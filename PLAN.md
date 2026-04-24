@@ -285,6 +285,10 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | SS-S01-BIB-world_model-v01 APPROVED | Director/CEO |
 | 2026-04-24 | SS-S01-BIB-character_sandy-v01 APPROVED | Director/CEO |
 | 2026-04-24 | SS-S01-BIB-character_inspector_stopwatch-v01 APPROVED | Director/CEO |
+| 2026-04-24 | SS-S01-E01-SPC-brief-v01 APPROVED | Director/CEO |
+| 2026-04-24 | SS-S01-E01-SPC-story_brief-v01 APPROVED (Option A ending confirmed) | Director/CEO |
+| 2026-04-24 | SS-S01-E01-SPC-music_brief-v01 APPROVED | Director/CEO |
+| 2026-04-24 | SS-S01-E01-SCR-script-v01 DRAFT — pending ART-HW review | EXEC-SW |
 
 ---
 
