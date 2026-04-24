@@ -754,6 +754,7 @@ sandystudio-app/                 ← separate repository or monorepo package
 | W-002 | Web app repo | A) Monorepo with C:\SandyStudio\ B) Separate repo | A = simpler for solo dev |
 | W-003 | First UI sprint scope | A) Full dashboard B) Approval queue only C) Episode tracker only | Recommend B — highest value fastest |
 | W-004 | config/defaults.yaml location | A) Static in repo B) Supabase table (editable via Settings UI) | B = all params in UI as promised |
+| W-005 | Approval Authority Matrix — entry point | A) Forced wizard on series creation B) Settings tab accessible any time C) Both (wizard first, settings after) | Recommend C — Director can't miss it on first run |
 
 ---
 
