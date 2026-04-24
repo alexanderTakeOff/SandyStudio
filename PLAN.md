@@ -212,6 +212,9 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | governance.md, CLAUDE.md, pipeline_overview.md, batch_approval.md, inter_agent_handoff.md updated | Claude Code |
 | 2026-04-24 | Sprint 4 COMPLETE — api_integrations, project_state, media_formats, auth APPROVED | Director/CEO |
 | 2026-04-24 | Sprint 5 COMPLETE — youtube, metadata, analytics APPROVED | Director/CEO |
+| 2026-04-24 | STACK DECISION: Next.js 15 + Supabase + Inngest + Vercel | Director/CEO |
+| 2026-04-24 | EXEC-ORCH orchestrator.md v0.1 APPROVED | Director/CEO |
+| 2026-04-24 | EXEC-SW screenwriter.md v0.1 DRAFT — pending review | Claude Code |
 
 ---
 
