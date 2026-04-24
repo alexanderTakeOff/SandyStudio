@@ -570,3 +570,7 @@ change_log:
     change: "Initial provider registry. Flux Pro as primary image (replaces Midjourney automation). Beatoven as primary music (replaces Suno). Kling 3.0 Elements as primary character video."
     by: "EXEC-ARCH / Claude Code"
     plan_md_entry: true
+  - date: "2026-04-24"
+    change: "Added mock provider layer. gateway.provider_mode: mock (default). All contracts return schema-valid placeholder outputs. Switch to real: change provider_mode to real."
+    by: "Director/CEO decision — pipeline validation before real API integration"
+    plan_md_entry: true
