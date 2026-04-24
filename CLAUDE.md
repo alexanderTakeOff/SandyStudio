@@ -163,7 +163,70 @@ Agents at this level execute production tasks. They read briefs, produce outputs
 
 ---
 
-## 5. OPERATION MODES
+## 5. ECC SKILL & AGENT MAPPING
+
+**everything-claude-code (ECC)** is installed globally at `~/.claude/` and available to all SandyStudio agents.
+Each agent must invoke its mapped ECC skill/agent before executing tasks.
+
+### Level 1 — Board (Strategic)
+
+| Agent ID | ECC Skill / Agent | Purpose |
+|----------|-------------------|---------|
+| `BOARD-MKT` | `research-apis`, `seo` skill | Market research, YouTube niche analysis |
+| `BOARD-FIN` | `agentic-engineering` skill | API cost routing: Haiku → Sonnet → Opus |
+| `BOARD-FAI` | `enterprise-agent-ops` skill | Brand consistency monitoring |
+| `BOARD-CRIT` | `security-review` skill | Risk and security audit |
+| `BOARD-CRD` | `gan-evaluator` agent | Visual style quality assessment |
+
+### Level 2 — Artistic Council (Creative Management)
+
+| Agent ID | ECC Skill / Agent | Purpose |
+|----------|-------------------|---------|
+| `ART-PROD` | `continuous-agent-loop`, `autonomous-loops` skills | Automate recurring production runs |
+| `ART-HW` | `agentic-engineering` skill | Script decomposition into 15-min agent units |
+| `ART-AD` | `gan-generator`, `gan-evaluator` agents | Visual style generation and consistency checks |
+| `ART-MS` | `fal-ai-media` skill (CSM-1B TTS) | Audio aesthetic and voiceover direction |
+| `ART-WB` | `enterprise-agent-ops` skill | World state long-lived agent management |
+| `ART-CAST` | `gan-evaluator` agent | Character appearance consistency across shots |
+| `ART-CONT` | `ai-regression-testing` skill | Detect continuity regressions across episodes |
+
+### Level 3 — Executive Agents (Production)
+
+| Agent ID | ECC Skill / Agent | Purpose |
+|----------|-------------------|---------|
+| `EXEC-ORCH` | `/orchestrate` command, `orchestration` module | Coordinate full episode pipeline |
+| `EXEC-SW` | `agentic-engineering` skill | Eval-first script generation with quality gates |
+| `EXEC-SREV` | `code-reviewer` agent, `e2e-testing` skill | Script QA against style bible and brief |
+| `EXEC-STY` | `gan-design` command | Generate and validate visual style bible |
+| `EXEC-SB` | `/plan` command, `planner` agent | Break script into acts → scenes → shots |
+| `EXEC-ARCH` | `archivist` (native) | Naming convention and asset registry enforcement |
+| `EXEC-WCHK` | `gan-evaluator` agent | Shot-by-shot world model verification |
+| `EXEC-VGEN` | `fal-ai-media` skill (Veo3/Kling/Seedance), `remotion-video-creation` skill | Image & video generation + episode assembly |
+| `EXEC-MGEN` | `fal-ai-media` skill (audio), `video-editing` skill | Music/audio generation and sync |
+| `EXEC-COPY` | `content-engine`, `seo` skills | Title, description, tags optimised for YouTube |
+| `EXEC-THUMB` | `fal-ai-media` skill (image), `gan-generator` agent | Thumbnail generation via Midjourney/fal.ai |
+| `EXEC-PUB` | `crosspost` skill | Multi-platform publish: YouTube + TikTok + X |
+| `EXEC-ANAL` | `seo`, `research-apis` skills | Post-publish metrics collection and analysis |
+
+### ECC Model Routing Policy (BOARD-FIN enforces)
+
+| Task Complexity | Model | Examples |
+|----------------|-------|---------|
+| Boilerplate, formatting, tagging | `claude-haiku-4-5` | Tags, metadata, file naming |
+| Scripts, storyboards, QA | `claude-sonnet-4-6` | Screenwriting, shot breakdown, reviews |
+| Architecture, strategy, world bible | `claude-opus-4-7` | World model, governance, creative direction |
+
+### ECC Hooks Active (project-level)
+
+| Hook | Trigger | Action |
+|------|---------|--------|
+| PostToolUse → Write/Edit | Every file save | Auto-commit + push to GitHub |
+| (Add) PreToolUse → Bash | Before API calls | Validate prompt structure, check quota |
+| (Add) PostToolUse → Bash | After generation | Log cost, duration, quality metrics |
+
+---
+
+## 6. OPERATION MODES
 
 ### System modes
 | Mode | Code | Behaviour |
