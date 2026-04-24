@@ -443,6 +443,95 @@ Sections:
 
 ---
 
+### 6.6 Approval Authority Matrix (`/series/[id]/approval-authority`)
+
+**When:** Configured once per series at project start, before any production begins.
+**Who:** Director only — this page is always Director-only, no delegation.
+**Purpose:** The Director explicitly declares, upfront, who reviews and approves each
+category of output. This makes implicit delegation explicit and auditable.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Approval Authority — Sandy Studio S01                           │
+│ "Who approves what. Set once. Override per episode if needed."  │
+├──────────────────────────┬──────────────────────────────────────┤
+│ APPROVAL CATEGORY        │ APPROVER                             │
+├──────────────────────────┼──────────────────────────────────────┤
+│ 🖼  Character visuals     │ ● Director personally               │
+│    (images, references)  │ ○ Delegate to: ____________         │
+│    [VISUAL — human only] │                                      │
+├──────────────────────────┼──────────────────────────────────────┤
+│ 🖼  Location references   │ ● Director personally               │
+│    (world bible images)  │ ○ Delegate to: ____________         │
+│    [VISUAL — human only] │                                      │
+├──────────────────────────┼──────────────────────────────────────┤
+│ 🎬  Generated shots       │ ● Director personally               │
+│    (video output review) │ ○ Delegate to: ____________         │
+│    [VISUAL — human only] │                                      │
+├──────────────────────────┼──────────────────────────────────────┤
+│ 🖼  Thumbnails            │ ● Director personally               │
+│    [VISUAL — human only] │ ○ Delegate to: ____________         │
+├──────────────────────────┼──────────────────────────────────────┤
+│ 📄  Scripts               │ ○ Director personally               │
+│                          │ ○ Delegate to: ____________         │
+│                          │ ● EXEC-DIR-AI (Mode 2/3)            │
+├──────────────────────────┼──────────────────────────────────────┤
+│ 📋  Storyboards           │ ○ Director personally               │
+│                          │ ○ Delegate to: ____________         │
+│                          │ ● EXEC-DIR-AI (Mode 2/3)            │
+├──────────────────────────┼──────────────────────────────────────┤
+│ 🎵  Music/audio           │ ○ Director personally               │
+│                          │ ● Delegate to: ____________         │
+│                          │ ○ EXEC-DIR-AI (Mode 2/3)            │
+├──────────────────────────┼──────────────────────────────────────┤
+│ 📝  Copy/metadata         │ ○ Director personally               │
+│                          │ ○ Delegate to: ____________         │
+│                          │ ● EXEC-DIR-AI (Mode 2/3)            │
+├──────────────────────────┼──────────────────────────────────────┤
+│ 🚀  PUBLISH               │ ● Director personally (HARD LIMIT)  │
+│    [always Director]     │ Cannot be delegated                  │
+└──────────────────────────┴──────────────────────────────────────┘
+
+  [SAVE APPROVAL MATRIX]    [RESET TO DEFAULTS]
+```
+
+**Rules enforced by the UI:**
+
+1. **Visual categories** (🖼 🎬) show only two options: "Director personally" or "Delegate to [human name field]". The EXEC-DIR-AI option is never shown for visual categories — it is not possible to delegate visual approval to an AI, regardless of governance mode.
+
+2. **PUBLISH** row is locked to "Director personally" — no radio buttons, no delegation UI.
+
+3. **"Delegate to [human name]"** field accepts a free-text name. In a multi-user future, this will be a user selector. For now: a name label for audit trail.
+
+4. **Override per episode:** The matrix sets series defaults. Any episode can override an individual category via the Episode Detail page → Settings tab. Override is logged with rationale.
+
+5. **Governance mode interaction:** Even if episode is in Mode 3 (DELEGATED), visual categories always require the approver named in the matrix — never auto-approved. Mode 3 only auto-approves non-visual text outputs.
+
+**Database addition (new table):**
+
+```sql
+CREATE TABLE approval_authority (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
+  series_id       text NOT NULL
+  episode_id      text            -- null = series default; set = episode override
+  category        text NOT NULL   -- 'character_visual' | 'location_ref' | 'generated_shots'
+                                  -- | 'thumbnails' | 'scripts' | 'storyboards'
+                                  -- | 'audio' | 'copy' | 'publish'
+  approver_type   text NOT NULL   -- 'director' | 'human_delegate' | 'exec_dir_ai'
+  approver_name   text            -- human name if human_delegate; null otherwise
+  is_visual       boolean NOT NULL DEFAULT false  -- visual=true blocks AI approval always
+  created_at      timestamptz DEFAULT now()
+  set_by          text NOT NULL   -- always Director user ID
+);
+```
+
+**UX note (carry into Sprint 6 design):** This page is the first thing the Director
+sees when starting a new series. It is a declaration of intent. The default state should
+show all visual categories pre-locked to "Director personally" so the Director actively
+has to choose to delegate — not the other way around.
+
+---
+
 ## 7. AGENT EXECUTION MODEL
 
 ### 7.1 How agents run
