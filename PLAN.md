@@ -316,6 +316,10 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | SS-S01-E01-REV-pipeline_validation-v01 APPROVED — 17/17 PASS, $0.00 mock | Director/CEO |
 | 2026-04-24 | PA-005 logged: Character Visual Development Workflow (pre-production character approval) | Director/CEO |
 | 2026-04-24 | PA-006 logged: Multi-Audience KPI Layer (gag_rate + philosophy_density + shot attribution) | Director/CEO |
+| 2026-04-24 | character_consistency.md v0.3 — two-level reference architecture (PA-001) + visual dev workflow (PA-005) | Claude Code |
+| 2026-04-24 | character_profile.md v0.2 — master_reference_image_path + fragment_test + physics_states (PA-002) | Claude Code |
+| 2026-04-24 | specs/production/character_visual_development.md v0.1 — full 6-phase pre-production character workflow | Claude Code |
+| 2026-04-24 | specs/production/audience_kpi.md v0.1 — multi-audience KPI layer, shot attribution, QA checks | Claude Code |
 
 ---
 
