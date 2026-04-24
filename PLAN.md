@@ -91,8 +91,8 @@ No agent writes content until the spec for that content is APPROVED.
 
 | Task | Status |
 |------|--------|
-| `specs/system/character_consistency.md` | ✅ DRAFT — **⚠️ D-001 needed** |
-| `specs/system/assembly_tool.md` | ✅ DRAFT — **⚠️ D-002 needed** |
+| `specs/system/character_consistency.md` | ✅ **APPROVED** — D-001: A2-Kling |
+| `specs/system/assembly_tool.md` | ✅ **APPROVED** — D-002: B4 FFmpeg |
 | `specs/system/api_integrations.md` | ✅ DRAFT |
 | `specs/system/project_state.md` | ✅ DRAFT |
 | `specs/system/media_formats.md` | ✅ DRAFT |
