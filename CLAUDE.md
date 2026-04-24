@@ -297,5 +297,5 @@ When starting a new Claude Code session in this project:
 
 ---
 
-*SandyStudio CLAUDE.md | v0.3 | Status: DRAFT*
+*SandyStudio CLAUDE.md | v0.4 | Status: DRAFT*
 *Next: Director approval of governance.md → Sprint 1*
