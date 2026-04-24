@@ -11,8 +11,8 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 6 — Agent Instructions (blocked on 2 decisions + spec approvals)
-Blocker:  D-001 (character consistency) and D-002 (assembly tool) — Director to decide
+Phase:    SPRINT 6 — Agent Instructions (IN PROGRESS)
+Blocker:  none
 Next:     Sprint 7 — First Production Run (PILOT)
 Mode:     ===1=== ANALYTICS (default)
 Date:     2026-04-24
