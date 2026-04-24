@@ -306,6 +306,12 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | SS-S01-E01-STB-act1-v01 APPROVED — 12 shots, 60s | Director/CEO |
 | 2026-04-24 | SS-S01-E01-REV-world_check-v01 DRAFT — PASS, 0 blocking, 1 minor note (WC-NOTE-01) | EXEC-WCHK |
 | 2026-04-24 | SS-S01-E01-REV-vgen_mock_log-v01 DRAFT — 12 shots mock, $0.00, PA-001 gap noted | EXEC-VGEN |
+| 2026-04-24 | SS-S01-E01-REV-mgen_mock_log-v01 DRAFT — 3 tracks + 8 SFX mock, $0.00 | EXEC-MGEN |
+| 2026-04-24 | SS-S01-E01-REV-thumb_mock_log-v01 DRAFT — 3 thumbnail variants mock, $0.00 | EXEC-THUMB |
+| 2026-04-24 | SS-S01-E01-SPC-copy-v01 DRAFT — title, description, tags, social copy | EXEC-COPY |
+| 2026-04-24 | SS-S01-E01-REV-pub_mock_log-v01 DRAFT — mock YouTube + X + TikTok, $0.00 | EXEC-PUB |
+| 2026-04-24 | SS-S01-E01-REV-anal_mock_log-v01 DRAFT — mock D+7 analytics, signals to BOARD-MKT | EXEC-ANAL |
+| 2026-04-24 | SS-S01-E01-REV-pipeline_validation-v01 DRAFT — 17/17 steps PASS, real est. $12.32/ep | EXEC-ORCH |
 
 ---
 
