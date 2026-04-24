@@ -275,6 +275,9 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 | S5 | All agent instructions (25 agents) | ⏳ Blocked by S2+S3+S4 |
 | S6 | Studio UI — agent dashboard, approval interface, episode tracker | ⏳ Blocked by S5 |
 
+**UI References:**
+- `awesome-design-md`: https://github.com/VoltAgent/awesome-design-md — 69+ brand DESIGN.md files (color, typography, components) for Sprint 6 Studio UI
+
 **Foundation complete:**
 - [x] Studio folder structure
 - [x] File storage paths
