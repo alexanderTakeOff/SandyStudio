@@ -284,7 +284,8 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 - [x] Naming convention (+ SPC, STA types)
 - [x] Agent stubs created (20 existing + 5 new defined)
 - [x] SDD master plan approved
-- [ ] Governance APPROVED by Director ← **current blocker**
+- [x] Governance APPROVED by Director 2026-04-24
+- [x] participants.md APPROVED by Director 2026-04-24
 
 ---
 
