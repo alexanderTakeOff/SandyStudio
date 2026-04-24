@@ -1,10 +1,13 @@
 # SandyStudio — Character Visual Consistency Spec
-## specs/system/character_consistency.md | v0.2 | APPROVED
+## specs/system/character_consistency.md | v0.3 | DRAFT
 
 > **✅ DIRECTOR DECISION: A2-Kling**
 > Midjourney v7 generates canonical cartoon-style reference images.
 > Kling 3.0 Elements uses those references to animate consistent characters.
 > Approved by Director (Sandy) on 2026-04-24.
+>
+> **v0.3 update (2026-04-24):** Two-level reference architecture added (PA-001).
+> Character Visual Development workflow added (PA-005).
 
 ---
 
@@ -12,180 +15,261 @@
 
 Visual consistency of characters across all generated shots is the single hardest
 technical problem in AI animation production. Each API call is stateless — the model
-has no memory of what the Pink Panther looked like in shot #1 when generating shot #47.
+has no memory of what the character looked like in shot #1 when generating shot #47.
 
-Without a deliberate consistency mechanism, each shot risks producing a subtly
-different character: different proportions, slightly off colours, different expression baseline.
+Without a deliberate consistency mechanism, each shot risks a subtly different character:
+different proportions, slightly off colours, different expression baseline.
 At episode scale (50–80 shots), this becomes visibly incoherent.
 
-This spec defines the technical approach SandyStudio uses to solve this problem.
+This spec defines:
+1. The technical architecture for character reference (A2-Kling two-level system)
+2. The pre-production workflow for establishing character visual baselines
+3. How the reference flows into EXEC-VGEN at generation time
 
 ---
 
-## THE FOUR OPTIONS
+## SECTION 1 — TWO-LEVEL REFERENCE ARCHITECTURE
 
-### A1 — Canonical Prompt Fragment (text only)
+Every approved character has two reference tiers. Both must exist before production begins.
 
-**How it works:**
-A precise, tested text description of each character is written and locked in the
-Character Profile as `canonical_prompt_fragment`. This exact text is injected into
-every generation prompt that features the character, in addition to the shot-specific content.
+### Level 0 — Master Reference Image
 
-**Example fragment (Pink Panther):**
 ```
-tall slender anthropomorphic pink panther, dusty rose pink fur (#E8A0A8),
-charcoal outline, heavy-lidded cool expression, walks upright, languid graceful
-movement, 1960s animated cartoon style, clean lines, flat colour with soft shading,
-expressive tail
-```
+What:   Single canonical 8K image of the character on a neutral background.
+        Full-body view, front-facing, neutral expression, standard lighting.
+        This is the immutable visual contract for the character.
 
-**Pros:**
-- Simple to implement immediately
-- No additional cost or infrastructure
-- Works with all APIs (Veo3, Kling, Midjourney)
-- Fragment can be refined over time
+Who:    ART-CAST proposes. ART-AD approves. Director signs off.
 
-**Cons:**
-- Text descriptions are interpreted differently by different models and even different runs
-- Consistency degrades with complex scenes (many characters, unusual angles)
-- No guarantee of exact colour reproduction
-- Estimated consistency rate: ~70–80% across shots (subjective)
+When:   Created during Character Visual Development (pre-production, PA-005).
+        Not during the production pipeline — before it.
 
-**Implementation effort:** Low (write the fragment, test, lock in profile)
-**Cost overhead:** None
+Lock:   LOCKED after first Director approval. Never overwritten.
+        Design changes → new version (v02, v03...) + new master reference.
 
----
+Storage: H:/My Drive/SandyStudio_Media/approved/images/
+         Naming: [character_id]-master-ref-v[NN]-APPROVED.png
 
-### A2 — Reference Image Anchor
-
-**How it works:**
-A canonical reference image of each character is generated and approved.
-This image is submitted alongside every generation prompt as a visual style/character anchor,
-using the image-to-video or image reference features of supported APIs.
-
-**Supported by:**
-- Kling (character consistency mode)
-- Midjourney (image reference with --cref flag)
-- Veo3: partial support (style reference, not character-locked)
-
-**Pros:**
-- Visual consistency significantly higher than text-only (~85–92%)
-- Model can match colours, proportions, and style more reliably
-- Anchor image is the visual contract — unambiguous
-
-**Cons:**
-- Requires generating and approving canonical reference images first (extra step)
-- API support varies — Veo3 character locking is limited as of early 2026
-- Reference image must be updated if character design changes (version cascade)
-- Slightly higher API cost (image submitted with each call)
-
-**Implementation effort:** Medium (generate reference images, integrate into EXEC-VGEN workflow)
-**Cost overhead:** ~5–10% more per generation call
-
----
-
-### A3 — LoRA / Fine-Tune
-
-**How it works:**
-A custom model is fine-tuned (LoRA) on a set of approved canonical character images.
-Every generation call uses the fine-tuned model, which has the character "baked in".
-
-**Pros:**
-- Highest consistency rate (~95%+)
-- Characters become first-class model concepts
-- Works across all shot types and angles
-
-**Cons:**
-- Requires 20–50 training images per character (must be generated or sourced first)
-- Fine-tuning cost and time (hours, not minutes)
-- Fine-tuned model must be re-trained if character design changes
-- Requires technical infrastructure (ComfyUI, Replicate, or similar)
-- Not available natively in Veo3 (as of early 2026)
-
-**Implementation effort:** High
-**Cost overhead:** Training cost per character + hosting
-
----
-
-### A4 — Hybrid: A1 now, A2 on pilot, A3 if needed
-
-**How it works:**
-Start with A1 (text fragment) for the bootstrap phase.
-After generating the first 10–15 shots and seeing actual consistency level,
-upgrade to A2 (reference image anchor) if A1 is insufficient.
-Reserve A3 (LoRA) as a future option if the series scales significantly.
-
-**Pros:**
-- Unblocks production immediately
-- Evidence-based decision: upgrade only if needed
-- Lower initial investment
-- Can course-correct after seeing real output
-
-**Cons:**
-- Potential rework if A1 proves insufficient: existing prompts may need updating
-  when upgrading to A2 (version cascade on all prompts)
-- Slightly lower consistency in earliest shots
-
-**Implementation effort:** Low to start, Medium if upgrade triggered
-**Cost overhead:** None to start, ~5–10% if upgrade to A2
-
----
-
-## SECTION 3 — DIRECTOR DECISION
-
-**Choose one approach:**
-
-| Option | Approach | Recommended for |
-|--------|----------|-----------------|
-| **A1** | Canonical prompt fragment only | Fastest start, accept variability |
-| **A2** | Reference image anchor | Best quality/effort balance |
-| **A3** | LoRA fine-tune | Maximum quality, significant investment |
-| **A4** | Hybrid (A1 → A2 → A3) | **Recommended — pragmatic and evidence-based** |
-
-**Sandy's choice:** ✅ **A2-Kling** — Midjourney reference image → Kling 3.0 Elements for animation
-
----
-
-## SECTION 4 — IMPLEMENTATION (fills in after decision)
-
-*This section will be completed once Director selects an approach.*
-
-### If A1 or A4 selected:
-```
-Workflow addition to EXEC-VGEN:
-  1. For each character in shot.characters_present:
-     → Read character_id → load canonical_prompt_fragment from approved profile
-     → Inject fragment into prompt_text at position [CHARACTER FRAGMENTS]
-  2. Validate fragment version matches current approved profile version
-  3. Log fragment version in prompt file's character_fragments array
+Profile field: master_reference_image_path  (added in character_profile.md v0.2)
 ```
 
-### If A2 or A4(upgraded) selected:
+### Level 1 — Scene Reference
+
 ```
-Additional workflow:
-  1. Reference image library maintained in: bibles/characters/references/
-     Naming: [character_id]-reference-v[NN]-APPROVED.png
-  2. EXEC-VGEN submits reference image alongside prompt per API spec
-  3. Reference image version logged in prompt file
-  4. When character profile updates: new reference image required
-     → version cascade on all prompts using old reference
+What:   Shot-specific composite image: master reference + shot conditions
+        (lighting, pose angle, sand state, other characters in frame).
+        Generated per shot by EXEC-VGEN as Step 0 of generation workflow.
+
+Who:    EXEC-VGEN generates automatically from master reference + shot spec.
+
+When:   At generation time, immediately before the main generation call.
+        Not stored permanently — regenerated each time if needed.
+
+API:    Passed to Kling 3.0 Elements as character_reference parameter.
+        Providers.yaml: character_reference: true is already set for character_video contract.
+
+Purpose: Adapts the immutable master reference to the specific shot conditions
+         without altering the character's fundamental appearance.
+```
+
+### Reference Flow at Generation Time
+
+```
+character_profile.master_reference_image_path
+        ↓
+EXEC-VGEN Step 0: Load master reference
+        ↓
+Compose with shot conditions (lighting, angle, sand state)
+        ↓
+Level 1 scene_reference image
+        ↓
+Kling 3.0 API call: prompt_text + character_reference + scene_reference
+        ↓
+Generated shot video
 ```
 
 ---
 
-## SECTION 5 — CHARACTER FRAGMENT TESTING PROTOCOL
+## SECTION 2 — TECHNICAL APPROACHES (archived for reference)
+
+*(Decision made. Section kept for institutional memory.)*
+
+| Option | Approach | Consistency est. | Effort | Decision |
+|--------|----------|-----------------|--------|----------|
+| A1 | Text fragment only | 70–80% | Low | Not selected |
+| **A2** | **Reference image anchor** | **85–92%** | **Medium** | **✅ SELECTED** |
+| A3 | LoRA fine-tune | 95%+ | High | Reserve for scale |
+| A4 | Hybrid (A1→A2→A3) | Variable | Progressive | Superseded by A2 direct |
+
+**A2-Kling specifics:**
+- Midjourney v7 generates master reference images (high quality, character design control)
+- Kling 3.0 Elements (`character_reference: true`) animates from reference
+- Veo-3 (background shots, no character): text-only is sufficient
+- Config: `config/providers.yaml → character_video_contract → character_reference: true`
+
+---
+
+## SECTION 3 — CHARACTER VISUAL DEVELOPMENT WORKFLOW (PA-005)
+
+*This is the pre-production phase that must complete before ART-CAST writes
+the final canonical_prompt_fragment and before the production pipeline begins.*
+
+### Step 1 — Search Existing Library
+
+```
+Agent: ART-CAST
+Action: Before generating anything, check bibles/characters/references/ for
+        any prior approved images of this character (or conceptually similar characters).
+        Re-use or build on existing references where possible.
+Result: Either proceed to Step 2, or propose adaptation of existing reference.
+```
+
+### Step 2 — Generate Visual Variants
+
+```
+Agent: ART-CAST + EXEC-VGEN (draft generation)
+Action: Generate 3–4 distinct visual variants of the character.
+        Each variant explores a different interpretation of the visual direction brief.
+        Use: Midjourney v7 or equivalent — low cost, fast iteration.
+        Format: Full-body, neutral pose, white/neutral background, consistent lighting.
+        Cost: ~$0.02–0.04 per variant (Midjourney standard)
+
+Variant brief structure:
+  - Variant A: closest to written design brief
+  - Variant B: slightly bolder/more graphic interpretation
+  - Variant C: slightly softer/more restrained interpretation
+  - Variant D: optional — experimental (e.g. different proportion emphasis)
+```
+
+### Step 3 — Director Review
+
+```
+Present all variants to Director with brief note per variant explaining
+what design choice it emphasises.
+
+Director selects preferred variant OR:
+  - Requests combination (e.g. "B proportions, C expression")
+  - Requests refinement ("add more wear/texture to B")
+  - Rejects all → return to Step 2 with revised brief
+```
+
+### Step 4 — Iterate to Approval
+
+```
+Iterate Step 2→3 until Director approves a specific visual as the character baseline.
+Typical: 1–2 rounds. Max: 5 rounds before escalating to ART-AD for brief revision.
+
+Cost budget: max 20 draft variants per character before escalation.
+```
+
+### Step 5 — Master Reference Image
+
+```
+Agent: ART-CAST
+Action: From the approved variant, generate the definitive Level 0 Master Reference Image.
+  - 8K resolution (or maximum available)
+  - Front-facing, full-body
+  - Neutral expression (canonical default state)
+  - Neutral background (#FFFFFF or transparent)
+  - Hard overhead spotlight (matches world lighting default)
+
+Store at: H:/My Drive/SandyStudio_Media/approved/images/
+          [character_id]-master-ref-v01-APPROVED.png
+
+Update character profile: master_reference_image_path → this file path
+```
+
+### Step 6 — Write canonical_prompt_fragment
+
+```
+Agent: ART-CAST
+Action: After master reference is approved, derive canonical_prompt_fragment
+        from the approved visual — not from abstract description.
+        The fragment must describe exactly what was approved in the reference image.
+
+Test (Section 5 below): Generate 10 test images using fragment only.
+  ≥8/10 match master reference → fragment approved for profile.
+  <8/10 → revise fragment wording → retest.
+```
+
+### Gate: Nothing Proceeds Without This
+
+```
+Character profile cannot reach APPROVED status without:
+  ✅ master_reference_image_path filled (not null)
+  ✅ canonical_prompt_fragment tested and validated
+  ✅ Both approved by Director
+
+Production pipeline gate: All character profiles APPROVED → pipeline unlocked.
+```
+
+---
+
+## SECTION 4 — EXEC-VGEN GENERATION WORKFLOW (updated for PA-001)
+
+When EXEC-VGEN processes a shot that includes a character:
+
+```
+Step 0a: For each character in shot.characters_present:
+         → Load character profile (approved version)
+         → Check: master_reference_image_path is not null
+         → Load master reference image from path
+         → If null: STOP — escalate upstream. Production gate failure.
+
+Step 0b: Compose Level 1 scene reference
+         → master_reference_image + shot.lighting_description
+         → + shot.camera_angle (to adjust pose reference)
+         → + sand_state (if sandy) or arrow_brow_position (if inspector)
+
+Step 1: Assemble generation prompt
+         → [STYLE] from style_bible.style_anchor_text
+         → [COMPOSITION] from shot.camera
+         → [ACTION] from shot.action
+         → [CHARACTER: id] → canonical_prompt_fragment (injected verbatim)
+         → [LOCATION] from shot.location
+         → [LIGHTING] from shot.lighting
+         → [MOOD] from shot.mood
+         → [NEGATIVE] from style_bible.standard_negative_prompt
+
+Step 2: API call
+         → Contract: character_video (if characters present)
+         → Contract: video (if no characters)
+         → character_reference: scene_reference image (Level 1)
+         → character_reference: true (already in providers.yaml)
+
+Step 3: Log output
+         → consistency_score (when real: from API response; mock: 0.95 flat)
+         → reference_image_version: master_reference_image_path version
+```
+
+---
+
+## SECTION 5 — CANONICAL PROMPT FRAGMENT TESTING PROTOCOL
 
 Before a Character Profile can move from DRAFT to REVIEW:
 
 1. ART-CAST writes initial `canonical_prompt_fragment`
 2. EXEC-VGEN generates 5 test images using only the fragment (no shot context)
 3. EXEC-VGEN generates 5 test images with fragment + typical shot context
-4. ART-AD reviews all 10 images against character visual_appearance spec
+4. ART-AD reviews all 10 images against master reference image (Level 0)
 5. If ≥8/10 match: fragment approved for profile
 6. If <8/10: ART-CAST revises fragment → retest
 
-Test results logged in: `reviews/SS-PILOT-REV-fragment_test_[character_id]-v01-DRAFT.md`
+Test results logged in: `reviews/SS-[SERIES]-REV-fragment_test_[character_id]-v01-DRAFT.md`
 
 ---
 
-*SandyStudio character_consistency.md | v0.1 | Status: DRAFT — awaiting Director decision*
+## SECTION 6 — VERSION CONTROL
+
+| Event | Action |
+|-------|--------|
+| Character design change (any visual element) | New profile version + new master reference image |
+| Fragment text refinement only (no visual change) | Fragment update only, same profile version, re-test required |
+| New season with redesigned character | New profile version v02+, old version LOCKED |
+| Production in progress with character_reference: true | Do NOT change master reference during production run |
+
+---
+
+*SandyStudio character_consistency.md | v0.3 | Status: DRAFT*
+*PA-001 (reference architecture) + PA-005 (visual development workflow) implemented*
+*Prev: v0.2 APPROVED (director decision). This version pending Director review.*
