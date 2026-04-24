@@ -261,7 +261,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 
 ---
 
-## 7. CURRENT PROJECT STATUS
+## 8. CURRENT PROJECT STATUS
 
 **Methodology:** SDD (Spec Driven Development) — specs approved before implementation
 
