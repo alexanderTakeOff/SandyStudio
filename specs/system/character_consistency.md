@@ -142,7 +142,7 @@ Reserve A3 (LoRA) as a future option if the series scales significantly.
 | **A3** | LoRA fine-tune | Maximum quality, significant investment |
 | **A4** | Hybrid (A1 → A2 → A3) | **Recommended — pragmatic and evidence-based** |
 
-**Sandy's choice:** `___` ← *Fill this in to approve spec*
+**Sandy's choice:** ✅ **A2-Kling** — Midjourney reference image → Kling 3.0 Elements for animation
 
 ---
 
