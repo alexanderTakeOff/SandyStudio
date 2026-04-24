@@ -223,6 +223,23 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | EXEC-DIR-AI exec_dir_ai.md v0.1 APPROVED (fix: EXEC-ARCH→EXEC-ORCH) | Director/CEO |
 | 2026-04-24 | EXEC-STY style_creator.md v0.1 DRAFT — pending review | Claude Code |
 | 2026-04-24 | EXEC-MGEN music_generator.md v0.1 DRAFT — pending review | Claude Code |
+| 2026-04-24 | EXEC-ARCH archivist.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | EXEC-COPY copywriter.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | EXEC-THUMB thumbnail_creator.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | EXEC-PUB publisher.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | EXEC-ANAL analytics_collector.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | ART-PROD producer.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | ART-HW head_writer.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | ART-AD art_director.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | ART-MS music_supervisor.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | ART-WB world_builder.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | ART-CAST casting_director.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | ART-CONT continuity_supervisor.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | BOARD-MKT market_analyst.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | BOARD-FIN financial_analyst.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | BOARD-FAI founder_ai.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | BOARD-CRIT cautious_critic.md v0.1 DRAFT | Claude Code |
+| 2026-04-24 | BOARD-CRD creative_director.md v0.1 DRAFT | Claude Code |
 
 ---
 
