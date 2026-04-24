@@ -24,6 +24,14 @@ gateway:
   audit_log_path: "reviews/gateway_audit/"
   config_reload_on_call: true         # reload this file fresh on every call (no restart needed)
 
+  # ─────────────────────────────────────────────────────────────
+  # PROVIDER MODE
+  # mock  → zero API calls; deterministic placeholder outputs; pipeline validation
+  # real  → live API calls; real outputs; costs apply
+  # Switch: change this single value. No other files need editing.
+  # ─────────────────────────────────────────────────────────────
+  provider_mode: mock                 # mock | real
+
 # ─────────────────────────────────────────────────────────────
 # BUDGET GATES
 # ─────────────────────────────────────────────────────────────
