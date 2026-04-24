@@ -64,7 +64,7 @@ H:\My Drive\SandyStudio_Media\
 │   ├── images/
 │   └── audio/
 ├── reviewed/                  ← Passed QA check
-└── approved/                  ← Sandy-approved final output
+└── approved/                  ← Director-approved final output
     ├── video/
     ├── images/
     └── audio/
