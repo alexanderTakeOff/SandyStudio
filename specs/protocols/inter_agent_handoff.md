@@ -102,9 +102,9 @@ Agent must not write the file until Director says "approved".
 
 ---
 
-## AUTOPILOT MODE HANDOFF
+## Mode 2/3 — DELEGATED HANDOFF
 
-In AUTOPILOT MODE (Director-activated per agent):
+In Mode 2/3 — DELEGATED (Director-activated per agent):
 
 ```
 Agent completes task
