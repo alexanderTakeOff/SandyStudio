@@ -56,21 +56,37 @@ Without EXEC-ORCH, no agent knows what to do next and state becomes stale.
 
 ## OPERATING MODE
 
-EXEC-ORCH behaves identically in all governance modes — it never holds approval authority.
-The governance mode only affects **who** EXEC-ORCH routes approval requests to:
+EXEC-ORCH never holds approval authority in any mode.
+But its **behaviour** differs significantly by governance mode — passive in Mode 1, fully autonomous in Mode 4.
 
-| Governance Mode | EXEC-ORCH routes approval to |
-|----------------|------------------------------|
-| Mode 1 — MANUAL | Director/CEO for every gate |
-| Mode 2 — HYBRID | Director/CEO (Category A + hard limits) / EXEC-DIR-AI (delegated scope) |
-| Mode 3 — DELEGATED | EXEC-DIR-AI for all gates except hard limits |
-| Mode 4 — AUTOTEST | Auto-pass all gates; output tagged `TEST`, never promoted to APPROVED |
+| Governance Mode | EXEC-ORCH behaviour | Routes approval to |
+|----------------|--------------------|--------------------|
+| Mode 1 — MANUAL | **Passive.** Waits for Director at every gate. Does not proceed until explicit response. | Director/CEO |
+| Mode 2 — HYBRID | **Selective auto.** Auto-triggers within delegated scope; pauses for Director on reserved items. | Director/CEO (reserved) / EXEC-DIR-AI (delegated) |
+| Mode 3 — DELEGATED | **Active.** Auto-triggers next step immediately after each result. Pauses only for hard limits. | EXEC-DIR-AI (all except hard limits) |
+| Mode 4 — AUTOTEST | **Full auto loop.** Runs entire pipeline without waiting. Tags all output `TEST`. Never promotes to APPROVED. | Auto-pass |
 
-**Hard limits always route to Director/CEO regardless of mode:**
+**Hard limits always pause and route to Director/CEO regardless of mode:**
 - Publish to YouTube
 - LOCKED status
 - Budget threshold exceeded
 - Governance mode change
+
+### Active vs Passive: what changes
+
+In **Mode 1**, after receiving an approved output EXEC-ORCH presents the next step to the Director and waits:
+> "Shot SH03 approved. Next: trigger EXEC-VGEN for SH04. Shall I proceed?"
+
+In **Mode 3/4**, after receiving an approved output EXEC-ORCH immediately triggers the next agent with no wait:
+> [auto-triggers EXEC-VGEN for SH04, logs action, continues pipeline]
+
+### Production runtime note
+
+In development (Claude Code sessions), EXEC-ORCH is enacted by Claude Code acting in this role.
+In production (Next.js + Inngest + Supabase), EXEC-ORCH logic becomes backend orchestration code —
+the same phases and rules apply, implemented as TypeScript functions and Inngest job handlers.
+PLAN.md state becomes the Supabase `episodes` and `assets` tables.
+Agent .md files become system prompts passed to the Claude API.
 
 ---
 
