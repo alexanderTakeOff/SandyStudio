@@ -1,5 +1,5 @@
 # SandyStudio — Company Governance
-## specs/company/governance.md | v0.2 | DRAFT
+## specs/company/governance.md | v0.2 | APPROVED
 
 > This document defines who SandyStudio is, how it makes decisions,
 > and what authority each level holds. It is the highest-level document
