@@ -38,10 +38,14 @@ Examples:
 ```yaml
 prompt_id: string             # REQUIRED — same as filename without extension
 prompt_type: string           # REQUIRED — VIDEO | IMAGE | MUSIC
-target_api: string            # REQUIRED — the specific API/model to call
-                              # VIDEO: "Veo3" | "Kling-1.6" | "Kling-2.0"
-                              # IMAGE: "Midjourney-v7" | "Flux-Pro"
-                              # MUSIC: "Suno-v4" | "Udio-v2"
+
+target_contract: string       # REQUIRED — the generation contract to call.
+                              # Resolved to actual provider via config/providers.yaml.
+                              # Never hardcode a model name here.
+                              # VIDEO:  "video_generation" | "character_video_generation"
+                              # IMAGE:  "image_generation"
+                              # MUSIC:  "music_generation" | "sfx_generation"
+                              # See specs/system/api_integrations.md for contract definitions.
 
 # --- SOURCE REFERENCE ---
 # Links this prompt back to the asset it is generating.
