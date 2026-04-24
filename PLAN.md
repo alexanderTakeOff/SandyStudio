@@ -201,12 +201,15 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-23 | PLAN.md created, SDD structure established | Claude Code |
 | 2026-04-23 | 5 new agents identified: ORCH, COPY, THUMB, PUB, ANAL | Claude Code |
 | 2026-04-23 | Spec hierarchy defined (7 layers, 23 files) | Claude Code |
-| 2026-04-24 | D-001 DECIDED: A2-Kling character consistency | Sandy |
-| 2026-04-24 | D-002 DECIDED: B4 FFmpeg assembly | Sandy |
-| 2026-04-24 | ARCH DECISION: Provider abstraction layer — agents call contracts not services | Sandy |
-| 2026-04-24 | api_integrations.md v0.2 — 7 full contracts (Image/Video/CharacterVideo/Music/SFX/Voice/Upscale) | Claude Code |
-| 2026-04-24 | media_gateway.md v0.1 — gateway routing, health monitoring, budget gate, retry policy | Claude Code |
-| 2026-04-24 | config/providers.yaml v0.1 — swappable provider registry; Flux Pro primary image, Beatoven primary music | Claude Code |
+| 2026-04-24 | D-001 DECIDED: A2-Kling character consistency | Director/CEO |
+| 2026-04-24 | D-002 DECIDED: B4 FFmpeg assembly | Director/CEO |
+| 2026-04-24 | ARCH DECISION: Provider abstraction layer — agents call contracts not services | Director/CEO |
+| 2026-04-24 | api_integrations.md v0.2 — 7 full contracts | Claude Code |
+| 2026-04-24 | media_gateway.md v0.1 — gateway routing, health monitoring, budget gate | Claude Code |
+| 2026-04-24 | config/providers.yaml v0.1 — swappable provider registry | Claude Code |
+| 2026-04-24 | GOVERNANCE REDESIGN: 4-mode system (MANUAL/HYBRID/DELEGATED/AUTOTEST) | Director/CEO |
+| 2026-04-24 | AI-EP → EXEC-DIR-AI — agent renamed and rewritten for 4-mode system | Claude Code |
+| 2026-04-24 | governance.md, CLAUDE.md, pipeline_overview.md, batch_approval.md, inter_agent_handoff.md updated | Claude Code |
 
 ---
 
