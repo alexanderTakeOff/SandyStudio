@@ -267,8 +267,8 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 
 | Sprint | What | Status |
 |--------|------|--------|
-| S0 | Governance approved, participants.md | ⏳ Awaiting Director approval |
-| S1 | PLAN.md, pipeline_overview, bootstrap_sequence | ⏳ Blocked by S0 |
+| S0 | Governance approved, participants.md | ✅ APPROVED by Director 2026-04-24 |
+| S1 | PLAN.md, pipeline_overview, bootstrap_sequence | 🟢 READY |
 | S2 | Data schemas (6 files) | ⏳ Blocked by S1 |
 | S3 | Protocols + Technical Decisions | ⏳ Blocked by S2 |
 | S4 | Distribution specs | ⏳ Blocked by S3 |
