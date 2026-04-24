@@ -497,15 +497,15 @@ category of output. This makes implicit delegation explicit and auditable.
 
 **Rules enforced by the UI:**
 
-1. **Visual categories** (🖼 🎬) show only two options: "Director personally" or "Delegate to [human name field]". The EXEC-DIR-AI option is never shown for visual categories — it is not possible to delegate visual approval to an AI, regardless of governance mode.
+1. **Visual categories** (🖼 🎬) default to "Director personally" and show a visible warning label — "Visual content: defaults to Director review." The Director can change this to any option (delegate to human or EXEC-DIR-AI), but must do so explicitly. The default is never silent.
 
-2. **PUBLISH** row is locked to "Director personally" — no radio buttons, no delegation UI.
+2. **PUBLISH** row is locked to "Director personally" — no radio buttons, no delegation UI. This is the only category with a hard lock.
 
 3. **"Delegate to [human name]"** field accepts a free-text name. In a multi-user future, this will be a user selector. For now: a name label for audit trail.
 
 4. **Override per episode:** The matrix sets series defaults. Any episode can override an individual category via the Episode Detail page → Settings tab. Override is logged with rationale.
 
-5. **Governance mode interaction:** Even if episode is in Mode 3 (DELEGATED), visual categories always require the approver named in the matrix — never auto-approved. Mode 3 only auto-approves non-visual text outputs.
+5. **Governance mode interaction:** Mode 3/4 (DELEGATED/AUTOTEST) only auto-approves categories where the matrix allows EXEC-DIR-AI. For categories where the matrix says "Director personally" or "human delegate" — Mode 3 still waits for that human. The matrix overrides the mode for each category individually.
 
 **Database addition (new table):**
 
