@@ -13,8 +13,7 @@
 ```
 Phase:    SPRINT 8 COMPLETE — Mock pipeline validated, all PA tasks logged
 Blocker:  none
-Next:     Director decision — q1: build webapp (Sprint 9) OR q2: character visuals first
-          Recommendation: start new session — context window full
+Next:     SPRINT 9 — Build webapp (Next.js + Supabase + Inngest per webapp.md)
 Mode:     ===1=== ANALYTICS (default)
 Date:     2026-04-24
 ```
