@@ -1,5 +1,5 @@
 # SandyStudio — AI Animation Studio
-## CLAUDE.md | Project Constitution v0.1
+## CLAUDE.md | Project Constitution v0.4
 
 > This file is read by Claude Code at every session start.
 > It defines the studio structure, file paths, naming conventions, and agent roles.

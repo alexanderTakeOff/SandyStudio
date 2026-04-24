@@ -8,7 +8,30 @@
       "WebSearch",
       "WebFetch(domain:registry.mcpservers.org)",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "Bash(where gh *)",
+      "Bash(powershell -Command \"Get-Command gh -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source\")",
+      "Bash(powershell -Command \"Get-Command gh | Select-Object -ExpandProperty Source\")",
+      "Bash(powershell -Command \"& 'C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe' auth login --web --git-protocol https 2>&1\")",
+      "Bash(powershell -Command \"& 'C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe' repo view alexanderTakeOff/SandyStudio --json name,visibility,url\")",
+      "Bash(powershell -Command \"[Environment]::SetEnvironmentVariable\\('Path', [Environment]::GetEnvironmentVariable\\('Path','Machine'\\) + ';C:\\\\Program Files\\\\GitHub CLI', 'Machine'\\)\")",
+      "Bash(powershell -Command \"[Environment]::SetEnvironmentVariable\\('Path', [Environment]::GetEnvironmentVariable\\('Path','User'\\) + ';C:\\\\Program Files\\\\GitHub CLI', 'User'\\)\")",
+      "mcp__mcp-registry__search_mcp_registry",
+      "Bash(powershell -Command \"& 'C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe' api repos/affaan-m/everything-claude-code/contents --jq '.[].name'\")",
+      "Bash(powershell -Command \"& 'C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe' api repos/affaan-m/everything-claude-code/contents/install.ps1 --jq '.download_url'\")",
+      "Bash(xargs curl *)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\NAVIA VISION ONE\\\\everything-claude-code\\\\install.ps1\")",
+      "Bash(powershell -ExecutionPolicy Bypass -Command \"cd 'C:\\\\Users\\\\NAVIA VISION ONE\\\\everything-claude-code'; node scripts/install-apply.js --target claude --profile full 2>&1\")",
+      "Bash(ls -la \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/.agents/skills/everything-claude-code/\")",
+      "Bash(find \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/.agents/skills/everything-claude-code\" -maxdepth 2 -type d)",
+      "Bash(find \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude\" -path \"*everything-claude-code*\" -type f)",
+      "Bash(ls -la \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/\")",
+      "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/rules/\")",
+      "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/agents/\")",
+      "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/commands/\")",
+      "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/hooks/\")",
+      "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/skills/\")",
+      "Bash(grep -l \"video\\\\|animation\\\\|media\\\\|image\\\\|audio\\\\|music\\\\|youtube\\\\|youtube\\\\|script\" \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/agents/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/commands/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/skills/\"*\"/SKILL.md\")"
     ]
   }
 }
