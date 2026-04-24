@@ -277,6 +277,14 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | DECISION: Mock provider layer — pipeline validation before real APIs | Director/CEO |
 | 2026-04-24 | providers.yaml updated — gateway.provider_mode: mock (default) | Claude Code |
 | 2026-04-24 | config/defaults.yaml v0.1 created — all fallback parameters for 25 agents | Claude Code |
+| 2026-04-24 | PILOT S01E01 brief received — "The Red Carpet", 60 sec, Sandy + Inspector Stopwatch | Director/CEO |
+| 2026-04-24 | shot.md schema updated — timing field mm.ss-mm.ss added, duration_seconds derived | Claude Code |
+| 2026-04-24 | defaults.yaml updated — target_runtime_seconds: 60 | Claude Code |
+| 2026-04-24 | SS-S01-STA-creative_direction-v01 APPROVED | Director/CEO |
+| 2026-04-24 | SS-S01-BIB-style-v01 APPROVED | Director/CEO |
+| 2026-04-24 | SS-S01-BIB-world_model-v01 APPROVED | Director/CEO |
+| 2026-04-24 | SS-S01-BIB-character_sandy-v01 APPROVED | Director/CEO |
+| 2026-04-24 | SS-S01-BIB-character_inspector_stopwatch-v01 APPROVED | Director/CEO |
 
 ---
 
