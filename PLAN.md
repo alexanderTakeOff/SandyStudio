@@ -11,9 +11,9 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 3 — Protocol Specs (+ Sprint 4 Technical Decisions in parallel)
-Blocker:  2 Director decisions needed for Sprint 4 (D-001, D-002)
-Next:     Sprint 5 — Distribution Specs
+Phase:    SPRINT 6 — Agent Instructions (blocked on 2 decisions + spec approvals)
+Blocker:  D-001 (character consistency) and D-002 (assembly tool) — Director to decide
+Next:     Sprint 7 — First Production Run (PILOT)
 Mode:     ===1=== ANALYTICS (default)
 Date:     2026-04-24
 ```
@@ -74,24 +74,29 @@ No agent writes content until the spec for that content is APPROVED.
 ---
 
 ### SPRINT 3 — Protocol Specs
-**Status:** ⏳ IN PROGRESS
-**Parallel with:** Sprint 4
+**Status:** ✅ COMPLETE (2026-04-24)
 
-| Task | Owner | Output |
-|------|-------|--------|
-| `specs/protocols/inter_agent_handoff.md` | EXEC-ORCH | File-based handoff protocol |
-| `specs/protocols/version_cascade.md` | EXEC-ARCH + EXEC-CONT | Upstream change invalidation |
-| `specs/protocols/qa_retry.md` | EXEC-ORCH | Retry loop: count, owner, escalation |
-| `specs/protocols/batch_approval.md` | ART-PROD | Batch review mechanism |
-
-**Exit criteria:** All 4 protocols APPROVED by Director
+| Task | Status |
+|------|--------|
+| `specs/protocols/inter_agent_handoff.md` | ✅ DRAFT |
+| `specs/protocols/version_cascade.md` | ✅ DRAFT |
+| `specs/protocols/qa_retry.md` | ✅ DRAFT |
+| `specs/protocols/batch_approval.md` | ✅ DRAFT |
 
 ---
 
 ### SPRINT 4 — Technical Decisions
-**Status:** 🔒 BLOCKED by Sprint 2
-**Parallel with:** Sprint 3
-**⚠️ Requires 2 Director decisions before starting**
+**Status:** ✅ COMPLETE (2026-04-24) — awaiting Director decisions on D-001, D-002
+**Parallel with:** Sprint 5
+
+| Task | Status |
+|------|--------|
+| `specs/system/character_consistency.md` | ✅ DRAFT — **⚠️ D-001 needed** |
+| `specs/system/assembly_tool.md` | ✅ DRAFT — **⚠️ D-002 needed** |
+| `specs/system/api_integrations.md` | ✅ DRAFT |
+| `specs/system/project_state.md` | ✅ DRAFT |
+| `specs/system/media_formats.md` | ✅ DRAFT |
+| `specs/system/auth.md` | ✅ DRAFT |
 
 #### Decision A — Character Visual Consistency
 > Sandy must choose approach before this sprint can begin
@@ -133,23 +138,20 @@ No agent writes content until the spec for that content is APPROVED.
 ---
 
 ### SPRINT 5 — Company + Distribution Specs
-**Status:** 🔒 BLOCKED by Sprint 4
-**Parallel with:** Sprint 4 (company specs can start earlier)
+**Status:** ✅ COMPLETE (2026-04-24)
 
-| Task | Owner | Output |
-|------|-------|--------|
-| `specs/company/participants.md` | EXEC-ARCH | Human access registry |
-| `specs/company/master_plan_template.md` | ART-PROD + BOARD | Master Plan template |
-| `specs/distribution/youtube.md` | EXEC-PUB | YouTube API + upload spec |
-| `specs/distribution/metadata.md` | EXEC-COPY | Title, description, tags templates |
-| `specs/distribution/analytics.md` | EXEC-ANAL + BOARD-MKT | Metrics + reporting |
-
-**Exit criteria:** All 5 specs APPROVED by Director
+| Task | Status |
+|------|--------|
+| `specs/company/participants.md` | ✅ **APPROVED** (pre-existing) |
+| `specs/company/master_plan_template.md` | ✅ **APPROVED** (pre-existing) |
+| `specs/distribution/youtube.md` | ✅ DRAFT |
+| `specs/distribution/metadata.md` | ✅ DRAFT |
+| `specs/distribution/analytics.md` | ✅ DRAFT |
 
 ---
 
 ### SPRINT 6 — Agent Instructions
-**Status:** 🔒 BLOCKED by Sprints 2 + 3 + 4
+**Status:** 🔒 BLOCKED — awaiting D-001, D-002 decisions + Director approval of DRAFT specs
 **This is the first "build" sprint — all prior sprints are spec-only**
 
 #### New agents to create (5)
