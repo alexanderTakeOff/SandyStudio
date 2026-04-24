@@ -78,9 +78,9 @@ An agent must NOT begin if any input is still in `DRAFT` status.
 
 ---
 
-## PROPOSE MODE HANDOFF
+## Mode 1 — MANUAL HANDOFF
 
-In PROPOSE MODE (default), the handoff includes a human checkpoint:
+In Mode 1 — MANUAL (default), the handoff includes a human checkpoint:
 
 ```
 Agent completes task
@@ -158,7 +158,7 @@ Before completing a handoff, the producing agent must verify:
 - [ ] Output file status field is correct (DRAFT for new work, REVIEW if submitting)
 - [ ] `source_version` or `brief_version` fields reference the correct upstream version
 - [ ] PLAN.md file tracker updated with new status
-- [ ] If PROPOSE MODE: summary prepared for Director
+- [ ] If Mode 1 — MANUAL: summary prepared for Director
 - [ ] If any input was INVALIDATED during this work: flag to EXEC-ORCH immediately
 
 ---
