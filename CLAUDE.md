@@ -273,6 +273,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 | S3 | Protocols + Technical Decisions | ⏳ Blocked by S2 |
 | S4 | Distribution specs | ⏳ Blocked by S3 |
 | S5 | All agent instructions (25 agents) | ⏳ Blocked by S2+S3+S4 |
+| S6 | Studio UI — agent dashboard, approval interface, episode tracker | ⏳ Blocked by S5 |
 
 **Foundation complete:**
 - [x] Studio folder structure
