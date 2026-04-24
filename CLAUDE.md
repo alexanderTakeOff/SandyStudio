@@ -266,7 +266,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 3. **LOCKED files are never modified.** Create a new version instead (`v02`, `v03`...).
 4. **Media goes to `H:\My Drive\SandyStudio_Media\raw\` first.** It only moves to `reviewed/` or `approved/` after passing QA.
 5. **All agent instructions live in `agents/`.** When Claude Code acts as a specific agent, it reads that agent's `.md` file first.
-6. **Sandy approves all LOCKED status changes.** Claude Code must explicitly ask for confirmation before marking anything LOCKED.
+6. **Director/CEO approves all LOCKED status changes.** Claude Code must explicitly ask for confirmation before marking anything LOCKED. AI-EP cannot mark files LOCKED.
 
 ---
 
