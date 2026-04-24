@@ -117,11 +117,11 @@ Canonical reference images for character consistency.
 
 ## 6. ASSEMBLY EXPORT SETTINGS
 
-*This section will be completed once `specs/system/assembly_tool.md` is APPROVED.*
+Assembly tool: **FFmpeg** (Decision D-002 — APPROVED 2026-04-24)
+Full tool spec: `specs/system/assembly_tool.md`
 
-### If B4 FFmpeg selected:
 ```bash
-# Final episode export command (template — filled by Developer)
+# Final episode export — primary command
 ffmpeg -i concat_list.txt -i music_mix.wav \
   -c:v libx264 -preset slow -crf 18 \
   -c:a aac -b:a 192k -ar 48000 \
@@ -130,23 +130,23 @@ ffmpeg -i concat_list.txt -i music_mix.wav \
   output_episode.mp4
 ```
 
-### If B1 DaVinci Resolve selected:
-```
-Export preset: YouTube 1080p
-Format: H.264 / AAC
-Resolution: 1920×1080
-Frame rate: 24 fps
-Bit rate: 12 Mbps (video) + 320 kbps (audio)
-```
+| Parameter | Value |
+|-----------|-------|
+| Video codec | libx264 (H.264) |
+| Preset | slow (quality over speed) |
+| CRF | 18 (visually lossless) |
+| Audio codec | AAC |
+| Audio bitrate | 192 kbps |
+| Audio sample rate | 48000 Hz |
+| Pixel format | yuv420p (max compatibility) |
+| Fast start | enabled (streaming-optimised) |
 
-### If B2 Adobe Premiere selected:
-```
-Export preset: Match Source - High Bitrate
-Format: H.264
-Resolution: 1920×1080
-Frame rate: 24 fps
-Target bit rate: 12 Mbps
-Maximum bit rate: 16 Mbps
+**Archival master** (kept alongside delivery file):
+```bash
+ffmpeg -i concat_list.txt -i music_mix.wav \
+  -c:v prores_ks -profile:v 3 \
+  -c:a pcm_s24le -ar 48000 \
+  output_episode_MASTER.mov
 ```
 
 ---
