@@ -170,7 +170,7 @@ This is the full Company Cycle feedback loop.
 
 ## PRIVACY AND DATA RULES
 
-- Analytics data belongs to Sandy/SandyStudio
+- Analytics data belongs to SandyStudio (Director/CEO)
 - No viewer personal data is stored (YouTube Analytics is aggregated)
 - Raw CSV exports stored in: `H:\My Drive\SandyStudio_Media\raw\` under `analytics/` subfolder
 - Retained for duration of the series + 2 years
