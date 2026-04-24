@@ -78,52 +78,81 @@ An agent must NOT begin if any input is still in `DRAFT` status.
 
 ---
 
-## Mode 1 — MANUAL HANDOFF
-
-In Mode 1 — MANUAL (default), the handoff includes a human checkpoint:
+## Mode 1 — MANUAL Handoff (Full Director Control)
 
 ```
 Agent completes task
     │
     ▼
-Agent presents output to Director with:
+Agent presents output to Director/CEO:
   - One paragraph summary of what was produced
   - Autonomous decisions made (and why)
   - Open questions or risks flagged
     │
     ▼
-Director responds:
-  "approved"     → Agent writes file, updates PLAN.md, EXEC-ORCH routes next
+Director/CEO responds:
+  "approved"     → Agent writes file · EXEC-ORCH logs · routes to next agent
   "revise: [X]"  → Agent revises and re-presents
-  "escalate"     → Director takes direct control of this step
+  "escalate"     → Director/CEO takes direct control of this step
 ```
 
-Agent must not write the file until Director says "approved".
+Agent must not write the output file until Director/CEO says "approved".
 
 ---
 
-## Mode 2/3 — DELEGATED HANDOFF
-
-In Mode 2/3 — DELEGATED (Director-activated per agent):
+## Mode 2 — HYBRID Handoff (Selective Delegation)
 
 ```
-Agent completes task
+Agent completes task → writes output file (status: REVIEW)
     │
     ▼
-Agent writes output file (status: REVIEW)
+EXEC-ORCH checks scope in PLAN.md ## Current Mode
     │
-    ▼
-Agent updates PLAN.md
+    ├── Asset IN EXEC-DIR-AI scope →
+    │       EXEC-DIR-AI reviews → APPROVES / REJECTS / ESCALATES
+    │       EXEC-ORCH logs → routes next agent
+    │       Director/CEO receives digest
     │
-    ▼
-EXEC-ORCH routes to next agent automatically
-    │
-    ▼
-Director receives digest (not individual approval request)
+    └── Asset OUTSIDE scope →
+            Director/CEO reviews → APPROVES / REJECTS
+            EXEC-ORCH logs → routes next agent
 ```
 
-Director receives a daily digest listing all AUTOPILOT actions taken.
-Director may pause AUTOPILOT at any time by saying `===1===`.
+---
+
+## Mode 3 — DELEGATED Handoff (AI Director Control)
+
+```
+Agent completes task → writes output file (status: REVIEW)
+    │
+    ▼
+EXEC-DIR-AI reviews (all gates except hard limits)
+    │
+    ├── APPROVED  → EXEC-ORCH logs → triggers next agent
+    │               Director/CEO receives end-of-session digest
+    │
+    ├── REJECTED  → EXEC-ORCH routes back to producing agent with revision notes
+    │
+    └── ESCALATED → EXEC-ORCH pauses this pipeline item → Director/CEO decides
+```
+
+Director/CEO may switch back to Mode 1 at any time: *"Switch to Mode 1"*.
+
+---
+
+## Mode 4 — AUTOTEST Handoff (Pipeline Validation)
+
+```
+Agent completes task → writes output file (status: TEST)
+    │
+    ▼
+All gates auto-pass. EXEC-ORCH logs and routes immediately.
+No QA blocking. No approvals required.
+    │
+    ▼
+Session ends → Mode reverts to Mode 1 automatically.
+TEST-status files are never promoted to APPROVED.
+```
 
 ---
 
