@@ -128,45 +128,92 @@ Example:
 
 ---
 
-## 4. AGENT OPERATING MODES
+## 4. GOVERNANCE MODES (Approval Authority System)
 
-Independent of the system mode above, agents operate in one of two modes
-that govern how autonomous their execution is.
+Governance modes define how approval decisions are handled across the entire pipeline.
+The Director/CEO sets the mode. EXEC-ORCH routes all approval gates based on the active mode.
+Current mode is always stored in `PLAN.md ## Current Mode`.
 
-### PROPOSE MODE (default during development)
+**Default at every session start: Mode 1 — MANUAL**
+
+---
+
+### Mode 1 — MANUAL (Full Director Control)
+
 ```
-Agent completes its task and produces a full output.
-Output is presented to the Director (or authorized human) for review.
-Nothing is saved or passed to the next agent until explicitly accepted.
-
-Flow:
-  Agent → produces output → presents with summary → waits for ACCEPT / REJECT / REVISE
-```
-
-### AUTOPILOT MODE (production use)
-```
-Agent completes its task, saves output, and passes to the next agent
-in the pipeline automatically.
-Director receives a digest of completed actions, not individual approvals.
-
-Flow:
-  Agent → produces output → saves → triggers next agent → logs action
+All approval gates require Director/CEO decision.
+No delegation to EXEC-DIR-AI.
+Pipeline pauses at every approval step and waits.
 ```
 
-### Mode switching
-- Default at project launch: **PROPOSE MODE** for all agents
-- The Director switches individual agents or entire councils to AUTOPILOT
-- Mode per agent is stored in that agent's instruction file under `## Operating Mode`
-- During beta / debugging: all agents in PROPOSE MODE
-- When stable: agents can be promoted to AUTOPILOT council by council
+**Use case:** Early production, pilot episode, critical creative decisions, final quality control.
 
-### When an agent in AUTOPILOT must stop and ask
-Even in AUTOPILOT, an agent must pause and request Director input when:
-- The task conflicts with an approved spec or bible
-- A required input file is missing or has DRAFT status
-- The output would affect a LOCKED file
-- Confidence in the correct output is below acceptable threshold
-- The Vector Principle detects a misalignment (see Section 8)
+---
+
+### Mode 2 — HYBRID (Selective Director Control)
+
+```
+Director/CEO defines approval scope (by phase, agent, or asset type).
+Defined scope → handled by EXEC-DIR-AI.
+Everything outside scope → Director/CEO.
+Escalation rules always apply.
+```
+
+**Example:**
+> "Mode 2: EXEC-DIR-AI approves storyboards, shots, and music. I keep scripts and final cut."
+
+**Use case:** Routine production with Director oversight on narrative and output quality.
+
+---
+
+### Mode 3 — DELEGATED (AI Director Control)
+
+```
+All approval gates handled by EXEC-DIR-AI.
+Director/CEO not involved in routine decisions.
+EXEC-DIR-AI escalates only: failures, ambiguity, risk, hard limits.
+Director/CEO receives daily digest of all decisions.
+```
+
+**Use case:** Stable pipeline at scale — series in full production, episode N+1 onwards.
+
+---
+
+### Mode 4 — AUTOTEST (Pipeline Validation Mode)
+
+```
+All outputs automatically treated as PASS.
+No QA blocking. No human or AI approval required.
+Pipeline runs end-to-end without interruption.
+```
+
+**Use case:** Debugging, API integration testing, pipeline validation.
+**Important:** Mode 4 automatically reverts to Mode 1 when test session ends.
+Generated assets in AUTOTEST are marked `TEST` status — never promoted to APPROVED.
+
+---
+
+### Hard Limits — Always Director/CEO, All Modes Including Mode 3
+
+Regardless of active governance mode, these 4 actions require Director/CEO:
+
+| Action | Reason |
+|--------|--------|
+| Publish to YouTube | Content exits studio — irreversible |
+| LOCKED status on any file | Permanent freeze — irreversible |
+| Real spend above budget threshold | Financial commitment |
+| Changing governance mode | Agent cannot modify its own authority |
+
+---
+
+### Mode Control Rules
+
+- Director/CEO sets mode at any time: *"Switch to Mode 2"* or *"Mode 3"*
+- Mode applies globally to all agents unless Director specifies a scope override
+- EXEC-ORCH routes all approval gates based on active mode
+- EXEC-DIR-AI must check active mode before every approval action
+- EXEC-ARCH records every mode change in `PLAN.md ## Current Mode` with timestamp
+- Mode 4 (AUTOTEST) reverts to Mode 1 automatically after test session
 
 ---
 
