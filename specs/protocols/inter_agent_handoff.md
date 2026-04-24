@@ -1,5 +1,5 @@
 # SandyStudio — Inter-Agent Handoff Protocol
-## specs/protocols/inter_agent_handoff.md | v0.1 | DRAFT
+## specs/protocols/inter_agent_handoff.md | v0.2 | APPROVED
 
 > Defines how one agent signals completion and hands work to the next.
 > This protocol is the nervous system of the pipeline.
