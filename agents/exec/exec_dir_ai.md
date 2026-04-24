@@ -175,7 +175,7 @@ Scope can be updated at any time by the Director/CEO.
 | Agent | Relationship |
 |-------|-------------|
 | `EXEC-ORCH` | Notified after every EXEC-DIR-AI decision — logs state, triggers next agent |
-| `EXEC-ARCH` | Updates PLAN.md Current Mode when Director changes governance mode |
+| `EXEC-ORCH` | Updates PLAN.md Current Mode when Director changes governance mode |
 | `EXEC-SREV` | EXEC-DIR-AI receives SREV QA reports before approving scripts (Mode 2/3) |
 | `EXEC-WCHK` | EXEC-DIR-AI receives WCHK world check reports before approving storyboards |
 | All producing agents | EXEC-DIR-AI is downstream of their output — never upstream |
