@@ -1,5 +1,5 @@
 # SandyStudio — Project State Spec
-## specs/system/project_state.md | v0.1 | DRAFT
+## specs/system/project_state.md | v0.2 | APPROVED
 
 > Defines the schema and maintenance rules for PLAN.md as a machine-readable state file.
 > PLAN.md is the solution to Claude Code's statelessness across sessions.
