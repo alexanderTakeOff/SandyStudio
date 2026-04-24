@@ -247,15 +247,20 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 - Only the CEO / Director can activate `===5===`.
 - If asked to write a file in `===1===` mode, respond: *"Mode is ===1===. To apply changes, append ===5=== to your command."*
 
-### Agent modes
-| Mode | Behaviour |
-|------|-----------|
-| **PROPOSE MODE** | Default. Agent presents output for Director review before saving or passing on. |
-| **AUTOPILOT MODE** | Agent saves output and triggers next agent automatically. Director receives a digest. |
+### Governance Modes (Approval Authority)
+| Mode | Code | Who approves |
+|------|------|-------------|
+| **MANUAL** | `Mode 1` | Director/CEO approves every gate. Default at session start. |
+| **HYBRID** | `Mode 2` | Director/CEO keeps defined scope · EXEC-DIR-AI handles the rest. |
+| **DELEGATED** | `Mode 3` | EXEC-DIR-AI approves all gates except hard limits. |
+| **AUTOTEST** | `Mode 4` | All gates auto-pass. Pipeline testing only. Reverts to Mode 1 on session end. |
 
-- All agents start in PROPOSE MODE.
-- Mode per agent is stored in that agent's file under `## Operating Mode`.
-- Only the CEO / Director can promote an agent to AUTOPILOT or grant EXEC-DIR-AI delegation.
+**Hard limits — Director/CEO always, all modes:** Publish · LOCKED · Budget · Mode changes
+
+- Default at every session start: **Mode 1 — MANUAL**
+- Only the CEO / Director can switch governance mode.
+- Active mode is stored in `PLAN.md ## Current Mode`.
+- Full spec: `specs/company/governance.md §4`
 
 ---
 
