@@ -1,7 +1,7 @@
-# Director/CEOStudio — Company Governance
+# SandyStudio — Company Governance
 ## specs/company/governance.md | v0.2 | APPROVED
 
-> This document defines who Director/CEOStudio is, how it makes decisions,
+> This document defines who SandyStudio is, how it makes decisions,
 > and what authority each level holds. It is the highest-level document
 > in the project. All other specs, plans, and agent instructions
 > operate within the boundaries defined here.
@@ -12,7 +12,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Company name** | Director/CEOStudio |
+| **Company name** | SandyStudio |
 | **Type** | AI-first animation production company |
 | **Output** | Multi-episode animated comedy series |
 | **First project** | Comedy series in the style of The Pink Panther |
@@ -23,9 +23,9 @@
 ## 2. LEADERSHIP
 
 ### The Director / CEO (Showrunner / Executive Producer)
-**Role:** Human founder and final authority of Director/CEOStudio.
+**Role:** Human founder and final authority of SandyStudio.
 
-The Director/CEO is the single point of ultimate authority in Director/CEOStudio.
+The Director/CEO is the single point of ultimate authority in SandyStudio.
 In film industry terms, this role combines:
 - **Showrunner** — ultimate creative authority over the series
 - **Executive Producer (EP)** — final sign-off on all production decisions
@@ -172,7 +172,7 @@ Even in AUTOPILOT, an agent must pause and request Director input when:
 
 ## 5. HUMAN PARTICIPANTS & ACCESS CONTROL
 
-Director/CEOStudio supports multiple human participants. Each participant has an identity,
+SandyStudio supports multiple human participants. Each participant has an identity,
 a role, and a defined set of permissions.
 
 ### Participant roles
@@ -216,7 +216,7 @@ a role, and a defined set of permissions.
 
 ## 6. DECISION AUTHORITY MATRIX
 
-Every decision in Director/CEOStudio falls into one of three categories:
+Every decision in SandyStudio falls into one of three categories:
 
 ### Category A — Director Approval Required
 | Decision type | Examples |
@@ -415,5 +415,5 @@ All specs follow SDD order. A spec cannot be built until its layer dependencies 
 
 ---
 
-*Director/CEOStudio governance.md | v0.3 | Status: APPROVED*
+*SandyStudio governance.md | v0.3 | Status: APPROVED*
 *Approved by Director (Director/CEO) on 2026-04-23.*
