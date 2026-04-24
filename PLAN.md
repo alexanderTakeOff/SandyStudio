@@ -11,9 +11,9 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 6 — Agent Instructions (IN PROGRESS)
+Phase:    SPRINT 7 — Web Application Spec
 Blocker:  none
-Next:     Sprint 7 — First Production Run (PILOT)
+Next:     specs/system/webapp.md → DB schema → Inngest jobs → UI
 Mode:     ===1=== ANALYTICS (default)
 Date:     2026-04-24
 ```
