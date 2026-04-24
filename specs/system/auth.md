@@ -1,5 +1,5 @@
 # SandyStudio — Authentication Spec
-## specs/system/auth.md | v0.1 | DRAFT
+## specs/system/auth.md | v0.2 | APPROVED
 
 > Defines how credentials, access tokens, and secrets are managed.
 > Referenced by: api_integrations.md, participants.md
