@@ -1,5 +1,5 @@
 # SandyStudio — Version Cascade Protocol
-## specs/protocols/version_cascade.md | v0.1 | DRAFT
+## specs/protocols/version_cascade.md | v0.1 | APPROVED
 
 > Defines what happens when an upstream document changes version.
 > Protects the pipeline from silent inconsistencies.
