@@ -78,10 +78,10 @@ No agent writes content until the spec for that content is APPROVED.
 
 | Task | Status |
 |------|--------|
-| `specs/protocols/inter_agent_handoff.md` | ✅ DRAFT — updated: Mode 1/2/3/4 handoff flows |
-| `specs/protocols/version_cascade.md` | ✅ DRAFT |
-| `specs/protocols/qa_retry.md` | ✅ DRAFT |
-| `specs/protocols/batch_approval.md` | ✅ DRAFT v0.2 — updated: Mode mapping + EXEC-DIR-AI |
+| `specs/protocols/inter_agent_handoff.md` | ✅ **APPROVED** v0.2 |
+| `specs/protocols/version_cascade.md` | ✅ **APPROVED** v0.1 |
+| `specs/protocols/qa_retry.md` | ✅ **APPROVED** v0.1 |
+| `specs/protocols/batch_approval.md` | ✅ **APPROVED** v0.2 |
 
 ---
 
