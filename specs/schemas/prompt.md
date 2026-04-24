@@ -1,5 +1,5 @@
 # SandyStudio — Generation Prompt Schema
-## specs/schemas/prompt.md | v0.1 | DRAFT
+## specs/schemas/prompt.md | v0.2 | APPROVED
 
 > Defines the exact format of an AI generation prompt file.
 > Produced by: EXEC-VGEN (video/image), EXEC-MGEN (music), EXEC-THUMB (thumbnails)
