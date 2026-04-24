@@ -174,13 +174,21 @@ Step 5b — Test fragment (10 generations):
     - 5 images: fragment only (neutral context)
     - 5 images: fragment + typical shot context (spotlight, red carpet)
 
-Step 5c — Review:
-  ART-AD reviews all 10 against master reference image.
-  Score: X/10 match (proportion, colour, expression within acceptable range)
+Step 5c — Technical check (agent):
+  EXEC-VGEN runs automated comparison against master reference image:
+  checks colour hex values, proportions within tolerance, outline style.
+  Produces: fragment_test log with per-image pass/fail flags + score X/10.
+  This is a technical pass — necessary but not sufficient.
+
+Step 5d — Visual review (HUMAN — always):
+  Director (or designated human approver per Approval Authority Matrix)
+  reviews the fragment_test log AND looks at all 10 generated images directly.
+  Human confirms: "yes, this looks like the character we approved."
+  RULE: No AI agent can substitute for this review. Not even in Mode 3.
   
-Step 5d — Gate:
-  ≥8/10 match → fragment APPROVED → update character profile
-  <8/10 match → ART-CAST revises fragment wording → return to Step 5b
+Step 5e — Gate:
+  Human approver confirms ≥8/10 match → fragment APPROVED
+  Human or agent flags <8/10 → ART-CAST revises fragment wording → return to Step 5b
 
 Log: reviews/[series]-REV-fragment_test_[character_id]-v01-DRAFT.md
 ```
