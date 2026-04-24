@@ -202,11 +202,11 @@ Update character profile:
   fragment_test.tested: true
   fragment_test.pass_rate: "[X/10]"
   fragment_test.test_log: "[path to fragment test review]"
-  fragment_test.tested_by: "EXEC-VGEN"
+  fragment_test.tested_by: "EXEC-VGEN"     ← automated technical check
+  fragment_test.reviewed_by: "[human name]" ← visual review — human always
   fragment_test.tested_date: "[ISO date]"
-  reviewed_by: "ART-AD"
 
-Director review → status: APPROVED
+Director (or designated visual approver) → status: APPROVED
 
 Character profile is now gate-cleared for production pipeline.
 ```
