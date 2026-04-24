@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"H:/My Drive/SandyStudio_Media/raw/video\" \"H:/My Drive/SandyStudio_Media/raw/images\" \"H:/My Drive/SandyStudio_Media/raw/audio\")",
+      "Bash(mkdir -p \"H:/My Drive/SandyStudio_Media/reviewed\")",
+      "Bash(mkdir -p \"H:/My Drive/SandyStudio_Media/approved/video\" \"H:/My Drive/SandyStudio_Media/approved/images\" \"H:/My Drive/SandyStudio_Media/approved/audio\")",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:registry.mcpservers.org)",
+      "Skill(update-config)",
+      "Skill(update-config:*)"
+    ]
+  }
+}
