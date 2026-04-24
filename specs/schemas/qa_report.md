@@ -1,5 +1,5 @@
 # SandyStudio — QA Report Schema
-## specs/schemas/qa_report.md | v0.1 | DRAFT
+## specs/schemas/qa_report.md | v0.2 | APPROVED
 
 > Defines the exact format of a quality assurance report.
 > Produced by: EXEC-SREV (script QA), EXEC-WCHK (world/shot QA), ART-MS (music QA)
