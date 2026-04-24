@@ -386,7 +386,7 @@ Full spec: `specs/protocols/version_cascade.md`
 
 **EXEC-ORCH** — active in ALL phases. Only agent that spans the full pipeline.
 **EXEC-ARCH** — active at all times.
-**EXEC-DIR-AI** — active only when Director/CEO has granted delegation.
+**EXEC-DIR-AI** — active in Mode 2 (within scope) and Mode 3. Inactive in Mode 1 and 4.
 
 ---
 
