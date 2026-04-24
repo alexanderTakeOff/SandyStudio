@@ -311,7 +311,9 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | SS-S01-E01-SPC-copy-v01 DRAFT — title, description, tags, social copy | EXEC-COPY |
 | 2026-04-24 | SS-S01-E01-REV-pub_mock_log-v01 DRAFT — mock YouTube + X + TikTok, $0.00 | EXEC-PUB |
 | 2026-04-24 | SS-S01-E01-REV-anal_mock_log-v01 DRAFT — mock D+7 analytics, signals to BOARD-MKT | EXEC-ANAL |
-| 2026-04-24 | SS-S01-E01-REV-pipeline_validation-v01 DRAFT — 17/17 steps PASS, real est. $12.32/ep | EXEC-ORCH |
+| 2026-04-24 | SS-S01-E01-REV-pipeline_validation-v01 APPROVED — 17/17 PASS, $0.00 mock | Director/CEO |
+| 2026-04-24 | PA-005 logged: Character Visual Development Workflow (pre-production character approval) | Director/CEO |
+| 2026-04-24 | PA-006 logged: Multi-Audience KPI Layer (gag_rate + philosophy_density + shot attribution) | Director/CEO |
 
 ---
 
