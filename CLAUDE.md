@@ -358,7 +358,23 @@ When presenting questions or options to the Director/CEO:
   STORAGE.MEDIA_ROOT
   STORAGE.PROJECT_ROOT
 
+8. PARAMETER COMPLETENESS AT GATE (MANDATORY)
+- All parameters an execution agent needs MUST be fully defined by upstream inputs
+  before that agent is triggered
+- Execution agents (EXEC-*) are pure functions: output = f(inputs)
+- An execution agent encountering an undefined parameter = upstream gate failure
+- Responsibility chain:
+  | Parameter type      | Must be defined in          |
+  |--------------------|-----------------------------|
+  | Style, tone, pacing | Style Bible (EXEC-STY)      |
+  | World / locations  | World Bible (ART-WB)        |
+  | Character behaviour| Character Profile (ART-CAST)|
+  | Narrative structure| Brief / ART-HW direction    |
+  | Runtime / config   | Brief or config.json        |
+- No execution agent may inject, assume, or default any creative or structural parameter
+- If a parameter is missing → STOP, escalate upstream, do not proceed
+
 ---
 
-*SandyStudio CLAUDE.md | v0.7 | Status: DRAFT*
+*SandyStudio CLAUDE.md | v0.8 | Status: DRAFT*
 *Next: Sprint 1 approval → Sprint 6 agent instructions → Web app*
