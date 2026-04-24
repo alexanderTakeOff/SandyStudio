@@ -320,6 +320,11 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | character_profile.md v0.2 — master_reference_image_path + fragment_test + physics_states (PA-002) | Claude Code |
 | 2026-04-24 | specs/production/character_visual_development.md v0.1 — full 6-phase pre-production character workflow | Claude Code |
 | 2026-04-24 | specs/production/audience_kpi.md v0.1 — multi-audience KPI layer, shot attribution, QA checks | Claude Code |
+| 2026-04-24 | VISUAL APPROVAL RULE locked: visual images/video always human-reviewed, never agent-approved | Director/CEO |
+| 2026-04-24 | character_visual_development.md — agent-as-approver bug fixed (ART-AD replaced with human approver) | Claude Code |
+| 2026-04-24 | character_consistency.md v0.3 — visual review rule corrected | Claude Code |
+| 2026-04-24 | character_profile.md v0.2 — visual_reviewed_by field, approval gate rule updated | Claude Code |
+| 2026-04-24 | webapp.md — Section 6.6 Approval Authority Matrix added + W-005 + VISUAL_CATEGORIES in governance | Claude Code |
 
 ---
 
