@@ -1,5 +1,5 @@
 # SandyStudio — Media Formats Spec
-## specs/system/media_formats.md | v0.1 | DRAFT
+## specs/system/media_formats.md | v0.2 | APPROVED
 
 > **⚠️ PARTIALLY DEPENDENT ON DECISION D-002 (Assembly Tool)**
 > Export settings in Section 4 will be completed after assembly_tool.md is APPROVED.
