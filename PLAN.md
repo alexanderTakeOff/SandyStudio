@@ -60,16 +60,16 @@ No agent writes content until the spec for that content is APPROVED.
 ---
 
 ### SPRINT 2 — Data Schemas
-**Status:** ✅ COMPLETE (2026-04-24)
+**Status:** ✅ COMPLETE — all 6 schemas APPROVED (2026-04-24)
 
 | Task | Status |
 |------|--------|
-| `specs/schemas/brief.md` | ✅ DRAFT |
-| `specs/schemas/script.md` | ✅ DRAFT |
-| `specs/schemas/shot.md` | ✅ DRAFT |
-| `specs/schemas/character_profile.md` | ✅ DRAFT |
-| `specs/schemas/qa_report.md` | ✅ DRAFT |
-| `specs/schemas/prompt.md` | ✅ DRAFT |
+| `specs/schemas/brief.md` | ✅ **APPROVED** v0.2 |
+| `specs/schemas/script.md` | ✅ **APPROVED** v0.1 |
+| `specs/schemas/shot.md` | ✅ **APPROVED** v0.1 |
+| `specs/schemas/character_profile.md` | ✅ **APPROVED** v0.1 |
+| `specs/schemas/qa_report.md` | ✅ **APPROVED** v0.2 |
+| `specs/schemas/prompt.md` | ✅ **APPROVED** v0.2 |
 
 ---
 
