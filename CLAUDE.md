@@ -300,6 +300,41 @@ When starting a new Claude Code session in this project:
 5. Identify which agent role is needed and read that agent's file in `agents/`
 6. Proceed with task — write files only if Sandy activates `===5===`
 
+## 10. ARCHITECTURE RULES (MANDATORY)
+
+1. NO HARDCODING
+- All dynamic values MUST come from:
+  - environment variables
+  - config files
+  - schemas
+
+2. ENV FIRST
+- API keys, paths, model names, limits → ONLY from `.env`
+
+3. CONFIG LAYER
+- All non-secret settings must be defined in:
+  `C:\SandyStudio\specs\system\config.json`
+
+4. SCHEMA CONTRACTS
+- Every agent input/output MUST follow a schema in:
+  `specs/schemas/`
+
+5. FAIL FAST
+- If required config/env is missing → STOP and report
+
+6. NO MAGIC VALUES
+- No inline strings like:
+  ❌ "gpt-4"
+  ❌ "H:\\My Drive\\..."
+  ❌ "v1"
+- Use constants or config
+
+7. PATH ALIASES ONLY
+- No raw paths in code
+- Use:
+  STORAGE.MEDIA_ROOT
+  STORAGE.PROJECT_ROOT
+
 ---
 
 *SandyStudio CLAUDE.md | v0.6 | Status: DRAFT*
