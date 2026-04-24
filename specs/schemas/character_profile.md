@@ -177,9 +177,11 @@ continuity:
 version: string               # REQUIRED
 status: string                # REQUIRED — DRAFT | REVIEW | APPROVED | LOCKED
 created_by: string            # REQUIRED — "ART-CAST"
-reviewed_by: string           # OPTIONAL — "ART-AD"
+schema_reviewed_by: string    # OPTIONAL — AI agent that checked schema completeness only
+visual_reviewed_by: string    # REQUIRED for APPROVED — human name (Director or designated approver)
+                              # NEVER an agent ID. Visual approval is always human.
 date: string                  # REQUIRED — ISO date
-approved_by: string           # REQUIRED when APPROVED — always "Director/CEO"
+approved_by: string           # REQUIRED when APPROVED — human: "Director/CEO" or delegated human
 approved_date: string         # REQUIRED when APPROVED
 ```
 
