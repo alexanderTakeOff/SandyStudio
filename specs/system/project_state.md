@@ -189,4 +189,5 @@ Claude Code NEVER assumes the state from a previous session. Always reads PLAN.m
 
 ---
 
-*SandyStudio project_state.md | v0.1 | Status: DRAFT*
+*SandyStudio project_state.md | v0.2 | Status: APPROVED*
+*Changes: Governance Mode field added to Current State Block · "Sandy" → "Director/CEO" in examples*
