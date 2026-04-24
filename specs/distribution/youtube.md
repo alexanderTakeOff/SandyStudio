@@ -1,4 +1,4 @@
-# SandyStudio — YouTube Distribution Spec
+﻿# SandyStudio — YouTube Distribution Spec
 ## specs/distribution/youtube.md | v0.1 | DRAFT
 
 > Defines how episodes are uploaded, scheduled, and published to YouTube.
@@ -26,7 +26,7 @@ Before EXEC-PUB uploads, all of the following must be APPROVED:
 - [ ] Episode video file: `SS-S[NN]-E[NN]-VID-final_cut-v[NN]-APPROVED.mp4`
 - [ ] Metadata file: `SS-S[NN]-E[NN]-SPC-metadata-v[NN]-APPROVED.md` (from EXEC-COPY)
 - [ ] Thumbnail: `SS-S[NN]-E[NN]-IMG-thumbnail-v[NN]-APPROVED.png` (from EXEC-THUMB)
-- [ ] Director explicit publish approval (Category A decision — always required)
+- [ ] Director explicit publish approval (Hard Limit — always Director/CEO, all governance modes)
 
 If any item is missing: EXEC-PUB enters BLOCKED state and notifies Director.
 

@@ -202,4 +202,4 @@ date: "2026-04-24"
 
 ---
 
-*SandyStudio metadata.md | v0.1 | Status: DRAFT*
+*SandyStudio metadata.md | v0.1 | Status: APPROVED*
