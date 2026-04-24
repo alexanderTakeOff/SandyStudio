@@ -193,7 +193,7 @@ No agent writes content until the spec for that content is APPROVED.
 
 | Task | Owner | Status |
 |------|-------|--------|
-| Write `specs/system/webapp.md` | EXEC-ORCH | ⏳ Next |
+| Write `specs/system/webapp.md` | EXEC-ORCH | 📝 DRAFT |
 | Define DB schema (Supabase) | Developer + EXEC-ORCH | ⏳ Blocked by webapp.md |
 | Define Inngest job definitions | Developer + EXEC-ORCH | ⏳ Blocked by webapp.md |
 | Define API routes (Next.js) | Developer | ⏳ Blocked by webapp.md |
