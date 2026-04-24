@@ -128,4 +128,4 @@ This log is the trigger for EXEC-ANAL to begin analytics collection.
 
 ---
 
-*SandyStudio youtube.md | v0.1 | Status: DRAFT*
+*SandyStudio youtube.md | v0.1 | Status: APPROVED*
