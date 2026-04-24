@@ -220,6 +220,9 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | EXEC-SB storyboarder.md v0.1 APPROVED | Director/CEO |
 | 2026-04-24 | EXEC-WCHK world_checker.md v0.1 APPROVED | Director/CEO |
 | 2026-04-24 | EXEC-VGEN visual_generator.md v0.1 APPROVED | Director/CEO |
+| 2026-04-24 | EXEC-DIR-AI exec_dir_ai.md v0.1 APPROVED (fix: EXEC-ARCH→EXEC-ORCH) | Director/CEO |
+| 2026-04-24 | EXEC-STY style_creator.md v0.1 DRAFT — pending review | Claude Code |
+| 2026-04-24 | EXEC-MGEN music_generator.md v0.1 DRAFT — pending review | Claude Code |
 
 ---
 
