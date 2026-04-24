@@ -109,16 +109,16 @@ SS-PILOT-BIB-character_pink_panther-v01-APPROVED.md
 ### Level 0 — Founder (Human)
 | Role | Authority |
 |------|-----------|
-| **CEO / Director** | Final authority. Grants/revokes human and AI-EP access. Switches system and agent operating modes. All APPROVED and LOCKED statuses require explicit CEO/Director sign-off unless delegated to AI-EP. |
+| **CEO / Director** | Final authority. Grants/revokes human and EXEC-DIR-AI access. Switches system and agent operating modes. All APPROVED and LOCKED statuses require explicit CEO/Director sign-off unless delegated to EXEC-DIR-AI. |
 
 ---
 
 ### Level 0.5 — AI Executive Producer (Delegated Authority AI Agent)
 | Agent ID | Name | Role | File |
 |----------|------|------|------|
-| `AI-EP` | AI Executive Producer | Acts as Director's proxy with delegated approval authority. Approves Category B production outputs when authorised. Escalates Category A decisions to Director. Authority granted and revoked exclusively by the Director. | `agents/exec/ai_ep.md` |
+| `EXEC-DIR-AI` | AI Executive Producer | Acts as Director's proxy with delegated approval authority. Approves Category B production outputs when authorised. Escalates Category A decisions to Director. Authority granted and revoked exclusively by the Director. | `agents/exec/ai_ep.md` |
 
-> **Delegation rule:** AI-EP has NO authority by default. The Director explicitly grants scope (e.g. "AI-EP: approve scripts and storyboards for S01"). The Director revokes at any time with a single command. All AI-EP approvals are logged with rationale.
+> **Delegation rule:** EXEC-DIR-AI has NO authority by default. The Director explicitly grants scope (e.g. "EXEC-DIR-AI: approve scripts and storyboards for S01"). The Director revokes at any time with a single command. All EXEC-DIR-AI approvals are logged with rationale.
 
 ---
 
@@ -255,7 +255,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 
 - All agents start in PROPOSE MODE.
 - Mode per agent is stored in that agent's file under `## Operating Mode`.
-- Only the CEO / Director can promote an agent to AUTOPILOT or grant AI-EP delegation.
+- Only the CEO / Director can promote an agent to AUTOPILOT or grant EXEC-DIR-AI delegation.
 
 ---
 
@@ -266,7 +266,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 3. **LOCKED files are never modified.** Create a new version instead (`v02`, `v03`...).
 4. **Media goes to `H:\My Drive\SandyStudio_Media\raw\` first.** It only moves to `reviewed/` or `approved/` after passing QA.
 5. **All agent instructions live in `agents/`.** When Claude Code acts as a specific agent, it reads that agent's `.md` file first.
-6. **Director/CEO approves all LOCKED status changes.** Claude Code must explicitly ask for confirmation before marking anything LOCKED. AI-EP cannot mark files LOCKED.
+6. **Director/CEO approves all LOCKED status changes.** Claude Code must explicitly ask for confirmation before marking anything LOCKED. EXEC-DIR-AI cannot mark files LOCKED.
 
 ---
 
