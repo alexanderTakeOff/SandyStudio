@@ -189,8 +189,8 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 
 | # | Decision | Options | Owner | Due |
 |---|----------|---------|-------|-----|
-| D-001 | Character visual consistency approach | A1 / A2 / A3 / A4 | Sandy | Before Sprint 4 |
-| D-002 | Assembly tool | B1 / B2 / B3 / B4 | Sandy | Before Sprint 4 |
+| D-001 | Character visual consistency | ✅ A2-Kling (Midjourney ref → Kling 3.0 Elements) | Sandy | ✅ 2026-04-24 |
+| D-002 | Assembly tool | ✅ B4 FFmpeg + optional DaVinci colour pass | Sandy | ✅ 2026-04-24 |
 
 ---
 
