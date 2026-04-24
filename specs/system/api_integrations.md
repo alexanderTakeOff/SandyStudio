@@ -602,5 +602,5 @@ They are never in the automated primary or secondary slot.
 
 ---
 
-*SandyStudio api_integrations.md | v0.2 | Status: DRAFT*
+*SandyStudio api_integrations.md | v0.2 | Status: APPROVED*
 *Updated: 2026-04-24 — full contract architecture replacing hardcoded service references*
