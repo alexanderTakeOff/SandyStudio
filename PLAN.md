@@ -218,7 +218,8 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | ARCH RULE #8 added to CLAUDE.md: Parameter Completeness at Gate | Director/CEO |
 | 2026-04-24 | EXEC-SREV script_reviewer.md v0.1 APPROVED | Director/CEO |
 | 2026-04-24 | EXEC-SB storyboarder.md v0.1 APPROVED | Director/CEO |
-| 2026-04-24 | EXEC-WCHK world_checker.md v0.1 DRAFT — pending review | Claude Code |
+| 2026-04-24 | EXEC-WCHK world_checker.md v0.1 APPROVED | Director/CEO |
+| 2026-04-24 | EXEC-VGEN visual_generator.md v0.1 DRAFT — pending review | Claude Code |
 
 ---
 
