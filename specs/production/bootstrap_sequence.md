@@ -1,5 +1,5 @@
 # SandyStudio — Bootstrap Sequence
-## specs/production/bootstrap_sequence.md | v0.1 | DRAFT
+## specs/production/bootstrap_sequence.md | v0.1 | APPROVED
 
 > The bootstrap sequence is the ordered list of documents that must be created
 > the first time SandyStudio goes from zero to its first episode in production.
