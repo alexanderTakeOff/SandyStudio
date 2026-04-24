@@ -151,7 +151,7 @@ No agent writes content until the spec for that content is APPROVED.
 ---
 
 ### SPRINT 6 — Agent Instructions
-**Status:** 🔒 BLOCKED — awaiting D-001, D-002 decisions + Director approval of DRAFT specs
+**Status:** ⏳ IN PROGRESS
 **This is the first "build" sprint — all prior sprints are spec-only**
 
 #### New agents to create (5)
