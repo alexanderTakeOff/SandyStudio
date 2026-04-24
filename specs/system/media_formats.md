@@ -188,4 +188,5 @@ H:\My Drive\SandyStudio_Media\
 
 ---
 
-*SandyStudio media_formats.md | v0.1 | Status: DRAFT*
+*SandyStudio media_formats.md | v0.2 | Status: APPROVED*
+*Changes: Section 6 completed with FFmpeg settings (D-002 APPROVED) · non-chosen assembly options removed*
