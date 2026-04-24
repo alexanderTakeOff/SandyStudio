@@ -1,9 +1,10 @@
 # SandyStudio — Assembly Tool Spec
-## specs/system/assembly_tool.md | v0.1 | DRAFT
+## specs/system/assembly_tool.md | v0.2 | APPROVED
 
-> **⚠️ DIRECTOR DECISION REQUIRED**
-> This spec cannot be finalised until Sandy selects the assembly tool (see Section 2).
-> media_formats.md export settings and EXEC-VGEN output parameters depend on this decision.
+> **✅ DIRECTOR DECISION: B4 FFmpeg**
+> Primary assembly: FFmpeg (fully automated via Claude Code / EXEC-ORCH).
+> Optional colour pass: DaVinci Resolve (manual, Director-only step).
+> Approved by Director (Sandy) on 2026-04-24.
 
 ---
 
