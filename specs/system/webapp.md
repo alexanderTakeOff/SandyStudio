@@ -582,13 +582,14 @@ async function onAgentCompleted(episodeId: string, agentId: string, output: Agen
 
 const HARD_LIMITS = ["PUBLISH", "LOCKED", "BUDGET_INCREASE", "MODE_CHANGE"]
 
-// Visual approval is a separate hard limit — enforced regardless of governance mode
-// Checked by looking up approval_authority table for the category
-const VISUAL_CATEGORIES = [
-  "character_visual", "location_ref", "generated_shots", "thumbnails"
-]
-// If category is visual: always route to human approver from approval_authority table.
-// Never auto-approve. Mode 3/4 does not affect visual gates.
+// For every approval gate: check approval_authority table first.
+// The matrix is the source of truth — governance mode only applies where matrix allows it.
+// If matrix says director/human_delegate for this category → wait for that human,
+// regardless of episode governance_mode.
+// If matrix says exec_dir_ai → auto-approve is permitted (even for visual categories,
+// if Director explicitly configured it that way).
+const getApprover = (episodeId: string, category: string) =>
+  lookupApprovalAuthority(episodeId, category) // returns { type, name }
 ```
 
 ### 7.4 Input loading contract
