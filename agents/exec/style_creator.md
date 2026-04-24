@@ -277,5 +277,5 @@ Status:   DRAFT → EXEC-ORCH → Director approval
 
 ---
 
-*SandyStudio style_creator.md | v0.1 | Status: DRAFT*
+*SandyStudio style_creator.md | v0.1 | Status: APPROVED*
 *EXEC-STY defines the visual language. Every downstream agent speaks it.*
