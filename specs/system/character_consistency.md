@@ -251,9 +251,11 @@ Before a Character Profile can move from DRAFT to REVIEW:
 1. ART-CAST writes initial `canonical_prompt_fragment`
 2. EXEC-VGEN generates 5 test images using only the fragment (no shot context)
 3. EXEC-VGEN generates 5 test images with fragment + typical shot context
-4. ART-AD reviews all 10 images against master reference image (Level 0)
-5. If ≥8/10 match: fragment approved for profile
-6. If <8/10: ART-CAST revises fragment → retest
+4. EXEC-VGEN runs automated technical check (colour/proportion/outline) → fragment_test log
+5. **Director (or designated human visual approver) reviews all 10 images against master reference.**
+   RULE: Visual review is always human. No AI agent can approve a visual in any governance mode.
+6. If human confirms ≥8/10 match: fragment approved
+7. If <8/10: ART-CAST revises fragment wording → retest from step 2
 
 Test results logged in: `reviews/SS-[SERIES]-REV-fragment_test_[character_id]-v01-DRAFT.md`
 
