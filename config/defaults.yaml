@@ -26,7 +26,7 @@
 # ═════════════════════════════════════════════════════════════
 
 production:
-  target_runtime_seconds: 420         # 7 minutes default episode length
+  target_runtime_seconds: 60          # 60 seconds — PILOT S01E01 confirmed by Director
   default_act_count: 3
   shots_per_episode: 24               # used for budget estimation
   music_tracks_per_episode: 4         # intro + 2 scene tracks + resolution
