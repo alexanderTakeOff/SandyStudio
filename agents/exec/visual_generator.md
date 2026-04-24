@@ -391,5 +391,5 @@ Assembly does not begin until:
 
 ---
 
-*SandyStudio visual_generator.md | v0.1 | Status: DRAFT*
+*SandyStudio visual_generator.md | v0.1 | Status: APPROVED*
 *EXEC-VGEN is where text becomes video. Every call costs money. Every call is logged.*
