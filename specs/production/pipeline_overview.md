@@ -27,19 +27,19 @@ Every gate in this pipeline requires approval. Two approvers exist:
 | Approver | When active | What they can approve |
 |----------|------------|----------------------|
 | **Director/CEO** | Always | Everything — Category A, B, C |
-| **AI-EP** | Only when Director/CEO has granted delegation | Category B only |
+| **EXEC-DIR-AI** | Only when Director/CEO has granted delegation | Category B only |
 
 **Category A — Director/CEO only:**
 Publish, LOCKED status, budget spend, access rights, Series Slate, Master Plan, final episode cut.
 
-**Category B — AI-EP when delegated:**
+**Category B — EXEC-DIR-AI when delegated:**
 Scripts, storyboards, shot QA escalations, music, style bible, world bible, character profiles.
 
 **Category C — agents autonomous:**
 DRAFT→REVIEW transitions, internal QA checks, prompt drafts, shot-level generation retries.
 
-At every gate below: *"Director/CEO or AI-EP approves"* means Director/CEO directly,
-OR AI-EP if delegation is active for that scope (see governance.md §2b–2c).
+At every gate below: *"Director/CEO or EXEC-DIR-AI approves"* means Director/CEO directly,
+OR EXEC-DIR-AI if delegation is active for that scope (see governance.md §2b–2c).
 
 ---
 
@@ -56,7 +56,7 @@ OR AI-EP if delegation is active for that scope (see governance.md §2b–2c).
 EXEC-ORCH does not approve anything. It executes transitions after approval is given.
 
 ```
-[Director/CEO or AI-EP says "approved"]
+[Director/CEO or EXEC-DIR-AI says "approved"]
     │
     ▼
 EXEC-ORCH
@@ -112,7 +112,7 @@ ART-CAST  →  Character Profiles (bibles/characters/)
 ART-CONT  →  Continuity check across all three
     │
     ▼
-DIRECTOR/CEO or AI-EP approves each bible      ← Category B
+DIRECTOR/CEO or EXEC-DIR-AI approves each bible      ← Category B
     │
     ▼
 EXEC-ORCH logs each approval → updates PLAN.md → unlocks Phase B
@@ -128,7 +128,7 @@ EXEC-ORCH logs each approval → updates PLAN.md → unlocks Phase B
 ART-HW  →  Season Arc Document  (one per season)
     │
     ▼
-DIRECTOR/CEO or AI-EP approves Season Arc      ← Category B
+DIRECTOR/CEO or EXEC-DIR-AI approves Season Arc      ← Category B
     │
     ▼
 EXEC-ORCH logs → triggers Episode Brief
@@ -137,7 +137,7 @@ EXEC-ORCH logs → triggers Episode Brief
 ART-HW  →  Episode Brief  (specs/schemas/brief.md format)
     │
     ▼
-DIRECTOR/CEO or AI-EP approves brief           ← Category B
+DIRECTOR/CEO or EXEC-DIR-AI approves brief           ← Category B
     │
     ▼
 EXEC-ORCH logs → triggers Screenwriter
@@ -149,14 +149,14 @@ EXEC-SW  →  Script  (scripts/s[NN]/ · specs/schemas/script.md)
 EXEC-SREV  →  Script QA  (reviews/ · specs/schemas/qa_report.md)
     │
     ├── PASS →
-    │         DIRECTOR/CEO or AI-EP approves script    ← Category B
+    │         DIRECTOR/CEO or EXEC-DIR-AI approves script    ← Category B
     │             │
     │             ▼
     │         EXEC-ORCH logs → triggers Storyboard phase
     │
     └── FAIL → back to EXEC-SW  (max 3 iterations)
                3rd fail → EXEC-ORCH escalates to Director/CEO directly
-               (AI-EP delegation suspended for this item)
+               (EXEC-DIR-AI delegation suspended for this item)
 ```
 
 ---
@@ -173,7 +173,7 @@ EXEC-WCHK  →  World Check  (reviews/ · specs/schemas/qa_report.md)
     │         ART-CONT  →  Continuity Check (cross-reference vs prior episodes)
     │             │
     │             ▼
-    │         DIRECTOR/CEO or AI-EP approves storyboard   ← Category B
+    │         DIRECTOR/CEO or EXEC-DIR-AI approves storyboard   ← Category B
     │             │
     │             ▼
     │         EXEC-ORCH logs → triggers Phase D
@@ -218,7 +218,7 @@ EXEC-WCHK  →  Shot QA  (specs/protocols/qa_retry.md)        ← Category C (au
 ART-MS  →  Music Brief  (mood · timing · instrumentation per scene)
     │
     ▼
-DIRECTOR/CEO or AI-EP approves Music Brief     ← Category B
+DIRECTOR/CEO or EXEC-DIR-AI approves Music Brief     ← Category B
     │
     ▼
 EXEC-ORCH logs → triggers Music Generator
@@ -236,7 +236,7 @@ Output → H:\My Drive\SandyStudio_Media\raw\audio\
 ART-MS  →  Music QA  (timing match · mood match · quality)
     │
     ├── PASS →
-    │         DIRECTOR/CEO or AI-EP approves music         ← Category B
+    │         DIRECTOR/CEO or EXEC-DIR-AI approves music         ← Category B
     │             │
     │             ▼
     │         EXEC-ORCH logs → marks music complete in PLAN.md
@@ -266,7 +266,7 @@ Assembly tool: FFmpeg  (specs/system/assembly_tool.md)
   5. Output → H:\My Drive\SandyStudio_Media\raw\video\[episode_file]
     │
     ▼
-DIRECTOR/CEO reviews assembled episode         ← Category A  (AI-EP cannot approve)
+DIRECTOR/CEO reviews assembled episode         ← Category A  (EXEC-DIR-AI cannot approve)
     │
     ├── APPROVED → episode moves to approved/
     │               EXEC-ORCH logs → marks episode APPROVED in PLAN.md
@@ -339,7 +339,7 @@ Full inter-agent spec: `specs/protocols/inter_agent_handoff.md`
 ```
 [agent creates file]              →  DRAFT
 [agent submits for review]        →  REVIEW
-[Director/CEO or AI-EP approves]  →  APPROVED
+[Director/CEO or EXEC-DIR-AI approves]  →  APPROVED
 [Director/CEO only]               →  LOCKED  (file frozen — new version for any change)
 ```
 
@@ -387,7 +387,7 @@ Full spec: `specs/protocols/version_cascade.md`
 
 **EXEC-ORCH** — active in ALL phases. Only agent that spans the full pipeline.
 **EXEC-ARCH** — active at all times.
-**AI-EP** — active only when Director/CEO has granted delegation.
+**EXEC-DIR-AI** — active only when Director/CEO has granted delegation.
 
 ---
 
@@ -401,5 +401,5 @@ Full spec: `specs/protocols/version_cascade.md`
 ---
 
 *SandyStudio pipeline_overview.md | v0.2 | Status: DRAFT*
-*Changes from v0.1: EXEC-ORCH shown at every gate transition · AI-EP approval authority added ·*
+*Changes from v0.1: EXEC-ORCH shown at every gate transition · EXEC-DIR-AI approval authority added ·*
 *Category A/B/C classification · "Sandy" replaced with "Director/CEO" · FFmpeg confirmed.*
