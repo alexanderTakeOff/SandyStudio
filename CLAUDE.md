@@ -346,5 +346,5 @@ When starting a new Claude Code session in this project:
 
 ---
 
-*SandyStudio CLAUDE.md | v0.6 | Status: DRAFT*
-*Next: Sprint 1 — PLAN.md, pipeline_overview, bootstrap_sequence*
+*SandyStudio CLAUDE.md | v0.7 | Status: DRAFT*
+*Next: Sprint 1 approval → Sprint 6 agent instructions → Web app*
