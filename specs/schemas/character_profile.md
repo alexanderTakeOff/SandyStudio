@@ -113,10 +113,13 @@ visual_appearance:
 canonical_prompt_fragment: string   # REQUIRED
 
 fragment_test:
-  tested: boolean             # REQUIRED — true = 10 test images reviewed
-  pass_rate: string           # e.g. "9/10" — must be ≥8/10
+  tested: boolean             # REQUIRED — true = automated technical check done
+  pass_rate: string           # e.g. "9/10" — must be ≥8/10 per human review
   test_log: string            # path to fragment test review file
-  tested_by: string           # "EXEC-VGEN"
+  tested_by: string           # "EXEC-VGEN" — automated technical check only
+  reviewed_by: string         # REQUIRED — human who reviewed the images visually
+                              # Director name or designated human approver.
+                              # NEVER an agent ID. If blank → not approved.
   tested_date: string         # ISO date
 
 # ─────────────────────────────────────────────────────────
