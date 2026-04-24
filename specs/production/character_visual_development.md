@@ -122,8 +122,12 @@ Director response (one of):
   C) Request refinement (e.g. "make B less angular") → revise and regenerate → loop Phase 3
   D) Reject all → ART-CAST revises visual brief → return to Phase 1
 
-Iteration budget: max 5 rounds. If unresolved after 5: ART-AD reviews brief.
+Iteration budget: max 5 rounds. If unresolved after 5: Director escalates brief to ART-CAST directly.
 Cost ceiling: 20 draft variants per character (~$0.60) before escalation.
+
+NOTE: Variant approval is always the Director (or the human the Director explicitly
+designates in the Approval Authority Matrix). No AI agent can approve a visual.
+Agents propose. Humans decide what the character looks like.
 ```
 
 ---
