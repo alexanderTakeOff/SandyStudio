@@ -9,7 +9,7 @@
 
 ---
 
-## GOVERNING RULES (from governance.md §11)
+## GOVERNING RULES (from CLAUDE.md §11)
 
 - No agent may call a paid API without an approved budget in the Master Plan
 - API credentials are never stored in project files — stored in system environment only
