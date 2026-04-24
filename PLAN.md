@@ -217,6 +217,19 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 
 ---
 
+## POST-PILOT ARCHITECTURAL TASKS
+
+*Items identified during PILOT run — not blocking, implement after pipeline validated.*
+
+| # | Task | Files affected | Priority |
+|---|------|---------------|----------|
+| PA-001 | **Character Reference Architecture** — Add Level 0 master reference (8K immutable image per character) + Level 1 scene reference layer. Text defines intent; reference defines reality. Currently: canonical_prompt_fragment is text-only (A1). This adds A2 (reference image). | `specs/system/character_consistency.md`, `specs/schemas/character_profile.md`, `agents/exec/visual_generator.md`, `specs/schemas/shot.md`, character profile bibles | HIGH — required before S01 real generation |
+| PA-002 | Add `master_reference_image_path` field to character profile schema | `specs/schemas/character_profile.md`, both character bibles | Follows PA-001 |
+| PA-003 | EXEC-VGEN Step 0: load master reference image, pass to API as character reference (not just text fragment) | `agents/exec/visual_generator.md` | Follows PA-001 |
+| PA-004 | `config/defaults.yaml` — all values reviewed after PILOT (benchmarks, cost estimates, shot counts) | `config/defaults.yaml` | After PILOT |
+
+---
+
 ## OPEN DECISIONS
 
 | # | Decision | Options | Owner | Due |
