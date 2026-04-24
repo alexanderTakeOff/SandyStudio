@@ -84,6 +84,15 @@ escalation_reason: string     # REQUIRED if next_action is ESCALATE
 revision_instructions: string # REQUIRED if next_action is REVISE
                               # Specific instructions for the producing agent.
                               # Must be actionable — not vague.
+
+# --- APPROVAL RECORD (populated when next_action is APPROVE) ---
+approved_by: string           # REQUIRED when next_action is APPROVE
+                              # "Director/CEO" | "AI-EP"
+                              # Records who approved — critical for audit trail
+approved_date: string         # REQUIRED when next_action is APPROVE — ISO format
+approval_notes: string        # OPTIONAL — any conditions or caveats on the approval
+                              # Example: "Approved with note: fix typo in scene 3
+                              #           before storyboard begins"
 ```
 
 ---
