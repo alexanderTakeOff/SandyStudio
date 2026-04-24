@@ -1,5 +1,5 @@
 # SandyStudio — QA Retry Protocol
-## specs/protocols/qa_retry.md | v0.1 | DRAFT
+## specs/protocols/qa_retry.md | v0.1 | APPROVED
 
 > Defines what happens when a QA check fails: retry limits, ownership, and escalation.
 > Enforced by: EXEC-ORCH
