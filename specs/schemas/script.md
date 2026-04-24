@@ -1,5 +1,5 @@
 # SandyStudio — Script Schema
-## specs/schemas/script.md | v0.1 | DRAFT
+## specs/schemas/script.md | v0.1 | APPROVED
 
 > Defines the exact format of a screenplay file.
 > Produced by: EXEC-SW
