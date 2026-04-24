@@ -214,9 +214,10 @@ Profile cannot reach APPROVED unless all of these are true:
 ✅ approved_by: Director/CEO or designated human approver
 ```
 
-HARD RULE: No field that contains a human reviewer may hold an agent ID.
-If it says "ART-AD" or any EXEC/ART/BOARD agent — it is not approved.
-Visual content approval = human eyes + human decision, always.
+DEFAULT: Visual approval is Director personally. To change: set in Approval Authority Matrix.
+If visual_reviewed_by holds an agent ID — this means Director explicitly delegated
+visual approval to EXEC-DIR-AI in the matrix. Valid if set there intentionally.
+If visual_reviewed_by is blank/null → not approved regardless of other fields.
 
 ---
 
