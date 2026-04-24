@@ -199,4 +199,5 @@ date: "2026-04-23"
 
 ---
 
-*SandyStudio prompt.md schema | v0.1 | Status: DRAFT*
+*SandyStudio prompt.md schema | v0.2 | Status: APPROVED*
+*Changes: target_api → target_contract (contract name, not model name) · model removed from parameters · resolved via config/providers.yaml at runtime*
