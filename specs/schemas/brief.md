@@ -1,5 +1,5 @@
 # SandyStudio — Brief Schema
-## specs/schemas/brief.md | v0.1 | DRAFT
+## specs/schemas/brief.md | v0.2 | APPROVED
 
 > Defines the exact format of a creative episode brief.
 > Produced by: ART-HW
