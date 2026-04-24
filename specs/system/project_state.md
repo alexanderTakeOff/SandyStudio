@@ -40,11 +40,12 @@ It must be kept exactly current — stale state is as dangerous as no state.
 ## CURRENT STATE
 
 \`\`\`
-Phase:    [current sprint name]
-Blocker:  [none | description of what is blocking]
-Next:     [next sprint or next action]
-Mode:     [===1=== | ===5===]
-Date:     [ISO date of last update]
+Phase:           [current sprint name]
+Blocker:         [none | description of what is blocking]
+Next:            [next sprint or next action]
+File Edit Mode:  [===1=== | ===5===]
+Governance Mode: [Mode 1 — MANUAL | Mode 2 — HYBRID | Mode 3 — DELEGATED | Mode 4 — AUTOTEST]
+Date:            [ISO date of last update]
 \`\`\`
 ```
 
