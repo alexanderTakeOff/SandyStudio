@@ -1,5 +1,5 @@
 # SandyStudio — Shot Schema
-## specs/schemas/shot.md | v0.1 | DRAFT
+## specs/schemas/shot.md | v0.1 | APPROVED
 
 > Defines the exact format of a single shot in a storyboard.
 > Produced by: EXEC-SB
