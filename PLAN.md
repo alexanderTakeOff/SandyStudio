@@ -216,6 +216,8 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | EXEC-ORCH orchestrator.md v0.1 APPROVED | Director/CEO |
 | 2026-04-24 | EXEC-SW screenwriter.md v0.2 APPROVED — rewritten as pure function | Director/CEO |
 | 2026-04-24 | ARCH RULE #8 added to CLAUDE.md: Parameter Completeness at Gate | Director/CEO |
+| 2026-04-24 | EXEC-SREV script_reviewer.md v0.1 APPROVED | Director/CEO |
+| 2026-04-24 | EXEC-SB storyboarder.md v0.1 DRAFT — pending review | Claude Code |
 
 ---
 
