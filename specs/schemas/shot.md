@@ -141,29 +141,31 @@ script_version: "v01"
 camera_angle: "MEDIUM"
 camera_movement: "STATIC"
 
-location: "Panther's Kitchen"
-time_of_day: "MORNING"
-lighting_condition: "warm morning light from window left, soft shadows, yellow-cream tones"
+location: "club_exterior_entrance"
+time_of_day: "NIGHT"
+lighting_condition: "harsh white spotlight cone from above, deep cobalt shadows, brass gleam on surfaces"
 
 characters_present:
-  - "pink_panther"
-  - "inspector_clouseau"
+  - "sandy"
+  - "inspector_stopwatch"
 
-action: "Pink Panther watches in frozen horror as Clouseau's door slam sends
-         a shockwave across the room, visibly rippling the air toward the oven."
+action: "Sandy floats toward the velvet rope, sand fully in upper bulb, chest out.
+         Inspector-Stopwatch swivels on his telescopic shaft to face her, arrow-brow at 9 o'clock."
 
 dialogue: ""
 
-mood: "dread — slow-motion comic anticipation"
-duration_seconds: 3.0
+timing: "00.08-00.15"
+duration_seconds: 7.0
 
-comic_beat: "Shockwave shown as cartoon ripple lines travelling across the kitchen"
+mood: "smug confidence meets cold authority"
+
+comic_beat: ""
 is_punchline: false
 
 props_in_frame:
-  - "kitchen oven (glass door visible)"
-  - "five backup timers on counter"
-special_effects: "cartoon ripple wave lines through air"
+  - "velvet rope"
+  - "red carpet"
+special_effects: "subtle bounce springs under Sandy's step — sand weight visible as slight sway"
 
 status: "DRAFT"
 ```
