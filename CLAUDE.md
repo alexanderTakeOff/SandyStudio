@@ -107,15 +107,24 @@ SS-PILOT-BIB-character_pink_panther-v01-APPROVED.md
 ## 4. AGENT STRUCTURE
 
 ### Level 0 — Founder (Human)
-| Agent | Role |
-|-------|------|
-| **Sandy** | CEO & Final Approver. Grants/revokes human participant access. Switches system and agent operating modes. All APPROVED and LOCKED statuses require Sandy's explicit sign-off. |
+| Role | Authority |
+|------|-----------|
+| **CEO / Director** | Final authority. Grants/revokes human and AI-EP access. Switches system and agent operating modes. All APPROVED and LOCKED statuses require explicit CEO/Director sign-off unless delegated to AI-EP. |
+
+---
+
+### Level 0.5 — AI Executive Producer (Delegated Authority AI Agent)
+| Agent ID | Name | Role | File |
+|----------|------|------|------|
+| `AI-EP` | AI Executive Producer | Acts as Director's proxy with delegated approval authority. Approves Category B production outputs when authorised. Escalates Category A decisions to Director. Authority granted and revoked exclusively by the Director. | `agents/exec/ai_ep.md` |
+
+> **Delegation rule:** AI-EP has NO authority by default. The Director explicitly grants scope (e.g. "AI-EP: approve scripts and storyboards for S01"). The Director revokes at any time with a single command. All AI-EP approvals are logged with rationale.
 
 ---
 
 ### Level 1 — Board of Directors (Strategic AI Agents)
 Agents at this level handle strategic decisions: market, finance, vision, risk.
-They pitch ideas to Sandy and receive final direction.
+They pitch ideas to the Director and receive final direction.
 
 | Agent ID | Name | Role | File |
 |----------|------|------|------|
