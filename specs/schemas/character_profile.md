@@ -207,11 +207,16 @@ Profile cannot reach APPROVED unless all of these are true:
 ```
 ✅ master_reference_image_path: not null
 ✅ fragment_test.tested: true
-✅ fragment_test.pass_rate: ≥8/10
+✅ fragment_test.pass_rate: ≥8/10 (confirmed by human)
+✅ fragment_test.reviewed_by: human name (not an agent ID)
 ✅ All REQUIRED fields present
-✅ reviewed_by: ART-AD (visual check)
-✅ approved_by: Director/CEO
+✅ visual_reviewed_by: human name (Director or designated approver)
+✅ approved_by: Director/CEO or designated human approver
 ```
+
+HARD RULE: No field that contains a human reviewer may hold an agent ID.
+If it says "ART-AD" or any EXEC/ART/BOARD agent — it is not approved.
+Visual content approval = human eyes + human decision, always.
 
 ---
 
