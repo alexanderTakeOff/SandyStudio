@@ -581,6 +581,14 @@ async function onAgentCompleted(episodeId: string, agentId: string, output: Agen
 }
 
 const HARD_LIMITS = ["PUBLISH", "LOCKED", "BUDGET_INCREASE", "MODE_CHANGE"]
+
+// Visual approval is a separate hard limit — enforced regardless of governance mode
+// Checked by looking up approval_authority table for the category
+const VISUAL_CATEGORIES = [
+  "character_visual", "location_ref", "generated_shots", "thumbnails"
+]
+// If category is visual: always route to human approver from approval_authority table.
+// Never auto-approve. Mode 3/4 does not affect visual gates.
 ```
 
 ### 7.4 Input loading contract
