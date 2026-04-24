@@ -151,8 +151,7 @@ No agent writes content until the spec for that content is APPROVED.
 ---
 
 ### SPRINT 6 — Agent Instructions
-**Status:** ⏳ PENDING DIRECTOR BATCH APPROVAL (all 25 agents written)
-**This is the first "build" sprint — all prior sprints are spec-only**
+**Status:** ✅ COMPLETE (2026-04-24) — all 25 agents APPROVED by Director
 
 #### Agent status
 
@@ -165,27 +164,25 @@ No agent writes content until the spec for that content is APPROVED.
 | EXEC-WCHK | `agents/exec/world_checker.md` | ✅ APPROVED |
 | EXEC-VGEN | `agents/exec/visual_generator.md` | ✅ APPROVED |
 | EXEC-DIR-AI | `agents/exec/exec_dir_ai.md` | ✅ APPROVED |
-| EXEC-STY | `agents/exec/style_creator.md` | 📝 DRAFT |
-| EXEC-MGEN | `agents/exec/music_generator.md` | 📝 DRAFT |
-| EXEC-ARCH | `agents/exec/archivist.md` | 📝 DRAFT |
-| EXEC-COPY | `agents/exec/copywriter.md` | 📝 DRAFT |
-| EXEC-THUMB | `agents/exec/thumbnail_creator.md` | 📝 DRAFT |
-| EXEC-PUB | `agents/exec/publisher.md` | 📝 DRAFT |
-| EXEC-ANAL | `agents/exec/analytics_collector.md` | 📝 DRAFT |
-| ART-PROD | `agents/artistic/producer.md` | 📝 DRAFT |
-| ART-HW | `agents/artistic/head_writer.md` | 📝 DRAFT |
-| ART-AD | `agents/artistic/art_director.md` | 📝 DRAFT |
-| ART-MS | `agents/artistic/music_supervisor.md` | 📝 DRAFT |
-| ART-WB | `agents/artistic/world_builder.md` | 📝 DRAFT |
-| ART-CAST | `agents/artistic/casting_director.md` | 📝 DRAFT |
-| ART-CONT | `agents/artistic/continuity_supervisor.md` | 📝 DRAFT |
-| BOARD-MKT | `agents/board/market_analyst.md` | 📝 DRAFT |
-| BOARD-FIN | `agents/board/financial_analyst.md` | 📝 DRAFT |
-| BOARD-FAI | `agents/board/founder_ai.md` | 📝 DRAFT |
-| BOARD-CRIT | `agents/board/cautious_critic.md` | 📝 DRAFT |
-| BOARD-CRD | `agents/board/creative_director.md` | 📝 DRAFT |
-
-**Exit criteria:** All 25 agent files APPROVED by Director
+| EXEC-STY | `agents/exec/style_creator.md` | ✅ APPROVED |
+| EXEC-MGEN | `agents/exec/music_generator.md` | ✅ APPROVED |
+| EXEC-ARCH | `agents/exec/archivist.md` | ✅ APPROVED |
+| EXEC-COPY | `agents/exec/copywriter.md` | ✅ APPROVED |
+| EXEC-THUMB | `agents/exec/thumbnail_creator.md` | ✅ APPROVED |
+| EXEC-PUB | `agents/exec/publisher.md` | ✅ APPROVED |
+| EXEC-ANAL | `agents/exec/analytics_collector.md` | ✅ APPROVED |
+| ART-PROD | `agents/artistic/producer.md` | ✅ APPROVED |
+| ART-HW | `agents/artistic/head_writer.md` | ✅ APPROVED |
+| ART-AD | `agents/artistic/art_director.md` | ✅ APPROVED |
+| ART-MS | `agents/artistic/music_supervisor.md` | ✅ APPROVED |
+| ART-WB | `agents/artistic/world_builder.md` | ✅ APPROVED |
+| ART-CAST | `agents/artistic/casting_director.md` | ✅ APPROVED |
+| ART-CONT | `agents/artistic/continuity_supervisor.md` | ✅ APPROVED |
+| BOARD-MKT | `agents/board/market_analyst.md` | ✅ APPROVED |
+| BOARD-FIN | `agents/board/financial_analyst.md` | ✅ APPROVED |
+| BOARD-FAI | `agents/board/founder_ai.md` | ✅ APPROVED |
+| BOARD-CRIT | `agents/board/cautious_critic.md` | ✅ APPROVED |
+| BOARD-CRD | `agents/board/creative_director.md` | ✅ APPROVED |
 
 ---
 
