@@ -70,9 +70,17 @@ dialogue: string            # OPTIONAL — spoken line heard during this shot (i
 mood: string                # REQUIRED — emotional tone of the shot
                             # e.g. "tense anticipation", "gleeful chaos", "quiet defeat"
 
-duration_seconds: number    # REQUIRED — estimated shot length in seconds
-                            # Minimum: 1.5 | Maximum: 8.0 for a single shot
-                            # Used by: ART-MS (music sync), assembly tool
+timing: string              # REQUIRED — start and end timecode within the episode
+                            # Format: mm.ss-mm.ss  (minutes.seconds – minutes.seconds)
+                            # Example: "00.08-00.15" = starts at 0:08, ends at 0:15
+                            # All shots must be contiguous: shot N end = shot N+1 start
+                            # Episode total must equal brief target_runtime_seconds
+                            # Used by: EXEC-SB (planning), EXEC-MGEN (music sync),
+                            #          assembly tool (cut points)
+
+duration_seconds: number    # DERIVED — calculated from timing (end - start). Do not set manually.
+                            # Formula: parse mm.ss end − parse mm.ss start
+                            # Kept for backwards compatibility with generation APIs
 
 # --- COMEDY ---
 comic_beat: string          # OPTIONAL — if this shot is a gag or punchline, describe it
