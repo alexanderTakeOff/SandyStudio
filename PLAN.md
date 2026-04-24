@@ -301,7 +301,8 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | SS-S01-E01-SPC-brief-v01 APPROVED | Director/CEO |
 | 2026-04-24 | SS-S01-E01-SPC-story_brief-v01 APPROVED (Option A ending confirmed) | Director/CEO |
 | 2026-04-24 | SS-S01-E01-SPC-music_brief-v01 APPROVED | Director/CEO |
-| 2026-04-24 | SS-S01-E01-SCR-script-v01 DRAFT — pending ART-HW review | EXEC-SW |
+| 2026-04-24 | SS-S01-E01-SCR-script-v01 APPROVED | Director/CEO |
+| 2026-04-24 | PA-001 logged: Character Reference Architecture — post-pilot | Director/CEO |
 
 ---
 
