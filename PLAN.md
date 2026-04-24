@@ -11,9 +11,9 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 7 — Web Application Spec
+Phase:    SPRINT 8 — Mock Pipeline Validation (in progress)
 Blocker:  none
-Next:     specs/system/webapp.md → DB schema → Inngest jobs → UI
+Next:     EXEC-MGEN mock music → EXEC-THUMB → EXEC-COPY → EXEC-PUB → EXEC-ANAL → summary
 Mode:     ===1=== ANALYTICS (default)
 Date:     2026-04-24
 ```
