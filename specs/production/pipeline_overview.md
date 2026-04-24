@@ -22,24 +22,23 @@
 
 ## 1b. APPROVAL AUTHORITY
 
-Every gate in this pipeline requires approval. Two approvers exist:
+Approval authority at every gate is determined by the active **Governance Mode**
+(see `specs/company/governance.md §4`). The Director/CEO sets the mode.
+EXEC-ORCH routes all gates accordingly.
 
-| Approver | When active | What they can approve |
-|----------|------------|----------------------|
-| **Director/CEO** | Always | Everything — Category A, B, C |
-| **EXEC-DIR-AI** | Only when Director/CEO has granted delegation | Category B only |
+| Mode | Who approves pipeline gates |
+|------|-----------------------------|
+| **Mode 1 — MANUAL** | Director/CEO approves every gate |
+| **Mode 2 — HYBRID** | Director/CEO approves defined scope · EXEC-DIR-AI approves the rest |
+| **Mode 3 — DELEGATED** | EXEC-DIR-AI approves all gates except hard limits |
+| **Mode 4 — AUTOTEST** | All gates auto-pass — pipeline testing only |
 
-**Category A — Director/CEO only:**
-Publish, LOCKED status, budget spend, access rights, Series Slate, Master Plan, final episode cut.
+**Hard limits — Director/CEO always, regardless of mode:**
+Publish · LOCKED status · Budget spend above threshold · Mode changes themselves
 
-**Category B — EXEC-DIR-AI when delegated:**
-Scripts, storyboards, shot QA escalations, music, style bible, world bible, character profiles.
-
-**Category C — agents autonomous:**
-DRAFT→REVIEW transitions, internal QA checks, prompt drafts, shot-level generation retries.
-
-At every gate below: *"Director/CEO or EXEC-DIR-AI approves"* means Director/CEO directly,
-OR EXEC-DIR-AI if delegation is active for that scope (see governance.md §2b–2c).
+In the flow diagrams below, every gate marked **[APPROVAL GATE]** follows this table.
+In Mode 1 that is always Director/CEO.
+In Mode 2/3 it is EXEC-DIR-AI within delegated scope.
 
 ---
 
