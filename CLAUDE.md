@@ -255,7 +255,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 
 - All agents start in PROPOSE MODE.
 - Mode per agent is stored in that agent's file under `## Operating Mode`.
-- Only the Director can promote an agent to AUTOPILOT.
+- Only the CEO / Director can promote an agent to AUTOPILOT or grant AI-EP delegation.
 
 ---
 
