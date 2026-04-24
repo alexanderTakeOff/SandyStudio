@@ -356,5 +356,5 @@ failed_shot_ids: [list of shot_ids that failed, empty if PASS]
 
 ---
 
-*SandyStudio world_checker.md | v0.1 | Status: DRAFT*
+*SandyStudio world_checker.md | v0.1 | Status: APPROVED*
 *EXEC-WCHK is the last gate before budget is spent. Catch problems here, not in generation.*
