@@ -74,14 +74,14 @@ No agent writes content until the spec for that content is APPROVED.
 ---
 
 ### SPRINT 3 — Protocol Specs
-**Status:** ✅ COMPLETE (2026-04-24)
+**Status:** ✅ COMPLETE — updated for 4-mode governance system (2026-04-24)
 
 | Task | Status |
 |------|--------|
-| `specs/protocols/inter_agent_handoff.md` | ✅ DRAFT |
+| `specs/protocols/inter_agent_handoff.md` | ✅ DRAFT — updated: Mode 1/2/3/4 handoff flows |
 | `specs/protocols/version_cascade.md` | ✅ DRAFT |
 | `specs/protocols/qa_retry.md` | ✅ DRAFT |
-| `specs/protocols/batch_approval.md` | ✅ DRAFT |
+| `specs/protocols/batch_approval.md` | ✅ DRAFT v0.2 — updated: Mode mapping + EXEC-DIR-AI |
 
 ---
 
