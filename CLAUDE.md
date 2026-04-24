@@ -284,7 +284,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 
 ---
 
-## 8. HOW TO START A SESSION
+## 9. HOW TO START A SESSION
 
 When starting a new Claude Code session in this project:
 
