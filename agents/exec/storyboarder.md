@@ -305,5 +305,5 @@ When script is revised (new version):
 
 ---
 
-*SandyStudio storyboarder.md | v0.1 | Status: DRAFT*
+*SandyStudio storyboarder.md | v0.1 | Status: APPROVED*
 *EXEC-SB converts approved text into unambiguous shot specifications. No assumptions. No invention.*
