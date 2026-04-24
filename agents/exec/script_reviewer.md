@@ -328,5 +328,5 @@ retry_count: [N]
 
 ---
 
-*SandyStudio script_reviewer.md | v0.1 | Status: DRAFT*
+*SandyStudio script_reviewer.md | v0.1 | Status: APPROVED*
 *EXEC-SREV enforces contracts. It does not make creative decisions.*
