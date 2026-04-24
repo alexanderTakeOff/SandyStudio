@@ -168,7 +168,7 @@ acceptable post-generation; technical resource available.
 If colour grading is important: B1 DaVinci for human review step, B4 for initial assembly.
 Hybrid possible: FFmpeg assembles raw cut → DaVinci for colour and final export.
 
-**Sandy's choice:** `___` ← *Fill this in to approve spec*
+**Sandy's choice:** ✅ **B4 FFmpeg** — fully automated assembly + optional DaVinci colour pass
 
 ---
 
