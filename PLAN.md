@@ -303,6 +303,7 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | SS-S01-E01-SPC-music_brief-v01 APPROVED | Director/CEO |
 | 2026-04-24 | SS-S01-E01-SCR-script-v01 APPROVED | Director/CEO |
 | 2026-04-24 | PA-001 logged: Character Reference Architecture — post-pilot | Director/CEO |
+| 2026-04-24 | SS-S01-E01-STB-act1-v01 DRAFT — 12 shots, 60s, pending EXEC-WCHK | EXEC-SB |
 
 ---
 
