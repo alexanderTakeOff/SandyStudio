@@ -107,7 +107,7 @@ generation_file: string     # OPTIONAL — path to generated video/image once cr
 ## RULES
 
 1. `shot_id` must be unique across the entire project, not just within an episode.
-2. `duration_seconds` is mandatory — no shot may be storyboarded without an estimated duration. The sum of shot durations in a scene must align with the target runtime in the brief.
+2. `timing` is mandatory — every shot must have an explicit `mm.ss-mm.ss` timecode. `duration_seconds` is derived from timing and must not be set manually. Shot timecodes must be contiguous (no gaps, no overlaps). Episode sum must equal `target_runtime_seconds` from the brief (±2 seconds tolerance).
 3. `characters_present` must use exact character IDs from approved Character Profiles. EXEC-WCHK cross-references this against the World Checker's appearance rules.
 4. `location` must exactly match a location name in the approved World Bible. No improvised locations.
 5. `lighting_condition` must derive from the World Bible's lighting rules for that location.
