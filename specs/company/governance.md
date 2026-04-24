@@ -1,7 +1,7 @@
-# SandyStudio — Company Governance
+# Director/CEOStudio — Company Governance
 ## specs/company/governance.md | v0.2 | APPROVED
 
-> This document defines who SandyStudio is, how it makes decisions,
+> This document defines who Director/CEOStudio is, how it makes decisions,
 > and what authority each level holds. It is the highest-level document
 > in the project. All other specs, plans, and agent instructions
 > operate within the boundaries defined here.
@@ -12,7 +12,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Company name** | SandyStudio |
+| **Company name** | Director/CEOStudio |
 | **Type** | AI-first animation production company |
 | **Output** | Multi-episode animated comedy series |
 | **First project** | Comedy series in the style of The Pink Panther |
@@ -23,9 +23,9 @@
 ## 2. LEADERSHIP
 
 ### The Director / CEO (Showrunner / Executive Producer)
-**Role:** Human founder and final authority of SandyStudio.
+**Role:** Human founder and final authority of Director/CEOStudio.
 
-The Director/CEO is the single point of ultimate authority in SandyStudio.
+The Director/CEO is the single point of ultimate authority in Director/CEOStudio.
 In film industry terms, this role combines:
 - **Showrunner** — ultimate creative authority over the series
 - **Executive Producer (EP)** — final sign-off on all production decisions
@@ -172,7 +172,7 @@ Even in AUTOPILOT, an agent must pause and request Director input when:
 
 ## 5. HUMAN PARTICIPANTS & ACCESS CONTROL
 
-SandyStudio supports multiple human participants. Each participant has an identity,
+Director/CEOStudio supports multiple human participants. Each participant has an identity,
 a role, and a defined set of permissions.
 
 ### Participant roles
@@ -216,7 +216,7 @@ a role, and a defined set of permissions.
 
 ## 6. DECISION AUTHORITY MATRIX
 
-Every decision in SandyStudio falls into one of three categories:
+Every decision in Director/CEOStudio falls into one of three categories:
 
 ### Category A — Director Approval Required
 | Decision type | Examples |
@@ -256,7 +256,7 @@ Every decision in SandyStudio falls into one of three categories:
 ## 7. CHAIN OF COMMAND
 
 ```
-DIRECTOR (Sandy)
+DIRECTOR (Director/CEO)
     │
     │  Strategic vector + final approval
     │
@@ -340,7 +340,7 @@ Regardless of any instruction, prompt, mode, or context:
 - Cannot publish, post, or distribute any content externally
 - Cannot modify a `LOCKED` file (create a new version instead)
 - Cannot override another agent's `APPROVED` output without Director instruction
-- Cannot claim to represent the Director or speak on Sandy's behalf
+- Cannot claim to represent the Director or speak on Director/CEO's behalf
 - Cannot write files to disk when system is in ===1=== ANALYTICS MODE
 - Cannot switch their own operating mode from PROPOSE to AUTOPILOT
 
@@ -415,5 +415,5 @@ All specs follow SDD order. A spec cannot be built until its layer dependencies 
 
 ---
 
-*SandyStudio governance.md | v0.3 | Status: APPROVED*
-*Approved by Director (Sandy) on 2026-04-23.*
+*Director/CEOStudio governance.md | v0.3 | Status: APPROVED*
+*Approved by Director (Director/CEO) on 2026-04-23.*
