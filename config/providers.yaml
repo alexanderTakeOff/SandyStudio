@@ -44,6 +44,109 @@ budget:
   cost_log_target: "PLAN.md"          # where running totals are written
 
 # ─────────────────────────────────────────────────────────────
+# MOCK PROVIDER — global definition
+# Active when gateway.provider_mode: mock
+# Returns structurally valid placeholder outputs for every contract.
+# Cost logged as $0.00. No env keys required.
+# ─────────────────────────────────────────────────────────────
+
+mock:
+  adapter: mock_adapter
+  cost_usd: 0.00
+  latency_ms: 50                      # simulated latency for realistic step timing
+
+  outputs:
+    image:
+      status: "success"
+      provider: "mock"
+      format: "PNG"
+      width: 1280
+      height: 720
+      size_bytes: 10240
+      seed: 42
+      # file path template — filled by adapter with episode_id + shot_id
+      file_template: "H:/My Drive/SandyStudio_Media/raw/images/mock_{episode_id}_{asset_id}-v{version}-DRAFT.png"
+
+    video:
+      status: "success"
+      provider: "mock"
+      format: "MP4"
+      width: 1920
+      height: 1080
+      duration_seconds: 5.0
+      fps: 24
+      size_bytes: 102400
+      seed: 42
+      file_template: "H:/My Drive/SandyStudio_Media/raw/video/mock_{episode_id}_{shot_id}-v{version}-DRAFT.mp4"
+
+    character_video:
+      status: "success"
+      provider: "mock"
+      format: "MP4"
+      width: 1920
+      height: 1080
+      duration_seconds: 5.0
+      fps: 24
+      size_bytes: 102400
+      character_consistency_score: 0.95   # mock score — signals field exists in real output
+      seed: 42
+      file_template: "H:/My Drive/SandyStudio_Media/raw/video/mock_{episode_id}_{shot_id}-v{version}-DRAFT.mp4"
+
+    music:
+      status: "success"
+      provider: "mock"
+      format: "WAV"
+      duration_seconds: 30.0
+      sample_rate: 44100
+      channels: 2
+      peak_dbfs: -8.0                  # within headroom spec (≤ -6 dB)
+      size_bytes: 5292000
+      royalty_free: true
+      file_template: "H:/My Drive/SandyStudio_Media/raw/audio/mock_{episode_id}_{track_id}-v{version}-DRAFT.wav"
+
+    sfx:
+      status: "success"
+      provider: "mock"
+      format: "WAV"
+      duration_seconds: 1.5
+      sample_rate: 44100
+      peak_dbfs: -6.0
+      size_bytes: 132300
+      file_template: "H:/My Drive/SandyStudio_Media/raw/audio/mock_{episode_id}_{sfx_id}-v{version}-DRAFT.wav"
+
+    youtube_upload:
+      status: "success"
+      provider: "mock"
+      youtube_video_id: "mock_vid_000000"
+      video_url: "https://www.youtube.com/watch?v=mock_vid_000000"
+      upload_timestamp: null           # filled at runtime
+      scheduled_publish_time: null     # filled at runtime
+      privacy_status: "private"
+      note: "MOCK — no actual upload performed"
+
+    analytics_collect:
+      status: "success"
+      provider: "mock"
+      # Schema-valid metrics per analytics.md — all zeroed for mock
+      views: 0
+      watch_time_minutes: 0
+      avg_view_duration_seconds: 0
+      avg_view_percentage: 0.0
+      impressions: 0
+      impression_ctr: 0.0
+      subscribers_gained: 0
+      likes: 0
+      comments: 0
+      traffic_sources:
+        search_pct: 0.0
+        suggested_pct: 0.0
+        direct_pct: 0.0
+        notification_pct: 0.0
+        other_pct: 0.0
+      retention_curve: []
+      note: "MOCK — no real analytics data"
+
+# ─────────────────────────────────────────────────────────────
 # CONTRACT: ImageProvider
 # Used by: EXEC-VGEN (character references, test images), EXEC-THUMB, ART-CAST
 # ─────────────────────────────────────────────────────────────
