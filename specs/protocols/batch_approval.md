@@ -1,7 +1,7 @@
-# SandyStudio — Batch Approval Protocol
+# Director/CEOStudio — Batch Approval Protocol
 ## specs/protocols/batch_approval.md | v0.1 | DRAFT
 
-> Defines how Director (Sandy) reviews and approves multiple assets efficiently.
+> Defines how Director (Director/CEO) reviews and approves multiple assets efficiently.
 > Without this protocol, approving one episode requires 100+ individual decisions.
 > This protocol makes scale manageable without sacrificing Director authority.
 
@@ -172,4 +172,4 @@ Delegated approvals:
 
 ---
 
-*SandyStudio batch_approval.md | v0.1 | Status: DRAFT*
+*Director/CEOStudio batch_approval.md | v0.1 | Status: DRAFT*
