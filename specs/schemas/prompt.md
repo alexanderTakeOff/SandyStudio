@@ -154,7 +154,7 @@ Add shot-specific negatives if needed.
 ```yaml
 prompt_id: "SS-S01-E01-PRO-video_S01E01-A1-SC02-SH02-v01-DRAFT"
 prompt_type: "VIDEO"
-target_api: "Veo3"
+target_contract: "video_generation"
 shot_id: "S01E01-A1-SC02-SH02"
 source_version: "v01"
 
