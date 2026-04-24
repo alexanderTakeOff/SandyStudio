@@ -31,7 +31,7 @@ In film industry terms, this role combines:
 - **Executive Producer (EP)** — final sign-off on all production decisions
 - **CEO** — ultimate authority over company direction, investments, and operations
 
-No output, decision, plan, or commitment is valid without the Director's explicit approval — unless authority has been formally delegated to AI-EP (see Section 2b).
+No output, decision, plan, or commitment is valid without the Director's explicit approval — unless authority has been formally delegated to EXEC-DIR-AI (see Section 2b).
 
 ### What the Director does
 - Sets the strategic vector for the company and each project
@@ -40,7 +40,7 @@ No output, decision, plan, or commitment is valid without the Director's explici
 - Signs off on APPROVED and LOCKED status for any file
 - Grants and revokes access rights for all human and AI participants
 - Switches system and agent operating modes
-- Grants and revokes AI-EP delegation authority
+- Grants and revokes EXEC-DIR-AI delegation authority
 - Can override any agent decision at any time, without explanation
 
 ### What the Director does NOT do
@@ -53,32 +53,32 @@ These tasks belong to agents.
 
 ---
 
-### 2b. AI-EP — AI Executive Producer (Delegated Proxy)
+### 2b. EXEC-DIR-AI — AI Executive Producer (Delegated Proxy)
 
-The AI Executive Producer (`AI-EP`) is a Level 0.5 agent that acts as the Director's proxy for production approvals when explicitly authorised.
+The AI Executive Producer (`EXEC-DIR-AI`) is a Level 0.5 agent that acts as the Director's proxy for production approvals when explicitly authorised.
 
 **Default state:** No authority. Acts in PROPOSE MODE like all other agents.
 
-**When delegated:** The Director grants AI-EP a specific scope:
+**When delegated:** The Director grants EXEC-DIR-AI a specific scope:
 ```
-Example: "AI-EP: I delegate approval of scripts and storyboards for S01."
+Example: "EXEC-DIR-AI: I delegate approval of scripts and storyboards for S01."
 → governance.md updated with delegation scope and date
-→ AI-EP may approve Category B items within that scope
-→ Director receives a daily digest of all AI-EP approvals
+→ EXEC-DIR-AI may approve Category B items within that scope
+→ Director receives a daily digest of all EXEC-DIR-AI approvals
 ```
 
 **Delegation format (stored in this file under Section 2c):**
 ```
-AI-EP.scope:    [list of file types / pipeline phases]
-AI-EP.series:   [e.g. S01, PILOT, ALL]
-AI-EP.granted:  [date]
-AI-EP.expires:  [date or "until revoked"]
+EXEC-DIR-AI.scope:    [list of file types / pipeline phases]
+EXEC-DIR-AI.series:   [e.g. S01, PILOT, ALL]
+EXEC-DIR-AI.granted:  [date]
+EXEC-DIR-AI.expires:  [date or "until revoked"]
 ```
 
-**Revocation:** The Director says "AI-EP: revoke delegation" at any time.
+**Revocation:** The Director says "EXEC-DIR-AI: revoke delegation" at any time.
 Effect is immediate. All pending approvals revert to Director queue.
 
-**AI-EP must ALWAYS escalate to Director when:**
+**EXEC-DIR-AI must ALWAYS escalate to Director when:**
 - Output conflicts with an APPROVED bible, style guide, or governance rule
 - QA retry limit reached (3 attempts) with no passing output
 - Decision involves Category A authority (publish, LOCKED, budget, access)
@@ -87,9 +87,9 @@ Effect is immediate. All pending approvals revert to Director queue.
 
 ---
 
-### 2c. Current AI-EP Delegation
+### 2c. Current EXEC-DIR-AI Delegation
 
-*No active delegation. AI-EP is in PROPOSE MODE.*
+*No active delegation. EXEC-DIR-AI is in PROPOSE MODE.*
 
 *(This section is updated by EXEC-ARCH when the Director grants or revokes delegation.)*
 
