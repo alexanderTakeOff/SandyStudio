@@ -1,9 +1,11 @@
-# SandyStudio — API Integrations Spec
-## specs/system/api_integrations.md | v0.1 | DRAFT
+# SandyStudio — API Integrations & Provider Contracts
+## specs/system/api_integrations.md | v0.2 | DRAFT
 
-> Defines all external API integrations: what they do, how they are called,
-> rate limits, costs, and fallback behaviour.
-> Used by: EXEC-VGEN, EXEC-MGEN, EXEC-THUMB, EXEC-PUB, EXEC-ANAL
+> Defines the full contract system for all external media generation services.
+> **Architecture principle:** Agents call contracts, never services directly.
+> Swapping any provider = change `config/providers.yaml` only — zero agent rewrites.
+> Gateway spec: `specs/system/media_gateway.md`
+> Provider registry: `config/providers.yaml`
 
 ---
 
@@ -11,198 +13,594 @@
 
 - No agent may call a paid API without an approved budget in the Master Plan
 - API credentials are never stored in project files — stored in system environment only
-- All API calls are logged in PLAN.md with cost estimate
-- If an API call fails, the retry protocol (specs/protocols/qa_retry.md) applies
-- BOARD-FIN receives a cost report after every episode production run
+- All API calls are logged with cost and `provider_used` — BOARD-FIN receives per-episode report
+- If an API call fails, the retry protocol (`specs/protocols/qa_retry.md`) applies
+- Agents NEVER call a specific service by name — they call the gateway contract
 
 ---
 
-## 1. VIDEO GENERATION
+## 1. ARCHITECTURE OVERVIEW
 
-### 1.1 Google Veo3 (Primary video generator)
-
-| Parameter | Value |
-|-----------|-------|
-| Purpose | Photorealistic + stylised video generation from text prompts |
-| Used by | EXEC-VGEN |
-| Output | 5–8 second video clips |
-| Resolution | Up to 1920×1080 |
-| Aspect ratios | 16:9 (episodes), 9:16 (Shorts) |
-| Estimated cost | ~$0.50–$2.00 per clip (varies by duration) |
-| Rate limit | Check current Google AI pricing dashboard |
-| Authentication | Google Cloud API key (stored in environment: `GOOGLE_VGEN_API_KEY`) |
-
-**Prompt structure for Veo3:**
 ```
-[style anchor], [shot action], [camera direction], [character fragments],
-[location description], [lighting], [mood], [special effects]
-```
+AGENT (EXEC-VGEN / EXEC-MGEN / EXEC-THUMB)
+        │
+        │  calls contract method only
+        │  e.g. gateway.generate_image(ImageRequest)
+        ▼
+MEDIA SERVICE GATEWAY   ← reads config/providers.yaml
+        │                   enforces budget gate
+        │                   checks provider health
+        │                   handles retry / fallback
+        │                   logs cost + audit trail
+        │
+        ├─► ImageProvider adapter          ─► Flux Pro / Ideogram / DALL-E / Midjourney*
+        ├─► VideoProvider adapter           ─► Veo 3 / Runway / Seedance
+        ├─► CharacterVideoProvider adapter  ─► Kling 3.0 Elements / Runway Ref / Veo img2vid
+        ├─► MusicProvider adapter           ─► Beatoven / Suno* / Udio*
+        ├─► SFXProvider adapter             ─► ElevenLabs SFX / Freesound / custom
+        ├─► VoiceProvider adapter           ─► ElevenLabs TTS / Cartesia [FUTURE]
+        └─► UpscaleProvider adapter         ─► Topaz / fal.ai upscale [FUTURE]
 
-**Known limitations (as of 2026-04-24):**
-- Character consistency across separate calls: moderate (use A2 reference if needed)
-- Maximum single clip: 8 seconds — longer shots need concatenation
-- Does not support negative prompts natively (build avoidances into positive prompt)
-
-**Fallback:** Kling-2.0 (see 1.2) if Veo3 unavailable or quality insufficient
-
----
-
-### 1.2 Kling AI (Secondary / fallback video generator)
-
-| Parameter | Value |
-|-----------|-------|
-| Purpose | Video generation; strong character consistency via reference image mode |
-| Used by | EXEC-VGEN (primary for character-heavy shots if A2 approach chosen) |
-| Models | Kling-1.6 (standard), Kling-2.0 (premium) |
-| Output | Up to 10 second clips |
-| Resolution | 1920×1080 |
-| Estimated cost | ~$0.30–$1.50 per clip |
-| Authentication | Kling API key (environment: `KLING_API_KEY`) |
-
-**Kling character consistency mode:**
-When `specs/system/character_consistency.md` decision = A2 or A4-upgraded:
-- Submit canonical reference image with each call using `reference_image` parameter
-- Reference image path: `bibles/characters/references/[character_id]-reference-v[NN]-APPROVED.png`
-
----
-
-## 2. IMAGE GENERATION
-
-### 2.1 Midjourney v7 (Primary image generator)
-
-| Parameter | Value |
-|-----------|-------|
-| Purpose | Character reference images, thumbnails, style reference images |
-| Used by | EXEC-THUMB, ART-CAST (character reference generation), ART-AD |
-| Output | Static images |
-| Resolutions | Up to 2048×2048 |
-| Estimated cost | ~$0.10–$0.40 per image |
-| Authentication | Midjourney API key (environment: `MIDJOURNEY_API_KEY`) |
-
-**Prompt flags in use:**
-- `--ar 16:9` for thumbnails
-- `--cref [reference_url]` for character consistency (A2 approach)
-- `--style raw` for animation style preservation
-- `--v 7` (always specify version)
-
----
-
-### 2.2 Flux Pro (Fallback image generator)
-
-| Parameter | Value |
-|-----------|-------|
-| Purpose | Fallback when Midjourney unavailable |
-| Used by | EXEC-THUMB, ART-CAST |
-| Authentication | Replicate API key (environment: `REPLICATE_API_KEY`) |
-
----
-
-## 3. MUSIC GENERATION
-
-### 3.1 Suno v4 (Primary music generator)
-
-| Parameter | Value |
-|-----------|-------|
-| Purpose | Background music and scene scoring |
-| Used by | EXEC-MGEN |
-| Output | MP3, up to 4 minutes per generation |
-| Estimated cost | ~$0.10–$0.30 per track |
-| Authentication | Suno API key (environment: `SUNO_API_KEY`) |
-
-**Prompt structure for Suno:**
-```
-[genre], [mood], [instrumentation], [tempo descriptor],
-[structural notes], [duration target], [style reference]
-Example: "playful jazz, comedic anticipation, piano and light brass,
-          upbeat 120bpm, builds to comedic peak at 0:30,
-          resolves quietly, 45 seconds, 1960s MGM cartoon style"
+* manual/unofficial only — see provider notes
 ```
 
-**Known limitation:** Duration is approximate ±5 seconds. ART-MS trims/fades in assembly.
-
 ---
 
-### 3.2 Udio v2 (Secondary music generator)
+## 2. BASE CONTRACT
 
-| Parameter | Value |
-|-----------|-------|
-| Purpose | Fallback or alternative style for Suno |
-| Used by | EXEC-MGEN |
-| Estimated cost | ~$0.10–$0.25 per track |
-| Authentication | Udio API key (environment: `UDIO_API_KEY`) |
+All provider contracts extend this base. Every request carries these fields in.
+Every response carries these fields out — regardless of provider.
 
----
+### BaseProviderRequest
 
-## 4. DISTRIBUTION
+```yaml
+BaseProviderRequest:
+  # Identity
+  request_id: uuid                  # generated by gateway for idempotency
+  session_id: string                # Claude Code session identifier
+  episode_id: string                # e.g. "SS-S01-E01"
+  shot_id: string | null            # e.g. "S01E01-A1-SC02-SH03" (null for music/SFX)
+  agent_id: string                  # which agent is calling, e.g. "EXEC-VGEN"
 
-### 4.1 YouTube Data API v3
+  # Routing hints (gateway uses these, not agents)
+  provider_hint: string | null      # suggest specific provider; gateway may override
+  allow_fallback: boolean           # default true; set false for exact-provider tests
+  quality_tier: DRAFT | STANDARD | HIGH  # maps to provider-specific quality settings
 
-| Parameter | Value |
-|-----------|-------|
-| Purpose | Upload episodes, set metadata, schedule publishing |
-| Used by | EXEC-PUB |
-| Authentication | OAuth 2.0 (YouTube account: Sandy's work Google account) |
-| Quota | 10,000 units/day free; 1 upload ≈ 1,600 units |
-| Full spec | `specs/distribution/youtube.md` |
+  # Execution
+  priority: LOW | NORMAL | HIGH | URGENT   # affects queue position
+  timeout_seconds: integer          # hard deadline; gateway kills if exceeded
+  dry_run: boolean                  # default false; true = validate only, no API call
 
----
-
-### 4.2 YouTube Analytics API v2
-
-| Parameter | Value |
-|-----------|-------|
-| Purpose | Collect post-publish performance metrics |
-| Used by | EXEC-ANAL |
-| Authentication | Same OAuth 2.0 as Data API |
-| Data available | Views, watch time, CTR, retention curve, traffic sources |
-| Full spec | `specs/distribution/analytics.md` |
-
----
-
-## 5. ERROR HANDLING
-
-### API-level errors
-
-| Error type | Response |
-|-----------|---------|
-| Rate limit (429) | Wait 60 seconds, retry once. If persists → BLOCKED state in PLAN.md |
-| Auth failure (401/403) | BLOCKED immediately. Do not retry. Notify Director. Check credentials. |
-| Timeout | Retry once after 30 seconds. If timeout again → BLOCKED |
-| Quality failure | Not an API error — route through QA retry protocol |
-| Unexpected output format | BLOCKED. Log raw response. Notify Director. |
-
-### Budget gate
-
-Before every API call, EXEC-VGEN/EXEC-MGEN checks:
+  # Budget
+  estimated_cost_usd: number        # agent's estimate; gateway validates before calling
+  budget_override: boolean          # default false; requires Director flag in PLAN.md
 ```
-current_episode_spend + estimated_call_cost <= episode_budget_ceiling
+
+### BaseProviderResponse
+
+```yaml
+BaseProviderResponse:
+  # Echo
+  request_id: uuid                  # matches request
+  session_id: string
+  episode_id: string
+  shot_id: string | null
+  agent_id: string
+
+  # Execution outcome
+  status: SUCCESS | PARTIAL | FAILED | RATE_LIMITED | BUDGET_BLOCKED | TIMEOUT | DRY_RUN_OK
+  error_code: string | null         # machine-readable; see error registry below
+  error_message: string | null      # human-readable
+  retry_after_seconds: integer | null
+
+  # Provider identity
+  provider_used: string             # actual provider that fulfilled request
+  provider_version: string          # model/API version string from provider
+  generation_id: string             # provider's internal job/generation ID
+
+  # Timing
+  request_timestamp: datetime       # ISO 8601
+  response_timestamp: datetime
+  latency_ms: integer               # total round-trip including polling
+
+  # Cost
+  cost_usd: number                  # actual cost reported or estimated
+  cost_source: REPORTED | ESTIMATED # did provider return exact cost?
+  budget_remaining_usd: number      # episode budget remaining after this call
+
+  # Quality signals
+  quality_score: number | null      # 0.0–1.0 if provider returns it; null otherwise
+  safety_flags: string[]            # content policy flags from provider; [] if none
+
+  # Audit
+  raw_request_hash: string          # SHA-256 of full request (for audit, not stored raw)
+  raw_response_hash: string         # SHA-256 of full response
+  cost_logged: boolean              # confirms entry written to PLAN.md budget tracker
+  file_path: string | null          # output file path (null if FAILED)
 ```
-- If within budget: proceed
-- If would exceed: BLOCKED → Director approval for budget override
 
-Budget ceiling per episode: defined in Master Plan.
-Current spend tracked in: PLAN.md `## Budget Tracker` section.
+### Error Code Registry
+
+```yaml
+error_codes:
+  # Provider errors
+  E-AUTH-001:     "Authentication failed — invalid or expired API key"
+  E-AUTH-002:     "Authentication failed — insufficient permissions or plan"
+  E-RATE-001:     "Rate limit hit — per-minute limit exceeded"
+  E-RATE-002:     "Rate limit hit — per-day limit exceeded"
+  E-RATE-003:     "Rate limit hit — concurrent request limit"
+  E-TIMEOUT-001:  "Generation timeout — provider did not respond within deadline"
+  E-TIMEOUT-002:  "Polling timeout — async job did not complete within max_wait"
+  E-CONTENT-001:  "Content policy rejection — prompt refused by provider"
+  E-CONTENT-002:  "Output flagged — generated content failed provider safety check"
+  E-FORMAT-001:   "Unexpected output format from provider"
+  E-FORMAT-002:   "Output file missing or empty"
+  E-SERVER-001:   "Provider internal server error (5xx)"
+  E-SERVER-002:   "Provider maintenance / scheduled downtime"
+  # Gateway errors
+  E-BUDGET-001:   "Budget gate blocked — would exceed episode ceiling"
+  E-BUDGET-002:   "Budget gate blocked — single call exceeds hard limit"
+  E-HEALTH-001:   "Primary provider unhealthy — no healthy provider available"
+  E-CONFIG-001:   "Provider not configured in providers.yaml"
+  E-CONFIG-002:   "Required environment variable missing"
+  E-INPUT-001:    "Request validation failed — required field missing"
+  E-INPUT-002:    "Request validation failed — field value out of range"
+```
 
 ---
 
-## 6. CREDENTIAL MANAGEMENT
+## 3. CONTRACT: ImageProvider
 
-| Credential | Environment variable | Owner |
-|-----------|---------------------|-------|
-| Google Veo3 | `GOOGLE_VGEN_API_KEY` | Sandy |
-| Kling | `KLING_API_KEY` | Sandy |
-| Midjourney | `MIDJOURNEY_API_KEY` | Sandy |
-| Replicate (Flux) | `REPLICATE_API_KEY` | Sandy |
-| Suno | `SUNO_API_KEY` | Sandy |
-| Udio | `UDIO_API_KEY` | Sandy |
-| YouTube OAuth | `YOUTUBE_CLIENT_ID` + `YOUTUBE_CLIENT_SECRET` | Sandy |
+Used for: character reference images, thumbnails, style reference images, test images.
 
-**Rules:**
-- Never stored in project files (not in `C:\SandyStudio\` or committed to git)
-- Stored in system environment variables or a `.env` file excluded by `.gitignore`
-- Rotated every 90 days or immediately if suspected compromise
-- Full auth spec: `specs/system/auth.md`
+### ImageProviderRequest (extends BaseProviderRequest)
+
+```yaml
+ImageProviderRequest:
+  extends: BaseProviderRequest
+
+  # Core prompt
+  prompt_text: string               # max 2000 chars; must follow prompt construction order
+  negative_prompt: string | null    # what to avoid; null if provider does not support
+
+  # Dimensions
+  aspect_ratio: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "2:3" | "3:2"
+  width: integer | null             # explicit pixel width; overrides aspect_ratio if set
+  height: integer | null            # explicit pixel height
+
+  # Style anchoring
+  style_reference_url: url | null        # image URL for style transfer
+  style_reference_weight: 0.0–1.0        # default 0.5; how strongly to follow reference
+  character_reference_url: url | null    # canonical character reference image (A2 approach)
+  character_reference_weight: 0.0–1.0   # default 0.85 for character shots
+  composition_reference_url: url | null  # layout/framing reference
+
+  # Generation parameters
+  num_images: 1–4                   # number of variants to generate; default 1
+  seed: integer | null              # for reproducibility; null = random
+  steps: integer | null             # diffusion steps if provider supports; null = default
+  cfg_scale: number | null          # guidance scale; null = provider default
+
+  # Output format
+  output_format: PNG | JPEG | WEBP  # default PNG
+  output_quality: 1–100             # JPEG/WEBP quality; ignored for PNG
+
+  # Purpose tag (for audit and routing hints)
+  purpose: CHARACTER_REFERENCE | THUMBNAIL | STYLE_REFERENCE | STORYBOARD_FRAME | TEST
+```
+
+### ImageProviderResponse (extends BaseProviderResponse)
+
+```yaml
+ImageProviderResponse:
+  extends: BaseProviderResponse
+
+  images: ImageResult[]
+
+  ImageResult:
+    index: integer                  # 0-based position in batch
+    file_path: path                 # absolute path; delivered to raw/images/
+    file_size_bytes: integer
+    width: integer
+    height: integer
+    format: PNG | JPEG | WEBP
+    seed_used: integer              # actual seed used (important for reproducibility)
+    nsfw_score: number | null       # 0.0–1.0 if provider returns it
+    watermarked: boolean            # true if provider embeds watermark
+```
 
 ---
 
-*SandyStudio api_integrations.md | v0.1 | Status: DRAFT*
+## 4. CONTRACT: VideoProvider
+
+Used for: non-character-critical video shots (backgrounds, establishing shots, abstract scenes).
+
+### VideoProviderRequest (extends BaseProviderRequest)
+
+```yaml
+VideoProviderRequest:
+  extends: BaseProviderRequest
+
+  # Core prompt
+  prompt_text: string               # max 2000 chars
+  negative_prompt: string | null
+
+  # Input media
+  reference_image_url: url | null   # image-to-video: starting frame
+  end_frame_url: url | null         # first-last frame interpolation (if provider supports)
+
+  # Duration — REQUIRED (from shot schema, field: duration_seconds)
+  duration_seconds: 1.5–8.0        # must match approved shot duration_seconds exactly
+  duration_tolerance_seconds: 0.5   # acceptable variance from target
+
+  # Visual parameters
+  aspect_ratio: "16:9" | "9:16" | "1:1"
+  resolution: "720p" | "1080p" | "4K"   # default 1080p
+  fps: 24 | 30                           # default 24
+  motion_intensity: LOW | MEDIUM | HIGH  # how much movement in scene
+  camera_movement: STATIC | PAN_LEFT | PAN_RIGHT | TILT_UP | TILT_DOWN |
+                   ZOOM_IN | ZOOM_OUT | DOLLY_IN | DOLLY_OUT | HANDHELD | null
+
+  # Async handling (most video APIs are async)
+  generation_mode: ASYNC | SYNC     # default ASYNC
+  polling:
+    poll_interval_seconds: 10       # how often to check job status
+    max_wait_seconds: 600           # hard deadline; triggers E-TIMEOUT-002 if exceeded
+
+  # Reproducibility
+  seed: integer | null
+```
+
+### VideoProviderResponse (extends BaseProviderResponse)
+
+```yaml
+VideoProviderResponse:
+  extends: BaseProviderResponse
+
+  video_file: path                  # delivered to raw/video/
+  thumbnail_frame: path | null      # extracted still frame (first or best frame)
+  duration_actual_seconds: number   # may differ slightly from requested
+  fps_actual: integer
+  resolution_actual: string
+  file_size_bytes: integer
+  has_audio: boolean                # should always be false for raw shots
+  codec: string                     # e.g. "h264", "h265"
+
+  # Polling record
+  job_id: string | null             # provider's async job ID
+  polling_attempts: integer
+  queue_wait_seconds: integer       # time spent in provider queue
+  generation_seconds: integer       # actual generation time
+```
+
+---
+
+## 5. CONTRACT: CharacterVideoProvider
+
+Used for: all shots containing approved characters (D-001 = A2-Kling).
+Extends VideoProvider — adds mandatory character binding fields.
+
+### CharacterVideoProviderRequest (extends VideoProviderRequest)
+
+```yaml
+CharacterVideoProviderRequest:
+  extends: VideoProviderRequest
+
+  # Character binding — REQUIRED for this contract
+  characters: CharacterBinding[]    # min 1, max 4 (Kling Elements limit)
+
+  CharacterBinding:
+    character_id: string            # from character profile, e.g. "CHAR-001"
+    character_profile_version: string  # approved profile version, e.g. "v02"
+    reference_image_url: url        # REQUIRED — canonical reference from bibles/characters/references/
+    reference_image_version: string # e.g. "v01" — logged for cascade tracking
+    binding_weight: 0.5–1.0        # how strictly to enforce character; default 0.85
+    element_role: PRIMARY | SECONDARY | BACKGROUND
+                                    # PRIMARY = main character; affects weight priority
+
+  # Elements configuration (Kling-specific; adapter ignores if not supported)
+  elements_mode: SINGLE | MULTI     # SINGLE = one character ref; MULTI = Elements feature
+  background_reference_url: url | null  # optional background anchor image
+  background_reference_weight: 0.0–0.5  # default 0.3; keep low to allow shot variety
+```
+
+### CharacterVideoProviderResponse (extends VideoProviderResponse)
+
+```yaml
+CharacterVideoProviderResponse:
+  extends: VideoProviderResponse
+
+  # Character consistency reporting
+  character_binding_used: boolean        # did provider apply the binding?
+  consistency_score: number | null       # 0.0–1.0 if provider reports it
+  character_drift_detected: boolean      # gateway comparison against reference: true = flag for QA
+  drift_details: DriftDetail[] | null    # populated only if character_drift_detected = true
+
+  DriftDetail:
+    character_id: string
+    drift_type: COLOR | PROPORTION | EXPRESSION | CLOTHING | IDENTITY
+    severity: LOW | MEDIUM | HIGH
+    description: string                  # human-readable, e.g. "Fur colour shifted pink→orange"
+    recommendation: ACCEPT | QA_REVIEW | REGENERATE
+```
+
+---
+
+## 6. CONTRACT: MusicProvider
+
+Used for: background music per scene, episode scoring, title/end stings.
+
+### MusicProviderRequest (extends BaseProviderRequest)
+
+```yaml
+MusicProviderRequest:
+  extends: BaseProviderRequest
+
+  # Core prompt
+  prompt_text: string               # mood, genre, instrumentation, style reference
+  style_reference: string | null    # e.g. "1960s MGM cartoon scoring, Henry Mancini adjacent"
+
+  # Duration — REQUIRED (must match scene or act duration from storyboard)
+  duration_seconds: number          # target duration from ART-MS music brief
+  duration_tolerance_seconds: 2.0  # acceptable ±variance; must be trimmed/padded in assembly
+
+  # Musical parameters
+  mood: string                      # e.g. "playful", "tense", "triumphant", "melancholic"
+  genre: string | null              # e.g. "jazz", "orchestral", "cartoon"
+  tempo_bpm: integer | null         # target BPM; null = provider decides
+  key: string | null                # musical key, e.g. "C major"; null = provider decides
+  time_signature: string | null     # e.g. "4/4", "3/4"; null = provider decides
+  instruments: string[] | null      # preferred instruments; null = provider decides
+  energy_level: LOW | MEDIUM | HIGH | VARIABLE
+
+  # Vocal settings
+  no_vocals: boolean                # default true for background music
+  vocal_style: string | null        # only if no_vocals = false
+
+  # Structure
+  loop_friendly: boolean            # default false; true for tracks that may extend
+  fade_in_seconds: 0.0–3.0         # default 0.5
+  fade_out_seconds: 0.0–5.0        # default 2.0
+  intro_bars: integer | null        # number of intro bars before main theme
+  outro_bars: integer | null
+
+  # Output preferences
+  output_format: WAV | MP3 | FLAC   # default WAV (from media_formats.md)
+  stems_requested: boolean          # request separate stems if provider supports
+```
+
+### MusicProviderResponse (extends BaseProviderResponse)
+
+```yaml
+MusicProviderResponse:
+  extends: BaseProviderResponse
+
+  audio_file: path                  # primary WAV, delivered to raw/audio/
+  audio_file_mp3: path | null       # MP3 copy if generated
+
+  # Audio properties
+  duration_actual_seconds: number
+  bpm_detected: integer | null      # BPM analysis of generated track
+  key_detected: string | null       # key analysis
+  time_signature_detected: string | null
+  loudness_lufs: number             # integrated loudness; check against media_formats.md spec
+  peak_db: number                   # peak level; MUST be ≤ -6dB per media_formats.md
+  loudness_compliant: boolean       # gateway checks: peak_db ≤ -6.0
+
+  # Stems (if requested and provider supports)
+  stems: StemFile[] | null
+
+  StemFile:
+    stem_type: MELODY | BASS | DRUMS | PAD | HARMONY | FULL_MIX
+    file_path: path
+    loudness_lufs: number
+    peak_db: number
+```
+
+---
+
+## 7. CONTRACT: SFXProvider
+
+Used for: comedic sound effects, transitions, foley, impact sounds.
+
+### SFXProviderRequest (extends BaseProviderRequest)
+
+```yaml
+SFXProviderRequest:
+  extends: BaseProviderRequest
+
+  # Core prompt
+  description: string               # e.g. "cartoon slide-whistle downward, comedic fall"
+  category: IMPACT | AMBIENT | FOLEY | TRANSITION | COMEDIC | STING | MUSICAL_HIT
+
+  # Duration
+  duration_seconds: number | null   # null = provider decides natural length
+  duration_max_seconds: number | null
+
+  # Character
+  intensity: LOW | MEDIUM | HIGH | EXAGGERATED  # EXAGGERATED for slapstick
+  pitch_shift: -12–+12 | null       # semitones; null = no shift
+  tempo_multiplier: 0.5–2.0 | null  # speed adjustment; null = no change
+
+  # Output
+  output_format: WAV | MP3          # default WAV
+```
+
+### SFXProviderResponse (extends BaseProviderResponse)
+
+```yaml
+SFXProviderResponse:
+  extends: BaseProviderResponse
+
+  audio_file: path
+  duration_actual_seconds: number
+  loudness_lufs: number
+  peak_db: number
+  loudness_compliant: boolean
+```
+
+---
+
+## 8. CONTRACT: VoiceProvider [FUTURE — not active in Sprint 7]
+
+Defined now so agent instructions can reference it; not wired in production until Sprint 8+.
+
+### VoiceProviderRequest (extends BaseProviderRequest)
+
+```yaml
+VoiceProviderRequest:
+  extends: BaseProviderRequest
+
+  # Text
+  text: string                      # the line to speak
+  ssml: string | null               # SSML markup if provider supports; overrides text
+
+  # Voice identity
+  voice_id: string                  # provider-specific voice identifier
+  character_id: string | null       # SandyStudio character this voice belongs to
+  character_voice_version: string | null
+
+  # Performance
+  emotion: NEUTRAL | HAPPY | SAD | ANGRY | SURPRISED | FEARFUL | COMIC | SARCASTIC
+  emotion_intensity: 0.0–1.0        # default 0.5
+  speaking_rate: 0.5–2.0            # 1.0 = normal; default 1.0
+  pitch_shift_semitones: -20–+20   # 0 = no shift
+  pause_before_ms: 0–2000
+  pause_after_ms: 0–2000
+
+  # Language
+  language: string                  # BCP-47, e.g. "en-US"
+
+  # Output
+  output_format: WAV | MP3
+  sample_rate_hz: 22050 | 44100 | 48000   # default 48000
+```
+
+### VoiceProviderResponse (extends BaseProviderResponse)
+
+```yaml
+VoiceProviderResponse:
+  extends: BaseProviderResponse
+
+  audio_file: path
+  duration_actual_seconds: number
+  character_count: integer
+  word_count: integer
+  loudness_lufs: number
+  peak_db: number
+
+  # Timing (for subtitle / caption sync)
+  word_timestamps: WordTimestamp[] | null
+
+  WordTimestamp:
+    word: string
+    start_seconds: number
+    end_seconds: number
+    confidence: 0.0–1.0
+```
+
+---
+
+## 9. CONTRACT: UpscaleProvider [FUTURE — not active in Sprint 7]
+
+Defined for future DaVinci colour pass replacement or 4K output pipeline.
+
+### UpscaleProviderRequest (extends BaseProviderRequest)
+
+```yaml
+UpscaleProviderRequest:
+  extends: BaseProviderRequest
+
+  input_file: path                  # source video or image
+  media_type: VIDEO | IMAGE
+  target_resolution: "2K" | "4K" | "8K"
+  scale_factor: 2 | 4 | 8 | null   # if provider uses factor not resolution
+
+  # Enhancement
+  denoise_strength: 0.0–1.0        # default 0.3
+  sharpen: boolean                  # default true
+  face_enhance: boolean             # default false; use true for character close-ups
+  motion_compensation: boolean      # video only; reduces temporal artifacts; default true
+
+  # Output
+  output_codec: H264 | H265 | PRORES_422 | PRORES_4444
+  output_fps: integer | null        # null = match input
+```
+
+### UpscaleProviderResponse (extends BaseProviderResponse)
+
+```yaml
+UpscaleProviderResponse:
+  extends: BaseProviderResponse
+
+  output_file: path
+  input_resolution: string
+  output_resolution: string
+  scale_factor_actual: number
+  processing_seconds: integer
+  file_size_bytes: integer
+```
+
+---
+
+## 10. CREDENTIAL MAP
+
+All credentials stored as Windows environment variables. Never in project files.
+
+```yaml
+credential_map:
+  # Video
+  GOOGLE_VGEN_API_KEY:        Veo 3 via Vertex AI
+  KLING_API_KEY:              Kling 3.0 Elements API
+  RUNWAY_API_KEY:             Runway Gen-4 (fallback) [provision when needed]
+  FAL_AI_KEY:                 fal.ai unified gateway (Flux, upscale, etc.)
+
+  # Image
+  FLUX_API_KEY:               Flux Pro via fal.ai OR direct
+  REPLICATE_API_KEY:          Replicate (Flux, SDXL fallbacks)
+
+  # Music
+  BEATOVEN_API_KEY:           Beatoven.ai primary music
+  ELEVENLABS_API_KEY:         ElevenLabs SFX + Voice (future)
+  SUNO_API_KEY:               Suno (unofficial fallback only)
+  UDIO_API_KEY:               Udio (unofficial fallback only)
+
+  # Distribution
+  YOUTUBE_CLIENT_ID:          YouTube OAuth 2.0
+  YOUTUBE_CLIENT_SECRET:      YouTube OAuth 2.0
+  YOUTUBE_REFRESH_TOKEN:      YouTube OAuth 2.0 (refreshed automatically)
+
+  # Future
+  CARTESIA_API_KEY:           Cartesia TTS (Voice future)
+  TOPAZ_API_KEY:              Topaz upscale (future)
+```
+
+Full auth rules: `specs/system/auth.md`
+
+---
+
+## 11. PROVIDER NOTES
+
+```
+PROVIDER             API STATUS     NOTES
+──────────────────   ────────────   ──────────────────────────────────────────
+Veo 3 (Vertex AI)    ✅ Official    Google Cloud; pay-per-second; regional allowlist
+Kling 3.0            ✅ Official    Elements feature confirmed in API; async jobs
+Flux Pro (fal.ai)    ✅ Official    Self-serve keys; PRIMARY image provider
+Beatoven.ai          ✅ Official    Mood-based; royalty-free; developer API
+ElevenLabs SFX       ✅ Official    Sound effects + TTS; single key for both
+Runway Gen-4         ✅ Official    Fallback video; good for motion shots
+Midjourney v7        ⚠️  Restricted  Enterprise-only API; use manually via web UI only
+Suno v4              ⚠️  Unofficial  No public API key; wrapper only; fallback of last resort
+Udio v2              ⚠️  Unofficial  No direct API; fallback of last resort
+```
+
+**Policy:** Unofficial providers (Suno, Udio) may be used as emergency fallbacks
+only. Their `allow_fallback` must be manually set by Director in `providers.yaml`.
+They are never in the automated primary or secondary slot.
+
+---
+
+*SandyStudio api_integrations.md | v0.2 | Status: DRAFT*
+*Updated: 2026-04-24 — full contract architecture replacing hardcoded service references*
