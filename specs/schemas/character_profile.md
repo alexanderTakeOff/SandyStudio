@@ -117,9 +117,10 @@ fragment_test:
   pass_rate: string           # e.g. "9/10" — must be ≥8/10 per human review
   test_log: string            # path to fragment test review file
   tested_by: string           # "EXEC-VGEN" — automated technical check only
-  reviewed_by: string         # REQUIRED — human who reviewed the images visually
-                              # Director name or designated human approver.
-                              # NEVER an agent ID. If blank → not approved.
+  reviewed_by: string         # REQUIRED — who reviewed the images visually.
+                              # Default: Director name. Can be EXEC-DIR-AI if Director
+                              # configured that in the Approval Authority Matrix.
+                              # If blank → not approved.
   tested_date: string         # ISO date
 
 # ─────────────────────────────────────────────────────────
