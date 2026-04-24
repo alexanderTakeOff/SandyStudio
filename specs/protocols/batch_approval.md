@@ -1,9 +1,9 @@
 # Director/CEOStudio — Batch Approval Protocol
 ## specs/protocols/batch_approval.md | v0.1 | DRAFT
 
-> Defines how Director (Director/CEO) reviews and approves multiple assets efficiently.
+> Defines how Director/CEO and EXEC-DIR-AI review and approve multiple assets efficiently.
 > Without this protocol, approving one episode requires 100+ individual decisions.
-> This protocol makes scale manageable without sacrificing Director authority.
+> This protocol makes scale manageable without sacrificing Director/CEO authority.
 
 ---
 
