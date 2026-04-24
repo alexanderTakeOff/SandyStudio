@@ -86,7 +86,7 @@ version: string             # REQUIRED — e.g. "v01"
 status: string              # REQUIRED — DRAFT | REVIEW | APPROVED | LOCKED
 created_by: string          # REQUIRED — agent ID e.g. "ART-HW"
 date: string                # REQUIRED — ISO format e.g. "2026-04-23"
-approved_by: string         # REQUIRED when APPROVED — "Sandy"
+approved_by: string         # REQUIRED when APPROVED — "Director/CEO" or "AI-EP"
 approved_date: string       # REQUIRED when APPROVED — ISO format
 ```
 
