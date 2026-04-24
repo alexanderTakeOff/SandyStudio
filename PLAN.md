@@ -186,8 +186,25 @@ No agent writes content until the spec for that content is APPROVED.
 
 ---
 
-### SPRINT 7 — First Production Run (PILOT)
-**Status:** 🔒 BLOCKED by Sprint 6
+### SPRINT 7 — Web Application
+**Status:** 🟢 READY — Sprint 6 complete
+**Stack:** Next.js 15 + Supabase + Inngest + Vercel
+**Goal:** Studio UI — agent dashboard, approval interface, episode tracker, async job runner
+
+| Task | Owner | Status |
+|------|-------|--------|
+| Write `specs/system/webapp.md` | EXEC-ORCH | ⏳ Next |
+| Define DB schema (Supabase) | Developer + EXEC-ORCH | ⏳ Blocked by webapp.md |
+| Define Inngest job definitions | Developer + EXEC-ORCH | ⏳ Blocked by webapp.md |
+| Define API routes (Next.js) | Developer | ⏳ Blocked by webapp.md |
+| Build Studio UI | Developer | ⏳ Blocked by above |
+
+**Exit criteria:** webapp.md APPROVED → development begins
+
+---
+
+### SPRINT 8 — First Production Run (PILOT)
+**Status:** 🔒 BLOCKED by Sprint 7
 **This is when actual animation production begins**
 
 Follow `specs/production/bootstrap_sequence.md` exactly.
