@@ -189,5 +189,5 @@ Human Producer delegated approvals:
 
 ---
 
-*SandyStudio batch_approval.md | v0.2 | Status: DRAFT*
+*SandyStudio batch_approval.md | v0.2 | Status: APPROVED*
 *Changes: "Sandy" → "Director/CEO" · Governance Mode mapping table added · EXEC-DIR-AI as primary delegate*
