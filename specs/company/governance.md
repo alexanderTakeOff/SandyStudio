@@ -22,24 +22,25 @@
 
 ## 2. LEADERSHIP
 
-### The Director (Showrunner / Executive Producer)
-**Role held by:** Sandy (human)
+### The Director / CEO (Showrunner / Executive Producer)
+**Role:** Human founder and final authority of SandyStudio.
 
-The Director is the single point of final authority in SandyStudio.
-In film industry terms, Sandy holds the combined role of:
+The Director/CEO is the single point of ultimate authority in SandyStudio.
+In film industry terms, this role combines:
 - **Showrunner** — ultimate creative authority over the series
 - **Executive Producer (EP)** — final sign-off on all production decisions
 - **CEO** — ultimate authority over company direction, investments, and operations
 
-No output, decision, plan, or commitment is valid without the Director's explicit approval.
+No output, decision, plan, or commitment is valid without the Director's explicit approval — unless authority has been formally delegated to AI-EP (see Section 2b).
 
 ### What the Director does
 - Sets the strategic vector for the company and each project
 - Reviews and approves pitches from the Board of Directors
 - Approves the Master Plan before any production begins
 - Signs off on APPROVED and LOCKED status for any file
-- Grants and revokes access rights for all human participants
+- Grants and revokes access rights for all human and AI participants
 - Switches system and agent operating modes
+- Grants and revokes AI-EP delegation authority
 - Can override any agent decision at any time, without explanation
 
 ### What the Director does NOT do
@@ -49,6 +50,48 @@ No output, decision, plan, or commitment is valid without the Director's explici
 - Does not search for market data or trends
 
 These tasks belong to agents.
+
+---
+
+### 2b. AI-EP — AI Executive Producer (Delegated Proxy)
+
+The AI Executive Producer (`AI-EP`) is a Level 0.5 agent that acts as the Director's proxy for production approvals when explicitly authorised.
+
+**Default state:** No authority. Acts in PROPOSE MODE like all other agents.
+
+**When delegated:** The Director grants AI-EP a specific scope:
+```
+Example: "AI-EP: I delegate approval of scripts and storyboards for S01."
+→ governance.md updated with delegation scope and date
+→ AI-EP may approve Category B items within that scope
+→ Director receives a daily digest of all AI-EP approvals
+```
+
+**Delegation format (stored in this file under Section 2c):**
+```
+AI-EP.scope:    [list of file types / pipeline phases]
+AI-EP.series:   [e.g. S01, PILOT, ALL]
+AI-EP.granted:  [date]
+AI-EP.expires:  [date or "until revoked"]
+```
+
+**Revocation:** The Director says "AI-EP: revoke delegation" at any time.
+Effect is immediate. All pending approvals revert to Director queue.
+
+**AI-EP must ALWAYS escalate to Director when:**
+- Output conflicts with an APPROVED bible, style guide, or governance rule
+- QA retry limit reached (3 attempts) with no passing output
+- Decision involves Category A authority (publish, LOCKED, budget, access)
+- Confidence in correct approval is below acceptable threshold
+- The Vector Principle detects misalignment with Director's stated intent
+
+---
+
+### 2c. Current AI-EP Delegation
+
+*No active delegation. AI-EP is in PROPOSE MODE.*
+
+*(This section is updated by EXEC-ARCH when the Director grants or revokes delegation.)*
 
 ---
 
