@@ -186,10 +186,10 @@ character_fragments:
                     clean lines, flat colour with soft shading, expressive tail"
 
 parameters:
-  model: "Veo3"
   duration_seconds: 3.0
   aspect_ratio: "16:9"
   resolution: "1920x1080"
+  # model resolved at runtime via config/providers.yaml → video_generation contract
 
 version: "v01"
 status: "DRAFT"
