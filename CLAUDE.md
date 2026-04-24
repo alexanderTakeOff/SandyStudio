@@ -12,7 +12,7 @@
 The goal is to produce multi-episode animated comedy series using specialized AI agents at every level of production — from market analysis to final video generation.
 
 **First project:** Comedy series in the style of The Pink Panther.
-**Owner & Final Approver:** Sandy (CEO) — no output ships without explicit human approval.
+**Owner & Final Approver:** CEO / Director — no output ships without explicit human approval.
 
 ---
 

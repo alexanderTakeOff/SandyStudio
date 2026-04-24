@@ -23,7 +23,7 @@
 ## 2. CYCLE 1 — COMPANY
 
 ```
-DIRECTOR (Sandy)
+DIRECTOR 
     │
     │  Gives strategic vector
     ▼
