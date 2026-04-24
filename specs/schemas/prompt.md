@@ -77,14 +77,13 @@ character_fragments:          # REQUIRED for VIDEO/IMAGE if characters present
 
 # --- API PARAMETERS ---
 parameters:
-  model: string               # REQUIRED — specific model version
   duration_seconds: number    # REQUIRED for VIDEO/MUSIC — must match shot duration
   aspect_ratio: string        # REQUIRED for VIDEO/IMAGE — e.g. "16:9" | "9:16" | "1:1"
   resolution: string          # REQUIRED for VIDEO/IMAGE — from specs/system/media_formats.md
-  style_preset: string        # OPTIONAL — API-specific style preset if used
   seed: integer               # OPTIONAL — fixed seed for reproducibility
                               # Always record seed of successful generations
-  additional_params: object   # OPTIONAL — any other API-specific parameters
+  additional_params: object   # OPTIONAL — contract-specific parameters (see api_integrations.md)
+                              # Do NOT include model name — resolved by providers.yaml at runtime
 
 # --- RESULT ---
 generation_attempts:          # OPTIONAL — log of each generation attempt
