@@ -144,9 +144,9 @@ No agent writes content until the spec for that content is APPROVED.
 |------|--------|
 | `specs/company/participants.md` | ✅ **APPROVED** (pre-existing) |
 | `specs/company/master_plan_template.md` | ✅ **APPROVED** (pre-existing) |
-| `specs/distribution/youtube.md` | ✅ DRAFT |
-| `specs/distribution/metadata.md` | ✅ DRAFT |
-| `specs/distribution/analytics.md` | ✅ DRAFT |
+| `specs/distribution/youtube.md` | ✅ **APPROVED** v0.1 |
+| `specs/distribution/metadata.md` | ✅ **APPROVED** v0.1 |
+| `specs/distribution/analytics.md` | ✅ **APPROVED** v0.1 |
 
 ---
 
