@@ -87,11 +87,11 @@ Effect is immediate. All pending approvals revert to Director queue.
 
 ---
 
-### 2c. Current EXEC-DIR-AI Delegation
+### 2c. Current EXEC-DIR-AI Mode Status
 
-*No active delegation. EXEC-DIR-AI is in PROPOSE MODE.*
+*No active delegation. Governance Mode 1 (MANUAL) — all approvals go to Director/CEO.*
 
-*(This section is updated by EXEC-ARCH when the Director grants or revokes delegation.)*
+*(This section is updated by EXEC-ARCH when Director changes governance mode.)*
 
 ---
 
