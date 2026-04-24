@@ -314,7 +314,16 @@ When starting a new Claude Code session in this project:
 5. Identify which agent role is needed and read that agent's file in `agents/`
 6. Proceed with task — write files only if the Director activates `===5===`
 
-## 10. ARCHITECTURE RULES (MANDATORY)
+## 10. DIRECTOR COMMUNICATION RULES
+
+When presenting questions or options to the Director/CEO:
+- Number all questions: **q1**, **q2**, **q3** — never ask multiple unnumbered questions
+- Keep questions short and decision-focused
+- Wait for answers before proceeding with changes
+
+---
+
+## 11. ARCHITECTURE RULES (MANDATORY)
 
 1. NO HARDCODING
 - All dynamic values MUST come from:
