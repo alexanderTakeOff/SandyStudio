@@ -1,0 +1,315 @@
+# SandyStudio — Default Configuration
+# config/defaults.yaml | v0.1
+#
+# SINGLE SOURCE OF FALLBACK PARAMETERS.
+# Every configurable value that agents reference as "config/defaults.yaml → X"
+# is defined here. These are studio-level defaults — not episode-specific.
+#
+# In the web app: all sections below are exposed as editable form fields
+# in the Settings UI. No raw YAML editing in production.
+#
+# Override precedence (highest → lowest):
+#   1. Episode brief (episode-specific Director instruction)
+#   2. This file (studio-level defaults)
+#   3. Agent internal logic is NOT a fallback — agents STOP if both above are absent
+#
+# Agents: read this file via specs/system/config.json or directly at runtime.
+# Never hardcode these values in agent instructions.
+#
+# Updated by: Director (via Settings UI in web app) or directly in dev
+# Change log at bottom of this file.
+# ─────────────────────────────────────────────────────────────
+
+# ═════════════════════════════════════════════════════════════
+# PRODUCTION
+# Consumed by: ART-PROD
+# ═════════════════════════════════════════════════════════════
+
+production:
+  target_runtime_seconds: 420         # 7 minutes default episode length
+  default_act_count: 3
+  shots_per_episode: 24               # used for budget estimation
+  music_tracks_per_episode: 4         # intro + 2 scene tracks + resolution
+  thumbnail_attempts_max: 3
+
+  milestones:                         # working days from brief approval
+    script_deadline_days: 1
+    storyboard_deadline_days: 2
+    generation_deadline_days: 5
+    review_deadline_days: 7
+    publish_target_days: 10
+
+# ═════════════════════════════════════════════════════════════
+# NARRATIVE
+# Consumed by: ART-HW
+# ═════════════════════════════════════════════════════════════
+
+narrative:
+  episodes_per_season: 10
+  default_act_structure: "3-act"      # 3-act | 5-act | 2-act
+  default_beat_count_per_act: 3
+  running_gag_escalation_steps: 3     # setup → escalation → payoff
+
+# ═════════════════════════════════════════════════════════════
+# VISUAL
+# Consumed by: ART-AD, EXEC-VGEN, EXEC-STY
+# ═════════════════════════════════════════════════════════════
+
+visual:
+  # Placeholder palette — replaced by Style Bible after EXEC-STY runs
+  palette_note: "Palette defined in Style Bible after EXEC-STY executes. Values below are structural placeholders only."
+  contrast_target_ratio: 4.5          # WCAG AA minimum — applies to thumbnail legibility
+
+# ═════════════════════════════════════════════════════════════
+# THUMBNAIL
+# Consumed by: EXEC-THUMB, ART-AD
+# ═════════════════════════════════════════════════════════════
+
+thumbnail:
+  composition_guidelines:
+    subject_position: "left-third"    # rule-of-thirds left placement
+    text_safe_zone_pct: 35            # right 35% reserved for title text overlay
+    contrast_target: 4.5              # minimum contrast ratio at small sizes
+    background_complexity: "simple"   # simple | medium | complex
+    face_prominence: true             # character face must be visible and large
+    min_width_px: 1280
+    min_height_px: 720
+    max_size_bytes: 2097152           # 2MB — YouTube hard limit
+
+# ═════════════════════════════════════════════════════════════
+# AUDIO
+# Consumed by: ART-MS, EXEC-MGEN
+# ═════════════════════════════════════════════════════════════
+
+audio:
+  tempo_range:
+    bpm_min: 80
+    bpm_max: 160
+  default_track_duration_seconds: 30
+  headroom_dbfs_max: -6.0             # loudness ceiling — mandatory per media_formats.md
+  structural_notes_defaults:
+    intro_bars: 4
+    main_loop: true
+    outro_fade_seconds: 3
+  loop_crossfade_ms: 50
+
+# ═════════════════════════════════════════════════════════════
+# WORLD
+# Consumed by: ART-WB
+# ═════════════════════════════════════════════════════════════
+
+world:
+  initial_location_count_min: 3      # minimum locations to define in v01 World Bible
+  object_list_format: "slug + display_name + description"
+  facts_format: "slug + statement + established_in"
+
+# ═════════════════════════════════════════════════════════════
+# CHARACTERS
+# Consumed by: ART-CAST, EXEC-VGEN, EXEC-THUMB
+# ═════════════════════════════════════════════════════════════
+
+characters:
+  prompt_fragment_format: |
+    [build and posture], [distinctive features], [wardrobe description],
+    [colour signature], [one visual personality note]
+    # Written in target image model's prompt language.
+    # No actions. No expressions. No locations. No backgrounds.
+    # Max 80 words.
+  canonical_fragment_max_words: 80
+  min_distinctive_features: 2        # minimum features for thumbnail recognition
+
+# ═════════════════════════════════════════════════════════════
+# CONTINUITY
+# Consumed by: ART-CONT
+# ═════════════════════════════════════════════════════════════
+
+continuity:
+  severity_thresholds:
+    CRITICAL: "directly contradicts approved canon"
+    HIGH: "inconsistency visible to audience"
+    LOW: "minor positional or background inconsistency"
+  auto_flag_on_wardrobe_change: true  # flag CT-01 whenever wardrobe differs from profile
+
+# ═════════════════════════════════════════════════════════════
+# MARKET
+# Consumed by: BOARD-MKT
+# ═════════════════════════════════════════════════════════════
+
+market:
+  competitor_categories:
+    - "animated comedy shorts"
+    - "AI-generated animation"
+    - "slapstick cartoon"
+  keyword_seed_list:
+    - "animated comedy"
+    - "AI animation"
+    - "cartoon shorts"
+  research_scope: "YouTube only (primary). Expand to TikTok/Reels in S2."
+  benchmark_calibration_after_episodes: 3
+
+# ═════════════════════════════════════════════════════════════
+# FINANCE
+# Consumed by: BOARD-FIN
+# ═════════════════════════════════════════════════════════════
+
+finance:
+  cost_estimates:
+    cost_per_video_shot_usd: 0.80     # Kling 3.0 Elements average
+    cost_per_image_usd: 0.055         # Flux Pro per image
+    cost_per_music_track_usd: 0.20    # Beatoven per track
+    cost_per_claude_sonnet_1k_tokens: 0.003
+    cost_per_claude_haiku_1k_tokens: 0.00025
+  alert_thresholds:
+    warn_at_pct: 0.70                 # warn at 70% of episode ceiling
+    critical_at_pct: 0.90             # critical alert at 90%
+  roi_threshold_cost_per_view_usd: 0.01  # flag if cost/view exceeds this
+  min_runway_episodes: 3              # trigger budget alert if projected runway < 3 episodes
+
+# ═════════════════════════════════════════════════════════════
+# BRAND
+# Consumed by: BOARD-FAI
+# ═════════════════════════════════════════════════════════════
+
+brand:
+  constitution_path: "specs/company/brand.md"
+  alignment_scoring:
+    ALIGNED: "all 3 dimensions (mission, voice, values) pass"
+    PARTIAL: "1–2 dimensions pass"
+    MISALIGNED: "0 dimensions pass"
+  # Note: actual brand criteria defined in specs/company/brand.md
+  # This section only provides structural defaults for the scoring system
+
+# ═════════════════════════════════════════════════════════════
+# RISK
+# Consumed by: BOARD-CRIT
+# ═════════════════════════════════════════════════════════════
+
+risk:
+  categories:
+    - FINANCIAL
+    - BRAND
+    - PRODUCTION
+    - LEGAL
+    - TECHNICAL
+    - STRATEGIC
+  severity_levels:
+    CRITICAL: "blocking — Director decision required before proceeding"
+    HIGH: "significant — should resolve before episode advances"
+    MEDIUM: "notable — flag for awareness"
+    LOW: "minor — log and monitor"
+
+# ═════════════════════════════════════════════════════════════
+# CREATIVE
+# Consumed by: BOARD-CRD
+# ═════════════════════════════════════════════════════════════
+
+creative:
+  format_defaults:
+    episode_length_minutes_min: 5
+    episode_length_minutes_max: 10
+    upload_frequency_days: 7          # weekly cadence default
+    series_arc_type: "anthology"      # anthology | serial | hybrid
+
+# ═════════════════════════════════════════════════════════════
+# NAMING
+# Consumed by: EXEC-ARCH
+# ═════════════════════════════════════════════════════════════
+
+naming:
+  type_extension_map:
+    SCR: [".md"]
+    STB: [".md"]
+    BIB: [".md"]
+    PRO: [".md"]
+    REV: [".md"]
+    SPC: [".md"]
+    STA: [".md"]
+    IMG: [".png", ".jpg", ".webp"]
+    VID: [".mp4", ".mov"]
+    AUD: [".wav", ".mp3"]
+  valid_statuses: ["DRAFT", "REVIEW", "APPROVED", "LOCKED", "INVALIDATED", "TEST"]
+  valid_projects: ["SS"]
+  season_pattern: "^S[0-9]{2}$"
+  episode_pattern: "^E[0-9]{2}$|^PILOT$"
+  version_pattern: "^v[0-9]{2}$"
+
+# ═════════════════════════════════════════════════════════════
+# SEO + COPY
+# Consumed by: EXEC-COPY
+# ═════════════════════════════════════════════════════════════
+
+seo:
+  series_tags:
+    - "animated comedy"
+    - "AI animation"
+    - "cartoon"
+    - "animated short"
+  standard_hashtags:
+    - "#animation"
+    - "#cartoon"
+    - "#comedy"
+  default_tags:
+    - "animated comedy"
+    - "short film"
+    - "cartoon shorts"
+    - "funny animation"
+    - "AI generated"
+
+copy:
+  subscribe_cta: "Subscribe for new episodes every week →"
+  series_boilerplate: "New animated comedy series. New episode every week."
+  title_max_chars_displayed: 60
+  title_max_chars_hard: 100
+  description_max_chars: 5000
+  tags_max_chars: 500
+  tags_count_target: 15
+
+# ═════════════════════════════════════════════════════════════
+# ANALYTICS
+# Consumed by: EXEC-ANAL
+# ═════════════════════════════════════════════════════════════
+
+analytics:
+  collection_tolerance_minutes: 15   # how late a collection can run and still count
+  retention_drop_off_top_n: 3        # map top 3 drop-off points to storyboard
+
+  benchmarks:
+    # Provisional until BOARD-MKT calibrates after episode 3
+    # Status: provisional — pre-launch estimates
+    T_plus_1h:
+      views_target: 50
+      ctr_target: 0.04
+    T_plus_24h:
+      views_target: 200
+      ctr_target: 0.04
+      avg_view_percentage_warn_below: 0.30
+    T_plus_7d:
+      views_target: 1000
+      ctr_target: 0.04
+      avg_view_percentage_warn_below: 0.35
+    T_plus_30d:
+      views_target: 2000
+      subscribers_gained_target: 10
+    benchmarks_status: "provisional"
+    calibrate_after_episodes: 3
+
+# ═════════════════════════════════════════════════════════════
+# APP (runtime settings — consumed by web app and Claude Code runner)
+# ═════════════════════════════════════════════════════════════
+
+app:
+  prompt_source: "filesystem"         # filesystem | database (W-001 decision — filesystem default)
+  agent_max_retries: 2
+  generation_max_retries: 3
+  max_parallel_shots: 4               # Inngest fan-out concurrency limit
+  log_level: "info"                   # debug | info | warn | error
+
+# ═════════════════════════════════════════════════════════════
+# CHANGE LOG
+# ═════════════════════════════════════════════════════════════
+
+change_log:
+  - date: "2026-04-24"
+    change: "Initial defaults.yaml. All fallback parameters from 25 agent instructions compiled."
+    by: "Claude Code"
+    note: "All values are provisional studio defaults. Director reviews and calibrates after PILOT run."
