@@ -210,6 +210,8 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | GOVERNANCE REDESIGN: 4-mode system (MANUAL/HYBRID/DELEGATED/AUTOTEST) | Director/CEO |
 | 2026-04-24 | AI-EP → EXEC-DIR-AI — agent renamed and rewritten for 4-mode system | Claude Code |
 | 2026-04-24 | governance.md, CLAUDE.md, pipeline_overview.md, batch_approval.md, inter_agent_handoff.md updated | Claude Code |
+| 2026-04-24 | Sprint 4 COMPLETE — api_integrations, project_state, media_formats, auth APPROVED | Director/CEO |
+| 2026-04-24 | Sprint 5 COMPLETE — youtube, metadata, analytics APPROVED | Director/CEO |
 
 ---
 
