@@ -189,5 +189,5 @@ This agent replaces `agents/exec/ai_ep.md` (v0.1 DRAFT, superseded 2026-04-24).
 
 ---
 
-*SandyStudio exec_dir_ai.md | v0.1 | DRAFT*
-*Implements 4-mode governance system. Awaiting Director/CEO approval.*
+*SandyStudio exec_dir_ai.md | v0.1 | Status: APPROVED*
+*Implements 4-mode governance system.*
