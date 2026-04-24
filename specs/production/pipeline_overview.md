@@ -396,7 +396,7 @@ Full spec: `specs/protocols/version_cascade.md`
 | Document | Status | Notes |
 |----------|--------|-------|
 | `specs/production/pipeline_overview.md` | DRAFT | Awaiting Director/CEO approval |
-| `specs/production/bootstrap_sequence.md` | DRAFT | Awaiting Director/CEO approval |
+| `specs/production/bootstrap_sequence.md` | **APPROVED** | Approved by Director/CEO 2026-04-24 |
 
 ---
 
