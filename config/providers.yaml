@@ -1,0 +1,460 @@
+# SandyStudio — Provider Registry
+# config/providers.yaml | v0.1
+#
+# THE ONLY FILE THAT NAMES ACTUAL SERVICES.
+# Agents call contracts. This file routes contracts to providers.
+# Change a provider = edit this file only. Zero agent rewrites.
+#
+# Gateway spec:     specs/system/media_gateway.md
+# Contract spec:    specs/system/api_integrations.md
+# Auth/credentials: specs/system/auth.md
+#
+# Last updated: 2026-04-24
+# Updated by:   EXEC-ARCH (log changes in PLAN.md Change Log)
+
+# ─────────────────────────────────────────────────────────────
+# GATEWAY GLOBAL SETTINGS
+# ─────────────────────────────────────────────────────────────
+
+gateway:
+  version: "1.0"
+  health_cache_ttl_seconds: 60        # how long to cache provider health status
+  queue_on_failure: true              # queue requests when all providers are down
+  queue_max_wait_minutes: 15          # max time a queued request waits before failing
+  audit_log_path: "reviews/gateway_audit/"
+  config_reload_on_call: true         # reload this file fresh on every call (no restart needed)
+
+# ─────────────────────────────────────────────────────────────
+# BUDGET GATES
+# ─────────────────────────────────────────────────────────────
+
+budget:
+  per_episode_ceiling_usd: 50.00      # hard ceiling per episode; set in Master Plan
+  per_call_warning_usd: 2.00          # single call above this adds budget_warning to response
+  hard_block_above_usd: 5.00          # single call above this is BLOCKED without Director override
+  warning_threshold_pct: 0.80         # warn Director when episode spend > 80% of ceiling
+  cost_log_target: "PLAN.md"          # where running totals are written
+
+# ─────────────────────────────────────────────────────────────
+# CONTRACT: ImageProvider
+# Used by: EXEC-VGEN (character references, test images), EXEC-THUMB, ART-CAST
+# ─────────────────────────────────────────────────────────────
+
+image:
+  primary: flux-pro
+  fallback: replicate-flux-dev
+  tertiary: dall-e-3
+  manual_only: midjourney            # Director uses web UI — NOT in automation path
+
+  providers:
+
+    flux-pro:
+      display_name: "Flux Pro (fal.ai)"
+      env_key: FAL_AI_KEY
+      adapter: flux_pro_adapter
+      base_url: "https://fal.run/fal-ai/flux-pro"
+      api_version: "v1"
+      async_mode: false
+      timeout_seconds: 120
+      # Capabilities
+      supports_negative_prompt: true
+      supports_style_reference: true       # via image_url param
+      supports_character_reference: false  # no native cref; use style_reference
+      max_images_per_call: 4
+      supported_aspect_ratios: ["1:1", "16:9", "9:16", "4:3", "3:4", "2:3", "3:2"]
+      supported_output_formats: ["PNG", "JPEG", "WEBP"]
+      max_prompt_chars: 1000
+      # Cost
+      estimated_cost_usd_per_image: 0.055
+      cost_source: REPORTED
+      # Quality mapping
+      quality_tiers:
+        DRAFT:    { steps: 20, guidance: 3.5 }
+        STANDARD: { steps: 28, guidance: 3.5 }
+        HIGH:     { steps: 40, guidance: 3.5 }
+
+    replicate-flux-dev:
+      display_name: "Flux Dev (Replicate)"
+      env_key: REPLICATE_API_KEY
+      adapter: replicate_flux_adapter
+      base_url: "https://api.replicate.com/v1"
+      api_version: "v1"
+      async_mode: true
+      poll_interval_seconds: 5
+      max_wait_seconds: 180
+      timeout_seconds: 200
+      supports_negative_prompt: true
+      supports_style_reference: false
+      max_images_per_call: 1
+      supported_aspect_ratios: ["1:1", "16:9", "9:16"]
+      estimated_cost_usd_per_image: 0.030
+      cost_source: REPORTED
+
+    dall-e-3:
+      display_name: "DALL-E 3 (OpenAI)"
+      env_key: OPENAI_API_KEY
+      adapter: dalle3_adapter
+      base_url: "https://api.openai.com/v1"
+      api_version: "v1"
+      async_mode: false
+      timeout_seconds: 90
+      supports_negative_prompt: false
+      supports_style_reference: false
+      max_images_per_call: 1
+      supported_aspect_ratios: ["1:1", "16:9", "9:16"]
+      supported_output_formats: ["PNG", "WEBP"]
+      estimated_cost_usd_per_image: 0.040
+      cost_source: REPORTED
+
+    midjourney:
+      display_name: "Midjourney v7 (Manual only)"
+      env_key: MIDJOURNEY_API_KEY
+      adapter: midjourney_manual_adapter
+      automation_allowed: false       # BLOCKED in automation; Director web UI only
+      notes: >
+        Enterprise API only; restricted access. Director uses web UI for special
+        cases (hero reference images, season poster). Output files dropped manually
+        into bibles/characters/references/ or prompts/image/. Not callable by agents.
+
+# ─────────────────────────────────────────────────────────────
+# CONTRACT: VideoProvider
+# Used by: EXEC-VGEN for non-character shots (backgrounds, establishing, abstract)
+# ─────────────────────────────────────────────────────────────
+
+video:
+  primary: veo-3
+  fallback: runway-gen4
+  tertiary: null
+
+  providers:
+
+    veo-3:
+      display_name: "Veo 3 (Google Vertex AI)"
+      env_key: GOOGLE_VGEN_API_KEY
+      adapter: veo3_adapter
+      base_url: "https://us-central1-aiplatform.googleapis.com/v1"
+      api_version: "v1"
+      project_id_env: GOOGLE_CLOUD_PROJECT_ID
+      location: "us-central1"
+      async_mode: true
+      poll_interval_seconds: 10
+      max_wait_seconds: 600
+      timeout_seconds: 660
+      # Capabilities
+      supports_negative_prompt: false    # build avoidances into positive prompt
+      supports_image_to_video: true
+      supports_end_frame: false
+      min_duration_seconds: 2.0
+      max_duration_seconds: 8.0
+      supported_aspect_ratios: ["16:9", "9:16", "1:1"]
+      supported_resolutions: ["720p", "1080p"]
+      supported_fps: [24]
+      # Cost (pay-per-second)
+      estimated_cost_usd_per_second: 0.15
+      cost_source: REPORTED
+      # Quality mapping
+      quality_tiers:
+        DRAFT:    { quality: "standard" }
+        STANDARD: { quality: "high" }
+        HIGH:     { quality: "high" }   # Veo 3 has 2 tiers; HIGH = same as STANDARD
+
+    runway-gen4:
+      display_name: "Runway Gen-4 (Runway ML)"
+      env_key: RUNWAY_API_KEY
+      adapter: runway_adapter
+      base_url: "https://api.runwayml.com/v1"
+      api_version: "v1"
+      async_mode: true
+      poll_interval_seconds: 8
+      max_wait_seconds: 480
+      timeout_seconds: 540
+      supports_negative_prompt: true
+      supports_image_to_video: true
+      supports_end_frame: true
+      min_duration_seconds: 4.0
+      max_duration_seconds: 16.0
+      supported_aspect_ratios: ["16:9", "9:16", "1:1"]
+      supported_resolutions: ["720p", "1080p"]
+      estimated_cost_usd_per_second: 0.12
+      cost_source: ESTIMATED
+
+# ─────────────────────────────────────────────────────────────
+# CONTRACT: CharacterVideoProvider
+# Used by: EXEC-VGEN for ALL shots containing approved characters (D-001 = A2-Kling)
+# ─────────────────────────────────────────────────────────────
+
+character_video:
+  primary: kling-3-elements
+  fallback: veo-3-img2vid            # Veo 3 image-to-video as fallback (lower consistency)
+  tertiary: runway-gen4-ref
+
+  providers:
+
+    kling-3-elements:
+      display_name: "Kling 3.0 Elements (Kuaishou)"
+      env_key: KLING_API_KEY
+      adapter: kling_elements_adapter
+      base_url: "https://api.klingai.com/v1"
+      api_version: "v1"
+      async_mode: true
+      poll_interval_seconds: 10
+      max_wait_seconds: 600
+      timeout_seconds: 660
+      # Character consistency capabilities
+      supports_character_reference: true   # core D-001 capability
+      max_character_elements: 4           # Kling Elements limit
+      supports_background_reference: true
+      character_reference_weight_range: [0.5, 1.0]
+      # Video capabilities
+      supports_negative_prompt: true
+      supports_image_to_video: true
+      min_duration_seconds: 2.0
+      max_duration_seconds: 10.0
+      supported_aspect_ratios: ["16:9", "9:16", "1:1"]
+      supported_resolutions: ["720p", "1080p"]
+      supported_fps: [24, 30]
+      # Cost
+      estimated_cost_usd_per_clip: 0.80    # average; varies by duration and mode
+      estimated_cost_usd_per_second: 0.12
+      cost_source: ESTIMATED
+      # Quality mapping
+      quality_tiers:
+        DRAFT:    { model: "kling-v1", mode: "std" }
+        STANDARD: { model: "kling-v1-6", mode: "pro" }
+        HIGH:     { model: "kling-v3", mode: "pro" }
+
+    veo-3-img2vid:
+      display_name: "Veo 3 image-to-video fallback"
+      env_key: GOOGLE_VGEN_API_KEY
+      adapter: veo3_adapter             # same adapter; different contract wrapping
+      base_url: "https://us-central1-aiplatform.googleapis.com/v1"
+      api_version: "v1"
+      project_id_env: GOOGLE_CLOUD_PROJECT_ID
+      location: "us-central1"
+      async_mode: true
+      poll_interval_seconds: 10
+      max_wait_seconds: 600
+      timeout_seconds: 660
+      supports_character_reference: false  # no native character binding
+      consistency_mode: REFERENCE_IMAGE    # submit ref image as starting frame
+      consistency_note: >
+        Lower character consistency than Kling Elements (~75% vs ~90%).
+        Use only when Kling is down. Flag all outputs for QA review when this fallback is used.
+      estimated_cost_usd_per_second: 0.15
+      cost_source: REPORTED
+
+    runway-gen4-ref:
+      display_name: "Runway Gen-4 reference mode"
+      env_key: RUNWAY_API_KEY
+      adapter: runway_adapter
+      base_url: "https://api.runwayml.com/v1"
+      api_version: "v1"
+      async_mode: true
+      poll_interval_seconds: 8
+      max_wait_seconds: 480
+      timeout_seconds: 540
+      supports_character_reference: true
+      consistency_mode: REFERENCE_IMAGE
+      estimated_cost_usd_per_second: 0.12
+      cost_source: ESTIMATED
+
+# ─────────────────────────────────────────────────────────────
+# CONTRACT: MusicProvider
+# Used by: EXEC-MGEN for background music, scene scoring, stings
+# ─────────────────────────────────────────────────────────────
+
+music:
+  primary: beatoven
+  fallback: null                     # no automated fallback — escalate to Director
+  unofficial_emergency: suno         # Director must set allow_unofficial: true in PLAN.md
+
+  providers:
+
+    beatoven:
+      display_name: "Beatoven.ai"
+      env_key: BEATOVEN_API_KEY
+      adapter: beatoven_adapter
+      base_url: "https://api.beatoven.ai/v1"
+      api_version: "v1"
+      async_mode: true
+      poll_interval_seconds: 15
+      max_wait_seconds: 300
+      timeout_seconds: 360
+      # Capabilities
+      supports_duration_target: true
+      duration_tolerance_seconds: 2.0
+      min_duration_seconds: 15.0
+      max_duration_seconds: 300.0
+      supported_output_formats: ["WAV", "MP3"]
+      supports_stems: false
+      supports_bpm_target: true
+      supports_key_target: false
+      supports_no_vocals: true
+      royalty_free: true              # important for YouTube monetization
+      # Cost
+      estimated_cost_usd_per_track: 0.20
+      cost_source: ESTIMATED
+
+    suno:
+      display_name: "Suno v4 (unofficial wrapper — emergency fallback only)"
+      env_key: SUNO_API_KEY
+      adapter: suno_unofficial_adapter
+      automation_allowed: false       # set allow_unofficial: true in PLAN.md to unlock
+      unofficial: true
+      reliability_warning: >
+        No official API. Uses third-party wrapper. May break without notice.
+        Against Suno ToS for commercial production use. Emergency use only.
+      estimated_cost_usd_per_track: 0.10
+      cost_source: ESTIMATED
+
+    udio:
+      display_name: "Udio v2 (unofficial wrapper — emergency fallback only)"
+      env_key: UDIO_API_KEY
+      adapter: udio_unofficial_adapter
+      automation_allowed: false
+      unofficial: true
+      reliability_warning: >
+        No direct API. Uses third-party aggregator. Lowest reliability tier.
+        Emergency use only with Director approval.
+      estimated_cost_usd_per_track: 0.10
+      cost_source: ESTIMATED
+
+# ─────────────────────────────────────────────────────────────
+# CONTRACT: SFXProvider
+# Used by: EXEC-MGEN for comedic sound effects, transitions, foley
+# ─────────────────────────────────────────────────────────────
+
+sfx:
+  primary: elevenlabs-sfx
+  fallback: null                     # skip SFX if unavailable; not blocking
+
+  providers:
+
+    elevenlabs-sfx:
+      display_name: "ElevenLabs Sound Effects"
+      env_key: ELEVENLABS_API_KEY    # same key as voice (future)
+      adapter: elevenlabs_sfx_adapter
+      base_url: "https://api.elevenlabs.io/v1"
+      api_version: "v1"
+      async_mode: false
+      timeout_seconds: 60
+      supports_duration_target: true
+      min_duration_seconds: 0.5
+      max_duration_seconds: 22.0
+      supported_output_formats: ["WAV", "MP3"]
+      estimated_cost_usd_per_sfx: 0.01   # very low; ~100 credits per gen
+      cost_source: ESTIMATED
+
+# ─────────────────────────────────────────────────────────────
+# CONTRACT: VoiceProvider [FUTURE — not active]
+# ─────────────────────────────────────────────────────────────
+
+voice:
+  active: false                      # set true when Sprint 8+ activates voice
+  primary: elevenlabs-tts
+  fallback: cartesia
+
+  providers:
+
+    elevenlabs-tts:
+      display_name: "ElevenLabs TTS"
+      env_key: ELEVENLABS_API_KEY
+      adapter: elevenlabs_tts_adapter
+      base_url: "https://api.elevenlabs.io/v1"
+      api_version: "v1"
+      async_mode: false
+      timeout_seconds: 60
+      supports_ssml: false
+      supported_emotions: ["NEUTRAL", "HAPPY", "SAD", "ANGRY", "SURPRISED", "FEARFUL"]
+      supported_output_formats: ["WAV", "MP3"]
+      supported_sample_rates: [22050, 44100, 48000]
+      supports_word_timestamps: true
+      estimated_cost_usd_per_1k_chars: 0.30
+      cost_source: REPORTED
+
+    cartesia:
+      display_name: "Cartesia TTS"
+      env_key: CARTESIA_API_KEY
+      adapter: cartesia_adapter
+      base_url: "https://api.cartesia.ai/v1"
+      api_version: "v1"
+      async_mode: false
+      timeout_seconds: 30
+      supports_ssml: true
+      estimated_cost_usd_per_1k_chars: 0.18
+      cost_source: REPORTED
+
+# ─────────────────────────────────────────────────────────────
+# CONTRACT: UpscaleProvider [FUTURE — not active]
+# ─────────────────────────────────────────────────────────────
+
+upscale:
+  active: false                      # set true when 4K pipeline activated
+  primary: topaz-video-ai
+  fallback: fal-upscale
+
+  providers:
+
+    topaz-video-ai:
+      display_name: "Topaz Video AI"
+      env_key: TOPAZ_API_KEY
+      adapter: topaz_adapter
+      async_mode: true
+      poll_interval_seconds: 30
+      max_wait_seconds: 3600
+      supported_target_resolutions: ["2K", "4K"]
+      supported_codecs: ["H264", "H265", "PRORES_422"]
+      estimated_cost_usd_per_minute_of_video: 0.50
+      cost_source: ESTIMATED
+
+    fal-upscale:
+      display_name: "fal.ai Video Upscale"
+      env_key: FAL_AI_KEY
+      adapter: fal_upscale_adapter
+      base_url: "https://fal.run/fal-ai/video-upscale"
+      async_mode: true
+      poll_interval_seconds: 20
+      max_wait_seconds: 1800
+      estimated_cost_usd_per_minute_of_video: 0.30
+      cost_source: ESTIMATED
+
+# ─────────────────────────────────────────────────────────────
+# DISTRIBUTION (not media generation — listed here for completeness)
+# These are not routed through the Media Service Gateway
+# ─────────────────────────────────────────────────────────────
+
+distribution:
+  youtube_data_api:
+    display_name: "YouTube Data API v3"
+    env_keys: [YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN]
+    adapter: youtube_data_adapter
+    quota_units_per_day: 10000
+    units_per_upload: 1600
+    spec: "specs/distribution/youtube.md"
+
+  youtube_analytics_api:
+    display_name: "YouTube Analytics API v2"
+    env_keys: [YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN]
+    adapter: youtube_analytics_adapter
+    spec: "specs/distribution/analytics.md"
+
+# ─────────────────────────────────────────────────────────────
+# FEATURE FLAGS
+# ─────────────────────────────────────────────────────────────
+
+feature_flags:
+  allow_unofficial_providers: false  # set true only with Director approval for emergency
+  enable_dry_run_mode: false         # set true for budget estimation without API calls
+  enable_batch_generation: false     # set true when batch APIs supported (future)
+  enable_stems_on_music: false       # set true when Beatoven adds stem support
+  force_provider: null               # e.g. "kling-3-elements" to bypass routing; testing only
+
+# ─────────────────────────────────────────────────────────────
+# CHANGE LOG
+# ─────────────────────────────────────────────────────────────
+
+change_log:
+  - date: "2026-04-24"
+    change: "Initial provider registry. Flux Pro as primary image (replaces Midjourney automation). Beatoven as primary music (replaces Suno). Kling 3.0 Elements as primary character video."
+    by: "EXEC-ARCH / Claude Code"
+    plan_md_entry: true
