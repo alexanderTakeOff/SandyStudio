@@ -1,5 +1,5 @@
 # SandyStudio — Character Profile Schema
-## specs/schemas/character_profile.md | v0.1 | DRAFT
+## specs/schemas/character_profile.md | v0.1 | APPROVED
 
 > Defines the exact format of a character profile file.
 > Produced by: ART-CAST
