@@ -250,7 +250,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 
 ---
 
-## 6. WORKFLOW RULES
+## 7. WORKFLOW RULES
 
 1. **Nothing ships without a file.** Every decision, brief, and output must exist as a named file.
 2. **Status must be explicit.** Every file has a status in its name: `DRAFT` → `REVIEW` → `APPROVED` → `LOCKED`.
