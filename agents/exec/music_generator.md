@@ -326,5 +326,5 @@ After 2nd failure:
 
 ---
 
-*SandyStudio music_generator.md | v0.1 | Status: DRAFT*
+*SandyStudio music_generator.md | v0.1 | Status: APPROVED*
 *EXEC-MGEN is the audio parallel of EXEC-VGEN. Same discipline, same contracts, different medium.*
