@@ -158,4 +158,5 @@ date: "2026-04-23"
 
 ---
 
-*SandyStudio brief.md schema | v0.1 | Status: DRAFT*
+*SandyStudio brief.md schema | v0.2 | Status: APPROVED*
+*Changes: approved_by field — "Sandy" → "Director/CEO" or "AI-EP"*
