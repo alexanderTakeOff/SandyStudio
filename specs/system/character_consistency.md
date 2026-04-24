@@ -1,9 +1,10 @@
 # SandyStudio — Character Visual Consistency Spec
-## specs/system/character_consistency.md | v0.1 | DRAFT
+## specs/system/character_consistency.md | v0.2 | APPROVED
 
-> **⚠️ DIRECTOR DECISION REQUIRED**
-> This spec cannot be finalised until Sandy chooses an approach (see Section 3).
-> Character Profiles (bootstrap Step 1.3) cannot begin until this spec is APPROVED.
+> **✅ DIRECTOR DECISION: A2-Kling**
+> Midjourney v7 generates canonical cartoon-style reference images.
+> Kling 3.0 Elements uses those references to animate consistent characters.
+> Approved by Director (Sandy) on 2026-04-24.
 
 ---
 
