@@ -73,8 +73,8 @@ they form the audit trail.
 
 | ID | Decision | Options | Owner | Due | Status |
 |----|----------|---------|-------|-----|--------|
-| D-001 | Character consistency | A1/A2/A3/A4 | Sandy | Before Sprint 4 | ⏳ OPEN |
-| D-002 | Assembly tool | B1/B2/B3/B4 | Sandy | Before Sprint 4 | ⏳ OPEN |
+| D-001 | Character consistency | A1/A2/A3/A4 | Director/CEO | Before Sprint 4 | ⏳ OPEN |
+| D-002 | Assembly tool | B1/B2/B3/B4 | Director/CEO | Before Sprint 4 | ⏳ OPEN |
 ```
 
 When Director makes a decision: update Status to `✅ [choice made]` and fill in
