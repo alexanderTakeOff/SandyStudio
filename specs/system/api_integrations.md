@@ -1,5 +1,5 @@
 # SandyStudio — API Integrations & Provider Contracts
-## specs/system/api_integrations.md | v0.2 | DRAFT
+## specs/system/api_integrations.md | v0.2 | APPROVED
 
 > Defines the full contract system for all external media generation services.
 > **Architecture principle:** Agents call contracts, never services directly.
