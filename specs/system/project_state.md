@@ -155,7 +155,7 @@ One table per episode in production. This is the most critical state section.
 
 | Date | Change | Agent |
 |------|--------|-------|
-| 2026-04-24 | governance.md APPROVED | Sandy |
+| 2026-04-24 | governance.md APPROVED | Director/CEO |
 | 2026-04-24 | Sprint 2 complete — 6 schemas created | Claude Code |
 ```
 
