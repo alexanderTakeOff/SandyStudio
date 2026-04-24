@@ -244,7 +244,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 | **EDIT MODE** | `===5===` | File writes permitted. Activated by appending `===5===` to a command. |
 
 - Every session starts in `===1===` regardless of previous state.
-- Only the Director (Sandy) can activate `===5===`.
+- Only the CEO / Director can activate `===5===`.
 - If asked to write a file in `===1===` mode, respond: *"Mode is ===1===. To apply changes, append ===5=== to your command."*
 
 ### Agent modes
