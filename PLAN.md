@@ -151,21 +151,39 @@ No agent writes content until the spec for that content is APPROVED.
 ---
 
 ### SPRINT 6 — Agent Instructions
-**Status:** ⏳ IN PROGRESS
+**Status:** ⏳ PENDING DIRECTOR BATCH APPROVAL (all 25 agents written)
 **This is the first "build" sprint — all prior sprints are spec-only**
 
-#### New agents to create (5)
-| File | Agent |
-|------|-------|
-| `agents/exec/orchestrator.md` | EXEC-ORCH |
-| `agents/exec/copywriter.md` | EXEC-COPY |
-| `agents/exec/thumbnail_creator.md` | EXEC-THUMB |
-| `agents/exec/publisher.md` | EXEC-PUB |
-| `agents/exec/analytics_collector.md` | EXEC-ANAL |
+#### Agent status
 
-#### Existing agent stubs to fill (20)
-All files in `agents/board/`, `agents/artistic/`, `agents/exec/`
-Each file must contain: Role, Inputs, Outputs, Operating Mode, Step-by-step process, Edge cases
+| Agent | File | Status |
+|-------|------|--------|
+| EXEC-ORCH | `agents/exec/orchestrator.md` | ✅ APPROVED |
+| EXEC-SW | `agents/exec/screenwriter.md` | ✅ APPROVED |
+| EXEC-SREV | `agents/exec/script_reviewer.md` | ✅ APPROVED |
+| EXEC-SB | `agents/exec/storyboarder.md` | ✅ APPROVED |
+| EXEC-WCHK | `agents/exec/world_checker.md` | ✅ APPROVED |
+| EXEC-VGEN | `agents/exec/visual_generator.md` | ✅ APPROVED |
+| EXEC-DIR-AI | `agents/exec/exec_dir_ai.md` | ✅ APPROVED |
+| EXEC-STY | `agents/exec/style_creator.md` | 📝 DRAFT |
+| EXEC-MGEN | `agents/exec/music_generator.md` | 📝 DRAFT |
+| EXEC-ARCH | `agents/exec/archivist.md` | 📝 DRAFT |
+| EXEC-COPY | `agents/exec/copywriter.md` | 📝 DRAFT |
+| EXEC-THUMB | `agents/exec/thumbnail_creator.md` | 📝 DRAFT |
+| EXEC-PUB | `agents/exec/publisher.md` | 📝 DRAFT |
+| EXEC-ANAL | `agents/exec/analytics_collector.md` | 📝 DRAFT |
+| ART-PROD | `agents/artistic/producer.md` | 📝 DRAFT |
+| ART-HW | `agents/artistic/head_writer.md` | 📝 DRAFT |
+| ART-AD | `agents/artistic/art_director.md` | 📝 DRAFT |
+| ART-MS | `agents/artistic/music_supervisor.md` | 📝 DRAFT |
+| ART-WB | `agents/artistic/world_builder.md` | 📝 DRAFT |
+| ART-CAST | `agents/artistic/casting_director.md` | 📝 DRAFT |
+| ART-CONT | `agents/artistic/continuity_supervisor.md` | 📝 DRAFT |
+| BOARD-MKT | `agents/board/market_analyst.md` | 📝 DRAFT |
+| BOARD-FIN | `agents/board/financial_analyst.md` | 📝 DRAFT |
+| BOARD-FAI | `agents/board/founder_ai.md` | 📝 DRAFT |
+| BOARD-CRIT | `agents/board/cautious_critic.md` | 📝 DRAFT |
+| BOARD-CRD | `agents/board/creative_director.md` | 📝 DRAFT |
 
 **Exit criteria:** All 25 agent files APPROVED by Director
 
