@@ -206,4 +206,5 @@ revision_instructions: "Add magnifying glass heat gag in Act 2 between scenes 3 
 
 ---
 
-*SandyStudio qa_report.md schema | v0.1 | Status: DRAFT*
+*SandyStudio qa_report.md schema | v0.2 | Status: APPROVED*
+*Changes: added approved_by, approved_date, approval_notes fields for audit trail*
