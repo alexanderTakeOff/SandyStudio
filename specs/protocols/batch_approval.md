@@ -157,19 +157,37 @@ Standing approvals and batch review unlock from Episode 2 onward.
 
 ---
 
-## DELEGATE APPROVAL
+## GOVERNANCE MODE MAPPING
 
-When a Producer participant exists (see specs/company/participants.md), Director may
-delegate Tier 2 batch approvals to Producer for specific episodes:
+Batch approval tiers map to governance modes as follows:
 
-> "Producer may approve shot batches for S01E03."
+| Tier | Mode 1 — MANUAL | Mode 2 — HYBRID | Mode 3 — DELEGATED |
+|------|----------------|-----------------|-------------------|
+| Tier 1 — individual | Director/CEO | Director/CEO (always) | Director/CEO (hard limits only) |
+| Tier 2 — batch | Director/CEO | EXEC-DIR-AI (if in scope) | EXEC-DIR-AI |
+| Tier 3 — standing | Director/CEO sets | EXEC-DIR-AI auto-approves | EXEC-DIR-AI auto-approves |
 
-Delegated approvals:
-- Must be explicitly granted per episode (not blanket per season)
-- Cannot be delegated for Tier 1 assets
-- Are logged in PLAN.md with delegating statement and date
-- Director retains override authority at all times
+In Mode 3, EXEC-DIR-AI handles Tier 2 and Tier 3 autonomously and reports via daily digest.
+Tier 1 hard-limit items (final cut, publish, LOCKED) always reach Director/CEO regardless of mode.
 
 ---
 
-*Director/CEOStudio batch_approval.md | v0.1 | Status: DRAFT*
+## DELEGATE APPROVAL
+
+**Primary delegate: EXEC-DIR-AI** — activated via governance mode (see `governance.md §4`).
+No per-episode grant needed — mode switch activates delegation globally.
+
+**Secondary delegate: human Producer** (when Producer exists in `participants.md`):
+
+> "Producer may approve shot batches for S01E03."
+
+Human Producer delegated approvals:
+- Must be explicitly granted per episode (not blanket per season)
+- Cannot be delegated for Tier 1 assets
+- Are logged in PLAN.md with delegating statement and date
+- Director/CEO retains override authority at all times
+
+---
+
+*SandyStudio batch_approval.md | v0.2 | Status: DRAFT*
+*Changes: "Sandy" → "Director/CEO" · Governance Mode mapping table added · EXEC-DIR-AI as primary delegate*
