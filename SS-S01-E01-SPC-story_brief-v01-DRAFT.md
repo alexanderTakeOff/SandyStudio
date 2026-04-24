@@ -109,6 +109,11 @@ resolution: >
   Final frame: through the still-open club door, Inspector-Stopwatch's white
   clockface is visible at the threshold. Arrow at 6 o'clock.
   He was never wrong.
+
+  ENDING: Option A — CONFIRMED by Director.
+  Sandy remains inside, on the floor. No expulsion scene.
+  The circle is closed by implication: Inspector in doorway, arrow at 6.
+  The audience completes it.
 ```
 
 ---
