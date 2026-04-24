@@ -274,6 +274,9 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | BOARD-CRD creative_director.md v0.1 DRAFT | Claude Code |
 | 2026-04-24 | Sprint 6 COMPLETE — all 25 agents APPROVED | Director/CEO |
 | 2026-04-24 | Sprint 7 READY — webapp.md next | Director/CEO |
+| 2026-04-24 | DECISION: Mock provider layer — pipeline validation before real APIs | Director/CEO |
+| 2026-04-24 | providers.yaml updated — gateway.provider_mode: mock (default) | Claude Code |
+| 2026-04-24 | config/defaults.yaml v0.1 created — all fallback parameters for 25 agents | Claude Code |
 
 ---
 
