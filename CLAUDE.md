@@ -302,5 +302,5 @@ When starting a new Claude Code session in this project:
 
 ---
 
-*SandyStudio CLAUDE.md | v0.5 | Status: DRAFT*
-*Next: Director approval of governance.md → Sprint 1*
+*SandyStudio CLAUDE.md | v0.6 | Status: DRAFT*
+*Next: Sprint 1 — PLAN.md, pipeline_overview, bootstrap_sequence*
