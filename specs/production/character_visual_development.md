@@ -222,8 +222,8 @@ Character profile is now gate-cleared for production pipeline.
 | Phase 3 approval | Director explicit approval | Loop or escalate |
 | Phase 4 entry | Approved variant image exists | Block until Phase 3 complete |
 | Phase 5 entry | master_reference_image_path not null | Block until Phase 4 complete |
-| Phase 5 pass | fragment_test ≥8/10 | Loop fragment revision |
-| Phase 6 gate | All fields filled + ART-AD sign-off | Block APPROVED status |
+| Phase 5 pass | fragment_test ≥8/10 confirmed by human | Loop fragment revision |
+| Phase 6 gate | All fields filled + human visual approver sign-off | Block APPROVED status |
 | Production gate | All characters APPROVED | Block pipeline start |
 
 ---
