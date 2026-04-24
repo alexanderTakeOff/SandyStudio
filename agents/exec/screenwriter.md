@@ -280,5 +280,5 @@ When Director provides notes directly:
 
 ---
 
-*SandyStudio screenwriter.md | v0.2 | Status: DRAFT*
+*SandyStudio screenwriter.md | v0.2 | Status: APPROVED*
 *EXEC-SW is a pure function of its inputs. No internal assumptions. No injected defaults.*
