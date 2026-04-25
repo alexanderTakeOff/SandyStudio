@@ -58,16 +58,24 @@ CREATE TYPE episode_status AS ENUM (
   'BRIEF_APPROVED',
   'SCRIPT_IN_PROGRESS',
   'SCRIPT_REVIEW',
+  'SCRIPT_REVISION',           -- returned for rework with revision log
   'SCRIPT_APPROVED',
   'STORYBOARD_IN_PROGRESS',
   'STORYBOARD_REVIEW',
+  'STORYBOARD_REVISION',       -- returned for rework
   'STORYBOARD_APPROVED',
+  'ANIMATIC_IN_PROGRESS',      -- EXEC-EDIT assembles static frames + SFX placeholder
+  'ANIMATIC_REVIEW',           -- Director reviews timing/comedy rhythm before generation spend
+  'ANIMATIC_REVISION',         -- timing adjustments needed
+  'ANIMATIC_APPROVED',         -- gates: generation cannot start until this is set
   'GENERATION_IN_PROGRESS',
   'GENERATION_REVIEW',
+  'GENERATION_REVISION',       -- shots returned for re-generation
   'GENERATION_APPROVED',
   'PUBLISH_PENDING',
   'PUBLISHED',
-  'ANALYTICS_COLLECTING'
+  'ANALYTICS_COLLECTING',
+  'COMPLETE'
 );
 ```
 
