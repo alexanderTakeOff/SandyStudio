@@ -320,11 +320,15 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 When starting a new Claude Code session in this project:
 
 1. Read this `CLAUDE.md` file
-2. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
-3. Check `C:\SandyStudio\archive\` for latest APPROVED files
-4. Ask the Director: "What are we working on today?"
-5. Identify which agent role is needed and read that agent's file in `agents/`
-6. Proceed with task — write files only if the Director activates `===5===`
+2. **Read `PLAN.md`** — this is the live state. §8 above is a snapshot; PLAN.md is always current.
+3. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
+4. Report current sprint and next step to Director (from PLAN.md `## CURRENT STATE`)
+5. Ask the Director: "What are we working on today?"
+6. Identify which agent role is needed and read that agent's file in `agents/`
+7. Proceed with task — write files only if the Director activates `===5===`
+
+> Do NOT summarise the project from §8 alone — always combine with PLAN.md.
+> If §8 and PLAN.md disagree, PLAN.md wins.
 
 ## 10. DIRECTOR COMMUNICATION RULES
 
