@@ -181,41 +181,60 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 
 | Agent ID | ECC Skill / Agent | Purpose |
 |----------|-------------------|---------|
-| `BOARD-MKT` | `research-apis`, `seo` skill | Market research, YouTube niche analysis |
-| `BOARD-FIN` | `agentic-engineering` skill | API cost routing: Haiku → Sonnet → Opus |
-| `BOARD-FAI` | `enterprise-agent-ops` skill | Brand consistency monitoring |
+| `BOARD-MKT` | `deep-research`, `exa-search`, `research-ops`, `seo` skills | Market research, YouTube niche analysis |
+| `BOARD-FIN` | `agentic-engineering`, `cost-aware-llm-pipeline` skills | API cost routing: Haiku → Sonnet → Opus, real-time provider selection |
+| `BOARD-FAI` | `enterprise-agent-ops`, `brand-voice` skills | Brand consistency monitoring, tone enforcement |
 | `BOARD-CRIT` | `security-review` skill | Risk and security audit |
-| `BOARD-CRD` | `gan-evaluator` agent | Visual style quality assessment |
+| `BOARD-CRD` | `gan-evaluator` agent, `council` skill | Visual style quality assessment, multi-perspective decisions |
 
 ### Level 2 — Artistic Council (Creative Management)
 
 | Agent ID | ECC Skill / Agent | Purpose |
 |----------|-------------------|---------|
-| `ART-PROD` | `continuous-agent-loop`, `autonomous-loops` skills | Automate recurring production runs |
+| `ART-PROD` | `continuous-agent-loop`, `autonomous-loops`, `ralphinho-rfc-pipeline`, `blueprint` skills | Automate recurring production runs, multi-agent DAG, plan multi-session projects |
 | `ART-HW` | `agentic-engineering` skill | Script decomposition into 15-min agent units |
-| `ART-AD` | `gan-generator`, `gan-evaluator` agents | Visual style generation and consistency checks |
+| `ART-AD` | `gan-generator`, `gan-evaluator` agents, `brand-voice` skill | Visual style generation, consistency checks, brand-tone enforcement |
 | `ART-MS` | `fal-ai-media` skill (CSM-1B TTS) | Audio aesthetic and voiceover direction |
-| `ART-WB` | `enterprise-agent-ops` skill | World state long-lived agent management |
+| `ART-WB` | `enterprise-agent-ops`, `knowledge-ops` skills | World state long-lived agent management, world-bible knowledge base |
 | `ART-CAST` | `gan-evaluator` agent | Character appearance consistency across shots |
-| `ART-CONT` | `ai-regression-testing` skill | Detect continuity regressions across episodes |
+| `ART-CONT` | `ai-regression-testing`, `knowledge-ops` skills | Detect continuity regressions, episode-state knowledge base |
 
 ### Level 3 — Executive Agents (Production)
 
 | Agent ID | ECC Skill / Agent | Purpose |
 |----------|-------------------|---------|
-| `EXEC-ORCH` | `/orchestrate` command, `orchestration` module | Coordinate full episode pipeline |
+| `EXEC-ORCH` | `/orchestrate` command, `ralphinho-rfc-pipeline` skill | Coordinate full episode pipeline, RFC-driven multi-agent execution |
 | `EXEC-SW` | `agentic-engineering` skill | Eval-first script generation with quality gates |
-| `EXEC-SREV` | `code-reviewer` agent, `e2e-testing` skill | Script QA against style bible and brief |
+| `EXEC-SREV` | `code-reviewer` agent, `silent-failure-hunter` agent, `eval-harness` skill | Script QA against style bible and brief, silent-failure detection, formal evaluation |
 | `EXEC-STY` | `gan-design` command | Generate and validate visual style bible |
 | `EXEC-SB` | `/plan` command, `planner` agent | Break script into acts → scenes → shots |
-| `EXEC-ARCH` | `archivist` (native) | Naming convention and asset registry enforcement |
-| `EXEC-WCHK` | `gan-evaluator` agent | Shot-by-shot world model verification |
-| `EXEC-VGEN` | `fal-ai-media` skill (Veo3/Kling/Seedance), `remotion-video-creation` skill | Image & video generation + episode assembly |
-| `EXEC-MGEN` | `fal-ai-media` skill (audio), `video-editing` skill | Music/audio generation and sync |
-| `EXEC-COPY` | `content-engine`, `seo` skills | Title, description, tags optimised for YouTube |
-| `EXEC-THUMB` | `fal-ai-media` skill (image), `gan-generator` agent | Thumbnail generation via Midjourney/fal.ai |
-| `EXEC-PUB` | `crosspost` skill | Multi-platform publish: YouTube + TikTok + X |
-| `EXEC-ANAL` | `seo`, `research-apis` skills | Post-publish metrics collection and analysis |
+| `EXEC-ARCH` | `knowledge-ops` skill, `sandystudio-archivist` (project-local) | Naming convention enforcement, asset registry, status transitions |
+| `EXEC-WCHK` | `gan-evaluator` agent, `eval-harness` skill | Shot-by-shot world model verification with formal gates |
+| `EXEC-VGEN` | `fal-ai-media` (Veo3/Kling/Seedance), `remotion-video-creation`, `prompt-optimizer`, `cost-aware-llm-pipeline` skills | Image & video generation, episode assembly, prompt optimisation, cost-aware routing |
+| `EXEC-MGEN` | `fal-ai-media` (audio), `video-editing`, `prompt-optimizer`, `cost-aware-llm-pipeline` skills | Music/audio generation and sync, prompt optimisation, cost-aware routing |
+| `EXEC-COPY` | `content-engine`, `seo`, `brand-voice` skills | Title, description, tags optimised for YouTube + brand-tone enforcement |
+| `EXEC-THUMB` | `fal-ai-media` (image), `gan-generator` agent, `prompt-optimizer` skill | Thumbnail generation via Midjourney/fal.ai with optimised prompts |
+| `EXEC-PUB` | `crosspost`, `x-api`, `google-workspace-ops` skills | Multi-platform publish: YouTube + TikTok + X, Sheets-based logs |
+| `EXEC-ANAL` | `deep-research`, `exa-search`, `research-ops`, `seo` skills | Post-publish metrics collection and analysis |
+
+### Custom SandyStudio skills (project-local)
+
+Located in `C:\SandyStudio\.claude\skills\`. Stub-level until Sprint 5 full implementation.
+
+| Skill | Owner Agent | Purpose |
+|-------|-------------|---------|
+| `sandystudio-archivist` | `EXEC-ARCH` | Enforce naming convention, status transitions DRAFT→REVIEW→APPROVED→LOCKED, asset registry per `specs/system/project_state.md` |
+| `episode-serialization` | `ART-CONT` | Long-arc narrative continuity across the 26-episode season; integrates with `knowledge-ops` and `ai-regression-testing` |
+
+### Governance enforcement (project-level hooks)
+
+Hook scripts in `C:\SandyStudio\.claude\hooks\`. Registered in `.claude/settings.json` as `PreToolUse` hooks. See `hookify` skill for adding more.
+
+| Hook | Matcher | Behaviour |
+|------|---------|-----------|
+| `mode-validator.cjs` | Write \| Edit | Reads `PLAN.md` `## Current Mode`; blocks writes if `===1===` ANALYTICS |
+| `naming-validator.cjs` | Write | Validates new files in `scripts/`, `storyboards/`, `bibles/`, `prompts/`, `reviews/` match the SS-... convention |
+| `locked-status-guard.cjs` | Edit | Blocks edits to any `*-LOCKED.*` file (CLAUDE.md §7.3) |
 
 ### ECC Model Routing Policy (BOARD-FIN enforces)
 
