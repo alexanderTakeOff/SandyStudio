@@ -21,7 +21,8 @@ The goal is to produce multi-episode animated comedy series using specialized AI
 | Type | Path | Notes |
 |------|------|-------|
 | Project root (code, configs, text) | `C:\SandyStudio\` | Git repository |
-| Media output (video, images, audio) | `H:\My Drive\SandyStudio_Media\` | Google Drive (work account) |
+| Media staging (pre-approval) | `C:\SandyStudio\Staging\` | Local SSD only — never committed to git. TTL 48h for non-approved files. |
+| Media output (approved assets) | `H:\My Drive\SandyStudio_Media\` | Google Drive — receives files only after APPROVED status. |
 
 ### Project folder structure (C:\SandyStudio\)
 ```
