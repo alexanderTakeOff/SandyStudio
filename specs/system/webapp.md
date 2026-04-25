@@ -758,6 +758,7 @@ sandystudio-app/                 ← separate repository or monorepo package
 │   │   ├── exec-srev.ts
 │   │   ├── exec-sb.ts
 │   │   ├── exec-wchk.ts
+│   │   ├── exec-edit.ts
 │   │   ├── exec-vgen.ts
 │   │   ├── exec-mgen.ts
 │   │   ├── exec-copy.ts
