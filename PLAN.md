@@ -325,6 +325,13 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | character_consistency.md v0.3 — visual review rule corrected | Claude Code |
 | 2026-04-24 | character_profile.md v0.2 — visual_reviewed_by field, approval gate rule updated | Claude Code |
 | 2026-04-24 | webapp.md — Section 6.6 Approval Authority Matrix added + W-005 + VISUAL_CATEGORIES in governance | Claude Code |
+| 2026-04-25 | REVISION status added to naming convention + episode_status + asset_status enums | Claude Code |
+| 2026-04-25 | Animatic milestone added: ANIMATIC_IN_PROGRESS/REVIEW/REVISION/APPROVED states + EXEC-EDIT job | Claude Code |
+| 2026-04-25 | NEEDS_HUMAN_TWEAK + REJECTED added to asset_status enum | Claude Code |
+| 2026-04-25 | Staging buffer added: C:\SandyStudio\Staging\ (local SSD, TTL 48h, gitignored) | Claude Code |
+| 2026-04-25 | staging_path + drive_path + staging_expires_at + revision_log added to assets table | Claude Code |
+| 2026-04-25 | .gitignore created | Claude Code |
+| 2026-04-25 | Generation gate: GENERATION cannot start until ANIMATIC_APPROVED | Claude Code |
 
 ---
 
