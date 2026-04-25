@@ -21,7 +21,8 @@ The goal is to produce multi-episode animated comedy series using specialized AI
 | Type | Path | Notes |
 |------|------|-------|
 | Project root (code, configs, text) | `C:\SandyStudio\` | Git repository |
-| Media output (video, images, audio) | `H:\My Drive\SandyStudio_Media\` | Google Drive (work account) |
+| Media staging (pre-approval) | `C:\SandyStudio\Staging\` | Local SSD only — never committed to git. TTL 48h for non-approved files. |
+| Media output (approved assets) | `H:\My Drive\SandyStudio_Media\` | Google Drive — receives files only after APPROVED status. |
 
 ### Project folder structure (C:\SandyStudio\)
 ```
@@ -52,7 +53,10 @@ C:\SandyStudio\
 │   ├── protocols/             ← Inter-agent protocols: handoff, QA, versioning
 │   ├── distribution/          ← YouTube, metadata, analytics specs
 │   └── system/                ← Technical: auth, APIs, media formats, state
-└── archive/                   ← Approved and locked versions
+├── archive/                   ← Approved and locked versions
+└── Staging/                   ← Local SSD buffer for generated media (pre-approval)
+                               ← TTL 48h — non-approved files auto-deleted
+                               ← gitignored — never committed
 
 ```
 
@@ -90,7 +94,7 @@ Every file in this project must be uniquely identifiable by its name alone.
 | TYPE | `SCR` script, `STB` storyboard, `IMG` image, `VID` video, `AUD` audio, `BIB` bible, `PRO` prompt, `REV` review, `SPC` spec, `STA` state | `SCR` |
 | DESCRIPTION | Short snake_case | `opening_scene` |
 | VERSION | `v01`, `v02`... | `v02` |
-| STATUS | `DRAFT`, `REVIEW`, `APPROVED`, `LOCKED` | `APPROVED` |
+| STATUS | `DRAFT`, `REVIEW`, `REVISION`, `APPROVED`, `LOCKED` | `APPROVED` |
 
 ### Examples:
 ```
@@ -296,29 +300,41 @@ Hook scripts in `C:\SandyStudio\.claude\hooks\`. Registered in `.claude/settings
 
 ## 8. CURRENT PROJECT STATUS
 
+> ⚠️ This section is a snapshot — for the live state always read `PLAN.md`.
+> PLAN.md is updated after every session. CLAUDE.md §8 is updated at sprint boundaries.
+
 **Methodology:** SDD (Spec Driven Development) — specs approved before implementation
 
 | Sprint | What | Status |
 |--------|------|--------|
-| S0 | Governance approved, participants.md | ✅ APPROVED by Director 2026-04-24 |
-| S1 | PLAN.md, pipeline_overview, bootstrap_sequence | 🟢 READY |
-| S2 | Data schemas (6 files) | ⏳ Blocked by S1 |
-| S3 | Protocols + Technical Decisions | ⏳ Blocked by S2 |
-| S4 | Distribution specs | ⏳ Blocked by S3 |
-| S5 | All agent instructions (25 agents) | ⏳ Blocked by S2+S3+S4 |
-| S6 | Studio UI — agent dashboard, approval interface, episode tracker | ⏳ Blocked by S5 |
+| S0 | Governance, participants.md | ✅ COMPLETE 2026-04-24 |
+| S1 | PLAN.md, pipeline_overview, bootstrap_sequence | ✅ COMPLETE 2026-04-24 |
+| S2 | Data schemas (6 files) | ✅ COMPLETE 2026-04-24 |
+| S3 | Protocols + Technical Decisions | ✅ COMPLETE 2026-04-24 |
+| S4 | Distribution specs (YouTube, metadata, analytics) | ✅ COMPLETE 2026-04-24 |
+| S5 | All 25 agent instructions | ✅ COMPLETE 2026-04-24 |
+| S6 | Web app spec (webapp.md) — Next.js + Supabase + Inngest | ✅ COMPLETE 2026-04-24 |
+| S7 | Mock provider layer + config/providers.yaml + config/defaults.yaml | ✅ COMPLETE 2026-04-24 |
+| S8 | Mock pipeline validation — PILOT SS-S01-E01 "The Red Carpet" end-to-end | ✅ COMPLETE 2026-04-24 |
+| S9 | **Build webapp** (Next.js + Supabase + Inngest per specs/system/webapp.md) | 🟢 NEXT |
 
-**UI References:**
-- `awesome-design-md`: https://github.com/VoltAgent/awesome-design-md — 69+ brand DESIGN.md files (color, typography, components) for Sprint 6 Studio UI
+**PILOT episode produced (mock mode, $0.00):**
+- Episode: SS-S01-E01 "The Red Carpet" — 60s silent physical comedy
+- Characters: Sandy (CH_01 hourglass silicone) + Inspector Stopwatch (CH_02 brass robot)
+- Pipeline: 17/17 steps PASS — creative direction → generation → publish → analytics
+- Real cost estimate: ~$12.32/episode
+- All files in `scripts/s01/`, `storyboards/s01/`, `bibles/`, `reviews/`
 
-**Foundation complete:**
-- [x] Studio folder structure
-- [x] File storage paths
-- [x] Naming convention (+ SPC, STA types)
-- [x] Agent stubs created (20 existing + 5 new defined)
-- [x] SDD master plan approved
-- [x] Governance APPROVED by Director 2026-04-24
-- [x] participants.md APPROVED by Director 2026-04-24
+**Post-pilot architectural tasks (implement before real generation):**
+- PA-001/002/003: Character reference image architecture (text fragment → image anchor)
+- PA-005: Character Visual Development workflow (variants → Director selects → master ref)
+- PA-006: Multi-Audience KPI layer (gag_rate, philosophy_density, shot attribution)
+- PA-004: defaults.yaml calibration after first real run
+- Specs: `specs/system/character_consistency.md`, `specs/production/character_visual_development.md`, `specs/production/audience_kpi.md`
+
+**UI References for S9:**
+- `awesome-design-md`: https://github.com/VoltAgent/awesome-design-md — 69+ brand DESIGN.md files
+- Full web app spec: `specs/system/webapp.md`
 
 ---
 
@@ -327,11 +343,15 @@ Hook scripts in `C:\SandyStudio\.claude\hooks\`. Registered in `.claude/settings
 When starting a new Claude Code session in this project:
 
 1. Read this `CLAUDE.md` file
-2. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
-3. Check `C:\SandyStudio\archive\` for latest APPROVED files
-4. Ask the Director: "What are we working on today?"
-5. Identify which agent role is needed and read that agent's file in `agents/`
-6. Proceed with task — write files only if the Director activates `===5===`
+2. **Read `PLAN.md`** — this is the live state. §8 above is a snapshot; PLAN.md is always current.
+3. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
+4. Report current sprint and next step to Director (from PLAN.md `## CURRENT STATE`)
+5. Ask the Director: "What are we working on today?"
+6. Identify which agent role is needed and read that agent's file in `agents/`
+7. Proceed with task — write files only if the Director activates `===5===`
+
+> Do NOT summarise the project from §8 alone — always combine with PLAN.md.
+> If §8 and PLAN.md disagree, PLAN.md wins.
 
 ## 10. DIRECTOR COMMUNICATION RULES
 

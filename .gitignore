@@ -1,0 +1,16 @@
+# Local media staging buffer — never commit generated video/image/audio files
+Staging/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Node / webapp (when Sprint 9 begins)
+node_modules/
+.next/
+out/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -17,19 +17,78 @@ Claude Code sessions for all recurring agent work.
 
 ## 2. STACK
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Frontend | Next.js 15 (App Router) | Studio UI — all pages |
-| Database | Supabase (PostgreSQL) | All persistent state |
-| Job queue | Inngest | Agent execution, scheduling, retries |
-| Deployment | Vercel | Hosting, edge functions, CI/CD |
-| Auth | Supabase Auth | Director login; future multi-user |
-| Storage | Google Drive (via API) | Media files — raw, reviewed, approved |
-| AI runtime | Anthropic API (Claude) | All agent logic |
-| Media APIs | Kling, Midjourney/fal.ai, Suno/Udio, YouTube | Generation + distribution |
+**Deployment model: LOCAL-FIRST.**
+The Next.js server + Inngest worker run locally on the Director's workstation
+(via `pnpm dev` in development, PM2 in production). Supabase remains in the cloud.
+This gives the server process direct access to:
+- Local SSD (`C:\SandyStudio\Staging\`)
+- Google Drive sync folder (`H:\My Drive\SandyStudio_Media\`)
+- Locally installed FFmpeg + DaVinci Resolve
+- DaVinci FCPXML round-trip without cloud upload/download cycles
 
-All environment variables in `.env.local` (dev) and Vercel Environment Variables (prod).
-No credentials in source code. Reference: `specs/system/auth.md`.
+The UI is reactive via Supabase realtime subscriptions — same DX as a cloud-deployed
+Next.js app, but with full filesystem and binary access for the worker.
+
+**Vercel deployment is rejected.** Vercel serverless functions cannot access local
+disk paths or invoke locally installed binaries (FFmpeg, DaVinci CLI). Hybrid
+deployment (UI on Vercel + local worker) was considered and rejected: too much sync
+complexity for a solo-developer workflow. Revisit in S03+ if multi-user access is needed.
+
+| Layer | Technology | Where it runs |
+|-------|-----------|---------------|
+| Frontend (Next.js 15 App Router) | Studio UI — all pages | localhost:3000 (dev) / PM2-managed (prod) |
+| Job worker (Inngest) | Agent execution, scheduling, retries, FFmpeg invocation | Same Node.js process as Next.js |
+| Database | Supabase (PostgreSQL) — all persistent state | Cloud (Supabase) |
+| Auth | Supabase Auth — Director login; future multi-user | Cloud |
+| Storage — staging | Local SSD: `C:\SandyStudio\Staging\` (TTL 48h) | Local |
+| Storage — approved | Google Drive: `H:\My Drive\SandyStudio_Media\` | Local mount → Drive sync |
+| AI runtime | Anthropic API (Claude) | Cloud API |
+| Media APIs | Kling, Midjourney/fal.ai, Suno/Udio, YouTube | Cloud APIs |
+| Video assembly | FFmpeg (local binary) + FCPXML export for DaVinci | Local |
+
+All environment variables in `.env.local`. No credentials in source code.
+Reference: `specs/system/auth.md`.
+
+### 2.1 REMOTE ACCESS (Tailscale)
+
+Local-First does not mean local-only. The Director needs to check status, approve gates,
+and review assets from any device — phone, iPad, laptop in another country. Standard
+pattern for SandyStudio:
+
+**Tailscale (recommended default).**
+- Install Tailscale on the workstation running the webapp + on every Director device
+  (iPhone, iPad, laptop)
+- Workstation gets a stable Tailscale URL: `http://sandystudio.tail-XXXXX.ts.net:3000`
+- All devices in the same Tailscale net can reach the URL — no public exposure
+- Free for personal use; no port forwarding; no domain needed
+- Works from any country/network the Director's device has internet on
+
+**Wake-on-LAN companion (optional).**
+If the workstation sleeps when idle:
+- Configure WoL in BIOS + OS
+- Tailscale subnet router on a small always-on device (Raspberry Pi, NAS, or router)
+  sends WoL packet on demand
+- Alternative: keep workstation in low-power "S3 sleep + WoL" or always-on (cost: ~$5/mo electricity)
+
+**Public access (NOT default — only when explicitly needed).**
+For one-off external reviewers, use Cloudflare Tunnel (`cloudflared`):
+- Exposes `https://studio.your-domain.com` backed by the local server
+- Supabase Auth gates access (invite-only)
+- Disable when the external reviewer is done — no permanent public endpoint
+
+**Future: hybrid deployment.**
+If 24/7 availability without the workstation becomes a hard requirement (e.g. team
+members in different timezones approving while Director sleeps), split:
+- UI → Vercel (always available)
+- Worker (Inngest + FFmpeg + Drive access) → local workstation, polls Supabase / receives webhooks
+
+This is a separate sprint, not Sprint 9 scope. Tailscale solves 90% of the remote use
+cases without architectural changes. Revisit when actually blocked by Tailscale's limits.
+
+**Sprint 9 deliverable for remote access:**
+- `docs/REMOTE_ACCESS.md` — setup walkthrough for Tailscale on Windows workstation + iOS/macOS clients
+- Health check endpoint `/api/health` for "is the studio online" probe from any device
+- No code changes vs. pure local-first; this is config + docs only
 
 ---
 
@@ -58,16 +117,24 @@ CREATE TYPE episode_status AS ENUM (
   'BRIEF_APPROVED',
   'SCRIPT_IN_PROGRESS',
   'SCRIPT_REVIEW',
+  'SCRIPT_REVISION',           -- returned for rework with revision log
   'SCRIPT_APPROVED',
   'STORYBOARD_IN_PROGRESS',
   'STORYBOARD_REVIEW',
+  'STORYBOARD_REVISION',       -- returned for rework
   'STORYBOARD_APPROVED',
+  'ANIMATIC_IN_PROGRESS',      -- EXEC-EDIT assembles static frames + SFX placeholder
+  'ANIMATIC_REVIEW',           -- Director reviews timing/comedy rhythm before generation spend
+  'ANIMATIC_REVISION',         -- timing adjustments needed
+  'ANIMATIC_APPROVED',         -- gates: generation cannot start until this is set
   'GENERATION_IN_PROGRESS',
   'GENERATION_REVIEW',
+  'GENERATION_REVISION',       -- shots returned for re-generation
   'GENERATION_APPROVED',
   'PUBLISH_PENDING',
   'PUBLISHED',
-  'ANALYTICS_COLLECTING'
+  'ANALYTICS_COLLECTING',
+  'COMPLETE'
 );
 ```
 
@@ -80,8 +147,11 @@ file_type       text NOT NULL                    -- SCR | STB | IMG | VID | AUD 
 description     text
 version         smallint NOT NULL DEFAULT 1
 status          asset_status NOT NULL DEFAULT 'DRAFT'
-storage_path    text                             -- Google Drive path or DB path
+staging_path    text                             -- local SSD: C:\SandyStudio\Staging\ (pre-approval)
+drive_path      text                             -- Google Drive H:\ path (post-approval only)
+staging_expires_at timestamptz                  -- TTL: auto-delete from Staging if not APPROVED within 48h
 agent_id        text                             -- which agent produced this
+revision_log    text                             -- populated when status = REVISION; reason for return
 created_at      timestamptz DEFAULT now()
 updated_at      timestamptz DEFAULT now()
 ```
@@ -89,7 +159,10 @@ updated_at      timestamptz DEFAULT now()
 #### `asset_status` (enum)
 ```sql
 CREATE TYPE asset_status AS ENUM (
-  'DRAFT', 'REVIEW', 'APPROVED', 'LOCKED', 'INVALIDATED', 'TEST'
+  'DRAFT', 'REVIEW', 'REVISION', 'APPROVED', 'LOCKED',
+  'NEEDS_HUMAN_TWEAK',  -- max retries hit; best attempt kept; human must adjust
+  'REJECTED',           -- permanently rejected; not for re-use
+  'INVALIDATED', 'TEST'
 );
 ```
 
@@ -188,8 +261,9 @@ Events are named: `sandystudio/<agent-id>/<action>`
 | `sandystudio/exec-srev/review-script` | EXEC-SREV | Script submitted | 1–3 min |
 | `sandystudio/exec-sb/create-storyboard` | EXEC-SB | Script approved | 3–8 min |
 | `sandystudio/exec-wchk/check-world` | EXEC-WCHK | Storyboard submitted | 2–4 min |
-| `sandystudio/exec-vgen/generate-shot` | EXEC-VGEN | Storyboard approved + per shot | 5–20 min |
-| `sandystudio/exec-mgen/generate-music` | EXEC-MGEN | Storyboard approved | 5–15 min |
+| `sandystudio/exec-edit/create-animatic` | EXEC-EDIT | Storyboard approved | 3–8 min |
+| `sandystudio/exec-vgen/generate-shot` | EXEC-VGEN | **Animatic approved** + per shot | 5–20 min |
+| `sandystudio/exec-mgen/generate-music` | EXEC-MGEN | Animatic approved | 5–15 min |
 | `sandystudio/exec-thumb/generate-thumbnail` | EXEC-THUMB | Script + metadata approved | 2–5 min |
 | `sandystudio/exec-copy/write-metadata` | EXEC-COPY | Script approved | 1–2 min |
 | `sandystudio/exec-pub/publish` | EXEC-PUB | All assets approved + Director confirm | 3–10 min |
@@ -198,13 +272,18 @@ Events are named: `sandystudio/<agent-id>/<action>`
 ### 4.2 Job function shape (TypeScript)
 
 ```typescript
-// All agent jobs follow this pattern — no exceptions
+// All agent jobs follow this pattern — no exceptions.
+// Concurrency limits MANDATORY per agent — see table below.
 export const execSwWriteScript = inngest.createFunction(
   {
     id: "exec-sw-write-script",
     name: "EXEC-SW: Write Script",
     retries: 2,
     timeouts: { finish: "10m" },
+    concurrency: {
+      limit: 5,                      // Anthropic API calls — moderate parallelism
+      key: "event.data.episodeId"   // separate quotas per episode
+    },
   },
   { event: "sandystudio/exec-sw/write-script" },
   async ({ event, step }) => {
@@ -232,6 +311,37 @@ export const execSwWriteScript = inngest.createFunction(
     })
   }
 )
+```
+
+### 4.2.1 Concurrency limits per agent (MANDATORY)
+
+Without these limits, fan-out (e.g. all shots after animatic approval) will trigger
+HTTP 429 rate-limiting from upstream providers. Limits set conservatively — raise
+after measuring real provider headroom.
+
+| Agent | Limit | Rationale |
+|-------|-------|-----------|
+| EXEC-SW, EXEC-SREV, EXEC-COPY, EXEC-WCHK, EXEC-SB, EXEC-EDIT | 5 | Anthropic API — moderate parallelism, episode-keyed |
+| **EXEC-VGEN** | **3** | **Kling/Veo-3 video generation — strictest limit. Highest cost, lowest provider tolerance.** |
+| EXEC-MGEN | 2 | Suno/Udio — typically tighter rate limits than image/video |
+| EXEC-THUMB | 4 | Midjourney/fal.ai image generation |
+| EXEC-PUB | 1 | YouTube Data API — sequential to avoid quota burn |
+| EXEC-ANAL | 2 | YouTube Data API — read-only, can be slightly parallel |
+
+All limits keyed by `event.data.episodeId` so multiple episodes do not starve each other.
+Implement as a shared config, not magic numbers per function:
+
+```typescript
+// lib/inngest/concurrency.ts
+export const CONCURRENCY_LIMITS = {
+  "exec-sw": 5, "exec-srev": 5, "exec-sb": 5, "exec-wchk": 5,
+  "exec-edit": 5, "exec-copy": 5,
+  "exec-vgen": 3,    // most expensive, tightest provider limits
+  "exec-mgen": 2,
+  "exec-thumb": 4,
+  "exec-pub": 1,
+  "exec-anal": 2,
+} as const
 ```
 
 ### 4.3 Analytics scheduled jobs
@@ -618,6 +728,7 @@ SCRIPT_IN_PROGRESS
   ▼
 SCRIPT_REVIEW
   │ ART-HW reviews → EXEC-SREV QA → Director approves (or EXEC-DIR-AI in Mode 3)
+  ├─ [REVISION] → SCRIPT_REVISION → back to EXEC-SW with revision_log
   ▼
 SCRIPT_APPROVED
   │ → triggers: EXEC-SB (storyboard), EXEC-MGEN (music brief)
@@ -627,17 +738,38 @@ STORYBOARD_IN_PROGRESS
   ▼
 STORYBOARD_REVIEW
   │ Director approves (or EXEC-DIR-AI in Mode 3)
+  ├─ [REVISION] → STORYBOARD_REVISION → back to EXEC-SB with revision_log
   ▼
 STORYBOARD_APPROVED
-  │ → triggers: EXEC-VGEN fan-out (all shots), EXEC-THUMB, EXEC-MGEN execute
+  │ → triggers: EXEC-EDIT (animatic assembly)
+  ▼
+ANIMATIC_IN_PROGRESS
+  │ EXEC-EDIT assembles: static storyboard frames + SFX placeholders + music sketch
+  │ Outputs: preview .mp4 (for Director) + FCPXML/EDL (for DaVinci import)
+  │ Staging path: C:\SandyStudio\Staging\animatics\
+  ▼
+ANIMATIC_REVIEW
+  │ Director reviews comedy timing and rhythm in preview .mp4
+  │ Optional: open FCPXML in DaVinci, adjust pauses manually, re-export
+  ├─ [REVISION] → ANIMATIC_REVISION → EXEC-SB adjusts shot durations
+  ▼
+ANIMATIC_APPROVED  ← GENERATION GATE: nothing generates until this is set
+  │ → triggers: EXEC-VGEN fan-out (all shots), EXEC-MGEN (full music), EXEC-THUMB
   ▼
 GENERATION_IN_PROGRESS
-  │ All shots + music + thumbnail complete
+  │ All shots: max_retries=3 per shot
+  │   → on pass: asset staged to C:\SandyStudio\Staging\video\
+  │   → on 3 fails: asset status = NEEDS_HUMAN_TWEAK, pipeline continues
+  │ All music + thumbnails complete
   ▼
 GENERATION_REVIEW
-  │ Director reviews generated assets
+  │ Director reviews generated assets (visual approval per Approval Authority Matrix)
+  │ Shots with NEEDS_HUMAN_TWEAK flagged for attention first
+  ├─ [REVISION] → GENERATION_REVISION → individual shots re-queued
   ▼
 GENERATION_APPROVED
+  │ → all APPROVED assets copied: Staging → H:\My Drive\SandyStudio_Media\approved\
+  │ → Staging TTL reset: non-approved Staging files deleted after 48h
   │ → triggers: EXEC-COPY (final metadata), pre-publish checklist
   ▼
 PUBLISH_PENDING
@@ -659,7 +791,7 @@ State transitions are recorded in `approvals` table with `approved_by` and times
 
 ## 9. ENVIRONMENT VARIABLES
 
-All values from `.env.local` (dev) / Vercel Environment Variables (prod).
+All values from `.env.local` (dev) / `.env.production` loaded by PM2 (prod, local-first).
 No defaults hardcoded in application code.
 
 ```bash
@@ -721,6 +853,7 @@ sandystudio-app/                 ← separate repository or monorepo package
 │   │   ├── exec-srev.ts
 │   │   ├── exec-sb.ts
 │   │   ├── exec-wchk.ts
+│   │   ├── exec-edit.ts
 │   │   ├── exec-vgen.ts
 │   │   ├── exec-mgen.ts
 │   │   ├── exec-copy.ts
@@ -757,13 +890,13 @@ sandystudio-app/                 ← separate repository or monorepo package
 
 ## 11. OPEN DECISIONS
 
-| # | Decision | Options | Notes |
-|---|----------|---------|-------|
-| W-001 | Agent prompt source | A) Filesystem (build-time) B) Supabase (runtime-editable) | B = Director edits agent prompts from UI |
-| W-002 | Web app repo | A) Monorepo with C:\SandyStudio\ B) Separate repo | A = simpler for solo dev |
-| W-003 | First UI sprint scope | A) Full dashboard B) Approval queue only C) Episode tracker only | Recommend B — highest value fastest |
-| W-004 | config/defaults.yaml location | A) Static in repo B) Supabase table (editable via Settings UI) | B = all params in UI as promised |
-| W-005 | Approval Authority Matrix — entry point | A) Forced wizard on series creation B) Settings tab accessible any time C) Both (wizard first, settings after) | Recommend C — Director can't miss it on first run |
+| # | Decision | Resolution | Date |
+|---|----------|-----------|------|
+| W-001 | Agent prompt source | **HYBRID** — `.md` files in `agents/` are source of truth (git-versioned, code review). On deploy: prompts synced into Supabase `agent_prompts` table. UI Settings allows hot-edit for experiments — edits write to Supabase only; PR back to `.md` required to persist across redeploy. | 2026-04-25 |
+| W-002 | Web app repo | **A) Monorepo** — Next.js inside `C:\SandyStudio\webapp\`. Solo dev, keeps specs + agent definitions + code in one git history. | 2026-04-25 |
+| W-003 | First UI sprint scope | **B) Approval queue first** — highest pain point. Dashboard/budget/analytics in subsequent sprints. | 2026-04-25 |
+| W-004 | `config/defaults.yaml` location | **HYBRID** (same pattern as W-001) — yaml in repo is source of truth, synced to Supabase `app_config` table on deploy. UI Settings edits Supabase, with explicit "promote to repo" action. | 2026-04-25 |
+| W-005 | Approval Authority Matrix — entry point | **C) Both** — forced wizard on first series creation; Settings tab accessible any time afterward. | 2026-04-25 |
 
 ---
 

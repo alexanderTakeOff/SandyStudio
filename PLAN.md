@@ -13,7 +13,18 @@
 ```
 Phase:    SPRINT 8 COMPLETE — Mock pipeline validated, all PA tasks logged
 Blocker:  none
-Next:     SPRINT 9 — Build webapp (Next.js + Supabase + Inngest per webapp.md)
+Next:     SPRINT 9 — Build webapp (LOCAL-FIRST: Next.js + Inngest + PM2; Supabase in cloud)
+          Deployment: NOT Vercel. Server runs locally on Director's workstation.
+          Build order:
+            1. Supabase project (cloud) + all DB migrations (schema from webapp.md §3)
+            2. Next.js 15 project scaffold at C:\SandyStudio\webapp\ + Supabase client
+            3. Inngest worker (same Node process) + concurrency limits (webapp.md §4.2.1)
+            4. Agent job functions (webapp.md §4)
+            5. API routes (webapp.md §5) — incl. /api/episodes/[id]/sync-edl (FCPXML round-trip)
+            6. UI pages: Approval Queue FIRST (W-003), then Dashboard, then Settings
+            7. Approval Authority Matrix wizard + Settings page (W-005)
+            8. PM2 ecosystem.config.js for prod local-first deployment
+          Start point: supabase init + create migrations from webapp.md §3 schema
 Mode:     ===1=== ANALYTICS (default)
 Date:     2026-04-24
 ```
@@ -325,6 +336,17 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-24 | character_consistency.md v0.3 — visual review rule corrected | Claude Code |
 | 2026-04-24 | character_profile.md v0.2 — visual_reviewed_by field, approval gate rule updated | Claude Code |
 | 2026-04-24 | webapp.md — Section 6.6 Approval Authority Matrix added + W-005 + VISUAL_CATEGORIES in governance | Claude Code |
+| 2026-04-25 | REVISION status added to naming convention + episode_status + asset_status enums | Claude Code |
+| 2026-04-25 | Animatic milestone added: ANIMATIC_IN_PROGRESS/REVIEW/REVISION/APPROVED states + EXEC-EDIT job | Claude Code |
+| 2026-04-25 | NEEDS_HUMAN_TWEAK + REJECTED added to asset_status enum | Claude Code |
+| 2026-04-25 | Staging buffer added: C:\SandyStudio\Staging\ (local SSD, TTL 48h, gitignored) | Claude Code |
+| 2026-04-25 | staging_path + drive_path + staging_expires_at + revision_log added to assets table | Claude Code |
+| 2026-04-25 | .gitignore created | Claude Code |
+| 2026-04-25 | Generation gate: GENERATION cannot start until ANIMATIC_APPROVED | Claude Code |
+| 2026-04-25 | webapp.md ARCH FIX: Vercel rejected → Local-First (Next.js + Inngest run on workstation, Supabase cloud) | Claude Code |
+| 2026-04-25 | webapp.md §4.2.1 added: Inngest concurrency limits per agent (EXEC-VGEN: 3, EXEC-MGEN: 2, etc.) | Claude Code |
+| 2026-04-25 | W-001 to W-005 RESOLVED — see webapp.md §11 | Director/CEO |
+| 2026-04-25 | webapp.md §2.1 added: Remote access via Tailscale (default) + WoL + Cloudflare Tunnel (escape hatch) | Claude Code |
 
 ---
 
