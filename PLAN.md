@@ -14,6 +14,14 @@
 Phase:    SPRINT 8 COMPLETE — Mock pipeline validated, all PA tasks logged
 Blocker:  none
 Next:     SPRINT 9 — Build webapp (Next.js + Supabase + Inngest per webapp.md)
+          Build order:
+            1. Supabase project + all DB migrations (schema from webapp.md §3)
+            2. Next.js 15 project scaffold + Supabase client
+            3. Inngest client + all agent job functions (webapp.md §4)
+            4. API routes (webapp.md §5)
+            5. UI pages in order: Dashboard → Episode Detail → Approval Queue
+            6. Settings + Approval Authority Matrix page
+          Start point: supabase init + create migrations from webapp.md §3 schema
 Mode:     ===1=== ANALYTICS (default)
 Date:     2026-04-24
 ```
