@@ -202,8 +202,9 @@ Events are named: `sandystudio/<agent-id>/<action>`
 | `sandystudio/exec-srev/review-script` | EXEC-SREV | Script submitted | 1–3 min |
 | `sandystudio/exec-sb/create-storyboard` | EXEC-SB | Script approved | 3–8 min |
 | `sandystudio/exec-wchk/check-world` | EXEC-WCHK | Storyboard submitted | 2–4 min |
-| `sandystudio/exec-vgen/generate-shot` | EXEC-VGEN | Storyboard approved + per shot | 5–20 min |
-| `sandystudio/exec-mgen/generate-music` | EXEC-MGEN | Storyboard approved | 5–15 min |
+| `sandystudio/exec-edit/create-animatic` | EXEC-EDIT | Storyboard approved | 3–8 min |
+| `sandystudio/exec-vgen/generate-shot` | EXEC-VGEN | **Animatic approved** + per shot | 5–20 min |
+| `sandystudio/exec-mgen/generate-music` | EXEC-MGEN | Animatic approved | 5–15 min |
 | `sandystudio/exec-thumb/generate-thumbnail` | EXEC-THUMB | Script + metadata approved | 2–5 min |
 | `sandystudio/exec-copy/write-metadata` | EXEC-COPY | Script approved | 1–2 min |
 | `sandystudio/exec-pub/publish` | EXEC-PUB | All assets approved + Director confirm | 3–10 min |
