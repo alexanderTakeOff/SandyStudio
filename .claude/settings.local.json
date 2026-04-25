@@ -53,7 +53,9 @@
       "Bash(npx --version)",
       "Bash(scoop --version)",
       "Bash(choco --version)",
-      "Bash(winget --version)"
+      "Bash(winget --version)",
+      "Bash(npm install *)",
+      "Bash(npx supabase *)"
     ]
   }
 }
