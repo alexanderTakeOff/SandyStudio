@@ -231,13 +231,18 @@ Events are named: `sandystudio/<agent-id>/<action>`
 ### 4.2 Job function shape (TypeScript)
 
 ```typescript
-// All agent jobs follow this pattern — no exceptions
+// All agent jobs follow this pattern — no exceptions.
+// Concurrency limits MANDATORY per agent — see table below.
 export const execSwWriteScript = inngest.createFunction(
   {
     id: "exec-sw-write-script",
     name: "EXEC-SW: Write Script",
     retries: 2,
     timeouts: { finish: "10m" },
+    concurrency: {
+      limit: 5,                      // Anthropic API calls — moderate parallelism
+      key: "event.data.episodeId"   // separate quotas per episode
+    },
   },
   { event: "sandystudio/exec-sw/write-script" },
   async ({ event, step }) => {
@@ -265,6 +270,37 @@ export const execSwWriteScript = inngest.createFunction(
     })
   }
 )
+```
+
+### 4.2.1 Concurrency limits per agent (MANDATORY)
+
+Without these limits, fan-out (e.g. all shots after animatic approval) will trigger
+HTTP 429 rate-limiting from upstream providers. Limits set conservatively — raise
+after measuring real provider headroom.
+
+| Agent | Limit | Rationale |
+|-------|-------|-----------|
+| EXEC-SW, EXEC-SREV, EXEC-COPY, EXEC-WCHK, EXEC-SB, EXEC-EDIT | 5 | Anthropic API — moderate parallelism, episode-keyed |
+| **EXEC-VGEN** | **3** | **Kling/Veo-3 video generation — strictest limit. Highest cost, lowest provider tolerance.** |
+| EXEC-MGEN | 2 | Suno/Udio — typically tighter rate limits than image/video |
+| EXEC-THUMB | 4 | Midjourney/fal.ai image generation |
+| EXEC-PUB | 1 | YouTube Data API — sequential to avoid quota burn |
+| EXEC-ANAL | 2 | YouTube Data API — read-only, can be slightly parallel |
+
+All limits keyed by `event.data.episodeId` so multiple episodes do not starve each other.
+Implement as a shared config, not magic numbers per function:
+
+```typescript
+// lib/inngest/concurrency.ts
+export const CONCURRENCY_LIMITS = {
+  "exec-sw": 5, "exec-srev": 5, "exec-sb": 5, "exec-wchk": 5,
+  "exec-edit": 5, "exec-copy": 5,
+  "exec-vgen": 3,    // most expensive, tightest provider limits
+  "exec-mgen": 2,
+  "exec-thumb": 4,
+  "exec-pub": 1,
+  "exec-anal": 2,
+} as const
 ```
 
 ### 4.3 Analytics scheduled jobs
