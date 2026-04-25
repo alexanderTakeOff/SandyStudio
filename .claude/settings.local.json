@@ -38,7 +38,12 @@
       "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('C:/SandyStudio/.claude/worktrees/ecstatic-noyce-12c9a8/.claude/settings.json','utf8'\\)\\); console.log\\('OK worktree settings.json'\\)\")",
       "Bash(node \"C:/SandyStudio/.claude/hooks/locked-status-guard.cjs\")",
       "Bash(echo \"exit=$?\")",
-      "Bash(node \"C:/SandyStudio/.claude/hooks/naming-validator.cjs\")"
+      "Bash(node \"C:/SandyStudio/.claude/hooks/naming-validator.cjs\")",
+      "Bash(node \"C:/SandyStudio/.claude/hooks/mode-validator.cjs\")",
+      "Bash(echo \"scripts edit exit=$?\")",
+      "Bash(echo \"PLAN.md edit exit=$?\")",
+      "Bash(echo \".claude/ write exit=$?\")",
+      "Bash(echo \".env write exit=$?\")"
     ]
   }
 }
