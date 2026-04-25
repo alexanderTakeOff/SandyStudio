@@ -49,6 +49,47 @@ complexity for a solo-developer workflow. Revisit in S03+ if multi-user access i
 All environment variables in `.env.local`. No credentials in source code.
 Reference: `specs/system/auth.md`.
 
+### 2.1 REMOTE ACCESS (Tailscale)
+
+Local-First does not mean local-only. The Director needs to check status, approve gates,
+and review assets from any device — phone, iPad, laptop in another country. Standard
+pattern for SandyStudio:
+
+**Tailscale (recommended default).**
+- Install Tailscale on the workstation running the webapp + on every Director device
+  (iPhone, iPad, laptop)
+- Workstation gets a stable Tailscale URL: `http://sandystudio.tail-XXXXX.ts.net:3000`
+- All devices in the same Tailscale net can reach the URL — no public exposure
+- Free for personal use; no port forwarding; no domain needed
+- Works from any country/network the Director's device has internet on
+
+**Wake-on-LAN companion (optional).**
+If the workstation sleeps when idle:
+- Configure WoL in BIOS + OS
+- Tailscale subnet router on a small always-on device (Raspberry Pi, NAS, or router)
+  sends WoL packet on demand
+- Alternative: keep workstation in low-power "S3 sleep + WoL" or always-on (cost: ~$5/mo electricity)
+
+**Public access (NOT default — only when explicitly needed).**
+For one-off external reviewers, use Cloudflare Tunnel (`cloudflared`):
+- Exposes `https://studio.your-domain.com` backed by the local server
+- Supabase Auth gates access (invite-only)
+- Disable when the external reviewer is done — no permanent public endpoint
+
+**Future: hybrid deployment.**
+If 24/7 availability without the workstation becomes a hard requirement (e.g. team
+members in different timezones approving while Director sleeps), split:
+- UI → Vercel (always available)
+- Worker (Inngest + FFmpeg + Drive access) → local workstation, polls Supabase / receives webhooks
+
+This is a separate sprint, not Sprint 9 scope. Tailscale solves 90% of the remote use
+cases without architectural changes. Revisit when actually blocked by Tailscale's limits.
+
+**Sprint 9 deliverable for remote access:**
+- `docs/REMOTE_ACCESS.md` — setup walkthrough for Tailscale on Windows workstation + iOS/macOS clients
+- Health check endpoint `/api/health` for "is the studio online" probe from any device
+- No code changes vs. pure local-first; this is config + docs only
+
 ---
 
 ## 3. DATABASE SCHEMA
