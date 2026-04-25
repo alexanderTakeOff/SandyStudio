@@ -13,14 +13,17 @@
 ```
 Phase:    SPRINT 8 COMPLETE — Mock pipeline validated, all PA tasks logged
 Blocker:  none
-Next:     SPRINT 9 — Build webapp (Next.js + Supabase + Inngest per webapp.md)
+Next:     SPRINT 9 — Build webapp (LOCAL-FIRST: Next.js + Inngest + PM2; Supabase in cloud)
+          Deployment: NOT Vercel. Server runs locally on Director's workstation.
           Build order:
-            1. Supabase project + all DB migrations (schema from webapp.md §3)
-            2. Next.js 15 project scaffold + Supabase client
-            3. Inngest client + all agent job functions (webapp.md §4)
-            4. API routes (webapp.md §5)
-            5. UI pages in order: Dashboard → Episode Detail → Approval Queue
-            6. Settings + Approval Authority Matrix page
+            1. Supabase project (cloud) + all DB migrations (schema from webapp.md §3)
+            2. Next.js 15 project scaffold at C:\SandyStudio\webapp\ + Supabase client
+            3. Inngest worker (same Node process) + concurrency limits (webapp.md §4.2.1)
+            4. Agent job functions (webapp.md §4)
+            5. API routes (webapp.md §5) — incl. /api/episodes/[id]/sync-edl (FCPXML round-trip)
+            6. UI pages: Approval Queue FIRST (W-003), then Dashboard, then Settings
+            7. Approval Authority Matrix wizard + Settings page (W-005)
+            8. PM2 ecosystem.config.js for prod local-first deployment
           Start point: supabase init + create migrations from webapp.md §3 schema
 Mode:     ===1=== ANALYTICS (default)
 Date:     2026-04-24
