@@ -31,8 +31,7 @@
       "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/commands/\")",
       "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/hooks/\")",
       "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/skills/\")",
-      "Bash(grep -l \"video\\\\|animation\\\\|media\\\\|image\\\\|audio\\\\|music\\\\|youtube\\\\|youtube\\\\|script\" \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/agents/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/commands/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/skills/\"*\"/SKILL.md\")",
-      "Bash(python -c ' *)"
+      "Bash(grep -l \"video\\\\|animation\\\\|media\\\\|image\\\\|audio\\\\|music\\\\|youtube\\\\|youtube\\\\|script\" \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/agents/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/commands/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/skills/\"*\"/SKILL.md\")"
     ]
   }
 }

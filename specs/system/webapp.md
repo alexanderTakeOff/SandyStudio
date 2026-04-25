@@ -17,19 +17,37 @@ Claude Code sessions for all recurring agent work.
 
 ## 2. STACK
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Frontend | Next.js 15 (App Router) | Studio UI — all pages |
-| Database | Supabase (PostgreSQL) | All persistent state |
-| Job queue | Inngest | Agent execution, scheduling, retries |
-| Deployment | Vercel | Hosting, edge functions, CI/CD |
-| Auth | Supabase Auth | Director login; future multi-user |
-| Storage | Google Drive (via API) | Media files — raw, reviewed, approved |
-| AI runtime | Anthropic API (Claude) | All agent logic |
-| Media APIs | Kling, Midjourney/fal.ai, Suno/Udio, YouTube | Generation + distribution |
+**Deployment model: LOCAL-FIRST.**
+The Next.js server + Inngest worker run locally on the Director's workstation
+(via `pnpm dev` in development, PM2 in production). Supabase remains in the cloud.
+This gives the server process direct access to:
+- Local SSD (`C:\SandyStudio\Staging\`)
+- Google Drive sync folder (`H:\My Drive\SandyStudio_Media\`)
+- Locally installed FFmpeg + DaVinci Resolve
+- DaVinci FCPXML round-trip without cloud upload/download cycles
 
-All environment variables in `.env.local` (dev) and Vercel Environment Variables (prod).
-No credentials in source code. Reference: `specs/system/auth.md`.
+The UI is reactive via Supabase realtime subscriptions — same DX as a cloud-deployed
+Next.js app, but with full filesystem and binary access for the worker.
+
+**Vercel deployment is rejected.** Vercel serverless functions cannot access local
+disk paths or invoke locally installed binaries (FFmpeg, DaVinci CLI). Hybrid
+deployment (UI on Vercel + local worker) was considered and rejected: too much sync
+complexity for a solo-developer workflow. Revisit in S03+ if multi-user access is needed.
+
+| Layer | Technology | Where it runs |
+|-------|-----------|---------------|
+| Frontend (Next.js 15 App Router) | Studio UI — all pages | localhost:3000 (dev) / PM2-managed (prod) |
+| Job worker (Inngest) | Agent execution, scheduling, retries, FFmpeg invocation | Same Node.js process as Next.js |
+| Database | Supabase (PostgreSQL) — all persistent state | Cloud (Supabase) |
+| Auth | Supabase Auth — Director login; future multi-user | Cloud |
+| Storage — staging | Local SSD: `C:\SandyStudio\Staging\` (TTL 48h) | Local |
+| Storage — approved | Google Drive: `H:\My Drive\SandyStudio_Media\` | Local mount → Drive sync |
+| AI runtime | Anthropic API (Claude) | Cloud API |
+| Media APIs | Kling, Midjourney/fal.ai, Suno/Udio, YouTube | Cloud APIs |
+| Video assembly | FFmpeg (local binary) + FCPXML export for DaVinci | Local |
+
+All environment variables in `.env.local`. No credentials in source code.
+Reference: `specs/system/auth.md`.
 
 ---
 
