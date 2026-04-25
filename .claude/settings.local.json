@@ -45,7 +45,9 @@
       "Bash(echo \".env write exit=$?\")",
       "Bash(node .claude/hooks/mode-validator.cjs *)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(set -e)"
+      "Bash(set -e)",
+      "Bash(grep -v \"^Staging$\")",
+      "Bash(grep -v \"^FILMS$\")"
     ]
   }
 }
