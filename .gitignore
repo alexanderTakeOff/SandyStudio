@@ -5,11 +5,17 @@ Staging/
 .env
 .env.local
 .env.*.local
+# Keep the template committed (explicit allow as a safety net)
+!.env.example
 
 # Node / webapp (when Sprint 9 begins)
 node_modules/
 .next/
 out/
+
+# Project-local junk
+*.tmp.json
+archive/_dead/
 
 # OS
 .DS_Store

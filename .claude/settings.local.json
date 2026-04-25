@@ -31,9 +31,7 @@
       "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/commands/\")",
       "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/hooks/\")",
       "Bash(ls -1 \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/skills/\")",
-<<<<<<< HEAD
       "Bash(grep -l \"video\\\\|animation\\\\|media\\\\|image\\\\|audio\\\\|music\\\\|youtube\\\\|youtube\\\\|script\" \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/agents/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/commands/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/skills/\"*\"/SKILL.md\")",
-      "Bash(python -c ' *)",
       "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('C:/SandyStudio/.claude/settings.json','utf8'\\)\\); console.log\\('OK project settings.json'\\)\")",
       "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('C:/SandyStudio/.claude/settings.local.json','utf8'\\)\\); console.log\\('OK project settings.local.json'\\)\")",
       "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('C:/SandyStudio/.claude/worktrees/ecstatic-noyce-12c9a8/.claude/settings.json','utf8'\\)\\); console.log\\('OK worktree settings.json'\\)\")",
@@ -45,9 +43,6 @@
       "Bash(echo \"PLAN.md edit exit=$?\")",
       "Bash(echo \".claude/ write exit=$?\")",
       "Bash(echo \".env write exit=$?\")"
-=======
-      "Bash(grep -l \"video\\\\|animation\\\\|media\\\\|image\\\\|audio\\\\|music\\\\|youtube\\\\|youtube\\\\|script\" \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/agents/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/commands/\"*.md \"C:\\\\\\\\Users\\\\\\\\NAVIA VISION ONE\\\\\\\\.claude/skills/\"*\"/SKILL.md\")"
->>>>>>> origin/master
     ]
   }
 }
