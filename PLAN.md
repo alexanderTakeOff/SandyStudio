@@ -343,6 +343,9 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-25 | staging_path + drive_path + staging_expires_at + revision_log added to assets table | Claude Code |
 | 2026-04-25 | .gitignore created | Claude Code |
 | 2026-04-25 | Generation gate: GENERATION cannot start until ANIMATIC_APPROVED | Claude Code |
+| 2026-04-25 | webapp.md ARCH FIX: Vercel rejected → Local-First (Next.js + Inngest run on workstation, Supabase cloud) | Claude Code |
+| 2026-04-25 | webapp.md §4.2.1 added: Inngest concurrency limits per agent (EXEC-VGEN: 3, EXEC-MGEN: 2, etc.) | Claude Code |
+| 2026-04-25 | W-001 to W-005 RESOLVED — see webapp.md §11 | Director/CEO |
 
 ---
 
