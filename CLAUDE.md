@@ -53,7 +53,10 @@ C:\SandyStudio\
 │   ├── protocols/             ← Inter-agent protocols: handoff, QA, versioning
 │   ├── distribution/          ← YouTube, metadata, analytics specs
 │   └── system/                ← Technical: auth, APIs, media formats, state
-└── archive/                   ← Approved and locked versions
+├── archive/                   ← Approved and locked versions
+└── Staging/                   ← Local SSD buffer for generated media (pre-approval)
+                               ← TTL 48h — non-approved files auto-deleted
+                               ← gitignored — never committed
 
 ```
 
