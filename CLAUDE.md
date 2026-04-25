@@ -395,5 +395,5 @@ When presenting questions or options to the Director/CEO:
 
 ---
 
-*SandyStudio CLAUDE.md | v0.8 | Status: DRAFT*
+*SandyStudio CLAUDE.md | v0.9 | Status: DRAFT*
 *Next: Sprint 1 approval → Sprint 6 agent instructions → Web app*
