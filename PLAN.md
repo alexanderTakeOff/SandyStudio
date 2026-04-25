@@ -346,6 +346,7 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-25 | webapp.md ARCH FIX: Vercel rejected → Local-First (Next.js + Inngest run on workstation, Supabase cloud) | Claude Code |
 | 2026-04-25 | webapp.md §4.2.1 added: Inngest concurrency limits per agent (EXEC-VGEN: 3, EXEC-MGEN: 2, etc.) | Claude Code |
 | 2026-04-25 | W-001 to W-005 RESOLVED — see webapp.md §11 | Director/CEO |
+| 2026-04-25 | webapp.md §2.1 added: Remote access via Tailscale (default) + WoL + Cloudflare Tunnel (escape hatch) | Claude Code |
 
 ---
 
