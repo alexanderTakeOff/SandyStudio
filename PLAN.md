@@ -347,6 +347,12 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-25 | webapp.md §4.2.1 added: Inngest concurrency limits per agent (EXEC-VGEN: 3, EXEC-MGEN: 2, etc.) | Claude Code |
 | 2026-04-25 | W-001 to W-005 RESOLVED — see webapp.md §11 | Director/CEO |
 | 2026-04-25 | webapp.md §2.1 added: Remote access via Tailscale (default) + WoL + Cloudflare Tunnel (escape hatch) | Claude Code |
+| 2026-04-25 | ARCH DECISION: 3-tier architecture — Studio (tools, git) / Film Projects (no git, configurable path) / Media Storage | Director/CEO |
+| 2026-04-25 | CLAUDE.md §2 rewritten: 3-tier structure + filename→path resolver table + path resolution rules | Claude Code |
+| 2026-04-25 | FILMS/Sandy/S01/PROJECT.md created — anchor file for the PILOT film project | Claude Code |
+| 2026-04-25 | PILOT MIGRATION: 19 files moved to FILMS/Sandy/S01/ (4 root briefs, 4 bibles, 1 script, 1 storyboard, 7 reviews, 1 distribution, 3 S00 demos→archive) | Claude Code |
+| 2026-04-25 | .gitignore: FILMS/ added (films are not git-tracked); .claude/worktrees/ added | Claude Code |
+| 2026-04-25 | Studio root cleaned: bibles/, scripts/, storyboards/, reviews/ removed (empty); SS-* files no longer at root | Claude Code |
 
 ---
 
