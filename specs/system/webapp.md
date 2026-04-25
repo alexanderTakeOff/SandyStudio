@@ -88,8 +88,11 @@ file_type       text NOT NULL                    -- SCR | STB | IMG | VID | AUD 
 description     text
 version         smallint NOT NULL DEFAULT 1
 status          asset_status NOT NULL DEFAULT 'DRAFT'
-storage_path    text                             -- Google Drive path or DB path
+staging_path    text                             -- local SSD: C:\SandyStudio\Staging\ (pre-approval)
+drive_path      text                             -- Google Drive H:\ path (post-approval only)
+staging_expires_at timestamptz                  -- TTL: auto-delete from Staging if not APPROVED within 48h
 agent_id        text                             -- which agent produced this
+revision_log    text                             -- populated when status = REVISION; reason for return
 created_at      timestamptz DEFAULT now()
 updated_at      timestamptz DEFAULT now()
 ```
@@ -97,7 +100,10 @@ updated_at      timestamptz DEFAULT now()
 #### `asset_status` (enum)
 ```sql
 CREATE TYPE asset_status AS ENUM (
-  'DRAFT', 'REVIEW', 'APPROVED', 'LOCKED', 'INVALIDATED', 'TEST'
+  'DRAFT', 'REVIEW', 'REVISION', 'APPROVED', 'LOCKED',
+  'NEEDS_HUMAN_TWEAK',  -- max retries hit; best attempt kept; human must adjust
+  'REJECTED',           -- permanently rejected; not for re-use
+  'INVALIDATED', 'TEST'
 );
 ```
 
