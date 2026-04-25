@@ -633,6 +633,7 @@ SCRIPT_IN_PROGRESS
   ▼
 SCRIPT_REVIEW
   │ ART-HW reviews → EXEC-SREV QA → Director approves (or EXEC-DIR-AI in Mode 3)
+  ├─ [REVISION] → SCRIPT_REVISION → back to EXEC-SW with revision_log
   ▼
 SCRIPT_APPROVED
   │ → triggers: EXEC-SB (storyboard), EXEC-MGEN (music brief)
@@ -642,17 +643,38 @@ STORYBOARD_IN_PROGRESS
   ▼
 STORYBOARD_REVIEW
   │ Director approves (or EXEC-DIR-AI in Mode 3)
+  ├─ [REVISION] → STORYBOARD_REVISION → back to EXEC-SB with revision_log
   ▼
 STORYBOARD_APPROVED
-  │ → triggers: EXEC-VGEN fan-out (all shots), EXEC-THUMB, EXEC-MGEN execute
+  │ → triggers: EXEC-EDIT (animatic assembly)
+  ▼
+ANIMATIC_IN_PROGRESS
+  │ EXEC-EDIT assembles: static storyboard frames + SFX placeholders + music sketch
+  │ Outputs: preview .mp4 (for Director) + FCPXML/EDL (for DaVinci import)
+  │ Staging path: C:\SandyStudio\Staging\animatics\
+  ▼
+ANIMATIC_REVIEW
+  │ Director reviews comedy timing and rhythm in preview .mp4
+  │ Optional: open FCPXML in DaVinci, adjust pauses manually, re-export
+  ├─ [REVISION] → ANIMATIC_REVISION → EXEC-SB adjusts shot durations
+  ▼
+ANIMATIC_APPROVED  ← GENERATION GATE: nothing generates until this is set
+  │ → triggers: EXEC-VGEN fan-out (all shots), EXEC-MGEN (full music), EXEC-THUMB
   ▼
 GENERATION_IN_PROGRESS
-  │ All shots + music + thumbnail complete
+  │ All shots: max_retries=3 per shot
+  │   → on pass: asset staged to C:\SandyStudio\Staging\video\
+  │   → on 3 fails: asset status = NEEDS_HUMAN_TWEAK, pipeline continues
+  │ All music + thumbnails complete
   ▼
 GENERATION_REVIEW
-  │ Director reviews generated assets
+  │ Director reviews generated assets (visual approval per Approval Authority Matrix)
+  │ Shots with NEEDS_HUMAN_TWEAK flagged for attention first
+  ├─ [REVISION] → GENERATION_REVISION → individual shots re-queued
   ▼
 GENERATION_APPROVED
+  │ → all APPROVED assets copied: Staging → H:\My Drive\SandyStudio_Media\approved\
+  │ → Staging TTL reset: non-approved Staging files deleted after 48h
   │ → triggers: EXEC-COPY (final metadata), pre-publish checklist
   ▼
 PUBLISH_PENDING
