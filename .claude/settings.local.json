@@ -47,7 +47,13 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(set -e)",
       "Bash(grep -v \"^Staging$\")",
-      "Bash(grep -v \"^FILMS$\")"
+      "Bash(grep -v \"^FILMS$\")",
+      "Bash(supabase --version)",
+      "Bash(npm --version)",
+      "Bash(npx --version)",
+      "Bash(scoop --version)",
+      "Bash(choco --version)",
+      "Bash(winget --version)"
     ]
   }
 }
