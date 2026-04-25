@@ -42,7 +42,9 @@
       "Bash(echo \"scripts edit exit=$?\")",
       "Bash(echo \"PLAN.md edit exit=$?\")",
       "Bash(echo \".claude/ write exit=$?\")",
-      "Bash(echo \".env write exit=$?\")"
+      "Bash(echo \".env write exit=$?\")",
+      "Bash(node .claude/hooks/mode-validator.cjs *)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }

@@ -25,7 +25,7 @@ Next:     SPRINT 9 — Build webapp (LOCAL-FIRST: Next.js + Inngest + PM2; Supab
             7. Approval Authority Matrix wizard + Settings page (W-005)
             8. PM2 ecosystem.config.js for prod local-first deployment
           Start point: supabase init + create migrations from webapp.md §3 schema
-Mode:     ===1=== ANALYTICS (default)
+Mode:     ===5=== EDIT — PILOT migration to 3-tier structure (Sprint 8b)
 Date:     2026-04-24
 ```
 
