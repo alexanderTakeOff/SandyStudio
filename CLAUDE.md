@@ -277,29 +277,41 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 
 ## 8. CURRENT PROJECT STATUS
 
+> ⚠️ This section is a snapshot — for the live state always read `PLAN.md`.
+> PLAN.md is updated after every session. CLAUDE.md §8 is updated at sprint boundaries.
+
 **Methodology:** SDD (Spec Driven Development) — specs approved before implementation
 
 | Sprint | What | Status |
 |--------|------|--------|
-| S0 | Governance approved, participants.md | ✅ APPROVED by Director 2026-04-24 |
-| S1 | PLAN.md, pipeline_overview, bootstrap_sequence | 🟢 READY |
-| S2 | Data schemas (6 files) | ⏳ Blocked by S1 |
-| S3 | Protocols + Technical Decisions | ⏳ Blocked by S2 |
-| S4 | Distribution specs | ⏳ Blocked by S3 |
-| S5 | All agent instructions (25 agents) | ⏳ Blocked by S2+S3+S4 |
-| S6 | Studio UI — agent dashboard, approval interface, episode tracker | ⏳ Blocked by S5 |
+| S0 | Governance, participants.md | ✅ COMPLETE 2026-04-24 |
+| S1 | PLAN.md, pipeline_overview, bootstrap_sequence | ✅ COMPLETE 2026-04-24 |
+| S2 | Data schemas (6 files) | ✅ COMPLETE 2026-04-24 |
+| S3 | Protocols + Technical Decisions | ✅ COMPLETE 2026-04-24 |
+| S4 | Distribution specs (YouTube, metadata, analytics) | ✅ COMPLETE 2026-04-24 |
+| S5 | All 25 agent instructions | ✅ COMPLETE 2026-04-24 |
+| S6 | Web app spec (webapp.md) — Next.js + Supabase + Inngest | ✅ COMPLETE 2026-04-24 |
+| S7 | Mock provider layer + config/providers.yaml + config/defaults.yaml | ✅ COMPLETE 2026-04-24 |
+| S8 | Mock pipeline validation — PILOT SS-S01-E01 "The Red Carpet" end-to-end | ✅ COMPLETE 2026-04-24 |
+| S9 | **Build webapp** (Next.js + Supabase + Inngest per specs/system/webapp.md) | 🟢 NEXT |
 
-**UI References:**
-- `awesome-design-md`: https://github.com/VoltAgent/awesome-design-md — 69+ brand DESIGN.md files (color, typography, components) for Sprint 6 Studio UI
+**PILOT episode produced (mock mode, $0.00):**
+- Episode: SS-S01-E01 "The Red Carpet" — 60s silent physical comedy
+- Characters: Sandy (CH_01 hourglass silicone) + Inspector Stopwatch (CH_02 brass robot)
+- Pipeline: 17/17 steps PASS — creative direction → generation → publish → analytics
+- Real cost estimate: ~$12.32/episode
+- All files in `scripts/s01/`, `storyboards/s01/`, `bibles/`, `reviews/`
 
-**Foundation complete:**
-- [x] Studio folder structure
-- [x] File storage paths
-- [x] Naming convention (+ SPC, STA types)
-- [x] Agent stubs created (20 existing + 5 new defined)
-- [x] SDD master plan approved
-- [x] Governance APPROVED by Director 2026-04-24
-- [x] participants.md APPROVED by Director 2026-04-24
+**Post-pilot architectural tasks (implement before real generation):**
+- PA-001/002/003: Character reference image architecture (text fragment → image anchor)
+- PA-005: Character Visual Development workflow (variants → Director selects → master ref)
+- PA-006: Multi-Audience KPI layer (gag_rate, philosophy_density, shot attribution)
+- PA-004: defaults.yaml calibration after first real run
+- Specs: `specs/system/character_consistency.md`, `specs/production/character_visual_development.md`, `specs/production/audience_kpi.md`
+
+**UI References for S9:**
+- `awesome-design-md`: https://github.com/VoltAgent/awesome-design-md — 69+ brand DESIGN.md files
+- Full web app spec: `specs/system/webapp.md`
 
 ---
 
