@@ -750,7 +750,7 @@ State transitions are recorded in `approvals` table with `approved_by` and times
 
 ## 9. ENVIRONMENT VARIABLES
 
-All values from `.env.local` (dev) / Vercel Environment Variables (prod).
+All values from `.env.local` (dev) / `.env.production` loaded by PM2 (prod, local-first).
 No defaults hardcoded in application code.
 
 ```bash
