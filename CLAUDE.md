@@ -90,7 +90,7 @@ Every file in this project must be uniquely identifiable by its name alone.
 | TYPE | `SCR` script, `STB` storyboard, `IMG` image, `VID` video, `AUD` audio, `BIB` bible, `PRO` prompt, `REV` review, `SPC` spec, `STA` state | `SCR` |
 | DESCRIPTION | Short snake_case | `opening_scene` |
 | VERSION | `v01`, `v02`... | `v02` |
-| STATUS | `DRAFT`, `REVIEW`, `APPROVED`, `LOCKED` | `APPROVED` |
+| STATUS | `DRAFT`, `REVIEW`, `REVISION`, `APPROVED`, `LOCKED` | `APPROVED` |
 
 ### Examples:
 ```
