@@ -849,13 +849,13 @@ sandystudio-app/                 ← separate repository or monorepo package
 
 ## 11. OPEN DECISIONS
 
-| # | Decision | Options | Notes |
-|---|----------|---------|-------|
-| W-001 | Agent prompt source | A) Filesystem (build-time) B) Supabase (runtime-editable) | B = Director edits agent prompts from UI |
-| W-002 | Web app repo | A) Monorepo with C:\SandyStudio\ B) Separate repo | A = simpler for solo dev |
-| W-003 | First UI sprint scope | A) Full dashboard B) Approval queue only C) Episode tracker only | Recommend B — highest value fastest |
-| W-004 | config/defaults.yaml location | A) Static in repo B) Supabase table (editable via Settings UI) | B = all params in UI as promised |
-| W-005 | Approval Authority Matrix — entry point | A) Forced wizard on series creation B) Settings tab accessible any time C) Both (wizard first, settings after) | Recommend C — Director can't miss it on first run |
+| # | Decision | Resolution | Date |
+|---|----------|-----------|------|
+| W-001 | Agent prompt source | **HYBRID** — `.md` files in `agents/` are source of truth (git-versioned, code review). On deploy: prompts synced into Supabase `agent_prompts` table. UI Settings allows hot-edit for experiments — edits write to Supabase only; PR back to `.md` required to persist across redeploy. | 2026-04-25 |
+| W-002 | Web app repo | **A) Monorepo** — Next.js inside `C:\SandyStudio\webapp\`. Solo dev, keeps specs + agent definitions + code in one git history. | 2026-04-25 |
+| W-003 | First UI sprint scope | **B) Approval queue first** — highest pain point. Dashboard/budget/analytics in subsequent sprints. | 2026-04-25 |
+| W-004 | `config/defaults.yaml` location | **HYBRID** (same pattern as W-001) — yaml in repo is source of truth, synced to Supabase `app_config` table on deploy. UI Settings edits Supabase, with explicit "promote to repo" action. | 2026-04-25 |
+| W-005 | Approval Authority Matrix — entry point | **C) Both** — forced wizard on first series creation; Settings tab accessible any time afterward. | 2026-04-25 |
 
 ---
 
