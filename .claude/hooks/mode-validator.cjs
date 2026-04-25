@@ -45,7 +45,13 @@ process.stdin.on('end', () => {
   try {
     if (fs.existsSync(PLAN)) {
       const t = fs.readFileSync(PLAN, 'utf8');
-      const m = t.match(/Current[\s\S]{0,40}Mode[\s\S]{0,200}?(===[15]===)/i);
+      // PLAN.md may carry the active mode in either form (CLAUDE.md §6):
+      //   ## Current Mode\n===X===
+      //   Mode:    ===X===            (used inside the CURRENT STATE block)
+      // Try both, then a last-resort first-marker scan.
+      let m = t.match(/##\s*Current\s*Mode[\s\S]{0,200}?(===[15]===)/i);
+      if (!m) m = t.match(/^\s*Mode\s*:[^\n]*?(===[15]===)/im);
+      if (!m) m = t.match(/(===[15]===)/);
       if (m) mode = m[1];
     }
   } catch (_) {
@@ -54,7 +60,7 @@ process.stdin.on('end', () => {
 
   if (mode === '===1===') {
     console.error('[Hook] BLOCKED: SandyStudio is in ===1=== ANALYTICS mode (read-only).');
-    console.error('[Hook] Edit PLAN.md `## Current Mode` to ===5=== to allow writes (Director only).');
+    console.error('[Hook] Flip PLAN.md `Mode:` line to ===5=== to allow writes (Director only).');
     process.exit(2);
   }
   process.stdout.write(buf);
