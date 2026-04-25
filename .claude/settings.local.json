@@ -44,7 +44,8 @@
       "Bash(echo \".claude/ write exit=$?\")",
       "Bash(echo \".env write exit=$?\")",
       "Bash(node .claude/hooks/mode-validator.cjs *)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(set -e)"
     ]
   }
 }

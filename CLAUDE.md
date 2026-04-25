@@ -16,63 +16,100 @@ The goal is to produce multi-episode animated comedy series using specialized AI
 
 ---
 
-## 2. FILE STORAGE PATHS
+## 2. FILE STORAGE PATHS — 3-TIER ARCHITECTURE
 
-| Type | Path | Notes |
-|------|------|-------|
-| Project root (code, configs, text) | `C:\SandyStudio\` | Git repository |
-| Media staging (pre-approval) | `C:\SandyStudio\Staging\` | Local SSD only — never committed to git. TTL 48h for non-approved files. |
-| Media output (approved assets) | `H:\My Drive\SandyStudio_Media\` | Google Drive — receives files only after APPROVED status. |
+The studio (this repo) is **separated from film projects**. The studio is the tool;
+each film is its own project with its own configurable storage. They never mix.
 
-### Project folder structure (C:\SandyStudio\)
+### Tier 1 — Studio (this git repo, permanent)
+
+`C:\SandyStudio\` — tools, agents, system specs, webapp, governance.
+**No film content is ever stored here.** Adding a film never grows this directory.
+
 ```
 C:\SandyStudio\
-├── CLAUDE.md                  ← This file
-├── .gitignore
-├── agents/                    ← Agent instruction files
-│   ├── board/                 ← Board of Directors agents
-│   ├── artistic/              ← Artistic Council agents
-│   └── exec/                  ← Executive production agents
-├── bibles/                    ← World bibles, style guides, character profiles
-│   ├── world/
-│   ├── characters/
-│   └── style/
-├── scripts/                   ← Screenplays
-│   └── s01/                   ← Season 01
-├── storyboards/               ← Shot breakdowns
-│   └── s01/
-├── prompts/                   ← AI generation prompts (video, image, music)
-│   ├── video/
-│   ├── image/
-│   └── music/
-├── reviews/                   ← QA reports from reviewer agents
-├── specs/                     ← Company and system specifications
-│   ├── company/               ← Governance, org structure, authority
-│   ├── production/            ← Pipeline overview, bootstrap sequence
-│   ├── schemas/               ← Data schemas: brief, script, shot, etc.
-│   ├── protocols/             ← Inter-agent protocols: handoff, QA, versioning
-│   ├── distribution/          ← YouTube, metadata, analytics specs
-│   └── system/                ← Technical: auth, APIs, media formats, state
-├── archive/                   ← Approved and locked versions
-└── Staging/                   ← Local SSD buffer for generated media (pre-approval)
-                               ← TTL 48h — non-approved files auto-deleted
-                               ← gitignored — never committed
-
+├── CLAUDE.md, PLAN.md, .gitignore
+├── agents/                ← Agent instruction files
+│   ├── board/, artistic/, exec/
+├── specs/                 ← System-level specs only (no episode/film content)
+│   ├── company/           ← Governance, org structure, authority
+│   ├── production/        ← Pipeline overview, bootstrap, char visual dev, audience KPI
+│   ├── schemas/           ← Data schemas (brief, script, shot, character_profile, etc.)
+│   ├── protocols/         ← Inter-agent: handoff, QA, versioning
+│   ├── distribution/      ← youtube.md, metadata.md, analytics.md (system specs only)
+│   └── system/            ← auth, APIs, media formats, character_consistency, webapp
+├── config/                ← defaults.yaml, providers.yaml (studio defaults)
+├── webapp/                ← Studio app (Sprint 9)
+├── archive/               ← Legacy / locked versions (rarely written)
+├── Staging/               ← Local SSD buffer (gitignored, TTL 48h)
+├── FILMS/                 ← Film projects (gitignored — see Tier 2)
+└── .claude/               ← Claude Code config (hooks, settings, skills)
 ```
 
-### Media folder structure (H:\My Drive\SandyStudio_Media\)
+### Tier 2 — Film Project (one folder per film, NOT git-tracked)
+
+Each film is one folder with its own `PROJECT.md` anchor. Path is configurable
+at film creation; default location is `C:\SandyStudio\FILMS\<series_name>\<season_id>\`.
+Director can override at "New Film" wizard (e.g. `D:\Films\…` or `H:\Films\…`).
+
 ```
-H:\My Drive\SandyStudio_Media\
-├── raw/                       ← Unreviewed AI-generated output
-│   ├── video/
-│   ├── images/
-│   └── audio/
-├── reviewed/                  ← Passed QA check
-└── approved/                  ← Director-approved final output
-    ├── video/
-    ├── images/
-    └── audio/
+<project_root>/                          ← e.g. C:\SandyStudio\FILMS\Sandy\S01\
+├── PROJECT.md                           ← project settings anchor — never moves
+├── bibles/                              ← series-level (BIB type)
+│   ├── world/        SS-{S}-BIB-world_*
+│   ├── characters/   SS-{S}-BIB-character_*
+│   └── style/        SS-{S}-BIB-style*
+├── state/                               ← series-level (STA type)
+│   └── SS-{S}-STA-*                     ← creative direction, episode index, etc.
+└── e<NN>/                               ← one folder per episode, auto-created
+    ├── briefs/       SS-{S}-{E}-SPC-{brief|story_brief|music_brief}-*
+    ├── scripts/      SS-{S}-{E}-SCR-*
+    ├── storyboards/  SS-{S}-{E}-STB-*
+    ├── reviews/      SS-{S}-{E}-REV-*
+    └── distribution/ SS-{S}-{E}-SPC-copy-*  (YouTube metadata, social copy)
 ```
+
+Max nesting: 3 levels under `project_root` (`<project>/eXX/<type>/file.md`).
+
+### Tier 3 — Media Storage (heavy binaries, separate path)
+
+Configurable per project via `media_storage` in `PROJECT.md`. Default:
+`H:\My Drive\SandyStudio_Media\<series_id>\` (Google Drive).
+
+```
+<media_storage>/                         ← e.g. H:\My Drive\SandyStudio_Media\SandyS01\
+└── e<NN>/
+    ├── raw/{video,images,audio}/        ← unreviewed
+    └── approved/{video,images,audio}/   ← Director-approved
+```
+
+### Auto-Folder Creation (filename → path resolver)
+
+Webapp + CLI agents both use one resolver. Folders are created on first write.
+
+| Filename pattern | Resolved location |
+|------------------|-------------------|
+| `SS-{S}-BIB-world_*` | `<project_root>/bibles/world/` |
+| `SS-{S}-BIB-character_*` | `<project_root>/bibles/characters/` |
+| `SS-{S}-BIB-style*` | `<project_root>/bibles/style/` |
+| `SS-{S}-STA-*` | `<project_root>/state/` |
+| `SS-{S}-{E}-SPC-{brief\|story_brief\|music_brief}-*` | `<project_root>/{e}/briefs/` |
+| `SS-{S}-{E}-SPC-copy-*` | `<project_root>/{e}/distribution/` |
+| `SS-{S}-{E}-SCR-*` | `<project_root>/{e}/scripts/` |
+| `SS-{S}-{E}-STB-*` | `<project_root>/{e}/storyboards/` |
+| `SS-{S}-{E}-REV-*` | `<project_root>/{e}/reviews/` |
+| `SS-{S}-{E}-IMG-*` | `<media_storage>/{e}/raw/images/` |
+| `SS-{S}-{E}-VID-*` | `<media_storage>/{e}/raw/video/` |
+| `SS-{S}-{E}-AUD-*` | `<media_storage>/{e}/raw/audio/` |
+
+### Path Resolution Rules
+
+1. Every operation that reads/writes a project file MUST go through the resolver.
+   No agent hardcodes a path.
+2. The resolver reads `<project_root>/PROJECT.md` to get `project_root` and `media_storage`.
+3. New episode subtree (`e<NN>/`) is auto-created on first write to that episode.
+4. **Studio repo is forbidden as a write target for project content.** Naming-validator hook
+   blocks any `SS-{S}-...` write outside `FILMS/` or another configured project root.
 
 ---
 
