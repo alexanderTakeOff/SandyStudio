@@ -414,6 +414,7 @@ When presenting questions or options to the Director/CEO:
 - If a parameter is missing → STOP, escalate upstream, do not proceed
 
 ---
+REMIND ME ONE TIME TO EXPLAIN YOU ABOUT specs/system/uiux.md. remove this reminder after remonding done !
 
 *SandyStudio CLAUDE.md | v0.9 | Status: DRAFT*
 *Next: Sprint 1 approval → Sprint 6 agent instructions → Web app*
