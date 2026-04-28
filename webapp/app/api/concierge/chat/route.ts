@@ -1,11 +1,12 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // app/api/concierge/chat/route.ts
 // Studio Concierge streaming endpoint per agents/exec/concierge.md §3.2.
-// Sprint 9 = chat-skeleton: streams Claude responses. No tools, no dispatch.
+// Sprint 9 = chat-skeleton: streams OpenAI responses. No tools, no dispatch.
+// Provider switched to OpenAI on 2026-04-28 — Director's account is faster.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { getServerEnv } from '@/lib/env';
 
 export const runtime = 'nodejs';
@@ -28,6 +29,7 @@ The user is the Director / CEO — final authority on everything.
 Your job:
 - Answer questions about the studio: what is happening, what is blocked, who is pending approval, budget status, recent activity.
 - Be concise, calm, and production-grade. No fluff. No emojis.
+- Match the user's language (Russian or English).
 - Use markdown for structure (lists, code blocks for filenames, links).
 - When you don't know something, say so plainly. Never invent state.
 
@@ -58,38 +60,36 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'messages[] required' }, { status: 400 });
   }
 
-  const { ANTHROPIC_API_KEY } = getServerEnv();
-  if (!ANTHROPIC_API_KEY) {
+  const { OPENAI_API_KEY, OPENAI_MODEL } = getServerEnv();
+  if (!OPENAI_API_KEY) {
     return NextResponse.json(
       {
         error:
-          'ANTHROPIC_API_KEY missing. Add it to webapp/.env.local to enable the Concierge.',
+          'OPENAI_API_KEY missing. Add it to webapp/.env.local to enable the Concierge.',
       },
       { status: 503 },
     );
   }
 
-  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const client = new OpenAI({ apiKey: OPENAI_API_KEY });
+  const model = OPENAI_MODEL || 'gpt-4o';
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
       try {
-        const response = await client.messages.stream({
-          // BOARD-FIN routing: Sonnet for the Concierge default per CLAUDE.md §5.
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1024,
-          system: SYSTEM_PROMPT,
-          messages: body.messages.map((m) => ({ role: m.role, content: m.content })),
+        const completion = await client.chat.completions.create({
+          model,
+          stream: true,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            ...body.messages.map((m) => ({ role: m.role, content: m.content })),
+          ],
         });
 
-        for await (const event of response) {
-          if (
-            event.type === 'content_block_delta' &&
-            event.delta.type === 'text_delta'
-          ) {
-            controller.enqueue(encoder.encode(event.delta.text));
-          }
+        for await (const chunk of completion) {
+          const delta = chunk.choices[0]?.delta?.content;
+          if (delta) controller.enqueue(encoder.encode(delta));
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
