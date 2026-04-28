@@ -87,7 +87,8 @@ export function createAgentInngestFunction<E extends string>(
     },
     // The cast is safe: caller passes a string literal that matches a known
     // Events key. Validation is enforced at the wiring site, not here.
-    { event: spec.eventName as E },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    { event: spec.eventName as any },
     async ({ event, step, runId }) => {
       const eventData = event.data as Record<string, unknown> & {
         episodeId: string;
