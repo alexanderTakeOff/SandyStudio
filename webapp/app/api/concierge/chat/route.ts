@@ -113,7 +113,11 @@ export async function POST(req: Request) {
           (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
         }
 
-        const completion = await client.chat.completions.create(params);
+        // Cast to streaming variant — TS can't narrow the union when `stream`
+        // is set on a dynamically-typed params object.
+        const completion = (await client.chat.completions.create(
+          params,
+        )) as Stream<ChatCompletionChunk>;
 
         for await (const chunk of completion) {
           const delta = chunk.choices[0]?.delta?.content;
