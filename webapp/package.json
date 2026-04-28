@@ -9,9 +9,14 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "supabase": "supabase",
     "gen:types": "supabase gen types typescript --linked --schema public > lib/supabase/types.gen.ts",
-    "inngest:dev": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
+    "inngest:dev": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest",
+    "replay-pilot": "tsx scripts/replay-pilot.ts",
+    "verify": "npm run typecheck && npm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
