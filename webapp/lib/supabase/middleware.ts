@@ -5,9 +5,15 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { PUBLIC_ENV } from '@/lib/env';
 import type { Database } from '@/lib/supabase/types.gen';
+
+interface CookieToSet {
+  name: string;
+  value: string;
+  options: CookieOptions;
+}
 
 export async function updateSupabaseSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -20,7 +26,7 @@ export async function updateSupabaseSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: CookieToSet[]) {
           for (const { name, value } of cookiesToSet) {
             request.cookies.set(name, value);
           }
