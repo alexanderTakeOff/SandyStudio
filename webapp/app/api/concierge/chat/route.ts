@@ -106,8 +106,9 @@ export async function POST(req: Request) {
           ],
           max_completion_tokens: maxCompletionTokens,
         };
-        // GPT-5 family rejects non-default temperature; only pass for legacy chat models.
-        const isGpt5 = model.startsWith('gpt-5');
+        // GPT-5 family (gpt-5, gpt-5.x, gpt-5.x-mini) rejects non-default temperature;
+        // only pass it for legacy chat models (gpt-4o, gpt-4.1).
+        const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
         if (!isGpt5 && Number.isFinite(temperature)) {
           params.temperature = temperature;
         }
