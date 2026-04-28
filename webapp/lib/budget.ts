@@ -22,7 +22,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { Database } from './supabase/types.gen';
+import type { Database, Json } from './supabase/types.gen';
 import type { AgentId, CostRecord } from './agents/types';
 
 /** Postgres unique-violation error code. */
