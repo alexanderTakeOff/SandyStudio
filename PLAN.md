@@ -11,10 +11,9 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 3 COMPLETE — Inngest worker live, end-to-end smoke test PASSED
-Blocker:  none
-Next:     SPRINT 9 / Phase 4 — Agent job functions (11 EXEC-* handlers per webapp.md §4.1)
-          Plus: lib/agents/runner.ts, gate.ts, prompts.ts, lib/budget.ts, lib/governance.ts
+Phase:    SPRINT 9 / Phase 4 COMPLETE — 11 EXEC-* Inngest functions + factory + verify harness
+Blocker:  Migration 0009 not yet applied to remote Supabase (run `npx supabase db push`)
+Next:     SPRINT 9 / Phase 5 — API routes (/api/episodes/*, /api/approvals/*, etc.)
 Mode:     ===5=== EDIT (Director active)
 Date:     2026-04-28
 ```
