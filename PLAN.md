@@ -25,8 +25,8 @@ Date:     2026-04-28
 | 1 | Supabase init + migrations (cloud)            | ✅ COMPLETE 2026-04-28 |
 | 2 | Next.js scaffold + theme + StudioShell + Concierge | ✅ COMPLETE 2026-04-28 |
 | 3 | Inngest worker + concurrency limits + ping smoke test | ✅ COMPLETE 2026-04-28 |
-| 4 | Agent job functions (11 Inngest fns)          | 🟢 NEXT |
-| 5 | API routes (Next.js App Router)               | ⏳ pending |
+| 4 | Agent job functions (11 Inngest fns + factory + 39 unit tests + replay-pilot harness)  | ✅ COMPLETE 2026-04-28 |
+| 5 | API routes (Next.js App Router)               | 🟢 NEXT |
 | 6 | UI: Approval Queue + Dashboard + Budget data wiring | ⏳ pending |
 | 7 | Approval Authority Matrix wizard              | ⏳ pending |
 | 8 | PM2 ecosystem + Tailscale doc                 | ⏳ pending |
