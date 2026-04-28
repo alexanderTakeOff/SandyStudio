@@ -14,13 +14,14 @@ export default async function StudioLayout({ children }: { children: React.React
   let governanceMode: 1 | 2 | 3 | 4 = 1;
   try {
     const supabase = await createSupabaseServerClient();
-    const { data } = await supabase
+    const result = await supabase
       .from('app_config')
       .select('value')
       .eq('scope', 'governance')
       .eq('key', 'mode')
       .maybeSingle();
-    const raw = data?.value;
+    const row = result.data as { value: unknown } | null;
+    const raw = row?.value;
     if (typeof raw === 'number' && raw >= 1 && raw <= 4) {
       governanceMode = raw as 1 | 2 | 3 | 4;
     }
