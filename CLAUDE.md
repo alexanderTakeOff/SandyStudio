@@ -279,13 +279,23 @@ Hook scripts in `C:\SandyStudio\.claude\hooks\`. Registered in `.claude/settings
 | `naming-validator.cjs` | Write | Validates new files in `scripts/`, `storyboards/`, `bibles/`, `prompts/`, `reviews/` match the SS-... convention |
 | `locked-status-guard.cjs` | Edit | Blocks edits to any `*-LOCKED.*` file (CLAUDE.md §7.3) |
 
-### ECC Model Routing Policy (BOARD-FIN enforces)
+### Model Routing Policy (BOARD-FIN enforces)
+
+**Studio production agents (Anthropic via Claude Code SDK):**
 
 | Task Complexity | Model | Examples |
 |----------------|-------|---------|
 | Boilerplate, formatting, tagging | `claude-haiku-4-5` | Tags, metadata, file naming |
 | Scripts, storyboards, QA | `claude-sonnet-4-6` | Screenwriting, shot breakdown, reviews |
 | Architecture, strategy, world bible | `claude-opus-4-7` | World model, governance, creative direction |
+
+**Webapp-side (OpenAI via direct API — Director's preference, faster + paid):**
+
+| Agent | Model | Notes |
+|-------|-------|-------|
+| `EXEC-CONC` (Concierge chat) | `gpt-5.4-mini` (default) | Override with `OPENAI_MODEL` env var. Reasoning model — `OPENAI_REASONING_EFFORT=low` for fast chat. |
+
+> Live model catalogue: **developers.openai.com/api/docs/models** — always verify model IDs against this page; assistant training data may lag.
 
 ### ECC Hooks Active (project-level)
 
