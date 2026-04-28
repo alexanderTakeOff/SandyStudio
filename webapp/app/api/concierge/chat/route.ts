@@ -7,6 +7,8 @@
 
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import type { Stream } from 'openai/streaming';
+import type { ChatCompletionChunk } from 'openai/resources/chat/completions';
 import { getServerEnv } from '@/lib/env';
 
 export const runtime = 'nodejs';
