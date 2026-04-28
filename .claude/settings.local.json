@@ -92,7 +92,9 @@
       "WebFetch(domain:platform.openai.com)",
       "WebFetch(domain:openai.com)",
       "Bash(curl -s -o /dev/null -w \"Next.js \\(3000\\): %{http_code}\\\\n\" http://localhost:3000/api/inngest)",
-      "Bash(curl -s -o /dev/null -w \"Inngest dev \\(8288\\): %{http_code}\\\\n\" http://localhost:8288/health)"
+      "Bash(curl -s -o /dev/null -w \"Inngest dev \\(8288\\): %{http_code}\\\\n\" http://localhost:8288/health)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" pr list --head claude/condescending-pare-61c4a7 --json number,url,title,state)",
+      "Bash('C:/Program Files/GitHub CLI/gh.exe' pr create --title 'feat\\(sprint-9\\): Phase 2+3 — webapp shell, theme, Concierge, Inngest worker' --body ' *)"
     ]
   }
 }
