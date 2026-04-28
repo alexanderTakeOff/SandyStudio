@@ -11,13 +11,11 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 2 COMPLETE — webapp scaffold + theme + StudioShell + Concierge
-Blocker:  Director must run `npx supabase db push` to apply 0007 (asset_relations) +
-          0008 (activity_events). Then regen types.gen.ts.
-          Optional but needed for Concierge: ANTHROPIC_API_KEY in webapp/.env.local.
-Next:     SPRINT 9 / Phase 3 — Inngest worker + concurrency limits (webapp.md §4)
-          + first end-to-end test job (Inngest dev → Supabase.jobs row).
-Mode:     ===1=== ANALYTICS (default — read-only)
+Phase:    SPRINT 9 / Phase 3 COMPLETE — Inngest worker live, end-to-end smoke test PASSED
+Blocker:  none
+Next:     SPRINT 9 / Phase 4 — Agent job functions (11 EXEC-* handlers per webapp.md §4.1)
+          Plus: lib/agents/runner.ts, gate.ts, prompts.ts, lib/budget.ts, lib/governance.ts
+Mode:     ===5=== EDIT (Director active)
 Date:     2026-04-28
 ```
 
