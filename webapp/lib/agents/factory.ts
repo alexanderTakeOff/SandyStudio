@@ -52,12 +52,16 @@ export interface AgentFunctionSpec<EventName extends string = string> {
   retries?: number;
   /**
    * Optional next-event emitter. Receives the saved asset id and original
-   * event data, returns the next event payload. Return null = no fan-out.
+   * event data, returns one event, an array of events for fan-out, or null
+   * for no further dispatch.
    */
   nextEvent?: (
     saved: { assetId: string },
     eventData: Record<string, unknown>
-  ) => { name: string; data: Record<string, unknown> } | null;
+  ) =>
+    | { name: string; data: Record<string, unknown> }
+    | Array<{ name: string; data: Record<string, unknown> }>
+    | null;
   /**
    * Optional resolver for runAgent extras (shotId, section, collectionPoint,
    * youtubeVideoId). Defaults to no extras.
