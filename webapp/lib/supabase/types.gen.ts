@@ -14,6 +14,70 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_events: {
+        Row: {
+          actor: string | null
+          asset_id: string | null
+          created_at: string
+          description: string | null
+          episode_id: string | null
+          event_type: string
+          id: string
+          job_id: string | null
+          metadata: Json | null
+          severity: string
+          title: string
+        }
+        Insert: {
+          actor?: string | null
+          asset_id?: string | null
+          created_at?: string
+          description?: string | null
+          episode_id?: string | null
+          event_type: string
+          id?: string
+          job_id?: string | null
+          metadata?: Json | null
+          severity?: string
+          title: string
+        }
+        Update: {
+          actor?: string | null
+          asset_id?: string | null
+          created_at?: string
+          description?: string | null
+          episode_id?: string | null
+          event_type?: string
+          id?: string
+          job_id?: string | null
+          metadata?: Json | null
+          severity?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_events_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_events_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_prompts: {
         Row: {
           agent_id: string
@@ -189,6 +253,45 @@ export type Database = {
             columns: ["episode_id"]
             isOneToOne: false
             referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      asset_relations: {
+        Row: {
+          created_at: string
+          id: string
+          relation_type: string
+          source_asset_id: string
+          target_asset_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          relation_type: string
+          source_asset_id: string
+          target_asset_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          relation_type?: string
+          source_asset_id?: string
+          target_asset_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asset_relations_source_asset_id_fkey"
+            columns: ["source_asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_relations_target_asset_id_fkey"
+            columns: ["target_asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
             referencedColumns: ["id"]
           },
         ]
