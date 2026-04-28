@@ -119,6 +119,13 @@ export async function recordCost(
     cost_usd: costUsd,
     recorded_at: new Date().toISOString(),
   };
+  const metadata: Json = {
+    job_id: record.job_id,
+    episode_id: record.episode_id,
+    agent_id: record.agent_id,
+    cost_usd: record.cost_usd,
+    recorded_at: record.recorded_at,
+  };
   const { error: insErr } = await supabase.from('activity_events').insert({
     event_type: 'cost_recorded',
     severity: 'info',
@@ -127,7 +134,7 @@ export async function recordCost(
     actor: agentId,
     job_id: jobId,
     episode_id: episodeId,
-    metadata: record as unknown as Record<string, unknown>,
+    metadata,
   });
 
   if (insErr) {
