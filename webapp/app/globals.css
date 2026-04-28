@@ -1,0 +1,256 @@
+/* ──────────────────────────────────────────────────────────────────────────
+ * app/globals.css
+ * Theme tokens per specs/system/uiux.md §6.5 — slate_blue_cinematic (default),
+ * sand_gold_studio, deep_purple_night. Components must consume these vars,
+ * never raw hex (uiux.md §6.4).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Defaults (applied when no [data-theme] is set) ──────────────────────── */
+:root,
+:root[data-theme='slate_blue_cinematic'] {
+  /* Background */
+  --bg-base:               #0F172A;
+  --bg-elevated:           #111827;
+  --bg-soft:               #1E293B;
+  --bg-gradient-from:      #0B1120;
+  --bg-gradient-to:        #1E293B;
+
+  /* Glass panels */
+  --panel-glass-bg:           rgba(15, 23, 42, 0.62);
+  --panel-glass-bg-strong:    rgba(15, 23, 42, 0.78);
+  --panel-glass-border:       rgba(148, 163, 184, 0.22);
+  --panel-glass-border-active: rgba(96, 165, 250, 0.42);
+  --panel-glass-blur:         12px;
+  --panel-shadow:             0 12px 36px rgba(0, 0, 0, 0.42);
+  --panel-hover-bg:           rgba(30, 41, 59, 0.65);
+
+  /* Text */
+  --text-primary:   #E5E7EB;
+  --text-secondary: #94A3B8;
+  --text-muted:     #64748B;
+  --text-inverse:   #0B1120;
+
+  /* Accents */
+  --accent-primary:   #3B82F6;
+  --accent-secondary: #6366F1;
+  --accent-tertiary:  #06B6D4;
+  --accent-success:   #22C55E;
+  --accent-warning:   #F59E0B;
+  --accent-danger:    #EF4444;
+  --accent-info:      #38BDF8;
+
+  /* Status chips */
+  --status-draft:    #64748B;
+  --status-review:   #38BDF8;
+  --status-revision: #F59E0B;
+  --status-approved: #22C55E;
+  --status-locked:   #A78BFA;
+  --status-blocked:  #EF4444;
+  --status-running:  #3B82F6;
+  --status-completed:#22C55E;
+  --status-warning:  #F59E0B;
+  --status-danger:   #EF4444;
+  --status-muted:    #475569;
+
+  /* Asset taxonomy (tokens map to theme accents) */
+  --asset-script:     var(--accent-info);
+  --asset-storyboard: var(--accent-secondary);
+  --asset-image:      #EC4899;
+  --asset-video:      var(--accent-primary);
+  --asset-audio:      var(--accent-warning);
+  --asset-review:     var(--accent-tertiary);
+  --asset-production: var(--accent-success);
+  --asset-status:     var(--text-secondary);
+  --asset-bible:      #F472B6;
+  --asset-spec:       var(--text-muted);
+  --asset-blocked:    var(--accent-danger);
+
+  /* Ambient layer */
+  --ambient-node-opacity:      0.34;
+  --ambient-line-opacity:      0.10;
+  --ambient-glow-strength:     0.22;
+  --ambient-motion-intensity:  0.35;
+  --ambient-parallax-intensity: 0.25;
+
+  /* Typography */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ─── Sand Gold Studio — warmer long-session ─────────────────────────────── */
+:root[data-theme='sand_gold_studio'] {
+  --bg-base:          #1B1612;
+  --bg-elevated:      #221B16;
+  --bg-soft:          #2A2118;
+  --bg-gradient-from: #14100C;
+  --bg-gradient-to:   #2D2419;
+
+  --panel-glass-bg:           rgba(27, 22, 18, 0.62);
+  --panel-glass-bg-strong:    rgba(27, 22, 18, 0.80);
+  --panel-glass-border:       rgba(212, 165, 116, 0.20);
+  --panel-glass-border-active: rgba(245, 158, 11, 0.45);
+  --panel-glass-blur:         12px;
+  --panel-shadow:             0 12px 36px rgba(0, 0, 0, 0.50);
+  --panel-hover-bg:           rgba(42, 33, 24, 0.70);
+
+  --text-primary:   #F5E9D7;
+  --text-secondary: #C9B79B;
+  --text-muted:     #8C7A60;
+  --text-inverse:   #14100C;
+
+  --accent-primary:   #D4A574;
+  --accent-secondary: #E0834C;
+  --accent-tertiary:  #B89968;
+  --accent-success:   #84CC16;
+  --accent-warning:   #F59E0B;
+  --accent-danger:    #DC2626;
+  --accent-info:      #FBBF24;
+
+  --status-draft:    #8C7A60;
+  --status-review:   #FBBF24;
+  --status-revision: #E0834C;
+  --status-approved: #84CC16;
+  --status-locked:   #B89968;
+  --status-blocked:  #DC2626;
+  --status-running:  #D4A574;
+  --status-completed:#84CC16;
+  --status-warning:  #F59E0B;
+  --status-danger:   #DC2626;
+  --status-muted:    #6B5C46;
+
+  --asset-script:     var(--accent-info);
+  --asset-storyboard: var(--accent-secondary);
+  --asset-image:      #F472B6;
+  --asset-video:      var(--accent-primary);
+  --asset-audio:      var(--accent-warning);
+  --asset-review:     var(--accent-tertiary);
+  --asset-production: var(--accent-success);
+  --asset-status:     var(--text-secondary);
+  --asset-bible:      #E879A9;
+  --asset-spec:       var(--text-muted);
+  --asset-blocked:    var(--accent-danger);
+}
+
+/* ─── Deep Purple Night — creative night work ────────────────────────────── */
+:root[data-theme='deep_purple_night'] {
+  --bg-base:          #0E0A1A;
+  --bg-elevated:      #150E26;
+  --bg-soft:          #1F1535;
+  --bg-gradient-from: #08051A;
+  --bg-gradient-to:   #1F1535;
+
+  --panel-glass-bg:           rgba(14, 10, 26, 0.62);
+  --panel-glass-bg-strong:    rgba(14, 10, 26, 0.82);
+  --panel-glass-border:       rgba(167, 139, 250, 0.24);
+  --panel-glass-border-active: rgba(167, 139, 250, 0.55);
+  --panel-glass-blur:         14px;
+  --panel-shadow:             0 16px 44px rgba(0, 0, 0, 0.55);
+  --panel-hover-bg:           rgba(31, 21, 53, 0.72);
+
+  --text-primary:   #ECE9F8;
+  --text-secondary: #A89DC9;
+  --text-muted:     #6E6390;
+  --text-inverse:   #08051A;
+
+  --accent-primary:   #A78BFA;
+  --accent-secondary: #C084FC;
+  --accent-tertiary:  #F0ABFC;
+  --accent-success:   #4ADE80;
+  --accent-warning:   #FACC15;
+  --accent-danger:    #F87171;
+  --accent-info:      #818CF8;
+
+  --status-draft:    #6E6390;
+  --status-review:   #818CF8;
+  --status-revision: #FACC15;
+  --status-approved: #4ADE80;
+  --status-locked:   #C084FC;
+  --status-blocked:  #F87171;
+  --status-running:  #A78BFA;
+  --status-completed:#4ADE80;
+  --status-warning:  #FACC15;
+  --status-danger:   #F87171;
+  --status-muted:    #534B70;
+
+  --asset-script:     var(--accent-info);
+  --asset-storyboard: var(--accent-primary);
+  --asset-image:      var(--accent-tertiary);
+  --asset-video:      var(--accent-secondary);
+  --asset-audio:      var(--accent-warning);
+  --asset-review:     #67E8F9;
+  --asset-production: var(--accent-success);
+  --asset-status:     var(--text-secondary);
+  --asset-bible:      #F0ABFC;
+  --asset-spec:       var(--text-muted);
+  --asset-blocked:    var(--accent-danger);
+}
+
+/* ─── Ambient mode overrides (uiux.md §7.2) ──────────────────────────────── */
+:root[data-ambient='reduced'] {
+  --ambient-motion-intensity:  0;
+  --ambient-parallax-intensity: 0;
+  --ambient-line-opacity:      0.06;
+  --ambient-node-opacity:      0.20;
+}
+:root[data-ambient='off'] {
+  --ambient-motion-intensity:  0;
+  --ambient-parallax-intensity: 0;
+  --ambient-line-opacity:      0;
+  --ambient-node-opacity:      0;
+  --ambient-glow-strength:     0;
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ambient-motion-intensity:  0;
+    --ambient-parallax-intensity: 0;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ─── Base ───────────────────────────────────────────────────────────────── */
+html,
+body {
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    var(--bg-gradient-from) 0%,
+    var(--bg-gradient-to) 100%
+  );
+  background-attachment: fixed;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+}
+
+/* Subtle scrollbar matching theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--panel-glass-border);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--panel-glass-border-active);
+}
