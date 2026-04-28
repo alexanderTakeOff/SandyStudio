@@ -219,8 +219,10 @@
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
-html,
-body {
+/* Gradient lives on <html>, NOT <body>, so the AmbientAssetField canvas can
+ * render BETWEEN the html background and the body content without being
+ * covered by an opaque body fill. */
+html {
   height: 100%;
   background: linear-gradient(
     180deg,
@@ -228,6 +230,10 @@ body {
     var(--bg-gradient-to) 100%
   );
   background-attachment: fixed;
+}
+body {
+  height: 100%;
+  background: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
