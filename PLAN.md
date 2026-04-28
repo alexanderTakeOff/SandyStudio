@@ -11,23 +11,29 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 8 COMPLETE — Mock pipeline validated, all PA tasks logged
-Blocker:  none
-Next:     SPRINT 9 — Build webapp (LOCAL-FIRST: Next.js + Inngest + PM2; Supabase in cloud)
-          Deployment: NOT Vercel. Server runs locally on Director's workstation.
-          Build order:
-            1. Supabase project (cloud) + all DB migrations (schema from webapp.md §3)
-            2. Next.js 15 project scaffold at C:\SandyStudio\webapp\ + Supabase client
-            3. Inngest worker (same Node process) + concurrency limits (webapp.md §4.2.1)
-            4. Agent job functions (webapp.md §4)
-            5. API routes (webapp.md §5) — incl. /api/episodes/[id]/sync-edl (FCPXML round-trip)
-            6. UI pages: Approval Queue FIRST (W-003), then Dashboard, then Settings
-            7. Approval Authority Matrix wizard + Settings page (W-005)
-            8. PM2 ecosystem.config.js for prod local-first deployment
-          Start point: supabase init + create migrations from webapp.md §3 schema
-Mode:     ===1=== ANALYTICS (default — migration complete, back to read-only)
-Date:     2026-04-24
+Phase:    SPRINT 9 / Phase 1 COMPLETE — Supabase schema live in cloud
+Blocker:  ⚠️  SUPABASE_SERVICE_ROLE_KEY was exposed in session transcript → rotate at
+              https://supabase.com/dashboard/project/akstennzrnkvexjgzhxv/settings/api
+              then update webapp/.env.local with new key.
+Next:     SPRINT 9 / Phase 2 — Next.js 15 scaffold + Supabase clients
+          (webapp/package.json, tsconfig.json, next.config.ts, tailwind.config.ts,
+           app/(studio)/layout.tsx auth-guard, lib/supabase/client.ts + server.ts)
+Mode:     ===1=== ANALYTICS (default — read-only)
+Date:     2026-04-28
 ```
+
+### Sprint 9 Phase status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Supabase init + migrations (cloud) | ✅ COMPLETE 2026-04-28 |
+| 2 | Next.js 15 scaffold + Supabase clients | 🟢 NEXT |
+| 3 | Inngest worker + concurrency limits | ⏳ pending |
+| 4 | Agent job functions (11 Inngest fns) | ⏳ pending |
+| 5 | API routes (Next.js App Router) | ⏳ pending |
+| 6 | UI: Approval Queue → Dashboard → Settings | ⏳ pending |
+| 7 | Approval Authority Matrix wizard | ⏳ pending |
+| 8 | PM2 ecosystem + Tailscale doc | ⏳ pending |
 
 ---
 
