@@ -195,24 +195,25 @@ export function createAgentInngestFunction<E extends string>(
       });
 
       // ── Step 6: fan-out (optional, single or array) ────────────────────────
+      // Factory is generic over event names; per-function `nextEvent`
+      // callbacks shape payloads. Cast at the boundary — runtime correctness
+      // is the call site's responsibility, not the factory's.
+      type SendEventPayload = Parameters<typeof step.sendEvent>[1];
+
       if (spec.nextEvent) {
         const next = spec.nextEvent(saved, eventData, exec.result);
         if (next) {
-          // Inngest's step.sendEvent accepts either one event or an array.
-          await step.sendEvent('fan-out', Array.isArray(next) ? next : next);
+          await step.sendEvent('fan-out', next as SendEventPayload);
         }
       }
       // runAgent may also return its own next_event (e.g. EXEC-PUB → published).
       if (exec.result.next_event) {
-        await step.sendEvent('runner-next', exec.result.next_event);
+        await step.sendEvent('runner-next', exec.result.next_event as SendEventPayload);
       }
       if (exec.result.fan_out_events && exec.result.fan_out_events.length > 0) {
         await step.sendEvent(
           'runner-fan-out',
-          exec.result.fan_out_events as Array<{
-            name: string;
-            data: Record<string, unknown>;
-          }>
+          exec.result.fan_out_events as unknown as SendEventPayload,
         );
       }
 
