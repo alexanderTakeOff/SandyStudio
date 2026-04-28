@@ -359,6 +359,21 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-25 | PILOT MIGRATION: 19 files moved to FILMS/Sandy/S01/ (4 root briefs, 4 bibles, 1 script, 1 storyboard, 7 reviews, 1 distribution, 3 S00 demos→archive) | Claude Code |
 | 2026-04-25 | .gitignore: FILMS/ added (films are not git-tracked); .claude/worktrees/ added | Claude Code |
 | 2026-04-25 | Studio root cleaned: bibles/, scripts/, storyboards/, reviews/ removed (empty); SS-* files no longer at root | Claude Code |
+| 2026-04-28 | SPRINT 9 BEGIN — build webapp (local-first: Next.js + Inngest + PM2; Supabase cloud) | Director/CEO |
+| 2026-04-28 | webapp/package.json created — supabase@^2.95.3 devDep | Claude Code |
+| 2026-04-28 | webapp/supabase/ initialized (supabase init) | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0001_enums.sql — episode_status (22), asset_status (9), job_status (6) | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0002_core_tables.sql — 7 tables + pgcrypto + updated_at triggers + filename CHECK | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0003_approval_authority.sql — approval_authority + publish_never_ai + visual_never_ai constraints | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0004_hybrid_sync_tables.sql — agent_prompts + app_config | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0005_indexes.sql — 12 indexes for hot query paths | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0006_rls_policies.sql — RLS on all 10 tables, authenticated full, anon none | Claude Code |
+| 2026-04-28 | .env.example updated — SUPABASE + INNGEST + APP_URL sections | Claude Code |
+| 2026-04-28 | .claude/settings.local.json — broad Bash/Edit/Write/PowerShell allowlist added (option B) | Claude Code |
+| 2026-04-28 | Supabase project linked: akstennzrnkvexjgzhxv (sandystudio) | Director/CEO |
+| 2026-04-28 | supabase db push — all 6 migrations applied to cloud (0001..0006) | Director/CEO |
+| 2026-04-28 | webapp/lib/supabase/types.gen.ts generated — 10 tables, 3 enums | Claude Code |
+| 2026-04-28 | Phase 1 COMPLETE — schema verified via types.gen.ts | Claude Code |
 
 ---
 
