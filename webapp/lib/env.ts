@@ -44,6 +44,10 @@ export function getServerEnv() {
       'SUPABASE_SERVICE_ROLE_KEY',
       process.env.SUPABASE_SERVICE_ROLE_KEY,
     ),
+    // Concierge LLM — primary provider is OpenAI (Director's account).
+    OPENAI_API_KEY: optional(process.env.OPENAI_API_KEY),
+    OPENAI_MODEL: optional(process.env.OPENAI_MODEL),
+    // Optional Anthropic fallback (kept for future cost-routing).
     ANTHROPIC_API_KEY: optional(process.env.ANTHROPIC_API_KEY),
     INNGEST_EVENT_KEY: optional(process.env.INNGEST_EVENT_KEY),
     INNGEST_SIGNING_KEY: optional(process.env.INNGEST_SIGNING_KEY),
