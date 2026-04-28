@@ -396,6 +396,21 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-28 | npm run build PASSED — 9 routes, 102 kB shared bundle | Claude Code |
 | 2026-04-28 | CLAUDE.md §7.5 added: UI/UX Source of Truth + EXEC-CONC in §4 Level 3 | Claude Code |
 | 2026-04-28 | Phase 2 COMPLETE — webapp loads, themes switch, Concierge ready (needs ANTHROPIC_API_KEY) | Claude Code |
+| 2026-04-28 | Concierge SWITCHED from Anthropic to OpenAI (Director request — paid OpenAI account, fast latency) | Director/CEO |
+| 2026-04-28 | Default model: gpt-5.4-mini (per developers.openai.com/api/docs/models) — Director updated my outdated assumption | Director/CEO |
+| 2026-04-28 | OpenAI tunables wired: OPENAI_MAX_OUTPUT_TOKENS, OPENAI_REASONING_EFFORT, OPENAI_TEMPERATURE (gpt-5.x family detected via regex; temperature/reasoning passed conditionally) | Claude Code |
+| 2026-04-28 | FIX: Ambient field invisible — body's solid gradient was covering canvas; moved gradient to <html>, body transparent, canvas at z-0 | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0007 + 0008 pushed to cloud — types.gen.ts regenerated (12 tables) | Director/CEO |
+| 2026-04-28 | Director created Supabase Auth user + logged in successfully | Director/CEO |
+| 2026-04-28 | Phase 3 START — Inngest worker | Director/CEO |
+| 2026-04-28 | inngest@^3.54.1 installed | Claude Code |
+| 2026-04-28 | lib/inngest/client.ts (typed event schema) + lib/inngest/concurrency.ts (CONCURRENCY_LIMITS per webapp.md §4.2.1) | Claude Code |
+| 2026-04-28 | inngest/functions/ping.ts smoke-test job + inngest/index.ts registry | Claude Code |
+| 2026-04-28 | app/api/inngest/route.ts (serve handler) + app/api/jobs/ping/route.ts (event trigger) | Claude Code |
+| 2026-04-28 | Jobs page wired to live `jobs` table + Send ping / Refresh actions | Claude Code |
+| 2026-04-28 | npm script: inngest:dev (npx inngest-cli@latest dev -u http://localhost:3000/api/inngest) | Claude Code |
+| 2026-04-28 | FIX: middleware was redirecting /api/inngest webhook PUTs to /login → infinite sync loop. Webhook paths now bypass auth | Claude Code |
+| 2026-04-28 | Phase 3 SMOKE TEST PASSED — event sent via curl → Inngest handler → Supabase jobs row (RUNNING → COMPLETED, output_ref=pong, dur=35.5s in dev mode) | Claude Code |
 
 ---
 
