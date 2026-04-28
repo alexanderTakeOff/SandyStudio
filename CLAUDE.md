@@ -198,6 +198,7 @@ Agents at this level execute production tasks. They read briefs, produce outputs
 | Agent ID | Name | Role | Output Type | File |
 |----------|------|------|-------------|------|
 | `EXEC-ORCH` | Pipeline Orchestrator | Manages flow between agents; owns project state | `.md` state | `agents/exec/orchestrator.md` |
+| `EXEC-CONC` | Studio Concierge | Conversational read/route entry point in webapp; never approves | chat reply | `agents/exec/concierge.md` |
 | `EXEC-SW` | Screenwriter | Writes full scripts from creative brief | `.md` → `scripts/` | `agents/exec/screenwriter.md` |
 | `EXEC-SREV` | Script Reviewer | QA: checks script vs style bible, world model, brief | `.md` → `reviews/` | `agents/exec/script_reviewer.md` |
 | `EXEC-STY` | Style Creator | Creates style bible: audience, visual philosophy, approach | `.md` → `bibles/style/` | `agents/exec/style_creator.md` |
@@ -245,6 +246,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 | Agent ID | ECC Skill / Agent | Purpose |
 |----------|-------------------|---------|
 | `EXEC-ORCH` | `/orchestrate` command, `ralphinho-rfc-pipeline` skill | Coordinate full episode pipeline, RFC-driven multi-agent execution |
+| `EXEC-CONC` | OpenAI Chat Completions (GPT-5 family, default `gpt-5.4-mini`) | Studio Concierge — conversational entry point in webapp; read-only, never approves |
 | `EXEC-SW` | `agentic-engineering` skill | Eval-first script generation with quality gates |
 | `EXEC-SREV` | `code-reviewer` agent, `silent-failure-hunter` agent, `eval-harness` skill | Script QA against style bible and brief, silent-failure detection, formal evaluation |
 | `EXEC-STY` | `gan-design` command | Generate and validate visual style bible |
@@ -277,13 +279,23 @@ Hook scripts in `C:\SandyStudio\.claude\hooks\`. Registered in `.claude/settings
 | `naming-validator.cjs` | Write | Validates new files in `scripts/`, `storyboards/`, `bibles/`, `prompts/`, `reviews/` match the SS-... convention |
 | `locked-status-guard.cjs` | Edit | Blocks edits to any `*-LOCKED.*` file (CLAUDE.md §7.3) |
 
-### ECC Model Routing Policy (BOARD-FIN enforces)
+### Model Routing Policy (BOARD-FIN enforces)
+
+**Studio production agents (Anthropic via Claude Code SDK):**
 
 | Task Complexity | Model | Examples |
 |----------------|-------|---------|
 | Boilerplate, formatting, tagging | `claude-haiku-4-5` | Tags, metadata, file naming |
 | Scripts, storyboards, QA | `claude-sonnet-4-6` | Screenwriting, shot breakdown, reviews |
 | Architecture, strategy, world bible | `claude-opus-4-7` | World model, governance, creative direction |
+
+**Webapp-side (OpenAI via direct API — Director's preference, faster + paid):**
+
+| Agent | Model | Notes |
+|-------|-------|-------|
+| `EXEC-CONC` (Concierge chat) | `gpt-5.4-mini` (default) | Override with `OPENAI_MODEL` env var. Reasoning model — `OPENAI_REASONING_EFFORT=low` for fast chat. |
+
+> Live model catalogue: **developers.openai.com/api/docs/models** — always verify model IDs against this page; assistant training data may lag.
 
 ### ECC Hooks Active (project-level)
 
@@ -335,6 +347,27 @@ Hook scripts in `C:\SandyStudio\.claude\hooks\`. Registered in `.claude/settings
 
 ---
 
+## 7.5 UI/UX SOURCE OF TRUTH
+
+Before any visual, layout, theme, animation, shell, dashboard, approval UI, ambient background, or asset taxonomy change, read **`specs/system/uiux.md`**.
+
+It is the source of truth for:
+- SandyStudio visual direction (cinematic production OS, not flashy/hacker/gamified);
+- theme tokens and the 3 presets (`slate_blue_cinematic` default, `sand_gold_studio`, `deep_purple_night`);
+- StudioShell structure (Sidebar + Topbar + ContentFrame + AmbientAssetField);
+- Approval Queue UX (Preview → Context → Decision flow);
+- Ambient Asset Field behavior (subtle, non-blocking, no navigation in v1);
+- asset visual taxonomy (`config/uiux.yaml`);
+- motion/accessibility rules (respect `prefers-reduced-motion`).
+
+**Do not hardcode colors directly inside components — use semantic theme tokens** (CSS variables defined in `webapp/app/globals.css`).
+
+**The Concierge (`EXEC-CONC`) is the conversational entry point** for ad-hoc Director questions — `agents/exec/concierge.md`. It is read-only in Sprint 9; tools and Inngest dispatch land in Sprint 10.
+
+If implementation changes visual behavior, update `specs/system/uiux.md` in the same task.
+
+---
+
 ## 8. CURRENT PROJECT STATUS
 
 > ⚠️ This section is a snapshot — for the live state always read `PLAN.md`.
@@ -350,10 +383,21 @@ Hook scripts in `C:\SandyStudio\.claude\hooks\`. Registered in `.claude/settings
 | S3 | Protocols + Technical Decisions | ✅ COMPLETE 2026-04-24 |
 | S4 | Distribution specs (YouTube, metadata, analytics) | ✅ COMPLETE 2026-04-24 |
 | S5 | All 25 agent instructions | ✅ COMPLETE 2026-04-24 |
-| S6 | Web app spec (webapp.md) — Next.js + Supabase + Inngest | ✅ COMPLETE 2026-04-24 |
+| S6 | Web app spec (webapp.md + uiux.md) — Next.js + Supabase + Inngest | ✅ COMPLETE 2026-04-28 |
 | S7 | Mock provider layer + config/providers.yaml + config/defaults.yaml | ✅ COMPLETE 2026-04-24 |
 | S8 | Mock pipeline validation — PILOT SS-S01-E01 "The Red Carpet" end-to-end | ✅ COMPLETE 2026-04-24 |
-| S9 | **Build webapp** (Next.js + Supabase + Inngest per specs/system/webapp.md) | 🟢 NEXT |
+| S9 | **Build webapp** (Next.js + Supabase + Inngest, local-first) | 🟡 IN PROGRESS — Phases 1–3 ✅, Phase 4 next |
+
+**Sprint 9 — what's actually live (as of 2026-04-28):**
+- Supabase cloud schema: 12 tables, 3 enums, RLS, hard constraints (`publish_never_ai`, `visual_never_ai`)
+- Next.js 15 + React 19 webapp at `webapp/` — runs locally via `npm run dev`
+- Auth: Supabase email/password, single Director principal (auth.md §1)
+- 3 themes (slate_blue_cinematic default + sand_gold_studio + deep_purple_night) + Settings → Appearance
+- StudioShell: Sidebar + Topbar + ContentFrame + AmbientAssetField (R3F, subtle)
+- Studio Concierge (`EXEC-CONC`) — floating chat bottom-right, OpenAI streaming, voice input
+- Inngest worker — `/api/inngest`, smoke-tested end-to-end with `studio-ping` function
+- Pages: Dashboard, Approval Queue, Episodes, Series, Budget, Jobs (Jobs is the only one wired to live data; others are placeholders for Phases 5–6)
+- Local dev requires **2 terminals**: `npm run dev` + `npm run inngest:dev`
 
 **PILOT episode produced (mock mode, $0.00):**
 - Episode: SS-S01-E01 "The Red Carpet" — 60s silent physical comedy

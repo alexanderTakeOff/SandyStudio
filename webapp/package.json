@@ -1,12 +1,46 @@
 {
   "name": "sandystudio-webapp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "SandyStudio production webapp — Next.js 15 + Supabase + Inngest (local-first). See specs/system/webapp.md.",
+  "description": "SandyStudio production webapp — Next.js 15 + Supabase + Inngest (local-first). See specs/system/webapp.md and specs/system/uiux.md.",
   "scripts": {
-    "supabase": "supabase"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "supabase": "supabase",
+    "gen:types": "supabase gen types typescript --linked --schema public > lib/supabase/types.gen.ts",
+    "inngest:dev": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^9.0.0-rc.0",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.46.2",
+    "clsx": "^2.1.1",
+    "inngest": "^3.54.1",
+    "lucide-react": "^0.468.0",
+    "next": "^15.1.0",
+    "openai": "^4.104.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^9.0.1",
+    "tailwind-merge": "^2.5.5",
+    "three": "^0.171.0"
   },
   "devDependencies": {
-    "supabase": "^2.95.3"
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2",
+    "@types/three": "^0.171.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.1.0",
+    "postcss": "^8.4.49",
+    "supabase": "^2.95.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
   }
 }

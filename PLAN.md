@@ -11,14 +11,11 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 1 COMPLETE — Supabase schema live in cloud
-Blocker:  ⚠️  SUPABASE_SERVICE_ROLE_KEY was exposed in session transcript → rotate at
-              https://supabase.com/dashboard/project/akstennzrnkvexjgzhxv/settings/api
-              then update webapp/.env.local with new key.
-Next:     SPRINT 9 / Phase 2 — Next.js 15 scaffold + Supabase clients
-          (webapp/package.json, tsconfig.json, next.config.ts, tailwind.config.ts,
-           app/(studio)/layout.tsx auth-guard, lib/supabase/client.ts + server.ts)
-Mode:     ===1=== ANALYTICS (default — read-only)
+Phase:    SPRINT 9 / Phase 3 COMPLETE — Inngest worker live, end-to-end smoke test PASSED
+Blocker:  none
+Next:     SPRINT 9 / Phase 4 — Agent job functions (11 EXEC-* handlers per webapp.md §4.1)
+          Plus: lib/agents/runner.ts, gate.ts, prompts.ts, lib/budget.ts, lib/governance.ts
+Mode:     ===5=== EDIT (Director active)
 Date:     2026-04-28
 ```
 
@@ -26,14 +23,23 @@ Date:     2026-04-28
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Supabase init + migrations (cloud) | ✅ COMPLETE 2026-04-28 |
-| 2 | Next.js 15 scaffold + Supabase clients | 🟢 NEXT |
-| 3 | Inngest worker + concurrency limits | ⏳ pending |
-| 4 | Agent job functions (11 Inngest fns) | ⏳ pending |
-| 5 | API routes (Next.js App Router) | ⏳ pending |
-| 6 | UI: Approval Queue → Dashboard → Settings | ⏳ pending |
-| 7 | Approval Authority Matrix wizard | ⏳ pending |
-| 8 | PM2 ecosystem + Tailscale doc | ⏳ pending |
+| 1 | Supabase init + migrations (cloud)            | ✅ COMPLETE 2026-04-28 |
+| 2 | Next.js scaffold + theme + StudioShell + Concierge | ✅ COMPLETE 2026-04-28 |
+| 3 | Inngest worker + concurrency limits + ping smoke test | ✅ COMPLETE 2026-04-28 |
+| 4 | Agent job functions (11 Inngest fns)          | 🟢 NEXT |
+| 5 | API routes (Next.js App Router)               | ⏳ pending |
+| 6 | UI: Approval Queue + Dashboard + Budget data wiring | ⏳ pending |
+| 7 | Approval Authority Matrix wizard              | ⏳ pending |
+| 8 | PM2 ecosystem + Tailscale doc                 | ⏳ pending |
+
+### UI/UX implementation note
+
+Any task touching visual UI must keep `specs/system/uiux.md` synchronized:
+1. Read `specs/system/uiux.md` first.
+2. Confirm changes follow the active theme/token system — no raw hex in components.
+3. Approval Queue remains the highest-priority UI path (Phase 6).
+4. Do NOT implement Interactive Asset Galaxy v2 unless explicitly planned.
+5. Update `specs/system/uiux.md` if visual rules change.
 
 ---
 
@@ -374,6 +380,37 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-28 | supabase db push — all 6 migrations applied to cloud (0001..0006) | Director/CEO |
 | 2026-04-28 | webapp/lib/supabase/types.gen.ts generated — 10 tables, 3 enums | Claude Code |
 | 2026-04-28 | Phase 1 COMPLETE — schema verified via types.gen.ts | Claude Code |
+| 2026-04-28 | uiux.md v0.2 added to master — visual system spec, theme presets, StudioShell, Approval Queue UX | Director/CEO |
+| 2026-04-28 | Phase 2 SCOPE EXPANDED — added theme system, StudioShell, AmbientAssetField (R3F), Concierge agent | Director/CEO |
+| 2026-04-28 | EXEC-CONC concierge.md v0.1 DRAFT — new conversational agent, read+route, no approval authority | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0007_asset_relations.sql — prep for v2 Asset Galaxy (uiux.md §17) | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0008_activity_events.sql — unified event feed (uiux.md §21) | Claude Code |
+| 2026-04-28 | config/uiux.yaml created — taxonomy + theme presets + ambient_limits | Claude Code |
+| 2026-04-28 | Next.js 15 scaffold complete — package.json, tsconfig, tailwind, postcss, eslint, middleware | Claude Code |
+| 2026-04-28 | Supabase clients: lib/supabase/{client,server,middleware}.ts + lib/env.ts (fail-fast per ARCH RULE #5) | Claude Code |
+| 2026-04-28 | Theme system: globals.css with 3 presets (slate_blue_cinematic default) + AppearanceProvider | Claude Code |
+| 2026-04-28 | UI primitives: Card, Badge, Button, StatusChip, Tooltip — semantic tokens only | Claude Code |
+| 2026-04-28 | StudioShell + Sidebar + Topbar + ContentFrame + AmbientAssetField (R3F) | Claude Code |
+| 2026-04-28 | ConciergePanel (chat skeleton) + /api/concierge/chat streaming Anthropic SDK | Claude Code |
+| 2026-04-28 | App routes: / (Dashboard), /approvals, /episodes, /series, /budget, /jobs, /settings, /login | Claude Code |
+| 2026-04-28 | npm run build PASSED — 9 routes, 102 kB shared bundle | Claude Code |
+| 2026-04-28 | CLAUDE.md §7.5 added: UI/UX Source of Truth + EXEC-CONC in §4 Level 3 | Claude Code |
+| 2026-04-28 | Phase 2 COMPLETE — webapp loads, themes switch, Concierge ready (needs ANTHROPIC_API_KEY) | Claude Code |
+| 2026-04-28 | Concierge SWITCHED from Anthropic to OpenAI (Director request — paid OpenAI account, fast latency) | Director/CEO |
+| 2026-04-28 | Default model: gpt-5.4-mini (per developers.openai.com/api/docs/models) — Director updated my outdated assumption | Director/CEO |
+| 2026-04-28 | OpenAI tunables wired: OPENAI_MAX_OUTPUT_TOKENS, OPENAI_REASONING_EFFORT, OPENAI_TEMPERATURE (gpt-5.x family detected via regex; temperature/reasoning passed conditionally) | Claude Code |
+| 2026-04-28 | FIX: Ambient field invisible — body's solid gradient was covering canvas; moved gradient to <html>, body transparent, canvas at z-0 | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0007 + 0008 pushed to cloud — types.gen.ts regenerated (12 tables) | Director/CEO |
+| 2026-04-28 | Director created Supabase Auth user + logged in successfully | Director/CEO |
+| 2026-04-28 | Phase 3 START — Inngest worker | Director/CEO |
+| 2026-04-28 | inngest@^3.54.1 installed | Claude Code |
+| 2026-04-28 | lib/inngest/client.ts (typed event schema) + lib/inngest/concurrency.ts (CONCURRENCY_LIMITS per webapp.md §4.2.1) | Claude Code |
+| 2026-04-28 | inngest/functions/ping.ts smoke-test job + inngest/index.ts registry | Claude Code |
+| 2026-04-28 | app/api/inngest/route.ts (serve handler) + app/api/jobs/ping/route.ts (event trigger) | Claude Code |
+| 2026-04-28 | Jobs page wired to live `jobs` table + Send ping / Refresh actions | Claude Code |
+| 2026-04-28 | npm script: inngest:dev (npx inngest-cli@latest dev -u http://localhost:3000/api/inngest) | Claude Code |
+| 2026-04-28 | FIX: middleware was redirecting /api/inngest webhook PUTs to /login → infinite sync loop. Webhook paths now bypass auth | Claude Code |
+| 2026-04-28 | Phase 3 SMOKE TEST PASSED — event sent via curl → Inngest handler → Supabase jobs row (RUNNING → COMPLETED, output_ref=pong, dur=35.5s in dev mode) | Claude Code |
 
 ---
 
