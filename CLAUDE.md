@@ -383,10 +383,21 @@ If implementation changes visual behavior, update `specs/system/uiux.md` in the 
 | S3 | Protocols + Technical Decisions | ✅ COMPLETE 2026-04-24 |
 | S4 | Distribution specs (YouTube, metadata, analytics) | ✅ COMPLETE 2026-04-24 |
 | S5 | All 25 agent instructions | ✅ COMPLETE 2026-04-24 |
-| S6 | Web app spec (webapp.md) — Next.js + Supabase + Inngest | ✅ COMPLETE 2026-04-24 |
+| S6 | Web app spec (webapp.md + uiux.md) — Next.js + Supabase + Inngest | ✅ COMPLETE 2026-04-28 |
 | S7 | Mock provider layer + config/providers.yaml + config/defaults.yaml | ✅ COMPLETE 2026-04-24 |
 | S8 | Mock pipeline validation — PILOT SS-S01-E01 "The Red Carpet" end-to-end | ✅ COMPLETE 2026-04-24 |
-| S9 | **Build webapp** (Next.js + Supabase + Inngest per specs/system/webapp.md + uiux.md) | 🟡 IN PROGRESS — Phases 1+2 ✅ |
+| S9 | **Build webapp** (Next.js + Supabase + Inngest, local-first) | 🟡 IN PROGRESS — Phases 1–3 ✅, Phase 4 next |
+
+**Sprint 9 — what's actually live (as of 2026-04-28):**
+- Supabase cloud schema: 12 tables, 3 enums, RLS, hard constraints (`publish_never_ai`, `visual_never_ai`)
+- Next.js 15 + React 19 webapp at `webapp/` — runs locally via `npm run dev`
+- Auth: Supabase email/password, single Director principal (auth.md §1)
+- 3 themes (slate_blue_cinematic default + sand_gold_studio + deep_purple_night) + Settings → Appearance
+- StudioShell: Sidebar + Topbar + ContentFrame + AmbientAssetField (R3F, subtle)
+- Studio Concierge (`EXEC-CONC`) — floating chat bottom-right, OpenAI streaming, voice input
+- Inngest worker — `/api/inngest`, smoke-tested end-to-end with `studio-ping` function
+- Pages: Dashboard, Approval Queue, Episodes, Series, Budget, Jobs (Jobs is the only one wired to live data; others are placeholders for Phases 5–6)
+- Local dev requires **2 terminals**: `npm run dev` + `npm run inngest:dev`
 
 **PILOT episode produced (mock mode, $0.00):**
 - Episode: SS-S01-E01 "The Red Carpet" — 60s silent physical comedy
