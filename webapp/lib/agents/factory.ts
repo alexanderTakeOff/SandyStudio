@@ -52,13 +52,15 @@ export interface AgentFunctionSpec<EventName extends string = string> {
   /** Inngest retry count. Default 2. */
   retries?: number;
   /**
-   * Optional next-event emitter. Receives the saved asset id and original
-   * event data, returns one event, an array of events for fan-out, or null
-   * for no further dispatch.
+   * Optional next-event emitter. Receives the saved asset id, original
+   * event data, AND the runAgent result (so callbacks can read metadata
+   * like shot counts). Returns one event, an array of events for fan-out,
+   * or null for no further dispatch.
    */
   nextEvent?: (
     saved: { assetId: string },
-    eventData: Record<string, unknown>
+    eventData: Record<string, unknown>,
+    result: AgentResult
   ) =>
     | { name: string; data: Record<string, unknown> }
     | Array<{ name: string; data: Record<string, unknown> }>
