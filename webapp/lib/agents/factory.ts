@@ -30,6 +30,7 @@ import {
   saveAgentOutput,
   type RunAgentArgs,
 } from './runner';
+import type { AgentResult } from './types';
 import { resolveModelId } from './registry';
 import { createSupabaseServiceRoleClient } from '../supabase/server';
 import type { AgentId } from './types';
