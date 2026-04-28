@@ -131,22 +131,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-EDIT': {
-      // EXEC-EDIT in Phase 4 mock mode: produce an animatic video asset AND
-      // fan out per-shot generation + music generation. Real mode will read
-      // shot ids from the storyboard; mock mode generates 3 deterministic shots.
+      // EXEC-EDIT in Phase 4 mock mode: produce an animatic video asset.
+      // Per-shot fan-out + music fan-out is dispatched by exec-edit.ts via
+      // its nextEvent callback (it reads shot_ids from this metadata).
+      // Real mode will read shot ids from the storyboard upstream.
       const llm = await mockLLM({ agentId, episodeId });
       const video = await mockVideo({ episodeId, shotId: 'animatic', durationSeconds: 60 });
       const shotIds = [1, 2, 3].map((act) => `${episodeId}-A${act}-SC01-SH01`);
-      const fanOut = [
-        ...shotIds.map((shotId) => ({
-          name: 'sandystudio/exec-vgen/generate-shot',
-          data: { episodeId, shotId, animaticAssetId: '<filled-by-factory>' },
-        })),
-        {
-          name: 'sandystudio/exec-mgen/generate-music',
-          data: { episodeId, animaticAssetId: '<filled-by-factory>', section: 'main' },
-        },
-      ];
       return {
         outputKind: 'video-mp4',
         result: {
@@ -157,9 +148,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             agent_id: agentId,
             markdown: llm.markdown,
             body: llm.body as Record<string, unknown>,
-            shot_count: shotIds.length,
+            shot_ids: shotIds,
           },
-          fan_out_events: fanOut,
         },
       };
     }
