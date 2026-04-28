@@ -246,6 +246,7 @@ Each agent must invoke its mapped ECC skill/agent before executing tasks.
 | Agent ID | ECC Skill / Agent | Purpose |
 |----------|-------------------|---------|
 | `EXEC-ORCH` | `/orchestrate` command, `ralphinho-rfc-pipeline` skill | Coordinate full episode pipeline, RFC-driven multi-agent execution |
+| `EXEC-CONC` | OpenAI Chat Completions (GPT-5 family, default `gpt-5.4-mini`) | Studio Concierge — conversational entry point in webapp; read-only, never approves |
 | `EXEC-SW` | `agentic-engineering` skill | Eval-first script generation with quality gates |
 | `EXEC-SREV` | `code-reviewer` agent, `silent-failure-hunter` agent, `eval-harness` skill | Script QA against style bible and brief, silent-failure detection, formal evaluation |
 | `EXEC-STY` | `gan-design` command | Generate and validate visual style bible |
