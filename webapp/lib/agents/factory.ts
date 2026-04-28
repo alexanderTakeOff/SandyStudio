@@ -190,11 +190,12 @@ export function createAgentInngestFunction<E extends string>(
         return out;
       });
 
-      // ── Step 6: fan-out (optional) ─────────────────────────────────────────
+      // ── Step 6: fan-out (optional, single or array) ────────────────────────
       if (spec.nextEvent) {
         const next = spec.nextEvent(saved, eventData);
         if (next) {
-          await step.sendEvent('fan-out', next);
+          // Inngest's step.sendEvent accepts either one event or an array.
+          await step.sendEvent('fan-out', Array.isArray(next) ? next : next);
         }
       }
       // runAgent may also return its own next_event (e.g. EXEC-PUB → published).
