@@ -375,7 +375,7 @@ If implementation changes visual behavior, update `specs/system/uiux.md` in the 
 | S6 | Web app spec (webapp.md) — Next.js + Supabase + Inngest | ✅ COMPLETE 2026-04-24 |
 | S7 | Mock provider layer + config/providers.yaml + config/defaults.yaml | ✅ COMPLETE 2026-04-24 |
 | S8 | Mock pipeline validation — PILOT SS-S01-E01 "The Red Carpet" end-to-end | ✅ COMPLETE 2026-04-24 |
-| S9 | **Build webapp** (Next.js + Supabase + Inngest per specs/system/webapp.md) | 🟢 NEXT |
+| S9 | **Build webapp** (Next.js + Supabase + Inngest per specs/system/webapp.md + uiux.md) | 🟡 IN PROGRESS — Phases 1+2 ✅ |
 
 **PILOT episode produced (mock mode, $0.00):**
 - Episode: SS-S01-E01 "The Red Carpet" — 60s silent physical comedy
