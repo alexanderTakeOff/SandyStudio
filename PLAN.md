@@ -382,6 +382,22 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-28 | supabase db push — all 6 migrations applied to cloud (0001..0006) | Director/CEO |
 | 2026-04-28 | webapp/lib/supabase/types.gen.ts generated — 10 tables, 3 enums | Claude Code |
 | 2026-04-28 | Phase 1 COMPLETE — schema verified via types.gen.ts | Claude Code |
+| 2026-04-28 | uiux.md v0.2 added to master — visual system spec, theme presets, StudioShell, Approval Queue UX | Director/CEO |
+| 2026-04-28 | Phase 2 SCOPE EXPANDED — added theme system, StudioShell, AmbientAssetField (R3F), Concierge agent | Director/CEO |
+| 2026-04-28 | EXEC-CONC concierge.md v0.1 DRAFT — new conversational agent, read+route, no approval authority | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0007_asset_relations.sql — prep for v2 Asset Galaxy (uiux.md §17) | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0008_activity_events.sql — unified event feed (uiux.md §21) | Claude Code |
+| 2026-04-28 | config/uiux.yaml created — taxonomy + theme presets + ambient_limits | Claude Code |
+| 2026-04-28 | Next.js 15 scaffold complete — package.json, tsconfig, tailwind, postcss, eslint, middleware | Claude Code |
+| 2026-04-28 | Supabase clients: lib/supabase/{client,server,middleware}.ts + lib/env.ts (fail-fast per ARCH RULE #5) | Claude Code |
+| 2026-04-28 | Theme system: globals.css with 3 presets (slate_blue_cinematic default) + AppearanceProvider | Claude Code |
+| 2026-04-28 | UI primitives: Card, Badge, Button, StatusChip, Tooltip — semantic tokens only | Claude Code |
+| 2026-04-28 | StudioShell + Sidebar + Topbar + ContentFrame + AmbientAssetField (R3F) | Claude Code |
+| 2026-04-28 | ConciergePanel (chat skeleton) + /api/concierge/chat streaming Anthropic SDK | Claude Code |
+| 2026-04-28 | App routes: / (Dashboard), /approvals, /episodes, /series, /budget, /jobs, /settings, /login | Claude Code |
+| 2026-04-28 | npm run build PASSED — 9 routes, 102 kB shared bundle | Claude Code |
+| 2026-04-28 | CLAUDE.md §7.5 added: UI/UX Source of Truth + EXEC-CONC in §4 Level 3 | Claude Code |
+| 2026-04-28 | Phase 2 COMPLETE — webapp loads, themes switch, Concierge ready (needs ANTHROPIC_API_KEY) | Claude Code |
 
 ---
 
