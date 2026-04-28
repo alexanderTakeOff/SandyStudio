@@ -1,0 +1,35 @@
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Env (never commit secrets — see CLAUDE.md §11 ENV FIRST + auth.md §2)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Supabase CLI local artifacts (project ref + access token live here)
+.supabase/
+supabase/.temp/
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# Misc
+.DS_Store
+*.pem
+.turbo/
+.vercel/
