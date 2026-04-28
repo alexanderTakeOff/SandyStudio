@@ -195,7 +195,7 @@ export function createAgentInngestFunction<E extends string>(
 
       // ── Step 6: fan-out (optional, single or array) ────────────────────────
       if (spec.nextEvent) {
-        const next = spec.nextEvent(saved, eventData);
+        const next = spec.nextEvent(saved, eventData, exec.result);
         if (next) {
           // Inngest's step.sendEvent accepts either one event or an array.
           await step.sendEvent('fan-out', Array.isArray(next) ? next : next);
