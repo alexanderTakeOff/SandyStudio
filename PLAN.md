@@ -11,23 +11,29 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 8 COMPLETE — Mock pipeline validated, all PA tasks logged
-Blocker:  none
-Next:     SPRINT 9 — Build webapp (LOCAL-FIRST: Next.js + Inngest + PM2; Supabase in cloud)
-          Deployment: NOT Vercel. Server runs locally on Director's workstation.
-          Build order:
-            1. Supabase project (cloud) + all DB migrations (schema from webapp.md §3)
-            2. Next.js 15 project scaffold at C:\SandyStudio\webapp\ + Supabase client
-            3. Inngest worker (same Node process) + concurrency limits (webapp.md §4.2.1)
-            4. Agent job functions (webapp.md §4)
-            5. API routes (webapp.md §5) — incl. /api/episodes/[id]/sync-edl (FCPXML round-trip)
-            6. UI pages: Approval Queue FIRST (W-003), then Dashboard, then Settings
-            7. Approval Authority Matrix wizard + Settings page (W-005)
-            8. PM2 ecosystem.config.js for prod local-first deployment
-          Start point: supabase init + create migrations from webapp.md §3 schema
-Mode:     ===1=== ANALYTICS (default)
-Date:     2026-04-24
+Phase:    SPRINT 9 / Phase 1 COMPLETE — Supabase schema live in cloud
+Blocker:  ⚠️  SUPABASE_SERVICE_ROLE_KEY was exposed in session transcript → rotate at
+              https://supabase.com/dashboard/project/akstennzrnkvexjgzhxv/settings/api
+              then update webapp/.env.local with new key.
+Next:     SPRINT 9 / Phase 2 — Next.js 15 scaffold + Supabase clients
+          (webapp/package.json, tsconfig.json, next.config.ts, tailwind.config.ts,
+           app/(studio)/layout.tsx auth-guard, lib/supabase/client.ts + server.ts)
+Mode:     ===1=== ANALYTICS (default — read-only)
+Date:     2026-04-28
 ```
+
+### Sprint 9 Phase status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Supabase init + migrations (cloud) | ✅ COMPLETE 2026-04-28 |
+| 2 | Next.js 15 scaffold + Supabase clients | 🟢 NEXT |
+| 3 | Inngest worker + concurrency limits | ⏳ pending |
+| 4 | Agent job functions (11 Inngest fns) | ⏳ pending |
+| 5 | API routes (Next.js App Router) | ⏳ pending |
+| 6 | UI: Approval Queue → Dashboard → Settings | ⏳ pending |
+| 7 | Approval Authority Matrix wizard | ⏳ pending |
+| 8 | PM2 ecosystem + Tailscale doc | ⏳ pending |
 
 ---
 
@@ -347,6 +353,27 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-25 | webapp.md §4.2.1 added: Inngest concurrency limits per agent (EXEC-VGEN: 3, EXEC-MGEN: 2, etc.) | Claude Code |
 | 2026-04-25 | W-001 to W-005 RESOLVED — see webapp.md §11 | Director/CEO |
 | 2026-04-25 | webapp.md §2.1 added: Remote access via Tailscale (default) + WoL + Cloudflare Tunnel (escape hatch) | Claude Code |
+| 2026-04-25 | ARCH DECISION: 3-tier architecture — Studio (tools, git) / Film Projects (no git, configurable path) / Media Storage | Director/CEO |
+| 2026-04-25 | CLAUDE.md §2 rewritten: 3-tier structure + filename→path resolver table + path resolution rules | Claude Code |
+| 2026-04-25 | FILMS/Sandy/S01/PROJECT.md created — anchor file for the PILOT film project | Claude Code |
+| 2026-04-25 | PILOT MIGRATION: 19 files moved to FILMS/Sandy/S01/ (4 root briefs, 4 bibles, 1 script, 1 storyboard, 7 reviews, 1 distribution, 3 S00 demos→archive) | Claude Code |
+| 2026-04-25 | .gitignore: FILMS/ added (films are not git-tracked); .claude/worktrees/ added | Claude Code |
+| 2026-04-25 | Studio root cleaned: bibles/, scripts/, storyboards/, reviews/ removed (empty); SS-* files no longer at root | Claude Code |
+| 2026-04-28 | SPRINT 9 BEGIN — build webapp (local-first: Next.js + Inngest + PM2; Supabase cloud) | Director/CEO |
+| 2026-04-28 | webapp/package.json created — supabase@^2.95.3 devDep | Claude Code |
+| 2026-04-28 | webapp/supabase/ initialized (supabase init) | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0001_enums.sql — episode_status (22), asset_status (9), job_status (6) | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0002_core_tables.sql — 7 tables + pgcrypto + updated_at triggers + filename CHECK | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0003_approval_authority.sql — approval_authority + publish_never_ai + visual_never_ai constraints | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0004_hybrid_sync_tables.sql — agent_prompts + app_config | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0005_indexes.sql — 12 indexes for hot query paths | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0006_rls_policies.sql — RLS on all 10 tables, authenticated full, anon none | Claude Code |
+| 2026-04-28 | .env.example updated — SUPABASE + INNGEST + APP_URL sections | Claude Code |
+| 2026-04-28 | .claude/settings.local.json — broad Bash/Edit/Write/PowerShell allowlist added (option B) | Claude Code |
+| 2026-04-28 | Supabase project linked: akstennzrnkvexjgzhxv (sandystudio) | Director/CEO |
+| 2026-04-28 | supabase db push — all 6 migrations applied to cloud (0001..0006) | Director/CEO |
+| 2026-04-28 | webapp/lib/supabase/types.gen.ts generated — 10 tables, 3 enums | Claude Code |
+| 2026-04-28 | Phase 1 COMPLETE — schema verified via types.gen.ts | Claude Code |
 
 ---
 

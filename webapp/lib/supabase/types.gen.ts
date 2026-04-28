@@ -1,0 +1,657 @@
+Initialising login role...
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  public: {
+    Tables: {
+      agent_prompts: {
+        Row: {
+          agent_id: string
+          id: string
+          prompt_md: string
+          source: string
+          source_path: string
+          synced_at: string
+          version: number
+        }
+        Insert: {
+          agent_id: string
+          id?: string
+          prompt_md: string
+          source?: string
+          source_path: string
+          synced_at?: string
+          version?: number
+        }
+        Update: {
+          agent_id?: string
+          id?: string
+          prompt_md?: string
+          source?: string
+          source_path?: string
+          synced_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      analytics_reports: {
+        Row: {
+          collected_at: string
+          collection_point: string
+          data: Json
+          episode_id: string | null
+          flags: Json | null
+          id: string
+          report_path: string | null
+          youtube_video_id: string | null
+        }
+        Insert: {
+          collected_at?: string
+          collection_point: string
+          data: Json
+          episode_id?: string | null
+          flags?: Json | null
+          id?: string
+          report_path?: string | null
+          youtube_video_id?: string | null
+        }
+        Update: {
+          collected_at?: string
+          collection_point?: string
+          data?: Json
+          episode_id?: string | null
+          flags?: Json | null
+          id?: string
+          report_path?: string | null
+          youtube_video_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analytics_reports_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      app_config: {
+        Row: {
+          id: string
+          key: string
+          scope: string
+          source: string
+          synced_at: string
+          value: Json
+        }
+        Insert: {
+          id?: string
+          key: string
+          scope: string
+          source?: string
+          synced_at?: string
+          value: Json
+        }
+        Update: {
+          id?: string
+          key?: string
+          scope?: string
+          source?: string
+          synced_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      approval_authority: {
+        Row: {
+          approver_name: string | null
+          approver_type: string
+          category: string
+          created_at: string
+          episode_id: string | null
+          id: string
+          is_visual: boolean
+          series_id: string
+          set_by: string
+        }
+        Insert: {
+          approver_name?: string | null
+          approver_type: string
+          category: string
+          created_at?: string
+          episode_id?: string | null
+          id?: string
+          is_visual?: boolean
+          series_id: string
+          set_by: string
+        }
+        Update: {
+          approver_name?: string | null
+          approver_type?: string
+          category?: string
+          created_at?: string
+          episode_id?: string | null
+          id?: string
+          is_visual?: boolean
+          series_id?: string
+          set_by?: string
+        }
+        Relationships: []
+      }
+      approvals: {
+        Row: {
+          approval_type: string
+          approved_by: string
+          asset_id: string | null
+          created_at: string
+          episode_id: string | null
+          id: string
+          notes: string | null
+        }
+        Insert: {
+          approval_type: string
+          approved_by: string
+          asset_id?: string | null
+          created_at?: string
+          episode_id?: string | null
+          id?: string
+          notes?: string | null
+        }
+        Update: {
+          approval_type?: string
+          approved_by?: string
+          asset_id?: string | null
+          created_at?: string
+          episode_id?: string | null
+          id?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approvals_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approvals_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assets: {
+        Row: {
+          agent_id: string | null
+          created_at: string
+          description: string | null
+          drive_path: string | null
+          episode_id: string | null
+          file_type: string
+          filename: string
+          id: string
+          revision_log: string | null
+          staging_expires_at: string | null
+          staging_path: string | null
+          status: Database["public"]["Enums"]["asset_status"]
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          agent_id?: string | null
+          created_at?: string
+          description?: string | null
+          drive_path?: string | null
+          episode_id?: string | null
+          file_type: string
+          filename: string
+          id?: string
+          revision_log?: string | null
+          staging_expires_at?: string | null
+          staging_path?: string | null
+          status?: Database["public"]["Enums"]["asset_status"]
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          agent_id?: string | null
+          created_at?: string
+          description?: string | null
+          drive_path?: string | null
+          episode_id?: string | null
+          file_type?: string
+          filename?: string
+          id?: string
+          revision_log?: string | null
+          staging_expires_at?: string | null
+          staging_path?: string | null
+          status?: Database["public"]["Enums"]["asset_status"]
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assets_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      budget_log: {
+        Row: {
+          agent_id: string
+          api_provider: string
+          cost_usd: number
+          created_at: string
+          duration_ms: number | null
+          episode_id: string | null
+          id: string
+          job_id: string | null
+          model_or_tier: string | null
+          operation: string
+          tokens_used: number | null
+        }
+        Insert: {
+          agent_id: string
+          api_provider: string
+          cost_usd: number
+          created_at?: string
+          duration_ms?: number | null
+          episode_id?: string | null
+          id?: string
+          job_id?: string | null
+          model_or_tier?: string | null
+          operation: string
+          tokens_used?: number | null
+        }
+        Update: {
+          agent_id?: string
+          api_provider?: string
+          cost_usd?: number
+          created_at?: string
+          duration_ms?: number | null
+          episode_id?: string | null
+          id?: string
+          job_id?: string | null
+          model_or_tier?: string | null
+          operation?: string
+          tokens_used?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_log_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_log_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      episodes: {
+        Row: {
+          budget_ceiling: number | null
+          budget_spent: number | null
+          created_at: string
+          episode_code: string
+          governance_mode: number
+          id: string
+          series_id: string
+          status: Database["public"]["Enums"]["episode_status"]
+          title_working: string | null
+          updated_at: string
+        }
+        Insert: {
+          budget_ceiling?: number | null
+          budget_spent?: number | null
+          created_at?: string
+          episode_code: string
+          governance_mode?: number
+          id?: string
+          series_id: string
+          status?: Database["public"]["Enums"]["episode_status"]
+          title_working?: string | null
+          updated_at?: string
+        }
+        Update: {
+          budget_ceiling?: number | null
+          budget_spent?: number | null
+          created_at?: string
+          episode_code?: string
+          governance_mode?: number
+          id?: string
+          series_id?: string
+          status?: Database["public"]["Enums"]["episode_status"]
+          title_working?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      jobs: {
+        Row: {
+          agent_id: string
+          completed_at: string | null
+          created_at: string
+          episode_id: string | null
+          error_message: string | null
+          id: string
+          inngest_event: string
+          inngest_run_id: string | null
+          input_snapshot: Json | null
+          output_ref: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["job_status"]
+        }
+        Insert: {
+          agent_id: string
+          completed_at?: string | null
+          created_at?: string
+          episode_id?: string | null
+          error_message?: string | null
+          id?: string
+          inngest_event: string
+          inngest_run_id?: string | null
+          input_snapshot?: Json | null
+          output_ref?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+        }
+        Update: {
+          agent_id?: string
+          completed_at?: string | null
+          created_at?: string
+          episode_id?: string | null
+          error_message?: string | null
+          id?: string
+          inngest_event?: string
+          inngest_run_id?: string | null
+          input_snapshot?: Json | null
+          output_ref?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      series_state: {
+        Row: {
+          creative_direction_path: string | null
+          id: string
+          series_arc_path: string | null
+          series_id: string
+          style_bible_path: string | null
+          updated_at: string
+          world_bible_path: string | null
+        }
+        Insert: {
+          creative_direction_path?: string | null
+          id?: string
+          series_arc_path?: string | null
+          series_id: string
+          style_bible_path?: string | null
+          updated_at?: string
+          world_bible_path?: string | null
+        }
+        Update: {
+          creative_direction_path?: string | null
+          id?: string
+          series_arc_path?: string | null
+          series_id?: string
+          style_bible_path?: string | null
+          updated_at?: string
+          world_bible_path?: string | null
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      asset_status:
+        | "DRAFT"
+        | "REVIEW"
+        | "REVISION"
+        | "APPROVED"
+        | "LOCKED"
+        | "NEEDS_HUMAN_TWEAK"
+        | "REJECTED"
+        | "INVALIDATED"
+        | "TEST"
+      episode_status:
+        | "BRIEF_PENDING"
+        | "BRIEF_APPROVED"
+        | "SCRIPT_IN_PROGRESS"
+        | "SCRIPT_REVIEW"
+        | "SCRIPT_REVISION"
+        | "SCRIPT_APPROVED"
+        | "STORYBOARD_IN_PROGRESS"
+        | "STORYBOARD_REVIEW"
+        | "STORYBOARD_REVISION"
+        | "STORYBOARD_APPROVED"
+        | "ANIMATIC_IN_PROGRESS"
+        | "ANIMATIC_REVIEW"
+        | "ANIMATIC_REVISION"
+        | "ANIMATIC_APPROVED"
+        | "GENERATION_IN_PROGRESS"
+        | "GENERATION_REVIEW"
+        | "GENERATION_REVISION"
+        | "GENERATION_APPROVED"
+        | "PUBLISH_PENDING"
+        | "PUBLISHED"
+        | "ANALYTICS_COLLECTING"
+        | "COMPLETE"
+      job_status:
+        | "QUEUED"
+        | "RUNNING"
+        | "COMPLETED"
+        | "FAILED"
+        | "RETRYING"
+        | "CANCELLED"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      asset_status: [
+        "DRAFT",
+        "REVIEW",
+        "REVISION",
+        "APPROVED",
+        "LOCKED",
+        "NEEDS_HUMAN_TWEAK",
+        "REJECTED",
+        "INVALIDATED",
+        "TEST",
+      ],
+      episode_status: [
+        "BRIEF_PENDING",
+        "BRIEF_APPROVED",
+        "SCRIPT_IN_PROGRESS",
+        "SCRIPT_REVIEW",
+        "SCRIPT_REVISION",
+        "SCRIPT_APPROVED",
+        "STORYBOARD_IN_PROGRESS",
+        "STORYBOARD_REVIEW",
+        "STORYBOARD_REVISION",
+        "STORYBOARD_APPROVED",
+        "ANIMATIC_IN_PROGRESS",
+        "ANIMATIC_REVIEW",
+        "ANIMATIC_REVISION",
+        "ANIMATIC_APPROVED",
+        "GENERATION_IN_PROGRESS",
+        "GENERATION_REVIEW",
+        "GENERATION_REVISION",
+        "GENERATION_APPROVED",
+        "PUBLISH_PENDING",
+        "PUBLISHED",
+        "ANALYTICS_COLLECTING",
+        "COMPLETE",
+      ],
+      job_status: [
+        "QUEUED",
+        "RUNNING",
+        "COMPLETED",
+        "FAILED",
+        "RETRYING",
+        "CANCELLED",
+      ],
+    },
+  },
+} as const
+A new version of Supabase CLI is available: v2.95.4 (currently installed v2.95.3)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

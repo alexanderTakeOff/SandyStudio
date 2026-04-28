@@ -1,6 +1,13 @@
 # Local media staging buffer — never commit generated video/image/audio files
 Staging/
 
+# Film projects — each film is its own non-git project (Director's q2 decision 2026-04-25)
+# Studio repo = tools. Films = content. Do not couple.
+FILMS/
+
+# Claude Code worktrees from parallel sessions
+.claude/worktrees/
+
 # Environment variables
 .env
 .env.local
