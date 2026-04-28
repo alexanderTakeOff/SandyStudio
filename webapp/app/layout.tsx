@@ -29,7 +29,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="slate_blue_cinematic" data-ambient="on" suppressHydrationWarning>
-      <body className={`${inter.variable} ${mono.variable} antialiased`}>
+      {/* suppressHydrationWarning on <body> — Grammarly and similar browser extensions
+          inject data-* attributes after load, causing React hydration mismatches. */}
+      <body className={`${inter.variable} ${mono.variable} antialiased`} suppressHydrationWarning>
         <AppearanceProvider>{children}</AppearanceProvider>
       </body>
     </html>
