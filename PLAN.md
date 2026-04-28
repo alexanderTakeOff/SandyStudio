@@ -410,6 +410,21 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-28 | npm script: inngest:dev (npx inngest-cli@latest dev -u http://localhost:3000/api/inngest) | Claude Code |
 | 2026-04-28 | FIX: middleware was redirecting /api/inngest webhook PUTs to /login → infinite sync loop. Webhook paths now bypass auth | Claude Code |
 | 2026-04-28 | Phase 3 SMOKE TEST PASSED — event sent via curl → Inngest handler → Supabase jobs row (RUNNING → COMPLETED, output_ref=pong, dur=35.5s in dev mode) | Claude Code |
+| 2026-04-28 | Phase 4 START — 11 EXEC-* Inngest functions + lib/agents library layer | Director/CEO |
+| 2026-04-28 | agents/exec/editor.md v0.1 DRAFT — EXEC-EDIT animatic editor spec (cost-protection gate before VGEN fan-out) | Claude Code |
+| 2026-04-28 | lib/agents/types.ts + registry.ts — single source of truth: 15 agents with display_ru/en, emoji, ECC skills[], model tier, next_agent. Composable architecture: skills[] lets agents gain capabilities without renaming | Claude Code |
+| 2026-04-28 | lib/agents/{prompts,mock-providers,gate,runner,factory}.ts — full library layer; factory pattern emits canonical 6-step Inngest function shape | Claude Code |
+| 2026-04-28 | lib/{governance,budget}.ts — enforceMode (Phase 4: PUBLISH-only hard block), recordCost (idempotent via budget_log unique index, ceiling enforcement) | Claude Code |
+| 2026-04-28 | webapp/supabase/migrations/0009_activity_events_phase4.sql — adds `governance_block` event type + unique index on budget_log(job_id) for idempotency | Claude Code |
+| 2026-04-28 | inngest/functions/ — 12 new function files: exec-{sw,srev,sb,wchk,edit,vgen,mgen,copy,thumb,pub,anal} + schedule-analytics; all registered in inngest/index.ts | Claude Code |
+| 2026-04-28 | lib/inngest/client.ts Events map extended to 13 events (per webapp.md §4.1) | Claude Code |
+| 2026-04-28 | vitest@^4.1.5 + @vitest/coverage-v8 + tsx installed; vitest.config.ts wired with @/ alias | Claude Code |
+| 2026-04-28 | __tests__/ — 5 test files (registry, mock-providers, gate, governance, budget) + helpers/mock-supabase.ts in-memory client | Claude Code |
+| 2026-04-28 | scripts/replay-pilot.ts — self-contained E2E harness (no servers): walks full PILOT pipeline + governance regression + idempotency + budget ceiling | Claude Code |
+| 2026-04-28 | package.json scripts: test, test:watch, test:coverage, replay-pilot, verify | Claude Code |
+| 2026-04-28 | naming-validator.cjs hook updated — whitelist code dirs (webapp/agents/lib/specs/config/.claude) so they don't trigger SS-*-naming validation | Claude Code |
+| 2026-04-28 | Phase 4 VERIFICATION PASSED: typecheck OK + 39/39 unit tests + 28/28 replay-pilot assertions (1.0s total) | Claude Code |
+| 2026-04-28 | Phase 4 COMPLETE — pipeline DAG + budget + governance fully exercised end-to-end in mock mode | Claude Code |
 
 ---
 
