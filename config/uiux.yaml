@@ -1,0 +1,79 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# config/uiux.yaml
+# UI/UX configuration per specs/system/uiux.md.
+# Synced into Supabase `app_config` (scope='ui') via the W-004 hybrid pattern.
+# ──────────────────────────────────────────────────────────────────────────────
+
+themes:
+  slate_blue_cinematic:
+    label: "Slate Blue Cinematic"
+    description: "Recommended calm cinematic production theme."
+    default: true
+  sand_gold_studio:
+    label: "Sand Gold Studio"
+    description: "Warmer theme for softer long-session work."
+    default: false
+  deep_purple_night:
+    label: "Deep Purple Night"
+    description: "Darker creative night-work theme."
+    default: false
+
+ambient_background:
+  default_mode: "on"      # on | reduced | off
+  # Hard ceilings — even at "on" the background must stay below these.
+  limits:
+    max_line_opacity: 0.12
+    max_node_opacity: 0.40
+    max_glow_strength: 0.30
+    max_parallax_px: 6
+    motion_speed: "very_slow"
+
+# Asset visual taxonomy per uiux.md §16.
+# Color *tokens* only — actual colors come from the active theme's
+# semantic accent palette.
+asset_visual_taxonomy:
+  SCR:
+    label: "Script"
+    color_token: "asset_script"
+  STB:
+    label: "Storyboard"
+    color_token: "asset_storyboard"
+  IMG:
+    label: "Image"
+    color_token: "asset_image"
+  VID:
+    label: "Video"
+    color_token: "asset_video"
+  AUD:
+    label: "Audio"
+    color_token: "asset_audio"
+  REV:
+    label: "Review"
+    color_token: "asset_review"
+  PRO:
+    label: "Production"
+    color_token: "asset_production"
+  STA:
+    label: "Status"
+    color_token: "asset_status"
+  BIB:
+    label: "Bible"
+    color_token: "asset_bible"
+  SPC:
+    label: "Spec"
+    color_token: "asset_spec"
+  BLOCKED:
+    label: "Blocked"
+    color_token: "asset_blocked"
+
+# Status chip mapping per uiux.md §6.3 + naming convention §3.
+asset_status_chip:
+  DRAFT:             { token: "status_draft",    label: "Draft" }
+  REVIEW:            { token: "status_review",   label: "Review" }
+  REVISION:          { token: "status_revision", label: "Revision" }
+  APPROVED:          { token: "status_approved", label: "Approved" }
+  LOCKED:            { token: "status_locked",   label: "Locked" }
+  NEEDS_HUMAN_TWEAK: { token: "status_warning",  label: "Needs human tweak" }
+  REJECTED:          { token: "status_danger",   label: "Rejected" }
+  INVALIDATED:       { token: "status_muted",    label: "Invalidated" }
+  TEST:              { token: "status_muted",    label: "Test" }
