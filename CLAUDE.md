@@ -198,6 +198,7 @@ Agents at this level execute production tasks. They read briefs, produce outputs
 | Agent ID | Name | Role | Output Type | File |
 |----------|------|------|-------------|------|
 | `EXEC-ORCH` | Pipeline Orchestrator | Manages flow between agents; owns project state | `.md` state | `agents/exec/orchestrator.md` |
+| `EXEC-CONC` | Studio Concierge | Conversational read/route entry point in webapp; never approves | chat reply | `agents/exec/concierge.md` |
 | `EXEC-SW` | Screenwriter | Writes full scripts from creative brief | `.md` → `scripts/` | `agents/exec/screenwriter.md` |
 | `EXEC-SREV` | Script Reviewer | QA: checks script vs style bible, world model, brief | `.md` → `reviews/` | `agents/exec/script_reviewer.md` |
 | `EXEC-STY` | Style Creator | Creates style bible: audience, visual philosophy, approach | `.md` → `bibles/style/` | `agents/exec/style_creator.md` |
