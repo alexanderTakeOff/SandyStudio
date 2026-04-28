@@ -60,8 +60,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'messages[] required' }, { status: 400 });
   }
 
-  const { OPENAI_API_KEY, OPENAI_MODEL } = getServerEnv();
-  if (!OPENAI_API_KEY) {
+  const env = getServerEnv();
+  if (!env.OPENAI_API_KEY) {
     return NextResponse.json(
       {
         error:
@@ -71,21 +71,47 @@ export async function POST(req: Request) {
     );
   }
 
-  const client = new OpenAI({ apiKey: OPENAI_API_KEY });
-  const model = OPENAI_MODEL || 'gpt-4o';
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const model = env.OPENAI_MODEL || 'gpt-5-mini';
+
+  // Tunables — all optional, defaults align with the Director's .env.local intent.
+  const temperature = env.OPENAI_TEMPERATURE ? Number(env.OPENAI_TEMPERATURE) : 0.2;
+  const maxCompletionTokens = env.OPENAI_MAX_OUTPUT_TOKENS
+    ? Number(env.OPENAI_MAX_OUTPUT_TOKENS)
+    : 2000;
+  // reasoning_effort is only meaningful for reasoning-capable models
+  // (gpt-5 family, o-series). Pass it; OpenAI ignores it for plain chat models.
+  const reasoningEffort = env.OPENAI_REASONING_EFFORT as
+    | 'minimal'
+    | 'low'
+    | 'medium'
+    | 'high'
+    | undefined;
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
       try {
-        const completion = await client.chat.completions.create({
+        // Build params dynamically so we don't send unsupported keys to older models.
+        const params: Parameters<typeof client.chat.completions.create>[0] = {
           model,
           stream: true,
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
             ...body.messages.map((m) => ({ role: m.role, content: m.content })),
           ],
-        });
+          max_completion_tokens: maxCompletionTokens,
+        };
+        // GPT-5 family rejects non-default temperature; only pass for legacy chat models.
+        const isGpt5 = model.startsWith('gpt-5');
+        if (!isGpt5 && Number.isFinite(temperature)) {
+          params.temperature = temperature;
+        }
+        if (reasoningEffort && isGpt5) {
+          (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
+        }
+
+        const completion = await client.chat.completions.create(params);
 
         for await (const chunk of completion) {
           const delta = chunk.choices[0]?.delta?.content;
