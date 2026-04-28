@@ -2,16 +2,18 @@
 // lib/budget.ts
 // Per-episode budget bookkeeping. Idempotent on Inngest step retry.
 //
+// Storage layout:
+//   - budget_log: per-call cost rows (api_provider, model_or_tier, tokens_used,
+//     duration_ms, cost_usd) — created by migration 0002.
+//   - episodes.budget_spent: running aggregate kept in sync with budget_log.
+//
 // Idempotency contract (per phase-4-jiggly-wave.md §4.5):
-//   - Each successful agent run records exactly ONE cost row in activity_events
-//     keyed by job_id.
+//   - Each successful agent run records exactly ONE cost row keyed by job_id.
 //   - Migration 0009 enforces this via a partial unique index on
-//     (job_id, event_type='cost_recorded').
+//     budget_log(job_id).
 //   - If Inngest retries the `record-cost` step, the second insert hits the
 //     unique constraint; we catch the violation and treat it as a no-op.
-//   - episodes.budget_spent is also updated only on the FIRST successful insert,
-//     because we only update it after the insert succeeds (no race; Inngest
-//     retries are sequential per step).
+//   - episodes.budget_spent is bumped only after a successful first insert.
 //
 // Hard ceiling check:
 //   - Before recording, sum projected (current spent + new cost) and compare
@@ -22,10 +24,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { Database, Json } from './supabase/types.gen';
-import type { AgentId, CostRecord } from './agents/types';
+import type { Database } from './supabase/types.gen';
+import type { AgentId } from './agents/types';
 
-/** Postgres unique-violation error code. */
 const PG_UNIQUE_VIOLATION = '23505';
 
 export class BudgetExceededError extends Error {
@@ -53,31 +54,40 @@ export class BudgetExceededError extends Error {
   }
 }
 
-interface RecordCostInput {
+export interface RecordCostInput {
   jobId: string;
   episodeId: string | null;
   agentId: AgentId;
   costUsd: number;
+  /** "anthropic" | "fal_ai" | "youtube" | "mock" — for budget_log analysis. */
+  apiProvider: string;
+  /** "claude-sonnet-4-6" | "flux-pro" | "mock" — concrete model/tier. */
+  modelOrTier: string;
+  /** "script_generation" | "video_generation" | "thumbnail_generation" | ... */
+  operation: string;
+  tokensUsed?: number;
+  durationMs?: number;
 }
 
-interface RecordCostResult {
+export interface RecordCostResult {
   recorded: boolean; // true on first insert, false on idempotent retry
   newBudgetSpent: number;
   ceilingHit: boolean;
 }
 
 /**
- * Idempotently record a cost row and update episodes.budget_spent.
+ * Idempotently record a cost row in budget_log and bump episodes.budget_spent.
  *
  * Returns:
  *   - {recorded: true, ...} on successful first record
- *   - {recorded: false, ...} on retry (existing row found via unique constraint)
+ *   - {recorded: false, ...} on retry (existing row found via unique index)
  *
  * Throws:
- *   - BudgetExceededError if the cost would exceed the episode ceiling
+ *   - BudgetExceededError if the cost would push spent > ceiling
  *
  * NOTE: cost = 0 still records a row (mock mode). This gives us a complete
- * audit trail even when no real money was spent.
+ * audit trail even when no real money was spent — same code path, real costs
+ * in Sprint 10 just produce non-zero rows.
  */
 export async function recordCost(
   supabase: SupabaseClient<Database>,
@@ -111,35 +121,20 @@ export async function recordCost(
     });
   }
 
-  // ── Step 3: idempotent insert into activity_events ─────────────────────────
-  const record: CostRecord = {
+  // ── Step 3: idempotent insert into budget_log ──────────────────────────────
+  const { error: insErr } = await supabase.from('budget_log').insert({
     job_id: jobId,
     episode_id: episodeId,
     agent_id: agentId,
+    api_provider: input.apiProvider,
+    model_or_tier: input.modelOrTier,
+    operation: input.operation,
     cost_usd: costUsd,
-    recorded_at: new Date().toISOString(),
-  };
-  const metadata: Json = {
-    job_id: record.job_id,
-    episode_id: record.episode_id,
-    agent_id: record.agent_id,
-    cost_usd: record.cost_usd,
-    recorded_at: record.recorded_at,
-  };
-  const { error: insErr } = await supabase.from('activity_events').insert({
-    event_type: 'cost_recorded',
-    severity: 'info',
-    title: `${agentId} cost: $${costUsd.toFixed(4)}`,
-    description: null,
-    actor: agentId,
-    job_id: jobId,
-    episode_id: episodeId,
-    metadata,
+    tokens_used: input.tokensUsed ?? null,
+    duration_ms: input.durationMs ?? null,
   });
 
   if (insErr) {
-    // Unique-violation = retry hitting the same job_id. That's the idempotent
-    // path: cost was already recorded on a prior attempt, do nothing more.
     if (insErr.code === PG_UNIQUE_VIOLATION) {
       return {
         recorded: false,
@@ -147,10 +142,10 @@ export async function recordCost(
         ceilingHit: false,
       };
     }
-    throw new Error(`recordCost: activity_events insert failed: ${insErr.message}`);
+    throw new Error(`recordCost: budget_log insert failed: ${insErr.message}`);
   }
 
-  // ── Step 4: bump episode budget_spent ──────────────────────────────────────
+  // ── Step 4: bump episodes.budget_spent ─────────────────────────────────────
   const newBudgetSpent = currentSpent + costUsd;
   if (episodeId !== null && costUsd > 0) {
     const { error: upErr } = await supabase
