@@ -9,10 +9,16 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { cookies } from 'next/headers';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { PUBLIC_ENV, getServerEnv } from '@/lib/env';
 import type { Database } from '@/lib/supabase/types.gen';
+
+interface CookieToSet {
+  name: string;
+  value: string;
+  options: CookieOptions;
+}
 
 /**
  * User-context server client. RLS applies as the signed-in Director.
