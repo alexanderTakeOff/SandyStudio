@@ -336,6 +336,27 @@ Hook scripts in `C:\SandyStudio\.claude\hooks\`. Registered in `.claude/settings
 
 ---
 
+## 7.5 UI/UX SOURCE OF TRUTH
+
+Before any visual, layout, theme, animation, shell, dashboard, approval UI, ambient background, or asset taxonomy change, read **`specs/system/uiux.md`**.
+
+It is the source of truth for:
+- SandyStudio visual direction (cinematic production OS, not flashy/hacker/gamified);
+- theme tokens and the 3 presets (`slate_blue_cinematic` default, `sand_gold_studio`, `deep_purple_night`);
+- StudioShell structure (Sidebar + Topbar + ContentFrame + AmbientAssetField);
+- Approval Queue UX (Preview → Context → Decision flow);
+- Ambient Asset Field behavior (subtle, non-blocking, no navigation in v1);
+- asset visual taxonomy (`config/uiux.yaml`);
+- motion/accessibility rules (respect `prefers-reduced-motion`).
+
+**Do not hardcode colors directly inside components — use semantic theme tokens** (CSS variables defined in `webapp/app/globals.css`).
+
+**The Concierge (`EXEC-CONC`) is the conversational entry point** for ad-hoc Director questions — `agents/exec/concierge.md`. It is read-only in Sprint 9; tools and Inngest dispatch land in Sprint 10.
+
+If implementation changes visual behavior, update `specs/system/uiux.md` in the same task.
+
+---
+
 ## 8. CURRENT PROJECT STATUS
 
 > ⚠️ This section is a snapshot — for the live state always read `PLAN.md`.
