@@ -81,7 +81,8 @@ export function createAgentInngestFunction<E extends string>(
     {
       id: spec.id,
       name: spec.name,
-      retries: spec.retries ?? 2,
+      // Inngest types retries as a literal union 0..20; default to 2.
+      retries: (spec.retries ?? 2) as 2,
       concurrency: concurrencyFor(spec.concurrencyId),
     },
     // The cast is safe: caller passes a string literal that matches a known
