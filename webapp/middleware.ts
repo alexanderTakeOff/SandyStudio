@@ -9,10 +9,22 @@ import { updateSupabaseSession } from '@/lib/supabase/middleware';
 
 const PUBLIC_PATHS = ['/login', '/auth/callback'];
 
+// Server-to-server webhook endpoints — auth handled by upstream signature
+// verification (Inngest signing key), NOT by Supabase user session.
+const WEBHOOK_PATHS = ['/api/inngest'];
+
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Webhooks bypass session refresh and auth-redirect entirely. Without this
+  // bypass, Inngest's PUT /api/inngest sync requests get 307'd to /login,
+  // creating an infinite registration loop and spamming the dev server.
+  if (WEBHOOK_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next({ request });
+  }
+
   const { supabaseResponse, user } = await updateSupabaseSession(request);
 
-  const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   // Unauthenticated → redirect to /login (except for public paths).
