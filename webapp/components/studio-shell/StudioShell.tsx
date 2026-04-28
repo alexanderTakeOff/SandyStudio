@@ -2,23 +2,15 @@
 // components/studio-shell/StudioShell.tsx
 // Top-level shell per uiux.md §8 — Sidebar + Topbar + ContentFrame + Ambient.
 // Uses the z-index model from §8.2.
+// AmbientAssetField and ConciergePanel are 'use client' components; they
+// guard their own browser-only APIs internally.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import dynamic from 'next/dynamic';
 import type { ReactNode } from 'react';
 import { StudioSidebar } from './StudioSidebar';
 import { StudioTopbar } from './StudioTopbar';
-
-// AmbientAssetField uses three.js — load only on the client.
-const AmbientAssetField = dynamic(
-  () => import('./AmbientAssetField').then((m) => m.AmbientAssetField),
-  { ssr: false },
-);
-
-const ConciergePanel = dynamic(
-  () => import('@/components/concierge/ConciergePanel').then((m) => m.ConciergePanel),
-  { ssr: false },
-);
+import { AmbientAssetField } from './AmbientAssetField';
+import { ConciergePanel } from '@/components/concierge/ConciergePanel';
 
 interface StudioShellProps {
   children: ReactNode;
