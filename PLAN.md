@@ -11,13 +11,12 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 1 COMPLETE — Supabase schema live in cloud
-Blocker:  ⚠️  SUPABASE_SERVICE_ROLE_KEY was exposed in session transcript → rotate at
-              https://supabase.com/dashboard/project/akstennzrnkvexjgzhxv/settings/api
-              then update webapp/.env.local with new key.
-Next:     SPRINT 9 / Phase 2 — Next.js 15 scaffold + Supabase clients
-          (webapp/package.json, tsconfig.json, next.config.ts, tailwind.config.ts,
-           app/(studio)/layout.tsx auth-guard, lib/supabase/client.ts + server.ts)
+Phase:    SPRINT 9 / Phase 2 COMPLETE — webapp scaffold + theme + StudioShell + Concierge
+Blocker:  Director must run `npx supabase db push` to apply 0007 (asset_relations) +
+          0008 (activity_events). Then regen types.gen.ts.
+          Optional but needed for Concierge: ANTHROPIC_API_KEY in webapp/.env.local.
+Next:     SPRINT 9 / Phase 3 — Inngest worker + concurrency limits (webapp.md §4)
+          + first end-to-end test job (Inngest dev → Supabase.jobs row).
 Mode:     ===1=== ANALYTICS (default — read-only)
 Date:     2026-04-28
 ```
@@ -26,14 +25,23 @@ Date:     2026-04-28
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Supabase init + migrations (cloud) | ✅ COMPLETE 2026-04-28 |
-| 2 | Next.js 15 scaffold + Supabase clients | 🟢 NEXT |
-| 3 | Inngest worker + concurrency limits | ⏳ pending |
-| 4 | Agent job functions (11 Inngest fns) | ⏳ pending |
-| 5 | API routes (Next.js App Router) | ⏳ pending |
-| 6 | UI: Approval Queue → Dashboard → Settings | ⏳ pending |
-| 7 | Approval Authority Matrix wizard | ⏳ pending |
-| 8 | PM2 ecosystem + Tailscale doc | ⏳ pending |
+| 1 | Supabase init + migrations (cloud)            | ✅ COMPLETE 2026-04-28 |
+| 2 | Next.js scaffold + theme + StudioShell + Concierge | ✅ COMPLETE 2026-04-28 |
+| 3 | Inngest worker + concurrency limits           | 🟢 NEXT |
+| 4 | Agent job functions (11 Inngest fns)          | ⏳ pending |
+| 5 | API routes (Next.js App Router)               | ⏳ pending |
+| 6 | UI: Approval Queue + Dashboard + Budget data wiring | ⏳ pending |
+| 7 | Approval Authority Matrix wizard              | ⏳ pending |
+| 8 | PM2 ecosystem + Tailscale doc                 | ⏳ pending |
+
+### UI/UX implementation note
+
+Any task touching visual UI must keep `specs/system/uiux.md` synchronized:
+1. Read `specs/system/uiux.md` first.
+2. Confirm changes follow the active theme/token system — no raw hex in components.
+3. Approval Queue remains the highest-priority UI path (Phase 6).
+4. Do NOT implement Interactive Asset Galaxy v2 unless explicitly planned.
+5. Update `specs/system/uiux.md` if visual rules change.
 
 ---
 
