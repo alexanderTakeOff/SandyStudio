@@ -88,7 +88,9 @@
       "Write(C:/SandyStudio/.claude/worktrees/**/webapp/**)",
       "mcp__30e3b4b7-df3c-4386-9bf7-421c3c073335__execute_sql",
       "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" pr list --head claude/condescending-pare-61c4a7 --json number,url,title)",
-      "Bash('C:/Program Files/GitHub CLI/gh.exe' pr create --title 'feat\\(sprint-9/phase-1\\): Supabase schema + TypeScript types' --body ' *)"
+      "Bash('C:/Program Files/GitHub CLI/gh.exe' pr create --title 'feat\\(sprint-9/phase-1\\): Supabase schema + TypeScript types' --body ' *)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:openai.com)"
     ]
   }
 }

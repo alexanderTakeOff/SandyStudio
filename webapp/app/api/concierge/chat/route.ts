@@ -74,7 +74,9 @@ export async function POST(req: Request) {
   }
 
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const model = env.OPENAI_MODEL || 'gpt-5-mini';
+  // Default per developers.openai.com/api/docs/models — gpt-5.4-mini is the
+  // recommended low-latency / low-cost frontier model.
+  const model = env.OPENAI_MODEL || 'gpt-5.4-mini';
 
   // Tunables — all optional, defaults align with the Director's .env.local intent.
   const temperature = env.OPENAI_TEMPERATURE ? Number(env.OPENAI_TEMPERATURE) : 0.2;
