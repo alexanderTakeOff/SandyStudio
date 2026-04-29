@@ -13,7 +13,7 @@ interface SeriesStepProps {
 }
 
 export function SeriesStep({ onAdvance }: SeriesStepProps) {
-  const [code, setCode] = useState('SS01');
+  const [code, setCode] = useState('SS-S01');
   const [title, setTitle] = useState('');
   const [audience, setAudience] = useState<'adult' | 'kids' | 'mixed' | 'other'>('adult');
   const [genre, setGenre] = useState<'comedy' | 'drama' | 'doc' | 'sci_fi' | 'other'>('comedy');
