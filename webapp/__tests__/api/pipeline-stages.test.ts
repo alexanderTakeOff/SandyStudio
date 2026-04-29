@@ -16,11 +16,10 @@ const baseAsset = {
 };
 
 describe('buildPipelineSnapshot', () => {
-  it('returns 10 stages in canonical order', () => {
+  it('returns 9 stages in canonical order (Story phantom removed in 5c)', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     expect(stages.map((s) => s.id)).toEqual([
       'brief',
-      'story',
       'script',
       'storyboard',
       'world_check',
