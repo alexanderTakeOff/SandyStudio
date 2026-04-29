@@ -227,6 +227,31 @@ export function createAgentInngestFunction<E extends string>(
               );
           }
         }
+
+        // Write activity_event so the Pipeline View feed shows agent
+        // milestones, not just Director approvals. metadata.file_type lets
+        // the per-stage filter bucket the event into the right column.
+        await supabase
+          .from('activity_events')
+          .insert({
+            event_type: 'agent_completed',
+            severity: 'info',
+            title: `${spec.agentId} completed`,
+            description: spec.name,
+            actor: spec.agentId,
+            episode_id: episodeId,
+            asset_id: out.assetId,
+            job_id: job.id,
+            metadata: {
+              agent: spec.agentId,
+              status: targetStatus,
+            },
+          } as never)
+          .then(
+            () => undefined,
+            () => undefined,
+          );
+
         return out;
       });
 
