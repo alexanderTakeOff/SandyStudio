@@ -8,14 +8,15 @@
 // product later supports multi-user, this guard is the place to widen.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import type { SupabaseClient, User } from '@supabase/supabase-js';
+import type { User } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import type { Database } from '@/lib/supabase/types.gen';
 import { UnauthorizedError } from './errors';
+
+type ServerSupabaseClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 export interface DirectorContext {
   user: User;
-  supabase: SupabaseClient<Database>;
+  supabase: ServerSupabaseClient;
 }
 
 /**
