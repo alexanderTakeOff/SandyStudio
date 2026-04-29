@@ -317,22 +317,25 @@ export const POST = withApiHandler(async (req, ctx) => {
       .eq('id', asset.episode_id);
   }
 
-  // 5. (Optional) fire downstream Inngest event after APPROVE
-  let firedEvent: { name: string; ids: string[] } | null = null;
-  if (body.decision === 'APPROVE') {
-    const next = nextEventForAsset(asset);
-    if (next) {
+  // 5. Fire downstream Inngest event(s) after APPROVE. Multi-asset
+  // milestones (storyboard 3-of-3, animatic fan-out, publish-ready) are
+  // resolved by computeNextEvents — async because it queries the asset
+  // and job tables to verify the gate set is complete and idempotent.
+  const firedEvents: Array<{ name: string; ids: string[] }> = [];
+  if (body.decision === 'APPROVE' && asset.episode_id) {
+    const events = await computeNextEvents(supabase, asset, user.id);
+    for (const ev of events) {
       const { ids } = await inngest.send({
-        name: next.name,
-        data: { ...next.data, episodeId: asset.episode_id } as never,
+        name: ev.name,
+        data: ev.data as never,
       });
-      firedEvent = { name: next.name, ids };
+      firedEvents.push({ name: ev.name, ids });
     }
   }
 
   return apiOk({
     decision: body.decision,
     asset_status: targetStatus,
-    fired_event: firedEvent,
+    fired_events: firedEvents,
   });
 });
