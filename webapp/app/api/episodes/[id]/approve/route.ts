@@ -67,9 +67,52 @@ export const POST = withApiHandler(async (req, ctx) => {
     metadata: { approval_type: body.approvalType, governance_code: decision.code },
   } as never);
 
+  // ── BRIEF approval is the pipeline starter ──────────────────────────────────
+  // Find the brief asset, flip status DRAFT/REVIEW → APPROVED, flip episode
+  // BRIEF_PENDING → BRIEF_APPROVED, then fire the EXEC-SW Inngest event.
+  let firedEvent: { name: string; ids: string[] } | null = null;
+  if (body.approvalType.toUpperCase() === 'BRIEF') {
+    if (ep.status !== 'BRIEF_PENDING') {
+      throw new ValidationError(
+        `Episode is in status ${ep.status}, not BRIEF_PENDING — brief already started`,
+      );
+    }
+    const { data: brief, error: bErr } = await supabase
+      .from('assets')
+      .select('id,filename')
+      .eq('episode_id', id)
+      .eq('file_type', 'SPC-brief')
+      .maybeSingle();
+    if (bErr) throw new Error(`brief lookup failed: ${bErr.message}`);
+    if (!brief) {
+      throw new ValidationError(
+        'No brief asset found for this episode. Did the wizard finish step 4?',
+      );
+    }
+    await supabase.from('assets').update({ status: 'APPROVED' }).eq('id', brief.id);
+    await supabase.from('episodes').update({ status: 'BRIEF_APPROVED' }).eq('id', id);
+
+    const { ids } = await inngest.send({
+      name: 'sandystudio/exec-sw/write-script',
+      data: { episodeId: id, briefAssetId: brief.id },
+    });
+    firedEvent = { name: 'sandystudio/exec-sw/write-script', ids };
+
+    await supabase.from('activity_events').insert({
+      event_type: 'pipeline_started',
+      severity: 'info',
+      title: `Pipeline started for ${ep.episode_code}`,
+      description: 'Brief approved — EXEC-SW dispatched',
+      actor: user.id,
+      episode_id: id,
+      metadata: { brief_asset_id: brief.id, inngest_event_ids: ids },
+    } as never);
+  }
+
   return apiOk({
     approved: true,
     approvalType: body.approvalType,
     governanceCode: decision.code,
+    fired_event: firedEvent,
   });
 });
