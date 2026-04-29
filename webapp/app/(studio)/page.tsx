@@ -42,7 +42,7 @@ export default async function DashboardPage() {
       <header className="mb-5">
         <h1 className="text-2xl font-semibold text-text-primary">Dashboard</h1>
         <p className="text-sm text-text-secondary mt-1">
-          Production cockpit — what needs you, what's in flight, what just happened.
+          Production cockpit — what needs you, what is in flight, what just happened.
         </p>
       </header>
 
