@@ -22,9 +22,11 @@ const ListQuery = z.object({
 });
 
 const CreateBody = z.object({
+  // Must match assets.filename CHECK pattern (^SS-(S\d{2}|PILOT)...). Without
+  // the dash, the brief asset filename fails CHECK and episode is orphaned.
   code: z
     .string()
-    .regex(/^[A-Z]{2,6}[0-9]{0,2}$/, 'Series code must match ^[A-Z]{2,6}[0-9]{0,2}$'),
+    .regex(/^SS-(S\d{2}|PILOT)$/, 'Series code must be SS-S01..SS-S99 or SS-PILOT'),
   title: z.string().min(1).max(80),
   audience: z.enum(['adult', 'kids', 'mixed', 'other']).optional(),
   genre: z.enum(['comedy', 'drama', 'doc', 'sci_fi', 'other']).optional(),
