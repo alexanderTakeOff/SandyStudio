@@ -194,7 +194,7 @@ function NewSeriesModal({
     setLogline('');
   }
 
-  const valid = title.trim().length > 0 && code.match(/^[A-Z]{2,6}[0-9]{0,2}$/);
+  const valid = title.trim().length > 0 && /^SS-(S\d{2}|PILOT)$/.test(code);
 
   return (
     <Modal open={open} onClose={onClose} title="New series" size="md">
