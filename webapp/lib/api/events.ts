@@ -4,9 +4,7 @@
 // metadata cast so route handlers don't sprinkle `as never` everywhere.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import type { createSupabaseServerClient } from '@/lib/supabase/server';
-
-type ServerSupabaseClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+import type { ServerSupabaseClient } from './auth';
 
 export type EventSeverity = 'info' | 'warning' | 'error';
 
