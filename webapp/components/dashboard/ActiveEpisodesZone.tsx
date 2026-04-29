@@ -94,7 +94,7 @@ export function ActiveEpisodesZone() {
                     <span className="text-sm font-mono text-text-primary">{ep.episode_code}</span>
                     {ep.title_working && (
                       <span className="text-xs text-text-secondary truncate">
-                        "{ep.title_working}"
+                        &ldquo;{ep.title_working}&rdquo;
                       </span>
                     )}
                   </div>
