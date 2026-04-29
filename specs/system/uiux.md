@@ -521,29 +521,23 @@ the visual chip styling stays the same.
 
 ## 9. Dashboard / Control Room
 
-The dashboard is a production overview, not the main Sprint workflow.
+> **v0.3 update:** the Dashboard becomes a 3-zone production cockpit. The
+> full layout, data sources, empty states, polling rules, and zone
+> proportions live in `specs/system/dashboard_cockpit.md`. This section
+> retains the high-level rule.
 
-Recommended sections:
-
-- Active Episodes
-- Pipeline Status
-- Pending Approvals
-- Budget Snapshot
-- Recent Jobs
-- Output Queue
-- System Health
-
-Dashboard should answer:
+The Dashboard answers, on every visit:
 
 ```text
-What is active?
-What needs my decision?
-What is running?
-What is blocked?
-How much have we spent?
+What needs me right now?       (Zone 1 — Inbox preview)
+What is in flight?             (Zone 2 — Active Episode timelines)
+What just happened?            (Zone 3 — Live activity feed)
+How much has been spent?       (Topbar budget meter)
+What is blocked?               (surfaced in Zone 1 Inbox group)
 ```
 
-Dashboard must not become the main development focus before Approval Queue MVP is usable.
+It is no longer a placeholder card grid. It is the cockpit a Director
+returns to multiple times per day. Sub-spec: `specs/system/dashboard_cockpit.md`.
 
 ---
 
