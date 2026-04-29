@@ -514,6 +514,16 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-29 | Settings → Storage tab — path picker, write-test, edit-and-validate cycle | Claude Code |
 | 2026-04-29 | Phase 5c VERIFY GREEN: typecheck OK + 79 tests + 28 replay-pilot + next build (35 routes; 6.2 kB onboarding, 4.68 kB inbox, 4.28 kB pipeline) | Claude Code |
 | 2026-04-29 | Phase 5c COMPLETE — Director cockpit live; Director smoke test next | Claude Code |
+| 2026-04-29 | Director smoke #1: orphan SS01 (no-dash code) episode → migration 0011 fixed series code regex + atomic rollback + cleanup | Director/CEO |
+| 2026-04-29 | Director smoke #2: assets.file_type CHECK rejected long-form ('SCR-script', 'SPC-metadata', etc.) — migration 0011 relaxed CHECK | Claude Code |
+| 2026-04-29 | Director smoke #3: variant with dashes (UUID shotIds) failed CHECK — migration 0012 allowed dashes in variants | Claude Code |
+| 2026-04-29 | Director smoke #4: gate.ts requires 3 STB acts but mock EXEC-SB produces 1 — factory step 5 special case spoofs act2+act3 | Claude Code |
+| 2026-04-29 | Brief approval wired (Pipeline View banner + Inbox path → both fire EXEC-SW) | Claude Code |
+| 2026-04-29 | Factory: Mode 4 auto-approve + auto-chain; Mode 1-3 → REVIEW + chain via Director approve | Claude Code |
+| 2026-04-29 | SS-S01-E01 in Mode 4: full chain Brief → Publish (15 assets APPROVED, 11 agents, $0 mock) | Director/CEO |
+| 2026-04-29 | Director smoke #5: Mode 1 chain stuck at multi-asset gates → computeNextEvents wired full chain (STB×3, animatic fan-out, metadata→thumb, all-ready→pub) with hasJob idempotency | Claude Code |
+| 2026-04-29 | Phase 5c долговая тетрадка #3, #9, #10, #11, #12 fixed | Claude Code |
+| 2026-04-29 | SS-S01-E02 reset to BRIEF_PENDING + Mode 1 → Director's Mode 1 manual test bench | Claude Code |
 
 ---
 
