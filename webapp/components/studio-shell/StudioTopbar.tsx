@@ -1,24 +1,19 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // components/studio-shell/StudioTopbar.tsx
 // Top status/search bar per uiux.md §8.1.
+// Phase 5c: chips become interactive levers per uiux.md §8.4.
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
 
-import { Search, Circle } from 'lucide-react';
-import { Tooltip } from '@/components/ui/Tooltip';
+import { Search } from 'lucide-react';
+import { SystemModeChip } from './SystemModeChip';
+import { GovernanceChip } from './GovernanceChip';
 
 interface StudioTopbarProps {
   governanceMode?: 1 | 2 | 3 | 4;
   systemMode?: '===1===' | '===5===';
 }
-
-const GOV_LABEL: Record<NonNullable<StudioTopbarProps['governanceMode']>, string> = {
-  1: 'MANUAL',
-  2: 'HYBRID',
-  3: 'DELEGATED',
-  4: 'AUTOTEST',
-};
 
 export function StudioTopbar({
   governanceMode = 1,
@@ -41,33 +36,10 @@ export function StudioTopbar({
         </div>
       </div>
 
-      {/* Mode chips */}
+      {/* Mode chips — now interactive */}
       <div className="flex items-center gap-2">
-        <Tooltip label={`System mode ${systemMode === '===5===' ? '5 — EDIT' : '1 — ANALYTICS'}`} side="bottom">
-          <span
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wider border"
-            style={{
-              color: systemMode === '===5===' ? 'var(--accent-warning)' : 'var(--text-secondary)',
-              borderColor:
-                systemMode === '===5==='
-                  ? 'color-mix(in oklab, var(--accent-warning) 50%, transparent)'
-                  : 'var(--panel-glass-border)',
-              background:
-                systemMode === '===5==='
-                  ? 'color-mix(in oklab, var(--accent-warning) 14%, transparent)'
-                  : 'transparent',
-            }}
-          >
-            <Circle size={6} fill="currentColor" />
-            {systemMode === '===5===' ? 'EDIT' : 'ANALYTICS'}
-          </span>
-        </Tooltip>
-
-        <Tooltip label={`Governance ${GOV_LABEL[governanceMode]}`} side="bottom">
-          <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wider border border-glass text-text-secondary">
-            Mode {governanceMode}
-          </span>
-        </Tooltip>
+        <SystemModeChip current={systemMode} />
+        <GovernanceChip current={governanceMode} />
       </div>
     </header>
   );
