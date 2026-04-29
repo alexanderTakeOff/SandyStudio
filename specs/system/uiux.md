@@ -1256,3 +1256,44 @@ Before coding visual changes:
 ---
 
 *SandyStudio uiux.md | v0.2 | Status: DRAFT*
+
+---
+
+## 28. First-Run Onboarding (v0.3)
+
+Before the cockpit is usable, the Director must complete a 4-step wizard:
+
+```
+Step 1 — Storage         (project_root, media_storage_root, write-test)
+Step 2 — Create Series   (code, title, audience, genre, budget ceiling)
+Step 3 — Authority Matrix (who approves what — visual + publish locked)
+Step 4 — First Episode   (brief: code, title, runtime, premise; optional)
+```
+
+Full spec: `specs/system/onboarding.md`. Sidebar nav (except Settings) is
+disabled until step 4 is complete (or skipped). Concierge is hidden during
+onboarding to remove distraction.
+
+Re-entry path: Settings → Onboarding → "Run setup wizard again" — never
+deletes existing series.
+
+---
+
+## 29. Storage Configuration (v0.3)
+
+Storage paths are configured in the first-run wizard step 1 and editable
+later under Settings → Storage. Two paths:
+
+- `project_root` — where film project folders live (Tier 2 per CLAUDE.md §2).
+- `media_storage_root` — where heavy media binaries live (Tier 3).
+
+Each path is validated by a write-test probe (create + delete a 0-byte
+file) before persisting. Failures are surfaced verbatim. The studio repo
+(`C:\SandyStudio\`) is forbidden as a write target except for its own
+`FILMS\` subdirectory.
+
+Full spec: `specs/system/storage_configuration.md`.
+
+---
+
+*SandyStudio uiux.md | v0.3 | Status: DRAFT*
