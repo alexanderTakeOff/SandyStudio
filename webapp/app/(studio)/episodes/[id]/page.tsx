@@ -150,6 +150,15 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         </div>
       </div>
 
+      {/* BRIEF_PENDING action banner */}
+      {episode.status === 'BRIEF_PENDING' && (
+        <ApproveBriefBanner
+          episodeId={episode.id}
+          governanceMode={episode.governance_mode}
+          onApproved={() => mutate()}
+        />
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* DAG (left) */}
         <Card className="lg:col-span-2">
