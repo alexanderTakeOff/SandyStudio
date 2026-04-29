@@ -20,8 +20,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const ListQuery = z.object({
-  limit: z.coerce.number().int().positive().max(50).optional().default(25),
-  filter: z.enum(['all', 'visual', 'non_visual', 'blockers', 'mine']).optional().default('all'),
+  limit: z.coerce.number().int().positive().max(50).default(25),
+  filter: z.enum(['all', 'visual', 'non_visual', 'blockers', 'mine']).default('all'),
   episode_id: z.string().uuid().optional(),
 });
 

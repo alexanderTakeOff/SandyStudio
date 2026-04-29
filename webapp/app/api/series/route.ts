@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 
 const ListQuery = z.object({
   status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional().default(50),
+  limit: z.coerce.number().int().positive().max(100).default(50),
 });
 
 const CreateBody = z.object({

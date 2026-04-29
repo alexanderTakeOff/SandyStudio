@@ -16,7 +16,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const Query = z.object({
-  feed_limit: z.coerce.number().int().positive().max(100).optional().default(50),
+  feed_limit: z.coerce.number().int().positive().max(100).default(50),
   feed_cursor: z.string().optional(),
 });
 

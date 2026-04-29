@@ -15,9 +15,9 @@ export const dynamic = 'force-dynamic';
 const ListQuery = z.object({
   episode_id: z.string().uuid().optional(),
   agent_id:   z.string().optional(),
-  status:     z.enum(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT']).optional(),
+  status:     z.enum(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'RETRYING']).optional(),
   cursor:     z.string().optional(),
-  limit:      z.coerce.number().int().positive().max(200).optional().default(50),
+  limit:      z.coerce.number().int().positive().max(200).default(50),
 });
 
 export const GET = withApiHandler(async (req) => {

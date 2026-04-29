@@ -16,7 +16,7 @@ const ListQuery = z.object({
   episode_id: z.string().uuid().optional(),
   file_type: z.string().optional(),
   status: z.string().optional(),
-  limit: z.coerce.number().int().positive().max(200).optional().default(100),
+  limit: z.coerce.number().int().positive().max(200).default(100),
 });
 
 export const GET = withApiHandler(async (req) => {

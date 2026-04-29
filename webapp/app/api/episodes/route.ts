@@ -18,7 +18,7 @@ const ListQuery = z.object({
   series_id: z.string().optional(),       // either uuid (FK) or text code
   status: z.string().optional(),
   active: z.enum(['true', 'false']).optional(),
-  limit: z.coerce.number().int().positive().max(100).optional().default(50),
+  limit: z.coerce.number().int().positive().max(100).default(50),
 });
 
 const ACTIVE_EXCLUDED = new Set(['COMPLETE']);
@@ -29,7 +29,7 @@ const CreateBody = z.object({
   title_working: z.string().min(1).max(80),
   target_runtime_seconds: z.number().int().min(5).max(300).optional(),
   premise: z.string().min(20).max(500),
-  governance_mode: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional().default(1),
+  governance_mode: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).default(1),
 });
 
 export const GET = withApiHandler(async (req) => {
