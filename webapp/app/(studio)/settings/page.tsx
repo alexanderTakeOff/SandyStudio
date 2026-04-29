@@ -1,10 +1,11 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // app/(studio)/settings/page.tsx
-// Settings → Appearance per uiux.md §7. Other tabs land in later phases.
+// Settings — Appearance + Storage tabs.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings';
+import { StorageSettings } from '@/components/settings/StorageSettings';
 
 export default function SettingsPage() {
   return (
@@ -12,11 +13,14 @@ export default function SettingsPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold text-text-primary">Settings</h1>
         <p className="text-sm text-text-secondary mt-1">
-          Studio appearance, governance, agents. More tabs land in later phases.
+          Appearance and storage paths. Authority Matrix lands in Phase 7.
         </p>
       </header>
 
-      <AppearanceSettings />
+      <div className="space-y-5">
+        <AppearanceSettings />
+        <StorageSettings />
+      </div>
     </StudioContentFrame>
   );
 }
