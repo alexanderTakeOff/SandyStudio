@@ -50,7 +50,7 @@ export const POST = withApiHandler(async (req) => {
     description: `Reason: ${body.reason}; by ${user.email ?? user.id}`,
     actor: user.id,
     metadata: { reason: body.reason },
-  });
+  } as never);
 
   return apiOk(updated);
 });

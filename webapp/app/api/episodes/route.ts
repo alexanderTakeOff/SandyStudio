@@ -46,7 +46,7 @@ export const GET = withApiHandler(async (req) => {
     // Match either by uuid (resolve to code first) or by code text directly.
     if (/^[0-9a-f-]{36}$/i.test(q.series_id)) {
       const { data: srow } = await supabase
-        .from('series')
+        .from('series' as never)
         .select('code')
         .eq('id', q.series_id)
         .maybeSingle();
@@ -73,7 +73,7 @@ export const POST = withApiHandler(async (req) => {
 
   // Resolve series row → series_id text code
   const { data: srow, error: serr } = await supabase
-    .from('series')
+    .from('series' as never)
     .select('*')
     .eq('id', body.series_id)
     .maybeSingle();
@@ -140,7 +140,7 @@ export const POST = withApiHandler(async (req) => {
       series_id: series.id,
       target_runtime_seconds: body.target_runtime_seconds ?? null,
     },
-  });
+  } as never);
 
   return apiCreated(ep);
 });

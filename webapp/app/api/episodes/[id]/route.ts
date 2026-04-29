@@ -100,7 +100,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     actor: user.id,
     episode_id: id,
     metadata: { patch },
-  });
+  } as never);
 
   return apiOk(updated);
 });

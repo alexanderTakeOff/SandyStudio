@@ -65,7 +65,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     actor: user.id,
     episode_id: id,
     metadata: { approval_type: body.approvalType, governance_code: decision.code },
-  });
+  } as never);
 
   return apiOk({
     approved: true,

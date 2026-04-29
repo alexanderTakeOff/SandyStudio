@@ -37,7 +37,7 @@ export const GET = withApiHandler(async (req) => {
   const q = parseSearchParams(req.url, ListQuery);
 
   let query = supabase
-    .from('series')
+    .from('series' as never)
     .select('*')
     .order('created_at', { ascending: false })
     .limit(q.limit);
@@ -64,7 +64,7 @@ export const POST = withApiHandler(async (req) => {
     created_by: user.id,
   };
   const { data: row, error: insErr } = await supabase
-    .from('series')
+    .from('series' as never)
     .insert(insertPayload as never)
     .select('*')
     .single();
@@ -100,7 +100,7 @@ export const POST = withApiHandler(async (req) => {
     }
   }
   const { error: aamErr } = await supabase
-    .from('approval_authority_matrix')
+    .from('approval_authority_matrix' as never)
     .insert(aamRows as never);
   if (aamErr) {
     // Don't roll back the series — log and surface a warning. The matrix can
@@ -112,7 +112,7 @@ export const POST = withApiHandler(async (req) => {
       description: `Authority seed failed: ${aamErr.message}`,
       actor: user.id,
       metadata: { series_id: seriesRow.id },
-    });
+    } as never);
   }
 
   await supabase.from('activity_events').insert({
@@ -122,7 +122,7 @@ export const POST = withApiHandler(async (req) => {
     description: `Created by ${user.email ?? user.id}`,
     actor: user.id,
     metadata: { series_id: seriesRow.id },
-  });
+  } as never);
 
   return apiCreated(seriesRow);
 });

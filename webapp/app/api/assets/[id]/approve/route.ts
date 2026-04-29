@@ -164,7 +164,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     asset_id: id,
     episode_id: asset.episode_id,
     metadata: { decision: body.decision, file_type: asset.file_type },
-  });
+  } as never);
 
   // 4. (Optional) fire downstream Inngest event after APPROVE
   let firedEvent: { name: string; ids: string[] } | null = null;

@@ -90,7 +90,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       payload: body.payload ?? null,
       inngest_event_ids: ids,
     },
-  });
+  } as never);
 
   return apiOk({
     triggered: true,

@@ -120,7 +120,7 @@ export const POST = withApiHandler(async (req) => {
     description: `project_root: ${old.project_root} → ${body.project_root}; media_root: ${old.media_storage_root} → ${body.media_storage_root}`,
     actor: user.id,
     metadata: { old, new: body },
-  });
+  } as never);
 
   const cfg = await readStorageConfig(supabase);
   return apiOk(cfg);

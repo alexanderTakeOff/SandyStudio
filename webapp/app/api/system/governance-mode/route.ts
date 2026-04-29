@@ -70,7 +70,7 @@ export const POST = withApiHandler(async (req) => {
     actor: user.id,
     episode_id: body.scope === 'global' ? null : body.scope.episodeId,
     metadata: { target_mode: body.targetMode, scope: body.scope },
-  });
+  } as never);
 
   return apiOk({ targetMode: body.targetMode, scope: body.scope });
 });

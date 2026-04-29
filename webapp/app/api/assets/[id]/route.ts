@@ -88,7 +88,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     asset_id: id,
     episode_id: asset.episode_id,
     metadata: { patch },
-  });
+  } as never);
 
   return apiOk(updated);
 });

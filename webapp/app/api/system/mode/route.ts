@@ -72,7 +72,7 @@ export const POST = withApiHandler(async (req) => {
     description: `Switched by Director ${user.email ?? user.id}`,
     actor: user.id,
     metadata: { target_mode: body.targetMode },
-  });
+  } as never);
 
   const cfg = await readSystemConfig(supabase);
   return apiOk(cfg);

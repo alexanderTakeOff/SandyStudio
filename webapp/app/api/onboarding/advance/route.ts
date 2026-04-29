@@ -85,7 +85,7 @@ export const POST = withApiHandler(async (req) => {
     description: `Director ${user.email ?? user.id} advanced wizard`,
     actor: user.id,
     metadata: { step: body.step, payload: body.payload ?? null },
-  });
+  } as never);
 
   return apiOk(updated);
 });

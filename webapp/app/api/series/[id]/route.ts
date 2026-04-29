@@ -19,7 +19,7 @@ export const GET = withApiHandler(async (_req, ctx) => {
 
   const { supabase } = await requireDirector();
   const { data: series, error } = await supabase
-    .from('series')
+    .from('series' as never)
     .select('*')
     .eq('id', id)
     .maybeSingle();
@@ -30,7 +30,7 @@ export const GET = withApiHandler(async (_req, ctx) => {
 
   const [matrixRes, epCountRes] = await Promise.all([
     supabase
-      .from('approval_authority_matrix')
+      .from('approval_authority_matrix' as never)
       .select('*')
       .eq('series_id', id),
     supabase
