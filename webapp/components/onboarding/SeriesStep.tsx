@@ -59,7 +59,7 @@ export function SeriesStep({ onAdvance }: SeriesStepProps) {
       <div>
         <h2 className="text-xl font-semibold text-text-primary">Your first series</h2>
         <p className="text-sm text-text-secondary mt-1">
-          Bibles (world, characters, style) populate during episode 1 — you don't write them now.
+          Bibles (world, characters, style) populate during episode 1 — you do not write them now.
         </p>
       </div>
 
