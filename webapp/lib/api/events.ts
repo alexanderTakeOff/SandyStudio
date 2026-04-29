@@ -29,7 +29,7 @@ export interface ActivityEventInput {
  * The error is logged via console.error in dev and silently swallowed in prod.
  */
 export async function logEvent(
-  supabase: SupabaseClient<Database>,
+  supabase: ServerSupabaseClient,
   input: ActivityEventInput,
 ): Promise<void> {
   const payload = {
