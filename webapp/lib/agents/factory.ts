@@ -170,7 +170,7 @@ export function createAgentInngestFunction<E extends string>(
         const supabase = createSupabaseServiceRoleClient();
         const { data: ep, error } = await supabase
           .from('episodes')
-          .select('episode_code')
+          .select('episode_code,governance_mode')
           .eq('id', episodeId)
           .single();
         if (error) {
@@ -192,6 +192,24 @@ export function createAgentInngestFunction<E extends string>(
           variant,
         });
         await markJobCompleted(supabase, job.id, out.assetId);
+
+        // Mode 4 (AUTOTEST) — auto-promote DRAFT → APPROVED so downstream
+        // gates pass without Director approval. Mirrors replay-pilot's
+        // autoApproveOutput flag. Modes 1-3 leave assets in REVIEW for
+        // Director Inbox triage. (REVIEW promotion handled below.)
+        if (ep.governance_mode === 4) {
+          await supabase
+            .from('assets')
+            .update({ status: 'APPROVED' })
+            .eq('id', out.assetId);
+        } else {
+          // Modes 1-3: flip DRAFT → REVIEW so the asset surfaces in the
+          // Director Inbox immediately. Approval there fires the next agent.
+          await supabase
+            .from('assets')
+            .update({ status: 'REVIEW' })
+            .eq('id', out.assetId);
+        }
         return out;
       });
 
