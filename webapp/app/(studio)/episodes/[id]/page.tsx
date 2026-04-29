@@ -264,6 +264,79 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   );
 }
 
+function ApproveBriefBanner({
+  episodeId,
+  governanceMode,
+  onApproved,
+}: {
+  episodeId: string;
+  governanceMode: number;
+  onApproved: () => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function approve() {
+    setPending(true);
+    setError(null);
+    const res = await fetch(`/api/episodes/${episodeId}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        approvalType: 'BRIEF',
+        notes: 'Brief approved — pipeline starts',
+      }),
+    });
+    setPending(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setError((j as { error?: string }).error ?? 'Approve failed');
+      return;
+    }
+    onApproved();
+  }
+
+  return (
+    <div
+      className="rounded-2xl border px-5 py-4 mb-4"
+      style={{
+        background: 'color-mix(in oklab, var(--accent-warning) 10%, transparent)',
+        borderColor: 'color-mix(in oklab, var(--accent-warning) 40%, transparent)',
+      }}
+    >
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-text-primary">
+            Brief is waiting for your approval
+          </div>
+          <p className="text-xs text-text-secondary mt-1 leading-relaxed">
+            Approving the brief locks it as APPROVED and dispatches{' '}
+            <span className="font-mono text-text-primary">EXEC-SW</span> (Screenwriter).
+            {governanceMode === 4
+              ? ' Mode 4 AUTOTEST — entire pipeline will auto-run through Publish.'
+              : ` Mode ${governanceMode} — each downstream gate (Script, Storyboard, Animatic, Generation, Publish) will land in your Inbox for review.`}
+          </p>
+          {error && (
+            <p
+              className="text-xs mt-2"
+              style={{ color: 'var(--accent-danger)' }}
+            >
+              {error}
+            </p>
+          )}
+        </div>
+        <Button
+          onClick={approve}
+          disabled={pending}
+          variant="warning"
+        >
+          <Play size={14} /> {pending ? 'Starting…' : 'Approve Brief & Start Pipeline'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function TriggerModal({
   open,
   onClose,
