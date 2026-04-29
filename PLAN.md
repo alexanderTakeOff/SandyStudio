@@ -54,11 +54,38 @@ cd webapp && npm run inngest:dev  # → http://localhost:8288 (dashboard)
 | 3 | Inngest worker + concurrency limits + ping smoke test | ✅ COMPLETE 2026-04-28 |
 | 4 | Agent job functions (11 Inngest fns + factory + 39 unit tests + replay-pilot harness)  | ✅ COMPLETE 2026-04-28 |
 | 5a | UX architecture specs (uiux v0.3 + 5 sub-specs + config/uiux.yaml extensions) | ✅ COMPLETE 2026-04-29 |
-| 5b | API routes (16 endpoints + lib/api/* + zod + migration 0010 + 79 tests) | ✅ COMPLETE 2026-04-29 |
-| 5c | First-run wizard + Cockpit Dashboard + Inbox + Pipeline view + Activity + Storage settings + Topbar levers | ✅ COMPLETE 2026-04-29 |
-| 6 | Polish: per-episode sub-pages, budget detail, asset preview drawer | ⏳ pending |
+| 5b | API routes (26 endpoints + lib/api/* + zod + migration 0010 + 79 tests) | ✅ COMPLETE 2026-04-29 |
+| 5c | First-run wizard + Cockpit Dashboard + Inbox + Pipeline View + Activity + Storage settings + Topbar levers + Mode 1 chain (computeNextEvents) + Mode 4 auto-chain (factory) + 3-STB-act gate fix (migration 0011 + 0012) | ✅ COMPLETE 2026-04-29 |
+| 5d | UX polish (долговая тетрадка ниже) — friendly agent names, asset preview drawer, tooltips, etc. | ⏳ pending |
+| 6 | Per-episode sub-pages, budget detail tab, jobs detail panel | ⏳ pending |
 | 7 | Approval Authority Matrix per-row editing + delegate UI | ⏳ pending |
-| 8 | PM2 ecosystem + Tailscale doc + production hardening | ⏳ pending |
+| 8 | Real provider integration (Kling/Midjourney/Suno/YouTube) — first paid run | ⏳ pending |
+| 9 | PM2 ecosystem + Tailscale + production hardening | ⏳ pending |
+
+### Long-debt (долговая тетрадка) — Phase 5d candidates
+
+Items surfaced during Director's Phase 5c smoke test, not blocking but worth fixing:
+
+| # | Bug / improvement | Severity |
+|---|---|---|
+| 1 | Friendly agent names everywhere (EXEC-SW → "Screenwriter"). Affects Re-trigger modal, Inbox, Pipeline DAG, Activity feed. | UX |
+| 2 | Per-stage trigger button in DAG (instead of generic Re-trigger… modal with dropdown) | UX |
+| 4 | `markJobFailed` on any throw, not only gate-fail. Job rows shouldn't sit `RUNNING` after Inngest function.failed (e.g. CHECK constraint, save errors) | Reliability |
+| 5 | Re-trigger dedup: refuse if same agent already has COMPLETED/RUNNING job for that asset | UX |
+| 6 | Asset preview drawer in Inbox (image/video/audio/markdown). Today it's just `confirm()` modal for visuals. | UX |
+| 7 | Tooltips on buttons (especially Mode 1/2/3 picker, APPROVE/REVISE/REJECT in Inbox); inline mode descriptions | UX |
+| 8 | Authority Matrix per-row editing UI (currently read-only display) | Phase 7 |
+| 13 | `episodes.status` doesn't update after milestone approvals — stays `BRIEF_APPROVED` even when published | Reliability |
+| 14 | `schedule-analytics` cron not firing after EXEC-PUB. Verify runner.ts EXEC-PUB emits `result.next_event` properly | Reliability |
+| 15 | Mode 4 auto-revert to Mode 1 on session end (per `governance.md §4`) | Compliance |
+| 16 | EXEC-VGEN base file_type duplicate `shot` token: produces `VID-shot-shot1`. Either base="VID" or shotId="1" | Cosmetic |
+
+**Already fixed in Phase 5c (don't re-add):**
+- ✅ #3 Story phantom stage hidden
+- ✅ #9 Multi-asset milestone chain (STB×3, animatic fan-out, metadata→thumb, ready→pub) via `computeNextEvents`
+- ✅ #10 Pipeline View stage filter (uses `metadata.file_type` prefix)
+- ✅ #11 Factory writes `agent_completed` activity_event on save
+- ✅ #12 STAGE_FROM_ASSET prefix matching (no more "all stages idle despite approved assets")
 
 ### UI/UX implementation note
 
