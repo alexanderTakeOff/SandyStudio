@@ -16,5 +16,5 @@ export async function fetcher<T = unknown>(url: string): Promise<T> {
     }
     throw new Error(detail || `${res.status} ${res.statusText}`);
   }
-  return res.json();
+  return res.json() as Promise<T>;
 }
