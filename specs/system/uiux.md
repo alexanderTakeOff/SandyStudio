@@ -621,7 +621,13 @@ Rules:
 
 ---
 
-## 11. Episode Detail
+## 11. Episode Detail → Pipeline View (v0.3 rename)
+
+> **v0.3 update:** Episode Detail is now the **Pipeline View** — a
+> two-pane layout (DAG on the left 40%, Agent Report Feed on the right
+> 60%) inspired by Temporal UI + GitHub PR conversation. Full spec:
+> `specs/system/pipeline_view.md`. The "current gate visually dominant"
+> rule is preserved via the gate connector glyph (`═`).
 
 Episode Detail should behave like mission control for one episode.
 
