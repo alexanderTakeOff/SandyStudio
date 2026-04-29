@@ -115,7 +115,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
               {episode.episode_code}
               {episode.title_working && (
                 <span className="text-text-secondary font-normal text-lg ml-3">
-                  "{episode.title_working}"
+                  &ldquo;{episode.title_working}&rdquo;
                 </span>
               )}
             </h1>
