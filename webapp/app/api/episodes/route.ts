@@ -1,0 +1,149 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// app/api/episodes/route.ts
+// Episodes list + create. Per webapp.md §5 + onboarding.md §7.
+// ──────────────────────────────────────────────────────────────────────────────
+
+import { z } from 'zod';
+import { requireDirector } from '@/lib/api/auth';
+import { withApiHandler } from '@/lib/api/handler';
+import { apiOk, apiCreated } from '@/lib/api/response';
+import { parseJson, parseSearchParams } from '@/lib/api/zod-helpers';
+import { ConflictError, ValidationError, NotFoundError } from '@/lib/api/errors';
+import type { SeriesRow } from '@/lib/supabase/types-phase5b';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const ListQuery = z.object({
+  series_id: z.string().optional(),       // either uuid (FK) or text code
+  status: z.string().optional(),
+  active: z.enum(['true', 'false']).optional(),
+  limit: z.coerce.number().int().positive().max(100).optional().default(50),
+});
+
+const ACTIVE_EXCLUDED = new Set(['COMPLETE']);
+
+const CreateBody = z.object({
+  series_id: z.string().uuid(),           // accept the series row uuid
+  episode_code: z.string().regex(/^E[0-9]{1,3}$/),
+  title_working: z.string().min(1).max(80),
+  target_runtime_seconds: z.number().int().min(5).max(300).optional(),
+  premise: z.string().min(20).max(500),
+  governance_mode: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional().default(1),
+});
+
+export const GET = withApiHandler(async (req) => {
+  const { supabase } = await requireDirector();
+  const q = parseSearchParams(req.url, ListQuery);
+
+  let query = supabase
+    .from('episodes')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(q.limit);
+
+  if (q.series_id) {
+    // Match either by uuid (resolve to code first) or by code text directly.
+    if (/^[0-9a-f-]{36}$/i.test(q.series_id)) {
+      const { data: srow } = await supabase
+        .from('series')
+        .select('code')
+        .eq('id', q.series_id)
+        .maybeSingle();
+      const code = (srow as { code?: string } | null)?.code;
+      if (code) query = query.eq('series_id', code);
+    } else {
+      query = query.eq('series_id', q.series_id);
+    }
+  }
+  if (q.status) query = query.eq('status', q.status as never);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`episodes list failed: ${error.message}`);
+  let rows = data ?? [];
+  if (q.active === 'true') {
+    rows = rows.filter((r) => !ACTIVE_EXCLUDED.has(r.status));
+  }
+  return apiOk(rows, { total: rows.length });
+});
+
+export const POST = withApiHandler(async (req) => {
+  const { user, supabase } = await requireDirector();
+  const body = await parseJson(req, CreateBody);
+
+  // Resolve series row → series_id text code
+  const { data: srow, error: serr } = await supabase
+    .from('series')
+    .select('*')
+    .eq('id', body.series_id)
+    .maybeSingle();
+  if (serr) throw new Error(`series lookup failed: ${serr.message}`);
+  if (!srow) throw new NotFoundError(`Series ${body.series_id}`);
+  const series = srow as unknown as SeriesRow;
+
+  const fullEpisodeCode = `${series.code}-${body.episode_code}`;
+
+  // Brief asset filename obeys the convention: SS-S01-E01-SPC-brief-v01-DRAFT.md
+  // (note: SS- prefix lives inside series.code, e.g. "SS-S01"; keep that.)
+  const briefFilename = `${series.code}-${body.episode_code}-SPC-brief-v01-DRAFT.md`;
+
+  // Insert episode
+  const epPayload = {
+    series_id: series.code,
+    episode_code: fullEpisodeCode,
+    title_working: body.title_working,
+    status: 'BRIEF_PENDING' as const,
+    governance_mode: body.governance_mode,
+    budget_ceiling: series.episode_budget_ceiling ?? null,
+    budget_spent: 0,
+  };
+  const { data: ep, error: epErr } = await supabase
+    .from('episodes')
+    .insert(epPayload)
+    .select('*')
+    .single();
+  if (epErr) {
+    if (epErr.code === '23505') {
+      throw new ConflictError(`Episode ${fullEpisodeCode} already exists`);
+    }
+    throw new Error(`episode insert failed: ${epErr.message}`);
+  }
+  if (!ep) throw new Error('episode insert returned no row');
+
+  // Insert brief asset
+  const { error: assErr } = await supabase
+    .from('assets')
+    .insert({
+      episode_id: ep.id,
+      filename: briefFilename,
+      file_type: 'SPC',
+      description: body.premise,
+      version: 1,
+      status: 'DRAFT' as const,
+      agent_id: 'Director',
+    });
+  if (assErr) {
+    // Episode is created; surface as warning but keep the episode row.
+    if (assErr.code !== '23505') {
+      throw new Error(`brief asset insert failed: ${assErr.message}`);
+    }
+  }
+
+  await supabase.from('activity_events').insert({
+    event_type: 'episode_created',
+    severity: 'info',
+    title: `Episode ${fullEpisodeCode} created`,
+    description: `By ${user.email ?? user.id}; runtime ${body.target_runtime_seconds ?? 'unspecified'}s`,
+    actor: user.id,
+    episode_id: ep.id,
+    metadata: {
+      series_id: series.id,
+      target_runtime_seconds: body.target_runtime_seconds ?? null,
+    },
+  });
+
+  return apiCreated(ep);
+});
+
+// Suppress unused-warning for ValidationError when not directly used
+void ValidationError;
