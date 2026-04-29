@@ -71,7 +71,7 @@ export default function OnboardingPage() {
         )}
         {state.current_step === 3 && !state.draft_series_id && (
           <p className="text-sm text-[var(--accent-danger)]">
-            Series wasn't created in step 2. Refresh and re-do step 2.
+            Series was not created in step 2. Refresh and re-do step 2.
           </p>
         )}
         {state.current_step === 4 && state.draft_series_id && (
