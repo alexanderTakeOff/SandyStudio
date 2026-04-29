@@ -22,10 +22,24 @@ When Claude Code changes anything related to:
 
 Claude Code must first read this file and keep it aligned with implementation.
 
-This file complements:
+This file is the **spine**. Heavyweight UX sub-specs live in their own files
+and are linked from here. When you change something in a sub-spec, also update
+the matching pointer here so this file stays the entry point.
+
+| Sub-spec | Owns |
+|----------|------|
+| `specs/system/onboarding.md` | First-run wizard (4 steps): Storage → Series → Authority Matrix → First Episode |
+| `specs/system/storage_configuration.md` | `project_root` and `media_storage_root` paths, write-test, Settings → Storage tab |
+| `specs/system/dashboard_cockpit.md` | Dashboard `/` as a 3-zone production cockpit (Inbox preview · Active episodes · Activity feed) |
+| `specs/system/pipeline_view.md` | Per-episode `/episodes/[id]` — DAG + Agent Report Feed hybrid |
+| `specs/system/director_inbox.md` | `/inbox` — Director Task Center, hotkeys, bulk actions, visual gate |
+
+Other documents this file complements:
 
 - `specs/system/webapp.md`
 - `specs/system/auth.md`
+- `specs/system/character_consistency.md` — visual approval rule that the Inbox enforces
+- `specs/company/governance.md` — 4-mode definitions surfaced via Topbar lever
 - `CLAUDE.md`
 - `PLAN.md`
 - agent and pipeline specifications
