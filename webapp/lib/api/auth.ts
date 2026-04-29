@@ -14,9 +14,9 @@ import type { Database } from '@/lib/supabase/types.gen';
 import { UnauthorizedError } from './errors';
 
 // Re-export the concrete client shape as returned by `createServerClient<Database>`.
-// SupabaseClient<Database, 'public'> matches the 3-generic form used by
-// @supabase/ssr 0.5 (which threads the schema as the third generic).
-export type ServerSupabaseClient = SupabaseClient<Database, 'public'>;
+// All three generics specified explicitly so the type matches what
+// @supabase/ssr 0.5 actually returns (Database, schema-name, schema-object).
+export type ServerSupabaseClient = SupabaseClient<Database, 'public', Database['public']>;
 
 export interface DirectorContext {
   user: User;
