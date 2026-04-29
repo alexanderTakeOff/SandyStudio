@@ -427,6 +427,18 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-28 | naming-validator.cjs hook updated — whitelist code dirs (webapp/agents/lib/specs/config/.claude) so they don't trigger SS-*-naming validation | Claude Code |
 | 2026-04-28 | Phase 4 VERIFICATION PASSED: typecheck OK + 39/39 unit tests + 28/28 replay-pilot assertions (1.0s total) | Claude Code |
 | 2026-04-28 | Phase 4 COMPLETE — pipeline DAG + budget + governance fully exercised end-to-end in mock mode | Claude Code |
+| 2026-04-29 | Director surfaced UX gap: webapp shell wired but no production cockpit, no first-run, no inbox, no pipeline visualisation | Director/CEO |
+| 2026-04-29 | DECISION: Phase 5 split into 5a (UX specs) + 5b (API routes, revised) + 5c (first-run + cockpit UI MVP); Phase 7 Authority Matrix UX home moved into 5a onboarding spec | Director/CEO |
+| 2026-04-29 | DECISION: Topbar System Mode + Governance Mode chips become interactive levers (Director-only, hard limits) | Director/CEO |
+| 2026-04-29 | DECISION: trigger route allows Director always + EXEC-DIR-AI in Mode 2/3; EXEC-DIR-AI re-trigger requires reason field | Director/CEO |
+| 2026-04-29 | Phase 5a START — UX architecture spec pass | Director/CEO |
+| 2026-04-29 | specs/system/storage_configuration.md v0.1 DRAFT — project_root + media_storage_root, write-test, settings tab | Claude Code |
+| 2026-04-29 | specs/system/onboarding.md v0.1 DRAFT — 4-step wizard (storage → series → authority → first episode) | Claude Code |
+| 2026-04-29 | specs/system/director_inbox.md v0.1 DRAFT — task center, hotkeys, bulk actions, visual gate, mode behaviour | Claude Code |
+| 2026-04-29 | specs/system/pipeline_view.md v0.1 DRAFT — DAG (40%) + Agent Report Feed (60%) hybrid per episode | Claude Code |
+| 2026-04-29 | specs/system/dashboard_cockpit.md v0.1 DRAFT — 3-zone cockpit (inbox preview + active episodes + activity feed) | Claude Code |
+| 2026-04-29 | specs/system/uiux.md v0.2 → v0.3 — spine + cross-links + Topbar levers + onboarding + storage pointers | Claude Code |
+| 2026-04-29 | config/uiux.yaml extended — pipeline_node_states, pipeline_stages, inbox config, agent_report_card, dashboard zones, topbar_levers, storage_defaults | Claude Code |
 
 ---
 
