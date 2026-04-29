@@ -98,8 +98,35 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   }
 
   const { episode, stages, feed } = data.data;
+  // Stage filter looks at event.metadata.file_type (set by asset_updated /
+  // approval_granted) and matches via the same prefix rule the DAG uses,
+  // OR matches event.metadata.agent against stage.agents (for system events
+  // like job_started). Director events have actor=user.uuid which we don't
+  // try to bucket by stage — they show in "All".
+  const STAGE_PREFIX_MAP: Record<string, string[]> = {
+    brief: ['SPC-brief'],
+    script: ['SCR', 'REV-script_qa'],
+    storyboard: ['STB'],
+    world_check: ['REV-world_check'],
+    animatic: ['VID-animatic'],
+    generation: ['VID-shot', 'AUD-music'],
+    distribution: ['SPC-metadata', 'IMG-thumbnail', 'SPC-copy'],
+    publish: ['REV-publish'],
+    analytics: ['REV-analytics'],
+  };
   const filtered = selectedStage
-    ? feed.filter((e) => e.actor && stages.find((s) => s.id === selectedStage)?.agents.includes(e.actor))
+    ? feed.filter((e) => {
+        const stage = stages.find((s) => s.id === selectedStage);
+        if (!stage) return false;
+        const meta = (e as { metadata?: Record<string, unknown> }).metadata ?? {};
+        const ft = (meta.file_type as string | undefined) ?? '';
+        const prefixes = STAGE_PREFIX_MAP[selectedStage] ?? [];
+        if (prefixes.some((p) => ft.startsWith(p))) return true;
+        const metaAgent = meta.agent as string | undefined;
+        if (metaAgent && stage.agents.includes(metaAgent)) return true;
+        if (e.actor && stage.agents.includes(e.actor)) return true;
+        return false;
+      })
     : feed;
 
   return (
