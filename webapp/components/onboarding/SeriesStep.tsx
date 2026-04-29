@@ -52,7 +52,9 @@ export function SeriesStep({ onAdvance }: SeriesStepProps) {
     onAdvance(j.data.id);
   }
 
-  const valid = title.trim().length > 0 && code.match(/^[A-Z]{2,6}[0-9]{0,2}$/);
+  // Series code must match assets.filename CHECK pattern: '^SS-(S\d{2}|PILOT)...'
+  // Accept either 'SS-S01' (canonical) or 'SS-PILOT'.
+  const valid = title.trim().length > 0 && /^SS-(S\d{2}|PILOT)$/.test(code);
 
   return (
     <div className="space-y-5">
