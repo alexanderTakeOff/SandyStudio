@@ -4,7 +4,7 @@
 // directly so components can read `data.data` / `data.meta`.
 // ──────────────────────────────────────────────────────────────────────────────
 
-export async function fetcher(url: string): Promise<unknown> {
+export async function fetcher<T = unknown>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) {
     let detail = '';
