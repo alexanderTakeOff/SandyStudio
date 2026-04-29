@@ -35,58 +35,163 @@ const STATUS_AFTER_DECISION: Record<typeof ApproveBody._type.decision, AssetStat
   NEEDS_HUMAN_TWEAK: 'NEEDS_HUMAN_TWEAK',
 };
 
-// Asset filename → next Inngest event mapping. After APPROVE only.
-// Mirrors the canonical pipeline DAG. Returns null when there is no
-// downstream event to fire (terminal asset, manual continuation, etc.).
-function nextEventForAsset(asset: {
+// Asset approval → which Inngest event(s) to fire next.
+//
+// Single-asset milestones return one event. Multi-asset milestones (storyboard,
+// animatic fan-out, publish-ready) require DB queries to verify the gate set
+// is complete — that logic lives in `computeNextEvents` (async) below.
+//
+// Idempotency: each branch checks whether the target agent already has a
+// COMPLETED or RUNNING job for this episode. If yes, no new event fires —
+// prevents duplicate runs when Director re-approves or HMR retriggers.
+
+type AssetForChain = {
   id: string;
   filename: string;
   file_type: string;
   episode_id: string | null;
-}):
-  | { name: StudioEventName; data: Record<string, unknown> }
-  | null {
-  if (!asset.episode_id) return null;
-  const ep = asset.episode_id;
+};
 
-  // Brief APPROVED → fire EXEC-SW (write-script). Same trigger as the
-  // Pipeline View "Approve Brief" banner — single source of truth.
-  if (asset.file_type === 'SPC-brief') {
-    return {
+type SupabaseClientLike = Awaited<ReturnType<typeof requireDirector>>['supabase'];
+
+async function hasJob(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+  agentId: string,
+  excludeFailed = true,
+): Promise<boolean> {
+  const { count } = await supabase
+    .from('jobs')
+    .select('*', { count: 'exact', head: true })
+    .eq('episode_id', episodeId)
+    .eq('agent_id', agentId)
+    .in('status', excludeFailed ? ['QUEUED', 'RUNNING', 'COMPLETED'] : ['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED']);
+  return (count ?? 0) > 0;
+}
+
+async function countApproved(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+  fileTypePrefix: string,
+): Promise<number> {
+  const { count } = await supabase
+    .from('assets')
+    .select('*', { count: 'exact', head: true })
+    .eq('episode_id', episodeId)
+    .eq('status', 'APPROVED')
+    .like('file_type', `${fileTypePrefix}%`);
+  return count ?? 0;
+}
+
+async function computeNextEvents(
+  supabase: SupabaseClientLike,
+  asset: AssetForChain,
+  directorUserId: string,
+): Promise<Array<{ name: StudioEventName; data: Record<string, unknown> }>> {
+  if (!asset.episode_id) return [];
+  const ep = asset.episode_id;
+  const ft = asset.file_type;
+  const events: Array<{ name: StudioEventName; data: Record<string, unknown> }> = [];
+
+  // ── Brief APPROVED → EXEC-SW (single)
+  if (ft === 'SPC-brief' && !(await hasJob(supabase, ep, 'EXEC-SW'))) {
+    events.push({
       name: 'sandystudio/exec-sw/write-script',
       data: { episodeId: ep, briefAssetId: asset.id },
-    };
+    });
   }
 
-  // Script APPROVED → fire EXEC-SREV (review-script).
-  if (asset.file_type === 'SCR-script') {
-    return {
-      name: 'sandystudio/exec-srev/review-script',
-      data: { episodeId: ep, scriptAssetId: asset.id },
-    };
+  // ── Script APPROVED → EXEC-SREV (single) AND EXEC-COPY (parallel chain start)
+  if (ft === 'SCR-script') {
+    if (!(await hasJob(supabase, ep, 'EXEC-SREV'))) {
+      events.push({
+        name: 'sandystudio/exec-srev/review-script',
+        data: { episodeId: ep, scriptAssetId: asset.id },
+      });
+    }
+    if (!(await hasJob(supabase, ep, 'EXEC-COPY'))) {
+      events.push({
+        name: 'sandystudio/exec-copy/write-metadata',
+        data: { episodeId: ep, scriptAssetId: asset.id },
+      });
+    }
   }
 
-  // Script review APPROVED → fire EXEC-SB (storyboard).
-  if (asset.file_type === 'REV-script_qa') {
-    return {
+  // ── Script review APPROVED → EXEC-SB
+  if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-SB'))) {
+    events.push({
       name: 'sandystudio/exec-sb/create-storyboard',
       data: { episodeId: ep, scriptAssetId: asset.id },
-    };
+    });
   }
 
-  // World check APPROVED → fire EXEC-EDIT (animatic).
-  if (asset.file_type === 'REV-world_check') {
-    return {
+  // ── Storyboard milestone: 3 STB acts APPROVED → EXEC-WCHK (idempotent)
+  if (ft.startsWith('STB-')) {
+    const stbCount = await countApproved(supabase, ep, 'STB');
+    if (stbCount >= 3 && !(await hasJob(supabase, ep, 'EXEC-WCHK'))) {
+      events.push({
+        name: 'sandystudio/exec-wchk/check-world',
+        data: { episodeId: ep, storyboardAssetIds: [] },
+      });
+    }
+  }
+
+  // ── World check APPROVED → EXEC-EDIT
+  if (ft === 'REV-world_check' && !(await hasJob(supabase, ep, 'EXEC-EDIT'))) {
+    events.push({
       name: 'sandystudio/exec-edit/create-animatic',
       data: { episodeId: ep, storyboardAssetIds: [] },
-    };
+    });
   }
 
-  // Storyboard / Animatic / Generation are multi-asset milestones —
-  // chaining waits for all required APPROVALs. Phase 6 will add the
-  // "all-of-set approved" detector. For now the Director uses
-  // Pipeline View → Re-trigger… to advance these manually.
-  return null;
+  // ── Animatic APPROVED → fan-out EXEC-VGEN×3 + EXEC-MGEN×1
+  if (ft === 'VID-animatic') {
+    if (!(await hasJob(supabase, ep, 'EXEC-VGEN'))) {
+      for (const shotN of [1, 2, 3] as const) {
+        events.push({
+          name: 'sandystudio/exec-vgen/generate-shot',
+          data: { episodeId: ep, shotId: `shot${shotN}`, animaticAssetId: asset.id },
+        });
+      }
+    }
+    if (!(await hasJob(supabase, ep, 'EXEC-MGEN'))) {
+      events.push({
+        name: 'sandystudio/exec-mgen/generate-music',
+        data: { episodeId: ep, animaticAssetId: asset.id, section: 'main' },
+      });
+    }
+  }
+
+  // ── Metadata APPROVED → EXEC-THUMB (covered also by EXEC-COPY's auto-chain
+  //    from factory.nextEvent in Mode 4; in Mode 1-3 chain is suppressed and
+  //    Director's metadata approval is what fires THUMB).
+  if (ft === 'SPC-metadata' && !(await hasJob(supabase, ep, 'EXEC-THUMB'))) {
+    events.push({
+      name: 'sandystudio/exec-thumb/generate-thumbnail',
+      data: {
+        episodeId: ep,
+        scriptAssetId: '', // optional in event schema; THUMB doesn't strictly need it
+        metadataAssetId: asset.id,
+      },
+    });
+  }
+
+  // ── Thumbnail APPROVED → check publish-ready set (animatic + metadata +
+  //    thumbnail all APPROVED) → EXEC-PUB. Director's APPROVE click on the
+  //    thumbnail is the implicit publish-confirm in Mode 1-3.
+  if (ft === 'IMG-thumbnail') {
+    const animaticOk = (await countApproved(supabase, ep, 'VID-animatic')) >= 1;
+    const metadataOk = (await countApproved(supabase, ep, 'SPC-metadata')) >= 1;
+    const thumbOk = (await countApproved(supabase, ep, 'IMG-thumbnail')) >= 1;
+    if (animaticOk && metadataOk && thumbOk && !(await hasJob(supabase, ep, 'EXEC-PUB'))) {
+      events.push({
+        name: 'sandystudio/exec-pub/publish',
+        data: { episodeId: ep, directorConfirm: true, confirmedBy: directorUserId },
+      });
+    }
+  }
+
+  return events;
 }
 
 export const POST = withApiHandler(async (req, ctx) => {
