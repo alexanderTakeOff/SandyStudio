@@ -36,7 +36,12 @@ export async function requireDirector(): Promise<DirectorContext> {
       error?.message ?? 'Director session required for this endpoint',
     );
   }
-  return { user: data.user, supabase };
+  return {
+    user: data.user,
+    // ssr 0.5 returns the older 3-generic SupabaseClient; cast to the
+    // canonical 1-generic alias so call sites get the same surface.
+    supabase: supabase as unknown as ServerSupabaseClient,
+  };
 }
 
 /**
