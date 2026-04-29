@@ -110,22 +110,32 @@ export const POST = withApiHandler(async (req) => {
   }
   if (!ep) throw new Error('episode insert returned no row');
 
-  // Insert brief asset
+  // Insert brief asset.
+  //   - file_type = 'SPC-brief' (long form) so gate.ts SPC-brief% LIKE matches.
+  //   - status = 'REVIEW' so the brief surfaces in the Director Inbox immediately.
+  //
+  // Atomicity: if the brief insert fails CHECK (most common cause: filename
+  // pattern mismatch) we roll back the episode insert so the user can retry
+  // without an orphan row.
   const { error: assErr } = await supabase
     .from('assets')
     .insert({
       episode_id: ep.id,
       filename: briefFilename,
-      file_type: 'SPC',
+      file_type: 'SPC-brief',
       description: body.premise,
       version: 1,
-      status: 'DRAFT' as const,
+      status: 'REVIEW' as const,
       agent_id: 'Director',
     });
   if (assErr) {
-    // Episode is created; surface as warning but keep the episode row.
     if (assErr.code !== '23505') {
-      throw new Error(`brief asset insert failed: ${assErr.message}`);
+      // Best-effort rollback. Cascade FK on assets/jobs handles cleanup.
+      await supabase.from('episodes').delete().eq('id', ep.id);
+      throw new Error(
+        `Brief asset insert failed (episode rolled back): ${assErr.message}. ` +
+          `Filename was '${briefFilename}'. Check the assets.filename CHECK constraint.`,
+      );
     }
   }
 
