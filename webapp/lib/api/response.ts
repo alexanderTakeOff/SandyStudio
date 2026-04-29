@@ -11,6 +11,8 @@ export interface ApiMeta {
   page?: number;
   limit?: number;
   cursor?: string | null;
+  visual_count?: number;
+  visual_categories?: string[];
 }
 
 export interface ApiOkResponse<T> {
