@@ -203,7 +203,16 @@ export const POST = withApiHandler(async (req, ctx) => {
     metadata: { decision: body.decision, file_type: asset.file_type },
   } as never);
 
-  // 4. (Optional) fire downstream Inngest event after APPROVE
+  // 4. Brief approval also flips the episode milestone status so the
+  // "Approve Brief" banner disappears from Pipeline View.
+  if (body.decision === 'APPROVE' && asset.file_type === 'SPC-brief' && asset.episode_id) {
+    await supabase
+      .from('episodes')
+      .update({ status: 'BRIEF_APPROVED' })
+      .eq('id', asset.episode_id);
+  }
+
+  // 5. (Optional) fire downstream Inngest event after APPROVE
   let firedEvent: { name: string; ids: string[] } | null = null;
   if (body.decision === 'APPROVE') {
     const next = nextEventForAsset(asset);
