@@ -8,15 +8,13 @@
 // product later supports multi-user, this guard is the place to widen.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import type { SupabaseClient, User } from '@supabase/supabase-js';
+import type { User } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import type { Database } from '@/lib/supabase/types.gen';
 import { UnauthorizedError } from './errors';
 
-// Re-export the concrete client shape as returned by `createServerClient<Database>`.
-// All three generics specified explicitly so the type matches what
-// @supabase/ssr 0.5 actually returns (Database, schema-name, schema-object).
-export type ServerSupabaseClient = SupabaseClient<Database, 'public', Database['public']>;
+// Concrete client shape — derived from the actual server client factory so
+// it's always in sync with @supabase/ssr's return type.
+export type ServerSupabaseClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 export interface DirectorContext {
   user: User;
