@@ -38,17 +38,54 @@ const STATUS_AFTER_DECISION: Record<typeof ApproveBody._type.decision, AssetStat
 // Asset filename → next Inngest event mapping. After APPROVE only.
 // Mirrors the canonical pipeline DAG. Returns null when there is no
 // downstream event to fire (terminal asset, manual continuation, etc.).
-function nextEventForAsset(asset: { filename: string; file_type: string }):
+function nextEventForAsset(asset: {
+  id: string;
+  filename: string;
+  file_type: string;
+  episode_id: string | null;
+}):
   | { name: StudioEventName; data: Record<string, unknown> }
   | null {
-  // Brief approved → kick screenwriter
-  if (asset.file_type === 'SPC' && /-SPC-brief-/.test(asset.filename)) {
-    return null;  // brief approval triggers via episode-level approve route, not asset
+  if (!asset.episode_id) return null;
+  const ep = asset.episode_id;
+
+  // Brief APPROVED → fire EXEC-SW (write-script). Same trigger as the
+  // Pipeline View "Approve Brief" banner — single source of truth.
+  if (asset.file_type === 'SPC-brief') {
+    return {
+      name: 'sandystudio/exec-sw/write-script',
+      data: { episodeId: ep, briefAssetId: asset.id },
+    };
   }
-  // Most asset approvals are observation; the agent that comes next is fired
-  // by the upstream agent's job, not by Director's individual asset approval.
-  // Director approval here is recorded as gate consent. Phase 7's authority
-  // matrix will widen this to explicit chain triggers.
+
+  // Script APPROVED → fire EXEC-SREV (review-script).
+  if (asset.file_type === 'SCR-script') {
+    return {
+      name: 'sandystudio/exec-srev/review-script',
+      data: { episodeId: ep, scriptAssetId: asset.id },
+    };
+  }
+
+  // Script review APPROVED → fire EXEC-SB (storyboard).
+  if (asset.file_type === 'REV-script_qa') {
+    return {
+      name: 'sandystudio/exec-sb/create-storyboard',
+      data: { episodeId: ep, scriptAssetId: asset.id },
+    };
+  }
+
+  // World check APPROVED → fire EXEC-EDIT (animatic).
+  if (asset.file_type === 'REV-world_check') {
+    return {
+      name: 'sandystudio/exec-edit/create-animatic',
+      data: { episodeId: ep, storyboardAssetIds: [] },
+    };
+  }
+
+  // Storyboard / Animatic / Generation are multi-asset milestones —
+  // chaining waits for all required APPROVALs. Phase 6 will add the
+  // "all-of-set approved" detector. For now the Director uses
+  // Pipeline View → Re-trigger… to advance these manually.
   return null;
 }
 
