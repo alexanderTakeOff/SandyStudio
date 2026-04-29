@@ -11,9 +11,9 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 5a IN PROGRESS — UX architecture spec pass (no code)
-Blocker:  Migration 0009 not yet applied to remote Supabase (run `npx supabase db push`)
-Next:     Director review of 5 new sub-specs + uiux v0.3 → then Phase 5b API routes
+Phase:    SPRINT 9 / Phase 5c COMPLETE — API + cockpit UI live (apply migration 0010 to remote Supabase next)
+Blocker:  Migration 0009 + 0010 not yet applied to remote Supabase (run `npx supabase db push`)
+Next:     Director smoke test: npm run dev + npm run inngest:dev → http://localhost:3000
 Mode:     ===5=== EDIT (Director active)
 Date:     2026-04-29
 ```
@@ -26,12 +26,12 @@ Date:     2026-04-29
 | 2 | Next.js scaffold + theme + StudioShell + Concierge | ✅ COMPLETE 2026-04-28 |
 | 3 | Inngest worker + concurrency limits + ping smoke test | ✅ COMPLETE 2026-04-28 |
 | 4 | Agent job functions (11 Inngest fns + factory + 39 unit tests + replay-pilot harness)  | ✅ COMPLETE 2026-04-28 |
-| 5a | UX architecture spec pass (uiux v0.3 + onboarding + storage_configuration + dashboard_cockpit + pipeline_view + director_inbox) | 🟢 IN PROGRESS 2026-04-29 |
-| 5b | API routes (Next.js App Router) — revised under 5a | ⏳ pending |
-| 5c | First-run wizard + Pipeline view + Inbox MVP UI | ⏳ pending |
-| 6 | Remaining UI (settings tabs, budget detail, jobs detail, episode sub-pages) | ⏳ pending |
-| 7 | Approval Authority Matrix wizard implementation (UX home defined in 5a) | ⏳ pending |
-| 8 | PM2 ecosystem + Tailscale doc                 | ⏳ pending |
+| 5a | UX architecture specs (uiux v0.3 + 5 sub-specs + config/uiux.yaml extensions) | ✅ COMPLETE 2026-04-29 |
+| 5b | API routes (16 endpoints + lib/api/* + zod + migration 0010 + 79 tests) | ✅ COMPLETE 2026-04-29 |
+| 5c | First-run wizard + Cockpit Dashboard + Inbox + Pipeline view + Activity + Storage settings + Topbar levers | ✅ COMPLETE 2026-04-29 |
+| 6 | Polish: per-episode sub-pages, budget detail, asset preview drawer | ⏳ pending |
+| 7 | Approval Authority Matrix per-row editing + delegate UI | ⏳ pending |
+| 8 | PM2 ecosystem + Tailscale doc + production hardening | ⏳ pending |
 
 ### UI/UX implementation note
 
