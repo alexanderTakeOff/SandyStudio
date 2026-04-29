@@ -39,8 +39,9 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (!ep) throw new NotFoundError(`Episode ${id}`);
 
   // Governance check (Phase 4 enforces only PUBLISH; rest pass through)
-  const action = body.approvalType.toUpperCase() === 'PUBLISH' ? 'PUBLISH' : 'APPROVE_GATE';
-  const decision = enforceMode(action as never, ep as GovernanceEpisode, {
+  const action: 'PUBLISH' | 'AGENT_RUN' =
+    body.approvalType.toUpperCase() === 'PUBLISH' ? 'PUBLISH' : 'AGENT_RUN';
+  const decision = enforceMode(action, ep as GovernanceEpisode, {
     directorConfirm: body.directorConfirm,
     confirmedBy: user.id,
   });
