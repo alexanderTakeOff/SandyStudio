@@ -9,9 +9,9 @@ import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
-import { NotFoundError } from '@/lib/api/errors';
+import { NotFoundError, GovernanceBlockError, ValidationError } from '@/lib/api/errors';
 import { enforceMode, type GovernanceEpisode } from '@/lib/governance';
-import { GovernanceBlockError } from '@/lib/api/errors';
+import { inngest } from '@/lib/inngest/client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
