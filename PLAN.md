@@ -439,6 +439,27 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-29 | specs/system/dashboard_cockpit.md v0.1 DRAFT — 3-zone cockpit (inbox preview + active episodes + activity feed) | Claude Code |
 | 2026-04-29 | specs/system/uiux.md v0.2 → v0.3 — spine + cross-links + Topbar levers + onboarding + storage pointers | Claude Code |
 | 2026-04-29 | config/uiux.yaml extended — pipeline_node_states, pipeline_stages, inbox config, agent_report_card, dashboard zones, topbar_levers, storage_defaults | Claude Code |
+| 2026-04-29 | Phase 5b START — API routes + lib/api/* foundation | Claude Code |
+| 2026-04-29 | webapp/lib/api/* created — response, errors, handler, auth, zod-helpers, status-transitions, storage-probe, pipeline-stages, events, supabase-cast (10 files) | Claude Code |
+| 2026-04-29 | webapp/lib/supabase/types-phase5b.ts — type extensions for series + approval_authority_matrix until types regen | Claude Code |
+| 2026-04-29 | webapp/supabase/migrations/0010_phase5b_series_authority_storage.sql — series table + approval_authority_matrix + app_config storage scope + seeds | Claude Code |
+| 2026-04-29 | zod@^3.23.8 + swr@^2.4.1 dependencies added | Claude Code |
+| 2026-04-29 | API routes: health, system/mode (GET+POST), system/governance-mode (POST), storage/config (GET+POST), storage/test-write, onboarding/state+advance+exit, series + series/[id], episodes + episodes/[id] (GET+PATCH) + approve + trigger + pipeline, assets + assets/[id] (GET+PATCH) + approve, director/inbox, activity, jobs, budget — 26 route handlers | Claude Code |
+| 2026-04-29 | __tests__/api/* — 4 new test files (status-transitions, storage-probe, pipeline-stages, response, errors-handler) — 79/79 passing | Claude Code |
+| 2026-04-29 | Phase 5b VERIFY GREEN: typecheck OK + 79 unit tests + 28 replay-pilot + next build (33 routes registered) | Claude Code |
+| 2026-04-29 | Phase 5b COMPLETE — API surface ready for Phase 5c UI | Claude Code |
+| 2026-04-29 | Phase 5c START — UI implementation | Claude Code |
+| 2026-04-29 | components/ui/Modal.tsx — portal-based modal primitive | Claude Code |
+| 2026-04-29 | StudioTopbar refactored: SystemModeChip + GovernanceChip levers (clickable + modal/dropdown) | Claude Code |
+| 2026-04-29 | StudioSidebar reordered: Dashboard / Inbox / Series / Episodes / Budget / Jobs / Activity (workflow-aligned) | Claude Code |
+| 2026-04-29 | Dashboard cockpit (3 zones): InboxPreviewZone + ActiveEpisodesZone (timeline glyphs) + ActivityFeedZone | Claude Code |
+| 2026-04-29 | First-run wizard at /onboarding — 4 steps (Storage probe → Series form → Authority matrix → Episode brief) | Claude Code |
+| 2026-04-29 | Director Inbox at /inbox — keyboard hotkeys (J/K/A/R/X/?), bulk actions (non-visual only), visual gate enforcement, group-grouped layout | Claude Code |
+| 2026-04-29 | Pipeline View at /episodes/[id] — vertical DAG (10 stages, 5 node states) + Agent Report Feed + Re-trigger modal with required reason | Claude Code |
+| 2026-04-29 | Activity feed page at /activity — severity filter pills | Claude Code |
+| 2026-04-29 | Settings → Storage tab — path picker, write-test, edit-and-validate cycle | Claude Code |
+| 2026-04-29 | Phase 5c VERIFY GREEN: typecheck OK + 79 tests + 28 replay-pilot + next build (35 routes; 6.2 kB onboarding, 4.68 kB inbox, 4.28 kB pipeline) | Claude Code |
+| 2026-04-29 | Phase 5c COMPLETE — Director cockpit live; Director smoke test next | Claude Code |
 
 ---
 
