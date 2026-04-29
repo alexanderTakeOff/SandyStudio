@@ -8,7 +8,7 @@
 import { use, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
-import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal } from 'lucide-react';
+import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
