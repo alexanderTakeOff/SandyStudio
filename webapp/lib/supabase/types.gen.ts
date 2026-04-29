@@ -212,6 +212,44 @@ export type Database = {
         }
         Relationships: []
       }
+      approval_authority_matrix: {
+        Row: {
+          approver: string
+          category: string
+          delegate_user_id: string | null
+          id: string
+          is_locked: boolean
+          series_id: string
+          updated_at: string
+        }
+        Insert: {
+          approver: string
+          category: string
+          delegate_user_id?: string | null
+          id?: string
+          is_locked?: boolean
+          series_id: string
+          updated_at?: string
+        }
+        Update: {
+          approver?: string
+          category?: string
+          delegate_user_id?: string | null
+          id?: string
+          is_locked?: boolean
+          series_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_authority_matrix_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       approvals: {
         Row: {
           approval_type: string
@@ -503,6 +541,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      series: {
+        Row: {
+          audience: string | null
+          code: string
+          created_at: string
+          created_by: string | null
+          episode_budget_ceiling: number | null
+          genre: string | null
+          id: string
+          logline: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: string | null
+          code: string
+          created_at?: string
+          created_by?: string | null
+          episode_budget_ceiling?: number | null
+          genre?: string | null
+          id?: string
+          logline?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: string | null
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          episode_budget_ceiling?: number | null
+          genre?: string | null
+          id?: string
+          logline?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       series_state: {
         Row: {
