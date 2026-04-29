@@ -100,7 +100,14 @@
       "Bash(curl -sS -o /dev/null -w \"inngest=%{http_code}\\\\n\" http://localhost:8288/)",
       "Bash(curl -sS -o /dev/null -w \"inngest_dashboard=%{http_code}\\\\n\" http://localhost:8288/)",
       "Bash(curl -sS -X POST http://localhost:3000/api/health)",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(curl -sS -o /dev/null -w \"onboarding=%{http_code}\\\\nepisodes=%{http_code} \" http://localhost:3000/onboarding)",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\nseries=%{http_code} \" http://localhost:3000/episodes)",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\nbudget=%{http_code} \" http://localhost:3000/series)",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\ninbox=%{http_code} \" http://localhost:3000/budget)",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/inbox)",
+      "Bash(curl -sS \"http://localhost:8288/v1/runs\")",
+      "Bash(curl -sS -X POST \"https://akstennzrnkvexjgzhxv.supabase.co/rest/v1/rpc/_dummy\" -H \"apikey: $\\(grep '^NEXT_PUBLIC_SUPABASE_ANON_KEY' .env.local)"
     ]
   }
 }
