@@ -10,11 +10,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  CheckSquare,
-  Film,
+  Inbox,
   Folders,
+  Film,
   DollarSign,
-  Activity,
+  Activity as ActivityIcon,
+  ListChecks,
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,13 +26,16 @@ interface NavItem {
   icon: typeof LayoutDashboard;
 }
 
+// Order reflects production workflow: Series (universe) → Episodes → Inbox →
+// Budget → Jobs → Activity. Dashboard sits on top as the cockpit overview.
 const NAV: NavItem[] = [
-  { href: '/',          label: 'Dashboard',      icon: LayoutDashboard },
-  { href: '/approvals', label: 'Approval Queue', icon: CheckSquare },
-  { href: '/episodes',  label: 'Episodes',       icon: Film },
-  { href: '/series',    label: 'Series',         icon: Folders },
-  { href: '/budget',    label: 'Budget',         icon: DollarSign },
-  { href: '/jobs',      label: 'Jobs',           icon: Activity },
+  { href: '/',          label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/inbox',     label: 'Inbox',     icon: Inbox },
+  { href: '/series',    label: 'Series',    icon: Folders },
+  { href: '/episodes',  label: 'Episodes',  icon: Film },
+  { href: '/budget',    label: 'Budget',    icon: DollarSign },
+  { href: '/jobs',      label: 'Jobs',      icon: ListChecks },
+  { href: '/activity',  label: 'Activity',  icon: ActivityIcon },
 ];
 
 export function StudioSidebar() {
