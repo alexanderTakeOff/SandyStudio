@@ -60,11 +60,21 @@ export const POST = withApiHandler(async (req) => {
     );
   }
 
+  // Capture draft_series_id from step 2 payload, draft_episode_id from step 4
+  const payload = body.payload ?? {};
   const updated: OnboardingState = {
     ...state,
     completed_steps: [...state.completed_steps, body.step],
     current_step: (body.step < 4 ? (body.step + 1) : 4) as OnboardingState['current_step'],
     started_at: state.started_at ?? new Date().toISOString(),
+    draft_series_id:
+      typeof payload.series_id === 'string'
+        ? payload.series_id
+        : state.draft_series_id,
+    draft_episode_id:
+      typeof payload.episode_id === 'string'
+        ? payload.episode_id
+        : state.draft_episode_id,
   };
 
   await supabase.from('app_config').upsert(
