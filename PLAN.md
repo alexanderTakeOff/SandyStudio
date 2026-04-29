@@ -11,12 +11,39 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 5c COMPLETE — API + cockpit UI live (apply migration 0010 to remote Supabase next)
-Blocker:  Migration 0009 + 0010 not yet applied to remote Supabase (run `npx supabase db push`)
-Next:     Director smoke test: npm run dev + npm run inngest:dev → http://localhost:3000
-Mode:     ===5=== EDIT (Director active)
+Phase:    SPRINT 9 / Phase 5c COMPLETE — full Mode 4 cycle proven on SS-S01-E01
+Next:     Phase 5d (UX polish — долговая тетрадка) OR Phase 8 (real provider keys)
+Mode:     ===5=== EDIT (Director active) — switches to ===1=== at session start per CLAUDE.md
 Date:     2026-04-29
 ```
+
+### Episodes in DB
+
+| Episode | Status | Mode | What it proves |
+|---------|--------|------|----------------|
+| **SS-S01-E01** "The Red Carpet" | BRIEF_APPROVED + 15 assets APPROVED through Publish | 4 (AUTOTEST) | Full chain Brief → EXEC-SW → SREV → SB (3 acts) → WCHK → EDIT → VGEN×3 + MGEN → COPY → THUMB → **PUB** works in Mode 4 mock mode |
+| **SS-S01-E02** "sandyTest05" | BRIEF_PENDING (brief in REVIEW) | 1 (MANUAL) | Reset clean — Director's Mode 1 test bench. Approve via `/inbox` → chain runs through asset-approve `computeNextEvents` |
+
+### Migrations on remote Supabase
+
+```
+0001..0009  Phase 1-4
+0010        series + approval_authority_matrix + app_config storage scope (Phase 5b)
+0011        relax assets.file_type CHECK + cleanup orphans
+0012        relax CHECK to allow dashes in variants/filenames (caught EXEC-VGEN/MGEN bug)
+```
+
+### Two-terminal local dev (canonical)
+
+```bash
+# Terminal 1
+cd webapp && npm run dev          # → http://localhost:3000
+
+# Terminal 2
+cd webapp && npm run inngest:dev  # → http://localhost:8288 (dashboard)
+```
+
+⚠ **Don't** run `npm run build` while dev is active — corrupts `.next/` webpack cache, every API route returns `Cannot read properties of undefined (reading 'call')` 500. Recovery: kill servers, `rm -rf webapp/.next`, restart dev.
 
 ### Sprint 9 Phase status
 
