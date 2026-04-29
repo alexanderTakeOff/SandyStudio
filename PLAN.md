@@ -11,11 +11,11 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 4 COMPLETE — 11 EXEC-* Inngest functions + factory + verify harness
+Phase:    SPRINT 9 / Phase 5a IN PROGRESS — UX architecture spec pass (no code)
 Blocker:  Migration 0009 not yet applied to remote Supabase (run `npx supabase db push`)
-Next:     SPRINT 9 / Phase 5 — API routes (/api/episodes/*, /api/approvals/*, etc.)
+Next:     Director review of 5 new sub-specs + uiux v0.3 → then Phase 5b API routes
 Mode:     ===5=== EDIT (Director active)
-Date:     2026-04-28
+Date:     2026-04-29
 ```
 
 ### Sprint 9 Phase status
@@ -26,9 +26,11 @@ Date:     2026-04-28
 | 2 | Next.js scaffold + theme + StudioShell + Concierge | ✅ COMPLETE 2026-04-28 |
 | 3 | Inngest worker + concurrency limits + ping smoke test | ✅ COMPLETE 2026-04-28 |
 | 4 | Agent job functions (11 Inngest fns + factory + 39 unit tests + replay-pilot harness)  | ✅ COMPLETE 2026-04-28 |
-| 5 | API routes (Next.js App Router)               | 🟢 NEXT |
-| 6 | UI: Approval Queue + Dashboard + Budget data wiring | ⏳ pending |
-| 7 | Approval Authority Matrix wizard              | ⏳ pending |
+| 5a | UX architecture spec pass (uiux v0.3 + onboarding + storage_configuration + dashboard_cockpit + pipeline_view + director_inbox) | 🟢 IN PROGRESS 2026-04-29 |
+| 5b | API routes (Next.js App Router) — revised under 5a | ⏳ pending |
+| 5c | First-run wizard + Pipeline view + Inbox MVP UI | ⏳ pending |
+| 6 | Remaining UI (settings tabs, budget detail, jobs detail, episode sub-pages) | ⏳ pending |
+| 7 | Approval Authority Matrix wizard implementation (UX home defined in 5a) | ⏳ pending |
 | 8 | PM2 ecosystem + Tailscale doc                 | ⏳ pending |
 
 ### UI/UX implementation note
