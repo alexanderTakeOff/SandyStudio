@@ -219,21 +219,37 @@ export function createAgentInngestFunction<E extends string>(
       // is the call site's responsibility, not the factory's.
       type SendEventPayload = Parameters<typeof step.sendEvent>[1];
 
-      if (spec.nextEvent) {
-        const next = spec.nextEvent(saved, eventData, exec.result);
-        if (next) {
-          await step.sendEvent('fan-out', next as SendEventPayload);
+      // Auto-chain only in Mode 4 (AUTOTEST). In Modes 1-3 the next agent is
+      // fired by Director's asset approval (POST /api/assets/[id]/approve);
+      // chaining here would cause the next agent to FAIL its gate because
+      // the just-saved asset is REVIEW, not APPROVED.
+      const autoChain = await step.run('check-mode', async () => {
+        const supabase = createSupabaseServiceRoleClient();
+        const { data } = await supabase
+          .from('episodes')
+          .select('governance_mode')
+          .eq('id', episodeId)
+          .single();
+        return data?.governance_mode === 4;
+      });
+
+      if (autoChain) {
+        if (spec.nextEvent) {
+          const next = spec.nextEvent(saved, eventData, exec.result);
+          if (next) {
+            await step.sendEvent('fan-out', next as SendEventPayload);
+          }
         }
-      }
-      // runAgent may also return its own next_event (e.g. EXEC-PUB → published).
-      if (exec.result.next_event) {
-        await step.sendEvent('runner-next', exec.result.next_event as SendEventPayload);
-      }
-      if (exec.result.fan_out_events && exec.result.fan_out_events.length > 0) {
-        await step.sendEvent(
-          'runner-fan-out',
-          exec.result.fan_out_events as unknown as SendEventPayload,
-        );
+        // runAgent may also return its own next_event (e.g. EXEC-PUB → published).
+        if (exec.result.next_event) {
+          await step.sendEvent('runner-next', exec.result.next_event as SendEventPayload);
+        }
+        if (exec.result.fan_out_events && exec.result.fan_out_events.length > 0) {
+          await step.sendEvent(
+            'runner-fan-out',
+            exec.result.fan_out_events as unknown as SendEventPayload,
+          );
+        }
       }
 
       return {
