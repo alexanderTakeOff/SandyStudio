@@ -541,7 +541,13 @@ returns to multiple times per day. Sub-spec: `specs/system/dashboard_cockpit.md`
 
 ---
 
-## 10. Approval Queue MVP
+## 10. Approval Queue → Director Inbox (v0.3 rename)
+
+> **v0.3 update:** what v0.2 called "Approval Queue" is now the **Director
+> Inbox** — broader scope (approvals + decisions + blockers), keyboard-first,
+> bulk actions for non-visual items, dedicated `/inbox` route plus a
+> Dashboard Zone 1 preview. The full spec is `specs/system/director_inbox.md`.
+> The decision flow `Preview → Context → Decision` is preserved.
 
 Approval Queue is the first major working UI.
 
