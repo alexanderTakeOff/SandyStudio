@@ -47,9 +47,12 @@ interface JobLike {
   status: string;
 }
 
+// Story stage is omitted: no current agent produces a story_brief asset.
+// The chain goes Brief → EXEC-SW (Script) directly. ART-HW is a Level-2
+// management agent (no Inngest function) and may emit story specs in
+// future phases — when it does, add { id: 'story', ... } back here.
 const STAGE_DEFINITIONS: Array<{ id: PipelineStageId; label: string; agents: string[] }> = [
   { id: 'brief',        label: 'Brief',        agents: ['Director'] },
-  { id: 'story',        label: 'Story',        agents: ['ART-HW'] },
   { id: 'script',       label: 'Script',       agents: ['EXEC-SW', 'EXEC-SREV'] },
   { id: 'storyboard',   label: 'Storyboard',   agents: ['EXEC-SB'] },
   { id: 'world_check',  label: 'World Check',  agents: ['EXEC-WCHK'] },
