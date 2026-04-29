@@ -1,5 +1,5 @@
 # SandyStudio — UI/UX Visual System
-## specs/system/uiux.md | v0.2 | DRAFT
+## specs/system/uiux.md | v0.3 | DRAFT
 
 ---
 
