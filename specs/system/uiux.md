@@ -465,6 +465,58 @@ Sidebar should be:
 - active section highlighted with soft glow or subtle border;
 - never visually louder than current work content.
 
+### 8.4 Topbar chips are levers (v0.3)
+
+The Topbar's two mode chips were read-only display elements in v0.2. In v0.3
+they are **interactive levers**. Director can change modes from the cockpit
+without leaving the screen.
+
+#### System Mode chip (`===1=== / ===5===`)
+
+- Click → modal:
+  ```
+  Switch to ===5=== EDIT?
+  Required for any write operation.
+  Director will be the active actor.
+  [ Cancel ]   [ Confirm ]
+  ```
+- Director-only. Hard limit per `CLAUDE.md §6` — MODE_CHANGE always Director.
+- Modal mirrors the PUBLISH `directorConfirm: true` pattern so the contract
+  is consistent.
+- Audit: `activity_events` row with `event_type='system_mode_change'`,
+  severity `warning` for `===5===`, `info` for `===1===`.
+
+#### Governance Mode chip (Mode 1..4)
+
+- Click → dropdown anchored under the chip:
+  ```
+  ┌──────────────────────────────────────────┐
+  │ ● Mode 1 MANUAL                          │
+  │   You approve every gate                  │
+  │ ○ Mode 2 HYBRID                          │
+  │   You + EXEC-DIR-AI share approvals      │
+  │ ○ Mode 3 DELEGATED                       │
+  │   EXEC-DIR-AI handles all but hard limits│
+  │ ○ Mode 4 AUTOTEST                        │
+  │   ⚠ all gates auto-pass — testing only   │
+  ├──────────────────────────────────────────┤
+  │ Apply to: [ ● Global ]  [ ○ This episode ]│
+  │              [ Cancel ]   [ Apply ]       │
+  └──────────────────────────────────────────┘
+  ```
+- Director-only. Hard limit.
+- Per-episode override is available only when an episode page is currently
+  active; otherwise the option is disabled with a tooltip.
+- Audit: `activity_events` row with `event_type='governance_mode_change'`.
+  Mode 4 changes are `severity='warning'`.
+
+#### Implementation note
+
+`webapp/components/studio-shell/StudioTopbar.tsx` currently renders both
+chips as static `<span>` elements. Phase 5c migrates them to `<button>`
+with the dropdown/modal hosts. The lever migration is purely additive —
+the visual chip styling stays the same.
+
 ---
 
 ## 9. Dashboard / Control Room
