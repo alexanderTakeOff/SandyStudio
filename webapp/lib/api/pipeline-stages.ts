@@ -60,18 +60,34 @@ const STAGE_DEFINITIONS: Array<{ id: PipelineStageId; label: string; agents: str
   { id: 'analytics',    label: 'Analytics',    agents: ['EXEC-ANAL'] },
 ];
 
-// Heuristics for stage attribution from filename / file_type
+// Heuristics for stage attribution from file_type prefix.
+//
+// runner.ts writes file_type values like:
+//   - SPC-brief, SPC-metadata
+//   - SCR-script
+//   - REV-script_qa, REV-world_check, REV-publish_log, REV-analytics
+//   - STB-storyboard, STB-act2, STB-act3
+//   - VID-animatic, VID-shot-shotN
+//   - IMG-thumbnail
+//   - AUD-music-main
+//
+// Pre-Phase-5c heuristic compared `file_type === 'STB'` (bare code) which
+// never matched the long form — DAG showed all stages idle.
 const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
-  const f = asset.filename;
-  if (asset.file_type === 'SPC' && /-SPC-brief-/.test(f)) return 'brief';
-  if (asset.file_type === 'SPC' && /-SPC-story_brief-/.test(f)) return 'story';
-  if (asset.file_type === 'SCR') return 'script';
-  if (asset.file_type === 'STB') return 'storyboard';
-  if (asset.file_type === 'REV' && /world_check/.test(f)) return 'world_check';
-  if (asset.file_type === 'VID' && /-animatic-/.test(f)) return 'animatic';
-  if (asset.file_type === 'IMG' && /-thumb_/.test(f)) return 'distribution';
-  if (asset.file_type === 'SPC' && /-SPC-copy-/.test(f)) return 'distribution';
-  if (asset.file_type === 'IMG' || asset.file_type === 'VID' || asset.file_type === 'AUD') return 'generation';
+  const ft = asset.file_type;
+  if (ft.startsWith('SPC-brief')) return 'brief';
+  if (ft.startsWith('SPC-story')) return 'story';
+  if (ft.startsWith('SCR'))       return 'script';
+  if (ft.startsWith('STB'))       return 'storyboard';
+  if (ft === 'REV-world_check')   return 'world_check';
+  if (ft === 'REV-script_qa')     return 'script';
+  if (ft.startsWith('VID-animatic')) return 'animatic';
+  if (ft.startsWith('VID-shot') || ft.startsWith('AUD-music')) return 'generation';
+  if (ft.startsWith('SPC-metadata') || ft.startsWith('IMG-thumbnail') || ft.startsWith('SPC-copy')) {
+    return 'distribution';
+  }
+  if (ft.startsWith('REV-publish'))  return 'publish';
+  if (ft.startsWith('REV-analytics')) return 'analytics';
   return null;
 };
 
