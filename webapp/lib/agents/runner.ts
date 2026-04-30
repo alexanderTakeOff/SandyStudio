@@ -228,7 +228,6 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-THUMB': {
-      const provider = args.provider;
       if (provider?.providerId === 'gpt-image-1') {
         const real = await generateImageOpenAI({
           prompt: buildThumbnailPrompt(inputs),
