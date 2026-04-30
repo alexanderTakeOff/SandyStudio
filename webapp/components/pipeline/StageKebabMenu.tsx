@@ -68,6 +68,7 @@ export function StageKebabMenu({
   stageLabel,
   stageAgents,
   stageState,
+  assetsInReview = 0,
   latestAssetId,
   onChanged,
 }: StageKebabMenuProps) {
