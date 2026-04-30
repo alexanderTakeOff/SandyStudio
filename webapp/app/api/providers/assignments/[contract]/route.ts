@@ -41,7 +41,7 @@ export const PUT = withApiHandler(async (req, ctx) => {
     throw new NotFoundError(`Contract '${contract}'`);
   }
 
-  const { user, supabase } = await requireDirector();
+  const { user } = await requireDirector();
   const body = await parseJson(req, PutBody);
 
   // Validate the requested provider exists in the catalog for this contract.
@@ -54,6 +54,12 @@ export const PUT = withApiHandler(async (req, ctx) => {
     );
   }
 
+  // Director identity is verified by requireDirector. Use service role client
+  // for the actual write — RLS on provider_assignments restricts UPDATE/INSERT
+  // to service_role (per migration 0014), and the user-session client returns
+  // 0 affected rows + "Cannot coerce the result to a single JSON object".
+  const sb = createSupabaseServiceRoleClient();
+
   const patch: Record<string, unknown> = {
     active_provider_id: body.active_provider_id,
     updated_by: user.id,
@@ -62,7 +68,7 @@ export const PUT = withApiHandler(async (req, ctx) => {
   if (body.is_active !== undefined) patch.is_active = body.is_active;
   if (body.notes !== undefined) patch.notes = body.notes;
 
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from('provider_assignments')
     .update(patch as never)
     .eq('contract', contract)
@@ -72,7 +78,7 @@ export const PUT = withApiHandler(async (req, ctx) => {
 
   invalidateProviderCache(contract as ContractName);
 
-  await supabase.from('activity_events').insert({
+  await sb.from('activity_events').insert({
     event_type: 'provider_switched_global',
     severity: 'info',
     title: `Provider for '${contract}' switched to ${target.display_name}`,
