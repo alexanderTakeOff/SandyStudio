@@ -154,9 +154,23 @@ export function createAgentInngestFunction<E extends string>(
           agentId: spec.agentId,
           episodeId,
         });
+        // Resolve provider for agents that consume an external contract.
+        // Resolver auto-downgrades to 'mock' when the env key is missing,
+        // so this is safe in test/dev environments without secrets.
+        const contract = CONTRACT_BY_AGENT[spec.agentId];
+        let provider: ResolvedProvider | undefined;
+        if (contract) {
+          try {
+            provider = await resolveProvider(supabase, contract);
+          } catch {
+            // Disabled contract or no row — fall through to mock everywhere.
+            provider = undefined;
+          }
+        }
         const runArgs: RunAgentArgs = {
           agentId: spec.agentId,
           inputs,
+          provider,
           ...(spec.resolveRunArgs ? spec.resolveRunArgs(eventData) : {}),
         };
         return runAgent(runArgs);
@@ -165,13 +179,19 @@ export function createAgentInngestFunction<E extends string>(
       // ── Step 4: idempotent cost record ─────────────────────────────────────
       await step.run('record-cost', async () => {
         const supabase = createSupabaseServiceRoleClient();
+        const providerUsed =
+          (typeof exec.result.metadata.provider_used === 'string' &&
+            exec.result.metadata.provider_used) ||
+          (typeof exec.result.metadata.provider_id === 'string' &&
+            exec.result.metadata.provider_id) ||
+          'mock';
         return recordCost(supabase, {
           jobId: job.id,
           episodeId,
           agentId: spec.agentId,
           costUsd: exec.result.cost_usd,
-          apiProvider: 'mock',
-          modelOrTier: resolveModelId(spec.agentId) || 'mock',
+          apiProvider: providerUsed,
+          modelOrTier: resolveModelId(spec.agentId) || providerUsed,
           operation: spec.operation,
         });
       });
