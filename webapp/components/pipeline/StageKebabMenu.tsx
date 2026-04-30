@@ -256,12 +256,24 @@ export function StageKebabMenu({
   }
 
   if (canEdit) {
-    items.push({
-      label: stageState === 'approved' ? 'View / edit (read-only)' : 'Edit',
-      icon: <Pencil size={14} />,
-      onSelect: openEditor,
-      disabled: busy,
-    });
+    const isBinary = !isTextFileType(latestAssetType);
+    if (isBinary && onOpenPreview) {
+      items.push({
+        label: 'Preview',
+        icon: <Eye size={14} />,
+        onSelect: () => onOpenPreview(latestAssetId!, `${stageLabel} preview`),
+        disabled: busy,
+      });
+    } else if (!isBinary) {
+      items.push({
+        label: stageState === 'approved' ? 'View / edit (read-only)' : 'Edit',
+        icon: <Pencil size={14} />,
+        onSelect: openEditor,
+        disabled: busy,
+      });
+    }
+    // Binary asset without onOpenPreview wired: silently omit — better than
+    // a button that errors. Page should always pass onOpenPreview.
   }
 
   if (canRetrigger) {
