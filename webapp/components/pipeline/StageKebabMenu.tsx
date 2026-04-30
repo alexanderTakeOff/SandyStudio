@@ -56,6 +56,8 @@ export interface StageKebabMenuProps {
   stageAgents: string[];
   /** Current stage state — drives which kebab items are shown. */
   stageState: PipelineNodeState;
+  /** Count of REVIEW-status assets in stage. >0 means "Approve all" makes sense regardless of stage state (e.g. when state=failed but a prior asset is awaiting approval). */
+  assetsInReview?: number;
   latestAssetId?: string;
   onChanged: () => void;
 }
