@@ -1,0 +1,234 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// components/preview/AssetPreview.tsx
+// Renders an asset's body inside the preview drawer based on file type.
+//
+//   text (SCR / STB / BIB / PRO / REV / SPC / STA)  → markdown via react-markdown
+//   image (IMG)                                     → <img src=drive_path>
+//   video (VID)                                     → <video controls>
+//   audio (AUD)                                     → <audio controls>
+//   unknown                                         → "preview unavailable" + Download
+//
+// Binary URLs go through `drive_path`. For mock outputs that's
+// "H:/My Drive/..." (won't load → fallback). For real outputs it's
+// "/staging/<file>" served by Next.js public/.
+// ──────────────────────────────────────────────────────────────────────────────
+
+'use client';
+
+import useSWR from 'swr';
+import ReactMarkdown from 'react-markdown';
+import { Download, FileWarning } from 'lucide-react';
+import { fetcher } from '@/lib/swr';
+
+const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA'];
+
+export interface AssetPreviewProps {
+  assetId: string;
+}
+
+interface AssetRow {
+  id: string;
+  filename: string;
+  file_type: string;
+  status: string;
+  drive_path: string | null;
+  staging_path: string | null;
+  content: string | null;
+  description: string | null;
+  agent_id: string | null;
+  created_at: string;
+  version: number | null;
+}
+
+function categoryFor(file_type: string): 'text' | 'image' | 'video' | 'audio' | 'unknown' {
+  const code = (file_type.split('-')[0] ?? '').toUpperCase();
+  if (TEXT_PREFIXES.includes(code)) return 'text';
+  if (code === 'IMG') return 'image';
+  if (code === 'VID') return 'video';
+  if (code === 'AUD') return 'audio';
+  return 'unknown';
+}
+
+function isHttpishUrl(path: string | null): boolean {
+  if (!path) return false;
+  return path.startsWith('/') || path.startsWith('http://') || path.startsWith('https://');
+}
+
+export function AssetPreview({ assetId }: AssetPreviewProps) {
+  const { data: meta, error: metaErr } = useSWR<{ data: AssetRow }>(
+    `/api/assets/${assetId}`,
+    fetcher,
+  );
+
+  if (metaErr) {
+    return (
+      <div className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--accent-danger)' }}>
+        Failed to load asset metadata.
+      </div>
+    );
+  }
+  if (!meta?.data) {
+    return <p className="text-sm text-text-secondary">Loading…</p>;
+  }
+
+  const asset = meta.data;
+  const cat = categoryFor(asset.file_type);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] text-text-muted">
+        <span className="text-text-primary font-medium font-mono">{asset.filename}</span>
+        <span>{asset.status}</span>
+        <span>·</span>
+        <span>{asset.file_type}</span>
+        {asset.agent_id && (
+          <>
+            <span>·</span>
+            <span>{asset.agent_id}</span>
+          </>
+        )}
+        {asset.version && (
+          <>
+            <span>·</span>
+            <span>v{String(asset.version).padStart(2, '0')}</span>
+          </>
+        )}
+      </div>
+
+      {cat === 'text' && <TextBody assetId={asset.id} />}
+      {cat === 'image' && <ImageBody asset={asset} />}
+      {cat === 'video' && <VideoBody asset={asset} />}
+      {cat === 'audio' && <AudioBody asset={asset} />}
+      {cat === 'unknown' && (
+        <FallbackBody
+          message={`Preview unavailable for file type "${asset.file_type}". Download to inspect.`}
+          drivePath={asset.drive_path}
+        />
+      )}
+    </div>
+  );
+}
+
+function TextBody({ assetId }: { assetId: string }) {
+  const { data, error } = useSWR<{ data: { content: string } }>(
+    `/api/assets/${assetId}/content`,
+    fetcher,
+  );
+  if (error) {
+    return (
+      <div className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--accent-danger)' }}>
+        {(error as Error).message}
+      </div>
+    );
+  }
+  if (!data?.data) return <p className="text-sm text-text-secondary">Loading content…</p>;
+  const content = data.data.content;
+  if (!content) {
+    return (
+      <p className="text-sm text-text-secondary italic">
+        Asset has no content yet (may be pre-migration 0013 or pending generation).
+      </p>
+    );
+  }
+  return (
+    <article
+      className="prose prose-invert prose-sm max-w-none px-4 py-3 rounded-lg border border-glass leading-relaxed"
+      style={{ background: 'var(--bg-elevated)' }}
+    >
+      <ReactMarkdown>{content}</ReactMarkdown>
+    </article>
+  );
+}
+
+function ImageBody({ asset }: { asset: AssetRow }) {
+  if (!isHttpishUrl(asset.drive_path)) {
+    return (
+      <FallbackBody
+        message="Mock image — no browser-loadable URL. Switch the image provider to gpt-image-1 in Settings → Providers and re-trigger to see a real preview."
+        drivePath={asset.drive_path}
+      />
+    );
+  }
+  return (
+    <div
+      className="rounded-lg overflow-hidden border border-glass"
+      style={{ background: 'var(--bg-elevated)' }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={asset.drive_path ?? ''}
+        alt={asset.filename}
+        className="w-full h-auto block"
+      />
+    </div>
+  );
+}
+
+function VideoBody({ asset }: { asset: AssetRow }) {
+  if (!isHttpishUrl(asset.drive_path)) {
+    return (
+      <FallbackBody
+        message="Mock video — no browser-loadable URL. Switch the video provider to a real one and re-trigger."
+        drivePath={asset.drive_path}
+      />
+    );
+  }
+  return (
+    <video
+      src={asset.drive_path ?? ''}
+      controls
+      className="w-full rounded-lg border border-glass"
+      style={{ background: 'var(--bg-elevated)' }}
+    />
+  );
+}
+
+function AudioBody({ asset }: { asset: AssetRow }) {
+  if (!isHttpishUrl(asset.drive_path)) {
+    return (
+      <FallbackBody
+        message="Mock audio — no browser-loadable URL."
+        drivePath={asset.drive_path}
+      />
+    );
+  }
+  return (
+    <audio
+      src={asset.drive_path ?? ''}
+      controls
+      className="w-full"
+    />
+  );
+}
+
+function FallbackBody({
+  message,
+  drivePath,
+}: {
+  message: string;
+  drivePath: string | null;
+}) {
+  return (
+    <div
+      className="px-3 py-3 rounded-lg border border-glass space-y-2"
+      style={{ background: 'var(--bg-elevated)' }}
+    >
+      <div className="flex items-center gap-2 text-sm text-text-secondary">
+        <FileWarning size={14} />
+        <span>{message}</span>
+      </div>
+      {drivePath && (
+        <div className="text-[11px] text-text-muted font-mono break-all">{drivePath}</div>
+      )}
+      {drivePath && isHttpishUrl(drivePath) && (
+        <a
+          href={drivePath}
+          download
+          className="inline-flex items-center gap-1.5 text-xs text-text-primary hover:underline"
+        >
+          <Download size={12} /> Download
+        </a>
+      )}
+    </div>
+  );
+}
