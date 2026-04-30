@@ -17,7 +17,7 @@
 
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
-import { Download, FileWarning } from 'lucide-react';
+import { Download, FileWarning, ExternalLink, CloudOff } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 
 const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA'];
