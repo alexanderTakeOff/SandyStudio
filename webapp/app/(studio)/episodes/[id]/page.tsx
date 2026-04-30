@@ -196,11 +196,21 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             <ol className="space-y-1">
               {stages.map((s, i) => {
                 const active = selectedStage === s.id;
+                const onActivate = () => setSelectedStage(active ? null : s.id);
+                const onRowKey = (e: KeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onActivate();
+                  }
+                };
                 return (
                   <li key={s.id}>
-                    <button
-                      onClick={() => setSelectedStage(active ? null : s.id)}
-                      className="flex items-center gap-3 w-full px-2 py-1.5 rounded-lg transition-colors text-left"
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={onActivate}
+                      onKeyDown={onRowKey}
+                      className="group flex items-center gap-3 w-full px-2 py-1.5 rounded-lg transition-colors text-left cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-info)]"
                       style={{
                         background: active ? 'var(--panel-hover-bg)' : 'transparent',
                       }}
@@ -217,7 +227,15 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                           {s.job_count.done}/{s.job_count.total}
                         </span>
                       )}
-                    </button>
+                      <StageKebabMenu
+                        episodeId={id}
+                        stageId={s.id as PipelineStageId}
+                        stageLabel={s.label}
+                        stageAgents={s.agents}
+                        latestAssetId={s.latest_asset_id}
+                        onChanged={() => mutate()}
+                      />
+                    </div>
                     {i < stages.length - 1 && (
                       <div
                         className="ml-5 h-3 w-px"
