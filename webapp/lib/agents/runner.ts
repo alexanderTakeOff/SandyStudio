@@ -205,23 +205,27 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       const shotIds = [1, 2, 3].map((act) => `${episodeId}-A${act}-SC01-SH01`);
 
       if (provider?.providerId === 'veo-3' || provider?.providerId === 'veo-3-img2vid') {
+        if (!supabase) throw new Error('EXEC-EDIT real path requires supabase in runArgs');
         const real = await generateVideoVeoGemini({
           prompt: buildAnimaticPrompt(inputs),
           durationSeconds: 8,
           aspectRatio: '16:9',
           quality: 'fast',
         });
-        const persisted = await persistBinaryToStaging({
+        const persisted = await persistBinary({
           base64: real.mp4_b64,
           ext: 'mp4',
-          hint: `animatic-${episodeId.slice(-8)}`,
+          driveFilename: `${episodeCode ?? 'SS-unknown'}-VID-animatic-v01-DRAFT.mp4`,
+          localHint: `animatic-${episodeId.slice(-8)}`,
+          episodeCode,
+          supabase,
         });
         return {
           outputKind: 'video-mp4',
           result: {
             asset_paths: [persisted.browserUrl],
             cost_usd: llm.cost_usd + real.cost_usd,
-            metadata: {
+            metadata: metadataFromPersisted(persisted, {
               agent_id: agentId,
               provider_id: real.provider,
               provider_used: real.provider,
@@ -230,11 +234,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               height: real.height,
               duration_seconds: real.duration_seconds,
               size_bytes: real.size_bytes,
-              staging_path: persisted.absolutePath,
               markdown: llm.markdown,
               body: llm.body as Record<string, unknown>,
               shot_ids: shotIds,
-            },
+            }),
           },
         };
       }
