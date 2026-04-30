@@ -325,6 +325,11 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 
 | Date | Change | By |
 |------|--------|----|
+| 2026-04-30 | DECISION: Phase 8 = Google-first MVP. Active stack: Drive native (storage), gpt-image-1 (image, reuses OPENAI_API_KEY), Veo 3 + Veo 3 img2vid (video). Beatoven, ElevenLabs, Kling registered but `is_active = false`. YouTube wired last. Anthropic studio agents unchanged. | Director/CEO |
+| 2026-04-30 | DECISION: provider switching architecture — two-tier (global `provider_assignments` + per-stage `stage_provider_overrides`). UI = `/settings/providers` for global + pipeline kebab for per-stage. 60s cache. Soft cancel on switch (no early Inngest interruption for MVP). | Director/CEO |
+| 2026-04-30 | DECISION: Phase 5d ships kebab UI + activity preview drawer FIRST; Phase 8 slots provider sub-menu into the same kebab. Sequencing — q1b. | Director/CEO |
+| 2026-04-30 | DECISION (partial D-001 reversal): MVP uses Veo 3 image-to-video for character shots (~75% consistency). Kling re-evaluated post first real cycle; Phase 8.5 candidate. | Director/CEO |
+| 2026-04-30 | specs/system/provider_strategy.md v0.2 APPROVED — 17-step plan: Phase 5d (4 steps) → Phase 8 (13 steps). | Claude Code |
 | 2026-04-23 | PLAN.md created, SDD structure established | Claude Code |
 | 2026-04-23 | 5 new agents identified: ORCH, COPY, THUMB, PUB, ANAL | Claude Code |
 | 2026-04-23 | Spec hierarchy defined (7 layers, 23 files) | Claude Code |
