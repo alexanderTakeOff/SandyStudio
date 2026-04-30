@@ -246,6 +246,11 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                         stageState={s.state}
                         assetsInReview={(s as { assets_in_review?: number }).assets_in_review}
                         latestAssetId={s.latest_asset_id}
+                        latestAssetType={(s as { latest_asset_type?: string }).latest_asset_type}
+                        onOpenPreview={(assetId, title) => {
+                          setPreviewAssetId(assetId);
+                          setPreviewTitle(title);
+                        }}
                         onChanged={() => mutate()}
                       />
                     </div>
