@@ -113,7 +113,7 @@ export const PUT = withApiHandler(async (req, ctx) => {
   const sizeBytes = Buffer.byteLength(body.content, 'utf-8');
   const { error: updErr } = await supabase
     .from('assets')
-    .update({ content: body.content, size_bytes: sizeBytes } as never)
+    .update({ content: body.content } as never)
     .eq('id', id);
   if (updErr) throw new Error(`asset content update failed: ${updErr.message}`);
 
