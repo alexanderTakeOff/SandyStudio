@@ -37,14 +37,16 @@ export interface ResolvedProvider {
 }
 
 // Adapter id → required env key. `null` means no key needed (mock, OAuth).
+// Veo runs through the Gemini API (single key), not Vertex OAuth — so
+// it depends on GEMINI_API_KEY, not GOOGLE_REFRESH_TOKEN.
 const ENV_KEY_BY_PROVIDER: Record<string, string | null> = {
   mock: null,
   'gpt-image-1': 'OPENAI_API_KEY',
   'flux-pro': 'FAL_AI_KEY',
-  'imagen-3': 'GOOGLE_REFRESH_TOKEN', // OAuth — proxy for "Google creds present"
+  'imagen-3': 'GEMINI_API_KEY',
   'dall-e-3': 'OPENAI_API_KEY',
-  'veo-3': 'GOOGLE_REFRESH_TOKEN',
-  'veo-3-img2vid': 'GOOGLE_REFRESH_TOKEN',
+  'veo-3': 'GEMINI_API_KEY',
+  'veo-3-img2vid': 'GEMINI_API_KEY',
   'kling-3-elements': 'KLING_API_KEY',
   beatoven: 'BEATOVEN_API_KEY',
   suno: 'SUNO_API_KEY',
