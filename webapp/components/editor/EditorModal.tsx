@@ -130,7 +130,20 @@ export function EditorModal({
           <p className="text-sm text-text-secondary">Loading content…</p>
         )}
 
-        {!loading && !editable && (
+        {!loading && error && (
+          <div
+            className="px-3 py-2 rounded-lg border text-xs"
+            style={{
+              background: 'color-mix(in oklab, var(--accent-danger) 10%, transparent)',
+              borderColor: 'color-mix(in oklab, var(--accent-danger) 35%, transparent)',
+              color: 'var(--accent-danger)',
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && !editable && (
           <div
             className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
             style={{
@@ -141,24 +154,18 @@ export function EditorModal({
           >
             <Lock size={14} />
             <span>
-              Read-only — asset is {status}. Request revision first to edit.
+              Read-only — asset is {status || 'not editable'}. Request revision first to edit.
             </span>
           </div>
         )}
 
-        {!loading && (
+        {!loading && !error && (
           <MarkdownEditor
             value={content}
             onChange={setContent}
             readOnly={!editable}
             height={460}
           />
-        )}
-
-        {error && (
-          <p className="text-xs" style={{ color: 'var(--accent-danger)' }}>
-            {error}
-          </p>
         )}
 
         <div className="flex items-center justify-between pt-1">
