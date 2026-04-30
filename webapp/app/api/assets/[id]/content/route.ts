@@ -42,7 +42,7 @@ interface AssetRow {
   filename: string;
   file_type: string;
   status: string;
-  version: string | null;
+  version: number | null;
   staging_path: string | null;
   episode_id: string | null;
 }
