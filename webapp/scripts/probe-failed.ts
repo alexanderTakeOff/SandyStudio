@@ -14,12 +14,13 @@ async function main() {
     .maybeSingle();
   console.log('episode:', ep);
   if (!ep) return;
-  const { data: jobs } = await sb
+  const { data: jobs, error: jobsErr } = await sb
     .from('jobs')
-    .select('id,agent_id,status,started_at,completed_at,error_message,error_code')
+    .select('*')
     .eq('episode_id', ep.id)
-    .order('created_at', { ascending: false })
-    .limit(10);
+    .order('created_at', { ascending: false });
+  console.log('jobs error:', jobsErr);
+  console.log('jobs count:', jobs?.length);
   console.log('jobs:', JSON.stringify(jobs, null, 2));
   const { data: assets } = await sb
     .from('assets')
