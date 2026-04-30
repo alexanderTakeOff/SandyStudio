@@ -330,6 +330,13 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         episodeId={id}
         onTriggered={() => mutate()}
       />
+
+      <PreviewDrawer
+        open={previewAssetId !== null}
+        onClose={() => setPreviewAssetId(null)}
+        assetId={previewAssetId}
+        title={previewTitle}
+      />
     </StudioContentFrame>
   );
 }
