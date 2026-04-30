@@ -220,6 +220,7 @@ export function createAgentInngestFunction<E extends string>(
                 status: targetStatus,
                 version: 1,
                 description: `Mock storyboard act ${act} (auto-generated to satisfy EXEC-WCHK 3-act gate).`,
+                content: `# Storyboard — Act ${act}\n\n_Mock placeholder — real EXEC-SB will produce three acts natively in Phase 8._\n\n## Shots\n\n- shot${act * 3 - 2}: TBD\n- shot${act * 3 - 1}: TBD\n- shot${act * 3}: TBD\n`,
               } as never)
               .then(
                 () => undefined,
