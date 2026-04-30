@@ -46,6 +46,8 @@ interface ActivityRow {
   description: string | null;
   actor: string | null;
   created_at: string;
+  asset_id?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface PipelineResponse {
