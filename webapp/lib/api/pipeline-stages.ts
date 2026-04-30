@@ -30,6 +30,8 @@ export interface PipelineStageSnapshot {
   agents: string[];
   latest_asset_id?: string;
   job_count?: { total: number; done: number; running: number; failed: number };
+  /** Count of assets in this stage with status REVIEW. Drives kebab "Approve all" visibility — non-zero means there is something to approve, even if the stage state has been overridden by a FAILED job. */
+  assets_in_review?: number;
 }
 
 interface AssetLike {
