@@ -33,6 +33,8 @@ interface AssetRow {
   status: string;
   drive_path: string | null;
   staging_path: string | null;
+  drive_file_id: string | null;
+  drive_web_view_url: string | null;
   content: string | null;
   description: string | null;
   agent_id: string | null;
