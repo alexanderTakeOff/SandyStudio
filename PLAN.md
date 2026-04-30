@@ -330,6 +330,9 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-30 | DECISION: Phase 5d ships kebab UI + activity preview drawer FIRST; Phase 8 slots provider sub-menu into the same kebab. Sequencing — q1b. | Director/CEO |
 | 2026-04-30 | DECISION (partial D-001 reversal): MVP uses Veo 3 image-to-video for character shots (~75% consistency). Kling re-evaluated post first real cycle; Phase 8.5 candidate. | Director/CEO |
 | 2026-04-30 | specs/system/provider_strategy.md v0.2 APPROVED — 17-step plan: Phase 5d (4 steps) → Phase 8 (13 steps). | Claude Code |
+| 2026-04-30 | Phase 5d step 2 SHIPPED — pipeline-row kebab UI (Approve / Reject / Edit / Re-trigger), CodeMirror 6 editor, RejectModal. Components: DropdownMenu, MarkdownEditor, EditorModal, RejectModal, StageKebabMenu. New endpoint `/api/assets/[id]/content`. | Claude Code |
+| 2026-04-30 | DECISION: markdown canonical in DB (variant A), not on disk. Reason: 10ms DB vs 300ms Drive API per save × frequent edits = seconds. Drive holds binaries only in Phase 8 step 10. | Director/CEO |
+| 2026-04-30 | Migration 0013_assets_content.sql applied — `assets.content text NULL`. runner.ts saveAgentOutput populates `content` instead of stuffing markdown into `description`. factory.ts STB-act spoof carries placeholder content. Editor banner UX fixed (error path no longer shows empty Read-only banner). | Claude Code |
 | 2026-04-23 | PLAN.md created, SDD structure established | Claude Code |
 | 2026-04-23 | 5 new agents identified: ORCH, COPY, THUMB, PUB, ANAL | Claude Code |
 | 2026-04-23 | Spec hierarchy defined (7 layers, 23 files) | Claude Code |
