@@ -107,8 +107,41 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
           drivePath={asset.drive_path}
         />
       )}
+      <DriveBadge asset={asset} />
     </div>
   );
+}
+
+function DriveBadge({ asset }: { asset: AssetRow }) {
+  if (asset.drive_file_id && asset.drive_web_view_url) {
+    return (
+      <a
+        href={asset.drive_web_view_url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1.5 text-[11px] hover:underline"
+        style={{ color: 'var(--accent-success)' }}
+      >
+        <ExternalLink size={11} />
+        Backed up to Google Drive — open in Drive
+      </a>
+    );
+  }
+  // Show this hint only for binary types. Text assets live in the DB column.
+  const cat = categoryFor(asset.file_type);
+  if (cat === 'image' || cat === 'video' || cat === 'audio') {
+    return (
+      <div
+        className="inline-flex items-center gap-1.5 text-[11px]"
+        style={{ color: 'var(--text-muted)' }}
+        title="Switch storage provider to drive_native in Settings → Providers to back up new assets to Drive."
+      >
+        <CloudOff size={11} />
+        Local cache only — Drive storage off
+      </div>
+    );
+  }
+  return null;
 }
 
 function TextBody({ assetId }: { assetId: string }) {
