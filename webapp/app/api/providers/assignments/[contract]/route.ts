@@ -13,6 +13,7 @@ import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { getProviderCatalog, type ContractName } from '@/lib/api/provider-catalog';
 import { invalidateProviderCache } from '@/lib/agents/provider-resolver';
+import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
