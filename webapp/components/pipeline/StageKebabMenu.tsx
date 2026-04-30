@@ -42,14 +42,6 @@ const STAGE_PREFIX_MAP: Record<string, string[]> = {
   analytics: ['REV-analytics'],
 };
 
-const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.json', '.yaml', '.yml']);
-
-function isTextFilename(filename: string): boolean {
-  const i = filename.lastIndexOf('.');
-  if (i < 0) return false;
-  return TEXT_EXTENSIONS.has(filename.slice(i).toLowerCase());
-}
-
 interface AssetLite {
   id: string;
   filename: string;
