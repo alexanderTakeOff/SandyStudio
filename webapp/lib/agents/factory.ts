@@ -167,10 +167,14 @@ export function createAgentInngestFunction<E extends string>(
             provider = undefined;
           }
         }
+        const episodeCode =
+          (inputs.episode as { episode_code?: string } | undefined)?.episode_code ?? undefined;
         const runArgs: RunAgentArgs = {
           agentId: spec.agentId,
           inputs,
           provider,
+          supabase,
+          episodeCode,
           ...(spec.resolveRunArgs ? spec.resolveRunArgs(eventData) : {}),
         };
         return runAgent(runArgs);
