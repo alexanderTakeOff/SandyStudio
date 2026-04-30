@@ -33,7 +33,18 @@ import {
 import type { AgentResult } from './types';
 import { resolveModelId } from './registry';
 import { createSupabaseServiceRoleClient } from '../supabase/server';
+import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
+
+// Maps an agent to the provider contract it consumes. Agents not listed here
+// don't go through the resolver (text-only agents → Anthropic / mock LLM).
+const CONTRACT_BY_AGENT: Partial<Record<AgentId, ContractName>> = {
+  'EXEC-THUMB': 'image',
+  'EXEC-VGEN': 'character_video',
+  'EXEC-EDIT': 'video',
+  'EXEC-MGEN': 'music',
+  'EXEC-PUB': 'publish',
+};
 
 /** Spec passed to createAgentInngestFunction. */
 export interface AgentFunctionSpec<EventName extends string = string> {
