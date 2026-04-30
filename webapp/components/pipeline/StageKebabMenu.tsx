@@ -190,31 +190,17 @@ export function StageKebabMenu({
     }
   }
 
-  async function openEditor() {
+  function openEditor() {
     if (!latestAssetId) {
       alert(`No asset in ${stageLabel} to edit.`);
       return;
     }
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/assets/${latestAssetId}`);
-      if (!res.ok) {
-        alert(`Could not load asset.`);
-        return;
-      }
-      const j = (await res.json()) as { data: AssetLite };
-      if (!isTextFilename(j.data.filename)) {
-        alert(
-          `${j.data.filename} is binary — open the preview drawer once it ships (Phase 5d step 3).`,
-        );
-        return;
-      }
-      setEditorAssetId(latestAssetId);
-      setEditorAssetFilename(j.data.filename);
-      setEditorOpen(true);
-    } finally {
-      setBusy(false);
-    }
+    // Don't pre-fetch metadata — EditorModal fetches /content which already
+    // returns filename + status + content in one round-trip. Binary assets
+    // get a clean error from that endpoint and EditorModal renders it.
+    setEditorAssetId(latestAssetId);
+    setEditorAssetFilename(undefined);
+    setEditorOpen(true);
   }
 
   function openReject() {
