@@ -545,6 +545,36 @@ export type Database = {
           },
         ]
       }
+      provider_assignments: {
+        Row: {
+          active_provider_id: string
+          contract: string
+          fallback_provider_id: string | null
+          is_active: boolean
+          notes: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active_provider_id: string
+          contract: string
+          fallback_provider_id?: string | null
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active_provider_id?: string
+          contract?: string
+          fallback_provider_id?: string | null
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       series: {
         Row: {
           audience: string | null
