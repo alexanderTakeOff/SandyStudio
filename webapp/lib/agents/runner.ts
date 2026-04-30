@@ -161,8 +161,18 @@ interface RunResult {
  * does not change.
  */
 export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
-  const { agentId, inputs, shotId, section, collectionPoint, youtubeVideoId, provider } = args;
-  void provider; // referenced inside individual cases (see EXEC-THUMB)
+  const {
+    agentId,
+    inputs,
+    shotId,
+    section,
+    collectionPoint,
+    youtubeVideoId,
+    provider,
+    supabase,
+    episodeCode,
+  } = args;
+  void provider; // referenced inside individual cases
   const episodeId = inputs.episode_id;
   const agentMeta = getAgent(agentId);
 
