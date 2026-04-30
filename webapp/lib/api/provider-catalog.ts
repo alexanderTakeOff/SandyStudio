@@ -96,10 +96,10 @@ export function getProviderCatalog(): ProviderCatalog {
       {
         id: 'veo-3-img2vid',
         display_name: 'Veo 3 (image-to-video)',
-        vendor: 'Google Vertex AI',
-        envKey: 'GOOGLE_REFRESH_TOKEN',
-        adapter_ready: false,
-        cost_hint: '~$0.15 / second',
+        vendor: 'Google AI Studio (Gemini API)',
+        envKey: 'GEMINI_API_KEY',
+        adapter_ready: true,
+        cost_hint: '~$0.15 / second (with reference image, when wired in PA-001)',
       },
       {
         id: 'kling-3-elements',
