@@ -249,6 +249,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             <div className="mt-4 pt-3 border-t border-glass space-y-1 text-[10px] text-text-muted">
               <div>● approved · ◐ running · ◇ blocked · ✗ failed · ○ idle</div>
               <div>Click a stage to filter the feed →</div>
+              <div>Hover any stage for actions ⋯</div>
             </div>
           </CardBody>
         </Card>
