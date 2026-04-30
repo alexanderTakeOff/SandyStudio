@@ -8,13 +8,15 @@
 import { use, useState, type KeyboardEvent } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
-import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { StageKebabMenu } from '@/components/pipeline/StageKebabMenu';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
+import { EditorModal } from '@/components/editor/EditorModal';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { fetcher } from '@/lib/swr';
 
