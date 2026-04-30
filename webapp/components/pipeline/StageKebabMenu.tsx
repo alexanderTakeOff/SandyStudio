@@ -70,6 +70,10 @@ export interface StageKebabMenuProps {
   /** Count of REVIEW-status assets in stage. >0 means "Approve all" makes sense regardless of stage state (e.g. when state=failed but a prior asset is awaiting approval). */
   assetsInReview?: number;
   latestAssetId?: string;
+  /** file_type of the latest asset — text → Edit (CodeMirror), binary → Preview (drawer). */
+  latestAssetType?: string;
+  /** Page-level callback to open the preview drawer for a binary asset. */
+  onOpenPreview?: (assetId: string, title?: string) => void;
   onChanged: () => void;
 }
 
