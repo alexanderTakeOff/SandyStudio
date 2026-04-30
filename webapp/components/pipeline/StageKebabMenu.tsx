@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Pencil,
   XCircle,
+  Eye,
 } from 'lucide-react';
 import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { EditorModal } from '@/components/editor/EditorModal';
