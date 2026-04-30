@@ -530,6 +530,18 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       ? (result.metadata.staging_path as string)
       : null;
 
+  // Drive identity (when storage provider = drive_native and upload succeeded)
+  // — read by AssetPreview as a fallback when local cache misses, by future
+  // Drive-native operations (download, share, delete) as the canonical handle.
+  const driveFileId =
+    typeof result.metadata.drive_file_id === 'string'
+      ? (result.metadata.drive_file_id as string)
+      : null;
+  const driveWebViewUrl =
+    typeof result.metadata.drive_web_view_url === 'string'
+      ? (result.metadata.drive_web_view_url as string)
+      : null;
+
   const { data, error } = await supabase
     .from('assets')
     .insert({
@@ -539,6 +551,8 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       filename,
       drive_path: drivePath,
       staging_path: stagingPath,
+      drive_file_id: driveFileId,
+      drive_web_view_url: driveWebViewUrl,
       status: 'DRAFT',
       version: 1,
       content,
