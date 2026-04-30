@@ -340,7 +340,9 @@ export type Database = {
           content: string | null
           created_at: string
           description: string | null
+          drive_file_id: string | null
           drive_path: string | null
+          drive_web_view_url: string | null
           episode_id: string | null
           file_type: string
           filename: string
@@ -357,7 +359,9 @@ export type Database = {
           content?: string | null
           created_at?: string
           description?: string | null
+          drive_file_id?: string | null
           drive_path?: string | null
+          drive_web_view_url?: string | null
           episode_id?: string | null
           file_type: string
           filename: string
@@ -374,7 +378,9 @@ export type Database = {
           content?: string | null
           created_at?: string
           description?: string | null
+          drive_file_id?: string | null
           drive_path?: string | null
+          drive_web_view_url?: string | null
           episode_id?: string | null
           file_type?: string
           filename?: string
