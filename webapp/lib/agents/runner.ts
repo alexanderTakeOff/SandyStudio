@@ -109,6 +109,25 @@ async function persistBinaryToStaging(args: {
   return { absolutePath, browserUrl: `/staging/${filename}` };
 }
 
+function buildAnimaticPrompt(inputs: AgentInputs): string {
+  const ep = inputs.episode as { episode_code?: string; title_working?: string | null };
+  const title = ep.title_working ?? 'Untitled comedy short';
+  return [
+    `Animatic preview for an animated comedy short titled "${title}".`,
+    'Stylised 2D animation, muted palette, cinematic 16:9 framing.',
+    'Smooth camera, simple silhouette compositions, no on-screen text.',
+  ].join(' ');
+}
+
+function buildShotPrompt(inputs: AgentInputs, shotId?: string): string {
+  const ep = inputs.episode as { episode_code?: string; title_working?: string | null };
+  const title = ep.title_working ?? 'Untitled comedy short';
+  return [
+    `Single shot from animated comedy "${title}" (shot ${shotId ?? '?'}).`,
+    'Vibrant 2D animation, dynamic action, comedic timing, 16:9 framing, no text.',
+  ].join(' ');
+}
+
 function buildThumbnailPrompt(inputs: AgentInputs): string {
   const ep = inputs.episode as { episode_code?: string; title_working?: string | null };
   const code = ep.episode_code ?? 'episode';
