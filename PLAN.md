@@ -11,10 +11,12 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 5c COMPLETE — full Mode 4 cycle proven on SS-S01-E01
-Next:     Phase 5d (UX polish — долговая тетрадка) OR Phase 8 (real provider keys)
+Phase:    SPRINT 9 / Phase 5c COMPLETE + E02 Mode 1 cycle verified by Director
+          Provider Strategy v0.2 APPROVED 2026-04-30 — Google-first MVP, two-tier UI switching
+Next:     Phase 5d step 2 — pipeline-row kebab UI (Approve/Reject/Tweak/Re-trigger)
+          → activity preview drawer → friendly agent names → Phase 8 (13 sub-steps)
 Mode:     ===5=== EDIT (Director active) — switches to ===1=== at session start per CLAUDE.md
-Date:     2026-04-29
+Date:     2026-04-30
 ```
 
 ### Episodes in DB
