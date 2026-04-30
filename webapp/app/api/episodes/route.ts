@@ -10,6 +10,11 @@ import { apiOk, apiCreated } from '@/lib/api/response';
 import { parseJson, parseSearchParams } from '@/lib/api/zod-helpers';
 import { ConflictError, ValidationError, NotFoundError } from '@/lib/api/errors';
 import type { SeriesRow } from '@/lib/supabase/types-phase5b';
+import {
+  buildBriefTemplate,
+  generateBriefMarkdown,
+  type BriefInput,
+} from '@/lib/agents/providers/anthropic-brief';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
