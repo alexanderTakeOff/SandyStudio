@@ -110,7 +110,8 @@
       "Bash(curl -sS -X POST \"https://akstennzrnkvexjgzhxv.supabase.co/rest/v1/rpc/_dummy\" -H \"apikey: $\\(grep '^NEXT_PUBLIC_SUPABASE_ANON_KEY' .env.local)",
       "Bash(curl -sS -X POST http://localhost:8288/e/test_key -H \"content-type: application/json\" -d '{\"name\":\"sandystudio/exec-wchk/check-world\",\"data\":{\"episodeId\":\"3a4be629-0ca6-4e6b-af2c-54a91a79f5ae\",\"storyboardAssetIds\":[]}}')",
       "Bash(curl -sS -X POST http://localhost:8288/e/test_key -H 'content-type: application/json' -d '{\"name\":\"sandystudio/exec-pub/publish\",\"data\":{\"episodeId\":\"3a4be629-0ca6-4e6b-af2c-54a91a79f5ae\",\"directorConfirm\":true,\"confirmedBy\":\"director-mode4-demo\"}}')",
-      "Bash(curl -sS \"https://akstennzrnkvexjgzhxv.supabase.co/rest/v1/jobs?episode_id=eq.3a4be629-0ca6-4e6b-af2c-54a91a79f5ae&status=eq.RUNNING&select=agent_id\" -H \"apikey: $\\(grep '^SUPABASE_SERVICE_ROLE_KEY' .env.local)"
+      "Bash(curl -sS \"https://akstennzrnkvexjgzhxv.supabase.co/rest/v1/jobs?episode_id=eq.3a4be629-0ca6-4e6b-af2c-54a91a79f5ae&status=eq.RUNNING&select=agent_id\" -H \"apikey: $\\(grep '^SUPABASE_SERVICE_ROLE_KEY' .env.local)",
+      "Bash(taskkill //F //PID 329656 //PID 131904 //PID 170560 //PID 1678292 //PID 330384 //PID 170628 //PID 1677452)"
     ]
   }
 }
