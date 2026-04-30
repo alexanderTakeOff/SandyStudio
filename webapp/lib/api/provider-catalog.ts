@@ -153,7 +153,8 @@ export function getProviderCatalog(): ProviderCatalog {
         display_name: 'Google Drive',
         vendor: 'Google',
         envKey: 'GOOGLE_REFRESH_TOKEN',
-        adapter_ready: false,
+        adapter_ready: true,
+        cost_hint: 'free (storage uses Drive quota)',
       },
     ],
     publish: [
