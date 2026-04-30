@@ -1,5 +1,5 @@
 # SandyStudio — Provider Strategy
-## specs/system/provider_strategy.md | v0.1 | DRAFT
+## specs/system/provider_strategy.md | v0.2 | APPROVED
 
 > Defines **which** providers run in Phase 8 MVP and **how** the Director can
 > reassign providers later through the webapp UI without code changes.
@@ -10,10 +10,11 @@
 > - `config/providers.yaml` — provider **registry** (capabilities, cost, env keys)
 >
 > What this spec adds: **decision of record** for Phase 8 active stack +
-> **runtime selection mechanism** (DB-backed, UI-editable).
+> **runtime selection mechanism** (DB-backed, two-tier: global + per-stage, UI-editable).
 >
 > Last updated: 2026-04-30
 > Owner: Director / EXEC-ARCH
+> Status: APPROVED 2026-04-30 (Director resolved OQ1–OQ4, q1–q3)
 
 ---
 
@@ -24,13 +25,14 @@ Phase 8 turns the studio from mock-mode into a paid pipeline. The decision is **
 that proves the full cycle end-to-end (Brief → Publish), and make every connection
 swappable through a UI control later."
 
-This spec answers three questions:
+This spec answers four questions:
 
-1. **What stack runs in Phase 8 MVP?** (Section 2 — Active Stack)
-2. **How does the Director switch a provider without redeploying code?**
-   (Section 3 — Runtime Selection Architecture)
-3. **What is the implementation order, and what is the exit criterion?**
-   (Section 5 — Implementation Plan + Section 6 — Exit Criteria)
+1. **What stack runs in Phase 8 MVP?** (§2 — Active Stack)
+2. **How does the Director switch a provider — globally and for a single stage —
+   without redeploying code?** (§3 — Runtime Selection Architecture)
+3. **What UI carries those switches?** (§4 — UI Surfaces)
+4. **What is the implementation order, and what is the exit criterion?**
+   (§6 — Implementation Plan + §7 — Exit Criteria)
 
 ---
 
@@ -50,9 +52,9 @@ This spec answers three questions:
 | Image | `gpt-image-1` | OpenAI Images API | ✅ Active | Reuses `OPENAI_API_KEY` (same key as Concierge). Replaces `flux-pro` as primary. Used by EXEC-THUMB and PA-005 character variants. |
 | Video (no character) | `veo-3` | Vertex AI | ✅ Active | text-to-video. |
 | Video (character) | `veo-3-img2vid` | Vertex AI | ✅ Active | image-to-video using `master_reference.drive_file_id` as start frame. Documented limitation: ~75% character consistency vs ~90% with Kling. Accepted MVP trade-off; Kling re-evaluated post-cycle. |
-| Music | `beatoven` | Beatoven.ai | ⚠️ Registered, inactive | "Silent pilot" for Phase 8. UI dropdown shows `beatoven` available; Director flips switch when ready. |
+| Music | `beatoven` | Beatoven.ai | ⚠️ Registered, inactive | "Silent pilot" for Phase 8. UI dropdown shows `beatoven` greyed-out with [Activate] button; Director flips switch when ready. |
 | SFX | `elevenlabs-sfx` | ElevenLabs SFX | ⚠️ Registered, inactive | Same — present in registry, off in Phase 8 MVP. |
-| Publish | `youtube_data_api` | YouTube Data API v3 | ⏳ Last | Wired only after the rest of the cycle is stable on E03 dry-run. Order matters — see §5. |
+| Publish | `youtube_data_api` | YouTube Data API v3 | ⏳ Last | Wired only after the rest of the cycle is stable on E03 dry-run. Order matters — see §6. |
 | Studio agents | Anthropic Claude (Sonnet 4.6 / Opus 4.7) | Claude Code SDK | ✅ Unchanged | Not part of `providers.yaml` — separate model routing per BOARD-FIN policy. |
 | Concierge chat | OpenAI `gpt-5.4-mini` | OpenAI Chat Completions | ✅ Unchanged | Already in production. Same `OPENAI_API_KEY` as `gpt-image-1`. |
 
@@ -84,18 +86,41 @@ This spec answers three questions:
 `config/providers.yaml` defines **which providers exist** and what they can do. It does
 **not** persist the Director's runtime choice. To change `image.primary` from `flux-pro`
 to `gpt-image-1` today, an engineer edits the YAML and redeploys. That is the wrong
-ergonomics for a Director who wants "swap image provider" to be a one-click action.
+ergonomics for a Director who wants "swap image provider" to be a one-click action —
+sometimes globally, sometimes for a single stage of a single episode.
 
-### 3.2 Source of truth split
+### 3.2 Two-tier override hierarchy
+
+Director-resolved decision (q2): **global + per-stage. No per-episode tier.**
+If the Director wants "everything in this episode on Flux", that's the global switch
+(it affects all episodes equally — that's the trade-off). Per-episode-only override
+is over-engineering for MVP.
+
+```
+              ┌─ stage_provider_overrides ─┐    (narrowest — per episode + stage)
+              │                             │
+                                            ▼
+                                     applies if found
+                                            │
+              ┌─ provider_assignments ────┐ │    (global default per contract)
+              │                            ▼ │
+                                   applies otherwise
+                                            │
+                                            ▼
+                                  resolver returns ResolvedProvider
+```
+
+### 3.3 Source of truth split
 
 | Information | Lives in | Mutable through | Reload |
 |---|---|---|---|
 | Provider **capabilities** (cost, max chars, supported aspect ratios, env_key name) | `config/providers.yaml` | git commit | `gateway.config_reload_on_call: true` (already on) |
-| Provider **active selection** (which adapter id resolves a contract) | Supabase `provider_assignments` table | Webapp UI `/settings/providers` | Cache invalidation on row update; resolver re-reads at next call |
-| Provider **health** (last successful call, last error) | Supabase `provider_health` view (computed) | Read-only | 60s TTL cache, same as today |
+| Provider **global selection** (which adapter id resolves a contract by default) | Supabase `provider_assignments` | `/settings/providers` UI | 60s cache, invalidated on UI write (q1) |
+| Provider **per-stage override** (override for a single episode + stage) | Supabase `stage_provider_overrides` | Pipeline page kebab menu | 60s cache, invalidated on UI write |
+| Provider **health** (last successful call, last error) | computed from `jobs.metadata.provider_id` | Read-only | 60s TTL cache |
 | Provider **secrets** (env keys) | Server env vars | Deployment platform | Process restart |
 
-### 3.3 New table: `provider_assignments`
+### 3.4 New table: `provider_assignments` (global tier)
 
 ```
 provider_assignments
@@ -124,58 +149,137 @@ notes               text NULL      -- Director's reason for the switch (audit tr
 `is_active = false` means the resolver throws `E-CONTRACT-DISABLED` if any agent calls it.
 This is how "no music in Phase 8" is enforced — not by deleting the row.
 
-### 3.4 Resolver: `lib/agents/provider-resolver.ts`
+### 3.5 New table: `stage_provider_overrides` (per-stage tier)
 
 ```
-resolveProvider(contract: ContractName): ResolvedProvider
-  ↓
-  1. SELECT * FROM provider_assignments WHERE contract = $1 AND is_active = true
-  2. Look up active_provider_id in providers.yaml → get capabilities + env_key + adapter
-  3. Check process.env[env_key] is set → fail fast E-CONFIG-002 if not
-  4. Return { id, capabilities, adapter, env_key } — gateway uses this in step [3] of
-     the existing call lifecycle (specs/system/media_gateway.md §2)
+stage_provider_overrides
+─────────────────────────────────────────────────
+id                  uuid PK
+episode_id          uuid REFERENCES episodes(id) ON DELETE CASCADE
+stage               text NOT NULL    -- 'brief' | 'script' | 'script_qa' | 'storyboard' | 'world_check'
+                                      -- 'animatic' | 'generation' | 'distribution' | 'thumbnail' | 'publish'
+contract            text NOT NULL    -- which contract is being overridden
+active_provider_id  text NOT NULL
+notes               text NULL        -- "veo-3 drifted on Sandy hourglass — switching to flux+kling"
+updated_by          uuid REFERENCES auth.users
+updated_at          timestamptz NOT NULL DEFAULT now()
+
+UNIQUE (episode_id, stage, contract)
 ```
 
-Existing gateway logic (validate → budget → call → retry → log) is **unchanged**.
-The resolver **replaces** the hard-coded `primary` lookup that today reads YAML directly.
-
-### 3.5 UI: `/settings/providers`
-
-A new settings page (Phase 8 Step 4):
-
-- Table: row per contract, columns: Contract • Active provider (dropdown of all
-  candidates from `providers.yaml` whose `automation_allowed` is not `false`) •
-  Health badge • Last call • Last error • [Edit]
-- Edit dialog: Director changes `active_provider_id` → server validates env key is
-  present → write to `provider_assignments` → toast "Switched image to gpt-image-1.
-  Will apply on next agent call."
-- An "is_active" toggle per row — turns the contract on/off (the way music/SFX are
-  off in MVP).
-- Audit: every change writes to `activity_events` with `kind = 'provider_switched'`.
-
-### 3.6 Health computation
-
-`provider_health` is a materialised view (or computed in resolver):
+**Lookup precedence in resolver:**
 
 ```
-SELECT
-  p.contract,
-  p.active_provider_id,
-  MAX(j.completed_at) FILTER (WHERE j.status = 'COMPLETED') AS last_success_at,
-  MAX(j.completed_at) FILTER (WHERE j.status = 'FAILED')    AS last_failure_at,
-  COUNT(*) FILTER (WHERE j.status = 'FAILED' AND j.completed_at > now() - interval '1 hour') AS failures_last_hour
-FROM provider_assignments p
-LEFT JOIN jobs j ON j.metadata->>'provider_id' = p.active_provider_id
-GROUP BY 1, 2;
+1. SELECT active_provider_id FROM stage_provider_overrides
+     WHERE episode_id = $1 AND stage = $2 AND contract = $3
+2. If found → use it.
+3. Else → SELECT active_provider_id FROM provider_assignments WHERE contract = $3
+4. If is_active = false → throw E-CONTRACT-DISABLED
+5. Else → resolve adapter from providers.yaml
 ```
 
-This requires `jobs.metadata` to start carrying `provider_id` (small runner.ts addition).
+### 3.6 Cancellation policy on provider switch (q3)
+
+Director-resolved (q3): **soft cancel only — no early Inngest interruption for now.**
+
+When a Director switches a provider (global or per-stage):
+- All `RUNNING` and `QUEUED` jobs that target the affected contract are **marked**
+  `CANCELLED_BY_PROVIDER_SWITCH` in the `jobs` table.
+- Inngest functions in flight are **not** killed mid-step. They complete their current
+  step and the result is discarded (the asset row is not updated from a cancelled job).
+- Director sees a toast: "Marked N jobs cancelled. Re-trigger to run on the new provider."
+- Director re-triggers manually from the kebab menu. Re-trigger creates a new job with
+  the new provider id.
+
+Future Phase (post-MVP): runner.ts learns to check job status at each `step.run()`
+boundary and short-circuit if cancelled. Out of scope for Phase 8.
+
+### 3.7 Resolver: `lib/agents/provider-resolver.ts`
+
+```typescript
+interface ResolvedProvider {
+  id: string;                  // 'gpt-image-1'
+  contract: ContractName;       // 'image'
+  capabilities: ProviderSpec;   // from providers.yaml
+  envKey: string;              // 'OPENAI_API_KEY'
+  source: 'stage_override' | 'global';
+}
+
+resolveProvider({ contract, episodeId?, stage? }): ResolvedProvider
+```
+
+If `episodeId` and `stage` provided → check `stage_provider_overrides` first.
+Else → fall through to `provider_assignments`. Existing gateway logic
+(validate → budget → call → retry → log) is **unchanged**. The resolver **replaces**
+the hard-coded `primary` lookup that today reads YAML directly.
 
 ---
 
-## 4. STORAGE SHIFT — DRIVE AS CANONICAL
+## 4. UI SURFACES
 
-### 4.1 What changes
+### 4.1 `/settings/providers` — global tier
+
+A new settings page (Phase 8 step). Director-only.
+
+- Table: row per contract. Columns: Contract • Active provider (dropdown of all
+  candidates from `providers.yaml` whose `automation_allowed` is not `false`) •
+  Health badge • Last call • Last error • [Edit].
+- Inactive contracts (music/sfx in MVP) are shown **greyed-out with an [Activate]
+  button** (q2/OQ3 resolved — discoverability matters).
+- Edit dialog: Director changes `active_provider_id` → server validates env key is
+  present → write to `provider_assignments` → triggers cancel-on-switch (§3.6) →
+  toast confirms.
+- Audit: every change writes `activity_events` with `kind = 'provider_switched_global'`.
+
+### 4.2 Pipeline page kebab menu — per-stage tier
+
+This is the **shared UI surface** for Phase 5d (Approve/Reject/Tweak/Re-trigger
+controls per stage) and Phase 8 (per-stage provider override). Director ergonomics
+require: keep the pipeline visually clean, expose actions on hover.
+
+```
+● Storyboard           1/1   [⋯]  ← kebab visible on row hover
+                              │
+                              ├─ Approve all in stage
+                              ├─ Reject + revise
+                              ├─ Edit prompt / tweak
+                              ├─ Re-trigger this stage
+                              ├─ ───────────────────
+                              ├─ Provider › [veo-3 ▾]  ← Phase 8 adds this section
+                              │   ├─ ● veo-3 (global default)
+                              │   ├─ ○ veo-3-img2vid
+                              │   ├─ ○ flux-pro
+                              │   └─ Reset to global
+                              └─ ───────────────────
+```
+
+**Sequencing:** Phase 5d ships kebab WITHOUT the Provider section first
+(actions only). Phase 8 adds the Provider sub-menu later, slotting into the same
+kebab. This is the Director's q1b decision — granularity over big-bang.
+
+### 4.3 Activity item → preview drawer
+
+Today: clicking an activity item filters the feed but doesn't render content.
+Director-required behaviour (Phase 5d task #6):
+
+Click on `SS-S01-E02-STB-act3-v01-DRAFT.md` → right-side drawer opens with:
+
+| Asset extension | Render |
+|---|---|
+| `.md` | rendered Markdown (script, brief, storyboard, review) |
+| `.png` / `.jpg` / `.webp` | `<img src={drive_web_view_url}>` |
+| `.mp4` / `.mov` | `<video controls src={drive_web_view_url}>` |
+| `.wav` / `.mp3` | `<audio controls src={drive_web_view_url}>` |
+| other | metadata + "Download" link |
+
+Drawer footer carries the same kebab actions as the pipeline row
+(Approve / Reject / Tweak / Re-trigger / Provider — the last shown only after Phase 8).
+
+---
+
+## 5. STORAGE SHIFT — DRIVE AS CANONICAL
+
+### 5.1 What changes
 
 Today: `assets.staging_path = 'H:/My Drive/SandyStudio_Media/...'` — local filesystem
 path that happens to live inside a Drive sync folder. **The webapp doesn't know it's
@@ -187,10 +291,10 @@ Phase 8: Drive becomes a **first-class storage backend**.
 |---|---|---|
 | `assets.staging_path` | local filesystem path string | DEPRECATED, kept for backwards compat one cycle, then dropped |
 | `assets.drive_file_id` | — | NEW: canonical Drive file id |
-| `assets.drive_web_view_url` | — | NEW: shareable preview link (used by Inbox preview drawer Phase 5d) |
+| `assets.drive_web_view_url` | — | NEW: shareable preview link (used by drawer §4.3) |
 | `assets.size_bytes` | from local fs | from Drive metadata |
 
-### 4.2 PA-001/002/003 in Drive form
+### 5.2 PA-001/002/003 in Drive form
 
 The original character consistency spec defined `master_reference_image_path` as a
 local file path. With Drive native, it becomes:
@@ -210,9 +314,9 @@ Multi-machine access, automatic backup, sharing, and PA-005 variant carousel all
 become trivial: every variant is a Drive file id, the carousel is a `<grid>` of
 embeds, the Director clicks "Choose" → `master_reference.drive_file_id := variant_id`.
 
-Full PA-001/002/003 spec rewrite happens in **Step 9** of the implementation plan.
+Full PA-001/002/003 spec rewrite happens in **Step 11** of the implementation plan.
 
-### 4.3 OAuth model
+### 5.3 OAuth model
 
 - One Google Cloud project: `sandystudio-prod` (or similar)
 - Two scopes: `drive.file` (asset I/O) + `cloud-platform` (Vertex AI for Veo)
@@ -222,48 +326,65 @@ Full PA-001/002/003 spec rewrite happens in **Step 9** of the implementation pla
 
 ---
 
-## 5. IMPLEMENTATION PLAN (12 STEPS)
+## 6. IMPLEMENTATION PLAN
+
+Director-resolved q1b: **Phase 5d ships first, Phase 8 builds on top.** Kebab UI lands
+with Approve/Reject/Tweak/Re-trigger only; provider switch slots into the same kebab
+as a later step.
+
+### Phase 5d — UI foundation (prerequisite)
 
 | # | Step | Depends on | Output |
 |---|---|---|---|
-| 1 | Spec `provider_strategy.md` v0.1 (this file) | — | DRAFT |
-| 2 | Migration `0013_provider_assignments.sql` + seed | (1) APPROVED | Supabase table + seed rows |
-| 3 | `lib/agents/provider-resolver.ts` + integration into gateway/runner | (2) | Resolver returns ResolvedProvider; existing mock path still works |
-| 4 | `/settings/providers` UI + audit events | (3) | Director can swap providers in DB |
-| 5 | Migration `0014_assets_drive_fields.sql` + Drive adapter | (3) | `assets.drive_file_id`, Drive read/write |
-| 6 | Google OAuth flow (Drive + Vertex) on a single GCP project | — (parallel) | Refresh token in env |
-| 7 | `gpt-image-1` adapter | (3) | Image contract goes real |
-| 8 | `veo-3` + `veo-3-img2vid` adapters | (5)(6) | Video contracts go real |
-| 9 | Rewrite `character_consistency.md` v0.4 + PA-001/002/003 in Drive form | (5) | Spec for Drive-based references |
-| 10 | PA-005 Character Visual Development workflow on Drive | (9) + (7) | UI for variant carousel + selection |
-| 11 | First real cycle on E03 — Brief → Imagen → Veo → mute assemble → publish DRY-RUN | (10) | E03 reaches "ready_to_publish" without YouTube |
-| 12 | `youtube_data_api` adapter + first real publish | (11) ✅ | Phase 8 complete |
+| 1 | Spec `provider_strategy.md` v0.2 (this file) | — | APPROVED ✅ |
+| 2 | Pipeline-row kebab UI: Approve all / Reject / Tweak / Re-trigger / Edit prompt | (1) | Hover-revealed `[⋯]` per stage; actions wired to existing approve/reject/re-trigger endpoints |
+| 3 | Activity-item preview drawer: markdown / image / video / audio renderers + drawer footer kebab | (2) | Click activity → see content. Approves are now possible from drawer. |
+| 4 | Friendly agent names everywhere (EXEC-SW → "Screenwriter") — touches Re-trigger modal, Inbox, Pipeline DAG, Activity feed (debt #1) | (2) | No more EXEC-* codes shown to Director |
 
-**Gate between 11 and 12:** if E03 dry-run reveals character consistency below
+### Phase 8 — providers
+
+| # | Step | Depends on | Output |
+|---|---|---|---|
+| 5 | Migration `0013_provider_assignments.sql` + seed | (1) | global tier table |
+| 6 | Migration `0014_stage_provider_overrides.sql` | (5) | per-stage override table |
+| 7 | `lib/agents/provider-resolver.ts` + integration into gateway/runner; all jobs save `provider_id` to `metadata` | (6) | Resolver returns ResolvedProvider; mock path still works; cancellation marker (§3.6) implemented |
+| 8 | `/settings/providers` UI (global tier) + audit events + greyed-out inactive contracts | (7) | Director can swap globals through UI |
+| 9 | Pipeline kebab gets a "Provider" sub-menu (per-stage tier) — slots into the kebab built in step 2 | (3)(7) | Per-stage override flow live |
+| 10 | Migration `0015_assets_drive_fields.sql` + Drive adapter | (7) | `assets.drive_file_id`, Drive read/write |
+| 11 | Google OAuth flow (Drive + Vertex) on a single GCP project | — (parallel) | Refresh token in env |
+| 12 | `gpt-image-1` adapter | (7) | Image contract goes real |
+| 13 | `veo-3` + `veo-3-img2vid` adapters | (10)(11) | Video contracts go real |
+| 14 | Rewrite `character_consistency.md` v0.4 + PA-001/002/003 in Drive form | (10) | Spec for Drive-based references |
+| 15 | PA-005 Character Visual Development workflow on Drive (variant carousel + Director selects master) | (14) + (12) | UI for variant carousel |
+| 16 | First real cycle on E03 — Brief → gpt-image-1 → Veo → mute assemble → publish DRY-RUN | (15) | E03 reaches "ready_to_publish" without YouTube |
+| 17 | `youtube_data_api` adapter + first real publish | (16) ✅ | Phase 8 complete |
+
+**Gate between 16 and 17:** if E03 dry-run reveals character consistency below
 acceptable threshold, branch to Phase 8.5 — wire Kling adapter, flip switch through UI,
-re-run from Step 11 before Step 12.
+re-run from Step 16 before Step 17.
 
 ---
 
-## 6. EXIT CRITERIA — PHASE 8
+## 7. EXIT CRITERIA — PHASE 8
 
 Phase 8 is **complete** when:
 
 1. ✅ All 7 contracts have a Director-selectable provider in `provider_assignments`
    (even if `is_active = false`).
-2. ✅ `/settings/providers` lets the Director switch provider per contract through UI.
-3. ✅ At least one episode (E03) has run end-to-end on real APIs:
+2. ✅ `/settings/providers` lets the Director switch global provider per contract.
+3. ✅ Pipeline kebab lets the Director set per-stage override for any episode/stage.
+4. ✅ At least one episode (E03) has run end-to-end on real APIs:
    Drive storage + gpt-image-1 + Veo 3 + Veo 3 img2vid + YouTube publish.
-4. ✅ Total cost of E03 first real cycle is logged in `PLAN.md` change log and stays
+5. ✅ Total cost of E03 first real cycle is logged in `PLAN.md` change log and stays
    within 1.5× the PILOT estimate ($12.32) — i.e. ≤ $18.50.
-5. ✅ Character consistency on E03 documented (subjective Director rating + any
+6. ✅ Character consistency on E03 documented (subjective Director rating + any
    Vertex-returned consistency score) — informs Kling Phase 8.5 decision.
-6. ✅ No regression in mock-mode: `npm run replay-pilot` still passes 28/28 with
+7. ✅ No regression in mock-mode: `npm run replay-pilot` still passes 28/28 with
    `provider_mode: real` overridden to `mock` in test env.
 
 ---
 
-## 7. SECURITY / SECRETS LAYOUT
+## 8. SECURITY / SECRETS LAYOUT
 
 | Secret | Env var | Used by | Notes |
 |---|---|---|---|
@@ -275,14 +396,14 @@ Phase 8 is **complete** when:
 | Beatoven | `BEATOVEN_API_KEY` | inactive | Not required in Phase 8 MVP. |
 | ElevenLabs | `ELEVENLABS_API_KEY` | inactive | Not required in Phase 8 MVP. |
 | Kling | `KLING_API_KEY` | inactive (Phase 8.5 candidate) | Not required in Phase 8 MVP. |
-| YouTube | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` | wired in Step 12 | Same Google client recommended (one project, multiple scopes). |
+| YouTube | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` | wired in Step 17 | Same Google client recommended (one project, multiple scopes). |
 
-Total **new** secrets to provision before Step 11:
+Total **new** secrets to provision before Step 16:
 `OPENAI_API_KEY` (already set) + 4 Google vars. That's the entire Phase 8 secret surface.
 
 ---
 
-## 8. EXIT STRATEGY — MULTI-VENDOR
+## 9. EXIT STRATEGY — MULTI-VENDOR
 
 The whole point of the abstraction is reversibility. If GCP blocks billing, throttles
 quotas, or changes terms unfavourably:
@@ -296,28 +417,36 @@ The same applies to a Veo 3 outage:
 - `character_video` → switch to `kling-3-elements` (registered) or
   `runway-gen4-ref` (registered).
 
+Or a single-stage rescue: Director sees Sandy drifting in Storyboard act 3 →
+opens kebab → "Provider › flux-pro" → re-triggers just that stage. Pipeline keeps
+moving on Veo for everything else.
+
 This exit-strategy guarantee is **the** justification for paying the abstraction cost
 in Phase 8 instead of hard-wiring Google APIs directly.
 
 ---
 
-## 9. OPEN QUESTIONS (resolve before APPROVED)
+## 10. RESOLVED QUESTIONS
 
-| # | Question | Default if Director doesn't decide |
+| # | Question | Resolution |
 |---|---|---|
-| OQ1 | Should `provider_assignments` cache TTL be 0 (read every call) or 60s? Current `gateway.config_reload_on_call: true` suggests 0; but per-call DB read adds latency. | 60s with explicit invalidate on UI write. |
-| OQ2 | Should the `/settings/providers` UI live under `/settings` (existing area) or under a new `/admin/providers` route? | Under `/settings/providers`, alongside Storage/Authority Matrix. |
-| OQ3 | Should `is_active = false` show the contract row at all in the UI (greyed out) or hide it entirely? | Show greyed out with "Activate" button — discoverability matters. |
-| OQ4 | When Director switches provider, does the swap affect already-queued jobs or only new ones? | Only new jobs. In-flight jobs complete on the provider they started with. |
+| OQ1 | Cache TTL for `provider_assignments`? | **60s with explicit invalidate on UI write.** |
+| OQ2 | Where does the UI live? | **`/settings/providers` for global tier** + **kebab menu on each pipeline row for per-stage tier**. |
+| OQ3 | How are inactive contracts shown? | **Greyed-out with [Activate] button** — discoverability matters. |
+| OQ4 | What happens to in-flight jobs on switch? | **Soft cancel** — mark `CANCELLED_BY_PROVIDER_SWITCH`, do NOT kill running Inngest functions early. Director re-triggers manually. |
+| q1 | Phase 5d and Phase 8 — bundled or sequential? | **Sequential.** Phase 5d ships kebab + drawer first. Phase 8 slots provider switch into existing kebab. |
+| q2 | Override hierarchy depth? | **Two tiers — global + per-stage.** No per-episode tier. |
+| q3 | Early job interruption on switch? | **Defer to post-MVP.** Soft cancel marker only; runner short-circuiting comes later when needed. |
 
 ---
 
-## 10. CHANGE LOG
+## 11. CHANGE LOG
 
 | Date | Change | By |
 |---|---|---|
 | 2026-04-30 | v0.1 DRAFT created — Phase 8 Google-first MVP + DB-backed provider switching architecture. | Claude Code under Director session |
+| 2026-04-30 | v0.2 APPROVED — OQ1–OQ4 + q1–q3 resolved by Director. Two-tier hierarchy (global + per-stage), Phase 5d sequenced before Phase 8, soft cancel policy, kebab UI as shared surface, activity preview drawer added as explicit Phase 5d step. | Claude Code under Director session |
 
 ---
 
-*Status: DRAFT. Next: Director review + APPROVED status before Step 2 (migration).*
+*Status: APPROVED 2026-04-30. Next: Step 2 — Phase 5d kebab UI on pipeline rows.*
