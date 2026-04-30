@@ -244,6 +244,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                         stageLabel={s.label}
                         stageAgents={s.agents}
                         stageState={s.state}
+                        assetsInReview={(s as { assets_in_review?: number }).assets_in_review}
                         latestAssetId={s.latest_asset_id}
                         onChanged={() => mutate()}
                       />
