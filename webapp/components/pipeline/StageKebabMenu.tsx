@@ -216,7 +216,9 @@ export function StageKebabMenu({
   //   approved — done: only Edit (read-only modal)
   const items: DropdownEntry[] = [];
 
-  const canApprove = stageState === 'blocked' && latestAssetId !== undefined;
+  // Approve makes sense whenever there's a REVIEW-status asset in the stage,
+  // even if the stage state has been masked to 'failed' by a separate job.
+  const canApprove = assetsInReview > 0 && latestAssetId !== undefined;
   const canRetrigger = producerAgent !== null && stageState !== 'running' && stageState !== 'approved';
   const canEdit = latestAssetId !== undefined;
 
