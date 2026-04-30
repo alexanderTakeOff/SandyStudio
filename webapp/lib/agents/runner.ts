@@ -87,6 +87,37 @@ export interface RunAgentArgs {
   collectionPoint?: 'T+1h' | 'T+24h' | 'T+7d' | 'T+30d';
   /** Optional youtube video id (passed by EXEC-PUB to EXEC-ANAL through events). */
   youtubeVideoId?: string;
+  /** Resolved provider for the contract this agent fulfils. Undefined ⇒ mock everywhere (replay-pilot, tests). */
+  provider?: ResolvedProvider;
+}
+
+// Persists base64 binary output under webapp/public/staging/ so it can be
+// served by Next.js at /staging/<file>. Phase 8 step 10 replaces this with
+// Drive upload + drive_file_id.
+async function persistBinaryToStaging(args: {
+  base64: string;
+  ext: 'png' | 'jpg' | 'mp4' | 'wav';
+  hint?: string;
+}): Promise<{ absolutePath: string; browserUrl: string }> {
+  const stagingDir = path.join(process.cwd(), 'public', 'staging');
+  await fs.mkdir(stagingDir, { recursive: true });
+  const rand = crypto.randomBytes(6).toString('hex');
+  const filename = `${args.hint ? `${args.hint}-` : ''}${rand}.${args.ext}`;
+  const absolutePath = path.join(stagingDir, filename);
+  await fs.writeFile(absolutePath, Buffer.from(args.base64, 'base64'));
+  return { absolutePath, browserUrl: `/staging/${filename}` };
+}
+
+function buildThumbnailPrompt(inputs: AgentInputs): string {
+  const ep = inputs.episode as { episode_code?: string; title_working?: string | null };
+  const code = ep.episode_code ?? 'episode';
+  const title = ep.title_working ?? 'Untitled comedy short';
+  return [
+    `YouTube thumbnail for an animated comedy short titled "${title}" (${code}).`,
+    'Style: stylised 2D-ish animation aesthetic, vibrant colours, dynamic composition,',
+    'a clear focal subject readable at 320×180, comedy/sketch art direction.',
+    'No text, no watermark, 16:9 framing, high contrast.',
+  ].join(' ');
 }
 
 interface RunResult {
