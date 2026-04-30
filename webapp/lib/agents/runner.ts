@@ -188,13 +188,47 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-EDIT': {
-      // EXEC-EDIT in Phase 4 mock mode: produce an animatic video asset.
-      // Per-shot fan-out + music fan-out is dispatched by exec-edit.ts via
-      // its nextEvent callback (it reads shot_ids from this metadata).
-      // Real mode will read shot ids from the storyboard upstream.
+      // EXEC-EDIT: produce an animatic video. Real path uses Veo 3 via Gemini
+      // API (8s clip, fast quality). Mock path keeps the existing fan-out.
       const llm = await mockLLM({ agentId, episodeId });
-      const video = await mockVideo({ episodeId, shotId: 'animatic', durationSeconds: 60 });
       const shotIds = [1, 2, 3].map((act) => `${episodeId}-A${act}-SC01-SH01`);
+
+      if (provider?.providerId === 'veo-3' || provider?.providerId === 'veo-3-img2vid') {
+        const real = await generateVideoVeoGemini({
+          prompt: buildAnimaticPrompt(inputs),
+          durationSeconds: 8,
+          aspectRatio: '16:9',
+          quality: 'fast',
+        });
+        const persisted = await persistBinaryToStaging({
+          base64: real.mp4_b64,
+          ext: 'mp4',
+          hint: `animatic-${episodeId.slice(-8)}`,
+        });
+        return {
+          outputKind: 'video-mp4',
+          result: {
+            asset_paths: [persisted.browserUrl],
+            cost_usd: llm.cost_usd + real.cost_usd,
+            metadata: {
+              agent_id: agentId,
+              provider_id: real.provider,
+              provider_used: real.provider,
+              format: real.format,
+              width: real.width,
+              height: real.height,
+              duration_seconds: real.duration_seconds,
+              size_bytes: real.size_bytes,
+              staging_path: persisted.absolutePath,
+              markdown: llm.markdown,
+              body: llm.body as Record<string, unknown>,
+              shot_ids: shotIds,
+            },
+          },
+        };
+      }
+
+      const video = await mockVideo({ episodeId, shotId: 'animatic', durationSeconds: 60 });
       return {
         outputKind: 'video-mp4',
         result: {
@@ -203,6 +237,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           metadata: {
             ...video,
             agent_id: agentId,
+            provider_id: 'mock',
+            provider_used: 'mock',
             markdown: llm.markdown,
             body: llm.body as Record<string, unknown>,
             shot_ids: shotIds,
@@ -215,6 +251,43 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       if (!shotId) {
         throw new Error(`EXEC-VGEN requires shotId in event payload`);
       }
+
+      if (provider?.providerId === 'veo-3-img2vid' || provider?.providerId === 'veo-3') {
+        // Without a master character reference (PA-001/2/3 lands later), fall
+        // back to text-to-video for the shot. When the reference workflow is
+        // live, pass referenceImageBase64 + referenceImageMime here.
+        const real = await generateVideoVeoGemini({
+          prompt: buildShotPrompt(inputs, shotId),
+          durationSeconds: 4,
+          aspectRatio: '16:9',
+          quality: 'fast',
+        });
+        const persisted = await persistBinaryToStaging({
+          base64: real.mp4_b64,
+          ext: 'mp4',
+          hint: `shot-${shotId}`,
+        });
+        return {
+          outputKind: 'video-mp4',
+          result: {
+            asset_paths: [persisted.browserUrl],
+            cost_usd: real.cost_usd,
+            metadata: {
+              agent_id: agentId,
+              shot_id: shotId,
+              provider_id: real.provider,
+              provider_used: real.provider,
+              format: real.format,
+              width: real.width,
+              height: real.height,
+              duration_seconds: real.duration_seconds,
+              size_bytes: real.size_bytes,
+              staging_path: persisted.absolutePath,
+            },
+          },
+        };
+      }
+
       const video = await mockVideo({ episodeId, shotId, durationSeconds: 5 });
       return {
         outputKind: 'video-mp4',
@@ -225,6 +298,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             ...video,
             agent_id: agentId,
             shot_id: shotId,
+            provider_id: 'mock',
+            provider_used: 'mock',
           },
         },
       };
