@@ -277,22 +277,38 @@ Drawer footer carries the same kebab actions as the pipeline row
 
 ---
 
-## 5. STORAGE SHIFT — DRIVE AS CANONICAL
+## 5. STORAGE SHIFT — TWO-CHANNEL CANONICAL
 
-### 5.1 What changes
+### 5.1 Two-channel decision (2026-04-30)
 
-Today: `assets.staging_path = 'H:/My Drive/SandyStudio_Media/...'` — local filesystem
-path that happens to live inside a Drive sync folder. **The webapp doesn't know it's
-Drive.** No file_id, no sharing model, no API surface.
+Director-resolved: **markdown lives in the database, binaries live in Drive.**
+The earlier "everything on Drive" framing was overruled because:
 
-Phase 8: Drive becomes a **first-class storage backend**.
+- Markdown is editorial structured content (briefs, scripts, storyboards, QA reports).
+  Each save is a small, frequent operation. ~10ms DB UPDATE vs ~300ms Drive API call
+  — accumulates to seconds across an episode.
+- DB enables atomic transactions (asset row + content + activity event in one tx),
+  full-text search, version-via-INSERT, multi-machine consistency.
+- Binaries (image / video / audio) are large, infrequent writes — Drive API latency
+  is amortised. Drive also gives sharing, web preview, and free CDN.
+
+Implementation already shipped in Phase 5d step 2.1 (migration 0013):
+
+| Field | Pre-2026-04-30 | Now |
+|---|---|---|
+| `assets.content` | — (workaround: markdown in `description`, truncated 8000) | NEW: full markdown body, no length cap (256kb soft via API) |
+| `assets.description` | dual-purpose summary + truncated body | back to its real role: short summary line |
+| `assets.staging_path` | local filesystem path string | UNUSED for text assets. Kept for binaries until Drive lands. |
+
+### 5.2 Phase 8 step 10 — Drive for binaries only
 
 | Field | Today | Phase 8 |
 |---|---|---|
-| `assets.staging_path` | local filesystem path string | DEPRECATED, kept for backwards compat one cycle, then dropped |
-| `assets.drive_file_id` | — | NEW: canonical Drive file id |
+| `assets.content` | text-asset body in DB | unchanged — DB stays canonical for markdown |
+| `assets.staging_path` | binary path placeholder (currently null in mock) | Optional disk cache; Drive becomes source of truth |
+| `assets.drive_file_id` | — | NEW: canonical Drive file id (binaries) |
 | `assets.drive_web_view_url` | — | NEW: shareable preview link (used by drawer §4.3) |
-| `assets.size_bytes` | from local fs | from Drive metadata |
+| `assets.size_bytes` | computed from `content` length | for binaries: from Drive metadata |
 
 ### 5.2 PA-001/002/003 in Drive form
 
