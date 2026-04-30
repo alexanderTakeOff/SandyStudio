@@ -85,6 +85,8 @@ export function StageKebabMenu({
   stageState,
   assetsInReview = 0,
   latestAssetId,
+  latestAssetType,
+  onOpenPreview,
   onChanged,
 }: StageKebabMenuProps) {
   const [editorOpen, setEditorOpen] = useState(false);
