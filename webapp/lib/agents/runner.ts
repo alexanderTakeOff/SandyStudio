@@ -328,11 +328,13 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
   const filename = `${episodeCode}-${fileType}-v01-DRAFT.${ext}`;
   const drivePath = result.asset_paths[0] ?? null;
 
-  // Persist markdown (if any) inside description so Phase 4 verification can
-  // round-trip it via Supabase only — no filesystem dependency.
-  const description =
+  // Markdown body lives in the dedicated `content` column (migration 0013).
+  // `description` keeps its original role: a short summary line — currently
+  // null for mock outputs since the providers don't emit a separate summary.
+  // Phase 5d step 2 editor reads/writes via /api/assets/[id]/content → DB.
+  const content =
     typeof result.metadata.markdown === 'string'
-      ? (result.metadata.markdown as string).slice(0, 8000)
+      ? (result.metadata.markdown as string)
       : null;
 
   const { data, error } = await supabase
@@ -346,7 +348,7 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       staging_path: null,
       status: 'DRAFT',
       version: 1,
-      description,
+      content,
     })
     .select('id')
     .single();

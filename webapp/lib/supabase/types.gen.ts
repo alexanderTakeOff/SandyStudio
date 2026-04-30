@@ -337,6 +337,7 @@ export type Database = {
       assets: {
         Row: {
           agent_id: string | null
+          content: string | null
           created_at: string
           description: string | null
           drive_path: string | null
@@ -353,6 +354,7 @@ export type Database = {
         }
         Insert: {
           agent_id?: string | null
+          content?: string | null
           created_at?: string
           description?: string | null
           drive_path?: string | null
@@ -369,6 +371,7 @@ export type Database = {
         }
         Update: {
           agent_id?: string | null
+          content?: string | null
           created_at?: string
           description?: string | null
           drive_path?: string | null
