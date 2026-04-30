@@ -25,7 +25,7 @@ import {
 import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { RejectModal } from '@/components/editor/RejectModal';
-import type { PipelineStageId } from '@/lib/api/pipeline-stages';
+import type { PipelineNodeState, PipelineStageId } from '@/lib/api/pipeline-stages';
 
 // File-type prefix → stage matching, kept in sync with the same map in
 // `(studio)/episodes/[id]/page.tsx`. Phase 5d follow-up will deduplicate
