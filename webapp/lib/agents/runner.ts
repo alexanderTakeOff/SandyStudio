@@ -406,6 +406,14 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       ? (result.metadata.markdown as string)
       : null;
 
+  // Real provider adapters that produce binaries (e.g. gpt-image-1) write the
+  // file under webapp/public/staging/ and pass the absolute path through
+  // metadata.staging_path. Mock outputs never set this — staging_path stays null.
+  const stagingPath =
+    typeof result.metadata.staging_path === 'string'
+      ? (result.metadata.staging_path as string)
+      : null;
+
   const { data, error } = await supabase
     .from('assets')
     .insert({
@@ -414,7 +422,7 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       file_type: fileType,
       filename,
       drive_path: drivePath,
-      staging_path: null,
+      staging_path: stagingPath,
       status: 'DRAFT',
       version: 1,
       content,
