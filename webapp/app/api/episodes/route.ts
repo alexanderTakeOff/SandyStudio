@@ -118,21 +118,36 @@ export const POST = withApiHandler(async (req) => {
   // Insert brief asset.
   //   - file_type = 'SPC-brief' (long form) so gate.ts SPC-brief% LIKE matches.
   //   - status = 'REVIEW' so the brief surfaces in the Director Inbox immediately.
+  //   - content = template markdown built from form fields (always present, even
+  //     if Claude enrichment below fails). Director sees structured brief on first
+  //     open of the editor — no more empty editor.
   //
   // Atomicity: if the brief insert fails CHECK (most common cause: filename
   // pattern mismatch) we roll back the episode insert so the user can retry
   // without an orphan row.
-  const { error: assErr } = await supabase
+  const briefInput: BriefInput = {
+    episodeCode: fullEpisodeCode,
+    episodeTitle: body.title_working,
+    premise: body.premise,
+    runtimeSeconds: body.target_runtime_seconds ?? null,
+    seriesContext: { code: series.code, title: series.title },
+  };
+  const templateBrief = buildBriefTemplate(briefInput);
+
+  const { data: briefRow, error: assErr } = await supabase
     .from('assets')
     .insert({
       episode_id: ep.id,
       filename: briefFilename,
       file_type: 'SPC-brief',
       description: body.premise,
+      content: templateBrief,
       version: 1,
       status: 'REVIEW' as const,
       agent_id: 'Director',
-    });
+    })
+    .select('id')
+    .single();
   if (assErr) {
     if (assErr.code !== '23505') {
       // Best-effort rollback. Cascade FK on assets/jobs handles cleanup.
@@ -140,6 +155,26 @@ export const POST = withApiHandler(async (req) => {
       throw new Error(
         `Brief asset insert failed (episode rolled back): ${assErr.message}. ` +
           `Filename was '${briefFilename}'. Check the assets.filename CHECK constraint.`,
+      );
+    }
+  }
+  const briefAssetId = briefRow?.id ?? null;
+
+  // Sync Claude Haiku enrichment. ~3-5s. If it fails, template stays — episode
+  // is still usable. Director never sees an empty brief.
+  let briefSource: 'ai' | 'template' = 'template';
+  if (briefAssetId) {
+    try {
+      const aiBrief = await generateBriefMarkdown(briefInput);
+      const { error: updErr } = await supabase
+        .from('assets')
+        .update({ content: aiBrief } as never)
+        .eq('id', briefAssetId);
+      if (!updErr) briefSource = 'ai';
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[episodes POST] Claude brief generation failed (kept template): ${(err as Error).message}`,
       );
     }
   }
