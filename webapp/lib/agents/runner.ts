@@ -13,9 +13,6 @@
 //   SS-{S}-{E}-{TYPE}-{description}-v{NN}-{STATUS}.{ext}
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database, Json } from '../supabase/types.gen';
@@ -29,6 +26,7 @@ import {
 } from './mock-providers';
 import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
+import { persistBinary, type PersistedBinary } from './persist-binary';
 import type { ResolvedProvider } from './provider-resolver';
 import { getAgent } from './registry';
 import type { AgentId, AgentInputs, AgentResult } from './types';
