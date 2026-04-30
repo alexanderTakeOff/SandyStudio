@@ -5,7 +5,7 @@
 
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, type KeyboardEvent } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play } from 'lucide-react';
@@ -13,6 +13,8 @@ import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { StageKebabMenu } from '@/components/pipeline/StageKebabMenu';
+import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { fetcher } from '@/lib/swr';
 
 interface Stage {
