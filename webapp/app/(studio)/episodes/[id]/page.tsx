@@ -193,7 +193,9 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         <ApproveBriefBanner
           episodeId={episode.id}
           governanceMode={episode.governance_mode}
+          briefAssetId={briefAssetId}
           onApproved={() => mutate()}
+          onBriefEdited={() => mutate()}
         />
       )}
 
