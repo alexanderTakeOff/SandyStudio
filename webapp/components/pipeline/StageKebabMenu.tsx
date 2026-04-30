@@ -54,6 +54,8 @@ export interface StageKebabMenuProps {
   stageId: PipelineStageId;
   stageLabel: string;
   stageAgents: string[];
+  /** Current stage state — drives which kebab items are shown. */
+  stageState: PipelineNodeState;
   latestAssetId?: string;
   onChanged: () => void;
 }
