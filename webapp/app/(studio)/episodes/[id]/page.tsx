@@ -285,23 +285,40 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             )}
 
             <div className="space-y-2">
-              {filtered.map((e) => (
-                <div
-                  key={e.id}
-                  className="rounded-lg border border-glass bg-panel-glass-strong px-3 py-2"
-                >
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-text-primary font-medium">{e.title}</span>
-                    <span className="text-text-muted">·</span>
-                    <span className="text-text-muted">{relativeTime(e.created_at)}</span>
-                  </div>
-                  {e.description && (
-                    <div className="text-[12px] text-text-secondary mt-1 leading-snug">
-                      {e.description}
+              {filtered.map((e) => {
+                const hasAsset = Boolean(e.asset_id);
+                return (
+                  <div
+                    key={e.id}
+                    className="group rounded-lg border border-glass bg-panel-glass-strong px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-text-primary font-medium flex-1 min-w-0 truncate">
+                        {e.title}
+                      </span>
+                      <span className="text-text-muted">{relativeTime(e.created_at)}</span>
+                      {hasAsset && (
+                        <button
+                          onClick={() => {
+                            setPreviewAssetId(e.asset_id ?? null);
+                            setPreviewTitle(e.title);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary"
+                          title="Open preview"
+                          aria-label="Open preview"
+                        >
+                          <Eye size={12} strokeWidth={1.7} />
+                        </button>
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
+                    {e.description && (
+                      <div className="text-[12px] text-text-secondary mt-1 leading-snug">
+                        {e.description}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </CardBody>
         </Card>
