@@ -205,34 +205,59 @@ export function StageKebabMenu({
     setRejectOpen(true);
   }
 
-  const items: DropdownEntry[] = [
-    {
+  // Build kebab items based on stage state — keeps the menu honest:
+  //   blocked  — asset awaiting Director: Approve / Reject / Edit (+ Re-trigger to redo)
+  //   failed   — last job failed: Re-trigger (+ Edit if there's a partial asset)
+  //   idle     — nothing produced yet: Re-trigger (start it)
+  //   running  — job in flight: nothing actionable (we don't kill mid-step in MVP)
+  //   approved — done: only Edit (read-only modal)
+  const items: DropdownEntry[] = [];
+
+  const canApprove = stageState === 'blocked' && latestAssetId !== undefined;
+  const canRetrigger = producerAgent !== null && stageState !== 'running' && stageState !== 'approved';
+  const canEdit = latestAssetId !== undefined;
+
+  if (canApprove) {
+    items.push({
       label: 'Approve all in stage',
       icon: <CheckCheck size={14} />,
       onSelect: approveAll,
       disabled: busy,
-    },
-    {
+    });
+    items.push({
       label: 'Reject + revise',
       icon: <XCircle size={14} />,
       onSelect: openReject,
       destructive: true,
-      disabled: busy || !latestAssetId,
-    },
-    {
-      label: 'Edit',
+      disabled: busy,
+    });
+  }
+
+  if (canEdit) {
+    items.push({
+      label: stageState === 'approved' ? 'View / edit (read-only)' : 'Edit',
       icon: <Pencil size={14} />,
       onSelect: openEditor,
-      disabled: busy || !latestAssetId,
-    },
-    { separator: true },
-    {
+      disabled: busy,
+    });
+  }
+
+  if (canRetrigger) {
+    if (items.length > 0) items.push({ separator: true });
+    items.push({
       label: 'Re-trigger this stage',
       icon: <RotateCcw size={14} />,
       onSelect: retriggerStage,
-      disabled: busy || stageAgents.length === 0 || stageAgents.includes('Director'),
-    },
-  ];
+      disabled: busy,
+    });
+  }
+
+  // Nothing actionable for this stage state — hide the kebab entirely so the
+  // pipeline row stays clean. "running" and director-only "approved" stages
+  // both hit this branch.
+  if (items.length === 0) {
+    return null;
+  }
 
   return (
     <>
