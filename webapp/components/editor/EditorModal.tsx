@@ -33,7 +33,7 @@ interface ContentResponse {
       filename: string;
       file_type: string;
       status: string;
-      version: string | null;
+      version: number | null;
     };
     editable: boolean;
   };
