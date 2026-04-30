@@ -28,6 +28,7 @@ import {
   mockYouTubeUpload,
 } from './mock-providers';
 import { generateImageOpenAI } from './providers/openai-image';
+import { generateVideoVeoGemini } from './providers/veo-gemini';
 import type { ResolvedProvider } from './provider-resolver';
 import { getAgent } from './registry';
 import type { AgentId, AgentInputs, AgentResult } from './types';
