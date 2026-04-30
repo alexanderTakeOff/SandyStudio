@@ -350,14 +350,25 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
 function ApproveBriefBanner({
   episodeId,
   governanceMode,
+  briefAssetId,
   onApproved,
+  onBriefEdited,
 }: {
   episodeId: string;
   governanceMode: number;
+  briefAssetId: string | null;
   onApproved: () => void;
+  onBriefEdited: () => void;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+
+  // Pull the brief markdown so the Director can read what's about to be approved.
+  const { data: briefData, mutate: mutateBrief } = useSWR<{
+    data: { content: string; asset: { filename: string; status: string } };
+  }>(briefAssetId ? `/api/assets/${briefAssetId}/content` : null, fetcher);
+  const briefContent = briefData?.data.content ?? '';
 
   async function approve() {
     setPending(true);
@@ -381,7 +392,7 @@ function ApproveBriefBanner({
 
   return (
     <div
-      className="rounded-2xl border px-5 py-4 mb-4"
+      className="rounded-2xl border px-5 py-4 mb-4 space-y-3"
       style={{
         background: 'color-mix(in oklab, var(--accent-warning) 10%, transparent)',
         borderColor: 'color-mix(in oklab, var(--accent-warning) 40%, transparent)',
@@ -400,22 +411,82 @@ function ApproveBriefBanner({
               : ` Mode ${governanceMode} — each downstream gate (Script, Storyboard, Animatic, Generation, Publish) will land in your Inbox for review.`}
           </p>
           {error && (
-            <p
-              className="text-xs mt-2"
-              style={{ color: 'var(--accent-danger)' }}
-            >
+            <p className="text-xs mt-2" style={{ color: 'var(--accent-danger)' }}>
               {error}
             </p>
           )}
         </div>
-        <Button
-          onClick={approve}
-          disabled={pending}
-          variant="warning"
-        >
-          <Play size={14} /> {pending ? 'Starting…' : 'Approve Brief & Start Pipeline'}
-        </Button>
+        <div className="flex gap-2">
+          {briefAssetId && (
+            <Button
+              variant="ghost"
+              onClick={() => setEditorOpen(true)}
+              disabled={pending}
+            >
+              <Pencil size={14} /> Edit brief
+            </Button>
+          )}
+          <Button onClick={approve} disabled={pending} variant="warning">
+            <Play size={14} /> {pending ? 'Starting…' : 'Approve Brief & Start Pipeline'}
+          </Button>
+        </div>
       </div>
+
+      {briefContent && (
+        <details
+          open
+          className="rounded-lg border border-glass px-4 py-3 leading-relaxed text-sm text-text-primary"
+          style={{ background: 'var(--bg-elevated)' }}
+        >
+          <summary className="text-[11px] uppercase tracking-wider text-text-muted cursor-pointer mb-2">
+            Brief preview · {briefData?.data.asset.filename}
+          </summary>
+          <div className="markdown-body mt-2">
+            <ReactMarkdown
+              components={{
+                h1: ({ children }) => (
+                  <h1 className="text-base font-semibold mt-1 mb-2 text-text-primary">
+                    {children}
+                  </h1>
+                ),
+                h2: ({ children }) => (
+                  <h2 className="text-sm font-semibold mt-3 mb-1 text-text-primary uppercase tracking-wider">
+                    {children}
+                  </h2>
+                ),
+                p: ({ children }) => (
+                  <p className="mb-2 text-text-secondary text-[13px]">{children}</p>
+                ),
+                ul: ({ children }) => <ul className="list-disc ml-5 mb-2 space-y-0.5">{children}</ul>,
+                li: ({ children }) => <li className="text-text-secondary text-[13px]">{children}</li>,
+                hr: () => <hr className="my-3 border-glass" />,
+                em: ({ children }) => (
+                  <em className="text-text-muted not-italic">{children}</em>
+                ),
+              }}
+            >
+              {briefContent}
+            </ReactMarkdown>
+          </div>
+        </details>
+      )}
+
+      {!briefContent && briefAssetId && (
+        <p className="text-[11px] text-text-muted italic">
+          Loading brief… (the brief is generated automatically when the episode is created — should appear within seconds)
+        </p>
+      )}
+
+      <EditorModal
+        open={editorOpen}
+        onClose={() => setEditorOpen(false)}
+        assetId={briefAssetId}
+        assetFilename={briefData?.data.asset.filename}
+        onSaved={() => {
+          mutateBrief();
+          onBriefEdited();
+        }}
+      />
     </div>
   );
 }
