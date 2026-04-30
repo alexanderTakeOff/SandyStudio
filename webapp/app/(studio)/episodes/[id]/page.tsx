@@ -27,6 +27,8 @@ interface Stage {
   agents: string[];
   job_count?: { total: number; done: number; running: number; failed: number };
   latest_asset_id?: string;
+  latest_asset_type?: string;
+  assets_in_review?: number;
 }
 
 interface Episode {
