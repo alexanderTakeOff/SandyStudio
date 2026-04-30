@@ -15,8 +15,9 @@ Phase:    SPRINT 9 / Phase 5c COMPLETE + E02 Mode 1 cycle verified
           Provider Strategy v0.2 APPROVED 2026-04-30 — Google-first MVP, two-tier UI switching
           Phase 5d steps 2 + 3 SHIPPED — pipeline kebab, CodeMirror editor, preview drawer
           🎯 Real providers verified: gpt-image-1 ($0.016) + Drive OAuth (test upload/delete passed)
-          Veo 3 adapter SHIPPED, blocked on Gemini billing (429 quota exceeded — code path good)
-Next:     Director enables Gemini billing → flip video to veo-3 in /settings/providers → real animatic
+          🎯 Drive-backed binary pipeline VERIFIED E2E: gpt-image-1 → persistBinary → Drive upload
+          Gemini billing enabled — Veo 3 now unblocked for next test
+Next:     Director switches storage→drive_native in /settings/providers (or video→veo-3) → real EXEC-THUMB/EDIT
           Then: Phase 5d step 4 (friendly names), step 9 (per-stage Provider kebab), PA-001/2/3 (char refs)
 Mode:     ===5=== EDIT (Director active) — switches to ===1=== at session start per CLAUDE.md
 Date:     2026-04-30
