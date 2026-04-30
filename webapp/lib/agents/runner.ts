@@ -227,6 +227,37 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-THUMB': {
+      const provider = args.provider;
+      if (provider?.providerId === 'gpt-image-1') {
+        const real = await generateImageOpenAI({
+          prompt: buildThumbnailPrompt(inputs),
+          size: '1536x1024',
+          quality: 'medium',
+        });
+        const persisted = await persistBinaryToStaging({
+          base64: real.b64_data,
+          ext: 'png',
+          hint: `thumb-${episodeId.slice(-8)}`,
+        });
+        return {
+          outputKind: 'image-png',
+          result: {
+            asset_paths: [persisted.browserUrl],
+            cost_usd: real.cost_usd,
+            metadata: {
+              agent_id: agentId,
+              provider_id: 'gpt-image-1',
+              provider_used: 'gpt-image-1',
+              format: real.format,
+              width: real.width,
+              height: real.height,
+              size_bytes: real.size_bytes,
+              staging_path: persisted.absolutePath,
+              revised_prompt: real.revised_prompt ?? null,
+            },
+          },
+        };
+      }
       const image = await mockImage({
         episodeId,
         assetId: `thumbnail-${episodeId.slice(-8)}`,
@@ -239,6 +270,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           metadata: {
             ...image,
             agent_id: agentId,
+            provider_id: 'mock',
+            provider_used: 'mock',
           },
         },
       };
