@@ -183,12 +183,14 @@ export const POST = withApiHandler(async (req) => {
     event_type: 'episode_created',
     severity: 'info',
     title: `Episode ${fullEpisodeCode} created`,
-    description: `By ${user.email ?? user.id}; runtime ${body.target_runtime_seconds ?? 'unspecified'}s`,
+    description: `By ${user.email ?? user.id}; runtime ${body.target_runtime_seconds ?? 'unspecified'}s; brief=${briefSource}`,
     actor: user.id,
     episode_id: ep.id,
+    asset_id: briefAssetId,
     metadata: {
       series_id: series.id,
       target_runtime_seconds: body.target_runtime_seconds ?? null,
+      brief_source: briefSource,
     },
   } as never);
 
