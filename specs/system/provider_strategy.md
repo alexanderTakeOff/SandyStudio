@@ -462,6 +462,7 @@ in Phase 8 instead of hard-wiring Google APIs directly.
 |---|---|---|
 | 2026-04-30 | v0.1 DRAFT created — Phase 8 Google-first MVP + DB-backed provider switching architecture. | Claude Code under Director session |
 | 2026-04-30 | v0.2 APPROVED — OQ1–OQ4 + q1–q3 resolved by Director. Two-tier hierarchy (global + per-stage), Phase 5d sequenced before Phase 8, soft cancel policy, kebab UI as shared surface, activity preview drawer added as explicit Phase 5d step. | Claude Code under Director session |
+| 2026-04-30 | §5 rewritten — Variant A: markdown stays canonical in DB (`assets.content`, migration 0013 applied), Drive holds binaries only in Phase 8 step 10. Reason: 10ms DB update vs 300ms Drive API call accumulates; transactionality + multi-machine consistency are stronger for editorial text. | Claude Code under Director session |
 
 ---
 
