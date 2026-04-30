@@ -267,6 +267,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       }
 
       if (provider?.providerId === 'veo-3-img2vid' || provider?.providerId === 'veo-3') {
+        if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
         // Without a master character reference (PA-001/2/3 lands later), fall
         // back to text-to-video for the shot. When the reference workflow is
         // live, pass referenceImageBase64 + referenceImageMime here.
@@ -276,17 +277,21 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           aspectRatio: '16:9',
           quality: 'fast',
         });
-        const persisted = await persistBinaryToStaging({
+        const safeShotId = shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+        const persisted = await persistBinary({
           base64: real.mp4_b64,
           ext: 'mp4',
-          hint: `shot-${shotId}`,
+          driveFilename: `${episodeCode ?? 'SS-unknown'}-VID-shot_${safeShotId}-v01-DRAFT.mp4`,
+          localHint: `shot-${safeShotId}`,
+          episodeCode,
+          supabase,
         });
         return {
           outputKind: 'video-mp4',
           result: {
             asset_paths: [persisted.browserUrl],
             cost_usd: real.cost_usd,
-            metadata: {
+            metadata: metadataFromPersisted(persisted, {
               agent_id: agentId,
               shot_id: shotId,
               provider_id: real.provider,
@@ -296,8 +301,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               height: real.height,
               duration_seconds: real.duration_seconds,
               size_bytes: real.size_bytes,
-              staging_path: persisted.absolutePath,
-            },
+            }),
           },
         };
       }
