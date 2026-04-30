@@ -176,6 +176,7 @@ export function buildPipelineSnapshot(
       state,
       agents: def.agents,
       latest_asset_id: latest?.id,
+      latest_asset_type: latest?.file_type,
       assets_in_review: stageAssets.filter((a) => a.status === 'REVIEW').length,
       job_count: {
         total: stageJobs.length,
