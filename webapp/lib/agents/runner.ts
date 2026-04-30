@@ -335,22 +335,26 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
     case 'EXEC-THUMB': {
       if (provider?.providerId === 'gpt-image-1') {
+        if (!supabase) throw new Error('EXEC-THUMB real path requires supabase in runArgs');
         const real = await generateImageOpenAI({
           prompt: buildThumbnailPrompt(inputs),
           size: '1536x1024',
           quality: 'medium',
         });
-        const persisted = await persistBinaryToStaging({
+        const persisted = await persistBinary({
           base64: real.b64_data,
           ext: 'png',
-          hint: `thumb-${episodeId.slice(-8)}`,
+          driveFilename: `${episodeCode ?? 'SS-unknown'}-IMG-thumbnail-v01-DRAFT.png`,
+          localHint: `thumb-${episodeId.slice(-8)}`,
+          episodeCode,
+          supabase,
         });
         return {
           outputKind: 'image-png',
           result: {
             asset_paths: [persisted.browserUrl],
             cost_usd: real.cost_usd,
-            metadata: {
+            metadata: metadataFromPersisted(persisted, {
               agent_id: agentId,
               provider_id: 'gpt-image-1',
               provider_used: 'gpt-image-1',
@@ -358,9 +362,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               width: real.width,
               height: real.height,
               size_bytes: real.size_bytes,
-              staging_path: persisted.absolutePath,
               revised_prompt: real.revised_prompt ?? null,
-            },
+            }),
           },
         };
       }
