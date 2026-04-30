@@ -88,23 +88,26 @@ export interface RunAgentArgs {
   youtubeVideoId?: string;
   /** Resolved provider for the contract this agent fulfils. Undefined ⇒ mock everywhere (replay-pilot, tests). */
   provider?: ResolvedProvider;
+  /** Supabase client (service role). Required for binary-producing agents that go to real providers — used by persistBinary to resolve the storage contract. */
+  supabase?: SupabaseClient<Database>;
+  /** Episode code (e.g. SS-S01-E02) — fed into Drive folder layout. */
+  episodeCode?: string;
 }
 
-// Persists base64 binary output under webapp/public/staging/ so it can be
-// served by Next.js at /staging/<file>. Phase 8 step 10 replaces this with
-// Drive upload + drive_file_id.
-async function persistBinaryToStaging(args: {
-  base64: string;
-  ext: 'png' | 'jpg' | 'mp4' | 'wav';
-  hint?: string;
-}): Promise<{ absolutePath: string; browserUrl: string }> {
-  const stagingDir = path.join(process.cwd(), 'public', 'staging');
-  await fs.mkdir(stagingDir, { recursive: true });
-  const rand = crypto.randomBytes(6).toString('hex');
-  const filename = `${args.hint ? `${args.hint}-` : ''}${rand}.${args.ext}`;
-  const absolutePath = path.join(stagingDir, filename);
-  await fs.writeFile(absolutePath, Buffer.from(args.base64, 'base64'));
-  return { absolutePath, browserUrl: `/staging/${filename}` };
+// Helper: assemble metadata payload for binary outputs, encapsulating the
+// difference between local-only and Drive-backed persistence.
+function metadataFromPersisted(
+  persisted: PersistedBinary,
+  extra: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...extra,
+    staging_path: persisted.absolutePath,
+    drive_file_id: persisted.driveFileId,
+    drive_web_view_url: persisted.driveWebViewUrl,
+    storage_provider: persisted.storageProviderId,
+    drive_upload_failed: persisted.driveUploadFailed,
+  };
 }
 
 function buildAnimaticPrompt(inputs: AgentInputs): string {
