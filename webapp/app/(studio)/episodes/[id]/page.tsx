@@ -243,6 +243,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                         stageId={s.id as PipelineStageId}
                         stageLabel={s.label}
                         stageAgents={s.agents}
+                        stageState={s.state}
                         latestAssetId={s.latest_asset_id}
                         onChanged={() => mutate()}
                       />
