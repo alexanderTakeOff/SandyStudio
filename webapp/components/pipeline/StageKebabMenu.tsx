@@ -136,14 +136,21 @@ export function StageKebabMenu({
     }
   }
 
+  // Producer = the first agent in the stage's agents list. Re-trigger fires
+  // ONLY this agent — downstream gates (e.g. EXEC-SREV waiting on script
+  // APPROVED) chain naturally via computeNextEvents in the approve route.
+  // Firing the whole stage in parallel was the cause of "EXEC-SREV gate
+  // failed: Script (need 1, found 0 APPROVED)" errors during re-trigger.
+  const producerAgent = stageAgents.find((a) => a !== 'Director') ?? null;
+
   async function retriggerStage() {
     if (busy) return;
-    if (stageAgents.length === 0 || stageAgents.includes('Director')) {
-      alert(`${stageLabel} has no agents to re-trigger.`);
+    if (!producerAgent) {
+      alert(`${stageLabel} has no automatable agent (Director-only stage).`);
       return;
     }
     const reason = prompt(
-      `Re-trigger ${stageAgents.join(', ')} for ${stageLabel}?\n\nReason (required, audit log):`,
+      `Re-trigger ${producerAgent} for ${stageLabel}?\n\nReason (required, audit log):`,
       '',
     );
     if (reason === null) return;
@@ -153,33 +160,25 @@ export function StageKebabMenu({
     }
     if (
       !confirm(
-        `This will fire ${stageAgents.length} agent(s) and may produce duplicate assets. Continue?`,
+        `This will fire ${producerAgent} and may produce a duplicate asset. Downstream agents (if any) will fire automatically when their gates pass. Continue?`,
       )
     ) {
       return;
     }
     setBusy(true);
     try {
-      const results = await Promise.allSettled(
-        stageAgents.map((agent) =>
-          fetch(`/api/episodes/${episodeId}/trigger`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ agentCode: agent, reason: reason.trim() }),
-          }).then(async (r) => {
-            if (!r.ok) {
-              const j = await r.json().catch(() => ({}));
-              throw new Error((j as { error?: string }).error ?? `${r.status}`);
-            }
-          }),
-        ),
-      );
-      const ok = results.filter((r) => r.status === 'fulfilled').length;
-      const fail = results.length - ok;
-      onChanged();
-      if (fail > 0) {
-        alert(`Triggered ${ok} of ${stageAgents.length}. ${fail} failed.`);
+      const res = await fetch(`/api/episodes/${episodeId}/trigger`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ agentCode: producerAgent, reason: reason.trim() }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? `${res.status}`);
       }
+      onChanged();
+    } catch (err) {
+      alert(`Re-trigger failed: ${(err as Error).message}`);
     } finally {
       setBusy(false);
     }
