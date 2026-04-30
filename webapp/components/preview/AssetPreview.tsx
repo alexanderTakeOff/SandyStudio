@@ -132,10 +132,55 @@ function TextBody({ assetId }: { assetId: string }) {
   }
   return (
     <article
-      className="prose prose-invert prose-sm max-w-none px-4 py-3 rounded-lg border border-glass leading-relaxed"
+      className="markdown-body px-4 py-3 rounded-lg border border-glass leading-relaxed text-sm text-text-primary"
       style={{ background: 'var(--bg-elevated)' }}
     >
-      <ReactMarkdown>{content}</ReactMarkdown>
+      <ReactMarkdown
+        components={{
+          h1: ({ children }) => (
+            <h1 className="text-lg font-semibold mt-1 mb-2 text-text-primary">{children}</h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-base font-semibold mt-3 mb-1.5 text-text-primary">{children}</h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-sm font-semibold mt-2.5 mb-1 text-text-primary">{children}</h3>
+          ),
+          p: ({ children }) => (
+            <p className="mb-2 text-text-secondary leading-relaxed">{children}</p>
+          ),
+          ul: ({ children }) => <ul className="list-disc ml-5 mb-2 space-y-0.5">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal ml-5 mb-2 space-y-0.5">{children}</ol>,
+          li: ({ children }) => <li className="text-text-secondary">{children}</li>,
+          code: ({ children }) => (
+            <code
+              className="px-1 py-0.5 rounded text-[12px] font-mono"
+              style={{ background: 'var(--panel-hover-bg)' }}
+            >
+              {children}
+            </code>
+          ),
+          pre: ({ children }) => (
+            <pre
+              className="p-3 rounded-lg overflow-x-auto text-[12px] mb-2"
+              style={{ background: 'var(--panel-hover-bg)' }}
+            >
+              {children}
+            </pre>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote
+              className="pl-3 border-l-2 italic mb-2"
+              style={{ borderColor: 'var(--accent-info)', color: 'var(--text-muted)' }}
+            >
+              {children}
+            </blockquote>
+          ),
+          hr: () => <hr className="my-3 border-glass" />,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
     </article>
   );
 }
