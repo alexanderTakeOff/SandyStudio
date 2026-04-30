@@ -13,10 +13,10 @@
 ```
 Phase:    SPRINT 9 / Phase 5c COMPLETE + E02 Mode 1 cycle verified
           Provider Strategy v0.2 APPROVED 2026-04-30 — Google-first MVP, two-tier UI switching
-          Phase 5d step 2 SHIPPED — pipeline-row kebab + CodeMirror editor
-          🎯 Phase 8 first real provider call SHIPPED 2026-04-30 — gpt-image-1 ($0.016, 17.1s)
-Next:     Phase 8 next adapters (Veo 3 / Drive) OR Phase 5d step 3 (preview drawer)
-          OR /settings/providers UI (step 8) — Director picks order
+          Phase 5d steps 2 + 3 SHIPPED — pipeline kebab, CodeMirror editor, preview drawer
+          🎯 Phase 8 first real provider call (gpt-image-1, $0.016) + /settings/providers UI SHIPPED
+Next:     Phase 8 step 13 (Veo 3) + step 10 (Drive) BLOCKED on Google creds
+          Director to provision GEMINI_API_KEY (Veo via Gemini API) and/or Google OAuth (Drive)
 Mode:     ===5=== EDIT (Director active) — switches to ===1=== at session start per CLAUDE.md
 Date:     2026-04-30
 ```
