@@ -107,6 +107,8 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   }
 
   const { episode, stages, feed } = data.data;
+  const briefStage = stages.find((s) => s.id === 'brief');
+  const briefAssetId = briefStage?.latest_asset_id ?? null;
   // Stage filter looks at event.metadata.file_type (set by asset_updated /
   // approval_granted) and matches via the same prefix rule the DAG uses,
   // OR matches event.metadata.agent against stage.agents (for system events
