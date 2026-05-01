@@ -96,6 +96,15 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
           </>
         )}
       </div>
+      {asset.description && (
+        <div
+          className="text-[11px] px-3 py-2 rounded-lg border border-glass leading-relaxed"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          title="Production trace — contract, model, cost, tokens"
+        >
+          {asset.description}
+        </div>
+      )}
 
       {cat === 'text' && <TextBody assetId={asset.id} />}
       {cat === 'image' && <ImageBody asset={asset} />}
