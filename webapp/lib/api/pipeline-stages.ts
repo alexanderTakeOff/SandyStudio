@@ -9,6 +9,7 @@ export type PipelineStageId =
   | 'story'
   | 'script'
   | 'storyboard'
+  | 'episode_reference'
   | 'world_check'
   | 'animatic'
   | 'generation'
