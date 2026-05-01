@@ -91,6 +91,7 @@ const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
   if (ft.startsWith('SPC-story')) return 'story';
   if (ft.startsWith('SCR'))       return 'script';
   if (ft.startsWith('STB'))       return 'storyboard';
+  if (ft.startsWith('IMG-episode_ref')) return 'episode_reference';
   if (ft === 'REV-world_check')   return 'world_check';
   if (ft === 'REV-script_qa')     return 'script';
   if (ft.startsWith('VID-animatic')) return 'animatic';
