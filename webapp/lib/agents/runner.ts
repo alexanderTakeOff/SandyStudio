@@ -629,6 +629,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-SREV': 'REV-script_qa',
   'EXEC-SB': 'STB-storyboard',
   'EXEC-WCHK': 'REV-world_check',
+  'EXEC-EREF': 'IMG-episode_ref', // backbone v2: between Storyboard and Animatic
   'EXEC-EDIT': 'VID-animatic', // animatic produces a video asset; spec is metadata
   'EXEC-VGEN': 'VID-shot',
   'EXEC-MGEN': 'AUD-music',
