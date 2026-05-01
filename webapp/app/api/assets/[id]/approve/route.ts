@@ -119,10 +119,11 @@ async function computeNextEvents(
   if (!asset.episode_id) return [];
   const ep = asset.episode_id;
   const ft = asset.file_type;
+  const since = asset.updated_at ?? null;
   const events: Array<{ name: StudioEventName; data: Record<string, unknown> }> = [];
 
   // ── Brief APPROVED → EXEC-SW (single)
-  if (ft === 'SPC-brief' && !(await hasJob(supabase, ep, 'EXEC-SW'))) {
+  if (ft === 'SPC-brief' && !(await hasJob(supabase, ep, 'EXEC-SW', { since }))) {
     events.push({
       name: 'sandystudio/exec-sw/write-script',
       data: { episodeId: ep, briefAssetId: asset.id },
@@ -131,13 +132,13 @@ async function computeNextEvents(
 
   // ── Script APPROVED → EXEC-SREV (single) AND EXEC-COPY (parallel chain start)
   if (ft === 'SCR-script') {
-    if (!(await hasJob(supabase, ep, 'EXEC-SREV'))) {
+    if (!(await hasJob(supabase, ep, 'EXEC-SREV', { since }))) {
       events.push({
         name: 'sandystudio/exec-srev/review-script',
         data: { episodeId: ep, scriptAssetId: asset.id },
       });
     }
-    if (!(await hasJob(supabase, ep, 'EXEC-COPY'))) {
+    if (!(await hasJob(supabase, ep, 'EXEC-COPY', { since }))) {
       events.push({
         name: 'sandystudio/exec-copy/write-metadata',
         data: { episodeId: ep, scriptAssetId: asset.id },
@@ -146,7 +147,7 @@ async function computeNextEvents(
   }
 
   // ── Script review APPROVED → EXEC-SB
-  if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-SB'))) {
+  if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-SB', { since }))) {
     events.push({
       name: 'sandystudio/exec-sb/create-storyboard',
       data: { episodeId: ep, scriptAssetId: asset.id },
@@ -156,16 +157,20 @@ async function computeNextEvents(
   // ── Storyboard milestone: 3 STB acts APPROVED → EXEC-WCHK (idempotent)
   if (ft.startsWith('STB-')) {
     const stbCount = await countApproved(supabase, ep, 'STB');
-    if (stbCount >= 3 && !(await hasJob(supabase, ep, 'EXEC-WCHK'))) {
+    // Lower the threshold to 1: with the real EXEC-SB now producing a single
+    // STB-storyboard asset that contains all 3 acts internally, the legacy
+    // "3 STB rows" milestone no longer fits. World Check fires on the first
+    // approved storyboard.
+    if (stbCount >= 1 && !(await hasJob(supabase, ep, 'EXEC-WCHK', { since }))) {
       events.push({
         name: 'sandystudio/exec-wchk/check-world',
-        data: { episodeId: ep, storyboardAssetIds: [] },
+        data: { episodeId: ep, storyboardAssetIds: [asset.id] },
       });
     }
   }
 
   // ── World check APPROVED → EXEC-EDIT
-  if (ft === 'REV-world_check' && !(await hasJob(supabase, ep, 'EXEC-EDIT'))) {
+  if (ft === 'REV-world_check' && !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))) {
     events.push({
       name: 'sandystudio/exec-edit/create-animatic',
       data: { episodeId: ep, storyboardAssetIds: [] },
@@ -174,7 +179,7 @@ async function computeNextEvents(
 
   // ── Animatic APPROVED → fan-out EXEC-VGEN×3 + EXEC-MGEN×1
   if (ft === 'VID-animatic') {
-    if (!(await hasJob(supabase, ep, 'EXEC-VGEN'))) {
+    if (!(await hasJob(supabase, ep, 'EXEC-VGEN', { since }))) {
       for (const shotN of [1, 2, 3] as const) {
         events.push({
           name: 'sandystudio/exec-vgen/generate-shot',
@@ -182,7 +187,7 @@ async function computeNextEvents(
         });
       }
     }
-    if (!(await hasJob(supabase, ep, 'EXEC-MGEN'))) {
+    if (!(await hasJob(supabase, ep, 'EXEC-MGEN', { since }))) {
       events.push({
         name: 'sandystudio/exec-mgen/generate-music',
         data: { episodeId: ep, animaticAssetId: asset.id, section: 'main' },
@@ -193,7 +198,7 @@ async function computeNextEvents(
   // ── Metadata APPROVED → EXEC-THUMB (covered also by EXEC-COPY's auto-chain
   //    from factory.nextEvent in Mode 4; in Mode 1-3 chain is suppressed and
   //    Director's metadata approval is what fires THUMB).
-  if (ft === 'SPC-metadata' && !(await hasJob(supabase, ep, 'EXEC-THUMB'))) {
+  if (ft === 'SPC-metadata' && !(await hasJob(supabase, ep, 'EXEC-THUMB', { since }))) {
     events.push({
       name: 'sandystudio/exec-thumb/generate-thumbnail',
       data: {
@@ -211,7 +216,7 @@ async function computeNextEvents(
     const animaticOk = (await countApproved(supabase, ep, 'VID-animatic')) >= 1;
     const metadataOk = (await countApproved(supabase, ep, 'SPC-metadata')) >= 1;
     const thumbOk = (await countApproved(supabase, ep, 'IMG-thumbnail')) >= 1;
-    if (animaticOk && metadataOk && thumbOk && !(await hasJob(supabase, ep, 'EXEC-PUB'))) {
+    if (animaticOk && metadataOk && thumbOk && !(await hasJob(supabase, ep, 'EXEC-PUB', { since }))) {
       events.push({
         name: 'sandystudio/exec-pub/publish',
         data: { episodeId: ep, directorConfirm: true, confirmedBy: directorUserId },
