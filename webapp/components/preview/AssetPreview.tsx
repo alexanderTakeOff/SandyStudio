@@ -20,7 +20,7 @@ import ReactMarkdown from 'react-markdown';
 import { Download, FileWarning, ExternalLink, CloudOff } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 
-const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA'];
+const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 
 export interface AssetPreviewProps {
   assetId: string;
