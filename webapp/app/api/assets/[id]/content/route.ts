@@ -22,7 +22,12 @@ import { NotFoundError, ValidationError } from '@/lib/api/errors';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const TEXT_FILE_TYPE_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA'];
+// SBL = Series Bible (text general_idea + binary refs).
+// Some SBL-* are text (general_idea, style description) and some are
+// binaries (character/location/object images). The route guards with
+// extension below, but the prefix list must include SBL so the early
+// gate passes for text rows.
+const TEXT_FILE_TYPE_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 const EDITABLE_STATUSES: ReadonlySet<string> = new Set([
   'DRAFT',
   'REVIEW',
