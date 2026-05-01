@@ -575,6 +575,14 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       ? (result.metadata.drive_web_view_url as string)
       : null;
 
+  // Real text agents (Step 1+) emit a one-line description through metadata
+  // ("produced by EXEC-SW · screenwriter@v1 · sonnet · cost $X · N tokens").
+  // Mock agents leave this null. Surfaced verbatim in AssetPreview header.
+  const description =
+    typeof result.metadata.description === 'string'
+      ? (result.metadata.description as string)
+      : null;
+
   const { data, error } = await supabase
     .from('assets')
     .insert({
@@ -589,6 +597,7 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       status: 'DRAFT',
       version: 1,
       content,
+      description,
     })
     .select('id')
     .single();
