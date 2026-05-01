@@ -8,7 +8,40 @@
 //
 // This is a paid call (~$0.02-0.05 per run on Sonnet). Don't loop it.
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
+
+// Force-load .env.local *with override* — Node's `--env-file` flag does NOT
+// overwrite existing environment variables (e.g. an empty ANTHROPIC_API_KEY
+// pre-set at the Windows system level). Override here so smoke tests use
+// the project's actual keys.
+function loadDotenvOverride(filename: string): void {
+  try {
+    const text = readFileSync(resolve(process.cwd(), filename), 'utf-8');
+    for (const raw of text.split('\n')) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      const key = line.slice(0, eq).trim();
+      let val = line.slice(eq + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      }
+      process.env[key] = val;
+    }
+  } catch {
+    // ignore — caller will see "X not set" if key missing
+  }
+}
+loadDotenvOverride('.env.local');
+
+// Static import is fine — it's resolved at call time (after env load above)
+// because runScreenwriter only reads env on its first invocation.
 import { runScreenwriter } from '../lib/agents/runners/screenwriter';
 
 interface AssetRow {
