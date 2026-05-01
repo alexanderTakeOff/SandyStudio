@@ -368,6 +368,12 @@ If implementation changes visual behavior, update `specs/system/uiux.md` in the 
 
 ---
 
+## 7.6 GLOSSARY — CANONICAL VOCABULARY
+
+`specs/glossary.md` is the single source of truth for every term used across this constitution, agent prompts, contracts, schemas, UI labels, and Concierge dialogue. Bilingual (RU + EN). Read once per session (§9). Update in the same commit when introducing any new term.
+
+---
+
 ## 8. CURRENT PROJECT STATUS
 
 > ⚠️ This section is a snapshot — for the live state always read `PLAN.md`.
