@@ -50,22 +50,50 @@ type AssetForChain = {
   filename: string;
   file_type: string;
   episode_id: string | null;
+  /** Approval timestamp — used as the "since" floor for idempotency. */
+  updated_at?: string | null;
 };
 
 type SupabaseClientLike = Awaited<ReturnType<typeof requireDirector>>['supabase'];
 
+/**
+ * Has the target agent been triggered for this episode SINCE the given moment?
+ *
+ * `since` is critical: previous pipeline runs (mock pilot, dev retries, prior
+ * revisions) leave COMPLETED/FAILED jobs behind. Without a `since` floor, those
+ * stale jobs would block every re-trigger — and Director's APPROVE-after-revision
+ * would silently produce no fan-out.
+ *
+ * Pass the asset's `updated_at` (≈ approval moment) as `since`. Jobs started
+ * before that don't count: they belonged to earlier upstream versions.
+ */
 async function hasJob(
   supabase: SupabaseClientLike,
   episodeId: string,
   agentId: string,
-  excludeFailed = true,
+  options?: { since?: string | null; excludeFailed?: boolean },
 ): Promise<boolean> {
-  const { count } = await supabase
+  const excludeFailed = options?.excludeFailed ?? true;
+  const since = options?.since;
+  let q = supabase
     .from('jobs')
     .select('*', { count: 'exact', head: true })
     .eq('episode_id', episodeId)
     .eq('agent_id', agentId)
-    .in('status', excludeFailed ? ['QUEUED', 'RUNNING', 'COMPLETED'] : ['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED']);
+    .in(
+      'status',
+      excludeFailed
+        ? ['QUEUED', 'RUNNING', 'COMPLETED']
+        : ['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED'],
+    );
+  // Allow a small grace window (5s) before approval to catch jobs the route
+  // itself might have just enqueued in a parallel request — keeps idempotency
+  // intact for double-clicks.
+  if (since) {
+    const sinceMs = new Date(since).getTime() - 5_000;
+    q = q.gte('started_at', new Date(sinceMs).toISOString());
+  }
+  const { count } = await q;
   return (count ?? 0) > 0;
 }
 
