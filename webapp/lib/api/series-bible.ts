@@ -95,7 +95,7 @@ export function bibleFilename(args: {
   const { seriesCode, section, slug, version, ext, status } = args;
   const slugSafe = slug.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_');
   const v = `v${String(version).padStart(2, '0')}`;
-  return `${seriesCode}-BIB-${section}_${slugSafe}-${v}-${status}.${ext}`;
+  return `${seriesCode}-SBL-${section}_${slugSafe}-${v}-${status}.${ext}`;
 }
 
 export async function listBibleSections(
