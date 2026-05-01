@@ -178,7 +178,39 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
   const agentMeta = getAgent(agentId);
 
   switch (agentId) {
-    case 'EXEC-SW':
+    case 'EXEC-SW': {
+      // Real screenwriter — Anthropic Sonnet, reads APPROVED brief from
+      // upstream_assets, returns markdown + scenes_v1 JSON. Contract:
+      // specs/contracts/screenwriter@v1.yaml.
+      try {
+        const sw = await runScreenwriter({ inputs });
+        return {
+          outputKind: 'text-md',
+          result: {
+            asset_paths: [],
+            cost_usd: sw.costUsd,
+            metadata: {
+              agent_id: agentId,
+              model: sw.model,
+              contract: sw.contract,
+              markdown: sw.markdown,
+              body: sw.body,
+              description: sw.description,
+              brief_asset_id: sw.briefAssetId,
+              mvp_missing_inputs: sw.notes,
+              provider_id: sw.model,
+              provider_used: 'anthropic',
+            },
+          },
+        };
+      } catch (err: unknown) {
+        if (err instanceof ScreenwriterError) {
+          throw new Error(`EXEC-SW: ${err.message}`);
+        }
+        throw err;
+      }
+    }
+
     case 'EXEC-SREV':
     case 'EXEC-SB':
     case 'EXEC-WCHK':
