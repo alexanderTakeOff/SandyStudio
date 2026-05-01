@@ -207,6 +207,26 @@ async function happyPathReplay(): Promise<void> {
         status: 'APPROVED',
         version: 1,
       },
+      // Series Bible canon — Step 4 gate requires ≥1 LOCKED character + style.
+      // Series-scoped (no episode_id), pre-LOCKED so EXEC-EREF gate passes.
+      {
+        id: 'sbl-character-pilot',
+        series_id: 'series-1',
+        episode_id: null,
+        file_type: 'SBL-character_sandy',
+        filename: 'SS-S01-BIB-character_sandy-v01-LOCKED.png',
+        status: 'LOCKED',
+        version: 1,
+      },
+      {
+        id: 'sbl-style-pilot',
+        series_id: 'series-1',
+        episode_id: null,
+        file_type: 'SBL-style_visual',
+        filename: 'SS-S01-BIB-style_visual-v01-LOCKED.md',
+        status: 'LOCKED',
+        version: 1,
+      },
     ],
   });
 
