@@ -8,7 +8,7 @@ import { Inngest, EventSchemas } from 'inngest';
 
 const EPISODE_CODE = 'SS-S03-E01';
 
-interface PingEvents {
+interface AnimaticTriggerEvents extends Record<string, { data: Record<string, unknown> }> {
   'sandystudio/exec-edit/create-animatic': {
     data: { episodeId: string; storyboardAssetIds: string[] };
   };
