@@ -165,7 +165,7 @@ async function seedFor(seriesCode: string): Promise<void> {
   console.log(`[seed] 1/4 — SBL-general_idea`);
   await insert({
     file_type: 'SBL-general_idea',
-    filename: `${ser.code}-BIB-general_idea_main-v01-DRAFT.md`,
+    filename: `${ser.code}-SBL-general_idea_main-v01-DRAFT.md`,
     description: 'Sandy series — premise, philosophy, world rules, tone',
     content: GENERAL_IDEA,
     staging_path: null,
@@ -177,7 +177,7 @@ async function seedFor(seriesCode: string): Promise<void> {
   console.log(`[seed] 2/4 — SBL-style_visual`);
   await insert({
     file_type: 'SBL-style_visual',
-    filename: `${ser.code}-BIB-style_visual-v01-DRAFT.md`,
+    filename: `${ser.code}-SBL-style_visual-v01-DRAFT.md`,
     description: 'Flat 2D bold outlines, pastel palette, character-stage layout',
     content: STYLE_VISUAL,
     staging_path: null,
@@ -205,13 +205,13 @@ async function seedFor(seriesCode: string): Promise<void> {
   const sandyPersisted = await persistBinary({
     base64: sandyImg.b64_data,
     ext: 'png',
-    driveFilename: `${ser.code}-BIB-character_sandy-staging.png`,
+    driveFilename: `${ser.code}-SBL-character_sandy-staging.png`,
     localHint: `bible-character-sandy`,
     supabase: sb,
   });
   await insert({
     file_type: 'SBL-character_sandy',
-    filename: `${ser.code}-BIB-character_sandy-v01-DRAFT.png`,
+    filename: `${ser.code}-SBL-character_sandy-v01-DRAFT.png`,
     description: SANDY_DESCRIPTION,
     content: null,
     staging_path: sandyPersisted.browserUrl,
@@ -239,13 +239,13 @@ async function seedFor(seriesCode: string): Promise<void> {
   const cafePersisted = await persistBinary({
     base64: cafeImg.b64_data,
     ext: 'png',
-    driveFilename: `${ser.code}-BIB-location_cafe-staging.png`,
+    driveFilename: `${ser.code}-SBL-location_cafe-staging.png`,
     localHint: `bible-location-cafe`,
     supabase: sb,
   });
   await insert({
     file_type: 'SBL-location_cafe',
-    filename: `${ser.code}-BIB-location_cafe-v01-DRAFT.png`,
+    filename: `${ser.code}-SBL-location_cafe-v01-DRAFT.png`,
     description: CAFE_DESCRIPTION,
     content: null,
     staging_path: cafePersisted.browserUrl,
