@@ -49,8 +49,9 @@ interface AssetRow {
   version: number | null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function findApproved(
-  sb: ReturnType<typeof createClient>,
+  sb: any,
   episodeId: string,
   fileType: string,
 ): Promise<AssetRow | null> {
