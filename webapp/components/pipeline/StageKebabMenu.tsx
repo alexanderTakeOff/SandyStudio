@@ -28,19 +28,33 @@ import { EditorModal } from '@/components/editor/EditorModal';
 import { RejectModal } from '@/components/editor/RejectModal';
 import type { PipelineNodeState, PipelineStageId } from '@/lib/api/pipeline-stages';
 
-// File-type prefix → stage matching, kept in sync with the same map in
-// `(studio)/episodes/[id]/page.tsx`. Phase 5d follow-up will deduplicate
-// these into `lib/api/pipeline-stages.ts`.
+// File-type prefix → row matching for backbone v2.5 per-agent rows.
+// Each row = single agent → single primary file_type prefix.
+// Legacy ids kept for back-compat with old episode pages still in cache.
 const STAGE_PREFIX_MAP: Record<string, string[]> = {
-  brief: ['SPC-brief'],
-  script: ['SCR', 'REV-script_qa'],
-  storyboard: ['STB'],
-  world_check: ['REV-world_check'],
-  animatic: ['VID-animatic'],
-  generation: ['VID-shot', 'AUD-music'],
-  distribution: ['SPC-metadata', 'IMG-thumbnail', 'SPC-copy'],
-  publish: ['REV-publish'],
-  analytics: ['REV-analytics'],
+  // Backbone v2.5 — per-agent rows
+  brief:               ['SPC-brief'],
+  screenwriter:        ['SCR'],
+  script_reviewer:     ['REV-script_qa'],
+  storyboarder:        ['STB'],
+  continuity_check:    ['REV-world_check', 'REV-continuity'],
+  episode_references:  ['IMG-episode_ref'],
+  animatic:            ['VID-animatic'],
+  visual_generator:    ['VID-shot'],
+  music_generator:     ['AUD-music'],
+  copywriter:          ['SPC-metadata', 'SPC-copy'],
+  thumbnail_creator:   ['IMG-thumbnail'],
+  publisher:           ['REV-publish'],
+  analytics_collector: ['REV-analytics'],
+  // Legacy ids — old code paths
+  script:        ['SCR', 'REV-script_qa'],
+  storyboard:    ['STB'],
+  episode_reference: ['IMG-episode_ref'],
+  world_check:   ['REV-world_check'],
+  generation:    ['VID-shot', 'AUD-music'],
+  distribution:  ['SPC-metadata', 'IMG-thumbnail', 'SPC-copy'],
+  publish:       ['REV-publish'],
+  analytics:     ['REV-analytics'],
 };
 
 // Text asset prefixes — these support markdown editing via /content endpoint.
