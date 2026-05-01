@@ -106,12 +106,20 @@ export default function SeriesPage() {
                     <p className="mt-2 text-sm text-text-secondary leading-relaxed">{s.logline}</p>
                   )}
                 </div>
-                <Link
-                  href={`/episodes?series_id=${s.id}`}
-                  className="text-xs text-[var(--accent-primary)] hover:brightness-125 shrink-0"
-                >
-                  View episodes →
-                </Link>
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  <Link
+                    href={`/series/${s.id}?tab=bible`}
+                    className="text-xs text-[var(--accent-primary)] hover:brightness-125"
+                  >
+                    Open Bible →
+                  </Link>
+                  <Link
+                    href={`/episodes?series_id=${s.id}`}
+                    className="text-xs text-text-secondary hover:text-text-primary"
+                  >
+                    Episodes →
+                  </Link>
+                </div>
               </div>
             </CardBody>
           </Card>
