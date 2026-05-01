@@ -32,6 +32,7 @@ import { getAgent } from './registry';
 import { runScreenwriter, ScreenwriterError } from './runners/screenwriter';
 import { runScriptReviewer, ScriptReviewerError } from './runners/script-reviewer';
 import { runStoryboarder, StoryboarderError } from './runners/storyboarder';
+import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-check';
 import type { AgentId, AgentInputs, AgentResult } from './types';
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
