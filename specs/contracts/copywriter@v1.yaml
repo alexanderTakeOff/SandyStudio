@@ -1,0 +1,46 @@
+id: copywriter
+version: 1
+agent: EXEC-COPY
+display:
+  ru: Копирайтер
+  en: Copywriter
+
+model: claude-haiku-4-5
+max_output_tokens: 1500
+cost_ceiling_usd: 0.05
+sla_minutes: 2
+
+input:
+  required:
+    - { id: brief,  file_type: SPC-brief,  status: APPROVED }
+    - { id: script, file_type: SCR-script, status: APPROVED }
+
+output:
+  primary:
+    file_type: SPC-metadata
+    naming: "{episode_code}-SPC-metadata-v{NN}-DRAFT.md"
+    status_on_create: DRAFT
+  fields:
+    markdown: { required: true }
+    json_block:
+      required: true
+      schema_ref: copy_v1
+      shape:
+        episode_id: string
+        title: string
+        description: string
+        tags: string[]
+        hook: string
+        hashtags: string[]
+
+approval_gate:
+  approver: director
+  category: B
+  action_on_approve: "fanout EXEC-THUMB"
+
+escalation:
+  on_invalid_json: "retry once; then NEEDS_HUMAN_TWEAK"
+  on_anthropic_error: "retry up to 2 times"
+
+audit:
+  records: [job_id, model, input_tokens, output_tokens, cost_usd]
