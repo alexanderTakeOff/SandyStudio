@@ -122,7 +122,10 @@
       "Bash(taskkill //F //PID 40012 //T)",
       "Bash(taskkill //F //PID 43184 //T)",
       "Bash(curl -s -o /dev/null -w \"first /login => HTTP %{http_code}\\\\n\" \"http://localhost:3000/login\")",
-      "Bash(curl -s -o /dev/null -w \"second /login => HTTP %{http_code}\\\\n\" \"http://localhost:3000/login\")"
+      "Bash(curl -s -o /dev/null -w \"second /login => HTTP %{http_code}\\\\n\" \"http://localhost:3000/login\")",
+      "Bash(curl -s -o /dev/null -w \"warmup1 /login => HTTP %{http_code}\\\\n\" http://localhost:3000/login)",
+      "Bash(curl -s -o /dev/null -w \"warmup2 /api/inngest => HTTP %{http_code}\\\\n\" http://localhost:3000/api/inngest)",
+      "Bash(curl -s -o /dev/null -w \"second /login => HTTP %{http_code}\\\\n\" http://localhost:3000/login)"
     ]
   }
 }

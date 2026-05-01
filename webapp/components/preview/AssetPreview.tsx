@@ -98,11 +98,15 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
       </div>
       {asset.description && (
         <div
-          className="text-[11px] px-3 py-2 rounded-lg border border-glass leading-relaxed"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+          className="text-xs px-3 py-2 rounded-lg border leading-relaxed font-mono"
+          style={{
+            background: 'var(--accent-success-bg, rgba(34, 197, 94, 0.08))',
+            color: 'var(--accent-success, rgb(34, 197, 94))',
+            borderColor: 'var(--accent-success, rgba(34, 197, 94, 0.3))',
+          }}
           title="Production trace — contract, model, cost, tokens"
         >
-          {asset.description}
+          ⚙ {asset.description}
         </div>
       )}
 
