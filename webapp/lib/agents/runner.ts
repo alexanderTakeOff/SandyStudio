@@ -34,6 +34,7 @@ import { runScriptReviewer, ScriptReviewerError } from './runners/script-reviewe
 import { runStoryboarder, StoryboarderError } from './runners/storyboarder';
 import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-check';
 import { runCopywriter, CopywriterError } from './runners/copywriter';
+import { runEpisodeReferences, EpisodeReferencesError } from './runners/episode-references';
 import type { AgentId, AgentInputs, AgentResult } from './types';
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
