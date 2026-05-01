@@ -568,7 +568,22 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
           ? 'wav'
           : 'md';
 
-  const filename = `${episodeCode}-${fileType}-v01-DRAFT.${ext}`;
+  // Auto-increment version: each agent re-run produces a new asset row, so
+  // re-trigger / revision cycles never collide on the unique filename
+  // constraint. Versioning policy per glossary §9: each pipeline pass is its
+  // own version; old version stays in REVISION/REJECTED for the audit trail.
+  const { data: existingRows } = await supabase
+    .from('assets')
+    .select('version, filename')
+    .eq('episode_id', episodeId)
+    .eq('file_type', fileType);
+  const maxExistingVersion = (existingRows ?? []).reduce(
+    (max, row) => Math.max(max, row.version ?? 0),
+    0,
+  );
+  const nextVersion = maxExistingVersion + 1;
+  const versionTag = `v${String(nextVersion).padStart(2, '0')}`;
+  const filename = `${episodeCode}-${fileType}-${versionTag}-DRAFT.${ext}`;
   const drivePath = result.asset_paths[0] ?? null;
 
   // Markdown body lives in the dedicated `content` column (migration 0013).
