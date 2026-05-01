@@ -453,14 +453,42 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-EREF': {
-      // EXEC-EREF: episode reference image generator (backbone v2 stage between
-      // Storyboard and Animatic). Real implementation lands in Step 5 of the
-      // contract pipeline rollout — it will iterate through the storyboard's
-      // unique location/character poses and call gpt-image-1 per ref.
-      //
-      // For now: mock placeholder so the pipeline view shows the correct
-      // structure and Director can walk the flow end-to-end. The mock writes
-      // an IMG-episode_ref asset with a marker description.
+      // Real Episode Reference Generator. Bible-anchored gpt-image-1 fan-out
+      // — produces N IMG-episode_ref_<slug> assets directly. Contract:
+      // specs/contracts/episode_references@v1.yaml.
+      const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
+      if (hasOpenAI && supabase) {
+        try {
+          const r = await runEpisodeReferences({ inputs, supabase, episodeCode });
+          return {
+            outputKind: 'image-png',
+            result: {
+              // Empty asset_paths because the runner already inserted N rows
+              // directly. saveAgentOutput sees skip_save and doesn't create
+              // an extra placeholder row.
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                contract: r.contract,
+                provider_id: 'gpt-image-1',
+                provider_used: 'gpt-image-1',
+                description: r.description,
+                skip_save: true,
+                inserted_asset_ids: r.insertedAssetIds,
+                total_images: r.totalImages,
+                bible_snapshot: r.bibleSnapshot,
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof EpisodeReferencesError) {
+            throw new Error(`EXEC-EREF: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mock placeholder so replay-pilot keeps working.
       const image = await mockImage({
         episodeId,
         assetId: `episode_ref-${episodeId.slice(-8)}`,
@@ -475,7 +503,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             agent_id: agentId,
             provider_id: 'mock',
             provider_used: 'mock',
-            description: `Stub EXEC-EREF — Step 5 will replace with real gpt-image-1 generation per storyboard shot`,
+            description: 'Stub EXEC-EREF mock — set OPENAI_API_KEY for real path',
           },
         },
       };
