@@ -30,6 +30,8 @@ import { persistBinary, type PersistedBinary } from './persist-binary';
 import type { ResolvedProvider } from './provider-resolver';
 import { getAgent } from './registry';
 import { runScreenwriter, ScreenwriterError } from './runners/screenwriter';
+import { runScriptReviewer, ScriptReviewerError } from './runners/script-reviewer';
+import { runStoryboarder, StoryboarderError } from './runners/storyboarder';
 import type { AgentId, AgentInputs, AgentResult } from './types';
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
