@@ -82,7 +82,7 @@ async function main() {
   // ── 4. Trigger EXEC-EDIT via Inngest ──────────────────────────────────────
   const inngest = new Inngest({
     id: 'sandystudio',
-    schemas: new EventSchemas().fromRecord<PingEvents>(),
+    schemas: new EventSchemas().fromRecord<AnimaticTriggerEvents>(),
   });
   const sendRes = await inngest.send({
     name: 'sandystudio/exec-edit/create-animatic',
