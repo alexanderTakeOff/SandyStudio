@@ -62,6 +62,18 @@ type Events = {
     };
   };
 
+  /**
+   * NEW stage between Storyboard and Animatic per backbone v2 (specs/glossary.md §4).
+   * Generates per-episode reference images for each unique location/character pose
+   * in the approved storyboard. Director approves these BEFORE the expensive
+   * Veo animatic — see specs/glossary.md "Episode reference / Эпизод-референс".
+   */
+  'sandystudio/exec-eref/generate-references': {
+    data: AssetTrigger & {
+      storyboardAssetId: string;
+    };
+  };
+
   'sandystudio/exec-edit/create-animatic': {
     data: AssetTrigger & {
       storyboardAssetIds: string[];
