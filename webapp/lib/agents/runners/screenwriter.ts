@@ -175,6 +175,7 @@ function buildUserMessage(args: {
     '- Every mandatory beat from the brief\'s "Key beats" section MUST appear in at least one scene\'s `beats[]`.',
     '- Total of `duration_seconds` across all scenes ≈ runtime_target_seconds (within 10%).',
     '- The fenced JSON must be valid JSON. No trailing commas. No comments.',
+    '- KEEP PROSE TIGHT. The JSON block at the end is MANDATORY and must not be truncated. Aim for ~3-4 paragraphs of action prose per scene maximum, then the final JSON block. If you find yourself running long, shorten prose — never skip the JSON.',
   ]
     .filter(Boolean)
     .join('\n');
