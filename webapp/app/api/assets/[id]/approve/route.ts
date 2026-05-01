@@ -154,22 +154,30 @@ async function computeNextEvents(
     });
   }
 
-  // ── Storyboard milestone: 3 STB acts APPROVED → EXEC-WCHK (idempotent)
+  // ── Storyboard APPROVED → EXEC-EREF (Episode Reference Generator)
+  // Backbone v2: between Storyboard and Animatic, Director must approve
+  // episode-specific reference images BEFORE the expensive Veo animatic.
+  // World Check is hidden from MVP pipeline view until Series Bible exists.
   if (ft.startsWith('STB-')) {
     const stbCount = await countApproved(supabase, ep, 'STB');
-    // Lower the threshold to 1: with the real EXEC-SB now producing a single
-    // STB-storyboard asset that contains all 3 acts internally, the legacy
-    // "3 STB rows" milestone no longer fits. World Check fires on the first
-    // approved storyboard.
-    if (stbCount >= 1 && !(await hasJob(supabase, ep, 'EXEC-WCHK', { since }))) {
+    if (stbCount >= 1 && !(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
       events.push({
-        name: 'sandystudio/exec-wchk/check-world',
-        data: { episodeId: ep, storyboardAssetIds: [asset.id] },
+        name: 'sandystudio/exec-eref/generate-references',
+        data: { episodeId: ep, storyboardAssetId: asset.id },
       });
     }
   }
 
-  // ── World check APPROVED → EXEC-EDIT
+  // ── Episode references APPROVED → EXEC-EDIT (animatic)
+  if (ft.startsWith('IMG-episode_ref') && !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))) {
+    events.push({
+      name: 'sandystudio/exec-edit/create-animatic',
+      data: { episodeId: ep, storyboardAssetIds: [] },
+    });
+  }
+
+  // ── World check APPROVED → EXEC-EDIT (legacy; kept for backward compat
+  // until WCHK stage is reactivated post-Series-Bible).
   if (ft === 'REV-world_check' && !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))) {
     events.push({
       name: 'sandystudio/exec-edit/create-animatic',
