@@ -143,21 +143,27 @@ export function buildPipelineSnapshot(
 
     let state: PipelineNodeState = 'idle';
 
-    // Approved if any APPROVED / LOCKED asset present in this stage
-    if (stageAssets.some((a) => a.status === 'APPROVED' || a.status === 'LOCKED')) {
-      state = 'approved';
-    }
+    const hasApprovedAsset = stageAssets.some(
+      (a) => a.status === 'APPROVED' || a.status === 'LOCKED',
+    );
+    const hasReviewAsset = stageAssets.some((a) => a.status === 'REVIEW');
+    const hasRunningJob = stageJobs.some(
+      (j) => j.status === 'RUNNING' || j.status === 'QUEUED',
+    );
+    const hasFailedJob = stageJobs.some((j) => j.status === 'FAILED');
 
-    // Running if any RUNNING / QUEUED jobs OR REVIEW asset (waiting Director)
-    if (stageJobs.some((j) => j.status === 'RUNNING' || j.status === 'QUEUED')) {
+    // Precedence: approved/running > review-blocked > failed > idle.
+    // A stage with at least one APPROVED asset is APPROVED, regardless of how
+    // many old FAILED jobs sit in the audit trail (cancelled retries, dev
+    // crashes, prior revisions). Failure only wins when there is genuinely
+    // nothing approved and nothing in flight.
+    if (hasRunningJob) {
       state = 'running';
-    }
-    if (state === 'idle' && stageAssets.some((a) => a.status === 'REVIEW')) {
-      state = 'blocked';   // awaiting Director
-    }
-
-    // Failed if any FAILED job
-    if (stageJobs.some((j) => j.status === 'FAILED')) {
+    } else if (hasApprovedAsset) {
+      state = 'approved';
+    } else if (hasReviewAsset) {
+      state = 'blocked'; // awaiting Director
+    } else if (hasFailedJob) {
       state = 'failed';
     }
 
