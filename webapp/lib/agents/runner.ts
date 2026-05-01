@@ -238,8 +238,116 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       };
     }
 
-    case 'EXEC-SREV':
-    case 'EXEC-SB':
+    case 'EXEC-SREV': {
+      // Real script reviewer — Anthropic Sonnet, reads APPROVED brief +
+      // script, returns markdown + verdict JSON. Contract:
+      // specs/contracts/script_reviewer@v1.yaml.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runScriptReviewer({ inputs });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                verdict: r.verdict,
+                brief_asset_id: r.briefAssetId,
+                script_asset_id: r.scriptAssetId,
+                mvp_missing_inputs: r.notes,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof ScriptReviewerError) {
+            throw new Error(`EXEC-SREV: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mockLLM (replay-pilot, tests, no key)
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-SB': {
+      // Real storyboarder — Anthropic Sonnet, breaks APPROVED script into
+      // 3 acts × shots. Contract: specs/contracts/storyboarder@v1.yaml.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runStoryboarder({ inputs });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                total_shots: r.totalShots,
+                total_duration_s: r.totalDurationS,
+                brief_asset_id: r.briefAssetId,
+                script_asset_id: r.scriptAssetId,
+                mvp_missing_inputs: r.notes,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof StoryboarderError) {
+            throw new Error(`EXEC-SB: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mockLLM
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
     case 'EXEC-WCHK':
     case 'EXEC-COPY': {
       const llm = await mockLLM({ agentId, episodeId });
