@@ -59,7 +59,7 @@ const STAGE_PREFIX_MAP: Record<string, string[]> = {
 
 // Text asset prefixes — these support markdown editing via /content endpoint.
 // Anything else (IMG / VID / AUD) is binary and must use the preview drawer.
-const TEXT_PREFIXES = new Set(['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA']);
+const TEXT_PREFIXES = new Set(['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL']);
 
 function isTextFileType(file_type: string | undefined): boolean {
   if (!file_type) return false;
