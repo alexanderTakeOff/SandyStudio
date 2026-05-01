@@ -149,6 +149,18 @@ Recorded decision with actor, timestamp, optional revision_note. Stored on the a
 ### Producer plan / План продюсера
 Episode-level instance of a contract: which sub-agents Producer will engage, in what order, with what budget. Director approves the plan before execution begins (this is the Producer↔Director contract).
 
+### Contract instance / Инстанс контракта
+One execution of a contract — the runtime job that consumes the input, calls the agent, validates the output, records cost. Persisted as a row in `jobs` + linked rows in `assets` and `costs`. Identified by `job.id`.
+
+### Cost ceiling / Потолок стоимости
+Hard upper bound in USD specified in a contract (`cost_ceiling_usd`). If a single contract instance exceeds this, the runtime aborts the job, marks it FAILED, and logs the violation. Per-episode budget ceilings are separate (see [`webapp/lib/budget.ts`](../webapp/lib/budget.ts)).
+
+### JSON block / JSON-блок
+Structured machine-readable output appended at the end of a text agent's markdown response, wrapped in a fenced ` ```json ` code block. The runtime parses the LAST such block in the response (so models that include schema examples earlier still emit canonical output at the end). Used by Screenwriter, Script Reviewer, Storyboarder, World Checker, Copywriter to deliver typed structured payloads alongside human-readable prose.
+
+### Reset script / Скрипт сброса
+Operational helper that returns an episode to a known intermediate state (e.g. "brief APPROVED, everything downstream cleared") and re-triggers the next agent. Example: [`webapp/scripts/reset-episode-after-brief.ts`](../webapp/scripts/reset-episode-after-brief.ts). Always preserves the brief; demotes downstream assets to `REVISION`; cancels in-flight jobs.
+
 ---
 
 ## 7. Status & gates / Статусы и гейты
