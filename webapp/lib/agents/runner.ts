@@ -58,7 +58,7 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
 
   const { data: assets, error: asErr } = await supabase
     .from('assets')
-    .select('id, file_type, filename, status, drive_path, staging_path, version')
+    .select('id, file_type, filename, status, drive_path, staging_path, version, content')
     .eq('episode_id', episodeId)
     .eq('status', 'APPROVED');
   if (asErr) {
