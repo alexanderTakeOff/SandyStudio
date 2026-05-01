@@ -7,12 +7,7 @@
 
 import { useState } from 'react';
 import { Lock, Unlock, MoreHorizontal, Eye, Edit, Trash } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@/components/ui/DropdownMenu';
+import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { Card } from '@/components/ui/Card';
 import type { BibleAsset, SbSection } from '@/lib/api/series-bible';
 import { AssetDetailDrawer } from './AssetDetailDrawer';
