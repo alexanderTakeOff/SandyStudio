@@ -57,7 +57,19 @@ Smallest video unit — a single continuous camera take, typically 3–8 seconds
 ## 3. Series-level pre-production / Pre-production уровня сериала
 
 ### Series Bible / Библия серии
-Master document containing everything canonical about the series: world rules, hero list with refs, location list with refs, object list with refs, audio palette, visual style guide. Once a Series Bible section is LOCKED, no episode may contradict it. See [`specs/company/series_bible.md`](company/series_bible.md) (planned).
+Master document containing everything canonical about the series: world rules, hero list with refs, location list with refs, object list with refs, audio palette, visual style guide. Once a Series Bible section is LOCKED, no episode may contradict it. Final Bible = description + media per asset; text-only Bible is incomplete. Spec: [`specs/company/series_bible.md`](company/series_bible.md). Two top-level tabs: **General idea** (text) and **Library** (visual + audio canon).
+
+### General idea / Общая идея
+The textual side of a Series Bible — one markdown document holding premise, philosophy, world rules, tone. Asset type: `SBL-general_idea`.
+
+### Library / Библиотека
+The visual + audio side of a Series Bible — feeds of Heroes / Locations / Objects / Style / Audio canonical assets. Each entry has both description and media.
+
+### Bible asset / Ассет Библии
+Any `SBL-*` file_type asset belonging to a Series Bible. Distinct from Episode references (`IMG-episode_ref`) which are episode-scoped and anchor on Bible assets.
+
+### Cross-reference / Кросс-референс
+The link between an Episode reference and the Bible asset it anchors on. Recorded in `IMG-episode_ref.metadata.bible_ref_ids[]`. Drives the Bible UI's "Used in [episode]" lookup.
 
 ### World / Мир
 Section of Series Bible: physics, geography, cultural rules of the universe (e.g. "in Sandy's world all objects have body language"). Describes WHAT EXISTS. No character or shot detail.
