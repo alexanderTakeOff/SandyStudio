@@ -307,11 +307,12 @@ async function happyPathReplay(): Promise<void> {
   header('Cross-cutting checks');
 
   const completedJobs = supabase.tables.jobs.filter((j) => j.status === 'COMPLETED');
-  // Expected: SW + SREV + SB + WCHK + EDIT + 3*VGEN + MGEN + COPY + THUMB + PUB + 4*ANAL = 16
+  // Expected (backbone v2): SW + SREV + SB + WCHK + EREF + EDIT + 3*VGEN + MGEN
+  //                       + COPY + THUMB + PUB + 4*ANAL = 17
   assert(
-    completedJobs.length === 16,
+    completedJobs.length === 17,
     'jobs.status: every step COMPLETED',
-    `expected 16, found ${completedJobs.length}`,
+    `expected 17, found ${completedJobs.length}`,
   );
 
   const totalSpent = supabase.tables.episodes[0].budget_spent;
