@@ -168,8 +168,7 @@ export async function seriesIdForEpisode(
   const { data, error } = await supabase
     .from('episodes')
     .select('series_id')
-    .eq('id', episodeId)
-    .limit(1);
+    .eq('id', episodeId);
   if (error) {
     throw new Error(`seriesIdForEpisode: ${error.message}`);
   }
