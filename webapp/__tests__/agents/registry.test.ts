@@ -26,9 +26,11 @@ describe('AGENT_REGISTRY structural integrity', () => {
     }
   });
 
-  it('exactly 11 agents have Inngest functions (per webapp.md §4.1)', () => {
+  it('exactly 12 agents have Inngest functions (backbone v2: +EXEC-EREF)', () => {
+    // Backbone v2 (2026-05-01) adds EXEC-EREF Episode Reference Generator
+    // between Storyboard and Animatic. See specs/glossary.md §4.
     const inngestable = inngestAgents();
-    expect(inngestable).toHaveLength(11);
+    expect(inngestable).toHaveLength(12);
   });
 
   it('every Inngest agent has a prompt_file (no orphaned prompts)', () => {
