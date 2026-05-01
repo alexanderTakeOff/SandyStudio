@@ -157,6 +157,9 @@ export async function countLockedBibleSections(
 /**
  * Look up the parent series_id for an episode. Used by gate.ts to bridge
  * episode-scoped runs to series-scoped Bible canon.
+ *
+ * Avoids `.maybeSingle()` to stay compatible with the in-memory test
+ * supabase mock used by replay-pilot.
  */
 export async function seriesIdForEpisode(
   supabase: SupabaseClient<Database>,
@@ -166,9 +169,10 @@ export async function seriesIdForEpisode(
     .from('episodes')
     .select('series_id')
     .eq('id', episodeId)
-    .maybeSingle();
+    .limit(1);
   if (error) {
     throw new Error(`seriesIdForEpisode: ${error.message}`);
   }
-  return data?.series_id ?? null;
+  const row = (data ?? [])[0] as { series_id?: string | null } | undefined;
+  return row?.series_id ?? null;
 }
