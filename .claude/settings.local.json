@@ -118,7 +118,11 @@
       "Bash(awk 'NR==25' C:/SandyStudio/.claude/worktrees/agitated-lederberg-a292d3/webapp/.env.local)",
       "Bash(awk 'NR==23,NR==27' C:/SandyStudio/.claude/worktrees/agitated-lederberg-a292d3/webapp/.env.local)",
       "Bash(curl -s -o /dev/null -w \"next dev / => HTTP %{http_code}\\\\n\" http://localhost:3000/)",
-      "Bash(curl -s -o /dev/null -w \"inngest /healthz => HTTP %{http_code}\\\\n\" http://localhost:8288/health)"
+      "Bash(curl -s -o /dev/null -w \"inngest /healthz => HTTP %{http_code}\\\\n\" http://localhost:8288/health)",
+      "Bash(taskkill //F //PID 40012 //T)",
+      "Bash(taskkill //F //PID 43184 //T)",
+      "Bash(curl -s -o /dev/null -w \"first /login => HTTP %{http_code}\\\\n\" \"http://localhost:3000/login\")",
+      "Bash(curl -s -o /dev/null -w \"second /login => HTTP %{http_code}\\\\n\" \"http://localhost:3000/login\")"
     ]
   }
 }
