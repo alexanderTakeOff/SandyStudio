@@ -127,7 +127,8 @@
       "Bash(curl -s -o /dev/null -w \"warmup2 /api/inngest => HTTP %{http_code}\\\\n\" http://localhost:3000/api/inngest)",
       "Bash(curl -s -o /dev/null -w \"second /login => HTTP %{http_code}\\\\n\" http://localhost:3000/login)",
       "mcp__30e3b4b7-df3c-4386-9bf7-421c3c073335__apply_migration",
-      "Bash(awk '/Tables: \\\\{/{f=1} f && /assets:/{p=1} p{print; if\\(/^      [a-z]/ && !/assets/\\) c++; if\\(c>2\\) exit}' lib/supabase/types.gen.ts)"
+      "Bash(awk '/Tables: \\\\{/{f=1} f && /assets:/{p=1} p{print; if\\(/^      [a-z]/ && !/assets/\\) c++; if\\(c>2\\) exit}' lib/supabase/types.gen.ts)",
+      "Bash(where ffmpeg *)"
     ]
   }
 }
