@@ -27,6 +27,7 @@ export const functions = [
   execSrevReviewScript,
   execSbCreateStoryboard,
   execWchkCheckWorld,
+  execErefGenerateReferences,
   execEditCreateAnimatic,
   execVgenGenerateShot,
   execMgenGenerateMusic,
