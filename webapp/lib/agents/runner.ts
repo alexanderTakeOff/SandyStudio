@@ -511,8 +511,51 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-EDIT': {
-      // EXEC-EDIT: produce an animatic video. Real path uses Veo 3 via Gemini
-      // API (8s clip, fast quality). Mock path keeps the existing fan-out.
+      // EXEC-EDIT priority: Step 8-lite slideshow assembly when ≥1 APPROVED
+      // IMG-episode_ref exists in upstream. This is our Bible-anchored animatic
+      // gate per Director's critique #4 — Director validates pacing on a
+      // browser-rendered sequence of approved refs. Music + real MP4 land in
+      // Step 8.5 / 8 full.
+      const upstream = inputs.upstream_assets as
+        | ReadonlyArray<{ file_type?: string | null; status?: string | null }>
+        | undefined;
+      const hasApprovedRefs = (upstream ?? []).some(
+        (a) =>
+          typeof a.file_type === 'string' &&
+          a.file_type.startsWith('IMG-episode_ref') &&
+          a.status === 'APPROVED',
+      );
+      if (hasApprovedRefs && supabase) {
+        try {
+          const slide = await runAnimaticSlideshow({ inputs, supabase, episodeCode });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: slide.costUsd,
+              metadata: {
+                agent_id: agentId,
+                contract: slide.contract,
+                provider_id: 'slideshow',
+                provider_used: 'slideshow',
+                markdown: slide.markdown,
+                body: slide.body,
+                description: slide.description,
+                animatic_kind: 'slideshow_v1',
+                total_duration_s: slide.totalDurationS,
+                frame_count: slide.frameCount,
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof AnimaticSlideshowError) {
+            throw new Error(`EXEC-EDIT (slideshow): ${err.message}`);
+          }
+          throw err;
+        }
+      }
+
+      // Legacy real Veo path + mock path (kept for replay-pilot and Step 9).
       const llm = await mockLLM({ agentId, episodeId });
       const shotIds = [1, 2, 3].map((act) => `${episodeId}-A${act}-SC01-SH01`);
 
