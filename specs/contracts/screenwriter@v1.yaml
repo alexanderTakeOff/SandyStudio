@@ -1,0 +1,87 @@
+id: screenwriter
+version: 1
+agent: EXEC-SW
+display:
+  ru: Главный сценарист
+  en: Head Screenwriter
+
+# ─── Model & cost ────────────────────────────────────────────────────────────
+model: claude-sonnet-4-6
+max_output_tokens: 4000
+cost_ceiling_usd: 0.50      # hard limit per single execution
+sla_minutes: 5
+
+# ─── Inputs ──────────────────────────────────────────────────────────────────
+input:
+  required:
+    - id: brief
+      file_type: SPC-brief
+      status: APPROVED
+      passes_to: user_message
+  # MVP step 1: Style Bible / World Bible / Character Profiles are not yet
+  # provisioned. They will become required in Step 7 (Continuity / Series Bible).
+  # Until then the runner records them as "absent — MVP" in the output notes.
+  optional_for_mvp:
+    - { id: style_bible,        file_type: BIB-style }
+    - { id: world_bible,        file_type: BIB-world }
+    - { id: character_profiles, file_type: BIB-character }
+
+# ─── Output ──────────────────────────────────────────────────────────────────
+output:
+  primary:
+    file_type: SCR-script
+    naming: "{episode_code}-SCR-script-v01-DRAFT.md"
+    status_on_create: DRAFT
+  fields:
+    markdown:
+      required: true
+      min_chars: 1500
+      max_chars: 30000
+    json_block:
+      required: true
+      schema_ref: scenes_v1
+      shape:
+        episode_id: string
+        title: string
+        runtime_target_seconds: integer
+        scenes:
+          type: array
+          items:
+            scene_id: string
+            act: integer
+            characters: string[]
+            location: string
+            action: string
+            beats: string[]
+            duration_seconds: integer
+
+# ─── Preconditions / Postconditions ──────────────────────────────────────────
+preconditions:
+  - "Brief asset for this episode exists with status = APPROVED"
+  - "Brief content is non-empty"
+  - "ANTHROPIC_API_KEY env var is set"
+
+postconditions:
+  - "One SCR-script asset created with status = DRAFT"
+  - "asset.content contains both human-readable markdown and a fenced ```json block"
+  - "JSON block parses successfully and conforms to scenes_v1 shape"
+  - "cost_usd recorded in costs table linked to producing job"
+
+# ─── Approval gate ───────────────────────────────────────────────────────────
+approval_gate:
+  approver: director         # Mode 1 default; Mode 2/3 may delegate to EXEC-DIR-AI
+  category: B                # per governance.md §4
+  action_on_approve: "fanout EXEC-SREV (script_reviewer)"
+  action_on_revise:  "re-run EXEC-SW with revision_note in user message"
+
+# ─── Escalation ──────────────────────────────────────────────────────────────
+escalation:
+  on_max_tokens_exceeded: "halve user_message context, retry once; then ESCALATED"
+  on_invalid_json:        "retry once with explicit schema reminder; then NEEDS_HUMAN_TWEAK"
+  on_cost_overrun:        "abort job, mark FAILED, log in costs table"
+  on_anthropic_error:     "retry up to 2 times; then NEEDS_HUMAN_TWEAK"
+
+# ─── Audit ───────────────────────────────────────────────────────────────────
+audit:
+  records: [job_id, model, input_tokens, output_tokens, cost_usd, started_at, completed_at]
+  storage: jobs + costs tables
