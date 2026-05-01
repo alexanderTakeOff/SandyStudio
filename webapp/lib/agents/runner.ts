@@ -405,6 +405,34 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-COPY': {
+      // Real copywriter — Haiku 4.5 (cheap + fast). Contract:
+      // specs/contracts/copywriter@v1.yaml.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runCopywriter({ inputs });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof CopywriterError) throw new Error(`EXEC-COPY: ${err.message}`);
+          throw err;
+        }
+      }
       const llm = await mockLLM({ agentId, episodeId });
       return {
         outputKind: 'text-md',
@@ -416,6 +444,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             model: agentMeta.model,
             markdown: llm.markdown,
             body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
           },
         },
       };
