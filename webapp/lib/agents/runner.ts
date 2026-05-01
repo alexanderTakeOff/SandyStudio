@@ -182,33 +182,58 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // Real screenwriter — Anthropic Sonnet, reads APPROVED brief from
       // upstream_assets, returns markdown + scenes_v1 JSON. Contract:
       // specs/contracts/screenwriter@v1.yaml.
-      try {
-        const sw = await runScreenwriter({ inputs });
-        return {
-          outputKind: 'text-md',
-          result: {
-            asset_paths: [],
-            cost_usd: sw.costUsd,
-            metadata: {
-              agent_id: agentId,
-              model: sw.model,
-              contract: sw.contract,
-              markdown: sw.markdown,
-              body: sw.body,
-              description: sw.description,
-              brief_asset_id: sw.briefAssetId,
-              mvp_missing_inputs: sw.notes,
-              provider_id: sw.model,
-              provider_used: 'anthropic',
+      //
+      // Auto-mock fallback (mirrors provider-resolver.ts pattern): when
+      // ANTHROPIC_API_KEY is not set we keep the mock path so replay-pilot
+      // and unit tests run without secrets. In webapp dev/prod the key is
+      // always present and the real path runs.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const sw = await runScreenwriter({ inputs });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: sw.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: sw.model,
+                contract: sw.contract,
+                markdown: sw.markdown,
+                body: sw.body,
+                description: sw.description,
+                brief_asset_id: sw.briefAssetId,
+                mvp_missing_inputs: sw.notes,
+                provider_id: sw.model,
+                provider_used: 'anthropic',
+              },
             },
-          },
-        };
-      } catch (err: unknown) {
-        if (err instanceof ScreenwriterError) {
-          throw new Error(`EXEC-SW: ${err.message}`);
+          };
+        } catch (err: unknown) {
+          if (err instanceof ScreenwriterError) {
+            throw new Error(`EXEC-SW: ${err.message}`);
+          }
+          throw err;
         }
-        throw err;
       }
+      // Fallback: mockLLM path (replay-pilot, unit tests, environments without key)
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
     }
 
     case 'EXEC-SREV':
