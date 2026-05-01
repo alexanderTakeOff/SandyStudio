@@ -14,6 +14,10 @@ export const CONCURRENCY_LIMITS = {
   'exec-srev':  5,
   'exec-sb':    5,
   'exec-wchk':  5,
+  // Episode reference generator (backbone v2). Per-episode limit will be
+  // higher once Step 5 fans out N images per storyboard shot — for now mock
+  // produces one ref so 5 is plenty.
+  'exec-eref':  3,
   'exec-edit':  5,
   'exec-copy':  5,
   // Visual generation — strictest. Highest cost, lowest provider tolerance.
