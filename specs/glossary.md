@@ -217,13 +217,12 @@ Minimum to prove the creative idea works for the pilot. For S01: 3 героя, 2
 The 9 episode stages above (Brief → Publish). Producer cannot skip a stage, but is free to choose HOW to fulfil each (which sub-agents, single-shot vs multi-pass). Backbone is fixed; composition is flexible.
 
 ### Continuity policy / Политика канона
-Any visual element in an episode reference, animatic, or shot MUST trace back to a LOCKED Series Bible reference. Validators (`EXEC-WCHK`, `ART-CONT`) enforce this gate. New visual elements require either a new canonical ref (Series Bible update, separate sub-pipeline) OR an explicit episode-only ref approved by Director.
+> **Policy lives in [`specs/rules/canon_versioning.md`](rules/canon_versioning.md).** Glossary holds definitions only.
+> Any visual element in an episode reference, animatic, or shot must trace back to a LOCKED Series Bible reference. The `EXEC-CONT` validator enforces this once Series Bible exists.
 
 ### Versioning policy / Политика версий
-- **Costume change in episode** → new Episode reference, NOT new canonical ref.
-- **Permanent appearance change** → new canonical ref version (`v02`), old version stays LOCKED for back-compat.
-- **Error / regression** → revision of current version, not new version.
-- Detailed rules in [`specs/company/series_bible.md`](company/series_bible.md) (planned).
+> **Policy lives in [`specs/rules/canon_versioning.md`](rules/canon_versioning.md).** Glossary holds definitions only.
+> Costume changes use Episode references; permanent canon changes create new Bible asset versions; errors are revisions of the current version. Full table in the rules document.
 
 ---
 
