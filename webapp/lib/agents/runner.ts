@@ -635,7 +635,7 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       drive_file_id: driveFileId,
       drive_web_view_url: driveWebViewUrl,
       status: 'DRAFT',
-      version: 1,
+      version: nextVersion,
       content,
       description,
     })
