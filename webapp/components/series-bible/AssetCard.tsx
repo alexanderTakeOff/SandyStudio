@@ -29,8 +29,8 @@ export interface AssetCardProps {
 }
 
 function readableNameFromFilename(filename: string): string {
-  // SS-S03-BIB-character_sandy-v01-LOCKED.png → "sandy"
-  const m = filename.match(/-BIB-[a-z_]+_([a-z0-9_-]+)-v\d+-/i);
+  // SS-S03-SBL-character_sandy-v01-LOCKED.png → "sandy"
+  const m = filename.match(/-SBL-[a-z_]+_([a-z0-9_-]+)-v\d+-/i);
   if (m && m[1]) return m[1].replace(/_/g, ' ');
   return filename;
 }
