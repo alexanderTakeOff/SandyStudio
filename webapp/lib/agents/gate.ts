@@ -59,14 +59,26 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     governance: 'AGENT_RUN',
   },
   'EXEC-WCHK': {
+    // Real EXEC-SB now produces ONE storyboard asset with 3 acts inline,
+    // not 3 separate STB rows. Threshold lowered to 1.
     required: [
-      { fileTypePrefix: 'STB', minCount: 3, label: 'Storyboard acts (3)' },
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
+    ],
+    governance: 'AGENT_RUN',
+  },
+  'EXEC-EREF': {
+    // Backbone v2: between Storyboard and Animatic. Reads APPROVED storyboard
+    // and generates per-episode reference images for each unique
+    // location/character pose. Step 5 implements real gpt-image-1 fan-out.
+    required: [
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
     ],
     governance: 'AGENT_RUN',
   },
   'EXEC-EDIT': {
+    // Animatic now consumes APPROVED Episode references (not raw storyboard).
     required: [
-      { fileTypePrefix: 'STB', minCount: 3, label: 'Approved storyboard acts (3)' },
+      { fileTypePrefix: 'IMG-episode_ref', minCount: 1, label: 'Approved episode references' },
     ],
     governance: 'AGENT_RUN',
   },
