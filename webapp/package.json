@@ -21,6 +21,8 @@
     "test-video": "tsx --env-file=.env.local scripts/test-video-provider.ts",
     "test-pipeline-drive": "tsx --env-file=.env.local scripts/test-drive-binary-pipeline.ts",
     "test-screenwriter": "tsx --env-file=.env.local scripts/test-screenwriter.ts",
+    "test-script-reviewer": "tsx --env-file=.env.local scripts/test-script-reviewer.ts",
+    "test-storyboarder": "tsx --env-file=.env.local scripts/test-storyboarder.ts",
     "reset-episode-after-brief": "tsx --env-file=.env.local scripts/reset-episode-after-brief.ts",
     "verify": "npm run typecheck && npm test"
   },
