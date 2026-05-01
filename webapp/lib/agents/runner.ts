@@ -29,6 +29,7 @@ import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { persistBinary, type PersistedBinary } from './persist-binary';
 import type { ResolvedProvider } from './provider-resolver';
 import { getAgent } from './registry';
+import { runScreenwriter, ScreenwriterError } from './runners/screenwriter';
 import type { AgentId, AgentInputs, AgentResult } from './types';
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
