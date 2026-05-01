@@ -110,6 +110,7 @@ const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'EXEC-SW':    'script',
   'EXEC-SREV':  'script',
   'EXEC-SB':    'storyboard',
+  'EXEC-EREF':  'episode_reference',
   'EXEC-WCHK':  'world_check',
   'EXEC-EDIT':  'animatic',
   'EXEC-VGEN':  'generation',
