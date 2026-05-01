@@ -206,7 +206,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         <Card className="lg:col-span-2">
           <CardBody>
             <div className="text-xs uppercase tracking-wider text-text-muted mb-3">Pipeline</div>
-            <ol className="space-y-1">
+            <ol className="space-y-0.5">
               {stages.map((s, i) => {
                 const active = selectedStage === s.id;
                 const onActivate = () => setSelectedStage(active ? null : s.id);
@@ -216,8 +216,36 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                     onActivate();
                   }
                 };
+                // Phase header — render a tiny label whenever the phase
+                // changes between consecutive rows. Backbone v2.5 groups
+                // 13 agent rows into 5 phases.
+                const prevPhase = i > 0 ? (stages[i - 1] as { phase?: string }).phase : null;
+                // Cast — `phase` is added in pipeline-stages.ts; older
+                // PipelineStageSnapshot typing may not expose it yet.
+                const phase = (s as unknown as { phase?: string }).phase;
+                const showPhase = phase && phase !== prevPhase;
+                const phaseLabel =
+                  phase === 'pre-production'
+                    ? 'Pre-production'
+                    : phase === 'production'
+                      ? 'Production'
+                      : phase === 'generation'
+                        ? 'Generation'
+                        : phase === 'distribution'
+                          ? 'Distribution'
+                          : phase === 'analytics'
+                            ? 'Analytics'
+                            : '';
                 return (
                   <li key={s.id}>
+                    {showPhase && (
+                      <div
+                        className="text-[10px] uppercase tracking-[0.15em] mt-3 mb-1 px-2"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {phaseLabel}
+                      </div>
+                    )}
                     <div
                       role="button"
                       tabIndex={0}
@@ -234,7 +262,14 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                       >
                         {NODE_GLYPH[s.state]}
                       </span>
-                      <span className="flex-1 text-sm text-text-primary">{s.label}</span>
+                      <span className="flex-1 text-sm text-text-primary">
+                        {(s as unknown as { emoji?: string }).emoji && (
+                          <span className="mr-1.5 text-xs">
+                            {(s as unknown as { emoji?: string }).emoji}
+                          </span>
+                        )}
+                        {s.label}
+                      </span>
                       {s.job_count && s.job_count.total > 0 && (
                         <span className="text-[10px] uppercase tracking-wider text-text-muted">
                           {s.job_count.done}/{s.job_count.total}
@@ -258,7 +293,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                     </div>
                     {i < stages.length - 1 && (
                       <div
-                        className="ml-5 h-3 w-px"
+                        className="ml-5 h-2 w-px"
                         style={{ background: NODE_COLOR[s.state], opacity: 0.4 }}
                       />
                     )}
