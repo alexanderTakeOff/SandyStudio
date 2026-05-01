@@ -9,6 +9,7 @@ import { execSwWriteScript } from './functions/exec-sw';
 import { execSrevReviewScript } from './functions/exec-srev';
 import { execSbCreateStoryboard } from './functions/exec-sb';
 import { execWchkCheckWorld } from './functions/exec-wchk';
+import { execErefGenerateReferences } from './functions/exec-eref';
 import { execEditCreateAnimatic } from './functions/exec-edit';
 import { execVgenGenerateShot } from './functions/exec-vgen';
 import { execMgenGenerateMusic } from './functions/exec-mgen';
