@@ -20,6 +20,7 @@
     "test-drive": "tsx --env-file=.env.local scripts/test-drive-provider.ts",
     "test-video": "tsx --env-file=.env.local scripts/test-video-provider.ts",
     "test-pipeline-drive": "tsx --env-file=.env.local scripts/test-drive-binary-pipeline.ts",
+    "test-screenwriter": "tsx --env-file=.env.local scripts/test-screenwriter.ts",
     "verify": "npm run typecheck && npm test"
   },
   "dependencies": {
