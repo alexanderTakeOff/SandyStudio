@@ -237,10 +237,24 @@ async function happyPathReplay(): Promise<void> {
     });
   }
 
-  // Phase B — world check + animatic
-  info('Phase B: world check + animatic');
+  // Phase B — backbone v2: world check + episode references + animatic
+  // World Check stays in the pipeline (not in pipeline view but still in
+  // gate.ts) for legacy compatibility. Episode references is the new gate
+  // before Animatic per backbone v2.
+  info('Phase B: world check + episode references + animatic');
   const wchk = await runPipelineStep(h, 'EXEC-WCHK');
   assert(wchk.success, `EXEC-WCHK (${displayWithEmoji('EXEC-WCHK')}) verified world consistency`);
+
+  // EXEC-EREF — Episode Reference Generator (backbone v2 stage)
+  const erefResult = await runPipelineStep(h, 'EXEC-EREF');
+  assert(erefResult.success, `EXEC-EREF (${displayWithEmoji('EXEC-EREF')}) produced episode references`);
+  // Promote the EREF asset to APPROVED with the canonical IMG-episode_ref
+  // file_type so EXEC-EDIT's gate (backbone v2) finds it.
+  const erefAsset = supabase.tables.assets.find((a) => a.id === erefResult.assetId);
+  if (erefAsset) {
+    erefAsset.file_type = 'IMG-episode_ref';
+    erefAsset.status = 'APPROVED';
+  }
 
   const editResult = await runPipelineStep(h, 'EXEC-EDIT');
   assert(editResult.success, `EXEC-EDIT (${displayWithEmoji('EXEC-EDIT')}) assembled the animatic`);
