@@ -106,38 +106,51 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
             className="absolute top-1 right-1"
             onClick={(e) => e.stopPropagation()}
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger className="p-1 rounded hover:bg-[var(--panel-hover-bg)] transition-colors">
-                <MoreHorizontal size={14} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => setDrawerOpen(true)}>
-                  <Eye size={12} /> Preview
-                </DropdownMenuItem>
-                {!isLocked && (
-                  <DropdownMenuItem onClick={() => setDrawerOpen(true)}>
-                    <Edit size={12} /> Edit
-                  </DropdownMenuItem>
-                )}
-                {!isLocked ? (
-                  <DropdownMenuItem onClick={lock} disabled={busy}>
-                    <Lock size={12} /> Lock
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem disabled>
-                    <Unlock size={12} /> Fork as v{(asset.version ?? 1) + 1} (planned)
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem disabled>
-                  Used in: (loading after Step 7)
-                </DropdownMenuItem>
-                {!isLocked && asset.version === 1 && (
-                  <DropdownMenuItem disabled>
-                    <Trash size={12} /> Delete (planned)
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {(() => {
+              const items: DropdownEntry[] = [
+                { label: 'Preview', icon: <Eye size={12} />, onSelect: () => setDrawerOpen(true) },
+              ];
+              if (!isLocked) {
+                items.push({ label: 'Edit', icon: <Edit size={12} />, onSelect: () => setDrawerOpen(true) });
+                items.push({ separator: true });
+                items.push({ label: 'Lock', icon: <Lock size={12} />, onSelect: lock, disabled: busy });
+              } else {
+                items.push({
+                  label: `Fork as v${(asset.version ?? 1) + 1} (planned)`,
+                  icon: <Unlock size={12} />,
+                  onSelect: () => {},
+                  disabled: true,
+                });
+              }
+              items.push({ separator: true });
+              items.push({
+                label: 'Used in: (Step 7)',
+                onSelect: () => {},
+                disabled: true,
+              });
+              if (!isLocked && asset.version === 1) {
+                items.push({ separator: true });
+                items.push({
+                  label: 'Delete (planned)',
+                  icon: <Trash size={12} />,
+                  onSelect: () => {},
+                  disabled: true,
+                  destructive: true,
+                });
+              }
+              return (
+                <DropdownMenu
+                  trigger={
+                    <span className="block p-1 rounded hover:bg-[var(--panel-hover-bg)] transition-colors">
+                      <MoreHorizontal size={14} />
+                    </span>
+                  }
+                  items={items}
+                  align="end"
+                  ariaLabel="Asset actions"
+                />
+              );
+            })()}
           </div>
         </div>
       </Card>
