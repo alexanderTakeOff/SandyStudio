@@ -16,13 +16,13 @@ const baseAsset = {
 };
 
 describe('buildPipelineSnapshot', () => {
-  it('returns 9 stages in canonical order (Story phantom removed in 5c)', () => {
+  it('returns 9 stages in canonical backbone-v2 order (Episode references inserted between Storyboard and Animatic; World Check hidden until Series Bible exists)', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     expect(stages.map((s) => s.id)).toEqual([
       'brief',
       'script',
       'storyboard',
-      'world_check',
+      'episode_reference',
       'animatic',
       'generation',
       'distribution',
