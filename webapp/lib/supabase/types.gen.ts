@@ -348,6 +348,7 @@ export type Database = {
           filename: string
           id: string
           revision_log: string | null
+          series_id: string | null
           staging_expires_at: string | null
           staging_path: string | null
           status: Database["public"]["Enums"]["asset_status"]
@@ -367,6 +368,7 @@ export type Database = {
           filename: string
           id?: string
           revision_log?: string | null
+          series_id?: string | null
           staging_expires_at?: string | null
           staging_path?: string | null
           status?: Database["public"]["Enums"]["asset_status"]
@@ -386,6 +388,7 @@ export type Database = {
           filename?: string
           id?: string
           revision_log?: string | null
+          series_id?: string | null
           staging_expires_at?: string | null
           staging_path?: string | null
           status?: Database["public"]["Enums"]["asset_status"]
@@ -398,6 +401,13 @@ export type Database = {
             columns: ["episode_id"]
             isOneToOne: false
             referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assets_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
             referencedColumns: ["id"]
           },
         ]
