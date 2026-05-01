@@ -99,7 +99,7 @@ The 9 stages every episode passes through, in order. Director may approve, reque
 **Stage 5.** Static panels — one per shot — with camera angle, location id, action description, duration. **Visualises STRUCTURE, not final picture.** Asset: `STB-storyboard`. Schema: [`specs/schemas/shot.md`](schemas/shot.md). Produced by `EXEC-SB`. Continuity-checked by `EXEC-WCHK` against Series Bible.
 
 ### Episode reference / Эпизод-референс
-**Stage 6 (NEW).** Episode-specific reference pictures: heroes in episode-specific moods/poses/costumes, locations in episode-specific lighting/angles, episode-only props. Director approves these BEFORE Animatic. Sources MUST be canonical refs from Series Bible (continuity check enforces this). Asset: `IMG-episode_ref` (planned). Produced by Visual Generator with character + location refs as input.
+**Stage 6.** Episode-specific reference pictures: heroes in episode-specific moods/poses/costumes, locations in episode-specific lighting/angles, episode-only props. Director approves these BEFORE Animatic. Sources MUST be canonical refs from Series Bible (continuity check enforces this once Bible exists). Asset: `IMG-episode_ref`. Produced by `EXEC-EREF` (Episode Reference Generator) — see `webapp/lib/agents/registry.ts`. MVP step (current): stub mock; Step 5 implements real `gpt-image-1` fan-out per unique location/character pose in the storyboard.
 
 ### Animatic / Аниматик
 **Stage 7.** Episode references arranged in timeline + scratch music + SFX. **First moment Director can validate comedy timing with sound.** A gag works or doesn't here — at low cost, before Veo. Asset: `VID-animatic`. Produced by `EXEC-EDIT`. Replaces today's silent placeholder.
