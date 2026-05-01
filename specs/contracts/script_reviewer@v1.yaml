@@ -1,0 +1,78 @@
+id: script_reviewer
+version: 1
+agent: EXEC-SREV
+display:
+  ru: Критик-редактор
+  en: Script Reviewer
+
+# ─── Model & cost ────────────────────────────────────────────────────────────
+model: claude-sonnet-4-6
+max_output_tokens: 3000     # verdict + per-check rationale fits well under
+cost_ceiling_usd: 0.30
+sla_minutes: 3
+
+# ─── Inputs ──────────────────────────────────────────────────────────────────
+input:
+  required:
+    - { id: brief,  file_type: SPC-brief,  status: APPROVED }
+    - { id: script, file_type: SCR-script, status: APPROVED }
+  optional_for_mvp:
+    - { id: style_bible,        file_type: BIB-style }
+    - { id: world_bible,        file_type: BIB-world }
+    - { id: character_profiles, file_type: BIB-character }
+
+# ─── Output ──────────────────────────────────────────────────────────────────
+output:
+  primary:
+    file_type: REV-script_qa
+    naming: "{episode_code}-REV-script_qa-v{NN}-DRAFT.md"
+    status_on_create: DRAFT
+  fields:
+    markdown:
+      required: true
+      min_chars: 600
+    json_block:
+      required: true
+      schema_ref: review_v1
+      shape:
+        episode_id: string
+        script_version: integer
+        verdict: enum [PASS, REVISE, FAIL]
+        checks_passed: string[]
+        issues:
+          type: array
+          items:
+            severity: enum [CRITICAL, MAJOR, MINOR]
+            area: enum [structure, character_voice, comic_beats, world_consistency, dialogue, pacing, brief_alignment]
+            scene_id: string
+            note: string
+            recommendation: string
+        notes: string[]
+
+# ─── Preconditions / Postconditions ──────────────────────────────────────────
+preconditions:
+  - "Brief and Script for this episode exist with status = APPROVED"
+  - "Script content contains a parseable scenes_v1 JSON block"
+
+postconditions:
+  - "One REV-script_qa asset created with status = DRAFT"
+  - "asset.content contains markdown report + fenced ```json block"
+  - "JSON verdict ∈ {PASS, REVISE, FAIL}; if not PASS, issues[] is non-empty"
+
+# ─── Approval gate ───────────────────────────────────────────────────────────
+approval_gate:
+  approver: director
+  category: B
+  action_on_approve: "fanout EXEC-SB (storyboarder)"
+  action_on_revise:  "block; Director sends script back to EXEC-SW with revision_note"
+
+# ─── Escalation ──────────────────────────────────────────────────────────────
+escalation:
+  on_invalid_json:    "retry once with explicit schema reminder; then NEEDS_HUMAN_TWEAK"
+  on_anthropic_error: "retry up to 2 times; then NEEDS_HUMAN_TWEAK"
+  on_cost_overrun:    "abort job, mark FAILED, log in costs table"
+
+# ─── Audit ───────────────────────────────────────────────────────────────────
+audit:
+  records: [job_id, model, input_tokens, output_tokens, cost_usd, started_at, completed_at, verdict]
+  storage: jobs + costs tables
