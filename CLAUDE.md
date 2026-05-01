@@ -425,11 +425,14 @@ When starting a new Claude Code session in this project:
 
 1. Read this `CLAUDE.md` file
 2. **Read `PLAN.md`** — this is the live state. §8 above is a snapshot; PLAN.md is always current.
-3. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
-4. Report current sprint and next step to Director (from PLAN.md `## CURRENT STATE`)
-5. Ask the Director: "What are we working on today?"
-6. Identify which agent role is needed and read that agent's file in `agents/`
-7. Proceed with task — write files only if the Director activates `===5===`
+3. **Read `specs/glossary.md`** — canonical RU+EN vocabulary for every term used in this project (roles, pipeline stages, statuses, modes). Never invent a term — look it up or add it to the glossary.
+4. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
+5. Report current sprint and next step to Director (from PLAN.md `## CURRENT STATE`)
+6. Ask the Director: "What are we working on today?"
+7. Identify which agent role is needed and read that agent's file in `agents/`
+8. Proceed with task — write files only if the Director activates `===5===`
+
+**Glossary discipline:** every new spec, agent, contract, or asset type MUST add its terms to `specs/glossary.md` in the same commit. If a term used in CLAUDE.md or any spec is not in the glossary, that's a defect — fix it.
 
 > Do NOT summarise the project from §8 alone — always combine with PLAN.md.
 > If §8 and PLAN.md disagree, PLAN.md wins.
