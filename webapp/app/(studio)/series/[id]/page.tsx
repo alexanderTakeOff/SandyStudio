@@ -44,11 +44,10 @@ export default function SeriesDetailPage({
   const pathname = usePathname();
   const tab: Tab = (search?.get('tab') as Tab) ?? 'overview';
 
-  const { data, isLoading, error } = useSWR<{ data: SeriesRow }>(
-    `/api/series/${id}`,
-    fetcher,
-  );
-  const series = data?.data;
+  const { data, isLoading, error } = useSWR<{
+    data: { series: SeriesRow; episode_count: number };
+  }>(`/api/series/${id}`, fetcher);
+  const series = data?.data?.series;
 
   const setTab = (t: Tab) => {
     const sp = new URLSearchParams(search?.toString() ?? '');
