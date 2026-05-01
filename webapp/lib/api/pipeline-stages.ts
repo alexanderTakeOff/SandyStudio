@@ -52,20 +52,24 @@ interface JobLike {
   status: string;
 }
 
-// Story stage is omitted: no current agent produces a story_brief asset.
-// The chain goes Brief → EXEC-SW (Script) directly. ART-HW is a Level-2
-// management agent (no Inngest function) and may emit story specs in
-// future phases — when it does, add { id: 'story', ... } back here.
+// Backbone v2 (specs/glossary.md §4 + Director's 14-point critique 2026-05-01):
+//   Brief → Script → Storyboard → Episode references → Animatic → Generation
+//        → Distribution → Publish → Analytics
+//
+// Story stage omitted: no current agent produces a story_brief asset (legacy).
+// World Check temporarily hidden from MVP pipeline view: a continuity check
+// only makes sense once a Series Bible is provisioned (Step 7+). Until then
+// it stays in the registry/runner but is not a visible stage.
 const STAGE_DEFINITIONS: Array<{ id: PipelineStageId; label: string; agents: string[] }> = [
-  { id: 'brief',        label: 'Brief',        agents: ['Director'] },
-  { id: 'script',       label: 'Script',       agents: ['EXEC-SW', 'EXEC-SREV'] },
-  { id: 'storyboard',   label: 'Storyboard',   agents: ['EXEC-SB'] },
-  { id: 'world_check',  label: 'World Check',  agents: ['EXEC-WCHK'] },
-  { id: 'animatic',     label: 'Animatic',     agents: ['EXEC-EDIT'] },
-  { id: 'generation',   label: 'Generation',   agents: ['EXEC-VGEN', 'EXEC-MGEN'] },
-  { id: 'distribution', label: 'Distribution', agents: ['EXEC-COPY', 'EXEC-THUMB'] },
-  { id: 'publish',      label: 'Publish',      agents: ['EXEC-PUB'] },
-  { id: 'analytics',    label: 'Analytics',    agents: ['EXEC-ANAL'] },
+  { id: 'brief',             label: 'Brief',              agents: ['Director'] },
+  { id: 'script',            label: 'Script',             agents: ['EXEC-SW', 'EXEC-SREV'] },
+  { id: 'storyboard',        label: 'Storyboard',         agents: ['EXEC-SB'] },
+  { id: 'episode_reference', label: 'Episode references', agents: ['EXEC-EREF'] },
+  { id: 'animatic',          label: 'Animatic',           agents: ['EXEC-EDIT'] },
+  { id: 'generation',        label: 'Generation',         agents: ['EXEC-VGEN', 'EXEC-MGEN'] },
+  { id: 'distribution',      label: 'Distribution',       agents: ['EXEC-COPY', 'EXEC-THUMB'] },
+  { id: 'publish',           label: 'Publish',            agents: ['EXEC-PUB'] },
+  { id: 'analytics',         label: 'Analytics',          agents: ['EXEC-ANAL'] },
 ];
 
 // Heuristics for stage attribution from file_type prefix.
