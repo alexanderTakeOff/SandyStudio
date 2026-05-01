@@ -7,7 +7,7 @@ display:
 
 # ─── Model & cost ────────────────────────────────────────────────────────────
 model: claude-sonnet-4-6
-max_output_tokens: 4000
+max_output_tokens: 8000      # 60s script in Russian + scenes JSON ≈ 5-7k output tokens
 cost_ceiling_usd: 0.50      # hard limit per single execution
 sla_minutes: 5
 
