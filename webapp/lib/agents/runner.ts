@@ -807,6 +807,20 @@ export interface SaveOutputArgs {
 export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: string }> {
   const { supabase, agentId, episodeId, episodeCode, result, outputKind, variant } = args;
 
+  // Some agents (e.g. EXEC-EREF) insert N assets directly inside their runner
+  // and ask saveAgentOutput to step aside. They pass `skip_save: true` and
+  // `inserted_asset_ids: [...]` in metadata; we return the first one as the
+  // primary asset id so the rest of the factory chain keeps working.
+  if (result.metadata.skip_save === true) {
+    const ids = result.metadata.inserted_asset_ids;
+    if (Array.isArray(ids) && typeof ids[0] === 'string') {
+      return { assetId: ids[0] };
+    }
+    throw new Error(
+      'saveAgentOutput: skip_save was set but inserted_asset_ids missing or empty',
+    );
+  }
+
   const fileTypeBase = FILE_TYPE_BY_AGENT[agentId];
   if (!fileTypeBase) {
     throw new Error(`saveAgentOutput: agent ${agentId} has no file_type mapping`);
