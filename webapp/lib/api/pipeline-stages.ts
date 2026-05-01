@@ -1,21 +1,41 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // lib/api/pipeline-stages.ts
-// Episode pipeline stage derivation per pipeline_view.md §3.1 + §11.
-// Maps episode + assets + jobs into a 10-stage DAG state snapshot.
+// Episode pipeline view derivation — backbone v2.5 (Step 5).
+//
+// Pre-Step-5 design grouped agents into stages (e.g. "Script" hid both EXEC-SW
+// and EXEC-SREV under one row). Director's feedback (2026-05-01): show every
+// agent as its own row, including background validators (`EXEC-SREV`,
+// `EXEC-CONT` once it lands), so nothing happens invisibly.
+//
+// Pipeline rows now correspond 1-to-1 with agents, grouped visually by phase.
+// `stage` was kept as the type name for backward compat, but conceptually
+// each row is now a pipeline-agent slot.
 // ──────────────────────────────────────────────────────────────────────────────
 
 export type PipelineStageId =
   | 'brief'
-  | 'story'
+  | 'screenwriter'
+  | 'script_reviewer'
+  | 'storyboarder'
+  | 'continuity_check'
+  | 'episode_references'
+  | 'animatic'
+  | 'visual_generator'
+  | 'music_generator'
+  | 'copywriter'
+  | 'thumbnail_creator'
+  | 'publisher'
+  | 'analytics_collector'
+  // Legacy ids kept so old test fixtures still compile during transition.
   | 'script'
   | 'storyboard'
   | 'episode_reference'
   | 'world_check'
-  | 'animatic'
   | 'generation'
   | 'distribution'
   | 'publish'
-  | 'analytics';
+  | 'analytics'
+  | 'story';
 
 export type PipelineNodeState =
   | 'idle'
@@ -24,16 +44,28 @@ export type PipelineNodeState =
   | 'blocked'
   | 'failed';
 
+export type PipelinePhase =
+  | 'pre-production'
+  | 'production'
+  | 'generation'
+  | 'distribution'
+  | 'analytics';
+
 export interface PipelineStageSnapshot {
   id: PipelineStageId;
+  /** Human label shown in the UI row. */
   label: string;
-  state: PipelineNodeState;
+  /** Agents that contribute to this row. Now usually a single id. */
   agents: string[];
+  /** Visual phase grouping for the pipeline view. */
+  phase: PipelinePhase;
+  /** Optional emoji for the row icon (matches registry.ts). */
+  emoji?: string;
+  state: PipelineNodeState;
   latest_asset_id?: string;
-  /** file_type of the latest asset — drives kebab Edit-vs-Preview branching (text → editor, binary → drawer). */
   latest_asset_type?: string;
   job_count?: { total: number; done: number; running: number; failed: number };
-  /** Count of assets in this stage with status REVIEW. Drives kebab "Approve all" visibility — non-zero means there is something to approve, even if the stage state has been overridden by a FAILED job. */
+  /** Count of assets in this stage with status REVIEW. */
   assets_in_review?: number;
 }
 
@@ -52,73 +84,67 @@ interface JobLike {
   status: string;
 }
 
-// Backbone v2 (specs/glossary.md §4 + Director's 14-point critique 2026-05-01):
-//   Brief → Script → Storyboard → Episode references → Animatic → Generation
-//        → Distribution → Publish → Analytics
-//
-// Story stage omitted: no current agent produces a story_brief asset (legacy).
-// World Check temporarily hidden from MVP pipeline view: a continuity check
-// only makes sense once a Series Bible is provisioned (Step 7+). Until then
-// it stays in the registry/runner but is not a visible stage.
-const STAGE_DEFINITIONS: Array<{ id: PipelineStageId; label: string; agents: string[] }> = [
-  { id: 'brief',             label: 'Brief',              agents: ['Director'] },
-  { id: 'script',            label: 'Script',             agents: ['EXEC-SW', 'EXEC-SREV'] },
-  { id: 'storyboard',        label: 'Storyboard',         agents: ['EXEC-SB'] },
-  { id: 'episode_reference', label: 'Episode references', agents: ['EXEC-EREF'] },
-  { id: 'animatic',          label: 'Animatic',           agents: ['EXEC-EDIT'] },
-  { id: 'generation',        label: 'Generation',         agents: ['EXEC-VGEN', 'EXEC-MGEN'] },
-  { id: 'distribution',      label: 'Distribution',       agents: ['EXEC-COPY', 'EXEC-THUMB'] },
-  { id: 'publish',           label: 'Publish',            agents: ['EXEC-PUB'] },
-  { id: 'analytics',         label: 'Analytics',          agents: ['EXEC-ANAL'] },
+interface RowDef {
+  id: PipelineStageId;
+  label: string;
+  agents: string[];
+  phase: PipelinePhase;
+  emoji: string;
+}
+
+// Per-agent rows. `world_check` (EXEC-WCHK) stays out of MVP pipeline view
+// until Series Bible exists (Step 7+) — gate.ts and registry.ts still know
+// about it for legacy compatibility.
+const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
+  { id: 'brief',               label: 'Brief',              agents: ['Director'],   phase: 'pre-production', emoji: '🎬' },
+  { id: 'screenwriter',        label: 'Screenwriter',       agents: ['EXEC-SW'],    phase: 'pre-production', emoji: '✍️' },
+  { id: 'script_reviewer',     label: 'Script Reviewer',    agents: ['EXEC-SREV'],  phase: 'pre-production', emoji: '🔍' },
+  { id: 'storyboarder',        label: 'Storyboarder',       agents: ['EXEC-SB'],    phase: 'production',     emoji: '🎬' },
+  { id: 'continuity_check',    label: 'Continuity Check',   agents: ['EXEC-CONT'],  phase: 'production',     emoji: '🌍' },
+  { id: 'episode_references',  label: 'Episode references', agents: ['EXEC-EREF'],  phase: 'production',     emoji: '🖼️' },
+  { id: 'animatic',            label: 'Animatic',           agents: ['EXEC-EDIT'],  phase: 'production',     emoji: '🎞️' },
+  { id: 'visual_generator',    label: 'Visual Generator',   agents: ['EXEC-VGEN'],  phase: 'generation',     emoji: '🎥' },
+  { id: 'music_generator',     label: 'Music',              agents: ['EXEC-MGEN'],  phase: 'generation',     emoji: '🎵' },
+  { id: 'copywriter',          label: 'Copywriter',         agents: ['EXEC-COPY'],  phase: 'distribution',   emoji: '📝' },
+  { id: 'thumbnail_creator',   label: 'Thumbnail',          agents: ['EXEC-THUMB'], phase: 'distribution',   emoji: '🖼️' },
+  { id: 'publisher',           label: 'Publish',            agents: ['EXEC-PUB'],   phase: 'distribution',   emoji: '🚀' },
+  { id: 'analytics_collector', label: 'Analytics',          agents: ['EXEC-ANAL'],  phase: 'analytics',      emoji: '📊' },
 ];
 
-// Heuristics for stage attribution from file_type prefix.
-//
-// runner.ts writes file_type values like:
-//   - SPC-brief, SPC-metadata
-//   - SCR-script
-//   - REV-script_qa, REV-world_check, REV-publish_log, REV-analytics
-//   - STB-storyboard, STB-act2, STB-act3
-//   - VID-animatic, VID-shot-shotN
-//   - IMG-thumbnail
-//   - AUD-music-main
-//
-// Pre-Phase-5c heuristic compared `file_type === 'STB'` (bare code) which
-// never matched the long form — DAG showed all stages idle.
+// Map a file_type → row id. Each agent's primary asset goes to its own row.
 const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
   const ft = asset.file_type;
   if (ft.startsWith('SPC-brief')) return 'brief';
-  if (ft.startsWith('SPC-story')) return 'story';
-  if (ft.startsWith('SCR'))       return 'script';
-  if (ft.startsWith('STB'))       return 'storyboard';
-  if (ft.startsWith('IMG-episode_ref')) return 'episode_reference';
-  if (ft === 'REV-world_check')   return 'world_check';
-  if (ft === 'REV-script_qa')     return 'script';
+  if (ft.startsWith('SCR'))       return 'screenwriter';
+  if (ft === 'REV-script_qa')     return 'script_reviewer';
+  if (ft.startsWith('STB'))       return 'storyboarder';
+  if (ft === 'REV-world_check')   return 'continuity_check';
+  if (ft.startsWith('IMG-episode_ref')) return 'episode_references';
   if (ft.startsWith('VID-animatic')) return 'animatic';
-  if (ft.startsWith('VID-shot') || ft.startsWith('AUD-music')) return 'generation';
-  if (ft.startsWith('SPC-metadata') || ft.startsWith('IMG-thumbnail') || ft.startsWith('SPC-copy')) {
-    return 'distribution';
-  }
-  if (ft.startsWith('REV-publish'))  return 'publish';
-  if (ft.startsWith('REV-analytics')) return 'analytics';
+  if (ft.startsWith('VID-shot'))     return 'visual_generator';
+  if (ft.startsWith('AUD-music'))    return 'music_generator';
+  if (ft.startsWith('SPC-metadata') || ft.startsWith('SPC-copy')) return 'copywriter';
+  if (ft.startsWith('IMG-thumbnail')) return 'thumbnail_creator';
+  if (ft.startsWith('REV-publish'))   return 'publisher';
+  if (ft.startsWith('REV-analytics')) return 'analytics_collector';
   return null;
 };
 
 const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'Director':   'brief',
-  'ART-HW':     'story',
-  'EXEC-SW':    'script',
-  'EXEC-SREV':  'script',
-  'EXEC-SB':    'storyboard',
-  'EXEC-EREF':  'episode_reference',
-  'EXEC-WCHK':  'world_check',
+  'EXEC-SW':    'screenwriter',
+  'EXEC-SREV':  'script_reviewer',
+  'EXEC-SB':    'storyboarder',
+  'EXEC-CONT':  'continuity_check',
+  'EXEC-WCHK':  'continuity_check', // legacy WCHK feeds the Continuity row when CONT is not yet shipped
+  'EXEC-EREF':  'episode_references',
   'EXEC-EDIT':  'animatic',
-  'EXEC-VGEN':  'generation',
-  'EXEC-MGEN':  'generation',
-  'EXEC-COPY':  'distribution',
-  'EXEC-THUMB': 'distribution',
-  'EXEC-PUB':   'publish',
-  'EXEC-ANAL':  'analytics',
+  'EXEC-VGEN':  'visual_generator',
+  'EXEC-MGEN':  'music_generator',
+  'EXEC-COPY':  'copywriter',
+  'EXEC-THUMB': 'thumbnail_creator',
+  'EXEC-PUB':   'publisher',
+  'EXEC-ANAL':  'analytics_collector',
 };
 
 export function buildPipelineSnapshot(
@@ -144,7 +170,7 @@ export function buildPipelineSnapshot(
 
   const status = episodeStatus.toUpperCase();
 
-  return STAGE_DEFINITIONS.map<PipelineStageSnapshot>((def) => {
+  return ROW_DEFINITIONS.map<PipelineStageSnapshot>((def) => {
     const stageAssets = assetsByStage.get(def.id) ?? [];
     const stageJobs = jobsByStage.get(def.id) ?? [];
 
@@ -159,25 +185,19 @@ export function buildPipelineSnapshot(
     );
     const hasFailedJob = stageJobs.some((j) => j.status === 'FAILED');
 
-    // Precedence: approved/running > review-blocked > failed > idle.
-    // A stage with at least one APPROVED asset is APPROVED, regardless of how
-    // many old FAILED jobs sit in the audit trail (cancelled retries, dev
-    // crashes, prior revisions). Failure only wins when there is genuinely
-    // nothing approved and nothing in flight.
     if (hasRunningJob) {
       state = 'running';
     } else if (hasApprovedAsset) {
       state = 'approved';
     } else if (hasReviewAsset) {
-      state = 'blocked'; // awaiting Director
+      state = 'blocked';
     } else if (hasFailedJob) {
       state = 'failed';
     }
 
-    // Episode-status overrides
     if (def.id === 'brief' && status === 'BRIEF_APPROVED') state = 'approved';
-    if (def.id === 'publish' && status === 'PUBLISHED') state = 'approved';
-    if (def.id === 'analytics' && status === 'COMPLETE') state = 'approved';
+    if (def.id === 'publisher' && status === 'PUBLISHED') state = 'approved';
+    if (def.id === 'analytics_collector' && status === 'COMPLETE') state = 'approved';
 
     const latest = [...stageAssets].sort((a, b) =>
       b.created_at.localeCompare(a.created_at),
@@ -186,8 +206,10 @@ export function buildPipelineSnapshot(
     return {
       id: def.id,
       label: def.label,
-      state,
       agents: def.agents,
+      phase: def.phase,
+      emoji: def.emoji,
+      state,
       latest_asset_id: latest?.id,
       latest_asset_type: latest?.file_type,
       assets_in_review: stageAssets.filter((a) => a.status === 'REVIEW').length,
