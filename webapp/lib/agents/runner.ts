@@ -366,6 +366,35 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       };
     }
 
+    case 'EXEC-EREF': {
+      // EXEC-EREF: episode reference image generator (backbone v2 stage between
+      // Storyboard and Animatic). Real implementation lands in Step 5 of the
+      // contract pipeline rollout — it will iterate through the storyboard's
+      // unique location/character poses and call gpt-image-1 per ref.
+      //
+      // For now: mock placeholder so the pipeline view shows the correct
+      // structure and Director can walk the flow end-to-end. The mock writes
+      // an IMG-episode_ref asset with a marker description.
+      const image = await mockImage({
+        episodeId,
+        assetId: `episode_ref-${episodeId.slice(-8)}`,
+      });
+      return {
+        outputKind: 'image-png',
+        result: {
+          asset_paths: [image.drive_path],
+          cost_usd: image.cost_usd,
+          metadata: {
+            ...image,
+            agent_id: agentId,
+            provider_id: 'mock',
+            provider_used: 'mock',
+            description: `Stub EXEC-EREF — Step 5 will replace with real gpt-image-1 generation per storyboard shot`,
+          },
+        },
+      };
+    }
+
     case 'EXEC-EDIT': {
       // EXEC-EDIT: produce an animatic video. Real path uses Veo 3 via Gemini
       // API (8s clip, fast quality). Mock path keeps the existing fan-out.
