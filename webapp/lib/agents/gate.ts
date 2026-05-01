@@ -184,6 +184,39 @@ export async function validateAgentInputs(
     };
   }
 
+  // ── Step 1.5: EXEC-EREF Series Bible canon precondition ──────────────────
+  // Backbone v2 / Step 4 of contract pipeline rollout: Episode references
+  // can only be generated when the parent series has at least 1 LOCKED
+  // canonical character ref AND 1 LOCKED style guide. Without canon there is
+  // nothing to anchor episode visuals on — see specs/company/series_bible.md.
+  if (agentId === 'EXEC-EREF') {
+    const { seriesIdForEpisode, countLockedBibleSections } = await import(
+      '../api/series-bible'
+    );
+    const seriesId = await seriesIdForEpisode(supabase, episodeId);
+    if (!seriesId) {
+      return {
+        passed: false,
+        missing: ['parent series'],
+        reason:
+          'EXEC-EREF requires a parent series to look up Series Bible canon, but the episode is not linked to a series.',
+      };
+    }
+    const counts = await countLockedBibleSections(supabase, seriesId);
+    const bibleMissing: string[] = [];
+    if (counts.character < 1)
+      bibleMissing.push('≥1 LOCKED Series Bible character (Heroes section)');
+    if (counts.style < 1)
+      bibleMissing.push('≥1 LOCKED Series Bible style guide (Style section)');
+    if (bibleMissing.length > 0) {
+      return {
+        passed: false,
+        missing: bibleMissing,
+        reason: `Series Bible canon not provisioned: ${bibleMissing.join(' AND ')}. Open the series Bible UI and LOCK the missing entries before re-triggering EXEC-EREF.`,
+      };
+    }
+  }
+
   // ── Step 2: governance authority ───────────────────────────────────────────
   // Read episode's current governance_mode for the enforceMode call.
   const { data: episode, error: epErr } = await supabase
