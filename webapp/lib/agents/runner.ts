@@ -349,7 +349,60 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       };
     }
 
-    case 'EXEC-WCHK':
+    case 'EXEC-WCHK': {
+      // Pivoted: was "World Checker", now Continuity Supervisor — validates
+      // storyboard against LOCKED Series Bible canon. Contract:
+      // specs/contracts/continuity_check@v1.yaml.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey && supabase) {
+        try {
+          const r = await runContinuityCheck({ inputs, supabase });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                verdict: r.verdict,
+                storyboard_asset_id: r.storyboardAssetId,
+                bible_snapshot: r.bibleSnapshot,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof ContinuityCheckError) {
+            throw new Error(`EXEC-WCHK: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mockLLM
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
     case 'EXEC-COPY': {
       const llm = await mockLLM({ agentId, episodeId });
       return {
