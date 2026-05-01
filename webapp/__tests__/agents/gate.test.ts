@@ -46,13 +46,15 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
     expect(result.reason).toMatch(/Brief/);
   });
 
-  it('EXEC-WCHK requires 3 APPROVED storyboard assets', async () => {
+  it('EXEC-WCHK requires at least 1 APPROVED storyboard asset (backbone v2)', async () => {
+    // Real EXEC-SB now produces ONE storyboard asset with all 3 acts inline,
+    // so the gate threshold dropped from 3 to 1. With ZERO approved storyboards
+    // the gate must still fail.
     const sup = makeMockSupabase({
       episodes: [{ id: 'ep-1', governance_mode: 4 }],
       assets: [
-        { id: 'a1', episode_id: 'ep-1', file_type: 'STB-act1', status: 'APPROVED' },
-        { id: 'a2', episode_id: 'ep-1', file_type: 'STB-act2', status: 'APPROVED' },
-        // only 2 approved — should fail
+        // No APPROVED STB asset — gate must fail.
+        { id: 'a1', episode_id: 'ep-1', file_type: 'STB-storyboard', status: 'DRAFT' },
       ],
     });
     const result = await validateAgentInputs({
@@ -61,7 +63,7 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
       episodeId: 'ep-1',
     });
     expect(result.passed).toBe(false);
-    expect(result.reason).toMatch(/Storyboard/);
+    expect(result.reason).toMatch(/storyboard/i);
   });
 
   it('EXEC-PUB blocks in Mode 1 without director_confirm', async () => {
