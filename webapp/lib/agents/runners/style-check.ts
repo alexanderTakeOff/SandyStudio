@@ -176,7 +176,7 @@ export async function runStyleCheck(args: RunStyleCheckArgs): Promise<StyleCheck
         styleText: style.text.slice(0, 2400),
       }),
       model: STYLE_CHECK_MODEL,
-      maxOutputTokens: 800,
+      maxOutputTokens: 1500,
       expectsJson: true,
     });
   } catch (err: unknown) {
