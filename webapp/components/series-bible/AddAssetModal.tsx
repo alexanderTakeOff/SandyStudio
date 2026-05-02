@@ -171,8 +171,10 @@ export function AddAssetModal({
   function pickSuggestion(s: CrossSeriesSuggestion) {
     setDescription(s.description ?? '');
     // Extract slug hint from filename like SS-S01-BIB-character_sandy-v01-LOCKED.png
-    const m = s.filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
-    if (m && m[1]) setSlug(m[1]);
+    if (s.file_type) {
+      const slug = bibleSlug(s.file_type);
+      if (slug) setSlug(slug);
+    }
   }
 
   return (
