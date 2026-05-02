@@ -146,8 +146,21 @@ export function AssetDetailDrawer({
   if (!open || typeof document === 'undefined') return null;
 
   const editable = EDITABLE_STATUSES.has(asset.status);
-  const previewSrc = asset.staging_path || asset.drive_web_view_url || asset.drive_path || null;
-  const isImage = previewSrc && (previewSrc.startsWith('/') || previewSrc.startsWith('http'));
+  // Pick the first browser-loadable URL across all candidates. Some legacy data
+  // stores Windows absolute paths in staging_path (`C:\...`); those are NOT
+  // loadable by <img> — fall through to drive_path / Drive view url / the
+  // image_prompt history's stored URL.
+  const candidates: Array<string | null | undefined> = [
+    asset.drive_path,
+    asset.staging_path,
+    asset.drive_web_view_url,
+    currentPromptEntry?.staging_path,
+    currentPromptEntry?.drive_web_view_url,
+  ];
+  const previewSrc = candidates.find(
+    (c): c is string => typeof c === 'string' && (c.startsWith('/') || c.startsWith('http')),
+  ) ?? null;
+  const isImage = !!previewSrc;
 
   async function saveTextEdits() {
     setBusy(true);
