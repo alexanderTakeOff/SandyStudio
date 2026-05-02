@@ -334,7 +334,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                 small thumbnails, click → Drawer with ← back. */}
             {selectedStage === 'episode_references' && (
               <div className="mb-3">
-                <EpisodeReferencesGallery episodeId={id} />
+                <EpisodeReferencesGallery episodeId={id} seriesId={episode.series_id} />
               </div>
             )}
 
