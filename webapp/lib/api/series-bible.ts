@@ -144,11 +144,18 @@ export interface AssetProvenance {
   last_modified_mode?: GovernanceModeNum;
 }
 
-/** One entry in image_prompt.history. Each Director reroll appends here. */
+/** One entry in image_prompt.history. Each Director reroll, agent enrich, or upload appends here. */
 export interface ImagePromptHistoryEntry {
   version: number;
   prompt: string;
-  source: 'EXEC-BIBLE-AUTHOR' | 'director_edit' | 'manual_generate' | 'restore';
+  source:
+    | 'EXEC-BIBLE-AUTHOR'
+    | 'EXEC-EREF'
+    | 'EXEC-THUMB'
+    | 'director_edit'
+    | 'director_upload'
+    | 'manual_generate'
+    | 'restore';
   at: string;
   cost_usd: number;
   staging_path: string | null;
@@ -159,6 +166,14 @@ export interface ImagePromptHistoryEntry {
   quality: 'low' | 'medium' | 'high' | null;
   /** Optional: when source='restore', which previous version was duplicated forward. */
   restored_from_version?: number;
+  /** Governance mode at the moment of this entry. */
+  mode_at_time?: GovernanceModeNum;
+  /** Original filename when source='director_upload'. */
+  upload_original_filename?: string;
+  /** Style Guardian verdict at the moment of generation, if pre-flight ran. */
+  style_check_verdict?: 'PASS' | 'WARN' | 'FAIL' | null;
+  /** True if Auto-Rewrite Style Guardian rewrote the prompt before generation. */
+  style_check_rewritten?: boolean;
 }
 
 /** image_prompt sub-doc — current pointer + ordered history. */
