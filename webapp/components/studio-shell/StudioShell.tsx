@@ -11,6 +11,7 @@ import { StudioSidebar } from './StudioSidebar';
 import { StudioTopbar } from './StudioTopbar';
 import { AmbientAssetField } from './AmbientAssetField';
 import { ConciergePanel } from '@/components/concierge/ConciergePanel';
+import { NotificationDotStyles } from '@/components/notifications/NotificationDot';
 
 interface StudioShellProps {
   children: ReactNode;
