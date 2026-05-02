@@ -239,30 +239,12 @@ export function createAgentInngestFunction<E extends string>(
           .update({ status: targetStatus })
           .eq('id', out.assetId);
 
-        // EXEC-SB special case: gate.ts requires 3 STB acts but the mock
-        // produces 1 unified storyboard. Spoof act2 + act3 rows so the
-        // EXEC-WCHK and EXEC-EDIT gates (minCount=3) pass. Real provider
-        // will produce 3 acts natively in Sprint 10.
-        if (spec.agentId === 'EXEC-SB') {
-          for (const act of [2, 3] as const) {
-            await supabase
-              .from('assets')
-              .insert({
-                episode_id: episodeId,
-                agent_id: spec.agentId,
-                file_type: `STB-act${act}`,
-                filename: `${ep.episode_code}-STB-act${act}-v01-DRAFT.md`,
-                status: targetStatus,
-                version: 1,
-                description: `Mock storyboard act ${act} (auto-generated to satisfy EXEC-WCHK 3-act gate).`,
-                content: `# Storyboard — Act ${act}\n\n_Mock placeholder — real EXEC-SB will produce three acts natively in Phase 8._\n\n## Shots\n\n- shot${act * 3 - 2}: TBD\n- shot${act * 3 - 1}: TBD\n- shot${act * 3}: TBD\n`,
-              } as never)
-              .then(
-                () => undefined,
-                () => undefined,
-              );
-          }
-        }
+        // (Removed 2026-05-02) Earlier code spoofed STB-act2 + STB-act3 mock
+        // rows after EXEC-SB to satisfy a legacy WCHK gate that required
+        // minCount=3. The real Storyboarder produces a single STB-storyboard
+        // asset with all 3 acts inline (JSON), and gate.ts now uses minCount=1.
+        // Spoofing pollutes the storyboard stage with "Mock placeholder" rows
+        // visible in the kebab editor — confusing Director. Removed entirely.
 
         // Write activity_event so the Pipeline View feed shows agent
         // milestones, not just Director approvals. metadata.file_type lets

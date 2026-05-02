@@ -128,7 +128,11 @@
       "Bash(curl -s -o /dev/null -w \"second /login => HTTP %{http_code}\\\\n\" http://localhost:3000/login)",
       "mcp__30e3b4b7-df3c-4386-9bf7-421c3c073335__apply_migration",
       "Bash(awk '/Tables: \\\\{/{f=1} f && /assets:/{p=1} p{print; if\\(/^      [a-z]/ && !/assets/\\) c++; if\\(c>2\\) exit}' lib/supabase/types.gen.ts)",
-      "Bash(where ffmpeg *)"
+      "Bash(where ffmpeg *)",
+      "Bash(curl -s -o /dev/null -w \"next /login => %{http_code}, inngest health => \" http://localhost:3000/login)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8288/health)",
+      "Bash(curl -s -o /dev/null -w \"next /login => HTTP %{http_code}\\\\n\" http://localhost:3000/login)",
+      "Bash(curl -s -o /dev/null -w \"inngest /health => HTTP %{http_code}\\\\n\" http://localhost:8288/health)"
     ]
   }
 }
