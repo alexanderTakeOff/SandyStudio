@@ -138,7 +138,8 @@
       "Bash(curl -sS -o /dev/null -w \"Inngest dev :8288 -> %{http_code}\\\\n\" http://localhost:8288/)",
       "Bash(curl -sS -o /dev/null -w \"Webapp dev :3000 -> %{http_code}\\\\n\" http://localhost:3000/)",
       "Bash(curl -sS -o /dev/null -w \"%{http_code}\" http://localhost:8288/)",
-      "Bash(curl -sS \"http://localhost:3000/api/jobs?limit=3&episode_id=63ba7f1b-b8b3-4cdb-81d5-3d4c70bc23dd\")"
+      "Bash(curl -sS \"http://localhost:3000/api/jobs?limit=3&episode_id=63ba7f1b-b8b3-4cdb-81d5-3d4c70bc23dd\")",
+      "Bash(curl -sS \"http://localhost:3000/api/jobs?limit=2&episode_id=63ba7f1b-b8b3-4cdb-81d5-3d4c70bc23dd\")"
     ]
   }
 }

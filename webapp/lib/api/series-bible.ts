@@ -85,6 +85,42 @@ export function sectionFromFileType(fileType: string): SbSection | null {
   return null;
 }
 
+/**
+ * Canonical "what is this Bible asset's slug?" helper — single source of truth.
+ *
+ * file_type is the structured carrier (`SBL-{section}_{slug}`). Filename is
+ * derivative — adds v01/DRAFT suffixes that get rewritten on every status
+ * change — so DO NOT parse the filename for this purpose. Past bug: a greedy
+ * regex over filename (`-SBL-[a-z_]+_(...)-v\d+-`) collapsed compound slugs
+ * (`city_systems` → `systems`) and broke Continuity Check matching against
+ * canonical character IDs. Two callers had the buggy regex, two had the
+ * correct one — classic DRY violation. This helper kills all the copies.
+ *
+ * Every component that needs the slug MUST call this function. Inline regex
+ * over filename is forbidden — eslint-no-restricted-syntax + a unit test
+ * enforce it.
+ */
+export function bibleSlugFromFileType(fileType: string): {
+  section: SbSection;
+  slug: string;
+} | null {
+  if (!fileType.startsWith(BIBLE_FILE_TYPE_PREFIX)) return null;
+  const tail = fileType.slice(BIBLE_FILE_TYPE_PREFIX.length);
+  for (const sec of BIBLE_SECTIONS) {
+    if (tail === sec) return { section: sec, slug: '' };
+    const prefix = `${sec}_`;
+    if (tail.startsWith(prefix)) {
+      return { section: sec, slug: tail.slice(prefix.length).toLowerCase() };
+    }
+  }
+  return null;
+}
+
+/** Convenience wrapper: returns just the slug, null if file_type is not SBL-*. */
+export function bibleSlug(fileType: string): string | null {
+  return bibleSlugFromFileType(fileType)?.slug ?? null;
+}
+
 // ── Asset metadata schema (assets.metadata jsonb, migration 0020) ─────────────
 //
 // We persist three structured side-documents inside the single JSONB column,
