@@ -79,6 +79,7 @@ export function StudioSidebar() {
           const active =
             item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
           const Icon = item.icon;
+          const showBadge = item.href === '/inbox' && inboxCount > 0;
           return (
             <Link
               key={item.href}
@@ -92,7 +93,19 @@ export function StudioSidebar() {
               )}
             >
               <Icon size={16} strokeWidth={1.7} />
-              <span className="truncate">{item.label}</span>
+              <span className="truncate flex-1">{item.label}</span>
+              {showBadge && (
+                <span
+                  className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-semibold rounded-full"
+                  style={{
+                    background: 'var(--accent-warning, rgb(251, 146, 60))',
+                    color: 'var(--text-inverse, white)',
+                  }}
+                  title={`${inboxCount} pending item${inboxCount === 1 ? '' : 's'}`}
+                >
+                  {inboxCount > 99 ? '99+' : inboxCount}
+                </span>
+              )}
             </Link>
           );
         })}
