@@ -19,7 +19,7 @@ import {
   AnthropicTextError,
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
-import { seriesIdForEpisode } from '../../api/series-bible';
+import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
 import type { AgentInputs } from '../types';
 
 export const CONT_CONTRACT = 'continuity_check@v1';
