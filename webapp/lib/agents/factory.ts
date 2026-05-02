@@ -106,10 +106,10 @@ export function createAgentInngestFunction<E extends string>(
       };
       const { episodeId } = eventData;
 
-      // ── Step 1: insert RUNNING job row ─────────────────────────────────────
+      // ── Step 1: insert RUNNING job row + emit agent_started activity ─────
       const job = await step.run('insert-job-row', async () => {
         const supabase = createSupabaseServiceRoleClient();
-        return insertJobRow({
+        const created = await insertJobRow({
           supabase,
           agentId: spec.agentId,
           episodeId,
@@ -117,6 +117,24 @@ export function createAgentInngestFunction<E extends string>(
           inngestRunId: runId,
           inputSnapshot: eventData,
         });
+        // Activity feed entry so the Pipeline View shows "Storyboarder started"
+        // immediately, not after ~70s of silence. Director's UX request from
+        // 2026-05-02 — silent stages were unreadable.
+        await supabase.from('activity_events').insert({
+          event_type: 'agent_started',
+          severity: 'info',
+          title: `${spec.name} started`,
+          description: `Working on episode (${spec.agentId})…`,
+          actor: spec.agentId,
+          episode_id: episodeId,
+          metadata: {
+            file_type: FILE_TYPE_HINT_BY_AGENT[spec.agentId] ?? null,
+            job_id: created.id,
+            inngest_run_id: runId,
+            expected_seconds: EXPECTED_RUNTIME_SECONDS[spec.agentId] ?? 60,
+          },
+        } as never);
+        return created;
       });
 
       // ── Step 2: load + validate (one checkpoint) ───────────────────────────
