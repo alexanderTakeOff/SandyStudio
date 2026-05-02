@@ -86,13 +86,21 @@ export class GovernanceError extends Error {
   }
 }
 
-/** Action → category map. Single source of truth. */
+/**
+ * Action → category map. Single source of truth.
+ *
+ * Note on AGENT_RUN: it's category C because pipeline downstream agents
+ * fire as a *consequence* of a Director-approved gate upstream — the
+ * approval IS the Mode-1 confirmation. Strict B-level recheck on every
+ * downstream agent would defeat the auto-fanout pattern. Director-initiated
+ * ad-hoc actions (REGENERATE_IMAGE, ENRICH_ASSET) ARE category B.
+ */
 const ACTION_CATEGORY: Record<GovernanceAction, ActionCategory> = {
   PUBLISH: 'A',
   LOCK: 'A',
   BUDGET_OVERRIDE: 'A',
   MODE_CHANGE: 'A',
-  AGENT_RUN: 'B',
+  AGENT_RUN: 'C',
   REGENERATE_IMAGE: 'B',
   ENRICH_ASSET: 'B',
   UPLOAD_ASSET: 'C',
