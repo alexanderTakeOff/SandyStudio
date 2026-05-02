@@ -42,8 +42,20 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const previewSrc = asset.staging_path || asset.drive_web_view_url || asset.drive_path || null;
-  const isImage = previewSrc && (previewSrc.startsWith('/') || previewSrc.startsWith('http'));
+  // Pick first browser-loadable URL — staging_path may legacy-store a Windows
+  // absolute path (`C:\...`) that <img> can't render; fall through to drive_path.
+  const previewCandidates: Array<string | null | undefined> = [
+    asset.drive_path,
+    asset.staging_path,
+    asset.drive_web_view_url,
+    asset.metadata?.image_prompt?.history?.[
+      (asset.metadata.image_prompt.current_version ?? 1) - 1
+    ]?.staging_path,
+  ];
+  const previewSrc = previewCandidates.find(
+    (c): c is string => typeof c === 'string' && (c.startsWith('/') || c.startsWith('http')),
+  ) ?? null;
+  const isImage = !!previewSrc;
   const statusColor = STATUS_COLORS[asset.status] ?? 'var(--text-muted)';
   const isLocked = asset.status === 'LOCKED';
   const name = readableNameFromFilename(asset.filename);
