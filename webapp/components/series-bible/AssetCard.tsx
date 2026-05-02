@@ -55,7 +55,7 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
   const isImage = !!previewSrc;
   const statusColor = STATUS_COLORS[asset.status] ?? 'var(--text-muted)';
   const isLocked = asset.status === 'LOCKED';
-  const name = readableNameFromFilename(asset.filename);
+  const name = readableName(asset);
 
   async function lock() {
     if (!confirm(`LOCK ${asset.filename}? Locked Bible assets are immutable.`)) return;
