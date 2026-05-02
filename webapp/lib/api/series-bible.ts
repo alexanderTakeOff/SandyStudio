@@ -48,6 +48,8 @@ export interface BibleAsset {
   staging_path: string | null;
   created_at: string;
   updated_at: string;
+  /** assets.metadata jsonb (migration 0020). */
+  metadata?: AssetMetadataDoc | null;
 }
 
 export interface BibleSection {
