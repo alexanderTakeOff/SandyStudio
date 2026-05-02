@@ -81,7 +81,7 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
       episodeId: 'ep-1',
     });
     expect(result.passed).toBe(false);
-    expect(result.reason).toMatch(/PUBLISH blocked/);
+    expect(result.reason).toMatch(/hard limit/i);
   });
 
   it('EXEC-PUB passes in Mode 1 WITH director_confirm', async () => {
