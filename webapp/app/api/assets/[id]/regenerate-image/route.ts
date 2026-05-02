@@ -147,7 +147,8 @@ export const POST = withApiHandler(async (req, ctx) => {
         category: decision.category,
         requires_director: decision.requiresDirector,
       },
-      403,
+      undefined,
+      { status: 403 },
     );
   }
 
