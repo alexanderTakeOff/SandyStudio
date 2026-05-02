@@ -21,7 +21,7 @@ import { Sparkles, Wand2, RefreshCcw, Save, Loader2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { fetcher } from '@/lib/swr';
-import type { SbSection } from '@/lib/api/series-bible';
+import { bibleSlug, type SbSection } from '@/lib/api/series-bible';
 
 const SECTION_TITLES: Record<Exclude<SbSection, 'general_idea'>, string> = {
   character: 'Add hero',
