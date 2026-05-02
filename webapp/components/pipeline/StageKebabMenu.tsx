@@ -271,23 +271,26 @@ export function StageKebabMenu({
 
   if (canEdit) {
     const isBinary = !isTextFileType(latestAssetType);
-    if (isBinary && onOpenPreview) {
+    // Preview drawer — works for both text and binary. Renders AssetPreview
+    // (markdown + JSON + CanonExtensionsPanel for review/storyboard assets).
+    // Director needs this to see Bible Extension Proposals for Continuity etc.
+    if (onOpenPreview) {
       items.push({
         label: 'Preview',
         icon: <Eye size={14} />,
         onSelect: () => onOpenPreview(latestAssetId!, `${stageLabel} preview`),
         disabled: busy,
       });
-    } else if (!isBinary) {
+    }
+    // Edit modal — text assets only (CodeMirror raw editor; useful for tweaks)
+    if (!isBinary) {
       items.push({
-        label: stageState === 'approved' ? 'View / edit (read-only)' : 'Edit',
+        label: stageState === 'approved' ? 'Edit (read-only)' : 'Edit',
         icon: <Pencil size={14} />,
         onSelect: openEditor,
         disabled: busy,
       });
     }
-    // Binary asset without onOpenPreview wired: silently omit — better than
-    // a button that errors. Page should always pass onOpenPreview.
   }
 
   if (canRetrigger) {
