@@ -228,7 +228,8 @@ export const POST = withApiHandler(async (req, ctx) => {
   const upd = await sb
     .from('assets')
     .update({
-      staging_path: persisted.absolutePath,
+      // browser-loadable url for <img>; not OS-specific absolutePath.
+      staging_path: persisted.browserUrl,
       drive_file_id: persisted.driveFileId,
       drive_web_view_url: persisted.driveWebViewUrl,
       drive_path: persisted.browserUrl,
