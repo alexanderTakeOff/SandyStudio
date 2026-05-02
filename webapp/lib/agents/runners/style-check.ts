@@ -120,19 +120,21 @@ function buildSystemPrompt(): string {
 }
 
 function buildUserMessage(args: { prompt: string; assetType: string; styleText: string }): string {
+  // Cap the prompt + style each at 2000 chars — Style Guardian only needs the
+  // visual/aesthetic gist. Longer prompts blow past max_output_tokens.
   return [
     `# Asset type`,
     args.assetType,
     '',
     `# LOCKED Series Bible Style guide`,
-    args.styleText,
+    args.styleText.slice(0, 2000),
     '',
     `# Prompt under review`,
     '<prompt>',
-    args.prompt,
+    args.prompt.slice(0, 2000),
     '</prompt>',
     '',
-    'Return verdict per the schema in your system prompt.',
+    'Return verdict per the schema.',
   ].join('\n');
 }
 
