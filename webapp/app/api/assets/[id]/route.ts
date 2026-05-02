@@ -13,6 +13,12 @@ import {
   assertAssetTransition,
   type AssetStatus,
 } from '@/lib/api/status-transitions';
+import {
+  buildProvenance,
+  stampLastModified,
+  type AssetMetadataDoc,
+  type DescriptionHistoryEntry,
+} from '@/lib/api/series-bible';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
