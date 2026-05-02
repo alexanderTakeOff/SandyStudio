@@ -121,6 +121,7 @@ export function EpisodeAssetDrawer({
   onChange,
   onBack,
   kindLabel,
+  seriesId,
 }: EpisodeAssetDrawerProps) {
   const [description, setDescription] = useState(asset.description ?? '');
   const [content, setContent] = useState(asset.content ?? '');
