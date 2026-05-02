@@ -8,6 +8,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import useSWR from 'swr';
 import {
   LayoutDashboard,
   Inbox,
@@ -19,6 +20,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fetcher } from '@/lib/swr';
 
 interface NavItem {
   href: string;
