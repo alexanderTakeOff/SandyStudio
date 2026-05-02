@@ -377,5 +377,6 @@ export const POST = withApiHandler(async (req, ctx) => {
     staging_url: persisted.browserUrl,
     drive_web_view_url: persisted.driveWebViewUrl,
     mode_at_time: decision.modeAtTime,
+    style_check: { verdict: styleVerdict, rewritten: styleRewritten, skipped: styleSkipped },
   });
 });
