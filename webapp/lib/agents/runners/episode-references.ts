@@ -301,8 +301,8 @@ export async function runEpisodeReferences(
     throw new EpisodeReferencesError('No APPROVED storyboard with content');
   }
 
-  const seriesId =
-    ep?.series_id ?? (await seriesIdForEpisode(supabase, ep?.id ?? inputs.episode_id));
+  // Always resolve via helper — episodes.series_id may store code instead of UUID.
+  const seriesId = await seriesIdForEpisode(supabase, ep?.id ?? inputs.episode_id);
   if (!seriesId) {
     throw new EpisodeReferencesError('Episode has no parent series_id');
   }
