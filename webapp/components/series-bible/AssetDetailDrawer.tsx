@@ -23,7 +23,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Lock, Save, ChevronDown, ChevronRight, Sparkles, RotateCcw, History } from 'lucide-react';
+import { X, Lock, Save, ChevronDown, ChevronRight, Sparkles, RotateCcw, History, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import type {
   BibleAsset,
