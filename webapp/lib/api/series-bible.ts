@@ -236,6 +236,7 @@ export function stampLastModified(
     last_modified_by: by,
     last_modified_by_kind: byKind,
     last_modified_at: at ?? new Date().toISOString(),
+    ...(modeAtTime !== undefined ? { last_modified_mode: modeAtTime } : {}),
   };
 }
 
