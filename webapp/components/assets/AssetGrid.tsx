@@ -9,10 +9,10 @@
 
 import { AssetThumb, type AssetThumbProps } from './AssetThumb';
 
-export interface AssetGridAsset extends AssetThumbProps['asset'] {
+export type AssetGridAsset = AssetThumbProps['asset'] & {
   /** Optional friendly label shown on hover/title. */
   hoverName?: string;
-}
+};
 
 export interface AssetGridProps {
   assets: AssetGridAsset[];
