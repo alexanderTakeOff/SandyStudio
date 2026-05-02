@@ -352,6 +352,8 @@ export function AssetDetailDrawer({
             open={promptOpen}
             onToggle={() => setPromptOpen((v) => !v)}
             onChanged={onChange}
+            assetType={asset.file_type}
+            seriesId={asset.series_id ?? _seriesId}
           />
 
           <AssetCollapsibleSection
