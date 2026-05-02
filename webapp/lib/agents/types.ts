@@ -28,6 +28,7 @@ export type AgentId =
   | 'EXEC-ARCH'
   | 'EXEC-STY'
   | 'EXEC-BIBLE-AUTHOR'
+  | 'EXEC-STYLE-CHECK'
   | 'EXEC-ORCH'
   | 'EXEC-CONC';
 
