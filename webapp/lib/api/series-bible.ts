@@ -188,24 +188,25 @@ export async function seriesIdForEpisode(
   // Happy path: real UUID FK
   if (typeof raw === 'string' && UUID_RE.test(raw)) return raw;
 
-  // Legacy fallback 1: series_id stores series code like "SS-S09"
-  if (typeof raw === 'string' && /^SS-/.test(raw)) {
-    const lookup = await supabase.from('series').select('id').eq('code', raw);
-    if (!lookup.error) {
-      const seriesRow = (lookup.data ?? [])[0] as { id?: string } | undefined;
-      if (seriesRow?.id) return seriesRow.id;
-    }
-  }
-
-  // Legacy fallback 2: derive from episode_code prefix (SS-S09-E01 → SS-S09)
+  // Legacy fallback 1: series_id stores series code like "SS-S09".
+  // 2: derive from episode_code prefix (SS-S09-E01 → SS-S09).
+  // Both wrapped: replay-pilot's mock supabase has no `series` table and
+  // would throw on .from('series'); we keep happy-path running.
+  const candidates: string[] = [];
+  if (typeof raw === 'string' && /^SS-/.test(raw)) candidates.push(raw);
   if (row.episode_code) {
     const m = row.episode_code.match(/^(SS-[A-Z0-9]+)/);
-    if (m && m[1]) {
-      const lookup = await supabase.from('series').select('id').eq('code', m[1]);
+    if (m && m[1] && !candidates.includes(m[1])) candidates.push(m[1]);
+  }
+  for (const code of candidates) {
+    try {
+      const lookup = await supabase.from('series').select('id').eq('code', code);
       if (!lookup.error) {
         const seriesRow = (lookup.data ?? [])[0] as { id?: string } | undefined;
         if (seriesRow?.id) return seriesRow.id;
       }
+    } catch {
+      // mock supabase or transient error — try next
     }
   }
 
