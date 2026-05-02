@@ -196,8 +196,9 @@ export async function resolveExtensionRequest(
   supabase: SupabaseClient<Database>,
   eventId: string,
 ): Promise<void> {
+  // Pre-types-regen cast: resolved_at column was added in migration 0019.
   await supabase
     .from('activity_events')
-    .update({ resolved_at: new Date().toISOString() })
+    .update({ resolved_at: new Date().toISOString() } as never)
     .eq('id', eventId);
 }
