@@ -42,6 +42,15 @@ interface AssetRow {
   agent_id: string | null;
   created_at: string;
   version: number | null;
+  episode_id: string | null;
+  series_id: string | null;
+}
+
+interface CanonExtensionEvent {
+  id: string;
+  episode_id: string | null;
+  metadata: { proposals?: CanonExtensionProposal[]; asset_id?: string } | null;
+  resolved_at: string | null;
 }
 
 function categoryFor(file_type: string): 'text' | 'image' | 'video' | 'audio' | 'unknown' {
