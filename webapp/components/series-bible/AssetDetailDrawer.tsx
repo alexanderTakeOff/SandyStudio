@@ -223,17 +223,25 @@ export function AssetDetailDrawer({
     if (!confirm(`Generate description + reference image with EXEC-BIBLE-AUTHOR?\nCost: ~$0.06 (Sonnet description + gpt-image-1 medium quality)\nTakes ~10-20s.`)) return;
     setBusy(true);
     setError(null);
-    const res = await fetch(
-      `/api/series/${seriesId}/bible/${asset.id}/enrich`,
-      { method: 'POST' },
-    );
-    setBusy(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setError((j as { error?: string }).error ?? 'Enrich failed');
-      return;
+    setProgress({
+      label: 'EXEC-BIBLE-AUTHOR is working…',
+      detail: 'Writing rich description (Sonnet) + generating first reference image (gpt-image-1). Stay in this window — it will refresh automatically with the result.',
+    });
+    try {
+      const res = await fetch(
+        `/api/series/${seriesId}/bible/${asset.id}/enrich`,
+        { method: 'POST' },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError((j as { error?: string }).error ?? 'Enrich failed');
+        return;
+      }
+      onChange();
+    } finally {
+      setBusy(false);
+      setProgress(null);
     }
-    onChange();
   }
 
   async function lock() {
