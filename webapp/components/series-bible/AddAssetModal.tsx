@@ -35,6 +35,8 @@ type Section = Exclude<SbSection, 'general_idea'>;
 
 interface CrossSeriesSuggestion {
   filename: string;
+  /** Structured file_type — e.g. SBL-character_sandy. Slug helper reads this. */
+  file_type?: string | null;
   description: string | null;
   series_code: string | null;
   preview_url: string | null;
