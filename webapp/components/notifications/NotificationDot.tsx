@@ -12,13 +12,6 @@
 import useSWR from 'swr';
 import { fetcher } from '@/lib/swr';
 
-const URGENT_TYPES = [
-  'canon_extension_proposed',
-  'decision_requested',
-  'input_requested',
-  'blocker_raised',
-] as const;
-
 interface NotificationDotProps {
   assetId: string;
   /** Visual size in px. Default 8. */
