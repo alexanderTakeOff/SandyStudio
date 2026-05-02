@@ -56,6 +56,10 @@ export const GET = withApiHandler(async (req) => {
   if (aerr) throw new Error(`inbox assets failed: ${aerr.message}`);
 
   // ── Source 2 & 3: activity_events unresolved (decision/input/blocker)
+  // Backbone v2: include canon_extension_proposed so agents that surface
+  // Bible extensions land in the Director Inbox automatically. The
+  // resolved_at filter (added migration 0019) hides items already
+  // dispositioned via CanonExtensionsPanel.
   let evtQuery = supabase
     .from('activity_events')
     .select('*')
@@ -64,7 +68,9 @@ export const GET = withApiHandler(async (req) => {
       'input_requested',
       'budget_threshold_reached',
       'blocker_raised',
+      'canon_extension_proposed',
     ])
+    .is('resolved_at', null)
     .order('created_at', { ascending: true })
     .limit(q.limit);
   if (q.episode_id) evtQuery = evtQuery.eq('episode_id', q.episode_id);
