@@ -10,6 +10,7 @@ import { Lock, Unlock, MoreHorizontal, Eye, Edit, Trash } from 'lucide-react';
 import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { Card } from '@/components/ui/Card';
 import type { BibleAsset, SbSection } from '@/lib/api/series-bible';
+import { NotificationDot } from '@/components/notifications/NotificationDot';
 import { AssetDetailDrawer } from './AssetDetailDrawer';
 
 const STATUS_COLORS: Record<string, string> = {
