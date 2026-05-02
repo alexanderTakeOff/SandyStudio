@@ -21,9 +21,9 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Lock, Save, Wand2, Loader2 } from 'lucide-react';
+import { X, Lock, Save, Wand2, Loader2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { AssetCollapsibleSection } from '@/components/assets/AssetCollapsibleSection';
 import { AssetProvenanceChip } from '@/components/assets/AssetProvenanceChip';
