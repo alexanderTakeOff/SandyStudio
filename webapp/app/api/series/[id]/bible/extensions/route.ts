@@ -26,8 +26,14 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
-import { bibleFilename } from '@/lib/api/series-bible';
+import {
+  bibleFilename,
+  buildProvenance,
+  type AssetMetadataDoc,
+} from '@/lib/api/series-bible';
 import { resolveExtensionRequest } from '@/lib/api/canon-extensions';
+import { runBibleAuthor, BibleAuthorError } from '@/lib/agents/runners/bible-author';
+import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
