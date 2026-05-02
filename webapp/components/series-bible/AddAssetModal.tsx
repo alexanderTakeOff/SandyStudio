@@ -194,23 +194,23 @@ export function AddAssetModal({
           />
           <datalist id={`suggestions-${section}`}>
             {suggestions.map((s) => {
-              const m = s.filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
-              return m ? <option key={s.filename} value={m[1]} /> : null;
+              const slug = s.file_type ? bibleSlug(s.file_type) : null;
+              return slug ? <option key={s.filename} value={slug} /> : null;
             })}
           </datalist>
           {suggestions.length > 0 && (
             <div className="mt-1.5 text-[11px] text-text-muted">
               Existing canonical entries:{' '}
-              {suggestions.slice(0, 5).map((s, i) => {
-                const m = s.filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
-                return m ? (
+              {suggestions.slice(0, 5).map((s) => {
+                const slug = s.file_type ? bibleSlug(s.file_type) : null;
+                return slug ? (
                   <button
                     key={s.filename}
                     onClick={() => pickSuggestion(s)}
                     className="underline hover:text-text-primary mr-2"
                     type="button"
                   >
-                    {m[1]}
+                    {slug}
                     {s.series_code && <span className="text-text-muted/60"> ({s.series_code})</span>}
                   </button>
                 ) : null;
