@@ -15,8 +15,10 @@ import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import {
   listBibleSections,
   bibleFilename,
+  buildProvenance,
   BIBLE_SECTIONS,
   type SbSection,
+  type AssetMetadataDoc,
 } from '@/lib/api/series-bible';
 
 export const runtime = 'nodejs';
