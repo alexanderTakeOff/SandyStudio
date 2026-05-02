@@ -23,7 +23,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Lock, Save, ChevronDown, ChevronRight, Sparkles, RotateCcw, History } from 'lucide-react';
+import { X, Lock, Save, ChevronDown, ChevronRight, Sparkles, RotateCcw, History, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import type {
   BibleAsset,
@@ -213,6 +213,23 @@ export function AssetDetailDrawer({
     onChange();
   }
 
+  async function enrich() {
+    if (!confirm(`Generate description + reference image with EXEC-BIBLE-AUTHOR?\nCost: ~$0.06 (Sonnet description + gpt-image-1 medium quality)\nTakes ~10-20s.`)) return;
+    setBusy(true);
+    setError(null);
+    const res = await fetch(
+      `/api/series/${seriesId}/bible/${asset.id}/enrich`,
+      { method: 'POST' },
+    );
+    setBusy(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setError((j as { error?: string }).error ?? 'Enrich failed');
+      return;
+    }
+    onChange();
+  }
+
   async function lock() {
     if (!confirm(`LOCK ${asset.filename}? Locked Bible assets are immutable.`)) return;
     setBusy(true);
@@ -279,6 +296,30 @@ export function AssetDetailDrawer({
             <div className="rounded-lg overflow-hidden border border-glass">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={previewSrc!} alt={asset.filename} className="w-full h-auto block" />
+            </div>
+          )}
+
+          {/* Enrich CTA — shown when asset has no image AND no prompt history yet
+              (legacy DRAFT, or DRAFT whose auto-enrich failed at extension approval). */}
+          {!isImage && !promptDoc && editable && (
+            <div
+              className="rounded-lg border border-dashed border-glass p-4 flex flex-col items-center gap-2.5"
+              style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
+            >
+              <Wand2 size={20} className="text-[var(--accent-primary)]" />
+              <div className="text-sm text-text-primary text-center font-medium">
+                No reference image yet
+              </div>
+              <div className="text-xs text-text-muted text-center max-w-xs">
+                EXEC-BIBLE-AUTHOR will write a rich description and generate a first
+                reference image anchored on the LOCKED Style Bible.
+              </div>
+              <Button onClick={enrich} disabled={busy}>
+                <Wand2 size={13} /> Generate description + image · $0.06
+              </Button>
+              <div className="text-[10px] text-text-muted">
+                ~10-20s · Sonnet description + gpt-image-1 medium
+              </div>
             </div>
           )}
 
