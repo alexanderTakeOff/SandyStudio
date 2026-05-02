@@ -1,33 +1,47 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // lib/agents/runners/episode-references.ts
-// EXEC-EREF — Episode Reference Generator.
+// EXEC-EREF v2 — per-shot Episode Reference Generator with image-to-image
+// anchoring on Bible LOCKED character / location refs.
 //
-// MVP scope (Step 7 of contract pipeline rollout):
-//   - Read APPROVED storyboard JSON to find unique location/character combos.
-//   - Read LOCKED Series Bible canon (characters, locations, style guide).
-//   - For each unique shot beat, build a rich text prompt that includes the
-//     Bible character + location descriptions, then call gpt-image-1.
-//   - Persist N images via persistBinary (local cache + Drive when on).
-//   - Insert N IMG-episode_ref-<slug> rows directly so the EREF stage produces
-//     a real fan-out, not a single placeholder.
+// Pipeline:
+//   1. Read APPROVED storyboard JSON.
+//   2. Read LOCKED Series Bible canon (characters, locations, style).
+//   3. For each shot (capped at MAX_REFS_CAP = 49):
+//      a. Build prompt via asset-prompt-builder.buildEpisodeRefPrompt
+//      b. Pre-flight Style Guardian (skipped/warn/strict per app_config)
+//      c. If a Bible character/location LOCKED image is loadable → call
+//         OpenAI Images Edits (image-to-image, preserves visual identity).
+//         Otherwise fall back to text-to-image generateImageOpenAI.
+//      d. Persist binary + insert IMG-episode_ref_<slug> row with metadata
+//         .image_prompt history v01 (source='EXEC-EREF') AND
+//         .source_bible_refs[] for click-through to canonical Bible asset.
 //
-// Bible anchoring (image-to-image with reference photo) is Step 7.5 follow-up
-// — for MVP we anchor through detailed text descriptions only. This keeps the
-// pipeline cheap (~$0.20-0.30 per episode) and unblocked by OpenAI's edits
-// endpoint quirks.
+// Cost target: ~$0.04/shot × 13 shots ≈ $0.50/episode (medium quality).
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
 import { generateImageOpenAI } from '../providers/openai-image';
+import {
+  editImageOpenAI,
+  readBibleImageAsBase64,
+  OpenAIImageEditError,
+} from '../providers/openai-image-edit';
 import { persistBinary } from '../persist-binary';
 import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
+import { runStyleCheck } from './style-check';
+import { getStyleGuardianMode } from '../../api/style-guardian-config';
 import type { AgentInputs } from '../types';
+import type { ImagePromptHistoryEntry } from '../../api/series-bible';
 
 export const EREF_CONTRACT = 'episode_references@v1';
 export const EREF_PROVIDER = 'gpt-image-1';
-/** Max number of unique shots we generate refs for, to cap cost. */
-export const EREF_MAX_REFS = 6;
+/**
+ * Hard ceiling on episode references per run. Per Director's plan:
+ * cap = min(49, storyboard.shot_count). 49 chosen as ceiling — beyond that
+ * the cost per episode (~$2) starts to question MVP scope.
+ */
+export const EREF_MAX_REFS_CAP = 49;
 /** Per-image quality — 'medium' is the sweet spot between cost and detail. */
 export const EREF_QUALITY = 'medium' as const;
 
