@@ -32,6 +32,60 @@ import type { BibleAsset, ImagePromptHistoryEntry, SbSection } from '@/lib/api/s
 
 const EDITABLE_STATUSES = new Set(['DRAFT', 'REVIEW', 'REVISION']);
 
+/** Inline Upload affordance for assets with an image but no prompt history yet. */
+function LegacyUploadCard({ assetId, onChanged }: { assetId: string; onChanged: () => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function upload(file: File) {
+    setBusy(true);
+    setError(null);
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`/api/assets/${assetId}/upload`, { method: 'POST', body: fd });
+    setBusy(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setError((j as { error?: string }).error ?? 'Upload failed');
+      return;
+    }
+    onChanged();
+  }
+  return (
+    <div
+      className="rounded-lg border border-dashed border-glass p-3 flex items-center gap-3"
+      style={{ background: 'color-mix(in oklab, var(--accent-info) 6%, transparent)' }}
+    >
+      <Upload size={16} className="text-[var(--accent-info, var(--accent-primary))]" />
+      <div className="flex-1 min-w-0">
+        <div className="text-xs text-text-primary font-medium">Replace image with your own</div>
+        <div className="text-[10px] text-text-muted">
+          Upload PNG/JPG/WebP/MP4/WAV. Initialises prompt history at v01.
+        </div>
+      </div>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*,video/*,audio/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) upload(f);
+          e.target.value = '';
+        }}
+      />
+      <Button variant="ghost" onClick={() => ref.current?.click()} disabled={busy}>
+        <Upload size={13} /> Upload
+      </Button>
+      {error && (
+        <div className="text-[10px]" style={{ color: 'var(--accent-danger)' }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface AssetDetailDrawerProps {
   open: boolean;
   onClose: () => void;
