@@ -55,6 +55,12 @@ export interface EpisodeAssetDrawerProps {
   onBack?: () => void;
   /** Header label override — defaults to "EPISODE ASSET". */
   kindLabel?: string;
+  /**
+   * Series UUID for Style Guardian context. Episode-level assets don't carry
+   * series_id on the asset row — caller (episode page) supplies it from the
+   * episode object.
+   */
+  seriesId?: string | null;
 }
 
 function LegacyUploadCard({ assetId, onChanged }: { assetId: string; onChanged: () => void }) {
