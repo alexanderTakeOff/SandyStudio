@@ -144,6 +144,8 @@ export async function emitExtensionRequest(
     assetId: string;
     episodeId: string | null;
     agentId: string;
+    /** Stage bucket for Pipeline View activity filter (e.g. REV-world_check). */
+    fileType?: string;
     proposals: CanonExtensionProposal[];
   },
 ): Promise<{ eventId: string; created: boolean }> {
