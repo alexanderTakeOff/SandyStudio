@@ -243,8 +243,47 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
 
   // ── Branch B: edit prompt + reroll ────────────────────────────────────────
+
+  // Pre-flight Style Guardian check. Behaviour depends on app_config.style_guardian_mode:
+  //   warn          → record verdict, NEVER block
+  //   strict        → FAIL blocks (Director may pass directorConfirm with override flag)
+  //   auto_rewrite  → use suggested_prompt instead of original; mark history
+  let promptToSend = body.prompt;
+  let styleVerdict: 'PASS' | 'WARN' | 'FAIL' | null = null;
+  let styleRewritten = false;
+  let styleSkipped = false;
+  if (asset.series_id) {
+    const guardMode = await getStyleGuardianMode(sb);
+    const result = await runStyleCheck({
+      supabase: sb,
+      prompt: body.prompt,
+      assetType: asset.file_type,
+      seriesId: asset.series_id,
+    });
+    styleVerdict = result.verdict;
+    styleSkipped = result.skipped;
+    if (!result.skipped) {
+      if (guardMode === 'strict' && result.verdict === 'FAIL') {
+        return apiOk(
+          {
+            action_blocked: true,
+            reason: 'Style Guardian FAIL — prompt diverges from LOCKED Series Bible style.',
+            style_check: result,
+            style_guardian_mode: guardMode,
+          },
+          undefined,
+          { status: 409 },
+        );
+      }
+      if (guardMode === 'auto_rewrite' && result.suggested_prompt && result.verdict !== 'PASS') {
+        promptToSend = result.suggested_prompt;
+        styleRewritten = true;
+      }
+    }
+  }
+
   const real = await generateImageOpenAI({
-    prompt: body.prompt,
+    prompt: promptToSend,
     size: '1024x1024',
     quality: body.quality ?? 'medium',
   });
