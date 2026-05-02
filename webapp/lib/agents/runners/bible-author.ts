@@ -367,7 +367,9 @@ export async function runBibleAuthor(
     source: 'EXEC-BIBLE-AUTHOR',
     at: nowIso,
     cost_usd: imgResult.cost_usd,
-    staging_path: persisted.absolutePath,
+    // Store browser-loadable url; absolutePath is OS-specific and breaks <img>.
+    // seed-sandy-bible.ts uses the same convention.
+    staging_path: persisted.browserUrl,
     drive_file_id: persisted.driveFileId,
     drive_web_view_url: persisted.driveWebViewUrl,
     width: imgResult.width,
