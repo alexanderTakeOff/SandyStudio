@@ -59,6 +59,8 @@ export function AssetImagePromptSection({
   open,
   onToggle,
   onChanged,
+  assetType,
+  seriesId,
 }: AssetImagePromptSectionProps) {
   const currentEntry: ImagePromptHistoryEntry | undefined = useMemo(() => {
     if (!promptDoc) return undefined;
