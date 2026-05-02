@@ -121,6 +121,8 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
         </div>
       )}
 
+      <CanonExtensionsForAsset asset={asset} />
+
       {cat === 'text' && <TextBody assetId={asset.id} />}
       {cat === 'image' && <ImageBody asset={asset} />}
       {cat === 'video' && <VideoBody asset={asset} />}
