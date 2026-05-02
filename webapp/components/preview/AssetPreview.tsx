@@ -19,6 +19,8 @@ import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import { Download, FileWarning, ExternalLink, CloudOff } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
+import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
+import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
 
 const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 
