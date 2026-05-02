@@ -46,6 +46,42 @@ const CONTRACT_BY_AGENT: Partial<Record<AgentId, ContractName>> = {
   'EXEC-PUB': 'publish',
 };
 
+/**
+ * Rough p50 runtime estimates per agent — surfaced in activity feed so Director
+ * can tell "still working, ~30s left" vs "stuck". Tune from real telemetry over
+ * time. Conservative — better to under-promise.
+ */
+const EXPECTED_RUNTIME_SECONDS: Partial<Record<AgentId, number>> = {
+  'EXEC-SW':    70,   // Sonnet ~6k output tokens
+  'EXEC-SREV':  50,   // Sonnet ~3k output tokens
+  'EXEC-SB':    140,  // Sonnet ~8k output tokens, 16-shot JSON
+  'EXEC-WCHK':  60,   // Sonnet ~3k output tokens (Continuity)
+  'EXEC-EREF':  180,  // gpt-image-1 fan-out (up to 6 images × 25-40s)
+  'EXEC-EDIT':  30,   // slideshow assembly (no LLM, just JSON build)
+  'EXEC-VGEN':  150,  // Veo per-shot
+  'EXEC-MGEN':  60,   // Music gen (mock for now)
+  'EXEC-COPY':  30,   // Haiku, short output
+  'EXEC-THUMB': 45,   // gpt-image-1 single
+  'EXEC-PUB':   20,   // YouTube upload mock
+  'EXEC-ANAL':  10,
+};
+
+/** Activity-feed asset bucket hint so per-stage filter works while job is running. */
+const FILE_TYPE_HINT_BY_AGENT: Partial<Record<AgentId, string>> = {
+  'EXEC-SW':    'SCR-script',
+  'EXEC-SREV':  'REV-script_qa',
+  'EXEC-SB':    'STB-storyboard',
+  'EXEC-WCHK':  'REV-world_check',
+  'EXEC-EREF':  'IMG-episode_ref',
+  'EXEC-EDIT':  'VID-animatic',
+  'EXEC-VGEN':  'VID-shot',
+  'EXEC-MGEN':  'AUD-music',
+  'EXEC-COPY':  'SPC-metadata',
+  'EXEC-THUMB': 'IMG-thumbnail',
+  'EXEC-PUB':   'REV-publish_log',
+  'EXEC-ANAL':  'REV-analytics',
+};
+
 /** Spec passed to createAgentInngestFunction. */
 export interface AgentFunctionSpec<EventName extends string = string> {
   /** Inngest function id (kebab-case). */
