@@ -27,6 +27,7 @@ export type AgentId =
   | 'EXEC-ANAL'
   | 'EXEC-ARCH'
   | 'EXEC-STY'
+  | 'EXEC-BIBLE-AUTHOR'
   | 'EXEC-ORCH'
   | 'EXEC-CONC';
 
@@ -46,6 +47,7 @@ export type AgentCode =
   | 'exec-anal'
   | 'exec-arch'
   | 'exec-sty'
+  | 'exec-bible-author'
   | 'exec-orch'
   | 'exec-conc';
 
