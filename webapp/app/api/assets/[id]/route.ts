@@ -25,6 +25,8 @@ export const dynamic = 'force-dynamic';
 
 const PatchBody = z.object({
   description:  z.string().max(2000).optional(),
+  /** Markdown body — versioned in metadata.description_history when changed. */
+  content:      z.string().max(200_000).optional(),
   revision_log: z.string().max(4000).optional(),
   status:       z.string().optional(),  // soft transition; hard ones go through /approve
 });
