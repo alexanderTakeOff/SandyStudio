@@ -22,6 +22,9 @@ interface StudioShellProps {
 export function StudioShell({ children, governanceMode, systemMode }: StudioShellProps) {
   return (
     <div className="relative min-h-screen flex">
+      {/* Notification dot keyframes — global once per shell */}
+      <NotificationDotStyles />
+
       {/* z-0 / -z-10 — Ambient background */}
       <AmbientAssetField />
 
