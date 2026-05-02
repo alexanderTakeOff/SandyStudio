@@ -26,9 +26,9 @@ async function fetchUnresolvedCount(assetId: string): Promise<number> {
   // The current /api/activity supports single event_type per request — we run
   // the canon_extension_proposed query (most common) and treat anything > 0
   // as "needs attention". Future: extend API to accept type[] for batched check.
-  const res = await fetcher(
+  const res = (await fetcher(
     `/api/activity?asset_id=${assetId}&type=canon_extension_proposed&unresolved=true&limit=1`,
-  );
+  )) as { data?: unknown[] } | null;
   return Array.isArray(res?.data) ? res.data.length : 0;
 }
 
