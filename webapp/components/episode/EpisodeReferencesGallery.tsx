@@ -23,11 +23,13 @@ interface AssetsResponse {
 
 export interface EpisodeReferencesGalleryProps {
   episodeId: string;
+  /** Series UUID — passed to EpisodeAssetDrawer for Style Guardian context. */
+  seriesId?: string | null;
   /** Tile side. Default 36 px (1/8 of typical 256-280 Bible card side). */
   size?: number;
 }
 
-export function EpisodeReferencesGallery({ episodeId, size = 36 }: EpisodeReferencesGalleryProps) {
+export function EpisodeReferencesGallery({ episodeId, seriesId, size = 36 }: EpisodeReferencesGalleryProps) {
   const [openAssetId, setOpenAssetId] = useState<string | null>(null);
 
   const { data, mutate } = useSWR<AssetsResponse>(
