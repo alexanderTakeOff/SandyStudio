@@ -401,12 +401,18 @@ export function AssetDetailDrawer({
             <ProvenanceChip prov={asset.metadata?.provenance} />
           </div>
 
-          {/* Image preview */}
+          {/* Image preview — collapsible */}
           {isImage && (
-            <div className="rounded-lg overflow-hidden border border-glass">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={previewSrc!} alt={asset.filename} className="w-full h-auto block" />
-            </div>
+            <Section
+              open={imageOpen}
+              onToggle={() => setImageOpen((v) => !v)}
+              label="Reference image"
+            >
+              <div className="rounded-lg overflow-hidden border border-glass">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={previewSrc!} alt={asset.filename} className="w-full h-auto block" />
+              </div>
+            </Section>
           )}
 
           {/* Enrich CTA — shown when asset has no image AND no prompt history yet
