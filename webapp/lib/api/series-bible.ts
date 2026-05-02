@@ -155,23 +155,59 @@ export async function countLockedBibleSections(
 }
 
 /**
- * Look up the parent series_id for an episode. Used by gate.ts to bridge
+ * Look up the parent series_id (UUID) for an episode. Used by gate.ts to bridge
  * episode-scoped runs to series-scoped Bible canon.
+ *
+ * NewEpisodeModal historical bug: some episode rows have `series_id` populated
+ * with the series CODE (e.g. "SS-S09") instead of the UUID. We tolerate that
+ * here by detecting non-UUID values and resolving via the series.code lookup.
  *
  * Avoids `.maybeSingle()` to stay compatible with the in-memory test
  * supabase mock used by replay-pilot.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function seriesIdForEpisode(
   supabase: SupabaseClient<Database>,
   episodeId: string,
 ): Promise<string | null> {
   const { data, error } = await supabase
     .from('episodes')
-    .select('series_id')
+    .select('series_id, episode_code')
     .eq('id', episodeId);
   if (error) {
     throw new Error(`seriesIdForEpisode: ${error.message}`);
   }
-  const row = (data ?? [])[0] as { series_id?: string | null } | undefined;
-  return row?.series_id ?? null;
+  const row = (data ?? [])[0] as
+    | { series_id?: string | null; episode_code?: string | null }
+    | undefined;
+  if (!row) return null;
+
+  const raw = row.series_id;
+
+  // Happy path: real UUID FK
+  if (typeof raw === 'string' && UUID_RE.test(raw)) return raw;
+
+  // Legacy fallback 1: series_id stores series code like "SS-S09"
+  if (typeof raw === 'string' && /^SS-/.test(raw)) {
+    const lookup = await supabase.from('series').select('id').eq('code', raw);
+    if (!lookup.error) {
+      const seriesRow = (lookup.data ?? [])[0] as { id?: string } | undefined;
+      if (seriesRow?.id) return seriesRow.id;
+    }
+  }
+
+  // Legacy fallback 2: derive from episode_code prefix (SS-S09-E01 → SS-S09)
+  if (row.episode_code) {
+    const m = row.episode_code.match(/^(SS-[A-Z0-9]+)/);
+    if (m && m[1]) {
+      const lookup = await supabase.from('series').select('id').eq('code', m[1]);
+      if (!lookup.error) {
+        const seriesRow = (lookup.data ?? [])[0] as { id?: string } | undefined;
+        if (seriesRow?.id) return seriesRow.id;
+      }
+    }
+  }
+
+  return raw ?? null;
 }
