@@ -69,13 +69,21 @@ export const POST = withApiHandler(async (req, ctx) => {
   const series = seriesRow as SeriesRow;
 
   // Verify the event exists and isn't already resolved
-  const { data: evRow, error: eerr } = await supabase
+  const evRes = await supabase
     .from('activity_events')
-    .select('id,episode_id,resolved_at,metadata,event_type')
+    .select('*')
     .eq('id', body.event_id)
     .maybeSingle();
-  if (eerr) throw new Error(`event fetch failed: ${eerr.message}`);
-  if (!evRow) throw new NotFoundError(`Event ${body.event_id}`);
+  if (evRes.error) throw new Error(`event fetch failed: ${evRes.error.message}`);
+  if (!evRes.data) throw new NotFoundError(`Event ${body.event_id}`);
+  // Pre-types-regen cast: resolved_at column was just added in migration 0019.
+  const evRow = evRes.data as unknown as {
+    id: string;
+    episode_id: string | null;
+    event_type: string;
+    resolved_at: string | null;
+    metadata: Record<string, unknown> | null;
+  };
   if (evRow.event_type !== 'canon_extension_proposed') {
     throw new ValidationError('Event is not a Bible extension proposal');
   }
