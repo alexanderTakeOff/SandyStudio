@@ -230,6 +230,8 @@ function buildUserMessage(args: {
     '}',
     '```',
     '',
+    'KEEP PROSE TIGHT — JSON block at end is mandatory and must not be truncated. If running long, shorten markdown — never skip JSON.',
+    '',
     'Verdict rubric:',
     '- PASS: every shot uses only canonical characters; locations are canonical OR clearly episode-only and acceptable.',
     '- REVISE: some shots reference a character or location not in the LOCKED Bible. Storyboarder must rewrite.',
