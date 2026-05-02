@@ -107,6 +107,12 @@ export function AssetDetailDrawer({
   const [content, setContent] = useState(initialContent);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** When non-null, the drawer is mid-flight on a long-running paid op.
+   * Drives the in-place progress UI so Director knows to wait here. */
+  const [progress, setProgress] = useState<null | {
+    label: string;
+    detail: string;
+  }>(null);
 
   // Prompt-edit local state
   const promptDoc = asset.metadata?.image_prompt;
