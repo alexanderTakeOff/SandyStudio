@@ -45,7 +45,7 @@ export const GET = withApiHandler(async (req) => {
   // Pull LOCKED Bible assets for this section across all series.
   const { data, error } = await supabase
     .from('assets')
-    .select('filename,description,drive_file_id,drive_web_view_url,drive_path,staging_path,series_id')
+    .select('filename,file_type,description,drive_file_id,drive_web_view_url,drive_path,staging_path,series_id')
     .eq('status', 'LOCKED')
     .like('file_type', `SBL-${section}%`)
     .order('filename', { ascending: true })
