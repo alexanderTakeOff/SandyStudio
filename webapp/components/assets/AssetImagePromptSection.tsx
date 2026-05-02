@@ -46,6 +46,10 @@ export interface AssetImagePromptSectionProps {
   onToggle: () => void;
   /** Callback fired after a successful regenerate / restore / upload — refresh asset. */
   onChanged: () => void;
+  /** Asset's file_type — fed to Style Guardian as asset_type. */
+  assetType?: string;
+  /** Series UUID for Style Guardian context. Null → guardian skipped. */
+  seriesId?: string | null;
 }
 
 export function AssetImagePromptSection({
