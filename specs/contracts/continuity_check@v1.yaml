@@ -1,0 +1,76 @@
+id: continuity_check
+version: 1
+agent: EXEC-CONT
+display:
+  ru: Хранитель канона
+  en: Continuity Supervisor
+
+# ─── Model & cost ────────────────────────────────────────────────────────────
+model: claude-sonnet-4-6
+max_output_tokens: 3000
+cost_ceiling_usd: 0.20
+sla_minutes: 3
+
+# ─── Inputs ──────────────────────────────────────────────────────────────────
+input:
+  required:
+    - { id: storyboard, file_type: STB-storyboard, status: APPROVED }
+  required_series:
+    - { id: bible_characters, file_type_prefix: SBL-character_, status: LOCKED, min_count: 1 }
+    - { id: bible_style,      file_type_prefix: SBL-style_,     status: LOCKED, min_count: 1 }
+  optional_series:
+    - { id: bible_locations, file_type_prefix: SBL-location_, status: LOCKED }
+    - { id: bible_objects,   file_type_prefix: SBL-object_,   status: LOCKED }
+
+# ─── Output ──────────────────────────────────────────────────────────────────
+output:
+  primary:
+    file_type: REV-continuity
+    naming: "{episode_code}-REV-continuity-v{NN}-DRAFT.md"
+    status_on_create: DRAFT
+  fields:
+    markdown:
+      required: true
+    json_block:
+      required: true
+      schema_ref: continuity_v1
+      shape:
+        episode_id: string
+        storyboard_version: integer
+        verdict: enum [PASS, REVISE, FAIL]
+        per_shot:
+          type: array
+          items:
+            shot_id: string
+            location_canon: enum [PASS, MISSING, UNKNOWN]
+            characters_canon: enum [PASS, MISSING, UNKNOWN]
+            issues: string[]
+        summary: string
+        canon_used:
+          characters: string[]
+          locations: string[]
+        violations: string[]
+
+# ─── Pre / Postconditions ────────────────────────────────────────────────────
+preconditions:
+  - "APPROVED storyboard exists with parseable shots[]"
+  - "Parent series has ≥1 LOCKED SBL-character_* AND ≥1 LOCKED SBL-style_*"
+
+postconditions:
+  - "REV-continuity asset created"
+  - "Verdict recorded; if not PASS, violations[] non-empty"
+
+# ─── Approval gate ───────────────────────────────────────────────────────────
+approval_gate:
+  approver: director
+  category: B
+  action_on_approve: "fanout EXEC-EREF (episode reference generator)"
+  action_on_revise:  "block; Director sends storyboard back to EXEC-SB"
+
+escalation:
+  on_invalid_json: "retry once with explicit schema reminder; then NEEDS_HUMAN_TWEAK"
+  on_anthropic_error: "retry up to 2 times; then NEEDS_HUMAN_TWEAK"
+
+audit:
+  records: [job_id, model, input_tokens, output_tokens, cost_usd, verdict]
+  storage: jobs + costs

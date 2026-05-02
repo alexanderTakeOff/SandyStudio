@@ -1,5 +1,5 @@
 # SandyStudio — UI/UX Visual System
-## specs/system/uiux.md | v0.2 | DRAFT
+## specs/system/uiux.md | v0.3 | DRAFT
 
 ---
 
@@ -22,10 +22,24 @@ When Claude Code changes anything related to:
 
 Claude Code must first read this file and keep it aligned with implementation.
 
-This file complements:
+This file is the **spine**. Heavyweight UX sub-specs live in their own files
+and are linked from here. When you change something in a sub-spec, also update
+the matching pointer here so this file stays the entry point.
+
+| Sub-spec | Owns |
+|----------|------|
+| `specs/system/onboarding.md` | First-run wizard (4 steps): Storage → Series → Authority Matrix → First Episode |
+| `specs/system/storage_configuration.md` | `project_root` and `media_storage_root` paths, write-test, Settings → Storage tab |
+| `specs/system/dashboard_cockpit.md` | Dashboard `/` as a 3-zone production cockpit (Inbox preview · Active episodes · Activity feed) |
+| `specs/system/pipeline_view.md` | Per-episode `/episodes/[id]` — DAG + Agent Report Feed hybrid |
+| `specs/system/director_inbox.md` | `/inbox` — Director Task Center, hotkeys, bulk actions, visual gate |
+
+Other documents this file complements:
 
 - `specs/system/webapp.md`
 - `specs/system/auth.md`
+- `specs/system/character_consistency.md` — visual approval rule that the Inbox enforces
+- `specs/company/governance.md` — 4-mode definitions surfaced via Topbar lever
 - `CLAUDE.md`
 - `PLAN.md`
 - agent and pipeline specifications
@@ -451,37 +465,89 @@ Sidebar should be:
 - active section highlighted with soft glow or subtle border;
 - never visually louder than current work content.
 
+### 8.4 Topbar chips are levers (v0.3)
+
+The Topbar's two mode chips were read-only display elements in v0.2. In v0.3
+they are **interactive levers**. Director can change modes from the cockpit
+without leaving the screen.
+
+#### System Mode chip (`===1=== / ===5===`)
+
+- Click → modal:
+  ```
+  Switch to ===5=== EDIT?
+  Required for any write operation.
+  Director will be the active actor.
+  [ Cancel ]   [ Confirm ]
+  ```
+- Director-only. Hard limit per `CLAUDE.md §6` — MODE_CHANGE always Director.
+- Modal mirrors the PUBLISH `directorConfirm: true` pattern so the contract
+  is consistent.
+- Audit: `activity_events` row with `event_type='system_mode_change'`,
+  severity `warning` for `===5===`, `info` for `===1===`.
+
+#### Governance Mode chip (Mode 1..4)
+
+- Click → dropdown anchored under the chip:
+  ```
+  ┌──────────────────────────────────────────┐
+  │ ● Mode 1 MANUAL                          │
+  │   You approve every gate                  │
+  │ ○ Mode 2 HYBRID                          │
+  │   You + EXEC-DIR-AI share approvals      │
+  │ ○ Mode 3 DELEGATED                       │
+  │   EXEC-DIR-AI handles all but hard limits│
+  │ ○ Mode 4 AUTOTEST                        │
+  │   ⚠ all gates auto-pass — testing only   │
+  ├──────────────────────────────────────────┤
+  │ Apply to: [ ● Global ]  [ ○ This episode ]│
+  │              [ Cancel ]   [ Apply ]       │
+  └──────────────────────────────────────────┘
+  ```
+- Director-only. Hard limit.
+- Per-episode override is available only when an episode page is currently
+  active; otherwise the option is disabled with a tooltip.
+- Audit: `activity_events` row with `event_type='governance_mode_change'`.
+  Mode 4 changes are `severity='warning'`.
+
+#### Implementation note
+
+`webapp/components/studio-shell/StudioTopbar.tsx` currently renders both
+chips as static `<span>` elements. Phase 5c migrates them to `<button>`
+with the dropdown/modal hosts. The lever migration is purely additive —
+the visual chip styling stays the same.
+
 ---
 
 ## 9. Dashboard / Control Room
 
-The dashboard is a production overview, not the main Sprint workflow.
+> **v0.3 update:** the Dashboard becomes a 3-zone production cockpit. The
+> full layout, data sources, empty states, polling rules, and zone
+> proportions live in `specs/system/dashboard_cockpit.md`. This section
+> retains the high-level rule.
 
-Recommended sections:
-
-- Active Episodes
-- Pipeline Status
-- Pending Approvals
-- Budget Snapshot
-- Recent Jobs
-- Output Queue
-- System Health
-
-Dashboard should answer:
+The Dashboard answers, on every visit:
 
 ```text
-What is active?
-What needs my decision?
-What is running?
-What is blocked?
-How much have we spent?
+What needs me right now?       (Zone 1 — Inbox preview)
+What is in flight?             (Zone 2 — Active Episode timelines)
+What just happened?            (Zone 3 — Live activity feed)
+How much has been spent?       (Topbar budget meter)
+What is blocked?               (surfaced in Zone 1 Inbox group)
 ```
 
-Dashboard must not become the main development focus before Approval Queue MVP is usable.
+It is no longer a placeholder card grid. It is the cockpit a Director
+returns to multiple times per day. Sub-spec: `specs/system/dashboard_cockpit.md`.
 
 ---
 
-## 10. Approval Queue MVP
+## 10. Approval Queue → Director Inbox (v0.3 rename)
+
+> **v0.3 update:** what v0.2 called "Approval Queue" is now the **Director
+> Inbox** — broader scope (approvals + decisions + blockers), keyboard-first,
+> bulk actions for non-visual items, dedicated `/inbox` route plus a
+> Dashboard Zone 1 preview. The full spec is `specs/system/director_inbox.md`.
+> The decision flow `Preview → Context → Decision` is preserved.
 
 Approval Queue is the first major working UI.
 
@@ -555,7 +621,13 @@ Rules:
 
 ---
 
-## 11. Episode Detail
+## 11. Episode Detail → Pipeline View (v0.3 rename)
+
+> **v0.3 update:** Episode Detail is now the **Pipeline View** — a
+> two-pane layout (DAG on the left 40%, Agent Report Feed on the right
+> 60%) inspired by Temporal UI + GitHub PR conversation. Full spec:
+> `specs/system/pipeline_view.md`. The "current gate visually dominant"
+> rule is preserved via the gate connector glyph (`═`).
 
 Episode Detail should behave like mission control for one episode.
 
@@ -1184,3 +1256,44 @@ Before coding visual changes:
 ---
 
 *SandyStudio uiux.md | v0.2 | Status: DRAFT*
+
+---
+
+## 28. First-Run Onboarding (v0.3)
+
+Before the cockpit is usable, the Director must complete a 4-step wizard:
+
+```
+Step 1 — Storage         (project_root, media_storage_root, write-test)
+Step 2 — Create Series   (code, title, audience, genre, budget ceiling)
+Step 3 — Authority Matrix (who approves what — visual + publish locked)
+Step 4 — First Episode   (brief: code, title, runtime, premise; optional)
+```
+
+Full spec: `specs/system/onboarding.md`. Sidebar nav (except Settings) is
+disabled until step 4 is complete (or skipped). Concierge is hidden during
+onboarding to remove distraction.
+
+Re-entry path: Settings → Onboarding → "Run setup wizard again" — never
+deletes existing series.
+
+---
+
+## 29. Storage Configuration (v0.3)
+
+Storage paths are configured in the first-run wizard step 1 and editable
+later under Settings → Storage. Two paths:
+
+- `project_root` — where film project folders live (Tier 2 per CLAUDE.md §2).
+- `media_storage_root` — where heavy media binaries live (Tier 3).
+
+Each path is validated by a write-test probe (create + delete a 0-byte
+file) before persisting. Failures are surfaced verbatim. The studio repo
+(`C:\SandyStudio\`) is forbidden as a write target except for its own
+`FILMS\` subdirectory.
+
+Full spec: `specs/system/storage_configuration.md`.
+
+---
+
+*SandyStudio uiux.md | v0.3 | Status: DRAFT*

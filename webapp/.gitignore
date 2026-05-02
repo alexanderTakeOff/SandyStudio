@@ -33,3 +33,7 @@ supabase/.temp/
 *.pem
 .turbo/
 .vercel/
+
+# Generated provider outputs (Phase 8 first-call MVP local binary store).
+# Will be replaced by Drive in Phase 8 step 10.
+/public/staging/

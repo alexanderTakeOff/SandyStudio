@@ -24,7 +24,18 @@ import {
   mockVideo,
   mockYouTubeUpload,
 } from './mock-providers';
+import { generateImageOpenAI } from './providers/openai-image';
+import { generateVideoVeoGemini } from './providers/veo-gemini';
+import { persistBinary, type PersistedBinary } from './persist-binary';
+import type { ResolvedProvider } from './provider-resolver';
 import { getAgent } from './registry';
+import { runScreenwriter, ScreenwriterError } from './runners/screenwriter';
+import { runScriptReviewer, ScriptReviewerError } from './runners/script-reviewer';
+import { runStoryboarder, StoryboarderError } from './runners/storyboarder';
+import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-check';
+import { runCopywriter, CopywriterError } from './runners/copywriter';
+import { runEpisodeReferences, EpisodeReferencesError } from './runners/episode-references';
+import { runAnimaticSlideshow, AnimaticSlideshowError } from './runners/animatic-slideshow';
 import type { AgentId, AgentInputs, AgentResult } from './types';
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
@@ -54,7 +65,7 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
 
   const { data: assets, error: asErr } = await supabase
     .from('assets')
-    .select('id, file_type, filename, status, drive_path, staging_path, version')
+    .select('id, file_type, filename, status, drive_path, staging_path, version, content')
     .eq('episode_id', episodeId)
     .eq('status', 'APPROVED');
   if (asErr) {
@@ -82,6 +93,59 @@ export interface RunAgentArgs {
   collectionPoint?: 'T+1h' | 'T+24h' | 'T+7d' | 'T+30d';
   /** Optional youtube video id (passed by EXEC-PUB to EXEC-ANAL through events). */
   youtubeVideoId?: string;
+  /** Resolved provider for the contract this agent fulfils. Undefined ⇒ mock everywhere (replay-pilot, tests). */
+  provider?: ResolvedProvider;
+  /** Supabase client (service role). Required for binary-producing agents that go to real providers — used by persistBinary to resolve the storage contract. */
+  supabase?: SupabaseClient<Database>;
+  /** Episode code (e.g. SS-S01-E02) — fed into Drive folder layout. */
+  episodeCode?: string;
+}
+
+// Helper: assemble metadata payload for binary outputs, encapsulating the
+// difference between local-only and Drive-backed persistence.
+function metadataFromPersisted(
+  persisted: PersistedBinary,
+  extra: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...extra,
+    staging_path: persisted.absolutePath,
+    drive_file_id: persisted.driveFileId,
+    drive_web_view_url: persisted.driveWebViewUrl,
+    storage_provider: persisted.storageProviderId,
+    drive_upload_failed: persisted.driveUploadFailed,
+  };
+}
+
+function buildAnimaticPrompt(inputs: AgentInputs): string {
+  const ep = inputs.episode as { episode_code?: string; title_working?: string | null };
+  const title = ep.title_working ?? 'Untitled comedy short';
+  return [
+    `Animatic preview for an animated comedy short titled "${title}".`,
+    'Stylised 2D animation, muted palette, cinematic 16:9 framing.',
+    'Smooth camera, simple silhouette compositions, no on-screen text.',
+  ].join(' ');
+}
+
+function buildShotPrompt(inputs: AgentInputs, shotId?: string): string {
+  const ep = inputs.episode as { episode_code?: string; title_working?: string | null };
+  const title = ep.title_working ?? 'Untitled comedy short';
+  return [
+    `Single shot from animated comedy "${title}" (shot ${shotId ?? '?'}).`,
+    'Vibrant 2D animation, dynamic action, comedic timing, 16:9 framing, no text.',
+  ].join(' ');
+}
+
+function buildThumbnailPrompt(inputs: AgentInputs): string {
+  const ep = inputs.episode as { episode_code?: string; title_working?: string | null };
+  const code = ep.episode_code ?? 'episode';
+  const title = ep.title_working ?? 'Untitled comedy short';
+  return [
+    `YouTube thumbnail for an animated comedy short titled "${title}" (${code}).`,
+    'Style: stylised 2D-ish animation aesthetic, vibrant colours, dynamic composition,',
+    'a clear focal subject readable at 320×180, comedy/sketch art direction.',
+    'No text, no watermark, 16:9 framing, high contrast.',
+  ].join(' ');
 }
 
 interface RunResult {
@@ -104,16 +168,62 @@ interface RunResult {
  * does not change.
  */
 export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
-  const { agentId, inputs, shotId, section, collectionPoint, youtubeVideoId } = args;
+  const {
+    agentId,
+    inputs,
+    shotId,
+    section,
+    collectionPoint,
+    youtubeVideoId,
+    provider,
+    supabase,
+    episodeCode,
+  } = args;
+  void provider; // referenced inside individual cases
   const episodeId = inputs.episode_id;
   const agentMeta = getAgent(agentId);
 
   switch (agentId) {
-    case 'EXEC-SW':
-    case 'EXEC-SREV':
-    case 'EXEC-SB':
-    case 'EXEC-WCHK':
-    case 'EXEC-COPY': {
+    case 'EXEC-SW': {
+      // Real screenwriter — Anthropic Sonnet, reads APPROVED brief from
+      // upstream_assets, returns markdown + scenes_v1 JSON. Contract:
+      // specs/contracts/screenwriter@v1.yaml.
+      //
+      // Auto-mock fallback (mirrors provider-resolver.ts pattern): when
+      // ANTHROPIC_API_KEY is not set we keep the mock path so replay-pilot
+      // and unit tests run without secrets. In webapp dev/prod the key is
+      // always present and the real path runs.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const sw = await runScreenwriter({ inputs });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: sw.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: sw.model,
+                contract: sw.contract,
+                markdown: sw.markdown,
+                body: sw.body,
+                description: sw.description,
+                brief_asset_id: sw.briefAssetId,
+                mvp_missing_inputs: sw.notes,
+                provider_id: sw.model,
+                provider_used: 'anthropic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof ScreenwriterError) {
+            throw new Error(`EXEC-SW: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mockLLM path (replay-pilot, unit tests, environments without key)
       const llm = await mockLLM({ agentId, episodeId });
       return {
         outputKind: 'text-md',
@@ -125,19 +235,369 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             model: agentMeta.model,
             markdown: llm.markdown,
             body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-SREV': {
+      // Real script reviewer — Anthropic Sonnet, reads APPROVED brief +
+      // script, returns markdown + verdict JSON. Contract:
+      // specs/contracts/script_reviewer@v1.yaml.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runScriptReviewer({ inputs });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                verdict: r.verdict,
+                brief_asset_id: r.briefAssetId,
+                script_asset_id: r.scriptAssetId,
+                mvp_missing_inputs: r.notes,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof ScriptReviewerError) {
+            throw new Error(`EXEC-SREV: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mockLLM (replay-pilot, tests, no key)
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-SB': {
+      // Real storyboarder — Anthropic Sonnet, breaks APPROVED script into
+      // 3 acts × shots. Contract: specs/contracts/storyboarder@v1.yaml.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runStoryboarder({ inputs });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                total_shots: r.totalShots,
+                total_duration_s: r.totalDurationS,
+                brief_asset_id: r.briefAssetId,
+                script_asset_id: r.scriptAssetId,
+                mvp_missing_inputs: r.notes,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof StoryboarderError) {
+            throw new Error(`EXEC-SB: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mockLLM
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-WCHK': {
+      // Pivoted: was "World Checker", now Continuity Supervisor — validates
+      // storyboard against LOCKED Series Bible canon. Contract:
+      // specs/contracts/continuity_check@v1.yaml.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey && supabase) {
+        try {
+          const r = await runContinuityCheck({ inputs, supabase });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                verdict: r.verdict,
+                storyboard_asset_id: r.storyboardAssetId,
+                bible_snapshot: r.bibleSnapshot,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof ContinuityCheckError) {
+            throw new Error(`EXEC-WCHK: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mockLLM
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-COPY': {
+      // Real copywriter — Haiku 4.5 (cheap + fast). Contract:
+      // specs/contracts/copywriter@v1.yaml.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runCopywriter({ inputs });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof CopywriterError) throw new Error(`EXEC-COPY: ${err.message}`);
+          throw err;
+        }
+      }
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-EREF': {
+      // Real Episode Reference Generator. Bible-anchored gpt-image-1 fan-out
+      // — produces N IMG-episode_ref_<slug> assets directly. Contract:
+      // specs/contracts/episode_references@v1.yaml.
+      const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
+      if (hasOpenAI && supabase) {
+        try {
+          const r = await runEpisodeReferences({ inputs, supabase, episodeCode });
+          return {
+            outputKind: 'image-png',
+            result: {
+              // Empty asset_paths because the runner already inserted N rows
+              // directly. saveAgentOutput sees skip_save and doesn't create
+              // an extra placeholder row.
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                contract: r.contract,
+                provider_id: 'gpt-image-1',
+                provider_used: 'gpt-image-1',
+                description: r.description,
+                skip_save: true,
+                inserted_asset_ids: r.insertedAssetIds,
+                total_images: r.totalImages,
+                bible_snapshot: r.bibleSnapshot,
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof EpisodeReferencesError) {
+            throw new Error(`EXEC-EREF: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mock placeholder so replay-pilot keeps working.
+      const image = await mockImage({
+        episodeId,
+        assetId: `episode_ref-${episodeId.slice(-8)}`,
+      });
+      return {
+        outputKind: 'image-png',
+        result: {
+          asset_paths: [image.drive_path],
+          cost_usd: image.cost_usd,
+          metadata: {
+            ...image,
+            agent_id: agentId,
+            provider_id: 'mock',
+            provider_used: 'mock',
+            description: 'Stub EXEC-EREF mock — set OPENAI_API_KEY for real path',
           },
         },
       };
     }
 
     case 'EXEC-EDIT': {
-      // EXEC-EDIT in Phase 4 mock mode: produce an animatic video asset.
-      // Per-shot fan-out + music fan-out is dispatched by exec-edit.ts via
-      // its nextEvent callback (it reads shot_ids from this metadata).
-      // Real mode will read shot ids from the storyboard upstream.
+      // EXEC-EDIT priority: Step 8-lite slideshow assembly when ≥1 APPROVED
+      // IMG-episode_ref exists in upstream. This is our Bible-anchored animatic
+      // gate per Director's critique #4 — Director validates pacing on a
+      // browser-rendered sequence of approved refs. Music + real MP4 land in
+      // Step 8.5 / 8 full.
+      const upstream = inputs.upstream_assets as
+        | ReadonlyArray<{ file_type?: string | null; status?: string | null }>
+        | undefined;
+      const hasApprovedRefs = (upstream ?? []).some(
+        (a) =>
+          typeof a.file_type === 'string' &&
+          a.file_type.startsWith('IMG-episode_ref') &&
+          a.status === 'APPROVED',
+      );
+      if (hasApprovedRefs && supabase) {
+        try {
+          const slide = await runAnimaticSlideshow({ inputs, supabase, episodeCode });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: slide.costUsd,
+              metadata: {
+                agent_id: agentId,
+                contract: slide.contract,
+                provider_id: 'slideshow',
+                provider_used: 'slideshow',
+                markdown: slide.markdown,
+                body: slide.body,
+                description: slide.description,
+                animatic_kind: 'slideshow_v1',
+                total_duration_s: slide.totalDurationS,
+                frame_count: slide.frameCount,
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof AnimaticSlideshowError) {
+            throw new Error(`EXEC-EDIT (slideshow): ${err.message}`);
+          }
+          throw err;
+        }
+      }
+
+      // Legacy real Veo path + mock path (kept for replay-pilot and Step 9).
       const llm = await mockLLM({ agentId, episodeId });
-      const video = await mockVideo({ episodeId, shotId: 'animatic', durationSeconds: 60 });
       const shotIds = [1, 2, 3].map((act) => `${episodeId}-A${act}-SC01-SH01`);
+
+      if (provider?.providerId === 'veo-3' || provider?.providerId === 'veo-3-img2vid') {
+        if (!supabase) throw new Error('EXEC-EDIT real path requires supabase in runArgs');
+        const real = await generateVideoVeoGemini({
+          prompt: buildAnimaticPrompt(inputs),
+          durationSeconds: 8,
+          aspectRatio: '16:9',
+          quality: 'fast',
+        });
+        const persisted = await persistBinary({
+          base64: real.mp4_b64,
+          ext: 'mp4',
+          driveFilename: `${episodeCode ?? 'SS-unknown'}-VID-animatic-v01-DRAFT.mp4`,
+          localHint: `animatic-${episodeId.slice(-8)}`,
+          episodeCode,
+          supabase,
+        });
+        return {
+          outputKind: 'video-mp4',
+          result: {
+            asset_paths: [persisted.browserUrl],
+            cost_usd: llm.cost_usd + real.cost_usd,
+            metadata: metadataFromPersisted(persisted, {
+              agent_id: agentId,
+              provider_id: real.provider,
+              provider_used: real.provider,
+              format: real.format,
+              width: real.width,
+              height: real.height,
+              duration_seconds: real.duration_seconds,
+              size_bytes: real.size_bytes,
+              markdown: llm.markdown,
+              body: llm.body as Record<string, unknown>,
+              shot_ids: shotIds,
+            }),
+          },
+        };
+      }
+
+      const video = await mockVideo({ episodeId, shotId: 'animatic', durationSeconds: 60 });
       return {
         outputKind: 'video-mp4',
         result: {
@@ -146,6 +606,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           metadata: {
             ...video,
             agent_id: agentId,
+            provider_id: 'mock',
+            provider_used: 'mock',
             markdown: llm.markdown,
             body: llm.body as Record<string, unknown>,
             shot_ids: shotIds,
@@ -158,6 +620,47 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       if (!shotId) {
         throw new Error(`EXEC-VGEN requires shotId in event payload`);
       }
+
+      if (provider?.providerId === 'veo-3-img2vid' || provider?.providerId === 'veo-3') {
+        if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
+        // Without a master character reference (PA-001/2/3 lands later), fall
+        // back to text-to-video for the shot. When the reference workflow is
+        // live, pass referenceImageBase64 + referenceImageMime here.
+        const real = await generateVideoVeoGemini({
+          prompt: buildShotPrompt(inputs, shotId),
+          durationSeconds: 4,
+          aspectRatio: '16:9',
+          quality: 'fast',
+        });
+        const safeShotId = shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+        const persisted = await persistBinary({
+          base64: real.mp4_b64,
+          ext: 'mp4',
+          driveFilename: `${episodeCode ?? 'SS-unknown'}-VID-shot_${safeShotId}-v01-DRAFT.mp4`,
+          localHint: `shot-${safeShotId}`,
+          episodeCode,
+          supabase,
+        });
+        return {
+          outputKind: 'video-mp4',
+          result: {
+            asset_paths: [persisted.browserUrl],
+            cost_usd: real.cost_usd,
+            metadata: metadataFromPersisted(persisted, {
+              agent_id: agentId,
+              shot_id: shotId,
+              provider_id: real.provider,
+              provider_used: real.provider,
+              format: real.format,
+              width: real.width,
+              height: real.height,
+              duration_seconds: real.duration_seconds,
+              size_bytes: real.size_bytes,
+            }),
+          },
+        };
+      }
+
       const video = await mockVideo({ episodeId, shotId, durationSeconds: 5 });
       return {
         outputKind: 'video-mp4',
@@ -168,6 +671,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             ...video,
             agent_id: agentId,
             shot_id: shotId,
+            provider_id: 'mock',
+            provider_used: 'mock',
           },
         },
       };
@@ -191,6 +696,39 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-THUMB': {
+      if (provider?.providerId === 'gpt-image-1') {
+        if (!supabase) throw new Error('EXEC-THUMB real path requires supabase in runArgs');
+        const real = await generateImageOpenAI({
+          prompt: buildThumbnailPrompt(inputs),
+          size: '1536x1024',
+          quality: 'medium',
+        });
+        const persisted = await persistBinary({
+          base64: real.b64_data,
+          ext: 'png',
+          driveFilename: `${episodeCode ?? 'SS-unknown'}-IMG-thumbnail-v01-DRAFT.png`,
+          localHint: `thumb-${episodeId.slice(-8)}`,
+          episodeCode,
+          supabase,
+        });
+        return {
+          outputKind: 'image-png',
+          result: {
+            asset_paths: [persisted.browserUrl],
+            cost_usd: real.cost_usd,
+            metadata: metadataFromPersisted(persisted, {
+              agent_id: agentId,
+              provider_id: 'gpt-image-1',
+              provider_used: 'gpt-image-1',
+              format: real.format,
+              width: real.width,
+              height: real.height,
+              size_bytes: real.size_bytes,
+              revised_prompt: real.revised_prompt ?? null,
+            }),
+          },
+        };
+      }
       const image = await mockImage({
         episodeId,
         assetId: `thumbnail-${episodeId.slice(-8)}`,
@@ -203,6 +741,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           metadata: {
             ...image,
             agent_id: agentId,
+            provider_id: 'mock',
+            provider_used: 'mock',
           },
         },
       };
@@ -276,6 +816,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-SREV': 'REV-script_qa',
   'EXEC-SB': 'STB-storyboard',
   'EXEC-WCHK': 'REV-world_check',
+  'EXEC-EREF': 'IMG-episode_ref', // backbone v2: between Storyboard and Animatic
   'EXEC-EDIT': 'VID-animatic', // animatic produces a video asset; spec is metadata
   'EXEC-VGEN': 'VID-shot',
   'EXEC-MGEN': 'AUD-music',
@@ -310,6 +851,20 @@ export interface SaveOutputArgs {
 export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: string }> {
   const { supabase, agentId, episodeId, episodeCode, result, outputKind, variant } = args;
 
+  // Some agents (e.g. EXEC-EREF) insert N assets directly inside their runner
+  // and ask saveAgentOutput to step aside. They pass `skip_save: true` and
+  // `inserted_asset_ids: [...]` in metadata; we return the first one as the
+  // primary asset id so the rest of the factory chain keeps working.
+  if (result.metadata.skip_save === true) {
+    const ids = result.metadata.inserted_asset_ids;
+    if (Array.isArray(ids) && typeof ids[0] === 'string') {
+      return { assetId: ids[0] };
+    }
+    throw new Error(
+      'saveAgentOutput: skip_save was set but inserted_asset_ids missing or empty',
+    );
+  }
+
   const fileTypeBase = FILE_TYPE_BY_AGENT[agentId];
   if (!fileTypeBase) {
     throw new Error(`saveAgentOutput: agent ${agentId} has no file_type mapping`);
@@ -325,14 +880,59 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
           ? 'wav'
           : 'md';
 
-  const filename = `${episodeCode}-${fileType}-v01-DRAFT.${ext}`;
+  // Auto-increment version: each agent re-run produces a new asset row, so
+  // re-trigger / revision cycles never collide on the unique filename
+  // constraint. Versioning policy per glossary §9: each pipeline pass is its
+  // own version; old version stays in REVISION/REJECTED for the audit trail.
+  const { data: existingRows } = await supabase
+    .from('assets')
+    .select('version, filename')
+    .eq('episode_id', episodeId)
+    .eq('file_type', fileType);
+  const maxExistingVersion = (existingRows ?? []).reduce(
+    (max, row) => Math.max(max, row.version ?? 0),
+    0,
+  );
+  const nextVersion = maxExistingVersion + 1;
+  const versionTag = `v${String(nextVersion).padStart(2, '0')}`;
+  const filename = `${episodeCode}-${fileType}-${versionTag}-DRAFT.${ext}`;
   const drivePath = result.asset_paths[0] ?? null;
 
-  // Persist markdown (if any) inside description so Phase 4 verification can
-  // round-trip it via Supabase only — no filesystem dependency.
-  const description =
+  // Markdown body lives in the dedicated `content` column (migration 0013).
+  // `description` keeps its original role: a short summary line — currently
+  // null for mock outputs since the providers don't emit a separate summary.
+  // Phase 5d step 2 editor reads/writes via /api/assets/[id]/content → DB.
+  const content =
     typeof result.metadata.markdown === 'string'
-      ? (result.metadata.markdown as string).slice(0, 8000)
+      ? (result.metadata.markdown as string)
+      : null;
+
+  // Real provider adapters that produce binaries (e.g. gpt-image-1) write the
+  // file under webapp/public/staging/ and pass the absolute path through
+  // metadata.staging_path. Mock outputs never set this — staging_path stays null.
+  const stagingPath =
+    typeof result.metadata.staging_path === 'string'
+      ? (result.metadata.staging_path as string)
+      : null;
+
+  // Drive identity (when storage provider = drive_native and upload succeeded)
+  // — read by AssetPreview as a fallback when local cache misses, by future
+  // Drive-native operations (download, share, delete) as the canonical handle.
+  const driveFileId =
+    typeof result.metadata.drive_file_id === 'string'
+      ? (result.metadata.drive_file_id as string)
+      : null;
+  const driveWebViewUrl =
+    typeof result.metadata.drive_web_view_url === 'string'
+      ? (result.metadata.drive_web_view_url as string)
+      : null;
+
+  // Real text agents (Step 1+) emit a one-line description through metadata
+  // ("produced by EXEC-SW · screenwriter@v1 · sonnet · cost $X · N tokens").
+  // Mock agents leave this null. Surfaced verbatim in AssetPreview header.
+  const description =
+    typeof result.metadata.description === 'string'
+      ? (result.metadata.description as string)
       : null;
 
   const { data, error } = await supabase
@@ -343,9 +943,12 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       file_type: fileType,
       filename,
       drive_path: drivePath,
-      staging_path: null,
+      staging_path: stagingPath,
+      drive_file_id: driveFileId,
+      drive_web_view_url: driveWebViewUrl,
       status: 'DRAFT',
-      version: 1,
+      version: nextVersion,
+      content,
       description,
     })
     .select('id')

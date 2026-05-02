@@ -77,3 +77,140 @@ asset_status_chip:
   REJECTED:          { token: "status_danger",   label: "Rejected" }
   INVALIDATED:       { token: "status_muted",    label: "Invalidated" }
   TEST:              { token: "status_muted",    label: "Test" }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Phase 5a additions (uiux.md v0.3)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Pipeline DAG node states per pipeline_view.md §3.2.
+pipeline_node_states:
+  idle:     { glyph: "○",  token: "pipeline_node_idle",     label: "Idle" }
+  running:  { glyph: "◐",  token: "pipeline_node_running",  label: "Running" }
+  approved: { glyph: "●",  token: "pipeline_node_approved", label: "Approved" }
+  blocked:  { glyph: "◇",  token: "pipeline_node_blocked",  label: "Blocked" }
+  failed:   { glyph: "✗",  token: "pipeline_node_failed",   label: "Failed" }
+
+# Pipeline stages — canonical order surfaced in DAG and timelines.
+# Mirrors pipeline_view.md §3.1 and dashboard_cockpit.md §4.2.
+pipeline_stages:
+  - { id: brief,        label: "Brief" }
+  - { id: story,        label: "Story" }
+  - { id: script,       label: "Script" }
+  - { id: storyboard,   label: "Storyboard" }
+  - { id: world_check,  label: "World Check" }
+  - { id: animatic,     label: "Animatic" }    # hard gate — Generation blocked until approved
+  - { id: generation,   label: "Generation" }  # fan-out container
+  - { id: distribution, label: "Distribution" }
+  - { id: publish,      label: "Publish" }     # hard limit — Director only
+  - { id: analytics,    label: "Analytics" }
+
+# Director Inbox groups + sort rules per director_inbox.md §4.
+inbox:
+  preview_limit: 5      # how many cards on Dashboard Zone 1
+  poll_interval_sec: 30
+  bulk_size_cap: 20
+
+  groups:
+    - id: needs_approval
+      label: "Needs approval"
+      sort: [non_visual_first, oldest_first]
+    - id: needs_decision
+      label: "Needs decision"
+      sort: [oldest_first]
+    - id: awaiting_input
+      label: "Awaiting your input"
+      sort: [oldest_first]
+    - id: blocked
+      label: "Blocked — awaiting unblock"
+      sort: [severity_desc, oldest_first]
+
+  # Categories that disable bulk actions and require preview-before-approve
+  # per character_consistency.md §3.3 + uiux.md §13.2.
+  visual_categories:
+    - character_visual
+    - location_ref
+    - generated_shots
+    - thumbnail
+
+  # Hotkey map. Surfaced in the `?` overlay.
+  hotkeys:
+    next:           "J"
+    previous:       "K"
+    open_preview:   "Space"
+    approve:        "A"
+    revise:         "R"
+    reject:         "X"
+    needs_tweak:    "T"
+    claim:          "M"
+    help:           "?"
+    jump_top:       "GG"
+    jump_end:       "GE"
+
+# Agent Report card schema per pipeline_view.md §4.1.
+# UI consumes `assets.agent_summary` (text, agent-authored) plus joined rows.
+agent_report_card:
+  fields:
+    - { name: emoji,         source: "agents.registry.emoji" }
+    - { name: agent_code,    source: "agents.registry.code" }
+    - { name: relative_time, source: "events.created_at",    format: "relative" }
+    - { name: headline,      source: "assets.agent_summary", max_chars: 120 }
+    - { name: body_bullets,  source: "assets.agent_summary", max_lines: 3, optional: true }
+    - { name: next_agent,    source: "agents.registry.next_agent", optional: true }
+    - { name: status_chip,   source: "jobs.status" }
+    - { name: artifact_link, source: "assets.id" }
+    - { name: secondary_link, source: "events.metadata", optional: true }
+  director_card:
+    glyph: "⚠"
+    border_token: "accent_warning_subtle"
+
+# Dashboard cockpit zones per dashboard_cockpit.md §2.
+dashboard:
+  poll_intervals_sec:
+    inbox: 30
+    episodes: 60
+    activity: 30
+  zones:
+    - id: inbox_preview
+      label: "Inbox preview"
+      height_share: 0.30
+      data_source: "GET /api/director/inbox?limit=5"
+      deep_link: "/inbox"
+    - id: active_episodes
+      label: "Active Episodes"
+      height_share: 0.40
+      data_source: "GET /api/episodes?status=active"
+      deep_link: "/episodes"
+    - id: activity_feed
+      label: "Live activity"
+      height_share: 0.30
+      data_source: "GET /api/activity?limit=10"
+      deep_link: "/activity"
+
+# Topbar chip lever rules per uiux.md §8.4.
+topbar_levers:
+  system_mode:
+    type: modal_confirm
+    director_only: true
+    audit_event: "system_mode_change"
+    severity_map:
+      "===5===": "warning"
+      "===1===": "info"
+  governance_mode:
+    type: dropdown_with_scope
+    director_only: true
+    scopes: [global, current_episode]
+    audit_event: "governance_mode_change"
+    autotest_severity: "warning"
+
+# Storage configuration defaults per storage_configuration.md §2.
+storage_defaults:
+  project_root: "C:\\SandyStudio\\FILMS\\"
+  media_storage_root: "H:\\My Drive\\SandyStudio_Media\\"
+  probe_filename_prefix: ".sandystudio_probe_"
+  rewalidate_after_hours: 24
+  forbidden_path_prefixes:
+    - "C:\\Windows\\"
+    - "C:\\Program Files\\"
+    - "C:\\Program Files (x86)\\"
+  studio_repo_root: "C:\\SandyStudio\\"
+  studio_films_subdir: "C:\\SandyStudio\\FILMS\\"

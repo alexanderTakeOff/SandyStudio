@@ -1,0 +1,90 @@
+id: storyboarder
+version: 1
+agent: EXEC-SB
+display:
+  ru: Раскадровщик
+  en: Storyboarder
+
+# ─── Model & cost ────────────────────────────────────────────────────────────
+model: claude-sonnet-4-6
+max_output_tokens: 8000     # 3 acts × N shots × prose + structured JSON
+cost_ceiling_usd: 0.50
+sla_minutes: 5
+
+# ─── Inputs ──────────────────────────────────────────────────────────────────
+input:
+  required:
+    - { id: brief,  file_type: SPC-brief,  status: APPROVED }
+    - { id: script, file_type: SCR-script, status: APPROVED }
+  optional_for_mvp:
+    - { id: style_bible,        file_type: BIB-style }
+    - { id: world_bible,        file_type: BIB-world }
+    - { id: character_profiles, file_type: BIB-character }
+
+# ─── Output ──────────────────────────────────────────────────────────────────
+output:
+  primary:
+    file_type: STB-storyboard
+    naming: "{episode_code}-STB-storyboard-v{NN}-DRAFT.md"
+    status_on_create: DRAFT
+  fields:
+    markdown:
+      required: true
+      min_chars: 1500
+    json_block:
+      required: true
+      schema_ref: storyboard_v1
+      shape:
+        episode_id: string
+        script_version: integer
+        runtime_target_seconds: integer
+        acts:
+          type: array
+          length: 3
+          items:
+            act: integer       # 1, 2, 3
+            beat_summary: string
+            shots:
+              type: array
+              items:
+                shot_id: string         # {episode_code}-A{N}-SC{NN}-SH{NN}
+                camera_angle: enum [wide, medium, medium_wide, close_up, extreme_close_up, over_shoulder, top_down, low_angle, dutch]
+                location: string         # name from brief, NOT generic
+                action: string           # one paragraph of visual action
+                characters_present: string[]
+                duration_seconds: integer
+                key_beat: string         # which brief beat this shot delivers (or "transition" / "setup")
+                continuity_notes: string # what must match prior shot (lighting, pose, prop state)
+        assumptions: string[]
+        total_shots: integer
+        total_duration_s: integer
+
+# ─── Preconditions / Postconditions ──────────────────────────────────────────
+preconditions:
+  - "Brief and Script for this episode exist with status = APPROVED"
+  - "Script content contains parseable scenes_v1 JSON"
+
+postconditions:
+  - "One STB-storyboard asset created with status = DRAFT"
+  - "JSON acts[] has exactly 3 entries"
+  - "Every shot has a unique shot_id and a non-generic location"
+  - "Sum of shot durations within 10% of runtime_target_seconds"
+
+# ─── Approval gate ───────────────────────────────────────────────────────────
+approval_gate:
+  approver: director
+  category: B
+  action_on_approve: "fanout EXEC-WCHK (world_check)"
+  action_on_revise:  "re-run EXEC-SB with revision_note"
+
+# ─── Escalation ──────────────────────────────────────────────────────────────
+escalation:
+  on_invalid_json:        "retry once with explicit schema reminder; then NEEDS_HUMAN_TWEAK"
+  on_act_count_mismatch:  "retry once asking model for exactly 3 acts; then NEEDS_HUMAN_TWEAK"
+  on_anthropic_error:     "retry up to 2 times; then NEEDS_HUMAN_TWEAK"
+  on_cost_overrun:        "abort job, mark FAILED, log in costs table"
+
+# ─── Audit ───────────────────────────────────────────────────────────────────
+audit:
+  records: [job_id, model, input_tokens, output_tokens, cost_usd, started_at, completed_at, total_shots, total_duration_s]
+  storage: jobs + costs tables

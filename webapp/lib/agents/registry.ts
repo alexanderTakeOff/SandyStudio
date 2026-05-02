@@ -107,6 +107,21 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: true,
   },
 
+  'EXEC-EREF': {
+    id: 'EXEC-EREF',
+    code: 'exec-eref',
+    display_ru: 'Художник эпизод-референсов',
+    display_en: 'Episode Reference Generator',
+    emoji: '🖼️',
+    category: 'production',
+    model: 'haiku', // image generation is via gpt-image-1; text scaffold is light
+    skills: ['fal-ai-media', 'prompt-optimizer'],
+    next_agent: 'EXEC-EDIT',
+    governance: 'B',
+    prompt_file: 'episode_reference.md', // to be written in Step 5
+    has_inngest_function: true,
+  },
+
   'EXEC-EDIT': {
     id: 'EXEC-EDIT',
     code: 'exec-edit',

@@ -11,12 +11,45 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 4 COMPLETE — 11 EXEC-* Inngest functions + factory + verify harness
-Blocker:  Migration 0009 not yet applied to remote Supabase (run `npx supabase db push`)
-Next:     SPRINT 9 / Phase 5 — API routes (/api/episodes/*, /api/approvals/*, etc.)
-Mode:     ===5=== EDIT (Director active)
-Date:     2026-04-28
+Phase:    SPRINT 9 / Phase 5c COMPLETE + E02 Mode 1 cycle verified
+          Provider Strategy v0.2 APPROVED 2026-04-30 — Google-first MVP, two-tier UI switching
+          🎯 Phase 8 first-call MVP COMPLETE — providers UI + AI brief gen + drive-backed pipeline
+          Phase 5d steps 2 + 3 SHIPPED — pipeline kebab (context-aware), CodeMirror editor, preview drawer
+          E03 (SS-S03-E01) test cycle in progress — animatic re-triggered with real Veo 2026-04-30 18:41
+          /clear point set — see RESUME-AFTER-CLEAR.md
+Next:     Watch animatic Veo result → approve → fan-out 3× shot Veo + mock music
+          Then: activity_events fix, friendly names, text-agent Anthropic adapter, Series Genesis
+Mode:     ===5=== EDIT (Director active) — switches to ===1=== at session start per CLAUDE.md
+Date:     2026-04-30
 ```
+
+### Episodes in DB
+
+| Episode | Status | Mode | What it proves |
+|---------|--------|------|----------------|
+| **SS-S01-E01** "The Red Carpet" | BRIEF_APPROVED + 15 assets APPROVED through Publish | 4 (AUTOTEST) | Full chain Brief → EXEC-SW → SREV → SB (3 acts) → WCHK → EDIT → VGEN×3 + MGEN → COPY → THUMB → **PUB** works in Mode 4 mock mode |
+| **SS-S01-E02** "sandyTest05" | BRIEF_PENDING (brief in REVIEW) | 1 (MANUAL) | Reset clean — Director's Mode 1 test bench. Approve via `/inbox` → chain runs through asset-approve `computeNextEvents` |
+
+### Migrations on remote Supabase
+
+```
+0001..0009  Phase 1-4
+0010        series + approval_authority_matrix + app_config storage scope (Phase 5b)
+0011        relax assets.file_type CHECK + cleanup orphans
+0012        relax CHECK to allow dashes in variants/filenames (caught EXEC-VGEN/MGEN bug)
+```
+
+### Two-terminal local dev (canonical)
+
+```bash
+# Terminal 1
+cd webapp && npm run dev          # → http://localhost:3000
+
+# Terminal 2
+cd webapp && npm run inngest:dev  # → http://localhost:8288 (dashboard)
+```
+
+⚠ **Don't** run `npm run build` while dev is active — corrupts `.next/` webpack cache, every API route returns `Cannot read properties of undefined (reading 'call')` 500. Recovery: kill servers, `rm -rf webapp/.next`, restart dev.
 
 ### Sprint 9 Phase status
 
@@ -26,10 +59,39 @@ Date:     2026-04-28
 | 2 | Next.js scaffold + theme + StudioShell + Concierge | ✅ COMPLETE 2026-04-28 |
 | 3 | Inngest worker + concurrency limits + ping smoke test | ✅ COMPLETE 2026-04-28 |
 | 4 | Agent job functions (11 Inngest fns + factory + 39 unit tests + replay-pilot harness)  | ✅ COMPLETE 2026-04-28 |
-| 5 | API routes (Next.js App Router)               | 🟢 NEXT |
-| 6 | UI: Approval Queue + Dashboard + Budget data wiring | ⏳ pending |
-| 7 | Approval Authority Matrix wizard              | ⏳ pending |
-| 8 | PM2 ecosystem + Tailscale doc                 | ⏳ pending |
+| 5a | UX architecture specs (uiux v0.3 + 5 sub-specs + config/uiux.yaml extensions) | ✅ COMPLETE 2026-04-29 |
+| 5b | API routes (26 endpoints + lib/api/* + zod + migration 0010 + 79 tests) | ✅ COMPLETE 2026-04-29 |
+| 5c | First-run wizard + Cockpit Dashboard + Inbox + Pipeline View + Activity + Storage settings + Topbar levers + Mode 1 chain (computeNextEvents) + Mode 4 auto-chain (factory) + 3-STB-act gate fix (migration 0011 + 0012) | ✅ COMPLETE 2026-04-29 |
+| 5d | UX polish (долговая тетрадка ниже) — friendly agent names, asset preview drawer, tooltips, etc. | ⏳ pending |
+| 6 | Per-episode sub-pages, budget detail tab, jobs detail panel | ⏳ pending |
+| 7 | Approval Authority Matrix per-row editing + delegate UI | ⏳ pending |
+| 8 | Real provider integration (Kling/Midjourney/Suno/YouTube) — first paid run | ⏳ pending |
+| 9 | PM2 ecosystem + Tailscale + production hardening | ⏳ pending |
+
+### Long-debt (долговая тетрадка) — Phase 5d candidates
+
+Items surfaced during Director's Phase 5c smoke test, not blocking but worth fixing:
+
+| # | Bug / improvement | Severity |
+|---|---|---|
+| 1 | Friendly agent names everywhere (EXEC-SW → "Screenwriter"). Affects Re-trigger modal, Inbox, Pipeline DAG, Activity feed. | UX |
+| 2 | Per-stage trigger button in DAG (instead of generic Re-trigger… modal with dropdown) | UX |
+| 4 | `markJobFailed` on any throw, not only gate-fail. Job rows shouldn't sit `RUNNING` after Inngest function.failed (e.g. CHECK constraint, save errors) | Reliability |
+| 5 | Re-trigger dedup: refuse if same agent already has COMPLETED/RUNNING job for that asset | UX |
+| 6 | Asset preview drawer in Inbox (image/video/audio/markdown). Today it's just `confirm()` modal for visuals. | UX |
+| 7 | Tooltips on buttons (especially Mode 1/2/3 picker, APPROVE/REVISE/REJECT in Inbox); inline mode descriptions | UX |
+| 8 | Authority Matrix per-row editing UI (currently read-only display) | Phase 7 |
+| 13 | `episodes.status` doesn't update after milestone approvals — stays `BRIEF_APPROVED` even when published | Reliability |
+| 14 | `schedule-analytics` cron not firing after EXEC-PUB. Verify runner.ts EXEC-PUB emits `result.next_event` properly | Reliability |
+| 15 | Mode 4 auto-revert to Mode 1 on session end (per `governance.md §4`) | Compliance |
+| 16 | EXEC-VGEN base file_type duplicate `shot` token: produces `VID-shot-shot1`. Either base="VID" or shotId="1" | Cosmetic |
+
+**Already fixed in Phase 5c (don't re-add):**
+- ✅ #3 Story phantom stage hidden
+- ✅ #9 Multi-asset milestone chain (STB×3, animatic fan-out, metadata→thumb, ready→pub) via `computeNextEvents`
+- ✅ #10 Pipeline View stage filter (uses `metadata.file_type` prefix)
+- ✅ #11 Factory writes `agent_completed` activity_event on save
+- ✅ #12 STAGE_FROM_ASSET prefix matching (no more "all stages idle despite approved assets")
 
 ### UI/UX implementation note
 
@@ -267,6 +329,28 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 
 | Date | Change | By |
 |------|--------|----|
+| 2026-04-30 | DECISION: Phase 8 = Google-first MVP. Active stack: Drive native (storage), gpt-image-1 (image, reuses OPENAI_API_KEY), Veo 3 + Veo 3 img2vid (video). Beatoven, ElevenLabs, Kling registered but `is_active = false`. YouTube wired last. Anthropic studio agents unchanged. | Director/CEO |
+| 2026-04-30 | DECISION: provider switching architecture — two-tier (global `provider_assignments` + per-stage `stage_provider_overrides`). UI = `/settings/providers` for global + pipeline kebab for per-stage. 60s cache. Soft cancel on switch (no early Inngest interruption for MVP). | Director/CEO |
+| 2026-04-30 | DECISION: Phase 5d ships kebab UI + activity preview drawer FIRST; Phase 8 slots provider sub-menu into the same kebab. Sequencing — q1b. | Director/CEO |
+| 2026-04-30 | DECISION (partial D-001 reversal): MVP uses Veo 3 image-to-video for character shots (~75% consistency). Kling re-evaluated post first real cycle; Phase 8.5 candidate. | Director/CEO |
+| 2026-04-30 | specs/system/provider_strategy.md v0.2 APPROVED — 17-step plan: Phase 5d (4 steps) → Phase 8 (13 steps). | Claude Code |
+| 2026-04-30 | Phase 5d step 2 SHIPPED — pipeline-row kebab UI (Approve / Reject / Edit / Re-trigger), CodeMirror 6 editor, RejectModal. Components: DropdownMenu, MarkdownEditor, EditorModal, RejectModal, StageKebabMenu. New endpoint `/api/assets/[id]/content`. | Claude Code |
+| 2026-04-30 | DECISION: markdown canonical in DB (variant A), not on disk. Reason: 10ms DB vs 300ms Drive API per save × frequent edits = seconds. Drive holds binaries only in Phase 8 step 10. | Director/CEO |
+| 2026-04-30 | Migration 0013_assets_content.sql applied — `assets.content text NULL`. runner.ts saveAgentOutput populates `content` instead of stuffing markdown into `description`. factory.ts STB-act spoof carries placeholder content. Editor banner UX fixed (error path no longer shows empty Read-only banner). | Claude Code |
+| 2026-04-30 | **🎯 FIRST REAL PROVIDER CALL — gpt-image-1 worked end-to-end.** $0.016, 17.1s, 1536×1024 PNG saved to webapp/public/staging/. Architecture validated: env key → provider-resolver → openai-image adapter → binary persist → /staging/ URL. Migration 0014_provider_assignments applied (image=gpt-image-1 active, others mock). EXEC-THUMB wired through resolver in factory.ts; auto-downgrades to mock if env key missing. | Claude Code |
+| 2026-04-30 | New files: `lib/agents/provider-resolver.ts` (60s cache + auto-mock fallback), `lib/agents/providers/openai-image.ts` (gpt-image-1 adapter with cost ladder), `scripts/test-image-provider.ts` (`npm run test-image` for direct proof without Inngest). | Claude Code |
+| 2026-04-30 | Phase 8 step 8 SHIPPED — `/settings/providers` UI. Per-contract dropdown of catalogued candidates, on/off toggle (greyed-out for inactive), live/no-key/wip health badges, auto-mock fallback indicator. New: `app/api/providers/assignments/route.ts` (GET enriched), `app/api/providers/assignments/[contract]/route.ts` (PUT with audit + cache invalidate), `lib/api/provider-catalog.ts` (catalog), `components/settings/ProviderSettings.tsx`. | Claude Code |
+| 2026-04-30 | Phase 5d step 3 SHIPPED — Activity-item preview drawer. Right-side overlay with small (480px) / wide (70vw) / full (100vw) toggle. Renders markdown via react-markdown, image via `<img>`, video via `<video controls>`, audio via `<audio controls>`. Mock URLs (H:/My Drive/...) get a fallback "switch provider to see real preview". Eye button reveals on activity-item hover; click on item is reserved for future short-summary. | Claude Code |
+| 2026-04-30 | Phase 8 step 13 (Veo 3) and step 10 (Drive) BLOCKED — both require Google credentials not yet in env. Recommended path: GEMINI_API_KEY for Veo (single API key via aistudio.google.com), Drive needs full OAuth flow. Director to provision before unblock. | Claude Code |
+| 2026-04-30 | Director provisioned all 4 Google creds in webapp/.env.local: GEMINI_API_KEY + GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET + GOOGLE_REFRESH_TOKEN. | Director/CEO |
+| 2026-04-30 | **🎯 Drive adapter SHIPPED + VERIFIED.** `npm run test-drive` passed: OAuth refresh → ensureFolder("SandyStudio") → uploadBinary → listAssetFolder → deleteFile. Real folder created at https://drive.google.com/drive/folders/1AefoGUxuNEiwG118iQvYfx7Cn3EgEA1Y. New files: `lib/agents/providers/google-auth.ts` (token refresh + 50min cache), `lib/agents/providers/drive.ts` (multipart upload), `scripts/test-drive-provider.ts`. | Claude Code |
+| 2026-04-30 | **Veo 3 adapter SHIPPED, BLOCKED on Gemini billing.** Code path verified end-to-end (got 429 RESOURCE_EXHAUSTED, not 401/404 — auth/model/endpoint all correct). Director to enable pay-as-you-go at https://aistudio.google.com/app/billing to unlock. New files: `lib/agents/providers/veo-gemini.ts` (long-running operation pattern, 5s poll, 6min max), `scripts/test-video-provider.ts`. | Claude Code |
+| 2026-04-30 | EXEC-EDIT (animatic) + EXEC-VGEN (per-shot) wired through resolver — branch on `provider.providerId === 'veo-3'`. Persists MP4 binary via `persistBinaryToStaging`. When Director enables billing + flips video=veo-3 in /settings/providers, real animation kicks in with zero code change. | Claude Code |
+| 2026-04-30 | Dev environment clean restart — killed 3 stale Next.js + 3 stale Inngest procs (occupied 3000-3002 + 8288-8291), restarted on 3000 + 8288. | Claude Code |
+| 2026-04-30 | Director enabled Gemini API billing (Paid Tier 1, $250 cap, postpay). Veo 3 unblocked for next test cycle. | Director/CEO |
+| 2026-04-30 | Migration 0015_assets_drive_fields applied — `assets.drive_file_id` + `assets.drive_web_view_url`. | Claude Code |
+| 2026-04-30 | **🎯 Drive-backed binary persistence SHIPPED + E2E VERIFIED.** New helper `lib/agents/persist-binary.ts` writes local cache always, uploads to Drive when resolver reports storage=drive_native, never fails the agent run on Drive errors (degrades gracefully with `drive_upload_failed: true`). EXEC-THUMB / EXEC-EDIT / EXEC-VGEN refactored to use it. saveAgentOutput populates new `drive_file_id` + `drive_web_view_url` columns. `npm run test-pipeline-drive` proved gpt-image-1 → local cache + Drive upload (file `1bXP4axmK9yuqNla21pltgmPoL9B73dtD` in /SandyStudio/SS-TEST/). | Claude Code |
+| 2026-04-30 | AssetPreview component now shows "Backed up to Google Drive — open in Drive" link when `drive_web_view_url` is set, or "Local cache only — Drive storage off" hint otherwise. | Claude Code |
 | 2026-04-23 | PLAN.md created, SDD structure established | Claude Code |
 | 2026-04-23 | 5 new agents identified: ORCH, COPY, THUMB, PUB, ANAL | Claude Code |
 | 2026-04-23 | Spec hierarchy defined (7 layers, 23 files) | Claude Code |
@@ -425,6 +509,49 @@ Follow `specs/production/bootstrap_sequence.md` exactly.
 | 2026-04-28 | naming-validator.cjs hook updated — whitelist code dirs (webapp/agents/lib/specs/config/.claude) so they don't trigger SS-*-naming validation | Claude Code |
 | 2026-04-28 | Phase 4 VERIFICATION PASSED: typecheck OK + 39/39 unit tests + 28/28 replay-pilot assertions (1.0s total) | Claude Code |
 | 2026-04-28 | Phase 4 COMPLETE — pipeline DAG + budget + governance fully exercised end-to-end in mock mode | Claude Code |
+| 2026-04-29 | Director surfaced UX gap: webapp shell wired but no production cockpit, no first-run, no inbox, no pipeline visualisation | Director/CEO |
+| 2026-04-29 | DECISION: Phase 5 split into 5a (UX specs) + 5b (API routes, revised) + 5c (first-run + cockpit UI MVP); Phase 7 Authority Matrix UX home moved into 5a onboarding spec | Director/CEO |
+| 2026-04-29 | DECISION: Topbar System Mode + Governance Mode chips become interactive levers (Director-only, hard limits) | Director/CEO |
+| 2026-04-29 | DECISION: trigger route allows Director always + EXEC-DIR-AI in Mode 2/3; EXEC-DIR-AI re-trigger requires reason field | Director/CEO |
+| 2026-04-29 | Phase 5a START — UX architecture spec pass | Director/CEO |
+| 2026-04-29 | specs/system/storage_configuration.md v0.1 DRAFT — project_root + media_storage_root, write-test, settings tab | Claude Code |
+| 2026-04-29 | specs/system/onboarding.md v0.1 DRAFT — 4-step wizard (storage → series → authority → first episode) | Claude Code |
+| 2026-04-29 | specs/system/director_inbox.md v0.1 DRAFT — task center, hotkeys, bulk actions, visual gate, mode behaviour | Claude Code |
+| 2026-04-29 | specs/system/pipeline_view.md v0.1 DRAFT — DAG (40%) + Agent Report Feed (60%) hybrid per episode | Claude Code |
+| 2026-04-29 | specs/system/dashboard_cockpit.md v0.1 DRAFT — 3-zone cockpit (inbox preview + active episodes + activity feed) | Claude Code |
+| 2026-04-29 | specs/system/uiux.md v0.2 → v0.3 — spine + cross-links + Topbar levers + onboarding + storage pointers | Claude Code |
+| 2026-04-29 | config/uiux.yaml extended — pipeline_node_states, pipeline_stages, inbox config, agent_report_card, dashboard zones, topbar_levers, storage_defaults | Claude Code |
+| 2026-04-29 | Phase 5b START — API routes + lib/api/* foundation | Claude Code |
+| 2026-04-29 | webapp/lib/api/* created — response, errors, handler, auth, zod-helpers, status-transitions, storage-probe, pipeline-stages, events, supabase-cast (10 files) | Claude Code |
+| 2026-04-29 | webapp/lib/supabase/types-phase5b.ts — type extensions for series + approval_authority_matrix until types regen | Claude Code |
+| 2026-04-29 | webapp/supabase/migrations/0010_phase5b_series_authority_storage.sql — series table + approval_authority_matrix + app_config storage scope + seeds | Claude Code |
+| 2026-04-29 | zod@^3.23.8 + swr@^2.4.1 dependencies added | Claude Code |
+| 2026-04-29 | API routes: health, system/mode (GET+POST), system/governance-mode (POST), storage/config (GET+POST), storage/test-write, onboarding/state+advance+exit, series + series/[id], episodes + episodes/[id] (GET+PATCH) + approve + trigger + pipeline, assets + assets/[id] (GET+PATCH) + approve, director/inbox, activity, jobs, budget — 26 route handlers | Claude Code |
+| 2026-04-29 | __tests__/api/* — 4 new test files (status-transitions, storage-probe, pipeline-stages, response, errors-handler) — 79/79 passing | Claude Code |
+| 2026-04-29 | Phase 5b VERIFY GREEN: typecheck OK + 79 unit tests + 28 replay-pilot + next build (33 routes registered) | Claude Code |
+| 2026-04-29 | Phase 5b COMPLETE — API surface ready for Phase 5c UI | Claude Code |
+| 2026-04-29 | Phase 5c START — UI implementation | Claude Code |
+| 2026-04-29 | components/ui/Modal.tsx — portal-based modal primitive | Claude Code |
+| 2026-04-29 | StudioTopbar refactored: SystemModeChip + GovernanceChip levers (clickable + modal/dropdown) | Claude Code |
+| 2026-04-29 | StudioSidebar reordered: Dashboard / Inbox / Series / Episodes / Budget / Jobs / Activity (workflow-aligned) | Claude Code |
+| 2026-04-29 | Dashboard cockpit (3 zones): InboxPreviewZone + ActiveEpisodesZone (timeline glyphs) + ActivityFeedZone | Claude Code |
+| 2026-04-29 | First-run wizard at /onboarding — 4 steps (Storage probe → Series form → Authority matrix → Episode brief) | Claude Code |
+| 2026-04-29 | Director Inbox at /inbox — keyboard hotkeys (J/K/A/R/X/?), bulk actions (non-visual only), visual gate enforcement, group-grouped layout | Claude Code |
+| 2026-04-29 | Pipeline View at /episodes/[id] — vertical DAG (10 stages, 5 node states) + Agent Report Feed + Re-trigger modal with required reason | Claude Code |
+| 2026-04-29 | Activity feed page at /activity — severity filter pills | Claude Code |
+| 2026-04-29 | Settings → Storage tab — path picker, write-test, edit-and-validate cycle | Claude Code |
+| 2026-04-29 | Phase 5c VERIFY GREEN: typecheck OK + 79 tests + 28 replay-pilot + next build (35 routes; 6.2 kB onboarding, 4.68 kB inbox, 4.28 kB pipeline) | Claude Code |
+| 2026-04-29 | Phase 5c COMPLETE — Director cockpit live; Director smoke test next | Claude Code |
+| 2026-04-29 | Director smoke #1: orphan SS01 (no-dash code) episode → migration 0011 fixed series code regex + atomic rollback + cleanup | Director/CEO |
+| 2026-04-29 | Director smoke #2: assets.file_type CHECK rejected long-form ('SCR-script', 'SPC-metadata', etc.) — migration 0011 relaxed CHECK | Claude Code |
+| 2026-04-29 | Director smoke #3: variant with dashes (UUID shotIds) failed CHECK — migration 0012 allowed dashes in variants | Claude Code |
+| 2026-04-29 | Director smoke #4: gate.ts requires 3 STB acts but mock EXEC-SB produces 1 — factory step 5 special case spoofs act2+act3 | Claude Code |
+| 2026-04-29 | Brief approval wired (Pipeline View banner + Inbox path → both fire EXEC-SW) | Claude Code |
+| 2026-04-29 | Factory: Mode 4 auto-approve + auto-chain; Mode 1-3 → REVIEW + chain via Director approve | Claude Code |
+| 2026-04-29 | SS-S01-E01 in Mode 4: full chain Brief → Publish (15 assets APPROVED, 11 agents, $0 mock) | Director/CEO |
+| 2026-04-29 | Director smoke #5: Mode 1 chain stuck at multi-asset gates → computeNextEvents wired full chain (STB×3, animatic fan-out, metadata→thumb, all-ready→pub) with hasJob idempotency | Claude Code |
+| 2026-04-29 | Phase 5c долговая тетрадка #3, #9, #10, #11, #12 fixed | Claude Code |
+| 2026-04-29 | SS-S01-E02 reset to BRIEF_PENDING + Mode 1 → Director's Mode 1 manual test bench | Claude Code |
 
 ---
 

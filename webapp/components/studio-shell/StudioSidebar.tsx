@@ -8,16 +8,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import useSWR from 'swr';
 import {
   LayoutDashboard,
-  CheckSquare,
-  Film,
+  Inbox,
   Folders,
+  Film,
   DollarSign,
-  Activity,
+  Activity as ActivityIcon,
+  ListChecks,
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fetcher } from '@/lib/swr';
 
 interface NavItem {
   href: string;
@@ -25,17 +28,30 @@ interface NavItem {
   icon: typeof LayoutDashboard;
 }
 
+// Order reflects production workflow: Series (universe) → Episodes → Inbox →
+// Budget → Jobs → Activity. Dashboard sits on top as the cockpit overview.
 const NAV: NavItem[] = [
-  { href: '/',          label: 'Dashboard',      icon: LayoutDashboard },
-  { href: '/approvals', label: 'Approval Queue', icon: CheckSquare },
-  { href: '/episodes',  label: 'Episodes',       icon: Film },
-  { href: '/series',    label: 'Series',         icon: Folders },
-  { href: '/budget',    label: 'Budget',         icon: DollarSign },
-  { href: '/jobs',      label: 'Jobs',           icon: Activity },
+  { href: '/',          label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/inbox',     label: 'Inbox',     icon: Inbox },
+  { href: '/series',    label: 'Series',    icon: Folders },
+  { href: '/episodes',  label: 'Episodes',  icon: Film },
+  { href: '/budget',    label: 'Budget',    icon: DollarSign },
+  { href: '/jobs',      label: 'Jobs',      icon: ListChecks },
+  { href: '/activity',  label: 'Activity',  icon: ActivityIcon },
 ];
 
 export function StudioSidebar() {
   const pathname = usePathname();
+
+  // Inbox count badge — surfaces unresolved approval/decision/extension events
+  // and REVIEW assets so Director sees pending work in the left rail without
+  // navigating. Refreshes every 8s so it picks up new pipeline events.
+  const { data: inboxRes } = useSWR<{ data: unknown[] }>(
+    '/api/director/inbox?limit=50',
+    fetcher,
+    { refreshInterval: 8_000, revalidateOnFocus: true },
+  );
+  const inboxCount = inboxRes?.data?.length ?? 0;
 
   return (
     <aside className="relative z-20 hidden md:flex flex-col w-60 shrink-0 border-r border-glass bg-panel-glass backdrop-blur-md">
@@ -63,6 +79,7 @@ export function StudioSidebar() {
           const active =
             item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
           const Icon = item.icon;
+          const showBadge = item.href === '/inbox' && inboxCount > 0;
           return (
             <Link
               key={item.href}
@@ -76,7 +93,19 @@ export function StudioSidebar() {
               )}
             >
               <Icon size={16} strokeWidth={1.7} />
-              <span className="truncate">{item.label}</span>
+              <span className="truncate flex-1">{item.label}</span>
+              {showBadge && (
+                <span
+                  className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-semibold rounded-full"
+                  style={{
+                    background: 'var(--accent-warning, rgb(251, 146, 60))',
+                    color: 'var(--text-inverse, white)',
+                  }}
+                  title={`${inboxCount} pending item${inboxCount === 1 ? '' : 's'}`}
+                >
+                  {inboxCount > 99 ? '99+' : inboxCount}
+                </span>
+              )}
             </Link>
           );
         })}

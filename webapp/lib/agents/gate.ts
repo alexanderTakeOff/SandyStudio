@@ -59,14 +59,26 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     governance: 'AGENT_RUN',
   },
   'EXEC-WCHK': {
+    // Real EXEC-SB now produces ONE storyboard asset with 3 acts inline,
+    // not 3 separate STB rows. Threshold lowered to 1.
     required: [
-      { fileTypePrefix: 'STB', minCount: 3, label: 'Storyboard acts (3)' },
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
+    ],
+    governance: 'AGENT_RUN',
+  },
+  'EXEC-EREF': {
+    // Backbone v2: between Storyboard and Animatic. Reads APPROVED storyboard
+    // and generates per-episode reference images for each unique
+    // location/character pose. Step 5 implements real gpt-image-1 fan-out.
+    required: [
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
     ],
     governance: 'AGENT_RUN',
   },
   'EXEC-EDIT': {
+    // Animatic now consumes APPROVED Episode references (not raw storyboard).
     required: [
-      { fileTypePrefix: 'STB', minCount: 3, label: 'Approved storyboard acts (3)' },
+      { fileTypePrefix: 'IMG-episode_ref', minCount: 1, label: 'Approved episode references' },
     ],
     governance: 'AGENT_RUN',
   },
@@ -170,6 +182,39 @@ export async function validateAgentInputs(
       missing,
       reason: `Upstream gate failed for ${agentId}: ${missing.join('; ')}`,
     };
+  }
+
+  // ── Step 1.5: EXEC-EREF Series Bible canon precondition ──────────────────
+  // Backbone v2 / Step 4 of contract pipeline rollout: Episode references
+  // can only be generated when the parent series has at least 1 LOCKED
+  // canonical character ref AND 1 LOCKED style guide. Without canon there is
+  // nothing to anchor episode visuals on — see specs/company/series_bible.md.
+  if (agentId === 'EXEC-EREF') {
+    const { seriesIdForEpisode, countLockedBibleSections } = await import(
+      '../api/series-bible'
+    );
+    const seriesId = await seriesIdForEpisode(supabase, episodeId);
+    if (!seriesId) {
+      return {
+        passed: false,
+        missing: ['parent series'],
+        reason:
+          'EXEC-EREF requires a parent series to look up Series Bible canon, but the episode is not linked to a series.',
+      };
+    }
+    const counts = await countLockedBibleSections(supabase, seriesId);
+    const bibleMissing: string[] = [];
+    if (counts.character < 1)
+      bibleMissing.push('≥1 LOCKED Series Bible character (Heroes section)');
+    if (counts.style < 1)
+      bibleMissing.push('≥1 LOCKED Series Bible style guide (Style section)');
+    if (bibleMissing.length > 0) {
+      return {
+        passed: false,
+        missing: bibleMissing,
+        reason: `Series Bible canon not provisioned: ${bibleMissing.join(' AND ')}. Open the series Bible UI and LOCK the missing entries before re-triggering EXEC-EREF.`,
+      };
+    }
   }
 
   // ── Step 2: governance authority ───────────────────────────────────────────

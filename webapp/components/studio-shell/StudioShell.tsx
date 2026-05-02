@@ -11,6 +11,7 @@ import { StudioSidebar } from './StudioSidebar';
 import { StudioTopbar } from './StudioTopbar';
 import { AmbientAssetField } from './AmbientAssetField';
 import { ConciergePanel } from '@/components/concierge/ConciergePanel';
+import { NotificationDotStyles } from '@/components/notifications/NotificationDot';
 
 interface StudioShellProps {
   children: ReactNode;
@@ -21,6 +22,9 @@ interface StudioShellProps {
 export function StudioShell({ children, governanceMode, systemMode }: StudioShellProps) {
   return (
     <div className="relative min-h-screen flex">
+      {/* Notification dot keyframes — global once per shell */}
+      <NotificationDotStyles />
+
       {/* z-0 / -z-10 — Ambient background */}
       <AmbientAssetField />
 

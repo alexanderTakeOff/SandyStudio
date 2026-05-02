@@ -1,44 +1,55 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// app/(studio)/page.tsx — Dashboard placeholder.
-// Real implementation lands in Phase 6 (uiux.md §9).
+// app/(studio)/page.tsx — Dashboard cockpit per dashboard_cockpit.md.
+// 3 zones: Inbox preview · Active Episodes timelines · Live activity feed.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { redirect } from 'next/navigation';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
-import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
+import { InboxPreviewZone } from '@/components/dashboard/InboxPreviewZone';
+import { ActiveEpisodesZone } from '@/components/dashboard/ActiveEpisodesZone';
+import { ActivityFeedZone } from '@/components/dashboard/ActivityFeedZone';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const SECTIONS = [
-  { title: 'Active Episodes',    body: 'Pipeline view of every in-flight episode.' },
-  { title: 'Pending Approvals',  body: 'Items waiting on a Director or delegate decision.' },
-  { title: 'Budget Snapshot',    body: 'Per-episode spend vs. ceiling.' },
-  { title: 'Recent Jobs',        body: 'Latest Inngest runs, success/failure rate.' },
-  { title: 'Output Queue',       body: 'Assets queued for staging or publish.' },
-  { title: 'System Health',      body: 'Provider availability, gateway status.' },
-];
+export const dynamic = 'force-dynamic';
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  // Onboarding redirect — if needed_run, send to wizard.
+  // Resilient to schema absence (migration 0010 not yet pushed).
+  try {
+    const supabase = await createSupabaseServerClient();
+    const [seriesRes, storageRes] = await Promise.all([
+      (supabase.from('series' as never) as unknown as { select: (cols: string, opts?: { count?: string; head?: boolean }) => Promise<{ count: number | null }> })
+        .select('id', { count: 'exact', head: true }),
+      supabase.from('app_config').select('key,value').eq('scope', 'storage'),
+    ]);
+    const seriesCount = (seriesRes as unknown as { count: number | null }).count ?? 0;
+    let projectWritable = false;
+    let mediaWritable = false;
+    for (const row of storageRes.data ?? []) {
+      const r = row as { key: string; value: unknown };
+      if (r.key === 'project_root_writable' && r.value === true) projectWritable = true;
+      if (r.key === 'media_root_writable' && r.value === true) mediaWritable = true;
+    }
+    if (seriesCount === 0 && (!projectWritable || !mediaWritable)) {
+      redirect('/onboarding');
+    }
+  } catch {
+    // schema absent — render cockpit normally; the user may not yet have run migration 0010
+  }
+
   return (
     <StudioContentFrame>
-      <header className="mb-6">
+      <header className="mb-5">
         <h1 className="text-2xl font-semibold text-text-primary">Dashboard</h1>
         <p className="text-sm text-text-secondary mt-1">
-          Production overview. Real data wires up in Phase 5–6.
+          Production cockpit — what needs you, what is in flight, what just happened.
         </p>
       </header>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {SECTIONS.map((s) => (
-          <Card key={s.title}>
-            <CardHeader>
-              <CardTitle>{s.title}</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <p className="text-sm text-text-secondary leading-relaxed">{s.body}</p>
-              <p className="mt-3 text-[10px] uppercase tracking-wider text-text-muted">
-                Placeholder · Phase 6
-              </p>
-            </CardBody>
-          </Card>
-        ))}
+      <div className="grid grid-cols-1 gap-4">
+        <InboxPreviewZone />
+        <ActiveEpisodesZone />
+        <ActivityFeedZone />
       </div>
     </StudioContentFrame>
   );

@@ -207,6 +207,26 @@ async function happyPathReplay(): Promise<void> {
         status: 'APPROVED',
         version: 1,
       },
+      // Series Bible canon — Step 4 gate requires ≥1 LOCKED character + style.
+      // Series-scoped (no episode_id), pre-LOCKED so EXEC-EREF gate passes.
+      {
+        id: 'sbl-character-pilot',
+        series_id: 'series-1',
+        episode_id: null,
+        file_type: 'SBL-character_sandy',
+        filename: 'SS-S01-SBL-character_sandy-v01-LOCKED.png',
+        status: 'LOCKED',
+        version: 1,
+      },
+      {
+        id: 'sbl-style-pilot',
+        series_id: 'series-1',
+        episode_id: null,
+        file_type: 'SBL-style_visual',
+        filename: 'SS-S01-SBL-style_visual-v01-LOCKED.md',
+        status: 'LOCKED',
+        version: 1,
+      },
     ],
   });
 
@@ -237,10 +257,24 @@ async function happyPathReplay(): Promise<void> {
     });
   }
 
-  // Phase B — world check + animatic
-  info('Phase B: world check + animatic');
+  // Phase B — backbone v2: world check + episode references + animatic
+  // World Check stays in the pipeline (not in pipeline view but still in
+  // gate.ts) for legacy compatibility. Episode references is the new gate
+  // before Animatic per backbone v2.
+  info('Phase B: world check + episode references + animatic');
   const wchk = await runPipelineStep(h, 'EXEC-WCHK');
   assert(wchk.success, `EXEC-WCHK (${displayWithEmoji('EXEC-WCHK')}) verified world consistency`);
+
+  // EXEC-EREF — Episode Reference Generator (backbone v2 stage)
+  const erefResult = await runPipelineStep(h, 'EXEC-EREF');
+  assert(erefResult.success, `EXEC-EREF (${displayWithEmoji('EXEC-EREF')}) produced episode references`);
+  // Promote the EREF asset to APPROVED with the canonical IMG-episode_ref
+  // file_type so EXEC-EDIT's gate (backbone v2) finds it.
+  const erefAsset = supabase.tables.assets.find((a) => a.id === erefResult.assetId);
+  if (erefAsset) {
+    erefAsset.file_type = 'IMG-episode_ref';
+    erefAsset.status = 'APPROVED';
+  }
 
   const editResult = await runPipelineStep(h, 'EXEC-EDIT');
   assert(editResult.success, `EXEC-EDIT (${displayWithEmoji('EXEC-EDIT')}) assembled the animatic`);
@@ -293,11 +327,12 @@ async function happyPathReplay(): Promise<void> {
   header('Cross-cutting checks');
 
   const completedJobs = supabase.tables.jobs.filter((j) => j.status === 'COMPLETED');
-  // Expected: SW + SREV + SB + WCHK + EDIT + 3*VGEN + MGEN + COPY + THUMB + PUB + 4*ANAL = 16
+  // Expected (backbone v2): SW + SREV + SB + WCHK + EREF + EDIT + 3*VGEN + MGEN
+  //                       + COPY + THUMB + PUB + 4*ANAL = 17
   assert(
-    completedJobs.length === 16,
+    completedJobs.length === 17,
     'jobs.status: every step COMPLETED',
-    `expected 16, found ${completedJobs.length}`,
+    `expected 17, found ${completedJobs.length}`,
   );
 
   const totalSpent = supabase.tables.episodes[0].budget_spent;

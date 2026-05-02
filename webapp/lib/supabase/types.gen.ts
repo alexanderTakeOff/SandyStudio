@@ -212,6 +212,44 @@ export type Database = {
         }
         Relationships: []
       }
+      approval_authority_matrix: {
+        Row: {
+          approver: string
+          category: string
+          delegate_user_id: string | null
+          id: string
+          is_locked: boolean
+          series_id: string
+          updated_at: string
+        }
+        Insert: {
+          approver: string
+          category: string
+          delegate_user_id?: string | null
+          id?: string
+          is_locked?: boolean
+          series_id: string
+          updated_at?: string
+        }
+        Update: {
+          approver?: string
+          category?: string
+          delegate_user_id?: string | null
+          id?: string
+          is_locked?: boolean
+          series_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_authority_matrix_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       approvals: {
         Row: {
           approval_type: string
@@ -299,14 +337,18 @@ export type Database = {
       assets: {
         Row: {
           agent_id: string | null
+          content: string | null
           created_at: string
           description: string | null
+          drive_file_id: string | null
           drive_path: string | null
+          drive_web_view_url: string | null
           episode_id: string | null
           file_type: string
           filename: string
           id: string
           revision_log: string | null
+          series_id: string | null
           staging_expires_at: string | null
           staging_path: string | null
           status: Database["public"]["Enums"]["asset_status"]
@@ -315,14 +357,18 @@ export type Database = {
         }
         Insert: {
           agent_id?: string | null
+          content?: string | null
           created_at?: string
           description?: string | null
+          drive_file_id?: string | null
           drive_path?: string | null
+          drive_web_view_url?: string | null
           episode_id?: string | null
           file_type: string
           filename: string
           id?: string
           revision_log?: string | null
+          series_id?: string | null
           staging_expires_at?: string | null
           staging_path?: string | null
           status?: Database["public"]["Enums"]["asset_status"]
@@ -331,14 +377,18 @@ export type Database = {
         }
         Update: {
           agent_id?: string | null
+          content?: string | null
           created_at?: string
           description?: string | null
+          drive_file_id?: string | null
           drive_path?: string | null
+          drive_web_view_url?: string | null
           episode_id?: string | null
           file_type?: string
           filename?: string
           id?: string
           revision_log?: string | null
+          series_id?: string | null
           staging_expires_at?: string | null
           staging_path?: string | null
           status?: Database["public"]["Enums"]["asset_status"]
@@ -351,6 +401,13 @@ export type Database = {
             columns: ["episode_id"]
             isOneToOne: false
             referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assets_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
             referencedColumns: ["id"]
           },
         ]
@@ -503,6 +560,78 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      provider_assignments: {
+        Row: {
+          active_provider_id: string
+          contract: string
+          fallback_provider_id: string | null
+          is_active: boolean
+          notes: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active_provider_id: string
+          contract: string
+          fallback_provider_id?: string | null
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active_provider_id?: string
+          contract?: string
+          fallback_provider_id?: string | null
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      series: {
+        Row: {
+          audience: string | null
+          code: string
+          created_at: string
+          created_by: string | null
+          episode_budget_ceiling: number | null
+          genre: string | null
+          id: string
+          logline: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: string | null
+          code: string
+          created_at?: string
+          created_by?: string | null
+          episode_budget_ceiling?: number | null
+          genre?: string | null
+          id?: string
+          logline?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: string | null
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          episode_budget_ceiling?: number | null
+          genre?: string | null
+          id?: string
+          logline?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       series_state: {
         Row: {

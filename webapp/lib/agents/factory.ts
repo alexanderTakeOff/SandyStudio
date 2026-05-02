@@ -33,7 +33,54 @@ import {
 import type { AgentResult } from './types';
 import { resolveModelId } from './registry';
 import { createSupabaseServiceRoleClient } from '../supabase/server';
+import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
+
+// Maps an agent to the provider contract it consumes. Agents not listed here
+// don't go through the resolver (text-only agents → Anthropic / mock LLM).
+const CONTRACT_BY_AGENT: Partial<Record<AgentId, ContractName>> = {
+  'EXEC-THUMB': 'image',
+  'EXEC-VGEN': 'character_video',
+  'EXEC-EDIT': 'video',
+  'EXEC-MGEN': 'music',
+  'EXEC-PUB': 'publish',
+};
+
+/**
+ * Rough p50 runtime estimates per agent — surfaced in activity feed so Director
+ * can tell "still working, ~30s left" vs "stuck". Tune from real telemetry over
+ * time. Conservative — better to under-promise.
+ */
+const EXPECTED_RUNTIME_SECONDS: Partial<Record<AgentId, number>> = {
+  'EXEC-SW':    70,   // Sonnet ~6k output tokens
+  'EXEC-SREV':  50,   // Sonnet ~3k output tokens
+  'EXEC-SB':    140,  // Sonnet ~8k output tokens, 16-shot JSON
+  'EXEC-WCHK':  60,   // Sonnet ~3k output tokens (Continuity)
+  'EXEC-EREF':  180,  // gpt-image-1 fan-out (up to 6 images × 25-40s)
+  'EXEC-EDIT':  30,   // slideshow assembly (no LLM, just JSON build)
+  'EXEC-VGEN':  150,  // Veo per-shot
+  'EXEC-MGEN':  60,   // Music gen (mock for now)
+  'EXEC-COPY':  30,   // Haiku, short output
+  'EXEC-THUMB': 45,   // gpt-image-1 single
+  'EXEC-PUB':   20,   // YouTube upload mock
+  'EXEC-ANAL':  10,
+};
+
+/** Activity-feed asset bucket hint so per-stage filter works while job is running. */
+const FILE_TYPE_HINT_BY_AGENT: Partial<Record<AgentId, string>> = {
+  'EXEC-SW':    'SCR-script',
+  'EXEC-SREV':  'REV-script_qa',
+  'EXEC-SB':    'STB-storyboard',
+  'EXEC-WCHK':  'REV-world_check',
+  'EXEC-EREF':  'IMG-episode_ref',
+  'EXEC-EDIT':  'VID-animatic',
+  'EXEC-VGEN':  'VID-shot',
+  'EXEC-MGEN':  'AUD-music',
+  'EXEC-COPY':  'SPC-metadata',
+  'EXEC-THUMB': 'IMG-thumbnail',
+  'EXEC-PUB':   'REV-publish_log',
+  'EXEC-ANAL':  'REV-analytics',
+};
 
 /** Spec passed to createAgentInngestFunction. */
 export interface AgentFunctionSpec<EventName extends string = string> {
@@ -95,10 +142,10 @@ export function createAgentInngestFunction<E extends string>(
       };
       const { episodeId } = eventData;
 
-      // ── Step 1: insert RUNNING job row ─────────────────────────────────────
+      // ── Step 1: insert RUNNING job row + emit agent_started activity ─────
       const job = await step.run('insert-job-row', async () => {
         const supabase = createSupabaseServiceRoleClient();
-        return insertJobRow({
+        const created = await insertJobRow({
           supabase,
           agentId: spec.agentId,
           episodeId,
@@ -106,6 +153,24 @@ export function createAgentInngestFunction<E extends string>(
           inngestRunId: runId,
           inputSnapshot: eventData,
         });
+        // Activity feed entry so the Pipeline View shows "Storyboarder started"
+        // immediately, not after ~70s of silence. Director's UX request from
+        // 2026-05-02 — silent stages were unreadable.
+        await supabase.from('activity_events').insert({
+          event_type: 'agent_started',
+          severity: 'info',
+          title: `${spec.name} started`,
+          description: `Working on episode (${spec.agentId})…`,
+          actor: spec.agentId,
+          episode_id: episodeId,
+          metadata: {
+            file_type: FILE_TYPE_HINT_BY_AGENT[spec.agentId] ?? null,
+            job_id: created.id,
+            inngest_run_id: runId,
+            expected_seconds: EXPECTED_RUNTIME_SECONDS[spec.agentId] ?? 60,
+          },
+        } as never);
+        return created;
       });
 
       // ── Step 2: load + validate (one checkpoint) ───────────────────────────
@@ -143,9 +208,27 @@ export function createAgentInngestFunction<E extends string>(
           agentId: spec.agentId,
           episodeId,
         });
+        // Resolve provider for agents that consume an external contract.
+        // Resolver auto-downgrades to 'mock' when the env key is missing,
+        // so this is safe in test/dev environments without secrets.
+        const contract = CONTRACT_BY_AGENT[spec.agentId];
+        let provider: ResolvedProvider | undefined;
+        if (contract) {
+          try {
+            provider = await resolveProvider(supabase, contract);
+          } catch {
+            // Disabled contract or no row — fall through to mock everywhere.
+            provider = undefined;
+          }
+        }
+        const episodeCode =
+          (inputs.episode as { episode_code?: string } | undefined)?.episode_code ?? undefined;
         const runArgs: RunAgentArgs = {
           agentId: spec.agentId,
           inputs,
+          provider,
+          supabase,
+          episodeCode,
           ...(spec.resolveRunArgs ? spec.resolveRunArgs(eventData) : {}),
         };
         return runAgent(runArgs);
@@ -154,13 +237,19 @@ export function createAgentInngestFunction<E extends string>(
       // ── Step 4: idempotent cost record ─────────────────────────────────────
       await step.run('record-cost', async () => {
         const supabase = createSupabaseServiceRoleClient();
+        const providerUsed =
+          (typeof exec.result.metadata.provider_used === 'string' &&
+            exec.result.metadata.provider_used) ||
+          (typeof exec.result.metadata.provider_id === 'string' &&
+            exec.result.metadata.provider_id) ||
+          'mock';
         return recordCost(supabase, {
           jobId: job.id,
           episodeId,
           agentId: spec.agentId,
           costUsd: exec.result.cost_usd,
-          apiProvider: 'mock',
-          modelOrTier: resolveModelId(spec.agentId) || 'mock',
+          apiProvider: providerUsed,
+          modelOrTier: resolveModelId(spec.agentId) || providerUsed,
           operation: spec.operation,
         });
       });
@@ -170,7 +259,7 @@ export function createAgentInngestFunction<E extends string>(
         const supabase = createSupabaseServiceRoleClient();
         const { data: ep, error } = await supabase
           .from('episodes')
-          .select('episode_code')
+          .select('episode_code,governance_mode')
           .eq('id', episodeId)
           .single();
         if (error) {
@@ -192,6 +281,88 @@ export function createAgentInngestFunction<E extends string>(
           variant,
         });
         await markJobCompleted(supabase, job.id, out.assetId);
+
+        // Mode 4 (AUTOTEST) — auto-promote DRAFT → APPROVED so downstream
+        // gates pass without Director approval. Mirrors replay-pilot's
+        // autoApproveOutput flag. Modes 1-3 flip DRAFT → REVIEW so the
+        // asset surfaces in the Director Inbox; approval there fires the
+        // next agent.
+        const targetStatus = ep.governance_mode === 4 ? 'APPROVED' : 'REVIEW';
+        await supabase
+          .from('assets')
+          .update({ status: targetStatus })
+          .eq('id', out.assetId);
+
+        // (Removed 2026-05-02) Earlier code spoofed STB-act2 + STB-act3 mock
+        // rows after EXEC-SB to satisfy a legacy WCHK gate that required
+        // minCount=3. The real Storyboarder produces a single STB-storyboard
+        // asset with all 3 acts inline (JSON), and gate.ts now uses minCount=1.
+
+        // ── Bible Extension Proposals — Director-arbitrated canon growth.
+        // Per Director's 2026-05-02 architecture decision: agents may propose
+        // new canonical refs via `proposed_canon_extensions[]` in their JSON
+        // output (or via `violations[]` for Continuity Check). Surface them as
+        // an Inbox `canon_extension_proposed` event linking the producing
+        // asset. Director's CanonExtensionsPanel approves/rejects per row.
+        try {
+          // Lazy import to avoid pulling Supabase types into the in-memory
+          // replay-pilot harness.
+          const { parseExtensionsFromContent, emitExtensionRequest } = await import(
+            '../api/canon-extensions'
+          );
+          const { data: assetRow } = await supabase
+            .from('assets')
+            .select('content,file_type,episode_id')
+            .eq('id', out.assetId)
+            .maybeSingle();
+          const proposals = parseExtensionsFromContent(
+            assetRow?.content ?? null,
+            assetRow?.file_type ?? '',
+          );
+          if (proposals.length > 0) {
+            await emitExtensionRequest(supabase, {
+              assetId: out.assetId,
+              episodeId,
+              agentId: spec.agentId,
+              fileType: assetRow?.file_type ?? undefined,
+              proposals,
+            });
+          }
+        } catch (err) {
+          // Non-fatal: pipeline continues even if proposal extraction fails.
+          // Director's manual workflow still works — Continuity verdict is
+          // rendered as plain markdown.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[factory] canon-extension extraction failed for ${spec.agentId}:`,
+            err,
+          );
+        }
+
+        // Write activity_event so the Pipeline View feed shows agent
+        // milestones, not just Director approvals. metadata.file_type lets
+        // the per-stage filter bucket the event into the right column.
+        await supabase
+          .from('activity_events')
+          .insert({
+            event_type: 'agent_completed',
+            severity: 'info',
+            title: `${spec.agentId} completed`,
+            description: spec.name,
+            actor: spec.agentId,
+            episode_id: episodeId,
+            asset_id: out.assetId,
+            job_id: job.id,
+            metadata: {
+              agent: spec.agentId,
+              status: targetStatus,
+            },
+          } as never)
+          .then(
+            () => undefined,
+            () => undefined,
+          );
+
         return out;
       });
 
@@ -201,21 +372,37 @@ export function createAgentInngestFunction<E extends string>(
       // is the call site's responsibility, not the factory's.
       type SendEventPayload = Parameters<typeof step.sendEvent>[1];
 
-      if (spec.nextEvent) {
-        const next = spec.nextEvent(saved, eventData, exec.result);
-        if (next) {
-          await step.sendEvent('fan-out', next as SendEventPayload);
+      // Auto-chain only in Mode 4 (AUTOTEST). In Modes 1-3 the next agent is
+      // fired by Director's asset approval (POST /api/assets/[id]/approve);
+      // chaining here would cause the next agent to FAIL its gate because
+      // the just-saved asset is REVIEW, not APPROVED.
+      const autoChain = await step.run('check-mode', async () => {
+        const supabase = createSupabaseServiceRoleClient();
+        const { data } = await supabase
+          .from('episodes')
+          .select('governance_mode')
+          .eq('id', episodeId)
+          .single();
+        return data?.governance_mode === 4;
+      });
+
+      if (autoChain) {
+        if (spec.nextEvent) {
+          const next = spec.nextEvent(saved, eventData, exec.result);
+          if (next) {
+            await step.sendEvent('fan-out', next as SendEventPayload);
+          }
         }
-      }
-      // runAgent may also return its own next_event (e.g. EXEC-PUB → published).
-      if (exec.result.next_event) {
-        await step.sendEvent('runner-next', exec.result.next_event as SendEventPayload);
-      }
-      if (exec.result.fan_out_events && exec.result.fan_out_events.length > 0) {
-        await step.sendEvent(
-          'runner-fan-out',
-          exec.result.fan_out_events as unknown as SendEventPayload,
-        );
+        // runAgent may also return its own next_event (e.g. EXEC-PUB → published).
+        if (exec.result.next_event) {
+          await step.sendEvent('runner-next', exec.result.next_event as SendEventPayload);
+        }
+        if (exec.result.fan_out_events && exec.result.fan_out_events.length > 0) {
+          await step.sendEvent(
+            'runner-fan-out',
+            exec.result.fan_out_events as unknown as SendEventPayload,
+          );
+        }
       }
 
       return {

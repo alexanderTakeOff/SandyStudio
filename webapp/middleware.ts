@@ -7,7 +7,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSupabaseSession } from '@/lib/supabase/middleware';
 
-const PUBLIC_PATHS = ['/login', '/auth/callback'];
+const PUBLIC_PATHS = ['/login', '/auth/callback', '/api/health'];
 
 // Server-to-server webhook endpoints — auth handled by upstream signature
 // verification (Inngest signing key), NOT by Supabase user session.

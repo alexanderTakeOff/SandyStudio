@@ -1,0 +1,174 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// components/series-bible/AssetCard.tsx
+// Single Bible asset card — LoRes thumbnail, name, status pill, kebab menu.
+// ──────────────────────────────────────────────────────────────────────────────
+
+'use client';
+
+import { useState } from 'react';
+import { Lock, Unlock, MoreHorizontal, Eye, Edit, Trash } from 'lucide-react';
+import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
+import { Card } from '@/components/ui/Card';
+import type { BibleAsset, SbSection } from '@/lib/api/series-bible';
+import { NotificationDot } from '@/components/notifications/NotificationDot';
+import { AssetDetailDrawer } from './AssetDetailDrawer';
+
+const STATUS_COLORS: Record<string, string> = {
+  DRAFT: 'var(--accent-info)',
+  REVIEW: 'var(--accent-warning, #d97706)',
+  REVISION: 'var(--accent-warning, #d97706)',
+  APPROVED: 'var(--accent-success)',
+  LOCKED: 'var(--accent-success)',
+  REJECTED: 'var(--accent-danger)',
+};
+
+export interface AssetCardProps {
+  seriesId: string;
+  asset: BibleAsset;
+  section: Exclude<SbSection, 'general_idea'>;
+  onChange: () => void;
+}
+
+function readableNameFromFilename(filename: string): string {
+  // SS-S03-SBL-character_sandy-v01-LOCKED.png → "sandy"
+  // SS-S09-SBL-character_city_systems-v01-DRAFT.md → "city_systems" (multi-word slug)
+  // Greedy `[a-z]+_` matches the section prefix once; `(.+)` captures whole slug.
+  const m = filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
+  if (m && m[1]) return m[1].replace(/_/g, ' ');
+  return filename;
+}
+
+export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const previewSrc = asset.staging_path || asset.drive_web_view_url || asset.drive_path || null;
+  const isImage = previewSrc && (previewSrc.startsWith('/') || previewSrc.startsWith('http'));
+  const statusColor = STATUS_COLORS[asset.status] ?? 'var(--text-muted)';
+  const isLocked = asset.status === 'LOCKED';
+  const name = readableNameFromFilename(asset.filename);
+
+  async function lock() {
+    if (!confirm(`LOCK ${asset.filename}? Locked Bible assets are immutable.`)) return;
+    setBusy(true);
+    const res = await fetch(`/api/series/${seriesId}/bible/${asset.id}/lock`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(`Lock failed: ${(j as { error?: string }).error ?? 'unknown'}`);
+      return;
+    }
+    onChange();
+  }
+
+  return (
+    <>
+      <Card>
+        <div
+          className="relative cursor-pointer overflow-hidden rounded-lg"
+          onClick={() => setDrawerOpen(true)}
+          style={{ background: 'var(--bg-elevated)' }}
+        >
+          <div
+            className="aspect-square w-full flex items-center justify-center text-text-muted text-xs"
+          >
+            {isImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={previewSrc!}
+                alt={name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="px-2 text-center">no preview</span>
+            )}
+          </div>
+
+          <div className="p-2 space-y-1">
+            <div className="text-xs font-medium text-text-primary truncate capitalize flex items-center gap-1.5">
+              <NotificationDot assetId={asset.id} />
+              <span className="truncate">{name}</span>
+            </div>
+            <div className="flex items-center justify-between gap-1 text-[10px]">
+              <span
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded uppercase tracking-wider font-semibold"
+                style={{
+                  background: `color-mix(in oklab, ${statusColor} 14%, transparent)`,
+                  color: statusColor,
+                }}
+              >
+                {isLocked && <Lock size={9} />}
+                {asset.status.toLowerCase()}
+              </span>
+              <span className="text-text-muted font-mono">v{String(asset.version ?? 1).padStart(2, '0')}</span>
+            </div>
+          </div>
+
+          <div
+            className="absolute top-1 right-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(() => {
+              const items: DropdownEntry[] = [
+                { label: 'Preview', icon: <Eye size={12} />, onSelect: () => setDrawerOpen(true) },
+              ];
+              if (!isLocked) {
+                items.push({ label: 'Edit', icon: <Edit size={12} />, onSelect: () => setDrawerOpen(true) });
+                items.push({ separator: true });
+                items.push({ label: 'Lock', icon: <Lock size={12} />, onSelect: lock, disabled: busy });
+              } else {
+                items.push({
+                  label: `Fork as v${(asset.version ?? 1) + 1} (planned)`,
+                  icon: <Unlock size={12} />,
+                  onSelect: () => {},
+                  disabled: true,
+                });
+              }
+              items.push({ separator: true });
+              items.push({
+                label: 'Used in: (Step 7)',
+                onSelect: () => {},
+                disabled: true,
+              });
+              if (!isLocked && asset.version === 1) {
+                items.push({ separator: true });
+                items.push({
+                  label: 'Delete (planned)',
+                  icon: <Trash size={12} />,
+                  onSelect: () => {},
+                  disabled: true,
+                  destructive: true,
+                });
+              }
+              return (
+                <DropdownMenu
+                  trigger={
+                    <span className="block p-1 rounded hover:bg-[var(--panel-hover-bg)] transition-colors">
+                      <MoreHorizontal size={14} />
+                    </span>
+                  }
+                  items={items}
+                  align="end"
+                  ariaLabel="Asset actions"
+                />
+              );
+            })()}
+          </div>
+        </div>
+      </Card>
+
+      <AssetDetailDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        asset={asset}
+        section={section}
+        seriesId={seriesId}
+        onChange={onChange}
+      />
+    </>
+  );
+}
