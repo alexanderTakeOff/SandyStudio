@@ -301,7 +301,7 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   const newEntry: ImagePromptHistoryEntry = {
     version: nextVersion,
-    prompt: body.prompt,
+    prompt: promptToSend,
     source: 'director_edit',
     at: nowIso,
     cost_usd: real.cost_usd,
@@ -312,6 +312,8 @@ export const POST = withApiHandler(async (req, ctx) => {
     height: real.height,
     quality: body.quality ?? 'medium',
     mode_at_time: decision.modeAtTime,
+    style_check_verdict: styleVerdict,
+    style_check_rewritten: styleRewritten,
   };
 
   const newMeta: AssetMetadataDoc = {
