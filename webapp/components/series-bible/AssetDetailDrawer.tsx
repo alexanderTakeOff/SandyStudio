@@ -326,6 +326,33 @@ export function AssetDetailDrawer({
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* In-flight progress banner — shown for any long-running paid op
+              (enrich, regenerate, restore). Tells Director to stay in this
+              window; the drawer auto-refreshes when done. */}
+          {progress && (
+            <div
+              className="rounded-lg p-3 border flex items-start gap-3"
+              style={{
+                background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+                borderColor: 'color-mix(in oklab, var(--accent-primary) 35%, transparent)',
+              }}
+            >
+              <Loader2
+                size={20}
+                className="text-[var(--accent-primary)] shrink-0 mt-0.5"
+                style={{ animation: 'spin 1s linear infinite' }}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-text-primary">
+                  {progress.label}
+                </div>
+                <div className="text-xs text-text-secondary mt-1">
+                  {progress.detail}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Provenance chip */}
           <div
             className="rounded-lg p-2.5 border border-glass"
