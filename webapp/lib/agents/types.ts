@@ -49,6 +49,7 @@ export type AgentCode =
   | 'exec-arch'
   | 'exec-sty'
   | 'exec-bible-author'
+  | 'exec-style-check'
   | 'exec-orch'
   | 'exec-conc';
 
