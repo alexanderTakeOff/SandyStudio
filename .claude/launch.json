@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "next-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "webapp", "run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "inngest-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "webapp", "run", "inngest:dev"],
+      "port": 8288
+    }
+  ]
+}
