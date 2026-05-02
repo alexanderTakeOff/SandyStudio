@@ -17,6 +17,7 @@ import { Modal } from '@/components/ui/Modal';
 import { StageKebabMenu } from '@/components/pipeline/StageKebabMenu';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
 import { EditorModal } from '@/components/editor/EditorModal';
+import { EpisodeReferencesGallery } from '@/components/episode/EpisodeReferencesGallery';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { fetcher } from '@/lib/swr';
 
