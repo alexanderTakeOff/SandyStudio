@@ -55,6 +55,38 @@ function fmtDate(iso: string | undefined): string {
   }
 }
 
+/** Reusable collapsible section — chevron + label header, body shown when open. */
+function Section({
+  open,
+  onToggle,
+  label,
+  meta,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  label: React.ReactNode;
+  meta?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-glass overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[var(--panel-hover-bg)] transition-colors"
+      >
+        <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-text-secondary">
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {label}
+        </span>
+        {meta && <span className="text-[10px] text-text-muted font-mono">{meta}</span>}
+      </button>
+      {open && <div className="border-t border-glass p-3">{children}</div>}
+    </div>
+  );
+}
+
 function ProvenanceChip({ prov }: { prov: AssetProvenance | undefined }) {
   if (!prov) {
     return (
