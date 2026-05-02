@@ -132,7 +132,9 @@
       "Bash(curl -s -o /dev/null -w \"next /login => %{http_code}, inngest health => \" http://localhost:3000/login)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8288/health)",
       "Bash(curl -s -o /dev/null -w \"next /login => HTTP %{http_code}\\\\n\" http://localhost:3000/login)",
-      "Bash(curl -s -o /dev/null -w \"inngest /health => HTTP %{http_code}\\\\n\" http://localhost:8288/health)"
+      "Bash(curl -s -o /dev/null -w \"inngest /health => HTTP %{http_code}\\\\n\" http://localhost:8288/health)",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
     ]
   }
 }

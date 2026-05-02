@@ -389,11 +389,11 @@ function CanonExtensionsWithEpisode({
   proposals: CanonExtensionProposal[];
   onResolved: () => void;
 }) {
-  const { data: epData } = useSWR<{ data: { series_id: string | null } }>(
+  const { data: epData } = useSWR<{ data: { episode: { series_id: string | null } } }>(
     episodeId ? `/api/episodes/${episodeId}` : null,
     fetcher,
   );
-  const seriesId = epData?.data?.series_id;
+  const seriesId = epData?.data?.episode?.series_id;
   if (!seriesId) {
     return (
       <div

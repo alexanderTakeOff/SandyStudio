@@ -13,5 +13,6 @@
       "runtimeArgs": ["--prefix", "webapp", "run", "inngest:dev"],
       "port": 8288
     }
-  ]
+  ],
+  "autoVerify": true
 }
