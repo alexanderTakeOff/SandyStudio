@@ -579,24 +579,31 @@ export function AssetDetailDrawer({
             </div>
           )}
 
-          {/* Status / version meta */}
-          <div className="text-xs text-text-muted space-y-1">
-            <div>Status: <span className="text-text-primary">{asset.status}</span></div>
-            <div>Version: <span className="text-text-primary font-mono">v{String(asset.version ?? 1).padStart(2, '0')}</span></div>
-            {asset.drive_web_view_url && (
-              <div>
-                Drive:{' '}
-                <a
-                  href={asset.drive_web_view_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[var(--accent-primary)] hover:underline"
-                >
-                  open in Google Drive
-                </a>
-              </div>
-            )}
-          </div>
+          {/* Status / version meta — collapsible */}
+          <Section
+            open={metaOpen}
+            onToggle={() => setMetaOpen((v) => !v)}
+            label="Status & meta"
+            meta={`${asset.status} · v${String(asset.version ?? 1).padStart(2, '0')}`}
+          >
+            <div className="text-xs text-text-muted space-y-1">
+              <div>Status: <span className="text-text-primary">{asset.status}</span></div>
+              <div>Version: <span className="text-text-primary font-mono">v{String(asset.version ?? 1).padStart(2, '0')}</span></div>
+              {asset.drive_web_view_url && (
+                <div>
+                  Drive:{' '}
+                  <a
+                    href={asset.drive_web_view_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[var(--accent-primary)] hover:underline"
+                  >
+                    open in Google Drive
+                  </a>
+                </div>
+              )}
+            </div>
+          </Section>
 
           {error && (
             <div
