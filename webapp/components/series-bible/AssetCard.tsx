@@ -89,7 +89,10 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
           </div>
 
           <div className="p-2 space-y-1">
-            <div className="text-xs font-medium text-text-primary truncate capitalize">{name}</div>
+            <div className="text-xs font-medium text-text-primary truncate capitalize flex items-center gap-1.5">
+              <NotificationDot assetId={asset.id} />
+              <span className="truncate">{name}</span>
+            </div>
             <div className="flex items-center justify-between gap-1 text-[10px]">
               <span
                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded uppercase tracking-wider font-semibold"
