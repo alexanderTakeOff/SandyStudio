@@ -21,7 +21,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
 import { generateImageOpenAI } from '../providers/openai-image';
 import { persistBinary } from '../persist-binary';
-import { seriesIdForEpisode } from '../../api/series-bible';
+import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
 import type { AgentInputs } from '../types';
 
 export const EREF_CONTRACT = 'episode_references@v1';

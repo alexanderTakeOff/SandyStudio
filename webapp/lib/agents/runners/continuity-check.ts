@@ -144,22 +144,22 @@ function buildUserMessage(args: {
 }): string {
   const { episodeCode, storyboardContent, storyboardVersion, bible } = args;
   const charNames = bible.characters
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
   const locNames = bible.locations
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
 
   const charDescriptions = bible.characters
     .map((c) => {
-      const name = nameFromBibleFilename(c.filename) ?? 'unknown';
+      const name = bibleSlug(c.file_type) ?? 'unknown';
       const desc = (c.description ?? '').slice(0, 400);
       return `- ${name}: ${desc || '(no description)'}`;
     })
     .join('\n');
   const locDescriptions = bible.locations
     .map((c) => {
-      const name = nameFromBibleFilename(c.filename) ?? 'unknown';
+      const name = bibleSlug(c.file_type) ?? 'unknown';
       const desc = (c.description ?? '').slice(0, 400);
       return `- ${name}: ${desc || '(no description)'}`;
     })
@@ -319,13 +319,13 @@ export async function runContinuityCheck(
     `cost $${result.costUsd.toFixed(4)}`;
 
   const charNames = bible.characters
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
   const locNames = bible.locations
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
   const styleNames = bible.styles
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
 
   return {
