@@ -26,8 +26,14 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
-import { bibleFilename } from '@/lib/api/series-bible';
+import {
+  bibleFilename,
+  buildProvenance,
+  type AssetMetadataDoc,
+} from '@/lib/api/series-bible';
 import { resolveExtensionRequest } from '@/lib/api/canon-extensions';
+import { runBibleAuthor, BibleAuthorError } from '@/lib/agents/runners/bible-author';
+import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -91,8 +97,20 @@ export const POST = withApiHandler(async (req, ctx) => {
     throw new ValidationError('Event already resolved');
   }
 
-  const created: Array<{ name: string; kind: string; assetId: string; filename: string }> = [];
+  const created: Array<{
+    name: string;
+    kind: string;
+    assetId: string;
+    filename: string;
+    enriched: boolean;
+    enrichmentError?: string;
+    costUsd?: number;
+  }> = [];
   const rejected: Array<{ name: string; kind: string; rationale_note?: string }> = [];
+
+  // Service-role client for the EXEC-BIBLE-AUTHOR call — needs to read style
+  // anchor + write back metadata, all behind RLS.
+  const serviceSupabase = createSupabaseServiceRoleClient();
 
   for (const d of body.decisions) {
     if (d.decision === 'APPROVE') {
@@ -109,8 +127,17 @@ export const POST = withApiHandler(async (req, ctx) => {
       const description = d.description ?? '';
       const content =
         `# ${d.kind.charAt(0).toUpperCase() + d.kind.slice(1)} — ${slug}\n\n` +
-        `_Bible extension approved by Director from canon proposal._\n\n` +
-        `## Description\n\n${description || '_(write description here, then add reference image and LOCK)_'}\n`;
+        `_Bible extension approved by Director from canon proposal — awaiting EXEC-BIBLE-AUTHOR enrichment._\n\n` +
+        `## Description (seed)\n\n${description || '_(none provided)_'}\n`;
+
+      // Stamp creation provenance immediately so the asset carries audit info
+      // even if enrichment later fails.
+      const provenance = buildProvenance({
+        by: user.email ?? user.id,
+        byKind: 'director',
+        source: 'canon_extension_approval',
+      });
+      const seedMeta: AssetMetadataDoc = { provenance };
 
       const ins = await supabase
         .from('assets')
@@ -124,6 +151,7 @@ export const POST = withApiHandler(async (req, ctx) => {
           status: 'DRAFT',
           version: 1,
           content,
+          metadata: seedMeta as unknown as Record<string, unknown>,
         } as never)
         .select('id,filename')
         .single();
@@ -132,11 +160,56 @@ export const POST = withApiHandler(async (req, ctx) => {
         // Surface the error rather than silently dropping
         throw new Error(`extension insert failed (${slug}): ${ins.error.message}`);
       }
+      const newAssetId = (ins.data as { id: string }).id;
+
+      // ── Auto-enrichment via EXEC-BIBLE-AUTHOR ──────────────────────────────
+      // Inline because Director is waiting on Approve. Wrapped in try/catch so
+      // a provider failure leaves the DRAFT alive (with seed description) and
+      // surfaces a blocker_raised event for retry.
+      let enriched = false;
+      let enrichmentError: string | undefined;
+      let costUsd: number | undefined;
+      try {
+        const r = await runBibleAuthor({
+          supabase: serviceSupabase,
+          assetId: newAssetId,
+          seriesId: series.id,
+          section: d.kind,
+          slug,
+          seedDescription: description,
+          filename,
+          source: 'canon_extension_approval',
+        });
+        enriched = true;
+        costUsd = r.costUsd;
+      } catch (err: unknown) {
+        enrichmentError =
+          err instanceof BibleAuthorError ? err.message : err instanceof Error ? err.message : String(err);
+        await supabase.from('activity_events').insert({
+          event_type: 'blocker_raised',
+          severity: 'warning',
+          title: `Bible enrichment failed: ${d.kind} "${slug}"`,
+          description: `EXEC-BIBLE-AUTHOR could not enrich the DRAFT — ${enrichmentError}. Director can edit description manually or trigger regenerate-image.`,
+          actor: 'EXEC-BIBLE-AUTHOR',
+          asset_id: newAssetId,
+          episode_id: evRow.episode_id ?? null,
+          metadata: {
+            kind: 'bible_enrichment_failure',
+            section: d.kind,
+            slug,
+            error: enrichmentError,
+          },
+        } as never);
+      }
+
       created.push({
         name: d.name,
         kind: d.kind,
-        assetId: (ins.data as { id: string }).id,
+        assetId: newAssetId,
         filename: (ins.data as { filename: string }).filename,
+        enriched,
+        enrichmentError,
+        costUsd,
       });
 
       // Audit row
@@ -144,15 +217,17 @@ export const POST = withApiHandler(async (req, ctx) => {
         event_type: 'canon_extension_resolved',
         severity: 'info',
         title: `Bible extension approved: ${d.kind} "${slug}"`,
-        description: `Director ${user.email ?? user.id} approved canon extension; DRAFT created in Bible Library`,
+        description: `Director ${user.email ?? user.id} approved canon extension; DRAFT created in Bible Library${enriched ? ' (enriched by EXEC-BIBLE-AUTHOR)' : ' (enrichment pending)'}`,
         actor: user.id,
         episode_id: evRow.episode_id ?? null,
         metadata: {
           source_event_id: body.event_id,
-          asset_id: (ins.data as { id: string }).id,
+          asset_id: newAssetId,
           decision: 'APPROVE',
           name: d.name,
           kind: d.kind,
+          enriched,
+          cost_usd: costUsd ?? null,
         },
       } as never);
     } else {

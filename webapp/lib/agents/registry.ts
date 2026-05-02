@@ -236,6 +236,21 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: true,
   },
 
+  'EXEC-BIBLE-AUTHOR': {
+    id: 'EXEC-BIBLE-AUTHOR',
+    code: 'exec-bible-author',
+    display_ru: 'Автор Библии',
+    display_en: 'Bible Author',
+    emoji: '📖',
+    category: 'production',
+    model: 'sonnet',
+    skills: ['agentic-engineering', 'fal-ai-media', 'prompt-optimizer'],
+    next_agent: null,
+    governance: 'B',
+    prompt_file: 'bible_author.md',
+    has_inngest_function: false, // called inline from extension approval route
+  },
+
   // ── Orchestration agents (no Inngest function) ──────────────────────────────
 
   'EXEC-ARCH': {

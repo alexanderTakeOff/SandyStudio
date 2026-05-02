@@ -825,6 +825,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-PUB': 'REV-publish_log',
   'EXEC-ANAL': 'REV-analytics',
   'EXEC-STY': 'BIB-style',
+  'EXEC-BIBLE-AUTHOR': '', // updates existing SBL-* row inline; never creates a new one through saveAgentOutput
   'EXEC-ARCH': '',
   'EXEC-ORCH': '',
   'EXEC-CONC': '',

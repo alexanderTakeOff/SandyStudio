@@ -48,6 +48,8 @@ export interface BibleAsset {
   staging_path: string | null;
   created_at: string;
   updated_at: string;
+  /** assets.metadata jsonb (migration 0020). */
+  metadata?: AssetMetadataDoc | null;
 }
 
 export interface BibleSection {
@@ -81,6 +83,99 @@ export function sectionFromFileType(fileType: string): SbSection | null {
     if (tail === sec || tail.startsWith(`${sec}_`)) return sec;
   }
   return null;
+}
+
+// ── Asset metadata schema (assets.metadata jsonb, migration 0020) ─────────────
+//
+// We persist three structured side-documents inside the single JSONB column,
+// so we don't add new columns for every editorial concern.
+
+/** Who/when an asset was created or last touched. Surfaced in AssetDetailDrawer. */
+export interface AssetProvenance {
+  created_by: string;
+  created_by_kind: 'agent' | 'director' | 'system';
+  created_at: string;
+  source: 'canon_extension_approval' | 'manual_add' | 'seed_script' | 'pipeline' | 'unknown';
+  last_modified_by?: string;
+  last_modified_by_kind?: 'agent' | 'director' | 'system';
+  last_modified_at?: string;
+}
+
+/** One entry in image_prompt.history. Each Director reroll appends here. */
+export interface ImagePromptHistoryEntry {
+  version: number;
+  prompt: string;
+  source: 'EXEC-BIBLE-AUTHOR' | 'director_edit' | 'manual_generate' | 'restore';
+  at: string;
+  cost_usd: number;
+  staging_path: string | null;
+  drive_file_id: string | null;
+  drive_web_view_url: string | null;
+  width: number | null;
+  height: number | null;
+  quality: 'low' | 'medium' | 'high' | null;
+  /** Optional: when source='restore', which previous version was duplicated forward. */
+  restored_from_version?: number;
+}
+
+/** image_prompt sub-doc — current pointer + ordered history. */
+export interface ImagePromptDoc {
+  current_version: number;
+  style_anchor_asset_id: string | null;
+  history: ImagePromptHistoryEntry[];
+}
+
+/** description_history sub-doc — versioned description text. */
+export interface DescriptionHistoryEntry {
+  version: number;
+  content: string;
+  source: 'EXEC-BIBLE-AUTHOR' | 'director_edit';
+  at: string;
+}
+
+export interface DescriptionHistoryDoc {
+  current_version: number;
+  history: DescriptionHistoryEntry[];
+}
+
+/** Full shape of assets.metadata. All sub-docs optional — pre-existing rows have none. */
+export interface AssetMetadataDoc {
+  provenance?: AssetProvenance;
+  image_prompt?: ImagePromptDoc;
+  description_history?: DescriptionHistoryDoc;
+  // Non-Bible assets carry other keys (proposal_count, severity, etc.) — preserved
+  // by always merging via spread when updating.
+  [key: string]: unknown;
+}
+
+/** Build a fresh provenance record for a new asset. */
+export function buildProvenance(args: {
+  by: string;
+  byKind: 'agent' | 'director' | 'system';
+  source: AssetProvenance['source'];
+  at?: string;
+}): AssetProvenance {
+  return {
+    created_by: args.by,
+    created_by_kind: args.byKind,
+    created_at: args.at ?? new Date().toISOString(),
+    source: args.source,
+  };
+}
+
+/** Stamp a last-modified marker onto an existing provenance (immutable copy). */
+export function stampLastModified(
+  prov: AssetProvenance,
+  by: string,
+  byKind: 'agent' | 'director' | 'system',
+  at?: string,
+): AssetProvenance {
+  return {
+    ...prov,
+    last_modified_by: by,
+    last_modified_by_kind: byKind,
+    last_modified_at: at ?? new Date().toISOString(),
+  };
 }
 
 /** Build the canonical filename for a new Bible asset. */

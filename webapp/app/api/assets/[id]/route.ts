@@ -13,12 +13,20 @@ import {
   assertAssetTransition,
   type AssetStatus,
 } from '@/lib/api/status-transitions';
+import {
+  buildProvenance,
+  stampLastModified,
+  type AssetMetadataDoc,
+  type DescriptionHistoryEntry,
+} from '@/lib/api/series-bible';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const PatchBody = z.object({
   description:  z.string().max(2000).optional(),
+  /** Markdown body — versioned in metadata.description_history when changed. */
+  content:      z.string().max(200_000).optional(),
   revision_log: z.string().max(4000).optional(),
   status:       z.string().optional(),  // soft transition; hard ones go through /approve
 });
@@ -55,6 +63,11 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   if (error) throw new Error(`asset fetch failed: ${error.message}`);
   if (!asset) throw new NotFoundError(`Asset ${id}`);
 
+  // Refuse mutations to LOCKED assets — defence in depth alongside DB CHECK.
+  if (asset.status === 'LOCKED' && (body.description !== undefined || body.content !== undefined)) {
+    throw new ValidationError('Asset is LOCKED — cannot edit description or content');
+  }
+
   const patch: Record<string, unknown> = {};
   if (body.description !== undefined) patch.description = body.description;
   if (body.revision_log !== undefined) patch.revision_log = body.revision_log;
@@ -67,6 +80,62 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     }
     assertAssetTransition(asset.status as AssetStatus, body.status as AssetStatus);
     patch.status = body.status;
+  }
+
+  // Markdown body version + provenance update — only when content actually changes.
+  // We store description history in metadata so the audit trail survives without
+  // proliferating columns. content stays in the dedicated `content` column.
+  let contentChanged = false;
+  if (body.content !== undefined && body.content !== (asset.content ?? '')) {
+    contentChanged = true;
+    patch.content = body.content;
+  }
+
+  const hasMeaningfulChange =
+    contentChanged ||
+    body.description !== undefined ||
+    body.revision_log !== undefined ||
+    body.status !== undefined;
+
+  if (hasMeaningfulChange) {
+    // types.gen lags behind migration 0020 — cast through unknown to read.
+    const existingMeta = (((asset as unknown as { metadata?: AssetMetadataDoc | null }).metadata) ?? {}) as AssetMetadataDoc;
+    const nowIso = new Date().toISOString();
+    const directorLabel = user.email ?? user.id;
+
+    // Append a new description_history entry only when the markdown body
+    // changed (description-only PATCH is treated as a one-line summary edit).
+    let nextDescriptionHistory = existingMeta.description_history;
+    if (contentChanged) {
+      const prevVersion = existingMeta.description_history?.current_version ?? 0;
+      const nextVersion = prevVersion + 1;
+      const entry: DescriptionHistoryEntry = {
+        version: nextVersion,
+        content: body.content ?? '',
+        source: 'director_edit',
+        at: nowIso,
+      };
+      nextDescriptionHistory = {
+        current_version: nextVersion,
+        history: [...(existingMeta.description_history?.history ?? []), entry],
+      };
+    }
+
+    const provenance = existingMeta.provenance
+      ? stampLastModified(existingMeta.provenance, directorLabel, 'director', nowIso)
+      : buildProvenance({
+          by: directorLabel,
+          byKind: 'director',
+          source: 'manual_add',
+          at: nowIso,
+        });
+
+    const newMeta: AssetMetadataDoc = {
+      ...existingMeta,
+      provenance,
+      ...(nextDescriptionHistory ? { description_history: nextDescriptionHistory } : {}),
+    };
+    patch.metadata = newMeta;
   }
 
   if (Object.keys(patch).length === 0) return apiOk(asset);
