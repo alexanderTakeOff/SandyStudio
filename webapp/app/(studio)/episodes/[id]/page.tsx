@@ -329,6 +329,15 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
               )}
             </div>
 
+            {/* When the selected stage is Episode references — render the gallery
+                in place of (or above) the activity feed. Director's request:
+                small thumbnails, click → Drawer with ← back. */}
+            {selectedStage === 'episode_references' && (
+              <div className="mb-3">
+                <EpisodeReferencesGallery episodeId={id} />
+              </div>
+            )}
+
             {filtered.length === 0 && (
               <p className="text-sm text-text-secondary">
                 {selectedStage ? 'No activity for this stage yet.' : 'Pipeline is idle.'}
