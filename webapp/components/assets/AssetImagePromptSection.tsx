@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { AssetCollapsibleSection } from './AssetCollapsibleSection';
+import { StyleGuardianBadge } from './StyleGuardianBadge';
 import type { ImagePromptDoc, ImagePromptHistoryEntry } from '@/lib/api/series-bible';
 
 function fmtDate(iso: string | undefined): string {
