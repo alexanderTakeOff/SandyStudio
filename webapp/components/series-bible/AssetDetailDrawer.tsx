@@ -213,6 +213,23 @@ export function AssetDetailDrawer({
     onChange();
   }
 
+  async function enrich() {
+    if (!confirm(`Generate description + reference image with EXEC-BIBLE-AUTHOR?\nCost: ~$0.06 (Sonnet description + gpt-image-1 medium quality)\nTakes ~10-20s.`)) return;
+    setBusy(true);
+    setError(null);
+    const res = await fetch(
+      `/api/series/${seriesId}/bible/${asset.id}/enrich`,
+      { method: 'POST' },
+    );
+    setBusy(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setError((j as { error?: string }).error ?? 'Enrich failed');
+      return;
+    }
+    onChange();
+  }
+
   async function lock() {
     if (!confirm(`LOCK ${asset.filename}? Locked Bible assets are immutable.`)) return;
     setBusy(true);
