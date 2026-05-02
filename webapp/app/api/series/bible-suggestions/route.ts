@@ -75,6 +75,7 @@ export const GET = withApiHandler(async (req) => {
   return apiOk(
     rows.map((r) => ({
       filename: r.filename,
+      file_type: r.file_type,
       description: r.description,
       series_code: r.series_id ? seriesMap.get(r.series_id) ?? null : null,
       preview_url: r.staging_path || r.drive_web_view_url || r.drive_path,
