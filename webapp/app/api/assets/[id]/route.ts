@@ -162,6 +162,13 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     .single();
   if (updErr) throw new Error(`asset update failed: ${updErr.message}`);
 
+  // Stamp mode_at_time for audit consistency with regenerate-image / upload.
+  const modeForAudit = (((updated as unknown as { metadata?: AssetMetadataDoc | null })
+    .metadata?.provenance?.last_modified_mode) ??
+    ((updated as unknown as { metadata?: AssetMetadataDoc | null })
+      .metadata?.provenance?.mode_at_time) ??
+    1);
+
   await supabase.from('activity_events').insert({
     event_type: 'asset_updated',
     severity: 'info',
@@ -170,7 +177,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     actor: user.id,
     asset_id: id,
     episode_id: asset.episode_id,
-    metadata: { patch },
+    metadata: { patch, mode_at_time: modeForAudit },
   } as never);
 
   return apiOk(updated);
