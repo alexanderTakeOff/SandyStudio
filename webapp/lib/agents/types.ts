@@ -137,10 +137,22 @@ export interface AgentResult {
   }>;
 }
 
-/** Action codes that governance enforces. Phase 4 hard-blocks PUBLISH only. */
+/**
+ * Action codes that governance enforces. Each maps to a Category (A/B/C):
+ *  A — hard limit, always Director (PUBLISH, LOCK, BUDGET_OVERRIDE, MODE_CHANGE)
+ *  B — creative gate, Mode-dependent (REGENERATE_IMAGE, ENRICH_ASSET, AGENT_RUN, ...)
+ *  C — autonomous / direct Director (UPLOAD_ASSET, EDIT_DESCRIPTION)
+ */
 export type GovernanceAction =
   | 'PUBLISH'
   | 'LOCK'
   | 'BUDGET_OVERRIDE'
   | 'MODE_CHANGE'
-  | 'AGENT_RUN'; // catch-all for normal agent execution
+  | 'AGENT_RUN'
+  | 'REGENERATE_IMAGE'
+  | 'ENRICH_ASSET'
+  | 'UPLOAD_ASSET'
+  | 'EDIT_DESCRIPTION';
+
+/** Single source of truth for category mapping. Read by `enforceMode`. */
+export type ActionCategory = 'A' | 'B' | 'C';
