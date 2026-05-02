@@ -103,6 +103,7 @@ export function EpisodeReferencesGallery({ episodeId, seriesId, size = 36 }: Epi
             mutate();
           }}
           kindLabel="Episode reference"
+          seriesId={seriesId ?? null}
         />
       )}
     </div>
