@@ -100,7 +100,10 @@ function findApprovedAsset(
 }
 
 function nameFromBibleFilename(filename: string): string | null {
-  const m = filename.match(/-SBL-[a-z_]+_([a-z0-9_-]+)-v\d+-/i);
+  // Multi-word slug fix — greedy `[a-z_]+_` was eating compound slugs
+  // (SBL-character_city_systems → "systems"). Explicit section alternation +
+  // non-greedy capture preserves the full slug (city_systems).
+  const m = filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
   return m && m[1] ? m[1].toLowerCase() : null;
 }
 
