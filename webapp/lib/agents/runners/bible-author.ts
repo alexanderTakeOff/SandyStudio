@@ -272,7 +272,7 @@ export async function runBibleAuthor(
   // do not re-enrich. This protects against double approval / retries.
   const existing = await supabase
     .from('assets')
-    .select('id,metadata,status')
+    .select('*')
     .eq('id', assetId)
     .maybeSingle();
   if (existing.error) {
@@ -281,12 +281,15 @@ export async function runBibleAuthor(
   if (!existing.data) {
     throw new BibleAuthorError(`asset not found: ${assetId}`);
   }
-  const existingMeta = ((existing.data as { metadata?: AssetMetadataDoc | null }).metadata ??
-    {}) as AssetMetadataDoc;
+  const existingRow = existing.data as unknown as {
+    status: string;
+    metadata: AssetMetadataDoc | null;
+  };
+  const existingMeta = (existingRow.metadata ?? {}) as AssetMetadataDoc;
   if (existingMeta.image_prompt && existingMeta.image_prompt.history.length > 0) {
     throw new BibleAuthorError(`asset ${assetId} already enriched (image_prompt v${existingMeta.image_prompt.current_version})`);
   }
-  if (existing.data.status === 'LOCKED') {
+  if (existingRow.status === 'LOCKED') {
     throw new BibleAuthorError(`asset ${assetId} is LOCKED — refusing to enrich`);
   }
 
