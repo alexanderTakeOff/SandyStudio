@@ -176,6 +176,8 @@ export async function emitExtensionRequest(
       episode_id: args.episodeId,
       metadata: {
         kind: 'canon_extension',
+        // Stage bucket — Pipeline View activity feed filters by metadata.file_type
+        file_type: args.fileType ?? null,
         asset_id: args.assetId,
         proposal_count: args.proposals.length,
         proposals: args.proposals,
