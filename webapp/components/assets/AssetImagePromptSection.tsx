@@ -156,13 +156,18 @@ export function AssetImagePromptSection({
           placeholder="Edit the prompt and click Regenerate to reroll the image…"
         />
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="text-[10px] text-text-muted">
-            Style anchor:{' '}
-            <span className="text-text-secondary font-mono">
-              {promptDoc.style_anchor_asset_id
-                ? promptDoc.style_anchor_asset_id.slice(0, 8) + '…'
-                : 'none'}
-            </span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="text-[10px] text-text-muted">
+              Style anchor:{' '}
+              <span className="text-text-secondary font-mono">
+                {promptDoc.style_anchor_asset_id
+                  ? promptDoc.style_anchor_asset_id.slice(0, 8) + '…'
+                  : 'none'}
+              </span>
+            </div>
+            {assetType && seriesId && (
+              <StyleGuardianBadge prompt={draft} assetType={assetType} seriesId={seriesId} />
+            )}
           </div>
           {editable && (
             <div className="flex items-center gap-2">
