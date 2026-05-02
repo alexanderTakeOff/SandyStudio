@@ -106,8 +106,11 @@ function findApprovedAsset(
 }
 
 function nameFromBibleFilename(filename: string): string | null {
-  // SS-S03-SBL-character_sandy-v01-LOCKED.png → sandy
-  const m = filename.match(/-SBL-[a-z_]+_([a-z0-9_-]+)-v\d+-/i);
+  // SS-S03-SBL-character_sandy-v01-LOCKED.png       → sandy
+  // SS-S09-SBL-character_city_systems-v01-DRAFT.md  → city_systems (multi-word slug)
+  // Greedy `[a-z_]+_` was eating compound slugs (city_systems → systems);
+  // explicit section alternation + non-greedy capture preserves the full slug.
+  const m = filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
   return m && m[1] ? m[1].toLowerCase() : null;
 }
 
