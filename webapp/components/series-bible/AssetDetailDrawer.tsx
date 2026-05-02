@@ -124,6 +124,14 @@ export function AssetDetailDrawer({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState(currentPromptEntry?.prompt ?? '');
 
+  // Per-section open/closed — let Director collapse big blocks to navigate fast.
+  // Defaults: Image OPEN (key visual), Summary OPEN (one-liner), Body CLOSED
+  // (largest block, scroll-heavy), Meta OPEN (small status/version row).
+  const [imageOpen, setImageOpen] = useState(true);
+  const [summaryOpen, setSummaryOpen] = useState(true);
+  const [bodyOpen, setBodyOpen] = useState(false);
+  const [metaOpen, setMetaOpen] = useState(true);
+
   useEffect(() => {
     setDescription(asset.description ?? '');
     setContent(asset.content ?? '');
