@@ -297,8 +297,46 @@ export function createAgentInngestFunction<E extends string>(
         // rows after EXEC-SB to satisfy a legacy WCHK gate that required
         // minCount=3. The real Storyboarder produces a single STB-storyboard
         // asset with all 3 acts inline (JSON), and gate.ts now uses minCount=1.
-        // Spoofing pollutes the storyboard stage with "Mock placeholder" rows
-        // visible in the kebab editor — confusing Director. Removed entirely.
+
+        // ── Bible Extension Proposals — Director-arbitrated canon growth.
+        // Per Director's 2026-05-02 architecture decision: agents may propose
+        // new canonical refs via `proposed_canon_extensions[]` in their JSON
+        // output (or via `violations[]` for Continuity Check). Surface them as
+        // an Inbox `canon_extension_proposed` event linking the producing
+        // asset. Director's CanonExtensionsPanel approves/rejects per row.
+        try {
+          // Lazy import to avoid pulling Supabase types into the in-memory
+          // replay-pilot harness.
+          const { parseExtensionsFromContent, emitExtensionRequest } = await import(
+            '../api/canon-extensions'
+          );
+          const { data: assetRow } = await supabase
+            .from('assets')
+            .select('content,file_type,episode_id')
+            .eq('id', out.assetId)
+            .maybeSingle();
+          const proposals = parseExtensionsFromContent(
+            assetRow?.content ?? null,
+            assetRow?.file_type ?? '',
+          );
+          if (proposals.length > 0) {
+            await emitExtensionRequest(supabase, {
+              assetId: out.assetId,
+              episodeId,
+              agentId: spec.agentId,
+              proposals,
+            });
+          }
+        } catch (err) {
+          // Non-fatal: pipeline continues even if proposal extraction fails.
+          // Director's manual workflow still works — Continuity verdict is
+          // rendered as plain markdown.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[factory] canon-extension extraction failed for ${spec.agentId}:`,
+            err,
+          );
+        }
 
         // Write activity_event so the Pipeline View feed shows agent
         // milestones, not just Director approvals. metadata.file_type lets
