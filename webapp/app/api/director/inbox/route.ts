@@ -104,26 +104,48 @@ export const GET = withApiHandler(async (req) => {
   }
 
   for (const e of events ?? []) {
-    const isBlocker = e.event_type === 'budget_threshold_reached' || e.event_type === 'blocker_raised';
+    const isBlocker =
+      e.event_type === 'budget_threshold_reached' || e.event_type === 'blocker_raised';
+    const isCanonExt = e.event_type === 'canon_extension_proposed';
     const group: InboxItem['group'] =
       isBlocker ? 'blocked'
       : e.event_type === 'decision_requested' ? 'needs_decision'
       : 'awaiting_input';
-    const cta: InboxItem['cta'] = isBlocker
-      ? [{ label: 'RESOLVE', intent: 'primary', action: 'resolve_blocker' },
-         { label: 'HOLD',    intent: 'secondary', action: 'hold' }]
-      : [{ label: 'OPEN',    intent: 'primary', action: 'open_event' }];
+
+    let cta: InboxItem['cta'];
+    if (isBlocker) {
+      cta = [
+        { label: 'RESOLVE', intent: 'primary', action: 'resolve_blocker' },
+        { label: 'HOLD',    intent: 'secondary', action: 'hold' },
+      ];
+    } else if (isCanonExt) {
+      cta = [
+        { label: 'REVIEW PROPOSALS', intent: 'primary', action: 'open_asset_preview' },
+      ];
+    } else {
+      cta = [{ label: 'OPEN', intent: 'primary', action: 'open_event' }];
+    }
+
     items.push({
       id: `event:${e.id}`,
       group,
       title: e.title,
-      subtitle: `${e.actor ?? 'system'} · ${e.event_type}`,
+      subtitle: isCanonExt
+        ? `${e.actor ?? 'agent'} · ${(e.metadata as { proposal_count?: number } | null)?.proposal_count ?? 0} extension${((e.metadata as { proposal_count?: number } | null)?.proposal_count ?? 0) === 1 ? '' : 's'}`
+        : `${e.actor ?? 'system'} · ${e.event_type}`,
       created_at: e.created_at,
       agent_id: e.actor,
+      asset_id: (e.asset_id as string | undefined) ?? undefined,
       episode_id: e.episode_id ?? undefined,
       is_visual: false,
       cta,
-      metadata: { severity: e.severity, event_type: e.event_type },
+      metadata: {
+        severity: e.severity,
+        event_type: e.event_type,
+        ...(isCanonExt && e.metadata && typeof e.metadata === 'object'
+          ? { proposal_count: (e.metadata as { proposal_count?: number }).proposal_count }
+          : {}),
+      },
     });
   }
 
