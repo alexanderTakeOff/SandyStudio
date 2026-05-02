@@ -332,6 +332,8 @@ export function EpisodeAssetDrawer({
             open={promptOpen}
             onToggle={() => setPromptOpen((v) => !v)}
             onChanged={onChange}
+            assetType={asset.file_type}
+            seriesId={seriesId ?? asset.series_id ?? null}
           />
 
           <AssetCollapsibleSection
