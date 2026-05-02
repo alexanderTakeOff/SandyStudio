@@ -253,6 +253,12 @@ export function AssetDetailDrawer({
             </div>
           )}
 
+          {/* Legacy / no-prompt-doc affordance — when there IS an image but NO
+              image_prompt history yet (legacy assets created before the
+              metadata column or the seed script). Director can replace the
+              image via Upload, which initialises the history v01. */}
+          {isImage && !promptDoc && editable && <LegacyUploadCard assetId={asset.id} onChanged={onChange} />}
+
           <AssetCollapsibleSection
             open={summaryOpen}
             onToggle={() => setSummaryOpen((v) => !v)}
