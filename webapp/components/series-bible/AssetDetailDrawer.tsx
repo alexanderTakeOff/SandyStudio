@@ -439,11 +439,12 @@ export function AssetDetailDrawer({
             </div>
           )}
 
-          {/* Description (one-line summary) */}
-          <div className="space-y-2">
-            <label className="block text-xs uppercase tracking-wider text-text-muted">
-              Summary (one line)
-            </label>
+          {/* Summary (one-line) — collapsible */}
+          <Section
+            open={summaryOpen}
+            onToggle={() => setSummaryOpen((v) => !v)}
+            label="Summary (one line)"
+          >
             <input
               type="text"
               value={description}
@@ -452,13 +453,15 @@ export function AssetDetailDrawer({
               className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
               placeholder="Short summary used in card lists"
             />
-          </div>
+          </Section>
 
-          {/* Markdown body */}
-          <div className="space-y-2">
-            <label className="block text-xs uppercase tracking-wider text-text-muted">
-              Description (markdown body)
-            </label>
+          {/* Markdown body — collapsible (closed by default; this is the largest block) */}
+          <Section
+            open={bodyOpen}
+            onToggle={() => setBodyOpen((v) => !v)}
+            label="Description (markdown body)"
+            meta={`${content.split('\n').length} lines · ${content.length} chars`}
+          >
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -467,7 +470,7 @@ export function AssetDetailDrawer({
               className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary font-sans leading-relaxed focus:outline-none focus:border-[var(--accent-primary)]"
               placeholder="Full canonical description in markdown…"
             />
-          </div>
+          </Section>
 
           {/* Image prompt — collapsed disclosure, shown only when metadata exists */}
           {promptDoc && currentPromptEntry && (
