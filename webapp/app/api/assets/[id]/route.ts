@@ -98,7 +98,8 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     body.status !== undefined;
 
   if (hasMeaningfulChange) {
-    const existingMeta = ((asset.metadata as AssetMetadataDoc | null) ?? {}) as AssetMetadataDoc;
+    // types.gen lags behind migration 0020 — cast through unknown to read.
+    const existingMeta = (((asset as unknown as { metadata?: AssetMetadataDoc | null }).metadata) ?? {}) as AssetMetadataDoc;
     const nowIso = new Date().toISOString();
     const directorLabel = user.email ?? user.id;
 
