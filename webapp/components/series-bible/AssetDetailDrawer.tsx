@@ -181,42 +181,58 @@ export function AssetDetailDrawer({
     if (!confirm(`Regenerate image with this prompt?\nCost: ~$0.04 (gpt-image-1, medium quality)`)) return;
     setBusy(true);
     setError(null);
-    const res = await fetch(
-      `/api/series/${seriesId}/bible/${asset.id}/regenerate-image`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prompt: promptDraft, quality: 'medium' }),
-      },
-    );
-    setBusy(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setError((j as { error?: string }).error ?? 'Regenerate failed');
-      return;
+    setProgress({
+      label: 'Regenerating image…',
+      detail: 'gpt-image-1 is rendering with the edited prompt. Stay in this window — it will refresh with the new image and a new history entry.',
+    });
+    try {
+      const res = await fetch(
+        `/api/series/${seriesId}/bible/${asset.id}/regenerate-image`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ prompt: promptDraft, quality: 'medium' }),
+        },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError((j as { error?: string }).error ?? 'Regenerate failed');
+        return;
+      }
+      onChange();
+    } finally {
+      setBusy(false);
+      setProgress(null);
     }
-    onChange();
   }
 
   async function restoreVersion(version: number) {
     if (!confirm(`Restore image version v${String(version).padStart(2, '0')} as the current image?\nA new history entry will be created (no destruction).`)) return;
     setBusy(true);
     setError(null);
-    const res = await fetch(
-      `/api/series/${seriesId}/bible/${asset.id}/regenerate-image`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ restore_version: version }),
-      },
-    );
-    setBusy(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setError((j as { error?: string }).error ?? 'Restore failed');
-      return;
+    setProgress({
+      label: `Restoring v${String(version).padStart(2, '0')}…`,
+      detail: 'Copying the past image forward as a new history entry (no destruction).',
+    });
+    try {
+      const res = await fetch(
+        `/api/series/${seriesId}/bible/${asset.id}/regenerate-image`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ restore_version: version }),
+        },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError((j as { error?: string }).error ?? 'Restore failed');
+        return;
+      }
+      onChange();
+    } finally {
+      setBusy(false);
+      setProgress(null);
     }
-    onChange();
   }
 
   async function enrich() {
