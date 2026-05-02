@@ -43,6 +43,16 @@ const NAV: NavItem[] = [
 export function StudioSidebar() {
   const pathname = usePathname();
 
+  // Inbox count badge — surfaces unresolved approval/decision/extension events
+  // and REVIEW assets so Director sees pending work in the left rail without
+  // navigating. Refreshes every 8s so it picks up new pipeline events.
+  const { data: inboxRes } = useSWR<{ data: unknown[] }>(
+    '/api/director/inbox?limit=50',
+    fetcher,
+    { refreshInterval: 8_000, revalidateOnFocus: true },
+  );
+  const inboxCount = inboxRes?.data?.length ?? 0;
+
   return (
     <aside className="relative z-20 hidden md:flex flex-col w-60 shrink-0 border-r border-glass bg-panel-glass backdrop-blur-md">
       {/* Brand */}
