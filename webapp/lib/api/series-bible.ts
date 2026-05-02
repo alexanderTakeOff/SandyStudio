@@ -211,6 +211,7 @@ export function buildProvenance(args: {
   by: string;
   byKind: 'agent' | 'director' | 'system';
   source: AssetProvenance['source'];
+  modeAtTime?: GovernanceModeNum;
   at?: string;
 }): AssetProvenance {
   return {
