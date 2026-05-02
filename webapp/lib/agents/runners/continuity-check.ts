@@ -264,9 +264,10 @@ export async function runContinuityCheck(
     );
   }
 
-  // Series is required to load Bible canon.
-  const seriesId =
-    ep?.series_id ?? (await seriesIdForEpisode(supabase, ep?.id ?? inputs.episode_id));
+  // Series is required to load Bible canon. Always resolve via helper so we
+  // get a real UUID even when episodes.series_id was populated with the code
+  // (legacy NewEpisodeModal bug).
+  const seriesId = await seriesIdForEpisode(supabase, ep?.id ?? inputs.episode_id);
   if (!seriesId) {
     throw new ContinuityCheckError(
       'Precondition failed: episode has no parent series_id, cannot load Bible canon',
