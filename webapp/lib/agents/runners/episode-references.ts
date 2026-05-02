@@ -179,12 +179,12 @@ function pickUniqueRefs(
   const seen = new Map<string, UniqueRefSpec>();
   const charByName = new Map<string, BibleAssetLike>();
   for (const c of bible.characters) {
-    const n = nameFromBibleFilename(c.filename);
+    const n = nameFromBibleFilename(c);
     if (n) charByName.set(n, c);
   }
   const locByName = new Map<string, BibleAssetLike>();
   for (const l of bible.locations) {
-    const n = nameFromBibleFilename(l.filename);
+    const n = nameFromBibleFilename(l);
     if (n) locByName.set(n, l);
   }
 
@@ -211,7 +211,7 @@ function pickUniqueRefs(
         bibleRefs.push({
           id: asset.id,
           kind: 'character',
-          name: nameFromBibleFilename(asset.filename) ?? lower,
+          name: nameFromBibleFilename(asset) ?? lower,
           description: asset.description ?? asset.content ?? '',
         });
       }
@@ -226,7 +226,7 @@ function pickUniqueRefs(
       bibleRefs.push({
         id: asset.id,
         kind: 'location',
-        name: nameFromBibleFilename(asset.filename) ?? lowerLoc,
+        name: nameFromBibleFilename(asset) ?? lowerLoc,
         description: asset.description ?? asset.content ?? '',
       });
     }
@@ -236,7 +236,7 @@ function pickUniqueRefs(
       bibleRefs.push({
         id: sa.id,
         kind: 'style',
-        name: nameFromBibleFilename(sa.filename) ?? 'visual',
+        name: nameFromBibleFilename(sa) ?? 'visual',
         description: sa.description ?? sa.content ?? '',
       });
     }
@@ -403,10 +403,10 @@ export async function runEpisodeReferences(
     `${insertedAssetIds.length} refs · cost $${totalCost.toFixed(4)}`;
 
   const charNames = bible.characters
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => nameFromBibleFilename(c))
     .filter((s): s is string => Boolean(s));
   const locNames = bible.locations
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => nameFromBibleFilename(c))
     .filter((s): s is string => Boolean(s));
 
   return {
