@@ -25,6 +25,7 @@ export type Database = {
           id: string
           job_id: string | null
           metadata: Json | null
+          resolved_at: string | null
           severity: string
           title: string
         }
@@ -38,6 +39,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           metadata?: Json | null
+          resolved_at?: string | null
           severity?: string
           title: string
         }
@@ -51,6 +53,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           metadata?: Json | null
+          resolved_at?: string | null
           severity?: string
           title?: string
         }
@@ -347,6 +350,7 @@ export type Database = {
           file_type: string
           filename: string
           id: string
+          metadata: Json | null
           revision_log: string | null
           series_id: string | null
           staging_expires_at: string | null
@@ -367,6 +371,7 @@ export type Database = {
           file_type: string
           filename: string
           id?: string
+          metadata?: Json | null
           revision_log?: string | null
           series_id?: string | null
           staging_expires_at?: string | null
@@ -387,6 +392,7 @@ export type Database = {
           file_type?: string
           filename?: string
           id?: string
+          metadata?: Json | null
           revision_log?: string | null
           series_id?: string | null
           staging_expires_at?: string | null

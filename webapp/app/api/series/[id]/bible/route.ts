@@ -15,8 +15,10 @@ import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import {
   listBibleSections,
   bibleFilename,
+  buildProvenance,
   BIBLE_SECTIONS,
   type SbSection,
+  type AssetMetadataDoc,
 } from '@/lib/api/series-bible';
 
 export const runtime = 'nodejs';
@@ -114,6 +116,14 @@ export const POST = withApiHandler(async (req, ctx) => {
     status: 'DRAFT',
   });
 
+  // Provenance — Director-driven manual add.
+  const provenance = buildProvenance({
+    by: user.email ?? user.id,
+    byKind: 'director',
+    source: 'manual_add',
+  });
+  const seedMeta: AssetMetadataDoc = { provenance };
+
   // Persist as DRAFT.
   const { data: inserted, error: ierr } = await supabase
     .from('assets')
@@ -131,7 +141,8 @@ export const POST = withApiHandler(async (req, ctx) => {
       status: 'DRAFT',
       version: nextVersion,
       agent_id: 'Director',
-    })
+      metadata: seedMeta as unknown as Record<string, unknown>,
+    } as never)
     .select('*')
     .single();
 
