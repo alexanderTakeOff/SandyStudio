@@ -126,15 +126,22 @@ export function bibleSlug(fileType: string): string | null {
 // We persist three structured side-documents inside the single JSONB column,
 // so we don't add new columns for every editorial concern.
 
+/** Governance mode at the moment of action. Future EXEC-ORCH reads this for audit. */
+export type GovernanceModeNum = 1 | 2 | 3 | 4;
+
 /** Who/when an asset was created or last touched. Surfaced in AssetDetailDrawer. */
 export interface AssetProvenance {
   created_by: string;
   created_by_kind: 'agent' | 'director' | 'system';
   created_at: string;
   source: 'canon_extension_approval' | 'manual_add' | 'seed_script' | 'pipeline' | 'unknown';
+  /** Governance mode at the moment of creation (1=MANUAL, 4=AUTOTEST). */
+  mode_at_time?: GovernanceModeNum;
   last_modified_by?: string;
   last_modified_by_kind?: 'agent' | 'director' | 'system';
   last_modified_at?: string;
+  /** Mode at the moment of last edit. */
+  last_modified_mode?: GovernanceModeNum;
 }
 
 /** One entry in image_prompt.history. Each Director reroll appends here. */
