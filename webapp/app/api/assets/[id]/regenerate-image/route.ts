@@ -36,6 +36,8 @@ import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { generateImageOpenAI } from '@/lib/agents/providers/openai-image';
 import { persistBinary } from '@/lib/agents/persist-binary';
+import { runStyleCheck } from '@/lib/agents/runners/style-check';
+import { getStyleGuardianMode } from '@/lib/api/style-guardian-config';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import {
