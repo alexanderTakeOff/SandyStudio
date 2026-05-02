@@ -61,18 +61,24 @@ export function NotificationDot({
   );
 }
 
+/**
+ * Global keyframe injection — call once near the StudioShell root so the
+ * blink animation is available everywhere a NotificationDot renders.
+ */
 export function NotificationDotStyles() {
-  // Inline-injected once near the root so child components can rely on the
-  // animation existing without per-page <style> tags.
   return (
-    <style jsx global>{`
-      @keyframes notif-blink {
-        0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); transform: scale(1); }
-        50%  { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);   transform: scale(1.05); }
-        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);     transform: scale(1); }
-      }
-      .notif-dot { will-change: box-shadow, transform; }
-    `}</style>
+    <style
+      // eslint-disable-next-line react/no-danger
+      dangerouslySetInnerHTML={{
+        __html: `
+@keyframes notif-blink {
+  0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); transform: scale(1); }
+  50%  { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);   transform: scale(1.05); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);     transform: scale(1); }
+}
+.notif-dot { will-change: box-shadow, transform; }
+`,
+      }}
+    />
   );
 }
-URGENT_TYPES; // keep export reference (silences unused-var if tree-shaken)
