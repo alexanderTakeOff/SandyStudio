@@ -424,7 +424,7 @@ export async function runBibleAuthor(
       drive_file_id: persisted.driveFileId,
       drive_web_view_url: persisted.driveWebViewUrl,
       drive_path: persisted.browserUrl,
-      metadata: newMeta as unknown as Database['public']['Tables']['assets']['Update']['metadata'],
+      metadata: newMeta as unknown as Record<string, unknown>,
     } as never)
     .eq('id', assetId);
 
