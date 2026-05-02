@@ -338,3 +338,78 @@ function FallbackBody({
     </div>
   );
 }
+
+function CanonExtensionsForAsset({ asset }: { asset: AssetRow }) {
+  // Look up unresolved canon_extension_proposed event for this asset.
+  const { data, error, mutate } = useSWR<{
+    data: CanonExtensionEvent[];
+  }>(`/api/activity?asset_id=${asset.id}&type=canon_extension_proposed&unresolved=true`, fetcher);
+
+  if (error || !data?.data) return null;
+  const event = data.data[0];
+  if (!event || event.resolved_at) return null;
+
+  // Resolve series_id: prefer asset.series_id (Bible asset), else fall back
+  // to the episode's series via API. For canon-extension events the asset is
+  // the producing agent's output (REV-world_check, etc.) — series_id is on
+  // the parent episode, surfaced via /api/episodes/[id].
+  const seriesId = asset.series_id;
+  const proposals: CanonExtensionProposal[] = Array.isArray(event.metadata?.proposals)
+    ? event.metadata!.proposals!
+    : [];
+  if (proposals.length === 0) return null;
+  if (!seriesId) {
+    return (
+      <CanonExtensionsWithEpisode
+        episodeId={asset.episode_id ?? null}
+        eventId={event.id}
+        proposals={proposals}
+        onResolved={() => mutate()}
+      />
+    );
+  }
+  return (
+    <CanonExtensionsPanel
+      proposals={proposals}
+      eventId={event.id}
+      seriesId={seriesId}
+      onResolved={() => mutate()}
+    />
+  );
+}
+
+function CanonExtensionsWithEpisode({
+  episodeId,
+  eventId,
+  proposals,
+  onResolved,
+}: {
+  episodeId: string | null;
+  eventId: string;
+  proposals: CanonExtensionProposal[];
+  onResolved: () => void;
+}) {
+  const { data: epData } = useSWR<{ data: { series_id: string | null } }>(
+    episodeId ? `/api/episodes/${episodeId}` : null,
+    fetcher,
+  );
+  const seriesId = epData?.data?.series_id;
+  if (!seriesId) {
+    return (
+      <div
+        className="text-xs px-3 py-2 rounded-lg border"
+        style={{ borderColor: 'var(--border-glass)', color: 'var(--text-muted)' }}
+      >
+        Bible extensions found, but the parent series is unresolved — cannot create Bible drafts.
+      </div>
+    );
+  }
+  return (
+    <CanonExtensionsPanel
+      proposals={proposals}
+      eventId={eventId}
+      seriesId={seriesId}
+      onResolved={onResolved}
+    />
+  );
+}
