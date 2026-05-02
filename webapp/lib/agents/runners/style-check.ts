@@ -208,11 +208,11 @@ export async function runStyleCheck(args: RunStyleCheckArgs): Promise<StyleCheck
     ? 'WARN'
     : 'PASS';
   const score = typeof body.score === 'number' ? Math.max(0, Math.min(100, body.score)) : 100;
-  const issues = Array.isArray(body.issues)
-    ? (body.issues as Array<Record<string, unknown>>).slice(0, 10).map((i) => ({
+  const issues: StyleCheckIssue[] = Array.isArray(body.issues)
+    ? (body.issues as Array<Record<string, unknown>>).slice(0, 10).map((i): StyleCheckIssue => ({
         field: typeof i.field === 'string' ? i.field : 'other',
         severity:
-          i.severity === 'high' || i.severity === 'med' ? (i.severity as 'high' | 'med') : 'low',
+          i.severity === 'high' ? 'high' : i.severity === 'med' ? 'med' : 'low',
         note: typeof i.note === 'string' ? i.note : '',
       }))
     : [];
