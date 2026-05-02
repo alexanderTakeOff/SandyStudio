@@ -99,13 +99,11 @@ function findApprovedAsset(
   return approved[0] ?? null;
 }
 
-function nameFromBibleFilename(filename: string): string | null {
-  // Multi-word slug fix — greedy `[a-z_]+_` was eating compound slugs
-  // (SBL-character_city_systems → "systems"). Explicit section alternation +
-  // non-greedy capture preserves the full slug (city_systems).
-  const m = filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
-  return m && m[1] ? m[1].toLowerCase() : null;
-}
+// Slug lookup — single source of truth lives in lib/api/series-bible.bibleSlug
+// (works on file_type, NOT filename — filename rewrites with status changes).
+// DO NOT re-introduce a local regex here; see bibleSlugFromFileType JSDoc.
+const nameFromBibleFilename = (asset: { file_type?: string | null }): string | null =>
+  asset.file_type ? bibleSlug(asset.file_type) : null;
 
 async function loadBibleCanon(
   supabase: SupabaseClient<Database>,
