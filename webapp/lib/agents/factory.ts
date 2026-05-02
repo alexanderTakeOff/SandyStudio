@@ -324,6 +324,7 @@ export function createAgentInngestFunction<E extends string>(
               assetId: out.assetId,
               episodeId,
               agentId: spec.agentId,
+              fileType: assetRow?.file_type ?? undefined,
               proposals,
             });
           }
