@@ -196,7 +196,8 @@ export const POST = withApiHandler(async (req, ctx) => {
     source: 'director_edit',
     at: nowIso,
     cost_usd: real.cost_usd,
-    staging_path: persisted.absolutePath,
+    // browser-loadable url; absolutePath would break <img> rendering.
+    staging_path: persisted.browserUrl,
     drive_file_id: persisted.driveFileId,
     drive_web_view_url: persisted.driveWebViewUrl,
     width: real.width,
