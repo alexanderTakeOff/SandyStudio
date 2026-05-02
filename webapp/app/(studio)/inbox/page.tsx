@@ -311,6 +311,17 @@ export default function InboxPage() {
                           key={b.action}
                           onClick={(e) => {
                             e.stopPropagation();
+                            // Canon-extension proposals: deep-link to the
+                            // episode page; Director clicks Continuity kebab
+                            // → Preview to open the CanonExtensionsPanel.
+                            if (b.action === 'open_asset_preview') {
+                              if (item.episode_id) {
+                                window.location.href = `/episodes/${item.episode_id}`;
+                              } else if (item.asset_id) {
+                                window.location.href = `/assets/${item.asset_id}`;
+                              }
+                              return;
+                            }
                             const map: Record<string, string> = {
                               approve: 'APPROVE',
                               revise: 'REQUEST_REVISION',
