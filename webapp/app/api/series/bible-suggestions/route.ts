@@ -20,6 +20,7 @@ const SectionSchema = z.enum(['character', 'location', 'object', 'style']);
 
 interface AssetWithSeries {
   filename: string;
+  file_type: string;
   description: string | null;
   drive_file_id: string | null;
   drive_web_view_url: string | null;
