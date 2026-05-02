@@ -440,10 +440,13 @@ export async function runEpisodeReferences(
     throw new EpisodeReferencesError('Storyboard JSON has no parseable shots');
   }
 
-  const refs = pickUniqueRefs(shots, bible);
+  const refs = pickShotsToReference(shots, bible);
   if (refs.length === 0) {
-    throw new EpisodeReferencesError('Could not derive any unique references');
+    throw new EpisodeReferencesError('Could not derive any per-shot references');
   }
+
+  // Style Guardian mode — pre-flight before each paid generation.
+  const guardianMode = await getStyleGuardianMode(supabase);
 
   const insertedAssetIds: string[] = [];
   let totalCost = 0;
@@ -461,13 +464,87 @@ export async function runEpisodeReferences(
   }
 
   for (const ref of refs) {
-    const prompt = buildPromptForRef(ref);
-    const img = await generateImageOpenAI({
-      prompt,
-      size: '1536x1024',
-      quality: EREF_QUALITY,
-    });
-    totalCost += img.cost_usd;
+    let prompt = buildPromptForRef(ref);
+
+    // ── Style Guardian pre-flight ──────────────────────────────────────────
+    let styleVerdict: 'PASS' | 'WARN' | 'FAIL' | null = null;
+    let styleRewritten = false;
+    try {
+      const guardResult = await runStyleCheck({
+        supabase,
+        prompt,
+        assetType: `IMG-episode_ref_${ref.slug}`,
+        seriesId,
+      });
+      if (!guardResult.skipped) {
+        styleVerdict = guardResult.verdict;
+        if (guardianMode === 'strict' && guardResult.verdict === 'FAIL') {
+          // Skip this shot — don't burn $0.04 on a known-bad prompt.
+          console.error(`[eref] strict-mode FAIL for shot ${ref.anchorShot.shot_id}, skipping`);
+          continue;
+        }
+        if (guardianMode === 'auto_rewrite' && guardResult.suggested_prompt && guardResult.verdict !== 'PASS') {
+          prompt = guardResult.suggested_prompt;
+          styleRewritten = true;
+        }
+      }
+    } catch {
+      // Guardian failure should never block production — proceed with original prompt.
+    }
+
+    // ── Try image-to-image anchor first; fall back to text-to-image ─────────
+    const anchor = await pickImageAnchor(supabase, ref);
+    let imgB64: string;
+    let imgCost = 0;
+    let imgWidth = 1024;
+    let imgHeight = 1024;
+    let provider: 'gpt-image-1' | 'gpt-image-1-edit' = 'gpt-image-1';
+
+    if (anchor && anchor.staging_path) {
+      const base64 = await readBibleImageAsBase64(anchor.staging_path);
+      if (base64) {
+        try {
+          const edit = await editImageOpenAI({
+            imageBase64: base64,
+            prompt,
+            size: '1024x1024',
+            quality: EREF_QUALITY,
+          });
+          imgB64 = edit.b64_data;
+          imgCost = edit.cost_usd;
+          imgWidth = edit.width;
+          imgHeight = edit.height;
+          provider = 'gpt-image-1-edit';
+        } catch (err) {
+          if (err instanceof OpenAIImageEditError) {
+            // Fallback to text-only path.
+            console.error(`[eref] edits API failed for ${ref.anchorShot.shot_id}, falling back to text: ${err.message}`);
+            const fb = await generateImageOpenAI({ prompt, size: '1024x1024', quality: EREF_QUALITY });
+            imgB64 = fb.b64_data;
+            imgCost = fb.cost_usd;
+            imgWidth = fb.width;
+            imgHeight = fb.height;
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        // anchor present but file unreadable — text fallback
+        const fb = await generateImageOpenAI({ prompt, size: '1024x1024', quality: EREF_QUALITY });
+        imgB64 = fb.b64_data;
+        imgCost = fb.cost_usd;
+        imgWidth = fb.width;
+        imgHeight = fb.height;
+      }
+    } else {
+      // No anchor — text-to-image
+      const fb = await generateImageOpenAI({ prompt, size: '1024x1024', quality: EREF_QUALITY });
+      imgB64 = fb.b64_data;
+      imgCost = fb.cost_usd;
+      imgWidth = fb.width;
+      imgHeight = fb.height;
+    }
+    totalCost += imgCost;
 
     const fileType = `IMG-episode_ref_${ref.slug}`.slice(0, 80);
     const nextV = (existingMap.get(fileType) ?? 0) + 1;
@@ -476,13 +553,48 @@ export async function runEpisodeReferences(
     const filename = `${epCode}-${fileType}-${versionTag}-DRAFT.png`;
 
     const persisted = await persistBinary({
-      base64: img.b64_data,
+      base64: imgB64,
       ext: 'png',
       driveFilename: filename,
       localHint: `eref-${ref.slug}`,
       episodeCode: epCode,
       supabase,
     });
+
+    // Build metadata.image_prompt with v01 history entry + source_bible_refs[]
+    // for click-through audit (Drawer can show "Anchored on Sandy LOCKED").
+    const nowIso = new Date().toISOString();
+    const promptEntry: ImagePromptHistoryEntry = {
+      version: 1,
+      prompt,
+      source: 'EXEC-EREF',
+      at: nowIso,
+      cost_usd: imgCost,
+      staging_path: persisted.browserUrl,
+      drive_file_id: persisted.driveFileId,
+      drive_web_view_url: persisted.driveWebViewUrl,
+      width: imgWidth,
+      height: imgHeight,
+      quality: EREF_QUALITY,
+      style_check_verdict: styleVerdict,
+      style_check_rewritten: styleRewritten,
+    };
+    const newMeta = {
+      provenance: {
+        created_by: 'EXEC-EREF',
+        created_by_kind: 'agent' as const,
+        created_at: nowIso,
+        source: 'pipeline' as const,
+      },
+      image_prompt: {
+        current_version: 1,
+        style_anchor_asset_id: ref.bibleRefs.find((r) => r.kind === 'style')?.id ?? null,
+        history: [promptEntry],
+      },
+      source_bible_refs: ref.bibleRefs.map((r) => ({ id: r.id, kind: r.kind, name: r.name })),
+      anchor_image_asset_id: anchor?.id ?? null,
+      provider_used: provider,
+    };
 
     const { data: inserted, error } = await supabase
       .from('assets')
@@ -493,21 +605,23 @@ export async function runEpisodeReferences(
         file_type: fileType,
         filename,
         description:
-          `Anchored on Bible: ${ref.bibleRefs.map((r) => `${r.kind}:${r.name}`).join(', ')} · ` +
-          `cost $${img.cost_usd.toFixed(4)}`,
-        staging_path: persisted.absolutePath,
+          `Shot ${ref.anchorShot.shot_id} · ${provider} · ` +
+          `${ref.bibleRefs.map((r) => `${r.kind}:${r.name}`).join(', ')} · ` +
+          `cost $${imgCost.toFixed(4)}` +
+          (styleVerdict ? ` · guardian:${styleVerdict.toLowerCase()}` : ''),
+        staging_path: persisted.browserUrl,
         drive_path: persisted.browserUrl,
         drive_file_id: persisted.driveFileId,
         drive_web_view_url: persisted.driveWebViewUrl,
         status: 'DRAFT',
         version: nextV,
         content: null,
-      })
+        metadata: newMeta as unknown as Record<string, unknown>,
+      } as never)
       .select('id')
       .single();
 
     if (error) {
-      // continue with the rest, but record violation
       console.error(`[eref] insert failed for ${filename}: ${error.message}`);
       continue;
     }
