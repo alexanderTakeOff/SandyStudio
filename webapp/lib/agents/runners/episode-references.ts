@@ -261,7 +261,91 @@ function pickUniqueRefs(
       bibleRefs,
     });
   }
-  return [...seen.values()].slice(0, EREF_MAX_REFS);
+  return [...seen.values()].slice(0, EREF_MAX_REFS_CAP);
+}
+
+/**
+ * v2: per-shot picker. NO bucketing — every shot in the storyboard gets its
+ * own reference, capped at min(EREF_MAX_REFS_CAP, shots.length).
+ *
+ * Each per-shot ref still resolves Bible character/location/style refs the
+ * same way pickUniqueRefs did, so the prompt + image-anchor logic downstream
+ * is unchanged.
+ */
+function pickShotsToReference(
+  shots: ParsedShot[],
+  bible: {
+    characters: BibleAssetLike[];
+    locations: BibleAssetLike[];
+    styles: BibleAssetLike[];
+  },
+): UniqueRefSpec[] {
+  const out: UniqueRefSpec[] = [];
+  const charByName = new Map<string, BibleAssetLike>();
+  for (const c of bible.characters) {
+    const n = nameFromBibleFilename(c);
+    if (n) charByName.set(n, c);
+  }
+  const locByName = new Map<string, BibleAssetLike>();
+  for (const l of bible.locations) {
+    const n = nameFromBibleFilename(l);
+    if (n) locByName.set(n, l);
+  }
+
+  for (const shot of shots) {
+    if (out.length >= EREF_MAX_REFS_CAP) break;
+    const charsKey = [...shot.characters_present].sort().join('_').toLowerCase();
+    const locKey = shot.location.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const slugBase = `${shot.shot_id.toLowerCase().replace(/[^a-z0-9_]/g, '_')}_${locKey}_${charsKey}`
+      .replace(/_+/g, '_')
+      .slice(0, 64);
+
+    const bibleRefs: UniqueRefSpec['bibleRefs'] = [];
+    for (const charName of shot.characters_present) {
+      const lower = charName.toLowerCase();
+      const matched = [...charByName.entries()].find(
+        ([name]) => name === lower || lower.includes(name) || name.includes(lower),
+      );
+      if (matched) {
+        const [, asset] = matched;
+        bibleRefs.push({
+          id: asset.id,
+          kind: 'character',
+          name: nameFromBibleFilename(asset) ?? lower,
+          description: asset.description ?? asset.content ?? '',
+        });
+      }
+    }
+    const lowerLoc = shot.location.toLowerCase();
+    const locMatch = [...locByName.entries()].find(
+      ([name]) => lowerLoc.includes(name) || name.includes(lowerLoc.split(/[\s_-]/)[0] ?? ''),
+    );
+    if (locMatch) {
+      const [, asset] = locMatch;
+      bibleRefs.push({
+        id: asset.id,
+        kind: 'location',
+        name: nameFromBibleFilename(asset) ?? lowerLoc,
+        description: asset.description ?? asset.content ?? '',
+      });
+    }
+    if (bible.styles[0]) {
+      const sa = bible.styles[0];
+      bibleRefs.push({
+        id: sa.id,
+        kind: 'style',
+        name: nameFromBibleFilename(sa) ?? 'visual',
+        description: sa.description ?? sa.content ?? '',
+      });
+    }
+
+    out.push({
+      slug: slugBase || `shot_${out.length + 1}`,
+      anchorShot: shot,
+      bibleRefs,
+    });
+  }
+  return out;
 }
 
 function buildPromptForRef(spec: UniqueRefSpec): string {
@@ -292,6 +376,28 @@ function buildPromptForRef(spec: UniqueRefSpec): string {
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+/**
+ * Pick the best Bible image to use as image-to-image anchor for this shot.
+ * Prefer character > location. Returns the asset row (with staging_path) or
+ * null if no anchor available.
+ */
+async function pickImageAnchor(
+  supabase: SupabaseClient<Database>,
+  spec: UniqueRefSpec,
+): Promise<BibleAssetLike | null> {
+  const candidate =
+    spec.bibleRefs.find((r) => r.kind === 'character') ??
+    spec.bibleRefs.find((r) => r.kind === 'location') ??
+    null;
+  if (!candidate) return null;
+  const { data } = await supabase
+    .from('assets')
+    .select('id,filename,description,content,staging_path,drive_web_view_url,status,file_type')
+    .eq('id', candidate.id)
+    .maybeSingle();
+  return (data as BibleAssetLike | null) ?? null;
 }
 
 export interface EpisodeReferencesRunArgs {
