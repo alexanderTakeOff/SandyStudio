@@ -171,7 +171,7 @@ export function AddAssetModal({
   function pickSuggestion(s: CrossSeriesSuggestion) {
     setDescription(s.description ?? '');
     // Extract slug hint from filename like SS-S01-BIB-character_sandy-v01-LOCKED.png
-    const m = s.filename.match(/-SBL-[a-z_]+_([a-z0-9_-]+)-v\d+-/i);
+    const m = s.filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
     if (m && m[1]) setSlug(m[1]);
   }
 
@@ -192,7 +192,7 @@ export function AddAssetModal({
           />
           <datalist id={`suggestions-${section}`}>
             {suggestions.map((s) => {
-              const m = s.filename.match(/-SBL-[a-z_]+_([a-z0-9_-]+)-v\d+-/i);
+              const m = s.filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
               return m ? <option key={s.filename} value={m[1]} /> : null;
             })}
           </datalist>
@@ -200,7 +200,7 @@ export function AddAssetModal({
             <div className="mt-1.5 text-[11px] text-text-muted">
               Existing canonical entries:{' '}
               {suggestions.slice(0, 5).map((s, i) => {
-                const m = s.filename.match(/-SBL-[a-z_]+_([a-z0-9_-]+)-v\d+-/i);
+                const m = s.filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
                 return m ? (
                   <button
                     key={s.filename}
