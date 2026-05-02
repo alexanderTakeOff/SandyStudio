@@ -24,7 +24,9 @@ import type { AgentInputs } from '../types';
 
 export const CONT_CONTRACT = 'continuity_check@v1';
 export const CONT_MODEL = 'claude-sonnet-4-6';
-export const CONT_MAX_TOKENS = 3000;
+// Continuity emits per-shot rows + violations + descriptions in Russian; 3000
+// is too tight for 13-17-shot storyboards. 6000 leaves room for prose + JSON.
+export const CONT_MAX_TOKENS = 6000;
 
 export class ContinuityCheckError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
