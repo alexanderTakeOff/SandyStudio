@@ -219,6 +219,7 @@ export function buildProvenance(args: {
     created_by_kind: args.byKind,
     created_at: args.at ?? new Date().toISOString(),
     source: args.source,
+    ...(args.modeAtTime !== undefined ? { mode_at_time: args.modeAtTime } : {}),
   };
 }
 
@@ -228,6 +229,7 @@ export function stampLastModified(
   by: string,
   byKind: 'agent' | 'director' | 'system',
   at?: string,
+  modeAtTime?: GovernanceModeNum,
 ): AssetProvenance {
   return {
     ...prov,
