@@ -251,6 +251,21 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: false, // called inline from extension approval route
   },
 
+  'EXEC-STYLE-CHECK': {
+    id: 'EXEC-STYLE-CHECK',
+    code: 'exec-style-check',
+    display_ru: 'Хранитель стиля',
+    display_en: 'Style Guardian',
+    emoji: '🎨',
+    category: 'review',
+    model: 'sonnet',
+    skills: ['eval-harness', 'brand-voice'],
+    next_agent: null,
+    governance: 'C',
+    prompt_file: 'style_check.md',
+    has_inngest_function: false, // called inline before every paid generation
+  },
+
   // ── Orchestration agents (no Inngest function) ──────────────────────────────
 
   'EXEC-ARCH': {
