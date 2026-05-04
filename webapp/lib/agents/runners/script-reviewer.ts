@@ -99,9 +99,13 @@ function buildUserMessage(args: {
   briefContent: string;
   scriptContent: string;
   scriptVersion: number;
-  missingInputs: readonly string[];
+  bible: SeriesBibleCanon;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, missingInputs } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible } = args;
+  const biblePromptBlock = formatBibleForPrompt(bible);
+  const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
+  const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
+  const locationSlugs = bible.locations.map((l) => l.slug).filter(Boolean);
   return [
     '# Task',
     `Review the screenplay below against its brief and report a verdict for episode ${episodeCode} — "${episodeTitle}".`,
@@ -118,12 +122,21 @@ function buildUserMessage(args: {
     scriptContent,
     '</script>',
     '',
-    '## MVP context — missing upstream inputs',
+    hasCanon
+      ? biblePromptBlock
+      : [
+          '## MVP context — Series Bible empty',
+          '',
+          'No LOCKED Series Bible entries exist for this series. Review against the brief alone. Where you would normally check Style Bible / World Bible / Character Profiles, instead flag any concern as an issue with `area: brief_alignment` and a recommendation that the relevant bible be created.',
+        ].join('\n'),
     '',
-    'These inputs your role normally consults are NOT YET PROVISIONED:',
-    ...missingInputs.map((m) => `- ${m}`),
-    '',
-    'Per Director\'s decision: review against the brief alone. Where you would normally check Style Bible / World Bible / Character Profiles, instead flag any concern as an issue with `area: brief_alignment` and a recommendation that the relevant bible be created.',
+    hasCanon
+      ? [
+          '## Bible-driven review checks',
+          '',
+          `When checking the script, verify it uses ONLY the Bible canon slugs for characters (${characterSlugs.join(', ') || '(none)'}) and locations (${locationSlugs.join(', ') || '(none)'}). Flag any character or location not present in the canon as a `+'`world_consistency`'+` issue. Verify character behaviour and visual references are consistent with their LOCKED Bible descriptions above.`,
+        ].join('\n')
+      : '',
     '',
     '## Output format',
     '',
