@@ -127,39 +127,19 @@ export function InboxPreviewZone() {
                   {it.cta.slice(0, 3).map((b) => (
                     <button
                       key={b.action}
-                      onClick={async () => {
-                        if (it.asset_id) {
-                          const map: Record<string, string> = {
-                            approve: 'APPROVE',
-                            revise: 'REQUEST_REVISION',
-                            reject: 'REJECT',
-                            needs_human_tweak: 'NEEDS_HUMAN_TWEAK',
-                          };
-                          const decision = map[b.action];
-                          if (!decision) return;
-                          if (decision === 'REQUEST_REVISION' || decision === 'REJECT') {
-                            const note = window.prompt(`Note required for ${decision}`);
-                            if (!note) return;
-                            await fetch(`/api/assets/${it.asset_id}/approve`, {
-                              method: 'POST',
-                              headers: { 'content-type': 'application/json' },
-                              body: JSON.stringify({ decision, note }),
-                            });
-                          } else {
-                            const ack = it.is_visual
-                              ? window.confirm('Visual asset — confirm preview reviewed?')
-                              : true;
-                            if (!ack) return;
-                            await fetch(`/api/assets/${it.asset_id}/approve`, {
-                              method: 'POST',
-                              headers: { 'content-type': 'application/json' },
-                              body: JSON.stringify({
-                                decision,
-                                preview_acknowledged: it.is_visual ? true : undefined,
-                              }),
-                            });
-                          }
-                          mutate();
+                      onClick={() => {
+                        const map: Record<string, string> = {
+                          approve: 'APPROVE',
+                          revise: 'REQUEST_REVISION',
+                          reject: 'REJECT',
+                          needs_human_tweak: 'NEEDS_HUMAN_TWEAK',
+                        };
+                        const decision = map[b.action];
+                        if (!decision) return;
+                        if (decision === 'REQUEST_REVISION' || decision === 'REJECT') {
+                          setNotePrompt({ item: it, decision: decision as InboxNoteDecision });
+                        } else {
+                          void postDecision(it, decision);
                         }
                       }}
                       className={`px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wider transition-colors ${INTENT_CLASS[b.intent]}`}
