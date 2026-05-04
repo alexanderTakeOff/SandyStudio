@@ -198,7 +198,7 @@ function buildUserMessage(args: {
     '<2-3 sentences why>',
     '',
     '## Per-shot results',
-    '<for each shot in storyboard JSON.acts[].shots[]: shot_id, location verdict, characters verdict, list any issues>',
+    '<for each shot in storyboard JSON.acts[].shots[]: shot_id, location verdict, characters verdict, list any issues. The storyboard may follow either contract version: v2 uses `location.slug` (object) and `characters[].bible_slug` (array of objects); v1 used `location` (string) and `characters_present[]` (array of strings). Look up the canonical character/location slugs from the LOCKED Bible canon above, regardless of contract version.>',
     '',
     '## Violations',
     '<list any character or location that is not in the LOCKED Bible canon>',
