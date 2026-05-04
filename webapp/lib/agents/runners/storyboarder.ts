@@ -23,7 +23,7 @@ import {
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
 
-export const SB_CONTRACT = 'storyboarder@v1';
+export const SB_CONTRACT = 'storyboarder@v2';
 export const SB_MODEL = 'claude-sonnet-4-6';
 export const SB_MAX_TOKENS = 8000;
 export const SB_COST_CEILING_USD = 0.5;
