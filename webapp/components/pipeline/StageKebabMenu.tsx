@@ -179,45 +179,13 @@ export function StageKebabMenu({
   // failed: Script (need 1, found 0 APPROVED)" errors during re-trigger.
   const producerAgent = stageAgents.find((a) => a !== 'Director') ?? null;
 
-  async function retriggerStage() {
+  function retriggerStage() {
     if (busy) return;
     if (!producerAgent) {
       alert(`${stageLabel} has no automatable agent (Director-only stage).`);
       return;
     }
-    const reason = prompt(
-      `Re-trigger ${producerAgent} for ${stageLabel}?\n\nReason (required, audit log):`,
-      '',
-    );
-    if (reason === null) return;
-    if (reason.trim().length < 3) {
-      alert('Reason must be at least 3 characters.');
-      return;
-    }
-    if (
-      !confirm(
-        `This will fire ${producerAgent} and may produce a duplicate asset. Downstream agents (if any) will fire automatically when their gates pass. Continue?`,
-      )
-    ) {
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/episodes/${episodeId}/trigger`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agentCode: producerAgent, reason: reason.trim() }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? `${res.status}`);
-      }
-      onChanged();
-    } catch (err) {
-      alert(`Re-trigger failed: ${(err as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
+    setRetriggerOpen(true);
   }
 
   function openEditor() {
