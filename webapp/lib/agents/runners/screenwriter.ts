@@ -100,10 +100,14 @@ function buildUserMessage(args: {
   episodeCode: string;
   episodeTitle: string;
   briefContent: string;
-  missingInputs: readonly string[];
+  bible: SeriesBibleCanon;
   revisionNote?: string;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, missingInputs, revisionNote } = args;
+  const { episodeCode, episodeTitle, briefContent, bible, revisionNote } = args;
+  const biblePromptBlock = formatBibleForPrompt(bible);
+  const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
+  const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
+  const locationSlugs = bible.locations.map((l) => l.slug).filter(Boolean);
   return [
     '# Task',
     `Write the screenplay for episode ${episodeCode} — "${episodeTitle}".`,
@@ -114,12 +118,13 @@ function buildUserMessage(args: {
     briefContent,
     '</brief>',
     '',
-    '## MVP context — missing upstream inputs',
-    '',
-    'The following inputs that your role normally requires are NOT YET PROVISIONED in this MVP step:',
-    ...missingInputs.map((m) => `- ${m}`),
-    '',
-    'Per Director\'s decision: proceed using ONLY the brief above. Do not invent series-level canon (no character backstories, no world rules) beyond what the brief states. Where you would normally consult a Style Bible / World Bible / Character Profile, instead derive minimal episode-local choices from the brief — and list each such choice in the `assumptions[]` array of the JSON block. The Director will validate them and decide which become canonical in a later step.',
+    hasCanon
+      ? biblePromptBlock
+      : [
+          '## MVP context — Series Bible empty',
+          '',
+          'No LOCKED Series Bible entries exist for this series yet. Proceed using ONLY the brief above. Do not invent series-level canon (no character backstories, no world rules) beyond what the brief states. Where you would normally consult a Style Bible / World Bible / Character Profile, instead derive minimal episode-local choices from the brief — and list each such choice in the `assumptions[]` array of the JSON block. The Director will validate them and decide which become canonical in a later step.',
+        ].join('\n'),
     '',
     revisionNote
       ? [
