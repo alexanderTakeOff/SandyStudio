@@ -20,6 +20,7 @@ import {
   AnthropicTextError,
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
+import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
 
 export const SCREENWRITER_CONTRACT = 'screenwriter@v1';
