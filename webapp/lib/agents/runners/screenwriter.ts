@@ -160,13 +160,19 @@ function buildUserMessage(args: {
     '  "episode_id": "<uuid or episode_code>",',
     '  "title": "<episode title>",',
     '  "runtime_target_seconds": <integer>,',
-    '  "assumptions": ["<each MVP assumption you made because Style/World/Character bibles are missing>"],',
+    hasCanon
+      ? '  "assumptions": ["<minor episode-local choices not covered by Series Bible canon>"],'
+      : '  "assumptions": ["<each MVP assumption you made because Series Bible is empty>"],',
     '  "scenes": [',
     '    {',
     '      "scene_id": "<episode_code>-A<N>-SC<NN>",',
     '      "act": <integer>,',
-    '      "characters": ["<character name from brief>"],',
-    '      "location": "<location name from brief>",',
+    hasCanon
+      ? `      "characters": ["<Bible character slug — one of: ${characterSlugs.join(', ') || '(none)'}>"]`
+      : '      "characters": ["<character name from brief>"],',
+    hasCanon
+      ? `      "location": "<Bible location slug — one of: ${locationSlugs.join(', ') || '(none)'} — optionally followed by sub-area, e.g. \\"neon_cafe — entrance\\">",`
+      : '      "location": "<location name from brief>",',
     '      "action": "<one short paragraph of visual action>",',
     '      "beats": ["<beat from brief that this scene delivers>"],',
     '      "duration_seconds": <integer>',
@@ -176,7 +182,12 @@ function buildUserMessage(args: {
     '```',
     '',
     'Hard rules:',
-    '- Use only characters and locations the brief explicitly mentions.',
+    hasCanon
+      ? `- Use ONLY the Bible canon slugs in \`characters[]\` and \`location\`. Available characters: ${characterSlugs.join(', ') || '(none)'}. Available locations: ${locationSlugs.join(', ') || '(none)'}. Do not invent new characters or locations.`
+      : '- Use only characters and locations the brief explicitly mentions.',
+    hasCanon
+      ? '- Every character description in your prose MUST be consistent with the Series Bible canon above. Do not contradict canonical appearance, behaviour, or backstory.'
+      : '',
     '- For visual comedy MVP: action lines, no dialogue (unless the brief explicitly asks for dialogue).',
     '- Every mandatory beat from the brief\'s "Key beats" section MUST appear in at least one scene\'s `beats[]`.',
     '- Total of `duration_seconds` across all scenes ≈ runtime_target_seconds (within 10%).',
