@@ -366,6 +366,16 @@ export default function InboxPage() {
         );
       })}
 
+      <InboxNotePromptModal
+        open={notePrompt !== null}
+        decision={notePrompt?.decision ?? 'REJECT'}
+        subjectLabel={notePrompt?.item.title}
+        onClose={() => setNotePrompt(null)}
+        onSubmit={async (note) => {
+          if (notePrompt) await act(notePrompt.item, notePrompt.decision, note);
+        }}
+      />
+
       <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title="Inbox shortcuts">
         <ul className="text-sm space-y-2">
           <Shortcut k="J / K" desc="Move focus down/up" />
