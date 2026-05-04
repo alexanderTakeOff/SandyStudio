@@ -41,6 +41,15 @@ export function Modal({ open, onClose, title, children, size = 'sm', hideClose }
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
+      // React portals bubble synthetic events through the React parent tree,
+      // not the DOM tree — so a textarea inside this modal would hand its
+      // keydown to whatever parent component triggered the modal (e.g. the
+      // episode page's stage row with `onKeyDown` that preventDefault()s
+      // Space/Enter to toggle the row). Stop synthetic bubbling here so the
+      // textarea actually receives the keystroke. Native `document` listeners
+      // (e.g. our Escape handler above) are unaffected.
+      onKeyDown={(e) => e.stopPropagation()}
+      onKeyUp={(e) => e.stopPropagation()}
     >
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"

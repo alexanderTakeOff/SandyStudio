@@ -144,7 +144,8 @@
       "Bash(curl -s -o /dev/null -w \"next:%{http_code} \" http://localhost:3000/)",
       "Bash(curl -s -o /dev/null -w \"inngest:%{http_code}\\\\n\" http://localhost:8288/)",
       "Bash(curl -sS -o /dev/null -w \"%{http_code}\" http://localhost:3000/)",
-      "Bash(curl -s \"http://localhost:3000/api/episodes/4809684a-3740-4d20-85fa-b24d76340074/pipeline\")"
+      "Bash(curl -s \"http://localhost:3000/api/episodes/4809684a-3740-4d20-85fa-b24d76340074/pipeline\")",
+      "Bash(./node_modules/.bin/tsc --noEmit)"
     ]
   }
 }
