@@ -220,12 +220,19 @@ export function StageKebabMenu({
   // Approve makes sense whenever there's a REVIEW-status asset in the stage,
   // even if the stage state has been masked to 'failed' by a separate job.
   const canApprove = assetsInReview > 0 && latestAssetId !== undefined;
-  // Re-trigger is allowed on `approved` too — RetriggerStageModal forces a
-  // reason and warns about the new version. Director sometimes needs to redo
-  // an already-approved stage (e.g. after a contract upgrade like
-  // storyboarder@v1 → @v2). Existing approved asset is untouched; a new vNN
-  // is created in REVIEW.
-  const canRetrigger = producerAgent !== null && stageState !== 'running';
+  // Re-trigger policy:
+  //   - blocked on `running` UNLESS the stage already has a produced asset
+  //     (latestAssetId set). The stale-running case (Inngest function.failed
+  //     leaving the jobs row at RUNNING — see PLAN.md long-debt #4) would
+  //     otherwise lock the kebab forever; if there's a prior asset, the
+  //     Director clearly wants a re-roll, and RetriggerStageModal still
+  //     forces a reason + duplicate-version warning.
+  //   - allowed on `approved` so contract upgrades (e.g. storyboarder@v1 → @v2)
+  //     can produce a fresh version. Existing approved asset stays APPROVED,
+  //     new asset starts in REVIEW.
+  const canRetrigger =
+    producerAgent !== null &&
+    (stageState !== 'running' || latestAssetId !== undefined);
   const canEdit = latestAssetId !== undefined;
 
   if (canApprove) {
