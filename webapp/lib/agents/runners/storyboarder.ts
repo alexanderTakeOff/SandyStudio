@@ -141,7 +141,7 @@ function buildUserMessage(args: {
     '<one paragraph: total shot count, total runtime, beats coverage>',
     '',
     '## ACT 1 — <act beat summary>',
-    '<for each shot: shot id, camera, location, action prose, duration, key beat from brief>',
+    '<for each shot: shot id, camera, location, action prose, duration, key beat>',
     '',
     '## ACT 2 — <act beat summary>',
     '<same>',
@@ -150,12 +150,13 @@ function buildUserMessage(args: {
     '<same>',
     '```',
     '',
-    'Then append exactly one fenced JSON code block with this shape:',
+    'Then append exactly one fenced JSON code block with this shape (storyboarder@v2):',
     '',
     '```json',
     '{',
     `  "episode_id": "${episodeCode}",`,
     `  "script_version": ${scriptVersion},`,
+    '  "contract": "storyboarder@v2",',
     '  "runtime_target_seconds": <integer from brief>,',
     '  "acts": [',
     '    {',
@@ -165,13 +166,22 @@ function buildUserMessage(args: {
     '        {',
     `          "shot_id": "${episodeCode}-A1-SC01-SH01",`,
     '          "camera_angle": "wide" | "medium" | "medium_wide" | "close_up" | "extreme_close_up" | "over_shoulder" | "top_down" | "low_angle" | "dutch",',
+    '          "shot_role": "establishing" | "action" | "reaction" | "gag" | "punchline" | "transition",',
     hasCanon
-      ? `          "location": "<one of the Bible location slugs (${locationSlugs.join(', ') || '(none)'}), optionally followed by sub-area, e.g. \\"neon_cafe — entrance\\">",`
-      : '          "location": "<location name from brief — NOT generic>",',
-    '          "action": "<one paragraph of visual action — what is on screen>",',
+      ? `          "location": { "slug": "<one of: ${locationSlugs.join(', ') || '(none)'}>", "sub_area": "<optional sub-area within that location, e.g. \\"entrance\\" or \\"window table\\". Use null if shot covers the whole location.>" },`
+      : '          "location": { "slug": "<short slug derived from brief location name, lowercase_with_underscores>", "sub_area": "<optional sub-area or null>" },',
+    '          "characters": [',
+    '            {',
     hasCanon
-      ? `          "characters_present": ["<Bible character slug — one of: ${characterSlugs.join(', ') || '(none)'}>"]`
-      : '          "characters_present": ["<name>"],',
+      ? `              "bible_slug": "<one of the Bible character slugs: ${characterSlugs.join(', ') || '(none)'}>",`
+      : '              "bible_slug": "<character slug from brief, lowercase_with_underscores>",',
+    '              "expected_emotion": "<one short noun phrase — e.g. \\"smitten\\", \\"panicked\\", \\"dignified composure\\", \\"oblivious\\". The mood the AI image reviewer will check against.>",',
+    '              "expected_action": "<one short verb phrase — e.g. \\"leaning forward toward the vial\\", \\"falling backward like a plank\\", \\"raising one open hand\\". The physical action the AI image reviewer will check against.>",',
+    '              "role_in_shot": "subject" | "co-star" | "background"',
+    '            }',
+    '          ],',
+    '          "expected_gag": "<one short sentence describing the visual joke this shot delivers, OR null if shot is a setup/transition/reaction-without-gag>",',
+    '          "action_prose": "<one paragraph of visual action — what is on screen, written for the storyboard reader. Can include all characters and props in motion. This is your prose narration of the shot.>",',
     '          "duration_seconds": <integer>,',
     '          "key_beat": "<which brief beat this shot delivers, OR \\"transition\\" / \\"setup\\">",',
     '          "continuity_notes": "<what must match the prior shot — pose, prop state, lighting>"',
@@ -182,28 +192,32 @@ function buildUserMessage(args: {
     '    { "act": 3, ... }',
     '  ],',
     hasCanon
-      ? '  "assumptions": ["<minor episode-local visual choices not covered by Series Bible canon>"],'
+      ? '  "assumptions": ["<minor episode-local visual choices not covered by Series Bible canon — keep this list short; major drift goes through Continuity Check>"],'
       : '  "assumptions": ["<each MVP choice you made because Series Bible is empty>"],',
     '  "total_shots": <integer>,',
     '  "total_duration_s": <integer — sum of all duration_seconds>',
     '}',
     '```',
     '',
-    'Hard rules:',
+    'Hard rules (storyboarder@v2):',
     '- Exactly THREE acts in `acts[]`. No more, no fewer.',
     '- Every shot needs a unique `shot_id` following the pattern `<episode>-A<N>-SC<NN>-SH<NN>`.',
     hasCanon
-      ? `- \`location\` MUST start with a Bible location slug (one of: ${locationSlugs.join(', ') || '(none)'}). Optionally append " — sub-area" for a specific zone, e.g. "neon_cafe — table by window". Never invent a new location.`
-      : '- `location` must be specific (e.g. "Кафе у окна", "Стойка кафе") — never "scene_1" or "generic_location".',
+      ? `- \`location.slug\` MUST be one of the Bible location slugs (verbatim, lowercase): ${locationSlugs.join(', ') || '(none)'}. Use \`location.sub_area\` for a specific zone within that location (e.g. slug=\`neon_cafe\`, sub_area=\`window table\`). Never invent a new location slug.`
+      : '- `location.slug` must be a stable lowercase_with_underscores identifier derived from the brief.',
     hasCanon
-      ? `- \`characters_present\` MUST contain ONLY Bible character slugs (verbatim). Available: ${characterSlugs.join(', ') || '(none)'}. Never use display names ("Sandy") or invent characters. The downstream image generator looks up Bible canon by exact slug match.`
-      : '- `characters_present` must use names from the brief.',
+      ? `- \`characters[].bible_slug\` MUST be a Bible character slug (verbatim). Available: ${characterSlugs.join(', ') || '(none)'}. Never use display names ("Sandy") or invent characters. EREF and the AI reviewer match canonical reference images by exact slug.`
+      : '- `characters[].bible_slug` must be a stable lowercase_with_underscores identifier from the brief.',
+    '- `characters[]` must contain EVERY character visible or audible in the shot — even brief background presence. If a character is offscreen, do NOT include them.',
+    '- For each character: `expected_emotion` and `expected_action` are the two values the downstream AI image reviewer will use to score the generated image. Be specific and physical (not abstract). "happy" is too vague; "wide-eyed admiration" is good. "moving" is too vague; "leaning forward toward vial, hands flat on table" is good.',
+    '- `role_in_shot`: "subject" = main focus, "co-star" = also active in this shot, "background" = visible but passive.',
+    '- `expected_gag` is null only for transitions/setups. Every shot tagged `shot_role: "gag" | "punchline"` MUST have a non-null `expected_gag`.',
     hasCanon
-      ? '- Every visual description in `action` MUST be consistent with the Bible canon above. Do not contradict canonical character appearance, location layout, or style direction.'
+      ? '- Every visual description in `action_prose` MUST be consistent with the Bible canon above. Do not contradict canonical character appearance, location layout, or style direction.'
       : '',
     '- Sum of all shot `duration_seconds` should be within ±10% of `runtime_target_seconds`.',
     '- For visual comedy MVP: every shot is action, no dialogue.',
-    '- Each shot\'s `action` must describe what the camera SEES — concrete physical action, not internal feelings.',
+    '- Each shot\'s `action_prose` must describe what the camera SEES — concrete physical action, not internal feelings.',
     '- The fenced JSON must be valid JSON. No trailing commas. No comments. Properly escape any quotes inside strings.',
     '- KEEP PROSE TIGHT in markdown — JSON at end is mandatory and must not be truncated. If running long, shorten markdown — never skip JSON.',
   ]
