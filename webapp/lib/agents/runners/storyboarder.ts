@@ -165,9 +165,13 @@ function buildUserMessage(args: {
     '        {',
     `          "shot_id": "${episodeCode}-A1-SC01-SH01",`,
     '          "camera_angle": "wide" | "medium" | "medium_wide" | "close_up" | "extreme_close_up" | "over_shoulder" | "top_down" | "low_angle" | "dutch",',
-    '          "location": "<location name from brief — NOT generic>",',
+    hasCanon
+      ? `          "location": "<one of the Bible location slugs (${locationSlugs.join(', ') || '(none)'}), optionally followed by sub-area, e.g. \\"neon_cafe — entrance\\">",`
+      : '          "location": "<location name from brief — NOT generic>",',
     '          "action": "<one paragraph of visual action — what is on screen>",',
-    '          "characters_present": ["<name>"],',
+    hasCanon
+      ? `          "characters_present": ["<Bible character slug — one of: ${characterSlugs.join(', ') || '(none)'}>"]`
+      : '          "characters_present": ["<name>"],',
     '          "duration_seconds": <integer>,',
     '          "key_beat": "<which brief beat this shot delivers, OR \\"transition\\" / \\"setup\\">",',
     '          "continuity_notes": "<what must match the prior shot — pose, prop state, lighting>"',
@@ -177,7 +181,9 @@ function buildUserMessage(args: {
     '    { "act": 2, ... },',
     '    { "act": 3, ... }',
     '  ],',
-    '  "assumptions": ["<each MVP choice you made because Style/World/Character bibles are missing>"],',
+    hasCanon
+      ? '  "assumptions": ["<minor episode-local visual choices not covered by Series Bible canon>"],'
+      : '  "assumptions": ["<each MVP choice you made because Series Bible is empty>"],',
     '  "total_shots": <integer>,',
     '  "total_duration_s": <integer — sum of all duration_seconds>',
     '}',
@@ -186,14 +192,23 @@ function buildUserMessage(args: {
     'Hard rules:',
     '- Exactly THREE acts in `acts[]`. No more, no fewer.',
     '- Every shot needs a unique `shot_id` following the pattern `<episode>-A<N>-SC<NN>-SH<NN>`.',
-    '- `location` must be specific (e.g. "Кафе у окна", "Стойка кафе") — never "scene_1" or "generic_location".',
-    '- `characters_present` must use names from the brief.',
+    hasCanon
+      ? `- \`location\` MUST start with a Bible location slug (one of: ${locationSlugs.join(', ') || '(none)'}). Optionally append " — sub-area" for a specific zone, e.g. "neon_cafe — table by window". Never invent a new location.`
+      : '- `location` must be specific (e.g. "Кафе у окна", "Стойка кафе") — never "scene_1" or "generic_location".',
+    hasCanon
+      ? `- \`characters_present\` MUST contain ONLY Bible character slugs (verbatim). Available: ${characterSlugs.join(', ') || '(none)'}. Never use display names ("Sandy") or invent characters. The downstream image generator looks up Bible canon by exact slug match.`
+      : '- `characters_present` must use names from the brief.',
+    hasCanon
+      ? '- Every visual description in `action` MUST be consistent with the Bible canon above. Do not contradict canonical character appearance, location layout, or style direction.'
+      : '',
     '- Sum of all shot `duration_seconds` should be within ±10% of `runtime_target_seconds`.',
     '- For visual comedy MVP: every shot is action, no dialogue.',
     '- Each shot\'s `action` must describe what the camera SEES — concrete physical action, not internal feelings.',
     '- The fenced JSON must be valid JSON. No trailing commas. No comments. Properly escape any quotes inside strings.',
     '- KEEP PROSE TIGHT in markdown — JSON at end is mandatory and must not be truncated. If running long, shorten markdown — never skip JSON.',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export interface StoryboarderRunArgs {
