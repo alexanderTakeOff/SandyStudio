@@ -42,6 +42,28 @@ export function InboxPreviewZone() {
 
   const items = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
+  const [notePrompt, setNotePrompt] = useState<{
+    item: InboxItem;
+    decision: InboxNoteDecision;
+  } | null>(null);
+
+  async function postDecision(item: InboxItem, decision: string, note?: string) {
+    if (!item.asset_id) return;
+    if (decision === 'APPROVE' && item.is_visual) {
+      const ack = window.confirm('Visual asset — confirm preview reviewed?');
+      if (!ack) return;
+    }
+    await fetch(`/api/assets/${item.asset_id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        decision,
+        note,
+        preview_acknowledged: decision === 'APPROVE' && item.is_visual ? true : undefined,
+      }),
+    });
+    mutate();
+  }
 
   return (
     <Card>
