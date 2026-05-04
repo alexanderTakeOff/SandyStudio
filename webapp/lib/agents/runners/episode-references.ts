@@ -901,7 +901,14 @@ export async function runEpisodeReferences(
     const legacyHistory: ImagePromptHistoryEntry[] = generationHistory.map((g) => ({
       version: g.version,
       prompt: g.prompt,
-      source: g.triggered_by === 'pipeline' || g.triggered_by === 'auto_regen' ? 'EXEC-EREF' : g.triggered_by,
+      // Legacy `source` enum (lib/api/series-bible.ts) doesn't model the new
+      // v2 triggers — map them to the closest existing values so the legacy
+      // AssetDetailDrawer keeps rendering. Authoritative info lives in the
+      // shot_reference.generation_history field.
+      source:
+        g.triggered_by === 'director_edit'
+          ? 'director_edit'
+          : 'EXEC-EREF',
       at: g.at,
       cost_usd: g.cost_usd,
       staging_path: g.image_url,
