@@ -182,12 +182,22 @@ export async function runCopywriter(
     throw new CopywriterError(`Precondition failed: APPROVED SCR-script not found`);
   }
 
+  const bible = (inputs.bible as SeriesBibleCanon | undefined) ?? {
+    series_id: null,
+    general_idea: null,
+    characters: [],
+    locations: [],
+    styles: [],
+    total_entries: 0,
+  };
+
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
     episodeCode,
     episodeTitle,
     briefContent: briefAsset.content,
     scriptContent: scriptAsset.content,
+    bible,
   });
 
   let result: AnthropicTextResult;
