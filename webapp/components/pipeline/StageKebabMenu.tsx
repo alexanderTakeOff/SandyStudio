@@ -258,9 +258,13 @@ export function StageKebabMenu({
       });
     }
     // Edit modal — text assets only (CodeMirror raw editor; useful for tweaks)
+    // For approved/locked stages we still expose it as "View source" so the
+    // Director can read the raw markdown + JSON tail; the modal enforces
+    // read-only via EDITABLE_STATUSES. Calling it "Edit (read-only)" was
+    // confusing — Edit implies you can edit.
     if (!isBinary) {
       items.push({
-        label: stageState === 'approved' ? 'Edit (read-only)' : 'Edit',
+        label: stageState === 'approved' ? 'View source' : 'Edit',
         icon: <Pencil size={14} />,
         onSelect: openEditor,
         disabled: busy,
