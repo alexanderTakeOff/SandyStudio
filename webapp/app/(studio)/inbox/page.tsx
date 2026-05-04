@@ -44,6 +44,10 @@ export default function InboxPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [focusIdx, setFocusIdx] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [notePrompt, setNotePrompt] = useState<{
+    item: InboxItem;
+    decision: InboxNoteDecision;
+  } | null>(null);
 
   const { data, mutate } = useSWR<{ data: InboxItem[]; meta?: { total: number } }>(
     `/api/director/inbox?filter=${filter}&limit=50`,
