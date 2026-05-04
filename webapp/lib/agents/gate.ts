@@ -121,6 +121,7 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
   'EXEC-STY': { required: [], governance: 'AGENT_RUN' },
   'EXEC-BIBLE-AUTHOR': { required: [], governance: 'AGENT_RUN' },
   'EXEC-STYLE-CHECK': { required: [], governance: 'AGENT_RUN' },
+  'EXEC-EREF-CHECK': { required: [], governance: 'AGENT_RUN' },
   'EXEC-ARCH': { required: [], governance: 'AGENT_RUN' },
   'EXEC-ORCH': { required: [], governance: 'AGENT_RUN' },
   'EXEC-CONC': { required: [], governance: 'AGENT_RUN' },
