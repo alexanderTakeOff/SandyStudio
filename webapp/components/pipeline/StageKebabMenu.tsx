@@ -315,6 +315,17 @@ export function StageKebabMenu({
         assetFilename={undefined}
         onRejected={onChanged}
       />
+
+      {producerAgent && (
+        <RetriggerStageModal
+          open={retriggerOpen}
+          onClose={() => setRetriggerOpen(false)}
+          episodeId={episodeId}
+          stageLabel={stageLabel}
+          producerAgent={producerAgent}
+          onTriggered={onChanged}
+        />
+      )}
     </>
   );
 }
