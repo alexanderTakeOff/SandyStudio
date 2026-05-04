@@ -240,13 +240,23 @@ export async function runStoryboarder(
     );
   }
 
-  const missingInputs: string[] = [];
-  if (!findApprovedAsset(upstream, 'BIB-style'))
-    missingInputs.push('Style Bible (BIB-style) — not yet provisioned');
-  if (!findApprovedAsset(upstream, 'BIB-world'))
-    missingInputs.push('World Bible (BIB-world) — not yet provisioned');
-  if (!findApprovedAsset(upstream, 'BIB-character'))
-    missingInputs.push('Character Profiles (BIB-character) — not yet provisioned');
+  const bible = (inputs.bible as SeriesBibleCanon | undefined) ?? {
+    series_id: null,
+    general_idea: null,
+    characters: [],
+    locations: [],
+    styles: [],
+    total_entries: 0,
+  };
+
+  const notes: string[] = [];
+  if (bible.total_entries === 0 && !bible.general_idea) {
+    notes.push('Series Bible empty — storyboarding against brief + script alone (MVP mode)');
+  } else {
+    notes.push(
+      `Series Bible canon loaded: ${bible.characters.length} characters, ${bible.locations.length} locations, ${bible.styles.length} styles`,
+    );
+  }
 
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
@@ -255,7 +265,7 @@ export async function runStoryboarder(
     briefContent: briefAsset.content,
     scriptContent: scriptAsset.content,
     scriptVersion: scriptAsset.version ?? 1,
-    missingInputs,
+    bible,
   });
 
   let result: AnthropicTextResult;
