@@ -162,6 +162,21 @@ async function loadBibleCanon(
   };
 }
 
+/**
+ * Parse the storyboard JSON and normalise both contract versions into the
+ * single `ParsedShot` shape.
+ *
+ *  - **storyboarder@v2** (current): `location: { slug, sub_area }`,
+ *    `characters: [{ bible_slug, expected_emotion, expected_action,
+ *    role_in_shot }]`, `action_prose`, `shot_role`, `expected_gag`.
+ *  - **storyboarder@v1** (legacy in-DB): `location: string`,
+ *    `characters_present: string[]`, `action: string`. No emotion/action/role.
+ *
+ * Both are accepted — Phase C+ will deprecate v1 once all stored boards are
+ * regenerated. v2 fields are surfaced via `shot_role`, `expected_gag`,
+ * `characters_v2`; flat `location` / `characters_present` / `action` always
+ * filled so legacy EREF logic keeps working during the transitional phases.
+ */
 function extractScenesFromStoryboard(content: string): ParsedShot[] {
   // Last fenced ```json block — same convention as Storyboarder output.
   const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
@@ -181,18 +196,70 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
     const a = act as { act?: number; shots?: unknown[] };
     if (!Array.isArray(a.shots)) continue;
     for (const s of a.shots) {
-      const sh = s as Partial<ParsedShot> & { shot_id?: string };
+      const sh = s as {
+        shot_id?: string;
+        // v1
+        location?: string | { slug?: string; sub_area?: string | null };
+        characters_present?: unknown[];
+        action?: string;
+        // v2
+        characters?: Array<{
+          bible_slug?: string;
+          expected_emotion?: string;
+          expected_action?: string;
+          role_in_shot?: string;
+        }>;
+        action_prose?: string;
+        shot_role?: string;
+        expected_gag?: string | null;
+        // shared
+        duration_seconds?: number;
+        key_beat?: string;
+      };
       if (!sh.shot_id) continue;
+
+      // Location: v2 = object, v1 = string.
+      let flatLocation = 'unknown';
+      if (typeof sh.location === 'string') {
+        flatLocation = sh.location;
+      } else if (sh.location && typeof sh.location === 'object') {
+        const slug = String(sh.location.slug ?? 'unknown');
+        const sub = sh.location.sub_area;
+        flatLocation = sub ? `${slug} — ${sub}` : slug;
+      }
+
+      // Characters: prefer v2 characters[], fall back to v1 characters_present[].
+      const v2Chars = Array.isArray(sh.characters)
+        ? sh.characters
+            .filter((c): c is NonNullable<typeof c> => Boolean(c) && typeof c.bible_slug === 'string')
+            .map((c) => ({
+              bible_slug: String(c.bible_slug),
+              expected_emotion: String(c.expected_emotion ?? ''),
+              expected_action: String(c.expected_action ?? ''),
+              role_in_shot: String(c.role_in_shot ?? 'subject'),
+            }))
+        : undefined;
+      const flatChars =
+        v2Chars && v2Chars.length > 0
+          ? v2Chars.map((c) => c.bible_slug)
+          : Array.isArray(sh.characters_present)
+            ? sh.characters_present.map(String)
+            : [];
+
+      // Action prose: v2 action_prose preferred, fall back to v1 action.
+      const flatAction = String(sh.action_prose ?? sh.action ?? '');
+
       shots.push({
         shot_id: String(sh.shot_id),
         act: Number(a.act ?? 0),
-        location: String(sh.location ?? 'unknown'),
-        characters_present: Array.isArray(sh.characters_present)
-          ? sh.characters_present.map(String)
-          : [],
-        action: String(sh.action ?? ''),
+        location: flatLocation,
+        characters_present: flatChars,
+        action: flatAction,
         duration_seconds: Number(sh.duration_seconds ?? 0),
         key_beat: sh.key_beat ? String(sh.key_beat) : undefined,
+        shot_role: sh.shot_role ? String(sh.shot_role) : undefined,
+        expected_gag: sh.expected_gag === undefined ? undefined : sh.expected_gag,
+        characters_v2: v2Chars,
       });
     }
   }
