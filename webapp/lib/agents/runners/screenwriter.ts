@@ -289,6 +289,6 @@ export async function runScreenwriter(
     contract: SCREENWRITER_CONTRACT,
     briefAssetId: briefAsset.id ?? null,
     description,
-    notes: missingInputs,
+    notes,
   };
 }
