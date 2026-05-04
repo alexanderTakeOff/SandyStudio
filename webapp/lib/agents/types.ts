@@ -29,6 +29,7 @@ export type AgentId =
   | 'EXEC-STY'
   | 'EXEC-BIBLE-AUTHOR'
   | 'EXEC-STYLE-CHECK'
+  | 'EXEC-EREF-CHECK'
   | 'EXEC-ORCH'
   | 'EXEC-CONC';
 
