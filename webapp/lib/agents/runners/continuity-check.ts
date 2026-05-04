@@ -236,7 +236,9 @@ function buildUserMessage(args: {
     '- FAIL: storyboard introduces multiple unknown characters or breaks the world rules — needs Director intervention.',
     '',
     'Hard rules:',
-    '- Compare characters by lowercase name match against the canonical list above.',
+    '- Compare characters by exact slug match against the canonical list above (storyboarder@v2 puts the slug in `characters[].bible_slug`; @v1 used `characters_present[]` strings — both should match the canon).',
+    '- Compare locations by exact slug match against `location.slug` (v2) or by parsing the prefix of the legacy `location` string (v1).',
+    '- A v2 shot also carries per-character `expected_emotion` and `expected_action` — these are NOT canon constraints; do not flag them as violations. They are the test plan for the downstream EREF AI-reviewer.',
     '- Locations are softer: a new location is allowed if the brief implies it; flag with "UNKNOWN" only when it is invented mid-storyboard with no narrative justification.',
     '- The fenced JSON must be valid JSON.',
   ].join('\n');
