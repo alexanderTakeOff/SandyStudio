@@ -13,6 +13,10 @@ import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { fetcher } from '@/lib/swr';
+import {
+  InboxNotePromptModal,
+  type InboxNoteDecision,
+} from '@/components/inbox/InboxNotePromptModal';
 
 interface InboxItem {
   id: string;
