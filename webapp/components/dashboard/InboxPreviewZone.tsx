@@ -6,10 +6,15 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import useSWR from 'swr';
 import { ArrowRight, AlertTriangle, Inbox } from 'lucide-react';
 import { Card, CardBody } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
+import {
+  InboxNotePromptModal,
+  type InboxNoteDecision,
+} from '@/components/inbox/InboxNotePromptModal';
 
 interface InboxItem {
   id: string;
