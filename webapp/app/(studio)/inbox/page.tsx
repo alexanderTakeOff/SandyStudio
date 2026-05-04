@@ -333,9 +333,7 @@ export default function InboxPage() {
                             const decision = map[b.action];
                             if (!decision) return;
                             if (decision === 'REQUEST_REVISION' || decision === 'REJECT') {
-                              const note = window.prompt(`Note for ${decision}`);
-                              if (!note) return;
-                              act(item, decision, note);
+                              setNotePrompt({ item, decision });
                             } else {
                               act(item, decision);
                             }
