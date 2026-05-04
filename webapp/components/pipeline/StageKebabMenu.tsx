@@ -26,6 +26,7 @@ import {
 import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { RejectModal } from '@/components/editor/RejectModal';
+import { RetriggerStageModal } from '@/components/pipeline/RetriggerStageModal';
 import type { PipelineNodeState, PipelineStageId } from '@/lib/api/pipeline-stages';
 
 // File-type prefix → row matching for backbone v2.5 per-agent rows.
