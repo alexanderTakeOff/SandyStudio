@@ -849,6 +849,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-STY': 'BIB-style',
   'EXEC-BIBLE-AUTHOR': '', // updates existing SBL-* row inline; never creates a new one through saveAgentOutput
   'EXEC-STYLE-CHECK': '', // pre-flight check; never creates an asset
+  'EXEC-EREF-CHECK': '', // post-generation review; called inline from EREF runner, never creates an asset
   'EXEC-ARCH': '',
   'EXEC-ORCH': '',
   'EXEC-CONC': '',
