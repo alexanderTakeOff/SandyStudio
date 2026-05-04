@@ -324,6 +324,85 @@ export async function runStoryboarder(
       ? result.body.total_duration_s
       : 0;
 
+  // ── storyboarder@v2 post-validation ─────────────────────────────────────
+  // Each shot must carry the test-plan fields EREF + AI-reviewer rely on.
+  // If Claude drifted off contract we want a loud failure here, not a silent
+  // EREF run that misinterprets v1 fields. Bible-slug membership is checked
+  // when canon is loaded (only; otherwise we trust the slug as-is).
+  const allowedCharSlugs = new Set(bible.characters.map((c) => c.slug).filter(Boolean));
+  const allowedLocSlugs = new Set(bible.locations.map((l) => l.slug).filter(Boolean));
+  const validationErrors: string[] = [];
+  for (const act of acts) {
+    const shots = Array.isArray((act as { shots?: unknown[] }).shots)
+      ? ((act as { shots: unknown[] }).shots as unknown[])
+      : [];
+    for (const sh of shots) {
+      const s = sh as {
+        shot_id?: string;
+        shot_role?: string;
+        location?: { slug?: string; sub_area?: string | null };
+        characters?: Array<{
+          bible_slug?: string;
+          expected_emotion?: string;
+          expected_action?: string;
+          role_in_shot?: string;
+        }>;
+        expected_gag?: string | null;
+        action_prose?: string;
+      };
+      const id = s.shot_id ?? '<unknown>';
+      if (typeof s.shot_role !== 'string') {
+        validationErrors.push(`${id}: missing shot_role`);
+      }
+      if (!s.location || typeof s.location.slug !== 'string') {
+        validationErrors.push(`${id}: missing location.slug`);
+      } else if (allowedLocSlugs.size > 0 && !allowedLocSlugs.has(s.location.slug)) {
+        validationErrors.push(
+          `${id}: location.slug "${s.location.slug}" not in Bible canon (${[...allowedLocSlugs].join(', ')})`,
+        );
+      }
+      if (!Array.isArray(s.characters) || s.characters.length === 0) {
+        // Allowed: a pure-environment shot with zero characters. But action_prose
+        // must reference no character then. Cheap proxy: we don't enforce.
+      } else {
+        for (const c of s.characters) {
+          if (typeof c.bible_slug !== 'string') {
+            validationErrors.push(`${id}: character missing bible_slug`);
+            continue;
+          }
+          if (allowedCharSlugs.size > 0 && !allowedCharSlugs.has(c.bible_slug)) {
+            validationErrors.push(
+              `${id}: character bible_slug "${c.bible_slug}" not in Bible canon (${[...allowedCharSlugs].join(', ')})`,
+            );
+          }
+          if (typeof c.expected_emotion !== 'string' || c.expected_emotion.trim().length === 0) {
+            validationErrors.push(`${id}: character "${c.bible_slug}" missing expected_emotion`);
+          }
+          if (typeof c.expected_action !== 'string' || c.expected_action.trim().length === 0) {
+            validationErrors.push(`${id}: character "${c.bible_slug}" missing expected_action`);
+          }
+          if (typeof c.role_in_shot !== 'string') {
+            validationErrors.push(`${id}: character "${c.bible_slug}" missing role_in_shot`);
+          }
+        }
+      }
+      if (s.expected_gag === undefined) {
+        validationErrors.push(`${id}: expected_gag not provided (use null for transitions)`);
+      }
+      if (typeof s.action_prose !== 'string') {
+        validationErrors.push(`${id}: missing action_prose`);
+      }
+    }
+  }
+  if (validationErrors.length > 0) {
+    // Fail loud — Claude broke contract. Show first 5 errors.
+    const sample = validationErrors.slice(0, 5).join('; ');
+    const more = validationErrors.length > 5 ? ` (+${validationErrors.length - 5} more)` : '';
+    throw new StoryboarderError(
+      `Postcondition failed: storyboarder@v2 contract violations: ${sample}${more}`,
+    );
+  }
+
   const description = `Produced by EXEC-SB · ${SB_CONTRACT} · ${SB_MODEL} · ${totalShots} shots / ${totalDurationS}s · cost $${result.costUsd.toFixed(4)} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
 
   return {
