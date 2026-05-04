@@ -86,8 +86,27 @@ function buildUserMessage(args: {
   episodeTitle: string;
   briefContent: string;
   scriptContent: string;
+  bible: SeriesBibleCanon;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, bible } = args;
+  const styleToneBlock =
+    bible.styles.length > 0
+      ? [
+          '## Series style direction (tone reference)',
+          '',
+          'Match the voice/tone of this style direction — it is the LOCKED canonical aesthetic for the whole series. Title, description, and hook should feel native to this tone.',
+          '',
+          ...bible.styles.flatMap((s) => [
+            `### ${s.slug}`,
+            '',
+            s.description,
+            s.content && s.content !== s.description ? s.content : '',
+            '',
+          ]),
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : '';
   return [
     '# Task',
     `Write YouTube-ready metadata for episode ${episodeCode} — "${episodeTitle}".`,
@@ -99,8 +118,10 @@ function buildUserMessage(args: {
     '',
     '## Script (final structure)',
     '<script>',
-    scriptContent.slice(0, 5000),
+    scriptContent,
     '</script>',
+    '',
+    styleToneBlock,
     '',
     '## Output format',
     'Markdown:',
