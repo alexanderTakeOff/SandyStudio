@@ -36,6 +36,7 @@ import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-c
 import { runCopywriter, CopywriterError } from './runners/copywriter';
 import { runEpisodeReferences, EpisodeReferencesError } from './runners/episode-references';
 import { runAnimaticSlideshow, AnimaticSlideshowError } from './runners/animatic-slideshow';
+import { loadSeriesBibleCanon } from './bible-loader';
 import type { AgentId, AgentInputs, AgentResult } from './types';
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
