@@ -99,9 +99,13 @@ function buildUserMessage(args: {
   briefContent: string;
   scriptContent: string;
   scriptVersion: number;
-  missingInputs: readonly string[];
+  bible: SeriesBibleCanon;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, missingInputs } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible } = args;
+  const biblePromptBlock = formatBibleForPrompt(bible);
+  const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
+  const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
+  const locationSlugs = bible.locations.map((l) => l.slug).filter(Boolean);
   return [
     '# Task',
     `Break the screenplay below into a shot-by-shot storyboard for episode ${episodeCode} — "${episodeTitle}".`,
@@ -118,12 +122,13 @@ function buildUserMessage(args: {
     scriptContent,
     '</script>',
     '',
-    '## MVP context — missing upstream inputs',
-    '',
-    'These inputs are NOT YET PROVISIONED:',
-    ...missingInputs.map((m) => `- ${m}`),
-    '',
-    'Per Director\'s decision: storyboard against brief + script alone. Use only locations and characters explicitly named there. Where you would normally consult Style Bible / World Bible / Character Profiles, list each episode-local choice in the `assumptions[]` array.',
+    hasCanon
+      ? biblePromptBlock
+      : [
+          '## MVP context — Series Bible empty',
+          '',
+          'No LOCKED Series Bible entries exist for this series. Storyboard against brief + script alone. Use only locations and characters explicitly named there. List each episode-local visual choice (character appearance, location details, camera vocabulary) in the `assumptions[]` array.',
+        ].join('\n'),
     '',
     '## Output format',
     '',
