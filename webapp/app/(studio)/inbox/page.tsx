@@ -100,16 +100,10 @@ export default function InboxPage() {
           if (item && !item.is_visual) act(item, 'APPROVE');
           break;
         case 'r':
-          if (item) {
-            const note = window.prompt('Note for revision');
-            if (note) act(item, 'REQUEST_REVISION', note);
-          }
+          if (item) setNotePrompt({ item, decision: 'REQUEST_REVISION' });
           break;
         case 'x':
-          if (item) {
-            const note = window.prompt('Note for rejection');
-            if (note) act(item, 'REJECT', note);
-          }
+          if (item) setNotePrompt({ item, decision: 'REJECT' });
           break;
         case 'escape':
           setHelpOpen(false);
