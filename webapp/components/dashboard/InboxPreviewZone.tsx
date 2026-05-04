@@ -153,6 +153,15 @@ export function InboxPreviewZone() {
           ))}
         </div>
       </CardBody>
+      <InboxNotePromptModal
+        open={notePrompt !== null}
+        decision={notePrompt?.decision ?? 'REJECT'}
+        subjectLabel={notePrompt?.item.title}
+        onClose={() => setNotePrompt(null)}
+        onSubmit={async (note) => {
+          if (notePrompt) await postDecision(notePrompt.item, notePrompt.decision, note);
+        }}
+      />
     </Card>
   );
 }
