@@ -289,6 +289,6 @@ export async function runScriptReviewer(
     briefAssetId: briefAsset.id ?? null,
     scriptAssetId: scriptAsset.id ?? null,
     description,
-    notes: missingInputs,
+    notes,
   };
 }
