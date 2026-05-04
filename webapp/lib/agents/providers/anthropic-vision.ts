@@ -57,7 +57,7 @@ export async function generateAnthropicVision(
   // Compose multipart user message: optional lead text → image blocks (with
   // their captions inline) → optional trail text. Anthropic SDK accepts an
   // array of content blocks for the `user` role.
-  const blocks: Anthropic.ContentBlockParam[] = [];
+  const blocks: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = [];
   if (input.leadText && input.leadText.trim()) {
     blocks.push({ type: 'text', text: input.leadText });
   }
