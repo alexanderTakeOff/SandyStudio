@@ -51,6 +51,7 @@ export type AgentCode =
   | 'exec-sty'
   | 'exec-bible-author'
   | 'exec-style-check'
+  | 'exec-eref-check'
   | 'exec-orch'
   | 'exec-conc';
 
