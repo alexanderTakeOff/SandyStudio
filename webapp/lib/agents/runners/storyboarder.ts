@@ -25,8 +25,14 @@ import type { AgentInputs } from '../types';
 
 export const SB_CONTRACT = 'storyboarder@v2';
 export const SB_MODEL = 'claude-sonnet-4-6';
-export const SB_MAX_TOKENS = 8000;
-export const SB_COST_CEILING_USD = 0.5;
+// v2 contract carries per-character expected_emotion/expected_action/role_in_shot
+// + shot_role + expected_gag + structured location, on top of the v1 fields.
+// For a 14-shot episode with full Bible canon in input, Sonnet legitimately
+// needs ~12-14K output tokens to emit the markdown report + complete JSON block.
+// 8K (the v1 budget) hit max_tokens mid-JSON and caused infinite retries.
+// Sonnet 4.6 supports up to 64K output tokens; 16K is comfortable headroom.
+export const SB_MAX_TOKENS = 16000;
+export const SB_COST_CEILING_USD = 1.0;
 
 export class StoryboarderError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
