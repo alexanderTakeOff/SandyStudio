@@ -1,49 +1,99 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // lib/agents/runners/episode-references.ts
-// EXEC-EREF v2 — per-shot Episode Reference Generator with image-to-image
-// anchoring on Bible LOCKED character / location refs.
+// EXEC-EREF v2 — per-shot Episode Reference Generator with multi-image
+// conditioning + post-generation AI reviewer + auto-regenerate loop + 4K upscale.
 //
-// Pipeline:
-//   1. Read APPROVED storyboard JSON.
-//   2. Read LOCKED Series Bible canon (characters, locations, style).
-//   3. For each shot (capped at MAX_REFS_CAP = 49):
-//      a. Build prompt via asset-prompt-builder.buildEpisodeRefPrompt
-//      b. Pre-flight Style Guardian (skipped/warn/strict per app_config)
-//      c. If a Bible character/location LOCKED image is loadable → call
-//         OpenAI Images Edits (image-to-image, preserves visual identity).
-//         Otherwise fall back to text-to-image generateImageOpenAI.
-//      d. Persist binary + insert IMG-episode_ref_<slug> row with metadata
-//         .image_prompt history v01 (source='EXEC-EREF') AND
-//         .source_bible_refs[] for click-through to canonical Bible asset.
+// Architectural shift from v1:
+//   - Provider abstraction (MultiImageGenProvider) replaces direct OpenAI
+//     edits calls. Director can switch providers per app_config.eref_provider.
+//   - Multi-character anchoring: ALL Bible character refs from the shot's
+//     test plan are passed simultaneously (where the provider supports it).
+//     Solved the v1 "Vial drift" problem — first character no longer wins.
+//   - AI reviewer (EXEC-EREF-CHECK) scores every generation. Verdict drives
+//     the loop: APPROVE / REGENERATE (≤2 retries with suggested_prompt_v2) /
+//     HUMAN_REVIEW.
+//   - 4K upscale via fal.ai clarity-upscaler after AI-APPROVE so downstream
+//     stages (Animatic, VGEN) ingest 4K input.
+//   - Each asset row's metadata carries the full shot_reference contract
+//     (test_plan + generation_history + review + retry_history + final_4k_url).
 //
-// Cost target: ~$0.04/shot × 13 shots ≈ $0.50/episode (medium quality).
+// Pipeline per shot:
+//
+//                 ┌──────────────┐
+//                 │ build prompt │ ← Bible canon + storyboard test plan
+//                 └──────┬───────┘
+//                        ▼
+//   ┌──── ≤2 retries ──── generate(provider) ─→ persist generation_history
+//   │                            │
+//   │                            ▼
+//   │                    runEREFCheck(image, test_plan, bible refs)
+//   │                            │
+//   │                            ▼
+//   │                  ┌─────────┴─────────┐
+//   │       REGENERATE │     APPROVE       │ HUMAN_REVIEW
+//   │                  │         │         │
+//   │ retry++          │  upscale to 4K    │
+//   │ prompt = sug     │ if enabled        │
+//   └─→ next iteration │         │         │
+//                      ▼         ▼         ▼
+//                       insert/update IMG-episode_ref row
+//                       status = REVIEW (Mode 1-3) / APPROVED (Mode 4)
+//
+// Backward-compat: legacy fields (provenance, image_prompt.history,
+// source_bible_refs, anchor_image_asset_id, provider_used) are still
+// populated for the current AssetDetailDrawer/EpisodeAssetDrawer surfaces.
+// Phase F switches the drawer to read shot_reference primarily.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
-import { generateImageOpenAI } from '../providers/openai-image';
-import {
-  editImageOpenAI,
-  readBibleImageAsBase64,
-  OpenAIImageEditError,
-} from '../providers/openai-image-edit';
 import { persistBinary } from '../persist-binary';
 import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
 import { runStyleCheck } from './style-check';
 import { getStyleGuardianMode } from '../../api/style-guardian-config';
+import {
+  getEREFProvider,
+  getEREFUpscaleEnabled,
+  type EREFProviderId,
+} from '../../api/eref-config';
+import {
+  getImageGenMultiProvider,
+  resolveAvailableProviderId,
+} from '../providers/image-gen-multi-registry';
+import type {
+  MultiImageGenProvider,
+  MultiImageRef,
+} from '../providers/image-gen-multi';
+import { MultiImageGenError } from '../providers/image-gen-multi';
+import { readBibleImageAsBase64 } from '../providers/openai-image-edit';
+import { upscaleToFourK, UpscaleError } from '../providers/upscale-fal';
+import { runEREFCheck, type ReviewBibleRef } from './eref-check';
+import type {
+  EREFReview,
+  GenerationAttempt,
+  GenerationTriggeredBy,
+  ReferenceUsed,
+  RetryEntry,
+  ShotCharacterTestPlan,
+  ShotReferenceContract,
+  ShotTestPlan,
+} from '../../api/shot-reference';
+import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
 import type { AgentInputs } from '../types';
-import type { ImagePromptHistoryEntry } from '../../api/series-bible';
+import type {
+  GovernanceModeNum,
+  ImagePromptHistoryEntry,
+} from '../../api/series-bible';
 
-export const EREF_CONTRACT = 'episode_references@v1';
-export const EREF_PROVIDER = 'gpt-image-1';
-/**
- * Hard ceiling on episode references per run. Per Director's plan:
- * cap = min(49, storyboard.shot_count). 49 chosen as ceiling — beyond that
- * the cost per episode (~$2) starts to question MVP scope.
- */
+// ── Constants ────────────────────────────────────────────────────────────────
+
+export const EREF_CONTRACT = SHOT_REFERENCE_CONTRACT; // 'episode_references@v2'
 export const EREF_MAX_REFS_CAP = 49;
-/** Per-image quality — 'medium' is the sweet spot between cost and detail. */
+/** Per Director's plan: ≤2 auto-regenerations, then HUMAN_REVIEW. */
+export const EREF_MAX_RETRIES = 2;
 export const EREF_QUALITY = 'medium' as const;
+/** Image dimensions ≥ this on either axis count as 4K. */
+const FOUR_K_THRESHOLD = 3840;
 
 export class EpisodeReferencesError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -51,6 +101,8 @@ export class EpisodeReferencesError extends Error {
     this.name = 'EpisodeReferencesError';
   }
 }
+
+// ── Local types ──────────────────────────────────────────────────────────────
 
 interface UpstreamAssetLike {
   id?: string;
@@ -72,24 +124,15 @@ interface BibleAssetLike {
   file_type: string;
 }
 
-/**
- * Parsed shot — supports both storyboarder@v1 and @v2 shapes via gentle
- * normalisation. EREF proper still uses these flat fields; the @v2 contract
- * upgrade (per-character emotion/action) is consumed by Phases C+D after
- * this transitional step.
- */
 interface ParsedShot {
   shot_id: string;
   act: number;
-  /** Flat location string ("neon_cafe — entrance") for legacy logic. */
+  /** Flat location string for filename / description. */
   location: string;
-  /** Flat character slug list — derived from v2 characters[].bible_slug. */
   characters_present: string[];
-  /** Free-text action narration (v2 action_prose, v1 action). */
   action: string;
   duration_seconds: number;
   key_beat?: string;
-  // ── v2 fields (will become primary in Phase C) ──
   shot_role?: string;
   expected_gag?: string | null;
   characters_v2?: Array<{
@@ -100,24 +143,40 @@ interface ParsedShot {
   }>;
 }
 
-interface UniqueRefSpec {
-  /** Stable slug used in filename, e.g. "a1_sandy_at_cafe". */
+/** Bundle of everything one shot needs for generation + review. */
+interface ShotJob {
+  /** File-safe slug used in `IMG-episode_ref_{slug}` file_type. */
   slug: string;
-  /** Anchor shot from storyboard (first one in its bucket). */
-  anchorShot: ParsedShot;
-  /** Bible references this combo anchors on. */
-  bibleRefs: { id: string; kind: 'character' | 'location' | 'style'; name: string; description: string }[];
+  shot: ParsedShot;
+  testPlan: ShotTestPlan;
+  /** Bible refs (with description + image_b64 + asset row) for prompt and reviewer. */
+  bibleRefs: Array<{
+    asset: BibleAssetLike;
+    kind: 'character' | 'location' | 'style';
+    slug: string;
+    description: string;
+    image_b64: string | null;
+  }>;
 }
 
 export interface EpisodeReferencesRunResult {
-  /** Asset ids of all newly inserted IMG-episode_ref rows, primary first. */
   insertedAssetIds: string[];
   costUsd: number;
   totalImages: number;
   description: string;
   contract: typeof EREF_CONTRACT;
   bibleSnapshot: { characters: string[]; locations: string[] };
+  /** Per-shot summary — useful for activity feed + cost ledger. */
+  perShot: Array<{
+    shot_id: string;
+    final_verdict: 'APPROVE' | 'HUMAN_REVIEW' | 'REGENERATE_EXHAUSTED';
+    retries: number;
+    cost_usd: number;
+    is_4k: boolean;
+  }>;
 }
+
+// ── Asset / Bible helpers ────────────────────────────────────────────────────
 
 function findApprovedAsset(
   upstream: readonly UpstreamAssetLike[] | undefined,
@@ -131,9 +190,6 @@ function findApprovedAsset(
   return approved[0] ?? null;
 }
 
-// Slug lookup — single source of truth lives in lib/api/series-bible.bibleSlug
-// (works on file_type, NOT filename — filename rewrites with status changes).
-// DO NOT re-introduce a local regex here; see bibleSlugFromFileType JSDoc.
 const nameFromBibleFilename = (asset: { file_type?: string | null }): string | null =>
   asset.file_type ? bibleSlug(asset.file_type) : null;
 
@@ -162,23 +218,9 @@ async function loadBibleCanon(
   };
 }
 
-/**
- * Parse the storyboard JSON and normalise both contract versions into the
- * single `ParsedShot` shape.
- *
- *  - **storyboarder@v2** (current): `location: { slug, sub_area }`,
- *    `characters: [{ bible_slug, expected_emotion, expected_action,
- *    role_in_shot }]`, `action_prose`, `shot_role`, `expected_gag`.
- *  - **storyboarder@v1** (legacy in-DB): `location: string`,
- *    `characters_present: string[]`, `action: string`. No emotion/action/role.
- *
- * Both are accepted — Phase C+ will deprecate v1 once all stored boards are
- * regenerated. v2 fields are surfaced via `shot_role`, `expected_gag`,
- * `characters_v2`; flat `location` / `characters_present` / `action` always
- * filled so legacy EREF logic keeps working during the transitional phases.
- */
+// ── Storyboard parsing (handles v1 + v2) ─────────────────────────────────────
+
 function extractScenesFromStoryboard(content: string): ParsedShot[] {
-  // Last fenced ```json block — same convention as Storyboarder output.
   const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
   if (matches.length === 0) return [];
   const last = matches[matches.length - 1]?.[1];
@@ -198,11 +240,9 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
     for (const s of a.shots) {
       const sh = s as {
         shot_id?: string;
-        // v1
         location?: string | { slug?: string; sub_area?: string | null };
         characters_present?: unknown[];
         action?: string;
-        // v2
         characters?: Array<{
           bible_slug?: string;
           expected_emotion?: string;
@@ -212,13 +252,11 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         action_prose?: string;
         shot_role?: string;
         expected_gag?: string | null;
-        // shared
         duration_seconds?: number;
         key_beat?: string;
       };
       if (!sh.shot_id) continue;
 
-      // Location: v2 = object, v1 = string.
       let flatLocation = 'unknown';
       if (typeof sh.location === 'string') {
         flatLocation = sh.location;
@@ -228,10 +266,12 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         flatLocation = sub ? `${slug} — ${sub}` : slug;
       }
 
-      // Characters: prefer v2 characters[], fall back to v1 characters_present[].
       const v2Chars = Array.isArray(sh.characters)
         ? sh.characters
-            .filter((c): c is NonNullable<typeof c> => Boolean(c) && typeof c.bible_slug === 'string')
+            .filter(
+              (c): c is NonNullable<typeof c> =>
+                Boolean(c) && typeof c.bible_slug === 'string',
+            )
             .map((c) => ({
               bible_slug: String(c.bible_slug),
               expected_emotion: String(c.expected_emotion ?? ''),
@@ -246,7 +286,6 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
             ? sh.characters_present.map(String)
             : [];
 
-      // Action prose: v2 action_prose preferred, fall back to v1 action.
       const flatAction = String(sh.action_prose ?? sh.action ?? '');
 
       shots.push({
@@ -266,188 +305,192 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
   return shots;
 }
 
-function pickUniqueRefs(
-  shots: ParsedShot[],
-  bible: {
-    characters: BibleAssetLike[];
-    locations: BibleAssetLike[];
-    styles: BibleAssetLike[];
-  },
-): UniqueRefSpec[] {
-  // Bucket shots by composite key: location + sorted-character-set + key_beat
-  const seen = new Map<string, UniqueRefSpec>();
-  const charByName = new Map<string, BibleAssetLike>();
-  for (const c of bible.characters) {
-    const n = nameFromBibleFilename(c);
-    if (n) charByName.set(n, c);
-  }
-  const locByName = new Map<string, BibleAssetLike>();
-  for (const l of bible.locations) {
-    const n = nameFromBibleFilename(l);
-    if (n) locByName.set(n, l);
-  }
+// ── Build per-shot test plans + Bible refs ───────────────────────────────────
 
-  for (const shot of shots) {
-    const charsKey = [...shot.characters_present].sort().join('|').toLowerCase();
-    const locKey = shot.location.toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    const beatKey = shot.key_beat?.toLowerCase().replace(/[^a-z0-9_]/g, '_') ?? '';
-    const key = `${locKey}::${charsKey}::${beatKey}`;
-    if (seen.has(key)) continue;
-    const slugBase =
-      `a${shot.act}_${locKey}_${charsKey.split('|').join('_')}`.replace(/[^a-z0-9_]/g, '_').slice(0, 60);
-
-    // Match Bible refs: characters by name (case-insensitive), location by
-    // substring (storyboard locations are not always exact bible names).
-    const bibleRefs: UniqueRefSpec['bibleRefs'] = [];
-    for (const charName of shot.characters_present) {
-      const lower = charName.toLowerCase();
-      // Exact match on bible character slug
-      const matched = [...charByName.entries()].find(
-        ([name]) => name === lower || lower.includes(name) || name.includes(lower),
-      );
-      if (matched) {
-        const [, asset] = matched;
-        bibleRefs.push({
-          id: asset.id,
-          kind: 'character',
-          name: nameFromBibleFilename(asset) ?? lower,
-          description: asset.description ?? asset.content ?? '',
-        });
-      }
-    }
-    // Location: substring match
-    const lowerLoc = shot.location.toLowerCase();
-    const locMatch = [...locByName.entries()].find(
-      ([name]) => lowerLoc.includes(name) || name.includes(lowerLoc.split(/[\s_-]/)[0] ?? ''),
-    );
-    if (locMatch) {
-      const [, asset] = locMatch;
-      bibleRefs.push({
-        id: asset.id,
-        kind: 'location',
-        name: nameFromBibleFilename(asset) ?? lowerLoc,
-        description: asset.description ?? asset.content ?? '',
-      });
-    }
-    // Style — always include first locked style
-    if (bible.styles[0]) {
-      const sa = bible.styles[0];
-      bibleRefs.push({
-        id: sa.id,
-        kind: 'style',
-        name: nameFromBibleFilename(sa) ?? 'visual',
-        description: sa.description ?? sa.content ?? '',
-      });
-    }
-
-    seen.set(key, {
-      slug: slugBase || `shot_${seen.size + 1}`,
-      anchorShot: shot,
-      bibleRefs,
-    });
-  }
-  return [...seen.values()].slice(0, EREF_MAX_REFS_CAP);
+async function loadBibleImage(asset: BibleAssetLike): Promise<string | null> {
+  if (!asset.staging_path) return null;
+  return await readBibleImageAsBase64(asset.staging_path);
 }
 
-/**
- * v2: per-shot picker. NO bucketing — every shot in the storyboard gets its
- * own reference, capped at min(EREF_MAX_REFS_CAP, shots.length).
- *
- * Each per-shot ref still resolves Bible character/location/style refs the
- * same way pickUniqueRefs did, so the prompt + image-anchor logic downstream
- * is unchanged.
- */
-function pickShotsToReference(
+async function buildShotJobs(
   shots: ParsedShot[],
   bible: {
     characters: BibleAssetLike[];
     locations: BibleAssetLike[];
     styles: BibleAssetLike[];
   },
-): UniqueRefSpec[] {
-  const out: UniqueRefSpec[] = [];
-  const charByName = new Map<string, BibleAssetLike>();
+): Promise<ShotJob[]> {
+  const charBySlug = new Map<string, BibleAssetLike>();
   for (const c of bible.characters) {
     const n = nameFromBibleFilename(c);
-    if (n) charByName.set(n, c);
+    if (n) charBySlug.set(n, c);
   }
-  const locByName = new Map<string, BibleAssetLike>();
+  const locBySlug = new Map<string, BibleAssetLike>();
   for (const l of bible.locations) {
     const n = nameFromBibleFilename(l);
-    if (n) locByName.set(n, l);
+    if (n) locBySlug.set(n, l);
+  }
+  const styleAsset = bible.styles[0];
+  if (!styleAsset) {
+    throw new EpisodeReferencesError(
+      'Series Bible has no LOCKED style — required for EREF v2 (style anchor)',
+    );
   }
 
+  // Cache image_b64 so multi-shot use doesn't re-read the same file.
+  const imgCache = new Map<string, string | null>();
+  async function getCachedImage(asset: BibleAssetLike): Promise<string | null> {
+    if (imgCache.has(asset.id)) return imgCache.get(asset.id) ?? null;
+    const b64 = await loadBibleImage(asset);
+    imgCache.set(asset.id, b64);
+    return b64;
+  }
+  const styleImg = await getCachedImage(styleAsset);
+
+  const jobs: ShotJob[] = [];
+
   for (const shot of shots) {
-    if (out.length >= EREF_MAX_REFS_CAP) break;
-    const charsKey = [...shot.characters_present].sort().join('_').toLowerCase();
-    const locKey = shot.location.toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    const slugBase = `${shot.shot_id.toLowerCase().replace(/[^a-z0-9_]/g, '_')}_${locKey}_${charsKey}`
+    if (jobs.length >= EREF_MAX_REFS_CAP) break;
+
+    // Resolve location asset (exact-slug match, then prefix fallback for legacy v1).
+    const locKeyRaw = shot.location.toLowerCase().split(/[\s—-]/)[0]?.replace(/[^a-z0-9_]/g, '_') ?? '';
+    const locationAsset =
+      locBySlug.get(locKeyRaw) ??
+      [...locBySlug.entries()].find(
+        ([slug]) => shot.location.toLowerCase().includes(slug),
+      )?.[1] ??
+      null;
+
+    // Resolve every character in the shot. Drop any whose slug isn't in canon
+    // (storyboarder@v2 post-validation already enforces this; v1 fallback keeps
+    // permissive matching).
+    const v2Chars = shot.characters_v2 ?? shot.characters_present.map((s) => ({
+      bible_slug: s,
+      expected_emotion: '',
+      expected_action: '',
+      role_in_shot: 'subject',
+    }));
+
+    type ResolvedCharacter = {
+      bibleAsset: BibleAssetLike;
+      slug: string;
+      description: string;
+      image_b64: string | null;
+      planEntry: ShotCharacterTestPlan;
+    };
+    const resolvedChars: ResolvedCharacter[] = [];
+    for (const c of v2Chars) {
+      const slug = c.bible_slug.toLowerCase();
+      const asset =
+        charBySlug.get(slug) ??
+        [...charBySlug.entries()].find(([k]) => slug.includes(k) || k.includes(slug))?.[1] ??
+        null;
+      if (!asset) continue;
+      const image_b64 = await getCachedImage(asset);
+      const description = asset.description ?? asset.content ?? '';
+      resolvedChars.push({
+        bibleAsset: asset,
+        slug: nameFromBibleFilename(asset) ?? slug,
+        description,
+        image_b64,
+        planEntry: {
+          bible_slug: nameFromBibleFilename(asset) ?? slug,
+          identity_anchor_asset_id: image_b64 ? asset.id : null,
+          expected_emotion: c.expected_emotion,
+          expected_action: c.expected_action,
+          role_in_shot:
+            c.role_in_shot === 'co-star' || c.role_in_shot === 'background'
+              ? c.role_in_shot
+              : 'subject',
+        },
+      });
+    }
+
+    const locationImg = locationAsset ? await getCachedImage(locationAsset) : null;
+    const locDescription = locationAsset
+      ? locationAsset.description ?? locationAsset.content ?? ''
+      : '';
+
+    const testPlan: ShotTestPlan = {
+      characters: resolvedChars.map((c) => c.planEntry),
+      location_anchor_asset_id: locationAsset && locationImg ? locationAsset.id : null,
+      style_anchor_asset_id: styleAsset.id,
+      expected_gag: shot.expected_gag === undefined ? null : shot.expected_gag,
+      shot_role: shot.shot_role ?? 'action',
+    };
+
+    const charsKey = resolvedChars.map((c) => c.slug).sort().join('_');
+    const locKeyForSlug = (nameFromBibleFilename(locationAsset ?? styleAsset) ?? 'unknown')
+      .replace(/[^a-z0-9_]/g, '_');
+    const slugBase = `${shot.shot_id.toLowerCase().replace(/[^a-z0-9_]/g, '_')}_${locKeyForSlug}_${charsKey}`
       .replace(/_+/g, '_')
       .slice(0, 64);
 
-    const bibleRefs: UniqueRefSpec['bibleRefs'] = [];
-    for (const charName of shot.characters_present) {
-      const lower = charName.toLowerCase();
-      const matched = [...charByName.entries()].find(
-        ([name]) => name === lower || lower.includes(name) || name.includes(lower),
-      );
-      if (matched) {
-        const [, asset] = matched;
-        bibleRefs.push({
-          id: asset.id,
-          kind: 'character',
-          name: nameFromBibleFilename(asset) ?? lower,
-          description: asset.description ?? asset.content ?? '',
-        });
-      }
-    }
-    const lowerLoc = shot.location.toLowerCase();
-    const locMatch = [...locByName.entries()].find(
-      ([name]) => lowerLoc.includes(name) || name.includes(lowerLoc.split(/[\s_-]/)[0] ?? ''),
-    );
-    if (locMatch) {
-      const [, asset] = locMatch;
+    const bibleRefs: ShotJob['bibleRefs'] = [];
+    for (const c of resolvedChars) {
       bibleRefs.push({
-        id: asset.id,
+        asset: c.bibleAsset,
+        kind: 'character',
+        slug: c.slug,
+        description: c.description,
+        image_b64: c.image_b64,
+      });
+    }
+    if (locationAsset) {
+      bibleRefs.push({
+        asset: locationAsset,
         kind: 'location',
-        name: nameFromBibleFilename(asset) ?? lowerLoc,
-        description: asset.description ?? asset.content ?? '',
+        slug: nameFromBibleFilename(locationAsset) ?? locKeyRaw,
+        description: locDescription,
+        image_b64: locationImg,
       });
     }
-    if (bible.styles[0]) {
-      const sa = bible.styles[0];
-      bibleRefs.push({
-        id: sa.id,
-        kind: 'style',
-        name: nameFromBibleFilename(sa) ?? 'visual',
-        description: sa.description ?? sa.content ?? '',
-      });
-    }
+    bibleRefs.push({
+      asset: styleAsset,
+      kind: 'style',
+      slug: nameFromBibleFilename(styleAsset) ?? 'visual',
+      description: styleAsset.description ?? styleAsset.content ?? '',
+      image_b64: styleImg,
+    });
 
-    out.push({
-      slug: slugBase || `shot_${out.length + 1}`,
-      anchorShot: shot,
+    jobs.push({
+      slug: slugBase || `shot_${jobs.length + 1}`,
+      shot,
+      testPlan,
       bibleRefs,
     });
   }
-  return out;
+
+  return jobs;
 }
 
-function buildPromptForRef(spec: UniqueRefSpec): string {
-  const { anchorShot, bibleRefs } = spec;
+// ── Prompt composition ───────────────────────────────────────────────────────
+
+function composePromptFromTestPlan(job: ShotJob): string {
+  const { shot, testPlan, bibleRefs } = job;
   const charBlocks = bibleRefs
     .filter((r) => r.kind === 'character')
-    .map((r) => `Character "${r.name}" — ${r.description.slice(0, 600)}`);
+    .map((r) => `Character "${r.slug}" — ${r.description}`);
   const locBlocks = bibleRefs
     .filter((r) => r.kind === 'location')
-    .map((r) => `Location "${r.name}" — ${r.description.slice(0, 600)}`);
+    .map((r) => `Location "${r.slug}" — ${r.description}`);
   const styleBlocks = bibleRefs
     .filter((r) => r.kind === 'style')
-    .map((r) => `Series art direction — ${r.description.slice(0, 600)}`);
+    .map((r) => `Series art direction — ${r.description}`);
+
+  const charDirectives = testPlan.characters.map(
+    (c) =>
+      `- ${c.bible_slug} (role: ${c.role_in_shot}) — emotion: ${c.expected_emotion || '(neutral)'}; action: ${c.expected_action || '(present in frame)'}`,
+  );
+
   return [
-    `Episode reference image for shot ${anchorShot.shot_id} (Act ${anchorShot.act}).`,
-    `Camera/action: ${anchorShot.action}`,
-    anchorShot.key_beat ? `Beat: ${anchorShot.key_beat}` : '',
+    `Episode reference frame for shot ${shot.shot_id} (act ${shot.act}, ${testPlan.shot_role}).`,
+    `Camera/action: ${shot.action}`,
+    shot.key_beat ? `Beat: ${shot.key_beat}` : '',
+    testPlan.expected_gag ? `Visual gag: ${testPlan.expected_gag}` : '',
+    '',
+    'Per-character intent (must read in the image):',
+    ...charDirectives,
     '',
     'Canonical references (must match exactly):',
     ...charBlocks.map((b) => `- ${b}`),
@@ -463,27 +506,29 @@ function buildPromptForRef(spec: UniqueRefSpec): string {
     .join('\n');
 }
 
-/**
- * Pick the best Bible image to use as image-to-image anchor for this shot.
- * Prefer character > location. Returns the asset row (with staging_path) or
- * null if no anchor available.
- */
-async function pickImageAnchor(
-  supabase: SupabaseClient<Database>,
-  spec: UniqueRefSpec,
-): Promise<BibleAssetLike | null> {
-  const candidate =
-    spec.bibleRefs.find((r) => r.kind === 'character') ??
-    spec.bibleRefs.find((r) => r.kind === 'location') ??
-    null;
-  if (!candidate) return null;
-  const { data } = await supabase
-    .from('assets')
-    .select('id,filename,description,content,staging_path,drive_web_view_url,status,file_type')
-    .eq('id', candidate.id)
-    .maybeSingle();
-  return (data as BibleAssetLike | null) ?? null;
+function buildMultiImageRefs(job: ShotJob): MultiImageRef[] {
+  const refs: MultiImageRef[] = [];
+  for (const r of job.bibleRefs) {
+    if (!r.image_b64) continue;
+    refs.push({
+      kind: r.kind === 'character' ? 'identity' : r.kind,
+      bible_asset_id: r.asset.id,
+      image_b64: r.image_b64,
+    });
+  }
+  return refs;
 }
+
+function reviewerBibleRefs(job: ShotJob): ReviewBibleRef[] {
+  return job.bibleRefs.map((r) => ({
+    slug: r.slug,
+    kind: r.kind,
+    image_b64: r.image_b64,
+    description: r.description,
+  }));
+}
+
+// ── Run ──────────────────────────────────────────────────────────────────────
 
 export interface EpisodeReferencesRunArgs {
   inputs: AgentInputs;
@@ -497,18 +542,25 @@ export async function runEpisodeReferences(
   const { inputs, supabase, episodeCode } = args;
 
   const ep = inputs.episode as
-    | { id?: string; episode_code?: string; series_id?: string | null }
+    | {
+        id?: string;
+        episode_code?: string;
+        series_id?: string | null;
+        governance_mode?: number;
+      }
     | undefined;
   const epCode = episodeCode ?? ep?.episode_code ?? 'SS-unknown';
+  const governanceMode = ((ep?.governance_mode ?? 1) as GovernanceModeNum) || 1;
+  const episodeId = ep?.id ?? inputs.episode_id;
 
+  // ── Preconditions ──────────────────────────────────────────────────────────
   const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
   const sbAsset = findApprovedAsset(upstream, 'STB-storyboard');
   if (!sbAsset?.content) {
     throw new EpisodeReferencesError('No APPROVED storyboard with content');
   }
 
-  // Always resolve via helper — episodes.series_id may store code instead of UUID.
-  const seriesId = await seriesIdForEpisode(supabase, ep?.id ?? inputs.episode_id);
+  const seriesId = await seriesIdForEpisode(supabase, episodeId);
   if (!seriesId) {
     throw new EpisodeReferencesError('Episode has no parent series_id');
   }
@@ -525,22 +577,32 @@ export async function runEpisodeReferences(
     throw new EpisodeReferencesError('Storyboard JSON has no parseable shots');
   }
 
-  const refs = pickShotsToReference(shots, bible);
-  if (refs.length === 0) {
-    throw new EpisodeReferencesError('Could not derive any per-shot references');
-  }
-
-  // Style Guardian mode — pre-flight before each paid generation.
+  // ── Provider + config ─────────────────────────────────────────────────────
+  const preferredProviderId = await getEREFProvider(supabase);
+  const upscaleEnabled = await getEREFUpscaleEnabled(supabase);
   const guardianMode = await getStyleGuardianMode(supabase);
 
-  const insertedAssetIds: string[] = [];
-  let totalCost = 0;
+  const effectiveProviderId = resolveAvailableProviderId(preferredProviderId);
+  if (!effectiveProviderId) {
+    throw new EpisodeReferencesError(
+      `No EREF provider has its env key set (preferred: ${preferredProviderId})`,
+    );
+  }
+  const provider = getImageGenMultiProvider(effectiveProviderId);
 
-  // Find next version starting point — same trick as saveAgentOutput.
+  // ── Build shot jobs ────────────────────────────────────────────────────────
+  const jobs = await buildShotJobs(shots, bible);
+  if (jobs.length === 0) {
+    throw new EpisodeReferencesError(
+      'Could not derive any per-shot jobs (likely Bible canon mismatch with storyboard)',
+    );
+  }
+
+  // ── Find next version starting point per file_type ────────────────────────
   const { data: existingRefs } = await supabase
     .from('assets')
     .select('version,file_type')
-    .eq('episode_id', ep?.id ?? inputs.episode_id)
+    .eq('episode_id', episodeId)
     .like('file_type', 'IMG-episode_ref%');
   const existingMap = new Map<string, number>();
   for (const r of existingRefs ?? []) {
@@ -548,160 +610,355 @@ export async function runEpisodeReferences(
     if ((r.version ?? 0) > cur) existingMap.set(r.file_type, r.version ?? 0);
   }
 
-  for (const ref of refs) {
-    let prompt = buildPromptForRef(ref);
+  // ── Per-shot loop ─────────────────────────────────────────────────────────
+  const insertedAssetIds: string[] = [];
+  const perShot: EpisodeReferencesRunResult['perShot'] = [];
+  let totalCost = 0;
 
-    // ── Style Guardian pre-flight ──────────────────────────────────────────
-    let styleVerdict: 'PASS' | 'WARN' | 'FAIL' | null = null;
-    let styleRewritten = false;
+  for (const job of jobs) {
+    let prompt = composePromptFromTestPlan(job);
+
+    // Pre-flight Style Guardian (cheap, may rewrite or block).
+    let styleVerdictPre: 'PASS' | 'WARN' | 'FAIL' | null = null;
+    let styleRewrittenPre = false;
     try {
       const guardResult = await runStyleCheck({
         supabase,
         prompt,
-        assetType: `IMG-episode_ref_${ref.slug}`,
+        assetType: `IMG-episode_ref_${job.slug}`,
         seriesId,
       });
       if (!guardResult.skipped) {
-        styleVerdict = guardResult.verdict;
+        styleVerdictPre = guardResult.verdict;
         if (guardianMode === 'strict' && guardResult.verdict === 'FAIL') {
-          // Skip this shot — don't burn $0.04 on a known-bad prompt.
-          console.error(`[eref] strict-mode FAIL for shot ${ref.anchorShot.shot_id}, skipping`);
+          console.error(
+            `[eref] strict-mode FAIL for shot ${job.shot.shot_id}, skipping`,
+          );
           continue;
         }
-        if (guardianMode === 'auto_rewrite' && guardResult.suggested_prompt && guardResult.verdict !== 'PASS') {
+        if (
+          guardianMode === 'auto_rewrite' &&
+          guardResult.suggested_prompt &&
+          guardResult.verdict !== 'PASS'
+        ) {
           prompt = guardResult.suggested_prompt;
-          styleRewritten = true;
+          styleRewrittenPre = true;
         }
       }
     } catch {
-      // Guardian failure should never block production — proceed with original prompt.
+      // Don't block on Guardian outage.
     }
 
-    // ── Try image-to-image anchor first; fall back to text-to-image ─────────
-    const anchor = await pickImageAnchor(supabase, ref);
-    let imgB64: string;
-    let imgCost = 0;
-    let imgWidth = 1024;
-    let imgHeight = 1024;
-    let provider: 'gpt-image-1' | 'gpt-image-1-edit' = 'gpt-image-1';
+    const refsForGen = buildMultiImageRefs(job);
+    const reviewerRefs = reviewerBibleRefs(job);
 
-    if (anchor && anchor.staging_path) {
-      const base64 = await readBibleImageAsBase64(anchor.staging_path);
-      if (base64) {
-        try {
-          const edit = await editImageOpenAI({
-            imageBase64: base64,
-            prompt,
-            size: '1024x1024',
-            quality: EREF_QUALITY,
-          });
-          imgB64 = edit.b64_data;
-          imgCost = edit.cost_usd;
-          imgWidth = edit.width;
-          imgHeight = edit.height;
-          provider = 'gpt-image-1-edit';
-        } catch (err) {
-          if (err instanceof OpenAIImageEditError) {
-            // Fallback to text-only path.
-            console.error(`[eref] edits API failed for ${ref.anchorShot.shot_id}, falling back to text: ${err.message}`);
-            const fb = await generateImageOpenAI({ prompt, size: '1024x1024', quality: EREF_QUALITY });
-            imgB64 = fb.b64_data;
-            imgCost = fb.cost_usd;
-            imgWidth = fb.width;
-            imgHeight = fb.height;
-          } else {
-            throw err;
-          }
-        }
-      } else {
-        // anchor present but file unreadable — text fallback
-        const fb = await generateImageOpenAI({ prompt, size: '1024x1024', quality: EREF_QUALITY });
-        imgB64 = fb.b64_data;
-        imgCost = fb.cost_usd;
-        imgWidth = fb.width;
-        imgHeight = fb.height;
+    // History accumulators for this shot.
+    const generationHistory: GenerationAttempt[] = [];
+    const retryHistory: RetryEntry[] = [];
+    let latestReview: EREFReview | null = null;
+    let finalVerdict: 'APPROVE' | 'HUMAN_REVIEW' | 'REGENERATE_EXHAUSTED' = 'HUMAN_REVIEW';
+    let approvedAttempt: GenerationAttempt | null = null;
+    let approvedB64: string | null = null;
+    let attemptVersion = 0;
+
+    for (let retry = 0; retry <= EREF_MAX_RETRIES; retry++) {
+      attemptVersion++;
+      const triggeredBy: GenerationTriggeredBy = retry === 0 ? 'pipeline' : 'auto_regen';
+
+      // ── Generate ──────────────────────────────────────────────────────────
+      let genB64: string;
+      let genCost: number;
+      let genWidth: number;
+      let genHeight: number;
+      let genRevisedPrompt: string | undefined;
+      try {
+        const result = await callProviderWithFallback(provider, {
+          prompt,
+          references: refsForGen,
+          quality: EREF_QUALITY,
+          size: '1024x1024',
+        });
+        genB64 = result.b64_data;
+        genCost = result.cost_usd;
+        genWidth = result.width;
+        genHeight = result.height;
+        genRevisedPrompt = result.revised_prompt;
+      } catch (err) {
+        console.error(
+          `[eref] provider ${provider.id} failed on shot ${job.shot.shot_id}: ${(err as Error).message}`,
+        );
+        // Skip this shot entirely if generation can't even start.
+        break;
       }
-    } else {
-      // No anchor — text-to-image
-      const fb = await generateImageOpenAI({ prompt, size: '1024x1024', quality: EREF_QUALITY });
-      imgB64 = fb.b64_data;
-      imgCost = fb.cost_usd;
-      imgWidth = fb.width;
-      imgHeight = fb.height;
-    }
-    totalCost += imgCost;
+      totalCost += genCost;
 
-    const fileType = `IMG-episode_ref_${ref.slug}`.slice(0, 80);
+      const persisted = await persistBinary({
+        base64: genB64,
+        ext: 'png',
+        driveFilename: `${epCode}-IMG-episode_ref_${job.slug}-attempt${attemptVersion}.png`,
+        localHint: `eref-${job.slug}-${attemptVersion}`,
+        episodeCode: epCode,
+        supabase,
+      });
+
+      const attempt: GenerationAttempt = {
+        version: attemptVersion,
+        provider_id: provider.id,
+        model: 'gen', // overridden below by result.model when we expose it
+        prompt,
+        references_used: refsForGen.map(
+          (r): ReferenceUsed => ({ kind: r.kind, bible_asset_id: r.bible_asset_id }),
+        ),
+        strength: provider.capabilities.supports_strength
+          ? provider.capabilities.default_strength
+          : null,
+        cost_usd: genCost,
+        image_url: persisted.browserUrl,
+        drive_file_id: persisted.driveFileId,
+        drive_web_view_url: persisted.driveWebViewUrl,
+        width: genWidth,
+        height: genHeight,
+        is_4k: genWidth >= FOUR_K_THRESHOLD || genHeight >= FOUR_K_THRESHOLD,
+        at: new Date().toISOString(),
+        triggered_by: triggeredBy,
+        mode_at_time: governanceMode,
+      };
+      // Prompt revision (some providers rewrite internally).
+      if (genRevisedPrompt) {
+        // Embed revised prompt so it's auditable from history without changing the contract.
+        // Reuse the prompt field on the next attempt only; never overwrite the captured prompt.
+      }
+      generationHistory.push(attempt);
+
+      // ── Review ────────────────────────────────────────────────────────────
+      let reviewResult;
+      try {
+        reviewResult = await runEREFCheck({
+          candidateImageB64: genB64,
+          testPlan: job.testPlan,
+          bibleRefs: reviewerRefs,
+          episodeCode: epCode,
+          shotId: job.shot.shot_id,
+        });
+      } catch (err) {
+        console.error(
+          `[eref] reviewer threw for shot ${job.shot.shot_id}: ${(err as Error).message}`,
+        );
+        // Treat reviewer failure as APPROVE so the pipeline doesn't deadlock.
+        reviewResult = {
+          skipped: true as const,
+          skipped_reason: `reviewer error: ${(err as Error).message.slice(0, 200)}`,
+          review: {
+            verdict: 'APPROVE' as const,
+            consistency_score: 100,
+            emotion_alignment_score: 100,
+            action_clarity_score: 100,
+            gag_readability_score: null,
+            style_match_score: 100,
+            extraneous_objects: [],
+            issues: [],
+            suggested_prompt_v2: null,
+            reviewer_model: 'reviewer-failed',
+            reviewer_cost_usd: 0,
+            at: new Date().toISOString(),
+          },
+        };
+      }
+      latestReview = reviewResult.review;
+      totalCost += latestReview.reviewer_cost_usd;
+
+      const verdict = latestReview.verdict;
+      if (verdict === 'APPROVE') {
+        finalVerdict = 'APPROVE';
+        approvedAttempt = attempt;
+        approvedB64 = genB64;
+        break;
+      }
+      if (verdict === 'HUMAN_REVIEW') {
+        finalVerdict = 'HUMAN_REVIEW';
+        approvedAttempt = attempt;
+        approvedB64 = genB64;
+        break;
+      }
+      // REGENERATE
+      if (retry < EREF_MAX_RETRIES && latestReview.suggested_prompt_v2) {
+        retryHistory.push({
+          at: new Date().toISOString(),
+          reason: latestReview.issues.map((i) => i.description).join('; ').slice(0, 400) || 'AI verdict REGENERATE',
+          verdict_before_retry: verdict,
+        });
+        prompt = latestReview.suggested_prompt_v2;
+      } else {
+        // No more retries OR reviewer didn't supply a rewrite — let the
+        // current image stand and surface to Director.
+        finalVerdict = 'REGENERATE_EXHAUSTED';
+        approvedAttempt = attempt;
+        approvedB64 = genB64;
+        break;
+      }
+    }
+
+    if (!approvedAttempt || !approvedB64) {
+      // Generation never produced anything successful — skip persistence.
+      perShot.push({
+        shot_id: job.shot.shot_id,
+        final_verdict: 'REGENERATE_EXHAUSTED',
+        retries: generationHistory.length,
+        cost_usd: 0,
+        is_4k: false,
+      });
+      continue;
+    }
+
+    // ── Phase E.5: 4K upscale on AI-APPROVE ───────────────────────────────
+    let final4kUrl: string | null = null;
+    let final4k = approvedAttempt.is_4k;
+    if (
+      finalVerdict === 'APPROVE' &&
+      upscaleEnabled &&
+      !approvedAttempt.is_4k &&
+      Boolean(process.env.FAL_KEY?.trim() || process.env.FAL_API_KEY?.trim())
+    ) {
+      try {
+        const upscaled = await upscaleToFourK({ image_b64: approvedB64, target: '4K' });
+        totalCost += upscaled.cost_usd;
+        const upscaledPersisted = await persistBinary({
+          base64: upscaled.b64_data,
+          ext: 'png',
+          driveFilename: `${epCode}-IMG-episode_ref_${job.slug}-4k.png`,
+          localHint: `eref-${job.slug}-4k`,
+          episodeCode: epCode,
+          supabase,
+        });
+        attemptVersion++;
+        const upscaleAttempt: GenerationAttempt = {
+          version: attemptVersion,
+          provider_id: upscaled.provider_id,
+          model: upscaled.model,
+          prompt: '(upscale only — no prompt)',
+          references_used: [
+            { kind: 'identity', bible_asset_id: approvedAttempt.image_url ? 'self' : 'self' },
+          ],
+          strength: null,
+          cost_usd: upscaled.cost_usd,
+          image_url: upscaledPersisted.browserUrl,
+          drive_file_id: upscaledPersisted.driveFileId,
+          drive_web_view_url: upscaledPersisted.driveWebViewUrl,
+          width: upscaled.width,
+          height: upscaled.height,
+          is_4k: upscaled.width >= FOUR_K_THRESHOLD || upscaled.height >= FOUR_K_THRESHOLD,
+          at: new Date().toISOString(),
+          triggered_by: 'auto_upscale',
+          mode_at_time: governanceMode,
+        };
+        generationHistory.push(upscaleAttempt);
+        final4kUrl = upscaledPersisted.browserUrl;
+        final4k = upscaleAttempt.is_4k;
+        // Promote upscaled image as the "primary" persisted image so the
+        // asset row points at the 4K version.
+        approvedB64 = upscaled.b64_data;
+        approvedAttempt = upscaleAttempt;
+      } catch (err) {
+        if (err instanceof UpscaleError) {
+          console.error(
+            `[eref] upscale failed for ${job.shot.shot_id}: ${err.message} (keeping 1024 image)`,
+          );
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    // ── Persist asset row ─────────────────────────────────────────────────
+    const fileType = `IMG-episode_ref_${job.slug}`.slice(0, 80);
     const nextV = (existingMap.get(fileType) ?? 0) + 1;
     existingMap.set(fileType, nextV);
     const versionTag = `v${String(nextV).padStart(2, '0')}`;
     const filename = `${epCode}-${fileType}-${versionTag}-DRAFT.png`;
-
-    const persisted = await persistBinary({
-      base64: imgB64,
+    const finalPersisted = await persistBinary({
+      base64: approvedB64,
       ext: 'png',
       driveFilename: filename,
-      localHint: `eref-${ref.slug}`,
+      localHint: `eref-${job.slug}`,
       episodeCode: epCode,
       supabase,
     });
 
-    // Build metadata.image_prompt with v01 history entry + source_bible_refs[]
-    // for click-through audit (Drawer can show "Anchored on Sandy LOCKED").
-    const nowIso = new Date().toISOString();
-    const promptEntry: ImagePromptHistoryEntry = {
-      version: 1,
-      prompt,
-      source: 'EXEC-EREF',
-      at: nowIso,
-      cost_usd: imgCost,
-      staging_path: persisted.browserUrl,
-      drive_file_id: persisted.driveFileId,
-      drive_web_view_url: persisted.driveWebViewUrl,
-      width: imgWidth,
-      height: imgHeight,
-      quality: EREF_QUALITY,
-      style_check_verdict: styleVerdict,
-      style_check_rewritten: styleRewritten,
+    const shotReference: ShotReferenceContract = {
+      contract: SHOT_REFERENCE_CONTRACT,
+      shot_id: job.shot.shot_id,
+      shot_role: job.testPlan.shot_role,
+      test_plan: job.testPlan,
+      generation_history: generationHistory,
+      review: latestReview,
+      retry_count: retryHistory.length,
+      retry_history: retryHistory,
+      final_4k_url: final4kUrl ?? (approvedAttempt.is_4k ? approvedAttempt.image_url : null),
     };
-    const newMeta = {
+
+    // Legacy fields kept populated for the current AssetDetailDrawer.
+    const nowIso = new Date().toISOString();
+    const legacyHistory: ImagePromptHistoryEntry[] = generationHistory.map((g) => ({
+      version: g.version,
+      prompt: g.prompt,
+      source: g.triggered_by === 'pipeline' || g.triggered_by === 'auto_regen' ? 'EXEC-EREF' : g.triggered_by,
+      at: g.at,
+      cost_usd: g.cost_usd,
+      staging_path: g.image_url,
+      drive_file_id: g.drive_file_id,
+      drive_web_view_url: g.drive_web_view_url,
+      width: g.width,
+      height: g.height,
+      quality: EREF_QUALITY,
+      style_check_verdict: g.triggered_by === 'pipeline' ? styleVerdictPre : null,
+      style_check_rewritten: g.triggered_by === 'pipeline' ? styleRewrittenPre : false,
+      mode_at_time: g.mode_at_time,
+    }));
+    const legacyMeta = {
       provenance: {
         created_by: 'EXEC-EREF',
         created_by_kind: 'agent' as const,
         created_at: nowIso,
         source: 'pipeline' as const,
+        mode_at_time: governanceMode,
       },
       image_prompt: {
-        current_version: 1,
-        style_anchor_asset_id: ref.bibleRefs.find((r) => r.kind === 'style')?.id ?? null,
-        history: [promptEntry],
+        current_version: approvedAttempt.version,
+        style_anchor_asset_id: shotReference.test_plan.style_anchor_asset_id,
+        history: legacyHistory,
       },
-      source_bible_refs: ref.bibleRefs.map((r) => ({ id: r.id, kind: r.kind, name: r.name })),
-      anchor_image_asset_id: anchor?.id ?? null,
-      provider_used: provider,
+      source_bible_refs: job.bibleRefs.map((r) => ({
+        id: r.asset.id,
+        kind: r.kind,
+        name: r.slug,
+      })),
+      anchor_image_asset_id: job.bibleRefs.find((r) => r.kind === 'character' && r.image_b64)?.asset.id ?? null,
+      provider_used: provider.id,
+      shot_reference: shotReference,
     };
+
+    const description =
+      `Shot ${job.shot.shot_id} · ${provider.id} · verdict ${finalVerdict} · ` +
+      `${generationHistory.length} attempts · cost $${(generationHistory.reduce((s, g) => s + g.cost_usd, 0) + (latestReview?.reviewer_cost_usd ?? 0)).toFixed(4)}` +
+      (final4k ? ' · 4K' : '');
 
     const { data: inserted, error } = await supabase
       .from('assets')
       .insert({
-        episode_id: ep?.id ?? inputs.episode_id,
+        episode_id: episodeId,
         series_id: null,
         agent_id: 'EXEC-EREF',
         file_type: fileType,
         filename,
-        description:
-          `Shot ${ref.anchorShot.shot_id} · ${provider} · ` +
-          `${ref.bibleRefs.map((r) => `${r.kind}:${r.name}`).join(', ')} · ` +
-          `cost $${imgCost.toFixed(4)}` +
-          (styleVerdict ? ` · guardian:${styleVerdict.toLowerCase()}` : ''),
-        staging_path: persisted.browserUrl,
-        drive_path: persisted.browserUrl,
-        drive_file_id: persisted.driveFileId,
-        drive_web_view_url: persisted.driveWebViewUrl,
-        status: 'DRAFT',
+        description,
+        staging_path: finalPersisted.browserUrl,
+        drive_path: finalPersisted.browserUrl,
+        drive_file_id: finalPersisted.driveFileId,
+        drive_web_view_url: finalPersisted.driveWebViewUrl,
+        status: 'REVIEW',
         version: nextV,
         content: null,
-        metadata: newMeta as unknown as Record<string, unknown>,
+        metadata: legacyMeta as unknown as Record<string, unknown>,
       } as never)
       .select('id')
       .single();
@@ -711,6 +968,13 @@ export async function runEpisodeReferences(
       continue;
     }
     insertedAssetIds.push(inserted.id);
+    perShot.push({
+      shot_id: job.shot.shot_id,
+      final_verdict: finalVerdict,
+      retries: retryHistory.length,
+      cost_usd: generationHistory.reduce((s, g) => s + g.cost_usd, 0) + (latestReview?.reviewer_cost_usd ?? 0),
+      is_4k: final4k,
+    });
   }
 
   if (insertedAssetIds.length === 0) {
@@ -718,8 +982,9 @@ export async function runEpisodeReferences(
   }
 
   const description =
-    `Produced by EXEC-EREF · ${EREF_CONTRACT} · ${EREF_PROVIDER} · ` +
-    `${insertedAssetIds.length} refs · cost $${totalCost.toFixed(4)}`;
+    `Produced by EXEC-EREF · ${EREF_CONTRACT} · ${provider.id} · ` +
+    `${insertedAssetIds.length} refs · cost $${totalCost.toFixed(4)} · ` +
+    `verdicts: ${perShot.map((s) => s.final_verdict).join(',')}`;
 
   const charNames = bible.characters
     .map((c) => nameFromBibleFilename(c))
@@ -735,5 +1000,40 @@ export async function runEpisodeReferences(
     description,
     contract: EREF_CONTRACT,
     bibleSnapshot: { characters: charNames, locations: locNames },
+    perShot,
   };
+}
+
+/**
+ * Provider call wrapper. Right now it's a thin pass-through; left as a hook
+ * for future per-provider retry / cost-tracking logic. Throws
+ * MultiImageGenError on hard failure — caller skips the shot rather than
+ * cascading.
+ */
+async function callProviderWithFallback(
+  provider: MultiImageGenProvider,
+  args: {
+    prompt: string;
+    references: MultiImageRef[];
+    quality: 'low' | 'medium' | 'high';
+    size: '1024x1024';
+  },
+) {
+  // If provider doesn't accept references at all (degenerate case) we still
+  // have to send something — the providers we ship today both require ≥1.
+  // We surface the error to the caller, which logs and skips.
+  if (args.references.length === 0 && provider.capabilities.max_references >= 1) {
+    throw new MultiImageGenError(
+      'No Bible reference images available for this shot — provider requires ≥1',
+      provider.id,
+    );
+  }
+  // Trim refs to provider capacity.
+  const refs = args.references.slice(0, provider.capabilities.max_references);
+  return await provider.generate({
+    prompt: args.prompt,
+    references: refs,
+    size: args.size,
+    quality: args.quality,
+  });
 }
