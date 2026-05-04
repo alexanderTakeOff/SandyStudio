@@ -11,6 +11,7 @@ import {
   AnthropicTextError,
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
+import type { SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
 
 export const COPY_CONTRACT = 'copywriter@v1';
