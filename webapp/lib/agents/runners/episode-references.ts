@@ -72,14 +72,32 @@ interface BibleAssetLike {
   file_type: string;
 }
 
+/**
+ * Parsed shot — supports both storyboarder@v1 and @v2 shapes via gentle
+ * normalisation. EREF proper still uses these flat fields; the @v2 contract
+ * upgrade (per-character emotion/action) is consumed by Phases C+D after
+ * this transitional step.
+ */
 interface ParsedShot {
   shot_id: string;
   act: number;
+  /** Flat location string ("neon_cafe — entrance") for legacy logic. */
   location: string;
+  /** Flat character slug list — derived from v2 characters[].bible_slug. */
   characters_present: string[];
+  /** Free-text action narration (v2 action_prose, v1 action). */
   action: string;
   duration_seconds: number;
   key_beat?: string;
+  // ── v2 fields (will become primary in Phase C) ──
+  shot_role?: string;
+  expected_gag?: string | null;
+  characters_v2?: Array<{
+    bible_slug: string;
+    expected_emotion: string;
+    expected_action: string;
+    role_in_shot: string;
+  }>;
 }
 
 interface UniqueRefSpec {
