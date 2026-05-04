@@ -323,6 +323,6 @@ export async function runStoryboarder(
     briefAssetId: briefAsset.id ?? null,
     scriptAssetId: scriptAsset.id ?? null,
     description,
-    notes: missingInputs,
+    notes,
   };
 }
