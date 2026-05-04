@@ -106,6 +106,7 @@ export function StageKebabMenu({
 }: StageKebabMenuProps) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [retriggerOpen, setRetriggerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editorAssetId, setEditorAssetId] = useState<string | null>(null);
   const [editorAssetFilename, setEditorAssetFilename] = useState<string | undefined>();
