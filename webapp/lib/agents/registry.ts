@@ -266,6 +266,21 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: false, // called inline before every paid generation
   },
 
+  'EXEC-EREF-CHECK': {
+    id: 'EXEC-EREF-CHECK',
+    code: 'exec-eref-check',
+    display_ru: 'QC-инспектор кадра',
+    display_en: 'Shot QC Inspector',
+    emoji: '🔍',
+    category: 'review',
+    model: 'sonnet', // Sonnet 4.6 — vision-capable for image-to-text scoring
+    skills: ['eval-harness', 'gan-evaluator'],
+    next_agent: null,
+    governance: 'C',
+    prompt_file: null, // system prompt is inlined in lib/agents/runners/eref-check.ts
+    has_inngest_function: false, // called inline from EREF runner after each generation
+  },
+
   // ── Orchestration agents (no Inngest function) ──────────────────────────────
 
   'EXEC-ARCH': {
