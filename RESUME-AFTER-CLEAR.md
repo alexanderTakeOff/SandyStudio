@@ -1,127 +1,132 @@
 # RESUME-AFTER-CLEAR — read first after `Clear this session`
 
-**Session ended:** 2026-05-02
-**Branch:** `claude/agitated-lederberg-a292d3` (auto-sync hook commits frequently — check `git log -20 --oneline`)
-**Latest master commit:** `39c83db` — feat: EXEC-BIBLE-AUTHOR + prompt edit + provenance (PR #5 squash-merged)
+**Session ended:** 2026-05-04 evening
+**Branch:** `claude/agitated-lederberg-a292d3` (auto-sync hook commits frequently — `git log -20 --oneline`)
+**Latest meaningful master commit:** `39c83db` — pre-EREF v2 work
+**All EREF v2 work auto-synced** to local branch — working tree clean.
 
 ---
 
 ## TL;DR — Where we are
 
-We just finished **4 slices (A+B+C+D)** of a major upgrade. All code in working tree, **NOT yet in a PR**. Tests + tsc green. Director chose to **start a brand-new clean series ("флакон духов" / perfume bottle)** to walk through the new system manually. He had not yet provided the q1-q5 inputs (name/premise/hero/location/style) before clearing the session.
+The big architectural overhaul is **done in code, not yet stress-tested**:
 
-When session resumes — **first ask Director for the q1-q5 inputs to seed the new series**, then unblock him as he walks through the UI.
+**EREF v2 — full rewrite of Episode References as a quality-control station:**
+- Storyboarder@v2 contract (per-character emotion/action/role/shot_role/expected_gag) — **proven end-to-end** with SS-S14-E01 v03
+- Provider abstraction (MultiImageGenProvider) with two impls: `openai-edits-multi` (default) + `flux-pro-1.1-ultra` (fal.ai)
+- AI reviewer (EXEC-EREF-CHECK, Sonnet vision) — scores 5 axes per shot, returns APPROVE/REGENERATE/HUMAN_REVIEW + suggested_prompt_v2
+- Generate→review→regen loop (≤2 retries)
+- 4K upscale via fal.ai clarity-upscaler (Phase E.5)
+- All persisted to `assets.metadata.shot_reference` (contract `episode_references@v2`)
 
----
+**First real run last night:** 10/13 v2 records produced before Director stopped it. Issues encountered:
+- 2 EXEC-EREF jobs racing in parallel → duplicate-key collisions
+- OpenAI Edits 502 hiccups → 1-2 shots skipped
+- AI reviewer verdicts mostly `APPROVE` (consistency 88, emotion 82, action 85, gag 80, style 87)
+- Director visual feedback: "уже гораздо лучше" — multi-anchor IS solving Vial drift
 
-## State of the worktree
-
-- `npx tsc --noEmit` clean
-- `npm test` 110/110
-- `npm run replay-pilot` 29/29
-- Both dev servers (next-dev :3000, inngest-dev :8288) **must be started** via `preview_start` MCP
-
-### Slices A+B+C+D — coded, not committed
-
-Auto-sync hook commits locally on `claude/agitated-lederberg-a292d3`. Director said "коммит/PR только по моей команде" so nothing is in a PR yet.
-
-| Slice | What | Files |
-|---|---|---|
-| **A** | Generic Mode-aware Asset Drawer + Upload | `lib/api/series-bible.ts` (provenance + mode_at_time + history.source += director_upload), `lib/governance.ts` rewritten (`{allowed, requiresDirector, autoFireAllowed, modeAtTime, category}` + action-category map A/B/C), `lib/api/asset-prompt-builder.ts` NEW, `app/api/assets/[id]/{regenerate-image,enrich,upload}/route.ts` NEW, `components/assets/{AssetCollapsibleSection,AssetProvenanceChip,AssetImagePromptSection}.tsx` NEW, `components/series-bible/AssetDetailDrawer.tsx` refactored, `components/series-bible/AddAssetModal.tsx` (regex → bibleSlug DRY) |
-| **B** | Generic AssetGrid + Episode References Gallery | `components/assets/{AssetGrid,AssetThumb,EpisodeAssetDrawer}.tsx` NEW, `components/episode/EpisodeReferencesGallery.tsx` NEW, `app/(studio)/episodes/[id]/page.tsx` (renders gallery when stage=episode_references). Tile size = 1/8 Bible card (~36px). Drawer has ←back link. |
-| **C** | Style Guardian (EXEC-STYLE-CHECK) | `lib/agents/runners/style-check.ts` NEW (Sonnet ~$0.005/check), `app/api/style-check/route.ts` NEW, `lib/api/style-guardian-config.ts` NEW (reads `app_config.style_guardian_mode`, default `warn`), wired into `regenerate-image` (warn/strict/auto_rewrite), `components/assets/StyleGuardianBadge.tsx` NEW (debounced inline chip) |
-| **D** | EREF v2 (per-shot + image-to-image) | `lib/agents/providers/openai-image-edit.ts` NEW, `lib/agents/runners/episode-references.ts` rewritten — `pickShotsToReference` per-shot capped at 49, image2image via Bible LOCKED character/location ref, fallback text-only, per-shot Style Guardian pre-flight, writes `metadata.image_prompt` v01 + `source_bible_refs[]` |
-
-### Cross-cutting (baked in for future EXEC-ORCH)
-
-- All new endpoints call `enforceMode(action, episode, context)` returning `{allowed, requiresDirector, autoFireAllowed, modeAtTime, category}`.
-- All mutating actions stamp `mode_at_time` in `provenance` + `activity_events.metadata`.
-- Action category map: PUBLISH/LOCK/BUDGET/MODE_CHANGE = A; REGENERATE_IMAGE/ENRICH_ASSET = B; AGENT_RUN/UPLOAD_ASSET/EDIT_DESCRIPTION = C.
-
-### Plan + cross-project rule files
-
-- Plan: `C:\Users\NAVIA VISION ONE\.claude\plans\snuggly-crunching-raven.md`
-- **PARTNERSHIP RULE** (new this session, applies to ALL future projects): `C:\Users\NAVIA VISION ONE\.claude\rules\common\partnership.md` — read before responding to any non-trivial request.
+**Concurrency lock fix already applied** (`lib/inngest/concurrency.ts` set `exec-eref` from 3→1). Single clean run on next re-trigger should finish all 13 shots cleanly.
 
 ---
 
-## Verified browser smoke (Slices A+B+C)
+## Foundation files written this work cycle (persistent)
 
-| Slice | Verified |
+| File | Purpose |
 |---|---|
-| A | Bible Drawer: provenance chip with mode_at_time, collapsible sections, Upload button (legacy + standard), prompt edit + Regenerate + History + Restore |
-| B | Episode page: click EREF row → 12-thumb gallery (existing v1 IMG-episode_ref_*) renders; click thumb → EpisodeAssetDrawer with ←back link works |
-| C | Style Guardian badge fetches via `/api/style-check`, displays verdict + score + tooltip with issues (verified WARN 71/100 on City Systems, real Sonnet) |
-| D | tsc + tests pass; **NOT** browser-tested end-to-end (would cost ~$0.50 on real EREF v2 trigger) |
+| `C:\SandyStudio\technology.md` | NEW — production-technology theses ("how we make movies"). Read before responding. Append on every Director message about pipeline/format/quality/sequencing. Maintenance protocol §7. |
+| `C:\SandyStudio\CLAUDE.md` | §9 startup sequence updated — read `technology.md` after `glossary.md`. |
+| `C:\SandyStudio\PLAN.md` | New `## Pipeline philosophy` section before `CURRENT STATE` — Animatic role, EREF as QC, 4K, 5-action review set. |
+| `~/.claude/projects/C--SandyStudio/memory/technology_md_protocol.md` | Memory rule: pre-read technology.md, scan Director messages, escalate contradictions. |
 
 ---
 
-## What Director chose for next step
+## State of the worktree (all auto-synced to local branch)
 
-**New clean series — "флакон духов" (perfume bottle)** — manual walkthrough through UI.
+- `npx tsc --noEmit` — clean (verified this morning)
+- `npm test` — 110/110 pass (last verified yesterday)
+- `npm run replay-pilot` — 29/29 pass
+- Both dev servers: **next-dev :3000 RUNNING; inngest-dev :8288 STOPPED** (need to restart it before triggering EREF)
 
-Plan was: create series → enrich Bible (general_idea + 1 character `Flacon` + 1-2 locations + 1 style LOCKED, ~$0.20) → episode E01 → manual approve through pipeline (SW → SREV → SB → Continuity → EREF v2 → Animatic → Copy → Thumbnail → Publish). **Total ~$1.00**.
+### New files this cycle
 
-I asked these questions, got NO answer before clear:
-- q1: Series name + code (e.g. `Flacon` / `SS-FL`)
-- q2: Premise (one line — what's the show about?)
-- q3: Hero description (1-2 line seed for `Flacon`)
-- q4: Location seed (1 location, e.g. "antique perfumery")
-- q5: Style direction one-liner (Art Deco? watercolor? noir?)
+| Area | File |
+|---|---|
+| Phase A (storyboarder@v2) | `webapp/lib/agents/runners/storyboarder.ts` (rewrite + post-validation) |
+| Phase A parsers | `webapp/lib/agents/runners/episode-references.ts` (extractScenesFromStoryboard handles v1+v2), `webapp/lib/agents/runners/continuity-check.ts` (prompt hints v2-aware) |
+| Phase B providers | `webapp/lib/agents/providers/image-gen-multi.ts` (interface), `openai-edits-multi.ts`, `flux-pro-ultra-fal.ts`, `image-gen-multi-registry.ts`, `upscale-fal.ts` |
+| Phase B config | `webapp/lib/api/eref-config.ts` (`getEREFProvider`, `getEREFUpscaleEnabled`) |
+| Phase C types | `webapp/lib/api/shot-reference.ts` (full v2 contract types) |
+| Phase D reviewer | `webapp/lib/agents/providers/anthropic-vision.ts` (multimodal adapter), `webapp/lib/agents/runners/eref-check.ts` |
+| Phase D registry | `webapp/lib/agents/types.ts` + `registry.ts` + `gate.ts` + `runner.ts` extended for `EXEC-EREF-CHECK` |
+| Phase E loop | `webapp/lib/agents/runners/episode-references.ts` (full rewrite — generate→review→regen+upscale) |
+| UX fixes | `webapp/components/pipeline/RetriggerStageModal.tsx` (NEW), `webapp/components/inbox/InboxNotePromptModal.tsx` (NEW), `webapp/components/ui/Modal.tsx` (stopPropagation), `webapp/components/pipeline/StageKebabMenu.tsx` (Re-trigger on approved + "View source" rename + relax running guard), `webapp/app/api/episodes/[id]/trigger/route.ts` (EXEC-EREF allowlist) |
+| Bible refactor (earlier in cycle) | `webapp/lib/agents/bible-loader.ts` + 4 runner integrations |
+| Concurrency fix (last action) | `webapp/lib/inngest/concurrency.ts` `exec-eref: 3 → 1` |
 
-**Director will manually walk through UI**. My role = unblock if pipeline fails, diagnose errors, write small fixes if regression caught. **Bible enrichment expects only short seed text** — EXEC-BIBLE-AUTHOR expands it into full canonical entry + generates ref image.
+### Episode in active production
+
+**SS-S14-E01 "Perfume Vial"** — Sandy series 14 ep 1.
+- Brief: APPROVED, edited
+- Script: APPROVED v01
+- Script Reviewer: APPROVED v01
+- Storyboarder: APPROVED v03 (storyboarder@v2 contract)
+- Continuity Check: APPROVED v03 (PASS verdict, after Bible neon_cafe pink enrich)
+- Episode References: **STOPPED mid-run**, 10/13 v2 records in DB (`metadata.shot_reference.contract='episode_references@v2'`), some duplicates from racing
+- Animatic and beyond: not started
+
+### Bible state for SS-S14
+
+LOCKED entries: 1 general_idea, 2 characters (`sandy_hourglass`, `perfume_vial`), 1 location (`neon_cafe` — recently enriched with pink/magenta hue), 1 style (`episode_perfume_02`).
 
 ---
 
-## Dev servers — how to start (REQUIRED)
+## What to do FIRST in next session
 
-`launch.json` has both configs:
-```
-next-dev    → npm --prefix webapp run dev          (port 3000)
-inngest-dev → npm --prefix webapp run inngest:dev  (port 8288)
-```
+1. **Read this file** (you're doing it).
+2. **Read `C:\SandyStudio\technology.md`** — production-tech theses (per CLAUDE.md §9 step 4).
+3. **Read project memory** `C:\Users\NAVIA VISION ONE\.claude\projects\C--SandyStudio\memory\MEMORY.md`.
+4. **Restart inngest-dev** via Claude Preview MCP `preview_start name=inngest-dev` (it was killed last night to stop the failing run).
+5. From `webapp/`: `npx tsc --noEmit` — should be clean.
+6. **Greet Director and propose first action.** Two options:
+   - **A. Test clean EREF run** — Director re-triggers EREF on SS-S14-E01 from kebab on Episode references stage. With concurrency=1, it should run sequentially (no racing), 6-10 min wall clock, ~$1 spend. If 502 still hits 1-2 shots — add retry; if not — concurrency=1 alone solves the issue.
+   - **B. Build Phase F (QC console UI)** — AssetDetailDrawer with 5 actions (APPROVE/EDIT PROMPT/SWITCH PROVIDER/REQUEST REVISION/REJECT) + score bars + history carousel. Director can't really USE the AI reviewer verdicts without this UI. ~3-4 hours code.
 
-Use Claude Preview MCP `preview_start` with name `next-dev` then `inngest-dev`. **Both required** — Inngest dev runs all agent functions, without it triggers fail with "401 Event key not found" because empty INNGEST_EVENT_KEY falls through to prod.
+Recommend **A first** (proves the architectural fix), then **B** (unlocks Director's Day-2 workflow).
 
 ---
 
-## Open follow-ups (post-Slice D)
+## Open architectural follow-ups
 
 | ID | What | Priority |
 |---|---|---|
-| q3-of-original | Brief/SW/SB/Copywriter runners emit `proposed_canon_extensions[]` like Continuity does | medium |
-| q4-of-original | NotificationDot detect `decision_requested/input_requested/blocker_raised` types | small |
-| q5-of-original | Real Thumbnail provider (gpt-image-1) + real YouTube Publish (OAuth) | large |
-| EXEC-ORCH | Proactive orchestrator (event-driven, decides next action per Mode 1-4) | large, deferred |
-| Settings UI | Toggle for Style Guardian strictness; currently via direct `app_config` UPDATE | small |
-| Migration 0021 | `app_config style_guardian_mode='warn'` row insert (skipped — code falls back to `warn` default if missing) | small |
+| Phase F | QC Console UI — biggest remaining must-have for production EREF | high |
+| Move-upscale-to-Director-approve | Currently upscale runs on AI APPROVE — wasteful (Director may REJECT). Per `technology.md §3`: only Director APPROVE triggers upscale. Per-asset opt-out toggle. | high |
+| Hybrid parallelism | Pilot pass + Fan-out batch + Kill switch (`technology.md §4`). After Phase F. | medium |
+| Stale-cascade | When SB regen → downstream APPROVED becomes semantically stale, UI must show `stale` state. Modal prompt on upstream APPROVE. | medium |
+| markJobFailed reconciliation | Zombie RUNNING jobs from Inngest function.failed (PLAN.md long-debt #4) | medium |
+| Cleanup | Delete S01-S13 episodes + duplicate v2 records from yesterday's racing run | small |
+| 502 retry / idempotent insert | Conditional — only if clean EREF run still hits these | small |
+| UX polish | Version badge in Inbox, smoke animation, per-version kebab actions, optimistic stage feedback, activity feed entries, per-series Inbox filter | small |
 
 ---
 
 ## Important context (gotchas)
 
-1. **Inngest dev MUST be running** — webapp/.env.local has empty `INNGEST_EVENT_KEY=` which falls through to prod cloud (401). Local dev requires Inngest dev server on :8288.
-2. **DO NOT `npm run build` while dev is running** — corrupts `.next/` chunks → 500 on every API route. Recovery: kill+rm -rf .next+restart.
-3. **Bible slug regex** — `lib/api/series-bible.bibleSlug()` is single source of truth for `SBL-*` slug parsing. Never re-introduce inline regex (compound slugs like `city_systems` collapsed to `systems` in old greedy regex — fixed in this session).
-4. **Verify real results, not just logs** — Director's rule: open the artifact (Drive file, content excerpt, DB row) before reporting "done".
-5. **PROCESS RULE**: "коммит/PR только по моей команде". I can suggest "ready to commit?" when chunk is meaningful but never auto-commit/PR.
-6. **PARTNERSHIP RULE** (new this session, cross-project): I'm Director's project partner. Don't treat his words as divine dogma. Engage with intent, propose better paths, push back on flawed instructions, remember project goal + current phase. See `~/.claude/rules/common/partnership.md`.
-7. **Mode 1-4 awareness**: every mutating endpoint goes through `enforceMode()`. Mode 1 = manual confirm, Mode 2-3 auto-allowed for B-category, Mode 4 auto-everything except for any A-category (still Director).
+1. **Inngest dev MUST be running** — webapp/.env.local has `INNGEST_DEV=1` so it routes to local :8288. Without dev server, events fail.
+2. **DO NOT `npm run build` while dev is running** — corrupts `.next/` chunks → 500 on every API route.
+3. **Bible slug regex** — single source of truth in `lib/api/series-bible.bibleSlug()`. Never re-introduce inline regex.
+4. **Storyboarder@v2 post-validation** — runner throws if `bible_slug` not in canon, missing `expected_emotion`, etc. Will FAIL LOUD if Claude breaks contract.
+5. **EREF concurrency fixed at 1** per episode (`lib/inngest/concurrency.ts`) — until hybrid parallelism lands.
+6. **Verify real results, not just logs** — Director's rule: open the artifact (Drive file, content excerpt, DB row) before reporting "done".
+7. **PROCESS RULE**: "коммит/PR только по моей команде". Suggest "ready to commit?" when chunk is meaningful but never auto-commit/PR. (Auto-sync hook does happen, but that's local; PR to master needs Director.)
+8. **PARTNERSHIP RULE** — `~/.claude/rules/common/partnership.md`. Engage with intent, propose better paths, push back on flawed instructions.
+9. **technology.md PROTOCOL** — `~/.claude/projects/C--SandyStudio/memory/technology_md_protocol.md`. Pre-read before responding; scan every Director message for production-tech theses; escalate contradictions.
+10. **Mode 1-4 governance** — every mutating endpoint goes through `enforceMode()`. Mode 1 = manual confirm, Mode 2-3 auto-allowed for B-category, Mode 4 auto-everything except A-category.
 
 ---
 
-## How to start the next session
+## Director's last words (2026-05-04 evening)
 
-1. Read this file (you're doing it).
-2. Read `~/.claude/rules/common/partnership.md` — the partnership rule.
-3. Read project memory `C:\Users\NAVIA VISION ONE\.claude\projects\C--SandyStudio\memory\MEMORY.md`.
-4. From webapp/: `npx tsc --noEmit` — should be clean.
-5. Start dev servers via Claude Preview MCP `preview_start` — both `next-dev` + `inngest-dev`.
-6. Ask Director: **"Готов к новой серии про флакон духов? Дай q1-q5 (name+code, premise, hero seed, location seed, style direction) и стартуем."**
-7. Wait for Director's input + ===5=== before any code/DB edit. Mode ===1=== = read-only analytics.
+> "пока хватит. до завтра. посмотрел картинки - уже гораздо лучше! ))"
 
----
-
-## Recent commits
-
-Run `git log -20 --oneline`. Most commits are auto-sync. Last meaningful merge to master = PR #5 `39c83db` — Slices A-D **NOT yet in any PR**. When Director says "PR" → consolidate into a single feature branch off master and open one PR for all 4 slices.
+Multi-anchor architecture is validated. Foundation works. Director happy. Next session: clean run + Phase F.
