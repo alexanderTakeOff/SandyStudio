@@ -47,6 +47,20 @@ import {
   stampLastModified,
   buildProvenance,
 } from '@/lib/api/series-bible';
+import {
+  isShotReferenceV2,
+  SHOT_REFERENCE_CONTRACT,
+  type GenerationAttempt,
+  type ReferenceUsed,
+  type ShotReferenceContract,
+} from '@/lib/api/shot-reference';
+import {
+  getImageGenMultiProvider,
+  hasProviderEnv,
+} from '@/lib/agents/providers/image-gen-multi-registry';
+import type { EREFProviderId } from '@/lib/api/eref-config';
+import type { MultiImageRef } from '@/lib/agents/providers/image-gen-multi';
+import { readBibleImageAsBase64 } from '@/lib/agents/providers/openai-image-edit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
