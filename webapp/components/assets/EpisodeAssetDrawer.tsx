@@ -206,6 +206,11 @@ export function EpisodeAssetDrawer({
 
   // ── EREF v2 detection ──────────────────────────────────────────────────
   const isV2 = isShotReferenceV2(asset.metadata);
+  // ── Animatic v1 detection ──────────────────────────────────────────────
+  const isAnimaticAsset = asset.file_type.startsWith('VID-animatic');
+  const animaticV1 = isAnimaticV1(asset.metadata)
+    ? (asset.metadata as { animatic_v1: import('@/lib/api/animatic-shotlist').AnimaticContract }).animatic_v1
+    : null;
   const shotRef = isV2
     ? (asset.metadata as { shot_reference: import('@/lib/api/shot-reference').ShotReferenceContract }).shot_reference
     : null;
