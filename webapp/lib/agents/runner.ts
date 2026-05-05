@@ -994,7 +994,7 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       version: nextVersion,
       content,
       description,
-      ...(metadataPayload ? { metadata: metadataPayload } : {}),
+      ...(metadataPayload ? { metadata: metadataPayload as unknown as Json } : {}),
     })
     .select('id')
     .single();
