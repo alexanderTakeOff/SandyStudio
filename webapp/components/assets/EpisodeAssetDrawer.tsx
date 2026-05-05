@@ -93,6 +93,12 @@ export interface EpisodeAssetDrawerProps {
    * episode object.
    */
   seriesId?: string | null;
+  /**
+   * For EREF v2 candidates strip — caller controls which asset id is open so
+   * the strip can switch the drawer to a sibling. When omitted, the strip
+   * still renders but clicking a sibling is a no-op.
+   */
+  onPickAsset?: (assetId: string) => void;
 }
 
 function LegacyUploadCard({ assetId, onChanged }: { assetId: string; onChanged: () => void }) {
