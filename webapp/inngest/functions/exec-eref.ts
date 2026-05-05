@@ -93,7 +93,7 @@ export const execErefStart = inngest.createFunction(
         episodeId,
         inngestEvent: event.name,
         inngestRunId: runId,
-        inputSnapshot: data as Record<string, unknown>,
+        inputSnapshot: data as unknown as Record<string, unknown>,
       });
     });
 
