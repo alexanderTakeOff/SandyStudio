@@ -72,7 +72,7 @@ function isHttpishUrl(path: string | null): boolean {
 }
 
 export function AssetPreview({ assetId }: AssetPreviewProps) {
-  const { data: meta, error: metaErr } = useSWR<{ data: AssetRow }>(
+  const { data: meta, error: metaErr, mutate } = useSWR<{ data: AssetRow }>(
     `/api/assets/${assetId}`,
     fetcher,
   );
