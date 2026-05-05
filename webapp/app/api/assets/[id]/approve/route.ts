@@ -67,6 +67,8 @@ type AssetForChain = {
   episode_id: string | null;
   /** Approval timestamp — used as the "since" floor for idempotency. */
   updated_at?: string | null;
+  /** Optional metadata — used to detect v2 EREF contract for chain skip. */
+  metadata?: unknown;
 };
 
 type SupabaseClientLike = Awaited<ReturnType<typeof requireDirector>>['supabase'];
