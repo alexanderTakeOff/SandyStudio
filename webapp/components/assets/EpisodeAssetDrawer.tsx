@@ -202,6 +202,47 @@ export function EpisodeAssetDrawer({
     };
   }, [open, onClose]);
 
+  // ── EREF v2 detection ──────────────────────────────────────────────────
+  const isV2 = isShotReferenceV2(asset.metadata);
+  const shotRef = isV2
+    ? (asset.metadata as { shot_reference: import('@/lib/api/shot-reference').ShotReferenceContract }).shot_reference
+    : null;
+  const shotId = shotRef?.shot_id ?? null;
+
+  // Fetch sibling assets for the same shot (candidates strip + replace-confirm).
+  // Always called (hook rule) — but only used when v2.
+  const { data: assetsData } = useSWR<{ data: EpisodeAsset[] }>(
+    open && asset.episode_id ? `/api/assets?episode_id=${asset.episode_id}&limit=200` : null,
+    fetcher,
+  );
+
+  const siblingCandidates = useMemo(() => {
+    if (!isV2 || !shotId || !assetsData?.data) return [] as EpisodeAsset[];
+    return assetsData.data
+      .filter((a) => a.file_type.startsWith('IMG-episode_ref'))
+      .filter((a) => {
+        const sr = isShotReferenceV2(a.metadata)
+          ? (a.metadata as { shot_reference: { shot_id: string } }).shot_reference
+          : null;
+        return sr?.shot_id === shotId;
+      })
+      .sort((a, b) => {
+        // current asset first, then APPROVED, REVIEW, DRAFT, REJECTED
+        if (a.id === asset.id) return -1;
+        if (b.id === asset.id) return 1;
+        const order: Record<string, number> = { APPROVED: 0, LOCKED: 0, REVIEW: 1, DRAFT: 2, REVISION: 3, REJECTED: 4 };
+        return (order[a.status] ?? 9) - (order[b.status] ?? 9);
+      });
+  }, [isV2, shotId, assetsData?.data, asset.id]);
+
+  // Existing APPROVED for this shot (replace-confirm gate). May be the current asset.
+  const existingApprovedForShot = useMemo(() => {
+    if (!isV2 || !shotId) return null;
+    return siblingCandidates.find(
+      (a) => (a.status === 'APPROVED' || a.status === 'LOCKED') && a.id !== asset.id,
+    ) ?? null;
+  }, [isV2, shotId, siblingCandidates, asset.id]);
+
   if (!open || typeof document === 'undefined') return null;
 
   const editable = EDITABLE_STATUSES.has(asset.status);
@@ -210,7 +251,7 @@ export function EpisodeAssetDrawer({
     ? promptDoc.history.find((h) => h.version === promptDoc.current_version)
     : undefined;
 
-  const candidates: Array<string | null | undefined> = [
+  const previewCandidates: Array<string | null | undefined> = [
     asset.drive_path,
     asset.staging_path,
     asset.drive_web_view_url,
@@ -218,7 +259,7 @@ export function EpisodeAssetDrawer({
     currentPromptEntry?.drive_web_view_url,
   ];
   const previewSrc =
-    candidates.find(
+    previewCandidates.find(
       (c): c is string => typeof c === 'string' && (c.startsWith('/') || c.startsWith('http')),
     ) ?? null;
   const isImage = !!previewSrc;
