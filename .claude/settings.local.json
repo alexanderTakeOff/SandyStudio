@@ -150,10 +150,7 @@
       "Bash(curl -s \"http://localhost:8288/v1/events/01KQVJVG2YKPCRWEXG7S8KVGBA/runs\")",
       "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H\")",
       "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H/jobs\")",
-      "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H/actions\")",
-      "Bash(wc -l webapp/app/api/series/\\\\[id\\\\]/bible/\\\\[assetId\\\\]/enrich/route.ts)",
-      "Bash(wc -l webapp/components/series-bible/AssetDetailDrawer.tsx)",
-      "Bash(claude --version)"
+      "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H/actions\")"
     ]
   }
 }
