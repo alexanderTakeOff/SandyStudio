@@ -46,6 +46,8 @@ interface AssetRow {
   version: number | null;
   episode_id: string | null;
   series_id: string | null;
+  /** JSONB metadata (image_prompt, provenance, animatic_v1, shot_reference, …). */
+  metadata: unknown;
 }
 
 interface CanonExtensionEvent {
