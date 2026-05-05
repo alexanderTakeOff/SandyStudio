@@ -69,6 +69,15 @@ export interface AnimaticSlideshowResult {
   contract: typeof ANIMATIC_CONTRACT;
   totalDurationS: number;
   frameCount: number;
+  /**
+   * The browser-native player payload (animatic@v1). When present, the
+   * EpisodeAssetDrawer renders an interactive AnimaticPlayer instead of the
+   * markdown body, and Director can play / pause / edit per-shot duration
+   * without re-rendering. May be null on legacy episodes whose storyboard or
+   * EREF assets do not carry shot_id metadata — in that case the markdown
+   * body is the only viewer.
+   */
+  animaticV1: AnimaticContract | null;
 }
 
 function findApprovedAsset(
