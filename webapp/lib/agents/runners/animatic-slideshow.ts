@@ -326,7 +326,11 @@ export async function runAnimaticSlideshow(
   // about the episode's assets cannot be resolved deterministically — the
   // legacy markdown view is still produced and shown.
   let animaticV1: AnimaticContract | null = null;
-  const episodeId = (inputs.episode as { id?: string } | undefined)?.id;
+  const episodeId =
+    (inputs.episode as { id?: string } | undefined)?.id ??
+    (inputs as { episode_id?: string }).episode_id;
+  // eslint-disable-next-line no-console
+  console.log('[animatic] v1 build attempt — episodeId:', episodeId, 'frames:', frames.length);
   if (episodeId) {
     try {
       const shotList = await buildShotListFromApprovedEREF(
@@ -335,11 +339,16 @@ export async function runAnimaticSlideshow(
         sbAsset.content,
       );
       animaticV1 = newAnimaticContract(shotList);
+      // eslint-disable-next-line no-console
+      console.log('[animatic] v1 BUILT OK — shot_list length:', shotList.length, 'total:', animaticV1.total_duration);
     } catch (err) {
       // Logged but non-fatal: legacy markdown view continues to work.
       // eslint-disable-next-line no-console
       console.error('[animatic] v1 builder failed (legacy view will show):', err);
     }
+  } else {
+    // eslint-disable-next-line no-console
+    console.error('[animatic] v1 builder SKIPPED — no episodeId in inputs.episode.id or inputs.episode_id');
   }
 
   return {
