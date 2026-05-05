@@ -49,6 +49,7 @@ export default function InboxPage() {
     item: InboxItem;
     decision: InboxNoteDecision;
   } | null>(null);
+  const [openAssetId, setOpenAssetId] = useState<string | null>(null);
 
   const { data, mutate } = useSWR<{ data: InboxItem[]; meta?: { total: number } }>(
     `/api/director/inbox?filter=${filter}&limit=50`,
