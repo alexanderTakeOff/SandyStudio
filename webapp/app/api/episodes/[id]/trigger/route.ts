@@ -28,7 +28,7 @@ const AGENT_TO_EVENT: Record<string, StudioEventName> = {
   'EXEC-SREV':  'sandystudio/exec-srev/review-script',
   'EXEC-SB':    'sandystudio/exec-sb/create-storyboard',
   'EXEC-WCHK':  'sandystudio/exec-wchk/check-world',
-  'EXEC-EREF':  'sandystudio/exec-eref/generate-references',
+  'EXEC-EREF':  'sandystudio/exec-eref/start',
   'EXEC-EDIT':  'sandystudio/exec-edit/create-animatic',
   'EXEC-VGEN':  'sandystudio/exec-vgen/generate-shot',
   'EXEC-MGEN':  'sandystudio/exec-mgen/generate-music',
