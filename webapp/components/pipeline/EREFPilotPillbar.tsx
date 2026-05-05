@@ -216,6 +216,7 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
       const res = await fetch(`/api/episodes/${episodeId}/eref/advance`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ directorConfirm: true }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
