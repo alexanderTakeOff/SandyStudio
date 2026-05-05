@@ -65,18 +65,38 @@ import { readBibleImageAsBase64 } from '@/lib/agents/providers/openai-image-edit
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const ProviderIdSchema = z.enum([
+  'openai-edits-multi',
+  'flux-pro-1.1-ultra',
+  'gpt-image-1',
+]);
+
 const Body = z.union([
   z.object({
     prompt: z.string().min(8).max(8000),
     quality: z.enum(['low', 'medium', 'high']).optional(),
     style_anchor_asset_id: z.string().uuid().nullable().optional(),
     directorConfirm: z.boolean().optional(),
+    /**
+     * Optional per-image provider override for v2 EREF assets. Per
+     * technology.md §4 — Director may switch providers per shot during
+     * testing. Ignored for non-v2 assets.
+     */
+    provider_id: ProviderIdSchema.optional(),
   }),
   z.object({
     restore_version: z.number().int().positive(),
     directorConfirm: z.boolean().optional(),
   }),
 ]);
+
+/**
+ * Hard cap on EREF v2 candidate generations per shot in non-MANUAL modes.
+ * Mode 1 lets Director iterate freely (with a soft warning at ≥5).
+ */
+const NON_MANUAL_REGEN_CAP = 8;
+/** Mode 1 soft-warning threshold — surfaced in the response, never blocks. */
+const MODE_1_WARN_THRESHOLD = 5;
 
 interface AssetRow {
   id: string;
