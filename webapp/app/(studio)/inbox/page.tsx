@@ -58,6 +58,14 @@ export default function InboxPage() {
   );
   const items = useMemo(() => data?.data ?? [], [data]);
 
+  // Fetch the asset row when the drawer is open. Use the single-asset endpoint
+  // which already exists at /api/assets/[id].
+  const { data: openAssetResp, mutate: mutateOpenAsset } = useSWR<{ data: EpisodeAsset }>(
+    openAssetId ? `/api/assets/${openAssetId}` : null,
+    fetcher,
+  );
+  const openAsset: EpisodeAsset | null = openAssetResp?.data ?? null;
+
   // Group items
   const grouped = useMemo(() => {
     const out: Record<InboxItem['group'], InboxItem[]> = {
