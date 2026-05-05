@@ -606,7 +606,100 @@ export function EpisodeAssetDrawer({
           )}
         </div>
 
-        <div className="border-t border-glass px-4 py-2.5 flex items-center justify-end gap-2">
+        <div className="border-t border-glass px-4 py-2.5 flex items-center justify-end gap-2 flex-wrap">
+          {/* EREF v2 footer action bar — APPROVE / REJECT / REQUEST_REVISION /
+              REGENERATE + provider dropdown + skip-upscale toggle. */}
+          {isV2 && (
+            <div className="flex items-center gap-2 mr-auto flex-wrap">
+              <label
+                className="inline-flex items-center gap-1.5 text-[11px] text-text-secondary cursor-pointer select-none"
+                title="When ON, Approve will not trigger 4K upscale."
+              >
+                <input
+                  type="checkbox"
+                  checked={skipUpscale}
+                  onChange={(e) => setSkipUpscale(e.target.checked)}
+                  className="accent-[var(--accent-primary)]"
+                />
+                Skip 4K upscale
+              </label>
+
+              <select
+                value={providerOverride}
+                onChange={(e) =>
+                  setProviderOverride(
+                    e.target.value as 'openai-edits-multi' | 'flux-pro-1.1-ultra' | '',
+                  )
+                }
+                aria-label="Provider override for regenerate"
+                className="px-2 py-1 rounded-md text-[11px] bg-[var(--bg-elevated)] border border-glass text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+              >
+                <option value="">Series default</option>
+                {PROVIDER_OPTIONS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={regenWithProvider}
+                disabled={decisionBusy !== null || busy || !promptDoc}
+                title="Create a new candidate (REVIEW status) — does not auto-approve"
+              >
+                {decisionBusy === 'REQUEST_REVISION' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Sparkles size={12} />
+                )}
+                Regenerate
+              </Button>
+            </div>
+          )}
+
+          {isV2 && (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setNotePrompt('REQUEST_REVISION')}
+                disabled={decisionBusy !== null}
+              >
+                <RotateCcw size={12} /> Request revision
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => setNotePrompt('REJECT')}
+                disabled={decisionBusy !== null}
+              >
+                {decisionBusy === 'REJECT' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : decisionDone === 'REJECT' ? (
+                  <CheckCircle2 size={12} />
+                ) : (
+                  <XCircle size={12} />
+                )}
+                Reject
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={onApproveClick}
+                disabled={decisionBusy !== null}
+              >
+                {decisionBusy === 'APPROVE' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : decisionDone === 'APPROVE' ? (
+                  <CheckCircle2 size={12} />
+                ) : null}
+                Approve
+              </Button>
+            </>
+          )}
+
           {editable && (
             <Button variant="ghost" onClick={saveTextEdits} disabled={busy}>
               <Save size={13} /> Save
@@ -614,7 +707,86 @@ export function EpisodeAssetDrawer({
           )}
         </div>
       </aside>
+
+      {/* REJECT / REQUEST_REVISION note prompt modal */}
+      <InboxNotePromptModal
+        open={notePrompt !== null}
+        decision={notePrompt ?? 'REJECT'}
+        subjectLabel={asset.filename}
+        onClose={() => setNotePrompt(null)}
+        onSubmit={async (note) => {
+          if (notePrompt) await postDecision(notePrompt, note);
+        }}
+      />
+
+      {/* Replace approved image confirm modal */}
+      {confirmReplace && existingApprovedForShot && (
+        <ConfirmReplaceModal
+          existingFilename={existingApprovedForShot.filename}
+          newFilename={asset.filename}
+          onCancel={() => setConfirmReplace(false)}
+          onConfirm={async () => {
+            setConfirmReplace(false);
+            await postDecision('APPROVE');
+          }}
+        />
+      )}
     </div>,
     document.body,
+  );
+}
+
+interface ConfirmReplaceModalProps {
+  existingFilename: string;
+  newFilename: string;
+  onCancel: () => void;
+  onConfirm: () => void | Promise<void>;
+}
+
+function ConfirmReplaceModal({
+  existingFilename,
+  newFilename,
+  onCancel,
+  onConfirm,
+}: ConfirmReplaceModalProps) {
+  const [pending, setPending] = useState(false);
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
+      <div
+        className="relative w-full max-w-md rounded-2xl border border-glass bg-panel-glass-strong backdrop-blur-xl shadow-glass p-5 space-y-4"
+        style={{ boxShadow: 'var(--panel-shadow)' }}
+      >
+        <h3 className="text-sm font-semibold text-text-primary">
+          Replace approved image for this shot?
+        </h3>
+        <p className="text-xs text-text-secondary leading-relaxed">
+          <span className="font-mono text-text-primary">{existingFilename}</span> is
+          currently approved for this shot. Approving{' '}
+          <span className="font-mono text-text-primary">{newFilename}</span> will
+          demote the previous candidate to REJECTED in a single transaction.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onCancel} disabled={pending}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={async () => {
+              setPending(true);
+              await onConfirm();
+              setPending(false);
+            }}
+            disabled={pending}
+          >
+            {pending ? 'Replacing…' : 'Replace approved'}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
