@@ -1092,14 +1092,31 @@ export async function runEpisodeReferences(
     });
   }
 
-  if (insertedAssetIds.length === 0) {
+  // ── Pilot/fan-out state transition ────────────────────────────────────────
+  // Only update state when not cancelled — cancel route already sets state=NONE.
+  if (!cancelled && episodeId) {
+    try {
+      if (pilot_count !== undefined && insertedAssetIds.length > 0) {
+        await setPilotState(supabase, episodeId, 'PENDING_REVIEW');
+      } else if (start_index !== undefined) {
+        await setPilotState(supabase, episodeId, 'FANOUT_COMPLETE');
+      }
+    } catch (err) {
+      // Non-fatal — Director can still review; pillbar derives state from
+      // approval progress when state column is missing.
+      console.warn(`[eref] setPilotState failed: ${(err as Error).message}`);
+    }
+  }
+
+  if (insertedAssetIds.length === 0 && !cancelled) {
     throw new EpisodeReferencesError('No episode reference assets inserted');
   }
 
   const description =
     `Produced by EXEC-EREF · ${EREF_CONTRACT} · ${provider.id} · ` +
     `${insertedAssetIds.length} refs · cost $${totalCost.toFixed(4)} · ` +
-    `verdicts: ${perShot.map((s) => s.final_verdict).join(',')}`;
+    `verdicts: ${perShot.map((s) => s.final_verdict).join(',')}` +
+    (cancelled ? ' · CANCELLED' : '');
 
   const charNames = bible.characters
     .map((c) => nameFromBibleFilename(c))
@@ -1116,6 +1133,185 @@ export async function runEpisodeReferences(
     contract: EREF_CONTRACT,
     bibleSnapshot: { characters: charNames, locations: locNames },
     perShot,
+    cancelled,
+    completedShots: insertedAssetIds.length,
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// runUpscaleOnly — lifted out of the inline post-AI-APPROVE block above so
+// /approve route can fire `sandystudio/exec-eref/upscale-final` events on
+// Director APPROVE (technology.md §3: upscale only on Director-approve, not
+// AI-approve, to avoid wasted spend).
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface AssetWithMetadata {
+  id: string;
+  metadata: Record<string, unknown> | null;
+  staging_path: string | null;
+  filename: string | null;
+  episode_id: string | null;
+}
+
+export interface RunUpscaleOnlyArgs {
+  assetId: string;
+  supabase: SupabaseClient<Database>;
+}
+
+export interface RunUpscaleOnlyResult {
+  ok: boolean;
+  final_4k_url: string | null;
+  cost_usd: number;
+  /** Reason when ok=false. */
+  reason?: string;
+}
+
+export async function runUpscaleOnly(
+  args: RunUpscaleOnlyArgs,
+): Promise<RunUpscaleOnlyResult> {
+  const { assetId, supabase } = args;
+  if (!process.env.FAL_KEY?.trim() && !process.env.FAL_API_KEY?.trim()) {
+    return { ok: false, final_4k_url: null, cost_usd: 0, reason: 'FAL_KEY not set' };
+  }
+
+  const { data: rawAsset, error } = await supabase
+    .from('assets')
+    .select('id,metadata,staging_path,filename,episode_id')
+    .eq('id', assetId)
+    .maybeSingle();
+  if (error) {
+    return { ok: false, final_4k_url: null, cost_usd: 0, reason: error.message };
+  }
+  if (!rawAsset) {
+    return { ok: false, final_4k_url: null, cost_usd: 0, reason: 'Asset not found' };
+  }
+  const asset = rawAsset as unknown as AssetWithMetadata;
+
+  const meta = (asset.metadata ?? {}) as Record<string, unknown>;
+  const sr = meta.shot_reference as ShotReferenceContract | undefined;
+  if (!sr || sr.contract !== SHOT_REFERENCE_CONTRACT) {
+    return {
+      ok: false,
+      final_4k_url: null,
+      cost_usd: 0,
+      reason: 'Asset is not v2 EREF (no shot_reference contract)',
+    };
+  }
+  if (sr.final_4k_url) {
+    return {
+      ok: true,
+      final_4k_url: sr.final_4k_url,
+      cost_usd: 0,
+      reason: 'already 4K',
+    };
+  }
+  const last = sr.generation_history[sr.generation_history.length - 1];
+  if (!last) {
+    return {
+      ok: false,
+      final_4k_url: null,
+      cost_usd: 0,
+      reason: 'No generation_history entries to upscale',
+    };
+  }
+
+  // Read source image as base64 — same approach as bible-image loader.
+  let imageB64: string;
+  try {
+    const res = await fetch(last.image_url);
+    if (!res.ok) {
+      return {
+        ok: false,
+        final_4k_url: null,
+        cost_usd: 0,
+        reason: `source fetch ${res.status}`,
+      };
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    imageB64 = buf.toString('base64');
+  } catch (err) {
+    return {
+      ok: false,
+      final_4k_url: null,
+      cost_usd: 0,
+      reason: `source fetch failed: ${(err as Error).message}`,
+    };
+  }
+
+  let upscaled;
+  try {
+    upscaled = await upscaleToFourK({ image_b64: imageB64, target: '4K' });
+  } catch (err) {
+    if (err instanceof UpscaleError) {
+      return {
+        ok: false,
+        final_4k_url: null,
+        cost_usd: 0,
+        reason: `upscale failed: ${err.message}`,
+      };
+    }
+    throw err;
+  }
+
+  // Persist the new 4K bytes via the same persistBinary path used by the run loop.
+  const persisted = await persistBinary({
+    base64: upscaled.b64_data,
+    ext: 'png',
+    driveFilename: (asset.filename ?? `eref-${assetId.slice(-8)}-4k`).replace(/\.png$/i, '-4k.png'),
+    localHint: `eref-upscale-${assetId.slice(-8)}`,
+    episodeCode: undefined,
+    supabase,
+  });
+
+  const upscaleAttempt: GenerationAttempt = {
+    version: (last.version ?? sr.generation_history.length) + 1,
+    provider_id: upscaled.provider_id,
+    model: upscaled.model,
+    prompt: '(upscale only — no prompt)',
+    references_used: [{ kind: 'identity', bible_asset_id: 'self' }],
+    strength: null,
+    cost_usd: upscaled.cost_usd,
+    image_url: persisted.browserUrl,
+    drive_file_id: persisted.driveFileId,
+    drive_web_view_url: persisted.driveWebViewUrl,
+    width: upscaled.width,
+    height: upscaled.height,
+    is_4k: upscaled.width >= FOUR_K_THRESHOLD || upscaled.height >= FOUR_K_THRESHOLD,
+    at: new Date().toISOString(),
+    triggered_by: 'auto_upscale',
+    mode_at_time: last.mode_at_time,
+  };
+
+  const updatedSr: ShotReferenceContract = {
+    ...sr,
+    generation_history: [...sr.generation_history, upscaleAttempt],
+    final_4k_url: persisted.browserUrl,
+  };
+  const newMeta = { ...meta, shot_reference: updatedSr };
+
+  const { error: upErr } = await supabase
+    .from('assets')
+    .update({
+      staging_path: persisted.browserUrl,
+      drive_path: persisted.browserUrl,
+      drive_file_id: persisted.driveFileId,
+      drive_web_view_url: persisted.driveWebViewUrl,
+      metadata: newMeta as unknown as Record<string, unknown>,
+    } as never)
+    .eq('id', assetId);
+  if (upErr) {
+    return {
+      ok: false,
+      final_4k_url: null,
+      cost_usd: upscaled.cost_usd,
+      reason: `asset update: ${upErr.message}`,
+    };
+  }
+
+  return {
+    ok: true,
+    final_4k_url: persisted.browserUrl,
+    cost_usd: upscaled.cost_usd,
   };
 }
 
