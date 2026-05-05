@@ -65,9 +65,6 @@ function loadDotenvOverride(filename: string): void {
 }
 loadDotenvOverride('.env.local');
 
-// Lazy-import after env is loaded so google-auth picks up creds.
-const { getGoogleAccessToken } = await import('../lib/agents/providers/google-auth');
-
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 
 interface GenerationHistoryEntry {
