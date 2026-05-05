@@ -334,7 +334,13 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                 in place of (or above) the activity feed. Director's request:
                 small thumbnails, click → Drawer with ← back. */}
             {selectedStage === 'episode_references' && (
-              <div className="mb-3">
+              <div className="mb-3 space-y-3">
+                <EREFPilotPillbar
+                  episodeId={id}
+                  stageRunning={
+                    stages.find((s) => s.id === 'episode_references')?.state === 'running'
+                  }
+                />
                 <EpisodeReferencesGallery episodeId={id} seriesId={episode.series_id} />
               </div>
             )}
