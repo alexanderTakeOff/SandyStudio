@@ -288,6 +288,85 @@ export function EpisodeAssetDrawer({
     onChange();
   }
 
+  // ── EREF v2 footer actions ────────────────────────────────────────────────
+
+  async function postDecision(decision: DecisionVerb, note?: string) {
+    setDecisionBusy(decision);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = {
+        decision,
+        directorConfirm: true,
+      };
+      if (decision === 'APPROVE') {
+        body.preview_acknowledged = true;
+        body.eref_options = { skip_upscale: skipUpscale };
+      }
+      if (note) body.note = note;
+      const res = await fetch(`/api/assets/${asset.id}/approve`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? `${decision} failed`);
+      }
+      setDecisionDone(decision);
+      setTimeout(() => setDecisionDone(null), 600);
+      onChange();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDecisionBusy(null);
+    }
+  }
+
+  function onApproveClick() {
+    if (existingApprovedForShot) {
+      setConfirmReplace(true);
+      return;
+    }
+    void postDecision('APPROVE');
+  }
+
+  async function regenWithProvider() {
+    if (!promptDoc) return;
+    const cur = promptDoc.history.find((h) => h.version === promptDoc.current_version);
+    if (!cur) return;
+    if (
+      !window.confirm(
+        `Regenerate with ${providerOverride || 'series default'}?\nThis creates a new candidate in REVIEW status — it will not auto-approve.`,
+      )
+    ) {
+      return;
+    }
+    setDecisionBusy('REQUEST_REVISION'); // borrow as a "busy" indicator slot
+    setError(null);
+    try {
+      const body: Record<string, unknown> = {
+        prompt: cur.prompt,
+        quality: 'medium',
+        directorConfirm: true,
+      };
+      if (providerOverride) body.provider_id = providerOverride;
+      const res = await fetch(`/api/assets/${asset.id}/regenerate-image`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Regenerate failed');
+      }
+      onChange();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDecisionBusy(null);
+    }
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-50 pointer-events-none" role="dialog" aria-modal="true">
       <div
