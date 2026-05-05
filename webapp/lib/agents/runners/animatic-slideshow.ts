@@ -320,6 +320,29 @@ export async function runAnimaticSlideshow(
     `Produced by EXEC-EDIT · ${ANIMATIC_CONTRACT} · slideshow · ` +
     `${frames.length} frames / ${totalDurationS}s · cost $0 (no music yet)`;
 
+  // ── animatic@v1 payload — for browser-native AnimaticPlayer in drawer.
+  // Built via the canonical helper so v2 EREF shot_id matching is used and
+  // the result is structurally identical to what /upload-music and the
+  // /animatic-timing PATCH expect later. Falls back to null if anything
+  // about the episode's assets cannot be resolved deterministically — the
+  // legacy markdown view is still produced and shown.
+  let animaticV1: AnimaticContract | null = null;
+  const episodeId = (inputs.episode as { id?: string } | undefined)?.id;
+  if (episodeId) {
+    try {
+      const shotList = await buildShotListFromApprovedEREF(
+        _supabase,
+        episodeId,
+        sbAsset.content,
+      );
+      animaticV1 = newAnimaticContract(shotList);
+    } catch (err) {
+      // Logged but non-fatal: legacy markdown view continues to work.
+      // eslint-disable-next-line no-console
+      console.error('[animatic] v1 builder failed (legacy view will show):', err);
+    }
+  }
+
   return {
     markdown,
     body,
@@ -328,5 +351,6 @@ export async function runAnimaticSlideshow(
     contract: ANIMATIC_CONTRACT,
     totalDurationS,
     frameCount: frames.length,
+    animaticV1,
   };
 }
