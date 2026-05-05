@@ -190,11 +190,20 @@ async function computeNextEvents(
   }
 
   // ── Episode references APPROVED → EXEC-EDIT (animatic)
+  // EREF v2 (Pilot+Fanout, technology.md §4): per-shot approvals must NOT
+  // auto-fire the animatic — Director uses the explicit "Advance to Animatic"
+  // button (POST /api/episodes/[id]/eref/advance) once all shots have an
+  // approved variant. We detect the v2 contract on the asset metadata and
+  // skip the auto-fan-out branch in that case. Legacy v1 assets keep the
+  // old chain behaviour for backwards compatibility.
   if (ft.startsWith('IMG-episode_ref') && !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))) {
-    events.push({
-      name: 'sandystudio/exec-edit/create-animatic',
-      data: { episodeId: ep, storyboardAssetIds: [] },
-    });
+    const isV2 = isShotReferenceV2((asset as { metadata?: unknown }).metadata);
+    if (!isV2) {
+      events.push({
+        name: 'sandystudio/exec-edit/create-animatic',
+        data: { episodeId: ep, storyboardAssetIds: [] },
+      });
+    }
   }
 
   // ── Animatic APPROVED → fan-out EXEC-VGEN×3 + EXEC-MGEN×1
