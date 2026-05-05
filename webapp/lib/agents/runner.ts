@@ -963,6 +963,22 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       ? (result.metadata.description as string)
       : null;
 
+  // Persist agent-specific structured payloads to the JSONB `metadata` column
+  // so downstream UI / runners can read them. We pick only opted-in keys:
+  // `animatic_v1` is the only one for now, but this list is expected to grow
+  // as new contracts (animatic_v2, vgen_shot_v1, etc.) emerge. Keys like
+  // `markdown`, `staging_path`, `description` are already promoted to columns
+  // and would just bloat metadata, so they are NOT included here.
+  const PERSIST_METADATA_KEYS = ['animatic_v1'] as const;
+  let metadataPayload: Record<string, unknown> | null = null;
+  for (const key of PERSIST_METADATA_KEYS) {
+    const v = result.metadata[key];
+    if (v !== undefined && v !== null) {
+      if (metadataPayload === null) metadataPayload = {};
+      metadataPayload[key] = v;
+    }
+  }
+
   const { data, error } = await supabase
     .from('assets')
     .insert({
@@ -978,6 +994,7 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       version: nextVersion,
       content,
       description,
+      ...(metadataPayload ? { metadata: metadataPayload } : {}),
     })
     .select('id')
     .single();
