@@ -273,11 +273,28 @@ export default function InboxPage() {
               {rows.map((item) => {
                 const idx = flat.indexOf(item);
                 const focused = idx === focusIdx;
+                const handleOpen = () => {
+                  setFocusIdx(idx);
+                  if (item.asset_id) {
+                    setOpenAssetId(item.asset_id);
+                  } else if (item.episode_id) {
+                    window.location.href = `/episodes/${item.episode_id}`;
+                  }
+                };
                 return (
                   <div
                     key={item.id}
-                    onClick={() => setFocusIdx(idx)}
-                    className="rounded-xl border bg-panel-glass-strong px-4 py-3 transition-all cursor-pointer"
+                    onClick={handleOpen}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleOpen();
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open ${item.title}`}
+                    className="rounded-xl border bg-panel-glass-strong px-4 py-3 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
                     style={{
                       borderColor: focused
                         ? 'var(--accent-primary)'
@@ -293,6 +310,7 @@ export default function InboxPage() {
                           onChange={() => toggleSelect(item)}
                           onClick={(e) => e.stopPropagation()}
                           className="mt-1"
+                          aria-label={`Select ${item.title} for bulk approve`}
                         />
                       )}
                       {item.is_visual && <span className="w-4" />}
@@ -310,63 +328,26 @@ export default function InboxPage() {
                               }}
                             >
                               <AlertTriangle size={9} />
-                              visual — bulk disabled
+                              visual — review in drawer
                             </span>
                           )}
                         </div>
                         <div className="text-xs text-text-muted mt-0.5">{item.subtitle}</div>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-3 ml-7">
-                      {item.cta.map((b) => (
-                        <button
-                          key={b.action}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Canon-extension proposals: deep-link to the
-                            // episode page; Director clicks Continuity kebab
-                            // → Preview to open the CanonExtensionsPanel.
-                            if (b.action === 'open_asset_preview') {
-                              if (item.episode_id) {
-                                window.location.href = `/episodes/${item.episode_id}`;
-                              } else if (item.asset_id) {
-                                window.location.href = `/assets/${item.asset_id}`;
-                              }
-                              return;
-                            }
-                            const map: Record<string, string> = {
-                              approve: 'APPROVE',
-                              revise: 'REQUEST_REVISION',
-                              reject: 'REJECT',
-                              needs_human_tweak: 'NEEDS_HUMAN_TWEAK',
-                            };
-                            const decision = map[b.action];
-                            if (!decision) return;
-                            if (decision === 'REQUEST_REVISION' || decision === 'REJECT') {
-                              setNotePrompt({ item, decision });
-                            } else {
-                              act(item, decision);
-                            }
-                          }}
-                          className="px-2.5 h-8 rounded-md text-[11px] font-semibold uppercase tracking-wider transition-colors"
-                          style={{
-                            background:
-                              b.intent === 'primary'
-                                ? 'var(--accent-primary)'
-                                : b.intent === 'destructive'
-                                ? 'var(--accent-danger)'
-                                : 'transparent',
-                            color:
-                              b.intent === 'primary' || b.intent === 'destructive'
-                                ? 'var(--text-inverse)'
-                                : 'var(--text-secondary)',
-                            border:
-                              b.intent === 'secondary' ? '1px solid var(--panel-glass-border)' : 'none',
-                          }}
-                        >
-                          {b.label}
-                        </button>
-                      ))}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpen();
+                        }}
+                        className="shrink-0 inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md text-[11px] font-semibold uppercase tracking-wider transition-colors"
+                        style={{
+                          background: 'var(--accent-primary)',
+                          color: 'var(--text-inverse)',
+                        }}
+                      >
+                        <ExternalLink size={11} /> Open
+                      </button>
                     </div>
                   </div>
                 );
