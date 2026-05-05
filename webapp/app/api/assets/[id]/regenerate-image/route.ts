@@ -278,6 +278,41 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   // ── Branch B: edit prompt + reroll ────────────────────────────────────────
 
+  // ── Mode-aware regeneration cap (v2 EREF only) ────────────────────────────
+  // Mode 1 (MANUAL): no cap; warn at ≥5 candidates so Director sees the spend.
+  // Modes 2-4: hard cap at NON_MANUAL_REGEN_CAP candidates per shot.
+  const isV2 = isShotReferenceV2(asset.metadata);
+  const v2Sr = isV2
+    ? (asset.metadata as { shot_reference: ShotReferenceContract }).shot_reference
+    : null;
+
+  let regenCount = 0;
+  let mode1Warning = false;
+  if (isV2 && v2Sr && asset.episode_id) {
+    const { count } = await sb
+      .from('assets')
+      .select('*', { count: 'exact', head: true })
+      .eq('episode_id', asset.episode_id)
+      .like('file_type', 'IMG-episode_ref%')
+      .filter('metadata->shot_reference->>shot_id', 'eq', v2Sr.shot_id);
+    regenCount = count ?? 0;
+    if (mode === 1) {
+      if (regenCount >= MODE_1_WARN_THRESHOLD) mode1Warning = true;
+    } else if (regenCount >= NON_MANUAL_REGEN_CAP) {
+      return apiOk(
+        {
+          action_blocked: true,
+          reason: `Regeneration cap reached: max ${NON_MANUAL_REGEN_CAP} candidates per shot in non-manual mode (current: ${regenCount})`,
+          regen_count: regenCount,
+          cap: NON_MANUAL_REGEN_CAP,
+          mode_at_time: decision.modeAtTime,
+        },
+        undefined,
+        { status: 429 },
+      );
+    }
+  }
+
   // Pre-flight Style Guardian check. Behaviour depends on app_config.style_guardian_mode:
   //   warn          → record verdict, NEVER block
   //   strict        → FAIL blocks (Director may pass directorConfirm with override flag)
