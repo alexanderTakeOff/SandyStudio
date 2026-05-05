@@ -15,6 +15,10 @@ import { NotFoundError, ValidationError, ConflictError, GovernanceBlockError } f
 import { assertAssetTransition, type AssetStatus } from '@/lib/api/status-transitions';
 import { enforceMode, type GovernanceEpisode } from '@/lib/governance';
 import { inngest, type StudioEventName } from '@/lib/inngest/client';
+import {
+  isShotReferenceV2,
+  type ShotReferenceContract,
+} from '@/lib/api/shot-reference';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
