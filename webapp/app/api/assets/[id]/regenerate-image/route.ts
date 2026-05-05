@@ -360,13 +360,25 @@ export const POST = withApiHandler(async (req, ctx) => {
   let realModel = 'gpt-image-1';
   let v2RefsUsed: ReferenceUsed[] = [];
 
-  if (isV2 && v2Sr && body.provider_id) {
-    // Resolve a v2 provider id; tolerate the legacy 'gpt-image-1' alias by
-    // mapping it onto the OpenAI multi-image provider.
-    const requestedProviderId: EREFProviderId =
-      body.provider_id === 'gpt-image-1'
-        ? 'openai-edits-multi'
-        : body.provider_id;
+  // For v2 EREF assets we ALWAYS go through the multi-image path so identity
+  // anchors (Sandy/Vial/location/style) are preserved on regeneration.
+  // Director's `body.provider_id` wins when set; otherwise we fall back to the
+  // provider used in the asset's last generation_history attempt; finally to
+  // the OpenAI multi-image default. Without this, a manual Regenerate click
+  // without a dropdown selection silently dropped to plain text-to-image and
+  // catastrophically lost identity (bug observed on SS-S14-E01-A2-SC02-SH03,
+  // 2026-05-05).
+  let effectiveV2Provider: EREFProviderId | null = null;
+  if (isV2 && v2Sr) {
+    const fromBody = body.provider_id;
+    const history = v2Sr.generation_history ?? [];
+    const lastProviderRaw = history.length > 0 ? history[history.length - 1]?.provider_id : null;
+    const candidate = fromBody ?? lastProviderRaw ?? 'openai-edits-multi';
+    effectiveV2Provider = candidate === 'gpt-image-1' ? 'openai-edits-multi' : (candidate as EREFProviderId);
+  }
+
+  if (isV2 && v2Sr && effectiveV2Provider) {
+    const requestedProviderId: EREFProviderId = effectiveV2Provider;
     if (!hasProviderEnv(requestedProviderId)) {
       return apiOk(
         {
