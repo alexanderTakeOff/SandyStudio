@@ -460,11 +460,16 @@ export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerP
           <RotateCcw size={13} /> Reset
         </Button>
         <div className="flex-1" />
-        {dirty && (
-          <Button variant="primary" size="sm" onClick={handleSaveTiming} disabled={savingTiming}>
-            {savingTiming ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save timing
-          </Button>
-        )}
+        <Button
+          variant={dirty ? 'primary' : 'ghost'}
+          size="sm"
+          onClick={handleSaveTiming}
+          disabled={savingTiming || !dirty}
+          title={dirty ? 'Save updated per-shot durations' : 'No timing changes to save yet'}
+        >
+          {savingTiming ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{' '}
+          {dirty ? 'Save timing' : 'Saved'}
+        </Button>
       </div>
 
       {/* Inline duration editor (current shot) */}
