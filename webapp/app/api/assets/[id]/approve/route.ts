@@ -355,8 +355,8 @@ export const POST = withApiHandler(async (req, ctx) => {
     typeof asset.file_type === 'string' &&
     asset.file_type.startsWith('IMG-episode_ref') &&
     isShotReferenceV2(asset.metadata);
-  if (isV2EREFApprove) {
-    const sr = (asset.metadata as { shot_reference: ShotReferenceContract })
+  if (isV2EREFApprove && asset.episode_id) {
+    const sr = (asset.metadata as unknown as { shot_reference: ShotReferenceContract })
       .shot_reference;
     const newShotId = sr.shot_id;
     const { data: existing, error: existingErr } = await supabase
