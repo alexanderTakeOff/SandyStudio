@@ -330,6 +330,67 @@ export const POST = withApiHandler(async (req, ctx) => {
     notes: body.note ?? null,
   });
 
+  // 1.5. v2 EREF auto-demote: when APPROVING a v2 EREF candidate, any prior
+  // APPROVED asset for the same (episode_id, shot_id) tuple is REJECTED in
+  // the same logical step (the DB partial unique index in 0024 enforces the
+  // invariant; we sequence the demote BEFORE promote to avoid a 23505 flash).
+  // Two-step sequence with rollback on failure: if the demote succeeds and
+  // the promote fails, restore the demoted asset's prior status.
+  let demotedPriorAssetId: string | null = null;
+  let demotedPriorAssetStatus: string | null = null;
+  const isV2EREFApprove =
+    body.decision === 'APPROVE' &&
+    asset.episode_id &&
+    typeof asset.file_type === 'string' &&
+    asset.file_type.startsWith('IMG-episode_ref') &&
+    isShotReferenceV2(asset.metadata);
+  if (isV2EREFApprove) {
+    const sr = (asset.metadata as { shot_reference: ShotReferenceContract })
+      .shot_reference;
+    const newShotId = sr.shot_id;
+    const { data: existing, error: existingErr } = await supabase
+      .from('assets')
+      .select('id,status,metadata')
+      .eq('episode_id', asset.episode_id)
+      .eq('status', 'APPROVED')
+      .like('file_type', 'IMG-episode_ref%')
+      .neq('id', id);
+    if (existingErr) {
+      throw new Error(`prior-approved fetch failed: ${existingErr.message}`);
+    }
+    const priorForShot = (existing ?? []).find((row) => {
+      const meta = (row as { metadata?: unknown }).metadata;
+      if (!isShotReferenceV2(meta)) return false;
+      return (
+        (meta as { shot_reference: ShotReferenceContract }).shot_reference
+          .shot_id === newShotId
+      );
+    });
+    if (priorForShot) {
+      const priorMetaRaw = (priorForShot as { metadata?: unknown }).metadata as
+        | Record<string, unknown>
+        | null;
+      const newPriorMeta = {
+        ...(priorMetaRaw ?? {}),
+        demoted_reason: `superseded_by_${id}`,
+      };
+      const { error: demoteErr } = await supabase
+        .from('assets')
+        .update({
+          status: 'REJECTED',
+          metadata: newPriorMeta as unknown as Record<string, unknown>,
+        } as never)
+        .eq('id', priorForShot.id);
+      if (demoteErr) {
+        throw new Error(
+          `auto-demote of prior APPROVED ${priorForShot.id} failed: ${demoteErr.message}`,
+        );
+      }
+      demotedPriorAssetId = priorForShot.id;
+      demotedPriorAssetStatus = priorForShot.status as string;
+    }
+  }
+
   // 2. Update asset status
   const patch: Record<string, unknown> = { status: targetStatus };
   if (body.decision === 'REQUEST_REVISION' && body.note) {
@@ -339,7 +400,19 @@ export const POST = withApiHandler(async (req, ctx) => {
     .from('assets')
     .update(patch as never)
     .eq('id', id);
-  if (upErr) throw new Error(`asset status update failed: ${upErr.message}`);
+  if (upErr) {
+    // Best-effort rollback of the auto-demoted asset so the invariant is
+    // preserved even on partial failure. (DB transactions over Supabase JS
+    // require an RPC; sequenced + rollback is the closest we can get
+    // without one — see plan §"Approve transaction".)
+    if (demotedPriorAssetId && demotedPriorAssetStatus) {
+      await supabase
+        .from('assets')
+        .update({ status: demotedPriorAssetStatus } as never)
+        .eq('id', demotedPriorAssetId);
+    }
+    throw new Error(`asset status update failed: ${upErr.message}`);
+  }
 
   // 3. Audit event
   const evtType =
