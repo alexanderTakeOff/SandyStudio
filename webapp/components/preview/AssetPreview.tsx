@@ -21,6 +21,8 @@ import { Download, FileWarning, ExternalLink, CloudOff } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
 import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
+import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 
 const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 
@@ -44,6 +46,8 @@ interface AssetRow {
   version: number | null;
   episode_id: string | null;
   series_id: string | null;
+  /** JSONB metadata (image_prompt, provenance, animatic_v1, shot_reference, …). */
+  metadata: unknown;
 }
 
 interface CanonExtensionEvent {
@@ -68,7 +72,7 @@ function isHttpishUrl(path: string | null): boolean {
 }
 
 export function AssetPreview({ assetId }: AssetPreviewProps) {
-  const { data: meta, error: metaErr } = useSWR<{ data: AssetRow }>(
+  const { data: meta, error: metaErr, mutate } = useSWR<{ data: AssetRow }>(
     `/api/assets/${assetId}`,
     fetcher,
   );
@@ -123,10 +127,25 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
 
       <CanonExtensionsForAsset asset={asset} />
 
-      {cat === 'text' && <TextBody assetId={asset.id} />}
-      {cat === 'image' && <ImageBody asset={asset} />}
-      {cat === 'video' && <VideoBody asset={asset} />}
-      {cat === 'audio' && <AudioBody asset={asset} />}
+      {/* Animatic v1: interactive browser-native player. Takes precedence over
+          the VideoBody fallback so Director gets the player from the activity
+          feed Preview drawer (not just from the EpisodeAssetDrawer in Inbox). */}
+      {asset.file_type.startsWith('VID-animatic') && isAnimaticV1(asset.metadata) ? (
+        <AnimaticPlayer
+          assetId={asset.id}
+          contract={
+            (asset.metadata as { animatic_v1: AnimaticContract }).animatic_v1
+          }
+          onChanged={() => void mutate()}
+        />
+      ) : (
+        <>
+          {cat === 'text' && <TextBody assetId={asset.id} />}
+          {cat === 'image' && <ImageBody asset={asset} />}
+          {cat === 'video' && <VideoBody asset={asset} />}
+          {cat === 'audio' && <AudioBody asset={asset} />}
+        </>
+      )}
       {cat === 'unknown' && (
         <FallbackBody
           message={`Preview unavailable for file type "${asset.file_type}". Download to inspect.`}

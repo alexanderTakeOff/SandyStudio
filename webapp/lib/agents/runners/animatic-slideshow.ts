@@ -15,6 +15,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
+import {
+  buildShotListFromApprovedEREF,
+  newAnimaticContract,
+  type AnimaticContract,
+} from '../../api/animatic-shotlist';
 
 export const ANIMATIC_CONTRACT = 'animatic_slideshow@v1';
 
@@ -64,6 +69,15 @@ export interface AnimaticSlideshowResult {
   contract: typeof ANIMATIC_CONTRACT;
   totalDurationS: number;
   frameCount: number;
+  /**
+   * The browser-native player payload (animatic@v1). When present, the
+   * EpisodeAssetDrawer renders an interactive AnimaticPlayer instead of the
+   * markdown body, and Director can play / pause / edit per-shot duration
+   * without re-rendering. May be null on legacy episodes whose storyboard or
+   * EREF assets do not carry shot_id metadata — in that case the markdown
+   * body is the only viewer.
+   */
+  animaticV1: AnimaticContract | null;
 }
 
 function findApprovedAsset(
@@ -247,7 +261,6 @@ export async function runAnimaticSlideshow(
   args: AnimaticSlideshowRunArgs,
 ): Promise<AnimaticSlideshowResult> {
   const { inputs, supabase: _supabase, episodeCode } = args;
-  void _supabase; // not yet used; will be when music gen lands
 
   const ep = inputs.episode as
     | { episode_code?: string; title_working?: string | null }
@@ -306,6 +319,38 @@ export async function runAnimaticSlideshow(
     `Produced by EXEC-EDIT · ${ANIMATIC_CONTRACT} · slideshow · ` +
     `${frames.length} frames / ${totalDurationS}s · cost $0 (no music yet)`;
 
+  // ── animatic@v1 payload — for browser-native AnimaticPlayer in drawer.
+  // Built via the canonical helper so v2 EREF shot_id matching is used and
+  // the result is structurally identical to what /upload-music and the
+  // /animatic-timing PATCH expect later. Falls back to null if anything
+  // about the episode's assets cannot be resolved deterministically — the
+  // legacy markdown view is still produced and shown.
+  let animaticV1: AnimaticContract | null = null;
+  const episodeId =
+    (inputs.episode as { id?: string } | undefined)?.id ??
+    (inputs as { episode_id?: string }).episode_id;
+  // eslint-disable-next-line no-console
+  console.log('[animatic] v1 build attempt — episodeId:', episodeId, 'frames:', frames.length);
+  if (episodeId) {
+    try {
+      const shotList = await buildShotListFromApprovedEREF(
+        _supabase,
+        episodeId,
+        sbAsset.content,
+      );
+      animaticV1 = newAnimaticContract(shotList);
+      // eslint-disable-next-line no-console
+      console.log('[animatic] v1 BUILT OK — shot_list length:', shotList.length, 'total:', animaticV1.total_duration);
+    } catch (err) {
+      // Logged but non-fatal: legacy markdown view continues to work.
+      // eslint-disable-next-line no-console
+      console.error('[animatic] v1 builder failed (legacy view will show):', err);
+    }
+  } else {
+    // eslint-disable-next-line no-console
+    console.error('[animatic] v1 builder SKIPPED — no episodeId in inputs.episode.id or inputs.episode_id');
+  }
+
   return {
     markdown,
     body,
@@ -314,5 +359,6 @@ export async function runAnimaticSlideshow(
     contract: ANIMATIC_CONTRACT,
     totalDurationS,
     frameCount: frames.length,
+    animaticV1,
   };
 }
