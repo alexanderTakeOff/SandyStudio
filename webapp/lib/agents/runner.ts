@@ -566,6 +566,9 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
                 animatic_kind: 'slideshow_v1',
                 total_duration_s: slide.totalDurationS,
                 frame_count: slide.frameCount,
+                // animatic@v1 — interactive browser-native player payload.
+                // Drawer renders <AnimaticPlayer /> when present.
+                ...(slide.animaticV1 ? { animatic_v1: slide.animaticV1 } : {}),
               },
             },
           };
