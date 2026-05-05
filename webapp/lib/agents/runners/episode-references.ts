@@ -68,6 +68,8 @@ import { MultiImageGenError } from '../providers/image-gen-multi';
 import { readBibleImageAsBase64 } from '../providers/openai-image-edit';
 import { upscaleToFourK, UpscaleError } from '../providers/upscale-fal';
 import { runEREFCheck, type ReviewBibleRef } from './eref-check';
+import { isErefCancelled } from '../../api/eref-cancel';
+import { setPilotState } from '../../api/eref-pilot-state';
 import type {
   EREFReview,
   GenerationAttempt,
