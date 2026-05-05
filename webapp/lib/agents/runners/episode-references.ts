@@ -665,11 +665,37 @@ export async function runEpisodeReferences(
   const provider = getImageGenMultiProvider(effectiveProviderId);
 
   // ── Build shot jobs ────────────────────────────────────────────────────────
-  const jobs = await buildShotJobs(shots, bible);
-  if (jobs.length === 0) {
+  const allJobs = await buildShotJobs(shots, bible);
+  if (allJobs.length === 0) {
     throw new EpisodeReferencesError(
       'Could not derive any per-shot jobs (likely Bible canon mismatch with storyboard)',
     );
+  }
+
+  // ── Pilot/fan-out slicing (technology.md §4) ──────────────────────────────
+  // pilot_count: pick first N representative shots and stop after them.
+  // start_index: skip first N shots (already done in pilot pass) and finish.
+  // Neither: process every job (legacy behaviour).
+  let jobs: ShotJob[];
+  if (pilot_count !== undefined && pilot_count > 0) {
+    const pilotShots = pickPilotShots(
+      allJobs.map((j) => j.shot),
+      pilot_count,
+    );
+    const pilotIds = new Set(pilotShots.map((s) => s.shot_id));
+    jobs = allJobs.filter((j) => pilotIds.has(j.shot.shot_id));
+  } else if (start_index !== undefined && start_index > 0) {
+    // Build the same pilot list to skip exactly the same shots that the
+    // pilot pass already generated (rather than blindly slicing the first N
+    // — pickPilotShots may pick non-contiguous indexes).
+    const pilotShots = pickPilotShots(
+      allJobs.map((j) => j.shot),
+      start_index,
+    );
+    const skipIds = new Set(pilotShots.map((s) => s.shot_id));
+    jobs = allJobs.filter((j) => !skipIds.has(j.shot.shot_id));
+  } else {
+    jobs = allJobs;
   }
 
   // ── Find next version starting point per file_type ────────────────────────
