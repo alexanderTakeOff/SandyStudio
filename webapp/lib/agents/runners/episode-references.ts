@@ -591,6 +591,18 @@ export interface EpisodeReferencesRunArgs {
   inputs: AgentInputs;
   supabase: SupabaseClient<Database>;
   episodeCode?: string;
+  /**
+   * Pilot Pass mode (technology.md §4): generate only the first `pilot_count`
+   * representative shots. After success, sets `eref_pilot_state=PENDING_REVIEW`.
+   * Mutually exclusive with `start_index`.
+   */
+  pilot_count?: number;
+  /**
+   * Fan-out mode: skip the first `start_index` shots (already produced by
+   * the pilot pass) and run the rest. After success, sets
+   * `eref_pilot_state=FANOUT_COMPLETE`. Mutually exclusive with `pilot_count`.
+   */
+  start_index?: number;
 }
 
 export async function runEpisodeReferences(
