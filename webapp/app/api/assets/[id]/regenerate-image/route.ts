@@ -455,17 +455,49 @@ export const POST = withApiHandler(async (req, ctx) => {
     prompt: promptToSend,
     source: 'director_edit',
     at: nowIso,
-    cost_usd: real.cost_usd,
+    cost_usd: realCost,
     staging_path: persisted.browserUrl,
     drive_file_id: persisted.driveFileId,
     drive_web_view_url: persisted.driveWebViewUrl,
-    width: real.width,
-    height: real.height,
+    width: realWidth,
+    height: realHeight,
     quality: body.quality ?? 'medium',
     mode_at_time: decision.modeAtTime,
     style_check_verdict: styleVerdict,
     style_check_rewritten: styleRewritten,
   };
+
+  // For v2 EREF: append a new entry to shot_reference.generation_history
+  // alongside the legacy image_prompt.history. Both fields are kept in sync
+  // until the legacy renderer is retired.
+  let updatedShotReference: ShotReferenceContract | null = null;
+  if (isV2 && v2Sr) {
+    const v2Attempt: GenerationAttempt = {
+      version:
+        (v2Sr.generation_history[v2Sr.generation_history.length - 1]?.version ??
+          0) + 1,
+      provider_id: realProviderId,
+      model: realModel,
+      prompt: promptToSend,
+      references_used: v2RefsUsed,
+      strength: null,
+      cost_usd: realCost,
+      image_url: persisted.browserUrl,
+      drive_file_id: persisted.driveFileId,
+      drive_web_view_url: persisted.driveWebViewUrl,
+      width: realWidth,
+      height: realHeight,
+      is_4k: realWidth >= 3840 || realHeight >= 3840,
+      at: nowIso,
+      triggered_by: 'director_edit',
+      mode_at_time: decision.modeAtTime,
+    };
+    updatedShotReference = {
+      ...v2Sr,
+      contract: SHOT_REFERENCE_CONTRACT,
+      generation_history: [...v2Sr.generation_history, v2Attempt],
+    };
+  }
 
   const newMeta: AssetMetadataDoc = {
     ...meta,
@@ -486,6 +518,9 @@ export const POST = withApiHandler(async (req, ctx) => {
           at: nowIso,
           modeAtTime: decision.modeAtTime,
         }),
+    ...(updatedShotReference
+      ? ({ shot_reference: updatedShotReference } as Record<string, unknown>)
+      : {}),
   };
 
   const upd = await sb
