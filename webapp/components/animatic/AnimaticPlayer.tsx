@@ -258,6 +258,38 @@ export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerP
     }
   }, [assetId, onChanged, overrides]);
 
+  // ── Approve / Reject — fires the same /approve route the drawer footer uses,
+  // which in turn triggers `computeNextEvents` to emit VGEN×3 + MGEN events
+  // (see approve/route.ts line ~212). In Mode 4 the factory auto-approves
+  // animatic on creation so this UI path is exercised only in Mode 1-3.
+  const [approving, setApproving] = useState<null | 'APPROVE' | 'REJECT'>(null);
+  const postDecision = useCallback(
+    async (decision: 'APPROVE' | 'REJECT', note?: string) => {
+      setApproving(decision);
+      setError(null);
+      try {
+        const body: Record<string, unknown> = { decision, directorConfirm: true };
+        if (decision === 'APPROVE') body.preview_acknowledged = true;
+        if (note) body.note = note;
+        const res = await fetch(`/api/assets/${assetId}/approve`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error((j as { error?: string }).error ?? `${decision} failed`);
+        }
+        onChanged();
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setApproving(null);
+      }
+    },
+    [assetId, onChanged],
+  );
+
   // ── Music upload ─────────────────────────────────────────────────────────
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
