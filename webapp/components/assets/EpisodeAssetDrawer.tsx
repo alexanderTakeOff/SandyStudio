@@ -463,6 +463,71 @@ export function EpisodeAssetDrawer({
             </div>
           )}
 
+          {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Candidates ── */}
+          {isV2 && shotRef && (
+            <>
+              <TestPlanCard shotRef={shotRef} />
+              <VerdictPill review={shotRef.review} />
+              <ScoreBars review={shotRef.review} />
+              {shotRef.review && <IssuesList issues={shotRef.review.issues} />}
+              <CandidatesStrip
+                currentAssetId={asset.id}
+                candidates={siblingCandidates.map((a) => ({
+                  id: a.id,
+                  filename: a.filename,
+                  status: a.status,
+                  staging_path: a.staging_path,
+                  drive_path: a.drive_path,
+                  drive_web_view_url: a.drive_web_view_url,
+                  metadata: a.metadata as never,
+                }))}
+                onPick={(id) => onPickAsset?.(id)}
+              />
+            </>
+          )}
+
+          {/* Markdown content rendering — applies to all assets when content is non-empty */}
+          {asset.content && asset.content.trim().length > 0 && (
+            <AssetCollapsibleSection
+              open={contentMdOpen}
+              onToggle={() => setContentMdOpen((v) => !v)}
+              label="Notes (markdown)"
+              meta={`${asset.content.split('\n').length} lines`}
+            >
+              <article
+                className="prose prose-sm max-w-none rounded-lg p-3 border border-glass"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+              >
+                <ReactMarkdown
+                  components={{
+                    h1: ({ children }) => (
+                      <h1 className="text-base font-semibold mt-1 mb-2 text-text-primary">{children}</h1>
+                    ),
+                    h2: ({ children }) => (
+                      <h2 className="text-sm font-semibold mt-2 mb-1.5 text-text-primary">{children}</h2>
+                    ),
+                    h3: ({ children }) => (
+                      <h3 className="text-xs font-semibold mt-1.5 mb-1 text-text-primary">{children}</h3>
+                    ),
+                    p: ({ children }) => (
+                      <p className="text-xs text-text-secondary leading-relaxed my-1.5">{children}</p>
+                    ),
+                    ul: ({ children }) => (
+                      <ul className="list-disc pl-5 text-xs text-text-secondary my-1.5">{children}</ul>
+                    ),
+                    code: ({ children }) => (
+                      <code className="px-1 py-0.5 rounded text-[10px] font-mono bg-[var(--panel-glass-strong-bg)]">
+                        {children}
+                      </code>
+                    ),
+                  }}
+                >
+                  {asset.content}
+                </ReactMarkdown>
+              </article>
+            </AssetCollapsibleSection>
+          )}
+
           <AssetCollapsibleSection
             open={summaryOpen}
             onToggle={() => setSummaryOpen((v) => !v)}
