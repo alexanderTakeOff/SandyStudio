@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { AlertTriangle, Inbox as InboxIcon, Filter, Keyboard } from 'lucide-react';
+import { AlertTriangle, Inbox as InboxIcon, Filter, Keyboard, ExternalLink } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -17,6 +17,7 @@ import {
   InboxNotePromptModal,
   type InboxNoteDecision,
 } from '@/components/inbox/InboxNotePromptModal';
+import { EpisodeAssetDrawer, type EpisodeAsset } from '@/components/assets/EpisodeAssetDrawer';
 
 interface InboxItem {
   id: string;
