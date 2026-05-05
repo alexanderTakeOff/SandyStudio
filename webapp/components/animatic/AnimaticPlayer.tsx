@@ -83,7 +83,7 @@ function fmt(t: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerProps): JSX.Element {
+export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerProps) {
   // Local copy of overrides so Director can edit live without round-tripping
   // to DB on every click. Saved via Save Timing button.
   const [overrides, setOverrides] = useState<Record<string, AnimaticDirectorOverride>>(
