@@ -18,6 +18,7 @@ import { StageKebabMenu } from '@/components/pipeline/StageKebabMenu';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { EpisodeReferencesGallery } from '@/components/episode/EpisodeReferencesGallery';
+import { EREFPilotPillbar } from '@/components/pipeline/EREFPilotPillbar';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { fetcher } from '@/lib/swr';
 
