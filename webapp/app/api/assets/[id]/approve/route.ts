@@ -28,6 +28,17 @@ const ApproveBody = z.object({
   note: z.string().max(2000).optional(),
   preview_acknowledged: z.boolean().optional(),  // visual gate flag
   directorConfirm: z.boolean().optional(),
+  /**
+   * v2 EREF-only options. `skip_upscale=true` suppresses the
+   * `sandystudio/exec-eref/upscale-final` event after APPROVE — useful when
+   * the asset is already 4K, when the shot's stylization doesn't benefit
+   * (technology.md §3), or when Director wants to defer upscaling cost.
+   */
+  eref_options: z
+    .object({
+      skip_upscale: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 const VISUAL_FILE_TYPES: ReadonlySet<string> = new Set(['IMG', 'VID']);
