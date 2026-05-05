@@ -8,16 +8,23 @@
 //   3 — DELEGATED EXEC-DIR-AI handles everything except hard limits
 //   4 — AUTOTEST  All gates auto-pass (pipeline testing only)
 //
-// Hard limits in CLAUDE.md §6 — Director always, in ALL modes:
+// Hard limits (Category A) — Director always, in ALL modes:
 //   PUBLISH · LOCK · BUDGET · MODE_CHANGE
 //
-// Phase 4 enforces ONLY the PUBLISH hard limit. Per the approved plan
-// (phase-4-jiggly-wave.md §4.4): all other agents call enforceMode() but it
-// returns {passed: true} for everything except PUBLISH. Full Approval
-// Authority Matrix is wired up in Phase 7 via the wizard.
+// Category B — creative gates (REGENERATE_IMAGE, ENRICH_ASSET, AGENT_RUN, …)
+//   Mode 1: blocked without directorConfirm
+//   Mode 2-3: auto-allowed (EXEC-DIR-AI / pipeline can fire)
+//   Mode 4: auto-allowed
+//
+// Category C — autonomous / direct Director input (UPLOAD_ASSET, EDIT_DESCRIPTION)
+//   Always allowed regardless of mode
+//
+// The enforceMode() return shape is the foundation EXEC-ORCH (deferred slice)
+// will plug into to drive auto-actions.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import type { GovernanceAction } from './agents/types';
+import type { ActionCategory, GovernanceAction } from './agents/types';
+import type { GovernanceModeNum } from './api/series-bible';
 
 /** Episode shape needed by governance — matches Supabase row partial. */
 export interface GovernanceEpisode {
@@ -31,14 +38,42 @@ export interface GovernanceContext {
   directorConfirm?: boolean;
   /** Identifier of the human/agent that confirmed, for audit trail. */
   confirmedBy?: string;
+  /**
+   * Actor making the request — used by future EXEC-ORCH to call enforceMode
+   * with `actor='EXEC-ORCH'`. Same gate decides whether ORCH may auto-fire.
+   */
+  actor?: string;
 }
 
 export interface GovernanceDecision {
+  /** True when the action is permitted to proceed. */
+  allowed: boolean;
+  /** Backward-compat alias for `allowed` — older callers read this. */
   passed: boolean;
+  /**
+   * True when only an explicit Director confirmation can permit this action.
+   * UI uses this to render confirm dialogs / disabled buttons.
+   */
+  requiresDirector: boolean;
+  /**
+   * True when the system (pipeline / EXEC-ORCH) may fire this without Director.
+   * False for Category A always; for B in Mode 1; for C only when context lacks actor.
+   */
+  autoFireAllowed: boolean;
+  /** Governance mode at the moment of the call — stamped into provenance + activity events. */
+  modeAtTime: GovernanceModeNum;
+  /** Category this action falls into. Useful for UI grouping. */
+  category: ActionCategory;
   /** Single human-readable reason if blocked. UI shows this verbatim. */
   reason?: string;
   /** Machine-readable code for activity_events metadata. */
-  code?: 'mode_4_autotest' | 'director_confirmed' | 'no_director_confirm' | 'category_c_autonomous';
+  code?:
+    | 'mode_4_autotest'
+    | 'director_confirmed'
+    | 'no_director_confirm'
+    | 'category_c_autonomous'
+    | 'category_b_pipeline_auto'
+    | 'category_a_hard_limit';
 }
 
 /** Thrown by callers when they want a hard NonRetriableError instead of a soft pass-through. */
@@ -52,47 +87,134 @@ export class GovernanceError extends Error {
 }
 
 /**
+ * Action → category map. Single source of truth.
+ *
+ * Note on AGENT_RUN: it's category C because pipeline downstream agents
+ * fire as a *consequence* of a Director-approved gate upstream — the
+ * approval IS the Mode-1 confirmation. Strict B-level recheck on every
+ * downstream agent would defeat the auto-fanout pattern. Director-initiated
+ * ad-hoc actions (REGENERATE_IMAGE, ENRICH_ASSET) ARE category B.
+ */
+const ACTION_CATEGORY: Record<GovernanceAction, ActionCategory> = {
+  PUBLISH: 'A',
+  LOCK: 'A',
+  BUDGET_OVERRIDE: 'A',
+  MODE_CHANGE: 'A',
+  AGENT_RUN: 'C',
+  REGENERATE_IMAGE: 'B',
+  ENRICH_ASSET: 'B',
+  UPLOAD_ASSET: 'C',
+  EDIT_DESCRIPTION: 'C',
+};
+
+export function categoryFor(action: GovernanceAction): ActionCategory {
+  return ACTION_CATEGORY[action];
+}
+
+/**
  * Decide whether `action` is allowed for `episode` given the event context.
  *
- * Phase 4 contract:
- *   - action='PUBLISH' + Mode 1/2/3 + no directorConfirm → BLOCKED
- *   - action='PUBLISH' + Mode 4 (AUTOTEST)              → PASSED
- *   - action='PUBLISH' + directorConfirm=true           → PASSED
- *   - all other actions                                 → PASSED (Phase 7 expands this)
+ * Returns a structured decision the caller branches on — see GovernanceDecision.
+ * Note: legacy `passed` field kept as alias of `allowed` for back-compat.
  */
 export function enforceMode(
   action: GovernanceAction,
   episode: GovernanceEpisode,
-  context: GovernanceContext = {}
+  context: GovernanceContext = {},
 ): GovernanceDecision {
-  // Mode 4 AUTOTEST short-circuits everything for CI smoke tests.
-  if (episode.governance_mode === 4) {
+  const mode = (episode.governance_mode as GovernanceModeNum) ?? 1;
+  const category = categoryFor(action);
+
+  // Mode 4 AUTOTEST short-circuits everything (CI smoke tests).
+  if (mode === 4) {
     return {
+      allowed: true,
       passed: true,
+      requiresDirector: false,
+      autoFireAllowed: true,
+      modeAtTime: 4,
+      category,
       code: 'mode_4_autotest',
     };
   }
 
-  if (action === 'PUBLISH') {
+  // Category C — always allowed (uploads, free-text edits). Director's direct input.
+  if (category === 'C') {
+    return {
+      allowed: true,
+      passed: true,
+      requiresDirector: false,
+      autoFireAllowed: false, // C is human-initiated by definition; auto-fire makes no sense
+      modeAtTime: mode,
+      category,
+      code: 'category_c_autonomous',
+    };
+  }
+
+  // Category A — hard limit. Always requires explicit director confirm. Auto-fire never allowed (except Mode 4 above).
+  if (category === 'A') {
     if (context.directorConfirm === true) {
       return {
+        allowed: true,
         passed: true,
+        requiresDirector: false,
+        autoFireAllowed: false,
+        modeAtTime: mode,
+        category,
         code: 'director_confirmed',
       };
     }
     return {
+      allowed: false,
       passed: false,
+      requiresDirector: true,
+      autoFireAllowed: false,
+      modeAtTime: mode,
+      category,
       reason:
-        `PUBLISH blocked: episode ${episode.id} is in Mode ${episode.governance_mode} ` +
-        `and event payload missing directorConfirm: true. ` +
-        `Hard limit per CLAUDE.md §6 — Director must explicitly confirm publish.`,
+        `${action} is a hard limit per CLAUDE.md §6 — Director must explicitly confirm. ` +
+        `Episode ${episode.id} is in Mode ${mode}. Click the confirmation button in the UI.`,
       code: 'no_director_confirm',
     };
   }
 
-  // All other actions in Phase 4: pass-through. Phase 7 wires the full matrix.
+  // Category B — creative gates. Mode-dependent.
+  // Mode 1 MANUAL: Director must confirm.
+  // Mode 2-3: pipeline / EXEC-DIR-AI may auto-fire.
+  if (mode === 1) {
+    if (context.directorConfirm === true) {
+      return {
+        allowed: true,
+        passed: true,
+        requiresDirector: false,
+        autoFireAllowed: false,
+        modeAtTime: 1,
+        category,
+        code: 'director_confirmed',
+      };
+    }
+    return {
+      allowed: false,
+      passed: false,
+      requiresDirector: true,
+      autoFireAllowed: false,
+      modeAtTime: 1,
+      category,
+      reason:
+        `${action} requires Director confirmation in Mode 1 (MANUAL). ` +
+        `Click the action button in the UI to confirm.`,
+      code: 'no_director_confirm',
+    };
+  }
+
+  // Mode 2-3 — pipeline-driven; allow auto-fire.
   return {
+    allowed: true,
     passed: true,
-    code: 'category_c_autonomous',
+    requiresDirector: false,
+    autoFireAllowed: true,
+    modeAtTime: mode,
+    category,
+    code: 'category_b_pipeline_auto',
   };
 }

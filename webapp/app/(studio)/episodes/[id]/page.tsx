@@ -17,6 +17,8 @@ import { Modal } from '@/components/ui/Modal';
 import { StageKebabMenu } from '@/components/pipeline/StageKebabMenu';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
 import { EditorModal } from '@/components/editor/EditorModal';
+import { EpisodeReferencesGallery } from '@/components/episode/EpisodeReferencesGallery';
+import { EREFPilotPillbar } from '@/components/pipeline/EREFPilotPillbar';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { fetcher } from '@/lib/swr';
 
@@ -327,6 +329,21 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                 </button>
               )}
             </div>
+
+            {/* When the selected stage is Episode references — render the gallery
+                in place of (or above) the activity feed. Director's request:
+                small thumbnails, click → Drawer with ← back. */}
+            {selectedStage === 'episode_references' && (
+              <div className="mb-3 space-y-3">
+                <EREFPilotPillbar
+                  episodeId={id}
+                  stageRunning={
+                    stages.find((s) => s.id === 'episode_references')?.state === 'running'
+                  }
+                />
+                <EpisodeReferencesGallery episodeId={id} seriesId={episode.series_id} />
+              </div>
+            )}
 
             {filtered.length === 0 && (
               <p className="text-sm text-text-secondary">

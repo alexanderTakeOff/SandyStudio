@@ -20,6 +20,7 @@ import {
   AnthropicTextError,
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
+import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
 
 export const SREV_CONTRACT = 'script_reviewer@v1';
@@ -98,9 +99,13 @@ function buildUserMessage(args: {
   briefContent: string;
   scriptContent: string;
   scriptVersion: number;
-  missingInputs: readonly string[];
+  bible: SeriesBibleCanon;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, missingInputs } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible } = args;
+  const biblePromptBlock = formatBibleForPrompt(bible);
+  const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
+  const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
+  const locationSlugs = bible.locations.map((l) => l.slug).filter(Boolean);
   return [
     '# Task',
     `Review the screenplay below against its brief and report a verdict for episode ${episodeCode} — "${episodeTitle}".`,
@@ -117,12 +122,21 @@ function buildUserMessage(args: {
     scriptContent,
     '</script>',
     '',
-    '## MVP context — missing upstream inputs',
+    hasCanon
+      ? biblePromptBlock
+      : [
+          '## MVP context — Series Bible empty',
+          '',
+          'No LOCKED Series Bible entries exist for this series. Review against the brief alone. Where you would normally check Style Bible / World Bible / Character Profiles, instead flag any concern as an issue with `area: brief_alignment` and a recommendation that the relevant bible be created.',
+        ].join('\n'),
     '',
-    'These inputs your role normally consults are NOT YET PROVISIONED:',
-    ...missingInputs.map((m) => `- ${m}`),
-    '',
-    'Per Director\'s decision: review against the brief alone. Where you would normally check Style Bible / World Bible / Character Profiles, instead flag any concern as an issue with `area: brief_alignment` and a recommendation that the relevant bible be created.',
+    hasCanon
+      ? [
+          '## Bible-driven review checks',
+          '',
+          `When checking the script, verify it uses ONLY the Bible canon slugs for characters (${characterSlugs.join(', ') || '(none)'}) and locations (${locationSlugs.join(', ') || '(none)'}). Flag any character or location not present in the canon as a `+'`world_consistency`'+` issue. Verify character behaviour and visual references are consistent with their LOCKED Bible descriptions above.`,
+        ].join('\n')
+      : '',
     '',
     '## Output format',
     '',
@@ -207,13 +221,23 @@ export async function runScriptReviewer(
     );
   }
 
-  const missingInputs: string[] = [];
-  if (!findApprovedAsset(upstream, 'BIB-style'))
-    missingInputs.push('Style Bible (BIB-style) — not yet provisioned');
-  if (!findApprovedAsset(upstream, 'BIB-world'))
-    missingInputs.push('World Bible (BIB-world) — not yet provisioned');
-  if (!findApprovedAsset(upstream, 'BIB-character'))
-    missingInputs.push('Character Profiles (BIB-character) — not yet provisioned');
+  const bible = (inputs.bible as SeriesBibleCanon | undefined) ?? {
+    series_id: null,
+    general_idea: null,
+    characters: [],
+    locations: [],
+    styles: [],
+    total_entries: 0,
+  };
+
+  const notes: string[] = [];
+  if (bible.total_entries === 0 && !bible.general_idea) {
+    notes.push('Series Bible empty — reviewing against brief alone (MVP mode)');
+  } else {
+    notes.push(
+      `Series Bible canon loaded: ${bible.characters.length} characters, ${bible.locations.length} locations, ${bible.styles.length} styles`,
+    );
+  }
 
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
@@ -222,7 +246,7 @@ export async function runScriptReviewer(
     briefContent: briefAsset.content,
     scriptContent: scriptAsset.content,
     scriptVersion: scriptAsset.version ?? 1,
-    missingInputs,
+    bible,
   });
 
   let result: AnthropicTextResult;
@@ -265,6 +289,6 @@ export async function runScriptReviewer(
     briefAssetId: briefAsset.id ?? null,
     scriptAssetId: scriptAsset.id ?? null,
     description,
-    notes: missingInputs,
+    notes,
   };
 }

@@ -120,6 +120,8 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
   // Agents below have no Inngest function — gate is informational only.
   'EXEC-STY': { required: [], governance: 'AGENT_RUN' },
   'EXEC-BIBLE-AUTHOR': { required: [], governance: 'AGENT_RUN' },
+  'EXEC-STYLE-CHECK': { required: [], governance: 'AGENT_RUN' },
+  'EXEC-EREF-CHECK': { required: [], governance: 'AGENT_RUN' },
   'EXEC-ARCH': { required: [], governance: 'AGENT_RUN' },
   'EXEC-ORCH': { required: [], governance: 'AGENT_RUN' },
   'EXEC-CONC': { required: [], governance: 'AGENT_RUN' },

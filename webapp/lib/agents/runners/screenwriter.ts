@@ -20,6 +20,7 @@ import {
   AnthropicTextError,
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
+import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
 
 export const SCREENWRITER_CONTRACT = 'screenwriter@v1';
@@ -99,10 +100,14 @@ function buildUserMessage(args: {
   episodeCode: string;
   episodeTitle: string;
   briefContent: string;
-  missingInputs: readonly string[];
+  bible: SeriesBibleCanon;
   revisionNote?: string;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, missingInputs, revisionNote } = args;
+  const { episodeCode, episodeTitle, briefContent, bible, revisionNote } = args;
+  const biblePromptBlock = formatBibleForPrompt(bible);
+  const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
+  const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
+  const locationSlugs = bible.locations.map((l) => l.slug).filter(Boolean);
   return [
     '# Task',
     `Write the screenplay for episode ${episodeCode} — "${episodeTitle}".`,
@@ -113,12 +118,13 @@ function buildUserMessage(args: {
     briefContent,
     '</brief>',
     '',
-    '## MVP context — missing upstream inputs',
-    '',
-    'The following inputs that your role normally requires are NOT YET PROVISIONED in this MVP step:',
-    ...missingInputs.map((m) => `- ${m}`),
-    '',
-    'Per Director\'s decision: proceed using ONLY the brief above. Do not invent series-level canon (no character backstories, no world rules) beyond what the brief states. Where you would normally consult a Style Bible / World Bible / Character Profile, instead derive minimal episode-local choices from the brief — and list each such choice in the `assumptions[]` array of the JSON block. The Director will validate them and decide which become canonical in a later step.',
+    hasCanon
+      ? biblePromptBlock
+      : [
+          '## MVP context — Series Bible empty',
+          '',
+          'No LOCKED Series Bible entries exist for this series yet. Proceed using ONLY the brief above. Do not invent series-level canon (no character backstories, no world rules) beyond what the brief states. Where you would normally consult a Style Bible / World Bible / Character Profile, instead derive minimal episode-local choices from the brief — and list each such choice in the `assumptions[]` array of the JSON block. The Director will validate them and decide which become canonical in a later step.',
+        ].join('\n'),
     '',
     revisionNote
       ? [
@@ -154,13 +160,19 @@ function buildUserMessage(args: {
     '  "episode_id": "<uuid or episode_code>",',
     '  "title": "<episode title>",',
     '  "runtime_target_seconds": <integer>,',
-    '  "assumptions": ["<each MVP assumption you made because Style/World/Character bibles are missing>"],',
+    hasCanon
+      ? '  "assumptions": ["<minor episode-local choices not covered by Series Bible canon>"],'
+      : '  "assumptions": ["<each MVP assumption you made because Series Bible is empty>"],',
     '  "scenes": [',
     '    {',
     '      "scene_id": "<episode_code>-A<N>-SC<NN>",',
     '      "act": <integer>,',
-    '      "characters": ["<character name from brief>"],',
-    '      "location": "<location name from brief>",',
+    hasCanon
+      ? `      "characters": ["<Bible character slug — one of: ${characterSlugs.join(', ') || '(none)'}>"]`
+      : '      "characters": ["<character name from brief>"],',
+    hasCanon
+      ? `      "location": "<Bible location slug — one of: ${locationSlugs.join(', ') || '(none)'} — optionally followed by sub-area, e.g. \\"neon_cafe — entrance\\">",`
+      : '      "location": "<location name from brief>",',
     '      "action": "<one short paragraph of visual action>",',
     '      "beats": ["<beat from brief that this scene delivers>"],',
     '      "duration_seconds": <integer>',
@@ -170,7 +182,12 @@ function buildUserMessage(args: {
     '```',
     '',
     'Hard rules:',
-    '- Use only characters and locations the brief explicitly mentions.',
+    hasCanon
+      ? `- Use ONLY the Bible canon slugs in \`characters[]\` and \`location\`. Available characters: ${characterSlugs.join(', ') || '(none)'}. Available locations: ${locationSlugs.join(', ') || '(none)'}. Do not invent new characters or locations.`
+      : '- Use only characters and locations the brief explicitly mentions.',
+    hasCanon
+      ? '- Every character description in your prose MUST be consistent with the Series Bible canon above. Do not contradict canonical appearance, behaviour, or backstory.'
+      : '',
     '- For visual comedy MVP: action lines, no dialogue (unless the brief explicitly asks for dialogue).',
     '- Every mandatory beat from the brief\'s "Key beats" section MUST appear in at least one scene\'s `beats[]`.',
     '- Total of `duration_seconds` across all scenes ≈ runtime_target_seconds (within 10%).',
@@ -206,20 +223,30 @@ export async function runScreenwriter(
     );
   }
 
-  const missingInputs: string[] = [];
-  if (!findApprovedAsset(upstream, 'BIB-style'))
-    missingInputs.push('Style Bible (BIB-style) — not yet provisioned');
-  if (!findApprovedAsset(upstream, 'BIB-world'))
-    missingInputs.push('World Bible (BIB-world) — not yet provisioned');
-  if (!findApprovedAsset(upstream, 'BIB-character'))
-    missingInputs.push('Character Profiles (BIB-character) — not yet provisioned');
+  const bible = (inputs.bible as SeriesBibleCanon | undefined) ?? {
+    series_id: null,
+    general_idea: null,
+    characters: [],
+    locations: [],
+    styles: [],
+    total_entries: 0,
+  };
+
+  const notes: string[] = [];
+  if (bible.total_entries === 0 && !bible.general_idea) {
+    notes.push('Series Bible empty — proceeding in MVP mode without canon');
+  } else {
+    notes.push(
+      `Series Bible canon loaded: ${bible.characters.length} characters, ${bible.locations.length} locations, ${bible.styles.length} styles`,
+    );
+  }
 
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
     episodeCode,
     episodeTitle,
     briefContent: briefAsset.content,
-    missingInputs,
+    bible,
     revisionNote,
   });
 
@@ -262,6 +289,6 @@ export async function runScreenwriter(
     contract: SCREENWRITER_CONTRACT,
     briefAssetId: briefAsset.id ?? null,
     description,
-    notes: missingInputs,
+    notes,
   };
 }

@@ -15,6 +15,10 @@ import { NotFoundError, ValidationError, ConflictError, GovernanceBlockError } f
 import { assertAssetTransition, type AssetStatus } from '@/lib/api/status-transitions';
 import { enforceMode, type GovernanceEpisode } from '@/lib/governance';
 import { inngest, type StudioEventName } from '@/lib/inngest/client';
+import {
+  isShotReferenceV2,
+  type ShotReferenceContract,
+} from '@/lib/api/shot-reference';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +28,17 @@ const ApproveBody = z.object({
   note: z.string().max(2000).optional(),
   preview_acknowledged: z.boolean().optional(),  // visual gate flag
   directorConfirm: z.boolean().optional(),
+  /**
+   * v2 EREF-only options. `skip_upscale=true` suppresses the
+   * `sandystudio/exec-eref/upscale-final` event after APPROVE — useful when
+   * the asset is already 4K, when the shot's stylization doesn't benefit
+   * (technology.md §3), or when Director wants to defer upscaling cost.
+   */
+  eref_options: z
+    .object({
+      skip_upscale: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 const VISUAL_FILE_TYPES: ReadonlySet<string> = new Set(['IMG', 'VID']);
@@ -52,6 +67,8 @@ type AssetForChain = {
   episode_id: string | null;
   /** Approval timestamp — used as the "since" floor for idempotency. */
   updated_at?: string | null;
+  /** Optional metadata — used to detect v2 EREF contract for chain skip. */
+  metadata?: unknown;
 };
 
 type SupabaseClientLike = Awaited<ReturnType<typeof requireDirector>>['supabase'];
@@ -175,11 +192,20 @@ async function computeNextEvents(
   }
 
   // ── Episode references APPROVED → EXEC-EDIT (animatic)
+  // EREF v2 (Pilot+Fanout, technology.md §4): per-shot approvals must NOT
+  // auto-fire the animatic — Director uses the explicit "Advance to Animatic"
+  // button (POST /api/episodes/[id]/eref/advance) once all shots have an
+  // approved variant. We detect the v2 contract on the asset metadata and
+  // skip the auto-fan-out branch in that case. Legacy v1 assets keep the
+  // old chain behaviour for backwards compatibility.
   if (ft.startsWith('IMG-episode_ref') && !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))) {
-    events.push({
-      name: 'sandystudio/exec-edit/create-animatic',
-      data: { episodeId: ep, storyboardAssetIds: [] },
-    });
+    const isV2 = isShotReferenceV2((asset as { metadata?: unknown }).metadata);
+    if (!isV2) {
+      events.push({
+        name: 'sandystudio/exec-edit/create-animatic',
+        data: { episodeId: ep, storyboardAssetIds: [] },
+      });
+    }
   }
 
   // ── Animatic APPROVED → fan-out EXEC-VGEN×3 + EXEC-MGEN×1
@@ -315,6 +341,67 @@ export const POST = withApiHandler(async (req, ctx) => {
     notes: body.note ?? null,
   });
 
+  // 1.5. v2 EREF auto-demote: when APPROVING a v2 EREF candidate, any prior
+  // APPROVED asset for the same (episode_id, shot_id) tuple is REJECTED in
+  // the same logical step (the DB partial unique index in 0024 enforces the
+  // invariant; we sequence the demote BEFORE promote to avoid a 23505 flash).
+  // Two-step sequence with rollback on failure: if the demote succeeds and
+  // the promote fails, restore the demoted asset's prior status.
+  let demotedPriorAssetId: string | null = null;
+  let demotedPriorAssetStatus: string | null = null;
+  const isV2EREFApprove =
+    body.decision === 'APPROVE' &&
+    asset.episode_id &&
+    typeof asset.file_type === 'string' &&
+    asset.file_type.startsWith('IMG-episode_ref') &&
+    isShotReferenceV2(asset.metadata);
+  if (isV2EREFApprove && asset.episode_id) {
+    const sr = (asset.metadata as unknown as { shot_reference: ShotReferenceContract })
+      .shot_reference;
+    const newShotId = sr.shot_id;
+    const { data: existing, error: existingErr } = await supabase
+      .from('assets')
+      .select('id,status,metadata')
+      .eq('episode_id', asset.episode_id)
+      .eq('status', 'APPROVED')
+      .like('file_type', 'IMG-episode_ref%')
+      .neq('id', id);
+    if (existingErr) {
+      throw new Error(`prior-approved fetch failed: ${existingErr.message}`);
+    }
+    const priorForShot = (existing ?? []).find((row) => {
+      const meta = (row as { metadata?: unknown }).metadata;
+      if (!isShotReferenceV2(meta)) return false;
+      return (
+        (meta as { shot_reference: ShotReferenceContract }).shot_reference
+          .shot_id === newShotId
+      );
+    });
+    if (priorForShot) {
+      const priorMetaRaw = (priorForShot as { metadata?: unknown }).metadata as
+        | Record<string, unknown>
+        | null;
+      const newPriorMeta = {
+        ...(priorMetaRaw ?? {}),
+        demoted_reason: `superseded_by_${id}`,
+      };
+      const { error: demoteErr } = await supabase
+        .from('assets')
+        .update({
+          status: 'REJECTED',
+          metadata: newPriorMeta as unknown as Record<string, unknown>,
+        } as never)
+        .eq('id', priorForShot.id);
+      if (demoteErr) {
+        throw new Error(
+          `auto-demote of prior APPROVED ${priorForShot.id} failed: ${demoteErr.message}`,
+        );
+      }
+      demotedPriorAssetId = priorForShot.id;
+      demotedPriorAssetStatus = priorForShot.status as string;
+    }
+  }
+
   // 2. Update asset status
   const patch: Record<string, unknown> = { status: targetStatus };
   if (body.decision === 'REQUEST_REVISION' && body.note) {
@@ -324,7 +411,19 @@ export const POST = withApiHandler(async (req, ctx) => {
     .from('assets')
     .update(patch as never)
     .eq('id', id);
-  if (upErr) throw new Error(`asset status update failed: ${upErr.message}`);
+  if (upErr) {
+    // Best-effort rollback of the auto-demoted asset so the invariant is
+    // preserved even on partial failure. (DB transactions over Supabase JS
+    // require an RPC; sequenced + rollback is the closest we can get
+    // without one — see plan §"Approve transaction".)
+    if (demotedPriorAssetId && demotedPriorAssetStatus) {
+      await supabase
+        .from('assets')
+        .update({ status: demotedPriorAssetStatus } as never)
+        .eq('id', demotedPriorAssetId);
+    }
+    throw new Error(`asset status update failed: ${upErr.message}`);
+  }
 
   // 3. Audit event
   const evtType =
@@ -369,11 +468,31 @@ export const POST = withApiHandler(async (req, ctx) => {
       });
       firedEvents.push({ name: ev.name, ids });
     }
+
+    // v2 EREF: trigger Director-approve 4K upscale per technology.md §3
+    // unless explicitly skipped or asset is already 4K.
+    if (isV2EREFApprove) {
+      const sr = (asset.metadata as unknown as { shot_reference: ShotReferenceContract })
+        .shot_reference;
+      const skipUpscale = body.eref_options?.skip_upscale === true;
+      const alreadyFourK = Boolean(sr.final_4k_url);
+      if (!skipUpscale && !alreadyFourK) {
+        const { ids } = await inngest.send({
+          name: 'sandystudio/exec-eref/upscale-final',
+          data: { episodeId: asset.episode_id, assetId: id } as never,
+        });
+        firedEvents.push({
+          name: 'sandystudio/exec-eref/upscale-final',
+          ids,
+        });
+      }
+    }
   }
 
   return apiOk({
     decision: body.decision,
     asset_status: targetStatus,
     fired_events: firedEvents,
+    demoted_prior_asset_id: demotedPriorAssetId,
   });
 });

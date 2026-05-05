@@ -7,12 +7,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { AlertTriangle, Inbox as InboxIcon, Filter, Keyboard } from 'lucide-react';
+import { AlertTriangle, Inbox as InboxIcon, Filter, Keyboard, ExternalLink } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { fetcher } from '@/lib/swr';
+import {
+  InboxNotePromptModal,
+  type InboxNoteDecision,
+} from '@/components/inbox/InboxNotePromptModal';
+import { EpisodeAssetDrawer, type EpisodeAsset } from '@/components/assets/EpisodeAssetDrawer';
 
 interface InboxItem {
   id: string;
@@ -40,6 +45,11 @@ export default function InboxPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [focusIdx, setFocusIdx] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [notePrompt, setNotePrompt] = useState<{
+    item: InboxItem;
+    decision: InboxNoteDecision;
+  } | null>(null);
+  const [openAssetId, setOpenAssetId] = useState<string | null>(null);
 
   const { data, mutate } = useSWR<{ data: InboxItem[]; meta?: { total: number } }>(
     `/api/director/inbox?filter=${filter}&limit=50`,
@@ -47,6 +57,14 @@ export default function InboxPage() {
     { refreshInterval: 30_000 },
   );
   const items = useMemo(() => data?.data ?? [], [data]);
+
+  // Fetch the asset row when the drawer is open. Use the single-asset endpoint
+  // which already exists at /api/assets/[id].
+  const { data: openAssetResp, mutate: mutateOpenAsset } = useSWR<{ data: EpisodeAsset }>(
+    openAssetId ? `/api/assets/${openAssetId}` : null,
+    fetcher,
+  );
+  const openAsset: EpisodeAsset | null = openAssetResp?.data ?? null;
 
   // Group items
   const grouped = useMemo(() => {
@@ -92,16 +110,10 @@ export default function InboxPage() {
           if (item && !item.is_visual) act(item, 'APPROVE');
           break;
         case 'r':
-          if (item) {
-            const note = window.prompt('Note for revision');
-            if (note) act(item, 'REQUEST_REVISION', note);
-          }
+          if (item) setNotePrompt({ item, decision: 'REQUEST_REVISION' });
           break;
         case 'x':
-          if (item) {
-            const note = window.prompt('Note for rejection');
-            if (note) act(item, 'REJECT', note);
-          }
+          if (item) setNotePrompt({ item, decision: 'REJECT' });
           break;
         case 'escape':
           setHelpOpen(false);
@@ -261,11 +273,28 @@ export default function InboxPage() {
               {rows.map((item) => {
                 const idx = flat.indexOf(item);
                 const focused = idx === focusIdx;
+                const handleOpen = () => {
+                  setFocusIdx(idx);
+                  if (item.asset_id) {
+                    setOpenAssetId(item.asset_id);
+                  } else if (item.episode_id) {
+                    window.location.href = `/episodes/${item.episode_id}`;
+                  }
+                };
                 return (
                   <div
                     key={item.id}
-                    onClick={() => setFocusIdx(idx)}
-                    className="rounded-xl border bg-panel-glass-strong px-4 py-3 transition-all cursor-pointer"
+                    onClick={handleOpen}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleOpen();
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open ${item.title}`}
+                    className="rounded-xl border bg-panel-glass-strong px-4 py-3 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
                     style={{
                       borderColor: focused
                         ? 'var(--accent-primary)'
@@ -281,6 +310,7 @@ export default function InboxPage() {
                           onChange={() => toggleSelect(item)}
                           onClick={(e) => e.stopPropagation()}
                           className="mt-1"
+                          aria-label={`Select ${item.title} for bulk approve`}
                         />
                       )}
                       {item.is_visual && <span className="w-4" />}
@@ -298,65 +328,26 @@ export default function InboxPage() {
                               }}
                             >
                               <AlertTriangle size={9} />
-                              visual — bulk disabled
+                              visual — review in drawer
                             </span>
                           )}
                         </div>
                         <div className="text-xs text-text-muted mt-0.5">{item.subtitle}</div>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-3 ml-7">
-                      {item.cta.map((b) => (
-                        <button
-                          key={b.action}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Canon-extension proposals: deep-link to the
-                            // episode page; Director clicks Continuity kebab
-                            // → Preview to open the CanonExtensionsPanel.
-                            if (b.action === 'open_asset_preview') {
-                              if (item.episode_id) {
-                                window.location.href = `/episodes/${item.episode_id}`;
-                              } else if (item.asset_id) {
-                                window.location.href = `/assets/${item.asset_id}`;
-                              }
-                              return;
-                            }
-                            const map: Record<string, string> = {
-                              approve: 'APPROVE',
-                              revise: 'REQUEST_REVISION',
-                              reject: 'REJECT',
-                              needs_human_tweak: 'NEEDS_HUMAN_TWEAK',
-                            };
-                            const decision = map[b.action];
-                            if (!decision) return;
-                            if (decision === 'REQUEST_REVISION' || decision === 'REJECT') {
-                              const note = window.prompt(`Note for ${decision}`);
-                              if (!note) return;
-                              act(item, decision, note);
-                            } else {
-                              act(item, decision);
-                            }
-                          }}
-                          className="px-2.5 h-8 rounded-md text-[11px] font-semibold uppercase tracking-wider transition-colors"
-                          style={{
-                            background:
-                              b.intent === 'primary'
-                                ? 'var(--accent-primary)'
-                                : b.intent === 'destructive'
-                                ? 'var(--accent-danger)'
-                                : 'transparent',
-                            color:
-                              b.intent === 'primary' || b.intent === 'destructive'
-                                ? 'var(--text-inverse)'
-                                : 'var(--text-secondary)',
-                            border:
-                              b.intent === 'secondary' ? '1px solid var(--panel-glass-border)' : 'none',
-                          }}
-                        >
-                          {b.label}
-                        </button>
-                      ))}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpen();
+                        }}
+                        className="shrink-0 inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md text-[11px] font-semibold uppercase tracking-wider transition-colors"
+                        style={{
+                          background: 'var(--accent-primary)',
+                          color: 'var(--text-inverse)',
+                        }}
+                      >
+                        <ExternalLink size={11} /> Open
+                      </button>
                     </div>
                   </div>
                 );
@@ -365,6 +356,32 @@ export default function InboxPage() {
           </section>
         );
       })}
+
+      <InboxNotePromptModal
+        open={notePrompt !== null}
+        decision={notePrompt?.decision ?? 'REJECT'}
+        subjectLabel={notePrompt?.item.title}
+        onClose={() => setNotePrompt(null)}
+        onSubmit={async (note) => {
+          if (notePrompt) await act(notePrompt.item, notePrompt.decision, note);
+        }}
+      />
+
+      {openAsset && (
+        <EpisodeAssetDrawer
+          open={true}
+          asset={openAsset}
+          onClose={() => setOpenAssetId(null)}
+          onChange={() => {
+            // Refresh both: the open asset (status / metadata changed) and the
+            // inbox list (decided items disappear from feed).
+            mutateOpenAsset();
+            mutate();
+          }}
+          onPickAsset={(id) => setOpenAssetId(id)}
+          kindLabel="Inbox asset"
+        />
+      )}
 
       <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title="Inbox shortcuts">
         <ul className="text-sm space-y-2">

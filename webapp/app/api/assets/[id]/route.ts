@@ -103,6 +103,19 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     const nowIso = new Date().toISOString();
     const directorLabel = user.email ?? user.id;
 
+    // Resolve current Mode for audit. Episode-level uses governance_mode column;
+    // series-level (Bible) defaults to 1 (Director's manual canon work).
+    let modeAtTime: 1 | 2 | 3 | 4 = 1;
+    if (asset.episode_id) {
+      const { data: ep } = await supabase
+        .from('episodes')
+        .select('governance_mode')
+        .eq('id', asset.episode_id)
+        .maybeSingle();
+      const m = (ep as { governance_mode?: number } | null)?.governance_mode;
+      if (m === 1 || m === 2 || m === 3 || m === 4) modeAtTime = m;
+    }
+
     // Append a new description_history entry only when the markdown body
     // changed (description-only PATCH is treated as a one-line summary edit).
     let nextDescriptionHistory = existingMeta.description_history;
@@ -122,12 +135,13 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     }
 
     const provenance = existingMeta.provenance
-      ? stampLastModified(existingMeta.provenance, directorLabel, 'director', nowIso)
+      ? stampLastModified(existingMeta.provenance, directorLabel, 'director', nowIso, modeAtTime)
       : buildProvenance({
           by: directorLabel,
           byKind: 'director',
           source: 'manual_add',
           at: nowIso,
+          modeAtTime,
         });
 
     const newMeta: AssetMetadataDoc = {
@@ -148,6 +162,13 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     .single();
   if (updErr) throw new Error(`asset update failed: ${updErr.message}`);
 
+  // Stamp mode_at_time for audit consistency with regenerate-image / upload.
+  const modeForAudit = (((updated as unknown as { metadata?: AssetMetadataDoc | null })
+    .metadata?.provenance?.last_modified_mode) ??
+    ((updated as unknown as { metadata?: AssetMetadataDoc | null })
+      .metadata?.provenance?.mode_at_time) ??
+    1);
+
   await supabase.from('activity_events').insert({
     event_type: 'asset_updated',
     severity: 'info',
@@ -156,7 +177,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     actor: user.id,
     asset_id: id,
     episode_id: asset.episode_id,
-    metadata: { patch },
+    metadata: { patch, mode_at_time: modeForAudit },
   } as never);
 
   return apiOk(updated);

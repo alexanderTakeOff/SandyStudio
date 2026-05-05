@@ -381,7 +381,7 @@ async function governanceRegression(): Promise<void> {
     { eventContext: {} },
   );
   assert(
-    !blocked.success && /PUBLISH blocked/.test(blocked.error ?? ''),
+    !blocked.success && /hard limit/i.test(blocked.error ?? ''),
     'EXEC-PUB without director_confirm in Mode 1 -> BLOCKED',
     blocked.error,
   );

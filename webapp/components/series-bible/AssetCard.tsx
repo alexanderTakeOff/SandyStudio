@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Lock, Unlock, MoreHorizontal, Eye, Edit, Trash } from 'lucide-react';
 import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { Card } from '@/components/ui/Card';
-import type { BibleAsset, SbSection } from '@/lib/api/series-bible';
+import { bibleSlug, type BibleAsset, type SbSection } from '@/lib/api/series-bible';
 import { NotificationDot } from '@/components/notifications/NotificationDot';
 import { AssetDetailDrawer } from './AssetDetailDrawer';
 
@@ -29,24 +29,33 @@ export interface AssetCardProps {
   onChange: () => void;
 }
 
-function readableNameFromFilename(filename: string): string {
-  // SS-S03-SBL-character_sandy-v01-LOCKED.png → "sandy"
-  // SS-S09-SBL-character_city_systems-v01-DRAFT.md → "city_systems" (multi-word slug)
-  // Greedy `[a-z]+_` matches the section prefix once; `(.+)` captures whole slug.
-  const m = filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
-  if (m && m[1]) return m[1].replace(/_/g, ' ');
-  return filename;
+/** Display name for the card — humanise the slug ("city_systems" → "city systems"). */
+function readableName(asset: { file_type: string; filename: string }): string {
+  const slug = bibleSlug(asset.file_type);
+  return slug ? slug.replace(/_/g, ' ') : asset.filename;
 }
 
 export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const previewSrc = asset.staging_path || asset.drive_web_view_url || asset.drive_path || null;
-  const isImage = previewSrc && (previewSrc.startsWith('/') || previewSrc.startsWith('http'));
+  // Pick first browser-loadable URL — staging_path may legacy-store a Windows
+  // absolute path (`C:\...`) that <img> can't render; fall through to drive_path.
+  const previewCandidates: Array<string | null | undefined> = [
+    asset.drive_path,
+    asset.staging_path,
+    asset.drive_web_view_url,
+    asset.metadata?.image_prompt?.history?.[
+      (asset.metadata.image_prompt.current_version ?? 1) - 1
+    ]?.staging_path,
+  ];
+  const previewSrc = previewCandidates.find(
+    (c): c is string => typeof c === 'string' && (c.startsWith('/') || c.startsWith('http')),
+  ) ?? null;
+  const isImage = !!previewSrc;
   const statusColor = STATUS_COLORS[asset.status] ?? 'var(--text-muted)';
   const isLocked = asset.status === 'LOCKED';
-  const name = readableNameFromFilename(asset.filename);
+  const name = readableName(asset);
 
   async function lock() {
     if (!confirm(`LOCK ${asset.filename}? Locked Bible assets are immutable.`)) return;

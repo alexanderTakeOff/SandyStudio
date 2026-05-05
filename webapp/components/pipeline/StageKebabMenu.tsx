@@ -26,6 +26,7 @@ import {
 import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { RejectModal } from '@/components/editor/RejectModal';
+import { RetriggerStageModal } from '@/components/pipeline/RetriggerStageModal';
 import type { PipelineNodeState, PipelineStageId } from '@/lib/api/pipeline-stages';
 
 // File-type prefix → row matching for backbone v2.5 per-agent rows.
@@ -105,6 +106,7 @@ export function StageKebabMenu({
 }: StageKebabMenuProps) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [retriggerOpen, setRetriggerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editorAssetId, setEditorAssetId] = useState<string | null>(null);
   const [editorAssetFilename, setEditorAssetFilename] = useState<string | undefined>();
@@ -177,45 +179,13 @@ export function StageKebabMenu({
   // failed: Script (need 1, found 0 APPROVED)" errors during re-trigger.
   const producerAgent = stageAgents.find((a) => a !== 'Director') ?? null;
 
-  async function retriggerStage() {
+  function retriggerStage() {
     if (busy) return;
     if (!producerAgent) {
       alert(`${stageLabel} has no automatable agent (Director-only stage).`);
       return;
     }
-    const reason = prompt(
-      `Re-trigger ${producerAgent} for ${stageLabel}?\n\nReason (required, audit log):`,
-      '',
-    );
-    if (reason === null) return;
-    if (reason.trim().length < 3) {
-      alert('Reason must be at least 3 characters.');
-      return;
-    }
-    if (
-      !confirm(
-        `This will fire ${producerAgent} and may produce a duplicate asset. Downstream agents (if any) will fire automatically when their gates pass. Continue?`,
-      )
-    ) {
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/episodes/${episodeId}/trigger`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agentCode: producerAgent, reason: reason.trim() }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? `${res.status}`);
-      }
-      onChanged();
-    } catch (err) {
-      alert(`Re-trigger failed: ${(err as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
+    setRetriggerOpen(true);
   }
 
   function openEditor() {
@@ -250,7 +220,19 @@ export function StageKebabMenu({
   // Approve makes sense whenever there's a REVIEW-status asset in the stage,
   // even if the stage state has been masked to 'failed' by a separate job.
   const canApprove = assetsInReview > 0 && latestAssetId !== undefined;
-  const canRetrigger = producerAgent !== null && stageState !== 'running' && stageState !== 'approved';
+  // Re-trigger policy:
+  //   - blocked on `running` UNLESS the stage already has a produced asset
+  //     (latestAssetId set). The stale-running case (Inngest function.failed
+  //     leaving the jobs row at RUNNING — see PLAN.md long-debt #4) would
+  //     otherwise lock the kebab forever; if there's a prior asset, the
+  //     Director clearly wants a re-roll, and RetriggerStageModal still
+  //     forces a reason + duplicate-version warning.
+  //   - allowed on `approved` so contract upgrades (e.g. storyboarder@v1 → @v2)
+  //     can produce a fresh version. Existing approved asset stays APPROVED,
+  //     new asset starts in REVIEW.
+  const canRetrigger =
+    producerAgent !== null &&
+    (stageState !== 'running' || latestAssetId !== undefined);
   const canEdit = latestAssetId !== undefined;
 
   if (canApprove) {
@@ -283,9 +265,13 @@ export function StageKebabMenu({
       });
     }
     // Edit modal — text assets only (CodeMirror raw editor; useful for tweaks)
+    // For approved/locked stages we still expose it as "View source" so the
+    // Director can read the raw markdown + JSON tail; the modal enforces
+    // read-only via EDITABLE_STATUSES. Calling it "Edit (read-only)" was
+    // confusing — Edit implies you can edit.
     if (!isBinary) {
       items.push({
-        label: stageState === 'approved' ? 'Edit (read-only)' : 'Edit',
+        label: stageState === 'approved' ? 'View source' : 'Edit',
         icon: <Pencil size={14} />,
         onSelect: openEditor,
         disabled: busy,
@@ -345,6 +331,17 @@ export function StageKebabMenu({
         assetFilename={undefined}
         onRejected={onChanged}
       />
+
+      {producerAgent && (
+        <RetriggerStageModal
+          open={retriggerOpen}
+          onClose={() => setRetriggerOpen(false)}
+          episodeId={episodeId}
+          stageLabel={stageLabel}
+          producerAgent={producerAgent}
+          onTriggered={onChanged}
+        />
+      )}
     </>
   );
 }

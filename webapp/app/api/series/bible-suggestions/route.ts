@@ -20,6 +20,7 @@ const SectionSchema = z.enum(['character', 'location', 'object', 'style']);
 
 interface AssetWithSeries {
   filename: string;
+  file_type: string;
   description: string | null;
   drive_file_id: string | null;
   drive_web_view_url: string | null;
@@ -44,7 +45,7 @@ export const GET = withApiHandler(async (req) => {
   // Pull LOCKED Bible assets for this section across all series.
   const { data, error } = await supabase
     .from('assets')
-    .select('filename,description,drive_file_id,drive_web_view_url,drive_path,staging_path,series_id')
+    .select('filename,file_type,description,drive_file_id,drive_web_view_url,drive_path,staging_path,series_id')
     .eq('status', 'LOCKED')
     .like('file_type', `SBL-${section}%`)
     .order('filename', { ascending: true })
@@ -74,6 +75,7 @@ export const GET = withApiHandler(async (req) => {
   return apiOk(
     rows.map((r) => ({
       filename: r.filename,
+      file_type: r.file_type,
       description: r.description,
       series_code: r.series_id ? seriesMap.get(r.series_id) ?? null : null,
       preview_url: r.staging_path || r.drive_web_view_url || r.drive_path,

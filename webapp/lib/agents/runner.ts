@@ -36,6 +36,7 @@ import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-c
 import { runCopywriter, CopywriterError } from './runners/copywriter';
 import { runEpisodeReferences, EpisodeReferencesError } from './runners/episode-references';
 import { runAnimaticSlideshow, AnimaticSlideshowError } from './runners/animatic-slideshow';
+import { loadSeriesBibleCanon } from './bible-loader';
 import type { AgentId, AgentInputs, AgentResult } from './types';
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
@@ -72,11 +73,32 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
     throw new Error(`loadAgentInputs: assets lookup failed: ${asErr.message}`);
   }
 
+  // Load LOCKED Series Bible canon. Empty canon is valid (early-stage projects);
+  // text-producing runners (SW, SREV, SB, COPY) gracefully degrade. Image and
+  // continuity runners load the canon themselves with stricter preconditions.
+  // Failure here is non-fatal: degrade to empty canon rather than blocking the
+  // pipeline. Replay-pilot's mock supabase may not implement the assets/series
+  // tables; without this guard the entire pipeline would fail in tests.
+  let bible;
+  try {
+    bible = await loadSeriesBibleCanon(supabase, episodeId);
+  } catch {
+    bible = {
+      series_id: null,
+      general_idea: null,
+      characters: [],
+      locations: [],
+      styles: [],
+      total_entries: 0,
+    };
+  }
+
   return {
     episode_id: episodeId,
     agent_id: agentId,
     episode,
     upstream_assets: assets,
+    bible,
   };
 }
 
@@ -826,6 +848,8 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-ANAL': 'REV-analytics',
   'EXEC-STY': 'BIB-style',
   'EXEC-BIBLE-AUTHOR': '', // updates existing SBL-* row inline; never creates a new one through saveAgentOutput
+  'EXEC-STYLE-CHECK': '', // pre-flight check; never creates an asset
+  'EXEC-EREF-CHECK': '', // post-generation review; called inline from EREF runner, never creates an asset
   'EXEC-ARCH': '',
   'EXEC-ORCH': '',
   'EXEC-CONC': '',

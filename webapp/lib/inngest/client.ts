@@ -63,14 +63,47 @@ type Events = {
   };
 
   /**
-   * NEW stage between Storyboard and Animatic per backbone v2 (specs/glossary.md §4).
-   * Generates per-episode reference images for each unique location/character pose
-   * in the approved storyboard. Director approves these BEFORE the expensive
-   * Veo animatic — see specs/glossary.md "Episode reference / Эпизод-референс".
+   * Legacy (pre-v2 Pilot Pass) entry point. Kept registered so historical
+   * Inngest log entries continue to type-check. Replaced by
+   * `sandystudio/exec-eref/start` (full episode, default pilot_count) and
+   * `sandystudio/exec-eref/fanout-trigger` (resume after pilots approved).
+   * @deprecated Remove after one release once no in-flight events remain.
    */
   'sandystudio/exec-eref/generate-references': {
     data: AssetTrigger & {
       storyboardAssetId: string;
+    };
+  };
+
+  /**
+   * EREF v2 Pilot Pass entry point. Generates `pilot_count` (default 2)
+   * representative shots and stops. Sets `eref_pilot_state=PENDING_REVIEW`.
+   */
+  'sandystudio/exec-eref/start': {
+    data: BaseEpisodeEvent & {
+      pilot_count?: number;
+    };
+  };
+
+  /**
+   * EREF v2 Fan-out trigger. Director approved both pilot shots and clicked
+   * "Approve Direction & Fan Out" — runner re-enters at start_index and
+   * finishes the remaining shots.
+   */
+  'sandystudio/exec-eref/fanout-trigger': {
+    data: BaseEpisodeEvent & {
+      start_index: number;
+    };
+  };
+
+  /**
+   * EREF v2 Final upscale. Fired by /api/assets/[id]/approve when Director
+   * APPROVES a v2 EREF asset (technology.md §3 — upscale only on Director
+   * approve, not AI approve).
+   */
+  'sandystudio/exec-eref/upscale-final': {
+    data: BaseEpisodeEvent & {
+      assetId: string;
     };
   };
 

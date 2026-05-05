@@ -85,10 +85,49 @@ export function sectionFromFileType(fileType: string): SbSection | null {
   return null;
 }
 
+/**
+ * Canonical "what is this Bible asset's slug?" helper — single source of truth.
+ *
+ * file_type is the structured carrier (`SBL-{section}_{slug}`). Filename is
+ * derivative — adds v01/DRAFT suffixes that get rewritten on every status
+ * change — so DO NOT parse the filename for this purpose. Past bug: a greedy
+ * regex over filename (`-SBL-[a-z_]+_(...)-v\d+-`) collapsed compound slugs
+ * (`city_systems` → `systems`) and broke Continuity Check matching against
+ * canonical character IDs. Two callers had the buggy regex, two had the
+ * correct one — classic DRY violation. This helper kills all the copies.
+ *
+ * Every component that needs the slug MUST call this function. Inline regex
+ * over filename is forbidden — eslint-no-restricted-syntax + a unit test
+ * enforce it.
+ */
+export function bibleSlugFromFileType(fileType: string): {
+  section: SbSection;
+  slug: string;
+} | null {
+  if (!fileType.startsWith(BIBLE_FILE_TYPE_PREFIX)) return null;
+  const tail = fileType.slice(BIBLE_FILE_TYPE_PREFIX.length);
+  for (const sec of BIBLE_SECTIONS) {
+    if (tail === sec) return { section: sec, slug: '' };
+    const prefix = `${sec}_`;
+    if (tail.startsWith(prefix)) {
+      return { section: sec, slug: tail.slice(prefix.length).toLowerCase() };
+    }
+  }
+  return null;
+}
+
+/** Convenience wrapper: returns just the slug, null if file_type is not SBL-*. */
+export function bibleSlug(fileType: string): string | null {
+  return bibleSlugFromFileType(fileType)?.slug ?? null;
+}
+
 // ── Asset metadata schema (assets.metadata jsonb, migration 0020) ─────────────
 //
 // We persist three structured side-documents inside the single JSONB column,
 // so we don't add new columns for every editorial concern.
+
+/** Governance mode at the moment of action. Future EXEC-ORCH reads this for audit. */
+export type GovernanceModeNum = 1 | 2 | 3 | 4;
 
 /** Who/when an asset was created or last touched. Surfaced in AssetDetailDrawer. */
 export interface AssetProvenance {
@@ -96,16 +135,27 @@ export interface AssetProvenance {
   created_by_kind: 'agent' | 'director' | 'system';
   created_at: string;
   source: 'canon_extension_approval' | 'manual_add' | 'seed_script' | 'pipeline' | 'unknown';
+  /** Governance mode at the moment of creation (1=MANUAL, 4=AUTOTEST). */
+  mode_at_time?: GovernanceModeNum;
   last_modified_by?: string;
   last_modified_by_kind?: 'agent' | 'director' | 'system';
   last_modified_at?: string;
+  /** Mode at the moment of last edit. */
+  last_modified_mode?: GovernanceModeNum;
 }
 
-/** One entry in image_prompt.history. Each Director reroll appends here. */
+/** One entry in image_prompt.history. Each Director reroll, agent enrich, or upload appends here. */
 export interface ImagePromptHistoryEntry {
   version: number;
   prompt: string;
-  source: 'EXEC-BIBLE-AUTHOR' | 'director_edit' | 'manual_generate' | 'restore';
+  source:
+    | 'EXEC-BIBLE-AUTHOR'
+    | 'EXEC-EREF'
+    | 'EXEC-THUMB'
+    | 'director_edit'
+    | 'director_upload'
+    | 'manual_generate'
+    | 'restore';
   at: string;
   cost_usd: number;
   staging_path: string | null;
@@ -116,6 +166,14 @@ export interface ImagePromptHistoryEntry {
   quality: 'low' | 'medium' | 'high' | null;
   /** Optional: when source='restore', which previous version was duplicated forward. */
   restored_from_version?: number;
+  /** Governance mode at the moment of this entry. */
+  mode_at_time?: GovernanceModeNum;
+  /** Original filename when source='director_upload'. */
+  upload_original_filename?: string;
+  /** Style Guardian verdict at the moment of generation, if pre-flight ran. */
+  style_check_verdict?: 'PASS' | 'WARN' | 'FAIL' | null;
+  /** True if Auto-Rewrite Style Guardian rewrote the prompt before generation. */
+  style_check_rewritten?: boolean;
 }
 
 /** image_prompt sub-doc — current pointer + ordered history. */
@@ -153,6 +211,7 @@ export function buildProvenance(args: {
   by: string;
   byKind: 'agent' | 'director' | 'system';
   source: AssetProvenance['source'];
+  modeAtTime?: GovernanceModeNum;
   at?: string;
 }): AssetProvenance {
   return {
@@ -160,6 +219,7 @@ export function buildProvenance(args: {
     created_by_kind: args.byKind,
     created_at: args.at ?? new Date().toISOString(),
     source: args.source,
+    ...(args.modeAtTime !== undefined ? { mode_at_time: args.modeAtTime } : {}),
   };
 }
 
@@ -169,12 +229,14 @@ export function stampLastModified(
   by: string,
   byKind: 'agent' | 'director' | 'system',
   at?: string,
+  modeAtTime?: GovernanceModeNum,
 ): AssetProvenance {
   return {
     ...prov,
     last_modified_by: by,
     last_modified_by_kind: byKind,
     last_modified_at: at ?? new Date().toISOString(),
+    ...(modeAtTime !== undefined ? { last_modified_mode: modeAtTime } : {}),
   };
 }
 

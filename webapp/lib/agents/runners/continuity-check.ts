@@ -19,7 +19,7 @@ import {
   AnthropicTextError,
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
-import { seriesIdForEpisode } from '../../api/series-bible';
+import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
 import type { AgentInputs } from '../types';
 
 export const CONT_CONTRACT = 'continuity_check@v1';
@@ -105,11 +105,9 @@ function findApprovedAsset(
   return approved[0] ?? null;
 }
 
-function nameFromBibleFilename(filename: string): string | null {
-  // SS-S03-SBL-character_sandy-v01-LOCKED.png → sandy
-  const m = filename.match(/-SBL-[a-z_]+_([a-z0-9_-]+)-v\d+-/i);
-  return m && m[1] ? m[1].toLowerCase() : null;
-}
+// Canonical slug lookup goes through lib/api/series-bible.bibleSlug — DO NOT
+// re-introduce a local filename regex here. See JSDoc on bibleSlugFromFileType
+// for the history of the bug this prevents.
 
 async function loadBibleCanon(
   supabase: SupabaseClient<Database>,
@@ -146,22 +144,22 @@ function buildUserMessage(args: {
 }): string {
   const { episodeCode, storyboardContent, storyboardVersion, bible } = args;
   const charNames = bible.characters
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
   const locNames = bible.locations
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
 
   const charDescriptions = bible.characters
     .map((c) => {
-      const name = nameFromBibleFilename(c.filename) ?? 'unknown';
+      const name = bibleSlug(c.file_type) ?? 'unknown';
       const desc = (c.description ?? '').slice(0, 400);
       return `- ${name}: ${desc || '(no description)'}`;
     })
     .join('\n');
   const locDescriptions = bible.locations
     .map((c) => {
-      const name = nameFromBibleFilename(c.filename) ?? 'unknown';
+      const name = bibleSlug(c.file_type) ?? 'unknown';
       const desc = (c.description ?? '').slice(0, 400);
       return `- ${name}: ${desc || '(no description)'}`;
     })
@@ -200,7 +198,7 @@ function buildUserMessage(args: {
     '<2-3 sentences why>',
     '',
     '## Per-shot results',
-    '<for each shot in storyboard JSON.acts[].shots[]: shot_id, location verdict, characters verdict, list any issues>',
+    '<for each shot in storyboard JSON.acts[].shots[]: shot_id, location verdict, characters verdict, list any issues. The storyboard may follow either contract version: v2 uses `location.slug` (object) and `characters[].bible_slug` (array of objects); v1 used `location` (string) and `characters_present[]` (array of strings). Look up the canonical character/location slugs from the LOCKED Bible canon above, regardless of contract version.>',
     '',
     '## Violations',
     '<list any character or location that is not in the LOCKED Bible canon>',
@@ -238,7 +236,9 @@ function buildUserMessage(args: {
     '- FAIL: storyboard introduces multiple unknown characters or breaks the world rules — needs Director intervention.',
     '',
     'Hard rules:',
-    '- Compare characters by lowercase name match against the canonical list above.',
+    '- Compare characters by exact slug match against the canonical list above (storyboarder@v2 puts the slug in `characters[].bible_slug`; @v1 used `characters_present[]` strings — both should match the canon).',
+    '- Compare locations by exact slug match against `location.slug` (v2) or by parsing the prefix of the legacy `location` string (v1).',
+    '- A v2 shot also carries per-character `expected_emotion` and `expected_action` — these are NOT canon constraints; do not flag them as violations. They are the test plan for the downstream EREF AI-reviewer.',
     '- Locations are softer: a new location is allowed if the brief implies it; flag with "UNKNOWN" only when it is invented mid-storyboard with no narrative justification.',
     '- The fenced JSON must be valid JSON.',
   ].join('\n');
@@ -321,13 +321,13 @@ export async function runContinuityCheck(
     `cost $${result.costUsd.toFixed(4)}`;
 
   const charNames = bible.characters
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
   const locNames = bible.locations
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
   const styleNames = bible.styles
-    .map((c) => nameFromBibleFilename(c.filename))
+    .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
 
   return {

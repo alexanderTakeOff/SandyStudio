@@ -6,10 +6,15 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import useSWR from 'swr';
 import { ArrowRight, AlertTriangle, Inbox } from 'lucide-react';
 import { Card, CardBody } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
+import {
+  InboxNotePromptModal,
+  type InboxNoteDecision,
+} from '@/components/inbox/InboxNotePromptModal';
 
 interface InboxItem {
   id: string;
@@ -37,6 +42,28 @@ export function InboxPreviewZone() {
 
   const items = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
+  const [notePrompt, setNotePrompt] = useState<{
+    item: InboxItem;
+    decision: InboxNoteDecision;
+  } | null>(null);
+
+  async function postDecision(item: InboxItem, decision: string, note?: string) {
+    if (!item.asset_id) return;
+    if (decision === 'APPROVE' && item.is_visual) {
+      const ack = window.confirm('Visual asset — confirm preview reviewed?');
+      if (!ack) return;
+    }
+    await fetch(`/api/assets/${item.asset_id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        decision,
+        note,
+        preview_acknowledged: decision === 'APPROVE' && item.is_visual ? true : undefined,
+      }),
+    });
+    mutate();
+  }
 
   return (
     <Card>
@@ -100,39 +127,19 @@ export function InboxPreviewZone() {
                   {it.cta.slice(0, 3).map((b) => (
                     <button
                       key={b.action}
-                      onClick={async () => {
-                        if (it.asset_id) {
-                          const map: Record<string, string> = {
-                            approve: 'APPROVE',
-                            revise: 'REQUEST_REVISION',
-                            reject: 'REJECT',
-                            needs_human_tweak: 'NEEDS_HUMAN_TWEAK',
-                          };
-                          const decision = map[b.action];
-                          if (!decision) return;
-                          if (decision === 'REQUEST_REVISION' || decision === 'REJECT') {
-                            const note = window.prompt(`Note required for ${decision}`);
-                            if (!note) return;
-                            await fetch(`/api/assets/${it.asset_id}/approve`, {
-                              method: 'POST',
-                              headers: { 'content-type': 'application/json' },
-                              body: JSON.stringify({ decision, note }),
-                            });
-                          } else {
-                            const ack = it.is_visual
-                              ? window.confirm('Visual asset — confirm preview reviewed?')
-                              : true;
-                            if (!ack) return;
-                            await fetch(`/api/assets/${it.asset_id}/approve`, {
-                              method: 'POST',
-                              headers: { 'content-type': 'application/json' },
-                              body: JSON.stringify({
-                                decision,
-                                preview_acknowledged: it.is_visual ? true : undefined,
-                              }),
-                            });
-                          }
-                          mutate();
+                      onClick={() => {
+                        const map: Record<string, string> = {
+                          approve: 'APPROVE',
+                          revise: 'REQUEST_REVISION',
+                          reject: 'REJECT',
+                          needs_human_tweak: 'NEEDS_HUMAN_TWEAK',
+                        };
+                        const decision = map[b.action];
+                        if (!decision) return;
+                        if (decision === 'REQUEST_REVISION' || decision === 'REJECT') {
+                          setNotePrompt({ item: it, decision: decision as InboxNoteDecision });
+                        } else {
+                          void postDecision(it, decision);
                         }
                       }}
                       className={`px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wider transition-colors ${INTENT_CLASS[b.intent]}`}
@@ -146,6 +153,15 @@ export function InboxPreviewZone() {
           ))}
         </div>
       </CardBody>
+      <InboxNotePromptModal
+        open={notePrompt !== null}
+        decision={notePrompt?.decision ?? 'REJECT'}
+        subjectLabel={notePrompt?.item.title}
+        onClose={() => setNotePrompt(null)}
+        onSubmit={async (note) => {
+          if (notePrompt) await postDecision(notePrompt.item, notePrompt.decision, note);
+        }}
+      />
     </Card>
   );
 }

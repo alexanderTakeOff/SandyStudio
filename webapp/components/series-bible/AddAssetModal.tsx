@@ -21,7 +21,7 @@ import { Sparkles, Wand2, RefreshCcw, Save, Loader2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { fetcher } from '@/lib/swr';
-import type { SbSection } from '@/lib/api/series-bible';
+import { bibleSlug, type SbSection } from '@/lib/api/series-bible';
 
 const SECTION_TITLES: Record<Exclude<SbSection, 'general_idea'>, string> = {
   character: 'Add hero',
@@ -35,6 +35,8 @@ type Section = Exclude<SbSection, 'general_idea'>;
 
 interface CrossSeriesSuggestion {
   filename: string;
+  /** Structured file_type — e.g. SBL-character_sandy. Slug helper reads this. */
+  file_type?: string | null;
   description: string | null;
   series_code: string | null;
   preview_url: string | null;
@@ -171,8 +173,10 @@ export function AddAssetModal({
   function pickSuggestion(s: CrossSeriesSuggestion) {
     setDescription(s.description ?? '');
     // Extract slug hint from filename like SS-S01-BIB-character_sandy-v01-LOCKED.png
-    const m = s.filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
-    if (m && m[1]) setSlug(m[1]);
+    if (s.file_type) {
+      const slug = bibleSlug(s.file_type);
+      if (slug) setSlug(slug);
+    }
   }
 
   return (
@@ -192,23 +196,23 @@ export function AddAssetModal({
           />
           <datalist id={`suggestions-${section}`}>
             {suggestions.map((s) => {
-              const m = s.filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
-              return m ? <option key={s.filename} value={m[1]} /> : null;
+              const slug = s.file_type ? bibleSlug(s.file_type) : null;
+              return slug ? <option key={s.filename} value={slug} /> : null;
             })}
           </datalist>
           {suggestions.length > 0 && (
             <div className="mt-1.5 text-[11px] text-text-muted">
               Existing canonical entries:{' '}
-              {suggestions.slice(0, 5).map((s, i) => {
-                const m = s.filename.match(/-SBL-(?:character|location|object|style|audio|general_idea)_(.+?)-v\d+-/i);
-                return m ? (
+              {suggestions.slice(0, 5).map((s) => {
+                const slug = s.file_type ? bibleSlug(s.file_type) : null;
+                return slug ? (
                   <button
                     key={s.filename}
                     onClick={() => pickSuggestion(s)}
                     className="underline hover:text-text-primary mr-2"
                     type="button"
                   >
-                    {m[1]}
+                    {slug}
                     {s.series_code && <span className="text-text-muted/60"> ({s.series_code})</span>}
                   </button>
                 ) : null;

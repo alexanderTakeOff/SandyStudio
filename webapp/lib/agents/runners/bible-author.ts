@@ -367,7 +367,9 @@ export async function runBibleAuthor(
     source: 'EXEC-BIBLE-AUTHOR',
     at: nowIso,
     cost_usd: imgResult.cost_usd,
-    staging_path: persisted.absolutePath,
+    // Store browser-loadable url; absolutePath is OS-specific and breaks <img>.
+    // seed-sandy-bible.ts uses the same convention.
+    staging_path: persisted.browserUrl,
     drive_file_id: persisted.driveFileId,
     drive_web_view_url: persisted.driveWebViewUrl,
     width: imgResult.width,
@@ -420,7 +422,8 @@ export async function runBibleAuthor(
       // Keep `description` as a short summary line for list views; markdown
       // body lives in `content`. Truncate to fit the 2000-char description cap.
       description: descriptionMd.slice(0, 280).split('\n')[0] ?? '',
-      staging_path: persisted.absolutePath,
+      // staging_path = browser-loadable url, NOT OS-specific absolutePath.
+      staging_path: persisted.browserUrl,
       drive_file_id: persisted.driveFileId,
       drive_web_view_url: persisted.driveWebViewUrl,
       drive_path: persisted.browserUrl,
