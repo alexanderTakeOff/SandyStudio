@@ -714,8 +714,16 @@ export async function runEpisodeReferences(
   const insertedAssetIds: string[] = [];
   const perShot: EpisodeReferencesRunResult['perShot'] = [];
   let totalCost = 0;
+  let cancelled = false;
 
   for (const job of jobs) {
+    // Kill switch: Director may cancel an in-flight run between shots
+    // (technology.md §4). Abort gracefully and let the function return what
+    // we already produced.
+    if (episodeId && (await isErefCancelled(supabase, episodeId))) {
+      cancelled = true;
+      break;
+    }
     let prompt = composePromptFromTestPlan(job);
 
     // Pre-flight Style Guardian (cheap, may rewrite or block).
