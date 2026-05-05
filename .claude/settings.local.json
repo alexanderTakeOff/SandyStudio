@@ -146,7 +146,11 @@
       "Bash(curl -sS -o /dev/null -w \"%{http_code}\" http://localhost:3000/)",
       "Bash(curl -s \"http://localhost:3000/api/episodes/4809684a-3740-4d20-85fa-b24d76340074/pipeline\")",
       "Bash(./node_modules/.bin/tsc --noEmit)",
-      "Bash(./webapp/node_modules/.bin/tsc --noEmit -p webapp)"
+      "Bash(./webapp/node_modules/.bin/tsc --noEmit -p webapp)",
+      "Bash(curl -s \"http://localhost:8288/v1/events/01KQVJVG2YKPCRWEXG7S8KVGBA/runs\")",
+      "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H\")",
+      "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H/jobs\")",
+      "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H/actions\")"
     ]
   }
 }
