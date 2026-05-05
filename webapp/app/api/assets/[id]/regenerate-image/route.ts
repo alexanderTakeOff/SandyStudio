@@ -351,14 +351,96 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
-  const real = await generateImageOpenAI({
-    prompt: promptToSend,
-    size: '1024x1024',
-    quality: body.quality ?? 'medium',
-  });
+  // ── Generation: v2 EREF gets multi-image registry; legacy stays single ───
+  let realB64: string;
+  let realCost: number;
+  let realWidth: number;
+  let realHeight: number;
+  let realProviderId = 'gpt-image-1';
+  let realModel = 'gpt-image-1';
+  let v2RefsUsed: ReferenceUsed[] = [];
+
+  if (isV2 && v2Sr && body.provider_id) {
+    // Resolve a v2 provider id; tolerate the legacy 'gpt-image-1' alias by
+    // mapping it onto the OpenAI multi-image provider.
+    const requestedProviderId: EREFProviderId =
+      body.provider_id === 'gpt-image-1'
+        ? 'openai-edits-multi'
+        : body.provider_id;
+    if (!hasProviderEnv(requestedProviderId)) {
+      return apiOk(
+        {
+          action_blocked: true,
+          reason: `Provider "${requestedProviderId}" has no env key configured`,
+          mode_at_time: decision.modeAtTime,
+        },
+        undefined,
+        { status: 409 },
+      );
+    }
+    const provider = getImageGenMultiProvider(requestedProviderId);
+
+    // Reconstruct references from the existing test_plan. Each entry already
+    // points at a Bible asset id; load image bytes via the same staging-path
+    // bridge used by the runner.
+    const refIds: { id: string; kind: 'identity' | 'location' | 'style' }[] = [];
+    for (const c of v2Sr.test_plan.characters) {
+      if (c.identity_anchor_asset_id) {
+        refIds.push({ id: c.identity_anchor_asset_id, kind: 'identity' });
+      }
+    }
+    if (v2Sr.test_plan.location_anchor_asset_id) {
+      refIds.push({
+        id: v2Sr.test_plan.location_anchor_asset_id,
+        kind: 'location',
+      });
+    }
+    refIds.push({ id: v2Sr.test_plan.style_anchor_asset_id, kind: 'style' });
+
+    const refs: MultiImageRef[] = [];
+    for (const r of refIds) {
+      const { data: bibleAsset } = await sb
+        .from('assets')
+        .select('id,staging_path')
+        .eq('id', r.id)
+        .maybeSingle();
+      const stagingPath = (bibleAsset as { staging_path?: string | null } | null)
+        ?.staging_path;
+      if (!stagingPath) continue;
+      const b64 = await readBibleImageAsBase64(stagingPath);
+      if (!b64) continue;
+      refs.push({ kind: r.kind, bible_asset_id: r.id, image_b64: b64 });
+    }
+
+    const result = await provider.generate({
+      prompt: promptToSend,
+      references: refs,
+      size: '1024x1024',
+      quality: body.quality ?? 'medium',
+    });
+    realB64 = result.b64_data;
+    realCost = result.cost_usd;
+    realWidth = result.width;
+    realHeight = result.height;
+    realProviderId = result.provider_id;
+    realModel = result.model;
+    v2RefsUsed = refs.map(
+      (r): ReferenceUsed => ({ kind: r.kind, bible_asset_id: r.bible_asset_id }),
+    );
+  } else {
+    const real = await generateImageOpenAI({
+      prompt: promptToSend,
+      size: '1024x1024',
+      quality: body.quality ?? 'medium',
+    });
+    realB64 = real.b64_data;
+    realCost = real.cost_usd;
+    realWidth = real.width;
+    realHeight = real.height;
+  }
 
   const persisted = await persistBinary({
-    base64: real.b64_data,
+    base64: realB64,
     ext: 'png',
     driveFilename: asset.filename
       .replace(/-(v\d+)-([A-Z]+)\.[a-z]+$/, `-$1-$2.png`)
