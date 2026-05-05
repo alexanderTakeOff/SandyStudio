@@ -608,7 +608,12 @@ export interface EpisodeReferencesRunArgs {
 export async function runEpisodeReferences(
   args: EpisodeReferencesRunArgs,
 ): Promise<EpisodeReferencesRunResult> {
-  const { inputs, supabase, episodeCode } = args;
+  const { inputs, supabase, episodeCode, pilot_count, start_index } = args;
+  if (pilot_count !== undefined && start_index !== undefined) {
+    throw new EpisodeReferencesError(
+      'pilot_count and start_index are mutually exclusive',
+    );
+  }
 
   const ep = inputs.episode as
     | {
