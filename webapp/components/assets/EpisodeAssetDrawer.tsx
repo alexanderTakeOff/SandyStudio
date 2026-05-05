@@ -15,17 +15,49 @@
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, X, Save, Wand2, Loader2, Upload } from 'lucide-react';
+import useSWR from 'swr';
+import ReactMarkdown from 'react-markdown';
+import {
+  ArrowLeft,
+  X,
+  Save,
+  Wand2,
+  Loader2,
+  Upload,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { AssetCollapsibleSection } from './AssetCollapsibleSection';
 import { AssetProvenanceChip } from './AssetProvenanceChip';
 import { AssetImagePromptSection } from './AssetImagePromptSection';
+import {
+  TestPlanCard,
+  VerdictPill,
+  ScoreBars,
+  IssuesList,
+  CandidatesStrip,
+} from './EREFv2Sections';
+import { InboxNotePromptModal } from '@/components/inbox/InboxNotePromptModal';
+import { fetcher } from '@/lib/swr';
+import { isShotReferenceV2 } from '@/lib/api/shot-reference';
 import type {
   AssetMetadataDoc,
   ImagePromptHistoryEntry,
 } from '@/lib/api/series-bible';
+
+// Provider IDs available for per-image regeneration override.
+// Hard-coded for MVP — kept in sync with lib/agents/providers/image-gen-multi-registry.ts.
+const PROVIDER_OPTIONS: Array<{ id: 'openai-edits-multi' | 'flux-pro-1.1-ultra'; label: string }> = [
+  { id: 'openai-edits-multi', label: 'OpenAI Edits' },
+  { id: 'flux-pro-1.1-ultra', label: 'Flux Pro 1.1 Ultra' },
+];
+
+type DecisionVerb = 'APPROVE' | 'REJECT' | 'REQUEST_REVISION';
 
 const EDITABLE_STATUSES = new Set(['DRAFT', 'REVIEW', 'REVISION']);
 
