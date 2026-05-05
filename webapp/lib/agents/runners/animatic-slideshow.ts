@@ -15,6 +15,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
+import {
+  buildShotListFromApprovedEREF,
+  newAnimaticContract,
+  type AnimaticContract,
+} from '../../api/animatic-shotlist';
 
 export const ANIMATIC_CONTRACT = 'animatic_slideshow@v1';
 
