@@ -176,6 +176,61 @@ export interface EpisodeReferencesRunResult {
     cost_usd: number;
     is_4k: boolean;
   }>;
+  /**
+   * True when Director's kill-switch (technology.md §4) aborted the loop
+   * mid-flight. Set when isErefCancelled returned true between shots.
+   */
+  cancelled?: boolean;
+  /** Number of shots actually persisted before cancel/end. */
+  completedShots?: number;
+}
+
+// ── Pilot Pass helper ───────────────────────────────────────────────────────
+
+/**
+ * Pick up to `n` representative shots for the Pilot Pass (technology.md §4).
+ * Strategy:
+ *   1. First shot tagged 'establishing' (calm setup baseline)
+ *   2. First shot tagged 'action' / 'gag' / 'punchline' (motion/comedy probe)
+ *   3. Fallback: first N raw shots when no role variety
+ *
+ * Goal: 1-2 representative frames so Director can validate visual direction
+ * cheap (~$0.10) before fan-out generates the rest (~$1.00).
+ */
+export function pickPilotShots(shots: readonly ParsedShot[], n: number): ParsedShot[] {
+  if (n <= 0 || shots.length === 0) return [];
+  const limit = Math.min(n, shots.length);
+  const picked: ParsedShot[] = [];
+  const used = new Set<string>();
+
+  const establishing = shots.find((s) => s.shot_role === 'establishing');
+  if (establishing) {
+    picked.push(establishing);
+    used.add(establishing.shot_id);
+  }
+
+  if (picked.length < limit) {
+    const action = shots.find(
+      (s) =>
+        !used.has(s.shot_id) &&
+        (s.shot_role === 'action' || s.shot_role === 'gag' || s.shot_role === 'punchline'),
+    );
+    if (action) {
+      picked.push(action);
+      used.add(action.shot_id);
+    }
+  }
+
+  // Fallback fill from first-N when no role variety.
+  for (const s of shots) {
+    if (picked.length >= limit) break;
+    if (!used.has(s.shot_id)) {
+      picked.push(s);
+      used.add(s.shot_id);
+    }
+  }
+
+  return picked;
 }
 
 // ── Asset / Bible helpers ────────────────────────────────────────────────────
