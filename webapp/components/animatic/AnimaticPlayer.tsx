@@ -565,6 +565,45 @@ export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerP
         </div>
       )}
 
+      {/* Approve / Reject — fires /approve route which emits VGEN×3 + MGEN
+          events, advancing pipeline to Visual Generator + Music. In Mode 4
+          factory auto-approves on creation; this row is exercised in Modes 1-3. */}
+      <div
+        className="flex items-center gap-2 pt-2 border-t border-glass"
+      >
+        <div className="text-[11px] text-text-muted">
+          When happy with pacing → Approve advances to Visual Generator + Music
+        </div>
+        <div className="flex-1" />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void postDecision('REJECT')}
+          disabled={approving !== null}
+          style={{ color: 'var(--accent-danger)' }}
+        >
+          {approving === 'REJECT' ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <XCircle size={13} />
+          )}{' '}
+          Reject
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => void postDecision('APPROVE')}
+          disabled={approving !== null}
+        >
+          {approving === 'APPROVE' ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <CheckCircle2 size={13} />
+          )}{' '}
+          Approve & advance
+        </Button>
+      </div>
+
       {/* Error banner */}
       {error && (
         <div
