@@ -215,7 +215,7 @@ async function main(): Promise<void> {
   let trashed = 0;
   let alreadyGone = 0;
   let driveErrors = 0;
-  for (const fileId of driveIds) {
+  for (const fileId of Array.from(driveIds)) {
     try {
       const res = await trashDriveFile(fileId, permanent);
       if (res === 'ok') trashed++;
