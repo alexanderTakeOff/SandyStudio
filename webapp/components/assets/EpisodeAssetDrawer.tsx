@@ -160,6 +160,7 @@ export function EpisodeAssetDrawer({
   onBack,
   kindLabel,
   seriesId,
+  onPickAsset,
 }: EpisodeAssetDrawerProps) {
   const [description, setDescription] = useState(asset.description ?? '');
   const [content, setContent] = useState(asset.content ?? '');
@@ -167,9 +168,19 @@ export function EpisodeAssetDrawer({
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<null | { label: string; detail: string }>(null);
 
+  // EREF v2 footer-action state.
+  const [decisionBusy, setDecisionBusy] = useState<null | DecisionVerb>(null);
+  const [decisionDone, setDecisionDone] = useState<null | DecisionVerb>(null);
+  const [skipUpscale, setSkipUpscale] = useState(false);
+  const [providerOverride, setProviderOverride] =
+    useState<'openai-edits-multi' | 'flux-pro-1.1-ultra' | ''>('');
+  const [notePrompt, setNotePrompt] = useState<null | 'REJECT' | 'REQUEST_REVISION'>(null);
+  const [confirmReplace, setConfirmReplace] = useState(false);
+
   const [imageOpen, setImageOpen] = useState(true);
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [bodyOpen, setBodyOpen] = useState(false);
+  const [contentMdOpen, setContentMdOpen] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const [metaOpen, setMetaOpen] = useState(true);
 
