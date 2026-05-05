@@ -367,6 +367,22 @@ export default function InboxPage() {
         }}
       />
 
+      {openAsset && (
+        <EpisodeAssetDrawer
+          open={true}
+          asset={openAsset}
+          onClose={() => setOpenAssetId(null)}
+          onChange={() => {
+            // Refresh both: the open asset (status / metadata changed) and the
+            // inbox list (decided items disappear from feed).
+            mutateOpenAsset();
+            mutate();
+          }}
+          onPickAsset={(id) => setOpenAssetId(id)}
+          kindLabel="Inbox asset"
+        />
+      )}
+
       <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title="Inbox shortcuts">
         <ul className="text-sm space-y-2">
           <Shortcut k="J / K" desc="Move focus down/up" />
