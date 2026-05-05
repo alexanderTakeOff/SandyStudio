@@ -261,7 +261,6 @@ export async function runAnimaticSlideshow(
   args: AnimaticSlideshowRunArgs,
 ): Promise<AnimaticSlideshowResult> {
   const { inputs, supabase: _supabase, episodeCode } = args;
-  void _supabase; // not yet used; will be when music gen lands
 
   const ep = inputs.episode as
     | { episode_code?: string; title_working?: string | null }
