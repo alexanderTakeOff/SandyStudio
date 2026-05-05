@@ -752,7 +752,7 @@ function ConfirmReplaceModal({
   const [pending, setPending] = useState(false);
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 pointer-events-auto"
       role="dialog"
       aria-modal="true"
     >
