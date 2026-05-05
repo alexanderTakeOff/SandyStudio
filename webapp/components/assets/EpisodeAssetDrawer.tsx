@@ -470,6 +470,19 @@ export function EpisodeAssetDrawer({
             </div>
           )}
 
+          {/* ── Animatic v1 player — VID-animatic with animatic_v1 metadata ── */}
+          {isAnimaticAsset && animaticV1 && (
+            <AnimaticPlayer assetId={asset.id} contract={animaticV1} onChanged={onChange} />
+          )}
+          {isAnimaticAsset && !animaticV1 && (
+            <div
+              className="rounded-lg p-3 border border-dashed border-glass text-xs text-text-muted"
+              style={{ background: 'color-mix(in oklab, var(--accent-warning) 6%, transparent)' }}
+            >
+              Legacy animatic — interactive player not available. Re-trigger the Animatic stage to upgrade to animatic@v1.
+            </div>
+          )}
+
           {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Candidates ── */}
           {isV2 && shotRef && (
             <>
