@@ -472,7 +472,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     // v2 EREF: trigger Director-approve 4K upscale per technology.md §3
     // unless explicitly skipped or asset is already 4K.
     if (isV2EREFApprove) {
-      const sr = (asset.metadata as { shot_reference: ShotReferenceContract })
+      const sr = (asset.metadata as unknown as { shot_reference: ShotReferenceContract })
         .shot_reference;
       const skipUpscale = body.eref_options?.skip_upscale === true;
       const alreadyFourK = Boolean(sr.final_4k_url);
