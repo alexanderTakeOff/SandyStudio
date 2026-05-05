@@ -468,11 +468,31 @@ export const POST = withApiHandler(async (req, ctx) => {
       });
       firedEvents.push({ name: ev.name, ids });
     }
+
+    // v2 EREF: trigger Director-approve 4K upscale per technology.md §3
+    // unless explicitly skipped or asset is already 4K.
+    if (isV2EREFApprove) {
+      const sr = (asset.metadata as { shot_reference: ShotReferenceContract })
+        .shot_reference;
+      const skipUpscale = body.eref_options?.skip_upscale === true;
+      const alreadyFourK = Boolean(sr.final_4k_url);
+      if (!skipUpscale && !alreadyFourK) {
+        const { ids } = await inngest.send({
+          name: 'sandystudio/exec-eref/upscale-final',
+          data: { episodeId: asset.episode_id, assetId: id } as never,
+        });
+        firedEvents.push({
+          name: 'sandystudio/exec-eref/upscale-final',
+          ids,
+        });
+      }
+    }
   }
 
   return apiOk({
     decision: body.decision,
     asset_status: targetStatus,
     fired_events: firedEvents,
+    demoted_prior_asset_id: demotedPriorAssetId,
   });
 });
