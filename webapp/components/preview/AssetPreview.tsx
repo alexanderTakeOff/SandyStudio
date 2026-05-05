@@ -127,10 +127,25 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
 
       <CanonExtensionsForAsset asset={asset} />
 
-      {cat === 'text' && <TextBody assetId={asset.id} />}
-      {cat === 'image' && <ImageBody asset={asset} />}
-      {cat === 'video' && <VideoBody asset={asset} />}
-      {cat === 'audio' && <AudioBody asset={asset} />}
+      {/* Animatic v1: interactive browser-native player. Takes precedence over
+          the VideoBody fallback so Director gets the player from the activity
+          feed Preview drawer (not just from the EpisodeAssetDrawer in Inbox). */}
+      {asset.file_type.startsWith('VID-animatic') && isAnimaticV1(asset.metadata) ? (
+        <AnimaticPlayer
+          assetId={asset.id}
+          contract={
+            (asset.metadata as { animatic_v1: AnimaticContract }).animatic_v1
+          }
+          onChanged={() => void mutate()}
+        />
+      ) : (
+        <>
+          {cat === 'text' && <TextBody assetId={asset.id} />}
+          {cat === 'image' && <ImageBody asset={asset} />}
+          {cat === 'video' && <VideoBody asset={asset} />}
+          {cat === 'audio' && <AudioBody asset={asset} />}
+        </>
+      )}
       {cat === 'unknown' && (
         <FallbackBody
           message={`Preview unavailable for file type "${asset.file_type}". Download to inspect.`}
