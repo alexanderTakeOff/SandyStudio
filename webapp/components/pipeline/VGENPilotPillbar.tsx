@@ -61,75 +61,22 @@ export interface VGENPilotPillbarProps {
   stageRunning?: boolean;
 }
 
-interface ShotProgress {
-  totalShots: number;
-  approvedCount: number;
-  pilotApprovedCount: number;
-  pilotShotIds: string[];
-}
-
-function getVidShotShotId(meta: unknown): string | null {
-  if (!meta || typeof meta !== 'object') return null;
-  const obj = meta as { shot_id?: unknown; storyboard_shot?: { shot_id?: unknown } };
-  if (typeof obj.shot_id === 'string') return obj.shot_id;
-  if (obj.storyboard_shot && typeof obj.storyboard_shot.shot_id === 'string') {
-    return obj.storyboard_shot.shot_id;
-  }
-  return null;
-}
-
-function computeProgress(
-  assets: AssetRow[],
-  meta: VgenPilotMetadataLike | null | undefined,
-): ShotProgress {
-  const vidShots = assets.filter((a) => a.file_type.startsWith('VID-shot'));
-
-  // Group by shot_id so re-generated variants count once.
-  const byShot = new Map<string, AssetRow[]>();
-  for (const a of vidShots) {
-    const sid = getVidShotShotId(a.metadata) ?? a.id; // fallback per-asset
-    if (!byShot.has(sid)) byShot.set(sid, []);
-    byShot.get(sid)!.push(a);
-  }
-
-  const approvedShotIds = new Set<string>();
-  for (const [sid, rows] of byShot) {
-    if (rows.some((r) => r.status === 'APPROVED' || r.status === 'LOCKED')) {
-      approvedShotIds.add(sid);
-    }
-  }
-
-  const totalShots = meta?.vgen_total_shots ?? Math.max(byShot.size, 1);
-  const pilotShotIds = meta?.vgen_pilot_shot_ids ?? [];
-  const pilotApprovedCount = pilotShotIds.filter((sid) => approvedShotIds.has(sid)).length;
-
-  return {
-    totalShots,
-    approvedCount: approvedShotIds.size,
-    pilotApprovedCount,
-    pilotShotIds,
-  };
-}
-
 export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarProps) {
-  const { data: episodeData, mutate: mutateEp } = useSWR<EpisodeResponse>(
-    `/api/episodes/${episodeId}`,
+  const { data: stateData, mutate: mutateState } = useSWR<VgenStateResponse>(
+    `/api/episodes/${episodeId}/vgen/state`,
     fetcher,
-    { refreshInterval: 30_000 },
-  );
-  const { data: assetsData, mutate: mutateAssets } = useSWR<AssetsResponse>(
-    `/api/assets?episode_id=${episodeId}&limit=200`,
-    fetcher,
-    { refreshInterval: 30_000 },
+    { refreshInterval: 10_000 },
   );
 
-  const meta = episodeData?.data?.metadata ?? null;
-  const pilotState: VGENPilotState | undefined = meta?.vgen_pilot_state;
+  const s = stateData?.data;
+  const pilotState: VGENPilotState | undefined = s?.pilot_state;
 
-  const progress = useMemo(
-    () => computeProgress(assetsData?.data ?? [], meta),
-    [assetsData?.data, meta],
-  );
+  const progress = {
+    totalShots: s?.total_shots ?? 0,
+    approvedCount: s?.approved_count ?? 0,
+    pilotApprovedCount: s?.pilot_approved_count ?? 0,
+    pilotShotIds: s?.pilot_shot_ids ?? [],
+  };
 
   const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel'>(null);
   const [success, setSuccess] = useState<null | 'approve_pilots' | 'cancel'>(null);
@@ -137,10 +84,10 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   // Visibility heuristic — show whenever:
-  //   • episode metadata has a v1 vgen pilot state, OR
+  //   • the state endpoint reports a non-NONE pilot state, OR
   //   • the stage is currently running, OR
   //   • there is at least one VID-shot asset already.
-  const hasVidShots = (assetsData?.data ?? []).some((a) => a.file_type.startsWith('VID-shot'));
+  const hasVidShots = s?.has_vid_shots === true;
   const visible =
     Boolean(pilotState && pilotState !== 'NONE') ||
     Boolean(stageRunning) ||
@@ -151,7 +98,7 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
   // ── Actions ─────────────────────────────────────────────────────────────
 
   async function refresh() {
-    await Promise.all([mutateEp(), mutateAssets()]);
+    await mutateState();
   }
 
   async function approvePilots() {
