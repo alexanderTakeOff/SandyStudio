@@ -503,12 +503,12 @@ export function EpisodeAssetDrawer({
           )}
 
           {/* When asset has an image but no prompt history (legacy), offer Upload-only. */}
-          {isImage && !promptDoc && editable && (
+          {isImage && !promptDoc && editable && !isVidShot && (
             <LegacyUploadCard assetId={asset.id} onChanged={onChange} />
           )}
 
           {/* Empty-state CTA for non-Bible assets without image — minimal, just text */}
-          {!isImage && !promptDoc && editable && (
+          {!isImage && !promptDoc && editable && !isVidShot && !isAnimaticAsset && (
             <div
               className="rounded-lg border border-dashed border-glass p-4 flex flex-col items-center gap-2.5"
               style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
