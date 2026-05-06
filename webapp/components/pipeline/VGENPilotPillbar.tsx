@@ -63,10 +63,22 @@ export interface VGENPilotPillbarProps {
 }
 
 export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarProps) {
+  // Faster refresh while VGEN is actively running so Director sees progress
+  // updates without manual Refresh clicks. Falls back to 30s when idle.
   const { data: stateData, mutate: mutateState } = useSWR<VgenStateResponse>(
     `/api/episodes/${episodeId}/vgen/state`,
     fetcher,
-    { refreshInterval: 10_000 },
+    {
+      refreshInterval: (latest) => {
+        const d = latest?.data;
+        if (!d) return 30_000;
+        const live =
+          d.pilot_state === 'PENDING_REVIEW' ||
+          d.pilot_state === 'FANOUT_RUNNING' ||
+          d.running_jobs > 0;
+        return live ? 4_000 : 30_000;
+      },
+    },
   );
 
   const s = stateData?.data;
@@ -77,6 +89,7 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
     approvedCount: s?.approved_count ?? 0,
     pilotApprovedCount: s?.pilot_approved_count ?? 0,
     pilotShotIds: s?.pilot_shot_ids ?? [],
+    runningJobs: s?.running_jobs ?? 0,
   };
 
   const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel'>(null);
