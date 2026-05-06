@@ -78,20 +78,20 @@ function shotToV2(s: unknown): StoryboardShotV2 | null {
   if (!s || typeof s !== 'object') return null;
   const sh = s as Record<string, unknown>;
   if (typeof sh.shot_id !== 'string') return null;
-  const characters: StoryboardShotCharacter[] | undefined = Array.isArray(sh.characters)
-    ? sh.characters
-        .map((c) => {
-          if (!c || typeof c !== 'object') return null;
-          const obj = c as Record<string, unknown>;
-          return {
-            bible_slug: typeof obj.bible_slug === 'string' ? obj.bible_slug : undefined,
-            display_name:
-              typeof obj.display_name === 'string' ? obj.display_name : undefined,
-            emotion: typeof obj.emotion === 'string' ? obj.emotion : undefined,
-          };
-        })
-        .filter((x): x is StoryboardShotCharacter => x !== null)
-    : undefined;
+  let characters: StoryboardShotCharacter[] | undefined;
+  if (Array.isArray(sh.characters)) {
+    const parsed: StoryboardShotCharacter[] = [];
+    for (const c of sh.characters) {
+      if (!c || typeof c !== 'object') continue;
+      const obj = c as Record<string, unknown>;
+      const entry: StoryboardShotCharacter = {};
+      if (typeof obj.bible_slug === 'string') entry.bible_slug = obj.bible_slug;
+      if (typeof obj.display_name === 'string') entry.display_name = obj.display_name;
+      if (typeof obj.emotion === 'string') entry.emotion = obj.emotion;
+      parsed.push(entry);
+    }
+    characters = parsed;
+  }
 
   return {
     shot_id: sh.shot_id,
