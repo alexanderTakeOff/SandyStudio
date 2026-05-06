@@ -81,6 +81,13 @@ export function EpisodeTimelineSection({
   const [filter, setFilter] = useState<FilterKey>('all');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  // When Director clicks a missing-VGEN cell (image fallback), we open the
+  // EREF in the drawer AND remember the shot_id so the drawer footer offers
+  // a "Generate VGEN" button. Cleared when previewAssetId moves to a real
+  // VID-shot or the drawer closes.
+  const [pendingGenerateShotId, setPendingGenerateShotId] = useState<string | null>(null);
+  const [genBusy, setGenBusy] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
 
   // Pick the freshest APPROVED VID-animatic with the v1 contract. If multiple
   // approved animatics exist (re-trigger history), we use the highest version /
