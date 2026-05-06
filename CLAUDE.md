@@ -324,6 +324,7 @@ Hook scripts in `C:\SandyStudio\.claude\hooks\`. Registered in `.claude/settings
 |------|------|-------------|
 | **MANUAL** | `Mode 1` | Director/CEO approves every gate. Default at session start. |
 | **HYBRID** | `Mode 2` | Director/CEO keeps defined scope · EXEC-DIR-AI handles the rest. |
+| **APPRENTICE** _(planned)_ | `Mode 2.5` | Agent leads pipeline, Director supervises + approves key creative gates. Required bridge before Mode 3. **Not yet implemented** — see `specs/company/governance.md §4 (Mode 2.5)` for full design + Skill Editor / Learning Loop architecture. |
 | **DELEGATED** | `Mode 3` | EXEC-DIR-AI approves all gates except hard limits. |
 | **AUTOTEST** | `Mode 4` | All gates auto-pass. Pipeline testing only. Reverts to Mode 1 on session end. |
 
