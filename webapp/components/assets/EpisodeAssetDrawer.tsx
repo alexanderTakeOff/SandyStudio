@@ -487,7 +487,6 @@ export function EpisodeAssetDrawer({
             </div>
           )}
 
-<<<<<<< HEAD
           {/* ── VGEN: VID-shot Universal Core panel (extracted to keep drawer < 800 lines) ── */}
           {isVidShot && (
             <VGENShotSection
@@ -502,8 +501,6 @@ export function EpisodeAssetDrawer({
             />
           )}
 
-=======
->>>>>>> origin/master
           {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Candidates ── */}
           {isV2 && shotRef && (
             <>
