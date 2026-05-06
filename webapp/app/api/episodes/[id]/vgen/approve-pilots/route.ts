@@ -73,11 +73,14 @@ export const POST = withApiHandler(async (req, ctx) => {
   // Verify at least one VID-shot in REVIEW or APPROVED status that's marked
   // as a pilot in metadata.vgen_pilot=true. Director must have approved
   // every pilot shot before fan-out can proceed.
+  // VID-shot rows carry a per-shot variant suffix in their file_type
+  // (e.g. "VID-shot-ss-s14-e01-a1-sc01-sh01"). Use prefix match instead of
+  // `.eq()` so we catch every variant.
   const { data: pilotShots, error: pilotErr } = await supabase
     .from('assets')
     .select('id,status,metadata,filename')
     .eq('episode_id', episodeId)
-    .eq('file_type', 'VID-shot');
+    .like('file_type', 'VID-shot%');
   if (pilotErr) throw new Error(`pilot shots fetch: ${pilotErr.message}`);
   const pilots = (pilotShots ?? []).filter((row) => {
     const meta = (row as { metadata?: unknown }).metadata;
