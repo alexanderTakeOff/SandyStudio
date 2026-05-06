@@ -121,6 +121,14 @@ export interface RunAgentArgs {
   supabase?: SupabaseClient<Database>;
   /** Episode code (e.g. SS-S01-E02) — fed into Drive folder layout. */
   episodeCode?: string;
+  /** EXEC-VGEN Universal Core: aspect ratio override (Pilot/Fan-out/Per-shot). */
+  aspectRatio?: '16:9' | '9:16' | '1:1';
+  /** EXEC-VGEN Universal Core: quality tier override. */
+  qualityTier?: 'fast' | 'standard';
+  /** EXEC-VGEN Universal Core: duration seconds override (animatic timing). */
+  durationSeconds?: number;
+  /** EXEC-VGEN: pilot pass marker for activity feed / metadata. */
+  vgenPilot?: boolean;
 }
 
 // Helper: assemble metadata payload for binary outputs, encapsulating the
