@@ -21,6 +21,7 @@
 //     pilot_approved_count: number,   // pilot shots whose latest VID-shot is APPROVED
 //     approved_count: number,         // distinct shot_ids with any APPROVED VID-shot
 //     has_vid_shots: boolean,
+//     running_jobs: number,           // EXEC-VGEN jobs currently RUNNING for this episode
 //   }
 // ──────────────────────────────────────────────────────────────────────────────
 
