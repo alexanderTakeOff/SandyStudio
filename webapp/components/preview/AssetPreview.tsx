@@ -175,6 +175,64 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
   );
 }
 
+function PilotApproveButtons({
+  assetId,
+  onChanged,
+}: {
+  assetId: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState<null | 'approve' | 'reject'>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function post(decision: 'APPROVE' | 'REJECT') {
+    setBusy(decision === 'APPROVE' ? 'approve' : 'reject');
+    setError(null);
+    try {
+      const res = await fetch(`/api/assets/${assetId}/approve`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ decision, directorConfirm: true }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? `${decision} failed`);
+      }
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 pt-2 border-t border-glass">
+      <Button
+        size="sm"
+        variant="primary"
+        onClick={() => post('APPROVE')}
+        disabled={busy !== null}
+      >
+        {busy === 'approve' ? 'Approving…' : 'Approve'}
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => post('REJECT')}
+        disabled={busy !== null}
+      >
+        {busy === 'reject' ? 'Rejecting…' : 'Reject'}
+      </Button>
+      {error && (
+        <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function DriveBadge({ asset }: { asset: AssetRow }) {
   if (asset.drive_file_id && asset.drive_web_view_url) {
     return (
