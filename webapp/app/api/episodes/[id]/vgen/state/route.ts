@@ -107,7 +107,10 @@ export const GET = withApiHandler(async (_req, ctx) => {
   }
 
   // ── VID-shot grouping (one row per shot_id; APPROVED/LOCKED wins) ─────────
-  const vidShots = assets.filter((a) => a.file_type === 'VID-shot');
+  // file_type can be the bare 'VID-shot' (legacy) or 'VID-shot-<variant>'
+  // (Pilot Pass / fan-out path). Both shapes map to the same shot_id via
+  // metadata.shot_id, so we treat them uniformly.
+  const vidShots = assets.filter((a) => a.file_type.startsWith('VID-shot'));
   const byShot = new Map<string, AssetRow[]>();
   for (const a of vidShots) {
     const sid = getVidShotShotId(a.metadata) ?? a.id; // fallback per-asset
