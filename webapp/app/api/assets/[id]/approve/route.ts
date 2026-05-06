@@ -211,14 +211,47 @@ async function computeNextEvents(
     }
   }
 
-  // ── Animatic APPROVED → fan-out EXEC-VGEN×3 + EXEC-MGEN×1
+  // ── Animatic APPROVED → VGEN Pilot Pass + EXEC-MGEN×1
+  // Per purrfect-stirring-hollerith plan: replace the legacy [1,2,3] hardcode
+  // with real shot ids from animatic_v1.shot_list. Pilot Pass picks 1-2
+  // representative shots; Director approves direction; remaining shots fan
+  // out via the /fanout-trigger event after manual approval.
+  //
+  // Back-compat: if the animatic asset has no animatic_v1 metadata (legacy
+  // mock pilot or pre-shot-list episodes), fall through to the old 3-shot
+  // fan-out so replay-pilot keeps passing.
   if (ft === 'VID-animatic') {
     if (!(await hasJob(supabase, ep, 'EXEC-VGEN', { since }))) {
-      for (const shotN of [1, 2, 3] as const) {
-        events.push({
-          name: 'sandystudio/exec-vgen/generate-shot',
-          data: { episodeId: ep, shotId: `shot${shotN}`, animaticAssetId: asset.id },
-        });
+      const animaticMeta = (asset as { metadata?: unknown }).metadata;
+      if (isAnimaticV1(animaticMeta)) {
+        const v1 = (animaticMeta as { animatic_v1: AnimaticContract }).animatic_v1;
+        const shotList = v1.shot_list ?? [];
+        const pilots = pickPilotVgenShots(shotList);
+        if (pilots.length > 0) {
+          // Set pilot_state PENDING_REVIEW upfront — runner will reaffirm
+          // it after each pilot finishes. Doing it here means the UI reflects
+          // "pilot in flight" the moment Director clicks Approve animatic.
+          await setVgenPilotState(supabase, ep, 'PENDING_REVIEW');
+          for (const p of pilots) {
+            events.push({
+              name: 'sandystudio/exec-vgen/start',
+              data: {
+                episodeId: ep,
+                shotId: p.shotId,
+                duration_seconds: p.durationSeconds,
+                pilot: true,
+              },
+            });
+          }
+        }
+      } else {
+        // Legacy fallback (replay-pilot, pre-Pilot-Pass episodes): 3 fake shots.
+        for (const shotN of [1, 2, 3] as const) {
+          events.push({
+            name: 'sandystudio/exec-vgen/generate-shot',
+            data: { episodeId: ep, shotId: `shot${shotN}`, animaticAssetId: asset.id },
+          });
+        }
       }
     }
     if (!(await hasJob(supabase, ep, 'EXEC-MGEN', { since }))) {
