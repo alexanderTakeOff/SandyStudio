@@ -200,9 +200,16 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
 
 function PilotApproveButtons({
   assetId,
+  variant,
   onChanged,
 }: {
   assetId: string;
+  /**
+   * `review`   — REVIEW asset: Approve → APPROVED, Reject → REVISION.
+   * `approved` — APPROVED asset: only Reject available, demotes back to REVIEW
+   *              so Director can revoke a too-eager approval without regen.
+   */
+  variant: 'review' | 'approved';
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState<null | 'approve' | 'reject'>(null);
@@ -231,21 +238,30 @@ function PilotApproveButtons({
 
   return (
     <div className="flex items-center gap-2 pt-2 border-t border-glass">
-      <Button
-        size="sm"
-        variant="primary"
-        onClick={() => post('APPROVE')}
-        disabled={busy !== null}
-      >
-        {busy === 'approve' ? 'Approving…' : 'Approve'}
-      </Button>
+      {variant === 'review' && (
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => post('APPROVE')}
+          disabled={busy !== null}
+        >
+          {busy === 'approve' ? 'Approving…' : 'Approve'}
+        </Button>
+      )}
       <Button
         size="sm"
         variant="ghost"
         onClick={() => post('REJECT')}
         disabled={busy !== null}
+        title={
+          variant === 'approved'
+            ? 'Demote this APPROVED shot back to REVIEW'
+            : 'Reject — sends shot to REVISION'
+        }
       >
-        {busy === 'reject' ? 'Rejecting…' : 'Reject'}
+        {busy === 'reject'
+          ? variant === 'approved' ? 'Demoting…' : 'Rejecting…'
+          : variant === 'approved' ? 'Demote to REVIEW' : 'Reject'}
       </Button>
       {error && (
         <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
