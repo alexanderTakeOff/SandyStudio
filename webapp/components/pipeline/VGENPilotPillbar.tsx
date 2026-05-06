@@ -276,29 +276,93 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
 function PilotHeadline({
   pilotApproved,
   pilotTotal,
+  pilotReady,
   totalShots,
+  runningJobs,
 }: {
   pilotApproved: number;
   pilotTotal: number;
+  /** Number of pilot VID-shot assets that already exist (any status). */
+  pilotReady: number;
   totalShots: number;
+  runningJobs: number;
 }) {
+  // Three sub-states inside PENDING_REVIEW:
+  //   1. generating — runner still creating pilots (running_jobs > 0 OR
+  //      no pilot assets exist yet)
+  //   2. partial    — at least one pilot asset exists but not all approved
+  //   3. ready      — all pilots approved
+  const allApproved = pilotApproved >= pilotTotal && pilotTotal > 0;
+  const generating = !allApproved && (runningJobs > 0 || pilotReady === 0);
+
+  // Progress is "approved/total" when both pilots have arrived; when still
+  // generating, switch to a soft "pilots arrived/expected" so the bar isn't
+  // empty for the whole 30s of generation.
+  const progressNumerator = pilotReady < pilotTotal ? pilotReady : pilotApproved;
+  const pct =
+    pilotTotal === 0
+      ? 0
+      : Math.max(2, Math.round((progressNumerator / pilotTotal) * 100));
+
+  let label: string;
+  if (allApproved) {
+    label = `${pilotApproved}/${pilotTotal} pilots ready — approve direction to fan out`;
+  } else if (generating) {
+    label = `Generating pilots… ${pilotReady}/${pilotTotal} ready`;
+  } else {
+    label = `${pilotApproved}/${pilotTotal} pilot shots approved · review the rest`;
+  }
+
   return (
-    <div className="flex items-center gap-2 text-sm text-text-primary">
-      <span
-        className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider"
-        style={{
-          background: 'color-mix(in oklab, var(--accent-primary) 20%, transparent)',
-          color: 'var(--accent-primary)',
-        }}
+    <div className="flex items-center gap-3 flex-wrap basis-full sm:basis-auto sm:flex-1">
+      <div className="flex items-center gap-2 text-sm text-text-primary">
+        <span
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider"
+          style={{
+            background: 'color-mix(in oklab, var(--accent-primary) 20%, transparent)',
+            color: 'var(--accent-primary)',
+          }}
+        >
+          VGEN Pilot
+        </span>
+        {allApproved ? (
+          <CheckCircle2
+            size={14}
+            className="shrink-0"
+            style={{ color: 'var(--accent-success)' }}
+          />
+        ) : generating ? (
+          <Loader2
+            size={14}
+            className="shrink-0 animate-spin"
+            style={{ color: 'var(--accent-primary)' }}
+          />
+        ) : null}
+        <span className="text-text-primary font-medium">
+          {label}
+          {totalShots > 0 && totalShots !== pilotTotal && (
+            <span className="text-text-muted text-xs ml-1">
+              · {totalShots} total in episode
+            </span>
+          )}
+        </span>
+      </div>
+      <div
+        className="h-1.5 rounded-full overflow-hidden flex-1 min-w-[120px] max-w-[280px]"
+        style={{ background: 'color-mix(in oklab, var(--panel-glass-border) 60%, transparent)' }}
       >
-        VGEN Pilot
-      </span>
-      <span>
-        {pilotApproved}/{pilotTotal} pilot shots approved
-        {totalShots > 0 && totalShots !== pilotTotal && (
-          <span className="text-text-muted text-xs ml-1">· {totalShots} total in episode</span>
-        )}
-      </span>
+        <div
+          className={`h-full rounded-full transition-all ${
+            generating ? 'animate-pulse' : ''
+          }`}
+          style={{
+            width: `${pct}%`,
+            background: allApproved
+              ? 'var(--accent-success)'
+              : 'var(--accent-primary)',
+          }}
+        />
+      </div>
     </div>
   );
 }
