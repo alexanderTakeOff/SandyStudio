@@ -92,10 +92,11 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
     runningJobs: s?.running_jobs ?? 0,
   };
 
-  const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel'>(null);
-  const [success, setSuccess] = useState<null | 'approve_pilots' | 'cancel'>(null);
+  const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel' | 'approve_all'>(null);
+  const [success, setSuccess] = useState<null | 'approve_pilots' | 'cancel' | 'approve_all'>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmApproveAll, setConfirmApproveAll] = useState(false);
 
   // Visibility heuristic — show whenever:
   //   • the state endpoint reports a non-NONE pilot state, OR
