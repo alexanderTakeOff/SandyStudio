@@ -176,6 +176,13 @@ export const GET = withApiHandler(async (_req, ctx) => {
   // aren't in the current animatic) could read N/M with N > M in the UI.
   const approvedCount = Math.min(approvedShotIds.size, totalShots || approvedShotIds.size);
 
+  // missing_count = shots that have no APPROVED-or-REVIEW row at all (e.g.
+  // generation failed and was never recovered, or shot was demoted). The
+  // pillbar uses this to differentiate "needs your approval" (review_count)
+  // from "needs regeneration" (missing_count).
+  const reviewCount = reviewShotIds.size;
+  const missingCount = Math.max(0, totalShots - approvedCount - reviewCount);
+
   return apiOk({
     episode_id: episodeId,
     pilot_state: pilotState,
@@ -183,6 +190,8 @@ export const GET = withApiHandler(async (_req, ctx) => {
     pilot_shot_ids: pilotShotIds,
     pilot_approved_count: pilotApprovedCount,
     approved_count: approvedCount,
+    review_count: reviewCount,
+    missing_count: missingCount,
     has_vid_shots: vidShots.length > 0,
     running_jobs: runningJobs,
   });
