@@ -57,12 +57,32 @@ export class VeoGeminiError extends Error {
   }
 }
 
-const MODEL_BY_QUALITY: Record<VeoQualityTier, string> = {
-  standard: 'veo-3.0-generate-001',
-  fast: 'veo-3.0-fast-generate-001',
-};
+// Veo model IDs. Defaults switched to Veo 3.1 (preview) in 2026-05-06 Phase 1.5
+// upgrade — Director directive: "переходить на 3.1 там квота в 5 раз больше".
+// Veo 3.1 lifts the per-region request-rate ceiling vs the Veo 3.0 IDs that
+// were previously hard-coded.
+//
+// Director can override via env without redeploy if Google renames the model:
+//   VEO_MODEL_STANDARD  — overrides the 'standard' tier model id
+//   VEO_MODEL_FAST      — overrides the 'fast' tier model id
+//
+// Fallback chain: env → 3.1 default. If 3.1 ever gets retired or renamed,
+// env override is the safety valve.
+function getVeoModelId(quality: VeoQualityTier): string {
+  const env =
+    quality === 'standard'
+      ? process.env.VEO_MODEL_STANDARD
+      : process.env.VEO_MODEL_FAST;
+  const trimmed = env?.trim();
+  if (trimmed && trimmed.length > 0) return trimmed;
+  return quality === 'standard'
+    ? 'veo-3.1-generate-preview'
+    : 'veo-3.1-fast-generate-preview';
+}
 
 // Veo cost estimates per Google AI Studio pricing (USD per second of output).
+// Veo 3.1 preview is currently billed at the same rate as Veo 3.0 per Google's
+// public pricing page — update here if that changes.
 const COST_USD_PER_SECOND: Record<VeoQualityTier, number> = {
   standard: 0.15,
   fast: 0.075,
