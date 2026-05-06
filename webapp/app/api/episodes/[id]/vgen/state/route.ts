@@ -40,6 +40,8 @@ interface AssetRow {
   file_type: string;
   status: string;
   metadata: unknown;
+  version: number | null;
+  created_at: string;
 }
 
 function getVidShotShotId(meta: unknown): string | null {
