@@ -38,12 +38,19 @@ Pipeline runs end-to-end on mocks all the way to Publish gate (Director hard-lim
 
 ### Background sub-agents
 
-Two parallel sub-agents launched. **Both will finish independently — check before starting any work**.
+- **Track B — UI** ✅ **COMPLETED** (agent ID `a62e962435b35cead`). Files created:
+  - `webapp/components/vgen/VGENShotPanel.tsx` (378 lines) — Universal Core controls
+  - `webapp/components/vgen/VGENBatchPanel.tsx` (242 lines) — stage batch defaults (uses localStorage stub `sandystudio.vgen_batch_defaults.<episodeId>`; Track A may choose to upgrade to server PATCH later)
+  - `webapp/components/vgen/VGENShotSection.tsx` (116 lines) — drawer↔panel glue extractor
+  - `webapp/components/pipeline/VGENPilotPillbar.tsx` (397 lines)
+  - Modified: `EpisodeAssetDrawer.tsx` (830 lines, net 0 — extracted glue), episode page (629→648)
+  - tsc clean for Track B (110/110 tests pass)
 
-- **Track A — Backend** — agent ID `af95e1ac14f22c8c3`. Building: vgen-pilot-state.ts, vgen-cancel.ts, vgen-defaults.ts, vgen-shot-helpers.ts (buildShotPromptV2 + getApprovedEREFForShot + pickPilotVgenShots), video-gen-multi.ts type abstraction, 3 routes (approve-pilots / cancel / regenerate-video), runner.ts EXEC-VGEN refactor (img2vid + real prompt + real duration), exec-vgen.ts Inngest 3-events branch, /approve route fan-out fix.
-- **Track B — UI** — agent ID `a62e962435b35cead`. Building: VGENShotPanel.tsx (Universal Core controls — aspect/quality/duration/prompt/reference + Generate), VGENBatchPanel.tsx (stage-level batch defaults), VGENPilotPillbar.tsx, EpisodeAssetDrawer branch for VID-shot, episode page integration.
-
-**Next session must:** check sub-agent completion via tool notifications. If both finished — do integration + smoke test. If still running — wait or send `SendMessage to: <agentId>` to query status. Or just wait for completion notification.
+- **Track A — Backend** 🟡 **STILL RUNNING** (agent ID `af95e1ac14f22c8c3`). Will finish independently — wait for notification.
+  - Track B's tsc found 2 errors in Track A's WIP file `lib/api/vgen-shot-helpers.ts`:
+    - Line 81 TS2322 — null filter needed for `StoryboardShotCharacter[]` map
+    - Line 93 TS2677 — type predicate parameter shape mismatch
+  - Track A may self-fix before finishing; if not, integration step (~5 min) handles them.
 
 **Do NOT relaunch sub-agents** — they'll create duplicate work.
 
