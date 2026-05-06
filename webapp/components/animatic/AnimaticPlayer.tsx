@@ -63,6 +63,22 @@ export interface AnimaticPlayerProps {
   contract: AnimaticContract;
   /** Called after a successful save / upload — drawer should refetch. */
   onChanged: () => void;
+  /**
+   * EpisodeTimeline mode: when provided, the player upgrades from "animatic
+   * frames only" to a hybrid surface that also plays approved/REVIEW VID-shot
+   * mp4s for shot_ids that have them. Per Director's directives 2026-05-06:
+   *   - REVIEW VID-shot plays for visual feedback (yellow border, not canonical)
+   *   - APPROVED VID-shot replaces the animatic frame canonically (green pill)
+   *   - Storyboard order is preserved; one cell per shot_id (directive #1)
+   * Pass `[]` (empty) to keep behaviour pure-animatic.
+   */
+  vidShotAssets?: VidShotAssetRow[];
+  /**
+   * Called when Director clicks any timeline cell — caller (episode page)
+   * opens the per-shot drawer for review. Optional; without it, cells just
+   * seek the playhead.
+   */
+  onCellClick?: (cell: TimelineCell) => void;
 }
 
 interface ShotTime {
