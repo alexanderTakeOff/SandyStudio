@@ -298,6 +298,39 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
         )}
       </div>
 
+      <Modal
+        open={confirmApproveAll}
+        onClose={() => setConfirmApproveAll(false)}
+        title={`Approve all ${pendingReviewCount} REVIEW shots?`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary leading-relaxed">
+            This bulk-flips every VID-shot row in REVIEW status to APPROVED for
+            this episode. Use it after fan-out completes when you're satisfied
+            the direction holds across all shots. Mode 1 governance still
+            applies — the audit log records each approval.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmApproveAll(false)}
+              disabled={busy === 'approve_all'}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={approveAllReview}
+              disabled={busy === 'approve_all'}
+            >
+              {busy === 'approve_all'
+                ? 'Approving…'
+                : `Approve ${pendingReviewCount} shots`}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={confirmCancel} onClose={() => setConfirmCancel(false)} title="Cancel VGEN?">
         <div className="space-y-4">
           <p className="text-sm text-text-secondary leading-relaxed">
