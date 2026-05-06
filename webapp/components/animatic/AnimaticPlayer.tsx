@@ -388,12 +388,34 @@ export function AnimaticPlayer({
         </div>
       </div>
 
-      {/* Preview area */}
+      {/* Preview area — hybrid: <video> for VID-shot cells (canonical/review),
+          <img> for animatic image fallback. Cell border color reflects status:
+          green = canonical APPROVED/LOCKED, yellow = REVIEW (tentative per
+          directive #2), no border = animatic image fallback. */}
       <div
-        className="relative rounded-lg overflow-hidden border border-glass bg-black"
-        style={{ aspectRatio: '16 / 9' }}
+        className="relative rounded-lg overflow-hidden border-2 bg-black"
+        style={{
+          aspectRatio: '16 / 9',
+          borderColor:
+            currentCell?.kind === 'video-canonical'
+              ? 'var(--accent-success, #22c55e)'
+              : currentCell?.kind === 'video-review'
+                ? 'var(--accent-warning, #f59e0b)'
+                : 'var(--panel-glass-border, rgba(255,255,255,0.1))',
+        }}
       >
-        {currentShot ? (
+        {currentCell?.kind === 'video-canonical' || currentCell?.kind === 'video-review' ? (
+          <video
+            key={currentCell.url ?? currentShot?.shot_id}
+            src={currentCell.url ?? undefined}
+            className="absolute inset-0 w-full h-full object-contain"
+            // Inline mp4 plays automatically when its cell is current. On
+            // pause / seek the parent state controls; here we just render.
+            autoPlay={isPlaying}
+            muted
+            playsInline
+          />
+        ) : currentShot && currentShot.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={currentShot.image_url}
@@ -405,6 +427,23 @@ export function AnimaticPlayer({
             No shots yet
           </div>
         )}
+        {/* Status pill (top-right) — visible only in hybrid mode. */}
+        {isHybridMode && currentCell && currentCell.status !== 'NONE' && (
+          <div
+            className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider"
+            style={{
+              background:
+                currentCell.kind === 'video-canonical'
+                  ? 'color-mix(in oklab, var(--accent-success, #22c55e) 75%, transparent)'
+                  : currentCell.kind === 'video-review'
+                    ? 'color-mix(in oklab, var(--accent-warning, #f59e0b) 75%, transparent)'
+                    : 'rgba(0,0,0,0.55)',
+              color: 'white',
+            }}
+          >
+            {currentCell.status}
+          </div>
+        )}
         {currentShot && (
           <div
             className="absolute bottom-2 left-2 right-2 text-xs text-white px-2 py-1 rounded"
@@ -413,6 +452,17 @@ export function AnimaticPlayer({
             <span className="font-mono">{currentShot.shot_id}</span>
             {currentShot.shot_role && <span className="ml-2 opacity-80">· {currentShot.shot_role}</span>}
             <span className="ml-2 opacity-80">· {currentDuration.toFixed(1)}s</span>
+            {isHybridMode && currentCell && (
+              <button
+                type="button"
+                onClick={() => onCellClick?.(currentCell)}
+                disabled={!onCellClick || !currentCell.asset_id}
+                className="ml-2 underline opacity-90 hover:opacity-100 disabled:opacity-50 disabled:no-underline"
+                title="Open this shot in drawer for review"
+              >
+                Open shot →
+              </button>
+            )}
             {currentShot.caption && (
               <div className="opacity-75 truncate mt-0.5">{currentShot.caption}</div>
             )}
