@@ -23,6 +23,9 @@ import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
 import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
+import { VGENShotSection } from '@/components/vgen/VGENShotSection';
+import { Button } from '@/components/ui/Button';
+import { useState } from 'react';
 
 const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 
@@ -142,7 +145,11 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
         <>
           {cat === 'text' && <TextBody assetId={asset.id} />}
           {cat === 'image' && <ImageBody asset={asset} />}
-          {cat === 'video' && <VideoBody asset={asset} />}
+          {/* VID-shot has its own player inside VGENShotPanel — skip the
+              generic VideoBody to avoid rendering the mp4 twice. */}
+          {cat === 'video' && !asset.file_type.startsWith('VID-shot') && (
+            <VideoBody asset={asset} />
+          )}
           {cat === 'audio' && <AudioBody asset={asset} />}
         </>
       )}
@@ -152,7 +159,89 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
           drivePath={asset.drive_path}
         />
       )}
+      {/* VGEN VID-shot: show Universal Core controls + per-shot approve/reject
+          so Director can act on a pilot from the activity feed Preview drawer
+          (full drawer in Inbox is the canonical path; this mirrors the same
+          actions for the activity-feed entrypoint). */}
+      {asset.file_type.startsWith('VID-shot') && (
+        <>
+          <VGENShotSection
+            assetId={asset.id}
+            filename={asset.filename}
+            metadata={asset.metadata}
+            drivePath={asset.drive_path}
+            driveWebViewUrl={asset.drive_web_view_url}
+            stagingPath={asset.staging_path}
+            editable={asset.status === 'REVIEW' || asset.status === 'DRAFT'}
+            onChanged={() => void mutate()}
+          />
+          {asset.status === 'REVIEW' && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              onChanged={() => void mutate()}
+            />
+          )}
+        </>
+      )}
       <DriveBadge asset={asset} />
+    </div>
+  );
+}
+
+function PilotApproveButtons({
+  assetId,
+  onChanged,
+}: {
+  assetId: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState<null | 'approve' | 'reject'>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function post(decision: 'APPROVE' | 'REJECT') {
+    setBusy(decision === 'APPROVE' ? 'approve' : 'reject');
+    setError(null);
+    try {
+      const res = await fetch(`/api/assets/${assetId}/approve`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ decision, directorConfirm: true }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? `${decision} failed`);
+      }
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 pt-2 border-t border-glass">
+      <Button
+        size="sm"
+        variant="primary"
+        onClick={() => post('APPROVE')}
+        disabled={busy !== null}
+      >
+        {busy === 'approve' ? 'Approving…' : 'Approve'}
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => post('REJECT')}
+        disabled={busy !== null}
+      >
+        {busy === 'reject' ? 'Rejecting…' : 'Reject'}
+      </Button>
+      {error && (
+        <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
+          {error}
+        </span>
+      )}
     </div>
   );
 }

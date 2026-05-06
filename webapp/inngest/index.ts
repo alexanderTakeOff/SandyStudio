@@ -11,7 +11,12 @@ import { execSbCreateStoryboard } from './functions/exec-sb';
 import { execWchkCheckWorld } from './functions/exec-wchk';
 import { execErefStart } from './functions/exec-eref';
 import { execEditCreateAnimatic } from './functions/exec-edit';
-import { execVgenGenerateShot } from './functions/exec-vgen';
+import {
+  execVgenLegacyGenerateShot,
+  execVgenStart,
+  execVgenFanoutTrigger,
+  execVgenSingleShot,
+} from './functions/exec-vgen';
 import { execMgenGenerateMusic } from './functions/exec-mgen';
 import { execCopyWriteMetadata } from './functions/exec-copy';
 import { execThumbGenerateThumbnail } from './functions/exec-thumb';
@@ -29,7 +34,10 @@ export const functions = [
   execWchkCheckWorld,
   execErefStart,
   execEditCreateAnimatic,
-  execVgenGenerateShot,
+  execVgenLegacyGenerateShot,
+  execVgenStart,
+  execVgenFanoutTrigger,
+  execVgenSingleShot,
   execMgenGenerateMusic,
   execCopyWriteMetadata,
   execThumbGenerateThumbnail,

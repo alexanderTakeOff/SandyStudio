@@ -47,6 +47,7 @@ import { fetcher } from '@/lib/swr';
 import { isShotReferenceV2 } from '@/lib/api/shot-reference';
 import { isAnimaticV1 } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
+import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import type {
   AssetMetadataDoc,
   ImagePromptHistoryEntry,
@@ -215,6 +216,9 @@ export function EpisodeAssetDrawer({
     ? (asset.metadata as { shot_reference: import('@/lib/api/shot-reference').ShotReferenceContract }).shot_reference
     : null;
   const shotId = shotRef?.shot_id ?? null;
+
+  // ── VID-shot (VGEN) detection ───────────────────────────────────────────
+  const isVidShot = asset.file_type.startsWith('VID-shot');
 
   // Fetch sibling assets for the same shot (candidates strip + replace-confirm).
   // Always called (hook rule) — but only used when v2.
@@ -451,12 +455,12 @@ export function EpisodeAssetDrawer({
           )}
 
           {/* When asset has an image but no prompt history (legacy), offer Upload-only. */}
-          {isImage && !promptDoc && editable && (
+          {isImage && !promptDoc && editable && !isVidShot && (
             <LegacyUploadCard assetId={asset.id} onChanged={onChange} />
           )}
 
           {/* Empty-state CTA for non-Bible assets without image — minimal, just text */}
-          {!isImage && !promptDoc && editable && (
+          {!isImage && !promptDoc && editable && !isVidShot && (
             <div
               className="rounded-lg border border-dashed border-glass p-4 flex flex-col items-center gap-2.5"
               style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
@@ -481,6 +485,20 @@ export function EpisodeAssetDrawer({
             >
               Legacy animatic — interactive player not available. Re-trigger the Animatic stage to upgrade to animatic@v1.
             </div>
+          )}
+
+          {/* ── VGEN: VID-shot Universal Core panel (extracted to keep drawer < 800 lines) ── */}
+          {isVidShot && (
+            <VGENShotSection
+              assetId={asset.id}
+              filename={asset.filename}
+              metadata={asset.metadata}
+              drivePath={asset.drive_path}
+              driveWebViewUrl={asset.drive_web_view_url}
+              stagingPath={asset.staging_path}
+              editable={editable}
+              onChanged={onChange}
+            />
           )}
 
           {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Candidates ── */}

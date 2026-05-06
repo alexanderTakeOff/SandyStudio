@@ -93,6 +93,22 @@ Items surfaced during Director's Phase 5c smoke test, not blocking but worth fix
 - ✅ #11 Factory writes `agent_completed` activity_event on save
 - ✅ #12 STAGE_FROM_ASSET prefix matching (no more "all stages idle despite approved assets")
 
+### Long-term architecture roadmap (recorded — NOT current sprint work)
+
+Strategic items captured by Director's directives. Not part of any active sprint; refine and schedule later.
+
+| # | Item | Status | Source |
+|---|---|---|---|
+| LT-01 | **Mode 2.5 — APPRENTICE / SUPERVISED OPERATOR** governance mode. Required bridge between Mode 2 and Mode 3. Agent-led pipeline with Director supervision; conversational control; learning loop with Skill Editor; Director-approved skill changes. **Must be considered before expanding Mode 3 autonomy.** | PLANNED — full design in `specs/company/governance.md §4 (Mode 2.5)` | Director directive 2026-05-06 |
+| LT-02 | **EpisodeTimeline** — unified progressive review surface evolving AnimaticPlayer (animatic frames → real mp4s → stitched final). Replaces 4 disconnected surfaces with one. Multi-track audio schema, hybrid playback, drawer prev/next. | PLANNED — full design in `~/.claude/plans/purrfect-stirring-hollerith.md` (Phase A section) | Director directive 2026-05-06 |
+| LT-03 | **EXEC-STITCH** — auto-assembly stage (ffmpeg concat + cut/fade/dissolve transitions + audio mix → final mp4). Renderer, NOT editor. | PLANNED — Phase B in `purrfect-stirring-hollerith.md` | Director directive 2026-05-06 (technology.md §0) |
+| LT-04 | **Audio block reorg** — Music/Voice/SFX as separate stage BEFORE Animatic, so Animatic can play with pre-generated music for pacing review. | PLANNED — `technology.md §1` | Director directive 2026-05-05 |
+| LT-05 | **Skill Editor / Skill Update Candidate mechanism** — store rule candidates (visual style, prompt patterns, character consistency, Director preferences), Director approval flow, audit trail of canonical skill changes. **Prerequisite for Mode 2.5 Learning Loop (LT-01).** | DESIGN PENDING | Director directive 2026-05-06 |
+| LT-06 | **Improve `buildShotPromptV2`** — currently 3 generic lines; storyboard has rich `action_prose / expected_emotion / expected_gag / camera_angle / character emotions` data + Bible canon. Prompts must reflect this per `technology.md §1` ("Bible content попадает в prompt as-is, без truncation — quality > token cost"). | PLANNED — Phase 1.5 follow-up after VGEN epic merges | Director observation 2026-05-06 |
+| LT-07 | **Variants per generation** — Veo 3 supports `numberOfVideos: 1-4`. Add UI dropdown + multi-asset persist + side-by-side review pattern in drawer. | PLANNED — Phase 1.5 follow-up | Director observation 2026-05-06 |
+| LT-08 | **Vertex AI quota mitigation** — Veo 3 hit 429 at concurrency 2 + 3 in observed smoke 2026-05-06 (3/13 shots failed quota-bound, not code-bound). Concurrency hard-capped to 1 (sequential, ~20min/episode). Mitigation options: (a) request quota increase via Google Cloud Console; (b) implement Inngest backoff retry policy for 429-specific recovery; (c) batch shots with sleep between starts; (d) failover to alternate provider (Kling) on 429. | PLANNED — Phase 1.5 follow-up | Live test observation 2026-05-06 |
+| LT-09 | **Pipeline stage progress arc animation** — animated arc filling around stage emoji as % done (instead of static half-filled circle). Cosmetic UX polish for Pipeline View. Should respect `prefers-reduced-motion`. | PLANNED — backlog | Director directive 2026-05-06 |
+
 ### UI/UX implementation note
 
 Any task touching visual UI must keep `specs/system/uiux.md` synchronized:

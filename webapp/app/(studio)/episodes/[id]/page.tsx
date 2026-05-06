@@ -19,6 +19,8 @@ import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { EpisodeReferencesGallery } from '@/components/episode/EpisodeReferencesGallery';
 import { EREFPilotPillbar } from '@/components/pipeline/EREFPilotPillbar';
+import { VGENPilotPillbar } from '@/components/pipeline/VGENPilotPillbar';
+import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { fetcher } from '@/lib/swr';
 
@@ -342,6 +344,23 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                   }
                 />
                 <EpisodeReferencesGallery episodeId={id} seriesId={episode.series_id} />
+              </div>
+            )}
+
+            {/* When the selected stage is Visual Generator — render the VGEN
+                pilot pillbar + collapsed-by-default batch defaults panel. */}
+            {selectedStage === 'visual_generator' && (
+              <div className="mb-3 space-y-3">
+                <VGENPilotPillbar
+                  episodeId={id}
+                  stageRunning={
+                    stages.find((s) => s.id === 'visual_generator')?.state === 'running'
+                  }
+                />
+                <VGENBatchPanel
+                  episodeId={id}
+                  seriesId={episode.series_id}
+                />
               </div>
             )}
 

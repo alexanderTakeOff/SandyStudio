@@ -166,6 +166,174 @@ Escalation rules always apply.
 
 ---
 
+### Mode 2.5 — APPRENTICE / SUPERVISED OPERATOR (PLANNED — not yet implemented)
+
+> **Status:** Architectural plan recorded by Director's directive 2026-05-06.
+> Implementation scheduled AFTER Mode 1/2/3/4 stabilise + Skill Editor / Learning Loop infrastructure exists.
+> This is the **required bridge** before expanding Mode 3 autonomy in production.
+
+```
+Agent leads the production pipeline; Director supervises, corrects, approves at gates.
+The agent knows what should happen next, asks the right questions, prepares artifacts,
+explains decisions, and learns from feedback. Hard limits + key creative gates remain
+Director-approved.
+```
+
+**Core idea — agent-led, Director-supervised**
+
+Mode 2.5 is NOT "Director gives commands through chat". It is more advanced:
+
+- The agent knows the production pipeline (Idea → Script → References → Animatic → Shot gen → Auto-stitch → Music → Auto-publish per `technology.md §0`).
+- The agent **proactively leads** the Director through the process.
+- The agent asks the right questions (what's missing for the next gate).
+- The agent creates the required artifacts.
+- The agent presents outputs for review.
+- The Director gives feedback / approvals.
+- The agent continues to the next step **only after** the required gate is approved.
+
+The Director does NOT manually click through UI to manage every step. The agent becomes the active production operator; the Director remains the supervising authority.
+
+**Example flow**
+
+Director: *"Let's create a new series."*
+
+Agent:
+1. *"To create a new series I first need to define the Series Bible. Please answer: target audience, episode length, visual style, main character, tone, humor style, level of dialogue, production format..."*
+2. Collects Director's answers
+3. Drafts the initial Series Bible
+4. Presents it to the Director
+5. Asks for approval or corrections
+6. Updates the Bible based on feedback
+7. Once approved, **proposes the next step** ("now I'll generate character reference prompts — proceed?")
+8. Generates character references
+9. Presents for approval
+10. Continues through the pipeline step by step
+
+**Helicopter training analogy**
+
+| Mode | Pilot training stage |
+|---|---|
+| Mode 1 | Instructor controls everything manually |
+| Mode 2 | Limited AI assistance under defined scope |
+| **Mode 2.5** | **Student pilot at the controls, instructor supervising** |
+| Mode 3 | Solo flight with hard limits only |
+| Mode 4 | Simulator (autotest) |
+
+Mode 2.5 gives the agent "flight hours" under Director supervision before trusting Mode 3 in production.
+
+**Difference from Mode 2**
+
+Mode 2 is still **Director-led**: Director defines scope, AI helps with selected routine gates inside that scope.
+
+Mode 2.5 is **agent-led**: agent knows what should happen next, asks for missing info, prepares artifacts, requests approval. Director is not operating the pipeline manually.
+
+**Difference from Mode 3**
+
+Mode 3 allows the AI to approve **routine** production decisions itself, except hard limits. Mode 2.5 does NOT give the agent full final authority — key creative gates remain Director-approved:
+
+- Series Bible approval
+- Character / world Bible approval
+- Visual style approval
+- Script approval
+- References approval
+- Animatic approval
+- Final render approval
+- Publish approval
+- Budget limit approval
+- Mode change approval
+- Locked canonical asset approval
+
+**The agent must learn from feedback (Learning Loop requirement)**
+
+A key purpose of Mode 2.5 is **training future autonomy**, not just convenience. The agent must learn from Director feedback **without** the Director explicitly saying *"save this as a rule"*.
+
+Bad behavior:
+> Director: *"No, Sandy looks too premium and glassy."*
+> Agent: *"OK, I will regenerate."*
+
+Correct behavior:
+> Director: *"No, Sandy looks too premium and glassy."*
+> Agent: *"Understood. I treated Sandy as a premium glass character, but that seems wrong for this project. **Proposed visual rule update: Sandy should avoid a premium / glassy luxury look and should instead be simple, toy-like, funny, readable, and visually clear.** Should I save this to Sandy's character visual rules?"*
+
+**Learning loop schema**
+
+```
+Director feedback
+  → agent interprets the reason
+  → agent proposes a reusable rule update (rule candidate)
+  → Director confirms or edits the rule
+  → Skill Editor saves it to canonical store
+  → future agents (and future episodes) use it
+```
+
+**Safety / governance rule for self-modification**
+
+The agent shall NOT silently rewrite its own skills or system behavior. It MAY:
+
+- Detect patterns from Director feedback
+- Propose rule updates
+- Draft skill changes (rule candidates)
+- Explain why an update is useful
+
+But the **Director must approve** every skill change before it becomes canonical. All rule changes go through Skill Editor with audit trail (who proposed, when, Director's decision, before/after diff).
+
+**What can be learned**
+
+Mode 2.5 Learning Loop should support rule candidates for:
+
+- Character consistency
+- Visual style preferences
+- Prompt-writing patterns
+- Provider-specific generation preferences (Veo / Kling / fal.ai etc.)
+- Script tone
+- Humor style / pacing rules
+- Rejection patterns (what Director consistently rejects)
+- Approval heuristics (what Director consistently approves)
+- Shot composition preferences
+- World / lore consistency rules
+- Director-specific preferences (working hours, communication style)
+
+**Architectural prerequisites (must exist before Mode 2.5 ships)**
+
+| # | Subsystem | Status |
+|---|---|---|
+| 1 | Agent-led workflow progression (orchestrator that knows next step + can drive it) | Partial — EXEC-ORCH exists, no chat-driven mode |
+| 2 | Conversational control surface (chat that drives agents, not just answers questions) | Partial — Concierge is read-only in Sprint 9 |
+| 3 | Tool access to production pipeline (chat → can fire Inngest events, create assets) | Sprint 10 (Concierge tool dispatch) |
+| 4 | Gate-aware execution (agent knows which gates require Director approval per Mode) | Exists — `enforceMode()` in `lib/governance.ts` |
+| 5 | Persistent memory / skill updates store | Partial — `MEMORY.md`, `~/.claude/rules/` exist; no canonical Skill Editor for SandyStudio agents |
+| 6 | Skill Editor / Skill Update Candidate mechanism | NEW — needs design |
+| 7 | Director approval flow for canonical skill changes | NEW — needs design |
+| 8 | Audit trail of what the agent did and why (per decision) | Partial — `activity_events` table tracks actions; no rationale capture for skill changes |
+
+**Why Mode 2.5 matters strategically**
+
+Mode 2.5 is the **required bridge** before trusting Mode 3 in production. Without Mode 2.5, jumping from manual / hybrid work directly to delegated AI production is risky — we don't know whether the agent can reliably:
+
+- Understand current pipeline state
+- Know what should happen next
+- Ask the right questions
+- Access the required tools
+- Prepare the right artifacts
+- Explain its decisions
+- Learn from corrections
+- Update skills safely
+- Avoid crossing hard limits
+- Request Director approval at the right gates
+
+Mode 2.5 gives the agent **observable flight hours** under Director supervision — a behavioural foundation that can be reviewed and tuned before authority expands.
+
+**Implementation phasing (rough — not committed)**
+
+- **Phase 1** — Mode 2.5 conversational shell: Concierge gains write tools (Sprint 10), can drive pipeline gates, conversational checklist with "next gate" awareness.
+- **Phase 2** — Skill Editor: Persistent rule store, rule candidate UI, Director approval flow, audit trail.
+- **Phase 3** — Learning Loop: Agent infers rule candidates from rejection / revision patterns, presents them at session boundary.
+- **Phase 4** — Trust gradient: Mode 2.5 metrics (correction rate, rejection rate, skill candidate hit rate) inform decision to expand Mode 3 autonomy.
+
+**Decision recorded:** Mode 2.5 must be considered before expanding Mode 3 autonomy. Director's directive 2026-05-06.
+
+---
+
 ### Mode 3 — DELEGATED (AI Director Control)
 
 ```

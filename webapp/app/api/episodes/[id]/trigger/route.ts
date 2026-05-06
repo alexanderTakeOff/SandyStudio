@@ -11,8 +11,11 @@ import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
-import { NotFoundError, ValidationError } from '@/lib/api/errors';
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/api/errors';
 import { inngest, type StudioEventName } from '@/lib/inngest/client';
+import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
+import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -60,6 +63,82 @@ export const POST = withApiHandler(async (req, ctx) => {
     .maybeSingle();
   if (epErr) throw new Error(`episode fetch failed: ${epErr.message}`);
   if (!ep) throw new NotFoundError(`Episode ${id}`);
+
+  // ── EXEC-VGEN special path: route to Pilot Pass if animatic_v1 is approved
+  // and no explicit shotId override is in payload.
+  // Per purrfect-stirring-hollerith plan, manual re-trigger of VGEN should
+  // enter the Pilot Pass flow (pick 1-2 pilots → /start) rather than legacy
+  // 3-fake-shots fan-out. Caller can force legacy by passing payload.shotId.
+  if (body.agentCode === 'EXEC-VGEN' && !body.payload?.shotId) {
+    const { data: animatics, error: animErr } = await supabase
+      .from('assets')
+      .select('id,status,metadata,created_at')
+      .eq('episode_id', id)
+      .eq('file_type', 'VID-animatic')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (animErr) throw new Error(`animatic fetch failed: ${animErr.message}`);
+
+    let v1: AnimaticContract | null = null;
+    for (const a of animatics ?? []) {
+      if ((a.status === 'APPROVED' || a.status === 'LOCKED') && isAnimaticV1(a.metadata)) {
+        v1 = (a.metadata as { animatic_v1: AnimaticContract }).animatic_v1;
+        break;
+      }
+    }
+    if (v1) {
+      const shotList = v1.shot_list ?? [];
+      const pilots = pickPilotVgenShots(shotList);
+      if (pilots.length === 0) {
+        throw new ConflictError(
+          'Approved animatic has no shots — cannot start VGEN Pilot Pass',
+        );
+      }
+
+      // Set state PENDING_REVIEW upfront so the pillbar shows "VGEN Pilot 0/N"
+      // immediately. Runner will reaffirm after each pilot completes.
+      await setVgenPilotState(supabase, id, 'PENDING_REVIEW');
+
+      const pilotEvents = pilots.map((p) => ({
+        name: 'sandystudio/exec-vgen/start' as const,
+        data: {
+          episodeId: id,
+          shotId: p.shotId,
+          duration_seconds: p.durationSeconds,
+          pilot: true,
+        },
+      }));
+      const { ids } = await inngest.send(pilotEvents as never);
+
+      await supabase.from('activity_events').insert({
+        event_type: 'manual_trigger',
+        severity: 'warning',
+        title: `Manual trigger: EXEC-VGEN (Pilot Pass, ${pilots.length} shots)`,
+        description: body.reason,
+        actor: user.id,
+        episode_id: id,
+        metadata: {
+          agent: 'EXEC-VGEN',
+          event: 'sandystudio/exec-vgen/start',
+          reason: body.reason,
+          pilot_count: pilots.length,
+          pilot_shot_ids: pilots.map((p) => p.shotId),
+          inngest_event_ids: ids,
+        },
+      } as never);
+
+      return apiOk({
+        triggered: true,
+        agent: 'EXEC-VGEN',
+        flow: 'pilot_pass',
+        pilot_count: pilots.length,
+        pilot_shot_ids: pilots.map((p) => p.shotId),
+        inngest_event: 'sandystudio/exec-vgen/start',
+        inngest_event_ids: ids,
+      });
+    }
+    // Fall through to legacy if no v1 animatic — keep replay-pilot working.
+  }
 
   // Build event payload — caller is responsible for matching agent's expected shape.
   // We always inject episodeId and reason. directorConfirm passes for PUBLISH.
