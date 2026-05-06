@@ -144,5 +144,6 @@ export const GET = withApiHandler(async (_req, ctx) => {
     pilot_approved_count: pilotApprovedCount,
     approved_count: approvedShotIds.size,
     has_vid_shots: vidShots.length > 0,
+    running_jobs: runningJobs,
   });
 });
