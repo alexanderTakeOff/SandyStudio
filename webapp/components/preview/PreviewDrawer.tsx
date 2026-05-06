@@ -12,7 +12,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Maximize2, Minimize2, Square } from 'lucide-react';
+import { X, Maximize2, Minimize2, Square, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AssetPreview } from './AssetPreview';
 
 export type PreviewDrawerSize = 'small' | 'wide' | 'full';
@@ -26,6 +26,18 @@ export interface PreviewDrawerProps {
   title?: string;
   /** Footer slot for kebab actions; rendered below the preview body. */
   footer?: ReactNode;
+  /**
+   * Optional prev/next navigation. Caller supplies callbacks; drawer renders
+   * chevron buttons in the header that invoke them. When a callback is null,
+   * the corresponding button is disabled (end of list).
+   *
+   * Used by EpisodeTimeline so Director can review shots without closing the
+   * drawer between cells. Keyboard: ← / → arrow keys when drawer is open.
+   */
+  onPrev?: (() => void) | null;
+  onNext?: (() => void) | null;
+  /** Optional position label (e.g. "5 / 13") shown next to nav arrows. */
+  navLabel?: string;
 }
 
 const WIDTHS: Record<PreviewDrawerSize, string> = {
