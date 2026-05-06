@@ -259,7 +259,8 @@ export const execVgenFanoutTrigger = inngest.createFunction(
       if (!animatic || !isAnimaticV1((animatic as { metadata?: unknown }).metadata)) {
         return { emitted: 0, reason: 'no_animatic_v1' };
       }
-      const v1 = (animatic.metadata as { animatic_v1: AnimaticContract }).animatic_v1;
+      const animaticMeta = animatic.metadata as unknown as { animatic_v1: AnimaticContract };
+      const v1 = animaticMeta.animatic_v1;
       const shotList = v1.shot_list ?? [];
 
       // Find pilot shots already produced — skip them in fan-out.
