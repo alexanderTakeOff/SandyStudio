@@ -535,6 +535,18 @@ export function EpisodeAssetDrawer({
             </div>
           )}
 
+          {/* ── VGEN: VID-shot Universal Core panel ────────────────────────── */}
+          {isVidShot && vidShotMeta && (
+            <VGENShotPanel
+              assetId={asset.id}
+              videoUrl={vidShotUrl}
+              storyboardShot={vidShotMeta.storyboardShot}
+              currentSettings={vidShotMeta.currentSettings}
+              onChanged={onChange}
+              readOnly={!editable}
+            />
+          )}
+
           {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Candidates ── */}
           {isV2 && shotRef && (
             <>
