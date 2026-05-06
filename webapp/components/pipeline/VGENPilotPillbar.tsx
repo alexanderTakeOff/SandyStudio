@@ -305,7 +305,7 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
       <Modal
         open={confirmApproveAll}
         onClose={() => setConfirmApproveAll(false)}
-        title={`Approve all ${pendingReviewCount} REVIEW shots?`}
+        title={`Approve all ${reviewCount} REVIEW shots?`}
       >
         <div className="space-y-4">
           <p className="text-sm text-text-secondary leading-relaxed">
@@ -329,7 +329,7 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
             >
               {busy === 'approve_all'
                 ? 'Approving…'
-                : `Approve ${pendingReviewCount} shots`}
+                : `Approve ${reviewCount} shots`}
             </Button>
           </div>
         </div>
