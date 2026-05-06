@@ -6,63 +6,49 @@
 //   - POST /api/episodes/[id]/vgen/approve-pilots  → emit fanout
 //   - POST /api/episodes/[id]/vgen/cancel          → set cancel token
 //
-// Two display modes (driven by `episode.metadata.vgen_pilot_state`):
+// Two display modes (driven by `pilot_state` from /api/episodes/[id]/vgen/state):
 //   - Pilot mode    (`PENDING_REVIEW`)  → "VGEN Pilot N/total — review and approve direction"
 //                                         + "Approve Direction & Fan Out" + "Cancel VGEN"
-//   - Review mode   (`FANOUT_RUNNING` |
-//                    `FANOUT_COMPLETE`) → "Reviewed: x/N shots have approved video"
+//   - Review mode   (`FANOUT_RUNNING`)  → "Reviewed: x/N shots have approved video"
 //                                         + "Cancel VGEN" while running
 //
-// Progress is computed client-side from existing endpoints:
-//   - /api/episodes/[id]                 → episode.metadata
-//   - /api/assets?episode_id=…           → VID-shot assets
-//
-// NOTE: Track B inlines the `VGENPilotState` type minimally so this file does
-//       not depend on Track A's `lib/api/vgen-pilot-state.ts` to compile. After
-//       Track A lands, swap the inline alias for `import type { VGENPilotState }`.
+// State + progress come from a single endpoint that bridges Track A's
+// app_config storage with Track B's UI:
+//   - /api/episodes/[id]/vgen/state → { pilot_state, total_shots,
+//                                        pilot_shot_ids, pilot_approved_count,
+//                                        approved_count, has_vid_shots }
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import useSWR from 'swr';
 import { Loader2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { fetcher } from '@/lib/swr';
 
-// ── Types (inlined Phase-1 fallback — see header) ───────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────
 
 type VGENPilotState =
   | 'NONE'
   | 'PENDING_REVIEW'
   | 'FANOUT_RUNNING'
-  | 'FANOUT_COMPLETE'
-  | 'CANCELLED'
-  | 'COMPLETE';
+  | 'COMPLETE'
+  | 'CANCELLED';
 
-interface VgenPilotMetadataLike {
-  vgen_pilot_state?: VGENPilotState;
-  vgen_total_shots?: number;
-  vgen_pilot_shot_ids?: string[];
+interface VgenStateData {
+  episode_id: string;
+  pilot_state: VGENPilotState;
+  total_shots: number;
+  pilot_shot_ids: string[];
+  pilot_approved_count: number;
+  approved_count: number;
+  has_vid_shots: boolean;
 }
 
-interface AssetRow {
-  id: string;
-  file_type: string;
-  status: string;
-  metadata?: unknown;
-}
-
-interface EpisodeResponse {
-  data?: {
-    id: string;
-    metadata?: VgenPilotMetadataLike | null;
-  };
-}
-
-interface AssetsResponse {
-  data: AssetRow[];
+interface VgenStateResponse {
+  data: VgenStateData;
 }
 
 export interface VGENPilotPillbarProps {
