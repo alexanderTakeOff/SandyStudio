@@ -21,6 +21,7 @@ import { EpisodeReferencesGallery } from '@/components/episode/EpisodeReferences
 import { EREFPilotPillbar } from '@/components/pipeline/EREFPilotPillbar';
 import { VGENPilotPillbar } from '@/components/pipeline/VGENPilotPillbar';
 import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
+import { EpisodeTimelineSection } from '@/components/timeline/EpisodeTimelineSection';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { fetcher } from '@/lib/swr';
 
@@ -204,6 +205,13 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
           onBriefEdited={() => mutate()}
         />
       )}
+
+      {/* Episode timeline — unified progressive review surface (Phase A).
+          Auto-hides when no animatic v1 yet. Click any cell → drawer opens
+          for that shot's per-asset review. */}
+      <div className="mb-4">
+        <EpisodeTimelineSection episodeId={id} />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* DAG (left) */}

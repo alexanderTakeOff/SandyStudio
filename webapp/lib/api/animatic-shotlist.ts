@@ -39,11 +39,62 @@ export interface AnimaticDirectorOverride {
   edited_at?: string;
 }
 
+/**
+ * One audio layer in the timeline. Schema is multi-track from the start (per
+ * Director's directive 2026-05-06 #4) so `EpisodeTimeline` can play music +
+ * voice + sfx + ambience in parallel without re-architecting later — even
+ * though MVP only ships the `music` layer.
+ */
+export type AudioLayer = 'music' | 'voice' | 'sfx' | 'ambience';
+
+export interface AudioTrack {
+  layer: AudioLayer;
+  /** Best browser-loadable URL — drive_web_view_url, staging_path, or http(s). */
+  url: string;
+  filename: string;
+  /** 0..1, default 1.0 for music, 0.8 for ambience, etc. */
+  volume?: number;
+  muted?: boolean;
+  /** Optional offset in seconds — track starts at this point in the timeline. */
+  start_at_seconds?: number;
+}
+
+/**
+ * Forward-compat reader: returns `audio_tracks[]` if the contract has it,
+ * otherwise fabricates a single-element list from the legacy `music_url`
+ * field. Always safe to call — `[]` if the asset has no audio at all.
+ */
+export function getAudioTracks(contract: AnimaticContract): AudioTrack[] {
+  if (Array.isArray(contract.audio_tracks)) {
+    return contract.audio_tracks;
+  }
+  if (contract.music_url) {
+    return [{
+      layer: 'music',
+      url: contract.music_url,
+      filename: contract.music_filename ?? 'music',
+      volume: 1.0,
+      muted: false,
+    }];
+  }
+  return [];
+}
+
 /** The full v1 animatic payload stored at `assets.metadata.animatic_v1`. */
 export interface AnimaticContract {
   contract: AnimaticContractId;
   shot_list: AnimaticShot[];
-  /** Drive or staging URL of the .mp3 the Director uploaded. Null until upload. */
+  /**
+   * Multi-track audio layers (music / voice / sfx / ambience). New writers MUST
+   * populate this. Readers should prefer `getAudioTracks(contract)` which falls
+   * back to the deprecated `music_url` for legacy assets.
+   */
+  audio_tracks?: AudioTrack[];
+  /**
+   * @deprecated Legacy single-music slot. Kept readable for animatic v1 assets
+   * created before 2026-05-06. New code should write `audio_tracks` instead.
+   * `getAudioTracks()` reads either field transparently.
+   */
   music_url: string | null;
   music_filename: string | null;
   /** Sum of durations (with overrides applied). Recomputed on save-timing. */
@@ -240,6 +291,7 @@ export function newAnimaticContract(shotList: AnimaticShot[]): AnimaticContract 
   return {
     contract: ANIMATIC_CONTRACT,
     shot_list: shotList,
+    audio_tracks: [],
     music_url: null,
     music_filename: null,
     total_duration: computeTotalDuration(shotList, undefined),

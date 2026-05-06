@@ -42,10 +42,17 @@ import {
   ANIMATIC_CONTRACT,
   computeTotalDuration,
   effectiveDurationSeconds,
+  getAudioTracks,
   type AnimaticContract,
   type AnimaticDirectorOverride,
   type AnimaticShot,
+  type AudioTrack,
 } from '@/lib/api/animatic-shotlist';
+import {
+  resolveTimelineCells,
+  type TimelineCell,
+  type VidShotAssetRow,
+} from '@/lib/api/timeline-cell-resolver';
 
 const SECOND_STEP = 1.0;
 const MIN_SHOT_S = 0.5;
@@ -56,6 +63,22 @@ export interface AnimaticPlayerProps {
   contract: AnimaticContract;
   /** Called after a successful save / upload — drawer should refetch. */
   onChanged: () => void;
+  /**
+   * EpisodeTimeline mode: when provided, the player upgrades from "animatic
+   * frames only" to a hybrid surface that also plays approved/REVIEW VID-shot
+   * mp4s for shot_ids that have them. Per Director's directives 2026-05-06:
+   *   - REVIEW VID-shot plays for visual feedback (yellow border, not canonical)
+   *   - APPROVED VID-shot replaces the animatic frame canonically (green pill)
+   *   - Storyboard order is preserved; one cell per shot_id (directive #1)
+   * Pass `[]` (empty) to keep behaviour pure-animatic.
+   */
+  vidShotAssets?: VidShotAssetRow[];
+  /**
+   * Called when Director clicks any timeline cell — caller (episode page)
+   * opens the per-shot drawer for review. Optional; without it, cells just
+   * seek the playhead.
+   */
+  onCellClick?: (cell: TimelineCell) => void;
 }
 
 interface ShotTime {
@@ -85,7 +108,22 @@ function fmt(t: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerProps) {
+export function AnimaticPlayer({
+  assetId,
+  contract,
+  onChanged,
+  vidShotAssets,
+  onCellClick,
+}: AnimaticPlayerProps) {
+  // Hybrid mode: resolver maps each shot_id to its current canonical cell
+  // (mp4-canonical / mp4-review / image fallback / placeholder).
+  const timelineCells: TimelineCell[] = useMemo(
+    () => resolveTimelineCells(contract, vidShotAssets ?? []),
+    [contract, vidShotAssets],
+  );
+  // Multi-track audio (forward-compat per directive #4 — reads `audio_tracks[]`
+  // when present, falls back to legacy `music_url` single track for v1 assets).
+  const audioTracks: AudioTrack[] = useMemo(() => getAudioTracks(contract), [contract]);
   // Local copy of overrides so Director can edit live without round-tripping
   // to DB on every click. Saved via Save Timing button.
   const [overrides, setOverrides] = useState<Record<string, AnimaticDirectorOverride>>(
@@ -328,6 +366,12 @@ export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerP
   const currentDuration = times[currentIndex]?.duration ?? 0;
   const newTotal = computeTotalDuration(contract.shot_list, overrides);
 
+  // In hybrid mode, the cell index corresponds 1:1 with shot index — fetch the
+  // resolved cell for the current frame so we can decide between <img> / <video>
+  // and color-code the status pill.
+  const currentCell = timelineCells[currentIndex];
+  const isHybridMode = (vidShotAssets?.length ?? 0) > 0;
+
   return (
     <div className="space-y-3">
       {/* Header info */}
@@ -344,12 +388,34 @@ export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerP
         </div>
       </div>
 
-      {/* Preview area */}
+      {/* Preview area — hybrid: <video> for VID-shot cells (canonical/review),
+          <img> for animatic image fallback. Cell border color reflects status:
+          green = canonical APPROVED/LOCKED, yellow = REVIEW (tentative per
+          directive #2), no border = animatic image fallback. */}
       <div
-        className="relative rounded-lg overflow-hidden border border-glass bg-black"
-        style={{ aspectRatio: '16 / 9' }}
+        className="relative rounded-lg overflow-hidden border-2 bg-black"
+        style={{
+          aspectRatio: '16 / 9',
+          borderColor:
+            currentCell?.kind === 'video-canonical'
+              ? 'var(--accent-success, #22c55e)'
+              : currentCell?.kind === 'video-review'
+                ? 'var(--accent-warning, #f59e0b)'
+                : 'var(--panel-glass-border, rgba(255,255,255,0.1))',
+        }}
       >
-        {currentShot ? (
+        {currentCell?.kind === 'video-canonical' || currentCell?.kind === 'video-review' ? (
+          <video
+            key={currentCell.url ?? currentShot?.shot_id}
+            src={currentCell.url ?? undefined}
+            className="absolute inset-0 w-full h-full object-contain"
+            // Inline mp4 plays automatically when its cell is current. On
+            // pause / seek the parent state controls; here we just render.
+            autoPlay={isPlaying}
+            muted
+            playsInline
+          />
+        ) : currentShot && currentShot.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={currentShot.image_url}
@@ -361,6 +427,23 @@ export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerP
             No shots yet
           </div>
         )}
+        {/* Status pill (top-right) — visible only in hybrid mode. */}
+        {isHybridMode && currentCell && currentCell.status !== 'NONE' && (
+          <div
+            className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider"
+            style={{
+              background:
+                currentCell.kind === 'video-canonical'
+                  ? 'color-mix(in oklab, var(--accent-success, #22c55e) 75%, transparent)'
+                  : currentCell.kind === 'video-review'
+                    ? 'color-mix(in oklab, var(--accent-warning, #f59e0b) 75%, transparent)'
+                    : 'rgba(0,0,0,0.55)',
+              color: 'white',
+            }}
+          >
+            {currentCell.status}
+          </div>
+        )}
         {currentShot && (
           <div
             className="absolute bottom-2 left-2 right-2 text-xs text-white px-2 py-1 rounded"
@@ -369,6 +452,17 @@ export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerP
             <span className="font-mono">{currentShot.shot_id}</span>
             {currentShot.shot_role && <span className="ml-2 opacity-80">· {currentShot.shot_role}</span>}
             <span className="ml-2 opacity-80">· {currentDuration.toFixed(1)}s</span>
+            {isHybridMode && currentCell && (
+              <button
+                type="button"
+                onClick={() => onCellClick?.(currentCell)}
+                disabled={!onCellClick || !currentCell.asset_id}
+                className="ml-2 underline opacity-90 hover:opacity-100 disabled:opacity-50 disabled:no-underline"
+                title="Open this shot in drawer for review"
+              >
+                Open shot →
+              </button>
+            )}
             {currentShot.caption && (
               <div className="opacity-75 truncate mt-0.5">{currentShot.caption}</div>
             )}
@@ -376,37 +470,62 @@ export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerP
         )}
       </div>
 
-      {/* Audio bar */}
+      {/* Audio bar — supports multi-track (music / voice / sfx / ambience).
+          For animatic v1 with only `music_url`, getAudioTracks fabricates a
+          single 'music' track. EXEC-MGEN voice / sfx tracks (Phase 1.5+) will
+          land here without UI rewrite — schema is forward-compat per directive #4.
+          The first 'music' track is the master clock (audioRef); additional
+          tracks are slaved with periodic re-sync. Only music exposes Replace
+          (Upload music) to keep the v1 surface familiar. */}
       <div className="rounded-lg border border-glass p-2.5 space-y-1.5">
-        {contract.music_url ? (
-          <>
-            <div className="flex items-center gap-2 text-xs text-text-secondary">
-              <Music2 size={13} className="text-[var(--accent-primary)]" />
-              <span className="truncate flex-1 font-mono text-text-primary">
-                {contract.music_filename ?? 'music'}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingMusic}
-              >
-                <Upload size={12} /> Replace
-              </Button>
-            </div>
-            <audio
-              ref={audioRef}
-              src={contract.music_url}
-              preload="auto"
-              controls
-              className="w-full"
-              style={{ height: 32 }}
-            />
-          </>
+        {audioTracks.length > 0 ? (
+          audioTracks.map((track, i) => {
+            const isMaster = i === 0;
+            return (
+              <div key={`${track.layer}-${track.url}`} className="space-y-1">
+                <div className="flex items-center gap-2 text-xs text-text-secondary">
+                  <Music2
+                    size={13}
+                    className={isMaster ? 'text-[var(--accent-primary)]' : 'text-text-muted'}
+                  />
+                  <span
+                    className="px-1.5 py-0.5 rounded-full text-[9px] uppercase tracking-wider"
+                    style={{
+                      background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)',
+                      color: 'var(--accent-primary)',
+                    }}
+                  >
+                    {track.layer}
+                  </span>
+                  <span className="truncate flex-1 font-mono text-text-primary">
+                    {track.filename}
+                  </span>
+                  {track.layer === 'music' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingMusic}
+                    >
+                      <Upload size={12} /> Replace
+                    </Button>
+                  )}
+                </div>
+                <audio
+                  ref={isMaster ? audioRef : undefined}
+                  src={track.url}
+                  preload="auto"
+                  controls
+                  className="w-full"
+                  style={{ height: 32 }}
+                />
+              </div>
+            );
+          })
         ) : (
           <div className="flex items-center gap-2 text-xs">
             <Music2 size={13} className="text-text-muted" />
-            <span className="text-text-muted flex-1">No music yet — playback runs silent</span>
+            <span className="text-text-muted flex-1">No audio yet — playback runs silent</span>
             <Button
               variant="ghost"
               size="sm"

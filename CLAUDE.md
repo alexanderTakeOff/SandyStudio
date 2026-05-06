@@ -451,6 +451,18 @@ When presenting questions or options to the Director/CEO:
 - Keep questions short and decision-focused
 - Wait for answers before proceeding with changes
 
+### Smoke tests — propose, don't auto-fire
+
+Director's directive 2026-05-06 (correcting earlier "always run smoke" instruction):
+- **Default: propose smoke, wait for explicit command.** Do NOT auto-spin smoke
+  tests, especially ones that spend real money (Veo 3 ~$3/episode, GPT image,
+  Suno music) or take long wall clock (>2 min).
+- Mock smoke tests ($0, fast) — also propose first, don't auto-fire.
+- Director uses `q1Y` / `go` / explicit "run smoke" as approval.
+- Exception: tiny verification (`tsc --noEmit`, single-file unit test, dev
+  server health check) is part of normal verification loop and can run
+  without prompting.
+
 ---
 
 ## 11. ARCHITECTURE RULES (MANDATORY)
