@@ -223,11 +223,12 @@ export const POST = withApiHandler(async (req, ctx) => {
   });
 
   // Persist as a NEW asset row (REVIEW status). Auto-increment version.
+  // file_type carries a per-shot variant suffix → prefix-match.
   const { data: existing } = await sb
     .from('assets')
     .select('version')
     .eq('episode_id', asset.episode_id)
-    .eq('file_type', 'VID-shot')
+    .like('file_type', 'VID-shot%')
     .filter('metadata->>shot_id', 'eq', shotId);
   const maxVersion = ((existing ?? []) as Array<{ version?: number | null }>).reduce(
     (m, row) => Math.max(m, row.version ?? 0),
