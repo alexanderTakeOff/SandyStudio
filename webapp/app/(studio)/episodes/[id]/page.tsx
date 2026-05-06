@@ -21,6 +21,7 @@ import { EpisodeReferencesGallery } from '@/components/episode/EpisodeReferences
 import { EREFPilotPillbar } from '@/components/pipeline/EREFPilotPillbar';
 import { VGENPilotPillbar } from '@/components/pipeline/VGENPilotPillbar';
 import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
+import { EpisodeTimelineSection } from '@/components/timeline/EpisodeTimelineSection';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { fetcher } from '@/lib/swr';
 
