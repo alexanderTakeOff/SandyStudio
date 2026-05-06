@@ -65,7 +65,7 @@ export const GET = withApiHandler(async (_req, ctx) => {
   const { supabase } = await requireDirector();
 
   // ── Episode existence + parallel fetch ────────────────────────────────────
-  const [epRes, assetsRes, pilotState] = await Promise.all([
+  const [epRes, assetsRes, pilotState, jobsRes] = await Promise.all([
     supabase.from('episodes').select('id').eq('id', episodeId).maybeSingle(),
     supabase
       .from('assets')
@@ -73,12 +73,19 @@ export const GET = withApiHandler(async (_req, ctx) => {
       .eq('episode_id', episodeId)
       .in('file_type', ['VID-animatic', 'VID-shot']),
     getVgenPilotState(supabase, episodeId),
+    supabase
+      .from('jobs')
+      .select('id,status')
+      .eq('episode_id', episodeId)
+      .eq('agent_id', 'EXEC-VGEN')
+      .in('status', ['QUEUED', 'RUNNING']),
   ]);
   if (epRes.error) throw new Error(`episode fetch: ${epRes.error.message}`);
   if (!epRes.data) throw new NotFoundError(`Episode ${episodeId}`);
   if (assetsRes.error) throw new Error(`assets fetch: ${assetsRes.error.message}`);
 
   const assets = (assetsRes.data ?? []) as AssetRow[];
+  const runningJobs = (jobsRes.data ?? []).length;
 
   // ── total_shots — from latest APPROVED animatic v1 shot_list ──────────────
   // Pick the most recent approved animatic with a v1 contract.
