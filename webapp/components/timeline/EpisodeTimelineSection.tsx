@@ -299,11 +299,58 @@ export function EpisodeTimelineSection({
 
       <PreviewDrawer
         open={previewAssetId !== null}
-        onClose={() => setPreviewAssetId(null)}
+        onClose={() => {
+          setPreviewAssetId(null);
+          setPendingGenerateShotId(null);
+          setGenError(null);
+        }}
         assetId={previewAssetId}
         onPrev={onPrev}
         onNext={onNext}
         navLabel={navLabel}
+        footer={
+          pendingGenerateShotId ? (
+            <div className="flex items-center gap-2 w-full">
+              <span className="text-[11px] text-text-muted flex-1">
+                No VGEN yet for{' '}
+                <span className="font-mono text-text-secondary">
+                  {pendingGenerateShotId}
+                </span>{' '}
+                — animatic frame shown as fallback.
+              </span>
+              {genError && (
+                <span
+                  className="text-[11px] px-1.5 py-0.5 rounded"
+                  style={{
+                    background: 'color-mix(in oklab, var(--accent-danger) 12%, transparent)',
+                    color: 'var(--accent-danger)',
+                  }}
+                >
+                  {genError}
+                </span>
+              )}
+              <button
+                onClick={generateMissingShot}
+                disabled={genBusy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium border transition-colors disabled:opacity-50"
+                style={{
+                  background:
+                    'color-mix(in oklab, var(--accent-primary) 14%, transparent)',
+                  color: 'var(--accent-primary)',
+                  borderColor:
+                    'color-mix(in oklab, var(--accent-primary) 35%, transparent)',
+                }}
+              >
+                {genBusy ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Sparkles size={12} />
+                )}
+                {genBusy ? 'Triggering…' : 'Generate VGEN shot'}
+              </button>
+            </div>
+          ) : undefined
+        }
       />
     </>
   );
