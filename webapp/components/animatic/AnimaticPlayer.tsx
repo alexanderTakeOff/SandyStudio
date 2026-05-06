@@ -42,10 +42,17 @@ import {
   ANIMATIC_CONTRACT,
   computeTotalDuration,
   effectiveDurationSeconds,
+  getAudioTracks,
   type AnimaticContract,
   type AnimaticDirectorOverride,
   type AnimaticShot,
+  type AudioTrack,
 } from '@/lib/api/animatic-shotlist';
+import {
+  resolveTimelineCells,
+  type TimelineCell,
+  type VidShotAssetRow,
+} from '@/lib/api/timeline-cell-resolver';
 
 const SECOND_STEP = 1.0;
 const MIN_SHOT_S = 0.5;
