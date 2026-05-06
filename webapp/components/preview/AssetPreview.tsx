@@ -160,9 +160,11 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
         />
       )}
       {/* VGEN VID-shot: show Universal Core controls + per-shot approve/reject
-          so Director can act on a pilot from the activity feed Preview drawer
-          (full drawer in Inbox is the canonical path; this mirrors the same
-          actions for the activity-feed entrypoint). */}
+          so Director can act on a shot from the activity feed Preview drawer
+          and the EpisodeTimeline "Open shot →" link. Regenerate creates a NEW
+          asset row (does NOT mutate the canonical), so any non-LOCKED state can
+          re-generate to try a new variant. The cell-resolver picks the latest
+          per shot_id (directive #6 fast iteration). */}
       {asset.file_type.startsWith('VID-shot') && (
         <>
           <VGENShotSection
@@ -172,12 +174,20 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
             drivePath={asset.drive_path}
             driveWebViewUrl={asset.drive_web_view_url}
             stagingPath={asset.staging_path}
-            editable={asset.status === 'REVIEW' || asset.status === 'DRAFT'}
+            editable={asset.status !== 'LOCKED'}
             onChanged={() => void mutate()}
           />
           {asset.status === 'REVIEW' && (
             <PilotApproveButtons
               assetId={asset.id}
+              variant="review"
+              onChanged={() => void mutate()}
+            />
+          )}
+          {asset.status === 'APPROVED' && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="approved"
               onChanged={() => void mutate()}
             />
           )}
