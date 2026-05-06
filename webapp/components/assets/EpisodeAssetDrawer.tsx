@@ -47,10 +47,7 @@ import { fetcher } from '@/lib/swr';
 import { isShotReferenceV2 } from '@/lib/api/shot-reference';
 import { isAnimaticV1 } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
-<<<<<<< HEAD
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
-=======
->>>>>>> origin/master
 import type {
   AssetMetadataDoc,
   ImagePromptHistoryEntry,
