@@ -101,7 +101,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (asset.status === 'LOCKED') {
     throw new ValidationError('Asset is LOCKED — cannot regenerate video');
   }
-  if (asset.file_type !== 'VID-shot') {
+  if (!asset.file_type.startsWith('VID-shot')) {
     throw new ValidationError(
       `File type ${asset.file_type} is not a VID-shot — use the matching regenerate route`,
     );
