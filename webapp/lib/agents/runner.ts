@@ -208,6 +208,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     provider,
     supabase,
     episodeCode,
+    aspectRatio,
+    qualityTier,
+    durationSeconds,
+    vgenPilot,
   } = args;
   void provider; // referenced inside individual cases
   const episodeId = inputs.episode_id;
