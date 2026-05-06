@@ -145,15 +145,11 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
         <>
           {cat === 'text' && <TextBody assetId={asset.id} />}
           {cat === 'image' && <ImageBody asset={asset} />}
-<<<<<<< HEAD
           {/* VID-shot has its own player inside VGENShotPanel — skip the
               generic VideoBody to avoid rendering the mp4 twice. */}
           {cat === 'video' && !asset.file_type.startsWith('VID-shot') && (
             <VideoBody asset={asset} />
           )}
-=======
-          {cat === 'video' && <VideoBody asset={asset} />}
->>>>>>> origin/master
           {cat === 'audio' && <AudioBody asset={asset} />}
         </>
       )}
