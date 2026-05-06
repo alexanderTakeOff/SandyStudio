@@ -454,26 +454,35 @@ function ReviewHeadline({
   approved,
   totalShots,
   running,
+  runningJobs,
 }: {
   approved: number;
   totalShots: number;
   running: boolean;
+  runningJobs: number;
 }) {
+  // Live jobs always take priority — even when approved_count is already at
+  // total (legacy approved rows from a prior provider switch), if there are
+  // RUNNING jobs we want to surface that progress, not "Reviewed: 13/13".
+  const liveActivity = runningJobs > 0;
   const pct = totalShots === 0 ? 0 : Math.round((approved / totalShots) * 100);
-  const done = approved >= totalShots && totalShots > 0;
+  const done = approved >= totalShots && totalShots > 0 && !liveActivity;
+  const showSpinner = liveActivity || (running && !done);
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <div className="flex items-center gap-2 text-sm">
         {done && (
           <CheckCircle2 size={14} className="shrink-0" style={{ color: 'var(--accent-success)' }} />
         )}
-        {running && !done && (
+        {showSpinner && !done && (
           <Loader2 size={14} className="shrink-0 animate-spin" style={{ color: 'var(--accent-primary)' }} />
         )}
         <span className="text-text-primary font-medium">
-          {running && !done
-            ? `Generating: ${approved}/${totalShots} shots have approved video`
-            : `Reviewed: ${approved}/${totalShots} shots have approved video`}
+          {liveActivity
+            ? `Generating new shots… ${runningJobs} in flight (concurrency 3) · ${approved}/${totalShots} approved`
+            : running && !done
+              ? `Generating: ${approved}/${totalShots} shots have approved video`
+              : `Reviewed: ${approved}/${totalShots} shots have approved video`}
         </span>
       </div>
       <div
