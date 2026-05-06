@@ -141,10 +141,13 @@ export const GET = withApiHandler(async (_req, ctx) => {
   }
 
   const approvedShotIds = new Set<string>();
+  const reviewShotIds = new Set<string>();
   for (const [sid, rows] of byShot) {
     const latest = pickLatest(rows);
     if (latest.status === 'APPROVED' || latest.status === 'LOCKED') {
       approvedShotIds.add(sid);
+    } else if (latest.status === 'REVIEW') {
+      reviewShotIds.add(sid);
     }
   }
 
