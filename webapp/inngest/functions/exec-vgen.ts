@@ -295,32 +295,48 @@ export const execVgenFanoutTrigger = inngest.createFunction(
       const v1 = animaticMeta.animatic_v1;
       const shotList = v1.shot_list ?? [];
 
-      // Find pilot shots already produced — skip them in fan-out.
-      // file_type carries a per-shot variant suffix (e.g. "VID-shot-ss-s14-e01-…")
-      // so we prefix-match instead of using `.eq('VID-shot')`.
-      const { data: pilotRows } = await supabase
+      // Find shots already produced — skip them in fan-out. Two skip categories:
+      //   1. Pilot shots (vgen_pilot=true) — already generated in Pilot Pass.
+      //   2. Fan-out shots that ALREADY have a row in REVIEW or APPROVED status
+      //      for the same shot_id. This makes fan-out idempotent — retrying
+      //      after a partial failure (e.g. some shots hit Vertex AI 429) only
+      //      regenerates the missing ones instead of duplicating successes.
+      const { data: existingRows } = await supabase
         .from('assets')
-        .select('metadata')
+        .select('status,metadata')
         .eq('episode_id', episodeId)
         .like('file_type', 'VID-shot%');
+      const SKIP_STATUSES = new Set(['REVIEW', 'APPROVED', 'LOCKED', 'NEEDS_HUMAN_TWEAK']);
+      const skipShotIds = new Set<string>();
       const pilotShotIds = new Set<string>();
-      for (const row of (pilotRows ?? [])) {
+      for (const row of (existingRows ?? [])) {
         const meta = (row as { metadata?: unknown }).metadata;
-        if (meta && typeof meta === 'object') {
-          const m = meta as Record<string, unknown>;
-          if (m.vgen_pilot === true && typeof m.shot_id === 'string') {
-            pilotShotIds.add(m.shot_id);
-          }
+        if (!meta || typeof meta !== 'object') continue;
+        const m = meta as Record<string, unknown>;
+        const sid = typeof m.shot_id === 'string' ? m.shot_id : null;
+        if (!sid) continue;
+        const status = (row as { status?: string }).status;
+        if (m.vgen_pilot === true) {
+          pilotShotIds.add(sid);
+        }
+        if (status && SKIP_STATUSES.has(status)) {
+          skipShotIds.add(sid);
         }
       }
 
       let emitted = 0;
+      let skipped = 0;
       for (const s of shotList) {
-        if (pilotShotIds.has(s.shot_id)) continue;
+        if (skipShotIds.has(s.shot_id)) { skipped += 1; continue; }
         await emitSingleShot(episodeId, s.shot_id, s.duration_seconds);
         emitted += 1;
       }
-      return { emitted, total: shotList.length, pilots: pilotShotIds.size };
+      return {
+        emitted,
+        skipped,
+        total: shotList.length,
+        pilots: pilotShotIds.size,
+      };
     });
 
     return { ok: true, kind: 'fanout-trigger', ...result };
