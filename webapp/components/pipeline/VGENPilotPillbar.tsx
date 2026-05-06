@@ -45,6 +45,7 @@ interface VgenStateData {
   pilot_approved_count: number;
   approved_count: number;
   has_vid_shots: boolean;
+  running_jobs: number;
 }
 
 interface VgenStateResponse {
