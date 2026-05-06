@@ -82,9 +82,16 @@ export const POST = withApiHandler(async (req, ctx) => {
     .eq('episode_id', episodeId)
     .like('file_type', 'VID-shot%');
   if (pilotErr) throw new Error(`pilot shots fetch: ${pilotErr.message}`);
+  // Only consider pilot rows in an "active" status. REVISION / REJECTED /
+  // INVALIDATED are explicitly out of consideration — they include rows
+  // demoted from a previous run, manually rejected pilots, etc. Without this
+  // filter a re-trigger after a demote leaves leftover rows that block
+  // fan-out forever even after the new cohort is fully approved.
+  const ACTIVE_PILOT_STATUSES = new Set(['REVIEW', 'APPROVED', 'LOCKED', 'NEEDS_HUMAN_TWEAK']);
   const pilots = (pilotShots ?? []).filter((row) => {
     const meta = (row as { metadata?: unknown }).metadata;
     if (!meta || typeof meta !== 'object') return false;
+    if (!ACTIVE_PILOT_STATUSES.has(row.status as string)) return false;
     return (meta as { vgen_pilot?: unknown }).vgen_pilot === true;
   });
   if (pilots.length === 0) {
@@ -92,10 +99,27 @@ export const POST = withApiHandler(async (req, ctx) => {
       'No VGEN pilot shots found for this episode — re-run VGEN start before fan-out',
     );
   }
-  const unapproved = pilots.filter((row) => row.status !== 'APPROVED');
+  // Dedupe by canonical shot_id so multi-version pilot rows for the same
+  // shot (e.g. v01 REVIEW + v02 APPROVED after a regenerate) collapse to a
+  // single entry. The newest APPROVED wins; REVIEW entries fail the
+  // unapproved check until Director acts.
+  const byShotId = new Map<string, { status: string; filename: string }>();
+  for (const row of pilots) {
+    const meta = row.metadata as { shot_id?: unknown };
+    const sid = typeof meta?.shot_id === 'string' ? meta.shot_id : row.id;
+    const prior = byShotId.get(sid);
+    // APPROVED outranks REVIEW; later created_at outranks earlier when same status.
+    if (!prior) {
+      byShotId.set(sid, { status: row.status, filename: row.filename });
+    } else if (prior.status !== 'APPROVED' && row.status === 'APPROVED') {
+      byShotId.set(sid, { status: row.status, filename: row.filename });
+    }
+  }
+  const dedupedPilots = [...byShotId.values()];
+  const unapproved = dedupedPilots.filter((row) => row.status !== 'APPROVED');
   if (unapproved.length > 0) {
     throw new ConflictError(
-      `Director must APPROVE all VGEN pilot shots before fan-out (got ${pilots.length - unapproved.length}/${pilots.length} approved)`,
+      `Director must APPROVE all VGEN pilot shots before fan-out (got ${dedupedPilots.length - unapproved.length}/${dedupedPilots.length} approved)`,
     );
   }
 
