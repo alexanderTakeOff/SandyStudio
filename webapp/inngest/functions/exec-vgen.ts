@@ -204,6 +204,33 @@ export const execVgenStart = inngest.createFunction(
             metadata: pilotMetaPatch as never,
           } as never)
           .eq('id', out.assetId);
+
+        // Mirror factory.ts behaviour — write activity_event so the Pipeline
+        // View feed surfaces the completed pilot. Without this the asset is
+        // created silently and Director can't open its drawer from the feed.
+        await supabase
+          .from('activity_events')
+          .insert({
+            event_type: 'agent_completed',
+            severity: 'info',
+            title: `EXEC-VGEN pilot completed (${shotId})`,
+            description: 'EXEC-VGEN: Pilot Pass',
+            actor: 'EXEC-VGEN',
+            episode_id: episodeId,
+            asset_id: out.assetId,
+            job_id: job.id,
+            metadata: {
+              agent: 'EXEC-VGEN',
+              status: targetStatus,
+              kind: 'vgen_pilot',
+              shot_id: shotId,
+            },
+          } as never)
+          .then(
+            () => undefined,
+            () => undefined,
+          );
+
         return out;
       });
 
