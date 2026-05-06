@@ -108,7 +108,22 @@ function fmt(t: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AnimaticPlayer({ assetId, contract, onChanged }: AnimaticPlayerProps) {
+export function AnimaticPlayer({
+  assetId,
+  contract,
+  onChanged,
+  vidShotAssets,
+  onCellClick,
+}: AnimaticPlayerProps) {
+  // Hybrid mode: resolver maps each shot_id to its current canonical cell
+  // (mp4-canonical / mp4-review / image fallback / placeholder).
+  const timelineCells: TimelineCell[] = useMemo(
+    () => resolveTimelineCells(contract, vidShotAssets ?? []),
+    [contract, vidShotAssets],
+  );
+  // Multi-track audio (forward-compat per directive #4 — reads `audio_tracks[]`
+  // when present, falls back to legacy `music_url` single track for v1 assets).
+  const audioTracks: AudioTrack[] = useMemo(() => getAudioTracks(contract), [contract]);
   // Local copy of overrides so Director can edit live without round-tripping
   // to DB on every click. Saved via Save Timing button.
   const [overrides, setOverrides] = useState<Record<string, AnimaticDirectorOverride>>(
