@@ -79,6 +79,11 @@ export interface AnimaticPlayerProps {
    * seek the playhead.
    */
   onCellClick?: (cell: TimelineCell) => void;
+  /**
+   * Phase A polish: timeline filter chip selection. Cells outside the
+   * filter are dimmed in the shot strip but still seek-able. Default 'all'.
+   */
+  filter?: 'all' | 'review' | 'approved' | 'missing';
 }
 
 interface ShotTime {
@@ -114,6 +119,7 @@ export function AnimaticPlayer({
   onChanged,
   vidShotAssets,
   onCellClick,
+  filter = 'all',
 }: AnimaticPlayerProps) {
   // Hybrid mode: resolver maps each shot_id to its current canonical cell
   // (mp4-canonical / mp4-review / image fallback / placeholder).
@@ -561,11 +567,29 @@ export function AnimaticPlayer({
             const widthPct = total > 0 ? (t.duration / total) * 100 : 0;
             const leftPct = total > 0 ? (t.cumStart / total) * 100 : 0;
             const isCurrent = i === currentIndex;
+            const cell = timelineCells[i];
+            const cellMatchesFilter =
+              filter === 'all'
+                ? true
+                : filter === 'review'
+                  ? cell?.status === 'REVIEW'
+                  : filter === 'approved'
+                    ? cell?.status === 'APPROVED' || cell?.status === 'LOCKED'
+                    : filter === 'missing'
+                      ? cell?.status === 'NONE'
+                      : true;
+            // Status dot color: green/yellow/transparent.
+            const dotColor =
+              cell?.kind === 'video-canonical'
+                ? 'var(--accent-success, #22c55e)'
+                : cell?.kind === 'video-review'
+                  ? 'var(--accent-warning, #f59e0b)'
+                  : null;
             return (
               <button
                 key={t.shot.shot_id}
                 onClick={() => seekTo(t.cumStart)}
-                className="absolute top-0 h-full transition-colors"
+                className="absolute top-0 h-full transition-opacity"
                 style={{
                   left: `${leftPct}%`,
                   width: `${widthPct}%`,
@@ -573,12 +597,20 @@ export function AnimaticPlayer({
                     ? 'color-mix(in oklab, var(--accent-primary) 35%, transparent)'
                     : 'transparent',
                   borderRight: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
+                  opacity: cellMatchesFilter ? 1 : 0.25,
                 }}
-                title={`${t.shot.shot_id} · ${t.duration.toFixed(1)}s · click to jump`}
+                title={`${t.shot.shot_id} · ${t.duration.toFixed(1)}s · ${cell?.status ?? 'NONE'} · click to jump`}
               >
                 <div className="text-[9px] text-text-secondary truncate px-0.5 leading-[36px]">
                   {i + 1}
                 </div>
+                {dotColor && (
+                  <span
+                    className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
+                    style={{ background: dotColor }}
+                    aria-hidden
+                  />
+                )}
               </button>
             );
           })}

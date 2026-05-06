@@ -49,8 +49,8 @@ const ASPECT_OPTIONS: Array<{ value: AspectRatio; label: string; sub: string }> 
 ];
 
 const QUALITY_OPTIONS: Array<{ value: QualityTier; label: string; sub: string }> = [
-  { value: 'fast', label: 'Fast', sub: '~$0.075/s · iteration' },
-  { value: 'standard', label: 'Standard', sub: '~$0.15/s · final' },
+  { value: 'fast', label: 'Fast (Veo 3.1)', sub: '~$0.075/s · iteration' },
+  { value: 'standard', label: 'Standard (Veo 3.1)', sub: '~$0.15/s · final' },
 ];
 
 const DURATION_MIN = 1;

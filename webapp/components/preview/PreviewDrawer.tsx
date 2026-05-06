@@ -12,7 +12,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Maximize2, Minimize2, Square } from 'lucide-react';
+import { X, Maximize2, Minimize2, Square, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AssetPreview } from './AssetPreview';
 
 export type PreviewDrawerSize = 'small' | 'wide' | 'full';
@@ -26,6 +26,18 @@ export interface PreviewDrawerProps {
   title?: string;
   /** Footer slot for kebab actions; rendered below the preview body. */
   footer?: ReactNode;
+  /**
+   * Optional prev/next navigation. Caller supplies callbacks; drawer renders
+   * chevron buttons in the header that invoke them. When a callback is null,
+   * the corresponding button is disabled (end of list).
+   *
+   * Used by EpisodeTimeline so Director can review shots without closing the
+   * drawer between cells. Keyboard: ← / → arrow keys when drawer is open.
+   */
+  onPrev?: (() => void) | null;
+  onNext?: (() => void) | null;
+  /** Optional position label (e.g. "5 / 13") shown next to nav arrows. */
+  navLabel?: string;
 }
 
 const WIDTHS: Record<PreviewDrawerSize, string> = {
@@ -40,6 +52,9 @@ export function PreviewDrawer({
   assetId,
   title,
   footer,
+  onPrev,
+  onNext,
+  navLabel,
 }: PreviewDrawerProps) {
   const [size, setSize] = useState<PreviewDrawerSize>('small');
 
@@ -47,6 +62,21 @@ export function PreviewDrawer({
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      // Don't hijack arrow keys when the user is typing inside an input.
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        (target?.isContentEditable ?? false);
+      if (isTyping) return;
+      if (e.key === 'ArrowLeft' && onPrev) {
+        e.preventDefault();
+        onPrev();
+      }
+      if (e.key === 'ArrowRight' && onNext) {
+        e.preventDefault();
+        onNext();
+      }
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
@@ -54,7 +84,7 @@ export function PreviewDrawer({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open, onClose, onPrev, onNext]);
 
   // Reset size when drawer closes so next open starts compact.
   useEffect(() => {
@@ -90,6 +120,34 @@ export function PreviewDrawer({
             )}
           </div>
           <div className="flex items-center gap-1">
+            {(onPrev !== undefined || onNext !== undefined) && (
+              <>
+                <button
+                  onClick={() => onPrev?.()}
+                  disabled={!onPrev}
+                  className="p-1.5 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Previous shot"
+                  title="Previous (←)"
+                >
+                  <ChevronLeft size={14} strokeWidth={1.7} />
+                </button>
+                {navLabel && (
+                  <span className="text-[11px] text-text-muted px-1 tabular-nums">
+                    {navLabel}
+                  </span>
+                )}
+                <button
+                  onClick={() => onNext?.()}
+                  disabled={!onNext}
+                  className="p-1.5 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Next shot"
+                  title="Next (→)"
+                >
+                  <ChevronRight size={14} strokeWidth={1.7} />
+                </button>
+                <span className="w-px h-4 bg-glass mx-1" aria-hidden />
+              </>
+            )}
             <SizeButton
               active={size === 'small'}
               onClick={() => setSize('small')}
