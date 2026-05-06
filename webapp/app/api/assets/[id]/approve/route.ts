@@ -19,6 +19,9 @@ import {
   isShotReferenceV2,
   type ShotReferenceContract,
 } from '@/lib/api/shot-reference';
+import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
+import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
