@@ -250,6 +250,23 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
             </Button>
           )}
 
+          {/* Bulk-approve all REVIEW shots — visible during/after fan-out
+              when there are still un-approved fan-out shots. Saves Director
+              from clicking through 11 individual drawers in Mode 1. */}
+          {!isPilotMode && !cancelled && pendingReviewCount > 0 && (
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => setConfirmApproveAll(true)}
+              disabled={busy !== null}
+              title={`Bulk-approve ${pendingReviewCount} REVIEW shots`}
+            >
+              {busy === 'approve_all' && <Loader2 size={13} className="animate-spin" />}
+              {success === 'approve_all' && <CheckCircle2 size={13} />}
+              Approve all {pendingReviewCount} REVIEW
+            </Button>
+          )}
+
           {!cancelled && (
             <Button
               size="sm"
