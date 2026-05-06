@@ -120,6 +120,34 @@ export function PreviewDrawer({
             )}
           </div>
           <div className="flex items-center gap-1">
+            {(onPrev !== undefined || onNext !== undefined) && (
+              <>
+                <button
+                  onClick={() => onPrev?.()}
+                  disabled={!onPrev}
+                  className="p-1.5 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Previous shot"
+                  title="Previous (←)"
+                >
+                  <ChevronLeft size={14} strokeWidth={1.7} />
+                </button>
+                {navLabel && (
+                  <span className="text-[11px] text-text-muted px-1 tabular-nums">
+                    {navLabel}
+                  </span>
+                )}
+                <button
+                  onClick={() => onNext?.()}
+                  disabled={!onNext}
+                  className="p-1.5 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Next shot"
+                  title="Next (→)"
+                >
+                  <ChevronRight size={14} strokeWidth={1.7} />
+                </button>
+                <span className="w-px h-4 bg-glass mx-1" aria-hidden />
+              </>
+            )}
             <SizeButton
               active={size === 'small'}
               onClick={() => setSize('small')}
