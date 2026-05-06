@@ -129,7 +129,11 @@ export function ConciergePanel() {
       return;
     }
     const rec = new Ctor();
-    rec.lang = 'en-US';
+    // Auto-detect from browser locale — works in Chrome/Edge for ru-RU, en-US,
+    // es-ES, etc. Director's browser language drives recognition language.
+    // Falls back to en-US when navigator.language is unavailable.
+    rec.lang =
+      (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
     rec.interimResults = true;
     rec.continuous = false;
     rec.onresult = (e) => {
