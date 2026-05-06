@@ -24,7 +24,16 @@ export const CONCURRENCY_LIMITS = {
   'exec-edit':  5,
   'exec-copy':  5,
   // Visual generation — strictest. Highest cost, lowest provider tolerance.
+  // Legacy single-event path kept for backward-compat (old replay-pilot tests
+  // and any in-flight `/generate-shot` events).
   'exec-vgen':  3,
+  // Pilot Pass: walk through 1-2 shots sequentially so cost is deterministic.
+  'exec-vgen-pilot':   1,
+  // Fan-out trigger: one runner per episode, then it fans out via /single-shot.
+  'exec-vgen-fanout':  1,
+  // Per-shot single-shot generation; this is where Veo 3's per-episode
+  // parallelism actually lives. Bump if Vertex AI quota allows.
+  'exec-vgen-shot':    3,
   // Music — Suno/Udio rate limits tighter than image/video.
   'exec-mgen':  2,
   // Image — Midjourney/fal.ai.
