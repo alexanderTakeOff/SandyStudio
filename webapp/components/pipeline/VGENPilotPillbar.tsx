@@ -139,6 +139,30 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
     }
   }
 
+  async function approveAllReview() {
+    setBusy('approve_all');
+    setError(null);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/vgen/approve-all-review`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ directorConfirm: true }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Approve all failed');
+      }
+      setSuccess('approve_all');
+      setTimeout(() => setSuccess(null), 600);
+      setConfirmApproveAll(false);
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function cancel() {
     setBusy('cancel');
     setError(null);
