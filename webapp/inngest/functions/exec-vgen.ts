@@ -296,11 +296,13 @@ export const execVgenFanoutTrigger = inngest.createFunction(
       const shotList = v1.shot_list ?? [];
 
       // Find pilot shots already produced — skip them in fan-out.
+      // file_type carries a per-shot variant suffix (e.g. "VID-shot-ss-s14-e01-…")
+      // so we prefix-match instead of using `.eq('VID-shot')`.
       const { data: pilotRows } = await supabase
         .from('assets')
         .select('metadata')
         .eq('episode_id', episodeId)
-        .eq('file_type', 'VID-shot');
+        .like('file_type', 'VID-shot%');
       const pilotShotIds = new Set<string>();
       for (const row of (pilotRows ?? [])) {
         const meta = (row as { metadata?: unknown }).metadata;
