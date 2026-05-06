@@ -347,6 +347,23 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
               </div>
             )}
 
+            {/* When the selected stage is Visual Generator — render the VGEN
+                pilot pillbar + collapsed-by-default batch defaults panel. */}
+            {selectedStage === 'visual_generator' && (
+              <div className="mb-3 space-y-3">
+                <VGENPilotPillbar
+                  episodeId={id}
+                  stageRunning={
+                    stages.find((s) => s.id === 'visual_generator')?.state === 'running'
+                  }
+                />
+                <VGENBatchPanel
+                  episodeId={id}
+                  seriesId={episode.series_id}
+                />
+              </div>
+            )}
+
             {filtered.length === 0 && (
               <p className="text-sm text-text-secondary">
                 {selectedStage ? 'No activity for this stage yet.' : 'Pipeline is idle.'}
