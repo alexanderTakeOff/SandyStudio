@@ -206,6 +206,13 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         />
       )}
 
+      {/* Episode timeline — unified progressive review surface (Phase A).
+          Auto-hides when no animatic v1 yet. Click any cell → drawer opens
+          for that shot's per-asset review. */}
+      <div className="mb-4">
+        <EpisodeTimelineSection episodeId={id} />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* DAG (left) */}
         <Card className="lg:col-span-2">
