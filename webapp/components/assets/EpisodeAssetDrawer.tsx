@@ -47,6 +47,13 @@ import { fetcher } from '@/lib/swr';
 import { isShotReferenceV2 } from '@/lib/api/shot-reference';
 import { isAnimaticV1 } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
+import {
+  VGENShotPanel,
+  type AspectRatio,
+  type QualityTier,
+  type VGENShotPanelSettings,
+  type VGENShotPanelStoryboardShot,
+} from '@/components/vgen/VGENShotPanel';
 import type {
   AssetMetadataDoc,
   ImagePromptHistoryEntry,
