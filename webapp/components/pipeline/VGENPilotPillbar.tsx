@@ -490,10 +490,13 @@ function ReviewHeadline({
         style={{ background: 'color-mix(in oklab, var(--panel-glass-border) 60%, transparent)' }}
       >
         <div
-          className="h-full rounded-full transition-all"
+          className={`h-full rounded-full transition-all ${
+            liveActivity ? 'animate-pulse' : ''
+          }`}
           style={{
-            width: `${pct}%`,
+            width: liveActivity ? '100%' : `${pct}%`,
             background: done ? 'var(--accent-success)' : 'var(--accent-primary)',
+            opacity: liveActivity ? 0.55 : 1,
           }}
         />
       </div>
