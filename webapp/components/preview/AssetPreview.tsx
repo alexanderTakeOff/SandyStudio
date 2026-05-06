@@ -161,7 +161,16 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
           actions for the activity-feed entrypoint). */}
       {asset.file_type.startsWith('VID-shot') && (
         <>
-          <VGENShotSection asset={asset as never} onChanged={() => void mutate()} />
+          <VGENShotSection
+            assetId={asset.id}
+            filename={asset.filename}
+            metadata={asset.metadata}
+            drivePath={asset.drive_path}
+            driveWebViewUrl={asset.drive_web_view_url}
+            stagingPath={asset.staging_path}
+            editable={asset.status === 'REVIEW' || asset.status === 'DRAFT'}
+            onChanged={() => void mutate()}
+          />
           {asset.status === 'REVIEW' && (
             <PilotApproveButtons
               assetId={asset.id}
