@@ -52,6 +52,9 @@ export function PreviewDrawer({
   assetId,
   title,
   footer,
+  onPrev,
+  onNext,
+  navLabel,
 }: PreviewDrawerProps) {
   const [size, setSize] = useState<PreviewDrawerSize>('small');
 
@@ -59,6 +62,21 @@ export function PreviewDrawer({
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      // Don't hijack arrow keys when the user is typing inside an input.
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        (target?.isContentEditable ?? false);
+      if (isTyping) return;
+      if (e.key === 'ArrowLeft' && onPrev) {
+        e.preventDefault();
+        onPrev();
+      }
+      if (e.key === 'ArrowRight' && onNext) {
+        e.preventDefault();
+        onNext();
+      }
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
@@ -66,7 +84,7 @@ export function PreviewDrawer({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open, onClose, onPrev, onNext]);
 
   // Reset size when drawer closes so next open starts compact.
   useEffect(() => {
