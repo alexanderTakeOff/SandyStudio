@@ -44,6 +44,10 @@ interface VgenStateData {
   pilot_shot_ids: string[];
   pilot_approved_count: number;
   approved_count: number;
+  /** distinct shot_ids whose latest VID-shot row is in REVIEW status */
+  review_count: number;
+  /** distinct shot_ids missing from VID-shot entirely (no APPROVED + no REVIEW) */
+  missing_count: number;
   has_vid_shots: boolean;
   running_jobs: number;
 }
