@@ -291,6 +291,7 @@ export function newAnimaticContract(shotList: AnimaticShot[]): AnimaticContract 
   return {
     contract: ANIMATIC_CONTRACT,
     shot_list: shotList,
+    audio_tracks: [],
     music_url: null,
     music_filename: null,
     total_duration: computeTotalDuration(shotList, undefined),
