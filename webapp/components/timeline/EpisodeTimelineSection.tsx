@@ -165,7 +165,7 @@ export function EpisodeTimelineSection({
       <PreviewDrawer
         open={previewAssetId !== null}
         onClose={() => setPreviewAssetId(null)}
-        assetId={previewAssetId ?? ''}
+        assetId={previewAssetId}
       />
     </>
   );
