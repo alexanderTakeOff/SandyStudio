@@ -74,7 +74,7 @@ export const GET = withApiHandler(async (_req, ctx) => {
     // instead of `.in()` so we catch every variant.
     supabase
       .from('assets')
-      .select('id,file_type,status,metadata')
+      .select('id,file_type,status,metadata,version,created_at')
       .eq('episode_id', episodeId)
       .or('file_type.eq.VID-animatic,file_type.like.VID-shot%'),
     getVgenPilotState(supabase, episodeId),
