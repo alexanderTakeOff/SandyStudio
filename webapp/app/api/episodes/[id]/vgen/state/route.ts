@@ -67,11 +67,14 @@ export const GET = withApiHandler(async (_req, ctx) => {
   // ── Episode existence + parallel fetch ────────────────────────────────────
   const [epRes, assetsRes, pilotState, jobsRes] = await Promise.all([
     supabase.from('episodes').select('id').eq('id', episodeId).maybeSingle(),
+    // VID-shot rows carry a per-shot variant suffix in their file_type
+    // (e.g. "VID-shot-ss-s14-e01-a1-sc01-sh01"). Use OR with prefix match
+    // instead of `.in()` so we catch every variant.
     supabase
       .from('assets')
       .select('id,file_type,status,metadata')
       .eq('episode_id', episodeId)
-      .in('file_type', ['VID-animatic', 'VID-shot']),
+      .or('file_type.eq.VID-animatic,file_type.like.VID-shot%'),
     getVgenPilotState(supabase, episodeId),
     supabase
       .from('jobs')
