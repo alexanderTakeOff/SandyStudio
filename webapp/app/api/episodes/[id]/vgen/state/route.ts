@@ -148,12 +148,15 @@ export const GET = withApiHandler(async (_req, ctx) => {
     }
   }
 
-  // ── pilot_shot_ids — distinct shot_ids of VID-shot assets marked vgen_pilot
+  // ── pilot_shot_ids — distinct shot_ids of VID-shot assets marked vgen_pilot.
+  // Apply the same "latest row wins" rule so pilots from a previous run that
+  // are now REVISION (demoted) don't bleed into the current cohort.
   const pilotShotIdSet = new Set<string>();
-  for (const a of vidShots) {
-    if (!isPilotMeta(a.metadata)) continue;
-    const sid = getVidShotShotId(a.metadata);
-    if (sid) pilotShotIdSet.add(sid);
+  for (const [sid, rows] of byShot) {
+    const latest = pickLatest(rows);
+    if (isPilotMeta(latest.metadata)) {
+      pilotShotIdSet.add(sid);
+    }
   }
   const pilotShotIds = [...pilotShotIdSet];
 
