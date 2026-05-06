@@ -166,8 +166,8 @@ export async function generateVideoVeoGemini(
     throw new VeoGeminiError('GEMINI_API_KEY is not set');
   }
 
-  const quality = input.quality ?? 'standard';
-  const model = MODEL_BY_QUALITY[quality];
+  const quality = input.quality ?? 'fast';
+  const model = getVeoModelId(quality);
   const aspectRatio = input.aspectRatio ?? '16:9';
   const durationSeconds = input.durationSeconds ?? 5;
 
