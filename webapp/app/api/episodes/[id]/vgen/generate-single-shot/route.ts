@@ -92,7 +92,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       'No APPROVED animatic@v1 found for this episode. Approve the animatic first.',
     );
   }
-  const v1 = (animatic.metadata as { animatic_v1: AnimaticContract }).animatic_v1;
+  const v1 = (animatic.metadata as unknown as { animatic_v1: AnimaticContract }).animatic_v1;
   const shot = v1.shot_list?.find((s) => s.shot_id === shotId);
   if (!shot) {
     throw new ValidationError(
