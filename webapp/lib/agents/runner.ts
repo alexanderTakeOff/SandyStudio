@@ -666,16 +666,101 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         throw new Error(`EXEC-VGEN requires shotId in event payload`);
       }
 
-      if (provider?.providerId === 'veo-3-img2vid' || provider?.providerId === 'veo-3') {
+      const isRealVeo =
+        provider?.providerId === 'veo-3-img2vid' || provider?.providerId === 'veo-3';
+
+      // ── Universal Core defaults ───────────────────────────────────────────
+      // Per-event override → series defaults → hardcoded fallback. Series
+      // defaults plumbing happens at the call site (Inngest function reads
+      // app_config); the runner just trusts what's in the event payload.
+      const effectiveAspect: '16:9' | '9:16' | '1:1' = aspectRatio ?? '16:9';
+      const effectiveQuality: 'fast' | 'standard' = qualityTier ?? 'fast';
+
+      // ── Resolve approved EREF reference image (img2vid) ───────────────────
+      // Skipped when supabase is unavailable (replay-pilot mock harness) or
+      // when the agent input list lacks any EREF — the runner falls through
+      // to the legacy text-to-video path and the mock-mode behaviour stays
+      // intact for back-compat (29/29 replay-pilot expects the old shape).
+      let referenceImageBase64: string | null = null;
+      let referenceErefAssetId: string | null = null;
+      let storyboardShot: StoryboardShotV2 | null = null;
+      let storyboardAssetId: string | null = null;
+      let resolvedDurationSeconds: number | null = null;
+
+      const upstream = (inputs.upstream_assets ?? []) as Array<{
+        id: string;
+        file_type: string;
+        content?: string | null;
+        metadata?: unknown;
+      }>;
+
+      // Resolve storyboard shot for prompt + duration
+      const stb = upstream.find((a) => a.file_type === 'STB-storyboard' && a.content);
+      if (stb && stb.content) {
+        storyboardAssetId = stb.id;
+        storyboardShot = getStoryboardShotById(stb.content, shotId);
+      }
+
+      // Resolve approved EREF for img2vid + apply Director's animatic overrides.
+      if (supabase && isRealVeo) {
+        const ref = await getApprovedEREFForShot(supabase, episodeId, shotId);
+        if (ref) {
+          referenceErefAssetId = ref.asset.id;
+          referenceImageBase64 = ref.image_b64;
+        }
+
+        // Apply animatic director-overrides for duration when present.
+        const animatic = upstream.find(
+          (a) => a.file_type === 'VID-animatic' && isAnimaticV1(a.metadata),
+        );
+        if (animatic && isAnimaticV1(animatic.metadata)) {
+          const animaticDoc = (animatic.metadata as { animatic_v1: { shot_list: Array<{ shot_id: string; duration_seconds: number }>; director_overrides?: Record<string, { duration_seconds: number }> } }).animatic_v1;
+          const animShot = animaticDoc.shot_list.find((s) => s.shot_id === shotId);
+          if (animShot) {
+            resolvedDurationSeconds = effectiveDurationSeconds(
+              {
+                shot_id: animShot.shot_id,
+                asset_id: '',
+                image_url: '',
+                duration_seconds: animShot.duration_seconds,
+              },
+              animaticDoc.director_overrides,
+            );
+          }
+        }
+      }
+
+      const finalDuration = (() => {
+        if (typeof durationSeconds === 'number' && durationSeconds > 0) {
+          return Math.min(8, Math.max(4, durationSeconds));
+        }
+        if (resolvedDurationSeconds !== null) {
+          return Math.min(8, Math.max(4, Math.round(resolvedDurationSeconds)));
+        }
+        if (storyboardShot?.duration_seconds && storyboardShot.duration_seconds > 0) {
+          return Math.min(8, Math.max(4, Math.round(storyboardShot.duration_seconds)));
+        }
+        return 5;
+      })();
+
+      const episodeMeta = inputs.episode as { title_working?: string | null };
+      const episodeTitle = episodeMeta?.title_working ?? '';
+
+      const prompt = storyboardShot
+        ? buildShotPromptV2(storyboardShot, episodeTitle)
+        : buildShotPrompt(inputs, shotId);
+
+      if (isRealVeo) {
         if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
-        // Without a master character reference (PA-001/2/3 lands later), fall
-        // back to text-to-video for the shot. When the reference workflow is
-        // live, pass referenceImageBase64 + referenceImageMime here.
+
         const real = await generateVideoVeoGemini({
-          prompt: buildShotPrompt(inputs, shotId),
-          durationSeconds: 4,
-          aspectRatio: '16:9',
-          quality: 'fast',
+          prompt,
+          durationSeconds: finalDuration,
+          aspectRatio: effectiveAspect,
+          quality: effectiveQuality,
+          ...(referenceImageBase64
+            ? { referenceImageBase64, referenceImageMime: 'image/png' as const }
+            : {}),
         });
         const safeShotId = shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
         const persisted = await persistBinary({
@@ -701,12 +786,18 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               height: real.height,
               duration_seconds: real.duration_seconds,
               size_bytes: real.size_bytes,
+              aspect_ratio: effectiveAspect,
+              quality_tier: effectiveQuality,
+              prompt,
+              reference_eref_asset_id: referenceErefAssetId,
+              storyboard_asset_id: storyboardAssetId,
+              vgen_pilot: vgenPilot === true,
             }),
           },
         };
       }
 
-      const video = await mockVideo({ episodeId, shotId, durationSeconds: 5 });
+      const video = await mockVideo({ episodeId, shotId, durationSeconds: finalDuration });
       return {
         outputKind: 'video-mp4',
         result: {
@@ -718,6 +809,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             shot_id: shotId,
             provider_id: 'mock',
             provider_used: 'mock',
+            aspect_ratio: effectiveAspect,
+            quality_tier: effectiveQuality,
+            duration_seconds: finalDuration,
+            prompt,
+            reference_eref_asset_id: referenceErefAssetId,
+            storyboard_asset_id: storyboardAssetId,
+            vgen_pilot: vgenPilot === true,
           },
         },
       };
