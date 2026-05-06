@@ -146,13 +146,18 @@ export const GET = withApiHandler(async (_req, ctx) => {
     totalShots = byShot.size;
   }
 
+  // Final safety cap — approved can't logically exceed total. Without this,
+  // edge cases (manual DB inserts, legacy rows that DO have a shot_id but
+  // aren't in the current animatic) could read N/M with N > M in the UI.
+  const approvedCount = Math.min(approvedShotIds.size, totalShots || approvedShotIds.size);
+
   return apiOk({
     episode_id: episodeId,
     pilot_state: pilotState,
     total_shots: totalShots,
     pilot_shot_ids: pilotShotIds,
     pilot_approved_count: pilotApprovedCount,
-    approved_count: approvedShotIds.size,
+    approved_count: approvedCount,
     has_vid_shots: vidShots.length > 0,
     running_jobs: runningJobs,
   });
