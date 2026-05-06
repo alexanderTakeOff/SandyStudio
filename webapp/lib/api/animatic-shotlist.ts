@@ -39,6 +39,47 @@ export interface AnimaticDirectorOverride {
   edited_at?: string;
 }
 
+/**
+ * One audio layer in the timeline. Schema is multi-track from the start (per
+ * Director's directive 2026-05-06 #4) so `EpisodeTimeline` can play music +
+ * voice + sfx + ambience in parallel without re-architecting later — even
+ * though MVP only ships the `music` layer.
+ */
+export type AudioLayer = 'music' | 'voice' | 'sfx' | 'ambience';
+
+export interface AudioTrack {
+  layer: AudioLayer;
+  /** Best browser-loadable URL — drive_web_view_url, staging_path, or http(s). */
+  url: string;
+  filename: string;
+  /** 0..1, default 1.0 for music, 0.8 for ambience, etc. */
+  volume?: number;
+  muted?: boolean;
+  /** Optional offset in seconds — track starts at this point in the timeline. */
+  start_at_seconds?: number;
+}
+
+/**
+ * Forward-compat reader: returns `audio_tracks[]` if the contract has it,
+ * otherwise fabricates a single-element list from the legacy `music_url`
+ * field. Always safe to call — `[]` if the asset has no audio at all.
+ */
+export function getAudioTracks(contract: AnimaticContract): AudioTrack[] {
+  if (Array.isArray(contract.audio_tracks)) {
+    return contract.audio_tracks;
+  }
+  if (contract.music_url) {
+    return [{
+      layer: 'music',
+      url: contract.music_url,
+      filename: contract.music_filename ?? 'music',
+      volume: 1.0,
+      muted: false,
+    }];
+  }
+  return [];
+}
+
 /** The full v1 animatic payload stored at `assets.metadata.animatic_v1`. */
 export interface AnimaticContract {
   contract: AnimaticContractId;
