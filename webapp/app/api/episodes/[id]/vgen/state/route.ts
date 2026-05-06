@@ -109,11 +109,15 @@ export const GET = withApiHandler(async (_req, ctx) => {
   // ── VID-shot grouping (one row per shot_id; APPROVED/LOCKED wins) ─────────
   // file_type can be the bare 'VID-shot' (legacy) or 'VID-shot-<variant>'
   // (Pilot Pass / fan-out path). Both shapes map to the same shot_id via
-  // metadata.shot_id, so we treat them uniformly.
+  // metadata.shot_id. Only rows with a valid shot_id are counted toward the
+  // animatic-derived progress (legacy rows without metadata.shot_id — e.g.
+  // pre-Pilot-Pass mock runs that wrote `shot1/shot2/shot3` without
+  // metadata — would otherwise inflate approved_count above total_shots).
   const vidShots = assets.filter((a) => a.file_type.startsWith('VID-shot'));
   const byShot = new Map<string, AssetRow[]>();
   for (const a of vidShots) {
-    const sid = getVidShotShotId(a.metadata) ?? a.id; // fallback per-asset
+    const sid = getVidShotShotId(a.metadata);
+    if (!sid) continue; // skip legacy rows without canonical shot_id
     if (!byShot.has(sid)) byShot.set(sid, []);
     byShot.get(sid)!.push(a);
   }
