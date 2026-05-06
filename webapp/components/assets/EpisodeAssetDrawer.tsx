@@ -487,15 +487,17 @@ export function EpisodeAssetDrawer({
             </div>
           )}
 
-          {/* ── VGEN: VID-shot Universal Core panel ────────────────────────── */}
-          {isVidShot && vidShotMeta && (
-            <VGENShotPanel
+          {/* ── VGEN: VID-shot Universal Core panel (extracted to keep drawer < 800 lines) ── */}
+          {isVidShot && (
+            <VGENShotSection
               assetId={asset.id}
-              videoUrl={vidShotUrl}
-              storyboardShot={vidShotMeta.storyboardShot}
-              currentSettings={vidShotMeta.currentSettings}
+              filename={asset.filename}
+              metadata={asset.metadata}
+              drivePath={asset.drive_path}
+              driveWebViewUrl={asset.drive_web_view_url}
+              stagingPath={asset.staging_path}
+              editable={editable}
               onChanged={onChange}
-              readOnly={!editable}
             />
           )}
 
