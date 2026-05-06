@@ -205,28 +205,70 @@ function PilotApproveButtons({
 }: {
   assetId: string;
   /**
-   * `review`   — REVIEW asset: Approve → APPROVED, Reject → REVISION.
-   * `approved` — APPROVED asset: only Reject available, demotes back to REVIEW
-   *              so Director can revoke a too-eager approval without regen.
+   * `review`   — REVIEW asset: Approve → APPROVED, "Send to revision" → REVISION.
+   * `approved` — APPROVED asset: "Send to revision" only — demotes APPROVED to
+   *              REVISION so Director can revoke a too-eager approval and regen.
+   *
+   * REJECT decision is intentionally not exposed: the FSM forbids
+   * APPROVED→REJECTED, and REVISION is the ergonomic state for "not happy,
+   * please redo". REJECTED is reserved for upstream pipeline failures.
    */
   variant: 'review' | 'approved';
   onChanged: () => void;
 }) {
-  const [busy, setBusy] = useState<null | 'approve' | 'reject'>(null);
+  const [busy, setBusy] = useState<null | 'approve' | 'revise'>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function post(decision: 'APPROVE' | 'REJECT') {
-    setBusy(decision === 'APPROVE' ? 'approve' : 'reject');
+  async function approve() {
+    setBusy('approve');
     setError(null);
     try {
       const res = await fetch(`/api/assets/${assetId}/approve`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ decision, directorConfirm: true }),
+        body: JSON.stringify({
+          decision: 'APPROVE',
+          directorConfirm: true,
+          preview_acknowledged: true,
+        }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? `${decision} failed`);
+        throw new Error((j as { error?: string }).error ?? 'APPROVE failed');
+      }
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function requestRevision() {
+    const defaultNote =
+      variant === 'approved'
+        ? 'Director revoked approval — please regenerate'
+        : 'Please regenerate with adjusted settings';
+    const note = typeof window !== 'undefined'
+      ? window.prompt('Reason for sending back to revision?', defaultNote)
+      : defaultNote;
+    if (note === null) return; // user cancelled prompt
+    const trimmed = note.trim().length > 0 ? note.trim() : defaultNote;
+    setBusy('revise');
+    setError(null);
+    try {
+      const res = await fetch(`/api/assets/${assetId}/approve`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          decision: 'REQUEST_REVISION',
+          note: trimmed,
+          directorConfirm: true,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'REVISION failed');
       }
       onChanged();
     } catch (e) {
@@ -242,7 +284,7 @@ function PilotApproveButtons({
         <Button
           size="sm"
           variant="primary"
-          onClick={() => post('APPROVE')}
+          onClick={approve}
           disabled={busy !== null}
         >
           {busy === 'approve' ? 'Approving…' : 'Approve'}
@@ -251,17 +293,17 @@ function PilotApproveButtons({
       <Button
         size="sm"
         variant="ghost"
-        onClick={() => post('REJECT')}
+        onClick={requestRevision}
         disabled={busy !== null}
         title={
           variant === 'approved'
-            ? 'Demote this APPROVED shot back to REVIEW'
-            : 'Reject — sends shot to REVISION'
+            ? 'Demote this APPROVED shot to REVISION so Director can regenerate'
+            : 'Send shot back to REVISION'
         }
       >
-        {busy === 'reject'
-          ? variant === 'approved' ? 'Demoting…' : 'Rejecting…'
-          : variant === 'approved' ? 'Demote to REVIEW' : 'Reject'}
+        {busy === 'revise'
+          ? 'Sending…'
+          : variant === 'approved' ? 'Send to revision' : 'Reject'}
       </Button>
       {error && (
         <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
