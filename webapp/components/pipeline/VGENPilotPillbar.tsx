@@ -239,6 +239,8 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
             totalShots={progress.totalShots}
             running={fanoutRunning}
             runningJobs={progress.runningJobs}
+            reviewCount={reviewCount}
+            missingCount={missingCount}
           />
         )}
 
