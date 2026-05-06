@@ -113,11 +113,55 @@ type Events = {
     };
   };
 
-  /** Per-shot fan-out after EXEC-EDIT animatic approval. */
+  /**
+   * Legacy per-shot fan-out trigger (pre-Pilot Pass). Kept registered so
+   * historical Inngest log entries continue to type-check. New flows fire
+   * `sandystudio/exec-vgen/start` (pilot) → `/fanout-trigger` → `/single-shot`.
+   * @deprecated Remove after one release once no in-flight events remain.
+   */
   'sandystudio/exec-vgen/generate-shot': {
     data: AssetTrigger & {
       shotId: string;
       animaticAssetId: string;
+    };
+  };
+
+  /**
+   * VGEN v2 Pilot Pass entry point. Generates 1-2 representative shots and
+   * stops. Each shot fires its own `/start` event so the existing concurrency
+   * key + Universal Core overrides work uniformly across pilot and fan-out.
+   */
+  'sandystudio/exec-vgen/start': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      /** Universal Core overrides — fall back to series defaults. */
+      aspect_ratio?: '16:9' | '9:16' | '1:1';
+      quality_tier?: 'fast' | 'standard';
+      duration_seconds?: number;
+      /** Pilot pass marker for activity feed / runner branching. */
+      pilot?: boolean;
+    };
+  };
+
+  /**
+   * VGEN v2 Fan-out trigger. Director approved both pilot shots and clicked
+   * "Approve Direction & Fan Out" — runner fans the remaining shots out as
+   * `/single-shot` events.
+   */
+  'sandystudio/exec-vgen/fanout-trigger': {
+    data: BaseEpisodeEvent;
+  };
+
+  /**
+   * VGEN v2 single-shot generation. Fired by the fan-out trigger (per shot)
+   * and by the per-shot Re-generate UI button. Concurrency 3 per episode.
+   */
+  'sandystudio/exec-vgen/single-shot': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      aspect_ratio?: '16:9' | '9:16' | '1:1';
+      quality_tier?: 'fast' | 'standard';
+      duration_seconds?: number;
     };
   };
 
