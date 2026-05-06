@@ -460,11 +460,15 @@ function ReviewHeadline({
   totalShots,
   running,
   runningJobs,
+  reviewCount,
+  missingCount,
 }: {
   approved: number;
   totalShots: number;
   running: boolean;
   runningJobs: number;
+  reviewCount: number;
+  missingCount: number;
 }) {
   // Live jobs always take priority — even when approved_count is already at
   // total (legacy approved rows from a prior provider switch), if there are
@@ -472,23 +476,38 @@ function ReviewHeadline({
   const liveActivity = runningJobs > 0;
   const pct = totalShots === 0 ? 0 : Math.round((approved / totalShots) * 100);
   const done = approved >= totalShots && totalShots > 0 && !liveActivity;
-  const showSpinner = liveActivity || (running && !done);
+  const showSpinner = liveActivity && !done;
+  // Build a precise headline that matches reality. Director's pain point
+  // (2026-05-06): pillbar said "Generating 10/13" + "Approve all 3 REVIEW"
+  // when nothing was running and there were 0 actual REVIEW rows — the 3
+  // were just MISSING (failed and never recovered). Now we differentiate.
+  let label: string;
+  if (liveActivity) {
+    label = `Generating new shots… ${runningJobs} in flight · ${approved}/${totalShots} approved`;
+  } else if (done) {
+    label = `Reviewed: ${approved}/${totalShots} shots have approved video`;
+  } else if (reviewCount > 0 && missingCount === 0) {
+    label = `${reviewCount} shot${reviewCount === 1 ? '' : 's'} awaiting your review · ${approved}/${totalShots} approved`;
+  } else if (missingCount > 0 && reviewCount === 0) {
+    label = `${missingCount} shot${missingCount === 1 ? '' : 's'} missing — re-trigger generation · ${approved}/${totalShots} approved`;
+  } else if (reviewCount > 0 && missingCount > 0) {
+    label = `${reviewCount} REVIEW · ${missingCount} missing · ${approved}/${totalShots} approved`;
+  } else {
+    label = `${approved}/${totalShots} shots have approved video`;
+  }
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <div className="flex items-center gap-2 text-sm">
         {done && (
           <CheckCircle2 size={14} className="shrink-0" style={{ color: 'var(--accent-success)' }} />
         )}
-        {showSpinner && !done && (
+        {showSpinner && (
           <Loader2 size={14} className="shrink-0 animate-spin" style={{ color: 'var(--accent-primary)' }} />
         )}
-        <span className="text-text-primary font-medium">
-          {liveActivity
-            ? `Generating new shots… ${runningJobs} in flight (concurrency 3) · ${approved}/${totalShots} approved`
-            : running && !done
-              ? `Generating: ${approved}/${totalShots} shots have approved video`
-              : `Reviewed: ${approved}/${totalShots} shots have approved video`}
-        </span>
+        {!done && !showSpinner && missingCount > 0 && (
+          <AlertCircle size={14} className="shrink-0" style={{ color: 'var(--accent-warning, #f59e0b)' }} />
+        )}
+        <span className="text-text-primary font-medium">{label}</span>
       </div>
       <div
         className="h-1.5 rounded-full overflow-hidden flex-1 min-w-[120px] max-w-[280px]"
