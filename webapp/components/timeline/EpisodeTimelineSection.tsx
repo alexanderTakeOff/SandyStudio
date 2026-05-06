@@ -179,8 +179,48 @@ export function EpisodeTimelineSection({
     .animatic_v1;
 
   function handleCellClick(cell: TimelineCell): void {
+    setGenError(null);
     if (cell.asset_id) {
       setPreviewAssetId(cell.asset_id);
+      // Image fallback / placeholder: cell.asset_id points to the EREF (or
+      // null). Remember the shot so the drawer footer shows Generate VGEN.
+      // For real VID-shot cells, clear the pending state — drawer's own
+      // VGEN controls handle regenerate.
+      const isMissingVgen =
+        cell.kind === 'image' || cell.kind === 'placeholder';
+      setPendingGenerateShotId(isMissingVgen ? cell.shot_id : null);
+    }
+  }
+
+  async function generateMissingShot(): Promise<void> {
+    if (!pendingGenerateShotId) return;
+    setGenBusy(true);
+    setGenError(null);
+    try {
+      const res = await fetch(
+        `/api/episodes/${episodeId}/vgen/generate-single-shot`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            shot_id: pendingGenerateShotId,
+            directorConfirm: true,
+          }),
+        },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Generate failed');
+      }
+      // Optimistic UX: close the drawer; SWR refresh will surface the new
+      // job in activity, and once mp4 lands the cell flips to video-review.
+      setPreviewAssetId(null);
+      setPendingGenerateShotId(null);
+      void mutate();
+    } catch (e) {
+      setGenError((e as Error).message);
+    } finally {
+      setGenBusy(false);
     }
   }
 
