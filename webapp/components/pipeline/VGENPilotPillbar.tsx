@@ -197,13 +197,12 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
   const cancelled = pilotState === 'CANCELLED';
   const fanoutRunning = pilotState === 'FANOUT_RUNNING' || stageRunning === true;
   const pilotCount = progress.pilotShotIds.length || 2;
-  // Number of fan-out VID-shot rows still in REVIEW (= total_shots-derived
-  // distinct shot_ids that aren't approved yet). The state endpoint already
-  // gives us approved_count + total_shots; their delta is the bulk-approve target.
-  const pendingReviewCount = Math.max(
-    0,
-    (s?.total_shots ?? 0) - progress.approvedCount,
-  );
+  // Bulk-approve targets actual REVIEW rows (not the delta of total-approved).
+  const reviewCount = s?.review_count ?? 0;
+  // Missing = shot_ids that have NO row at all in approved/review status.
+  // Surfaced as "X shots missing — re-trigger generation" so Director knows
+  // the right action is regenerate, not approve.
+  const missingCount = s?.missing_count ?? 0;
 
   const canApproveDirection =
     isPilotMode &&
