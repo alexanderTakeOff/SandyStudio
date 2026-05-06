@@ -140,7 +140,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     episode_id: episodeId,
     metadata: {
       kind: 'vgen_fanout',
-      pilot_count: pilots.length,
+      pilot_count: dedupedPilots.length,
       inngest_event_ids: ids,
     },
   } as never);
@@ -148,7 +148,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   return apiOk({
     triggered: true,
     pilot_state: 'FANOUT_RUNNING',
-    pilot_count: pilots.length,
+    pilot_count: dedupedPilots.length,
     inngest_event: 'sandystudio/exec-vgen/fanout-trigger',
     inngest_event_ids: ids,
   });
