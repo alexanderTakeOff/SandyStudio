@@ -27,6 +27,14 @@ import {
 import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { persistBinary, type PersistedBinary } from './persist-binary';
+import {
+  buildShotPromptV2,
+  effectiveDurationSeconds,
+  getApprovedEREFForShot,
+  getStoryboardShotById,
+  type StoryboardShotV2,
+} from '../api/vgen-shot-helpers';
+import { isAnimaticV1 } from '../api/animatic-shotlist';
 import type { ResolvedProvider } from './provider-resolver';
 import { getAgent } from './registry';
 import { runScreenwriter, ScreenwriterError } from './runners/screenwriter';
