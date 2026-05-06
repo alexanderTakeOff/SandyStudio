@@ -451,6 +451,31 @@ export const execVgenSingleShot = inngest.createFunction(
             metadata: fanMetaPatch as never,
           } as never)
           .eq('id', out.assetId);
+
+        // Mirror factory.ts so the fan-out shot lands in the Pipeline feed.
+        await supabase
+          .from('activity_events')
+          .insert({
+            event_type: 'agent_completed',
+            severity: 'info',
+            title: `EXEC-VGEN completed (${shotId})`,
+            description: 'EXEC-VGEN: Single Shot',
+            actor: 'EXEC-VGEN',
+            episode_id: episodeId,
+            asset_id: out.assetId,
+            job_id: job.id,
+            metadata: {
+              agent: 'EXEC-VGEN',
+              status: targetStatus,
+              kind: 'vgen_fanout',
+              shot_id: shotId,
+            },
+          } as never)
+          .then(
+            () => undefined,
+            () => undefined,
+          );
+
         return out;
       });
 
