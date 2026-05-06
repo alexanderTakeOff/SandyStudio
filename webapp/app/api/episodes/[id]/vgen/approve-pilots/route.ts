@@ -135,7 +135,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     event_type: 'manual_trigger',
     severity: 'info',
     title: 'VGEN fan-out triggered',
-    description: `Director ${user.email ?? user.id} approved direction; fanning out ${pilots.length} pilot shots → remaining shots`,
+    description: `Director ${user.email ?? user.id} approved direction; fanning out ${dedupedPilots.length} pilot shots → remaining shots`,
     actor: user.id,
     episode_id: episodeId,
     metadata: {
