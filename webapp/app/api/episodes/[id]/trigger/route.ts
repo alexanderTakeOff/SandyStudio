@@ -11,8 +11,11 @@ import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
-import { NotFoundError, ValidationError } from '@/lib/api/errors';
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/api/errors';
 import { inngest, type StudioEventName } from '@/lib/inngest/client';
+import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
+import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
