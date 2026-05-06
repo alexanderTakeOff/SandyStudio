@@ -10,17 +10,29 @@
 // This is the unified review surface that progressively evolves as VGEN /
 // EXEC-MGEN / EXEC-STITCH outputs land. Cells are shot-centric (#1) and the
 // resolver picks LATEST per shot_id (#6 fast iteration).
+//
+// Phase A polish (2026-05-06):
+//   - Filter chips (All / REVIEW / APPROVED / Missing)
+//   - Bulk actions toolbar (Approve all REVIEW)
+//   - Drawer prev/next nav (chevron buttons + arrow keys) so Director can
+//     review every cell without closing the drawer between shots.
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
 
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { ChevronDown, ChevronUp, Film } from 'lucide-react';
+import { ChevronDown, ChevronUp, Film, CheckCircle2, Loader2 } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
-import { type VidShotAssetRow, type TimelineCell } from '@/lib/api/timeline-cell-resolver';
+import {
+  resolveTimelineCells,
+  countCellsByStatus,
+  type VidShotAssetRow,
+  type TimelineCell,
+  type CellStatusPill,
+} from '@/lib/api/timeline-cell-resolver';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
 
 interface AssetRow {
@@ -52,6 +64,8 @@ export interface EpisodeTimelineSectionProps {
   defaultCollapsed?: boolean;
 }
 
+type FilterKey = 'all' | 'review' | 'approved' | 'missing';
+
 export function EpisodeTimelineSection({
   episodeId,
   defaultCollapsed = false,
@@ -64,6 +78,9 @@ export function EpisodeTimelineSection({
 
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterKey>('all');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   // Pick the freshest APPROVED VID-animatic with the v1 contract. If multiple
   // approved animatics exist (re-trigger history), we use the highest version /
@@ -103,6 +120,40 @@ export function EpisodeTimelineSection({
       }));
   }, [data]);
 
+  // Compute resolved cells once, used by both the toolbar (counts/bulk) and
+  // the drawer (prev/next nav). The player computes the same internally —
+  // duplicating this is cheap (pure function, ~O(shots × vid-shots)).
+  const cells: TimelineCell[] = useMemo(() => {
+    if (!animaticAsset) return [];
+    const contract = (animaticAsset.metadata as { animatic_v1: AnimaticContract })
+      .animatic_v1;
+    return resolveTimelineCells(contract, vidShotAssets);
+  }, [animaticAsset, vidShotAssets]);
+
+  const counts = useMemo(() => countCellsByStatus(cells), [cells]);
+
+  const navigableAssetIds = useMemo(() => {
+    return cells
+      .filter((c) => c.asset_id !== null)
+      .map((c) => c.asset_id!) as string[];
+  }, [cells]);
+
+  const navIndex = previewAssetId
+    ? navigableAssetIds.indexOf(previewAssetId)
+    : -1;
+  const onPrev =
+    navIndex > 0
+      ? () => setPreviewAssetId(navigableAssetIds[navIndex - 1] ?? null)
+      : null;
+  const onNext =
+    navIndex >= 0 && navIndex < navigableAssetIds.length - 1
+      ? () => setPreviewAssetId(navigableAssetIds[navIndex + 1] ?? null)
+      : null;
+  const navLabel =
+    navIndex >= 0
+      ? `${navIndex + 1} / ${navigableAssetIds.length}`
+      : undefined;
+
   if (!data) {
     return (
       <div className="rounded-lg border border-glass px-3 py-3 text-xs text-text-muted">
@@ -117,13 +168,40 @@ export function EpisodeTimelineSection({
     return null;
   }
 
-  const contract = (animaticAsset.metadata as { animatic_v1: AnimaticContract }).animatic_v1;
+  const contract = (animaticAsset.metadata as { animatic_v1: AnimaticContract })
+    .animatic_v1;
 
   function handleCellClick(cell: TimelineCell): void {
     if (cell.asset_id) {
       setPreviewAssetId(cell.asset_id);
     }
   }
+
+  async function bulkApproveReview(): Promise<void> {
+    setBulkBusy(true);
+    setBulkError(null);
+    try {
+      const res = await fetch(
+        `/api/episodes/${episodeId}/vgen/approve-all-review`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ directorConfirm: true }),
+        },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Bulk approve failed');
+      }
+      void mutate();
+    } catch (e) {
+      setBulkError((e as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  const reviewCount = counts.REVIEW;
 
   return (
     <>
@@ -150,11 +228,21 @@ export function EpisodeTimelineSection({
           {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
         </div>
         {!collapsed && (
-          <div className="px-3 pb-3 pt-0 border-t border-glass">
+          <div className="px-3 pb-3 pt-0 border-t border-glass space-y-2">
+            <TimelineToolbar
+              counts={counts}
+              filter={filter}
+              setFilter={setFilter}
+              reviewCount={reviewCount}
+              bulkBusy={bulkBusy}
+              onBulkApprove={bulkApproveReview}
+              bulkError={bulkError}
+            />
             <AnimaticPlayer
               assetId={animaticAsset.id}
               contract={contract}
               vidShotAssets={vidShotAssets}
+              filter={filter}
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
             />
@@ -166,7 +254,142 @@ export function EpisodeTimelineSection({
         open={previewAssetId !== null}
         onClose={() => setPreviewAssetId(null)}
         assetId={previewAssetId}
+        onPrev={onPrev}
+        onNext={onNext}
+        navLabel={navLabel}
       />
     </>
+  );
+}
+
+// ── Toolbar (filter chips + bulk actions) ────────────────────────────────────
+
+function TimelineToolbar({
+  counts,
+  filter,
+  setFilter,
+  reviewCount,
+  bulkBusy,
+  onBulkApprove,
+  bulkError,
+}: {
+  counts: Record<CellStatusPill, number>;
+  filter: FilterKey;
+  setFilter: (f: FilterKey) => void;
+  reviewCount: number;
+  bulkBusy: boolean;
+  onBulkApprove: () => void;
+  bulkError: string | null;
+}) {
+  const total = Object.values(counts).reduce((s, n) => s + n, 0);
+  const approved = counts.APPROVED + counts.LOCKED;
+  const missing = counts.NONE; // placeholder + image fallback both count as "missing VGEN"
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 pt-2">
+      <FilterChip
+        label="All"
+        count={total}
+        active={filter === 'all'}
+        onClick={() => setFilter('all')}
+      />
+      <FilterChip
+        label="Review"
+        count={counts.REVIEW}
+        active={filter === 'review'}
+        onClick={() => setFilter('review')}
+        accent="warn"
+      />
+      <FilterChip
+        label="Approved"
+        count={approved}
+        active={filter === 'approved'}
+        onClick={() => setFilter('approved')}
+        accent="ok"
+      />
+      <FilterChip
+        label="Missing"
+        count={missing}
+        active={filter === 'missing'}
+        onClick={() => setFilter('missing')}
+        accent="muted"
+      />
+      <div className="flex-1" />
+      {reviewCount > 0 && (
+        <button
+          onClick={onBulkApprove}
+          disabled={bulkBusy}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors disabled:opacity-50"
+          style={{
+            background: bulkBusy
+              ? 'color-mix(in oklab, var(--accent-primary) 8%, transparent)'
+              : 'color-mix(in oklab, var(--accent-success) 12%, transparent)',
+            color: 'var(--accent-success)',
+            borderColor: 'color-mix(in oklab, var(--accent-success) 30%, transparent)',
+          }}
+          title="Approve all VID-shot REVIEW rows for this episode"
+        >
+          {bulkBusy ? (
+            <Loader2 size={11} className="animate-spin" />
+          ) : (
+            <CheckCircle2 size={11} />
+          )}
+          {bulkBusy ? 'Approving…' : `Approve all REVIEW (${reviewCount})`}
+        </button>
+      )}
+      {bulkError && (
+        <span
+          className="text-[11px] px-2 py-1 rounded-md"
+          style={{
+            background: 'color-mix(in oklab, var(--accent-danger) 10%, transparent)',
+            color: 'var(--accent-danger)',
+          }}
+        >
+          {bulkError}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FilterChip({
+  label,
+  count,
+  active,
+  onClick,
+  accent,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+  accent?: 'ok' | 'warn' | 'muted';
+}) {
+  const accentColor =
+    accent === 'ok'
+      ? 'var(--accent-success)'
+      : accent === 'warn'
+        ? 'var(--accent-warning)'
+        : accent === 'muted'
+          ? 'var(--text-muted)'
+          : 'var(--accent-primary)';
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium border transition-colors"
+      style={{
+        background: active
+          ? `color-mix(in oklab, ${accentColor} 16%, transparent)`
+          : 'transparent',
+        color: active ? accentColor : 'var(--text-secondary)',
+        borderColor: active
+          ? `color-mix(in oklab, ${accentColor} 40%, transparent)`
+          : 'var(--border-glass)',
+      }}
+      aria-pressed={active}
+    >
+      <span>{label}</span>
+      <span className="tabular-nums opacity-70">{count}</span>
+    </button>
   );
 }
