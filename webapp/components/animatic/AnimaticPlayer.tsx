@@ -366,6 +366,12 @@ export function AnimaticPlayer({
   const currentDuration = times[currentIndex]?.duration ?? 0;
   const newTotal = computeTotalDuration(contract.shot_list, overrides);
 
+  // In hybrid mode, the cell index corresponds 1:1 with shot index — fetch the
+  // resolved cell for the current frame so we can decide between <img> / <video>
+  // and color-code the status pill.
+  const currentCell = timelineCells[currentIndex];
+  const isHybridMode = (vidShotAssets?.length ?? 0) > 0;
+
   return (
     <div className="space-y-3">
       {/* Header info */}
