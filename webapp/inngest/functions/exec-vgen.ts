@@ -172,7 +172,12 @@ export const execVgenStart = inngest.createFunction(
           episodeCode: ep?.episode_code ?? 'SS-unknown',
           result: exec.result,
           outputKind: exec.outputKind,
-          variant: shotId,
+          // file_type CHECK constraint requires [a-z0-9_-]+ — storyboard
+          // shotId is uppercase mixed case (e.g. SS-S14-E01-A1-SC01-SH01),
+          // so we lowercase the variant. Canonical shotId roundtrips
+          // through metadata.shot_id (set in pilotMetaPatch / fanMetaPatch
+          // below) so consumers don't lose the original casing.
+          variant: shotId.toLowerCase(),
         });
         await markJobCompleted(supabase, job.id, out.assetId);
         const targetStatus = TARGET_STATUS_BY_MODE(ep?.governance_mode);
@@ -390,7 +395,12 @@ export const execVgenSingleShot = inngest.createFunction(
           episodeCode: ep?.episode_code ?? 'SS-unknown',
           result: exec.result,
           outputKind: exec.outputKind,
-          variant: shotId,
+          // file_type CHECK constraint requires [a-z0-9_-]+ — storyboard
+          // shotId is uppercase mixed case (e.g. SS-S14-E01-A1-SC01-SH01),
+          // so we lowercase the variant. Canonical shotId roundtrips
+          // through metadata.shot_id (set in pilotMetaPatch / fanMetaPatch
+          // below) so consumers don't lose the original casing.
+          variant: shotId.toLowerCase(),
         });
         await markJobCompleted(supabase, job.id, out.assetId);
         const targetStatus = TARGET_STATUS_BY_MODE(ep?.governance_mode);
