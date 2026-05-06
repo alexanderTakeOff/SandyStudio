@@ -223,6 +223,51 @@ export function EpisodeAssetDrawer({
     : null;
   const shotId = shotRef?.shot_id ?? null;
 
+  // ── VID-shot (VGEN) detection ───────────────────────────────────────────
+  // VID-shot assets are produced by EXEC-VGEN. Their metadata carries the
+  // Universal Core settings used to generate the mp4 plus a denormalised
+  // copy of the storyboard shot row (so the drawer doesn't need to refetch).
+  const isVidShot = asset.file_type.startsWith('VID-shot');
+  const vidShotMeta = useMemo(() => {
+    if (!isVidShot) return null;
+    const m = (asset.metadata ?? {}) as {
+      shot_id?: string;
+      storyboard_shot?: VGENShotPanelStoryboardShot;
+      aspect_ratio?: string;
+      quality_tier?: string;
+      duration_seconds?: number;
+      reference_eref_asset_id?: string;
+      reference_asset_id?: string;
+      prompt?: string;
+      vgen_settings?: Partial<VGENShotPanelSettings> & { reference_eref_asset_id?: string };
+    };
+    const settings = m.vgen_settings ?? {};
+    const aspect: AspectRatio = (settings.aspect_ratio ?? m.aspect_ratio ?? '16:9') as AspectRatio;
+    const quality: QualityTier = (settings.quality_tier ?? m.quality_tier ?? 'fast') as QualityTier;
+    const duration = settings.duration_seconds ?? m.duration_seconds ?? 4;
+    const refId =
+      settings.reference_asset_id ??
+      settings.reference_eref_asset_id ??
+      m.reference_asset_id ??
+      m.reference_eref_asset_id ??
+      '';
+    const promptText = settings.prompt ?? m.prompt ?? '';
+    const sId = m.storyboard_shot?.shot_id ?? m.shot_id ?? asset.filename;
+    const stub: VGENShotPanelStoryboardShot = m.storyboard_shot ?? { shot_id: sId };
+    const cs: VGENShotPanelSettings = {
+      prompt: promptText,
+      aspect_ratio: aspect,
+      quality_tier: quality,
+      duration_seconds: duration,
+      reference_asset_id: refId,
+    };
+    return { storyboardShot: stub, currentSettings: cs };
+  }, [isVidShot, asset.metadata, asset.filename]);
+  const vidShotUrl =
+    isVidShot
+      ? (asset.drive_web_view_url ?? asset.drive_path ?? asset.staging_path ?? null)
+      : null;
+
   // Fetch sibling assets for the same shot (candidates strip + replace-confirm).
   // Always called (hook rule) — but only used when v2.
   const { data: assetsData } = useSWR<{ data: EpisodeAsset[] }>(
