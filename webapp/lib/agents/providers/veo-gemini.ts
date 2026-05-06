@@ -28,7 +28,12 @@ export interface VeoGeminiInput {
   /** Optional reference frame as base64 PNG/JPEG for image-to-video. */
   referenceImageBase64?: string;
   referenceImageMime?: 'image/png' | 'image/jpeg';
-  /** 'standard' uses veo-3.0-generate-001; 'fast' uses veo-3.0-fast-generate-001. */
+  /**
+   * 'standard' uses veo-3.1-generate-preview (default unless VEO_MODEL_STANDARD
+   * overrides); 'fast' uses veo-3.1-fast-generate-preview. Defaults to 'fast'
+   * — Director directive 2026-05-06 (cheaper iteration; switch to 'standard'
+   * for final renders).
+   */
   quality?: VeoQualityTier;
 }
 
