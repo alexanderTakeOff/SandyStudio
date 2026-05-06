@@ -119,6 +119,7 @@ export function AnimaticPlayer({
   onChanged,
   vidShotAssets,
   onCellClick,
+  filter = 'all',
 }: AnimaticPlayerProps) {
   // Hybrid mode: resolver maps each shot_id to its current canonical cell
   // (mp4-canonical / mp4-review / image fallback / placeholder).
