@@ -155,6 +155,21 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
           drivePath={asset.drive_path}
         />
       )}
+      {/* VGEN VID-shot: show Universal Core controls + per-shot approve/reject
+          so Director can act on a pilot from the activity feed Preview drawer
+          (full drawer in Inbox is the canonical path; this mirrors the same
+          actions for the activity-feed entrypoint). */}
+      {asset.file_type.startsWith('VID-shot') && (
+        <>
+          <VGENShotSection asset={asset as never} onChanged={() => void mutate()} />
+          {asset.status === 'REVIEW' && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              onChanged={() => void mutate()}
+            />
+          )}
+        </>
+      )}
       <DriveBadge asset={asset} />
     </div>
   );
