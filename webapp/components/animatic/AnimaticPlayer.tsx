@@ -578,13 +578,21 @@ export function AnimaticPlayer({
                     : filter === 'missing'
                       ? cell?.status === 'NONE'
                       : true;
-            // Status dot color: green/yellow/transparent.
-            const dotColor =
+            // Per Director 2026-05-06 — encode status in the cell-number
+            // colour itself (no extra dot). Cleaner read at a glance:
+            //   green  = APPROVED canonical mp4
+            //   yellow = REVIEW mp4 (tentative, not canonical)
+            //   muted  = animatic image fallback / no VGEN yet
+            const numberColor =
               cell?.kind === 'video-canonical'
                 ? 'var(--accent-success, #22c55e)'
                 : cell?.kind === 'video-review'
                   ? 'var(--accent-warning, #f59e0b)'
-                  : null;
+                  : 'var(--text-muted)';
+            const numberWeight =
+              cell?.kind === 'video-canonical' || cell?.kind === 'video-review'
+                ? 600
+                : 400;
             return (
               <button
                 key={t.shot.shot_id}
@@ -601,16 +609,12 @@ export function AnimaticPlayer({
                 }}
                 title={`${t.shot.shot_id} · ${t.duration.toFixed(1)}s · ${cell?.status ?? 'NONE'} · click to jump`}
               >
-                <div className="text-[9px] text-text-secondary truncate px-0.5 leading-[36px]">
+                <div
+                  className="text-[10px] truncate px-0.5 leading-[36px] tabular-nums text-center"
+                  style={{ color: numberColor, fontWeight: numberWeight }}
+                >
                   {i + 1}
                 </div>
-                {dotColor && (
-                  <span
-                    className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
-                    style={{ background: dotColor }}
-                    aria-hidden
-                  />
-                )}
               </button>
             );
           })}
