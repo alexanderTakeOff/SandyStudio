@@ -124,9 +124,26 @@ export const GET = withApiHandler(async (_req, ctx) => {
     byShot.get(sid)!.push(a);
   }
 
+  // For each shot_id, the LATEST row (highest version, or newest created_at as
+  // tiebreak) is what represents the "current cohort". Older rows for the same
+  // shot are historical (e.g. demoted REVISION from a prior provider switch).
+  // Without this rule the pillbar would show 13/13 APPROVED even after
+  // re-triggering with a new provider — old mock APPROVEDs would shadow the
+  // fresh REVIEW rows.
+  function pickLatest(rows: AssetRow[]): AssetRow {
+    return rows.reduce((best, r) => {
+      const bv = best.version ?? 0;
+      const rv = r.version ?? 0;
+      if (rv > bv) return r;
+      if (rv < bv) return best;
+      return r.created_at > best.created_at ? r : best;
+    });
+  }
+
   const approvedShotIds = new Set<string>();
   for (const [sid, rows] of byShot) {
-    if (rows.some((r) => r.status === 'APPROVED' || r.status === 'LOCKED')) {
+    const latest = pickLatest(rows);
+    if (latest.status === 'APPROVED' || latest.status === 'LOCKED') {
       approvedShotIds.add(sid);
     }
   }
