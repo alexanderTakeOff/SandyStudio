@@ -46,13 +46,33 @@ Pipeline runs end-to-end on mocks all the way to Publish gate (Director hard-lim
   - Modified: `EpisodeAssetDrawer.tsx` (830 lines, net 0 — extracted glue), episode page (629→648)
   - tsc clean for Track B (110/110 tests pass)
 
-- **Track A — Backend** 🟡 **STILL RUNNING** (agent ID `af95e1ac14f22c8c3`). Will finish independently — wait for notification.
-  - Track B's tsc found 2 errors in Track A's WIP file `lib/api/vgen-shot-helpers.ts`:
-    - Line 81 TS2322 — null filter needed for `StoryboardShotCharacter[]` map
-    - Line 93 TS2677 — type predicate parameter shape mismatch
-  - Track A may self-fix before finishing; if not, integration step (~5 min) handles them.
+- **Track A — Backend** ✅ **COMPLETED** (agent ID `af95e1ac14f22c8c3`). Files created (all under 800 except runner.ts which was already oversized):
+  - `webapp/lib/api/vgen-pilot-state.ts` (89) — state machine via `app_config` (mirrors EREF pattern)
+  - `webapp/lib/api/vgen-cancel.ts` (81)
+  - `webapp/lib/api/vgen-defaults.ts` (73)
+  - `webapp/lib/api/vgen-shot-helpers.ts` (328) — buildShotPromptV2, getApprovedEREFForShot, pickPilotVgenShots, getStoryboardShotById
+  - `webapp/lib/agents/providers/video-gen-multi.ts` (141) — type abstraction + Veo 3 wrapper
+  - `webapp/app/api/episodes/[id]/vgen/approve-pilots/route.ts` (128)
+  - `webapp/app/api/episodes/[id]/vgen/cancel/route.ts` (67)
+  - `webapp/app/api/assets/[id]/regenerate-video/route.ts` (322)
+  - Modified: runner.ts EXEC-VGEN case (img2vid + buildShotPromptV2 + Universal Core args), exec-vgen.ts (3 new functions + legacy back-compat), inngest index/client, concurrency, /approve route fan-out fix
+  - **All checks green**: tsc clean ✓, 110/110 tests ✓, **replay-pilot 29/29 ✓** (legacy 3-shot fallback verified)
 
-**Do NOT relaunch sub-agents** — they'll create duplicate work.
+### 🔴 Critical integration mismatch — must fix before live test
+
+Track A stores `vgen_pilot_state` in **`app_config`** (mirror EREF). Track B reads from **`episode.metadata.vgen_pilot_state`**. Incompatible.
+
+**Fix options:**
+1. (Recommended) Create new `GET /api/episodes/[id]/vgen/state` endpoint (~30 lines) — reads app_config via `getVgenPilotState` + computes pilot/total counts. Track B's pillbar swaps SWR to this endpoint.
+2. Or refactor Track A to store in episodes.metadata (requires schema migration since episodes table has no metadata column today).
+
+Option 1 is faster — do that.
+
+**Other Track A open items** (defer to Phase 1.5):
+- `vgen_pilot_state=COMPLETE` not auto-flipped when last fanout shot finishes — UI computes from asset counts (acceptable pattern)
+- `regenerate-video` does NOT auto-demote prior VID-shot — Director may want EREF-style 1-shot-1-approved invariant later
+
+**Do NOT relaunch sub-agents** — both finished.
 
 ### After sub-agents finish
 
