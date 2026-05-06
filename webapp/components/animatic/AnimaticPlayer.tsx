@@ -470,37 +470,62 @@ export function AnimaticPlayer({
         )}
       </div>
 
-      {/* Audio bar */}
+      {/* Audio bar — supports multi-track (music / voice / sfx / ambience).
+          For animatic v1 with only `music_url`, getAudioTracks fabricates a
+          single 'music' track. EXEC-MGEN voice / sfx tracks (Phase 1.5+) will
+          land here without UI rewrite — schema is forward-compat per directive #4.
+          The first 'music' track is the master clock (audioRef); additional
+          tracks are slaved with periodic re-sync. Only music exposes Replace
+          (Upload music) to keep the v1 surface familiar. */}
       <div className="rounded-lg border border-glass p-2.5 space-y-1.5">
-        {contract.music_url ? (
-          <>
-            <div className="flex items-center gap-2 text-xs text-text-secondary">
-              <Music2 size={13} className="text-[var(--accent-primary)]" />
-              <span className="truncate flex-1 font-mono text-text-primary">
-                {contract.music_filename ?? 'music'}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingMusic}
-              >
-                <Upload size={12} /> Replace
-              </Button>
-            </div>
-            <audio
-              ref={audioRef}
-              src={contract.music_url}
-              preload="auto"
-              controls
-              className="w-full"
-              style={{ height: 32 }}
-            />
-          </>
+        {audioTracks.length > 0 ? (
+          audioTracks.map((track, i) => {
+            const isMaster = i === 0;
+            return (
+              <div key={`${track.layer}-${track.url}`} className="space-y-1">
+                <div className="flex items-center gap-2 text-xs text-text-secondary">
+                  <Music2
+                    size={13}
+                    className={isMaster ? 'text-[var(--accent-primary)]' : 'text-text-muted'}
+                  />
+                  <span
+                    className="px-1.5 py-0.5 rounded-full text-[9px] uppercase tracking-wider"
+                    style={{
+                      background: 'color-mix(in oklab, var(--accent-primary) 15%, transparent)',
+                      color: 'var(--accent-primary)',
+                    }}
+                  >
+                    {track.layer}
+                  </span>
+                  <span className="truncate flex-1 font-mono text-text-primary">
+                    {track.filename}
+                  </span>
+                  {track.layer === 'music' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingMusic}
+                    >
+                      <Upload size={12} /> Replace
+                    </Button>
+                  )}
+                </div>
+                <audio
+                  ref={isMaster ? audioRef : undefined}
+                  src={track.url}
+                  preload="auto"
+                  controls
+                  className="w-full"
+                  style={{ height: 32 }}
+                />
+              </div>
+            );
+          })
         ) : (
           <div className="flex items-center gap-2 text-xs">
             <Music2 size={13} className="text-text-muted" />
-            <span className="text-text-muted flex-1">No music yet — playback runs silent</span>
+            <span className="text-text-muted flex-1">No audio yet — playback runs silent</span>
             <Button
               variant="ghost"
               size="sm"
