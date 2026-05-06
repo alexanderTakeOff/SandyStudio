@@ -47,7 +47,10 @@ import { fetcher } from '@/lib/swr';
 import { isShotReferenceV2 } from '@/lib/api/shot-reference';
 import { isAnimaticV1 } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
+<<<<<<< HEAD
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
+=======
+>>>>>>> origin/master
 import type {
   AssetMetadataDoc,
   ImagePromptHistoryEntry,
@@ -487,6 +490,7 @@ export function EpisodeAssetDrawer({
             </div>
           )}
 
+<<<<<<< HEAD
           {/* ── VGEN: VID-shot Universal Core panel (extracted to keep drawer < 800 lines) ── */}
           {isVidShot && (
             <VGENShotSection
@@ -501,6 +505,8 @@ export function EpisodeAssetDrawer({
             />
           )}
 
+=======
+>>>>>>> origin/master
           {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Candidates ── */}
           {isV2 && shotRef && (
             <>
