@@ -31,17 +31,20 @@ export const CONCURRENCY_LIMITS = {
   'exec-vgen-pilot':   1,
   // Fan-out trigger: one runner per episode, then it fans out via /single-shot.
   'exec-vgen-fanout':  1,
-  // Per-shot single-shot generation; this is where Veo 3's per-episode
-  // parallelism actually lives. Vertex AI quota observations 2026-05-06:
-  //   - concurrency 3 → 3/13 shots failed with 429
-  //   - concurrency 2 retry → 3/3 retried shots STILL failed with 429
-  //     (quota is request-rate based ~5 RPM, not parallel-request based;
-  //      stacking 2 starts within 60s window trips the limit)
-  // Hard-capped to 1 (sequential per episode). 13 shots × ~90s = ~20min
-  // wall clock for a full episode but eliminates 429 spend waste.
-  // Bump to 2 only if Vertex quota is raised or after batching/backoff
-  // logic lands in Phase 1.5.
-  'exec-vgen-shot':    1,
+  // Per-shot single-shot generation; this is where Veo's per-episode
+  // parallelism actually lives.
+  //
+  // Quota history:
+  //   2026-05-06 Veo 3.0 fast: 10 RPM hard cap — concurrency 2-3 tripped 429s.
+  //                            Hard-capped to 1, ~20min wall for 13 shots.
+  //   2026-05-06 Veo 3.1 preview (Phase 1.5 upgrade): per Director's quota
+  //                            investigation, 3.1 ceiling is ~5× higher.
+  //                            Bumped to 2 (conservative — q2b decision); a
+  //                            future bump to 3 once we observe stable runs
+  //                            without 429s.
+  //
+  // Episode-keyed so multiple episodes don't starve each other.
+  'exec-vgen-shot':    2,
   // Music — Suno/Udio rate limits tighter than image/video.
   'exec-mgen':  2,
   // Image — Midjourney/fal.ai.
