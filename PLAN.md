@@ -107,6 +107,7 @@ Strategic items captured by Director's directives. Not part of any active sprint
 | LT-06 | **Improve `buildShotPromptV2`** — currently 3 generic lines; storyboard has rich `action_prose / expected_emotion / expected_gag / camera_angle / character emotions` data + Bible canon. Prompts must reflect this per `technology.md §1` ("Bible content попадает в prompt as-is, без truncation — quality > token cost"). | PLANNED — Phase 1.5 follow-up after VGEN epic merges | Director observation 2026-05-06 |
 | LT-07 | **Variants per generation** — Veo 3 supports `numberOfVideos: 1-4`. Add UI dropdown + multi-asset persist + side-by-side review pattern in drawer. | PLANNED — Phase 1.5 follow-up | Director observation 2026-05-06 |
 | LT-08 | **Vertex AI quota mitigation** — Veo 3 hit 429 at concurrency 2 + 3 in observed smoke 2026-05-06 (3/13 shots failed quota-bound, not code-bound). Concurrency hard-capped to 1 (sequential, ~20min/episode). Mitigation options: (a) request quota increase via Google Cloud Console; (b) implement Inngest backoff retry policy for 429-specific recovery; (c) batch shots with sleep between starts; (d) failover to alternate provider (Kling) on 429. | PLANNED — Phase 1.5 follow-up | Live test observation 2026-05-06 |
+| LT-09 | **Pipeline stage progress arc animation** — animated arc filling around stage emoji as % done (instead of static half-filled circle). Cosmetic UX polish for Pipeline View. Should respect `prefers-reduced-motion`. | PLANNED — backlog | Director directive 2026-05-06 |
 
 ### UI/UX implementation note
 
