@@ -84,7 +84,17 @@ export function getAudioTracks(contract: AnimaticContract): AudioTrack[] {
 export interface AnimaticContract {
   contract: AnimaticContractId;
   shot_list: AnimaticShot[];
-  /** Drive or staging URL of the .mp3 the Director uploaded. Null until upload. */
+  /**
+   * Multi-track audio layers (music / voice / sfx / ambience). New writers MUST
+   * populate this. Readers should prefer `getAudioTracks(contract)` which falls
+   * back to the deprecated `music_url` for legacy assets.
+   */
+  audio_tracks?: AudioTrack[];
+  /**
+   * @deprecated Legacy single-music slot. Kept readable for animatic v1 assets
+   * created before 2026-05-06. New code should write `audio_tracks` instead.
+   * `getAudioTracks()` reads either field transparently.
+   */
   music_url: string | null;
   music_filename: string | null;
   /** Sum of durations (with overrides applied). Recomputed on save-timing. */
