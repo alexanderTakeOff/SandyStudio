@@ -189,7 +189,9 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
           <PilotHeadline
             pilotApproved={progress.pilotApprovedCount}
             pilotTotal={pilotCount}
+            pilotReady={progress.pilotShotIds.length}
             totalShots={progress.totalShots}
+            runningJobs={progress.runningJobs}
           />
         ) : cancelled ? (
           <span className="flex items-center gap-2 text-sm text-text-secondary">
