@@ -160,9 +160,11 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
         />
       )}
       {/* VGEN VID-shot: show Universal Core controls + per-shot approve/reject
-          so Director can act on a pilot from the activity feed Preview drawer
-          (full drawer in Inbox is the canonical path; this mirrors the same
-          actions for the activity-feed entrypoint). */}
+          so Director can act on a shot from the activity feed Preview drawer
+          and the EpisodeTimeline "Open shot →" link. Regenerate creates a NEW
+          asset row (does NOT mutate the canonical), so any non-LOCKED state can
+          re-generate to try a new variant. The cell-resolver picks the latest
+          per shot_id (directive #6 fast iteration). */}
       {asset.file_type.startsWith('VID-shot') && (
         <>
           <VGENShotSection
@@ -172,12 +174,20 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
             drivePath={asset.drive_path}
             driveWebViewUrl={asset.drive_web_view_url}
             stagingPath={asset.staging_path}
-            editable={asset.status === 'REVIEW' || asset.status === 'DRAFT'}
+            editable={asset.status !== 'LOCKED'}
             onChanged={() => void mutate()}
           />
           {asset.status === 'REVIEW' && (
             <PilotApproveButtons
               assetId={asset.id}
+              variant="review"
+              onChanged={() => void mutate()}
+            />
+          )}
+          {asset.status === 'APPROVED' && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="approved"
               onChanged={() => void mutate()}
             />
           )}
@@ -190,26 +200,75 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
 
 function PilotApproveButtons({
   assetId,
+  variant,
   onChanged,
 }: {
   assetId: string;
+  /**
+   * `review`   — REVIEW asset: Approve → APPROVED, "Send to revision" → REVISION.
+   * `approved` — APPROVED asset: "Send to revision" only — demotes APPROVED to
+   *              REVISION so Director can revoke a too-eager approval and regen.
+   *
+   * REJECT decision is intentionally not exposed: the FSM forbids
+   * APPROVED→REJECTED, and REVISION is the ergonomic state for "not happy,
+   * please redo". REJECTED is reserved for upstream pipeline failures.
+   */
+  variant: 'review' | 'approved';
   onChanged: () => void;
 }) {
-  const [busy, setBusy] = useState<null | 'approve' | 'reject'>(null);
+  const [busy, setBusy] = useState<null | 'approve' | 'revise'>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function post(decision: 'APPROVE' | 'REJECT') {
-    setBusy(decision === 'APPROVE' ? 'approve' : 'reject');
+  async function approve() {
+    setBusy('approve');
     setError(null);
     try {
       const res = await fetch(`/api/assets/${assetId}/approve`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ decision, directorConfirm: true }),
+        body: JSON.stringify({
+          decision: 'APPROVE',
+          directorConfirm: true,
+          preview_acknowledged: true,
+        }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? `${decision} failed`);
+        throw new Error((j as { error?: string }).error ?? 'APPROVE failed');
+      }
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function requestRevision() {
+    const defaultNote =
+      variant === 'approved'
+        ? 'Director revoked approval — please regenerate'
+        : 'Please regenerate with adjusted settings';
+    const note = typeof window !== 'undefined'
+      ? window.prompt('Reason for sending back to revision?', defaultNote)
+      : defaultNote;
+    if (note === null) return; // user cancelled prompt
+    const trimmed = note.trim().length > 0 ? note.trim() : defaultNote;
+    setBusy('revise');
+    setError(null);
+    try {
+      const res = await fetch(`/api/assets/${assetId}/approve`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          decision: 'REQUEST_REVISION',
+          note: trimmed,
+          directorConfirm: true,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'REVISION failed');
       }
       onChanged();
     } catch (e) {
@@ -221,21 +280,30 @@ function PilotApproveButtons({
 
   return (
     <div className="flex items-center gap-2 pt-2 border-t border-glass">
-      <Button
-        size="sm"
-        variant="primary"
-        onClick={() => post('APPROVE')}
-        disabled={busy !== null}
-      >
-        {busy === 'approve' ? 'Approving…' : 'Approve'}
-      </Button>
+      {variant === 'review' && (
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={approve}
+          disabled={busy !== null}
+        >
+          {busy === 'approve' ? 'Approving…' : 'Approve'}
+        </Button>
+      )}
       <Button
         size="sm"
         variant="ghost"
-        onClick={() => post('REJECT')}
+        onClick={requestRevision}
         disabled={busy !== null}
+        title={
+          variant === 'approved'
+            ? 'Demote this APPROVED shot to REVISION so Director can regenerate'
+            : 'Send shot back to REVISION'
+        }
       >
-        {busy === 'reject' ? 'Rejecting…' : 'Reject'}
+        {busy === 'revise'
+          ? 'Sending…'
+          : variant === 'approved' ? 'Send to revision' : 'Reject'}
       </Button>
       {error && (
         <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
