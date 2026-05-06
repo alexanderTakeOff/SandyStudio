@@ -78,7 +78,7 @@ export const GET = withApiHandler(async (_req, ctx) => {
       .select('id,status')
       .eq('episode_id', episodeId)
       .eq('agent_id', 'EXEC-VGEN')
-      .in('status', ['QUEUED', 'RUNNING']),
+      .eq('status', 'RUNNING'),
   ]);
   if (epRes.error) throw new Error(`episode fetch: ${epRes.error.message}`);
   if (!epRes.data) throw new NotFoundError(`Episode ${episodeId}`);
