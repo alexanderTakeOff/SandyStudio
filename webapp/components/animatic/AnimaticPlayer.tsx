@@ -79,6 +79,11 @@ export interface AnimaticPlayerProps {
    * seek the playhead.
    */
   onCellClick?: (cell: TimelineCell) => void;
+  /**
+   * Phase A polish: timeline filter chip selection. Cells outside the
+   * filter are dimmed in the shot strip but still seek-able. Default 'all'.
+   */
+  filter?: 'all' | 'review' | 'approved' | 'missing';
 }
 
 interface ShotTime {
