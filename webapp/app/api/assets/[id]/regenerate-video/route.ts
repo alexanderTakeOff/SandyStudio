@@ -167,11 +167,24 @@ export const POST = withApiHandler(async (req, ctx) => {
   const episodeCode = (epRow as { episode_code?: string } | null)?.episode_code ?? 'SS-unknown';
   const episodeTitle = (epRow as { title_working?: string | null } | null)?.title_working ?? '';
 
-  // Resolve prompt: explicit override → buildShotPromptV2 → fallback
+  // Phase A.1 — load Bible character canon to anchor character visuals in the
+  // prompt alongside the EREF reference image. Failure is non-fatal: degrade
+  // to empty canon so regenerate still works on series without Bible.
+  let bibleCanon: ReturnType<typeof makeCharacterCanonSnippets> = [];
+  try {
+    const bible = await loadSeriesBibleCanon(sb, asset.episode_id);
+    bibleCanon = makeCharacterCanonSnippets(
+      bible.characters.map((c) => ({ slug: c.slug, description: c.description })),
+    );
+  } catch {
+    bibleCanon = [];
+  }
+
+  // Resolve prompt: explicit override → buildShotPromptV2 (with Bible canon) → fallback
   const finalPrompt = body.prompt
     ? body.prompt
     : storyboardShot
-      ? buildShotPromptV2(storyboardShot, episodeTitle)
+      ? buildShotPromptV2(storyboardShot, episodeTitle, bibleCanon)
       : `Single shot from animated comedy "${episodeTitle}" (shot ${shotId}). Vibrant 2D animation, dynamic action, comedic timing.`;
 
   // Resolve reference image: override → approved EREF for shot → none
