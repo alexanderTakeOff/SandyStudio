@@ -113,6 +113,7 @@ export function VGENShotSection({
       storyboardShot={storyboardShot}
       currentSettings={currentSettings}
       onChanged={onChanged}
+      onRegenerated={onRegenerated}
       readOnly={!editable}
     />
   );
