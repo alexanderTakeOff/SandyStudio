@@ -274,6 +274,11 @@ export const POST = withApiHandler(async (req, ctx) => {
     mode_at_time: decision.modeAtTime,
   } as Record<string, unknown>;
 
+  // Production trace shown in AssetPreview's "⚙ {description}" green box.
+  // Includes model_id so Director can audit Veo 3.0 vs 3.1 at a glance
+  // (Phase A.1 directive 2026-05-07 — "Verify provider").
+  const description = `model=${real.model_id} · ${aspectRatio} · ${qualityTier} · ${real.duration_seconds}s · cost $${real.cost_usd.toFixed(3)} · op=${real.operation_name}`;
+
   const { data: insertedAsset, error: insErr } = await sb
     .from('assets')
     .insert({
@@ -281,6 +286,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       agent_id: 'EXEC-VGEN',
       file_type: 'VID-shot',
       filename: `${episodeCode}-VID-shot_${safeShotId}-${versionTag}-DRAFT.mp4`,
+      description,
       drive_path: persisted.browserUrl,
       staging_path: persisted.absolutePath,
       drive_file_id: persisted.driveFileId,
