@@ -794,4 +794,5 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       )}
     </div>
   );
-}
+});
+AnimaticPlayer.displayName = 'AnimaticPlayer';
