@@ -326,6 +326,7 @@ export function EpisodeTimelineSection({
         onPrev={onPrev}
         onNext={onNext}
         navLabel={navLabel}
+        onRegenerated={handleRegenerated}
         footer={
           pendingGenerateShotId ? (
             <div className="flex items-center gap-2 w-full">
