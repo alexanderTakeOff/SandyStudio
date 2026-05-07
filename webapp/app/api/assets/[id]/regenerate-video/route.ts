@@ -28,6 +28,7 @@ import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import {
   buildShotPromptV2,
+  makeCharacterCanonSnippets,
   getApprovedEREFForShot,
   getStoryboardShotById,
 } from '@/lib/api/vgen-shot-helpers';
