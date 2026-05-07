@@ -24,6 +24,7 @@ import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { generateVideoVeoGemini } from '@/lib/agents/providers/veo-gemini';
 import { persistBinary } from '@/lib/agents/persist-binary';
+import { loadSeriesBibleCanon } from '@/lib/agents/bible-loader';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import {
