@@ -38,6 +38,8 @@ export interface PreviewDrawerProps {
   onNext?: (() => void) | null;
   /** Optional position label (e.g. "5 / 13") shown next to nav arrows. */
   navLabel?: string;
+  /** Pass-through for VID-shot regenerate completion (Phase A.1 auto-focus). */
+  onRegenerated?: (shotId: string, newAssetId: string) => void;
 }
 
 const WIDTHS: Record<PreviewDrawerSize, string> = {
