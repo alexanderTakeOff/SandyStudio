@@ -750,8 +750,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // Phase A.1 (2026-05-07) — inject Bible character visual canon into the
       // prompt as TEXT anchors, alongside the EREF image. Helps Veo 3.1 keep
       // character look consistent when image-to-video drifts mid-clip.
+      const bibleSnippet = inputs.bible as
+        | { characters?: ReadonlyArray<{ slug: string; description: string }> }
+        | undefined;
       const characterCanon = makeCharacterCanonSnippets(
-        (inputs.bible?.characters ?? []).map((c) => ({
+        (bibleSnippet?.characters ?? []).map((c) => ({
           slug: c.slug,
           description: c.description,
         })),
