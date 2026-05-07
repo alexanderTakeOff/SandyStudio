@@ -178,6 +178,7 @@ export function AssetPreview({ assetId, onRegenerated }: AssetPreviewProps) {
             stagingPath={asset.staging_path}
             editable={asset.status !== 'LOCKED'}
             onChanged={() => void mutate()}
+            onRegenerated={onRegenerated}
           />
           {asset.status === 'REVIEW' && (
             <PilotApproveButtons
