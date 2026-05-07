@@ -130,14 +130,17 @@ function fmt(t: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AnimaticPlayer({
-  assetId,
-  contract,
-  onChanged,
-  vidShotAssets,
-  onCellClick,
-  filter = 'all',
-}: AnimaticPlayerProps) {
+export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerProps>(function AnimaticPlayer(
+  {
+    assetId,
+    contract,
+    onChanged,
+    vidShotAssets,
+    onCellClick,
+    filter = 'all',
+  },
+  ref,
+) {
   // Hybrid mode: resolver maps each shot_id to its current canonical cell
   // (mp4-canonical / mp4-review / image fallback / placeholder).
   const timelineCells: TimelineCell[] = useMemo(
