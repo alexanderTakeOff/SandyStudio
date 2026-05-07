@@ -48,6 +48,8 @@ export interface VGENShotSectionProps {
   stagingPath: string | null;
   editable: boolean;
   onChanged: () => void;
+  /** See VGENShotPanelProps.onRegenerated. */
+  onRegenerated?: (shotId: string, newAssetId: string) => void;
 }
 
 function pickAspect(value: unknown): AspectRatio {
