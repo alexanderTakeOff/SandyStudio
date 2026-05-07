@@ -49,6 +49,13 @@ export interface VeoGeminiResult {
   mp4_b64: string;
   cost_usd: number;
   operation_name: string;
+  /**
+   * The actual Google model id used at generate time (e.g.
+   * `veo-3.1-fast-generate-preview`). Persisted into asset metadata so Director
+   * can audit which model produced any given shot without reading runtime
+   * logs (Phase A.1 directive 2026-05-07 — "Verify provider").
+   */
+  model_id: string;
 }
 
 export class VeoGeminiError extends Error {
