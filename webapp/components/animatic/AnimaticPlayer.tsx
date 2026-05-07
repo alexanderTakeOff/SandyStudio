@@ -173,9 +173,19 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentT, setCurrentT] = useState(0); // seconds elapsed
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Inline preview <video> — explicit ref so useEffect can play/pause/seek it
+  // in lockstep with the master clock (Phase A.1 fix for two playback bugs:
+  // selected-cell + Play starts NEXT cell, and Pause/Resume jumps cells).
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const startTsRef = useRef<number>(0);
   const startTOffsetRef = useRef<number>(0); // where we resumed from
+  // Mirror the master clock in a ref so the inline-video sync effect can read
+  // currentT without re-running on every tick (state changes 60×/s during play).
+  const currentTRef = useRef<number>(0);
+  useEffect(() => {
+    currentTRef.current = currentT;
+  }, [currentT]);
 
   // ── Playback engine ──────────────────────────────────────────────────────
   const computeIndex = useCallback(
