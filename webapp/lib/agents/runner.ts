@@ -781,6 +781,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               shot_id: shotId,
               provider_id: real.provider,
               provider_used: real.provider,
+              // Provider verification stamp (Phase A.1 directive 2026-05-07).
+              // `model_id` is the actual Google model that produced this mp4,
+              // surfaced in the asset description so Director sees it in the
+              // drawer without scanning runtime logs. `operation_name` is the
+              // Vertex/Gemini operation id for vendor-side cross-reference.
+              model_id: real.operation_name ? real.model_id : undefined,
+              operation_name: real.operation_name,
               format: real.format,
               width: real.width,
               height: real.height,
