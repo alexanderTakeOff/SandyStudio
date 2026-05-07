@@ -120,6 +120,7 @@ export function VGENShotPanel({
   storyboardShot,
   currentSettings,
   onChanged,
+  onRegenerated,
   readOnly,
 }: VGENShotPanelProps) {
   const [prompt, setPrompt] = useState<string>(
