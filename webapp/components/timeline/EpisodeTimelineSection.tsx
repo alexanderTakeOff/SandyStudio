@@ -88,6 +88,23 @@ export function EpisodeTimelineSection({
   const [pendingGenerateShotId, setPendingGenerateShotId] = useState<string | null>(null);
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  // Imperative ref to AnimaticPlayer — used to seek the playhead after a
+  // regenerate completes (Phase A.1 directive — auto-focus the new candidate).
+  const playerRef = useRef<AnimaticPlayerHandle | null>(null);
+
+  function handleRegenerated(shotId: string, _newAssetId: string): void {
+    // Refetch so the cell-resolver picks up the new VID-shot REVIEW row, then
+    // move the playhead to that shot. SWR mutate happens via VGENShotPanel's
+    // onChanged → AssetPreview's mutate → /api/episodes refetch propagates
+    // through SWR cache; we then nudge the timeline to focus.
+    void mutate();
+    // Slight delay so cell-resolver re-runs with the fresh assets list before
+    // the seek lands on it. Without this we'd seek to the same shot but the
+    // cell would still resolve to image fallback for one render cycle.
+    setTimeout(() => {
+      playerRef.current?.seekToShot(shotId);
+    }, 200);
+  }
 
   // Pick the freshest APPROVED VID-animatic with the v1 contract. If multiple
   // approved animatics exist (re-trigger history), we use the highest version /
