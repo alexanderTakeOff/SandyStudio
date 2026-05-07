@@ -181,7 +181,7 @@ export function PreviewDrawer({
 
         <div className="flex-1 overflow-y-auto p-4">
           {assetId ? (
-            <AssetPreview assetId={assetId} />
+            <AssetPreview assetId={assetId} onRegenerated={onRegenerated} />
           ) : (
             <p className="text-sm text-text-secondary">No asset selected.</p>
           )}
