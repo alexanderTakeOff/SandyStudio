@@ -303,6 +303,7 @@ export function EpisodeTimelineSection({
               bulkError={bulkError}
             />
             <AnimaticPlayer
+              ref={playerRef}
               assetId={animaticAsset.id}
               contract={contract}
               vidShotAssets={vidShotAssets}
