@@ -640,12 +640,14 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
         />
       </div>
 
-      {/* Timeline strip */}
+      {/* Timeline strip — Phase A.1: numbers ~2× bigger, expanded color palette,
+          hover bubble tooltip showing shot_id · duration · status. Strip height
+          bumped 36→44 for the larger numbers; per-cell bubble shows on hover. */}
       <div className="space-y-1.5">
         <div className="text-[10px] uppercase tracking-wider text-text-muted">Timeline</div>
         <div
-          className="relative rounded-md border border-glass overflow-hidden"
-          style={{ height: 36, background: 'var(--bg-elevated)' }}
+          className="relative rounded-md border border-glass"
+          style={{ height: 44, background: 'var(--bg-elevated)' }}
         >
           {times.map((t, i) => {
             const widthPct = total > 0 ? (t.duration / total) * 100 : 0;
@@ -662,26 +664,15 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                     : filter === 'missing'
                       ? cell?.status === 'NONE'
                       : true;
-            // Per Director 2026-05-06 — encode status in the cell-number
-            // colour itself (no extra dot). Cleaner read at a glance:
-            //   green  = APPROVED canonical mp4
-            //   yellow = REVIEW mp4 (tentative, not canonical)
-            //   muted  = animatic image fallback / no VGEN yet
-            const numberColor =
-              cell?.kind === 'video-canonical'
-                ? 'var(--accent-success, #22c55e)'
-                : cell?.kind === 'video-review'
-                  ? 'var(--accent-warning, #f59e0b)'
-                  : 'var(--text-muted)';
-            const numberWeight =
-              cell?.kind === 'video-canonical' || cell?.kind === 'video-review'
-                ? 600
-                : 400;
+            // Phase A.1 colour palette — every non-final state is visually
+            // distinct. Bold weight when there's a real mp4 row; lighter for
+            // missing / draft.
+            const palette = cellPalette(cell?.status, cell?.kind);
             return (
               <button
                 key={t.shot.shot_id}
                 onClick={() => seekTo(t.cumStart)}
-                className="absolute top-0 h-full transition-opacity"
+                className="group absolute top-0 h-full transition-opacity"
                 style={{
                   left: `${leftPct}%`,
                   width: `${widthPct}%`,
@@ -691,14 +682,36 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                   borderRight: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
                   opacity: cellMatchesFilter ? 1 : 0.25,
                 }}
-                title={`${t.shot.shot_id} · ${t.duration.toFixed(1)}s · ${cell?.status ?? 'NONE'} · click to jump`}
               >
                 <div
-                  className="text-[10px] truncate px-0.5 leading-[36px] tabular-nums text-center"
-                  style={{ color: numberColor, fontWeight: numberWeight }}
+                  className="text-[18px] truncate px-0.5 leading-[44px] tabular-nums text-center"
+                  style={{ color: palette.color, fontWeight: palette.weight }}
                 >
                   {i + 1}
                 </div>
+                {/* Hover bubble (shot_id · duration · status). Pure-CSS via
+                    Tailwind group-hover so no JS state per cell. */}
+                <span
+                  className="pointer-events-none absolute z-30 left-1/2 -translate-x-1/2 -top-1 -translate-y-full whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-mono opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{
+                    background: 'var(--panel-glass-strong-bg, rgba(20,20,20,0.92))',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-glass)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    backdropFilter: 'blur(6px)',
+                  }}
+                  role="tooltip"
+                >
+                  <span style={{ color: palette.color, fontWeight: 600 }}>
+                    {cell?.status ?? 'NONE'}
+                  </span>
+                  <span className="opacity-70">
+                    {' · '}
+                    {t.shot.shot_id}
+                    {' · '}
+                    {t.duration.toFixed(1)}s
+                  </span>
+                </span>
               </button>
             );
           })}
