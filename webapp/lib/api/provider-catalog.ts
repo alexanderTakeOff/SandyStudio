@@ -95,7 +95,7 @@ export function getProviderCatalog(): ProviderCatalog {
       MOCK,
       {
         id: 'veo-3-img2vid',
-        display_name: 'Veo 3 (image-to-video)',
+        display_name: 'Veo 3.1 (image-to-video)',
         vendor: 'Google AI Studio (Gemini API)',
         envKey: 'GEMINI_API_KEY',
         adapter_ready: true,
