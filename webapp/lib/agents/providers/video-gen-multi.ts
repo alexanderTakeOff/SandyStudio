@@ -112,6 +112,8 @@ function veoResultToMulti(r: VeoGeminiResult): MultiVideoGenResult {
     size_bytes: r.size_bytes,
     mp4_b64: r.mp4_b64,
     cost_usd: r.cost_usd,
+    model_id: r.model_id,
+    operation_name: r.operation_name,
   };
 }
 
