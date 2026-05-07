@@ -252,6 +252,9 @@ export const POST = withApiHandler(async (req, ctx) => {
     shot_id: shotId,
     provider_id: real.provider,
     provider_used: real.provider,
+    // Provider verification stamp (Phase A.1 directive 2026-05-07).
+    model_id: real.model_id,
+    operation_name: real.operation_name,
     format: real.format,
     width: real.width,
     height: real.height,
