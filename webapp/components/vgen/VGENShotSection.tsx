@@ -71,6 +71,7 @@ export function VGENShotSection({
   stagingPath,
   editable,
   onChanged,
+  onRegenerated,
 }: VGENShotSectionProps) {
   const { storyboardShot, currentSettings } = useMemo(() => {
     const m = (metadata ?? {}) as VidShotMetadataLoose;
