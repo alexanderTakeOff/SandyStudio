@@ -426,6 +426,39 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // and color-code the status pill.
   const currentCell = timelineCells[currentIndex];
   const isHybridMode = (vidShotAssets?.length ?? 0) > 0;
+  const currentCellStart = times[currentIndex]?.cumStart ?? 0;
+
+  // ── Inline-video sync (Phase A.1 fix for bugs 1+2) ──────────────────────
+  // The inline <video> only takes its `autoPlay` prop into account at MOUNT.
+  // Toggling isPlaying later does nothing — that was the playback bug. Drive
+  // it explicitly via ref. Also keep video.currentTime in lockstep with the
+  // master clock when isPlaying flips on, so resume after pause stays at the
+  // exact in-cell offset.
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    const isVideoCell =
+      currentCell?.kind === 'video-canonical' ||
+      currentCell?.kind === 'video-review';
+    if (!isVideoCell) return;
+    if (isPlaying) {
+      // Re-anchor video to the master clock's in-cell offset before play.
+      const inCellOffset = Math.max(0, currentTRef.current - currentCellStart);
+      try {
+        vid.currentTime = inCellOffset;
+      } catch {
+        /* seeking before metadata loaded — browser will seek when ready */
+      }
+      void vid.play().catch(() => {
+        /* autoplay rejected by browser policy — fall back to user gesture */
+      });
+    } else {
+      vid.pause();
+    }
+    // Re-run when isPlaying changes OR when currentCell switches to a new mp4
+    // (key change rebuilds the ref; but the effect needs to re-anchor).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, currentCell?.url]);
 
   return (
     <div className="space-y-3">
