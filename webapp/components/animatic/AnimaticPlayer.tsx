@@ -94,6 +94,15 @@ export interface AnimaticPlayerProps {
   filter?: 'all' | 'review' | 'approved' | 'missing';
 }
 
+/**
+ * Imperative API exposed via ref. Used by EpisodeTimelineSection so post-
+ * regenerate the parent can move the playhead to the freshly-created shot
+ * (Phase A.1 directive — "new candidate must appear and be focused").
+ */
+export interface AnimaticPlayerHandle {
+  seekToShot: (shotId: string) => void;
+}
+
 interface ShotTime {
   shot: AnimaticShot;
   duration: number;       // effective (override applied)
