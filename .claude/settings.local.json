@@ -151,7 +151,8 @@
       "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H\")",
       "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H/jobs\")",
       "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H/actions\")",
-      "Bash(wait)"
+      "Bash(wait)",
+      "mcp__30e3b4b7-df3c-4386-9bf7-421c3c073335__list_projects"
     ]
   }
 }
