@@ -31,6 +31,8 @@ const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 
 export interface AssetPreviewProps {
   assetId: string;
+  /** Pass-through for VID-shot regenerate completion (Phase A.1 auto-focus). */
+  onRegenerated?: (shotId: string, newAssetId: string) => void;
 }
 
 interface AssetRow {
