@@ -29,6 +29,7 @@ import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { persistBinary, type PersistedBinary } from './persist-binary';
 import {
   buildShotPromptV2,
+  makeCharacterCanonSnippets,
   effectiveDurationSeconds,
   getApprovedEREFForShot,
   getStoryboardShotById,
