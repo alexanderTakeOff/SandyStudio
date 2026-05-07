@@ -231,15 +231,17 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
 
   const handlePlay = useCallback(() => {
     if (isPlaying) return;
-    if (currentT >= total) {
+    // Read latest start position from the mutable ref so click-on-cell
+    // immediately followed by Play starts at the clicked cell, not at the
+    // stale React-state currentT (Phase A.1 fix #1).
+    const startFrom = startTOffsetRef.current;
+    if (startFrom >= total) {
       // Auto-reset on play after end.
       startTOffsetRef.current = 0;
       setCurrentT(0);
       setCurrentIndex(0);
       const audio = audioRef.current;
       if (audio) audio.currentTime = 0;
-    } else {
-      startTOffsetRef.current = currentT;
     }
     startTsRef.current = Date.now();
     const audio = audioRef.current;
@@ -251,7 +253,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     }
     setIsPlaying(true);
     rafRef.current = requestAnimationFrame(tick);
-  }, [currentT, isPlaying, tick, total]);
+  }, [isPlaying, tick, total]);
 
   const handlePause = useCallback(() => {
     if (!isPlaying) return;
