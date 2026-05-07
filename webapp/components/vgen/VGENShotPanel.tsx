@@ -187,9 +187,17 @@ export function VGENShotPanel({
         const j = await res.json().catch(() => ({}));
         throw new Error((j as { error?: string }).error ?? 'Regenerate failed');
       }
+      const j = (await res.json().catch(() => ({}))) as {
+        data?: { asset_id?: string };
+      };
+      const newAssetId = j.data?.asset_id;
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 1200);
+      setTimeout(() => setSuccess(false), 2000);
       onChanged();
+      // Notify parent for auto-focus; shot_id is stable across regens.
+      if (newAssetId && onRegenerated) {
+        onRegenerated(storyboardShot.shot_id, newAssetId);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
