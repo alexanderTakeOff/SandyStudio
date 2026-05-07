@@ -113,6 +113,9 @@
   --accent-warning:   #F59E0B;
   --accent-danger:    #DC2626;
   --accent-info:      #FBBF24;
+  /* Phase A.1 — palette parity for REVISION + NEEDS_HUMAN_TWEAK on Sand Gold theme. */
+  --accent-orange:    #E0834C;
+  --accent-purple:    #B89968;
 
   --status-draft:    #8C7A60;
   --status-review:   #FBBF24;
