@@ -283,12 +283,29 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       const clamped = Math.max(0, Math.min(t, total));
       startTOffsetRef.current = clamped;
       startTsRef.current = Date.now();
+      currentTRef.current = clamped; // keep ref in sync for video-sync effect
       setCurrentT(clamped);
       setCurrentIndex(computeIndex(clamped));
       const audio = audioRef.current;
       if (audio) audio.currentTime = clamped;
     },
     [computeIndex, total],
+  );
+
+  // ── Imperative API: seekToShot — caller (EpisodeTimelineSection) jumps
+  // playhead to a specific shot_id after a regenerate completes (Phase A.1
+  // directive — "new candidate must appear and focused").
+  useImperativeHandle(
+    ref,
+    () => ({
+      seekToShot: (shotId: string) => {
+        const idx = contract.shot_list.findIndex((s) => s.shot_id === shotId);
+        if (idx < 0) return;
+        const time = times[idx]?.cumStart ?? 0;
+        seekTo(time);
+      },
+    }),
+    [contract.shot_list, seekTo, times],
   );
 
   // ── Duration editing ─────────────────────────────────────────────────────
