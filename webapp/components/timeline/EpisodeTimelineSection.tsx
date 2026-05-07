@@ -20,7 +20,7 @@
 
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { ChevronDown, ChevronUp, Film, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
