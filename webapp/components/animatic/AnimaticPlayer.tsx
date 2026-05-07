@@ -130,6 +130,36 @@ function fmt(t: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// ── Cell colour palette (Phase A.1, "improve non-approved colorization") ────
+// Each non-final status gets its own colour so Director can scan the strip and
+// see the spread of states at a glance. `--accent-orange/--accent-purple/
+// --accent-info` may not be defined in every theme — fall back to literal
+// hex/oklch in the CSS var default.
+function cellPalette(
+  status: string | undefined,
+  kind: string | undefined,
+): { color: string; weight: number } {
+  switch (status) {
+    case 'APPROVED':
+    case 'LOCKED':
+      return { color: 'var(--accent-success, #22c55e)', weight: 600 };
+    case 'REVIEW':
+      return { color: 'var(--accent-warning, #f59e0b)', weight: 600 };
+    case 'REVISION':
+      return { color: 'var(--accent-orange, #f97316)', weight: 600 };
+    case 'REJECTED':
+      return { color: 'var(--accent-danger, #ef4444)', weight: 600 };
+    case 'NEEDS_HUMAN_TWEAK':
+      return { color: 'var(--accent-purple, #a855f7)', weight: 600 };
+    case 'DRAFT':
+      return { color: 'var(--accent-info, #38bdf8)', weight: 500 };
+    default:
+      // NONE / unknown — animatic image fallback or placeholder.
+      void kind; // reserved for future kind-specific tweaks
+      return { color: 'var(--text-muted)', weight: 400 };
+  }
+}
+
 export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerProps>(function AnimaticPlayer(
   {
     assetId,
