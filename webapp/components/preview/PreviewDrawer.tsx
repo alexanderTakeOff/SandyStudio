@@ -57,6 +57,7 @@ export function PreviewDrawer({
   onPrev,
   onNext,
   navLabel,
+  onRegenerated,
 }: PreviewDrawerProps) {
   const [size, setSize] = useState<PreviewDrawerSize>('small');
 
