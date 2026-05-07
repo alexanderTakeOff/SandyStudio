@@ -54,6 +54,14 @@ export interface MultiVideoGenResult {
   /** Base64-encoded MP4 bytes. */
   mp4_b64: string;
   cost_usd: number;
+  /**
+   * Underlying model id (e.g. `veo-3.1-fast-generate-preview`). Optional
+   * because non-Veo providers (Kling/Sora) may use different ids; runner
+   * persists when present.
+   */
+  model_id?: string;
+  /** Provider-side operation/job id for cross-reference in vendor logs. */
+  operation_name?: string;
 }
 
 export interface MultiVideoGenCapabilities {
