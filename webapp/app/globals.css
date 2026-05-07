@@ -42,6 +42,10 @@
   --accent-warning:   #F59E0B;
   --accent-danger:    #EF4444;
   --accent-info:      #38BDF8;
+  /* Phase A.1 — extra hue for distinct REVISION + NEEDS_HUMAN_TWEAK signalling
+     in EpisodeTimeline shot strip. Used by AnimaticPlayer cellPalette. */
+  --accent-orange:    #F97316;
+  --accent-purple:    #A855F7;
 
   /* Status chips */
   --status-draft:    #64748B;
