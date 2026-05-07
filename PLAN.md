@@ -109,6 +109,28 @@ Strategic items captured by Director's directives. Not part of any active sprint
 | LT-08 | **Vertex AI quota mitigation** — Veo 3 hit 429 at concurrency 2 + 3 in observed smoke 2026-05-06 (3/13 shots failed quota-bound, not code-bound). Concurrency hard-capped to 1 (sequential, ~20min/episode). Mitigation options: (a) request quota increase via Google Cloud Console; (b) implement Inngest backoff retry policy for 429-specific recovery; (c) batch shots with sleep between starts; (d) failover to alternate provider (Kling) on 429. | PLANNED — Phase 1.5 follow-up | Live test observation 2026-05-06 |
 | LT-09 | **Pipeline stage progress arc animation** — animated arc filling around stage emoji as % done (instead of static half-filled circle). Cosmetic UX polish for Pipeline View. Should respect `prefers-reduced-motion`. | PLANNED — backlog | Director directive 2026-05-06 |
 
+### VGEN params vs Bible — audit (2026-05-07)
+
+Director directive: confirm VGEN parameters match Bible references. Findings after walk through `runner.ts` EXEC-VGEN + `regenerate-video` route + `vgen-shot-helpers`:
+
+| VGEN parameter | Source today | Status |
+|---|---|---|
+| `aspect_ratio` | event payload override → hardcoded `'16:9'` | ⚠ defaults missing — should come from `series.metadata.vgen_defaults` (LT-07 / Phase 1.5 vgen_defaults UI). No bug, just needs series-level config. |
+| `quality_tier` | event payload override → hardcoded `'fast'` | ⚠ same as aspect — series default missing |
+| `duration_seconds` | event override → animatic director_overrides → storyboard shot → 5s | ✅ correct — Director's animatic timing IS picked up |
+| `referenceImageBase64` | approved EREF for `shot_id` (`getApprovedEREFForShot`) | ✅ correct — per-shot canonical reference |
+| Character visual (text) | storyboard `characters[]` slugs + (Phase A.1 PR) Bible character description first 1-2 sentences | ✅ now anchored in TEXT alongside EREF image |
+| Character image (Bible drive_web_view_url) | not used as Veo reference | by design — EREF is the per-shot reference; Bible image is the canon-source |
+| World / locations | not injected into prompt | opportunity — `bible.locations` could enrich setting context (small follow-up) |
+| Style direction | not injected into prompt | opportunity — `bible.styles` could anchor visual style (small follow-up) |
+| Provider/model id | now persisted in asset metadata as `model_id` + `operation_name` (Phase A.1 PR) | ✅ Director can audit Veo 3.0 vs 3.1 in drawer |
+
+**Conclusion:** no bugs in current VGEN parameter sourcing. Two known gaps recorded in backlog:
+1. Series-level `vgen_defaults` UI — LT-07 / Phase 1.5 (already tracked).
+2. Bible locations + styles in prompt — small enrichment, low priority. Add as **LT-14** below.
+
+| LT-14 | **Bible locations + styles in VGEN prompt** — extend `buildShotPromptV2` to inject brief location and style direction snippets when present in shot context. Mirror the character-canon pattern from Phase A.1. | PLANNED — backlog | Director audit 2026-05-07 |
+
 ### UI/UX implementation note
 
 Any task touching visual UI must keep `specs/system/uiux.md` synchronized:
