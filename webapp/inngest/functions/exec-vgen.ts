@@ -202,7 +202,7 @@ export const execVgenStart = inngest.createFunction(
         };
         // Description carries the production trace surfaced in the AssetPreview
         // green box — Director audits model_id at a glance from the drawer.
-        const cost = typeof existingMeta.cost_usd === 'number' ? existingMeta.cost_usd : null;
+        const cost = typeof exec.result.cost_usd === 'number' ? exec.result.cost_usd : null;
         const description = existingMeta.model_id
           ? `model=${existingMeta.model_id} · ${existingMeta.aspect_ratio ?? '?'} · ${existingMeta.quality_tier ?? '?'} · ${existingMeta.duration_seconds ?? '?'}s${cost !== null ? ` · cost $${cost.toFixed(3)}` : ''} · op=${existingMeta.operation_name ?? '?'}`
           : null;
@@ -475,7 +475,7 @@ export const execVgenSingleShot = inngest.createFunction(
           model_id: existingMeta.model_id ?? null,
           operation_name: existingMeta.operation_name ?? null,
         };
-        const cost = typeof existingMeta.cost_usd === 'number' ? existingMeta.cost_usd : null;
+        const cost = typeof exec.result.cost_usd === 'number' ? exec.result.cost_usd : null;
         const description = existingMeta.model_id
           ? `model=${existingMeta.model_id} · ${existingMeta.aspect_ratio ?? '?'} · ${existingMeta.quality_tier ?? '?'} · ${existingMeta.duration_seconds ?? '?'}s${cost !== null ? ` · cost $${cost.toFixed(3)}` : ''} · op=${existingMeta.operation_name ?? '?'}`
           : null;
