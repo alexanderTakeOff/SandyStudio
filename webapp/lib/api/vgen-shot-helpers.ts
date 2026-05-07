@@ -282,6 +282,42 @@ function characterLine(c: StoryboardShotCharacter): string | null {
 const PROMPT_TAIL =
   'Vibrant colours, dynamic action, smooth comedic timing, no text overlays.';
 
+/** Compact visual snippet for one character (Bible character description
+ *  shortened to 1–2 sentences). Used by the prompt builder to anchor character
+ *  appearance in TEXT alongside the EREF reference image — Phase A.1 directive
+ *  2026-05-07: improve character consistency across VGEN. */
+export interface CharacterCanonSnippet {
+  /** Bible slug (e.g. `sandy_hourglass`) — must match the slug found on
+   *  `characters[i].bible_slug` in the storyboard shot. */
+  slug: string;
+  /** Short visual blurb (~1–2 sentences). Pre-extracted upstream. */
+  description: string;
+}
+
+/** Pull the first N sentences from a longer description. Defaults to 2 — long
+ *  enough for "young woman, curly red hair, freckles, yellow raincoat" without
+ *  bloating the prompt with backstory. */
+function firstSentences(text: string, n: number = 2): string {
+  if (!text) return '';
+  const parts = text.split(/(?<=[.!?])\s+/).filter((p) => p.trim().length > 0);
+  return parts.slice(0, n).join(' ').trim();
+}
+
+/** Build CharacterCanonSnippets from a list of full Bible character entries.
+ *  Caller passes Bible.characters; this helper truncates each description. */
+export function makeCharacterCanonSnippets(
+  bibleCharacters: ReadonlyArray<{ slug: string; description: string }>,
+  sentenceCount: number = 2,
+): CharacterCanonSnippet[] {
+  return bibleCharacters
+    .filter((c) => c.slug && c.description)
+    .map((c) => ({
+      slug: c.slug,
+      description: firstSentences(c.description, sentenceCount),
+    }))
+    .filter((c) => c.description.length > 0);
+}
+
 /**
  * Build a Veo 3 prompt for a single shot — replaces the legacy filler
  * "shot ?" prompt that ignored every storyboard field.
@@ -290,12 +326,17 @@ const PROMPT_TAIL =
  *   - episode title + medium tag (2D animated comedy)
  *   - action_prose (or fallback: action / key_beat)
  *   - present characters with display_name + emotion
+ *   - Bible character visual descriptions (Phase A.1 — anchors character
+ *     appearance in text so prompt + image-to-video both pull in the same
+ *     direction; only characters actually present in this shot are injected
+ *     to keep prompt focused)
  *   - camera angle (default medium)
  *   - mood: expected_gag / expected_emotion / key_beat
  */
 export function buildShotPromptV2(
   shot: StoryboardShotV2,
   episodeTitle: string,
+  characterCanon?: ReadonlyArray<CharacterCanonSnippet>,
 ): string {
   const titlePhrase = episodeTitle && episodeTitle.length > 0
     ? `2D animation comedy '${episodeTitle}'`
@@ -318,9 +359,35 @@ export function buildShotPromptV2(
   }
   const charPhrase = charLines.length > 0 ? `Characters: ${charLines.join(', ')}.` : '';
 
+  // Bible canon snippets — only for characters actually present in this shot.
+  // Prevents stuffing the prompt with the entire cast every time.
+  const presentSlugs = new Set<string>();
+  if (Array.isArray(shot.characters)) {
+    for (const c of shot.characters) {
+      if (c.bible_slug) presentSlugs.add(c.bible_slug);
+    }
+  }
+  if (Array.isArray(shot.characters_present)) {
+    for (const slug of shot.characters_present) {
+      if (typeof slug === 'string' && slug) presentSlugs.add(slug);
+    }
+  }
+  const canonLines: string[] = [];
+  if (characterCanon && presentSlugs.size > 0) {
+    for (const snip of characterCanon) {
+      if (presentSlugs.has(snip.slug)) {
+        canonLines.push(`${snip.slug}: ${snip.description}`);
+      }
+    }
+  }
+  const canonPhrase = canonLines.length > 0
+    ? `Visual canon: ${canonLines.join(' ')}`
+    : '';
+
   const segments: string[] = [`[${titlePhrase}]`];
   if (action) segments.push(`${action}.`);
   if (charPhrase) segments.push(charPhrase);
+  if (canonPhrase) segments.push(canonPhrase);
   segments.push(`Camera: ${camera}.`);
   segments.push(`Mood: ${mood}.`);
   segments.push(PROMPT_TAIL);
