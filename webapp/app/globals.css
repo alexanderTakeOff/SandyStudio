@@ -169,6 +169,9 @@
   --accent-success:   #4ADE80;
   --accent-warning:   #FACC15;
   --accent-danger:    #F87171;
+  /* Phase A.1 — palette parity for REVISION + NEEDS_HUMAN_TWEAK on Deep Purple theme. */
+  --accent-orange:    #FB923C;
+  --accent-purple:    #C084FC;
   --accent-info:      #818CF8;
 
   --status-draft:    #6E6390;
