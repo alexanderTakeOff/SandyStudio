@@ -83,6 +83,14 @@ export interface VGENShotPanelProps {
   currentSettings: VGENShotPanelSettings;
   /** Called after a successful regenerate so the parent can refetch. */
   onChanged: () => void;
+  /**
+   * Called after a successful regenerate with the shot_id of the new asset
+   * row so the parent can move the timeline cursor to that shot (Phase A.1
+   * directive — "new candidate must appear and focused"). Phase 1 panel
+   * doesn't know the new asset id beyond what /regenerate-video returns;
+   * shot_id is stable across regens, so callers re-resolve via shot_id.
+   */
+  onRegenerated?: (shotId: string, newAssetId: string) => void;
   /** When true, disables every editable control (e.g. asset is LOCKED). */
   readOnly?: boolean;
 }
