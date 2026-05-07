@@ -76,7 +76,7 @@ function isHttpishUrl(path: string | null): boolean {
   return path.startsWith('/') || path.startsWith('http://') || path.startsWith('https://');
 }
 
-export function AssetPreview({ assetId }: AssetPreviewProps) {
+export function AssetPreview({ assetId, onRegenerated }: AssetPreviewProps) {
   const { data: meta, error: metaErr, mutate } = useSWR<{ data: AssetRow }>(
     `/api/assets/${assetId}`,
     fetcher,
