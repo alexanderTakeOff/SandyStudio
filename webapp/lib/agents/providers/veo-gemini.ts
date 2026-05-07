@@ -261,5 +261,6 @@ export async function generateVideoVeoGemini(
     mp4_b64: Buffer.from(mp4Bytes).toString('base64'),
     cost_usd: cost,
     operation_name: operationName,
+    model_id: model,
   };
 }
