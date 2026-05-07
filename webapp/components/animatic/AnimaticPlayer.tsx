@@ -494,14 +494,16 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       >
         {currentCell?.kind === 'video-canonical' || currentCell?.kind === 'video-review' ? (
           <video
+            ref={videoRef}
             key={currentCell.url ?? currentShot?.shot_id}
             src={currentCell.url ?? undefined}
             className="absolute inset-0 w-full h-full object-contain"
-            // Inline mp4 plays automatically when its cell is current. On
-            // pause / seek the parent state controls; here we just render.
-            autoPlay={isPlaying}
+            // Playback driven explicitly by the videoRef sync useEffect above.
+            // We don't set autoPlay here because the effect handles play/pause
+            // in lockstep with the master clock (bugs 1+2 fix).
             muted
             playsInline
+            preload="auto"
           />
         ) : currentShot && currentShot.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
