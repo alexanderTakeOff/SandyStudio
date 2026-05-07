@@ -106,9 +106,13 @@ describe('buildShotPromptV2 — role flavouring', () => {
       { ...baseShot, shot_role: 'made_up_role' },
       'X',
     );
-    expect(p).not.toContain(':');
-    // (the colon assertion is for the role prefix specifically — the action
-    // line just says "Sandy enters..." with no leading "Role:")
+    // Action line should appear without a leading role-prefix:
+    //   ✓ "Sandy enters the cafe …"
+    //   ✗ "Establishing the scene: Sandy enters the cafe …"
+    expect(p).not.toContain('Establishing the scene:');
+    expect(p).not.toContain('Punchline payoff:');
+    // The action itself is still present (no role-aware framing applied).
+    expect(p).toContain('Sandy enters the cafe');
   });
 });
 
