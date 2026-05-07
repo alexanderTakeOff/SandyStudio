@@ -196,12 +196,22 @@ export const execVgenStart = inngest.createFunction(
           storyboard_asset_id: existingMeta.storyboard_asset_id ?? null,
           provider_id: existingMeta.provider_id ?? null,
           provider_used: existingMeta.provider_used ?? null,
+          // Provider verification stamp (Phase A.1 directive 2026-05-07).
+          model_id: existingMeta.model_id ?? null,
+          operation_name: existingMeta.operation_name ?? null,
         };
+        // Description carries the production trace surfaced in the AssetPreview
+        // green box — Director audits model_id at a glance from the drawer.
+        const cost = typeof existingMeta.cost_usd === 'number' ? existingMeta.cost_usd : null;
+        const description = existingMeta.model_id
+          ? `model=${existingMeta.model_id} · ${existingMeta.aspect_ratio ?? '?'} · ${existingMeta.quality_tier ?? '?'} · ${existingMeta.duration_seconds ?? '?'}s${cost !== null ? ` · cost $${cost.toFixed(3)}` : ''} · op=${existingMeta.operation_name ?? '?'}`
+          : null;
         await supabase
           .from('assets')
           .update({
             status: targetStatus,
             metadata: pilotMetaPatch as never,
+            ...(description ? { description } : {}),
           } as never)
           .eq('id', out.assetId);
 
