@@ -747,8 +747,18 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       const episodeMeta = inputs.episode as { title_working?: string | null };
       const episodeTitle = episodeMeta?.title_working ?? '';
 
+      // Phase A.1 (2026-05-07) — inject Bible character visual canon into the
+      // prompt as TEXT anchors, alongside the EREF image. Helps Veo 3.1 keep
+      // character look consistent when image-to-video drifts mid-clip.
+      const characterCanon = makeCharacterCanonSnippets(
+        (inputs.bible?.characters ?? []).map((c) => ({
+          slug: c.slug,
+          description: c.description,
+        })),
+      );
+
       const prompt = storyboardShot
-        ? buildShotPromptV2(storyboardShot, episodeTitle)
+        ? buildShotPromptV2(storyboardShot, episodeTitle, characterCanon)
         : buildShotPrompt(inputs, shotId);
 
       if (isRealVeo) {
