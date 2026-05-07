@@ -24,7 +24,7 @@ import { useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { ChevronDown, ChevronUp, Film, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
-import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
+import { AnimaticPlayer, type AnimaticPlayerHandle } from '@/components/animatic/AnimaticPlayer';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import {
   resolveTimelineCells,
