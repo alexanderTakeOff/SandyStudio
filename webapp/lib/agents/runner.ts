@@ -921,16 +921,30 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       if (rowsErr) throw new Error(`EXEC-STITCH: fetch VID-shot rows failed: ${rowsErr.message}`);
 
       // Group by shot_id, pick latest by version → created_at.
-      const byShotId = new Map<string, { id: string; version: number; created_at: string; url: string | null }>();
+      // Track BOTH stagingPath (FS absolute, for direct read) and url
+      // (browserUrl / Drive https) so the loader can pick the cheapest path.
+      // Phase A.2 PR β fix 2026-05-08: routing through HTTP /staging/ gets
+      // 307-redirected to /login by middleware, so we MUST prefer the FS
+      // path when present. Reading from disk also avoids HTTP overhead.
+      const byShotId = new Map<
+        string,
+        { id: string; version: number; created_at: string; stagingPath: string | null; url: string | null }
+      >();
       for (const row of (vidShotRows ?? []) as Array<{ id: string; version?: number | null; created_at: string; drive_path: string | null; staging_path: string | null; drive_web_view_url: string | null; metadata?: unknown }>) {
-        const meta = (row.metadata as { shot_id?: unknown } | null) ?? {};
+        const meta = (row.metadata as { shot_id?: unknown; staging_path?: unknown } | null) ?? {};
         const sid = typeof meta.shot_id === 'string' ? meta.shot_id : null;
         if (!sid) continue;
-        const url = row.drive_path ?? row.staging_path ?? row.drive_web_view_url ?? null;
+        // staging_path may live on the column OR inside metadata (regenerate-
+        // video writes both, factory only writes metadata).
+        const stagingPath =
+          row.staging_path ??
+          (typeof meta.staging_path === 'string' ? meta.staging_path : null);
+        const url = row.drive_path ?? row.drive_web_view_url ?? null;
         const candidate = {
           id: row.id,
           version: row.version ?? 0,
           created_at: row.created_at,
+          stagingPath,
           url,
         };
         const existing = byShotId.get(sid);
@@ -945,15 +959,20 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       }
 
       // Walk shot_list in order → assemble inputs.
-      const orderedShots: Array<{ shotId: string; assetId: string; url: string }> = [];
+      const orderedShots: Array<{ shotId: string; assetId: string; stagingPath: string | null; url: string | null }> = [];
       const missing: string[] = [];
       for (const shot of shotList) {
         const found = byShotId.get(shot.shot_id);
-        if (!found || !found.url) {
+        if (!found || (!found.stagingPath && !found.url)) {
           missing.push(shot.shot_id);
           continue;
         }
-        orderedShots.push({ shotId: shot.shot_id, assetId: found.id, url: found.url });
+        orderedShots.push({
+          shotId: shot.shot_id,
+          assetId: found.id,
+          stagingPath: found.stagingPath,
+          url: found.url,
+        });
       }
       if (missing.length > 0) {
         throw new Error(`EXEC-STITCH: missing APPROVED VID-shot for shot_ids: ${missing.join(', ')}`);
@@ -963,21 +982,33 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       const audioTracks = getAudioTracks(v1);
       const musicTrack = audioTracks.find((t) => t.layer === 'music') ?? null;
 
-      // 4. Download all inputs to memory (ffmpeg-stitch helper writes them to
-      // tmpdir internally).
-      async function fetchBytes(url: string): Promise<Buffer> {
-        // Local /staging/ URLs are served by Next.js dev — fetch via http.
-        // Drive https URLs work directly. Either way fetch() handles it.
-        const fullUrl = url.startsWith('/') ? `http://localhost:3000${url}` : url;
-        const res = await fetch(fullUrl);
-        if (!res.ok) throw new Error(`fetch ${fullUrl} → ${res.status}`);
+      // 4. Load all inputs into memory.
+      // Prefer staging_path (direct FS read) over drive_path (HTTP fetch) —
+      // the staging URL is /staging/<file>.mp4 served by Next.js but the
+      // middleware auth-blocks it for non-Director sessions. Inngest worker
+      // has no Director session, so HTTP would 307→/login. Reading from FS
+      // bypasses middleware entirely.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fsPromises = await import('node:fs/promises');
+      async function loadBytes(stagingPath: string | null, url: string | null): Promise<Buffer> {
+        if (stagingPath) {
+          // eslint-disable-next-line no-console
+          console.log('[stitch] reading FS:', stagingPath);
+          return await fsPromises.readFile(stagingPath);
+        }
+        if (!url) throw new Error('loadBytes: neither stagingPath nor url provided');
+        // Fallback for Drive https URLs (drive_native storage). Do NOT use
+        // localhost — that would re-trigger middleware. Drive URLs are
+        // pre-signed and accessible directly.
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`);
         const ab = await res.arrayBuffer();
         return Buffer.from(ab);
       }
 
       const shotMp4Bytes: Array<{ shotId: string; bytes: Buffer }> = [];
       for (const s of orderedShots) {
-        const bytes = await fetchBytes(s.url);
+        const bytes = await loadBytes(s.stagingPath, s.url);
         shotMp4Bytes.push({ shotId: s.shotId, bytes });
       }
 
