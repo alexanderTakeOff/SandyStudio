@@ -173,6 +173,16 @@ type Events = {
     };
   };
 
+  /**
+   * EXEC-STITCH (Phase A.2 PR β, 2026-05-08): assemble approved per-shot
+   * mp4s + music into one final-cut mp4. Fired from approve/route.ts when
+   * episode reaches GENERATION_APPROVED (last VID-shot just APPROVED + auto-
+   * complete branch flipped the episode status).
+   */
+  'sandystudio/exec-stitch/assemble-episode': {
+    data: BaseEpisodeEvent;
+  };
+
   'sandystudio/exec-thumb/generate-thumbnail': {
     data: AssetTrigger & {
       scriptAssetId: string;
