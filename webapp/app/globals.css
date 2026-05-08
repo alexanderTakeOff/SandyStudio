@@ -42,6 +42,10 @@
   --accent-warning:   #F59E0B;
   --accent-danger:    #EF4444;
   --accent-info:      #38BDF8;
+  /* Phase A.1 — extra hue for distinct REVISION + NEEDS_HUMAN_TWEAK signalling
+     in EpisodeTimeline shot strip. Used by AnimaticPlayer cellPalette. */
+  --accent-orange:    #F97316;
+  --accent-purple:    #A855F7;
 
   /* Status chips */
   --status-draft:    #64748B;
@@ -109,6 +113,9 @@
   --accent-warning:   #F59E0B;
   --accent-danger:    #DC2626;
   --accent-info:      #FBBF24;
+  /* Phase A.1 — palette parity for REVISION + NEEDS_HUMAN_TWEAK on Sand Gold theme. */
+  --accent-orange:    #E0834C;
+  --accent-purple:    #B89968;
 
   --status-draft:    #8C7A60;
   --status-review:   #FBBF24;
@@ -162,6 +169,9 @@
   --accent-success:   #4ADE80;
   --accent-warning:   #FACC15;
   --accent-danger:    #F87171;
+  /* Phase A.1 — palette parity for REVISION + NEEDS_HUMAN_TWEAK on Deep Purple theme. */
+  --accent-orange:    #FB923C;
+  --accent-purple:    #C084FC;
   --accent-info:      #818CF8;
 
   --status-draft:    #6E6390;
