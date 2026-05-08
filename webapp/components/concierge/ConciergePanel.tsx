@@ -1,14 +1,21 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // components/concierge/ConciergePanel.tsx
-// Studio Concierge UI per agents/exec/concierge.md §3.1 — floating button
-// bottom-right that expands into a right-side chat. Sprint 9 = chat-skeleton
-// only; tools and Inngest dispatch land in Sprint 10.
+// Prod Assistant UI per agents/exec/concierge.md (formerly "Studio Concierge",
+// renamed 2026-05-08 — agent_id EXEC-CONC kept in code for stability).
+//
+// Mode 2.5 Phase 1 additions (~/.claude/plans/valiant-soaring-karp.md):
+// - Long-term memory: thread id stored locally, sent on every request, server
+//   persists turns to concierge_threads / concierge_turns.
+// - TTS: SpeechSynthesis reads assistant replies aloud. Toggle persisted in
+//   localStorage so the Director only enables it once.
+// - Naming: "Prod Assistant" in user-facing surfaces; EXEC-CONC remains the
+//   spec / code identifier.
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { MessageCircle, Mic, MicOff, Send, X, Sparkles } from 'lucide-react';
+import { MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -18,7 +25,9 @@ interface Message {
   content: string;
 }
 
-const STORAGE_KEY = 'sandystudio.concierge.history';
+const STORAGE_KEY = 'sandystudio.prodassistant.history';
+const THREAD_KEY = 'sandystudio.prodassistant.threadId';
+const TTS_KEY = 'sandystudio.prodassistant.ttsEnabled';
 const MAX_HISTORY_TURNS = 20;
 
 // Web Speech API typing — minimal, broadly compatible.
@@ -39,22 +48,77 @@ function getSpeechRecognition(): SpeechRecCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+/** Plain-text strip for TTS — markdown / fences hurt synthesis. */
+function stripMarkdownForSpeech(input: string): string {
+  return input
+    .replace(/```[\s\S]*?```/g, '') // code fences silently
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/[*_~]+/g, '')
+    .replace(/!?\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^>\s?/gm, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Heuristic: pick voice for the message language. RU if any cyrillic char. */
+function pickVoiceLang(text: string): string {
+  if (typeof navigator === 'undefined') return 'en-US';
+  if (/[Ѐ-ӿ]/.test(text)) return 'ru-RU';
+  return navigator.language || 'en-US';
+}
+
+function speakText(text: string) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  const cleaned = stripMarkdownForSpeech(text);
+  if (!cleaned) return;
+  // Cancel any in-flight utterance first — overlapping speech is unusable.
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(cleaned);
+  utter.lang = pickVoiceLang(cleaned);
+  utter.rate = 1.0;
+  utter.pitch = 1.0;
+  // Try to match an installed voice for the requested language so we don't
+  // fall back to the system default English voice on cyrillic text.
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find((v) => v.lang.toLowerCase() === utter.lang.toLowerCase());
+  if (preferred) utter.voice = preferred;
+  window.speechSynthesis.speak(utter);
+}
+
 export function ConciergePanel() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [listening, setListening] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRec | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Hydrate history from sessionStorage.
+  // Hydrate history + thread id + TTS preference.
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) setMessages(JSON.parse(raw));
     } catch { /* ignore */ }
+    try {
+      const t = localStorage.getItem(THREAD_KEY);
+      if (t) setThreadId(t);
+    } catch { /* ignore */ }
+    try {
+      const tts = localStorage.getItem(TTS_KEY);
+      if (tts === '1') setTtsEnabled(true);
+    } catch { /* ignore */ }
   }, []);
+
+  // Stop TTS on panel close so the Director isn't followed by speech.
+  useEffect(() => {
+    if (!open && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, [open]);
 
   // Persist history.
   useEffect(() => {
@@ -62,6 +126,13 @@ export function ConciergePanel() {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-MAX_HISTORY_TURNS * 2)));
     } catch { /* storage may be disabled */ }
   }, [messages]);
+
+  // Persist TTS preference.
+  useEffect(() => {
+    try {
+      localStorage.setItem(TTS_KEY, ttsEnabled ? '1' : '0');
+    } catch { /* ignore */ }
+  }, [ttsEnabled]);
 
   // Auto-scroll to bottom on new content.
   useEffect(() => {
@@ -83,13 +154,21 @@ export function ConciergePanel() {
       const res = await fetch('/api/concierge/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({
+          messages: next,
+          threadId: threadId ?? undefined,
+        }),
       });
+      // Capture the persistent thread id from the response header.
+      const newThreadId = res.headers.get('X-Concierge-Thread-Id');
+      if (newThreadId && newThreadId !== threadId) {
+        setThreadId(newThreadId);
+        try { localStorage.setItem(THREAD_KEY, newThreadId); } catch { /* ignore */ }
+      }
       if (!res.body) throw new Error('No response body');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let acc = '';
-      // Stream is plain UTF-8 text chunks (no SSE framing in v1).
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -100,18 +179,22 @@ export function ConciergePanel() {
           return copy;
         });
       }
+      // Speak the final reply once the stream closes.
+      if (ttsEnabled && acc.trim()) {
+        speakText(acc);
+      }
     } catch (err) {
       setMessages((prev) => {
         const copy = [...prev];
         copy[copy.length - 1] = {
           role: 'assistant',
           content:
-            '⚠️ Concierge is offline. Likely missing `ANTHROPIC_API_KEY` in `.env.local` or the API route errored.',
+            '⚠️ Prod Assistant is offline. Likely missing `OPENAI_API_KEY` in `.env.local` or the API route errored.',
         };
         return copy;
       });
       // eslint-disable-next-line no-console
-      console.error('[concierge]', err);
+      console.error('[prod-assistant]', err);
     } finally {
       setStreaming(false);
     }
@@ -129,9 +212,6 @@ export function ConciergePanel() {
       return;
     }
     const rec = new Ctor();
-    // Auto-detect from browser locale — works in Chrome/Edge for ru-RU, en-US,
-    // es-ES, etc. Director's browser language drives recognition language.
-    // Falls back to en-US when navigator.language is unavailable.
     rec.lang =
       (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
     rec.interimResults = true;
@@ -150,13 +230,23 @@ export function ConciergePanel() {
     setListening(true);
   }
 
+  function toggleTts() {
+    setTtsEnabled((v) => {
+      const nextEnabled = !v;
+      if (!nextEnabled && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      return nextEnabled;
+    });
+  }
+
   return (
     <>
       {/* Floating trigger */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          aria-label="Open Concierge"
+          aria-label="Open Prod Assistant"
           className={cn(
             'fixed bottom-5 right-5 z-30 h-14 w-14 rounded-full shadow-[var(--panel-shadow)]',
             'flex items-center justify-center text-[var(--text-inverse)]',
@@ -192,24 +282,39 @@ export function ConciergePanel() {
               <Sparkles size={16} className="text-[var(--text-inverse)]" />
             </div>
             <div className="leading-tight">
-              <div className="text-sm font-semibold text-text-primary">Studio Concierge</div>
-              <div className="text-[10px] uppercase tracking-wider text-text-muted">EXEC-CONC · v0.1</div>
+              <div className="text-sm font-semibold text-text-primary">Prod Assistant</div>
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">EXEC-CONC · Mode 2.5 Phase 1</div>
             </div>
           </div>
-          <button
-            onClick={() => setOpen(false)}
-            aria-label="Close"
-            className="h-8 w-8 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary flex items-center justify-center"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleTts}
+              aria-label={ttsEnabled ? 'Disable voice replies' : 'Enable voice replies'}
+              title={ttsEnabled ? 'Voice replies on' : 'Voice replies off'}
+              className={cn(
+                'h-8 w-8 rounded-md flex items-center justify-center transition-colors',
+                ttsEnabled
+                  ? 'text-[var(--accent-primary)] bg-[color-mix(in_oklab,var(--accent-primary)_14%,transparent)]'
+                  : 'text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary',
+              )}
+            >
+              {ttsEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Close"
+              className="h-8 w-8 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary flex items-center justify-center"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </header>
 
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           {messages.length === 0 && (
             <div className="text-sm text-text-secondary leading-relaxed">
-              <p className="mb-2">Hi. Ask me anything about the studio.</p>
+              <p className="mb-2">Hi. I&apos;m your Prod Assistant.</p>
               <p className="text-text-muted text-xs">
                 Examples:
                 <br />• What is currently blocked?
@@ -264,7 +369,7 @@ export function ConciergePanel() {
               }
             }}
             rows={1}
-            placeholder="Ask the Concierge…"
+            placeholder="Ask the Prod Assistant…"
             className="flex-1 resize-none rounded-lg bg-[var(--bg-elevated)] border border-glass px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--accent-primary)] max-h-32"
           />
           <Button
