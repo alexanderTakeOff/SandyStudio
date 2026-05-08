@@ -86,6 +86,7 @@ Items surfaced during Director's Phase 5c smoke test, not blocking but worth fix
 | 15 | Mode 4 auto-revert to Mode 1 on session end (per `governance.md §4`) | Compliance |
 | 16 | EXEC-VGEN base file_type duplicate `shot` token: produces `VID-shot-shot1`. Either base="VID" or shotId="1" | Cosmetic |
 | 17 | Videomatic FFmpeg export aspect ratio: requested 16:9, observed 1:1 with content centered. First real MP4 produced 2026-05-08 ("congratulations" milestone). Inspect ffmpeg canvas dims, source clip dimensions, padding/crop logic in `webapp/lib/agents/providers/ffmpeg-stitch.ts`. | Reliability |
+| 18 | Prod Assistant TTS quality — Director confirmed 2026-05-08 smoke: голос звучит "как больной робот". Web Speech SpeechSynthesis на Windows использует системные голоса (ru-RU = Pavel/Irina), качество неровное. Upgrade path: ElevenLabs API или OpenAI TTS API (~$0.015/1K chars). Решение принимаем после второго использования — может, и не критично. | UX |
 
 **Already fixed in Phase 5c (don't re-add):**
 - ✅ #3 Story phantom stage hidden
