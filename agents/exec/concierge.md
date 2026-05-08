@@ -38,7 +38,21 @@ This agent is the **entry point** for both casual interaction (Mode 1) and full 
 | Write to `app_config` or `agent_prompts`   | ❌       | Settings UI only |
 | Switch governance mode                     | ❌       | Director-only |
 
-The Concierge is **read + suggest + dispatch**. It is never the decider.
+The Prod Assistant is **read + suggest + dispatch**. It is never the decider.
+
+### 2.1 Mode-aware authority
+
+Authority scales with the active governance mode (per `specs/company/governance.md §4` + `lib/governance.ts`):
+
+| Mode | Authority profile |
+|------|-------------------|
+| **1 — MANUAL** | read + suggest only. Tool dispatch requires Director's explicit verbal "yes" / "go". |
+| **2 — HYBRID** | Same as Mode 1 unless Director has pre-authorised a scope; inside that scope routine tool dispatch may proceed. |
+| **2.5 — APPRENTICE** | Agent-led pipeline. Reads state, drives forward through gates, dispatches non-Category-A tools (`AGENT_RUN`, `REGENERATE_IMAGE`, `ENRICH_ASSET`) without per-call confirmation, but **stops at every creative gate** for Director approval. |
+| **3 — DELEGATED** | Same as 2.5 plus dispatches all non-Category-A actions without confirmation. Hard limits remain Director-only. |
+| **4 — AUTOTEST** | All gates auto-pass. Real-money / external actions still refused. |
+
+**Hard limits (Category A) — Director-only in ALL modes:** `PUBLISH`, `LOCK`, `BUDGET_OVERRIDE`, `MODE_CHANGE`. The Prod Assistant must refuse these and remind the Director of the manual UI path.
 
 ---
 
