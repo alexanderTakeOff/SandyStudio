@@ -24,10 +24,12 @@ import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { generateVideoVeoGemini } from '@/lib/agents/providers/veo-gemini';
 import { persistBinary } from '@/lib/agents/persist-binary';
+import { loadSeriesBibleCanon } from '@/lib/agents/bible-loader';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import {
   buildShotPromptV2,
+  makeCharacterCanonSnippets,
   getApprovedEREFForShot,
   getStoryboardShotById,
 } from '@/lib/api/vgen-shot-helpers';
@@ -167,11 +169,24 @@ export const POST = withApiHandler(async (req, ctx) => {
   const episodeCode = (epRow as { episode_code?: string } | null)?.episode_code ?? 'SS-unknown';
   const episodeTitle = (epRow as { title_working?: string | null } | null)?.title_working ?? '';
 
-  // Resolve prompt: explicit override → buildShotPromptV2 → fallback
+  // Phase A.1 — load Bible character canon to anchor character visuals in the
+  // prompt alongside the EREF reference image. Failure is non-fatal: degrade
+  // to empty canon so regenerate still works on series without Bible.
+  let bibleCanon: ReturnType<typeof makeCharacterCanonSnippets> = [];
+  try {
+    const bible = await loadSeriesBibleCanon(sb, asset.episode_id);
+    bibleCanon = makeCharacterCanonSnippets(
+      bible.characters.map((c) => ({ slug: c.slug, description: c.description })),
+    );
+  } catch {
+    bibleCanon = [];
+  }
+
+  // Resolve prompt: explicit override → buildShotPromptV2 (with Bible canon) → fallback
   const finalPrompt = body.prompt
     ? body.prompt
     : storyboardShot
-      ? buildShotPromptV2(storyboardShot, episodeTitle)
+      ? buildShotPromptV2(storyboardShot, episodeTitle, bibleCanon)
       : `Single shot from animated comedy "${episodeTitle}" (shot ${shotId}). Vibrant 2D animation, dynamic action, comedic timing.`;
 
   // Resolve reference image: override → approved EREF for shot → none
@@ -252,6 +267,9 @@ export const POST = withApiHandler(async (req, ctx) => {
     shot_id: shotId,
     provider_id: real.provider,
     provider_used: real.provider,
+    // Provider verification stamp (Phase A.1 directive 2026-05-07).
+    model_id: real.model_id,
+    operation_name: real.operation_name,
     format: real.format,
     width: real.width,
     height: real.height,
@@ -271,6 +289,11 @@ export const POST = withApiHandler(async (req, ctx) => {
     mode_at_time: decision.modeAtTime,
   } as Record<string, unknown>;
 
+  // Production trace shown in AssetPreview's "⚙ {description}" green box.
+  // Includes model_id so Director can audit Veo 3.0 vs 3.1 at a glance
+  // (Phase A.1 directive 2026-05-07 — "Verify provider").
+  const description = `model=${real.model_id} · ${aspectRatio} · ${qualityTier} · ${real.duration_seconds}s · cost $${real.cost_usd.toFixed(3)} · op=${real.operation_name}`;
+
   const { data: insertedAsset, error: insErr } = await sb
     .from('assets')
     .insert({
@@ -278,6 +301,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       agent_id: 'EXEC-VGEN',
       file_type: 'VID-shot',
       filename: `${episodeCode}-VID-shot_${safeShotId}-${versionTag}-DRAFT.mp4`,
+      description,
       drive_path: persisted.browserUrl,
       staging_path: persisted.absolutePath,
       drive_file_id: persisted.driveFileId,

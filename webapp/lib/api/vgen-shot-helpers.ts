@@ -342,12 +342,49 @@ function describeRole(role: string | undefined): string | null {
   return null;
 }
 
+/** Compact visual snippet for one character (Bible character description
+ *  shortened to 1–2 sentences). Used by the prompt builder to anchor character
+ *  appearance in TEXT alongside the EREF reference image — Phase A.1 directive
+ *  2026-05-07: improve character consistency across VGEN. */
+export interface CharacterCanonSnippet {
+  /** Bible slug (e.g. `sandy_hourglass`) — must match the slug found on
+   *  `characters[i].bible_slug` in the storyboard shot. */
+  slug: string;
+  /** Short visual blurb (~1–2 sentences). Pre-extracted upstream. */
+  description: string;
+}
+
+/** Pull the first N sentences from a longer description. Defaults to 2 — long
+ *  enough for "young woman, curly red hair, freckles, yellow raincoat" without
+ *  bloating the prompt with backstory. */
+function firstSentences(text: string, n: number = 2): string {
+  if (!text) return '';
+  const parts = text.split(/(?<=[.!?])\s+/).filter((p) => p.trim().length > 0);
+  return parts.slice(0, n).join(' ').trim();
+}
+
+/** Build CharacterCanonSnippets from a list of full Bible character entries.
+ *  Caller passes Bible.characters; this helper truncates each description. */
+export function makeCharacterCanonSnippets(
+  bibleCharacters: ReadonlyArray<{ slug: string; description: string }>,
+  sentenceCount: number = 2,
+): CharacterCanonSnippet[] {
+  return bibleCharacters
+    .filter((c) => c.slug && c.description)
+    .map((c) => ({
+      slug: c.slug,
+      description: firstSentences(c.description, sentenceCount),
+    }))
+    .filter((c) => c.description.length > 0);
+}
+
 /**
  * Build a Veo 3.1 prompt for a single shot from the storyboard contract.
  * Replaces the legacy "shot ?" filler that ignored every storyboard field.
  *
  * Output shape (natural language, no bracket prefix — Veo prefers prose):
- *   <Role hint, if any>: <action>. Characters: ... .
+ *   <setting>. <Role hint, if any>: <action>. Characters: ... .
+ *   Visual canon: <slug>: <1–2 sentence Bible description>; <slug>: ... .
  *   Camera: <static/over-the-shoulder/etc.>.
  *   Beat: <gag, if any>. Mood: <emotion, if any>.
  *   Style: <positive style anchors>. Avoid: <negative anchors>.
@@ -356,10 +393,16 @@ function describeRole(role: string | undefined): string | null {
  * — combining them as one "Mood" line was confusing in earlier smoke. The
  * episode title is included only as setting flavour, never as a literal
  * label, so titles never leak as on-screen text.
+ *
+ * `characterCanon` (Phase A.1, optional) injects Bible character visual
+ * descriptions so prompt + image-to-video both pull in the same direction.
+ * Only characters actually present in this shot are injected to keep the
+ * prompt focused — the entire series cast never lands here.
  */
 export function buildShotPromptV2(
   shot: StoryboardShotV2,
   episodeTitle: string,
+  characterCanon?: ReadonlyArray<CharacterCanonSnippet>,
 ): string {
   const action = (shot.action_prose ?? shot.action ?? shot.key_beat ?? '').trim();
   const camera = describeCamera(shot.camera_angle);
@@ -380,6 +423,31 @@ export function buildShotPromptV2(
   }
   const charPhrase = charLines.length > 0 ? `Characters: ${charLines.join(', ')}.` : '';
 
+  // Bible canon snippets — only for characters actually present in this shot.
+  // Prevents stuffing the prompt with the entire cast every time.
+  const presentSlugs = new Set<string>();
+  if (Array.isArray(shot.characters)) {
+    for (const c of shot.characters) {
+      if (c.bible_slug) presentSlugs.add(c.bible_slug);
+    }
+  }
+  if (Array.isArray(shot.characters_present)) {
+    for (const slug of shot.characters_present) {
+      if (typeof slug === 'string' && slug) presentSlugs.add(slug);
+    }
+  }
+  const canonLines: string[] = [];
+  if (characterCanon && presentSlugs.size > 0) {
+    for (const snip of characterCanon) {
+      if (presentSlugs.has(snip.slug)) {
+        canonLines.push(`${snip.slug}: ${snip.description}`);
+      }
+    }
+  }
+  const canonPhrase = canonLines.length > 0
+    ? `Visual canon: ${canonLines.join(' ')}`
+    : '';
+
   // Setting prefix uses episode title only as ambient flavour — the actual
   // setting comes from the EREF (image-to-video reference). Avoid making the
   // title look like a label the model might want to render as on-screen text.
@@ -394,6 +462,7 @@ export function buildShotPromptV2(
     segments.push(`${action}.`);
   }
   if (charPhrase) segments.push(charPhrase);
+  if (canonPhrase) segments.push(canonPhrase);
   segments.push(`Camera: ${camera}.`);
   if (gag) segments.push(`Beat: ${gag}.`);
   if (emotion) segments.push(`Mood: ${emotion}.`);
