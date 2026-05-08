@@ -180,6 +180,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     vidShotAssets,
     onCellClick,
     filter = 'all',
+    animaticStatus,
   },
   ref,
 ) {
