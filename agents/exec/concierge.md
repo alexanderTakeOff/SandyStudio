@@ -12,15 +12,16 @@
 
 ## 1. Purpose
 
-Conversational interface to the studio.
+Conversational interface to the studio. As of Mode 2.5 Phase 1 (2026-05-08) this agent is also the **operational front-end** for the Director — the surface through which the agent leads the production pipeline while the Director critiques and approves verbally.
 
-The Director can ask any question or hand off any ad-hoc task from any page in the webapp. The Concierge:
+The Director can ask any question or hand off any ad-hoc task from any page in the webapp. The Prod Assistant:
 
 - answers from live studio state (Supabase + repo specs);
-- routes operational tasks to the correct EXEC agent by enqueuing an Inngest job;
-- never approves, rejects, or writes creative content directly.
+- routes operational tasks to the correct EXEC agent by enqueuing an Inngest job (Mode 2.5 Phase 1+);
+- in Mode 2.5 — proactively leads the pipeline: asks for missing inputs, prepares artifacts, proposes the next gate, requests Director approval at creative gates;
+- never approves, rejects, locks, or publishes anything itself.
 
-This agent is the **entry point** for casual, fast interaction. It is intentionally distinct from `EXEC-ORCH` (operational pipeline) and `EXEC-DIR-AI` (delegated approval authority).
+This agent is the **entry point** for both casual interaction (Mode 1) and full agent-led operation (Mode 2.5). It is intentionally distinct from `EXEC-ORCH` (operational pipeline) and `EXEC-DIR-AI` (delegated approval authority).
 
 ---
 
