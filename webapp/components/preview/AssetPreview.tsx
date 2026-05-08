@@ -33,6 +33,14 @@ export interface AssetPreviewProps {
   assetId: string;
   /** Pass-through for VID-shot regenerate completion (Phase A.1 auto-focus). */
   onRegenerated?: (shotId: string, newAssetId: string) => void;
+  /**
+   * Called whenever an action inside this preview changes asset state
+   * (approve / reject / regenerate / demote). Lets the parent invalidate
+   * sibling SWR caches — e.g. EpisodeTimelineSection's `/api/episodes/[id]`
+   * — so the timeline cell colour updates instantly. Phase A.1 bug fix
+   * 2026-05-08.
+   */
+  onAssetChanged?: () => void;
 }
 
 interface AssetRow {
@@ -76,7 +84,7 @@ function isHttpishUrl(path: string | null): boolean {
   return path.startsWith('/') || path.startsWith('http://') || path.startsWith('https://');
 }
 
-export function AssetPreview({ assetId, onRegenerated }: AssetPreviewProps) {
+export function AssetPreview({ assetId, onRegenerated, onAssetChanged }: AssetPreviewProps) {
   const { data: meta, error: metaErr, mutate } = useSWR<{ data: AssetRow }>(
     `/api/assets/${assetId}`,
     fetcher,
@@ -177,21 +185,30 @@ export function AssetPreview({ assetId, onRegenerated }: AssetPreviewProps) {
             driveWebViewUrl={asset.drive_web_view_url}
             stagingPath={asset.staging_path}
             editable={asset.status !== 'LOCKED'}
-            onChanged={() => void mutate()}
+            onChanged={() => {
+              void mutate();
+              onAssetChanged?.();
+            }}
             onRegenerated={onRegenerated}
           />
           {asset.status === 'REVIEW' && (
             <PilotApproveButtons
               assetId={asset.id}
               variant="review"
-              onChanged={() => void mutate()}
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
             />
           )}
           {asset.status === 'APPROVED' && (
             <PilotApproveButtons
               assetId={asset.id}
               variant="approved"
-              onChanged={() => void mutate()}
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
             />
           )}
         </>

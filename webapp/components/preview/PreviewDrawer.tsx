@@ -40,6 +40,14 @@ export interface PreviewDrawerProps {
   navLabel?: string;
   /** Pass-through for VID-shot regenerate completion (Phase A.1 auto-focus). */
   onRegenerated?: (shotId: string, newAssetId: string) => void;
+  /**
+   * Called whenever an action inside the drawer changes asset state
+   * (approve / reject / regenerate / demote). Caller can use this to
+   * invalidate adjacent SWR caches — e.g. EpisodeTimelineSection refreshes
+   * `/api/episodes/[id]` so the timeline cell colour updates instantly
+   * instead of waiting for the 30s SWR tick. Phase A.1 bug fix 2026-05-08.
+   */
+  onAssetChanged?: () => void;
 }
 
 const WIDTHS: Record<PreviewDrawerSize, string> = {
@@ -58,6 +66,7 @@ export function PreviewDrawer({
   onNext,
   navLabel,
   onRegenerated,
+  onAssetChanged,
 }: PreviewDrawerProps) {
   const [size, setSize] = useState<PreviewDrawerSize>('small');
 
@@ -181,7 +190,11 @@ export function PreviewDrawer({
 
         <div className="flex-1 overflow-y-auto p-4">
           {assetId ? (
-            <AssetPreview assetId={assetId} onRegenerated={onRegenerated} />
+            <AssetPreview
+              assetId={assetId}
+              onRegenerated={onRegenerated}
+              onAssetChanged={onAssetChanged}
+            />
           ) : (
             <p className="text-sm text-text-secondary">No asset selected.</p>
           )}

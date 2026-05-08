@@ -131,6 +131,12 @@ export function VGENShotPanel({
   const [aspect, setAspect] = useState<AspectRatio>(currentSettings.aspect_ratio);
   const [quality, setQuality] = useState<QualityTier>(currentSettings.quality_tier);
   const [duration, setDuration] = useState<number>(clampDuration(currentSettings.duration_seconds));
+  // Track whether Director actually edited the prompt textarea. When false,
+  // regenerate sends NO `prompt` field so the server rebuilds via the latest
+  // `buildShotPromptV2(storyboardShot, episodeTitle, bibleCanon)` — Phase A.1
+  // bug fix 2026-05-08: without this, the panel always shipped the previously-
+  // persisted prompt back, and Bible canon never landed on regen.
+  const [promptEdited, setPromptEdited] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -146,6 +152,7 @@ export function VGENShotPanel({
     setAspect(currentSettings.aspect_ratio);
     setQuality(currentSettings.quality_tier);
     setDuration(clampDuration(currentSettings.duration_seconds));
+    setPromptEdited(false);
     setError(null);
     setSuccess(false);
     // intentionally key on assetId so we don't reset state on every parent rerender
@@ -175,7 +182,10 @@ export function VGENShotPanel({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          prompt,
+          // Send `prompt` ONLY when Director explicitly edited the textarea.
+          // Otherwise omit so the server rebuilds via buildShotPromptV2 with
+          // current Bible canon. (See `promptEdited` comment above.)
+          ...(promptEdited ? { prompt } : {}),
           aspect_ratio: aspect,
           quality_tier: quality,
           duration_seconds: duration,
@@ -331,10 +341,52 @@ export function VGENShotPanel({
 
       {/* ── Prompt textarea ─────────────────────────────────────────── */}
       <label className="block">
-        <span className="text-[10px] uppercase tracking-wider text-text-muted">Prompt</span>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-text-muted">
+            Prompt
+            {!promptEdited && (
+              <span
+                className="ml-2 normal-case font-normal"
+                style={{ color: 'var(--accent-info, #38bdf8)' }}
+                title="Auto-built from storyboard + Bible canon. Server rebuilds fresh on regenerate."
+              >
+                · auto
+              </span>
+            )}
+            {promptEdited && (
+              <span
+                className="ml-2 normal-case font-normal"
+                style={{ color: 'var(--accent-warning, #f59e0b)' }}
+                title="Director edited — server uses this verbatim, ignores Bible canon"
+              >
+                · edited
+              </span>
+            )}
+          </span>
+          {promptEdited && (
+            <button
+              type="button"
+              onClick={() => {
+                setPrompt(
+                  currentSettings.prompt && currentSettings.prompt.trim().length > 0
+                    ? currentSettings.prompt
+                    : buildPromptFromShot(storyboardShot),
+                );
+                setPromptEdited(false);
+              }}
+              className="text-[10px] underline text-text-muted hover:text-text-secondary"
+              title="Discard edits — let server rebuild prompt with current Bible canon on regen"
+            >
+              Reset to auto
+            </button>
+          )}
+        </div>
         <textarea
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+            setPrompt(e.target.value);
+            setPromptEdited(true);
+          }}
           disabled={disabled}
           rows={5}
           aria-label="Video generation prompt"
