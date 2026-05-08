@@ -300,12 +300,8 @@ async function computeNextEvents(
         }
       }
     }
-    if (!(await hasJob(supabase, ep, 'EXEC-MGEN', { since }))) {
-      events.push({
-        name: 'sandystudio/exec-mgen/generate-music',
-        data: { episodeId: ep, animaticAssetId: asset.id, section: 'main' },
-      });
-    }
+    // (Phase A.2 PR γ) MGEN no longer fires here — moved to REV-world_check
+    // approval so music is ready BEFORE animatic. See branch above.
   }
 
   // ── Metadata APPROVED → EXEC-THUMB (covered also by EXEC-COPY's auto-chain
