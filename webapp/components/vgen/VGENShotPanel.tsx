@@ -182,7 +182,10 @@ export function VGENShotPanel({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          prompt,
+          // Send `prompt` ONLY when Director explicitly edited the textarea.
+          // Otherwise omit so the server rebuilds via buildShotPromptV2 with
+          // current Bible canon. (See `promptEdited` comment above.)
+          ...(promptEdited ? { prompt } : {}),
           aspect_ratio: aspect,
           quality_tier: quality,
           duration_seconds: duration,
