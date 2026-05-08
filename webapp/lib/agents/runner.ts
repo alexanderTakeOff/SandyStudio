@@ -35,7 +35,12 @@ import {
   getStoryboardShotById,
   type StoryboardShotV2,
 } from '../api/vgen-shot-helpers';
-import { isAnimaticV1 } from '../api/animatic-shotlist';
+import {
+  getAudioTracks,
+  isAnimaticV1,
+  type AnimaticContract,
+} from '../api/animatic-shotlist';
+import { ffmpegStitchEpisode } from './providers/ffmpeg-stitch';
 import type { ResolvedProvider } from './provider-resolver';
 import { getAgent } from './registry';
 import { runScreenwriter, ScreenwriterError } from './runners/screenwriter';
