@@ -77,6 +77,7 @@ const FILE_TYPE_HINT_BY_AGENT: Partial<Record<AgentId, string>> = {
   'EXEC-EDIT':  'VID-animatic',
   'EXEC-VGEN':  'VID-shot',
   'EXEC-MGEN':  'AUD-music',
+  'EXEC-STITCH': 'VID-final_cut',
   'EXEC-COPY':  'SPC-metadata',
   'EXEC-THUMB': 'IMG-thumbnail',
   'EXEC-PUB':   'REV-publish_log',
