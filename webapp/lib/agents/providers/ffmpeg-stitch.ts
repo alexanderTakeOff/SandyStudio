@@ -146,7 +146,14 @@ export async function ffmpegStitchEpisode(
     );
   }
 
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ss-stitch-'));
+  // Resolve `os.tmpdir()` through `fs.realpath` to expand any 8.3 short
+  // names (e.g. `C:\Users\NAVIAV~1\AppData\Local\Temp` → the full long form
+  // `C:\Users\NAVIA VISION ONE\...`). ffmpeg refuses to open files via short
+  // path names inside the concat demuxer's single-quoted form on Windows
+  // (observed 2026-05-08: "Impossible to open 'C:/Users/NAVIAV~1/...'"), so
+  // we make the path canonical before writing.
+  const tmpRoot = await fs.realpath(os.tmpdir());
+  const tmpDir = await fs.mkdtemp(path.join(tmpRoot, 'ss-stitch-'));
   try {
     // 1. Write per-shot mp4s + music.
     const shotPaths: string[] = [];
