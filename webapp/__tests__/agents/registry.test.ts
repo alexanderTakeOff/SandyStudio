@@ -87,7 +87,9 @@ describe('AGENT_REGISTRY helpers', () => {
   it('agentsByCategory returns all media agents', () => {
     const media = agentsByCategory('media');
     const ids = media.map((e) => e.id).sort();
-    expect(ids).toEqual(['EXEC-MGEN', 'EXEC-THUMB', 'EXEC-VGEN']);
+    // Phase A.2 PR β (2026-05-08): EXEC-STITCH joins the media category
+    // alongside VGEN/MGEN/THUMB.
+    expect(ids).toEqual(['EXEC-MGEN', 'EXEC-STITCH', 'EXEC-THUMB', 'EXEC-VGEN']);
   });
 
   it('resolveModelId maps tiers to concrete models', () => {
