@@ -151,10 +151,12 @@ Not part of Phase 1. Will be designed after 2 weeks of Mode 2.5 Phase 1 operatio
 
 ## 8. Naming convention impact
 
-Concierge does not produce file outputs in v1. No `SS-...-CONC-*` files are emitted.
+The Prod Assistant does not produce file outputs in v1. No `SS-...-CONC-*` files are emitted.
 
-When the Concierge dispatches a job that produces a file, the producing EXEC agent owns the naming and writes the file under its own ID.
+When the Prod Assistant dispatches a job that produces a file, the producing EXEC agent owns the naming and writes the file under its own ID.
+
+The "Concierge" name persists only inside agent code (`EXEC-CONC` agent_id, `lib/concierge/*` directory, `/api/concierge/chat` route, `X-Concierge-Thread-Id` header) for stability. All user-facing surfaces say **Prod Assistant**.
 
 ---
 
-*EXEC-CONC concierge.md | v0.1 | DRAFT*
+*EXEC-CONC concierge.md | v0.2 | Mode 2.5 Phase 1*
