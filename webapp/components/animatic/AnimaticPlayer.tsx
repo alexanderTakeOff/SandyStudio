@@ -92,6 +92,18 @@ export interface AnimaticPlayerProps {
    * filter are dimmed in the shot strip but still seek-able. Default 'all'.
    */
   filter?: 'all' | 'review' | 'approved' | 'missing';
+  /**
+   * Phase A.2 Bug C fix (Director report 2026-05-08): the asset status of
+   * the animatic itself, used to hide the footer Approve/Reject row once
+   * the animatic is past REVIEW. Without this prop, the footer shows on
+   * every render and clicking Approve on an already-APPROVED asset throws
+   * the scary "idempotent no-op" red banner; clicking Reject without a
+   * note throws "REJECT requires a note". Both useless once VGEN started.
+   *
+   * When `'REVIEW'` (or undefined for back-compat) — show Approve/Reject.
+   * When `'APPROVED'` / `'LOCKED'` / anything else — hide the footer row.
+   */
+  animaticStatus?: string;
 }
 
 /**
