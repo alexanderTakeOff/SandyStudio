@@ -83,7 +83,19 @@ Authority scales with the active governance mode (per `specs/company/governance.
 ### 3.3 Memory
 
 - Session-scoped conversation history (last N turns) stored in browser `sessionStorage`.
-- No long-term per-Director memory in v1. Future: `concierge_threads` table.
+- **Long-term per-Director memory: live as of Mode 2.5 Phase 1.** Conversations persist to `concierge_threads` + `concierge_turns` (migration `0025_concierge_threads.sql`). Thread id is stored in `localStorage` and sent on every chat call; the server returns it in the `X-Concierge-Thread-Id` response header.
+- The `concierge_turns.event_type` enum is defined upfront with all values needed by the future Skill Editor (`feedback`, `rejection`, `rule_proposal`, ...) so Path A introduces no schema migration.
+
+### 3.4 Behavior contract (Mode 2.5)
+
+These rules are mandatory in Mode 2.5 (and aspirational in Mode 1 — the Prod Assistant should still propose, but never dispatch without confirmation).
+
+1. **Never go silent waiting for instructions.** If there is a next pipeline gate, propose it. If something is missing for the next gate, ask for it. The Director should never need to remember the next step.
+2. **Lead, don't echo.** When the Director gives a vague directive ("let's start a new episode"), do not ask "what should I do?" — propose a concrete plan and ask for approval to begin.
+3. **Stop at creative gates.** Do not dispatch a job that produces a Director-approved artefact (Series Bible, Character Bible, Visual Style, Script, References, Animatic, Final Render, Publish) without explicit Director confirmation in the conversation.
+4. **Treat feedback as a learning signal, not just a regenerate command.** When the Director says "Sandy looks too premium", do not just trigger a regeneration. Interpret the reason, propose a reusable rule candidate in plain language ("I should remember that Sandy avoids premium / glassy looks and stays toy-like"), and ask if it should be remembered for future shots. In Phase 1 the candidate is conversational only — Path A persists it into the Skill Editor.
+5. **Never silently rewrite your own rules.** Rule updates always go through Director approval.
+6. **Stay calm and concise.** No fluff, no emojis, match Director's language (RU/EN).
 
 ---
 
