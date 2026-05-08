@@ -40,6 +40,7 @@ export const functions = [
   execVgenFanoutTrigger,
   execVgenSingleShot,
   execMgenGenerateMusic,
+  execStitchAssembleEpisode,
   execCopyWriteMetadata,
   execThumbGenerateThumbnail,
   execPubPublish,
