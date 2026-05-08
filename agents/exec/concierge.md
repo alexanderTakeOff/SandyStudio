@@ -118,15 +118,24 @@ These rules are mandatory in Mode 2.5 (and aspirational in Mode 1 — the Prod A
 
 ---
 
-## 6. Sprint 9 scope
+## 6. Implementation status
 
-Chat-skeleton only:
-- ✅ Streaming chat with Claude API
-- ✅ System prompt with read-only context (PLAN.md summary, current mode, today's date)
-- ✅ Voice input via Web Speech API (free, native)
-- ❌ Tool-calling (deferred to Sprint 10)
-- ❌ Action dispatch to Inngest (deferred to Sprint 10)
-- ❌ Long-term memory
+### Sprint 9 (chat-skeleton)
+- ✅ Streaming chat (OpenAI gpt-5.4-mini)
+- ✅ System prompt with read-only context
+- ✅ Voice input via Web Speech API
+
+### Mode 2.5 Phase 1 (2026-05-08, in progress)
+- ✅ Renamed to **Prod Assistant** (UI label) — `EXEC-CONC` retained as agent_id
+- ✅ Modular system prompt builder (`lib/concierge/system-prompt-builder.ts`) — block-based assembly so Path A's `[ACTIVE_RULES]` block adds without re-engineering
+- ✅ Long-term memory — `concierge_threads` + `concierge_turns` (migration 0025) with future-proof `event_type` enum
+- ✅ TTS — SpeechSynthesis reads assistant replies aloud with cyrillic detection; Director toggles via header button (preference persisted in `localStorage`)
+- ✅ Mode-aware system prompt blocks (Mode 1 vs 2 vs 2.5 vs 3 vs 4 emit different authority + behavior text)
+- ⏳ Tool dispatch (5 tools: `getStudioStatus`, `listPendingApprovals`, `getEpisodeBudget`, `getRecentActivity`, `triggerAgent`) — follow-up task
+- ⏳ Pipeline-awareness (`getNextGate(episode_id)` injected into `[STUDIO_STATE]`) — follow-up task
+
+### Path A (Skill Editor / Learning Loop) — DEFERRED
+Not part of Phase 1. Will be designed after 2 weeks of Mode 2.5 Phase 1 operation, using real `concierge_turns` patterns as evidence.
 
 ---
 
