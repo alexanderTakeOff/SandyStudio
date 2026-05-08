@@ -21,6 +21,7 @@ export type AgentId =
   | 'EXEC-EDIT'
   | 'EXEC-VGEN'
   | 'EXEC-MGEN'
+  | 'EXEC-STITCH'
   | 'EXEC-THUMB'
   | 'EXEC-COPY'
   | 'EXEC-PUB'
