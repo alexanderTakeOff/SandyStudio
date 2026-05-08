@@ -262,6 +262,47 @@ async function computeNextEvents(
     }
   }
 
+  // ── Last VID-shot APPROVED → if all shots have an APPROVED row, fire
+  //    EXEC-STITCH to assemble the final-cut mp4 (Phase A.2 PR β).
+  //    This is the second half of VGEN auto-COMPLETE: the inline status flip
+  //    (after the BRIEF block) handles the episode FSM; this branch fires the
+  //    actual stitching job. Idempotent via hasJob.
+  if (ft.startsWith('VID-shot') && !(await hasJob(supabase, ep, 'EXEC-STITCH', { since }))) {
+    const { data: animaticRow } = await supabase
+      .from('assets')
+      .select('metadata')
+      .eq('episode_id', ep)
+      .like('file_type', 'VID-animatic%')
+      .eq('status', 'APPROVED')
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const animMeta = (animaticRow as { metadata?: unknown } | null)?.metadata;
+    if (isAnimaticV1(animMeta)) {
+      const v1 = (animMeta as { animatic_v1: AnimaticContract }).animatic_v1;
+      const totalShots = v1.shot_list?.length ?? 0;
+      if (totalShots > 0) {
+        const { data: approvedRows } = await supabase
+          .from('assets')
+          .select('metadata')
+          .eq('episode_id', ep)
+          .like('file_type', 'VID-shot%')
+          .eq('status', 'APPROVED');
+        const approvedShotIds = new Set<string>();
+        for (const row of (approvedRows ?? []) as Array<{ metadata?: unknown }>) {
+          const sid = (row.metadata as { shot_id?: unknown } | null)?.shot_id;
+          if (typeof sid === 'string') approvedShotIds.add(sid);
+        }
+        if (approvedShotIds.size >= totalShots) {
+          events.push({
+            name: 'sandystudio/exec-stitch/assemble-episode',
+            data: { episodeId: ep },
+          });
+        }
+      }
+    }
+  }
+
   // ── Metadata APPROVED → EXEC-THUMB (covered also by EXEC-COPY's auto-chain
   //    from factory.nextEvent in Mode 4; in Mode 1-3 chain is suppressed and
   //    Director's metadata approval is what fires THUMB).
