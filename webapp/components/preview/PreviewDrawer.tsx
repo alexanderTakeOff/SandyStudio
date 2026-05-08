@@ -40,6 +40,14 @@ export interface PreviewDrawerProps {
   navLabel?: string;
   /** Pass-through for VID-shot regenerate completion (Phase A.1 auto-focus). */
   onRegenerated?: (shotId: string, newAssetId: string) => void;
+  /**
+   * Called whenever an action inside the drawer changes asset state
+   * (approve / reject / regenerate / demote). Caller can use this to
+   * invalidate adjacent SWR caches — e.g. EpisodeTimelineSection refreshes
+   * `/api/episodes/[id]` so the timeline cell colour updates instantly
+   * instead of waiting for the 30s SWR tick. Phase A.1 bug fix 2026-05-08.
+   */
+  onAssetChanged?: () => void;
 }
 
 const WIDTHS: Record<PreviewDrawerSize, string> = {
