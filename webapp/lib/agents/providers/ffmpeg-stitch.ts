@@ -154,14 +154,23 @@ export async function ffmpegStitchEpisode(
   // we make the path canonical before writing.
   const tmpRoot = await fs.realpath(os.tmpdir());
   const tmpDir = await fs.mkdtemp(path.join(tmpRoot, 'ss-stitch-'));
+  // eslint-disable-next-line no-console
+  console.log('[stitch] tmp dir:', tmpDir, 'shots:', input.shotMp4Bytes.length);
   try {
     // 1. Write per-shot mp4s + music.
     const shotPaths: string[] = [];
     for (let i = 0; i < input.shotMp4Bytes.length; i++) {
       const shot = input.shotMp4Bytes[i]!;
-      const fname = `shot-${String(i).padStart(3, '0')}-${shot.shotId.replace(/[^a-z0-9_-]/gi, '_')}.mp4`;
+      // Phase A.2 PR β fix 2026-05-08: keep filenames ASCII-only and avoid
+      // mixing case + the canonical SS- prefix from shotId so ffmpeg's
+      // concat demuxer can't find ANY excuse to refuse opening the path.
+      // Sanitization mirrors the existing regenerate-video safeShotId pattern.
+      const safeShotId = shot.shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+      const fname = `shot-${String(i).padStart(3, '0')}-${safeShotId}.mp4`;
       const fpath = path.join(tmpDir, fname);
       await fs.writeFile(fpath, shot.bytes);
+      // eslint-disable-next-line no-console
+      console.log('[stitch] wrote', fname, '→', shot.bytes.length, 'bytes');
       shotPaths.push(fpath);
     }
 
