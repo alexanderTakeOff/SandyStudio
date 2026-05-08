@@ -984,6 +984,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-EDIT': 'VID-animatic', // animatic produces a video asset; spec is metadata
   'EXEC-VGEN': 'VID-shot',
   'EXEC-MGEN': 'AUD-music',
+  'EXEC-STITCH': 'VID-final_cut',
   'EXEC-COPY': 'SPC-metadata',
   'EXEC-THUMB': 'IMG-thumbnail',
   'EXEC-PUB': 'REV-publish_log',
