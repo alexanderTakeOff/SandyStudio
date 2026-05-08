@@ -862,42 +862,50 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
 
       {/* Approve / Reject — fires /approve route which emits VGEN×3 + MGEN
           events, advancing pipeline to Visual Generator + Music. In Mode 4
-          factory auto-approves on creation; this row is exercised in Modes 1-3. */}
-      <div
-        className="flex items-center gap-2 pt-2 border-t border-glass"
-      >
-        <div className="text-[11px] text-text-muted">
-          When happy with pacing → Approve advances to Visual Generator + Music
+          factory auto-approves on creation; this row is exercised in Modes 1-3.
+          Phase A.2 Bug C fix (Director report 2026-05-08): hide entirely
+          once the animatic is past REVIEW. Clicking Approve on an already-
+          APPROVED asset throws "idempotent no-op"; clicking Reject without
+          a note throws "REJECT requires a note". Once VGEN starts, neither
+          action is meaningful. The pipeline DAG (VGEN pillbar / "Approve all
+          REVIEW") owns advancement from here on. */}
+      {(animaticStatus === undefined || animaticStatus === 'REVIEW' || animaticStatus === 'DRAFT') && (
+        <div
+          className="flex items-center gap-2 pt-2 border-t border-glass"
+        >
+          <div className="text-[11px] text-text-muted">
+            When happy with pacing → Approve advances to Visual Generator + Music
+          </div>
+          <div className="flex-1" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void postDecision('REJECT')}
+            disabled={approving !== null}
+            style={{ color: 'var(--accent-danger)' }}
+          >
+            {approving === 'REJECT' ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <XCircle size={13} />
+            )}{' '}
+            Reject
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => void postDecision('APPROVE')}
+            disabled={approving !== null}
+          >
+            {approving === 'APPROVE' ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={13} />
+            )}{' '}
+            Approve & advance
+          </Button>
         </div>
-        <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void postDecision('REJECT')}
-          disabled={approving !== null}
-          style={{ color: 'var(--accent-danger)' }}
-        >
-          {approving === 'REJECT' ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <XCircle size={13} />
-          )}{' '}
-          Reject
-        </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => void postDecision('APPROVE')}
-          disabled={approving !== null}
-        >
-          {approving === 'APPROVE' ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <CheckCircle2 size={13} />
-          )}{' '}
-          Approve & advance
-        </Button>
-      </div>
+      )}
 
       {/* Error banner */}
       {error && (
