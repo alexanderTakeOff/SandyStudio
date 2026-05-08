@@ -47,6 +47,10 @@ export const CONCURRENCY_LIMITS = {
   'exec-vgen-shot':    2,
   // Music — Suno/Udio rate limits tighter than image/video.
   'exec-mgen':  2,
+  // Episode Stitcher (Phase A.2 PR β) — local ffmpeg + Drive I/O serialized
+  // per episode. One stitch at a time keeps the staging dir tidy and avoids
+  // ffmpeg fighting itself for CPU when multiple episodes are in flight.
+  'exec-stitch': 1,
   // Image — Midjourney/fal.ai.
   'exec-thumb': 4,
   // YouTube Data API — sequential to avoid quota burn.
