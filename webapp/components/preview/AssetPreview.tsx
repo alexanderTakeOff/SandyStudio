@@ -150,6 +150,7 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged }: AssetPr
             (asset.metadata as { animatic_v1: AnimaticContract }).animatic_v1
           }
           onChanged={() => void mutate()}
+          animaticStatus={asset.status}
         />
       ) : (
         <>
