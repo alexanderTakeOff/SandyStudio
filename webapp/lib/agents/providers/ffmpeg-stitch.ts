@@ -166,7 +166,14 @@ export async function ffmpegStitchEpisode(
     }
 
     // 2. Build concat list file.
-    const concatList = shotPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
+    // ffmpeg's concat demuxer parses single-quoted file paths. On Windows the
+    // path.join produces backslashes which ffmpeg refuses to open inside the
+    // single-quoted form ("Impossible to open '<path>'"). Convert to forward
+    // slashes — ffmpeg accepts both on Windows and forward slashes survive
+    // the concat parser intact.
+    const concatList = shotPaths
+      .map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
+      .join('\n');
     const listPath = path.join(tmpDir, 'concat-list.txt');
     await fs.writeFile(listPath, concatList);
 
