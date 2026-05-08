@@ -80,12 +80,29 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
   const storyboardAssetIds = (approvedAssets ?? []).map((a) => a.id);
 
+  // Phase A.2 PR γ (LT-04, 2026-05-08): pass APPROVED music asset id to
+  // EXEC-EDIT so the produced animatic bakes the music URL in. EDIT runs
+  // even without music (legacy path) — the runner will silently fall
+  // through to upload-music's contract update. With music, animatic
+  // playback is ready for pacing review immediately.
+  const { data: musicRow } = await supabase
+    .from('assets')
+    .select('id')
+    .eq('episode_id', episodeId)
+    .eq('file_type', 'AUD-music')
+    .eq('status', 'APPROVED')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const musicAssetId = (musicRow as { id?: string } | null)?.id ?? null;
+
   // ── Fire downstream Animatic event ────────────────────────────────────────
   const { ids } = await inngest.send({
     name: 'sandystudio/exec-edit/create-animatic',
     data: {
       episodeId,
       storyboardAssetIds,
+      ...(musicAssetId ? { musicAssetId } : {}),
     } as never,
   });
 

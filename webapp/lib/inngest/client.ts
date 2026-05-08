@@ -110,6 +110,13 @@ type Events = {
   'sandystudio/exec-edit/create-animatic': {
     data: AssetTrigger & {
       storyboardAssetIds: string[];
+      /**
+       * Optional: APPROVED AUD-music asset id to bake into the animatic.
+       * Phase A.2 PR γ (LT-04, 2026-05-08) — music now generates BEFORE
+       * animatic so pacing review hears the real track. Absent → animatic
+       * runs silent (legacy fallback for episodes without music yet).
+       */
+      musicAssetId?: string;
     };
   };
 
