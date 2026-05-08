@@ -186,28 +186,74 @@ async function computeNextEvents(
     }
   }
 
-  // ── Continuity Check APPROVED → EXEC-EREF (episode references)
-  if (ft === 'REV-world_check' && !(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
-    events.push({
-      name: 'sandystudio/exec-eref/generate-references',
-      data: { episodeId: ep, storyboardAssetId: asset.id },
-    });
+  // ── Continuity Check APPROVED → EXEC-EREF (episode references) +
+  //    EXEC-MGEN (music) in parallel.
+  // Phase A.2 PR γ (LT-04, Director directive 2026-05-08 q3b): music
+  // generation moves BEFORE animatic, so the animatic player can preview
+  // pacing WITH music. Both MGEN and EREF run after world_check; EDIT
+  // (animatic) waits for both to complete.
+  if (ft === 'REV-world_check') {
+    if (!(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
+      events.push({
+        name: 'sandystudio/exec-eref/generate-references',
+        data: { episodeId: ep, storyboardAssetId: asset.id },
+      });
+    }
+    if (!(await hasJob(supabase, ep, 'EXEC-MGEN', { since }))) {
+      events.push({
+        name: 'sandystudio/exec-mgen/generate-music',
+        // animaticAssetId is empty here — MGEN now generates BEFORE
+        // animatic exists. Runner reads section + storyboard for prompt
+        // context. Field kept for backward-compat with the event schema.
+        data: { episodeId: ep, animaticAssetId: '', section: 'main' },
+      });
+    }
   }
 
-  // ── Episode references APPROVED → EXEC-EDIT (animatic)
+  // ── Episode references OR music APPROVED → EXEC-EDIT (animatic)
+  // Phase A.2 PR γ: animatic creation now waits for BOTH approved EREF v1
+  // (or via /eref/advance for v2) AND approved music. This unblocks
+  // animatic playback with music for pacing review BEFORE expensive VGEN.
+  //
   // EREF v2 (Pilot+Fanout, technology.md §4): per-shot approvals must NOT
   // auto-fire the animatic — Director uses the explicit "Advance to Animatic"
   // button (POST /api/episodes/[id]/eref/advance) once all shots have an
-  // approved variant. We detect the v2 contract on the asset metadata and
-  // skip the auto-fan-out branch in that case. Legacy v1 assets keep the
-  // old chain behaviour for backwards compatibility.
-  if (ft.startsWith('IMG-episode_ref') && !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))) {
-    const isV2 = isShotReferenceV2((asset as { metadata?: unknown }).metadata);
-    if (!isV2) {
-      events.push({
-        name: 'sandystudio/exec-edit/create-animatic',
-        data: { episodeId: ep, storyboardAssetIds: [] },
-      });
+  // approved variant. That route also waits for music to be approved
+  // before firing create-animatic.
+  if (
+    (ft.startsWith('IMG-episode_ref') || ft === 'AUD-music') &&
+    !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))
+  ) {
+    // For EREF v2 path, the per-shot approvals don't auto-fire — only the
+    // explicit advance route does. Skip auto-fire when this asset is v2.
+    const isV2EREF =
+      ft.startsWith('IMG-episode_ref') &&
+      isShotReferenceV2((asset as { metadata?: unknown }).metadata);
+    if (!isV2EREF) {
+      const erefOk = (await countApproved(supabase, ep, 'IMG-episode_ref')) >= 1;
+      const musicOk = (await countApproved(supabase, ep, 'AUD-music')) >= 1;
+      if (erefOk && musicOk) {
+        // Find the most recent APPROVED music asset to attach as
+        // musicAssetId. Lets EXEC-EDIT bake the track into the animatic.
+        const { data: musicRow } = await supabase
+          .from('assets')
+          .select('id')
+          .eq('episode_id', ep)
+          .eq('file_type', 'AUD-music')
+          .eq('status', 'APPROVED')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const musicAssetId = (musicRow as { id?: string } | null)?.id ?? null;
+        events.push({
+          name: 'sandystudio/exec-edit/create-animatic',
+          data: {
+            episodeId: ep,
+            storyboardAssetIds: [],
+            ...(musicAssetId ? { musicAssetId } : {}),
+          },
+        });
+      }
     }
   }
 
