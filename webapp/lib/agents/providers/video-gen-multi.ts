@@ -133,7 +133,7 @@ export const veo3Provider: MultiVideoGenProvider = {
       return veoResultToMulti(r);
     } catch (err) {
       throw new MultiVideoGenError(
-        err instanceof Error ? err.message : 'Veo 3 generation failed',
+        err instanceof Error ? err.message : 'Veo 3.1 generation failed',
         'veo-3-img2vid',
         err,
       );
@@ -141,7 +141,8 @@ export const veo3Provider: MultiVideoGenProvider = {
   },
 };
 
-/** Lookup a provider by id. Phase 1 only knows Veo 3; Phase 2+ adds Kling/etc. */
+/** Lookup a provider by id. Phase 1 ships Veo 3.1 (default model in adapter);
+ *  Phase 2+ adds Kling/etc. */
 export function getMultiVideoProvider(id: string): MultiVideoGenProvider {
   if (id === 'veo-3-img2vid' || id === 'veo-3') return veo3Provider;
   throw new MultiVideoGenError(

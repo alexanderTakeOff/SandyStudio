@@ -83,6 +83,14 @@ export interface VGENShotPanelProps {
   currentSettings: VGENShotPanelSettings;
   /** Called after a successful regenerate so the parent can refetch. */
   onChanged: () => void;
+  /**
+   * Called after a successful regenerate with the shot_id of the new asset
+   * row so the parent can move the timeline cursor to that shot (Phase A.1
+   * directive — "new candidate must appear and focused"). Phase 1 panel
+   * doesn't know the new asset id beyond what /regenerate-video returns;
+   * shot_id is stable across regens, so callers re-resolve via shot_id.
+   */
+  onRegenerated?: (shotId: string, newAssetId: string) => void;
   /** When true, disables every editable control (e.g. asset is LOCKED). */
   readOnly?: boolean;
 }
@@ -112,6 +120,7 @@ export function VGENShotPanel({
   storyboardShot,
   currentSettings,
   onChanged,
+  onRegenerated,
   readOnly,
 }: VGENShotPanelProps) {
   const [prompt, setPrompt] = useState<string>(
@@ -178,9 +187,17 @@ export function VGENShotPanel({
         const j = await res.json().catch(() => ({}));
         throw new Error((j as { error?: string }).error ?? 'Regenerate failed');
       }
+      const j = (await res.json().catch(() => ({}))) as {
+        data?: { asset_id?: string };
+      };
+      const newAssetId = j.data?.asset_id;
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 1200);
+      setTimeout(() => setSuccess(false), 2000);
       onChanged();
+      // Notify parent for auto-focus; shot_id is stable across regens.
+      if (newAssetId && onRegenerated) {
+        onRegenerated(storyboardShot.shot_id, newAssetId);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -326,23 +343,31 @@ export function VGENShotPanel({
         />
       </label>
 
-      {/* ── Cost preview + Generate ─────────────────────────────────── */}
+      {/* ── Cost preview + Status chip + Generate (Phase A.1: high-contrast) ─── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div
-          className="text-xs text-text-secondary inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-glass"
-          style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
-        >
-          <Sparkles size={12} className="shrink-0" style={{ color: 'var(--accent-primary)' }} />
-          <span>
-            Will cost ~<span className="font-mono text-text-primary">${costEstimate.toFixed(3)}</span>{' '}
-            <span className="text-text-muted">
-              ({duration}s × ${QUALITY_RATE_USD_PER_SECOND[quality].toFixed(3)}/s)
+        <div className="flex items-center gap-2 flex-wrap">
+          <div
+            className="text-xs text-text-secondary inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-glass"
+            style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
+          >
+            <Sparkles size={12} className="shrink-0" style={{ color: 'var(--accent-primary)' }} />
+            <span>
+              Will cost ~<span className="font-mono text-text-primary">${costEstimate.toFixed(3)}</span>{' '}
+              <span className="text-text-muted">
+                ({duration}s × ${QUALITY_RATE_USD_PER_SECOND[quality].toFixed(3)}/s)
+              </span>
             </span>
-          </span>
+          </div>
+          <RegenerateStatusChip
+            busy={busy}
+            success={success}
+            error={error}
+            videoUrl={videoUrl}
+          />
         </div>
 
-        <Button
-          variant="primary"
+        <button
+          type="button"
           onClick={regenerate}
           disabled={disabled}
           title={
@@ -352,12 +377,43 @@ export function VGENShotPanel({
                 ? 'Generate a new mp4 with the current settings'
                 : 'Re-generate with the same settings'
           }
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            background: error
+              ? 'color-mix(in oklab, var(--accent-danger) 18%, transparent)'
+              : success
+                ? 'color-mix(in oklab, var(--accent-success) 22%, transparent)'
+                : 'color-mix(in oklab, var(--accent-primary) 22%, transparent)',
+            color: error
+              ? 'var(--accent-danger)'
+              : success
+                ? 'var(--accent-success)'
+                : 'var(--accent-primary)',
+            borderColor: error
+              ? 'color-mix(in oklab, var(--accent-danger) 55%, transparent)'
+              : success
+                ? 'color-mix(in oklab, var(--accent-success) 55%, transparent)'
+                : 'color-mix(in oklab, var(--accent-primary) 55%, transparent)',
+            boxShadow:
+              busy || success || error
+                ? 'none'
+                : '0 0 0 3px color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+          }}
         >
-          {busy && <Loader2 size={13} className="animate-spin" />}
-          {success && <CheckCircle2 size={13} />}
-          {!busy && !success && <RefreshCw size={13} />}
-          {videoUrl ? 'Re-generate shot' : 'Generate shot'}
-        </Button>
+          {busy && <Loader2 size={15} className="animate-spin" />}
+          {success && !busy && <CheckCircle2 size={15} />}
+          {error && !busy && <AlertCircle size={15} />}
+          {!busy && !success && !error && <RefreshCw size={15} />}
+          {busy
+            ? 'Generating…'
+            : error
+              ? 'Retry'
+              : success
+                ? 'Generated ✓'
+                : videoUrl
+                  ? 'Re-generate shot'
+                  : 'Generate shot'}
+        </button>
       </div>
 
       {error && (
@@ -374,5 +430,63 @@ export function VGENShotPanel({
         </div>
       )}
     </div>
+  );
+}
+
+// ── Status chip ─────────────────────────────────────────────────────────────
+// Compact pill showing the current regenerate lifecycle phase next to the
+// button so Director gets persistent feedback without scanning for spinner /
+// inline error block. Phase A.1 directive: "show generating / failed /
+// completed".
+
+function RegenerateStatusChip({
+  busy,
+  success,
+  error,
+  videoUrl,
+}: {
+  busy: boolean;
+  success: boolean;
+  error: string | null;
+  videoUrl: string | null;
+}) {
+  let label: string;
+  let color: string;
+  let bg: string;
+  let icon: React.ReactNode;
+  if (busy) {
+    label = 'Generating… 30–90s';
+    color = 'var(--accent-warning)';
+    bg = 'color-mix(in oklab, var(--accent-warning) 14%, transparent)';
+    icon = <Loader2 size={11} className="animate-spin" />;
+  } else if (error) {
+    label = 'Failed — see error';
+    color = 'var(--accent-danger)';
+    bg = 'color-mix(in oklab, var(--accent-danger) 14%, transparent)';
+    icon = <AlertCircle size={11} />;
+  } else if (success) {
+    label = 'Completed';
+    color = 'var(--accent-success)';
+    bg = 'color-mix(in oklab, var(--accent-success) 14%, transparent)';
+    icon = <CheckCircle2 size={11} />;
+  } else {
+    label = videoUrl ? 'Ready to re-generate' : 'Ready to generate';
+    color = 'var(--text-muted)';
+    bg = 'transparent';
+    icon = <Sparkles size={11} />;
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border"
+      style={{
+        background: bg,
+        color,
+        borderColor: `color-mix(in oklab, ${color} 32%, transparent)`,
+      }}
+      aria-live="polite"
+    >
+      {icon}
+      {label}
+    </span>
   );
 }

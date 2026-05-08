@@ -38,6 +38,8 @@ export interface PreviewDrawerProps {
   onNext?: (() => void) | null;
   /** Optional position label (e.g. "5 / 13") shown next to nav arrows. */
   navLabel?: string;
+  /** Pass-through for VID-shot regenerate completion (Phase A.1 auto-focus). */
+  onRegenerated?: (shotId: string, newAssetId: string) => void;
 }
 
 const WIDTHS: Record<PreviewDrawerSize, string> = {
@@ -55,6 +57,7 @@ export function PreviewDrawer({
   onPrev,
   onNext,
   navLabel,
+  onRegenerated,
 }: PreviewDrawerProps) {
   const [size, setSize] = useState<PreviewDrawerSize>('small');
 
@@ -178,7 +181,7 @@ export function PreviewDrawer({
 
         <div className="flex-1 overflow-y-auto p-4">
           {assetId ? (
-            <AssetPreview assetId={assetId} />
+            <AssetPreview assetId={assetId} onRegenerated={onRegenerated} />
           ) : (
             <p className="text-sm text-text-secondary">No asset selected.</p>
           )}

@@ -31,6 +31,8 @@ const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 
 export interface AssetPreviewProps {
   assetId: string;
+  /** Pass-through for VID-shot regenerate completion (Phase A.1 auto-focus). */
+  onRegenerated?: (shotId: string, newAssetId: string) => void;
 }
 
 interface AssetRow {
@@ -74,7 +76,7 @@ function isHttpishUrl(path: string | null): boolean {
   return path.startsWith('/') || path.startsWith('http://') || path.startsWith('https://');
 }
 
-export function AssetPreview({ assetId }: AssetPreviewProps) {
+export function AssetPreview({ assetId, onRegenerated }: AssetPreviewProps) {
   const { data: meta, error: metaErr, mutate } = useSWR<{ data: AssetRow }>(
     `/api/assets/${assetId}`,
     fetcher,
@@ -176,6 +178,7 @@ export function AssetPreview({ assetId }: AssetPreviewProps) {
             stagingPath={asset.staging_path}
             editable={asset.status !== 'LOCKED'}
             onChanged={() => void mutate()}
+            onRegenerated={onRegenerated}
           />
           {asset.status === 'REVIEW' && (
             <PilotApproveButtons

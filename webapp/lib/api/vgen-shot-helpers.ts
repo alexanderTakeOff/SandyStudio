@@ -279,8 +279,68 @@ function characterLine(c: StoryboardShotCharacter): string | null {
   return c.emotion ? `${name} (${c.emotion})` : name;
 }
 
-const PROMPT_TAIL =
-  'Vibrant colours, dynamic action, smooth comedic timing, no text overlays.';
+const NEGATIVE_PROMPT =
+  'Avoid: on-screen text, captions, subtitles, watermarks, logos, distorted faces, extra limbs.';
+const POSITIVE_STYLE =
+  'Vibrant colours, smooth comedic timing, expressive 2D animation, clean line art.';
+
+/** Map a storyboard `camera_angle` to a Veo-friendly camera description.
+ * Veo responds well to explicit framing + (optional) movement hints; raw
+ * abbreviations like "OTS" or "POV" tend to confuse it. */
+function describeCamera(rawAngle: string | undefined): string {
+  const a = (rawAngle ?? '').trim().toUpperCase();
+  if (!a) return 'static medium shot';
+  switch (a) {
+    case 'WIDE':
+    case 'LONG':
+    case 'ESTABLISHING':
+      return 'static wide establishing shot';
+    case 'MEDIUM':
+    case 'MS':
+      return 'static medium shot';
+    case 'CLOSE':
+    case 'CLOSE-UP':
+    case 'CLOSEUP':
+    case 'CU':
+      return 'static close-up';
+    case 'EXTREME-CLOSEUP':
+    case 'ECU':
+      return 'static extreme close-up';
+    case 'OTS':
+    case 'OVER-SHOULDER':
+      return 'over-the-shoulder medium shot';
+    case 'POV':
+      return 'first-person point-of-view shot';
+    case 'LOW':
+    case 'LOW-ANGLE':
+      return 'low-angle shot looking up';
+    case 'HIGH':
+    case 'HIGH-ANGLE':
+      return 'high-angle shot looking down';
+    case 'AERIAL':
+    case 'BIRDS-EYE':
+      return "bird's-eye aerial shot";
+    case 'DUTCH':
+      return 'tilted dutch-angle shot';
+    default:
+      // Unknown / free-form value — pass through, capitalised as a phrase.
+      return a.toLowerCase().replace(/_/g, ' ');
+  }
+}
+
+/** Map shot_role to an opening framing cue that primes the model on intent. */
+function describeRole(role: string | undefined): string | null {
+  const r = (role ?? '').trim().toLowerCase();
+  if (!r) return null;
+  if (r === 'establishing') return 'Establishing the scene';
+  if (r === 'action') return 'Dynamic action moment';
+  if (r === 'reaction') return 'Reaction shot';
+  if (r === 'punchline' || r === 'gag-payoff' || r === 'gag_payoff')
+    return 'Punchline payoff';
+  if (r === 'transition') return 'Transition cut';
+  if (r === 'closer' || r === 'tag') return 'Closing tag';
+  return null;
+}
 
 /** Compact visual snippet for one character (Bible character description
  *  shortened to 1–2 sentences). Used by the prompt builder to anchor character
@@ -319,32 +379,36 @@ export function makeCharacterCanonSnippets(
 }
 
 /**
- * Build a Veo 3 prompt for a single shot — replaces the legacy filler
- * "shot ?" prompt that ignored every storyboard field.
+ * Build a Veo 3.1 prompt for a single shot from the storyboard contract.
+ * Replaces the legacy "shot ?" filler that ignored every storyboard field.
  *
- * Includes:
- *   - episode title + medium tag (2D animated comedy)
- *   - action_prose (or fallback: action / key_beat)
- *   - present characters with display_name + emotion
- *   - Bible character visual descriptions (Phase A.1 — anchors character
- *     appearance in text so prompt + image-to-video both pull in the same
- *     direction; only characters actually present in this shot are injected
- *     to keep prompt focused)
- *   - camera angle (default medium)
- *   - mood: expected_gag / expected_emotion / key_beat
+ * Output shape (natural language, no bracket prefix — Veo prefers prose):
+ *   <setting>. <Role hint, if any>: <action>. Characters: ... .
+ *   Visual canon: <slug>: <1–2 sentence Bible description>; <slug>: ... .
+ *   Camera: <static/over-the-shoulder/etc.>.
+ *   Beat: <gag, if any>. Mood: <emotion, if any>.
+ *   Style: <positive style anchors>. Avoid: <negative anchors>.
+ *
+ * Splitting beat (gag) and mood (emotion) gives the model two distinct slots
+ * — combining them as one "Mood" line was confusing in earlier smoke. The
+ * episode title is included only as setting flavour, never as a literal
+ * label, so titles never leak as on-screen text.
+ *
+ * `characterCanon` (Phase A.1, optional) injects Bible character visual
+ * descriptions so prompt + image-to-video both pull in the same direction.
+ * Only characters actually present in this shot are injected to keep the
+ * prompt focused — the entire series cast never lands here.
  */
 export function buildShotPromptV2(
   shot: StoryboardShotV2,
   episodeTitle: string,
   characterCanon?: ReadonlyArray<CharacterCanonSnippet>,
 ): string {
-  const titlePhrase = episodeTitle && episodeTitle.length > 0
-    ? `2D animation comedy '${episodeTitle}'`
-    : '2D animation comedy short';
-
   const action = (shot.action_prose ?? shot.action ?? shot.key_beat ?? '').trim();
-  const camera = (shot.camera_angle ?? 'medium').trim();
-  const mood = (shot.expected_gag ?? shot.expected_emotion ?? shot.key_beat ?? 'comedic').trim();
+  const camera = describeCamera(shot.camera_angle);
+  const role = describeRole(shot.shot_role);
+  const gag = (shot.expected_gag ?? '').trim();
+  const emotion = (shot.expected_emotion ?? '').trim();
 
   const charLines: string[] = [];
   if (Array.isArray(shot.characters)) {
@@ -384,12 +448,25 @@ export function buildShotPromptV2(
     ? `Visual canon: ${canonLines.join(' ')}`
     : '';
 
-  const segments: string[] = [`[${titlePhrase}]`];
-  if (action) segments.push(`${action}.`);
+  // Setting prefix uses episode title only as ambient flavour — the actual
+  // setting comes from the EREF (image-to-video reference). Avoid making the
+  // title look like a label the model might want to render as on-screen text.
+  const setting = episodeTitle && episodeTitle.length > 0
+    ? `2D animated comedy short, set in the world of "${episodeTitle}".`
+    : '2D animated comedy short.';
+
+  const segments: string[] = [setting];
+  if (role) {
+    segments.push(action ? `${role}: ${action}.` : `${role}.`);
+  } else if (action) {
+    segments.push(`${action}.`);
+  }
   if (charPhrase) segments.push(charPhrase);
   if (canonPhrase) segments.push(canonPhrase);
   segments.push(`Camera: ${camera}.`);
-  segments.push(`Mood: ${mood}.`);
-  segments.push(PROMPT_TAIL);
+  if (gag) segments.push(`Beat: ${gag}.`);
+  if (emotion) segments.push(`Mood: ${emotion}.`);
+  segments.push(`Style: ${POSITIVE_STYLE}`);
+  segments.push(NEGATIVE_PROMPT);
   return segments.join(' ');
 }

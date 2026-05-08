@@ -20,11 +20,11 @@
 
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { ChevronDown, ChevronUp, Film, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
-import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
+import { AnimaticPlayer, type AnimaticPlayerHandle } from '@/components/animatic/AnimaticPlayer';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import {
   resolveTimelineCells,
@@ -88,6 +88,23 @@ export function EpisodeTimelineSection({
   const [pendingGenerateShotId, setPendingGenerateShotId] = useState<string | null>(null);
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  // Imperative ref to AnimaticPlayer — used to seek the playhead after a
+  // regenerate completes (Phase A.1 directive — auto-focus the new candidate).
+  const playerRef = useRef<AnimaticPlayerHandle | null>(null);
+
+  function handleRegenerated(shotId: string, _newAssetId: string): void {
+    // Refetch so the cell-resolver picks up the new VID-shot REVIEW row, then
+    // move the playhead to that shot. SWR mutate happens via VGENShotPanel's
+    // onChanged → AssetPreview's mutate → /api/episodes refetch propagates
+    // through SWR cache; we then nudge the timeline to focus.
+    void mutate();
+    // Slight delay so cell-resolver re-runs with the fresh assets list before
+    // the seek lands on it. Without this we'd seek to the same shot but the
+    // cell would still resolve to image fallback for one render cycle.
+    setTimeout(() => {
+      playerRef.current?.seekToShot(shotId);
+    }, 200);
+  }
 
   // Pick the freshest APPROVED VID-animatic with the v1 contract. If multiple
   // approved animatics exist (re-trigger history), we use the highest version /
@@ -286,6 +303,7 @@ export function EpisodeTimelineSection({
               bulkError={bulkError}
             />
             <AnimaticPlayer
+              ref={playerRef}
               assetId={animaticAsset.id}
               contract={contract}
               vidShotAssets={vidShotAssets}
@@ -308,6 +326,7 @@ export function EpisodeTimelineSection({
         onPrev={onPrev}
         onNext={onNext}
         navLabel={navLabel}
+        onRegenerated={handleRegenerated}
         footer={
           pendingGenerateShotId ? (
             <div className="flex items-center gap-2 w-full">

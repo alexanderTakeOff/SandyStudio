@@ -48,6 +48,8 @@ export interface VGENShotSectionProps {
   stagingPath: string | null;
   editable: boolean;
   onChanged: () => void;
+  /** See VGENShotPanelProps.onRegenerated. */
+  onRegenerated?: (shotId: string, newAssetId: string) => void;
 }
 
 function pickAspect(value: unknown): AspectRatio {
@@ -69,6 +71,7 @@ export function VGENShotSection({
   stagingPath,
   editable,
   onChanged,
+  onRegenerated,
 }: VGENShotSectionProps) {
   const { storyboardShot, currentSettings } = useMemo(() => {
     const m = (metadata ?? {}) as VidShotMetadataLoose;
@@ -110,6 +113,7 @@ export function VGENShotSection({
       storyboardShot={storyboardShot}
       currentSettings={currentSettings}
       onChanged={onChanged}
+      onRegenerated={onRegenerated}
       readOnly={!editable}
     />
   );
