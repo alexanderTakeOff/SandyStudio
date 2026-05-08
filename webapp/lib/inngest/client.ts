@@ -110,6 +110,13 @@ type Events = {
   'sandystudio/exec-edit/create-animatic': {
     data: AssetTrigger & {
       storyboardAssetIds: string[];
+      /**
+       * Optional: APPROVED AUD-music asset id to bake into the animatic.
+       * Phase A.2 PR γ (LT-04, 2026-05-08) — music now generates BEFORE
+       * animatic so pacing review hears the real track. Absent → animatic
+       * runs silent (legacy fallback for episodes without music yet).
+       */
+      musicAssetId?: string;
     };
   };
 
@@ -171,6 +178,16 @@ type Events = {
       /** "intro" | "act1" | "act2" | "act3" | "outro" — section per music_brief. */
       section: string;
     };
+  };
+
+  /**
+   * EXEC-STITCH (Phase A.2 PR β, 2026-05-08): assemble approved per-shot
+   * mp4s + music into one final-cut mp4. Fired from approve/route.ts when
+   * episode reaches GENERATION_APPROVED (last VID-shot just APPROVED + auto-
+   * complete branch flipped the episode status).
+   */
+  'sandystudio/exec-stitch/assemble-episode': {
+    data: BaseEpisodeEvent;
   };
 
   'sandystudio/exec-thumb/generate-thumbnail': {

@@ -476,7 +476,12 @@ export function EpisodeAssetDrawer({
 
           {/* ── Animatic v1 player — VID-animatic with animatic_v1 metadata ── */}
           {isAnimaticAsset && animaticV1 && (
-            <AnimaticPlayer assetId={asset.id} contract={animaticV1} onChanged={onChange} />
+            <AnimaticPlayer
+              assetId={asset.id}
+              contract={animaticV1}
+              onChanged={onChange}
+              animaticStatus={asset.status}
+            />
           )}
           {isAnimaticAsset && !animaticV1 && (
             <div

@@ -92,12 +92,20 @@ export function EpisodeTimelineSection({
   // regenerate completes (Phase A.1 directive — auto-focus the new candidate).
   const playerRef = useRef<AnimaticPlayerHandle | null>(null);
 
-  function handleRegenerated(shotId: string, _newAssetId: string): void {
+  function handleRegenerated(shotId: string, newAssetId: string): void {
     // Refetch so the cell-resolver picks up the new VID-shot REVIEW row, then
     // move the playhead to that shot. SWR mutate happens via VGENShotPanel's
     // onChanged → AssetPreview's mutate → /api/episodes refetch propagates
     // through SWR cache; we then nudge the timeline to focus.
     void mutate();
+    // Phase A.2 Bug A fix (Director report 2026-05-08): swap the drawer to
+    // the NEW asset id immediately. Without this, the drawer stays bound to
+    // the OLD APPROVED asset and never shows the REVIEW state's Approve/
+    // Reject buttons until Director manually closes + reopens via "Open
+    // shot →". The old asset row is unchanged (still APPROVED), so its
+    // mutate() doesn't surface the new candidate; only re-pointing the
+    // drawer at the NEW row reveals the buttons.
+    setPreviewAssetId(newAssetId);
     // Slight delay so cell-resolver re-runs with the fresh assets list before
     // the seek lands on it. Without this we'd seek to the same shot but the
     // cell would still resolve to image fallback for one render cycle.
@@ -310,6 +318,7 @@ export function EpisodeTimelineSection({
               filter={filter}
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
+              animaticStatus={animaticAsset.status}
             />
           </div>
         )}

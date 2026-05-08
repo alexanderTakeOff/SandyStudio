@@ -5,13 +5,15 @@
       "name": "next-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "webapp", "run", "dev"],
-      "port": 3000
+      "port": 3000,
+      "autoPort": false
     },
     {
       "name": "inngest-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "webapp", "run", "inngest:dev"],
-      "port": 8288
+      "port": 8288,
+      "autoPort": false
     }
   ],
   "autoVerify": true

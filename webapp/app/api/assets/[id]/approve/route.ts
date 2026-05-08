@@ -186,28 +186,74 @@ async function computeNextEvents(
     }
   }
 
-  // ── Continuity Check APPROVED → EXEC-EREF (episode references)
-  if (ft === 'REV-world_check' && !(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
-    events.push({
-      name: 'sandystudio/exec-eref/generate-references',
-      data: { episodeId: ep, storyboardAssetId: asset.id },
-    });
+  // ── Continuity Check APPROVED → EXEC-EREF (episode references) +
+  //    EXEC-MGEN (music) in parallel.
+  // Phase A.2 PR γ (LT-04, Director directive 2026-05-08 q3b): music
+  // generation moves BEFORE animatic, so the animatic player can preview
+  // pacing WITH music. Both MGEN and EREF run after world_check; EDIT
+  // (animatic) waits for both to complete.
+  if (ft === 'REV-world_check') {
+    if (!(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
+      events.push({
+        name: 'sandystudio/exec-eref/generate-references',
+        data: { episodeId: ep, storyboardAssetId: asset.id },
+      });
+    }
+    if (!(await hasJob(supabase, ep, 'EXEC-MGEN', { since }))) {
+      events.push({
+        name: 'sandystudio/exec-mgen/generate-music',
+        // animaticAssetId is empty here — MGEN now generates BEFORE
+        // animatic exists. Runner reads section + storyboard for prompt
+        // context. Field kept for backward-compat with the event schema.
+        data: { episodeId: ep, animaticAssetId: '', section: 'main' },
+      });
+    }
   }
 
-  // ── Episode references APPROVED → EXEC-EDIT (animatic)
+  // ── Episode references OR music APPROVED → EXEC-EDIT (animatic)
+  // Phase A.2 PR γ: animatic creation now waits for BOTH approved EREF v1
+  // (or via /eref/advance for v2) AND approved music. This unblocks
+  // animatic playback with music for pacing review BEFORE expensive VGEN.
+  //
   // EREF v2 (Pilot+Fanout, technology.md §4): per-shot approvals must NOT
   // auto-fire the animatic — Director uses the explicit "Advance to Animatic"
   // button (POST /api/episodes/[id]/eref/advance) once all shots have an
-  // approved variant. We detect the v2 contract on the asset metadata and
-  // skip the auto-fan-out branch in that case. Legacy v1 assets keep the
-  // old chain behaviour for backwards compatibility.
-  if (ft.startsWith('IMG-episode_ref') && !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))) {
-    const isV2 = isShotReferenceV2((asset as { metadata?: unknown }).metadata);
-    if (!isV2) {
-      events.push({
-        name: 'sandystudio/exec-edit/create-animatic',
-        data: { episodeId: ep, storyboardAssetIds: [] },
-      });
+  // approved variant. That route also waits for music to be approved
+  // before firing create-animatic.
+  if (
+    (ft.startsWith('IMG-episode_ref') || ft === 'AUD-music') &&
+    !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))
+  ) {
+    // For EREF v2 path, the per-shot approvals don't auto-fire — only the
+    // explicit advance route does. Skip auto-fire when this asset is v2.
+    const isV2EREF =
+      ft.startsWith('IMG-episode_ref') &&
+      isShotReferenceV2((asset as { metadata?: unknown }).metadata);
+    if (!isV2EREF) {
+      const erefOk = (await countApproved(supabase, ep, 'IMG-episode_ref')) >= 1;
+      const musicOk = (await countApproved(supabase, ep, 'AUD-music')) >= 1;
+      if (erefOk && musicOk) {
+        // Find the most recent APPROVED music asset to attach as
+        // musicAssetId. Lets EXEC-EDIT bake the track into the animatic.
+        const { data: musicRow } = await supabase
+          .from('assets')
+          .select('id')
+          .eq('episode_id', ep)
+          .eq('file_type', 'AUD-music')
+          .eq('status', 'APPROVED')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const musicAssetId = (musicRow as { id?: string } | null)?.id ?? null;
+        events.push({
+          name: 'sandystudio/exec-edit/create-animatic',
+          data: {
+            episodeId: ep,
+            storyboardAssetIds: [],
+            ...(musicAssetId ? { musicAssetId } : {}),
+          },
+        });
+      }
     }
   }
 
@@ -254,11 +300,48 @@ async function computeNextEvents(
         }
       }
     }
-    if (!(await hasJob(supabase, ep, 'EXEC-MGEN', { since }))) {
-      events.push({
-        name: 'sandystudio/exec-mgen/generate-music',
-        data: { episodeId: ep, animaticAssetId: asset.id, section: 'main' },
-      });
+    // (Phase A.2 PR γ) MGEN no longer fires here — moved to REV-world_check
+    // approval so music is ready BEFORE animatic. See branch above.
+  }
+
+  // ── Last VID-shot APPROVED → if all shots have an APPROVED row, fire
+  //    EXEC-STITCH to assemble the final-cut mp4 (Phase A.2 PR β).
+  //    This is the second half of VGEN auto-COMPLETE: the inline status flip
+  //    (after the BRIEF block) handles the episode FSM; this branch fires the
+  //    actual stitching job. Idempotent via hasJob.
+  if (ft.startsWith('VID-shot') && !(await hasJob(supabase, ep, 'EXEC-STITCH', { since }))) {
+    const { data: animaticRow } = await supabase
+      .from('assets')
+      .select('metadata')
+      .eq('episode_id', ep)
+      .like('file_type', 'VID-animatic%')
+      .eq('status', 'APPROVED')
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const animMeta = (animaticRow as { metadata?: unknown } | null)?.metadata;
+    if (isAnimaticV1(animMeta)) {
+      const v1 = (animMeta as { animatic_v1: AnimaticContract }).animatic_v1;
+      const totalShots = v1.shot_list?.length ?? 0;
+      if (totalShots > 0) {
+        const { data: approvedRows } = await supabase
+          .from('assets')
+          .select('metadata')
+          .eq('episode_id', ep)
+          .like('file_type', 'VID-shot%')
+          .eq('status', 'APPROVED');
+        const approvedShotIds = new Set<string>();
+        for (const row of (approvedRows ?? []) as Array<{ metadata?: unknown }>) {
+          const sid = (row.metadata as { shot_id?: unknown } | null)?.shot_id;
+          if (typeof sid === 'string') approvedShotIds.add(sid);
+        }
+        if (approvedShotIds.size >= totalShots) {
+          events.push({
+            name: 'sandystudio/exec-stitch/assemble-episode',
+            data: { episodeId: ep },
+          });
+        }
+      }
     }
   }
 
@@ -488,6 +571,66 @@ export const POST = withApiHandler(async (req, ctx) => {
       .from('episodes')
       .update({ status: 'BRIEF_APPROVED' })
       .eq('id', asset.episode_id);
+  }
+
+  // VGEN auto-COMPLETE (Phase A.2 PR α, Director directive 2026-05-08 q2b).
+  // When the last VID-shot for an episode reaches APPROVED — meaning every
+  // shot in the animatic v1 contract now has at least one APPROVED VID-shot
+  // row — auto-advance the episode to `GENERATION_APPROVED`. Without this,
+  // Director would have to remember to manually click an advance button after
+  // 13/13 are green; with it, the pipeline progresses on its own.
+  //
+  // Idempotency: only flip when current episode status is in the pre-APPROVED
+  // generation window. Once the episode reaches GENERATION_APPROVED (or
+  // beyond), re-approving a shot is a no-op.
+  if (
+    body.decision === 'APPROVE' &&
+    asset.file_type.startsWith('VID-shot') &&
+    asset.episode_id
+  ) {
+    const { data: animaticRow } = await supabase
+      .from('assets')
+      .select('metadata')
+      .eq('episode_id', asset.episode_id)
+      .like('file_type', 'VID-animatic%')
+      .eq('status', 'APPROVED')
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const animaticMeta = (animaticRow as { metadata?: unknown } | null)?.metadata;
+    if (isAnimaticV1(animaticMeta)) {
+      const v1 = (animaticMeta as { animatic_v1: AnimaticContract }).animatic_v1;
+      const totalShots = v1.shot_list?.length ?? 0;
+      if (totalShots > 0) {
+        // Count DISTINCT shot_ids that have at least one APPROVED VID-shot
+        // row. We dedupe by shot_id because regenerate-video creates a new
+        // asset row per regen — multiple APPROVED rows for the same shot_id
+        // must count as one.
+        const { data: approvedRows } = await supabase
+          .from('assets')
+          .select('metadata')
+          .eq('episode_id', asset.episode_id)
+          .like('file_type', 'VID-shot%')
+          .eq('status', 'APPROVED');
+        const approvedShotIds = new Set<string>();
+        for (const row of (approvedRows ?? []) as Array<{ metadata?: unknown }>) {
+          const sid = (row.metadata as { shot_id?: unknown } | null)?.shot_id;
+          if (typeof sid === 'string') approvedShotIds.add(sid);
+        }
+        if (approvedShotIds.size >= totalShots) {
+          await supabase
+            .from('episodes')
+            .update({ status: 'GENERATION_APPROVED' })
+            .eq('id', asset.episode_id)
+            .in('status', [
+              'ANIMATIC_APPROVED',
+              'GENERATION_IN_PROGRESS',
+              'GENERATION_REVIEW',
+              'GENERATION_REVISION',
+            ]);
+        }
+      }
+    }
   }
 
   // 5. Fire downstream Inngest event(s) after APPROVE. Multi-asset

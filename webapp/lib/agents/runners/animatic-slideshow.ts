@@ -339,6 +339,48 @@ export async function runAnimaticSlideshow(
         sbAsset.content,
       );
       animaticV1 = newAnimaticContract(shotList);
+
+      // Phase A.2 PR γ (LT-04, 2026-05-08): if an APPROVED AUD-music asset
+      // exists at this point (Music block now generates BEFORE Animatic),
+      // bake the URL into the animatic v1 contract so the player has music
+      // for pacing review without a manual /upload-music round trip.
+      try {
+        const { data: musicRow } = await _supabase
+          .from('assets')
+          .select('drive_path,staging_path,filename')
+          .eq('episode_id', episodeId)
+          .eq('file_type', 'AUD-music')
+          .eq('status', 'APPROVED')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const m = musicRow as
+          | { drive_path?: string | null; staging_path?: string | null; filename?: string }
+          | null;
+        const musicUrl = m?.drive_path ?? m?.staging_path ?? null;
+        if (musicUrl) {
+          animaticV1 = {
+            ...animaticV1,
+            music_url: musicUrl,
+            music_filename: m?.filename ?? null,
+            audio_tracks: [
+              {
+                layer: 'music',
+                url: musicUrl,
+                filename: m?.filename ?? 'music.mp3',
+                volume: 1.0,
+                muted: false,
+              },
+            ],
+          };
+          // eslint-disable-next-line no-console
+          console.log('[animatic] v1 baked APPROVED music URL:', musicUrl);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[animatic] music-bake step failed (animatic still works):', err);
+      }
+
       // eslint-disable-next-line no-console
       console.log('[animatic] v1 BUILT OK — shot_list length:', shotList.length, 'total:', animaticV1.total_duration);
     } catch (err) {
