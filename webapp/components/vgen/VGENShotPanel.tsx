@@ -341,10 +341,52 @@ export function VGENShotPanel({
 
       {/* ── Prompt textarea ─────────────────────────────────────────── */}
       <label className="block">
-        <span className="text-[10px] uppercase tracking-wider text-text-muted">Prompt</span>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-text-muted">
+            Prompt
+            {!promptEdited && (
+              <span
+                className="ml-2 normal-case font-normal"
+                style={{ color: 'var(--accent-info, #38bdf8)' }}
+                title="Auto-built from storyboard + Bible canon. Server rebuilds fresh on regenerate."
+              >
+                · auto
+              </span>
+            )}
+            {promptEdited && (
+              <span
+                className="ml-2 normal-case font-normal"
+                style={{ color: 'var(--accent-warning, #f59e0b)' }}
+                title="Director edited — server uses this verbatim, ignores Bible canon"
+              >
+                · edited
+              </span>
+            )}
+          </span>
+          {promptEdited && (
+            <button
+              type="button"
+              onClick={() => {
+                setPrompt(
+                  currentSettings.prompt && currentSettings.prompt.trim().length > 0
+                    ? currentSettings.prompt
+                    : buildPromptFromShot(storyboardShot),
+                );
+                setPromptEdited(false);
+              }}
+              className="text-[10px] underline text-text-muted hover:text-text-secondary"
+              title="Discard edits — let server rebuild prompt with current Bible canon on regen"
+            >
+              Reset to auto
+            </button>
+          )}
+        </div>
         <textarea
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+            setPrompt(e.target.value);
+            setPromptEdited(true);
+          }}
           disabled={disabled}
           rows={5}
           aria-label="Video generation prompt"
