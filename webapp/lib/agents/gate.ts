@@ -94,6 +94,17 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     ],
     governance: 'AGENT_RUN',
   },
+  'EXEC-STITCH': {
+    // Phase A.2 PR β — assemble approved per-shot mp4s + music into final cut.
+    // Gate requires animatic (for shot order + audio_tracks) and at least one
+    // VID-shot — the actual "all 13 approved" check happens in the runner
+    // and in approve/route.ts where the event fires.
+    required: [
+      { fileTypePrefix: 'VID-animatic', minCount: 1, label: 'Approved animatic' },
+      { fileTypePrefix: 'VID-shot', minCount: 1, label: 'Approved shots' },
+    ],
+    governance: 'AGENT_RUN',
+  },
   'EXEC-COPY': {
     required: [{ fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' }],
     governance: 'AGENT_RUN',
