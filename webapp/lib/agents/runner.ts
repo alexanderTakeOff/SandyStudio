@@ -988,8 +988,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // middleware auth-blocks it for non-Director sessions. Inngest worker
       // has no Director session, so HTTP would 307→/login. Reading from FS
       // bypasses middleware entirely.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const fsPromises = await import('node:fs/promises');
+      const pathMod = await import('node:path');
       async function loadBytes(stagingPath: string | null, url: string | null): Promise<Buffer> {
         if (stagingPath) {
           // eslint-disable-next-line no-console
@@ -997,9 +997,16 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           return await fsPromises.readFile(stagingPath);
         }
         if (!url) throw new Error('loadBytes: neither stagingPath nor url provided');
-        // Fallback for Drive https URLs (drive_native storage). Do NOT use
-        // localhost — that would re-trigger middleware. Drive URLs are
-        // pre-signed and accessible directly.
+        // Relative /staging/* URL → resolve to absolute path under
+        // webapp/public/ and read directly. Avoids the middleware auth
+        // redirect AND Node's "Failed to parse URL" for relative paths.
+        if (url.startsWith('/staging/')) {
+          const absPath = pathMod.join(process.cwd(), 'public', url);
+          // eslint-disable-next-line no-console
+          console.log('[stitch] reading FS (resolved from URL):', absPath);
+          return await fsPromises.readFile(absPath);
+        }
+        // Fallback for Drive https URLs (drive_native storage).
         const res = await fetch(url);
         if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`);
         const ab = await res.arrayBuffer();
