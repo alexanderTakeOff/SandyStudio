@@ -242,7 +242,9 @@ export async function ffmpegStitchEpisode(
  * Pure function — no I/O. Exposed for unit tests.
  */
 export function buildConcatList(shotPaths: ReadonlyArray<string>): string {
-  return shotPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
+  return shotPaths
+    .map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
+    .join('\n');
 }
 
 /**
