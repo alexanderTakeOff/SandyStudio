@@ -23,6 +23,15 @@ describe('buildConcatList', () => {
   it('returns empty string for empty input (caller validates non-empty)', () => {
     expect(buildConcatList([])).toBe('');
   });
+
+  it('converts Windows backslashes to forward slashes (ffmpeg refuses backslashes inside single-quoted concat paths)', () => {
+    const list = buildConcatList([
+      'C:\\Users\\me\\AppData\\Local\\Temp\\ss-stitch\\shot-000.mp4',
+    ]);
+    expect(list).toBe(
+      "file 'C:/Users/me/AppData/Local/Temp/ss-stitch/shot-000.mp4'",
+    );
+  });
 });
 
 describe('buildFfmpegArgs', () => {
