@@ -1,8 +1,17 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // app/api/concierge/chat/route.ts
-// Studio Concierge streaming endpoint per agents/exec/concierge.md §3.2.
-// Sprint 9 = chat-skeleton: streams OpenAI responses. No tools, no dispatch.
-// Provider switched to OpenAI on 2026-04-28 — Director's account is faster.
+// Studio Concierge / Prod Assistant streaming endpoint.
+//
+// Mode 2.5 Phase 1 (per ~/.claude/plans/valiant-soaring-karp.md, approved
+// 2026-05-08):
+// - Modular system prompt via lib/concierge/system-prompt-builder.ts
+// - Long-term memory: turns persisted to concierge_threads / concierge_turns
+//   (migration 0025) so the conversation survives reloads.
+// - Backwards compatible — clients that send `messages[]` without threadId
+//   still work; the server creates a thread on first call and returns its
+//   id in the `X-Concierge-Thread-Id` response header.
+//
+// Tool-calling and Inngest dispatch land in a follow-up task within Phase 1.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from 'next/server';
@@ -10,6 +19,10 @@ import OpenAI from 'openai';
 import type { Stream } from 'openai/streaming';
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions';
 import { getServerEnv } from '@/lib/env';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
+import { createThread, getThread, persistTurn } from '@/lib/concierge/threads';
+import type { ConciergeMode } from '@/lib/concierge/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,34 +34,24 @@ interface ChatMessage {
 
 interface ChatRequest {
   messages: ChatMessage[];
+  /** Optional thread to append to; when absent the server creates one. */
+  threadId?: string;
+  /** Active governance mode. Defaults to '1' (MANUAL). */
+  mode?: ConciergeMode;
+  /** Optional episode scope for pipeline-aware prompting. */
+  episodeId?: string | null;
+  /** Optional next pipeline gate hint, e.g. 'BRIEF', 'STB_ACT1'. */
+  nextGate?: string | null;
 }
 
-const SYSTEM_PROMPT = `You are SandyStudio's Studio Concierge (agent ID: EXEC-CONC).
+const VALID_MODES: ReadonlyArray<ConciergeMode> = ['1', '2', '2.5', '3', '4'];
 
-SandyStudio is an AI-first animation studio building multi-episode comedy series. \
-The user is the Director / CEO — final authority on everything.
-
-Your job:
-- Answer questions about the studio: what is happening, what is blocked, who is pending approval, budget status, recent activity.
-- Be concise, calm, and production-grade. No fluff. No emojis.
-- Match the user's language (Russian or English).
-- Use markdown for structure (lists, code blocks for filenames, links).
-- When you don't know something, say so plainly. Never invent state.
-
-You are a NEW agent — Sprint 9 ships a chat-skeleton only:
-- You DO NOT yet have tools to read the database directly.
-- You DO NOT yet have authority to trigger jobs or approve assets.
-- If asked to take an action, explain that this lands in Sprint 10 and suggest the manual UI path.
-
-System awareness:
-- Current sprint: Sprint 9 (Build webapp).
-- Stack: Next.js 15 + Supabase + Inngest, local-first on Director's workstation.
-- Today's date: ${new Date().toISOString().slice(0, 10)}.
-
-Hard rules:
-- NEVER claim to have approved or rejected anything.
-- NEVER fabricate episode codes, asset filenames, or budget numbers.
-- If the user wants to change governance mode or LOCK an asset — refuse and remind them only the Director can.`;
+function normaliseMode(value: unknown): ConciergeMode {
+  if (typeof value !== 'string') return '1';
+  return (VALID_MODES as ReadonlyArray<string>).includes(value)
+    ? (value as ConciergeMode)
+    : '1';
+}
 
 export async function POST(req: Request) {
   let body: ChatRequest;
@@ -67,24 +70,76 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          'OPENAI_API_KEY missing. Add it to webapp/.env.local to enable the Concierge.',
+          'OPENAI_API_KEY missing. Add it to webapp/.env.local to enable the Prod Assistant.',
       },
       { status: 503 },
     );
+  }
+
+  const mode = normaliseMode(body.mode);
+  const episodeId = body.episodeId ?? null;
+  const nextGate = body.nextGate ?? null;
+  const lastUserMessage = body.messages[body.messages.length - 1];
+  if (lastUserMessage.role !== 'user' || !lastUserMessage.content.trim()) {
+    return NextResponse.json(
+      { error: 'last message must be a non-empty user message' },
+      { status: 400 },
+    );
+  }
+
+  // Persistence is best-effort: if Supabase is unreachable the chat must still
+  // work (graceful degradation). We capture the thread id even when writes
+  // fail so the UI keeps a stable session anchor.
+  const supabase = await createSupabaseServerClient();
+  let threadId: string | null = body.threadId ?? null;
+  let persistenceError: string | null = null;
+
+  try {
+    if (!threadId) {
+      const thread = await createThread(supabase, {
+        episodeId,
+        activeMode: mode,
+        activeGate: nextGate,
+      });
+      threadId = thread.id;
+    } else {
+      const existing = await getThread(supabase, threadId);
+      if (!existing) {
+        // Stale id from sessionStorage — start a new thread instead of failing.
+        const thread = await createThread(supabase, {
+          episodeId,
+          activeMode: mode,
+          activeGate: nextGate,
+        });
+        threadId = thread.id;
+      }
+    }
+  } catch (err) {
+    persistenceError = err instanceof Error ? err.message : 'unknown persistence error';
+  }
+
+  // Persist Director's incoming message before we kick off the LLM. If it
+  // fails we proceed with the chat — only memory is degraded.
+  if (threadId && !persistenceError) {
+    try {
+      await persistTurn(supabase, threadId, {
+        role: 'director',
+        event_type: 'message',
+        content: lastUserMessage.content,
+      });
+    } catch (err) {
+      persistenceError = err instanceof Error ? err.message : 'persist incoming failed';
+    }
   }
 
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   // Default per developers.openai.com/api/docs/models — gpt-5.4-mini is the
   // recommended low-latency / low-cost frontier model.
   const model = env.OPENAI_MODEL || 'gpt-5.4-mini';
-
-  // Tunables — all optional, defaults align with the Director's .env.local intent.
   const temperature = env.OPENAI_TEMPERATURE ? Number(env.OPENAI_TEMPERATURE) : 0.2;
   const maxCompletionTokens = env.OPENAI_MAX_OUTPUT_TOKENS
     ? Number(env.OPENAI_MAX_OUTPUT_TOKENS)
     : 2000;
-  // reasoning_effort is only meaningful for reasoning-capable models
-  // (gpt-5 family, o-series). Pass it; OpenAI ignores it for plain chat models.
   const reasoningEffort = env.OPENAI_REASONING_EFFORT as
     | 'minimal'
     | 'low'
@@ -92,22 +147,27 @@ export async function POST(req: Request) {
     | 'high'
     | undefined;
 
+  const systemPrompt = buildSystemPrompt({
+    today: new Date().toISOString().slice(0, 10),
+    mode,
+    episodeId,
+    nextGate,
+  });
+
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
+      let assistantBuffer = '';
       try {
-        // Build params dynamically so we don't send unsupported keys to older models.
         const params: Parameters<typeof client.chat.completions.create>[0] = {
           model,
           stream: true,
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: systemPrompt },
             ...body.messages.map((m) => ({ role: m.role, content: m.content })),
           ],
           max_completion_tokens: maxCompletionTokens,
         };
-        // GPT-5 family (gpt-5, gpt-5.x, gpt-5.x-mini) rejects non-default temperature;
-        // only pass it for legacy chat models (gpt-4o, gpt-4.1).
         const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
         if (!isGpt5 && Number.isFinite(temperature)) {
           params.temperature = temperature;
@@ -116,21 +176,38 @@ export async function POST(req: Request) {
           (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
         }
 
-        // Cast to streaming variant — TS can't narrow the union when `stream`
-        // is set on a dynamically-typed params object.
         const completion = (await client.chat.completions.create(
           params,
         )) as Stream<ChatCompletionChunk>;
 
         for await (const chunk of completion) {
           const delta = chunk.choices[0]?.delta?.content;
-          if (delta) controller.enqueue(encoder.encode(delta));
+          if (delta) {
+            assistantBuffer += delta;
+            controller.enqueue(encoder.encode(delta));
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        controller.enqueue(encoder.encode(`\n\n⚠️ Upstream error: ${message}`));
+        const errLine = `\n\n⚠️ Upstream error: ${message}`;
+        assistantBuffer += errLine;
+        controller.enqueue(encoder.encode(errLine));
       } finally {
         controller.close();
+        // Persist the assistant turn after the stream closes so we capture
+        // the full reply. Best-effort — never throw inside the closer.
+        if (threadId && assistantBuffer.trim() !== '') {
+          try {
+            await persistTurn(supabase, threadId, {
+              role: 'assistant',
+              event_type: 'message',
+              content: assistantBuffer,
+              metadata: { model },
+            });
+          } catch {
+            // Already in finally — swallow secondary persistence failures.
+          }
+        }
       }
     },
   });
@@ -140,6 +217,10 @@ export async function POST(req: Request) {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       'X-Accel-Buffering': 'no',
+      ...(threadId ? { 'X-Concierge-Thread-Id': threadId } : {}),
+      ...(persistenceError
+        ? { 'X-Concierge-Persistence-Warning': persistenceError.slice(0, 200) }
+        : {}),
     },
   });
 }
