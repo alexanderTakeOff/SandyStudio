@@ -131,6 +131,12 @@ export function VGENShotPanel({
   const [aspect, setAspect] = useState<AspectRatio>(currentSettings.aspect_ratio);
   const [quality, setQuality] = useState<QualityTier>(currentSettings.quality_tier);
   const [duration, setDuration] = useState<number>(clampDuration(currentSettings.duration_seconds));
+  // Track whether Director actually edited the prompt textarea. When false,
+  // regenerate sends NO `prompt` field so the server rebuilds via the latest
+  // `buildShotPromptV2(storyboardShot, episodeTitle, bibleCanon)` — Phase A.1
+  // bug fix 2026-05-08: without this, the panel always shipped the previously-
+  // persisted prompt back, and Bible canon never landed on regen.
+  const [promptEdited, setPromptEdited] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -146,6 +152,7 @@ export function VGENShotPanel({
     setAspect(currentSettings.aspect_ratio);
     setQuality(currentSettings.quality_tier);
     setDuration(clampDuration(currentSettings.duration_seconds));
+    setPromptEdited(false);
     setError(null);
     setSuccess(false);
     // intentionally key on assetId so we don't reset state on every parent rerender
