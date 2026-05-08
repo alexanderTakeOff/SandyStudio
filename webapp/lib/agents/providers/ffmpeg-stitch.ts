@@ -131,8 +131,15 @@ export async function ffmpegInstalled(): Promise<boolean> {
  * rejects with FfmpegStitchError otherwise.
  */
 async function runFfmpeg(args: ReadonlyArray<string>): Promise<string> {
+  const ffmpegBin = await resolveFfmpegPath();
+  if (!ffmpegBin) {
+    throw new FfmpegStitchError(
+      'ffmpeg binary not found on PATH or via FFMPEG_PATH/winget fallbacks. Install ffmpeg (winget install ffmpeg / brew install ffmpeg / apt install ffmpeg) and restart the Inngest dev server.',
+      'ffmpeg_not_installed',
+    );
+  }
   return new Promise((resolve, reject) => {
-    const proc = spawn('ffmpeg', [...args], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const proc = spawn(ffmpegBin, [...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     proc.stderr?.on('data', (chunk) => {
       stderr += chunk.toString();
