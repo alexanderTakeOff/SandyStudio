@@ -19,9 +19,10 @@ export type PipelineStageId =
   | 'storyboarder'
   | 'continuity_check'
   | 'episode_references'
+  | 'music_generator'
   | 'animatic'
   | 'visual_generator'
-  | 'music_generator'
+  | 'final_cut'
   | 'copywriter'
   | 'thumbnail_creator'
   | 'publisher'
@@ -95,20 +96,32 @@ interface RowDef {
 // Per-agent rows. `world_check` (EXEC-WCHK) stays out of MVP pipeline view
 // until Series Bible exists (Step 7+) — gate.ts and registry.ts still know
 // about it for legacy compatibility.
+//
+// Phase A.2 (2026-05-08, Director directive q3b / LT-04): Music moved BEFORE
+// Animatic. The audio reorg fires MGEN in parallel with EREF after world_check
+// approves; EDIT (animatic) gates on BOTH being approved so the animatic
+// preview already plays with music for pacing review. Director observed the
+// pipeline view was still showing Music after Visual Generator — that was a
+// stale visualisation; the actual event chain in approve/route.ts §189–258
+// runs Music early. This row order now matches the event chain.
+//
+// Phase A.2 also added EXEC-STITCH (final cut) after VGEN — added here as
+// `final_cut` so the DAG reflects the assembly stage Director can see.
 const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
-  { id: 'brief',               label: 'Brief',              agents: ['Director'],   phase: 'pre-production', emoji: '🎬' },
-  { id: 'screenwriter',        label: 'Screenwriter',       agents: ['EXEC-SW'],    phase: 'pre-production', emoji: '✍️' },
-  { id: 'script_reviewer',     label: 'Script Reviewer',    agents: ['EXEC-SREV'],  phase: 'pre-production', emoji: '🔍' },
-  { id: 'storyboarder',        label: 'Storyboarder',       agents: ['EXEC-SB'],    phase: 'production',     emoji: '🎬' },
-  { id: 'continuity_check',    label: 'Continuity Check',   agents: ['EXEC-CONT'],  phase: 'production',     emoji: '🌍' },
-  { id: 'episode_references',  label: 'Episode references', agents: ['EXEC-EREF'],  phase: 'production',     emoji: '🖼️' },
-  { id: 'animatic',            label: 'Animatic',           agents: ['EXEC-EDIT'],  phase: 'production',     emoji: '🎞️' },
-  { id: 'visual_generator',    label: 'Visual Generator',   agents: ['EXEC-VGEN'],  phase: 'generation',     emoji: '🎥' },
-  { id: 'music_generator',     label: 'Music',              agents: ['EXEC-MGEN'],  phase: 'generation',     emoji: '🎵' },
-  { id: 'copywriter',          label: 'Copywriter',         agents: ['EXEC-COPY'],  phase: 'distribution',   emoji: '📝' },
-  { id: 'thumbnail_creator',   label: 'Thumbnail',          agents: ['EXEC-THUMB'], phase: 'distribution',   emoji: '🖼️' },
-  { id: 'publisher',           label: 'Publish',            agents: ['EXEC-PUB'],   phase: 'distribution',   emoji: '🚀' },
-  { id: 'analytics_collector', label: 'Analytics',          agents: ['EXEC-ANAL'],  phase: 'analytics',      emoji: '📊' },
+  { id: 'brief',               label: 'Brief',              agents: ['Director'],     phase: 'pre-production', emoji: '🎬' },
+  { id: 'screenwriter',        label: 'Screenwriter',       agents: ['EXEC-SW'],      phase: 'pre-production', emoji: '✍️' },
+  { id: 'script_reviewer',     label: 'Script Reviewer',    agents: ['EXEC-SREV'],    phase: 'pre-production', emoji: '🔍' },
+  { id: 'storyboarder',        label: 'Storyboarder',       agents: ['EXEC-SB'],      phase: 'production',     emoji: '🎬' },
+  { id: 'continuity_check',    label: 'Continuity Check',   agents: ['EXEC-CONT'],    phase: 'production',     emoji: '🌍' },
+  { id: 'episode_references',  label: 'Episode references', agents: ['EXEC-EREF'],    phase: 'production',     emoji: '🖼️' },
+  { id: 'music_generator',     label: 'Music',              agents: ['EXEC-MGEN'],    phase: 'production',     emoji: '🎵' },
+  { id: 'animatic',            label: 'Animatic',           agents: ['EXEC-EDIT'],    phase: 'production',     emoji: '🎞️' },
+  { id: 'visual_generator',    label: 'Visual Generator',   agents: ['EXEC-VGEN'],    phase: 'generation',     emoji: '🎥' },
+  { id: 'final_cut',           label: 'Final Cut',          agents: ['EXEC-STITCH'],  phase: 'generation',     emoji: '🎬' },
+  { id: 'copywriter',          label: 'Copywriter',         agents: ['EXEC-COPY'],    phase: 'distribution',   emoji: '📝' },
+  { id: 'thumbnail_creator',   label: 'Thumbnail',          agents: ['EXEC-THUMB'],   phase: 'distribution',   emoji: '🖼️' },
+  { id: 'publisher',           label: 'Publish',            agents: ['EXEC-PUB'],     phase: 'distribution',   emoji: '🚀' },
+  { id: 'analytics_collector', label: 'Analytics',          agents: ['EXEC-ANAL'],    phase: 'analytics',      emoji: '📊' },
 ];
 
 // Map a file_type → row id. Each agent's primary asset goes to its own row.
@@ -120,9 +133,10 @@ const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
   if (ft.startsWith('STB'))       return 'storyboarder';
   if (ft === 'REV-world_check')   return 'continuity_check';
   if (ft.startsWith('IMG-episode_ref')) return 'episode_references';
-  if (ft.startsWith('VID-animatic')) return 'animatic';
-  if (ft.startsWith('VID-shot'))     return 'visual_generator';
-  if (ft.startsWith('AUD-music'))    return 'music_generator';
+  if (ft.startsWith('VID-animatic'))   return 'animatic';
+  if (ft.startsWith('VID-shot'))       return 'visual_generator';
+  if (ft.startsWith('VID-final_cut'))  return 'final_cut';
+  if (ft.startsWith('AUD-music'))      return 'music_generator';
   if (ft.startsWith('SPC-metadata') || ft.startsWith('SPC-copy')) return 'copywriter';
   if (ft.startsWith('IMG-thumbnail')) return 'thumbnail_creator';
   if (ft.startsWith('REV-publish'))   return 'publisher';
@@ -139,8 +153,9 @@ const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'EXEC-WCHK':  'continuity_check', // legacy WCHK feeds the Continuity row when CONT is not yet shipped
   'EXEC-EREF':  'episode_references',
   'EXEC-EDIT':  'animatic',
-  'EXEC-VGEN':  'visual_generator',
-  'EXEC-MGEN':  'music_generator',
+  'EXEC-VGEN':   'visual_generator',
+  'EXEC-STITCH': 'final_cut',
+  'EXEC-MGEN':   'music_generator',
   'EXEC-COPY':  'copywriter',
   'EXEC-THUMB': 'thumbnail_creator',
   'EXEC-PUB':   'publisher',

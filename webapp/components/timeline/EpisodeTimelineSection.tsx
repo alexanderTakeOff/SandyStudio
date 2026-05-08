@@ -34,6 +34,7 @@ import {
   type CellStatusPill,
 } from '@/lib/api/timeline-cell-resolver';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
+import { StitchStatusPill } from '@/components/timeline/StitchStatusPill';
 
 interface AssetRow {
   id: string;
@@ -127,6 +128,22 @@ export function EpisodeTimelineSection({
     );
     if (animatics.length === 0) return null;
     return animatics.reduce((best, a) => {
+      const bv = best.version ?? 0;
+      const av = a.version ?? 0;
+      if (av > bv) return a;
+      if (av < bv) return best;
+      return a.created_at > best.created_at ? a : best;
+    });
+  }, [data]);
+
+  // Pick the freshest VID-final_cut asset (any status — REVIEW/APPROVED/LOCKED
+   // all warrant the "ready" pill). Used by StitchStatusPill so the green
+   // chip survives a session reload after STITCH already completed.
+  const finalCutAsset = useMemo(() => {
+    const assets = data?.data.assets ?? [];
+    const finals = assets.filter((a) => a.file_type === 'VID-final_cut');
+    if (finals.length === 0) return null;
+    return finals.reduce((best, a) => {
       const bv = best.version ?? 0;
       const av = a.version ?? 0;
       if (av > bv) return a;
@@ -293,6 +310,17 @@ export function EpisodeTimelineSection({
           <span className="text-[11px] text-text-muted">
             · {contract.shot_list.length} shots · {vidShotAssets.length} VID-shot rows
           </span>
+          <div
+            // Stop the click from toggling collapse when Director clicks the
+            // "Final cut ready" pill button.
+            onClick={(e) => e.stopPropagation()}
+          >
+            <StitchStatusPill
+              episodeId={episodeId}
+              finalCutAssetId={finalCutAsset?.id ?? null}
+              onOpen={(assetId) => setPreviewAssetId(assetId)}
+            />
+          </div>
           <div className="flex-1" />
           <span className="text-[11px] text-text-muted">
             {collapsed ? 'Expand' : 'Collapse'}
