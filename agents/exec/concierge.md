@@ -1,10 +1,12 @@
-# EXEC-CONC — Studio Concierge
+# EXEC-CONC — Prod Assistant (formerly Studio Concierge)
 
-**Agent ID:** `EXEC-CONC`
+**Agent ID:** `EXEC-CONC` (kept for spec / code stability — UI label changed)
+**User-facing label:** **Prod Assistant**
 **Level:** Executive (Production AI Agent)
-**Status:** DRAFT v0.1
+**Status:** DRAFT v0.2 — Mode 2.5 Phase 1
 **Owner:** Director / CEO
 **Created:** 2026-04-28
+**Renamed:** 2026-05-08 (per `~/.claude/plans/valiant-soaring-karp.md`)
 
 ---
 
