@@ -340,7 +340,7 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
       <Modal open={confirmCancel} onClose={() => setConfirmCancel(false)} title="Cancel VGEN?">
         <div className="space-y-4">
           <p className="text-sm text-text-secondary leading-relaxed">
-            The currently in-flight shot will finish (~$0.20 wasted on Veo 3).
+            The currently in-flight shot will finish (~$0.20 wasted on Veo 3.1).
             Subsequent shots will abort. You can re-trigger VGEN afterwards.
           </p>
           <div className="flex justify-end gap-2">

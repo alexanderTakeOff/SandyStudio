@@ -24,7 +24,15 @@
 
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Play,
   Pause,
@@ -86,6 +94,15 @@ export interface AnimaticPlayerProps {
   filter?: 'all' | 'review' | 'approved' | 'missing';
 }
 
+/**
+ * Imperative API exposed via ref. Used by EpisodeTimelineSection so post-
+ * regenerate the parent can move the playhead to the freshly-created shot
+ * (Phase A.1 directive — "new candidate must appear and be focused").
+ */
+export interface AnimaticPlayerHandle {
+  seekToShot: (shotId: string) => void;
+}
+
 interface ShotTime {
   shot: AnimaticShot;
   duration: number;       // effective (override applied)
@@ -113,14 +130,47 @@ function fmt(t: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AnimaticPlayer({
-  assetId,
-  contract,
-  onChanged,
-  vidShotAssets,
-  onCellClick,
-  filter = 'all',
-}: AnimaticPlayerProps) {
+// ── Cell colour palette (Phase A.1, "improve non-approved colorization") ────
+// Each non-final status gets its own colour so Director can scan the strip and
+// see the spread of states at a glance. `--accent-orange/--accent-purple/
+// --accent-info` may not be defined in every theme — fall back to literal
+// hex/oklch in the CSS var default.
+function cellPalette(
+  status: string | undefined,
+  kind: string | undefined,
+): { color: string; weight: number } {
+  switch (status) {
+    case 'APPROVED':
+    case 'LOCKED':
+      return { color: 'var(--accent-success, #22c55e)', weight: 600 };
+    case 'REVIEW':
+      return { color: 'var(--accent-warning, #f59e0b)', weight: 600 };
+    case 'REVISION':
+      return { color: 'var(--accent-orange, #f97316)', weight: 600 };
+    case 'REJECTED':
+      return { color: 'var(--accent-danger, #ef4444)', weight: 600 };
+    case 'NEEDS_HUMAN_TWEAK':
+      return { color: 'var(--accent-purple, #a855f7)', weight: 600 };
+    case 'DRAFT':
+      return { color: 'var(--accent-info, #38bdf8)', weight: 500 };
+    default:
+      // NONE / unknown — animatic image fallback or placeholder.
+      void kind; // reserved for future kind-specific tweaks
+      return { color: 'var(--text-muted)', weight: 400 };
+  }
+}
+
+export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerProps>(function AnimaticPlayer(
+  {
+    assetId,
+    contract,
+    onChanged,
+    vidShotAssets,
+    onCellClick,
+    filter = 'all',
+  },
+  ref,
+) {
   // Hybrid mode: resolver maps each shot_id to its current canonical cell
   // (mp4-canonical / mp4-review / image fallback / placeholder).
   const timelineCells: TimelineCell[] = useMemo(
@@ -153,9 +203,19 @@ export function AnimaticPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentT, setCurrentT] = useState(0); // seconds elapsed
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Inline preview <video> — explicit ref so useEffect can play/pause/seek it
+  // in lockstep with the master clock (Phase A.1 fix for two playback bugs:
+  // selected-cell + Play starts NEXT cell, and Pause/Resume jumps cells).
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const startTsRef = useRef<number>(0);
   const startTOffsetRef = useRef<number>(0); // where we resumed from
+  // Mirror the master clock in a ref so the inline-video sync effect can read
+  // currentT without re-running on every tick (state changes 60×/s during play).
+  const currentTRef = useRef<number>(0);
+  useEffect(() => {
+    currentTRef.current = currentT;
+  }, [currentT]);
 
   // ── Playback engine ──────────────────────────────────────────────────────
   const computeIndex = useCallback(
@@ -201,15 +261,17 @@ export function AnimaticPlayer({
 
   const handlePlay = useCallback(() => {
     if (isPlaying) return;
-    if (currentT >= total) {
+    // Read latest start position from the mutable ref so click-on-cell
+    // immediately followed by Play starts at the clicked cell, not at the
+    // stale React-state currentT (Phase A.1 fix #1).
+    const startFrom = startTOffsetRef.current;
+    if (startFrom >= total) {
       // Auto-reset on play after end.
       startTOffsetRef.current = 0;
       setCurrentT(0);
       setCurrentIndex(0);
       const audio = audioRef.current;
       if (audio) audio.currentTime = 0;
-    } else {
-      startTOffsetRef.current = currentT;
     }
     startTsRef.current = Date.now();
     const audio = audioRef.current;
@@ -221,7 +283,7 @@ export function AnimaticPlayer({
     }
     setIsPlaying(true);
     rafRef.current = requestAnimationFrame(tick);
-  }, [currentT, isPlaying, tick, total]);
+  }, [isPlaying, tick, total]);
 
   const handlePause = useCallback(() => {
     if (!isPlaying) return;
@@ -251,12 +313,29 @@ export function AnimaticPlayer({
       const clamped = Math.max(0, Math.min(t, total));
       startTOffsetRef.current = clamped;
       startTsRef.current = Date.now();
+      currentTRef.current = clamped; // keep ref in sync for video-sync effect
       setCurrentT(clamped);
       setCurrentIndex(computeIndex(clamped));
       const audio = audioRef.current;
       if (audio) audio.currentTime = clamped;
     },
     [computeIndex, total],
+  );
+
+  // ── Imperative API: seekToShot — caller (EpisodeTimelineSection) jumps
+  // playhead to a specific shot_id after a regenerate completes (Phase A.1
+  // directive — "new candidate must appear and focused").
+  useImperativeHandle(
+    ref,
+    () => ({
+      seekToShot: (shotId: string) => {
+        const idx = contract.shot_list.findIndex((s) => s.shot_id === shotId);
+        if (idx < 0) return;
+        const time = times[idx]?.cumStart ?? 0;
+        seekTo(time);
+      },
+    }),
+    [contract.shot_list, seekTo, times],
   );
 
   // ── Duration editing ─────────────────────────────────────────────────────
@@ -377,6 +456,39 @@ export function AnimaticPlayer({
   // and color-code the status pill.
   const currentCell = timelineCells[currentIndex];
   const isHybridMode = (vidShotAssets?.length ?? 0) > 0;
+  const currentCellStart = times[currentIndex]?.cumStart ?? 0;
+
+  // ── Inline-video sync (Phase A.1 fix for bugs 1+2) ──────────────────────
+  // The inline <video> only takes its `autoPlay` prop into account at MOUNT.
+  // Toggling isPlaying later does nothing — that was the playback bug. Drive
+  // it explicitly via ref. Also keep video.currentTime in lockstep with the
+  // master clock when isPlaying flips on, so resume after pause stays at the
+  // exact in-cell offset.
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    const isVideoCell =
+      currentCell?.kind === 'video-canonical' ||
+      currentCell?.kind === 'video-review';
+    if (!isVideoCell) return;
+    if (isPlaying) {
+      // Re-anchor video to the master clock's in-cell offset before play.
+      const inCellOffset = Math.max(0, currentTRef.current - currentCellStart);
+      try {
+        vid.currentTime = inCellOffset;
+      } catch {
+        /* seeking before metadata loaded — browser will seek when ready */
+      }
+      void vid.play().catch(() => {
+        /* autoplay rejected by browser policy — fall back to user gesture */
+      });
+    } else {
+      vid.pause();
+    }
+    // Re-run when isPlaying changes OR when currentCell switches to a new mp4
+    // (key change rebuilds the ref; but the effect needs to re-anchor).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, currentCell?.url]);
 
   return (
     <div className="space-y-3">
@@ -412,14 +524,16 @@ export function AnimaticPlayer({
       >
         {currentCell?.kind === 'video-canonical' || currentCell?.kind === 'video-review' ? (
           <video
+            ref={videoRef}
             key={currentCell.url ?? currentShot?.shot_id}
             src={currentCell.url ?? undefined}
             className="absolute inset-0 w-full h-full object-contain"
-            // Inline mp4 plays automatically when its cell is current. On
-            // pause / seek the parent state controls; here we just render.
-            autoPlay={isPlaying}
+            // Playback driven explicitly by the videoRef sync useEffect above.
+            // We don't set autoPlay here because the effect handles play/pause
+            // in lockstep with the master clock (bugs 1+2 fix).
             muted
             playsInline
+            preload="auto"
           />
         ) : currentShot && currentShot.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -556,12 +670,14 @@ export function AnimaticPlayer({
         />
       </div>
 
-      {/* Timeline strip */}
+      {/* Timeline strip — Phase A.1: numbers ~2× bigger, expanded color palette,
+          hover bubble tooltip showing shot_id · duration · status. Strip height
+          bumped 36→44 for the larger numbers; per-cell bubble shows on hover. */}
       <div className="space-y-1.5">
         <div className="text-[10px] uppercase tracking-wider text-text-muted">Timeline</div>
         <div
-          className="relative rounded-md border border-glass overflow-hidden"
-          style={{ height: 36, background: 'var(--bg-elevated)' }}
+          className="relative rounded-md border border-glass"
+          style={{ height: 44, background: 'var(--bg-elevated)' }}
         >
           {times.map((t, i) => {
             const widthPct = total > 0 ? (t.duration / total) * 100 : 0;
@@ -578,26 +694,15 @@ export function AnimaticPlayer({
                     : filter === 'missing'
                       ? cell?.status === 'NONE'
                       : true;
-            // Per Director 2026-05-06 — encode status in the cell-number
-            // colour itself (no extra dot). Cleaner read at a glance:
-            //   green  = APPROVED canonical mp4
-            //   yellow = REVIEW mp4 (tentative, not canonical)
-            //   muted  = animatic image fallback / no VGEN yet
-            const numberColor =
-              cell?.kind === 'video-canonical'
-                ? 'var(--accent-success, #22c55e)'
-                : cell?.kind === 'video-review'
-                  ? 'var(--accent-warning, #f59e0b)'
-                  : 'var(--text-muted)';
-            const numberWeight =
-              cell?.kind === 'video-canonical' || cell?.kind === 'video-review'
-                ? 600
-                : 400;
+            // Phase A.1 colour palette — every non-final state is visually
+            // distinct. Bold weight when there's a real mp4 row; lighter for
+            // missing / draft.
+            const palette = cellPalette(cell?.status, cell?.kind);
             return (
               <button
                 key={t.shot.shot_id}
                 onClick={() => seekTo(t.cumStart)}
-                className="absolute top-0 h-full transition-opacity"
+                className="group absolute top-0 h-full transition-opacity"
                 style={{
                   left: `${leftPct}%`,
                   width: `${widthPct}%`,
@@ -607,14 +712,36 @@ export function AnimaticPlayer({
                   borderRight: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
                   opacity: cellMatchesFilter ? 1 : 0.25,
                 }}
-                title={`${t.shot.shot_id} · ${t.duration.toFixed(1)}s · ${cell?.status ?? 'NONE'} · click to jump`}
               >
                 <div
-                  className="text-[10px] truncate px-0.5 leading-[36px] tabular-nums text-center"
-                  style={{ color: numberColor, fontWeight: numberWeight }}
+                  className="text-[18px] truncate px-0.5 leading-[44px] tabular-nums text-center"
+                  style={{ color: palette.color, fontWeight: palette.weight }}
                 >
                   {i + 1}
                 </div>
+                {/* Hover bubble (shot_id · duration · status). Pure-CSS via
+                    Tailwind group-hover so no JS state per cell. */}
+                <span
+                  className="pointer-events-none absolute z-30 left-1/2 -translate-x-1/2 -top-1 -translate-y-full whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-mono opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{
+                    background: 'var(--panel-glass-strong-bg, rgba(20,20,20,0.92))',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border-glass)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    backdropFilter: 'blur(6px)',
+                  }}
+                  role="tooltip"
+                >
+                  <span style={{ color: palette.color, fontWeight: 600 }}>
+                    {cell?.status ?? 'NONE'}
+                  </span>
+                  <span className="opacity-70">
+                    {' · '}
+                    {t.shot.shot_id}
+                    {' · '}
+                    {t.duration.toFixed(1)}s
+                  </span>
+                </span>
               </button>
             );
           })}
@@ -774,4 +901,5 @@ export function AnimaticPlayer({
       )}
     </div>
   );
-}
+});
+AnimaticPlayer.displayName = 'AnimaticPlayer';
