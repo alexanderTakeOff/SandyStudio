@@ -185,21 +185,30 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged }: AssetPr
             driveWebViewUrl={asset.drive_web_view_url}
             stagingPath={asset.staging_path}
             editable={asset.status !== 'LOCKED'}
-            onChanged={() => void mutate()}
+            onChanged={() => {
+              void mutate();
+              onAssetChanged?.();
+            }}
             onRegenerated={onRegenerated}
           />
           {asset.status === 'REVIEW' && (
             <PilotApproveButtons
               assetId={asset.id}
               variant="review"
-              onChanged={() => void mutate()}
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
             />
           )}
           {asset.status === 'APPROVED' && (
             <PilotApproveButtons
               assetId={asset.id}
               variant="approved"
-              onChanged={() => void mutate()}
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
             />
           )}
         </>
