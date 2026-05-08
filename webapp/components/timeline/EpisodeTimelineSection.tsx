@@ -318,6 +318,7 @@ export function EpisodeTimelineSection({
               filter={filter}
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
+              animaticStatus={animaticAsset.status}
             />
           </div>
         )}
