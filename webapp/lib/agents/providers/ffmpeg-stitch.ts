@@ -65,13 +65,64 @@ export class FfmpegStitchError extends Error {
   }
 }
 
-/** Probe `ffmpeg -version` to confirm the binary is on PATH. */
-export async function ffmpegInstalled(): Promise<boolean> {
+/**
+ * Resolve the ffmpeg binary path. Strategy:
+ *   1. `FFMPEG_PATH` env var — explicit override.
+ *   2. Plain `ffmpeg` — works when binary is on PATH (Linux/macOS, Windows
+ *      with shell that inherited the right PATH).
+ *   3. Windows winget canonical install path — covers Director's setup
+ *      where the user's persistent PATH includes winget but the spawning
+ *      Node process's stripped-down env didn't inherit it.
+ *   4. Common Linux/macOS install locations.
+ *
+ * Returns the FIRST path whose `-version` probe succeeds, or null if none.
+ */
+async function probeFfmpegBinary(candidate: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const proc = spawn('ffmpeg', ['-version'], { stdio: 'ignore' });
+    const proc = spawn(candidate, ['-version'], { stdio: 'ignore' });
     proc.on('error', () => resolve(false));
     proc.on('exit', (code) => resolve(code === 0));
   });
+}
+
+let cachedFfmpegPath: string | null | undefined = undefined;
+
+export async function resolveFfmpegPath(): Promise<string | null> {
+  if (cachedFfmpegPath !== undefined) return cachedFfmpegPath;
+
+  const envPath = process.env.FFMPEG_PATH?.trim();
+  const candidates: string[] = [];
+  if (envPath) candidates.push(envPath);
+  candidates.push('ffmpeg');
+  // Windows winget canonical install — Gyan.FFmpeg full build.
+  if (process.platform === 'win32') {
+    const userProfile =
+      process.env.USERPROFILE ?? process.env.HOMEPATH ?? null;
+    if (userProfile) {
+      // Glob-ish: any version directory under WinGet/Packages.
+      // We try the well-known 8.1.1 layout first; fall through is fine since
+      // the env override path covers other versions.
+      candidates.push(
+        `${userProfile}\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffmpeg.exe`,
+      );
+    }
+  }
+  // Common Unix install locations.
+  candidates.push('/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg');
+
+  for (const cand of candidates) {
+    if (await probeFfmpegBinary(cand)) {
+      cachedFfmpegPath = cand;
+      return cand;
+    }
+  }
+  cachedFfmpegPath = null;
+  return null;
+}
+
+/** Probe `ffmpeg -version` to confirm the binary is on PATH. */
+export async function ffmpegInstalled(): Promise<boolean> {
+  return (await resolveFfmpegPath()) !== null;
 }
 
 /**
