@@ -33,6 +33,14 @@ export interface AssetPreviewProps {
   assetId: string;
   /** Pass-through for VID-shot regenerate completion (Phase A.1 auto-focus). */
   onRegenerated?: (shotId: string, newAssetId: string) => void;
+  /**
+   * Called whenever an action inside this preview changes asset state
+   * (approve / reject / regenerate / demote). Lets the parent invalidate
+   * sibling SWR caches — e.g. EpisodeTimelineSection's `/api/episodes/[id]`
+   * — so the timeline cell colour updates instantly. Phase A.1 bug fix
+   * 2026-05-08.
+   */
+  onAssetChanged?: () => void;
 }
 
 interface AssetRow {
