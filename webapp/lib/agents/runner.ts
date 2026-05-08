@@ -35,7 +35,12 @@ import {
   getStoryboardShotById,
   type StoryboardShotV2,
 } from '../api/vgen-shot-helpers';
-import { isAnimaticV1 } from '../api/animatic-shotlist';
+import {
+  getAudioTracks,
+  isAnimaticV1,
+  type AnimaticContract,
+} from '../api/animatic-shotlist';
+import { ffmpegStitchEpisode } from './providers/ffmpeg-stitch';
 import type { ResolvedProvider } from './provider-resolver';
 import { getAgent } from './registry';
 import { runScreenwriter, ScreenwriterError } from './runners/screenwriter';
@@ -75,7 +80,9 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
 
   const { data: assets, error: asErr } = await supabase
     .from('assets')
-    .select('id, file_type, filename, status, drive_path, staging_path, version, content')
+    .select(
+      'id, file_type, filename, status, drive_path, staging_path, drive_web_view_url, version, content, metadata',
+    )
     .eq('episode_id', episodeId)
     .eq('status', 'APPROVED');
   if (asErr) {
@@ -859,6 +866,180 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       };
     }
 
+    case 'EXEC-STITCH': {
+      // Phase A.2 PR β (2026-05-08) — assemble per-shot APPROVED VID-shot
+      // mp4s + APPROVED music into one final-cut mp4 via local ffmpeg.
+      //
+      // Requirements:
+      //   - APPROVED VID-animatic with v1 contract (defines shot order +
+      //     duration_seconds + audio_tracks).
+      //   - At least one APPROVED VID-shot per shot_id (auto-COMPLETE branch
+      //     in approve/route.ts ensures this is the case before firing the
+      //     event).
+      //   - System ffmpeg on PATH. Without it, runner returns a clean error
+      //     (FfmpegStitchError kind=ffmpeg_not_installed).
+      //
+      // Output asset:
+      //   file_type='VID-final_cut'
+      //   metadata.shot_ids[] in storyboard order
+      //   metadata.music_asset_id (when present)
+      //   metadata.ffmpeg_command (audit trail)
+      if (!supabase) throw new Error('EXEC-STITCH requires supabase in runArgs');
+
+      // 1. Resolve animatic v1 contract.
+      const upstream = (inputs.upstream_assets ?? []) as Array<{
+        id: string;
+        file_type: string;
+        status?: string;
+        metadata?: unknown;
+        drive_path?: string | null;
+        staging_path?: string | null;
+        drive_web_view_url?: string | null;
+      }>;
+      const animaticAsset = upstream.find(
+        (a) =>
+          a.file_type === 'VID-animatic' &&
+          a.status === 'APPROVED' &&
+          isAnimaticV1(a.metadata),
+      );
+      if (!animaticAsset) {
+        throw new Error('EXEC-STITCH: no APPROVED VID-animatic with animatic@v1 found in upstream');
+      }
+      const v1 = (animaticAsset.metadata as { animatic_v1: AnimaticContract }).animatic_v1;
+      const shotList = v1.shot_list ?? [];
+      if (shotList.length === 0) {
+        throw new Error('EXEC-STITCH: animatic shot_list is empty');
+      }
+
+      // 2. Per shot_id, fetch the latest APPROVED VID-shot row from DB.
+      const { data: vidShotRows, error: rowsErr } = await supabase
+        .from('assets')
+        .select('id,file_type,status,version,created_at,drive_path,staging_path,drive_web_view_url,metadata')
+        .eq('episode_id', episodeId)
+        .like('file_type', 'VID-shot%')
+        .eq('status', 'APPROVED');
+      if (rowsErr) throw new Error(`EXEC-STITCH: fetch VID-shot rows failed: ${rowsErr.message}`);
+
+      // Group by shot_id, pick latest by version → created_at.
+      const byShotId = new Map<string, { id: string; version: number; created_at: string; url: string | null }>();
+      for (const row of (vidShotRows ?? []) as Array<{ id: string; version?: number | null; created_at: string; drive_path: string | null; staging_path: string | null; drive_web_view_url: string | null; metadata?: unknown }>) {
+        const meta = (row.metadata as { shot_id?: unknown } | null) ?? {};
+        const sid = typeof meta.shot_id === 'string' ? meta.shot_id : null;
+        if (!sid) continue;
+        const url = row.drive_path ?? row.staging_path ?? row.drive_web_view_url ?? null;
+        const candidate = {
+          id: row.id,
+          version: row.version ?? 0,
+          created_at: row.created_at,
+          url,
+        };
+        const existing = byShotId.get(sid);
+        if (!existing) {
+          byShotId.set(sid, candidate);
+        } else if (
+          candidate.version > existing.version ||
+          (candidate.version === existing.version && candidate.created_at > existing.created_at)
+        ) {
+          byShotId.set(sid, candidate);
+        }
+      }
+
+      // Walk shot_list in order → assemble inputs.
+      const orderedShots: Array<{ shotId: string; assetId: string; url: string }> = [];
+      const missing: string[] = [];
+      for (const shot of shotList) {
+        const found = byShotId.get(shot.shot_id);
+        if (!found || !found.url) {
+          missing.push(shot.shot_id);
+          continue;
+        }
+        orderedShots.push({ shotId: shot.shot_id, assetId: found.id, url: found.url });
+      }
+      if (missing.length > 0) {
+        throw new Error(`EXEC-STITCH: missing APPROVED VID-shot for shot_ids: ${missing.join(', ')}`);
+      }
+
+      // 3. Resolve music URL via getAudioTracks (handles legacy music_url too).
+      const audioTracks = getAudioTracks(v1);
+      const musicTrack = audioTracks.find((t) => t.layer === 'music') ?? null;
+
+      // 4. Download all inputs to memory (ffmpeg-stitch helper writes them to
+      // tmpdir internally).
+      async function fetchBytes(url: string): Promise<Buffer> {
+        // Local /staging/ URLs are served by Next.js dev — fetch via http.
+        // Drive https URLs work directly. Either way fetch() handles it.
+        const fullUrl = url.startsWith('/') ? `http://localhost:3000${url}` : url;
+        const res = await fetch(fullUrl);
+        if (!res.ok) throw new Error(`fetch ${fullUrl} → ${res.status}`);
+        const ab = await res.arrayBuffer();
+        return Buffer.from(ab);
+      }
+
+      const shotMp4Bytes: Array<{ shotId: string; bytes: Buffer }> = [];
+      for (const s of orderedShots) {
+        const bytes = await fetchBytes(s.url);
+        shotMp4Bytes.push({ shotId: s.shotId, bytes });
+      }
+
+      let musicInput: { bytes: Buffer; ext: 'mp3' | 'wav' | 'm4a' | 'aac' } | undefined;
+      let musicAssetId: string | null = null;
+      if (musicTrack?.url) {
+        const bytes = await fetchBytes(musicTrack.url);
+        const fname = musicTrack.filename ?? musicTrack.url;
+        const lower = fname.toLowerCase();
+        const ext: 'mp3' | 'wav' | 'm4a' | 'aac' =
+          lower.endsWith('.wav')
+            ? 'wav'
+            : lower.endsWith('.m4a')
+              ? 'm4a'
+              : lower.endsWith('.aac')
+                ? 'aac'
+                : 'mp3';
+        musicInput = { bytes, ext };
+        // Locate the AUD-music asset row that backs this URL (best-effort).
+        const audMusic = upstream.find(
+          (a) =>
+            a.file_type === 'AUD-music' &&
+            (a.drive_path === musicTrack.url || a.staging_path === musicTrack.url),
+        );
+        if (audMusic) musicAssetId = audMusic.id;
+      }
+
+      // 5. Run ffmpeg.
+      const stitched = await ffmpegStitchEpisode({
+        shotMp4Bytes,
+        ...(musicInput ? { music: musicInput } : {}),
+      });
+
+      // 6. Persist.
+      const persisted = await persistBinary({
+        base64: stitched.mp4Base64,
+        ext: 'mp4',
+        driveFilename: `${episodeCode ?? 'SS-unknown'}-VID-final_cut-v01-DRAFT.mp4`,
+        localHint: `final-cut-${episodeId}`,
+        episodeCode,
+        supabase,
+      });
+
+      // Cost stays $0 (local ffmpeg, no API call). Time-on-CPU is the cost
+      // signal; we record it in metadata for future telemetry.
+      return {
+        outputKind: 'video-mp4',
+        result: {
+          asset_paths: [persisted.browserUrl],
+          cost_usd: 0,
+          metadata: metadataFromPersisted(persisted, {
+            agent_id: agentId,
+            shot_ids: orderedShots.map((s) => s.shotId),
+            music_asset_id: musicAssetId,
+            ffmpeg_command: stitched.ffmpegCommand,
+            size_bytes: stitched.sizeBytes,
+            assembled_at: new Date().toISOString(),
+          }),
+        },
+      };
+    }
+
     case 'EXEC-THUMB': {
       if (provider?.providerId === 'gpt-image-1') {
         if (!supabase) throw new Error('EXEC-THUMB real path requires supabase in runArgs');
@@ -984,6 +1165,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-EDIT': 'VID-animatic', // animatic produces a video asset; spec is metadata
   'EXEC-VGEN': 'VID-shot',
   'EXEC-MGEN': 'AUD-music',
+  'EXEC-STITCH': 'VID-final_cut',
   'EXEC-COPY': 'SPC-metadata',
   'EXEC-THUMB': 'IMG-thumbnail',
   'EXEC-PUB': 'REV-publish_log',

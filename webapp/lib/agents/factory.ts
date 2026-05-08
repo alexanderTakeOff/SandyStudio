@@ -60,6 +60,7 @@ const EXPECTED_RUNTIME_SECONDS: Partial<Record<AgentId, number>> = {
   'EXEC-EDIT':  30,   // slideshow assembly (no LLM, just JSON build)
   'EXEC-VGEN':  150,  // Veo per-shot
   'EXEC-MGEN':  60,   // Music gen (mock for now)
+  'EXEC-STITCH': 60,  // Local ffmpeg concat: 13 shots × ~4s + music = ~60s
   'EXEC-COPY':  30,   // Haiku, short output
   'EXEC-THUMB': 45,   // gpt-image-1 single
   'EXEC-PUB':   20,   // YouTube upload mock
@@ -76,6 +77,7 @@ const FILE_TYPE_HINT_BY_AGENT: Partial<Record<AgentId, string>> = {
   'EXEC-EDIT':  'VID-animatic',
   'EXEC-VGEN':  'VID-shot',
   'EXEC-MGEN':  'AUD-music',
+  'EXEC-STITCH': 'VID-final_cut',
   'EXEC-COPY':  'SPC-metadata',
   'EXEC-THUMB': 'IMG-thumbnail',
   'EXEC-PUB':   'REV-publish_log',

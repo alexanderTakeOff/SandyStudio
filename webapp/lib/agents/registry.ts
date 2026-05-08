@@ -174,6 +174,27 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: true,
   },
 
+  // EXEC-STITCH (Phase A.2 PR β, 2026-05-08): assembles 13 APPROVED VID-shot
+  // mp4s + APPROVED music track into one final episode mp4 via local ffmpeg.
+  // Per specs/system/assembly_tool.md §D-002 (APPROVED) ffmpeg is the chosen
+  // tool. The agent shells out to system `ffmpeg` (no npm dep). Director
+  // must have ffmpeg installed in PATH; missing-ffmpeg failure is reported
+  // explicitly by the runner.
+  'EXEC-STITCH': {
+    id: 'EXEC-STITCH',
+    code: 'exec-stitch',
+    display_ru: 'Сборщик эпизода',
+    display_en: 'Episode Stitcher',
+    emoji: '🎬',
+    category: 'media',
+    model: 'haiku', // unused — runner uses local ffmpeg, not LLM
+    skills: ['video-editing'],
+    next_agent: null, // EXEC-PUB picks up the final cut from approve gate
+    governance: 'B',
+    prompt_file: 'episode_stitcher.md',
+    has_inngest_function: true,
+  },
+
   'EXEC-COPY': {
     id: 'EXEC-COPY',
     code: 'exec-copy',

@@ -18,6 +18,7 @@ import {
   execVgenSingleShot,
 } from './functions/exec-vgen';
 import { execMgenGenerateMusic } from './functions/exec-mgen';
+import { execStitchAssembleEpisode } from './functions/exec-stitch';
 import { execCopyWriteMetadata } from './functions/exec-copy';
 import { execThumbGenerateThumbnail } from './functions/exec-thumb';
 import { execPubPublish } from './functions/exec-pub';
@@ -39,6 +40,7 @@ export const functions = [
   execVgenFanoutTrigger,
   execVgenSingleShot,
   execMgenGenerateMusic,
+  execStitchAssembleEpisode,
   execCopyWriteMetadata,
   execThumbGenerateThumbnail,
   execPubPublish,
