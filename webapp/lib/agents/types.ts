@@ -44,6 +44,7 @@ export type AgentCode =
   | 'exec-edit'
   | 'exec-vgen'
   | 'exec-mgen'
+  | 'exec-stitch'
   | 'exec-thumb'
   | 'exec-copy'
   | 'exec-pub'
