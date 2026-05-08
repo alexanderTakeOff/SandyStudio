@@ -1015,7 +1015,21 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       let musicInput: { bytes: Buffer; ext: 'mp3' | 'wav' | 'm4a' | 'aac' } | undefined;
       let musicAssetId: string | null = null;
       if (musicTrack?.url) {
-        const bytes = await fetchBytes(musicTrack.url);
+        // Locate the AUD-music asset row to get its staging_path for direct
+        // FS read (same middleware-bypass rationale as the shot loader).
+        const audMusic = upstream.find(
+          (a) =>
+            a.file_type === 'AUD-music' &&
+            (a.drive_path === musicTrack.url || a.staging_path === musicTrack.url),
+        ) as { id?: string; staging_path?: string | null } | undefined;
+        const audMeta = (
+          (audMusic as unknown as { metadata?: { staging_path?: unknown } } | undefined)
+            ?.metadata ?? {}
+        ) as { staging_path?: unknown };
+        const audStagingPath =
+          audMusic?.staging_path ??
+          (typeof audMeta.staging_path === 'string' ? audMeta.staging_path : null);
+        const bytes = await loadBytes(audStagingPath, musicTrack.url);
         const fname = musicTrack.filename ?? musicTrack.url;
         const lower = fname.toLowerCase();
         const ext: 'mp3' | 'wav' | 'm4a' | 'aac' =
@@ -1027,13 +1041,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
                 ? 'aac'
                 : 'mp3';
         musicInput = { bytes, ext };
-        // Locate the AUD-music asset row that backs this URL (best-effort).
-        const audMusic = upstream.find(
-          (a) =>
-            a.file_type === 'AUD-music' &&
-            (a.drive_path === musicTrack.url || a.staging_path === musicTrack.url),
-        );
-        if (audMusic) musicAssetId = audMusic.id;
+        if (audMusic?.id) musicAssetId = audMusic.id;
       }
 
       // 5. Run ffmpeg.
