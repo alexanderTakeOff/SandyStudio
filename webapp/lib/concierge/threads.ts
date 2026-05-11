@@ -97,11 +97,11 @@ export async function endThread(
  * accumulated content after the stream closes — not on every chunk.
  */
 export async function persistTurn(
-  client: SupabaseClient,
+  client: Client,
   threadId: string,
   turn: ConciergeTurnInput,
 ): Promise<ConciergeTurnRow> {
-  const { data, error } = await (client as LooseClient)
+  const { data, error } = await client
     .from(TURNS_TABLE)
     .insert({
       thread_id: threadId,
