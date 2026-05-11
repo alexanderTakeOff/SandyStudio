@@ -20,8 +20,19 @@ interface StudioShellProps {
 }
 
 export function StudioShell({ children, governanceMode, systemMode }: StudioShellProps) {
+  // The Prod Assistant panel writes --pa-pad-left / --pa-pad-right on the
+  // document root via useEffect (see ConciergePanel.tsx). The wrapper here
+  // reserves space for the panel via padding so the rest of the UI shrinks
+  // instead of being overlapped. Falls back to 0 when the panel is closed
+  // or the vars are unset (initial server render).
   return (
-    <div className="relative min-h-screen flex">
+    <div
+      className="relative min-h-screen flex transition-[padding] duration-200 ease-out"
+      style={{
+        paddingLeft: 'var(--pa-pad-left, 0px)',
+        paddingRight: 'var(--pa-pad-right, 0px)',
+      }}
+    >
       {/* Notification dot keyframes — global once per shell */}
       <NotificationDotStyles />
 
@@ -37,7 +48,7 @@ export function StudioShell({ children, governanceMode, systemMode }: StudioShel
         {children}
       </div>
 
-      {/* z-30 — Concierge floating panel */}
+      {/* z-30 — Prod Assistant docked panel (writes the CSS vars above) */}
       <ConciergePanel />
     </div>
   );
