@@ -103,8 +103,19 @@ export function checkVerbalApproval(
     };
   }
 
-  // Walk backwards through the window — most recent turn first.
+  // Walk backwards through the window — most recent turn first. A rejection
+  // in this window invalidates any earlier approval (so "stop" / "не надо"
+  // cancels). Otherwise the most recent approval wins, even when later
+  // neutral utterances (questions, complaints, frustration) come after it.
+  //
+  // Earlier versions BROKE on the first neutral director turn — but that
+  // caused this failure mode: Director says "одобряю", PA delays answering,
+  // Director then asks "где результат?", and the gate refused because the
+  // latest utterance was neutral. Director feedback 2026-05-11:
+  //   "Я не вижу никакого действия — что нужно от меня?"
+  // Fix: scan the full window; neutral turns no longer reset state.
   const start = Math.max(0, turns.length - windowSize);
+  let foundApproval: { i: number; text: string } | null = null;
   for (let i = turns.length - 1; i >= start; i--) {
     const turn = turns[i];
     if (turn.role !== 'director') continue;
@@ -115,22 +126,27 @@ export function checkVerbalApproval(
     if (isRejection(text)) {
       return {
         approved: false,
-        reason: `Director's most recent input ("${truncate(text, 80)}") signals rejection or hesitation. Ask for explicit re-confirmation.`,
+        reason: `Director's recent input ("${truncate(text, 80)}") signals rejection or hesitation. Ask for explicit re-confirmation.`,
         matchedTurnIndex: i,
       };
     }
 
     if (isApproval(text)) {
-      return {
-        approved: true,
-        reason: `Director said: "${truncate(text, 80)}" — counted as verbal approval.`,
-        matchedTurnIndex: i,
-      };
+      foundApproval = { i, text };
+      // Don't return yet — keep scanning to ensure no later (= already-seen,
+      // since we're going backwards) rejection cancelled it. With reverse
+      // iteration the rejection would have triggered the early return above.
+      // So a found approval here is durable.
+      break;
     }
+  }
 
-    // The last director utterance is neither approval nor rejection — stop
-    // scanning. Don't carry over an older approval through a topic change.
-    break;
+  if (foundApproval) {
+    return {
+      approved: true,
+      reason: `Director said: "${truncate(foundApproval.text, 80)}" — counted as verbal approval.`,
+      matchedTurnIndex: foundApproval.i,
+    };
   }
 
   return {
