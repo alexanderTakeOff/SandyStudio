@@ -107,6 +107,41 @@ interface CaptureInput {
   worktreeRoot: string;
 }
 
+interface CaptureSimpleInput {
+  /** Marker kind used for header tag ('paon' | 'paoff' | 'ambient'). */
+  kind: FeedbackMarker;
+  /** Cleaned content shown in the log entry. */
+  content: string;
+  threadId: string;
+  episodeId: string | null;
+  worktreeRoot: string;
+}
+
+/**
+ * Append a single-line feedback entry — used for toggle events and
+ * ambient-captured Director utterances while ===PAON=== is active.
+ * No DB read, no turn bundle.
+ */
+export async function captureSimple(input: CaptureSimpleInput): Promise<CaptureResult> {
+  const { kind, content, threadId, episodeId, worktreeRoot } = input;
+  const logDir = path.join(worktreeRoot, '.claude');
+  const logPath = path.join(logDir, 'pa-feedback.log');
+  const stamp = new Date().toISOString();
+  const tag = kind.toUpperCase();
+  const lines = [
+    `===== !${tag} ${stamp} thread=${threadId.slice(0, 8)} episode=${episodeId ?? '-'} =====`,
+  ];
+  if (content) lines.push(content);
+  lines.push('===== END =====', '');
+  try {
+    await mkdir(logDir, { recursive: true });
+    await appendFile(logPath, lines.join('\n') + '\n', 'utf8');
+  } catch (err) {
+    return { ok: false, logPath, turnCount: 0, error: err instanceof Error ? err.message : String(err) };
+  }
+  return { ok: true, logPath, turnCount: 0 };
+}
+
 interface CaptureResult {
   ok: boolean;
   /** Absolute path to the file the entry was appended to. */
