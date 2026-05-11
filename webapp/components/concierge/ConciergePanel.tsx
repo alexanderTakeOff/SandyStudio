@@ -277,6 +277,10 @@ export function ConciergePanel() {
       return;
     }
     if (listening) {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
       recognitionRef.current?.stop();
       setListening(false);
       return;
