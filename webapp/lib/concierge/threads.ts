@@ -13,7 +13,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@/lib/supabase/types.gen';
+import type { Database, Json } from '@/lib/supabase/types.gen';
 import type {
   ConciergeMode,
   ConciergeThreadRow,
