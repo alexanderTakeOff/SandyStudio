@@ -23,7 +23,53 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/supabase/types.gen';
 import type { ConciergeTurnRow } from './types';
 
-export type FeedbackMarker = 'todo' | 'fb';
+export type FeedbackMarker = 'todo' | 'fb' | 'paon' | 'paoff' | 'ambient';
+
+export const PAON_PATTERN = /===\s*PAON\s*===/i;
+export const PAOFF_PATTERN = /===\s*PAOFF\s*===/i;
+
+/** Strip toggle markers from text so the cleaned form can be logged / shown. */
+export function stripToggleMarkers(text: string): string {
+  return text.replace(PAON_PATTERN, '').replace(PAOFF_PATTERN, '').trim();
+}
+
+/**
+ * Detect ===PAON=== / ===PAOFF=== anywhere in the message and report which
+ * one (if any). When both appear, OFF wins (safer).
+ */
+export function detectToggle(text: string): 'on' | 'off' | null {
+  const off = PAOFF_PATTERN.test(text);
+  const on = PAON_PATTERN.test(text);
+  if (off) return 'off';
+  if (on) return 'on';
+  return null;
+}
+
+/**
+ * Determine the current capture state by walking back through the most
+ * recent director turns until a toggle marker is found. Returns true iff
+ * the latest toggle (across PRIOR turns) was PAON. Defaults to false.
+ *
+ * Pass the CURRENT incoming message separately — this only inspects
+ * already-persisted history.
+ */
+export async function readCaptureState(
+  supabase: SupabaseClient<Database>,
+  threadId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('concierge_turns')
+    .select('content,event_type,role,created_at')
+    .eq('thread_id', threadId)
+    .eq('role', 'director')
+    .order('created_at', { ascending: false })
+    .limit(60);
+  for (const t of data ?? []) {
+    if (PAOFF_PATTERN.test(t.content)) return false;
+    if (PAON_PATTERN.test(t.content)) return true;
+  }
+  return false;
+}
 
 export interface ParsedMarker {
   kind: FeedbackMarker;
