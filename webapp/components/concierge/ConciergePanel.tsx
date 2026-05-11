@@ -150,7 +150,7 @@ export function ConciergePanel() {
   const recognitionRef = useRef<SpeechRec | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Hydrate history + thread id + TTS preference.
+  // Hydrate history + thread id + TTS preference + panel side / width.
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
@@ -164,7 +164,23 @@ export function ConciergePanel() {
       const tts = localStorage.getItem(TTS_KEY);
       if (tts === '1') setTtsEnabled(true);
     } catch { /* ignore */ }
+    try {
+      const s = localStorage.getItem(SIDE_KEY);
+      if (s === 'left' || s === 'right') setSide(s);
+    } catch { /* ignore */ }
+    try {
+      const w = parseInt(localStorage.getItem(WIDTH_KEY) ?? '', 10);
+      if (Number.isFinite(w) && w >= 320 && w <= 900) setPanelWidth(w);
+    } catch { /* ignore */ }
   }, []);
+
+  // Persist panel side / width.
+  useEffect(() => {
+    try { localStorage.setItem(SIDE_KEY, side); } catch { /* ignore */ }
+  }, [side]);
+  useEffect(() => {
+    try { localStorage.setItem(WIDTH_KEY, String(panelWidth)); } catch { /* ignore */ }
+  }, [panelWidth]);
 
   // Stop TTS on panel close so the Director isn't followed by speech.
   useEffect(() => {
