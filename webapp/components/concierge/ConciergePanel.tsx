@@ -28,7 +28,12 @@ interface Message {
 const STORAGE_KEY = 'sandystudio.prodassistant.history';
 const THREAD_KEY = 'sandystudio.prodassistant.threadId';
 const TTS_KEY = 'sandystudio.prodassistant.ttsEnabled';
+const SIDE_KEY = 'sandystudio.prodassistant.side';
+const WIDTH_KEY = 'sandystudio.prodassistant.width';
 const MAX_HISTORY_TURNS = 20;
+
+/** Silence tolerance for continuous mic. Director wanted ≥5s for thinking pauses. */
+const MIC_SILENCE_TIMEOUT_MS = 5500;
 
 // Web Speech API typing — minimal, broadly compatible.
 interface SpeechRecErrorEvent {
