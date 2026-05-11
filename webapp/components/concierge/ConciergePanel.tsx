@@ -547,10 +547,10 @@ export function ConciergePanel() {
             >
               {m.role === 'assistant' ? (
                 <div className="prose prose-invert prose-sm max-w-none">
-                  <ReactMarkdown>{m.content || '…'}</ReactMarkdown>
+                  <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
                 </div>
               ) : (
-                m.content
+                <div className="whitespace-pre-wrap">{m.content}</div>
               )}
             </div>
           ))}
