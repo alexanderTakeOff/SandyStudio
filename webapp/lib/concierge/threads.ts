@@ -127,11 +127,11 @@ export async function persistTurn(
  * LLM with conversation history when the page reloads.
  */
 export async function loadRecentTurns(
-  client: SupabaseClient,
+  client: Client,
   threadId: string,
   limit: number,
 ): Promise<ConciergeTurnRow[]> {
-  const { data, error } = await (client as LooseClient)
+  const { data, error } = await client
     .from(TURNS_TABLE)
     .select('*')
     .eq('thread_id', threadId)
