@@ -261,9 +261,57 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
+    const slug = args.section === 'general_idea' ? 'main' : (args.slug ?? 'main');
+    const fileType = args.section === 'general_idea'
+      ? 'SBL-general_idea'
+      : `SBL-${args.section}_${slug}`;
+
+    // Director directive 2026-05-11: do NOT bump a fresh DRAFT every time —
+    // overwrite the latest DRAFT in place. Only create a new version when
+    // the most recent existing version is LOCKED / APPROVED / REJECTED.
+    const { data: existing } = await ctx.supabase
+      .from('assets')
+      .select('id,status,version,filename')
+      .eq('series_id', args.seriesId)
+      .eq('file_type', fileType)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const EDITABLE_STATUSES = new Set(['DRAFT', 'REVIEW', 'REVISION']);
+    if (existing && EDITABLE_STATUSES.has(existing.status)) {
+      // Overwrite in place via PUT /api/assets/[id]/content.
+      const resp = await fetch(
+        `${ctx.appOrigin.replace(/\/$/, '')}/api/assets/${encodeURIComponent(existing.id)}/content`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+          },
+          body: JSON.stringify({ content: args.content }),
+        },
+      );
+      let payload: unknown = null;
+      try { payload = await resp.json(); } catch { /* */ }
+      if (!resp.ok) {
+        const message =
+          payload && typeof payload === 'object' && 'error' in payload
+            ? String((payload as { error: unknown }).error)
+            : `content overwrite failed (HTTP ${resp.status})`;
+        return fail(message, `http_${resp.status}`);
+      }
+      return ok(
+        payload,
+        `Bible ${args.section}/${slug} v${existing.version} (${existing.status}) overwritten in place. No new version created.`,
+      );
+    }
+
+    // Latest version is LOCKED/APPROVED/REJECTED (or there's nothing yet) —
+    // create a fresh DRAFT version via POST /api/series/[id]/bible.
     const body: Record<string, unknown> = {
       section: args.section,
-      slug: args.section === 'general_idea' ? 'main' : (args.slug ?? 'main'),
+      slug,
       content: args.content,
     };
     if (args.description) body.description = args.description;
@@ -288,7 +336,10 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
           : `setBibleContent failed (HTTP ${resp.status})`;
       return fail(message, `http_${resp.status}`);
     }
-    return ok(payload, `Bible ${args.section}/${body.slug} updated as a new DRAFT version. Director can approve it from Inbox or via approveAsset.`);
+    return ok(
+      payload,
+      `Bible ${args.section}/${slug} created as a new DRAFT version (previous was ${existing?.status ?? 'absent'}).`,
+    );
   },
 };
 
