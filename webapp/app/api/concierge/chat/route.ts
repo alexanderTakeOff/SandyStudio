@@ -425,6 +425,22 @@ export async function POST(req: Request) {
           } catch {
             /* swallow secondary persistence failures */
           }
+          // While ambient capture is active for this thread, also stream
+          // the assistant final reply to the feedback log so the engineer
+          // sees BOTH sides of the conversation in real time.
+          if (captureActive) {
+            try {
+              await captureSimple({
+                kind: 'ambient',
+                content: `[ASSISTANT] ${assistantBuffer}`,
+                threadId,
+                episodeId,
+                worktreeRoot,
+              });
+            } catch {
+              /* never throw inside finally */
+            }
+          }
         }
       }
     },
