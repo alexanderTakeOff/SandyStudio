@@ -12,8 +12,7 @@
 // without a schema migration.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@/lib/supabase/types.gen';
+import type { createSupabaseServerClient } from '@/lib/supabase/server';
 import type {
   ConciergeMode,
   ConciergeThreadRow,
@@ -21,10 +20,12 @@ import type {
   ConciergeTurnRow,
 } from './types';
 
-// Canonical Supabase client shape per `lib/api/auth.ts` (single generic).
-// types.gen.ts now includes concierge_threads / concierge_turns from
-// migration 0025 so the insert/update payloads are fully typed.
-type Client = SupabaseClient<Database>;
+// Pin to the actual return type of `createSupabaseServerClient` so every
+// generic slot (Database, SchemaName, Schema, …) is resolved identically
+// to what the chat route gets back from the helper. types.gen.ts now
+// includes concierge_threads / concierge_turns from migration 0025 so
+// insert/update payloads are fully typed.
+type Client = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 const THREADS_TABLE = 'concierge_threads' as const;
 const TURNS_TABLE = 'concierge_turns' as const;
