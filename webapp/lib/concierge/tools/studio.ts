@@ -60,7 +60,7 @@ export const getStudioStatus: Tool<GetStudioStatusArgs> = {
           .eq('status', 'REVIEW'),
         supabase
           .from('activity_events')
-          .select('id,event_type,title_working,actor,episode_id,severity,created_at')
+          .select('id,event_type,title,actor,episode_id,severity,created_at')
           .order('created_at', { ascending: false })
           .limit(5),
       ]);
