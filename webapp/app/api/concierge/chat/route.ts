@@ -134,42 +134,63 @@ export async function POST(req: Request) {
     persistenceError = err instanceof Error ? err.message : 'unknown persistence error';
   }
 
-  // Director-side feedback markers (!todo / !fb) — captured BEFORE the LLM
-  // sees the message so we always log even if generation fails downstream.
-  // The full message is still sent to the LLM so PA can acknowledge it
-  // naturally.
+  // Director-side feedback markers — captured BEFORE the LLM sees the
+  // message so we always log even if generation fails downstream. The full
+  // message still goes to the LLM so PA can acknowledge it naturally.
+  //
+  // Marker types:
+  //   1. !fb [N] / !todo [N]   — bundle last N turns + optional note
+  //   2. ===PAON=== / ===PAOFF=== — toggle ambient capture for this thread
+  //   3. Any message while ambient capture is ON     — logged as one-liner
   const marker = parseMarker(lastUserMessage.content);
+  const toggle = detectToggle(lastUserMessage.content);
+  const worktreeRoot = path.resolve(process.cwd(), '..');
+
+  // Resolve incoming capture state from history BEFORE we persist this
+  // turn (otherwise we'd see ourselves).
+  let captureActive = false;
+  if (threadId) {
+    try {
+      captureActive = await readCaptureState(supabase, threadId);
+    } catch {
+      /* default false */
+    }
+  }
+  // Apply this message's toggles.
+  if (toggle === 'on') captureActive = true;
+  if (toggle === 'off') captureActive = false;
+
+  // Anything captured-ish gets event_type='feedback' for indexing.
+  const isCapturedTurn =
+    Boolean(marker) || toggle !== null || captureActive;
+
   let captureLogPath: string | null = null;
   let captureTurnCount = 0;
 
-  // Persist Director's incoming message before kicking off the LLM.
-  // event_type = 'feedback' when a marker was detected so retrospective
-  // queries (`/pa-recent feedback`, Skill Editor pattern mining) can index
-  // them efficiently.
+  // Persist Director's incoming message.
   if (threadId && !persistenceError) {
     try {
+      const metadata = marker
+        ? { marker: marker.kind, window_size: marker.windowSize, note: marker.note }
+        : toggle
+          ? { marker: toggle === 'on' ? 'paon' : 'paoff' }
+          : captureActive
+            ? { marker: 'ambient', via_toggle: true }
+            : undefined;
       await persistTurn(supabase, threadId, {
         role: 'director',
-        event_type: marker ? 'feedback' : 'message',
+        event_type: isCapturedTurn ? 'feedback' : 'message',
         content: lastUserMessage.content,
-        metadata: marker
-          ? { marker: marker.kind, window_size: marker.windowSize, note: marker.note }
-          : undefined,
+        metadata,
       });
     } catch (err) {
       persistenceError = err instanceof Error ? err.message : 'persist incoming failed';
     }
   }
 
+  // Marker-driven bundle capture (with window of prior turns).
   if (marker && threadId) {
-    // Write the captured bundle AFTER the marker turn is persisted, so the
-    // file shows the most recent context including the marker itself if
-    // windowSize includes it.
     try {
-      // Worktree root = parent of webapp/. process.cwd() is the webapp dir
-      // when Next.js dev runs (`npm --prefix webapp run dev`). Use a path
-      // relative to that.
-      const worktreeRoot = path.resolve(process.cwd(), '..');
       const res = await captureFeedback({
         marker,
         threadId,
@@ -181,9 +202,42 @@ export async function POST(req: Request) {
         captureLogPath = res.logPath;
         captureTurnCount = res.turnCount;
       }
-    } catch {
-      // never throw — capture is best-effort
-    }
+    } catch { /* best-effort */ }
+  }
+
+  // Toggle events themselves — single-line log entry.
+  if (toggle && threadId) {
+    try {
+      const cleaned = stripToggleMarkers(lastUserMessage.content);
+      const res = await captureSimple({
+        kind: toggle === 'on' ? 'paon' : 'paoff',
+        content: cleaned
+          ? `(toggle ${toggle.toUpperCase()}) ${cleaned}`
+          : `(toggle ${toggle.toUpperCase()})`,
+        threadId,
+        episodeId,
+        worktreeRoot,
+      });
+      if (res.ok && !captureLogPath) captureLogPath = res.logPath;
+    } catch { /* best-effort */ }
+  }
+
+  // Ambient capture — messages that aren't markers or toggles but landed
+  // while ===PAON=== is active. Skip if a marker already handled this turn.
+  if (!marker && !toggle && captureActive && threadId) {
+    try {
+      const res = await captureSimple({
+        kind: 'ambient',
+        content: lastUserMessage.content,
+        threadId,
+        episodeId,
+        worktreeRoot,
+      });
+      if (res.ok && !captureLogPath) {
+        captureLogPath = res.logPath;
+        captureTurnCount = 1;
+      }
+    } catch { /* best-effort */ }
   }
 
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
