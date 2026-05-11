@@ -27,12 +27,20 @@ export { ok, fail } from './types';
 type AnyTool = Tool<Record<string, unknown>>;
 
 export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
+  // Read-only — call freely
   getStudioStatus as unknown as AnyTool,
   getEpisode as unknown as AnyTool,
+  findEpisode as unknown as AnyTool,
   getNextGate as unknown as AnyTool,
   listPendingApprovals as unknown as AnyTool,
+  listSeries as unknown as AnyTool,
+  listSeriesBibles as unknown as AnyTool,
+  // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
   approveAsset as unknown as AnyTool,
+  requestRevision as unknown as AnyTool,
+  enrichBible as unknown as AnyTool,
+  createEpisode as unknown as AnyTool,
 ]);
 
 const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(
