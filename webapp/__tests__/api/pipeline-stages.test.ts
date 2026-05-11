@@ -16,7 +16,7 @@ const baseAsset = {
 };
 
 describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
-  it('returns 13 per-agent rows in canonical order', () => {
+  it('returns 14 per-agent rows in canonical order (Phase A.2: Music before Animatic, Final Cut after VGEN)', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     expect(stages.map((s) => s.id)).toEqual([
       'brief',
@@ -25,14 +25,34 @@ describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
       'storyboarder',
       'continuity_check',
       'episode_references',
+      'music_generator',
       'animatic',
       'visual_generator',
-      'music_generator',
+      'final_cut',
       'copywriter',
       'thumbnail_creator',
       'publisher',
       'analytics_collector',
     ]);
+  });
+
+  it('Music row sits in production phase BEFORE Animatic (audio reorg LT-04)', () => {
+    const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
+    const musicIdx = stages.findIndex((s) => s.id === 'music_generator');
+    const animaticIdx = stages.findIndex((s) => s.id === 'animatic');
+    expect(musicIdx).toBeGreaterThan(-1);
+    expect(animaticIdx).toBeGreaterThan(-1);
+    expect(musicIdx).toBeLessThan(animaticIdx);
+    expect(stages[musicIdx]!.phase).toBe('production');
+  });
+
+  it('Final Cut row sits in generation phase AFTER Visual Generator', () => {
+    const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
+    const vgenIdx = stages.findIndex((s) => s.id === 'visual_generator');
+    const finalIdx = stages.findIndex((s) => s.id === 'final_cut');
+    expect(finalIdx).toBeGreaterThan(vgenIdx);
+    expect(stages[finalIdx]!.phase).toBe('generation');
+    expect(stages[finalIdx]!.agents).toEqual(['EXEC-STITCH']);
   });
 
   it('rows are grouped by phase', () => {
@@ -44,7 +64,26 @@ describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
       'pre-production',
       'pre-production',
     ]);
-    expect(phases[12]).toBe('analytics');
+    expect(phases[phases.length - 1]).toBe('analytics');
+  });
+
+  it('VID-final_cut asset routes to final_cut row, EXEC-STITCH job too', () => {
+    const stages = buildPipelineSnapshot(
+      'GENERATION_APPROVED',
+      [
+        {
+          ...baseAsset,
+          filename: 'SS-S14-E01-VID-final_cut-v01-APPROVED.mp4',
+          file_type: 'VID-final_cut',
+          status: 'APPROVED',
+        },
+      ],
+      [{ id: 'j1', agent_id: 'EXEC-STITCH', status: 'COMPLETED' }],
+    );
+    const fc = stages.find((s) => s.id === 'final_cut')!;
+    expect(fc.state).toBe('approved');
+    expect(fc.job_count?.total).toBe(1);
+    expect(fc.job_count?.done).toBe(1);
   });
 
   it('all rows start idle when no assets/jobs', () => {

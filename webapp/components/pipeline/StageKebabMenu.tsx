@@ -42,6 +42,7 @@ const STAGE_PREFIX_MAP: Record<string, string[]> = {
   episode_references:  ['IMG-episode_ref'],
   animatic:            ['VID-animatic'],
   visual_generator:    ['VID-shot'],
+  final_cut:           ['VID-final_cut'],
   music_generator:     ['AUD-music'],
   copywriter:          ['SPC-metadata', 'SPC-copy'],
   thumbnail_creator:   ['IMG-thumbnail'],
