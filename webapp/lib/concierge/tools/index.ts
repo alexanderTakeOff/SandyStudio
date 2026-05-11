@@ -10,7 +10,7 @@
 import { getStudioStatus, getEpisode } from './studio';
 import { getNextGate, listPendingApprovals } from './pipeline';
 import { triggerAgent, approveAsset, requestRevision } from './dispatch';
-import { listSeries, listSeriesBibles, enrichBible } from './series';
+import { listSeries, listSeriesBibles, enrichBible, setBibleContent } from './series';
 import { createEpisode, findEpisode } from './episode-create';
 import type { OpenAIToolSchema, Tool } from './types';
 
