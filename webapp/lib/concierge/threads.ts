@@ -62,10 +62,10 @@ export async function createThread(
 }
 
 export async function getThread(
-  client: SupabaseClient,
+  client: Client,
   threadId: string,
 ): Promise<ConciergeThreadRow | null> {
-  const { data, error } = await (client as LooseClient)
+  const { data, error } = await client
     .from(THREADS_TABLE)
     .select('*')
     .eq('id', threadId)
