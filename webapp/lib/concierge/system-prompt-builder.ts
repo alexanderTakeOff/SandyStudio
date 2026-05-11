@@ -122,6 +122,7 @@ const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'BASE_BEHAVIOR', render: baseBehavior },
   { name: 'ENVIRONMENT', render: environment },
   { name: 'ACTIVE_MODE', render: activeMode },
+  { name: 'TOOLS_AVAILABLE', render: toolsAvailable },
   { name: 'STUDIO_STATE', render: studioState },
   { name: 'ACTIVE_RULES', render: activeRules },
 ];
