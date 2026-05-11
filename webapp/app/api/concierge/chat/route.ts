@@ -31,7 +31,14 @@ import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/con
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
 import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
-import { captureFeedback, parseMarker } from '@/lib/concierge/feedback-capture';
+import {
+  captureFeedback,
+  captureSimple,
+  detectToggle,
+  parseMarker,
+  readCaptureState,
+  stripToggleMarkers,
+} from '@/lib/concierge/feedback-capture';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
