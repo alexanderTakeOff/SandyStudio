@@ -203,20 +203,25 @@ export async function POST(req: Request) {
             recentTurns,
           };
 
+          const toolsThisRound = isLastRound ? undefined : [...openaiSchemas];
           const params: Parameters<typeof client.chat.completions.create>[0] = {
             model,
             messages: conversation,
             max_completion_tokens: maxCompletionTokens,
             // Disable tools on the very last round so the model is forced
             // to produce a final natural-language answer.
-            tools: isLastRound ? undefined : [...openaiSchemas],
-            tool_choice: isLastRound ? undefined : 'auto',
+            tools: toolsThisRound,
+            tool_choice: toolsThisRound ? 'auto' : undefined,
             stream: false,
           };
           if (!isGpt5 && Number.isFinite(temperature)) {
             params.temperature = temperature;
           }
-          if (reasoningEffort && isGpt5) {
+          // OpenAI 400: gpt-5* in /v1/chat/completions rejects the combination
+          // of `tools` + `reasoning_effort`. Only pass reasoning_effort on the
+          // final (tools-disabled) round so the model still reasons over the
+          // collected tool results without breaking the tool-call rounds.
+          if (reasoningEffort && isGpt5 && !toolsThisRound) {
             (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
           }
 
