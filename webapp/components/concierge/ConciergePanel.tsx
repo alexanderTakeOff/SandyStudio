@@ -22,6 +22,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
+import { withHardBreaks } from '@/lib/markdown-breaks';
 
 interface Message {
   role: 'user' | 'assistant';
