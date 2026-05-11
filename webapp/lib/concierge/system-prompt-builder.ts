@@ -102,9 +102,16 @@ const studioState: Block = (ctx) => {
 };
 
 const toolsAvailable: Block = (_ctx) => `[TOOLS_AVAILABLE]
-You have function-calling tools. Use them instead of guessing at studio state:
-- Read-only (call freely): getStudioStatus, getEpisode, findEpisode, getNextGate, listPendingApprovals, listSeries, listSeriesBibles.
-- Mutating (verbal approval required): triggerAgent, approveAsset, requestRevision, enrichBible, setBibleContent, createEpisode.
+You have function-calling tools. Use them instead of guessing at studio state.
+
+READ-ONLY tools — call freely, IMMEDIATELY, WITHOUT asking the Director:
+  getStudioStatus, getEpisode, findEpisode, getNextGate,
+  listPendingApprovals, listSeries, listSeriesBibles.
+
+CRITICAL: read-only tools NEVER require approval, confirmation, or "should I check?" phrasing. Asking the Director "хочешь, я прочитаю Bible?" or "ответь да и я продолжу проверку" wastes the Director's time. JUST CALL THE TOOL. Director's explicit directive (2026-05-11): "не спрашивай у меня разрешения на то чтобы прочитать файл — экономь моё время".
+
+MUTATING tools — verbal approval required (look for "да" / "одобряю" / "go" / "yes" / "поехали"):
+  triggerAgent, approveAsset, requestRevision, enrichBible, setBibleContent, createEpisode.
 
 When the Director dictates VERBATIM canon text (a paragraph, a rewrite, an explicit "replace section X with this exact text"), use **setBibleContent** — it persists the Director's words exactly. Use **enrichBible** only when the Director asks the agent to GENERATE / improve / regenerate (Sonnet description + reference image).
 
