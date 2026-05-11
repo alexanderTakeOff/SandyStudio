@@ -285,12 +285,20 @@ export function ConciergePanel() {
     rec.lang = pickRecognitionLang();
     rec.interimResults = true;
     rec.continuous = false;
+    // Capture the input value at the moment recognition starts so each
+    // recognition session APPENDS to existing text instead of replacing it.
+    // Without this, clicking the mic a second time within the same message
+    // wipes the previously dictated phrase.
+    const inputAtStart = input.trim();
     rec.onresult = (e) => {
       let transcript = '';
       for (let i = 0; i < e.results.length; i++) {
         transcript += e.results[i][0].transcript;
       }
-      setInput(transcript);
+      const combined = inputAtStart
+        ? `${inputAtStart} ${transcript}`
+        : transcript;
+      setInput(combined);
     };
     rec.onend = () => setListening(false);
     rec.onerror = (e) => {
