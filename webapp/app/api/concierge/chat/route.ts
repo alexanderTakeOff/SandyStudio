@@ -443,6 +443,33 @@ export async function POST(req: Request) {
               /* never throw inside finally */
             }
           }
+          // A4 (Director directive 2026-05-11): LOG-ONLY behavior-drift scan.
+          // Detect "если хочешь / если позволите / скажи 'да'" patterns that
+          // signal PA is asking permission when it should be acting. Emit
+          // activity_event for future RC6 dashboard; do NOT modify the reply.
+          const BANNED_RE =
+            /если хочешь[, ]|если позволите[, ]|скажи['"]?\s*(да|yes)['"]?[, ]|я могу подготовить[, ]/i;
+          const match = assistantBuffer.match(BANNED_RE);
+          if (match) {
+            try {
+              await supabase.from('activity_events').insert({
+                event_type: 'manual_trigger',
+                severity: 'warning',
+                title: 'PA behavior drift: permission-asking phrase detected',
+                description: `Phrase: "${match[0]}". Thread ${threadId?.slice(0, 8)}.`,
+                actor: 'EXEC-CONC',
+                episode_id: episodeId,
+                metadata: {
+                  kind: 'behavior_drift',
+                  thread_id: threadId,
+                  matched_phrase: match[0],
+                  reply_length: assistantBuffer.length,
+                },
+              });
+            } catch {
+              /* swallow audit failures */
+            }
+          }
         }
       }
     },
