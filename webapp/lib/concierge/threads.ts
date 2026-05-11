@@ -109,7 +109,10 @@ export async function persistTurn(
       role: turn.role,
       event_type: turn.event_type,
       content: turn.content,
-      metadata: turn.metadata ?? {},
+      // Public API keeps `metadata?: Record<string, unknown>` for caller
+      // convenience; coerce to the strict recursive Json type at the DB
+      // boundary. Safe because the value originates from typed local code.
+      metadata: (turn.metadata ?? {}) as Json,
       token_count: turn.token_count ?? null,
     })
     .select('*')
