@@ -69,7 +69,7 @@ export function MarkdownEditor({
         value={value}
         height={`${height}px`}
         theme={theme === 'dark' ? oneDark : undefined}
-        extensions={[markdown(), editorTheme]}
+        extensions={[markdown(), editorTheme, EditorView.lineWrapping]}
         readOnly={readOnly}
         basicSetup={{
           lineNumbers: true,
