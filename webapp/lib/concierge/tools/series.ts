@@ -237,7 +237,12 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
     const obj = safeParse(raw);
     const seriesId = typeof obj.seriesId === 'string' ? obj.seriesId : '';
     const section = obj.section as SetBibleContentArgs['section'];
-    const slug = typeof obj.slug === 'string' ? obj.slug : undefined;
+    // Slug is OPTIONAL — defaults to 'main' for any section. Per Director
+    // feedback 2026-05-11, asking the human about technical slug strings
+    // breaks the agent-led flow. PA may still pass an explicit slug when
+    // creating distinct sub-entries (sandy / pink_panther / cafe etc.).
+    const rawSlug = typeof obj.slug === 'string' ? obj.slug : undefined;
+    const slug = rawSlug && rawSlug.trim() !== '' ? rawSlug.trim() : 'main';
     const content = typeof obj.content === 'string' ? obj.content : '';
     const description = typeof obj.description === 'string' ? obj.description : undefined;
     if (!seriesId) throw new Error('seriesId is required');
@@ -245,10 +250,7 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
     if (!VALID_SECTIONS.includes(section as string)) {
       throw new Error(`section must be one of ${VALID_SECTIONS.join(', ')}`);
     }
-    if (section !== 'general_idea' && !slug) {
-      throw new Error(`slug is required for section "${section}"`);
-    }
-    if (slug && !/^[a-z0-9_-]+$/i.test(slug)) {
+    if (!/^[a-z0-9_-]+$/i.test(slug)) {
       throw new Error('slug must contain only letters, numbers, _ or -');
     }
     if (content.length < 10) throw new Error('content too short (min 10 chars)');
