@@ -186,6 +186,28 @@ export function ConciergePanel() {
     try { localStorage.setItem(WIDTH_KEY, String(panelWidth)); } catch { /* ignore */ }
   }, [panelWidth]);
 
+  // Reserve layout space in the StudioShell so the panel pushes content
+  // instead of overlapping it. Cleared on close / unmount.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const px = `${panelWidth}px`;
+    if (open && side === 'right') {
+      root.style.setProperty('--pa-pad-right', px);
+      root.style.setProperty('--pa-pad-left', '0px');
+    } else if (open && side === 'left') {
+      root.style.setProperty('--pa-pad-left', px);
+      root.style.setProperty('--pa-pad-right', '0px');
+    } else {
+      root.style.setProperty('--pa-pad-right', '0px');
+      root.style.setProperty('--pa-pad-left', '0px');
+    }
+    return () => {
+      root.style.setProperty('--pa-pad-right', '0px');
+      root.style.setProperty('--pa-pad-left', '0px');
+    };
+  }, [open, side, panelWidth]);
+
   // Stop TTS on panel close so the Director isn't followed by speech.
   useEffect(() => {
     if (!open && typeof window !== 'undefined' && 'speechSynthesis' in window) {
