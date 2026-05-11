@@ -598,9 +598,9 @@ export function ConciergePanel() {
                 handleSubmit(e as unknown as FormEvent);
               }
             }}
-            rows={1}
-            placeholder="Ask the Prod Assistant…"
-            className="flex-1 resize-none rounded-lg bg-[var(--bg-elevated)] border border-glass px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--accent-primary)] max-h-32"
+            rows={2}
+            placeholder="Ask the Prod Assistant… (Shift+Enter = newline, drag bottom-right to resize)"
+            className="flex-1 resize-y rounded-lg bg-[var(--bg-elevated)] border border-glass px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--accent-primary)] min-h-[3rem] max-h-[60vh]"
           />
           <Button
             type="submit"
