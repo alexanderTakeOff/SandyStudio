@@ -25,11 +25,13 @@ import type {
 } from 'openai/resources/chat/completions';
 import { getServerEnv, PUBLIC_ENV } from '@/lib/env';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import path from 'node:path';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
 import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
+import { captureFeedback, parseMarker } from '@/lib/concierge/feedback-capture';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
