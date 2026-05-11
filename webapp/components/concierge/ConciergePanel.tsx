@@ -491,6 +491,14 @@ export function ConciergePanel() {
           </div>
           <div className="flex items-center gap-1">
             <button
+              onClick={() => setSide((s) => (s === 'right' ? 'left' : 'right'))}
+              aria-label={side === 'right' ? 'Dock to left side' : 'Dock to right side'}
+              title={side === 'right' ? 'Dock left' : 'Dock right'}
+              className="h-8 w-8 rounded-md flex items-center justify-center text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary"
+            >
+              {side === 'right' ? <PanelLeftClose size={16} /> : <PanelRightClose size={16} />}
+            </button>
+            <button
               onClick={toggleTts}
               aria-label={ttsEnabled ? 'Disable voice replies' : 'Enable voice replies'}
               title={ttsEnabled ? 'Voice replies on' : 'Voice replies off'}
