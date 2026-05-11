@@ -127,16 +127,55 @@ export async function POST(req: Request) {
     persistenceError = err instanceof Error ? err.message : 'unknown persistence error';
   }
 
+  // Director-side feedback markers (!todo / !fb) — captured BEFORE the LLM
+  // sees the message so we always log even if generation fails downstream.
+  // The full message is still sent to the LLM so PA can acknowledge it
+  // naturally.
+  const marker = parseMarker(lastUserMessage.content);
+  let captureLogPath: string | null = null;
+  let captureTurnCount = 0;
+
   // Persist Director's incoming message before kicking off the LLM.
+  // event_type = 'feedback' when a marker was detected so retrospective
+  // queries (`/pa-recent feedback`, Skill Editor pattern mining) can index
+  // them efficiently.
   if (threadId && !persistenceError) {
     try {
       await persistTurn(supabase, threadId, {
         role: 'director',
-        event_type: 'message',
+        event_type: marker ? 'feedback' : 'message',
         content: lastUserMessage.content,
+        metadata: marker
+          ? { marker: marker.kind, window_size: marker.windowSize, note: marker.note }
+          : undefined,
       });
     } catch (err) {
       persistenceError = err instanceof Error ? err.message : 'persist incoming failed';
+    }
+  }
+
+  if (marker && threadId) {
+    // Write the captured bundle AFTER the marker turn is persisted, so the
+    // file shows the most recent context including the marker itself if
+    // windowSize includes it.
+    try {
+      // Worktree root = parent of webapp/. process.cwd() is the webapp dir
+      // when Next.js dev runs (`npm --prefix webapp run dev`). Use a path
+      // relative to that.
+      const worktreeRoot = path.resolve(process.cwd(), '..');
+      const res = await captureFeedback({
+        marker,
+        threadId,
+        episodeId,
+        supabase,
+        worktreeRoot,
+      });
+      if (res.ok) {
+        captureLogPath = res.logPath;
+        captureTurnCount = res.turnCount;
+      }
+    } catch {
+      // never throw — capture is best-effort
     }
   }
 
