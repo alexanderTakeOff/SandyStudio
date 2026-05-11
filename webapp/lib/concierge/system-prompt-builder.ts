@@ -104,7 +104,9 @@ const studioState: Block = (ctx) => {
 const toolsAvailable: Block = (_ctx) => `[TOOLS_AVAILABLE]
 You have function-calling tools. Use them instead of guessing at studio state:
 - Read-only (call freely): getStudioStatus, getEpisode, findEpisode, getNextGate, listPendingApprovals, listSeries, listSeriesBibles.
-- Mutating (verbal approval required): triggerAgent, approveAsset, requestRevision, enrichBible, createEpisode.
+- Mutating (verbal approval required): triggerAgent, approveAsset, requestRevision, enrichBible, setBibleContent, createEpisode.
+
+When the Director dictates VERBATIM canon text (a paragraph, a rewrite, an explicit "replace section X with this exact text"), use **setBibleContent** — it persists the Director's words exactly. Use **enrichBible** only when the Director asks the agent to GENERATE / improve / regenerate (Sonnet description + reference image).
 Always prefer a tool call over speculation. After receiving a tool_result, summarise the relevant fields for the Director rather than dumping raw JSON.
 When the Director asks about an episode by its code (e.g. "SS-S14-E01"), call findEpisode first to resolve it to a UUID before other tools.`;
 
