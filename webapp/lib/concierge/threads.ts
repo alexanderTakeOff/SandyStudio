@@ -13,6 +13,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/lib/supabase/types.gen';
 import type {
   ConciergeMode,
   ConciergeThreadRow,
@@ -20,14 +21,13 @@ import type {
   ConciergeTurnRow,
 } from './types';
 
-// types.gen.ts has not yet been regenerated to include concierge_threads /
-// concierge_turns. Until then we narrow the loose Supabase client to typed
-// query helpers via these casts. After the next `npm run gen-types` we can
-// drop the casts.
-type LooseClient = SupabaseClient<Record<string, never>>;
+// Canonical Supabase client shape per `lib/api/auth.ts` (single generic).
+// types.gen.ts now includes concierge_threads / concierge_turns from
+// migration 0025 so the insert/update payloads are fully typed.
+type Client = SupabaseClient<Database>;
 
-const THREADS_TABLE = 'concierge_threads';
-const TURNS_TABLE = 'concierge_turns';
+const THREADS_TABLE = 'concierge_threads' as const;
+const TURNS_TABLE = 'concierge_turns' as const;
 
 export interface CreateThreadInput {
   directorId?: string | null;

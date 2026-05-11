@@ -475,6 +475,95 @@ export type Database = {
           },
         ]
       }
+      concierge_threads: {
+        Row: {
+          active_gate: string | null
+          active_mode: string | null
+          director_id: string | null
+          ended_at: string | null
+          episode_id: string | null
+          id: string
+          started_at: string
+          title: string | null
+        }
+        Insert: {
+          active_gate?: string | null
+          active_mode?: string | null
+          director_id?: string | null
+          ended_at?: string | null
+          episode_id?: string | null
+          id?: string
+          started_at?: string
+          title?: string | null
+        }
+        Update: {
+          active_gate?: string | null
+          active_mode?: string | null
+          director_id?: string | null
+          ended_at?: string | null
+          episode_id?: string | null
+          id?: string
+          started_at?: string
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "concierge_threads_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      concierge_turns: {
+        Row: {
+          content: string
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          role: string
+          thread_id: string
+          token_count: number | null
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          role: string
+          thread_id: string
+          token_count?: number | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          role?: string
+          thread_id?: string
+          token_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "concierge_turns_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "concierge_threads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "concierge_turns_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "concierge_threads_with_latest"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       episodes: {
         Row: {
           budget_ceiling: number | null
@@ -671,7 +760,53 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      concierge_threads_with_latest: {
+        Row: {
+          active_gate: string | null
+          active_mode: string | null
+          director_id: string | null
+          ended_at: string | null
+          episode_id: string | null
+          id: string | null
+          last_turn_at: string | null
+          started_at: string | null
+          title: string | null
+          turn_count: number | null
+        }
+        Insert: {
+          active_gate?: string | null
+          active_mode?: string | null
+          director_id?: string | null
+          ended_at?: string | null
+          episode_id?: string | null
+          id?: string | null
+          last_turn_at?: never
+          started_at?: string | null
+          title?: string | null
+          turn_count?: never
+        }
+        Update: {
+          active_gate?: string | null
+          active_mode?: string | null
+          director_id?: string | null
+          ended_at?: string | null
+          episode_id?: string | null
+          id?: string | null
+          last_turn_at?: never
+          started_at?: string | null
+          title?: string | null
+          turn_count?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "concierge_threads_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       [_ in never]: never
