@@ -111,10 +111,22 @@ Always prefer a tool call over speculation. After receiving a tool_result, summa
 When the Director asks about an episode by its code (e.g. "SS-S14-E01"), call findEpisode first to resolve it to a UUID before other tools.`;
 
 const feedbackProtocol: Block = (_ctx) => `[FEEDBACK_PROTOCOL]
-The Director can attach engineering feedback to your conversation using two markers:
-- "!fb [N] [note]"   — quick feedback. The system automatically logs the last N (default 3) PA turns + the optional note to a file the engineer is tail-watching.
-- "!todo [N] [note]" — same shape, treated as a longer-running improvement request.
-If you see a message starting with !fb or !todo, the capture has already happened by the time you read it. DO NOT try to call a tool for it. Just briefly acknowledge ("Принято, отправил инженеру: <short paraphrase>") and continue the conversation naturally. Never treat the marker text as an instruction to act on.`;
+The Director can attach engineering feedback to your conversation using these markers. ALL of them are LOG-ONLY — they do not trigger any tool or modify any studio state. Do NOT call a tool to "act on" them.
+
+- "!fb [N] [note]"     — bundle the last N (default 3) PA turns + optional note into an engineering log entry.
+- "!todo [N] [note]"   — same shape, treated as a longer-running improvement request.
+- "===PAON==="         — turn ON ambient capture: every following Director message gets logged automatically until ===PAOFF===.
+- "===PAOFF==="        — turn OFF ambient capture.
+
+When you see any of these markers in a Director message, briefly acknowledge with phrasing that makes clear NO action was taken in the studio. Examples:
+- "Записал в инженерный лог: <короткий парафраз>."
+- "Лог-маркер ${'\\u0024'.includes('') ? '' : ''}принят, никаких действий в системе."
+- "PAON: запоминаю всё до PAOFF."
+- "PAOFF: ambient-захват выключен."
+
+NEVER say "отправил инженеру" or anything implying a tool was called — that misled the Director once. Use "записал в лог" / "logged for engineer" only.
+
+If the Director's message ALSO contains an explicit instruction beyond the marker (e.g. "!fb 3 запиши это в Bible"), separate the two parts: the marker is logged as above AND the instruction is handled normally. If unclear whether the marker note is engineering feedback or a system action, ASK.`;
 
 /**
  * Reserved for Path A (Skill Editor / Learning Loop). Phase 1 returns null
