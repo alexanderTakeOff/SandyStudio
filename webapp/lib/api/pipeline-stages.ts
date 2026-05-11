@@ -200,12 +200,19 @@ export function buildPipelineSnapshot(
     );
     const hasFailedJob = stageJobs.some((j) => j.status === 'FAILED');
 
-    if (hasRunningJob) {
-      state = 'running';
-    } else if (hasApprovedAsset) {
+    // Priority order (Director directive 2026-05-10): `approved` wins over
+    // `running` when both exist. Rationale: if at least one APPROVED asset
+    // exists for this stage, the Director already has a usable artifact —
+    // an active job is an *improvement* attempt, not a blocker. Showing
+    // orange "running" over green "approved" was misleading (Director saw
+    // 3 approved Final Cuts but row stayed orange because of a stale or
+    // in-flight STITCH job). A blocked/review state still beats running.
+    if (hasApprovedAsset) {
       state = 'approved';
     } else if (hasReviewAsset) {
       state = 'blocked';
+    } else if (hasRunningJob) {
+      state = 'running';
     } else if (hasFailedJob) {
       state = 'failed';
     }
