@@ -15,7 +15,10 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles } from 'lucide-react';
+import {
+  MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles,
+  PanelLeftClose, PanelRightClose,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
