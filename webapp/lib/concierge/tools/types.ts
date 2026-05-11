@@ -24,6 +24,15 @@ export interface ToolContext {
   directorUserId?: string | null;
   /** Recent thread turns, oldest-first. Used for verbal-approval detection. */
   recentTurns?: ConciergeTurnRow[];
+  /**
+   * Director's session cookies forwarded from the chat request. Mutating
+   * tools call existing webapp API routes (e.g. /api/assets/[id]/approve)
+   * which run `requireDirector()`; forwarding the cookie keeps the audit
+   * trail attributed to the real human and respects existing governance.
+   */
+  cookieHeader?: string | null;
+  /** Origin used for internal fetch (defaults to NEXT_PUBLIC_APP_URL). */
+  appOrigin: string;
 }
 
 /** Standard tool result envelope. Always JSON-serialisable. */
