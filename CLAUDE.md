@@ -393,7 +393,16 @@ If implementation changes visual behavior, update `specs/system/uiux.md` in the 
 | S6 | Web app spec (webapp.md + uiux.md) — Next.js + Supabase + Inngest | ✅ COMPLETE 2026-04-28 |
 | S7 | Mock provider layer + config/providers.yaml + config/defaults.yaml | ✅ COMPLETE 2026-04-24 |
 | S8 | Mock pipeline validation — PILOT SS-S01-E01 "The Red Carpet" end-to-end | ✅ COMPLETE 2026-04-24 |
-| S9 | **Build webapp** (Next.js + Supabase + Inngest, local-first) | 🟡 IN PROGRESS — Phases 1–3 ✅, Phase 4 next |
+| S9 | **Build webapp** (Next.js + Supabase + Inngest, local-first) | ✅ Phases 1–5d COMPLETE + Phase 8 (real providers) COMPLETE |
+| A.1 | Animatic with director_overrides + EpisodeTimeline Phase A | ✅ COMPLETE 2026-05-06..07 |
+| A.2 | VGEN auto-COMPLETE + EXEC-STITCH + Audio reorg (LT-04) + Bug A/C/D | ✅ COMPLETE 2026-05-08..10 |
+| **Mode 2.5 Phase 1** | Prod Assistant + memory + TTS + mode-aware blocks | 🟡 IN PROGRESS (claude/quizzical-brown-462555) — tool dispatch pending |
+
+**As of 2026-05-10 — what's actually shipped:**
+- Phase A.2: real ffmpeg final-cut assembly works (SS-S14-E01 produced first real mp4)
+- Audio reorg: MGEN before animatic, EDIT gates on EREF+music
+- Mode 2.5 Phase 1 (in flight): Prod Assistant (renamed Concierge) with concierge_threads memory, TTS, mode-aware authority
+- Pipeline DAG (`lib/api/pipeline-stages.ts`): Music before Animatic + Final Cut row for EXEC-STITCH
 
 **Sprint 9 — what's actually live (as of 2026-04-28):**
 - Supabase cloud schema: 12 tables, 3 enums, RLS, hard constraints (`publish_never_ai`, `visual_never_ai`)
@@ -518,5 +527,78 @@ Director's directive 2026-05-06 (correcting earlier "always run smoke" instructi
 
 ---
 
-*SandyStudio CLAUDE.md | v0.9 | Status: DRAFT*
-*Next: Sprint 1 approval → Sprint 6 agent instructions → Web app*
+## 12. OPERATIONAL RITUALS (MANDATORY)
+
+Added 2026-05-10 after Director observed quality degradation. Root cause:
+`PLAN.md ## CURRENT STATE` фact stale for 10 days. Each session was anchoring on
+out-of-date state. These 4 rituals keep PLAN.md as a **living anchor**.
+
+### Ritual 1 — PLAN.md update **in the same session** as code change
+
+Before `git push` / `gh pr create` / closing a task — update
+`PLAN.md ## CURRENT STATE` block (lines 11–24). One paragraph max:
+
+```
+Phase:   <real phase right now>
+Status:  <what was just done in this session>
+Next:    <next concrete step>
+Mode:    <current governance mode>
+Date:    <today's ISO date>
+```
+
+If the change is purely under one Sprint phase row, also tick its status in the
+Phase table.
+
+### Ritual 2 — Session start = PLAN.md sanity check
+
+After §9 (Read CLAUDE.md → PLAN.md → glossary), compare `Date:` in PLAN.md
+`## CURRENT STATE` to today.
+
+- Diff ≤ 3 days → proceed normally.
+- Diff > 3 days → **flag the Director**: "PLAN.md last updated N days ago,
+  reality may have moved on — update before starting?"
+
+Do not silently work with a stale anchor.
+
+### Ritual 3 — Verify ritual (numbers visible to Director)
+
+After any code change (not docs-only), run the standard trio and report counts:
+
+```bash
+npx tsc --noEmit             # type safety
+npm test -- --run            # unit tests (X/X)
+npm run replay-pilot         # full DAG smoke (29/29)
+```
+
+Publish numbers in chat ("tsc clean, 166/166 tests, 29/29 replay-pilot").
+Skip only if change was docs / PLAN.md / CLAUDE.md — and say so explicitly.
+
+### Ritual 4 — Session-end summary
+
+Before /compact or task handoff, write a memory note
+`session_YYYY-MM-DD_<title>.md` covering:
+
+1. What landed (bullet list)
+2. Last 1–3 meaningful commits (skip auto-sync noise)
+3. PLAN.md updates made
+4. Verify result (tsc / tests / replay-pilot counts)
+5. What's open / next step / blockers
+
+Add the note to `~/.claude/projects/C--SandyStudio/memory/` and link from
+`MEMORY.md` index.
+
+### Parallel-session discipline
+
+When multiple worktrees are active, **one of them owns PLAN.md updates** per
+day. Default: whichever session is on `master` (or the one merging next).
+Other sessions read PLAN.md but don't write — they hand notes to the
+PLAN-owner session.
+
+Hard cap suggestion: 2 active parallel worktrees + main. Dead worktrees
+(`claude/<name>` with no recent commits) should be deleted after Director
+approval.
+
+---
+
+*SandyStudio CLAUDE.md | v0.10 | Status: DRAFT*
+*Next: Mode 2.5 Phase 1 merge → smoke #2 (audio reorg) → Phase 1.5 backlog*

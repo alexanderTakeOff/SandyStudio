@@ -11,24 +11,35 @@
 ## CURRENT STATE
 
 ```
-Phase:    SPRINT 9 / Phase 5c COMPLETE + E02 Mode 1 cycle verified
-          Provider Strategy v0.2 APPROVED 2026-04-30 — Google-first MVP, two-tier UI switching
-          🎯 Phase 8 first-call MVP COMPLETE — providers UI + AI brief gen + drive-backed pipeline
-          Phase 5d steps 2 + 3 SHIPPED — pipeline kebab (context-aware), CodeMirror editor, preview drawer
-          E03 (SS-S03-E01) test cycle in progress — animatic re-triggered with real Veo 2026-04-30 18:41
-          /clear point set — see RESUME-AFTER-CLEAR.md
-Next:     Watch animatic Veo result → approve → fan-out 3× shot Veo + mock music
-          Then: activity_events fix, friendly names, text-agent Anthropic adapter, Series Genesis
+Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit d1c820d 2026-05-10)
+          ✅ VGEN auto-COMPLETE — episode flips to GENERATION_APPROVED when all VID-shots APPROVED
+          ✅ EXEC-STITCH — local ffmpeg final-cut assembly (first real mp4 produced SS-S14-E01)
+          ✅ Audio reorg (LT-04) — MGEN fires after REV-world_check, EDIT gates on EREF+music
+          ✅ Bug D — STITCH status pill in Episode Timeline toolbar (Stitching / Ready / Failed)
+          ✅ Pipeline DAG — Music before Animatic + new Final Cut row (was: Music after VGEN)
+
+          🟡 Mode 2.5 Phase 1 IN PROGRESS — claude/quizzical-brown-462555 (LT-01)
+             ✅ Prod Assistant rename (was Studio Concierge) + modular system-prompt builder
+             ✅ concierge_threads + concierge_turns memory (migration 0025, not yet applied to cloud)
+             ✅ TTS (SpeechSynthesis reads replies aloud) + mode-aware authority blocks
+             ⏳ Tool dispatch (triggerAgent + 4 read tools) — follow-up task
+             ⏳ Pipeline-awareness (getNextGate) — follow-up task
+
+Next:     1. Wait for quizzical-brown to finish Phase 1 (open PR) → review → merge
+          2. Director smoke #2 (Audio reorg on new episode) — plan at webapp/docs/smoke-tests/audio-reorg-smoke.md
+          3. Phase 1.5 backlog — variants_per_generation (LT-07), vgen_defaults UI, buildShotPromptV2 (LT-14)
+          4. UI cleanup LT-10..13 (scalable timeline 60+, episode page noise, foldable Activity Feed)
+
 Mode:     ===5=== EDIT (Director active) — switches to ===1=== at session start per CLAUDE.md
-Date:     2026-04-30
+Date:     2026-05-10
 ```
 
-### Episodes in DB
+### Episodes in DB (production-grade)
 
 | Episode | Status | Mode | What it proves |
 |---------|--------|------|----------------|
-| **SS-S01-E01** "The Red Carpet" | BRIEF_APPROVED + 15 assets APPROVED through Publish | 4 (AUTOTEST) | Full chain Brief → EXEC-SW → SREV → SB (3 acts) → WCHK → EDIT → VGEN×3 + MGEN → COPY → THUMB → **PUB** works in Mode 4 mock mode |
-| **SS-S01-E02** "sandyTest05" | BRIEF_PENDING (brief in REVIEW) | 1 (MANUAL) | Reset clean — Director's Mode 1 test bench. Approve via `/inbox` → chain runs through asset-approve `computeNextEvents` |
+| **SS-S01-E01** "The Red Carpet" | Mock chain published end-to-end | 4 (AUTOTEST) | Pipeline DAG works in mock — historical record |
+| **SS-S14-E01** | 13/13 VID-shots APPROVED → final-cut.mp4 stitched (~3.99 MB, 0:32.75) | 1 (MANUAL) | **First real production** — ffmpeg concat + music. $8.27 spent / $25 budget. Audio reorg pending re-validation on new episode |
 
 ### Migrations on remote Supabase
 
@@ -36,7 +47,10 @@ Date:     2026-04-30
 0001..0009  Phase 1-4
 0010        series + approval_authority_matrix + app_config storage scope (Phase 5b)
 0011        relax assets.file_type CHECK + cleanup orphans
-0012        relax CHECK to allow dashes in variants/filenames (caught EXEC-VGEN/MGEN bug)
+0012        relax CHECK to allow dashes in variants/filenames
+0013..0020  content / drive_fields / series bible / activity_events extensions
+0024        eref_one_approved_per_shot
+🟡 0025     concierge_threads + concierge_turns (lives in claude/quizzical-brown-462555, NOT applied to cloud yet)
 ```
 
 ### Two-terminal local dev (canonical)
@@ -62,11 +76,14 @@ cd webapp && npm run inngest:dev  # → http://localhost:8288 (dashboard)
 | 5a | UX architecture specs (uiux v0.3 + 5 sub-specs + config/uiux.yaml extensions) | ✅ COMPLETE 2026-04-29 |
 | 5b | API routes (26 endpoints + lib/api/* + zod + migration 0010 + 79 tests) | ✅ COMPLETE 2026-04-29 |
 | 5c | First-run wizard + Cockpit Dashboard + Inbox + Pipeline View + Activity + Storage settings + Topbar levers + Mode 1 chain (computeNextEvents) + Mode 4 auto-chain (factory) + 3-STB-act gate fix (migration 0011 + 0012) | ✅ COMPLETE 2026-04-29 |
-| 5d | UX polish (долговая тетрадка ниже) — friendly agent names, asset preview drawer, tooltips, etc. | ⏳ pending |
-| 6 | Per-episode sub-pages, budget detail tab, jobs detail panel | ⏳ pending |
+| 5d | UX polish — pipeline kebab + CodeMirror editor + preview drawer | ✅ COMPLETE 2026-04-30 |
+| 6 | Per-episode sub-pages, budget detail tab, jobs detail panel | ⏳ partially (episode page + timeline) |
 | 7 | Approval Authority Matrix per-row editing + delegate UI | ⏳ pending |
-| 8 | Real provider integration (Kling/Midjourney/Suno/YouTube) — first paid run | ⏳ pending |
+| 8 | Real provider integration — gpt-image-1 + Drive + Veo 3/3.1 | ✅ COMPLETE 2026-04-30 (Kling/Suno/YouTube deferred) |
 | 9 | PM2 ecosystem + Tailscale + production hardening | ⏳ pending |
+| A.1 | Animatic with director_overrides + EpisodeTimeline Phase A | ✅ COMPLETE 2026-05-06..07 |
+| A.2 | VGEN auto-COMPLETE + EXEC-STITCH + Audio reorg (LT-04) + Bug A/C/D | ✅ COMPLETE 2026-05-08..10 |
+| **Mode 2.5 Phase 1** | Prod Assistant + memory + TTS + mode-aware blocks | 🟡 IN PROGRESS (quizzical-brown) — tool dispatch pending |
 
 ### Long-debt (долговая тетрадка) — Phase 5d candidates
 
@@ -99,10 +116,10 @@ Strategic items captured by Director's directives. Not part of any active sprint
 
 | # | Item | Status | Source |
 |---|---|---|---|
-| LT-01 | **Mode 2.5 — APPRENTICE / SUPERVISED OPERATOR** governance mode. Required bridge between Mode 2 and Mode 3. Agent-led pipeline with Director supervision; conversational control; learning loop with Skill Editor; Director-approved skill changes. **Must be considered before expanding Mode 3 autonomy.** | PLANNED — full design in `specs/company/governance.md §4 (Mode 2.5)` | Director directive 2026-05-06 |
+| LT-01 | **Mode 2.5 — APPRENTICE / SUPERVISED OPERATOR** governance mode. Required bridge between Mode 2 and Mode 3. Agent-led pipeline with Director supervision; conversational control; learning loop with Skill Editor; Director-approved skill changes. **Must be considered before expanding Mode 3 autonomy.** | **Phase 1 IN PROGRESS** 2026-05-08+ — Prod Assistant rename + modular prompt builder + concierge_threads memory + TTS shipped (commit pending). Tool dispatch + pipeline-awareness next. Skill Editor (Path A) deferred per `~/.claude/plans/valiant-soaring-karp.md`. | Director directive 2026-05-06 + plan approved 2026-05-08 |
 | LT-02 | **EpisodeTimeline** — unified progressive review surface evolving AnimaticPlayer (animatic frames → real mp4s → stitched final). Replaces 4 disconnected surfaces with one. Multi-track audio schema, hybrid playback, drawer prev/next. | PLANNED — full design in `~/.claude/plans/purrfect-stirring-hollerith.md` (Phase A section) | Director directive 2026-05-06 |
-| LT-03 | **EXEC-STITCH** — auto-assembly stage (ffmpeg concat + cut/fade/dissolve transitions + audio mix → final mp4). Renderer, NOT editor. | PLANNED — Phase B in `purrfect-stirring-hollerith.md` | Director directive 2026-05-06 (technology.md §0) |
-| LT-04 | **Audio block reorg** — Music/Voice/SFX as separate stage BEFORE Animatic, so Animatic can play with pre-generated music for pacing review. | PLANNED — `technology.md §1` | Director directive 2026-05-05 |
+| LT-03 | **EXEC-STITCH** — auto-assembly stage (ffmpeg concat + cut/fade/dissolve transitions + audio mix → final mp4). Renderer, NOT editor. | ✅ **COMPLETE 2026-05-08** (Phase A.2 PR β). Local ffmpeg via `lib/agents/providers/ffmpeg-stitch.ts`, concurrency 1, FFMPEG_PATH env + winget fallback for Windows. First real mp4 SS-S14-E01 produced. Transitions (fade/dissolve) deferred — current is hard cut. | Director directive 2026-05-06 (technology.md §0) |
+| LT-04 | **Audio block reorg** — Music/Voice/SFX as separate stage BEFORE Animatic, so Animatic can play with pre-generated music for pacing review. | ✅ **COMPLETE 2026-05-08** (Phase A.2 PR γ). MGEN fires after `REV-world_check`, EDIT gates on EREF+music, musicAssetId baked into animatic_v1. Smoke #2 on new episode pending. | Director directive 2026-05-05 |
 | LT-05 | **Skill Editor / Skill Update Candidate mechanism** — store rule candidates (visual style, prompt patterns, character consistency, Director preferences), Director approval flow, audit trail of canonical skill changes. **Prerequisite for Mode 2.5 Learning Loop (LT-01).** | DESIGN PENDING | Director directive 2026-05-06 |
 | LT-06 | **Improve `buildShotPromptV2`** — currently 3 generic lines; storyboard has rich `action_prose / expected_emotion / expected_gag / camera_angle / character emotions` data + Bible canon. Prompts must reflect this per `technology.md §1` ("Bible content попадает в prompt as-is, без truncation — quality > token cost"). | PLANNED — Phase 1.5 follow-up after VGEN epic merges | Director observation 2026-05-06 |
 | LT-07 | **Variants per generation** — Veo 3 supports `numberOfVideos: 1-4`. Add UI dropdown + multi-asset persist + side-by-side review pattern in drawer. | PLANNED — Phase 1.5 follow-up | Director observation 2026-05-06 |
