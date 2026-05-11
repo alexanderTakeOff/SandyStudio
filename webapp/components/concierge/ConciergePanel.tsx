@@ -405,15 +405,16 @@ export function ConciergePanel() {
 
   return (
     <>
-      {/* Floating trigger */}
+      {/* Floating trigger — anchored to the user-chosen side */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
           aria-label="Open Prod Assistant"
           className={cn(
-            'fixed bottom-5 right-5 z-30 h-14 w-14 rounded-full shadow-[var(--panel-shadow)]',
+            'fixed bottom-5 z-30 h-14 w-14 rounded-full shadow-[var(--panel-shadow)]',
             'flex items-center justify-center text-[var(--text-inverse)]',
             'transition-transform hover:scale-105 active:scale-95',
+            side === 'right' ? 'right-5' : 'left-5',
           )}
           style={{
             background: `linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))`,
@@ -426,13 +427,52 @@ export function ConciergePanel() {
       {/* Panel */}
       <aside
         className={cn(
-          'fixed top-0 right-0 z-40 h-screen w-[420px] max-w-[100vw] flex flex-col',
-          'bg-panel-glass-strong border-l border-glass backdrop-blur-md shadow-[var(--panel-shadow)]',
+          'fixed top-0 z-40 h-screen max-w-[100vw] flex flex-col',
+          'bg-panel-glass-strong backdrop-blur-md shadow-[var(--panel-shadow)]',
           'transition-transform duration-300 ease-out',
-          open ? 'translate-x-0' : 'translate-x-full',
+          side === 'right'
+            ? 'right-0 border-l border-glass'
+            : 'left-0 border-r border-glass',
+          open
+            ? 'translate-x-0'
+            : side === 'right'
+              ? 'translate-x-full'
+              : '-translate-x-full',
         )}
-        style={{ backdropFilter: 'blur(var(--panel-glass-blur))' }}
+        style={{
+          backdropFilter: 'blur(var(--panel-glass-blur))',
+          width: `${panelWidth}px`,
+        }}
       >
+        {/* Resize handle — drag horizontally to grow/shrink the panel. */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startW = panelWidth;
+            const onMove = (mv: MouseEvent) => {
+              const dx = mv.clientX - startX;
+              const delta = side === 'right' ? -dx : dx;
+              const w = Math.max(320, Math.min(900, startW + delta));
+              setPanelWidth(w);
+            };
+            const onUp = () => {
+              window.removeEventListener('mousemove', onMove);
+              window.removeEventListener('mouseup', onUp);
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+          }}
+          className={cn(
+            'absolute top-0 h-full w-1.5 cursor-ew-resize z-50',
+            'hover:bg-[var(--accent-primary)]/30',
+            side === 'right' ? 'left-0 -translate-x-1/2' : 'right-0 translate-x-1/2',
+          )}
+          aria-label="Resize panel"
+          title="Drag to resize"
+        />
         {/* Header */}
         <header className="flex items-center justify-between px-4 h-14 border-b border-glass">
           <div className="flex items-center gap-2.5">
