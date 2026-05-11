@@ -566,7 +566,7 @@ export function EpisodeAssetDrawer({
                     ),
                   }}
                 >
-                  {asset.content}
+                  {withHardBreaks(asset.content)}
                 </ReactMarkdown>
               </article>
             </AssetCollapsibleSection>
