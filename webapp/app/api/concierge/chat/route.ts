@@ -19,7 +19,7 @@ import OpenAI from 'openai';
 import type { Stream } from 'openai/streaming';
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions';
 import { getServerEnv } from '@/lib/env';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { createThread, getThread, persistTurn } from '@/lib/concierge/threads';
 import type { ConciergeMode } from '@/lib/concierge/types';
