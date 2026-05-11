@@ -129,6 +129,7 @@ export function ConciergePanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [listening, setListening] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRec | null>(null);
