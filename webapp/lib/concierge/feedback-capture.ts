@@ -11,9 +11,10 @@
 //   !todo [N] [text]   → bundle the last N PA turns + optional note as a
 //                        feedback record requesting deeper analysis
 //   !fb   [N] [text]   → same shape, treated as a smaller / quicker note
-//
-// The `===PAON/OFF===` toggle was deliberately rejected — too easy to
-// forget OFF and flood the log.
+//   ===PAON===         → enable ambient capture: every subsequent Director
+//                        message is logged as a single-turn feedback entry
+//                        until ===PAOFF===
+//   ===PAOFF===        → disable ambient capture
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { appendFile, mkdir } from 'node:fs/promises';

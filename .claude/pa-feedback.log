@@ -111,3 +111,46 @@ S14 is a silent comedy series about a hyperactive character whose attempts to do
 The series exists as a family-friendly comedy engine: it is built primarily on motion, interruption, escalation, and…
 ===== END =====
 
+===== !FB 2026-05-11T09:21:25.315Z thread=bdbdafcf episode=- =====
+NOTE: это правда ,  отправила ?
+или это галлюцинации ?
+WINDOW: last 4 turns (most recent first)
+
+[09:13:24] assistant Принято. Ты прав: `General idea` нельзя превращать в пересказ списка требований.  
+Она должна отвечать на два вопроса:
+
+- **что это за сериал**
+- **зачем он существует**
+
+А детали уже должны жить в отдельных разделах.
+
+## Как я предлагаю исправить
+Я перепишу `General idea` в более правильной форме:
+
+1. **One-line identity** — что это за сериал
+2. **Why it exists** — зачем он нужен зрителю
+3. **Core engine** — откуда берётся комедия и смысл
+4. **Tone boundary** — где проходит граница философии и физической комедии
+
+---
+
+## Черновик новой General idea
+> **S14 is a silent comedy series about a h…
+[09:19:48] director  !fb
+обнови библию замени на это 
+
+# SANDY — GENERAL IDEA (ACTION-DRIVEN)
+
+---
+
+## General Idea
+
+**Sandy Chronicles** — это короткий безсловесный анимационный сериал о песочном герое, который попадает в простые бытовые ситуации, пытается всё ускорить, упростить или идеально контролировать, и каждый раз сам же запускает комедийный сбой.
+S14 is a silent comedy series about a hyperactive character whose attempts to do something good are repeatedly disrupted by the world around him.
+The series exists as a family-friendly comedy engine: it is built primarily on motion, interruption, escalation, and…
+[09:19:53] assistant Принято, отправил инженеру: обновить Bible и заменить `General Idea` на предложенный блок `SANDY — GENERAL IDEA (ACTION-DRIVEN)`.
+[09:21:20] director  !fb 4 
+это правда ,  отправила ?
+или это галлюцинации ?
+===== END =====
+
