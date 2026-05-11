@@ -238,10 +238,11 @@ export function ConciergePanel() {
     }
   }
 
-  function toggleVoice() {
+  async function toggleVoice() {
+    setMicError(null);
     const Ctor = getSpeechRecognition();
     if (!Ctor) {
-      alert('Voice input unavailable in this browser. Use Chrome or Edge.');
+      setMicError('Voice input unavailable in this browser. Use Chrome or Edge.');
       return;
     }
     if (listening) {
@@ -249,9 +250,39 @@ export function ConciergePanel() {
       setListening(false);
       return;
     }
-    const rec = new Ctor();
-    rec.lang =
-      (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
+
+    // Pre-flight: request microphone permission via getUserMedia so the OS
+    // permission prompt appears reliably. Without this, some Chrome builds
+    // silently fail with `not-allowed` after a previous denial.
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Immediately release — Web Speech opens its own internal stream.
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    } catch (err) {
+      const name = err instanceof Error ? err.name : 'PermissionError';
+      // eslint-disable-next-line no-console
+      console.warn('[prod-assistant] mic permission denied:', err);
+      setMicError(
+        name === 'NotAllowedError'
+          ? 'Microphone permission denied. Click the address-bar mic icon → allow, then retry.'
+          : `Microphone unavailable (${name}). Check system audio settings.`,
+      );
+      return;
+    }
+
+    let rec: SpeechRec;
+    try {
+      rec = new Ctor();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[prod-assistant] SpeechRecognition ctor failed:', err);
+      setMicError('Failed to initialise speech recognition. Try refreshing the page.');
+      return;
+    }
+
+    rec.lang = pickRecognitionLang();
     rec.interimResults = true;
     rec.continuous = false;
     rec.onresult = (e) => {
@@ -262,10 +293,24 @@ export function ConciergePanel() {
       setInput(transcript);
     };
     rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.onerror = (e) => {
+      // eslint-disable-next-line no-console
+      console.error('[prod-assistant] speech recognition error:', e);
+      setMicError(describeMicError(e?.error));
+      setListening(false);
+    };
     recognitionRef.current = rec;
-    rec.start();
-    setListening(true);
+    try {
+      rec.start();
+      setListening(true);
+    } catch (err) {
+      // .start() throws InvalidStateError when called twice in a row.
+      // eslint-disable-next-line no-console
+      console.error('[prod-assistant] rec.start() threw:', err);
+      setMicError(
+        err instanceof Error ? `start() failed: ${err.message}` : 'start() failed',
+      );
+    }
   }
 
   function toggleTts() {
