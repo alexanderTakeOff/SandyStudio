@@ -176,6 +176,64 @@ export const approveAsset: Tool<ApproveAssetArgs> = {
   },
 };
 
+interface RequestRevisionArgs {
+  assetId: string;
+  note: string;
+}
+
+export const requestRevision: Tool<RequestRevisionArgs> = {
+  name: 'requestRevision',
+  description:
+    "Send an asset back for revision (status → REVISION) with a note explaining what the agent should fix. Non-destructive — keeps the asset around but blocks the downstream cascade until a fresh APPROVE. The note is sent to the producing agent so it can re-run with better input. Verbal approval required since this restarts work.",
+  mutating: true,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'requestRevision',
+      description: 'Send an asset back for revision with feedback. Verbal approval required.',
+      parameters: {
+        type: 'object',
+        properties: {
+          assetId: { type: 'string', description: 'Asset UUID.' },
+          note: {
+            type: 'string',
+            description: 'Specific feedback for the producing agent. Quote the Director\'s actual concern.',
+            minLength: 3,
+            maxLength: 2000,
+          },
+        },
+        required: ['assetId', 'note'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const assetId = typeof obj.assetId === 'string' ? obj.assetId : '';
+    const note = typeof obj.note === 'string' ? obj.note.trim() : '';
+    if (!assetId) throw new Error('assetId is required');
+    if (note.length < 3) throw new Error('note is required (min 3 chars)');
+    return { assetId, note };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    if (!approval.approved) {
+      return fail(approval.reason, 'verbal_approval_required');
+    }
+    const resp = await internalFetch(
+      ctx,
+      `/api/assets/${encodeURIComponent(args.assetId)}/approve`,
+      {
+        decision: 'REQUEST_REVISION',
+        note: `[Prod Assistant] ${args.note} — ${approval.reason}`,
+        directorConfirm: true,
+        preview_acknowledged: true,
+      },
+    );
+    return parseFetchResponse(resp, `requestRevision(${args.assetId})`);
+  },
+};
+
 async function internalFetch(
   ctx: ToolContext,
   path: string,
