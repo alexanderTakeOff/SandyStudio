@@ -31,21 +31,58 @@ const TTS_KEY = 'sandystudio.prodassistant.ttsEnabled';
 const MAX_HISTORY_TURNS = 20;
 
 // Web Speech API typing — minimal, broadly compatible.
+interface SpeechRecErrorEvent {
+  error?: string;
+  message?: string;
+}
 interface SpeechRec extends EventTarget {
   lang: string;
   interimResults: boolean;
   continuous: boolean;
   start(): void;
   stop(): void;
+  abort?(): void;
   onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
   onend: (() => void) | null;
-  onerror: ((e: unknown) => void) | null;
+  onerror: ((e: SpeechRecErrorEvent) => void) | null;
+  onstart?: (() => void) | null;
+  onaudiostart?: (() => void) | null;
 }
 type SpeechRecCtor = new () => SpeechRec;
 function getSpeechRecognition(): SpeechRecCtor | null {
   if (typeof window === 'undefined') return null;
   const w = window as unknown as { SpeechRecognition?: SpeechRecCtor; webkitSpeechRecognition?: SpeechRecCtor };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+/** Human-readable explanation for each W3C SpeechRecognitionErrorEvent.error code. */
+function describeMicError(code: string | undefined): string {
+  switch (code) {
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return 'Microphone permission is blocked. Click the camera/mic icon in the browser address bar → allow microphone, then try again.';
+    case 'no-speech':
+      return 'No speech detected. The mic worked but heard nothing. Try again and speak after the chime.';
+    case 'audio-capture':
+      return 'No microphone detected by the OS. Plug one in or pick the right input device in system audio settings.';
+    case 'network':
+      return 'Network error — Web Speech relies on Google\'s online recognition service for ru-RU. Check internet.';
+    case 'aborted':
+      return 'Recognition aborted. Click again to restart.';
+    case 'language-not-supported':
+      return 'This language is not supported by the browser\'s speech engine. Switch to Chrome or English locale.';
+    default:
+      return code ? `Speech recognition error: ${code}` : 'Unknown speech recognition error.';
+  }
+}
+
+/** Pick a recognition language: Russian if browser locale is ru*, else en-US. */
+function pickRecognitionLang(): string {
+  if (typeof navigator === 'undefined') return 'en-US';
+  const lang = (navigator.language || '').toLowerCase();
+  if (lang.startsWith('ru')) return 'ru-RU';
+  if (lang.startsWith('en')) return navigator.language || 'en-US';
+  return navigator.language || 'en-US';
 }
 
 /** Plain-text strip for TTS — markdown / fences hurt synthesis. */
