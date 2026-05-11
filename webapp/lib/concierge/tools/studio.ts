@@ -84,7 +84,7 @@ export const getStudioStatus: Tool<GetStudioStatusArgs> = {
       }));
       const activity = (activityRes.data ?? []).map((a) => ({
         type: a.event_type,
-        title_working: a.title_working,
+        title: a.title,
         actor: a.actor,
         episode_id: a.episode_id,
         severity: a.severity,
