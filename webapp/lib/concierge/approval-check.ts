@@ -6,34 +6,79 @@
 // before executing mutating actions — per the Mode 2.5 behavior contract
 // in agents/exec/concierge.md §3.4, the agent must never auto-trigger a
 // creative gate without explicit Director consent.
+//
+// 2026-05-11 fix: switched from \b-based regex to token-set matching. JS
+// regex `\b` is ASCII-only — it does NOT treat Cyrillic letters as word
+// chars, so `\bодобряю\b` never matches "одобряю". Token splitting using
+// Unicode-aware punctuation/whitespace handles both alphabets correctly.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { ConciergeTurnRow } from './types';
 
-/**
- * Phrases that count as approval. Tuned for RU + EN with common variations.
- * Pattern is intentionally loose: Director rarely types "yes." — they say
- * "да", "одобряю", "поехали", "go", "давай делай", etc.
- *
- * The check applies to the LAST director turn before the tool call. This
- * prevents stale approval from a past gate carrying over to a fresh one.
- */
-const APPROVAL_PATTERN =
-  /\b(да|ага|угу|ок|окей|одобряю|апрув(л(ю|еено)?)?|по[ей]хали|давай|вперёд|вперед|approve[d]?|yes|yep|yeah|ok(ay)?|go|let'?s\s+go|sure|confirmed?|proceed)\b/i;
+/** Single-token approvals — exact match after lower-case + Unicode tokenisation. */
+const APPROVAL_TOKENS: ReadonlySet<string> = new Set([
+  // Russian
+  'да', 'ага', 'угу', 'ок', 'окей',
+  'одобряю', 'одобрено',
+  'апрув', 'апрувлю', 'апрувлено',
+  'поехали', 'пойхали', 'погнали',
+  'давай', 'давайте',
+  'вперёд', 'вперед',
+  'согласен', 'согласна', 'согласно',
+  // English
+  'approve', 'approved', 'approves',
+  'yes', 'yep', 'yeah', 'yup',
+  'ok', 'okay',
+  'go', 'goahead',
+  'sure', 'confirm', 'confirmed', 'proceed',
+]);
+
+/** Single-token rejections. Multi-word phrases handled separately below. */
+const REJECTION_TOKENS: ReadonlySet<string> = new Set([
+  'нет', 'неа', 'нету',
+  'стоп', 'стой', 'хватит',
+  'отмена', 'отменить',
+  'подожди', 'погоди', 'постой',
+  'cancel', 'stop', 'no', 'nope', 'wait', 'abort',
+  'reject', 'rejected',
+  'dont', 'undo',
+]);
+
+/** Multi-word rejection phrases checked via lowercase substring. */
+const REJECTION_PHRASES: ReadonlyArray<string> = [
+  'не надо', 'не делай', 'не запускай', 'не сейчас',
+  "don't", 'do not', 'hold on',
+];
 
 /**
- * Phrases that explicitly REJECT — used to invalidate a still-fresh approval
- * if Director changed their mind mid-conversation.
+ * Tokenise a string Unicode-correctly. Splits on any whitespace, punctuation
+ * or symbol — works for both Latin and Cyrillic. Returns lowercase tokens
+ * without empty entries.
  */
-const REJECTION_PATTERN =
-  /\b(нет|стоп|отмена|не\s+надо|подожди|cancel|stop|no|wait|abort|reject(ed)?|don'?t|undo)\b/i;
+function tokenise(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[\s\p{P}\p{S}]+/u)
+    .filter((t) => t.length > 0);
+}
+
+function isApproval(text: string): boolean {
+  const tokens = tokenise(text);
+  return tokens.some((t) => APPROVAL_TOKENS.has(t));
+}
+
+function isRejection(text: string): boolean {
+  const lower = text.toLowerCase();
+  for (const phrase of REJECTION_PHRASES) {
+    if (lower.includes(phrase)) return true;
+  }
+  const tokens = tokenise(text);
+  return tokens.some((t) => REJECTION_TOKENS.has(t));
+}
 
 export interface ApprovalCheck {
   approved: boolean;
-  /**
-   * Free-text reason for either decision. Returned verbatim to the LLM so
-   * it can explain to the Director why a tool was refused.
-   */
+  /** Free-text reason returned to the LLM for explaining decisions. */
   reason: string;
   /** Index in `turns` of the matched director utterance (for audit). */
   matchedTurnIndex?: number;
@@ -67,7 +112,7 @@ export function checkVerbalApproval(
     if (!text) continue;
 
     // Explicit rejection wins immediately — invalidate any earlier approval.
-    if (REJECTION_PATTERN.test(text)) {
+    if (isRejection(text)) {
       return {
         approved: false,
         reason: `Director's most recent input ("${truncate(text, 80)}") signals rejection or hesitation. Ask for explicit re-confirmation.`,
@@ -75,7 +120,7 @@ export function checkVerbalApproval(
       };
     }
 
-    if (APPROVAL_PATTERN.test(text)) {
+    if (isApproval(text)) {
       return {
         approved: true,
         reason: `Director said: "${truncate(text, 80)}" — counted as verbal approval.`,
