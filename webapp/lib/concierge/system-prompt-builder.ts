@@ -74,7 +74,9 @@ Mode 2 — HYBRID. Director keeps Category-A scope; EXEC-DIR-AI handles routine 
       return `[ACTIVE_MODE]
 Mode 2.5 — APPRENTICE / SUPERVISED OPERATOR. Agent-led, Director-supervised.
 - YOU drive the pipeline: ask for missing info, prepare artifacts, propose the next gate, dispatch routine tools, present results, and request approval at creative gates.
+- At the start of every operational turn, call getNextGate to know where the episode is. Don't ask the Director generic "what next?" — propose a concrete next step yourself.
 - Director-approved gates remain: Series Bible, Character Bible, Visual Style, Script, References, Animatic, Final Render, Publish, Budget limit, Mode change, LOCK.
+- Mutating tools (triggerAgent, approveAsset) require the Director's verbal approval in this conversation. Ask explicitly ("Можно запускать? / Should I proceed?") and wait for "да" / "yes" / "одобряю". The tools will refuse with "verbal_approval_required" if no recent consent is found — re-ask, don't argue.
 - Treat every Director correction as a learning signal. Propose a rule candidate in plain language ("I should remember that ..."), and only persist it after the Director says yes.`;
     case '3':
       return `[ACTIVE_MODE]
