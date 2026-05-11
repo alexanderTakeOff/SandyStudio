@@ -183,6 +183,113 @@ export const enrichBible: Tool<EnrichBibleArgs> = {
   },
 };
 
+interface SetBibleContentArgs {
+  seriesId: string;
+  section: 'general_idea' | 'character' | 'location' | 'object' | 'style' | 'audio';
+  slug?: string;
+  content: string;
+  description?: string;
+}
+
+export const setBibleContent: Tool<SetBibleContentArgs> = {
+  name: 'setBibleContent',
+  description:
+    "Write Director-supplied verbatim text as a NEW DRAFT version of a Bible section. Use this when the Director dictates / pastes specific canon text and wants it persisted exactly as-is (not paraphrased by an agent). Creates a fresh version — old versions stay as history. For section='general_idea' the slug is always 'main'. For other sections (character/location/object/style/audio) slug is required (e.g. 'sandy' for character). Verbal approval required.",
+  mutating: true,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'setBibleContent',
+      description: "Persist Director's verbatim text as a new DRAFT version of a Bible section.",
+      parameters: {
+        type: 'object',
+        properties: {
+          seriesId: { type: 'string', description: 'Series UUID.' },
+          section: {
+            type: 'string',
+            enum: ['general_idea', 'character', 'location', 'object', 'style', 'audio'],
+          },
+          slug: {
+            type: 'string',
+            description: "Section item slug (e.g. 'sandy', 'cafe'). Required for non-general_idea sections.",
+            pattern: '^[a-z0-9_-]+$',
+            minLength: 1,
+            maxLength: 80,
+          },
+          content: {
+            type: 'string',
+            description: 'The verbatim canon text the Director wants saved.',
+            minLength: 10,
+            maxLength: 200000,
+          },
+          description: {
+            type: 'string',
+            description: 'Optional short one-liner describing this Bible entry.',
+            maxLength: 20000,
+          },
+        },
+        required: ['seriesId', 'section', 'content'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const seriesId = typeof obj.seriesId === 'string' ? obj.seriesId : '';
+    const section = obj.section as SetBibleContentArgs['section'];
+    const slug = typeof obj.slug === 'string' ? obj.slug : undefined;
+    const content = typeof obj.content === 'string' ? obj.content : '';
+    const description = typeof obj.description === 'string' ? obj.description : undefined;
+    if (!seriesId) throw new Error('seriesId is required');
+    const VALID_SECTIONS = ['general_idea', 'character', 'location', 'object', 'style', 'audio'];
+    if (!VALID_SECTIONS.includes(section as string)) {
+      throw new Error(`section must be one of ${VALID_SECTIONS.join(', ')}`);
+    }
+    if (section !== 'general_idea' && !slug) {
+      throw new Error(`slug is required for section "${section}"`);
+    }
+    if (slug && !/^[a-z0-9_-]+$/i.test(slug)) {
+      throw new Error('slug must contain only letters, numbers, _ or -');
+    }
+    if (content.length < 10) throw new Error('content too short (min 10 chars)');
+    return { seriesId, section, slug, content, description };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    if (!approval.approved) {
+      return fail(approval.reason, 'verbal_approval_required');
+    }
+    const body: Record<string, unknown> = {
+      section: args.section,
+      slug: args.section === 'general_idea' ? 'main' : (args.slug ?? 'main'),
+      content: args.content,
+    };
+    if (args.description) body.description = args.description;
+
+    const resp = await fetch(
+      `${ctx.appOrigin.replace(/\/$/, '')}/api/series/${encodeURIComponent(args.seriesId)}/bible`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+        },
+        body: JSON.stringify(body),
+      },
+    );
+    let payload: unknown = null;
+    try { payload = await resp.json(); } catch { /* */ }
+    if (!resp.ok) {
+      const message =
+        payload && typeof payload === 'object' && 'error' in payload
+          ? String((payload as { error: unknown }).error)
+          : `setBibleContent failed (HTTP ${resp.status})`;
+      return fail(message, `http_${resp.status}`);
+    }
+    return ok(payload, `Bible ${args.section}/${body.slug} updated as a new DRAFT version. Director can approve it from Inbox or via approveAsset.`);
+  },
+};
+
 function safeParse(raw: string): AnyArgs {
   if (!raw || raw.trim() === '') return {};
   try {
