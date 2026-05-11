@@ -378,6 +378,12 @@ export async function POST(req: Request) {
       ...(persistenceError
         ? { 'X-Concierge-Persistence-Warning': persistenceError.slice(0, 200) }
         : {}),
+      ...(captureLogPath
+        ? {
+            'X-Concierge-Feedback-Captured': `${captureTurnCount}`,
+            'X-Concierge-Feedback-Log': captureLogPath.slice(-100),
+          }
+        : {}),
     },
   });
 }
