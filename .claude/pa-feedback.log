@@ -154,3 +154,27 @@ The series exists as a family-friendly comedy engine: it is built primarily on m
 или это галлюцинации ?
 ===== END =====
 
+===== !PAON 2026-05-11T09:33:36.195Z thread=bdbdafcf episode=- =====
+(toggle ON)
+===== END =====
+
+===== !AMBIENT 2026-05-11T09:33:39.166Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: запоминаю всё до PAOFF.
+===== END =====
+
+===== !AMBIENT 2026-05-11T09:34:28.177Z thread=bdbdafcf episode=- =====
+ОК, ВСТАВЬ В БИБЛИЮ, НО НА РУССКОМ ЯЗЫКЕ.
+ОДОБРЯЮ
+===== END =====
+
+===== !AMBIENT 2026-05-11T09:34:35.515Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Система отклонила запись: для секции `style` нужен обязательный `slug`.
+
+Чтобы я повторила вставку, нужен короткий `slug`, например:
+- `main`
+- `season_style`
+- `style_s14`
+
+Я не меняю ничего сама. Скажи, какой `slug` использовать, и я сразу повторю запись тем же русским текстом.
+===== END =====
+
