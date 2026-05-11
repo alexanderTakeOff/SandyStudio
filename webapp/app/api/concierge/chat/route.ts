@@ -254,12 +254,9 @@ export async function POST(req: Request) {
     | undefined;
   const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
 
-  const systemPrompt = buildSystemPrompt({
-    today: new Date().toISOString().slice(0, 10),
-    mode,
-    episodeId,
-    nextGate,
-  });
+  const today = new Date().toISOString().slice(0, 10);
+  const buildPrompt = (turns: ConciergeTurnRow[]) =>
+    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns });
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -272,7 +269,7 @@ export async function POST(req: Request) {
       };
       try {
         const conversation: ChatCompletionMessageParam[] = [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: buildPrompt([]) },
           ...body.messages.map<ChatCompletionMessageParam>((m) => ({
             role: m.role,
             content: m.content,
