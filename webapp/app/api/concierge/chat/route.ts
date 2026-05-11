@@ -90,7 +90,16 @@ export async function POST(req: Request) {
   // Persistence is best-effort: if Supabase is unreachable the chat must still
   // work (graceful degradation). We capture the thread id even when writes
   // fail so the UI keeps a stable session anchor.
-  const supabase = await createSupabaseServerClient();
+  //
+  // Service-role client used here because:
+  //   1. the chat route is gated by middleware auth (Director-only),
+  //   2. RLS on concierge_threads / _turns is `director_all` which the
+  //      service-role bypasses identically, and
+  //   3. the typed return shape (`SupabaseClient<Database>`) matches the
+  //      pattern used in lib/agents/factory.ts so threads.ts helpers
+  //      type-check cleanly. The @supabase/ssr server client has a more
+  //      specific resolved generic that prevents reuse across helpers.
+  const supabase = createSupabaseServiceRoleClient();
   let threadId: string | null = body.threadId ?? null;
   let persistenceError: string | null = null;
 
