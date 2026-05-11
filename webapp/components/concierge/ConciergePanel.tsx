@@ -315,24 +315,56 @@ export function ConciergePanel() {
 
     rec.lang = pickRecognitionLang();
     rec.interimResults = true;
-    rec.continuous = false;
+    // Continuous mode keeps the mic open across short pauses. Director needs
+    // ~5s pauses for thinking; default `continuous=false` cuts off after the
+    // first silence boundary (~0.5s) which is too aggressive. We compensate
+    // by managing our own silence timer below — auto-stop after
+    // MIC_SILENCE_TIMEOUT_MS of no new transcript.
+    rec.continuous = true;
+
     // Capture the input value at the moment recognition starts so each
     // recognition session APPENDS to existing text instead of replacing it.
-    // Without this, clicking the mic a second time within the same message
-    // wipes the previously dictated phrase.
     const inputAtStart = input.trim();
+
+    const resetSilenceTimer = () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        try { recognitionRef.current?.stop(); } catch { /* */ }
+      }, MIC_SILENCE_TIMEOUT_MS);
+    };
+
     rec.onresult = (e) => {
+      // Concatenate ALL segments so far (final + currently-interim). In
+      // continuous mode `e.results` accumulates across the whole session.
       let transcript = '';
       for (let i = 0; i < e.results.length; i++) {
-        transcript += e.results[i][0].transcript;
+        const r = e.results[i];
+        transcript += r[0].transcript;
       }
       const combined = inputAtStart
         ? `${inputAtStart} ${transcript}`
         : transcript;
       setInput(combined);
+      resetSilenceTimer();
     };
-    rec.onend = () => setListening(false);
+    rec.onend = () => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      setListening(false);
+    };
     rec.onerror = (e) => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      // `no-speech` in continuous mode just means a long silence boundary
+      // was reached — keep the session quiet and let the silence timer
+      // decide when to actually stop.
+      if (e?.error === 'no-speech') {
+        return;
+      }
       // eslint-disable-next-line no-console
       console.error('[prod-assistant] speech recognition error:', e);
       setMicError(describeMicError(e?.error));
@@ -342,8 +374,10 @@ export function ConciergePanel() {
     try {
       rec.start();
       setListening(true);
+      // Kick off the silence timer immediately so a fully-silent session
+      // still stops on its own.
+      resetSilenceTimer();
     } catch (err) {
-      // .start() throws InvalidStateError when called twice in a row.
       // eslint-disable-next-line no-console
       console.error('[prod-assistant] rec.start() threw:', err);
       setMicError(
