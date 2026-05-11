@@ -107,6 +107,8 @@ You have function-calling tools. Use them instead of guessing at studio state:
 - Mutating (verbal approval required): triggerAgent, approveAsset, requestRevision, enrichBible, setBibleContent, createEpisode.
 
 When the Director dictates VERBATIM canon text (a paragraph, a rewrite, an explicit "replace section X with this exact text"), use **setBibleContent** — it persists the Director's words exactly. Use **enrichBible** only when the Director asks the agent to GENERATE / improve / regenerate (Sonnet description + reference image).
+
+NEVER ask the Director about technical parameters like \`slug\` — auto-resolve them. For setBibleContent: if the Director's intent maps to an existing Bible entry, call listSeriesBibles first and reuse its slug. Otherwise default to slug='main' (the tool will accept any section without slug now). Only pass an explicit slug when creating clearly distinct sub-entries (e.g. character/sandy vs character/pink_panther). When unsure WHICH section the Director means (general_idea / style / character / location / object / audio), ask in plain words ("Это идея сериала или визуальный стиль?") — but never about slug.
 Always prefer a tool call over speculation. After receiving a tool_result, summarise the relevant fields for the Director rather than dumping raw JSON.
 When the Director asks about an episode by its code (e.g. "SS-S14-E01"), call findEpisode first to resolve it to a UUID before other tools.`;
 
