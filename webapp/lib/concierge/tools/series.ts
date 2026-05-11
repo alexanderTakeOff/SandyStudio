@@ -194,7 +194,7 @@ interface SetBibleContentArgs {
 export const setBibleContent: Tool<SetBibleContentArgs> = {
   name: 'setBibleContent',
   description:
-    "Write Director-supplied verbatim text as a NEW DRAFT version of a Bible section. Use this when the Director dictates / pastes specific canon text and wants it persisted exactly as-is (not paraphrased by an agent). Creates a fresh version — old versions stay as history. For section='general_idea' the slug is always 'main'. For other sections (character/location/object/style/audio) slug is required (e.g. 'sandy' for character). Verbal approval required.",
+    "Write Director-supplied verbatim text as a NEW DRAFT version of a Bible section. Use this when the Director dictates / pastes specific canon text and wants it persisted exactly as-is (not paraphrased by an agent). Creates a fresh version — old versions stay as history. Slug defaults to 'main' if omitted; pass a specific slug only when distinguishing sub-entries (e.g. character='sandy' vs 'pink_panther'). Never ask the Director about slug — call listSeriesBibles first to see existing slugs, or default to 'main'. Verbal approval required.",
   mutating: true,
   schema: {
     type: 'function',
