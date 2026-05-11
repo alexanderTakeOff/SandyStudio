@@ -40,6 +40,7 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   approveAsset as unknown as AnyTool,
   requestRevision as unknown as AnyTool,
   enrichBible as unknown as AnyTool,
+  setBibleContent as unknown as AnyTool,
   createEpisode as unknown as AnyTool,
 ]);
 
