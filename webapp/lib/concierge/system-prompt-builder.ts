@@ -91,10 +91,21 @@ const studioState: Block = (ctx) => {
   if (!ctx.studioState && !ctx.episodeId && !ctx.nextGate) return null;
   const lines: string[] = ['[STUDIO_STATE]'];
   if (ctx.episodeId) lines.push(`- Active episode: ${ctx.episodeId}`);
-  if (ctx.nextGate) lines.push(`- Next pipeline gate: ${ctx.nextGate}`);
+  if (ctx.nextGate) lines.push(`- Next pipeline gate hint (from URL): ${ctx.nextGate}`);
   if (ctx.studioState) lines.push(ctx.studioState);
+  if (ctx.episodeId) {
+    lines.push(
+      '- Call getNextGate before proposing the next step — the URL hint may be stale.',
+    );
+  }
   return lines.join('\n');
 };
+
+const toolsAvailable: Block = (_ctx) => `[TOOLS_AVAILABLE]
+You have function-calling tools. Use them instead of guessing at studio state:
+- Read-only (call freely): getStudioStatus, getEpisode, getNextGate, listPendingApprovals.
+- Mutating (verbal approval required): triggerAgent, approveAsset.
+Always prefer a tool call over speculation. After receiving a tool_result, summarise the relevant fields for the Director rather than dumping raw JSON.`;
 
 /**
  * Reserved for Path A (Skill Editor / Learning Loop). Phase 1 returns null
