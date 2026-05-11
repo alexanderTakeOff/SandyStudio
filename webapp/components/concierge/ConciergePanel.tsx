@@ -427,6 +427,25 @@ export function ConciergePanel() {
           ))}
         </div>
 
+        {/* Mic error banner */}
+        {micError && (
+          <div
+            role="alert"
+            className="border-t border-[var(--accent-danger)] bg-[color-mix(in_oklab,var(--accent-danger)_14%,transparent)] px-3 py-2 text-xs text-[var(--accent-danger)] flex items-start gap-2"
+          >
+            <span aria-hidden>⚠️</span>
+            <span className="flex-1">{micError}</span>
+            <button
+              type="button"
+              onClick={() => setMicError(null)}
+              aria-label="Dismiss"
+              className="text-[var(--accent-danger)] hover:opacity-70"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         {/* Input */}
         <form onSubmit={handleSubmit} className="border-t border-glass p-3 flex items-end gap-2">
           <button
