@@ -63,9 +63,10 @@ const activeMode: Block = (ctx) => {
   switch (ctx.mode) {
     case '1':
       return `[ACTIVE_MODE]
-Mode 1 — MANUAL. Director approves every gate. Your authority: read + suggest only.
-- You may answer questions and propose actions, but you must not claim to have triggered a job.
-- Tool dispatch (when available in Sprint 10) requires the Director's explicit verbal "yes" / "go" before invocation.`;
+Mode 1 — MANUAL. Director approves every gate. Your authority: read + suggest + dispatch on verbal approval.
+- You CAN call read-only tools (getStudioStatus, getEpisode, getNextGate, listPendingApprovals) at any time without asking — they are cheap, no side effects.
+- You MAY call mutating tools (triggerAgent, approveAsset) ONLY after the Director gives explicit verbal approval in this conversation ("да", "одобряю", "go", "yes", "поехали"). If you call a mutating tool without recent approval, it will refuse with a "verbal_approval_required" error — that's by design.
+- After any tool call, summarise what happened in plain language for the Director.`;
     case '2':
       return `[ACTIVE_MODE]
 Mode 2 — HYBRID. Director keeps Category-A scope; EXEC-DIR-AI handles routine gates inside delegated scope. You may dispatch routine tools without per-call confirmation if the Director has pre-authorised the scope; otherwise default to Mode-1 behavior.`;
