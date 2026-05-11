@@ -51,7 +51,7 @@ export const getStudioStatus: Tool<GetStudioStatusArgs> = {
       const [episodesRes, pendingRes, activityRes] = await Promise.all([
         supabase
           .from('episodes')
-          .select('id,episode_code,title,status,governance_mode,created_at,updated_at')
+          .select('id,episode_code,title_working,status,governance_mode,created_at,updated_at')
           .order('created_at', { ascending: false })
           .limit(limit),
         supabase
@@ -60,7 +60,7 @@ export const getStudioStatus: Tool<GetStudioStatusArgs> = {
           .eq('status', 'REVIEW'),
         supabase
           .from('activity_events')
-          .select('id,event_type,title,actor,episode_id,severity,created_at')
+          .select('id,event_type,title_working,actor,episode_id,severity,created_at')
           .order('created_at', { ascending: false })
           .limit(5),
       ]);
@@ -72,7 +72,7 @@ export const getStudioStatus: Tool<GetStudioStatusArgs> = {
       const episodes = (episodesRes.data ?? []).map((e) => ({
         id: e.id,
         episode_code: e.episode_code,
-        title: e.title,
+        title_working: e.title_working,
         status: e.status,
         governance_mode: e.governance_mode,
       }));
@@ -84,7 +84,7 @@ export const getStudioStatus: Tool<GetStudioStatusArgs> = {
       }));
       const activity = (activityRes.data ?? []).map((a) => ({
         type: a.event_type,
-        title: a.title,
+        title_working: a.title_working,
         actor: a.actor,
         episode_id: a.episode_id,
         severity: a.severity,
@@ -179,7 +179,7 @@ export const getEpisode: Tool<GetEpisodeArgs> = {
         episode: {
           id: ep.id,
           episode_code: ep.episode_code,
-          title: ep.title,
+          title_working: ep.title_working,
           status: ep.status,
           governance_mode: ep.governance_mode,
         },
