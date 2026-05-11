@@ -38,10 +38,10 @@ export interface CreateThreadInput {
 }
 
 export async function createThread(
-  client: SupabaseClient,
+  client: Client,
   input: CreateThreadInput,
 ): Promise<ConciergeThreadRow> {
-  const { data, error } = await (client as LooseClient)
+  const { data, error } = await client
     .from(THREADS_TABLE)
     .insert({
       director_id: input.directorId ?? null,
