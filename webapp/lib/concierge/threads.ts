@@ -78,10 +78,10 @@ export async function getThread(
 }
 
 export async function endThread(
-  client: SupabaseClient,
+  client: Client,
   threadId: string,
 ): Promise<void> {
-  const { error } = await (client as LooseClient)
+  const { error } = await client
     .from(THREADS_TABLE)
     .update({ ended_at: new Date().toISOString() })
     .eq('id', threadId);
