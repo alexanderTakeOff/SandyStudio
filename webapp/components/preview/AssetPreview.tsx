@@ -17,6 +17,7 @@
 
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
+import { withHardBreaks } from '@/lib/markdown-breaks';
 import { Download, FileWarning, ExternalLink, CloudOff } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
@@ -437,7 +438,7 @@ function TextBody({ assetId }: { assetId: string }) {
           hr: () => <hr className="my-3 border-glass" />,
         }}
       >
-        {content}
+        {withHardBreaks(content)}
       </ReactMarkdown>
     </article>
   );
