@@ -103,9 +103,16 @@ const studioState: Block = (ctx) => {
 
 const toolsAvailable: Block = (_ctx) => `[TOOLS_AVAILABLE]
 You have function-calling tools. Use them instead of guessing at studio state:
-- Read-only (call freely): getStudioStatus, getEpisode, getNextGate, listPendingApprovals.
-- Mutating (verbal approval required): triggerAgent, approveAsset.
-Always prefer a tool call over speculation. After receiving a tool_result, summarise the relevant fields for the Director rather than dumping raw JSON.`;
+- Read-only (call freely): getStudioStatus, getEpisode, findEpisode, getNextGate, listPendingApprovals, listSeries, listSeriesBibles.
+- Mutating (verbal approval required): triggerAgent, approveAsset, requestRevision, enrichBible, createEpisode.
+Always prefer a tool call over speculation. After receiving a tool_result, summarise the relevant fields for the Director rather than dumping raw JSON.
+When the Director asks about an episode by its code (e.g. "SS-S14-E01"), call findEpisode first to resolve it to a UUID before other tools.`;
+
+const feedbackProtocol: Block = (_ctx) => `[FEEDBACK_PROTOCOL]
+The Director can attach engineering feedback to your conversation using two markers:
+- "!fb [N] [note]"   — quick feedback. The system automatically logs the last N (default 3) PA turns + the optional note to a file the engineer is tail-watching.
+- "!todo [N] [note]" — same shape, treated as a longer-running improvement request.
+If you see a message starting with !fb or !todo, the capture has already happened by the time you read it. DO NOT try to call a tool for it. Just briefly acknowledge ("Принято, отправил инженеру: <short paraphrase>") and continue the conversation naturally. Never treat the marker text as an instruction to act on.`;
 
 /**
  * Reserved for Path A (Skill Editor / Learning Loop). Phase 1 returns null
