@@ -283,7 +283,7 @@ export async function POST(req: Request) {
           const isLastRound = round === MAX_TOOL_ROUNDS - 1;
 
           // Refresh recent turns each round so verbal-approval detection
-          // sees the latest director utterance even if it landed mid-loop.
+          // AND the ACTIVE_INTENT prompt block both see the freshest state.
           let recentTurns: ConciergeTurnRow[] = [];
           if (threadId) {
             try {
@@ -292,6 +292,11 @@ export async function POST(req: Request) {
               /* memory degradation already surfaced via header */
             }
           }
+          // Rebuild the system prompt with the freshest recentTurns so the
+          // ACTIVE_INTENT block reflects "Director just said X (Ns ago)" +
+          // drift count. Conversation[0] is replaced in place.
+          conversation[0] = { role: 'system', content: buildPrompt(recentTurns) };
+
           const toolCtx: ToolContext = {
             supabase,
             threadId: threadId ?? '',
