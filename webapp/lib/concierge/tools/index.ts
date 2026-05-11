@@ -19,20 +19,25 @@ export { ok, fail } from './types';
  * Canonical registry. Add a tool here once it's implemented; the chat route
  * picks up the OpenAI schemas via {@link openaiSchemas}.
  */
-export const TOOLS: ReadonlyArray<Tool> = Object.freeze([
-  getStudioStatus,
-  getEpisode,
-  getNextGate,
-  listPendingApprovals,
-  triggerAgent,
-  approveAsset,
-] as ReadonlyArray<Tool>);
+// Each Tool has its own TArgs generic. Registering them together requires
+// a less strict element type — the chat route only needs `name`, `schema`,
+// `parse`, `execute`, `mutating` which are invariant.
+type AnyTool = Tool<Record<string, unknown>>;
 
-const TOOL_BY_NAME: ReadonlyMap<string, Tool> = new Map(
+export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
+  getStudioStatus as unknown as AnyTool,
+  getEpisode as unknown as AnyTool,
+  getNextGate as unknown as AnyTool,
+  listPendingApprovals as unknown as AnyTool,
+  triggerAgent as unknown as AnyTool,
+  approveAsset as unknown as AnyTool,
+]);
+
+const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(
   TOOLS.map((t) => [t.name, t]),
 );
 
-export function findTool(name: string): Tool | undefined {
+export function findTool(name: string): AnyTool | undefined {
   return TOOL_BY_NAME.get(name);
 }
 
