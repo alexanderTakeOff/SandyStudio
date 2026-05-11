@@ -35,6 +35,11 @@ interface SpeechRecErrorEvent {
   error?: string;
   message?: string;
 }
+interface SpeechRecResult {
+  isFinal?: boolean;
+  0: { transcript: string };
+  length: number;
+}
 interface SpeechRec extends EventTarget {
   lang: string;
   interimResults: boolean;
@@ -42,11 +47,13 @@ interface SpeechRec extends EventTarget {
   start(): void;
   stop(): void;
   abort?(): void;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onresult: ((e: { results: ArrayLike<SpeechRecResult> }) => void) | null;
   onend: (() => void) | null;
   onerror: ((e: SpeechRecErrorEvent) => void) | null;
   onstart?: (() => void) | null;
   onaudiostart?: (() => void) | null;
+  onspeechend?: (() => void) | null;
+  onsoundend?: (() => void) | null;
 }
 type SpeechRecCtor = new () => SpeechRec;
 function getSpeechRecognition(): SpeechRecCtor | null {

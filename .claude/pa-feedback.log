@@ -1,0 +1,34 @@
+[init] pa-feedback log created 2026-05-11T08:47:59Z
+===== !FB 2026-05-11T08:49:18.235Z thread=bdbdafcf episode=- =====
+NOTE: mic кнопка хорошо работает после фикса
+WINDOW: last 3 turns (most recent first)
+
+[08:25:33] tool      ↪ findEpisode ✓: {"ok":true,"data":{"matches":[]},"summary":"No episode matches \"SS-S14\"."}
+[08:25:36] assistant Вот что нашёл в студии.
+
+## Все серии
+1. **SS-S14 — Sandy Chronicles**
+   - UUID: `d1dfa060-748d-4713-ad55-ec30d3214f73`
+   - Genre: comedy
+   - Audience: mixed
+   - Status: DRAFT
+   - Logline: `Sandy Hourglass`
+
+2. **SS-S09 — Sandy Bible**
+   - UUID: `7acf94f2-d4de-47ac-acf1-b81ec1aa408b`
+   - Genre: comedy
+   - Audience: adult
+   - Status: DRAFT
+   - Logline: `Sandy Hourglass`
+
+## Что важно
+Я **не смогла автоматически показать Bible SS-S14**, потому что для этого нужен именно `seriesId`, а не код.  
+Теперь seriesId у нас есть:
+
+- **SS-S14**
+- `d1dfa060-748d-4713-ad55-ec30d3214f73`
+
+## Следу…
+[08:49:13] director  !fb mic кнопка хорошо работает после фикса
+===== END =====
+
