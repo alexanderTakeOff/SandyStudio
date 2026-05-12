@@ -5029,3 +5029,240 @@ CH_01 Sandy / Sandy Hourglass = SS-S14-SBL-character_sandy_hourglass-v01-LOCKED.
 - показывать state `Generating… / Processing…`, чтобы не казалось, что галерея “не обновилась”.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T10:00:05.396Z thread=bdbdafcf episode=- =====
+Да я вот забыл что там у нас пропущены какие-то текстовые блоки в описании героя Давай сделаем Как лучше либо ты возьмёшь тут же самую картинку и создаю нового героя а я его залочу сделай с полным описанием или как лучше сделать
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:00:48.188Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Лучше **не создавать нового героя как отдельный персонаж**. Это внесёт путаницу: появятся два Sandy.
+
+Правильнее:
+
+## Решение
+
+Оставляем:
+
+```text
+SS-S14-SBL-character_sandy_hourglass-v01-LOCKED.png
+```
+
+как основной визуальный канон героя:
+
+```text
+CH_01 Sandy / Sandy Hourglass
+```
+
+И создаём **новую текстовую draft-версию того же character slug**:
+
+```text
+character_sandy_hourglass v02-DRAFT
+```
+
+с полным описанием:
+- identity;
+- silhouette/body;
+- face;
+- material logic;
+- sand behavior;
+- limbs;
+- movement/comedy;
+- interaction rules;
+- visual prompt;
+- negative restrictions;
+- ссылка на v01 LOCKED image как visual source of truth.
+
+Так мы не ломаем locked image и не плодим нового Sandy.
+
+## Почему так лучше
+
+- `v01 LOCKED` остаётся утверждённой картинкой.
+- `v02 DRAFT` закрывает дырку `content: null`.
+- Downstream-агенты получают нормальный текстовый canon.
+- После проверки ты сможешь залочить `v02` как полноценную Bible-запись.
+- Визуально это всё тот же Sandy, не новый герой.
+
+## Важный нюанс
+
+У меня нет инструмента “скопировать картинку из locked asset в новый draft”. Поэтому я могу сейчас сделать **текстовый v02-DRAFT**. Визуально он будет ссылаться на locked image `v01` как на master reference.
+
+Один вопрос: **одобряешь создать полный текстовый `character_sandy_hourglass v02-DRAFT` на основе locked Sandy v01?**
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:03:24.190Z thread=bdbdafcf episode=- =====
+Ну вообще говоря это наша чистая недоработка у нас несколько таких референсов может быть на одного персонажа например может быть вид слева и справа три четверти вид сверху снизу и при этом это один персонаж которого мы просто канонизируем таким образом все они должны ссылаться на одного героя но референсы могут быть к нему разные например разные одежды время года или в разные молодости в старости ещё что-то такие
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:04:11.710Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, это правильная модель. Текущая проблема в том, что у нас `character asset` фактически смешивает две сущности:
+
+1. **Персонаж как каноническая сущность**
+2. **Визуальный reference/image как отдельный материал к этому персонажу**
+
+Их надо разделить.
+
+## Правильная архитектура
+
+### 1. Character entity
+Одна сущность:
+
+```text
+CH_01 Sandy / Sandy Hourglass
+```
+
+У неё:
+- имя;
+- роль;
+- базовое описание;
+- personality;
+- animation rules;
+- material logic;
+- canonical restrictions;
+- relation to series;
+- current primary reference.
+
+### 2. Character references
+Много reference assets, привязанных к одному `character_id`:
+
+```text
+CH_01 references:
+- front view
+- side view
+- 3/4 view
+- back view
+- expression sheet
+- pose sheet
+- winter outfit
+- summer outfit
+- young version
+- old version
+- episode-specific reaction variant
+- prop interaction sheet
+```
+
+То есть `SS-S14-SBL-character_sandy_hourglass-v01-LOCKED.png` — это не “весь Sandy”, а **primary visual reference** для `CH_01`.
+
+## Что нужно добавить в систему
+
+### Character model
+
+```ts
+characters
+- id
+- series_id
+- code // CH_01
+- name
+- slug
+- role
+- canonical_description
+- status
+- primary_reference_asset_id
+- created_at
+- updated_at
+```
+
+### Bible assets
+
+```ts
+bible_assets
+- id
+- series_id
+- section
+- slug
+- character_id nullable
+- reference_type nullable
+- view_angle nullable
+- variant_scope nullable
+- is_primary_reference boolean
+- is_current boolean
+- is_archived boolean
+```
+
+### Reference taxonomy
+
+```text
+reference_type:
+- primary
+- front_view
+- side_view
+- back_view
+- three_quarter
+- top_view
+- expression_sheet
+- pose_sheet
+- outfit_variant
+- age_variant
+- episode_variant
+- material_reaction
+- prop_interaction
+```
+
+### Variant scope
+
+```text
+variant_scope:
+- series_canon
+- episode_specific
+- seasonal
+- alternate_age
+- special_state
+- legacy_test
+```
+
+## UI логика
+
+В Library персонажи должны отображаться не плоским списком картинок, а группами:
+
+```text
+Characters
+  Sandy / CH_01
+    Primary reference
+    Front
+    Side
+    Expressions
+    Episode variants
+    Archived / legacy
+```
+
+И для каждой картинки:
+- “Set as primary reference”
+- “Add reference to existing character”
+- “Create new character from reference”
+- “Duplicate as variant”
+- “Archive reference”
+- “Mark episode-specific”
+- “Link to character…”
+
+## Production правило
+
+```text
+A character may have many references.
+A reference may not imply a new character unless explicitly created as new character.
+```
+
+## Что делать прямо сейчас с Sandy
+
+Я бы сейчас не создавал второго героя.
+
+Правильный текущий шаг:
+
+1. Считать `SS-S14-SBL-character_sandy_hourglass-v01-LOCKED.png` primary reference для `CH_01 Sandy`.
+2. Создать текстовую canonical entry для `CH_01 Sandy`.
+3. Позже добавить недостающие references:
+   - front view;
+   - side view;
+   - 3/4;
+   - expression sheet;
+   - pose sheet;
+   - episode-specific violet mist variant.
+
+## Для Claude
+
+Нужно ввести сущность `Character` отдельно от `BibleAsset`.
+
+Ключевая задача:
+- `BibleAsset.section = character` не должен означать “это отдельный персонаж”.
+- Он может быть просто reference к уже существующему `character_id`.
+
+Иначе Library будет плодить “новых Sandy” на каждую позу/вариант.
+===== END =====
+
