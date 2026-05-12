@@ -21,6 +21,7 @@ import { withHardBreaks } from '@/lib/markdown-breaks';
 import { Download, FileWarning, ExternalLink, CloudOff } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
+import { agentDisplayName } from '@/lib/api/agent-names';
 import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
