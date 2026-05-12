@@ -29,6 +29,13 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
              ✅ Docs: CLAUDE.md slim 604→347, technology.md §3.5 (shot rhythm/gag density) + §7 (handoff protocol)
              ⏳ Phase D (Character Identity Model) — schema articulated by PA + Director (16:03), spec captured in observations. Migration 0026 + UI + backfill ~3-7 days. Awaiting Director green-light.
 
+          ✅ **2026-05-12 18:30 UTC — surgical patch STB E20 v02 + gate.ts MGEN unblock**
+             STB v02 was production-usable but missing camera fields. One-off `webapp/scripts/patch-e20-stb-camera.ts` added `camera_movement` + `camera_motivation` to all 19 shots (acts→shots flatten). Includes 2 orbit experiments (SH06 `slow_orbit_around_subject`, SH10 `orbit_pullback`). Idempotent.
+             Storyboarder skill updated (`agents/exec/storyboarder.md`): Default camera vocabulary section with 17 movement values + rules-of-thumb per shot_role; `camera_motivation` field added to shot schema; edge case "Style Bible camera vocab missing" now uses MVP defaults instead of stalling.
+             PA approved STB v02 → WCHK COMPLETED 18:24 → EREF+MGEN fired in parallel 18:27.
+             **MGEN failed `Upstream gate failed: Approved animatic (need 1, found 0)`** — leftover from pre-LT-04 audio reorg (Director directive 2026-05-08 q3b moved Composer BEFORE animatic). `lib/agents/gate.ts EXEC-MGEN` now requires APPROVED storyboard + APPROVED world_check (not animatic).
+             Re-fired EREF + MGEN events: **MGEN COMPLETED ✅**, EREF RUNNING (~3-5min gpt-image-1 fan-out). Verify trio clean.
+
           ✅ **2026-05-12 evening hot-fix — SREV REVIEW-loader layer (Sprint 10 precursor)**
              SREV на v03 крашился мгновенно (4× function.failed, ~50ms каждый).
              Root: `runner.ts:87` `loadAgentInputs` фильтрует `.eq('status','APPROVED')` — 3-й слой того же бага что чинили днём (gate + runner findApprovedAsset уже принимали REVIEW).

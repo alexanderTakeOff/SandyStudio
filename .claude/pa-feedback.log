@@ -7768,3 +7768,50 @@ Storyboard approved
 Reference Artist ещё в expected window / рядом с ним. Следующий контроль: проверяю через короткий интервал; если появится reference asset — читаю и даю breakdown.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T18:31:48.485Z thread=bdbdafcf episode=- =====
+а похожа на наш Клод перепутал временные рамки 4 часа назад это в Дубае разница плюс 4 часа поэтому все процессы идут сейчас а не 4 часа назад стартовали
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:32:50.464Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, похоже вы правы: это не “4 часа назад”, а **UTC vs Dubai +4**. В базе события идут в UTC, UI/восприятие — локально. Значит процессы действительно текущие.
+
+## Что сейчас реально происходит по E20
+
+### Reference Artist
+Он **уже завершил первый reference frame** и поставил его на review:
+
+- `SS-S14-E20-IMG-episode_ref...SC01-SH01...v01-DRAFT.png`
+- статус: `REVIEW`
+- это первый кадр: Sandy входит к perfume counter.
+
+Но важно: результат **не идеальный**. Сам Reference Artist/ревьюер дошёл до:
+- `verdict: REGENERATE_EXHAUSTED`
+- 3 попытки генерации
+- consistency score: 72
+
+### Проблемы reference frame
+Основные:
+- Sandy не идеально держит каноническую hourglass-форму;
+- cap дрейфует по форме/цвету;
+- эмоция ближе к generic excitement, не совсем smitten;
+- sliding action читается не идеально.
+
+То есть это не “готовый эталон”, а **черновой референс после исчерпания retry**.
+
+### Composer
+Composer не просто failed: он тоже выдал pending asset:
+
+- `SS-S14-E20-AUD-music-main-v01-DRAFT.wav`
+- статус: `REVIEW`
+
+Надо будет послушать/проверить отдельно, но по текущей задаче референсов это не блокирует.
+
+## Вывод
+
+Reference pipeline работает, но пока дал **один спорный frame**, а не полноценный package по всем 19 shots.
+
+Я сейчас не утверждала бы этот reference. Лучший следующий шаг — дать Reference Artist доработку по этому кадру или понять, должен ли он продолжать batch дальше после review первого кадра.
+
+Следующий мой шаг: проверяю next gate и pending logic — надо понять, ждёт ли pipeline approval первого reference перед генерацией остальных shots.
+===== END =====
+
