@@ -347,6 +347,7 @@ interface RegenerateBibleImageArgs {
   assetId: string;
   prompt: string;
   quality?: 'low' | 'medium' | 'high';
+  styleAnchorAssetId?: string | null;
 }
 
 export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {

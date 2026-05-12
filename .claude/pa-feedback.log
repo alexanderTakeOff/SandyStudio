@@ -3440,3 +3440,144 @@ UI-кнопка “перегенерить” взяла именно **ста�
 **одобряю регенерацию трёх локаций по новым prompt без людей, животных и персонажей**.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T07:55:20.890Z thread=bdbdafcf episode=- =====
+одобряю регенерацию трёх локаций по новым prompt без людей, животных и персонажей
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:57:40.551Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Готово. Перегенерировал три локации по новым prompt’ам с жёстким запретом на людей, животных и персонажей.
+
+## Новые версии
+
+1. **Violet Distance Cafe**
+   - asset: `4d11da05-0513-4e80-9bca-fc1a25032c44`
+   - new image version: `v2`
+   - staging: `/staging/regen-25032c44-e38954b41cd3.png`
+
+2. **Perfume Counter Bar**
+   - asset: `8e9e1b7a-02a2-43d5-bf97-dfd6c2dfd1ad`
+   - new image version: `v3`
+   - staging: `/staging/regen-c2dfd1ad-7ad76ce76c20.png`
+
+3. **Violet Neon Alley**
+   - asset: `0d5cceb0-b944-482c-89a1-e356accb76c1`
+   - new image version: `v2`
+   - staging: `/staging/regen-accb76c1-83f6694ed245.png`
+
+## В prompt’ах зафиксировано
+- no characters
+- no people
+- no animals
+- no silhouettes
+- no Sandy
+- no Perfume Madame
+- no squirrel
+- no girl
+- no bald man
+- no cube
+- no mascot objects
+- no faces / eyes / living figures
+
+Style check вернул `WARN`, но не переписывал prompt. Это не блокер; картинки созданы.
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:02:04.238Z thread=bdbdafcf episode=- =====
+ну из картинок которую ты сгенерила видно что стиль рисования у нас хотя и Симпатичный но не соответствуют На мой взгляд нашему наши идеи про 2D карту у нас здесь явные 3D очень симпатичные фиолетовые Но вот явно не соответствующие стилю может быть это связано с тем что у нас в стиле залочена только старая картинка и нам надо её убрать там вот именно такое трёхмерное кафе нарисовано с большим окном и дождём и ещё какой-то драфт есть и без картинки и ещё есть там что-то мейна и какой-то ставил S14 и вот это наверное нужно поудалять и сделать новое либо оставить стиль в таком виде как есть но нет давай будем придерживаться канона кстати для Клода у нас в кебабах которые всплывают в например в разделе локации или в разделе стиль Да наверное везде отсутствует опция удалить референсы особенно если он залочен а может быть и другие тоже Ну да как-то не работает пока опция удаления Так что это может приводить к какой-то путанец в том числе и со стилями
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:02:43.386Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: запоминаю до PAOFF.
+
+Проверил S14 Bible. Да, источник путаницы по стилю найден.
+
+## Что сейчас конфликтует
+
+### 1. Locked style anchor ведёт к 3D-ish кафе
+Активный style anchor для генераций:
+
+- `SS-S14-SBL-style_episode_perfume_02-v01-LOCKED.png`
+- asset id: `7a43b77b-8bf0-49ef-9b14-15413377d9df`
+
+У него `staging_path` указывает на uploaded image:
+
+```text
+/staging/uploads/400d23dc1cd6149e.png
+```
+
+Это тот же визуальный референс, что и locked location:
+
+- `SS-S14-SBL-location_neon_cafe-v01-LOCKED.png`
+
+Поэтому генератор получает текст “Flat 2D cartoon”, но visual anchor тянет его в **симпатичный 3D/объёмный неон-кафе look**.
+
+### 2. В style-разделе есть мусор/устаревшие референсы
+Вижу:
+
+- `style_episode_perfume_02-v01-LOCKED` — активный locked style с неподходящей картинкой.
+- `style_episode_perfume_style-v01-DRAFT` — draft, но staging это вообще `.mp4` animatic:
+  ```text
+  /staging/uploads/b872a350a3341311.mp4
+  ```
+- `style_main-v01-DRAFT` — уже `REJECTED`.
+- `style_style_s14-v01-DRAFT` — уже `REJECTED`.
+
+Текстовый канон в `general_idea v02 LOCKED` правильный: **простая, читаемая, action-first, 2D flat cartoon**. Но Library style anchor визуально тянет в другую сторону.
+
+## Вывод
+
+Проблема не только в prompt’ах локаций. Проблема в том, что **генерация использует locked visual style anchor, который противоречит текущему канону**.
+
+## Что нужно исправить
+
+Так как locked asset я не должен/не могу “удалить” или сам объявить неактуальным, production-safe путь такой:
+
+1. Создать новый style draft:
+   - `style_s14_flat_action_canon`
+   - без 3D кафе;
+   - с жёстким 2D flat / vector / minimal backgrounds / no 3D правилом.
+
+2. Сгенерировать для него новый style reference image:
+   - не локацию;
+   - не кафе;
+   - не красивый environment;
+   - а **style sheet / neutral composition**:
+     - плоские формы;
+     - bold outlines;
+     - простая комнатная/уличная сцена;
+     - минимальный реквизит;
+     - без персонажей или с простыми placeholder shapes, если нужно;
+     - no 3D, no volumetric lighting, no realistic reflections.
+
+3. После твоего просмотра — утвердить новый style asset как current canonical style.
+
+4. Дальше перегенерировать E20 locations уже с новым style anchor, иначе они будут продолжать уходить в объёмный neon-cafe look.
+
+## По UX/продуктовому багу
+
+Да, нужна опция удаления/архивации/деактивации references в kebab menu в Library:
+
+- для DRAFT: delete / archive;
+- для LOCKED: нельзя физически удалить канон без истории, но нужна опция:
+  - `Mark as inactive / archived`;
+  - `Duplicate as new draft`;
+  - `Replace canonical reference`;
+  - `Set as current`;
+- и системное правило: **в одной категории/slug/current-scope может быть только один current reference**.
+
+Иначе стиль, персонажи и локации будут конфликтовать.
+
+## Текущий безопасный следующий шаг
+
+Нужно создать новый style draft для S14:
+
+```text
+style_s14_flat_action_canon
+```
+
+С содержанием: flat 2D cartoon, bold outlines, clean vector, minimal backgrounds, no 3D, no cinematic depth, no volumetric neon, no realistic reflections, no glossy render, action readability first.
+
+У меня есть approval на “исправь” в рамках проблемы, но для mutating tool нужен свежий явный approval на создание/генерацию style asset.
+
+Одобри одной фразой: **одобряю создание нового flat 2D style reference S14**.
+===== END =====
+
