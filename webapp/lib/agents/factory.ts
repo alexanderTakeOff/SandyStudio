@@ -231,6 +231,12 @@ export function createAgentInngestFunction<E extends string>(
           provider,
           supabase,
           episodeCode,
+          // Forward Director's revisionNote when this run originated from a
+          // REQUEST_REVISION auto-chain (2026-05-12). Agents that accept it
+          // (screenwriter for now) will treat it as hard acceptance criteria.
+          revisionNote: typeof eventData.revisionNote === 'string'
+            ? eventData.revisionNote
+            : undefined,
           ...(spec.resolveRunArgs ? spec.resolveRunArgs(eventData) : {}),
         };
         return runAgent(runArgs);
