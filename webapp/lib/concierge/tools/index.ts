@@ -7,7 +7,7 @@
 // the model emits a tool_call.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { getStudioStatus, getEpisode } from './studio';
+import { getStudioStatus, getEpisode, getAsset, getRecentActivityEvents } from './studio';
 import { getNextGate, listPendingApprovals } from './pipeline';
 import { triggerAgent, approveAsset, requestRevision } from './dispatch';
 import {
