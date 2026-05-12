@@ -400,7 +400,12 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
       obj.quality === 'low' || obj.quality === 'medium' || obj.quality === 'high'
         ? obj.quality
         : undefined;
-    return { assetId: obj.assetId, prompt: obj.prompt, quality };
+    let styleAnchorAssetId: string | null | undefined = undefined;
+    if (obj.styleAnchorAssetId === null) styleAnchorAssetId = null;
+    else if (typeof obj.styleAnchorAssetId === 'string' && obj.styleAnchorAssetId.length > 0) {
+      styleAnchorAssetId = obj.styleAnchorAssetId;
+    }
+    return { assetId: obj.assetId, prompt: obj.prompt, quality, styleAnchorAssetId };
   },
   async execute(args, ctx): Promise<ToolResult> {
     const approval = checkVerbalApproval(ctx.recentTurns ?? []);
