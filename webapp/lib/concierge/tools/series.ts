@@ -343,6 +343,116 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
   },
 };
 
+interface RegenerateBibleImageArgs {
+  assetId: string;
+  prompt: string;
+  quality?: 'low' | 'medium' | 'high';
+}
+
+export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
+  name: 'regenerateBibleImage',
+  description:
+    "Reroll the image on an already-enriched Bible / IMG-* asset. Use after the asset has been enriched at least once (enrichBible already ran) and the Director wants a NEW image — either because the prompt has been rewritten via setBibleContent, or because the previous result didn't fit. Creates a new image version under metadata.image_prompt.history and updates staging_path/drive_* to the new image. Refuses if asset is LOCKED. Verbal approval required for each operation (one approval covers a batch only if Director said 'одобряю перегенерацию N локаций' in the same window). Does NOT work for first enrichment — use enrichBible for that.",
+  mutating: true,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'regenerateBibleImage',
+      description:
+        'Reroll an already-enriched Bible / IMG-* asset image with a (possibly edited) prompt. Verbal approval required.',
+      parameters: {
+        type: 'object',
+        properties: {
+          assetId: { type: 'string', description: 'Asset UUID. Must be non-LOCKED and already enriched.' },
+          prompt: {
+            type: 'string',
+            description:
+              "The image prompt to use for the new generation. Required. If the Director hasn't supplied a new prompt explicitly, use the current asset's image prompt (from a prior listSeriesBibles call or by reading the asset.metadata.image_prompt.history). For location assets, enforce: no characters, no people, no animals, no silhouettes — only environment, architecture, lighting, signage, neutral props.",
+            minLength: 8,
+            maxLength: 8000,
+          },
+          quality: {
+            type: 'string',
+            enum: ['low', 'medium', 'high'],
+            description: "gpt-image-1 quality tier. Defaults to 'medium'.",
+          },
+        },
+        required: ['assetId', 'prompt'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    if (typeof obj.assetId !== 'string' || !obj.assetId) {
+      throw new Error('assetId is required');
+    }
+    if (typeof obj.prompt !== 'string' || obj.prompt.trim().length < 8) {
+      throw new Error('prompt is required (min 8 chars)');
+    }
+    const quality =
+      obj.quality === 'low' || obj.quality === 'medium' || obj.quality === 'high'
+        ? obj.quality
+        : undefined;
+    return { assetId: obj.assetId, prompt: obj.prompt, quality };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    if (!approval.approved) {
+      return fail(approval.reason, 'verbal_approval_required');
+    }
+    const resp = await fetch(
+      `${ctx.appOrigin.replace(/\/$/, '')}/api/assets/${encodeURIComponent(args.assetId)}/regenerate-image`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+        },
+        body: JSON.stringify({
+          prompt: args.prompt,
+          quality: args.quality ?? 'medium',
+          directorConfirm: true,
+        }),
+      },
+    );
+    let body: unknown = null;
+    try {
+      body = await resp.json();
+    } catch {
+      /* keep body null */
+    }
+    if (!resp.ok) {
+      const message =
+        body && typeof body === 'object' && 'error' in body
+          ? String((body as { error: unknown }).error)
+          : `regenerate-image failed (HTTP ${resp.status})`;
+      return fail(message, `http_${resp.status}`);
+    }
+    // The route returns either {action: 'reroll', new_version, cost_usd, ...}
+    // or {action_blocked: true, reason} (200 with status code embedded).
+    const payload = (body as { data?: unknown })?.data ?? body;
+    if (
+      payload &&
+      typeof payload === 'object' &&
+      'action_blocked' in payload &&
+      (payload as { action_blocked?: boolean }).action_blocked
+    ) {
+      const reason = String((payload as { reason?: string }).reason ?? 'action blocked');
+      return fail(reason, 'action_blocked');
+    }
+    const versionInfo =
+      payload && typeof payload === 'object' && 'new_version' in payload
+        ? ` → v${(payload as { new_version: number }).new_version}`
+        : '';
+    const costInfo =
+      payload && typeof payload === 'object' && 'cost_usd' in payload
+        ? ` ($${(payload as { cost_usd: number }).cost_usd.toFixed(4)})`
+        : '';
+    return ok(payload, `Image regenerated${versionInfo}${costInfo}. Watch Bible / activity feed.`);
+  },
+};
+
 function safeParse(raw: string): AnyArgs {
   if (!raw || raw.trim() === '') return {};
   try {

@@ -2500,3 +2500,913 @@ Perfume Madame should preserve the S14 action-first style:
 Следующий производственный шаг: подготовить brief для E20 на основе новой Bible и Perfume Madame.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T07:14:19.713Z thread=bdbdafcf episode=- =====
+виж тескт есть . а картинку ты не стал ла генерировать вопросительный знак
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:14:35.896Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, ты прав: **картинку я не сгенерировал**. Я записал только текстовый character draft с prompt’ом.
+
+Что сейчас есть в Bible:
+
+- `SS-S14-SBL-character_perfume_madame-v01-DRAFT.png`
+- status: `DRAFT`
+- `staging_path`: пустой
+- `drive_path`: пустой
+
+То есть файл называется `.png`, потому что character-asset так типизируется в системе, но **изображения внутри нет** — только текстовое описание и visual prompt.
+
+## Почему так произошло
+Я использовал `setBibleContent`, а он сохраняет **текстовый draft**.  
+Для генерации картинки нужно запускать Bible enrichment через `enrichBible` по asset id.
+
+## Следующее действие
+Нужно сгенерировать изображение для этого draft-asset:
+
+- asset id: `55814786-62f6-4660-afb9-3dc4c84c95f5`
+- character: `Perfume Madame`
+- prompt уже внутри asset’а
+
+Подтверди: **одобряю генерацию Perfume Madame**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:14:55.157Z thread=bdbdafcf episode=- =====
+одобряю генерацию Perfume Madame.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:15:55.602Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Генерация **Perfume Madame** запущена.
+
+## Asset
+- `asset_id`: `55814786-62f6-4660-afb9-3dc4c84c95f5`
+- размер: `1024x1024`
+- mode: `MANUAL`
+- style anchor: `7a43b77b-8bf0-49ef-9b14-15413377d9df`
+
+Ждём результат в activity feed / Bible asset.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:16:05.776Z thread=bdbdafcf episode=- =====
+а по поводу Сэнди Power Glass у нас есть и даже залочен но там отсутствует описание и поскольку заочную картинку мы не сможем редактировать то скорее всего нам придётся создать для этого эпизода тоже нового героя точка хорошо бы наверное добавить опцию чтобы если мы не можем разлучить какого-то героя но мы могли бы создать его копию и отредактировать где-то создав новую версию
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:16:44.240Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Согласен. Это правильная продуктовая опция: **когда LOCKED character-asset нельзя редактировать, нужен “Duplicate as new draft/version”**, чтобы не ломать утверждённую картинку, но создать редактируемую ветку героя под эпизод.
+
+По текущему состоянию вижу:
+- `SS-S14` найдена.
+- `SS-S14-E20 The Violet Distance` создан, `BRIEF_PENDING`.
+- `general_idea_main-v02` уже `LOCKED`.
+- По старому E01 висит много pending approvals, но для E20 это не блокер.
+
+## По Sandy Power Glass
+
+Да, если текущий Sandy Power Glass / Sandy Hourglass:
+- залочен,
+- без нормального текстового описания,
+- и картинку нельзя править,
+
+то для E20 лучше сделать **эпизодную вариацию Sandy**, не ломая базового Sandy.
+
+Я бы назвал её:
+
+## `Sandy — Fogged Glass Variant` / `Сэнди — Запотевшее стекло`
+
+Функция именно под E20:
+- тот же Sandy, но с поведением корпуса в условиях фиолетового тумана Perfume Madame;
+- прозрачный силикон/стекло начинает запотевать изнутри;
+- золотой песок хуже читается, сбивается в вихри/комки;
+- тело реагирует на близость как на аллергенную эмоциональную перегрузку;
+- это не новый персонаж по лору, а **production variant** для конкретного эпизода.
+
+## Текстовый draft для character asset
+
+```md
+# CHARACTER VARIANT — SANDY: FOGGED GLASS VARIANT
+
+Status: episode-specific character variant for S14-E20 "The Violet Distance".
+
+Base character: Sandy / Sandy Hourglass [CH_01]
+
+## Purpose
+
+This is not a new story character. It is an episode-specific visual/behavioral variant of Sandy used for scenes where Perfume Madame’s violet mist affects him.
+
+The variant exists because the locked base Sandy asset cannot be edited directly and does not contain enough textual description for the complex mist/allergy/emotional distortion behavior required in S14-E20.
+
+## Core Identity
+
+Sandy remains the same soft transparent hourglass hero with golden sand as his life resource.
+
+He is:
+- active,
+- emotionally pulled forward,
+- physically vulnerable,
+- trying to get closer,
+- trying to control his reaction,
+- and failing in visible physical comedy.
+
+## Episode-Specific Visual Behavior
+
+When Sandy enters Perfume Madame’s violet mist, his transparent body reacts.
+
+Effects:
+- inner fogging on the glass/silicone surface;
+- condensation-like patches inside the body;
+- golden sand becomes less stable;
+- sand may swirl, clog, pulse, or form uneven piles;
+- the narrow waist may appear tense or temporarily blocked;
+- rubber limbs stretch toward Perfume Madame, then recoil;
+- eyes water, distort, or blink uncontrollably;
+- body bends forward from attraction, then snaps backward from allergic reaction.
+
+## Shape Language
+
+Sandy keeps his recognizable hourglass silhouette.
+
+Do not redesign him into a new character.
+
+Allowed changes:
+- fogged translucent body;
+- slightly more nervous posture;
+- mist wrapping around edges;
+- subtle violet reflections on the transparent surface;
+- sand temporarily displaced by emotional pressure;
+- exaggerated squash and stretch under allergy bursts.
+
+Not allowed:
+- changing his base anatomy;
+- replacing the golden sand;
+- making him opaque;
+- making him look like a different species;
+- adding complex costume details;
+- turning him into a realistic glass object.
+
+## Material
+
+Sandy’s body is transparent soft silicone / glass-like material.
+
+In this variant it becomes:
+- fogged,
+- slightly wet-looking,
+- internally clouded by violet mist,
+- still readable with bold black outline.
+
+The golden sand remains warm and alive. It should contrast against the cool violet haze.
+
+## Comedy Function
+
+The comedy comes from the contradiction:
+
+**Sandy wants to move closer emotionally, but his own body treats closeness as a physical allergy.**
+
+His body betrays him in visible ways:
+- fogging,
+- sneezing-like body spasms,
+- sand turbulence,
+- rubber-limb recoil,
+- awkward attempts to look normal,
+- sudden loss of balance.
+
+## Interaction with Perfume Madame
+
+Perfume Madame’s violet mist should never fully hide Sandy.
+
+The mist should:
+- wrap around him,
+- enter the transparent body visually,
+- create internal fogging,
+- push him back,
+- distort his perception,
+- create romantic/emotional attraction and allergic rejection at the same time.
+
+## First Visual Prompt
+
+2D flat cartoon character design, Sandy Hourglass episode-specific fogged glass variant, soft transparent hourglass body with warm golden sand inside, bold black outlines, rubber glove-like dark grey arms, simple flexible legs, body partially fogged from inside by violet perfume mist, condensation-like cloudy patches on transparent surface, golden sand swirling unevenly and slightly clogged at the narrow waist, nervous romantic expression, watery eyes, body leaning forward while rubber arms recoil, subtle violet reflections, action-first readable silhouette, classic 2D comedic animation style, clean vector shapes, simple neutral background, no text --no photorealism, no 3d render, no realistic glass, no over-detailed smoke, no costume, no opaque body, no human proportions
+
+## Negative Prompt / Restrictions
+
+- do not redesign Sandy’s base silhouette;
+- do not remove the hourglass body;
+- do not replace golden sand;
+- do not make him opaque;
+- do not add clothing or complex accessories;
+- do not make him realistic glass;
+- do not hide the character inside smoke;
+- do not use text or labels in the image.
+```
+
+## Что делать дальше
+
+Так как у нас уже есть активное одобрение на работу по E20/героям, следующий правильный шаг — записать эту вариацию в Bible как отдельный `character` draft, например:
+
+- slug: `sandy_fogged_glass_variant`
+- section: `character`
+
+Перед записью нужен один короткий явный approval именно на mutating action:  
+**«одобряю запись Sandy Fogged Glass Variant»**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:18:20.322Z thread=bdbdafcf episode=- =====
+Ну давай тогда создай Сэнди Одобряю писание делай а также с картинку Сэнди генерацию картинки тоже Одобряю
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:19:35.098Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Создал и запустил генерацию.
+
+## Sandy Fogged Glass Variant
+
+Создан character draft:
+- `SS-S14-SBL-character_sandy_fogged_glass_variant-v01-DRAFT.png`
+- asset id: `a5c8e7e1-b34f-4c75-99ba-cd8cba5f4562`
+- section: `character`
+- slug: `sandy_fogged_glass_variant`
+- status: `DRAFT`
+
+Запущена генерация картинки:
+- размер: `1024x1024`
+- style anchor: `7a43b77b-8bf0-49ef-9b14-15413377d9df`
+- cost: `$0.0587`
+- mode: `MANUAL`
+
+Ждём результат в activity feed / Bible asset.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:32:16.385Z thread=bdbdafcf episode=- =====
+слушаю Сэнди по твоему описанию получился вообще какой-то размытый непонятный я попробовал загрузить свою собственную картинку из предыдущих вариантов но там у нас после моей загрузки исчез имиджпромт Проверь пожалуйста и Восстанови если нужно Ну и в целом Оцени картинку мою и соответствие её от нашей Библии
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:33:12.263Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверил asset `Sandy Fogged Glass Variant`.
+
+## Что произошло
+
+После твоей загрузки картинки **image prompt действительно не исчез полностью**, но текущая активная версия картинки теперь — это upload:
+
+- asset: `SS-S14-SBL-character_sandy_fogged_glass_variant-v01-DRAFT.png`
+- текущий image version: `4`
+- source: `director_upload`
+- файл: `Gemini_Generated_Image_z1leu3z1leu3z1le.jpg`
+- path: `/staging/uploads/4ef7b0237d357b38.jpg`
+
+Но есть нюанс: **последний image prompt теперь технически заменён на upload-заглушку**:
+
+```text
+(uploaded by Director — Gemini_Generated_Image_z1leu3z1leu3z1le.jpg)
+```
+
+Хорошая новость: старый prompt сохранился в history, версия `1`, так что его можно восстановить/переписать.
+
+## Что не так с текущим текстовым описанием Sandy
+
+В описании есть несколько проблем:
+
+1. **Слишком “размытый” концепт**
+   - `fogged white-grey wash`
+   - `eyes as dark oval voids`
+   - `frosted body`
+   - это уводит от читаемого Sandy.
+
+2. **Сэнди теряет базовый канон**
+   - в Bible Sandy должен быть прозрачным/силиконовым hourglass с золотым песком;
+   - текущий вариант звучит как отдельный “стеклянный призрак”.
+
+3. **Слабая связь с base Sandy**
+   - надо не “новый материал”, а **тот же Sandy + поверхностная реакция на фиолетовый туман**.
+
+4. **Upload сломал активный generation prompt**
+   - не описание героя, а именно активная image-prompt версия теперь заглушка.
+
+## Оценка твоей картинки
+
+Я не могу визуально открыть staging-картинку прямо глазами в этом интерфейсе, поэтому честно: **визуально оценить изображение как картинку не могу**.  
+Но по факту загрузки могу оценить состояние asset’а и соответствие текстовой Bible.
+
+Сейчас asset технически содержит:
+- твой uploaded image как текущую картинку;
+- текстовое описание, которое я бы **исправил**;
+- старый prompt в history, который можно взять как основу, но переписать.
+
+## Что нужно восстановить
+
+Я бы не восстанавливал старый prompt 1:1, потому что именно он и дал “размытого непонятного” Sandy.
+
+Нужно заменить описание и prompt на более жёсткий вариант:
+
+- Sandy остаётся **оригинальным hourglass**;
+- не frosted white-grey body;
+- не dark oval void eyes;
+- не “призрак”;
+- эффект тумана только как **тонкий внешний violet overlay / internal fog patches**, не меняющий форму;
+- golden sand остаётся главным читаемым элементом;
+- лицо остаётся мультяшным, с большими белыми глазами;
+- фиолетовый эффект должен быть симптомом, а не новым дизайном.
+
+## Предлагаемая замена для character draft
+
+```md
+# SANDY — VIOLET MIST REACTION VARIANT
+### Bible Entry · S14-E20 · `sandy_violet_mist_reaction_variant`
+
+---
+
+## 1. Identity
+
+**Name:** Sandy — Violet Mist Reaction Variant  
+**Role:** Series lead, episode-specific reaction state  
+**Base character:** Sandy / Sandy Hourglass [CH_01]  
+**Episode:** S14-E20 “The Violet Distance”
+
+This is not a new character. It is the same Sandy under the physical and emotional effect of Perfume Madame’s violet mist.
+
+The variant exists to keep Sandy visually consistent while giving production a clear reference for allergy, attraction, confusion, and internal sand instability.
+
+---
+
+## 2. Core Rule
+
+Sandy must remain instantly recognizable as Sandy.
+
+Do not redesign his body, face, limbs, proportions, or color identity.
+
+The violet mist is a temporary effect layer, not a replacement for his design.
+
+---
+
+## 3. Silhouette & Body
+
+Sandy keeps the base hourglass silhouette:
+
+- clear transparent hourglass body;
+- dark grey top and bottom caps;
+- bright golden sand inside;
+- large joined white cartoon eyes;
+- simple expressive mouth;
+- thin dark grey rubber-hose arms and legs;
+- rounded dark grey feet;
+- readable compact 2D cartoon proportions.
+
+Episode-specific changes are limited to:
+
+- subtle violet tint at the edges of the transparent body;
+- small fog patches inside the glass/silicone, especially near the waist;
+- a thin violet mist ribbon around the silhouette;
+- temporary condensation dots or soft cloud marks, used sparingly;
+- sand slightly swirling, clumping, or tilting when Sandy reacts.
+
+The body should never become opaque, grey, ghost-like, icy, watery, or unreadable.
+
+---
+
+## 4. Face & Expression
+
+Sandy keeps his normal face style.
+
+Allowed expressions:
+
+- watery eyes;
+- nervous smile;
+- forced composure;
+- allergic squint;
+- romantic pull mixed with panic;
+- sneeze anticipation;
+- sudden wide-eyed recoil.
+
+Not allowed:
+
+- black void eyes;
+- missing face;
+- horror expression;
+- realistic illness;
+- over-fogged unreadable face.
+
+The face must remain the main emotional read.
+
+---
+
+## 5. Sand Behavior
+
+Golden sand remains the key readable element.
+
+In this variant, the sand reacts to Perfume Madame’s mist:
+
+- swirls in small spirals;
+- clogs briefly at the narrow waist;
+- piles unevenly when Sandy leans toward her;
+- jumps upward during sneezes or panic jolts;
+- forms unstable diagonal slopes when his balance shifts.
+
+The sand must stay warm gold and visible in every pose.
+
+---
+
+## 6. Mist Interaction
+
+The mist should read as an external and internal effect.
+
+External:
+- thin violet ribbon around Sandy;
+- small soft puffs near face and waist;
+- stylized, simple, not realistic smoke.
+
+Internal:
+- faint violet haze only in selected areas;
+- no full-body fog coverage;
+- no loss of golden sand readability.
+
+Mist should support the gag:
+
+**Sandy is emotionally pulled toward Perfume Madame, but his body reacts like it is allergic to closeness.**
+
+---
+
+## 7. Movement & Comedy
+
+Sandy’s movement stays active and comedic.
+
+Typical actions:
+
+- leans forward toward Perfume Madame;
+- rubber arms reach out, then recoil;
+- body bends from attraction, then snaps back from allergy;
+- sand sloshes diagonally;
+- eyes water while he tries to smile;
+- tiny sneeze pressure builds until a full-body elastic jolt.
+
+The comedy comes from Sandy trying to look normal while his transparent body visibly betrays him.
+
+---
+
+## 8. Visual Canon Notes
+
+| Property | Value |
+|---|---|
+| Base body | Clear transparent hourglass |
+| Caps / limbs | Dark grey |
+| Sand | Warm bright gold |
+| Eyes | Large joined white cartoon eyes |
+| Mist | Violet, thin, stylized, readable |
+| Fogging | Minimal internal patches only |
+| Outline | Crisp black / dark grey |
+| Style | 2D flat cartoon, clean vector |
+| Priority | Sandy recognizability first |
+
+Hard rule:
+
+**If the effect makes Sandy harder to recognize, reduce the effect.**
+
+---
+
+## First Visual Prompt
+
+Canonical character reference for the animated series “Sandy Chronicles”.
+
+Sandy — Violet Mist Reaction Variant, same base Sandy Hourglass character, clear transparent hourglass body with dark grey top and bottom caps, bright warm golden sand visible inside, large joined white cartoon eyes, simple expressive mouth, thin dark grey rubber-hose arms and legs, rounded dark grey feet, 2D flat cartoon, clean vector shapes, crisp dark outlines, high readability.
+
+Episode-specific effect: subtle violet perfume mist reaction, thin stylized violet ribbon around the silhouette, small violet fog patches inside the transparent body near the waist, golden sand swirling slightly and briefly clogging at the narrow waist, watery nervous eyes, forced romantic smile mixed with allergic panic, body leaning forward toward attraction while arms recoil backward, comedic physical contradiction, readable action-first pose, neutral simple background.
+
+Style: classic 2D comedic animation, flat colors, controlled soft gradients only where needed, no realistic glass reflections, no photorealism, no 3D, no visual noise, no heavy smoke, no opaque body, no ghost look, no black void eyes, no text, no logo, no watermark.
+
+---
+
+## Negative Prompt / Restrictions
+
+- do not redesign Sandy;
+- do not change hourglass silhouette;
+- do not remove dark grey caps;
+- do not remove golden sand;
+- do not make body grey/opaque/frosted;
+- do not use black void eyes;
+- do not hide face behind fog;
+- do not hide sand behind fog;
+- do not make him realistic glass;
+- do not make him look like ice or water;
+- do not add clothing;
+- do not add complex accessories;
+- do not use realistic smoke simulation;
+- do not use 3D render;
+- no text.
+```
+
+## Мой вывод
+
+Твою загруженную картинку можно оставить как текущий визуальный вариант, если она тебе ближе.  
+Но для production я бы **срочно исправил текст и prompt**, чтобы следующие генерации не тащили “размытого призрачного Sandy”.
+
+Нужное действие: перезаписать `sandy_fogged_glass_variant` новым clean-описанием и prompt’ом выше.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:33:18.162Z thread=bdbdafcf episode=- =====
+а вот ещё я перегенерировал и имел немножко описание нашей парфюм мадам теперь мне кажется она стала немножко по-человечнее было уже очень строга и и Давай наверное сгенерируем несколько вариаций локации
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:34:33.515Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Создал 3 location draft’а под E20, без Library-перегруза и с учётом новой Perfume Madame:
+
+1. `SS-S14-SBL-location_violet_distance_cafe-v01-DRAFT.png`
+   - date/cafe setup, два места далеко друг от друга, между ними фиолетовая зона дистанции.
+
+2. `SS-S14-SBL-location_perfume_counter_bar-v01-DRAFT.png`
+   - perfume counter / display bar, формальная граница между Sandy и Perfume Madame.
+
+3. `SS-S14-SBL-location_violet_neon_alley-v01-DRAFT.png`
+   - внешний neon alley, коридор приближения/отталкивания с туманом.
+
+Проверил Perfume Madame: твоя правка действительно сделала её человечнее:
+- появилась мягкость лица;
+- золотая корона;
+- меньше “ледяной строгости”;
+- при этом форма флакона и дистанция сохранены.
+
+Попытался сразу запустить генерацию картинок по 3 локациям, но approval-gate не пропустил: для `enrichBible` нужен свежий approval прямо перед генерацией.
+
+Скажи: **одобряю генерацию трёх локаций E20**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:35:12.112Z thread=bdbdafcf episode=- =====
+одобряю генерацию трёх локаций E20
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:38:07.380Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Запустил генерацию трёх локаций E20.
+
+## В работе
+
+1. `Violet Distance Cafe`
+   - asset id: `4d11da05-0513-4e80-9bca-fc1a25032c44`
+   - cost: `$0.0563`
+
+2. `Perfume Counter Bar`
+   - asset id: `8e9e1b7a-02a2-43d5-bf97-dfd6c2dfd1ad`
+   - cost: `$0.0567`
+
+3. `Violet Neon Alley`
+   - asset id: `0d5cceb0-b944-482c-89a1-e356accb76c1`
+   - cost: `$0.0587`
+
+Все три идут через style anchor:
+`SS-S14-SBL-style_episode_perfume_02-v01-LOCKED`.
+
+Смотри результат в activity feed / Bible locations.
+===== END =====
+
+===== !PAON 2026-05-12T07:40:51.808Z thread=bdbdafcf episode=- =====
+(toggle ON) !fb 3 ты сгенерировала стиль молодец но картинки Не сгенерировала давай в следующий раз когда генерируешь Уточняй по поводу картинок и сразу тоже генериру точка пометище где-нибудь правила то когда генерируются картинки локации они генерируются без каких-то героев и там могут быть присутствовать объекты которые у нас есть в списке объектов а может быть и не нужно чтобы случайно потом они не появились везде точка как-то странно смотрится пример локации бара где сидит Белка и стоит какой-то флакончик с духами непонятный или пример где дистанция и какая-то синяя полоса между столами странная Но самое странное - это то что сидит какая-то девушка непонятно на фиолетовый неоновой Аллее бежит какой-то непонятный кубик лучше Это всё убрать и перегенерировать картинки в соответствии с этими моими требованиями одобряю генерацию трёх картинок локаций
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:41:56.122Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Сервер не засчитал approval, потому что фраза с `одобряю` была внутри `!fb`-marker’а, а markers у нас log-only и не дают разрешение на mutating tools.
+
+Сформулировал правку: три location draft’а будут переписаны как **чистые пустые локации**:
+- без героев;
+- без людей/животных/силуэтов;
+- без случайных character-like объектов;
+- без синей полосы;
+- без “белки”, девушки, кубика;
+- только допустимый реквизит окружения.
+
+Нужна отдельная фраза вне marker’а: **одобряю перезапись и генерацию трёх локаций E20**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:42:55.169Z thread=bdbdafcf episode=- =====
+одобряю перезапись и генерацию трёх локаций E20.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:43:48.744Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Перезаписал три location draft’а по требованиям:
+
+- `violet_distance_cafe`
+- `perfume_counter_bar`
+- `violet_neon_alley`
+
+Теперь в текстах жёстко зафиксировано:
+- без героев;
+- без людей/животных;
+- без силуэтов;
+- без Sandy / Perfume Madame;
+- без случайных бутылочек-персонажей;
+- без белки, девушки, кубика;
+- без синей полосы;
+- только пустая локация и нейтральный реквизит.
+
+Генерация картинок не стартовала: серверный approval-gate не засчитал разрешение после marker-сообщения и перезаписи. Нужна отдельная свежая фраза:
+
+**одобряю генерацию трёх картинок локаций**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:47:03.899Z thread=bdbdafcf episode=- =====
+а я пока не вижу картинки которые генерируются возможно они ещё в процессе а возможно мне нужно что-то щёлкнуть чтобы они обновились но подожду ещё немножко У меня вопрос к лоду вот ту картинку которую я загрузил самостоятельно героя SANDY через UPLOAD а не через генерацию картинки троеточие вопрос не будет ли каких-то конфликтов в процессе с тем что картинка может быть чему-то не соответствует каким-то канонам текстовым или ещё что-то такое и как этот риск нам зафиксить
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:47:32.640Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверил. По локациям ситуация такая: **картинки уже есть**, но это старые генерации до твоих новых ограничений.
+
+## 1. Локации: что сейчас реально в Bible
+
+У трёх location draft’ов есть `staging_path` и `drive_file_id`, то есть картинки сгенерированы:
+
+- `violet_distance_cafe`  
+  `/staging/bible-location-violet_distance_cafe-950290a37cc3.png`
+
+- `perfume_counter_bar`  
+  `/staging/bible-location-perfume_counter_bar-601bf887339e.png`
+
+- `violet_neon_alley`  
+  `/staging/bible-location-violet_neon_alley-9bef87ccff25.png`
+
+Но: **активные картинки были сгенерированы по старым prompt’ам**, где могли появиться лишние элементы.  
+Я уже переписал текстовые описания location draft’ов под новые правила, но **новую генерацию после переписывания сервер не запускал**. Поэтому если ты видишь белку/девушку/кубик/синюю полосу — это не баг UI, это старые image versions.
+
+Нужно будет отдельно перегенерировать эти три картинки по уже очищенным описаниям.
+
+---
+
+## 2. Sandy upload: будет ли конфликт
+
+Да, риск конфликта есть. Сейчас asset:
+
+`SS-S14-SBL-character_sandy_fogged_glass_variant-v01-DRAFT.png`
+
+имеет текущую картинку из твоего upload:
+
+- source: `director_upload`
+- текущая image version: `4`
+- файл: `Gemini_Generated_Image_z1leu3z1leu3z1le.jpg`
+
+Но текстовое описание всё ещё проблемное:
+
+- `frosted white-grey wash`
+- `dark oval voids`
+- `body material shifts to flat semi-transparent vector glass`
+- “fragile temporary glass”
+- Sandy теряет базовую каноническую читаемость
+
+Это может конфликтовать с новой General Bible, где Sandy:
+- мягкий силиконовый герой-песочные часы;
+- прозрачный;
+- с золотым песком;
+- action-first;
+- узнаваемый;
+- не должен превращаться в другой материал/существо.
+
+## 3. Как зафиксить риск
+
+Правильный фикс — **не трогать твою uploaded-картинку**, а привести текстовый canon asset’а в соответствие с ней и с общей Bible.
+
+То есть:
+1. оставить uploaded image как текущий visual reference;
+2. переписать описание Sandy-варианта так, чтобы оно не говорило “новый frosted ghost/glass Sandy”;
+3. восстановить нормальный image prompt внутри asset’а, чтобы будущие регенерации не брали upload-заглушку;
+4. потом либо:
+   - утвердить asset, если картинка визуально устраивает;
+   - либо перегенерировать уже по чистому prompt.
+
+## 4. Что надо записать в Sandy asset
+
+Канон должен быть такой:
+
+```md
+# SANDY — VIOLET MIST REACTION VARIANT
+
+This is not a new character. This is the same Sandy [CH_01] under the temporary visual and physical effect of Perfume Madame’s violet mist.
+
+Hard rule: Sandy must remain instantly recognizable as Sandy.
+
+The violet mist is an effect layer, not a redesign.
+```
+
+И дальше зафиксировать:
+- сохраняем hourglass silhouette;
+- сохраняем золотой песок;
+- сохраняем белые cartoon eyes;
+- сохраняем dark grey caps/limbs;
+- fogging только локально;
+- mist не скрывает лицо и песок;
+- эффект уменьшать, если он снижает узнаваемость.
+
+## 5. Моя рекомендация
+
+Твою uploaded-картинку можно использовать как reference, но только после текстовой нормализации asset’а. Иначе downstream-агенты могут читать описание и делать неправильного “размытого стеклянного Sandy”, даже если картинка хорошая.
+
+Следующий правильный шаг: **переписать Sandy character draft в clean canonical “Violet Mist Reaction Variant”** и восстановить image prompt.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:49:23.493Z thread=bdbdafcf episode=- =====
+Ну тогда поправь текстовое описание подсказки для генерации изображения Сэнди и всё-таки перегенери картинки 
+одобряю генерацию трёх картинок локаций.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:50:00.304Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Поправил Sandy.
+
+## Sandy — что сделано
+Перезаписал текстовое описание и generation prompt для:
+
+- `sandy_fogged_glass_variant`
+- asset id: `a5c8e7e1-b34f-4c75-99ba-cd8cba5f4562`
+
+Теперь там clean-канон:
+- это **не новый Sandy**, а реакция базового Sandy на фиолетовый туман;
+- Sandy остаётся узнаваемым hourglass;
+- золотой песок, глаза, пропорции, dark grey caps/limbs сохраняются;
+- mist/fog только как локальный эффект;
+- запрещены ghost/frosted/opaque/black void eyes.
+
+## Локации — что произошло
+Я попытался запустить генерацию трёх очищенных локаций:
+
+- `violet_distance_cafe`
+- `perfume_counter_bar`
+- `violet_neon_alley`
+
+Сервер не запустил, потому что эти assets уже enriched:
+
+```text
+Asset already enriched — use /regenerate-image to reroll the image
+```
+
+То есть обычный `enrichBible` больше не подходит. Нужен отдельный route/tool `regenerate-image`, но он сейчас **не доступен в моём списке tools**.
+
+## Практический вывод
+- Текстовые prompt’ы локаций уже очищены.
+- Старые картинки остаются прежними, пока их не перегенерировать через UI/route `regenerate-image`.
+- Через текущий API-инструмент я не могу reroll’нуть уже enriched-картинки.
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:51:36.070Z thread=bdbdafcf episode=- =====
+а Исправь пожалуйста чтобы можно было перегенерировать картинки по моему указанию и регенерировать провод и всё чтобы Production Assistant мог делать без проблем по моему указанию
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:52:09.504Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Принял. Я не могу сам изменить backend/tools из этого чата, но фикс понятен. Ниже — точное инженерное требование, которое нужно добавить, чтобы Production Assistant мог делать это по твоему прямому указанию.
+
+## Нужно добавить tool для PA
+
+### Новый mutating tool
+
+```ts
+regenerateBibleImage({
+  assetId: string,
+  reason: string,
+  promptOverride?: string,
+  keepCurrentPrompt?: boolean,
+  createNewImageVersion?: boolean,
+})
+```
+
+## Поведение
+
+Когда Director говорит:
+
+- «перегенерируй картинку»
+- «перегенерируй эти три локации»
+- «сделай новые варианты»
+- «исправь и перегенерируй»
+- «одобряю генерацию / перегенерацию»
+
+Production Assistant должен иметь право вызвать `regenerateBibleImage`, даже если asset уже enriched.
+
+Сейчас проблема в том, что `enrichBible` работает только для первого enrichment, а для уже созданной картинки возвращает:
+
+```text
+Asset already enriched — use /regenerate-image to reroll the image
+```
+
+Но самого `regenerate-image` tool у PA нет. Его нужно выдать PA как mutating tool.
+
+---
+
+## Правильная логика
+
+### Для DRAFT asset
+
+Если asset в статусе `DRAFT`:
+
+1. PA обновляет текст / prompt через `setBibleContent`, если нужно.
+2. PA вызывает `regenerateBibleImage`.
+3. Система создаёт новую image version:
+   - `image_version + 1`
+   - source: `ai_regeneration`
+   - сохраняет старую картинку в history
+   - текущей становится новая картинка
+4. Asset остаётся `DRAFT`.
+
+### Для LOCKED asset
+
+Если asset `LOCKED`, PA не должен перетирать его напрямую.
+
+Нужно одно из двух:
+
+#### Вариант A — duplicate as draft
+
+```ts
+duplicateBibleAssetAsDraft({
+  sourceAssetId: string,
+  newSlug?: string,
+  reason: string
+})
+```
+
+Потом уже перегенерация по новой draft-копии.
+
+#### Вариант B — regenerate locked as new version
+
+Система сама создаёт новый DRAFT asset на основе locked asset:
+
+```text
+character_sandy-v01-LOCKED
+→ character_sandy_variant-v02-DRAFT
+```
+
+Это безопаснее для production.
+
+---
+
+## Нужно добавить PA rule
+
+### Image regeneration rule
+
+Если Director просит перегенерировать картинку и даёт approval, PA должен:
+
+1. не использовать `enrichBible`, если asset уже enriched;
+2. использовать `regenerateBibleImage`;
+3. не просить повторное разрешение на каждый asset в рамках той же операции;
+4. после завершения дать отчёт:
+   - какие assets перегенерированы;
+   - какие новые image versions созданы;
+   - какие остались без изменений;
+   - какие ошибки возникли.
+
+---
+
+## Важное правило для локаций
+
+Для location assets нужно добавить default restriction:
+
+```md
+Location images must be generated as empty environments unless explicitly requested otherwise.
+
+Default:
+- no characters;
+- no people;
+- no animals;
+- no silhouettes;
+- no Sandy;
+- no Perfume Madame;
+- no random mascot objects;
+- no character-like props;
+- no unexplained creatures;
+- no accidental story figures.
+
+Allowed:
+- architecture;
+- furniture;
+- lighting;
+- signage;
+- neutral props;
+- approved recurring objects only when they support the location.
+```
+
+Это должно автоматически добавляться к location prompt при генерации и перегенерации.
+
+---
+
+## Для текущей проблемы с E20
+
+Нам нужны перегенерации по уже очищенным prompt’ам для:
+
+1. `violet_distance_cafe`
+2. `perfume_counter_bar`
+3. `violet_neon_alley`
+
+Но сейчас PA не может это сделать, потому что нет доступного tool для reroll уже enriched image.
+
+## Acceptance criteria
+
+Фикс считается сделанным, когда я смогу после твоей фразы:
+
+> одобряю перегенерацию трёх локаций
+
+сразу вызвать tool и получить новые картинки, без ручного UI и без ошибки:
+
+```text
+Asset already enriched
+```
+
+## Коротко
+
+Нужно выдать Production Assistant доступ к backend-действию:
+
+```text
+/regenerate-image
+```
+
+как полноценному mutating tool:
+
+```text
+regenerateBibleImage
+```
+
+и добавить отдельную безопасную логику для locked assets через duplicate/new draft version.
+===== END =====
+
