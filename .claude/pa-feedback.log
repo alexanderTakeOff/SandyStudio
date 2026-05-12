@@ -6779,3 +6779,42 @@ No “completed” without checking the actual instruction.
 Ну теперь когда мы такие умные знаем что надо делать и какие ошибки мы допускаем давайте во-первых где-то зафиксируем как надо действовать чтобы не допускать Эти ошибки а во-вторых вперёд исправляйте свои ошибки и двигаемся дальше
 ===== END =====
 
+===== !AMBIENT 2026-05-12T17:05:02.516Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина.
+
+## Новое событие
+**Writer v02 готов**, но качество плохое: 80s, 9 сцен, есть 10s blocks.
+
+## Ошибку исправила
+Запустила **Story Editor** на v02.
+
+- event: `review-script`
+- id: `01KREJBXQGZ5E9EBDMSXDMY2T5`
+
+Теперь он должен разобрать v02 и вернуть Writer’у нормальные production notes, если draft не проходит.
+
+## Зафиксировать правило
+В рабочий протокол записываем так:
+
+```text
+No silent handoff.
+Every task must have:
+- recipient
+- source asset
+- objective
+- acceptance criteria
+- what not to change
+
+Recipient must ACK/start.
+After completion, recipient reports result.
+Assignor/Polina verifies handoff happened.
+```
+
+Практически для E20 сейчас:
+```text
+Writer v02 → Story Editor review → если fail, Writer revision v03
+```
+
+Жду результат **Story Editor** и сразу дам полный разбор замечаний.
+===== END =====
+
