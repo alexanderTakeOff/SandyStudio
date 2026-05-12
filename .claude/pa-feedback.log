@@ -6563,3 +6563,111 @@ Output concise action units, not prose expansion.
 Сейчас v02 не годится для storyboard.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T16:54:22.194Z thread=bdbdafcf episode=- =====
+о у нас есть уже отдельный валидатор Просто у нас до него ещё хоть не дошёл как не понимаю
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:55:18.714Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина проверила pipeline E20.
+
+## Почему валидатор до этого не дошёл
+
+Причина простая: **v02 сейчас стоит на Writer approval gate**.
+
+Текущее состояние E20:
+
+- **Writer:** blocked, ждёт решения по `SS-S14-E20-SCR-script-v02-DRAFT.md`
+- **Story Editor:** blocked на старом review asset
+- **Script Supervisor / validator:** idle
+- **Storyboard Artist:** idle
+
+То есть система считает:
+
+```text
+Writer produced v02 → Director must approve/reject/request revision
+```
+
+и **не пускает downstream-агентов дальше**, включая валидатор.
+
+## Где ошибка workflow
+
+У нас есть валидатор как отдельный агент/стадия, но он стоит **слишком поздно** и не подключён как автоматический gate сразу после Writer.
+
+Правильная цепочка должна быть:
+
+```text
+Writer completes draft
+→ automatic machine/validator check
+→ if fails: return to Writer, do not bother Director
+→ if passes: Story Editor / Director review
+```
+
+А сейчас фактически:
+
+```text
+Writer completes draft
+→ asset goes to Director review
+→ validator не запускается, пока Director не пропустит дальше
+```
+
+Поэтому очевидные нарушения типа:
+
+```text
+Runtime = 80s
+Scenes = 10s each
+Unit count = 9 instead of 11
+```
+
+попали к вам, а не были отфильтрованы системой.
+
+## Что ещё неправильно
+
+### 1. Story Editor не является этим валидатором
+**Story Editor** сделал содержательное review v01.  
+Но после Writer v02 новый review не стартовал автоматически.
+
+### 2. Script Supervisor / validator сейчас downstream
+Он не работает как **pre-Director acceptance gate** для сценария.
+
+### 3. Writer self-QA нельзя считать валидатором
+Writer сам написал в self-QA:
+
+> `10+10+10+10+10+10+8+8+4 = 80 seconds (≈60 s target; within brief's "≈" tolerance at 33% over)`
+
+Это должно было автоматически провалить asset.  
+Но внешней проверки после Writer не было.
+
+## Правильное исправление для Claude
+
+Нужно добавить обязательный **Script Validator gate** сразу после Writer:
+
+```text
+Writer completed
+→ Script Validator runs automatically
+→ checks hard constraints
+→ if fail: status = VALIDATION_FAILED, task returns to Writer
+→ if pass: send to Story Editor / Director approval
+```
+
+Минимальные hard checks для E20:
+
+```text
+total_runtime_seconds must be 60–63
+unit_count must be 10–12, ideally 11
+no unit duration > 8s
+preferred unit duration 3–6s
+no scene marked 9–10s
+forbidden token: perfume_vial
+Sandy pronouns: he/him/his
+location: perfume_counter_bar only
+characters: sandy_hourglass, perfume_madame only
+```
+
+## Практический вывод
+
+Да, валидатор у нас должен быть.  
+Но **он не был встроен в нужное место pipeline**. Сейчас он не защищает Director от плохого Writer output.
+
+По E20 v02 производственно правильное решение: не утверждать v02, а вернуть Writer’у с hard failure: `80s / 10s scenes / 9 units` не соответствуют acceptance criteria.
+===== END =====
+

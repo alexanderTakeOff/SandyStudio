@@ -355,7 +355,7 @@ export function createAgentInngestFunction<E extends string>(
           .insert({
             event_type: 'agent_completed',
             severity: 'info',
-            title: `${spec.agentId} completed`,
+            title: `${agentDisplayName(spec.agentId)} completed`,
             description: spec.name,
             actor: spec.agentId,
             episode_id: episodeId,
