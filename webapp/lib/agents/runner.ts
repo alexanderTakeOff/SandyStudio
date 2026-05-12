@@ -145,6 +145,14 @@ export interface RunAgentArgs {
   durationSeconds?: number;
   /** EXEC-VGEN: pilot pass marker for activity feed / metadata. */
   vgenPilot?: boolean;
+  /**
+   * Director's revision note when this agent run is a re-fire after
+   * REQUEST_REVISION. Forwarded to writer-class agents so they treat the
+   * note as hard acceptance criteria, not a polish hint. 2026-05-12 Mode 3
+   * readiness drill — without this, requestRevision auto-chain delivers a
+   * cosmetic revision instead of an actual fix.
+   */
+  revisionNote?: string;
 }
 
 // Helper: assemble metadata payload for binary outputs, encapsulating the
