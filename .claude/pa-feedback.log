@@ -6851,3 +6851,53 @@ Writer v02 → Story Editor review → если fail, Writer revision v03
 - рекомендация: вернуть Writer’у или двигаться дальше.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T17:11:52.826Z thread=bdbdafcf episode=- =====
+а я же не очень понял я посмотрю писатель у него 24 минуты назад зовёт закончен закончен На работу . Сейчас не запустили ему в работу что ли
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:12:13.182Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина проверила.
+
+Нет, **Writer сейчас не в работе**.
+
+Что произошло:
+
+- **Writer** стартовал: 16:44
+- **Writer** закончил v02: 16:46
+- v02 сейчас висит как asset на review, поэтому стадия Writer показывает **blocked / assets_in_review: 1**
+- После этого мы запустили **Story Editor**: 17:04
+
+Но есть проблема: по `getEpisode` **Story Editor тоже уже показывает blocked / assets_in_review: 1**, а в событиях за 30 минут я пока не вижу `Story Editor completed`.
+
+Вероятно, review asset уже появился, но событие completion не отразилось в activity feed или статус обновился раньше события.
+
+Следующий шаг: читаю pending approvals по E20 и, если там есть новый review от Story Editor, сразу разбираю его.
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:13:02.582Z thread=bdbdafcf episode=- =====
+а я понял сейчас работают редактор в истории Дитер но он уже работает 6 минут по-моему многовато
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:13:30.838Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина проверила.
+
+Да, **Story Editor завис**:
+
+- стартовал: `17:04:47`
+- expected: `50 сек`
+- прошло: больше 6 минут
+- completion event нет
+- нового review asset нет
+- в pending всё ещё старый review v01, не review v02
+
+Я попыталась сразу перезапустить Story Editor как recovery, но серверный approval gate не пропустил: считает, что свежего approval уже нет.
+
+Нужна одна короткая команда:
+
+```text
+Одобряю перезапуск Story Editor для E20 v02
+```
+
+После этого перезапущу и буду контролировать completion/asset.
+===== END =====
+

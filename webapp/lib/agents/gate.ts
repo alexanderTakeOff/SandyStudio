@@ -25,10 +25,19 @@ import type { AgentId, GateResult, GovernanceAction } from './types';
 interface AgentDependency {
   /** Dot-pattern matched against assets.file_type (e.g. "SCR", "STB", "VID"). */
   fileTypePrefix: string;
-  /** How many APPROVED assets of this type must exist for the gate to pass. */
+  /** How many assets in `allowedStatuses` must exist for the gate to pass. */
   minCount: number;
   /** Friendly name for the missing-input error message. */
   label: string;
+  /**
+   * Asset statuses that satisfy the gate. Default ['APPROVED'] — most agents
+   * consume approved upstream output. Review agents (Story Editor, World
+   * Checker) override with ['REVIEW', 'REVISION', 'APPROVED'] so they can
+   * review pending drafts AS WELL AS approved ones (this enables the
+   * internal loop: Writer produces REVIEW → Story Editor reviews → REVISE
+   * → Writer regenerates REVIEW → Story Editor reviews again). 2026-05-12.
+   */
+  allowedStatuses?: ReadonlyArray<string>;
 }
 
 interface AgentGateSpec {
