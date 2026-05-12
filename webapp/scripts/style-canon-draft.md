@@ -17,13 +17,15 @@ Flat 2D cartoon, action-first silent comedy in the spirit of The Pink Panther �
 
 | Rule | Spec |
 |---|---|
-| Outline weight | **uniform 3–4 px @ 1080p** (4–5 px for hero close-ups) — never tapered, never broken |
-| Outline colour | **`#1A1A1A` near-black** on light tier · **`#0A0818` void-purple** on dark tier |
+| Outline character (v1.1) | **Confident pencil-like edge** — near-black but softened, mostly uniform 3–4 px @ 1080p, slightly textured/imperfect, clean and readable. NOT sketchy, NOT messy, NOT broken, NOT trembling. The look is "drawn with confidence" over flat fills, NOT vector-stiff and NOT pencil-illustration. |
+| Outline weight target | **3–4 px @ 1080p** (4–5 px for hero close-ups) — small natural variation allowed, no taper, no obvious gaps |
+| Outline colour | **`#1A1A1A` softened near-black** on light tier · **`#0A0818` softened void-purple** on dark tier |
 | Geometry | Circles · rounded rectangles · truncated wedges · stubby cylinders. **No** organic freehand curves, no NURBS-feel surfaces |
 | Corner radius | **2–4 px** — crisp vector, never brittle |
 | Silhouette test | Every character/prop must read clearly at **25% scale** with palette stripped to grayscale |
 | Separation | Same-hue neighbours need a **3 px containment stroke** (outline colour) between them |
 | Negative space | **≥ 35%** of any frame is empty flat colour field |
+| **Forbidden inside pencil clause** | hatching · cross-hatching as shading · pencil texture as fill · scribbly/messy lines · trembling/drunk lines · multiple stroke layers · thick illustrative inking — pencil quality is OUTLINE only, fills stay flat vector |
 
 ---
 
