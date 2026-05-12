@@ -115,18 +115,31 @@ async function main(): Promise<void> {
   console.log(`  → ${aToFlip.length} of ${aAssets.length} will flip to REJECTED.`);
 
   // ── Pre-flight: find Phase B dependents ───────────────────────────────────
-  console.log('\n[Phase B] Reading dependents pointing at LOCKED style anchor…');
-  const { data: bRows, error: bErr } = await sb
+  // Director directive q2 (2026-05-12): EXCLUDE APPROVED assets to preserve
+  // SS-S14-E01 final-cut state. Clear only non-APPROVED (DRAFT / REVIEW /
+  // REJECTED / etc) so future regenerations don't inherit the bad anchor.
+  console.log('\n[Phase B] Reading dependents pointing at LOCKED style anchor (excluding APPROVED — q2 scope)…');
+  const { data: bRowsAll, error: bErr } = await sb
     .from('assets')
     .select('id, filename, status, file_type, metadata')
     .filter('metadata->image_prompt->>style_anchor_asset_id', 'eq', STALE_LOCKED_STYLE);
   if (bErr) throw new Error(`Phase B read failed: ${bErr.message}`);
 
-  const bAssets = (bRows ?? []) as AssetRow[];
+  const bAll = (bRowsAll ?? []) as AssetRow[];
+  const bAssets = bAll.filter((a) => a.status !== 'APPROVED');
+  const bSkipped = bAll.filter((a) => a.status === 'APPROVED');
+
   for (const a of bAssets) {
-    console.log(`  - ${a.filename}  [${a.status}]  ${a.id}`);
+    console.log(`  ✓ ${a.filename}  [${a.status}]  ${a.id}`);
   }
-  console.log(`  → ${bAssets.length} dependents will have style_anchor_asset_id cleared.`);
+  if (bSkipped.length > 0) {
+    console.log(`\n  Skipped ${bSkipped.length} APPROVED (preserved per q2):`);
+    for (const a of bSkipped.slice(0, 5)) {
+      console.log(`    · ${a.filename}  ${a.id}`);
+    }
+    if (bSkipped.length > 5) console.log(`    · +${bSkipped.length - 5} more APPROVED preserved`);
+  }
+  console.log(`  → ${bAssets.length} dependents will have style_anchor_asset_id cleared (${bSkipped.length} APPROVED preserved).`);
 
   if (!commit) {
     console.log('\n[cleanup] DRY-RUN complete. Re-run with --commit to apply.');

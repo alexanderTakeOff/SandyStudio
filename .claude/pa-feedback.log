@@ -3769,3 +3769,137 @@ Episode-specific style references are not allowed as global canonical style anch
 - В Library будет понятнее: сначала стиль, потом всё остальное.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T08:19:25.848Z thread=bdbdafcf episode=- =====
+эпизод е01 Это был тестовый эпизод который очевидно уже морально и технически устарел и не актуален поэтому в принципе можно конечно удалить этот референс но можно подойти по-другому и оставить возможность всё-таки для каких-то разных эпизодов делать какие-то разные референсы может быть где-то это можно указать чётко когда делается эпизод что что для данного эпизода используется вот эти вот эти вот эти конкретные референсы из Библии но скорее всего это будет наверное неоправданное усложнение что вы думаете вопросительный знак
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:19:46.758Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: зафиксировал вывод по E01/reference policy. Никаких действий в системе.
+
+Моё мнение: **эпизодные style overrides стоит поддержать, но не делать основным путём**. Основной путь должен быть проще:
+
+## Рекомендованная модель
+
+### 1. Series style — главный и обязательный
+У сериала должен быть один актуальный общий стиль:
+
+```text
+S14 current style anchor
+```
+
+Он используется по умолчанию для:
+- персонажей;
+- объектов;
+- локаций;
+- эпизодов;
+- обложек;
+- промо.
+
+Это production baseline.
+
+### 2. Episode-specific references — только как override
+Для отдельных эпизодов можно разрешить дополнительные reference assets, но они должны быть явно помечены как:
+
+```text
+episode_override
+```
+
+Например:
+
+```text
+E20 uses:
+- series_style: s14_flat_action_canon
+- character: perfume_madame
+- character: sandy_violet_mist_reaction_variant
+- location: violet_distance_cafe
+- mood_override: violet_mist_emotional_distance
+```
+
+Но такой override **не должен становиться глобальным стилем серии**.
+
+## Почему не стоит усложнять прямо сейчас
+
+Для текущей стадии лучше не строить сложную систему “каждый эпизод выбирает набор refs”, потому что это быстро создаст хаос:
+
+- ассистенту придётся каждый раз понимать, какие refs брать;
+- UI должен будет показывать inheritance;
+- агенты могут случайно смешивать старые и новые refs;
+- locked старые тесты будут продолжать влиять на новые генерации;
+- Director будет тратить время на отладку не творчества, а routing references.
+
+То есть да: концептуально полезно, но сейчас это **не первая необходимость**.
+
+## Что сделать практически
+
+Я бы зафиксировал три уровня:
+
+### Уровень 1 — Global Series Canon
+Один текущий стиль сериала.
+
+```text
+current_series_style = s14_flat_action_canon
+```
+
+Обязателен.
+
+### Уровень 2 — Approved Library Assets
+Персонажи, объекты, локации, которые соответствуют текущему стилю.
+
+```text
+Perfume Madame
+Sandy Violet Mist Reaction Variant
+Violet Distance Cafe
+```
+
+### Уровень 3 — Episode Overrides
+Редко, вручную, только если Director явно указал:
+
+```text
+This episode uses special visual mood/reference.
+```
+
+Например, “эпизод сна”, “эпизод внутри телевизора”, “эпизод в стиле старой рекламы”.
+
+## Что делать с E01
+
+E01 лучше пометить как:
+
+```text
+legacy_test_episode
+```
+
+А его references:
+
+```text
+legacy_test_reference
+not_current
+not_series_style
+```
+
+Физически удалять можно, но production-safe вариант лучше:
+
+- убрать из current/canonical selection;
+- не использовать как default style anchor;
+- оставить в истории как тест;
+- дать UI-фильтр “Hide legacy/test references”.
+
+## Главное правило
+
+```text
+Legacy/test episode references must never be eligible as current series style anchors.
+```
+
+## Итог
+
+Я бы не удалял всю возможность episode-specific refs. Но сделал бы её **исключением**, а не нормой.
+
+Правильная архитектура:
+
+```text
+Series Style first.
+Episode refs optional.
+Legacy refs excluded from canon by default.
+Only Director can promote an episode reference into current series style.
+```
+===== END =====
+
