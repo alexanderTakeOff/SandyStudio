@@ -60,12 +60,11 @@ console.log(`\n--- IMG-episode_ref assets (${erefs?.length ?? 0}) ---`);
 for (const e of erefs ?? []) {
   const m = e.metadata as Record<string, unknown> | null;
   const sr = m?.shot_reference as Record<string, unknown> | undefined;
-  console.log(`\n${e.created_at.slice(11,19)} ${e.status.padEnd(9)} v${e.version} ${e.filename}`);
-  console.log('  shot_id:', sr?.shot_id);
-  console.log('  prompt_used (first 600):', String(sr?.prompt_used ?? '').slice(0,600));
-  console.log('  staging_url:', sr?.staging_url ?? sr?.staging_path);
-  console.log('  metadata keys:', Object.keys(m ?? {}));
-  console.log('  shot_reference keys:', sr ? Object.keys(sr) : '(none)');
+  console.log(`\n${e.created_at.slice(11,19)} ${e.status.padEnd(9)} v${e.version} shot=${sr?.shot_id}`);
+  console.log('  shot_role:', sr?.shot_role);
+  const imgPrompt = (m?.image_prompt as string | undefined) ?? '';
+  console.log('  image_prompt (first 700):');
+  console.log('   ', imgPrompt.slice(0,700).replace(/\n/g,'\n    '));
 }
 }
 main().catch(e => { console.error(e); process.exit(1); });
