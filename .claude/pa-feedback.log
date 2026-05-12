@@ -6311,3 +6311,83 @@ When Director requests revision on SCR-script:
 Иначе Director видит “revision approved”, но никто реально не работает.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T16:48:08.278Z thread=bdbdafcf episode=- =====
+Ну вот замечательный анализ так жалко что проблему заметил я а не кто-то из вас соответственно Вас должен быть правила что если какой-то Агент поручил какому-то другому моменту кто-то сделать убедиться что его поручение получено адресатом и что адресат взял это в работу более того Нормальный рабочий орфолоу - это когда тот исполнитель которому получили какую-то работу которая сообщил что он взял её в работу после выполнения должен сообщить о том монтирую который бы поручил о том что эта работа выполнена если она почему-то не выполнена то соответственно сообщить причины почему не было и это должно быть исполняться прямо как в армии очень строго как в авиации
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:48:35.504Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина: по E20 важное событие уже есть.
+
+## Новое событие по E20
+
+**Writer завершил revised script v02** в 16:46.
+
+- asset: `SS-S14-E20-SCR-script-v02-DRAFT.md`
+- asset id: `73bfec40-b845-46e9-9838-d5e86886151a`
+- status: `REVIEW`
+
+Я прочитала draft. Проблема: **Writer почти не выполнил поручение.**
+
+## Быстрый QA v02
+
+### Blocking
+1. **Не перестроено под 11 action units.**  
+   Было требование: примерно 11 коротких units.  
+   Фактически: 9 сцен.
+
+2. **Runtime стал 80 секунд, а не 60–63.**  
+   Даже хуже, чем review target:
+   - durations: `10+10+10+10+10+10+8+8+4 = 80s`
+   - self-QA абсурдно пишет: “80 seconds ≈60 target; within tolerance at 33% over” — это неверно.
+
+3. **Не соблюдено правило 3–5 секунд.**  
+   Шесть сцен по 10 секунд. Это прямо против поручения.
+
+4. **Не соблюден практический лимит video-gen ≤8s.**  
+   Сцены по 10s недопустимы для текущего production rhythm.
+
+### Important
+5. **В тексте всё ещё есть конфликтный след Perfume Vial.**  
+   В assumptions написано:  
+   `Perfume Madame uses CH_04 perfume_vial visual anatomy...`  
+   Это снова смешивает новый E20 reference с legacy Perfume Vial.
+
+6. **В self-QA остался неправильный pronoun:**  
+   `Perfume Madame receives her with apparent warmth`  
+   Sandy должен быть `he/him/his`. В action в основном уже `he`, но QA-блок грязный.
+
+7. **Café fan line удалён** — это выполнено.
+
+## Рекомендация
+
+Не утверждать v02. Нужна повторная revision с более жёстким указанием:
+
+- reject current v02 as non-compliant;
+- explicitly require:
+  - 11 units;
+  - each unit 3–6s;
+  - no unit above 8s;
+  - total 60–63s;
+  - no “≈60 at 80s” tolerance;
+  - remove all `perfume_vial` mentions;
+  - Sandy he/him/his everywhere including QA/JSON;
+  - output only corrected script v03.
+
+## По вашему workflow rule
+
+Да, правило нужно вводить строго:
+
+```text
+Task handoff protocol:
+1. Assignor creates task with explicit recipient, deliverable, acceptance criteria, deadline/ETA.
+2. Recipient must ACK: accepted / rejected / blocked.
+3. If no ACK within timeout, assignor and Prod Assistant get escalation.
+4. Task becomes visible as running only after ACK.
+5. On completion, recipient must report back to assignor with result asset and self-QA against acceptance criteria.
+6. If failed or partial, recipient must report failure reason, not silently mark completed.
+7. Orchestrator/Prod Assistant verifies acceptance criteria before exposing it as ready.
+```
+
+В нашем случае Writer должен был ACK’нуть revision task и потом self-QA должен был поймать, что `80s` не проходит. Этого не произошло.
+===== END =====
+
