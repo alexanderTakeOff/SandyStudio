@@ -152,6 +152,13 @@ export function createAgentInngestFunction<E extends string>(
       };
       const { episodeId } = eventData;
 
+      // job is captured outside try{} so the outer catch can reference it
+      // when emitting agent_failed activity (closes the "PA can't see
+      // pipeline failures" hole observed 2026-05-12).
+      let capturedJobId: string | null = null;
+
+      try {
+
       // ── Step 1: insert RUNNING job row + emit agent_started activity ─────
       const job = await step.run('insert-job-row', async () => {
         const supabase = createSupabaseServiceRoleClient();
