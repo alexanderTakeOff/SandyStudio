@@ -324,12 +324,14 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
       if (!sh.shot_id) continue;
 
       let flatLocation = 'unknown';
+      let locationSubArea: string | undefined;
       if (typeof sh.location === 'string') {
         flatLocation = sh.location;
       } else if (sh.location && typeof sh.location === 'object') {
         const slug = String(sh.location.slug ?? 'unknown');
         const sub = sh.location.sub_area;
         flatLocation = sub ? `${slug} — ${sub}` : slug;
+        if (typeof sub === 'string' && sub.length > 0) locationSubArea = sub;
       }
 
       const v2Chars = Array.isArray(sh.characters)
