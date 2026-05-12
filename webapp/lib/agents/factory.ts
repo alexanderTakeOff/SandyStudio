@@ -218,6 +218,7 @@ export function createAgentInngestFunction<E extends string>(
           supabase,
           agentId: spec.agentId,
           episodeId,
+          allowedStatuses: spec.inputAllowedStatuses,
         });
         // Resolve provider for agents that consume an external contract.
         // Resolver auto-downgrades to 'mock' when the env key is missing,
