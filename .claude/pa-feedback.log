@@ -7815,3 +7815,355 @@ Reference pipeline работает, но пока дал **один спорн�
 Следующий мой шаг: проверяю next gate и pending logic — надо понять, ждёт ли pipeline approval первого reference перед генерацией остальных shots.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T18:35:56.159Z thread=bdbdafcf episode=- =====
+а я не очень понимаю там Клод до решил убить процесс генерации референсов то вроде бы передумал непонятно на самом деле как он сейчас всё статусе точка вопрос к коду нам ретривернуть референсного художника или не нужны это процесс идёт
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:36:43.391Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, разобралась.
+
+## Статус Reference Artist сейчас
+
+Процесс **не идёт дальше**. Он **остановлен на approval gate**.
+
+Reference Artist сгенерировал 3 pending assets:
+
+1. **SC01-SH01 v01** — старый дубль Sandy entrance  
+2. **SC01-SH01 v02** — новый дубль Sandy entrance  
+3. **SC02-SH01 v01** — Sandy + Perfume Madame greeting
+
+Stage сейчас:
+
+```text
+Reference Artist: blocked
+assets_in_review: 3
+```
+
+То есть код ждёт, что мы примем решение по этим референсам. Сам Reference Artist сейчас не работает.
+
+## Нужно ли retrigger?
+
+**Нет, прямо сейчас не retrigger.**  
+Сначала нужно закрыть pending refs, иначе повторный запуск снова упрётся в review queue.
+
+## Качество refs
+
+### SC01-SH01 v01
+Старый дубль, уже superseded by v02.  
+Решение: **reject as obsolete**.
+
+### SC01-SH01 v02
+Не проходит:
+- Sandy местами уходит от канона;
+- action “slides in” читается слабо;
+- cap/форма дрейфуют;
+- reviewer дошёл до `REGENERATE_EXHAUSTED`.
+
+Решение: **request revision**, не approve.
+
+### SC02-SH01 v01
+Тоже не проходит:
+- Perfume Madame не держит нужную геометрию/индифферентность;
+- atomiser/puff плохо читаются;
+- Sandy недостаточно eager/leaning;
+- тоже `REGENERATE_EXHAUSTED`.
+
+Решение: **request revision**, не approve.
+
+## По Composer
+
+Уточнение: Composer в итоге **завершился** и выдал music asset на review. Ранее “failed” был ложный/промежуточный сигнал состояния.
+
+## Правильный следующий шаг
+
+Закрыть ref queue так:
+
+```text
+Reject SC01-SH01 v01 as obsolete.
+Request revision on SC01-SH01 v02.
+Request revision on SC02-SH01 v01.
+Then retrigger Reference Artist only after queue is clean.
+```
+
+Один вопрос: **одобряете закрыть эти 3 reference assets по схеме выше и затем перезапустить Reference Artist?**
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:38:13.156Z thread=bdbdafcf episode=- =====
+Ну музыкант похоже просто там какой-то мок выдал
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:38:36.236Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, по музыке вы правы: это **mock**.
+
+Факт по asset:
+- `SS-S14-E20-AUD-music-main-v01-DRAFT.wav`
+- path: `raw/audio/mock_..._main-v1-DRAFT.wav`
+- metadata: пусто
+- содержательного описания/параметров нет
+
+Значит Composer сейчас не production music, а заглушка для проверки pipeline. Я бы её **не оценивала творчески** и не блокировала референсы из-за неё.
+
+## Текущий статус E20
+
+- **Reference Artist**: blocked, 3 refs на review
+- **Composer**: blocked, 1 mock music на review
+- **Story Editor**: всё ещё ложный `running` — старый зависший state
+- дальше Editor/Animator idle
+
+## Что делать по Reference Artist
+
+Reference Artist сейчас не продолжает: ждёт решений по 3 картинкам.
+
+Я бы действовала так:
+1. старый `SC01-SH01 v01` — reject obsolete;
+2. `SC01-SH01 v02` — request revision;
+3. `SC02-SH01 v01` — request revision;
+4. потом перезапустить Reference Artist.
+
+По музыке: отдельно закрыть как “mock accepted for pipeline test” или оставить pending до подключения нормального Composer.
+
+Следующий шаг: нужна команда — **одобряю закрыть 3 reference assets по схеме и перезапустить Reference Artist**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:42:52.168Z thread=bdbdafcf episode=- =====
+а вот смотрите мы имеем в принципе хорошую более-менее совпадающую с моими ощущениями аналитику на картинке а потом я Нажимаю кнопочку регенерировать изображение мне интересно вот эти замечания они при моём регенерации при нажатии на кнопочку они попадают как-то провод корректируются или они игнорируются если игнорируются то это неправильно наверное можете можете посоветовать и как-то сделать чтобы вот эти замечания не учитывались при регенерации изображения и регенерации и может быть как-то есть способы добиться
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:43:28.690Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверила по факту на E20.
+
+## Ответ коротко
+
+Сейчас при ручном нажатии **Regenerate image** замечания review **скорее всего игнорируются**, если вы сами не внесли их в prompt.
+
+По asset `SC02-SH01` видно:
+
+- review notes лежат отдельно в metadata:
+  - Sandy недостаточно eager / не mid-stride;
+  - Perfume Madame не совсем indifference;
+  - atomiser/puff должен читаться лучше;
+  - quarter-turn должен быть яснее.
+- но ручной regenerate `v4` пошёл с prompt, который практически повторяет `v3`.
+- reviewer issues не были автоматически добавлены как correction layer.
+
+То есть кнопка сейчас работает больше как:
+
+```text
+reroll current prompt
+```
+
+а должна иметь режим:
+
+```text
+regenerate using unresolved review notes
+```
+
+## Как правильно сделать
+
+Нужно разделить две кнопки/режима:
+
+### 1. Reroll same prompt
+Просто новый вариант по текущему prompt. Полезно, если prompt хороший, но картинка неудачная.
+
+### 2. Fix from review notes
+Автоматически собирает новый prompt из:
+
+```text
+current_prompt
++ unresolved reviewer issues
++ suggested_prompt_v2 / fix_hints
++ Director edits
++ negative constraints
+```
+
+И только потом регенерирует.
+
+## Что добавить в систему
+
+Для Claude задача такая:
+
+```text
+Implement review-aware image regeneration.
+
+When Director clicks Regenerate on an image asset with shot_reference.review.issues:
+1. Load current image_prompt.
+2. Load unresolved review issues and fix_hints.
+3. Load suggested_prompt_v2 if present.
+4. Build corrected_prompt:
+   - preserve current shot, characters, location, style anchors;
+   - apply all CRITICAL and MAJOR fix_hints;
+   - preserve Director manual prompt edits;
+   - add negative constraints for known failures.
+5. Store prompt source as:
+   source: director_regen_with_review_notes
+6. Show in UI whether review notes were applied.
+7. After regeneration, run image review again and compare old issues vs new.
+```
+
+## Для UI
+
+Я бы сделала так:
+
+```text
+[Regenerate same prompt]
+[Regenerate fixing review notes]
+```
+
+И рядом чекбокс:
+
+```text
+☑ Apply reviewer notes
+☑ Preserve my prompt edits
+```
+
+## Почему это важно
+
+Иначе мы имеем хорошую аналитику, но она не управляет следующим поколением. Это неправильно: review должен быть не просто текстом для человека, а рабочим correction signal для генерации.
+
+## По текущему E20
+
+Ваш последний regenerate `SC02-SH01 v4` не выглядит как гарантированно review-aware. Его нужно оценивать глазами/review заново, но системно я бы считал это багом UX/pipeline.
+
+Следующий шаг: формулирую Claude короткий implementation task на **review-aware regenerate button**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:45:32.544Z thread=bdbdafcf episode=- =====
+Ну давай тогда вот с учётом тебе замечания сделаете новый фронт А я его пока ручками вставлю туда и регенерирую посмотрим что получится
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:46:12.730Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да. Я проверила текущий asset: последний `v5` всё ещё почти повторяет старый prompt, то есть review-замечания не встроены. Ниже даю новый prompt, уже с учётом замечаний reviewer-а.
+
+Вставляйте его целиком в поле prompt и регенерируйте.
+
+```text
+Animated comedy reference frame, S14 canon style: thick clean dark outlines, flat colour fills, subtle cel shading, warm cream-beige palette, simple minimalist 2D cartoon look.
+
+Location: perfume_counter_bar — pale cream/beige perfume counter with dark brown outlines, panelled front, two neat shelves of teal perfume bottles with orange stoppers behind, small tray of mini bottles on the counter. No extra props, no random objects, no labels, no text.
+
+Composition: two-character wide shot, full bodies visible. Sandy is on the LEFT, moving toward the counter. Perfume Madame is on the RIGHT, behind the counter. The image must clearly show the greeting moment: Sandy approaches eagerly, Perfume Madame gives a cool atomiser puff greeting with devastating indifference.
+
+LEFT CHARACTER — sandy_hourglass:
+Canonical anthropomorphic hourglass character. Clear glass hourglass body with bright golden-yellow sand inside, smooth dark grey top cap and bottom base, large joined white cartoon eyes with dark pupils, thin dark grey rubber-hose arms and legs, simple dark grey hands, small rounded grey feet.
+Action: Sandy is visibly mid-stride toward Perfume Madame, not standing still. One foot is lifted slightly, body tilted 10–15 degrees forward toward the counter, chest/upper glass bulb leaning forward, eyes and pupils locked on Perfume Madame. Arms are slightly swept back or lightly reaching forward to show momentum.
+Emotion: eager, smitten, breathless anticipation. Raised brows, bright attentive eyes, gentle closed curved smile — expressive but not a huge open mouth.
+
+RIGHT CHARACTER — perfume_madame:
+Tall angular purple perfume-bottle character behind the counter. Sharp faceted trapezoid purple bottle body, narrow base with small feet, geometric violet planes, gold collar band at the neck, purple faceted cap/head. Must look like an elegant bottle, not a soft humanoid body.
+Action: Perfume Madame is executing a slow quarter-turn / 3/4 turn toward Sandy. Her torso is angled left toward him, one shoulder closer to camera, so the turn is legible. One hand raises exactly ONE elegant gold-ringed index finger in minimal acknowledgement. The other hand clearly holds a visible gold oval atomiser bulb with a small nozzle.
+Atomiser: a thin wispy violet mist puff must emerge directly from the atomiser nozzle tip, not float separately. The puff should be small, controlled, elegant, and readable.
+Emotion: polite devastating indifference. Half-lidded deadpan eyes, flat neutral mouth, rigid upright posture, composed and cool. She should not look worried, surprised, friendly, angry, or soft.
+
+Beat to communicate:
+Perfume Madame receives Sandy with apparent elegance, but emotionally she is cool and unreachable. Sandy reads the gesture as romantic attention; the audience sees her indifference.
+
+Style constraints:
+Use S14 object-plate cartoon style, clean bold outlines, flat vector-like shapes, crisp silhouette readability, no photorealism, no CGI, no 3D, no realistic glass reflections, no painterly texture, no text overlay, no logo, no watermark.
+
+Negative constraints:
+No extra characters. No random yellow square objects. No orange pendants. No stray shelf blobs. No floating purple blob disconnected from the atomiser. No missing atomiser. No full-front Perfume Madame pose. No static Sandy pose. No open screaming mouth. No humanoid rounded Perfume Madame body.
+```
+
+Ключевые исправления здесь:
+- Sandy теперь **mid-stride**, а не просто стоит;
+- Perfume Madame явно **3/4 quarter-turn**;
+- atomiser обязателен и видимый;
+- violet puff привязан к nozzle;
+- эмоция Madame жёстко задана как deadpan indifference;
+- убраны типовые мусорные артефакты.
+
+Следующий шаг: вставьте prompt и нажмите Regenerate; после появления новой версии я проверю, закрыла ли она старые review issues.
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:49:42.255Z thread=bdbdafcf episode=- =====
+а я не понимаю почему у нас два фото утверждены а сразу появилась кнопочка отправить в animatic вас ведь должны воевать уходить сколько там 19 а не 2 из двух
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:50:18.593Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Привязка: E20 id сейчас `763c5c1e-44dc-4e10-92fb-e7671e5d4a44`. Я проверяю gate по правильному id.
+Вы правы: **кнопка “Send to Animatic” после 2 approved refs выглядит преждевременной**.
+
+По факту сейчас в E20:
+
+- approved image refs: **2**
+  - `SC01-SH01`
+  - `SC02-SH01`
+- storyboard: **19 shots**
+- pending image refs: **0**
+- Reference Artist сейчас не держит 19 refs в review
+- pending остались только:
+  - 2 metadata drafts от Publicist
+  - 1 mock music
+
+Значит UI/логика gate, скорее всего, считает так:
+
+```text
+Storyboard approved + Continuity PASS + хотя бы какие-то refs approved
+→ можно Send to Animatic
+```
+
+А должна считать строже:
+
+```text
+Storyboard approved
++ Continuity PASS
++ required reference coverage complete
+→ Send to Animatic
+```
+
+## В чём проблема
+
+У нас нет явного правила: **сколько reference frames требуется перед animatic**.
+
+Варианты:
+1. **Полное покрытие:** 19 refs на 19 shots.
+2. **Keyframe coverage:** не все 19, а только ключевые visual beats.
+3. **Character/location pack + selected shot refs:** например 2 character refs + 4–6 key shots.
+
+Сейчас система ведёт себя как будто хватает “2 из 2 созданных”, а не “2 из 19 требуемых”.
+
+## Моя рекомендация
+
+Для E20 не жать Animatic пока не решим coverage rule.
+
+Минимально правильно сейчас:
+```text
+Require Reference Artist to produce reference coverage plan:
+- list all 19 shots;
+- mark each shot: needs generated ref / can reuse previous / covered by character-location ref;
+- generate missing required refs.
+```
+
+То есть не обязательно делать 19 картинок, но должно быть явно:
+```text
+19 shots accounted for
+```
+
+А не просто 2 картинки approved.
+
+## Что надо поправить в коде
+
+Gate должен проверять не количество approved generated images вообще, а **coverage manifest**:
+
+```text
+reference_coverage.total_storyboard_shots = 19
+reference_coverage.covered_shots = [...]
+reference_coverage.missing_required_shots = []
+```
+
+Только тогда показывать/разрешать:
+```text
+Send to Animatic
+```
+
+Следующий шаг: я проверяю next gate по правильному E20 id и выясняю, есть ли в системе coverage manifest или gate реально считает “2 approved refs enough”.
+===== END =====
+
+===== !PAON 2026-05-12T18:51:37.938Z thread=bdbdafcf episode=- =====
+(toggle ON)
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:51:41.810Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: запоминаю до PAOFF. Никаких действий в системе.
+===== END =====
+

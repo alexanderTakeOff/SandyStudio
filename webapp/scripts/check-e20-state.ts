@@ -49,5 +49,18 @@ console.log(asset);
 const { data: approvals } = await sb.from('approvals').select('approved_by,approval_type,created_at,notes').eq('asset_id', ASSET).order('created_at', { ascending: false });
 console.log('\n--- approvals ---');
 console.log(approvals);
+
+const { data: erefs } = await sb
+  .from('assets')
+  .select('id,filename,status,version,created_at,metadata')
+  .eq('episode_id', EP)
+  .like('file_type', 'IMG-episode_ref%')
+  .order('created_at', { ascending: true });
+console.log(`\n--- IMG-episode_ref assets (${erefs?.length ?? 0}) ---`);
+for (const e of erefs ?? []) {
+  const m = e.metadata as { shot_reference?: { shot_id?: string }; kind?: string } | null;
+  const shot = m?.shot_reference?.shot_id ?? '?';
+  console.log(`${e.created_at.slice(11,19)} ${e.status.padEnd(9)} v${e.version} ${e.filename} shot=${shot}`);
+}
 }
 main().catch(e => { console.error(e); process.exit(1); });
