@@ -20,19 +20,22 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
           ✅ Bug D — STITCH status pill in Episode Timeline toolbar (Stitching / Ready / Failed)
           ✅ Pipeline DAG — Music before Animatic + new Final Cut row (was: Music after VGEN)
 
-          ✅ Mode 2.5 Phase 1-A + 1-B + Phase A COMPLETE — claude/quizzical-brown-462555 (LT-01), PR #23 OPEN
-             ✅ Phase 1-A: Prod Assistant rename + modular system-prompt builder + concierge_threads/turns (migration 0025 applied to remote) + TTS + voice continuous mic + panel push CSS vars
-             ✅ Phase 1-B: 13 OpenAI function-calling tools (read + dispatch + setBibleContent overwrite-DRAFT) + verbal approval gate (Cyrillic-safe token-based, full-window scan) + cookie-forwarded auth
-             ✅ Phase A: gpt-5.4-mini → gpt-5.5 swap + reasoning_effort=none + max_completion_tokens=8000 (direct API test 9.7s full content, was 52s+0 chars on reasoning_effort=low). BEHAVIOR_CONTRACT (rules 1-8, top-priority block), ACTIVE_INTENT dynamic block, BIBLE_DOMAIN block, behavior_drift activity_event LOG-ONLY emitter
-             ⏳ Phase B Skill Editor / Learning Loop — design ready (~/.claude/plans/valiant-soaring-karp.md "Phase B"), implementation deferred until Director green-lights
-             ⏳ Slash commands /pa-recent /pa-summary /pa-resume + Monitor task on pa-feedback.log
+          ✅ **PR #23 MERGED 2026-05-12 17:22 UTC (commit `8fa5c00`, --merge style)** — Mode 2.5 PA + Mode 3 readiness drill on master
+             ✅ Phase 1-A: Prod Assistant rename + modular system-prompt builder (10 blocks) + concierge_threads/turns (migration 0025) + TTS + voice continuous mic + panel push CSS vars
+             ✅ Phase 1-B: 16 PA tools (was 13 + getAsset + getRecentActivityEvents + regenerateBibleImage) + verbal approval gate position-aware (Cyrillic + later-token-wins + Director-turn-window) + cookie-forwarded auth
+             ✅ Phase A: gpt-5.5 + reasoning_effort=none + BEHAVIOR_CONTRACT rules 1-8 + 1a (event awareness) + 1b (proactive driving) + AGENT_NAMES block
+             ✅ Mode 3 drill — 14 chained bugs fixed: SREV max_tokens 12000, agent role names everywhere, requestRevision auto-chain, revisionNote propagation, Writer HARD CONTRACT prompt, SREV verdict routing + S09-S12 checks, gate accepts REVIEW status, runner findApprovedAsset accepts REVIEW, Library 10s polling, kebab DELETE
+             ✅ Hooks shipped: 5 Operational-Ritual hooks (A staleness, B commit-guard, C verify-on-push, D session-memo, E parallel-worktree)
+             ✅ Docs: CLAUDE.md slim 604→347, technology.md §3.5 (shot rhythm/gag density) + §7 (handoff protocol)
+             ⏳ Phase D (Character Identity Model) — schema articulated by PA + Director (16:03), spec captured in observations. Migration 0026 + UI + backfill ~3-7 days. Awaiting Director green-light.
 
-Next:     1. PR #23 → review → merge to master (merge with master DONE 2026-05-12 morning, no conflicts left)
-          2. Director smoke #2 (Audio reorg on new episode) — plan at webapp/docs/smoke-tests/audio-reorg-smoke.md
-          3. Phase 1.5 backlog — variants_per_generation (LT-07), vgen_defaults UI, buildShotPromptV2 (LT-14)
-          4. UI cleanup LT-10..13 (scalable timeline 60+, episode page noise, foldable Activity Feed)
+Next:     1. Verify hooks fire on next session start (Hook A/D silent, Hook E warns 6 worktrees)
+          2. E20 pipeline self-convergence test — Writer↔Story Editor loop should close before Director sees PASS draft
+          3. Phase D Character Identity Model — Director green-light to start spec → migration → UI
+          4. Phase B Skill Editor / Learning Loop — design ready in `~/.claude/plans/valiant-soaring-karp.md`, deferred
+          5. 6 worktrees vs cap 3 — Director approval to remove stale claude/* branches
 
-Mode:     ===5=== EDIT (Director active) — switches to ===1=== at session start per CLAUDE.md
+Mode:     ===1=== ANALYTICS (default at session start) per CLAUDE.md §6
 Date:     2026-05-12
 ```
 
