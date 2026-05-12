@@ -134,19 +134,21 @@ Only ONE tier active per episode. Mid value used for floor band + props receding
 ## 8. Generation prompt template (use verbatim for every Bible / IMG generation)
 
 ```
-Flat 2D cartoon, hard-edged vector style, uniform 3-4 px outlines.
+Flat 2D cartoon with confident pencil-like outlines (softened near-black, mostly uniform 3-4 px,
+  slightly textured edge — drawn with confidence, NOT sketchy, NOT messy, NOT trembling).
 Scene tier: <LIGHT | DARK | DUSK>.
 Palette (strict, hex-locked):
-  body #F5C842 / shadow #C4882A / limb #D8763A / outline #1A1A1A
+  body #F5C842 / shadow #C4882A / limb #D8763A / outline softened #1A1A1A
   background base <tier base hex> / mid <tier mid hex>
   accent <up to 2 from cyan #00F0E0, magenta #FF2D78, coral #F87171, lime #B0FF3A>
 Lighting: completely flat, no cast shadows except one hard ground band.
 Composition: 16:9, character centre-left third, gag space right third, 35% negative space minimum.
 Forbidden: 3D shading, volumetric light, glossy reflections, depth of field, gradient shadows,
-  paint texture, sketch lines, multiple accent colours beyond 2, cinematic neon-cafe look.
+  paint texture, hatching, cross-hatching, pencil fill, scribbly lines, multiple accent colours
+  beyond 2, cinematic neon-cafe look.
 Asset type: <character | object | location | prop>.
 Subject: <describe asset>.
-Reference: SS-S14-SBL-style_s14_canon_v1-v01-LOCKED.
+Reference: SS-S14-SBL-style_s14_canon_v1-v01-LOCKED (canon v1.1).
 ```
 
 ---
