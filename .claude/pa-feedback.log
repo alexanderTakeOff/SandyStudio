@@ -5713,3 +5713,74 @@ EXEC-COPY: completed а вот такие названия агентов они
 Технические `EXEC-*` буду показывать только при отладке.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T16:05:54.492Z thread=bdbdafcf episode=- =====
+Script Reviewer когда закончат Проанализируйте что они там наработали и выдаете мне короткий анализ и рекомендации устранению несоответствия если такие будут
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:06:05.390Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON активен: записал в инженерный лог — когда **Script Editor** закончит, нужно выдать короткий анализ и рекомендации по устранению несоответствий. Никаких действий в системе.
+
+## Текущий статус E20
+
+- **Writer:** script approved
+- **Script Editor:** ещё в работе, результата пока нет
+- **Copywriter:** metadata draft готов
+- Pending approval сейчас только:
+  - `SS-S14-E20-SPC-metadata-v01-DRAFT.md`
+
+## Что сделаю, когда Script Editor завершит
+
+Дам короткий блок:
+
+1. **Verdict:** pass / needs revision
+2. **Main notes:** 3–5 пунктов максимум
+3. **Canon/style mismatches:** если есть
+4. **Recommended fix:** конкретно что править
+5. **Pipeline action:** approve / request revision / continue to storyboard
+
+Сейчас замечаний Script Editor ещё нет, анализировать нечего.
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:08:27.510Z thread=bdbdafcf episode=- =====
+Нет для начала можешь выдать все замечания какие будут мне три пять пунктов а все какие будут можешь их разбить на важные и неважное я посмотрю важное может быть и не важно прежде чем дать тебе команду на утверждение и продолжения
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:08:44.089Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Принял. По **Script Editor**: буду выдавать **все замечания**, не сжимая до 3–5, но разделю на:
+
+- **Critical / blocking** — мешает двигаться дальше.
+- **Important / should fix** — лучше исправить до storyboard.
+- **Minor / optional** — можно принять как есть.
+
+Текущий статус по доступным данным:
+- pending от **Script Editor** пока нет;
+- pending сейчас только от **Copywriter**: `SS-S14-E20-SPC-metadata-v01-DRAFT.md`;
+- поиск по `E20` напрямую сейчас не вернул episode match, но pending metadata подтверждает эпизод `SS-S14-E20`.
+
+Когда Script Editor появится в pending / завершит review, сначала покажу тебе полный список notes по категориям, без авто-approval.
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:13:10.275Z thread=bdbdafcf episode=- =====
+ПОХОЖЕ ОН ЗАВИС 
+одобряю trigger Story Editor (EXEC-SREV) для E20 заново — script asset SS-S14-E20-SCR-script-v01 уже APPROVED, нужен повторный review
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:14:05.980Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON активен: записал в инженерный лог — **Script Editor**, похоже, завис; выполнен повторный запуск review. Никаких дополнительных studio-действий кроме указанного rerun.
+
+Повторно запустил **Script Editor** для E20.
+
+## E20
+- episode id: `763c5c1e-44dc-4e10-92fb-e7671e5d4a44`
+- script уже был approved:
+  - `SS-S14-E20-SCR-script-v01-DRAFT.md`
+- rerun event:
+  - `sandystudio/exec-srev/review-script`
+  - event id: `01KREFEY440KNPA0VZV2V0Z0Y3`
+
+Текущий pending всё ещё только:
+- **Copywriter:** `SS-S14-E20-SPC-metadata-v01-DRAFT.md`
+
+Жду появления результата от **Script Editor**; когда будет, дам полный список замечаний с разделением на blocking / important / minor.
+===== END =====
+
