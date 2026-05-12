@@ -35,6 +35,8 @@ export interface PromptContext {
   activeRules?: string | null;
   /** Recent turns (oldest-first) used to derive ACTIVE_INTENT. */
   recentTurns?: ConciergeTurnRow[];
+  /** OpenAI model id — so PA can answer "what model are you?" honestly. */
+  modelId?: string;
 }
 
 type Block = (ctx: PromptContext) => string | null;
