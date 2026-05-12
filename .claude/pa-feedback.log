@@ -5266,3 +5266,173 @@ A reference may not imply a new character unless explicitly created as new chara
 Иначе Library будет плодить “новых Sandy” на каждую позу/вариант.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T10:09:05.000Z thread=bdbdafcf episode=- =====
+а какой следующий шаг
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:09:20.723Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Следующий шаг — **закрыть S14 Bible как production baseline**, иначе E20 и новые ассеты будут продолжать опираться на неполный канон.
+
+## Конкретно я бы сделал так
+
+### 1. Зафиксировать Sandy как CH_01
+Не создавать нового Sandy.  
+Нужно добавить полный текстовый canon для существующего `sandy_hourglass`, привязав его к locked reference:
+
+- `SS-S14-SBL-character_sandy_hourglass-v01-LOCKED.png`
+- asset id: `25bc0863-ac9a-441d-bfb2-116c858eec80`
+
+Смысл:
+```text
+CH_01 Sandy / Sandy Hourglass = основной герой серии.
+Locked image v01 = primary visual reference.
+Новые виды/позы/варианты = references к CH_01, а не новые персонажи.
+```
+
+### 2. После этого выбрать/утвердить стиль
+Сейчас есть `s14_canon_v1` как DRAFT. Его нужно визуально проверить по новым location/object samples и потом Director-side залочить/утвердить как официальный S14 style.
+
+### 3. Потом E20
+После Bible baseline:
+- обновить E20 brief под новый стиль и Sandy canon;
+- потом двигать сценарий.
+
+## Что сейчас висит
+В pending approvals 19 items, почти всё — старый E01 legacy/test.  
+Актуальный для нас:
+- `SS-S14-E20-SPC-brief-v01-DRAFT.md`
+
+E01 я бы сейчас не трогал, кроме будущей архивации legacy references.
+
+## Мой рекомендуемый immediate next action
+
+Создать полный текстовый `sandy_hourglass` canon draft для CH_01, без генерации картинки.
+
+Для mutation нужно твоё approval:  
+**одобряю записать полный текстовый canon Sandy / CH_01 в Bible**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:09:41.832Z thread=bdbdafcf episode=- =====
+уже создали нового Сэнди и он даже уже залочен
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:10:19.378Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, подтверждаю: новый Sandy уже создан и залочен.
+
+## Актуальный основной Sandy
+
+Используем как основной герой:
+
+```text
+SS-S14-SBL-character_sandy_hourglass-v02-LOCKED.png
+```
+
+- asset id: `d01b424c-cd47-48d3-b2b1-6bd52d59c7a5`
+- status: `LOCKED`
+- version: `2`
+- staging image: `/staging/bible-character-sandy_hourglass-e74e3159e6ab.png`
+- visual source: cloned from v01 locked
+- full text canon: есть
+
+## Что это означает
+
+`v02-LOCKED` уже закрывает проблему, которую я предлагал решать:
+
+- картинка сохранена от старого Sandy v01;
+- полное текстовое описание добавлено;
+- статус уже `LOCKED`;
+- он прямо определён как `CH_01 Sandy / Sandy Hourglass`;
+- в тексте указано, что episode-specific variants должны ссылаться на него, а не заменять его.
+
+## Как теперь считать
+
+```text
+CH_01 Sandy / Sandy Hourglass = character_sandy_hourglass v02 LOCKED
+```
+
+Старый:
+
+```text
+SS-S14-SBL-character_sandy_hourglass-v01-LOCKED.png
+```
+
+лучше считать legacy primary visual source / historical v01, но не рабочей текстовой entry.
+
+## Следующий шаг
+
+Теперь baseline по героям для Sandy закрыт. Практический следующий шаг — **синхронизировать E20 assets с новым каноном**:
+
+1. `sandy_fogged_glass_variant` оставить как episode-specific variant, но привязать смыслово к `CH_01 Sandy v02`.
+2. Проверить/обновить его prompt под `S14 STYLE CANON v1.1`.
+3. Перегенерировать E20 Sandy variant, если текущий upload не соответствует v02 + style v1.1.
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:10:22.952Z thread=bdbdafcf episode=- =====
+а всё что у нас в ожидании висит там вот эти 19 позиций из старого эпизода е01 и acloda прошу закрыть эту тему чтобы она больше не поднималась сделай как-то в фоне
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:10:44.045Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверил pending approvals.
+
+## Что висит
+
+Всего: **19 pending approvals**.
+
+Из них:
+- **18 штук — старый E01** (`episode_id: 4809684a-3740-4d20-85fa-b24d76340074`)
+- **1 штука — актуальный E20 brief**
+  - `SS-S14-E20-SPC-brief-v01-DRAFT.md`
+  - asset id: `f6beec0d-0fe5-4e5e-a08e-ab58a7cdb0cf`
+
+## По E01
+
+Да, это старый legacy/test хвост. Его нужно закрыть так, чтобы он больше не всплывал в pending.
+
+Технически у меня сейчас есть только asset-level actions:
+- approve
+- request revision
+- reject
+
+Для “закрыть тему E01” безопасный вариант — **reject всех 18 pending E01 assets** с note:
+
+```text
+Legacy/test E01 cleanup. Episode E01 is obsolete and should not be used for current S14 canon or production.
+```
+
+Это не удалит историю, но уберёт их из pending approvals.
+
+## Для Claude / backend
+
+Нужна отдельная нормальная операция:
+
+```text
+archiveEpisode(episodeId)
+```
+
+или
+
+```text
+bulkCloseEpisodePendingApprovals(episodeId, decision="REJECT", reason)
+```
+
+и флаг:
+
+```text
+episode.is_legacy = true
+episode.is_archived = true
+```
+
+Чтобы E01 больше не попадал в:
+- pending approvals;
+- current production queues;
+- style/reference auto-selection;
+- default Library canon picks.
+
+## Текущее действие
+
+У тебя уже есть формулировка “сделай как-то в фоне”, но для mutating tool серверу нужен явный approval на reject/close 18 E01 assets.
+
+Одобри одной фразой:  
+**одобряю закрыть все pending approvals E01 как legacy/test reject**.
+===== END =====
+
