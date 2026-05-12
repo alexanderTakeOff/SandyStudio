@@ -112,9 +112,9 @@ const PATCHES: readonly CameraPatch[] = [
   },
   {
     shot_id: 'SS-S14-E20-A2-SC07-SH01',
-    camera_movement: 'slow_pullback',
+    camera_movement: 'orbit_pullback',
     camera_motivation:
-      'Pull back to reveal Sandy small inside the cloud — emphasises how the chaos has overwhelmed him.',
+      'Crescendo combo — camera both orbits and recedes as Sandy is engulfed by the cloud. Rotational dimension + distance reveal stack to a single peak-chaos cinematic gesture, more visceral than a flat pullback.',
   },
   {
     shot_id: 'SS-S14-E20-A2-SC07-SH02',
