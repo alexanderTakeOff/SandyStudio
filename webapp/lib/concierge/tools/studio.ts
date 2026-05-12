@@ -4,6 +4,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { agentDisplayName } from '@/lib/api/agent-names';
 
 type AnyArgs = Record<string, unknown>;
 

@@ -5784,3 +5784,99 @@ Script Reviewer когда закончат Проанализируйте чт�
 Жду появления результата от **Script Editor**; когда будет, дам полный список замечаний с разделением на blocking / important / minor.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T16:23:28.674Z thread=bdbdafcf episode=- =====
+Клод Дорогой у нас как-то неправильно работают взаимосвязи внутри команды Ну вот 3 минуты назад уже как появился ревью скрипта а ассистент об этом не знает соответственно не занимается анализом ничего не делает А как же это всё будет работать в автомате а второй замечание что между завершением процесса и обновлением странички эпизодов проходит какую-то достаточно большое время А ты можешь сделать чтобы события которые произошло например оно соответственно остановилось известно всем участникам процесса и в соответствии с этими людьми занимались каким-то своими обязанностями которые у них  прописано и давай для простоты общения моего Prod Assistant будем называть по имени Полина
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:23:55.158Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина приняла.
+
+## По факту сейчас
+
+**Story Editor** уже завершил review E20.
+
+Pending approvals теперь 2:
+
+1. **Story Editor**
+   - `SS-S14-E20-REV-script_qa-v01-DRAFT.md`
+   - asset id: `0abed4b0-de0d-4c17-bb3b-9565f2fc0ab0`
+
+2. **Publicist**
+   - `SS-S14-E20-SPC-metadata-v01-DRAFT.md`
+   - asset id: `62653354-19e0-43a3-b2f4-e626d0ec5dd3`
+
+Сейчас E20 по стадиям:
+- **Writer:** approved
+- **Story Editor:** blocked на Director approval
+- **Publicist:** blocked на Director approval
+- дальше production stages idle.
+
+Я не вижу содержимое review notes в ответе `getEpisode`; вижу только сам pending asset. Поэтому полный разбор замечаний могу сделать только когда backend отдаст body/content этого asset’а через episode/assets API. Сейчас доступный `getEpisode` возвращает стадии, но не текст файла.
+
+## Замечание для Claude / backend
+
+Проблема реальная: workflow сейчас **eventually consistent, но не event-driven для ассистента и UI**.
+
+Нужно сделать так:
+
+### 1. Studio event bus как источник правды
+Каждое событие:
+- agent_started
+- agent_completed
+- asset_created
+- asset_ready_for_approval
+- asset_approved
+- asset_revision_requested
+- episode_stage_changed
+
+должно публиковаться в общий event stream.
+
+### 2. Prod Assistant должен получать события
+Не ждать, пока Director спросит “как успехи”, а иметь механизм:
+- subscribe/poll every 1s while conversation active;
+- при `asset_ready_for_approval` автоматически читать asset body;
+- если это review — сразу готовить summary:
+  - blocking;
+  - important;
+  - minor;
+  - recommendation.
+
+### 3. UI episode page должен обновляться быстрее
+Сейчас после завершения процесса страница эпизода запаздывает.
+
+Нужно:
+- realtime subscription на episode/stages/assets/activity;
+- cache invalidation сразу по Inngest completion;
+- optimistic stage update после mutation;
+- fallback polling раз в 1 секунду до синхронизации.
+
+### 4. Human-readable role names везде
+В activity и UI показывать:
+- **Story Editor**, не `EXEC-SREV`
+- **Publicist**, не `EXEC-COPY`
+- **Storyboard Artist**, не `EXEC-SB`
+
+Технические коды оставить только в debug/tooltip/log.
+
+## Что я могу сделать прямо сейчас
+
+Один конкретный блокер: у меня нет tool’а, который читает содержимое pending asset by `asset_id`.
+
+Нужен read-only tool типа:
+
+```ts
+getAsset(assetId)
+```
+
+который возвращает:
+- filename;
+- status;
+- content;
+- metadata;
+- reviewer notes;
+- agent self-critique;
+- links to source assets.
+
+Без этого я вижу, что Story Editor закончил, но не могу честно процитировать и разобрать его notes.
+===== END =====
+
