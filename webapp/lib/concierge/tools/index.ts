@@ -36,6 +36,8 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // Read-only — call freely
   getStudioStatus as unknown as AnyTool,
   getEpisode as unknown as AnyTool,
+  getAsset as unknown as AnyTool,
+  getRecentActivityEvents as unknown as AnyTool,
   findEpisode as unknown as AnyTool,
   getNextGate as unknown as AnyTool,
   listPendingApprovals as unknown as AnyTool,
