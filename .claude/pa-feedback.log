@@ -6901,3 +6901,16 @@ Writer v02 → Story Editor review → если fail, Writer revision v03
 После этого перезапущу и буду контролировать completion/asset.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T17:15:38.139Z thread=bdbdafcf episode=- =====
+Одобряю перезапуск Story Editor для E20 v02
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:16:16.560Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина перезапустила **Story Editor** для E20 v02.
+
+- reason: предыдущий run превысил expected time и не дал completion/result
+- event id: `01KREK0RSFX9F0C6VNMMCS5Z1R`
+
+Контроль: жду ~60 секунд, затем проверяю события и pending review; если review появится — сразу читаю и даю разбор blocking / important / minor.
+===== END =====
+
