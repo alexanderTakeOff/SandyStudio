@@ -25,7 +25,12 @@ import type { AgentInputs } from '../types';
 
 export const SREV_CONTRACT = 'script_reviewer@v1';
 export const SREV_MODEL = 'claude-sonnet-4-6';
-export const SREV_MAX_TOKENS = 3000;
+// 2026-05-12: bumped from 3000 → 12000 after pilot run crashed with
+// `stop_reason=max_tokens, output 12246 chars` before closing JSON block.
+// SREV reviews scripts up to ~8K tokens and emits structured findings —
+// 3K was way under budget. Storyboarder uses 16K, Screenwriter 8K; SREV
+// sits between the two.
+export const SREV_MAX_TOKENS = 12000;
 export const SREV_COST_CEILING_USD = 0.3;
 
 export class ScriptReviewerError extends Error {
@@ -85,12 +90,17 @@ function findApprovedAsset(
   fileType: string,
 ): UpstreamAssetLike | null {
   if (!upstream) return null;
-  // Pick the latest version (highest `version`) that is APPROVED.
-  const approved = upstream.filter(
-    (a) => a.file_type === fileType && a.status === 'APPROVED',
+  // Pick the latest version (highest `version`) in a reviewable status.
+  // For Story Editor's input we accept REVIEW + REVISION + APPROVED — Story
+  // Editor IS the gate that decides if the latest version becomes APPROVED.
+  // Brief itself is always APPROVED upstream, so 'APPROVED' alone is still
+  // valid for the brief lookup.
+  const REVIEWABLE: ReadonlySet<string> = new Set(['REVIEW', 'REVISION', 'APPROVED']);
+  const candidates = upstream.filter(
+    (a) => a.file_type === fileType && REVIEWABLE.has(a.status ?? ''),
   );
-  approved.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
-  return approved[0] ?? null;
+  candidates.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+  return candidates[0] ?? null;
 }
 
 function buildUserMessage(args: {

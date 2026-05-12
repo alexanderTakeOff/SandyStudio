@@ -33,12 +33,17 @@ const AGENT_TO_EVENT: Record<string, StudioEventName> = {
   'EXEC-WCHK':  'sandystudio/exec-wchk/check-world',
   'EXEC-EREF':  'sandystudio/exec-eref/start',
   'EXEC-EDIT':  'sandystudio/exec-edit/create-animatic',
-  'EXEC-VGEN':  'sandystudio/exec-vgen/generate-shot',
-  'EXEC-MGEN':  'sandystudio/exec-mgen/generate-music',
-  'EXEC-COPY':  'sandystudio/exec-copy/write-metadata',
-  'EXEC-THUMB': 'sandystudio/exec-thumb/generate-thumbnail',
-  'EXEC-PUB':   'sandystudio/exec-pub/publish',
-  'EXEC-ANAL':  'sandystudio/exec-anal/collect',
+  'EXEC-VGEN':   'sandystudio/exec-vgen/generate-shot',
+  'EXEC-MGEN':   'sandystudio/exec-mgen/generate-music',
+  // EXEC-STITCH added 2026-05-10 — agent shipped in d1c820d (Final Cut row
+  // in pipeline DAG + StageKebabMenu wiring), but the re-trigger whitelist
+  // was missed. Event payload is BaseEpisodeEvent (episodeId only); the
+  // generic path below already injects episodeId, so no special handling.
+  'EXEC-STITCH': 'sandystudio/exec-stitch/assemble-episode',
+  'EXEC-COPY':   'sandystudio/exec-copy/write-metadata',
+  'EXEC-THUMB':  'sandystudio/exec-thumb/generate-thumbnail',
+  'EXEC-PUB':    'sandystudio/exec-pub/publish',
+  'EXEC-ANAL':   'sandystudio/exec-anal/collect',
 };
 
 export const POST = withApiHandler(async (req, ctx) => {

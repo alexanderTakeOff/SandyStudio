@@ -23,6 +23,7 @@ import { VGENPilotPillbar } from '@/components/pipeline/VGENPilotPillbar';
 import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
 import { EpisodeTimelineSection } from '@/components/timeline/EpisodeTimelineSection';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
+import { agentDisplayName } from '@/lib/api/agent-names';
 import { fetcher } from '@/lib/swr';
 
 interface Stage {
@@ -492,8 +493,8 @@ function ApproveBriefBanner({
             Brief is waiting for your approval
           </div>
           <p className="text-xs text-text-secondary mt-1 leading-relaxed">
-            Approving the brief locks it as APPROVED and dispatches{' '}
-            <span className="font-mono text-text-primary">EXEC-SW</span> (Screenwriter).
+            Approving the brief locks it as APPROVED and dispatches the{' '}
+            <span className="text-text-primary">Writer</span>.
             {governanceMode === 4
               ? ' Mode 4 AUTOTEST — entire pipeline will auto-run through Publish.'
               : ` Mode ${governanceMode} — each downstream gate (Script, Storyboard, Animatic, Generation, Publish) will land in your Inbox for review.`}
@@ -626,7 +627,7 @@ function TriggerModal({
             className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono"
           >
             {['EXEC-SW', 'EXEC-SREV', 'EXEC-SB', 'EXEC-WCHK', 'EXEC-EDIT', 'EXEC-VGEN', 'EXEC-MGEN', 'EXEC-COPY', 'EXEC-THUMB', 'EXEC-PUB', 'EXEC-ANAL'].map((a) => (
-              <option key={a} value={a}>{a}</option>
+              <option key={a} value={a}>{agentDisplayName(a)} ({a})</option>
             ))}
           </select>
         </div>

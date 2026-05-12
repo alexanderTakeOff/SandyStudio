@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
+import { withHardBreaks } from '@/lib/markdown-breaks';
 import {
   ArrowLeft,
   X,
@@ -565,7 +566,7 @@ export function EpisodeAssetDrawer({
                     ),
                   }}
                 >
-                  {asset.content}
+                  {withHardBreaks(asset.content)}
                 </ReactMarkdown>
               </article>
             </AssetCollapsibleSection>

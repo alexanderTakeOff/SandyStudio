@@ -101,6 +101,12 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
         rows = applyFilters();
         return builder;
       },
+      in: (col: string, vals: ReadonlyArray<unknown>) => {
+        const set = new Set(vals);
+        filters.push((r) => set.has(r[col]));
+        rows = applyFilters();
+        return builder;
+      },
       like: (col: string, pattern: string) => {
         // Convert SQL LIKE pattern to JS regex (only handles trailing % for now).
         const trimmed = pattern.endsWith('%') ? pattern.slice(0, -1) : pattern;

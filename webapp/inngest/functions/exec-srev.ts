@@ -1,7 +1,12 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // inngest/functions/exec-srev.ts
-// EXEC-SREV Script Reviewer — QA gate after EXEC-SW.
-// On PASS: fans out to EXEC-SB and EXEC-COPY in parallel.
+// EXEC-SREV Story Editor — QA gate after Writer.
+// Routing by verdict (2026-05-12 Director directive — close the internal
+// Writer↔Story Editor loop so Director only sees PASS drafts):
+//   PASS / PASS-WITH-NOTES → fan out to Storyboard Artist + Publicist
+//   REVISE / FAIL          → fire Writer again with the review markdown as
+//                            revisionNote (factory forwards to runScreenwriter)
+// In mock mode the runner always returns PASS — fan-out continues as before.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { createAgentInngestFunction } from '@/lib/agents/factory';
@@ -13,13 +18,32 @@ export const execSrevReviewScript = createAgentInngestFunction({
   concurrencyId: 'exec-srev',
   eventName: 'sandystudio/exec-srev/review-script',
   operation: 'script_review',
-  // Note: in mock mode we always PASS, so always fan out. In real mode the
-  // verdict will be embedded in metadata; the orchestrator decides routing.
-  nextEvent: (_saved, eventData) => ({
-    name: 'sandystudio/exec-sb/create-storyboard',
-    data: {
-      episodeId: eventData.episodeId as string,
-      scriptAssetId: eventData.scriptAssetId as string,
-    },
-  }),
+  nextEvent: (_saved, eventData, result) => {
+    const verdict = (result?.metadata as { verdict?: string } | undefined)?.verdict;
+    const reviewMarkdown =
+      (result?.metadata as { markdown?: string } | undefined)?.markdown ?? '';
+
+    // REVISE / FAIL → bounce back to Writer, do NOT advance pipeline.
+    if (verdict === 'REVISE' || verdict === 'FAIL') {
+      return {
+        name: 'sandystudio/exec-sw/write-script',
+        data: {
+          episodeId: eventData.episodeId as string,
+          // Forward Story Editor's review markdown as the revision note
+          // (factory.ts pulls revisionNote from event data → runScreenwriter).
+          // Writer's prompt now treats this as HARD ACCEPTANCE CRITERIA.
+          revisionNote: reviewMarkdown,
+        },
+      };
+    }
+
+    // PASS / PASS-WITH-NOTES / UNKNOWN / mock → continue downstream.
+    return {
+      name: 'sandystudio/exec-sb/create-storyboard',
+      data: {
+        episodeId: eventData.episodeId as string,
+        scriptAssetId: eventData.scriptAssetId as string,
+      },
+    };
+  },
 });

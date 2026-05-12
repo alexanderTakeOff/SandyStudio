@@ -17,9 +17,11 @@
 
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
+import { withHardBreaks } from '@/lib/markdown-breaks';
 import { Download, FileWarning, ExternalLink, CloudOff } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
+import { agentDisplayName } from '@/lib/api/agent-names';
 import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
@@ -114,7 +116,7 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged }: AssetPr
         {asset.agent_id && (
           <>
             <span>·</span>
-            <span>{asset.agent_id}</span>
+            <span title={asset.agent_id}>{agentDisplayName(asset.agent_id)}</span>
           </>
         )}
         {asset.version && (
@@ -437,7 +439,7 @@ function TextBody({ assetId }: { assetId: string }) {
           hr: () => <hr className="my-3 border-glass" />,
         }}
       >
-        {content}
+        {withHardBreaks(content)}
       </ReactMarkdown>
     </article>
   );

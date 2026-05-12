@@ -25,10 +25,19 @@ import type { AgentId, GateResult, GovernanceAction } from './types';
 interface AgentDependency {
   /** Dot-pattern matched against assets.file_type (e.g. "SCR", "STB", "VID"). */
   fileTypePrefix: string;
-  /** How many APPROVED assets of this type must exist for the gate to pass. */
+  /** How many assets in `allowedStatuses` must exist for the gate to pass. */
   minCount: number;
   /** Friendly name for the missing-input error message. */
   label: string;
+  /**
+   * Asset statuses that satisfy the gate. Default ['APPROVED'] — most agents
+   * consume approved upstream output. Review agents (Story Editor, World
+   * Checker) override with ['REVIEW', 'REVISION', 'APPROVED'] so they can
+   * review pending drafts AS WELL AS approved ones (this enables the
+   * internal loop: Writer produces REVIEW → Story Editor reviews → REVISE
+   * → Writer regenerates REVIEW → Story Editor reviews again). 2026-05-12.
+   */
+  allowedStatuses?: ReadonlyArray<string>;
 }
 
 interface AgentGateSpec {
@@ -51,7 +60,18 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     governance: 'AGENT_RUN',
   },
   'EXEC-SREV': {
-    required: [{ fileTypePrefix: 'SCR', minCount: 1, label: 'Script' }],
+    // Story Editor reviews scripts in REVIEW (pending Director approval).
+    // Loop pattern: Writer produces v0X REVIEW → Story Editor reviews →
+    // verdict REVISE → Writer regenerates v0X+1 REVIEW → Story Editor reviews.
+    // Pre-fix the gate required APPROVED — but Story Editor IS the gate
+    // FROM REVIEW to APPROVED, so requiring APPROVED upstream was a chicken-
+    // and-egg deadlock (Director directive 2026-05-12 — close internal loop).
+    required: [{
+      fileTypePrefix: 'SCR',
+      minCount: 1,
+      label: 'Script (REVIEW or APPROVED)',
+      allowedStatuses: ['REVIEW', 'REVISION', 'APPROVED'],
+    }],
     governance: 'AGENT_RUN',
   },
   'EXEC-SB': {
@@ -171,12 +191,21 @@ export async function validateAgentInputs(
   // ── Step 1: asset completeness ─────────────────────────────────────────────
   const missing: string[] = [];
   for (const dep of spec.required) {
-    const { count, error } = await supabase
+    const allowedStatuses = dep.allowedStatuses ?? ['APPROVED'];
+    // Use .eq() for single-status (default) so existing mock-supabase tests
+    // keep working — .in() requires multi-status mock support which the test
+    // harness doesn't provide.
+    const baseQuery = supabase
       .from('assets')
       .select('*', { count: 'exact', head: true })
       .eq('episode_id', episodeId)
-      .eq('status', 'APPROVED')
       .like('file_type', `${dep.fileTypePrefix}%`);
+    const query = allowedStatuses.length === 1
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? baseQuery.eq('status', allowedStatuses[0] as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      : baseQuery.in('status', allowedStatuses as any);
+    const { count, error } = await query;
     if (error) {
       return {
         passed: false,
@@ -186,7 +215,7 @@ export async function validateAgentInputs(
     }
     const found = count ?? 0;
     if (found < dep.minCount) {
-      missing.push(`${dep.label} (need ${dep.minCount}, found ${found} APPROVED)`);
+      missing.push(`${dep.label} (need ${dep.minCount}, found ${found} in [${allowedStatuses.join('|')}])`);
     }
   }
 

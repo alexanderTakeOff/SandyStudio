@@ -1,0 +1,226 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// lib/concierge/approval-check.ts
+//
+// Detects whether the Director has given verbal approval in the most recent
+// thread turns. Phase 1-B `triggerAgent` and `approveAsset` tools call this
+// before executing mutating actions — per the Mode 2.5 behavior contract
+// in agents/exec/concierge.md §3.4, the agent must never auto-trigger a
+// creative gate without explicit Director consent.
+//
+// 2026-05-11 fix: switched from \b-based regex to token-set matching. JS
+// regex `\b` is ASCII-only — it does NOT treat Cyrillic letters as word
+// chars, so `\bодобряю\b` never matches "одобряю". Token splitting using
+// Unicode-aware punctuation/whitespace handles both alphabets correctly.
+// ──────────────────────────────────────────────────────────────────────────────
+
+import type { ConciergeTurnRow } from './types';
+
+/** Single-token approvals — exact match after lower-case + Unicode tokenisation. */
+const APPROVAL_TOKENS: ReadonlySet<string> = new Set([
+  // Russian
+  'да', 'ага', 'угу', 'ок', 'окей',
+  'одобряю', 'одобрено',
+  'апрув', 'апрувлю', 'апрувлено',
+  'поехали', 'пойхали', 'погнали',
+  'давай', 'давайте',
+  'вперёд', 'вперед',
+  'согласен', 'согласна', 'согласно',
+  // English
+  'approve', 'approved', 'approves',
+  'yes', 'yep', 'yeah', 'yup',
+  'ok', 'okay',
+  'go', 'goahead',
+  'sure', 'confirm', 'confirmed', 'proceed',
+]);
+
+/** Single-token rejections. Multi-word phrases handled separately below. */
+const REJECTION_TOKENS: ReadonlySet<string> = new Set([
+  'нет', 'неа', 'нету',
+  'стоп', 'стой', 'хватит',
+  'отмена', 'отменить',
+  'подожди', 'погоди', 'постой',
+  'cancel', 'stop', 'no', 'nope', 'wait', 'abort',
+  'reject', 'rejected',
+  'dont', 'undo',
+]);
+
+/** Multi-word rejection phrases checked via lowercase substring. */
+const REJECTION_PHRASES: ReadonlyArray<string> = [
+  'не надо', 'не делай', 'не запускай', 'не сейчас',
+  "don't", 'do not', 'hold on',
+];
+
+/**
+ * Tokenise a string Unicode-correctly. Splits on any whitespace, punctuation
+ * or symbol — works for both Latin and Cyrillic. Returns lowercase tokens
+ * without empty entries.
+ */
+function tokenise(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[\s\p{P}\p{S}]+/u)
+    .filter((t) => t.length > 0);
+}
+
+/**
+ * Returns the LAST character position where any approval token appears in
+ * `text`, or -1 if none. Used to resolve position-based winner when one
+ * Director turn contains BOTH approval and rejection tokens (e.g. "мы это
+ * не решили, но одобряю N" — rejection mid-sentence, approval near the end).
+ */
+function approvalPosition(text: string): number {
+  const lower = text.toLowerCase();
+  let last = -1;
+  for (const token of APPROVAL_TOKENS) {
+    // Word-boundary using Unicode-aware lookaround. Find last occurrence.
+    const re = new RegExp(`(?:^|[\\s\\p{P}\\p{S}])${token}(?=$|[\\s\\p{P}\\p{S}])`, 'gu');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(lower)) !== null) {
+      if (m.index > last) last = m.index;
+    }
+  }
+  return last;
+}
+
+/**
+ * Returns the LAST character position where any rejection token / phrase
+ * appears in `text`, or -1 if none.
+ */
+function rejectionPosition(text: string): number {
+  const lower = text.toLowerCase();
+  let last = -1;
+  for (const phrase of REJECTION_PHRASES) {
+    let idx = -1;
+    let from = 0;
+    while ((idx = lower.indexOf(phrase, from)) !== -1) {
+      if (idx > last) last = idx;
+      from = idx + 1;
+    }
+  }
+  for (const token of REJECTION_TOKENS) {
+    const re = new RegExp(`(?:^|[\\s\\p{P}\\p{S}])${token}(?=$|[\\s\\p{P}\\p{S}])`, 'gu');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(lower)) !== null) {
+      if (m.index > last) last = m.index;
+    }
+  }
+  return last;
+}
+
+function isApproval(text: string): boolean {
+  return approvalPosition(text) >= 0;
+}
+
+function isRejection(text: string): boolean {
+  return rejectionPosition(text) >= 0;
+}
+
+/**
+ * Position-aware verdict for a single director turn. When BOTH tokens
+ * appear, the LATER one wins. Returns 'approved' / 'rejected' / 'neutral'.
+ * Director directive 2026-05-12: long messages contain mid-sentence "нет"
+ * followed by clear "одобряю" at the end — gate must not reject on the
+ * earlier token.
+ */
+function verdictForTurn(text: string): 'approved' | 'rejected' | 'neutral' {
+  const a = approvalPosition(text);
+  const r = rejectionPosition(text);
+  if (a < 0 && r < 0) return 'neutral';
+  if (a < 0) return 'rejected';
+  if (r < 0) return 'approved';
+  return a > r ? 'approved' : 'rejected';
+}
+
+export interface ApprovalCheck {
+  approved: boolean;
+  /** Free-text reason returned to the LLM for explaining decisions. */
+  reason: string;
+  /** Index in `turns` of the matched director utterance (for audit). */
+  matchedTurnIndex?: number;
+}
+
+/**
+ * Scan the most recent `windowSize` Director turns (default 4) for an
+ * approval statement. Intermediate assistant / tool turns DO NOT count
+ * toward the window — a compound approval like "одобряю создание и
+ * генерацию N локаций" must survive PA's multi-step execution (each tool
+ * call adds intermediate turns).
+ *
+ * Returns `approved=false` with a human-readable reason when consent is
+ * missing or has been revoked.
+ *
+ * @param turns oldest-first turn history (any role)
+ */
+export function checkVerbalApproval(
+  turns: ConciergeTurnRow[],
+  windowSize = 4,
+): ApprovalCheck {
+  if (turns.length === 0) {
+    return {
+      approved: false,
+      reason:
+        'No conversation history yet. Ask the Director to confirm before triggering this action.',
+    };
+  }
+
+  // Walk backwards through Director turns ONLY — most recent first. A
+  // rejection in this window invalidates any earlier approval (so "stop" /
+  // "не надо" cancels). Otherwise the most recent approval wins, even when
+  // later neutral Director utterances (questions, complaints, frustration)
+  // come after it.
+  //
+  // Window counts DIRECTOR turns, not total turns. PA's intermediate
+  // assistant/tool turns between Director's approval and a downstream tool
+  // call must not push the approval out of scope. Director feedback
+  // 2026-05-12: "Почему повторно давать одобрение Хотя я давал предыдущим
+  // сообщении на создание И генерацию". Fix: count only director turns.
+  // Earlier versions ALSO broke on the first neutral director turn — that
+  // is now also fixed (only rejection cancels; neutral utterances are
+  // ignored).
+  let directorTurnsSeen = 0;
+  let foundApproval: { i: number; text: string } | null = null;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i];
+    if (turn.role !== 'director') continue;
+    if (directorTurnsSeen >= windowSize) break;
+    directorTurnsSeen++;
+    const text = turn.content.trim();
+    if (!text) continue;
+
+    // Per-turn verdict respects WHERE in the message the tokens appeared.
+    // Long Director messages may include mid-sentence "нет" / hesitation
+    // followed by clear approval near the end — approval at later position
+    // wins.
+    const verdict = verdictForTurn(text);
+    if (verdict === 'rejected') {
+      return {
+        approved: false,
+        reason: `Director's recent input ("${truncate(text, 80)}") signals rejection or hesitation. Ask for explicit re-confirmation.`,
+        matchedTurnIndex: i,
+      };
+    }
+    if (verdict === 'approved') {
+      foundApproval = { i, text };
+      break;
+    }
+    // 'neutral' — keep scanning earlier director turns for prior approval
+  }
+
+  if (foundApproval) {
+    return {
+      approved: true,
+      reason: `Director said: "${truncate(foundApproval.text, 80)}" — counted as verbal approval.`,
+      matchedTurnIndex: foundApproval.i,
+    };
+  }
+
+  return {
+    approved: false,
+    reason:
+      'No verbal approval found in the last few turns. Ask the Director "Можно запускать? / Should I proceed?" and wait for "да" / "yes" / "одобряю" before retrying.',
+  };
+}
+
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max - 1) + '…';
+}

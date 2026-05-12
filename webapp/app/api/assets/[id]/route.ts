@@ -182,3 +182,64 @@ export const PATCH = withApiHandler(async (req, ctx) => {
 
   return apiOk(updated);
 });
+
+/**
+ * DELETE — Director-driven asset deletion for non-canonical drafts.
+ *
+ * Allowed for: DRAFT, REVIEW, REVISION, REJECTED.
+ * Blocked for: APPROVED, LOCKED (terminal canon — protected from accidental loss).
+ *
+ * Director requirement 2026-05-12: "Давай сделаем чтобы я мог удалять как
+ * минимум драфты без всяких ограничений иначе уже куча мусора".
+ *
+ * Physical row delete. Drive files (if any) become orphans — recoverable from
+ * Drive trash for 30 days. Drive cleanup automation deferred.
+ */
+const DELETABLE_STATUSES: ReadonlySet<string> = new Set([
+  'DRAFT', 'REVIEW', 'REVISION', 'REJECTED',
+]);
+
+export const DELETE = withApiHandler(async (_req, ctx) => {
+  const params = (await ctx?.params) as { id: string } | undefined;
+  const id = params?.id;
+  if (!id) throw new NotFoundError('Asset');
+
+  const { user, supabase } = await requireDirector();
+
+  const { data: asset, error: fetchErr } = await supabase
+    .from('assets')
+    .select('id, filename, status, file_type, episode_id, drive_file_id')
+    .eq('id', id)
+    .maybeSingle();
+  if (fetchErr) throw new Error(`asset fetch failed: ${fetchErr.message}`);
+  if (!asset) throw new NotFoundError(`Asset ${id}`);
+
+  if (!DELETABLE_STATUSES.has(asset.status as string)) {
+    throw new ValidationError(
+      `Cannot delete asset in status "${asset.status}". Only DRAFT / REVIEW / REVISION / REJECTED may be deleted; APPROVED and LOCKED are protected. To remove a LOCKED canon asset, use the soft-archive cleanup script.`,
+    );
+  }
+
+  // Log BEFORE delete so the audit row's foreign-key reference doesn't dangle.
+  // (activity_events.asset_id is nullable, so the row survives the delete.)
+  await supabase.from('activity_events').insert({
+    event_type: 'asset_updated',
+    severity: 'warn',
+    title: `Asset deleted: ${asset.filename}`,
+    description: `Director ${user.email ?? user.id} deleted asset (was status ${asset.status}). Drive file ${asset.drive_file_id ?? 'none'} preserved in Drive.`,
+    actor: user.id,
+    asset_id: id,
+    episode_id: asset.episode_id,
+    metadata: {
+      kind: 'asset_delete',
+      previous_status: asset.status,
+      file_type: asset.file_type,
+      drive_file_id: asset.drive_file_id,
+    },
+  } as never);
+
+  const { error: delErr } = await supabase.from('assets').delete().eq('id', id);
+  if (delErr) throw new Error(`asset delete failed: ${delErr.message}`);
+
+  return apiOk({ id, deleted: true, filename: asset.filename });
+});

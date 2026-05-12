@@ -142,7 +142,7 @@ export function EpisodeReferencesGallery({
   if (refs.length === 0) {
     return (
       <div className="rounded-lg border border-glass p-3 text-xs text-text-muted">
-        No episode references generated yet. Run EXEC-EREF after Storyboard approval.
+        No episode references generated yet. Run the Reference Artist after Storyboard approval.
       </div>
     );
   }

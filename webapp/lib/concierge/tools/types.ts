@@ -1,0 +1,83 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// lib/concierge/tools/types.ts
+// Shared contract for Prod Assistant tools (Phase 1-B).
+//
+// Each tool: declarative schema + parser + executor. The chat route exposes
+// the schemas to OpenAI function-calling; when the model emits a tool_call,
+// the route looks up the tool, parses args, and calls execute().
+// ──────────────────────────────────────────────────────────────────────────────
+
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/lib/supabase/types.gen';
+import type { ConciergeMode, ConciergeTurnRow } from '../types';
+
+/** Server-side execution context handed to every tool. */
+export interface ToolContext {
+  supabase: SupabaseClient<Database>;
+  /** Active thread for audit + verbal-approval lookups. */
+  threadId: string;
+  /** Active governance mode — tools may refuse based on mode (e.g. publish in Mode 1). */
+  mode: ConciergeMode;
+  /** Episode currently in focus, if any. Many tools default to this when args omit episodeId. */
+  episodeId?: string | null;
+  /** Director's auth user id for activity_events provenance. */
+  directorUserId?: string | null;
+  /** Recent thread turns, oldest-first. Used for verbal-approval detection. */
+  recentTurns?: ConciergeTurnRow[];
+  /**
+   * Director's session cookies forwarded from the chat request. Mutating
+   * tools call existing webapp API routes (e.g. /api/assets/[id]/approve)
+   * which run `requireDirector()`; forwarding the cookie keeps the audit
+   * trail attributed to the real human and respects existing governance.
+   */
+  cookieHeader?: string | null;
+  /** Origin used for internal fetch (defaults to NEXT_PUBLIC_APP_URL). */
+  appOrigin: string;
+}
+
+/** Standard tool result envelope. Always JSON-serialisable. */
+export type ToolResult =
+  | { ok: true; data: unknown; summary?: string }
+  | { ok: false; error: string; code?: string };
+
+/** OpenAI Chat Completions tool definition shape (function calling). */
+export interface OpenAIToolSchema {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, unknown>;
+      required?: string[];
+      additionalProperties?: boolean;
+    };
+  };
+}
+
+export interface Tool<TArgs = Record<string, unknown>> {
+  /** Unique name matching the OpenAI schema `function.name`. */
+  name: string;
+  /** Short marketing description shown to the model. */
+  description: string;
+  /** OpenAI JSON-schema parameter definition. */
+  schema: OpenAIToolSchema;
+  /** Parse and validate raw JSON args from the model. Throw on invalid input. */
+  parse: (raw: string) => TArgs;
+  /** Execute the tool against the live studio. */
+  execute: (args: TArgs, ctx: ToolContext) => Promise<ToolResult>;
+  /**
+   * True for tools that change state (triggerAgent, approveAsset, …).
+   * Verbal-approval gate is applied to mutating tools only.
+   */
+  mutating: boolean;
+}
+
+/** Helper to produce ok results with optional human summary. */
+export function ok(data: unknown, summary?: string): ToolResult {
+  return summary ? { ok: true, data, summary } : { ok: true, data };
+}
+
+export function fail(error: string, code?: string): ToolResult {
+  return code ? { ok: false, error, code } : { ok: false, error };
+}

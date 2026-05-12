@@ -637,7 +637,26 @@ export const POST = withApiHandler(async (req, ctx) => {
   // milestones (storyboard 3-of-3, animatic fan-out, publish-ready) are
   // resolved by computeNextEvents — async because it queries the asset
   // and job tables to verify the gate set is complete and idempotent.
+  //
+  // REQUEST_REVISION auto-chain (Director directive 2026-05-12 + PA finding):
+  // after a revision flip the producing agent must re-run automatically so
+  // pipeline keeps moving without manual triggerAgent. Map file_type → its
+  // Inngest event so we re-fire the upstream agent with the same episode
+  // context. Mode 3 readiness requirement.
   const firedEvents: Array<{ name: string; ids: string[] }> = [];
+
+  if (body.decision === 'REQUEST_REVISION' && asset.episode_id) {
+    const reviseEvent = revisionEventForAsset(asset.file_type);
+    if (reviseEvent) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { ids } = await inngest.send({
+        name: reviseEvent as any,
+        data: { episodeId: asset.episode_id, revisionNote: body.note ?? null } as never,
+      });
+      firedEvents.push({ name: reviseEvent, ids });
+    }
+  }
+
   if (body.decision === 'APPROVE' && asset.episode_id) {
     const events = await computeNextEvents(supabase, asset, user.id);
     for (const ev of events) {
@@ -675,3 +694,29 @@ export const POST = withApiHandler(async (req, ctx) => {
     demoted_prior_asset_id: demotedPriorAssetId,
   });
 });
+
+/**
+ * Map asset.file_type → the Inngest event that re-runs its producing agent.
+ * Used on REQUEST_REVISION to auto-chain the upstream agent so pipeline
+ * keeps moving without manual triggerAgent. Returns null when no obvious
+ * single-agent rerun applies (e.g. per-shot VID is regenerate-video, not
+ * a whole-stage rerun; thumbnails / publish are terminal).
+ *
+ * Director directive 2026-05-12 (Mode 3 readiness drill): PA observed that
+ * requestRevision only flips status without dispatching the producing agent.
+ * Pipeline stalls until manual triggerAgent. Auto-chain closes the gap.
+ */
+function revisionEventForAsset(fileType: string): string | null {
+  if (fileType.startsWith('SCR-script'))                return 'sandystudio/exec-sw/write-script';
+  if (fileType === 'REV-script_qa')                     return 'sandystudio/exec-srev/review-script';
+  if (fileType.startsWith('STB'))                       return 'sandystudio/exec-sb/create-storyboard';
+  if (fileType === 'REV-world_check')                   return 'sandystudio/exec-wchk/check-world';
+  if (fileType.startsWith('AUD-music'))                 return 'sandystudio/exec-mgen/generate-music';
+  if (fileType.startsWith('VID-animatic'))              return 'sandystudio/exec-edit/create-animatic';
+  if (fileType === 'SPC-metadata' || fileType.startsWith('SPC-copy'))
+                                                        return 'sandystudio/exec-copy/write-metadata';
+  // Per-shot VGEN regen goes through /regenerate-video, not the wide event.
+  // EREF revision per-shot is similar — handled by Director UI, not a global rerun.
+  // Thumbnail / publish — terminal, no automatic rerun.
+  return null;
+}

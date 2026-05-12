@@ -74,6 +74,19 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
     onChange();
   }
 
+  async function del() {
+    if (!confirm(`DELETE ${asset.filename}?\n\nStatus: ${asset.status}\nThis is permanent. Drive file (if any) will become an orphan in Drive trash.`)) return;
+    setBusy(true);
+    const res = await fetch(`/api/assets/${asset.id}`, { method: 'DELETE' });
+    setBusy(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(`Delete failed: ${(j as { error?: string }).error ?? 'unknown'}`);
+      return;
+    }
+    onChange();
+  }
+
   return (
     <>
       <Card>
@@ -143,13 +156,17 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
                 onSelect: () => {},
                 disabled: true,
               });
-              if (!isLocked && asset.version === 1) {
+              // Delete available for non-LOCKED, non-APPROVED. Director can
+              // freely clear drafts/reviews/revisions/rejected — protects
+              // canonical APPROVED/LOCKED from accidental loss. Backend
+              // enforces same scope via DELETABLE_STATUSES in /api/assets/[id].
+              if (!isLocked && asset.status !== 'APPROVED') {
                 items.push({ separator: true });
                 items.push({
-                  label: 'Delete (planned)',
+                  label: 'Delete',
                   icon: <Trash size={12} />,
-                  onSelect: () => {},
-                  disabled: true,
+                  onSelect: del,
+                  disabled: busy,
                   destructive: true,
                 });
               }

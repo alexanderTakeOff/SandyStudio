@@ -20,6 +20,7 @@ import { NonRetriableError } from 'inngest';
 import { inngest } from '../inngest/client';
 import { concurrencyFor, type AgentConcurrencyId } from '../inngest/concurrency';
 import { recordCost } from '../budget';
+import { agentDisplayName } from '../api/agent-names';
 import { validateAgentInputs } from './gate';
 import {
   insertJobRow,
@@ -161,7 +162,7 @@ export function createAgentInngestFunction<E extends string>(
         await supabase.from('activity_events').insert({
           event_type: 'agent_started',
           severity: 'info',
-          title: `${spec.name} started`,
+          title: `${agentDisplayName(spec.agentId)} started`,
           description: `Working on episode (${spec.agentId})…`,
           actor: spec.agentId,
           episode_id: episodeId,
@@ -231,6 +232,12 @@ export function createAgentInngestFunction<E extends string>(
           provider,
           supabase,
           episodeCode,
+          // Forward Director's revisionNote when this run originated from a
+          // REQUEST_REVISION auto-chain (2026-05-12). Agents that accept it
+          // (screenwriter for now) will treat it as hard acceptance criteria.
+          revisionNote: typeof eventData.revisionNote === 'string'
+            ? eventData.revisionNote
+            : undefined,
           ...(spec.resolveRunArgs ? spec.resolveRunArgs(eventData) : {}),
         };
         return runAgent(runArgs);
@@ -349,7 +356,7 @@ export function createAgentInngestFunction<E extends string>(
           .insert({
             event_type: 'agent_completed',
             severity: 'info',
-            title: `${spec.agentId} completed`,
+            title: `${agentDisplayName(spec.agentId)} completed`,
             description: spec.name,
             actor: spec.agentId,
             episode_id: episodeId,

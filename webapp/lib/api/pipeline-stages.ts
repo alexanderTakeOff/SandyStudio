@@ -107,21 +107,23 @@ interface RowDef {
 //
 // Phase A.2 also added EXEC-STITCH (final cut) after VGEN — added here as
 // `final_cut` so the DAG reflects the assembly stage Director can see.
+// Labels are short English industry-standard role names per `lib/api/agent-names.ts`
+// (Director directive 2026-05-12). Mirror any change in agent-names.ts.
 const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   { id: 'brief',               label: 'Brief',              agents: ['Director'],     phase: 'pre-production', emoji: '🎬' },
-  { id: 'screenwriter',        label: 'Screenwriter',       agents: ['EXEC-SW'],      phase: 'pre-production', emoji: '✍️' },
-  { id: 'script_reviewer',     label: 'Script Reviewer',    agents: ['EXEC-SREV'],    phase: 'pre-production', emoji: '🔍' },
-  { id: 'storyboarder',        label: 'Storyboarder',       agents: ['EXEC-SB'],      phase: 'production',     emoji: '🎬' },
-  { id: 'continuity_check',    label: 'Continuity Check',   agents: ['EXEC-CONT'],    phase: 'production',     emoji: '🌍' },
-  { id: 'episode_references',  label: 'Episode references', agents: ['EXEC-EREF'],    phase: 'production',     emoji: '🖼️' },
-  { id: 'music_generator',     label: 'Music',              agents: ['EXEC-MGEN'],    phase: 'production',     emoji: '🎵' },
-  { id: 'animatic',            label: 'Animatic',           agents: ['EXEC-EDIT'],    phase: 'production',     emoji: '🎞️' },
-  { id: 'visual_generator',    label: 'Visual Generator',   agents: ['EXEC-VGEN'],    phase: 'generation',     emoji: '🎥' },
-  { id: 'final_cut',           label: 'Final Cut',          agents: ['EXEC-STITCH'],  phase: 'generation',     emoji: '🎬' },
-  { id: 'copywriter',          label: 'Copywriter',         agents: ['EXEC-COPY'],    phase: 'distribution',   emoji: '📝' },
-  { id: 'thumbnail_creator',   label: 'Thumbnail',          agents: ['EXEC-THUMB'],   phase: 'distribution',   emoji: '🖼️' },
-  { id: 'publisher',           label: 'Publish',            agents: ['EXEC-PUB'],     phase: 'distribution',   emoji: '🚀' },
-  { id: 'analytics_collector', label: 'Analytics',          agents: ['EXEC-ANAL'],    phase: 'analytics',      emoji: '📊' },
+  { id: 'screenwriter',        label: 'Writer',             agents: ['EXEC-SW'],      phase: 'pre-production', emoji: '✍️' },
+  { id: 'script_reviewer',     label: 'Story Editor',       agents: ['EXEC-SREV'],    phase: 'pre-production', emoji: '🔍' },
+  { id: 'storyboarder',        label: 'Storyboard Artist',  agents: ['EXEC-SB'],      phase: 'production',     emoji: '🎬' },
+  { id: 'continuity_check',    label: 'Script Supervisor',  agents: ['EXEC-CONT'],    phase: 'production',     emoji: '🌍' },
+  { id: 'episode_references',  label: 'Reference Artist',   agents: ['EXEC-EREF'],    phase: 'production',     emoji: '🖼️' },
+  { id: 'music_generator',     label: 'Composer',           agents: ['EXEC-MGEN'],    phase: 'production',     emoji: '🎵' },
+  { id: 'animatic',            label: 'Editor',             agents: ['EXEC-EDIT'],    phase: 'production',     emoji: '🎞️' },
+  { id: 'visual_generator',    label: 'Animator',           agents: ['EXEC-VGEN'],    phase: 'generation',     emoji: '🎥' },
+  { id: 'final_cut',           label: 'Online Editor',      agents: ['EXEC-STITCH'],  phase: 'generation',     emoji: '🎬' },
+  { id: 'copywriter',          label: 'Publicist',          agents: ['EXEC-COPY'],    phase: 'distribution',   emoji: '📝' },
+  { id: 'thumbnail_creator',   label: 'Key Art Designer',   agents: ['EXEC-THUMB'],   phase: 'distribution',   emoji: '🖼️' },
+  { id: 'publisher',           label: 'Distribution',       agents: ['EXEC-PUB'],     phase: 'distribution',   emoji: '🚀' },
+  { id: 'analytics_collector', label: 'Audience Analyst',   agents: ['EXEC-ANAL'],    phase: 'analytics',      emoji: '📊' },
 ];
 
 // Map a file_type → row id. Each agent's primary asset goes to its own row.
@@ -200,12 +202,19 @@ export function buildPipelineSnapshot(
     );
     const hasFailedJob = stageJobs.some((j) => j.status === 'FAILED');
 
-    if (hasRunningJob) {
-      state = 'running';
-    } else if (hasApprovedAsset) {
+    // Priority order (Director directive 2026-05-10): `approved` wins over
+    // `running` when both exist. Rationale: if at least one APPROVED asset
+    // exists for this stage, the Director already has a usable artifact —
+    // an active job is an *improvement* attempt, not a blocker. Showing
+    // orange "running" over green "approved" was misleading (Director saw
+    // 3 approved Final Cuts but row stayed orange because of a stale or
+    // in-flight STITCH job). A blocked/review state still beats running.
+    if (hasApprovedAsset) {
       state = 'approved';
     } else if (hasReviewAsset) {
       state = 'blocked';
+    } else if (hasRunningJob) {
+      state = 'running';
     } else if (hasFailedJob) {
       state = 'failed';
     }

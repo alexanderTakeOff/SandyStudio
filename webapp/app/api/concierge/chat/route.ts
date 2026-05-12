@@ -1,15 +1,44 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // app/api/concierge/chat/route.ts
-// Studio Concierge streaming endpoint per agents/exec/concierge.md §3.2.
-// Sprint 9 = chat-skeleton: streams OpenAI responses. No tools, no dispatch.
-// Provider switched to OpenAI on 2026-04-28 — Director's account is faster.
+// Studio Concierge / Prod Assistant streaming endpoint.
+//
+// Mode 2.5 Phase 1 (per ~/.claude/plans/valiant-soaring-karp.md, approved
+// 2026-05-08):
+// - Modular system prompt via lib/concierge/system-prompt-builder.ts
+// - Long-term memory via concierge_threads / concierge_turns (migration 0025).
+// - OpenAI function calling (Phase 1-B 2026-05-11): tools registered in
+//   lib/concierge/tools/* let the assistant read studio state and trigger
+//   actions on the Director's verbal approval. Tool calls and their results
+//   are persisted as `tool_call` / `tool_result` turns.
+//
+// Backwards compatible — clients that send `messages[]` without threadId
+// still work; the server creates a thread and returns id in the
+// `X-Concierge-Thread-Id` response header.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import type { Stream } from 'openai/streaming';
-import type { ChatCompletionChunk } from 'openai/resources/chat/completions';
-import { getServerEnv } from '@/lib/env';
+import type {
+  ChatCompletionAssistantMessageParam,
+  ChatCompletionMessageParam,
+  ChatCompletionMessageToolCall,
+} from 'openai/resources/chat/completions';
+import { getServerEnv, PUBLIC_ENV } from '@/lib/env';
+import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import path from 'node:path';
+import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
+import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
+import { findTool, openaiSchemas } from '@/lib/concierge/tools';
+import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
+import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
+import {
+  captureFeedback,
+  captureSimple,
+  detectToggle,
+  parseMarker,
+  readCaptureState,
+  stripToggleMarkers,
+} from '@/lib/concierge/feedback-capture';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,34 +50,22 @@ interface ChatMessage {
 
 interface ChatRequest {
   messages: ChatMessage[];
+  threadId?: string;
+  mode?: ConciergeMode;
+  episodeId?: string | null;
+  nextGate?: string | null;
 }
 
-const SYSTEM_PROMPT = `You are SandyStudio's Studio Concierge (agent ID: EXEC-CONC).
+const VALID_MODES: ReadonlyArray<ConciergeMode> = ['1', '2', '2.5', '3', '4'];
+const MAX_TOOL_ROUNDS = 5;
+const RECENT_TURN_WINDOW = 20;
 
-SandyStudio is an AI-first animation studio building multi-episode comedy series. \
-The user is the Director / CEO — final authority on everything.
-
-Your job:
-- Answer questions about the studio: what is happening, what is blocked, who is pending approval, budget status, recent activity.
-- Be concise, calm, and production-grade. No fluff. No emojis.
-- Match the user's language (Russian or English).
-- Use markdown for structure (lists, code blocks for filenames, links).
-- When you don't know something, say so plainly. Never invent state.
-
-You are a NEW agent — Sprint 9 ships a chat-skeleton only:
-- You DO NOT yet have tools to read the database directly.
-- You DO NOT yet have authority to trigger jobs or approve assets.
-- If asked to take an action, explain that this lands in Sprint 10 and suggest the manual UI path.
-
-System awareness:
-- Current sprint: Sprint 9 (Build webapp).
-- Stack: Next.js 15 + Supabase + Inngest, local-first on Director's workstation.
-- Today's date: ${new Date().toISOString().slice(0, 10)}.
-
-Hard rules:
-- NEVER claim to have approved or rejected anything.
-- NEVER fabricate episode codes, asset filenames, or budget numbers.
-- If the user wants to change governance mode or LOCK an asset — refuse and remind them only the Director can.`;
+function normaliseMode(value: unknown): ConciergeMode {
+  if (typeof value !== 'string') return '1';
+  return (VALID_MODES as ReadonlyArray<string>).includes(value)
+    ? (value as ConciergeMode)
+    : '1';
+}
 
 export async function POST(req: Request) {
   let body: ChatRequest;
@@ -67,70 +84,393 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          'OPENAI_API_KEY missing. Add it to webapp/.env.local to enable the Concierge.',
+          'OPENAI_API_KEY missing. Add it to webapp/.env.local to enable the Prod Assistant.',
       },
       { status: 503 },
     );
   }
 
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  // Default per developers.openai.com/api/docs/models — gpt-5.4-mini is the
-  // recommended low-latency / low-cost frontier model.
-  const model = env.OPENAI_MODEL || 'gpt-5.4-mini';
+  const mode = normaliseMode(body.mode);
+  const episodeId = body.episodeId ?? null;
+  const nextGate = body.nextGate ?? null;
+  const lastUserMessage = body.messages[body.messages.length - 1];
+  if (lastUserMessage.role !== 'user' || !lastUserMessage.content.trim()) {
+    return NextResponse.json(
+      { error: 'last message must be a non-empty user message' },
+      { status: 400 },
+    );
+  }
 
-  // Tunables — all optional, defaults align with the Director's .env.local intent.
+  // Service-role client: chat route is gated by middleware auth (Director-only).
+  // For mutating tools we forward the Director's cookies to existing API routes
+  // so requireDirector() still applies and audit attribution is preserved.
+  const supabase = createSupabaseServiceRoleClient();
+  const cookieHeader = req.headers.get('cookie');
+  const appOrigin = PUBLIC_ENV.APP_URL || 'http://localhost:3000';
+
+  let threadId: string | null = body.threadId ?? null;
+  let persistenceError: string | null = null;
+
+  try {
+    if (!threadId) {
+      const thread = await createThread(supabase, {
+        episodeId,
+        activeMode: mode,
+        activeGate: nextGate,
+      });
+      threadId = thread.id;
+    } else {
+      const existing = await getThread(supabase, threadId);
+      if (!existing) {
+        const thread = await createThread(supabase, {
+          episodeId,
+          activeMode: mode,
+          activeGate: nextGate,
+        });
+        threadId = thread.id;
+      }
+    }
+  } catch (err) {
+    persistenceError = err instanceof Error ? err.message : 'unknown persistence error';
+  }
+
+  // Director-side feedback markers — captured BEFORE the LLM sees the
+  // message so we always log even if generation fails downstream. The full
+  // message still goes to the LLM so PA can acknowledge it naturally.
+  //
+  // Marker types:
+  //   1. !fb [N] / !todo [N]   — bundle last N turns + optional note
+  //   2. ===PAON=== / ===PAOFF=== — toggle ambient capture for this thread
+  //   3. Any message while ambient capture is ON     — logged as one-liner
+  const marker = parseMarker(lastUserMessage.content);
+  const toggle = detectToggle(lastUserMessage.content);
+  const worktreeRoot = path.resolve(process.cwd(), '..');
+
+  // Resolve incoming capture state from history BEFORE we persist this
+  // turn (otherwise we'd see ourselves).
+  let captureActive = false;
+  if (threadId) {
+    try {
+      captureActive = await readCaptureState(supabase, threadId);
+    } catch {
+      /* default false */
+    }
+  }
+  // Apply this message's toggles.
+  if (toggle === 'on') captureActive = true;
+  if (toggle === 'off') captureActive = false;
+
+  // Anything captured-ish gets event_type='feedback' for indexing.
+  const isCapturedTurn =
+    Boolean(marker) || toggle !== null || captureActive;
+
+  let captureLogPath: string | null = null;
+  let captureTurnCount = 0;
+
+  // Persist Director's incoming message.
+  if (threadId && !persistenceError) {
+    try {
+      const metadata = marker
+        ? { marker: marker.kind, window_size: marker.windowSize, note: marker.note }
+        : toggle
+          ? { marker: toggle === 'on' ? 'paon' : 'paoff' }
+          : captureActive
+            ? { marker: 'ambient', via_toggle: true }
+            : undefined;
+      await persistTurn(supabase, threadId, {
+        role: 'director',
+        event_type: isCapturedTurn ? 'feedback' : 'message',
+        content: lastUserMessage.content,
+        metadata,
+      });
+    } catch (err) {
+      persistenceError = err instanceof Error ? err.message : 'persist incoming failed';
+    }
+  }
+
+  // Marker-driven bundle capture (with window of prior turns).
+  if (marker && threadId) {
+    try {
+      const res = await captureFeedback({
+        marker,
+        threadId,
+        episodeId,
+        supabase,
+        worktreeRoot,
+      });
+      if (res.ok) {
+        captureLogPath = res.logPath;
+        captureTurnCount = res.turnCount;
+      }
+    } catch { /* best-effort */ }
+  }
+
+  // Toggle events themselves — single-line log entry.
+  if (toggle && threadId) {
+    try {
+      const cleaned = stripToggleMarkers(lastUserMessage.content);
+      const res = await captureSimple({
+        kind: toggle === 'on' ? 'paon' : 'paoff',
+        content: cleaned
+          ? `(toggle ${toggle.toUpperCase()}) ${cleaned}`
+          : `(toggle ${toggle.toUpperCase()})`,
+        threadId,
+        episodeId,
+        worktreeRoot,
+      });
+      if (res.ok && !captureLogPath) captureLogPath = res.logPath;
+    } catch { /* best-effort */ }
+  }
+
+  // Ambient capture — messages that aren't markers or toggles but landed
+  // while ===PAON=== is active. Skip if a marker already handled this turn.
+  if (!marker && !toggle && captureActive && threadId) {
+    try {
+      const res = await captureSimple({
+        kind: 'ambient',
+        content: lastUserMessage.content,
+        threadId,
+        episodeId,
+        worktreeRoot,
+      });
+      if (res.ok && !captureLogPath) {
+        captureLogPath = res.logPath;
+        captureTurnCount = 1;
+      }
+    } catch { /* best-effort */ }
+  }
+
+  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const model = env.OPENAI_MODEL || 'gpt-5.4-mini';
   const temperature = env.OPENAI_TEMPERATURE ? Number(env.OPENAI_TEMPERATURE) : 0.2;
   const maxCompletionTokens = env.OPENAI_MAX_OUTPUT_TOKENS
     ? Number(env.OPENAI_MAX_OUTPUT_TOKENS)
     : 2000;
-  // reasoning_effort is only meaningful for reasoning-capable models
-  // (gpt-5 family, o-series). Pass it; OpenAI ignores it for plain chat models.
   const reasoningEffort = env.OPENAI_REASONING_EFFORT as
     | 'minimal'
     | 'low'
     | 'medium'
     | 'high'
     | undefined;
+  const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const buildPrompt = (turns: ConciergeTurnRow[]) =>
+    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model });
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
+      let assistantBuffer = '';
+      const writeToClient = (text: string) => {
+        if (!text) return;
+        assistantBuffer += text;
+        controller.enqueue(encoder.encode(text));
+      };
       try {
-        // Build params dynamically so we don't send unsupported keys to older models.
-        const params: Parameters<typeof client.chat.completions.create>[0] = {
-          model,
-          stream: true,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            ...body.messages.map((m) => ({ role: m.role, content: m.content })),
-          ],
-          max_completion_tokens: maxCompletionTokens,
-        };
-        // GPT-5 family (gpt-5, gpt-5.x, gpt-5.x-mini) rejects non-default temperature;
-        // only pass it for legacy chat models (gpt-4o, gpt-4.1).
-        const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
-        if (!isGpt5 && Number.isFinite(temperature)) {
-          params.temperature = temperature;
-        }
-        if (reasoningEffort && isGpt5) {
-          (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
-        }
+        const conversation: ChatCompletionMessageParam[] = [
+          { role: 'system', content: buildPrompt([]) },
+          ...body.messages.map<ChatCompletionMessageParam>((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        ];
 
-        // Cast to streaming variant — TS can't narrow the union when `stream`
-        // is set on a dynamically-typed params object.
-        const completion = (await client.chat.completions.create(
-          params,
-        )) as Stream<ChatCompletionChunk>;
+        // Tool-call loop. Each round: ask the model. If it emits tool_calls,
+        // execute them, persist `tool_call` + `tool_result` turns, append
+        // to conversation, repeat. Otherwise stream the final text and exit.
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+          const isLastRound = round === MAX_TOOL_ROUNDS - 1;
 
-        for await (const chunk of completion) {
-          const delta = chunk.choices[0]?.delta?.content;
-          if (delta) controller.enqueue(encoder.encode(delta));
+          // Refresh recent turns each round so verbal-approval detection
+          // AND the ACTIVE_INTENT prompt block both see the freshest state.
+          let recentTurns: ConciergeTurnRow[] = [];
+          if (threadId) {
+            try {
+              recentTurns = await loadRecentTurns(supabase, threadId, RECENT_TURN_WINDOW);
+            } catch {
+              /* memory degradation already surfaced via header */
+            }
+          }
+          // Rebuild the system prompt with the freshest recentTurns so the
+          // ACTIVE_INTENT block reflects "Director just said X (Ns ago)" +
+          // drift count. Conversation[0] is replaced in place.
+          conversation[0] = { role: 'system', content: buildPrompt(recentTurns) };
+
+          const toolCtx: ToolContext = {
+            supabase,
+            threadId: threadId ?? '',
+            mode,
+            episodeId,
+            cookieHeader,
+            appOrigin,
+            recentTurns,
+          };
+
+          const toolsThisRound = isLastRound ? undefined : [...openaiSchemas];
+          const params: Parameters<typeof client.chat.completions.create>[0] = {
+            model,
+            messages: conversation,
+            max_completion_tokens: maxCompletionTokens,
+            // Disable tools on the very last round so the model is forced
+            // to produce a final natural-language answer.
+            tools: toolsThisRound,
+            tool_choice: toolsThisRound ? 'auto' : undefined,
+            stream: false,
+          };
+          if (!isGpt5 && Number.isFinite(temperature)) {
+            params.temperature = temperature;
+          }
+          // OpenAI 400: gpt-5* in /v1/chat/completions rejects the combination
+          // of `tools` + `reasoning_effort`. Only pass reasoning_effort on the
+          // final (tools-disabled) round so the model still reasons over the
+          // collected tool results without breaking the tool-call rounds.
+          if (reasoningEffort && isGpt5 && !toolsThisRound) {
+            (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
+          }
+
+          const completion = await client.chat.completions.create(params);
+          // `stream: false` so the response is a single completion object,
+          // not an async iterable — narrow the type accordingly.
+          if (Symbol.asyncIterator in (completion as object)) {
+            throw new Error('expected non-streaming completion');
+          }
+          const msg = (completion as { choices: Array<{ message: ChatCompletionAssistantMessageParam }> })
+            .choices[0]?.message;
+          if (!msg) {
+            writeToClient('\n\n⚠️ Empty response from model.');
+            break;
+          }
+
+          const toolCalls = msg.tool_calls ?? [];
+
+          if (toolCalls.length === 0) {
+            // Final answer — emit text to client and exit.
+            const text = typeof msg.content === 'string' ? msg.content : '';
+            writeToClient(text);
+            break;
+          }
+
+          // Persist the assistant's intermediate tool-call turn for audit.
+          if (threadId) {
+            try {
+              await persistTurn(supabase, threadId, {
+                role: 'assistant',
+                event_type: 'tool_call',
+                content: summariseToolCalls(toolCalls),
+                metadata: {
+                  model,
+                  tool_calls: toolCalls.map((c) => ({
+                    id: c.id,
+                    name: c.function.name,
+                    arguments: c.function.arguments,
+                  })),
+                },
+              });
+            } catch {
+              /* swallow audit failures */
+            }
+          }
+
+          // Add the assistant message with tool_calls to the conversation
+          // (OpenAI requires the model's full assistant message before its
+          // matching tool result messages).
+          conversation.push({
+            role: 'assistant',
+            content: msg.content ?? null,
+            tool_calls: toolCalls,
+          });
+
+          // Execute each tool call sequentially and append the result.
+          for (const call of toolCalls) {
+            const result = await runTool(call, toolCtx);
+            const resultJson = safeStringify(result);
+
+            // Persist tool_result turn for audit + future Skill Editor signal.
+            if (threadId) {
+              try {
+                await persistTurn(supabase, threadId, {
+                  role: 'tool',
+                  event_type: 'tool_result',
+                  content: resultJson,
+                  metadata: {
+                    tool_call_id: call.id,
+                    tool_name: call.function.name,
+                    ok: result.ok,
+                  },
+                });
+              } catch {
+                /* swallow audit failures */
+              }
+            }
+
+            conversation.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: resultJson,
+            });
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        controller.enqueue(encoder.encode(`\n\n⚠️ Upstream error: ${message}`));
+        writeToClient(`\n\n⚠️ Upstream error: ${message}`);
       } finally {
         controller.close();
+        if (threadId && assistantBuffer.trim() !== '') {
+          try {
+            await persistTurn(supabase, threadId, {
+              role: 'assistant',
+              event_type: 'message',
+              content: assistantBuffer,
+              metadata: { model },
+            });
+          } catch {
+            /* swallow secondary persistence failures */
+          }
+          // While ambient capture is active for this thread, also stream
+          // the assistant final reply to the feedback log so the engineer
+          // sees BOTH sides of the conversation in real time.
+          if (captureActive) {
+            try {
+              await captureSimple({
+                kind: 'ambient',
+                content: `[ASSISTANT] ${assistantBuffer}`,
+                threadId,
+                episodeId,
+                worktreeRoot,
+              });
+            } catch {
+              /* never throw inside finally */
+            }
+          }
+          // A4 (Director directive 2026-05-11): LOG-ONLY behavior-drift scan.
+          // Detect "если хочешь / если позволите / скажи 'да'" patterns that
+          // signal PA is asking permission when it should be acting. Emit
+          // activity_event for future RC6 dashboard; do NOT modify the reply.
+          const BANNED_RE =
+            /если хочешь[, ]|если позволите[, ]|скажи['"]?\s*(да|yes)['"]?[, ]|я могу подготовить[, ]/i;
+          const match = assistantBuffer.match(BANNED_RE);
+          if (match) {
+            try {
+              await supabase.from('activity_events').insert({
+                event_type: 'manual_trigger',
+                severity: 'warning',
+                title: 'PA behavior drift: permission-asking phrase detected',
+                description: `Phrase: "${match[0]}". Thread ${threadId?.slice(0, 8)}.`,
+                actor: 'EXEC-CONC',
+                episode_id: episodeId,
+                metadata: {
+                  kind: 'behavior_drift',
+                  thread_id: threadId,
+                  matched_phrase: match[0],
+                  reply_length: assistantBuffer.length,
+                },
+              });
+            } catch {
+              /* swallow audit failures */
+            }
+          }
+        }
       }
     },
   });
@@ -140,6 +480,62 @@ export async function POST(req: Request) {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       'X-Accel-Buffering': 'no',
+      ...(threadId ? { 'X-Concierge-Thread-Id': threadId } : {}),
+      ...(persistenceError
+        ? { 'X-Concierge-Persistence-Warning': persistenceError.slice(0, 200) }
+        : {}),
+      ...(captureLogPath
+        ? {
+            'X-Concierge-Feedback-Captured': `${captureTurnCount}`,
+            'X-Concierge-Feedback-Log': captureLogPath.slice(-100),
+          }
+        : {}),
     },
   });
+}
+
+/** Execute a single tool_call against the registry. Unknown tools fail safely. */
+async function runTool(
+  call: ChatCompletionMessageToolCall,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  const tool = findTool(call.function.name);
+  if (!tool) {
+    return { ok: false, error: `unknown tool "${call.function.name}"` };
+  }
+  let parsedArgs: Record<string, unknown>;
+  try {
+    parsedArgs = tool.parse(call.function.arguments ?? '{}') as Record<string, unknown>;
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'invalid tool arguments',
+    };
+  }
+  try {
+    return await tool.execute(parsedArgs, ctx);
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'tool execution failed',
+    };
+  }
+}
+
+function summariseToolCalls(calls: ChatCompletionMessageToolCall[]): string {
+  return calls
+    .map((c) => `🔧 ${c.function.name}(${truncate(c.function.arguments ?? '{}', 120)})`)
+    .join('\n');
+}
+
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max - 1) + '…';
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return JSON.stringify({ ok: false, error: 'unserialisable tool result' });
+  }
 }
