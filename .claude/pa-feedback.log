@@ -6044,3 +6044,171 @@ Backend отклонил mutation из-за approval gate: он распозна
 После этого Полина сразу выполнит оба действия.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T16:37:06.926Z thread=bdbdafcf episode=- =====
+и пока не забыл Давайте на будущее в Технолоджи запишем есть у нас такой файл примерно так называется запишем длина кадра в экшн в фильме или мультики переключения должен быть каждый 3-5 секунд при этом за эти 3-5 секунд пройти движение и желательно какой-нибудь гэг при этом я не обратил внимания но моё требование - это ГК каждые 6-7 секунд поэтому Поверьте пожалуйста плотность гэгов в нашем сценарии
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:37:56.613Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON активен: зафиксировала требование по монтажному ритму и gag density для Technology notes; студийных действий по этому лог-маркеру не было.
+
+## E20 script — проверка плотности гэгов
+
+Проверила текущий approved script v01 и review.
+
+### Вывод
+**Script v01 не проходит по вашему новому правилу ритма.**
+
+Главные проблемы:
+
+1. **Сцены слишком длинные:** есть блоки по `9–10s`.
+2. **Часть сцен содержит один gag на всю сцену**, а не gag/visual switch каждые `6–7s`.
+3. **Для генерации клипов лучше держать shot/action units до 3–5s**, максимум около `8s`, иначе storyboard/video-gen будет пытаться упаковать слишком много в один кусок.
+4. **77s runtime реально много** для target `60s`; надо резать до `60–63s`.
+
+## Где плотность нормальная
+
+### A1-SC01 — 10s
+Гэгов/визуальных beats много:
+- Sandy slides to stop;
+- eyes widen;
+- sand surges upward;
+- Perfume Madame rotates 12 frames;
+- violet puff;
+- heart eyes for 2 frames.
+
+**Проблема:** сцена 10s, но её можно разбить/ужать.  
+**Оценка:** gag density хорошая, duration плохой.
+
+### A2-SC05 — 9s
+Хорошая gag density:
+- thought icons cycle wrongly;
+- direct look from Perfume Madame;
+- large cloud;
+- hand inflates;
+- icon still heart;
+- sand half-violet.
+
+**Проблема:** 9s можно сделать 6–7s.
+
+### A3-SC07 — 8s
+Пик хаоса работает:
+- body disaster;
+- eyes rotate opposite directions;
+- infinite bottles;
+- three Perfume Madames in reflection;
+- hand closes on fog;
+- stillness beat.
+
+**Оценка:** ок, но это верхний предел.
+
+## Где плотность слабая / надо править
+
+### A1-SC02 — 8s
+Фактически один мягкий beat:
+- Sandy walks closer;
+- mist deepens;
+- waist wobble.
+
+**Проблема:** для 8s мало событий.  
+**Правка:** сократить до `4–5s`.
+
+### A2-SC03 — 9s
+Есть гэг:
+- arm stretches/snaps back;
+- eyes water;
+- sand gets violet edge;
+- puff expands.
+
+**Проблема:** можно держать в `6–7s`; 9s избыточно.
+
+### A2-SC04 — 10s
+Содержания много, но оно “размазано”:
+- waist accordion;
+- bulbs distort;
+- one arm long / one nub;
+- ribbon loops ankle;
+- tray blurs;
+- blotter bends.
+
+**Проблема:** лучше не как 10s scene, а как два action units по 4–5s.
+
+### A2-SC06 — 9s
+Хороший visual escalation, но один крупный эффект:
+- bottle rows mirror;
+- wall hexagons;
+- false reflection;
+- Sandy tied to counter.
+
+**Проблема:** 9s многовато.  
+**Правка:** объединить с A2-SC05 или ужать до `6–7s`.
+
+### A3-SC08 — 7s
+Нормально:
+- mist recedes;
+- room normalises;
+- Sandy reassembles wrong;
+- violet scar remains;
+- Perfume Madame rotates away.
+
+**Оценка:** проходит.
+
+### A3-SC09 — 7s
+Эмоционально хорошо, но gag density слабее:
+- ribbon drops;
+- Sandy smooths top cap;
+- steps backward;
+- small wave;
+- exit.
+
+**Проблема:** это финальный melancholic beat, поэтому допустимо чуть спокойнее, но café fan line удалить.
+
+## Рекомендуемый новый ритм
+
+Нужно переписать script в **action units по 3–5 секунд**, а не сценами по 9–10 секунд.
+
+Цель:
+
+| Unit | Duration | Beat |
+|---|---:|---|
+| 1 | 4s | Sandy sees Perfume Madame, slide-stop |
+| 2 | 4s | Perfume puff + Sandy heart-eyes |
+| 3 | 5s | approach + first waist wobble |
+| 4 | 6s | arm stretch + watery eyes |
+| 5 | 5s | body accordion + uneven arms |
+| 6 | 5s | ribbon ankle + counter props bend |
+| 7 | 6s | thought icons + hand inflation |
+| 8 | 6s | environment fractal + Sandy tied |
+| 9 | 7s | peak chaos |
+| 10 | 6s | mist recedes + Sandy reassembles |
+| 11 | 6s | final separation + wave/exit |
+
+Итого примерно: **60s**.
+
+## Technology note для Claude
+
+Нужно добавить в production/technology guideline:
+
+```text
+Animation pacing rule:
+- Shot/action unit should usually change every 3–5 seconds.
+- Each 3–5 second unit must contain a visible action progression.
+- A clear gag, reversal, visual surprise, or emotional-comic beat should land at least every 6–7 seconds.
+- Avoid script scenes marked 9–10 seconds unless internally split into 3–5 second action units.
+- Current video generation constraint: prefer units ≤8 seconds.
+- Runtime target is a script-level contract, not something deferred to edit.
+```
+
+## Практическая рекомендация по E20
+
+При revision надо не просто “уменьшить цифры”, а **переструктурировать script под 11 коротких action units**.
+
+Тогда одновременно исправим:
+- runtime `77s → ~60s`;
+- gag density;
+- 3–5s action switching;
+- video-gen compatibility;
+- café fan line;
+- Sandy pronouns = **he/him/his**;
+- Perfume Madame оставить как новый E20 reference, не откатывать к legacy Perfume Vial.
+===== END =====
+
