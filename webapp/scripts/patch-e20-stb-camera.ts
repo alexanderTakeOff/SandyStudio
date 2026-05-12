@@ -47,8 +47,132 @@ const TARGET_VERSION = 2;
 // confirm structure before committing real values.
 type CameraPatch = { shot_id: string; camera_movement: string; camera_motivation: string };
 
-// Placeholder until real values are proposed (see runtime PATCHES below).
-const PATCHES: readonly CameraPatch[] = [];
+// Director-requested camera direction for E20 v02.
+// Vocabulary kept industry-standard so Storyboarder@v3 skill can later read
+// these without ambiguity (push_in / dolly / whip_pan / static_locked_off /
+// dutch_tilt / pullback / rack_zoom). Motivation is the narrative reason —
+// links the move to shot_role and the beat already in the JSON.
+const PATCHES: readonly CameraPatch[] = [
+  // ── Act 1 — Open & approach ────────────────────────────────────────────────
+  {
+    shot_id: 'SS-S14-E20-A1-SC01-SH01',
+    camera_movement: 'slow_push_in',
+    camera_motivation:
+      'Push from establishing wide toward Sandy — emulates love-at-first-sight focal narrowing and sets up the emotional approach.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A1-SC02-SH01',
+    camera_movement: 'dolly_with_subject',
+    camera_motivation:
+      'Camera dollies alongside Sandy as he approaches the counter — viewer rides his hopeful momentum so the reveal of Perfume Madame\'s poised hand lands cleanly.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A1-SC03-SH01',
+    camera_movement: 'slight_handheld_drift',
+    camera_motivation:
+      'Subtle handheld waver introduces the first hint of instability — physical sting registers in framing before Sandy registers it consciously.',
+  },
+
+  // ── Act 2 — Distortion peak ────────────────────────────────────────────────
+  {
+    shot_id: 'SS-S14-E20-A2-SC04-SH01',
+    camera_movement: 'whip_pan_recover',
+    camera_motivation:
+      'Quick whip-pan as Sandy\'s body distorts and snaps back — camera reacts to the cartoon stretch, selling the physical gag.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A2-SC04-SH02',
+    camera_movement: 'slow_push_in_close',
+    camera_motivation:
+      'Continuing push despite the distortion — visual contradiction (he keeps approaching even as his body fails) underlined by camera intimacy.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A2-SC05-SH01',
+    camera_movement: 'dutch_tilt_rotation',
+    camera_motivation:
+      'Slow dutch tilt as thought-bubble visuals appear — world tipping into emotional confusion.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A2-SC05-SH02',
+    camera_movement: 'accelerating_zoom',
+    camera_motivation:
+      'Short zoom-in punching the panic curve — tempo lift before the environment fractures.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A2-SC06-SH01',
+    camera_movement: 'rack_zoom_kaleidoscope',
+    camera_motivation:
+      'Wide reveal of fracturing space; camera rotates slowly as kaleidoscope effect builds — shows scale of disorientation.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A2-SC06-SH02',
+    camera_movement: 'rapid_shake_static_burst',
+    camera_motivation:
+      'Handheld shake bursts in 6-frame increments — peak chaos visual stutter.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A2-SC07-SH01',
+    camera_movement: 'slow_pullback',
+    camera_motivation:
+      'Pull back to reveal Sandy small inside the cloud — emphasises how the chaos has overwhelmed him.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A2-SC07-SH02',
+    camera_movement: 'static_locked_off',
+    camera_motivation:
+      'Total stillness on Sandy after relentless motion — visual exhaustion punchline; camera "gives up" along with him.',
+  },
+
+  // ── Act 3 — Recede & separation ───────────────────────────────────────────
+  {
+    shot_id: 'SS-S14-E20-A3-SC08-SH01',
+    camera_movement: 'slow_pullback_reveal',
+    camera_motivation:
+      'Continuous slow pullback as the mist clears — visually breathing out after the chaos peak.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A3-SC08-SH02',
+    camera_movement: 'static_locked_off',
+    camera_motivation:
+      'Camera stops — emphasises Sandy\'s stillness after the storm. The change is settled.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A3-SC09-SH01',
+    camera_movement: 'slow_dolly_back',
+    camera_motivation:
+      'Slow dolly back widens the space between Sandy and Perfume Madame — visualises the gap by literal distance.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A3-SC09-SH02',
+    camera_movement: 'static_locked_off',
+    camera_motivation:
+      'Hold on Sandy\'s face for emotional clarity — no movement to compete with micro-expression.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A3-SC10-SH01',
+    camera_movement: 'slight_push_in',
+    camera_motivation:
+      'Gentle push toward Sandy as he reaches — underscores the gesture\'s intent before its failure.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A3-SC10-SH02',
+    camera_movement: 'whip_pan_recover',
+    camera_motivation:
+      'Quick reactive whip mirrors SC04-SH01 — visual rhyme reinforces "same trap, smaller hope".',
+  },
+  {
+    shot_id: 'SS-S14-E20-A3-SC11-SH01',
+    camera_movement: 'slow_pullback_to_two_shot',
+    camera_motivation:
+      'Final slow pullback to symmetric wide — Sandy left of frame, Perfume Madame right, counter between. Composition does the emotional work.',
+  },
+  {
+    shot_id: 'SS-S14-E20-A3-SC11-SH02',
+    camera_movement: 'static_locked_off',
+    camera_motivation:
+      'Final static hold on Sandy alone — stops the comedic momentum cold for the melancholic closing punctuation.',
+  },
+];
 
 interface ShotV2 {
   shot_id?: string;
