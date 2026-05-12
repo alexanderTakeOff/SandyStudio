@@ -165,6 +165,13 @@ interface ShotJob {
     description: string;
     image_b64: string | null;
   }>;
+  /**
+   * Spatial Coverage Manifest entry (added 2026-05-12 Director directive).
+   * Derived from storyboard camera vocab + location sub_area + characters role
+   * by `deriveSpatialCoverage` BEFORE prompt composition. Forces each
+   * gpt-image-1 frame to land on a different vantage inside the same location.
+   */
+  spatial?: SpatialShotEntry;
 }
 
 export interface EpisodeReferencesRunResult {
