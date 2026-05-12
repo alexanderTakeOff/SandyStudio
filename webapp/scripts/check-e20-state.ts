@@ -33,12 +33,11 @@ for (const e of events ?? []) {
 
 const { data: jobs } = await sb
   .from('jobs')
-  .select('agent_id,status,started_at,completed_at,inngest_event,inngest_run_id')
+  .select('agent_id,status,started_at,completed_at,inngest_event')
   .eq('episode_id', EP)
-  .gte('started_at', '2026-05-12T20:00:00Z')
   .order('started_at', { ascending: false })
-  .limit(15);
-console.log('\n--- recent jobs (since 20:00 UTC) ---');
+  .limit(25);
+console.log('\n--- ALL jobs for E20 ---');
 for (const j of jobs ?? []) {
   console.log(`${(j.started_at ?? '').slice(11,19)} ${j.status.padEnd(10)} ${j.agent_id} ← ${j.inngest_event}`);
 }
