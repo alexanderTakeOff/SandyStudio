@@ -6914,3 +6914,36 @@ Writer v02 → Story Editor review → если fail, Writer revision v03
 Контроль: жду ~60 секунд, затем проверяю события и pending review; если review появится — сразу читаю и даю разбор blocking / important / minor.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T17:20:10.408Z thread=bdbdafcf episode=- =====
+прошло 60 сек
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:21:05.654Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина проверила. **Story Editor снова завис.**
+
+## Факт
+- перезапуск был в `17:16:10`
+- expected: `50 сек`
+- прошло больше 60 сек
+- completion event нет
+- нового review asset нет
+- pending всё ещё старый review v01
+
+## Recovery
+По действующему approval на исправление E20 я не стала ждать дальше и вернула **Writer v02** на доработку напрямую.
+
+Запущен **Writer** на v03.
+
+Что передано:
+- ровно 11 action units;
+- runtime 60–63s;
+- durations: `4,4,5,6,5,5,6,6,7,6,6`;
+- без блоков 8–10s;
+- Sandy = he/him/his;
+- Perfume Madame, не legacy Perfume Vial;
+- убрать café fan;
+- только storyboardable action.
+
+Следующий контроль: жду Writer v03, затем сразу читаю и проверяю сама.
+===== END =====
+

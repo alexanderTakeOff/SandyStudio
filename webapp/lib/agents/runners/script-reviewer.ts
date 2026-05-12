@@ -90,12 +90,17 @@ function findApprovedAsset(
   fileType: string,
 ): UpstreamAssetLike | null {
   if (!upstream) return null;
-  // Pick the latest version (highest `version`) that is APPROVED.
-  const approved = upstream.filter(
-    (a) => a.file_type === fileType && a.status === 'APPROVED',
+  // Pick the latest version (highest `version`) in a reviewable status.
+  // For Story Editor's input we accept REVIEW + REVISION + APPROVED — Story
+  // Editor IS the gate that decides if the latest version becomes APPROVED.
+  // Brief itself is always APPROVED upstream, so 'APPROVED' alone is still
+  // valid for the brief lookup.
+  const REVIEWABLE: ReadonlySet<string> = new Set(['REVIEW', 'REVISION', 'APPROVED']);
+  const candidates = upstream.filter(
+    (a) => a.file_type === fileType && REVIEWABLE.has(a.status ?? ''),
   );
-  approved.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
-  return approved[0] ?? null;
+  candidates.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+  return candidates[0] ?? null;
 }
 
 function buildUserMessage(args: {
