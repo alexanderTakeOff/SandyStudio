@@ -626,7 +626,7 @@ function TriggerModal({
             className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono"
           >
             {['EXEC-SW', 'EXEC-SREV', 'EXEC-SB', 'EXEC-WCHK', 'EXEC-EDIT', 'EXEC-VGEN', 'EXEC-MGEN', 'EXEC-COPY', 'EXEC-THUMB', 'EXEC-PUB', 'EXEC-ANAL'].map((a) => (
-              <option key={a} value={a}>{a}</option>
+              <option key={a} value={a}>{agentDisplayName(a)} ({a})</option>
             ))}
           </select>
         </div>
