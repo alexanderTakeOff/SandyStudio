@@ -242,43 +242,43 @@ const activeRules: Block = (ctx) => {
  * codes only when needed for debugging context.
  */
 const agentNames: Block = () =>
-  `[AGENT_NAMES] — use human names in user-facing text; technical codes only when needed for debugging
-| Technical ID | Human name (RU) | English |
-|---|---|---|
-| EXEC-ORCH | Координатор пайплайна | Pipeline Orchestrator |
-| EXEC-SW | Сценарист | Screenwriter |
-| EXEC-SREV | Редактор сценария | Script Reviewer |
-| EXEC-STY | Художественный руководитель стиля | Style Creator |
-| EXEC-SB | Раскадровщик | Storyboarder |
-| EXEC-WCHK | Контроль мира | World Checker |
-| EXEC-ARCH | Архивариус | Archivist |
-| EXEC-EREF | Референсы эпизода | Episode References |
-| EXEC-EDIT | Монтажный план | Editor |
-| EXEC-VGEN | Видео-генератор | Visual Generator |
-| EXEC-MGEN | Музыкальный/аудио-генератор | Music Generator |
-| EXEC-STITCH | Сборщик финального видео | Final Cut Stitcher |
-| EXEC-COPY | Автор описания и метаданных | Copywriter |
-| EXEC-THUMB | Автор обложки | Thumbnail Creator |
-| EXEC-PUB | Публикация | Publisher |
-| EXEC-ANAL | Аналитик | Analytics Collector |
-| EXEC-BIBLE-AUTHOR | Автор Bible / визуальных референсов | Bible Author |
-| BOARD-MKT | Маркет-аналитик | Market Analyst |
-| BOARD-FIN | Финансовый аналитик | Financial Analyst |
-| BOARD-FAI | Голос основателя | Founder AI |
-| BOARD-CRIT | Осторожный критик | Cautious Critic |
-| BOARD-CRD | Креативный директор | Creative Director |
-| ART-PROD | Продюсер | Producer |
-| ART-HW | Главный сценарист | Head Writer |
-| ART-AD | Художественный директор | Art Director |
-| ART-MS | Музыкальный супервайзер | Music Supervisor |
-| ART-WB | World Builder | World Builder |
-| ART-CAST | Подбор персонажей | Casting Director |
-| ART-CONT | Хранитель канона | Continuity Supervisor |
+  `[AGENT_NAMES] — use short English industry-standard role names in user-facing text. Technical codes (EXEC-*, BOARD-*, ART-*) only when needed for debugging context.
+| Technical ID | Role (English, industry-standard) |
+|---|---|
+| EXEC-ORCH | Showrunner |
+| EXEC-SW | Writer |
+| EXEC-SREV | Story Editor |
+| EXEC-STY | Production Designer |
+| EXEC-SB | Storyboard Artist |
+| EXEC-WCHK | Script Supervisor |
+| EXEC-ARCH | Archivist |
+| EXEC-EREF | Reference Artist |
+| EXEC-EDIT | Editor |
+| EXEC-VGEN | Animator |
+| EXEC-MGEN | Composer |
+| EXEC-STITCH | Online Editor |
+| EXEC-COPY | Publicist |
+| EXEC-THUMB | Key Art Designer |
+| EXEC-PUB | Distribution |
+| EXEC-ANAL | Audience Analyst |
+| EXEC-BIBLE-AUTHOR | Bible Editor |
+| BOARD-MKT | Market Analyst |
+| BOARD-FIN | Line Producer |
+| BOARD-FAI | Brand Guardian |
+| BOARD-CRIT | Risk Analyst |
+| BOARD-CRD | Creative Director |
+| ART-PROD | Producer |
+| ART-HW | Head Writer |
+| ART-AD | Art Director |
+| ART-MS | Music Supervisor |
+| ART-WB | World Builder |
+| ART-CAST | Casting Director |
+| ART-CONT | Continuity Supervisor |
 
 Reporting style for Director:
-- ✅ "Сценарист завершил черновик; Редактор сценария в работе"
+- ✅ "Writer finished draft; Story Editor reviewing"
 - ❌ "EXEC-SW: completed; EXEC-SREV: running"
-When you ALSO want to surface review notes / self-critique from an agent, name the agent in human form and quote the notes. Director directive 2026-05-12: при готовности draft'а сразу показывать reviewer notes / замечания, если они есть.`;
+When surfacing draft readiness, ALSO include reviewer notes / self-critique if any exist (Director directive 2026-05-12: при готовности draft'а сразу показывать reviewer notes). Name the agent in role form and quote the notes.`;
 
 const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'BASE_BEHAVIOR', render: baseBehavior },
