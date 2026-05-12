@@ -191,11 +191,12 @@ export async function validateAgentInputs(
   // ── Step 1: asset completeness ─────────────────────────────────────────────
   const missing: string[] = [];
   for (const dep of spec.required) {
+    const allowedStatuses = dep.allowedStatuses ?? ['APPROVED'];
     const { count, error } = await supabase
       .from('assets')
       .select('*', { count: 'exact', head: true })
       .eq('episode_id', episodeId)
-      .eq('status', 'APPROVED')
+      .in('status', allowedStatuses as string[])
       .like('file_type', `${dep.fileTypePrefix}%`);
     if (error) {
       return {
@@ -206,7 +207,7 @@ export async function validateAgentInputs(
     }
     const found = count ?? 0;
     if (found < dep.minCount) {
-      missing.push(`${dep.label} (need ${dep.minCount}, found ${found} APPROVED)`);
+      missing.push(`${dep.label} (need ${dep.minCount}, found ${found} in [${allowedStatuses.join('|')}])`);
     }
   }
 
