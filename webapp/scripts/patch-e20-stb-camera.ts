@@ -177,11 +177,12 @@ async function main() {
   let alreadyPresent = 0;
   let notInPatchSet = 0;
 
-  const newShots: ShotV2[] = shots.map((s) => {
+  function patchShot(s: ShotV2): ShotV2 {
     const id = s.shot_id;
     if (!id) return s;
-    const has = typeof s.camera_movement === 'string' && s.camera_movement.length > 0 &&
-                typeof s.camera_motivation === 'string' && s.camera_motivation.length > 0;
+    const has =
+      typeof s.camera_movement === 'string' && s.camera_movement.length > 0 &&
+      typeof s.camera_motivation === 'string' && s.camera_motivation.length > 0;
     if (has) {
       alreadyPresent += 1;
       return s;
@@ -197,7 +198,20 @@ async function main() {
       camera_movement: p.camera_movement,
       camera_motivation: p.camera_motivation,
     };
-  });
+  }
+
+  let newParsed: StoryboardJson;
+  if (Array.isArray(parsed.acts) && parsed.acts.length > 0) {
+    newParsed = {
+      ...parsed,
+      acts: parsed.acts.map((a) => ({
+        ...a,
+        shots: Array.isArray(a.shots) ? a.shots.map(patchShot) : a.shots,
+      })),
+    };
+  } else {
+    newParsed = { ...parsed, shots: shots.map(patchShot) };
+  }
 
   console.log(
     `Patch plan: ${changed} shot(s) will be updated, ${alreadyPresent} already had camera fields, ${notInPatchSet} not in PATCHES set.`,
@@ -212,8 +226,6 @@ async function main() {
     console.log('PATCHES array is empty — discovery pass only. Pass --show-json to inspect shots.');
     return;
   }
-
-  const newParsed: StoryboardJson = { ...parsed, shots: newShots };
   const newJson = JSON.stringify(newParsed, null, 2);
   const newContent =
     content.slice(0, block.start) + '```json\n' + newJson + '\n```' + content.slice(block.end);
