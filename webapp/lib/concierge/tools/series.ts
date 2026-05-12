@@ -377,6 +377,11 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
             enum: ['low', 'medium', 'high'],
             description: "gpt-image-1 quality tier. Defaults to 'medium'.",
           },
+          styleAnchorAssetId: {
+            type: ['string', 'null'],
+            description:
+              "Optional override for the visual style anchor used during generation. Pass the UUID of a Bible style asset (SBL-style*) to swap the locked-style reference (e.g. when the active LOCKED style anchor diverges from current text canon, and the Director has approved a new style draft). Pass null to explicitly clear the anchor (rare). Omit to keep the asset's existing anchor.",
+          },
         },
         required: ['assetId', 'prompt'],
         additionalProperties: false,
