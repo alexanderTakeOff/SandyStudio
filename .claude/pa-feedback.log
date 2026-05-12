@@ -4963,3 +4963,69 @@ Reference: SS-S14-SBL-style_s14_canon_v1-v01-LOCKED (canon v1.1).
 у нас есть вот такой герой и я предлагаю его и оставить в качестве основного героя Тем более что он у нас залочен уже и практически совпадает с нашими требованиями по канону S14   SS-S14-SBL-character_sandy_hourglass-v01-LOCKED.png проверьте Если всё О'кей то Будем считать что герои у нас зафиксирован и для Клода Прошу обратить внимание что когда я что-то изменяю галерею в библиотеке Точнее говоря то обновление на экране я вижу Через несколько секунд немножко долговато может быть как-то почаще это сделать хотя бы чтобы через секунду они появлялись
 ===== END =====
 
+===== !AMBIENT 2026-05-12T09:58:52.853Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверил `SS-S14-SBL-character_sandy_hourglass-v01-LOCKED.png`.
+
+## Sandy Hourglass — статус
+
+Да, это хороший кандидат на **основного Sandy / CH_01**:
+
+- status: `LOCKED`
+- asset id: `25bc0863-ac9a-441d-bfb2-116c858eec80`
+- staging image есть:
+  - `/staging/bible-character-sandy_hourglass-e74e3159e6ab.png`
+- Drive file есть:
+  - `1OVgRCnWJJ6B6oIj13RXmrtu2FXnAnrx4`
+
+## Соответствие канону S14
+
+Совпадает по ключевым пунктам:
+
+- living hourglass character;
+- clear glass body;
+- bright golden sand;
+- dark-grey caps;
+- large joined white cartoon eyes;
+- simple smile;
+- thin flexible dark-grey rubber-hose arms/legs;
+- rounded feet;
+- flat vector / classic 2D animation;
+- no 3D / no photorealism / no realistic glass reflections.
+
+## Единственный нюанс
+
+У asset’а `content: null`; текстовое описание лежит в `description`, а не в полноценном Bible `content`.
+
+Это не блокер для визуального канона, но для downstream-агентов лучше позже продублировать/нормализовать описание в `content`, чтобы Sandy читался как полноценная textual Bible entry, а не только как legacy locked reference.
+
+## Production conclusion
+
+Можно считать:
+
+```text
+CH_01 Sandy / Sandy Hourglass = SS-S14-SBL-character_sandy_hourglass-v01-LOCKED.png
+```
+
+как основной герой серии S14.
+
+Важно: я не утверждаю/не лочу сам — он уже был `LOCKED` Director-side. Я только подтверждаю, что по проверке он соответствует текущему S14 style/cast канону.
+
+## Для Claude / frontend
+
+Баг по Library refresh подтверждаю как UX-проблему:
+
+- после изменений в Library изображения появляются, но задержка несколько секунд ощущается долгой;
+- нужно ускорить invalidation/polling после:
+  - upload;
+  - enrich;
+  - regenerate;
+  - approve/reject/lock;
+  - set content.
+
+Рекомендация:
+- optimistic update карточки сразу;
+- polling раз в ~1 сек до появления `staging_path` / новой `image_version`;
+- invalidate Supabase/React Query cache сразу после mutation success;
+- показывать state `Generating… / Processing…`, чтобы не казалось, что галерея “не обновилась”.
+===== END =====
+
