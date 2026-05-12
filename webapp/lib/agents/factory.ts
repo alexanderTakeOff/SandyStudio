@@ -189,6 +189,7 @@ export function createAgentInngestFunction<E extends string>(
         } as never);
         return created;
       });
+      capturedJobId = job.id;
 
       // ── Step 2: load + validate (one checkpoint) ───────────────────────────
       const gate = await step.run('load-and-validate', async () => {
