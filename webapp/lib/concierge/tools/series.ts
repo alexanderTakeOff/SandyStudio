@@ -424,6 +424,9 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
           prompt: args.prompt,
           quality: args.quality ?? 'medium',
           directorConfirm: true,
+          ...(args.styleAnchorAssetId !== undefined
+            ? { style_anchor_asset_id: args.styleAnchorAssetId }
+            : {}),
         }),
       },
     );
