@@ -82,7 +82,7 @@ Sprints S0–S8 (foundation + spec) all COMPLETE 2026-04-23..28 — details in `
 | 9 | PM2 ecosystem + Tailscale + production hardening | ⏳ pending |
 | A.1 | Animatic director_overrides + EpisodeTimeline Phase A | ✅ COMPLETE 2026-05-06..07 |
 | A.2 | VGEN auto-COMPLETE + EXEC-STITCH + Audio reorg + Bug A/C/D | ✅ COMPLETE 2026-05-08..10 |
-| **Mode 2.5 Phase 1** | Prod Assistant + memory + TTS + mode-aware blocks | 🟡 IN PROGRESS (quizzical-brown) — tool dispatch pending |
+| **Mode 2.5 Phase 1-A + 1-B + Phase A** | Prod Assistant + memory + TTS + 13 tools + verbal approval + gpt-5.5 + BEHAVIOR_CONTRACT | ✅ COMPLETE 2026-05-08..12 (PR #23 OPEN) |
 
 ---
 
