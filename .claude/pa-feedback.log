@@ -4476,3 +4476,69 @@ Style check вернул `FAIL`, но prompt не переписывался; к
 [ASSISTANT] Одобряешь перегенерацию **H и J** с теми же prompt’ами, но с заменой outline на **уверенный сухой карандашный контур**: не solid black, чуть текстурный, без грязного sketch-look и без потери flat 2D?
 ===== END =====
 
+===== !AMBIENT 2026-05-12T09:19:18.565Z thread=bdbdafcf episode=- =====
+Одобряю
+===== END =====
+
+===== !AMBIENT 2026-05-12T09:21:02.059Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Перегенерировал H и J с более мягким уверенным карандашным контуром вместо solid black outline.
+
+## H — location plate
+- asset id: `5691f99f-af65-4489-9cd0-ad7ba2c4c98b`
+- new image version: `v3`
+- staging: `/staging/regen-a2c4c98b-a4e32ecd5db0.png`
+
+## J — object plate
+- asset id: `21994711-2aba-499e-8662-b13ced08d452`
+- new image version: `v3`
+- staging: `/staging/regen-ed08d452-d210b4c04c7e.png`
+
+Обе генерации прошли с anchor на `s14_canon_v1_character_plate_i`.
+
+Style check снова `FAIL`, но prompt не переписывался; изображения созданы.
+===== END =====
+
+===== !AMBIENT 2026-05-12T09:21:47.866Z thread=bdbdafcf episode=- =====
+Да вот то что получилось Сейчас получилось приятнее
+===== END =====
+
+===== !AMBIENT 2026-05-12T09:21:57.645Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Зафиксировал: текущий вариант **H/J v3 с уверенным мягким карандашным контуром** визуально приятнее, чем жёсткий solid black outline.
+
+## Style canon adjustment
+
+В стиль стоит внести правку:
+
+Было:
+```md
+uniform 3–4 px outlines in #1A1A1A, never broken
+```
+
+Стало:
+```md
+confident hand-drawn pencil-like outline, near-black but softened, mostly uniform 3–4 px, slightly textured edge, clean and readable, not sketchy, not messy, not broken
+```
+
+## Важно сохранить ограничения
+
+Это не должно увести стиль в sketch/paint:
+
+- не грязный скетч;
+- не дрожащая линия;
+- не тонкая иллюстративная штриховка;
+- без hatching;
+- без карандашной заливки;
+- только **чуть живой контур** поверх flat vector fills.
+
+## Практический вывод
+
+Текущие H/J v3 можно использовать как направление для нового `S14 STYLE CANON v1.1`:
+
+- flat 2D;
+- простые формы;
+- мало деталей;
+- 35%+ negative space;
+- без 3D;
+- но контур не стерильно-векторный, а “drawn with confidence”.
+===== END =====
+

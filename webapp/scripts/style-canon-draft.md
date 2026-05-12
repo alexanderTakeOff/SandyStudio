@@ -1,6 +1,7 @@
-# S14 STYLE CANON v1.0 — Formal Spec
+# S14 STYLE CANON v1.1 — Formal Spec
 
-> Synthesized 2026-05-12 from observed E (winner) silhouette + C (gag-pop) palette + Director feedback "less detail than B, closer to C, broader than just human figures".
+> v1.0 → v1.1 (2026-05-12): outline changed from solid vector to **confident pencil-like edge** after Director validation on H/J v3 regen — Pink Panther-родственная теплота. Everything else unchanged.
+> Synthesized from observed E (winner) silhouette + C (gag-pop) palette + Director feedback "less detail than B, closer to C, broader than just human figures" + H/J v3 pencil outline preference.
 > Goal: ONE canonical style asset that gives guaranteed visual consistency across all 26 S14 episodes for characters, objects, locations, and props.
 > Slot: replace the 7 exploratory style drafts with this single source of truth. Lock as `SS-S14-SBL-style_s14_canon_v1-v01-LOCKED.md` after Director approval.
 
