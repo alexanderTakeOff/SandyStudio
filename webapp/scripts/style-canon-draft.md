@@ -163,4 +163,4 @@ Reference: SS-S14-SBL-style_s14_canon_v1-v01-LOCKED (canon v1.1).
 
 ---
 
-*S14 STYLE CANON v1.0 | 2026-05-12 | Status: DRAFT awaiting Director review*
+*S14 STYLE CANON v1.1 | 2026-05-12 | Status: DRAFT awaiting Director lock (pencil edition)*
