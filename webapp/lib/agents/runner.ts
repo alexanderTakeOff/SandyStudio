@@ -59,6 +59,14 @@ export interface LoadInputsArgs {
   supabase: SupabaseClient<Database>;
   agentId: AgentId;
   episodeId: string;
+  /**
+   * Which asset statuses to load into upstream_assets. Defaults to
+   * `['APPROVED']` — the historical behaviour. Reviewer agents (EXEC-SREV
+   * and Sprint 10 unified reviewer) pass `['APPROVED','REVIEW','REVISION']`
+   * because the reviewer IS the gate from REVIEW to APPROVED. Without this
+   * override the input loader filters out the very asset under review.
+   */
+  allowedStatuses?: readonly string[];
 }
 
 /**
@@ -67,7 +75,8 @@ export interface LoadInputsArgs {
  * what's available for runAgent's use.
  */
 export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs> {
-  const { supabase, agentId, episodeId } = args;
+  const { supabase, agentId, episodeId, allowedStatuses } = args;
+  const statuses = allowedStatuses && allowedStatuses.length > 0 ? allowedStatuses : ['APPROVED'];
 
   const { data: episode, error: epErr } = await supabase
     .from('episodes')
@@ -84,7 +93,7 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
       'id, file_type, filename, status, drive_path, staging_path, drive_web_view_url, version, content, metadata',
     )
     .eq('episode_id', episodeId)
-    .eq('status', 'APPROVED');
+    .in('status', statuses as string[]);
   if (asErr) {
     throw new Error(`loadAgentInputs: assets lookup failed: ${asErr.message}`);
   }

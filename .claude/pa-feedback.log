@@ -7003,3 +7003,243 @@ Writer v02 → Story Editor review → если fail, Writer revision v03
 Через минуту проверю результат: если review asset появился — сразу прочитаю и дам разбор blocking / important / minor.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T17:32:49.258Z thread=bdbdafcf episode=- =====
+ну и
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:33:26.156Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина проверила: **Story Editor опять не дал completion/result** после запуска на v03.
+
+## Факт
+- Story Editor стартовал в `17:28:21`
+- expected: `50s`
+- нового review asset нет
+- pending всё ещё:
+  - Writer v03
+  - старый Story Editor review v01
+  - Publicist metadata
+
+## Действие
+По действующему approval на review v03 я перезапустила **Story Editor** ещё раз.
+
+- event id: `01KREM05EBNQ3CY593C8J0DGW4`
+
+Следующий контроль: через 60 секунд проверяю completion. Если снова зависнет — буду предлагать обход: approve Writer v03 как production-clean и двигать Storyboard Artist, а Story Editor чинить отдельно.
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:41:33.994Z thread=bdbdafcf episode=- =====
+Похоже что история где-то опять где-то висит разберись пожалуйста почему это происходит,Клод
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:42:06.738Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина разобралась.
+
+## Что вижу по фактам
+
+**Story Editor запускался 3 раза:**
+- 17:16 — started, completion нет
+- 17:28 — started, completion нет
+- 17:33 — started, completion нет
+
+Ни одного:
+- `agent_completed`
+- `agent_failed`
+- нового `REV-script_qa-v02`
+- нового review asset по v03
+
+## Главное
+
+Pipeline сейчас заблокирован не “работой Story Editor”, а старым pending asset:
+
+- `SS-S14-E20-REV-script_qa-v01-DRAFT.md`
+- это review старого script v01
+- он всё ещё висит в approval
+
+Параллельно висит новый:
+- `SS-S14-E20-SCR-script-v03-DRAFT.md`
+
+## Вероятная причина зависания
+
+Story Editor запускается episode-level, но не получает явно:
+
+```text
+review exactly script v03
+ignore/supersede old review v01
+```
+
+А в системе уже есть pending `REV-script_qa-v01`, поэтому стадия **Story Editor** считается `blocked`, и новый run не создаёт новый review asset.
+
+Иными словами: мы перезапускаем агента, но у него конфликт состояния:
+
+```text
+old review pending → stage blocked
+new script v03 pending → needs review
+generic trigger → unclear what to review
+```
+
+## Что нужно поправить Claude
+
+1. **Story Editor trigger должен принимать sourceAssetId**
+   ```text
+   review script asset a50c1af3... only
+   ```
+
+2. При новом script version старый review должен автоматически становиться:
+   ```text
+   SUPERSEDED / OBSOLETE
+   ```
+   а не блокировать stage.
+
+3. Stage state не должен быть `blocked`, если есть active run.  
+   Сейчас UI/episode state смешивает:
+   - pending old review
+   - active new run
+
+4. Если агент стартовал и за `expected_seconds * 2` нет completion/failure — нужен auto-fail event, а не вечное молчание.
+
+## Практический выход сейчас
+
+Нужно закрыть старый Story Editor review v01 как obsolete/superseded, потом заново запустить Story Editor на v03.  
+Для этого нужен ваш explicit approval на mutating action.
+
+Одна команда: **“Одобряю закрыть старый review v01 как obsolete и перезапустить Story Editor на v03.”**
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:43:34.972Z thread=bdbdafcf episode=- =====
+Мне вообще кажется что история эдитор не стартовал потому что у него значок не показывает что работает
+
+Одобряю закрыть старый review v01 как obsolete и перезапустить Story Editor на v03.
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:44:15.063Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина выполнила.
+
+## Что сделано
+1. Старый **Story Editor review v01** закрыт как obsolete:
+   - asset `0abed4b0-de0d-4c17-bb3b-9565f2fc0ab0`
+   - status: `REJECTED`
+   - причина: superseded by Writer v03
+
+2. **Story Editor** перезапущен на текущий E20 script v03:
+   - event id: `01KREMKYDNDCWQSX4ED0KSD6RR`
+
+## По вашей гипотезе
+Да, похоже вы правы: события `agent_started` в логе есть, но UI-иконка не показывала работу. Значит проблема либо:
+- stage state не переключается в `running`,
+- либо старый pending review держал stage в `blocked`,
+- либо UI смотрит не на activity events, а на другой stale stage field.
+
+Следующий контроль: через ~60 секунд проверяю события и pending; если review появится — читаю и даю разбор.
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:50:53.866Z thread=bdbdafcf episode=- =====
+слушайте Ну в этот раз в сторидитора начал работать и даже иконка у него поменялась на состояние работающее но судя по пять где-то завис
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:51:07.992Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина проверила.
+
+## Да, Story Editor завис снова
+
+Факт:
+
+- стартовал: `17:44:07`
+- expected: `50s`
+- stage сейчас: **Story Editor running**
+- completion/failure event: **нет**
+- нового review asset: **нет**
+- pending только:
+  - **Writer:** `SS-S14-E20-SCR-script-v03-DRAFT.md`
+  - **Publicist:** metadata v01
+
+То есть в этот раз UI честно показывает `running`, но агент не завершает работу.
+
+## Вероятная причина
+
+Старый review уже закрыт, значит прежний блокер убран. Теперь похоже на реальный сбой run-а **Story Editor**:
+- Inngest run стартует;
+- event `agent_started` пишется;
+- дальше нет ни success, ни failure;
+- job зависает или падает без публикации failure event.
+
+## Практический выход
+
+Я не буду больше бесконечно перезапускать **Story Editor**: он стабильно зависает.
+
+Так как **Writer v03** уже проходит наши hard notes, следующий рабочий шаг — **approve script v03** и двигать **Storyboard Artist**. Story Editor чинить отдельно как инфраструктурный баг.
+
+Нужна команда:
+
+```text
+Одобряю approve script v03 и двигать Storyboard Artist
+```
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:51:48.862Z thread=bdbdafcf episode=- =====
+Одобряю approve script v03 и двигать Storyboard Artist
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:52:09.895Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина выполнила.
+
+## E20
+- **Writer v03** approved.
+- **Storyboard Artist** запущен.
+- event id: `01KREN2EJRWH0MABFNMFAVYA4W`
+
+Побочный автозапуск после approval:
+- **Publicist** metadata тоже запущен заново.
+- event id: `01KREN2DEHZ5WAFJQMRDVQRQYY`
+
+## Важно
+**Story Editor** остаётся infrastructure bug: последний run висит с `17:44`, completion/failure нет. Для E20 мы его обошли, потому что v03 прошёл production checks.
+
+Следующий контроль: жду результат **Storyboard Artist**; ожидаю draft и сразу проверю storyboard на runtime / 11 units / gag density.
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:53:31.376Z thread=bdbdafcf episode=- =====
+а Напомни мне должностные обязанности Storyboard Artist
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:53:52.461Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина. Сначала обновление по E20: **Publicist завершил metadata v02**. Я прочитала — критичных проблем нет, но есть важный нюанс: в описании есть слова `body-horror-comedy` / “body horror”, я бы смягчила перед публикацией, чтобы не уводить тон S14 в хоррор. **Storyboard Artist ещё работает**.
+
+## Storyboard Artist — обязанности
+
+**Storyboard Artist** переводит approved script в визуальный план эпизода.
+
+Он должен:
+
+- Разбить сценарий на **кадры / panels / shots**.
+- Для каждого shot указать:
+  - длительность;
+  - действие;
+  - композицию;
+  - движение камеры, если нужно;
+  - позы и эмоции персонажей;
+  - visual gag / beat.
+- Проверить, что runtime совпадает со script target.
+- Сохранить правило ритма:
+  - action switch каждые **3–5 сек**;
+  - gag / comic beat каждые **6–7 сек**;
+  - не делать shot длиннее текущих production limits.
+- Убедиться, что всё **storyboardable**:
+  - видно на экране;
+  - без внутренней прозы;
+  - без невидимых мыслей, если они не превращены в visual gag.
+- Соблюдать Bible/canon:
+  - Sandy = approved CH_01;
+  - Perfume Madame = текущий E20 reference;
+  - одна локация: `perfume_counter_bar`;
+  - стиль S14.
+- Подготовить материал для следующих этапов:
+  - **Continuity Supervisor**
+  - **Reference Producer**
+  - **Animatic Editor**
+  - дальше video/audio/final cut.
+
+Коротко: **Storyboard Artist отвечает за то, чтобы сценарий стал понятным визуальным чертежом для производства.**
+
+Следующий мой контроль: жду storyboard draft; когда появится — читаю и проверяю по runtime, 11 units, gag density и канону.
+===== END =====
+
