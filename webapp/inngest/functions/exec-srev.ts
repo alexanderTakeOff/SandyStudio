@@ -18,6 +18,11 @@ export const execSrevReviewScript = createAgentInngestFunction({
   concurrencyId: 'exec-srev',
   eventName: 'sandystudio/exec-srev/review-script',
   operation: 'script_review',
+  // Story Editor IS the gate from REVIEW to APPROVED — without this override
+  // the input loader (`loadAgentInputs` in runner.ts) filters out the very
+  // script under review. Closes the 3rd layer of the gate→runner→loader
+  // REVIEW-status bug (2026-05-12 hot-fix).
+  inputAllowedStatuses: ['APPROVED', 'REVIEW', 'REVISION'],
   nextEvent: (_saved, eventData, result) => {
     const verdict = (result?.metadata as { verdict?: string } | undefined)?.verdict;
     const reviewMarkdown =
