@@ -2322,3 +2322,181 @@ E20 episode code и давай создай нового героя сделай
 Подтверди одной фразой: **«одобряю создание E20 The Violet Distance и нового героя Perfume Madame»**.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T06:51:33.468Z thread=bdbdafcf episode=- =====
+«одобряю создание E20 The Violet Distance и нового героя Perfume Madame».
+===== END =====
+
+===== !AMBIENT 2026-05-12T06:53:02.652Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Создал новый эпизод:
+
+- `SS-S14-E20`
+- title: `The Violet Distance`
+- UUID: `763c5c1e-44dc-4e10-92fb-e7671e5d4a44`
+- status: `BRIEF_PENDING`
+- governance: `MANUAL`
+
+Проверил Bible S14. Важное по текущей базе:
+- `general_idea_main-v02-LOCKED` — актуальная полная Bible.
+- Старый `Perfume Vial` уже есть как `CH_04`, но он описан как **tall slim curved glass body** — то есть более гладкий/плавный вариант.
+- Твоя новая задача — фактически новый дизайн-поворот: **Perfume Madame** как более прямоугольная, гранёная, острая, сложная версия.
+
+Попытка записать нового героя в Bible была отклонена approval-gate, хотя ты дал фразу одобрения. Значит, для записи character-драфта нужен свежий короткий approval прямо перед записью.
+
+## Готовый текст героя для Bible / Library character draft
+
+```md
+# CHARACTER — PERFUME MADAME (CH_04B)
+
+Status: new character / redesigned perfume heroine for S14-E20 "The Violet Distance".
+
+## Core Role
+
+Perfume Madame is an elegant but difficult perfume-bottle character. She represents attraction, emotional distance, sensory overload, and the danger of getting too close to something beautiful but incompatible.
+
+She is not simply "smooth and cute". Her form should communicate a more complex, sharper, less predictable personality.
+
+## Personality Function
+
+- graceful but emotionally difficult;
+- attractive but not fully safe;
+- controlled on the surface, unstable in effect;
+- does not rush, but changes the whole room around her;
+- creates distance even when Sandy tries to approach;
+- turns intimacy into allergy, confusion, distortion, and visual chaos.
+
+## Anatomy / Shape Language
+
+Perfume Madame should look more clearly like a perfume bottle than the earlier smoother Perfume Vial design.
+
+Body shape:
+- vertical perfume bottle silhouette;
+- more rectangular than round;
+- faceted glass body;
+- slightly complex geometry;
+- sharper corners and angled shoulders;
+- elegant but not soft;
+- narrow waist or inward bevels may suggest refinement and tension;
+- stable bottle base, possibly floating slightly above the ground.
+
+Top / cap:
+- stylized perfume cap as head/crown;
+- cap can be angular, jewel-like, or metallic;
+- atomizer detail is allowed but should stay simple and readable.
+
+Face:
+- subtle feminine face on upper bottle/cap area;
+- narrow eyes;
+- calm, knowing expression;
+- slight asymmetry or sharp eyebrow shape to suggest a difficult character;
+- never overly cute.
+
+Limbs:
+- optional very thin arms made of violet vapor, glass-like strokes, or minimal dark lines;
+- no realistic hands required unless needed for acting;
+- movement should feel gliding, controlled, and slightly untouchable.
+
+## Material
+
+- faceted translucent violet glass;
+- crisp highlights, but no photorealistic reflections;
+- glass should feel fragile, beautiful, and emotionally dangerous;
+- edges should read clearly through bold cartoon outline;
+- violet mist is part of her presence, not just an effect.
+
+## Mist / FX Logic
+
+Perfume Madame emits a violet mist that behaves like a character force.
+
+The mist can:
+- wrap around Sandy;
+- obscure parts of the scene;
+- create emotional distortion;
+- cause allergic reactions;
+- split the space between attraction and danger;
+- form soft barriers between Sandy and Perfume Madame;
+- briefly suggest hearts, waves, spirals, or warning shapes, but only if readable.
+
+The mist should remain stylized and clear. It must not become realistic smoke or visual noise.
+
+## Interaction with Sandy
+
+Sandy wants to get closer. Perfume Madame does not need to attack; her presence itself creates the problem.
+
+When Sandy approaches:
+- his sand may swirl, clog, or shift upward/downward;
+- his transparent body may fog from the inside;
+- his rubber limbs may stretch toward her and then recoil;
+- his eyes may water or distort;
+- he may misread distance because of the mist.
+
+The comedy comes from the contradiction:
+
+**Sandy is emotionally pulled forward, but physically forced backward.**
+
+## Movement
+
+- slow gliding motion;
+- precise turns;
+- elegant pauses;
+- sudden small sprays of mist;
+- angular silhouette stays stable even when the mist moves fluidly around her.
+
+Her body should feel composed. The chaos comes from the aura around her.
+
+## Visual Priority
+
+Perfume Madame should preserve the S14 action-first style:
+- readable silhouette;
+- bold black outline;
+- flat 2D cartoon look;
+- controlled gradients only;
+- no photorealism;
+- no over-detailed glass;
+- mist supports the gag, never hides the action completely.
+
+## First Visual Prompt
+
+2D flat cartoon character design, anthropomorphic perfume bottle woman named Perfume Madame, elegant rectangular faceted violet glass bottle body, angular shoulders, slightly sharp corners, complex but readable perfume-bottle silhouette, jewel-like cap as a head, subtle feminine face with narrow confident eyes and a calm difficult expression, translucent purple glass, bold black outlines, soft controlled gradients, stylized violet mist flowing around her like an aura, no legs or tiny minimal floating base, optional thin vapor arms, graceful but dangerous, attractive yet emotionally distant, action-first readable silhouette, classic 2D animation style, clean vector shapes, high readability, isolated on simple neutral background --no photorealism, no 3d, no realistic glass reflections, no excessive smoke, no visual noise, no text
+
+## Negative Prompt / Restrictions
+
+- no round cute bottle;
+- no overly smooth toy shape;
+- no photorealistic perfume ad;
+- no complex luxury packaging details;
+- no tiny unreadable ornaments;
+- no realistic smoke simulation;
+- no 3D render;
+- no human body proportions;
+- no dialogue or text on image.
+```
+
+Напиши **«одобряю запись Perfume Madame»**, и я запишу этот character draft в Bible.
+===== END =====
+
+===== !AMBIENT 2026-05-12T06:55:11.191Z thread=bdbdafcf episode=- =====
+одобряю запись Perfume Madame
+===== END =====
+
+===== !AMBIENT 2026-05-12T06:55:38.346Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Записал character draft в Bible.
+
+## Создано
+- `SS-S14-SBL-character_perfume_madame-v01-DRAFT.png`
+- section: `character`
+- slug: `perfume_madame`
+- status: `DRAFT`
+
+## Важно
+Это текстовое описание героя + первый visual prompt внутри character-раздела Bible.  
+Статус пока `DRAFT`; для production-опоры его нужно будет утвердить/залочить в UI или через approval flow.
+
+## По эпизоду
+Новый эпизод уже создан:
+- `SS-S14-E20`
+- `The Violet Distance`
+- status: `BRIEF_PENDING`
+
+Следующий производственный шаг: подготовить brief для E20 на основе новой Bible и Perfume Madame.
+===== END =====
+
