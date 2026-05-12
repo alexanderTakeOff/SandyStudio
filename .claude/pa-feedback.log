@@ -8167,3 +8167,100 @@ Send to Animatic
 [ASSISTANT] PAON: запоминаю до PAOFF. Никаких действий в системе.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T18:58:21.387Z thread=bdbdafcf episode=- =====
+Ну ладно в общем как-то генерится тут новые эти 17 кадров будет реальная проблема если все эти 17 кадров будут генериться на одной и той же локацию дело в том что у нас одна картинка локации да потому что у нас не было раскадровки а вот на раскадровке у нас должны по-хорошему показываться уже направление Ну даже если мы находимся внутри ресторана то есть в сторону окна есть и вид в сторону двери есть 30 в сторону ещё чего-то и это всё должно быть каким-то образом генерится будем взаимоувязаны а сейчас у нас похоже генератор референсов воспринимает что есть единственное картинка локации нужна Вот привязываться только к ней никак иначе а это неправильно
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:58:45.950Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: зафиксировал как важное product/technology замечание. Никаких действий в системе.
+
+По E20 новое: **fan-out remaining refs уже запущен вручную** в `18:54`, после 2 approved pilots. Значит сейчас как раз риск, который вы описали: оставшиеся кадры могут генериться с чрезмерной привязкой к одной плоской локационной картинке.
+
+Вы правы: для storyboard refs нужна не одна “location image”, а **spatial coverage bible** по локации.
+
+## Что неправильно сейчас
+
+Reference Artist, вероятно, воспринимает `perfume_counter_bar` как:
+
+> есть одна картинка локации → все shots рисуем вариацией этой картинки.
+
+А должно быть:
+
+> одна локация = единое пространство с несколькими допустимыми направлениями камеры.
+
+Даже внутри одного ресторана/стойки нужны:
+- view toward shelves;
+- view toward entrance/door;
+- view along counter;
+- reverse angle from behind counter;
+- close counter surface angle;
+- high/low angle variants;
+- left/right staging map.
+
+## Правильная система
+
+Перед fan-out reference frames нужен промежуточный слой:
+
+```text
+Storyboard approved
+→ Location spatial sheet / camera direction map
+→ Reference frames
+```
+
+Для каждой локации Reference Artist должен знать:
+
+```text
+location_id: perfume_counter_bar
+spatial anchors:
+- counter front
+- back shelf wall
+- entrance side
+- aisle side
+- counter surface
+- behind-counter zone
+- customer side
+allowed camera directions:
+- toward shelves
+- toward entrance
+- along counter left-to-right
+- reverse from behind counter
+- overhead/low comic angle if justified
+continuity constraints:
+- shelves remain behind counter
+- Madame stays behind counter unless script says otherwise
+- Sandy stays customer-side until gag requires contact
+```
+
+## Для текущего fan-out E20
+
+Сейчас надо мониторить первые generated refs после fan-out. Если они все выглядят как один и тот же flat angle, не утверждать пачкой. Нужен request revision:
+
+```text
+Do not reuse one flat location plate for all shots.
+Generate shot references using storyboard camera direction.
+Maintain one continuous location, but vary viewpoint:
+front-counter, reverse-counter, along-counter, shelf-side, entrance-side, close counter-surface.
+Each shot prompt must declare camera_direction and spatial_anchor.
+```
+
+## Стратегическая задача для Claude
+
+```text
+Add Location Spatial Coverage layer for episode reference generation.
+
+Before EREF fan-out:
+1. Build a spatial coverage manifest from storyboard + location bible.
+2. For each shot assign:
+   - spatial_anchor
+   - camera_direction
+   - foreground/background relationship
+   - continuity anchors visible
+   - reusable location plate or new angle required
+3. Reference Artist prompt must use this per-shot spatial data.
+4. Animatic gate must require all storyboard shots accounted for, not just approved image count.
+5. UI should show coverage: 19 shots → covered/reuse/new/missing.
+```
+
+Следующий мой контроль: проверяю новые EREF completions. Если пачка пошла в один и тот же angle, сразу поднимаю как blocking и формулирую revision по spatial coverage.
+===== END =====
+

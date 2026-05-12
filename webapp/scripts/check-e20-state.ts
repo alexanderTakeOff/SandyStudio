@@ -58,9 +58,14 @@ const { data: erefs } = await sb
   .order('created_at', { ascending: true });
 console.log(`\n--- IMG-episode_ref assets (${erefs?.length ?? 0}) ---`);
 for (const e of erefs ?? []) {
-  const m = e.metadata as { shot_reference?: { shot_id?: string }; kind?: string } | null;
-  const shot = m?.shot_reference?.shot_id ?? '?';
-  console.log(`${e.created_at.slice(11,19)} ${e.status.padEnd(9)} v${e.version} ${e.filename} shot=${shot}`);
+  const m = e.metadata as Record<string, unknown> | null;
+  const sr = m?.shot_reference as Record<string, unknown> | undefined;
+  console.log(`\n${e.created_at.slice(11,19)} ${e.status.padEnd(9)} v${e.version} ${e.filename}`);
+  console.log('  shot_id:', sr?.shot_id);
+  console.log('  prompt_used (first 600):', String(sr?.prompt_used ?? '').slice(0,600));
+  console.log('  staging_url:', sr?.staging_url ?? sr?.staging_path);
+  console.log('  metadata keys:', Object.keys(m ?? {}));
+  console.log('  shot_reference keys:', sr ? Object.keys(sr) : '(none)');
 }
 }
 main().catch(e => { console.error(e); process.exit(1); });
