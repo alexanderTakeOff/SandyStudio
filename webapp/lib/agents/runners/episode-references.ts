@@ -360,12 +360,16 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         shot_id: String(sh.shot_id),
         act: Number(a.act ?? 0),
         location: flatLocation,
+        location_sub_area: locationSubArea,
         characters_present: flatChars,
         action: flatAction,
         duration_seconds: Number(sh.duration_seconds ?? 0),
         key_beat: sh.key_beat ? String(sh.key_beat) : undefined,
         shot_role: sh.shot_role ? String(sh.shot_role) : undefined,
         expected_gag: sh.expected_gag === undefined ? undefined : sh.expected_gag,
+        camera_angle: sh.camera_angle ? String(sh.camera_angle) : undefined,
+        camera_movement: sh.camera_movement ? String(sh.camera_movement) : undefined,
+        camera_motivation: sh.camera_motivation ? String(sh.camera_motivation) : undefined,
         characters_v2: v2Chars,
       });
     }
