@@ -340,12 +340,16 @@ When script is revised (new version):
 → Escalate to Director — Brief runtime may need adjustment
 ```
 
-### Style Bible does not define camera angle vocabulary
+### Style Bible does not define camera vocabulary
 ```
-→ CHK field camera_angle: cannot be populated from input
-→ Flag: "Style Bible does not define camera_angle vocabulary."
-→ Escalate to EXEC-STY to update Style Bible
-→ Do not use assumed camera terms
+→ Use the MVP Default camera vocabulary defined earlier in §"Default camera vocabulary".
+→ Both camera_angle AND camera_movement have documented fallback values there.
+→ Populate camera_motivation in every shot regardless of Bible state — it is
+   narrative, not vocabulary, so it never needs the Bible.
+→ Flag once (per episode, not per shot): "Style Bible camera vocabulary
+   missing — using MVP defaults. Recommend ART-STY define an episode-specific
+   set so the look stays consistent across episodes."
+→ Do NOT stall the storyboard waiting for Style Bible.
 ```
 
 ### A scene has a single continuous action with no natural shot breaks
