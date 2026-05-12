@@ -7247,3 +7247,246 @@ generic trigger → unclear what to review
 да ты молодец просто замечательно У меня всё расписала А Обрати внимание на одну вещь на работу с камерой в предыдущих попытках камера всегда была очень статична а в наших простых минималистичных мультиках Мне кажется это будет очень Крутая фишка если камера будет себя вести очень динамично и надо дать возможность камере Просто вот по креативить круговые пролёты и Арсенал движения камеры нам нужно поюзать
 ===== END =====
 
+===== !AMBIENT 2026-05-12T17:58:39.666Z thread=bdbdafcf episode=- =====
+успехи?
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:59:33.405Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, есть прогресс.
+
+## E20 — новое
+
+**Storyboard Artist завершил storyboard v01** в 17:57.
+
+- asset: `SS-S14-E20-STB-storyboard-v01-DRAFT.md`
+- статус: `REVIEW`
+- 22 shots
+- total runtime: 60s
+
+## Быстрый разбор storyboard
+
+### Blocking
+1. **Не учтена ваша последняя режиссёрская правка по камере.**  
+   Камера почти вся описана как `wide / medium / close_up`, но без динамического языка:
+   - нет circular moves;
+   - нет push-in / pull-back;
+   - нет orbit;
+   - нет whip-pan;
+   - нет parallax;
+   - нет creative camera choreography.
+
+Это критично, потому что вы прямо задали новую фишку: **камера должна быть активным комедийным инструментом**, не статичной регистрацией.
+
+### Important
+2. В остальном storyboard production-clean:
+   - 60s ровно;
+   - 11 script units покрыты;
+   - 22 shots;
+   - локация одна: `perfume_counter_bar`;
+   - Sandy / Perfume Madame корректны;
+   - `perfume_vial` не используется;
+   - финальный blotter-strip punchline сохранён.
+
+3. Ритм хороший: shots по 2–4 секунды, это уже лучше для animation.
+
+### Minor
+4. Есть мелкая опечатка: `gestered` вместо `gestured`.
+
+## Publicist metadata v02 тоже готов
+Критичного нет, но я бы потом отправила на правку:
+- убрать `body-horror-comedy`;
+- смягчить “toxic” / “tragic” в сторону “surreal allergic comedy / tender visual gag”.
+
+## Рекомендация
+
+Storyboard **не утверждать сейчас**. Вернуть Storyboard Artist на revision v02 с конкретной задачей:
+
+```text
+Keep all 22 shots and 60s runtime, but add dynamic camera choreography.
+Use camera as comedy/feeling instrument:
+- orbit around Sandy during first attraction;
+- slow push-in into mist greeting;
+- Dutch tilt / wobble during allergic distortion;
+- circular drift around thought bubble;
+- parallax shelf ripple during environment fracture;
+- handheld-style micro shake or elastic camera during peak chaos;
+- slow pull-back for unbridgeable gap;
+- final locked-off stillness only for blotter-strip punchline.
+Do not change story, timing, characters, location, or final gag.
+```
+
+Нужна команда: **“Одобряю revision storyboard: добавить динамическую камеру.”**
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:01:08.502Z thread=bdbdafcf episode=- =====
+одобряю, отпраляй над добработку только по камере
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:01:49.335Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина. Принято и отправлено на доработку **только по камере**.
+
+## E20 storyboard revision
+Storyboard Artist получил задачу:
+
+- не менять story;
+- не менять 22 shots;
+- не менять 60s runtime;
+- не менять персонажей, локацию и финальный gag;
+- добавить динамическую камеру как creative feature:
+  - orbit / circular move;
+  - push-in;
+  - Dutch tilt / wobble;
+  - parallax;
+  - whip-pan / snap reframe;
+  - micro-shake;
+  - slow pull-back;
+  - финальная статичная фиксация только под punchline.
+
+Запущен новый run Storyboard Artist:
+`01KRENM5C8GVZQT4BFAH9JMD5G`
+
+Следующий контроль: жду revised storyboard и проверю, что изменена именно камера, а не структура.
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:05:19.563Z thread=bdbdafcf episode=- =====
+кладу в разделе технологии можно сделать пометочку по камере и также прописать это в скиллах соответствующего артиста сториборда и надо помнить что мы хотели делать описание всех от этих особенностей применительно к каждому типу произведения которые мы создаём То есть если здесь у нас Action мультик то уместные постоянные какие-то движения камеры Ну по крайней мере пока так кажется в какую-то другую историю или в каком-то другом жанре может быть это будет неуместно и соответственно пожарам Нам тоже надо иметь какие-то ски скилы или файлы технологии в общем что-то Придумай как надо системно это сделать И где отразить эту стратегическую задачу
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:06:09.373Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина. Сначала по E20: **Storyboard Artist уже выдал v02**, но он провалил вашу правку — вместо “только камера” он сократил storyboard с **22 до 19 shots** и почти не добавил camera choreography в JSON. Это blocking. Следующий шаг по E20 — вернуть на доработку именно с требованием: восстановить 22 shots и добавить отдельное поле `camera_movement` в каждый shot.
+
+По стратегической задаче — вы правы. Это надо фиксировать не как разовую правку, а как **production technology + role skill**, причём жанрозависимо.
+
+## Где фиксировать системно
+
+### 1. Bible / General idea → раздел “Production Technology”
+Туда пишем канон уровня сериала:
+
+```md
+## Production Technology: Camera as Comedy Instrument
+
+For SandyStudio minimalist action-comedy episodes, camera is not passive coverage.
+Camera movement is an active tool for comedy rhythm, emotional pressure, spatial distortion, and punchline contrast.
+
+Default for action-comedy:
+- avoid static wide/medium/close-up coverage as the main language;
+- use purposeful camera movement every few seconds when it supports the gag;
+- use stillness only as contrast, especially for deadpan punchlines.
+
+Camera movement palette:
+- push-in / pull-back;
+- orbit / circular drift;
+- whip-pan / snap reframe;
+- parallax shelf/space movement;
+- Dutch tilt / elastic wobble;
+- micro-shake during chaos;
+- locked-off stillness for punchline contrast.
+
+Genre rule:
+Camera behavior must match the type of work.
+Action-comedy may use frequent dynamic camera moves.
+Tender melancholy may use slower drift, pull-back, locked-off pauses.
+Dialogue/minimal episodes may use restrained camera with precise reframes.
+Surreal distortion episodes may use orbit, parallax, tilt, elastic camera.
+```
+
+### 2. Storyboard Artist skill → обязательный навык
+В skill нужно добавить:
+
+```md
+Storyboard Artist must specify camera behavior per shot:
+- framing alone is not enough;
+- every shot requires intentional camera movement or intentional stillness;
+- camera movement must support the beat, not decorate it;
+- preserve approved script timing and shot structure unless explicitly asked to restructure;
+- for camera-only revision, do not change story, shot count, timing, characters, location, or gag order.
+```
+
+### 3. Genre / format technology files
+Нужна отдельная библиотека “Technology by Format/Genre”:
+
+```text
+technology/
+  camera_general.md
+  camera_action_comedy.md
+  camera_tender_melancholy.md
+  camera_dialogue_minimal.md
+  camera_surreal_distortion.md
+  storyboard_artist_skill.md
+```
+
+И в задачу Storyboard Artist каждый раз надо передавать не просто “make storyboard”, а:
+
+```text
+Apply camera profile: action_comedy / surreal_distortion / tender_melancholy
+```
+
+## Что это решает
+
+- Мы не хардкодим один стиль камеры на все случаи.
+- Артист получает правильный “skill context”.
+- Для каждого жанра будет своя уместность:
+  - action — больше движения;
+  - melancholy — меньше, точнее;
+  - surreal — деформация камеры;
+  - dialogue — restrained reframing.
+
+## Что надо зафиксировать как стратегическую задачу для Claude
+
+```text
+Create production technology layer for SandyStudio.
+
+Add:
+1. Bible section: Production Technology / Camera as Comedy Instrument.
+2. Storyboard Artist skill update: per-shot camera_movement is required.
+3. Genre camera profiles:
+   - action_comedy
+   - tender_melancholy
+   - dialogue_minimal
+   - surreal_distortion
+4. Storyboard output schema update:
+   each shot must include:
+   - camera_angle
+   - camera_movement
+   - camera_motivation
+5. Camera-only revision rule:
+   when Director asks for camera-only revision, Storyboard Artist must not alter story, timing, shot count, characters, location, or gag order.
+```
+
+По E20 у меня следующий шаг: отправить Storyboard v02 обратно Storyboard Artist с жёсткой correction — **камера-only revision, восстановить 22 shots, не менять структуру**. Нужна команда: **“Одобряю correction storyboard v02 только по камере.”**
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:08:58.959Z thread=bdbdafcf episode=- =====
+Ну смотри Давай мы наверное пропустим если он добавил такой где камеру и не сильно накосячил по структуре потому что я думаю что Видимо у нас какая-то проблема со своей со скилом этого Агента и нужно будет одним работать отдельно потоком сейчас мы всё-таки отрабатываем в основном процедурная задача поэтому давай подтверди ещё раз что storyboard написала нормальный документ с погрешностями по камеры Мы пока согласимся и его пропускать дальше
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:09:19.954Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверила v02 внимательно.
+
+## Итог по storyboard v02
+
+Да, документ **в целом нормальный и пригодный для пропуска дальше**, если сейчас цель — процедурно двигать pipeline.
+
+### Что хорошо
+- runtime: **60s**
+- покрыты все **11 script units**
+- история не сломана
+- персонажи/локация/финальный gag сохранены
+- ритм рабочий: shots в основном 2–4s
+- визуальные beats понятны для следующего этапа
+
+### Погрешности
+- стало **19 shots вместо 22** — нежелательно, но не разрушительно
+- камера всё ещё описана слабо: в JSON нет отдельного `camera_movement`
+- текстовые shot labels остаются `wide / medium / close_up`, то есть камера не стала полноценным инструментом
+
+### Вывод
+Для E20 я бы **пропустила storyboard v02 дальше**, а проблему камеры вынесла отдельной системной задачей по skill’у Storyboard Artist и production technology.
+
+Чтобы двигаться дальше, нужна команда: **“Одобряю storyboard v02.”**
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:11:11.458Z thread=bdbdafcf episode=- =====
+Ну ещё как вариант Ты можешь сама вручную поправить документы возможно этот и добавить туда в Джейсон движение камеры не трогая всё остальное что скажешь или может быть плотно Может в этом помочь
+===== END =====
+
