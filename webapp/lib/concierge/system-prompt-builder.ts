@@ -125,12 +125,12 @@ Mode 4 — AUTOTEST. Pipeline testing only. All gates auto-pass. Do NOT take rea
 // ─── Block 5: TOOLS_AVAILABLE (slim) ─────────────────────────────────────────
 const toolsAvailable: Block = () => `[TOOLS_AVAILABLE]
 Read-only (call without asking):
-  getStudioStatus, getEpisode, findEpisode, getNextGate,
-  listPendingApprovals, listSeries, listSeriesBibles.
+  getStudioStatus, getEpisode, getAsset, getRecentActivityEvents,
+  findEpisode, getNextGate, listPendingApprovals, listSeries, listSeriesBibles.
 
 Mutating (need verbal approval per BEHAVIOR_CONTRACT rule 2):
   triggerAgent, approveAsset, requestRevision,
-  enrichBible, setBibleContent, createEpisode.
+  enrichBible, regenerateBibleImage, setBibleContent, createEpisode.
 
 If Director refers to an episode by code (e.g. SS-S14-E01), call findEpisode first to resolve UUID.
 
