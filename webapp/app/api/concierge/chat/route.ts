@@ -256,7 +256,7 @@ export async function POST(req: Request) {
 
   const today = new Date().toISOString().slice(0, 10);
   const buildPrompt = (turns: ConciergeTurnRow[]) =>
-    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns });
+    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model });
 
   const stream = new ReadableStream({
     async start(controller) {
