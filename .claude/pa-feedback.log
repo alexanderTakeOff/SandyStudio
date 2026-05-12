@@ -7587,3 +7587,31 @@ add camera_movement + camera_motivation to every shot
 Так ну Клод вроде бы всё должен поправить добавить камеру в 19 эпизодов проверь Если всё О'кей то одобряю двигаемся дальше
 ===== END =====
 
+===== !AMBIENT 2026-05-12T18:24:15.441Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверила. Claude действительно сделал surgical patch.
+
+## Storyboard v02 — OK
+
+- 19 shots сохранены
+- total runtime: 60s
+- story не тронута
+- action prose не тронут
+- characters/location/key beats сохранены
+- в каждый shot добавлены:
+  - `camera_movement`
+  - `camera_motivation`
+
+Есть пара мест, где camera motivation не идеально точна по формулировке, но для прохода дальше это не blocking.
+
+## Выполнено
+
+По вашему approval я **утвердила storyboard v02**.
+
+Автоматически запущен следующий этап:
+
+- **Script Supervisor / Continuity check**
+- event id: `01KREPX5XEJRHV7D3JNH8TVXAZ`
+
+Следующий контроль: жду continuity check; как только появится результат, читаю и даю короткий breakdown.
+===== END =====
+

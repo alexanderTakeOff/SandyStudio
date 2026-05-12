@@ -100,6 +100,60 @@ All three files delivered together to EXEC-ORCH as a single handoff.
 - Total duration budget (sum of all shot `duration_seconds` must not exceed this)
 - Any specific shot requirements called out in the brief
 
+### Default camera vocabulary (MVP fallback)
+
+Use these values when Style Bible does not yet define camera vocabulary
+(empty Series Bible / MVP projects). When Style Bible is populated, prefer
+the Bible's vocabulary and treat this list as compatibility floor.
+
+**`camera_angle`** — framing / shot size:
+
+| value | when to use |
+|---|---|
+| `extreme_close_up` | micro-expression, eye/hand, emotional reaction shots |
+| `close_up` | dialogue, isolated reaction, single-character emotion |
+| `medium` | conversation, action with limited body movement |
+| `medium_wide` | full body, two-character interaction |
+| `wide` | establishing, environment reveal, full action with context |
+| `extreme_wide` | scale / isolation in environment, vista |
+| `over_shoulder` | dialogue with character POV anchor |
+| `pov` | subjective — what character sees |
+| `top_down` / `low_angle` / `high_angle` | power dynamics, vulnerability, surveillance |
+
+**`camera_movement`** — how the camera moves during the shot:
+
+| value | character | when to use |
+|---|---|---|
+| `static_locked_off` | no movement | reaction holds, punchlines, melancholy stillness, "let the moment land" |
+| `slight_handheld_drift` | barely-perceptible waver | introduce subtle instability, unease before the audience notices |
+| `slow_push_in` | gentle forward dolly | emotional approach, intimacy build, "noticing" |
+| `slight_push_in` | small forward move | underscore an intent or gesture without overpowering it |
+| `slow_push_in_close` | longer push to tight framing | unbroken intimacy peak, "we are right there with them" |
+| `dolly_with_subject` | camera tracks subject laterally | ride subject's momentum, viewer travels with them |
+| `slow_pullback` | gentle backward dolly | reveal scale, exhale after intensity, "see how small they are" |
+| `slow_pullback_reveal` | pullback that reveals new info | breathing out + new context together |
+| `slow_pullback_to_two_shot` | pullback ending in symmetric wide | composition does emotional work — distance / separation |
+| `slow_dolly_back` | smooth backward dolly | visualise a widening gap by literal distance |
+| `whip_pan_recover` | fast pan + snap-back | reactive — camera "flinches" at a cartoon distortion or gag |
+| `accelerating_zoom` | zoom that ramps up | tempo lift before a fracture, panic curve |
+| `rack_zoom_kaleidoscope` | combined zoom + symmetry effect | disorientation, environment fracture, dream/hallucination |
+| `rapid_shake_static_burst` | brief handheld jolts | peak chaos stutter, ~6-frame bursts |
+| `dutch_tilt_rotation` | slow tilt off-horizontal | world tilting, emotional misalignment, unstable mental state |
+| `slow_orbit_around_subject` | camera arcs around subject (orbit) | thoughts spiral, "world rotating around me", trapped-in-own-head, subjective dizziness |
+| `orbit_pullback` | orbit + pullback combo | crescendo — rotation + distance stack for peak chaos / engulfment |
+
+**Rules of thumb (link movement to `shot_role`):**
+
+- `establishing` → `slow_push_in` or `slow_pullback_reveal`
+- `action` → `dolly_with_subject` or `slight_push_in`
+- `gag` → `whip_pan_recover`, `rapid_shake_static_burst`, `rack_zoom_kaleidoscope`, or orbit family
+- `punchline` → `static_locked_off` (the comic stop) — only break this if the gag IS the camera move
+- `reaction` → `static_locked_off` (close_up) — never compete with the face
+- `transition` → `slow_pullback_reveal` or `slow_pullback`
+
+Repeat the same movement intentionally as a **visual rhyme** (same trap second
+time) — but vary it elsewhere to avoid monotony.
+
 ### Step 2 — Compute duration budget
 
 ```
