@@ -25,7 +25,12 @@ import type { AgentInputs } from '../types';
 
 export const SREV_CONTRACT = 'script_reviewer@v1';
 export const SREV_MODEL = 'claude-sonnet-4-6';
-export const SREV_MAX_TOKENS = 3000;
+// 2026-05-12: bumped from 3000 → 12000 after pilot run crashed with
+// `stop_reason=max_tokens, output 12246 chars` before closing JSON block.
+// SREV reviews scripts up to ~8K tokens and emits structured findings —
+// 3K was way under budget. Storyboarder uses 16K, Screenwriter 8K; SREV
+// sits between the two.
+export const SREV_MAX_TOKENS = 12000;
 export const SREV_COST_CEILING_USD = 0.3;
 
 export class ScriptReviewerError extends Error {
