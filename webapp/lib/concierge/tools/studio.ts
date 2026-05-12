@@ -197,6 +197,162 @@ export const getEpisode: Tool<GetEpisodeArgs> = {
   },
 };
 
+interface GetAssetArgs {
+  assetId: string;
+  includeContent?: boolean;
+}
+
+export const getAsset: Tool<GetAssetArgs> = {
+  name: 'getAsset',
+  description:
+    "Read a full asset row by UUID — including filename, status, version, file_type, agent_id, content (markdown body), description, and metadata. Use this when you need to surface reviewer notes / agent output to the Director. After listPendingApprovals or getRecentActivityEvents tells you an asset is ready, call getAsset on its UUID to summarise the actual content. Default returns content; pass includeContent:false to skip body when only metadata is needed.",
+  mutating: false,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'getAsset',
+      description: 'Read full asset row including markdown content. Read-only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          assetId: { type: 'string', description: 'Asset UUID.' },
+          includeContent: {
+            type: 'boolean',
+            description: 'Whether to include the markdown body (default true).',
+          },
+        },
+        required: ['assetId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    if (typeof obj.assetId !== 'string' || !obj.assetId) {
+      throw new Error('assetId is required');
+    }
+    return {
+      assetId: obj.assetId,
+      includeContent: obj.includeContent === false ? false : true,
+    };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const { supabase } = ctx;
+    try {
+      const cols = args.includeContent
+        ? 'id, filename, status, version, file_type, agent_id, episode_id, series_id, description, content, metadata, staging_path, drive_web_view_url, created_at, updated_at'
+        : 'id, filename, status, version, file_type, agent_id, episode_id, series_id, description, staging_path, drive_web_view_url, created_at, updated_at';
+      const { data, error } = await supabase
+        .from('assets')
+        .select(cols)
+        .eq('id', args.assetId)
+        .maybeSingle();
+      if (error) return fail(`asset read failed: ${error.message}`, 'db_error');
+      if (!data) return fail(`asset ${args.assetId} not found`, 'not_found');
+      const row = data as { agent_id?: string | null; filename: string; status: string };
+      const author = row.agent_id ? agentDisplayName(row.agent_id) : '—';
+      return ok(
+        { asset: data, author_role: author },
+        `Asset ${row.filename} (${row.status}) — author: ${author}.`,
+      );
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'unknown', 'tool_error');
+    }
+  },
+};
+
+interface GetRecentActivityEventsArgs {
+  episodeId?: string;
+  sinceMinutes?: number;
+  limit?: number;
+}
+
+export const getRecentActivityEvents: Tool<GetRecentActivityEventsArgs> = {
+  name: 'getRecentActivityEvents',
+  description:
+    "Read recent activity events (agent completions, asset updates, approvals, errors). Use at the START of each turn when an episode is in focus, so you can surface progress without waiting for the Director to ask. Director directive 2026-05-12: 'события которые произошло должно быть известно всем участникам' — PA must proactively notice draft readiness, agent failures, etc. Returns up to `limit` events (default 25) within the last `sinceMinutes` (default 30, max 1440).",
+  mutating: false,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'getRecentActivityEvents',
+      description: 'List recent activity_events for situational awareness. Read-only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          episodeId: { type: 'string', description: 'Filter to one episode UUID.' },
+          sinceMinutes: {
+            type: 'integer',
+            description: 'Lookback window in minutes (default 30, max 1440).',
+            minimum: 1,
+            maximum: 1440,
+          },
+          limit: {
+            type: 'integer',
+            description: 'Max events returned (default 25, max 100).',
+            minimum: 1,
+            maximum: 100,
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const sinceMinutes = typeof obj.sinceMinutes === 'number'
+      ? Math.min(1440, Math.max(1, Math.floor(obj.sinceMinutes)))
+      : 30;
+    const limit = typeof obj.limit === 'number'
+      ? Math.min(100, Math.max(1, Math.floor(obj.limit)))
+      : 25;
+    const episodeId = typeof obj.episodeId === 'string' && obj.episodeId.length > 0
+      ? obj.episodeId
+      : undefined;
+    return { episodeId, sinceMinutes, limit };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const { supabase } = ctx;
+    const since = new Date(Date.now() - (args.sinceMinutes ?? 30) * 60 * 1000).toISOString();
+    try {
+      let q = supabase
+        .from('activity_events')
+        .select('id, event_type, severity, title, description, episode_id, asset_id, actor, metadata, created_at')
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(args.limit ?? 25);
+      if (args.episodeId) q = q.eq('episode_id', args.episodeId);
+      const { data, error } = await q;
+      if (error) return fail(`events read failed: ${error.message}`, 'db_error');
+      const rows = (data ?? []) as Array<{
+        id: string;
+        event_type: string;
+        severity: string;
+        title: string;
+        description: string | null;
+        episode_id: string | null;
+        asset_id: string | null;
+        actor: string | null;
+        metadata: Record<string, unknown> | null;
+        created_at: string;
+      }>;
+      const events = rows.map((r) => {
+        const metaAgent = r.metadata?.agent_id as string | undefined;
+        return {
+          ...r,
+          author_role: metaAgent ? agentDisplayName(metaAgent) : null,
+        };
+      });
+      return ok(
+        { events, count: events.length, since_iso: since },
+        `Read ${events.length} events in last ${args.sinceMinutes}m${args.episodeId ? ' for that episode' : ''}.`,
+      );
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'unknown', 'tool_error');
+    }
+  },
+};
+
 function safeParse(raw: string): AnyArgs {
   if (!raw || raw.trim() === '') return {};
   try {
