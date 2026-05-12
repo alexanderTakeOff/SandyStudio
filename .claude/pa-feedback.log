@@ -3410,3 +3410,33 @@ regenerateBibleImage
 и добавить отдельную безопасную логику для locked assets через duplicate/new draft version.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T07:54:08.827Z thread=bdbdafcf episode=- =====
+я нажал кнопку перегенерить но по видимому всё-таки Промт остался старым потому что опять какая-то белка сидит и какой-то лысый человек Промт
+===== END =====
+
+===== !AMBIENT 2026-05-12T07:54:47.057Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверил: ты прав, UI-регенерация снова взяла **старый image prompt из metadata.history**, а не новый текст из `content`.
+
+## Почему появилась белка / лысый человек
+У location assets сейчас два слоя:
+
+1. **`content`** — уже очищен правильно:
+   - no characters
+   - no people
+   - no animals
+   - no silhouettes
+   - no squirrel/girl/cube/bald man
+   - empty location only
+
+2. **`metadata.image_prompt.history[current_version].prompt`** — всё ещё старый prompt, с текстом от `EXEC-BIBLE-AUTHOR`.
+
+UI-кнопка “перегенерить” взяла именно **старый image prompt**, поэтому и повторила мусор.
+
+## Я попытался перегенерировать напрямую
+Собрал правильные prompt’ы и вызвал `regenerateBibleImage` для трёх локаций, но серверный gate не пропустил: в последних turn’ах нет свежего approval для mutating action.
+
+Нужна ровно одна фраза:
+
+**одобряю регенерацию трёх локаций по новым prompt без людей, животных и персонажей**.
+===== END =====
+
