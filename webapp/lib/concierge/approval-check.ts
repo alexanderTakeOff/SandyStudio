@@ -187,23 +187,23 @@ export function checkVerbalApproval(
     const text = turn.content.trim();
     if (!text) continue;
 
-    // Explicit rejection wins immediately — invalidate any earlier approval.
-    if (isRejection(text)) {
+    // Per-turn verdict respects WHERE in the message the tokens appeared.
+    // Long Director messages may include mid-sentence "нет" / hesitation
+    // followed by clear approval near the end — approval at later position
+    // wins.
+    const verdict = verdictForTurn(text);
+    if (verdict === 'rejected') {
       return {
         approved: false,
         reason: `Director's recent input ("${truncate(text, 80)}") signals rejection or hesitation. Ask for explicit re-confirmation.`,
         matchedTurnIndex: i,
       };
     }
-
-    if (isApproval(text)) {
+    if (verdict === 'approved') {
       foundApproval = { i, text };
-      // Don't return yet — keep scanning to ensure no later (= already-seen,
-      // since we're going backwards) rejection cancelled it. With reverse
-      // iteration the rejection would have triggered the early return above.
-      // So a found approval here is durable.
       break;
     }
+    // 'neutral' — keep scanning earlier director turns for prior approval
   }
 
   if (foundApproval) {
