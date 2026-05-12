@@ -437,6 +437,41 @@ export function createAgentInngestFunction<E extends string>(
         assetId: saved.assetId,
         runId,
       };
+
+      } catch (err) {
+        // Best-effort failure logging — writes one activity_event so the
+        // Prod Assistant's `getRecentActivityEvents` surfaces the cause
+        // instead of timing out silently. Wrapped in step.run for
+        // idempotency across Inngest retries. Re-throws so Inngest still
+        // marks the function FAILED (preserves existing semantics).
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await step.run('log-agent-failure', async () => {
+          try {
+            const supabase = createSupabaseServiceRoleClient();
+            await supabase.from('activity_events').insert({
+              event_type: 'agent_failed',
+              severity: 'error',
+              title: `${agentDisplayName(spec.agentId)} failed`,
+              description: errMsg.slice(0, 500),
+              actor: spec.agentId,
+              episode_id: episodeId,
+              job_id: capturedJobId,
+              metadata: {
+                agent: spec.agentId,
+                inngest_run_id: runId,
+                error: errMsg.slice(0, 500),
+              },
+            } as never);
+            if (capturedJobId) {
+              await markJobFailed(supabase, capturedJobId, errMsg.slice(0, 500));
+            }
+          } catch {
+            // Swallow logging errors so we don't mask the original failure.
+          }
+          return { logged: true };
+        });
+        throw err;
+      }
     },
   );
 }
