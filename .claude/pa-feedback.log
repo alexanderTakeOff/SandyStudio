@@ -1341,3 +1341,837 @@ setup → interference → escalation → recovery → punch
 ок не можешь поменять Тогда сделай мне макдаун прямо в этом нашем чате и я сам сделаю копипаст Библию .
 ===== END =====
 
+===== !AMBIENT 2026-05-12T05:54:28.335Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Готово. Ниже цельный Markdown для вставки во вкладку **General Idea**.
+
+```md
+# SANDY — GENERAL IDEA (ACTION-DRIVEN)
+
+---
+
+## General Idea
+
+**Sandy Chronicles** — это короткий безсловесный анимационный сериал о песочном герое, который попадает в простые бытовые ситуации, пытается всё ускорить, упростить или идеально контролировать, и каждый раз сам же запускает комедийный сбой.
+
+S14 is a silent comedy series about a hyperactive character whose attempts to do something good are repeatedly disrupted by the world around him.
+
+The series exists as a family-friendly comedy engine: it is built primarily on motion, interruption, escalation, and physical reversal, with light philosophical undertones reserved for older viewers.
+
+At its core, the show turns ordinary intentions into unpredictable comic situations, where action matters more than explanation and visual storytelling carries the meaning.
+
+The result is a flexible seasonal world that can support many episodes without losing its central promise: a clear, energetic, and universally readable comedy experience.
+
+---
+
+## Core Creative Rule
+
+The main rule of the series is:
+
+**Action first. Explanation last.**
+
+Every episode should be readable without dialogue. The audience must understand:
+- what Sandy wants,
+- what goes wrong,
+- why the situation escalates,
+- and what the final comic reversal means.
+
+The series should avoid verbal explanation, complicated psychology, and overdesigned visual scenes that distract from the gag.
+
+Comedy comes from:
+- movement,
+- timing,
+- interruption,
+- physical pressure,
+- reversal,
+- contrast between intention and result.
+
+The adult layer can carry social or philosophical meaning, but the child layer must always remain simple, visual, and funny.
+
+---
+
+## Tone
+
+The tone is:
+- family-friendly,
+- fast,
+- visual,
+- physical,
+- slightly absurd,
+- emotionally clear,
+- never cynical.
+
+Sandy may suffer comic failure, but the show should not feel cruel. The world can pressure him, mock his plans, or interrupt his rhythm, but the emotional core stays playful and readable.
+
+The audience should feel that Sandy is not a passive victim. He is active, inventive, stubborn, and constantly trying to solve the situation — even when his solution makes everything worse.
+
+---
+
+## Cast Bible / Персонажи
+
+This section contains only short textual canon for the main cast. Detailed visual designs, poses, expressions, alternate looks, and reference images belong in the Library / assets section.
+
+### Sandy / Сэнди [CH_01]
+
+Мягкий силиконовый герой-песочные часы, чей золотой песок визуализирует жизненный ресурс.
+
+Sandy is the main action engine of the series: he tries to optimize, accelerate, fix, control, or improve situations, but his own body and the world around him turn those intentions into comedy.
+
+### Antagonist Shadow / Тень-Антагонист [CH_02]
+
+Зловещая высокая фигура с горящими красными глазами, олицетворяющая абстрактную угрозу неонового города.
+
+A visual pressure force rather than a talkative villain. It represents fear, scale, and the hostile side of the environment.
+
+### Inspector-Stopwatch / Инспектор-Секундомер [CH_03]
+
+Металлический контролер ритма и администратор «эффективности», одержимый дедлайнами.
+
+A comic embodiment of productivity pressure. He turns normal action into timed, measured, over-controlled chaos.
+
+### Perfume Vial / Флакон Духов [CH_04]
+
+Изящная стеклянная дама с фиолетовым туманом, символизирующая притягательную, но аллергенную близость.
+
+A character of beauty, attraction, and danger. Her presence creates emotional pull and physical reaction at the same time.
+
+### Coffee Cup Colleague / Коллега-Стакан Кофе [CH_05]
+
+Дерганый офисный работник, живущий на стимуляторах и постоянно расплескивающий нервную энергию.
+
+A nervous energy amplifier. He brings workplace anxiety, speed, spills, and unstable rhythm into scenes.
+
+### Old Calendar Neighbor / Сосед-Календарь [CH_06]
+
+Ворчливый пенсионер, с которого постоянно осыпаются листки прошлого.
+
+A comic figure of old time, memory, routine, and resistance to change.
+
+### Baby-Timer / Малыш-Таймер [CH_07]
+
+Непредсказуемый круглый младенец, который громко звенит и переворачивает спящих взрослых в рабочий режим.
+
+A chaotic alarm-like baby. He interrupts rest, resets rhythm, and forces adults back into action.
+
+### Skateboard Courier / Курьер-Скейтборд [CH_08]
+
+Быстрая безликая функция, которая постоянно вносит хаос в упорядоченную жизнь.
+
+A speed-based disruption force. He crosses scenes fast, breaks order, and introduces sudden motion.
+
+### Mirror-Filter / Зеркало-Фильтр [CH_09]
+
+Инструмент социального одобрения и нарциссизма, искажающий реальность в угоду статусу.
+
+A reflection-based character/object that turns identity, status, and self-image into visual comedy.
+
+### Balloon / Воздушный Шарик [CH_10]
+
+Яркий «оптимист на грани срыва», который хаотично сдувается и носится по комнате от любой обиды.
+
+A fragile emotional pressure character. Small triggers cause large physical reactions.
+
+### Yarn Ball / Клубок Ниток [CH_11]
+
+Тревожный тип, который постоянно запутывается в самом себе и затягивает других в свои узлы.
+
+A character of anxiety, overthinking, and entanglement. He turns simple movement into knots.
+
+### Stapler / Степлер [CH_12]
+
+Резкий бюрократ, который грубо скрепляет вместе вещи, несовместимые по своей природе.
+
+A force of bad administrative logic. He solves problems by attaching the wrong things together.
+
+### Eraser / Ластик [CH_13]
+
+Персонаж, избегающий ответственности, физически стирающий свои следы и чужие достижения.
+
+A comic avoidance character. He removes evidence, consequences, and sometimes progress itself.
+
+### Marginal / Маргинал — Клубок Ветоши [CH_14]
+
+Хаотичный «человек с улицы», чья грязь срывает с героев фальшивые маски.
+
+A disruptive outsider. He exposes artificial order, social masks, and polished surfaces.
+
+### Golden Chronometer / Золотой Хронометр [CH_15]
+
+Сияющий представитель идеальной элиты, чей песок всегда падает ровно и чинно.
+
+A contrast figure for Sandy: perfect rhythm, controlled status, and polished superiority.
+
+### Heavy Friend / Тяжелый друг — Наковальня [CH_16]
+
+Массивный персонаж в депрессии, под весом которого прогибается и чуть не рвется талия Сэнди.
+
+A literal and emotional weight character. He turns friendship, support, and empathy into physical pressure.
+
+---
+
+## World & Locations / Мир и локации
+
+Locations should stay simple and readable. A location exists to support action, not to show decorative worldbuilding.
+
+The world can contain a recurring **Neon City** environment, but it must not override the main action-first rule.
+
+### Neon City / Неоновый город
+
+A futuristic, slightly hostile city environment that represents pressure, speed, status, and overstimulation.
+
+Visual use:
+- deep dark backgrounds,
+- vertical architecture,
+- neon accents,
+- reflections,
+- signs,
+- traffic,
+- distant movement.
+
+Creative rule:
+
+**Neon City should create mood and pressure, but never steal attention from Sandy’s action.**
+
+The city may feel large and oppressive, but scenes must remain clean enough for physical comedy to be immediately readable.
+
+### Functional Everyday Spaces
+
+Episodes may also use simple everyday spaces:
+- office,
+- home,
+- cafe,
+- street,
+- waiting room,
+- gym,
+- store,
+- beach,
+- bathroom,
+- public service office,
+- bedroom,
+- corridor,
+- elevator,
+- rooftop,
+- simple room with one key prop.
+
+Each location should be reduced to what the gag needs. If a tree, house, car, bridge, vase, painting, table, door, river, or chair is enough for the joke, the scene should not add unnecessary detail.
+
+---
+
+## Core Style Rule
+
+S14 visual style is simple, readable, and action-first.
+
+The series should feel like a classic comedic cartoon where character acting, movement, timing, and interaction carry the scene.
+
+Backgrounds are minimal and only include what the story needs:
+- a tree,
+- a house,
+- a passage,
+- a boat,
+- a car,
+- a river,
+- a bridge,
+- a building,
+- a vase,
+- a painting,
+- a table,
+- a door,
+- or another simple prop/place that supports the joke.
+
+The visual language should avoid unnecessary complexity, decorative overload, and overly beautiful frames that distract from the action.
+
+The focus is on:
+- clear silhouettes,
+- expressive motion,
+- physical comedy,
+- fast readable storytelling,
+- strong character posing,
+- immediate cause and effect.
+
+The world should feel lightweight and flexible so the scene can move quickly from intention to disruption to payoff.
+
+Atmospheric effects, ornamental detail, and layered visual richness should be used only when they directly support the gag or the story beat.
+
+If a visual element does not help the action, it should not dominate the frame.
+
+---
+
+## Visual Style Addendum / Дополнение к стилю
+
+This section expands the style only where it supports the existing action-first rule. If there is any conflict, the main style rule has priority.
+
+### Graphic Style
+
+The base look is 2D flat cartoon with bold black outlines and soft controlled gradients.
+
+Lineart:
+- outlines are dense,
+- black,
+- readable,
+- consistent,
+- and strong enough to separate characters from the background in motion.
+
+Shapes:
+- characters may use exaggerated squash and stretch,
+- bodies can stretch, compress, vibrate, bend, or deform according to physical pressure,
+- deformation should always serve the gag.
+
+### Sandy’s Material
+
+Sandy’s body is transparent, soft, flexible silicone.
+
+His body can:
+- bend,
+- inflate,
+- compress,
+- wobble,
+- stretch,
+- fold,
+- and react visibly to pressure.
+
+The transparent body allows the audience to see the golden sand inside.
+
+### Golden Sand
+
+The golden sand is Sandy’s visual life resource.
+
+It should feel warm, alive, and important. It may be the only truly warm element in colder scenes.
+
+The sand can be used to show:
+- energy,
+- time,
+- emotional pressure,
+- exhaustion,
+- imbalance,
+- urgency,
+- loss of control.
+
+In close-ups, individual grains may be visible when useful for emotion or comedy.
+
+### Materials as Comedy
+
+Materials should support character function:
+
+- **transparent silicone** — softness, vulnerability, elasticity;
+- **golden sand** — life resource, time, inner pressure;
+- **cold metal** — control, bureaucracy, rigidity;
+- **fragile glass** — beauty, danger, distortion;
+- **rubber limbs** — flexibility, awkward effort, physical comedy.
+
+Material detail should stay readable and should not become visual noise.
+
+### Light and Color
+
+The series may use:
+- strong contrast,
+- dark backgrounds,
+- neon accents,
+- electric blue,
+- toxic purple,
+- anxious amber,
+- red glowing eyes,
+- selective reflections.
+
+But lighting must not hide the physical action.
+
+Deep shadows, film-noir mood, and cyberpunk atmosphere are allowed only when they strengthen the gag, the pressure, or the emotional beat.
+
+### Neon City Use
+
+Neon City can be an important recurring environment, but it is not a license for background overload.
+
+Allowed:
+- vertical buildings,
+- wet asphalt,
+- neon signs,
+- steam,
+- distant silhouettes,
+- reflections,
+- background motion.
+
+Not allowed as default:
+- constant visual clutter,
+- excessive atmospheric effects,
+- complicated environments that slow down the joke,
+- decorative shots that overpower the character action.
+
+---
+
+## Object Logic / Предметы и реквизит
+
+Objects in Sandy should act as comedy engines.
+
+A good object:
+- creates a clear physical problem,
+- changes Sandy’s body balance,
+- blocks motion,
+- causes reversal,
+- leaks, spills, sticks, rings, rolls, breaks, inflates, reflects, or traps.
+
+Objects should not be decorative by default. They should either:
+- trigger the gag,
+- intensify the gag,
+- reveal character,
+- or create the final punch.
+
+Recurring object types:
+- stopwatch,
+- perfume vial,
+- coffee cup,
+- calendar,
+- baby timer,
+- skateboard,
+- mirror/filter,
+- balloon,
+- yarn ball,
+- stapler,
+- eraser,
+- chronometer,
+- anvil,
+- smartphone,
+- shopping bags,
+- gym equipment,
+- paperwork,
+- tape,
+- patch,
+- pipe,
+- door,
+- table,
+- chair.
+
+---
+
+## Episode Architecture / Архитектура эпизода
+
+Each episode should be built as a compact visual comedy mechanism.
+
+### 1. Clear Intention
+
+Sandy wants something simple:
+- impress someone,
+- finish work,
+- rest,
+- save time,
+- fix a problem,
+- hide a flaw,
+- become better,
+- help a friend,
+- control the situation.
+
+The goal must be readable immediately.
+
+### 2. Interference
+
+A character, object, environment, or Sandy’s own body interrupts the plan.
+
+The interference should be physical and visual, not verbal.
+
+### 3. Escalation
+
+Sandy reacts with effort. The effort makes the situation worse.
+
+Each new attempt should:
+- increase pressure,
+- shift balance,
+- deform the body,
+- accelerate rhythm,
+- or create a new visible problem.
+
+### 4. Physical Reversal
+
+The logic flips.
+
+What Sandy used to solve the problem becomes the source of the problem.
+
+Examples:
+- saving time wastes time,
+- hiding a flaw reveals it,
+- becoming stronger makes him immobile,
+- helping someone almost destroys him,
+- trying to look perfect creates a grotesque result.
+
+### 5. Recovery or Collapse
+
+Sandy either finds a tiny temporary solution or collapses into a comic state.
+
+The result should be visual, not explained.
+
+### 6. Final Punch
+
+The last beat should be:
+- simple,
+- fast,
+- readable,
+- physical,
+- and slightly ironic.
+
+The ending may carry adult meaning, but the surface gag must work for children.
+
+---
+
+## Comedy Engine
+
+The series repeatedly uses the same core machine:
+
+**ordinary intention → physical interruption → overcorrection → escalation → reversal → visual punch**
+
+Common comedy patterns:
+- Sandy tries to optimize something and makes it inefficient.
+- Sandy tries to hide something and makes it more visible.
+- Sandy tries to control rhythm and loses rhythm.
+- Sandy tries to save his resource and wastes more of it.
+- Sandy tries to look successful and becomes physically absurd.
+- Sandy tries to help someone else and almost breaks himself.
+- Sandy tries to rest and is forced back into action.
+
+---
+
+## Do / Don’t Rules
+
+### Do
+
+- Make the action readable without dialogue.
+- Keep the gag visually clear.
+- Use Sandy’s hourglass body as the main comedy tool.
+- Let the golden sand show time, pressure, energy, and loss.
+- Use side characters as functional comedy forces.
+- Keep backgrounds simple unless mood directly helps the gag.
+- Let each episode have one strong physical idea.
+- Build escalation through movement, deformation, and rhythm.
+
+### Don’t
+
+- Don’t overexplain.
+- Don’t rely on dialogue.
+- Don’t overload the frame with decorative detail.
+- Don’t make cyberpunk/noir atmosphere more important than comedy.
+- Don’t turn the show into abstract philosophy.
+- Don’t make Sandy passive for too long.
+- Don’t make jokes depend on text.
+- Don’t add visual complexity unless it improves the gag.
+
+---
+
+## Seed Bank / Реестр сюжетов: Season 1
+
+### 1. «Инверсия успеха» / The Red Carpet
+
+Попытка имитировать потенциал, стоя на голове, заставляет Сэнди видеть мир вверх ногами и захлебываться собственным ресурсом.
+
+Core gag:
+Sandy tries to look successful by reversing himself, but the reversal physically breaks his inner logic.
+
+### 2. «Ловушка эффективности» / Management
+
+Хаотичные «спринты» и постоянные перевороты Инспектором превращают рабочий прогресс Сэнди в бесполезное статичное облако.
+
+Core gag:
+Productivity rituals create motion without progress.
+
+### 3. «Фиолетовый морок» / The Date
+
+Страсть на расстоянии и попытка скрыть «аллергию» на партнера приводят к взрывному разрушению обеих личностей при сближении.
+
+Core gag:
+Attraction becomes physically incompatible when distance disappears.
+
+### 4. «Бесконечная лента» / The Scroll
+
+Сэнди заворожен экраном смартфона, пока его жизненный песок физически утекает в «цифровую пустоту» нижней чаши.
+
+Core gag:
+Attention drain becomes literal sand drain.
+
+### 5. «Идеальная форма» / The Gym
+
+Попытка перекачать весь песок в верхнюю чашу — «плечи» — делает Сэнди сверх-устойчивым, но абсолютно неповоротливым гиреподобным объектом.
+
+Core gag:
+The body becomes “improved” but unusable.
+
+### 6. «Черная пятница» / The Sale
+
+Огромное количество покупок в руках Сэнди смещает его центр тяжести, превращая его в неуправляемый и разрушительный вращающийся волчок.
+
+Core gag:
+Consumption turns the buyer into a spinning hazard.
+
+### 7. «Очередь в госучреждение» / The Waiting
+
+Время тянется настолько мучительно долго, что песок Сэнди засыхает от скуки и образует в талии плотную «бюрократическую пробку».
+
+Core gag:
+Waiting physically blocks time itself.
+
+### 8. «Молодой родитель» / The Baby-Timer
+
+Сэнди отчаянно пытается уснуть в горизонтальном положении, но активный малыш-таймер постоянно переворачивает его в рабочий вертикальный режим.
+
+Core gag:
+Rest is repeatedly converted into duty.
+
+### 9. «Домашний ремонт» / The Leak
+
+Сэнди пытается судорожно заклеить микротрещину в своем силиконовом корпусе, пока его золотой песок медленно высыпается на пол.
+
+Core gag:
+A tiny leak becomes a resource panic.
+
+### 10. «Отпускной дзен» / The Vacation Trap
+
+Пытаясь «сэкономить» время и не двигаться на пляже, Сэнди превращается в неподвижную, покрытую пылью садовую декорацию.
+
+Core gag:
+Extreme rest becomes lifeless stillness.
+
+### 11. «Информационный передоз» / The News
+
+Сэнди пытается «поглотить» слишком масштабную новость, которая физически застревает в его узкой талии, вызывая удушье.
+
+Core gag:
+Information overload becomes a body blockage.
+
+### 12. «Обновление системы» / New Hands
+
+Сэнди меняет свои резиновые перчатки на сложные механические протезы, которые живут своей жизнью и не слушаются его мягкого тела.
+
+Core gag:
+The upgrade becomes less usable than the old tool.
+
+### 13. «Тяжелый друг» / The Support
+
+Сэнди пытается стать опорой для очень «тяжелого» друга, из-за чего его собственная талия растягивается до состояния тонкой, готовой лопнуть нити.
+
+Core gag:
+Emotional support becomes literal structural collapse.
+
+---
+
+## Season 1 Direction
+
+Season 1 should establish Sandy as a flexible silent-comedy hero whose body is the main metaphor and main gag machine.
+
+The season should explore:
+- time pressure,
+- social status,
+- productivity,
+- attraction,
+- burnout,
+- consumption,
+- parenting,
+- self-improvement,
+- anxiety,
+- responsibility,
+- support,
+- and the absurdity of trying to fully control life.
+
+The philosophical layer should remain light and secondary. Every episode must first work as visual comedy.
+
+The audience should be able to understand the episode from silhouettes, motion, body deformation, and cause-effect rhythm alone.
+
+---
+```
+===== END =====
+
+===== !AMBIENT 2026-05-12T06:09:16.294Z thread=bdbdafcf episode=- =====
+### Materials as Comedy
+
+Materials should support character function:
+
+- **transparent silicone** — softness, vulnerability, elasticity;
+- **golden sand** — life resource, time, inner pressure;
+- **cold metal** — control, bureaucracy, rigidity;
+- **fragile glass** — beauty, danger, distortion;
+- **rubber limbs** — flexibility, awkward effort, physical comedy.
+
+Material detail should stay readable and should not become visual noise. это совсем база она учитывает только Сэнди но не учитывает других героев Я думаю надо расширить хотя бы раза в два в три Дай мне предложение
+===== END =====
+
+===== !AMBIENT 2026-05-12T06:09:45.845Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Подготовил расширенную замену для секции **Materials as Comedy**. Она учитывает не только Сэнди, но и весь основной cast, при этом не уходит в детальные visual assets.
+
+```md
+### Materials as Comedy
+
+Materials should support character function. In Sandy, material is not decoration: it defines how a character moves, reacts, breaks, resists, attracts, repels, or creates comedy.
+
+Each main character should have a clear physical material logic that helps the audience understand the gag instantly.
+
+- **transparent silicone** — softness, vulnerability, elasticity, deformation under pressure.  
+  Used for Sandy’s body. It allows him to bend, inflate, compress, wobble, and visibly reveal inner pressure.
+
+- **golden sand** — life resource, time, energy, inner pressure, emotional depletion.  
+  Sandy’s sand should behave like both a physical substance and a metaphor. It can flow, clog, leak, dry, scatter, overload, or shift balance.
+
+- **dark rubber** — effort, awkward control, improvised action, comic flexibility.  
+  Sandy’s limbs feel practical and slightly ridiculous: useful, stretchy, but never elegant.
+
+- **cold scratched metal** — control, bureaucracy, rigidity, deadlines, mechanical pressure.  
+  Used for Inspector-Stopwatch and efficiency-based characters. Metal should feel hard, precise, unforgiving, and unable to emotionally adapt.
+
+- **polished gold metal** — elite perfection, status, false stability, social superiority.  
+  Used for Golden Chronometer. It should look smooth, expensive, and overly controlled — a contrast to Sandy’s vulnerable transparency.
+
+- **fragile glass** — beauty, danger, distance, distortion, emotional risk.  
+  Used for Perfume Vial. Glass should look attractive but dangerous: it reflects, refracts, cracks, and makes closeness physically risky.
+
+- **colored mist / vapor** — attraction, intoxication, allergy, emotional confusion.  
+  Used around Perfume Vial. Vapor can invade space, soften perception, trigger reactions, and turn romance into physical danger.
+
+- **steam, caffeine liquid, and paper cup texture** — nervous speed, workplace anxiety, spill-based chaos.  
+  Used for Coffee Cup Colleague. The character should feel unstable, hot, overfilled, and always close to spilling.
+
+- **dry paper** — memory, age, bureaucracy, time passing, fragility.  
+  Used for Old Calendar Neighbor and office/public-service environments. Paper can peel, fall, stack, block, bury, or create absurd administrative pressure.
+
+- **plastic timer shell** — loud interruption, childish unpredictability, hard reset.  
+  Used for Baby-Timer. The material should feel toy-like but aggressive: bright, round, noisy, impossible to ignore.
+
+- **worn skateboard wood / wheels** — speed, instability, intrusion, uncontrolled momentum.  
+  Used for Skateboard Courier. The material logic is motion: rolling, sliding, crashing, cutting through order.
+
+- **mirror surface / digital filter glass** — vanity, social approval, distortion, false identity.  
+  Used for Mirror-Filter. It should reflect and modify reality, making characters chase a fake version of themselves.
+
+- **thin balloon latex** — emotional pressure, fragility, overreaction, sudden collapse.  
+  Used for Balloon. Latex can inflate, tremble, squeak, stretch, pop, or deflate chaotically.
+
+- **wool / tangled yarn** — anxiety, overthinking, entanglement, self-created traps.  
+  Used for Yarn Ball. Yarn should catch, knot, wrap around others, and turn simple movement into a mess.
+
+- **stapled steel and office plastic** — forced connection, rough bureaucracy, artificial order.  
+  Used for Stapler. This material logic is aggressive attachment: it joins things that should not be joined.
+
+- **soft eraser rubber** — avoidance, deletion, denial, damage disguised as correction.  
+  Used for Eraser. It can rub away traces, achievements, responsibilities, or even parts of the scene.
+
+- **dirty fabric / rag texture** — social chaos, street reality, collapse of polished appearances.  
+  Used for Marginal / Rag Ball. It brings dirt, stains, friction, and unwanted truth into overly clean spaces.
+
+- **black shadow mass** — abstract threat, fear, scale, hostile environment.  
+  Used for Antagonist Shadow. It may not have a normal solid body. Its material is darkness, silhouette, and pressure.
+
+- **heavy iron / anvil mass** — depression, emotional weight, immobility, burden.  
+  Used for Heavy Friend. The body should feel massively heavy, resistant to movement, and capable of physically deforming Sandy’s fragile middle.
+
+Material detail should stay readable and should not become visual noise. The audience should understand the material function immediately from silhouette, motion, deformation, and reaction.
+
+A material is successful when it creates comedy by itself:
+- glass gets too close and risks breaking;
+- metal refuses to bend;
+- rubber stretches too far;
+- sand leaks or clogs;
+- paper buries the action;
+- yarn traps everyone;
+- latex overreacts and deflates;
+- shadow grows larger than the real threat;
+- heavy iron turns friendship into physical collapse.
+```
+===== END =====
+
+===== !AMBIENT 2026-05-12T06:13:06.786Z thread=bdbdafcf episode=- =====
+Recurring object types:
+- stopwatch,
+- perfume vial,
+- coffee cup,
+- calendar,
+- baby timer,
+- skateboard,
+- mirror/filter,
+- balloon,
+- yarn ball,
+- stapler,
+- eraser,
+- chronometer,
+- anvil,
+- smartphone,
+- shopping bags,
+- gym equipment,
+- paperwork,
+- tape,
+- patch,
+- pipe,
+- door,
+- table,
+- chair. в этом списке который ты предложил половину занимают не предметы а герои которые имеют у нас отдельную типизацию поэтому своих предметов предметов каких-то очень мало постараюсь Добавить сюда ещё предметов в качестве примера а исходя из тех эпизодов которые у нас планируют к работе но с другой стороны нам не нужен огромный преющий список этих предметов будет 2-3 десятка хорошо два десятка но они должны отражать какие-то особенности всех этих эпизодов
+===== END =====
+
+===== !AMBIENT 2026-05-12T06:13:32.878Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, ты прав: в прошлом списке я смешал **object props** и **character-objects**. Для Bible это неправильно, потому что `Perfume Vial`, `Coffee Cup Colleague`, `Baby-Timer`, `Balloon`, `Yarn Ball`, `Stapler`, `Eraser`, `Golden Chronometer`, `Heavy Friend` у нас уже типизированы как персонажи.
+
+Ниже даю исправленную секцию: **только реквизит и предметы**, которые могут работать в эпизодах как gag engines.
+
+```md
+## Object Logic / Предметы и реквизит
+
+Objects in Sandy should act as comedy engines, not decoration.
+
+A good object:
+- creates a clear physical problem,
+- changes Sandy’s body balance,
+- blocks motion,
+- causes reversal,
+- leaks, spills, sticks, rings, rolls, breaks, inflates, reflects, traps, overloads, or redirects action.
+
+Objects should either:
+- trigger the gag,
+- intensify the gag,
+- reveal character,
+- or create the final punch.
+
+Objects should stay simple, readable, and functional. The show does not need a huge inventory of props; it needs a compact set of reusable objects that support the planned episode types.
+
+### Recurring Object Types
+
+- **smartphone** — attention trap, infinite scroll, digital drain, loss of time and body awareness.
+- **red carpet** — status surface, performance stage, social pressure line.
+- **velvet rope / queue barrier** — artificial access control, waiting, exclusion, bureaucratic rhythm.
+- **spotlight** — public attention, exposure, false success, sudden shame.
+- **clipboard** — inspection, measurement, control, productivity pressure.
+- **deadline board / task board** — fake progress, sprint chaos, visible overload.
+- **timer bell / alarm device** — interruption, reset, panic rhythm.
+- **stack of documents** — bureaucracy, waiting, paper pressure, slow suffocation.
+- **rubber stamp** — approval/rejection machine, absurd authority, repetitive impact.
+- **ticket dispenser** — endless queue logic, impersonal waiting, number-based comedy.
+- **shopping bags** — consumer overload, imbalance, spinning, blocked movement.
+- **price tags / sale stickers** — temptation, false urgency, visual clutter around desire.
+- **gym dumbbells** — self-improvement pressure, weight shift, body deformation.
+- **exercise machine** — overcomplicated improvement tool that traps or misuses Sandy.
+- **mirror** — self-image, status check, distorted confidence, visual reversal.
+- **patch / repair tape** — temporary fix, denial of leak, escalating damage.
+- **glue / sealant tube** — desperate repair, sticking things wrong, loss of flexibility.
+- **pipe / leaking valve** — pressure, leak, resource loss, panic escalation.
+- **bucket** — containment attempt, catching leaks, comic inadequacy.
+- **pillow** — failed rest, compression, softness versus interruption.
+- **blanket** — hiding, sleep attempt, entanglement, false safety.
+- **beach umbrella** — vacation control, shade as trap, false relaxation.
+- **deck chair** — rest object that collapses, folds, traps, or immobilizes.
+- **news screen / giant headline panel** — information overload, scale panic, visual pressure.
+- **notification icons** — digital noise, multiplying distractions, attention attack.
+- **mechanical hand / prosthetic glove** — upgrade tool that acts independently and disobeys.
+- **remote control** — false command over systems, wrong button comedy.
+- **support cushion / brace** — attempt to help or stabilize that creates new pressure.
+- **scale / weight meter** — measurement anxiety, status comparison, visible failure.
+- **door / automatic door** — timing obstacle, social threshold, repeated interruption.
+
+### Object Rule
+
+Each object should have a clear physical behavior.
+
+Examples:
+- smartphone pulls attention downward;
+- shopping bags shift Sandy’s center of gravity;
+- documents bury or block motion;
+- gym equipment redistributes Sandy’s sand in absurd ways;
+- repair tape hides the problem but increases pressure;
+- alarm devices destroy rest;
+- mirrors create false self-image;
+- queue barriers turn space into waiting;
+- news screens turn information into physical pressure;
+- mechanical hands convert upgrade into loss of control.
+
+If an object does not change the action, it should not dominate the frame.
+```
+
+Ключевая правка: теперь список отражает Season 1, но не дублирует персонажей. Здесь около 30 предметов; при вставке можно оставить весь список как рабочий банк, а в конкретных эпизодах использовать 1–3 ключевых объекта.
+===== END =====
+
