@@ -24,9 +24,9 @@ each film is its own project with its own configurable storage. They never mix.
 
 | Tier | Root | Contents | Git-tracked |
 |---|---|---|---|
-| **1 — Studio** | `C:\SandyStudio\` | tools, agents, specs, webapp, governance — no film content | ✅ |
-| **2 — Film Project** | `<project_root>/` (default `C:\SandyStudio\FILMS\<series>\<season>\`, Director overridable) | `PROJECT.md` anchor + `bibles/` + `state/` + `e<NN>/{briefs,scripts,storyboards,reviews,distribution}` | ❌ |
-| **3 — Media Storage** | `<media_storage>/` (default `H:\My Drive\SandyStudio_Media\<series>\`, configurable per project) | `e<NN>/{raw,approved}/{video,images,audio}/` heavy binaries | ❌ |
+| **Tier 1 — Studio** | `C:\SandyStudio\` | tools, agents, specs, webapp, governance — no film content | ✅ |
+| **Tier 2 — Film Project** | `<project_root>/` (default `C:\SandyStudio\FILMS\<series>\<season>\`, Director overridable) | `PROJECT.md` anchor + `bibles/` + `state/` + `e<NN>/{briefs,scripts,storyboards,reviews,distribution}` | ❌ |
+| **Tier 3 — Media Storage** | `<media_storage>/` (default `H:\My Drive\SandyStudio_Media\<series>\`, configurable per project) | `e<NN>/{raw,approved}/{video,images,audio}/` heavy binaries | ❌ |
 
 Max nesting under `project_root`: 3 levels (`<project>/eXX/<type>/file.md`).
 Full directory trees in `docs/CLAUDE-history.md §2`.
