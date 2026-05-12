@@ -62,18 +62,73 @@ function tokenise(text: string): string[] {
     .filter((t) => t.length > 0);
 }
 
+/**
+ * Returns the LAST character position where any approval token appears in
+ * `text`, or -1 if none. Used to resolve position-based winner when one
+ * Director turn contains BOTH approval and rejection tokens (e.g. "мы это
+ * не решили, но одобряю N" — rejection mid-sentence, approval near the end).
+ */
+function approvalPosition(text: string): number {
+  const lower = text.toLowerCase();
+  let last = -1;
+  for (const token of APPROVAL_TOKENS) {
+    // Word-boundary using Unicode-aware lookaround. Find last occurrence.
+    const re = new RegExp(`(?:^|[\\s\\p{P}\\p{S}])${token}(?=$|[\\s\\p{P}\\p{S}])`, 'gu');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(lower)) !== null) {
+      if (m.index > last) last = m.index;
+    }
+  }
+  return last;
+}
+
+/**
+ * Returns the LAST character position where any rejection token / phrase
+ * appears in `text`, or -1 if none.
+ */
+function rejectionPosition(text: string): number {
+  const lower = text.toLowerCase();
+  let last = -1;
+  for (const phrase of REJECTION_PHRASES) {
+    let idx = -1;
+    let from = 0;
+    while ((idx = lower.indexOf(phrase, from)) !== -1) {
+      if (idx > last) last = idx;
+      from = idx + 1;
+    }
+  }
+  for (const token of REJECTION_TOKENS) {
+    const re = new RegExp(`(?:^|[\\s\\p{P}\\p{S}])${token}(?=$|[\\s\\p{P}\\p{S}])`, 'gu');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(lower)) !== null) {
+      if (m.index > last) last = m.index;
+    }
+  }
+  return last;
+}
+
 function isApproval(text: string): boolean {
-  const tokens = tokenise(text);
-  return tokens.some((t) => APPROVAL_TOKENS.has(t));
+  return approvalPosition(text) >= 0;
 }
 
 function isRejection(text: string): boolean {
-  const lower = text.toLowerCase();
-  for (const phrase of REJECTION_PHRASES) {
-    if (lower.includes(phrase)) return true;
-  }
-  const tokens = tokenise(text);
-  return tokens.some((t) => REJECTION_TOKENS.has(t));
+  return rejectionPosition(text) >= 0;
+}
+
+/**
+ * Position-aware verdict for a single director turn. When BOTH tokens
+ * appear, the LATER one wins. Returns 'approved' / 'rejected' / 'neutral'.
+ * Director directive 2026-05-12: long messages contain mid-sentence "нет"
+ * followed by clear "одобряю" at the end — gate must not reject on the
+ * earlier token.
+ */
+function verdictForTurn(text: string): 'approved' | 'rejected' | 'neutral' {
+  const a = approvalPosition(text);
+  const r = rejectionPosition(text);
+  if (a < 0 && r < 0) return 'neutral';
+  if (a < 0) return 'rejected';
+  if (r < 0) return 'approved';
+  return a > r ? 'approved' : 'rejected';
 }
 
 export interface ApprovalCheck {
