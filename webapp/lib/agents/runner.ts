@@ -93,7 +93,10 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
       'id, file_type, filename, status, drive_path, staging_path, drive_web_view_url, version, content, metadata',
     )
     .eq('episode_id', episodeId)
-    .in('status', statuses as string[]);
+    // Supabase typed-client narrows `status` to a literal union; widen via cast
+    // at the boundary so the runtime-supplied `allowedStatuses` strings flow
+    // through. Caller is responsible for using valid asset_status values.
+    .in('status', statuses as never);
   if (asErr) {
     throw new Error(`loadAgentInputs: assets lookup failed: ${asErr.message}`);
   }
