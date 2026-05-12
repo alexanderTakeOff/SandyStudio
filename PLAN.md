@@ -20,20 +20,20 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
           ✅ Bug D — STITCH status pill in Episode Timeline toolbar (Stitching / Ready / Failed)
           ✅ Pipeline DAG — Music before Animatic + new Final Cut row (was: Music after VGEN)
 
-          🟡 Mode 2.5 Phase 1 IN PROGRESS — claude/quizzical-brown-462555 (LT-01)
-             ✅ Prod Assistant rename (was Studio Concierge) + modular system-prompt builder
-             ✅ concierge_threads + concierge_turns memory (migration 0025, not yet applied to cloud)
-             ✅ TTS (SpeechSynthesis reads replies aloud) + mode-aware authority blocks
-             ⏳ Tool dispatch (triggerAgent + 4 read tools) — follow-up task
-             ⏳ Pipeline-awareness (getNextGate) — follow-up task
+          ✅ Mode 2.5 Phase 1-A + 1-B + Phase A COMPLETE — claude/quizzical-brown-462555 (LT-01), PR #23 OPEN
+             ✅ Phase 1-A: Prod Assistant rename + modular system-prompt builder + concierge_threads/turns (migration 0025 applied to remote) + TTS + voice continuous mic + panel push CSS vars
+             ✅ Phase 1-B: 13 OpenAI function-calling tools (read + dispatch + setBibleContent overwrite-DRAFT) + verbal approval gate (Cyrillic-safe token-based, full-window scan) + cookie-forwarded auth
+             ✅ Phase A: gpt-5.4-mini → gpt-5.5 swap + reasoning_effort=none + max_completion_tokens=8000 (direct API test 9.7s full content, was 52s+0 chars on reasoning_effort=low). BEHAVIOR_CONTRACT (rules 1-8, top-priority block), ACTIVE_INTENT dynamic block, BIBLE_DOMAIN block, behavior_drift activity_event LOG-ONLY emitter
+             ⏳ Phase B Skill Editor / Learning Loop — design ready (~/.claude/plans/valiant-soaring-karp.md "Phase B"), implementation deferred until Director green-lights
+             ⏳ Slash commands /pa-recent /pa-summary /pa-resume + Monitor task on pa-feedback.log
 
-Next:     1. Wait for quizzical-brown to finish Phase 1 (open PR) → review → merge
+Next:     1. PR #23 → review → merge to master (merge with master DONE 2026-05-12 morning, no conflicts left)
           2. Director smoke #2 (Audio reorg on new episode) — plan at webapp/docs/smoke-tests/audio-reorg-smoke.md
           3. Phase 1.5 backlog — variants_per_generation (LT-07), vgen_defaults UI, buildShotPromptV2 (LT-14)
           4. UI cleanup LT-10..13 (scalable timeline 60+, episode page noise, foldable Activity Feed)
 
 Mode:     ===5=== EDIT (Director active) — switches to ===1=== at session start per CLAUDE.md
-Date:     2026-05-10
+Date:     2026-05-12
 ```
 
 ### Episodes in DB (production-grade)
