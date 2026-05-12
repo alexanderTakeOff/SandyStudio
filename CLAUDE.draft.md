@@ -3,7 +3,7 @@
 
 > This file is read by Claude Code at every session start.
 > It defines the studio structure, file paths, naming conventions, and agent roles.
-> Slimmed 2026-05-12 (604 → ~XXX lines). Archive: `docs/CLAUDE-history.md`.
+> Slimmed 2026-05-12 (604 → 347 lines, −42.5%). Archive: `docs/CLAUDE-history.md`.
 
 ---
 
