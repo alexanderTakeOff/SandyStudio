@@ -137,6 +137,13 @@ async function main() {
   console.log(`Storyboard contains ${shots.length} shots.`);
 
   if (showJson) {
+    console.log('--- Top-level JSON keys: ' + Object.keys(parsed).join(', '));
+    console.log('--- First 2500 chars of JSON ---');
+    console.log(block.json.slice(0, 2500));
+    console.log('--- (snip) ---');
+  }
+
+  if (showJson && shots.length > 0) {
     for (const s of shots) {
       const cm = s.camera_movement ?? '(none)';
       const cmo = s.camera_motivation ?? '(none)';
