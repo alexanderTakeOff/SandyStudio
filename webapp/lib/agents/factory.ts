@@ -122,6 +122,13 @@ export interface AgentFunctionSpec<EventName extends string = string> {
   resolveRunArgs?: (eventData: Record<string, unknown>) => Partial<
     Pick<RunAgentArgs, 'shotId' | 'section' | 'collectionPoint' | 'youtubeVideoId'>
   >;
+  /**
+   * Asset statuses to load into upstream_assets for this agent. Defaults to
+   * `['APPROVED']`. Reviewer agents override with `['APPROVED','REVIEW','REVISION']`
+   * so the asset under review is actually loaded. Closes the 3rd layer of the
+   * gate→runner→loader REVIEW-status bug discovered 2026-05-12.
+   */
+  inputAllowedStatuses?: readonly string[];
 }
 
 export function createAgentInngestFunction<E extends string>(
