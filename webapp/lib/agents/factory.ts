@@ -20,6 +20,7 @@ import { NonRetriableError } from 'inngest';
 import { inngest } from '../inngest/client';
 import { concurrencyFor, type AgentConcurrencyId } from '../inngest/concurrency';
 import { recordCost } from '../budget';
+import { agentDisplayName } from '../api/agent-names';
 import { validateAgentInputs } from './gate';
 import {
   insertJobRow,
