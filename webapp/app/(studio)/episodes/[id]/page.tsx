@@ -493,8 +493,8 @@ function ApproveBriefBanner({
             Brief is waiting for your approval
           </div>
           <p className="text-xs text-text-secondary mt-1 leading-relaxed">
-            Approving the brief locks it as APPROVED and dispatches{' '}
-            <span className="font-mono text-text-primary">EXEC-SW</span> (Screenwriter).
+            Approving the brief locks it as APPROVED and dispatches the{' '}
+            <span className="text-text-primary">Writer</span>.
             {governanceMode === 4
               ? ' Mode 4 AUTOTEST — entire pipeline will auto-run through Publish.'
               : ` Mode ${governanceMode} — each downstream gate (Script, Storyboard, Animatic, Generation, Publish) will land in your Inbox for review.`}
