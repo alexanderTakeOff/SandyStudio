@@ -6,6 +6,24 @@
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/SandyStudio/.claude/hooks/plan-md-staleness-check.cjs\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/SandyStudio/.claude/hooks/parallel-session-warn.cjs\""
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit",
@@ -33,6 +51,24 @@
             "command": "node \"C:/SandyStudio/.claude/hooks/locked-status-guard.cjs\""
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/SandyStudio/.claude/hooks/plan-md-update-guard.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/SandyStudio/.claude/hooks/verify-trio-on-push.cjs\""
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -43,6 +79,16 @@
             "type": "command",
             "command": "git add -A && { git diff --cached --quiet || { git commit -m \"auto-sync $(date '+%Y-%m-%d %H:%M')\" && BR=$(git symbolic-ref --short HEAD 2>/dev/null) && case \"$BR\" in claude/*) git push origin \"$BR\" ;; *) : ;; esac; }; } 2>/dev/null || true",
             "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/SandyStudio/.claude/hooks/session-end-memo-check.cjs\""
           }
         ]
       }
