@@ -50,3 +50,5 @@ console.log(asset);
 const { data: approvals } = await sb.from('approvals').select('approved_by,approval_type,created_at,notes').eq('asset_id', ASSET).order('created_at', { ascending: false });
 console.log('\n--- approvals ---');
 console.log(approvals);
+}
+main().catch(e => { console.error(e); process.exit(1); });
