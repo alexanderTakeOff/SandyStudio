@@ -70,6 +70,11 @@ import { upscaleToFourK, UpscaleError } from '../providers/upscale-fal';
 import { runEREFCheck, type ReviewBibleRef } from './eref-check';
 import { isErefCancelled } from '../../api/eref-cancel';
 import { setPilotState } from '../../api/eref-pilot-state';
+import {
+  deriveSpatialCoverage,
+  formatSpatialBlockForPrompt,
+  type SpatialShotEntry,
+} from '../../api/eref-spatial-coverage';
 import type {
   EREFReview,
   GenerationAttempt,
