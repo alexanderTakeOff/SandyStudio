@@ -190,6 +190,7 @@ export function createAgentInngestFunction<E extends string>(
           supabase,
           agentId: spec.agentId,
           episodeId,
+          allowedStatuses: spec.inputAllowedStatuses,
         });
         return validateAgentInputs({
           supabase,
