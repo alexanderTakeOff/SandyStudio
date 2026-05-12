@@ -6947,3 +6947,59 @@ Writer v02 → Story Editor review → если fail, Writer revision v03
 Следующий контроль: жду Writer v03, затем сразу читаю и проверяю сама.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T17:26:12.950Z thread=bdbdafcf episode=- =====
+У меня написано что писатель закончил свою работу 2 минуты назад а ты почему-то этого не обнаружил иконка в него поменялась с рабочего на ожидание
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:26:46.342Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина: вы правы. Я должна была обнаружить это сама.
+
+## Что появилось
+**Writer закончил v03** в `17:22`.
+
+- asset: `SS-S14-E20-SCR-script-v03-DRAFT.md`
+- id: `a50c1af3-603f-4dac-848f-c9db2e9fa005`
+- status: `REVIEW`
+
+## Быстрый контроль v03
+В этот раз Writer выполнил основные production notes:
+
+- 11 action units — да
+- runtime: `60s` — да
+- durations: `4,4,5,6,5,5,6,6,7,6,6` — да
+- max unit: `7s` — да
+- `perfume_vial` нет — да
+- Sandy: `he/him/his` — да
+- café fan удалён — да
+- single location `perfume_counter_bar` — да
+
+Содержательно draft выглядит пригодным к review.
+
+## Что не смогла сделать
+Я попыталась сразу запустить **Story Editor** на v03, но approval gate не пропустил: “нет свежего approval в последних репликах”.
+
+Нужна короткая команда:
+
+```text
+Одобряю Story Editor review E20 v03
+```
+
+После этого запускаю review и контролирую completion сама.
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:27:50.777Z thread=bdbdafcf episode=- =====
+Одобряю Story Editor review E20 v03
+===== END =====
+
+===== !AMBIENT 2026-05-12T17:28:27.418Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина проверила события и запустила **Story Editor** на v03.
+
+## Статус
+- **Writer v03** готов: `17:22`
+- **Story Editor** запущен на v03
+- event id: `01KREKQ36CPTDSFRAGHAWH086H`
+- ожидаемое время: около `50 сек`
+
+Через минуту проверю результат: если review asset появился — сразу прочитаю и дам разбор blocking / important / minor.
+===== END =====
+
