@@ -156,13 +156,17 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
                 onSelect: () => {},
                 disabled: true,
               });
-              if (!isLocked && asset.version === 1) {
+              // Delete available for non-LOCKED, non-APPROVED. Director can
+              // freely clear drafts/reviews/revisions/rejected — protects
+              // canonical APPROVED/LOCKED from accidental loss. Backend
+              // enforces same scope via DELETABLE_STATUSES in /api/assets/[id].
+              if (!isLocked && asset.status !== 'APPROVED') {
                 items.push({ separator: true });
                 items.push({
-                  label: 'Delete (planned)',
+                  label: 'Delete',
                   icon: <Trash size={12} />,
-                  onSelect: () => {},
-                  disabled: true,
+                  onSelect: del,
+                  disabled: busy,
                   destructive: true,
                 });
               }
