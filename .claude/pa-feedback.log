@@ -7544,3 +7544,42 @@ For asset SS-S14-E20-STB-storyboard-v02-DRAFT.md:
 Один вопрос для решения: **делаем surgical patch через Claude сейчас или утверждаем v02 как есть и двигаем pipeline дальше?**
 ===== END =====
 
+===== !AMBIENT 2026-05-12T18:14:55.923Z thread=bdbdafcf episode=- =====
+жду ответ от клода
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:15:23.952Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверила E20: нового ответа/действия от Claude в studio events не вижу.
+
+Что у нас сейчас по факту:
+
+## Storyboard v02
+- asset: `SS-S14-E20-STB-storyboard-v02-DRAFT.md`
+- status: `REVIEW`
+- 19 shots
+- 60s
+- история / timing / персонажи / локация / финальный gag сохранены
+
+## Проблема v02
+Blocking уже не по истории, а по **камерному skill/schema**:
+
+- нет полей `camera_movement`;
+- нет `camera_motivation`;
+- камера в основном всё ещё описана как `wide / medium / close_up`.
+
+## Моя позиция
+Если Claude сейчас может сделать **surgical patch** — это лучший вариант:
+
+```text
+keep all 19 shots
+keep all durations
+keep all action_prose
+keep story unchanged
+add camera_movement + camera_motivation to every shot
+```
+
+Если Claude не даст быстрый патч, я бы **не тормозила E20**: утверждаем v02 как usable и двигаем дальше, а camera skill чиним отдельным потоком.
+
+Следующий мой шаг: жду ответ Claude; как только он появится, сверю, не меняет ли он story/timing/19 shots, и дам короткую рекомендацию: patch / approve / stop.
+===== END =====
+
