@@ -115,7 +115,7 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged }: AssetPr
         {asset.agent_id && (
           <>
             <span>·</span>
-            <span>{asset.agent_id}</span>
+            <span title={asset.agent_id}>{agentDisplayName(asset.agent_id)}</span>
           </>
         )}
         {asset.version && (
