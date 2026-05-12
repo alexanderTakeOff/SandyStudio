@@ -60,7 +60,18 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     governance: 'AGENT_RUN',
   },
   'EXEC-SREV': {
-    required: [{ fileTypePrefix: 'SCR', minCount: 1, label: 'Script' }],
+    // Story Editor reviews scripts in REVIEW (pending Director approval).
+    // Loop pattern: Writer produces v0X REVIEW → Story Editor reviews →
+    // verdict REVISE → Writer regenerates v0X+1 REVIEW → Story Editor reviews.
+    // Pre-fix the gate required APPROVED — but Story Editor IS the gate
+    // FROM REVIEW to APPROVED, so requiring APPROVED upstream was a chicken-
+    // and-egg deadlock (Director directive 2026-05-12 — close internal loop).
+    required: [{
+      fileTypePrefix: 'SCR',
+      minCount: 1,
+      label: 'Script (REVIEW or APPROVED)',
+      allowedStatuses: ['REVIEW', 'REVISION', 'APPROVED'],
+    }],
     governance: 'AGENT_RUN',
   },
   'EXEC-SB': {
