@@ -4052,3 +4052,51 @@ is_current = false
 Нужна одна фраза: **одобряю создание и генерацию трёх style reference S14**.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T08:30:40.537Z thread=bdbdafcf episode=- =====
+одобряю создание и генерацию трёх style reference S14.
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:31:54.170Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Создал три style draft’а S14 в Library:
+
+1. `SS-S14-SBL-style_s14_flat_action_canon_a-v01-DRAFT.png`
+   - asset id: `083a9268-4e1e-4a62-a881-b279873e89c6`
+
+2. `SS-S14-SBL-style_s14_flat_comedy_stage_b-v01-DRAFT.png`
+   - asset id: `b95f8de4-1b45-4f4e-bbf8-18026c11d594`
+
+3. `SS-S14-SBL-style_s14_flat_neon_safe_c-v01-DRAFT.png`
+   - asset id: `ca48adb2-1b8a-4fc5-924f-b64cbbd8746f`
+
+Содержание у всех трёх: общий стиль серии, не эпизодный, strict flat 2D, no 3D, no glossy, no cinematic neon, no characters/people/animals.
+
+## Генерация картинок
+Попытка запуска `enrichBible` не прошла: серверный approval-gate не засчитал прежнее одобрение после трёх `setBibleContent`.
+
+Нужна свежая фраза: **одобряю генерацию трёх style-картинок S14**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:35:18.730Z thread=bdbdafcf episode=- =====
+НЕ ВИЖУ ПРЕВЬЮ В ГАЛЕЕЕЕ. ВИЖУ ЧТО ДРАФТЫ ЕСТЬ НО НЕ ВИЖУ КАРТИНОК
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:35:43.067Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверил. Картинок нет, потому что **генерация style-картинок не запускалась**.
+
+Сейчас в Style Library есть только текстовые draft’ы:
+
+- `s14_flat_action_canon_a` — `staging_path: null`
+- `s14_flat_comedy_stage_b` — `staging_path: null`
+- `s14_flat_neon_safe_c` — `staging_path: null`
+
+То есть превью в галерее физически нечему показывать. Это не refresh-баг для этих трёх: изображения ещё не созданы.
+
+Причина: предыдущий запуск остановился на approval-gate после `setBibleContent`. Я не должен был оставлять это в таком состоянии без генерации.
+
+Нужна свежая фраза: **одобряю генерацию трёх style-картинок S14**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:36:06.672Z thread=bdbdafcf episode=- =====
+одобряю генерацию трёх style-картинок S14
+===== END =====
+

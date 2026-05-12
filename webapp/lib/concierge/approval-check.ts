@@ -85,11 +85,16 @@ export interface ApprovalCheck {
 }
 
 /**
- * Scan the most recent `windowSize` turns (default 4) for an approval
- * statement from the Director. Returns `approved=false` with a
- * human-readable reason when consent is missing or has been revoked.
+ * Scan the most recent `windowSize` Director turns (default 4) for an
+ * approval statement. Intermediate assistant / tool turns DO NOT count
+ * toward the window — a compound approval like "одобряю создание и
+ * генерацию N локаций" must survive PA's multi-step execution (each tool
+ * call adds intermediate turns).
  *
- * @param turns oldest-first turn history
+ * Returns `approved=false` with a human-readable reason when consent is
+ * missing or has been revoked.
+ *
+ * @param turns oldest-first turn history (any role)
  */
 export function checkVerbalApproval(
   turns: ConciergeTurnRow[],
@@ -103,22 +108,27 @@ export function checkVerbalApproval(
     };
   }
 
-  // Walk backwards through the window — most recent turn first. A rejection
-  // in this window invalidates any earlier approval (so "stop" / "не надо"
-  // cancels). Otherwise the most recent approval wins, even when later
-  // neutral utterances (questions, complaints, frustration) come after it.
+  // Walk backwards through Director turns ONLY — most recent first. A
+  // rejection in this window invalidates any earlier approval (so "stop" /
+  // "не надо" cancels). Otherwise the most recent approval wins, even when
+  // later neutral Director utterances (questions, complaints, frustration)
+  // come after it.
   //
-  // Earlier versions BROKE on the first neutral director turn — but that
-  // caused this failure mode: Director says "одобряю", PA delays answering,
-  // Director then asks "где результат?", and the gate refused because the
-  // latest utterance was neutral. Director feedback 2026-05-11:
-  //   "Я не вижу никакого действия — что нужно от меня?"
-  // Fix: scan the full window; neutral turns no longer reset state.
-  const start = Math.max(0, turns.length - windowSize);
+  // Window counts DIRECTOR turns, not total turns. PA's intermediate
+  // assistant/tool turns between Director's approval and a downstream tool
+  // call must not push the approval out of scope. Director feedback
+  // 2026-05-12: "Почему повторно давать одобрение Хотя я давал предыдущим
+  // сообщении на создание И генерацию". Fix: count only director turns.
+  // Earlier versions ALSO broke on the first neutral director turn — that
+  // is now also fixed (only rejection cancels; neutral utterances are
+  // ignored).
+  let directorTurnsSeen = 0;
   let foundApproval: { i: number; text: string } | null = null;
-  for (let i = turns.length - 1; i >= start; i--) {
+  for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
     if (turn.role !== 'director') continue;
+    if (directorTurnsSeen >= windowSize) break;
+    directorTurnsSeen++;
     const text = turn.content.trim();
     if (!text) continue;
 
