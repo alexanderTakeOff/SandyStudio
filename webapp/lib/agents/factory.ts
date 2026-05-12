@@ -161,7 +161,7 @@ export function createAgentInngestFunction<E extends string>(
         await supabase.from('activity_events').insert({
           event_type: 'agent_started',
           severity: 'info',
-          title: `${spec.name} started`,
+          title: `${agentDisplayName(spec.agentId)} started`,
           description: `Working on episode (${spec.agentId})…`,
           actor: spec.agentId,
           episode_id: episodeId,
