@@ -5436,3 +5436,7 @@ episode.is_archived = true
 **одобряю закрыть все pending approvals E01 как legacy/test reject**.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T10:11:25.417Z thread=bdbdafcf episode=- =====
+Одобряю синхронизировать E20 assets с новым каноном
+===== END =====
+
