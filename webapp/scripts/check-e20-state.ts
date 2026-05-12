@@ -62,9 +62,10 @@ for (const e of erefs ?? []) {
   const sr = m?.shot_reference as Record<string, unknown> | undefined;
   console.log(`\n${e.created_at.slice(11,19)} ${e.status.padEnd(9)} v${e.version} shot=${sr?.shot_id}`);
   console.log('  shot_role:', sr?.shot_role);
-  const imgPrompt = (m?.image_prompt as string | undefined) ?? '';
-  console.log('  image_prompt (first 700):');
-  console.log('   ', imgPrompt.slice(0,700).replace(/\n/g,'\n    '));
+  const ip = m?.image_prompt;
+  const ipStr = typeof ip === 'string' ? ip : JSON.stringify(ip ?? {}, null, 1);
+  console.log('  image_prompt (first 900):');
+  console.log('    ' + ipStr.slice(0,900).replace(/\n/g,'\n    '));
 }
 }
 main().catch(e => { console.error(e); process.exit(1); });
