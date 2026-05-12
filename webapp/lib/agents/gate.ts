@@ -192,13 +192,20 @@ export async function validateAgentInputs(
   const missing: string[] = [];
   for (const dep of spec.required) {
     const allowedStatuses = dep.allowedStatuses ?? ['APPROVED'];
-    const { count, error } = await supabase
+    // Use .eq() for single-status (default) so existing mock-supabase tests
+    // keep working — .in() requires multi-status mock support which the test
+    // harness doesn't provide.
+    const baseQuery = supabase
       .from('assets')
       .select('*', { count: 'exact', head: true })
       .eq('episode_id', episodeId)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .in('status', allowedStatuses as any)
       .like('file_type', `${dep.fileTypePrefix}%`);
+    const query = allowedStatuses.length === 1
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? baseQuery.eq('status', allowedStatuses[0] as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      : baseQuery.in('status', allowedStatuses as any);
+    const { count, error } = await query;
     if (error) {
       return {
         passed: false,
