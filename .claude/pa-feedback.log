@@ -3903,3 +3903,152 @@ Only Director can promote an episode reference into current series style.
 ```
 ===== END =====
 
+===== !AMBIENT 2026-05-12T08:25:13.777Z thread=bdbdafcf episode=- =====
+а я думаю что те которые не СС который не что терриференсы которые не актуальны по каким-то причинам нам нужно иметь возможность помечать как архивные и тогда будет понятно при запуске объекта что архивная референция точно трогать не надо
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:25:28.834Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Зафиксировал правило: **любой неактуальный reference должен иметь статус/флаг `ARCHIVED`, и pipeline обязан исключать такие references из выбора автоматически.**
+
+## Правильная модель
+
+Нужен не физический delete как основной механизм, а явное состояние:
+
+```text
+ACTIVE / CURRENT
+ARCHIVED
+LEGACY_TEST
+REJECTED
+DRAFT
+LOCKED
+```
+
+Но важно разделить две оси:
+
+### 1. Production status
+Например:
+
+```text
+DRAFT
+LOCKED
+REJECTED
+```
+
+Это про жизненный цикл ассета.
+
+### 2. Canon availability
+Отдельный флаг:
+
+```text
+is_current: true/false
+is_archived: true/false
+is_legacy: true/false
+```
+
+Потому что `LOCKED` не всегда значит “актуально”. Старый locked reference может быть исторически утверждён, но больше не использоваться.
+
+## Ключевое правило для pipeline
+
+```text
+Archived references are never eligible for automatic selection by agents.
+```
+
+То есть при запуске генерации объект/агент должен брать только:
+
+```text
+status in [LOCKED, APPROVED]
+AND is_archived = false
+AND is_current = true, если категория требует единственный current
+```
+
+## Для style особенно жёстко
+
+Для серии должен быть один текущий style reference:
+
+```text
+series_id + section=style + is_current=true
+```
+
+И constraint:
+
+```text
+Only one current style reference per series.
+```
+
+Старые тесты E01:
+
+```text
+is_archived = true
+is_legacy = true
+is_current = false
+```
+
+## UI/kebab menu
+
+Нужны действия:
+
+- `Mark as archived`
+- `Restore from archive`
+- `Set as current`
+- `Unset current`
+- `Duplicate as draft`
+- `Delete draft` только для безопасных черновиков
+
+Для locked ассетов:
+
+- нельзя молча редактировать/удалять;
+- можно пометить `ARCHIVED`;
+- можно сделать `Duplicate as draft`.
+
+## Вывод
+
+Да, это лучше удаления.  
+`ARCHIVED` решает главную проблему: ассет остаётся в истории, но production точно его не трогает.
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:27:17.030Z thread=bdbdafcf episode=- =====
+Ну что вижу что некоторые референсы помеченные как реджект и поэтому давай начнём сделай несколько примеров картинок В нашем утверждённом стиле и покажи их на в библиотеке кстати для Клода не всегда рефрешится библиотека после появления новых генерации надо поправить фоне
+===== END =====
+
+===== !AMBIENT 2026-05-12T08:28:05.662Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверил Bible S14.
+
+## Текущее состояние style-раздела
+
+Сейчас **нет актуального утверждённого style reference**:
+
+- `style_episode_perfume_02` — `REJECTED`
+- `style_episode_perfume_style` — `REJECTED`
+- `style_main` — `REJECTED`
+- `style_style_s14` — `REJECTED`
+
+То есть генерировать “в утверждённом стиле” буквально сейчас нельзя: утверждённого визуального style anchor нет. Есть только текстовый канон в `general_idea v02 LOCKED`: **простая 2D flat cartoon, action-first, clean shapes, bold outlines, без 3D и декоративной перегрузки**.
+
+## Что нужно сделать первым шагом
+
+Создать в Library несколько новых `style` draft-картинок как варианты общего стиля S14, не эпизодного:
+
+1. `s14_flat_action_canon_a`
+   - самый простой flat 2D / clean vector / bold outlines.
+
+2. `s14_flat_comedy_stage_b`
+   - чуть более “мультсценический”, с простым фоном и реквизитом для gag-action.
+
+3. `s14_flat_neon_safe_c`
+   - допускает neon city, но строго без 3D, без glossy café, без cinematic depth.
+
+После просмотра ты выберешь один как основной current/canonical style.
+
+## Для Claude зафиксировано
+
+Баг: Library не всегда refresh’ится после новых генераций. Нужно чинить invalidation/reload после:
+- `enrichBible`
+- `regenerateBibleImage`
+- upload image
+- status change / reject / approve
+
+Минимальный expected behavior: после появления новой image version карточка в Library обновляется без ручного refresh.
+
+Нужна одна фраза: **одобряю создание и генерацию трёх style reference S14**.
+===== END =====
+

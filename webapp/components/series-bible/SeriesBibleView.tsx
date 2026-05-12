@@ -32,9 +32,15 @@ interface BibleResponse {
 
 export function SeriesBibleView({ seriesId, seriesCode, seriesTitle }: SeriesBibleViewProps) {
   const [sub, setSub] = useState<SubTab>('general');
+  // Library auto-refresh: PA / Inngest / cron may write new image versions
+  // server-side without a UI click that calls mutate(). Match the studio-wide
+  // pattern (30s) so freshly enriched/regenerated assets surface without a
+  // manual page reload. Director observation 2026-05-12: "не всегда
+  // рефрешится после новых генераций". Also revalidate on window focus.
   const { data, isLoading, mutate } = useSWR<BibleResponse>(
     `/api/series/${seriesId}/bible`,
     fetcher,
+    { refreshInterval: 30_000, revalidateOnFocus: true },
   );
   const sections = data?.data?.sections ?? [];
 
