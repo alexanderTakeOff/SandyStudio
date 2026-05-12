@@ -33,14 +33,15 @@ interface BibleResponse {
 export function SeriesBibleView({ seriesId, seriesCode, seriesTitle }: SeriesBibleViewProps) {
   const [sub, setSub] = useState<SubTab>('general');
   // Library auto-refresh: PA / Inngest / cron may write new image versions
-  // server-side without a UI click that calls mutate(). Match the studio-wide
-  // pattern (30s) so freshly enriched/regenerated assets surface without a
-  // manual page reload. Director observation 2026-05-12: "не всегда
-  // рефрешится после новых генераций". Also revalidate on window focus.
+  // server-side without a UI click that calls mutate(). 10s polling beats the
+  // studio-wide 30s default because Library is the most actively edited
+  // surface during Mode 2.5 PA smokes. Director observation 2026-05-12
+  // "обновление вижу через несколько секунд немножко долговато" — drop from
+  // 30s to 10s. Cost: 3× API hits but cached Bible JSON is light.
   const { data, isLoading, mutate } = useSWR<BibleResponse>(
     `/api/series/${seriesId}/bible`,
     fetcher,
-    { refreshInterval: 30_000, revalidateOnFocus: true },
+    { refreshInterval: 10_000, revalidateOnFocus: true },
   );
   const sections = data?.data?.sections ?? [];
 
