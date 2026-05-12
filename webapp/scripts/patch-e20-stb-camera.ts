@@ -359,12 +359,14 @@ async function main() {
     console.log(`Old JSON length: ${block.json.length} chars`);
     console.log(`New JSON length: ${newJson.length} chars`);
     console.log('First patched shot preview:');
-    const firstChanged = newShots.find((s) =>
-      patchById.has(s.shot_id ?? '') &&
-      typeof s.camera_movement === 'string' &&
-      s.camera_movement.length > 0,
+    const newShotsFlat = flattenShots(newParsed);
+    const firstChanged = newShotsFlat.find(
+      (s) =>
+        patchById.has(s.shot_id ?? '') &&
+        typeof s.camera_movement === 'string' &&
+        s.camera_movement.length > 0,
     );
-    console.log(firstChanged);
+    console.log(JSON.stringify(firstChanged, null, 2));
     return;
   }
 
