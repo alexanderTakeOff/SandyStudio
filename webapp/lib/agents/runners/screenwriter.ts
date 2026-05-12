@@ -128,11 +128,19 @@ function buildUserMessage(args: {
     '',
     revisionNote
       ? [
-          '## Revision request from Director',
+          '## Revision request from Director — HARD ACCEPTANCE CRITERIA',
           '',
           revisionNote,
           '',
-          'Apply the minimum change needed to address this revision. Do not rewrite scenes that were not flagged.',
+          'Treat every numeric / structural item above as a HARD CONTRACT, not a hint:',
+          '- explicit unit count → produce exactly that count',
+          '- explicit per-unit / total duration → match within ±1s',
+          '- explicit forbidden token / wording → must be absent from output',
+          '- explicit pronoun / casing rule → enforce throughout BOTH the prose AND the JSON block (including assumptions and self-QA)',
+          '',
+          'If the revision asks for restructure (e.g. "rewrite into N short units"), perform a FULL restructure — do not "minimally tweak" the previous draft. Cosmetic edits to the previous version are a contract violation in this mode.',
+          '',
+          'Before finalising output, self-validate against the criteria. If any criterion fails, fix it in the same response — do NOT submit a draft you know is non-compliant with a self-QA that pretends it passes ("80s ≈ 60s within tolerance" is a failure, not tolerance).',
           '',
         ].join('\n')
       : '',
