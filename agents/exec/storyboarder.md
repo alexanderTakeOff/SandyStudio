@@ -136,8 +136,14 @@ episode_id:        # from script exactly
 shot_number:       # sequential within scene, starts at 1
 script_version:    # version of approved script — critical for version cascade
 
-camera_angle:      # from Style Bible vocabulary only
-camera_movement:   # from Style Bible vocabulary only
+camera_angle:      # from Style Bible vocabulary, else MVP default vocabulary (see §"Default camera vocabulary" below)
+camera_movement:   # from Style Bible vocabulary, else MVP default vocabulary (see §"Default camera vocabulary" below)
+camera_motivation: # one-sentence narrative reason for the movement choice
+                   # links the camera move to shot_role + key_beat
+                   # consumed downstream by VGEN (Veo prompt builder) — write it
+                   # so a cinematographer reading it understands intent
+                   # example: "Slow push from establishing wide toward Sandy —
+                   #          emulates love-at-first-sight focal narrowing."
 
 location:          # exact string from World Bible — no variations
 time_of_day:       # from script scene exactly
