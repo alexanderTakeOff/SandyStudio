@@ -152,24 +152,20 @@ async function main() {
     process.exit(2);
   }
 
-  const shots = Array.isArray(parsed.shots) ? parsed.shots : [];
-  console.log(`Storyboard contains ${shots.length} shots.`);
+  const shots = flattenShots(parsed);
+  console.log(`Storyboard contains ${shots.length} shots across ${parsed.acts?.length ?? 0} acts.`);
 
   if (showJson) {
-    console.log('--- Top-level JSON keys: ' + Object.keys(parsed).join(', '));
-    console.log('--- First 2500 chars of JSON ---');
-    console.log(block.json.slice(0, 2500));
-    console.log('--- (snip) ---');
-  }
-
-  if (showJson && shots.length > 0) {
+    console.log('--- Shot summary (id | dur | angle | role | beat) ---');
     for (const s of shots) {
-      const cm = s.camera_movement ?? '(none)';
-      const cmo = s.camera_motivation ?? '(none)';
-      console.log(
-        `  ${s.shot_id ?? '?'} (${s.duration_s ?? '?'}s) ` +
-          `cm="${cm}" mot="${cmo}" — ${(s.action_prose ?? '').slice(0, 80)}`,
-      );
+      const id = s.shot_id ?? '?';
+      const dur = typeof s.duration_seconds === 'number' ? `${s.duration_seconds}s` : '?';
+      const ang = s.camera_angle ?? '?';
+      const role = s.shot_role ?? '?';
+      const beat = (s.key_beat ?? '').slice(0, 90);
+      const cm = s.camera_movement ?? '(missing)';
+      console.log(`  ${id}  ${dur}  ${ang}  ${role}  cm:${cm}`);
+      console.log(`    beat: ${beat}`);
     }
   }
 
