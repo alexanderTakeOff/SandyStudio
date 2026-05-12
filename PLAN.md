@@ -29,6 +29,13 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
              ✅ Docs: CLAUDE.md slim 604→347, technology.md §3.5 (shot rhythm/gag density) + §7 (handoff protocol)
              ⏳ Phase D (Character Identity Model) — schema articulated by PA + Director (16:03), spec captured in observations. Migration 0026 + UI + backfill ~3-7 days. Awaiting Director green-light.
 
+          ✅ **2026-05-12 19:25 UTC — EREF prompt builder fix + Spatial Coverage Manifest (q3a)**
+             Director через PA (18:58) surfaced: EREF `image_prompt` шаблон игнорирует `camera_angle` / `camera_movement` / `camera_motivation` / location `sub_area` — все 19 shots коллапсируют на одну flat location plate, storyboard spatial intent теряется на gpt-image-1 шаге.
+             Cancelled running fan-out `01KRERN7ZW5KT0T62QY3A1RAKS` (Director-approved q1). 8 refs остались (2 pilots APPROVED + 6 fanout REVIEW/REVISION/REJECTED) — q2c: Director review через UI первым делом.
+             `lib/agents/runners/episode-references.ts` parser теперь читает camera_* + location.sub_area из storyboard JSON; prompt builder использует formatted spatial block; closing instruction: "Two shots in same location must show visibly different viewpoints, do NOT replicate flat plate".
+             NEW `lib/api/eref-spatial-coverage.ts` — pure derivation `deriveSpatialCoverage(shots) → entries[]` с per-shot spatial_anchor + camera_direction (17 vocabulary mappings) + variation_note (per-location anchor reuse tracking). Phase 1 of Spatial Coverage Manifest layer (UI/persistence asset — follow-up).
+             NEW `__tests__/lib/api/eref-spatial-coverage.test.ts` — 7 unit tests on anchor inference, variation tracking, vocabulary mapping.
+
           ✅ **2026-05-12 18:30 UTC — surgical patch STB E20 v02 + gate.ts MGEN unblock**
              STB v02 was production-usable but missing camera fields. One-off `webapp/scripts/patch-e20-stb-camera.ts` added `camera_movement` + `camera_motivation` to all 19 shots (acts→shots flatten). Includes 2 orbit experiments (SH06 `slow_orbit_around_subject`, SH10 `orbit_pullback`). Idempotent.
              Storyboarder skill updated (`agents/exec/storyboarder.md`): Default camera vocabulary section with 17 movement values + rules-of-thumb per shot_role; `camera_motivation` field added to shot schema; edge case "Style Bible camera vocab missing" now uses MVP defaults instead of stalling.
