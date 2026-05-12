@@ -717,6 +717,30 @@ export async function runEpisodeReferences(
     );
   }
 
+  // ── Spatial Coverage Manifest (2026-05-12 Director directive) ──────────────
+  // Derive ONCE across all shots so `variation_note` can reason about how many
+  // earlier shots share the same location/anchor. Attach the per-shot entry to
+  // each job; composePromptFromTestPlan injects it as a structured block.
+  const spatialEntries = deriveSpatialCoverage(
+    shots.map((s) => ({
+      shot_id: s.shot_id,
+      location: s.location,
+      location_sub_area: s.location_sub_area,
+      camera_angle: s.camera_angle,
+      camera_movement: s.camera_movement,
+      camera_motivation: s.camera_motivation,
+      shot_role: s.shot_role,
+      characters_present: s.characters_present,
+    })),
+  );
+  const spatialByShot = new Map<string, SpatialShotEntry>(
+    spatialEntries.map((e) => [e.shot_id, e]),
+  );
+  for (const job of allJobs) {
+    const entry = spatialByShot.get(job.shot.shot_id);
+    if (entry) job.spatial = entry;
+  }
+
   // ── Pilot/fan-out slicing (technology.md §4) ──────────────────────────────
   // pilot_count: pick first N representative shots and stop after them.
   // start_index: skip first N shots (already done in pilot pass) and finish.
