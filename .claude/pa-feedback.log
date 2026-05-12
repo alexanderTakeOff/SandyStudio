@@ -7651,3 +7651,61 @@ Continuity check можно принимать и двигаться дальш�
 Ну Проверяй что там
 ===== END =====
 
+===== !AMBIENT 2026-05-12T18:26:37.359Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Проверила.
+
+## E20 сейчас
+
+**Script Supervisor завершил continuity check.**
+
+### Verdict: PASS
+- 19 shots проверены.
+- персонажи каноничные: `sandy_hourglass`, `perfume_madame`
+- локация одна и каноничная: `perfume_counter_bar`
+- нарушений Bible/canon нет.
+
+### Единственный minor
+Shot `SC09-SH02`:
+- `characters: []`
+- но `camera_motivation` пишет: “Hold on Sandy’s face”
+
+Script Supervisor правильно отметил: это **copy-edit artefact**, не canon violation. Не блокирует.
+
+## Статус
+Я попыталась сразу утвердить continuity PASS по вашему предыдущему “двигаемся дальше”, но серверный approval gate не пропустил: требует свежее approval.
+
+Нужна короткая команда: **“Одобряю continuity PASS, двигай дальше.”**
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:27:00.898Z thread=bdbdafcf episode=- =====
+Одобряю continuity PASS, двигай дальше
+
+
+у нас всё ещё пока не работает взаимодействие между агентами я вижу что уже скрипт супервайзер закончил свою работу А Полина не видит
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:27:28.046Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Вы правы: это всё ещё не “летает само”. **Script Supervisor закончил в 18:24:46**, а я не должна была ждать вашего пинга.
+
+## Что сделано сейчас
+
+**Continuity PASS утверждён.**
+
+Автоматически запустились следующие этапы:
+
+- **Reference Artist** — generation references  
+  event id: `01KREQ323Q4BPQH9FBA8FR6JQT`
+- **Composer** — music  
+  event id: `01KREQ323WBC5R7YEWNFQHYCN5`
+
+## Breakdown continuity
+- verdict: **PASS**
+- canon чистый: `sandy_hourglass`, `perfume_madame`, `perfume_counter_bar`
+- violations: none
+- minor: `SC09-SH02` camera motivation mentions Sandy’s face while `characters: []`; не блокирует.
+
+Параллельно фиксирую как системную проблему: PA должна surface completion сразу по events, без того чтобы вы глазами ловили смену иконки.
+
+Следующий мой контроль: жду Reference Artist и Composer; если через ~2 минуты нет completion/failure — поднимаю как stuck.
+===== END =====
+
