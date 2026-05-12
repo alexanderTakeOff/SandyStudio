@@ -7713,3 +7713,58 @@ Script Supervisor правильно отметил: это **copy-edit artefact
 Ну вот самое интересное началось композитору отвалился но скорее всего он у нас просто не подключен к API А вот как мы будем работать с референсными кадрами это интересно Скажи как у нас идёт сейчас процесс
 ===== END =====
 
+===== !AMBIENT 2026-05-12T18:29:03.247Z thread=bdbdafcf episode=- =====
+[ASSISTANT] По E20 сейчас так.
+
+## Состояние pipeline
+
+- **Reference Artist**: `running`
+- **Composer**: `failed`
+- **Story Editor**: всё ещё ошибочно висит `running` — это старый баг, для E20 мы его уже обошли
+- **Publicist**: blocked, 2 metadata drafts ждут решения; не срочно
+
+## Composer
+
+Да, похоже ожидаемо отвалился. В событиях вижу только старт Composer, а stage уже `failed`. Failure event в activity feed не пришёл — это отдельная проблема observability.
+
+Сейчас Composer не блокирует работу с референсами. Музыку можно чинить позже, когда API/провайдер будет подключён.
+
+## Как должен идти процесс Reference Artist
+
+Reference Artist сейчас должен взять:
+- approved storyboard v02 с 19 shots;
+- approved script v03;
+- Bible/canon refs;
+- локацию `perfume_counter_bar`;
+- персонажей `sandy_hourglass`, `perfume_madame`;
+- добавленную camera choreography.
+
+И выдать production reference package, обычно это:
+- shot-by-shot visual reference plan;
+- ключевые кадры / prompt specs;
+- consistency notes по персонажам и локации;
+- возможно batch для генерации image refs.
+
+Дальше нормальная цепочка такая:
+
+```text
+Storyboard approved
+→ Script Supervisor PASS
+→ Reference Artist creates visual refs
+→ Director reviews refs
+→ approve / revise refs
+→ Editor assembles animatic or Animator starts shot generation
+```
+
+## На что я буду смотреть в Reference Artist result
+
+Главное:
+1. **Не потерял ли camera movement** из patched storyboard.
+2. Сохранил ли 19 shots / 60s / 11 units.
+3. Не добавил ли лишних персонажей или локаций.
+4. Не вернул ли legacy `perfume_vial`.
+5. Дал ли refs, полезные для следующего этапа, а не общие красивые описания.
+
+Reference Artist ещё в expected window / рядом с ним. Следующий контроль: проверяю через короткий интервал; если появится reference asset — читаю и даю breakdown.
+===== END =====
+
