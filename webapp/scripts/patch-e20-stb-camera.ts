@@ -52,21 +52,40 @@ const PATCHES: readonly CameraPatch[] = [];
 
 interface ShotV2 {
   shot_id?: string;
-  duration_s?: number;
+  camera_angle?: string;
+  shot_role?: string;
+  duration_seconds?: number;
   characters?: unknown;
   location?: unknown;
   action_prose?: string;
-  key_beat?: unknown;
+  key_beat?: string;
   camera_movement?: string;
   camera_motivation?: string;
+  [key: string]: unknown;
+}
+
+interface ActV2 {
+  act?: number;
+  beat_summary?: string;
+  shots?: ShotV2[];
   [key: string]: unknown;
 }
 
 interface StoryboardJson {
   episode_id?: string;
   total_duration_s?: number;
-  shots?: ShotV2[];
+  contract?: string;
+  acts?: ActV2[];
+  shots?: ShotV2[]; // legacy fallback
   [key: string]: unknown;
+}
+
+function flattenShots(parsed: StoryboardJson): ShotV2[] {
+  if (Array.isArray(parsed.acts) && parsed.acts.length > 0) {
+    return parsed.acts.flatMap((a) => (Array.isArray(a.shots) ? a.shots : []));
+  }
+  if (Array.isArray(parsed.shots)) return parsed.shots;
+  return [];
 }
 
 function findJsonBlock(markdown: string): { json: string; start: number; end: number } | null {
