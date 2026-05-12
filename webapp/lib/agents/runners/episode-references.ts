@@ -555,12 +555,30 @@ function composePromptFromTestPlan(job: ShotJob): string {
       `- ${c.bible_slug} (role: ${c.role_in_shot}) — emotion: ${c.expected_emotion || '(neutral)'}; action: ${c.expected_action || '(present in frame)'}`,
   );
 
+  // Camera + spatial block — added 2026-05-12 after Director surfaced that the
+  // v1 prompt was flat-angle, ignoring storyboard's camera intent. Reference
+  // frames must vary by camera_angle + camera_movement + sub-area of the
+  // location, not just by characters and action. Otherwise all 19 shots
+  // collapse onto the same plate and the Storyboard Artist's spatial work is
+  // wasted at VGEN time. Each value is conditionally rendered so MVP shots
+  // without camera vocabulary still produce a working prompt.
+  const cameraBits: string[] = [];
+  if (shot.camera_angle) cameraBits.push(`Camera framing: ${shot.camera_angle}`);
+  if (shot.camera_movement) cameraBits.push(`Camera movement: ${shot.camera_movement}`);
+  if (shot.camera_motivation) cameraBits.push(`Camera intent: ${shot.camera_motivation}`);
+  if (shot.location_sub_area) cameraBits.push(`Spatial anchor inside location: ${shot.location_sub_area}`);
+  const cameraBlock = cameraBits.length > 0
+    ? ['Camera direction (must inform composition — vary viewpoint between shots):', ...cameraBits.map((b) => `- ${b}`)]
+    : [];
+
   return [
     `Episode reference frame for shot ${shot.shot_id} (act ${shot.act}, ${testPlan.shot_role}).`,
     `Camera/action: ${shot.action}`,
     shot.key_beat ? `Beat: ${shot.key_beat}` : '',
     testPlan.expected_gag ? `Visual gag: ${testPlan.expected_gag}` : '',
     '',
+    ...cameraBlock,
+    cameraBlock.length > 0 ? '' : null,
     'Per-character intent (must read in the image):',
     ...charDirectives,
     '',
@@ -571,7 +589,7 @@ function composePromptFromTestPlan(job: ShotJob): string {
     'Series art direction (must follow):',
     ...styleBlocks.map((b) => `- ${b}`),
     '',
-    'Render as a single key frame of this shot. Composition follows the action.',
+    'Render as a single key frame of this shot. Composition follows the camera framing + movement + spatial anchor above — do NOT default to the same flat angle for every shot of this location. Two shots in the same location must show different viewpoints (e.g. wide-from-customer-side vs reverse-from-behind-counter vs along-counter), not the same plate twice.',
     'No text overlay, no logo, no watermark. Single coherent scene.',
   ]
     .filter(Boolean)
