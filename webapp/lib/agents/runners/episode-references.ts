@@ -317,6 +317,9 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         expected_gag?: string | null;
         duration_seconds?: number;
         key_beat?: string;
+        camera_angle?: string;
+        camera_movement?: string;
+        camera_motivation?: string;
       };
       if (!sh.shot_id) continue;
 
