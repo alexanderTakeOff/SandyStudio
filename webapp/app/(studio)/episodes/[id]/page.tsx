@@ -23,6 +23,7 @@ import { VGENPilotPillbar } from '@/components/pipeline/VGENPilotPillbar';
 import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
 import { EpisodeTimelineSection } from '@/components/timeline/EpisodeTimelineSection';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
+import { agentDisplayName } from '@/lib/api/agent-names';
 import { fetcher } from '@/lib/swr';
 
 interface Stage {
