@@ -29,13 +29,23 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
              ✅ Docs: CLAUDE.md slim 604→347, technology.md §3.5 (shot rhythm/gag density) + §7 (handoff protocol)
              ⏳ Phase D (Character Identity Model) — schema articulated by PA + Director (16:03), spec captured in observations. Migration 0026 + UI + backfill ~3-7 days. Awaiting Director green-light.
 
-Next:     1. Verify hooks fire on next session start (Hook A/D silent, Hook E warns 6 worktrees)
-          2. E20 pipeline self-convergence test — Writer↔Story Editor loop should close before Director sees PASS draft
-          3. Phase D Character Identity Model — Director green-light to start spec → migration → UI
-          4. Phase B Skill Editor / Learning Loop — design ready in `~/.claude/plans/valiant-soaring-karp.md`, deferred
-          5. 6 worktrees vs cap 3 — Director approval to remove stale claude/* branches
+          ✅ **2026-05-12 evening hot-fix — SREV REVIEW-loader layer (Sprint 10 precursor)**
+             SREV на v03 крашился мгновенно (4× function.failed, ~50ms каждый).
+             Root: `runner.ts:87` `loadAgentInputs` фильтрует `.eq('status','APPROVED')` — 3-й слой того же бага что чинили днём (gate + runner findApprovedAsset уже принимали REVIEW).
+             Fix: `loadAgentInputs.allowedStatuses?` параметр, `AgentFunctionSpec.inputAllowedStatuses?`, EXEC-SREV прокидывает `['APPROVED','REVIEW','REVISION']`.
+             Bonus: `agent_failed` activity_event через try/catch + step.run('log-agent-failure') (idempotent на Inngest retries) — PA теперь видит причины падения через `getRecentActivityEvents`.
+             Verify: tsc clean · vitest 166/166 · replay-pilot 29/29.
 
-Mode:     ===1=== ANALYTICS (default at session start) per CLAUDE.md §6
+Next:     1. PA триггерит SREV на E20 v03 — первый живой тест замкнутого Writer↔Story Editor loop с финальным фиксом
+          2. **Sprint 10 plan (Director-approved q1y q2a q4y):**
+             - 10A.0 Performance Audit (30s pipeline endpoint, slow tab switching) — 1-2 дня
+             - 10A   Reviewer Unification — 1 EXEC-REVIEWER + skill registry (`agents/skills/*.md`) — 5-7 дней
+             - 10B   Phase D Character Identity Model — 3-7 дней
+             - 10C   Skill Editor / Learning Loop (встроен в 10A reviewer arch) — 5-7 дней
+             После hot-fix верификации E20 v03 — закрыть текущий worktree + создать новый `claude/sprint-10` от свежего master
+          3. 6 worktrees vs cap 3 — отложено (q3n), Hook E будет warn
+
+Mode:     ===5=== EDIT MODE (Director активировал для hot-fix)
 Date:     2026-05-12
 ```
 
