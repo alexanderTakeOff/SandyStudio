@@ -196,7 +196,8 @@ export async function validateAgentInputs(
       .from('assets')
       .select('*', { count: 'exact', head: true })
       .eq('episode_id', episodeId)
-      .in('status', allowedStatuses as string[])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .in('status', allowedStatuses as any)
       .like('file_type', `${dep.fileTypePrefix}%`);
     if (error) {
       return {
