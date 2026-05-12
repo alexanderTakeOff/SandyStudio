@@ -637,7 +637,25 @@ export const POST = withApiHandler(async (req, ctx) => {
   // milestones (storyboard 3-of-3, animatic fan-out, publish-ready) are
   // resolved by computeNextEvents — async because it queries the asset
   // and job tables to verify the gate set is complete and idempotent.
+  //
+  // REQUEST_REVISION auto-chain (Director directive 2026-05-12 + PA finding):
+  // after a revision flip the producing agent must re-run automatically so
+  // pipeline keeps moving without manual triggerAgent. Map file_type → its
+  // Inngest event so we re-fire the upstream agent with the same episode
+  // context. Mode 3 readiness requirement.
   const firedEvents: Array<{ name: string; ids: string[] }> = [];
+
+  if (body.decision === 'REQUEST_REVISION' && asset.episode_id) {
+    const reviseEvent = revisionEventForAsset(asset.file_type);
+    if (reviseEvent) {
+      const { ids } = await inngest.send({
+        name: reviseEvent,
+        data: { episodeId: asset.episode_id, revisionNote: body.note ?? null } as never,
+      });
+      firedEvents.push({ name: reviseEvent, ids });
+    }
+  }
+
   if (body.decision === 'APPROVE' && asset.episode_id) {
     const events = await computeNextEvents(supabase, asset, user.id);
     for (const ev of events) {

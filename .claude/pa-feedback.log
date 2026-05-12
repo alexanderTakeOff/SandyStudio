@@ -6212,3 +6212,102 @@ Animation pacing rule:
 - Perfume Madame оставить как новый E20 reference, не откатывать к legacy Perfume Vial.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T16:40:00.667Z thread=bdbdafcf episode=- =====
+Практическая рекомендация по E20
+При revision надо не просто “уменьшить цифры”, а переструктурировать script под 11 коротких action units. 
+
+займись этим . ОДОБРЯЮ
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:40:49.678Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON активен: записала в инженерный лог — E20 script revision approved: перестроить сценарий под 11 коротких action units и новый rhythm/gag-density rule.
+
+Отправила script v01 на targeted revision.
+
+## E20 script revision — что передано Writer
+
+- Перестроить сценарий, а не просто поменять цифры.
+- Цель: около **11 коротких action units**, суммарно примерно **60 секунд**.
+- Ритм:
+  - переключение action/shot каждые **3–5 секунд**;
+  - в каждом unit должно быть видимое движение;
+  - gag / reversal / visual surprise / emotional-comic beat минимум каждые **6–7 секунд**;
+  - не использовать сцены по 9–10 секунд без внутреннего split;
+  - текущий практический лимит video-gen: prefer `≤8s`.
+- Оставить **Perfume Madame** как активный новый E20 reference, не legacy Perfume Vial.
+- Sandy везде: **he / him / his**.
+- Удалить café fan line.
+- Сохранить:
+  - mandatory beats;
+  - tender-tragic tone;
+  - single-location discipline;
+  - visual comedy.
+
+Статус script asset теперь: **REVISION**.
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:44:05.089Z thread=bdbdafcf episode=- =====
+а я вот смотрю на papeline Я не вижу чтобы кто-то сейчас работал и выполнял какую-то задачу поясните мне ситуацию Клод и Полина
+===== END =====
+
+===== !AMBIENT 2026-05-12T16:44:45.402Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Полина проверила.
+
+## Что произошло
+
+Revision на script был записан корректно:
+
+- событие: `REQUEST_REVISION on SS-S14-E20-SCR-script-v01-DRAFT.md`
+- время: 16:40:41
+- указания по 11 коротким action units сохранены.
+
+Но после `requestRevision` **Writer не стартовал автоматически**. Поэтому в pipeline вы и видели, что никто не работает.
+
+## Текущее объяснение
+
+Система сейчас сделала только asset-state transition:
+
+```text
+script v01 → REQUEST_REVISION
+```
+
+но не сделала orchestration step:
+
+```text
+revision requested → start Writer
+```
+
+Это дырка в workflow.
+
+## Что я сделала
+
+По вашему уже действующему approval на revision я вручную запустила **Writer** для E20.
+
+- role: **Writer**
+- event: `sandystudio/exec-sw/write-script`
+- event id: `01KREH6ZCW6P4KW0SFKC5PF2K8`
+
+## Текущий статус
+
+- **Writer:** запущен на revised script
+- **Story Editor:** blocked на старом review asset
+- **Publicist:** blocked на metadata draft
+- остальные idle
+
+## Для Claude
+
+Нужно поправить автоматический pipeline rule:
+
+```text
+When Director requests revision on SCR-script:
+1. mark script asset as revision requested;
+2. create revision task;
+3. dispatch Writer automatically;
+4. set Writer stage = running;
+5. publish activity event immediately;
+6. UI invalidates episode page/realtime updates.
+```
+
+Иначе Director видит “revision approved”, но никто реально не работает.
+===== END =====
+
