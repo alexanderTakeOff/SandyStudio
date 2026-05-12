@@ -182,11 +182,11 @@ export function AssetDetailDrawer({
   }
 
   async function enrich() {
-    if (!confirm(`Generate description + reference image with EXEC-BIBLE-AUTHOR?\nCost: ~$0.06 (Sonnet description + gpt-image-1).\nTakes ~10-20s.`)) return;
+    if (!confirm(`Generate description + reference image with Bible Editor?\nCost: ~$0.06 (Sonnet description + gpt-image-1).\nTakes ~10-20s.`)) return;
     setBusy(true);
     setError(null);
     setProgress({
-      label: 'EXEC-BIBLE-AUTHOR is working…',
+      label: 'Bible Editor is working…',
       detail:
         'Writing rich description (Sonnet) + generating first reference image (gpt-image-1). Stay in this window — it will refresh automatically.',
     });
@@ -297,7 +297,7 @@ export function AssetDetailDrawer({
               <Wand2 size={20} className="text-[var(--accent-primary)]" />
               <div className="text-sm text-text-primary text-center font-medium">No reference image yet</div>
               <div className="text-xs text-text-muted text-center max-w-xs">
-                EXEC-BIBLE-AUTHOR will write a rich description and generate a first reference image
+                Bible Editor will write a rich description and generate a first reference image
                 anchored on the LOCKED Style Bible.
               </div>
               <Button onClick={enrich} disabled={busy}>
