@@ -74,6 +74,19 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
     onChange();
   }
 
+  async function del() {
+    if (!confirm(`DELETE ${asset.filename}?\n\nStatus: ${asset.status}\nThis is permanent. Drive file (if any) will become an orphan in Drive trash.`)) return;
+    setBusy(true);
+    const res = await fetch(`/api/assets/${asset.id}`, { method: 'DELETE' });
+    setBusy(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(`Delete failed: ${(j as { error?: string }).error ?? 'unknown'}`);
+      return;
+    }
+    onChange();
+  }
+
   return (
     <>
       <Card>
