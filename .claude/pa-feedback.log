@@ -7615,3 +7615,39 @@ add camera_movement + camera_motivation to every shot
 Следующий контроль: жду continuity check; как только появится результат, читаю и даю короткий breakdown.
 ===== END =====
 
+===== !AMBIENT 2026-05-12T18:24:50.381Z thread=bdbdafcf episode=- =====
+и claud  сделал апдейт скила так что надеюсь что в будущем нам такие операции не потребуются
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:25:10.966Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, это правильное системное исправление: не лечить каждый storyboard руками, а поднять skill/schema Storyboard Artist.
+
+## Новое по E20
+
+**Script Supervisor завершил continuity check.**
+
+### Verdict: PASS
+
+Канон чистый:
+- персонажи: только `sandy_hourglass`, `perfume_madame`
+- локация: только `perfume_counter_bar`
+- лишних персонажей/локаций нет
+- storyboard v02 принят как совместимый с Bible
+
+### Minor
+Один copy-edit artefact:
+- shot `SC09-SH02`
+- `characters: []`, но `camera_motivation` пишет “Hold on Sandy’s face”
+- Script Supervisor считает это не canon violation, а мелкой текстовой правкой.
+
+## Рекомендация
+
+Continuity check можно принимать и двигаться дальше. Minor не блокирует production.
+
+По вашему уже действующему “двигаемся дальше” следующим шагом будет утвердить continuity PASS и запустить следующий production stage.
+===== END =====
+
+===== !AMBIENT 2026-05-12T18:26:05.476Z thread=bdbdafcf episode=- =====
+Ну Проверяй что там
+===== END =====
+
