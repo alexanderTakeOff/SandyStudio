@@ -18,6 +18,7 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPAB
 const EP = '763c5c1e-44dc-4e10-92fb-e7671e5d4a44';
 const ASSET = 'a8f1eed9-0d8e-44c9-a270-d487a8c2898e';
 
+async function main() {
 const { data: events } = await sb
   .from('activity_events')
   .select('created_at,event_type,severity,title,actor,asset_id,metadata')
