@@ -239,17 +239,19 @@ export const getAsset: Tool<GetAssetArgs> = {
   async execute(args, ctx): Promise<ToolResult> {
     const { supabase } = ctx;
     try {
-      const cols = args.includeContent
-        ? 'id, filename, status, version, file_type, agent_id, episode_id, series_id, description, content, metadata, staging_path, drive_web_view_url, created_at, updated_at'
-        : 'id, filename, status, version, file_type, agent_id, episode_id, series_id, description, staging_path, drive_web_view_url, created_at, updated_at';
       const { data, error } = await supabase
         .from('assets')
-        .select(cols)
+        .select('*')
         .eq('id', args.assetId)
         .maybeSingle();
       if (error) return fail(`asset read failed: ${error.message}`, 'db_error');
       if (!data) return fail(`asset ${args.assetId} not found`, 'not_found');
-      const row = data as { agent_id?: string | null; filename: string; status: string };
+      const rowAny = data as unknown as Record<string, unknown>;
+      if (!args.includeContent) {
+        delete rowAny.content;
+        delete rowAny.metadata;
+      }
+      const row = rowAny as { agent_id?: string | null; filename: string; status: string };
       const author = row.agent_id ? agentDisplayName(row.agent_id) : '—';
       return ok(
         { asset: data, author_role: author },
