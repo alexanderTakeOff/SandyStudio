@@ -7490,3 +7490,57 @@ Add:
 Ну ещё как вариант Ты можешь сама вручную поправить документы возможно этот и добавить туда в Джейсон движение камеры не трогая всё остальное что скажешь или может быть плотно Может в этом помочь
 ===== END =====
 
+===== !AMBIENT 2026-05-12T18:11:48.903Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, вариант разумный, но с ограничением.
+
+## По E20 v02
+
+Я прочитала storyboard v02: он production-usable.  
+Проблема только в том, что **камера не вынесена в JSON как отдельная управляемая постановочная сущность**.
+
+## Моя оценка
+
+### Ручная правка документа — хороший вариант, если:
+- не менять story;
+- не менять 19 shots;
+- не менять timing;
+- не менять action prose;
+- добавить только поля:
+  - `camera_movement`
+  - `camera_motivation`
+
+### Но
+У меня сейчас **нет tool’а для прямого редактирования episode asset content**.  
+Я могу:
+- прочитать asset;
+- approve / request revision;
+- запустить агента.
+
+Но не могу сама безопасно “дописать JSON в этот markdown” через текущий API.
+
+## Где Claude может помочь
+
+Claude может сделать surgical patch на уровне кода/DB:
+
+```text
+For asset SS-S14-E20-STB-storyboard-v02-DRAFT.md:
+- keep markdown prose unchanged;
+- keep all 19 shots unchanged;
+- inside JSON, add camera_movement and camera_motivation to every shot;
+- do not change duration, characters, location, action_prose, key_beat, total_duration_s.
+```
+
+Это лучше, чем снова мучить Storyboard Artist, потому что проблема именно в skill/schema, а не в сюжете.
+
+## Мой production recommendation
+
+Для E20: **не гонять агента ещё раз**.  
+Либо:
+1. пропустить v02 как есть и двигаться дальше;
+2. или попросить Claude сделать one-off surgical patch камеры в JSON.
+
+Стратегически: добавить нормальный asset-edit tool и обновить skill Storyboard Artist.
+
+Один вопрос для решения: **делаем surgical patch через Claude сейчас или утверждаем v02 как есть и двигаем pipeline дальше?**
+===== END =====
+

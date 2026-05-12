@@ -46,11 +46,17 @@ export const GET = withApiHandler(async (req) => {
   const q = parseSearchParams(req.url, ListQuery);
 
   // ── Source 1: assets in REVIEW
+  // Select only the columns the inbox renders — avoid hauling `content`
+  // (multi-KB TEXT) and `metadata` (JSON) on every 10s poll. The dropped
+  // payload was visible as 1+ second response times even with a warm route.
+  // Apply the same `limit` ceiling as events; assets are sorted oldest-first
+  // and downstream re-sorting still works on a truncated list.
   let assetQuery = supabase
     .from('assets')
-    .select('*')
+    .select('id,filename,file_type,status,agent_id,created_at,episode_id,version')
     .eq('status', 'REVIEW')
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .limit(q.limit);
   if (q.episode_id) assetQuery = assetQuery.eq('episode_id', q.episode_id);
   const { data: assets, error: aerr } = await assetQuery;
   if (aerr) throw new Error(`inbox assets failed: ${aerr.message}`);
@@ -62,7 +68,7 @@ export const GET = withApiHandler(async (req) => {
   // dispositioned via CanonExtensionsPanel.
   let evtQuery = supabase
     .from('activity_events')
-    .select('*')
+    .select('id,event_type,severity,title,actor,episode_id,asset_id,created_at,metadata')
     .in('event_type', [
       'decision_requested',
       'input_requested',
