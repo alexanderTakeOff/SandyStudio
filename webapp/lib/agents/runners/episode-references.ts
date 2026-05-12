@@ -131,12 +131,18 @@ interface ParsedShot {
   act: number;
   /** Flat location string for filename / description. */
   location: string;
+  /** Optional sub-area inside the location ("entrance end", "counter centre", "shelf side") — drives spatial anchor in the prompt. */
+  location_sub_area?: string;
   characters_present: string[];
   action: string;
   duration_seconds: number;
   key_beat?: string;
   shot_role?: string;
   expected_gag?: string | null;
+  /** Storyboard camera vocabulary (added 2026-05-12 — was lost in v1 prompt builder). */
+  camera_angle?: string;
+  camera_movement?: string;
+  camera_motivation?: string;
   characters_v2?: Array<{
     bible_slug: string;
     expected_emotion: string;
