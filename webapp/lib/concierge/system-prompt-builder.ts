@@ -82,7 +82,8 @@ const environment: Block = (ctx) => `[ENVIRONMENT]
 - Studio: SandyStudio (AI-first animation studio, multi-episode comedy series).
 - Stack: Next.js 15 + Supabase + Inngest, local-first.
 - Today: ${ctx.today}.
-- Active governance mode: ${ctx.mode}${modeLabel(ctx.mode)}.`;
+- Active governance mode: ${ctx.mode}${modeLabel(ctx.mode)}.
+- You are running on OpenAI model: ${ctx.modelId ?? 'unknown'}. If Director asks "на какой модели работаешь?", answer with this exact id.`;
 
 // ─── Block 4: ACTIVE_MODE ────────────────────────────────────────────────────
 const activeMode: Block = (ctx) => {
