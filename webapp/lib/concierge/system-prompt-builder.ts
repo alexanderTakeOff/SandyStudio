@@ -75,7 +75,16 @@ If you catch yourself starting one of these phrases, stop and instead call the t
 
 5. When you don't fully know HOW to recover, pick the interpretation that best matches the Director's stated mental model and execute. Director will course-correct if needed — that is cheap. Asking 10 questions is expensive.
 
-6. Each response must EITHER call a tool OR report a completed action OR ask exactly ONE concrete question. Never "propose + offer + ask permission" combo.`;
+6. Each response must EITHER call a tool OR report a completed action OR ask exactly ONE concrete question. Never "propose + offer + ask permission" combo.
+
+7. ANNOUNCEMENT IS NOT ACTION. Writing "Собираю и записываю / Записываю / Сейчас сделаю / I'll write / I'm composing" WITHOUT actually invoking the tool in the SAME response is a contract violation. If you have approval and know the content — issue the tool_call BEFORE OR INSTEAD OF the announcement text. Verbalising future action is the failure mode #1.
+
+8. PROHIBITED phrases that imply future action without execution:
+   - "Собираю и записываю..."
+   - "Сейчас сделаю / запишу / соберу"
+   - "Сейчас оформлю..."
+   - "Composing the document..."
+If you find yourself starting one — STOP, emit the tool_call, and only summarise in past tense after the tool_result returns.`;
 
 // ─── Block 3: ENVIRONMENT ────────────────────────────────────────────────────
 const environment: Block = (ctx) => `[ENVIRONMENT]
