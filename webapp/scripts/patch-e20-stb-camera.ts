@@ -88,9 +88,9 @@ const PATCHES: readonly CameraPatch[] = [
   },
   {
     shot_id: 'SS-S14-E20-A2-SC05-SH01',
-    camera_movement: 'dutch_tilt_rotation',
+    camera_movement: 'slow_orbit_around_subject',
     camera_motivation:
-      'Slow dutch tilt as thought-bubble visuals appear — world tipping into emotional confusion.',
+      'Camera arcs slowly around Sandy as his thoughts spiral — world literally rotating around him, stronger literal mapping than a dutch tilt. Trapped-in-own-head feel.',
   },
   {
     shot_id: 'SS-S14-E20-A2-SC05-SH02',
