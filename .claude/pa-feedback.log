@@ -5440,3 +5440,197 @@ episode.is_archived = true
 Одобряю синхронизировать E20 assets с новым каноном
 ===== END =====
 
+===== !AMBIENT 2026-05-12T10:13:51.139Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Синхронизировал E20 assets с новым каноном.
+
+## Что обновлено
+
+### Sandy variant
+Перезаписан in-place:
+- `SS-S14-SBL-character_sandy_fogged_glass_variant-v01-DRAFT.png`
+- asset id: `a5c8e7e1-b34f-4c75-99ba-cd8cba5f4562`
+
+Теперь он явно:
+- привязан смыслово к `CH_01 Sandy`;
+- ссылается на `SS-S14-SBL-character_sandy_hourglass-v02-LOCKED.png`;
+- использует `S14 STYLE CANON v1.1`;
+- запрещает ghost/frosted/black void eyes/opaque body;
+- описывает mist как эффект-слой, не redesign.
+
+### Perfume Madame
+Так как старая Perfume Madame уже `LOCKED`, создана новая draft-версия:
+- `SS-S14-SBL-character_perfume_madame-v02-DRAFT.png`
+- asset id: `c653096f-bb83-4a8f-bf15-002e21a81159`
+
+Теперь текст приведён к v1.1:
+- flat 2D;
+- confident pencil outline;
+- мягче/человечнее лицо;
+- gold crown-like cap;
+- без glossy/3D glass;
+- mist не volumetric.
+
+## Локации E20
+
+Созданы новые clean draft-записи под v1.1, потому прежние slug’и в текущем списке не нашлись как активные assets:
+
+1. `SS-S14-SBL-location_violet_distance_cafe-v01-DRAFT.png`
+   - asset id: `6290acdb-535a-4a24-a0a6-e57bd387ca8e`
+
+2. `SS-S14-SBL-location_perfume_counter_bar-v01-DRAFT.png`
+   - asset id: `23883c20-0bc5-4977-aeb8-fcb31aa38c52`
+
+3. `SS-S14-SBL-location_violet_neon_alley-v01-DRAFT.png`
+   - asset id: `83b82d7c-cdf8-4e08-ab5e-94d50b977f1a`
+
+Во всех трёх зафиксировано:
+- `S14 STYLE CANON v1.1`;
+- empty environment only;
+- no characters / people / animals / silhouettes;
+- no Sandy / no Perfume Madame;
+- no squirrel / girl / bald man / cube;
+- no 3D / no cinematic neon / no volumetric glow;
+- 35%+ negative space.
+
+## Важно
+Картинки для новых draft-локаций я не запускал в этом шаге: операция была именно синхронизация текстового канона E20 assets.
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:18:13.042Z thread=bdbdafcf episode=- =====
+поехали даьше
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:18:30.066Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Дальше по статусу:
+
+## Текущее состояние
+- Активный актуальный эпизод: `SS-S14-E20 — The Violet Distance`
+- Status: `BRIEF_PENDING`
+- Pending approvals остался только один:
+  - `SS-S14-E20-SPC-brief-v01-DRAFT.md`
+  - asset id: `f6beec0d-0fe5-4e5e-a08e-ab58a7cdb0cf`
+
+E01-хвосты уже не висят в pending.
+
+## Следующий production gate
+Нужно разобрать и либо утвердить, либо отправить на ревизию **brief E20**.
+
+Я не смог прочитать episode через active context, потому что backend не держит active episode. Сейчас читаю E20 по найденному UUID.
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:19:52.155Z thread=bdbdafcf episode=- =====
+ну давай делай brief
+===== END =====
+
+===== !AMBIENT 2026-05-12T10:20:53.179Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Brief E20 утверждён Director-side через approval flow, следующий агент запущен.
+
+## E20
+- `SS-S14-E20 — The Violet Distance`
+- brief asset: `SS-S14-E20-SPC-brief-v01-DRAFT.md`
+- result: `APPROVED`
+
+## Автоматически запущено дальше
+- event: `sandystudio/exec-sw/write-script`
+- next stage: Screenwriter / script generation
+
+Ждём draft сценария.
+===== END =====
+
+===== !AMBIENT 2026-05-12T15:52:41.191Z thread=bdbdafcf episode=- =====
+Как успехи
+===== END =====
+
+===== !AMBIENT 2026-05-12T15:52:53.222Z thread=bdbdafcf episode=- =====
+[ASSISTANT] EXEC-SW завершил сценарий E20.
+
+## Сейчас на approval
+- `SS-S14-E20-SCR-script-v01-DRAFT.md`
+- asset id: `03e62585-f014-46da-ae0f-9f20b42f39df`
+- episode: `SS-S14-E20 — The Violet Distance`
+- статус эпизода: `BRIEF_APPROVED`
+
+Следующий шаг: прочитать script draft и решить — approve или revision.
+===== END =====
+
+===== !PAON 2026-05-12T15:56:01.905Z thread=bdbdafcf episode=- =====
+(toggle ON) script draft — approveD одобряю точка двигаемся дальше к следующему пункту paypeline
+===== END =====
+
+===== !AMBIENT 2026-05-12T15:56:46.104Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: запоминаю до PAOFF.  
+Script draft утверждён через approval flow; запущены следующие шаги pipeline:
+
+- `EXEC-SREV` — review script
+- `EXEC-COPY` — write metadata
+===== END =====
+
+===== !AMBIENT 2026-05-12T15:57:17.861Z thread=bdbdafcf episode=- =====
+Ну да ещё у меня вопрос а ты сообщила статус что бриф и пруфт рублен а были ли какие-то замечания по нему Напомни пожалуйста и по скрипту тоже какие были замечания об этом обязательно надо указывать когда подготовлен драфт
+===== END =====
+
+===== !AMBIENT 2026-05-12T15:58:00.627Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON активен: записал замечание в инженерный лог — в статусах draft нужно явно показывать reviewer notes / замечания, если они есть. Никаких действий в системе.
+
+По E20 сейчас вижу так:
+
+## Brief
+- Stage: `Brief`
+- State: `approved`
+- Отдельных замечаний по brief в доступном статусе не вижу.
+- Я должен был указать это явно: **“замечаний не обнаружено / не знаю, если они не попали в asset metadata”**, а не просто “approved”.
+
+## Script
+- Stage: `Screenwriter`
+- State: `approved`
+- `EXEC-SREV` сейчас ещё `running`, то есть reviewer notes по script пока не готовы.
+- Script был approved до завершения review, поэтому замечаний reviewer-а на момент approval ещё не было.
+- Я должен был сказать: **“script draft готов; reviewer notes ещё не готовы, SREV running”**.
+
+## Сейчас pipeline
+- `EXEC-SREV`: running
+- `EXEC-COPY`: completed
+- pending approval: metadata
+  - `SS-S14-E20-SPC-metadata-v01-DRAFT.md`
+
+Дальше корректный порядок: дождаться/проверить SREV, затем отдельно сообщить замечания по review перед следующим gate.
+===== END =====
+
+===== !AMBIENT 2026-05-12T15:59:38.335Z thread=bdbdafcf episode=- =====
+EXEC-SREV: running
+EXEC-COPY: completed а вот такие названия агентов они изучают немножко не по-человечески специально каждому техническому наименованию сопоставляли человеческое название должности Давайте использовать их вот наших диалогов и в том числе в отчётах и замечаниях которые читаEт или слушаEт человек
+===== END =====
+
+===== !AMBIENT 2026-05-12T15:59:59.078Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON активен: записал в инженерный лог — в человекочитаемых отчётах не показывать `EXEC-*` как основное имя. Никаких действий в системе.
+
+Принял как рабочее правило для диалогов и отчётов:
+
+| Техническое имя | Человеческое название |
+|---|---|
+| `EXEC-SW` | Сценарист |
+| `EXEC-SREV` | Редактор сценария |
+| `EXEC-SB` | Раскадровщик |
+| `EXEC-WCHK` | Проверка раскадровки |
+| `EXEC-EREF` | Референсы эпизода |
+| `EXEC-EDIT` | Монтажный план |
+| `EXEC-VGEN` | Видео-генератор |
+| `EXEC-MGEN` | Музыкальный/аудио-генератор |
+| `EXEC-STITCH` | Сборщик финального видео |
+| `EXEC-COPY` | Автор описания и метаданных |
+| `EXEC-THUMB` | Автор thumbnail |
+| `EXEC-PUB` | Публикация |
+| `EXEC-ANAL` | Аналитик |
+| `EXEC-BIBLE-AUTHOR` | Автор Bible / визуальных референсов |
+
+В отчётах буду писать так:
+
+- **Редактор сценария:** в работе  
+  вместо `EXEC-SREV: running`
+
+- **Автор описания и метаданных:** завершил черновик  
+  вместо `EXEC-COPY: completed`
+
+Технический код буду добавлять только если нужен для отладки или backend-контекста.
+===== END =====
+

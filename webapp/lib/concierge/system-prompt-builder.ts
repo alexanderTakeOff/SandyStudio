@@ -236,6 +236,50 @@ const activeRules: Block = (ctx) => {
   return `[ACTIVE_RULES]\n${ctx.activeRules}`;
 };
 
+/**
+ * AGENT_NAMES — Director directive 2026-05-12: use human-readable agent
+ * names in user-facing output, NOT technical codes like EXEC-SW. Technical
+ * codes only when needed for debugging context.
+ */
+const agentNames: Block = () =>
+  `[AGENT_NAMES] — use human names in user-facing text; technical codes only when needed for debugging
+| Technical ID | Human name (RU) | English |
+|---|---|---|
+| EXEC-ORCH | Координатор пайплайна | Pipeline Orchestrator |
+| EXEC-SW | Сценарист | Screenwriter |
+| EXEC-SREV | Редактор сценария | Script Reviewer |
+| EXEC-STY | Художественный руководитель стиля | Style Creator |
+| EXEC-SB | Раскадровщик | Storyboarder |
+| EXEC-WCHK | Контроль мира | World Checker |
+| EXEC-ARCH | Архивариус | Archivist |
+| EXEC-EREF | Референсы эпизода | Episode References |
+| EXEC-EDIT | Монтажный план | Editor |
+| EXEC-VGEN | Видео-генератор | Visual Generator |
+| EXEC-MGEN | Музыкальный/аудио-генератор | Music Generator |
+| EXEC-STITCH | Сборщик финального видео | Final Cut Stitcher |
+| EXEC-COPY | Автор описания и метаданных | Copywriter |
+| EXEC-THUMB | Автор обложки | Thumbnail Creator |
+| EXEC-PUB | Публикация | Publisher |
+| EXEC-ANAL | Аналитик | Analytics Collector |
+| EXEC-BIBLE-AUTHOR | Автор Bible / визуальных референсов | Bible Author |
+| BOARD-MKT | Маркет-аналитик | Market Analyst |
+| BOARD-FIN | Финансовый аналитик | Financial Analyst |
+| BOARD-FAI | Голос основателя | Founder AI |
+| BOARD-CRIT | Осторожный критик | Cautious Critic |
+| BOARD-CRD | Креативный директор | Creative Director |
+| ART-PROD | Продюсер | Producer |
+| ART-HW | Главный сценарист | Head Writer |
+| ART-AD | Художественный директор | Art Director |
+| ART-MS | Музыкальный супервайзер | Music Supervisor |
+| ART-WB | World Builder | World Builder |
+| ART-CAST | Подбор персонажей | Casting Director |
+| ART-CONT | Хранитель канона | Continuity Supervisor |
+
+Reporting style for Director:
+- ✅ "Сценарист завершил черновик; Редактор сценария в работе"
+- ❌ "EXEC-SW: completed; EXEC-SREV: running"
+When you ALSO want to surface review notes / self-critique from an agent, name the agent in human form and quote the notes. Director directive 2026-05-12: при готовности draft'а сразу показывать reviewer notes / замечания, если они есть.`;
+
 const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'BASE_BEHAVIOR', render: baseBehavior },
   { name: 'BEHAVIOR_CONTRACT', render: behaviorContract },
@@ -243,6 +287,7 @@ const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'ACTIVE_MODE', render: activeMode },
   { name: 'TOOLS_AVAILABLE', render: toolsAvailable },
   { name: 'BIBLE_DOMAIN', render: bibleDomain },
+  { name: 'AGENT_NAMES', render: agentNames },
   { name: 'ACTIVE_INTENT', render: activeIntent },
   { name: 'STUDIO_STATE', render: studioState },
   { name: 'FEEDBACK_PROTOCOL', render: feedbackProtocol },
