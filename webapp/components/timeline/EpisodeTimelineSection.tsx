@@ -387,9 +387,15 @@ export function EpisodeTimelineSection({
                   {genError}
                 </span>
               )}
+              {/* Two quality tiers — Fast (cheaper, hits the same Veo
+                  quota that overloads first) and Standard (separate quota
+                  bucket, costs ~2× but reliably bypasses 429s when Fast is
+                  throttled). Director directive 2026-05-13 — surfaced when
+                  fan-out fast tier hit 429 storm on E20. */}
               <button
-                onClick={generateMissingShot}
+                onClick={() => generateMissingShot('fast')}
                 disabled={genBusy}
+                title="Veo 3.1 Fast (~$0.075/s) — cheaper, can hit 429 first"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium border transition-colors disabled:opacity-50"
                 style={{
                   background:
@@ -404,7 +410,27 @@ export function EpisodeTimelineSection({
                 ) : (
                   <Sparkles size={12} />
                 )}
-                {genBusy ? 'Triggering…' : 'Generate VGEN shot'}
+                {genBusy ? 'Triggering…' : 'Generate · Fast'}
+              </button>
+              <button
+                onClick={() => generateMissingShot('standard')}
+                disabled={genBusy}
+                title="Veo 3.1 Standard (~$0.15/s) — separate quota bucket, bypasses Fast 429s"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium border transition-colors disabled:opacity-50"
+                style={{
+                  background:
+                    'color-mix(in oklab, var(--accent-success) 14%, transparent)',
+                  color: 'var(--accent-success)',
+                  borderColor:
+                    'color-mix(in oklab, var(--accent-success) 35%, transparent)',
+                }}
+              >
+                {genBusy ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Sparkles size={12} />
+                )}
+                {genBusy ? 'Triggering…' : 'Generate · Standard'}
               </button>
             </div>
           ) : undefined
