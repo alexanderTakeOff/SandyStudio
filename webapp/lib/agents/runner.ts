@@ -26,6 +26,7 @@ import {
 } from './mock-providers';
 import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
+import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { persistBinary, type PersistedBinary } from './persist-binary';
 import {
   buildShotPromptV2,
