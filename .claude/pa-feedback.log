@@ -8882,3 +8882,68 @@ Check:
 и есть ещё косяк в нашем интерфейсе остался с прошлой архитектуры здесь вот у нас референс артист есть когда все шоты круто появляются кнопочка Advance to animatic под Но на самом деле мы должны приходить к следующему этапу этой композитор а не аниматик
 ===== END =====
 
+===== !AMBIENT 2026-05-13T06:01:05.045Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: зафиксировал UI-косяк про старую архитектуру кнопки `Advance to animatic`. Никаких действий по логу.
+
+Да, это ошибка интерфейса/маршрута. Сейчас фактический pipeline говорит правильно:
+
+## Текущий gate E20
+
+**Next gate = Composer approval**, не Animatic.
+
+- Reference Artist: approved, refs in review = 0
+- Composer: blocked, 1 asset in review
+- Editor / Animatic: idle
+
+Pending Composer asset:
+- `SS-S14-E20-AUD-music-main-v01-DRAFT.wav`
+- mock/placeholder
+
+То есть кнопка под Reference Artist должна вести не “Advance to animatic”, а максимум:
+
+```text
+Continue to Composer
+```
+
+или
+
+```text
+Resolve Composer
+```
+
+## Как правильно для UI
+
+После 19/19 refs approved:
+
+```text
+Reference Artist complete
+→ next required stage: Composer
+→ show Composer panel / music approval-upload-replace
+→ only after Composer resolved show Send to Animatic
+```
+
+## Задача для Claude
+
+```text
+Fix stale Reference Artist CTA.
+
+Current bug:
+When Reference Artist has all shot refs approved, UI shows “Advance to animatic”.
+This is from old architecture and skips Composer.
+
+Correct behavior:
+1. CTA must use getNextGate result, not hardcoded next stage.
+2. If next gate is Composer approval, show:
+   “Continue to Composer” / “Resolve Music”
+3. “Send to Animatic” must appear only when:
+   - storyboard approved
+   - continuity approved
+   - reference coverage complete
+   - Composer/music gate resolved or explicitly waived
+4. Do not let Reference Artist panel imply that animatic is next if Composer has pending REVIEW assets.
+5. Composer panel must support Upload/Replace audio while mock music is in REVIEW.
+```
+
+Следующий шаг у нас остаётся тот же: разобраться с Composer upload/replace UI, потому что это текущий настоящий gate.
+===== END =====
+
