@@ -752,7 +752,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
               >
                 <div
                   className="text-[18px] truncate px-0.5 leading-[44px] tabular-nums text-center"
-                  style={{ color: palette.color, fontWeight: palette.weight }}
+                  style={{
+                    color: palette.color,
+                    fontWeight: palette.weight,
+                    textShadow: palette.glow,
+                  }}
                 >
                   {i + 1}
                 </div>
