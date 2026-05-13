@@ -47,6 +47,8 @@ const ENV_KEY_BY_PROVIDER: Record<string, string | null> = {
   'dall-e-3': 'OPENAI_API_KEY',
   'veo-3': 'GEMINI_API_KEY',
   'veo-3-img2vid': 'GEMINI_API_KEY',
+  'seedance-fal': 'FAL_KEY',
+  'seedance-fal-img2vid': 'FAL_KEY',
   'kling-3-elements': 'KLING_API_KEY',
   beatoven: 'BEATOVEN_API_KEY',
   suno: 'SUNO_API_KEY',
