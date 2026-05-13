@@ -344,13 +344,40 @@ export async function ffmpegStitchEpisode(
   }
 }
 
+/** One concat-list entry: a shot file with optional trim duration. */
+export interface ConcatShotEntry {
+  /** Absolute path to the shot mp4 on disk. */
+  path: string;
+  /**
+   * Optional `outpoint <seconds>` directive — trims the clip to exactly this
+   * many seconds. Omit (or pass 0/undefined) to use the input's native length.
+   */
+  durationSeconds?: number;
+}
+
 /**
  * Build the concat-demuxer list contents for inspection or testing.
  * Pure function — no I/O. Exposed for unit tests.
+ *
+ * Output shape:
+ *   file '<path>'
+ *   outpoint <seconds>    # only when durationSeconds > 0
+ *
+ * `outpoint` is the canonical concat-demuxer trim directive (end timestamp
+ * in the input stream). Because the runner re-encodes via libx264 the cut is
+ * frame-accurate rather than keyframe-bound.
  */
-export function buildConcatList(shotPaths: ReadonlyArray<string>): string {
-  return shotPaths
-    .map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
+export function buildConcatList(
+  shots: ReadonlyArray<ConcatShotEntry>,
+): string {
+  return shots
+    .map((s) => {
+      const fileLine = `file '${s.path.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`;
+      if (s.durationSeconds !== undefined && s.durationSeconds > 0) {
+        return `${fileLine}\noutpoint ${s.durationSeconds.toFixed(3)}`;
+      }
+      return fileLine;
+    })
     .join('\n');
 }
 
