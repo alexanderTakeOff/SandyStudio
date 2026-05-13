@@ -709,8 +709,6 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         : false;
       const isVeoProvider =
         provider?.providerId === 'veo-3-img2vid' || provider?.providerId === 'veo-3';
-      // Back-compat alias — earlier code in this branch references the old name.
-      const isRealVeo = isRealVideo;
 
       // ── Universal Core defaults ───────────────────────────────────────────
       // Per-event override → series defaults → hardcoded fallback. Series
