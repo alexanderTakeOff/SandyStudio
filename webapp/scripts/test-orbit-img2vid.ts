@@ -54,15 +54,15 @@ async function main() {
   ].join(' ');
 
   console.log('[orbit-test] prompt:', prompt);
-  console.log('[orbit-test] firing Veo 3.1 Standard, 8s, 16:9 img2vid …');
+  console.log('[orbit-test] firing Veo 3.1 Fast, 4s, 16:9 img2vid (probe after Standard 429) …');
   const t0 = Date.now();
   const res = await generateVideoVeoGemini({
     prompt,
     referenceImageBase64: pngBytes.toString('base64'),
     referenceImageMime: 'image/png',
-    quality: 'standard',
+    quality: 'fast',
     aspectRatio: '16:9',
-    durationSeconds: 8,
+    durationSeconds: 4,
   });
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`[orbit-test] success in ${elapsed}s — cost $${res.cost_usd.toFixed(2)}, ${res.size_bytes} bytes`);
