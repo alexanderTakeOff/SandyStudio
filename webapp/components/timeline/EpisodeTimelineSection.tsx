@@ -89,6 +89,12 @@ export function EpisodeTimelineSection({
   const [pendingGenerateShotId, setPendingGenerateShotId] = useState<string | null>(null);
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  // Phase 2 (2026-05-13): provider dropdown. Defaults to Seedance 2.0 (new
+  // Director default) — Veo 3.1 still selectable for quick iteration when
+  // Seedance burns a different quota bucket.
+  const [genProvider, setGenProvider] = useState<'seedance-fal-img2vid' | 'veo-3-img2vid'>(
+    'seedance-fal-img2vid',
+  );
   // Imperative ref to AnimaticPlayer — used to seek the playhead after a
   // regenerate completes (Phase A.1 directive — auto-focus the new candidate).
   const playerRef = useRef<AnimaticPlayerHandle | null>(null);
