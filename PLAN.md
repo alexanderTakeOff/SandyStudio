@@ -88,17 +88,24 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
              Bonus: `agent_failed` activity_event через try/catch + step.run('log-agent-failure') (idempotent на Inngest retries) — PA теперь видит причины падения через `getRecentActivityEvents`.
              Verify: tsc clean · vitest 166/166 · replay-pilot 29/29.
 
-Next:     1. PA триггерит SREV на E20 v03 — первый живой тест замкнутого Writer↔Story Editor loop с финальным фиксом
-          2. **Sprint 10 plan (Director-approved q1y q2a q4y):**
-             - 10A.0 Performance Audit (30s pipeline endpoint, slow tab switching) — 1-2 дня
-             - 10A   Reviewer Unification — 1 EXEC-REVIEWER + skill registry (`agents/skills/*.md`) — 5-7 дней
-             - 10B   Phase D Character Identity Model — 3-7 дней
-             - 10C   Skill Editor / Learning Loop (встроен в 10A reviewer arch) — 5-7 дней
-             После hot-fix верификации E20 v03 — закрыть текущий worktree + создать новый `claude/sprint-10` от свежего master
-          3. 6 worktrees vs cap 3 — отложено (q3n), Hook E будет warn
+Next (after /clear in fresh session — Director directive 2026-05-13 evening, ~17:30 UTC):
+          1. **q1 — STITCH per-shot trim** ✂️ (~30-45min)
+             ffmpeg concat сейчас берёт full mp4 durations (96s output). Patch: переключить concat-list builder на per-file `outpoint <animatic.shot_list[i].duration_seconds>` directive → final cut respects storyboard timing → 54s correct.
+             File: `webapp/lib/agents/providers/ffmpeg-stitch.ts` + unit tests + re-fire STITCH event.
+          2. **q2 — Postgres trigger Realtime reliable** 🔔 (~30min)
+             Browser hook silent: 0 POSTs на /api/concierge/ambient несмотря migration 0027. Replace fragile client subscription с server-side trigger: on `activity_events` INSERT → automatic insert into `concierge_turns` для active thread. Migration 0028.
+             После — `useActivityRealtime.ts` можно simplify или удалить.
+          3. **q3 — Team-chat (Director's directive)** 💬 (~50min)
+             Минимальный unified channel: POST /api/team-chat/post endpoint → persist в PA thread с `role=system metadata.kind='claude_message'` + content `**Клод:** ...`. ConciergePanel рендерит distinct bubble. PA system prompt block lifts мои messages в её context (рядом с PIPELINE_EVENTS).
+             Я постю через curl. Director сейчас пишет в его field в webapp → "Директор:". Я в том же thread → "Клод:". PA отвечает в том же — все три видят всё.
+          4. E20 publish — approve current 96s OR wait q1 → re-stitch 54s
+          5. Sprint 10 plan (Director-approved earlier — q1y q2a q4y):
+             - 10A Reviewer Unification — 5-7 дней
+             - 10B Phase D Character Identity Model — 3-7 дней
+             - 10C Skill Editor / Learning Loop — 5-7 дней
 
-Mode:     ===5=== EDIT MODE (Director активировал для hot-fix)
-Date:     2026-05-12
+Mode:     ===5=== EDIT MODE (Director активировал) → /clear для fresh session
+Date:     2026-05-13
 ```
 
 ### Episodes in DB (production-grade)
