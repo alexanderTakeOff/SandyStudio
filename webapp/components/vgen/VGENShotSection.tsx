@@ -68,6 +68,15 @@ function pickQuality(value: unknown): QualityTier {
   return 'fast';
 }
 
+function pickProvider(value: unknown): VgenProvider | undefined {
+  // Normalize legacy variants — runner persists 'seedance-fal' for the text-
+  // only path and 'seedance-fal-img2vid' when an EREF was used; the UI shows
+  // them as the same provider choice.
+  if (value === 'veo-3' || value === 'veo-3-img2vid') return 'veo-3-img2vid';
+  if (value === 'seedance-fal' || value === 'seedance-fal-img2vid') return 'seedance-fal-img2vid';
+  return undefined;
+}
+
 export function VGENShotSection({
   assetId,
   filename,
