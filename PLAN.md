@@ -29,6 +29,15 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
              ✅ Docs: CLAUDE.md slim 604→347, technology.md §3.5 (shot rhythm/gag density) + §7 (handoff protocol)
              ⏳ Phase D (Character Identity Model) — schema articulated by PA + Director (16:03), spec captured in observations. Migration 0026 + UI + backfill ~3-7 days. Awaiting Director green-light.
 
+          ✅ **2026-05-13 10:00 UTC — Realtime push для PA + EREF skip-if-approved + 19/19 coverage**
+             Director directive: PA должна узнавать о pipeline events мгновенно, не pull-only. Phase 10A.0 item B shipped.
+             Migration `0026_realtime_publish_activity_events.sql` (NEEDS MANUAL APPLY — `apply_migration` MCP denied permissions): `ALTER PUBLICATION supabase_realtime ADD TABLE public.activity_events` + `REPLICA IDENTITY FULL`.
+             NEW backend: `lib/concierge/ambient-events.ts` (decision + filter + metadata extract), `app/api/concierge/ambient/route.ts` (POST endpoint, RLS guard, dedupe by activity_event_id).
+             NEW frontend: `hooks/useActivityRealtime.ts` (Supabase Realtime subscription per thread), `ConciergePanel.tsx` invokes hook with current threadId.
+             NEW prompt block `PIPELINE_EVENTS_SINCE_LAST_REPLY` в system-prompt-builder.ts — лифтит system role turns в LLM context, окно "since last assistant reply", cap 8 most recent.
+             EREF runner: skip-if-already-approved (loop iterates only shots без APPROVED ref) — re-run idempotent + topup-only. E20 теперь **19/19 coverage** (16 ранее + 3 missing закрыты PA/Director через UI пока я работал на Realtime).
+             Verify: tsc clean · vitest **182/182** (+9 new ambient-events tests) · replay-pilot 29/29.
+
           ✅ **2026-05-12 19:25 UTC — EREF prompt builder fix + Spatial Coverage Manifest (q3a)**
              Director через PA (18:58) surfaced: EREF `image_prompt` шаблон игнорирует `camera_angle` / `camera_movement` / `camera_motivation` / location `sub_area` — все 19 shots коллапсируют на одну flat location plate, storyboard spatial intent теряется на gpt-image-1 шаге.
              Cancelled running fan-out `01KRERN7ZW5KT0T62QY3A1RAKS` (Director-approved q1). 8 refs остались (2 pilots APPROVED + 6 fanout REVIEW/REVISION/REJECTED) — q2c: Director review через UI первым делом.
