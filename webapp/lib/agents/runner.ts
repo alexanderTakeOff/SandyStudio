@@ -1073,10 +1073,18 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         return Buffer.from(ab);
       }
 
-      const shotMp4Bytes: Array<{ shotId: string; bytes: Buffer }> = [];
+      const shotMp4Bytes: Array<{
+        shotId: string;
+        bytes: Buffer;
+        durationSeconds: number;
+      }> = [];
       for (const s of orderedShots) {
         const bytes = await loadBytes(s.stagingPath, s.url);
-        shotMp4Bytes.push({ shotId: s.shotId, bytes });
+        shotMp4Bytes.push({
+          shotId: s.shotId,
+          bytes,
+          durationSeconds: s.durationSeconds,
+        });
       }
 
       let musicInput: { bytes: Buffer; ext: 'mp3' | 'wav' | 'm4a' | 'aac' } | undefined;
