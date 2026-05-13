@@ -1001,7 +1001,21 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       }
 
       // Walk shot_list in order → assemble inputs.
-      const orderedShots: Array<{ shotId: string; assetId: string; stagingPath: string | null; url: string | null }> = [];
+      // Per-shot duration follows the canonical timeline-cell-resolver rule:
+      // director_overrides[shot_id].duration_seconds wins, fallback to
+      // shot.duration_seconds from the animatic shot_list. The duration is
+      // passed to ffmpeg-stitch which emits an `outpoint` directive so each
+      // Veo clip is trimmed to the animatic-intended length (Veo Fast=4s /
+      // Standard=8s vs. storyboard 2-5s caused E20 final-cut to play at 96s
+      // instead of 54s before this patch — 2026-05-13).
+      const overrides = v1.director_overrides ?? {};
+      const orderedShots: Array<{
+        shotId: string;
+        assetId: string;
+        stagingPath: string | null;
+        url: string | null;
+        durationSeconds: number;
+      }> = [];
       const missing: string[] = [];
       for (const shot of shotList) {
         const found = byShotId.get(shot.shot_id);
@@ -1009,11 +1023,15 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           missing.push(shot.shot_id);
           continue;
         }
+        const ov = overrides[shot.shot_id]?.duration_seconds;
+        const effectiveDuration =
+          typeof ov === 'number' && ov > 0 ? ov : shot.duration_seconds;
         orderedShots.push({
           shotId: shot.shot_id,
           assetId: found.id,
           stagingPath: found.stagingPath,
           url: found.url,
+          durationSeconds: effectiveDuration,
         });
       }
       if (missing.length > 0) {
