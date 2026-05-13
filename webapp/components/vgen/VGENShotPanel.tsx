@@ -168,6 +168,7 @@ export function VGENShotPanel({
     );
     setAspect(currentSettings.aspect_ratio);
     setQuality(currentSettings.quality_tier);
+    setProvider(currentSettings.provider_id ?? 'seedance-fal-img2vid');
     setDuration(clampDuration(currentSettings.duration_seconds));
     setPromptEdited(false);
     setError(null);
