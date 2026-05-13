@@ -52,13 +52,29 @@ const DURATION = Number(process.argv[3] ?? 5);
 
 const EREF_STAGING = '/staging/eref-ss_s14_e20_a2_sc04_sh01_perfume_counter_bar_perfume_madame_sandy-f881c79bd72c.png';
 
-const PROMPT = [
+const DEFAULT_PROMPT = [
   '16:9 widescreen composition from the very first frame.',
   'The shot starts on this exact reference frame, then the camera begins a slow orbit to the LEFT around the perfume counter bar interior.',
   'As the camera orbits, more of the location is revealed: the cream-colored side walls, additional shelves of blue-tinted perfume bottles with orange stoppers, the floor tiles, and the warm interior lighting.',
   'Both characters (Sandy the hourglass and Madame the purple perfume bottle) hold their poses in place. Only the camera moves — smooth, cinematic, continuous.',
   'Flat 2D cartoon aesthetic, crisp dark outlines, minimal shading, no text, no logo, no watermark.',
 ].join(' ');
+
+// Allow each probe to swap the motion intent without editing the script.
+// Set PROBE_PROMPT env var (or PROBE_PROMPT_FILE pointing to a UTF-8 text
+// file) to override the default orbit prompt. Useful for A/B testing dance,
+// pull-back, pan-right, or arbitrary motion descriptions across runs.
+function loadPrompt(): string {
+  const inline = process.env.PROBE_PROMPT?.trim();
+  if (inline) return inline;
+  const file = process.env.PROBE_PROMPT_FILE?.trim();
+  if (file) {
+    const abs = resolve(file);
+    if (existsSync(abs)) return readFileSync(abs, 'utf-8').trim();
+  }
+  return DEFAULT_PROMPT;
+}
+const PROMPT = loadPrompt();
 
 /** Upload bytes to fal.ai storage; returns a fal-served URL. */
 async function falUpload(bytes: Buffer, contentType: string, filename: string): Promise<string> {
