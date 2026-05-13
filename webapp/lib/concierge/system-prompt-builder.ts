@@ -355,6 +355,7 @@ const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'STUDIO_STATE', render: studioState },
   { name: 'FEEDBACK_PROTOCOL', render: feedbackProtocol },
   { name: 'ACTIVE_RULES', render: activeRules },
+  { name: 'PIPELINE_EVENTS_SINCE_LAST_REPLY', render: pipelineEvents },
 ];
 
 export function buildSystemPrompt(ctx: PromptContext): string {
