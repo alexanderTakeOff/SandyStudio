@@ -107,6 +107,7 @@ export function VGENShotSection({
       '';
     const prompt = settings.prompt ?? m.prompt ?? '';
     const shotId = m.storyboard_shot?.shot_id ?? m.shot_id ?? filename;
+    const providerId = pickProvider(settings.provider_id ?? m.provider_id);
     const stub: VGENShotPanelStoryboardShot = m.storyboard_shot ?? { shot_id: shotId };
     const cs: VGENShotPanelSettings = {
       prompt,
@@ -114,6 +115,7 @@ export function VGENShotSection({
       quality_tier: quality,
       duration_seconds: duration,
       reference_asset_id: refId,
+      ...(providerId ? { provider_id: providerId } : {}),
     };
     return { storyboardShot: stub, currentSettings: cs };
   }, [metadata, filename]);
