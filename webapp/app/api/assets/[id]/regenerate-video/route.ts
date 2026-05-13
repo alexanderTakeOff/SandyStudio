@@ -218,25 +218,52 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   const aspectRatio = body.aspect_ratio ?? (typeof meta.aspect_ratio === 'string' ? (meta.aspect_ratio as '16:9' | '9:16' | '1:1') : '16:9');
   const qualityTier = body.quality_tier ?? (typeof meta.quality_tier === 'string' ? (meta.quality_tier as 'fast' | 'standard') : 'fast');
+
+  // Provider resolution chain: explicit body override → previous asset's
+  // metadata.provider_id (preserve per-shot history) → series default →
+  // VgenDefaults fallback.
+  function normalizeProviderId(raw: string | null | undefined): VgenProviderId | null {
+    if (raw === 'veo-3' || raw === 'veo-3-img2vid') return 'veo-3-img2vid';
+    if (raw === 'seedance-fal' || raw === 'seedance-fal-img2vid') return 'seedance-fal-img2vid';
+    return null;
+  }
+  const providerFromMeta = normalizeProviderId(
+    typeof meta.provider_id === 'string' ? (meta.provider_id as string) : null,
+  );
+  const seriesDefaults = await getVgenDefaults(sb, asset.series_id);
+  const providerId: VgenProviderId =
+    body.provider ?? providerFromMeta ?? seriesDefaults.provider_id;
+  const videoProvider = getMultiVideoProvider(providerId);
+  const cap = videoProvider.capabilities;
+
   const durationSeconds = (() => {
+    const clamp = (n: number) => Math.min(cap.max_duration_s, Math.max(cap.min_duration_s, Math.round(n)));
     if (typeof body.duration_seconds === 'number' && body.duration_seconds > 0) {
-      return Math.min(8, Math.max(4, body.duration_seconds));
+      return clamp(body.duration_seconds);
     }
     if (typeof meta.duration_seconds === 'number' && meta.duration_seconds > 0) {
-      return Math.min(8, Math.max(4, Math.round(meta.duration_seconds as number)));
+      return clamp(meta.duration_seconds as number);
     }
     if (storyboardShot?.duration_seconds && storyboardShot.duration_seconds > 0) {
-      return Math.min(8, Math.max(4, Math.round(storyboardShot.duration_seconds)));
+      return clamp(storyboardShot.duration_seconds);
     }
-    return 5;
+    return clamp(5);
   })();
 
-  // Generate video
-  const real = await generateVideoVeoGemini({
+  // Veo Standard img2vid quirk — see runner.ts EXEC-VGEN for full rationale.
+  // Seedance has no equivalent constraint; only force-8 when explicitly Veo.
+  const isVeoProvider = providerId === 'veo-3-img2vid';
+  const generationDuration =
+    isVeoProvider && referenceImageBase64 && qualityTier === 'standard'
+      ? 8
+      : durationSeconds;
+
+  // Generate video via multi-provider router.
+  const real = await videoProvider.generate({
     prompt: finalPrompt,
     aspectRatio,
     quality: qualityTier,
-    durationSeconds,
+    durationSeconds: generationDuration,
     ...(referenceImageBase64
       ? { referenceImageBase64, referenceImageMime: 'image/png' as const }
       : {}),
