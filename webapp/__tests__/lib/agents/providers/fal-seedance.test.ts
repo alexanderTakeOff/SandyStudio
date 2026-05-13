@@ -30,12 +30,17 @@ function jsonResponse(body: unknown, status = 200): FetchResponse {
 }
 
 function mp4Response(bytes: Uint8Array): FetchResponse {
+  // Copy into a plain ArrayBuffer — vitest's lib.dom typing rejects the union
+  // `ArrayBufferLike` returned by Uint8Array.buffer when SharedArrayBuffer is
+  // in scope. Plain ArrayBuffer is unambiguous.
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
   return {
     ok: true,
     status: 200,
     json: async () => ({}),
     text: async () => '',
-    arrayBuffer: async () => bytes.buffer,
+    arrayBuffer: async () => ab,
   };
 }
 
