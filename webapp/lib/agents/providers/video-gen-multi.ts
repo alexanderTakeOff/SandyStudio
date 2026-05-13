@@ -22,6 +22,10 @@ import {
   type VeoQualityTier,
   type VeoGeminiResult,
 } from './veo-gemini';
+import {
+  generateVideoFalSeedance,
+  type FalSeedanceResult,
+} from './fal-seedance';
 
 // ── Universal Core types ─────────────────────────────────────────────────────
 
