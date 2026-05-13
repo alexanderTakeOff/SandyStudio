@@ -10033,3 +10033,46 @@ Patch:
 клод, а почему полина никак не реагирует на то что происходит Например я на генерила и утвердил кучу кадров она как будто не видит это по-моему бак
 ===== END =====
 
+===== !AMBIENT 2026-05-13T09:38:19.122Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: “Полина не реагирует на события; похоже баг”. Никаких действий в системе.
+
+Да, это баг поведения ассистента: я должен был сам подсветить изменения.
+
+## Что произошло за последние 30 минут
+
+Сгенерированы и/или утверждены новые видео:
+
+- `A1-SC03-SH01` — generated → approved
+- `A2-SC04-SH02` — generated → approved
+- `A2-SC06-SH02` — generated → approved
+- `A2-SC07-SH01` — generated → approved
+- `A2-SC07-SH02` — generated → approved
+- `A3-SC09-SH01` — generated → approved
+- `A3-SC10-SH02` — generated → approved
+
+Сейчас запущены и ждут результата:
+- `A3-SC11-SH01`
+- `A3-SC11-SH02`
+
+## Текущий статус E20
+
+- Animator stage формально **approved**
+- но в review всё ещё висят **5 stale video assets**:
+  - `A3-SC09-SH02 v01/v02/v03`
+  - `A2-SC05-SH01 v01`
+  - `A3-SC08-SH01 v01`
+- Publicist заблокирован на 2 metadata drafts.
+
+## Почему “Полина не видит”
+
+Два слоя:
+
+1. **Мой протокол нарушен**  
+   Я должен на каждом твоём turn по E20 первым делом читать recent events и докладывать completed/approved/running. Сейчас исправляю.
+
+2. **Системный UI/approval cleanup баг**  
+   Старые/битые pending video остаются висеть, хотя newer/approved versions уже есть. Это путает и меня, и интерфейс.
+
+Следующий шаг: я держу фокус на E20 и при каждом твоём сообщении сначала проверяю события; сейчас ждём completion по `A3-SC11-SH01/SH02`, а затем надо подчистить stale video pending и решить 2 Publicist metadata draft’а.
+===== END =====
+
