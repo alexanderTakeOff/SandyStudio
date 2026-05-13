@@ -145,12 +145,74 @@ export const veo3Provider: MultiVideoGenProvider = {
   },
 };
 
-/** Lookup a provider by id. Phase 1 ships Veo 3.1 (default model in adapter);
- *  Phase 2+ adds Kling/etc. */
+// ── Seedance 2.0 (fal.ai) wrapper ────────────────────────────────────────────
+
+const SEEDANCE_CAPABILITIES: MultiVideoGenCapabilities = {
+  supports_aspects: ['16:9', '9:16', '1:1'],
+  supports_qualities: ['fast', 'standard'],
+  supports_reference_image: true,
+  // Seedance 2.0 native supports up to 15s, but Phase 2 ships matching the Veo
+  // 4-8 range for parity with existing animatic duration logic. Phase 3 will
+  // widen once UI exposes the longer-duration knob.
+  min_duration_s: 4,
+  max_duration_s: 8,
+};
+
+function seedanceResultToMulti(r: FalSeedanceResult): MultiVideoGenResult {
+  return {
+    status: 'success',
+    provider: r.provider,
+    format: r.format,
+    width: r.width,
+    height: r.height,
+    duration_seconds: r.duration_seconds,
+    size_bytes: r.size_bytes,
+    mp4_b64: r.mp4_b64,
+    cost_usd: r.cost_usd,
+    model_id: r.model_id,
+    operation_name: r.operation_name,
+  };
+}
+
+export const seedanceFalProvider: MultiVideoGenProvider = {
+  id: 'seedance-fal-img2vid',
+  capabilities: SEEDANCE_CAPABILITIES,
+  async generate(input: MultiVideoGenInput): Promise<MultiVideoGenResult> {
+    try {
+      const r = await generateVideoFalSeedance({
+        prompt: input.prompt,
+        aspectRatio: input.aspectRatio,
+        quality: input.quality,
+        durationSeconds: input.durationSeconds,
+        referenceImageBase64: input.referenceImageBase64,
+        referenceImageMime: input.referenceImageMime,
+      });
+      return seedanceResultToMulti(r);
+    } catch (err) {
+      throw new MultiVideoGenError(
+        err instanceof Error ? err.message : 'Seedance 2.0 generation failed',
+        'seedance-fal-img2vid',
+        err,
+      );
+    }
+  },
+};
+
+/** Lookup a provider by id. Phase 1 shipped Veo 3.1; Phase 2 (2026-05-13) adds
+ *  Seedance 2.0 via fal.ai. Future providers (Kling, Hailuo, Sora) plug in by
+ *  exporting a `MultiVideoGenProvider` and adding a branch here. */
 export function getMultiVideoProvider(id: string): MultiVideoGenProvider {
   if (id === 'veo-3-img2vid' || id === 'veo-3') return veo3Provider;
+  if (id === 'seedance-fal-img2vid' || id === 'seedance-fal') return seedanceFalProvider;
   throw new MultiVideoGenError(
-    `Unknown video provider id "${id}" — Phase 1 supports only veo-3-img2vid`,
+    `Unknown video provider id "${id}" — supported: veo-3-img2vid, seedance-fal-img2vid`,
     id,
   );
 }
+
+/** Known provider ids that the router dispatches. Order is UI-display order
+ *  (Seedance first since it's the new default). */
+export const KNOWN_VIDEO_PROVIDER_IDS: ReadonlyArray<string> = [
+  'seedance-fal-img2vid',
+  'veo-3-img2vid',
+];
