@@ -328,19 +328,9 @@ function describeCamera(rawAngle: string | undefined): string {
   }
 }
 
-/** Map shot_role to an opening framing cue that primes the model on intent. */
-function describeRole(role: string | undefined): string | null {
-  const r = (role ?? '').trim().toLowerCase();
-  if (!r) return null;
-  if (r === 'establishing') return 'Establishing the scene';
-  if (r === 'action') return 'Dynamic action moment';
-  if (r === 'reaction') return 'Reaction shot';
-  if (r === 'punchline' || r === 'gag-payoff' || r === 'gag_payoff')
-    return 'Punchline payoff';
-  if (r === 'transition') return 'Transition cut';
-  if (r === 'closer' || r === 'tag') return 'Closing tag';
-  return null;
-}
+// describeRole(...) removed 2026-05-13 — role labels ("Reaction shot:")
+// were appearing as on-screen annotations in some Veo outputs and added
+// no information the EREF didn't already carry.
 
 /** Compact visual snippet for one character (Bible character description
  *  shortened to 1–2 sentences). Used by the prompt builder to anchor character
