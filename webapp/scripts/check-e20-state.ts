@@ -56,6 +56,41 @@ const { data: erefs } = await sb
   .eq('episode_id', EP)
   .like('file_type', 'IMG-episode_ref%')
   .order('created_at', { ascending: true });
+// Coverage diff: storyboard shot_ids vs APPROVED IMG-episode_ref shot_ids
+const { data: stbAsset } = await sb
+  .from('assets')
+  .select('content')
+  .eq('episode_id', EP)
+  .eq('file_type', 'STB-storyboard')
+  .eq('status', 'APPROVED')
+  .order('version', { ascending: false })
+  .limit(1)
+  .maybeSingle();
+const stbContent = (stbAsset as { content?: string } | null)?.content ?? '';
+const jsonMatch = /```json\s*\n([\s\S]*?)\n```/.exec(stbContent);
+let storyboardShotIds: string[] = [];
+if (jsonMatch) {
+  try {
+    const parsed = JSON.parse(jsonMatch[1]!) as { acts?: Array<{ shots?: Array<{ shot_id?: string }> }> };
+    storyboardShotIds = (parsed.acts ?? []).flatMap((a) => (a.shots ?? []).map((s) => String(s.shot_id ?? ''))).filter(Boolean);
+  } catch {}
+}
+const approvedShotIds = new Set<string>();
+for (const e of erefs ?? []) {
+  if (e.status !== 'APPROVED') continue;
+  const sr = (e.metadata as { shot_reference?: { shot_id?: string } } | null)?.shot_reference;
+  if (sr?.shot_id) approvedShotIds.add(sr.shot_id);
+}
+console.log(`\n--- COVERAGE: storyboard ${storyboardShotIds.length} shots vs APPROVED EREF ${approvedShotIds.size} ---`);
+const missing = storyboardShotIds.filter((id) => !approvedShotIds.has(id));
+const extra = [...approvedShotIds].filter((id) => !storyboardShotIds.includes(id));
+console.log(`  MISSING (no APPROVED ref): ${missing.length}`);
+for (const m of missing) console.log(`    - ${m}`);
+if (extra.length > 0) {
+  console.log(`  EXTRA (refs without storyboard shot): ${extra.length}`);
+  for (const x of extra) console.log(`    - ${x}`);
+}
+
 console.log(`\n--- IMG-episode_ref assets (${erefs?.length ?? 0}) ---`);
 for (const e of erefs ?? []) {
   const m = e.metadata as Record<string, unknown> | null;
