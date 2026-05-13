@@ -253,6 +253,7 @@ export function EpisodeTimelineSection({
           body: JSON.stringify({
             shot_id: pendingGenerateShotId,
             quality_tier: qualityTier,
+            provider: genProvider,
             directorConfirm: true,
           }),
         },
