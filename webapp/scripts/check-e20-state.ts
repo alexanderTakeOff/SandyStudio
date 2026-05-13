@@ -110,7 +110,7 @@ const vidApproved = new Set<string>();
 const vidReview = new Set<string>();
 const vidOther = new Set<string>();
 for (const [sid, rows] of vidByShot) {
-  rows.sort((a, b) => (b.version - a.version) || b.created_at.localeCompare(a.created_at));
+  rows.sort((a, b) => ((b.version ?? 0) - (a.version ?? 0)) || b.created_at.localeCompare(a.created_at));
   const latest = rows[0]!;
   if (latest.status === 'APPROVED' || latest.status === 'LOCKED') vidApproved.add(sid);
   else if (latest.status === 'REVIEW') vidReview.add(sid);
