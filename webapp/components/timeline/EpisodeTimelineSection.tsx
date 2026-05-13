@@ -234,7 +234,7 @@ export function EpisodeTimelineSection({
     }
   }
 
-  async function generateMissingShot(): Promise<void> {
+  async function generateMissingShot(qualityTier: 'fast' | 'standard' = 'fast'): Promise<void> {
     if (!pendingGenerateShotId) return;
     setGenBusy(true);
     setGenError(null);
@@ -246,6 +246,7 @@ export function EpisodeTimelineSection({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             shot_id: pendingGenerateShotId,
+            quality_tier: qualityTier,
             directorConfirm: true,
           }),
         },

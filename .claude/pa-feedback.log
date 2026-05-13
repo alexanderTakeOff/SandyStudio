@@ -9547,3 +9547,152 @@ Avoid: people, hands, faces, bottles, text, captions, subtitles, watermarks, log
 а в общем вижу что кнопочки стали горит ярко-зелёными но не очень понимаю Мне кажется что какие то шоты из тех которые были сгенерированы они теперь потеряли своё видео и остались только эстетические картинки и когда я захожу openshot нажимаю снова генерить вроде как не генерит
 ===== END =====
 
+===== !AMBIENT 2026-05-13T08:47:32.406Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: после фикса зелёного статуса есть подозрение, что часть шотов в Timeline потеряла видео и показывает только still/reference; regenerate из OpenShot не даёт видимого результата. Никаких действий в системе.
+
+Проверил E20.
+
+## Что вижу
+
+1. **Fan-out реально запускался**  
+   `08:25:43` — VGEN fan-out triggered.
+
+2. **Часть видео реально сгенерировалась и была approved**  
+   Например:
+   - `A2-SC04-SH01`
+   - `A2-SC05-SH02`
+   - `A2-SC06-SH01`
+   - `A3-SC08-SH02`
+   - `A3-SC10-SH01`
+   - `A3-SC09-SH02 v04`
+
+3. **Regenerate из OpenShot не молчит — он стартует jobs**  
+   Зафиксированы запуски:
+   - `A1-SC03-SH01` — запускался дважды
+   - `A2-SC04-SH02` — запускался один раз
+
+   Но по ним **пока нет agent_completed**. То есть кнопка, похоже, триггерит генерацию, но результат либо ещё не вернулся, либо застрял.
+
+4. **Есть явный баг с pending/stale versions**
+   Сейчас в pending approvals висят старые версии:
+   - `A3-SC09-SH02 v01`
+   - `A3-SC09-SH02 v02`
+   - `A3-SC09-SH02 v03`
+
+   При этом `A3-SC09-SH02 v04` уже approved.  
+   Значит UI/approval count не чистит старые regenerated версии и может показывать мусорное состояние.
+
+5. **Похоже, проблема не в “потере видео”, а в маппинге shot → latest video asset**
+   Некоторые regenerated assets имеют `file_type: VID-shot` вместо shot-specific `VID-shot-ss-s14...`.  
+   Поэтому Timeline может не понимать, какой видеофайл является актуальным для конкретного shot, и откатываться к still/reference картинке.
+
+## Клоду коротко
+
+```markdown
+E20 Timeline/OpenShot bug investigation.
+
+Symptoms:
+- Some Episode Timeline shots appear to have lost generated video and show only still/reference images.
+- OpenShot → Generate/Regen appears to do nothing visually.
+- However DB events show vgen_single_shot jobs are triggered:
+  - SS-S14-E20-A1-SC03-SH01 twice
+  - SS-S14-E20-A2-SC04-SH02 once
+- No agent_completed events yet for these single-shot jobs.
+- Pending approvals still contain stale older versions for A3-SC09-SH02 v01/v02/v03 even though v04 was approved.
+- Regenerated video assets often have generic file_type = "VID-shot" instead of shot-specific file_type.
+
+Please inspect:
+1. Episode Timeline shot-to-video resolution.
+2. OpenShot regenerate handler.
+3. VGEN single-shot job status/failure path.
+4. Cleanup/supersede logic for regenerated versions.
+5. Why approved latest v04 does not clear older pending v01-v03.
+6. Whether Timeline falls back to still/reference image when latest video asset is not resolvable.
+
+Expected patch:
+- Resolve latest video per shot by metadata.shot_id first, then filename fallback, not file_type only.
+- Mark older regenerated versions as superseded/hidden when newer version exists.
+- Show "generating" state after OpenShot regen trigger.
+- Surface VGEN failure if job fails instead of silently leaving still image.
+```
+
+Текущий вывод: **генерация не потеряна массово, но Timeline неправильно выбирает latest video asset + не показывает running/failure state для OpenShot regen**.
+
+Следующий шаг: подожди 2–3 минуты и дай мне “проверь статус”; я сверю, завершились ли `A1-SC03-SH01` и `A2-SC04-SH02` или они зависли.
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:52:06.498Z thread=bdbdafcf episode=- =====
+клуб считает что эти видео не сгенерились из-за перегрузки vio 3 и выхода за пределы квота но кого-то можно обойти например переключившись с фаст-генерации на колики генерацию на такой опции почему-то у меня здесь нет то есть если у нас произошёл сбой генерации нам нужно вернуться в стадию перегенерировать и там у нас была где-то Это же было Я же помню был на другой страничке где регенерировать и там была возможность переключения на другое качество
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:52:38.955Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: возможная причина — Veo quota/overload; нужна опция quality вместо fast. Никаких действий в системе.
+
+Проверил E20.
+
+## Факты
+
+- Последние OpenShot генерации:
+  - `A1-SC03-SH01` — запущен дважды
+  - `A2-SC04-SH02` — запущен один раз
+- По ним **нет completed** и **нет failed** событий.
+- Значит UI/worker сейчас плохо показывает зависание/ошибку quota.
+
+Ты прав: в regen раньше была опция качества. В событиях вижу:
+- `quality_tier: fast` → cost `$0.300`
+- `quality_tier: standard` → cost `$0.600`
+
+Значит режимы реально существуют, но в текущем OpenShot/Timeline кнопке они не доступны или не прокинуты.
+
+## Что надо вернуть
+
+В OpenShot / regenerate panel:
+
+1. Quality selector:
+   - `fast`
+   - `standard`
+   - возможно `high`, если backend поддерживает
+
+2. При ошибке Veo quota/overload:
+   - показать статус `failed: quota/overload`
+   - дать кнопку **Retry as Standard**
+   - не оставлять шот в состоянии “как будто ничего не произошло”
+
+3. Single-shot regen должен передавать `quality_tier`, а не использовать скрытый default `fast`.
+
+## Задача Claude
+
+```markdown
+Fix VGEN OpenShot retry quality controls and failure visibility.
+
+Context:
+Director suspects several single-shot generations failed due to Veo 3 quota/overload. In UI, OpenShot → Generate/Regen appears to do nothing. DB events show agent_started but no agent_completed or failed for:
+- SS-S14-E20-A1-SC03-SH01
+- SS-S14-E20-A2-SC04-SH02
+
+Existing event metadata proves quality tiers exist:
+- quality_tier: fast, cost_usd: 0.300
+- quality_tier: standard, cost_usd: 0.600
+
+Problem:
+The current OpenShot/Timeline regen UI does not expose quality tier switching, or does not pass it to the VGEN single-shot endpoint.
+
+Inspect and patch:
+1. OpenShot regenerate/generate UI.
+2. Episode Timeline missing-shot generate button.
+3. VGEN single-shot API/event payload.
+4. Worker failure path for Veo quota/overload.
+
+Expected behavior:
+- Add quality selector: fast / standard.
+- Persist selected quality_tier into VGEN single-shot payload.
+- On Veo quota/overload or timeout, create visible agent_failed/activity_event.
+- Timeline shows failed state, not still-image fallback.
+- Provide one-click Retry as Standard for failed fast generations.
+```
+
+Текущий production status: Animator формально approved, но **5 video approvals всё ещё висят как stale/pending**. Это отдельный cleanup/supersede баг.
+
+Следующий шаг: перезапускать эти два шота лучше не через текущую “слепую” кнопку, а после UI patch или через ручной путь, где точно выбирается `standard`.
+===== END =====
+
