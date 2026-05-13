@@ -139,6 +139,7 @@ export const POST = withApiHandler(async (req, ctx) => {
         body.duration_seconds ?? shot.duration_seconds,
       ...(body.aspect_ratio ? { aspect_ratio: body.aspect_ratio } : {}),
       ...(body.quality_tier ? { quality_tier: body.quality_tier } : {}),
+      ...(body.provider ? { provider: body.provider } : {}),
     } as never,
   });
 
