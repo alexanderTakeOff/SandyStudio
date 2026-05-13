@@ -82,6 +82,9 @@ export interface VGENShotPanelSettings {
   quality_tier: QualityTier;
   duration_seconds: number;
   reference_asset_id: string;
+  /** Phase 2 (2026-05-13). Provider id; omit when unknown — panel falls back
+   *  to the new default (Seedance 2.0). */
+  provider_id?: VgenProvider;
 }
 
 export interface VGENShotPanelProps {
