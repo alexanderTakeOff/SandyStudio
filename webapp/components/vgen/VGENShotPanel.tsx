@@ -144,6 +144,9 @@ export function VGENShotPanel({
   );
   const [aspect, setAspect] = useState<AspectRatio>(currentSettings.aspect_ratio);
   const [quality, setQuality] = useState<QualityTier>(currentSettings.quality_tier);
+  const [provider, setProvider] = useState<VgenProvider>(
+    currentSettings.provider_id ?? 'seedance-fal-img2vid',
+  );
   const [duration, setDuration] = useState<number>(clampDuration(currentSettings.duration_seconds));
   // Track whether Director actually edited the prompt textarea. When false,
   // regenerate sends NO `prompt` field so the server rebuilds via the latest
