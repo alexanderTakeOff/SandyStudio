@@ -264,9 +264,12 @@ export async function ffmpegStitchEpisode(
     // single-quoted form ("Impossible to open '<path>'"). Convert to forward
     // slashes — ffmpeg accepts both on Windows and forward slashes survive
     // the concat parser intact.
-    const concatList = shotPaths
-      .map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
-      .join('\n');
+    // Per-shot `outpoint` directive trims each input to the animatic-intended
+    // duration — required when provider clip length diverges from storyboard
+    // (e.g. Veo Standard img2vid returns fixed 8s clips but a 3s shot is
+    // wanted). 2026-05-13 — E20 stitched at 96s instead of 54s because
+    // Veo Fast=4s / Standard=8s clips played at native length.
+    const concatList = buildConcatList(shotEntries);
     const listPath = path.join(tmpDir, 'concat-list.txt');
     await fs.writeFile(listPath, concatList);
 
