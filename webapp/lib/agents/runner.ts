@@ -695,8 +695,22 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         throw new Error(`EXEC-VGEN requires shotId in event payload`);
       }
 
-      const isRealVeo =
+      // Phase 2 (2026-05-13): widened from veo-only to any registered multi-
+      // provider id. Seedance 2.0 via fal.ai is the new default; Veo 3.1 stays
+      // available via UI dropdown / regenerate-video override.
+      const KNOWN_REAL_VIDEO_PROVIDERS = new Set([
+        'veo-3',
+        'veo-3-img2vid',
+        'seedance-fal',
+        'seedance-fal-img2vid',
+      ]);
+      const isRealVideo = provider?.providerId
+        ? KNOWN_REAL_VIDEO_PROVIDERS.has(provider.providerId)
+        : false;
+      const isVeoProvider =
         provider?.providerId === 'veo-3-img2vid' || provider?.providerId === 'veo-3';
+      // Back-compat alias — earlier code in this branch references the old name.
+      const isRealVeo = isRealVideo;
 
       // ── Universal Core defaults ───────────────────────────────────────────
       // Per-event override → series defaults → hardcoded fallback. Series
