@@ -201,16 +201,8 @@ async function main() {
     }
   }
 
-  // Result shape varies by model — typically result.video.url is a CDN URL
-  // pointing to the generated mp4. Some models nest under .videos[0].url.
-  const videoUrl =
-    result?.video?.url ??
-    (Array.isArray((result as { videos?: Array<{ url?: string }> }).videos)
-      ? (result as { videos?: Array<{ url?: string }> }).videos?.[0]?.url
-      : undefined) ??
-    null;
   if (!videoUrl) {
-    console.error('[fal-orbit] result keys:', Object.keys(result));
+    console.error('[fal-orbit] result keys:', Object.keys(result ?? {}));
     console.error('[fal-orbit] raw result:', JSON.stringify(result).slice(0, 1500));
     throw new Error('fal result missing video.url — schema mismatch, check model docs');
   }
