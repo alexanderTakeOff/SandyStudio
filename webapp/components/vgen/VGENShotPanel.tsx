@@ -36,10 +36,14 @@ import { Button } from '@/components/ui/Button';
 
 export type AspectRatio = '16:9' | '9:16' | '1:1';
 export type QualityTier = 'fast' | 'standard';
+export type VgenProvider = 'seedance-fal-img2vid' | 'veo-3-img2vid';
 
-const QUALITY_RATE_USD_PER_SECOND: Record<QualityTier, number> = {
-  fast: 0.075,
-  standard: 0.15,
+// Phase 2 (2026-05-13) — per-provider cost rates surface in cost preview.
+// Seedance Pro (the default) is ~3-4× more expensive than Veo but produces
+// substantially better character motion and camera control (probe 2026-05-13).
+const COST_RATE_USD_PER_SECOND: Record<VgenProvider, Record<QualityTier, number>> = {
+  'veo-3-img2vid': { fast: 0.075, standard: 0.15 },
+  'seedance-fal-img2vid': { fast: 0.2419, standard: 0.3024 },
 };
 
 const ASPECT_OPTIONS: Array<{ value: AspectRatio; label: string; sub: string }> = [
@@ -49,8 +53,15 @@ const ASPECT_OPTIONS: Array<{ value: AspectRatio; label: string; sub: string }> 
 ];
 
 const QUALITY_OPTIONS: Array<{ value: QualityTier; label: string; sub: string }> = [
-  { value: 'fast', label: 'Fast (Veo 3.1)', sub: '~$0.075/s · iteration' },
-  { value: 'standard', label: 'Standard (Veo 3.1)', sub: '~$0.15/s · final' },
+  { value: 'fast', label: 'Fast', sub: 'cheaper · iteration' },
+  { value: 'standard', label: 'Standard', sub: 'pricier · final' },
+];
+
+// Provider order = Director-facing display order. Seedance first because it's
+// the new default per Director directive 2026-05-13.
+const PROVIDER_OPTIONS: Array<{ value: VgenProvider; label: string; sub: string }> = [
+  { value: 'seedance-fal-img2vid', label: 'Seedance 2.0 (fal.ai)', sub: 'best motion · 4-8s' },
+  { value: 'veo-3-img2vid', label: 'Veo 3.1 (Google)', sub: 'cheaper · 4-8s' },
 ];
 
 const DURATION_MIN = 1;
