@@ -87,58 +87,92 @@ describe('buildShotPromptV2 — camera mapping', () => {
   });
 });
 
-describe('buildShotPromptV2 — role flavouring', () => {
-  it('prefixes establishing shots with "Establishing the scene"', () => {
+describe('buildShotPromptV2 — role label removed (2026-05-13)', () => {
+  // Director report 2026-05-13: Veo occasionally rendered the role label
+  // ("Reaction shot:", "Establishing the scene:") as on-screen text.
+  // The label was decorative — the EREF already encodes framing — so we
+  // dropped role prefixes entirely. These tests pin the new contract.
+
+  it('does not prefix establishing shots with a role label', () => {
     const p = buildShotPromptV2(baseShot, 'X');
-    expect(p).toContain('Establishing the scene:');
+    expect(p).not.toContain('Establishing the scene:');
   });
 
-  it('prefixes punchlines with "Punchline payoff"', () => {
+  it('does not prefix punchlines with a role label', () => {
     const p = buildShotPromptV2(
       { ...baseShot, shot_role: 'punchline' },
       'X',
     );
-    expect(p).toContain('Punchline payoff:');
+    expect(p).not.toContain('Punchline payoff:');
   });
 
-  it('omits role prefix for unknown roles', () => {
+  it('still surfaces the action sentence', () => {
     const p = buildShotPromptV2(
       { ...baseShot, shot_role: 'made_up_role' },
       'X',
     );
-    // Action line should appear without a leading role-prefix:
-    //   ✓ "Sandy enters the cafe …"
-    //   ✗ "Establishing the scene: Sandy enters the cafe …"
-    expect(p).not.toContain('Establishing the scene:');
-    expect(p).not.toContain('Punchline payoff:');
-    // The action itself is still present (no role-aware framing applied).
     expect(p).toContain('Sandy enters the cafe');
   });
 });
 
-describe('buildShotPromptV2 — gag vs emotion separation', () => {
-  it('puts the gag on its own Beat: line', () => {
+describe('buildShotPromptV2 — gag vs emotion (no labels)', () => {
+  // Beat: / Mood: labels removed 2026-05-13 — Veo printed the labels as
+  // on-screen text. The substance is kept, woven into the flow without
+  // a colon-prefixed label so the model reads it as composition guidance.
+
+  it('keeps the gag substance', () => {
     const p = buildShotPromptV2(baseShot, 'X');
-    expect(p).toContain('Beat: Sandy trips on a stray umbrella.');
+    expect(p).toContain('Sandy trips on a stray umbrella');
+    expect(p).not.toContain('Beat:');
   });
 
-  it('puts the emotion on its own Mood: line', () => {
+  it('keeps the emotion substance', () => {
     const p = buildShotPromptV2(baseShot, 'X');
-    expect(p).toContain('Mood: curious.');
+    expect(p).toContain('curious');
+    expect(p).not.toContain('Mood:');
   });
 
-  it('skips Beat: line entirely when no gag is set', () => {
+  it('omits the gag fragment entirely when expected_gag is unset', () => {
     const { expected_gag: _, ...rest } = baseShot;
     void _;
     const p = buildShotPromptV2(rest, 'X');
-    expect(p).not.toMatch(/Beat:/);
+    expect(p).not.toContain('Sandy trips on a stray umbrella');
   });
 
-  it('skips Mood: line entirely when no emotion is set', () => {
+  it('omits the emotion fragment entirely when expected_emotion is unset', () => {
     const { expected_emotion: _, ...rest } = baseShot;
     void _;
     const p = buildShotPromptV2(rest, 'X');
-    expect(p).not.toMatch(/Mood:/);
+    // `curious` would otherwise have been emitted as a standalone fragment.
+    // Characters block can still mention emotion in parentheses if a
+    // character carries an `emotion` field, so we look for the *standalone*
+    // sentence form (period-terminated) rather than the bare token.
+    expect(p).not.toMatch(/\bcurious\.\s/);
+  });
+
+  it('forces native 16:9 composition (no square-inside-wide drift)', () => {
+    const p = buildShotPromptV2(baseShot, 'X');
+    expect(p).toContain('16:9 widescreen landscape composition from the very first frame');
+  });
+
+  it('does not quote the episode title (avoid on-screen text rendering)', () => {
+    const p = buildShotPromptV2(baseShot, 'The Violet Distance');
+    expect(p).not.toContain('"The Violet Distance"');
+    expect(p).not.toContain('set in the world of');
+  });
+
+  it('truncates multi-sentence literary action_prose to the first sentence', () => {
+    const p = buildShotPromptV2(
+      {
+        ...baseShot,
+        action_prose:
+          'The counter fills the entire frame. Not a smear of violet. The distance is exact. Precise. Unbridgeable..',
+      },
+      'X',
+    );
+    expect(p).toContain('The counter fills the entire frame');
+    expect(p).not.toContain('Unbridgeable');
+    expect(p).not.toMatch(/\.\./);
   });
 });
 
