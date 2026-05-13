@@ -207,6 +207,7 @@ export function VGENShotPanel({
           ...(promptEdited ? { prompt } : {}),
           aspect_ratio: aspect,
           quality_tier: quality,
+          provider,
           duration_seconds: duration,
           reference_asset_id: currentSettings.reference_asset_id,
           directorConfirm: true,
