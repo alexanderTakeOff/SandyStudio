@@ -10,12 +10,16 @@ import {
 
 describe('buildConcatList', () => {
   it('emits one file directive per input path', () => {
-    const list = buildConcatList(['/tmp/a.mp4', '/tmp/b.mp4', '/tmp/c.mp4']);
+    const list = buildConcatList([
+      { path: '/tmp/a.mp4' },
+      { path: '/tmp/b.mp4' },
+      { path: '/tmp/c.mp4' },
+    ]);
     expect(list).toBe(`file '/tmp/a.mp4'\nfile '/tmp/b.mp4'\nfile '/tmp/c.mp4'`);
   });
 
   it("escapes single quotes inside paths so the concat demuxer doesn't choke", () => {
-    const list = buildConcatList([`/tmp/it's a path/clip.mp4`]);
+    const list = buildConcatList([{ path: `/tmp/it's a path/clip.mp4` }]);
     // Single quote escaped via close-quote + escaped-single + reopen-quote.
     expect(list).toBe(`file '/tmp/it'\\''s a path/clip.mp4'`);
   });
@@ -26,10 +30,43 @@ describe('buildConcatList', () => {
 
   it('converts Windows backslashes to forward slashes (ffmpeg refuses backslashes inside single-quoted concat paths)', () => {
     const list = buildConcatList([
-      'C:\\Users\\me\\AppData\\Local\\Temp\\ss-stitch\\shot-000.mp4',
+      {
+        path: 'C:\\Users\\me\\AppData\\Local\\Temp\\ss-stitch\\shot-000.mp4',
+      },
     ]);
     expect(list).toBe(
       "file 'C:/Users/me/AppData/Local/Temp/ss-stitch/shot-000.mp4'",
+    );
+  });
+
+  it('emits `outpoint <seconds>` directive when durationSeconds is set (trims Veo clips to animatic intent)', () => {
+    const list = buildConcatList([
+      { path: '/tmp/a.mp4', durationSeconds: 4 },
+      { path: '/tmp/b.mp4', durationSeconds: 3.5 },
+    ]);
+    expect(list).toBe(
+      [
+        `file '/tmp/a.mp4'`,
+        'outpoint 4.000',
+        `file '/tmp/b.mp4'`,
+        'outpoint 3.500',
+      ].join('\n'),
+    );
+  });
+
+  it('omits `outpoint` when durationSeconds is undefined or 0 (use native clip length)', () => {
+    const list = buildConcatList([
+      { path: '/tmp/a.mp4' },
+      { path: '/tmp/b.mp4', durationSeconds: 0 },
+      { path: '/tmp/c.mp4', durationSeconds: 5 },
+    ]);
+    expect(list).toBe(
+      [
+        `file '/tmp/a.mp4'`,
+        `file '/tmp/b.mp4'`,
+        `file '/tmp/c.mp4'`,
+        'outpoint 5.000',
+      ].join('\n'),
     );
   });
 });
