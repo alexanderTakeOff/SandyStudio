@@ -209,10 +209,16 @@ export async function generateVideoVeoGemini(
     },
   );
   if (!submitRes.ok) {
+    // Surface the actual Veo response body in the error message so Inngest
+    // run output shows WHY (content filter? bad reference image? quota?).
+    // Without this, every failure read as bare "Veo predictLongRunning
+    // failed (4xx)" and Director couldn't tell 429 quota from 400 content
+    // policy. 2026-05-13 evening — Director ran into 400s on Standard tier.
+    const body = (await submitRes.text()).slice(0, 800);
     throw new VeoGeminiError(
-      `Veo predictLongRunning failed (${submitRes.status})`,
+      `Veo predictLongRunning failed (${submitRes.status}) — ${body || '<empty body>'}`,
       submitRes.status,
-      (await submitRes.text()).slice(0, 800),
+      body,
     );
   }
   const submitJson = (await submitRes.json()) as PredictResponse;

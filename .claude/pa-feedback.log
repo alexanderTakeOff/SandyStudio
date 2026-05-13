@@ -9696,3 +9696,87 @@ Expected behavior:
 Следующий шаг: перезапускать эти два шота лучше не через текущую “слепую” кнопку, а после UI patch или через ручной путь, где точно выбирается `standard`.
 ===== END =====
 
+===== !AMBIENT 2026-05-13T08:58:27.084Z thread=bdbdafcf episode=- =====
+SS-S14-E20-A1-SC03-SH01 1 2 3 4 5 ну вот смотри я поставил На регенерацию этот счёт Он вроде бы запустилась генерация в стандартном режиме не в фаст-режиме то есть не было сообщений ошибок про квоту но тем не менее я не вижу чтобы загорелась зелёная лампочка кнопочка циферка
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:58:46.982Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: `A1-SC03-SH01` запущен на regen в standard, но зелёная цифра не загорелась. Никаких действий в системе.
+
+Проверил события.
+
+## По `SS-S14-E20-A1-SC03-SH01`
+
+Есть только старты, результата нет:
+
+- `08:44:07` — started
+- `08:45:57` — started
+- `08:55:27` — started
+- `08:56:42` — started
+
+Но **нет**:
+- `agent_completed`
+- `asset_updated`
+- `approval_granted`
+- `agent_failed`
+
+Значит зелёная кнопка не горит правильно: **новое видео ещё не зарегистрировано как asset**.
+
+## Важный баг
+
+В событиях single-shot start нет `quality_tier`.
+
+Для успешного standard-regenerate раньше было так:
+
+```json
+quality_tier: "standard"
+cost_usd: 0.600
+```
+
+А у `A1-SC03-SH01` сейчас metadata только:
+
+```json
+kind: "vgen_single_shot"
+shot_id: "SS-S14-E20-A1-SC03-SH01"
+```
+
+То есть UI мог показывать standard, но backend event не получил/не записал качество. Это надо чинить.
+
+## Вывод
+
+Проблема не в approve-лампочке.  
+Проблема в том, что **single-shot generation запускается, но не доходит до completed/failed и не создаёт видео asset**. Плюс payload теряет `quality_tier`.
+
+Клоду точный баг:
+
+```markdown
+Bug: VGEN single-shot start events are created but never complete/fail, and quality_tier is missing from metadata.
+
+Episode: SS-S14-E20
+Shot: SS-S14-E20-A1-SC03-SH01
+
+Observed events:
+- multiple agent_started events for vgen_single_shot
+- no agent_completed
+- no agent_failed
+- no asset_updated
+- no video asset created
+- metadata contains shot_id only, no quality_tier, even when Director selected standard in UI
+
+Expected:
+- single-shot regen/generate should pass quality_tier to backend/Inngest
+- worker should create video asset on success
+- worker should emit agent_failed on Veo quota/timeout/API error
+- UI should show running/failed state, not silently remain non-green
+
+Please inspect:
+1. OpenShot/Timeline generate button payload
+2. API route that emits vgen_single_shot event
+3. Inngest handler for EXEC-VGEN single-shot
+4. whether quality_tier is ignored or not persisted
+5. timeout/error handling around Veo API call
+```
+
+Следующий шаг: не нажимай этот shot ещё раз — уже 4 старта висят без результата. Нужно сначала чинить single-shot worker / payload.
+===== END =====
+
