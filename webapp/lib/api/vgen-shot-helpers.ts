@@ -452,25 +452,48 @@ export function buildShotPromptV2(
     ? `Visual canon: ${canonLines.join(' ')}`
     : '';
 
-  // Setting prefix uses episode title only as ambient flavour — the actual
-  // setting comes from the EREF (image-to-video reference). Avoid making the
-  // title look like a label the model might want to render as on-screen text.
-  const setting = episodeTitle && episodeTitle.length > 0
-    ? `2D animated comedy short, set in the world of "${episodeTitle}".`
-    : '2D animated comedy short.';
+  // Setting prefix kept short and label-free. Earlier "set in the world of
+  // '<title>'" caused Veo to occasionally render the episode title as
+  // on-screen text. shot_role ("Reaction shot:") prefix dropped — the EREF
+  // already encodes framing, role-as-text adds nothing for the model.
+  const setting = '2D animated comedy short.';
+  // Reuse `episodeTitle` only as a discreet style hint, not as quoted text.
+  // (Keeps the symbol used so callers that still pass it don't warn.)
+  void episodeTitle;
 
   const segments: string[] = [setting];
-  if (role) {
-    segments.push(action ? `${role}: ${action}.` : `${role}.`);
-  } else if (action) {
-    segments.push(`${action}.`);
-  }
+  if (action) segments.push(`${action}.`);
   if (charPhrase) segments.push(charPhrase);
   if (canonPhrase) segments.push(canonPhrase);
   segments.push(`Camera: ${camera}.`);
-  if (gag) segments.push(`Beat: ${gag}.`);
-  if (emotion) segments.push(`Mood: ${emotion}.`);
+  // Beat/Mood are absorbed into the EREF + action sentence — adding them as
+  // separate labels invited the model to treat them as on-screen annotation
+  // (e.g. printing "Beat:" or "Mood:"). Re-enable only if a future eval
+  // shows they're load-bearing.
+  if (gag) segments.push(gag);
+  if (emotion) segments.push(emotion);
+  // Force native 16:9 composition so the model doesn't anchor on the
+  // square EREF crop and then "expand" mid-shot (Director report
+  // 2026-05-13: square-inside-wide-canvas artifact).
+  segments.push('16:9 widescreen landscape composition from the very first frame.');
   segments.push(`Style: ${POSITIVE_STYLE}`);
   segments.push(NEGATIVE_PROMPT);
   return segments.join(' ');
+}
+
+/**
+ * Return the first complete sentence in a paragraph. Splits on the canonical
+ * end-of-sentence punctuation (`.`, `!`, `?`) followed by whitespace; falls
+ * back to the input itself when the paragraph has no sentence terminators.
+ * Also collapses double-periods into single (avoids `Unbridgeable..` in the
+ * Veo prompt — a real artifact observed 2026-05-13).
+ */
+function firstSentence(input: string): string {
+  const cleaned = input.replace(/\.{2,}/g, '.').trim();
+  if (!cleaned) return '';
+  const match = cleaned.match(/^([^.!?]+[.!?])\s/);
+  if (match) return match[1]!.trim().replace(/[.!?]+$/, '');
+  // No mid-text terminator — strip a trailing terminator if any so the
+  // caller's `${action}.` doesn't produce "..".
+  return cleaned.replace(/[.!?]+$/, '').trim();
 }
