@@ -811,7 +811,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         ? buildShotPromptV2(storyboardShot, episodeTitle, characterCanon)
         : buildShotPrompt(inputs, shotId);
 
-      if (isRealVeo) {
+      if (isRealVideo) {
         if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
 
         // Veo 3.1 image-to-video constraint (Google docs, confirmed 2026-05-13):
@@ -822,18 +822,22 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         //   Fast (`veo-3.1-fast-generate-preview`) appears to accept 4-6-8;
         //   keep the storyboard value for Fast and force 8 for Standard
         //   when a reference image is attached.
+        // This is a Veo-only quirk; Seedance 2.0 accepts any 4-15s on either
+        // tier so we leave its duration untouched.
         const hasReferenceImage = Boolean(referenceImageBase64);
-        const veoDuration =
-          hasReferenceImage && effectiveQuality === 'standard'
+        const generationDuration =
+          isVeoProvider && hasReferenceImage && effectiveQuality === 'standard'
             ? 8
             : finalDuration;
         // eslint-disable-next-line no-console
         console.info(
-          `[exec-vgen] shot=${shotId} → Veo durationSeconds=${veoDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, clamped=${veoDuration !== finalDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}`,
+          `[exec-vgen] shot=${shotId} → provider=${provider!.providerId} durationSeconds=${generationDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, clamped=${generationDuration !== finalDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}`,
         );
-        const real = await generateVideoVeoGemini({
+
+        const videoProvider = getMultiVideoProvider(provider!.providerId);
+        const real = await videoProvider.generate({
           prompt,
-          durationSeconds: veoDuration,
+          durationSeconds: generationDuration,
           aspectRatio: effectiveAspect,
           quality: effectiveQuality,
           ...(referenceImageBase64
@@ -860,10 +864,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               provider_id: real.provider,
               provider_used: real.provider,
               // Provider verification stamp (Phase A.1 directive 2026-05-07).
-              // `model_id` is the actual Google model that produced this mp4,
-              // surfaced in the asset description so Director sees it in the
-              // drawer without scanning runtime logs. `operation_name` is the
-              // Vertex/Gemini operation id for vendor-side cross-reference.
+              // `model_id` is the actual upstream model that produced this mp4
+              // (e.g. `veo-3.1-fast-generate-preview` or
+              // `bytedance/seedance-2.0/fast/image-to-video`), surfaced in the
+              // asset description so Director sees it without scanning logs.
+              // `operation_name` is the provider-side job/operation id for
+              // vendor cross-reference.
               model_id: real.operation_name ? real.model_id : undefined,
               operation_name: real.operation_name,
               format: real.format,
