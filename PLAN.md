@@ -13,6 +13,48 @@
 ## CURRENT STATE
 
 ```
+Phase:    Phase 2 Video Provider — Seedance 2.0 integration COMPLETE 2026-05-13 19:30 UTC (this session)
+Status:   ✅ fal.ai Seedance 2.0 wired as multi-provider via existing `MultiVideoGenProvider` abstraction.
+            Director's "сделай выбор провайдера через дропдаун" closed end-to-end across UI + API + runner.
+            • NEW: `lib/agents/providers/fal-seedance.ts` (REST queue, mirrors `veo-gemini.ts` shape)
+            • NEW: `__tests__/lib/agents/providers/fal-seedance.test.ts` — 11 tests passing (slug resolution,
+              env override, parent-truncated URL quirk, 429/FAILED surfacing, cost math, data-URL inline,
+              duration clamp [4,15])
+            • EXTEND: `video-gen-multi.ts` — register `seedanceFalProvider` + dispatch in `getMultiVideoProvider`
+            • EXTEND: `lib/api/vgen-defaults.ts` — `VgenProviderId` widened to include `seedance-fal-img2vid`;
+              `FALLBACK_DEFAULTS.provider_id` flipped to Seedance (Director directive — new default)
+            • EXTEND: `lib/agents/provider-resolver.ts` — `seedance-fal[-img2vid]` → `FAL_KEY` env mapping
+            • REFACTOR: `lib/agents/runner.ts` EXEC-VGEN — direct `generateVideoVeoGemini` → `getMultiVideoProvider(provider!.providerId).generate(...)`. Veo Standard img2vid force-8 quirk preserved as Veo-only branch.
+            • REFACTOR: `app/api/assets/[id]/regenerate-video/route.ts` — body `provider` field; provider chain (body → asset meta → series default → fallback); capability-based duration clamp.
+            • EXTEND: `app/api/episodes/[id]/vgen/generate-single-shot/route.ts` — body `provider` field forwarded into Inngest event.
+            • EXTEND: `inngest/functions/exec-vgen.ts` — `VgenEventData.provider`, `syntheticResolvedProvider()` helper; per-event override beats `provider_assignments` global default in both pilot + single-shot handlers.
+            • UI: `components/vgen/VGENShotPanel.tsx` — new Provider `<select>` (Seedance / Veo). Cost preview is provider-aware. POST body includes `provider`.
+            • UI: `components/vgen/VGENShotSection.tsx` — `pickProvider()` normalizes legacy variants ('veo-3' ↔ 'veo-3-img2vid', etc.) when seeding panel.
+            • UI: `components/timeline/EpisodeTimelineSection.tsx` — provider `<select>` left of Generate Fast/Standard buttons. Defaults to Seedance.
+            • CATALOG: `lib/api/provider-catalog.ts` — Seedance entries added to `video` + `character_video` candidates (existing `/settings` ProviderSettings auto-picks up).
+            • MIGRATION: `0028_widen_vgen_provider.sql` APPLIED — `provider_assignments.character_video.active_provider_id = 'seedance-fal-img2vid'` confirmed in DB.
+
+            Verify trio: tsc clean · vitest **198/198** (was 187, +11 new) · replay-pilot **29/29**.
+            Real probe: Seedance Fast 5s img2vid via existing CLI test script — $1.21, 103s wall clock, 2.5 MB mp4. Provider stack working through every layer.
+
+            Out of scope (deferred):
+            • Seedance-specific prompt builder + skill `seedance-prompting` — Director said "пока не подключай — обсудим" (separate next PR, structure researched in session `nervous-bose-8196fc`)
+            • StageKebabMenu per-stage "Provider › […]" section — Phase 8 task
+            • 1080p resolution selection — Phase 2.1
+            • Longer Seedance durations (10-15s) — Phase 2.1, caps at 8s for animatic parity
+
+Next:     Director smokes the integration via UI:
+          1. Open any episode → timeline → pick a missing VID cell → confirm provider dropdown shows Seedance + Veo → click Generate · Fast → verify new VID-shot has metadata.provider_id='seedance-fal-img2vid'.
+          2. Open VGENShotPanel for an existing shot → flip Provider to Veo Standard → Regenerate → verify metadata.provider_id='veo-3-img2vid'.
+          3. (optional) /settings → Providers → swap default if desired.
+
+Mode:     Mode 1 (MANUAL) — Director approves each gate.
+Date:     2026-05-13
+```
+
+---
+
+```
 Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit d1c820d 2026-05-10)
           ✅ VGEN auto-COMPLETE — episode flips to GENERATION_APPROVED when all VID-shots APPROVED
           ✅ EXEC-STITCH — local ffmpeg final-cut assembly (first real mp4 produced SS-S14-E01)
