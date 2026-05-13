@@ -246,6 +246,59 @@ const activeRules: Block = (ctx) => {
   return `[ACTIVE_RULES]\n${ctx.activeRules}`;
 };
 
+// ─── Block 11: PIPELINE_EVENTS_SINCE_LAST_REPLY ──────────────────────────────
+//
+// Director directive 2026-05-13 — Realtime push: every pipeline event
+// (agent_started/completed/failed, approvals, blockers) now lands in
+// concierge_turns as a `system`-role turn within ~1 second of happening.
+// This block lifts those system turns into the system prompt so PA reads
+// them as fresh context on her very next reply, without needing to call
+// `getRecentActivityEvents` first.
+//
+// Window: every system turn since the last assistant reply (or the last 8
+// system turns, whichever is fewer). Older events stay in the DB and are
+// retrievable via tools — we don't bloat the prompt with stale chatter.
+const pipelineEvents: Block = (ctx) => {
+  const turns = ctx.recentTurns ?? [];
+  if (turns.length === 0) return null;
+  // Find the last assistant turn — only show events that arrived after it,
+  // because earlier events were already part of the previous reply's context.
+  let lastAssistantIdx = -1;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i]?.role === 'assistant') {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+  const window = turns.slice(lastAssistantIdx + 1);
+  const systemPipelineTurns = window.filter(
+    (t) =>
+      t.role === 'system' &&
+      typeof t.metadata === 'object' &&
+      t.metadata !== null &&
+      (t.metadata as { kind?: unknown }).kind === 'pipeline_event',
+  );
+  if (systemPipelineTurns.length === 0) return null;
+  // Cap at 8 most recent so the prompt stays compact even on a noisy run.
+  const recent = systemPipelineTurns.slice(-8);
+  const lines = recent.map((t) => {
+    const m = (t.metadata ?? {}) as Record<string, unknown>;
+    const sev = (m.severity as string | undefined) ?? 'info';
+    const ago = Math.max(
+      0,
+      Math.round((Date.now() - new Date(t.created_at).getTime()) / 1000),
+    );
+    return `- [${sev}, ${ago}s ago] ${truncate(t.content, 200)}`;
+  });
+  return [
+    '[PIPELINE_EVENTS_SINCE_LAST_REPLY]',
+    'These events arrived from the agent pipeline since your previous reply.',
+    'Read them BEFORE answering; surface anything actionable to the Director without being asked.',
+    'Newest at the bottom:',
+    ...lines,
+  ].join('\n');
+};
+
 /**
  * AGENT_NAMES — Director directive 2026-05-12: use human-readable agent
  * names in user-facing output, NOT technical codes like EXEC-SW. Technical
