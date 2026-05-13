@@ -351,7 +351,7 @@ export function buildFfmpegArgs(args: {
     args.listPath,
   ];
   if (args.musicPath) {
-    out.push('-i', args.musicPath);
+    out.push('-stream_loop', '-1', '-i', args.musicPath);
   }
   out.push(
     '-map',
