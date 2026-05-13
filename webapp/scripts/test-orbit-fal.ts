@@ -101,11 +101,17 @@ async function main() {
   // varies per model and is documented at https://fal.ai/models/<id>.
   // Seedance / Kling / Hailuo all accept `prompt`, `image_url`, and a
   // duration knob (named slightly differently per model).
+  // Seedance 2.0 schema: duration enum "auto"|"4".."15", aspect_ratio enum
+  // including "16:9", resolution enum "480p"|"720p"|"1080p", generate_audio
+  // boolean (default true, free). For orbit-camera test we kill audio — no
+  // need for synthesized ambient noise on a 5s probe.
   const payload: Record<string, unknown> = {
     prompt: PROMPT,
     image_url: imageUrl,
     duration: String(DURATION),
     aspect_ratio: '16:9',
+    resolution: '720p',
+    generate_audio: false,
   };
 
   console.log('[fal-orbit] submitting to fal queue …');
