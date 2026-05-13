@@ -117,7 +117,7 @@ describe('generateVideoFalSeedance', () => {
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
       const u = String(url);
       seen.push(u);
-      if (!u.includes('/requests/')) {
+      if (u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')) {
         return jsonResponse({
           request_id: 'r',
           status_url: 'https://queue.fal.run/parent/requests/r/status',
@@ -139,7 +139,7 @@ describe('generateVideoFalSeedance', () => {
     let captured: { headers?: Record<string, string>; body?: unknown } = {};
     globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: FetchInit) => {
       const u = String(url);
-      if (!u.includes('/requests/')) {
+      if (u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')) {
         captured = {
           headers: init?.headers as Record<string, string>,
           body: init?.body ? JSON.parse(init.body as string) : undefined,
@@ -181,7 +181,7 @@ describe('generateVideoFalSeedance', () => {
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
       const u = String(url);
       visited.push(u);
-      if (!u.includes('/requests/')) {
+      if (u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')) {
         return jsonResponse({
           request_id: 'qrz',
           // Truncated to parent (without /image-to-video) — fal's real behavior.
@@ -223,7 +223,7 @@ describe('generateVideoFalSeedance', () => {
   it('throws when fal returns FAILED status', async () => {
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
       const u = String(url);
-      if (!u.includes('/requests/')) {
+      if (u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')) {
         return jsonResponse({
           request_id: 'r',
           status_url: 'https://queue.fal.run/p/requests/r/status',
@@ -239,7 +239,7 @@ describe('generateVideoFalSeedance', () => {
     function setupHappyPath(): void {
       globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
         const u = String(url);
-        if (!u.includes('/requests/')) {
+        if (u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')) {
           return jsonResponse({
             request_id: 'r',
             status_url: 'https://queue.fal.run/p/requests/r/status',
@@ -277,7 +277,7 @@ describe('generateVideoFalSeedance', () => {
     let captured: Record<string, unknown> = {};
     globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: FetchInit) => {
       const u = String(url);
-      if (!u.includes('/requests/')) {
+      if (u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')) {
         captured = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
         return jsonResponse({
           request_id: 'r',
@@ -304,7 +304,7 @@ describe('generateVideoFalSeedance', () => {
     function setupHappyPath(): void {
       globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
         const u = String(url);
-        if (!u.includes('/requests/')) {
+        if (u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')) {
           return jsonResponse({
             request_id: 'r',
             status_url: 'https://queue.fal.run/p/requests/r/status',
@@ -335,7 +335,7 @@ describe('generateVideoFalSeedance', () => {
     let body: Record<string, unknown> = {};
     globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: FetchInit) => {
       const u = String(url);
-      if (!u.includes('/requests/')) {
+      if (u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')) {
         body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
         return jsonResponse({
           request_id: 'r',
