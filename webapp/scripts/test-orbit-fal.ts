@@ -181,29 +181,14 @@ async function main() {
   console.log('[fal-orbit] status keys:', Object.keys(lastStatusJson));
 
   if (!videoUrl) {
-    // Try a list of candidate URLs in order. fal's response_url field is
-    // authoritative when present; without it we try several known fal queue
-    // result-URL conventions.
-    const candidates = [
-      (submitJson.response_url as string | undefined) ?? null,
-      (lastStatusJson.response_url as string | undefined) ?? null,
-      statusUrl.replace(/\/status$/, ''),
-      `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}`,
-      `https://fal.run/${MODEL_ID}/requests/${submitJson.request_id}`,
-    ].filter(Boolean) as string[];
-    for (const url of candidates) {
-      console.log(`[fal-orbit] fetching result via: ${url}`);
-      const fres = await fetch(url, { headers: { Authorization: `Key ${FAL_KEY}` } });
-      if (!fres.ok) {
-        const body = (await fres.text()).slice(0, 200);
-        console.log(`[fal-orbit]   ${fres.status} ${body}`);
-        continue;
-      }
-      result = (await fres.json()) as AnyResult;
-      videoUrl = extractVideoUrl(result);
-      if (videoUrl) break;
-      console.log('[fal-orbit]   keys but no video.url:', Object.keys(result));
+    console.log(`[fal-orbit] fetching result via: ${resultUrl}`);
+    const fres = await fetch(resultUrl, { headers: { Authorization: `Key ${FAL_KEY}` } });
+    if (!fres.ok) {
+      const body = (await fres.text()).slice(0, 1200);
+      throw new Error(`fal result fetch failed (${fres.status}) — ${body}`);
     }
+    result = (await fres.json()) as AnyResult;
+    videoUrl = extractVideoUrl(result);
   }
 
   if (!videoUrl) {
