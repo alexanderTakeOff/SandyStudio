@@ -10096,3 +10096,67 @@ Patch:
 Пришли ссылку на E20 или episode UUID.
 ===== END =====
 
+===== !AMBIENT 2026-05-13T09:40:33.536Z thread=bdbdafcf episode=- =====
+восемнадцатый девятнадцатые кадры которые я запустил Похоже что с ними опять какие-то проблемы
+===== END =====
+
+===== !AMBIENT 2026-05-13T09:40:43.012Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: проверяю 18/19. Никаких действий в системе.
+
+18/19 не завершились.
+
+- `A3-SC11-SH01` — started, нет результата.
+- `A3-SC11-SH02` — started дважды, нет результата.
+
+Ошибки тоже нет. Значит опять **silent hang**.
+
+Плюс: музыка загружена в `09:40`.
+
+Следующий шаг: не жми ещё раз; ждём fix failed-state или ручной retry после диагностики.
+===== END =====
+
+===== !AMBIENT 2026-05-13T09:41:03.681Z thread=bdbdafcf episode=- =====
+восемнадцатый девятнадцатые кадры которые я запустил Похоже что с ними опять какие-то проблемы а также у нас похожие не решён бак по загрузке музыкального файла из таймлайна где у нас есть кнопочка replace
+===== END =====
+
+===== !AMBIENT 2026-05-13T09:41:15.680Z thread=bdbdafcf episode=- =====
+[ASSISTANT] 18/19 зависли.
+
+- `A3-SC11-SH01` — started, no result.
+- `A3-SC11-SH02` — started twice, no result.
+- failed-событий нет.
+
+Музыка: upload был, но это **Music uploaded**, не подтверждение replace active track. Значит баг Replace остаётся.
+
+Claude task:
+
+```markdown
+Investigate E20 stuck shots + Timeline music replace.
+
+Shots:
+- SS-S14-E20-A3-SC11-SH01
+- SS-S14-E20-A3-SC11-SH02
+
+Observed:
+- VGEN single-shot agent_started events exist.
+- No agent_completed.
+- No agent_failed.
+- No asset_updated video.
+- SH02 was started twice.
+
+Also:
+- Timeline music Replace uploads file and creates event:
+  "Music uploaded for SS-S14-E20-VID-animatic-v01-DRAFT.md"
+- But active timeline music does not visibly change.
+- Need verify if upload only stores file URL but does not update animatic/current music binding.
+
+Patch:
+1. Emit agent_failed on VGEN timeout/API error.
+2. Show running/failed state per shot.
+3. Prevent duplicate start for same shot while running.
+4. Fix music Replace to update active animatic music binding and refresh UI.
+```
+
+Следующий шаг: не перезапускать 18/19; сначала чинить stuck/failure visibility.
+===== END =====
+
