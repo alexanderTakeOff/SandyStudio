@@ -57,8 +57,17 @@ export function useActivityRealtime(
     if (!threadId) return;
 
     const supabase = createSupabaseBrowserClient();
+    // Defensive: HMR / StrictMode can re-run this effect with the same
+    // threadId and leak channels. If a channel for this name already exists
+    // on the singleton client, drop it first so we never accumulate dupes.
+    const channelTopic = `activity_events:${threadId}`;
+    for (const existing of supabase.getChannels()) {
+      if (existing.topic === `realtime:${channelTopic}` || existing.topic === channelTopic) {
+        void supabase.removeChannel(existing);
+      }
+    }
     const channel = supabase
-      .channel(`activity_events:${threadId}`)
+      .channel(channelTopic)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'activity_events' },
