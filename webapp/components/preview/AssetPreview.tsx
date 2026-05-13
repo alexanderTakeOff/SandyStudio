@@ -18,7 +18,7 @@
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import { withHardBreaks } from '@/lib/markdown-breaks';
-import { Download, FileWarning, ExternalLink, CloudOff } from 'lucide-react';
+import { Download, FileWarning, ExternalLink, CloudOff, Upload, Sparkles, Loader2 } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
 import { agentDisplayName } from '@/lib/api/agent-names';
@@ -27,7 +27,7 @@ import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import { Button } from '@/components/ui/Button';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 
@@ -172,6 +172,23 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged }: AssetPr
           drivePath={asset.drive_path}
         />
       )}
+      {/* AUD-music: Director affordances — Upload own track + Re-fire MGEN.
+          Closes the regression from Phase A.2 PR γ (LT-04, 2026-05-08): after
+          MGEN moved BEFORE animatic, the only Upload button lived inside
+          AnimaticPlayer, which doesn't render until the animatic exists.
+          Director ended up in the composer preview seeing a mock track with
+          no affordance to replace it. These two buttons restore the path. */}
+      {asset.file_type.startsWith('AUD-music') && asset.status !== 'LOCKED' && (
+        <MGENActionsBlock
+          assetId={asset.id}
+          episodeId={asset.episode_id}
+          onChanged={() => {
+            void mutate();
+            onAssetChanged?.();
+          }}
+        />
+      )}
+
       {/* VGEN VID-shot: show Universal Core controls + per-shot approve/reject
           so Director can act on a shot from the activity feed Preview drawer
           and the EpisodeTimeline "Open shot →" link. Regenerate creates a NEW
@@ -333,6 +350,163 @@ function PilotApproveButtons({
           {error}
         </span>
       )}
+    </div>
+  );
+}
+
+/**
+ * MGENActionsBlock — Director affordances for AUD-music assets.
+ *
+ * Two actions:
+ *  1. Upload own .mp3 / .wav → replaces asset binary via /upload-music-direct.
+ *     Asset status stays REVIEW (or current) so Director still has to APPROVE
+ *     separately. Uploaded flag is recorded in metadata.uploaded_by_director.
+ *  2. Re-fire EXEC-MGEN → POSTs /api/episodes/[id]/trigger with EXEC-MGEN.
+ *     Current provider is mock (no Suno wired); an informational chip
+ *     advertises this.
+ *
+ * Mounted under any AUD-music asset preview that is not LOCKED.
+ *
+ * Why this exists: after the Phase A.2 audio reorg (LT-04, 2026-05-08),
+ * music gen runs BEFORE animatic, so the legacy Upload button inside
+ * AnimaticPlayer became unreachable for fresh episodes. Director observed:
+ * «зашёл в композер, зашёл в превью, вижу там ничего нет. ожидаю Загрузить
+ * или Запустить генерацию.» — these two buttons close that gap.
+ */
+function MGENActionsBlock({
+  assetId,
+  episodeId,
+  onChanged,
+}: {
+  assetId: string;
+  episodeId: string | null;
+  onChanged: () => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState<null | 'upload' | 'generate'>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleUpload(file: File): Promise<void> {
+    setBusy('upload');
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`/api/assets/${assetId}/upload-music-direct`, {
+        method: 'POST',
+        body: fd,
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Upload failed');
+      }
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleGenerate(): Promise<void> {
+    if (!episodeId) {
+      setError('No episode_id on this asset — cannot re-trigger EXEC-MGEN');
+      return;
+    }
+    setBusy('generate');
+    setError(null);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/trigger`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          agentCode: 'EXEC-MGEN',
+          reason: 'Director re-fired EXEC-MGEN from composer preview',
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Trigger failed');
+      }
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="space-y-2 pt-2 border-t border-glass">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={busy !== null}
+        >
+          {busy === 'upload' ? (
+            <>
+              <Loader2 size={12} className="animate-spin" /> Uploading…
+            </>
+          ) : (
+            <>
+              <Upload size={12} /> Upload track
+            </>
+          )}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={handleGenerate}
+          disabled={busy !== null || !episodeId}
+          title={
+            episodeId
+              ? 'Re-fire EXEC-MGEN — currently mock provider (Suno not wired)'
+              : 'No episode_id on this asset'
+          }
+        >
+          {busy === 'generate' ? (
+            <>
+              <Loader2 size={12} className="animate-spin" /> Triggering…
+            </>
+          ) : (
+            <>
+              <Sparkles size={12} /> Run generation
+            </>
+          )}
+        </Button>
+        <span
+          className="text-[10px] px-1.5 py-0.5 rounded-full uppercase tracking-wider"
+          style={{
+            background: 'color-mix(in oklab, var(--text-muted) 12%, transparent)',
+            color: 'var(--text-muted)',
+          }}
+          title="Suno / Beatoven not wired yet — generation produces mock output. Upload works fully."
+        >
+          mock
+        </span>
+      </div>
+      <p className="text-[11px] text-text-muted">
+        Upload your own .mp3 / .wav to replace the track, or re-fire generation.
+        Status stays REVIEW after upload — Approve below when ready.
+      </p>
+      {error && (
+        <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
+          {error}
+        </span>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handleUpload(f);
+          e.target.value = '';
+        }}
+      />
     </div>
   );
 }
