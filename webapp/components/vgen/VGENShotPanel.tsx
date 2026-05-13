@@ -444,7 +444,7 @@ export function VGENShotPanel({
             <span>
               Will cost ~<span className="font-mono text-text-primary">${costEstimate.toFixed(3)}</span>{' '}
               <span className="text-text-muted">
-                ({duration}s × ${QUALITY_RATE_USD_PER_SECOND[quality].toFixed(3)}/s)
+                ({duration}s × ${COST_RATE_USD_PER_SECOND[provider][quality].toFixed(4)}/s)
               </span>
             </span>
           </div>
