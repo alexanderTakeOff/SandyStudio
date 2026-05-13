@@ -128,12 +128,16 @@ async function main() {
     const body = (await submitRes.text()).slice(0, 1200);
     throw new Error(`fal submit failed (${submitRes.status}) — ${body}`);
   }
-  const submitJson = (await submitRes.json()) as QueueSubmitResponse;
+  const submitJson = (await submitRes.json()) as QueueSubmitResponse & Record<string, unknown>;
   console.log('[fal-orbit] queued:', submitJson.request_id);
+  console.log('[fal-orbit] submit keys:', Object.keys(submitJson));
+  // Surface URLs returned by fal — they're authoritative.
+  if (submitJson.status_url) console.log('[fal-orbit]   status_url:', submitJson.status_url);
+  if (submitJson.response_url) console.log('[fal-orbit]   response_url:', submitJson.response_url);
 
   const statusUrl = submitJson.status_url ?? `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}/status`;
-  const responseUrl = submitJson.response_url ?? `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}`;
 
+  let lastStatusJson: QueueStatusResponse & Record<string, unknown> = { status: 'IN_QUEUE' };
   let status: QueueStatusResponse['status'] = 'IN_QUEUE';
   while (status === 'IN_QUEUE' || status === 'IN_PROGRESS') {
     await new Promise((r) => setTimeout(r, 4000));
@@ -142,22 +146,60 @@ async function main() {
       const body = (await sres.text()).slice(0, 600);
       throw new Error(`status poll failed (${sres.status}) — ${body}`);
     }
-    const sjson = (await sres.json()) as QueueStatusResponse;
-    status = sjson.status;
-    const last = sjson.logs?.slice(-1)[0]?.message ?? '';
-    console.log(`[fal-orbit] status=${status} pos=${sjson.queue_position ?? '-'} ${last ? `· ${last.slice(0, 120)}` : ''}`);
+    lastStatusJson = (await sres.json()) as QueueStatusResponse & Record<string, unknown>;
+    status = lastStatusJson.status;
+    const last = lastStatusJson.logs?.slice(-1)[0]?.message ?? '';
+    console.log(`[fal-orbit] status=${status} pos=${lastStatusJson.queue_position ?? '-'} ${last ? `· ${last.slice(0, 120)}` : ''}`);
   }
 
   if (status !== 'COMPLETED') {
+    console.error('[fal-orbit] terminal status payload:', JSON.stringify(lastStatusJson).slice(0, 1500));
     throw new Error(`fal request terminated with status=${status}`);
   }
 
-  const fres = await fetch(responseUrl, { headers: { Authorization: `Key ${FAL_KEY}` } });
-  if (!fres.ok) {
-    const body = (await fres.text()).slice(0, 1200);
-    throw new Error(`fal result fetch failed (${fres.status}) — ${body}`);
+  // Some fal models return the full result inline in the COMPLETED status
+  // payload; others require a separate GET. Try inline first.
+  // The terminal status JSON shape varies — sometimes the result lives at
+  // .response, sometimes the top level already has video.url.
+  type AnyResult = { video?: { url?: string }; videos?: Array<{ url?: string }>; response?: Record<string, unknown>; [k: string]: unknown };
+  function extractVideoUrl(obj: AnyResult | undefined | null): string | null {
+    if (!obj) return null;
+    if (obj.video?.url) return obj.video.url;
+    if (Array.isArray(obj.videos) && obj.videos[0]?.url) return obj.videos[0]!.url!;
+    if (obj.response) return extractVideoUrl(obj.response as AnyResult);
+    return null;
   }
-  const result = (await fres.json()) as { video?: { url?: string }; [k: string]: unknown };
+
+  let result: AnyResult | null = lastStatusJson as unknown as AnyResult;
+  let videoUrl = extractVideoUrl(result);
+  console.log('[fal-orbit] inline result has video.url?', !!videoUrl);
+  console.log('[fal-orbit] status keys:', Object.keys(lastStatusJson));
+
+  if (!videoUrl) {
+    // Try a list of candidate URLs in order. fal's response_url field is
+    // authoritative when present; without it we try several known fal queue
+    // result-URL conventions.
+    const candidates = [
+      (submitJson.response_url as string | undefined) ?? null,
+      (lastStatusJson.response_url as string | undefined) ?? null,
+      statusUrl.replace(/\/status$/, ''),
+      `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}`,
+      `https://fal.run/${MODEL_ID}/requests/${submitJson.request_id}`,
+    ].filter(Boolean) as string[];
+    for (const url of candidates) {
+      console.log(`[fal-orbit] fetching result via: ${url}`);
+      const fres = await fetch(url, { headers: { Authorization: `Key ${FAL_KEY}` } });
+      if (!fres.ok) {
+        const body = (await fres.text()).slice(0, 200);
+        console.log(`[fal-orbit]   ${fres.status} ${body}`);
+        continue;
+      }
+      result = (await fres.json()) as AnyResult;
+      videoUrl = extractVideoUrl(result);
+      if (videoUrl) break;
+      console.log('[fal-orbit]   keys but no video.url:', Object.keys(result));
+    }
+  }
 
   // Result shape varies by model — typically result.video.url is a CDN URL
   // pointing to the generated mp4. Some models nest under .videos[0].url.
