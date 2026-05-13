@@ -135,12 +135,18 @@ async function main() {
   if (submitJson.status_url) console.log('[fal-orbit]   status_url:', submitJson.status_url);
   if (submitJson.response_url) console.log('[fal-orbit]   response_url:', submitJson.response_url);
 
-  // Mirror the Python fal_client SDK pattern: pass the FULL model slug to
-  // every endpoint (submit / status / result). fal's REST gateway returns
-  // status_url / response_url that are parent-truncated (e.g. strips the
-  // /image-to-video suffix), which we deliberately ignore.
-  const statusUrl = `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}/status`;
-  const resultUrl = `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}`;
+  // fal REST quirk: submit goes to the FULL slug, but status/result URLs
+  // are returned by fal as parent-truncated paths (e.g. submit to
+  // `bytedance/seedance-2.0/image-to-video`, fal returns
+  // `bytedance/seedance-2.0/requests/.../status`). The Python fal_client SDK
+  // hides this by mapping internally; in raw REST we just use what fal
+  // returns. Fallback to full-slug-built URLs only if fal didn't return them.
+  const statusUrl =
+    (submitJson.status_url as string | undefined) ??
+    `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}/status`;
+  const resultUrl =
+    (submitJson.response_url as string | undefined) ??
+    `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}`;
 
   let lastStatusJson: QueueStatusResponse & Record<string, unknown> = { status: 'IN_QUEUE' };
   let status: QueueStatusResponse['status'] = 'IN_QUEUE';
