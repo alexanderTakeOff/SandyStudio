@@ -654,6 +654,7 @@ function VideoBody({ asset }: { asset: AssetRow }) {
   }
   return (
     <video
+      key={asset.drive_path ?? 'no-src'}
       src={asset.drive_path ?? ''}
       controls
       className="w-full rounded-lg border border-glass"
