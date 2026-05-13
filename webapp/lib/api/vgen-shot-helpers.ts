@@ -480,6 +480,12 @@ export function buildShotPromptV2(
  * Also collapses double-periods into single (avoids `Unbridgeable..` in the
  * Veo prompt — a real artifact observed 2026-05-13).
  */
+function endWithPeriod(s: string): string {
+  const t = s.trim();
+  if (!t) return '';
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
 function firstSentence(input: string): string {
   const cleaned = input.replace(/\.{2,}/g, '.').trim();
   if (!cleaned) return '';
