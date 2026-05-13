@@ -150,13 +150,25 @@ function fmt(t: number): string {
 function cellPalette(
   status: string | undefined,
   kind: string | undefined,
-): { color: string; weight: number } {
+): { color: string; weight: number; glow?: string } {
   switch (status) {
     case 'APPROVED':
     case 'LOCKED':
-      return { color: 'var(--accent-success, #22c55e)', weight: 600 };
+      // 2026-05-13 — Director: "approved циферки тускло горят, верните как
+      // было". Bump weight to 700 and add a green text-shadow glow so the
+      // canonical state reads at a glance again across all theme variants
+      // (the underlying --accent-success var can be muted by some themes).
+      return {
+        color: 'var(--accent-success, #22c55e)',
+        weight: 700,
+        glow: '0 0 6px color-mix(in oklab, var(--accent-success, #22c55e) 65%, transparent)',
+      };
     case 'REVIEW':
-      return { color: 'var(--accent-warning, #f59e0b)', weight: 600 };
+      return {
+        color: 'var(--accent-warning, #f59e0b)',
+        weight: 700,
+        glow: '0 0 6px color-mix(in oklab, var(--accent-warning, #f59e0b) 55%, transparent)',
+      };
     case 'REVISION':
       return { color: 'var(--accent-orange, #f97316)', weight: 600 };
     case 'REJECTED':
