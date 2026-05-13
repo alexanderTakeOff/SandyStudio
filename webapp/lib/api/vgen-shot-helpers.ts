@@ -404,9 +404,13 @@ export function buildShotPromptV2(
   episodeTitle: string,
   characterCanon?: ReadonlyArray<CharacterCanonSnippet>,
 ): string {
-  const action = (shot.action_prose ?? shot.action ?? shot.key_beat ?? '').trim();
+  // Trim action_prose to the first clean sentence — long literary prose with
+  // metaphors like "rendered as negative space" or "Precise. Unbridgeable.."
+  // confuses Veo (it does not parse abstractions) and the unused fragments
+  // hog the token budget. Director surfaced this 2026-05-13 evening.
+  const rawAction = (shot.action_prose ?? shot.action ?? shot.key_beat ?? '').trim();
+  const action = firstSentence(rawAction);
   const camera = describeCamera(shot.camera_angle);
-  const role = describeRole(shot.shot_role);
   const gag = (shot.expected_gag ?? '').trim();
   const emotion = (shot.expected_emotion ?? '').trim();
 

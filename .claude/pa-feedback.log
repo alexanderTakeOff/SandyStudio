@@ -9507,3 +9507,39 @@ Patch:
 Следующий ход: по пайплайну E20 уже прошёл Animator; сейчас надо решить 2 Publicist metadata draft’а.
 ===== END =====
 
+===== !AMBIENT 2026-05-13T08:39:23.667Z thread=bdbdafcf episode=- =====
+2D animated comedy short, set in the world of "The Violet Distance". Reaction shot: The counter surface fills the entire frame — pale cream-white, clean, undamaged. Not a smear of violet, not a scratch. The gap between Sandy's side and Perfume Madame's side is rendered as negative space: two edges of frame, nothing in between. The distance is exact. Precise. Unbridgeable.. Camera: extreme close up. Style: Vibrant colours, smooth comedic timing, expressive 2D animation, clean line art. Avoid: on-screen text, captions, subtitles, watermarks, logos, distorted faces, extra limbs.==== это очень странный какой-то промт генерит какой-то ерунду переделайте
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:39:51.924Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: промпт для `A3-SC09-SH02` слишком абстрактный, генерит ерунду. Никаких действий в системе.
+
+Новое по E20:
+- запущен fan-out;
+- сгенерированы новые шоты;
+- ты уже approve’нул несколько;
+- последний regen: **`SS-S14-E20-A3-SC09-SH02 → v02`**, сейчас `REVIEW`.
+
+Да, этот prompt плохой для Veo: “negative space / exact / unbridgeable” — это литературная метафора, модель не понимает её как кадр. Нужен физический, видимый action.
+
+## Замена prompt для regen
+
+```text
+2D animated comedy short, clean line art, vibrant colors.
+
+Extreme close-up of a pale cream-white perfume shop counter, seen from above at a slight angle. The counter is perfectly clean and empty. No violet smear, no scratches, no objects.
+
+The shot is very still. A tiny pause for comedic tension. Only a subtle camera hold and minimal animated shimmer in the lighting.
+
+Composition: empty counter surface fills the frame. Sandy and Perfume Madame are not visible. No hands, no faces, no characters enter the shot.
+
+Camera: locked extreme close-up, no zoom, no pan.
+
+Avoid: people, hands, faces, bottles, text, captions, subtitles, watermarks, logos, violet stains, scratches, extra objects, distorted animation.
+```
+
+Ключ: не “distance between sides”, а **empty clean counter, no characters, no props, locked camera**.
+
+Следующий шаг: перегенерируй `SS-S14-E20-A3-SC09-SH02` этим prompt’ом; если опять добавит лишнее — режем сцену через static hold / still-frame вместо video motion.
+===== END =====
+
