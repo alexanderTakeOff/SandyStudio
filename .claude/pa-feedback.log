@@ -9862,3 +9862,170 @@ Patch:
 Следующий шаг: после этого фикса перезапустить `A1-SC03-SH01` один раз в `standard`, `durationSeconds=4`.
 ===== END =====
 
+===== !AMBIENT 2026-05-13T09:13:44.545Z thread=bdbdafcf episode=- =====
+Возможно  продолжительность у нас теряется на какие-то на каких-то режимах потому что счёт Номер три имеет точно 5 секунд и в этом ошибки быть не может при этом Что странно те что ты которые действительно имеют Судя по описанию длину 2 секунды спокойно генерации например шок номер семь Точнее говоря сцена пять шорт-02 он имеет продолжительность 2 секунды Судя потому что у меня написано и он сгенерированный и эбруфт
+===== END =====
+
+===== !AMBIENT 2026-05-13T09:14:23.497Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: длительность, вероятно, теряется не везде, а в отдельных режимах regen/OpenShot. Никаких действий в системе.
+
+За последние 30 минут по E20: только `VGEN single-shot triggered`, **без completed/failed**. Animator формально `approved`, но у него ещё висят 5 review-assets.
+
+Да, твоя гипотеза верная: **это не просто “шот короче 4 секунд”**.
+
+## Что, скорее всего, происходит
+
+У нас есть две разные длительности:
+
+1. **Edit duration / timeline duration**  
+   Может быть 2 сек, 5 сек, сколько угодно. Это длительность шота в монтаже.
+
+2. **Veo generation durationSeconds**  
+   Veo требует строго **4–8 сек**.
+
+Поэтому шот на 2 секунды мог нормально сгенериться так:
+
+- Veo сгенерировал 4 секунды;
+- timeline использует только первые 2 секунды / trim;
+- UI показывает шот как 2 секунды.
+
+А в сломанном OpenShot/single-shot режиме, похоже, в Veo напрямую уходит неправильное значение: `2`, `0`, `undefined`, строка, или не тот duration-field.
+
+## Почему шот №3 на 5 сек всё равно может падать
+
+Даже если в UI он точно 5 секунд, worker может брать длительность не оттуда:
+
+- не из shot timeline duration;
+- не из storyboard shot duration;
+- а из пустого поля OpenShot;
+- или из старого `asset.duration`;
+- или теряет `durationSeconds` при переходе UI → API → Inngest.
+
+В событиях это подтверждается: у single-shot metadata сейчас нет ни `duration_seconds`, ни `quality_tier`.
+
+## Правильный фикс
+
+Нужно разделить поля:
+
+```ts
+editDurationSeconds = shot.durationSeconds // может быть 2, 5, 9 и т.д.
+
+veoDurationSeconds = clamp(
+  input.durationSeconds ?? editDurationSeconds ?? 4,
+  4,
+  8
+)
+```
+
+И для коротких шотов:
+
+```ts
+if (editDurationSeconds < 4) {
+  veoDurationSeconds = 4
+  trimToSeconds = editDurationSeconds
+}
+```
+
+То есть **2-секундный шот не должен запрещать генерацию**. Он должен генериться как 4 секунды и триммиться в timeline.
+
+## Точный task для Claude
+
+```markdown
+Fix duration handling for VGEN single-shot / OpenShot.
+
+Problem:
+Veo requires durationSeconds between 4 and 8 inclusive.
+
+But SandyStudio shots have two different durations:
+1. edit/timeline duration — can be 2s, 5s, etc.
+2. Veo generation durationSeconds — must be 4..8.
+
+Observed:
+- Some 2-second shots are already generated and approved, so the main fan-out path likely clamps/pads to 4s and timeline trims.
+- OpenShot/single-shot regen fails with:
+  "The number value for `durationSeconds` is out of bound. Please provide a value between 4 and 8, inclusive."
+- For failed single-shot events, metadata lacks:
+  - duration_seconds
+  - quality_tier
+- Example failing shot:
+  SS-S14-E20-A1-SC03-SH01
+  UI/timeline says it is 5 seconds, so the backend is probably reading the wrong duration source or losing the value.
+
+Patch:
+1. Audit duration flow:
+   - OpenShot UI
+   - Timeline regenerate button
+   - API route
+   - Inngest VGEN single-shot handler
+   - Veo request builder
+2. Separate:
+   - editDurationSeconds: actual shot duration in timeline
+   - veoDurationSeconds: clamped generation duration, always 4..8
+3. Logic:
+   - if editDurationSeconds < 4, send durationSeconds=4 to Veo and store trimToSeconds=editDurationSeconds
+   - if editDurationSeconds between 4 and 8, send same value
+   - if editDurationSeconds > 8, send 8 or split shot, but do not send >8 to Veo
+   - if missing/invalid, default to 4 and log warning
+4. Persist event metadata:
+   - edit_duration_seconds
+   - veo_duration_seconds
+   - trim_to_seconds
+   - quality_tier
+5. On Veo validation error, emit agent_failed with exact error.
+6. UI should show failed state and Retry button, not silent no-op.
+```
+
+Следующий ход: чинить именно **duration normalization в single-shot/OpenShot path**, не сам shot timing.
+===== END =====
+
+===== !AMBIENT 2026-05-13T09:17:21.820Z thread=bdbdafcf episode=- =====
+после того как я тыкаю кнопочку регенерировать в данном случае Shot номер три используем это сцена три шорт один начинает крутиться колёсико на кнопочки генерировать стандартную качестве и буквально через секунду меня перебрасывают снова на таймлайны на таймлайн это так и должно быть или это признать
+===== END =====
+
+===== !AMBIENT 2026-05-13T09:17:38.596Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: после нажатия Regenerate на `A1-SC03-SH01` крутилка появляется на секунду и UI возвращает на Episode Timeline. Никаких действий в системе.
+
+Коротко: **это не нормальное production-поведение**. Признаём баг UX/flow.
+
+Нормально должно быть так:
+- остаёшься в OpenShot или видишь явный toast/status;
+- shot получает состояние **Generating**;
+- на Timeline цифра/карточка показывает pending/running;
+- при ошибке показывается failure с текстом;
+- при успехе появляется новый video draft.
+
+То, что тебя через секунду выбрасывает на Timeline, допустимо только если это осознанный “submit and return”, но тогда **Timeline обязан показывать running state**. Сейчас он, судя по описанию, не показывает — значит баг.
+
+Ещё: я попытался прочитать эпизод как `SS-S14-E20`, но поиск не нашёл match, а active episode в tool-context не выставлен. Поэтому текущую базу по E20 сейчас не подтвердил.
+
+Task для Claude:
+
+```markdown
+Fix OpenShot regenerate UX after submit.
+
+Symptom:
+Director clicks Regenerate for shot SS-S14-E20-A1-SC03-SH01 in Standard quality.
+Button spinner appears for ~1 second, then UI navigates back to Episode Timeline.
+Timeline does not clearly show the shot as generating/running, and no success/failure feedback is visible.
+
+Expected behavior:
+Either:
+A) stay in OpenShot and show generation state until accepted by backend,
+or
+B) return to Timeline only if the shot tile immediately shows "Generating" / spinner / running badge.
+
+Patch:
+1. Inspect OpenShot regenerate submit handler.
+2. Identify whether it intentionally router.pushes back to timeline after event enqueue.
+3. If yes, add clear Timeline running state for that shot.
+4. If no, prevent accidental navigation/route reset.
+5. Show toast:
+   - "Generation queued: Standard, 4s"
+   - or exact error if request rejected.
+6. Persist/emit job state so Timeline can render running/failed/completed.
+7. Ensure failed Veo validation emits agent_failed and appears in UI.
+```
+
+Следующий шаг: считать это багом UI/job-state, не ошибкой пользователя.
+===== END =====
+

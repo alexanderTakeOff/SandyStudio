@@ -799,13 +799,26 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       if (isRealVeo) {
         if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
 
+        // Veo 3.1 image-to-video constraint (Google docs, confirmed 2026-05-13):
+        //   `veo-3.1-generate-preview` (Standard) with a reference/subject
+        //   image returns ONLY 8-second clips. Sending 4/5/6 yields HTTP 400
+        //   "durationSeconds out of bound" — Google's error message claims
+        //   [4, 8] but for img2vid Standard the real allowed set is {8}.
+        //   Fast (`veo-3.1-fast-generate-preview`) appears to accept 4-6-8;
+        //   keep the storyboard value for Fast and force 8 for Standard
+        //   when a reference image is attached.
+        const hasReferenceImage = Boolean(referenceImageBase64);
+        const veoDuration =
+          hasReferenceImage && effectiveQuality === 'standard'
+            ? 8
+            : finalDuration;
         // eslint-disable-next-line no-console
         console.info(
-          `[exec-vgen] shot=${shotId} → Veo durationSeconds=${finalDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}), aspect=${effectiveAspect}, quality=${effectiveQuality}`,
+          `[exec-vgen] shot=${shotId} → Veo durationSeconds=${veoDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, clamped=${veoDuration !== finalDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}`,
         );
         const real = await generateVideoVeoGemini({
           prompt,
-          durationSeconds: finalDuration,
+          durationSeconds: veoDuration,
           aspectRatio: effectiveAspect,
           quality: effectiveQuality,
           ...(referenceImageBase64
