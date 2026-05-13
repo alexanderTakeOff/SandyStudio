@@ -27,11 +27,13 @@ describe('buildShotPromptV2 — structure', () => {
     expect(prompt.startsWith('[')).toBe(false);
   });
 
-  it('mentions the episode title as setting flavour, not as a label', () => {
+  it('does NOT quote the episode title (avoids on-screen text rendering)', () => {
+    // Director report 2026-05-13: Veo rendered `"Red Carpet"` quoted text
+    // as an actual on-screen title card. The title is now dropped from the
+    // prompt body entirely — the EREF carries setting context.
     const prompt = buildShotPromptV2(baseShot, 'Red Carpet');
-    expect(prompt).toContain('"Red Carpet"');
-    // Should not contain the literal label `title:` or similar that risks
-    // showing up as on-screen text.
+    expect(prompt).not.toContain('"Red Carpet"');
+    expect(prompt).not.toContain('set in the world of');
     expect(prompt.toLowerCase()).not.toContain('title:');
   });
 
