@@ -671,8 +671,15 @@ function AudioBody({ asset }: { asset: AssetRow }) {
       />
     );
   }
+  // `key={drive_path}` forces React to unmount + remount the <audio> element
+  // when the URL changes (e.g. after Director uploads a replacement track via
+  // /upload-music-direct). Without the key, React reuses the same DOM node
+  // and the browser audio engine keeps streaming the previously-buffered
+  // file — Director sees "version did not change" even though the asset row
+  // updated. 2026-05-13 evening regression report.
   return (
     <audio
+      key={asset.drive_path ?? 'no-src'}
       src={asset.drive_path ?? ''}
       controls
       className="w-full"
