@@ -15,7 +15,9 @@ import type { Database } from '../supabase/types.gen';
 
 export type VgenAspectRatio = '16:9' | '9:16' | '1:1';
 export type VgenQualityTier = 'fast' | 'standard';
-export type VgenProviderId = 'veo-3-img2vid';
+// Phase 2 (2026-05-13): widened to include Seedance 2.0 via fal.ai. Director
+// directive: new default is Seedance Fast; Veo remains available via dropdown.
+export type VgenProviderId = 'veo-3-img2vid' | 'seedance-fal-img2vid';
 
 export interface VgenDefaults {
   aspect_ratio: VgenAspectRatio;
@@ -28,7 +30,7 @@ const KEY_PREFIX = 'vgen_defaults:';
 const FALLBACK_DEFAULTS: VgenDefaults = {
   aspect_ratio: '16:9',
   quality_tier: 'fast',
-  provider_id: 'veo-3-img2vid',
+  provider_id: 'seedance-fal-img2vid',
 };
 
 function isAspect(v: unknown): v is VgenAspectRatio {
@@ -40,7 +42,7 @@ function isQuality(v: unknown): v is VgenQualityTier {
 }
 
 function isProviderId(v: unknown): v is VgenProviderId {
-  return v === 'veo-3-img2vid';
+  return v === 'veo-3-img2vid' || v === 'seedance-fal-img2vid';
 }
 
 /**
