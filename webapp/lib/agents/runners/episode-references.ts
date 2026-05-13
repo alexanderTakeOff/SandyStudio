@@ -774,6 +774,31 @@ export async function runEpisodeReferences(
     jobs = allJobs;
   }
 
+  // ── Skip shots that already have an APPROVED IMG-episode_ref ──────────────
+  // Idempotency: re-running EREF after a partial fanout should top up only the
+  // missing/rejected/in-review shots, not regenerate already-approved frames
+  // (and waste gpt-image-1 quota). 2026-05-13 — surfaced when E20 ended pilot
+  // pass + fanout with 16/19 covered and Director needed the remaining 3.
+  const { data: alreadyApprovedRefs } = await supabase
+    .from('assets')
+    .select('metadata')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'IMG-episode_ref%')
+    .eq('status', 'APPROVED');
+  const approvedShotIds = new Set<string>();
+  for (const row of (alreadyApprovedRefs ?? []) as Array<{ metadata?: unknown }>) {
+    const sid = (row.metadata as { shot_reference?: { shot_id?: string } } | null)?.shot_reference?.shot_id;
+    if (typeof sid === 'string') approvedShotIds.add(sid);
+  }
+  const beforeSkip = jobs.length;
+  jobs = jobs.filter((j) => !approvedShotIds.has(j.shot.shot_id));
+  if (jobs.length < beforeSkip) {
+    // eslint-disable-next-line no-console
+    console.info(
+      `[eref] skipping ${beforeSkip - jobs.length} shot(s) with an APPROVED ref already in DB`,
+    );
+  }
+
   // ── Find next version starting point per file_type ────────────────────────
   const { data: existingRefs } = await supabase
     .from('assets')
