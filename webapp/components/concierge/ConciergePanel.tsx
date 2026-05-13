@@ -235,6 +235,12 @@ export function ConciergePanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, streaming]);
 
+  // Realtime push: subscribe to public.activity_events INSERTs and inject
+  // each meaningful pipeline event into PA's thread as a `system` turn so
+  // her next reply is event-aware without explicit prompting from Director.
+  // (Director directive 2026-05-13 — replaces the pull-only model.)
+  useActivityRealtime(threadId);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const text = input.trim();
