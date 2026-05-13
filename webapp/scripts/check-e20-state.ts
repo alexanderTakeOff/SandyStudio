@@ -91,6 +91,38 @@ if (extra.length > 0) {
   for (const x of extra) console.log(`    - ${x}`);
 }
 
+// VID-shot coverage breakdown
+const { data: vids } = await sb
+  .from('assets')
+  .select('id,filename,status,version,metadata,created_at')
+  .eq('episode_id', EP)
+  .like('file_type', 'VID-shot%')
+  .order('created_at', { ascending: false });
+console.log(`\n--- VID-shot assets (${vids?.length ?? 0}) ---`);
+const vidByShot = new Map<string, Array<{ status: string; version: number | null; filename: string; created_at: string }>>();
+for (const v of vids ?? []) {
+  const sid = (v.metadata as { shot_id?: string } | null)?.shot_id ?? '?';
+  const arr = vidByShot.get(sid) ?? [];
+  arr.push({ status: v.status, version: v.version ?? 0, filename: v.filename, created_at: v.created_at });
+  vidByShot.set(sid, arr);
+}
+const vidApproved = new Set<string>();
+const vidReview = new Set<string>();
+const vidOther = new Set<string>();
+for (const [sid, rows] of vidByShot) {
+  rows.sort((a, b) => (b.version - a.version) || b.created_at.localeCompare(a.created_at));
+  const latest = rows[0]!;
+  if (latest.status === 'APPROVED' || latest.status === 'LOCKED') vidApproved.add(sid);
+  else if (latest.status === 'REVIEW') vidReview.add(sid);
+  else vidOther.add(sid);
+}
+const vidMissingShots = storyboardShotIds.filter((sid) => !vidByShot.has(sid));
+console.log(`  APPROVED VID-shot shot_ids: ${vidApproved.size}`);
+console.log(`  REVIEW VID-shot shot_ids:   ${vidReview.size}`);
+console.log(`  Other status (DRAFT/REJECTED/REVISION): ${vidOther.size}`);
+console.log(`  MISSING (no VID-shot row at all): ${vidMissingShots.length}`);
+for (const m of vidMissingShots) console.log(`    - ${m}`);
+
 console.log(`\n--- IMG-episode_ref assets (${erefs?.length ?? 0}) ---`);
 for (const e of erefs ?? []) {
   const m = e.metadata as Record<string, unknown> | null;
