@@ -279,6 +279,24 @@ export function VGENShotPanel({
 
       {/* ── Universal Core controls — 2 columns ─────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Provider */}
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-wider text-text-muted">Provider</span>
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as VgenProvider)}
+            disabled={disabled}
+            aria-label="Video provider"
+            className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
+          >
+            {PROVIDER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label} — {opt.sub}
+              </option>
+            ))}
+          </select>
+        </label>
+
         {/* Aspect ratio */}
         <label className="block">
           <span className="text-[10px] uppercase tracking-wider text-text-muted">Aspect ratio</span>
