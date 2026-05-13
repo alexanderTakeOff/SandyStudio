@@ -9780,3 +9780,8 @@ Please inspect:
 Следующий шаг: не нажимай этот shot ещё раз — уже 4 старта висят без результата. Нужно сначала чинить single-shot worker / payload.
 ===== END =====
 
+===== !AMBIENT 2026-05-13T09:06:37.342Z thread=bdbdafcf episode=- =====
+"The number value for `durationSeconds` is out of bound.
+Please provide a value between 4 and 8, inclusive."
+===== END =====
+

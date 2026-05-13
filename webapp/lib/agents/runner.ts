@@ -759,8 +759,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       }
 
       const finalDuration = (() => {
+        // Veo rejects fractional or out-of-range durations with HTTP 400
+        // ("between 4 and 8, inclusive"). Always round AND clamp on every
+        // branch — earlier the explicit-arg branch skipped Math.round,
+        // letting a 3.x or 5.5 leak through and crash the call.
+        // Surfaced 2026-05-13 evening on E20 single-shot regen.
         if (typeof durationSeconds === 'number' && durationSeconds > 0) {
-          return Math.min(8, Math.max(4, durationSeconds));
+          return Math.min(8, Math.max(4, Math.round(durationSeconds)));
         }
         if (resolvedDurationSeconds !== null) {
           return Math.min(8, Math.max(4, Math.round(resolvedDurationSeconds)));
