@@ -25,6 +25,7 @@ import {
   type QualityTier,
   type VGENShotPanelSettings,
   type VGENShotPanelStoryboardShot,
+  type VgenProvider,
 } from './VGENShotPanel';
 
 interface VidShotMetadataLoose {
@@ -36,7 +37,12 @@ interface VidShotMetadataLoose {
   reference_eref_asset_id?: string;
   reference_asset_id?: string;
   prompt?: string;
-  vgen_settings?: Partial<VGENShotPanelSettings> & { reference_eref_asset_id?: string };
+  /** Phase 2 — provider id stamped by runner / regenerate-video. */
+  provider_id?: string;
+  vgen_settings?: Partial<VGENShotPanelSettings> & {
+    reference_eref_asset_id?: string;
+    provider_id?: string;
+  };
 }
 
 export interface VGENShotSectionProps {
