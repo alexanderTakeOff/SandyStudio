@@ -29,6 +29,27 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
              ✅ Docs: CLAUDE.md slim 604→347, technology.md §3.5 (shot rhythm/gag density) + §7 (handoff protocol)
              ⏳ Phase D (Character Identity Model) — schema articulated by PA + Director (16:03), spec captured in observations. Migration 0026 + UI + backfill ~3-7 days. Awaiting Director green-light.
 
+          ✅ **2026-05-13 evening — E20 partial close + VGEN/STITCH fix pack (10+ patches)**
+             Pipeline закрыт partial **17/19 shots** — Veo quota exhausted на SC11. Animatic trimmed 19→17 (60s→54s) via `webapp/scripts/trim-e20-animatic-sc11.ts`. STITCH executed: first 32s (music truncated через `-shortest`), потом 96s (concat actual mp4 durations).
+
+             FIXES:
+             - `regenerate-video/route.ts` forwards `vgen_pilot` metadata — Approve "1/2" bug closed
+             - `AssetPreview.tsx`: `<audio/video key={drive_path}>` — browser cache не держит старый stream после Replace
+             - `AnimaticPlayer.tsx`: pills solid `var(--accent-success)` + glow + weight 700 + textShadow — Director "тускло-зелёные" closed
+             - `buildShotPromptV2`: firstSentence truncate, drop role label / quoted title / Beat:/Mood:, add 16:9, endWithPeriod helper. Tests rewritten 23 passing
+             - `runner.ts EXEC-VGEN`: `Math.round` все 3 ветки duration; `forced 8s для Standard + img2vid` (Veo 3.1 docs); console.info debug log
+             - `veo-gemini.ts`: surface full Veo body в error message — bare 4xx больше не молчит
+             - `ffmpeg-stitch.ts`: `-stream_loop -1` music — short music больше не truncate'ит video. Tests 10 passing
+             - `EpisodeTimelineSection.tsx`: two-button **Generate · Fast / Standard** footer + passes `quality_tier` — обход Fast 429 quota через Standard bucket
+             - `lib/supabase/client.ts` singleton + `useActivityRealtime.ts` channel dedupe — closes WebSocket leak that turned next-dev в 2-5GB zombie
+             - Migration **0027 applied** — `activity_events_authenticated_select` SELECT policy for `authenticated`. Realtime push был silent из-за RLS блок на anon channel
+             - `scripts/backfill-pa-ambient.ts` — persist 21+2 ambient system turns retroactively when Realtime missed events
+
+             E20 final cut: 96s (concat actual VID-shot durations). q1 = trim per-shot к animatic shot_list timing (54s correct).
+             OPEN BUG: Realtime push still 0 POSTs to /api/concierge/ambient — browser hook не fires. Workaround: backfill script. q2 = Postgres trigger.
+
+             Verify final 17:28 UTC: tsc clean · vitest **185/185** · replay-pilot **29/29**.
+
           ✅ **2026-05-13 10:00 UTC — Realtime push для PA + EREF skip-if-approved + 19/19 coverage**
              Director directive: PA должна узнавать о pipeline events мгновенно, не pull-only. Phase 10A.0 item B shipped.
              Migration `0026_realtime_publish_activity_events.sql` (NEEDS MANUAL APPLY — `apply_migration` MCP denied permissions): `ALTER PUBLICATION supabase_realtime ADD TABLE public.activity_events` + `REPLICA IDENTITY FULL`.
