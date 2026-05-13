@@ -799,6 +799,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       if (isRealVeo) {
         if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
 
+        // eslint-disable-next-line no-console
+        console.info(
+          `[exec-vgen] shot=${shotId} → Veo durationSeconds=${finalDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}), aspect=${effectiveAspect}, quality=${effectiveQuality}`,
+        );
         const real = await generateVideoVeoGemini({
           prompt,
           durationSeconds: finalDuration,

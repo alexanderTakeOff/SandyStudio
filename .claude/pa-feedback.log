@@ -9785,3 +9785,80 @@ Please inspect:
 Please provide a value between 4 and 8, inclusive."
 ===== END =====
 
+===== !AMBIENT 2026-05-13T09:07:06.084Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: ошибка Veo `durationSeconds` вне диапазона. Никаких действий в системе.
+
+Нашёл причину. Это **не quota**.
+
+## Факт
+
+Veo возвращает:
+
+```text
+The number value for durationSeconds is out of bound.
+Please provide a value between 4 and 8, inclusive.
+```
+
+А успешные regen’ы у нас были с:
+
+```json
+duration_seconds: 4
+quality_tier: "standard"
+```
+
+## Что сломано
+
+Для **single-shot generation** payload, похоже, уходит:
+- без `quality_tier`;
+- и с неправильным `durationSeconds` — вероятно `0`, `undefined`, `null`, или значение из UI вне диапазона.
+
+Поэтому worker стартует, но не создаёт asset.
+
+## Короткий фикс
+
+В backend для VGEN single-shot нужно жёстко нормализовать:
+
+```ts
+durationSeconds = clamp(input.durationSeconds ?? 4, 4, 8)
+qualityTier = input.qualityTier ?? "standard"
+```
+
+И обязательно писать `agent_failed`, если Veo вернул такую ошибку.
+
+## Claude task
+
+```markdown
+Fix VGEN single-shot durationSeconds validation.
+
+Error from Veo:
+"The number value for `durationSeconds` is out of bound.
+Please provide a value between 4 and 8, inclusive."
+
+Episode: SS-S14-E20
+Shot: SS-S14-E20-A1-SC03-SH01
+
+Observed:
+- OpenShot single-shot generation creates agent_started events.
+- No agent_completed / agent_failed / asset_updated.
+- Event metadata lacks quality_tier.
+- Successful regenerate events include:
+  duration_seconds: 4
+  quality_tier: "standard"
+
+Patch:
+1. In OpenShot/Timeline single-shot generate payload, include:
+   - durationSeconds: 4 default
+   - qualityTier: selected tier or "standard"
+2. In API/backend, validate:
+   - durationSeconds must be integer 4..8
+   - if missing/invalid, default to 4
+3. Map snake/camel consistently:
+   - UI/API: durationSeconds
+   - event metadata: duration_seconds
+4. On Veo validation error, emit agent_failed with the exact error message.
+5. UI should show failed state and Retry button.
+```
+
+Следующий шаг: после этого фикса перезапустить `A1-SC03-SH01` один раз в `standard`, `durationSeconds=4`.
+===== END =====
+
