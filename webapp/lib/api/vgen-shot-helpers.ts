@@ -457,11 +457,13 @@ export function buildShotPromptV2(
   if (canonPhrase) segments.push(canonPhrase);
   segments.push(`Camera: ${camera}.`);
   // Beat/Mood are absorbed into the EREF + action sentence — adding them as
-  // separate labels invited the model to treat them as on-screen annotation
-  // (e.g. printing "Beat:" or "Mood:"). Re-enable only if a future eval
-  // shows they're load-bearing.
-  if (gag) segments.push(gag);
-  if (emotion) segments.push(emotion);
+  // separate `Beat:` / `Mood:` labels invited Veo to treat them as on-screen
+  // annotation (the model printed "Beat:" text in a couple of pilots).
+  // Keep the substance but drop the label so the model reads it as flow.
+  // Each fragment is normalised to end with a period so neighbouring segments
+  // don't run together when joined with a space.
+  if (gag) segments.push(endWithPeriod(gag));
+  if (emotion) segments.push(endWithPeriod(emotion));
   // Force native 16:9 composition so the model doesn't anchor on the
   // square EREF crop and then "expand" mid-shot (Director report
   // 2026-05-13: square-inside-wide-canvas artifact).
