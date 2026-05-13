@@ -45,6 +45,10 @@ const Body = z.object({
   quality_tier: z.enum(['fast', 'standard']).optional(),
   duration_seconds: z.number().min(4).max(8).optional(),
   reference_asset_id: z.string().uuid().nullable().optional(),
+  // Phase 2 (2026-05-13): explicit provider override per UI dropdown choice.
+  // Fallback chain: body override → asset metadata.provider_id → series default
+  // (app_config.vgen_defaults.<series>) → FALLBACK_DEFAULTS.provider_id.
+  provider: z.enum(['veo-3-img2vid', 'seedance-fal-img2vid']).optional(),
   directorConfirm: z.boolean().optional(),
 });
 
