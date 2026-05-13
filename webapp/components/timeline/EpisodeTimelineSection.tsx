@@ -394,6 +394,23 @@ export function EpisodeTimelineSection({
                   {genError}
                 </span>
               )}
+              {/* Phase 2 (2026-05-13) — provider dropdown. Default Seedance 2.0
+                  per Director directive: significantly better motion / camera
+                  control over Veo 3.1 (probe 2026-05-13 dance + 360° orbit).
+                  Quality tier stays in the button label below. */}
+              <select
+                value={genProvider}
+                onChange={(e) =>
+                  setGenProvider(e.target.value as 'seedance-fal-img2vid' | 'veo-3-img2vid')
+                }
+                disabled={genBusy}
+                aria-label="Video provider"
+                title="Video generation provider"
+                className="px-2 py-1.5 rounded-md text-[12px] bg-[var(--bg-elevated)] border border-glass text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
+              >
+                <option value="seedance-fal-img2vid">Seedance 2.0</option>
+                <option value="veo-3-img2vid">Veo 3.1</option>
+              </select>
               {/* Two quality tiers — Fast (cheaper, hits the same Veo
                   quota that overloads first) and Standard (separate quota
                   bucket, costs ~2× but reliably bypasses 429s when Fast is
