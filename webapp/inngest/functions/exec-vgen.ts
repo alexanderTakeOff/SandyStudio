@@ -143,11 +143,18 @@ export const execVgenStart = inngest.createFunction(
           agentId: 'EXEC-VGEN',
           episodeId,
         });
+        // Phase 2 (2026-05-13): per-event provider override takes precedence
+        // over global `provider_assignments.character_video` row, so the UI
+        // dropdown choice is honored even if the global default disagrees.
         let provider;
-        try {
-          provider = await resolveProvider(supabase, 'character_video');
-        } catch {
-          provider = undefined;
+        if (data.provider) {
+          provider = syntheticResolvedProvider(data.provider);
+        } else {
+          try {
+            provider = await resolveProvider(supabase, 'character_video');
+          } catch {
+            provider = undefined;
+          }
         }
         const ep = inputs.episode as { episode_code?: string };
         return runAgent({
@@ -421,11 +428,18 @@ export const execVgenSingleShot = inngest.createFunction(
           agentId: 'EXEC-VGEN',
           episodeId,
         });
+        // Phase 2 (2026-05-13): per-event provider override takes precedence
+        // over global `provider_assignments.character_video` row, so the UI
+        // dropdown choice is honored even if the global default disagrees.
         let provider;
-        try {
-          provider = await resolveProvider(supabase, 'character_video');
-        } catch {
-          provider = undefined;
+        if (data.provider) {
+          provider = syntheticResolvedProvider(data.provider);
+        } else {
+          try {
+            provider = await resolveProvider(supabase, 'character_video');
+          } catch {
+            provider = undefined;
+          }
         }
         const ep = inputs.episode as { episode_code?: string };
         return runAgent({
