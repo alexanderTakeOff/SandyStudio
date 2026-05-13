@@ -37,23 +37,14 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
              NEW prompt block `PIPELINE_EVENTS_SINCE_LAST_REPLY` в system-prompt-builder.ts — лифтит system role turns в LLM context, окно "since last assistant reply", cap 8 most recent.
              EREF runner: skip-if-already-approved (loop iterates only shots без APPROVED ref) — re-run idempotent + topup-only. E20 теперь **19/19 coverage** (16 ранее + 3 missing закрыты PA/Director через UI пока я работал на Realtime).
              Verify: tsc clean · vitest **182/182** (+9 new ambient-events tests) · replay-pilot 29/29.
-=======
-          ✅ Mode 2.5 Phase 1-A + 1-B + Phase A COMPLETE — PR #23 merged 2026-05-11 (8fa5c00)
-             — Prod Assistant + concierge_threads + TTS + 13 tools + verbal approval + gpt-5.5 + BEHAVIOR_CONTRACT
-             — Details in PR #23 description; Phase B (Skill Editor / Learning Loop) design ready, impl deferred
 
-          ✅ Composer upload regression fix (today, this session) — closes Director's report «зашёл в композер, вижу мок, нет кнопок»
+          ✅ **2026-05-13 — Composer upload regression fix (sibling worktree, commit `2d72849` merged in)** — closes Director's report «зашёл в композер, вижу мок, нет кнопок»
              — NEW route `/api/assets/[id]/upload-music-direct` writes binary to AUD-music asset
-             — `AssetPreview.tsx` now renders `MGENActionsBlock` for AUD-music (not LOCKED):
+             — `AssetPreview.tsx` renders `MGENActionsBlock` for AUD-music (not LOCKED):
                • 🎵 Upload track — file picker .mp3/.wav, 20MB, → upload-music-direct
                • ✨ Run generation — re-fires EXEC-MGEN, «mock» chip (Suno not wired)
              — Status stays REVIEW after upload (Director still approves explicitly)
-
-Next:     1. Director smoke #2 — Audio reorg on new episode (plan: webapp/docs/smoke-tests/audio-reorg-smoke.md), now unblocked
-          2. Phase 1.5 backlog — variants_per_generation (LT-07), vgen_defaults UI, buildShotPromptV2 (LT-14)
-          3. UI cleanup LT-10..13 (scalable timeline 60+, episode page noise, foldable Activity Feed)
-          4. Mode 2.5 Phase B (Skill Editor) when Director ready
->>>>>>> origin/master
+             — Director smoke #2 (Audio reorg on new episode, `webapp/docs/smoke-tests/audio-reorg-smoke.md`) now unblocked
 
           ✅ **2026-05-12 19:25 UTC — EREF prompt builder fix + Spatial Coverage Manifest (q3a)**
              Director через PA (18:58) surfaced: EREF `image_prompt` шаблон игнорирует `camera_angle` / `camera_movement` / `camera_motivation` / location `sub_area` — все 19 shots коллапсируют на одну flat location plate, storyboard spatial intent теряется на gpt-image-1 шаге.
