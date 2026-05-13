@@ -8947,3 +8947,207 @@ Correct behavior:
 Следующий шаг у нас остаётся тот же: разобраться с Composer upload/replace UI, потому что это текущий настоящий gate.
 ===== END =====
 
+===== !AMBIENT 2026-05-13T07:03:17.507Z thread=bdbdafcf episode=- =====
+Ну вот смотрите у нас появился композитор я туда загрузил файл который я до этого сгенерировал плохо что на превью нет кнопки для утверждения и приходится возвращаться опять композитор заходите бабы там нажимать кнопку утвердить это нужно будет починить по ходу Вот Но самое главное что о том что произошло я вижу что опять правда ассистент не знает что позитивно то есть из хорошего после того как я утвердил результаты композитора автоматически произошёл переход в Египта как он сейчас называется Хотя раньше назывался аниматик и меня честно говоря аниматик больше нравилась А потом когда я утвердился скопом в аниматике перешло в аниматора Хотя видео генератор мне название нравится больше ну и в общем сейчас идёт процесс Я так понимаю автоматически генерации И вот уже сгенерировался пилотный кадр и Честно говоря я вообще в шоке там какая-то чушь сгенерировалась можете посмотреть Сэнди почему-то раздваивается прилавок тоже раздваивается а Мадам парфюм почему-то выглядит в человеческом облике на наговорил я много Поэтому постарайтесь не растерять задачи точка
+===== END =====
+
+===== !AMBIENT 2026-05-13T07:04:08.000Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: зафиксировал весь пакет замечаний: preview approve button, stage naming, auto-transition Composer → Editor/Animatic → Animator, и плохой VGEN pilot. Никаких действий по логу.
+
+## Сначала — что произошло в pipeline
+
+За последние события по E20:
+
+1. **Composer**
+   - Composer сгенерировал/имел mock.
+   - Вы загрузили свой файл:
+     - `Flacon Pop Loop (1).mp3`
+     - asset: `SS-S14-E20-AUD-music-v01-DRAFT.wav`
+   - После этого были approved оба music assets:
+     - uploaded music
+     - old/main mock music
+   - Это открыло следующий gate.
+
+2. **Editor / Animatic**
+   - Editor автоматически стартовал.
+   - Создал:
+     - `SS-S14-E20-VID-animatic-v01-DRAFT.md`
+   - Вы утвердили animatic.
+   - После этого автоматически перешло к Animator.
+
+3. **Animator / Video Generator**
+   - Сейчас сгенерированы 2 pilot video shots:
+     - `SC01-SH01`
+     - `SC02-SH01`
+   - Оба в `REVIEW`.
+   - Текущий gate: **Animator approval**, 2 pending video assets.
+
+## По плохому pilot video
+
+Ваше описание я считаю **blocking**:
+
+### Blocking
+- Sandy раздваивается.
+- Прилавок раздваивается.
+- Perfume Madame уходит в человеческий облик.
+- Значит pilot **не держит object-character canon** и spatial continuity.
+
+### Important
+- Video prompt оказался слишком слабым по сравнению с reference prompt.
+- Для `SC02-SH01` в video prompt есть только:
+  - “Perfume Madame”
+  - “# PERFUME MADAME”
+  - общие слова про faceted violet planes / atomiser
+- Но нет жёсткого блока из reference prompt:
+  - “must look like elegant bottle, not humanoid”
+  - “sharp faceted trapezoid purple bottle body”
+  - “no soft humanoid body”
+  - “no extra characters / no double Sandy”
+- То есть video generation не наследует достаточно строго те constraints, которые мы руками добивали на reference stage.
+
+### Minor / UX
+- Название **Editor** технически корректно, но для Director-facing UI лучше **Animatic**.
+- Название **Animator** тоже индустриально нормальное, но вам понятнее **Video Generator**. Я бы в UI показывал:
+  - internal role: Animator
+  - panel label: Video Generator
+- На preview карточке music/video должен быть approve/revision CTA. Нельзя заставлять возвращаться в stage panel/kebab.
+
+## Что надо дать Claude как задачи
+
+```text
+1. Fix preview approval UX:
+   Any asset preview/detail page for REVIEW assets must show Approve / Request Revision / Reject controls.
+   Director should not need to go back to Composer/Animator stage kebab.
+
+2. Restore Director-facing stage labels:
+   - Editor stage should display as “Animatic” or “Editor / Animatic”.
+   - Animator stage should display as “Video Generator” or “Animator / Video Generator”.
+   Keep internal agent names unchanged.
+
+3. Fix VGEN prompt inheritance:
+   Video Generator must inherit the approved reference frame’s final prompt and hard negative constraints, not only storyboard text.
+   For character shots, include explicit object-canon constraints:
+   - Sandy must remain single anthropomorphic hourglass.
+   - Perfume Madame must remain angular purple perfume-bottle character.
+   - no humanoid woman, no human face/body, no duplicate Sandy, no duplicated counter, no extra characters.
+   Use approved EREF image as visual source and preserve composition.
+
+4. Add pilot review gate:
+   If pilot video violates character identity or duplicates key objects, block fan-out.
+   Do not continue full video generation from failed pilot.
+```
+
+## Готовый revision note для двух pilot videos
+
+```text
+Blocking revision.
+
+The pilot video does not preserve approved reference/canon.
+Problems:
+- Sandy duplicates / appears split.
+- Perfume counter duplicates / spatial layout breaks.
+- Perfume Madame turns into a humanoid/human-like character instead of remaining an angular purple perfume-bottle object character.
+- Object-character canon is not preserved from the approved reference frame.
+
+Regenerate using the approved EREF image as strict visual anchor.
+Carry over the final approved reference prompt and negative constraints into VGEN.
+Hard constraints:
+- exactly one Sandy;
+- Sandy remains canonical anthropomorphic hourglass;
+- exactly one perfume counter;
+- Perfume Madame remains a faceted purple perfume bottle, not a human/humanoid woman;
+- preserve 2D flat object-plate style;
+- no extra characters, no duplicated bodies, no duplicated props/counter.
+```
+
+Один вопрос: **одобряете отправить оба pilot videos (`SC01-SH01` и `SC02-SH01`) на revision с этим blocking note и остановить дальнейший video fan-out до исправленного pilot pass?**
+===== END =====
+
+===== !AMBIENT 2026-05-13T07:10:13.841Z thread=bdbdafcf episode=- =====
+Ну вот смотрите у нас когда генерировались референсы а не рефрировались в формате один к одному Несмотря на то что у нас было однозначно прописано что это для Ютуба и соответственно формат там 16:9 к примеру Вот как нам лучше поступать нам что нужно делать референсы для каждого формата Наверное это не очень правильно но с другой стороны когда мы передаём эти референсы в видеоредактор он обязательно должен использовать формат референса который мы передаём Ну наверное нет А у нас вот он использует почему-то хотя сам формат экрана вроде бы 16х9 но на нём я вижу картинку один к одному а потом в процессе исполнения первого кадра только к концу первого кадра происходит как бы превращение этого квадрата с плавным эффектом расширения но при этом следующий кадр всё равно остаётся один к одному В общем требуется перегенерировать оба кадра Сделай это пожалуйста
+===== END =====
+
+===== !AMBIENT 2026-05-13T07:11:03.624Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: зафиксировал замечание про 1:1 reference → 16:9 video как pipeline-дефект. Никаких действий по логу.
+
+Проверил оба pilot videos.
+
+## Что подтвердилось
+
+В metadata у обоих видео стоит:
+
+```text
+aspect_ratio: 16:9
+provider: veo-3-img2vid
+duration: 4s
+```
+
+Но по фактическому поведению, которое вы описали, проблема вероятно в другом:
+
+```text
+Видео формально генерируется в 16:9,
+но image-to-video использует квадратный reference как сильный visual anchor,
+поэтому сцена стартует как 1:1 внутри 16:9 canvas,
+а потом модель пытается “растянуть/расширить” композицию.
+```
+
+Это неправильно. Для video generation reference должен быть **identity/style/composition anchor**, но не должен навязывать квадратный crop.
+
+## Дополнительные blocking-проблемы
+
+Кроме aspect ratio:
+
+### SC01-SH01
+- Sandy раздваивается.
+- Прилавок/пространство двоится.
+- 16:9 не нативный с первого кадра.
+
+### SC02-SH01
+- Perfume Madame уходит в humanoid / human-like форму.
+- Объектный канон не удержан.
+- 16:9 также выглядит как квадратный ref внутри широкого кадра.
+
+## Я подготовил revision note
+
+Я попытался отправить оба кадра на revision, но серверный approval gate не принял формулировку как достаточную и потребовал явное подтверждение.
+
+Текст, который пойдёт в revision:
+
+```text
+Blocking revision.
+
+Regenerate this pilot video in proper YouTube 16:9 landscape framing from the first frame to the last frame.
+
+The current video appears to use a square 1:1 reference inside a 16:9 canvas and only expands during the shot. This is not acceptable. Do not animate a square-to-wide transition. Compose the actual scene natively in 16:9.
+
+Use the approved reference as visual anchor for identity, style and staging only, not as a fixed square aspect-ratio crop.
+
+Also preserve approved character/object canon:
+- exactly one Sandy;
+- Sandy remains a canonical anthropomorphic hourglass;
+- exactly one perfume counter;
+- Perfume Madame remains an angular purple perfume-bottle object character, not a human/humanoid woman;
+- no duplicate Sandy;
+- no duplicated counter;
+- no extra characters;
+- no humanoid Madame;
+- no square crop embedded in a 16:9 frame.
+```
+
+## Отдельно к Claude / коду
+
+Тут нужно чинить не только эти два кадра, а сам VGEN handoff:
+
+```text
+For image-to-video, if source EREF is 1:1 but episode output is 16:9:
+1. Do not pass the square reference as fixed framing.
+2. Build a 16:9 video composition prompt.
+3. Treat reference image as identity/style anchor only.
+4. Add explicit constraint:
+   “native 16:9 landscape composition from frame 1; no square image embedded in wide canvas; no animated crop expansion.”
+5. Prefer generating/deriving a 16:9 reference plate before VGEN, or letterbox-aware outpaint/crop plan.
+```
+
+Один конкретный unblock: **напишите “Одобряю revision двух pilot videos” — и я отправлю оба кадра на перегенерацию с этим blocking note.**
+===== END =====
+
