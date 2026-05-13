@@ -135,7 +135,12 @@ async function main() {
   if (submitJson.status_url) console.log('[fal-orbit]   status_url:', submitJson.status_url);
   if (submitJson.response_url) console.log('[fal-orbit]   response_url:', submitJson.response_url);
 
-  const statusUrl = submitJson.status_url ?? `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}/status`;
+  // Mirror the Python fal_client SDK pattern: pass the FULL model slug to
+  // every endpoint (submit / status / result). fal's REST gateway returns
+  // status_url / response_url that are parent-truncated (e.g. strips the
+  // /image-to-video suffix), which we deliberately ignore.
+  const statusUrl = `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}/status`;
+  const resultUrl = `https://queue.fal.run/${MODEL_ID}/requests/${submitJson.request_id}`;
 
   let lastStatusJson: QueueStatusResponse & Record<string, unknown> = { status: 'IN_QUEUE' };
   let status: QueueStatusResponse['status'] = 'IN_QUEUE';
