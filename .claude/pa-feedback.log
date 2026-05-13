@@ -10160,3 +10160,26 @@ Patch:
 Следующий шаг: не перезапускать 18/19; сначала чинить stuck/failure visibility.
 ===== END =====
 
+===== !AMBIENT 2026-05-13T12:53:19.724Z thread=bdbdafcf episode=- =====
+go ahead
+===== END =====
+
+===== !AMBIENT 2026-05-13T12:54:01.777Z thread=bdbdafcf episode=- =====
+[ASSISTANT] По E20 прочитал состояние.
+
+**Новое за последние 30 минут:**  
+Animator запущен на недостающий shot **SS-S14-E20-A3-SC11-SH01**. Готового нового draft’а пока нет.
+
+**Текущий блокер:**  
+Publicist заблокирован: 2 metadata draft’а ждут решения.
+
+**Всего pending approvals по E20:** 7  
+- 5 video shots от Animator  
+- 2 metadata от Publicist  
+- несколько video assets висят в REVIEW уже больше 5 минут
+
+**Следующий gate:** снять блок с Publicist metadata, затем добить video approvals/revisions и двигать final cut.
+
+Что именно делаем сейчас с pending approvals по E20: **пакетно утверждаем все 7** или **сначала разбираем по одному?**
+===== END =====
+
