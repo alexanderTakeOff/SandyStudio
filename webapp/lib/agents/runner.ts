@@ -743,7 +743,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       }
 
       // Resolve approved EREF for img2vid + apply Director's animatic overrides.
-      if (supabase && isRealVeo) {
+      if (supabase && isRealVideo) {
         const ref = await getApprovedEREFForShot(supabase, episodeId, shotId);
         if (ref) {
           referenceErefAssetId = ref.asset.id;
