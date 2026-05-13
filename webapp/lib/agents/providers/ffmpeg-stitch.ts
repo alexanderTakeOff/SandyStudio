@@ -269,7 +269,12 @@ export async function ffmpegStitchEpisode(
       listPath,
     ];
     if (musicPath) {
-      args.push('-i', musicPath);
+      // Loop the music if it's shorter than the stitched video. Without
+      // `-stream_loop -1` and with `-shortest` further down, ffmpeg cuts
+      // the final cut to the music's length — Director uploaded a 32s
+      // loop file and the 54s episode got truncated to 32s.
+      // 2026-05-13 regression caught right after STITCH ran on E20.
+      args.push('-stream_loop', '-1', '-i', musicPath);
     }
     args.push(
       '-map',
@@ -287,7 +292,13 @@ export async function ffmpegStitchEpisode(
       '-movflags',
       '+faststart',
     );
-    if (musicPath) args.push('-shortest');
+    if (musicPath) {
+      // With `-stream_loop -1` music is now infinite — switch the trim
+      // anchor to video duration (`-fflags +genpts` ensures concat output
+      // has clean PTS so ffmpeg's "shortest" math matches the actual
+      // stitched length, then `-shortest` truncates at the video end).
+      args.push('-shortest');
+    }
     args.push(outPath);
 
     await runFfmpeg(args);
