@@ -81,6 +81,26 @@ async function emitSingleShot(
   });
 }
 
+// Build a synthetic ResolvedProvider for an explicit per-event provider
+// override (Phase 2 UI dropdown choice). Skips the `provider_assignments`
+// table lookup — the dropdown choice is authoritative for that one shot.
+// Env-key availability still gates the choice (mirrors resolveProvider
+// auto-downgrade behavior).
+function syntheticResolvedProvider(
+  providerId: 'veo-3-img2vid' | 'seedance-fal-img2vid',
+): import('@/lib/agents/provider-resolver').ResolvedProvider {
+  const envKey = providerId === 'seedance-fal-img2vid' ? 'FAL_KEY' : 'GEMINI_API_KEY';
+  const envOk = Boolean(process.env[envKey]?.trim());
+  return {
+    contract: 'character_video' as const,
+    providerId: envOk ? providerId : 'mock',
+    isActive: true,
+    isMock: !envOk,
+    envKey,
+    envOk,
+  };
+}
+
 // ── Pilot start handler (concurrency 1 / episode) ─────────────────────────────
 export const execVgenStart = inngest.createFunction(
   {
