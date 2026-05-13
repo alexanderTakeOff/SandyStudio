@@ -23,6 +23,7 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { withHardBreaks } from '@/lib/markdown-breaks';
+import { useActivityRealtime } from '@/hooks/useActivityRealtime';
 
 interface Message {
   role: 'user' | 'assistant';
