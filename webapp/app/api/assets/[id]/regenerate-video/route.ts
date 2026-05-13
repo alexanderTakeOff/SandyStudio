@@ -287,6 +287,12 @@ export const POST = withApiHandler(async (req, ctx) => {
     drive_upload_failed: persisted.driveUploadFailed,
     regenerated_from_asset_id: assetId,
     mode_at_time: decision.modeAtTime,
+    // Preserve vgen_pilot flag from the source so the latest row keeps
+    // counting as a pilot. Without this, regenerating a pilot shot dropped
+    // pilot_approved_count back below pilot_count and "Approve Direction &
+    // Fan Out" reported 1/2 even after the Director approved both pilots.
+    // Director surfaced this 2026-05-13 evening on E20.
+    ...(meta.vgen_pilot === true ? { vgen_pilot: true as const } : {}),
   } as Record<string, unknown>;
 
   // Production trace shown in AssetPreview's "⚙ {description}" green box.

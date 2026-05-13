@@ -9151,3 +9151,359 @@ For image-to-video, if source EREF is 1:1 but episode output is 16:9:
 Один конкретный unblock: **напишите “Одобряю revision двух pilot videos” — и я отправлю оба кадра на перегенерацию с этим blocking note.**
 ===== END =====
 
+===== !AMBIENT 2026-05-13T07:32:19.595Z thread=bdbdafcf episode=- =====
+О'кей На чём мы остановились
+===== END =====
+
+===== !AMBIENT 2026-05-13T07:32:46.060Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Остановились на **SS-S14-E20 — “The Violet Distance”**.
+
+За последние 30 минут новое:
+- Перегенерирован шот **SS-S14-E20-A1-SC01-SH01 → v02**.
+- В animatic загружена музыка **Flacon Pop Loop.mp3**.
+- По эпизоду сейчас блокер на стадии **Animator**.
+
+Текущий статус пайплайна:
+- Writer / Storyboard / Continuity / References / Composer / Editor — пройдены.
+- Story Editor почему-то всё ещё числится **running**, но дальше pipeline уже продвинулся.
+- **Animator заблокирован:** ждёт твоего решения по 3 video-shot draft’ам:
+  1. `SS-S14-E20-VID-shot_ss-s14-e20-a1-sc01-sh01-v02-DRAFT.mp4`
+  2. `SS-S14-E20-VID-shot-ss-s14-e20-a1-sc01-sh01-v01-DRAFT.mp4`
+  3. `SS-S14-E20-VID-shot-ss-s14-e20-a1-sc02-sh01-v01-DRAFT.mp4`
+- Также висят 2 approval’а от Publicist по metadata v01/v02, но главный текущий gate — видео-шоты.
+
+Следующий ход: выбираем, что делать с **тремя Animator draft’ами** — approve / revision / reject.
+===== END =====
+
+===== !PAON 2026-05-13T07:32:51.365Z thread=bdbdafcf episode=- =====
+(toggle ON)
+===== END =====
+
+===== !AMBIENT 2026-05-13T07:32:54.382Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON: запоминаю до PAOFF. Никаких действий в системе.
+===== END =====
+
+===== !AMBIENT 2026-05-13T07:41:39.243Z thread=bdbdafcf episode=- =====
+а дай я посмотрел первые два Шота и даже один перегенерировал чуть-чуть изменённым промптом и вижу что текстовое описание наши впромте они немножко обзорные дают лишнюю информацию например зачем-то рассказывают инспектора  это первая. вторая ошибка в том что в этом промте описывается Мадам парфюм появление её А поскольку её на референсном кандре нет то подтянуть её неоткуда для Veo3.1 поскольку там только один референсный кадр но может быть насколько я помню позволяет работать ещё в режиме начального и конечного кадра генерация может быть это как-то может помочь или может быть нам следует обратиться как мы планировали к или седанс в дальнейшем точка Я Я прошу Клода провести анализ имеющихся решений и а также посмотреть mcp сервера для ПОСЛЕДНИХ верстий клинга Veo3.1 seedance и как-то там higg чего-то там помоему
+===== END =====
+
+===== !AMBIENT 2026-05-13T07:42:32.681Z thread=bdbdafcf episode=- =====
+[ASSISTANT] За последние 30 минут вижу только одно новое событие по эпизоду: **ты перегенерировал shot `SS-S14-E20-A1-SC01-SH01` в v02**. Новых agent-complete / review-draft событий нет.
+
+По сути проблемы ты прав: это не “качество Veo”, а **ошибка постановки задачи для video model**.
+
+## Диагноз
+
+### 1. Prompt даёт лишний обзорный лор
+Для video generation промпт должен описывать **только то, что камера должна увидеть и как это движется**.
+
+Плохо:
+- объяснение, кто такой инспектор;
+- сюжетная мотивация;
+- внутренние состояния;
+- описание персонажей/объектов, которых нет в reference frame;
+- “обзор сцены” вместо конкретного shot direction.
+
+Правильно:
+- visible subject;
+- pose/action;
+- camera motion;
+- lighting;
+- timing;
+- strict exclusions.
+
+### 2. Madame Perfume не может появиться “из текста”, если её нет в visual reference
+Если у модели только один reference frame, а Madame Perfume в нём отсутствует, текстовое описание почти наверняка даст:
+- рандомную женщину;
+- дрейф стиля;
+- ломку continuity;
+- несоответствие character design.
+
+Это особенно критично для повторяющихся персонажей.
+
+### 3. Start/end frame может помочь, но только частично
+Режим **first frame / last frame** может быть полезен, если мы заранее генерируем корректный end frame, где Madame Perfume уже визуально присутствует.
+
+Но это не “решение персонажа”, а workaround:
+- нужно иметь стабильный visual reference Madame Perfume;
+- end frame должен быть уже production-quality;
+- video model будет интерполировать между кадрами, но identity всё равно может плыть.
+
+Для появления нового персонажа в шоте лучше иметь:
+1. character reference Madame Perfume;
+2. shot start frame;
+3. shot end frame / target composition;
+4. короткий action prompt без лора.
+
+## Рабочая гипотеза
+
+Для текущего пайплайна нужно разделить генерацию на два слоя:
+
+### A. Shot prompt policy
+Animator получает не сценарный пересказ, а **строгий video prompt**:
+
+```text
+Visible content only. No backstory. No unseen characters. No lore.
+Describe only what is present in the reference frame or supplied character references.
+If a character is not visually referenced, do not introduce them in video generation.
+```
+
+### B. Visual reference package
+Для шотов с Madame Perfume нужен отдельный визуальный пакет:
+- character reference;
+- possibly clean pose sheet;
+- start frame;
+- optional end frame;
+- negative prompt / exclusions.
+
+## Задание для Claude
+
+Готовый текст, который можно дать Claude:
+
+```markdown
+We are building an AI animation pipeline for short comedy episodes.
+
+Current issue:
+Our video-generation prompts are too story-level and contain information that should not be in the prompt. They describe unseen characters and lore. Example: a shot prompt mentions Madame Perfume appearing, but the video model only receives one reference frame where she is absent. As a result, Veo 3.1 cannot reliably synthesize her identity.
+
+Please research and compare current practical solutions for image-to-video / reference-to-video generation using:
+- Veo 3.1
+- Kling latest available version
+- Seedance latest available version
+- Higgsfield / Higgsfield-style tools, if relevant
+- any MCP servers or API wrappers currently available for these tools
+
+Focus specifically on:
+1. Whether each tool supports single image-to-video.
+2. Whether it supports first-frame + last-frame generation.
+3. Whether it supports multiple visual references / character references.
+4. Whether it supports identity preservation for a character absent from the initial frame.
+5. Whether it supports prompt-level negative constraints.
+6. Whether API/MCP access exists and what the integration path looks like.
+7. Practical recommendation for an animation pipeline where recurring characters must stay visually consistent.
+
+Please produce:
+- comparison table;
+- recommended workflow for shots introducing a character not present in the first frame;
+- prompt-writing rules for video generation;
+- risks and failure modes;
+- whether we should keep using Veo 3.1 for this class of shots or route them to Kling / Seedance / another tool.
+```
+
+## Немедленная правка для нашего пайплайна
+
+Для Animator prompts я бы ввёл правило:
+
+```markdown
+Video prompt must not introduce any character, prop, costume, signage, or environment detail that is not present in the supplied visual references.
+
+If the script requires a new character to enter the shot, the pipeline must first produce either:
+- a character reference;
+- a start/end frame pair;
+- or a separate insert shot where the character is already visually established.
+```
+
+## Рекомендация по двум первым шотам
+
+Пока не стоит считать эти два video draft’а валидной проверкой качества анимации. Они тестируют неправильную постановку задачи.
+
+Правильнее:
+1. зафиксировать prompt policy;
+2. отдельно решить, как визуально вводим Madame Perfume;
+3. потом перегенерировать шоты уже с корректным reference package.
+
+Следующий шаг: после ответа Claude я превращу его вывод в короткий **Animator Prompt Policy** и конкретное решение для `SS-S14-E20-A1-SC01-SH01 / SC02-SH01`: Veo first/end frame, Kling/Seedance route или пересборка шота без появления Madame Perfume.
+===== END =====
+
+===== !AMBIENT 2026-05-13T07:59:57.309Z thread=bdbdafcf episode=- =====
+О'кей тогда в таком случае попробуем обойтись без хиксфилд Я предлагаю обсудить два варианта если это можно сделать быстро хирургически точно сейчас то поменять VEO3 на seedance или второй вариант - это завершить весь pipelint  c VEO3  и после этого вернуться к следующей итерации уже с новым эпизодом с учётом наших доработок по коррекции проводов в камере фронтов запятая камера ну и так далее А что скажете точка отдельная просьба к полинe писать короче.
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:00:25.904Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Записал в лог PAON: писать короче. Никаких действий в системе.
+
+Новых событий по эпизоду за 30 минут нет.
+
+Моё решение: **вариант 2**.
+
+## Рекомендация
+
+**Не менять Veo3 на Seedance внутри текущего E20.**  
+Причина: это уже не “хирургия”, а смена video backend’а посреди production pass. Риск сломать больше, чем починить.
+
+Дожимаем E20 на Veo3 как **technical v1**, фиксируем проблемы:
+- prompt слишком сценарный;
+- нельзя вводить персонажа без visual reference;
+- нужен first/end-frame workflow;
+- нужен отдельный policy для camera / reference / prompt constraints.
+
+Seedance/Kling тестируем уже на следующей итерации или новом эпизоде.
+
+## Исключение
+
+Менять сейчас имеет смысл только если уже есть готовый Seedance adapter/API route. Я этого не знаю.
+
+Подтверждаешь стратегию: **E20 заканчиваем на Veo3, Seedance/Kling вводим со следующей итерации?**
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:08:16.713Z thread=bdbdafcf episode=- =====
+E20 заканчиваем на Veo3, Seedance/Kling вводим со следующей итерации
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:08:43.307Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Принял: **E20 дожимаем на Veo3**, Seedance/Kling — со следующей итерации.
+
+Новых событий нет. Текущий gate: **Animator заблокирован на 3 video draft’ах**:
+
+1. `...SC01-SH01-v02` — новый, после твоего regen  
+2. `...SC01-SH01-v01` — старый  
+3. `...SC02-SH01-v01`
+
+Чтобы двигаться дальше по E20, нужен один Director verdict по этим трём:  
+**одобрить как technical v1** или **отправить на revision с короткой правкой**.
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:12:25.205Z thread=bdbdafcf episode=- =====
+а что-то я не могу найти где был просмотр чтобы видеть сгенерированные уже видео те которые два лежат на моё утверждение
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:12:43.992Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: “трудно найти просмотр pending video”. Никаких действий в системе.
+
+Новых событий за 30 минут нет.
+
+Где смотреть: **Episode → Assets / Approvals → pending video drafts**.  
+Сейчас на утверждении лежат 3 видео:
+
+1. **новый regen**
+   - `SS-S14-E20-VID-shot_ss-s14-e20-a1-sc01-sh01-v02-DRAFT.mp4`
+   - asset id: `1b2f0af5-5150-416f-8f2b-52e82eeb989c`
+
+2. **SC02**
+   - `SS-S14-E20-VID-shot-ss-s14-e20-a1-sc02-sh01-v01-DRAFT.mp4`
+   - asset id: `108dff7c-75ea-4666-8680-f2044496b247`
+
+3. **старый SC01**
+   - `SS-S14-E20-VID-shot-ss-s14-e20-a1-sc01-sh01-v01-DRAFT.mp4`
+   - asset id: `d21d6f05-538e-4e39-9f32-4c1f9389236f`
+
+Ищи по фильтру **VID-shot** или по имени `E20`.
+
+Следующий шаг: открой первый asset `...SC01-SH01-v02`; после просмотра дай verdict: approve или revision.
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:15:15.027Z thread=bdbdafcf episode=- =====
+Episode → Assets / Approvals → pending video drafts. нет у нас такого пути Это во-первых во-вторых я захожу в аниматор нажимаю три точки нажимаю превью и вижу только одно видео а не весь timeline с эпизодами которые циферками подсвечиваются зелёными если и пруфт оранжевыми Или какими-то там Если ждут утверждения я вот это потерял Клод Наверное ты лучше разберёшься да
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:15:35.205Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: навигация к просмотру video timeline непонятна; мой путь был неверный. Никаких действий в системе.
+
+Да, я ошибся: **“Episode → Assets / Approvals → pending video drafts”** — не подтверждённый путь. Не знаю точный UI-route.
+
+По симптомам:
+- в **Animator → три точки → Preview** открывается preview **одного asset’а/шота**;
+- потерян не preview asset’а, а **timeline/review view**, где шоты показаны по порядку и статусы подсвечены цветом.
+
+Клоду лучше дать не творческую, а инженерную задачу:
+
+```markdown
+Find the UI route/component for episode video review timeline in the SandyStudio app.
+
+Context:
+Director cannot find the view that shows all generated video shots in episode order, with status indicators:
+- green = approved/ready
+- orange or similar = awaiting approval
+- numbered shot blocks on a timeline
+
+Current misleading path was suggested:
+"Episode → Assets / Approvals → pending video drafts" — this path does not exist.
+
+What Director can currently access:
+Animator stage → kebab menu / three dots → Preview
+But this previews only one video asset/shot, not the full episode timeline.
+
+Please inspect the Next.js app routes/components and identify:
+1. Exact URL or navigation path to the episode video review timeline.
+2. Component name/file responsible for this timeline.
+3. Whether it exists but is hidden/broken, or whether only single-asset preview exists now.
+4. If broken/missing, propose the smallest UI fix:
+   - add "Review timeline" button to Animator stage;
+   - show all VID-shot assets for the episode ordered by scene/shot;
+   - include approval status colors;
+   - open video preview inline or modal;
+   - expose approve/request revision controls if governance mode allows.
+5. Return concise findings and patch plan.
+```
+
+Следующий шаг: пусть Claude найдёт route/component; я потом превращу его ответ в короткое решение: куда нажимать или какой минимальный UI patch делать.
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:25:15.151Z thread=bdbdafcf episode=- =====
+на всякий случай эта штука росла из называется эпизод timeline и он просто был схлопнуться я его экспендил и всё нашёл Только я не понял почему-то раньше когда пруфт они горели ярко-зелёным цветом А сейчас каким-то тускло зелёным кнопочки Циферки горят почти незаметно Верните обратно как было если что а здесь же вижу ещё одну проблему тут есть линейка музыкального проигрывателя и есть кнопочка реплейс я так понимаю что это замена той музыки которую я оплодот я делаю реплейс нахожу другой файл Правда он 2 минуты длиной ставлю его сюда но файл не поменялся как была версия 0.1 так и осталась и замечания номер три я сделал икру в двух пилотных файлов показывает на таймлайне 102 файла и провод Однако ничего не изменилось А по идее должно быть что-то связанное с тем чтобы запустить дальше А вот вижу теперь нужно перейти в другую вкладку найти где кнопочка пруф Дирекшен & Fun Out она почему-то у нас в активе аниматор находится а не там где мы только что рассматривали А ну это в принципе здесь же просто Внизу не видно и теперь видимо её надо запустить для того чтобы генерить все эти наши шоты у меня я запустил нажал эту кнопочку app.ru Direction and Fun Out и он показывает что у меня только один из двух шотов эпруфт хотя я и провел оба и видимо где-то у нас косяк какой-то регенерированное насчёт не считается и брумленным что ли поверьте
+===== END =====
+
+===== !AMBIENT 2026-05-13T08:25:56.101Z thread=bdbdafcf episode=- =====
+[ASSISTANT] PAON log: найден Episode Timeline; проблемы — тусклый зелёный статус, music replace не меняет файл, regen-shot не считается approved. Никаких действий в системе.
+
+Проверил E20.
+
+## Что реально в базе
+
+За последние 30 минут зафиксированы **3 Director approve**:
+
+1. `SC02-SH01-v01` — approved  
+2. `SC01-SH01-v02` — approved  
+3. `SC01-SH01-v01` — approved
+
+То есть **Animator сейчас уже approved**, pending video draft’ов нет.
+
+Текущий gate теперь не Animator, а **Publicist**: висят 2 metadata draft’а.
+
+## Где косяк
+
+Похоже, баг именно в учёте regenerated shot:
+
+- у обычных файлов `file_type` нормальный:  
+  `VID-shot-ss-s14-e20-a1-sc02-sh01`
+- у regenerated v02 почему-то:  
+  `VID-shot`
+
+Из-за этого UI/кнопка **Proof Direction & Fan Out** может не сопоставлять v02 с конкретным shot-id и считать, что approved только 1 из 2.
+
+## Ещё 2 UI бага
+
+1. **Timeline status color**  
+   Раньше approved был ярко-зелёный, сейчас слишком тусклый. Нужно вернуть контраст.
+
+2. **Music Replace**  
+   Replace принимает файл, но asset/version не меняется. Похоже, upload не привязывается к active music asset или UI не refresh’ит версию.
+
+## Короткий task для Claude
+
+```markdown
+Fix E20 Episode Timeline / Animator review bugs.
+
+Findings:
+1. Regenerated video asset was approved, but its file_type is only "VID-shot" instead of normalized shot-specific type like "VID-shot-ss-s14-e20-a1-sc01-sh01".
+2. Because of this, Proof Direction & Fan Out shows only 1 of 2 shots approved, despite approval events existing for both shots.
+3. Episode Timeline approved indicators became too dim; restore bright green approved state.
+4. Music Replace accepts a new file but does not update the visible music asset/version.
+
+Please inspect:
+- Episode Timeline component
+- Animator approval counting logic
+- regenerated video asset metadata/file_type creation
+- Music Replace upload handler
+
+Patch:
+- derive shot identity from asset metadata/filename when file_type is generic "VID-shot";
+- ensure regenerated v02 supersedes v01 for the same shot;
+- make approval count use latest approved asset per shot;
+- restore visible green approved UI;
+- make Music Replace persist and refresh active music asset/version.
+```
+
+Следующий ход: по пайплайну E20 уже прошёл Animator; сейчас надо решить 2 Publicist metadata draft’а.
+===== END =====
+
