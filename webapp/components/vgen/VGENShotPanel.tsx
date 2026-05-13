@@ -178,18 +178,19 @@ export function VGENShotPanel({
   }, [assetId]);
 
   const costEstimate = useMemo(() => {
-    const rate = QUALITY_RATE_USD_PER_SECOND[quality];
+    const rate = COST_RATE_USD_PER_SECOND[provider][quality];
     return Math.round(rate * duration * 1000) / 1000; // $0.001 precision
-  }, [quality, duration]);
+  }, [provider, quality, duration]);
 
   const dirty = useMemo(() => {
     return (
       prompt !== currentSettings.prompt ||
       aspect !== currentSettings.aspect_ratio ||
       quality !== currentSettings.quality_tier ||
+      provider !== (currentSettings.provider_id ?? 'seedance-fal-img2vid') ||
       duration !== currentSettings.duration_seconds
     );
-  }, [prompt, aspect, quality, duration, currentSettings]);
+  }, [prompt, aspect, quality, provider, duration, currentSettings]);
 
   async function regenerate() {
     setBusy(true);
