@@ -32,6 +32,14 @@ export interface FfmpegStitchInput {
     shotId: string;
     /** Raw mp4 bytes for this shot. */
     bytes: Buffer;
+    /**
+     * Optional desired output duration in seconds. When set, the concat
+     * demuxer emits an `outpoint <seconds>` directive so this shot is
+     * trimmed to exactly that length. Required when the provider clip is
+     * longer than the animatic intent (e.g. Veo Standard img2vid returns
+     * fixed 8s clips but animatic shot may want 3s).
+     */
+    durationSeconds?: number;
   }>;
   /** Optional music track. If absent, assembled mp4 keeps the per-shot audio. */
   music?: {
