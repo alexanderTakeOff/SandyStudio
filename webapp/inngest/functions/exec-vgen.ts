@@ -57,6 +57,9 @@ interface VgenEventData {
   quality_tier?: 'fast' | 'standard';
   duration_seconds?: number;
   pilot?: boolean;
+  /** Phase 2 (2026-05-13) — UI dropdown override. Skips
+   *  `provider_assignments` global lookup when set. */
+  provider?: 'veo-3-img2vid' | 'seedance-fal-img2vid';
 }
 
 const TARGET_STATUS_BY_MODE = (mode: number | null | undefined): 'APPROVED' | 'REVIEW' =>
