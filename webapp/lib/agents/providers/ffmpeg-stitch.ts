@@ -224,7 +224,7 @@ export async function ffmpegStitchEpisode(
   console.log('[stitch] tmp dir:', tmpDir, 'shots:', input.shotMp4Bytes.length);
   try {
     // 1. Write per-shot mp4s + music.
-    const shotPaths: string[] = [];
+    const shotEntries: Array<{ path: string; durationSeconds?: number }> = [];
     for (let i = 0; i < input.shotMp4Bytes.length; i++) {
       const shot = input.shotMp4Bytes[i]!;
       // Phase A.2 PR β fix 2026-05-08: keep filenames ASCII-only and avoid
@@ -236,8 +236,19 @@ export async function ffmpegStitchEpisode(
       const fpath = path.join(tmpDir, fname);
       await fs.writeFile(fpath, shot.bytes);
       // eslint-disable-next-line no-console
-      console.log('[stitch] wrote', fname, '→', shot.bytes.length, 'bytes');
-      shotPaths.push(fpath);
+      console.log(
+        '[stitch] wrote',
+        fname,
+        '→',
+        shot.bytes.length,
+        'bytes',
+        shot.durationSeconds !== undefined ? `(trim→${shot.durationSeconds}s)` : '',
+      );
+      const entry: { path: string; durationSeconds?: number } = { path: fpath };
+      if (shot.durationSeconds !== undefined && shot.durationSeconds > 0) {
+        entry.durationSeconds = shot.durationSeconds;
+      }
+      shotEntries.push(entry);
     }
 
     let musicPath: string | null = null;
