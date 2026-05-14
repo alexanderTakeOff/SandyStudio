@@ -181,6 +181,11 @@ export const fluxProUltraFalProvider: MultiImageGenProvider = {
     const size = input.size ?? '1024x1024';
     const strength = typeof input.strength === 'number' ? input.strength : 0.6;
     const dataUri = `data:image/png;base64,${anchor.image_b64}`;
+    // Flux Pro 1.1 Ultra Redux rejects `image_size: "1024x1024"` strings with
+    // HTTP 422; the endpoint expects either a named enum
+    // ('square_hd' | 'landscape_16_9' | …) or an explicit { width, height }
+    // pair. We send dimensions to preserve the existing size matrix.
+    const dimensions = dimensionsFor(size);
 
     // Submit job to queue.
     const queued = await falFetch<FalQueuedResponse>(
@@ -192,7 +197,7 @@ export const fluxProUltraFalProvider: MultiImageGenProvider = {
           prompt: input.prompt,
           image_url: dataUri,
           image_prompt_strength: strength,
-          image_size: size,
+          image_size: dimensions,
           num_inference_steps: 30,
           guidance_scale: 3.5,
           safety_tolerance: '2',
