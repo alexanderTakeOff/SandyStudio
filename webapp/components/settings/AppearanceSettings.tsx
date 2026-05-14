@@ -2,6 +2,9 @@
 // components/settings/AppearanceSettings.tsx
 // Theme + ambient selectors per uiux.md §7.
 // Persistence: localStorage in v1 (no user_settings table yet).
+//
+// Muted descriptive text rows have been replaced with <PeekHint> — auto-peek
+// on first paint, then collapse into a small `i` affordance.
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
@@ -9,6 +12,7 @@
 import { useAppearance } from '@/components/providers/AppearanceProvider';
 import { THEMES } from '@/lib/uiux/themes';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
+import { PeekHint } from '@/components/ui/PeekHint';
 import type { AmbientMode } from '@/lib/uiux/types';
 import { cn } from '@/lib/utils';
 
@@ -26,7 +30,12 @@ export function AppearanceSettings() {
       {/* Theme */}
       <Card>
         <CardHeader>
-          <CardTitle>Theme</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle>Theme</CardTitle>
+            <PeekHint autoPeekMs={3500}>
+              Pick a visual direction. Applied across the whole studio shell.
+            </PeekHint>
+          </div>
         </CardHeader>
         <CardBody>
           <div className="grid sm:grid-cols-3 gap-3">
@@ -55,9 +64,11 @@ export function AppearanceSettings() {
                       style={{ background: t.swatch.accent }}
                     />
                   </div>
-                  <div className="text-sm font-medium text-text-primary">{t.label}</div>
-                  <div className="text-xs text-text-muted mt-1 leading-relaxed">
-                    {t.description}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-text-primary">{t.label}</span>
+                    <PeekHint side="top" autoPeekMs={0}>
+                      {t.description}
+                    </PeekHint>
                   </div>
                 </button>
               );
@@ -69,7 +80,13 @@ export function AppearanceSettings() {
       {/* Ambient */}
       <Card>
         <CardHeader>
-          <CardTitle>Ambient background</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle>Ambient background</CardTitle>
+            <PeekHint autoPeekMs={3500}>
+              Settings persist in browser local storage. A user_settings table will store this
+              per-Director once multi-user lands (auth.md §5).
+            </PeekHint>
+          </div>
         </CardHeader>
         <CardBody>
           <div className="grid sm:grid-cols-3 gap-3">
@@ -87,18 +104,16 @@ export function AppearanceSettings() {
                       : 'border-glass hover:bg-[var(--panel-hover-bg)]',
                   )}
                 >
-                  <div className="text-sm font-medium text-text-primary">{opt.label}</div>
-                  <div className="text-xs text-text-muted mt-1 leading-relaxed">
-                    {opt.description}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-text-primary">{opt.label}</span>
+                    <PeekHint side="top" autoPeekMs={0}>
+                      {opt.description}
+                    </PeekHint>
                   </div>
                 </button>
               );
             })}
           </div>
-          <p className="text-xs text-text-muted mt-4 leading-relaxed">
-            Settings persist in browser local storage. A user_settings table will store this
-            per-Director once multi-user lands (auth.md §5).
-          </p>
         </CardBody>
       </Card>
     </div>
