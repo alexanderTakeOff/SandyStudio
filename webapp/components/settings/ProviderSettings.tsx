@@ -20,6 +20,7 @@ import useSWR from 'swr';
 import { useState } from 'react';
 import { CheckCircle2, AlertTriangle, Wrench, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Card, CardBody } from '@/components/ui/Card';
+import { PeekHint } from '@/components/ui/PeekHint';
 import { fetcher } from '@/lib/swr';
 import type { ProviderCandidate } from '@/lib/api/provider-catalog';
 
