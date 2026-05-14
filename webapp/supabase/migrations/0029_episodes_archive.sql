@@ -52,3 +52,26 @@ COMMENT ON COLUMN public.episodes.metadata IS
 -- GIN index for ad-hoc queries (e.g. "all PARTIAL archives across series").
 CREATE INDEX IF NOT EXISTS episodes_metadata_gin
   ON public.episodes USING GIN (metadata);
+
+-- 3. Whitelist `episode_archived` activity_event type. Mirrors the audit
+--    pattern used by 0019 for Inbox / canon-extension events.
+ALTER TABLE public.activity_events
+  DROP CONSTRAINT IF EXISTS activity_events_type_valid;
+
+ALTER TABLE public.activity_events
+  ADD CONSTRAINT activity_events_type_valid CHECK (
+    event_type IN (
+      'job_started','job_completed','job_failed',
+      'asset_submitted','approval_requested','approval_granted',
+      'revision_requested','asset_rejected',
+      'budget_threshold_reached','publish_pending','published',
+      'mode_changed','agent_prompt_updated','config_updated',
+      'governance_block',
+      'agent_started','agent_progress','agent_completed',
+      'asset_updated','manual_trigger','approval_revision','approval_rejected',
+      'decision_requested','input_requested','blocker_raised',
+      'canon_extension_proposed','canon_extension_resolved',
+      -- 0029: episode-level archival audit (PARTIAL or COMPLETE).
+      'episode_archived'
+    )
+  );
