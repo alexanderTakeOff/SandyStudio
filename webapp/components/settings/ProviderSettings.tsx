@@ -141,14 +141,14 @@ export function ProviderSettings() {
     <Card>
       <CardBody>
         <div className="flex items-center justify-between mb-4">
-          <div>
+          <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted">
               Providers
             </h2>
-            <p className="text-xs text-text-secondary mt-1">
+            <PeekHint autoPeekMs={3500}>
               Global tier — applies to every episode unless overridden per-stage. Resolver cache
               invalidates on save.
-            </p>
+            </PeekHint>
           </div>
         </div>
 
