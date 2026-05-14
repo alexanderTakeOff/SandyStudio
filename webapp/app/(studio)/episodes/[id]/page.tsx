@@ -9,7 +9,7 @@ import { use, useState, type KeyboardEvent } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil } from 'lucide-react';
+import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Archive } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
