@@ -13,7 +13,32 @@
 ## CURRENT STATE
 
 ```
-Phase:    Phase 2 Video Provider — Seedance 2.0 integration COMPLETE 2026-05-13 19:30 UTC (this session)
+Phase:    Sprint α→ε kickoff 2026-05-14 — plan APPROVED, awaiting `/clear` + fresh session
+Status:   ✅ Plan locked at `~/.claude/plans/cached-tickling-willow.md`
+          ✅ Checkpoint memo: `session_2026-05-14_sprint_alpha_kickoff.md`
+          ✅ MEMORY.md index updated (top entry, read-first on resume)
+          
+          Phase sequence (Director-approved 2026-05-14):
+          • **P0** (~30 min) — Flux Pro Ultra `image_size` 422 fix; E20 → ARCHIVED-PARTIAL
+          • **α** (~2-3 d) — Postgres trigger Realtime + team-chat unified thread
+          • **β** (~1 d) — Seedance prompting skill `.claude/skills/seedance-prompting/`
+          • **γ** (~1-2 d) — E21 production through chat only, zero webapp clicks, live PA-gap audit
+          • **δ** (~3-7 d) — Character Identity Model (migration 0030 + EREF + drawer)
+          • **ε** (~1-2 w) — Skill Editor / Learning Loop (`valiant-soaring-karp.md`)
+          
+          Deferred: StageKebabMenu provider section · Sprint 10A reviewer unification · Seedance 1080p/15s/webhook · "Claude-as-primary" pivot (worldview, parked)
+          
+          Pre-sprint: `/clear` now, resume from checkpoint memo on first turn next session.
+
+Next:     Open fresh session → read MEMORY.md → resume from `session_2026-05-14_sprint_alpha_kickoff.md` → start P0 (Flux 422 fix + E20 archive)
+Mode:     Mode 1 (MANUAL) — Director approves each gate
+Date:     2026-05-14
+```
+
+---
+
+```
+Phase:    Phase 2 Video Provider — Seedance 2.0 integration COMPLETE 2026-05-13 19:30 UTC
 Status:   ✅ fal.ai Seedance 2.0 wired as multi-provider via existing `MultiVideoGenProvider` abstraction.
             Director's "сделай выбор провайдера через дропдаун" closed end-to-end across UI + API + runner.
             • NEW: `lib/agents/providers/fal-seedance.ts` (REST queue, mirrors `veo-gemini.ts` shape)
