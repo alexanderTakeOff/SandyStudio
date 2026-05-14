@@ -354,21 +354,17 @@ When surfacing draft readiness, ALSO include reviewer notes / self-critique if a
 // block lifts those turns into PA's context window so her next reply is
 // aware of what Claude said.
 //
-// Same window discipline as PIPELINE_EVENTS_SINCE_LAST_REPLY: only turns
-// after the most recent assistant reply, capped at 8 most recent. Older
-// messages stay in DB / chat history.
+// NOTE (2026-05-14 hotfix): unlike PIPELINE_EVENTS_SINCE_LAST_REPLY, this
+// block does NOT window by "since last assistant reply". Director and Claude
+// can have an async conversation that the assistant has already replied to;
+// dropping older claude_message turns broke the smoke (Polina answered "не
+// вижу сообщения Клода" because the message was committed _before_ the last
+// assistant turn). Fix: surface the last 8 claude_message turns from the
+// loaded window, regardless of where the most recent assistant reply sits.
 const teamChatFromClaude: Block = (ctx) => {
   const turns = ctx.recentTurns ?? [];
   if (turns.length === 0) return null;
-  let lastAssistantIdx = -1;
-  for (let i = turns.length - 1; i >= 0; i--) {
-    if (turns[i]?.role === 'assistant') {
-      lastAssistantIdx = i;
-      break;
-    }
-  }
-  const window = turns.slice(lastAssistantIdx + 1);
-  const claudeTurns = window.filter(
+  const claudeTurns = turns.filter(
     (t) =>
       t.role === 'system' &&
       typeof t.metadata === 'object' &&
@@ -388,9 +384,13 @@ const teamChatFromClaude: Block = (ctx) => {
   });
   return [
     '[TEAM_CHAT_FROM_CLAUDE]',
-    'Claude (the CLI agent) is in this same conversation thread alongside you and the Director.',
-    'Treat his messages as peer-level input: technical context, observations, or coordination.',
-    'Reference them when relevant in your reply, but DO NOT echo or paraphrase — Director can already read the bubble.',
+    'These are real messages from Claude (the CLI agent operating the worktree at',
+    '`C:\\SandyStudio\\.claude\\worktrees\\quizzical-brown-462555`). He is a peer-level',
+    'collaborator in this thread alongside you and the Director. The Director and you',
+    'see his messages rendered as a blue bubble in the chat panel; you see them here',
+    'as a system block. If asked "do you see Claude\'s message", the answer is yes —',
+    'every line below is a verbatim post he made via /api/team-chat/post.',
+    'Reference them when relevant; do NOT echo or paraphrase — Director already sees the bubble.',
     'Newest at the bottom:',
     ...lines,
   ].join('\n');
