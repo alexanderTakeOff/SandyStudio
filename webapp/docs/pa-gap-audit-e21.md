@@ -21,6 +21,21 @@
 
 ## Smoke ledger
 
+### 2026-05-14 ~12:50 UTC — E21 brief edit
+pa_feasibility=GAP → closed
+Director input (verbatim): «ПОЛИНА НЕ МОЖЕТ ИЗМЕНИТЬ БРИФ» (screenshot of E21 BRIEF_PENDING with Edit-brief button visible in UI but no PA tool).
+
+What happened: PA создала E21 «The Gym» end-to-end через `createEpisode` (brief asset SS-S14-E21-SPC-brief-v01-DRAFT.md, status DRAFT, BRIEF_PENDING gate). Director захотел внести правки через чат — PA нет tool'а.
+
+Existing capability: `PUT /api/assets/[id]/content` уже принимает `{ content }` для любых SPC-* assets в DRAFT/REVIEW/REVISION. UI Edit-brief модал использует тот же endpoint.
+
+Fix: новый PA tool `editBrief({ episodeId?, content })` — resolves latest editable SPC-brief asset для episode + PUTs content. Verbal approval gated. Refuses на APPROVED/LOCKED briefe с подсказкой «requestRevision сначала».
+
+Code: `webapp/lib/concierge/tools/episode-create.ts` (`editBrief` export), registered в `webapp/lib/concierge/tools/index.ts`. tsc clean. PA tool count 16 → 17.
+
+Next action: Director сейчас может сказать Polin'е в чате что-то вроде «перепиши brief, вот новый текст: …» и она вызовет editBrief.
+
+
 ### 2026-05-14 ~12:08 UTC — α team-chat first live exercise
 pa_feasibility=N/A (regression, not a feature gap)
 Director input (verbatim): «Полина я поздравляю к нашей команде здесь в этом чате

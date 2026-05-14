@@ -293,6 +293,7 @@ export function ConciergePanel() {
     let cancelled = false;
     (async () => {
       try {
+        console.log('[ConciergePanel] DB-load mount effect firing for thread', threadId);
         const sb = createSupabaseBrowserClient();
         const { data, error } = await sb
           .from('concierge_turns')
@@ -301,6 +302,7 @@ export function ConciergePanel() {
           .eq('role', 'system')
           .order('created_at', { ascending: false })
           .limit(30);
+        console.log('[ConciergePanel] DB-load result: rows=', data?.length ?? 0, 'error=', error);
         if (cancelled || error || !data) return;
         // supabase-js infers a tuple-with-error union for the row type when
         // multiple filters chain on string columns; cast to the local
@@ -333,11 +335,13 @@ export function ConciergePanel() {
             });
           }
         }
+        console.log('[ConciergePanel] additions after filter:', additions.length, additions.map((a) => ({ role: a.role, turnId: a.turnId, head: a.content.slice(0, 30) })));
         if (additions.length === 0) return;
         setMessages((prev) => {
           // Merge respecting existing dedupe; insert only those not already present.
           const seen = new Set(prev.map((m) => m.turnId).filter(Boolean));
           const fresh = additions.filter((a) => !a.turnId || !seen.has(a.turnId));
+          console.log('[ConciergePanel] fresh after dedupe:', fresh.length, 'prev size:', prev.length);
           return [...prev, ...fresh];
         });
       } catch {

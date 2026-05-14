@@ -17,7 +17,7 @@ import {
   setBibleContent,
   regenerateBibleImage,
 } from './series';
-import { createEpisode, findEpisode } from './episode-create';
+import { createEpisode, findEpisode, editBrief } from './episode-create';
 import type { OpenAIToolSchema, Tool } from './types';
 
 export type { Tool, ToolContext, ToolResult, OpenAIToolSchema } from './types';
@@ -51,6 +51,7 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   setBibleContent as unknown as AnyTool,
   regenerateBibleImage as unknown as AnyTool,
   createEpisode as unknown as AnyTool,
+  editBrief as unknown as AnyTool,
 ]);
 
 const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(

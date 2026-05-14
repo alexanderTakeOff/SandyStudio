@@ -173,3 +173,122 @@ function safeParse(raw: string): AnyArgs {
     return {};
   }
 }
+
+interface EditBriefArgs {
+  episodeId?: string;
+  content: string;
+}
+
+export const editBrief: Tool<EditBriefArgs> = {
+  name: 'editBrief',
+  description:
+    "Overwrite the current episode brief markdown with Director-supplied verbatim text. Targets the latest editable (DRAFT/REVIEW/REVISION) SPC-brief asset for the episode. Use when Director dictates a brief edit — paste / dictate the FULL new brief, not a diff. Verbal approval required. If episodeId omitted, defaults to the episode currently in focus (ctx.episodeId). Refuses when brief is already APPROVED or LOCKED — in that case ask Director to revoke approval first.",
+  mutating: true,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'editBrief',
+      description:
+        "Overwrite the latest editable SPC-brief asset for an episode with new markdown content.",
+      parameters: {
+        type: 'object',
+        properties: {
+          episodeId: {
+            type: 'string',
+            description:
+              'Episode UUID. Optional — defaults to the episode currently in focus.',
+          },
+          content: {
+            type: 'string',
+            description:
+              'The full new brief markdown body the Director wants saved verbatim.',
+            minLength: 20,
+            maxLength: 200000,
+          },
+        },
+        required: ['content'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const episodeId = typeof obj.episodeId === 'string' && obj.episodeId.trim() !== ''
+      ? obj.episodeId.trim()
+      : undefined;
+    const content = typeof obj.content === 'string' ? obj.content : '';
+    if (content.length < 20) throw new Error('content too short (min 20 chars)');
+    return { episodeId, content };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    if (!approval.approved) {
+      return fail(approval.reason, 'verbal_approval_required');
+    }
+    const episodeId = args.episodeId ?? ctx.episodeId ?? null;
+    if (!episodeId) {
+      return fail(
+        'No episode in focus — pass episodeId explicitly or open an episode first.',
+        'no_episode_id',
+      );
+    }
+
+    // Resolve the latest editable SPC-brief asset for this episode.
+    const { data: brief, error: briefErr } = await ctx.supabase
+      .from('assets')
+      .select('id,status,version,filename')
+      .eq('episode_id', episodeId)
+      .like('file_type', 'SPC-brief%')
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (briefErr) {
+      return fail(`brief lookup failed: ${briefErr.message}`, 'db_error');
+    }
+    if (!brief) {
+      return fail(
+        `No SPC-brief asset found for episode ${episodeId}.`,
+        'brief_missing',
+      );
+    }
+    const EDITABLE_STATUSES = new Set(['DRAFT', 'REVIEW', 'REVISION']);
+    if (!EDITABLE_STATUSES.has(brief.status)) {
+      return fail(
+        `Brief is ${brief.status}, not editable. Ask Director to revoke approval first (requestRevision on the brief).`,
+        'not_editable',
+      );
+    }
+
+    // Overwrite in place via PUT /api/assets/[id]/content — mirrors the
+    // setBibleContent overwrite path so audit attribution & status guard
+    // stay identical to the manual UI Edit Brief flow.
+    const resp = await fetch(
+      `${ctx.appOrigin.replace(/\/$/, '')}/api/assets/${encodeURIComponent(brief.id)}/content`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+        },
+        body: JSON.stringify({ content: args.content }),
+      },
+    );
+    let payload: unknown = null;
+    try {
+      payload = await resp.json();
+    } catch {
+      /* ignore non-JSON */
+    }
+    if (!resp.ok) {
+      const message =
+        payload && typeof payload === 'object' && 'error' in payload
+          ? String((payload as { error: unknown }).error)
+          : `brief content overwrite failed (HTTP ${resp.status})`;
+      return fail(message, `http_${resp.status}`);
+    }
+    return ok(
+      payload,
+      `Brief overwritten in place (v${brief.version} ${brief.status}, ${args.content.length} chars). Status preserved — Director still approves via the existing gate.`,
+    );
+  },
+};
