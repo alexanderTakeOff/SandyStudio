@@ -92,7 +92,13 @@ export function StorageSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Storage</CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle>Storage</CardTitle>
+          <PeekHint autoPeekMs={3500}>
+            Project root holds bibles and scripts; media storage holds heavy binaries. Both are
+            tested for write access on save.
+          </PeekHint>
+        </div>
       </CardHeader>
       <CardBody>
         <div className="space-y-4">
