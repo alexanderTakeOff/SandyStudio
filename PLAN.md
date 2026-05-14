@@ -13,8 +13,9 @@
 ## CURRENT STATE
 
 ```
-Phase:    **P0 COMPLETE 2026-05-14 07:30 UTC** — Flux 422 fix · E20 archive feature · migration 0029
-          applied · E20 backfilled · zombie jobs cleared. Awaiting branch review before α.
+Phase:    **P0 + α + β SHIPPED 2026-05-14** — Flux 422 fix · E20 archived PARTIAL · Postgres trigger
+          Realtime + team-chat unified thread · capability manifests + Seedance full
+          controls + seedance-prompting skill. γ kickoff posted, awaiting Director brief in PA.
 Status:   ✅ **P0(a) Flux 422 fix** — `flux-pro-ultra-fal.ts` now sends `image_size: { width, height }`
             object (fal.ai rejected the legacy `"1024x1024"` string with HTTP 422). Locked by 6
             new unit tests + dimension regression guard.
@@ -58,20 +59,36 @@ Status:   ✅ **P0(a) Flux 422 fix** — `flux-pro-ultra-fal.ts` now sends `imag
              `.claude/skills/seedance-prompting/` prompt skill. 1-2 days vs Polina's 1-2 weeks.
              Directly solves "Director can't set seed/resolution/duration/aspect_ratio in UI" pain.
 
+          ✅ **α SHIPPED 2026-05-14** (commit `9ac1af9`) — migration 0030 trigger
+            `activity_events_to_concierge` writes pipeline_event turns server-side
+            (replaces silent client-side hook); `/api/team-chat/post` Bearer-auth endpoint
+            (`TEAM_CHAT_TOKEN` env); new `useConciergeTurnsRealtime` hook;
+            ConciergePanel renders `claude` + `pipeline` bubble variants; PA
+            `TEAM_CHAT_FROM_CLAUDE` system-prompt block; α smoke 2 lanes ✓.
+
+          ✅ **β SHIPPED 2026-05-14** (commit `1627fb4`) — `lib/api/provider-capabilities.ts`
+            shared manifest · widened `MultiVideoGenInput/Capabilities` with
+            seed/resolution/end-image/full aspect set · Seedance adapter forwards new
+            params + resolution cost mult + duration [4,15] · regenerate-video endpoint
+            accepts new body fields · `<ProviderControlPanel>` capability-aware UI ·
+            VGENShotPanel uses it · `.claude/skills/seedance-prompting/SKILL.md` STUB v0.1.
+
+          ⏳ **γ kickoff posted 2026-05-14** — `webapp/docs/pa-gap-audit-e21.md` live
+            audit doc · team-chat kickoff turn `27bd17da` in PA thread `bdbdafcf-...` ·
+            Director's brief is the next gate. Production budget cap ~$80.
+
           Phase sequence:
-          • ~~**P0**~~ — COMPLETE
-          • **α** (~2-3 d, on hold pending branch review) — Postgres trigger Realtime + team-chat
-            unified thread (Claude / Director / PA in one channel via curl POST endpoint)
-          • **β** (~1-2 d) — Per Claude counter-proposal above
-          • **γ** (~1-2 d) — E21 production through chat only, zero webapp clicks, live PA-gap audit
-          • **δ** (~3-7 d) — Character Identity Model (migration 0030 + EREF + drawer)
+          • ~~**P0**~~ — COMPLETE (`0510adc`, `11a621c`)
+          • ~~**α**~~ — COMPLETE (`9ac1af9`)
+          • ~~**β**~~ — COMPLETE (`1627fb4`)
+          • **γ** — IN PROGRESS — E21 production through PA chat (zero webapp clicks)
+          • **δ** (~3-7 d) — Character Identity Model (migration 0031 + EREF + drawer)
           • **ε** (~1-2 w) — Skill Editor / Learning Loop (`valiant-soaring-karp.md`)
 
-Next:     1. Director reviews `claude/quizzical-brown-462555` branch (183+ commits, including
-             14 auto-sync from today). Green-light to push latest commit `0510adc` + this PLAN.md
-             update before α work, or squash strategy.
-          2. Once branch reviewed → Claude starts **α** (Postgres trigger + team-chat endpoint).
-          3. After α → **β** seedance skill + capability UI → **γ** E21 smoke through chat.
+Next:     Director types brief into PA panel → PA fires `createEpisode` → I monitor
+          team-chat thread, surface gaps into `webapp/docs/pa-gap-audit-e21.md`, post
+          observations via `npx tsx scripts/team-chat-post.ts --file <msg>` as needed.
+          Final γ smoke = first published SS-S14-E21 episode.
 
 Mode:     ===5=== EDIT MODE active · Mode 1 (MANUAL governance) · auto-sync OFF
 Date:     2026-05-14
