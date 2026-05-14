@@ -29,21 +29,33 @@ import {
 
 // ── Universal Core types ─────────────────────────────────────────────────────
 
-export type MultiVideoAspectRatio = VeoAspectRatio;
+// Aspect/resolution sets are super-sets of any single provider's capability;
+// adapters reject or downgrade values they don't support.
+export type MultiVideoAspectRatio = '16:9' | '9:16' | '1:1' | '21:9' | '4:3' | '3:4' | 'auto';
 export type MultiVideoQualityTier = VeoQualityTier;
+export type MultiVideoResolution = '480p' | '720p' | '1080p';
 
 export interface MultiVideoGenInput {
   /** Composed prompt (already merged with shot details + episode title). */
   prompt: string;
-  /** Universal Core: 16:9 (YouTube), 9:16 (Reels/Shorts), 1:1 (square). */
+  /** Universal Core: 16:9 (YouTube), 9:16 (Reels/Shorts), 1:1 (square), or
+   * provider extensions (21:9 / 4:3 / 3:4 / auto inferred from reference). */
   aspectRatio?: MultiVideoAspectRatio;
   /** Universal Core: 'fast' (cheap) vs 'standard' (higher quality). */
   quality?: MultiVideoQualityTier;
-  /** Universal Core: 1-8 second clips. */
+  /** Universal Core: 4-15 second clips. Providers clamp to their own range. */
   durationSeconds?: number;
-  /** Universal Core: optional img2vid reference frame. */
+  /** Universal Core: optional img2vid reference frame (start). */
   referenceImageBase64?: string;
   referenceImageMime?: 'image/png' | 'image/jpeg';
+  /** Sprint β 2026-05-14: 480p / 720p / 1080p — provider may downgrade. */
+  resolution?: MultiVideoResolution;
+  /** Sprint β 2026-05-14: reproducibility seed (Seedance only currently). */
+  seed?: number;
+  /** Sprint β 2026-05-14: optional end-frame for start-to-end transition.
+   * Seedance only currently; Veo ignores. */
+  endImageBase64?: string;
+  endImageMime?: 'image/png' | 'image/jpeg';
 }
 
 export interface MultiVideoGenResult {
@@ -75,6 +87,12 @@ export interface MultiVideoGenCapabilities {
   /** Min/max clip duration in seconds. */
   min_duration_s: number;
   max_duration_s: number;
+  /** Sprint β 2026-05-14 — capability manifest extension. */
+  supports_resolutions: ReadonlyArray<MultiVideoResolution>;
+  supports_seed: boolean;
+  supports_end_image: boolean;
+  /** Soft prompt cap; UI uses to warn before submit. */
+  max_prompt_chars?: number;
 }
 
 export interface MultiVideoGenProvider {
@@ -103,6 +121,11 @@ const VEO_CAPABILITIES: MultiVideoGenCapabilities = {
   supports_reference_image: true,
   min_duration_s: 4,
   max_duration_s: 8,
+  // Veo 3 renders at fixed model resolution; do not expose a chooser.
+  supports_resolutions: [],
+  supports_seed: false,
+  supports_end_image: false,
+  max_prompt_chars: 2000,
 };
 
 function veoResultToMulti(r: VeoGeminiResult): MultiVideoGenResult {
@@ -126,13 +149,23 @@ export const veo3Provider: MultiVideoGenProvider = {
   capabilities: VEO_CAPABILITIES,
   async generate(input: MultiVideoGenInput): Promise<MultiVideoGenResult> {
     try {
+      // Veo accepts only 16:9 / 9:16 / 1:1; downgrade any wider aspect to 16:9.
+      const veoAspect: VeoAspectRatio | undefined =
+        input.aspectRatio === '16:9' ||
+        input.aspectRatio === '9:16' ||
+        input.aspectRatio === '1:1'
+          ? input.aspectRatio
+          : input.aspectRatio
+            ? '16:9'
+            : undefined;
       const r = await generateVideoVeoGemini({
         prompt: input.prompt,
-        aspectRatio: input.aspectRatio,
+        aspectRatio: veoAspect,
         quality: input.quality,
         durationSeconds: input.durationSeconds,
         referenceImageBase64: input.referenceImageBase64,
         referenceImageMime: input.referenceImageMime,
+        // Veo: seed/resolution/endImage silently ignored (capabilities flag declares them off).
       });
       return veoResultToMulti(r);
     } catch (err) {
@@ -148,14 +181,17 @@ export const veo3Provider: MultiVideoGenProvider = {
 // ── Seedance 2.0 (fal.ai) wrapper ────────────────────────────────────────────
 
 const SEEDANCE_CAPABILITIES: MultiVideoGenCapabilities = {
-  supports_aspects: ['16:9', '9:16', '1:1'],
+  supports_aspects: ['16:9', '9:16', '1:1', '21:9', '4:3', '3:4', 'auto'],
   supports_qualities: ['fast', 'standard'],
   supports_reference_image: true,
-  // Seedance 2.0 native supports up to 15s, but Phase 2 ships matching the Veo
-  // 4-8 range for parity with existing animatic duration logic. Phase 3 will
-  // widen once UI exposes the longer-duration knob.
+  // Sprint β 2026-05-14: full native range exposed (was capped at 8s for Phase 2
+  // animatic parity). UI control panel now lets Director pick anywhere in [4,15].
   min_duration_s: 4,
-  max_duration_s: 8,
+  max_duration_s: 15,
+  supports_resolutions: ['480p', '720p', '1080p'],
+  supports_seed: true,
+  supports_end_image: true,
+  max_prompt_chars: 3000,
 };
 
 function seedanceResultToMulti(r: FalSeedanceResult): MultiVideoGenResult {
@@ -186,6 +222,10 @@ export const seedanceFalProvider: MultiVideoGenProvider = {
         durationSeconds: input.durationSeconds,
         referenceImageBase64: input.referenceImageBase64,
         referenceImageMime: input.referenceImageMime,
+        resolution: input.resolution,
+        seed: input.seed,
+        endImageBase64: input.endImageBase64,
+        endImageMime: input.endImageMime,
       });
       return seedanceResultToMulti(r);
     } catch (err) {

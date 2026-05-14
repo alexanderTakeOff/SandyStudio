@@ -31,12 +31,21 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { ProviderControlPanel } from '@/components/vgen/ProviderControlPanel';
+import {
+  VIDEO_PROVIDER_CAPS,
+  normalizeControls,
+  type VideoControlsValue,
+  type VideoProviderId,
+} from '@/lib/api/provider-capabilities';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+// Pre-Sprint β narrow types kept for the legacy `currentSettings` prop shape.
+// New code should reach for the wider `VideoAspectRatio` from provider-capabilities.
 export type AspectRatio = '16:9' | '9:16' | '1:1';
 export type QualityTier = 'fast' | 'standard';
-export type VgenProvider = 'seedance-fal-img2vid' | 'veo-3-img2vid';
+export type VgenProvider = VideoProviderId;
 
 // Phase 2 (2026-05-13) — per-provider cost rates surface in cost preview.
 // Seedance Pro (the default) is ~3-4× more expensive than Veo but produces
@@ -142,12 +151,26 @@ export function VGENShotPanel({
       ? currentSettings.prompt
       : buildPromptFromShot(storyboardShot),
   );
-  const [aspect, setAspect] = useState<AspectRatio>(currentSettings.aspect_ratio);
-  const [quality, setQuality] = useState<QualityTier>(currentSettings.quality_tier);
   const [provider, setProvider] = useState<VgenProvider>(
     currentSettings.provider_id ?? 'seedance-fal-img2vid',
   );
-  const [duration, setDuration] = useState<number>(clampDuration(currentSettings.duration_seconds));
+  // Sprint β 2026-05-14 — capability-aware controls. Aspect/quality/duration
+  // live in VideoControlsValue now; resolution/seed/end-image are rendered
+  // only when the active provider supports them.
+  const [controls, setControls] = useState<VideoControlsValue>(() =>
+    normalizeControls(
+      {
+        prompt: '',
+        aspect_ratio: currentSettings.aspect_ratio,
+        quality_tier: currentSettings.quality_tier,
+        duration_seconds: clampDuration(currentSettings.duration_seconds),
+      },
+      VIDEO_PROVIDER_CAPS[currentSettings.provider_id ?? 'seedance-fal-img2vid'],
+    ),
+  );
+  const aspect = controls.aspect_ratio;
+  const quality = controls.quality_tier;
+  const duration = controls.duration_seconds;
   // Track whether Director actually edited the prompt textarea. When false,
   // regenerate sends NO `prompt` field so the server rebuilds via the latest
   // `buildShotPromptV2(storyboardShot, episodeTitle, bibleCanon)` — Phase A.1
@@ -166,10 +189,19 @@ export function VGENShotPanel({
         ? currentSettings.prompt
         : buildPromptFromShot(storyboardShot),
     );
-    setAspect(currentSettings.aspect_ratio);
-    setQuality(currentSettings.quality_tier);
-    setProvider(currentSettings.provider_id ?? 'seedance-fal-img2vid');
-    setDuration(clampDuration(currentSettings.duration_seconds));
+    const nextProvider = currentSettings.provider_id ?? 'seedance-fal-img2vid';
+    setProvider(nextProvider);
+    setControls(
+      normalizeControls(
+        {
+          prompt: '',
+          aspect_ratio: currentSettings.aspect_ratio,
+          quality_tier: currentSettings.quality_tier,
+          duration_seconds: clampDuration(currentSettings.duration_seconds),
+        },
+        VIDEO_PROVIDER_CAPS[nextProvider],
+      ),
+    );
     setPromptEdited(false);
     setError(null);
     setSuccess(false);
@@ -209,6 +241,11 @@ export function VGENShotPanel({
           quality_tier: quality,
           provider,
           duration_seconds: duration,
+          ...(controls.resolution ? { resolution: controls.resolution } : {}),
+          ...(typeof controls.seed === 'number' ? { seed: controls.seed } : {}),
+          ...(controls.end_image_asset_id
+            ? { end_image_asset_id: controls.end_image_asset_id }
+            : {}),
           reference_asset_id: currentSettings.reference_asset_id,
           directorConfirm: true,
         }),
@@ -277,103 +314,60 @@ export function VGENShotPanel({
         )}
       </div>
 
-      {/* ── Universal Core controls — 2 columns ─────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Provider */}
-        <label className="block">
-          <span className="text-[10px] uppercase tracking-wider text-text-muted">Provider</span>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value as VgenProvider)}
-            disabled={disabled}
-            aria-label="Video provider"
-            className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
-          >
-            {PROVIDER_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label} — {opt.sub}
-              </option>
-            ))}
-          </select>
-        </label>
+      {/* ── Provider select (gate to capability surface) ────────────── */}
+      <label className="block">
+        <span className="text-[10px] uppercase tracking-wider text-text-muted">Provider</span>
+        <select
+          value={provider}
+          onChange={(e) => {
+            const next = e.target.value as VgenProvider;
+            setProvider(next);
+            // Re-normalise controls against the new provider's capabilities.
+            setControls((prev) => normalizeControls(prev, VIDEO_PROVIDER_CAPS[next]));
+          }}
+          disabled={disabled}
+          aria-label="Video provider"
+          className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
+        >
+          {PROVIDER_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label} — {opt.sub}
+            </option>
+          ))}
+        </select>
+      </label>
 
-        {/* Aspect ratio */}
-        <label className="block">
-          <span className="text-[10px] uppercase tracking-wider text-text-muted">Aspect ratio</span>
-          <select
-            value={aspect}
-            onChange={(e) => setAspect(e.target.value as AspectRatio)}
-            disabled={disabled}
-            aria-label="Aspect ratio"
-            className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
-          >
-            {ASPECT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label} — {opt.sub}
-              </option>
-            ))}
-          </select>
-        </label>
+      {/* ── Capability-aware controls (Sprint β) ─────────────────────── */}
+      <ProviderControlPanel
+        provider={provider}
+        value={controls}
+        onChange={setControls}
+        disabled={disabled}
+        density="full"
+      />
 
-        {/* Quality tier */}
-        <label className="block">
-          <span className="text-[10px] uppercase tracking-wider text-text-muted">Quality tier</span>
-          <select
-            value={quality}
-            onChange={(e) => setQuality(e.target.value as QualityTier)}
-            disabled={disabled}
-            aria-label="Quality tier"
-            className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
-          >
-            {QUALITY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label} — {opt.sub}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* Duration */}
-        <label className="block">
-          <span className="text-[10px] uppercase tracking-wider text-text-muted">
-            Duration (s) — {DURATION_MIN}–{DURATION_MAX}
+      {/* Reference image — read-only chip; Replace picker is a follow-up. */}
+      <div className="block">
+        <span className="text-[10px] uppercase tracking-wider text-text-muted">Reference image</span>
+        <div
+          className="mt-1 px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-xs text-text-secondary flex items-center gap-2"
+          title={currentSettings.reference_asset_id || 'No reference assigned'}
+        >
+          <ImageIcon size={13} className="shrink-0 text-text-muted" />
+          <span className="font-mono truncate flex-1">
+            {currentSettings.reference_asset_id
+              ? `${currentSettings.reference_asset_id.slice(0, 8)}…`
+              : 'No reference'}
           </span>
-          <input
-            type="number"
-            min={DURATION_MIN}
-            max={DURATION_MAX}
-            step={1}
-            value={duration}
-            onChange={(e) => setDuration(clampDuration(Number(e.target.value)))}
-            disabled={disabled}
-            aria-label="Duration in seconds"
-            className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
-          />
-        </label>
-
-        {/* Reference image — read-only chip in Phase 1; replace picker is stub. */}
-        <div className="block">
-          <span className="text-[10px] uppercase tracking-wider text-text-muted">Reference image</span>
-          <div
-            className="mt-1 px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-xs text-text-secondary flex items-center gap-2"
-            title={currentSettings.reference_asset_id || 'No reference assigned'}
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled
+            title="Replace reference — follow-up"
+            aria-label="Replace reference"
           >
-            <ImageIcon size={13} className="shrink-0 text-text-muted" />
-            <span className="font-mono truncate flex-1">
-              {currentSettings.reference_asset_id
-                ? `${currentSettings.reference_asset_id.slice(0, 8)}…`
-                : 'No reference'}
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled
-              title="Replace reference — Phase 2"
-              aria-label="Replace reference"
-            >
-              Replace
-            </Button>
-          </div>
+            Replace
+          </Button>
         </div>
       </div>
 

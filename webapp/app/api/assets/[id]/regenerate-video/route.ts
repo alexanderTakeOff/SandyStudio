@@ -41,9 +41,14 @@ export const dynamic = 'force-dynamic';
 
 const Body = z.object({
   prompt: z.string().min(8).max(8000).optional(),
-  aspect_ratio: z.enum(['16:9', '9:16', '1:1']).optional(),
+  // Sprint β 2026-05-14: full capability surface. Adapters narrow + downgrade
+  // per provider (e.g. Veo silently downgrades 21:9 → 16:9; ignores seed).
+  aspect_ratio: z.enum(['16:9', '9:16', '1:1', '21:9', '4:3', '3:4', 'auto']).optional(),
   quality_tier: z.enum(['fast', 'standard']).optional(),
-  duration_seconds: z.number().min(4).max(8).optional(),
+  duration_seconds: z.number().min(4).max(15).optional(),
+  resolution: z.enum(['480p', '720p', '1080p']).optional(),
+  seed: z.number().int().optional(),
+  end_image_asset_id: z.string().uuid().nullable().optional(),
   reference_asset_id: z.string().uuid().nullable().optional(),
   // Phase 2 (2026-05-13): explicit provider override per UI dropdown choice.
   // Fallback chain: body override → asset metadata.provider_id → series default
@@ -216,8 +221,33 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
-  const aspectRatio = body.aspect_ratio ?? (typeof meta.aspect_ratio === 'string' ? (meta.aspect_ratio as '16:9' | '9:16' | '1:1') : '16:9');
+  // Sprint β: optional end-frame for Seedance start→end transition.
+  let endImageBase64: string | null = null;
+  if (body.end_image_asset_id) {
+    const { data: endRef } = await sb
+      .from('assets')
+      .select('staging_path')
+      .eq('id', body.end_image_asset_id)
+      .maybeSingle();
+    const endPath = (endRef as { staging_path?: string | null } | null)?.staging_path;
+    if (endPath) {
+      endImageBase64 = await readBibleImageAsBase64(endPath);
+    }
+  }
+
+  const aspectRatio =
+    body.aspect_ratio ??
+    (typeof meta.aspect_ratio === 'string'
+      ? (meta.aspect_ratio as '16:9' | '9:16' | '1:1' | '21:9' | '4:3' | '3:4' | 'auto')
+      : '16:9');
   const qualityTier = body.quality_tier ?? (typeof meta.quality_tier === 'string' ? (meta.quality_tier as 'fast' | 'standard') : 'fast');
+  // Sprint β: resolution / seed / end-image as optional overrides.
+  const resolution =
+    body.resolution ??
+    (typeof meta.resolution === 'string'
+      ? (meta.resolution as '480p' | '720p' | '1080p')
+      : undefined);
+  const seed = typeof body.seed === 'number' ? body.seed : undefined;
 
   // Provider resolution chain: explicit body override → previous asset's
   // metadata.provider_id (preserve per-shot history) → series default →
@@ -258,7 +288,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       ? 8
       : durationSeconds;
 
-  // Generate video via multi-provider router.
+  // Generate video via multi-provider router (Sprint β capability surface).
   const real = await videoProvider.generate({
     prompt: finalPrompt,
     aspectRatio,
@@ -266,6 +296,15 @@ export const POST = withApiHandler(async (req, ctx) => {
     durationSeconds: generationDuration,
     ...(referenceImageBase64
       ? { referenceImageBase64, referenceImageMime: 'image/png' as const }
+      : {}),
+    ...(cap.supports_resolutions.length > 0 && resolution
+      ? { resolution }
+      : {}),
+    ...(cap.supports_seed && typeof seed === 'number'
+      ? { seed }
+      : {}),
+    ...(cap.supports_end_image && endImageBase64
+      ? { endImageBase64, endImageMime: 'image/png' as const }
       : {}),
   });
 
@@ -309,6 +348,10 @@ export const POST = withApiHandler(async (req, ctx) => {
     size_bytes: real.size_bytes,
     aspect_ratio: aspectRatio,
     quality_tier: qualityTier,
+    // Sprint β: persist capability-extension knobs so reruns inherit them.
+    ...(resolution ? { resolution } : {}),
+    ...(typeof seed === 'number' ? { seed } : {}),
+    ...(body.end_image_asset_id ? { end_image_asset_id: body.end_image_asset_id } : {}),
     prompt: finalPrompt,
     reference_eref_asset_id: referenceErefAssetId,
     storyboard_asset_id: stbAsset?.id ?? null,

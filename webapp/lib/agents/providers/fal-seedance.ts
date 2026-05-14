@@ -23,8 +23,9 @@ const QUEUE_BASE = 'https://queue.fal.run';
 const POLL_INTERVAL_MS = 4_000;
 const MAX_WAIT_MS = 12 * 60 * 1000; // Seedance Standard 8s typically runs 90-180s; allow generous headroom.
 
-export type FalSeedanceAspectRatio = '16:9' | '9:16' | '1:1';
+export type FalSeedanceAspectRatio = '16:9' | '9:16' | '1:1' | '21:9' | '4:3' | '3:4' | 'auto';
 export type FalSeedanceQualityTier = 'standard' | 'fast';
+export type FalSeedanceResolution = '480p' | '720p' | '1080p';
 
 export interface FalSeedanceInput {
   prompt: string;
@@ -39,6 +40,25 @@ export interface FalSeedanceInput {
    * which uses a separate model slug.
    */
   quality?: FalSeedanceQualityTier;
+  /**
+   * Output resolution. Default '720p'. '1080p' costs ~2.25× more per second
+   * (Seedance pricing scales with pixel count). Sprint β 2026-05-14.
+   */
+  resolution?: FalSeedanceResolution;
+  /**
+   * Reproducibility seed. Integer. Minor variation may still occur per fal
+   * docs, but identical (prompt, image, seed) tends to render very close.
+   * Sprint β 2026-05-14 — Director directive "волшебный параметр SEED".
+   */
+  seed?: number;
+  /**
+   * Optional end frame (base64). When set, Seedance smoothly transitions
+   * from the start image to this end image over the requested duration.
+   * Useful for camera tightening / character entering frame / etc.
+   * Sprint β 2026-05-14.
+   */
+  endImageBase64?: string;
+  endImageMime?: 'image/png' | 'image/jpeg';
 }
 
 export interface FalSeedanceResult {
@@ -89,16 +109,41 @@ const COST_USD_PER_SECOND: Record<FalSeedanceQualityTier, number> = {
   fast: 0.2419,
 };
 
-// 720p output (Phase 1 — matches Veo width/height contract). Phase 2 can
-// expose 480p / 1080p via additional input knob.
-function dimensionsFor(aspect: FalSeedanceAspectRatio): { width: number; height: number } {
+// Resolution cost multiplier (Sprint β 2026-05-14). Baseline is 720p (mult=1).
+// 480p uses ~half the pixels → ~0.55×. 1080p uses ~2.25× the pixels.
+// Tune against real billing data; this is the rough first-order model.
+export const SEEDANCE_RESOLUTION_COST_MULT: Readonly<Record<FalSeedanceResolution, number>> = {
+  '480p': 0.55,
+  '720p': 1.0,
+  '1080p': 2.25,
+};
+
+// Aspect ratios that don't have a canonical pixel grid (21:9 / 4:3 / 3:4 /
+// auto) are reported using their nearest-neighbour 16:9 / 9:16 dimensions
+// scaled by resolution — refined when we receive the real fal manifest.
+function dimensionsFor(
+  aspect: FalSeedanceAspectRatio,
+  resolution: FalSeedanceResolution,
+): { width: number; height: number } {
+  // Base shapes at 720p, then scale by the resolution short-edge ratio.
+  const SHORT_EDGE: Record<FalSeedanceResolution, number> = { '480p': 480, '720p': 720, '1080p': 1080 };
+  const short = SHORT_EDGE[resolution];
   switch (aspect) {
     case '16:9':
-      return { width: 1280, height: 720 };
+      return { width: Math.round((short * 16) / 9), height: short };
     case '9:16':
-      return { width: 720, height: 1280 };
+      return { width: short, height: Math.round((short * 16) / 9) };
     case '1:1':
-      return { width: 720, height: 720 };
+      return { width: short, height: short };
+    case '21:9':
+      return { width: Math.round((short * 21) / 9), height: short };
+    case '4:3':
+      return { width: Math.round((short * 4) / 3), height: short };
+    case '3:4':
+      return { width: short, height: Math.round((short * 4) / 3) };
+    case 'auto':
+      // Fall back to 16:9 dimensions; fal will infer from the reference image.
+      return { width: Math.round((short * 16) / 9), height: short };
   }
 }
 
@@ -185,16 +230,25 @@ export async function generateVideoFalSeedance(
     ? `data:${input.referenceImageMime ?? 'image/png'};base64,${input.referenceImageBase64}`
     : undefined;
 
+  const resolution: FalSeedanceResolution = input.resolution ?? '720p';
+  const endImageUrl = input.endImageBase64
+    ? `data:${input.endImageMime ?? 'image/png'};base64,${input.endImageBase64}`
+    : undefined;
+
   const payload: Record<string, unknown> = {
     prompt: input.prompt,
     duration: String(durationSeconds),
     aspect_ratio: aspectRatio,
-    resolution: '720p',
+    resolution,
     // Audio handled by EXEC-MGEN (SUNO) + EXEC-STITCH (ffmpeg mux), never the
     // video provider. Inline Seedance audio would clash with the music track.
     generate_audio: false,
   };
   if (imageUrl) payload.image_url = imageUrl;
+  if (endImageUrl) payload.end_image_url = endImageUrl;
+  if (typeof input.seed === 'number' && Number.isFinite(input.seed)) {
+    payload.seed = Math.trunc(input.seed);
+  }
 
   const submitRes = await fetch(`${QUEUE_BASE}/${modelSlug}`, {
     method: 'POST',
@@ -260,8 +314,11 @@ export async function generateVideoFalSeedance(
   }
   const mp4Bytes = new Uint8Array(await vres.arrayBuffer());
 
-  const { width, height } = dimensionsFor(aspectRatio);
-  const cost = durationSeconds * COST_USD_PER_SECOND[quality];
+  const { width, height } = dimensionsFor(aspectRatio, resolution);
+  // Resolution multiplier — Seedance pricing scales roughly with pixel
+  // count: 480p ≈ 0.55×, 720p = 1× (baseline), 1080p ≈ 2.25×.
+  const resolutionMult = SEEDANCE_RESOLUTION_COST_MULT[resolution];
+  const cost = durationSeconds * COST_USD_PER_SECOND[quality] * resolutionMult;
   const provider: FalSeedanceResult['provider'] = imageUrl
     ? 'seedance-fal-img2vid'
     : 'seedance-fal';
