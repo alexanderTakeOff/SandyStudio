@@ -21,7 +21,31 @@
 
 ## Smoke ledger
 
-(empty — entries land as the smoke progresses)
+### 2026-05-14 ~12:08 UTC — α team-chat first live exercise
+pa_feasibility=N/A (regression, not a feature gap)
+Director input (verbatim): «Полина я поздравляю к нашей команде здесь в этом чате
+подсоединился присоединился и Клод и теперь мы сможем без испорченного телефона
+видеть сообщения друг друга скажи ты видишь сообщение Клода о том что мы готовы к Смоук»
+PA response (summary): **failed before responding**.
+
+What happened:
+PA chat returned `400 Invalid value: 'pipeline'. Supported values are: 'system',
+'assistant', 'user', 'function', 'tool', and 'developer'.` from OpenAI.
+
+Root cause:
+`α` introduced `pipeline` and `claude` as UI-render-only role variants on the
+`Message` type in ConciergePanel. The panel was sending the entire `messages`
+array (including those rows) to `/api/concierge/chat`, which forwards verbatim
+to the OpenAI Messages API. OpenAI's role enum rejected the synthetic roles.
+
+Fix shipped: commit `6bcce3c` — `handleSubmit` now narrows the wire payload to
+`user`/`assistant` only. Pipeline + Claude context still reaches PA via the
+PIPELINE_EVENTS_SINCE_LAST_REPLY and TEAM_CHAT_FROM_CLAUDE system-prompt blocks
+that the chat route loads from DB on every request.
+
+Next action: Director retries the question; PA should now respond correctly and
+should ALSO see Claude's kickoff turn `27bd17da` as `[TEAM_CHAT_FROM_CLAUDE]` in
+her system context.
 
 ### Format template (copy when appending)
 
