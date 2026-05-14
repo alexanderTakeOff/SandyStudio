@@ -66,13 +66,14 @@ export const POST = withApiHandler(async (req, ctx) => {
   const body = await parseJson(req, Body);
 
   // 1. Lookup + idempotency guard.
-  const { data: ep, error: epErr } = await supabase
+  const { data: epRaw, error: epErr } = await supabase
     .from('episodes')
     .select('id,episode_code,title_working,status,metadata')
     .eq('id', episodeId)
     .maybeSingle();
   if (epErr) throw new Error(`episode fetch: ${epErr.message}`);
-  if (!ep) throw new NotFoundError(`Episode ${episodeId}`);
+  if (!epRaw) throw new NotFoundError(`Episode ${episodeId}`);
+  const ep = epRaw as unknown as EpisodeRowWithMetadata;
   if (ep.status === 'ARCHIVED') {
     throw new ConflictError(
       `Episode ${ep.episode_code} is already ARCHIVED. Edit metadata.archival directly to revise.`,
