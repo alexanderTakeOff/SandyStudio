@@ -58,7 +58,14 @@ interface ChatRequest {
 
 const VALID_MODES: ReadonlyArray<ConciergeMode> = ['1', '2', '2.5', '3', '4'];
 const MAX_TOOL_ROUNDS = 5;
-const RECENT_TURN_WINDOW = 20;
+// Sprint γ 2026-05-14 hotfix — bumped 20 → 80. With Postgres trigger writing
+// a system turn per pipeline event + Claude posting team-chat bubbles in the
+// same channel, the previous 20-row window pushed user/assistant turns out
+// fast and Polina lost both her conversation history and ambient context.
+// 80 keeps a full smoke session worth of turns in the system prompt; the
+// per-block filters (PIPELINE_EVENTS_SINCE_LAST_REPLY, TEAM_CHAT_FROM_CLAUDE)
+// trim the final volume back down.
+const RECENT_TURN_WINDOW = 80;
 
 function normaliseMode(value: unknown): ConciergeMode {
   if (typeof value !== 'string') return '1';
