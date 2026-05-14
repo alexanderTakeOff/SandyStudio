@@ -343,6 +343,59 @@ Reporting style for Director:
 - ❌ "EXEC-SW: completed; EXEC-SREV: running"
 When surfacing draft readiness, ALSO include reviewer notes / self-critique if any exist (Director directive 2026-05-12: при готовности draft'а сразу показывать reviewer notes). Name the agent in role form and quote the notes.`;
 
+// ─── Block 12: TEAM_CHAT_FROM_CLAUDE ─────────────────────────────────────────
+//
+// Sprint α 2026-05-14 — Director directive "Я постю через curl. Director
+// пишет в его field в webapp → 'Директор:'. Я в том же thread → 'Клод:'.
+// PA отвечает в том же — все три видят всё".
+//
+// Claude (the CLI agent) posts into the same thread via /api/team-chat/post,
+// which persists a system turn with metadata.kind='claude_message'. This
+// block lifts those turns into PA's context window so her next reply is
+// aware of what Claude said.
+//
+// Same window discipline as PIPELINE_EVENTS_SINCE_LAST_REPLY: only turns
+// after the most recent assistant reply, capped at 8 most recent. Older
+// messages stay in DB / chat history.
+const teamChatFromClaude: Block = (ctx) => {
+  const turns = ctx.recentTurns ?? [];
+  if (turns.length === 0) return null;
+  let lastAssistantIdx = -1;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i]?.role === 'assistant') {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+  const window = turns.slice(lastAssistantIdx + 1);
+  const claudeTurns = window.filter(
+    (t) =>
+      t.role === 'system' &&
+      typeof t.metadata === 'object' &&
+      t.metadata !== null &&
+      (t.metadata as { kind?: unknown }).kind === 'claude_message',
+  );
+  if (claudeTurns.length === 0) return null;
+  const recent = claudeTurns.slice(-8);
+  const lines = recent.map((t) => {
+    const m = (t.metadata ?? {}) as Record<string, unknown>;
+    const author = (m.author as string | undefined) ?? 'Claude';
+    const ago = Math.max(
+      0,
+      Math.round((Date.now() - new Date(t.created_at).getTime()) / 1000),
+    );
+    return `- [${author}, ${ago}s ago] ${truncate(t.content, 600)}`;
+  });
+  return [
+    '[TEAM_CHAT_FROM_CLAUDE]',
+    'Claude (the CLI agent) is in this same conversation thread alongside you and the Director.',
+    'Treat his messages as peer-level input: technical context, observations, or coordination.',
+    'Reference them when relevant in your reply, but DO NOT echo or paraphrase — Director can already read the bubble.',
+    'Newest at the bottom:',
+    ...lines,
+  ].join('\n');
+};
+
 const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'BASE_BEHAVIOR', render: baseBehavior },
   { name: 'BEHAVIOR_CONTRACT', render: behaviorContract },
@@ -356,6 +409,7 @@ const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'FEEDBACK_PROTOCOL', render: feedbackProtocol },
   { name: 'ACTIVE_RULES', render: activeRules },
   { name: 'PIPELINE_EVENTS_SINCE_LAST_REPLY', render: pipelineEvents },
+  { name: 'TEAM_CHAT_FROM_CLAUDE', render: teamChatFromClaude },
 ];
 
 export function buildSystemPrompt(ctx: PromptContext): string {
