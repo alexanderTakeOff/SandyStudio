@@ -181,12 +181,33 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             <div className="flex items-center gap-3 mt-1.5 text-xs">
               <span
                 className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded uppercase tracking-wider font-semibold"
-                style={{
-                  background: 'color-mix(in oklab, var(--accent-info) 14%, transparent)',
-                  color: 'var(--accent-info)',
-                }}
+                style={
+                  episode.status === 'ARCHIVED'
+                    ? {
+                        background: 'color-mix(in oklab, var(--accent-warning) 16%, transparent)',
+                        color: 'var(--accent-warning)',
+                      }
+                    : {
+                        background: 'color-mix(in oklab, var(--accent-info) 14%, transparent)',
+                        color: 'var(--accent-info)',
+                      }
+                }
               >
+                {episode.status === 'ARCHIVED' && <Archive size={11} />}
                 {episode.status.replace(/_/g, ' ').toLowerCase()}
+                {episode.status === 'ARCHIVED' && episode.metadata?.archival && (
+                  <>
+                    {' · '}
+                    {episode.metadata.archival.state.toLowerCase()}
+                    {episode.metadata.archival.total_shots != null && (
+                      <>
+                        {' '}
+                        {episode.metadata.archival.completed_shots}/
+                        {episode.metadata.archival.total_shots}
+                      </>
+                    )}
+                  </>
+                )}
               </span>
               <span className="text-text-muted">Mode {episode.governance_mode}</span>
               <span className="text-text-muted">·</span>
@@ -202,6 +223,11 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             <Button variant="secondary" size="sm" onClick={() => setTriggerOpen(true)}>
               <RotateCcw size={14} /> Re-trigger…
             </Button>
+            {episode.status !== 'ARCHIVED' && (
+              <Button variant="ghost" size="sm" onClick={() => setArchiveOpen(true)} title="Archive episode…">
+                <Archive size={14} /> Archive…
+              </Button>
+            )}
             <Button variant="ghost" size="sm">
               <MoreHorizontal size={14} />
             </Button>
