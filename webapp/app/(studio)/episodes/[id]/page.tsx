@@ -109,6 +109,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   const { id } = use(params);
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [triggerOpen, setTriggerOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string | undefined>();
 
