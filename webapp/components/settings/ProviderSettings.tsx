@@ -251,16 +251,16 @@ export function ProviderSettings() {
           </div>
         )}
 
-        <p className="text-[11px] text-text-muted mt-4 leading-relaxed">
-          <strong>Live</strong> = adapter wired + env key set; real provider call.
-          {' '}
-          <strong>No key</strong> = adapter ready, but env var missing — resolver auto-falls back
-          to mock so the pipeline keeps moving.
-          {' '}
-          <strong>Wip</strong> = adapter not yet implemented (the dropdown lists future options).
-          {' '}
-          Per-stage overrides will appear in the pipeline kebab when Phase 8 step 9 ships.
-        </p>
+        <div className="mt-4 flex items-center gap-2 text-[11px] text-text-muted">
+          <span>Health legend</span>
+          <PeekHint autoPeekMs={0} side="top">
+            <strong>Live</strong> = adapter wired + env key set; real provider call.{' '}
+            <strong>No key</strong> = adapter ready, but env var missing — resolver auto-falls back
+            to mock so the pipeline keeps moving.{' '}
+            <strong>Wip</strong> = adapter not yet implemented (the dropdown lists future options).{' '}
+            Per-stage overrides will appear in the pipeline kebab when Phase 8 step 9 ships.
+          </PeekHint>
+        </div>
       </CardBody>
     </Card>
   );
