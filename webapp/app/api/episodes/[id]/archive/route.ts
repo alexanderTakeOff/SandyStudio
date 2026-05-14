@@ -155,9 +155,15 @@ export const POST = withApiHandler(async (req, ctx) => {
   // 6. Flip episode status + write metadata.
   const currentMeta = (ep.metadata ?? {}) as Record<string, unknown>;
   const newMeta = { ...currentMeta, archival };
+  // `status: 'ARCHIVED'` requires migration 0029 to be applied; types.gen.ts
+  // is regenerated post-apply. Cast bridges until then.
   const { error: upErr } = await supabase
     .from('episodes')
-    .update({ status: 'ARCHIVED', metadata: newMeta, updated_at: new Date().toISOString() })
+    .update({
+      status: 'ARCHIVED',
+      metadata: newMeta,
+      updated_at: new Date().toISOString(),
+    } as never)
     .eq('id', episodeId);
   if (upErr) throw new Error(`episode update: ${upErr.message}`);
 
