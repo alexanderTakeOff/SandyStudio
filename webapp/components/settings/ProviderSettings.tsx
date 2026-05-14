@@ -177,13 +177,15 @@ export function ProviderSettings() {
                   className={`grid grid-cols-12 gap-3 items-center px-3 py-2 rounded-lg border border-glass ${dim}`}
                   style={{ background: 'var(--bg-elevated)' }}
                 >
-                  <div className="col-span-3">
+                  <div className="col-span-3 flex items-center gap-1.5">
                     <div className="text-sm font-medium text-text-primary">
                       {CONTRACT_LABEL[row.contract] ?? row.contract}
                     </div>
-                    <div className="text-[11px] text-text-muted leading-tight">
-                      {CONTRACT_NOTE[row.contract] ?? ''}
-                    </div>
+                    {CONTRACT_NOTE[row.contract] && (
+                      <PeekHint side="right" autoPeekMs={0}>
+                        {CONTRACT_NOTE[row.contract]}
+                      </PeekHint>
+                    )}
                   </div>
 
                   <div className="col-span-5">
