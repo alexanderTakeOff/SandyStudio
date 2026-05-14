@@ -572,6 +572,7 @@ export type Database = {
           episode_code: string
           governance_mode: number
           id: string
+          metadata: Json
           series_id: string
           status: Database["public"]["Enums"]["episode_status"]
           title_working: string | null
@@ -584,6 +585,7 @@ export type Database = {
           episode_code: string
           governance_mode?: number
           id?: string
+          metadata?: Json
           series_id: string
           status?: Database["public"]["Enums"]["episode_status"]
           title_working?: string | null
@@ -596,6 +598,7 @@ export type Database = {
           episode_code?: string
           governance_mode?: number
           id?: string
+          metadata?: Json
           series_id?: string
           status?: Database["public"]["Enums"]["episode_status"]
           title_working?: string | null
@@ -845,6 +848,7 @@ export type Database = {
         | "PUBLISHED"
         | "ANALYTICS_COLLECTING"
         | "COMPLETE"
+        | "ARCHIVED"
       job_status:
         | "QUEUED"
         | "RUNNING"
@@ -1013,6 +1017,7 @@ export const Constants = {
         "PUBLISHED",
         "ANALYTICS_COLLECTING",
         "COMPLETE",
+        "ARCHIVED",
       ],
       job_status: [
         "QUEUED",

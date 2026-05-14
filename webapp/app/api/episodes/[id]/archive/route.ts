@@ -46,17 +46,6 @@ interface ArchivalPayload {
   archived_by: string;
 }
 
-// Migration 0029 adds `metadata` to episodes and `ARCHIVED` to the status
-// enum. Until `supabase/types.gen.ts` is regenerated post-apply, we narrow
-// rows through this shape locally. Remove the cast after type regen.
-interface EpisodeRowWithMetadata {
-  id: string;
-  episode_code: string;
-  title_working: string | null;
-  status: string;
-  metadata: Record<string, unknown> | null;
-}
-
 export const POST = withApiHandler(async (req, ctx) => {
   const params = (await ctx?.params) as { id: string } | undefined;
   const episodeId = params?.id;
@@ -66,14 +55,13 @@ export const POST = withApiHandler(async (req, ctx) => {
   const body = await parseJson(req, Body);
 
   // 1. Lookup + idempotency guard.
-  const { data: epRaw, error: epErr } = await supabase
+  const { data: ep, error: epErr } = await supabase
     .from('episodes')
     .select('id,episode_code,title_working,status,metadata')
     .eq('id', episodeId)
     .maybeSingle();
   if (epErr) throw new Error(`episode fetch: ${epErr.message}`);
-  if (!epRaw) throw new NotFoundError(`Episode ${episodeId}`);
-  const ep = epRaw as unknown as EpisodeRowWithMetadata;
+  if (!ep) throw new NotFoundError(`Episode ${episodeId}`);
   if (ep.status === 'ARCHIVED') {
     throw new ConflictError(
       `Episode ${ep.episode_code} is already ARCHIVED. Edit metadata.archival directly to revise.`,
@@ -155,13 +143,11 @@ export const POST = withApiHandler(async (req, ctx) => {
   // 6. Flip episode status + write metadata.
   const currentMeta = (ep.metadata ?? {}) as Record<string, unknown>;
   const newMeta = { ...currentMeta, archival };
-  // `status: 'ARCHIVED'` requires migration 0029 to be applied; types.gen.ts
-  // is regenerated post-apply. Cast bridges until then.
   const { error: upErr } = await supabase
     .from('episodes')
     .update({
       status: 'ARCHIVED',
-      metadata: newMeta,
+      metadata: newMeta as unknown as Record<string, unknown>,
       updated_at: new Date().toISOString(),
     } as never)
     .eq('id', episodeId);

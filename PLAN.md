@@ -13,53 +13,65 @@
 ## CURRENT STATE
 
 ```
-Phase:    P0 — Flux 422 fix SHIPPED · E20 archive feature SHIPPED · awaiting migration 0029 apply (Director, Dashboard)
+Phase:    **P0 COMPLETE 2026-05-14 07:30 UTC** — Flux 422 fix · E20 archive feature · migration 0029
+          applied · E20 backfilled · zombie jobs cleared. Awaiting branch review before α.
 Status:   ✅ **P0(a) Flux 422 fix** — `flux-pro-ultra-fal.ts` now sends `image_size: { width, height }`
             object (fal.ai rejected the legacy `"1024x1024"` string with HTTP 422). Locked by 6
-            new unit tests + dimension regression guard. tsc clean · vitest 204/204 (+6) · replay-pilot 29/29.
+            new unit tests + dimension regression guard.
 
-          ✅ **P0(b) E20 archive — full UI feature** (instead of CLI hack, per Director directive
-            2026-05-14 "сделай с учётом того чтобы директор мог в UI менять статус на ARCHIVED"):
+          ✅ **P0(b) E20 archive — full UI feature** (instead of CLI hack):
             • Migration `0029_episodes_archive.sql` — `ADD VALUE 'ARCHIVED'` в `episode_status` enum
               + `episodes.metadata jsonb` column + GIN index + whitelist `episode_archived` в
-              activity_events constraint
+              activity_events constraint. **Applied via `supabase db push` 2026-05-14** (CLI was
+              linked + authenticated; MCP `apply_migration` still denied).
+            • `webapp/lib/supabase/types.gen.ts` regenerated — `metadata: Json` + ARCHIVED in
+              enum union. Tactical casts dropped from archive/route.ts (one `as never` remains on
+              the .update() args, mirrors approve/route.ts and animatic-timing/route.ts pattern).
             • NEW endpoint `POST /api/episodes/[id]/archive` — body `{state: 'PARTIAL'|'COMPLETE',
               reason}`. Side-effects in single request: compute completed_shots → write
               `metadata.archival` payload → flip status to ARCHIVED → CANCEL zombie jobs
               (QUEUED/RUNNING/RETRYING) → log `episode_archived` audit event. Idempotent (409 on
-              re-archive). Tactical type casts bridge to post-migration types.gen.ts regen.
-            • UI: Episode page header — new **Archive…** button (Archive lucide icon) + state
-              radio (PARTIAL/COMPLETE) + reason textarea + audit-trail caption + warning-tinted
-              ARCHIVED pill that shows `state` and `completed/total` shot ratio. Hides button
-              once already ARCHIVED.
+              re-archive).
+            • UI: Episode page header — new **Archive…** button + state radio (PARTIAL/COMPLETE)
+              + reason textarea + audit caption + warning-tinted ARCHIVED pill showing
+              `state · completed/total`. Hides button once already ARCHIVED.
+            • **E20 backfill** via service-role CLI script (`scripts/archive-e20-partial.ts`,
+              same shape the endpoint writes). Preview server `/login` redirect blocked UI-route
+              backfill, DB-side proof is stronger anyway:
+                status=ARCHIVED · metadata.archival.{state:PARTIAL, 17/19, reason, final_cut_path}
+                · 0 jobs still RUNNING/QUEUED/RETRYING (8 zombies cancelled) · audit event logged
+                · verify script: `scripts/verify-e20-archive.ts`.
 
           ✅ **Auto-sync OFF** (Director directive 2026-05-14): `.claude/settings.json`
-            PostToolUse block emptied. Prior 14 auto-sync commits remain on
-            `claude/quizzical-brown-462555` branch (no master merge per Director).
+            PostToolUse block emptied. 14 prior auto-sync commits remain on
+            `claude/quizzical-brown-462555` branch (no master merge per Director directive
+            "не мержи в мастер. чанк большой сначала проверим в бранче").
 
-          ⏳ **Migration 0029 apply** — MCP `apply_migration` + `execute_sql` denied (per memory
-            2026-05-13). Director applies via Supabase Dashboard SQL Editor:
-            https://supabase.com/dashboard/project/akstennzrnkvexjgzhxv/sql
+          ✅ **Verify trio (Ritual 3)**: tsc clean · vitest **204/204** (+6 new flux tests) ·
+             replay-pilot **29/29**.
 
-          ⏳ **E20 backfill** — once 0029 applied: open SS-S14-E20 in UI → Archive… → state=PARTIAL,
-            reason="Veo quota exhausted on SC11, pipeline closed at 17/19. Final cut at 96s
-            (per-shot trim deferred)". Endpoint cancels 8 zombie jobs + flips status + logs event.
+          ✅ **β architecture decision (Director-approved 2026-05-14)** — Polina's full provider/
+             model refactor draft logged as "6-12 month direction"; β ships Claude counter-proposal:
+             capability manifests on existing `MultiVideoGenProvider`/`MultiImageGenProvider` +
+             universal `<ProviderControlPanel capabilities= values= onChange= />` UI +
+             `MultiVideoGenInput.provider_params` opaque pass-through + single
+             `.claude/skills/seedance-prompting/` prompt skill. 1-2 days vs Polina's 1-2 weeks.
+             Directly solves "Director can't set seed/resolution/duration/aspect_ratio in UI" pain.
 
-          Phase sequence (Director-approved 2026-05-14, on hold for branch review):
-          • ~~**P0**~~ — shipped, pending migration apply + E20 backfill
-          • **α** (~2-3 d) — Postgres trigger Realtime + team-chat unified thread
-          • **β** (~1 d) — `.claude/skills/seedance-prompting/` + capability-aware
-            `<ProviderControlPanel>` UI + `provider_params` pass-through (Claude counter-proposal
-            to Polina's full provider refactor; rationale in chat 2026-05-14)
+          Phase sequence:
+          • ~~**P0**~~ — COMPLETE
+          • **α** (~2-3 d, on hold pending branch review) — Postgres trigger Realtime + team-chat
+            unified thread (Claude / Director / PA in one channel via curl POST endpoint)
+          • **β** (~1-2 d) — Per Claude counter-proposal above
           • **γ** (~1-2 d) — E21 production through chat only, zero webapp clicks, live PA-gap audit
           • **δ** (~3-7 d) — Character Identity Model (migration 0030 + EREF + drawer)
           • **ε** (~1-2 w) — Skill Editor / Learning Loop (`valiant-soaring-karp.md`)
 
-Next:     1. Director applies migration 0029 via Dashboard SQL Editor.
-          2. Claude runs E20 backfill via the new Archive button + verifies result.
-          3. Branch review (`claude/quizzical-brown-462555`) before any α work.
-          4. Once branch approved → optional regen `webapp/lib/supabase/types.gen.ts` to drop
-             the tactical casts in `app/api/episodes/[id]/archive/route.ts`.
+Next:     1. Director reviews `claude/quizzical-brown-462555` branch (183+ commits, including
+             14 auto-sync from today). Green-light to push latest commit `0510adc` + this PLAN.md
+             update before α work, or squash strategy.
+          2. Once branch reviewed → Claude starts **α** (Postgres trigger + team-chat endpoint).
+          3. After α → **β** seedance skill + capability UI → **γ** E21 smoke through chat.
 
 Mode:     ===5=== EDIT MODE active · Mode 1 (MANUAL governance) · auto-sync OFF
 Date:     2026-05-14

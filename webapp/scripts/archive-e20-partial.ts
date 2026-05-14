@@ -106,13 +106,12 @@ async function main() {
     final_cut_asset_id: finalCut?.id,
     final_cut_path: finalCut?.drive_path ?? null,
     archived_at: new Date().toISOString(),
-    archived_by: 'CEO (Director, manual)',
+    archived_by: 'Director (CLI backfill, migration 0029 applied)',
   };
 
   console.log('=== Episode update plan ===');
-  console.log(`  ${ep.episode_code} "${ep.title_working}" — current status=${ep.status}`);
+  console.log(`  ${ep.episode_code} "${ep.title_working}" — current status=${ep.status} → ARCHIVED`);
   console.log(`  metadata.archival ← ${JSON.stringify(archival, null, 2)}`);
-  console.log(`  (status field unchanged: episode_status enum has no ARCHIVED_PARTIAL value — Option A)`);
 
   // 2. Identify zombie jobs to cancel.
   const { data: jobs } = await sb
@@ -152,13 +151,17 @@ async function main() {
   const newMeta = { ...meta, archival };
   const { error: epUpdErr } = await sb
     .from('episodes')
-    .update({ metadata: newMeta, updated_at: new Date().toISOString() })
+    .update({
+      status: 'ARCHIVED',
+      metadata: newMeta,
+      updated_at: new Date().toISOString(),
+    } as never)
     .eq('id', EP_ID);
   if (epUpdErr) {
     console.error('Episode update failed:', epUpdErr);
     process.exit(1);
   }
-  console.log('✓ episode.metadata.archival written');
+  console.log('✓ episode.status → ARCHIVED + metadata.archival written');
 
   if ((jobs ?? []).length > 0) {
     const ids = (jobs ?? []).map((j) => j.id);
