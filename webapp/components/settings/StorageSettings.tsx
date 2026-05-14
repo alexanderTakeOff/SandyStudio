@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, RefreshCw, Cloud, Folder } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { PeekHint } from '@/components/ui/PeekHint';
 
 interface StorageState {
   project_root: string;
