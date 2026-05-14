@@ -465,6 +465,14 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         onTriggered={() => mutate()}
       />
 
+      <ArchiveModal
+        open={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        episodeId={id}
+        episodeCode={episode.episode_code}
+        onArchived={() => mutate()}
+      />
+
       <PreviewDrawer
         open={previewAssetId !== null}
         onClose={() => setPreviewAssetId(null)}
