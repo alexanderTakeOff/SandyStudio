@@ -10414,3 +10414,479 @@ Pending approvals: **9**
 Пришли первую пачку ссылок.
 ===== END =====
 
+===== !AMBIENT 2026-05-14T07:05:00.337Z thread=bdbdafcf episode=- =====
+подумай Ну архитектурно Мне кажется нужно вытащить настройки для каждого провайдера в отдельные файлы возможно что они у нас так и есть и отдельные скиллы должны быть для работы с различными провайдерами и даже с различными версиями и моделей этих провайдеров не получится нам создать что-то универсальное для всего на свете
+===== END =====
+
+===== !AMBIENT 2026-05-14T07:05:50.557Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да, универсальный слой “для всего на свете” лучше не делать. Правильнее: **общий контракт + провайдерные адаптеры + модельные skill-пакеты**.
+
+## Рекомендуемая архитектура
+
+```txt
+/ai-providers
+  /seedance
+    provider.config.ts
+    capabilities.ts
+    models/
+      seedance-2.0.ts
+      seedance-1.0.ts
+    skills/
+      text-to-video.skill.ts
+      image-to-video.skill.ts
+      shot-continuity.skill.ts
+      camera-language.skill.ts
+    prompts/
+      seedance-2.0/
+        base.md
+        character-continuity.md
+        camera.md
+        motion.md
+        negative.md
+
+  /runway
+    provider.config.ts
+    capabilities.ts
+    models/
+      gen4.ts
+      gen3.ts
+    skills/
+      image-to-video.skill.ts
+      extend-shot.skill.ts
+
+  /openai
+    provider.config.ts
+    capabilities.ts
+    models/
+      gpt-image-1.ts
+      sora.ts
+    skills/
+      image-generation.skill.ts
+      video-generation.skill.ts
+
+  /anthropic
+    provider.config.ts
+    capabilities.ts
+    models/
+      claude-sonnet-4.5.ts
+    skills/
+      script-analysis.skill.ts
+      prompt-rewrite.skill.ts
+```
+
+## Главный принцип
+
+Не делать:
+
+```ts
+generateVideo(provider, model, prompt, options)
+```
+
+Потому что быстро получится помойка из условных веток:
+
+```ts
+if provider === "seedance" ...
+if model === "2.0" ...
+if supportsImageRef ...
+if supportsCameraControl ...
+```
+
+Лучше делать так:
+
+```ts
+VideoGenerationSkill
+  -> Seedance20ImageToVideoSkill
+  -> RunwayGen4ImageToVideoSkill
+  -> SoraTextToVideoSkill
+```
+
+То есть **общий интерфейс**, но реализация строго под конкретного провайдера/модель.
+
+---
+
+# 1. Общий контракт
+
+Например:
+
+```ts
+export interface VideoGenerationSkill {
+  provider: string;
+  model: string;
+  capability: "text_to_video" | "image_to_video" | "video_extend";
+
+  validate(input: VideoGenerationInput): ValidationResult;
+  buildPrompt(input: VideoGenerationInput): BuiltPrompt;
+  buildRequest(input: VideoGenerationInput): ProviderRequest;
+  parseResponse(response: unknown): VideoGenerationResult;
+}
+```
+
+Это даёт единый pipeline, но не заставляет все модели притворяться одинаковыми.
+
+---
+
+# 2. Capabilities вместо универсальности
+
+У каждой модели должен быть capability manifest:
+
+```ts
+export const seedance20Capabilities = {
+  provider: "seedance",
+  model: "seedance-2.0",
+
+  supports: {
+    textToVideo: true,
+    imageToVideo: true,
+    videoExtension: false,
+    characterReference: true,
+    styleReference: true,
+    cameraControl: true,
+    negativePrompt: true,
+    seed: true,
+    aspectRatio: ["16:9", "9:16", "1:1"],
+    durationSeconds: [5, 10],
+    resolution: ["720p", "1080p"],
+  },
+
+  prompting: {
+    prefersStructuredPrompt: true,
+    maxPromptChars: 3000,
+    needsExplicitCamera: true,
+    needsExplicitMotion: true,
+    sensitiveToOverloadedPrompts: true,
+  }
+};
+```
+
+Тогда оркестратор не “угадывает”, а спрашивает:
+
+```ts
+if (!model.capabilities.supports.characterReference) {
+  fallbackToTextualCharacterDescription();
+}
+```
+
+---
+
+# 3. Provider config отдельно от model config
+
+Важно разделить:
+
+## Provider-level
+
+```ts
+export const seedanceProviderConfig = {
+  id: "seedance",
+  apiBaseUrl: process.env.SEEDANCE_API_URL,
+  apiKeyEnv: "SEEDANCE_API_KEY",
+  rateLimits: {
+    rpm: 30,
+    concurrentJobs: 3,
+  },
+  billing: {
+    unit: "video_second",
+  },
+};
+```
+
+## Model-level
+
+```ts
+export const seedance20ModelConfig = {
+  id: "seedance-2.0",
+  provider: "seedance",
+  defaultDuration: 5,
+  defaultAspectRatio: "16:9",
+  defaultResolution: "1080p",
+  defaultStyleStrength: 0.65,
+};
+```
+
+Провайдер отвечает за API, auth, retries, billing, queue.
+
+Модель отвечает за формат промта, ограничения, параметры генерации.
+
+---
+
+# 4. Skills должны быть не просто “Claude skills”, а production skills
+
+Skill — это не только markdown-инструкция для Claude. В нашем случае лучше мыслить так:
+
+```txt
+Skill = instruction + validator + prompt builder + provider adapter + examples
+```
+
+Пример:
+
+```txt
+seedance-2.0-shot-generation/
+  SKILL.md
+  examples/
+    establishing-shot.md
+    character-action.md
+    dialogue-reaction.md
+  schemas/
+    input.schema.json
+  prompts/
+    prompt-template.md
+    negative-template.md
+  adapter.ts
+  validator.ts
+```
+
+Claude skill может быть верхним human-facing слоем, но в проде он должен маппиться на валидируемый backend skill.
+
+---
+
+# 5. Не один Seedance skill, а несколько
+
+Для Seedance 2.0 я бы делил так:
+
+## `seedance-2.0-text-to-video`
+
+Для генерации с нуля.
+
+Используется редко, потому что в сериальном pipeline хуже держит continuity.
+
+## `seedance-2.0-image-to-video`
+
+Главный production skill.
+
+Input:
+- locked character reference;
+- locked location frame;
+- style reference;
+- shot description;
+- camera;
+- motion;
+- duration;
+- negative prompt.
+
+## `seedance-2.0-shot-continuity`
+
+Skill, который не генерирует видео напрямую, а переписывает промт под сохранение:
+- персонажа;
+- костюма;
+- света;
+- локации;
+- направления движения;
+- screen direction;
+- пропсов.
+
+## `seedance-2.0-camera-language`
+
+Отдельный skill для перевода режиссёрской задачи в видео-язык:
+
+```txt
+“Сэнди понимает, что всё сломалось”
+```
+
+→
+
+```txt
+medium close-up, slow push-in, subtle handheld drift, character freezes for half a beat, eyes shift left, mouth half-open, background remains static
+```
+
+## `seedance-2.0-negative-prompt`
+
+Отдельный skill для контроля артефактов:
+- no extra limbs;
+- no face morphing;
+- no outfit changes;
+- no camera warping;
+- no melting objects;
+- no random text;
+- no extra characters.
+
+---
+
+# 6. Универсальный слой должен быть только на уровне intent
+
+Например, внутри SandyStudio можно иметь такие intent-level действия:
+
+```ts
+generateEstablishingShot()
+generateCharacterActionShot()
+generateReactionShot()
+generateInsertShot()
+extendShot()
+regenerateBadMotion()
+```
+
+Но ниже они маршрутизируются на конкретный skill:
+
+```ts
+generateCharacterActionShot(input)
+  -> selectProviderModel(input)
+  -> Seedance20ImageToVideoSkill.run(input)
+```
+
+То есть универсален **язык студии**, а не язык провайдера.
+
+---
+
+# 7. Пример routing logic
+
+```ts
+function selectVideoSkill(input: ShotGenerationInput) {
+  if (input.requiresCharacterContinuity && input.hasReferenceImage) {
+    return "seedance-2.0-image-to-video";
+  }
+
+  if (input.requiresLongCameraMove) {
+    return "runway-gen4-image-to-video";
+  }
+
+  if (input.requiresTextOnlyConceptExploration) {
+    return "sora-text-to-video";
+  }
+
+  return "seedance-2.0-image-to-video";
+}
+```
+
+Это лучше, чем пытаться сделать один `VideoProvider`.
+
+---
+
+# 8. Практическая структура для Claude skills
+
+Для Claude я бы завёл так:
+
+```txt
+/claude-skills
+  /video
+    /seedance-2.0
+      SKILL.md
+      prompt-recipes.md
+      continuity-rules.md
+      examples.md
+      negative-prompts.md
+
+    /runway-gen4
+      SKILL.md
+      prompt-recipes.md
+      examples.md
+
+    /sora
+      SKILL.md
+      prompt-recipes.md
+      examples.md
+
+  /studio
+    /shot-breakdown
+    /storyboard-to-video
+    /continuity-check
+    /prompt-debugger
+```
+
+Важно: не мешать “провайдерные” и “студийные” skills.
+
+## Провайдерный skill
+
+Знает особенности Seedance 2.0.
+
+## Студийный skill
+
+Знает, что такое SandyStudio shot, episode, storyboard, continuity, asset gate.
+
+---
+
+# 9. Seedance 2.0 prompt schema
+
+Я бы стандартизировал Seedance-промт так:
+
+```txt
+SHOT TYPE:
+[establishing / medium shot / close-up / insert / tracking shot]
+
+SUBJECT:
+[who/what is visible]
+
+ACTION:
+[clear physical action]
+
+CAMERA:
+[lens/framing/movement]
+
+MOTION:
+[character motion + object motion + environmental motion]
+
+STYLE:
+[visual style, lighting, rendering]
+
+CONTINUITY:
+[locked character/location/costume/props]
+
+NEGATIVE:
+[what must not happen]
+```
+
+Пример:
+
+```txt
+SHOT TYPE:
+Medium close-up, 16:9.
+
+SUBJECT:
+Sandy, a stylized animated squirrel character, sitting at a small cluttered desk inside a cozy forest workshop.
+
+ACTION:
+Sandy stares at a broken invention, slowly raises one eyebrow, then cautiously pokes it with a tiny screwdriver.
+
+CAMERA:
+Static camera with a very slow push-in. Eye-level framing. Keep Sandy centered.
+
+MOTION:
+Subtle character animation only: eyebrow movement, small hand motion, slight tail twitch. The invention gives one weak spark. Background remains stable.
+
+STYLE:
+Stylized 3D animated comedy series, soft cinematic lighting, warm colors, clean readable silhouettes, family-friendly cartoon realism.
+
+CONTINUITY:
+Keep Sandy's face, body proportions, fur color, outfit, and desk layout consistent with the reference image. Do not change character design.
+
+NEGATIVE:
+No extra characters, no face morphing, no costume changes, no extra limbs, no text, no logos, no camera shake, no melting objects.
+```
+
+---
+
+# 10. Главная архитектурная рекомендация
+
+Я бы зафиксировал правило:
+
+> SandyStudio не имеет “универсального video generation provider”.  
+> SandyStudio имеет единый **Shot Intent Contract**, который исполняется через конкретные provider/model skills.
+
+То есть:
+
+```txt
+Studio Intent
+  -> Shot Contract
+    -> Capability Match
+      -> Provider Skill
+        -> Model Prompt Builder
+          -> API Adapter
+```
+
+Это масштабируется.
+
+---
+
+## Итог
+
+Твоя мысль правильная:  
+**настройки провайдеров — отдельно; настройки моделей — отдельно; skills — отдельно под provider/model/version; универсальный только studio-level contract.**
+
+Так мы избежим хрупкой абстракции и сможем быстро добавлять:
+- Seedance 2.1;
+- Runway Gen-4 Turbo;
+- Sora image-to-video;
+- Kling;
+- Veo;
+- внутренние локальные модели.
+
+Следующее действие: зафиксировал архитектурный draft; теперь нужен один выбор — делать первым пакет skills под **Seedance 2.0** или сначала общий **Shot Intent Contract**?
+===== END =====
+
