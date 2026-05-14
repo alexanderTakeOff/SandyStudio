@@ -13,6 +13,7 @@ import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError, ConflictError, GovernanceBlockError } from '@/lib/api/errors';
 import { assertAssetTransition, type AssetStatus } from '@/lib/api/status-transitions';
+import { filenameForStatus } from '@/lib/api/filename-status';
 import { enforceMode, type GovernanceEpisode } from '@/lib/governance';
 import { inngest, type StudioEventName } from '@/lib/inngest/client';
 import {
@@ -521,10 +522,19 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
-  // 2. Update asset status
+  // 2. Update asset status (+ filename status suffix per CLAUDE.md §3)
   const patch: Record<string, unknown> = { status: targetStatus };
   if (body.decision === 'REQUEST_REVISION' && body.note) {
     patch.revision_log = body.note;
+  }
+  // Sprint γ 2026-05-14: keep filename in sync with status. Director:
+  // «утверждённый файл должен поменять наименование». The CHECK constraint
+  // allows only 5 statuses in filenames (DRAFT/REVIEW/REVISION/APPROVED/
+  // LOCKED) so we skip rename when the target status has no filename
+  // representation (REJECTED, INVALIDATED, …).
+  const renamed = filenameForStatus(asset.filename, targetStatus);
+  if (renamed && renamed !== asset.filename) {
+    patch.filename = renamed;
   }
   const { error: upErr } = await supabase
     .from('assets')
