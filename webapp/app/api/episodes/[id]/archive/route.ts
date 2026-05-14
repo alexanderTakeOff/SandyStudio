@@ -46,6 +46,17 @@ interface ArchivalPayload {
   archived_by: string;
 }
 
+// Migration 0029 adds `metadata` to episodes and `ARCHIVED` to the status
+// enum. Until `supabase/types.gen.ts` is regenerated post-apply, we narrow
+// rows through this shape locally. Remove the cast after type regen.
+interface EpisodeRowWithMetadata {
+  id: string;
+  episode_code: string;
+  title_working: string | null;
+  status: string;
+  metadata: Record<string, unknown> | null;
+}
+
 export const POST = withApiHandler(async (req, ctx) => {
   const params = (await ctx?.params) as { id: string } | undefined;
   const episodeId = params?.id;
