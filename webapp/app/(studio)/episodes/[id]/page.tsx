@@ -37,6 +37,17 @@ interface Stage {
   assets_in_review?: number;
 }
 
+interface EpisodeArchival {
+  state: 'PARTIAL' | 'COMPLETE';
+  completed_shots: number;
+  total_shots: number | null;
+  reason: string;
+  final_cut_asset_id: string | null;
+  final_cut_path: string | null;
+  archived_at: string;
+  archived_by: string;
+}
+
 interface Episode {
   id: string;
   episode_code: string;
@@ -46,6 +57,7 @@ interface Episode {
   budget_ceiling: number | null;
   budget_spent: number | null;
   series_id: string;
+  metadata?: { archival?: EpisodeArchival } | null;
 }
 
 interface ActivityRow {
