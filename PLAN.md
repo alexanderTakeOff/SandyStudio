@@ -13,25 +13,55 @@
 ## CURRENT STATE
 
 ```
-Phase:    Sprint α→ε kickoff 2026-05-14 — plan APPROVED, awaiting `/clear` + fresh session
-Status:   ✅ Plan locked at `~/.claude/plans/cached-tickling-willow.md`
-          ✅ Checkpoint memo: `session_2026-05-14_sprint_alpha_kickoff.md`
-          ✅ MEMORY.md index updated (top entry, read-first on resume)
-          
-          Phase sequence (Director-approved 2026-05-14):
-          • **P0** (~30 min) — Flux Pro Ultra `image_size` 422 fix; E20 → ARCHIVED-PARTIAL
+Phase:    P0 — Flux 422 fix SHIPPED · E20 archive feature SHIPPED · awaiting migration 0029 apply (Director, Dashboard)
+Status:   ✅ **P0(a) Flux 422 fix** — `flux-pro-ultra-fal.ts` now sends `image_size: { width, height }`
+            object (fal.ai rejected the legacy `"1024x1024"` string with HTTP 422). Locked by 6
+            new unit tests + dimension regression guard. tsc clean · vitest 204/204 (+6) · replay-pilot 29/29.
+
+          ✅ **P0(b) E20 archive — full UI feature** (instead of CLI hack, per Director directive
+            2026-05-14 "сделай с учётом того чтобы директор мог в UI менять статус на ARCHIVED"):
+            • Migration `0029_episodes_archive.sql` — `ADD VALUE 'ARCHIVED'` в `episode_status` enum
+              + `episodes.metadata jsonb` column + GIN index + whitelist `episode_archived` в
+              activity_events constraint
+            • NEW endpoint `POST /api/episodes/[id]/archive` — body `{state: 'PARTIAL'|'COMPLETE',
+              reason}`. Side-effects in single request: compute completed_shots → write
+              `metadata.archival` payload → flip status to ARCHIVED → CANCEL zombie jobs
+              (QUEUED/RUNNING/RETRYING) → log `episode_archived` audit event. Idempotent (409 on
+              re-archive). Tactical type casts bridge to post-migration types.gen.ts regen.
+            • UI: Episode page header — new **Archive…** button (Archive lucide icon) + state
+              radio (PARTIAL/COMPLETE) + reason textarea + audit-trail caption + warning-tinted
+              ARCHIVED pill that shows `state` and `completed/total` shot ratio. Hides button
+              once already ARCHIVED.
+
+          ✅ **Auto-sync OFF** (Director directive 2026-05-14): `.claude/settings.json`
+            PostToolUse block emptied. Prior 14 auto-sync commits remain on
+            `claude/quizzical-brown-462555` branch (no master merge per Director).
+
+          ⏳ **Migration 0029 apply** — MCP `apply_migration` + `execute_sql` denied (per memory
+            2026-05-13). Director applies via Supabase Dashboard SQL Editor:
+            https://supabase.com/dashboard/project/akstennzrnkvexjgzhxv/sql
+
+          ⏳ **E20 backfill** — once 0029 applied: open SS-S14-E20 in UI → Archive… → state=PARTIAL,
+            reason="Veo quota exhausted on SC11, pipeline closed at 17/19. Final cut at 96s
+            (per-shot trim deferred)". Endpoint cancels 8 zombie jobs + flips status + logs event.
+
+          Phase sequence (Director-approved 2026-05-14, on hold for branch review):
+          • ~~**P0**~~ — shipped, pending migration apply + E20 backfill
           • **α** (~2-3 d) — Postgres trigger Realtime + team-chat unified thread
-          • **β** (~1 d) — Seedance prompting skill `.claude/skills/seedance-prompting/`
+          • **β** (~1 d) — `.claude/skills/seedance-prompting/` + capability-aware
+            `<ProviderControlPanel>` UI + `provider_params` pass-through (Claude counter-proposal
+            to Polina's full provider refactor; rationale in chat 2026-05-14)
           • **γ** (~1-2 d) — E21 production through chat only, zero webapp clicks, live PA-gap audit
           • **δ** (~3-7 d) — Character Identity Model (migration 0030 + EREF + drawer)
           • **ε** (~1-2 w) — Skill Editor / Learning Loop (`valiant-soaring-karp.md`)
-          
-          Deferred: StageKebabMenu provider section · Sprint 10A reviewer unification · Seedance 1080p/15s/webhook · "Claude-as-primary" pivot (worldview, parked)
-          
-          Pre-sprint: `/clear` now, resume from checkpoint memo on first turn next session.
 
-Next:     Open fresh session → read MEMORY.md → resume from `session_2026-05-14_sprint_alpha_kickoff.md` → start P0 (Flux 422 fix + E20 archive)
-Mode:     Mode 1 (MANUAL) — Director approves each gate
+Next:     1. Director applies migration 0029 via Dashboard SQL Editor.
+          2. Claude runs E20 backfill via the new Archive button + verifies result.
+          3. Branch review (`claude/quizzical-brown-462555`) before any α work.
+          4. Once branch approved → optional regen `webapp/lib/supabase/types.gen.ts` to drop
+             the tactical casts in `app/api/episodes/[id]/archive/route.ts`.
+
+Mode:     ===5=== EDIT MODE active · Mode 1 (MANUAL governance) · auto-sync OFF
 Date:     2026-05-14
 ```
 
