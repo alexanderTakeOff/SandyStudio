@@ -361,11 +361,20 @@ export function ConciergePanel() {
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
     try {
+      // Sprint α 2026-05-14 — filter UI-only roles out of the wire payload.
+      // OpenAI Messages API rejects 'pipeline' and 'claude' (those are
+      // ConciergePanel-render variants, not conversation participants).
+      // Their context is already injected via the system-prompt-builder
+      // PIPELINE_EVENTS_SINCE_LAST_REPLY + TEAM_CHAT_FROM_CLAUDE blocks
+      // that the chat route loads from DB on each request.
+      const wireMessages = next
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch('/api/concierge/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: next,
+          messages: wireMessages,
           threadId: threadId ?? undefined,
         }),
       });
