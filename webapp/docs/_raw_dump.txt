@@ -1,0 +1,3887 @@
+
+
+===LINE 1101 | 2026-05-04T15:09:33.285Z===
+**Что я нашёл при ревью kebab-логики на всех стейджах** (один компонент `StageKebabMenu` рендерит все строки):
+
+| Проблема | Найдена | Исправлено |
+|---|---|---|
+| Re-trigger блокировался на `approved` | ✅ да | ✅ снят блок (теперь работает на любом стейдже кроме `running`) |
+| "Edit (read-only)" — оксиморон в кебабе | ✅ да | ✅ переименовал в "View source" когда стейдж approved |
+| Approve блокирован если нет REVIEW | ✅ нет — корректно (без REVIEW нечего апрувить) | n/a |
+| Page-header "Re-trigger…" button | ✅ нет — никаких state-restrictions | n/a |
+| Inbox actions | ✅ нет — Inbox по дизайну только REVIEW assets | n/a |
+| AssetDetailDrawer / EpisodeAssetDrawer readOnly | ✅ корректно — `EDITABLE_STATUSES = {DRAFT, REVIEW, REVISION}`, остальные read-only by design | n/a |
+
+Других state-based блокировок нет. Эти два фикса — единственные. tsc clean.
+
+---
+
+**По SB v03:** Inngest job всё ещё running (147+ сек на Sonnet, ожидаемо для v2 prompt'а + Bible canon в input). Ждём.
+
+Когда увижу v03 в DB — прочитаю JSON-блок и проверю что:
+1. Каждый шот имеет `shot_role`, `location: {slug, sub_area}`, `characters: [{bible_slug, expected_emotion, expected_action, role_in_shot}]`, `expected_gag`, `action_prose`
+2. Post-validation не упала (значит все Bible slugs корректные)
+3. `assumptions[]` короткий
+
+Если всё ОК — Phase A complete, перехожу на Phase B.
+
+
+===LINE 1408 | 2026-05-04T15:43:35.146Z===
+## Phase E + E.5 готовы
+
+`runEpisodeReferences` переписан полностью. State machine на каждом шоте:
+
+```
+build prompt (v2 test plan + Bible canon)
+↓
+pre-flight Style Guardian (warn/strict/auto_rewrite)
+↓
+loop (≤3 итерации):
+  generate via MultiImageGenProvider (multi-image refs!)
+  ↓
+  EREF-CHECK (Sonnet vision) → verdict + scores + suggested_prompt_v2
+  ↓
+  APPROVE → break
+  HUMAN_REVIEW → break  
+  REGENERATE && retry < 2 → prompt = suggested_prompt_v2; continue
+  REGENERATE_EXHAUSTED → break
+↓
+if APPROVE && upscale_enabled && FAL_KEY set:
+  upscale 1024 → 4096 via clarity-upscaler ($0.03)
+↓
+persist row (status REVIEW) with:
+  - metadata.shot_reference (новый authoritative contract)
+  - legacy metadata.image_prompt.history (для current AssetDetailDrawer)
+```
+
+**Что персистится в `metadata.shot_reference`:**
+- `test_plan` — characters[] с emotion/action/role, location anchor, style anchor, expected_gag
+- `generation_history[]` — каждая попытка: provider, prompt, refs_used, strength, cost, размеры, is_4k, triggered_by
+- `review` — verdict + 5 scores + issues + suggested_prompt_v2 + reviewer cost
+- `retry_history[]` — почему/когда retry'или
+- `final_4k_url` — для downstream Animatic/VGEN
+
+**Cost оценка** (14 шотов):
+- Generation: 14 × $0.04-0.06 = $0.56-0.84
+- Reviewer: 14 × $0.03 (Sonnet vision) = $0.42
+- 4K upscale: 14 × $0.03 = $0.42 (если включён)
+- Worst case с 2 retry на каждом: ~$2.50/эпизод
+
+**Все три гейта зелёные:**
+- ✅ tsc clean
+- ✅ 110/110 tests pass
+- ✅ 29/29 replay-pilot pass
+
+## Что дальше
+
+Остался **Phase F** — UI QC console (AssetDetailDrawer). Это большой кусок (5 actions + score bars + history carousel + per-version controls). Может занять 1-1.5 часа кода.
+
+q1: продолжаю Phase F сейчас? Или останавливаемся, сначала ты тестируешь EREF v2 в реальности (re-trigger Episode references на SS-S14-E01) и смотришь что получилось — потом Phase F?
+
+Рекомендую остановиться: ты увидишь как работает новый runner на реальных данных, и это даст обратную связь до того как я инвестирую в UI. Если runner барахлит — лучше починить до Phase F.
+
+q2: если триггеришь — переключить provider на Flux Pro 1.1 Ultra (если у тебя есть FAL_KEY)? Или оставить openai-edits-multi (default)?
+
+
+===LINE 1551 | 2026-05-04T16:17:03.034Z===
+Ситуация по объёму. Делю на 3 уровня важности.
+
+## 🔴 Critical — must-have для production EREF v2 (~10-12 часов)
+
+| # | Задача | Время | Что блокирует |
+|---|---|---|---|
+| 1 | **Phase F: QC Console UI** — AssetDetailDrawer с 5 actions (APPROVE/EDIT PROMPT/SWITCH PROVIDER/REQUEST REVISION/REJECT) + score bars + history | ~3-4ч | Без этого Director не может реально работать с AI reviewer'ом — verdicts только в DB |
+| 2 | **EREF concurrency lock** — Inngest `concurrency: 1` per episode, чтобы не было гонки | ~1ч | Текущая гонка тратит деньги впустую |
+| 3 | **Hybrid parallelism** — Pilot + Fan-out + Kill switch | ~4ч | Сейчас 13 шотов идут серийно ~10 мин. Параллельно ~30с с проверкой направления |
+| 4 | **Move upscale → Director APPROVE** | ~1-2ч | Сейчас код апскейлит на AI APPROVE → деньги впустую (у тебя сейчас не активно из-за нет FAL_KEY) |
+
+## 🟡 Important — архитектурный долг (~6-8 часов)
+
+| # | Задача | Время |
+|---|---|---|
+| 5 | **Stale-cascade** — downstream становится stale при SB regen, не остаётся зелёным | ~3ч |
+| 6 | **markJobFailed reconciliation** — zombie RUNNING jobs | ~1-2ч |
+| 7 | **Cleanup эпизоды S01-S13** в БД | ~30 мин |
+| 8 | **FAL_KEY setup** + первый прогон через Flux Pro Ultra (это просто конфиг, не код, но требует тестинга) | ~1ч (тест) |
+
+## 🟢 Polish — UX nice-to-have (~6-8 часов)
+
+| # | Задача | Время |
+|---|---|---|
+| 9 | Optimistic stage feedback on approve | ~1ч |
+| 10 | Pipeline stage smoke animation | ~3ч |
+| 11 | Version badge в Inbox row | ~30 мин |
+| 12 | Per-version StageKebabMenu actions | ~2ч |
+| 13 | Activity feed version + approval events | ~1-2ч |
+| 14 | Per-series filter в Inbox | ~1ч |
+
+## ⚪ Out of scope (для следующих серий)
+
+| # | Задача | Time |
+|---|---|---|
+| 15 | LoRA training pipeline per character | ~6-10ч |
+| 16 | Real Animatic stage (timeline + sound) — следующая стадия пайплайна за EREF | ~8-12ч |
+| 17 | YouTube real publish OAuth | ~3ч |
+
+---
+
+## Партнёрский совет
+
+**Минимум для рабочего EREF v2 production (закрыть Director's vision):**
+- Phase F (QC Console) — самый главный кусок UX
+- Concurrency lock — мелкий но важный
+- Move upscale на Director APPROVE — тривиальный фикс
+
+= **~5-7 часов работы**.
+
+После этого ты получаешь полностью функциональную QC station: видишь verdict, scores, можешь edit prompt и switch provider, апскейл только на твой APPROVE. **Это закрывает архитектурный план который мы согласовали.**
+
+Дальше можно решать: Hybrid parallelism для скорости / stale-cascade / Animatic stage / cleanup. Это уже следующие итерации.
+
+q1: продолжаем Phase F прямо сейчас? (~3-4 часа кода — самый большой оставшийся блок)
+q2: или сначала минификс — concurrency lock (~1ч) + move upscale (~1ч), потом Phase F? Дешёвые победы первыми.
+
+
+===LINE 1616 | 2026-05-05T05:49:19.278Z===
+Стратегический момент действительно подходящий. Анализ:
+
+## Где мы
+
+**Логическая граница:** Phase A→E.5 завершены (storyboarder@v2 + provider abstraction + reviewer + runner + 4K upscale). Phase F (UI QC console) ещё не начат. Между фазами — естественная точка компакта.
+
+**Что выживет компакт:**
+- ✅ `C:\SandyStudio\CLAUDE.md` (§9 обновлён)
+- ✅ `C:\SandyStudio\PLAN.md` (Pipeline philosophy секция)
+- ✅ `C:\SandyStudio\technology.md` (8 разделов с тезисами)
+- ✅ Memory: `technology_md_protocol.md` + 14 других
+- ✅ TodoWrite (20 пунктов, хорошо структурированы по приоритетам)
+- ✅ Все код-изменения в working tree (новые файлы + правки)
+
+**Что потеряем:**
+- ❌ Drive URLs 10 v2 шотов (можно восстановить из БД)
+- ❌ Диагностические данные из вчерашних прогонов
+- ❌ Тонкий контекст почему конкретные архитектурные решения принимались (большая часть зафиксирована в `technology.md`, но не вся)
+
+## Риск
+
+**RESUME-AFTER-CLEAR.md — устарел.** Он покрывает работу до этой сессии (Slices A-D, до EREF v2). Если сейчас компактнуть и завтра новый агент начнёт сессию — он прочитает stale state и не поймёт что произошло за последний день.
+
+## Рекомендация
+
+Прежде чем компактнуть — **обновить `RESUME-AFTER-CLEAR.md`** под текущее состояние:
+- Phase A-E.5 done
+- Working tree changes (~10 новых файлов + переписанный EREF runner)
+- Inngest dev остановлен (надо стартануть утром)
+- Concurrency lock 3→1 уже зафиксирован
+- Что делать первым в следующей сессии (Phase F или тестовый прогон EREF)
+
+Это ~5 минут моей работы, и оно гарантирует чистый resume.
+
+После этого `/compact` с focus message типа `Continue EREF v2 implementation: Phase F (AssetDetailDrawer QC console). Foundation ready, see RESUME-AFTER-CLEAR.md`.
+
+q1: обновить RESUME-AFTER-CLEAR.md перед компактом?
+q2: или сразу компакт без обновления (полагаемся на technology.md + TodoWrite + git status)?
+
+Рекомендую q1.
+
+
+===LINE 1660 | 2026-05-05T06:19:15.080Z===
+Рекомендую **компакт сейчас**. Идеальный момент по нескольким причинам:
+
+## Почему сейчас — правильное время
+
+1. **Архитектурный milestone достигнут.** Phase A-E.5 завершены и зафиксированы кодом. Граница между фазами.
+2. **Чистый handoff документ существует.** `RESUME-AFTER-CLEAR.md` обновлён — будущая сессия (пусть даже та же самая после компакта) поднимет точное состояние.
+3. **Persistent context защищён.** `technology.md`, `PLAN.md`, `CLAUDE.md`, memory, TodoWrite, git — всё закоммичено и переживёт компакт.
+4. **Фронт работы тяжёлый по контексту.** Phase F = читать AssetDetailDrawer, EpisodeAssetDrawer, EditorModal, RejectModal, Modal, ButtonVariants, Inbox patterns + строить UI с 5 actions, score bars, history carousel, prompt editor, provider dropdown. Каждое чтение жрёт токены. Лучше делать с свежим окном.
+5. **Ты не в середине шага.** Мы на ожидании твоего решения (тест прогон EREF / сразу Phase F). Прерывать нечего.
+
+## Что выживет
+
+| Survives | Lost |
+|---|---|
+| Все code-changes (auto-synced в git) | Drive URLs 10 шотов (recoverable из БД) |
+| `technology.md` (8 разделов тезисов) | Нюансы вчерашних дискуссий про провайдеры |
+| `RESUME-AFTER-CLEAR.md` (свежий) | Логи генерации/ошибок (в БД) |
+| TodoWrite (20 пунктов с приоритетами) | Часть mid-session reasoning |
+| Memory rule про technology.md | |
+| `PLAN.md` Pipeline philosophy | |
+| CLAUDE.md §9 (read technology.md) | |
+
+## Команда после моего ответа
+
+```
+/compact Continue EREF v2 implementation. Phase A-E.5 done (storyboarder@v2 + multi-image provider abstraction + AI reviewer + runner with retry loop + 4K upscale). Concurrency lock fixed (3→1). See RESUME-AFTER-CLEAR.md and technology.md for full state. Next: Director chooses between (A) clean EREF re-trigger test or (B) start Phase F (AssetDetailDrawer QC console with 5 actions).
+```
+
+После компакта ты задашь любой вопрос — агент прочитает RESUME + technology.md + memory + TODO и продолжит точно с этой точки.
+
+q1: компактнуть командой выше?
+q2: или ты хочешь сначала что-то ещё дописать в `RESUME-AFTER-CLEAR.md` / `technology.md` перед компактом?
+
+
+===LINE 1921 | 2026-05-05T05:49:19.278Z===
+Стратегический момент действительно подходящий. Анализ:
+
+## Где мы
+
+**Логическая граница:** Phase A→E.5 завершены (storyboarder@v2 + provider abstraction + reviewer + runner + 4K upscale). Phase F (UI QC console) ещё не начат. Между фазами — естественная точка компакта.
+
+**Что выживет компакт:**
+- ✅ `C:\SandyStudio\CLAUDE.md` (§9 обновлён)
+- ✅ `C:\SandyStudio\PLAN.md` (Pipeline philosophy секция)
+- ✅ `C:\SandyStudio\technology.md` (8 разделов с тезисами)
+- ✅ Memory: `technology_md_protocol.md` + 14 других
+- ✅ TodoWrite (20 пунктов, хорошо структурированы по приоритетам)
+- ✅ Все код-изменения в working tree (новые файлы + правки)
+
+**Что потеряем:**
+- ❌ Drive URLs 10 v2 шотов (можно восстановить из БД)
+- ❌ Диагностические данные из вчерашних прогонов
+- ❌ Тонкий контекст почему конкретные архитектурные решения принимались (большая часть зафиксирована в `technology.md`, но не вся)
+
+## Риск
+
+**RESUME-AFTER-CLEAR.md — устарел.** Он покрывает работу до этой сессии (Slices A-D, до EREF v2). Если сейчас компактнуть и завтра новый агент начнёт сессию — он прочитает stale state и не поймёт что произошло за последний день.
+
+## Рекомендация
+
+Прежде чем компактнуть — **обновить `RESUME-AFTER-CLEAR.md`** под текущее состояние:
+- Phase A-E.5 done
+- Working tree changes (~10 новых файлов + переписанный EREF runner)
+- Inngest dev остановлен (надо стартануть утром)
+- Concurrency lock 3→1 уже зафиксирован
+- Что делать первым в следующей сессии (Phase F или тестовый прогон EREF)
+
+Это ~5 минут моей работы, и оно гарантирует чистый resume.
+
+После этого `/compact` с focus message типа `Continue EREF v2 implementation: Phase F (AssetDetailDrawer QC console). Foundation ready, see RESUME-AFTER-CLEAR.md`.
+
+q1: обновить RESUME-AFTER-CLEAR.md перед компактом?
+q2: или сразу компакт без обновления (полагаемся на technology.md + TodoWrite + git status)?
+
+Рекомендую q1.
+
+
+===LINE 1943 | 2026-05-05T08:06:31.665Z===
+Доброе утро! Команда `/compact` прошла успешно — система выгрузила всю историю сессии в summary, а потом перезагрузила контекст с нуля, прочитав:
+
+- `RESUME-AFTER-CLEAR.md` (текущее состояние worktree после Phase A-E.5)
+- `technology.md` (production-tech theses)
+- `concurrency.ts` (lock fix 3→1 подтверждён)
+- `upscale-fal.ts` (4K upscaler)
+- Plan-файл `purrfect-stirring-hollerith.md` (полный EREF v2 plan)
+- MEMORY.md + auto-memory правила
+
+Контекст теперь компактный — основная история ушла в summary, но все ключевые решения и состояние кода живы.
+
+## Где мы
+
+**Phase A-E.5 done в коде, не stress-tested.** Концуррентность залочена на 1. Worktree clean. Inngest-dev надо перезапустить (был убит вчера).
+
+## Что дальше — твой выбор
+
+**A. Test clean EREF run** — ты ре-триггеришь EREF на SS-S14-E01 через kebab. Concurrency=1 → sequential, 6-10 мин, ~$1. Проверяет, решает ли lock-fix вчерашнее racing без доп. retry-логики.
+
+**B. Phase F (QC Console UI)** — AssetDetailDrawer с 5 действиями (APPROVE / EDIT PROMPT / SWITCH PROVIDER / REQUEST REVISION / REJECT) + score-бары + history carousel. ~3-4 часа кода. Без этого ты не можешь реально пользоваться AI-verdict'ами.
+
+Рекомендую **A первым** — это дёшево и проверяет архитектурный фикс. Потом **B**.
+
+Что выбираешь?
+
+
+===LINE 2061 | 2026-05-05T08:24:15.917Z===
+Хороший вопрос — но надо разделить два смысла "параллельности":
+
+**1. Claude sub-agents (мой Task tool)** — я могу запустить 3-5 sub-агентов параллельно. Хорошо для:
+- независимое чтение/анализ кода (5 файлов одновременно)
+- multi-perspective code review (security + typescript + architecture одновременно)
+- независимая работа над разными файлами одного фичерсета
+
+**Плохо для:**
+- наблюдения за одним долгим job'ом (sub-agent тоже будет polling — дешевле ScheduleWakeup)
+- последовательной pipeline-работы (shot N зависит от shot N-1 в reviewer feedback)
+- shared mutable state — race conditions
+
+**2. Pipeline parallelism (Inngest fan-out)** — про что ты, видимо, и спрашиваешь применительно к EREF. Это на уровне runtime, не Claude. Architecture в `technology.md §4`: pilot pass (2-3 shots) → Director подтверждает → fan-out 10 параллельно через Inngest events. Это TODO #8 — НЕ реализовано.
+
+---
+
+**Где sub-agents РЕАЛЬНО помогут прямо сейчас:**
+
+**Phase F (QC Console UI)** — можно разбить на 3 параллельных sub-агента:
+- A: `AssetDetailDrawer` рендеринг (test plan table + score bars + history carousel)
+- B: backend endpoints (`request-revision/route.ts` + `regenerate-image` extension для switch provider)
+- C: thumbnail badges на episode page (verdict + 4K marker)
+
+Все 3 — независимые файлы, можно строить параллельно ~1 час вместо 3 последовательно.
+
+**Cleanup batch** — S01-S13 удаление + dup records + markJobFailed reconciliation — 3 sub-агента в параллель.
+
+---
+
+**Применительно к EREF run прямо сейчас:** sub-agent НЕ поможет — он будет тоже ждать. Лучшая параллелизация — Inngest fan-out (TODO #8), но это код, который мы строим ПОСЛЕ Phase F.
+
+**Хочешь — после текущего EREF run запускаем Phase F через 3 параллельных sub-агента?** Это будет демонстрация подхода + закрывает большую задачу быстрее.
+
+
+===LINE 2094 | 2026-05-05T08:27:44.835Z===
+Запустил **planner sub-agent** для Phase F в background. Он:
+- читает RESUME, technology.md, shot-reference contract, AssetDetailDrawer, approve/regenerate routes
+- проектирует 5-action UI + score bars + history carousel + test plan table + per-asset 4K opt-out
+- разбивает план на 3 параллельных chunk'а (для последующего fan-out на 3 sub-агентов)
+- estimates effort, identifies risks
+
+Notify придёт автоматически когда план готов. Параллельно слежу за EREF.
+
+
+===LINE 2130 | 2026-05-05T08:29:58.556Z===
+**Phase F план готов!** Sub-agent выдал хорошо структурированный план:
+
+## Структура (вкратце)
+
+**3 независимых track'а — можно строить параллельно 3 агентами:**
+
+| Track | Что | Часов |
+|---|---|---|
+| **A — Backend** | `request-revision` route + `eref/providers` route + расширение `approve` (skip_upscale + emit upscale-final event) + расширение `regenerate-image` (eref_provider_id) | ~3h |
+| **B — Left column** | EREFQcPanel shell + EREFPreview (1024↔4K toggle) + EREFHistoryCarousel + интеграция в EpisodeAssetDrawer | ~2h |
+| **C — Right column + Actions** | TestPlanCard + VerdictPill + ScoreBars + IssuesList + ActionBar (5 кнопок + optimistic UI + skip-upscale toggle) + EditPromptModal + SwitchProviderModal | ~3h |
+
+Итого 8 человеко-часов → **~3-4h wall-clock с 3 параллельными агентами + 30 мин интеграции**.
+
+## Ключевые архитектурные решения
+
+- **Не раздувать `EpisodeAssetDrawer.tsx`** (сейчас 387 строк) — выносим всё в `webapp/components/assets/eref/*.tsx` (10 новых компонентов), а drawer просто branch'ит: `if (isShotReferenceV2(metadata)) return <EREFQcPanel/>`
+- **APPROVE триггерит `sandystudio/exec-eref/upscale-final` event** — то есть Phase F одновременно реализует TODO #7 (move upscale to Director APPROVE)
+- **Backend safe** — все изменения `/approve` и `/regenerate-image` через optional поля, legacy paths не трогаем
+- **`runUpscaleOnly()` экспортится** из episode-references.ts для нового upscale-only event handler
+- **2 новых event names:** `sandystudio/exec-eref/upscale-final` + `sandystudio/exec-eref/director-revision`
+
+## Risks (из плана)
+
+- Shared `/approve` route handles SCR/STB/REV/SPC tоо — must NOT break legacy
+- Drawer →700 lines breaches 800-line guard, MUST split into sub-components
+- `final_4k_url` may be null on existing v2 records → graceful tolerance
+
+---
+
+## EREF status update
+
+Run всё ещё Running, 21 мин. Webapp активно talks to OpenAI + Anthropic, 5% CPU = I/O wait. Не зависание, просто медленно (видимо 502 retries или REGENERATE verdicts).
+
+---
+
+## Что дальше — твой выбор
+
+**A. Дождаться EREF** (~5 мин), посмотреть результаты, потом запускать Phase F  
+**B. Запускать Phase F прямо сейчас** через 3 параллельных sub-агента — EREF параллельно доделает себя сам  
+**C. Стопнуть EREF** — что-то не так, расследуем
+
+Рекомендую **B** — экономим 5 мин wall-clock, EREF в нашем мониторинге всё равно идёт автоматом. Что выбираешь?
+
+
+===LINE 2158 | 2026-05-05T08:37:07.520Z===
+**Phase F простыми словами:**
+
+Это **полноценная панель проверки** для каждой картинки, которую сгенерил EREF. Сейчас в drawer'е ты видишь только превью + кнопки "Approve/Reject". После Phase F будет:
+
+**Что покажет:**
+- Большое превью + переключатель **"посмотреть в 1024 / посмотреть в 4К"**
+- **Карусель версий** — все попытки которые AI пытался сгенерить (если было 2 retry, увидишь все 3 варианта со ставками verdict'а — какой APPROVE, какой REGENERATE)
+- **Test plan** — таблица что AI ДОЛЖЕН был изобразить (например: Sandy = smitten/leaning toward vial/subject, Vial = dignified/standing/co-star)
+- **Verdict** — большая цветная плашка APPROVE / REGENERATE / HUMAN_REVIEW
+- **5 баров оценок** — consistency / emotion / action / gag / style (по 0-100)
+- **Список проблем** с подсказками AI как исправить
+
+**Что сможешь делать (5 кнопок вместо 2):**
+
+1. **APPROVE** — принять. Тогда автоматом запускается **upscale до 4К** (сейчас он криво запускается на каждый shot, тратя $$ на отбракованные)
+2. **EDIT PROMPT & REGENERATE** — ты сам редактируешь prompt и нажимаешь "перегенерируй на том же провайдере"
+3. **SWITCH PROVIDER & REGENERATE** — выбираешь другой провайдер (gpt-image-1 vs Flux Pro Ultra) и регенеришь
+4. **REQUEST REVISION** — отправляешь обратно агенту-генератору с note типа "сделай Vial более dignified"
+5. **REJECT** — финальный отказ
+
+Плюс **галочка "skip 4K upscale"** для каждого shot — если шот стилизованный (грубый эскиз) и 4К ему не нужен, экономит $0.03.
+
+**Зачем это нужно:**
+
+Сейчас ты НЕ можешь нормально пользоваться AI-verdict'ами и попсами картинки. Они есть в БД, но в UI не видны. Без Phase F — это просто текст в JSON, никто не пользуется.
+
+Phase F = **первый раз ты получаешь рабочую QC-станцию для production EREF**.
+
+
+===LINE 2226 | 2026-05-05T08:51:49.224Z===
+Понял. Картинка совсем другая:
+
+**Что уже есть:**
+- ✅ `EpisodeAssetDrawer.tsx` — drawer для IMG-episode_ref (386 строк)
+- ✅ Generic `/api/assets/[id]/regenerate-image` route (работает для episode assets, не только Bible)
+- ✅ Generic `/api/assets/[id]/approve` route (APPROVE/REQUEST_REVISION/REJECT/NEEDS_HUMAN_TWEAK)
+- ✅ Inbox имеет cta-кнопку `open_asset_preview` 
+
+**Что реально сломано/не хватает:**
+1. Inbox row → клик открывает drawer? **НЕТ** — кнопки execute approve/reject вслепую (твоя жалоба верна)
+2. EpisodeAssetDrawer рендерит `metadata.shot_reference` v2? **НЕТ** — игнорирует
+3. У EpisodeAssetDrawer есть кнопки APPROVE/REJECT/REVISE? **НЕТ** — только regen
+4. EREF runner может остановиться после 2 shots? **НЕТ** — hardcoded MAX_REFS=6
+5. Cancel switch? **НЕТ**
+6. Pilot pillbar? **НЕТ**
+
+Переписываю план — **3-4× меньше** чем был.
+
+
+===LINE 2236 | 2026-05-05T09:03:53.546Z===
+Полностью согласен с твоим разбором. Это правильная архитектура — viewer = decision tool, kebab = secondary. Давай разложу по пунктам, что меняется в плане:
+
+## Согласен (всё верно)
+
+| # | Твой пункт | Решение в плане |
+|---|---|---|
+| 1 | Viewer без действий | Drawer становится Level-1 decision tool — Approve/Select/Reject/Regen/Switch Provider встроены, не отдельно |
+| 2 | Дубликаты/rejected висят | Gallery фильтрует rejected+failed по умолчанию (toggle "show all" для аудита). В drawer'е history-strip показывает их с явными бейджами `failed`/`retry`/`rejected` |
+| 3 | Пустой markdown / короткий description | Проверю текущую схему — `description` (short) + `content` (full markdown) уже есть в `assets`. Drawer должен показывать ОБА поля, не только short |
+| 4 | Selection layer отсутствует | Gallery становится **Level-2 surface**: bulk-select checkboxes, "Approve Selected & Advance" button, "Regenerate Batch", "Reject All" (с confirm) |
+| 6-7 | Kebab Approve вслепую | **Демотим kebab**: убираем Approve/Reject со stage-уровня для стадий с gallery (EREF, animatic, vgen). Оставляем только "Re-trigger" + "Cancel" + "Approve all (emergency)" with hard confirm |
+| 8-10 | Two-level model | Жёсткое разделение: Drawer = per-image (Level 1), Gallery overlay = batch (Level 2), Kebab = emergency only |
+| 11 | Viewer основной | Pipeline path: stage card → gallery (Level 2) → click thumbnail → drawer (Level 1) → действия там |
+
+## Где осторожно push back
+
+- **"Reject all"** на batch уровне — опасно (можно случайно убить весь EREF). Требует note + double-confirm + Mode 1 always (даже Mode 4 не auto-reject batch'а)
+- **"Regenerate batch"** — стоит реальных $$ × N. Confirm + budget preview ("≈ $1.30 для 13 шотов"). В Mode 4 тоже manual-only
+- **Hide failed/rejected DEFAULT** — да, но в drawer history-strip всегда видны, чтобы Director мог сравнить варианты при выборе
+
+## Что нужно проверить ДО переписывания плана
+
+q1. Текущая схема: где сидит "full markdown" — в `assets.content`? Я проверю и если есть — drawer просто не рендерит сейчас  
+q2. Pipeline state: `eref_pilot_state` нужен ли вообще, если каждое изображение = отдельный asset со своим статусом, а Director просто шортлистит N через checkbox + clicks "Approve Selected"? Пилотную фазу можно убрать — replaced by manual selection from full set
+
+**Особенно q2 важен** — твой подход "selection layer" может полностью заменить мою "Pilot Pass" архитектуру. Вместо "сгенерь 2 → пауза → fan-out 11" можно просто "сгенерь все 13 → Director шортлистит лучшие → reject остальные → pipeline идёт дальше с выбранными". Проще И architecturally cleaner.
+
+Хочешь я проверю q1+q2 в коде и потом перепишу план уже с этой моделью? Или ты сразу хочешь дать direction по q2 (Pilot Pass vs Selection-only)?
+
+
+===LINE 2244 | 2026-05-05T09:10:48.029Z===
+Согласен на 90%, и эта модель проще, чем то, что я навыдумывал. Разложу по пунктам:
+
+## Полностью согласен (это правильно)
+
+**12. Two-stage generation** — точно матчит `technology.md §4` (Pilot + Fan-out). Правильный сценарий: 1-2 pilot шота → Director смотрит → "Approve Direction" → mass generate остальных.
+
+**13. Per-image control в MVP** — да, на этапе тестирования никаких "Approve All" / "Reject All". Каждый shot открывается отдельно, Director решает индивидуально. Bulk-actions откладываем до production-стабилизации.
+
+**14. Provider — на уровне серии, не per-image** — это критично правильно. Я в предыдущем плане ошибочно оставил `Switch Provider` в drawer'е per-image. Это создаст style drift. **Убираем.** Единственный switch — series-level setting (в Settings или per-episode defaults). 
+
+**15. Финальная логика** — пайплайн именно такой:
+```
+Generate 1-2 pilots → Director Approve Direction → 
+Generate batch → Director per-image review → 
+After всё approved → advance
+```
+
+## Где push back / clarify
+
+**❗ Push back: "Reject All" / "Approve All" остаётся в kebab как emergency**
+
+Не убираем полностью — оставляем в kebab под лейблом **"⚠ Emergency / Test Mode"** с hard double-confirm + Mode 4 only auto-allowed. Зачем:
+- Mode 4 AUTOTEST реально нужен для replay-pilot и smoke testing
+- Иногда после полного провала (например, контракт SB изменился) нужно reject все 13 одной кнопкой и регенить
+
+Per-image остаётся primary сценарий, но kebab сохраняет emergency-режим.
+
+**Push back: drawer per-image без provider dropdown — но REGENERATE кнопка остаётся**
+
+Per-image regenerate = same series provider (same prompt or edited prompt). Provider не меняется. UI: кнопка "Regenerate" (без dropdown) + опциональный prompt textarea. Это инструмент "перерисуй ещё раз с теми же параметрами", не "попробуй другой движок".
+
+**Provider switch для всей серии:**
+- Появляется как kebab action на stage уровне: **"Regenerate batch with new provider"**
+- Открывает confirm с budget preview ("~$0.65 для 13 шотов на flux-pro-1.1-ultra")
+- Mode 1: requires Director confirm
+- Если Director выбрал — реджектит весь текущий батч + перегенирит с новым provider'ом
+
+## Что нужно уточнить (1 вопрос)
+
+**q1.** При per-image flow — когда pipeline понимает что "all reviewed, advance"?
+
+Варианты:
+- **(a) Auto-advance** — когда все 13 имеют status APPROVED (rejected исключаются из набора, но pipeline ждёт пока N≥X approved). Минус: нужен порог "сколько должно быть approved", это новая логика.
+- **(b) Manual "Continue" button** — на pillbar появляется кнопка "All reviewed — continue to Animatic" когда нет PENDING_REVIEW в episode references. Director нажимает явно. Плюс: Director всегда контролирует переход.
+- **(c) Гибрид** — auto-advance в Mode 4, manual button в Mode 1-3.
+
+Я склоняюсь к **(c)** — Director всегда manual в нормальном режиме, autotest идёт сам.
+
+---
+
+После твоего ответа на q1 переписываю план финально и Exit'аю plan mode на approval.
+
+
+===LINE 2250 | 2026-05-05T09:16:42.646Z===
+Полностью согласен — это **системный invariant**, не UI rule. И на провайдере ты тоже прав: per-image нужен именно для тестирования (как иначе понять, что Flux лучше gpt-image-1 на конкретном action shot'е). Возвращаю Switch Provider в drawer.
+
+## Что меняется в архитектуре
+
+Правило **1 shot = 1 approved** становится database-enforced invariant, не UX hint.
+
+### DB layer
+- Partial unique index: `UNIQUE (episode_id, shot_id) WHERE status = 'APPROVED'` где `shot_id = metadata->'shot_reference'->>'shot_id'` 
+- Любая попытка ПРИАПРУВИТЬ второй asset на тот же shot → SQL transaction failure
+- Approve route обязательно делает auto-demote старого approved → SUPERSEDED перед approve нового, в одной транзакции
+
+### Status enum extension
+Сейчас: `DRAFT / REVIEW / REVISION / APPROVED / REJECTED / LOCKED`. Добавляем:
+- **`SUPERSEDED`** — был approved, но Director выбрал другой вариант для этого shot. Картинка остаётся в БД для истории + сравнения, но из gallery скрывается по умолчанию.
+- (Optional) **`CANDIDATE`** vs `REVIEW` — но REVIEW семантически уже "ожидает решения", можно не плодить enum
+
+### Pipeline-advance gate
+Episode references stage advance:
+```
+count(assets where shot_id is set AND status='APPROVED') === storyboard.total_shots
+```
+- Если `<` total — pillbar показывает **"Awaiting review: 4 shots have no approved variant"**
+- Если `===` total — auto-emit advance event (Mode 4) или show "Advance to Animatic" button (Mode 1-3)
+
+### Drawer flow (revised)
+- Asset в REVIEW: doc-default state
+- Click APPROVE → если уже есть APPROVED для same shot_id → confirm "Replace approved v01 with this one?" → on confirm: транзакция (demote v01 to SUPERSEDED + promote this to APPROVED)
+- Click REGENERATE → кандидат идёт в REVIEW, не auto-approved (point 20)
+- Click REJECT → status REJECTED (не блокирует другие кандидаты shot'а)
+
+### Provider в drawer (revised по твоему уточнению)
+- Drawer per-image: dropdown "Regenerate with provider:" (default = series default) — для тестирования
+- Series-level setting в Settings → Episode Defaults: меняет default. После change — kebab "Regenerate all non-approved with new provider"
+- Approved картинки НЕ перегенерятся при series-level switch (защита от случайной потери выбора)
+
+## Push back / clarify
+
+Точек не хватает по edge cases — q1, q2, q3.
+
+**q1. Кандидат cap per shot?**
+
+Сейчас Director может бесконечно regenerate. Каждый regen ≈ $0.04. Если зацепился за плохой shot и сделал 30 регенов → $1.20 на один shot. Предложение: **cap 8 candidates per shot** (мягкий лимит — после 8 кнопка regen disabled, но user может удалить старые candidates чтобы освободить).
+
+Альтернатива: no cap, но budget warning после 5 regen ("$0.20+ spent on this shot").
+
+**q2. SUPERSEDED видны где?**
+
+Default: скрыты в gallery, но видны в drawer history-strip (для сравнения "почему Director выбрал v03 а не v01"). Toggle "Show all variants" в gallery для аудита.
+
+**q3. Что с REJECTED candidates после approve?**
+
+Сценарий: shot имеет 3 кандидата (v1 REVIEW, v2 REVIEW, v3 REVIEW). Director открывает v3, APPROVE. v3 → APPROVED. Что с v1 и v2?
+
+- **(a)** Auto-reject (statuses → REJECTED) — чисто, но необратимо
+- **(b)** Stay in REVIEW (orphaned candidates) — мусор копится
+- **(c)** Auto-promote to SUPERSEDED — мягче чем reject, можно вернуться
+
+Я склоняюсь к **(c)** — SUPERSEDED семантически означает "был кандидатом, не выбран", а не "плохой/отвергнут". Если Director передумал — SUPERSEDED можно re-approve через кнопку "Restore" в drawer history-strip. Чище.
+
+---
+
+После твоих ответов на q1/q2/q3 переписываю план в финал и ExitPlanMode.
+
+
+===LINE 2284 | 2026-05-05T09:39:03.409Z===
+Запустил **2 параллельных sub-агента в background:**
+
+| Track | Что делает | Files |
+|---|---|---|
+| **A — Backend & DB** | migration 0024 (1-shot-1-approved partial unique index), 3 helper modules (eref-cancel, eref-pilot-state, eref-shot-invariant), runner extension с pilot_count/start_index/cancel-check, регенерация route с provider_id + Mode-aware cap, approve route с transactional auto-demote + skip_upscale + upscale-final emit, 3 новых routes (approve-pilots/cancel/advance), exec-eref Inngest refactor с 3 events branch | 8 modify + 8 create (backend) |
+| **B — UI** | Inbox row click → drawer (no blind approve), EpisodeReferencesGallery 36→128px + per-shot grouping + approval-progress badge, EpisodeAssetDrawer +v2 sections (test plan / verdict / 5 score bars / issues / candidates strip / markdown / 4-button footer + skip-upscale toggle + provider dropdown), EREFPilotPillbar новый компонент (pilot/review modes + cancel + advance), pipeline page integration | 4 modify + 1 create (UI) |
+
+Они работают на disjoint files — нет file conflicts. Уведомление придёт автоматом когда каждый завершится. Notify будет 2× — отдельно по каждому track'у.
+
+Пока они работают — параллельно проверю текущий EREF run (28+ мин уже), может уже наконец что-то родил.
+
+
+===LINE 2323 | 2026-05-05T09:45:50.695Z===
+Можно по-разному, оба пути работают. Вот варианты:
+
+## A. Сразу re-trigger на SS-S14-E01 (БЕЗ cleanup) — быстрее
+- Новые 2 pilots генерятся, старые 13 v2 records остаются в REVIEW как orphan кандидаты
+- Drawer покажет в "Candidates strip" много старых версий + 2 новые — визуально шумно, но **функционально работает**
+- Pillbar считает прогресс по distinct shot_id with APPROVED — старые в REVIEW не мешают advance-gate
+- Минус: сложнее наглядно увидеть "вот свежий pilot pass" среди старого мусора
+
+## B. Cleanup → re-trigger — чище для теста
+- DELETE 13 старых v2 records (один SQL запрос, ~10 секунд)
+- Re-trigger даёт чистую картину: 2 pilot → review → fanout 11
+- Минус: теряем старые scores (но они и так bot были, не Director-approved)
+
+## C. Создать SS-S14-E02 — настоящий greenfield тест
+- Нужно пройти Brief → SW → SREV → SB → CONT → EREF (4-5 часов работы)
+- Минус: долго, но purest test
+
+## Что я рекомендую
+
+**B** — оптимальный баланс. Cleanup занимает 1 SQL команду, дальше всё чисто. Drawer/UX часть всё равно покрывается на новых данных.
+
+Если хочешь супер-быстро посмотреть Drawer работу — **сначала открыть один из существующих 13 records** в drawer'е (test plan / scores / issues / 4 actions / candidates strip), убедиться что UI хорош, **потом** cleanup + re-trigger для полного pipeline-теста.
+
+Так что предлагаю последовательность:
+1. Tracks finish (notification)
+2. Integration + tsc + tests
+3. Migration apply
+4. **Quick UX test** — открыть существующий v2 record в drawer'е, проверить визуал + 4 actions
+5. **Cleanup SS-S14-E01 v2 records** (один SQL)
+6. **Full pipeline test** — re-trigger → Pilot Pass → review → fanout → advance to Animatic
+
+Согласен? Или хочешь другой порядок?
+
+
+===LINE 2355 | 2026-05-05T09:48:58.544Z===
+**🎉 Track B (UI) завершён** — 3 файла создано, 4 модифицировано, tsc clean, 110/110 tests pass.
+
+Highlights:
+- Drawer 386 → **792 lines** (под 800-line guard, но тесно — если Track A добавит ещё к нему, придётся вынести)
+- Inbox: row click → drawer (no blind approve), хоткеи A/R/X тоже теперь открывают drawer
+- Gallery: 36 → 128px, group by shot_id, "Approved" prominent + per-shot collapsible "Other variants"
+- Drawer 4 actions: APPROVE / REJECT / REQUEST REVISION / REGENERATE + per-image provider dropdown + skip-upscale toggle + ConfirmReplaceModal при approve когда уже есть APPROVED для shot
+- Pillbar (422 lines) — pilot/review/cancelled modes
+- `react-markdown` уже был — переиспользован для markdown content rendering
+
+**Track B сделал client-side computation для shot-approval-progress** — НЕ создавал `/api/episodes/[id]/eref-progress` endpoint. Это изящнее, считает прогресс из `getShotApprovalProgress`-эквивалентной логики client-side из существующих `/api/assets?episode_id=...` SWR. Если Track A создаст endpoint — refactor straightforward.
+
+**Edge case замечен:** Track B предположил, что Track A пишет `episode.metadata.eref_pilot_shot_ids: string[]` (список pilot shot IDs). Если Track A организовал по-другому (например `eref_pilot_count: number`), будет небольшой shim — починим в integration.
+
+---
+
+**Track A пока работает** (он более объёмный — backend + DB + Inngest refactor + 3 routes + миграция).
+
+Теперь к твоему вопросу про cleanup — **поехали, пишу скрипт сейчас**? Tracks не пересекаются с этим скриптом, могу сделать в параллель.
+
+
+===LINE 2366 | 2026-05-05T09:49:19.771Z===
+**Track B (UI) ✅ DONE** — отчитался выше:
+- Drawer 386→792 lines (под guard'ом)
+- Pillbar 422 lines (новый)
+- Gallery 111→281 lines (128px thumbs + grouping)
+- Inbox 402→409 lines (row click → drawer)
+- tsc clean, 110/110 tests pass
+
+**Track A (Backend) ⏳ ещё работает** — у него больше задач: миграция SQL, 4 helper модуля, runner extension с pilot_count/start_index/cancel-check + pickPilotShots + runUpscaleOnly, 2 route extension'а с transactional logic, 3 новых routes, exec-eref Inngest refactor с 3 events branch, registry events. Ожидаемо дольше Track B.
+
+Notification по Track A придёт автоматом. Когда Track A завершится → integration phase.
+
+---
+
+Пока Track A работает — **начинаю писать cleanup script** (`webapp/scripts/cleanup-episode-eref.ts`), как договорились. Этот скрипт независим от Track A файлов, не пересекается. Готов?
+
+
+===LINE 2448 | 2026-05-05T09:54:36.445Z===
+Полностью согласен — это правильная декомпозиция. Track B сделал гибрид (top-row "Approved" + per-shot "Other variants" collapsibles), но твоя модель **per-shot row как primary structure** проще и как decision board намного лучше.
+
+## Что меняется
+
+### Текущая Track B gallery (что есть)
+
+```
+[Approved (8)] — длинная строка из 8 thumbs
+  ▶ SH01 — 3 other variants (collapsed)
+  ▶ SH02 — 2 other variants (collapsed)
+  ...
+[Legacy] — старые без shot_id
+```
+
+### Целевая структура (твоя)
+
+```
+Shot 1 — Establishing — "Sandy enters neon cafe at dawn"  🟢
+  [📷 v3 ✓APPROVED] [📷 v1 rejected] [📷 v2 rejected]      [↻ Regenerate]
+
+Shot 2 — Action — "Sandy spots vial on counter"  🟢
+  [📷 v1 ✓APPROVED]                                          [↻ Regenerate]
+
+Shot 3 — Reaction — "Sandy approaches with wide eyes"  🟡
+  [📷 v1 review] [📷 v2 review]                             [↻ Regenerate]
+
+Shot 4 — Gag — "Hourglass hits sand spill"  ⚪
+  (no candidates yet — pending)                             [↻ Regenerate]
+
+Reviewed: 8/13 shots ████░░░░ 62%
+```
+
+**Key changes:**
+- **One row per shot**, в порядке storyboard'а (1, 2, 3, ...)
+- Header: `"Shot N — <shot_role> — <key_beat truncated>"` (читаем из storyboard для человеко-читаемой подписи)
+- Status circle aggregates all candidates per shot: 🟢 has APPROVED / 🟡 has REVIEW / 🔴 only REJECTED / ⚪ no candidates
+- All variants visible inline (no collapse) — Director видит весь test plan сразу
+- Filename / SS-S14-... уходит в tooltip + drawer, не как primary title
+- Per-row "Regenerate" button (быстрый regen без открытия drawer'а)
+
+### Modal "All shots approved"
+
+Тригер: когда по successful APPROVE-action `approvedCount` пересёк `totalShots` (был < N, стал === N).
+Окно:
+```
+🎉 All 13 shots have approved images.
+   Continue to Animatic, or review again?
+   [Review again]   [Continue to Animatic →]
+```
+- **Continue** → POST `/api/episodes/[id]/eref/advance` (the endpoint Track A creates)
+- **Review again** → закрывает modal, ничего не делает; pillbar "Advance to Animatic" button остаётся доступным
+
+Modal появляется **один раз** при пересечении порога — не каждый раз когда галерея обновится с 13/13 (sticky dismiss).
+
+## Push back / clarify (минимально)
+
+**q1.** Status circle по shot'у: что считать `🟢 has APPROVED`? Конкретно:
+- ровно 1 APPROVED (по invariant'у это всегда так если шла approve через UI) — 🟢
+- но что если 2+ (bypass invariant'а, например прямой SQL) — должна быть 🔴 ERROR / "duplicates", не зелёный? Я думаю да — в helper `getShotApprovalProgress` уже есть `duplicates: string[]`, рендерим красный alert badge "⚠ duplicate approved — fix in DB" для таких
+
+**q2.** Per-row "Regenerate" button — это quick button (последний prompt + series-level provider) или открывает modal с возможностью отредактировать prompt?
+- Я склоняюсь к **modal** — в galleryview много шотов, случайный click на full regen = $0.04+ потерь. Confirm + prompt edit.
+
+## Effort estimate
+
+Это refactor существующей `EpisodeReferencesGallery.tsx` (281 lines → ~350 lines) + modal + storyboard fetch. **~2-2.5 часа** новой работы.
+
+## Куда добавить
+
+Track B уже завершён, не хочется его reopen'ить. Предлагаю:
+- **Track B' (Decision Board refactor)** — новый sub-агент после Track A finishes, параллельно с integration phase
+- ИЛИ — добавляю в **integration phase** как часть финальной полировки
+
+Я склоняюсь к **первому варианту** — Track B' стартует когда Track A complete, integration phase делается в параллель (чинит Track A's TS errors + wires Track B + tests). Они на disjoint files (gallery vs backend routes/runner).
+
+**Запускать Track B' (Decision Board) когда Track A closes?** Или хочешь сначала увидеть текущую Track B gallery + Track A интеграцию работающими, потом решать про Decision Board?
+
+
+===LINE 2465 | 2026-05-05T09:55:58.265Z===
+## Current state — verified
+
+```
+tsc --noEmit:    ✓ clean (0 errors)
+npm test:        ✓ 110/110 PASS
+Track A files:   8 new + 7 modified
+Track B files:   2 new + 4 modified
+Cleanup script:  ✓ ready
+Migration 0024:  ✓ valid (gap 0020→0024 from Track A's assumption — easy rename to 0021 if нужно)
+```
+
+## Что надо в integration phase
+
+1. **State-location bridge** — Track B читает `episode.metadata.eref_pilot_state`, Track A пишет в `app_config`. Создаю один endpoint `GET /api/episodes/[id]/eref/state` который агрегирует `{pilot_state, pilot_shot_ids, total_shots, approved_count, missing}`. Pillbar SWRs туда. ~50 lines.
+2. **Migration rename** 0024→0021 (если хочешь contiguous numbering). Опционально.
+3. **Smoke test** на старых v2 records (Drawer работает, regen+provider работает)
+4. **Migration apply** через Supabase MCP
+
+## Твой выбор по Decision Board (точки 22-29)
+
+Был вопрос пока ждали. Теперь выбор:
+
+**A. Integration + smoke test FIRST, потом Decision Board**
+- Сначала верифицируем что Track A+B работают как есть (текущая Track B gallery — "Approved row + per-shot collapsible")
+- Потом Track B' (Decision Board refactor: per-shot rows как primary)
+- Плюс: видим что текущий flow работает до того как ещё refactor'ить gallery
+- Wall clock: 30 мин integration → live test → 2.5h Decision Board → 30 мин integration
+
+**B. Параллельно: integration + Decision Board одновременно**
+- Я делаю integration (30 мин)
+- Sub-agent параллельно строит Decision Board (~2.5h)
+- Когда оба готовы — single live test с уже улучшенной gallery
+- Плюс: не делаем повторный live test
+- Минус: если первая Track B gallery уже "хороша достаточно", refactor избыточен
+
+**C. Decision Board FIRST, потом integration**
+- Sub-agent делает Decision Board (~2.5h, параллельно я могу делать integration)
+- Потом всё вместе live test
+- Эквивалентно B но с другим порядком запуска
+
+Я склоняюсь к **B** — integration маленький (30 мин), не блокирует sub-agent'а. Плюс Decision Board UX лучше — нет смысла сначала тестить промежуточный вариант. **OK запускать B?**
+
+
+===LINE 2540 | 2026-05-05T10:31:56.914Z===
+Проверил что есть, что нет. Вот анализ:
+
+## Что уже стоит (через ECC marketplace)
+
+ECC (everything-claude-code) — наш основной marketplace, 149 skills + 38 agents + 72 commands. Из твоего списка частично уже покрыто:
+
+| Из списка | Статус | Что у нас уже есть |
+|---|---|---|
+| Frontend Design | ✅ **уже стоит** | `~/.claude/skills/frontend-design` |
+| /re & /ultra-review | ✅ покрыто | `code-review.md`, `review-pr.md` commands + `/ultrareview` (cloud sandbox per CLAUDE.md) + `code-reviewer` agent |
+| Superpowers (TDD) | ✅ покрыто | `tdd-workflow` skill + `tdd-guide` agent + `/tdd` command + `django-tdd` / `laravel-tdd` / `springboot-tdd` skills |
+| Context Mode (cleanup) | 🟡 частично | `context-budget.md` command (но без SQL session store) |
+| Claude Mem (memory) | 🟡 частично | `continuous-learning` + `continuous-learning-v2` skills + наш file-based memory protocol |
+| Skill Creator | 🟡 частично | `agent-harness-construction`, `configure-ecc` |
+| GSD (decomposition) | 🟡 частично | `dmux-workflows`, `claude-devfleet`, `continuous-agent-loop`, sub-agent pattern |
+
+## Рекомендации по установке
+
+| Plugin | Решение | Почему |
+|---|---|---|
+| **Context Mode** | ✅ **Try install** | Реально полезно. Мы хроник /compact — за 2 дня уже 2 раза. SQL session store + контекст cleanup = больше hours per session без деградации. Команды: `/plugin marketplace add mksglu/context-mode` + `/plugin install context-mode@context-mode` |
+| **Frontend Design** | ✅ **Уже есть** | Можем использовать прямо сейчас для polish'а Drawer/Gallery/Pillbar — pixel-perfect улучшения |
+| **Skill Creator** | ⚪ Не критично | Когда захочешь сделать SandyStudio-specific skill (например `eref-orchestrator`) — поставь. Сейчас мы пишем skills вручную в `.claude/skills/` нормально |
+| **Superpowers** | ❌ **Skip** | Дублирует ECC TDD setup. Конфликт hooks + commands не стоит риска |
+| **GSD** | ❌ **Skip** | Sub-agent pattern + dmux-workflows покрывают ту же нишу. Лишний слой |
+| **Claude Mem** | ❌ **Skip пока** | Vector DB memory для нашего объёма overkill. Текущий file-based + auto-memory работает. Может пригодиться при росте до 100+ сессий |
+
+## Что бы я рекомендовал ГЛОБАЛЬНО для Claude Code
+
+**Из твоего списка — Context Mode для всех** кто работает long-running сессиями (как мы). Остальные — situational:
+- Superpowers — ХОРОШ для команд без TDD дисциплины. У нас уже жёсткая.
+- GSD — ХОРОШ для одиночных Director'ов без sub-agent опыта.
+- Claude Mem — ХОРОШ для cross-project memory (мы — single project, file-based достаточно).
+
+**За пределами твоего списка** — самые недооцененные ECC skills которые мы могли бы шире использовать в SandyStudio:
+- `gan-design` / `gan-evaluator` / `gan-generator` — GAN harness pattern, который мы уже частично используем для EREF AI reviewer. Можно formalized'нуть до full feedback loop.
+- `cost-aware-llm-pipeline` — у нас 1 EREF run = $0.16 на shot. Скилл помогает routing'у Haiku→Sonnet→Opus с awareness.
+- `eval-harness` — formal evaluation pattern. Был бы перфект для regression testing на bible canon.
+
+---
+
+## Возвращаемся к **C (Bug #1 investigation)**
+
+Сейчас расследую Bug #1 — SH03 REGENERATE_EXHAUSTED + identity loss. Plan mode позволяет read-only — investigation идёт без проблем, fix потом через ExitPlanMode.
+
+
+===LINE 2547 | 2026-05-05T10:32:48.461Z===
+**🎯 НАШЁЛ Bug #1!**
+
+Смотри логику в `regenerate-image/route.ts:363`:
+
+```ts
+if (isV2 && v2Sr && body.provider_id) {  // ← BUG здесь
+  // Multi-image path with ALL identity references (Sandy + Vial + location + style)
+  ...
+} else {
+  // Plain generateImageOpenAI — text-to-image БЕЗ единой reference
+  const real = await generateImageOpenAI({
+    prompt: promptToSend,
+    size: '1024x1024',
+    quality: body.quality ?? 'medium',
+  });
+}
+```
+
+**Что происходит:**
+- Когда ты клацаешь **Regenerate** в drawer'е БЕЗ выбора провайдера в dropdown'е → `body.provider_id` НЕ отправляется
+- Условие `body.provider_id` падает → попадаешь в `else` ветку
+- `generateImageOpenAI` — это **plain text-to-image**, БЕЗ каких-либо identity anchors!
+- Sandy + Vial генерятся ТОЛЬКО по текстовому промпту, без reference картинок Bible
+- Результат: catastrophic identity drift
+
+Track B drawer шлёт `provider_id?` как **optional** (только когда меняешь dropdown). По умолчанию его нет → падаем в text-only path.
+
+## Fix (1 место, ~10 lines)
+
+Логика должна быть:
+- Если asset v2 EREF → **ВСЕГДА** идти через multi-image path с reference reconstruction
+- `provider_id` определять с приоритетом:
+  1. `body.provider_id` (если Director выбрал в dropdown)
+  2. `metadata.shot_reference.generation_history[last].provider_id` (использовать тот же что в последней попытке)
+  3. Fallback `'openai-edits-multi'`
+
+## Дополнительная находка
+
+Director regen'ит SH03 (verdict уже REGENERATE_EXHAUSTED после 3 internal attempts). Это значит сам runner с reference path работал. Но твой ручной regen без provider_id ушёл в text-only path. Это объясняет, почему AI reviewer выдавал REGENERATE_EXHAUSTED — потому что runner делал retry с правильными references, но scores не дотягивали (Sandy emotion limit от gpt-image-1 identity-lock — известная проблема, фиксится Flux Pro Ultra).
+
+То есть **2 разных проблемы:**
+- **Manual regen без provider_id → text-only** (этот ИСПРАВИМ сейчас, 1 место)
+- **Auto-retry runner uses references but scores still low → REGENERATE_EXHAUSTED** (это про reviewer threshold + provider quality limit, отдельная история)
+
+
+===LINE 2569 | 2026-05-05T10:36:10.110Z===
+✅ **Bug #1 пофиксил** — tsc clean.
+
+**Что изменилось в логике (`regenerate-image/route.ts`):**
+
+```diff
+- if (isV2 && v2Sr && body.provider_id) {  // ← падало в else без provider_id
++ // ВСЕГДА для v2 EREF идём через multi-image path
++ // provider_id с приоритетом:
++ //   1. body.provider_id (Director выбрал в dropdown'е)
++ //   2. metadata.shot_reference.generation_history[last].provider_id (last used)
++ //   3. fallback 'openai-edits-multi'
++ let effectiveV2Provider: EREFProviderId | null = null;
++ if (isV2 && v2Sr) {
++   const fromBody = body.provider_id;
++   const lastProviderRaw = history.at(-1)?.provider_id;
++   const candidate = fromBody ?? lastProviderRaw ?? 'openai-edits-multi';
++   effectiveV2Provider = candidate === 'gpt-image-1' ? 'openai-edits-multi' : candidate;
++ }
++ if (isV2 && v2Sr && effectiveV2Provider) {  // ← теперь срабатывает всегда
+```
+
+**Что это даёт:**
+- Manual regen из drawer'а **БЕЗ выбора provider** → теперь использует last-used (или 'openai-edits-multi' fallback) с **полным reference reconstruction** (Sandy + Vial + location + style anchors)
+- Identity drift при regen больше не должен происходить
+- Если хочешь поменять провайдер — выбираешь в dropdown'е, как раньше работало
+
+## Verify в браузере
+
+Если хочешь проверить — открой SH03 в drawer'е, нажми Regenerate (без изменения provider dropdown'а). Должен пойти multi-image путь — увидишь cost ~$0.04 (через openai-edits-multi с references), а не $0.013 (это был бы text-only).
+
+Можешь проверить через смотрит на activity feed или DB — `metadata.shot_reference.generation_history[last]` должен содержать `references_used: [{ kind: 'identity' ... }, { kind: 'identity' ... }, { kind: 'location' ... }, { kind: 'style' ... }]`.
+
+---
+
+## Что осталось
+
+Из todos:
+- ✅ Bug #2 fixed (advance route)
+- ✅ Bug #1 fixed (regen identity loss) — **сейчас**
+- ⏳ Pillbar state-after-advance UX (5 lines)
+- ⏳ Migration 0024 apply
+- ⏳ Animatic real video provider
+
+Хочешь сейчас:
+- **Reload + re-test SH03** проверить что fix реально работает?
+- **Pillbar UX fix** (быстрый)?
+- **Apply migration 0024** через Supabase MCP?
+- Что-то другое?
+
+
+===LINE 2634 | 2026-05-05T10:47:50.721Z===
+🎯 **НАШЁЛ корень бага!**
+
+Drawer outer wrapper имеет `pointer-events-none` (line 371). Модальное окно `ConfirmReplaceModal` рендерится КАК ребёнок этого wrapper'а. Inner backdrop/buttons не override'ят pointer-events → **CSS правило наследуется → клики через модал НЕ ПРОХОДЯТ вообще.**
+
+Поэтому в логах ноль `/approve` POST — кнопка визуально нажимается (focus-ring), но click event не firится.
+
+Fix — 1 line:
+
+
+===LINE 2645 | 2026-05-05T10:48:15.046Z===
+✅ tsc clean. HMR подхватит автоматом (client component change).
+
+**Что было:** Drawer parent имеет `pointer-events-none` (чтобы клики "сквозь" пустые области шли), backdrop+aside override на `pointer-events-auto`. ConfirmReplaceModal рендерился внутри этого wrapper'а, но НЕ override'ил pointer-events → CSS inherit'ило `none` → клики проваливались впустую.
+
+**Fix (1 word):** добавил `pointer-events-auto` в outer div модала.
+
+**Test:** открой v02 SH03 в drawer'е → нажми Approve → модал → "Replace approved". Должен:
+1. Кнопка показать "Replacing…"
+2. Через ~1с модал закроется
+3. v01 → REJECTED, v02 → APPROVED
+4. Drawer обновится (status badge зелёный)
+5. Gallery: v02 в "Approved" row, v01 уехал в "Other variants" с rejected badge
+
+q1Y/N: получилось?
+
+
+===LINE 2809 | 2026-05-05T11:03:18.802Z===
+🎉 **PR #7 MERGED to master!**
+
+```
+state: MERGED
+mergedAt: 2026-05-05T11:03:00Z
+mergeCommit: d0e5914
+```
+
+Что произошло:
+1. ✅ Pushed 231 unsynced commits → origin
+2. ✅ Resolved 2 merge conflicts (взял HEAD — наша архитектура новее)
+   - `enrich/route.ts` — оставил thin redirect wrapper (master имел старую полную версию которую мы централизовали)
+   - `series-bible/AssetDetailDrawer.tsx` — оставил modern UI с LegacyUploadCard
+3. ✅ Pushed merge commit
+4. ✅ **Squash-merged** PR #7 → master (clean single commit на master с полным описанием)
+
+
+===LINE 2812 | 2026-05-05T11:03:43.594Z===
+## Что мы сделали за сессию
+
+Огромная пачка приземлилась на master:
+
+**Архитектура:**
+- Bible canon refactor (4 runners + non-truncating)
+- Storyboarder@v2 contract
+- EREF v2 contract `episode_references@v2`
+- MultiImageGenProvider abstraction (openai-edits-multi + flux-pro-1.1-ultra)
+- EXEC-EREF-CHECK reviewer (Sonnet vision, 5 scores)
+- Pilot Pass + Cancel switch
+- 1-shot-1-approved invariant (DB-enforced)
+- 4K upscale (Director-APPROVE-only)
+
+**UI (Phase F):**
+- Drawer = decision tool (test plan / verdict / scores / issues / candidates / 4-button footer)
+- Gallery 36→128px + per-shot grouping
+- Pillbar (pilot/review/cancel modes)
+- Inbox row → drawer (no blind approve)
+
+**Backend:**
+- 3 new routes (approve-pilots / cancel / advance) + 2 extended (approve / regenerate-image)
+- Inngest exec-eref refactor (3 events branch)
+- 2 migrations applied
+- Cleanup script
+
+**Live tested + 3 bugs fixed in real time**
+
+---
+
+Хочешь сейчас:
+- **Отдых** — это была марафонная сессия, master работает
+- **Pillbar state UX** (5 мин)
+- **Animatic real video provider** (Veo3 setup)
+- **Live test ещё раз** на новом episode — посмотреть Pilot Pass с 0?
+
+q1Y/N — отдых сейчас?
+
+
+===LINE 2836 | 2026-05-05T14:41:40.204Z===
+Напомню кратко то, что обсуждали утром.
+
+## Из твоего списка
+
+| Plugin | Решение | Почему |
+|---|---|---|
+| **Context Mode** | ✅ **install сейчас** | Длинные multi-day sessions — real pain. SQL session store + cleanup. Команды: `/plugin marketplace add mksglu/context-mode` + `/plugin install context-mode@context-mode` |
+| **Frontend Design** | ✅ уже стоит | Использовать для polish'а Drawer/Gallery/Pillbar |
+| Skill Creator | ⚪ situational | Когда захочешь свой SandyStudio skill (e.g. `eref-orchestrator`) |
+| Superpowers (TDD) | ❌ skip | Дублирует ECC: `tdd-workflow`, `tdd-guide` agent, `/tdd` |
+| GSD | ❌ skip | `dmux-workflows`, `claude-devfleet`, sub-agent pattern уже покрывают |
+| Claude Mem | ❌ skip | Vector DB overkill — наш file-based memory + auto-memory достаточен |
+| /re & /ultra-review | ❌ skip | ECC уже даёт `code-review.md`, `review-pr.md`, `/ultrareview` |
+
+## Bonus — недооценённые ECC skills, релевантные SandyStudio
+
+| Skill | Зачем нам |
+|---|---|
+| `gan-design` / `gan-evaluator` / `gan-generator` | GAN harness pattern — мы уже пол-пути его реализовали для EREF AI reviewer. Можно formalize до full feedback loop |
+| `cost-aware-llm-pipeline` | EREF run = $0.16 per shot. Routing Haiku→Sonnet→Opus с awareness |
+| `eval-harness` | Formal evaluation pattern — был бы перфект для regression testing на bible canon |
+
+---
+
+q1Y/N — поставить **Context Mode** прямо сейчас?
+
+
+===LINE 2925 | 2026-05-05T15:11:15.555Z===
+Ты абсолютно прав. Animatic ≠ Veo3. Если animatic = Veo3, то стадия лишняя. Animatic должна быть **дешёвой быстрой предпросмотровой раскладкой** перед реальным видео — иначе теряется смысл этого гейта (см. `technology.md §1`).
+
+## Что нужно animatic'у на самом деле
+
+- 13 approved shots в правильном порядке
+- Каждый shot занимает свою длительность (из storyboard'а — `duration_seconds` per shot)
+- Звуковая дорожка underneath (мелодия)
+- Output: **playable preview** (mp4 file в drawer'е)
+- Wall clock: **5-15 секунд на сборку**, не минуты
+
+## Варианты реализации
+
+| Вариант | Скорость | Что даёт | Сложность |
+|---|---|---|---|
+| **A. Browser-side `<img>` + `<audio>` + setTimeout** | Мгновенно | "Click play" preview в drawer'е, без output file | Маленькая, но не получаем .mp4 для downstream |
+| **B. ffmpeg concat demuxer** ⭐ | 5-15с (32-сек слайдшоу) | Реальный .mp4, lightweight (CPU) | Установить ffmpeg один раз; runner вызывает CLI |
+| **C. Remotion (React video)** | 15-30с | .mp4, гибче (titles, переходы, fades) | Heavier setup, но в ECC уже skill `remotion-video-creation` |
+| **D. fal.ai slideshow API** | 30-90с | .mp4 cloud-side | Дорого + медленно для animatic |
+
+**Я склоняюсь к B (ffmpeg)** — самый прагматичный путь. Просто concat demuxer:
+
+```bash
+ffmpeg -f concat -i shotlist.txt -i music.mp3 -c:v libx264 -shortest animatic.mp4
+```
+
+`shotlist.txt`:
+```
+file 'shot01.png'
+duration 2.5
+file 'shot02.png'
+duration 3.0
+...
+```
+
+13 строк. Audio overlay. Готово за 10с.
+
+## Вопросы для финализации архитектуры
+
+q1: Источник музыки для MVP?
+- **q1A**: Director uploads .mp3 через drawer/stage UI (placeholder track) — простейший MVP. Suno/Udio integration позже.
+- **q1B**: Сразу Suno API hook (через EXEC-MGEN агент) — генерация по brief'у эпизода
+
+q2: Output — playable mp4 в drawer'е достаточно для MVP, или нужны title cards / transitions / fade-in fade-out?
+- **q2A**: Just slideshow + music — minimal viable preview
+- **q2B**: + title cards (shot N — caption из storyboard) + crossfades между шотами — Remotion path
+
+q3: Per-shot duration — берём из storyboard'а (есть `duration_seconds` в SB v2), или Director может править в drawer'е?
+- **q3A**: Use storyboard `duration_seconds` — single source of truth
+- **q3B**: Director можно edit per-shot duration перед сборкой animatic'а
+
+
+===LINE 2929 | 2026-05-05T15:15:50.434Z===
+🎯 **Гениально.** Ты прав — рендерить .mp4 для PREVIEW бессмысленно. Браузер уже умеет всё что нужно:
+
+- `<img>` показывает картинку
+- `<audio>` играет музыку
+- `setTimeout` меняет картинку через N секунд
+- Pause/Play controls
+- Live edit per-shot duration без re-render
+
+## Архитектура (НА ПОРЯДОК проще)
+
+```
+EXEC-EDIT → создаёт asset VID-animatic с metadata = {
+  shotList: [{asset_id, duration_seconds, image_url}, ...],
+  music_url: null,        // Director uploads через Animatic Player
+  total_duration: 32      // sum
+}
+```
+
+Никакого mp4. Никакого ffmpeg. Никакого rendering.
+
+**Animatic Player** (React component, в drawer'е для VID-animatic asset):
+- Большой preview area (картинка во весь preview)
+- Audio player + upload .mp3 button (persists в asset.metadata.music_url)
+- Timeline strip — все 13 shot'ов с их durations + cursor
+- Play / Pause / Replay
+- Click on shot → jump to that timestamp
+- **Per-shot duration sliders** — drag = изменяет realtime
+- "Save timing" button → новые durations записываются обратно в animatic asset metadata (или back into storyboard как Director выберет)
+
+## Преимущества
+
+| | Mp4 render path | Browser-native player |
+|---|---|---|
+| Time to preview | 5-15с | **Мгновенно** |
+| Edit timing | Re-render full mp4 | **Drag slider, instant** |
+| CPU/disk usage | Render + storage | **Zero** |
+| Audio sync | Hardcoded в mp4 | **Live, можно сменить** |
+| Готовность к downstream (Veo3) | mp4 → Veo3 не нужен | shotList → Veo3 prompts ✓ |
+
+## Файлы (минимально)
+
+**Создать:**
+- `webapp/components/animatic/AnimaticPlayer.tsx` (~250 lines) — preview + timeline + sliders + audio upload
+- `webapp/lib/api/animatic-shotlist.ts` (~40 lines) — type + helpers `buildShotListFromApprovedEREF`
+
+**Modify:**
+- `webapp/inngest/functions/exec-edit.ts` — заменить mock mp4 generation на shotList persist
+- `webapp/lib/agents/runners/animatic.ts` (новый или existing) — собирает shotList из approved EREF + storyboard
+- `webapp/components/assets/EpisodeAssetDrawer.tsx` — branch для `file_type === 'VID-animatic'` → render `<AnimaticPlayer>`
+- `webapp/app/api/assets/[id]/upload-music/route.ts` — новый endpoint (или extend existing /upload route с media_type='music')
+
+**Estimated effort:** ~3.5h (single track, не нужно параллелить)
+
+
+===LINE 3106 | 2026-05-05T15:28:54.255Z===
+tsc clean. Step 7 — drawer branch для VID-animatic v1:
+
+
+===LINE 3143 | 2026-05-05T15:30:22.609Z===
+## Done — Animatic v1 Browser-native Player
+
+| Files | Status |
+|---|---|
+| `webapp/lib/api/animatic-shotlist.ts` | ✅ types + helpers + `buildShotListFromApprovedEREF` (~210 lines) |
+| `webapp/lib/agents/runners/animatic-slideshow.ts` | ✅ extended — выдаёт `animaticV1` payload |
+| `webapp/lib/agents/runner.ts` | ✅ EXEC-EDIT case пишет `metadata.animatic_v1` |
+| `webapp/app/api/assets/[id]/upload-music/route.ts` | ✅ NEW — POST mp3/wav (~170 lines, 20MB cap) |
+| `webapp/app/api/assets/[id]/animatic-timing/route.ts` | ✅ NEW — PATCH director_overrides (~180 lines) |
+| `webapp/components/animatic/AnimaticPlayer.tsx` | ✅ NEW — preview + audio + timeline + controls + inline editor (~440 lines) |
+| `webapp/components/assets/EpisodeAssetDrawer.tsx` | ✅ branched — renders AnimaticPlayer для VID-animatic v1 |
+
+**tsc clean ✅ · 110/110 tests pass ✅**
+
+## Что Director может делать
+
+1. **Re-trigger Animatic stage** на SS-S14-E01 → новый VID-animatic asset с `metadata.animatic_v1.shot_list` (13 shots)
+2. **Open в drawer** → AnimaticPlayer рендерится:
+   - Preview area (16:9) с current shot image + caption overlay
+   - Audio bar — "Upload music track" empty state
+   - Timeline strip — 13 segments proportional to durations с cursor
+   - Controls: **Play / Pause / Stop / Reset** + current time (mm:ss)
+   - **Inline editor для current shot**: −1s / +1s buttons + numeric input + "Save timing" button (при unsaved overrides)
+3. **Upload .mp3** → file picker → POST `/upload-music` → audio element появляется → click Play → картинки + музыка sync'd
+4. **Click on timeline segment** → jump to that shot
+5. **Edit duration** через −1s/+1s/numeric → instant playback resync (no rebuild)
+6. **Save timing** → PATCH `/animatic-timing` → director_overrides + total_duration persisted
+
+## Live test plan
+
+1. Открой SS-S14-E01 → Pipeline page → Episode references stage уже approved (13/13) → Animatic stage показывает старую `VID-animatic-v01-DRAFT.md` (mock)
+2. **Re-trigger** Animatic stage из kebab → новый animatic asset создаётся с `metadata.animatic_v1`
+3. Open его в drawer → должен появиться AnimaticPlayer (если HMR подхватит — иначе F5)
+4. Test play / pause / stop / reset / timeline click / per-shot edit / upload music
+
+q1Y/N — re-trigger Animatic и проверим?
+
+
+===LINE 3166 | 2026-05-05T15:35:52.439Z===
+Понял. "Mock video" сообщение — это **AssetPreview fallback** (от старого VideoBody), а не drawer. Director видит preview pane, не drawer.
+
+Проверю что v02 имеет `animatic_v1` в metadata через next-dev logs:
+
+
+===LINE 3180 | 2026-05-05T15:36:35.365Z===
+Job ran (без errors), 13 step POSTs, status 200. Но "Mock video" сообщение которое ты видишь — это **AssetPreview** (preview pane на episode page), **НЕ drawer**.
+
+q1Y/N: **открой v02 в drawer'е** (клик на thumbnail или Inbox row → Open). Что видишь?
+- **q1Y**: AnimaticPlayer рендерится (preview area + audio bar + timeline + controls + inline editor)
+- **q1N**: "Legacy animatic — Re-trigger to upgrade" message (значит animatic_v1 не записался в metadata)
+- **q1other**: что-то ещё (опиши)
+
+
+===LINE 3188 | 2026-05-05T15:38:36.781Z===
+Drawer показывает legacy fallback — `metadata.animatic_v1` нет. Runner либо упал silently, либо запустился с КЭШЕМ старого кода. Проверю логи runner'а:
+
+
+===LINE 3288 | 2026-05-05T15:50:04.992Z===
+Next-dev restarted clean. function_count: 14 functions registered fresh. Теперь Inngest подхватит новый код.
+
+Также есть отдельная проблема которую ты подсветил:
+1. **"Каша"** — ты загрузил .mp3 через legacy "Replace with your own file" в drawer'е → файл попал в `image_prompt.history` (это для image rerolls), drawer показывает .mp3 как "Reference image" → broken filename .md + audio player wrong place
+2. **"Animatic preview"** на Pipeline page показывает audio player потому что `asset.drive_path` сейчас .mp3 (после legacy upload) и AssetPreview's AudioBody auto-renders audio control
+
+Эти две проблемы решатся когда v04 будет иметь `animatic_v1` → drawer покажет AnimaticPlayer с правильным upload-music button.
+
+q1Y/N — re-trigger Animatic ещё раз (создаст v04). Должны увидеть мой console.log в next-dev и/или AnimaticPlayer в drawer'е.
+
+
+===LINE 3368 | 2026-05-05T15:57:21.642Z===
+Bug found and fixed: **`saveAgentOutput` insert не сохранял metadata field вообще** — поэтому `animatic_v1` улетал в нигде, а только promotion-keys (description, content, staging_path, drive_*) приземлялись в DB. v02-v04 имели только `image_prompt + provenance` — это от твоих legacy uploads.
+
+**Fix:** добавил `PERSIST_METADATA_KEYS = ['animatic_v1']` whitelist в saveAgentOutput insert. Теперь `animatic_v1` записывается на новый asset.
+
+next-dev restarted (id `1218670d`). tsc clean.
+
+q1Y/N — re-trigger Animatic ещё раз → новая v05 должна иметь `animatic_v1` → drawer показывает AnimaticPlayer
+
+
+===LINE 3386 | 2026-05-05T15:58:04.428Z===
+Жду ~2 мин и проверю v05 metadata. Если `animatic_v1` приземлится в DB — drawer покажет AnimaticPlayer.
+
+
+===LINE 3396 | 2026-05-05T15:59:26.888Z===
+🎉 **РАБОТАЕТ!**
+
+```
+v05: animatic_v1 present: TRUE
+  contract: animatic@v1
+  shot_list length: 13
+  total_duration: 32
+  music_url: null
+```
+
+**v05** имеет `metadata.animatic_v1` с правильным shot_list 13 шотов / 32s. Drawer теперь должен показать AnimaticPlayer.
+
+
+===LINE 3399 | 2026-05-05T15:59:48.288Z===
+**Что делать сейчас:**
+
+1. **Reload страницу** в браузере (HMR может не подхватить серверные lib изменения, F5 безопаснее)
+2. Открой **v05** в drawer'е (последний VID-animatic)
+3. Должен увидеть **AnimaticPlayer** (preview area + audio bar "Upload music track" + timeline 13 segments + Play/Pause/Stop/Reset + inline editor)
+4. Загрузи .mp3 через AnimaticPlayer's "Upload music" button (НЕ через "Replace with your own file" — это legacy)
+5. Click Play → картинки начнут меняться + музыка играть
+
+q1Y/N — открыл v05, AnimaticPlayer рендерится?
+
+
+===LINE 3408 | 2026-05-05T16:00:24.301Z===
+✅ **v05 = good state:**
+
+```
+metadata keys: provenance, animatic_v1, image_prompt
+animatic_v1 present: TRUE
+  contract: animatic@v1
+  shot_list length: 13
+  total_duration: 32
+  music_url: null   ← still null because legacy /upload не пишет сюда
+```
+
+**Что произошло:**
+- ✅ saveAgentOutput fix сработал → `animatic_v1` приземлился в DB
+- ⚠️ `music_url: null` — Director загружал .mp3 через legacy "Replace with your own file" в drawer'е (это пишет в `image_prompt`, не в `animatic_v1.music_url`)
+
+**Что Director должен сделать:**
+1. **Reload страницы** (F5) — чтобы drawer pick'нул новый код
+2. Open v05 в drawer'е → должен показать **AnimaticPlayer** (не legacy fallback message)
+3. В AnimaticPlayer'е увидишь "Upload music track" button — это правильный route `/upload-music`
+4. Загрузи .mp3 через ЭТУ кнопку (не через "Replace with your own file") → music_url запишется в `animatic_v1.music_url`
+5. Click Play → playback с music sync
+
+q1Y/N — открыл v05 в drawer'е, AnimaticPlayer рендерится?
+
+
+===LINE 3417 | 2026-05-05T16:05:05.413Z===
+🎉🎉🎉 **AnimaticPlayer работает!!!**
+
+Вижу:
+- ✅ Preview с current shot (SS-S14-E01-A2-SC01-SH01 · gag · 3.0s · "Beat 3 — approach stumble gag")
+- ✅ Music loaded ("Flacon Pop Loop (1).mp3" · 0:07 / 0:29)
+- ✅ Timeline 13 segments с current=4 highlighted
+- ✅ Play / Stop / Reset / Save timing buttons
+- ✅ Inline editor для current shot: −1s / +1s / numeric input / "s"
+
+Браво! Все компоненты работают.
+
+## Замечание про "только через Inbox"
+
+Director прав — заход через Inbox это hack. Animatic asset должен открываться:
+- ✅ Через Inbox row click (работает)
+- ❌ Через Pipeline page → Animatic stage card click → drawer (надо добавить)
+- ❌ Через episode/[id] page → animatic asset thumbnail click → drawer (надо добавить)
+
+Это маленький UX fix — добавлю прямой путь.
+
+q1Y/N — починить сейчас (~10 мин: на Pipeline page добавить openable drawer для Animatic stage asset, плюс возможно на episode page если там показывается)?
+
+
+===LINE 3505 | 2026-05-05T16:08:41.101Z===
+**Что теперь работает:**
+
+| Точка входа | Что показывается |
+|---|---|
+| Inbox row click → drawer | EpisodeAssetDrawer + AnimaticPlayer (полный QC) |
+| Pipeline page → Activity Feed → Eye icon | PreviewDrawer + AnimaticPlayer (через AssetPreview branch) |
+| Pipeline page → stage card click | PreviewDrawer + AnimaticPlayer |
+
+Reload страницы (F5) и попробуй с любого из этих мест — везде AnimaticPlayer должен появиться.
+
+q1Y/N — теперь все entry points работают?
+
+
+===LINE 3521 | 2026-05-05T17:02:34.908Z===
+tsc clean. Кнопка теперь всегда видна:
+- Disabled `Saved` (ghost variant) когда нечего сохранять
+- Active `Save timing` (primary variant) когда есть unsaved overrides
+- `Saving...` (spinner) во время save
+
+HMR подхватит автоматом (client component). Reload страницы / Activity Feed (F5) и кнопка появится в Preview drawer.
+
+q1Y/N — кнопка Save timing видна теперь?
+
+
+===LINE 3535 | 2026-05-05T17:05:20.118Z===
+Хороший вопрос — отвечу + закрою gap который ты открыл.
+
+## Как сейчас работает transition
+
+**Когда Director APPROVE'ит VID-animatic asset** — `/api/assets/[id]/approve` route fires в `computeNextEvents`:
+- **3× `exec-vgen/generate-shot`** events (по shot для visual generator)
+- **1× `exec-mgen/generate-music`** event
+
+Это запускает следующую stage = **Visual Generator + Music**.
+
+## Mode-зависимость
+
+| Mode | Поведение |
+|---|---|
+| **Mode 1-3** (manual review) | Director явно нажимает APPROVE → fires VGEN+MGEN events. AnimaticPlayer = surface для review. |
+| **Mode 4 (AUTOTEST)** | Factory auto-promotes DRAFT → APPROVED при создании (см. `factory.ts:290`). Animatic **скипается** — VGEN/MGEN запускаются автоматически. |
+
+**Per `technology.md §1`**: animatic — это quality gate перед expensive video. В Mode 4 этот gate сейчас обходится. По architectural sense должно остаться review-required даже в Mode 4 (как hard-limit). Но это отдельное архитектурное решение.
+
+## Gap который ты заметил (фиксю прямо сейчас)
+
+В drawer'е VID-animatic asset НЕТ кнопок APPROVE/REJECT — 4-button footer рендерится только для v2 EREF (`isV2 && shotRef`). Для animatic Director должен идти в kebab меню → "Approve" или через Inbox row action.
+
+**Fix:** добавлю inline Approve/Reject прямо в AnimaticPlayer controls. После approve → срабатывает existing `/approve` route → fires VGEN+MGEN. Делаю.
+
+
+===LINE 3567 | 2026-05-05T17:06:30.103Z===
+tsc clean, tests pass.
+
+## Summary — Animatic transitions
+
+| Точка | Что происходит |
+|---|---|
+| **Approve & advance** в AnimaticPlayer | POST `/api/assets/[id]/approve` с `decision: APPROVE` → asset → APPROVED → `computeNextEvents` fires **3× EXEC-VGEN + 1× EXEC-MGEN** events |
+| **Reject** в AnimaticPlayer | POST `/api/assets/[id]/approve` с `decision: REJECT` → asset → REJECTED → next stage НЕ запускается |
+| **Mode 1-3** | Manual approve required (то что ты видишь сейчас) |
+| **Mode 4 AUTOTEST** | Factory auto-promotes DRAFT → APPROVED при создании → fires VGEN+MGEN автоматом БЕЗ review (это existing behavior, не моя реализация) |
+
+**Кнопки в новой версии (HMR подхватит):**
+- 🔴 **Reject** (ghost, danger color) 
+- ✅ **Approve & advance** (primary)
+
+Кнопки находятся внизу AnimaticPlayer'а с подписью "When happy with pacing → Approve advances to Visual Generator + Music".
+
+q1Y/N — F5 страницу, проверь что Approve & advance + Reject видны в animatic preview/drawer?
+
+
+===LINE 3572 | 2026-05-05T17:09:46.368Z===
+🎉 Animatic stage полностью функционален.
+
+## Чек-лист по Animatic v1
+
+| Feature | Status |
+|---|---|
+| Browser-native player (no mp4 render) | ✅ |
+| Preview area + caption overlay | ✅ |
+| Audio bar + Upload music + Replace | ✅ |
+| Timeline strip 13 segments + cursor + click-to-seek | ✅ |
+| Play / Pause / Stop / Reset | ✅ |
+| Inline duration editor (−1s / +1s / numeric) | ✅ |
+| Save timing (always visible, disabled when no changes) | ✅ |
+| **Approve & advance → fires VGEN×3 + MGEN** | ✅ |
+| **Reject** | ✅ |
+| Entry: Inbox → drawer | ✅ |
+| Entry: Pipeline page → activity feed → Preview | ✅ |
+| Entry: Stage card → Preview | ✅ |
+
+
+===LINE 3689 | 2026-05-06T06:10:33.262Z===
+Поищу — Claude Code voice input настраивается через settings.json или OS-level. Сначала гляну что уже есть в твоих настройках.
+
+
+===LINE 3703 | 2026-05-06T06:11:46.706Z===
+Партнёрство — push back: claude-code-guide agent дал ответ который я НЕ могу подтвердить. В твоей `~/.claude/settings.json` пусто, и я не нашёл следов `/voice` команды или `language` setting в реальном install'е.
+
+Возможно агент дал generic guess. Давай проверим:
+
+1. **Попробуй сейчас** в чате набрать `/voice` — есть ли такая команда?
+2. **Проверь** `~/.claude/settings.json` — реально пусто? Если да, добавь:
+```json
+{
+  "language": "russian",
+  "voice": { "enabled": true, "language": "russian" }
+}
+```
+Перезапусти CC. Если voice input понял русский → работает. Если нет → ничего не упало, можно убрать.
+
+3. **Honest альтернатива** — Claude Code Desktop может использовать:
+   - **OS-level dictation** (Windows Speech): Settings → Time & Language → Speech → "Speech language: Russian"
+   - **Whisper auto-detect** (если CC шлёт аудио в OpenAI Whisper) — в этом случае оно ДОЛЖНО распознавать русский автоматом без настройки. Тогда проблема не в языке, а в чём-то другом.
+
+q1: что показывает `/voice` в чате?
+- **q1A**: команда работает, открывает settings  
+- **q1B**: команда не существует ("Unknown slash command")  
+- **q1C**: что-то третье (опиши)
+
+q2: в Windows Speech language уже Russian?
+- **q2A**: yes
+- **q2B**: no
+- **q2C**: не знаю где смотреть
+
+
+===LINE 3714 | 2026-05-06T06:19:35.288Z===
+Agent fetched real docs ([https://code.claude.com/docs/en/voice-dictation.md](https://code.claude.com/docs/en/voice-dictation.md)). Реальный fix:
+
+## Steps
+
+1. **Создай файл** `C:\Users\NAVIA VISION ONE\.claude\settings.json` с:
+
+```json
+{
+  "language": "ru"
+}
+```
+
+(Или `"russian"` — оба формата принимаются.)
+
+2. **Зайди в чат** и набери `/config` — должна открыться settings UI где можно поменять language. Альтернативно прямо JSON отредактирован выше — настройка применится без рестарта.
+
+3. **Проверь** — нажми Mic → скажи по-русски → должно транскрибироваться кириллицей.
+
+## Если не работает
+
+Возможные причины:
+- **Версия Claude Code старовата** — `claude --version` в терминале. Voice dictation требует v2.1.69+
+- **Mic permission** — Windows Settings → Privacy & security → Microphone → Claude Code в allow list
+- **Не WSL** — voice работает только в native Windows
+
+## Создать файл
+
+```bash
+echo '{"language":"ru"}' > "C:/Users/NAVIA VISION ONE/.claude/settings.json"
+```
+
+Хочешь чтобы я создал? (тогда нужен `===5===` mode или твой явный go).
+
+q1Y/N — создать `settings.json` с `language: ru`?
+
+
+===LINE 3725 | 2026-05-06T06:30:17.856Z===
+🎯 **Нашёл проблему!** Файл создан в **UTF-16 с BOM** (Windows PowerShell default), а JSON парсер ждёт UTF-8. Claude Code не может прочитать настройку → fallback to English.
+
+
+===LINE 3803 | 2026-05-06T06:38:20.618Z===
+Поменял на `"language": "russian"`. **Полностью закрой Claude Code** (system tray → Quit), переоткрой, попробуй voice по-русски.
+
+## Option 2 — если всё равно не работает
+
+В чате Claude Code набери:
+```
+/config
+```
+
+Должно открыться settings UI где можно явно установить language. Иногда `/config` подкручивает то что не подхватывает settings.json напрямую.
+
+## Option 3 — `/voice` командой
+
+Раньше говорил что её нет. В версии 2.1.121 точно есть. Попробуй заново — может был typo. Должна вывести что-то типа:
+```
+Voice mode enabled (hold). Hold Space to record. Dictation language: ru (/config to change).
+```
+
+Если **Dictation language: en** показывает — значит CC настройку не подхватил.
+
+q1: после полного restart + `/voice` — какой language показывает?
+
+
+===LINE 3840 | 2026-05-06T06:47:15.940Z===
+OS-level всё ОК — Windows locale `ru-RU`, Russian первый в input languages. Если voice прицеплён к OS speech, должно было работать. Но не работает.
+
+Settings.json теперь полный (`language: russian` + `voice.enabled: true` + mode tap). Ты убил процесс через Task Manager — restart должен был подхватить.
+
+## Гипотеза которая остаётся
+
+Mic icon в Desktop UI **возможно использует другой voice path** чем CLI `/voice`. Раньше я предположил это. Проверка:
+
+1. **Напечатай** в чате `/voice` целиком + Enter (не autocomplete-выбор)
+2. Что ответ?
+   - **q1A**: "Voice mode enabled (hold). Dictation language: ru" — значит CLI voice работает с RU. Но Mic button в UI — другой механизм.
+   - **q1B**: "Unknown command" — `/voice` не существует в твоей build'е, Mic button = единственный путь, settings.json не помогает
+   - **q1C**: что-то третье
+
+## Push back: предлагаю остановиться
+
+Настройка voice input для Russian в Claude Code Desktop — проблема **на стороне Anthropic** (либо feature flag, либо багует на Windows ru-RU). Моя продуктивная отдача от дальнейшего копания низкая.
+
+**Что у нас уже работает:**
+- ✅ Concierge voice в webapp (настроили утром через navigator.language)
+- ✅ Можешь печатать на русском в Claude Code (текст идёт нормально)
+
+**Что не работает:**
+- ❌ Voice → text транскрипция в Russian внутри Claude Code Desktop
+
+Я бы **репортил это в Anthropic** (https://github.com/anthropics/claude-code/issues или поддержка) и переключился на работу. У нас впереди:
+- Audio block reorg в pipeline (твоё directive утром)
+- VGEN real provider
+
+q2: продолжаем voice debug или **переключаемся на работу**?
+- **q2A**: продолжаем (но ставлю под сомнение что найдём — без visibility в Anthropic feature flags)
+- **q2B**: переключаемся — отложу voice как known-issue, открою github issue Anthropic
+- **q2C**: переключаемся БЕЗ issue — забили вообще
+
+
+===LINE 3961 | 2026-05-06T07:19:02.071Z===
+Очень хорошая постановка. Думаю партнёрски, push back на бинарный выбор.
+
+## Моё мнение — гибрид (best of both)
+
+**Ни А, ни Б** — а **Universal Core + Provider Extensions** (как VS Code plugins / fal.ai playground / ComfyUI custom nodes).
+
+### Архитектура
+
+**ОДНА страница** видео-редактора (или drawer extension), с двумя слоями:
+
+**Слой 1 — Universal Core** (общий для всех providers):
+- Aspect ratio: 16:9 / 9:16 / 1:1 (auto-маппится на YouTube / Shorts/Reels/TikTok / Instagram)
+- Quality tier: fast / standard (cost preview)
+- Duration per shot (с дефолтом из storyboard, override опционален)
+- Reference image (берётся из approved EREF автоматически, можно override)
+- Prompt (auto-generated из storyboard, можно edit вручную)
+
+**Слой 2 — Provider Extensions**, который **auto-renders** из манифеста провайдера:
+```ts
+ProviderManifest {
+  id: 'veo-3-img2vid',
+  label: 'Veo 3 (image-to-video)',
+  supports_aspects: ['16:9', '9:16', '1:1'],
+  quality_tiers: [{id:'fast', cost_per_sec: 0.075}, {id:'standard', cost_per_sec: 0.15}],
+  extra_settings: [
+    { key: 'native_audio', type: 'boolean', label: 'Generate ambient audio' },
+    { key: 'motion_strength', type: 'slider 0-1', label: 'Motion intensity' },
+    ...
+  ]
+}
+```
+
+UI рендерит универсальную часть + раздел "Veo 3 settings" / "Kling settings" / etc — динамически, на основе manifest'а.
+
+### Почему это лучше А или Б
+
+| | А (Universal-only) | Б (Per-provider) | **Hybrid (core + ext)** |
+|---|---|---|---|
+| Provider-specific killer features | Теряются | Работают | ✅ Все доступны |
+| New provider — N часов работы | UI не меняется | Новая страница (~10h) | Adapter + manifest (~3h) |
+| Common controls дублируются | Нет | Да | Нет |
+| Director context-switch | Нет | Да | Нет |
+| UI maintenance | 1 страница | N страниц | 1 страница + N manifests |
+
+Это паттерн который индустрия конвергировала (VS Code extensions API, ComfyUI nodes, OBS plugins, Photoshop filters).
+
+### Что ship'аем в Phase 1 vs Phase 2
+
+**Phase 1 (сейчас, ~6h)** — Universal Core:
+- Aspect ratio dropdown
+- Quality tier dropdown
+- Duration override input (default из storyboard)
+- Reference image picker (default = approved EREF, чекбокс "use this" / pick другую)
+- Prompt textarea (auto-generated, editable)
+- Provider dropdown (для теперь = только Veo 3, но architecture готова к Kling/fal.ai)
+- ✅ Pilot Pass workflow
+
+**Phase 2 (позже, ~3h)** — Provider Manifest System:
+- Декларативная схема ProviderManifest
+- UI auto-renders extra_settings из manifest'а
+- Veo 3 manifest добавляет: native_audio toggle, person_generation policy
+- Kling manifest добавляет: elements (camera control) + prompt_strength
+- При добавлении fal.ai — adapter + manifest, UI работает
+
+### Бонус — Series-level defaults
+
+Director создаёт series → задаёт defaults (e.g. "SS-S14: 16:9, fast quality"). Per-shot можно override. Mirrors как "Episode Defaults" уже работает для EREF provider.
+
+### Открытый вопрос архитектурный
+
+**Где жить этой странице?**
+
+- **Inline в drawer** для VID-shot asset — как AnimaticPlayer для VID-animatic. Каждый shot имеет свою VGEN-Settings panel + Generate button.
+- **Stage-level панель** — в pipeline page рядом со stage card "Visual Generator" (батч-режим, default settings → applies to all shots).
+- **Оба** — drawer для per-shot fine-tune, stage panel для batch defaults.
+
+Я склоняюсь к **drawer + stage-level batch UI** — drawer для precision (одиночные shot rerun), batch для типичного flow.
+
+
+===LINE 3977 | 2026-05-06T07:36:20.784Z===
+Полностью коррелируется. Проверю по точкам:
+
+| Director's principle | Мой план |
+|---|---|
+| Viral pipeline: Idea → Script → Refs → Animatic → Shot gen → Auto-stitch → Music → Auto-publish | ✅ Уже строим этап Shot gen (VGEN). Auto-stitch — следующий epic |
+| Universal core controls (aspect, quality, duration) | ✅ Phase 1 layer 1 |
+| Provider switching через manifests | ✅ Phase 2 |
+| Batch + per-shot review | ✅ Drawer + stage batch panel |
+| **NOT** compositing / VFX / color grading | ✅ В плане ничего из этого нет |
+| **NOT** Hollywood editing suite | ✅ Drawer = decision tool, не редактор |
+| Speed + iteration | ✅ Pilot Pass = fast loop |
+
+**Что плану НЕ хватает (и что станет следующим epic):**
+
+После VGEN получим 13 mp4 shot files. **Auto-stitch step** который ты сейчас явно назвал — он СЛЕДУЮЩИЙ за VGEN, не часть VGEN. Pipeline:
+
+```
+EREF → Audio → Animatic (preview) → VGEN (per-shot) → 
+NEXT EPIC: Auto-stitch (concat + transitions + sync to music) → Publish
+```
+
+Auto-stitch может использовать ffmpeg server-side (dedicated stage `EXEC-STITCH`), берёт shots + music_url + animatic timing → final mp4. Дешёво, быстро, серверно. Director смотрит финальный preview перед publish.
+
+Записываю эту architectural principle в `technology.md` и добавляю Auto-stitch как next epic в plan. Затем ExitPlanMode.
+
+
+===LINE 4064 | 2026-05-06T07:48:51.663Z===
+Track B finished! 🎉 Track A still running.
+
+## Track B summary
+- 4 new components: VGENShotPanel (378), VGENBatchPanel (242), VGENShotSection (116), VGENPilotPillbar (397)
+- 2 modified files (drawer + episode page)
+- tsc clean (Track B only), 110/110 tests pass
+- Known: drawer 830 lines (already over 800 guard pre-edit, didn't worsen)
+
+## Track A status
+Still running. Has 2 known TS errors flagged by Track B's tsc check:
+- `lib/api/vgen-shot-helpers.ts:81` TS2322 — null filter needed
+- `lib/api/vgen-shot-helpers.ts:93` TS2677 — predicate type
+
+Эти 2 fix'а на 5 минут после finish.
+
+Обновлю RESUME-AFTER-CLEAR.md с последним state и можешь смело compact:
+
+
+===LINE 4335 | 2026-05-06T08:31:20.210Z===
+Все green. Теперь Director может своими руками. Инструкция:
+
+## 🎬 Что нажать в UI (mock-mode = $0):
+
+**1. Открыть SS-S14-E01:**
+- http://localhost:3000/episodes/4809684a-3740-4d20-85fa-b24d76340074
+- Или через Episodes list → "Perfume Vial"
+
+**2. Запустить VGEN Pilot Pass:**
+- Сверху страницы кнопка **"Re-trigger an agent"** (или "Trigger" — TriggerModal)
+- В dropdown выбрать **`EXEC-VGEN`**
+- Reason (обязательно ≥3 chars): `first VGEN run after Track A+B integration`
+- Нажать **`Trigger`**
+
+**3. Что увидишь:**
+- Pillbar над Visual Generator stage card: **"VGEN Pilot 0/2 pilot shots approved · 13 total in episode"**
+- В Jobs/Activity feed: 2 EXEC-VGEN runs (mock provider — fake mp4, $0)
+- Через ~30 сек в Inbox / на pipeline page появятся 2 VID-shot assets со status REVIEW
+
+**4. Approve пилотов:**
+- Открыть каждый VID-shot в drawer
+- В drawer должен быть **VGENShotPanel** (Universal Core controls — aspect/quality/duration/prompt)
+- **APPROVE** обоих
+
+**5. Fan out:**
+- Pillbar теперь показывает **"VGEN Pilot 2/2 pilot shots approved"** + кнопка **"Approve Direction & Fan Out"**
+- Кликнешь → fires 11 remaining shots concurrency 3
+
+**6. Cancel switch:**
+- В любой момент кнопка **"Cancel VGEN"** в pillbar — мягко прервёт fan-out
+
+---
+
+## 🟡 После mock-smoke зелёного — flip в real Veo 3:
+
+Когда integration подтверждена, нужно один SQL update:
+```sql
+UPDATE provider_assignments
+SET active_provider_id = 'veo-3-img2vid'
+WHERE contract = 'character_video';
+```
+Цена ~$3 за полный эпизод (2 pilots ~$0.45 + 11 fanout ~$2.50, fast quality).
+
+---
+
+## ⚠️ Если что-то не так
+
+| Симптом | Значит |
+|---|---|
+| 404 при кнопке Trigger | route не подхватился dev server'ом → restart `npm run dev` |
+| Pillbar не появился | проверь стейдж filter сверху — должен быть `Visual Generator` или `All` |
+| EXEC-VGEN job ERROR | provider_assignments не настроен или GEMINI_API_KEY проблемы — но в mock не должно быть |
+| 2 шота генерятся бесконечно | inngest worker не запущен → проверь второй терминал |
+
+q1 — старт?
+
+
+===LINE 4344 | 2026-05-06T08:35:29.688Z===
+Отлично, Pilot Pass запустился — pillbar **"0/2 pilot shots approved · 13 total in episode"** видно ✓. Но пилоты ещё не сгенерировались — нужно подождать.
+
+## Что сейчас происходит
+
+2 mock-генерации в полёте (`Manual trigger: EXEC-VGEN (Pilot Pass, 2 shots)` — just now). Mock провайдер ~10–30 сек.
+
+## Что делать дальше
+
+**1. Жми `Refresh` (вверху справа) через ~20 сек**
+
+В Activity появятся 2 новых **"EXEC-VGEN completed"** записи (свежие, не 15h ago).
+
+**2. Тебе нужно найти 2 новых VID-shot asset'а**
+
+Как — есть варианты, скажи мне какой удобнее:
+
+| Q | путь | где увидеть pilot mp4 |
+|---|---|---|
+| **a)** Inbox / Approval Queue | в боковой панели → Approval Queue → 2 новых REVIEW | клик → drawer с VGENShotPanel + mp4 |
+| **b)** Pipeline page → клик на стейдж "Visual Generator" | там же где сейчас, но прокрути активити вниз | drawer на клик asset row |
+| **c)** Напрямую через DB query — я тебе ID скажу | — | — |
+
+**3. После открытия каждого pilot в drawer:**
+- Посмотришь mp4 (mock = заглушка, но контракт VGENShotPanel должен работать)
+- Кнопка **APPROVE** на VID-shot
+- После APPROVE обоих → pillbar `2/2 approved` → **"Approve Direction & Fan Out"** активна
+
+## Куда не надо тыкать (пока)
+
+- ❌ **VGEN batch defaults** + "Apply to all unrendered shots" — это Phase 1.5 фича, для smoke test не нужно
+- ❌ **Approve Direction & Fan Out** — кнопка сейчас показана но disabled (требует 2/2 approved)
+
+---
+
+**q1**: refresh сделал? видишь 2 свежих "EXEC-VGEN completed"?
+**q2**: какой путь предпочитаешь для открытия pilot — a/b/c?
+
+
+===LINE 4483 | 2026-05-06T08:49:32.308Z===
+✅ **Fix готов:**
+
+**Что было:**
+```
+saveAgentOutput: assets insert failed: violates check constraint "assets_file_type_check"
+```
+
+**Корень:** `variant: shotId` пихалось как есть (`SS-S14-E01-A1-SC01-SH01`), но DB constraint требует `[a-z0-9_-]+` → fail.
+
+**Fix:** `variant: shotId.toLowerCase()` в exec-vgen.ts (2 места: pilot path + single-shot fanout). Канонический shotId roundtrip'ит через `metadata.shot_id` без потерь.
+
+**Greens:** tsc · 110/110 tests · replay-pilot 29/29
+
+**Также catch'нуто бонусом** — твой UX request (от прошлого сообщения) уже задеплоен:
+- `/vgen/state` теперь возвращает `running_jobs` (count EXEC-VGEN status=RUNNING)
+- Pillbar показывает `🔄 Generating pilots… 0/2 ready` со spinner'ом + animate-pulse прогресс-бар
+- SWR refresh = 4 сек когда пилоты в полёте, 30 сек когда idle
+- Когда оба готовы: `✓ 2/2 pilots ready — approve direction`
+
+---
+
+## Что делать (Next.js HMR должен подхватить, dev server не нужно перезапускать)
+
+**1.** Жми **`Cancel VGEN`** — сбросит state с PENDING_REVIEW (старая failed попытка) → CANCELLED
+**2.** Жми **`Re-trigger…`** → `EXEC-VGEN` → reason `retry after constraint fix` → Trigger
+**3.** Pillbar сразу должен показать **`🔄 Generating pilots… 0/2 ready`** со spinner'ом + анимированный прогрессбар
+**4.** Через ~30-60 сек (mock провайдер) → `2/2 pilots ready — approve direction`
+**5.** Открыть оба shot'а в drawer, посмотреть VGENShotPanel + Approve каждого
+**6.** Кликнуть `Approve Direction & Fan Out` → 11 fanout shots полетят
+
+q1 — поехали?
+
+
+===LINE 4585 | 2026-05-06T09:21:00.998Z===
+Все green. **Status:**
+
+| Check | Result |
+|---|---|
+| Dev сервера | ✓ Next 3000, Inngest 8288 |
+| Pilot job runs | ✓ 2/2 COMPLETED после lowercase fix |
+| VID-shot rows in DB | ✓ 2 pilots `[REVIEW]` с `vgen_pilot=true` |
+| /vgen/state query | ✓ исправлен — теперь матчит variant suffix |
+| tsc / tests / replay | ✓ 0 / 110/110 / 29/29 |
+
+**Что увидишь сейчас в UI:**
+
+Открой http://localhost:3000/episodes/4809684a-3740-4d20-85fa-b24d76340074
+
+Pillbar над Visual Generator стейджем должен показать:
+> **VGEN Pilot · 0/2 pilot shots approved · review the rest · 13 total in episode**
+
+Кнопка "Approve Direction & Fan Out" — disabled пока оба не APPROVED.
+
+**Дальше ты:**
+1. Открыть каждый из 2 новых VID-shot pilot'ов (status=REVIEW) в drawer
+2. Видишь mp4 (mock — заглушка) + **VGENShotPanel** (aspect / quality / duration / prompt)
+3. Approve каждого
+4. После 2/2 APPROVED → "Approve Direction & Fan Out" активна → fan out 11 шотов
+
+q1 — открой страницу и скажи что видишь?
+
+
+===LINE 4625 | 2026-05-06T09:24:32.020Z===
+✅ Backfill готов. **Refresh страницу** — теперь увидишь:
+
+1. В Activity feed: **2 свежих events** "EXEC-VGEN pilot completed (SS-S14-E01-A1-SC01-SH01)" и "...SH02"
+2. **Клик на каждый event** → откроется drawer с mp4 + VGENShotPanel
+3. Там кнопка **APPROVE** — нажми оба
+4. После 2/2 APPROVED → "Approve Direction & Fan Out" станет активной
+
+**Также добавлено в код** (для следующих pilot runs автоматически):
+- `agent_completed` event пишется в pilot path после save (как в legacy factory)
+- То же для fan-out single-shot path
+
+Refresh + скажи что видишь.
+
+
+===LINE 4636 | 2026-05-06T09:25:31.818Z===
+Отлично — теперь видно **"EXEC-VGEN pilot completed (SS-S14-E01-A1-SC01-SH01) · just now"** в Activity feed. Внизу должен быть ещё один такой же для SH02 (если проскроллить).
+
+**Что делать:**
+
+**1.** Кликни на запись "EXEC-VGEN pilot completed..." → откроется drawer справа
+
+**2.** В drawer'е должны быть:
+   - 🎬 mp4 player (mock — заглушка ~2 сек)
+   - **VGENShotPanel** — Universal Core controls (aspect/quality/duration/prompt/reference)
+   - Кнопка **APPROVE**
+
+**3.** Нажми **APPROVE** на этом shot'е
+
+**4.** Проскролль активити вниз → найди второй "EXEC-VGEN pilot completed (SH02)" → клик → APPROVE
+
+**5.** После 2/2 APPROVED:
+   - Pillbar обновится на **"VGEN Pilot · 2/2 pilots ready — approve direction to fan out"** (зелёная галочка)
+   - Кнопка **"Approve Direction & Fan Out"** станет активной (сейчас disabled)
+
+**6.** Кликнешь — fan out 11 оставшихся shots (mock провайдер, $0)
+
+q1 — открой первый pilot и скажи что видишь в drawer'е?
+
+
+===LINE 4644 | 2026-05-06T09:26:32.656Z===
+Drawer открылся, mock warning видим (нормально, mp4 файл фейковый). Но **VGENShotPanel** не виден — должен быть ниже. Проверь:
+
+1. Проскролль drawer вниз — VGENShotPanel мог быть под mock-warning'ом
+2. Скажи что видишь — VGENShotPanel + APPROVE есть, или нет
+
+Параллельно проверю код drawer'а — правильно ли детектится VID-shot с variant suffix:
+
+
+===LINE 4648 | 2026-05-06T09:26:46.435Z===
+🔴 Проблема найдена! В скрине заголовок **"PREVIEW"** — это `AssetPreview` overlay drawer, а **НЕ** `EpisodeAssetDrawer`. Они разные. AssetPreview скорее всего не подключён к VGENShotPanel:
+
+
+===LINE 4664 | 2026-05-06T09:27:27.659Z===
+🟡 Найдено: это **PREVIEW drawer (мини-overlay)** из activity feed — он не имеет VGENShotPanel + Approve/Reject. Полный drawer (`EpisodeAssetDrawer`) с этими контролами открывается через **Inbox**.
+
+**Быстрый путь для теста сейчас:**
+
+1. Закрой PREVIEW (X)
+2. Слева в меню — **Inbox (21)** ← там твои REVIEW assets
+3. Найди два pilot'а: `SS-S14-E01-VID-shot-ss-s14-e01-a1-sc01-sh01-v01-DRAFT.mp4` и `...-sh02-v01-DRAFT.mp4`
+4. Клик по каждому → откроется полный drawer с **VGENShotPanel** + кнопки **Approve/Reject**
+5. Approve оба
+
+Параллельно я допишу VGENShotPanel + Approve/Reject в PREVIEW drawer чтобы оба пути работали:
+
+
+===LINE 4703 | 2026-05-06T09:28:51.122Z===
+✅ Greens. Next.js HMR должен подхватить.
+
+**Refresh страницу** и снова кликни "EXEC-VGEN pilot completed (SH01)" — теперь в PREVIEW drawer'е должны появиться:
+
+1. 🎬 Mock video warning (как раньше)
+2. **VGENShotPanel** — Universal Core controls (aspect / quality / duration / prompt / reference picker)
+3. Кнопки **`Approve`** + **`Reject`** в самом низу (только когда status=REVIEW)
+
+Approve оба pilot'а → Pillbar обновится на `2/2 pilots ready` → "Approve Direction & Fan Out" станет активна.
+
+q1 — обновись и скажи что видно в drawer'е?
+
+
+===LINE 4717 | 2026-05-06T09:31:45.443Z===
+Да, верно — сейчас **mock** провайдер. Это намеренно для smoke-теста integration без денежных трат.
+
+**Что mock делает:** возвращает фейковый mp4 (заглушка-путь, не реальный файл). Используется чтобы проверить:
+- ✅ Pilot Pass запускается
+- ✅ State machine работает (PENDING_REVIEW → FANOUT_RUNNING)
+- ✅ Pillbar UX, Approve/Reject UI
+- ✅ Fan-out 11 shots с concurrency 3
+- ✅ DB записи, activity feed
+- ✅ Все integration пути (drawer, preview, кнопки)
+
+**Чтобы переключить на реальный Veo 3** нужно одно изменение в DB:
+
+```sql
+UPDATE provider_assignments
+SET active_provider_id = 'veo-3-img2vid'
+WHERE contract = 'character_video';
+```
+
+Сейчас:
+```
+contract='character_video' → active_provider_id='mock'
+                             notes: 'Wires to veo-3-img2vid in Phase 8 step 13.'
+```
+
+После switch'а:
+- Re-trigger pilot pass → 2 реальных Veo 3 шота через Vertex AI (~$0.45, ~30 сек на штуку)
+- Approve пилотов → Fan out 11 → real generations (~$2.50, concurrency 3 = ~3 мин wall clock)
+- **Total: ~$3 за полный episode** (fast quality, ~2 сек видео per shot)
+
+**Q: что предпочтёшь?**
+
+| Вариант | Что | Cost | Risk |
+|---|---|---|---|
+| **a)** Доведи mock fan-out до конца (нажми Approve Direction & Fan Out сейчас) → проверь что 11 шотов через рендерится без ошибок | mock | $0 | ноль |
+| **b)** Сразу switch на real Veo 3 → re-trigger pilot pass | real | ~$3 | первая реальная Veo 3 проверка может выявить новые баги |
+| **c)** **Recommended:** сделай (a) на mock сначала (валидируем fan-out plumbing на 11 шотах), потом switch и (b) | mock + real | ~$3 | минимальный |
+
+q1: a / b / c?
+
+
+===LINE 4814 | 2026-05-06T09:39:29.832Z===
+## ✅ Path C полностью завершён — VGEN epic v1 готов к merge
+
+**Smoke test results SS-S14-E01 (mock provider, $0):**
+
+| Stage | Result |
+|---|---|
+| Pilot Pass trigger | ✓ 2 events fired, 2 jobs COMPLETED |
+| Pilot UI flow | ✓ pillbar 0/2 → spinner → 2/2 ready ✓ green |
+| Director approval | ✓ approve buttons work in PREVIEW + EpisodeAssetDrawer |
+| Approve Direction & Fan Out | ✓ fired fanout-trigger event |
+| Fan-out 11 shots concurrency 3 | ✓ all 11 COMPLETED, no failures |
+| Metadata persistence | ✓ 13/13 distinct shot_ids · 2 pilot · 11 fanout · all with provider_id |
+| State machine | ✓ NONE → PENDING_REVIEW → FANOUT_RUNNING |
+| tsc / 110 tests / replay-pilot 29 | ✓ all green |
+
+**Bugs caught + fixed in live test:**
+
+| # | Bug | Fix |
+|---|---|---|
+| 1 | DB constraint failure on uppercase shotId variant | `variant: shotId.toLowerCase()` (2 sites) |
+| 2 | `/vgen/state` `.eq('VID-shot')` missed variant suffix rows | `.like('VID-shot%')` + `startsWith()` |
+| 3 | `approve-pilots` route same .eq() bug → "no pilots found" | same .like() fix |
+| 4 | `fanout-trigger` step couldn't find pilots to skip → would re-fanout pilots | same .like() fix |
+| 5 | `regenerate-video` route same .eq() bug | same fix |
+| 6 | Pillbar показывал "0/2 approved" без спиннера = "выглядит мёртвым" | `running_jobs` count + spinner + animate-pulse + 4s SWR refresh |
+| 7 | Pilot completion silently — нет в Activity feed | `agent_completed` event insert in pilot + fanout paths |
+| 8 | PREVIEW drawer не имел VGENShotPanel + Approve кнопок | added VGENShotSection + PilotApproveButtons |
+| 9 | Trigger route → EXEC-VGEN fired legacy `generate-shot` | routes to Pilot Pass `/start` if animatic_v1 approved |
+
+**Auto-sync committed all locally** (327 commits on branch). НЕ push'ил per your rule.
+
+**Files changed today:**
+- 9 VGEN core files modified/added
+- ~1500 lines net delta
+
+**Phase 1.5 deferred** (intentional, separate work):
+- auto-COMPLETE state transition (pilot_state stays FANOUT_RUNNING)
+- regenerate-video auto-demote prior shot
+- vgen_defaults UI
+
+---
+
+## Что предлагаю дальше
+
+**Recommended: Path B → PR + merge VGEN epic now**
+
+Причины:
+- Smoke на 13 шотах прошёл чисто, 9 багов словлены и исправлены
+- Real Veo 3 test ($3) можно сделать в свежей сессии после merge — меньше risk что что-то сломается с накопленным контекстом
+- Auto-sync commits уже на ветке, нужно только push + PR
+
+q1: PR + merge сейчас? Y / N
+q2: Если Y — какой PR title предпочитаешь?
+- a) `feat(vgen): Universal Video Editor Surface + Pilot Pass + Veo 3 ready (Phase 1)`
+- b) `feat: VGEN v1 — Pilot Pass + 13-shot fan-out + Universal Core panel`
+
+
+===LINE 4903 | 2026-05-06T09:43:37.847Z===
+✅ **13/13** — bulk approve сработал на все 11 fan-out + 2 pilots. Legacy 3 shots больше не считаются.
+
+Refresh страницу — должно показать:
+
+**`✓ Reviewed: 13/13 shots have approved video`** (зелёная галочка + full green progress bar)
+
+Всё, smoke complete.
+
+---
+
+## Summary VGEN epic ready to ship
+
+**Smoke test пройден полностью:**
+- Pilot Pass: 2 → Director approved
+- Fan-out: 11 → concurrency 3 → all COMPLETED
+- Bulk approve: 11 REVIEW → APPROVED одним кликом
+- Final state: 13/13 ✓
+
+**Bugs caught + fixed (10 total):**
+1. Lowercase variant for DB constraint
+2. `/vgen/state` `.in()` → `.like()`
+3. `approve-pilots` `.eq()` → `.like()`
+4. `fanout-trigger` `.eq()` → `.like()`
+5. `regenerate-video` exact match → prefix
+6. Pillbar UX (spinner + animate-pulse + 4s SWR live)
+7. `agent_completed` events для pilot/fanout
+8. PREVIEW drawer VGEN integration (panel + approve buttons)
+9. Trigger route → Pilot Pass routing
+10. Approved count cap + legacy shot_id filtering
+
+**Greens:** tsc · 110/110 · replay-pilot 29/29
+
+**Auto-sync committed all locally** — НЕ pushed/PR'd per твоему правилу.
+
+q1 — push + PR сейчас?
+q2 — title:
+- a) `feat(vgen): Universal Video Editor Surface + Pilot Pass + 13-shot fan-out`
+- b) `feat: VGEN v1 — Pilot Pass · fan-out · bulk approve · 10 bugs caught in live test`
+
+
+===LINE 4965 | 2026-05-06T09:54:32.436Z===
+🎉 **REAL VEO 3 РАБОТАЕТ:**
+
+| | |
+|---|---|
+| File sizes | 553KB + 552KB (mock = 0 bytes) |
+| Generation time | 71s + 130s (mock = ~5s) |
+| Provider | `veo-3-img2vid` |
+| Drive upload | ✓ оба uploaded (drive_file_id present) |
+| Local staging | ✓ webapp/public/staging/*.mp4 |
+
+**Refresh страницу** — pillbar теперь должен показать **`0/2 pilots ready`** (старые demoted, real в REVIEW).
+
+## Что делать
+
+1. Открой каждый pilot в drawer (Inbox или Activity feed)
+2. **Реально посмотри mp4** — это первое настоящее AI-сгенерированное видео в студии
+3. Проверь character consistency vs approved EREF
+4. Approve или Reject
+
+**Cost so far:** ~$0.45 (2 pilots × ~$0.20-0.25 each, fast quality)
+
+Если пилоты OK → "Approve Direction & Fan Out" → 11 fanout shots Veo 3 (~$2.50, ~3 мин wall clock с concurrency 3).
+
+q1 — посмотри пилоты и скажи как character consistency?
+
+
+===LINE 4989 | 2026-05-06T09:57:55.563Z===
+✅ Дубликат убран. Refresh — теперь увидишь **только один** video player в drawer'е.
+
+---
+
+## Про твой вопрос — variants per generation
+
+Ты прав, это feature gap. Veo 3 нативно поддерживает **`numberOfVideos: 1-4`** — generates N variants за один call с разными seeds. Стандартная практика для AI generation = 2-4 варианта, выбираешь best.
+
+**Что у нас сейчас:**
+- Жёстко прибито `numberOfVideos: 1`
+- Один шот = одно видео
+- Чтобы получить варианты — Director клацает "Re-generate" N раз
+
+**Что нужно добавить (Phase 1.5):**
+
+| Слой | Что |
+|---|---|
+| Veo 3 adapter | `numberOfVideos: number` параметр (already supported by API) |
+| VGENShotPanel UI | Новый control: **"Variants per generation"** dropdown 1/2/3/4 (default 2) |
+| Cost preview | Cost × N (~$0.30 → $0.60 за 2 варианта) |
+| Persist | N parallel asset rows вместо 1; pilot_state считает 1 shot = 1 variant cohort |
+| Drawer UX | Side-by-side variants → click "Pick this one" → промотируется в APPROVED, остальные → REJECTED |
+
+**Аналог в EREF:** там у нас тоже n=1 сейчас, но архитектурно EREF поддерживает множественные generation calls (через regenerate с edited prompt). VGEN вариант = "одна генерация, N выходов" — это естественнее когда AI-провайдер сам поддерживает.
+
+---
+
+## Сейчас 2 решения
+
+| Path | Что | Time |
+|---|---|---|
+| **A)** Сначала ship VGEN v1 (1 variant) → PR + merge → потом variants как Phase 1.5 add-on | минимально — кнопка "Re-generate" уже работает | ship now |
+| **B)** Добавить variants в текущий PR | расширяем UI + adapter + persist + drawer review pattern | ~3-4h |
+| **C)** Сейчас доведи real Veo 3 smoke до конца на 1 variant → решение про variants после | пилоты → fanout → 11 шотов | сейчас |
+
+**Recommended C → потом A**: сначала validate full pipeline на real Veo 3 с 1 variant, потом ship, потом variants как отдельное PR.
+
+q1 — продолжаем review этих 2 pilot'ов? Открой 2-й pilot в drawer'е (без duplicate теперь) и скажи character consistency vs EREF reference, и approve если ok.
+
+
+===LINE 4995 | 2026-05-06T09:59:11.800Z===
+OK. Жду твой review двух real Veo 3 pilots:
+
+1. Refresh → открой pilot SH01 в drawer (теперь один video player)
+2. Посмотри 4-сек mp4 — character consistency Sandy + Inspector Stopwatch?
+3. Approve / Reject
+4. То же для SH02
+5. Когда оба APPROVED → "Approve Direction & Fan Out" → 11 fanout shots (~$2.50)
+
+Я слежу за DB на предмет ошибок. Когда сделаешь — скажи.
+
+
+===LINE 5120 | 2026-05-06T10:11:43.992Z===
+Ты абсолютно прав — это **fundamental UX gap** для VGEN. Activity feed как лог хорошо для "что произошло", но плохо для "review the work product".
+
+## Что реально нужно для review 13 видео
+
+Director'у не нужен список текстовых строк. Ему нужна **visual review surface**:
+
+| What current sucks | What's needed |
+|---|---|
+| 13 одинаковых текстовых строк с длинными filename'ами | **Grid of mp4 thumbnails** (first-frame poster) с visible status pills |
+| Не видно сразу "какие APPROVED" | Цветовой кодинг: green pill APPROVED, yellow REVIEW, red REJECTED |
+| Не видно что в шоте | Caption под thumbnail: `SH02 · Sandy & Stopwatch tense face-off · 4s` (action_prose snippet) |
+| Каждый review = открыть drawer | Click thumbnail → drawer **с prev/next arrows** для последовательного review |
+| Bulk approve без visual context | Bulk approve уже есть в pillbar но ты не видишь что approve'ишь |
+
+## 3 пути на выбор
+
+**a) MVP-fix (~1h)** — добавить status pill + 64×36 thumbnail к каждому activity row
+- Минимально инвазивно, не меняет layout
+- Решает "не вижу approve/review" но не решает "не вижу что в видео"
+
+**b) VGEN Review Grid (~3-4h)** — отдельный новый компонент `VGENShotGrid` под Visual Generator стейдж
+- Замещает текстовый feed grid'ом 13 thumbnails
+- Per-cell: poster mp4 + shot_id + action_prose snippet + status pill
+- Click → existing drawer + prev/next nav
+- Filter chips: All / REVIEW / APPROVED
+- **Это правильная архитектура** для AI video review surface (как fal.ai playground, Sora, Adobe Firefly)
+
+**c) Storyboard-timeline view (~5-6h)** — все 13 mp4 как timeline с durations (как Animatic player), Director проигрывает sequentially
+- Cinema-style review experience
+- Helps Director feel pacing of full episode
+- Шире чем просто review — это уже EXEC-STITCH preview
+
+## Моя рекомендация
+
+**(b) сейчас + (c) как next epic после EXEC-STITCH.**
+
+Почему b сейчас:
+- Покрывает основную боль: visual review at-a-glance
+- 3-4h — vs (a) 1h это правильная инвестиция (UX gap не уйдёт сам)
+- Реюзает existing drawer, panel, approve API
+- (c) естественно вырастает из (b) когда придёт EXEC-STITCH (там shots уже в timeline)
+
+Почему НЕ (a):
+- Текстовый feed с thumbnails — половинчатое решение, всё равно непонятно
+- Через неделю придётся переделывать в (b)
+
+## Вопросы до старта
+
+q1: какой путь? (рекомендую **b**)
+q2: если b — где разместить grid?
+   - **i)** Inside ACTIVITY column current view (replaces text feed only when stage=Visual Generator)
+   - **ii)** New "Review" tab сверху (toggle между Activity и Review)
+   - **iii)** Full-screen takeover modal "VGEN Review Mode"
+
+q3: filter behaviour default?
+   - All shots
+   - Only REVIEW (focus on action items)
+   - Only APPROVED (audit)
+
+Скажи a/b/c + i/ii/iii + filter default, и стартую.
+
+
+===LINE 5126 | 2026-05-06T10:18:23.919Z===
+Стоп — это правильный вопрос. Давай поднимемся над VGEN-specific UI и спроектируем **unified video review architecture** на весь lifecycle.
+
+## Прозрение: всё это ОДИН компонент во времени
+
+Что мы строим — **прогрессивно эволюционирующий episode timeline**:
+
+```
+Animatic v1   →   VGEN per-shot   →   Stitched final
+─────────────     ─────────────       ─────────────
+[img][img][img]   [mp4][mp4][mp4]     [mp4][mp4][mp4]
+└── 4s ─┘ 3s 5s   └── 4s ─┘ 3s 5s     └── 4s ─┘ 3s 5s
+   ♪ music optional   ♪ music optional   ♪ music ✓
+```
+
+Это **одна и та же временная шкала**, заполняемая всё более высокой fidelity'ью.
+
+## Архитектура — `EpisodeTimeline` (single source-of-truth)
+
+**Один компонент** на episode page. Каждая cell в timeline:
+
+| Условие | Что рендерится в cell |
+|---|---|
+| VGEN APPROVED для этого shot_id | **Real mp4** (играется при playback) |
+| VGEN REVIEW (latest) | Real mp4 + yellow border (unreviewed) |
+| VGEN ещё не сгенерирован | Animatic v1 image frame + duration |
+| Animatic ещё нет | Storyboard placeholder + shot_id |
+
+Director **жмёт Play** → проигрывается весь эпизод от начала до конца:
+- Sequential mp4/image playback по storyboard order
+- Music track (`EXEC-MGEN approved`) синхронизированно
+- Real-time замена animatic frames на VGEN mp4'ы по мере поступления
+- При playback = Director видит "что получится" в финале **без EXEC-STITCH**
+
+## Что это убирает
+
+| Проблема | Решение |
+|---|---|
+| Разные surfaces для Animatic / VGEN review / Final preview | Один |
+| Director теряется между stages | Timeline всегда показывает "where we are" |
+| Не видно как шот вписывается в episode flow | Видно при playback |
+| EXEC-STITCH preview = third UI | Не нужен — timeline уже live composite |
+| 13 видео review = 13 кликов | Click any cell → drawer + prev/next |
+
+## Что добавляется поверх AnimaticPlayer (существующий ~530 строк)
+
+| Feature | Effort | What |
+|---|---|---|
+| **Asset resolver per cell** | 1h | "для shot_id — чей APPROVED mp4 latest? иначе animatic frame?" |
+| **Mp4 frame as cell preview** | 0.5h | `<video poster>` или `preload="metadata"` |
+| **Status pill per cell** | 0.5h | green/yellow/red overlay в углу cell |
+| **Click cell → drawer + prev/next** | 1h | wire existing VGENShotPanel |
+| **Hybrid playback** (mp4 для одних, image+timer для других) | 1.5h | extend AnimaticPlayer's frame loop |
+| **Filter chips** (Show: All / VGEN-ready / Review / Approved) | 0.5h | UI |
+| **Bulk actions toolbar** (Approve all REVIEW / Re-gen all REJECTED) | 0.5h | reuse existing endpoints |
+
+**Total ~5h** vs если делать 3 отдельных surface'а.
+
+## Phases
+
+**Phase A (сейчас — ship VGEN epic):**
+- `EpisodeTimeline` v1 (extend AnimaticPlayer)
+- Hybrid render + per-cell status + drawer + prev/next
+- Replaces VGEN activity feed на VG stage
+
+**Phase B (EXEC-STITCH next epic):**
+- Transitions (cuts/crossfades) overlay в timeline
+- Audio mixing layer (music + voice + SFX когда придут)
+- "Export final mp4" button → ffmpeg concat → final asset
+- Timeline становится **edit surface**, не только preview
+
+**Phase C (publish gate):**
+- Final mp4 review = тот же EpisodeTimeline в LOCKED состоянии
+- "Approve & Publish" button → EXEC-PUB
+
+## Также решает Director's directive из technology.md §0
+
+> "Pipeline runs **entirely inside our system** — Idea → Script → Refs → Animatic → Shot gen → Auto-stitch → Music → Auto-publish. No external video editor required."
+
+EpisodeTimeline = **наша студия в одном компоненте**. DaVinci/Premiere не нужны для viral content.
+
+## Разумный размер для shipping
+
+Phase A ~5h, ship together with current VGEN epic как одно PR:
+- VGEN epic (что уже сделано) + EpisodeTimeline v1 = одна когерентная фича "video pipeline до publish"
+
+vs **alternatives:**
+- Build VGEN-specific grid сейчас → выбросим через 2 недели когда придёт STITCH
+- Build AnimaticPlayer + VGEN grid + STITCH preview раздельно → 3× работы, фрагментированный UX
+
+## Вопросы
+
+**q1**: Согласен с архитектурой "один EpisodeTimeline progressive"?
+
+**q2**: Если да — Phase A сейчас (ship с VGEN epic) или сначала закончить smoke на текущем UI и Phase A в next session?
+
+**q3**: Где разместить EpisodeTimeline на episode page?
+   - **i)** Заменяет ACTIVITY column целиком когда выбран Visual Generator stage
+   - **ii)** Новая полноширинная секция СВЕРХУ страницы — всегда видна, разворачивается при клике
+   - **iii)** Отдельная вкладка "Review" в shell
+
+q4: Что делает кнопка "Play" в timeline до того как все шоты готовы?
+   - **a)** Играет hybrid (animatic frames для unfinished + mp4 для finished) — feels like progress
+   - **b)** Играет только если все APPROVED (preview = только final)
+
+Recommendation: **q1=Y, q2=Phase A в next session (закончим смок на текущем UI чтобы не ломать live test), q3=ii (full-width top, collapsible), q4=a (hybrid — Director видит как меняется фильм)**.
+
+Скажи q1/q2/q3/q4.
+
+
+===LINE 5394 | 2026-05-06T14:49:41.718Z===
+## ✅ VGEN Epic — Smoke Complete (with quota footnote)
+
+**Final state SS-S14-E01:**
+- Real Veo 3 successful: **10/13 distinct shot_ids** (~$2.50 spent)
+- 3 quota-blocked: A2-SC01-SH01, A2-SC02-SH01, A3-SC01-SH02 (Vertex 429 — daily quota exhausted)
+- Code path validated: pilot pass, fan-out, idempotency, retry, cancel, bulk-approve, drawer integration
+- Concurrency: 3→2→1 (final, sequential per Vertex quota)
+
+**Greens:** tsc · 110/110 tests · replay-pilot 29/29
+
+**Bugs caught + fixed live (12 total):**
+1. Lowercase variant for DB constraint
+2. `/vgen/state` `.in()` → `.like()`
+3. `approve-pilots` exact match → prefix
+4. `fanout-trigger` exact match → prefix
+5. `regenerate-video` exact match → prefix
+6. Pillbar UX (spinner + animate-pulse + 4s SWR live)
+7. `agent_completed` events для pilot/fanout
+8. PREVIEW drawer VGEN integration
+9. Trigger route → Pilot Pass routing
+10. Approved count cap + legacy shot_id filtering
+11. Pillbar "live activity" headline (running_jobs > 0 → spinner even at total)
+12. fanout-trigger idempotency (skip APPROVED/REVIEW shots) + active-pilot status filter
+
+**Documented:**
+- Mode 2.5 in `governance.md §4` + `CLAUDE.md §6` + `PLAN.md` LT-01
+- EpisodeTimeline plan in `~/.claude/plans/purrfect-stirring-hollerith.md` Phase A
+- Vertex quota mitigation in PLAN.md LT-08
+
+**Local commits:** all auto-sync'd (327+ commits ahead of master). НЕ pushed per твоему правилу.
+
+---
+
+## Decision time — что дальше
+
+| Опция | Что делать | Cost / risk |
+|---|---|---|
+| **a)** Push + PR сейчас на 10/13 | Director-supervised PR review; 3 missing shots генерятся вручную после quota reset | $0 / 3 manual retries после merge |
+| **b)** Wait quota reset (~24h) → retry 3 shots → 13/13 → PR | Чистый ship | ~24h block + $0.60 |
+| **c)** Add quota mitigation code (LT-08: backoff retry policy) → retry → ship | Lifeproofs pipeline; ~30 мин work | ~30 мин + $0.60 |
+
+Мой recommendation: **(a)**. Smoke validated всё что можно валидировать; 3 missing — external quota, не системная проблема. Phase 1.5 LT-08 fix'ит надолго.
+
+q1: a / b / c?
+
+
+===LINE 5502 | 2026-05-06T15:02:48.863Z===
+🔴 Все 5 retry attempts тоже **FAILED 429**. Vertex AI quota полностью исчерпана. Pipeline корректно остановился на **10/13 successful real Veo 3** generations.
+
+| Status | Count | Cost |
+|---|---|---|
+| 10 APPROVED real Veo 3 v02 | $2.50 spent ✓ | Real mp4 in Drive + staging |
+| 3 missing (quota-blocked) | $0.20 wasted on FAILED 429s | Need quota reset |
+| Total fan-out attempts | 8 across 2 sessions | All hit same 3 shotIds |
+
+Pillbar теперь точно отражает реальность: ⚠️ **"3 shots missing — re-trigger generation · 10/13 approved"** + warning icon. Это canonical state.
+
+---
+
+## Решения
+
+**Smoke validation goal достигнут:**
+- ✅ Pipeline architecture работает end-to-end на real Veo 3
+- ✅ Idempotency, retry, quota-aware concurrency, bulk approve, drawer integration — все валидировано
+- ✅ 13 bugs caught & fixed during smoke
+- ✅ Pillbar UX accurately reflects quota-blocked state
+- ❌ Last 3 shots blocked by external Vertex AI quota — НЕ codebase issue
+
+**3 пути:**
+
+| Опция | Что | Time | Cost |
+|---|---|---|---|
+| **a)** Ship VGEN epic now (10/13 real validation) | PR push сейчас. После quota reset — Re-trigger из UI добивает 3 missing. | 0 | $0 |
+| **b)** Wait quota reset (~24h Google daily quota cycle) → retry → 13/13 → PR | Idempotency сама добьёт missing shots при retry. | ~24h | ~$0.60 |
+| **c)** Request Vertex quota increase via Cloud Console → retry → 13/13 → PR | Google approval может занять часы или дни | unpredictable | $0.60 |
+
+Recommend **(a)** — все code paths validated. 3 missing — operational ops issue (quota), не блокер для merge.
+
+q1: a / b / c?
+q2: записать **agent-kit / vercel-ai / mem0** в PLAN.md как LT-10/11/12 (нужно `===5===` для write)?
+
+
+===LINE 5624 | 2026-05-06T15:18:59.751Z===
+Now EpisodeAssetDrawer:
+
+
+===LINE 5881 | 2026-05-06T15:35:58.208Z===
+# ✅ EpisodeTimeline Phase A — MVP shipped
+
+| Step | Status | Output |
+|---|---|---|
+| 1. AudioTrack schema (multi-track future-proof) | ✓ | `animatic-shotlist.ts` + `getAudioTracks()` |
+| 2. Timeline cell resolver (pure function) | ✓ | `timeline-cell-resolver.ts` + **14 unit tests** |
+| 3. AnimaticPlayer hybrid render | ✓ | mp4 vs image switch · status pill · Open shot link · multi-track audio bar (741 lines, под guard) |
+| 6. Page integration | ✓ | `EpisodeTimelineSection.tsx` + episode page wired |
+| 7. Verification | ✓ | tsc clean · **124/124 tests** (+14) · replay-pilot 29/29 |
+| 4. Filter chips + bulk actions | deferred | iterate after smoke |
+| 5. Drawer prev/next nav | deferred | quality-of-life add later |
+
+## Что Director увидит на episode page
+
+Сверху страницы (выше DAG/Activity grid) — **collapsible "Episode timeline" section**:
+
+- 🎬 Auto-hides если animatic v1 ещё не существует
+- Header: "Episode timeline · 13 shots · 11 VID-shot rows" + collapse toggle
+- Внутри — твой familiar AnimaticPlayer **в hybrid mode**:
+  - **Real Veo 3 mp4'ы** играются для shotIds где есть APPROVED VID-shot (зелёная рамка + green pill)
+  - **REVIEW mp4'ы** играются с yellow рамкой + yellow pill (visual feedback но not canonical per directive #2)
+  - **Animatic frames** для shotIds где ещё нет VID-shot (storyboard placeholder)
+- При playback — все 13 cells в storyboard order, каждый с правильной duration (animatic_v1 + director_overrides)
+- Multi-track audio bar — сейчас 1 трек (music), но schema готова к music+voice+sfx+ambience
+- "Open shot →" link в caption → drawer открывается на этом shot для review/regenerate
+
+## Что дальше
+
+**Live smoke сейчас:**
+1. Refresh episode page SS-S14-E01
+2. Скрол вверх — увидишь "Episode timeline" section
+3. Жми Play → 10 real Veo 3 mp4 + 3 animatic frames проигрываются sequentially
+4. Click "Open shot →" → drawer для review
+
+q1: Делать live smoke сейчас или сразу PR + merge?
+q2: Если что-то не так в smoke — фиксим и потом PR.
+
+
+===LINE 5887 | 2026-05-06T15:47:44.639Z===
+🎉 
+
+Запомнил — обновил ментальное правило:
+- ❌ ~~всегда запускать smoke перед звонком~~
+- ✅ **Smoke по моей команде ИЛИ предлагать на решение** (default — propose, не auto-fire)
+
+Это особенно важно для smoke test'ов которые тратят $ (real Veo 3) или время (long pipelines). Mock smoke'ы за $0 — propose тоже, а не auto-spin.
+
+Записать ли это в `~/.claude/projects/C--SandyStudio/memory/MEMORY.md` или в CLAUDE.md как persistent rule, чтобы в следующих сессиях помнил? Сейчас стоит в моей рабочей памяти этой сессии но компакт может стереть.
+
+q1: записать как persistent rule? Y/N
+
+Тем временем готово к ship:
+
+## EpisodeTimeline Phase A — ready to merge
+
+**Что сделано:**
+- AudioTrack multi-track schema (forward-compat)
+- timeline-cell-resolver pure function + 14 unit tests
+- AnimaticPlayer hybrid render (mp4 для VID-shot, animatic frame fallback) + status pills + multi-track audio bar
+- EpisodeTimelineSection wrapper на episode page
+- 124/124 tests, replay-pilot 29/29, tsc clean
+
+**Что deferred (Phase A v2 / Phase B):**
+- Filter chips (All / REVIEW / APPROVED) + bulk actions toolbar
+- Drawer prev/next nav arrows
+
+q2: PR + merge сейчас? Или хочешь поиграться с UI на live и подкинешь правки?
+
+
+===LINE 6032 | 2026-05-06T16:28:17.854Z===
+**Проверка результатов:**
+
+| Что | Статус |
+|---|---|
+| PR #10 (`feat/bible-enrich-cta` → master) | ✅ Merged (commit `b18b7cd`) |
+| Что реально в #10 | Только `0dedaab` — conflict resolution post PR #7/#8 |
+| EpisodeTimeline code в master | ❌ **НЕТ** — 18 auto-sync commits локально, не запушены |
+
+PR #10 захватил только commit где я разрешал конфликты после squash-merge PR #7/#8 — это было ДО Phase A работы. Сама EpisodeTimeline (8 файлов, +823 lines) сидит в local commits.
+
+**Что нужно:**
+
+```
+Local feat/bible-enrich-cta = ahead of origin by 18 commits
+Содержит: timeline-cell-resolver.ts (+tests), EpisodeTimelineSection.tsx,
+          AnimaticPlayer hybrid render, audio_tracks schema, page.tsx integration,
+          CLAUDE.md smoke rule
+```
+
+**q1 — что делаем с EpisodeTimeline?**
+- a) Push + PR #11 → merge в master сейчас
+- b) Сначала live smoke на SS-S14-E01 (timeline видна, mp4 + image hybrid играет, click → drawer) — потом PR
+- c) Добавить Veo 3.1 dropdown в тот же PR (concurrency 2 + model selectable) — single shipment
+
+**По твоим решениям q1c/q2b/q3b:**
+- ✅ q3b: проверил — manual merge захватил только conflict commit, основная работа НЕ в master
+- 📝 q1c (3.1 fast default + standard в dropdown) + q2b (concurrency 2) — это отдельная Phase 1.5 задача, ~30 мин кода:
+  - `veo-gemini.ts`: model selectable from `quality_tier` ('fast' → `veo-3.1-fast-generate-preview`, 'standard' → `veo-3.1-generate-preview`)
+  - `concurrency.ts`: `'exec-vgen-shot': 2`
+  - `VGENShotPanel` quality dropdown labels: "Fast (Veo 3.1)" / "Standard (Veo 3.1)"
+
+Что делаем — q1a / q1b / q1c?
+
+
+===LINE 6053 | 2026-05-06T16:30:11.967Z===
+**PR #11 открыт ✅**
+
+🔗 https://github.com/alexanderTakeOff/SandyStudio/pull/11
+
+| Параметр | Значение |
+|---|---|
+| Title | `feat(timeline): EpisodeTimeline Phase A — unified progressive review surface` |
+| Base | `master` |
+| Head | `feat/episode-timeline-phase-a` |
+| State | `OPEN` |
+| Mergeable | ✅ `MERGEABLE` (no conflicts) |
+| Files | 8 changed, +823 / −34 |
+
+**Что внутри:**
+- `timeline-cell-resolver.ts` (+ 14 unit tests) — pure shot-centric mapping
+- `EpisodeTimelineSection.tsx` — wrapper (SWR fetch + collapsible)
+- `AnimaticPlayer.tsx` — hybrid video/image render + multi-track audio + status pills + "Open shot →"
+- `animatic-shotlist.ts` — `AudioTrack` schema + backward-compat `getAudioTracks()`
+- `episodes/[id]/page.tsx` — integration at top of page
+- `CLAUDE.md §10` — persistent smoke rule
+
+**Verification done:**
+- ✅ `tsc --noEmit` clean
+- ✅ 124/124 unit tests
+- ✅ replay-pilot 29/29
+
+**Deferred to follow-up PR (Phase A polish):**
+- Filter chips (All/REVIEW/APPROVED/Failed)
+- Bulk actions toolbar
+- Drawer prev/next arrows
+
+Дальше — твоё решение:
+- **q1** Merge сейчас или сначала live smoke на SS-S14-E01?
+- **q2** Следующий PR — Veo 3.1 dropdown + concurrency 2 (q1c/q2b решено) или Phase A polish (filter chips/bulk/prev-next)?
+
+
+===LINE 6067 | 2026-05-06T16:33:24.314Z===
+PR #11 merged ✅. Теперь чиним bug с drawer — ты увидел шот через "Open shot →" link, но кнопки approve/edit/regenerate не появились.
+
+
+===LINE 6109 | 2026-05-06T16:36:09.491Z===
+Понял bug. Корень:
+
+`AssetPreview.tsx` line 175: `editable={asset.status === 'REVIEW' || asset.status === 'DRAFT'}`
+
+Для APPROVED шотов → `editable=false` → readOnly=true → все controls VGENShotPanel disabled → "cannot edit / regenerate". А кнопки Approve показываются только для REVIEW. Если шот APPROVED (а у тебя 10/13 APPROVED) — drawer виден но мёртвый.
+
+Корректно: regenerate-video создаёт **новый** asset row (не мутирует canonical), так что для VID-shot безопасно разрешать regenerate во всех non-LOCKED состояниях. EpisodeAssetDrawer (в Inbox) уже использует `['DRAFT','REVIEW','REVISION']` — AssetPreview более restrictive чем Inbox, в этом перекос.
+
+Чиню сейчас:
+
+
+===LINE 6193 | 2026-05-06T16:40:14.040Z===
+**Status check:**
+
+| PR | Что | Статус |
+|---|---|---|
+| #11 | EpisodeTimeline Phase A | ✅ Merged |
+| #12 | VID-shot drawer controls fix | ✅ Merged |
+
+PR #12 уже на master — тестируй: открой APPROVED шот через "Open shot →" → теперь editable=true, можешь regenerate с новым prompt/quality, или Send to revision (демотит APPROVED → REVISION).
+
+Дальше делаю в **одном PR** (Phase A polish + Veo 3.1 upgrade), per твоему "q2 both":
+
+| Что | Где |
+|---|---|
+| Veo 3.1 model selectable (fast/standard) | `veo-gemini.ts` |
+| Concurrency 2 | `concurrency.ts` |
+| Quality dropdown labels: "Fast (Veo 3.1)" / "Standard (Veo 3.1)" | `VGENShotPanel.tsx` |
+| Drawer prev/next arrows | `PreviewDrawer.tsx` + `EpisodeTimelineSection.tsx` |
+| Filter chips (All / REVIEW / APPROVED / Missing) | `EpisodeTimelineSection.tsx` |
+| Bulk actions: "Approve all REVIEW" + "Generate all missing" | `EpisodeTimelineSection.tsx` |
+
+Старт с Veo 3.1 (backend), потом UI polish.
+
+
+===LINE 6229 | 2026-05-06T16:41:38.322Z===
+Drawer prev/next nav сначала — самая частая операция при review.
+
+
+===LINE 6341 | 2026-05-06T16:46:16.472Z===
+**Все три PR на master ✅**
+
+| PR | Что | Когда |
+|---|---|---|
+| #11 | EpisodeTimeline Phase A | merged |
+| #12 | VID-shot drawer controls fix (твой bug) | merged |
+| #13 | Veo 3.1 + Phase A polish (filter/bulk/nav) | merged |
+
+**Что появилось в UI после #13:**
+
+| Где | Что нового |
+|---|---|
+| Timeline header | Filter chips: All / Review / Approved / Missing с counts |
+| Timeline header (right) | "Approve all REVIEW (N)" button — появляется когда есть REVIEW шоты |
+| Shot strip | Status dot (green/yellow) на каждой ячейке, dim outside filter |
+| PreviewDrawer header | ← / → chevrons + "5 / 13" label · arrow keys работают (но не во время typing) |
+| VGEN drawer (Inbox + Timeline) | quality dropdown labels: "Fast (Veo 3.1)" / "Standard (Veo 3.1)" |
+
+**Backend:**
+- `veo-3.1-fast-generate-preview` (default) / `veo-3.1-generate-preview` (standard)
+- Concurrency `exec-vgen-shot: 2` (было 1) — при 3.1 квоте 5× больше держит без 429
+- env override `VEO_MODEL_FAST` / `VEO_MODEL_STANDARD` если Google переименует
+
+**Готово к проверке:**
+
+Refresh episode page SS-S14-E01 → должен увидеть:
+1. Toolbar с filter chips + counts
+2. Timeline cells с цветными точками
+3. Click на любой шот → drawer с ← → стрелками
+4. На REVIEW шоте → Approve button работает
+5. На APPROVED шоте → "Send to revision" button работает (с note prompt)
+6. Re-trigger generation 3 missing шотов → должны пойти на Veo 3.1 (concurrency 2)
+
+Если Veo 3.1 model ID окажется другим (Google может переименовать `-preview`) — kill процесс и в `webapp/.env`:
+```
+VEO_MODEL_FAST=veo-3.0-fast-generate-001
+VEO_MODEL_STANDARD=veo-3.0-generate-001
+```
+Это вернёт 3.0 без code change.
+
+Жду твою команду — testить Veo 3.1 на 3 missing шотах? Или другая задача?
+
+
+===LINE 6359 | 2026-05-06T16:47:59.452Z===
+Чтобы диагностировать точно — два возможных сценария:
+
+**A) Click на ячейку где ЕСТЬ mp4 (зелёная/жёлтая точка)** → drawer открывает VID-shot
+- Поля Aspect/Quality/Duration/Prompt должны быть **editable** (после PR #12)
+- Видишь поля но они серые/disabled? → Hard refresh браузера: **Ctrl+Shift+R** (старый JS bundle закэширован)
+
+**B) Click на ячейку БЕЗ mp4 (нет точки, fallback на animatic image)** → drawer открывает **EREF (image)**, не VID-shot
+- В этом случае VGENShotSection вообще не рендерится (это другой asset type)
+- Видишь только картинку без полей — это правильно для image preview, но **нет button "Generate this shot"** → bug, но другой
+- Это твой случай скорее всего, потому что 3 шота quota-blocked
+
+**q1 — что ты видишь?**
+- a) Click на зелёную точку → поля disabled серые
+- b) Click на серую ячейку (без точки) → только картинка, никаких полей
+- c) Что-то ещё (опиши)
+
+Если **q1b** — мне нужно добавить в drawer для EREF (когда у Director нет VID-shot для этого shot_id) кнопку **"Generate VGEN shot"** которая фирит `vgen/single-shot` event. Это новая фича, не просто bug fix. Открою PR — ждать твоего согласия на merge per твоё последнее правило.
+
+Если **q1a** — просто Ctrl+Shift+R, fix уже на master.
+
+
+===LINE 6365 | 2026-05-06T16:50:39.214Z===
+Понял оба — фикс + UX:
+
+**(B) UI: цвет цифры вместо точки** — простая правка в shot strip. Делаю сразу.
+
+**(A) "Generate this shot" button в drawer для missing шотов** — новая фича, нужен новый API endpoint `/api/episodes/[id]/vgen/generate-single-shot` который фирит `vgen/single-shot` event с full payload (storyboard shot + EREF + defaults). Существующий `/regenerate-video` работает только если уже есть VID-shot row для этого шота.
+
+Начинаю с (A) — backend route. Сначала посмотрю как fanout-trigger генерит single-shot events.
+
+
+===LINE 6416 | 2026-05-06T16:52:38.023Z===
+Now wire up footer на PreviewDrawer:
+
+
+===LINE 6428 | 2026-05-06T16:53:08.539Z===
+Понял — фиксим именно missing VGEN. Backend + drawer button уже есть. Теперь colored numbers:
+
+
+===LINE 6457 | 2026-05-06T16:54:47.675Z===
+**PR #14 открыт — НЕ merge'ил, жду твою команду.**
+
+🔗 https://github.com/alexanderTakeOff/SandyStudio/pull/14
+
+| Что | Где |
+|---|---|
+| Backend route `POST /api/episodes/[id]/vgen/generate-single-shot` | New file |
+| Drawer footer "Generate VGEN shot" button (для missing cells) | `EpisodeTimelineSection.tsx` |
+| Status dots → colored cell numbers (зелёный/жёлтый/muted, bold для mp4 cells) | `AnimaticPlayer.tsx` |
+
+**Логика "Generate VGEN shot":**
+- Появляется только когда clicked cell без mp4 (image fallback / placeholder)
+- Validates: episode имеет APPROVED animatic@v1 + shot_id есть в shot_list + нет уже active VID-shot row
+- Фирит `sandystudio/exec-vgen/single-shot` event с правильным duration_seconds из storyboard
+- Если уже существует APPROVED/REVIEW VID-shot для этого shot — 409 error с подсказкой использовать regenerate-video
+- Вписывается в твой текущий Veo 3.1 + concurrency 2 setup
+
+**Verification:**
+- ✅ `tsc --noEmit` clean
+- ✅ 124/124 tests
+
+**Твой комментарий "файлы без апрува"** — это именно тот случай: missing VGEN cells показывают animatic image как fallback, но не было способа их fix. Теперь — есть.
+
+q1 — review PR #14 на GitHub и скажи **merge / правки / не merge**?
+
+
+===LINE 6943 | 2026-05-07T10:51:11.860Z===
+Investigated. Конкретные ответы:
+
+## 1. Provider verification
+
+**Код:** `lib/agents/providers/veo-gemini.ts:getVeoModelId` — default `veo-3.1-fast-generate-preview` / `veo-3.1-generate-preview`. Env `VEO_MODEL_*` не pinned в `.env.local` → 3.1 используется.
+
+**НО:** asset metadata записывает только SandyStudio abstraction (`provider_used: 'veo-3-img2vid'`), не реальный Google model id. `operation_name` возвращается из `generateVideoVeoGemini` но **отбрасывается** при persist (`runner.ts:780-795`).
+
+**Чтобы Director мог верифицировать без чтения логов:** добавить в metadata `model_id: getVeoModelId(quality)` и `operation_name: real.operation_name`. ~15 минут работы.
+
+## 2. Reference / canon usage
+
+**Что сейчас происходит при VGEN:**
+- ✅ Pulls approved EREF для конкретного shot_id (`getApprovedEREFForShot`)
+- ❌ **НЕ** использует character bible (BIB-character)
+- ❌ **НЕ** использует previous shot frame
+- ❌ Только **ОДНА** картинка передаётся в Veo (Gemini API field `instances[].image` — singular)
+
+**Prompt сейчас:** только storyboard shot fields (`action_prose` / `expected_emotion` / `expected_gag` / `camera_angle` / `characters[]` from storyboard). Bible character descriptions **в prompt не входят**.
+
+## 3. Multi-reference images — что возможно
+
+| Опция | Effort | Effect |
+|---|---|---|
+| **Veo 3.1 native multi-image** | ❌ — API не поддерживает | Только одна картинка на instance |
+| **Composite client-side**: склеить bible + EREF + prev frame в один image grid → послать как одну image | ~3h | Может сработать; Veo treats grid as scene reference |
+| **Switch `character_video` → Kling 3.0 Elements** (уже в provider catalog, `adapter_ready: false`) | ~5-6h adapter | Kling Elements принимает up to 4 reference images; полноценный multi-ref |
+| **Inject Bible character description в prompt text** | ~1h | Дешевле, partial — Veo лучше следует prose описанию когда reference image нет |
+
+## 4. Prompt quality / character consistency
+
+Director прав: **emotion jumps (sad → hearts in eyes) — это storyboard issue, не VGEN**. `expected_emotion` per shot пишется EXEC-SB и не проверяется на arc-continuity. EXEC-SREV (script reviewer) тоже не enforces emotion continuity между шотами.
+
+Real fix: добавить character-arc continuity check в EXEC-SREV. Это Phase upstream (script generation), не VGEN epic.
+
+## What's next — рекомендую (выбери)
+
+| Опция | Effort | Что даёт |
+|---|---|---|
+| **A. Provider verification fix** — record `model_id` + `operation_name` в asset metadata | 15 min | Director видит реальный 3.0/3.1 в drawer description |
+| **B. Bible character description в prompt** — runner добавляет BIB-character bullet points в `buildShotPromptV2` | ~1h | Better character consistency без API change. Самый быстрый win. |
+| **C. Composite multi-reference image** — stitch EREF + prev shot frame → single image | ~3h | Continuity между шотами, но Veo может smear если grid не качественный |
+| **D. Kling 3.0 Elements adapter** — настоящий multi-reference (4 imgs), provider switch per shot | ~6h | Лучшее решение для multi-ref, but new adapter + per-shot provider UI work |
+| **E. Storyboard arc-continuity checker** — EXEC-SREV reviews emotion consistency | ~3h | Решает root cause (script issue), не VGEN |
+
+**Мой recommend: A + B** в одном PR (~1.5h) — дёшево, видимо, не ломает ничего. Потом C или D отдельно.
+
+q1 — какая опция? a/b/c/d/e или их комбо?
+
+
+===LINE 6991 | 2026-05-07T11:10:58.385Z===
+Понял. Короткий человеческий формат — вот что предлагаю сделать одним PR:
+
+---
+
+## Что сделаю сейчас
+
+**1. Provider verification** — в metadata каждого VID-shot буду писать:
+- `model_id` = `veo-3.1-fast-generate-preview` (или standard)
+- `operation_name` = реальный Google operation id
+
+→ Director открывает drawer → видит в description строку `model_id=veo-3.1-fast-generate-preview` → точно знает что используется.
+
+**2. Bible character description в prompt** — runner перед Veo подгружает character-Bible файлы (`SBL-character_<slug>`) для всех characters упомянутых в shot, берёт первые 1-2 предложения визуального описания, и вставляет в prompt:
+
+> *"Sandy enters the cafe. **Sandy: young woman, curly red hair, freckles, yellow raincoat.** Camera: ..."*
+
+→ Veo лучше держит character когда image-to-video drift'ит.
+
+**3. Audit "VGEN params vs Bible"** — пройдусь по runner.ts + проверю:
+- aspect_ratio / quality / duration берутся откуда?
+- Match ли тому что Bible/Director задал?
+
+Запишу finding в PLAN.md, фиксы — отдельным PR если нужно.
+
+**4. PLAN.md update** — confirm LT-04 (music block перед Animatic) уже там, добавлю короткую заметку про audit findings.
+
+---
+
+**Effort:** ~1.5h. Один PR. Не auto-merge.
+
+**Не делаю:** composite stitcher, Kling adapter, storyboard continuity (defer per твоему решению).
+
+OK поехали? `q1Y` / `правки` / `нет`
+
+
+===LINE 7245 | 2026-05-07T11:25:34.536Z===
+**PR #17 готов** (НЕ merged). 🔗 https://github.com/alexanderTakeOff/SandyStudio/pull/17
+
+| Что | Файл |
+|---|---|
+| Provider stamp `model_id` + `operation_name` в metadata + description строка | `veo-gemini.ts`, `video-gen-multi.ts`, `runner.ts`, `exec-vgen.ts`, `regenerate-video/route.ts` |
+| Bible character canon → prompt (1-2 sentences per character actually present in shot) | `vgen-shot-helpers.ts` + `runner.ts` + `regenerate-video/route.ts` |
+| 9 unit tests | `__tests__/lib/api/vgen-prompt-bible-canon.test.ts` |
+| Audit findings + LT-14 (Bible loc/style enrichment) | `PLAN.md` |
+
+**После merge Director увидит в drawer green ⚙ box:**
+> `model=veo-3.1-fast-generate-preview · 16:9 · fast · 5s · cost $0.375 · op=models/...`
+
+**Prompt теперь включает:**
+> `[Setting] action. Characters: Sandy (curious). **Visual canon: sandy_hourglass: Young woman with curly red hair, freckles, wearing a yellow raincoat. Carries a vintage hourglass.** Camera: WIDE. ...`
+
+**Verification:**
+- ✅ tsc clean
+- ✅ 133/133 tests (124 existing + 9 new)
+- ✅ MERGEABLE без конфликтов с master
+
+---
+
+**Текущие открытые PRs (все ждут твоего merge approval):**
+
+| PR | Что | Стэкается? |
+|---|---|---|
+| #15 | Videomatic playback + regenerate UX + colored numbers + Veo 3.1 labels | независимо от master |
+| #16 | buildShotPromptV2 prose-style rewrite + theme color tokens | независимо |
+| #17 | Provider stamp + Bible canon в prompt + audit | независимо |
+
+PR #16 и #17 оба меняют `buildShotPromptV2` → если оба merge'нутся, последний потребует rebase (тривиальный, объединить prose-style + canon param). Если хочешь — merge порядок 16 → 17 без конфликтов; либо я заранее rebase #17 на #16.
+
+q1 — какой порядок? (a) 15 → 16 → 17, (b) 17 первым, (c) оставь висеть, я ревьюну позже
+
+Sources:
+- [Kling 3 API | Magnific API](https://docs.magnific.com/api-reference/video/kling-v3/overview)
+- [Kling 3.0 - docs.kie.ai](https://docs.kie.ai/market/kling/kling-3-0)
+- [Kling 3.0 - Cinematic AI Video Generation | fal.ai](https://fal.ai/kling-3)
+- [Kling AI: Next-Gen AI Video & AI Image Generator](https://app.klingai.com/global/dev/document-api/quickStart/productIntroduction/overview)
+
+
+===LINE 7269 | 2026-05-08T08:46:51.976Z===
+Да, ты прав, без чек-листа неудобно. Вот что глянуть в каждом PR:
+
+---
+
+### PR #15 — Videomatic bugfixes
+**Что меняется:** play/pause/resume, regenerate button, colored cell numbers.
+
+**Где посмотреть код:**
+- `webapp/components/animatic/AnimaticPlayer.tsx` — playback fix (start from clicked cell, resume same time)
+- `webapp/components/vgen/VGENShotPanel.tsx` — Regenerate button colors
+
+**Что проверить глазами в коде (без запуска):**
+- Diff не больше 800 строк
+- Нет `console.log` оставленных
+
+**Что проверить локально (если хочешь):**
+- Click на cell в timeline → жми Play → должен начать с этой cell, не со следующей
+- Pause посреди cell → Play → должен продолжить с того же frame, не прыгать
+- Open shot → drawer → Regenerate button должен быть **яркий** (не muted)
+
+---
+
+### PR #16 — Prose-style prompt + theme tokens
+**Что меняется:** только текст prompt'а который улетает в Veo, плюс CSS токены.
+
+**Где посмотреть:**
+- `webapp/lib/api/vgen-shot-helpers.ts` — функция `buildShotPromptV2`
+- `webapp/app/globals.css` — добавил `--accent-orange` / `--accent-purple` для 3 тем
+- `webapp/__tests__/lib/api/vgen-prompt-builder.test.ts` — 20 тестов
+
+**Что проверить:**
+- В PR description есть **before/after** пример prompt'а — сравни визуально, читается ли лучше
+- Никакой UI этим PR не ломает — только текст и CSS
+
+---
+
+### PR #17 — Provider stamp + Bible canon + audit
+**Что меняется:** теперь в metadata записываются `model_id` + `operation_name`, и в prompt вставляется описание персонажа из Bible.
+
+**Где посмотреть:**
+- `PLAN.md` — внизу секция **"VGEN params vs Bible — audit (2026-05-07)"** — мой findings отчёт. **Прочитай его — ключевая часть.**
+- `webapp/lib/agents/runner.ts:746-770` — где загружается Bible canon и передаётся в prompt
+- `webapp/__tests__/lib/api/vgen-prompt-bible-canon.test.ts` — 9 тестов
+
+**Что проверить локально (после merge всех трёх):**
+1. Перегенерируй один shot → открой drawer → в зелёном `⚙` box должна быть строка типа `model=veo-3.1-fast-generate-preview · 16:9 · fast · 5s · cost $0.375 · op=...`
+2. Если у эпизода есть Bible character (`SBL-character_*` в LOCKED) — поле prompt в metadata должно содержать `Visual canon: <slug>: <описание>`
+
+---
+
+### Если совсем коротко
+
+Проще всего так:
+
+1. **Открой PR #15 на GitHub** → нажми **"Files changed"** → пробеги diff'ы. Если ок выглядит → пиши "merge 15".
+2. То же для #16 и #17.
+3. Если хочешь живой smoke — нужно сначала merge'нуть, потом перегенерируй один shot на SS-S14-E01 и проверь что в drawer показывает `model=veo-3.1-...` строку.
+
+Какой формат удобнее?
+- a) Я тебе **скриншоты diff'ов** через Chrome MCP открою и расскажу что важно?
+- b) Я **сам пройдусь** по diff'ам PR #15 и дам тебе summary "что критичного, что cosmetic"?
+- c) Сам ревью буду — отвечу на конкретные вопросы.
+
+
+===LINE 7389 | 2026-05-08T08:59:27.678Z===
+**Все три merged ✅. Master:**
+
+```
+2a95644 feat(vgen): provider stamp + Bible canon + audit (#17)  ← только что
+e65816d feat: improved buildShotPromptV2 + theme tokens (#16)   ← только что
+3c14849 fix(videomatic): playback + regenerate UX + numbers (#15) ← только что
+dcd6d0b feat(timeline): Generate-this-shot for missing cells (#14)
+8d2e7cf feat: Veo 3.1 upgrade + Phase A polish (#13)
+```
+
+**Open PRs: 0**
+
+**Что было аккуратно сделано:**
+1. PR #15 → squash-merge clean (no conflicts)
+2. PR #16 → tsbuildinfo conflict → resolved (взял master) → tests 144/144 → squash-merge
+3. PR #17 → conflict в `buildShotPromptV2` (overlapping rewrite) → **вручную объединил**: prose-style structure из #16 + character canon param из #17 → tests 153/153 → squash-merge
+
+**Что теперь на master (новые фичи):**
+- Videomatic playback fixes (start from selected cell, resume same time)
+- Regenerate button visible (не muted)
+- Colored cell numbers (×2 size, color-coded by status)
+- Veo 3.1 prompts (prose-style + Bible character canon)
+- Provider stamp в drawer: `model=veo-3.1-fast-generate-preview · 16:9 · fast · 5s · cost $0.375 · op=...`
+
+**Что проверить live:**
+1. Open episode SS-S14-E01 → Videomatic должен играть с pause/resume правильно
+2. Open shot → drawer green ⚙ box → строка `model=veo-3.1-fast-generate-preview ...`
+3. Re-generate один shot → новая запись должна тоже иметь model_id строку
+4. Если у эпизода есть Bible characters в LOCKED → metadata.prompt должен содержать `Visual canon: <slug>: ...`
+
+3 quota-blocked шота на SS-S14-E01 готовы к retry.
+
+
+===LINE 7418 | 2026-05-08T09:22:33.003Z===
+Оба бага найдены:
+
+**Bug 2 (prompt без canon после regen):** `VGENShotPanel.regenerate()` всегда шлёт `body.prompt: prompt` (текущее состояние textarea), даже если Director не редактировал → server `body.prompt ? body.prompt : ...` → новый buildShotPromptV2 с canon никогда не вызывается на regen. Нужно отслеживать "Director реально редактировал" и слать `prompt` только тогда.
+
+**Bug 1 (APPROVED → orange):** EpisodeTimelineSection SWR refreshInterval 30s. Когда Director апрувит через drawer, AssetPreview обновляет только свой `/api/assets/[id]` SWR — timeline cache `/api/episodes/[id]` остаётся stale до 30s tick. Нужно прокинуть callback `onAssetChanged` от EpisodeTimelineSection → PreviewDrawer → AssetPreview, чтобы при approve refresh'илось мгновенно.
+
+
+===LINE 7518 | 2026-05-08T09:26:19.716Z===
+**PR #18 готов** (НЕ merged). 🔗 https://github.com/alexanderTakeOff/SandyStudio/pull/18
+
+| Bug | Fix |
+|---|---|
+| APPROVED → orange (timeline lag 30s) | `onAssetChanged` callback chain: `EpisodeTimelineSection` → `PreviewDrawer` → `AssetPreview` → wires SWR `mutate()` мгновенно |
+| Regen prompt без Bible canon | `promptEdited` flag в VGENShotPanel: textarea не отправляется в body когда Director не редактировал → server rebuild'ит с canon |
+
+**Bonus UX:**
+- Prompt label показывает `· auto` (синий) когда не редактирован, `· edited` (жёлтый) когда редактирован
+- "Reset to auto" link button когда edited — discard override
+
+**Verification:**
+- ✅ tsc clean
+- ✅ 153/153 tests
+- ✅ MERGEABLE
+
+**После merge — что проверить live:**
+1. Approve shot 8 → cell должен **мгновенно** позеленеть (без 30s lag)
+2. Open shot → Re-generate (без редактирования prompt) → metadata.prompt новой записи должен содержать `Visual canon: sandy_hourglass: ...`
+3. Edit prompt → видишь `· edited` badge + Reset button → click Reset → возврат к auto
+
+Жду команду на merge.
+
+
+===LINE 8035 | 2026-05-08T13:10:28.267Z===
+## Что визуально изменится после merge всех трёх
+
+### PR #19 — VGEN auto-COMPLETE (backend only)
+
+| Где смотреть | Что увидишь |
+|---|---|
+| **Episode header** (SS-S14-E01) | Status автоматически переключается `GENERATION_REVIEW` → `GENERATION_APPROVED` когда последний shot APPROVED. Раньше — застревал в REVIEW |
+| **Pipeline View stage cards** | Visual Generator stage окрашивается полностью зелёным/done вместо "13/13 still review" |
+| **Approval Queue / Inbox** | После apprve последнего shot — episode пропадает из "needs attention", идёт в next stage |
+
+❌ Нет новых кнопок, новых компонентов — это чистый бекенд-фикс.
+
+---
+
+### PR #20 — EXEC-STITCH (новый агент)
+
+| Где смотреть | Что увидишь |
+|---|---|
+| **Activity Feed** | Новые записи: `🎬 EXEC-STITCH: Assemble Episode started` → `... completed` с длительностью ~60s |
+| **Pipeline View** | Новый stage card между "Visual Generator" и "Publisher" с emoji 🎬 (Episode Stitcher) |
+| **Episode page assets list** | Новый asset row: `SS-S14-E01-VID-final_cut-v01-DRAFT.mp4`, file_type `VID-final_cut`, 0:33 длительность |
+| **Drawer (Open shot →)** | Если кликнуть на VID-final_cut — drawer открывается с полным эпизодом mp4 (13 шотов склеены + музыка), play контролы как в animatic |
+| **Asset description (зелёный ⚙ box)** | `model=ffmpeg · cost $0 · 13 shots · with music` (формат может быть проще, но провайдер виден) |
+
+⚠ **Условие:** Director должен `winget install ffmpeg` (Windows). Без ffmpeg — увидишь red error в Activity: "ffmpeg not installed — install ffmpeg and restart Inngest dev server".
+
+---
+
+### PR #21 — Audio block reorg
+
+| Где смотреть | Что увидишь (только на НОВЫХ эпизодах после merge) |
+|---|---|
+| **Pipeline View DAG** | Music Generator теперь идёт **раньше** Animatic Editor. Раньше: Storyboard → World Check → EREF → Animatic → [VGEN+MGEN]. Теперь: Storyboard → World Check → [EREF+MGEN параллельно] → Animatic → VGEN |
+| **Activity Feed на новом эпизоде** | После approve world_check — два события почти одновременно: `🖼️ EXEC-EREF started` + `🎵 EXEC-MGEN started`. Раньше MGEN шёл сильно позже |
+| **Animatic player (Open animatic)** | Animatic уже **играет с музыкой** при первом открытии — БЕЗ необходимости жать "Upload music". Music секция показывает baked URL вместо placeholder |
+| **AnimaticContract в drawer description** | `audio_tracks: [{layer: 'music', url: '/staging/...'}]` (раньше был `null` пока Director не загрузит) |
+
+❌ Существующие эпизоды (SS-S14-E01 уже past animatic) — никаких изменений. Только новые.
+
+---
+
+## TL;DR — что точно увидишь после merge всех трёх
+
+1. **Сейчас на SS-S14-E01**: re-approve любой shot → header стал зелёным `GENERATION_APPROVED`. Если ffmpeg installed → через ~60s в Activity новый stitch event и новый `VID-final_cut.mp4` в drawer.
+
+2. **На следующем эпизоде** (когда новый brief approved): MGEN запустится сразу после world_check — увидишь две параллельные звёздочки в pipeline. Animatic будет играть с music сразу.
+
+⚠ **Скриптовые "видимые баги" остаются** (Sandy hearts-eyes / emotion jumps) — это storyboard issue, мы оставили на следующий эпизод. PR γ их не лечит.
+
+
+===LINE 8045 | 2026-05-08T13:23:51.850Z===
+===1=== Analytics. Только анализ, без code.
+
+## Двa отдельных бага в твоём флоу
+
+### Bug A — Drawer не обновляется на новый asset после regenerate
+
+**Что ты видел:**
+1. Click Regenerate → `· generating` orange chip горит
+2. Generation done → orange исчезает
+3. Drawer остаётся показывать **старый APPROVED asset** → buttons Approve/Reject отсутствуют (потому что старый уже APPROVED)
+4. Закрываешь + открываешь shot заново → drawer тянет **новый REVIEW asset** → buttons появляются
+
+**Root cause** (анализ кода без правок):
+
+`VGENShotPanel.regenerate()` после успеха вызывает `onChanged()` который mutate'ит SWR `/api/assets/[OLD_ID]` — но old asset не изменился (он всё ещё APPROVED v01). Новый asset (v02 REVIEW) — это **другая запись в БД** с новым assetId.
+
+PR #15 добавил `onRegenerated(shotId, newAssetId)` callback chain до `EpisodeTimelineSection`, НО handler там только seek'ает playhead — **не обновляет** `previewAssetId`. Поэтому drawer продолжает показывать старый assetId до ручного re-open.
+
+**Где фиксить:** `EpisodeTimelineSection.handleRegenerated(shotId, newAssetId)` должен дополнительно сделать `setPreviewAssetId(newAssetId)`. Это автоматически перезагрузит drawer на новый asset → Approve/Reject buttons появятся сразу.
+
+**Effort:** 1 строка кода. Уже не мерджнутые PR'ы (#19/#20/#21) этого НЕ покрывают — нужна отдельная правка.
+
+---
+
+### Bug B — После 13/13 APPROVED нет visual feedback о next step
+
+**Что ты видел:**
+- Episode timeline: 13 / 13 Approved (зелёный)
+- Кнопка `Approve & advance` есть, но не объясняет что произойдёт
+- Нет упоминания STITCH / ffmpeg / VID-final_cut
+- Нет статуса episode (GENERATION_REVIEW vs APPROVED)
+- "Видеоматик молчит после Approve & advance"
+
+**Root cause:**
+
+PR #19 (auto-COMPLETE → GENERATION_APPROVED) и PR #20 (EXEC-STITCH new agent) **открыты но НЕ merged**. Поэтому сейчас:
+- Episode остаётся в `GENERATION_REVIEW` навсегда после 13/13 (PR #19 это починит)
+- STITCH события не существует — нечему фыркать в Activity (PR #20 это добавит)
+- Никакого VID-final_cut нет → drawer пуст после approve
+
+**После merge PR #19 + PR #20** появится:
+- Активность `🎬 EXEC-STITCH: Assemble Episode started/completed`
+- Новый asset row `SS-S14-E01-VID-final_cut-v01-DRAFT.mp4`
+- Episode header → `GENERATION_APPROVED` автоматически
+
+**НО** даже после merge — **всё ещё нет explicit CTA "Stitch episode"** в Videomatic UI. Если ты хочешь явный визуальный сигнал в Episode timeline ("ready for stitch / stitching / stitched"), это **отдельная UI работа**, которую я не делал в #19/#20.
+
+---
+
+## Что предлагаю на твоё рассмотрение (без коммитов)
+
+| Bug | Текущее состояние | Нужно |
+|---|---|---|
+| A — drawer не свич'ится на новый asset | НЕ покрыто открытыми PR'ами | Маленький фикс (1 строка): `setPreviewAssetId(newAssetId)` в handleRegenerated |
+| B — silence после 13/13 | Частично покрыто PR #19+#20 (бекенд) | После merge: Activity получает события, asset появляется. Но в **Videomatic toolbar** нет stitch-status pill — это новая UI задача |
+
+**q1 — что приоритет?**
+- a) Сначала merge PR #19+#20 → проверить что Activity покажет stitch события → потом решать про UI pill
+- b) Сначала Bug A fix (1 строка) → отдельный мини-PR
+- c) И то и то в одном PR (Bug A fix + Videomatic stitch-status pill)
+
+Жду твоего выбора, ничего не пишу пока ===1===.
+
+
+===LINE 8054 | 2026-05-08T13:28:55.640Z===
+===1=== Понял проблему. Это **bug C** (третий после A drawer + B silence).
+
+## Что произошло
+
+Кнопка **"Approve & advance"** (синяя справа) и текст "When happy with pacing → Approve advances to Visual Generator + Music" — это **hardcoded UI из старого Animatic flow**.
+
+Кнопка делает: `POST /api/assets/[animatic_id]/approve` с `decision: APPROVE`. Если animatic уже APPROVED (как сейчас — v05 уже прошла), сервер возвращает idempotent error → красная плашка снизу.
+
+## Почему это UX bug
+
+Episode timeline — это **универсальный surface**, который Director видит на всех стадиях:
+1. **Свежий animatic** → animatic ещё REVIEW → "Approve & advance" имеет смысл
+2. **VGEN running** → animatic давно APPROVED, идут шоты → кнопка бессмысленна
+3. **13/13 APPROVED** → должно быть "Stitch episode" (когда PR #20 merged) или "Send to publish"
+
+Сейчас кнопка везде показывает один и тот же label + всегда таргетит animatic. После того как animatic один раз APPROVED — кнопка только спамит idempotent ошибкой.
+
+## Что должно быть (контекстно-зависимый CTA)
+
+| Episode status | CTA в Videomatic |
+|---|---|
+| `ANIMATIC_REVIEW` | **"Approve animatic & advance"** → approve animatic → fires VGEN Pilot Pass |
+| `GENERATION_IN_PROGRESS` (pilots running) | **"VGEN Pilot 2/13 — review and approve direction"** (это уже есть в pillbar выше) |
+| `GENERATION_REVIEW` (some shots done) | **"Approve all REVIEW (N)"** (тоже есть в filter chips toolbar) |
+| `GENERATION_REVIEW` (13/13 APPROVED, после PR #19 это будет `GENERATION_APPROVED`) | **"Stitch episode →"** (после PR #20 merge — fires EXEC-STITCH) |
+| `VID-final_cut` exists, status REVIEW | **"Approve final cut & publish"** |
+| Past publish | hide button |
+
+## Что прямо сейчас сломано (без merge'ей PR #19/#20)
+
+1. **Bug A** — drawer не свич'ится на новый asset после regen → manual reopen
+2. **Bug B** — silence после 13/13 (нет stitch события, episode застрял в REVIEW)
+3. **Bug C** (новый) — "Approve & advance" контекстно неактуальна и бросает scary red error
+
+После merge PR #19+#20:
+- Bug B частично решится (auto-COMPLETE flips status, STITCH fires) — но **CTA в footer всё равно останется про animatic** (Bug C не покрывается ни одним из 3 PR'ов)
+
+## Что предлагаю — отдельный мини-PR
+
+**Scope: Bug A + Bug C** (~30 min работы):
+
+1. **Bug A fix** (1 строка): `EpisodeTimelineSection.handleRegenerated(shotId, newAssetId)` дополнительно делает `setPreviewAssetId(newAssetId)`.
+2. **Bug C fix** (~50 строк): footer CTA становится **контекстно-зависимым**:
+   - Hide button когда episode past `ANIMATIC_APPROVED`
+   - Show "Stitch episode →" когда `GENERATION_APPROVED` (after PR #19+#20)
+   - Disable + show "Animatic already approved" когда uselessly clicked
+   - Скрыть scary red error для idempotent case (treat as no-op silently)
+
+**q1 — что делать?**
+- a) **Сначала merge PR #19+#20+#21** → потом я делаю мини-PR для Bug A + Bug C
+- b) **Параллельно** — мини-PR для Bug A + Bug C можно открыть сейчас (не зависит от других PR'ов)
+- c) **Только Bug A** срочно (1 строка), Bug C — позже отдельным дизайн-проходом
+
+Жду команду в ===1===, code не пишу.
+
+
+===LINE 8063 | 2026-05-08T14:16:18.312Z===
+===1=== Анализ + clarify про PR.
+
+## Про Reject ошибку — это Bug C продолжение
+
+Reject требует `note` (текст почему). Plain click без note → 422 validation error. Тот же фундамент: footer button не контекстный.
+
+Сейчас тебе **не нужно** ни Approve ни Reject — animatic уже APPROVED, VGEN уже 13/13. Эти кнопки в footer Videomatic — legacy от animatic-review flow, должны быть скрыты.
+
+---
+
+## Про PRs — давай разберёмся, ты прав что путаешь
+
+**Что такое PR в нашей работе:**
+
+| Уровень | Что | Где живёт |
+|---|---|---|
+| **Твой local dev** | `npm run dev` на `localhost:3000` | Локальный сервер. Видит код в файлах на твоём диске |
+| **Файлы на диске** | `C:\SandyStudio\.claude\worktrees\agitated-lederberg-a292d3\webapp\...` | git tracked, syncs с GitHub |
+| **GitHub master** | `github.com/alexanderTakeOff/SandyStudio` branch master | Source of truth |
+| **PR** | Pull Request на GitHub — предложение merge'нуть branch → master | Только review/audit step |
+
+**Что happens:**
+
+1. Я делаю изменения → пушу в GitHub branch (`feat/exec-stitch` etc) → открываю PR
+2. Твой local dev **НЕ ВИДИТ** эти изменения автоматически
+3. Чтобы local dev увидел — после merge'а PR'а в master нужно:
+   ```
+   git checkout master && git pull && npm run dev (restart)
+   ```
+4. ИЛИ я мог бы pushить прямо в master без PR — тогда `git pull` сразу подтягивает
+
+**Почему я делал PR'ы:** это **твой rule** который ты установил вчера: "не нужно мерджить то и дело в мастер. только по согласованию со мной". Поэтому каждое изменение я открываю PR и жду твоего "merge" command.
+
+**Если хочешь упростить:**
+- Вариант 1 (как сейчас): я открываю PR, ты смотришь diff на GitHub, говоришь "merge" → я merge → ты git pull
+- Вариант 2 (быстрее, рискованнее): я pushу прямо в master → ты git pull. Но потеряешь review step.
+- Вариант 3 (компромисс): для UX-багов (типа Bug A/C — мелкие изменения) → пушу в master сразу. Для больших фичей (типа EXEC-STITCH) → PR + review.
+
+**q1 — какой вариант?**
+- a) Текущий (PR на всё)
+- b) Master push на всё (быстро, без review)
+- c) Mixed — мелкие в master, большие через PR
+
+---
+
+## Текущий статус кода (что ты сейчас видишь в local dev)
+
+| Что | Где |
+|---|---|
+| PR #18 (regen prompt + instant refresh) | ✅ Merged 8 May. Если ты `git pull` — увидишь |
+| PR #19 (VGEN auto-COMPLETE) | ❌ OPEN — твой local НЕ ВИДИТ |
+| PR #20 (EXEC-STITCH) | ❌ OPEN — твой local НЕ ВИДИТ |
+| PR #21 (Audio reorg) | ❌ OPEN — твой local НЕ ВИДИТ |
+| Bug A fix (drawer не свич'ится) | ❌ Не написан |
+| Bug C fix (footer Approve/Reject context) | ❌ Не написан |
+
+**Поэтому ты сейчас видишь:**
+- 13/13 APPROVED (потому что ты руками apprve'ил каждый shot до этого)
+- Episode застрял в `GENERATION_REVIEW` (PR #19 это починит после merge)
+- Footer показывает legacy Approve/Reject animatic кнопки которые ничего полезного не делают (Bug C)
+- Drawer не свич'ится автоматически после regen (Bug A)
+
+---
+
+## Простой путь forward (предлагаю)
+
+1. **Я пишу код Bug A + Bug C fix локально** (~30 мин)
+2. **Push прямо в master** (если q1=b или c)
+3. **Ты git pull + restart npm run dev**
+4. **Проверяешь** — оба бага должны уйти
+
+q2 — после ответа на q1, мне делать Bug A + Bug C fix сейчас?
+
+
+===LINE 8221 | 2026-05-08T14:28:49.500Z===
+**Готово ✅. Variant C на месте.**
+
+## Текущая конфигурация
+
+| Компонент | Где |
+|---|---|
+| Твой `npm run dev` | PID 26064, читает из `C:\SandyStudio\.claude\worktrees\agitated-lederberg-a292d3\webapp\` |
+| Эта worktree | На branch **`feat/phase-a2-rolling`** |
+| GitHub | branch pushed → `origin/feat/phase-a2-rolling` |
+| Master | без изменений (чистый) |
+| PR #19/#20/#21 | **CLOSED** (не merged) — консолидированы в rolling |
+
+## Что сейчас на rolling branch (всё на твоём localhost:3000 через HMR)
+
+1. **PR α — VGEN auto-COMPLETE** (Director directive q2b)
+2. **PR β — EXEC-STITCH ffmpeg agent** (q3a)
+3. **PR γ — Audio block reorg** (q3b, LT-04)
+4. **Bug A fix** — drawer мгновенно swap'ается на новый asset после regen → Approve/Reject buttons appear immediately
+5. **Bug C fix** — footer "Approve & advance" / "Reject" исчезает когда animatic уже APPROVED (нет больше scary red errors)
+
+## Что проверить live
+
+Next.js HMR должен был подхватить файлы автоматически. Если нет — restart `npm run dev`.
+
+| Тест | Ожидание |
+|---|---|
+| **Bug A**: Open shot → Re-generate → дождись завершения | drawer **сразу** обновляется на новый REVIEW asset с Approve/Reject buttons. Не нужно вручную закрывать-открывать |
+| **Bug C**: Episode timeline на SS-S14-E01 (animatic уже APPROVED) | footer "When happy with pacing" + Approve & advance / Reject **скрыты** полностью. Нет красных error banners |
+| **PR α (auto-COMPLETE)**: Re-approve любой shot → episode header | status переключается на `GENERATION_APPROVED` |
+| **PR β (STITCH)**: после auto-COMPLETE, Activity Feed | новое событие `EXEC-STITCH: Assemble Episode started`. Если ffmpeg не установлен → red error с install-hint. Если установлен → ~60s → новый asset `SS-S14-E01-VID-final_cut-v01-DRAFT.mp4` |
+| **PR γ (audio)**: только на новых эпизодах | MGEN запускается параллельно с EREF после world_check. Animatic потом играет с music сразу. SS-S14-E01 уже past — не покажет |
+
+## Дальнейший workflow (Variant C)
+
+С этого момента:
+- Я pushю commits в `feat/phase-a2-rolling`
+- Ты HMR-видишь изменения сразу (или `git pull` после моего push для безопасности)
+- Когда всё работает stable end-to-end → **один PR rolling → master** → merge
+
+q1 — Что дальше?
+- a) Установить `winget install ffmpeg` и live-test STITCH event
+- b) Что-то ещё нашёл сломанное (опиши)
+- c) Готовиться к финальному merge rolling → master
+
+
+===LINE 8744 | 2026-05-08T15:08:55.918Z===
+🔔 **STITCH РАБОТАЕТ END-TO-END.**
+
+## Финальный результат
+
+`final-cut-4809684a-...-f7c356accd9e.mp4` (3.99 MB):
+
+| Параметр | Значение |
+|---|---|
+| Длительность | **0:32.75** (animatic timing) |
+| Разрешение | 1280×720 |
+| Видео | H.264 High @ 24fps, 790 kb/s |
+| Аудио | AAC stereo 48kHz, 196 kb/s (Flacon Pop Loop) |
+| Bitrate total | 973 kb/s |
+
+**Где лежит:** `webapp/public/staging/final-cut-4809684a-...-f7c356accd9e.mp4`
+
+## Что было сделано в этой сессии (после approval плана)
+
+| # | Что | Где |
+|---|---|---|
+| 1 | Rolling branch `feat/phase-a2-rolling` от master | git |
+| 2 | Merged PR α + β + γ (auto-COMPLETE + STITCH + Audio reorg) | rolling |
+| 3 | Bug A fix — drawer swap to new asset на regen | EpisodeTimelineSection |
+| 4 | Bug C fix — footer hide когда animatic APPROVED | AnimaticPlayer |
+| 5 | Closed PRs #19/#20/#21 — всё в одном rolling | github |
+| 6 | Installed ffmpeg via winget (Gyan.FFmpeg 8.1.1) | system |
+| 7 | Dev servers migrated to Claude Preview system | .claude/launch.json |
+| 8 | STITCH iter 1 — backslash → forward slash в concat list | ffmpeg-stitch.ts |
+| 9 | STITCH iter 2 — 8.3 short name → realpath() expand | ffmpeg-stitch.ts |
+| 10 | STITCH iter 3 — middleware redirect → FS direct read | runner.ts |
+| 11 | STITCH iter 4 — relative URL → resolve to webapp/public path | runner.ts |
+| 12 | STITCH iter 5 — preview env без ffmpeg → resolveFfmpegPath() с FFMPEG_PATH + winget fallback | ffmpeg-stitch.ts |
+
+**Branch state:** все commits в `feat/phase-a2-rolling` на GitHub.
+
+---
+
+## Рассмотрение — что предложить дальше
+
+**q1 — приоритет тестирования:**
+- a) Ты открой `localhost:3000` (re-login после restart) → episode page → найди `VID-final_cut` asset → play в drawer. Проверь что 13 шотов склеены в правильном порядке + музыка sync.
+- b) Я могу автоматически verify через playwright — открыть episode page, найти asset, play, скриншот.
+
+**q2 — следующий шаг:**
+- a) **Финальный merge** `feat/phase-a2-rolling → master` (один большой PR, я открою) — всё что мы накопили за 2 сессии в master.
+- b) **Bug D fix** (silence после 13/13 → STITCH) — добавить visual feedback в Videomatic toolbar когда STITCH running / completed. Сейчас если ты в Videomatic — нет индикатора что STITCH идёт.
+- c) **Smoke на нового эпизоде** — создать новый episode чтобы протестить полный flow (script → SB → world_check → [EREF + MGEN parallel] → animatic with music → VGEN pilot → fanout → STITCH).
+- d) **Что-то другое** (опиши).
+
+Жду твою команду q1 / q2.
+
+
+===LINE 8940 | 2026-05-08T16:00:34.881Z===
+# Что у нас по плану дальше
+
+После мержа Phase A.2 в master (PR #22) — открытый бэклог:
+
+## 🔴 Hot — finish-the-loop по Phase A.2
+
+**Bug D** — Videomatic toolbar не показывает статус STITCH (бежит / готов / упал). После «13/13 APPROVED» — тишина, пока final-cut не появится в drawer. Без UI-индикатора непонятно, что система вообще что-то делает.
+→ ~30 мин: status pill в `EpisodeTimelineSection` toolbar + SWR-источник из `jobs` table по EXEC-STITCH; красно-жёлто-зелёный circle.
+
+**Smoke на новом эпизоде** — Phase A.2 включил перестройку аудиоблока (q3b): MGEN теперь после `REV-world_check`, EDIT ждёт EREF + music. На SS-S14-E01 это не проверено end-to-end (там аудио уже было approved до мержа). Нужно прогнать на свежем эпизоде, чтобы убедиться, что аниматик рендерится С музыкой для review pacing.
+
+## 🟡 Phase 1.5 — VGEN polish (короткие куски)
+
+| # | Что | Время |
+|---|---|---|
+| LT-07 | `variants_per_generation` UI (Veo 3.1 поддерживает 1-4, сейчас всегда 1) + side-by-side review в drawer | ~3ч |
+| — | Regenerate auto-demote (старый APPROVED → REVIEW при regen, чтобы не было двух «зелёных» кандидатов) | ~1ч |
+| — | `vgen_defaults` UI на уровне series (aspect_ratio + quality_tier из `series.metadata`) | ~2ч |
+| LT-14 | `buildShotPromptV2` enrichments — Bible locations + style direction в prompt | ~2ч |
+
+## 🟢 LT — большие архитектурные
+
+- **LT-01 / LT-05** — Mode 2.5 + Skill Editor (Director-led, требует обсуждения объёма)
+- **LT-10..13** — UI cleanup: scalable timeline 60+ shots, episode page noise, foldable Activity Feed, time filters
+- **Storyboard arc-continuity checker** — deferred until next episode (твоё решение 2026-05-07)
+
+## 📌 Моё предложение по приоритету
+
+1. **Bug D** (быстрый win, закрывает Phase A.2 по UX)
+2. **Smoke на новом эпизоде** (валидируем аудиоперестройку — это критично перед след. цикловым прогоном)
+3. Дальше — выбор твой: Phase 1.5 (variants/auto-demote) или LT-10..13 (UI cleanup)
+
+Что берём — **q1** Bug D, **q2** smoke на новом эпизоде, **q3** Phase 1.5, **q4** LT-10..13, или своё?
+
+
+===LINE 9063 | 2026-05-08T16:12:45.657Z===
+Готово. tsc clean, 163/163 tests green.
+
+## Что сделано
+
+### 1) Bug D — STITCH status pill 
+
+**Новые файлы:**
+- `webapp/components/timeline/StitchStatusPill.tsx` — самодостаточный компонент. Поллит `/api/jobs?agent_id=EXEC-STITCH&episode_id=…`. Адаптивный refresh: 5s пока RUNNING/QUEUED/RETRYING, 30s после терминального состояния (без лишней нагрузки).
+
+**Изменено:**
+- `webapp/components/timeline/EpisodeTimelineSection.tsx` — добавлен `finalCutAsset` lookup (max version+created_at среди VID-final_cut) + рендер pill в шапке Episode Timeline рядом со счётчиком shots/VID-shot.
+
+**Состояния pill:**
+| Состояние | Цвет | Действие |
+|---|---|---|
+| Job RUNNING/QUEUED/RETRYING | yellow + spinner "Stitching final cut…" | tooltip с реальным статусом |
+| Final-cut asset существует (любой статус) | green "Final cut ready" | клик открывает в PreviewDrawer |
+| Latest job FAILED | red "Stitch failed" | tooltip с `error_message` |
+| Ничего нет | hidden | — |
+
+**Edge cases покрыты:**
+- Reload after success → green chip остаётся (читает asset, не job).
+- Re-stitch → активный job переопределяет green chip.
+- `e.stopPropagation()` на клике pill, чтобы не свернуть Timeline.
+
+### 2) Smoke #2 — Audio reorg test plan
+
+`webapp/docs/smoke-tests/audio-reorg-smoke.md` — 8-gate чек-лист с code anchors (line numbers в `approve/route.ts`), curl-командами для верификации, и failure modes для каждого шага.
+
+**Ключевая проверка (Gate 4-6):**
+1. `REV-world_check APPROVED` → EREF + **MGEN параллельно** (раньше MGEN был после animatic)
+2. EREF APPROVED один — EDIT **НЕ** должен фаирить (gate ждёт оба)
+3. AUD-music APPROVED — EDIT фаирится с `musicAssetId` в payload
+4. Animatic metadata содержит `music_url` + `audio_tracks[]`
+5. AnimaticPlayer проигрывает музыку
+
+Plan включает escape hatch (`POST /api/episodes/[id]/skip-music`) если музыка упадёт.
+
+## Что НЕ сделал (по правилу §10 — propose-don't-auto-fire)
+
+- Не запускал сам smoke. Это требует Director approval на каждом gate + это потратит реальные деньги (Veo 3.1 ~$3, GPT image, Suno music).
+
+**Готов запускать smoke когда скажешь** `go` / `q1Y` — нужен только candidate episode (новый через `/onboarding` или существующий с pre-world_check состоянием).
+
+
+===LINE 10123 | 2026-05-14T05:48:09.987Z===
+Принято. Фокус — **информационный шум**, без визуальных правок пока.
+
+## Что готов делать с каждым скрином
+
+1. Назвать конкретную страницу/состояние (например «Episode page — VID-animatic in REVIEW»)
+2. Перечислить блоки на скрине → отметить:
+   - 🔴 **дубль** — то же самое уже видно в другом блоке/странице
+   - 🟡 **избыток** — нужная инфа, но слишком детально / можно сжать
+   - 🟢 **уникальный** — оставить как есть
+3. Предложить *что убрать / схлопнуть / спрятать под disclosure*
+4. По итогу 10 скринов — сводная таблица cuts + порядок execution
+
+## Что НЕ делаю в этой фазе
+
+- Цвета / pill-кнопки / glassmorphism — задача №2
+- AmbientAssetField (parallax, размеры кубиков, свечение) — задача №3
+- Подключение UX/Design скиллов (`design:design-critique`, `frontend-design`) — пригодится на задачах 2-3
+
+## Принципы фильтрации (на чём буду основываться)
+
+| Что | Признак шума |
+|---|---|
+| Одна сущность на странице | повторяется > 1 раза в разных формах |
+| Технические ID (UUID, agent_id) | показаны Director'у вместо человеческого названия |
+| Длинные описания / production_trace | не нужны Director'у на регулярных surface — только в drawer detail |
+| Stats / counts | дублируют то, что и так видно (например количество строк рядом с таблицей строк) |
+| Status pills + status в title + status в badge | три места одного статуса |
+| Auto-sync / debug события | в основной Activity Feed без фильтра |
+
+## По поводу сервера (parking)
+
+Кнопки upload-music-direct лежат на master, но dev бежит из quizzical-brown — для тестов задачи Music нужно либо рестарт dev оттуда, либо merge master в ту ветку. **Не критично прямо сейчас** — фильтрация шума идёт от скринов, не от живой UI. Вернёмся когда нужно будет тестить.
+
+**Жду первый скрин.**
+
+
+===LINE 10134 | 2026-05-14T06:05:04.375Z===
+Принято, 5 скринов вижу. Накидывай дальше — я в режиме приёма. По завершении буду делать сводную карту шума.
+
+Уже фиксирую черновые наблюдения (для памяти, не финал):
+- Episode header — статус/режим/бюджет/3 кнопки рядом, плотно
+- "Episode timeline" header — `17 shots · 24 VID-shot rows` + `Final cut ready` + чипы All/Review/Approved/Missing суммой 17 → три места про одно количество шотов
+- Long shot ID `SS-S14-E20-A3-SC08-SH01` — префикс `SS-S14-E20-` дублирует то, что в title страницы
+- Music filename `SS-S14-E20-AUD-music-v01-DRAFT.wav` — то же самое
+- **EDITING CURRENT SHOT** — повторяет shot ID + caption + длительность из shot frame footer (явный 100% дубль)
+- Pipeline DAG — 14 ролей × своя строка, два hint-line под ним
+- Activity Feed — `APPROVE` + `Bulk approve from Online Editor kebab` повторяется три раза подряд; `Director ostrovoy.alexander@gmail.com regenerated VGEN shot` светит твой email на каждой строке; STITCH = start+completed (2 события на один прогон)
+- Brief drawer — production_trace `⚙ Sandy tries...` + сам Episode Brief title — два summary одного
+
+Жду следующие скрины.
+
+
+===LINE 10144 | 2026-05-14T06:09:37.109Z===
+Принято — теперь 9 скринов. Твой call-out про layout вижу: drawer узкий, под ним — большая blurred-площадь которая никак не используется. Это структурный шум, не информационный — отметил отдельно.
+
+## Чистая выписка нового шума (скрины 6-9)
+
+**Screen 6 — EREF gallery:**
+- 20+ thumbnail'ов в 4 узкие колонки правее DAG, при этом справа открывается drawer на ~480px, остальная середина — пустая
+- "OTHER VARIANTS BY SHOT" — каждая строка с длинным shot id (`SS-S14-E20-A1-SC01-SH01`) + лейбл «1 other variant» — лишний текст когда видно одну миниатюру
+
+**Screen 7-9 — EREF detail drawer:**
+- 🔴 **Длинное имя файла** `SS-S14-E20-IMG-episode_ref_ss_s14_e20_a3_sc09_sh01_perfume_counter_bar_perfume_madame_sandy_v01-DRAFT.png` — episode/season/shot префикс дублирует то, что в breadcrumb и TEST PLAN; truncate с `...` лишает Director возможности прочитать полное название
+- 🔴 **LOCATION `23883c20…` STYLE `21994711…`** — это UUID! Director видит хеш вместо человеческого названия локации/стиля
+- 🔴 **REVIEWER SCORES** — 5 баров все 100%, плюс пустой "Gag readability" без значения. Если всё 100 → один pill «All checks passed ✓»
+- 🔴 **«No issues flagged»** появляется дважды на одном экране (после scroll и до)
+- 🔴 **STATUS & META section** — Status: APPROVED + Version: v01 уже видны в header `APPROVED · v01`. Файлнейм там же повторяется 130 символами с переносом
+- 🔴 **SUMMARY (ONE LINE)** — `verdict APPROVE` уже третий раз на одном экране (header pill + chip + Approve button)
+- 🟡 **GAG: Transition / no gag** + Gag readability бар без значения → если gag.type=none, скрывать всю колонку
+- 🟡 **Footer 6 контролов**: Skip 4K upscale + Series default dropdown + Regenerate + Request revision + Reject + Approve. Каждый занимает место — Regenerate/Request revision можно убрать в overflow
+
+## Layout-level (твоя главная нота)
+
+Сейчас:
+```
+[chat 25%] [empty 5%] [sidebar 10%] [middle blurred 35%] [drawer 25%]
+```
+
+При открытом drawer middle-зона серая/blurred, недоступная, занимает 35% ширины. Это **архитектурная проблема**, не косметика:
+- drawer мог бы растягиваться до 60-70% screen
+- или: при открытии drawer pipeline/timeline сдвигается левее, а правая часть отдаётся drawer'у
+- или: drawer становится full-screen modal на широких разрешениях
+
+Решение этой темы — задача №1.5 (между noise filtering и pill-design): **redesign drawer width strategy**. Не делаю сейчас, только записываю.
+
+---
+
+**Сколько ещё скринов?** Готов принять 10-й (Episodes list / Dashboard / Activity page / Inbox?), либо если хватит — переключаюсь на сводную консолидацию шума с приоритетами cuts.
+
+
+===LINE 10154 | 2026-05-14T06:12:39.093Z===
+Принял оба пункта — добавлю в карту. Закругляю приём, делаю консолидацию.
+
+## Сводная карта шума по 11 скринам
+
+### A. Информационный шум (что убрать / схлопнуть)
+
+| Где | Что | Степень | Действие |
+|---|---|---|---|
+| **Episode page header** | Status pill + Mode + Budget + Refresh + Re-trigger + ... — 6 контролов в линию | 🔴 | Схлопнуть в один компактный rail; budget — overflow chip |
+| **Episode timeline header** | `17 shots · 24 VID-shot rows` + `Final cut ready` + чипы All/Review/Approved/Missing с суммой 17 — 3 места про шоты | 🔴 | Один блок: "17 shots / 16 ✓ / 1 review · Final cut ready" |
+| **Shot frame footer + EDITING CURRENT SHOT** | Shot ID + caption + duration повторяются в двух блоках под видео | 🔴 | Удалить EDITING CURRENT SHOT, controls вынести в overlay поверх кадра |
+| **Длинные filename `SS-S14-E20-...`** | Префикс `SS-S14-E20-` повторяет название эпизода в title (везде) | 🔴 | Скрыть префикс в UI; полное имя — на hover/copy |
+| **TEST PLAN UUIDs** | `LOCATION 23883c20…` `STYLE 21994711…` | 🔴 | Достать human names из Bible (`getLocation`/`getStyle`) |
+| **REVIEWER SCORES — 5 баров по 100** | Визуально кричат, но смысла ноль | 🔴 | Один pill «All 5 checks passed ✓» с drill-down на hover |
+| **No issues flagged ×2 на одном экране** | Дубль после scroll | 🔴 | Один раз, в footer |
+| **STATUS & META section в drawer** | Status: APPROVED + Version: v01 уже в header; filename — 130 символов с переносом | 🔴 | Удалить всю секцию (есть в header) |
+| **SUMMARY (ONE LINE)** | `verdict APPROVE` 3-й раз на экране | 🔴 | Удалить или сделать tooltip на header pill |
+| **Pipeline DAG 14 строк** | Каждая роль на отдельной строке, hint-text ×2 | 🟡 | Группировать approved-rows под disclosure; hint-text один раз |
+| **Activity Feed: `Bulk approve from Online Editor kebab` ×3 подряд** | Одинаковый bulk-action логирует N событий | 🔴 | Group consecutive: «3× APPROVE on final_cut v01-v03» (LT-12 уже в плане) |
+| **Activity Feed: email Director** | `Director ostrovoy.alexander@gmail.com requested generation` — на каждой строке email | 🔴 | Имя/initials в одном месте feed (или просто «Director»); email в hover |
+| **Activity Feed: Online Editor started + completed** | 2 события на 1 прогон STITCH | 🟡 | Collapse pair в одну линию с длительностью |
+| **Brief drawer: `⚙` trace + Episode Brief title** | Два summary одного | 🟡 | Удалить `⚙` trace или title H1 |
+| **Gag readability empty bar** | Пустой бар сбивает | 🟡 | Если `gag.type=none` — скрыть |
+| **Footer drawer 6 controls** | Skip 4K + Series default + Regenerate + Request revision + Reject + Approve | 🟡 | Regen/Request revision — в overflow menu |
+| **Editor preview: timeline shot strip overflow** | `1.. 1.. 14 1.. 1..` — числа ужаты с `..` | 🟡 | LT-10 (scalable timeline 60+ shots уже в плане) |
+| **`cost $0 (no music yet)` на animatic** | Музыка УЖЕ есть в `AUD-music-v01-DRAFT.wav` | 🔴 | Bug: animatic метаданные не подхватывают музыку |
+
+### B. Layout-проблемы (твой call-out)
+
+| # | Проблема | Решение |
+|---|---|---|
+| L1 | Drawer узкий (~480px), middle blurred (35% screen) — work area сжата | Drawer resizable up to ~70% screen; или layout split: pipeline съезжает влево, drawer занимает right 50%+ |
+| L2 | На episode page при свёрнутом chat — ширина 50% уходит на ambient/empty space | Episode content max-width разрастается до ~70% при свёрнутом chat |
+| L3 | Big empty area по бокам контента (ambient виден на screen 11) | Это — фичa (AmbientAssetField), но shouldn't waste «work zone» |
+
+### C. Prod Assistant — accessibility issue (твой call-out)
+
+| # | Состояние | Чего не хватает |
+|---|---|---|
+| C1 | PA панель сейчас только в episode view + явный toggle | Должна быть global float button bottom-right на каждой странице (`/dashboard`, `/inbox`, `/series/*`, `/budget`, `/jobs`, `/activity`, `/settings`) |
+| C2 | PA контекст-aware только когда episode_id в URL | На других страницах PA должен принимать «no-episode» mode + предлагать «которым эпизодом хочешь заняться?» |
+| C3 | Открытие PA сейчас занимает 25% screen с левой стороны навсегда (пока не закроешь) | Сделать PA collapsible mini-bubble (icon-only) → expand на hover/click |
+
+---
+
+## Предлагаю порядок execution (3 волны)
+
+### 🌊 Wave 1 — pure noise removal (~3-4 ч, без редизайна)
+
+Все 🔴 из таблицы A (12 пунктов). Это:
+- Удалить дубликат EDITING CURRENT SHOT
+- Удалить STATUS & META в drawer
+- Удалить SUMMARY (ONE LINE)
+- Схлопнуть REVIEWER SCORES до one-pill
+- Скрыть префикс `SS-S14-E20-` в filenames
+- Заменить UUIDs на human names в TEST PLAN
+- Group consecutive same-agent events в Activity Feed
+- Заменить email на "Director" в feed rows
+- Починить `cost $0 (no music yet)` (реальный bug)
+- Schлопнуть Episode timeline header
+
+**Эффект:** ~30-40% меньше текста на экране, ноль изменений layout/visuals. Это то что ты просил «убрать шум».
+
+### 🌊 Wave 2 — layout optimization (~1 день)
+
+L1+L2+L3 + C1+C2+C3. Сделать:
+- Drawer resizable (drag handle)
+- Episode content responsive (max-width зависит от chat panel state)
+- Prod Assistant — global float button + page-aware context
+
+### 🌊 Wave 3 — visual redesign (~1-2 дня, нужен design skill)
+
+Pill кнопки полупрозрачные, glow, цвета, glassmorphism. AmbientAssetField — parallax ×3, размеры кубиков градиент. Подключим `frontend-design` + `design:design-critique` скиллы.
+
+---
+
+**Вопрос:** Wave 1 — стартую сразу или сначала хочешь review этой карты глазами? Если что-то в таблице A не совпадает с твоим ощущением — скажи, прежде чем резать.
+
+
+===LINE 10165 | 2026-05-14T06:14:40.922Z===
+Это уже не шум — это **сломанный primary action**. Добавляю критическим пунктом в карту.
+
+## Critical finding (screens 10-11 → Inbox + OPEN drawer)
+
+### C4 — Inbox drawer теряет approve/reject buttons (🔴 BLOCKER)
+
+**Контекст страницы:** Inbox · «Triage everything that needs your decision»
+**Действие:** клик OPEN → ожидается Approve / Reject / Request revision
+**Реальность:** drawer показывает Re-generate панель (Provider/Aspect/Quality/Duration/Prompt/Cost). **Approve/Reject не видны** (или ниже scroll, или вообще нет в этом surface).
+
+Это не noise, это **функциональный регресс** — Inbox обещает решение, OPEN не даёт его принять. Должно быть на первом экране drawer'а:
+- Большая `Approve` кнопка (primary)
+- `Reject` / `Request revision`
+- Регенерация — секондари (collapsible disclosure)
+
+### A19 — Inbox дубликаты по версиям (🔴 шум)
+
+В inbox видны:
+- `...a3-sc09-sh02-v01-DRAFT.mp4` (REVIEW)
+- `...a3-sc09-sh02-v02-DRAFT.mp4` (REVIEW)
+- `...a3-sc09-sh02-v03-DRAFT.mp4` (REVIEW, selected)
+
+Три REVIEW-варианта одного и того же шота (`a3-sc09-sh02`) — это после 3 regen'ов. Inbox должен показывать **только latest версию на shot+kind**, старые auto-demote в REVISION (или скрыть).
+
+Этот item у нас уже в backlog как «regenerate auto-demote» (был в Phase 1.5 списке) — сейчас вылез на UI.
+
+### L4 — Inbox drawer тот же layout pattern
+
+Drawer ~480px, под ним blurred Inbox list (50% screen) — та же проблема L1. При работе с Approve/Reject было бы удобно видеть Inbox список рядом (чтобы быстро next/prev через keyboard), а не blurred.
+
+---
+
+## Обновлённая карта — финал
+
+Старые таблицы остаются. Добавляю:
+
+| New | Где | Что | Степень |
+|---|---|---|---|
+| C4 | Inbox → OPEN drawer | Нет primary approve/reject, только regen | 🔴 **BLOCKER** |
+| A19 | Inbox list | Множественные REVIEW-версии одного shot | 🔴 |
+| L4 | Inbox drawer | Тот же узкий drawer pattern | 🟡 (L1 решение перекроет) |
+
+## Скорректированный execution order
+
+### 🚨 Wave 0 — quick fix (~1ч, перед Wave 1)
+
+**C4 alone.** Поднять Approve/Reject в Inbox drawer (использовать существующий `PilotApproveButtons` или клонировать) как primary block наверху, прежде чем regen panel.
+
+Это **самый болезненный пункт** — Director открывает Inbox чтобы решить, а решить негде. Чиним первым.
+
+### 🌊 Wave 1 — pure noise + A19 (~3-4ч)
+
+Все 🔴 из таблицы A + A19 (Inbox dedup на latest version). Без редизайна.
+
+### 🌊 Wave 2 — layout (drawer width, PA global, content responsive)
+
+L1-L4 + C1-C3.
+
+### 🌊 Wave 3 — visual redesign (pill кнопки, glow, ambient parallax)
+
+`frontend-design` skill.
+
+---
+
+**Запускать Wave 0 (C4 fix) сейчас?** Это короткое — Approve/Reject в Inbox drawer, ~1 час. После — Director может реально работать с inbox, прежде чем мы пойдём в Wave 1.
+
+Либо если есть ещё скрины — присылай.
+
+
+===LINE 10176 | 2026-05-14T06:15:51.576Z===
+Это уже не косметика — это **рассинхронизированные источники данных**. Тут одновременно и UI плохо, и UX врёт. Отмечаю по полочкам:
+
+## Dashboard — критические находки (screen 12)
+
+### 🟥 UX: данные неактуальные (выше приоритет чем UI)
+
+| # | Что не так | Где правда |
+|---|---|---|
+| **D5** | Sidebar badge `Inbox 8`, на странице Inbox 8 items — **на Dashboard «Inbox · 5 items»**. Три потерянных | preview limit = 5 (config), но без указания «8 total — see all» Director думает что 5 это всё |
+| **D6** | E20 pipeline glyphs: BRIEF ●green · STORY ●yellow · остальное ◯ gray (idle). **Реально**: E20 закончил final-cut (видели в Episode timeline `Final cut ready`, 17/17 approved, $12.37 spent) | Dashboard mini-DAG читает legacy `episode_status` field, не реальное состояние ассетов. **Long-debt #13** — `episodes.status` не обновляется после milestone approvals |
+| **D7** | Phantom stage **`STORY-`** в линейке (между SCRIPT и WORLD) | Был старый id `story` в STAGE_FROM_ASSET legacy list. На Episode page его уже нет — здесь остался |
+| **D8** | Обе episodes показывают «BRIEF APPROVED» pill, хотя E20 на 12 часов вперёд этого статуса | Тот же D6 — episode_status field stale |
+
+### 🟥 UI vocabulary inconsistency
+
+Dashboard mini-DAG: `BRIEF · STORY · SCRIPT · STORY- · WORLD · ANIM. · GEN. · DISTR. · PUB · ANAL.` (10 точек, аббревиатуры)
+
+Episode page DAG: `Brief · Writer · Story Editor · Storyboard Artist · Script Supervisor · Reference Artist · Composer · Editor · Animator · Online Editor · Publicist · Key Art Designer · Distribution · Audience Analyst` (14 ролей)
+
+**Два разных словаря для одного и того же pipeline.** Director лендится на Dashboard, видит одни названия; кликает на эпизод — другие. Mental model рвётся.
+
+### 🟧 UI noise
+
+| # | Где | Что |
+|---|---|---|
+| D1 | Inbox cards 5 штук | Super wide, low density. Filename `SS-S14-E20-VID-shot-ss-s14-e20-a3-sc08-sh01-v01-DRAFT.mp4` — `s14-e20` повторяется **дважды внутри одного имени** + ещё раз префиксом эпизода. Можно сжать до `A3-SC08-SH01 · v01` |
+| D2 | Каждая inbox card | Три кнопки APPROVE/REVISE/REJECT в линию — на 5 cards × 3 = 15 кнопок на главной странице |
+| D3 | Live activity внизу | Те же дубли что раньше (Director email · Bulk approve ×N) |
+
+---
+
+## Обновлённый execution order
+
+### 🚨 Wave 0 — два baseline-fix'а (~2-3 ч)
+
+1. **C4** — Inbox OPEN drawer → primary Approve/Reject buttons
+2. **D5+D6+D7+D8** — Dashboard читает живые данные через `buildPipelineSnapshot` (тот же источник что Episode page), legacy phantom labels вычищены, episode_status либо derived live либо background sync хук
+3. **D-Vocab** — заменить mini-DAG аббревиатуры на короткие версии Episode-page лейблов (`Brief · Writer · Editor · …` — 14 точек либо collapse approved-cluster)
+
+### 🌊 Wave 1 — noise removal (~3-4 ч)
+
+Все 🔴 из A + A19 + D1+D2+D3
+
+### 🌊 Wave 2 — layout (drawer width, PA global, content responsive)
+
+L1-L4 + C1-C3
+
+### 🌊 Wave 3 — visual redesign
+
+pill / glow / ambient parallax × frontend-design skill
+
+---
+
+**Вопрос:** Wave 0 сейчас — стартую с фикса 1+2+3 (~2-3 ч, всё видимое — Inbox approve работает, Dashboard не врёт, vocabulary едина)? Или хочешь ещё скрины с Series / Budget / Jobs / Activity / Settings — чтоб собрать полную картину прежде чем резать?
+
+
+===LINE 10187 | 2026-05-14T06:17:22.965Z===
+Принял 3 страницы. Дополняю карту шума.
+
+## Budget · Jobs · Activity (screens 13-15)
+
+### Budget (screen 13)
+
+| # | Что не так | Степень |
+|---|---|---|
+| BG1 | `BURN / EPISODE $0.00 · no published episodes yet` — placeholder при пустом значении занимает full card | 🟡 — пока нет published episodes показывать «—» или скрывать |
+| BG2 | Per-episode breakdown: `anthropic: $0.76  gpt-image-1: $3.91  slideshow: $0.00  mock: $0.00  veo-3-img2vid: $3.90` — провайдеры с $0 (slideshow, mock) занимают место | 🔴 Скрыть provider'ов с cost=0 |
+| BG3 | Inline текст провайдеров читается как лента, без структуры | 🟡 Mini-bar chart или badge'ы вместо inline text |
+| BG4 | Subtitle «projected runway» — нигде на странице не показан projected runway | 🔴 Удалить из subtitle или ДОБАВИТЬ projected runway |
+
+### Jobs (screen 14)
+
+| # | Что не так | Степень |
+|---|---|---|
+| JB1 | Subtitle: «Realtime push lands in Phase 5» — мы давно в Phase 9/A.2, копия устаревшая | 🔴 Stale UX copy |
+| JB2 | **`Send ping` button на production-странице** — debug-control висит у Director'а в основном UI | 🔴 Убрать из prod (либо запрятать в Settings) |
+| JB3 | AGENT column: `EXEC-STITCH`, `EXEC-VGEN` — raw IDs, не friendly. На pipeline DAG же `Online Editor`, `Animator` | 🔴 vocab inconsistency (Long-debt #1) |
+| JB4 | EVENT column: `sandystudio/exec-vgen/single-shot` — internal namespace, Director'у не нужен | 🔴 Скрыть или collapse в kebab/expand |
+| JB5 | RUN ID: ULID `01KRGSJW4FM25TK6AXAQRDRYQW` — нечитаемо | 🟡 Скрыть; копировать на hover, открыть Inngest dashboard на клик |
+| JB6 | Status pills: `APPROVED`, `REJECTED`, `REVIEW` — это **asset FSM словарь**, не job FSM. Jobs должны быть RUNNING/COMPLETED/FAILED/CANCELLED | 🔴 wrong vocabulary — jobs не approve'ятся |
+| JB7 | 50 rows без фильтров (агент, статус, эпизод, период) | 🟡 Добавить фильтры (Long-debt-style) |
+| JB8 | STARTED `17:49:24` без даты — ambiguous для строк часов назад | 🟡 Показать relative time + absolute on hover |
+
+### Activity (screen 15)
+
+| # | Что не так | Степень |
+|---|---|---|
+| AC1 | Subtitle: «Auto-refreshes every 30 seconds» — Director ожидал realtime push (как обещано в Jobs subtitle). Lag 30s | 🟡 Либо realtime, либо честно «refreshes every 30s» в footer |
+| AC2 | `APPROVE on ... v01/v02/v03` × 3 подряд + `Bulk approve from Online Editor kebab` × 3 описание дубль | 🔴 Group consecutive (LT-12) |
+| AC3 | `Director ostrovoy.alexander@gmail.com` — email на каждой строке | 🔴 Заменить на «Director» (или name) |
+| AC4 | `Online Editor started` + `Online Editor completed` × N — каждый STITCH-прогон = 2 строки | 🔴 Collapse pair в одну с duration `Online Editor · 2m 14s ✓` |
+| AC5 | `Working on episode (EXEC-STITCH)...` — одинаковое описание × N | 🔴 Если group implemented — один раз |
+| AC6 | Filter pills ALL/INFO/WARNING/ERROR — нет фильтра по агенту/эпизоду/времени | 🟡 LT-13 (time filters в плане) |
+| AC7 | Long filenames `SS-S14-E20-VID-shot-ss-s14-e20-a3-sc10-sh02-v01-DRAFT.mp4` | 🔴 Сжать (общий fix) |
+| AC8 | `Video regenerated: shot SS-S14-E20-A1-SC02-SH01 → v02 · Director ostrovoy.alexander@gmail.com regenerated VGEN shot (cost $0.968)` — title + description оба пишут «regenerated» | 🟡 Schлопнуть |
+
+---
+
+## Полная карта — финальная версия
+
+Всего 11 страниц / surfaces. Cuts посчитал:
+
+| Категория | Items |
+|---|---|
+| 🔴 Critical (data/UX) | C4, A19, D5-D8, JB6 (wrong vocab), BG4 (stale copy), JB1, JB2 — 9 пунктов |
+| 🔴 Noise (text density) | A1-A18 + D1-D3 + BG2-BG3 + JB3-JB4 + AC2-AC5+AC7-AC8 — ~25 пунктов |
+| 🟡 Layout | L1-L4 + C1-C3 + JB5+JB7+JB8 + AC6 — ~10 пунктов |
+
+---
+
+## Скорректированный execution
+
+### 🚨 Wave 0 — fix-the-lies (~3-4 ч)
+
+Все 🔴 critical (data/UX врёт или ломает workflow):
+- **C4** Inbox OPEN drawer → primary Approve/Reject
+- **A19** Inbox dedup — latest version per shot, старые auto-demote
+- **D5-D8** Dashboard читает live данные через `buildPipelineSnapshot`, phantom STORY- убрать
+- **JB6** Jobs status pills: APPROVED/REJECTED → RUNNING/COMPLETED/FAILED/CANCELLED
+- **JB1, JB2, BG4** stale UX copy + debug `Send ping` убрать из prod
+- **Friendly agent names везде** (Long-debt #1) — единый словарь EXEC-* → Online Editor/Animator/etc. На Jobs page + Activity feed + Dashboard mini-DAG
+
+### 🌊 Wave 1 — noise removal (~3-4 ч)
+
+Все 🔴 noise:
+- Сжатие filenames (общий хелпер)
+- Email → name/Director в Activity + Jobs
+- Group consecutive events в Activity (LT-12)
+- Hide REVIEWER SCORES когда all 100
+- Удалить STATUS & META block в drawer (дубль header)
+- Удалить SUMMARY (ONE LINE) (дубль verdict)
+- Удалить EDITING CURRENT SHOT (дубль shot frame footer)
+- Скрыть providers с $0 в Budget breakdown
+- BG3 mini-chart провайдеров
+- Episode timeline header consolidation
+- TEST PLAN human names (UUID → Bible lookup)
+- Gag readability conditional hide
+
+### 🌊 Wave 2 — layout + Prod Assistant global
+
+L1-L4 + C1-C3 — drawer width strategy + PA на любой странице.
+
+### 🌊 Wave 3 — visual redesign
+
+pill / glow / ambient parallax × `frontend-design`.
+
+---
+
+## Что хочу проверить перед Wave 0
+
+Series page и Settings page — не видел. Если там тоже что-то критичное (stale, vocab, layout) — нужно знать заранее.
+
+**Вопрос:** **q1** — последний батч скринов Series + Settings, потом старт Wave 0. **q2** — Wave 0 стартую сейчас, Series/Settings — отдельным проходом если найдём проблемы.
+
+
+===LINE 10213 | 2026-05-14T07:44:19.540Z===
+Session saved to **`C:\Users\NAVIA VISION ONE\.claude\session-data\2026-05-14-ui-noise-audit-session.tmp`**
+
+## Краткое содержание файла
+
+**Что в нём:**
+- Morning result: композер upload buttons fix (`commit 2d72849`, tsc + 166/166 + 29/29 ✓)
+- Afternoon result: 16-screen UI/UX noise audit, консолидированный в 4-волновый план
+- **9 critical fixes** в Wave 0 + ~18 noise items в Wave 1 + layout/PA в Wave 2 + visual redesign в Wave 3
+- Blockers зафиксированы: (1) Director's q1/q2 sequencing open, (2) dev server из quizzical-brown показывает stale code, (3) UI audit map живёт только в чате — рекомендую сохранить в `webapp/docs/ui-audit-2026-05-14.md` перед /clear
+- Decisions locked: 4-wave order, MGENActionsBlock в AssetPreview (не AnimaticPlayer), `/upload-music-direct` сибинг а не замена legacy
+- Exact next step: либо Wave 0 (C4 inbox approve) либо Sprint α→ε по `cached-tickling-willow.md` — нужно решить Director'у
+
+**Что НЕ покрыто:**
+- Series page + Settings page — Director не прислал скрины, audit неполный
+- UI audit map ещё не сохранён в репо как файл (только в чат-истории и в этом session-файле через ссылки на тематические таблицы)
+
+---
+
+**Выглядит точно? Что-то исправить или добавить перед закрытием?**
+
+
+===LINE 10226 | 2026-05-14T07:45:09.044Z===
+Принял Series + Settings. **Это закрывает аудит — 18 скринов суммарно.** Обновляю карту + использую Settings как reference design pattern.
+
+## Series (screen 17)
+
+| # | Что не так | Степень |
+|---|---|---|
+| SR1 | Cards относительно чистые ✓ — низкий noise | 🟢 |
+| SR2 | Subtitle «Bibles populate during episode 1 production» — utility text занимает строку, мог быть tooltip на `?` | 🟡 |
+| SR3 | Огромный empty space под 2 cards (~70% screen) — layout не compress'ится при малом числе series | 🟡 — общая layout-проблема L1-L2 |
+
+## Settings (screen 18) — ⭐ Reference Design Pattern
+
+Director's call-out: «одна из более приятных страниц». Анализ почему — и что переиспользовать на остальных страницах.
+
+### Что хорошо работает в Settings (паттерны):
+
+1. **Wide cards, full screen width** — нет narrow drawer
+2. **Section headers + small contextual description** (`PROVIDERS · Global tier — applies to every episode unless overridden per-stage`)
+3. **Theme cards with visual preview** (gradient swatches) — visual scan быстрее текста
+4. **Per-row 3-column layout**: name+desc · dropdown · LIVE pill + toggle
+5. **LIVE pill согласован** с другими страницами — единый visual language
+6. **Информация per row минимальна**: label + 1-line context + control. Никакой избыточности.
+7. **Auth.md §5 note мелкий** в конце AMBIENT BACKGROUND — не отвлекает
+
+### Один минор:
+
+| # | Что не так | Степень |
+|---|---|---|
+| ST1 | Subtitle: «Authority Matrix lands in Phase 7» — мы давно после Phase 7, stale copy | 🟡 minor |
+
+---
+
+## 🎯 Дизайн-доктрина из Settings — переносим на остальные страницы
+
+| Surface | Settings даёт паттерн → применить так |
+|---|---|
+| **Inbox cards (Dashboard + /inbox)** | Превратить из узких карт-блоков в Settings-style wide rows: thumbnail + filename · APPROVE/REVISE/REJECT справа. 1 row = 1 item. |
+| **Pipeline DAG (Episode page)** | Settings-style stage rows: emoji + role name + status pill справа. Можно collapse approved-cluster. |
+| **Episode header** | Settings-style top section: title + одна метро-строка (status · mode · budget). Действия в overflow `…` |
+| **Drawer detail (EREF / Asset / Brief)** | Settings-style sections, не fixed-width — full screen modal с поделёнными колонками |
+| **Activity feed item** | Settings-style row: agent emoji + title + meta + time (right) |
+
+Это превращается в **Wave 1 supplement**: «всё что не похоже на Settings — выровнять под него». Wave 2 (layout) и Wave 3 (visual) будут расширять этот же язык.
+
+---
+
+## Финальный audit closure
+
+**18 screens покрыто:**
+- Dashboard, Inbox, Inbox→OPEN drawer, Episode page (5 scrolls), EREF gallery, EREF detail drawer (3 scrolls), Editor preview drawer, Budget, Jobs, Activity, **Series, Settings**
+
+**Заметки добавляю в session-file:**
+
+
+===LINE 10234 | 2026-05-14T07:45:58.643Z===
+Да — Series + Settings скрины пришли и уже учтены. Только что обновил session-file (`2026-05-14-ui-noise-audit-session.tmp`) — добавил оба в раздел «What Has NOT Been Tried Yet → received».
+
+**Закрыты все 18 скринов. Аудит завершён.**
+
+## Сводка по полному audit (18 screens)
+
+| Категория | Items | Готовы к Wave |
+|---|---|---|
+| 🔴 Critical (data lies + workflow bugs) | C4, A19, D5-D8, JB1, JB2, JB6, BG4 — 9 | **Wave 0** |
+| 🔴 Noise (text density) | ~25 items в A + D + BG + JB + AC | Wave 1 |
+| 🟡 Layout (drawer width, PA global, content responsive) | L1-L4 + C1-C3 + JB5+JB7+JB8 — ~10 | Wave 2 |
+| ⭐ Design doctrine из Settings | переносим pattern на остальные surfaces | Wave 1 supplement + Wave 3 |
+| 🟢 Series + Settings | almost clean (ST1 minor) | reference, не трогаем |
+
+## Session-file финал
+
+Файл `~/.claude/session-data/2026-05-14-ui-noise-audit-session.tmp` теперь содержит:
+- Утренний композер upload fix (`commit 2d72849`, verified)
+- Дневной 18-screen аудит (4 waves, design doctrine из Settings)
+- Все blockers + decisions + exact next step
+
+## Что я НЕ сделал и стоит решить перед закрытием сессии
+
+1. **UI audit map не сохранён в репо** — живёт в чат-истории + session-file. При /clear в следующей сессии Claude увидит session-file (через MEMORY.md → resume-session), но было бы надёжнее иметь файл `webapp/docs/ui-audit-2026-05-14.md` с теми же таблицами. Сделать сейчас?
+2. **Wave 0 не стартован** — ждём твоего go. Recommended order: C4 (Inbox drawer Approve/Reject) → D5-D8 (Dashboard live data) → JB6 (jobs vocab) → Friendly agent names — итого ~3-4 часа.
+3. **Dev server stale** — composer fix не виден в браузере, dev бежит из quizzical-brown. Перезапускать?
+
+**Skip everything, go to sleep?** Или один из трёх пунктов сделать перед закрытием?
