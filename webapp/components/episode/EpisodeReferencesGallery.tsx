@@ -16,7 +16,6 @@
 
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
-import { ChevronDown, ChevronRight } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { AssetGrid, type AssetGridAsset } from '@/components/assets/AssetGrid';
 import { EpisodeAssetDrawer, type EpisodeAsset } from '@/components/assets/EpisodeAssetDrawer';
@@ -82,7 +81,6 @@ export function EpisodeReferencesGallery({
   size = 128,
 }: EpisodeReferencesGalleryProps) {
   const [openAssetId, setOpenAssetId] = useState<string | null>(null);
-  const [expandShot, setExpandShot] = useState<Record<string, boolean>>({});
 
   const { data, mutate } = useSWR<AssetsResponse>(
     `/api/assets?episode_id=${episodeId}&limit=200`,
@@ -147,9 +145,6 @@ export function EpisodeReferencesGallery({
     );
   }
 
-  // Flatten all approved variants across shots into a single grid.
-  const approvedFlat: EpisodeAsset[] = groups.flatMap((g) => g.approved);
-
   return (
     <div className="space-y-3">
       {/* Header summary */}
@@ -176,74 +171,61 @@ export function EpisodeReferencesGallery({
         )}
       </div>
 
-      {/* Approved row */}
-      {approvedFlat.length > 0 && (
+      {/* References by shot — Sprint τ (2026-05-15).
+          Director's UX directive: approved variants stay INSIDE their shot's
+          slice (not lifted into a separate "Approved" section at the top).
+          APPROVED variants render first (left), then REVIEW / DRAFT / REVISION /
+          REJECTED in status order — already sorted by sortByStatus, so just
+          concat approved + others. AssetThumb dyes the border by status, so
+          APPROVED tiles read as green dots in place. Each shot row is always
+          expanded — no click needed to see what belongs to that shot. */}
+      {groups.length > 0 && (
         <section className="space-y-1.5">
           <div className="text-[10px] uppercase tracking-wider text-text-muted">
-            Approved ({approvedFlat.length})
-          </div>
-          <AssetGrid
-            assets={approvedFlat.map(toGridAsset)}
-            size={size}
-            onAssetClick={(id) => setOpenAssetId(id)}
-          />
-        </section>
-      )}
-
-      {/* Per-shot collapsible "Other variants" rows — only shots with non-approved candidates. */}
-      {groups.some((g) => g.others.length > 0) && (
-        <section className="space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wider text-text-muted">
-            Other variants by shot
+            References by shot ({groups.length})
           </div>
           <div className="space-y-1">
-            {groups
-              .filter((g) => g.others.length > 0)
-              .map((g) => {
-                const expanded = !!expandShot[g.shotId];
-                return (
-                  <div
-                    key={g.shotId}
-                    className="rounded-md border border-glass"
-                    style={{ background: 'color-mix(in oklab, var(--bg-elevated) 60%, transparent)' }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandShot((prev) => ({ ...prev, [g.shotId]: !prev[g.shotId] }))
-                      }
-                      className="w-full px-2.5 py-1.5 flex items-center gap-2 text-left text-[11px] text-text-secondary hover:text-text-primary transition-colors"
-                      aria-expanded={expanded}
-                    >
-                      {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                      <span className="font-mono text-text-primary">{g.shotId}</span>
-                      <span className="text-text-muted">·</span>
-                      <span>{g.others.length} other variant{g.others.length === 1 ? '' : 's'}</span>
-                      {g.approved.length > 0 && (
+            {groups.map((g) => {
+              const allVariants = [...g.approved, ...g.others];
+              const hasApproved = g.approved.length > 0;
+              return (
+                <div
+                  key={g.shotId}
+                  className="rounded-md border border-glass px-2.5 py-1.5"
+                  style={{ background: 'color-mix(in oklab, var(--bg-elevated) 60%, transparent)' }}
+                >
+                  <div className="flex items-center gap-2 text-[11px] mb-1.5">
+                    <span className="font-mono text-text-primary">{g.shotId}</span>
+                    <span className="text-text-muted">·</span>
+                    <span className="text-text-secondary">
+                      {allVariants.length} variant{allVariants.length === 1 ? '' : 's'}
+                    </span>
+                    {hasApproved && (
+                      <span
+                        className="ml-auto inline-flex items-center gap-1 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{
+                          background:
+                            'color-mix(in oklab, var(--accent-success) 16%, transparent)',
+                          color: 'var(--accent-success)',
+                        }}
+                      >
                         <span
-                          className="ml-auto text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded"
-                          style={{
-                            background:
-                              'color-mix(in oklab, var(--accent-success) 16%, transparent)',
-                            color: 'var(--accent-success)',
-                          }}
-                        >
-                          approved
-                        </span>
-                      )}
-                    </button>
-                    {expanded && (
-                      <div className="px-2.5 pb-2 pt-0.5">
-                        <AssetGrid
-                          assets={g.others.map(toGridAsset)}
-                          size={Math.round(size * 0.7)}
-                          onAssetClick={(id) => setOpenAssetId(id)}
+                          aria-hidden
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{ background: 'var(--accent-success)' }}
                         />
-                      </div>
+                        approved
+                      </span>
                     )}
                   </div>
-                );
-              })}
+                  <AssetGrid
+                    assets={allVariants.map(toGridAsset)}
+                    size={size}
+                    onAssetClick={(id) => setOpenAssetId(id)}
+                  />
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
