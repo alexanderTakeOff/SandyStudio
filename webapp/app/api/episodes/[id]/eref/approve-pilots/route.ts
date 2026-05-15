@@ -86,6 +86,64 @@ export const POST = withApiHandler(async (req, ctx) => {
   // ── Fire fan-out ───────────────────────────────────────────────────────────
   await setPilotState(supabase, episodeId, 'FANOUT_RUNNING');
 
+  // Sprint τ (2026-05-15) — mirror state into episodes.metadata so the
+  // browser-side EREFPilotPillbar (which reads episode.metadata.eref_*)
+  // sees FANOUT_RUNNING immediately and can switch to the FanoutHeadline.
+  // The app_config setPilotState above is still authoritative for server-
+  // side lookups (getPilotState); episodes.metadata is the UI mirror.
+  //
+  // We also persist `eref_total_shots` (parsed from the latest APPROVED
+  // storyboard JSON) so the headline counter has a real denominator from
+  // the moment fan-out fires — eliminates the "0/2 shots" misread when
+  // only the 2 pilots are in DB.
+  try {
+    let totalShots: number | null = null;
+    const { data: stbAsset } = await supabase
+      .from('assets')
+      .select('content')
+      .eq('episode_id', episodeId)
+      .like('file_type', 'STB-storyboard%')
+      .eq('status', 'APPROVED')
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const stbContent = (stbAsset as { content?: string } | null)?.content ?? '';
+    const m = /```json\s*([\s\S]*?)```/i.exec(stbContent);
+    if (m && m[1]) {
+      try {
+        const body = JSON.parse(m[1]) as { acts?: Array<{ shots?: unknown[] }> };
+        if (Array.isArray(body.acts)) {
+          totalShots = body.acts.reduce(
+            (sum, a) => sum + (Array.isArray(a.shots) ? a.shots.length : 0),
+            0,
+          );
+        }
+      } catch {
+        /* leave totalShots null */
+      }
+    }
+
+    const { data: epRow } = await supabase
+      .from('episodes')
+      .select('metadata')
+      .eq('id', episodeId)
+      .maybeSingle();
+    const prevMeta = ((epRow as { metadata?: unknown } | null)?.metadata as Record<string, unknown> | null) ?? {};
+    const nextMeta = {
+      ...prevMeta,
+      eref_pilot_state: 'FANOUT_RUNNING' as const,
+      eref_pilot_state_at: new Date().toISOString(),
+      eref_pilot_count: pilotCount,
+      ...(totalShots !== null && totalShots > 0 ? { eref_total_shots: totalShots } : {}),
+    };
+    await supabase
+      .from('episodes')
+      .update({ metadata: nextMeta as never })
+      .eq('id', episodeId);
+  } catch {
+    // Metadata mirror is a UI-helper, never block fan-out on it.
+  }
+
   const { ids } = await inngest.send({
     name: 'sandystudio/exec-eref/fanout-trigger',
     data: {

@@ -164,10 +164,21 @@ const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'EXEC-ANAL':  'analytics_collector',
 };
 
+/**
+ * Minimal shape of `episodes.metadata` the snapshot builder cares about.
+ * Sprint τ (2026-05-15) — `eref_pilot_state` from this mirror lets the
+ * `episode_references` stage report `running` while pilots-in-REVIEW
+ * would otherwise force `blocked`. Other stages ignore this field.
+ */
+export interface EpisodeMetadataForPipeline {
+  eref_pilot_state?: 'NONE' | 'PENDING_REVIEW' | 'FANOUT_RUNNING' | 'FANOUT_COMPLETE';
+}
+
 export function buildPipelineSnapshot(
   episodeStatus: string,
   assets: AssetLike[],
   jobs: JobLike[],
+  episodeMetadata?: EpisodeMetadataForPipeline | null,
 ): PipelineStageSnapshot[] {
   const assetsByStage = new Map<PipelineStageId, AssetLike[]>();
   for (const a of assets) {
@@ -217,6 +228,23 @@ export function buildPipelineSnapshot(
       state = 'running';
     } else if (hasFailedJob) {
       state = 'failed';
+    }
+
+    // Sprint τ (2026-05-15) — EREF fan-out override.
+    // EREF is unique: when pilots land in REVIEW and the Director gives a
+    // chat-level "proceed", fan-out fires for the remaining shots while
+    // pilots stay in REVIEW (their per-asset review is a separate decision,
+    // not a blocker). The 2026-05-10 "blocked > running" rule misclassifies
+    // this as ◇ "blocked" — confusing the Director who actually has agents
+    // working on his screen. Override: if pilot state is FANOUT_RUNNING
+    // AND any EREF job is running/queued, surface `running` over `blocked`.
+    if (
+      def.id === 'episode_references' &&
+      episodeMetadata?.eref_pilot_state === 'FANOUT_RUNNING' &&
+      hasRunningJob &&
+      !hasApprovedAsset
+    ) {
+      state = 'running';
     }
 
     if (def.id === 'brief' && status === 'BRIEF_APPROVED') state = 'approved';
