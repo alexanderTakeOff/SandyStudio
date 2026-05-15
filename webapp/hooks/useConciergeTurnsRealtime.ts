@@ -81,6 +81,13 @@ export function useConciergeTurnsRealtime(
         },
         (payload) => {
           const row = payload.new as Partial<ConciergeTurnRow> | undefined;
+          // eslint-disable-next-line no-console
+          console.log('[useConciergeTurnsRealtime] INSERT payload', {
+            id: row?.id,
+            role: row?.role,
+            thread_id: row?.thread_id,
+            metadata_kind: (row?.metadata as { kind?: string } | undefined)?.kind,
+          });
           if (!row?.id || !row.role) return;
           if (row.thread_id !== threadId) return;
           callbackRef.current?.(row as ConciergeTurnRow);
