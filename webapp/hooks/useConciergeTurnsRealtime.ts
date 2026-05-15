@@ -62,6 +62,14 @@ export function useConciergeTurnsRealtime(
       }
     }
 
+    // Sprint γ 2026-05-15 hotfix — Director reported: claude_message bubbles
+    // arrived only after Ctrl+R despite migration 0031 fixing the
+    // publication. Service-role probe receives events; authenticated browser
+    // session does not. Root cause is the `thread_id=eq.X` postgres_changes
+    // server-side filter clashing with the `authenticated` role's RLS
+    // evaluation under Supabase Realtime v2 (known quirk). Drop the
+    // server-side filter and discriminate in the handler — we accept the
+    // tiny extra fanout cost in exchange for delivery actually working.
     const channel = supabase
       .channel(channelTopic)
       .on(
@@ -70,15 +78,18 @@ export function useConciergeTurnsRealtime(
           event: 'INSERT',
           schema: 'public',
           table: 'concierge_turns',
-          filter: `thread_id=eq.${threadId}`,
         },
         (payload) => {
           const row = payload.new as Partial<ConciergeTurnRow> | undefined;
           if (!row?.id || !row.role) return;
+          if (row.thread_id !== threadId) return;
           callbackRef.current?.(row as ConciergeTurnRow);
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        // eslint-disable-next-line no-console
+        console.log('[useConciergeTurnsRealtime] subscribe status:', status, 'thread:', threadId);
+      });
 
     return () => {
       void supabase.removeChannel(channel);
