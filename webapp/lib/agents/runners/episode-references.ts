@@ -86,6 +86,7 @@ import type {
   ShotTestPlan,
 } from '../../api/shot-reference';
 import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
+import { loadAgentSkills } from '../load-skills';
 import type { AgentInputs } from '../types';
 import type {
   GovernanceModeNum,
@@ -811,6 +812,36 @@ export async function runEpisodeReferences(
     if ((r.version ?? 0) > cur) existingMap.set(r.file_type, r.version ?? 0);
   }
 
+  // ── Director-canon skills (σ.1 / 2026-05-15) ─────────────────────────────
+  // Load once for the whole run — same skill block prepends to every shot's
+  // prompt. Genre is resolved through the series table; episodeId carries
+  // episode-scoped skills. Non-fatal: empty block if no skills match or
+  // .claude/skills/ is absent (replay-pilot, CI).
+  let seriesGenre: string | null = null;
+  try {
+    const { data: sr } = await supabase
+      .from('series')
+      .select('genre')
+      .eq('id', seriesId)
+      .maybeSingle();
+    seriesGenre = (sr as { genre?: string | null } | null)?.genre ?? null;
+  } catch {
+    /* leave null */
+  }
+  const skillsBundle = await loadAgentSkills({
+    agentId: 'EXEC-EREF',
+    genre: seriesGenre ?? undefined,
+    series_id: seriesId,
+    episode_id: episodeId,
+  });
+  const skillsPrefix = skillsBundle.block ? `${skillsBundle.block}\n\n` : '';
+  if (skillsBundle.count > 0) {
+    // eslint-disable-next-line no-console
+    console.info(
+      `[eref] ACTIVE SKILLS injected: ${skillsBundle.count}${skillsBundle.truncatedCount > 0 ? ` (+${skillsBundle.truncatedCount} truncated)` : ''}`,
+    );
+  }
+
   // ── Per-shot loop ─────────────────────────────────────────────────────────
   const insertedAssetIds: string[] = [];
   const perShot: EpisodeReferencesRunResult['perShot'] = [];
@@ -825,7 +856,7 @@ export async function runEpisodeReferences(
       cancelled = true;
       break;
     }
-    let prompt = composePromptFromTestPlan(job);
+    let prompt = skillsPrefix + composePromptFromTestPlan(job);
 
     // Pre-flight Style Guardian (cheap, may rewrite or block).
     let styleVerdictPre: 'PASS' | 'WARN' | 'FAIL' | null = null;
@@ -850,7 +881,9 @@ export async function runEpisodeReferences(
           guardResult.suggested_prompt &&
           guardResult.verdict !== 'PASS'
         ) {
-          prompt = guardResult.suggested_prompt;
+          // Style Guardian rewrites the inner prompt; re-prepend skills
+          // so the ACTIVE SKILLS block survives the rewrite (σ.1).
+          prompt = skillsPrefix + guardResult.suggested_prompt;
           styleRewrittenPre = true;
         }
       }
@@ -996,7 +1029,9 @@ export async function runEpisodeReferences(
           reason: latestReview.issues.map((i) => i.description).join('; ').slice(0, 400) || 'AI verdict REGENERATE',
           verdict_before_retry: verdict,
         });
-        prompt = latestReview.suggested_prompt_v2;
+        // Reviewer's rewrite replaces the prompt body; re-prepend skills so
+        // the regeneration still respects the ACTIVE SKILLS block (σ.1).
+        prompt = skillsPrefix + latestReview.suggested_prompt_v2;
       } else {
         // No more retries OR reviewer didn't supply a rewrite — let the
         // current image stand and surface to Director.
