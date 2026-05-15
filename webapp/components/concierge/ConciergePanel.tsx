@@ -258,12 +258,56 @@ export function ConciergePanel() {
   //   activity_events INSERT → concierge_turns INSERT (role=system)
   // The browser only needs to read concierge_turns and render the two
   // server-authored bubble variants (kind=pipeline_event, kind=claude_message).
+  //
+  // Sprint q1 2026-05-15 — Polina auto-reaction.
+  // When a critical system turn arrives, fire /api/concierge/auto-react so
+  // Polina surfaces it in the channel instead of waiting for the Director
+  // to type. Dedup via in-memory ref (server checks acked_by_assistant too).
+  const autoReactFiredRef = useRef<Set<string>>(new Set());
   useConciergeTurnsRealtime(threadId, {
     onNewTurn: (turn: ConciergeTurnRow) => {
       if (turn.role !== 'system') return; // user/assistant flow through chat route
       const m = (turn.metadata ?? {}) as Record<string, unknown>;
       const kind = m.kind as string | undefined;
       if (kind !== 'claude_message' && kind !== 'pipeline_event') return;
+
+      // Auto-react trigger — fire BEFORE rendering so Polina's reply arrives
+      // soon after the chip. Criticality filter keeps cost down: ambient
+      // info-severity pipeline events don't burn OpenAI tokens. Skip turns
+      // already marked acked_by_assistant (server-side dedup); skip turns
+      // we already fired for in this session; skip turns older than 2 min
+      // (avoid replaying a backlog on page load).
+      const ackedAlready = m.acked_by_assistant === true;
+      const fireKey = turn.id;
+      const turnAgeMs = Date.now() - new Date(turn.created_at).getTime();
+      const recentEnough = turnAgeMs < 120_000;
+      const severity = (m.severity as string | undefined) ?? 'info';
+      const content = turn.content ?? '';
+      const isCritical =
+        kind === 'claude_message' ||
+        severity === 'warning' ||
+        severity === 'error' ||
+        /agent_completed|agent_failed|approval_required|review|REV-|REVISION/.test(content);
+      if (
+        threadId &&
+        recentEnough &&
+        isCritical &&
+        !ackedAlready &&
+        !autoReactFiredRef.current.has(fireKey)
+      ) {
+        autoReactFiredRef.current.add(fireKey);
+        void fetch('/api/concierge/auto-react', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ threadId, triggerTurnId: turn.id }),
+        }).catch(() => {
+          // Best-effort. If the call fails (offline, server down) the Director
+          // can still type to engage Polina. Remove from set so a manual retry
+          // could re-fire by clicking the bubble (future UX).
+          autoReactFiredRef.current.delete(fireKey);
+        });
+      }
+
       setMessages((prev) => {
         // Dedupe by turnId in case of re-subscribe / strict-mode dupes.
         if (prev.some((p) => p.turnId === turn.id)) return prev;
