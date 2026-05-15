@@ -48,10 +48,17 @@ interface AssetRow {
   metadata?: unknown;
 }
 
+// Sprint τ (2026-05-15) — actual /api/episodes/[id] envelope is
+// `{ data: { episode, assets, jobs } }`. Pillbar previously read
+// `data.metadata` (flat) which silently returned null, so the Pilot/Fanout
+// branches never fired and Director only ever saw ReviewHeadline. Fix the
+// shape to match the route's apiOk return.
 interface EpisodeResponse {
   data?: {
-    id: string;
-    metadata?: EpisodeMetadataLike | null;
+    episode?: {
+      id: string;
+      metadata?: EpisodeMetadataLike | null;
+    };
   };
 }
 
@@ -142,7 +149,7 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
     { refreshInterval: 30_000 },
   );
 
-  const meta = episodeData?.data?.metadata ?? null;
+  const meta = episodeData?.data?.episode?.metadata ?? null;
   const pilotState: EREFPilotState | undefined = meta?.eref_pilot_state;
 
   const progress = useMemo(
