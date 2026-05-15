@@ -129,3 +129,16 @@ export async function selectSkills(ctx: SelectorContext): Promise<readonly Loade
 export function clearSkillsCache(): void {
   cache = null;
 }
+
+/**
+ * List ALL skills on disk regardless of status. Used by `/api/skills` list
+ * and PA `listSkills` tool. Does not consult the selector cache — always
+ * re-scans so newly-written files are visible immediately.
+ */
+export async function listAllSkills(): Promise<readonly LoadedSkill[]> {
+  const skills = await scanSkillsDir();
+  // Refresh cache while we're here so the next selectSkills() call sees the
+  // same disk view.
+  cache = { loadedAt: Date.now(), skills };
+  return skills;
+}

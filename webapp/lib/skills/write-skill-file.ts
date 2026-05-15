@@ -83,6 +83,23 @@ export function validateStatus(value: string): SkillStatus {
   throw new SkillWriteError(`Unknown skill status: ${value}`);
 }
 
+export async function deleteSkillFile(slug: string): Promise<{ slug: string; removed: boolean }> {
+  if (!isValidSlug(slug)) {
+    throw new SkillWriteError(
+      `Invalid slug "${slug}". Slugs must match ${SLUG_RE.source} (lowercase, kebab-case, 3-80 chars).`,
+    );
+  }
+  const dir = path.join(resolveSkillsRoot(), slug);
+  try {
+    await fs.access(dir);
+  } catch {
+    return { slug, removed: false };
+  }
+  await fs.rm(dir, { recursive: true, force: true });
+  clearSkillsCache();
+  return { slug, removed: true };
+}
+
 export async function writeSkillFile(args: WriteSkillArgs): Promise<{ slug: string; filePath: string }> {
   if (!isValidSlug(args.slug)) {
     throw new SkillWriteError(
