@@ -22,6 +22,7 @@ import {
 } from '../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
+import { loadAgentSkills } from '../load-skills';
 
 export const SB_CONTRACT = 'storyboarder@v2';
 export const SB_MODEL = 'claude-sonnet-4-6';
@@ -30,8 +31,10 @@ export const SB_MODEL = 'claude-sonnet-4-6';
 // For a 14-shot episode with full Bible canon in input, Sonnet legitimately
 // needs ~12-14K output tokens to emit the markdown report + complete JSON block.
 // 8K (the v1 budget) hit max_tokens mid-JSON and caused infinite retries.
-// Sonnet 4.6 supports up to 64K output tokens; 16K is comfortable headroom.
-export const SB_MAX_TOKENS = 16000;
+// Sonnet 4.6 supports up to 64K output tokens; 24K is comfortable headroom
+// once ACTIVE SKILLS block (σ.1 2026-05-15) lands in the prompt — observed
+// 60K-char markdown output on a 22-shot E21 v03 attempt with SKILLS injected.
+export const SB_MAX_TOKENS = 24000;
 export const SB_COST_CEILING_USD = 1.0;
 
 export class StoryboarderError extends Error {
@@ -111,8 +114,12 @@ function buildUserMessage(args: {
    *  Render as a hard-contract block so the model treats them as
    *  acceptance criteria, not polish hints. */
   upstreamNotes?: ReadonlyArray<{ label: string; note: string }>;
+  /** Sprint σ.1 2026-05-15 — Director-canon skills resolved for this run.
+   *  Pre-formatted ACTIVE SKILLS markdown block. Empty string = no skills
+   *  matched (no genre, no .claude/skills dir, or all skills DRAFT). */
+  activeSkillsBlock?: string;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes, activeSkillsBlock } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -138,6 +145,8 @@ function buildUserMessage(args: {
     '# Task',
     `Break the screenplay below into a shot-by-shot storyboard for episode ${episodeCode} — "${episodeTitle}".`,
     '',
+    activeSkillsBlock && activeSkillsBlock.length > 0 ? activeSkillsBlock : '',
+    activeSkillsBlock && activeSkillsBlock.length > 0 ? '' : '',
     notesBlock,
     '## Episode Brief (canonical input — APPROVED)',
     '',
@@ -323,6 +332,28 @@ export async function runStoryboarder(
   }
 
   const systemPrompt = await loadSystemPrompt();
+
+  // Sprint σ.1 2026-05-15 — load Director-canon skills that match this run.
+  // genre comes from inputs.series_genre (resolved in loadAgentInputs);
+  // episode_id is the inputs.episode_id; series_id from episode row.
+  // Non-fatal: missing .claude/skills/ or empty selector result yields an
+  // empty block and the runner proceeds exactly as before σ.1.
+  const seriesGenre =
+    typeof inputs.series_genre === 'string' ? inputs.series_genre : undefined;
+  const seriesId =
+    (inputs.episode as { series_id?: string | null } | undefined)?.series_id ?? undefined;
+  const skillsBundle = await loadAgentSkills({
+    agentId: 'EXEC-SB',
+    genre: seriesGenre,
+    series_id: seriesId ?? undefined,
+    episode_id: inputs.episode_id,
+  });
+  if (skillsBundle.count > 0) {
+    notes.push(
+      `ACTIVE SKILLS injected: ${skillsBundle.count}${skillsBundle.truncatedCount > 0 ? ` (+${skillsBundle.truncatedCount} truncated)` : ''}`,
+    );
+  }
+
   const userMessage = buildUserMessage({
     episodeCode,
     episodeTitle,
@@ -331,6 +362,7 @@ export async function runStoryboarder(
     scriptVersion: scriptAsset.version ?? 1,
     bible,
     upstreamNotes,
+    activeSkillsBlock: skillsBundle.block,
   });
 
   let result: AnthropicTextResult;

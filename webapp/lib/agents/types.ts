@@ -133,6 +133,10 @@ export interface AgentInputs {
    * prompt so the note isn't lost at the gate transition.
    */
   upstream_approval_notes?: Record<string, string>;
+  /** Sprint σ.1 (2026-05-15). `series.genre` resolved at input-load time,
+   *  passed to the Skill selector so genre-scoped skills (comedy, etc.)
+   *  match. Null when series unknown or mock supabase environment. */
+  series_genre?: string | null;
   [key: string]: unknown;
 }
 

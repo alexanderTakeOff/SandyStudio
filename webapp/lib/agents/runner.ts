@@ -153,6 +153,24 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
     };
   }
 
+  // Sprint σ.1 (2026-05-15) — series.genre surfaced for the Skill selector.
+  // Non-fatal: replay-pilot mock supabase doesn't implement `series`; degrade
+  // to null and let the agent treat genre as unspecified (skill selector then
+  // only matches skills without a `genre` constraint).
+  let seriesGenre: string | null = null;
+  if (episode?.series_id) {
+    try {
+      const { data: seriesRow } = await supabase
+        .from('series')
+        .select('id,genre')
+        .eq('id', episode.series_id)
+        .single();
+      seriesGenre = (seriesRow as { genre?: string | null } | null)?.genre ?? null;
+    } catch {
+      // mock supabase fallthrough
+    }
+  }
+
   return {
     episode_id: episodeId,
     agent_id: agentId,
@@ -160,6 +178,7 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
     upstream_assets: assets,
     bible,
     upstream_approval_notes: upstreamApprovalNotes,
+    series_genre: seriesGenre,
   };
 }
 
