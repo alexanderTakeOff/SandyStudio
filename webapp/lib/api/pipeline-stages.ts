@@ -230,21 +230,40 @@ export function buildPipelineSnapshot(
       state = 'failed';
     }
 
-    // Sprint τ (2026-05-15) — EREF fan-out override.
-    // EREF is unique: when pilots land in REVIEW and the Director gives a
-    // chat-level "proceed", fan-out fires for the remaining shots while
-    // pilots stay in REVIEW (their per-asset review is a separate decision,
-    // not a blocker). The 2026-05-10 "blocked > running" rule misclassifies
-    // this as ◇ "blocked" — confusing the Director who actually has agents
-    // working on his screen. Override: if pilot state is FANOUT_RUNNING
-    // AND any EREF job is running/queued, surface `running` over `blocked`.
-    if (
-      def.id === 'episode_references' &&
-      episodeMetadata?.eref_pilot_state === 'FANOUT_RUNNING' &&
-      hasRunningJob &&
-      !hasApprovedAsset
-    ) {
-      state = 'running';
+    // Sprint τ (2026-05-15) — EREF semantic state overrides.
+    //
+    // EREF is unique: the stage covers per-shot reference images for an
+    // entire episode (~20-25 shots). The default `hasApprovedAsset` rule
+    // misclassifies "pilot pair APPROVED, 22 remaining shots not even
+    // generated" as `approved` — Director then sees a green checkmark
+    // on a stage that has produced only 2/24 references. Same trap from
+    // the opposite direction: "pilots in REVIEW + fan-out running" is
+    // PRODUCTIVE work, not `blocked`.
+    //
+    // Pilot-state lifecycle drives the override:
+    //   PENDING_REVIEW   → pilots done, awaiting Director's Approve
+    //                      Direction. Stage MUST be `blocked` (gate) even
+    //                      if both pilots are APPROVED — the rest of the
+    //                      shots haven't been touched yet.
+    //   FANOUT_RUNNING   → fan-out in flight. Stage = `running` (◐).
+    //   FANOUT_COMPLETE  → all shots generated. Legacy rule applies:
+    //                      `approved` only when every shot has an
+    //                      APPROVED variant (handled by hasApprovedAsset
+    //                      combined with the Pillbar's stricter shot-level
+    //                      check — `Advance to Animatic` is the real gate).
+    //   NONE / undefined → no v2 run yet, legacy rule applies.
+    if (def.id === 'episode_references') {
+      const pilotState = episodeMetadata?.eref_pilot_state;
+      if (pilotState === 'PENDING_REVIEW') {
+        // Pilot pass complete, awaiting Director's Approve Direction. The
+        // stage is gated — not green — even if both pilots are APPROVED.
+        state = 'blocked';
+      } else if (pilotState === 'FANOUT_RUNNING' && hasRunningJob) {
+        // Fan-out actively producing remaining shots. Show running over
+        // any default that would otherwise say blocked/approved.
+        state = 'running';
+      }
+      // FANOUT_COMPLETE / NONE: fall through to default rule above.
     }
 
     if (def.id === 'brief' && status === 'BRIEF_APPROVED') state = 'approved';
