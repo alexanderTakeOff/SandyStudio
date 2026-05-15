@@ -102,6 +102,37 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
     throw new Error(`loadAgentInputs: assets lookup failed: ${asErr.message}`);
   }
 
+  // Sprint γ 2026-05-15 — approve-with-notes propagation.
+  // For each upstream asset that was approved with a note, surface the
+  // latest `approvals.notes` keyed by asset_id so producing agents
+  // (Storyboarder, World Checker, etc.) can inject it into their prompt.
+  // Non-fatal: empty record is the no-notes case and behaves identically
+  // to pre-γ pipeline. Try/catch lets the mock supabase in replay-pilot
+  // (which doesn't implement the approvals table) degrade gracefully.
+  const upstreamApprovalNotes: Record<string, string> = {};
+  const assetIds = (assets ?? []).map((a) => a.id);
+  if (assetIds.length > 0) {
+    try {
+      const { data: approvalRows } = await supabase
+        .from('approvals')
+        .select('asset_id,notes,created_at,approval_type')
+        .in('asset_id', assetIds)
+        .eq('approval_type', 'APPROVE')
+        .order('created_at', { ascending: false });
+      for (const row of approvalRows ?? []) {
+        if (!row.notes || typeof row.notes !== 'string') continue;
+        const aid = row.asset_id;
+        if (!aid) continue;
+        if (upstreamApprovalNotes[aid]) continue; // keep newest only (desc order)
+        upstreamApprovalNotes[aid] = row.notes;
+      }
+    } catch {
+      // Mock supabase environments (replay-pilot) may not implement the
+      // approvals table — degrade to empty notes; downstream runners
+      // already treat the field as optional.
+    }
+  }
+
   // Load LOCKED Series Bible canon. Empty canon is valid (early-stage projects);
   // text-producing runners (SW, SREV, SB, COPY) gracefully degrade. Image and
   // continuity runners load the canon themselves with stricter preconditions.
@@ -128,6 +159,7 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
     episode,
     upstream_assets: assets,
     bible,
+    upstream_approval_notes: upstreamApprovalNotes,
   };
 }
 

@@ -106,16 +106,39 @@ function buildUserMessage(args: {
   scriptContent: string;
   scriptVersion: number;
   bible: SeriesBibleCanon;
+  /** Sprint γ 2026-05-15 — approve-with-notes propagation. Notes the
+   *  Director attached when approving upstream assets (script, brief, etc.).
+   *  Render as a hard-contract block so the model treats them as
+   *  acceptance criteria, not polish hints. */
+  upstreamNotes?: ReadonlyArray<{ label: string; note: string }>;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
   const locationSlugs = bible.locations.map((l) => l.slug).filter(Boolean);
+  const notesBlock =
+    upstreamNotes && upstreamNotes.length > 0
+      ? [
+          '## DOWNSTREAM NOTES FROM PREVIOUS GATE (Director, MANDATORY)',
+          '',
+          'The Director approved upstream artefacts on condition that the following',
+          'notes carry into this storyboard. Treat each line as a HARD acceptance',
+          'criterion — your output must visibly satisfy every numbered item, not',
+          'just acknowledge it. If a note demands a beat the script omits, ADD that',
+          'beat to the storyboard (you have authority within the same total runtime).',
+          '',
+          ...upstreamNotes.map(
+            (n, i) => `${i + 1}. (from ${n.label} approval): ${n.note}`,
+          ),
+          '',
+        ].join('\n')
+      : '';
   return [
     '# Task',
     `Break the screenplay below into a shot-by-shot storyboard for episode ${episodeCode} — "${episodeTitle}".`,
     '',
+    notesBlock,
     '## Episode Brief (canonical input — APPROVED)',
     '',
     '<brief>',
@@ -278,6 +301,27 @@ export async function runStoryboarder(
     );
   }
 
+  // Sprint γ 2026-05-15 — surface upstream approval notes (script + brief).
+  const approvalNotesMap =
+    (inputs.upstream_approval_notes as Record<string, string> | undefined) ?? {};
+  const upstreamNotes: Array<{ label: string; note: string }> = [];
+  if (scriptAsset.id && approvalNotesMap[scriptAsset.id]) {
+    upstreamNotes.push({ label: `script v${scriptAsset.version ?? 1}`, note: approvalNotesMap[scriptAsset.id]! });
+  }
+  if (briefAsset.id && approvalNotesMap[briefAsset.id]) {
+    upstreamNotes.push({ label: `brief v${briefAsset.version ?? 1}`, note: approvalNotesMap[briefAsset.id]! });
+  }
+  // SREV review notes — find any REV-* asset that was APPROVED and has a note.
+  // SREV's note is the canonical "what to fix" carrier from Story Editor.
+  for (const a of (upstream ?? [])) {
+    if (!a.file_type?.startsWith('REV-')) continue;
+    if (a.status !== 'APPROVED') continue;
+    if (!a.id) continue;
+    const n = approvalNotesMap[a.id];
+    if (!n) continue;
+    upstreamNotes.push({ label: `${a.file_type} v${a.version ?? 1}`, note: n });
+  }
+
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
     episodeCode,
@@ -286,6 +330,7 @@ export async function runStoryboarder(
     scriptContent: scriptAsset.content,
     scriptVersion: scriptAsset.version ?? 1,
     bible,
+    upstreamNotes,
   });
 
   let result: AnthropicTextResult;
