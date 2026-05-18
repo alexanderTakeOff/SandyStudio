@@ -10,8 +10,9 @@ import { updateSupabaseSession } from '@/lib/supabase/middleware';
 const PUBLIC_PATHS = ['/login', '/auth/callback', '/api/health'];
 
 // Server-to-server webhook endpoints — auth handled by upstream signature
-// verification (Inngest signing key), NOT by Supabase user session.
-const WEBHOOK_PATHS = ['/api/inngest'];
+// verification (Inngest signing key) or Bearer token, NOT by Supabase user
+// session. Sprint α 2026-05-14: added /api/team-chat/* for CLI agent posts.
+const WEBHOOK_PATHS = ['/api/inngest', '/api/team-chat'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

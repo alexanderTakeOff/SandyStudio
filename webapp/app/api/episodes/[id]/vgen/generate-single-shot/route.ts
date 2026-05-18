@@ -40,6 +40,9 @@ const Body = z.object({
   duration_seconds: z.number().min(1).max(8).optional(),
   aspect_ratio: z.enum(['16:9', '9:16', '1:1']).optional(),
   quality_tier: z.enum(['fast', 'standard']).optional(),
+  /** Phase 2 (2026-05-13) — UI dropdown choice. When omitted the runner falls
+   *  back to the series/global default from app_config.vgen_defaults. */
+  provider: z.enum(['veo-3-img2vid', 'seedance-fal-img2vid']).optional(),
 });
 
 const ACTIVE_VGEN_STATUSES = new Set([
@@ -136,6 +139,7 @@ export const POST = withApiHandler(async (req, ctx) => {
         body.duration_seconds ?? shot.duration_seconds,
       ...(body.aspect_ratio ? { aspect_ratio: body.aspect_ratio } : {}),
       ...(body.quality_tier ? { quality_tier: body.quality_tier } : {}),
+      ...(body.provider ? { provider: body.provider } : {}),
     } as never,
   });
 

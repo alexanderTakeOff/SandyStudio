@@ -371,8 +371,17 @@ export const POST = withApiHandler(async (req, ctx) => {
   let effectiveV2Provider: EREFProviderId | null = null;
   if (isV2 && v2Sr) {
     const fromBody = body.provider_id;
+    // Skip auto_upscale entries — they record the 4K upscale provider
+    // (typically not a generation provider), so taking the literal last
+    // attempt loses the generation provider we actually want. Walk history
+    // in reverse looking for the last real (non-upscale) generation attempt.
+    // (Sprint φ smoke UX bug fix 2026-05-16 — Director: «использовать тот
+    // же провод который генерировался».)
     const history = v2Sr.generation_history ?? [];
-    const lastProviderRaw = history.length > 0 ? history[history.length - 1]?.provider_id : null;
+    const lastReal = [...history]
+      .reverse()
+      .find((h) => (h as { triggered_by?: string }).triggered_by !== 'auto_upscale');
+    const lastProviderRaw = lastReal?.provider_id ?? null;
     const candidate = fromBody ?? lastProviderRaw ?? 'openai-edits-multi';
     effectiveV2Provider = candidate === 'gpt-image-1' ? 'openai-edits-multi' : (candidate as EREFProviderId);
   }

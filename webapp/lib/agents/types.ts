@@ -122,6 +122,21 @@ export interface CostRecord {
 /** Loaded inputs handed to runAgent. Loose by design — gate.ts validates per agent. */
 export interface AgentInputs {
   episode_id: string;
+  /**
+   * Approve-with-notes propagation (Sprint γ 2026-05-15).
+   * Director directive: «утверждаем с замечаниями → замечания должны
+   * поступать следующему исполнителю». For every upstream asset that has
+   * an `approvals.notes` row, the latest APPROVE note is surfaced here
+   * keyed by asset_id. Runners that produce new artefacts downstream of
+   * an approval gate (Storyboarder, World Checker, Editor, etc.) read
+   * this and inject `[DOWNSTREAM_NOTES_FROM_PREVIOUS_GATE]` into their
+   * prompt so the note isn't lost at the gate transition.
+   */
+  upstream_approval_notes?: Record<string, string>;
+  /** Sprint σ.1 (2026-05-15). `series.genre` resolved at input-load time,
+   *  passed to the Skill selector so genre-scoped skills (comedy, etc.)
+   *  match. Null when series unknown or mock supabase environment. */
+  series_genre?: string | null;
   [key: string]: unknown;
 }
 

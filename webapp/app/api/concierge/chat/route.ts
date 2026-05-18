@@ -29,6 +29,7 @@ import path from 'node:path';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
+import { resolveSkillsContext } from '@/lib/concierge/build-context';
 import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
 import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
 import {
@@ -58,7 +59,14 @@ interface ChatRequest {
 
 const VALID_MODES: ReadonlyArray<ConciergeMode> = ['1', '2', '2.5', '3', '4'];
 const MAX_TOOL_ROUNDS = 5;
-const RECENT_TURN_WINDOW = 20;
+// Sprint γ 2026-05-14 hotfix — bumped 20 → 80. With Postgres trigger writing
+// a system turn per pipeline event + Claude posting team-chat bubbles in the
+// same channel, the previous 20-row window pushed user/assistant turns out
+// fast and Polina lost both her conversation history and ambient context.
+// 80 keeps a full smoke session worth of turns in the system prompt; the
+// per-block filters (PIPELINE_EVENTS_SINCE_LAST_REPLY, TEAM_CHAT_FROM_CLAUDE)
+// trim the final volume back down.
+const RECENT_TURN_WINDOW = 80;
 
 function normaliseMode(value: unknown): ConciergeMode {
   if (typeof value !== 'string') return '1';
@@ -255,8 +263,16 @@ export async function POST(req: Request) {
   const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
 
   const today = new Date().toISOString().slice(0, 10);
+
+  // Sprint φ.2 (2026-05-16) — PA reads the capability manifest only.
+  // Bodies are loaded on demand via the `getSkill` tool when she actually
+  // needs the playbook content. Shared helper resolves series+genre and
+  // formats the manifest identically for the auto-react route.
+  // See docs/skills-as-capabilities.md.
+  const { availablePlaybooks } = await resolveSkillsContext(supabase, episodeId);
+
   const buildPrompt = (turns: ConciergeTurnRow[]) =>
-    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model });
+    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model, availablePlaybooks });
 
   const stream = new ReadableStream({
     async start(controller) {

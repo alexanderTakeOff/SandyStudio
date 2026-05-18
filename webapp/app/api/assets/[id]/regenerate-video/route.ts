@@ -22,7 +22,8 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
-import { generateVideoVeoGemini } from '@/lib/agents/providers/veo-gemini';
+import { getMultiVideoProvider } from '@/lib/agents/providers/video-gen-multi';
+import { getVgenDefaults, type VgenProviderId } from '@/lib/api/vgen-defaults';
 import { persistBinary } from '@/lib/agents/persist-binary';
 import { loadSeriesBibleCanon } from '@/lib/agents/bible-loader';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
@@ -40,10 +41,19 @@ export const dynamic = 'force-dynamic';
 
 const Body = z.object({
   prompt: z.string().min(8).max(8000).optional(),
-  aspect_ratio: z.enum(['16:9', '9:16', '1:1']).optional(),
+  // Sprint β 2026-05-14: full capability surface. Adapters narrow + downgrade
+  // per provider (e.g. Veo silently downgrades 21:9 → 16:9; ignores seed).
+  aspect_ratio: z.enum(['16:9', '9:16', '1:1', '21:9', '4:3', '3:4', 'auto']).optional(),
   quality_tier: z.enum(['fast', 'standard']).optional(),
-  duration_seconds: z.number().min(4).max(8).optional(),
+  duration_seconds: z.number().min(4).max(15).optional(),
+  resolution: z.enum(['480p', '720p', '1080p']).optional(),
+  seed: z.number().int().optional(),
+  end_image_asset_id: z.string().uuid().nullable().optional(),
   reference_asset_id: z.string().uuid().nullable().optional(),
+  // Phase 2 (2026-05-13): explicit provider override per UI dropdown choice.
+  // Fallback chain: body override → asset metadata.provider_id → series default
+  // (app_config.vgen_defaults.<series>) → FALLBACK_DEFAULTS.provider_id.
+  provider: z.enum(['veo-3-img2vid', 'seedance-fal-img2vid']).optional(),
   directorConfirm: z.boolean().optional(),
 });
 
@@ -211,29 +221,90 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
-  const aspectRatio = body.aspect_ratio ?? (typeof meta.aspect_ratio === 'string' ? (meta.aspect_ratio as '16:9' | '9:16' | '1:1') : '16:9');
+  // Sprint β: optional end-frame for Seedance start→end transition.
+  let endImageBase64: string | null = null;
+  if (body.end_image_asset_id) {
+    const { data: endRef } = await sb
+      .from('assets')
+      .select('staging_path')
+      .eq('id', body.end_image_asset_id)
+      .maybeSingle();
+    const endPath = (endRef as { staging_path?: string | null } | null)?.staging_path;
+    if (endPath) {
+      endImageBase64 = await readBibleImageAsBase64(endPath);
+    }
+  }
+
+  const aspectRatio =
+    body.aspect_ratio ??
+    (typeof meta.aspect_ratio === 'string'
+      ? (meta.aspect_ratio as '16:9' | '9:16' | '1:1' | '21:9' | '4:3' | '3:4' | 'auto')
+      : '16:9');
   const qualityTier = body.quality_tier ?? (typeof meta.quality_tier === 'string' ? (meta.quality_tier as 'fast' | 'standard') : 'fast');
+  // Sprint β: resolution / seed / end-image as optional overrides.
+  const resolution =
+    body.resolution ??
+    (typeof meta.resolution === 'string'
+      ? (meta.resolution as '480p' | '720p' | '1080p')
+      : undefined);
+  const seed = typeof body.seed === 'number' ? body.seed : undefined;
+
+  // Provider resolution chain: explicit body override → previous asset's
+  // metadata.provider_id (preserve per-shot history) → series default →
+  // VgenDefaults fallback.
+  function normalizeProviderId(raw: string | null | undefined): VgenProviderId | null {
+    if (raw === 'veo-3' || raw === 'veo-3-img2vid') return 'veo-3-img2vid';
+    if (raw === 'seedance-fal' || raw === 'seedance-fal-img2vid') return 'seedance-fal-img2vid';
+    return null;
+  }
+  const providerFromMeta = normalizeProviderId(
+    typeof meta.provider_id === 'string' ? (meta.provider_id as string) : null,
+  );
+  const seriesDefaults = await getVgenDefaults(sb, asset.series_id);
+  const providerId: VgenProviderId =
+    body.provider ?? providerFromMeta ?? seriesDefaults.provider_id;
+  const videoProvider = getMultiVideoProvider(providerId);
+  const cap = videoProvider.capabilities;
+
   const durationSeconds = (() => {
+    const clamp = (n: number) => Math.min(cap.max_duration_s, Math.max(cap.min_duration_s, Math.round(n)));
     if (typeof body.duration_seconds === 'number' && body.duration_seconds > 0) {
-      return Math.min(8, Math.max(4, body.duration_seconds));
+      return clamp(body.duration_seconds);
     }
     if (typeof meta.duration_seconds === 'number' && meta.duration_seconds > 0) {
-      return Math.min(8, Math.max(4, Math.round(meta.duration_seconds as number)));
+      return clamp(meta.duration_seconds as number);
     }
     if (storyboardShot?.duration_seconds && storyboardShot.duration_seconds > 0) {
-      return Math.min(8, Math.max(4, Math.round(storyboardShot.duration_seconds)));
+      return clamp(storyboardShot.duration_seconds);
     }
-    return 5;
+    return clamp(5);
   })();
 
-  // Generate video
-  const real = await generateVideoVeoGemini({
+  // Veo Standard img2vid quirk — see runner.ts EXEC-VGEN for full rationale.
+  // Seedance has no equivalent constraint; only force-8 when explicitly Veo.
+  const isVeoProvider = providerId === 'veo-3-img2vid';
+  const generationDuration =
+    isVeoProvider && referenceImageBase64 && qualityTier === 'standard'
+      ? 8
+      : durationSeconds;
+
+  // Generate video via multi-provider router (Sprint β capability surface).
+  const real = await videoProvider.generate({
     prompt: finalPrompt,
     aspectRatio,
     quality: qualityTier,
-    durationSeconds,
+    durationSeconds: generationDuration,
     ...(referenceImageBase64
       ? { referenceImageBase64, referenceImageMime: 'image/png' as const }
+      : {}),
+    ...(cap.supports_resolutions.length > 0 && resolution
+      ? { resolution }
+      : {}),
+    ...(cap.supports_seed && typeof seed === 'number'
+      ? { seed }
+      : {}),
+    ...(cap.supports_end_image && endImageBase64
+      ? { endImageBase64, endImageMime: 'image/png' as const }
       : {}),
   });
 
@@ -277,6 +348,10 @@ export const POST = withApiHandler(async (req, ctx) => {
     size_bytes: real.size_bytes,
     aspect_ratio: aspectRatio,
     quality_tier: qualityTier,
+    // Sprint β: persist capability-extension knobs so reruns inherit them.
+    ...(resolution ? { resolution } : {}),
+    ...(typeof seed === 'number' ? { seed } : {}),
+    ...(body.end_image_asset_id ? { end_image_asset_id: body.end_image_asset_id } : {}),
     prompt: finalPrompt,
     reference_eref_asset_id: referenceErefAssetId,
     storyboard_asset_id: stbAsset?.id ?? null,
@@ -287,6 +362,12 @@ export const POST = withApiHandler(async (req, ctx) => {
     drive_upload_failed: persisted.driveUploadFailed,
     regenerated_from_asset_id: assetId,
     mode_at_time: decision.modeAtTime,
+    // Preserve vgen_pilot flag from the source so the latest row keeps
+    // counting as a pilot. Without this, regenerating a pilot shot dropped
+    // pilot_approved_count back below pilot_count and "Approve Direction &
+    // Fan Out" reported 1/2 even after the Director approved both pilots.
+    // Director surfaced this 2026-05-13 evening on E20.
+    ...(meta.vgen_pilot === true ? { vgen_pilot: true as const } : {}),
   } as Record<string, unknown>;
 
   // Production trace shown in AssetPreview's "⚙ {description}" green box.

@@ -25,6 +25,7 @@ import {
   type QualityTier,
   type VGENShotPanelSettings,
   type VGENShotPanelStoryboardShot,
+  type VgenProvider,
 } from './VGENShotPanel';
 
 interface VidShotMetadataLoose {
@@ -36,7 +37,12 @@ interface VidShotMetadataLoose {
   reference_eref_asset_id?: string;
   reference_asset_id?: string;
   prompt?: string;
-  vgen_settings?: Partial<VGENShotPanelSettings> & { reference_eref_asset_id?: string };
+  /** Phase 2 — provider id stamped by runner / regenerate-video. */
+  provider_id?: string;
+  vgen_settings?: Partial<VGENShotPanelSettings> & {
+    reference_eref_asset_id?: string;
+    provider_id?: string;
+  };
 }
 
 export interface VGENShotSectionProps {
@@ -60,6 +66,15 @@ function pickAspect(value: unknown): AspectRatio {
 function pickQuality(value: unknown): QualityTier {
   if (value === 'fast' || value === 'standard') return value;
   return 'fast';
+}
+
+function pickProvider(value: unknown): VgenProvider | undefined {
+  // Normalize legacy variants — runner persists 'seedance-fal' for the text-
+  // only path and 'seedance-fal-img2vid' when an EREF was used; the UI shows
+  // them as the same provider choice.
+  if (value === 'veo-3' || value === 'veo-3-img2vid') return 'veo-3-img2vid';
+  if (value === 'seedance-fal' || value === 'seedance-fal-img2vid') return 'seedance-fal-img2vid';
+  return undefined;
 }
 
 export function VGENShotSection({
@@ -92,6 +107,7 @@ export function VGENShotSection({
       '';
     const prompt = settings.prompt ?? m.prompt ?? '';
     const shotId = m.storyboard_shot?.shot_id ?? m.shot_id ?? filename;
+    const providerId = pickProvider(settings.provider_id ?? m.provider_id);
     const stub: VGENShotPanelStoryboardShot = m.storyboard_shot ?? { shot_id: shotId };
     const cs: VGENShotPanelSettings = {
       prompt,
@@ -99,6 +115,7 @@ export function VGENShotSection({
       quality_tier: quality,
       duration_seconds: duration,
       reference_asset_id: refId,
+      ...(providerId ? { provider_id: providerId } : {}),
     };
     return { storyboardShot: stub, currentSettings: cs };
   }, [metadata, filename]);

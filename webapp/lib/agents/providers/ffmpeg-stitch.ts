@@ -32,6 +32,14 @@ export interface FfmpegStitchInput {
     shotId: string;
     /** Raw mp4 bytes for this shot. */
     bytes: Buffer;
+    /**
+     * Optional desired output duration in seconds. When set, the concat
+     * demuxer emits an `outpoint <seconds>` directive so this shot is
+     * trimmed to exactly that length. Required when the provider clip is
+     * longer than the animatic intent (e.g. Veo Standard img2vid returns
+     * fixed 8s clips but animatic shot may want 3s).
+     */
+    durationSeconds?: number;
   }>;
   /** Optional music track. If absent, assembled mp4 keeps the per-shot audio. */
   music?: {
@@ -216,7 +224,7 @@ export async function ffmpegStitchEpisode(
   console.log('[stitch] tmp dir:', tmpDir, 'shots:', input.shotMp4Bytes.length);
   try {
     // 1. Write per-shot mp4s + music.
-    const shotPaths: string[] = [];
+    const shotEntries: Array<{ path: string; durationSeconds?: number }> = [];
     for (let i = 0; i < input.shotMp4Bytes.length; i++) {
       const shot = input.shotMp4Bytes[i]!;
       // Phase A.2 PR β fix 2026-05-08: keep filenames ASCII-only and avoid
@@ -228,8 +236,19 @@ export async function ffmpegStitchEpisode(
       const fpath = path.join(tmpDir, fname);
       await fs.writeFile(fpath, shot.bytes);
       // eslint-disable-next-line no-console
-      console.log('[stitch] wrote', fname, '→', shot.bytes.length, 'bytes');
-      shotPaths.push(fpath);
+      console.log(
+        '[stitch] wrote',
+        fname,
+        '→',
+        shot.bytes.length,
+        'bytes',
+        shot.durationSeconds !== undefined ? `(trim→${shot.durationSeconds}s)` : '',
+      );
+      const entry: { path: string; durationSeconds?: number } = { path: fpath };
+      if (shot.durationSeconds !== undefined && shot.durationSeconds > 0) {
+        entry.durationSeconds = shot.durationSeconds;
+      }
+      shotEntries.push(entry);
     }
 
     let musicPath: string | null = null;
@@ -245,9 +264,12 @@ export async function ffmpegStitchEpisode(
     // single-quoted form ("Impossible to open '<path>'"). Convert to forward
     // slashes — ffmpeg accepts both on Windows and forward slashes survive
     // the concat parser intact.
-    const concatList = shotPaths
-      .map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
-      .join('\n');
+    // Per-shot `outpoint` directive trims each input to the animatic-intended
+    // duration — required when provider clip length diverges from storyboard
+    // (e.g. Veo Standard img2vid returns fixed 8s clips but a 3s shot is
+    // wanted). 2026-05-13 — E20 stitched at 96s instead of 54s because
+    // Veo Fast=4s / Standard=8s clips played at native length.
+    const concatList = buildConcatList(shotEntries);
     const listPath = path.join(tmpDir, 'concat-list.txt');
     await fs.writeFile(listPath, concatList);
 
@@ -269,7 +291,12 @@ export async function ffmpegStitchEpisode(
       listPath,
     ];
     if (musicPath) {
-      args.push('-i', musicPath);
+      // Loop the music if it's shorter than the stitched video. Without
+      // `-stream_loop -1` and with `-shortest` further down, ffmpeg cuts
+      // the final cut to the music's length — Director uploaded a 32s
+      // loop file and the 54s episode got truncated to 32s.
+      // 2026-05-13 regression caught right after STITCH ran on E20.
+      args.push('-stream_loop', '-1', '-i', musicPath);
     }
     args.push(
       '-map',
@@ -287,7 +314,13 @@ export async function ffmpegStitchEpisode(
       '-movflags',
       '+faststart',
     );
-    if (musicPath) args.push('-shortest');
+    if (musicPath) {
+      // With `-stream_loop -1` music is now infinite — switch the trim
+      // anchor to video duration (`-fflags +genpts` ensures concat output
+      // has clean PTS so ffmpeg's "shortest" math matches the actual
+      // stitched length, then `-shortest` truncates at the video end).
+      args.push('-shortest');
+    }
     args.push(outPath);
 
     await runFfmpeg(args);
@@ -311,13 +344,40 @@ export async function ffmpegStitchEpisode(
   }
 }
 
+/** One concat-list entry: a shot file with optional trim duration. */
+export interface ConcatShotEntry {
+  /** Absolute path to the shot mp4 on disk. */
+  path: string;
+  /**
+   * Optional `outpoint <seconds>` directive — trims the clip to exactly this
+   * many seconds. Omit (or pass 0/undefined) to use the input's native length.
+   */
+  durationSeconds?: number;
+}
+
 /**
  * Build the concat-demuxer list contents for inspection or testing.
  * Pure function — no I/O. Exposed for unit tests.
+ *
+ * Output shape:
+ *   file '<path>'
+ *   outpoint <seconds>    # only when durationSeconds > 0
+ *
+ * `outpoint` is the canonical concat-demuxer trim directive (end timestamp
+ * in the input stream). Because the runner re-encodes via libx264 the cut is
+ * frame-accurate rather than keyframe-bound.
  */
-export function buildConcatList(shotPaths: ReadonlyArray<string>): string {
-  return shotPaths
-    .map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
+export function buildConcatList(
+  shots: ReadonlyArray<ConcatShotEntry>,
+): string {
+  return shots
+    .map((s) => {
+      const fileLine = `file '${s.path.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`;
+      if (s.durationSeconds !== undefined && s.durationSeconds > 0) {
+        return `${fileLine}\noutpoint ${s.durationSeconds.toFixed(3)}`;
+      }
+      return fileLine;
+    })
     .join('\n');
 }
 
@@ -340,7 +400,7 @@ export function buildFfmpegArgs(args: {
     args.listPath,
   ];
   if (args.musicPath) {
-    out.push('-i', args.musicPath);
+    out.push('-stream_loop', '-1', '-i', args.musicPath);
   }
   out.push(
     '-map',

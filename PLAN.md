@@ -13,6 +13,132 @@
 ## CURRENT STATE
 
 ```
+Phase:    **P0 + α + β SHIPPED 2026-05-14** — Flux 422 fix · E20 archived PARTIAL · Postgres trigger
+          Realtime + team-chat unified thread · capability manifests + Seedance full
+          controls + seedance-prompting skill. γ kickoff posted, awaiting Director brief in PA.
+Status:   ✅ **P0(a) Flux 422 fix** — `flux-pro-ultra-fal.ts` now sends `image_size: { width, height }`
+            object (fal.ai rejected the legacy `"1024x1024"` string with HTTP 422). Locked by 6
+            new unit tests + dimension regression guard.
+
+          ✅ **P0(b) E20 archive — full UI feature** (instead of CLI hack):
+            • Migration `0029_episodes_archive.sql` — `ADD VALUE 'ARCHIVED'` в `episode_status` enum
+              + `episodes.metadata jsonb` column + GIN index + whitelist `episode_archived` в
+              activity_events constraint. **Applied via `supabase db push` 2026-05-14** (CLI was
+              linked + authenticated; MCP `apply_migration` still denied).
+            • `webapp/lib/supabase/types.gen.ts` regenerated — `metadata: Json` + ARCHIVED in
+              enum union. Tactical casts dropped from archive/route.ts (one `as never` remains on
+              the .update() args, mirrors approve/route.ts and animatic-timing/route.ts pattern).
+            • NEW endpoint `POST /api/episodes/[id]/archive` — body `{state: 'PARTIAL'|'COMPLETE',
+              reason}`. Side-effects in single request: compute completed_shots → write
+              `metadata.archival` payload → flip status to ARCHIVED → CANCEL zombie jobs
+              (QUEUED/RUNNING/RETRYING) → log `episode_archived` audit event. Idempotent (409 on
+              re-archive).
+            • UI: Episode page header — new **Archive…** button + state radio (PARTIAL/COMPLETE)
+              + reason textarea + audit caption + warning-tinted ARCHIVED pill showing
+              `state · completed/total`. Hides button once already ARCHIVED.
+            • **E20 backfill** via service-role CLI script (`scripts/archive-e20-partial.ts`,
+              same shape the endpoint writes). Preview server `/login` redirect blocked UI-route
+              backfill, DB-side proof is stronger anyway:
+                status=ARCHIVED · metadata.archival.{state:PARTIAL, 17/19, reason, final_cut_path}
+                · 0 jobs still RUNNING/QUEUED/RETRYING (8 zombies cancelled) · audit event logged
+                · verify script: `scripts/verify-e20-archive.ts`.
+
+          ✅ **Auto-sync OFF** (Director directive 2026-05-14): `.claude/settings.json`
+            PostToolUse block emptied. 14 prior auto-sync commits remain on
+            `claude/quizzical-brown-462555` branch (no master merge per Director directive
+            "не мержи в мастер. чанк большой сначала проверим в бранче").
+
+          ✅ **Verify trio (Ritual 3)**: tsc clean · vitest **204/204** (+6 new flux tests) ·
+             replay-pilot **29/29**.
+
+          ✅ **β architecture decision (Director-approved 2026-05-14)** — Polina's full provider/
+             model refactor draft logged as "6-12 month direction"; β ships Claude counter-proposal:
+             capability manifests on existing `MultiVideoGenProvider`/`MultiImageGenProvider` +
+             universal `<ProviderControlPanel capabilities= values= onChange= />` UI +
+             `MultiVideoGenInput.provider_params` opaque pass-through + single
+             `.claude/skills/seedance-prompting/` prompt skill. 1-2 days vs Polina's 1-2 weeks.
+             Directly solves "Director can't set seed/resolution/duration/aspect_ratio in UI" pain.
+
+          ✅ **α SHIPPED 2026-05-14** (commit `9ac1af9`) — migration 0030 trigger
+            `activity_events_to_concierge` writes pipeline_event turns server-side
+            (replaces silent client-side hook); `/api/team-chat/post` Bearer-auth endpoint
+            (`TEAM_CHAT_TOKEN` env); new `useConciergeTurnsRealtime` hook;
+            ConciergePanel renders `claude` + `pipeline` bubble variants; PA
+            `TEAM_CHAT_FROM_CLAUDE` system-prompt block; α smoke 2 lanes ✓.
+
+          ✅ **β SHIPPED 2026-05-14** (commit `1627fb4`) — `lib/api/provider-capabilities.ts`
+            shared manifest · widened `MultiVideoGenInput/Capabilities` with
+            seed/resolution/end-image/full aspect set · Seedance adapter forwards new
+            params + resolution cost mult + duration [4,15] · regenerate-video endpoint
+            accepts new body fields · `<ProviderControlPanel>` capability-aware UI ·
+            VGENShotPanel uses it · `.claude/skills/seedance-prompting/SKILL.md` STUB v0.1.
+
+          ⏳ **γ kickoff posted 2026-05-14** — `webapp/docs/pa-gap-audit-e21.md` live
+            audit doc · team-chat kickoff turn `27bd17da` in PA thread `bdbdafcf-...` ·
+            Director's brief is the next gate. Production budget cap ~$80.
+
+          Phase sequence:
+          • ~~**P0**~~ — COMPLETE (`0510adc`, `11a621c`)
+          • ~~**α**~~ — COMPLETE (`9ac1af9`)
+          • ~~**β**~~ — COMPLETE (`1627fb4`)
+          • **γ** — IN PROGRESS — E21 production through PA chat (zero webapp clicks)
+          • **δ** (~3-7 d) — Character Identity Model (migration 0031 + EREF + drawer)
+          • **ε** (~1-2 w) — Skill Editor / Learning Loop (`valiant-soaring-karp.md`)
+
+Next:     Director types brief into PA panel → PA fires `createEpisode` → I monitor
+          team-chat thread, surface gaps into `webapp/docs/pa-gap-audit-e21.md`, post
+          observations via `npx tsx scripts/team-chat-post.ts --file <msg>` as needed.
+          Final γ smoke = first published SS-S14-E21 episode.
+
+Mode:     ===5=== EDIT MODE active · Mode 1 (MANUAL governance) · auto-sync OFF
+Date:     2026-05-14
+```
+
+---
+
+```
+Phase:    Phase 2 Video Provider — Seedance 2.0 integration COMPLETE 2026-05-13 19:30 UTC
+Status:   ✅ fal.ai Seedance 2.0 wired as multi-provider via existing `MultiVideoGenProvider` abstraction.
+            Director's "сделай выбор провайдера через дропдаун" closed end-to-end across UI + API + runner.
+            • NEW: `lib/agents/providers/fal-seedance.ts` (REST queue, mirrors `veo-gemini.ts` shape)
+            • NEW: `__tests__/lib/agents/providers/fal-seedance.test.ts` — 11 tests passing (slug resolution,
+              env override, parent-truncated URL quirk, 429/FAILED surfacing, cost math, data-URL inline,
+              duration clamp [4,15])
+            • EXTEND: `video-gen-multi.ts` — register `seedanceFalProvider` + dispatch in `getMultiVideoProvider`
+            • EXTEND: `lib/api/vgen-defaults.ts` — `VgenProviderId` widened to include `seedance-fal-img2vid`;
+              `FALLBACK_DEFAULTS.provider_id` flipped to Seedance (Director directive — new default)
+            • EXTEND: `lib/agents/provider-resolver.ts` — `seedance-fal[-img2vid]` → `FAL_KEY` env mapping
+            • REFACTOR: `lib/agents/runner.ts` EXEC-VGEN — direct `generateVideoVeoGemini` → `getMultiVideoProvider(provider!.providerId).generate(...)`. Veo Standard img2vid force-8 quirk preserved as Veo-only branch.
+            • REFACTOR: `app/api/assets/[id]/regenerate-video/route.ts` — body `provider` field; provider chain (body → asset meta → series default → fallback); capability-based duration clamp.
+            • EXTEND: `app/api/episodes/[id]/vgen/generate-single-shot/route.ts` — body `provider` field forwarded into Inngest event.
+            • EXTEND: `inngest/functions/exec-vgen.ts` — `VgenEventData.provider`, `syntheticResolvedProvider()` helper; per-event override beats `provider_assignments` global default in both pilot + single-shot handlers.
+            • UI: `components/vgen/VGENShotPanel.tsx` — new Provider `<select>` (Seedance / Veo). Cost preview is provider-aware. POST body includes `provider`.
+            • UI: `components/vgen/VGENShotSection.tsx` — `pickProvider()` normalizes legacy variants ('veo-3' ↔ 'veo-3-img2vid', etc.) when seeding panel.
+            • UI: `components/timeline/EpisodeTimelineSection.tsx` — provider `<select>` left of Generate Fast/Standard buttons. Defaults to Seedance.
+            • CATALOG: `lib/api/provider-catalog.ts` — Seedance entries added to `video` + `character_video` candidates (existing `/settings` ProviderSettings auto-picks up).
+            • MIGRATION: `0028_widen_vgen_provider.sql` APPLIED — `provider_assignments.character_video.active_provider_id = 'seedance-fal-img2vid'` confirmed in DB.
+
+            Verify trio: tsc clean · vitest **198/198** (was 187, +11 new) · replay-pilot **29/29**.
+            Real probe: Seedance Fast 5s img2vid via existing CLI test script — $1.21, 103s wall clock, 2.5 MB mp4. Provider stack working through every layer.
+
+            Out of scope (deferred):
+            • Seedance-specific prompt builder + skill `seedance-prompting` — Director said "пока не подключай — обсудим" (separate next PR, structure researched in session `nervous-bose-8196fc`)
+            • StageKebabMenu per-stage "Provider › […]" section — Phase 8 task
+            • 1080p resolution selection — Phase 2.1
+            • Longer Seedance durations (10-15s) — Phase 2.1, caps at 8s for animatic parity
+
+Next:     Director smokes the integration via UI:
+          1. Open any episode → timeline → pick a missing VID cell → confirm provider dropdown shows Seedance + Veo → click Generate · Fast → verify new VID-shot has metadata.provider_id='seedance-fal-img2vid'.
+          2. Open VGENShotPanel for an existing shot → flip Provider to Veo Standard → Regenerate → verify metadata.provider_id='veo-3-img2vid'.
+          3. (optional) /settings → Providers → swap default if desired.
+
+Mode:     Mode 1 (MANUAL) — Director approves each gate.
+Date:     2026-05-13
+```
+
+---
+
+```
 Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit d1c820d 2026-05-10)
           ✅ VGEN auto-COMPLETE — episode flips to GENERATION_APPROVED when all VID-shots APPROVED
           ✅ EXEC-STITCH — local ffmpeg final-cut assembly (first real mp4 produced SS-S14-E01)
@@ -20,24 +146,92 @@ Phase:    Phase A.2 COMPLETE (PR #22 merged 2026-05-08) + DAG visual fix (commit
           ✅ Bug D — STITCH status pill in Episode Timeline toolbar (Stitching / Ready / Failed)
           ✅ Pipeline DAG — Music before Animatic + new Final Cut row (was: Music after VGEN)
 
-          ✅ Mode 2.5 Phase 1-A + 1-B + Phase A COMPLETE — PR #23 merged 2026-05-11 (8fa5c00)
-             — Prod Assistant + concierge_threads + TTS + 13 tools + verbal approval + gpt-5.5 + BEHAVIOR_CONTRACT
-             — Details in PR #23 description; Phase B (Skill Editor / Learning Loop) design ready, impl deferred
+          ✅ **PR #23 MERGED 2026-05-12 17:22 UTC (commit `8fa5c00`, --merge style)** — Mode 2.5 PA + Mode 3 readiness drill on master
+             ✅ Phase 1-A: Prod Assistant rename + modular system-prompt builder (10 blocks) + concierge_threads/turns (migration 0025) + TTS + voice continuous mic + panel push CSS vars
+             ✅ Phase 1-B: 16 PA tools (was 13 + getAsset + getRecentActivityEvents + regenerateBibleImage) + verbal approval gate position-aware (Cyrillic + later-token-wins + Director-turn-window) + cookie-forwarded auth
+             ✅ Phase A: gpt-5.5 + reasoning_effort=none + BEHAVIOR_CONTRACT rules 1-8 + 1a (event awareness) + 1b (proactive driving) + AGENT_NAMES block
+             ✅ Mode 3 drill — 14 chained bugs fixed: SREV max_tokens 12000, agent role names everywhere, requestRevision auto-chain, revisionNote propagation, Writer HARD CONTRACT prompt, SREV verdict routing + S09-S12 checks, gate accepts REVIEW status, runner findApprovedAsset accepts REVIEW, Library 10s polling, kebab DELETE
+             ✅ Hooks shipped: 5 Operational-Ritual hooks (A staleness, B commit-guard, C verify-on-push, D session-memo, E parallel-worktree)
+             ✅ Docs: CLAUDE.md slim 604→347, technology.md §3.5 (shot rhythm/gag density) + §7 (handoff protocol)
+             ⏳ Phase D (Character Identity Model) — schema articulated by PA + Director (16:03), spec captured in observations. Migration 0026 + UI + backfill ~3-7 days. Awaiting Director green-light.
 
-          ✅ Composer upload regression fix (today, this session) — closes Director's report «зашёл в композер, вижу мок, нет кнопок»
+          ✅ **2026-05-13 evening — E20 partial close + VGEN/STITCH fix pack (10+ patches)**
+             Pipeline закрыт partial **17/19 shots** — Veo quota exhausted на SC11. Animatic trimmed 19→17 (60s→54s) via `webapp/scripts/trim-e20-animatic-sc11.ts`. STITCH executed: first 32s (music truncated через `-shortest`), потом 96s (concat actual mp4 durations).
+
+             FIXES:
+             - `regenerate-video/route.ts` forwards `vgen_pilot` metadata — Approve "1/2" bug closed
+             - `AssetPreview.tsx`: `<audio/video key={drive_path}>` — browser cache не держит старый stream после Replace
+             - `AnimaticPlayer.tsx`: pills solid `var(--accent-success)` + glow + weight 700 + textShadow — Director "тускло-зелёные" closed
+             - `buildShotPromptV2`: firstSentence truncate, drop role label / quoted title / Beat:/Mood:, add 16:9, endWithPeriod helper. Tests rewritten 23 passing
+             - `runner.ts EXEC-VGEN`: `Math.round` все 3 ветки duration; `forced 8s для Standard + img2vid` (Veo 3.1 docs); console.info debug log
+             - `veo-gemini.ts`: surface full Veo body в error message — bare 4xx больше не молчит
+             - `ffmpeg-stitch.ts`: `-stream_loop -1` music — short music больше не truncate'ит video. Tests 10 passing
+             - `EpisodeTimelineSection.tsx`: two-button **Generate · Fast / Standard** footer + passes `quality_tier` — обход Fast 429 quota через Standard bucket
+             - `lib/supabase/client.ts` singleton + `useActivityRealtime.ts` channel dedupe — closes WebSocket leak that turned next-dev в 2-5GB zombie
+             - Migration **0027 applied** — `activity_events_authenticated_select` SELECT policy for `authenticated`. Realtime push был silent из-за RLS блок на anon channel
+             - `scripts/backfill-pa-ambient.ts` — persist 21+2 ambient system turns retroactively when Realtime missed events
+
+             E20 final cut: 96s (concat actual VID-shot durations). q1 = trim per-shot к animatic shot_list timing (54s correct).
+             OPEN BUG: Realtime push still 0 POSTs to /api/concierge/ambient — browser hook не fires. Workaround: backfill script. q2 = Postgres trigger.
+
+             Verify final 17:28 UTC: tsc clean · vitest **185/185** · replay-pilot **29/29**.
+
+          ✅ **2026-05-13 10:00 UTC — Realtime push для PA + EREF skip-if-approved + 19/19 coverage**
+             Director directive: PA должна узнавать о pipeline events мгновенно, не pull-only. Phase 10A.0 item B shipped.
+             Migration `0026_realtime_publish_activity_events.sql` (NEEDS MANUAL APPLY — `apply_migration` MCP denied permissions): `ALTER PUBLICATION supabase_realtime ADD TABLE public.activity_events` + `REPLICA IDENTITY FULL`.
+             NEW backend: `lib/concierge/ambient-events.ts` (decision + filter + metadata extract), `app/api/concierge/ambient/route.ts` (POST endpoint, RLS guard, dedupe by activity_event_id).
+             NEW frontend: `hooks/useActivityRealtime.ts` (Supabase Realtime subscription per thread), `ConciergePanel.tsx` invokes hook with current threadId.
+             NEW prompt block `PIPELINE_EVENTS_SINCE_LAST_REPLY` в system-prompt-builder.ts — лифтит system role turns в LLM context, окно "since last assistant reply", cap 8 most recent.
+             EREF runner: skip-if-already-approved (loop iterates only shots без APPROVED ref) — re-run idempotent + topup-only. E20 теперь **19/19 coverage** (16 ранее + 3 missing закрыты PA/Director через UI пока я работал на Realtime).
+             Verify: tsc clean · vitest **182/182** (+9 new ambient-events tests) · replay-pilot 29/29.
+
+          ✅ **2026-05-13 — Composer upload regression fix (sibling worktree, commit `2d72849` merged in)** — closes Director's report «зашёл в композер, вижу мок, нет кнопок»
              — NEW route `/api/assets/[id]/upload-music-direct` writes binary to AUD-music asset
-             — `AssetPreview.tsx` now renders `MGENActionsBlock` for AUD-music (not LOCKED):
+             — `AssetPreview.tsx` renders `MGENActionsBlock` for AUD-music (not LOCKED):
                • 🎵 Upload track — file picker .mp3/.wav, 20MB, → upload-music-direct
                • ✨ Run generation — re-fires EXEC-MGEN, «mock» chip (Suno not wired)
              — Status stays REVIEW after upload (Director still approves explicitly)
+             — Director smoke #2 (Audio reorg on new episode, `webapp/docs/smoke-tests/audio-reorg-smoke.md`) now unblocked
 
-Next:     1. Director smoke #2 — Audio reorg on new episode (plan: webapp/docs/smoke-tests/audio-reorg-smoke.md), now unblocked
-          2. Phase 1.5 backlog — variants_per_generation (LT-07), vgen_defaults UI, buildShotPromptV2 (LT-14)
-          3. UI cleanup LT-10..13 (scalable timeline 60+, episode page noise, foldable Activity Feed)
-          4. Mode 2.5 Phase B (Skill Editor) when Director ready
+          ✅ **2026-05-12 19:25 UTC — EREF prompt builder fix + Spatial Coverage Manifest (q3a)**
+             Director через PA (18:58) surfaced: EREF `image_prompt` шаблон игнорирует `camera_angle` / `camera_movement` / `camera_motivation` / location `sub_area` — все 19 shots коллапсируют на одну flat location plate, storyboard spatial intent теряется на gpt-image-1 шаге.
+             Cancelled running fan-out `01KRERN7ZW5KT0T62QY3A1RAKS` (Director-approved q1). 8 refs остались (2 pilots APPROVED + 6 fanout REVIEW/REVISION/REJECTED) — q2c: Director review через UI первым делом.
+             `lib/agents/runners/episode-references.ts` parser теперь читает camera_* + location.sub_area из storyboard JSON; prompt builder использует formatted spatial block; closing instruction: "Two shots in same location must show visibly different viewpoints, do NOT replicate flat plate".
+             NEW `lib/api/eref-spatial-coverage.ts` — pure derivation `deriveSpatialCoverage(shots) → entries[]` с per-shot spatial_anchor + camera_direction (17 vocabulary mappings) + variation_note (per-location anchor reuse tracking). Phase 1 of Spatial Coverage Manifest layer (UI/persistence asset — follow-up).
+             NEW `__tests__/lib/api/eref-spatial-coverage.test.ts` — 7 unit tests on anchor inference, variation tracking, vocabulary mapping.
 
-Mode:     ===5=== EDIT (Director active) — switches to ===1=== at session start per CLAUDE.md
-Date:     2026-05-12
+          ✅ **2026-05-12 18:30 UTC — surgical patch STB E20 v02 + gate.ts MGEN unblock**
+             STB v02 was production-usable but missing camera fields. One-off `webapp/scripts/patch-e20-stb-camera.ts` added `camera_movement` + `camera_motivation` to all 19 shots (acts→shots flatten). Includes 2 orbit experiments (SH06 `slow_orbit_around_subject`, SH10 `orbit_pullback`). Idempotent.
+             Storyboarder skill updated (`agents/exec/storyboarder.md`): Default camera vocabulary section with 17 movement values + rules-of-thumb per shot_role; `camera_motivation` field added to shot schema; edge case "Style Bible camera vocab missing" now uses MVP defaults instead of stalling.
+             PA approved STB v02 → WCHK COMPLETED 18:24 → EREF+MGEN fired in parallel 18:27.
+             **MGEN failed `Upstream gate failed: Approved animatic (need 1, found 0)`** — leftover from pre-LT-04 audio reorg (Director directive 2026-05-08 q3b moved Composer BEFORE animatic). `lib/agents/gate.ts EXEC-MGEN` now requires APPROVED storyboard + APPROVED world_check (not animatic).
+             Re-fired EREF + MGEN events: **MGEN COMPLETED ✅**, EREF RUNNING (~3-5min gpt-image-1 fan-out). Verify trio clean.
+
+          ✅ **2026-05-12 evening hot-fix — SREV REVIEW-loader layer (Sprint 10 precursor)**
+             SREV на v03 крашился мгновенно (4× function.failed, ~50ms каждый).
+             Root: `runner.ts:87` `loadAgentInputs` фильтрует `.eq('status','APPROVED')` — 3-й слой того же бага что чинили днём (gate + runner findApprovedAsset уже принимали REVIEW).
+             Fix: `loadAgentInputs.allowedStatuses?` параметр, `AgentFunctionSpec.inputAllowedStatuses?`, EXEC-SREV прокидывает `['APPROVED','REVIEW','REVISION']`.
+             Bonus: `agent_failed` activity_event через try/catch + step.run('log-agent-failure') (idempotent на Inngest retries) — PA теперь видит причины падения через `getRecentActivityEvents`.
+             Verify: tsc clean · vitest 166/166 · replay-pilot 29/29.
+
+Next (after /clear in fresh session — Director directive 2026-05-13 evening, ~17:30 UTC):
+          1. **q1 — STITCH per-shot trim** ✂️ (~30-45min)
+             ffmpeg concat сейчас берёт full mp4 durations (96s output). Patch: переключить concat-list builder на per-file `outpoint <animatic.shot_list[i].duration_seconds>` directive → final cut respects storyboard timing → 54s correct.
+             File: `webapp/lib/agents/providers/ffmpeg-stitch.ts` + unit tests + re-fire STITCH event.
+          2. **q2 — Postgres trigger Realtime reliable** 🔔 (~30min)
+             Browser hook silent: 0 POSTs на /api/concierge/ambient несмотря migration 0027. Replace fragile client subscription с server-side trigger: on `activity_events` INSERT → automatic insert into `concierge_turns` для active thread. Migration 0028.
+             После — `useActivityRealtime.ts` можно simplify или удалить.
+          3. **q3 — Team-chat (Director's directive)** 💬 (~50min)
+             Минимальный unified channel: POST /api/team-chat/post endpoint → persist в PA thread с `role=system metadata.kind='claude_message'` + content `**Клод:** ...`. ConciergePanel рендерит distinct bubble. PA system prompt block lifts мои messages в её context (рядом с PIPELINE_EVENTS).
+             Я постю через curl. Director сейчас пишет в его field в webapp → "Директор:". Я в том же thread → "Клод:". PA отвечает в том же — все три видят всё.
+          4. E20 publish — approve current 96s OR wait q1 → re-stitch 54s
+          5. Sprint 10 plan (Director-approved earlier — q1y q2a q4y):
+             - 10A Reviewer Unification — 5-7 дней
+             - 10B Phase D Character Identity Model — 3-7 дней
+             - 10C Skill Editor / Learning Loop — 5-7 дней
+
+Mode:     ===5=== EDIT MODE (Director активировал) → /clear для fresh session
+Date:     2026-05-13
 ```
 
 ### Episodes in DB (production-grade)
@@ -174,6 +368,7 @@ Pre-2026-04-30 entries → `docs/PLAN-history.md`.
 
 | Date | Change | By |
 |------|--------|----|
+| 2026-05-12 | **PR #23 MERGED** to master (merge commit `8fa5c00`, --merge style preserves 227 auto-sync commits). Mode 2.5 PA + Mode 3 readiness drill shipped. | Director + Claude Code |
 | 2026-05-12 | fix(srev): runner's internal `findApprovedAsset` (script-reviewer.ts) — was a second layer of the same deadlock, requiring `status === 'APPROVED'` after gate already passed. Renamed semantically (still legacy name) to accept `REVIEW`/`REVISION`/`APPROVED` so Story Editor can review pending drafts. tsc clean, 166/166. (`lib/agents/runners/script-reviewer.ts`) | Claude Code |
 | 2026-05-12 | fix(gate): Story Editor's upstream gate now accepts SCR in `REVIEW`/`REVISION`/`APPROVED` status — pre-fix gate required APPROVED upstream, but Story Editor IS the gate FROM REVIEW to APPROVED (chicken-and-egg deadlock for the internal Writer↔Story Editor loop). Added `AgentDependency.allowedStatuses` field, single-status path still uses .eq() (test compat), multi-status uses .in(). 166/166 tests. (`lib/agents/gate.ts`) | Claude Code |
 | 2026-05-12 | feat(pa): BEHAVIOR_CONTRACT rule 1b "Proactive Pipeline Driving" — PA must push Director with next concrete proposal, not wait for "что дальше?". Flight-crew analogy from Director's 17:05 directive: Director draws the route, PA flies the plane. Each PA response ends with next concrete action OR single targeted unblock question. Mode 3 readiness measure: how rarely Director has to ask what's next. (`lib/concierge/system-prompt-builder.ts`) | Claude Code |

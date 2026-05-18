@@ -122,6 +122,13 @@ export interface AgentFunctionSpec<EventName extends string = string> {
   resolveRunArgs?: (eventData: Record<string, unknown>) => Partial<
     Pick<RunAgentArgs, 'shotId' | 'section' | 'collectionPoint' | 'youtubeVideoId'>
   >;
+  /**
+   * Asset statuses to load into upstream_assets for this agent. Defaults to
+   * `['APPROVED']`. Reviewer agents override with `['APPROVED','REVIEW','REVISION']`
+   * so the asset under review is actually loaded. Closes the 3rd layer of the
+   * gate→runner→loader REVIEW-status bug discovered 2026-05-12.
+   */
+  inputAllowedStatuses?: readonly string[];
 }
 
 export function createAgentInngestFunction<E extends string>(
@@ -144,6 +151,13 @@ export function createAgentInngestFunction<E extends string>(
         episodeId: string;
       };
       const { episodeId } = eventData;
+
+      // job is captured outside try{} so the outer catch can reference it
+      // when emitting agent_failed activity (closes the "PA can't see
+      // pipeline failures" hole observed 2026-05-12).
+      let capturedJobId: string | null = null;
+
+      try {
 
       // ── Step 1: insert RUNNING job row + emit agent_started activity ─────
       const job = await step.run('insert-job-row', async () => {
@@ -175,6 +189,7 @@ export function createAgentInngestFunction<E extends string>(
         } as never);
         return created;
       });
+      capturedJobId = job.id;
 
       // ── Step 2: load + validate (one checkpoint) ───────────────────────────
       const gate = await step.run('load-and-validate', async () => {
@@ -183,6 +198,7 @@ export function createAgentInngestFunction<E extends string>(
           supabase,
           agentId: spec.agentId,
           episodeId,
+          allowedStatuses: spec.inputAllowedStatuses,
         });
         return validateAgentInputs({
           supabase,
@@ -210,6 +226,7 @@ export function createAgentInngestFunction<E extends string>(
           supabase,
           agentId: spec.agentId,
           episodeId,
+          allowedStatuses: spec.inputAllowedStatuses,
         });
         // Resolve provider for agents that consume an external contract.
         // Resolver auto-downgrades to 'mock' when the env key is missing,
@@ -420,6 +437,41 @@ export function createAgentInngestFunction<E extends string>(
         assetId: saved.assetId,
         runId,
       };
+
+      } catch (err) {
+        // Best-effort failure logging — writes one activity_event so the
+        // Prod Assistant's `getRecentActivityEvents` surfaces the cause
+        // instead of timing out silently. Wrapped in step.run for
+        // idempotency across Inngest retries. Re-throws so Inngest still
+        // marks the function FAILED (preserves existing semantics).
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await step.run('log-agent-failure', async () => {
+          try {
+            const supabase = createSupabaseServiceRoleClient();
+            await supabase.from('activity_events').insert({
+              event_type: 'agent_failed',
+              severity: 'error',
+              title: `${agentDisplayName(spec.agentId)} failed`,
+              description: errMsg.slice(0, 500),
+              actor: spec.agentId,
+              episode_id: episodeId,
+              job_id: capturedJobId,
+              metadata: {
+                agent: spec.agentId,
+                inngest_run_id: runId,
+                error: errMsg.slice(0, 500),
+              },
+            } as never);
+            if (capturedJobId) {
+              await markJobFailed(supabase, capturedJobId, errMsg.slice(0, 500));
+            }
+          } catch {
+            // Swallow logging errors so we don't mask the original failure.
+          }
+          return { logged: true };
+        });
+        throw err;
+      }
     },
   );
 }

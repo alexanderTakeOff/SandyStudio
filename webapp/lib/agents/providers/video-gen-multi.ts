@@ -22,24 +22,40 @@ import {
   type VeoQualityTier,
   type VeoGeminiResult,
 } from './veo-gemini';
+import {
+  generateVideoFalSeedance,
+  type FalSeedanceResult,
+} from './fal-seedance';
 
 // ── Universal Core types ─────────────────────────────────────────────────────
 
-export type MultiVideoAspectRatio = VeoAspectRatio;
+// Aspect/resolution sets are super-sets of any single provider's capability;
+// adapters reject or downgrade values they don't support.
+export type MultiVideoAspectRatio = '16:9' | '9:16' | '1:1' | '21:9' | '4:3' | '3:4' | 'auto';
 export type MultiVideoQualityTier = VeoQualityTier;
+export type MultiVideoResolution = '480p' | '720p' | '1080p';
 
 export interface MultiVideoGenInput {
   /** Composed prompt (already merged with shot details + episode title). */
   prompt: string;
-  /** Universal Core: 16:9 (YouTube), 9:16 (Reels/Shorts), 1:1 (square). */
+  /** Universal Core: 16:9 (YouTube), 9:16 (Reels/Shorts), 1:1 (square), or
+   * provider extensions (21:9 / 4:3 / 3:4 / auto inferred from reference). */
   aspectRatio?: MultiVideoAspectRatio;
   /** Universal Core: 'fast' (cheap) vs 'standard' (higher quality). */
   quality?: MultiVideoQualityTier;
-  /** Universal Core: 1-8 second clips. */
+  /** Universal Core: 4-15 second clips. Providers clamp to their own range. */
   durationSeconds?: number;
-  /** Universal Core: optional img2vid reference frame. */
+  /** Universal Core: optional img2vid reference frame (start). */
   referenceImageBase64?: string;
   referenceImageMime?: 'image/png' | 'image/jpeg';
+  /** Sprint β 2026-05-14: 480p / 720p / 1080p — provider may downgrade. */
+  resolution?: MultiVideoResolution;
+  /** Sprint β 2026-05-14: reproducibility seed (Seedance only currently). */
+  seed?: number;
+  /** Sprint β 2026-05-14: optional end-frame for start-to-end transition.
+   * Seedance only currently; Veo ignores. */
+  endImageBase64?: string;
+  endImageMime?: 'image/png' | 'image/jpeg';
 }
 
 export interface MultiVideoGenResult {
@@ -71,6 +87,12 @@ export interface MultiVideoGenCapabilities {
   /** Min/max clip duration in seconds. */
   min_duration_s: number;
   max_duration_s: number;
+  /** Sprint β 2026-05-14 — capability manifest extension. */
+  supports_resolutions: ReadonlyArray<MultiVideoResolution>;
+  supports_seed: boolean;
+  supports_end_image: boolean;
+  /** Soft prompt cap; UI uses to warn before submit. */
+  max_prompt_chars?: number;
 }
 
 export interface MultiVideoGenProvider {
@@ -99,6 +121,11 @@ const VEO_CAPABILITIES: MultiVideoGenCapabilities = {
   supports_reference_image: true,
   min_duration_s: 4,
   max_duration_s: 8,
+  // Veo 3 renders at fixed model resolution; do not expose a chooser.
+  supports_resolutions: [],
+  supports_seed: false,
+  supports_end_image: false,
+  max_prompt_chars: 2000,
 };
 
 function veoResultToMulti(r: VeoGeminiResult): MultiVideoGenResult {
@@ -122,13 +149,23 @@ export const veo3Provider: MultiVideoGenProvider = {
   capabilities: VEO_CAPABILITIES,
   async generate(input: MultiVideoGenInput): Promise<MultiVideoGenResult> {
     try {
+      // Veo accepts only 16:9 / 9:16 / 1:1; downgrade any wider aspect to 16:9.
+      const veoAspect: VeoAspectRatio | undefined =
+        input.aspectRatio === '16:9' ||
+        input.aspectRatio === '9:16' ||
+        input.aspectRatio === '1:1'
+          ? input.aspectRatio
+          : input.aspectRatio
+            ? '16:9'
+            : undefined;
       const r = await generateVideoVeoGemini({
         prompt: input.prompt,
-        aspectRatio: input.aspectRatio,
+        aspectRatio: veoAspect,
         quality: input.quality,
         durationSeconds: input.durationSeconds,
         referenceImageBase64: input.referenceImageBase64,
         referenceImageMime: input.referenceImageMime,
+        // Veo: seed/resolution/endImage silently ignored (capabilities flag declares them off).
       });
       return veoResultToMulti(r);
     } catch (err) {
@@ -141,12 +178,81 @@ export const veo3Provider: MultiVideoGenProvider = {
   },
 };
 
-/** Lookup a provider by id. Phase 1 ships Veo 3.1 (default model in adapter);
- *  Phase 2+ adds Kling/etc. */
+// ── Seedance 2.0 (fal.ai) wrapper ────────────────────────────────────────────
+
+const SEEDANCE_CAPABILITIES: MultiVideoGenCapabilities = {
+  supports_aspects: ['16:9', '9:16', '1:1', '21:9', '4:3', '3:4', 'auto'],
+  supports_qualities: ['fast', 'standard'],
+  supports_reference_image: true,
+  // Sprint β 2026-05-14: full native range exposed (was capped at 8s for Phase 2
+  // animatic parity). UI control panel now lets Director pick anywhere in [4,15].
+  min_duration_s: 4,
+  max_duration_s: 15,
+  supports_resolutions: ['480p', '720p', '1080p'],
+  supports_seed: true,
+  supports_end_image: true,
+  max_prompt_chars: 3000,
+};
+
+function seedanceResultToMulti(r: FalSeedanceResult): MultiVideoGenResult {
+  return {
+    status: 'success',
+    provider: r.provider,
+    format: r.format,
+    width: r.width,
+    height: r.height,
+    duration_seconds: r.duration_seconds,
+    size_bytes: r.size_bytes,
+    mp4_b64: r.mp4_b64,
+    cost_usd: r.cost_usd,
+    model_id: r.model_id,
+    operation_name: r.operation_name,
+  };
+}
+
+export const seedanceFalProvider: MultiVideoGenProvider = {
+  id: 'seedance-fal-img2vid',
+  capabilities: SEEDANCE_CAPABILITIES,
+  async generate(input: MultiVideoGenInput): Promise<MultiVideoGenResult> {
+    try {
+      const r = await generateVideoFalSeedance({
+        prompt: input.prompt,
+        aspectRatio: input.aspectRatio,
+        quality: input.quality,
+        durationSeconds: input.durationSeconds,
+        referenceImageBase64: input.referenceImageBase64,
+        referenceImageMime: input.referenceImageMime,
+        resolution: input.resolution,
+        seed: input.seed,
+        endImageBase64: input.endImageBase64,
+        endImageMime: input.endImageMime,
+      });
+      return seedanceResultToMulti(r);
+    } catch (err) {
+      throw new MultiVideoGenError(
+        err instanceof Error ? err.message : 'Seedance 2.0 generation failed',
+        'seedance-fal-img2vid',
+        err,
+      );
+    }
+  },
+};
+
+/** Lookup a provider by id. Phase 1 shipped Veo 3.1; Phase 2 (2026-05-13) adds
+ *  Seedance 2.0 via fal.ai. Future providers (Kling, Hailuo, Sora) plug in by
+ *  exporting a `MultiVideoGenProvider` and adding a branch here. */
 export function getMultiVideoProvider(id: string): MultiVideoGenProvider {
   if (id === 'veo-3-img2vid' || id === 'veo-3') return veo3Provider;
+  if (id === 'seedance-fal-img2vid' || id === 'seedance-fal') return seedanceFalProvider;
   throw new MultiVideoGenError(
-    `Unknown video provider id "${id}" — Phase 1 supports only veo-3-img2vid`,
+    `Unknown video provider id "${id}" — supported: veo-3-img2vid, seedance-fal-img2vid`,
     id,
   );
 }
+
+/** Known provider ids that the router dispatches. Order is UI-display order
+ *  (Seedance first since it's the new default). */
+export const KNOWN_VIDEO_PROVIDER_IDS: ReadonlyArray<string> = [
+  'seedance-fal-img2vid',
+  'veo-3-img2vid',
+];

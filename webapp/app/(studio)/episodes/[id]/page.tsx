@@ -9,7 +9,7 @@ import { use, useState, type KeyboardEvent } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil } from 'lucide-react';
+import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Archive } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -37,6 +37,17 @@ interface Stage {
   assets_in_review?: number;
 }
 
+interface EpisodeArchival {
+  state: 'PARTIAL' | 'COMPLETE';
+  completed_shots: number;
+  total_shots: number | null;
+  reason: string;
+  final_cut_asset_id: string | null;
+  final_cut_path: string | null;
+  archived_at: string;
+  archived_by: string;
+}
+
 interface Episode {
   id: string;
   episode_code: string;
@@ -46,6 +57,7 @@ interface Episode {
   budget_ceiling: number | null;
   budget_spent: number | null;
   series_id: string;
+  metadata?: { archival?: EpisodeArchival } | null;
 }
 
 interface ActivityRow {
@@ -97,6 +109,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   const { id } = use(params);
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [triggerOpen, setTriggerOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string | undefined>();
 
@@ -168,12 +181,33 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             <div className="flex items-center gap-3 mt-1.5 text-xs">
               <span
                 className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded uppercase tracking-wider font-semibold"
-                style={{
-                  background: 'color-mix(in oklab, var(--accent-info) 14%, transparent)',
-                  color: 'var(--accent-info)',
-                }}
+                style={
+                  episode.status === 'ARCHIVED'
+                    ? {
+                        background: 'color-mix(in oklab, var(--accent-warning) 16%, transparent)',
+                        color: 'var(--accent-warning)',
+                      }
+                    : {
+                        background: 'color-mix(in oklab, var(--accent-info) 14%, transparent)',
+                        color: 'var(--accent-info)',
+                      }
+                }
               >
+                {episode.status === 'ARCHIVED' && <Archive size={11} />}
                 {episode.status.replace(/_/g, ' ').toLowerCase()}
+                {episode.status === 'ARCHIVED' && episode.metadata?.archival && (
+                  <>
+                    {' · '}
+                    {episode.metadata.archival.state.toLowerCase()}
+                    {episode.metadata.archival.total_shots != null && (
+                      <>
+                        {' '}
+                        {episode.metadata.archival.completed_shots}/
+                        {episode.metadata.archival.total_shots}
+                      </>
+                    )}
+                  </>
+                )}
               </span>
               <span className="text-text-muted">Mode {episode.governance_mode}</span>
               <span className="text-text-muted">·</span>
@@ -189,6 +223,11 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             <Button variant="secondary" size="sm" onClick={() => setTriggerOpen(true)}>
               <RotateCcw size={14} /> Re-trigger…
             </Button>
+            {episode.status !== 'ARCHIVED' && (
+              <Button variant="ghost" size="sm" onClick={() => setArchiveOpen(true)} title="Archive episode…">
+                <Archive size={14} /> Archive…
+              </Button>
+            )}
             <Button variant="ghost" size="sm">
               <MoreHorizontal size={14} />
             </Button>
@@ -426,6 +465,14 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         onTriggered={() => mutate()}
       />
 
+      <ArchiveModal
+        open={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        episodeId={id}
+        episodeCode={episode.episode_code}
+        onArchived={() => mutate()}
+      />
+
       <PreviewDrawer
         open={previewAssetId !== null}
         onClose={() => setPreviewAssetId(null)}
@@ -649,6 +696,105 @@ function TriggerModal({
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={fire} disabled={pending || reason.length < 3}>
             {pending ? 'Firing…' : 'Trigger'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ArchiveModal({
+  open,
+  onClose,
+  episodeId,
+  episodeCode,
+  onArchived,
+}: {
+  open: boolean;
+  onClose: () => void;
+  episodeId: string;
+  episodeCode: string;
+  onArchived: () => void;
+}) {
+  const [state, setState] = useState<'PARTIAL' | 'COMPLETE'>('PARTIAL');
+  const [reason, setReason] = useState('');
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function fire() {
+    if (reason.trim().length < 3) return;
+    setPending(true);
+    setErr(null);
+    const res = await fetch(`/api/episodes/${episodeId}/archive`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ state, reason: reason.trim() }),
+    });
+    setPending(false);
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      setErr(j.error ?? `Archive failed (${res.status})`);
+      return;
+    }
+    onArchived();
+    onClose();
+    setReason('');
+    setState('PARTIAL');
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Archive ${episodeCode}`}>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
+            Archive state
+          </label>
+          <div className="flex gap-2">
+            {(['PARTIAL', 'COMPLETE'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setState(s)}
+                className={`flex-1 h-10 px-3 rounded-lg border text-sm font-medium transition ${
+                  state === s
+                    ? 'border-[var(--accent-warning)] text-[var(--accent-warning)] bg-[color-mix(in_oklab,var(--accent-warning)_12%,transparent)]'
+                    : 'border-glass text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {s === 'PARTIAL' ? 'Partial — closed early' : 'Complete — explicitly retired'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
+            Reason (required, audit log)
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={
+              state === 'PARTIAL'
+                ? 'e.g. Veo quota exhausted on SC11, pipeline closed at 17/19'
+                : 'e.g. shipped, analytics window closed, no further work'
+            }
+            rows={3}
+            className="w-full p-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm resize-none"
+          />
+        </div>
+        <p className="text-[11px] text-text-muted">
+          Flips status to <code className="font-mono">ARCHIVED</code>, cancels any
+          QUEUED/RUNNING/RETRYING jobs on this episode, and logs an
+          <code className="font-mono"> episode_archived</code> audit event.
+          Idempotent — re-archiving an ARCHIVED episode is rejected.
+        </p>
+        {err && (
+          <p className="text-xs text-[var(--accent-danger)]">{err}</p>
+        )}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={fire} disabled={pending || reason.trim().length < 3} variant="warning">
+            {pending ? 'Archiving…' : 'Archive episode'}
           </Button>
         </div>
       </div>

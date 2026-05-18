@@ -76,6 +76,14 @@ export function getProviderCatalog(): ProviderCatalog {
     video: [
       MOCK,
       {
+        id: 'seedance-fal',
+        display_name: 'Seedance 2.0 (text-to-video)',
+        vendor: 'ByteDance via fal.ai',
+        envKey: 'FAL_KEY',
+        adapter_ready: true,
+        cost_hint: '~$0.3024/s (standard) · ~$0.2419/s (fast)',
+      },
+      {
         id: 'veo-3',
         display_name: 'Veo 3.1 (text-to-video)',
         vendor: 'Google AI Studio (Gemini API)',
@@ -93,6 +101,14 @@ export function getProviderCatalog(): ProviderCatalog {
     ],
     character_video: [
       MOCK,
+      {
+        id: 'seedance-fal-img2vid',
+        display_name: 'Seedance 2.0 (image-to-video)',
+        vendor: 'ByteDance via fal.ai',
+        envKey: 'FAL_KEY',
+        adapter_ready: true,
+        cost_hint: '~$0.3024/s (standard) · ~$0.2419/s (fast) — best character motion (2026-05-13)',
+      },
       {
         id: 'veo-3-img2vid',
         display_name: 'Veo 3.1 (image-to-video)',

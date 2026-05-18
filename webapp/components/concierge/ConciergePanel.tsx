@@ -23,10 +23,28 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { withHardBreaks } from '@/lib/markdown-breaks';
+import {
+  useConciergeTurnsRealtime,
+  type ConciergeTurnRow,
+} from '@/hooks/useConciergeTurnsRealtime';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
+// Sprint α 2026-05-14 — team-chat unified thread surfaces three voices:
+//   user     → Director's typed input
+//   assistant→ PA's reply
+//   claude   → CLI agent's curl POST (/api/team-chat/post)
+//   pipeline → ambient agent_started/completed/approval events
+// `claude` + `pipeline` come from concierge_turns Realtime (migration 0030
+// Postgres trigger writes them server-side).
 interface Message {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'claude' | 'pipeline';
   content: string;
+  /** DB turn id, only for system turns; lets us dedupe Realtime arrivals. */
+  turnId?: string;
+  /** For `pipeline` messages — severity hint for the bubble accent. */
+  severity?: 'info' | 'warning' | 'error';
+  /** For `claude` messages — author label, default "Claude". */
+  author?: string;
 }
 
 const STORAGE_KEY = 'sandystudio.prodassistant.history';
@@ -234,6 +252,151 @@ export function ConciergePanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, streaming]);
 
+  // Sprint α 2026-05-14 — team-chat unified thread.
+  // Replaces the silent useActivityRealtime → /api/concierge/ambient hop.
+  // Migration 0030 wires a Postgres trigger:
+  //   activity_events INSERT → concierge_turns INSERT (role=system)
+  // The browser only needs to read concierge_turns and render the two
+  // server-authored bubble variants (kind=pipeline_event, kind=claude_message).
+  //
+  // Sprint q1 2026-05-15 — Polina auto-reaction.
+  // When a critical system turn arrives, fire /api/concierge/auto-react so
+  // Polina surfaces it in the channel instead of waiting for the Director
+  // to type. Dedup via in-memory ref (server checks acked_by_assistant too).
+  const autoReactFiredRef = useRef<Set<string>>(new Set());
+  useConciergeTurnsRealtime(threadId, {
+    onNewTurn: (turn: ConciergeTurnRow) => {
+      if (turn.role !== 'system') return; // user/assistant flow through chat route
+      const m = (turn.metadata ?? {}) as Record<string, unknown>;
+      const kind = m.kind as string | undefined;
+      if (kind !== 'claude_message' && kind !== 'pipeline_event') return;
+
+      // Auto-react trigger — fire BEFORE rendering so Polina's reply arrives
+      // soon after the chip. Criticality filter keeps cost down: ambient
+      // info-severity pipeline events don't burn OpenAI tokens. Skip turns
+      // already marked acked_by_assistant (server-side dedup); skip turns
+      // we already fired for in this session; skip turns older than 2 min
+      // (avoid replaying a backlog on page load).
+      const ackedAlready = m.acked_by_assistant === true;
+      const fireKey = turn.id;
+      const turnAgeMs = Date.now() - new Date(turn.created_at).getTime();
+      const recentEnough = turnAgeMs < 120_000;
+      const severity = (m.severity as string | undefined) ?? 'info';
+      const content = turn.content ?? '';
+      const isCritical =
+        kind === 'claude_message' ||
+        severity === 'warning' ||
+        severity === 'error' ||
+        /agent_completed|agent_failed|approval_required|review|REV-|REVISION/.test(content);
+      if (
+        threadId &&
+        recentEnough &&
+        isCritical &&
+        !ackedAlready &&
+        !autoReactFiredRef.current.has(fireKey)
+      ) {
+        autoReactFiredRef.current.add(fireKey);
+        void fetch('/api/concierge/auto-react', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ threadId, triggerTurnId: turn.id }),
+        }).catch(() => {
+          // Best-effort. If the call fails (offline, server down) the Director
+          // can still type to engage Polina. Remove from set so a manual retry
+          // could re-fire by clicking the bubble (future UX).
+          autoReactFiredRef.current.delete(fireKey);
+        });
+      }
+
+      setMessages((prev) => {
+        // Dedupe by turnId in case of re-subscribe / strict-mode dupes.
+        if (prev.some((p) => p.turnId === turn.id)) return prev;
+        const next: Message = kind === 'claude_message'
+          ? {
+              role: 'claude',
+              content: turn.content,
+              turnId: turn.id,
+              author: (m.author as string | undefined) ?? 'Claude',
+            }
+          : {
+              role: 'pipeline',
+              content: turn.content,
+              turnId: turn.id,
+              severity: (m.severity as 'info' | 'warning' | 'error' | undefined) ?? 'info',
+            };
+        return [...prev, next];
+      });
+    },
+  });
+
+  // One-time DB load on thread bind: pull recent system turns so reload
+  // restores the team-chat + ambient bubbles, not just user/assistant cached
+  // in sessionStorage.
+  useEffect(() => {
+    if (!threadId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        console.log('[ConciergePanel] DB-load mount effect firing for thread', threadId);
+        const sb = createSupabaseBrowserClient();
+        const { data, error } = await sb
+          .from('concierge_turns')
+          .select('id,role,content,metadata,created_at')
+          .eq('thread_id', threadId)
+          .eq('role', 'system')
+          .order('created_at', { ascending: false })
+          .limit(30);
+        console.log('[ConciergePanel] DB-load result: rows=', data?.length ?? 0, 'error=', error);
+        if (cancelled || error || !data) return;
+        // supabase-js infers a tuple-with-error union for the row type when
+        // multiple filters chain on string columns; cast to the local
+        // row shape used by the loop below.
+        type SystemTurnRow = {
+          id: string;
+          role: string;
+          content: string;
+          metadata: Record<string, unknown> | null;
+          created_at: string;
+        };
+        const rows = data as unknown as SystemTurnRow[];
+        const additions: Message[] = [];
+        for (const t of [...rows].reverse()) {
+          const meta = (t.metadata ?? {}) as Record<string, unknown>;
+          const kind = meta.kind as string | undefined;
+          if (kind === 'claude_message') {
+            additions.push({
+              role: 'claude',
+              content: t.content,
+              turnId: t.id,
+              author: (meta.author as string | undefined) ?? 'Claude',
+            });
+          } else if (kind === 'pipeline_event') {
+            additions.push({
+              role: 'pipeline',
+              content: t.content,
+              turnId: t.id,
+              severity: (meta.severity as 'info' | 'warning' | 'error' | undefined) ?? 'info',
+            });
+          }
+        }
+        console.log('[ConciergePanel] additions after filter:', additions.length, additions.map((a) => ({ role: a.role, turnId: a.turnId, head: a.content.slice(0, 30) })));
+        if (additions.length === 0) return;
+        setMessages((prev) => {
+          // Merge respecting existing dedupe; insert only those not already present.
+          const seen = new Set(prev.map((m) => m.turnId).filter(Boolean));
+          const fresh = additions.filter((a) => !a.turnId || !seen.has(a.turnId));
+          console.log('[ConciergePanel] fresh after dedupe:', fresh.length, 'prev size:', prev.length);
+          return [...prev, ...fresh];
+        });
+      } catch {
+        // Non-fatal: chat still works, just without ambient/team-chat history on reload.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [threadId]);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const text = input.trim();
@@ -246,11 +409,20 @@ export function ConciergePanel() {
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
     try {
+      // Sprint α 2026-05-14 — filter UI-only roles out of the wire payload.
+      // OpenAI Messages API rejects 'pipeline' and 'claude' (those are
+      // ConciergePanel-render variants, not conversation participants).
+      // Their context is already injected via the system-prompt-builder
+      // PIPELINE_EVENTS_SINCE_LAST_REPLY + TEAM_CHAT_FROM_CLAUDE blocks
+      // that the chat route loads from DB on each request.
+      const wireMessages = next
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch('/api/concierge/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: next,
+          messages: wireMessages,
           threadId: threadId ?? undefined,
         }),
       });
@@ -557,25 +729,70 @@ export function ConciergePanel() {
               </p>
             </div>
           )}
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={cn(
-                'rounded-xl px-3 py-2 text-sm',
-                m.role === 'user'
-                  ? 'bg-[var(--accent-primary)] text-[var(--text-inverse)] ml-8'
-                  : 'bg-panel-glass border border-glass text-text-primary mr-8',
-              )}
-            >
-              {m.role === 'assistant' ? (
-                <div className="prose prose-invert prose-sm max-w-none">
-                  <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
+          {messages.map((m, i) => {
+            const key = m.turnId ?? `local-${i}`;
+            if (m.role === 'user') {
+              return (
+                <div
+                  key={key}
+                  className="rounded-xl px-3 py-2 text-sm bg-[var(--accent-primary)] text-[var(--text-inverse)] ml-8"
+                >
+                  <div className="whitespace-pre-wrap">{m.content}</div>
                 </div>
-              ) : (
-                <div className="whitespace-pre-wrap">{m.content}</div>
-              )}
-            </div>
-          ))}
+              );
+            }
+            if (m.role === 'assistant') {
+              return (
+                <div
+                  key={key}
+                  className="rounded-xl px-3 py-2 text-sm bg-panel-glass border border-glass text-text-primary mr-8"
+                >
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
+                  </div>
+                </div>
+              );
+            }
+            if (m.role === 'claude') {
+              return (
+                <div
+                  key={key}
+                  className="rounded-xl px-3 py-2 text-sm border mr-8"
+                  style={{
+                    background: 'color-mix(in oklab, var(--accent-info) 8%, transparent)',
+                    borderColor: 'color-mix(in oklab, var(--accent-info) 35%, transparent)',
+                    color: 'var(--text-primary)',
+                  }}
+                  title={`Team chat — ${m.author ?? 'Claude'}`}
+                >
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
+                  </div>
+                </div>
+              );
+            }
+            // role === 'pipeline'
+            const accent =
+              m.severity === 'error'
+                ? 'var(--accent-danger)'
+                : m.severity === 'warning'
+                  ? 'var(--accent-warning)'
+                  : 'var(--text-muted)';
+            return (
+              <div
+                key={key}
+                className="rounded-md px-2 py-1 text-[11px] font-mono mx-2"
+                style={{
+                  background: 'color-mix(in oklab, currentColor 4%, transparent)',
+                  color: accent,
+                  borderLeft: `2px solid ${accent}`,
+                }}
+                title="Pipeline event"
+              >
+                {m.content}
+              </div>
+            );
+          })}
         </div>
 
         {/* Mic error banner */}

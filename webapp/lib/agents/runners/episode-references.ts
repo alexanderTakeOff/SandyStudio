@@ -70,6 +70,11 @@ import { upscaleToFourK, UpscaleError } from '../providers/upscale-fal';
 import { runEREFCheck, type ReviewBibleRef } from './eref-check';
 import { isErefCancelled } from '../../api/eref-cancel';
 import { setPilotState } from '../../api/eref-pilot-state';
+import {
+  deriveSpatialCoverage,
+  formatSpatialBlockForPrompt,
+  type SpatialShotEntry,
+} from '../../api/eref-spatial-coverage';
 import type {
   EREFReview,
   GenerationAttempt,
@@ -81,6 +86,7 @@ import type {
   ShotTestPlan,
 } from '../../api/shot-reference';
 import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
+import { selectSkills } from '../../skills/select-skills';
 import type { AgentInputs } from '../types';
 import type {
   GovernanceModeNum,
@@ -131,12 +137,18 @@ interface ParsedShot {
   act: number;
   /** Flat location string for filename / description. */
   location: string;
+  /** Optional sub-area inside the location ("entrance end", "counter centre", "shelf side") — drives spatial anchor in the prompt. */
+  location_sub_area?: string;
   characters_present: string[];
   action: string;
   duration_seconds: number;
   key_beat?: string;
   shot_role?: string;
   expected_gag?: string | null;
+  /** Storyboard camera vocabulary (added 2026-05-12 — was lost in v1 prompt builder). */
+  camera_angle?: string;
+  camera_movement?: string;
+  camera_motivation?: string;
   characters_v2?: Array<{
     bible_slug: string;
     expected_emotion: string;
@@ -159,6 +171,13 @@ interface ShotJob {
     description: string;
     image_b64: string | null;
   }>;
+  /**
+   * Spatial Coverage Manifest entry (added 2026-05-12 Director directive).
+   * Derived from storyboard camera vocab + location sub_area + characters role
+   * by `deriveSpatialCoverage` BEFORE prompt composition. Forces each
+   * gpt-image-1 frame to land on a different vantage inside the same location.
+   */
+  spatial?: SpatialShotEntry;
 }
 
 export interface EpisodeReferencesRunResult {
@@ -311,16 +330,21 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         expected_gag?: string | null;
         duration_seconds?: number;
         key_beat?: string;
+        camera_angle?: string;
+        camera_movement?: string;
+        camera_motivation?: string;
       };
       if (!sh.shot_id) continue;
 
       let flatLocation = 'unknown';
+      let locationSubArea: string | undefined;
       if (typeof sh.location === 'string') {
         flatLocation = sh.location;
       } else if (sh.location && typeof sh.location === 'object') {
         const slug = String(sh.location.slug ?? 'unknown');
         const sub = sh.location.sub_area;
         flatLocation = sub ? `${slug} — ${sub}` : slug;
+        if (typeof sub === 'string' && sub.length > 0) locationSubArea = sub;
       }
 
       const v2Chars = Array.isArray(sh.characters)
@@ -349,12 +373,16 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         shot_id: String(sh.shot_id),
         act: Number(a.act ?? 0),
         location: flatLocation,
+        location_sub_area: locationSubArea,
         characters_present: flatChars,
         action: flatAction,
         duration_seconds: Number(sh.duration_seconds ?? 0),
         key_beat: sh.key_beat ? String(sh.key_beat) : undefined,
         shot_role: sh.shot_role ? String(sh.shot_role) : undefined,
         expected_gag: sh.expected_gag === undefined ? undefined : sh.expected_gag,
+        camera_angle: sh.camera_angle ? String(sh.camera_angle) : undefined,
+        camera_movement: sh.camera_movement ? String(sh.camera_movement) : undefined,
+        camera_motivation: sh.camera_motivation ? String(sh.camera_motivation) : undefined,
         characters_v2: v2Chars,
       });
     }
@@ -540,12 +568,37 @@ function composePromptFromTestPlan(job: ShotJob): string {
       `- ${c.bible_slug} (role: ${c.role_in_shot}) — emotion: ${c.expected_emotion || '(neutral)'}; action: ${c.expected_action || '(present in frame)'}`,
   );
 
+  // Storyboard camera vocabulary fields (camera_angle / camera_movement /
+  // camera_motivation) are folded INTO job.spatial via deriveSpatialCoverage
+  // before this function runs. The block below is the unified spatial manifest
+  // entry rendered as a structured directive — replaces the earlier inline
+  // camera bits. Falls back to raw camera fields when no spatial entry was
+  // attached (mock runs / unit tests).
+  const spatialBlock = job.spatial
+    ? formatSpatialBlockForPrompt(job.spatial)
+    : (() => {
+        const bits: string[] = [];
+        if (shot.camera_angle) bits.push(`- Camera framing: ${shot.camera_angle}`);
+        if (shot.camera_movement) bits.push(`- Camera movement: ${shot.camera_movement}`);
+        if (shot.camera_motivation) bits.push(`- Camera intent: ${shot.camera_motivation}`);
+        if (shot.location_sub_area) bits.push(`- Spatial anchor inside location: ${shot.location_sub_area}`);
+        return bits.length > 0
+          ? ['Camera & spatial direction (must inform composition):', ...bits]
+          : [];
+      })();
+  const cameraMotivationLine = shot.camera_motivation
+    ? `Camera intent (narrative reason): ${shot.camera_motivation}`
+    : '';
+
   return [
     `Episode reference frame for shot ${shot.shot_id} (act ${shot.act}, ${testPlan.shot_role}).`,
     `Camera/action: ${shot.action}`,
     shot.key_beat ? `Beat: ${shot.key_beat}` : '',
     testPlan.expected_gag ? `Visual gag: ${testPlan.expected_gag}` : '',
     '',
+    ...spatialBlock,
+    cameraMotivationLine,
+    spatialBlock.length > 0 ? '' : null,
     'Per-character intent (must read in the image):',
     ...charDirectives,
     '',
@@ -556,7 +609,7 @@ function composePromptFromTestPlan(job: ShotJob): string {
     'Series art direction (must follow):',
     ...styleBlocks.map((b) => `- ${b}`),
     '',
-    'Render as a single key frame of this shot. Composition follows the action.',
+    'Render as a single key frame of this shot. Two shots in the same location must show visibly different viewpoints (e.g. wide-from-customer-side vs reverse-from-behind-counter vs along-counter vs over-shoulder vs close counter-surface) — do NOT replicate the same flat plate.',
     'No text overlay, no logo, no watermark. Single coherent scene.',
   ]
     .filter(Boolean)
@@ -672,6 +725,30 @@ export async function runEpisodeReferences(
     );
   }
 
+  // ── Spatial Coverage Manifest (2026-05-12 Director directive) ──────────────
+  // Derive ONCE across all shots so `variation_note` can reason about how many
+  // earlier shots share the same location/anchor. Attach the per-shot entry to
+  // each job; composePromptFromTestPlan injects it as a structured block.
+  const spatialEntries = deriveSpatialCoverage(
+    shots.map((s) => ({
+      shot_id: s.shot_id,
+      location: s.location,
+      location_sub_area: s.location_sub_area,
+      camera_angle: s.camera_angle,
+      camera_movement: s.camera_movement,
+      camera_motivation: s.camera_motivation,
+      shot_role: s.shot_role,
+      characters_present: s.characters_present,
+    })),
+  );
+  const spatialByShot = new Map<string, SpatialShotEntry>(
+    spatialEntries.map((e) => [e.shot_id, e]),
+  );
+  for (const job of allJobs) {
+    const entry = spatialByShot.get(job.shot.shot_id);
+    if (entry) job.spatial = entry;
+  }
+
   // ── Pilot/fan-out slicing (technology.md §4) ──────────────────────────────
   // pilot_count: pick first N representative shots and stop after them.
   // start_index: skip first N shots (already done in pilot pass) and finish.
@@ -698,6 +775,31 @@ export async function runEpisodeReferences(
     jobs = allJobs;
   }
 
+  // ── Skip shots that already have an APPROVED IMG-episode_ref ──────────────
+  // Idempotency: re-running EREF after a partial fanout should top up only the
+  // missing/rejected/in-review shots, not regenerate already-approved frames
+  // (and waste gpt-image-1 quota). 2026-05-13 — surfaced when E20 ended pilot
+  // pass + fanout with 16/19 covered and Director needed the remaining 3.
+  const { data: alreadyApprovedRefs } = await supabase
+    .from('assets')
+    .select('metadata')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'IMG-episode_ref%')
+    .eq('status', 'APPROVED');
+  const approvedShotIds = new Set<string>();
+  for (const row of (alreadyApprovedRefs ?? []) as Array<{ metadata?: unknown }>) {
+    const sid = (row.metadata as { shot_reference?: { shot_id?: string } } | null)?.shot_reference?.shot_id;
+    if (typeof sid === 'string') approvedShotIds.add(sid);
+  }
+  const beforeSkip = jobs.length;
+  jobs = jobs.filter((j) => !approvedShotIds.has(j.shot.shot_id));
+  if (jobs.length < beforeSkip) {
+    // eslint-disable-next-line no-console
+    console.info(
+      `[eref] skipping ${beforeSkip - jobs.length} shot(s) with an APPROVED ref already in DB`,
+    );
+  }
+
   // ── Find next version starting point per file_type ────────────────────────
   const { data: existingRefs } = await supabase
     .from('assets')
@@ -708,6 +810,42 @@ export async function runEpisodeReferences(
   for (const r of existingRefs ?? []) {
     const cur = existingMap.get(r.file_type) ?? 0;
     if ((r.version ?? 0) > cur) existingMap.set(r.file_type, r.version ?? 0);
+  }
+
+  // ── Director-canon skills (σ.1 / 2026-05-15) ─────────────────────────────
+  // Load once for the whole run — same skill block prepends to every shot's
+  // prompt. Genre is resolved through the series table; episodeId carries
+  // episode-scoped skills. Non-fatal: empty block if no skills match or
+  // .claude/skills/ is absent (replay-pilot, CI).
+  let seriesGenre: string | null = null;
+  try {
+    const { data: sr } = await supabase
+      .from('series')
+      .select('genre')
+      .eq('id', seriesId)
+      .maybeSingle();
+    seriesGenre = (sr as { genre?: string | null } | null)?.genre ?? null;
+  } catch {
+    /* leave null */
+  }
+  // EREF is an image-gen consumer (gpt-image-1), not a reasoning agent.
+  // Skill bodies must NOT be pasted into the visual prompt — gpt-image-1
+  // would try to visualize the meta-instructions instead of producing a
+  // clean scene. We still query the selector for telemetry so future
+  // runner-side logic (closed-vocab camera picker etc.) can read
+  // structured skill data without body injection.
+  // See docs/skills-as-capabilities.md §"Consumer types".
+  const matchedSkills = await selectSkills({
+    agent: 'EXEC-EREF',
+    genre: seriesGenre ?? undefined,
+    series_id: seriesId,
+    episode_id: episodeId,
+  });
+  if (matchedSkills.length > 0) {
+    // eslint-disable-next-line no-console
+    console.info(
+      `[eref] ${matchedSkills.length} skills matched (not injected — image-gen consumer): ${matchedSkills.map((s) => s.slug).join(', ')}`,
+    );
   }
 
   // ── Per-shot loop ─────────────────────────────────────────────────────────
@@ -749,6 +887,8 @@ export async function runEpisodeReferences(
           guardResult.suggested_prompt &&
           guardResult.verdict !== 'PASS'
         ) {
+          // Style Guardian rewrites the inner prompt. No skill block
+          // re-prepend — image-gen consumes a clean visual description.
           prompt = guardResult.suggested_prompt;
           styleRewrittenPre = true;
         }
@@ -895,6 +1035,8 @@ export async function runEpisodeReferences(
           reason: latestReview.issues.map((i) => i.description).join('; ').slice(0, 400) || 'AI verdict REGENERATE',
           verdict_before_retry: verdict,
         });
+        // Reviewer's rewrite replaces the prompt body. No skill block
+        // re-prepend — image-gen consumes a clean visual description.
         prompt = latestReview.suggested_prompt_v2;
       } else {
         // No more retries OR reviewer didn't supply a rewrite — let the

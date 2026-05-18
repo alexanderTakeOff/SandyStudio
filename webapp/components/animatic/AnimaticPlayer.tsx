@@ -150,13 +150,25 @@ function fmt(t: number): string {
 function cellPalette(
   status: string | undefined,
   kind: string | undefined,
-): { color: string; weight: number } {
+): { color: string; weight: number; glow?: string } {
   switch (status) {
     case 'APPROVED':
     case 'LOCKED':
-      return { color: 'var(--accent-success, #22c55e)', weight: 600 };
+      // 2026-05-13 — Director: "approved циферки тускло горят, верните как
+      // было". Bump weight to 700 and add a green text-shadow glow so the
+      // canonical state reads at a glance again across all theme variants
+      // (the underlying --accent-success var can be muted by some themes).
+      return {
+        color: 'var(--accent-success, #22c55e)',
+        weight: 700,
+        glow: '0 0 6px color-mix(in oklab, var(--accent-success, #22c55e) 65%, transparent)',
+      };
     case 'REVIEW':
-      return { color: 'var(--accent-warning, #f59e0b)', weight: 600 };
+      return {
+        color: 'var(--accent-warning, #f59e0b)',
+        weight: 700,
+        glow: '0 0 6px color-mix(in oklab, var(--accent-warning, #f59e0b) 55%, transparent)',
+      };
     case 'REVISION':
       return { color: 'var(--accent-orange, #f97316)', weight: 600 };
     case 'REJECTED':
@@ -565,13 +577,25 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           <div
             className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider"
             style={{
+              // 2026-05-13 — Director: "approved pills были ярко-зелёные,
+              // стали тускло-зелёные, верните как было". 75% over transparent
+              // was the Phase A.1 "non-approved colorization" pass and
+              // accidentally muted the canonical APPROVED state too. Bring
+              // canonical green back to solid + boost REVIEW so the timeline
+              // reads at a glance again.
               background:
                 currentCell.kind === 'video-canonical'
-                  ? 'color-mix(in oklab, var(--accent-success, #22c55e) 75%, transparent)'
+                  ? 'var(--accent-success, #22c55e)'
                   : currentCell.kind === 'video-review'
-                    ? 'color-mix(in oklab, var(--accent-warning, #f59e0b) 75%, transparent)'
+                    ? 'var(--accent-warning, #f59e0b)'
                     : 'rgba(0,0,0,0.55)',
               color: 'white',
+              boxShadow:
+                currentCell.kind === 'video-canonical'
+                  ? '0 0 6px color-mix(in oklab, var(--accent-success, #22c55e) 55%, transparent)'
+                  : currentCell.kind === 'video-review'
+                    ? '0 0 6px color-mix(in oklab, var(--accent-warning, #f59e0b) 55%, transparent)'
+                    : undefined,
             }}
           >
             {currentCell.status}
@@ -728,7 +752,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
               >
                 <div
                   className="text-[18px] truncate px-0.5 leading-[44px] tabular-nums text-center"
-                  style={{ color: palette.color, fontWeight: palette.weight }}
+                  style={{
+                    color: palette.color,
+                    fontWeight: palette.weight,
+                    textShadow: palette.glow,
+                  }}
                 >
                   {i + 1}
                 </div>

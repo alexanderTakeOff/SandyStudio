@@ -4,7 +4,7 @@
   "private": true,
   "description": "SandyStudio production webapp — Next.js 15 + Supabase + Inngest (local-first). See specs/system/webapp.md and specs/system/uiux.md.",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

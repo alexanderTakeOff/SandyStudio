@@ -57,6 +57,9 @@ interface VgenEventData {
   quality_tier?: 'fast' | 'standard';
   duration_seconds?: number;
   pilot?: boolean;
+  /** Phase 2 (2026-05-13) — UI dropdown override. Skips
+   *  `provider_assignments` global lookup when set. */
+  provider?: 'veo-3-img2vid' | 'seedance-fal-img2vid';
 }
 
 const TARGET_STATUS_BY_MODE = (mode: number | null | undefined): 'APPROVED' | 'REVIEW' =>
@@ -76,6 +79,26 @@ async function emitSingleShot(
       duration_seconds: durationSeconds,
     } as never,
   });
+}
+
+// Build a synthetic ResolvedProvider for an explicit per-event provider
+// override (Phase 2 UI dropdown choice). Skips the `provider_assignments`
+// table lookup — the dropdown choice is authoritative for that one shot.
+// Env-key availability still gates the choice (mirrors resolveProvider
+// auto-downgrade behavior).
+function syntheticResolvedProvider(
+  providerId: 'veo-3-img2vid' | 'seedance-fal-img2vid',
+): import('@/lib/agents/provider-resolver').ResolvedProvider {
+  const envKey = providerId === 'seedance-fal-img2vid' ? 'FAL_KEY' : 'GEMINI_API_KEY';
+  const envOk = Boolean(process.env[envKey]?.trim());
+  return {
+    contract: 'character_video' as const,
+    providerId: envOk ? providerId : 'mock',
+    isActive: true,
+    isMock: !envOk,
+    envKey,
+    envOk,
+  };
 }
 
 // ── Pilot start handler (concurrency 1 / episode) ─────────────────────────────
@@ -120,11 +143,18 @@ export const execVgenStart = inngest.createFunction(
           agentId: 'EXEC-VGEN',
           episodeId,
         });
+        // Phase 2 (2026-05-13): per-event provider override takes precedence
+        // over global `provider_assignments.character_video` row, so the UI
+        // dropdown choice is honored even if the global default disagrees.
         let provider;
-        try {
-          provider = await resolveProvider(supabase, 'character_video');
-        } catch {
-          provider = undefined;
+        if (data.provider) {
+          provider = syntheticResolvedProvider(data.provider);
+        } else {
+          try {
+            provider = await resolveProvider(supabase, 'character_video');
+          } catch {
+            provider = undefined;
+          }
         }
         const ep = inputs.episode as { episode_code?: string };
         return runAgent({
@@ -398,11 +428,18 @@ export const execVgenSingleShot = inngest.createFunction(
           agentId: 'EXEC-VGEN',
           episodeId,
         });
+        // Phase 2 (2026-05-13): per-event provider override takes precedence
+        // over global `provider_assignments.character_video` row, so the UI
+        // dropdown choice is honored even if the global default disagrees.
         let provider;
-        try {
-          provider = await resolveProvider(supabase, 'character_video');
-        } catch {
-          provider = undefined;
+        if (data.provider) {
+          provider = syntheticResolvedProvider(data.provider);
+        } else {
+          try {
+            provider = await resolveProvider(supabase, 'character_video');
+          } catch {
+            provider = undefined;
+          }
         }
         const ep = inputs.episode as { episode_code?: string };
         return runAgent({

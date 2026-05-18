@@ -109,8 +109,15 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     governance: 'AGENT_RUN',
   },
   'EXEC-MGEN': {
+    // Phase A.2 LT-04 audio reorg (Director directive 2026-05-08 q3b):
+    // Composer fires AFTER REV-world_check approval and BEFORE animatic, so
+    // the animatic player can preview pacing WITH music. The earlier gate
+    // requiring an APPROVED animatic was a leftover from the pre-reorg DAG
+    // and stalls the pipeline on every real episode (E20 surfaced this
+    // 2026-05-12). Upstream is now: approved storyboard + approved world_check.
     required: [
-      { fileTypePrefix: 'VID-animatic', minCount: 1, label: 'Approved animatic' },
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
+      { fileTypePrefix: 'REV-world_check', minCount: 1, label: 'Approved world_check' },
     ],
     governance: 'AGENT_RUN',
   },

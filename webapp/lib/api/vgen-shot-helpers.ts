@@ -328,19 +328,9 @@ function describeCamera(rawAngle: string | undefined): string {
   }
 }
 
-/** Map shot_role to an opening framing cue that primes the model on intent. */
-function describeRole(role: string | undefined): string | null {
-  const r = (role ?? '').trim().toLowerCase();
-  if (!r) return null;
-  if (r === 'establishing') return 'Establishing the scene';
-  if (r === 'action') return 'Dynamic action moment';
-  if (r === 'reaction') return 'Reaction shot';
-  if (r === 'punchline' || r === 'gag-payoff' || r === 'gag_payoff')
-    return 'Punchline payoff';
-  if (r === 'transition') return 'Transition cut';
-  if (r === 'closer' || r === 'tag') return 'Closing tag';
-  return null;
-}
+// describeRole(...) removed 2026-05-13 — role labels ("Reaction shot:")
+// were appearing as on-screen annotations in some Veo outputs and added
+// no information the EREF didn't already carry.
 
 /** Compact visual snippet for one character (Bible character description
  *  shortened to 1–2 sentences). Used by the prompt builder to anchor character
@@ -404,9 +394,13 @@ export function buildShotPromptV2(
   episodeTitle: string,
   characterCanon?: ReadonlyArray<CharacterCanonSnippet>,
 ): string {
-  const action = (shot.action_prose ?? shot.action ?? shot.key_beat ?? '').trim();
+  // Trim action_prose to the first clean sentence — long literary prose with
+  // metaphors like "rendered as negative space" or "Precise. Unbridgeable.."
+  // confuses Veo (it does not parse abstractions) and the unused fragments
+  // hog the token budget. Director surfaced this 2026-05-13 evening.
+  const rawAction = (shot.action_prose ?? shot.action ?? shot.key_beat ?? '').trim();
+  const action = firstSentence(rawAction);
   const camera = describeCamera(shot.camera_angle);
-  const role = describeRole(shot.shot_role);
   const gag = (shot.expected_gag ?? '').trim();
   const emotion = (shot.expected_emotion ?? '').trim();
 
@@ -448,25 +442,56 @@ export function buildShotPromptV2(
     ? `Visual canon: ${canonLines.join(' ')}`
     : '';
 
-  // Setting prefix uses episode title only as ambient flavour — the actual
-  // setting comes from the EREF (image-to-video reference). Avoid making the
-  // title look like a label the model might want to render as on-screen text.
-  const setting = episodeTitle && episodeTitle.length > 0
-    ? `2D animated comedy short, set in the world of "${episodeTitle}".`
-    : '2D animated comedy short.';
+  // Setting prefix kept short and label-free. Earlier "set in the world of
+  // '<title>'" caused Veo to occasionally render the episode title as
+  // on-screen text. shot_role ("Reaction shot:") prefix dropped — the EREF
+  // already encodes framing, role-as-text adds nothing for the model.
+  const setting = '2D animated comedy short.';
+  // Reuse `episodeTitle` only as a discreet style hint, not as quoted text.
+  // (Keeps the symbol used so callers that still pass it don't warn.)
+  void episodeTitle;
 
   const segments: string[] = [setting];
-  if (role) {
-    segments.push(action ? `${role}: ${action}.` : `${role}.`);
-  } else if (action) {
-    segments.push(`${action}.`);
-  }
+  if (action) segments.push(`${action}.`);
   if (charPhrase) segments.push(charPhrase);
   if (canonPhrase) segments.push(canonPhrase);
   segments.push(`Camera: ${camera}.`);
-  if (gag) segments.push(`Beat: ${gag}.`);
-  if (emotion) segments.push(`Mood: ${emotion}.`);
+  // Beat/Mood are absorbed into the EREF + action sentence — adding them as
+  // separate `Beat:` / `Mood:` labels invited Veo to treat them as on-screen
+  // annotation (the model printed "Beat:" text in a couple of pilots).
+  // Keep the substance but drop the label so the model reads it as flow.
+  // Each fragment is normalised to end with a period so neighbouring segments
+  // don't run together when joined with a space.
+  if (gag) segments.push(endWithPeriod(gag));
+  if (emotion) segments.push(endWithPeriod(emotion));
+  // Force native 16:9 composition so the model doesn't anchor on the
+  // square EREF crop and then "expand" mid-shot (Director report
+  // 2026-05-13: square-inside-wide-canvas artifact).
+  segments.push('16:9 widescreen landscape composition from the very first frame.');
   segments.push(`Style: ${POSITIVE_STYLE}`);
   segments.push(NEGATIVE_PROMPT);
   return segments.join(' ');
+}
+
+/**
+ * Return the first complete sentence in a paragraph. Splits on the canonical
+ * end-of-sentence punctuation (`.`, `!`, `?`) followed by whitespace; falls
+ * back to the input itself when the paragraph has no sentence terminators.
+ * Also collapses double-periods into single (avoids `Unbridgeable..` in the
+ * Veo prompt — a real artifact observed 2026-05-13).
+ */
+function endWithPeriod(s: string): string {
+  const t = s.trim();
+  if (!t) return '';
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
+function firstSentence(input: string): string {
+  const cleaned = input.replace(/\.{2,}/g, '.').trim();
+  if (!cleaned) return '';
+  const match = cleaned.match(/^([^.!?]+[.!?])\s/);
+  if (match) return match[1]!.trim().replace(/[.!?]+$/, '');
+  // No mid-text terminator — strip a trailing terminator if any so the
+  // caller's `${action}.` doesn't produce "..".
+  return cleaned.replace(/[.!?]+$/, '').trim();
 }

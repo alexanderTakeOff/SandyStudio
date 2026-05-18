@@ -17,6 +17,7 @@ import {
   DollarSign,
   Activity as ActivityIcon,
   ListChecks,
+  BookOpen,
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -38,6 +39,7 @@ const NAV: NavItem[] = [
   { href: '/budget',    label: 'Budget',    icon: DollarSign },
   { href: '/jobs',      label: 'Jobs',      icon: ListChecks },
   { href: '/activity',  label: 'Activity',  icon: ActivityIcon },
+  { href: '/skills',    label: 'Skills',    icon: BookOpen },
 ];
 
 export function StudioSidebar() {

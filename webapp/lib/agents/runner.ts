@@ -26,6 +26,7 @@ import {
 } from './mock-providers';
 import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
+import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { persistBinary, type PersistedBinary } from './persist-binary';
 import {
   buildShotPromptV2,
@@ -59,6 +60,14 @@ export interface LoadInputsArgs {
   supabase: SupabaseClient<Database>;
   agentId: AgentId;
   episodeId: string;
+  /**
+   * Which asset statuses to load into upstream_assets. Defaults to
+   * `['APPROVED']` — the historical behaviour. Reviewer agents (EXEC-SREV
+   * and Sprint 10 unified reviewer) pass `['APPROVED','REVIEW','REVISION']`
+   * because the reviewer IS the gate from REVIEW to APPROVED. Without this
+   * override the input loader filters out the very asset under review.
+   */
+  allowedStatuses?: readonly string[];
 }
 
 /**
@@ -67,7 +76,8 @@ export interface LoadInputsArgs {
  * what's available for runAgent's use.
  */
 export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs> {
-  const { supabase, agentId, episodeId } = args;
+  const { supabase, agentId, episodeId, allowedStatuses } = args;
+  const statuses = allowedStatuses && allowedStatuses.length > 0 ? allowedStatuses : ['APPROVED'];
 
   const { data: episode, error: epErr } = await supabase
     .from('episodes')
@@ -84,9 +94,43 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
       'id, file_type, filename, status, drive_path, staging_path, drive_web_view_url, version, content, metadata',
     )
     .eq('episode_id', episodeId)
-    .eq('status', 'APPROVED');
+    // Supabase typed-client narrows `status` to a literal union; widen via cast
+    // at the boundary so the runtime-supplied `allowedStatuses` strings flow
+    // through. Caller is responsible for using valid asset_status values.
+    .in('status', statuses as never);
   if (asErr) {
     throw new Error(`loadAgentInputs: assets lookup failed: ${asErr.message}`);
+  }
+
+  // Sprint γ 2026-05-15 — approve-with-notes propagation.
+  // For each upstream asset that was approved with a note, surface the
+  // latest `approvals.notes` keyed by asset_id so producing agents
+  // (Storyboarder, World Checker, etc.) can inject it into their prompt.
+  // Non-fatal: empty record is the no-notes case and behaves identically
+  // to pre-γ pipeline. Try/catch lets the mock supabase in replay-pilot
+  // (which doesn't implement the approvals table) degrade gracefully.
+  const upstreamApprovalNotes: Record<string, string> = {};
+  const assetIds = (assets ?? []).map((a) => a.id);
+  if (assetIds.length > 0) {
+    try {
+      const { data: approvalRows } = await supabase
+        .from('approvals')
+        .select('asset_id,notes,created_at,approval_type')
+        .in('asset_id', assetIds)
+        .eq('approval_type', 'APPROVE')
+        .order('created_at', { ascending: false });
+      for (const row of approvalRows ?? []) {
+        if (!row.notes || typeof row.notes !== 'string') continue;
+        const aid = row.asset_id;
+        if (!aid) continue;
+        if (upstreamApprovalNotes[aid]) continue; // keep newest only (desc order)
+        upstreamApprovalNotes[aid] = row.notes;
+      }
+    } catch {
+      // Mock supabase environments (replay-pilot) may not implement the
+      // approvals table — degrade to empty notes; downstream runners
+      // already treat the field as optional.
+    }
   }
 
   // Load LOCKED Series Bible canon. Empty canon is valid (early-stage projects);
@@ -109,12 +153,32 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
     };
   }
 
+  // Sprint σ.1 (2026-05-15) — series.genre surfaced for the Skill selector.
+  // Non-fatal: replay-pilot mock supabase doesn't implement `series`; degrade
+  // to null and let the agent treat genre as unspecified (skill selector then
+  // only matches skills without a `genre` constraint).
+  let seriesGenre: string | null = null;
+  if (episode?.series_id) {
+    try {
+      const { data: seriesRow } = await supabase
+        .from('series')
+        .select('id,genre')
+        .eq('id', episode.series_id)
+        .single();
+      seriesGenre = (seriesRow as { genre?: string | null } | null)?.genre ?? null;
+    } catch {
+      // mock supabase fallthrough
+    }
+  }
+
   return {
     episode_id: episodeId,
     agent_id: agentId,
     episode,
     upstream_assets: assets,
     bible,
+    upstream_approval_notes: upstreamApprovalNotes,
+    series_genre: seriesGenre,
   };
 }
 
@@ -682,7 +746,19 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         throw new Error(`EXEC-VGEN requires shotId in event payload`);
       }
 
-      const isRealVeo =
+      // Phase 2 (2026-05-13): widened from veo-only to any registered multi-
+      // provider id. Seedance 2.0 via fal.ai is the new default; Veo 3.1 stays
+      // available via UI dropdown / regenerate-video override.
+      const KNOWN_REAL_VIDEO_PROVIDERS = new Set([
+        'veo-3',
+        'veo-3-img2vid',
+        'seedance-fal',
+        'seedance-fal-img2vid',
+      ]);
+      const isRealVideo = provider?.providerId
+        ? KNOWN_REAL_VIDEO_PROVIDERS.has(provider.providerId)
+        : false;
+      const isVeoProvider =
         provider?.providerId === 'veo-3-img2vid' || provider?.providerId === 'veo-3';
 
       // ── Universal Core defaults ───────────────────────────────────────────
@@ -718,7 +794,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       }
 
       // Resolve approved EREF for img2vid + apply Director's animatic overrides.
-      if (supabase && isRealVeo) {
+      if (supabase && isRealVideo) {
         const ref = await getApprovedEREFForShot(supabase, episodeId, shotId);
         if (ref) {
           referenceErefAssetId = ref.asset.id;
@@ -747,8 +823,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       }
 
       const finalDuration = (() => {
+        // Veo rejects fractional or out-of-range durations with HTTP 400
+        // ("between 4 and 8, inclusive"). Always round AND clamp on every
+        // branch — earlier the explicit-arg branch skipped Math.round,
+        // letting a 3.x or 5.5 leak through and crash the call.
+        // Surfaced 2026-05-13 evening on E20 single-shot regen.
         if (typeof durationSeconds === 'number' && durationSeconds > 0) {
-          return Math.min(8, Math.max(4, durationSeconds));
+          return Math.min(8, Math.max(4, Math.round(durationSeconds)));
         }
         if (resolvedDurationSeconds !== null) {
           return Math.min(8, Math.max(4, Math.round(resolvedDurationSeconds)));
@@ -779,12 +860,33 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         ? buildShotPromptV2(storyboardShot, episodeTitle, characterCanon)
         : buildShotPrompt(inputs, shotId);
 
-      if (isRealVeo) {
+      if (isRealVideo) {
         if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
 
-        const real = await generateVideoVeoGemini({
+        // Veo 3.1 image-to-video constraint (Google docs, confirmed 2026-05-13):
+        //   `veo-3.1-generate-preview` (Standard) with a reference/subject
+        //   image returns ONLY 8-second clips. Sending 4/5/6 yields HTTP 400
+        //   "durationSeconds out of bound" — Google's error message claims
+        //   [4, 8] but for img2vid Standard the real allowed set is {8}.
+        //   Fast (`veo-3.1-fast-generate-preview`) appears to accept 4-6-8;
+        //   keep the storyboard value for Fast and force 8 for Standard
+        //   when a reference image is attached.
+        // This is a Veo-only quirk; Seedance 2.0 accepts any 4-15s on either
+        // tier so we leave its duration untouched.
+        const hasReferenceImage = Boolean(referenceImageBase64);
+        const generationDuration =
+          isVeoProvider && hasReferenceImage && effectiveQuality === 'standard'
+            ? 8
+            : finalDuration;
+        // eslint-disable-next-line no-console
+        console.info(
+          `[exec-vgen] shot=${shotId} → provider=${provider!.providerId} durationSeconds=${generationDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, clamped=${generationDuration !== finalDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}`,
+        );
+
+        const videoProvider = getMultiVideoProvider(provider!.providerId);
+        const real = await videoProvider.generate({
           prompt,
-          durationSeconds: finalDuration,
+          durationSeconds: generationDuration,
           aspectRatio: effectiveAspect,
           quality: effectiveQuality,
           ...(referenceImageBase64
@@ -811,10 +913,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               provider_id: real.provider,
               provider_used: real.provider,
               // Provider verification stamp (Phase A.1 directive 2026-05-07).
-              // `model_id` is the actual Google model that produced this mp4,
-              // surfaced in the asset description so Director sees it in the
-              // drawer without scanning runtime logs. `operation_name` is the
-              // Vertex/Gemini operation id for vendor-side cross-reference.
+              // `model_id` is the actual upstream model that produced this mp4
+              // (e.g. `veo-3.1-fast-generate-preview` or
+              // `bytedance/seedance-2.0/fast/image-to-video`), surfaced in the
+              // asset description so Director sees it without scanning logs.
+              // `operation_name` is the provider-side job/operation id for
+              // vendor cross-reference.
               model_id: real.operation_name ? real.model_id : undefined,
               operation_name: real.operation_name,
               format: real.format,
@@ -967,7 +1071,21 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       }
 
       // Walk shot_list in order → assemble inputs.
-      const orderedShots: Array<{ shotId: string; assetId: string; stagingPath: string | null; url: string | null }> = [];
+      // Per-shot duration follows the canonical timeline-cell-resolver rule:
+      // director_overrides[shot_id].duration_seconds wins, fallback to
+      // shot.duration_seconds from the animatic shot_list. The duration is
+      // passed to ffmpeg-stitch which emits an `outpoint` directive so each
+      // Veo clip is trimmed to the animatic-intended length (Veo Fast=4s /
+      // Standard=8s vs. storyboard 2-5s caused E20 final-cut to play at 96s
+      // instead of 54s before this patch — 2026-05-13).
+      const overrides = v1.director_overrides ?? {};
+      const orderedShots: Array<{
+        shotId: string;
+        assetId: string;
+        stagingPath: string | null;
+        url: string | null;
+        durationSeconds: number;
+      }> = [];
       const missing: string[] = [];
       for (const shot of shotList) {
         const found = byShotId.get(shot.shot_id);
@@ -975,11 +1093,15 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           missing.push(shot.shot_id);
           continue;
         }
+        const ov = overrides[shot.shot_id]?.duration_seconds;
+        const effectiveDuration =
+          typeof ov === 'number' && ov > 0 ? ov : shot.duration_seconds;
         orderedShots.push({
           shotId: shot.shot_id,
           assetId: found.id,
           stagingPath: found.stagingPath,
           url: found.url,
+          durationSeconds: effectiveDuration,
         });
       }
       if (missing.length > 0) {
@@ -1021,10 +1143,18 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         return Buffer.from(ab);
       }
 
-      const shotMp4Bytes: Array<{ shotId: string; bytes: Buffer }> = [];
+      const shotMp4Bytes: Array<{
+        shotId: string;
+        bytes: Buffer;
+        durationSeconds: number;
+      }> = [];
       for (const s of orderedShots) {
         const bytes = await loadBytes(s.stagingPath, s.url);
-        shotMp4Bytes.push({ shotId: s.shotId, bytes });
+        shotMp4Bytes.push({
+          shotId: s.shotId,
+          bytes,
+          durationSeconds: s.durationSeconds,
+        });
       }
 
       let musicInput: { bytes: Buffer; ext: 'mp3' | 'wav' | 'm4a' | 'aac' } | undefined;

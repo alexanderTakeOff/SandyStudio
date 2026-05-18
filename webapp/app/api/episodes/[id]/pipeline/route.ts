@@ -71,6 +71,10 @@ export const GET = withApiHandler(async (req, ctx) => {
       agent_id: j.agent_id,
       status: j.status,
     })),
+    // Sprint τ (2026-05-15) — feed EREF fan-out state from episode.metadata
+    // so the snapshot builder can promote `running` over `blocked` while
+    // pilots-in-REVIEW and remaining shots fan out in parallel.
+    ((epRes.data as { metadata?: unknown }).metadata as Parameters<typeof buildPipelineSnapshot>[3]) ?? null,
   );
 
   const feedRows = feedRes.data ?? [];

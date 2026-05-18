@@ -48,10 +48,17 @@ interface AssetRow {
   metadata?: unknown;
 }
 
+// Sprint τ (2026-05-15) — actual /api/episodes/[id] envelope is
+// `{ data: { episode, assets, jobs } }`. Pillbar previously read
+// `data.metadata` (flat) which silently returned null, so the Pilot/Fanout
+// branches never fired and Director only ever saw ReviewHeadline. Fix the
+// shape to match the route's apiOk return.
 interface EpisodeResponse {
   data?: {
-    id: string;
-    metadata?: EpisodeMetadataLike | null;
+    episode?: {
+      id: string;
+      metadata?: EpisodeMetadataLike | null;
+    };
   };
 }
 
@@ -71,6 +78,13 @@ export interface EREFPilotPillbarProps {
 interface ShotProgress {
   totalShots: number;
   approvedCount: number;
+  /** Sprint τ — unique shot_ids that have at least one IMG-episode_ref asset
+   *  in ANY status (DRAFT/REVIEW/REVISION/APPROVED). Used by FanoutHeadline
+   *  to show "Generated N / M shots so far" without waiting on Director's
+   *  per-asset approval. */
+  generatedShotIds: string[];
+  /** Subset of generatedShotIds that have at least one asset in REVIEW. */
+  reviewShotIds: string[];
   pilotApprovedCount: number;
   pilotShotIds: string[];
   missing: string[];
@@ -93,9 +107,13 @@ function computeProgress(
   }
 
   const approvedShotIds = new Set<string>();
+  const reviewShotIds = new Set<string>();
   for (const [sid, rows] of byShot) {
     if (rows.some((r) => r.status === 'APPROVED' || r.status === 'LOCKED')) {
       approvedShotIds.add(sid);
+    }
+    if (rows.some((r) => r.status === 'REVIEW')) {
+      reviewShotIds.add(sid);
     }
   }
 
@@ -111,6 +129,8 @@ function computeProgress(
   return {
     totalShots,
     approvedCount: approvedShotIds.size,
+    generatedShotIds: Array.from(byShot.keys()),
+    reviewShotIds: Array.from(reviewShotIds),
     pilotApprovedCount,
     pilotShotIds,
     missing,
@@ -129,7 +149,7 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
     { refreshInterval: 30_000 },
   );
 
-  const meta = episodeData?.data?.metadata ?? null;
+  const meta = episodeData?.data?.episode?.metadata ?? null;
   const pilotState: EREFPilotState | undefined = meta?.eref_pilot_state;
 
   const progress = useMemo(
@@ -235,6 +255,10 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
   // ── Render ────────────────────────────────────────────────────────────────
 
   const isPilotMode = pilotState === 'PENDING_REVIEW';
+  // Sprint τ (2026-05-15) — fan-out mode is its own headline. Pilot pair was
+  // already accepted via approve-pilots route; fan-out is generating the
+  // remaining shots. Director needs to see (a) acceptance, (b) progress.
+  const isFanoutMode = pilotState === 'FANOUT_RUNNING';
   const pilotCount = progress.pilotShotIds.length || 2;
 
   // In pilot mode: "Approve Direction" gated on both pilots APPROVED.
@@ -271,6 +295,12 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
             <XCircle size={14} className="shrink-0" style={{ color: 'var(--accent-danger)' }} />
             EREF cancelled — re-trigger to start over.
           </span>
+        ) : isFanoutMode ? (
+          <FanoutHeadline
+            generated={progress.generatedShotIds.length}
+            reviewed={progress.reviewShotIds.length}
+            totalShots={progress.totalShots}
+          />
         ) : (
           <ReviewHeadline
             approved={progress.approvedCount}
@@ -389,6 +419,62 @@ function PilotHeadline({
           <span className="text-text-muted text-xs ml-1">· {totalShots} total in episode</span>
         )}
       </span>
+    </div>
+  );
+}
+
+function FanoutHeadline({
+  generated,
+  reviewed,
+  totalShots,
+}: {
+  generated: number;
+  reviewed: number;
+  totalShots: number;
+}) {
+  const known = totalShots > 0 && totalShots !== generated;
+  const pct = totalShots > 0 ? Math.min(100, Math.round((generated / totalShots) * 100)) : 0;
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-2 text-sm">
+        <span
+          aria-hidden
+          className="relative inline-flex h-2.5 w-2.5 shrink-0"
+        >
+          <span
+            className="absolute inset-0 rounded-full animate-ping"
+            style={{ background: 'var(--accent-warning)', opacity: 0.55 }}
+          />
+          <span
+            className="relative inline-flex h-2.5 w-2.5 rounded-full"
+            style={{ background: 'var(--accent-warning)' }}
+          />
+        </span>
+        <span className="text-text-primary font-medium">
+          Pilot pair accepted · fan-out running
+        </span>
+      </div>
+      <div className="text-sm text-text-secondary">
+        Generated <span className="text-text-primary font-medium">{generated}</span>
+        {known ? <> / <span className="text-text-primary font-medium">{totalShots}</span> shots</> : <> shots so far</>}
+        {reviewed > 0 && (
+          <span className="text-text-muted text-xs ml-1">· {reviewed} in review</span>
+        )}
+      </div>
+      {known && (
+        <div
+          className="h-1.5 rounded-full overflow-hidden flex-1 min-w-[120px] max-w-[280px]"
+          style={{ background: 'color-mix(in oklab, var(--panel-glass-border) 60%, transparent)' }}
+        >
+          <div
+            className="h-full rounded-full transition-all"
+            style={{
+              width: `${pct}%`,
+              background: 'var(--accent-warning)',
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -89,6 +89,12 @@ export function EpisodeTimelineSection({
   const [pendingGenerateShotId, setPendingGenerateShotId] = useState<string | null>(null);
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  // Phase 2 (2026-05-13): provider dropdown. Defaults to Seedance 2.0 (new
+  // Director default) — Veo 3.1 still selectable for quick iteration when
+  // Seedance burns a different quota bucket.
+  const [genProvider, setGenProvider] = useState<'seedance-fal-img2vid' | 'veo-3-img2vid'>(
+    'seedance-fal-img2vid',
+  );
   // Imperative ref to AnimaticPlayer — used to seek the playhead after a
   // regenerate completes (Phase A.1 directive — auto-focus the new candidate).
   const playerRef = useRef<AnimaticPlayerHandle | null>(null);
@@ -234,7 +240,7 @@ export function EpisodeTimelineSection({
     }
   }
 
-  async function generateMissingShot(): Promise<void> {
+  async function generateMissingShot(qualityTier: 'fast' | 'standard' = 'fast'): Promise<void> {
     if (!pendingGenerateShotId) return;
     setGenBusy(true);
     setGenError(null);
@@ -246,6 +252,8 @@ export function EpisodeTimelineSection({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             shot_id: pendingGenerateShotId,
+            quality_tier: qualityTier,
+            provider: genProvider,
             directorConfirm: true,
           }),
         },
@@ -386,9 +394,32 @@ export function EpisodeTimelineSection({
                   {genError}
                 </span>
               )}
-              <button
-                onClick={generateMissingShot}
+              {/* Phase 2 (2026-05-13) — provider dropdown. Default Seedance 2.0
+                  per Director directive: significantly better motion / camera
+                  control over Veo 3.1 (probe 2026-05-13 dance + 360° orbit).
+                  Quality tier stays in the button label below. */}
+              <select
+                value={genProvider}
+                onChange={(e) =>
+                  setGenProvider(e.target.value as 'seedance-fal-img2vid' | 'veo-3-img2vid')
+                }
                 disabled={genBusy}
+                aria-label="Video provider"
+                title="Video generation provider"
+                className="px-2 py-1.5 rounded-md text-[12px] bg-[var(--bg-elevated)] border border-glass text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
+              >
+                <option value="seedance-fal-img2vid">Seedance 2.0</option>
+                <option value="veo-3-img2vid">Veo 3.1</option>
+              </select>
+              {/* Two quality tiers — Fast (cheaper, hits the same Veo
+                  quota that overloads first) and Standard (separate quota
+                  bucket, costs ~2× but reliably bypasses 429s when Fast is
+                  throttled). Director directive 2026-05-13 — surfaced when
+                  fan-out fast tier hit 429 storm on E20. */}
+              <button
+                onClick={() => generateMissingShot('fast')}
+                disabled={genBusy}
+                title="Veo 3.1 Fast (~$0.075/s) — cheaper, can hit 429 first"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium border transition-colors disabled:opacity-50"
                 style={{
                   background:
@@ -403,7 +434,27 @@ export function EpisodeTimelineSection({
                 ) : (
                   <Sparkles size={12} />
                 )}
-                {genBusy ? 'Triggering…' : 'Generate VGEN shot'}
+                {genBusy ? 'Triggering…' : 'Generate · Fast'}
+              </button>
+              <button
+                onClick={() => generateMissingShot('standard')}
+                disabled={genBusy}
+                title="Veo 3.1 Standard (~$0.15/s) — separate quota bucket, bypasses Fast 429s"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium border transition-colors disabled:opacity-50"
+                style={{
+                  background:
+                    'color-mix(in oklab, var(--accent-success) 14%, transparent)',
+                  color: 'var(--accent-success)',
+                  borderColor:
+                    'color-mix(in oklab, var(--accent-success) 35%, transparent)',
+                }}
+              >
+                {genBusy ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Sparkles size={12} />
+                )}
+                {genBusy ? 'Triggering…' : 'Generate · Standard'}
               </button>
             </div>
           ) : undefined

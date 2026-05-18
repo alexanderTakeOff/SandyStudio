@@ -3,12 +3,17 @@
 // Real OpenAI Images API adapter for the `image` contract.
 // Used by EXEC-THUMB (initial integration) and EXEC-VGEN reference frames.
 //
-// Per provider_strategy.md §2.2 — `gpt-image-1` reuses the existing
-// OPENAI_API_KEY (also used by Concierge gpt-5.4-mini). No new secret.
+// Per provider_strategy.md §2.2 — uses the existing OPENAI_API_KEY (also used
+// by Concierge gpt-5.x). No new secret.
+//
+// Sprint φ post-merge 2026-05-18 — upgraded model to `gpt-image-2` (released
+// 2026-04-21). Same /v1/images/generations endpoint. gpt-image-1 deprecated
+// May 2026. Per-image cost increased ~15% but multi-anchor identity coherence
+// improved noticeably and text rendering hit 99% accuracy (relevant for any
+// future on-screen typography).
 //
 // Phase 8 first-call MVP: returned image is base64-encoded inline in the
 // adapter result. Caller (saveAgentOutput) is responsible for persisting it.
-// In Phase 8 step 10 we'll switch to Drive upload + drive_file_id.
 // ──────────────────────────────────────────────────────────────────────────────
 
 export type GptImageSize = '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
@@ -24,7 +29,7 @@ export interface OpenAIImageInput {
 
 export interface OpenAIImageResult {
   status: 'success';
-  provider: 'gpt-image-1';
+  provider: 'gpt-image-2';
   format: 'PNG';
   width: number;
   height: number;
@@ -36,13 +41,14 @@ export interface OpenAIImageResult {
   revised_prompt?: string;
 }
 
-// Estimated price ladder (USD per image, gpt-image-1 standard pricing).
-// Source: openai.com/pricing. Prices change; we only track for budget hints.
+// Estimated price ladder (USD per image, gpt-image-2 standard pricing).
+// Source: developers.openai.com/api/docs/pricing (2026-05-18). Prices change;
+// we track for budget hints only. gpt-image-2 ≈ +15% over gpt-image-1.
 const COST_TABLE: Record<GptImageQuality, Record<string, number>> = {
-  low:    { '1024x1024': 0.011, '1024x1536': 0.016, '1536x1024': 0.016, auto: 0.016 },
-  medium: { '1024x1024': 0.042, '1024x1536': 0.063, '1536x1024': 0.063, auto: 0.063 },
-  high:   { '1024x1024': 0.167, '1024x1536': 0.250, '1536x1024': 0.250, auto: 0.250 },
-  auto:   { '1024x1024': 0.042, '1024x1536': 0.063, '1536x1024': 0.063, auto: 0.063 },
+  low:    { '1024x1024': 0.013, '1024x1536': 0.018, '1536x1024': 0.018, auto: 0.018 },
+  medium: { '1024x1024': 0.053, '1024x1536': 0.080, '1536x1024': 0.080, auto: 0.080 },
+  high:   { '1024x1024': 0.211, '1024x1536': 0.317, '1536x1024': 0.317, auto: 0.317 },
+  auto:   { '1024x1024': 0.053, '1024x1536': 0.080, '1536x1024': 0.080, auto: 0.080 },
 };
 
 function dimensionsFor(size: GptImageSize): { width: number; height: number } {
@@ -82,7 +88,7 @@ export async function generateImageOpenAI(
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-image-1',
+      model: 'gpt-image-2',
       prompt: input.prompt,
       n: 1,
       size,
@@ -113,7 +119,7 @@ export async function generateImageOpenAI(
 
   const { width, height } = dimensionsFor(size);
   const sizeBytes = Math.round(b64.length * 0.75);
-  const cost = COST_TABLE[quality][size] ?? 0.042;
+  const cost = COST_TABLE[quality][size] ?? 0.053;
 
   // Touch latency value so the duration is measured even if not exposed —
   // useful for logging hooks once we wire them up.
@@ -121,7 +127,7 @@ export async function generateImageOpenAI(
 
   return {
     status: 'success',
-    provider: 'gpt-image-1',
+    provider: 'gpt-image-2',
     format: 'PNG',
     width,
     height,

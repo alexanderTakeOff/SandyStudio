@@ -1,0 +1,138 @@
+// One-off: dump activity around E20 storyboard v02 + episode current state.
+import { createClient } from '@supabase/supabase-js';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+const envPath = resolve(process.cwd(), '.env.local');
+if (existsSync(envPath)) {
+  for (const raw of readFileSync(envPath, 'utf-8').split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    let val = line.slice(eq+1).trim();
+    if ((val.startsWith('"')&&val.endsWith('"'))||(val.startsWith("'")&&val.endsWith("'"))) val=val.slice(1,-1);
+    process.env[line.slice(0,eq).trim()] = val;
+  }
+}
+const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+const EP = '763c5c1e-44dc-4e10-92fb-e7671e5d4a44';
+const ASSET = 'a8f1eed9-0d8e-44c9-a270-d487a8c2898e';
+
+async function main() {
+const { data: events } = await sb
+  .from('activity_events')
+  .select('created_at,event_type,severity,title,actor,asset_id,metadata')
+  .eq('episode_id', EP)
+  .gte('created_at', '2026-05-12T21:00:00Z')
+  .order('created_at', { ascending: false })
+  .limit(25);
+console.log('--- recent activity_events (since 21:00 UTC) ---');
+for (const e of events ?? []) {
+  console.log(`${e.created_at.slice(11,19)} [${e.severity}] ${e.event_type} · ${e.actor ?? '-'} · ${e.title}`);
+}
+
+const { data: jobs } = await sb
+  .from('jobs')
+  .select('agent_id,status,started_at,completed_at,inngest_event')
+  .eq('episode_id', EP)
+  .order('started_at', { ascending: false })
+  .limit(25);
+console.log('\n--- ALL jobs for E20 ---');
+for (const j of jobs ?? []) {
+  console.log(`${(j.started_at ?? '').slice(11,19)} ${j.status.padEnd(10)} ${j.agent_id} ← ${j.inngest_event}`);
+}
+
+const { data: asset } = await sb.from('assets').select('id,filename,status,version,updated_at').eq('id', ASSET).maybeSingle();
+console.log('\n--- target asset ---');
+console.log(asset);
+
+const { data: approvals } = await sb.from('approvals').select('approved_by,approval_type,created_at,notes').eq('asset_id', ASSET).order('created_at', { ascending: false });
+console.log('\n--- approvals ---');
+console.log(approvals);
+
+const { data: erefs } = await sb
+  .from('assets')
+  .select('id,filename,status,version,created_at,metadata')
+  .eq('episode_id', EP)
+  .like('file_type', 'IMG-episode_ref%')
+  .order('created_at', { ascending: true });
+// Coverage diff: storyboard shot_ids vs APPROVED IMG-episode_ref shot_ids
+const { data: stbAsset } = await sb
+  .from('assets')
+  .select('content')
+  .eq('episode_id', EP)
+  .eq('file_type', 'STB-storyboard')
+  .eq('status', 'APPROVED')
+  .order('version', { ascending: false })
+  .limit(1)
+  .maybeSingle();
+const stbContent = (stbAsset as { content?: string } | null)?.content ?? '';
+const jsonMatch = /```json\s*\n([\s\S]*?)\n```/.exec(stbContent);
+let storyboardShotIds: string[] = [];
+if (jsonMatch) {
+  try {
+    const parsed = JSON.parse(jsonMatch[1]!) as { acts?: Array<{ shots?: Array<{ shot_id?: string }> }> };
+    storyboardShotIds = (parsed.acts ?? []).flatMap((a) => (a.shots ?? []).map((s) => String(s.shot_id ?? ''))).filter(Boolean);
+  } catch {}
+}
+const approvedShotIds = new Set<string>();
+for (const e of erefs ?? []) {
+  if (e.status !== 'APPROVED') continue;
+  const sr = (e.metadata as { shot_reference?: { shot_id?: string } } | null)?.shot_reference;
+  if (sr?.shot_id) approvedShotIds.add(sr.shot_id);
+}
+console.log(`\n--- COVERAGE: storyboard ${storyboardShotIds.length} shots vs APPROVED EREF ${approvedShotIds.size} ---`);
+const missing = storyboardShotIds.filter((id) => !approvedShotIds.has(id));
+const extra = [...approvedShotIds].filter((id) => !storyboardShotIds.includes(id));
+console.log(`  MISSING (no APPROVED ref): ${missing.length}`);
+for (const m of missing) console.log(`    - ${m}`);
+if (extra.length > 0) {
+  console.log(`  EXTRA (refs without storyboard shot): ${extra.length}`);
+  for (const x of extra) console.log(`    - ${x}`);
+}
+
+// VID-shot coverage breakdown
+const { data: vids } = await sb
+  .from('assets')
+  .select('id,filename,status,version,metadata,created_at')
+  .eq('episode_id', EP)
+  .like('file_type', 'VID-shot%')
+  .order('created_at', { ascending: false });
+console.log(`\n--- VID-shot assets (${vids?.length ?? 0}) ---`);
+const vidByShot = new Map<string, Array<{ status: string; version: number | null; filename: string; created_at: string }>>();
+for (const v of vids ?? []) {
+  const sid = (v.metadata as { shot_id?: string } | null)?.shot_id ?? '?';
+  const arr = vidByShot.get(sid) ?? [];
+  arr.push({ status: v.status, version: v.version ?? 0, filename: v.filename, created_at: v.created_at });
+  vidByShot.set(sid, arr);
+}
+const vidApproved = new Set<string>();
+const vidReview = new Set<string>();
+const vidOther = new Set<string>();
+for (const [sid, rows] of vidByShot) {
+  rows.sort((a, b) => ((b.version ?? 0) - (a.version ?? 0)) || b.created_at.localeCompare(a.created_at));
+  const latest = rows[0]!;
+  if (latest.status === 'APPROVED' || latest.status === 'LOCKED') vidApproved.add(sid);
+  else if (latest.status === 'REVIEW') vidReview.add(sid);
+  else vidOther.add(sid);
+}
+const vidMissingShots = storyboardShotIds.filter((sid) => !vidByShot.has(sid));
+console.log(`  APPROVED VID-shot shot_ids: ${vidApproved.size}`);
+console.log(`  REVIEW VID-shot shot_ids:   ${vidReview.size}`);
+console.log(`  Other status (DRAFT/REJECTED/REVISION): ${vidOther.size}`);
+console.log(`  MISSING (no VID-shot row at all): ${vidMissingShots.length}`);
+for (const m of vidMissingShots) console.log(`    - ${m}`);
+
+console.log(`\n--- IMG-episode_ref assets (${erefs?.length ?? 0}) ---`);
+for (const e of erefs ?? []) {
+  const m = e.metadata as Record<string, unknown> | null;
+  const sr = m?.shot_reference as Record<string, unknown> | undefined;
+  console.log(`\n${e.created_at.slice(11,19)} ${e.status.padEnd(9)} v${e.version} shot=${sr?.shot_id}`);
+  console.log('  shot_role:', sr?.shot_role);
+  const ip = m?.image_prompt;
+  const ipStr = typeof ip === 'string' ? ip : JSON.stringify(ip ?? {}, null, 1);
+  console.log('  image_prompt (first 900):');
+  console.log('    ' + ipStr.slice(0,900).replace(/\n/g,'\n    '));
+}
+}
+main().catch(e => { console.error(e); process.exit(1); });

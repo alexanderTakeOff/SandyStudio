@@ -13,6 +13,7 @@ import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError, ConflictError, GovernanceBlockError } from '@/lib/api/errors';
 import { assertAssetTransition, type AssetStatus } from '@/lib/api/status-transitions';
+import { filenameForStatus } from '@/lib/api/filename-status';
 import { enforceMode, type GovernanceEpisode } from '@/lib/governance';
 import { inngest, type StudioEventName } from '@/lib/inngest/client';
 import {
@@ -131,6 +132,36 @@ async function countApproved(
   return count ?? 0;
 }
 
+/**
+ * Find the latest APPROVED upstream asset of a given file_type prefix for
+ * the episode. Used by the auto-chain when a REV-* approval needs to fire
+ * the next agent — the agent expects the underlying creative asset's id
+ * (storyboard / script / etc.), not the review asset's id.
+ *
+ * Sprint φ chain bug fix (2026-05-16): REV-world_check approval was firing
+ * EREF with `storyboardAssetId = <review asset id>`; runner loaded review
+ * content, found no shots, failed «No episode reference assets inserted».
+ * Symmetric bug for REV-script_qa → EXEC-SB (storyboarder ignored it via
+ * its `findApprovedAsset` lookup, so the bug was latent there).
+ */
+async function findLatestApprovedAssetId(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+  fileTypePrefix: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('assets')
+    .select('id,version,created_at')
+    .eq('episode_id', episodeId)
+    .eq('status', 'APPROVED')
+    .like('file_type', `${fileTypePrefix}%`)
+    .order('version', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as { id?: string } | null)?.id ?? null;
+}
+
 async function computeNextEvents(
   supabase: SupabaseClientLike,
   asset: AssetForChain,
@@ -167,10 +198,15 @@ async function computeNextEvents(
   }
 
   // ── Script review APPROVED → EXEC-SB
+  // Resolve underlying SCR-script asset id — `asset.id` here is the REV
+  // review, not the script. EXEC-SB's runner currently looks up upstream
+  // assets itself (so it survives without this), but passing the correct id
+  // keeps event payloads honest and consistent with the EREF fix below.
   if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-SB', { since }))) {
+    const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
     events.push({
       name: 'sandystudio/exec-sb/create-storyboard',
-      data: { episodeId: ep, scriptAssetId: asset.id },
+      data: { episodeId: ep, scriptAssetId: scrId ?? asset.id },
     });
   }
 
@@ -194,9 +230,15 @@ async function computeNextEvents(
   // (animatic) waits for both to complete.
   if (ft === 'REV-world_check') {
     if (!(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
+      // Resolve the underlying STB asset — `asset.id` is the REV-world_check
+      // review, not the storyboard. EREF runner parses storyboard JSON from
+      // the asset it receives, so passing the review id makes it find no
+      // shots → "No episode reference assets inserted" failure. (Sprint φ
+      // chain bug fix 2026-05-16.)
+      const stbId = await findLatestApprovedAssetId(supabase, ep, 'STB-storyboard');
       events.push({
         name: 'sandystudio/exec-eref/generate-references',
-        data: { episodeId: ep, storyboardAssetId: asset.id },
+        data: { episodeId: ep, storyboardAssetId: stbId ?? asset.id },
       });
     }
     if (!(await hasJob(supabase, ep, 'EXEC-MGEN', { since }))) {
@@ -521,10 +563,19 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
-  // 2. Update asset status
+  // 2. Update asset status (+ filename status suffix per CLAUDE.md §3)
   const patch: Record<string, unknown> = { status: targetStatus };
   if (body.decision === 'REQUEST_REVISION' && body.note) {
     patch.revision_log = body.note;
+  }
+  // Sprint γ 2026-05-14: keep filename in sync with status. Director:
+  // «утверждённый файл должен поменять наименование». The CHECK constraint
+  // allows only 5 statuses in filenames (DRAFT/REVIEW/REVISION/APPROVED/
+  // LOCKED) so we skip rename when the target status has no filename
+  // representation (REJECTED, INVALIDATED, …).
+  const renamed = filenameForStatus(asset.filename, targetStatus);
+  if (renamed && renamed !== asset.filename) {
+    patch.filename = renamed;
   }
   const { error: upErr } = await supabase
     .from('assets')
