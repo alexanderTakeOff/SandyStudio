@@ -159,7 +159,10 @@
       "WebFetch(domain:ui8.net)",
       "WebFetch(domain:medium.com)",
       "WebFetch(domain:www.figma.com)",
-      "Bash(tail -5 \"/c/Users/NAVIA VISION ONE/.claude/projects/C--SandyStudio/memory/MEMORY.md\")"
+      "Bash(tail -5 \"/c/Users/NAVIA VISION ONE/.claude/projects/C--SandyStudio/memory/MEMORY.md\")",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/api/health)",
+      "Bash(cd /c/SandyStudio/.claude/worktrees/quizzical-brown-462555/webapp && grep -n \"location\\\\|sub_area\\\\|bibleRefs\\\\|buildMultiImageRefs\" lib/agents/runners/episode-references.ts | head -25)",
+      "Bash(cd /c/SandyStudio/.claude/worktrees/quizzical-brown-462555/webapp && grep -n \"location\\\\|locations\" lib/agents/bible-loader.ts | head -20)"
     ]
   }
 }
