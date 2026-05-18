@@ -94,7 +94,10 @@ Status:   ✅ **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 — MERGED to mast
           • ~~**φ**~~ (Skills-as-capabilities refactor) — COMPLETE 2026-05-18 (cc43944)
           • ✅ **Day 1 of 11 COMPLETE** — Sprint «Дизайнер и Аниматор» schema groundwork
           • ✅ **Day 2 of 11 COMPLETE** — Episode Reference Designer agent (spec + runner + tests + skill)
-          • **Day 3** — IN PROGRESS — Designer factory.ts + Inngest function wiring
+          • ✅ **Day 3.1 COMPLETE** — Option A agent infrastructure plumbing (commit `d148a01`).
+            EXEC-EREF-DESIGNER registered, fireable via Inngest event. Critic + live wire-in pending.
+          • **Day 3.2** — IN PROGRESS — live approval-route wire-in (STB.APPROVED → Designer,
+            SPC-ref_plan.APPROVED → EREF executor) + refactor episode-references.ts to read Plan
 
 ✅ **Day 1 deliverables (2026-05-18):**
           • Migration **0032** `0032_designer_animator_sprint.sql` written — additive: adds
