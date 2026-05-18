@@ -105,8 +105,29 @@ export function PreviewDrawer({
 
   if (!open || typeof document === 'undefined') return null;
 
+  // Sprint «Дизайнер и Аниматор» Day 1 UX fix (2026-05-18) — PA panel must
+  // stay visible while a preview is open. The Director surfaced 2026-05-18:
+  // «когда я захожу в превью, окно Полины уходит за blur, нужно выходить из
+  // превью чтобы её спросить». Root cause: this overlay was `fixed inset-0
+  // z-50`, perfectly covering the full viewport including the docked PA
+  // panel (z-30) which lives outside the createPortal tree. Fix: respect
+  // the PA panel padding vars (--pa-pad-left / --pa-pad-right that
+  // ConciergePanel.tsx writes on documentElement) so the overlay carves
+  // out the PA column from both backdrop and drawer.
+  const overlayInset = {
+    top: 0,
+    bottom: 0,
+    left: 'var(--pa-pad-left, 0px)',
+    right: 'var(--pa-pad-right, 0px)',
+  };
+
   return createPortal(
-    <div className="fixed inset-0 z-50 pointer-events-none" role="dialog" aria-modal="true">
+    <div
+      className="fixed z-50 pointer-events-none"
+      style={overlayInset}
+      role="dialog"
+      aria-modal="true"
+    >
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-[2px] pointer-events-auto"
         onClick={onClose}
@@ -115,7 +136,7 @@ export function PreviewDrawer({
         className="absolute top-0 right-0 h-full pointer-events-auto flex flex-col border-l border-glass shadow-2xl transition-[width] duration-200 ease-out"
         style={{
           width: WIDTHS[size],
-          maxWidth: '100vw',
+          maxWidth: '100%',
           background: 'var(--panel-glass-strong-bg)',
           backdropFilter: 'blur(18px)',
         }}

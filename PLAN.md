@@ -13,6 +13,128 @@
 ## CURRENT STATE
 
 ```
+Phase:    **Sprint «Дизайнер и Аниматор» — KICKOFF 2026-05-18** (11 дней, EREF → VGEN canonical agentification)
+Status:   ✅ **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 — MERGED to master 2026-05-18** (squash commit `cc43944`)
+            • Skills-as-capabilities refactor (lazy two-step API + 2 broad capability playbooks)
+            • EREF chain bug fix (review-id → underlying STB resolution) + RejectModal directorConfirm
+            • EREF pilot state mirror в episodes.metadata (closes UI gap FANOUT_RUNNING → FANOUT_COMPLETE)
+            • gpt-image-1 → gpt-image-2 across openai-image / openai-image-edit / openai-edits-multi
+            • Branch `claude/quizzical-brown-462555` tip 3993374; worktree disposition deferred
+            • Verify: tsc clean · vitest 216/216 · replay-pilot 29/29
+
+          ✅ **Stage A smoke 2026-05-18 (E21)** — 2 VGEN pilots APPROVED (Sandy SH01 establishing,
+             SH02 action via Seedance fal-img2vid 4s). Budget $4.46 / $25. Director surfaced
+             **3 architectural issues** during review:
+             1. 🔴 EREF aspect ratio bug — refs generated 1:1 (1024×1024), Seedance crops to 16:9
+                losing top/bottom. Critical for E22+ canonical episodes.
+             2. 🟡 Camera movement слишком subtle — Seedance under-emits motion despite skill
+                favoring «static + 5% push-in» default.
+             3. 🟡 «no audio yet» в VGEN panel — animatic missing music_asset_id в metadata.
+
+          ⏳ **Sprint «Дизайнер и Аниматор» — Director-approved 2026-05-18** — root-cause fix for
+             issues 1+2 (issue 3 deferred to separate sprint). Architectural diagnosis:
+             **VGEN + EREF — единственные стадии пайплайна без write-agent и без reviewer.**
+             Все остальные стадии (Script→SREV, Storyboard→WCHK, Bible→BIBLE-LOCK) имеют
+             Writer-agent + Reviewer-agent + Director gate. VGEN/EREF — template-функции,
+             которые шаблонно склеивают строку и зовут провайдер. Closing this gap:
+
+             **Two new agents + two critics:**
+             • **Episode Reference Designer** (EXEC-EREF становится full agent) — decision space:
+               provider per shot type (gpt-image-2 vs Flux), size per delivery_target (1536×1024
+               YouTube vs 1024×1792 Shorts), variants count, pilot strategy, camera coverage.
+               Output: `SPC-ref_plan-<shot_id>` asset.
+             • **Designer's Critic** (EXEC-EPREV) — validates Plan: aspect=delivery_target,
+               provider obosnovan, sub_area variation, Bible style canon present.
+             • **Animator** (EXEC-VGEN становится full agent) — decision space: provider per
+               shot role, quality tier per hero-marker, aspect per delivery_target, seed
+               locking, end_image strategy. Output: `SPC-shot_plan-<shot_id>` asset.
+             • **Animator's Critic** (EXEC-VPREV) — V01-V09 hard checks (7-slot structure,
+               ≤1 primary action, NEGATIVE non-empty, CONTINUITY references EREF anchor,
+               STYLE matches Bible canon, CAMERA aligns STB, SUBJECT matches characters,
+               duration vs action complexity, no on-screen text).
+
+             **Coms model (Director-confirmed):** Polina = единственный голос. Agents работают
+             silent, публикуют structured Plan-asset + activity events. PA reads, summarizes,
+             asks approval verbally. Per-agent dialog через PA-proxy (`askAgent` tool). NO
+             отдельных team-chat threads на каждого агента.
+
+             **UI:** zero new timeline rows. Diagnostic Plan inspector в existing Episode
+             Asset Drawer (read-only). PA panel always-visible UX fix Day 1.
+
+             **Brief extension:** `series.delivery_targets[]` + `episode.brief.delivery_targets[]`
+             — для S14 default `['youtube_landscape']`. Designers/Animators читают список,
+             решают какой aspect/размер генерить.
+
+             **11-day breakdown:**
+             - Day 1: Schema + migration 0031 + asset types + naming + delivery_targets +
+                      glossary + skills tree + PA panel always-visible fix
+             - Day 2-3: Episode Reference Designer agent + skill + 12+ unit tests
+             - Day 4: Designer's Critic + 8-10 hard checks + REVISE auto-chain
+             - Day 4.5: PA integration (3 tools + askAgent + diagnostic inspector)
+             - Day 5: E22 EREF smoke + retro memo
+             - Day 6-7: Animator agent + skill + 15+ unit tests (replaces buildShotPromptV2)
+             - Day 8: Animator's Critic + V01-V09 + auto-chain
+             - Day 8.5: PA integration for Animator (3 tools + diagnostic + regenerate route patch)
+             - Day 9-10: E22 full episode smoke через PA + quantitative retro
+             - Day 11: Final memo + technology.md §3.6 + skill v0.2 updates + buffer
+
+             **Issue 3 (no audio yet)** — отдельный sprint после «Дизайнер и Аниматор».
+             Root cause likely в animatic runner: musicAssetId не пишется в `animatic_v1.metadata`
+             даже когда music asset APPROVED.
+
+          ⏳ **PR γ status**: `webapp/docs/pa-gap-audit-e21.md` живёт от Sprint γ, остаётся
+             как production-audit doc. Не блокирует Sprint «Дизайнер и Аниматор».
+
+          Phase sequence (master mainline):
+          • ~~**P0**~~ (Flux 422 + E20 archive) — COMPLETE 2026-05-14
+          • ~~**α**~~ (Realtime + team-chat) — COMPLETE 2026-05-14
+          • ~~**β**~~ (Seedance capability manifests) — COMPLETE 2026-05-14
+          • ~~**γ**~~ (E21 production через PA) — COMPLETE 2026-05-18 (E21 Stage A: 22/22 EREF
+                                                  generated, 2 VGEN pilots APPROVED)
+          • ~~**φ**~~ (Skills-as-capabilities refactor) — COMPLETE 2026-05-18 (cc43944)
+          • ✅ **Day 1 of 11 COMPLETE** — Sprint «Дизайнер и Аниматор» schema groundwork
+          • **Day 2-3** — IN PROGRESS — Episode Reference Designer agent
+
+✅ **Day 1 deliverables (2026-05-18):**
+          • Migration **0032** `0032_designer_animator_sprint.sql` written — additive: adds
+            `series.metadata jsonb` (mirrors episodes.metadata 0029, holds `delivery_targets[]`),
+            widens `activity_events.event_type` whitelist with 6 new types
+            (plan_proposed, plan_approved, plan_revised, plan_rejected, agent_question,
+            agent_answered), reserves `agent_failed` (catch-up for 2026-05-12 SREV hotfix).
+            Migration 0031 was already taken by `concierge_turns_publication_fix` (post-cc43944
+            merge); bumped to 0032 to avoid collision.
+          • Naming convention: no changes needed — `SPC` already whitelisted in 0002 assets
+            CHECK + naming-validator hook covers `prompts/` directory.
+          • Glossary extended with 6 new canonical terms: «Episode Reference Designer»,
+            «Designer's Critic», «Animator», «Animator's Critic», «Plan-asset», «delivery_targets»,
+            «askAgent (PA tool)». Also extended «Validator» entry to mention new EXEC-EPREV/EXEC-VPREV.
+          • Skill stubs: `.claude/skills/eref-designer/SKILL.md` + `.claude/skills/animator/SKILL.md`
+            written as `status: STUB / maturity: stub-day-1`. Populated Day 2-3 (Designer) and Day 6-7
+            (Animator) when runners implement decision rules.
+          • PreviewDrawer UX fix shipped: overlay now respects `--pa-pad-left/--pa-pad-right` CSS
+            vars from ConciergePanel — PA panel stays visible on preview open, no more «уходит за blur».
+            File: `webapp/components/preview/PreviewDrawer.tsx`. Browser smoke deferred to Day 5
+            with E22 EREF run.
+          • Verify trio: tsc clean · vitest **216/216** · replay-pilot **29/29**.
+
+Next:     Day 2-3 — Episode Reference Designer agent implementation:
+          1. `agents/exec/episode_reference_designer.md` — system prompt + decision contract
+          2. `webapp/lib/agents/runners/episode-reference-designer.ts` — runner with full
+             Bible / STB shot / Script scene / delivery_targets injection
+          3. Populate `.claude/skills/eref-designer/SKILL.md` with decision rules:
+             provider per shot type, size per delivery_target, variants count, pilot strategy,
+             camera coverage, sub_area variation, negative-term baseline
+          4. 12+ unit tests covering decision dimensions + Plan-asset JSON schema parse
+          5. Integration point in `factory.ts` so EREF events route to the new agent
+          6. Verify trio after milestone
+
+Mode:     ===5=== EDIT MODE active · Mode 1 (MANUAL governance) · auto-sync OFF
+Date:     2026-05-18
+```
+
+---
+
+```
 Phase:    **P0 + α + β SHIPPED 2026-05-14** — Flux 422 fix · E20 archived PARTIAL · Postgres trigger
           Realtime + team-chat unified thread · capability manifests + Seedance full
           controls + seedance-prompting skill. γ kickoff posted, awaiting Director brief in PA.
@@ -281,6 +403,9 @@ Sprints S0–S8 (foundation + spec) all COMPLETE 2026-04-23..28 — details in `
 | A.1 | Animatic director_overrides + EpisodeTimeline Phase A | ✅ COMPLETE 2026-05-06..07 |
 | A.2 | VGEN auto-COMPLETE + EXEC-STITCH + Audio reorg + Bug A/C/D | ✅ COMPLETE 2026-05-08..10 |
 | **Mode 2.5 Phase 1-A + 1-B + Phase A** | Prod Assistant + memory + TTS + 13 tools + verbal approval + gpt-5.5 + BEHAVIOR_CONTRACT | ✅ COMPLETE 2026-05-08..12 (PR #23 OPEN) |
+| **Sprint P0/α/β/γ** | Flux 422 + E20 archive + Realtime trigger + Seedance capability manifests + E21 production via PA | ✅ COMPLETE 2026-05-14..18 |
+| **Sprint φ** | Skills-as-capabilities lazy two-step API + 2 broad capability playbooks + EREF chain fix + RejectModal + EREF state mirror + gpt-image-2 | ✅ COMPLETE 2026-05-18 (master `cc43944`) |
+| **Sprint «Дизайнер и Аниматор»** | Episode Reference Designer + Animator full agents + 2 Critics + PA integration + delivery_targets + E22 smoke. Closes architectural gap: VGEN/EREF as template-functions → as decision-making agents | ⏳ IN PROGRESS Day 1/11 (2026-05-18) |
 
 ---
 
@@ -368,6 +493,8 @@ Pre-2026-04-30 entries → `docs/PLAN-history.md`.
 
 | Date | Change | By |
 |------|--------|----|
+| 2026-05-18 | **Sprint «Дизайнер и Аниматор» kickoff** — Director-approved 11-day arc to close architectural gap (VGEN+EREF as template-functions → as decision-making agents). Two new full agents (Episode Reference Designer + Animator) + two Critics (Designer's Critic + Animator's Critic) + PA integration (askAgent tool + Plan-asset approval flow) + UX fix (PA panel always-visible) + brief extension (delivery_targets). Closes Director-flagged Stage A issues #1 (EREF aspect ratio) and #2 (camera too subtle) at root cause, not symptom. Issue #3 (no audio yet) deferred to next sprint. Diagnosis memo in chat; Day 1 starts: migration 0031 + asset types + naming + delivery_targets + glossary + skills tree + PA panel fix. | Director + Claude Code |
+| 2026-05-18 | **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 MERGED to master** (squash commit `cc43944`, 206 commits, 188 files, +19782/−435). Skills-as-capabilities refactor (lazy two-step API: getAgentSkillManifest → loadAgentSkillBodies), 2 broad capability playbooks (`storyboarder-situational-comedy`, `eref-shot-composition`), seedance-prompting ACTIVE, 3 atomic σ seeds DEPRECATED. EREF chain bug fix (approve route resolves REV-* → underlying STB asset id via findLatestApprovedAssetId). RejectModal directorConfirm true. regenerate-image route skips auto_upscale provider entries. EpisodeAssetDrawer/AssetImagePromptSection visible busy/done states. EREF state mirror to episodes.metadata.eref_pilot_state. gpt-image-1 → gpt-image-2 across openai-image, openai-image-edit, openai-edits-multi (~15% cost refresh). E21 Stage A: 22/22 EREF generated, 2 VGEN pilots APPROVED, $4.46 / $25 budget. tsc clean · vitest 216/216 · replay-pilot 29/29. | Director + Claude Code |
 | 2026-05-12 | **PR #23 MERGED** to master (merge commit `8fa5c00`, --merge style preserves 227 auto-sync commits). Mode 2.5 PA + Mode 3 readiness drill shipped. | Director + Claude Code |
 | 2026-05-12 | fix(srev): runner's internal `findApprovedAsset` (script-reviewer.ts) — was a second layer of the same deadlock, requiring `status === 'APPROVED'` after gate already passed. Renamed semantically (still legacy name) to accept `REVIEW`/`REVISION`/`APPROVED` so Story Editor can review pending drafts. tsc clean, 166/166. (`lib/agents/runners/script-reviewer.ts`) | Claude Code |
 | 2026-05-12 | fix(gate): Story Editor's upstream gate now accepts SCR in `REVIEW`/`REVISION`/`APPROVED` status — pre-fix gate required APPROVED upstream, but Story Editor IS the gate FROM REVIEW to APPROVED (chicken-and-egg deadlock for the internal Writer↔Story Editor loop). Added `AgentDependency.allowedStatuses` field, single-status path still uses .eq() (test compat), multi-status uses .in(). 166/166 tests. (`lib/agents/gate.ts`) | Claude Code |
