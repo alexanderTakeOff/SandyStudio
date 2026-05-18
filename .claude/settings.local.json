@@ -152,6 +152,13 @@
       "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H/jobs\")",
       "Bash(curl -s \"http://localhost:8288/v1/runs/01KQVJVGA9ZTA0M08PNFX7RQ2H/actions\")",
       "Bash(wait)",
+      "Bash(mkdir -p ~/.claude/session-data)",
+      "Read(//c/Users/NAVIA VISION ONE/.claude/session-data/**)",
+      "mcp__49afc652-97ce-4ea7-88cf-74a9959b819b__whoami",
+      "WebFetch(domain:muz.li)",
+      "WebFetch(domain:ui8.net)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:www.figma.com)",
       "Bash(tail -5 \"/c/Users/NAVIA VISION ONE/.claude/projects/C--SandyStudio/memory/MEMORY.md\")"
     ]
   }

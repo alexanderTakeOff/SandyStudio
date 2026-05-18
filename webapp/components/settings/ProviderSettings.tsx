@@ -20,6 +20,7 @@ import useSWR from 'swr';
 import { useState } from 'react';
 import { CheckCircle2, AlertTriangle, Wrench, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Card, CardBody } from '@/components/ui/Card';
+import { PeekHint } from '@/components/ui/PeekHint';
 import { fetcher } from '@/lib/swr';
 import type { ProviderCandidate } from '@/lib/api/provider-catalog';
 
@@ -140,14 +141,14 @@ export function ProviderSettings() {
     <Card>
       <CardBody>
         <div className="flex items-center justify-between mb-4">
-          <div>
+          <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted">
               Providers
             </h2>
-            <p className="text-xs text-text-secondary mt-1">
+            <PeekHint autoPeekMs={3500}>
               Global tier — applies to every episode unless overridden per-stage. Resolver cache
               invalidates on save.
-            </p>
+            </PeekHint>
           </div>
         </div>
 
@@ -176,13 +177,15 @@ export function ProviderSettings() {
                   className={`grid grid-cols-12 gap-3 items-center px-3 py-2 rounded-lg border border-glass ${dim}`}
                   style={{ background: 'var(--bg-elevated)' }}
                 >
-                  <div className="col-span-3">
+                  <div className="col-span-3 flex items-center gap-1.5">
                     <div className="text-sm font-medium text-text-primary">
                       {CONTRACT_LABEL[row.contract] ?? row.contract}
                     </div>
-                    <div className="text-[11px] text-text-muted leading-tight">
-                      {CONTRACT_NOTE[row.contract] ?? ''}
-                    </div>
+                    {CONTRACT_NOTE[row.contract] && (
+                      <PeekHint side="right" autoPeekMs={0}>
+                        {CONTRACT_NOTE[row.contract]}
+                      </PeekHint>
+                    )}
                   </div>
 
                   <div className="col-span-5">
@@ -248,16 +251,16 @@ export function ProviderSettings() {
           </div>
         )}
 
-        <p className="text-[11px] text-text-muted mt-4 leading-relaxed">
-          <strong>Live</strong> = adapter wired + env key set; real provider call.
-          {' '}
-          <strong>No key</strong> = adapter ready, but env var missing — resolver auto-falls back
-          to mock so the pipeline keeps moving.
-          {' '}
-          <strong>Wip</strong> = adapter not yet implemented (the dropdown lists future options).
-          {' '}
-          Per-stage overrides will appear in the pipeline kebab when Phase 8 step 9 ships.
-        </p>
+        <div className="mt-4 flex items-center gap-2 text-[11px] text-text-muted">
+          <span>Health legend</span>
+          <PeekHint autoPeekMs={0} side="top">
+            <strong>Live</strong> = adapter wired + env key set; real provider call.{' '}
+            <strong>No key</strong> = adapter ready, but env var missing — resolver auto-falls back
+            to mock so the pipeline keeps moving.{' '}
+            <strong>Wip</strong> = adapter not yet implemented (the dropdown lists future options).{' '}
+            Per-stage overrides will appear in the pipeline kebab when Phase 8 step 9 ships.
+          </PeekHint>
+        </div>
       </CardBody>
     </Card>
   );

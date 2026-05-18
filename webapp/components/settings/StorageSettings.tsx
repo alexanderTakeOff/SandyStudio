@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, RefreshCw, Cloud, Folder } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { PeekHint } from '@/components/ui/PeekHint';
 
 interface StorageState {
   project_root: string;
@@ -91,7 +92,13 @@ export function StorageSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Storage</CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle>Storage</CardTitle>
+          <PeekHint autoPeekMs={3500}>
+            Project root holds bibles and scripts; media storage holds heavy binaries. Both are
+            tested for write access on save.
+          </PeekHint>
+        </div>
       </CardHeader>
       <CardBody>
         <div className="space-y-4">
@@ -147,9 +154,13 @@ export function StorageSettings() {
             )}
           </div>
 
-          <div className="rounded-lg p-3 text-[11px] text-text-muted bg-[var(--bg-elevated)] border border-glass">
-            ⚠ Changing storage paths does not move existing content. New writes go to the new
-            path. Existing series stay where they are (their PROJECT.md is the authoritative anchor).
+          <div className="flex items-center gap-2 text-[11px] text-text-muted">
+            <span aria-hidden>⚠</span>
+            <span>Changing paths does not move existing content.</span>
+            <PeekHint side="top" autoPeekMs={0}>
+              New writes go to the new path. Existing series stay where they are — their
+              PROJECT.md remains the authoritative anchor.
+            </PeekHint>
           </div>
         </div>
       </CardBody>
