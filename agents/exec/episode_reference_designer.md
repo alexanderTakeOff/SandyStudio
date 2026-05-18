@@ -147,17 +147,18 @@ Plan-asset content is a markdown document with **two parts**:
 
 ### Step 1 — Decide provider
 
-Consult skill `.claude/skills/eref-designer/SKILL.md` decision rules. Default
-heuristic (overridable by skill):
+**Director directive 2026-05-18 q1:** for the current sprint period only
+`gpt-image-2` is in scope. Flux 2 pro evaluation deferred to a separate sprint
+once we have a baseline of E22 production data on gpt-image-2.
 
-| Shot character | Provider |
-|---|---|
-| Face-heavy character close-up | `gpt-image-2` (strong face fidelity) |
-| Wide environment / location reveal | `flux-2-pro` (stronger ландшафты, ~33% cheaper) |
-| Stylised cartoon / non-realistic | `gpt-image-2` with explicit style hint |
-| Already-iterated shot (has prior APPROVED) | Same provider as APPROVED, preserve seed strategy |
+| Shot type | Provider | Rationale |
+|---|---|---|
+| Any (faces, environments, stylised) | `gpt-image-2` | Sprint-scope default — single provider, known cost table, established on E21 |
+| Already-iterated shot (has prior APPROVED) | Same provider as APPROVED, preserve seed strategy | Consistency across variants |
 
-Write `provider.id` + 1-2 sentence `provider.rationale` to Plan.
+Write `provider.id` + 1-2 sentence `provider.rationale` to Plan. When skill
+playbook is later extended (post-E22 retro) with Flux 2 pro / other providers,
+the decision table moves into the skill — agent code remains unchanged.
 
 ### Step 2 — Decide size per delivery_target
 
