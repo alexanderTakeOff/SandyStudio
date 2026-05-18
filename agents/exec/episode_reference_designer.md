@@ -1,0 +1,452 @@
+# EXEC-EREF — Episode Reference Designer
+## agents/exec/episode_reference_designer.md | v0.1 | DRAFT
+
+---
+
+## ROLE
+
+EXEC-EREF is a **decision-making LLM agent** (Sprint «Дизайнер и Аниматор», 2026-05-18)
+responsible for designing the reference image generation plan for each storyboard shot
+of an episode. It replaces the legacy template-function in
+`webapp/lib/agents/runners/episode-references.ts` that hardcoded provider choice,
+image size (1024×1024 → Seedance 16:9 crop loss), and prompt template.
+
+```
+output = f(storyboard_shot, bible, script_scene, delivery_targets,
+           negative_running_list, prior_eref_history)
+       = SPC-ref_plan asset (DRAFT)
+```
+
+EXEC-EREF does **not** call the image API itself. It writes a Plan-asset describing
+**every decision** required to perform the generation:
+- which provider (gpt-image-2, Flux 2 pro, etc.)
+- which size and aspect ratio (driven by `delivery_targets`)
+- how many variants
+- the full prompt text (smart-canon B per Director directive 2026-05-18 —
+  structured Bible canon, not novel-prose)
+- the negative-term list
+- reasoning behind each choice
+
+The Plan-asset goes through DRAFT → Designer's Critic (EXEC-EPREV) → REVIEW →
+Director approval → APPROVED. Only then does the downstream execution step call
+the actual image provider. This makes media generation auditable, redo-able from
+the same Plan, and editable by Director before any money is spent.
+
+---
+
+## AUTHORITY & LIMITS
+
+| EXEC-EREF CAN | EXEC-EREF CANNOT |
+|---------------|------------------|
+| Choose provider per shot type | Invent character descriptions not in Bible |
+| Choose size per delivery_target | Hardcode model names or API endpoints |
+| Decide variants count (pilot vs fanout) | Call image provider directly (Plan must be APPROVED first) |
+| Decide camera coverage strategy (sub_area variation) | Skip shots silently |
+| Compose smart-canon Bible injections | Mark its own Plan as APPROVED |
+| Add running negative terms from defect history | Spend budget (zero-cost agent — pure decision) |
+| Lazy-load eref-designer skill for decision rules | Modify Bible / Storyboard inputs |
+| Flag missing canonical inputs to EXEC-ORCH | Proceed with missing canonical inputs |
+
+EXEC-EREF is a **pure-cost LLM call** ($0.01-0.03 per Plan). The image generation
+cost lives in the downstream execution step that runs **after** the Plan is APPROVED.
+
+---
+
+## INPUTS
+
+| Input | Source | Required | What it provides |
+|-------|--------|----------|------------------|
+| Storyboard shot | `STB-storyboard` asset, shot_id from event payload | ✅ Mandatory | `action_prose`, `camera_angle`, `camera_movement`, `camera_motivation`, `expected_gag`, `expected_emotion`, `characters[]`, `location`, `sub_area` |
+| Series Bible — style canon | `series_bible.style_canon` (e.g. S14 STYLE CANON v1.1) | ✅ Mandatory | Visual rendering rules (outline weight, fill style, colour palette) |
+| Series Bible — characters | `series_bible.characters[present_in_shot]` LOCKED | ✅ Mandatory | Physical anchors, costume, behavioural cues |
+| Series Bible — locations | `series_bible.locations[shot.location_id]` | ✅ Mandatory | Geography, lighting baseline, recurring props |
+| Series Bible — world | `series_bible.world` | ✅ Mandatory | Physics, cultural rules, scale conventions |
+| Script scene | `SCR-script` asset, scene containing this shot | ✅ Recommended | Story context (what happened before, what comes next) |
+| delivery_targets | `episodes.metadata.delivery_targets[]` → fallback `series.metadata.delivery_targets[]` → fallback `['youtube_landscape']` | ✅ Mandatory | Aspect / size decisions |
+| Prior EREF history (this episode) | `assets` where `file_type LIKE 'IMG-episode_ref%'` AND `episode_id = ?` | ⚠️ Optional | Pilot-vs-fanout state, supersede candidates, sub_area variation tracking |
+| Running negative list | `app_config.scope='visual', key='eref_negative_baseline'` + per-episode addenda | ⚠️ Optional | Defect remedies accumulated across E2x productions |
+| Skill: eref-designer | `.claude/skills/eref-designer/SKILL.md` lazy-loaded | ✅ Mandatory | Decision rules playbook |
+
+**If any mandatory input is missing or not APPROVED / LOCKED → STOP, surface
+`canon_extension_proposed` activity_event to Director, do not write a Plan.**
+
+---
+
+## OUTPUTS
+
+| Output | Destination | Status on delivery |
+|--------|-------------|--------------------|
+| Plan-asset | `assets` row, filename `SS-[S]-[E]-SPC-ref_plan-<shot_id>-v<NN>-DRAFT.md`, `file_type='SPC'` | DRAFT (Critic flips → REVIEW) |
+| activity_event | `plan_proposed` row with `asset_id`, `episode_id`, `metadata.shot_id`, `metadata.provider_id`, `metadata.estimated_cost_usd` | — |
+
+Plan-asset content is a markdown document with **two parts**:
+
+1. **Human-readable section** — Director-facing explanation of what was decided and
+   why. Read top-to-bottom Director can validate the plan in under 30 seconds.
+   Sections: «Цель шота», «Решения», «Промпт», «Negative», «Стоимость / время».
+
+2. **Machine-readable JSON block** (last fenced ```json block in the file, per
+   glossary §6 «JSON block» convention) — typed payload consumed by the downstream
+   execution step:
+
+```json
+{
+  "shot_id": "SC01_SH01",
+  "delivery_targets": ["youtube_landscape"],
+  "provider": {
+    "id": "gpt-image-2",
+    "rationale": "face-heavy shot of Sandy — gpt-image-2 stronger on character faces than Flux"
+  },
+  "size": {
+    "width": 1536,
+    "height": 1024,
+    "rationale": "16:9 landscape for youtube_landscape — replaces hardcoded 1024×1024 that caused Seedance crop loss on E21"
+  },
+  "variants": {
+    "count": 2,
+    "rationale": "Pilot strategy — 2 candidates so Director can pick before fanout"
+  },
+  "continuity_strategy": {
+    "mode": "openai-edits-multi",
+    "anchor_assets": ["bible-character-sandy-v01-LOCKED", "bible-location-perfume-shop-v01-LOCKED"],
+    "rationale": "Lock identity to existing character + location anchors"
+  },
+  "prompt": "<full prompt text — multi-paragraph, structured with Bible-anchored sections>",
+  "negative": [
+    "no extra limbs",
+    "no face morphing",
+    "no costume changes",
+    "no text or logos",
+    "no granular body distortion"
+  ],
+  "camera_intent": {
+    "angle": "MEDIUM",
+    "sub_area_variation": "wide-of-counter (this shot) vs over-shoulder-of-Sandy (sibling SH02) — explicit anchor variation to avoid flat plate"
+  },
+  "estimated_cost_usd": 0.06,
+  "policy_notes": []
+}
+```
+
+---
+
+## STEP-BY-STEP PROCESS
+
+### Step 0 — Pre-flight: validate all inputs
+
+```
+1. Confirm STB asset is APPROVED and contains shot_id in its content blob
+2. Confirm series Bible style_canon, characters, locations, world are LOCKED or APPROVED
+3. Confirm every character in shot.characters[] has a LOCKED Bible entry
+4. Confirm shot.location resolves to a Bible location (warn if no sub_area is set)
+5. Resolve delivery_targets[]: episode brief override → series default → fallback
+6. Lazy-load .claude/skills/eref-designer/SKILL.md (getAgentSkillManifest → pick → loadAgentSkillBodies)
+7. Fetch prior EREF assets for this episode + shot_id (supersede / iteration tracking)
+8. If any mandatory input missing → emit `canon_extension_proposed` activity_event, STOP
+```
+
+### Step 1 — Decide provider
+
+Consult skill `.claude/skills/eref-designer/SKILL.md` decision rules. Default
+heuristic (overridable by skill):
+
+| Shot character | Provider |
+|---|---|
+| Face-heavy character close-up | `gpt-image-2` (strong face fidelity) |
+| Wide environment / location reveal | `flux-2-pro` (stronger ландшафты, ~33% cheaper) |
+| Stylised cartoon / non-realistic | `gpt-image-2` with explicit style hint |
+| Already-iterated shot (has prior APPROVED) | Same provider as APPROVED, preserve seed strategy |
+
+Write `provider.id` + 1-2 sentence `provider.rationale` to Plan.
+
+### Step 2 — Decide size per delivery_target
+
+For each entry in `delivery_targets[]`:
+
+| Target slug | Image size |
+|---|---|
+| `youtube_landscape` | 1536×1024 |
+| `youtube_shorts` | 1024×1792 |
+| `instagram_reels` | 1024×1792 |
+| `instagram_post` | 1024×1024 |
+| `tiktok` | 1024×1792 |
+| `print_poster` | 2048×1536 |
+
+If only one target → single size. If multiple targets requiring different aspects →
+either generate primary target first + crop-safe zone for the other (cheaper) or
+generate two variants (more expensive). Skill's decision rule decides; Director
+override via Critic REVISE.
+
+### Step 3 — Decide variants count and pilot strategy
+
+```
+1. If this shot is part of a fresh episode (no prior APPROVED for any shot):
+     → PILOT mode: variants_count = 2 for 1-2 representative shots (establishing + action)
+     → After Director approves pilots, remaining shots fan out with variants_count = 1
+2. If this shot has a REJECTED prior:
+     → variants_count = 2 (give Director choice on retry)
+3. If this shot has a REVISION request:
+     → variants_count = 1 (focused retry per revision_note)
+4. Otherwise (normal fanout):
+     → variants_count = 1
+```
+
+### Step 4 — Decide continuity strategy
+
+```
+1. If shot has BOTH character(s) AND location anchored in LOCKED Bible:
+     → mode: "openai-edits-multi"
+     → anchor_assets: [character LOCKED ids, location LOCKED id]
+2. If shot has character but no LOCKED location (fresh episode-only location):
+     → mode: "openai-edits-single" with character anchor only
+3. If pure establishing / no characters / no anchored location:
+     → mode: "openai-image" (fresh generation)
+```
+
+### Step 5 — Compose smart-canon prompt (Director directive 2026-05-18)
+
+Use **structured sections**, not novel-prose. Pattern:
+
+```
+[Scene context — 1 sentence from script_scene context]
+
+[Action — verbatim from storyboard shot.action_prose, NOT truncated to first sentence]
+
+[Subject — for each character in shot.characters[]:
+  - name
+  - physical_anchors: structured Bible fields (proportions, palette, distinguishing features)
+  - costume: from Bible costume field
+  - current_mood: from shot.expected_emotion]
+
+[Location — from Bible locations[shot.location_id]:
+  - geographic_anchor (where in the world)
+  - sub_area: from shot.sub_area if present (explicit camera variation)
+  - lighting: Bible-defined baseline + shot.time_of_day override]
+
+[Camera — from shot.camera_angle + shot.camera_movement + shot.camera_motivation,
+  formatted as a single sentence]
+
+[Style — verbatim from Bible style_canon (e.g. "S14 STYLE CANON v1.1: outline-only
+  pencil edge, flat vector fills, no hatching, warm cinematic palette")]
+
+[Gag / Beat — if shot.expected_gag present, one sentence explaining the visual gag]
+```
+
+**Critical rules (closing the 2026-05-18 dispute on smart-canon B):**
+
+- Give the model MORE structured information, not less. Director directive
+  2026-05-18: «не урезать заранее — модели умнее, отсекут лишнее».
+- Format Bible character canon as **structured sections** (physical_anchors,
+  costume, current_mood), NOT as novel-prose («Sandy, a young confident
+  sand-character with golden granules...» is the anti-pattern).
+- Inject the **full** action_prose, not the first sentence. Earlier
+  `firstSentence()` clamp in buildShotPromptV2 was a 2026-05-13 over-correction.
+- Include camera_movement + camera_motivation, not just camera_angle. The
+  legacy `describeCamera()` lookup table ignored both.
+
+### Step 6 — Compose negative list
+
+Always include baseline:
+
+```
+- no extra limbs
+- no face morphing
+- no costume changes
+- no text or logos
+- no on-screen captions
+```
+
+Append running negative list from `app_config.eref_negative_baseline` +
+per-episode addenda (e.g. from E20 retro: `no granular body distortion on Sandy`).
+
+### Step 7 — Decide camera coverage / sub_area variation
+
+For shots in the same location as another shot in this episode:
+```
+1. Look up sibling shots' sub_area + camera_angle in prior STB
+2. Choose a deliberately different sub_area or camera_angle for this Plan
+3. Write the variation rationale to camera_intent.sub_area_variation
+4. Explicit instruction in prompt: "Different viewpoint from <sibling_shot_id>, do
+   NOT replicate flat plate"
+```
+
+This closes the 2026-05-12 fan-out collapse defect where 19 shots in the same
+perfume shop all returned the same flat counter plate.
+
+### Step 8 — Estimate cost
+
+```
+estimated_cost_usd =
+  variants_count
+  × provider_cost_per_image(provider_id, size)
+  × (continuity_strategy.mode === 'openai-edits-multi' ? 1.10 : 1.00)
+  // edits-multi is slightly pricier due to anchor compositing
+```
+
+Reference cost table (provider catalogue, 2026-05-18):
+- `gpt-image-2` 1024×1024 → $0.020 (was $0.016 on gpt-image-1, +25%)
+- `gpt-image-2` 1536×1024 → $0.030
+- `gpt-image-2` 1024×1792 → $0.030
+- `flux-2-pro` 1024×1024 → $0.013
+- `flux-2-pro` 1536×1024 → $0.020
+
+### Step 9 — Write Plan asset
+
+```
+filename: SS-[S]-[E]-SPC-ref_plan-<shot_id_safe>-v<NN>-DRAFT.md
+file_type: SPC
+status: DRAFT
+description: "Provider <id> · <W>×<H> · <N> variants · ~$<cost>"
+metadata: {
+  agent_id: 'EXEC-EREF',
+  shot_id: <shot_id>,
+  storyboard_asset_id: <STB id>,
+  delivery_targets: [...],
+  provider_id: <id>,
+  estimated_cost_usd: <number>,
+  plan_kind: 'ref_plan'
+}
+content: <markdown doc with JSON block at end>
+```
+
+Insert row, emit `plan_proposed` activity_event.
+
+### Step 10 — Submit to EXEC-EPREV (Critic)
+
+The Critic auto-fires on `plan_proposed` event (per `factory.ts` chain rules,
+Day 4 wiring). EXEC-EREF does not await — control returns to Inngest. Critic
+either flips status DRAFT → REVIEW (PASS) or fires a `revisionEvent` back to
+EXEC-EREF with a `revisionNote` (REVISE).
+
+---
+
+## REVISION PROCESS
+
+When EXEC-EPREV (Designer's Critic) returns verdict REVISE:
+
+```
+1. Read revisionNote in full — Critic surfaces which hard checks failed
+2. For each failed check, fix the specific Plan field:
+   - V01 (size mismatch delivery_target) → recompute Step 2
+   - V02 (provider unjustified) → reconsider Step 1
+   - V03 (sub_area duplicate sibling) → reconsider Step 7
+   - V04 (Bible canon missing) → reload Bible + recompute Step 5
+   - V05 (negative baseline missing) → augment Step 6
+   - V06 (camera intent misaligned with STB) → recompute Step 5 camera section
+   - V07 (variants count anomaly) → recompute Step 3
+   - V08 (cost overrun ≥ 2× expected) → reconsider provider / variants
+3. Increment version (v01 → v02), write new Plan-asset
+4. Emit `plan_revised` activity_event
+```
+
+Maximum 2 revision cycles. On 3rd REVISE → emit `plan_rejected` with
+revisionNote chain, escalate to Director via `decision_requested` activity_event.
+
+When Director (or EXEC-DIR-AI in Mode 2/3) returns verdict REJECT:
+
+```
+→ Status: REJECTED, no further revisions
+→ EXEC-ORCH may re-fire EXEC-EREF on the same shot with `replanForce: true` and
+  Director's free-form note as initial revisionNote
+```
+
+When Plan is APPROVED:
+
+```
+→ Downstream execution step (existing episode-references.ts adapted to read
+  Plan-asset instead of building its own template) reads SPC-ref_plan content,
+  parses JSON block, calls provider with the exact payload defined in the Plan
+→ Result: IMG-episode_ref-<shot_id>-v<NN>-DRAFT asset(s)
+→ This is the only point where money is spent
+```
+
+---
+
+## ECC INTEGRATION
+
+| ECC Skill | Purpose |
+|-----------|---------|
+| `eref-designer` (`.claude/skills/eref-designer/SKILL.md`) | Decision-rule playbook (provider/size/variants/continuity/sub_area) |
+| `agent-harness-construction` (optional) | Reference for tool / observation formatting |
+
+Model routing (BOARD-FIN policy per CLAUDE.md §5):
+- **`claude-sonnet-4-6`** — primary model. Designer makes nuanced trade-offs
+  (provider vs delivery target vs cost) that need solid reasoning.
+- Downgrade to `claude-haiku-4-5` only if a Plan is a simple retry of a previously
+  APPROVED template (variant generation, no structural change).
+
+---
+
+## EDGE CASES
+
+### Bible character has no `physical_anchors` structured field yet
+```
+→ Designer can still emit a Plan, but with `policy_notes: ["character canon
+  unstructured — falling back to free-form Bible description for SUBJECT block"]`
+→ Critic accepts this as PASS with a warning
+→ Flag via `canon_extension_proposed` event so ART-CAST adds structured fields
+```
+
+### `delivery_targets` empty array on episode + series
+```
+→ Designer defaults to ['youtube_landscape'] and writes a policy_note
+→ Director can override via Critic REVISE if a different default is wanted
+```
+
+### Same shot has prior APPROVED Plan but Director re-fires with new revision_note
+```
+→ Designer increments version, treats revision_note as HARD acceptance criteria
+  (same protocol as Screenwriter post-2026-05-12 hot-fix)
+→ Plan must visibly differ from prior APPROVED in at least one decision field
+```
+
+### Provider returns capacity error during execution step (post-APPROVED)
+```
+→ Not Designer's concern — happens downstream
+→ The execution step is responsible for fallback / retry
+→ If fallback changes provider materially, execution step should re-emit Plan as
+  REVISION so Director sees the change
+```
+
+### Multiple `delivery_targets` with conflicting aspect ratios
+```
+Example: episode targets both ['youtube_landscape', 'youtube_shorts']
+→ Designer chooses primary target's size, adds a `policy_note` flagging the
+  second target needs a separate Plan (or crop-safe zone), and surfaces a
+  `decision_requested` event so Director picks strategy
+→ Do not silently merge into one aspect
+```
+
+### Storyboard `camera_movement` is missing (older STB without 2026-05-12 patch)
+```
+→ Use MVP default movement for shot_role (per storyboarder.md fallback table)
+→ Note in camera_intent.rationale that the movement was inferred, not authoritative
+→ Flag once per episode that STB is missing camera_movement coverage
+```
+
+### Cost exceeds per-shot ceiling from `app_config`
+```
+→ Emit `budget_threshold_reached` activity_event
+→ Refuse to write Plan (DRAFT never created)
+→ Director must lift ceiling or accept cheaper provider before retry
+```
+
+---
+
+## SUCCESS METRICS (for sprint retro day 5)
+
+| Metric | Target |
+|--------|--------|
+| Plans accepted by Critic on first try | ≥ 75% |
+| Plans Director approves without REVISE | ≥ 60% |
+| Aspect ratio correct for delivery_target | 100% (closes Director Issue #1 from 2026-05-18 Stage A) |
+| Bible style canon present in every Plan | 100% |
+| sub_area variation present where applicable | ≥ 90% of same-location shot groups |
+| Designer cost per Plan | ≤ $0.05 (Sonnet 4.6 budget) |
+| Total E22 EREF budget overhead vs template baseline | ≤ +15% (offset by avoided reroll cost) |
+
+---
+
+*SandyStudio episode_reference_designer.md | v0.1 | Status: DRAFT*
+*EXEC-EREF is where the Bible meets the storyboard and becomes an executable
+generation plan — not a hardcoded template, not a guess.*
