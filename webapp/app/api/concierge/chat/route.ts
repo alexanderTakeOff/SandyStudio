@@ -29,7 +29,7 @@ import path from 'node:path';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
-import { loadAgentSkills } from '@/lib/agents/load-skills';
+import { resolveSkillsContext } from '@/lib/concierge/build-context';
 import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
 import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
 import {
@@ -264,44 +264,15 @@ export async function POST(req: Request) {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // σ.2 (2026-05-15) — Director-canon skills for PA. Resolve series_id +
-  // genre from the active episode (if any) so genre/series-scoped skills
-  // match. Non-fatal: a lookup failure or no-episode case yields no skills
-  // and the ACTIVE_RULES block is omitted, preserving pre-σ.2 behaviour.
-  let activeRules: string | null = null;
-  try {
-    let seriesId: string | undefined;
-    let genre: string | undefined;
-    if (episodeId) {
-      const { data: ep } = await supabase
-        .from('episodes')
-        .select('series_id')
-        .eq('id', episodeId)
-        .maybeSingle();
-      if (ep?.series_id) {
-        seriesId = ep.series_id;
-        const { data: sr } = await supabase
-          .from('series')
-          .select('genre')
-          .eq('id', ep.series_id)
-          .maybeSingle();
-        const g = (sr as { genre?: string | null } | null)?.genre ?? null;
-        if (g) genre = g;
-      }
-    }
-    const bundle = await loadAgentSkills({
-      agentId: 'EXEC-CONC',
-      episode_id: episodeId ?? undefined,
-      series_id: seriesId,
-      genre,
-    });
-    if (bundle.count > 0) activeRules = bundle.block;
-  } catch {
-    // skill selector failure must never break the chat endpoint
-  }
+  // Sprint φ.2 (2026-05-16) — PA reads the capability manifest only.
+  // Bodies are loaded on demand via the `getSkill` tool when she actually
+  // needs the playbook content. Shared helper resolves series+genre and
+  // formats the manifest identically for the auto-react route.
+  // See docs/skills-as-capabilities.md.
+  const { availablePlaybooks } = await resolveSkillsContext(supabase, episodeId);
 
   const buildPrompt = (turns: ConciergeTurnRow[]) =>
-    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model, activeRules });
+    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model, availablePlaybooks });
 
   const stream = new ReadableStream({
     async start(controller) {

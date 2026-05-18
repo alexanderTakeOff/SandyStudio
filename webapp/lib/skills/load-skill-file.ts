@@ -39,6 +39,18 @@ export interface LoadedSkill {
   body: string;
 }
 
+/**
+ * Lightweight skill metadata — no body. Used by manifest scanning so the
+ * caller can list available capabilities for an agent without loading body
+ * text into context. The body is loaded on-demand via `loadSkillFile`.
+ */
+export interface SkillManifest {
+  slug: string;
+  filePath: string;
+  frontmatter: SkillFrontmatter;
+  bodyChars: number;
+}
+
 export class SkillParseError extends Error {
   constructor(message: string, public readonly filePath: string) {
     super(`${message} (in ${filePath})`);
@@ -225,4 +237,23 @@ export async function loadSkillFile(filePath: string): Promise<LoadedSkill> {
   const slug = path.basename(path.dirname(filePath));
 
   return { slug, filePath, frontmatter, body };
+}
+
+/**
+ * Parse SKILL.md frontmatter and return manifest metadata only (no body).
+ * Used for two-step lazy loading: first scan picks capability candidates,
+ * then `loadSkillFile` reads the body of activated capabilities.
+ *
+ * For ~6 skill files at current scale, reading the full file and dropping
+ * the body is cheap. If file count grows past ~50 we can switch to a
+ * head-only read.
+ */
+export async function parseSkillHeader(filePath: string): Promise<SkillManifest> {
+  const loaded = await loadSkillFile(filePath);
+  return {
+    slug: loaded.slug,
+    filePath: loaded.filePath,
+    frontmatter: loaded.frontmatter,
+    bodyChars: loaded.body.length,
+  };
 }

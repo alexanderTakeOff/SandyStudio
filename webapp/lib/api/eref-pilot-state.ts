@@ -11,11 +11,16 @@
 //   FANOUT_COMPLETE   — all shots persisted; Director reviews each per-image
 //
 // Storage note:
-//   `episodes` table has no `metadata` column today; spec called for
-//   `episodes.metadata.eref_pilot_state` but adding a column would require
-//   a separate migration outside Track A's scope. Mirroring the cancel-token
-//   approach, we use `app_config.scope='app', key='eref_pilot_state:<episode_id>'`.
-//   This keeps Track A self-contained while preserving identical UX semantics.
+//   Authoritative state lives in `app_config.scope='app',
+//   key='eref_pilot_state:<episode_id>'` (server reads here). The UI's
+//   EREFPilotPillbar reads `episodes.metadata.eref_pilot_state` (browser
+//   has no app_config access), so setPilotState also writes the same
+//   value into the episode metadata as a UI mirror. Mirror failures are
+//   non-fatal — server logic still works off the app_config row.
+//   (Sprint φ post-merge 2026-05-18: previously the runner's
+//   PENDING_REVIEW + FANOUT_COMPLETE transitions never reached the
+//   metadata mirror, making the UI think fan-out was still running long
+//   after it finished.)
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -69,7 +74,8 @@ export async function setPilotState(
   episodeId: string,
   state: EREFPilotState,
 ): Promise<void> {
-  const value = { state, at: new Date().toISOString() };
+  const nowIso = new Date().toISOString();
+  const value = { state, at: nowIso };
   const { error } = await supabase
     .from('app_config')
     .upsert(
@@ -83,5 +89,29 @@ export async function setPilotState(
     );
   if (error) {
     throw new Error(`setPilotState failed: ${error.message}`);
+  }
+
+  // UI mirror — read-merge-write the episode.metadata.eref_pilot_state field
+  // so EREFPilotPillbar (browser-side, has no app_config access) sees the
+  // transition immediately. Mirror failures must NOT bubble up: app_config
+  // is the authoritative source; the metadata copy is best-effort UX.
+  try {
+    const { data: row } = await supabase
+      .from('episodes')
+      .select('metadata')
+      .eq('id', episodeId)
+      .maybeSingle();
+    const prev = ((row as { metadata?: Record<string, unknown> } | null)?.metadata ?? {}) as Record<string, unknown>;
+    const next = {
+      ...prev,
+      eref_pilot_state: state,
+      eref_pilot_state_at: nowIso,
+    };
+    await supabase
+      .from('episodes')
+      .update({ metadata: next as never })
+      .eq('id', episodeId);
+  } catch {
+    // swallow — non-fatal UI mirror
   }
 }

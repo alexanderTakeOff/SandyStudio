@@ -49,7 +49,11 @@ export function RejectModal({
       const res = await fetch(`/api/assets/${assetId}/approve`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ decision: 'REQUEST_REVISION', note }),
+        // directorConfirm:true required in Mode 1 — approve route gates
+        // AGENT_RUN through enforceMode and throws GovernanceBlockError
+        // without it (Sprint φ UI bug fix 2026-05-16; AssetPreview's
+        // requestRevision already passed this flag).
+        body: JSON.stringify({ decision: 'REQUEST_REVISION', note, directorConfirm: true }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));

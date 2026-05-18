@@ -1,8 +1,13 @@
 ---
 name: seedance-prompting
 description: Prompt + parameter playbook for ByteDance Seedance 2.0 image-to-video on fal.ai. Use whenever generating, regenerating, or rewriting prompts for VID-shot assets where the provider is `seedance-fal-img2vid`. Pairs with `webapp/lib/agents/providers/fal-seedance.ts` and `webapp/components/vgen/ProviderControlPanel.tsx`.
-status: STUB v0.1 — Sprint β 2026-05-14
+status: ACTIVE
 owner: EXEC-VGEN (Animator)
+applies_when:
+  agent: [EXEC-VGEN]
+hard: false
+maturity: stub-v0.1
+created: 2026-05-14
 ---
 
 # Seedance 2.0 — Prompting Playbook (SandyStudio)

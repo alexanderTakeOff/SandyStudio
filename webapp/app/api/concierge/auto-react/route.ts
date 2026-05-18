@@ -123,8 +123,9 @@ export async function POST(req: Request) {
     /* memory degraded; proceed with empty history */
   }
 
-  // σ.2 ACTIVE_RULES injection (same path as chat route).
-  const { activeRules } = await resolveSkillsContext(supabase, episodeId);
+  // φ.2 capability manifest (same path as chat route). PA receives the
+  // manifest only; bodies load on demand via `getSkill`.
+  const { availablePlaybooks } = await resolveSkillsContext(supabase, episodeId);
 
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const model = env.OPENAI_MODEL || 'gpt-5.4-mini';
@@ -144,7 +145,7 @@ export async function POST(req: Request) {
     nextGate,
     recentTurns,
     modelId: model,
-    activeRules,
+    availablePlaybooks,
   });
 
   const conversation: ChatCompletionMessageParam[] = [

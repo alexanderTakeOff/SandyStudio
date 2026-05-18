@@ -1,13 +1,22 @@
 ---
 name: storyboarder-prose-gag-per-shot
-description: Per-shot prose authoring rule for the Storyboard Artist (EXEC-SB). Every non-transition shot's `action_prose` must answer "где здесь прикол?" with a visible verb chain, not state description. Pairs with comedy-shot-must-carry-gag (genre canon); this skill is the storyboarder's HOW.
-status: ACTIVE
+description: DEPRECATED (Sprint φ 2026-05-16). The action_prose verb-chain technique migrated into broader capability `storyboarder-situational-comedy` as a section.
+status: DEPRECATED
 owner: Director
 applies_when:
   agent: [EXEC-SB]
 hard: true
 created: 2026-05-15
+deprecated: 2026-05-16
+superseded_by: storyboarder-situational-comedy
 ---
+
+> **DEPRECATED (Sprint φ 2026-05-16).** Director's mental-model correction:
+> skills are broad capability playbooks. This file's prose-craft techniques
+> (verb chain, status changes, no internal states, concrete props, end-pose
+> punctuation) moved into the broader `storyboarder-situational-comedy`
+> playbook as a dedicated section. Selector filters by `status:ACTIVE` —
+> this file no longer matches.
 
 # Storyboarder — per-shot prose must carry the gag
 

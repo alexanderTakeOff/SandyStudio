@@ -86,7 +86,7 @@ import type {
   ShotTestPlan,
 } from '../../api/shot-reference';
 import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
-import { loadAgentSkills } from '../load-skills';
+import { selectSkills } from '../../skills/select-skills';
 import type { AgentInputs } from '../types';
 import type {
   GovernanceModeNum,
@@ -828,17 +828,23 @@ export async function runEpisodeReferences(
   } catch {
     /* leave null */
   }
-  const skillsBundle = await loadAgentSkills({
-    agentId: 'EXEC-EREF',
+  // EREF is an image-gen consumer (gpt-image-1), not a reasoning agent.
+  // Skill bodies must NOT be pasted into the visual prompt — gpt-image-1
+  // would try to visualize the meta-instructions instead of producing a
+  // clean scene. We still query the selector for telemetry so future
+  // runner-side logic (closed-vocab camera picker etc.) can read
+  // structured skill data without body injection.
+  // See docs/skills-as-capabilities.md §"Consumer types".
+  const matchedSkills = await selectSkills({
+    agent: 'EXEC-EREF',
     genre: seriesGenre ?? undefined,
     series_id: seriesId,
     episode_id: episodeId,
   });
-  const skillsPrefix = skillsBundle.block ? `${skillsBundle.block}\n\n` : '';
-  if (skillsBundle.count > 0) {
+  if (matchedSkills.length > 0) {
     // eslint-disable-next-line no-console
     console.info(
-      `[eref] ACTIVE SKILLS injected: ${skillsBundle.count}${skillsBundle.truncatedCount > 0 ? ` (+${skillsBundle.truncatedCount} truncated)` : ''}`,
+      `[eref] ${matchedSkills.length} skills matched (not injected — image-gen consumer): ${matchedSkills.map((s) => s.slug).join(', ')}`,
     );
   }
 
@@ -856,7 +862,7 @@ export async function runEpisodeReferences(
       cancelled = true;
       break;
     }
-    let prompt = skillsPrefix + composePromptFromTestPlan(job);
+    let prompt = composePromptFromTestPlan(job);
 
     // Pre-flight Style Guardian (cheap, may rewrite or block).
     let styleVerdictPre: 'PASS' | 'WARN' | 'FAIL' | null = null;
@@ -881,9 +887,9 @@ export async function runEpisodeReferences(
           guardResult.suggested_prompt &&
           guardResult.verdict !== 'PASS'
         ) {
-          // Style Guardian rewrites the inner prompt; re-prepend skills
-          // so the ACTIVE SKILLS block survives the rewrite (σ.1).
-          prompt = skillsPrefix + guardResult.suggested_prompt;
+          // Style Guardian rewrites the inner prompt. No skill block
+          // re-prepend — image-gen consumes a clean visual description.
+          prompt = guardResult.suggested_prompt;
           styleRewrittenPre = true;
         }
       }
@@ -1029,9 +1035,9 @@ export async function runEpisodeReferences(
           reason: latestReview.issues.map((i) => i.description).join('; ').slice(0, 400) || 'AI verdict REGENERATE',
           verdict_before_retry: verdict,
         });
-        // Reviewer's rewrite replaces the prompt body; re-prepend skills so
-        // the regeneration still respects the ACTIVE SKILLS block (σ.1).
-        prompt = skillsPrefix + latestReview.suggested_prompt_v2;
+        // Reviewer's rewrite replaces the prompt body. No skill block
+        // re-prepend — image-gen consumes a clean visual description.
+        prompt = latestReview.suggested_prompt_v2;
       } else {
         // No more retries OR reviewer didn't supply a rewrite — let the
         // current image stand and surface to Director.

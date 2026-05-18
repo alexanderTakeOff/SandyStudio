@@ -10,7 +10,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { loadSkillFile, type LoadedSkill, type AppliesWhen } from './load-skill-file';
+import { loadSkillFile, type LoadedSkill, type SkillManifest, type AppliesWhen } from './load-skill-file';
 
 export interface SelectorContext {
   agent?: string;
@@ -106,7 +106,7 @@ function specificityScore(applies: AppliesWhen | undefined): number {
   return score;
 }
 
-export async function selectSkills(ctx: SelectorContext): Promise<readonly LoadedSkill[]> {
+async function selectSkillsRanked(ctx: SelectorContext): Promise<readonly LoadedSkill[]> {
   const now = Date.now();
   if (!cache || now - cache.loadedAt > CACHE_TTL_MS) {
     cache = { loadedAt: now, skills: await scanSkillsDir() };
@@ -124,6 +124,52 @@ export async function selectSkills(ctx: SelectorContext): Promise<readonly Loade
   });
 
   return matches.slice(0, MAX_SKILLS_PER_CALL);
+}
+
+/**
+ * Eager selector — returns matched skills WITH body. Kept for legacy
+ * callers (UI / probe scripts). New code should prefer `listSkillManifests`
+ * (lazy manifest) + `loadSkillBodies` (on-demand body fetch) per the
+ * two-step pattern described in docs/skills-as-capabilities.md.
+ */
+export async function selectSkills(ctx: SelectorContext): Promise<readonly LoadedSkill[]> {
+  return selectSkillsRanked(ctx);
+}
+
+/**
+ * Lazy manifest scanner — returns matched skills as frontmatter-only
+ * metadata (no body). Used by agent runners and PA to expose the available
+ * capability repertoire without burning context budget on bodies.
+ */
+export async function listSkillManifests(ctx: SelectorContext): Promise<readonly SkillManifest[]> {
+  const ranked = await selectSkillsRanked(ctx);
+  return ranked.map((s) => ({
+    slug: s.slug,
+    filePath: s.filePath,
+    frontmatter: s.frontmatter,
+    bodyChars: s.body.length,
+  }));
+}
+
+/**
+ * On-demand body loader. Reads cache when available (same in-process LRU
+ * as the selector), falls back to disk re-read if a slug is missing.
+ * Returns LoadedSkill[] in the order supplied; silently drops slugs that
+ * resolve to nothing (caller decides whether to log the gap).
+ */
+export async function loadSkillBodies(slugs: readonly string[]): Promise<readonly LoadedSkill[]> {
+  if (slugs.length === 0) return [];
+  const now = Date.now();
+  if (!cache || now - cache.loadedAt > CACHE_TTL_MS) {
+    cache = { loadedAt: now, skills: await scanSkillsDir() };
+  }
+  const indexed = new Map(cache.skills.map((s) => [s.slug, s]));
+  const out: LoadedSkill[] = [];
+  for (const slug of slugs) {
+    const hit = indexed.get(slug);
+    if (hit) out.push(hit);
+  }
+  return out;
 }
 
 export function clearSkillsCache(): void {

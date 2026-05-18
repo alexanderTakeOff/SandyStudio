@@ -189,9 +189,32 @@ export function AssetImagePromptSection({
               >
                 <Upload size={13} /> Upload your own
               </Button>
-              <Button onClick={regenerate} disabled={busy} variant="ghost">
-                {busy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                Regenerate $0.04
+              <Button
+                onClick={regenerate}
+                disabled={busy}
+                variant="ghost"
+                style={
+                  busy
+                    ? {
+                        opacity: 0.55,
+                        cursor: 'not-allowed',
+                        background:
+                          'color-mix(in oklab, var(--accent-primary) 18%, transparent)',
+                        borderColor:
+                          'color-mix(in oklab, var(--accent-primary) 40%, transparent)',
+                      }
+                    : undefined
+                }
+              >
+                {busy ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin" /> Regenerating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={13} /> Regenerate $0.04
+                  </>
+                )}
               </Button>
             </div>
           )}

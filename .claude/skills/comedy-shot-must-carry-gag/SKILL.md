@@ -1,13 +1,24 @@
 ---
 name: comedy-shot-must-carry-gag
-description: For comedy genre, every non-transition shot is a try → fail → escalation → punchline microcycle, NOT action description. Mundane prose ("he marches to the rack", "rolls his arms") is anti-pattern. Applies to any agent producing comedy content (Writer, Story Editor, Storyboarder).
-status: ACTIVE
+description: DEPRECATED (Sprint φ 2026-05-16). The try-fail-escalation-punchline technique migrated into broader capability `storyboarder-situational-comedy` (Director's mental-model correction: skills are capability playbooks per agent, not single-rule shards).
+status: DEPRECATED
 owner: Director
 applies_when:
   genre: [comedy]
 hard: true
 created: 2026-05-15
+deprecated: 2026-05-16
+superseded_by: storyboarder-situational-comedy
 ---
+
+> **DEPRECATED (Sprint φ 2026-05-16).** Director's mental-model correction
+> (2026-05-15): skills are broad **capability playbooks per agent**, not
+> atomic single-rule files. This file's content — the try-fail-escalation
+> microcycle, Director's worked examples (dumbbell foot-drop, jump-rope
+> snap-back) — moved into the broader storyboarder capability skill
+> `.claude/skills/storyboarder-situational-comedy/SKILL.md` as one
+> technique inside a fuller playbook. Selector filters by `status:ACTIVE`
+> so this file is no longer matched; kept on disk for audit / rollback.
 
 # Comedy — every non-transition shot must carry a gag
 

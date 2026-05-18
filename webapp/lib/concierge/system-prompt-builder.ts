@@ -13,14 +13,15 @@
 //   4. ACTIVE_MODE          mode-specific authority
 //   5. TOOLS_AVAILABLE      slim list + 3-line rules
 //   6. BIBLE_DOMAIN         Bible structure mental model
-//   7. ACTIVE_INTENT        director's last approval + open asks (NEW)
+//   7. ACTIVE_INTENT        director's last approval + open asks
 //   8. STUDIO_STATE         current episode/gate
 //   9. FEEDBACK_PROTOCOL    !fb / !todo / ===PAON=== meta-markers
-//  10. ACTIVE_RULES         reserved for Path A Skill Editor (still empty)
+//  10. AVAILABLE_PLAYBOOKS  capability manifest for this conversation
+//                           (Sprint φ.2 — lazy load via getSkill tool)
 //
-// Each block ≤ ~15 lines. If new rules exceed that, it's a signal that the
-// Skill Editor / Learning Loop (Path B in valiant-soaring-karp.md) should
-// take over instead of bloating the prompt further.
+// Each block ≤ ~15 lines. The AVAILABLE_PLAYBOOKS block carries manifest
+// metadata only (slug + name + description) — bodies are loaded on demand
+// via the getSkill tool. See docs/skills-as-capabilities.md.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { ConciergeMode, ConciergeTurnRow } from './types';
@@ -31,8 +32,13 @@ export interface PromptContext {
   episodeId?: string | null;
   nextGate?: string | null;
   studioState?: string | null;
-  /** Reserved for Path B Skill Editor — list of active canonical rules. */
-  activeRules?: string | null;
+  /**
+   * Sprint φ.2 — capability manifest for this conversation. Slug + name +
+   * description for each skill Polina has available. Bodies load on demand
+   * via the `getSkill` tool. Caller produces this via
+   * `lib/concierge/skill-manifest.ts::formatSkillManifestForPrompt`.
+   */
+  availablePlaybooks?: string | null;
   /** Recent turns (oldest-first) used to derive ACTIVE_INTENT. */
   recentTurns?: ConciergeTurnRow[];
   /** OpenAI model id — so PA can answer "what model are you?" honestly. */
@@ -101,7 +107,15 @@ If you catch yourself starting one of these phrases, stop and instead call the t
    - "Сейчас сделаю / запишу / соберу"
    - "Сейчас оформлю..."
    - "Composing the document..."
-If you find yourself starting one — STOP, emit the tool_call, and only summarise in past tense after the tool_result returns.`;
+If you find yourself starting one — STOP, emit the tool_call, and only summarise in past tense after the tool_result returns.
+
+9. LEARNING LOOP — when Director articulates a forever-rule or craft technique he wants remembered (\"запомни\", \"это правило\", \"всегда\", \"никогда\", \"as a rule\", \"forever rule\"):
+   a. Identify the TARGET agent (Storyboarder / Writer / EREF / etc.) the rule applies to.
+   b. \`listSkills({ agent: <target> })\` — see existing capability playbooks for that agent.
+   c. DEFAULT: if any existing skill's scope fits, propose \`updateSkill(slug, body=<existing body + new technique section>)\`. Treat skills as broad capability playbooks (per docs/skills-as-capabilities.md) — most feedback refines an existing one rather than spawning a new file.
+   d. EXCEPTION: only \`proposeSkill\` when the feedback opens a genuinely new capability (no existing skill covers this domain). The new file is a broad playbook, not a single-rule shard.
+   e. Both paths require Director verbal approval before the file is written. The verbal-approval gate handles it; you announce the proposed write so Director can say \`одобряю\` / \`go\`.
+   f. NEVER inline a rule into the chat without persisting it via these tools — chat memory is amnesic, skill files are durable canon.`;
 
 // ─── Block 3: ENVIRONMENT ────────────────────────────────────────────────────
 const environment: Block = (ctx) => `[ENVIRONMENT]
@@ -247,10 +261,30 @@ NEVER say "отправил инженеру" or anything implying a tool was ca
 
 If a marker message ALSO contains a separate instruction, split: log the marker AND handle the instruction normally.`;
 
-// ─── Block 10: ACTIVE_RULES (reserved for Skill Editor) ─────────────────────
-const activeRules: Block = (ctx) => {
-  if (!ctx.activeRules) return null;
-  return `[ACTIVE_RULES]\n${ctx.activeRules}`;
+// ─── Block 10: AVAILABLE_PLAYBOOKS ──────────────────────────────────────────
+//
+// Sprint φ.2 (2026-05-16): capability manifest for the conversation. Each
+// line is one skill Polina has in her repertoire — slug, name, one-line
+// description, and scope. Bodies are NOT included; she pulls a body when
+// she wants to apply a technique via `getSkill(slug)`.
+//
+// LEARNING LOOP guidance: when the Director articulates a forever-rule or
+// craft technique, Polina should FIRST `listSkills({agent: <target>})`,
+// check whether the feedback fits an existing capability, and propose an
+// `updateSkill` (default) — only fall back to `proposeSkill` for a
+// genuinely new capability. See docs/skills-as-capabilities.md.
+const availablePlaybooks: Block = (ctx) => {
+  if (!ctx.availablePlaybooks) return null;
+  return [
+    '[AVAILABLE_PLAYBOOKS]',
+    'Your craft capabilities for this conversation. Each entry is a skill',
+    'playbook you can pull on demand via `getSkill(slug)` when you need the',
+    'full body. When Director gives feedback that refines craft, default to',
+    '`updateSkill` (append a technique to an existing playbook). Only',
+    '`proposeSkill` when a genuinely new capability is needed.',
+    '',
+    ctx.availablePlaybooks,
+  ].join('\n');
 };
 
 // ─── Block 11: PIPELINE_EVENTS_SINCE_LAST_REPLY ──────────────────────────────
@@ -414,7 +448,7 @@ const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'ACTIVE_INTENT', render: activeIntent },
   { name: 'STUDIO_STATE', render: studioState },
   { name: 'FEEDBACK_PROTOCOL', render: feedbackProtocol },
-  { name: 'ACTIVE_RULES', render: activeRules },
+  { name: 'AVAILABLE_PLAYBOOKS', render: availablePlaybooks },
   { name: 'PIPELINE_EVENTS_SINCE_LAST_REPLY', render: pipelineEvents },
   { name: 'TEAM_CHAT_FROM_CLAUDE', render: teamChatFromClaude },
 ];

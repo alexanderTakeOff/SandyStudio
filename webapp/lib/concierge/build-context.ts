@@ -1,19 +1,21 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // lib/concierge/build-context.ts
-// Shared helper to resolve series_id + genre from an episodeId and produce the
-// ACTIVE_RULES block from the skill selector. Used by both the streaming chat
-// route and the non-streaming /api/concierge/auto-react endpoint so PA sees
-// the same Director canon either way.
+// Shared helper for the Prod Assistant routes: resolves series_id + genre
+// from an episodeId and returns a capability manifest formatted for the
+// system prompt (Sprint φ.2 2026-05-16, lazy-load path).
 //
-// Sprint q1 (2026-05-15) — auto-react path.
+// PA receives only manifest metadata (slug + name + description + scope)
+// in her system prompt. Bodies load on demand via the `getSkill` tool.
+// See docs/skills-as-capabilities.md.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/supabase/types.gen';
-import { loadAgentSkills } from '@/lib/agents/load-skills';
+import { getAgentSkillManifest } from '@/lib/agents/load-skills';
+import { formatSkillManifestForPrompt } from '@/lib/concierge/skill-manifest';
 
 export interface ResolvedSkillsContext {
-  activeRules: string | null;
+  availablePlaybooks: string | null;
   seriesId: string | null;
   genre: string | null;
 }
@@ -42,14 +44,18 @@ export async function resolveSkillsContext(
         if (g) genre = g;
       }
     }
-    const bundle = await loadAgentSkills({
+    const manifestResult = await getAgentSkillManifest({
       agentId: 'EXEC-CONC',
       episode_id: episodeId ?? undefined,
       series_id: seriesId ?? undefined,
       genre: genre ?? undefined,
     });
-    return { activeRules: bundle.count > 0 ? bundle.block : null, seriesId, genre };
+    const availablePlaybooks =
+      manifestResult.count > 0
+        ? formatSkillManifestForPrompt(manifestResult.available)
+        : null;
+    return { availablePlaybooks, seriesId, genre };
   } catch {
-    return { activeRules: null, seriesId, genre };
+    return { availablePlaybooks: null, seriesId, genre };
   }
 }

@@ -26,7 +26,10 @@ import type {
 import { MultiImageGenError } from './image-gen-multi';
 
 const PROVIDER_ID = 'openai-edits-multi';
-const MODEL = 'gpt-image-1';
+// Sprint φ post-merge 2026-05-18 — upgraded to gpt-image-2 (multi-ref edits
+// improved coherence + 16 references still supported). gpt-image-1 deprecated
+// May 2026.
+const MODEL = 'gpt-image-2';
 
 // Edits API supports up to 16 input images per request — keep some margin.
 const MAX_REFS = 16;
@@ -35,10 +38,10 @@ const MAX_REFS = 16;
 // Multi-ref edits price the same as single-ref edits — OpenAI charges per
 // generation, not per reference image fed in.
 const COST_TABLE: Record<GptImageQuality, Record<string, number>> = {
-  low:    { '1024x1024': 0.011, '1024x1536': 0.016, '1536x1024': 0.016, auto: 0.016 },
-  medium: { '1024x1024': 0.042, '1024x1536': 0.063, '1536x1024': 0.063, auto: 0.063 },
-  high:   { '1024x1024': 0.167, '1024x1536': 0.25,  '1536x1024': 0.25,  auto: 0.25 },
-  auto:   { '1024x1024': 0.042, '1024x1536': 0.063, '1536x1024': 0.063, auto: 0.063 },
+  low:    { '1024x1024': 0.013, '1024x1536': 0.018, '1536x1024': 0.018, auto: 0.018 },
+  medium: { '1024x1024': 0.053, '1024x1536': 0.080, '1536x1024': 0.080, auto: 0.080 },
+  high:   { '1024x1024': 0.211, '1024x1536': 0.317, '1536x1024': 0.317, auto: 0.317 },
+  auto:   { '1024x1024': 0.053, '1024x1536': 0.080, '1536x1024': 0.080, auto: 0.080 },
 };
 
 function dimensionsFor(size: GptImageSize): { width: number; height: number } {
@@ -141,7 +144,7 @@ export const openAIEditsMultiProvider: MultiImageGenProvider = {
     }
 
     const { width, height } = dimensionsFor(size);
-    const cost = COST_TABLE[quality][size] ?? 0.042;
+    const cost = COST_TABLE[quality][size] ?? 0.053;
 
     return {
       b64_data: b64,

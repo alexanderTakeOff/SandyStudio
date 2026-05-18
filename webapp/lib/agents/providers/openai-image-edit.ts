@@ -32,7 +32,7 @@ export interface OpenAIImageEditInput {
 
 export interface OpenAIImageEditResult {
   status: 'success';
-  provider: 'gpt-image-1-edit';
+  provider: 'gpt-image-2-edit';
   format: 'PNG';
   width: number;
   height: number;
@@ -55,11 +55,12 @@ export class OpenAIImageEditError extends Error {
 }
 
 // Same cost ladder as text-to-image (same model, same render cost).
+// Sprint φ post-merge 2026-05-18 — upgraded to gpt-image-2 pricing (~+15%).
 const COST_TABLE: Record<GptImageQuality, Record<string, number>> = {
-  low: { '1024x1024': 0.011, '1024x1536': 0.016, '1536x1024': 0.016, auto: 0.016 },
-  medium: { '1024x1024': 0.042, '1024x1536': 0.063, '1536x1024': 0.063, auto: 0.063 },
-  high: { '1024x1024': 0.167, '1024x1536': 0.25, '1536x1024': 0.25, auto: 0.25 },
-  auto: { '1024x1024': 0.042, '1024x1536': 0.063, '1536x1024': 0.063, auto: 0.063 },
+  low: { '1024x1024': 0.013, '1024x1536': 0.018, '1536x1024': 0.018, auto: 0.018 },
+  medium: { '1024x1024': 0.053, '1024x1536': 0.080, '1536x1024': 0.080, auto: 0.080 },
+  high: { '1024x1024': 0.211, '1024x1536': 0.317, '1536x1024': 0.317, auto: 0.317 },
+  auto: { '1024x1024': 0.053, '1024x1536': 0.080, '1536x1024': 0.080, auto: 0.080 },
 };
 
 function dimensionsFor(size: GptImageSize): { width: number; height: number } {
@@ -86,7 +87,7 @@ export async function editImageOpenAI(input: OpenAIImageEditInput): Promise<Open
   const blob = new Blob([new Uint8Array(buf)], { type: mime });
   formData.append('image', blob, filename);
   formData.append('prompt', input.prompt);
-  formData.append('model', 'gpt-image-1');
+  formData.append('model', 'gpt-image-2');
   formData.append('size', size);
   formData.append('quality', quality);
   formData.append('n', '1');
@@ -121,11 +122,11 @@ export async function editImageOpenAI(input: OpenAIImageEditInput): Promise<Open
 
   const { width, height } = dimensionsFor(size);
   const sizeBytes = Math.round(b64.length * 0.75);
-  const cost = COST_TABLE[quality][size] ?? 0.042;
+  const cost = COST_TABLE[quality][size] ?? 0.053;
 
   return {
     status: 'success',
-    provider: 'gpt-image-1-edit',
+    provider: 'gpt-image-2-edit',
     format: 'PNG',
     width,
     height,

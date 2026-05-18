@@ -22,10 +22,23 @@ import {
 } from '../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
-import { loadAgentSkills } from '../load-skills';
+import {
+  getAgentSkillManifest,
+  loadAgentSkillBodies,
+  composeSkillSelectionPrompt,
+  composeActivePlaybooksBlock,
+} from '../load-skills';
+import { parseSkillSelection } from '../../skills/parse-skill-selection';
 
 export const SB_CONTRACT = 'storyboarder@v2';
 export const SB_MODEL = 'claude-sonnet-4-6';
+// Sprint φ.2 — two-step skill activation. Step 1 uses Haiku (cheap, fast,
+// reasons over capability manifest only — no body context). Step 2 is the
+// existing Sonnet 4.6 main authoring call. Skipped (single-call shortcut)
+// when manifest has ≤ SKILL_SELECTION_THRESHOLD entries.
+export const SB_SELECTION_MODEL = 'claude-haiku-4-5';
+export const SB_SELECTION_MAX_TOKENS = 400;
+const SKILL_SELECTION_THRESHOLD = 2;
 // v2 contract carries per-character expected_emotion/expected_action/role_in_shot
 // + shot_role + expected_gag + structured location, on top of the v1 fields.
 // For a 14-shot episode with full Bible canon in input, Sonnet legitimately
@@ -333,26 +346,80 @@ export async function runStoryboarder(
 
   const systemPrompt = await loadSystemPrompt();
 
-  // Sprint σ.1 2026-05-15 — load Director-canon skills that match this run.
-  // genre comes from inputs.series_genre (resolved in loadAgentInputs);
-  // episode_id is the inputs.episode_id; series_id from episode row.
-  // Non-fatal: missing .claude/skills/ or empty selector result yields an
-  // empty block and the runner proceeds exactly as before σ.1.
+  // ── Sprint φ.2 — two-step skill activation ─────────────────────────────
+  // Step 1: list capability manifest (frontmatter only — no body context).
+  // Step 2: if the manifest is non-trivial, run a cheap Haiku selection
+  //         call to let the agent pick which skills to apply. Below
+  //         SKILL_SELECTION_THRESHOLD entries we skip Step 1 and activate
+  //         all matching skills directly.
+  // Step 3: load bodies for activated slugs and compose the Active
+  //         Playbooks block injected into the main Sonnet call.
+  // Non-fatal at every step: missing .claude/skills/ or empty selector
+  // yields an empty block and the runner proceeds.
   const seriesGenre =
     typeof inputs.series_genre === 'string' ? inputs.series_genre : undefined;
   const seriesId =
     (inputs.episode as { series_id?: string | null } | undefined)?.series_id ?? undefined;
-  const skillsBundle = await loadAgentSkills({
+
+  const manifestResult = await getAgentSkillManifest({
     agentId: 'EXEC-SB',
     genre: seriesGenre,
     series_id: seriesId ?? undefined,
     episode_id: inputs.episode_id,
   });
-  if (skillsBundle.count > 0) {
+
+  let activatedSlugs: readonly string[] = [];
+  let selectionCostUsd = 0;
+  let selectionSkipped = true;
+
+  if (manifestResult.count > 0) {
+    if (manifestResult.count <= SKILL_SELECTION_THRESHOLD) {
+      activatedSlugs = manifestResult.available.map((m) => m.slug);
+      notes.push(
+        `Skill selection skipped — ${manifestResult.count} matching skill${manifestResult.count === 1 ? '' : 's'} ≤ threshold (${SKILL_SELECTION_THRESHOLD}); activated all`,
+      );
+    } else {
+      const selectionPrompt = composeSkillSelectionPrompt(
+        manifestResult.available,
+        `Storyboarding episode ${episodeCode} "${episodeTitle}" (${manifestResult.count} candidate skills)`,
+      );
+      try {
+        const selectionResult = await generateAnthropicText({
+          systemPrompt:
+            'You are EXEC-SB (Storyboard Artist) preparing for a storyboard authoring task. Your only job in this turn is to pick which craft playbooks to activate from your repertoire.',
+          userMessage: selectionPrompt,
+          model: SB_SELECTION_MODEL,
+          maxOutputTokens: SB_SELECTION_MAX_TOKENS,
+          expectsJson: false,
+        });
+        selectionCostUsd = selectionResult.costUsd;
+        const parsed = parseSkillSelection(selectionResult.markdown);
+        const knownSlugs = new Set(manifestResult.available.map((m) => m.slug));
+        activatedSlugs = parsed.slugs.filter((s) => knownSlugs.has(s));
+        selectionSkipped = false;
+        notes.push(
+          `Skill selection (${SB_SELECTION_MODEL}): ${activatedSlugs.length}/${manifestResult.count} activated · source=${parsed.source} · cost $${selectionCostUsd.toFixed(4)}`,
+        );
+        if (parsed.error) {
+          notes.push(`Skill selection parse note: ${parsed.error}`);
+        }
+      } catch (err) {
+        // Step 1 failure must not block the main authoring call. Fall back
+        // to activating all matching skills — equivalent to pre-φ behaviour.
+        activatedSlugs = manifestResult.available.map((m) => m.slug);
+        const msg = err instanceof Error ? err.message : String(err);
+        notes.push(`Skill selection failed (${msg.slice(0, 200)}); activated all ${manifestResult.count} as fallback`);
+      }
+    }
+  }
+
+  const bodiesResult = await loadAgentSkillBodies(activatedSlugs);
+  if (bodiesResult.loaded.length > 0) {
     notes.push(
-      `ACTIVE SKILLS injected: ${skillsBundle.count}${skillsBundle.truncatedCount > 0 ? ` (+${skillsBundle.truncatedCount} truncated)` : ''}`,
+      `Active playbooks loaded: ${bodiesResult.loaded.map((s) => s.slug).join(', ')} (${bodiesResult.totalChars} chars${bodiesResult.truncatedCount > 0 ? ` · ${bodiesResult.truncatedCount} truncated for budget` : ''})`,
     );
   }
+  const activeSkillsBlock = composeActivePlaybooksBlock(bodiesResult.loaded);
 
   const userMessage = buildUserMessage({
     episodeCode,
@@ -362,7 +429,7 @@ export async function runStoryboarder(
     scriptVersion: scriptAsset.version ?? 1,
     bible,
     upstreamNotes,
-    activeSkillsBlock: skillsBundle.block,
+    activeSkillsBlock,
   });
 
   let result: AnthropicTextResult;
@@ -486,12 +553,16 @@ export async function runStoryboarder(
     );
   }
 
-  const description = `Produced by EXEC-SB · ${SB_CONTRACT} · ${SB_MODEL} · ${totalShots} shots / ${totalDurationS}s · cost $${result.costUsd.toFixed(4)} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
+  const totalCostUsd = result.costUsd + selectionCostUsd;
+  const selectionTag = selectionSkipped
+    ? ''
+    : ` (+$${selectionCostUsd.toFixed(4)} skill selection)`;
+  const description = `Produced by EXEC-SB · ${SB_CONTRACT} · ${SB_MODEL} · ${totalShots} shots / ${totalDurationS}s · cost $${totalCostUsd.toFixed(4)}${selectionTag} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
 
   return {
     markdown: result.markdown,
     body: result.body,
-    costUsd: result.costUsd,
+    costUsd: totalCostUsd,
     model: result.model,
     contract: SB_CONTRACT,
     totalShots,

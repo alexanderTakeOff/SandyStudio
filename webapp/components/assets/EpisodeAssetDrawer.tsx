@@ -344,8 +344,27 @@ export function EpisodeAssetDrawer({
 
   async function regenWithProvider() {
     if (!promptDoc) return;
-    const cur = promptDoc.history.find((h) => h.version === promptDoc.current_version);
-    if (!cur) return;
+    // Pick the latest history entry with a real generation prompt. The EREF
+    // runner pushes an upscale stub `"(upscale only — no prompt)"` whenever
+    // Director approves a v2 EREF and the 4K upscale fires; that stub became
+    // `current_version` and would be sent to gpt-image-1 as-is, returning
+    // garbage or an error. Walk history in reverse to find the last entry
+    // whose source !== 'upscale' and whose prompt doesn't start with the
+    // stub marker. (Sprint φ smoke UX bug fix 2026-05-16.)
+    const realEntry = [...promptDoc.history].reverse().find((h) => {
+      const p = (h.prompt ?? '').trim();
+      if (p.length < 8) return false;
+      if (p.startsWith('(upscale only')) return false;
+      if ((h.source as string | undefined) === 'upscale') return false;
+      return true;
+    });
+    const cur = realEntry ?? promptDoc.history.find((h) => h.version === promptDoc.current_version);
+    if (!cur || !cur.prompt || cur.prompt.startsWith('(upscale only')) {
+      setError(
+        'No real generation prompt found in history (only upscale stub). Open the "Image prompt" section and edit a prompt before regenerating.',
+      );
+      return;
+    }
     if (
       !window.confirm(
         `Regenerate with ${providerOverride || 'series default'}?\nThis creates a new candidate in REVIEW status — it will not auto-approve.`,
@@ -692,13 +711,30 @@ export function EpisodeAssetDrawer({
                 onClick={regenWithProvider}
                 disabled={decisionBusy !== null || busy || !promptDoc}
                 title="Create a new candidate (REVIEW status) — does not auto-approve"
+                style={
+                  decisionBusy === 'REQUEST_REVISION'
+                    ? {
+                        opacity: 0.55,
+                        cursor: 'not-allowed',
+                        background:
+                          'color-mix(in oklab, var(--accent-primary) 18%, transparent)',
+                        borderColor:
+                          'color-mix(in oklab, var(--accent-primary) 40%, transparent)',
+                      }
+                    : undefined
+                }
               >
                 {decisionBusy === 'REQUEST_REVISION' ? (
-                  <Loader2 size={12} className="animate-spin" />
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    Regenerating…
+                  </>
                 ) : (
-                  <Sparkles size={12} />
+                  <>
+                    <Sparkles size={12} />
+                    Regenerate
+                  </>
                 )}
-                Regenerate
               </Button>
             </div>
           )}
@@ -718,28 +754,59 @@ export function EpisodeAssetDrawer({
                 variant="danger"
                 onClick={() => setNotePrompt('REJECT')}
                 disabled={decisionBusy !== null}
+                style={
+                  decisionBusy === 'REJECT'
+                    ? { opacity: 0.55, cursor: 'not-allowed' }
+                    : decisionDone === 'REJECT'
+                      ? { opacity: 0.7 }
+                      : undefined
+                }
               >
                 {decisionBusy === 'REJECT' ? (
-                  <Loader2 size={12} className="animate-spin" />
+                  <>
+                    <Loader2 size={12} className="animate-spin" /> Rejecting…
+                  </>
                 ) : decisionDone === 'REJECT' ? (
-                  <CheckCircle2 size={12} />
+                  <>
+                    <CheckCircle2 size={12} /> Rejected
+                  </>
                 ) : (
-                  <XCircle size={12} />
+                  <>
+                    <XCircle size={12} /> Reject
+                  </>
                 )}
-                Reject
               </Button>
               <Button
                 size="sm"
                 variant="primary"
                 onClick={onApproveClick}
                 disabled={decisionBusy !== null}
+                style={
+                  decisionBusy === 'APPROVE'
+                    ? { opacity: 0.55, cursor: 'not-allowed' }
+                    : decisionDone === 'APPROVE'
+                      ? {
+                          opacity: 0.85,
+                          background:
+                            'color-mix(in oklab, var(--accent-success, #22c55e) 80%, transparent)',
+                          borderColor:
+                            'color-mix(in oklab, var(--accent-success, #22c55e) 90%, transparent)',
+                          color: 'white',
+                        }
+                      : undefined
+                }
               >
                 {decisionBusy === 'APPROVE' ? (
-                  <Loader2 size={12} className="animate-spin" />
+                  <>
+                    <Loader2 size={12} className="animate-spin" /> Approving…
+                  </>
                 ) : decisionDone === 'APPROVE' ? (
-                  <CheckCircle2 size={12} />
-                ) : null}
-                Approve
+                  <>
+                    <CheckCircle2 size={12} /> Approved
+                  </>
+                ) : (
+                  'Approve'
+                )}
               </Button>
             </>
           )}
