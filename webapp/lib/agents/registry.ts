@@ -107,6 +107,21 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: true,
   },
 
+  'EXEC-EREF-DESIGNER': {
+    id: 'EXEC-EREF-DESIGNER',
+    code: 'exec-eref-designer',
+    display_ru: 'Дизайнер референсов',
+    display_en: 'Episode Reference Designer',
+    emoji: '🧠',
+    category: 'production',
+    model: 'sonnet', // Sprint «Дизайнер и Аниматор» 2026-05-18 — LLM-driven Plan author
+    skills: ['eref-designer'],
+    next_agent: 'EXEC-EREF', // after Plan APPROVED, executor reads it and calls provider
+    governance: 'B',
+    prompt_file: 'episode_reference_designer.md',
+    has_inngest_function: true,
+  },
+
   'EXEC-EREF': {
     id: 'EXEC-EREF',
     code: 'exec-eref',

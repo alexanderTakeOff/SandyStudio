@@ -10,6 +10,7 @@ import { execSrevReviewScript } from './functions/exec-srev';
 import { execSbCreateStoryboard } from './functions/exec-sb';
 import { execWchkCheckWorld } from './functions/exec-wchk';
 import { execErefStart } from './functions/exec-eref';
+import { execErefDesignerPlan } from './functions/exec-eref-designer';
 import { execEditCreateAnimatic } from './functions/exec-edit';
 import {
   execVgenLegacyGenerateShot,
@@ -34,6 +35,7 @@ export const functions = [
   execSbCreateStoryboard,
   execWchkCheckWorld,
   execErefStart,
+  execErefDesignerPlan,
   execEditCreateAnimatic,
   execVgenLegacyGenerateShot,
   execVgenStart,

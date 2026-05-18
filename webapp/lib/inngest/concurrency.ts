@@ -21,6 +21,12 @@ export const CONCURRENCY_LIMITS = {
   // 1 per episode. Future hybrid-parallelism (Pilot+Fan-out, technology.md §4)
   // will fan out per-shot events and bump this limit per shot, not per run.
   'exec-eref':  1,
+  // Sprint «Дизайнер и Аниматор» 2026-05-18 — Designer is a pure-cost Sonnet
+  // LLM call per shot. Multiple shots can fan out in parallel since each Plan
+  // is independent. 3 is a moderate cap — Anthropic side is fine, but going
+  // higher won't help wall-clock much (Sonnet ~6-12s per Plan) and could
+  // surface rate-limit edge cases for very large episodes.
+  'exec-eref-designer': 3,
   'exec-edit':  5,
   'exec-copy':  5,
   // Visual generation — strictest. Highest cost, lowest provider tolerance.

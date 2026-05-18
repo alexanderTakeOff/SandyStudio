@@ -95,6 +95,16 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     ],
     governance: 'AGENT_RUN',
   },
+  'EXEC-EREF-DESIGNER': {
+    // Sprint «Дизайнер и Аниматор» 2026-05-18. Designer Plan author — needs
+    // only the same APPROVED storyboard the executor needs. Bible canon and
+    // delivery_targets are loaded by the runner from the episode/series rows,
+    // not via upstream_assets, so the gate stays minimal.
+    required: [
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
+    ],
+    governance: 'AGENT_RUN',
+  },
   'EXEC-EDIT': {
     // Animatic now consumes APPROVED Episode references (not raw storyboard).
     required: [

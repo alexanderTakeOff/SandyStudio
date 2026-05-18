@@ -50,6 +50,10 @@ import { runStoryboarder, StoryboarderError } from './runners/storyboarder';
 import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-check';
 import { runCopywriter, CopywriterError } from './runners/copywriter';
 import { runEpisodeReferences, EpisodeReferencesError } from './runners/episode-references';
+import {
+  runEpisodeReferenceDesigner,
+  EpisodeReferenceDesignerError,
+} from './runners/episode-reference-designer';
 import { runAnimaticSlideshow, AnimaticSlideshowError } from './runners/animatic-slideshow';
 import { loadSeriesBibleCanon } from './bible-loader';
 import type { AgentId, AgentInputs, AgentResult } from './types';
@@ -568,6 +572,76 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             model: agentMeta.model,
             markdown: llm.markdown,
             body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-EREF-DESIGNER': {
+      // Sprint «Дизайнер и Аниматор» 2026-05-18 — LLM Plan author for EREF.
+      // Pure-cost Sonnet 4.6 call per shot; does NOT call any image provider.
+      // Writes a SPC-ref_plan asset that the Critic validates and the
+      // Director approves; only then does EXEC-EREF executor consume it.
+      if (!shotId) {
+        throw new Error(`EXEC-EREF-DESIGNER requires shotId in event payload`);
+      }
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runEpisodeReferenceDesigner({
+            inputs,
+            shotId,
+            revisionNote: args.revisionNote,
+          });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                shot_id: r.shotId,
+                storyboard_asset_id: r.storyboardAssetId,
+                delivery_targets: r.deliveryTargets,
+                designer_notes: r.notes,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                plan_kind: 'ref_plan',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof EpisodeReferenceDesignerError) {
+            throw new Error(`EXEC-EREF-DESIGNER: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mockLLM so replay-pilot + tests without an API key keep
+      // running. Mock body shape doesn't match a real Plan, but downstream
+      // is gated by Director approval — no provider call ever fires from
+      // a mock Plan.
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            description: 'Stub EXEC-EREF-DESIGNER mock — set ANTHROPIC_API_KEY for real path',
+            shot_id: shotId,
+            plan_kind: 'ref_plan',
             provider_id: 'mock',
             provider_used: 'mock',
           },
@@ -1346,6 +1420,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-SB': 'STB-storyboard',
   'EXEC-WCHK': 'REV-world_check',
   'EXEC-EREF': 'IMG-episode_ref', // backbone v2: between Storyboard and Animatic
+  'EXEC-EREF-DESIGNER': 'SPC-ref_plan', // Sprint «Дизайнер и Аниматор» — Plan asset feeds EXEC-EREF executor
   'EXEC-EDIT': 'VID-animatic', // animatic produces a video asset; spec is metadata
   'EXEC-VGEN': 'VID-shot',
   'EXEC-MGEN': 'AUD-music',
