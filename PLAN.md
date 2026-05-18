@@ -93,7 +93,8 @@ Status:   ✅ **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 — MERGED to mast
                                                   generated, 2 VGEN pilots APPROVED)
           • ~~**φ**~~ (Skills-as-capabilities refactor) — COMPLETE 2026-05-18 (cc43944)
           • ✅ **Day 1 of 11 COMPLETE** — Sprint «Дизайнер и Аниматор» schema groundwork
-          • **Day 2-3** — IN PROGRESS — Episode Reference Designer agent
+          • ✅ **Day 2 of 11 COMPLETE** — Episode Reference Designer agent (spec + runner + tests + skill)
+          • **Day 3** — IN PROGRESS — Designer factory.ts + Inngest function wiring
 
 ✅ **Day 1 deliverables (2026-05-18):**
           • Migration **0032** `0032_designer_animator_sprint.sql` written — additive: adds
@@ -117,16 +118,55 @@ Status:   ✅ **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 — MERGED to mast
             with E22 EREF run.
           • Verify trio: tsc clean · vitest **216/216** · replay-pilot **29/29**.
 
-Next:     Day 2-3 — Episode Reference Designer agent implementation:
-          1. `agents/exec/episode_reference_designer.md` — system prompt + decision contract
-          2. `webapp/lib/agents/runners/episode-reference-designer.ts` — runner with full
-             Bible / STB shot / Script scene / delivery_targets injection
-          3. Populate `.claude/skills/eref-designer/SKILL.md` with decision rules:
-             provider per shot type, size per delivery_target, variants count, pilot strategy,
-             camera coverage, sub_area variation, negative-term baseline
-          4. 12+ unit tests covering decision dimensions + Plan-asset JSON schema parse
-          5. Integration point in `factory.ts` so EREF events route to the new agent
-          6. Verify trio after milestone
+✅ **Day 2 deliverables (2026-05-18):**
+          • Agent spec `agents/exec/episode_reference_designer.md` v0.1 — 452 LoC canonical
+            structure (ROLE / AUTHORITY / INPUTS / OUTPUTS / 10-step process / REVISION /
+            EDGE CASES / SUCCESS METRICS). Encodes smart-canon B, Plan-asset JSON contract,
+            sub_area variation rule, V01-V08 Critic hard-check map. Per q1 directive
+            narrowed to `gpt-image-2` only this sprint.
+          • Runner `webapp/lib/agents/runners/episode-reference-designer.ts` ~430 LoC —
+            LLM call to Sonnet 4.6 (`EREF_DESIGNER_MODEL`, `EREF_DESIGNER_MAX_TOKENS=6000`,
+            cost ceiling $0.15), `EREF_DESIGNER_PROVIDER_ALLOWLIST` single-entry,
+            `SIZE_BY_DELIVERY_TARGET` table for 6 slugs, pure `resolveDeliveryTargets()`
+            helper with episode→series→fallback precedence, `buildUserMessage()` per-shot
+            assembly with full Bible (formatBibleForPrompt), delivery_targets table,
+            revisionNote propagation as HARD ACCEPTANCE CRITERIA. Pre-flight validates
+            STB APPROVED + shotId present + bible loaded. Outputs structured
+            `EREFDesignerRunResult` for downstream Plan-asset write.
+          • 24 unit tests — constants/tables (4), `resolveDeliveryTargets` precedence (5),
+            pre-flight errors (4), happy-path runner behaviour (11). All green on first run.
+          • Skill `.claude/skills/eref-designer/SKILL.md` promoted STUB → ACTIVE v0.1.
+            Canonical decision playbook for provider/size/variants/continuity/camera
+            intent/smart-canon B/negative-list/cost reference/pre-flight/revision loop.
+            Agent spec links to skill rather than embedding rules inline.
+          • Verify trio: tsc clean · vitest **240/240** (+24 new Designer tests) ·
+            replay-pilot **29/29**.
+          • Commits: `1f82ed8` (runner), `dc75329` (tests), `693852b` (skill).
+
+Next:     Day 3 — Designer factory.ts + Inngest function wiring (DECISION POINT for Director):
+          STRATEGY OPTIONS:
+          • **Option A**: Add new `AgentId='EXEC-EREF-DESIGNER'` + new Inngest function
+             `sandystudio/exec-eref-designer/plan`. Existing `EXEC-EREF` stays as executor,
+             refactored to read APPROVED Plan asset instead of building its own template.
+             Pro: clean separation, both agents independently observable. Con: ~5-7 plumbing
+             files to update (types.ts AgentId union, registry.ts, factory.ts route map,
+             Inngest function file, event whitelist, naming-validator if needed).
+          • **Option B**: Wrap Designer + Executor inside the existing single `EXEC-EREF`
+             Inngest function as a two-step internal flow: step.run('designer-plan') →
+             persist Plan + REVIEW → step.waitForEvent('plan_approved') →
+             step.run('execute-from-plan'). Pro: minimal new plumbing. Con: long-blocked
+             Inngest function (Director may take days to approve), harder to observe each
+             phase, single agent_id obscures the two-role architecture.
+          • **Recommendation: A** — matches the canonical Writer↔SREV pattern (each role
+             is its own agent_id), plays nicely with Critic's Inngest function on Day 4.
+
+          1. Decide A vs B with Director (next session q1)
+          2. Implement chosen path
+          3. Refactor `episode-references.ts` to read APPROVED Plan asset (with fallback to
+             legacy template builder for replay-pilot mock harness back-compat)
+          4. Wire approval route: `SPC-ref_plan` APPROVED → fire executor event
+          5. Verify trio + E22 dry-run on a single shot (no production cost) to prove
+             end-to-end Designer→Critic-stub→Executor flow before Day 4 real Critic
 
 Mode:     ===5=== EDIT MODE active · Mode 1 (MANUAL governance) · auto-sync OFF
 Date:     2026-05-18
