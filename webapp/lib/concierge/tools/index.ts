@@ -19,6 +19,7 @@ import {
 } from './series';
 import { createEpisode, findEpisode, editBrief } from './episode-create';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from './skills';
+import { getRefPlan, listRefPlans, getCriticVerdict, regenerateRefPlan } from './eref';
 import type { OpenAIToolSchema, Tool } from './types';
 
 export type { Tool, ToolContext, ToolResult, OpenAIToolSchema } from './types';
@@ -46,6 +47,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   listSeriesBibles as unknown as AnyTool,
   listSkills as unknown as AnyTool,
   getSkill as unknown as AnyTool,
+  // EREF Plan inspection (Day 4.5)
+  getRefPlan as unknown as AnyTool,
+  listRefPlans as unknown as AnyTool,
+  getCriticVerdict as unknown as AnyTool,
   // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
   approveAsset as unknown as AnyTool,
@@ -58,6 +63,7 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   proposeSkill as unknown as AnyTool,
   updateSkill as unknown as AnyTool,
   approveSkill as unknown as AnyTool,
+  regenerateRefPlan as unknown as AnyTool,
 ]);
 
 const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(

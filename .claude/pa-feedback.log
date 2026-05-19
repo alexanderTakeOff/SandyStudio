@@ -14911,3 +14911,38 @@ SS-S14-E21-A1-SC02-SH02· gag· 3.0s Полина А какой здесь се�
 Следующее действие: составлю короткую карту “стадия → ответственный агент → supervisor → обязательный contract → текущая дырка → фикс”, чтобы было ясно, где чинить производственный цикл.
 ===== END =====
 
+===== !AMBIENT 2026-05-19T06:16:43.739Z thread=bdbdafcf episode=- =====
+Ну что анализ неплохой жми его сократи его сделай в виде подсказки для Клода чтобы он это использовал не как руководство где есть как информацию к размышлению сделай на английском языке для краткости
+===== END =====
+
+===== !AMBIENT 2026-05-19T06:17:12.945Z thread=bdbdafcf episode=- =====
+[ASSISTANT] E21 через API по коду сейчас не резолвится, но выжимку для Claude подготовила:
+
+```text
+Context for reflection, not a rigid instruction:
+
+We are seeing meaning loss across our animation production pipeline. The main failure is not generation quality in isolation, but weak handoff contracts between departments.
+
+Key concerns:
+1. Rich shot intent from storyboard/reference stages is not reliably carried into video generation prompts.
+2. Asset descriptions are often empty or technical, so reviewers cannot quickly understand what the shot is supposed to achieve.
+3. Failed or exhausted reference generations may still remain in the flow instead of being hard-blocked.
+4. Location selection appears too flat: many shots reuse the same generic gym reference despite different storyboard staging needs.
+5. Reviewer notes identify problems, but regeneration does not always convert those notes into stronger corrected prompts.
+6. There is no mandatory “shot contract” passed downstream: intent, gag, action, emotion, camera, location variant, continuity risks, and negative constraints.
+7. Each production role needs a supervising role before handoff: not just post-review after bad assets are already produced.
+8. Version hygiene is weak: rejected/old drafts stay visible and confuse the actual production state.
+9. The pipeline currently optimizes for asset creation, not for preserving the creative idea.
+10. The real KPI should be: readable gag, canon consistency, complete downstream prompt, and production-ready handoff.
+
+Please analyze the pipeline as a production system:
+- Where does creative intent get lost?
+- Which role should own each handoff?
+- What supervisor/gate should verify each stage?
+- What metadata or prompt contract must be mandatory before the next stage can run?
+- How can we prevent empty descriptions, generic prompts, wrong location anchors, and failed references from reaching video generation?
+```
+
+Следующее: могу сжать это ещё сильнее в 5-line “Claude task prompt” для вставки в чат.
+===== END =====
+
