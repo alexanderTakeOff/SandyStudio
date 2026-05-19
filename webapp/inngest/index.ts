@@ -11,6 +11,7 @@ import { execSbCreateStoryboard } from './functions/exec-sb';
 import { execWchkCheckWorld } from './functions/exec-wchk';
 import { execErefStart } from './functions/exec-eref';
 import { execErefDesignerPlan } from './functions/exec-eref-designer';
+import { execErefExecuteFromPlan } from './functions/exec-eref-execute-from-plan';
 import { execEditCreateAnimatic } from './functions/exec-edit';
 import {
   execVgenLegacyGenerateShot,
@@ -36,6 +37,7 @@ export const functions = [
   execWchkCheckWorld,
   execErefStart,
   execErefDesignerPlan,
+  execErefExecuteFromPlan,
   execEditCreateAnimatic,
   execVgenLegacyGenerateShot,
   execVgenStart,

@@ -96,8 +96,30 @@ Status:   ✅ **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 — MERGED to mast
           • ✅ **Day 2 of 11 COMPLETE** — Episode Reference Designer agent (spec + runner + tests + skill)
           • ✅ **Day 3.1 COMPLETE** — Option A agent infrastructure plumbing (commit `d148a01`).
             EXEC-EREF-DESIGNER registered, fireable via Inngest event. Critic + live wire-in pending.
-          • **Day 3.2** — IN PROGRESS — live approval-route wire-in (STB.APPROVED → Designer,
-            SPC-ref_plan.APPROVED → EREF executor) + refactor episode-references.ts to read Plan
+          • ✅ **Day 3.2 COMPLETE 2026-05-18** — Live approval-route wire-in shipped behind
+            `DESIGNER_CHAIN_ENABLED` feature flag (q2c soft switch — Director chose flag-gated rollout
+            so legacy `generate-references` path stays reachable as fallback). Plan-driven branch
+            added to episode-references.ts (q1a additive — old fan-out behaviour intact). Verify:
+            tsc clean · vitest **259/259** (+19 new Plan-branch tests) · replay-pilot **29/29**.
+            Smoke deferred to Day 4 per Director directive (q4c — Critic chain first).
+            **Touchpoints (10)**:
+            – `lib/inngest/client.ts` — registered `sandystudio/exec-eref-designer/plan` (formerly
+              referenced but unregistered) + new `sandystudio/exec-eref/execute-from-plan`
+            – `lib/inngest/concurrency.ts` — added `exec-eref-execute: 2` per-episode cap
+            – `inngest/functions/exec-eref-execute-from-plan.ts` — new factory-driven function
+            – `inngest/index.ts` — registered the new function
+            – `lib/agents/runner.ts` — added `planAssetId` to `RunAgentArgs`, forwarded to runEpisodeReferences
+            – `lib/agents/factory.ts` — widened `resolveRunArgs` return type to include `planAssetId`
+            – `lib/agents/runners/episode-references.ts` — added `planAssetId/shotId` to args,
+              `PlanOverrides` type, `loadPlanOverrides()` + `planSizeToProviderSize()` helpers
+              (test-exported), Plan-driven jobs filter, prompt + provider size overrides,
+              `provenance.plan_asset_id` IMG metadata for audit chain
+            – `app/api/assets/[id]/approve/route.ts` — `designerChainEnabled()` flag reader,
+              REV-world_check fan-out (N Designer events when flag on), new `SPC-ref_plan` →
+              `execute-from-plan` branch with per-Plan idempotency check on
+              `metadata.provenance.plan_asset_id`
+            – `__tests__/lib/agents/runners/episode-references-plan.test.ts` — 19 tests covering
+              size mapping (6) + Plan loader happy paths (3) + rejection paths (9) + error class (1)
 
 ✅ **Day 1 deliverables (2026-05-18):**
           • Migration **0032** `0032_designer_animator_sprint.sql` written — additive: adds
@@ -146,30 +168,18 @@ Status:   ✅ **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 — MERGED to mast
             replay-pilot **29/29**.
           • Commits: `1f82ed8` (runner), `dc75329` (tests), `693852b` (skill).
 
-Next:     Day 3 — Designer factory.ts + Inngest function wiring (DECISION POINT for Director):
-          STRATEGY OPTIONS:
-          • **Option A**: Add new `AgentId='EXEC-EREF-DESIGNER'` + new Inngest function
-             `sandystudio/exec-eref-designer/plan`. Existing `EXEC-EREF` stays as executor,
-             refactored to read APPROVED Plan asset instead of building its own template.
-             Pro: clean separation, both agents independently observable. Con: ~5-7 plumbing
-             files to update (types.ts AgentId union, registry.ts, factory.ts route map,
-             Inngest function file, event whitelist, naming-validator if needed).
-          • **Option B**: Wrap Designer + Executor inside the existing single `EXEC-EREF`
-             Inngest function as a two-step internal flow: step.run('designer-plan') →
-             persist Plan + REVIEW → step.waitForEvent('plan_approved') →
-             step.run('execute-from-plan'). Pro: minimal new plumbing. Con: long-blocked
-             Inngest function (Director may take days to approve), harder to observe each
-             phase, single agent_id obscures the two-role architecture.
-          • **Recommendation: A** — matches the canonical Writer↔SREV pattern (each role
-             is its own agent_id), plays nicely with Critic's Inngest function on Day 4.
-
-          1. Decide A vs B with Director (next session q1)
-          2. Implement chosen path
-          3. Refactor `episode-references.ts` to read APPROVED Plan asset (with fallback to
-             legacy template builder for replay-pilot mock harness back-compat)
-          4. Wire approval route: `SPC-ref_plan` APPROVED → fire executor event
-          5. Verify trio + E22 dry-run on a single shot (no production cost) to prove
-             end-to-end Designer→Critic-stub→Executor flow before Day 4 real Critic
+Next:     Day 4 — Designer's Critic (EXEC-EPREV) + Director q4c smoke gate:
+          • Build EXEC-EPREV runner — Sonnet 4.6, validates Plan against V01-V08 checks
+             (provider in allowlist, size matches delivery_target, prompt non-empty,
+             negative covers core terms, etc). Verdict APPROVE → fire approve-route as if
+             Director clicked; REVISE → flip Plan to REVISION + emit revisionNote.
+          • Register `sandystudio/exec-eprev/review-plan` event + Inngest function +
+             concurrency entry. Auto-fire from Designer's `nextEvent` callback
+             (currently returns null in Day 3.1 implementation).
+          • E22 real smoke (~$1.10 single-shot end-to-end) only AFTER Critic is in chain
+             — Director's q4c directive 2026-05-18. Bypass: set DESIGNER_CHAIN_ENABLED=true
+             in webapp env for selected episode, manual approve Plan, watch IMG land.
+          • PR or master merge of Day 1+2+3.1+3.2 — Director gate after Critic.
 
 Mode:     ===5=== EDIT MODE active · Mode 1 (MANUAL governance) · auto-sync OFF
 Date:     2026-05-18

@@ -221,6 +221,14 @@ export interface RunAgentArgs {
    * cosmetic revision instead of an actual fix.
    */
   revisionNote?: string;
+  /**
+   * Sprint «Дизайнер и Аниматор» Day 3.2 (2026-05-18) — APPROVED SPC-ref_plan
+   * asset id. When set, EXEC-EREF runner switches into Plan-driven branch:
+   * reads the Plan's JSON body for provider/size/variants/prompt/negative
+   * and generates exactly one IMG-episode_ref for the planned shot. When
+   * unset, runner falls back to the legacy multi-shot fan-out path.
+   */
+  planAssetId?: string;
 }
 
 // Helper: assemble metadata payload for binary outputs, encapsulating the
@@ -304,6 +312,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     qualityTier,
     durationSeconds,
     vgenPilot,
+    planAssetId,
   } = args;
   void provider; // referenced inside individual cases
   const episodeId = inputs.episode_id;
@@ -650,13 +659,25 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-EREF': {
-      // Real Episode Reference Generator. Bible-anchored gpt-image-1 fan-out
+      // Real Episode Reference Generator. Bible-anchored gpt-image-2 fan-out
       // — produces N IMG-episode_ref_<slug> assets directly. Contract:
       // specs/contracts/episode_references@v1.yaml.
+      //
+      // Sprint «Дизайнер и Аниматор» Day 3.2 (2026-05-18): when planAssetId
+      // + shotId are set (Plan-driven branch, q1a additive), runner generates
+      // exactly one IMG-episode_ref for the planned shot using the Plan's
+      // provider/size/variants/prompt/negative decisions. When unset, legacy
+      // multi-shot fan-out path runs.
       const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
       if (hasOpenAI && supabase) {
         try {
-          const r = await runEpisodeReferences({ inputs, supabase, episodeCode });
+          const r = await runEpisodeReferences({
+            inputs,
+            supabase,
+            episodeCode,
+            planAssetId,
+            shotId,
+          });
           return {
             outputKind: 'image-png',
             result: {

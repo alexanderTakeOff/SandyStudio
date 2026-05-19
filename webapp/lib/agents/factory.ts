@@ -119,10 +119,14 @@ export interface AgentFunctionSpec<EventName extends string = string> {
     | null;
   /**
    * Optional resolver for runAgent extras (shotId, section, collectionPoint,
-   * youtubeVideoId). Defaults to no extras.
+   * youtubeVideoId, planAssetId). Defaults to no extras. Day 3.2 added
+   * planAssetId for the Plan-driven EREF executor (q1a additive branch).
    */
   resolveRunArgs?: (eventData: Record<string, unknown>) => Partial<
-    Pick<RunAgentArgs, 'shotId' | 'section' | 'collectionPoint' | 'youtubeVideoId'>
+    Pick<
+      RunAgentArgs,
+      'shotId' | 'section' | 'collectionPoint' | 'youtubeVideoId' | 'planAssetId'
+    >
   >;
   /**
    * Asset statuses to load into upstream_assets for this agent. Defaults to

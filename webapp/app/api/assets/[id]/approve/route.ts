@@ -20,9 +20,27 @@ import {
   isShotReferenceV2,
   type ShotReferenceContract,
 } from '@/lib/api/shot-reference';
-import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import {
+  extractShotsFromStoryboard,
+  isAnimaticV1,
+  type AnimaticContract,
+} from '@/lib/api/animatic-shotlist';
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
+
+/**
+ * Sprint «Дизайнер и Аниматор» Day 3.2 (2026-05-18) — feature flag for the
+ * Designer chain (q2c soft switch). When unset/false: REV-world_check.APPROVED
+ * fires the legacy `exec-eref/generate-references` event (current behaviour).
+ * When `true`: REV-world_check fans out one `exec-eref-designer/plan` event
+ * per shot, and SPC-ref_plan.APPROVED fires `exec-eref/execute-from-plan`.
+ * One env var, no destructive deletes — rollback by unsetting.
+ */
+function designerChainEnabled(): boolean {
+  const v = process.env.DESIGNER_CHAIN_ENABLED;
+  if (!v) return false;
+  return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -73,6 +91,9 @@ type AssetForChain = {
   updated_at?: string | null;
   /** Optional metadata — used to detect v2 EREF contract for chain skip. */
   metadata?: unknown;
+  /** Optional content (markdown / JSON body) — read by Day 3.2 Plan branch
+   *  to extract `shot_id` from APPROVED SPC-ref_plan assets. */
+  content?: string | null;
 };
 
 type SupabaseClientLike = Awaited<ReturnType<typeof requireDirector>>['supabase'];
@@ -229,7 +250,50 @@ async function computeNextEvents(
   // pacing WITH music. Both MGEN and EREF run after world_check; EDIT
   // (animatic) waits for both to complete.
   if (ft === 'REV-world_check') {
-    if (!(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
+    // Day 3.2 (2026-05-18, q2c soft switch): when DESIGNER_CHAIN_ENABLED is
+    // on, fan out one Designer Plan event per shot in the APPROVED storyboard.
+    // Each Plan is a per-shot SPC-ref_plan asset that Director approves
+    // independently; APPROVED Plan fires `exec-eref/execute-from-plan` below.
+    // Legacy path (flag off) keeps firing the single generate-references
+    // event — replay-pilot and in-flight episodes continue to work.
+    if (designerChainEnabled()) {
+      if (!(await hasJob(supabase, ep, 'EXEC-EREF-DESIGNER', { since }))) {
+        const stbId = await findLatestApprovedAssetId(
+          supabase,
+          ep,
+          'STB-storyboard',
+        );
+        // Load the APPROVED storyboard's content so we can list every shot
+        // and fan out one Designer event per shot. If STB lookup fails we
+        // intentionally fall back to the legacy path rather than firing zero
+        // events (defensive — keeps the pipeline moving on data anomalies).
+        let stbContent: string | null = null;
+        if (stbId) {
+          const { data: stbRow } = await supabase
+            .from('assets')
+            .select('content')
+            .eq('id', stbId)
+            .maybeSingle();
+          stbContent = (stbRow as { content?: string | null } | null)?.content ?? null;
+        }
+        const shots = stbContent ? extractShotsFromStoryboard(stbContent) : [];
+        if (shots.length > 0) {
+          for (const shot of shots) {
+            events.push({
+              name: 'sandystudio/exec-eref-designer/plan',
+              data: { episodeId: ep, shotId: shot.shot_id },
+            });
+          }
+        } else {
+          // Defensive fallback — fire legacy single event so REV-world_check
+          // approval doesn't silently land in a state with zero next events.
+          events.push({
+            name: 'sandystudio/exec-eref/generate-references',
+            data: { episodeId: ep, storyboardAssetId: stbId ?? asset.id },
+          });
+        }
+      }
+    } else if (!(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
       // Resolve the underlying STB asset — `asset.id` is the REV-world_check
       // review, not the storyboard. EREF runner parses storyboard JSON from
       // the asset it receives, so passing the review id makes it find no
@@ -248,6 +312,56 @@ async function computeNextEvents(
         // animatic exists. Runner reads section + storyboard for prompt
         // context. Field kept for backward-compat with the event schema.
         data: { episodeId: ep, animaticAssetId: '', section: 'main' },
+      });
+    }
+  }
+
+  // ── Ref Plan APPROVED → EXEC-EREF execute-from-plan (Day 3.2)
+  // Sprint «Дизайнер и Аниматор» 2026-05-18 (q2c flag-gated). Director (or
+  // future Day 4 Critic) approved the per-shot Plan; runner now generates
+  // exactly one IMG-episode_ref using the Plan's provider/size/prompt
+  // decisions. Idempotency check is keyed per Plan asset id (not per agent
+  // for the whole episode) so each Plan triggers its own execute event.
+  if (ft === 'SPC-ref_plan' && designerChainEnabled()) {
+    // Extract shotId from the Plan asset's JSON body so the executor knows
+    // which shot to generate. We trust the body — Director would not have
+    // approved a Plan with a malformed shot_id (and the Designer runner
+    // validates it before write).
+    let shotId: string | null = null;
+    if (typeof asset.content === 'string') {
+      const matches = [...asset.content.matchAll(/```json\s*([\s\S]+?)```/g)];
+      const last = matches[matches.length - 1]?.[1];
+      if (last) {
+        try {
+          const body = JSON.parse(last.trim()) as { shot_id?: unknown };
+          if (typeof body.shot_id === 'string') shotId = body.shot_id;
+        } catch {
+          /* leave shotId null */
+        }
+      }
+    }
+    // Per-Plan idempotency: runner stamps every IMG with
+    // metadata.provenance.plan_asset_id. If any IMG already carries this
+    // Plan id, suppress re-fire (handles Director double-click, HMR retrigger).
+    let planAlreadyExecuted = false;
+    const { data: metadataRows } = await supabase
+      .from('assets')
+      .select('metadata')
+      .eq('episode_id', ep)
+      .like('file_type', 'IMG-episode_ref%');
+    for (const row of (metadataRows ?? []) as Array<{ metadata?: unknown }>) {
+      const meta = row.metadata as
+        | { provenance?: { plan_asset_id?: unknown } }
+        | null;
+      if (meta?.provenance?.plan_asset_id === asset.id) {
+        planAlreadyExecuted = true;
+        break;
+      }
+    }
+    if (shotId && !planAlreadyExecuted) {
+      events.push({
+        name: 'sandystudio/exec-eref/execute-from-plan',
+        data: { episodeId: ep, shotId, planAssetId: asset.id },
       });
     }
   }

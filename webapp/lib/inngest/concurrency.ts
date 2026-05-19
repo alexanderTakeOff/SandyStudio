@@ -27,6 +27,12 @@ export const CONCURRENCY_LIMITS = {
   // higher won't help wall-clock much (Sonnet ~6-12s per Plan) and could
   // surface rate-limit edge cases for very large episodes.
   'exec-eref-designer': 3,
+  // Plan-driven executor (Day 3.2 2026-05-18) — single-shot image generation
+  // from an APPROVED SPC-ref_plan. Same rate-limit logic as legacy exec-eref
+  // (gpt-image-2 fan-out, expensive), but here parallelism is one shot per
+  // event so episodes can have 2-3 shots in flight without colliding on the
+  // long internal per-shot loop.
+  'exec-eref-execute': 2,
   'exec-edit':  5,
   'exec-copy':  5,
   // Visual generation — strictest. Highest cost, lowest provider tolerance.

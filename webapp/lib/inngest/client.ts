@@ -107,6 +107,36 @@ type Events = {
     };
   };
 
+  /**
+   * EXEC-EREF-DESIGNER — Sprint «Дизайнер и Аниматор» 2026-05-18.
+   * Per-shot LLM Plan author. Fired N times per episode after REV-world_check
+   * approval (gated by DESIGNER_CHAIN_ENABLED flag); each invocation writes
+   * one SPC-ref_plan-<shot_id> asset. Plan asset goes through Director (and
+   * Day 4 Critic) approval; APPROVED Plan fires `exec-eref/execute-from-plan`.
+   */
+  'sandystudio/exec-eref-designer/plan': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      /** Optional revision note when this is a re-fire after REQUEST_REVISION. */
+      revisionNote?: string;
+    };
+  };
+
+  /**
+   * EREF v3 Plan-driven executor — Sprint «Дизайнер и Аниматор» Day 3.2
+   * 2026-05-18. Fired when Director approves an SPC-ref_plan asset. The
+   * executor reads the Plan's JSON body (provider, size, variants, prompt,
+   * negative, continuity_strategy) and generates exactly one IMG-episode_ref
+   * for the planned shot. Coexists with legacy `generate-references` and
+   * Pilot/fanout entries (q2c soft switch behind DESIGNER_CHAIN_ENABLED).
+   */
+  'sandystudio/exec-eref/execute-from-plan': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      planAssetId: string;
+    };
+  };
+
   'sandystudio/exec-edit/create-animatic': {
     data: AssetTrigger & {
       storyboardAssetIds: string[];
