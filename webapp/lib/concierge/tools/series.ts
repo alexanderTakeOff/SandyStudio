@@ -78,13 +78,13 @@ interface ListSeriesBiblesArgs {
 export const listSeriesBibles: Tool<ListSeriesBiblesArgs> = {
   name: 'listSeriesBibles',
   description:
-    "Get the Series Bible sections (general_idea, characters, locations, objects, styles, audio) for a series. Returns each section with its assets (status, slug, description). Use before suggesting Bible improvements — read what's there first.",
+    "Get the Series Bible sections (general_idea, characters, locations, objects, styles, audio) for a series. Returns metadata only — each asset's id, filename, slug, status, version, file_type, content_chars (size in chars). Use this to discover what exists. To read the actual markdown of one asset, call `getAsset(id)` afterwards. NEVER expects the full body in this list — content is stripped to keep PA context window safe (a single LOCKED Bible can exceed 400 KB and choke OpenAI).",
   mutating: false,
   schema: {
     type: 'function',
     function: {
       name: 'listSeriesBibles',
-      description: 'Read the Series Bible sections + their assets for one series.',
+      description: 'Read the Series Bible sections + their assets for one series (metadata only — call getAsset for actual content).',
       parameters: {
         type: 'object',
         properties: {
@@ -119,9 +119,39 @@ export const listSeriesBibles: Tool<ListSeriesBiblesArgs> = {
           : `bible fetch failed (HTTP ${resp.status})`;
       return fail(message, `http_${resp.status}`);
     }
-    // The envelope is `{ ok: true, data: { series, sections } }` from apiOk.
-    const payload = (body as { data?: unknown })?.data ?? body;
-    return ok(payload, 'Series Bible sections loaded.');
+    const payload = ((body as { data?: unknown })?.data ?? body) as {
+      series?: unknown;
+      sections?: Array<{
+        section?: unknown;
+        label?: unknown;
+        assets?: Array<Record<string, unknown>>;
+      }>;
+    };
+
+    // ── Strip content from each asset to protect PA context window ─────────
+    // Sprint «Дизайнер и Аниматор» PA hygiene fix (Tео, 2026-05-19): a single
+    // LOCKED Bible can exceed 400 KB markdown. Returning it in the tool_result
+    // pumps that into Polina's OpenAI context on the next round and choked
+    // gpt-5.5 silently (HTTP 200, no assistant reply). Now we return only
+    // metadata + content_chars indicator; Polina calls getAsset(id) to fetch
+    // any specific asset's actual content.
+    const stripped = (payload.sections ?? []).map((sec) => ({
+      section: sec.section,
+      label: sec.label,
+      assets: (sec.assets ?? []).map((a) => {
+        const content = a.content;
+        const contentChars =
+          typeof content === 'string' ? content.length : null;
+        const { content: _omit, ...rest } = a;
+        void _omit;
+        return { ...rest, content_chars: contentChars };
+      }),
+    }));
+
+    return ok(
+      { series: payload.series, sections: stripped },
+      'Series Bible sections loaded (metadata only — use getAsset(id) for actual content).',
+    );
   },
 };
 
@@ -464,6 +494,119 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
         ? ` ($${(payload as { cost_usd: number }).cost_usd.toFixed(4)})`
         : '';
     return ok(payload, `Image regenerated${versionInfo}${costInfo}. Watch Bible / activity feed.`);
+  },
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// createSeries — Sprint «Дизайнер и Аниматор» follow-up 2026-05-19 (Тео)
+// Mirrors the POST /api/series endpoint so the Director can spin up a fresh
+// series from PA chat. Verbal approval gated.
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface CreateSeriesArgs {
+  code: string;
+  title: string;
+  audience?: 'adult' | 'kids' | 'mixed' | 'other';
+  genre?: 'comedy' | 'drama' | 'doc' | 'sci_fi' | 'other';
+  logline?: string;
+  episode_budget_ceiling?: number;
+}
+
+export const createSeries: Tool<CreateSeriesArgs> = {
+  name: 'createSeries',
+  description:
+    "Create a brand-new series (SS-S15, SS-S16, etc) in DRAFT status. Seeds the default Approval Authority Matrix automatically. Use when the Director wants to start a fresh series from scratch (new comedy, new genre experiment). Requires verbal approval. After creation, use setBibleContent to author the general_idea/main Bible section, then createEpisode to start the first episode.",
+  mutating: true,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'createSeries',
+      description: 'Insert a new DRAFT series row + default authority matrix. Verbal approval required.',
+      parameters: {
+        type: 'object',
+        properties: {
+          code: {
+            type: 'string',
+            description: 'Series code matching ^SS-(S\\d{2}|PILOT)$, e.g. "SS-S15" or "SS-PILOT".',
+            pattern: '^SS-(S\\d{2}|PILOT)$',
+          },
+          title: { type: 'string', minLength: 1, maxLength: 80 },
+          audience: { type: 'string', enum: ['adult', 'kids', 'mixed', 'other'] },
+          genre: { type: 'string', enum: ['comedy', 'drama', 'doc', 'sci_fi', 'other'] },
+          logline: { type: 'string', maxLength: 200 },
+          episode_budget_ceiling: { type: 'number', exclusiveMinimum: 0 },
+        },
+        required: ['code', 'title'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const code = typeof obj.code === 'string' ? obj.code.trim() : '';
+    const title = typeof obj.title === 'string' ? obj.title.trim() : '';
+    if (!/^SS-(S\d{2}|PILOT)$/.test(code)) {
+      throw new Error('code must match ^SS-(S\\d{2}|PILOT)$ (e.g. SS-S15)');
+    }
+    if (title.length === 0) throw new Error('title is required');
+    const audience =
+      obj.audience === 'adult' ||
+      obj.audience === 'kids' ||
+      obj.audience === 'mixed' ||
+      obj.audience === 'other'
+        ? obj.audience
+        : undefined;
+    const genre =
+      obj.genre === 'comedy' ||
+      obj.genre === 'drama' ||
+      obj.genre === 'doc' ||
+      obj.genre === 'sci_fi' ||
+      obj.genre === 'other'
+        ? obj.genre
+        : undefined;
+    const logline = typeof obj.logline === 'string' ? obj.logline : undefined;
+    const episode_budget_ceiling =
+      typeof obj.episode_budget_ceiling === 'number' && obj.episode_budget_ceiling > 0
+        ? obj.episode_budget_ceiling
+        : undefined;
+    return { code, title, audience, genre, logline, episode_budget_ceiling };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    if (!approval.approved) {
+      return fail(approval.reason, 'verbal_approval_required');
+    }
+
+    const url = new URL('/api/series', ctx.appOrigin);
+    const resp = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(ctx.cookieHeader ? { cookie: ctx.cookieHeader } : {}),
+      },
+      body: JSON.stringify({
+        code: args.code,
+        title: args.title,
+        ...(args.audience ? { audience: args.audience } : {}),
+        ...(args.genre ? { genre: args.genre } : {}),
+        ...(args.logline ? { logline: args.logline } : {}),
+        ...(args.episode_budget_ceiling
+          ? { episode_budget_ceiling: args.episode_budget_ceiling }
+          : {}),
+      }),
+    });
+    let body: unknown = null;
+    try {
+      body = await resp.json();
+    } catch {
+      /* */
+    }
+    if (!resp.ok) {
+      const errMsg =
+        body && typeof body === 'object' ? JSON.stringify(body) : `HTTP ${resp.status}`;
+      return fail(`createSeries failed: ${errMsg}`);
+    }
+    return ok(body, `Series ${args.code} "${args.title}" created.`);
   },
 };
 

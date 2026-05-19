@@ -16,6 +16,7 @@ import {
   enrichBible,
   setBibleContent,
   regenerateBibleImage,
+  createSeries,
 } from './series';
 import { createEpisode, findEpisode, editBrief } from './episode-create';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from './skills';
@@ -68,6 +69,7 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   enrichBible as unknown as AnyTool,
   setBibleContent as unknown as AnyTool,
   regenerateBibleImage as unknown as AnyTool,
+  createSeries as unknown as AnyTool,
   createEpisode as unknown as AnyTool,
   editBrief as unknown as AnyTool,
   proposeSkill as unknown as AnyTool,
