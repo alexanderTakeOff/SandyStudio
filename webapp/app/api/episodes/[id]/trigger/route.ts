@@ -162,7 +162,8 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
 
   const { ids } = await inngest.send({
-    name: eventName,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    name: eventName as any,
     data: eventPayload as never,
   });
 

@@ -141,6 +141,43 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: true,
   },
 
+  'EXEC-VANIM': {
+    id: 'EXEC-VANIM',
+    code: 'exec-vanim',
+    display_ru: 'Аниматор',
+    display_en: 'Animator',
+    emoji: '🎬',
+    category: 'production',
+    // Sonnet 4.6 — per-shot video generation Plan author. Replaces the
+    // buildShotPromptV2 template path when ANIMATOR_CHAIN_ENABLED is on.
+    model: 'sonnet',
+    skills: ['animator'],
+    next_agent: 'EXEC-VPREV', // Day 8 — Animator's Critic validates Plan
+    governance: 'B',
+    prompt_file: 'animator.md',
+    has_inngest_function: true,
+  },
+
+  'EXEC-VPREV': {
+    id: 'EXEC-VPREV',
+    code: 'exec-vprev',
+    display_ru: 'Критик аниматора',
+    display_en: "Animator's Critic",
+    emoji: '🧐',
+    category: 'review',
+    // Sonnet 4.6 — V01-V09 hard checks against shot Plan JSON body (provider
+    // format match, ≤1 primary action, NEGATIVE baseline, continuity anchor,
+    // duration consistency). Cheap (~$0.01-0.03 per Plan). Registered now
+    // (Day 6-7) so Animator.next_agent resolves; Inngest function lands in
+    // Day 8 — `has_inngest_function: false` until then.
+    model: 'sonnet',
+    skills: [],
+    next_agent: 'EXEC-VGEN', // after Plan APPROVED, executor consumes it
+    governance: 'B',
+    prompt_file: 'animator_critic.md',
+    has_inngest_function: false,
+  },
+
   'EXEC-EREF': {
     id: 'EXEC-EREF',
     code: 'exec-eref',

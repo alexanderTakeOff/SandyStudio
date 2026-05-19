@@ -114,6 +114,24 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     ],
     governance: 'AGENT_RUN',
   },
+  'EXEC-VANIM': {
+    // Sprint «Дизайнер и Аниматор» Day 6-7 2026-05-19. Animator needs the
+    // same APPROVED storyboard the Designer / VGEN executor needs. Bible
+    // canon + EREF anchors are loaded by runner from inputs.
+    required: [
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
+    ],
+    governance: 'AGENT_RUN',
+  },
+  'EXEC-VPREV': {
+    // Sprint «Дизайнер и Аниматор» Day 8 2026-05-19. Animator's Critic —
+    // reads Plan asset via planAssetId from event payload, sanity-checks
+    // against the storyboard shot.
+    required: [
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
+    ],
+    governance: 'AGENT_RUN',
+  },
   'EXEC-EDIT': {
     // Animatic now consumes APPROVED Episode references (not raw storyboard).
     required: [

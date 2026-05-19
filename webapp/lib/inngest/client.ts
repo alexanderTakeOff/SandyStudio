@@ -138,6 +138,44 @@ type Events = {
   };
 
   /**
+   * EXEC-VANIM — Animator (Sprint «Дизайнер и Аниматор» Day 6-7 2026-05-19).
+   * Per-shot Sonnet 4.6 Plan author for video generation. Fired per shot
+   * after VID-animatic.APPROVED (when ANIMATOR_CHAIN_ENABLED is on) or
+   * manually via PA. Output: one SPC-shot_plan-<shot_id> asset per shot.
+   */
+  'sandystudio/exec-vanim/plan': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      revisionNote?: string;
+    };
+  };
+
+  /**
+   * EXEC-VPREV — Animator's Critic (Sprint «Дизайнер и Аниматор» Day 8
+   * 2026-05-19). Fired by Animator's nextEvent on freshly-saved SPC-shot_plan.
+   * Validates V01-V09 hard checks. Same chain shape as EXEC-EPREV.
+   */
+  'sandystudio/exec-vprev/review-plan': {
+    data: BaseEpisodeEvent & {
+      planAssetId: string;
+      shotId: string;
+    };
+  };
+
+  /**
+   * VGEN Plan-driven executor (Day 6-7 2026-05-19). Fired when Director
+   * approves an SPC-shot_plan asset. Executor reads Plan body (provider,
+   * aspect, duration, prompt, etc) and dispatches the actual provider call
+   * for ONE shot. Coexists with /start /single-shot /generate-shot.
+   */
+  'sandystudio/exec-vgen/execute-from-plan': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      planAssetId: string;
+    };
+  };
+
+  /**
    * EREF v3 Plan-driven executor — Sprint «Дизайнер и Аниматор» Day 3.2
    * 2026-05-18. Fired when Director approves an SPC-ref_plan asset. The
    * executor reads the Plan's JSON body (provider, size, variants, prompt,

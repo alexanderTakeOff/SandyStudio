@@ -1,71 +1,162 @@
 ---
 name: animator
-description: Decision playbook for the Animator (EXEC-VGEN). Covers provider choice per shot role, quality tier per hero-marker, aspect per delivery_target, duration with action-complexity reasoning, seed locking, end_image strategy, prompt formulation (Seedance 7-slot vs Veo prose), and running negative-term list. Pairs with `agents/exec/animator.md` and lazy-loads `seedance-prompting` / future `veo-prompting` sub-skills per chosen provider.
-status: STUB
-owner: EXEC-VGEN (Animator)
+description: Decision playbook for the Animator (EXEC-VANIM). Covers provider choice per shot role, quality tier per hero-marker, aspect per delivery_target, duration with action-complexity reasoning, seed locking, end_image strategy, prompt formulation (Seedance 7-slot vs Veo prose), and running negative-term list. Pairs with `agents/exec/animator.md` and lazy-loads `seedance-prompting` / future `veo-prompting` sub-skills per chosen provider.
+status: ACTIVE
+owner: EXEC-VANIM (Animator)
 applies_when:
-  agent: [EXEC-VGEN]
+  agent: [EXEC-VANIM]
 hard: false
-maturity: stub-day-1
+maturity: v0.1-day-6-7
 created: 2026-05-18
+updated: 2026-05-19
 ---
 
 # Animator — Decision Playbook (SandyStudio)
 
-> **Day 1 stub.** Populated on Day 6-7 of Sprint «Дизайнер и Аниматор» when the
-> Animator runner is implemented. Sections marked `TBD` are placeholders that
-> will be filled with concrete decision rules, examples, and worked cases.
+> **v0.1 Day 6-7 of Sprint «Дизайнер и Аниматор».** Animator (EXEC-VANIM) is
+> the LLM-driven Plan author for video generation. This skill captures the
+> decision rules. v0.2 lands on Day 11 retro with E22 production data.
 
 ## When this skill applies
 
-- Agent is `EXEC-VGEN` (Animator).
-- Director, PA, or factory.ts dispatched a per-shot video generation job.
-  The agent is composing a `SPC-shot_plan-<shot_id>` Plan-asset.
+- Agent is `EXEC-VANIM` (Animator).
+- Agent is composing a `SPC-shot_plan-<shot_id>` Plan-asset for one shot.
+- The Plan goes through Critic (EXEC-VPREV) → Director review → APPROVED.
+  Only after APPROVED, the EXEC-VGEN executor reads the Plan and calls the
+  actual video provider.
 
-## Decision dimensions (will be expanded Day 6-7)
+## Decision dimensions
 
-| Dimension | TBD |
+### Provider per shot role (sprint allowlist)
+
+| shot_role / context | Provider choice | Rationale |
+|---|---|---|
+| Establishing wide / non-hero / iteration loop | `seedance-fast` | Cheapest, fastest, "good enough" frame quality for iteration |
+| Hero shot · complex prose · long emotion arc | `veo-standard` | Cinematic prose handling, character emotion fidelity |
+| Camera-tightening · character-enter · emotion peak | `seedance-with-end-image` | Use approved EREF as end_image for arc continuity |
+
+When in doubt: `seedance-fast` first. Director's Stage A 2026-05-18 baseline.
+
+### Quality tier per hero-marker
+
+- **fast** — default for first pass / iteration / non-hero
+- **standard** — only when storyboard flags `shot_role=hero` OR Director-
+  approved direction is being re-rendered for final cut
+
+### Aspect per delivery_target
+
+Lookup from `episode.metadata.delivery_targets[0]`:
+
+| delivery_target | Aspect |
 |---|---|
-| Provider per shot role (Seedance fast iteration vs Veo standard hero) | Day 6-7 |
-| Quality tier per hero-marker | Day 6-7 |
-| Aspect per delivery_target | Day 6-7 |
-| Duration with action-complexity reasoning (simple = 3-5s, complex = up to 8s per technology.md §3.5) | Day 6-7 |
-| Seed locking strategy (random first try, lock after approve for batch consistency) | Day 6-7 |
-| End-image strategy (camera-tightening, character-enter beats) | Day 6-7 |
-| Prompt formulation (Seedance 7-slot vs Veo prose — lazy-load sub-skill per provider) | Day 6-7 |
-| Smart canon B (Director directive 2026-05-18 — structured Bible canon, not novel-prose) | Day 6-7 |
-| Running negative-term list | Day 6-7 |
+| youtube_landscape | 16:9 |
+| youtube_shorts | 9:16 |
+| instagram_reels | 9:16 |
+| tiktok | 9:16 |
+| instagram_post | 1:1 |
+| print_poster | 16:9 (static, but reuse 16:9 for video) |
 
-## Pre-day-6 reference (do not enforce yet)
+### Duration with action-complexity reasoning
 
-- Director's Stage A 2026-05-18 issue #2: camera movement too subtle in
-  Seedance output despite skill default «static + 5% push-in». Animator
-  should lean toward more aggressive motion when storyboard supplies a
-  non-trivial `camera_movement` value (whip-pan, dutch-tilt, orbit, etc.).
-- Director's directive 2026-05-18 q3: prefer **B (smart canon)** over A
-  (raw Bible dump) — structured sections like
-  `physical_anchors / costume / behavior / current_mood`, not novel-prose.
-- seedance-prompting `hard rule #2` (description-as-novel anti-pattern)
-  will be rewritten to v0.2 as part of this sprint — moving from «don't
-  describe identity» to «describe identity *structurally*».
+Per technology.md §3.5 (3-5s cuts, gag floor):
 
-## Sub-skills to lazy-load
-
-| Provider | Sub-skill |
+| Action complexity | Duration |
 |---|---|
-| `seedance-fal-img2vid` | [`seedance-prompting`](../seedance-prompting/SKILL.md) (existing, will bump to v0.2) |
-| `veo-3-img2vid` | `veo-prompting` (does not exist yet — TBD if E22 needs it) |
+| Static beat (talking head, reaction shot) | 3s |
+| Single action (one verb, one move) | 4-5s |
+| Compound action (verb + camera move) | 5-7s |
+| Complex sequence (multi-step, multi-character) | 8s (Veo Standard only — see below) |
 
-## Open questions (to refine with E22+ probes)
+**Veo 3.1 image-to-video Standard quirk** (technology.md §3.5):
+when a reference image is attached, only `duration=8s` is accepted. If your
+Plan picks `veo-standard` with `reference_anchor.kind != 'none'` and a
+shorter duration, the executor will force 8s — flag in policy_notes.
 
-TBD Day 10 retro.
+### Seed strategy
+
+- **random** (first iteration) — `seed_value: null`
+- **locked** — only after Director APPROVES a rendered shot. Then use the
+  approved seed for batch-consistent re-renders or sibling shots.
+
+### End-image strategy
+
+Use `seedance-with-end-image` provider when:
+- Shot is a camera-tightening (wide → medium → close-up over the clip)
+- Shot has a character-enter beat (frame ends with the character in place)
+- Shot is an emotion peak that should land on a held composition
+
+Pick `eref_asset_id` = the APPROVED IMG-episode_ref for THIS shot (continuity
+anchor). When no EREF exists for the shot yet → set `end_image.eref_asset_id: null`
+and use plain `seedance-fast` or `veo-standard` instead.
+
+### Prompt formulation
+
+Lazy-load the sub-skill per chosen provider:
+
+| Provider | Sub-skill | Format |
+|---|---|---|
+| `seedance-fast` / `seedance-with-end-image` | [`seedance-prompting`](../seedance-prompting/SKILL.md) | 7-slot: SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE |
+| `veo-standard` | (no sub-skill — pure prose) | Cinematic prose with explicit camera direction |
+
+**Seedance hard rules** (from `seedance-prompting`):
+- Hard rule #1: SUBJECT must be a noun phrase, not a sentence
+- Hard rule #2: identity described structurally (physical_anchors / costume / current_mood), not as novel-prose
+- Hard rule #4: ≤1 primary action per shot — multi-action = blur
+
+**Veo prose tips**:
+- Open with cinematic camera direction ("WIDE static shot…", "TRACKING low-angle…")
+- Drop character bible-slugs verbatim; let Veo handle identity from text
+- Close with explicit style anchor from Bible style canon
+
+### Smart canon B (Director directive 2026-05-18)
+
+Reference Bible canon STRUCTURALLY:
+```
+physical_anchors: …
+costume: …
+current_mood: …
+```
+
+NOT as novel-prose:
+```
+WRONG: "Sandy, a 30-year-old man with brown hair, wears a leather jacket
+while looking confused…"
+```
+
+### Running negative-term list
+
+Baseline (always include):
+- `no text`
+- `no logos`
+- `no watermarks`
+- `no captions`
+
+Shot-specific guards:
+- Solo character shots → add `no doppelgangers`, `no duplicate characters`
+- Tight close-ups → add `no face morph`, `no extra limbs`
+- Action shots → add `no blur` (Seedance), `no motion artifacts`
+- Static beats → add `no camera shake`, `no zoom drift`
+
+## Camera movement aggressiveness (Director Stage A directive)
+
+Director Stage A 2026-05-18 issue #2: Seedance under-emits motion. When the
+storyboard supplies a non-trivial `camera_movement` (whip-pan, dutch-tilt,
+orbit, push-in beyond 5%):
+
+- Use **emphatic verb form** in the CAMERA slot: «aggressively whip-pans left
+  to right» (not «pans left to right»)
+- Add motion-intensity descriptor: «fast», «aggressive», «sharp», «dynamic»
+- For push-in beyond 5%: state percentage explicitly («20% rapid push-in»)
+
+Static + 5% push-in remains the default ONLY when storyboard explicitly
+says so.
 
 ## Cross-references
 
-- Agent prompt: [`agents/exec/animator.md`](../../../agents/exec/animator.md) (Day 6)
-- Runner: [`webapp/lib/agents/runners/animator.ts`](../../../webapp/lib/agents/runners/animator.ts) (Day 6)
+- Agent prompt: [`agents/exec/animator.md`](../../../agents/exec/animator.md)
+- Runner: [`webapp/lib/agents/runners/animator.ts`](../../../webapp/lib/agents/runners/animator.ts)
 - Critic: [`agents/exec/animator_critic.md`](../../../agents/exec/animator_critic.md) (Day 8)
-- Providers: [`webapp/lib/agents/providers/fal-seedance.ts`](../../../webapp/lib/agents/providers/fal-seedance.ts), [`veo-gemini.ts`](../../../webapp/lib/agents/providers/veo-gemini.ts)
-- Capability manifest: [`webapp/lib/api/provider-capabilities.ts`](../../../webapp/lib/api/provider-capabilities.ts)
+- Providers: [`fal-seedance.ts`](../../../webapp/lib/agents/providers/fal-seedance.ts), [`veo-gemini.ts`](../../../webapp/lib/agents/providers/veo-gemini.ts)
 - Bible style canon: S14 STYLE CANON v1.1 (outline-only pencil edge, flat vector fills, no hatching)
 - Shot rhythm: [`technology.md`](../../../technology.md) §3.5 (3-5s cuts, gag floor)
+- Seedance prompting: [`seedance-prompting`](../seedance-prompting/SKILL.md) v0.1+

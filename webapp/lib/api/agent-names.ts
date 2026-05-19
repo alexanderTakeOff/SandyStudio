@@ -24,6 +24,8 @@ export const AGENT_DISPLAY_NAME: Readonly<Record<string, string>> = Object.freez
   'EXEC-EREF':          'Reference Artist',
   'EXEC-EREF-DESIGNER': 'Reference Designer',
   'EXEC-EPREV':         "Designer's Critic",
+  'EXEC-VANIM':         'Animator',
+  'EXEC-VPREV':         "Animator's Critic",
   'EXEC-EDIT':          'Editor',
   'EXEC-VGEN':          'Animator',
   'EXEC-MGEN':          'Composer',

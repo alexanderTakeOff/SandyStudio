@@ -60,6 +60,8 @@ const EXPECTED_RUNTIME_SECONDS: Partial<Record<AgentId, number>> = {
   'EXEC-EREF':  180,  // gpt-image-1 fan-out (up to 6 images × 25-40s)
   'EXEC-EREF-DESIGNER': 30, // Sonnet 4.6 Plan generation per shot (~6-12s typical)
   'EXEC-EPREV': 15, // Day 4 — Designer's Critic, Sonnet 4.6, short output (~3-8s)
+  'EXEC-VANIM': 35, // Day 6-7 — Animator, Sonnet 4.6 Plan author per shot
+  'EXEC-VPREV': 15, // Day 8 — Animator's Critic
   'EXEC-EDIT':  30,   // slideshow assembly (no LLM, just JSON build)
   'EXEC-VGEN':  150,  // Veo per-shot
   'EXEC-MGEN':  60,   // Music gen (mock for now)
@@ -79,6 +81,8 @@ const FILE_TYPE_HINT_BY_AGENT: Partial<Record<AgentId, string>> = {
   'EXEC-EREF':  'IMG-episode_ref',
   'EXEC-EREF-DESIGNER': 'SPC-ref_plan',
   'EXEC-EPREV':         'REV-ref_plan',
+  'EXEC-VANIM':         'SPC-shot_plan',
+  'EXEC-VPREV':         'REV-shot_plan',
   'EXEC-EDIT':  'VID-animatic',
   'EXEC-VGEN':  'VID-shot',
   'EXEC-MGEN':  'AUD-music',

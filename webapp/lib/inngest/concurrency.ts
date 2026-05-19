@@ -32,6 +32,11 @@ export const CONCURRENCY_LIMITS = {
   // multiple Plans land at once (e.g. fanned out from a single REV-world_check
   // approval).
   'exec-eprev': 5,
+  // Animator (Day 6-7 2026-05-19) — Sonnet 4.6 video Plan author per shot.
+  // Same cap as Designer (parallel-friendly LLM call).
+  'exec-vanim': 3,
+  // Animator's Critic (Day 8 2026-05-19) — same shape as Designer's Critic.
+  'exec-vprev': 5,
   // Plan-driven executor (Day 3.2 2026-05-18) — single-shot image generation
   // from an APPROVED SPC-ref_plan. Same rate-limit logic as legacy exec-eref
   // (gpt-image-2 fan-out, expensive), but here parallelism is one shot per

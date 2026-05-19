@@ -13,6 +13,7 @@ import { execErefStart } from './functions/exec-eref';
 import { execErefDesignerPlan } from './functions/exec-eref-designer';
 import { execEprevReviewPlan } from './functions/exec-eprev';
 import { execErefExecuteFromPlan } from './functions/exec-eref-execute-from-plan';
+import { execVanimPlan } from './functions/exec-vanim';
 import { execEditCreateAnimatic } from './functions/exec-edit';
 import {
   execVgenLegacyGenerateShot,
@@ -40,6 +41,7 @@ export const functions = [
   execErefDesignerPlan,
   execEprevReviewPlan,
   execErefExecuteFromPlan,
+  execVanimPlan,
   execEditCreateAnimatic,
   execVgenLegacyGenerateShot,
   execVgenStart,

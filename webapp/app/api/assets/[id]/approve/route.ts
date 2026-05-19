@@ -826,7 +826,8 @@ export const POST = withApiHandler(async (req, ctx) => {
     const events = await computeNextEvents(supabase, asset, user.id);
     for (const ev of events) {
       const { ids } = await inngest.send({
-        name: ev.name,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        name: ev.name as any,
         data: ev.data as never,
       });
       firedEvents.push({ name: ev.name, ids });

@@ -58,6 +58,7 @@ import {
   runEpisodeReferenceCritic,
   EpisodeReferenceCriticError,
 } from './runners/episode-reference-critic';
+import { runAnimator, AnimatorError } from './runners/animator';
 import { runAnimaticSlideshow, AnimaticSlideshowError } from './runners/animatic-slideshow';
 import { loadSeriesBibleCanon } from './bible-loader';
 import type { AgentId, AgentInputs, AgentResult } from './types';
@@ -662,6 +663,72 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       };
     }
 
+    case 'EXEC-VANIM': {
+      // Sprint «Дизайнер и Аниматор» Day 6-7 2026-05-19 — Animator. Pure-cost
+      // Sonnet 4.6 Plan author for one shot. Does NOT call any video provider.
+      // Output: SPC-shot_plan-<shot_id> asset consumed by EXEC-VGEN executor
+      // after Director approves the Plan.
+      if (!shotId) {
+        throw new Error(`EXEC-VANIM requires shotId in event payload`);
+      }
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runAnimator({
+            inputs,
+            shotId,
+            revisionNote: args.revisionNote,
+          });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                shot_id: r.shotId,
+                storyboard_asset_id: r.storyboardAssetId,
+                delivery_targets: r.deliveryTargets,
+                animator_notes: r.notes,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                plan_kind: 'shot_plan',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof AnimatorError) {
+            throw new Error(`EXEC-VANIM: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            description: 'Stub EXEC-VANIM mock — set ANTHROPIC_API_KEY for real path',
+            shot_id: shotId,
+            plan_kind: 'shot_plan',
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
     case 'EXEC-EPREV': {
       // Sprint «Дизайнер и Аниматор» Day 4 2026-05-19 — Designer's Critic.
       // Validates SPC-ref_plan asset against V01-V09 hard checks. Pure
@@ -1053,9 +1120,46 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         })),
       );
 
-      const prompt = storyboardShot
-        ? buildShotPromptV2(storyboardShot, episodeTitle, characterCanon)
-        : buildShotPrompt(inputs, shotId);
+      // ── Plan-driven branch (Day 6-7 q1a additive) ────────────────────────
+      // When planAssetId is set on EXEC-VGEN, load the APPROVED SPC-shot_plan
+      // and use its prompt verbatim (Animator's decision-of-record). Otherwise
+      // fall back to buildShotPromptV2 template (legacy path, replay-pilot).
+      let planPrompt: string | null = null;
+      if (planAssetId && supabase) {
+        try {
+          const { data: planRow } = await supabase
+            .from('assets')
+            .select('content,status,file_type')
+            .eq('id', planAssetId)
+            .maybeSingle();
+          if (
+            planRow &&
+            (planRow as { file_type?: string }).file_type === 'SPC-shot_plan' &&
+            (planRow as { status?: string }).status === 'APPROVED'
+          ) {
+            const content = (planRow as { content?: string | null }).content ?? '';
+            const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
+            const last = matches[matches.length - 1]?.[1];
+            if (last) {
+              try {
+                const body = JSON.parse(last.trim()) as { prompt?: unknown };
+                if (typeof body.prompt === 'string' && body.prompt.length > 0) {
+                  planPrompt = body.prompt;
+                }
+              } catch {
+                /* leave planPrompt null */
+              }
+            }
+          }
+        } catch {
+          /* leave planPrompt null — fall back to legacy template */
+        }
+      }
+      const prompt =
+        planPrompt ??
+        (storyboardShot
+          ? buildShotPromptV2(storyboardShot, episodeTitle, characterCanon)
+          : buildShotPrompt(inputs, shotId));
 
       if (isRealVideo) {
         if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
@@ -1545,6 +1649,8 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-EREF': 'IMG-episode_ref', // backbone v2: between Storyboard and Animatic
   'EXEC-EREF-DESIGNER': 'SPC-ref_plan', // Sprint «Дизайнер и Аниматор» — Plan asset feeds EXEC-EREF executor
   'EXEC-EPREV': 'REV-ref_plan', // Day 4 — Designer's Critic verdict (one REV row per Plan)
+  'EXEC-VANIM': 'SPC-shot_plan', // Day 6-7 — Animator video Plan per shot
+  'EXEC-VPREV': 'REV-shot_plan', // Day 8 — Animator's Critic verdict
   'EXEC-EDIT': 'VID-animatic', // animatic produces a video asset; spec is metadata
   'EXEC-VGEN': 'VID-shot',
   'EXEC-MGEN': 'AUD-music',
