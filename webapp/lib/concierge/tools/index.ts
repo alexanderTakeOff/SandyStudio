@@ -27,6 +27,12 @@ import {
   getAnimatorCriticVerdict,
   regenerateShotPlan,
 } from './animator';
+import {
+  getGagPlan,
+  listGagPlans,
+  getGagVerdict,
+  regenerateGagPlan,
+} from './gagad';
 import type { OpenAIToolSchema, Tool } from './types';
 
 export type { Tool, ToolContext, ToolResult, OpenAIToolSchema } from './types';
@@ -62,6 +68,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   getShotPlan as unknown as AnyTool,
   listShotPlans as unknown as AnyTool,
   getAnimatorCriticVerdict as unknown as AnyTool,
+  // Gag AD inspection (Day 11+)
+  getGagPlan as unknown as AnyTool,
+  listGagPlans as unknown as AnyTool,
+  getGagVerdict as unknown as AnyTool,
   // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
   approveAsset as unknown as AnyTool,
@@ -77,6 +87,7 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   approveSkill as unknown as AnyTool,
   regenerateRefPlan as unknown as AnyTool,
   regenerateShotPlan as unknown as AnyTool,
+  regenerateGagPlan as unknown as AnyTool,
 ]);
 
 const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(

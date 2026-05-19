@@ -27,6 +27,7 @@ import {
 } from '@/lib/api/animatic-shotlist';
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
+import { isComedyLikeGenre } from '@/lib/api/genre';
 
 /**
  * Sprint «Дизайнер и Аниматор» Day 3.2 (2026-05-18) — feature flag for the
@@ -165,6 +166,31 @@ async function countApproved(
  * Symmetric bug for REV-script_qa → EXEC-SB (storyboarder ignored it via
  * its `findApprovedAsset` lookup, so the bug was latent there).
  */
+/**
+ * Resolve `series.genre` for an episode via the episodes→series JOIN.
+ * Used by GAGAD chain (Day 11+ 2026-05-19) to fire only on comedy-like
+ * genres. Returns null on lookup failure — `isComedyLikeGenre(null)` is
+ * false, so the chain safely skips GAGAD in that case.
+ */
+async function resolveEpisodeGenre(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+): Promise<string | null> {
+  const { data: ep } = await supabase
+    .from('episodes')
+    .select('series_id')
+    .eq('id', episodeId)
+    .maybeSingle();
+  const seriesId = (ep as { series_id?: string | null } | null)?.series_id ?? null;
+  if (!seriesId) return null;
+  const { data: sr } = await supabase
+    .from('series')
+    .select('genre')
+    .eq('id', seriesId)
+    .maybeSingle();
+  return (sr as { genre?: string | null } | null)?.genre ?? null;
+}
+
 async function findLatestApprovedAssetId(
   supabase: SupabaseClientLike,
   episodeId: string,
@@ -229,6 +255,25 @@ async function computeNextEvents(
       name: 'sandystudio/exec-sb/create-storyboard',
       data: { episodeId: ep, scriptAssetId: scrId ?? asset.id },
     });
+  }
+
+  // ── Script review APPROVED → EXEC-GAGAD plan (Day 11+ 2026-05-19)
+  // Sprint «Дизайнер и Аниматор» Gag Assistant Director — fires in parallel
+  // with EXEC-SB when the series is comedy-like. Writes SPC-gag_plan that
+  // Designer/Animator + their Critics consume cross-layer. Genre-conditional
+  // via isComedyLikeGenre helper — drama/doc/sci_fi skip GAGAD entirely.
+  if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-GAGAD', { since }))) {
+    const seriesGenre = await resolveEpisodeGenre(supabase, ep);
+    if (isComedyLikeGenre(seriesGenre)) {
+      const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
+      events.push({
+        name: 'sandystudio/exec-gagad/plan',
+        data: {
+          episodeId: ep,
+          ...(scrId ? { scriptAssetId: scrId } : {}),
+        },
+      });
+    }
   }
 
   // ── Storyboard APPROVED → EXEC-WCHK (Continuity Supervisor)
@@ -877,6 +922,7 @@ function revisionEventForAsset(fileType: string): string | null {
   if (fileType === 'REV-script_qa')                     return 'sandystudio/exec-srev/review-script';
   if (fileType.startsWith('STB'))                       return 'sandystudio/exec-sb/create-storyboard';
   if (fileType === 'REV-world_check')                   return 'sandystudio/exec-wchk/check-world';
+  if (fileType === 'SPC-gag_plan')                      return 'sandystudio/exec-gagad/plan';
   if (fileType.startsWith('AUD-music'))                 return 'sandystudio/exec-mgen/generate-music';
   if (fileType.startsWith('VID-animatic'))              return 'sandystudio/exec-edit/create-animatic';
   if (fileType === 'SPC-metadata' || fileType.startsWith('SPC-copy'))

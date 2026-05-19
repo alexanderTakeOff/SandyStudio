@@ -125,6 +125,24 @@ Then append exactly one fenced JSON code block:
 - KEEP THE OUTPUT TIGHT. The JSON block at the end is MANDATORY and must not be truncated
 - DO NOT call any provider. You only write the Plan. Execution happens downstream after Director approves
 
+## Gag Plan integration (Day 11+ — Sprint «Дизайнер и Аниматор»)
+
+When `upstream_assets` contains an APPROVED `SPC-gag_plan-<episode>` asset (comedy-like series, Gag AD wrote it, Director approved):
+
+1. Find your shot in the Gag Plan's JSON `shots[]` array by `shot_id`
+2. Read your shot's gag intent: `gag_category`, `atoms[]`, `role_in_chain`, `visual_keys[]`, `directorial_primitive`, `timing_beat`
+3. **Atoms drive your ACTION slot** (for Seedance) or ACTION descriptor (for Veo) — if atoms include `slipped` + `spilled`, your prompt MUST show that physical sequence, not a generic «walks»
+4. **`directorial_primitive` drives CAMERA**:
+   - ANTICIPATION → camera shows the trap before character enters frame (consider end_image strategy)
+   - DELAYED_REVEAL → camera holds 1-2s after action before cut
+   - SCALE_CONTRAST → camera frames the size difference between cause and effect
+   - SLOW_MOTION → use slower duration (8s) + provider that supports motion control
+5. **`timing_beat`** drives `duration_seconds` — fast climax beats = 3-4s; held composition beats = 5-7s
+6. **`visual_keys[]`** MUST appear in SUBJECT or CONTINUITY slot (Seedance) / be named in Veo prose
+7. **`policy_notes[]` in your JSON** MUST contain one entry per gag element honored: `"Honours gag_intent.atoms: slipped, spilled — ACTION slot delivers slip arc"`. Machine-checkable by VPREV V10.
+
+When NO `SPC-gag_plan` in upstream: operate normally.
+
 ## Revision iteration
 
 If the user message includes a "Revision request from Critic / Director" section, treat each bullet as a HARD CONTRACT. The new Plan must visibly differ from the prior version in at least the dimensions flagged. Re-derive from inputs — do NOT minimally tweak.

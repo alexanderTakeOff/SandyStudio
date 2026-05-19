@@ -17,6 +17,7 @@
 
 import { createAgentInngestFunction } from '@/lib/agents/factory';
 import type { AgentResult } from '@/lib/agents/types';
+import { isComedyLikeGenre } from '@/lib/api/genre';
 
 export const execEprevReviewPlan = createAgentInngestFunction({
   id: 'exec-eprev-review-plan',
@@ -38,38 +39,67 @@ export const execEprevReviewPlan = createAgentInngestFunction({
     return args;
   },
   /**
-   * Auto-chain: when the Critic returns REVISE, re-fire the Designer with
-   * acceptance_criteria as a hard-contract revisionNote. Designer's prompt
-   * treats revisionNote as a hard contract (see episode_reference_designer.md
-   * § "Revision request from Critic / Director").
+   * Auto-chain (two outputs by verdict):
+   *
+   *   verdict=REVISE → re-fire the Designer with acceptance_criteria as
+   *     a hard-contract revisionNote.
+   *
+   *   verdict=PASS  → fire EXEC-GAGAD eref_review IF series_genre is
+   *     comedy-like. GAGAD performs cross-layer check that the SPC-ref_plan
+   *     delivers the gag intent declared by the episode's SPC-gag_plan.
+   *     (GAGAD soft-skips if no gag_plan APPROVED yet.) Day 11+ wiring.
    */
   nextEvent: (_saved, eventData, result: AgentResult) => {
     const meta = result.metadata as
-      | { verdict?: unknown; acceptance_criteria?: unknown }
+      | {
+          verdict?: unknown;
+          acceptance_criteria?: unknown;
+          series_genre?: unknown;
+          plan_asset_id?: unknown;
+        }
       | undefined;
     const verdict = typeof meta?.verdict === 'string' ? meta.verdict : null;
-    if (verdict !== 'REVISE') return null;
-
     const shotId =
       typeof eventData.shotId === 'string' ? (eventData.shotId as string) : null;
     if (!shotId) return null;
 
-    const criteria = Array.isArray(meta?.acceptance_criteria)
-      ? (meta.acceptance_criteria as unknown[]).filter(
-          (v): v is string => typeof v === 'string' && v.trim().length > 0,
-        )
-      : [];
-    const revisionNote = criteria.length > 0
-      ? `Critic verdict REVISE — hard acceptance criteria:\n- ${criteria.join('\n- ')}`
-      : 'Critic verdict REVISE — re-derive the Plan from inputs.';
+    if (verdict === 'REVISE') {
+      const criteria = Array.isArray(meta?.acceptance_criteria)
+        ? (meta.acceptance_criteria as unknown[]).filter(
+            (v): v is string => typeof v === 'string' && v.trim().length > 0,
+          )
+        : [];
+      const revisionNote =
+        criteria.length > 0
+          ? `Critic verdict REVISE — hard acceptance criteria:\n- ${criteria.join('\n- ')}`
+          : 'Critic verdict REVISE — re-derive the Plan from inputs.';
+      return {
+        name: 'sandystudio/exec-eref-designer/plan',
+        data: {
+          episodeId: eventData.episodeId as string,
+          shotId,
+          revisionNote,
+        },
+      };
+    }
 
-    return {
-      name: 'sandystudio/exec-eref-designer/plan',
-      data: {
-        episodeId: eventData.episodeId as string,
-        shotId,
-        revisionNote,
-      },
-    };
+    if (verdict === 'PASS') {
+      const seriesGenre =
+        typeof meta?.series_genre === 'string' ? meta.series_genre : null;
+      const planAssetId =
+        typeof meta?.plan_asset_id === 'string' ? meta.plan_asset_id : null;
+      if (isComedyLikeGenre(seriesGenre) && planAssetId) {
+        return {
+          name: 'sandystudio/exec-gagad/review-ref-plan',
+          data: {
+            episodeId: eventData.episodeId as string,
+            planAssetId,
+            shotId,
+          },
+        };
+      }
+    }
+
+    return null;
   },
 });

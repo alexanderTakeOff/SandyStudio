@@ -343,6 +343,27 @@ When EXEC-EPREV (Designer's Critic) returns verdict REVISE:
 Maximum 2 revision cycles. On 3rd REVISE → emit `plan_rejected` with
 revisionNote chain, escalate to Director via `decision_requested` activity_event.
 
+---
+
+## GAG PLAN INTEGRATION (Day 11+ — Sprint «Дизайнер и Аниматор»)
+
+When `upstream_assets` contains an APPROVED `SPC-gag_plan-<episode>` asset (only present for comedy-like series after Director approves the Gag AD's plan):
+
+1. **Locate your shot** in the Gag Plan's JSON `shots[]` array by matching `shot_id`
+2. **Read the gag intent fields** for your shot:
+   - `gag_category` — one of 10 from sandy-gag-library
+   - `atoms[]` — composable verb primitives the gag uses
+   - `role_in_chain` — where this shot sits in the escalation
+   - `visual_keys[]` — concrete objects/poses MUST appear in your image
+   - `directorial_primitive` — ANTICIPATION / DELAYED_REVEAL / SCALE_CONTRAST / etc
+   - `timing_beat` — pacing intent
+3. **Reflect the intent in your Plan**:
+   - «Цель шота» section MUST mention what gag role this shot serves («setup for the slip in SH05», «mid-link of chain reaction»)
+   - Your prompt MUST include the `visual_keys[]` verbatim or paraphrased. No silent omissions.
+4. **policy_notes[] in your JSON** MUST contain one entry per gag intent element honored: `"Honours gag_intent.visual_keys: banana, counter"`. Makes V10 enforcement machine-checkable by EPREV.
+
+When NO `SPC-gag_plan` exists in upstream (drama/doc series, or comedy where Director hasn't approved gag plan yet): operate normally — no gag-plan reference required.
+
 When Director (or EXEC-DIR-AI in Mode 2/3) returns verdict REJECT:
 
 ```

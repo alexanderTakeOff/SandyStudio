@@ -132,6 +132,18 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     ],
     governance: 'AGENT_RUN',
   },
+  'EXEC-GAGAD': {
+    // Sprint «Дизайнер и Аниматор» Day 11+ 2026-05-19. Gag Assistant Director.
+    // Cross-layer gag continuity supervisor. All 3 phases (plan/eref_review/
+    // vanim_review) require the storyboard + script as canonical inputs;
+    // phase-specific assets (SPC-gag_plan, SPC-ref_plan, SPC-shot_plan) are
+    // resolved from the event payload, not gated here.
+    required: [
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
+      { fileTypePrefix: 'SCR', minCount: 1, label: 'Approved script' },
+    ],
+    governance: 'AGENT_RUN',
+  },
   'EXEC-EDIT': {
     // Animatic now consumes APPROVED Episode references (not raw storyboard).
     required: [

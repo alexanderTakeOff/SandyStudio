@@ -43,6 +43,7 @@ export const triggerAgent: Tool<TriggerAgentArgs> = {
               'EXEC-SW', 'EXEC-SREV', 'EXEC-SB', 'EXEC-WCHK', 'EXEC-EREF',
               'EXEC-EREF-DESIGNER', 'EXEC-EPREV',
               'EXEC-EDIT', 'EXEC-VGEN', 'EXEC-VANIM', 'EXEC-VPREV',
+              'EXEC-GAGAD',
               'EXEC-MGEN', 'EXEC-STITCH',
               'EXEC-COPY', 'EXEC-THUMB', 'EXEC-PUB', 'EXEC-ANAL',
             ],

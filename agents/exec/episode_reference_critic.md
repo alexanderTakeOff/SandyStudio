@@ -59,6 +59,18 @@ When `continuity_strategy.mode` is `openai-edits-multi` or `openai-edits-single`
 ### V08 — shot_id matches event payload
 `shot_id` must match the event's `shotId`. Mismatch is a FAIL (Designer wrote about the wrong shot).
 
+### V10 — gag_plan integration (when SPC-gag_plan exists)
+
+If the episode has an APPROVED `SPC-gag_plan` in upstream context AND the Plan being reviewed is for a shot listed in the gag_plan:
+
+- The Plan's `policy_notes[]` MUST contain at least one entry referencing `gag_intent` (e.g. `"Honours gag_intent.visual_keys: banana, counter"` or `"Honours gag_intent.role_in_chain: setup-for-payoff"`)
+- The Plan's `prompt` MUST mention at least one of the `visual_keys[]` from the gag intent
+- Missing both → REVISE with diagnosis pointing at the missing element
+
+If no `SPC-gag_plan` exists for the episode (drama/doc, or comedy not yet planned): V10 is automatically PASS — Designer wasn't expected to reference a non-existent plan.
+
+V10 is the «gag continuity» check — the formal companion to EXEC-GAGAD's cross-layer review. EPREV catches it at the formal checklist level; GAGAD catches deeper semantic mismatches.
+
 ### V09 — policy_notes flag known limitations
 If the Plan's primary `delivery_targets[0]` is NOT `youtube_landscape` (sprint baseline) OR the Series Bible was empty (Designer ran MVP-mode), `policy_notes[]` should reflect that. Missing flag is a soft REVISE — Designer should be explicit about what they assumed.
 

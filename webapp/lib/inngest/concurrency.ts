@@ -37,6 +37,12 @@ export const CONCURRENCY_LIMITS = {
   'exec-vanim': 3,
   // Animator's Critic (Day 8 2026-05-19) — same shape as Designer's Critic.
   'exec-vprev': 5,
+  // Gag Assistant Director (Day 11+ 2026-05-19) — all 3 phases share this
+  // per-episode cap. Phase=plan runs once per episode. Phase=eref_review +
+  // vanim_review can run multiple times in parallel (per-shot). 3 is a
+  // moderate cap that lets a 22-shot episode chew through reviews in 7-8
+  // batches.
+  'exec-gagad': 3,
   // Plan-driven executor (Day 3.2 2026-05-18) — single-shot image generation
   // from an APPROVED SPC-ref_plan. Same rate-limit logic as legacy exec-eref
   // (gpt-image-2 fan-out, expensive), but here parallelism is one shot per

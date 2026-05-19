@@ -47,6 +47,18 @@ Bound by storyboard `duration_seconds` and provider limits. Outside [3, 8] is a 
 ### V08 — shot_id matches event payload
 `shot_id` must match the event's `shotId`. Mismatch is a FAIL.
 
+### V10 — gag_plan integration (when SPC-gag_plan exists)
+
+If the episode has an APPROVED `SPC-gag_plan` in upstream context AND the shot being reviewed is listed in the gag_plan:
+
+- The Shot Plan's `policy_notes[]` MUST contain at least one entry referencing `gag_intent` (e.g. `"Honours gag_intent.atoms: slipped — ACTION slot delivers slip arc"` or `"Honours gag_intent.directorial_primitive: ANTICIPATION — camera shows banana before Sandy"`)
+- The Shot Plan's `prompt` MUST reflect at least one of the gag intent's `atoms[]` as motion verbs
+- Missing both → REVISE with diagnosis pointing at the missing element
+
+If no `SPC-gag_plan` exists for the episode (drama/doc, or comedy not yet planned): V10 is automatically PASS.
+
+V10 is the «gag continuity» check — formal companion to EXEC-GAGAD's vanim_review cross-layer pass.
+
 ### V09 — reference_anchor consistency with provider
 - `seedance-with-end-image` → `end_image.eref_asset_id` MUST be non-null
 - Other providers → `end_image.eref_asset_id` SHOULD be null

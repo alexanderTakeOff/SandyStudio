@@ -176,6 +176,47 @@ type Events = {
   };
 
   /**
+   * EXEC-GAGAD — Gag Assistant Director, Phase «plan» (Sprint «Дизайнер и
+   * Аниматор» Day 11+ 2026-05-19). Per-episode Sonnet 4.6 LLM call after
+   * REV-script_qa.APPROVED (parallel with EXEC-SB) when isComedyLikeGenre.
+   * Reads APPROVED script + skill sandy-gag-library + Bible canon. Outputs
+   * `SPC-gag_plan-<episode>` asset (theme + antagonist + per-shot gag intent).
+   */
+  'sandystudio/exec-gagad/plan': {
+    data: BaseEpisodeEvent & {
+      scriptAssetId?: string;
+      revisionNote?: string;
+    };
+  };
+
+  /**
+   * EXEC-GAGAD Phase «eref_review». Fired by EPREV nextEvent on PASS verdict
+   * (when comedy + APPROVED SPC-gag_plan exists). Cross-layer check: does
+   * this SPC-ref_plan deliver the gag intent declared for its shot in the
+   * gag_plan? Verdict PASS → noop. REVISE → flip SPC-ref_plan to REVISION +
+   * re-fire EXEC-EREF-DESIGNER. After 2nd REVISE → HALT + director-attention
+   * activity event.
+   */
+  'sandystudio/exec-gagad/review-ref-plan': {
+    data: BaseEpisodeEvent & {
+      planAssetId: string;
+      shotId: string;
+    };
+  };
+
+  /**
+   * EXEC-GAGAD Phase «vanim_review». Same shape as eref_review but for
+   * SPC-shot_plan (Animator output). Fired by VPREV nextEvent on PASS.
+   * REVISE chains back to EXEC-VANIM.
+   */
+  'sandystudio/exec-gagad/review-shot-plan': {
+    data: BaseEpisodeEvent & {
+      planAssetId: string;
+      shotId: string;
+    };
+  };
+
+  /**
    * EREF v3 Plan-driven executor — Sprint «Дизайнер и Аниматор» Day 3.2
    * 2026-05-18. Fired when Director approves an SPC-ref_plan asset. The
    * executor reads the Plan's JSON body (provider, size, variants, prompt,

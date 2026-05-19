@@ -448,9 +448,9 @@ Gag chain **служит теме**: каждый gag в эпизоде **пре
 
 **Theme delivered:** Sandy got his nap. Just not the one he wanted.
 
-## 13. SPC-gag_breakdown structure (для будущего EXEC-GAGAD)
+## 13. SPC-gag_plan structure (для будущего EXEC-GAGAD)
 
-EXEC-GAGAD (planned Day 11+ sprint) будет читать APPROVED script + этот skill → создавать `SPC-gag_breakdown-<episode>.md` с machine-readable структурой:
+EXEC-GAGAD (planned Day 11+ sprint) будет читать APPROVED script + этот skill → создавать `SPC-gag_plan-<episode>.md` с machine-readable структурой:
 
 ```json
 {
@@ -505,7 +505,7 @@ EXEC-GAGAD (planned Day 11+ sprint) будет читать APPROVED script + э
 - `.claude/skills/comedy-shot-must-carry-gag/SKILL.md` — adjacent skill (universal carry rule)
 - `.claude/skills/animator/SKILL.md` — VGEN Plan author, consumes breakdown when GAGAD ships
 - Future: `agents/exec/gag_assistant_director.md` (EXEC-GAGAD spec, planned)
-- Future: `specs/contracts/gag_breakdown@v1.yaml` (formal SPC-gag_breakdown contract)
+- Future: `specs/contracts/gag_plan@v1.yaml` (formal SPC-gag_plan contract)
 
 ## 16. Open questions for v0.2
 

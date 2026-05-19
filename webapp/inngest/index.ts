@@ -15,6 +15,11 @@ import { execEprevReviewPlan } from './functions/exec-eprev';
 import { execErefExecuteFromPlan } from './functions/exec-eref-execute-from-plan';
 import { execVanimPlan } from './functions/exec-vanim';
 import { execVprevReviewPlan } from './functions/exec-vprev';
+import {
+  execGagadPlan,
+  execGagadReviewRefPlan,
+  execGagadReviewShotPlan,
+} from './functions/exec-gagad';
 import { execEditCreateAnimatic } from './functions/exec-edit';
 import {
   execVgenLegacyGenerateShot,
@@ -44,6 +49,9 @@ export const functions = [
   execErefExecuteFromPlan,
   execVanimPlan,
   execVprevReviewPlan,
+  execGagadPlan,
+  execGagadReviewRefPlan,
+  execGagadReviewShotPlan,
   execEditCreateAnimatic,
   execVgenLegacyGenerateShot,
   execVgenStart,
