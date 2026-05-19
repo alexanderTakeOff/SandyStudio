@@ -21,6 +21,34 @@ export const CONCURRENCY_LIMITS = {
   // 1 per episode. Future hybrid-parallelism (Pilot+Fan-out, technology.md §4)
   // will fan out per-shot events and bump this limit per shot, not per run.
   'exec-eref':  1,
+  // Sprint «Дизайнер и Аниматор» 2026-05-18 — Designer is a pure-cost Sonnet
+  // LLM call per shot. Multiple shots can fan out in parallel since each Plan
+  // is independent. 3 is a moderate cap — Anthropic side is fine, but going
+  // higher won't help wall-clock much (Sonnet ~6-12s per Plan) and could
+  // surface rate-limit edge cases for very large episodes.
+  'exec-eref-designer': 3,
+  // Designer's Critic (Day 4 2026-05-19) — Sonnet 4.6 validator, very cheap.
+  // Higher cap than Designer because Critic runs in parallel per Plan when
+  // multiple Plans land at once (e.g. fanned out from a single REV-world_check
+  // approval).
+  'exec-eprev': 5,
+  // Animator (Day 6-7 2026-05-19) — Sonnet 4.6 video Plan author per shot.
+  // Same cap as Designer (parallel-friendly LLM call).
+  'exec-vanim': 3,
+  // Animator's Critic (Day 8 2026-05-19) — same shape as Designer's Critic.
+  'exec-vprev': 5,
+  // Gag Assistant Director (Day 11+ 2026-05-19) — all 3 phases share this
+  // per-episode cap. Phase=plan runs once per episode. Phase=eref_review +
+  // vanim_review can run multiple times in parallel (per-shot). 3 is a
+  // moderate cap that lets a 22-shot episode chew through reviews in 7-8
+  // batches.
+  'exec-gagad': 3,
+  // Plan-driven executor (Day 3.2 2026-05-18) — single-shot image generation
+  // from an APPROVED SPC-ref_plan. Same rate-limit logic as legacy exec-eref
+  // (gpt-image-2 fan-out, expensive), but here parallelism is one shot per
+  // event so episodes can have 2-3 shots in flight without colliding on the
+  // long internal per-shot loop.
+  'exec-eref-execute': 2,
   'exec-edit':  5,
   'exec-copy':  5,
   // Visual generation — strictest. Highest cost, lowest provider tolerance.

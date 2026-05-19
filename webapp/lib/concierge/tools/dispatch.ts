@@ -41,7 +41,10 @@ export const triggerAgent: Tool<TriggerAgentArgs> = {
             description: 'Agent identifier, e.g. EXEC-SW.',
             enum: [
               'EXEC-SW', 'EXEC-SREV', 'EXEC-SB', 'EXEC-WCHK', 'EXEC-EREF',
-              'EXEC-EDIT', 'EXEC-VGEN', 'EXEC-MGEN', 'EXEC-STITCH',
+              'EXEC-EREF-DESIGNER', 'EXEC-EPREV',
+              'EXEC-EDIT', 'EXEC-VGEN', 'EXEC-VANIM', 'EXEC-VPREV',
+              'EXEC-GAGAD',
+              'EXEC-MGEN', 'EXEC-STITCH',
               'EXEC-COPY', 'EXEC-THUMB', 'EXEC-PUB', 'EXEC-ANAL',
             ],
           },

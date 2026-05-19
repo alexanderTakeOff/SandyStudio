@@ -107,6 +107,95 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: true,
   },
 
+  'EXEC-EREF-DESIGNER': {
+    id: 'EXEC-EREF-DESIGNER',
+    code: 'exec-eref-designer',
+    display_ru: 'Дизайнер референсов',
+    display_en: 'Episode Reference Designer',
+    emoji: '🧠',
+    category: 'production',
+    model: 'sonnet', // Sprint «Дизайнер и Аниматор» 2026-05-18 — LLM-driven Plan author
+    skills: ['eref-designer'],
+    next_agent: 'EXEC-EPREV', // Day 4 — Critic validates Plan before Director sees it
+    governance: 'B',
+    prompt_file: 'episode_reference_designer.md',
+    has_inngest_function: true,
+  },
+
+  'EXEC-EPREV': {
+    id: 'EXEC-EPREV',
+    code: 'exec-eprev',
+    display_ru: 'Критик дизайнера',
+    display_en: "Designer's Critic",
+    emoji: '🧐',
+    category: 'review',
+    // Sonnet 4.6 — Critic enforces V01-V09 hard checks against the Plan JSON
+    // body. Cheap (~$0.01-0.03 per Plan, no image generation). Verdict drives
+    // auto-chain: PASS → Plan flips REVIEW (Director sees it); REVISE → Plan
+    // flips REVISION + revisionNote fires Designer re-run with hard contract.
+    model: 'sonnet',
+    skills: [],
+    next_agent: 'EXEC-EREF', // after Plan APPROVED, executor reads it and calls provider
+    governance: 'B',
+    prompt_file: 'episode_reference_critic.md',
+    has_inngest_function: true,
+  },
+
+  'EXEC-VANIM': {
+    id: 'EXEC-VANIM',
+    code: 'exec-vanim',
+    display_ru: 'Аниматор',
+    display_en: 'Animator',
+    emoji: '🎬',
+    category: 'production',
+    // Sonnet 4.6 — per-shot video generation Plan author. Replaces the
+    // buildShotPromptV2 template path when ANIMATOR_CHAIN_ENABLED is on.
+    model: 'sonnet',
+    skills: ['animator'],
+    next_agent: 'EXEC-VPREV', // Day 8 — Animator's Critic validates Plan
+    governance: 'B',
+    prompt_file: 'animator.md',
+    has_inngest_function: true,
+  },
+
+  'EXEC-GAGAD': {
+    id: 'EXEC-GAGAD',
+    code: 'exec-gagad',
+    display_ru: 'Гэг-режиссёр',
+    display_en: 'Gag AD',
+    emoji: '🎭',
+    category: 'review',
+    // Sonnet 4.6 — cross-layer gag continuity supervisor.
+    // 3 phases: plan (after SREV) / eref_review (per-shot) / vanim_review (per-shot).
+    // Genre-conditional: fires only when isComedyLikeGenre(series.genre).
+    // Revision cap=2 with escalation event for Director attention.
+    model: 'sonnet',
+    skills: ['sandy-gag-library'],
+    next_agent: null, // terminal review role (REVISE re-fires upstream, not chains forward)
+    governance: 'B',
+    prompt_file: 'gag_assistant_director.md',
+    has_inngest_function: true,
+  },
+
+  'EXEC-VPREV': {
+    id: 'EXEC-VPREV',
+    code: 'exec-vprev',
+    display_ru: 'Критик аниматора',
+    display_en: "Animator's Critic",
+    emoji: '🧐',
+    category: 'review',
+    // Sonnet 4.6 — V01-V09 hard checks against shot Plan JSON body (provider
+    // format match, ≤1 primary action, NEGATIVE baseline, continuity anchor,
+    // duration consistency). Cheap (~$0.01-0.03 per Plan). Day 8 wired the
+    // Inngest function + auto-chain (REVISE → re-fire Animator).
+    model: 'sonnet',
+    skills: [],
+    next_agent: 'EXEC-VGEN', // after Plan APPROVED, executor consumes it
+    governance: 'B',
+    prompt_file: 'animator_critic.md',
+    has_inngest_function: true,
+  },
+
   'EXEC-EREF': {
     id: 'EXEC-EREF',
     code: 'exec-eref',

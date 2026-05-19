@@ -32,6 +32,18 @@ const AGENT_TO_EVENT: Record<string, StudioEventName> = {
   'EXEC-SB':    'sandystudio/exec-sb/create-storyboard',
   'EXEC-WCHK':  'sandystudio/exec-wchk/check-world',
   'EXEC-EREF':  'sandystudio/exec-eref/start',
+  // Sprint «Дизайнер и Аниматор» 2026-05-18+19 — Designer/Critic re-trigger
+  // via PA. Designer accepts shotId + optional revisionNote in payload; Critic
+  // accepts planAssetId + shotId.
+  'EXEC-EREF-DESIGNER': 'sandystudio/exec-eref-designer/plan',
+  'EXEC-EPREV': 'sandystudio/exec-eprev/review-plan',
+  // Day 6-7 + Day 8 (Sprint «Дизайнер и Аниматор» 2026-05-19)
+  'EXEC-VANIM': 'sandystudio/exec-vanim/plan',
+  'EXEC-VPREV': 'sandystudio/exec-vprev/review-plan',
+  // Day 11+ (Sprint «Дизайнер и Аниматор» 2026-05-19) — Gag AD manual re-fire.
+  // Only Phase plan exposed for manual trigger. Review phases auto-fire from
+  // EPREV/VPREV nextEvent on PASS verdict.
+  'EXEC-GAGAD': 'sandystudio/exec-gagad/plan',
   'EXEC-EDIT':  'sandystudio/exec-edit/create-animatic',
   'EXEC-VGEN':   'sandystudio/exec-vgen/generate-shot',
   'EXEC-MGEN':   'sandystudio/exec-mgen/generate-music',
@@ -157,7 +169,8 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
 
   const { ids } = await inngest.send({
-    name: eventName,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    name: eventName as any,
     data: eventPayload as never,
   });
 

@@ -34,7 +34,36 @@ Conversational interface agent between Director and Producer. Translates voice/t
 Single-purpose execution agent (Screenwriter, Storyboarder, World Checker, etc.). Fulfils exactly one contract. Replaceable by any other agent that honours the same contract. All `EXEC-*` entries except `EXEC-ORCH` and `EXEC-CONC` are sub-agents.
 
 ### Validator / Валидатор (Reviewer)
-Subclass of sub-agent whose contract is to verify another agent's output against Series Bible / canon / schema. Examples: `EXEC-SREV` (Script Reviewer), `EXEC-WCHK` (World Checker), `ART-CONT` (Continuity Supervisor).
+Subclass of sub-agent whose contract is to verify another agent's output against Series Bible / canon / schema. Examples: `EXEC-SREV` (Script Reviewer), `EXEC-WCHK` (World Checker), `ART-CONT` (Continuity Supervisor), `EXEC-EPREV` (Designer's Critic), `EXEC-VPREV` (Animator's Critic).
+
+### Episode Reference Designer / Дизайнер референсов эпизода
+Full LLM-driven agent (Sprint «Дизайнер и Аниматор», 2026-05-18) responsible for **all decisions** about an episode's reference images: provider choice (gpt-image-2 for character faces vs Flux 2 pro for environments), size per delivery_target (1536×1024 YouTube landscape vs 1024×1792 Shorts), variant count, pilot strategy (1 ref to validate continuity before fanout), camera-angle coverage (sub_area variation for same-location shots), prompt formulation, negative-term list. Replaces the legacy template-function `episode-references.ts`. Implemented as `EXEC-EREF` agent + `agents/exec/episode_reference_designer.md` + `.claude/skills/eref-designer/SKILL.md`. Output: `SPC-ref_plan-<shot_id>` asset that the Designer's Critic validates and Director (or EXEC-DIR-AI in Mode 2/3) approves before image generation runs.
+
+### Designer's Critic / Критик дизайнера
+Validator paired with Episode Reference Designer. Validates each `SPC-ref_plan` against hard checks: aspect matches `delivery_targets`, provider obosnovan by shot type, sub_area variation present for same-location shots, Bible style canon referenced, negative-term baseline included, EREF reference anchor present for cross-shot continuity. Verdict PASS → Plan stays REVIEW for Director · REVISE → Designer re-runs with revision_note · FAIL → Plan REJECTED, Director intervention. Mirrors Writer↔SREV pattern. Implemented as `EXEC-EPREV` agent.
+
+### Animator / Аниматор
+Full LLM-driven agent (Sprint «Дизайнер и Аниматор», Day 6-7 2026-05-19) responsible for **all decisions** about a video shot: provider choice (Seedance fast for iteration vs Veo standard for hero shots vs Seedance with end_image for emotion arc), quality tier per hero-marker, aspect per delivery_target, duration with action-complexity reasoning, seed locking strategy (random first try, lock after approve for batch consistency), end_image strategy (camera-tightening shots, character-enter beats), prompt formulation in provider-specific format (Seedance 7-slot vs Veo prose), negative-term list. Replaces the legacy template-function `buildShotPromptV2` in `vgen-shot-helpers.ts` when `ANIMATOR_CHAIN_ENABLED=true` and `planAssetId` is supplied to EXEC-VGEN. Implemented as **`EXEC-VANIM` agent** (Day 6-7 split from EXEC-VGEN for symmetry with EREF Designer pattern; Director glossary entry originally targeted `EXEC-VGEN`, refactored 2026-05-19) + `agents/exec/animator.md` + `.claude/skills/animator/SKILL.md`. Output: `SPC-shot_plan-<shot_id>` asset. EXEC-VGEN remains as the executor that reads APPROVED `SPC-shot_plan` and dispatches the actual provider call.
+
+### Animator's Critic / Критик аниматора
+Validator paired with Animator. Validates each `SPC-shot_plan` against V01-V09 hard checks: 7-slot structure for Seedance / well-formed prose for Veo, ≤1 primary action (Seedance hard rule #4 — multi-action = blur), NEGATIVE non-empty + contains baseline, CONTINUITY references locked EREF anchor, STYLE matches Bible style canon, CAMERA aligns with storyboard camera_angle + camera_movement, SUBJECT references same characters as STB shot.characters[], duration consistent with action complexity per technology.md §3.5, no on-screen text instruction. Verdict routing as Designer's Critic. Implemented as `EXEC-VPREV` agent.
+
+### Plan-asset / План-ассет
+A first-class asset that captures **all decisions** a media-generation agent has made about an upcoming generation job: provider, parameters, prompt, reasoning. Two concrete subtypes: `SPC-ref_plan-<shot_id>` (Episode Reference Designer's output) and `SPC-shot_plan-<shot_id>` (Animator's output). Plan-assets undergo the same DRAFT → REVIEW → APPROVED lifecycle as Script and Storyboard. The associated execution step (gpt-image-2 call, Seedance call) only runs after the Plan is APPROVED. This makes media generation auditable, redo-able from the same Plan, and editable by Director before any money is spent.
+
+### delivery_targets / Цели дистрибуции
+Array of distribution-target slugs declared at series level (`series.metadata.delivery_targets[]`) with optional per-episode override (`episodes.metadata.delivery_targets[]`, set via `SPC-brief`). Designer / Animator consult the list to choose aspect ratio, image size, and variant count. Recognised slugs:
+- `youtube_landscape` — YouTube main channel · 16:9 · video 1920×1080 · ref 1536×1024
+- `youtube_shorts` — YouTube Shorts · 9:16 · video 1080×1920 · ref 1024×1792
+- `instagram_reels` — Reels · 9:16
+- `instagram_post` — feed square · 1:1 · 1080×1080
+- `tiktok` — 9:16
+- `print_poster` — printed material · 2048×1536
+
+For S14 pilot period the default is `['youtube_landscape']`. Adding more targets is additive — extends the list, never replaces.
+
+### askAgent (PA tool) / Запрос к Агенту через Полину
+PA-proxy tool that lets Director ask a specific agent (Designer / Animator / etc.) a free-form question about its current work, without spinning up a persistent per-agent dialog thread. Polina dispatches the question to the agent via a short one-shot LLM call (agent system_prompt + current context + question), receives a structured answer, and returns it to Director in her own thread. Avoids N-thread fragmentation while preserving direct conversational access. Implemented as `lib/concierge/tools/askAgent.ts`. See `.claude/hooks/` and `lib/concierge/system-prompt-builder.ts` for integration.
 
 ---
 

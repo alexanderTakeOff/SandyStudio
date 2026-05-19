@@ -20,9 +20,28 @@ import {
   isShotReferenceV2,
   type ShotReferenceContract,
 } from '@/lib/api/shot-reference';
-import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import {
+  extractShotsFromStoryboard,
+  isAnimaticV1,
+  type AnimaticContract,
+} from '@/lib/api/animatic-shotlist';
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
+import { isComedyLikeGenre } from '@/lib/api/genre';
+
+/**
+ * Sprint «Дизайнер и Аниматор» Day 3.2 (2026-05-18) — feature flag for the
+ * Designer chain (q2c soft switch). When unset/false: REV-world_check.APPROVED
+ * fires the legacy `exec-eref/generate-references` event (current behaviour).
+ * When `true`: REV-world_check fans out one `exec-eref-designer/plan` event
+ * per shot, and SPC-ref_plan.APPROVED fires `exec-eref/execute-from-plan`.
+ * One env var, no destructive deletes — rollback by unsetting.
+ */
+function designerChainEnabled(): boolean {
+  const v = process.env.DESIGNER_CHAIN_ENABLED;
+  if (!v) return false;
+  return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
+}
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -73,6 +92,9 @@ type AssetForChain = {
   updated_at?: string | null;
   /** Optional metadata — used to detect v2 EREF contract for chain skip. */
   metadata?: unknown;
+  /** Optional content (markdown / JSON body) — read by Day 3.2 Plan branch
+   *  to extract `shot_id` from APPROVED SPC-ref_plan assets. */
+  content?: string | null;
 };
 
 type SupabaseClientLike = Awaited<ReturnType<typeof requireDirector>>['supabase'];
@@ -144,6 +166,31 @@ async function countApproved(
  * Symmetric bug for REV-script_qa → EXEC-SB (storyboarder ignored it via
  * its `findApprovedAsset` lookup, so the bug was latent there).
  */
+/**
+ * Resolve `series.genre` for an episode via the episodes→series JOIN.
+ * Used by GAGAD chain (Day 11+ 2026-05-19) to fire only on comedy-like
+ * genres. Returns null on lookup failure — `isComedyLikeGenre(null)` is
+ * false, so the chain safely skips GAGAD in that case.
+ */
+async function resolveEpisodeGenre(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+): Promise<string | null> {
+  const { data: ep } = await supabase
+    .from('episodes')
+    .select('series_id')
+    .eq('id', episodeId)
+    .maybeSingle();
+  const seriesId = (ep as { series_id?: string | null } | null)?.series_id ?? null;
+  if (!seriesId) return null;
+  const { data: sr } = await supabase
+    .from('series')
+    .select('genre')
+    .eq('id', seriesId)
+    .maybeSingle();
+  return (sr as { genre?: string | null } | null)?.genre ?? null;
+}
+
 async function findLatestApprovedAssetId(
   supabase: SupabaseClientLike,
   episodeId: string,
@@ -210,6 +257,25 @@ async function computeNextEvents(
     });
   }
 
+  // ── Script review APPROVED → EXEC-GAGAD plan (Day 11+ 2026-05-19)
+  // Sprint «Дизайнер и Аниматор» Gag Assistant Director — fires in parallel
+  // with EXEC-SB when the series is comedy-like. Writes SPC-gag_plan that
+  // Designer/Animator + their Critics consume cross-layer. Genre-conditional
+  // via isComedyLikeGenre helper — drama/doc/sci_fi skip GAGAD entirely.
+  if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-GAGAD', { since }))) {
+    const seriesGenre = await resolveEpisodeGenre(supabase, ep);
+    if (isComedyLikeGenre(seriesGenre)) {
+      const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
+      events.push({
+        name: 'sandystudio/exec-gagad/plan',
+        data: {
+          episodeId: ep,
+          ...(scrId ? { scriptAssetId: scrId } : {}),
+        },
+      });
+    }
+  }
+
   // ── Storyboard APPROVED → EXEC-WCHK (Continuity Supervisor)
   // Backbone v2.5: Bible canon validation BEFORE generating episode refs.
   if (ft.startsWith('STB-')) {
@@ -229,7 +295,50 @@ async function computeNextEvents(
   // pacing WITH music. Both MGEN and EREF run after world_check; EDIT
   // (animatic) waits for both to complete.
   if (ft === 'REV-world_check') {
-    if (!(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
+    // Day 3.2 (2026-05-18, q2c soft switch): when DESIGNER_CHAIN_ENABLED is
+    // on, fan out one Designer Plan event per shot in the APPROVED storyboard.
+    // Each Plan is a per-shot SPC-ref_plan asset that Director approves
+    // independently; APPROVED Plan fires `exec-eref/execute-from-plan` below.
+    // Legacy path (flag off) keeps firing the single generate-references
+    // event — replay-pilot and in-flight episodes continue to work.
+    if (designerChainEnabled()) {
+      if (!(await hasJob(supabase, ep, 'EXEC-EREF-DESIGNER', { since }))) {
+        const stbId = await findLatestApprovedAssetId(
+          supabase,
+          ep,
+          'STB-storyboard',
+        );
+        // Load the APPROVED storyboard's content so we can list every shot
+        // and fan out one Designer event per shot. If STB lookup fails we
+        // intentionally fall back to the legacy path rather than firing zero
+        // events (defensive — keeps the pipeline moving on data anomalies).
+        let stbContent: string | null = null;
+        if (stbId) {
+          const { data: stbRow } = await supabase
+            .from('assets')
+            .select('content')
+            .eq('id', stbId)
+            .maybeSingle();
+          stbContent = (stbRow as { content?: string | null } | null)?.content ?? null;
+        }
+        const shots = stbContent ? extractShotsFromStoryboard(stbContent) : [];
+        if (shots.length > 0) {
+          for (const shot of shots) {
+            events.push({
+              name: 'sandystudio/exec-eref-designer/plan',
+              data: { episodeId: ep, shotId: shot.shot_id },
+            });
+          }
+        } else {
+          // Defensive fallback — fire legacy single event so REV-world_check
+          // approval doesn't silently land in a state with zero next events.
+          events.push({
+            name: 'sandystudio/exec-eref/generate-references',
+            data: { episodeId: ep, storyboardAssetId: stbId ?? asset.id },
+          });
+        }
+      }
+    } else if (!(await hasJob(supabase, ep, 'EXEC-EREF', { since }))) {
       // Resolve the underlying STB asset — `asset.id` is the REV-world_check
       // review, not the storyboard. EREF runner parses storyboard JSON from
       // the asset it receives, so passing the review id makes it find no
@@ -248,6 +357,56 @@ async function computeNextEvents(
         // animatic exists. Runner reads section + storyboard for prompt
         // context. Field kept for backward-compat with the event schema.
         data: { episodeId: ep, animaticAssetId: '', section: 'main' },
+      });
+    }
+  }
+
+  // ── Ref Plan APPROVED → EXEC-EREF execute-from-plan (Day 3.2)
+  // Sprint «Дизайнер и Аниматор» 2026-05-18 (q2c flag-gated). Director (or
+  // future Day 4 Critic) approved the per-shot Plan; runner now generates
+  // exactly one IMG-episode_ref using the Plan's provider/size/prompt
+  // decisions. Idempotency check is keyed per Plan asset id (not per agent
+  // for the whole episode) so each Plan triggers its own execute event.
+  if (ft === 'SPC-ref_plan' && designerChainEnabled()) {
+    // Extract shotId from the Plan asset's JSON body so the executor knows
+    // which shot to generate. We trust the body — Director would not have
+    // approved a Plan with a malformed shot_id (and the Designer runner
+    // validates it before write).
+    let shotId: string | null = null;
+    if (typeof asset.content === 'string') {
+      const matches = [...asset.content.matchAll(/```json\s*([\s\S]+?)```/g)];
+      const last = matches[matches.length - 1]?.[1];
+      if (last) {
+        try {
+          const body = JSON.parse(last.trim()) as { shot_id?: unknown };
+          if (typeof body.shot_id === 'string') shotId = body.shot_id;
+        } catch {
+          /* leave shotId null */
+        }
+      }
+    }
+    // Per-Plan idempotency: runner stamps every IMG with
+    // metadata.provenance.plan_asset_id. If any IMG already carries this
+    // Plan id, suppress re-fire (handles Director double-click, HMR retrigger).
+    let planAlreadyExecuted = false;
+    const { data: metadataRows } = await supabase
+      .from('assets')
+      .select('metadata')
+      .eq('episode_id', ep)
+      .like('file_type', 'IMG-episode_ref%');
+    for (const row of (metadataRows ?? []) as Array<{ metadata?: unknown }>) {
+      const meta = row.metadata as
+        | { provenance?: { plan_asset_id?: unknown } }
+        | null;
+      if (meta?.provenance?.plan_asset_id === asset.id) {
+        planAlreadyExecuted = true;
+        break;
+      }
+    }
+    if (shotId && !planAlreadyExecuted) {
+      events.push({
+        name: 'sandystudio/exec-eref/execute-from-plan',
+        data: { episodeId: ep, shotId, planAssetId: asset.id },
       });
     }
   }
@@ -712,7 +871,8 @@ export const POST = withApiHandler(async (req, ctx) => {
     const events = await computeNextEvents(supabase, asset, user.id);
     for (const ev of events) {
       const { ids } = await inngest.send({
-        name: ev.name,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        name: ev.name as any,
         data: ev.data as never,
       });
       firedEvents.push({ name: ev.name, ids });
@@ -762,6 +922,7 @@ function revisionEventForAsset(fileType: string): string | null {
   if (fileType === 'REV-script_qa')                     return 'sandystudio/exec-srev/review-script';
   if (fileType.startsWith('STB'))                       return 'sandystudio/exec-sb/create-storyboard';
   if (fileType === 'REV-world_check')                   return 'sandystudio/exec-wchk/check-world';
+  if (fileType === 'SPC-gag_plan')                      return 'sandystudio/exec-gagad/plan';
   if (fileType.startsWith('AUD-music'))                 return 'sandystudio/exec-mgen/generate-music';
   if (fileType.startsWith('VID-animatic'))              return 'sandystudio/exec-edit/create-animatic';
   if (fileType === 'SPC-metadata' || fileType.startsWith('SPC-copy'))

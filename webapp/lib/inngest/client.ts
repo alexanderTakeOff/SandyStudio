@@ -107,6 +107,130 @@ type Events = {
     };
   };
 
+  /**
+   * EXEC-EREF-DESIGNER — Sprint «Дизайнер и Аниматор» 2026-05-18.
+   * Per-shot LLM Plan author. Fired N times per episode after REV-world_check
+   * approval (gated by DESIGNER_CHAIN_ENABLED flag); each invocation writes
+   * one SPC-ref_plan-<shot_id> asset. Plan asset goes through Director (and
+   * Day 4 Critic) approval; APPROVED Plan fires `exec-eref/execute-from-plan`.
+   */
+  'sandystudio/exec-eref-designer/plan': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      /** Optional revision note when this is a re-fire after REQUEST_REVISION. */
+      revisionNote?: string;
+    };
+  };
+
+  /**
+   * EXEC-EPREV — Designer's Critic. Sprint «Дизайнер и Аниматор» Day 4
+   * 2026-05-19. Fired by EXEC-EREF-DESIGNER's nextEvent callback right after
+   * a fresh SPC-ref_plan is saved. Critic runs V01-V09 hard checks against
+   * the Plan JSON body. PASS → Plan flips REVIEW (Director sees it); REVISE
+   * → Plan flips REVISION + Critic emits revisionNote which auto-fires the
+   * Designer with hard-contract criteria.
+   */
+  'sandystudio/exec-eprev/review-plan': {
+    data: BaseEpisodeEvent & {
+      planAssetId: string;
+      shotId: string;
+    };
+  };
+
+  /**
+   * EXEC-VANIM — Animator (Sprint «Дизайнер и Аниматор» Day 6-7 2026-05-19).
+   * Per-shot Sonnet 4.6 Plan author for video generation. Fired per shot
+   * after VID-animatic.APPROVED (when ANIMATOR_CHAIN_ENABLED is on) or
+   * manually via PA. Output: one SPC-shot_plan-<shot_id> asset per shot.
+   */
+  'sandystudio/exec-vanim/plan': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      revisionNote?: string;
+    };
+  };
+
+  /**
+   * EXEC-VPREV — Animator's Critic (Sprint «Дизайнер и Аниматор» Day 8
+   * 2026-05-19). Fired by Animator's nextEvent on freshly-saved SPC-shot_plan.
+   * Validates V01-V09 hard checks. Same chain shape as EXEC-EPREV.
+   */
+  'sandystudio/exec-vprev/review-plan': {
+    data: BaseEpisodeEvent & {
+      planAssetId: string;
+      shotId: string;
+    };
+  };
+
+  /**
+   * VGEN Plan-driven executor (Day 6-7 2026-05-19). Fired when Director
+   * approves an SPC-shot_plan asset. Executor reads Plan body (provider,
+   * aspect, duration, prompt, etc) and dispatches the actual provider call
+   * for ONE shot. Coexists with /start /single-shot /generate-shot.
+   */
+  'sandystudio/exec-vgen/execute-from-plan': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      planAssetId: string;
+    };
+  };
+
+  /**
+   * EXEC-GAGAD — Gag Assistant Director, Phase «plan» (Sprint «Дизайнер и
+   * Аниматор» Day 11+ 2026-05-19). Per-episode Sonnet 4.6 LLM call after
+   * REV-script_qa.APPROVED (parallel with EXEC-SB) when isComedyLikeGenre.
+   * Reads APPROVED script + skill sandy-gag-library + Bible canon. Outputs
+   * `SPC-gag_plan-<episode>` asset (theme + antagonist + per-shot gag intent).
+   */
+  'sandystudio/exec-gagad/plan': {
+    data: BaseEpisodeEvent & {
+      scriptAssetId?: string;
+      revisionNote?: string;
+    };
+  };
+
+  /**
+   * EXEC-GAGAD Phase «eref_review». Fired by EPREV nextEvent on PASS verdict
+   * (when comedy + APPROVED SPC-gag_plan exists). Cross-layer check: does
+   * this SPC-ref_plan deliver the gag intent declared for its shot in the
+   * gag_plan? Verdict PASS → noop. REVISE → flip SPC-ref_plan to REVISION +
+   * re-fire EXEC-EREF-DESIGNER. After 2nd REVISE → HALT + director-attention
+   * activity event.
+   */
+  'sandystudio/exec-gagad/review-ref-plan': {
+    data: BaseEpisodeEvent & {
+      planAssetId: string;
+      shotId: string;
+    };
+  };
+
+  /**
+   * EXEC-GAGAD Phase «vanim_review». Same shape as eref_review but for
+   * SPC-shot_plan (Animator output). Fired by VPREV nextEvent on PASS.
+   * REVISE chains back to EXEC-VANIM.
+   */
+  'sandystudio/exec-gagad/review-shot-plan': {
+    data: BaseEpisodeEvent & {
+      planAssetId: string;
+      shotId: string;
+    };
+  };
+
+  /**
+   * EREF v3 Plan-driven executor — Sprint «Дизайнер и Аниматор» Day 3.2
+   * 2026-05-18. Fired when Director approves an SPC-ref_plan asset. The
+   * executor reads the Plan's JSON body (provider, size, variants, prompt,
+   * negative, continuity_strategy) and generates exactly one IMG-episode_ref
+   * for the planned shot. Coexists with legacy `generate-references` and
+   * Pilot/fanout entries (q2c soft switch behind DESIGNER_CHAIN_ENABLED).
+   */
+  'sandystudio/exec-eref/execute-from-plan': {
+    data: BaseEpisodeEvent & {
+      shotId: string;
+      planAssetId: string;
+    };
+  };
+
   'sandystudio/exec-edit/create-animatic': {
     data: AssetTrigger & {
       storyboardAssetIds: string[];

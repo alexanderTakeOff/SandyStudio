@@ -13,6 +13,200 @@
 ## CURRENT STATE
 
 ```
+Phase:    **Sprint «Дизайнер и Аниматор» — DAY 1-11 SHIPPED 2026-05-19** (Director smoke + master merge pending)
+Status:   ✅ **Sprint Day 1-11 ALL CODE LANDED on `claude/quizzical-brown-462555`** (6 sprint commits: 191ef3a Day 3.2, 8f33f95 Day 4, 296606d Day 4.5, 3a575ce Day 6-7, 62c4b82 Day 8, c3c9b59 Day 8.5). Verify: tsc clean · vitest **308/308** · replay-pilot **29/29**.
+            • Skills-as-capabilities refactor (lazy two-step API + 2 broad capability playbooks)
+            • EREF chain bug fix (review-id → underlying STB resolution) + RejectModal directorConfirm
+            • EREF pilot state mirror в episodes.metadata (closes UI gap FANOUT_RUNNING → FANOUT_COMPLETE)
+            • gpt-image-1 → gpt-image-2 across openai-image / openai-image-edit / openai-edits-multi
+            • Branch `claude/quizzical-brown-462555` tip 3993374; worktree disposition deferred
+            • Verify: tsc clean · vitest 216/216 · replay-pilot 29/29
+
+          ✅ **Stage A smoke 2026-05-18 (E21)** — 2 VGEN pilots APPROVED (Sandy SH01 establishing,
+             SH02 action via Seedance fal-img2vid 4s). Budget $4.46 / $25. Director surfaced
+             **3 architectural issues** during review:
+             1. 🔴 EREF aspect ratio bug — refs generated 1:1 (1024×1024), Seedance crops to 16:9
+                losing top/bottom. Critical for E22+ canonical episodes.
+             2. 🟡 Camera movement слишком subtle — Seedance under-emits motion despite skill
+                favoring «static + 5% push-in» default.
+             3. 🟡 «no audio yet» в VGEN panel — animatic missing music_asset_id в metadata.
+
+          ⏳ **Sprint «Дизайнер и Аниматор» — Director-approved 2026-05-18** — root-cause fix for
+             issues 1+2 (issue 3 deferred to separate sprint). Architectural diagnosis:
+             **VGEN + EREF — единственные стадии пайплайна без write-agent и без reviewer.**
+             Все остальные стадии (Script→SREV, Storyboard→WCHK, Bible→BIBLE-LOCK) имеют
+             Writer-agent + Reviewer-agent + Director gate. VGEN/EREF — template-функции,
+             которые шаблонно склеивают строку и зовут провайдер. Closing this gap:
+
+             **Two new agents + two critics:**
+             • **Episode Reference Designer** (EXEC-EREF становится full agent) — decision space:
+               provider per shot type (gpt-image-2 vs Flux), size per delivery_target (1536×1024
+               YouTube vs 1024×1792 Shorts), variants count, pilot strategy, camera coverage.
+               Output: `SPC-ref_plan-<shot_id>` asset.
+             • **Designer's Critic** (EXEC-EPREV) — validates Plan: aspect=delivery_target,
+               provider obosnovan, sub_area variation, Bible style canon present.
+             • **Animator** (EXEC-VGEN становится full agent) — decision space: provider per
+               shot role, quality tier per hero-marker, aspect per delivery_target, seed
+               locking, end_image strategy. Output: `SPC-shot_plan-<shot_id>` asset.
+             • **Animator's Critic** (EXEC-VPREV) — V01-V09 hard checks (7-slot structure,
+               ≤1 primary action, NEGATIVE non-empty, CONTINUITY references EREF anchor,
+               STYLE matches Bible canon, CAMERA aligns STB, SUBJECT matches characters,
+               duration vs action complexity, no on-screen text).
+
+             **Coms model (Director-confirmed):** Polina = единственный голос. Agents работают
+             silent, публикуют structured Plan-asset + activity events. PA reads, summarizes,
+             asks approval verbally. Per-agent dialog через PA-proxy (`askAgent` tool). NO
+             отдельных team-chat threads на каждого агента.
+
+             **UI:** zero new timeline rows. Diagnostic Plan inspector в existing Episode
+             Asset Drawer (read-only). PA panel always-visible UX fix Day 1.
+
+             **Brief extension:** `series.delivery_targets[]` + `episode.brief.delivery_targets[]`
+             — для S14 default `['youtube_landscape']`. Designers/Animators читают список,
+             решают какой aspect/размер генерить.
+
+             **11-day breakdown:**
+             - Day 1: Schema + migration 0031 + asset types + naming + delivery_targets +
+                      glossary + skills tree + PA panel always-visible fix
+             - Day 2-3: Episode Reference Designer agent + skill + 12+ unit tests
+             - Day 4: Designer's Critic + 8-10 hard checks + REVISE auto-chain
+             - Day 4.5: PA integration (3 tools + askAgent + diagnostic inspector)
+             - Day 5: E22 EREF smoke + retro memo
+             - Day 6-7: Animator agent + skill + 15+ unit tests (replaces buildShotPromptV2)
+             - Day 8: Animator's Critic + V01-V09 + auto-chain
+             - Day 8.5: PA integration for Animator (3 tools + diagnostic + regenerate route patch)
+             - Day 9-10: E22 full episode smoke через PA + quantitative retro
+             - Day 11: Final memo + technology.md §3.6 + skill v0.2 updates + buffer
+
+             **Issue 3 (no audio yet)** — отдельный sprint после «Дизайнер и Аниматор».
+             Root cause likely в animatic runner: musicAssetId не пишется в `animatic_v1.metadata`
+             даже когда music asset APPROVED.
+
+          ⏳ **PR γ status**: `webapp/docs/pa-gap-audit-e21.md` живёт от Sprint γ, остаётся
+             как production-audit doc. Не блокирует Sprint «Дизайнер и Аниматор».
+
+          Phase sequence (master mainline):
+          • ~~**P0**~~ (Flux 422 + E20 archive) — COMPLETE 2026-05-14
+          • ~~**α**~~ (Realtime + team-chat) — COMPLETE 2026-05-14
+          • ~~**β**~~ (Seedance capability manifests) — COMPLETE 2026-05-14
+          • ~~**γ**~~ (E21 production через PA) — COMPLETE 2026-05-18 (E21 Stage A: 22/22 EREF
+                                                  generated, 2 VGEN pilots APPROVED)
+          • ~~**φ**~~ (Skills-as-capabilities refactor) — COMPLETE 2026-05-18 (cc43944)
+          • ✅ **Day 1 of 11 COMPLETE** — Sprint «Дизайнер и Аниматор» schema groundwork
+          • ✅ **Day 2 of 11 COMPLETE** — Episode Reference Designer agent (spec + runner + tests + skill)
+          • ✅ **Day 3.1 COMPLETE** — Option A agent infrastructure plumbing (commit `d148a01`).
+            EXEC-EREF-DESIGNER registered, fireable via Inngest event. Critic + live wire-in pending.
+          • ✅ **Day 3.2 COMPLETE 2026-05-18** (commit `191ef3a`) — Plan-driven EREF executor behind
+            `DESIGNER_CHAIN_ENABLED` feature flag. q1a/q2c/q3a/q4c.
+          • ✅ **Day 4 COMPLETE 2026-05-19** (commit `8f33f95`) — Designer's Critic (EXEC-EPREV) with
+            V01-V09 hard checks + auto-chain (REVISE re-fires Designer with acceptance_criteria as
+            hard contract). Plan status side-effects: PASS→REVIEW, REVISE→REVISION, FAIL→REJECTED.
+            Verify: vitest 269/269 (+10).
+          • ✅ **Day 4.5 COMPLETE 2026-05-19** (commit `296606d`) — PA tools: getRefPlan, listRefPlans,
+            getCriticVerdict, regenerateRefPlan. Verify: vitest 276/276 (+7).
+          • ✅ **Day 6-7 COMPLETE 2026-05-19** (commit `3a575ce`) — Animator (EXEC-VANIM) Sonnet 4.6
+            Plan author per shot + Plan-driven VGEN executor branch (q1a). Replaces buildShotPromptV2
+            when planAssetId is set. animator.md spec + skill v0.1 ACTIVE. Verify: vitest 292/292 (+16).
+          • ✅ **Day 8 COMPLETE 2026-05-19** (commit `62c4b82`) — Animator's Critic (EXEC-VPREV) with
+            V01-V09 (provider format match, ≤1 primary action, NEGATIVE baseline, etc) + auto-chain.
+            Verify: vitest 302/302 (+10).
+          • ✅ **Day 8.5 COMPLETE 2026-05-19** (commit `c3c9b59`) — PA tools for Animator: getShotPlan,
+            listShotPlans, getAnimatorCriticVerdict, regenerateShotPlan. Verify: vitest 308/308 (+6).
+          • ⏳ **Day 9-10 DEFERRED 2026-05-19** — Smoke E22 (full episode through Designer→Critic→
+            Animator→VGEN chain, ~$8-15 budget). Director will fire manually after master merge via
+            `DESIGNER_CHAIN_ENABLED=true ANIMATOR_CHAIN_ENABLED=true` on E22 episode. Quantitative
+            retro deferred to post-smoke session.
+          • ✅ **Day 11 COMPLETE 2026-05-19** — Final memo + glossary alignment + skill v0.2 polish.
+            Sprint «Дизайнер и Аниматор» Day 1-11 SHIPPED behind 2 feature flags. 6 commits, ~3000 LoC,
+            68 new tests, 4 new agent_ids (EREF-DESIGNER, EPREV, VANIM, VPREV), 6 new events, 2 new
+            asset types (SPC-ref_plan, SPC-shot_plan + REV variants), 0 dollars spent (smoke deferred).
+            **Touchpoints (10)**:
+            – `lib/inngest/client.ts` — registered `sandystudio/exec-eref-designer/plan` (formerly
+              referenced but unregistered) + new `sandystudio/exec-eref/execute-from-plan`
+            – `lib/inngest/concurrency.ts` — added `exec-eref-execute: 2` per-episode cap
+            – `inngest/functions/exec-eref-execute-from-plan.ts` — new factory-driven function
+            – `inngest/index.ts` — registered the new function
+            – `lib/agents/runner.ts` — added `planAssetId` to `RunAgentArgs`, forwarded to runEpisodeReferences
+            – `lib/agents/factory.ts` — widened `resolveRunArgs` return type to include `planAssetId`
+            – `lib/agents/runners/episode-references.ts` — added `planAssetId/shotId` to args,
+              `PlanOverrides` type, `loadPlanOverrides()` + `planSizeToProviderSize()` helpers
+              (test-exported), Plan-driven jobs filter, prompt + provider size overrides,
+              `provenance.plan_asset_id` IMG metadata for audit chain
+            – `app/api/assets/[id]/approve/route.ts` — `designerChainEnabled()` flag reader,
+              REV-world_check fan-out (N Designer events when flag on), new `SPC-ref_plan` →
+              `execute-from-plan` branch with per-Plan idempotency check on
+              `metadata.provenance.plan_asset_id`
+            – `__tests__/lib/agents/runners/episode-references-plan.test.ts` — 19 tests covering
+              size mapping (6) + Plan loader happy paths (3) + rejection paths (9) + error class (1)
+
+✅ **Day 1 deliverables (2026-05-18):**
+          • Migration **0032** `0032_designer_animator_sprint.sql` written — additive: adds
+            `series.metadata jsonb` (mirrors episodes.metadata 0029, holds `delivery_targets[]`),
+            widens `activity_events.event_type` whitelist with 6 new types
+            (plan_proposed, plan_approved, plan_revised, plan_rejected, agent_question,
+            agent_answered), reserves `agent_failed` (catch-up for 2026-05-12 SREV hotfix).
+            Migration 0031 was already taken by `concierge_turns_publication_fix` (post-cc43944
+            merge); bumped to 0032 to avoid collision.
+          • Naming convention: no changes needed — `SPC` already whitelisted in 0002 assets
+            CHECK + naming-validator hook covers `prompts/` directory.
+          • Glossary extended with 6 new canonical terms: «Episode Reference Designer»,
+            «Designer's Critic», «Animator», «Animator's Critic», «Plan-asset», «delivery_targets»,
+            «askAgent (PA tool)». Also extended «Validator» entry to mention new EXEC-EPREV/EXEC-VPREV.
+          • Skill stubs: `.claude/skills/eref-designer/SKILL.md` + `.claude/skills/animator/SKILL.md`
+            written as `status: STUB / maturity: stub-day-1`. Populated Day 2-3 (Designer) and Day 6-7
+            (Animator) when runners implement decision rules.
+          • PreviewDrawer UX fix shipped: overlay now respects `--pa-pad-left/--pa-pad-right` CSS
+            vars from ConciergePanel — PA panel stays visible on preview open, no more «уходит за blur».
+            File: `webapp/components/preview/PreviewDrawer.tsx`. Browser smoke deferred to Day 5
+            with E22 EREF run.
+          • Verify trio: tsc clean · vitest **216/216** · replay-pilot **29/29**.
+
+✅ **Day 2 deliverables (2026-05-18):**
+          • Agent spec `agents/exec/episode_reference_designer.md` v0.1 — 452 LoC canonical
+            structure (ROLE / AUTHORITY / INPUTS / OUTPUTS / 10-step process / REVISION /
+            EDGE CASES / SUCCESS METRICS). Encodes smart-canon B, Plan-asset JSON contract,
+            sub_area variation rule, V01-V08 Critic hard-check map. Per q1 directive
+            narrowed to `gpt-image-2` only this sprint.
+          • Runner `webapp/lib/agents/runners/episode-reference-designer.ts` ~430 LoC —
+            LLM call to Sonnet 4.6 (`EREF_DESIGNER_MODEL`, `EREF_DESIGNER_MAX_TOKENS=6000`,
+            cost ceiling $0.15), `EREF_DESIGNER_PROVIDER_ALLOWLIST` single-entry,
+            `SIZE_BY_DELIVERY_TARGET` table for 6 slugs, pure `resolveDeliveryTargets()`
+            helper with episode→series→fallback precedence, `buildUserMessage()` per-shot
+            assembly with full Bible (formatBibleForPrompt), delivery_targets table,
+            revisionNote propagation as HARD ACCEPTANCE CRITERIA. Pre-flight validates
+            STB APPROVED + shotId present + bible loaded. Outputs structured
+            `EREFDesignerRunResult` for downstream Plan-asset write.
+          • 24 unit tests — constants/tables (4), `resolveDeliveryTargets` precedence (5),
+            pre-flight errors (4), happy-path runner behaviour (11). All green on first run.
+          • Skill `.claude/skills/eref-designer/SKILL.md` promoted STUB → ACTIVE v0.1.
+            Canonical decision playbook for provider/size/variants/continuity/camera
+            intent/smart-canon B/negative-list/cost reference/pre-flight/revision loop.
+            Agent spec links to skill rather than embedding rules inline.
+          • Verify trio: tsc clean · vitest **240/240** (+24 new Designer tests) ·
+            replay-pilot **29/29**.
+          • Commits: `1f82ed8` (runner), `dc75329` (tests), `693852b` (skill).
+
+Next:     Sprint Day 1-11 SHIPPED — Director sequence:
+          1. Review PLAN.md sprint summary above + branch commits 191ef3a..c3c9b59
+          2. Decide PR vs squash-merge to master (existing pattern: squash, like Sprint φ cc43944)
+          3. Fire E22 smoke (Day 9-10 deferred deliverable):
+              • Set DESIGNER_CHAIN_ENABLED=true + ANIMATOR_CHAIN_ENABLED=true in webapp env
+              • Pick E22 episode, advance through REV-world_check.APPROVED
+              • Watch Plan fan-out (22 SPC-ref_plan + Critic verdicts) → Director approves
+              • Watch IMG fan-out (~$1.30 22 IMG @ gpt-image-2 high quality)
+              • Watch VID-animatic.APPROVED → 22 SPC-shot_plan + Critic verdicts → Director approves
+              • Watch VGEN fan-out (~$8 22 shots @ seedance-fast) → final-cut.mp4
+              • Total budget ~$10-15
+          4. Post-smoke retro session: update technology.md §3.6 with E22 data; bump
+             seedance-prompting and animator skills to v0.2 based on what worked / what flopped
+
+Mode:     ===5=== EDIT MODE active · Mode 1 (MANUAL governance) · auto-sync OFF
+Date:     2026-05-19
+```
+
+---
+
+```
 Phase:    **P0 + α + β SHIPPED 2026-05-14** — Flux 422 fix · E20 archived PARTIAL · Postgres trigger
           Realtime + team-chat unified thread · capability manifests + Seedance full
           controls + seedance-prompting skill. γ kickoff posted, awaiting Director brief in PA.
@@ -281,6 +475,9 @@ Sprints S0–S8 (foundation + spec) all COMPLETE 2026-04-23..28 — details in `
 | A.1 | Animatic director_overrides + EpisodeTimeline Phase A | ✅ COMPLETE 2026-05-06..07 |
 | A.2 | VGEN auto-COMPLETE + EXEC-STITCH + Audio reorg + Bug A/C/D | ✅ COMPLETE 2026-05-08..10 |
 | **Mode 2.5 Phase 1-A + 1-B + Phase A** | Prod Assistant + memory + TTS + 13 tools + verbal approval + gpt-5.5 + BEHAVIOR_CONTRACT | ✅ COMPLETE 2026-05-08..12 (PR #23 OPEN) |
+| **Sprint P0/α/β/γ** | Flux 422 + E20 archive + Realtime trigger + Seedance capability manifests + E21 production via PA | ✅ COMPLETE 2026-05-14..18 |
+| **Sprint φ** | Skills-as-capabilities lazy two-step API + 2 broad capability playbooks + EREF chain fix + RejectModal + EREF state mirror + gpt-image-2 | ✅ COMPLETE 2026-05-18 (master `cc43944`) |
+| **Sprint «Дизайнер и Аниматор»** | Episode Reference Designer + Animator full agents + 2 Critics + PA integration + delivery_targets + E22 smoke. Closes architectural gap: VGEN/EREF as template-functions → as decision-making agents | ⏳ IN PROGRESS Day 1/11 (2026-05-18) |
 
 ---
 
@@ -303,6 +500,8 @@ Sprints S0–S8 (foundation + spec) all COMPLETE 2026-04-23..28 — details in `
 | 16 | EXEC-VGEN base file_type duplicate `shot` token: produces `VID-shot-shot1` | Cosmetic |
 | 17 | Videomatic FFmpeg export aspect ratio: requested 16:9, observed 1:1 with content centered. First real MP4 produced 2026-05-08. Inspect ffmpeg canvas dims, source clip dimensions, padding/crop in `webapp/lib/agents/providers/ffmpeg-stitch.ts` | Reliability |
 | 18 | Prod Assistant TTS quality — Director confirmed 2026-05-08 smoke: голос "как больной робот". Web Speech SpeechSynthesis на Windows = системные голоса (Pavel/Irina). Upgrade path: ElevenLabs или OpenAI TTS API (~$0.015/1K chars). Decision deferred until 2nd use | UX |
+| 20 | **PA chat streaming + cancel button + alive-indicator.** Surfaced 2026-05-19 SS-S15-E01 smoke: Polina chat is sync POST `/api/concierge/chat` that hangs 50-110+ sec per turn (multi-roundtrip OpenAI + tool_calls). Client shows static thinking dots — no progress, no cancel, no per-tool visibility. When OpenAI errored on 450KB context bomb (since fixed via listSeriesBibles strip), UI stuck in `isLoading=true` indefinitely with no timeout. Three layered remediation: (a) **Level 1 cosmetic** ~30-40 min — fix dot animation CSS keyframes + client-side 90s timeout with toast/auto-recover + fake cancel button (closes fetch, server keeps spending). (b) **Level 2 SSE streaming + real cancel** ~4-6h — `/api/concierge/chat` returns Server-Sent Events stream; client renders text deltas as they arrive + per-tool plashka «Polina вызывает createSeries…»; real cancel via AbortController on client → server detects req.signal.aborted → cancels OpenAI mid-flight via AbortController on SDK call. (c) **Level 3 activity feed integration** +1-2h on Level 2 — emit `activity_events(event_type=pa_tool_call)` for each tool dispatch so events also show in main activity panel (not just chat); Realtime subscription pushes them to UI. Director-preferred minimum at session 2026-05-19: q1b (Level 1 + listSeriesBibles strip = the strip is done in commit 55958c8). Q for next session: Level 2 + 3 as one «PA Streaming + Cancel» mini-sprint. Decision deferred until after SS-S15-E01 first complete cycle. | UX / Reliability |
+| 19 | **Asset content edits overwrite in place — no version increment.** Surfaced 2026-05-19 SS-S15-E01 «Heavy Friend» smoke. `PUT /api/assets/[id]/content` (UI «Edit brief» button + PA tool `editBrief`) mutates same row → filename stays `v01`, no audit between agent and Director edits, «approve» targets ambiguous last-writer-wins state. Director's expected model: «my edit = v02 · agent's edit = v03 · approve targets a specific version». Affects ALL Plan-assets (SPC-brief / SCR-script / STB-storyboard / SPC-ref_plan / SPC-shot_plan / SPC-gag_plan / BIB-*). `setBibleContent` PA tool already does «create new version» correctly — this is the inconsistency to fix. Remediation: endpoint INSERT row v+1 instead of UPDATE; status DRAFT for new version; old row stays. ~30-40 min endpoint + ~15 min regression test. UI version selector dropdown is separate ~2h. Decision deferred per Director 2026-05-19 — keep current behaviour through smoke, fix before next series | Reliability / Audit |
 
 **Already fixed in Phase 5c** (don't re-add): #3 Story phantom stage hidden · #9 Multi-asset milestone chain via `computeNextEvents` (STB×3, animatic fan-out, metadata→thumb, ready→pub) · #10 Pipeline View stage filter · #11 Factory writes `agent_completed` · #12 STAGE_FROM_ASSET prefix matching.
 
@@ -368,6 +567,8 @@ Pre-2026-04-30 entries → `docs/PLAN-history.md`.
 
 | Date | Change | By |
 |------|--------|----|
+| 2026-05-18 | **Sprint «Дизайнер и Аниматор» kickoff** — Director-approved 11-day arc to close architectural gap (VGEN+EREF as template-functions → as decision-making agents). Two new full agents (Episode Reference Designer + Animator) + two Critics (Designer's Critic + Animator's Critic) + PA integration (askAgent tool + Plan-asset approval flow) + UX fix (PA panel always-visible) + brief extension (delivery_targets). Closes Director-flagged Stage A issues #1 (EREF aspect ratio) and #2 (camera too subtle) at root cause, not symptom. Issue #3 (no audio yet) deferred to next sprint. Diagnosis memo in chat; Day 1 starts: migration 0031 + asset types + naming + delivery_targets + glossary + skills tree + PA panel fix. | Director + Claude Code |
+| 2026-05-18 | **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 MERGED to master** (squash commit `cc43944`, 206 commits, 188 files, +19782/−435). Skills-as-capabilities refactor (lazy two-step API: getAgentSkillManifest → loadAgentSkillBodies), 2 broad capability playbooks (`storyboarder-situational-comedy`, `eref-shot-composition`), seedance-prompting ACTIVE, 3 atomic σ seeds DEPRECATED. EREF chain bug fix (approve route resolves REV-* → underlying STB asset id via findLatestApprovedAssetId). RejectModal directorConfirm true. regenerate-image route skips auto_upscale provider entries. EpisodeAssetDrawer/AssetImagePromptSection visible busy/done states. EREF state mirror to episodes.metadata.eref_pilot_state. gpt-image-1 → gpt-image-2 across openai-image, openai-image-edit, openai-edits-multi (~15% cost refresh). E21 Stage A: 22/22 EREF generated, 2 VGEN pilots APPROVED, $4.46 / $25 budget. tsc clean · vitest 216/216 · replay-pilot 29/29. | Director + Claude Code |
 | 2026-05-12 | **PR #23 MERGED** to master (merge commit `8fa5c00`, --merge style preserves 227 auto-sync commits). Mode 2.5 PA + Mode 3 readiness drill shipped. | Director + Claude Code |
 | 2026-05-12 | fix(srev): runner's internal `findApprovedAsset` (script-reviewer.ts) — was a second layer of the same deadlock, requiring `status === 'APPROVED'` after gate already passed. Renamed semantically (still legacy name) to accept `REVIEW`/`REVISION`/`APPROVED` so Story Editor can review pending drafts. tsc clean, 166/166. (`lib/agents/runners/script-reviewer.ts`) | Claude Code |
 | 2026-05-12 | fix(gate): Story Editor's upstream gate now accepts SCR in `REVIEW`/`REVISION`/`APPROVED` status — pre-fix gate required APPROVED upstream, but Story Editor IS the gate FROM REVIEW to APPROVED (chicken-and-egg deadlock for the internal Writer↔Story Editor loop). Added `AgentDependency.allowedStatuses` field, single-status path still uses .eq() (test compat), multi-status uses .in(). 166/166 tests. (`lib/agents/gate.ts`) | Claude Code |

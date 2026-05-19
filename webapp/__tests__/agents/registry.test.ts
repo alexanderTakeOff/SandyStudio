@@ -26,11 +26,15 @@ describe('AGENT_REGISTRY structural integrity', () => {
     }
   });
 
-  it('exactly 13 agents have Inngest functions (Phase A.2 PR β: +EXEC-STITCH)', () => {
+  it('exactly 18 agents have Inngest functions (Sprint «Дизайнер и Аниматор» Day 11+: +EXEC-GAGAD)', () => {
     // Backbone v2 (2026-05-01) added EXEC-EREF (12). Phase A.2 PR β
-    // (2026-05-08) adds EXEC-STITCH Episode Stitcher → 13.
+    // (2026-05-08) adds EXEC-STITCH → 13. Sprint «Дизайнер и Аниматор»
+    // (2026-05-18) adds EXEC-EREF-DESIGNER → 14. Day 4 (2026-05-19) adds
+    // EXEC-EPREV → 15. Day 6-7 adds EXEC-VANIM → 16. Day 8 adds EXEC-VPREV
+    // → 17. Day 11+ (2026-05-19) adds EXEC-GAGAD (Gag Assistant Director,
+    // cross-layer gag continuity supervisor with 3 phases) → 18.
     const inngestable = inngestAgents();
-    expect(inngestable).toHaveLength(13);
+    expect(inngestable).toHaveLength(18);
   });
 
   it('every Inngest agent has a prompt_file (no orphaned prompts)', () => {

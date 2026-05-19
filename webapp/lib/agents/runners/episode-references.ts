@@ -656,16 +656,247 @@ export interface EpisodeReferencesRunArgs {
    * `eref_pilot_state=FANOUT_COMPLETE`. Mutually exclusive with `pilot_count`.
    */
   start_index?: number;
+  /**
+   * Plan-driven mode (Day 3.2, Sprint «Дизайнер и Аниматор» 2026-05-18) —
+   * APPROVED SPC-ref_plan-<shot_id> asset id. Runner loads the Plan's JSON
+   * body, scopes `jobs` to ONE shot (`shotId`), and overrides prompt + size
+   * with the Plan's decisions. Mutually exclusive with `pilot_count` and
+   * `start_index`. Requires `shotId`.
+   */
+  planAssetId?: string;
+  /**
+   * Target shot id (Plan-driven mode). Must match the `shot_id` field inside
+   * the Plan's JSON body. Required when `planAssetId` is set; ignored
+   * otherwise.
+   */
+  shotId?: string;
+}
+
+/**
+ * Overrides extracted from an APPROVED SPC-ref_plan asset's JSON body.
+ * Designer's contract (see agents/exec/episode_reference_designer.md + the
+ * fenced JSON block emitted by runEpisodeReferenceDesigner). All fields
+ * required — the loader throws if the Plan body is missing any of them.
+ */
+interface PlanOverrides {
+  shotId: string;
+  planAssetId: string;
+  providerId: string;
+  size: { width: number; height: number };
+  variantsCount: number;
+  prompt: string;
+  negative: readonly string[];
+  continuityMode: string;
+  policyNotes: readonly string[];
+}
+
+/** Provider enum sizes the multi-image-gen contract honours. */
+type ProviderSize =
+  | '1024x1024'
+  | '1024x1536'
+  | '1536x1024'
+  | '2048x2048'
+  | '2752x1536'
+  | '1536x2752';
+
+/**
+ * Map a Plan's chosen size (width × height in pixels) to the closest provider
+ * enum slot. Day 3.2 sprint scope = youtube_landscape (1536×1024) which maps
+ * 1:1. Portrait targets (1024×1792) clamp to 1024×1536 — the provider doesn't
+ * support 9:16 natively yet; a future task adds 1024×1792 to the enum.
+ *
+ * Exported as a test seam so the mapping can be exercised without spinning
+ * up a Supabase mock — pure function, no I/O.
+ */
+export function planSizeToProviderSize(size: {
+  width: number;
+  height: number;
+}): ProviderSize {
+  const { width, height } = size;
+  if (width === 1024 && height === 1024) return '1024x1024';
+  if (width === 1024 && height === 1536) return '1024x1536';
+  if (width === 1536 && height === 1024) return '1536x1024';
+  if (width === 2048 && height === 2048) return '2048x2048';
+  if (width === 2752 && height === 1536) return '2752x1536';
+  if (width === 1536 && height === 2752) return '1536x2752';
+  // Portrait fallback for delivery_targets like 1024×1792 (shorts/reels).
+  if (height > width) return '1024x1536';
+  // Landscape fallback (anything else wider than tall).
+  if (width > height) return '1536x1024';
+  // Square fallback.
+  return '1024x1024';
+}
+
+/**
+ * Extract the last fenced JSON block from a Plan asset's markdown content.
+ * Mirrors parseStoryboardJson's logic — Plans use the same convention so
+ * Director can read the markdown narrative and the executor can read the
+ * machine-readable JSON.
+ */
+function parseLastJsonBlock(content: string): Record<string, unknown> | null {
+  const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
+  if (matches.length === 0) return null;
+  const last = matches[matches.length - 1]?.[1];
+  if (!last) return null;
+  try {
+    return JSON.parse(last.trim()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load an APPROVED SPC-ref_plan asset and extract executor-facing overrides.
+ * Throws on missing/invalid fields — Plan body must round-trip the Designer
+ * contract exactly. Caller guarantees `planAssetId` is non-empty.
+ *
+ * Exported as a test seam so the validation paths can be exercised against
+ * a lightweight in-memory Supabase mock.
+ */
+export async function loadPlanOverrides(
+  supabase: SupabaseClient<Database>,
+  planAssetId: string,
+  expectedShotId: string,
+): Promise<PlanOverrides> {
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,file_type,status,content')
+    .eq('id', planAssetId)
+    .maybeSingle();
+  if (error) {
+    throw new EpisodeReferencesError(
+      `Plan asset fetch failed: ${error.message}`,
+    );
+  }
+  if (!data) {
+    throw new EpisodeReferencesError(`Plan asset ${planAssetId} not found`);
+  }
+  if (data.file_type !== 'SPC-ref_plan') {
+    throw new EpisodeReferencesError(
+      `Plan asset ${planAssetId} has file_type="${data.file_type}", expected "SPC-ref_plan"`,
+    );
+  }
+  if (data.status !== 'APPROVED') {
+    throw new EpisodeReferencesError(
+      `Plan asset ${planAssetId} status="${data.status}", expected APPROVED`,
+    );
+  }
+  if (!data.content) {
+    throw new EpisodeReferencesError(`Plan asset ${planAssetId} content empty`);
+  }
+  const body = parseLastJsonBlock(data.content);
+  if (!body) {
+    throw new EpisodeReferencesError(
+      `Plan asset ${planAssetId} content has no parseable JSON code block`,
+    );
+  }
+
+  const shotId = typeof body.shot_id === 'string' ? body.shot_id : null;
+  if (!shotId) {
+    throw new EpisodeReferencesError(
+      `Plan ${planAssetId} JSON missing string shot_id`,
+    );
+  }
+  if (shotId !== expectedShotId) {
+    throw new EpisodeReferencesError(
+      `Plan shot_id="${shotId}" does not match event shotId="${expectedShotId}"`,
+    );
+  }
+
+  const providerObj = body.provider as { id?: unknown } | undefined;
+  const providerId =
+    providerObj && typeof providerObj.id === 'string' ? providerObj.id : null;
+  if (!providerId) {
+    throw new EpisodeReferencesError(`Plan ${planAssetId} missing provider.id`);
+  }
+
+  const sizeObj = body.size as { width?: unknown; height?: unknown } | undefined;
+  const width =
+    sizeObj && typeof sizeObj.width === 'number' ? sizeObj.width : null;
+  const height =
+    sizeObj && typeof sizeObj.height === 'number' ? sizeObj.height : null;
+  if (!width || !height) {
+    throw new EpisodeReferencesError(
+      `Plan ${planAssetId} size.width / size.height missing or non-numeric`,
+    );
+  }
+
+  const variantsObj = body.variants as { count?: unknown } | undefined;
+  const variantsCount =
+    variantsObj && typeof variantsObj.count === 'number'
+      ? Math.max(1, Math.floor(variantsObj.count))
+      : 1;
+
+  const prompt = typeof body.prompt === 'string' ? body.prompt : null;
+  if (!prompt || prompt.trim().length === 0) {
+    throw new EpisodeReferencesError(`Plan ${planAssetId} missing prompt string`);
+  }
+
+  const negativeRaw = Array.isArray(body.negative) ? body.negative : [];
+  const negative: string[] = [];
+  for (const v of negativeRaw) {
+    if (typeof v === 'string' && v.trim().length > 0) negative.push(v.trim());
+  }
+
+  const continuityObj = body.continuity_strategy as
+    | { mode?: unknown }
+    | undefined;
+  const continuityMode =
+    continuityObj && typeof continuityObj.mode === 'string'
+      ? continuityObj.mode
+      : 'openai-edits-multi';
+
+  const policyRaw = Array.isArray(body.policy_notes) ? body.policy_notes : [];
+  const policyNotes: string[] = [];
+  for (const v of policyRaw) {
+    if (typeof v === 'string' && v.trim().length > 0) policyNotes.push(v.trim());
+  }
+
+  return {
+    shotId,
+    planAssetId,
+    providerId,
+    size: { width, height },
+    variantsCount,
+    prompt,
+    negative,
+    continuityMode,
+    policyNotes,
+  };
 }
 
 export async function runEpisodeReferences(
   args: EpisodeReferencesRunArgs,
 ): Promise<EpisodeReferencesRunResult> {
-  const { inputs, supabase, episodeCode, pilot_count, start_index } = args;
+  const { inputs, supabase, episodeCode, pilot_count, start_index, planAssetId, shotId } = args;
   if (pilot_count !== undefined && start_index !== undefined) {
     throw new EpisodeReferencesError(
       'pilot_count and start_index are mutually exclusive',
     );
+  }
+
+  // ── Plan-driven mode (Day 3.2 q1a additive branch) ───────────────────────
+  // When planAssetId is set, runner scopes to ONE shot and overrides prompt +
+  // size with the Designer's decisions. The Plan must be APPROVED — gate.ts
+  // wouldn't fire this code path otherwise (the executor's Inngest function
+  // only triggers on `exec-eref/execute-from-plan`, dispatched from
+  // approve-route when an SPC-ref_plan reaches APPROVED).
+  const planDriven = planAssetId !== undefined;
+  if (planDriven) {
+    if (pilot_count !== undefined || start_index !== undefined) {
+      throw new EpisodeReferencesError(
+        'planAssetId is mutually exclusive with pilot_count / start_index',
+      );
+    }
+    if (!shotId) {
+      throw new EpisodeReferencesError(
+        'planAssetId requires shotId in event payload',
+      );
+    }
+  }
+  let planOverrides: PlanOverrides | null = null;
+  if (planDriven && planAssetId && shotId) {
+    planOverrides = await loadPlanOverrides(supabase, planAssetId, shotId);
   }
 
   const ep = inputs.episode as
@@ -749,12 +980,21 @@ export async function runEpisodeReferences(
     if (entry) job.spatial = entry;
   }
 
-  // ── Pilot/fan-out slicing (technology.md §4) ──────────────────────────────
-  // pilot_count: pick first N representative shots and stop after them.
-  // start_index: skip first N shots (already done in pilot pass) and finish.
-  // Neither: process every job (legacy behaviour).
+  // ── Plan-driven slicing (Day 3.2 q1a additive) ────────────────────────────
+  // Highest precedence: if Plan is set, scope to ONE shot. No pilot, no fan-
+  // out, no idempotency skip — the executor runs exactly one image per Plan,
+  // and the Plan is the unit of Director approval. Prompt and provider size
+  // are overridden further down (search "planOverrides" in the inner loop).
   let jobs: ShotJob[];
-  if (pilot_count !== undefined && pilot_count > 0) {
+  if (planOverrides) {
+    const target = planOverrides.shotId;
+    jobs = allJobs.filter((j) => j.shot.shot_id === target);
+    if (jobs.length === 0) {
+      throw new EpisodeReferencesError(
+        `Plan shot_id "${target}" not found in storyboard (have ${allJobs.length} shots)`,
+      );
+    }
+  } else if (pilot_count !== undefined && pilot_count > 0) {
     const pilotShots = pickPilotShots(
       allJobs.map((j) => j.shot),
       pilot_count,
@@ -780,24 +1020,32 @@ export async function runEpisodeReferences(
   // missing/rejected/in-review shots, not regenerate already-approved frames
   // (and waste gpt-image-1 quota). 2026-05-13 — surfaced when E20 ended pilot
   // pass + fanout with 16/19 covered and Director needed the remaining 3.
-  const { data: alreadyApprovedRefs } = await supabase
-    .from('assets')
-    .select('metadata')
-    .eq('episode_id', episodeId)
-    .like('file_type', 'IMG-episode_ref%')
-    .eq('status', 'APPROVED');
-  const approvedShotIds = new Set<string>();
-  for (const row of (alreadyApprovedRefs ?? []) as Array<{ metadata?: unknown }>) {
-    const sid = (row.metadata as { shot_reference?: { shot_id?: string } } | null)?.shot_reference?.shot_id;
-    if (typeof sid === 'string') approvedShotIds.add(sid);
-  }
-  const beforeSkip = jobs.length;
-  jobs = jobs.filter((j) => !approvedShotIds.has(j.shot.shot_id));
-  if (jobs.length < beforeSkip) {
-    // eslint-disable-next-line no-console
-    console.info(
-      `[eref] skipping ${beforeSkip - jobs.length} shot(s) with an APPROVED ref already in DB`,
-    );
+  //
+  // Plan-driven mode (Day 3.2): SKIP this filter. When Director approves a
+  // new Plan for a shot that already has an APPROVED IMG, intent is to
+  // regenerate — the v2 EREF auto-demote in approve-route handles the prior
+  // approved row when the new IMG is approved. Skipping here would silently
+  // produce zero new images and look like a no-op.
+  if (!planOverrides) {
+    const { data: alreadyApprovedRefs } = await supabase
+      .from('assets')
+      .select('metadata')
+      .eq('episode_id', episodeId)
+      .like('file_type', 'IMG-episode_ref%')
+      .eq('status', 'APPROVED');
+    const approvedShotIds = new Set<string>();
+    for (const row of (alreadyApprovedRefs ?? []) as Array<{ metadata?: unknown }>) {
+      const sid = (row.metadata as { shot_reference?: { shot_id?: string } } | null)?.shot_reference?.shot_id;
+      if (typeof sid === 'string') approvedShotIds.add(sid);
+    }
+    const beforeSkip = jobs.length;
+    jobs = jobs.filter((j) => !approvedShotIds.has(j.shot.shot_id));
+    if (jobs.length < beforeSkip) {
+      // eslint-disable-next-line no-console
+      console.info(
+        `[eref] skipping ${beforeSkip - jobs.length} shot(s) with an APPROVED ref already in DB`,
+      );
+    }
   }
 
   // ── Find next version starting point per file_type ────────────────────────
@@ -862,7 +1110,17 @@ export async function runEpisodeReferences(
       cancelled = true;
       break;
     }
-    let prompt = composePromptFromTestPlan(job);
+    // ── Prompt source ────────────────────────────────────────────────────────
+    // Default path: build the prompt from the storyboard test plan + Bible
+    // canon (the legacy fan-out behaviour).
+    // Plan-driven path (Day 3.2): the APPROVED Designer Plan already merged
+    // Bible canon + shot detail + camera intent into a self-contained prompt
+    // string. Trust it verbatim — Director approved it. Style Guardian still
+    // runs as a safety net but Plan.prompt won (Designer's contract is the
+    // creative-decision-of-record).
+    let prompt = planOverrides
+      ? planOverrides.prompt
+      : composePromptFromTestPlan(job);
 
     // Pre-flight Style Guardian (cheap, may rewrite or block).
     let styleVerdictPre: 'PASS' | 'WARN' | 'FAIL' | null = null;
@@ -920,11 +1178,19 @@ export async function runEpisodeReferences(
       let genHeight: number;
       let genRevisedPrompt: string | undefined;
       try {
+        // Plan-driven mode picks size from Designer's Plan (mapped to the
+        // provider's enum). Legacy path keeps the historical 1024×1024 which
+        // is the EREF aspect ratio bug Director surfaced Stage A 2026-05-18 —
+        // the proper fix lands when REV-world_check fully routes through
+        // Designer (Day 3.2 approve-route change).
+        const effectiveSize: ProviderSize = planOverrides
+          ? planSizeToProviderSize(planOverrides.size)
+          : '1024x1024';
         const result = await callProviderWithFallback(provider, {
           prompt,
           references: refsForGen,
           quality: EREF_QUALITY,
-          size: '1024x1024',
+          size: effectiveSize,
         });
         genB64 = result.b64_data;
         genCost = result.cost_usd;
@@ -1176,8 +1442,21 @@ export async function runEpisodeReferences(
         created_by: 'EXEC-EREF',
         created_by_kind: 'agent' as const,
         created_at: nowIso,
-        source: 'pipeline' as const,
+        source: planOverrides ? ('plan_driven' as const) : ('pipeline' as const),
         mode_at_time: governanceMode,
+        // Day 3.2 (Sprint «Дизайнер и Аниматор»): when the executor ran
+        // against an APPROVED Designer Plan, link the Plan asset id so the
+        // IMG audit chain (Plan → IMG) is queryable from a single row.
+        ...(planOverrides
+          ? {
+              plan_asset_id: planOverrides.planAssetId,
+              plan_provider_id: planOverrides.providerId,
+              plan_variants_count: planOverrides.variantsCount,
+              plan_size: planOverrides.size,
+              plan_continuity_mode: planOverrides.continuityMode,
+              plan_policy_notes: planOverrides.policyNotes,
+            }
+          : {}),
       },
       image_prompt: {
         current_version: approvedAttempt.version,
@@ -1298,7 +1577,7 @@ async function callProviderWithFallback(
     prompt: string;
     references: MultiImageRef[];
     quality: 'low' | 'medium' | 'high';
-    size: '1024x1024';
+    size: ProviderSize;
   },
 ) {
   // If provider doesn't accept references at all (degenerate case) we still

@@ -22,6 +22,11 @@ export const AGENT_DISPLAY_NAME: Readonly<Record<string, string>> = Object.freez
   'EXEC-CONT':          'Script Supervisor', // legacy alias of WCHK while CONT lands
   'EXEC-ARCH':          'Archivist',
   'EXEC-EREF':          'Reference Artist',
+  'EXEC-EREF-DESIGNER': 'Reference Designer',
+  'EXEC-EPREV':         "Designer's Critic",
+  'EXEC-VANIM':         'Animator',
+  'EXEC-VPREV':         "Animator's Critic",
+  'EXEC-GAGAD':         'Gag AD',
   'EXEC-EDIT':          'Editor',
   'EXEC-VGEN':          'Animator',
   'EXEC-MGEN':          'Composer',

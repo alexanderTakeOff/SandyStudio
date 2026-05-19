@@ -16,9 +16,23 @@ import {
   enrichBible,
   setBibleContent,
   regenerateBibleImage,
+  createSeries,
 } from './series';
 import { createEpisode, findEpisode, editBrief } from './episode-create';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from './skills';
+import { getRefPlan, listRefPlans, getCriticVerdict, regenerateRefPlan } from './eref';
+import {
+  getShotPlan,
+  listShotPlans,
+  getAnimatorCriticVerdict,
+  regenerateShotPlan,
+} from './animator';
+import {
+  getGagPlan,
+  listGagPlans,
+  getGagVerdict,
+  regenerateGagPlan,
+} from './gagad';
 import type { OpenAIToolSchema, Tool } from './types';
 
 export type { Tool, ToolContext, ToolResult, OpenAIToolSchema } from './types';
@@ -46,6 +60,18 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   listSeriesBibles as unknown as AnyTool,
   listSkills as unknown as AnyTool,
   getSkill as unknown as AnyTool,
+  // EREF Plan inspection (Day 4.5)
+  getRefPlan as unknown as AnyTool,
+  listRefPlans as unknown as AnyTool,
+  getCriticVerdict as unknown as AnyTool,
+  // Animator Shot Plan inspection (Day 8.5)
+  getShotPlan as unknown as AnyTool,
+  listShotPlans as unknown as AnyTool,
+  getAnimatorCriticVerdict as unknown as AnyTool,
+  // Gag AD inspection (Day 11+)
+  getGagPlan as unknown as AnyTool,
+  listGagPlans as unknown as AnyTool,
+  getGagVerdict as unknown as AnyTool,
   // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
   approveAsset as unknown as AnyTool,
@@ -53,11 +79,15 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   enrichBible as unknown as AnyTool,
   setBibleContent as unknown as AnyTool,
   regenerateBibleImage as unknown as AnyTool,
+  createSeries as unknown as AnyTool,
   createEpisode as unknown as AnyTool,
   editBrief as unknown as AnyTool,
   proposeSkill as unknown as AnyTool,
   updateSkill as unknown as AnyTool,
   approveSkill as unknown as AnyTool,
+  regenerateRefPlan as unknown as AnyTool,
+  regenerateShotPlan as unknown as AnyTool,
+  regenerateGagPlan as unknown as AnyTool,
 ]);
 
 const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(

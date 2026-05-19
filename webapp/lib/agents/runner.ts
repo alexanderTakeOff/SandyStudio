@@ -50,6 +50,21 @@ import { runStoryboarder, StoryboarderError } from './runners/storyboarder';
 import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-check';
 import { runCopywriter, CopywriterError } from './runners/copywriter';
 import { runEpisodeReferences, EpisodeReferencesError } from './runners/episode-references';
+import {
+  runEpisodeReferenceDesigner,
+  EpisodeReferenceDesignerError,
+} from './runners/episode-reference-designer';
+import {
+  runEpisodeReferenceCritic,
+  EpisodeReferenceCriticError,
+} from './runners/episode-reference-critic';
+import { runAnimator, AnimatorError } from './runners/animator';
+import { runAnimatorCritic, AnimatorCriticError } from './runners/animator-critic';
+import {
+  runGagAssistantDirector,
+  GagAssistantDirectorError,
+  type GagadPhase,
+} from './runners/gag-assistant-director';
 import { runAnimaticSlideshow, AnimaticSlideshowError } from './runners/animatic-slideshow';
 import { loadSeriesBibleCanon } from './bible-loader';
 import type { AgentId, AgentInputs, AgentResult } from './types';
@@ -217,6 +232,22 @@ export interface RunAgentArgs {
    * cosmetic revision instead of an actual fix.
    */
   revisionNote?: string;
+  /**
+   * Sprint «Дизайнер и Аниматор» Day 3.2 (2026-05-18) — APPROVED SPC-ref_plan
+   * asset id. When set, EXEC-EREF runner switches into Plan-driven branch:
+   * reads the Plan's JSON body for provider/size/variants/prompt/negative
+   * and generates exactly one IMG-episode_ref for the planned shot. When
+   * unset, runner falls back to the legacy multi-shot fan-out path.
+   */
+  planAssetId?: string;
+  /**
+   * Sprint «Дизайнер и Аниматор» Day 11+ (2026-05-19) — EXEC-GAGAD phase
+   * selector. plan = write SPC-gag_plan; eref_review/vanim_review = critic.
+   */
+  gagPhase?: 'plan' | 'eref_review' | 'vanim_review';
+  /** EXEC-GAGAD Phase plan — APPROVED SCR-script asset id (optional —
+   *  runner can resolve via upstream_assets too). */
+  scriptAssetId?: string;
 }
 
 // Helper: assemble metadata payload for binary outputs, encapsulating the
@@ -300,6 +331,9 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     qualityTier,
     durationSeconds,
     vgenPilot,
+    planAssetId,
+    gagPhase,
+    scriptAssetId,
   } = args;
   void provider; // referenced inside individual cases
   const episodeId = inputs.episode_id;
@@ -575,14 +609,644 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       };
     }
 
+    case 'EXEC-EREF-DESIGNER': {
+      // Sprint «Дизайнер и Аниматор» 2026-05-18 — LLM Plan author for EREF.
+      // Pure-cost Sonnet 4.6 call per shot; does NOT call any image provider.
+      // Writes a SPC-ref_plan asset that the Critic validates and the
+      // Director approves; only then does EXEC-EREF executor consume it.
+      if (!shotId) {
+        throw new Error(`EXEC-EREF-DESIGNER requires shotId in event payload`);
+      }
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runEpisodeReferenceDesigner({
+            inputs,
+            shotId,
+            revisionNote: args.revisionNote,
+          });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                shot_id: r.shotId,
+                storyboard_asset_id: r.storyboardAssetId,
+                delivery_targets: r.deliveryTargets,
+                designer_notes: r.notes,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                plan_kind: 'ref_plan',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof EpisodeReferenceDesignerError) {
+            throw new Error(`EXEC-EREF-DESIGNER: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mockLLM so replay-pilot + tests without an API key keep
+      // running. Mock body shape doesn't match a real Plan, but downstream
+      // is gated by Director approval — no provider call ever fires from
+      // a mock Plan.
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            description: 'Stub EXEC-EREF-DESIGNER mock — set ANTHROPIC_API_KEY for real path',
+            shot_id: shotId,
+            plan_kind: 'ref_plan',
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-VANIM': {
+      // Sprint «Дизайнер и Аниматор» Day 6-7 2026-05-19 — Animator. Pure-cost
+      // Sonnet 4.6 Plan author for one shot. Does NOT call any video provider.
+      // Output: SPC-shot_plan-<shot_id> asset consumed by EXEC-VGEN executor
+      // after Director approves the Plan.
+      if (!shotId) {
+        throw new Error(`EXEC-VANIM requires shotId in event payload`);
+      }
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runAnimator({
+            inputs,
+            shotId,
+            revisionNote: args.revisionNote,
+          });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                shot_id: r.shotId,
+                storyboard_asset_id: r.storyboardAssetId,
+                delivery_targets: r.deliveryTargets,
+                animator_notes: r.notes,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                plan_kind: 'shot_plan',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof AnimatorError) {
+            throw new Error(`EXEC-VANIM: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            description: 'Stub EXEC-VANIM mock — set ANTHROPIC_API_KEY for real path',
+            shot_id: shotId,
+            plan_kind: 'shot_plan',
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-GAGAD': {
+      // Sprint «Дизайнер и Аниматор» Day 11+ 2026-05-19 — Gag Assistant Director.
+      // Three phases dispatched on `gagPhase`:
+      //   - plan: write SPC-gag_plan asset (factory's saveAgentOutput handles)
+      //   - eref_review: validate SPC-ref_plan vs gag_plan; skip_save + manual
+      //     REV-gag_check_ref insert + revision counter side-effect
+      //   - vanim_review: same for SPC-shot_plan; REV-gag_check_shot insert
+      if (!gagPhase) {
+        throw new Error(`EXEC-GAGAD requires gagPhase in event payload`);
+      }
+      if (!supabase) {
+        throw new Error(`EXEC-GAGAD requires supabase client`);
+      }
+      const hasAnthropicKeyG = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+
+      // ── Phase=plan: factory's saveAgentOutput handles SPC-gag_plan asset.
+      if (gagPhase === 'plan') {
+        if (hasAnthropicKeyG) {
+          try {
+            const r = await runGagAssistantDirector({
+              phase: 'plan',
+              inputs,
+              supabase,
+              scriptAssetId,
+              revisionNote: args.revisionNote,
+            });
+            return {
+              outputKind: 'text-md',
+              result: {
+                asset_paths: [],
+                cost_usd: r.costUsd,
+                metadata: {
+                  agent_id: agentId,
+                  model: r.model,
+                  contract: r.contract,
+                  markdown: r.markdown,
+                  body: r.body,
+                  description: r.description,
+                  gag_phase: 'plan' as const,
+                  script_asset_id: r.scriptAssetId ?? null,
+                  gagad_notes: r.notes,
+                  provider_id: r.model,
+                  provider_used: 'anthropic',
+                  plan_kind: 'gag_plan',
+                },
+              },
+            };
+          } catch (err: unknown) {
+            if (err instanceof GagAssistantDirectorError) {
+              throw new Error(`EXEC-GAGAD plan: ${err.message}`);
+            }
+            throw err;
+          }
+        }
+        // Mock fallback for replay-pilot / no API key.
+        const llmG = await mockLLM({ agentId, episodeId });
+        return {
+          outputKind: 'text-md',
+          result: {
+            asset_paths: [],
+            cost_usd: llmG.cost_usd,
+            metadata: {
+              agent_id: agentId,
+              model: agentMeta.model,
+              markdown: llmG.markdown,
+              body: llmG.body as Record<string, unknown>,
+              description: 'Stub EXEC-GAGAD plan mock — set ANTHROPIC_API_KEY for real path',
+              gag_phase: 'plan' as const,
+              plan_kind: 'gag_plan',
+              provider_id: 'mock',
+              provider_used: 'mock',
+            },
+          },
+        };
+      }
+
+      // ── Review phases: eref_review / vanim_review
+      const reviewPhase: GagadPhase = gagPhase;
+      if (!planAssetId) {
+        throw new Error(`EXEC-GAGAD ${reviewPhase} requires planAssetId`);
+      }
+      if (!shotId) {
+        throw new Error(`EXEC-GAGAD ${reviewPhase} requires shotId`);
+      }
+
+      let reviewResult: Awaited<ReturnType<typeof runGagAssistantDirector>>;
+      if (hasAnthropicKeyG) {
+        try {
+          reviewResult = await runGagAssistantDirector({
+            phase: reviewPhase,
+            inputs,
+            supabase,
+            planAssetId,
+            shotId,
+          });
+        } catch (err: unknown) {
+          if (err instanceof GagAssistantDirectorError) {
+            throw new Error(`EXEC-GAGAD ${reviewPhase}: ${err.message}`);
+          }
+          throw err;
+        }
+      } else {
+        // Mock fallback: PASS verdict so chain progresses in replay-pilot.
+        reviewResult = {
+          phase: reviewPhase,
+          markdown: `Mock GAGAD ${reviewPhase} — PASS`,
+          body: { verdict: 'PASS' },
+          costUsd: 0,
+          model: 'mock',
+          contract: 'gag_assistant_director@v1' as const,
+          description: `Stub EXEC-GAGAD ${reviewPhase} mock`,
+          notes: [],
+          verdict: 'PASS' as const,
+          planAssetId,
+          shotId,
+          gagPlanAssetId: null,
+          revisionCountBefore: 0,
+          acceptanceCriteria: [],
+          failedChecks: [],
+          passedChecks: [],
+        };
+      }
+
+      // ── Side-effects: revision counter + status flip + halt-escalation event
+      const verdict = reviewResult.verdict ?? 'UNKNOWN';
+      const beforeCount = reviewResult.revisionCountBefore ?? 0;
+      const upstreamStatusAfter =
+        verdict === 'PASS'
+          ? null
+          : verdict === 'HALT'
+            ? null // do NOT flip on HALT — Plan stays REVIEW for Director attention
+            : verdict === 'REVISE'
+              ? 'REVISION'
+              : null;
+      let afterCount = beforeCount;
+      if (verdict === 'REVISE') {
+        afterCount = beforeCount + 1;
+      }
+
+      // Update upstream Plan: counter + status (only for REVISE)
+      if (verdict === 'REVISE' || verdict === 'HALT') {
+        try {
+          const { data: upstream } = await supabase
+            .from('assets')
+            .select('metadata,status')
+            .eq('id', planAssetId)
+            .maybeSingle();
+          const upMeta = (upstream?.metadata as Record<string, unknown> | null) ?? {};
+          const newMeta = {
+            ...upMeta,
+            gagad_revision_count: afterCount,
+            gagad_last_verdict: verdict,
+            gagad_last_verdict_at: new Date().toISOString(),
+          };
+          const patch: Record<string, unknown> = { metadata: newMeta as unknown };
+          if (upstreamStatusAfter) patch.status = upstreamStatusAfter;
+          await supabase
+            .from('assets')
+            .update(patch as never)
+            .eq('id', planAssetId);
+        } catch {
+          // Non-fatal: counter persistence best-effort. Worst case next review
+          // sees stale counter — still bounded by Director intervention.
+        }
+      }
+
+      // Halt escalation: emit activity event so Director Inbox surfaces it
+      if (verdict === 'HALT') {
+        try {
+          await supabase
+            .from('activity_events')
+            .insert({
+              event_type: 'revision_requested',
+              severity: 'warning',
+              title: `GAGAD HALT — manual review needed (${reviewPhase})`,
+              description: `GAGAD reached revision cap (count=${beforeCount}) on shot ${shotId}. Director attention required.`,
+              actor: 'EXEC-GAGAD',
+              episode_id: episodeId,
+              asset_id: planAssetId,
+              metadata: {
+                gagad_escalation: true,
+                reason: 'cap_reached_2',
+                phase: reviewPhase,
+                target_asset_id: planAssetId,
+                shot_id: shotId,
+                revision_count: beforeCount,
+              },
+            } as never);
+        } catch {
+          // Non-fatal: log only.
+        }
+      }
+
+      // ── Save the REV verdict asset directly (skip_save bypass)
+      // Compose REV-gag_check_ref / _shot filename + insert
+      const targetFileType =
+        reviewPhase === 'eref_review' ? 'REV-gag_check_ref' : 'REV-gag_check_shot';
+      const epRow = inputs.episode as { episode_code?: string } | undefined;
+      const epCode = epRow?.episode_code ?? 'SS-UNKNOWN';
+      const safeShot = shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+
+      // Find next version for this combination
+      const { data: existingRev } = await supabase
+        .from('assets')
+        .select('version')
+        .eq('episode_id', episodeId)
+        .eq('file_type', targetFileType)
+        .like('filename', `%${safeShot}%`);
+      const maxV = (existingRev ?? []).reduce(
+        (m, r) => Math.max(m, r.version ?? 0),
+        0,
+      );
+      const nextV = maxV + 1;
+      const vStr = `v${String(nextV).padStart(2, '0')}`;
+      const filename = `${epCode}-REV-gag_check_${reviewPhase === 'eref_review' ? 'ref' : 'shot'}-${safeShot}-${vStr}-DRAFT.md`;
+
+      const { data: inserted, error: insErr } = await supabase
+        .from('assets')
+        .insert({
+          episode_id: episodeId,
+          series_id: null,
+          agent_id: 'EXEC-GAGAD',
+          file_type: targetFileType,
+          filename,
+          description: reviewResult.description,
+          status: 'REVIEW',
+          version: nextV,
+          content: reviewResult.markdown,
+          metadata: {
+            ...(reviewResult.body as Record<string, unknown>),
+            phase: reviewPhase,
+            plan_asset_id: planAssetId,
+            shot_id: shotId,
+            gag_plan_asset_id: reviewResult.gagPlanAssetId,
+            verdict,
+            acceptance_criteria: reviewResult.acceptanceCriteria,
+            failed_checks: reviewResult.failedChecks,
+            passed_checks: reviewResult.passedChecks,
+            revision_count_before: beforeCount,
+            revision_count_after: afterCount,
+            upstream_status_after: upstreamStatusAfter,
+            agent_id: 'EXEC-GAGAD',
+            model: reviewResult.model,
+            contract: reviewResult.contract,
+            provider_id: reviewResult.model,
+            provider_used: hasAnthropicKeyG ? 'anthropic' : 'mock',
+          } as unknown as Record<string, unknown>,
+        } as never)
+        .select('id')
+        .single();
+
+      if (insErr) {
+        throw new Error(`EXEC-GAGAD ${reviewPhase} insert failed: ${insErr.message}`);
+      }
+
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: reviewResult.costUsd,
+          metadata: {
+            agent_id: agentId,
+            model: reviewResult.model,
+            contract: reviewResult.contract,
+            markdown: reviewResult.markdown,
+            body: reviewResult.body,
+            description: reviewResult.description,
+            gag_phase: reviewPhase,
+            plan_asset_id: planAssetId,
+            shot_id: shotId,
+            gag_plan_asset_id: reviewResult.gagPlanAssetId,
+            verdict,
+            acceptance_criteria: reviewResult.acceptanceCriteria,
+            failed_checks: reviewResult.failedChecks,
+            passed_checks: reviewResult.passedChecks,
+            revision_count_before: beforeCount,
+            revision_count_after: afterCount,
+            upstream_status_after: upstreamStatusAfter,
+            // Tell factory.ts to skip its own save — we already inserted above.
+            skip_save: true,
+            inserted_asset_ids: [inserted.id],
+            provider_id: reviewResult.model,
+            provider_used: hasAnthropicKeyG ? 'anthropic' : 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-VPREV': {
+      // Sprint «Дизайнер и Аниматор» Day 8 2026-05-19 — Animator's Critic.
+      // Validates SPC-shot_plan against V01-V09. Side-effects Plan asset
+      // status flip per verdict.
+      if (!planAssetId) {
+        throw new Error(`EXEC-VPREV requires planAssetId in event payload`);
+      }
+      if (!shotId) {
+        throw new Error(`EXEC-VPREV requires shotId in event payload`);
+      }
+      if (!supabase) {
+        throw new Error(`EXEC-VPREV requires supabase client`);
+      }
+      const hasAnthropicKeyV = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKeyV) {
+        try {
+          const r = await runAnimatorCritic({
+            inputs,
+            supabase,
+            planAssetId,
+            shotId,
+          });
+          const targetPlanStatus =
+            r.verdict === 'PASS'
+              ? null
+              : r.verdict === 'FAIL'
+              ? 'REJECTED'
+              : 'REVISION';
+          if (targetPlanStatus) {
+            await supabase
+              .from('assets')
+              .update({ status: targetPlanStatus } as never)
+              .eq('id', planAssetId);
+          }
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                shot_id: r.shotId,
+                plan_asset_id: r.planAssetId,
+                verdict: r.verdict,
+                acceptance_criteria: r.acceptanceCriteria,
+                failed_checks: r.failedChecks,
+                passed_checks: r.passedChecks,
+                critic_notes: r.notes,
+                plan_status_after_critic: targetPlanStatus ?? 'REVIEW',
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                review_kind: 'shot_plan_critic',
+                // Day 11+ — surface series_genre so VPREV.nextEvent can decide
+                // whether to chain to GAGAD vanim_review.
+                series_genre: (inputs.series_genre as string | null | undefined) ?? null,
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof AnimatorCriticError) {
+            throw new Error(`EXEC-VPREV: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      const llmV = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llmV.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llmV.markdown,
+            body: { verdict: 'PASS' } as Record<string, unknown>,
+            description: 'Stub EXEC-VPREV mock — set ANTHROPIC_API_KEY for real path',
+            shot_id: shotId,
+            plan_asset_id: planAssetId,
+            verdict: 'PASS' as const,
+            review_kind: 'shot_plan_critic',
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-EPREV': {
+      // Sprint «Дизайнер и Аниматор» Day 4 2026-05-19 — Designer's Critic.
+      // Validates SPC-ref_plan asset against V01-V09 hard checks. Pure
+      // Sonnet 4.6 call; cheap (~$0.01-0.03). No image generation.
+      if (!planAssetId) {
+        throw new Error(`EXEC-EPREV requires planAssetId in event payload`);
+      }
+      if (!shotId) {
+        throw new Error(`EXEC-EPREV requires shotId in event payload`);
+      }
+      if (!supabase) {
+        throw new Error(`EXEC-EPREV requires supabase client`);
+      }
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runEpisodeReferenceCritic({
+            inputs,
+            supabase,
+            planAssetId,
+            shotId,
+          });
+          // Side-effect: flip the Plan asset's status based on the Critic's
+          // verdict. PASS leaves the Plan in REVIEW for Director; REVISE
+          // flips to REVISION (Designer re-runs via Critic's nextEvent);
+          // FAIL flips to REJECTED for Director escalation. UNKNOWN (no
+          // parseable JSON) is treated as REVISE — Designer must redo it.
+          const targetPlanStatus =
+            r.verdict === 'PASS'
+              ? null
+              : r.verdict === 'FAIL'
+              ? 'REJECTED'
+              : 'REVISION';
+          if (targetPlanStatus) {
+            await supabase
+              .from('assets')
+              .update({ status: targetPlanStatus } as never)
+              .eq('id', planAssetId);
+          }
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                shot_id: r.shotId,
+                plan_asset_id: r.planAssetId,
+                verdict: r.verdict,
+                acceptance_criteria: r.acceptanceCriteria,
+                failed_checks: r.failedChecks,
+                passed_checks: r.passedChecks,
+                critic_notes: r.notes,
+                plan_status_after_critic: targetPlanStatus ?? 'REVIEW',
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                review_kind: 'ref_plan_critic',
+                // Day 11+ — surface series_genre so EPREV.nextEvent can decide
+                // whether to chain to GAGAD review (only fires for comedy-like).
+                series_genre: (inputs.series_genre as string | null | undefined) ?? null,
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof EpisodeReferenceCriticError) {
+            throw new Error(`EXEC-EPREV: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Mock fallback — replay-pilot / no API key. Default to PASS so the
+      // chain progresses for self-tests. Auto-chain in factory.nextEvent
+      // honours this verdict and flips the Plan to REVIEW.
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: { verdict: 'PASS' } as Record<string, unknown>,
+            description: 'Stub EXEC-EPREV mock — set ANTHROPIC_API_KEY for real path',
+            shot_id: shotId,
+            plan_asset_id: planAssetId,
+            verdict: 'PASS' as const,
+            review_kind: 'ref_plan_critic',
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
     case 'EXEC-EREF': {
-      // Real Episode Reference Generator. Bible-anchored gpt-image-1 fan-out
+      // Real Episode Reference Generator. Bible-anchored gpt-image-2 fan-out
       // — produces N IMG-episode_ref_<slug> assets directly. Contract:
       // specs/contracts/episode_references@v1.yaml.
+      //
+      // Sprint «Дизайнер и Аниматор» Day 3.2 (2026-05-18): when planAssetId
+      // + shotId are set (Plan-driven branch, q1a additive), runner generates
+      // exactly one IMG-episode_ref for the planned shot using the Plan's
+      // provider/size/variants/prompt/negative decisions. When unset, legacy
+      // multi-shot fan-out path runs.
       const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
       if (hasOpenAI && supabase) {
         try {
-          const r = await runEpisodeReferences({ inputs, supabase, episodeCode });
+          const r = await runEpisodeReferences({
+            inputs,
+            supabase,
+            episodeCode,
+            planAssetId,
+            shotId,
+          });
           return {
             outputKind: 'image-png',
             result: {
@@ -856,9 +1520,46 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         })),
       );
 
-      const prompt = storyboardShot
-        ? buildShotPromptV2(storyboardShot, episodeTitle, characterCanon)
-        : buildShotPrompt(inputs, shotId);
+      // ── Plan-driven branch (Day 6-7 q1a additive) ────────────────────────
+      // When planAssetId is set on EXEC-VGEN, load the APPROVED SPC-shot_plan
+      // and use its prompt verbatim (Animator's decision-of-record). Otherwise
+      // fall back to buildShotPromptV2 template (legacy path, replay-pilot).
+      let planPrompt: string | null = null;
+      if (planAssetId && supabase) {
+        try {
+          const { data: planRow } = await supabase
+            .from('assets')
+            .select('content,status,file_type')
+            .eq('id', planAssetId)
+            .maybeSingle();
+          if (
+            planRow &&
+            (planRow as { file_type?: string }).file_type === 'SPC-shot_plan' &&
+            (planRow as { status?: string }).status === 'APPROVED'
+          ) {
+            const content = (planRow as { content?: string | null }).content ?? '';
+            const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
+            const last = matches[matches.length - 1]?.[1];
+            if (last) {
+              try {
+                const body = JSON.parse(last.trim()) as { prompt?: unknown };
+                if (typeof body.prompt === 'string' && body.prompt.length > 0) {
+                  planPrompt = body.prompt;
+                }
+              } catch {
+                /* leave planPrompt null */
+              }
+            }
+          }
+        } catch {
+          /* leave planPrompt null — fall back to legacy template */
+        }
+      }
+      const prompt =
+        planPrompt ??
+        (storyboardShot
+          ? buildShotPromptV2(storyboardShot, episodeTitle, characterCanon)
+          : buildShotPrompt(inputs, shotId));
 
       if (isRealVideo) {
         if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
@@ -1346,6 +2047,11 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-SB': 'STB-storyboard',
   'EXEC-WCHK': 'REV-world_check',
   'EXEC-EREF': 'IMG-episode_ref', // backbone v2: between Storyboard and Animatic
+  'EXEC-EREF-DESIGNER': 'SPC-ref_plan', // Sprint «Дизайнер и Аниматор» — Plan asset feeds EXEC-EREF executor
+  'EXEC-EPREV': 'REV-ref_plan', // Day 4 — Designer's Critic verdict (one REV row per Plan)
+  'EXEC-VANIM': 'SPC-shot_plan', // Day 6-7 — Animator video Plan per shot
+  'EXEC-VPREV': 'REV-shot_plan', // Day 8 — Animator's Critic verdict
+  'EXEC-GAGAD': 'SPC-gag_plan', // Day 11+ — default for Phase plan; review phases use skip_save + manual insert
   'EXEC-EDIT': 'VID-animatic', // animatic produces a video asset; spec is metadata
   'EXEC-VGEN': 'VID-shot',
   'EXEC-MGEN': 'AUD-music',
