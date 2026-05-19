@@ -13,8 +13,8 @@
 ## CURRENT STATE
 
 ```
-Phase:    **Sprint «Дизайнер и Аниматор» — KICKOFF 2026-05-18** (11 дней, EREF → VGEN canonical agentification)
-Status:   ✅ **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 — MERGED to master 2026-05-18** (squash commit `cc43944`)
+Phase:    **Sprint «Дизайнер и Аниматор» — DAY 1-11 SHIPPED 2026-05-19** (Director smoke + master merge pending)
+Status:   ✅ **Sprint Day 1-11 ALL CODE LANDED on `claude/quizzical-brown-462555`** (6 sprint commits: 191ef3a Day 3.2, 8f33f95 Day 4, 296606d Day 4.5, 3a575ce Day 6-7, 62c4b82 Day 8, c3c9b59 Day 8.5). Verify: tsc clean · vitest **308/308** · replay-pilot **29/29**.
             • Skills-as-capabilities refactor (lazy two-step API + 2 broad capability playbooks)
             • EREF chain bug fix (review-id → underlying STB resolution) + RejectModal directorConfirm
             • EREF pilot state mirror в episodes.metadata (closes UI gap FANOUT_RUNNING → FANOUT_COMPLETE)
@@ -96,12 +96,30 @@ Status:   ✅ **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 — MERGED to mast
           • ✅ **Day 2 of 11 COMPLETE** — Episode Reference Designer agent (spec + runner + tests + skill)
           • ✅ **Day 3.1 COMPLETE** — Option A agent infrastructure plumbing (commit `d148a01`).
             EXEC-EREF-DESIGNER registered, fireable via Inngest event. Critic + live wire-in pending.
-          • ✅ **Day 3.2 COMPLETE 2026-05-18** — Live approval-route wire-in shipped behind
-            `DESIGNER_CHAIN_ENABLED` feature flag (q2c soft switch — Director chose flag-gated rollout
-            so legacy `generate-references` path stays reachable as fallback). Plan-driven branch
-            added to episode-references.ts (q1a additive — old fan-out behaviour intact). Verify:
-            tsc clean · vitest **259/259** (+19 new Plan-branch tests) · replay-pilot **29/29**.
-            Smoke deferred to Day 4 per Director directive (q4c — Critic chain first).
+          • ✅ **Day 3.2 COMPLETE 2026-05-18** (commit `191ef3a`) — Plan-driven EREF executor behind
+            `DESIGNER_CHAIN_ENABLED` feature flag. q1a/q2c/q3a/q4c.
+          • ✅ **Day 4 COMPLETE 2026-05-19** (commit `8f33f95`) — Designer's Critic (EXEC-EPREV) with
+            V01-V09 hard checks + auto-chain (REVISE re-fires Designer with acceptance_criteria as
+            hard contract). Plan status side-effects: PASS→REVIEW, REVISE→REVISION, FAIL→REJECTED.
+            Verify: vitest 269/269 (+10).
+          • ✅ **Day 4.5 COMPLETE 2026-05-19** (commit `296606d`) — PA tools: getRefPlan, listRefPlans,
+            getCriticVerdict, regenerateRefPlan. Verify: vitest 276/276 (+7).
+          • ✅ **Day 6-7 COMPLETE 2026-05-19** (commit `3a575ce`) — Animator (EXEC-VANIM) Sonnet 4.6
+            Plan author per shot + Plan-driven VGEN executor branch (q1a). Replaces buildShotPromptV2
+            when planAssetId is set. animator.md spec + skill v0.1 ACTIVE. Verify: vitest 292/292 (+16).
+          • ✅ **Day 8 COMPLETE 2026-05-19** (commit `62c4b82`) — Animator's Critic (EXEC-VPREV) with
+            V01-V09 (provider format match, ≤1 primary action, NEGATIVE baseline, etc) + auto-chain.
+            Verify: vitest 302/302 (+10).
+          • ✅ **Day 8.5 COMPLETE 2026-05-19** (commit `c3c9b59`) — PA tools for Animator: getShotPlan,
+            listShotPlans, getAnimatorCriticVerdict, regenerateShotPlan. Verify: vitest 308/308 (+6).
+          • ⏳ **Day 9-10 DEFERRED 2026-05-19** — Smoke E22 (full episode through Designer→Critic→
+            Animator→VGEN chain, ~$8-15 budget). Director will fire manually after master merge via
+            `DESIGNER_CHAIN_ENABLED=true ANIMATOR_CHAIN_ENABLED=true` on E22 episode. Quantitative
+            retro deferred to post-smoke session.
+          • ✅ **Day 11 COMPLETE 2026-05-19** — Final memo + glossary alignment + skill v0.2 polish.
+            Sprint «Дизайнер и Аниматор» Day 1-11 SHIPPED behind 2 feature flags. 6 commits, ~3000 LoC,
+            68 new tests, 4 new agent_ids (EREF-DESIGNER, EPREV, VANIM, VPREV), 6 new events, 2 new
+            asset types (SPC-ref_plan, SPC-shot_plan + REV variants), 0 dollars spent (smoke deferred).
             **Touchpoints (10)**:
             – `lib/inngest/client.ts` — registered `sandystudio/exec-eref-designer/plan` (formerly
               referenced but unregistered) + new `sandystudio/exec-eref/execute-from-plan`
@@ -168,21 +186,22 @@ Status:   ✅ **Sprint φ + 2026-05-16 hotfixes + gpt-image-2 — MERGED to mast
             replay-pilot **29/29**.
           • Commits: `1f82ed8` (runner), `dc75329` (tests), `693852b` (skill).
 
-Next:     Day 4 — Designer's Critic (EXEC-EPREV) + Director q4c smoke gate:
-          • Build EXEC-EPREV runner — Sonnet 4.6, validates Plan against V01-V08 checks
-             (provider in allowlist, size matches delivery_target, prompt non-empty,
-             negative covers core terms, etc). Verdict APPROVE → fire approve-route as if
-             Director clicked; REVISE → flip Plan to REVISION + emit revisionNote.
-          • Register `sandystudio/exec-eprev/review-plan` event + Inngest function +
-             concurrency entry. Auto-fire from Designer's `nextEvent` callback
-             (currently returns null in Day 3.1 implementation).
-          • E22 real smoke (~$1.10 single-shot end-to-end) only AFTER Critic is in chain
-             — Director's q4c directive 2026-05-18. Bypass: set DESIGNER_CHAIN_ENABLED=true
-             in webapp env for selected episode, manual approve Plan, watch IMG land.
-          • PR or master merge of Day 1+2+3.1+3.2 — Director gate after Critic.
+Next:     Sprint Day 1-11 SHIPPED — Director sequence:
+          1. Review PLAN.md sprint summary above + branch commits 191ef3a..c3c9b59
+          2. Decide PR vs squash-merge to master (existing pattern: squash, like Sprint φ cc43944)
+          3. Fire E22 smoke (Day 9-10 deferred deliverable):
+              • Set DESIGNER_CHAIN_ENABLED=true + ANIMATOR_CHAIN_ENABLED=true in webapp env
+              • Pick E22 episode, advance through REV-world_check.APPROVED
+              • Watch Plan fan-out (22 SPC-ref_plan + Critic verdicts) → Director approves
+              • Watch IMG fan-out (~$1.30 22 IMG @ gpt-image-2 high quality)
+              • Watch VID-animatic.APPROVED → 22 SPC-shot_plan + Critic verdicts → Director approves
+              • Watch VGEN fan-out (~$8 22 shots @ seedance-fast) → final-cut.mp4
+              • Total budget ~$10-15
+          4. Post-smoke retro session: update technology.md §3.6 with E22 data; bump
+             seedance-prompting and animator skills to v0.2 based on what worked / what flopped
 
 Mode:     ===5=== EDIT MODE active · Mode 1 (MANUAL governance) · auto-sync OFF
-Date:     2026-05-18
+Date:     2026-05-19
 ```
 
 ---
