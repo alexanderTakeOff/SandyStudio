@@ -167,15 +167,14 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     category: 'review',
     // Sonnet 4.6 — V01-V09 hard checks against shot Plan JSON body (provider
     // format match, ≤1 primary action, NEGATIVE baseline, continuity anchor,
-    // duration consistency). Cheap (~$0.01-0.03 per Plan). Registered now
-    // (Day 6-7) so Animator.next_agent resolves; Inngest function lands in
-    // Day 8 — `has_inngest_function: false` until then.
+    // duration consistency). Cheap (~$0.01-0.03 per Plan). Day 8 wired the
+    // Inngest function + auto-chain (REVISE → re-fire Animator).
     model: 'sonnet',
     skills: [],
     next_agent: 'EXEC-VGEN', // after Plan APPROVED, executor consumes it
     governance: 'B',
     prompt_file: 'animator_critic.md',
-    has_inngest_function: false,
+    has_inngest_function: true,
   },
 
   'EXEC-EREF': {

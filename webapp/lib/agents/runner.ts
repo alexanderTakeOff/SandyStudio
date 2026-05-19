@@ -59,6 +59,7 @@ import {
   EpisodeReferenceCriticError,
 } from './runners/episode-reference-critic';
 import { runAnimator, AnimatorError } from './runners/animator';
+import { runAnimatorCritic, AnimatorCriticError } from './runners/animator-critic';
 import { runAnimaticSlideshow, AnimaticSlideshowError } from './runners/animatic-slideshow';
 import { loadSeriesBibleCanon } from './bible-loader';
 import type { AgentId, AgentInputs, AgentResult } from './types';
@@ -722,6 +723,96 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             description: 'Stub EXEC-VANIM mock — set ANTHROPIC_API_KEY for real path',
             shot_id: shotId,
             plan_kind: 'shot_plan',
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-VPREV': {
+      // Sprint «Дизайнер и Аниматор» Day 8 2026-05-19 — Animator's Critic.
+      // Validates SPC-shot_plan against V01-V09. Side-effects Plan asset
+      // status flip per verdict.
+      if (!planAssetId) {
+        throw new Error(`EXEC-VPREV requires planAssetId in event payload`);
+      }
+      if (!shotId) {
+        throw new Error(`EXEC-VPREV requires shotId in event payload`);
+      }
+      if (!supabase) {
+        throw new Error(`EXEC-VPREV requires supabase client`);
+      }
+      const hasAnthropicKeyV = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKeyV) {
+        try {
+          const r = await runAnimatorCritic({
+            inputs,
+            supabase,
+            planAssetId,
+            shotId,
+          });
+          const targetPlanStatus =
+            r.verdict === 'PASS'
+              ? null
+              : r.verdict === 'FAIL'
+              ? 'REJECTED'
+              : 'REVISION';
+          if (targetPlanStatus) {
+            await supabase
+              .from('assets')
+              .update({ status: targetPlanStatus } as never)
+              .eq('id', planAssetId);
+          }
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                shot_id: r.shotId,
+                plan_asset_id: r.planAssetId,
+                verdict: r.verdict,
+                acceptance_criteria: r.acceptanceCriteria,
+                failed_checks: r.failedChecks,
+                passed_checks: r.passedChecks,
+                critic_notes: r.notes,
+                plan_status_after_critic: targetPlanStatus ?? 'REVIEW',
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                review_kind: 'shot_plan_critic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof AnimatorCriticError) {
+            throw new Error(`EXEC-VPREV: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      const llmV = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llmV.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llmV.markdown,
+            body: { verdict: 'PASS' } as Record<string, unknown>,
+            description: 'Stub EXEC-VPREV mock — set ANTHROPIC_API_KEY for real path',
+            shot_id: shotId,
+            plan_asset_id: planAssetId,
+            verdict: 'PASS' as const,
+            review_kind: 'shot_plan_critic',
             provider_id: 'mock',
             provider_used: 'mock',
           },
