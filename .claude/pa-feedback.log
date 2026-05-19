@@ -15936,3 +15936,136 @@ Blocking-проблем нет. Сценарий можно вести даль�
 вперед
 ===== END =====
 
+===== !AMBIENT 2026-05-19T16:46:37.787Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Сделала.
+
+## В Library SS-S15 созданы seed-карточки
+
+### Characters
+- `Sandy — S15 Base Look`
+- `Heavy Friend / Anvil — антропоморфная наковальня`
+
+### Objects
+- `Mirror Vanity / Mirrored Dresser`
+- `Heavy Friend — Key Prop Continuity Sheet`
+
+### Locations
+- `Sandy’s Room — Heavy Friend Episode Location`
+
+### Style
+- `Prop and Location Continuity System — S15`
+
+## Enrichment запущен
+
+Запустила генерацию первых Library-картинок по всем 6 карточкам:
+- Sandy
+- Anvil
+- mirror vanity
+- Sandy’s room
+- key props
+- continuity/style card
+
+Для всех генераций использован style-anchor `Prop and Location Continuity System`, чтобы системно снизить дрейф объектов между видами.
+
+Следующее действие: мониторю activity feed; когда изображения будут готовы, прочитаю assets и дам разбор по каждому: что годится, что надо регенерировать, и где есть continuity-риск.
+===== END =====
+
+===== !AMBIENT 2026-05-19T16:47:56.387Z thread=bdbdafcf episode=- =====
+пиши , отвечай мне короче  = use cavemen style reply
+===== END =====
+
+===== !AMBIENT 2026-05-19T16:48:02.484Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Приняла.
+
+Дальше отвечаю короче.  
+Стиль: коротко, прямо, без лишнего.
+===== END =====
+
+===== !AMBIENT 2026-05-19T16:49:51.801Z thread=bdbdafcf episode=- =====
+а я смотрю что никто не читает при генерации наших требований У нас написано что 2D никаких 3D А тем не менее сэндисгенерировали как 3D и совсем не в том стиле которые мы обсуждали которые у нас прописаны везде это мы где потерялись вопросительный знак Ну в общем мы нарушили своё собственное правило о том что сначала должен быть сгенерирован стиль когда мы делаем заполнение библиотеки первое что мы делаем - это стиль а только потом уже имея образец стиля мы делаем все остальные объекты Точка Но у меня вопрос почему у нас все объекты и герои получились трёхмерными и совершенно не в том стиле который у нас описан везде Где мой потерялись вопросительный знак
+===== END =====
+
+===== !AMBIENT 2026-05-19T16:50:33.195Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Да. Потерялись тут:
+
+1. **Style asset сам был неправильный.**  
+   В prompt попало: `Style: Stylized 3D cartoon`.  
+   Это прямой яд. Поэтому всё ушло в 3D.
+
+2. **Style надо было делать первым и остановиться.**  
+   Я нарушила порядок: запустила всех сразу. Нельзя.
+
+3. **General Bible говорит “жирные контуры / cartoon physics”, но style card перезаписала это как 3D.**  
+   Agent слушал последний style-anchor.
+
+4. **Нет active skill для Bible Editor.**  
+   Значит правило “сначала 2D style, потом остальные” не закреплено durable.
+
+Итог: вина пайплайна и моя. Не промониторила prompt перед генерацией.
+
+Что делаем:
+- текущие картинки считаем **браком / не canon**;
+- сначала делаем новый **2D style sample**;
+- только после твоего approval — Sandy / Anvil / props / location.
+
+Нужно закрепить skill для Bible Editor:  
+**“Library generation order: style first, 2D-only, no batch characters before approved style.”**
+
+Одобри skill, и я заведу.
+===== END =====
+
+===== !AMBIENT 2026-05-19T16:51:49.016Z thread=bdbdafcf episode=- =====
+Нет давай разберёмся Каким образом нам нужно изменить нашу систему взаимодействия Чтобы в дальнейшем драматически избегать подобных ситуаций?
+===== END =====
+
+===== !AMBIENT 2026-05-19T16:52:16.442Z thread=bdbdafcf episode=- =====
+[ASSISTANT] Новых событий нет.
+
+Да. Менять надо не “промпт”, а **протокол**.
+
+## Новый протокол Library
+
+1. **Style first. Always.**
+   - сначала только 1 style frame;
+   - никаких Sandy / props / locations до approval стиля.
+
+2. **Preflight перед генерацией**
+   Проверка prompt на яд:
+   - запрещено: `3D`, `render`, `volumetric`, `cinematic lighting`, `realistic`;
+   - обязательно: `2D`, `flat cartoon`, `bold outline`, `no 3D`.
+
+3. **Style-lock**
+   После утверждения стиля:
+   - все герои/объекты/локации используют только этот style anchor;
+   - без style anchor генерация запрещена.
+
+4. **Canary step**
+   После style:
+   - генерим только Sandy;
+   - проверяем стиль;
+   - только потом Anvil и остальные.
+
+5. **Continuity card до вариантов**
+   Для каждого объекта сначала карточка:
+   - форма;
+   - цвет;
+   - материал;
+   - запреты на вариации.
+
+6. **Batch запрещён до проверки**
+   Нельзя запускать 6 assets сразу.  
+   Только: style → Sandy → Anvil → props → location.
+
+7. **Все новые картинки = non-canon**
+   Пока Director не approved — это мусор/черновик, не канон.
+
+## Где сломалось
+
+Я запустила batch без approved style.  
+Пайплайн дал 3D-style prompt.  
+Никто не сделал preflight.  
+Значит система не имела стопора.
+
+Следующее действие: формулирую это как hard protocol для Bible Editor / visual generation skills.
+===== END =====
+

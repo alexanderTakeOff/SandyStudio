@@ -13,8 +13,15 @@
 ## CURRENT STATE
 
 ```
-Phase:    **Sprint «Дизайнер и Аниматор» — DAY 1-11 SHIPPED 2026-05-19** (Director smoke + master merge pending)
-Status:   ✅ **Sprint Day 1-11 ALL CODE LANDED on `claude/quizzical-brown-462555`** (6 sprint commits: 191ef3a Day 3.2, 8f33f95 Day 4, 296606d Day 4.5, 3a575ce Day 6-7, 62c4b82 Day 8, c3c9b59 Day 8.5). Verify: tsc clean · vitest **308/308** · replay-pilot **29/29**.
+Phase:    **Sprint «Дизайнер и Аниматор» — MERGED TO MASTER 2026-05-19** (squash `12d708f` pushed to origin)
+Status:   ✅ **Sprint Day 1-11+ MERGED TO ORIGIN/MASTER 2026-05-19 PM** (squash commit `12d708f`,
+            11 source commits 191ef3a..760ebe6 включая EXEC-GAGAD full v1 c2ed9e8, TD-19/TD-20).
+            Verify on master: tsc clean · vitest **327/327** · replay-pilot **29/29**.
+            SS-S15 «SANDY» E01 «Heavy Friend» smoke in flight via Polina chat at merge time.
+            Mode: ===5=== · Mode 1 governance · auto-sync OFF.
+            Open debt: TD-19 (asset version-increment), TD-20 (PA chat streaming + cancel),
+            ANIMATOR_CHAIN_ENABLED auto-fan-out branch (~30 LoC). All Director-deferred.
+            Date: 2026-05-19
             • Skills-as-capabilities refactor (lazy two-step API + 2 broad capability playbooks)
             • EREF chain bug fix (review-id → underlying STB resolution) + RejectModal directorConfirm
             • EREF pilot state mirror в episodes.metadata (closes UI gap FANOUT_RUNNING → FANOUT_COMPLETE)
