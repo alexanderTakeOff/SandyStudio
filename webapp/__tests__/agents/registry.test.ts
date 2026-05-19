@@ -26,13 +26,13 @@ describe('AGENT_REGISTRY structural integrity', () => {
     }
   });
 
-  it('exactly 14 agents have Inngest functions (Sprint «Дизайнер и Аниматор»: +EXEC-EREF-DESIGNER)', () => {
+  it('exactly 15 agents have Inngest functions (Sprint «Дизайнер и Аниматор» Day 4: +EXEC-EPREV)', () => {
     // Backbone v2 (2026-05-01) added EXEC-EREF (12). Phase A.2 PR β
     // (2026-05-08) adds EXEC-STITCH Episode Stitcher → 13. Sprint «Дизайнер
-    // и Аниматор» (2026-05-18) adds EXEC-EREF-DESIGNER as the LLM Plan
-    // author paired with the existing EXEC-EREF executor → 14.
+    // и Аниматор» (2026-05-18) adds EXEC-EREF-DESIGNER → 14. Day 4
+    // (2026-05-19) adds EXEC-EPREV (Designer's Critic) → 15.
     const inngestable = inngestAgents();
-    expect(inngestable).toHaveLength(14);
+    expect(inngestable).toHaveLength(15);
   });
 
   it('every Inngest agent has a prompt_file (no orphaned prompts)', () => {

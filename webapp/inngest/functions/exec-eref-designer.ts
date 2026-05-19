@@ -31,10 +31,23 @@ export const execErefDesignerPlan = createAgentInngestFunction({
       typeof eventData.shotId === 'string' ? (eventData.shotId as string) : undefined;
     return shotId ? { shotId } : {};
   },
-  // No auto-chain in Day 3 — the Plan sits in REVIEW for Director (or for the
-  // Day 4 Critic once it lands). When Critic ships, this becomes:
-  //   nextEvent: () => ({ name: 'sandystudio/exec-eprev/review-plan', ... })
-  // and on APPROVED a separate approve-route handler fires
+  // Day 4 wiring (2026-05-19): auto-fire Critic on the freshly-saved Plan.
+  // The Critic runs V01-V09 hard checks and either PASSes (Plan stays in
+  // REVIEW for Director) or REVISEs (Plan flips to REVISION; Critic's own
+  // nextEvent re-fires Designer with acceptance_criteria as hard contract).
+  // On APPROVED Plan, a separate approve-route handler fires
   // 'sandystudio/exec-eref/execute-from-plan'.
-  nextEvent: () => null,
+  nextEvent: (saved, eventData) => {
+    const shotId =
+      typeof eventData.shotId === 'string' ? (eventData.shotId as string) : null;
+    if (!shotId) return null;
+    return {
+      name: 'sandystudio/exec-eprev/review-plan',
+      data: {
+        episodeId: eventData.episodeId as string,
+        planAssetId: saved.assetId,
+        shotId,
+      },
+    };
+  },
 });

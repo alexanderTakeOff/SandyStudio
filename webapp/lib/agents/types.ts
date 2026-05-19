@@ -19,6 +19,7 @@ export type AgentId =
   | 'EXEC-WCHK'
   | 'EXEC-EREF'
   | 'EXEC-EREF-DESIGNER' // Sprint «Дизайнер и Аниматор» 2026-05-18 — Plan writer for EREF
+  | 'EXEC-EPREV' // Sprint «Дизайнер и Аниматор» 2026-05-19 — Designer's Critic (Plan validator)
   | 'EXEC-EDIT'
   | 'EXEC-VGEN'
   | 'EXEC-MGEN'
@@ -43,6 +44,7 @@ export type AgentCode =
   | 'exec-wchk'
   | 'exec-eref'
   | 'exec-eref-designer'
+  | 'exec-eprev'
   | 'exec-edit'
   | 'exec-vgen'
   | 'exec-mgen'

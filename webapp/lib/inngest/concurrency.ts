@@ -27,6 +27,11 @@ export const CONCURRENCY_LIMITS = {
   // higher won't help wall-clock much (Sonnet ~6-12s per Plan) and could
   // surface rate-limit edge cases for very large episodes.
   'exec-eref-designer': 3,
+  // Designer's Critic (Day 4 2026-05-19) — Sonnet 4.6 validator, very cheap.
+  // Higher cap than Designer because Critic runs in parallel per Plan when
+  // multiple Plans land at once (e.g. fanned out from a single REV-world_check
+  // approval).
+  'exec-eprev': 5,
   // Plan-driven executor (Day 3.2 2026-05-18) — single-shot image generation
   // from an APPROVED SPC-ref_plan. Same rate-limit logic as legacy exec-eref
   // (gpt-image-2 fan-out, expensive), but here parallelism is one shot per

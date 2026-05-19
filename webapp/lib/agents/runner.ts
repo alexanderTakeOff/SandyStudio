@@ -54,6 +54,10 @@ import {
   runEpisodeReferenceDesigner,
   EpisodeReferenceDesignerError,
 } from './runners/episode-reference-designer';
+import {
+  runEpisodeReferenceCritic,
+  EpisodeReferenceCriticError,
+} from './runners/episode-reference-critic';
 import { runAnimaticSlideshow, AnimaticSlideshowError } from './runners/animatic-slideshow';
 import { loadSeriesBibleCanon } from './bible-loader';
 import type { AgentId, AgentInputs, AgentResult } from './types';
@@ -651,6 +655,104 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             description: 'Stub EXEC-EREF-DESIGNER mock — set ANTHROPIC_API_KEY for real path',
             shot_id: shotId,
             plan_kind: 'ref_plan',
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-EPREV': {
+      // Sprint «Дизайнер и Аниматор» Day 4 2026-05-19 — Designer's Critic.
+      // Validates SPC-ref_plan asset against V01-V09 hard checks. Pure
+      // Sonnet 4.6 call; cheap (~$0.01-0.03). No image generation.
+      if (!planAssetId) {
+        throw new Error(`EXEC-EPREV requires planAssetId in event payload`);
+      }
+      if (!shotId) {
+        throw new Error(`EXEC-EPREV requires shotId in event payload`);
+      }
+      if (!supabase) {
+        throw new Error(`EXEC-EPREV requires supabase client`);
+      }
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runEpisodeReferenceCritic({
+            inputs,
+            supabase,
+            planAssetId,
+            shotId,
+          });
+          // Side-effect: flip the Plan asset's status based on the Critic's
+          // verdict. PASS leaves the Plan in REVIEW for Director; REVISE
+          // flips to REVISION (Designer re-runs via Critic's nextEvent);
+          // FAIL flips to REJECTED for Director escalation. UNKNOWN (no
+          // parseable JSON) is treated as REVISE — Designer must redo it.
+          const targetPlanStatus =
+            r.verdict === 'PASS'
+              ? null
+              : r.verdict === 'FAIL'
+              ? 'REJECTED'
+              : 'REVISION';
+          if (targetPlanStatus) {
+            await supabase
+              .from('assets')
+              .update({ status: targetPlanStatus } as never)
+              .eq('id', planAssetId);
+          }
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                shot_id: r.shotId,
+                plan_asset_id: r.planAssetId,
+                verdict: r.verdict,
+                acceptance_criteria: r.acceptanceCriteria,
+                failed_checks: r.failedChecks,
+                passed_checks: r.passedChecks,
+                critic_notes: r.notes,
+                plan_status_after_critic: targetPlanStatus ?? 'REVIEW',
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                review_kind: 'ref_plan_critic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof EpisodeReferenceCriticError) {
+            throw new Error(`EXEC-EPREV: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Mock fallback — replay-pilot / no API key. Default to PASS so the
+      // chain progresses for self-tests. Auto-chain in factory.nextEvent
+      // honours this verdict and flips the Plan to REVIEW.
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: { verdict: 'PASS' } as Record<string, unknown>,
+            description: 'Stub EXEC-EPREV mock — set ANTHROPIC_API_KEY for real path',
+            shot_id: shotId,
+            plan_asset_id: planAssetId,
+            verdict: 'PASS' as const,
+            review_kind: 'ref_plan_critic',
             provider_id: 'mock',
             provider_used: 'mock',
           },
@@ -1442,6 +1544,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-WCHK': 'REV-world_check',
   'EXEC-EREF': 'IMG-episode_ref', // backbone v2: between Storyboard and Animatic
   'EXEC-EREF-DESIGNER': 'SPC-ref_plan', // Sprint «Дизайнер и Аниматор» — Plan asset feeds EXEC-EREF executor
+  'EXEC-EPREV': 'REV-ref_plan', // Day 4 — Designer's Critic verdict (one REV row per Plan)
   'EXEC-EDIT': 'VID-animatic', // animatic produces a video asset; spec is metadata
   'EXEC-VGEN': 'VID-shot',
   'EXEC-MGEN': 'AUD-music',

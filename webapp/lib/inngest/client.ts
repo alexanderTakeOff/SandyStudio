@@ -123,6 +123,21 @@ type Events = {
   };
 
   /**
+   * EXEC-EPREV — Designer's Critic. Sprint «Дизайнер и Аниматор» Day 4
+   * 2026-05-19. Fired by EXEC-EREF-DESIGNER's nextEvent callback right after
+   * a fresh SPC-ref_plan is saved. Critic runs V01-V09 hard checks against
+   * the Plan JSON body. PASS → Plan flips REVIEW (Director sees it); REVISE
+   * → Plan flips REVISION + Critic emits revisionNote which auto-fires the
+   * Designer with hard-contract criteria.
+   */
+  'sandystudio/exec-eprev/review-plan': {
+    data: BaseEpisodeEvent & {
+      planAssetId: string;
+      shotId: string;
+    };
+  };
+
+  /**
    * EREF v3 Plan-driven executor — Sprint «Дизайнер и Аниматор» Day 3.2
    * 2026-05-18. Fired when Director approves an SPC-ref_plan asset. The
    * executor reads the Plan's JSON body (provider, size, variants, prompt,

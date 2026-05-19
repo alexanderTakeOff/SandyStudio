@@ -116,9 +116,28 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     category: 'production',
     model: 'sonnet', // Sprint «Дизайнер и Аниматор» 2026-05-18 — LLM-driven Plan author
     skills: ['eref-designer'],
-    next_agent: 'EXEC-EREF', // after Plan APPROVED, executor reads it and calls provider
+    next_agent: 'EXEC-EPREV', // Day 4 — Critic validates Plan before Director sees it
     governance: 'B',
     prompt_file: 'episode_reference_designer.md',
+    has_inngest_function: true,
+  },
+
+  'EXEC-EPREV': {
+    id: 'EXEC-EPREV',
+    code: 'exec-eprev',
+    display_ru: 'Критик дизайнера',
+    display_en: "Designer's Critic",
+    emoji: '🧐',
+    category: 'review',
+    // Sonnet 4.6 — Critic enforces V01-V09 hard checks against the Plan JSON
+    // body. Cheap (~$0.01-0.03 per Plan, no image generation). Verdict drives
+    // auto-chain: PASS → Plan flips REVIEW (Director sees it); REVISE → Plan
+    // flips REVISION + revisionNote fires Designer re-run with hard contract.
+    model: 'sonnet',
+    skills: [],
+    next_agent: 'EXEC-EREF', // after Plan APPROVED, executor reads it and calls provider
+    governance: 'B',
+    prompt_file: 'episode_reference_critic.md',
     has_inngest_function: true,
   },
 

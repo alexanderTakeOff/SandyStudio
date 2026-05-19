@@ -105,6 +105,15 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     ],
     governance: 'AGENT_RUN',
   },
+  'EXEC-EPREV': {
+    // Sprint «Дизайнер и Аниматор» Day 4 2026-05-19. Critic reads the Plan
+    // asset directly via planAssetId (event payload), not via upstream_assets.
+    // The storyboard is the upstream context — same minCount=1 as Designer.
+    required: [
+      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
+    ],
+    governance: 'AGENT_RUN',
+  },
   'EXEC-EDIT': {
     // Animatic now consumes APPROVED Episode references (not raw storyboard).
     required: [
