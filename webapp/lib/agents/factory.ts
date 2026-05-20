@@ -34,6 +34,7 @@ import {
 import type { AgentResult } from './types';
 import { resolveModelId } from './registry';
 import { createSupabaseServiceRoleClient } from '../supabase/server';
+import { logEvent } from '../api/events';
 import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
 
@@ -193,7 +194,10 @@ export function createAgentInngestFunction<E extends string>(
         // Activity feed entry so the Pipeline View shows "Storyboarder started"
         // immediately, not after ~70s of silence. Director's UX request from
         // 2026-05-02 — silent stages were unreadable.
-        await supabase.from('activity_events').insert({
+        // TD-20.B 2026-05-20 — write via logEvent so pa/notify-needed fires
+        // for the Inngest auto-react chain. Was direct insert which bypassed
+        // the helper and left Polina silent on real pipeline progress.
+        await logEvent(supabase, {
           event_type: 'agent_started',
           severity: 'info',
           title: `${agentDisplayName(spec.agentId)} started`,
@@ -206,7 +210,7 @@ export function createAgentInngestFunction<E extends string>(
             inngest_run_id: runId,
             expected_seconds: EXPECTED_RUNTIME_SECONDS[spec.agentId] ?? 60,
           },
-        } as never);
+        });
         return created;
       });
       capturedJobId = job.id;
@@ -385,29 +389,26 @@ export function createAgentInngestFunction<E extends string>(
           );
         }
 
-        // Write activity_event so the Pipeline View feed shows agent
-        // milestones, not just Director approvals. metadata.file_type lets
-        // the per-stage filter bucket the event into the right column.
-        await supabase
-          .from('activity_events')
-          .insert({
-            event_type: 'agent_completed',
-            severity: 'info',
-            title: `${agentDisplayName(spec.agentId)} completed`,
-            description: spec.name,
-            actor: spec.agentId,
-            episode_id: episodeId,
-            asset_id: out.assetId,
-            job_id: job.id,
-            metadata: {
-              agent: spec.agentId,
-              status: targetStatus,
-            },
-          } as never)
-          .then(
-            () => undefined,
-            () => undefined,
-          );
+        // TD-20.B 2026-05-20 — write via logEvent so the Postgres trigger
+        // mirrors into concierge_turns AND pa/notify-needed fires →
+        // exec-pa-react → Polina auto-react. Was direct insert which kept
+        // Polina silent on real pipeline completion (Director observed
+        // Storyboarder finishing without any reaction in chat).
+        // logEvent swallows failures internally, so we drop the .then() noop.
+        await logEvent(supabase, {
+          event_type: 'agent_completed',
+          severity: 'info',
+          title: `${agentDisplayName(spec.agentId)} completed`,
+          description: spec.name,
+          actor: spec.agentId,
+          episode_id: episodeId,
+          asset_id: out.assetId,
+          job_id: job.id,
+          metadata: {
+            agent: spec.agentId,
+            status: targetStatus,
+          },
+        });
 
         return out;
       });
@@ -468,7 +469,10 @@ export function createAgentInngestFunction<E extends string>(
         await step.run('log-agent-failure', async () => {
           try {
             const supabase = createSupabaseServiceRoleClient();
-            await supabase.from('activity_events').insert({
+            // TD-20.B 2026-05-20 — via logEvent so pa/notify-needed fires
+            // on failure too. Polina should react to a stalled / errored
+            // agent without waiting on Director to notice.
+            await logEvent(supabase, {
               event_type: 'agent_failed',
               severity: 'error',
               title: `${agentDisplayName(spec.agentId)} failed`,
@@ -481,7 +485,7 @@ export function createAgentInngestFunction<E extends string>(
                 inngest_run_id: runId,
                 error: errMsg.slice(0, 500),
               },
-            } as never);
+            });
             if (capturedJobId) {
               await markJobFailed(supabase, capturedJobId, errMsg.slice(0, 500));
             }
