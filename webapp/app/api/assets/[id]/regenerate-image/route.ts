@@ -38,6 +38,7 @@ import { generateImageOpenAI } from '@/lib/agents/providers/openai-image';
 import { persistBinary } from '@/lib/agents/persist-binary';
 import { runStyleCheck } from '@/lib/agents/runners/style-check';
 import { getStyleGuardianMode } from '@/lib/api/style-guardian-config';
+import { resolveBibleImageSize } from '@/lib/api/bible-image-size';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import { logEvent } from '@/lib/api/events';
@@ -464,9 +465,18 @@ export const POST = withApiHandler(async (req, ctx) => {
       (r): ReferenceUsed => ({ kind: r.kind, bible_asset_id: r.bible_asset_id }),
     );
   } else {
+    // Director 2026-05-20 — was hardcoded 1024×1024 for Bible regenerate
+    // (the non-v2 path). Resolve section from SBL-* file_type prefix and
+    // apply section-aware size: characters/objects → square, locations/
+    // style → landscape. See lib/api/bible-image-size.ts.
+    const sbMatch = /^SBL-(character|location|object|style)/.exec(asset.file_type);
+    const bibleSection = sbMatch ? (sbMatch[1] as 'character' | 'location' | 'object' | 'style') : null;
+    const regenSize: '1024x1024' | '1024x1536' | '1536x1024' = bibleSection
+      ? resolveBibleImageSize({ section: bibleSection })
+      : '1024x1024';
     const real = await generateImageOpenAI({
       prompt: promptToSend,
-      size: '1024x1024',
+      size: regenSize,
       quality: body.quality ?? 'medium',
     });
     realB64 = real.b64_data;

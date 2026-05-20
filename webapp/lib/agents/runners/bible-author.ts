@@ -28,6 +28,7 @@ import type {
 } from '../../api/series-bible';
 import { buildProvenance } from '../../api/series-bible';
 import { logEvent } from '../../api/events';
+import { resolveBibleImageSize } from '../../api/bible-image-size';
 
 export class BibleAuthorError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -369,11 +370,18 @@ export async function runBibleAuthor(
     description: descriptionMd,
     styleGuide,
   });
+  // Director 2026-05-20 — was hardcoded 1024×1024 (1:1), which did not suit
+  // landscape shows. Section-aware default: characters/objects → square
+  // (best for a single hero specimen on neutral backdrop), locations/style
+  // → landscape (environment + framing references match show format).
+  // series.metadata.delivery_targets is not a column today; if it becomes
+  // one later, callers can pass it through resolveBibleImageSize.
+  const resolvedSize = resolveBibleImageSize({ section });
   let imgResult;
   try {
     imgResult = await generateImageOpenAI({
       prompt: imagePrompt,
-      size: '1024x1024',
+      size: resolvedSize,
       quality: 'medium',
     });
   } catch (err: unknown) {

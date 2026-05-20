@@ -23,6 +23,7 @@ import { generateImageOpenAI } from '@/lib/agents/providers/openai-image';
 import { persistBinary } from '@/lib/agents/persist-binary';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { logEvent } from '@/lib/api/events';
+import { resolveBibleImageSize } from '@/lib/api/bible-image-size';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -108,9 +109,13 @@ export const POST = withApiHandler(async (req, ctx) => {
     styleGuides,
   });
 
+  // Director 2026-05-20 — was hardcoded 1024×1024. Section-aware default
+  // (characters/objects → square, locations/style → landscape).
+  // See lib/api/bible-image-size.ts.
+  const resolvedSize = resolveBibleImageSize({ section: body.section });
   const real = await generateImageOpenAI({
     prompt,
-    size: '1024x1024',
+    size: resolvedSize,
     quality: body.quality ?? 'medium',
   });
 
