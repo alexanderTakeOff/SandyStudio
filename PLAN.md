@@ -13,35 +13,54 @@
 ## CURRENT STATE
 
 ```
-Phase:    **Polina UX/Awareness + Skill Abstraction Principle — IMPLEMENTING 2026-05-20**
-          (plan `~/.claude/plans/soft-swimming-thunder.md`, approved this session)
-Status:   ✅ **C1+C2+C3 SHIPPED 2026-05-20** (commit `f0caf09`) — global meta-doc
-            `~/.claude/rules/common/skill-creation.md` (process vs tool skill flavors,
-            Bible+Brief as source of truth for concrete content, Conflict-Resolution =
-            HALT+escalate). `library-style-first-visual-generation-protocol` rewritten
-            as reference example of `flavor: process` (no hard-coded 2D vocabulary;
-            anchor read from Bible Style section + Brief).
-          ✅ **C4 SHIPPED 2026-05-20** (commit `c0bf70e`) — TD-20.B autonomy.
-            New Inngest event `sandystudio/pa/notify-needed` fired by `logEvent`
-            (after actionable activity_events) and by `POST /api/team-chat/post`
-            (after claude_message turns). Consumer `exec-pa-react` (debounce 5s
-            per thread, concurrency 1) POSTs new `/api/concierge/chat-internal`
-            endpoint (Bearer `PA_INTERNAL_TOKEN`, no tools, non-streaming, anti-
-            cascade 10s guard). Polina now auto-reacts to ambient + Тео messages
-            without Director typing. AUTO_REACT_GUIDANCE block added to system-
-            prompt-builder. Verify: tsc clean · vitest **327/327** · replay-pilot
-            **29/29**.
-          🟡 **C5 IN FLIGHT 2026-05-20** — TD-20.A streaming + cancel + per-tool
-            plashka. `/api/concierge/chat` now emits JSON-per-line envelope
-            (`{t:'token'|'text'|'tool_start'|'tool_result'|'tool_timeout'|'cancelled'|'error'}`).
-            Final-answer round uses OpenAI `stream:true` token-by-token. Per-tool
-            120s timeout via Promise.race. AbortSignal threaded through `req.signal`.
-            Client: AbortController + Cancel button + JSON-per-line parser +
-            ToolPlashka with seconds counter. Awaiting commit + preview smoke.
-          🟡 **C6 IN FLIGHT** — TD-21 logged to this ACTIVE BACKLOG below
-            (brief↔Bible consistency validator gap, discovered while planning).
-          SS-S15 «SANDY» E01 «Heavy Friend» smoke PAUSED — resume after Polina
-            fix verified end-to-end.
+Phase:    **Polina autonomy chain end-to-end + Drive layout + Storyboarder opus — SHIPPED 2026-05-20**
+          (plans `~/.claude/plans/soft-swimming-thunder.md` C1-C6 + rollout
+           `~/.claude/plans/polina-fix-rollout-and-resume.md`). Branch
+           `claude/quizzical-brown-462555` accumulated 19 значимых коммитов
+           f0caf09 → b6c83e7 since master `12d708f`. Branch cleanup deferred.
+Status:   ✅ **All C1-C6 + 13 follow-up fixes SHIPPED 2026-05-20**. Full session
+            memo: `~/.claude/projects/C--SandyStudio/memory/session_2026-05-20_polina_autonomy_full_chain_fix.md`.
+
+            Key landing points (commit order):
+            • f0caf09 skill abstraction principle (global meta-doc) + library-style-first rewrite
+            • c0bf70e C4 autonomy infra (pa/notify-needed Inngest, exec-pa-react,
+                     /api/concierge/chat-internal, AUTO_REACT_GUIDANCE block)
+            • db2f8e3 streaming + cancel + per-tool plashka + TD-21 logged
+            • 48ff9ec CEL ternary debounce + middleware bypass for chat-internal
+            • 6f54ddd Library generation visibility — routes through logEvent
+            • be42dc5 disabled silent-ack client trigger (root cause «Polina never reacts»)
+            • fcd685b UI renders auto-react assistant turns (Realtime + reload backlog)
+            • f0661ec runBibleAuthor emits agent_completed for enrichBible auto-react
+            • 2370b44 bible-author prompt fix — Primary Object Reference Rule
+                     (no characters/squirrels/dogs in object refs, single hero view)
+            • 1465b5f 15s polling fallback for dead Realtime WebSocket
+            • 9b08dca stamp gpt-image-2 in history label (was stale gpt-image-1)
+            • 5aa2232 copyAssetImage PA tool + endpoint + upload UI block
+            • e992086 consolidated /upload + Sandy S14→S15 carry-over executed
+            • 29d810b **Drive layout: /SandyStudio/<series>/<bucket>/<assetType>/<file>**
+                     13/13 S15 Bible files migrated (Sandy carry-over skipped — shared S14)
+            • d1cc216 Bible aspect-ratio policy (characters/objects square,
+                     locations/style landscape) — was hardcoded 1024×1024
+            • da31f81 Storyboarder revisionNote wired into prompt (был silently dropped)
+            • fd991bf **Storyboarder upgrade sonnet-4-6 → opus-4-7** for hard-contract
+                     instruction-following on requestRevision
+            • b6c83e7 **factory.ts → logEvent — THE ROOT FIX** for «Polina не реагирует
+                     на pipeline events». Was 3 inline activity_events.insert in
+                     factory wrapper, bypassed logEvent → pa/notify-needed never fired
+                     for real production events. Now все 3 точки через logEvent.
+
+            Verify trio: tsc clean · vitest **327/327** · replay-pilot **29/29**.
+            Director name codified — **Александр** (NOT Кирилл — my hallucination,
+            corrected 2026-05-20 via `~/.claude/projects/C--SandyStudio/memory/director_name_alexander.md`).
+
+          🟡 **AWAITING SMOKE (post-clear):** Director triggered new STB requestRevision
+            after b6c83e7+fd991bf+da31f81 landed. Expected:
+              - v4 description shows claude-opus-4-7
+              - v4 visibly applies all 5 of Polina's blocking items
+              - Polina auto-reacts to agent_completed within 15s, no Director prompt
+            If all three observed — entire autonomy chain validated on real
+            production event (not synthetic curl smoke).
+
           Mode: ===5=== · Mode 1 governance · auto-sync OFF.
           Date: 2026-05-20
             • Skills-as-capabilities refactor (lazy two-step API + 2 broad capability playbooks)
