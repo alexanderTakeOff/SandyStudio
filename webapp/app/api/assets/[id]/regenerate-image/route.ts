@@ -69,6 +69,11 @@ export const dynamic = 'force-dynamic';
 const ProviderIdSchema = z.enum([
   'openai-edits-multi',
   'flux-pro-1.1-ultra',
+  // Sprint φ 2026-05-18 upgrade: openai-image.ts moved to gpt-image-2.
+  // 'gpt-image-1' kept as accepted alias for backward compat with stale
+  // history rows + UI dropdowns that may still pass the old string;
+  // resolved to gpt-image-2 in execution (see fallback in else-branch).
+  'gpt-image-2',
   'gpt-image-1',
 ]);
 
@@ -360,8 +365,14 @@ export const POST = withApiHandler(async (req, ctx) => {
   let realCost: number;
   let realWidth: number;
   let realHeight: number;
-  let realProviderId = 'gpt-image-1';
-  let realModel = 'gpt-image-1';
+  // Sprint φ 2026-05-18 — defaults moved off the deprecated gpt-image-1.
+  // openai-image.ts hits the gpt-image-2 endpoint; previously the default
+  // string was stamped into metadata.image_prompt.history.provider_id
+  // for the non-v2 branch (which never reassigned it from the result),
+  // so Bible Library asset history rows were mislabeled. Director
+  // surfaced this 2026-05-20.
+  let realProviderId = 'gpt-image-2';
+  let realModel = 'gpt-image-2';
   let v2RefsUsed: ReferenceUsed[] = [];
 
   // For v2 EREF assets we ALWAYS go through the multi-image path so identity
@@ -462,6 +473,12 @@ export const POST = withApiHandler(async (req, ctx) => {
     realCost = real.cost_usd;
     realWidth = real.width;
     realHeight = real.height;
+    // Sprint φ 2026-05-18 + Director surface 2026-05-20 — stamp the actual
+    // provider/model returned by generateImageOpenAI so metadata.image_prompt
+    // history reflects gpt-image-2 (not the stale gpt-image-1 default).
+    // OpenAIImageResult.provider is the literal 'gpt-image-2'.
+    realProviderId = real.provider;
+    realModel = real.provider;
   }
 
   const persisted = await persistBinary({

@@ -2,7 +2,7 @@
 // lib/agents/runners/bible-author.ts
 // EXEC-BIBLE-AUTHOR — enriches a freshly-created Bible DRAFT with:
 //   1. A rich, section-appropriate description (Anthropic Sonnet)
-//   2. A first reference image (gpt-image-1, anchored on Style Bible)
+//   2. A first reference image (gpt-image-2, anchored on Style Bible)
 //   3. Provenance + image_prompt v1 + description_history v1 in metadata
 //
 // Called inline from POST /api/series/[id]/bible/extensions when Director
@@ -10,7 +10,7 @@
 // treat metadata.image_prompt.history.length > 0 as "already enriched"
 // and short-circuit.
 //
-// Failure mode: if either Sonnet or gpt-image-1 fails we still keep the
+// Failure mode: if either Sonnet or gpt-image-2 fails we still keep the
 // DRAFT row alive (caller can retry); we surface the error so the route
 // can record a blocker_raised activity_event and let Director retry.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -362,7 +362,7 @@ export async function runBibleAuthor(
     throw err;
   }
 
-  // ── 2. First reference image via gpt-image-1 ────────────────────────────────
+  // ── 2. First reference image via gpt-image-2 ────────────────────────────────
   const imagePrompt = buildImagePrompt({
     seriesTitle: ctx.series.title,
     section,

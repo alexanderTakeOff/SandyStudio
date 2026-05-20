@@ -1,13 +1,13 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // app/api/series/[id]/bible/generate-image/route.ts
-// Director-triggered gpt-image-1 generation for a Bible asset.
+// Director-triggered gpt-image-2 generation for a Bible asset.
 //
 // Flow:
 //   1. Director fills Add Hero modal (name, description) and clicks Generate.
 //   2. This route reads the description + the Style guide entries from the
 //      target series (if any LOCKED SBL-style_* exists, its content is added
 //      to the prompt to keep canonical art direction).
-//   3. Calls openai-image (gpt-image-1) — paid call ~$0.04.
+//   3. Calls openai-image (gpt-image-2) — paid call ~$0.04.
 //   4. Persists binary via persistBinary (local cache + Drive when on).
 //   5. Returns staging URL for live preview. Director then POSTs to
 //      /api/series/[id]/bible to persist the asset row using the staging URL.
