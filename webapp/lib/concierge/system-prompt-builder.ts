@@ -43,6 +43,15 @@ export interface PromptContext {
   recentTurns?: ConciergeTurnRow[];
   /** OpenAI model id — so PA can answer "what model are you?" honestly. */
   modelId?: string;
+  /**
+   * TD-20.B autonomy 2026-05-20. When true, PA is being invoked by the
+   * `exec-pa-react` Inngest function in response to a non-Director turn
+   * (ambient pipeline event or claude_message) — Director did NOT just
+   * type. Adds an AUTO_REACT_GUIDANCE block telling PA to acknowledge
+   * the trigger briefly and either announce her next step or wait for
+   * Director, without firing destructive tools.
+   */
+  autoReact?: boolean;
 }
 
 type Block = (ctx: PromptContext) => string | null;
@@ -437,6 +446,20 @@ const teamChatFromClaude: Block = (ctx) => {
   ].join('\n');
 };
 
+// ─── Block: AUTO_REACT_GUIDANCE (TD-20.B) ────────────────────────────────────
+const autoReactGuidance: Block = (ctx) => {
+  if (!ctx.autoReact) return null;
+  return `[AUTO_REACT_GUIDANCE]
+You were just invoked autonomously — Director did NOT type. A non-Director turn (ambient pipeline event or claude_message from Тео) landed in this thread and triggered your reaction.
+
+How to respond:
+- Acknowledge the trigger in one or two sentences — what happened, what state the pipeline is now in.
+- If next steps are obvious and read-only, state them briefly and proceed (no need for verbal approval).
+- If next steps would require a destructive / spending / canon-affecting tool, propose the action and wait for Director — do NOT fire it. Mutating tools are gated to verbal approval and Director has not approved this turn.
+- Keep it short — one short paragraph is usually enough. Director may or may not be at the keyboard; respect that the answer goes into the thread for later reading too.
+- If there is nothing useful to add, say so in one line. Do not invent work.`;
+};
+
 const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'BASE_BEHAVIOR', render: baseBehavior },
   { name: 'BEHAVIOR_CONTRACT', render: behaviorContract },
@@ -451,6 +474,7 @@ const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'AVAILABLE_PLAYBOOKS', render: availablePlaybooks },
   { name: 'PIPELINE_EVENTS_SINCE_LAST_REPLY', render: pipelineEvents },
   { name: 'TEAM_CHAT_FROM_CLAUDE', render: teamChatFromClaude },
+  { name: 'AUTO_REACT_GUIDANCE', render: autoReactGuidance },
 ];
 
 export function buildSystemPrompt(ctx: PromptContext): string {

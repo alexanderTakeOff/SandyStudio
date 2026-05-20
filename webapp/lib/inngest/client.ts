@@ -358,6 +358,32 @@ type Events = {
       collectionPoint: 'T+1h' | 'T+24h' | 'T+7d' | 'T+30d';
     };
   };
+
+  /**
+   * TD-20.B autonomy 2026-05-20 — Polina auto-reaction signal. Fired
+   * fire-and-forget by `logEvent` (after an actionable `activity_events`
+   * row) and by `/api/team-chat/post` (after a claude_message turn). The
+   * single consumer `exec-pa-react` throttles 5s per thread, dispatches an
+   * internal chat invocation so PA can acknowledge the non-Director event
+   * without waiting for the Director to type. Source labels the trigger
+   * for telemetry / debugging only.
+   */
+  'sandystudio/pa/notify-needed': {
+    data: {
+      /**
+       * Concierge thread to react in. Optional — when fired from logEvent
+       * we may only know the episode; the consumer resolves the latest
+       * open thread the same way migration 0030's Postgres trigger does.
+       */
+      threadId?: string | null;
+      episodeId?: string | null;
+      source: 'ambient' | 'claude_message';
+      /** Either an activity_events.id or a concierge_turns.id for traceability. */
+      triggerId: string;
+      /** Echo of the upstream event_type ('agent_completed' etc) when ambient. */
+      eventType?: string;
+    };
+  };
 };
 
 export type StudioEventName = keyof Events;

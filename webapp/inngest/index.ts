@@ -34,6 +34,7 @@ import { execThumbGenerateThumbnail } from './functions/exec-thumb';
 import { execPubPublish } from './functions/exec-pub';
 import { execAnalCollect } from './functions/exec-anal';
 import { scheduleAnalytics } from './functions/schedule-analytics';
+import { execPaReact } from './functions/exec-pa-react';
 
 export const functions = [
   // Phase 3 smoke
@@ -65,4 +66,6 @@ export const functions = [
   execAnalCollect,
   // Phase 4 cron fan-out
   scheduleAnalytics,
+  // TD-20.B autonomy 2026-05-20
+  execPaReact,
 ];

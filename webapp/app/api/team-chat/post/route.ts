@@ -26,6 +26,7 @@ import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { UnauthorizedError, ValidationError, NotFoundError } from '@/lib/api/errors';
 import { persistTurn } from '@/lib/concierge/threads';
+import { inngest } from '@/lib/inngest/client';
 import type { Database } from '@/lib/supabase/types.gen';
 
 export const runtime = 'nodejs';
@@ -113,6 +114,25 @@ export const POST = withApiHandler(async (req) => {
       posted_at: new Date().toISOString(),
     },
   });
+
+  // TD-20.B autonomy 2026-05-20 — nudge Polina so she can react to the
+  // claude_message without waiting on Director input. Fire-and-forget; the
+  // user has already received apiOk by the time Inngest is contacted.
+  void inngest
+    .send({
+      name: 'sandystudio/pa/notify-needed',
+      data: {
+        threadId,
+        source: 'claude_message',
+        triggerId: turn.id,
+      },
+    })
+    .catch((sendErr) => {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error('[team-chat/post] pa/notify-needed send failed:', sendErr);
+      }
+    });
 
   return apiOk({
     thread_id: threadId,
