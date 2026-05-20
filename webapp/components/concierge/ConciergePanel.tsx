@@ -302,8 +302,26 @@ export function ConciergePanel() {
   // ambient + claude_message bubbles). Just removed the auto-react POST.
   useConciergeTurnsRealtime(threadId, {
     onNewTurn: (turn: ConciergeTurnRow) => {
-      if (turn.role !== 'system') return; // user/assistant flow through chat route
       const m = (turn.metadata ?? {}) as Record<string, unknown>;
+      // TD-20.B 2026-05-20 — render server-authored auto-react assistant
+      // turns (from /api/concierge/chat-internal via exec-pa-react). These
+      // do NOT come through the chat-route streaming path, so without this
+      // branch the Director never sees Polina's reaction even though it
+      // landed in concierge_turns. metadata.auto_react=true is the marker
+      // chat-internal sets; the regular chat-route assistant turn (which
+      // arrives via the streaming POST response) does NOT have this flag,
+      // so the de-dup-with-streaming concern from Realtime stays solved.
+      if (turn.role === 'assistant' && m.auto_react === true) {
+        setMessages((prev) => {
+          if (prev.some((p) => p.turnId === turn.id)) return prev;
+          return [
+            ...prev,
+            { role: 'assistant', content: turn.content, turnId: turn.id },
+          ];
+        });
+        return;
+      }
+      if (turn.role !== 'system') return; // user/assistant flow through chat route
       const kind = m.kind as string | undefined;
       if (kind !== 'claude_message' && kind !== 'pipeline_event') return;
 
@@ -338,11 +356,13 @@ export function ConciergePanel() {
       try {
         console.log('[ConciergePanel] DB-load mount effect firing for thread', threadId);
         const sb = createSupabaseBrowserClient();
+        // TD-20.B 2026-05-20 — also pull auto-react assistant turns so
+        // they survive page reload. Filter is applied in JS below.
         const { data, error } = await sb
           .from('concierge_turns')
           .select('id,role,content,metadata,created_at')
           .eq('thread_id', threadId)
-          .eq('role', 'system')
+          .in('role', ['system', 'assistant'])
           .order('created_at', { ascending: false })
           .limit(30);
         console.log('[ConciergePanel] DB-load result: rows=', data?.length ?? 0, 'error=', error);
@@ -361,6 +381,18 @@ export function ConciergePanel() {
         const additions: Message[] = [];
         for (const t of [...rows].reverse()) {
           const meta = (t.metadata ?? {}) as Record<string, unknown>;
+          // TD-20.B — auto-react assistant turn (server-authored by
+          // chat-internal). Restore so reload doesn't lose Polina's
+          // autonomous reactions.
+          if (t.role === 'assistant' && meta.auto_react === true) {
+            additions.push({
+              role: 'assistant',
+              content: t.content,
+              turnId: t.id,
+            });
+            continue;
+          }
+          if (t.role !== 'system') continue;
           const kind = meta.kind as string | undefined;
           if (kind === 'claude_message') {
             additions.push({
