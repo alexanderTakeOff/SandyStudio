@@ -40,6 +40,7 @@ import { runStyleCheck } from '@/lib/agents/runners/style-check';
 import { getStyleGuardianMode } from '@/lib/api/style-guardian-config';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
+import { logEvent } from '@/lib/api/events';
 import {
   type AssetMetadataDoc,
   type ImagePromptHistoryEntry,
@@ -250,12 +251,14 @@ export const POST = withApiHandler(async (req, ctx) => {
       .eq('id', assetId);
     if (upd.error) throw new Error(`asset restore failed: ${upd.error.message}`);
 
-    await sb.from('activity_events').insert({
-      event_type: 'asset_updated',
+    // Use logEvent + agent_completed so Polina auto-acknowledges via
+    // pa/notify-needed. Director attribution preserved in metadata.
+    await logEvent(sb, {
+      event_type: 'agent_completed',
       severity: 'info',
       title: `Image restored: ${asset.filename} → v${target.version}`,
-      description: `Director ${user.email ?? user.id} rolled back to version ${target.version}`,
-      actor: user.id,
+      description: `Rolled back to version ${target.version}`,
+      actor: 'EXEC-BIBLE-AUTHOR',
       asset_id: assetId,
       episode_id: asset.episode_id,
       metadata: {
@@ -263,8 +266,9 @@ export const POST = withApiHandler(async (req, ctx) => {
         from_version: target.version,
         new_version: nextVersion,
         mode_at_time: decision.modeAtTime,
+        director_id: user.id,
       },
-    } as never);
+    });
 
     return apiOk({
       asset_id: assetId,
@@ -556,12 +560,12 @@ export const POST = withApiHandler(async (req, ctx) => {
     .eq('id', assetId);
   if (upd.error) throw new Error(`asset update failed: ${upd.error.message}`);
 
-  await sb.from('activity_events').insert({
-    event_type: 'asset_updated',
+  await logEvent(sb, {
+    event_type: 'agent_completed',
     severity: 'info',
     title: `Image regenerated: ${asset.filename} → v${nextVersion}`,
-    description: `Director ${user.email ?? user.id} edited prompt and rerolled (cost $${realCost.toFixed(4)})`,
-    actor: user.id,
+    description: `Prompt-edited reroll via ${realProviderId} ($${realCost.toFixed(4)})`,
+    actor: 'EXEC-BIBLE-AUTHOR',
     asset_id: assetId,
     episode_id: asset.episode_id,
     metadata: {
@@ -572,9 +576,10 @@ export const POST = withApiHandler(async (req, ctx) => {
       height: realHeight,
       provider_id: realProviderId,
       mode_at_time: decision.modeAtTime,
+      director_id: user.id,
       regen_count: regenCount,
     },
-  } as never);
+  });
 
   return apiOk({
     asset_id: assetId,

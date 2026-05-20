@@ -24,6 +24,11 @@ export const ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
   'input_requested',
   'canon_extension_proposed',
   'episode_archived',
+  // TD-20.B 2026-05-20 — symmetric safety net with migration 0033's
+  // Postgres trigger whitelist. Library generation routes now write
+  // 'agent_completed' (not 'asset_created') via logEvent, but keep
+  // this entry so a future drift doesn't silently de-route the events.
+  'asset_created',
 ]);
 
 export function isActionableEventType(eventType: string): boolean {

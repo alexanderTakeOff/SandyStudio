@@ -22,6 +22,7 @@ import { NotFoundError } from '@/lib/api/errors';
 import { generateImageOpenAI } from '@/lib/agents/providers/openai-image';
 import { persistBinary } from '@/lib/agents/persist-binary';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { logEvent } from '@/lib/api/events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -125,13 +126,19 @@ export const POST = withApiHandler(async (req, ctx) => {
     supabase: sb,
   });
 
-  // Audit
-  await sb.from('activity_events').insert({
-    event_type: 'asset_created',
+  // Audit — written through logEvent so the row passes the CHECK
+  // constraint AND the Postgres trigger mirrors it into concierge_turns
+  // AND logEvent fires `pa/notify-needed` so Polina auto-acknowledges.
+  // event_type was 'asset_created' before — that value is NOT in the
+  // activity_events_type_valid CHECK list, so every previous insert
+  // silently failed (caught nowhere visible). Switched to 'agent_completed'
+  // with actor='EXEC-BIBLE-AUTHOR' to align with other agent flows.
+  await logEvent(sb, {
+    event_type: 'agent_completed',
     severity: 'info',
-    title: `Bible: image generated (${body.section}_${slugSafe})`,
-    description: `Director ${user.email ?? user.id} generated a ${body.section} reference via gpt-image-1`,
-    actor: user.id,
+    title: `Bible image generated: ${body.section}/${slugSafe}`,
+    description: `Library reference generated via gpt-image-2 ($${real.cost_usd.toFixed(4)})`,
+    actor: 'EXEC-BIBLE-AUTHOR',
     asset_id: null,
     episode_id: null,
     metadata: {
@@ -142,8 +149,9 @@ export const POST = withApiHandler(async (req, ctx) => {
       width: real.width,
       height: real.height,
       drive_file_id: persisted.driveFileId,
+      director_id: user.id,
     },
-  } as never);
+  });
 
   return apiOk({
     staging_url: persisted.browserUrl,
