@@ -388,7 +388,12 @@ export async function runBibleAuthor(
     ext: 'png',
     driveFilename: filename.replace(/\.md$/, '.png'),
     localHint: `bible-${section}-${slug}`,
-    episodeCode: undefined,
+    // Director directive 2026-05-20 — new layout for S15+:
+    //   /SandyStudio/<seriesCode>/bible/images/<file>
+    // S14 Bible files already in /SandyStudio/<root> stay there (not touched).
+    seriesCode: ctx.series.code,
+    bucket: 'bible',
+    assetType: 'images',
     supabase,
   });
 

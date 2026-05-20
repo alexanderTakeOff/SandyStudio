@@ -122,7 +122,11 @@ export const POST = withApiHandler(async (req, ctx) => {
     ext: 'png',
     driveFilename: filename,
     localHint: `bible-${body.section}-${slugSafe}`,
-    episodeCode: undefined,
+    // Director directive 2026-05-20 — Bible Library lands under series root:
+    //   /SandyStudio/<series.code>/bible/images/<file>
+    seriesCode: series.code,
+    bucket: 'bible',
+    assetType: 'images',
     supabase: sb,
   });
 

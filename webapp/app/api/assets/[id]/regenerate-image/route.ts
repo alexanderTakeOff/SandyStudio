@@ -481,6 +481,36 @@ export const POST = withApiHandler(async (req, ctx) => {
     realModel = real.provider;
   }
 
+  // Director directive 2026-05-20 — pick the new Drive layout based on
+  // asset kind. SBL-* (Bible Library) is series-scoped → bucket='bible'.
+  // IMG-* (episode reference / thumbnail) is episode-scoped → bucket=E<NN>.
+  // Resolve series.code (and episode.code for IMG-*) so persistBinary
+  // can place the file under /SandyStudio/<series>/<bucket>/<assetType>/.
+  let layoutSeriesCode: string | undefined;
+  let layoutBucket: string | undefined;
+  if (asset.file_type.startsWith('SBL-') && asset.series_id) {
+    const { data: srow } = await sb
+      .from('series')
+      .select('code')
+      .eq('id', asset.series_id)
+      .maybeSingle();
+    layoutSeriesCode = (srow as { code?: string } | null)?.code;
+    if (layoutSeriesCode) layoutBucket = 'bible';
+  } else if (asset.file_type.startsWith('IMG-') && asset.episode_id) {
+    const { data: erow } = await sb
+      .from('episodes')
+      .select('episode_code,series_id')
+      .eq('id', asset.episode_id)
+      .maybeSingle();
+    const epCode = (erow as { episode_code?: string } | null)?.episode_code;
+    // episode_code is canonical like "SS-S15-E01" — parse series + episode short.
+    const match = epCode ? /^(SS-[A-Z0-9]+)-(E\d+)$/.exec(epCode) : null;
+    if (match) {
+      layoutSeriesCode = match[1];
+      layoutBucket = match[2];
+    }
+  }
+
   const persisted = await persistBinary({
     base64: realB64,
     ext: 'png',
@@ -488,7 +518,9 @@ export const POST = withApiHandler(async (req, ctx) => {
       .replace(/-(v\d+)-([A-Z]+)\.[a-z]+$/, `-$1-$2.png`)
       .replace(/\.md$/, '.png'),
     localHint: `regen-${assetId.slice(-8)}`,
-    episodeCode: undefined,
+    seriesCode: layoutSeriesCode,
+    bucket: layoutBucket,
+    assetType: 'images',
     supabase: sb,
   });
 

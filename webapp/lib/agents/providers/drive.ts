@@ -185,3 +185,35 @@ export async function deleteFile(fileId: string): Promise<void> {
     throw new DriveError(`deleteFile failed (${res.status})`, res.status);
   }
 }
+
+/**
+ * Move a file to a new parent folder. Drive's file ID stays the same;
+ * Supabase rows referencing this ID need no update. 2026-05-20 migration —
+ * Director directive to relocate S15 Bible Library out of the root into
+ * /SandyStudio/SS-S15/bible/images/.
+ */
+export async function moveFile(fileId: string, newParentId: string): Promise<void> {
+  // 1. Look up current parents so removeParents can be a precise diff.
+  const meta = await authedFetch(`${DRIVE_API}/files/${fileId}?fields=parents`);
+  if (!meta.ok) {
+    throw new DriveError(`moveFile lookup failed (${meta.status})`, meta.status);
+  }
+  const metaJson = (await meta.json()) as { parents?: string[] };
+  const oldParents = (metaJson.parents ?? []).filter((p) => p !== newParentId);
+  if (oldParents.length === 0) {
+    // Already in target parent (or has no parent meta). No-op.
+    return;
+  }
+  const params = new URLSearchParams({
+    addParents: newParentId,
+    removeParents: oldParents.join(','),
+    fields: 'id,parents',
+  });
+  const res = await authedFetch(`${DRIVE_API}/files/${fileId}?${params.toString()}`, {
+    method: 'PATCH',
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new DriveError(`moveFile patch failed (${res.status})`, res.status, body.slice(0, 400));
+  }
+}
