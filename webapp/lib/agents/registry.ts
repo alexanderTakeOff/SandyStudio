@@ -84,7 +84,11 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     display_en: 'Storyboarder',
     emoji: '🎬',
     category: 'production',
-    model: 'sonnet',
+    // 2026-05-20 — upgraded sonnet→opus per Director directive after Polina
+    // observed sonnet preserving disallowed gags through requestRevision.
+    // SB_MODEL in runners/storyboarder.ts is the source of truth at runtime
+    // (this field is descriptive only; runner does not call resolveModelId).
+    model: 'opus',
     skills: ['plan', 'planner'],
     next_agent: 'EXEC-WCHK',
     governance: 'B',

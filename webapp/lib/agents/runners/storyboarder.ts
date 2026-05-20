@@ -31,7 +31,13 @@ import {
 import { parseSkillSelection } from '../../skills/parse-skill-selection';
 
 export const SB_CONTRACT = 'storyboarder@v2';
-export const SB_MODEL = 'claude-sonnet-4-6';
+// 2026-05-20 — upgraded sonnet-4-6 → opus-4-7 per Director directive.
+// Sonnet kept producing cosmetic-only re-writes when asked to apply a
+// hard-contract revisionNote (Polina: «revision не выполнен как надо»);
+// Opus has stronger instruction-following on structured-removal prompts.
+// Cost delta: storyboard is one call per episode (not fan-out), so the
+// ~5× per-call jump lands at ~$0.30-0.80 / episode vs ~$0.06-0.16.
+export const SB_MODEL = 'claude-opus-4-7';
 // Sprint φ.2 — two-step skill activation. Step 1 uses Haiku (cheap, fast,
 // reasons over capability manifest only — no body context). Step 2 is the
 // existing Sonnet 4.6 main authoring call. Skipped (single-call shortcut)
