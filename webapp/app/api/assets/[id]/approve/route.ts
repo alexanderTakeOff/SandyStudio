@@ -323,11 +323,51 @@ async function computeNextEvents(
         }
         const shots = stbContent ? extractShotsFromStoryboard(stbContent) : [];
         if (shots.length > 0) {
-          for (const shot of shots) {
+          // Pilot Pass (Director directive 2026-05-20): only fire the first
+          // PILOT_COUNT shots as Designer Plans. Director reviews / approves
+          // both pilots, then we fan out the remaining shots in a second
+          // batch. Mirrors the EREF v2 generate-references → fanout-trigger
+          // pattern. Previously this fan-out was N×shots all at once, which
+          // generated 22 Plans in one go and forced Director to triage all
+          // of them before a single execute-from-plan could run. The
+          // remaining shot ids are stashed into episodes.metadata so a
+          // future auto-fanout-on-last-pilot trigger (or PA `fanoutDesigner`
+          // tool) can pick them up without re-reading the storyboard.
+          const PILOT_COUNT_DESIGNER = 2;
+          const pilotShots = shots.slice(0, PILOT_COUNT_DESIGNER);
+          const pendingShotIds = shots.slice(PILOT_COUNT_DESIGNER).map((s) => s.shot_id);
+          for (const shot of pilotShots) {
             events.push({
               name: 'sandystudio/exec-eref-designer/plan',
               data: { episodeId: ep, shotId: shot.shot_id },
             });
+          }
+          if (pendingShotIds.length > 0) {
+            // Stash remaining shot ids for the post-pilot fanout. Read by a
+            // future fanout-trigger handler / PA tool. We do this AFTER
+            // queueing events so a transient metadata write failure does not
+            // block the pilots — those still fire.
+            try {
+              const { data: epRow } = await supabase
+                .from('episodes')
+                .select('metadata')
+                .eq('id', ep)
+                .maybeSingle();
+              const existingMeta = (epRow?.metadata as Record<string, unknown> | null) ?? {};
+              await supabase
+                .from('episodes')
+                .update({
+                  metadata: {
+                    ...existingMeta,
+                    designer_fanout_pending: pendingShotIds,
+                    designer_pilot_count: PILOT_COUNT_DESIGNER,
+                    designer_fanout_total: shots.length,
+                  } as never,
+                } as never)
+                .eq('id', ep);
+            } catch {
+              /* non-fatal — pilots will still fire */
+            }
           }
         } else {
           // Defensive fallback — fire legacy single event so REV-world_check
