@@ -172,6 +172,27 @@ export function ConciergePanel() {
   const recognitionRef = useRef<SpeechRec | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // TD-20.A 2026-05-20 — AbortController for the in-flight chat request so
+  // the Director can cancel a hanging turn. abortControllerRef holds the
+  // current controller during streaming; null when no request is in flight.
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // TD-20.A — current tool plashka. `null` when no tool is executing.
+  // `startedAt` is wall-clock so the elapsed-seconds counter ticks via the
+  // toolElapsed state below.
+  const [toolPlashka, setToolPlashka] = useState<{ id: string; name: string; startedAt: number } | null>(null);
+  const [toolElapsedSec, setToolElapsedSec] = useState<number>(0);
+  useEffect(() => {
+    if (!toolPlashka) {
+      setToolElapsedSec(0);
+      return;
+    }
+    const tick = () => setToolElapsedSec(Math.floor((Date.now() - toolPlashka.startedAt) / 1000));
+    tick();
+    const handle = setInterval(tick, 500);
+    return () => clearInterval(handle);
+  }, [toolPlashka]);
+
   // Hydrate history + thread id + TTS preference + panel side / width.
   useEffect(() => {
     try {
@@ -418,6 +439,11 @@ export function ConciergePanel() {
       const wireMessages = next
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({ role: m.role, content: m.content }));
+      // TD-20.A — AbortController exposes the in-flight fetch to the Cancel
+      // button. The signal is also forwarded server-side via req.signal,
+      // closing the OpenAI/tool loop on abort.
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       const res = await fetch('/api/concierge/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -425,6 +451,7 @@ export function ConciergePanel() {
           messages: wireMessages,
           threadId: threadId ?? undefined,
         }),
+        signal: controller.signal,
       });
       // Capture the persistent thread id from the response header.
       const newThreadId = res.headers.get('X-Concierge-Thread-Id');
@@ -435,36 +462,156 @@ export function ConciergePanel() {
       if (!res.body) throw new Error('No response body');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+
+      // TD-20.A — JSON-per-line stream envelope. Server emits one JSON
+      // object per newline-terminated line. Possible event shapes:
+      //   { t: 'token', v: '...' }     incremental token from final-answer round
+      //   { t: 'text',  v: '...' }     legacy / non-streaming text chunk
+      //   { t: 'tool_start',   id, name, args_preview }
+      //   { t: 'tool_result',  id, name, ok }
+      //   { t: 'tool_timeout', id, name }
+      //   { t: 'cancelled' }
+      //   { t: 'error', message }
+      // Any unrecognised line falls back to plain text append.
       let acc = '';
+      let buffer = '';
+      let cancelledByServer = false;
+      let serverError: string | null = null;
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        acc += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
+        let nlIndex = buffer.indexOf('\n');
+        while (nlIndex !== -1) {
+          const line = buffer.slice(0, nlIndex);
+          buffer = buffer.slice(nlIndex + 1);
+          nlIndex = buffer.indexOf('\n');
+          if (!line.trim()) continue;
+          let event: Record<string, unknown> | null = null;
+          if (line.startsWith('{')) {
+            try { event = JSON.parse(line) as Record<string, unknown>; } catch { event = null; }
+          }
+          if (!event || typeof event.t !== 'string') {
+            // Legacy / unrecognised — append to assistant bubble verbatim.
+            acc += line;
+            setMessages((prev) => {
+              const copy = [...prev];
+              copy[copy.length - 1] = { role: 'assistant', content: acc };
+              return copy;
+            });
+            continue;
+          }
+          const t = event.t as string;
+          if (t === 'token' || t === 'text') {
+            const v = typeof event.v === 'string' ? event.v : '';
+            if (v) {
+              acc += v;
+              setMessages((prev) => {
+                const copy = [...prev];
+                copy[copy.length - 1] = { role: 'assistant', content: acc };
+                return copy;
+              });
+            }
+          } else if (t === 'tool_start') {
+            const id = typeof event.id === 'string' ? event.id : '';
+            const name = typeof event.name === 'string' ? event.name : 'tool';
+            setToolPlashka({ id, name, startedAt: Date.now() });
+          } else if (t === 'tool_result' || t === 'tool_timeout') {
+            setToolPlashka(null);
+            // Annotate the assistant bubble with a compact chip so the
+            // Director can see what just ran even after the plashka clears.
+            const name = typeof event.name === 'string' ? event.name : 'tool';
+            const ok = t === 'tool_result' ? Boolean(event.ok) : false;
+            const chip =
+              t === 'tool_timeout'
+                ? `\n_⏱ ${name}: timeout_\n`
+                : ok
+                  ? `\n_✓ ${name}_\n`
+                  : `\n_✗ ${name}_\n`;
+            acc += chip;
+            setMessages((prev) => {
+              const copy = [...prev];
+              copy[copy.length - 1] = { role: 'assistant', content: acc };
+              return copy;
+            });
+          } else if (t === 'cancelled') {
+            cancelledByServer = true;
+          } else if (t === 'error') {
+            serverError = typeof event.message === 'string' ? event.message : 'unknown error';
+          }
+          // Unknown event types are ignored — forward compatibility.
+        }
+      }
+      // Flush any trailing partial line (best-effort — usually empty).
+      if (buffer.trim()) {
+        acc += buffer;
         setMessages((prev) => {
           const copy = [...prev];
           copy[copy.length - 1] = { role: 'assistant', content: acc };
           return copy;
         });
       }
-      // Speak the final reply once the stream closes.
-      if (ttsEnabled && acc.trim()) {
+      setToolPlashka(null);
+      if (cancelledByServer) {
+        setMessages((prev) => {
+          const copy = [...prev];
+          const tail = copy[copy.length - 1];
+          if (tail?.role === 'assistant') {
+            copy[copy.length - 1] = {
+              role: 'assistant',
+              content: (tail.content || '') + (tail.content ? '\n\n' : '') + '_(cancelled)_',
+            };
+          }
+          return copy;
+        });
+      } else if (serverError) {
+        setMessages((prev) => {
+          const copy = [...prev];
+          copy[copy.length - 1] = {
+            role: 'assistant',
+            content: (acc || '') + (acc ? '\n\n' : '') + `⚠️ ${serverError}`,
+          };
+          return copy;
+        });
+      } else if (ttsEnabled && acc.trim()) {
+        // Speak the final reply once the stream closes (no error, not cancelled).
         speakText(acc);
       }
     } catch (err) {
+      // AbortError from fetch when Director hits Cancel — show local
+      // cancellation note and exit quietly. Server-side cancelled event may
+      // not arrive if the abort closed the connection first.
+      const isAbort =
+        err instanceof DOMException && err.name === 'AbortError';
       setMessages((prev) => {
         const copy = [...prev];
+        const tail = copy[copy.length - 1];
+        const partial = tail?.role === 'assistant' ? tail.content || '' : '';
         copy[copy.length - 1] = {
           role: 'assistant',
-          content:
-            '⚠️ Prod Assistant is offline. Likely missing `OPENAI_API_KEY` in `.env.local` or the API route errored.',
+          content: isAbort
+            ? partial + (partial ? '\n\n' : '') + '_(cancelled)_'
+            : '⚠️ Prod Assistant is offline. Likely missing `OPENAI_API_KEY` in `.env.local` or the API route errored.',
         };
         return copy;
       });
-      // eslint-disable-next-line no-console
-      console.error('[prod-assistant]', err);
+      if (!isAbort) {
+        // eslint-disable-next-line no-console
+        console.error('[prod-assistant]', err);
+      }
     } finally {
       setStreaming(false);
+      setToolPlashka(null);
+      abortControllerRef.current = null;
     }
+  }
+
+  // TD-20.A — cancel the in-flight turn. Aborting the fetch triggers
+  // AbortError on the reader loop AND closes the server-side request,
+  // which propagates as req.signal.aborted in the chat route → the
+  // server emits {"t":"cancelled"} then closes.
+  function handleCancel() {
+    abortControllerRef.current?.abort();
   }
 
   async function toggleVoice() {
@@ -793,6 +940,32 @@ export function ConciergePanel() {
               </div>
             );
           })}
+          {/* TD-20.A — Tool plashka: shown while PA is mid-tool. Lives in
+              the scroll area so it stays anchored at the bottom of the
+              conversation and scrolls naturally. */}
+          {toolPlashka && (
+            <div
+              className="rounded-md px-3 py-2 text-xs mx-2 flex items-center gap-2 border-l-2"
+              style={{
+                background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)',
+                borderLeftColor: 'var(--accent-primary)',
+                color: 'var(--text-secondary)',
+              }}
+              title={`Tool call ${toolPlashka.id}`}
+            >
+              <span className="inline-block h-2 w-2 rounded-full bg-[var(--accent-primary)] animate-pulse" />
+              <span className="font-mono">{toolPlashka.name}</span>
+              <span className="text-text-muted">·</span>
+              <span className="text-text-muted tabular-nums">{toolElapsedSec}s</span>
+            </div>
+          )}
+          {/* TD-20.A — Generic streaming hint when no tool plashka is active. */}
+          {streaming && !toolPlashka && (
+            <div className="text-xs text-text-muted px-2 italic flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] animate-pulse" />
+              Polina is thinking…
+            </div>
+          )}
         </div>
 
         {/* Mic error banner */}
@@ -842,15 +1015,29 @@ export function ConciergePanel() {
             placeholder="Ask the Prod Assistant… (Shift+Enter = newline, drag bottom-right to resize)"
             className="flex-1 resize-y rounded-lg bg-[var(--bg-elevated)] border border-glass px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--accent-primary)] min-h-[3rem] max-h-[60vh]"
           />
-          <Button
-            type="submit"
-            size="md"
-            disabled={!input.trim() || streaming}
-            className="h-10 w-10 p-0"
-            aria-label="Send"
-          >
-            <Send size={16} />
-          </Button>
+          {streaming ? (
+            <Button
+              type="button"
+              size="md"
+              variant="ghost"
+              onClick={handleCancel}
+              className="h-10 w-10 p-0 border border-[var(--accent-danger)] text-[var(--accent-danger)] hover:bg-[color-mix(in_oklab,var(--accent-danger)_15%,transparent)]"
+              aria-label="Cancel"
+              title="Cancel this turn"
+            >
+              <X size={16} />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="md"
+              disabled={!input.trim() || streaming}
+              className="h-10 w-10 p-0"
+              aria-label="Send"
+            >
+              <Send size={16} />
+            </Button>
+          )}
         </form>
       </aside>
     </>

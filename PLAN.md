@@ -13,15 +13,37 @@
 ## CURRENT STATE
 
 ```
-Phase:    **Sprint «Дизайнер и Аниматор» — MERGED TO MASTER 2026-05-19** (squash `12d708f` pushed to origin)
-Status:   ✅ **Sprint Day 1-11+ MERGED TO ORIGIN/MASTER 2026-05-19 PM** (squash commit `12d708f`,
-            11 source commits 191ef3a..760ebe6 включая EXEC-GAGAD full v1 c2ed9e8, TD-19/TD-20).
-            Verify on master: tsc clean · vitest **327/327** · replay-pilot **29/29**.
-            SS-S15 «SANDY» E01 «Heavy Friend» smoke in flight via Polina chat at merge time.
-            Mode: ===5=== · Mode 1 governance · auto-sync OFF.
-            Open debt: TD-19 (asset version-increment), TD-20 (PA chat streaming + cancel),
-            ANIMATOR_CHAIN_ENABLED auto-fan-out branch (~30 LoC). All Director-deferred.
-            Date: 2026-05-19
+Phase:    **Polina UX/Awareness + Skill Abstraction Principle — IMPLEMENTING 2026-05-20**
+          (plan `~/.claude/plans/soft-swimming-thunder.md`, approved this session)
+Status:   ✅ **C1+C2+C3 SHIPPED 2026-05-20** (commit `f0caf09`) — global meta-doc
+            `~/.claude/rules/common/skill-creation.md` (process vs tool skill flavors,
+            Bible+Brief as source of truth for concrete content, Conflict-Resolution =
+            HALT+escalate). `library-style-first-visual-generation-protocol` rewritten
+            as reference example of `flavor: process` (no hard-coded 2D vocabulary;
+            anchor read from Bible Style section + Brief).
+          ✅ **C4 SHIPPED 2026-05-20** (commit `c0bf70e`) — TD-20.B autonomy.
+            New Inngest event `sandystudio/pa/notify-needed` fired by `logEvent`
+            (after actionable activity_events) and by `POST /api/team-chat/post`
+            (after claude_message turns). Consumer `exec-pa-react` (debounce 5s
+            per thread, concurrency 1) POSTs new `/api/concierge/chat-internal`
+            endpoint (Bearer `PA_INTERNAL_TOKEN`, no tools, non-streaming, anti-
+            cascade 10s guard). Polina now auto-reacts to ambient + Тео messages
+            without Director typing. AUTO_REACT_GUIDANCE block added to system-
+            prompt-builder. Verify: tsc clean · vitest **327/327** · replay-pilot
+            **29/29**.
+          🟡 **C5 IN FLIGHT 2026-05-20** — TD-20.A streaming + cancel + per-tool
+            plashka. `/api/concierge/chat` now emits JSON-per-line envelope
+            (`{t:'token'|'text'|'tool_start'|'tool_result'|'tool_timeout'|'cancelled'|'error'}`).
+            Final-answer round uses OpenAI `stream:true` token-by-token. Per-tool
+            120s timeout via Promise.race. AbortSignal threaded through `req.signal`.
+            Client: AbortController + Cancel button + JSON-per-line parser +
+            ToolPlashka with seconds counter. Awaiting commit + preview smoke.
+          🟡 **C6 IN FLIGHT** — TD-21 logged to this ACTIVE BACKLOG below
+            (brief↔Bible consistency validator gap, discovered while planning).
+          SS-S15 «SANDY» E01 «Heavy Friend» smoke PAUSED — resume after Polina
+            fix verified end-to-end.
+          Mode: ===5=== · Mode 1 governance · auto-sync OFF.
+          Date: 2026-05-20
             • Skills-as-capabilities refactor (lazy two-step API + 2 broad capability playbooks)
             • EREF chain bug fix (review-id → underlying STB resolution) + RejectModal directorConfirm
             • EREF pilot state mirror в episodes.metadata (closes UI gap FANOUT_RUNNING → FANOUT_COMPLETE)
@@ -508,6 +530,7 @@ Sprints S0–S8 (foundation + spec) all COMPLETE 2026-04-23..28 — details in `
 | 17 | Videomatic FFmpeg export aspect ratio: requested 16:9, observed 1:1 with content centered. First real MP4 produced 2026-05-08. Inspect ffmpeg canvas dims, source clip dimensions, padding/crop in `webapp/lib/agents/providers/ffmpeg-stitch.ts` | Reliability |
 | 18 | Prod Assistant TTS quality — Director confirmed 2026-05-08 smoke: голос "как больной робот". Web Speech SpeechSynthesis на Windows = системные голоса (Pavel/Irina). Upgrade path: ElevenLabs или OpenAI TTS API (~$0.015/1K chars). Decision deferred until 2nd use | UX |
 | 20 | **PA chat streaming + cancel button + alive-indicator.** Surfaced 2026-05-19 SS-S15-E01 smoke: Polina chat is sync POST `/api/concierge/chat` that hangs 50-110+ sec per turn (multi-roundtrip OpenAI + tool_calls). Client shows static thinking dots — no progress, no cancel, no per-tool visibility. When OpenAI errored on 450KB context bomb (since fixed via listSeriesBibles strip), UI stuck in `isLoading=true` indefinitely with no timeout. Three layered remediation: (a) **Level 1 cosmetic** ~30-40 min — fix dot animation CSS keyframes + client-side 90s timeout with toast/auto-recover + fake cancel button (closes fetch, server keeps spending). (b) **Level 2 SSE streaming + real cancel** ~4-6h — `/api/concierge/chat` returns Server-Sent Events stream; client renders text deltas as they arrive + per-tool plashka «Polina вызывает createSeries…»; real cancel via AbortController on client → server detects req.signal.aborted → cancels OpenAI mid-flight via AbortController on SDK call. (c) **Level 3 activity feed integration** +1-2h on Level 2 — emit `activity_events(event_type=pa_tool_call)` for each tool dispatch so events also show in main activity panel (not just chat); Realtime subscription pushes them to UI. Director-preferred minimum at session 2026-05-19: q1b (Level 1 + listSeriesBibles strip = the strip is done in commit 55958c8). Q for next session: Level 2 + 3 as one «PA Streaming + Cancel» mini-sprint. Decision deferred until after SS-S15-E01 first complete cycle. | UX / Reliability |
+| 21 | **Brief↔Bible consistency validator missing (NEW gap 2026-05-20).** Discovered during plan `soft-swimming-thunder.md`. ART-HW writes `SPC-story_brief`; EXEC-SW reads it directly; EXEC-SREV reviews the **script**, not the brief; nobody verifies brief is compatible with Series Bible (character canon, world rules, declared style anchor). Risk: brief asks for behavior/look the Bible forbids; contradiction surfaces three layers downstream as Designer/Animator HALT, costing wall-clock + tokens with no clear cause. Options: (a) new Critic agent EXEC-HW-CRITIC between ART-HW APPROVED and EXEC-SW trigger — symmetric with EREF Designer's Critic + Animator's Critic shipped in Sprint «Дизайнер и Аниматор» (recommended); (b) extend EXEC-SREV to also re-read the brief and flag brief↔Bible drift in addition to script↔brief drift; (c) light pre-check in `gate.ts` for SPC-story_brief APPROVED transition mirroring the Bible canon precondition EXEC-EREF already does at gate.ts:286. Effort: ~6-10h for option (a). Defer until current Polina fix lands + SS-S15 smoke completes | Reliability / Creative |
 | 19 | **Asset content edits overwrite in place — no version increment.** Surfaced 2026-05-19 SS-S15-E01 «Heavy Friend» smoke. `PUT /api/assets/[id]/content` (UI «Edit brief» button + PA tool `editBrief`) mutates same row → filename stays `v01`, no audit between agent and Director edits, «approve» targets ambiguous last-writer-wins state. Director's expected model: «my edit = v02 · agent's edit = v03 · approve targets a specific version». Affects ALL Plan-assets (SPC-brief / SCR-script / STB-storyboard / SPC-ref_plan / SPC-shot_plan / SPC-gag_plan / BIB-*). `setBibleContent` PA tool already does «create new version» correctly — this is the inconsistency to fix. Remediation: endpoint INSERT row v+1 instead of UPDATE; status DRAFT for new version; old row stays. ~30-40 min endpoint + ~15 min regression test. UI version selector dropdown is separate ~2h. Decision deferred per Director 2026-05-19 — keep current behaviour through smoke, fix before next series | Reliability / Audit |
 
 **Already fixed in Phase 5c** (don't re-add): #3 Story phantom stage hidden · #9 Multi-asset milestone chain via `computeNextEvents` (STB×3, animatic fan-out, metadata→thumb, ready→pub) · #10 Pipeline View stage filter · #11 Factory writes `agent_completed` · #12 STAGE_FROM_ASSET prefix matching.
