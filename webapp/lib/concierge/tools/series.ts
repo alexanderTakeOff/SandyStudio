@@ -610,6 +610,69 @@ export const createSeries: Tool<CreateSeriesArgs> = {
   },
 };
 
+interface CopyAssetImageArgs {
+  fromAssetId: string;
+  toAssetId: string;
+}
+
+export const copyAssetImage: Tool<CopyAssetImageArgs> = {
+  name: 'copyAssetImage',
+  description:
+    "Carry over the image fields (staging_path, drive_path, drive_file_id, drive_web_view_url, and image_prompt history if present) from one Bible asset to another. Use when the Director wants a canonical asset from a prior series (e.g. SS-S14 Sandy LOCKED) to become the starting reference image for the new series (e.g. SS-S15 Sandy DRAFT) WITHOUT regenerating. Preserves the target's text canon (content / description). Refuses on LOCKED target, missing source image, or source==target. Verbal approval required.",
+  mutating: true,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'copyAssetImage',
+      description: 'Carry over image fields from one Bible asset to another (no regeneration).',
+      parameters: {
+        type: 'object',
+        properties: {
+          fromAssetId: { type: 'string', description: 'Source asset UUID (the one whose image you want to reuse).' },
+          toAssetId: { type: 'string', description: 'Target asset UUID (the one being populated; text canon stays).' },
+        },
+        required: ['fromAssetId', 'toAssetId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const fromAssetId = typeof obj.fromAssetId === 'string' ? obj.fromAssetId : '';
+    const toAssetId = typeof obj.toAssetId === 'string' ? obj.toAssetId : '';
+    if (!fromAssetId) throw new Error('fromAssetId required');
+    if (!toAssetId) throw new Error('toAssetId required');
+    return { fromAssetId, toAssetId };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    if (!approval.approved) {
+      return fail(approval.reason, 'verbal_approval_required');
+    }
+    const resp = await fetch(
+      `${ctx.appOrigin.replace(/\/$/, '')}/api/assets/${encodeURIComponent(args.toAssetId)}/copy-image-from`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+        },
+        body: JSON.stringify({ fromAssetId: args.fromAssetId, directorConfirm: true }),
+      },
+    );
+    let body: unknown = null;
+    try { body = await resp.json(); } catch { /* */ }
+    if (!resp.ok) {
+      const message =
+        body && typeof body === 'object' && 'error' in body
+          ? String((body as { error: unknown }).error)
+          : `copy-image-from failed (HTTP ${resp.status})`;
+      return fail(message, `http_${resp.status}`);
+    }
+    return ok(body, `Image fields copied. Target now shares the source's reference image.`);
+  },
+};
+
 function safeParse(raw: string): AnyArgs {
   if (!raw || raw.trim() === '') return {};
   try {
