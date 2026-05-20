@@ -428,6 +428,85 @@ export function ConciergePanel() {
     };
   }, [threadId]);
 
+  // TD-20.B 2026-05-20 — polling fallback for Realtime.
+  // Director observed: ambient pipeline_event + auto-react assistant turns
+  // arrive only after F5/Ctrl+R. Symptom of a dead Realtime WebSocket
+  // (idle tab → server drops → supabase-js v2 reconnect not always firing).
+  // Independent of WS state, we poll concierge_turns every 15s for rows
+  // newer than the last we have rendered, and merge by turnId. If WS is
+  // alive the rows arrived already and dedup discards them; if WS is
+  // dead this is the only delivery path and max lag is 15s.
+  useEffect(() => {
+    if (!threadId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const poll = async (): Promise<void> => {
+      try {
+        const sb = createSupabaseBrowserClient();
+        const { data, error } = await sb
+          .from('concierge_turns')
+          .select('id,role,content,metadata,created_at')
+          .eq('thread_id', threadId)
+          .in('role', ['system', 'assistant'])
+          .order('created_at', { ascending: false })
+          .limit(20);
+        if (cancelled || error || !data) return;
+        type Row = {
+          id: string;
+          role: string;
+          content: string;
+          metadata: Record<string, unknown> | null;
+          created_at: string;
+        };
+        const rows = data as unknown as Row[];
+        const additions: Message[] = [];
+        for (const t of [...rows].reverse()) {
+          const meta = (t.metadata ?? {}) as Record<string, unknown>;
+          if (t.role === 'assistant' && meta.auto_react === true) {
+            additions.push({ role: 'assistant', content: t.content, turnId: t.id });
+            continue;
+          }
+          if (t.role !== 'system') continue;
+          const kind = meta.kind as string | undefined;
+          if (kind === 'claude_message') {
+            additions.push({
+              role: 'claude',
+              content: t.content,
+              turnId: t.id,
+              author: (meta.author as string | undefined) ?? 'Claude',
+            });
+          } else if (kind === 'pipeline_event') {
+            additions.push({
+              role: 'pipeline',
+              content: t.content,
+              turnId: t.id,
+              severity: (meta.severity as 'info' | 'warning' | 'error' | undefined) ?? 'info',
+            });
+          }
+        }
+        if (additions.length === 0) return;
+        setMessages((prev) => {
+          const seen = new Set(prev.map((m) => m.turnId).filter(Boolean));
+          const fresh = additions.filter((a) => a.turnId && !seen.has(a.turnId));
+          if (fresh.length === 0) return prev;
+          return [...prev, ...fresh];
+        });
+      } catch {
+        /* polling is best-effort */
+      }
+    };
+
+    // Fire once after a small delay (let initial DB-load settle) then on interval.
+    const initial = setTimeout(() => { void poll(); }, 5_000);
+    timer = setInterval(() => { void poll(); }, 15_000);
+    return () => {
+      cancelled = true;
+      clearTimeout(initial);
+      if (timer) clearInterval(timer);
+    };
+  }, [threadId]);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const text = input.trim();
