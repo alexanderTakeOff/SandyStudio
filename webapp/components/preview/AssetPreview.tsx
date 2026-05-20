@@ -559,7 +559,11 @@ function ImageUploadBlock({
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch(`/api/assets/${assetId}/upload-image-direct`, {
+      // TD-20.B 2026-05-20 — use existing /api/assets/[id]/upload which
+      // accepts image/video/audio MIMEs and writes via logEvent. The
+      // standalone /upload-image-direct route that briefly existed was
+      // a duplicate of this path and was removed in the same commit.
+      const res = await fetch(`/api/assets/${assetId}/upload`, {
         method: 'POST',
         body: fd,
       });
