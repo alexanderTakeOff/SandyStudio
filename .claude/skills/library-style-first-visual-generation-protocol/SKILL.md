@@ -3,17 +3,13 @@ name: Library Style-First Visual Generation Protocol
 description: "Process skill: enforce style-anchor-first sequencing for Bible Library visual generation, with declared-style preflight and Director gates. Medium/style vocabulary is owned by Bible+Brief, not this skill."
 status: ACTIVE
 owner: Polina
-flavor: process
 applies_when:
   agent: [EXEC-BIBLE-AUTHOR]
   gate: [bible_library_generation, visual_development]
   file_type: [series_bible, library_visual_asset]
 hard: true
 created: 2026-05-19
-revised: 2026-05-20
-revision_reason: "Refactored under ~/.claude/rules/common/skill-creation.md — removed hard-coded 2D vocabulary; declared anchor now sourced from Bible+Brief; added explicit Bible↔Brief conflict-resolution = HALT+escalate."
 ---
-
 # Library Style-First Visual Generation Protocol
 
 ## Purpose
@@ -59,6 +55,39 @@ If any positive attribute is missing or any negative attribute leaks into the po
 
 After Director approves the style sample, every character, object, and location generation must reference that anchor as the style source. Generating without the approved anchor — or with a different anchor — is not allowed.
 
+## Primary Object Reference Rule
+
+When generating an asset in the **Objects** section of the Series Bible Library, the default output is a **primary object reference**, not an exploration sheet.
+
+Hard requirements for every primary object reference:
+
+- **one object = one image**;
+- exactly one canonical object instance in frame;
+- one clean hero view only, preferably front-facing or three-quarter;
+- neutral background unless the Brief explicitly says otherwise;
+- no contact sheet, no multi-view sheet, no turnaround grid, no rows/columns;
+- no alternate states, damage states, life situations, use scenes, or story panels;
+- no characters, hands, animals, silhouettes, or reflected characters unless the asset is explicitly a character-interaction reference rather than the primary object reference;
+- no extra props that can contaminate downstream generation.
+
+Rationale: primary object refs are fed downstream as canon. Multi-object sheets reduce per-object pixel budget, lower image quality, and cause video/reference systems to treat variants, characters, hands, or surrounding context as part of the object's identity.
+
+State variations, damage progressions, turnarounds, scale charts, and character-interaction diagrams belong in text canon or in separately named non-primary assets. They must not be mixed into the primary object card.
+
+If the object description contains sections such as `State Variations`, `Character Interactions`, `Damage Progression`, or `Allowed Variants`, the generator must treat those as **text-only animation/use notes** unless the requested asset is explicitly a variant sheet. They are not permission to draw multiple versions in the primary reference.
+
+## Object Naming Guardrail
+
+For object assets, use the most specific production noun as the lead noun in the prompt. Do not lead with a generic component name if it changes the generated object category.
+
+Examples:
+
+- Use “heavy floor-standing trumeau vanity / old-fashioned vanity dresser with mirror”, not “mirror”, when the intended object is furniture.
+- Use “flat-strap dog leash with handle loop and clip”, not “rope”, when the intended object is a leash.
+- Use “paper treat bag”, not “bag”, when the intended object is a specific small paper prop.
+
+If the canonical name is ambiguous, rewrite the generation prompt around the precise production noun before generating. Naming is part of visual control, not cosmetic metadata.
+
 ## Continuity Rule
 
 Before generating multiple views or variants of any object/location, create a continuity card with:
@@ -72,6 +101,8 @@ Before generating multiple views or variants of any object/location, create a co
 - details that must remain identical across all views.
 
 The values themselves come from Bible+Brief; the continuity-card *requirement* comes from this skill.
+
+Multiple views or variants are a separate, explicitly requested mode. They must never replace the primary object reference.
 
 ## Batch Control
 

@@ -113,12 +113,16 @@ const SECTION_GUIDANCE: Record<BibleSection, string> = {
   ].join('\n'),
   object: [
     'Cover (in this exact order):',
-    '1. **Identity** — name, function in story.',
-    '2. **Form & materials** — shape, scale, texture, weight.',
+    '1. **Identity** — name, function in story. Use the most specific production noun (e.g. "trumeau vanity dresser with mirror", not "mirror"; "flat-strap dog leash", not "rope").',
+    '2. **Form & materials** — shape, scale, texture, weight of the SINGLE canonical object.',
     '3. **Palette** — dominant colours, finish.',
-    '4. **State variations** — how it changes (broken, glowing, hidden).',
-    '5. **How characters interact with it** — held, worn, avoided.',
-    '6. **Visual canon notes** — recurring framing or detail.',
+    '4. **Visual canon notes** — recurring framing or detail when this object appears on screen.',
+    '',
+    'After the canonical sections above, you MAY add the following as TEXT-ONLY animation notes (they document behaviour but MUST NOT be drawn into the primary object reference image):',
+    '- *Animation notes — state variations* (broken, glowing, hidden, etc.) — text only.',
+    '- *Animation notes — character interactions* (held, worn, avoided) — text only.',
+    '',
+    'Hard rule: the primary object reference is ONE clean hero view of ONE canonical object instance. No characters, hands, animals, silhouettes. No variant sheet, no contact sheet, no rows/columns. State/interaction notes live in TEXT only and do not justify multi-view image output. See ~/.claude/skills/library-style-first-visual-generation-protocol.',
   ].join('\n'),
   style: [
     'Cover (in this exact order):',
@@ -197,10 +201,40 @@ function buildImagePrompt(args: {
     lines.push('', 'Series art direction (must follow):');
     lines.push(styleGuide.trim().slice(0, 1200));
   }
-  lines.push(
-    '',
-    'Render as a clean reference image — front-facing or three-quarter view, neutral background, full-body if a character, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
-  );
+  // Per-section closing instruction. Objects MUST be single-hero-view without
+  // characters/variants — the description may contain *Animation notes — state
+  // variations* and *Animation notes — character interactions* sections, those
+  // are TEXT canon only and must not be drawn. The primary object reference
+  // exists to be consumed as identity canon downstream; variants pollute it.
+  // See ~/.claude/skills/library-style-first-visual-generation-protocol.
+  if (section === 'object') {
+    lines.push(
+      '',
+      'Render exactly ONE clean hero view of ONE canonical object instance — front-facing or three-quarter view, neutral background, no text overlay, no logo, no watermark.',
+      'HARD CONSTRAINTS for this primary object reference (violation = unusable canon):',
+      '- no characters, no humans, no animals, no squirrels, no dogs, no hands, no arms, no silhouettes, no reflected characters in mirrors/glass.',
+      '- no multi-view sheet, no contact sheet, no turnaround grid, no rows/columns of variants, no scale chart, no exploded view.',
+      '- no state variations in the image (broken, damaged, hidden, glowing). Even if the Description mentions them as *Animation notes*, those are TEXT only — do NOT depict.',
+      '- no surrounding props, no scene context. Empty / neutral backdrop only.',
+      'If the Description includes sections titled "Animation notes — state variations" or "Animation notes — character interactions", treat them as text canon for downstream animation only. They are NOT permission to add characters or variants to this primary reference.',
+    );
+  } else if (section === 'character') {
+    lines.push(
+      '',
+      'Render as a clean reference image — front-facing or three-quarter view, neutral background, full-body, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
+    );
+  } else if (section === 'location') {
+    lines.push(
+      '',
+      'Render as a clean establishing reference of the empty location — no characters present, neutral natural lighting, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
+    );
+  } else {
+    // style sample
+    lines.push(
+      '',
+      'Render as a clean style sample frame illustrating the aesthetic thesis. Neutral subject if applicable. No text overlay, no logo, no watermark.',
+    );
+  }
   return lines.join('\n');
 }
 
