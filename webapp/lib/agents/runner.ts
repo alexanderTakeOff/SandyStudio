@@ -459,7 +459,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
       if (hasAnthropicKey) {
         try {
-          const r = await runStoryboarder({ inputs });
+          const r = await runStoryboarder({ inputs, revisionNote: args.revisionNote });
           return {
             outputKind: 'text-md',
             result: {
