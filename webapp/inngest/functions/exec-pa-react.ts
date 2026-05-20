@@ -69,17 +69,23 @@ export const execPaReact = inngest.createFunction(
     name: 'EXEC-CONC: Auto-react to non-Director turn',
     retries: 1,
     // Collapse a burst of pa/notify-needed events into a single invocation
-    // per target. If thread is unknown at fire time, fall back to episode.
+    // per target. If thread is unknown at fire time, fall back to episode,
+    // else a global bucket. CEL `||` is boolean OR, not nullish coalescing —
+    // use ternary on `has()` instead.
     debounce: {
       period: '5s',
-      key: 'event.data.threadId || event.data.episodeId || "global"',
+      key:
+        'has(event.data.threadId) && event.data.threadId != null ? event.data.threadId : ' +
+        '(has(event.data.episodeId) && event.data.episodeId != null ? event.data.episodeId : "global")',
     },
     // Cap parallelism so a flood of cross-episode events can't blow up the
     // OpenAI rate limit. Key is per-thread when known, else per-episode.
     concurrency: [
       {
         limit: 1,
-        key: 'event.data.threadId || event.data.episodeId || "global"',
+        key:
+          'has(event.data.threadId) && event.data.threadId != null ? event.data.threadId : ' +
+          '(has(event.data.episodeId) && event.data.episodeId != null ? event.data.episodeId : "global")',
       },
     ],
   },
