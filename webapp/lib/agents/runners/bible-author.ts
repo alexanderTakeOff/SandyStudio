@@ -27,6 +27,7 @@ import type {
   DescriptionHistoryEntry,
 } from '../../api/series-bible';
 import { buildProvenance } from '../../api/series-bible';
+import { logEvent } from '../../api/events';
 
 export class BibleAuthorError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -434,6 +435,32 @@ export async function runBibleAuthor(
   if (update.error) {
     throw new BibleAuthorError(`asset update failed: ${update.error.message}`);
   }
+
+  // TD-20.B 2026-05-20 — emit agent_completed so Polina auto-reacts to her
+  // own Library enrichment completing. Without this the runner finished
+  // silently and Director's expectation "the asset appeared, she should
+  // notice" was never met. Fire-and-forget; logEvent itself sends
+  // `pa/notify-needed` via Inngest after a successful row insert.
+  await logEvent(supabase, {
+    event_type: 'agent_completed',
+    severity: 'info',
+    title: `Bible Editor enriched: ${section}/${slug}`,
+    description: `Library asset ready (${imgResult.width}×${imgResult.height}, $${totalCost.toFixed(4)})`,
+    actor: 'EXEC-BIBLE-AUTHOR',
+    asset_id: assetId,
+    episode_id: null,
+    metadata: {
+      kind: 'bible_enrichment',
+      section,
+      slug,
+      cost_usd: totalCost,
+      width: imgResult.width,
+      height: imgResult.height,
+      style_anchor_asset_id: ctx.styleAnchor?.id ?? null,
+      filename,
+      source,
+    },
+  });
 
   return {
     contentMd: descriptionMd,
