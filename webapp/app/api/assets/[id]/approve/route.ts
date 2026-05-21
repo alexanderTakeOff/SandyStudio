@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { requireDirector } from '@/lib/api/auth';
+import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
@@ -812,6 +813,15 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
 
   // 3. Audit event
+  //
+  // TD-29 (2026-05-21): MUST route through logEvent helper, NOT direct
+  // `supabase.from('activity_events').insert(...)`. logEvent's side-effect
+  // fires the `sandystudio/pa/notify-needed` Inngest event when the
+  // event_type is in the actionable whitelist (approval_granted is). Direct
+  // insert bypasses that fan-out → Polina silently misses every Director
+  // approve, which is exactly what caused the 13-min auto-react gap
+  // observed at 08:42-08:43Z. Same class of bug as the factory.ts fix
+  // landed in b6c83e7 yesterday.
   const evtType =
     body.decision === 'APPROVE'
       ? 'approval_granted'
@@ -820,7 +830,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       : body.decision === 'REJECT'
       ? 'approval_rejected'
       : 'asset_updated';
-  await supabase.from('activity_events').insert({
+  await logEvent(supabase, {
     event_type: evtType,
     severity: body.decision === 'REJECT' ? 'warning' : 'info',
     title: `${body.decision} on ${asset.filename}`,
@@ -829,7 +839,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     asset_id: id,
     episode_id: asset.episode_id,
     metadata: { decision: body.decision, file_type: asset.file_type },
-  } as never);
+  });
 
   // 4. Brief approval also flips the episode milestone status so the
   // "Approve Brief" banner disappears from Pipeline View.

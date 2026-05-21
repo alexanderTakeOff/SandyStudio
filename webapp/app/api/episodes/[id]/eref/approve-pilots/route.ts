@@ -29,6 +29,7 @@ import {
   setPilotState,
 } from '@/lib/api/eref-pilot-state';
 import { getShotApprovalProgress } from '@/lib/api/eref-shot-invariant';
+import { logEvent } from '@/lib/api/events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -206,7 +207,11 @@ export const POST = withApiHandler(async (req, ctx) => {
     eventName = 'sandystudio/exec-eref/fanout-trigger';
   }
 
-  await supabase.from('activity_events').insert({
+  // TD-29 (2026-05-21): route through logEvent — manual_trigger is in the
+  // actionable whitelist, so this also fires pa/notify-needed and Polina
+  // gets a heads-up when the Director presses the "Approve Direction &
+  // Fan Out" button.
+  await logEvent(supabase, {
     event_type: 'manual_trigger',
     severity: 'info',
     title: designerEnabled ? 'Designer fan-out triggered' : 'EREF fan-out triggered',
@@ -221,7 +226,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       event_count: ids.length,
       inngest_event_ids: ids,
     },
-  } as never);
+  });
 
   return apiOk({
     triggered: true,
