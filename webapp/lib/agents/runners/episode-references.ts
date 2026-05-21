@@ -137,6 +137,15 @@ interface ParsedShot {
   act: number;
   /** Flat location string for filename / description. */
   location: string;
+  /**
+   * Bible-locked canonical location slug (e.g. "bedroom_main", "kitchen_morning")
+   * — verbatim from storyboard JSON's `location.slug`. TD-30 (2026-05-21):
+   * used by Designer to look up the latest APPROVED IMG-episode_ref in the
+   * same location and embed it as `scene_continuity_anchor` to stabilise
+   * spatial layout across shots. Undefined when storyboard has flat string
+   * location (no Bible link).
+   */
+  location_slug?: string;
   /** Optional sub-area inside the location ("entrance end", "counter centre", "shelf side") — drives spatial anchor in the prompt. */
   location_sub_area?: string;
   characters_present: string[];
@@ -338,6 +347,7 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
 
       let flatLocation = 'unknown';
       let locationSubArea: string | undefined;
+      let locationSlug: string | undefined; // TD-30 — bible-locked canonical
       if (typeof sh.location === 'string') {
         flatLocation = sh.location;
       } else if (sh.location && typeof sh.location === 'object') {
@@ -345,6 +355,7 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         const sub = sh.location.sub_area;
         flatLocation = sub ? `${slug} — ${sub}` : slug;
         if (typeof sub === 'string' && sub.length > 0) locationSubArea = sub;
+        if (slug && slug !== 'unknown') locationSlug = slug;
       }
 
       const v2Chars = Array.isArray(sh.characters)
@@ -373,6 +384,7 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         shot_id: String(sh.shot_id),
         act: Number(a.act ?? 0),
         location: flatLocation,
+        location_slug: locationSlug,
         location_sub_area: locationSubArea,
         characters_present: flatChars,
         action: flatAction,
@@ -616,7 +628,10 @@ function composePromptFromTestPlan(job: ShotJob): string {
     .join('\n');
 }
 
-function buildMultiImageRefs(job: ShotJob): MultiImageRef[] {
+function buildMultiImageRefs(
+  job: ShotJob,
+  sceneContinuityRef: MultiImageRef | null = null,
+): MultiImageRef[] {
   const refs: MultiImageRef[] = [];
   for (const r of job.bibleRefs) {
     if (!r.image_b64) continue;
@@ -626,7 +641,43 @@ function buildMultiImageRefs(job: ShotJob): MultiImageRef[] {
       image_b64: r.image_b64,
     });
   }
+  // TD-30 (2026-05-21): append scene_continuity anchor (prior APPROVED
+  // IMG-episode_ref in the same location). MAX_REFS=16 in
+  // openai-edits-multi.ts; identity+location+style+1 = 4 refs — well under
+  // the cap. Order kept stable (identity/location/style first, continuity
+  // last) so reviewer prompts stay deterministic.
+  if (sceneContinuityRef) {
+    refs.push(sceneContinuityRef);
+  }
   return refs;
+}
+
+/**
+ * TD-30: Load image bytes for a scene-continuity anchor asset. Reads
+ * `staging_path` from the asset row and converts the local staging file
+ * to base64 via the existing readBibleImageAsBase64 helper (same shape
+ * as Bible image loading). Returns null on any failure (missing row,
+ * missing staging file, read error) — Designer logged the asset id in
+ * the Plan, but the executor degrades gracefully if bytes are unavailable
+ * (no anchor → 3 refs instead of 4 → still functional generation).
+ */
+async function loadSceneContinuityAnchor(
+  supabase: SupabaseClient<Database>,
+  assetId: string,
+): Promise<MultiImageRef | null> {
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,staging_path,status')
+    .eq('id', assetId)
+    .maybeSingle();
+  if (error || !data?.staging_path) return null;
+  const b64 = await readBibleImageAsBase64(data.staging_path);
+  if (!b64) return null;
+  return {
+    kind: 'scene_continuity',
+    bible_asset_id: data.id,
+    image_b64: b64,
+  };
 }
 
 function reviewerBibleRefs(job: ShotJob): ReviewBibleRef[] {
@@ -688,6 +739,14 @@ interface PlanOverrides {
   negative: readonly string[];
   continuityMode: string;
   policyNotes: readonly string[];
+  /**
+   * TD-30 (2026-05-21): asset_id of a prior APPROVED IMG-episode_ref in the
+   * same location that Designer chose as a scene-continuity anchor. Null
+   * when first shot in this location for this episode, or when Plan was
+   * authored before TD-30 shipped. Executor loads bytes and embeds as a
+   * 4th multi-image ref alongside identity / location / style.
+   */
+  sceneContinuityAnchorAssetId: string | null;
 }
 
 /** Provider enum sizes the multi-image-gen contract honours. */
@@ -854,6 +913,16 @@ export async function loadPlanOverrides(
     if (typeof v === 'string' && v.trim().length > 0) policyNotes.push(v.trim());
   }
 
+  // TD-30: scene_continuity_anchor_asset_id is OPTIONAL — Plans authored
+  // before this field shipped won't have it; first-shot-in-location Plans
+  // also won't (Designer leaves it null). Coerce non-strings (incl. null,
+  // undefined, missing) to null.
+  const sceneContinuityRaw = body.scene_continuity_anchor_asset_id;
+  const sceneContinuityAnchorAssetId =
+    typeof sceneContinuityRaw === 'string' && sceneContinuityRaw.trim().length > 0
+      ? sceneContinuityRaw.trim()
+      : null;
+
   return {
     shotId,
     planAssetId,
@@ -864,6 +933,7 @@ export async function loadPlanOverrides(
     negative,
     continuityMode,
     policyNotes,
+    sceneContinuityAnchorAssetId,
   };
 }
 
@@ -1157,7 +1227,18 @@ export async function runEpisodeReferences(
       // Don't block on Guardian outage.
     }
 
-    const refsForGen = buildMultiImageRefs(job);
+    // TD-30: if Designer's Plan named a scene_continuity anchor, load its
+    // bytes and feed as a 4th multi-image ref. Graceful null fallback —
+    // missing-image degrades to identity+location+style only, never blocks.
+    const sceneContinuityRef =
+      planOverrides?.sceneContinuityAnchorAssetId
+        ? await loadSceneContinuityAnchor(
+            supabase,
+            planOverrides.sceneContinuityAnchorAssetId,
+          )
+        : null;
+
+    const refsForGen = buildMultiImageRefs(job, sceneContinuityRef);
     const reviewerRefs = reviewerBibleRefs(job);
 
     // History accumulators for this shot.
@@ -1412,6 +1493,11 @@ export async function runEpisodeReferences(
       retry_count: retryHistory.length,
       retry_history: retryHistory,
       final_4k_url: final4kUrl ?? (approvedAttempt.is_4k ? approvedAttempt.image_url : null),
+      // TD-30: persist bible-locked location slug so Designer's
+      // findLatestApprovedImgByLocation can match future shots in the same
+      // location. Null when storyboard had a flat-string location with no
+      // canonical slug.
+      location_slug: job.shot.location_slug ?? null,
     };
 
     // Legacy fields kept populated for the current AssetDetailDrawer.

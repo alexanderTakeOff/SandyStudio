@@ -624,6 +624,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             inputs,
             shotId,
             revisionNote: args.revisionNote,
+            // TD-30 (2026-05-21): pass supabase so Designer can query prior
+            // APPROVED IMG-episode_ref in the same location and embed it as
+            // a scene_continuity anchor. Falls back to null gracefully when
+            // supabase is undefined (e.g. replay-pilot mock harness).
+            supabase,
           });
           return {
             outputKind: 'text-md',

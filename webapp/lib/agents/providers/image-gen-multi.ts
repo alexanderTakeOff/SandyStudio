@@ -22,8 +22,8 @@
 //   - flux-pro-ultra-fal.ts  → fal.ai Flux Pro 1.1 Ultra Redux + tunable strength
 // ──────────────────────────────────────────────────────────────────────────────
 
-/** Three roles a reference image can play in the conditioning. */
-export type MultiImageRefKind = 'identity' | 'location' | 'style';
+/** Roles a reference image can play in the conditioning. TD-30: scene_continuity added 2026-05-21. */
+export type MultiImageRefKind = 'identity' | 'location' | 'style' | 'scene_continuity';
 
 export interface MultiImageRef {
   kind: MultiImageRefKind;

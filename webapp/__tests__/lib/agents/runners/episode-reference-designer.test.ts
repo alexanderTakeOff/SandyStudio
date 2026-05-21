@@ -26,6 +26,7 @@ import {
   EpisodeReferenceDesignerError,
   resolveDeliveryTargets,
   runEpisodeReferenceDesigner,
+  findLatestApprovedImgByLocation,
   _resetSystemPromptCacheForTests,
 } from '@/lib/agents/runners/episode-reference-designer';
 
@@ -433,5 +434,214 @@ describe('runEpisodeReferenceDesigner — happy path', () => {
     expect(call.userMessage).toContain('youtube_landscape: 1536×1024');
     expect(call.userMessage).toContain('youtube_shorts: 1024×1792');
     expect(call.userMessage).toContain('gpt-image-2');
+  });
+});
+
+// ─── TD-30: scene continuity anchor ─────────────────────────────────────────
+//
+// Helper-level test for findLatestApprovedImgByLocation + Designer-runner
+// integration tests that the user message correctly carries anchor context
+// for the LLM. Executor wiring (planOverrides.sceneContinuityAnchorAssetId
+// → loadSceneContinuityAnchor → buildMultiImageRefs with 4th ref) is covered
+// by `episode-references-plan.test.ts` (data-side seam already there).
+
+describe('findLatestApprovedImgByLocation (TD-30)', () => {
+  /** Build a chainable mock that satisfies the helper's query shape:
+   *  from('assets').select(...).eq(...).eq(...).order(...).limit(...) */
+  function mockSupabase(rows: Array<Record<string, unknown>>, error: unknown = null) {
+    const promise = Promise.resolve({ data: rows, error });
+    const limit = vi.fn(() => promise);
+    const order = vi.fn(() => ({ limit }));
+    const eq2 = vi.fn(() => ({ order }));
+    const eq1 = vi.fn(() => ({ eq: eq2 }));
+    const select = vi.fn(() => ({ eq: eq1 }));
+    const from = vi.fn(() => ({ select }));
+    return { from } as unknown as Parameters<typeof findLatestApprovedImgByLocation>[0];
+  }
+
+  it('returns asset_id of the most recent APPROVED IMG-episode_ref matching location_slug', async () => {
+    const sb = mockSupabase([
+      {
+        id: 'asset-new',
+        file_type: 'IMG-episode_ref',
+        status: 'APPROVED',
+        metadata: { shot_reference: { location_slug: 'bedroom_main' } },
+        created_at: '2026-05-21T13:00:00Z',
+      },
+      {
+        id: 'asset-old',
+        file_type: 'IMG-episode_ref',
+        status: 'APPROVED',
+        metadata: { shot_reference: { location_slug: 'bedroom_main' } },
+        created_at: '2026-05-21T12:00:00Z',
+      },
+    ]);
+    const found = await findLatestApprovedImgByLocation(sb, 'ep-1', 'bedroom_main');
+    expect(found).toBe('asset-new');
+  });
+
+  it('returns null when no row matches the requested location_slug', async () => {
+    const sb = mockSupabase([
+      {
+        id: 'asset-other',
+        file_type: 'IMG-episode_ref',
+        status: 'APPROVED',
+        metadata: { shot_reference: { location_slug: 'kitchen_morning' } },
+        created_at: '2026-05-21T13:00:00Z',
+      },
+    ]);
+    const found = await findLatestApprovedImgByLocation(sb, 'ep-1', 'bedroom_main');
+    expect(found).toBeNull();
+  });
+
+  it('returns null when empty location_slug or episode_id is passed', async () => {
+    const sb = mockSupabase([]);
+    expect(await findLatestApprovedImgByLocation(sb, '', 'bedroom_main')).toBeNull();
+    expect(await findLatestApprovedImgByLocation(sb, 'ep-1', '')).toBeNull();
+  });
+
+  it('returns null when supabase returns an error', async () => {
+    const sb = mockSupabase([], { message: 'db down' });
+    expect(
+      await findLatestApprovedImgByLocation(sb, 'ep-1', 'bedroom_main'),
+    ).toBeNull();
+  });
+
+  it('filters out rows with wrong file_type even when status APPROVED matches', async () => {
+    const sb = mockSupabase([
+      {
+        id: 'asset-stb',
+        file_type: 'STB-storyboard',
+        status: 'APPROVED',
+        metadata: { shot_reference: { location_slug: 'bedroom_main' } },
+        created_at: '2026-05-21T13:00:00Z',
+      },
+    ]);
+    const found = await findLatestApprovedImgByLocation(sb, 'ep-1', 'bedroom_main');
+    expect(found).toBeNull();
+  });
+
+  it('accepts IMG-episode_ref-<suffix> variants (TD-24 file_type shape)', async () => {
+    const sb = mockSupabase([
+      {
+        id: 'asset-variant',
+        file_type: 'IMG-episode_ref-SS-S15-E01-A1-SC01-SH02',
+        status: 'APPROVED',
+        metadata: { shot_reference: { location_slug: 'bedroom_main' } },
+        created_at: '2026-05-21T13:00:00Z',
+      },
+    ]);
+    const found = await findLatestApprovedImgByLocation(sb, 'ep-1', 'bedroom_main');
+    expect(found).toBe('asset-variant');
+  });
+});
+
+describe('runEpisodeReferenceDesigner — scene continuity context (TD-30)', () => {
+  function mockSupabaseWithMatch(assetId: string | null) {
+    const rows = assetId
+      ? [
+          {
+            id: assetId,
+            file_type: 'IMG-episode_ref',
+            status: 'APPROVED',
+            metadata: { shot_reference: { location_slug: 'bedroom_main' } },
+            created_at: '2026-05-21T13:00:00Z',
+          },
+        ]
+      : [];
+    const promise = Promise.resolve({ data: rows, error: null });
+    const limit = vi.fn(() => promise);
+    const order = vi.fn(() => ({ limit }));
+    const eq2 = vi.fn(() => ({ order }));
+    const eq1 = vi.fn(() => ({ eq: eq2 }));
+    const select = vi.fn(() => ({ eq: eq1 }));
+    return { from: vi.fn(() => ({ select })) };
+  }
+
+  /** Build STB content where the shot has a structured location object so the
+   *  Designer picks up `location.slug` for the helper lookup. */
+  const STB_WITH_LOCATION = (() => {
+    const stb = [
+      '# Storyboard — SS-S99-E99 — test',
+      '',
+      '```json',
+      JSON.stringify({
+        acts: [
+          {
+            shots: [
+              {
+                shot_id: 'SS-S99-E99-A1-SC01-SH01',
+                shot_role: 'establishing',
+                duration_seconds: 4,
+                camera_angle: 'WIDE',
+                action_prose: 'Sandy enters the bedroom.',
+                location: { slug: 'bedroom_main' },
+                characters: [{ bible_slug: 'sandy' }],
+              },
+            ],
+          },
+        ],
+      }),
+      '```',
+    ].join('\n');
+    return {
+      id: 'stb-asset-uuid-1',
+      file_type: 'STB-storyboard',
+      status: 'APPROVED',
+      content: stb,
+    };
+  })();
+
+  const inputsWithLocation = () => ({
+    episode_id: 'ep-1',
+    episode: {
+      id: 'ep-1',
+      episode_code: 'SS-S99-E99',
+      title_working: 'Test Episode',
+      metadata: {},
+    },
+    upstream_assets: [STB_WITH_LOCATION],
+    bible: { series_id: null, general_idea: null, characters: [], locations: [], styles: [], total_entries: 0 },
+  });
+
+  it('mentions prior anchor asset id in the user message when supabase finds one', async () => {
+    const sb = mockSupabaseWithMatch('prior-img-uuid-42');
+    await runEpisodeReferenceDesigner({
+      inputs: inputsWithLocation(),
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+      supabase: sb as unknown as Parameters<typeof runEpisodeReferenceDesigner>[0]['supabase'],
+    });
+    const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
+    expect(call.userMessage).toContain('Scene-continuity anchor');
+    expect(call.userMessage).toContain('prior-img-uuid-42');
+    expect(call.userMessage).toContain('bedroom_main');
+    expect(call.userMessage).toContain('scene_continuity_anchor_asset_id');
+  });
+
+  it('says "first shot in location" when no prior anchor exists', async () => {
+    const sb = mockSupabaseWithMatch(null);
+    await runEpisodeReferenceDesigner({
+      inputs: inputsWithLocation(),
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+      supabase: sb as unknown as Parameters<typeof runEpisodeReferenceDesigner>[0]['supabase'],
+    });
+    const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
+    expect(call.userMessage).toContain('FIRST shot in location');
+    expect(call.userMessage).toContain('bedroom_main');
+  });
+
+  it('skips lookup when supabase is omitted (replay-pilot mock path)', async () => {
+    await runEpisodeReferenceDesigner({
+      inputs: inputsWithLocation(),
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
+    // Block still renders to keep prompt shape stable, but Designer is told
+    // explicitly that NO lookup happened — so it can't claim "first shot".
+    expect(call.userMessage).toContain('Scene-continuity');
+    expect(call.userMessage).toContain('lookup was NOT performed');
+    expect(call.userMessage).not.toContain('FIRST shot in location');
+    // Must NOT mention any concrete anchor uuid — there is no lookup.
+    expect(call.userMessage).not.toContain('prior-img-uuid');
   });
 });

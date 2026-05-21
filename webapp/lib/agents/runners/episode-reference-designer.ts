@@ -35,6 +35,8 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../../supabase/types.gen';
 import {
   generateAnthropicText,
   AnthropicTextError,
@@ -78,11 +80,60 @@ export class EpisodeReferenceDesignerError extends Error {
   }
 }
 
+/**
+ * TD-30 (2026-05-21): Find the latest APPROVED IMG-episode_ref for the given
+ * episode whose stored `metadata.shot_reference.location_slug` matches the
+ * shot's bible-locked location. Used by Designer to embed a 4th
+ * scene_continuity anchor alongside identity/location/style, stabilising
+ * spatial layout across shots in the same room.
+ *
+ * Returns the asset id of the most recently APPROVED matching asset, or
+ * null when no prior shot in this location has been approved yet (first
+ * shot in a new location for this episode).
+ *
+ * Exported as a test seam so the matching logic can be exercised against
+ * a lightweight in-memory Supabase mock.
+ */
+export async function findLatestApprovedImgByLocation(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  locationSlug: string,
+): Promise<string | null> {
+  if (!episodeId || !locationSlug) return null;
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,file_type,status,metadata,created_at')
+    .eq('episode_id', episodeId)
+    .eq('status', 'APPROVED')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error || !data) return null;
+  for (const row of data) {
+    const ft = (row.file_type as string | null) ?? '';
+    if (ft !== 'IMG-episode_ref' && !ft.startsWith('IMG-episode_ref')) continue;
+    const meta = (row.metadata ?? null) as Record<string, unknown> | null;
+    if (!meta) continue;
+    const sr = meta.shot_reference as { location_slug?: unknown } | undefined;
+    const slug = sr && typeof sr.location_slug === 'string' ? sr.location_slug : null;
+    if (slug === locationSlug) {
+      return String(row.id);
+    }
+  }
+  return null;
+}
+
 export interface EREFDesignerRunArgs {
   inputs: AgentInputs;
   shotId: string;
   /** Optional revision note from Director / Critic — propagated to user message. */
   revisionNote?: string;
+  /**
+   * TD-30 (2026-05-21): if set, Designer can query the assets table to find
+   * a prior APPROVED IMG-episode_ref in the same location and embed it as a
+   * scene_continuity anchor in the Plan JSON. When omitted, Designer leaves
+   * `scene_continuity_anchor_asset_id` null (no spatial-continuity boost).
+   */
+  supabase?: SupabaseClient<Database>;
 }
 
 export interface EREFDesignerRunResult {
@@ -109,6 +160,8 @@ interface UpstreamAssetLike {
 }
 
 interface EpisodeLike {
+  /** TD-30: episode UUID — used by Designer to query prior APPROVED IMGs. */
+  id?: string;
   episode_code?: string;
   title_working?: string | null;
   metadata?: unknown;
@@ -214,6 +267,17 @@ function buildUserMessage(args: {
   deliveryTargets: readonly string[];
   priorPlanVersion: number | null;
   revisionNote?: string;
+  /** TD-30: prior APPROVED IMG-episode_ref in same location, or null when first shot. */
+  priorSceneContinuityAnchorAssetId?: string | null;
+  /** TD-30: bible-locked location slug for this shot — surfaced so Designer can reason. */
+  locationSlug?: string | null;
+  /**
+   * TD-30: true iff caller actually performed the lookup (supabase present
+   * AND locationSlug resolvable). False → Designer should NOT claim "first
+   * shot in location" because we never checked — Plan must mark the field
+   * null with a policy_note instead.
+   */
+  sceneContinuityLookupPerformed?: boolean;
 }): string {
   const {
     episodeCode,
@@ -224,6 +288,9 @@ function buildUserMessage(args: {
     deliveryTargets,
     priorPlanVersion,
     revisionNote,
+    priorSceneContinuityAnchorAssetId,
+    locationSlug,
+    sceneContinuityLookupPerformed,
   } = args;
 
   const biblePromptBlock = formatBibleForPrompt(bible);
@@ -286,6 +353,16 @@ function buildUserMessage(args: {
     '## Provider sprint-scope',
     '',
     `Provider allowlist for this sprint (Director directive 2026-05-18): ${EREF_DESIGNER_PROVIDER_ALLOWLIST.join(', ')}. Do not select any other provider. Justify the choice from this list in provider.rationale.`,
+    '',
+    '## Scene-continuity anchor (TD-30 — 2026-05-21)',
+    '',
+    !sceneContinuityLookupPerformed
+      ? 'Scene-continuity lookup was NOT performed in this runner invocation (no DB access). Leave `scene_continuity_anchor_asset_id` null and add a policy_note flagging the absent lookup.'
+      : locationSlug
+        ? priorSceneContinuityAnchorAssetId
+          ? `A prior APPROVED IMG-episode_ref in location \`${locationSlug}\` exists for this episode (asset_id: \`${priorSceneContinuityAnchorAssetId}\`). When continuity_strategy.mode = openai-edits-multi, set \`scene_continuity_anchor_asset_id\` to this id so the executor embeds it as a 4th multi-image ref alongside identity / location / style. This stabilises spatial layout (furniture position, set dressing) across shots in the same room. If you choose a different continuity_strategy.mode, leave the field null and note in policy_notes.`
+          : `This is the FIRST shot in location \`${locationSlug}\` for this episode — no prior APPROVED IMG-episode_ref to anchor on. Leave \`scene_continuity_anchor_asset_id\` null.`
+        : 'Shot has no resolvable bible-locked location slug — leave `scene_continuity_anchor_asset_id` null.',
     '',
     revisionNote
       ? [
@@ -358,6 +435,7 @@ function buildUserMessage(args: {
     '    "anchor_assets": ["<bible character/location slug>", ...],',
     '    "rationale": "<one sentence>"',
     '  },',
+    '  "scene_continuity_anchor_asset_id": <null | "<asset_id of prior APPROVED IMG-episode_ref in same location, TD-30>">,',
     '  "prompt": "<full prompt text — same as Промпт section above, machine-readable>",',
     '  "negative": ["<term>", "<term>", ...],',
     '  "camera_intent": {',
@@ -394,7 +472,7 @@ function buildUserMessage(args: {
 export async function runEpisodeReferenceDesigner(
   args: EREFDesignerRunArgs,
 ): Promise<EREFDesignerRunResult> {
-  const { inputs, shotId, revisionNote } = args;
+  const { inputs, shotId, revisionNote, supabase } = args;
   if (!shotId || typeof shotId !== 'string') {
     throw new EpisodeReferenceDesignerError('shotId is required');
   }
@@ -450,6 +528,40 @@ export async function runEpisodeReferenceDesigner(
   notes.push(`Delivery targets: ${deliveryTargets.join(', ')}`);
   if (revisionNote) notes.push('Revision-note loop iteration');
 
+  // TD-30 (2026-05-21): resolve scene-continuity anchor BEFORE composing the
+  // user message. Designer needs to know (a) what location this shot is in
+  // (b) whether a prior APPROVED IMG-episode_ref exists in that location.
+  // Caller must pass `supabase` to enable the lookup; otherwise we skip
+  // gracefully (returns null → Designer leaves the field null in JSON).
+  let locationSlug: string | null = null;
+  const shotLocation = (shot as { location?: unknown }).location;
+  if (typeof shotLocation === 'string') {
+    locationSlug = shotLocation;
+  } else if (shotLocation && typeof shotLocation === 'object') {
+    const slug = (shotLocation as { slug?: unknown }).slug;
+    if (typeof slug === 'string' && slug.length > 0) locationSlug = slug;
+  }
+  let priorSceneContinuityAnchorAssetId: string | null = null;
+  let sceneContinuityLookupPerformed = false;
+  if (supabase && locationSlug) {
+    const episodeId = (ep as { id?: unknown } | undefined)?.id;
+    if (typeof episodeId === 'string' && episodeId.length > 0) {
+      sceneContinuityLookupPerformed = true;
+      priorSceneContinuityAnchorAssetId = await findLatestApprovedImgByLocation(
+        supabase,
+        episodeId,
+        locationSlug,
+      );
+      if (priorSceneContinuityAnchorAssetId) {
+        notes.push(
+          `Scene-continuity anchor: ${priorSceneContinuityAnchorAssetId} (location=${locationSlug})`,
+        );
+      } else {
+        notes.push(`Scene-continuity: first shot in location=${locationSlug}`);
+      }
+    }
+  }
+
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
     episodeCode,
@@ -460,6 +572,9 @@ export async function runEpisodeReferenceDesigner(
     deliveryTargets,
     priorPlanVersion,
     revisionNote,
+    locationSlug,
+    priorSceneContinuityAnchorAssetId,
+    sceneContinuityLookupPerformed,
   });
 
   let result: AnthropicTextResult;

@@ -56,6 +56,13 @@ export interface StoryboardShotV2 {
   characters?: StoryboardShotCharacter[];
   /** v1 fallback. */
   characters_present?: string[];
+  /**
+   * TD-30 (2026-05-21): bible-locked location object (or flat string for
+   * legacy storyboards). Designer reads `location.slug` to look up prior
+   * APPROVED IMG-episode_ref in the same location and embed it as a
+   * scene_continuity anchor.
+   */
+  location?: string | { slug?: string; sub_area?: string };
 }
 
 interface StoryboardJson {
@@ -111,6 +118,23 @@ function shotToV2(s: unknown): StoryboardShotV2 | null {
     characters_present: Array.isArray(sh.characters_present)
       ? sh.characters_present.filter((x): x is string => typeof x === 'string')
       : undefined,
+    // TD-30: preserve location field (string OR { slug, sub_area } object)
+    // so Designer can extract the bible-locked location_slug.
+    location:
+      typeof sh.location === 'string'
+        ? sh.location
+        : sh.location && typeof sh.location === 'object'
+          ? {
+              slug:
+                typeof (sh.location as { slug?: unknown }).slug === 'string'
+                  ? String((sh.location as { slug?: unknown }).slug)
+                  : undefined,
+              sub_area:
+                typeof (sh.location as { sub_area?: unknown }).sub_area === 'string'
+                  ? String((sh.location as { sub_area?: unknown }).sub_area)
+                  : undefined,
+            }
+          : undefined,
   };
 }
 
