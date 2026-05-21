@@ -75,7 +75,7 @@ Tone & language:
 
 Hard safety rules — never break:
 - NEVER claim to have approved / rejected / locked / published anything yourself. Those are Director-only.
-- NEVER fabricate episode codes, asset filenames, budget numbers. Say "не знаю" plainly.
+- NEVER fabricate episode codes, asset filenames, budget numbers WHEN NO SOURCE IS VISIBLE. If a \`refs:\` line in PIPELINE_EVENTS_SINCE_LAST_REPLY or a prior tool_result already shows the field, USE IT — that is not fabrication, it is reading published structured data. Say "не знаю" only when there is genuinely no source to read.
 - NEVER silently rewrite your own rules. Propose changes verbally; Director must approve.`;
 
 // ─── Block 2: BEHAVIOR_CONTRACT (top-priority autonomy invariants) ──────────
@@ -331,19 +331,36 @@ const pipelineEvents: Block = (ctx) => {
   if (systemPipelineTurns.length === 0) return null;
   // Cap at 8 most recent so the prompt stays compact even on a noisy run.
   const recent = systemPipelineTurns.slice(-8);
-  const lines = recent.map((t) => {
+  // 2026-05-21 (auto-react read-gap fix): emit a second `refs:` line with the
+  // structured UUIDs/identifiers from metadata so Polina can directly call
+  // getAsset(asset_id) / getRecentActivityEvents without claiming "I don't
+  // know which asset". The trigger writes these into `metadata`; before this
+  // change only `content` reached the prompt and the UUIDs were invisible.
+  const lines = recent.flatMap((t) => {
     const m = (t.metadata ?? {}) as Record<string, unknown>;
     const sev = (m.severity as string | undefined) ?? 'info';
+    const eventType = (m.event_type as string | undefined) ?? '';
+    const actor = (m.actor as string | undefined) ?? '';
+    const assetId = (m.asset_id as string | undefined) ?? '';
+    const episodeId = (m.episode_id as string | undefined) ?? '';
     const ago = Math.max(
       0,
       Math.round((Date.now() - new Date(t.created_at).getTime()) / 1000),
     );
-    return `- [${sev}, ${ago}s ago] ${truncate(t.content, 200)}`;
+    const out: string[] = [`- [${sev}, ${ago}s ago] ${truncate(t.content, 200)}`];
+    const refs: string[] = [];
+    if (eventType) refs.push(`event_type=${eventType}`);
+    if (actor) refs.push(`actor=${actor}`);
+    if (assetId) refs.push(`asset_id=${assetId}`);
+    if (episodeId) refs.push(`episode_id=${episodeId}`);
+    if (refs.length > 0) out.push(`    refs: ${refs.join('  ')}`);
+    return out;
   });
   return [
     '[PIPELINE_EVENTS_SINCE_LAST_REPLY]',
     'These events arrived from the agent pipeline since your previous reply.',
     'Read them BEFORE answering; surface anything actionable to the Director without being asked.',
+    'The `refs:` line under each event lists PUBLISHED structured fields (event_type, actor, asset_id, episode_id) — use them directly as tool arguments, e.g. getAsset(asset_id). They are ground truth, NOT fabrication candidates.',
     'Newest at the bottom:',
     ...lines,
   ].join('\n');
@@ -446,18 +463,20 @@ const teamChatFromClaude: Block = (ctx) => {
   ].join('\n');
 };
 
-// ─── Block: AUTO_REACT_GUIDANCE (TD-20.B) ────────────────────────────────────
+// ─── Block: AUTO_REACT_GUIDANCE (TD-20.B + 2026-05-21 read-gap fix) ──────────
 const autoReactGuidance: Block = (ctx) => {
   if (!ctx.autoReact) return null;
   return `[AUTO_REACT_GUIDANCE]
 You were just invoked autonomously — Director did NOT type. A non-Director turn (ambient pipeline event or claude_message from Тео) landed in this thread and triggered your reaction.
 
 How to respond:
-- Acknowledge the trigger in one or two sentences — what happened, what state the pipeline is now in.
-- If next steps are obvious and read-only, state them briefly and proceed (no need for verbal approval).
-- If next steps would require a destructive / spending / canon-affecting tool, propose the action and wait for Director — do NOT fire it. Mutating tools are gated to verbal approval and Director has not approved this turn.
-- Keep it short — one short paragraph is usually enough. Director may or may not be at the keyboard; respect that the answer goes into the thread for later reading too.
-- If there is nothing useful to add, say so in one line. Do not invent work.`;
+- READ the pipeline_event line(s) in PIPELINE_EVENTS_SINCE_LAST_REPLY block above carefully — INCLUDING the \`refs:\` line under each event. \`refs:\` gives you \`event_type\`, \`actor\`, \`asset_id\`, \`episode_id\` — these are PUBLISHED structured fields from the event source, NOT fabricated guesses. Use them as ground truth.
+- READ-ONLY tools are ENCOURAGED on auto-react. If the event is \`agent_completed\` / \`agent_failed\` / \`asset_status_changed\` and \`asset_id\` is in \`refs:\`, your first action SHOULD be \`getAsset(assetId)\` — and \`getRecentActivityEvents(episodeId, sinceMinutes=30)\` if you need more context. THEN surface a 1–2 sentence summary to Director with the concrete agent role + asset name + status + key finding (e.g. "Reference Designer завершил SH07 v02 plan, asset \`1177690c-…\`, статус REVIEW, главное: physics fixed.").
+- NEVER reply "I don't know which agent / which asset" or "не буду выдумывать" when the \`refs:\` line is sitting right there in your prompt. That is the data — read it, use it, then optionally enrich via read-only tools. "Won't fabricate" applies when there is no source to read, NOT when the source is one block above.
+- MUTATING tools (approveAsset, triggerAgent, regenerateImage, requestRevision, setBibleContent, enrichBible, createEpisode, etc.) still require verbal Director approval. Do NOT fire them in auto-react. Propose them in past-Director-approval scope, or in q-format, and wait.
+- Keep it short — one short paragraph after the read-only tool calls is usually enough. Director may not be at the keyboard; the answer goes into the thread for later reading too.
+- If after reading the event + (optionally) calling read-only tools there is genuinely nothing actionable, say so explicitly: "Event read, no action needed; pipeline progressing as expected." Don't invent work.
+- Do NOT say "I'm waiting" / "жду" without an explicit q-format ask in the same turn — see OPEN_LOOP_AWARENESS below.`;
 };
 
 // ─── Block: OPEN_LOOP_AWARENESS (TD-25 P1, 2026-05-21) ───────────────────────
