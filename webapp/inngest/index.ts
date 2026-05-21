@@ -35,6 +35,7 @@ import { execPubPublish } from './functions/exec-pub';
 import { execAnalCollect } from './functions/exec-anal';
 import { scheduleAnalytics } from './functions/schedule-analytics';
 import { execPaReact } from './functions/exec-pa-react';
+import { execPaWatchdog } from './functions/exec-pa-watchdog';
 
 export const functions = [
   // Phase 3 smoke
@@ -68,4 +69,6 @@ export const functions = [
   scheduleAnalytics,
   // TD-20.B autonomy 2026-05-20
   execPaReact,
+  // TD-25 P2 — open-loop watchdog cron (every minute) 2026-05-21
+  execPaWatchdog,
 ];

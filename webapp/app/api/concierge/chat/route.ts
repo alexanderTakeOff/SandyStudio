@@ -27,6 +27,7 @@ import { getServerEnv, PUBLIC_ENV } from '@/lib/env';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import path from 'node:path';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
+import { detectAwaitingDirectorInput } from '@/lib/concierge/await-detector';
 import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
@@ -535,12 +536,21 @@ export async function POST(req: Request) {
         closed = true;
         try { controller.close(); } catch { /* already closed */ }
         if (threadId && assistantBuffer.trim() !== '') {
+          // TD-25 P1+P3 (2026-05-21): detect if Polina ended the turn with an
+          // explicit q-format question or a passive "жду" without an ask, and
+          // stamp `awaiting_director_input` into metadata. ConciergePanel
+          // renders a yellow "🟡 Полина ждёт ответа" chip above the bubble
+          // when this is present, so Director sees the pending ask without
+          // having to scan the whole text.
+          const awaiting = detectAwaitingDirectorInput(assistantBuffer);
           try {
             await persistTurn(supabase, threadId, {
               role: 'assistant',
               event_type: 'message',
               content: assistantBuffer,
-              metadata: { model },
+              metadata: awaiting
+                ? { model, awaiting_director_input: awaiting }
+                : { model },
             });
           } catch {
             /* swallow secondary persistence failures */

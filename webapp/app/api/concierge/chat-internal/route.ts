@@ -45,7 +45,9 @@ const RECENT_TURN_WINDOW = 80;
 
 const Body = z.object({
   thread_id: z.string().uuid(),
-  source: z.enum(['ambient', 'claude_message']),
+  // TD-25 P2 (2026-05-21): 'watchdog' source — re-ping after Polina's
+  // prior turn left an unresolved awaiting_director_input flag.
+  source: z.enum(['ambient', 'claude_message', 'watchdog']),
   trigger_id: z.string().min(1),
   event_type: z.string().optional(),
 });
@@ -146,14 +148,18 @@ export async function POST(req: Request) {
   const triggerLabel =
     parsed.source === 'ambient'
       ? `[autonomous trigger] pipeline event ${parsed.event_type ?? 'unknown'} (activity_event ${parsed.trigger_id})`
-      : `[autonomous trigger] team-chat message from Тео (turn ${parsed.trigger_id})`;
+      : parsed.source === 'watchdog'
+        ? `[autonomous trigger] **OPEN-LOOP WATCHDOG re-ping** — your prior turn (${parsed.trigger_id}) had awaiting_director_input set but nothing has resolved it for >90s. Director may have missed your question or you may need to take the next concrete step yourself.`
+        : `[autonomous trigger] team-chat message from Тео (turn ${parsed.trigger_id})`;
+  const userInstruction =
+    parsed.source === 'watchdog'
+      ? 'Read your prior assistant turn (above). Either (a) take the next concrete sub-step yourself if the original Director directive logically covers it — don\'t wait for new approval; or (b) re-ask Director more explicitly with a fresh q-format question and a tighter framing. Do not just echo your previous wait. Do not request tools.'
+      : 'Recap what just happened in this thread (read the recent turns above) and decide whether to act now or wait for Director. Keep the response short. Do not request tools.';
   const conversation: ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
     {
       role: 'user',
-      content:
-        `${triggerLabel}\n\n` +
-        'Recap what just happened in this thread (read the recent turns above) and decide whether to act now or wait for Director. Keep the response short. Do not request tools.',
+      content: `${triggerLabel}\n\n${userInstruction}`,
     },
   ];
 

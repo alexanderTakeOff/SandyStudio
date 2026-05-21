@@ -771,9 +771,11 @@ export async function loadPlanOverrides(
   if (!data) {
     throw new EpisodeReferencesError(`Plan asset ${planAssetId} not found`);
   }
-  if (data.file_type !== 'SPC-ref_plan') {
+  // TD-24 (2026-05-20): Designer runner writes file_type as `SPC-ref_plan-<shot_id>`,
+  // not bare `SPC-ref_plan`. Accept both shapes. Mirrors approve route line 410 fix.
+  if (data.file_type !== 'SPC-ref_plan' && !data.file_type.startsWith('SPC-ref_plan-')) {
     throw new EpisodeReferencesError(
-      `Plan asset ${planAssetId} has file_type="${data.file_type}", expected "SPC-ref_plan"`,
+      `Plan asset ${planAssetId} has file_type="${data.file_type}", expected "SPC-ref_plan" or "SPC-ref_plan-*"`,
     );
   }
   if (data.status !== 'APPROVED') {

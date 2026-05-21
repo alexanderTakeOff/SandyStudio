@@ -45,6 +45,16 @@ interface Message {
   severity?: 'info' | 'warning' | 'error';
   /** For `claude` messages — author label, default "Claude". */
   author?: string;
+  /**
+   * For `assistant` messages — Polina explicitly waiting for Director input.
+   * Stamped server-side by /api/concierge/chat via detectAwaitingDirectorInput
+   * when the turn ends in a q-format question or a passive "жду".
+   * TD-25 P3 (2026-05-21).
+   */
+  awaitingDirectorInput?: {
+    question: string;
+    choices?: ReadonlyArray<{ id: string; label: string }>;
+  };
 }
 
 const STORAGE_KEY = 'sandystudio.prodassistant.history';
@@ -56,6 +66,39 @@ const MAX_HISTORY_TURNS = 20;
 
 /** Silence tolerance for continuous mic. Director wanted ≥5s for thinking pauses. */
 const MIC_SILENCE_TIMEOUT_MS = 5500;
+
+/**
+ * Pull a structured `awaiting_director_input` descriptor out of a turn's
+ * metadata object — used by all three assistant-turn ingestion paths
+ * (Realtime arrivals, first load, polling fallback) so a single shape
+ * propagates into `Message.awaitingDirectorInput`. Server-side detection
+ * lives in `lib/concierge/await-detector.ts`. TD-25 P3 — 2026-05-21.
+ */
+function readAwaitingFromMetadata(
+  meta: Record<string, unknown> | null | undefined,
+): { question: string; choices?: ReadonlyArray<{ id: string; label: string }> } | null {
+  const raw = meta?.awaiting_director_input;
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const question = obj.question;
+  if (typeof question !== 'string' || question.length === 0) return null;
+  const rawChoices = obj.choices;
+  if (Array.isArray(rawChoices)) {
+    const choices: Array<{ id: string; label: string }> = [];
+    for (const c of rawChoices) {
+      if (
+        c &&
+        typeof c === 'object' &&
+        typeof (c as { id?: unknown }).id === 'string' &&
+        typeof (c as { label?: unknown }).label === 'string'
+      ) {
+        choices.push({ id: (c as { id: string }).id, label: (c as { label: string }).label });
+      }
+    }
+    if (choices.length > 0) return { question, choices };
+  }
+  return { question };
+}
 
 // Web Speech API typing — minimal, broadly compatible.
 interface SpeechRecErrorEvent {
@@ -314,9 +357,15 @@ export function ConciergePanel() {
       if (turn.role === 'assistant' && m.auto_react === true) {
         setMessages((prev) => {
           if (prev.some((p) => p.turnId === turn.id)) return prev;
+          const awaiting = readAwaitingFromMetadata(m);
           return [
             ...prev,
-            { role: 'assistant', content: turn.content, turnId: turn.id },
+            {
+              role: 'assistant',
+              content: turn.content,
+              turnId: turn.id,
+              ...(awaiting ? { awaitingDirectorInput: awaiting } : {}),
+            },
           ];
         });
         return;
@@ -385,10 +434,12 @@ export function ConciergePanel() {
           // chat-internal). Restore so reload doesn't lose Polina's
           // autonomous reactions.
           if (t.role === 'assistant' && meta.auto_react === true) {
+            const awaiting = readAwaitingFromMetadata(meta);
             additions.push({
               role: 'assistant',
               content: t.content,
               turnId: t.id,
+              ...(awaiting ? { awaitingDirectorInput: awaiting } : {}),
             });
             continue;
           }
@@ -464,7 +515,13 @@ export function ConciergePanel() {
         for (const t of [...rows].reverse()) {
           const meta = (t.metadata ?? {}) as Record<string, unknown>;
           if (t.role === 'assistant' && meta.auto_react === true) {
-            additions.push({ role: 'assistant', content: t.content, turnId: t.id });
+            const awaiting = readAwaitingFromMetadata(meta);
+            additions.push({
+              role: 'assistant',
+              content: t.content,
+              turnId: t.id,
+              ...(awaiting ? { awaitingDirectorInput: awaiting } : {}),
+            });
             continue;
           }
           if (t.role !== 'system') continue;
@@ -979,12 +1036,27 @@ export function ConciergePanel() {
             }
             if (m.role === 'assistant') {
               return (
-                <div
-                  key={key}
-                  className="rounded-xl px-3 py-2 text-sm bg-panel-glass border border-glass text-text-primary mr-8"
-                >
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
+                <div key={key} className="mr-8 flex flex-col gap-1.5">
+                  {/* TD-25 P3 (2026-05-21): yellow "🟡 Полина ждёт" chip
+                      above the bubble when Polina is explicitly waiting on
+                      Director input. Closes the silent-wait UX bug. */}
+                  {m.awaitingDirectorInput && (
+                    <div
+                      className="self-start rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                      style={{
+                        background: 'color-mix(in oklab, var(--accent-warning) 12%, transparent)',
+                        borderColor: 'color-mix(in oklab, var(--accent-warning) 45%, transparent)',
+                        color: 'var(--accent-warning)',
+                      }}
+                      title="Polina is waiting for your reply. Click choices below or just answer."
+                    >
+                      🟡 Полина ждёт ответа: «{m.awaitingDirectorInput.question}»
+                    </div>
+                  )}
+                  <div className="rounded-xl px-3 py-2 text-sm bg-panel-glass border border-glass text-text-primary">
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               );

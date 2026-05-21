@@ -342,32 +342,43 @@ async function computeNextEvents(
               data: { episodeId: ep, shotId: shot.shot_id },
             });
           }
-          if (pendingShotIds.length > 0) {
-            // Stash remaining shot ids for the post-pilot fanout. Read by a
-            // future fanout-trigger handler / PA tool. We do this AFTER
-            // queueing events so a transient metadata write failure does not
-            // block the pilots — those still fire.
-            try {
-              const { data: epRow } = await supabase
-                .from('episodes')
-                .select('metadata')
-                .eq('id', ep)
-                .maybeSingle();
-              const existingMeta = (epRow?.metadata as Record<string, unknown> | null) ?? {};
-              await supabase
-                .from('episodes')
-                .update({
-                  metadata: {
-                    ...existingMeta,
-                    designer_fanout_pending: pendingShotIds,
-                    designer_pilot_count: PILOT_COUNT_DESIGNER,
-                    designer_fanout_total: shots.length,
-                  } as never,
-                } as never)
-                .eq('id', ep);
-            } catch {
-              /* non-fatal — pilots will still fire */
+          // Stash remaining shot ids for the post-pilot fanout, AND mirror the
+          // pilot shotIds into the Track-A `eref_pilot_shot_ids` field so the
+          // browser-side EREFPilotPillbar (components/pipeline/EREFPilotPillbar.tsx)
+          // can count the 2 approved pilot IMGs and activate the
+          // "Approve Direction & Fan Out" button. Without this mirror, the UI
+          // counter stays "0/2" forever because the Designer-chain branch
+          // (Track B) writes only `designer_*` keys, but the pillbar reads
+          // `eref_pilot_shot_ids` (Track A).
+          //
+          // TD-23 / TD-24 follow-up 2026-05-20.
+          //
+          // We do this AFTER queueing events so a transient metadata write
+          // failure does not block the pilots — those still fire.
+          try {
+            const { data: epRow } = await supabase
+              .from('episodes')
+              .select('metadata')
+              .eq('id', ep)
+              .maybeSingle();
+            const existingMeta = (epRow?.metadata as Record<string, unknown> | null) ?? {};
+            const pilotShotIds = pilotShots.map((s) => s.shot_id);
+            const nextMeta: Record<string, unknown> = {
+              ...existingMeta,
+              designer_pilot_count: PILOT_COUNT_DESIGNER,
+              designer_fanout_total: shots.length,
+              // Mirror Track-A pilot shotIds so the pillbar counter works.
+              eref_pilot_shot_ids: pilotShotIds,
+            };
+            if (pendingShotIds.length > 0) {
+              nextMeta.designer_fanout_pending = pendingShotIds;
             }
+            await supabase
+              .from('episodes')
+              .update({ metadata: nextMeta as never } as never)
+              .eq('id', ep);
+          } catch {
+            /* non-fatal — pilots will still fire */
           }
         } else {
           // Defensive fallback — fire legacy single event so REV-world_check
@@ -407,7 +418,13 @@ async function computeNextEvents(
   // exactly one IMG-episode_ref using the Plan's provider/size/prompt
   // decisions. Idempotency check is keyed per Plan asset id (not per agent
   // for the whole episode) so each Plan triggers its own execute event.
-  if (ft === 'SPC-ref_plan' && designerChainEnabled()) {
+  // TD-24 (2026-05-20): Designer runner writes file_type as
+  // `SPC-ref_plan-<shot_id>` (e.g. `SPC-ref_plan-SS-S15-E01-A1-SC01-SH01`)
+  // per its documented format. The original strict `===` check missed every
+  // real Plan asset and `fired_events: []` blocked Phase 5 of the q2b smoke
+  // for SS-S15-E01. Hot-fix accepts both shapes. Helper refactor for the
+  // other 4 prod sites in follow-up (TD-24.B).
+  if ((ft === 'SPC-ref_plan' || ft.startsWith('SPC-ref_plan-')) && designerChainEnabled()) {
     // Extract shotId from the Plan asset's JSON body so the executor knows
     // which shot to generate. We trust the body — Director would not have
     // approved a Plan with a malformed shot_id (and the Designer runner

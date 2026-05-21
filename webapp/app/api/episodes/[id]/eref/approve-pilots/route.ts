@@ -144,25 +144,81 @@ export const POST = withApiHandler(async (req, ctx) => {
     // Metadata mirror is a UI-helper, never block fan-out on it.
   }
 
-  const { ids } = await inngest.send({
-    name: 'sandystudio/exec-eref/fanout-trigger',
-    data: {
-      episodeId,
-      start_index: pilotCount,
-    } as never,
-  });
+  // TD-23 (2026-05-20): when DESIGNER_CHAIN_ENABLED is on, the per-shot
+  // Designer pipeline replaces the legacy single-pass Reference Artist fan-out.
+  // Instead of firing `exec-eref/fanout-trigger` (which would generate IMG
+  // assets directly via the old Artist path, ignoring per-shot Plans), we
+  // emit one `exec-eref-designer/plan` event per shot stashed in
+  // `episode.metadata.designer_fanout_pending` by the REV-world_check approve
+  // branch (commit cdb7f9f). Each Designer Plan then gets reviewed + APPROVED
+  // independently, and SPC-ref_plan.APPROVED fires `exec-eref/execute-from-plan`
+  // via approve route line 410 (TD-24 hot-fix).
+  //
+  // Falls back to legacy path when flag is off.
+  const designerEnabled =
+    process.env.DESIGNER_CHAIN_ENABLED?.toLowerCase() === 'true' ||
+    process.env.DESIGNER_CHAIN_ENABLED === '1' ||
+    process.env.DESIGNER_CHAIN_ENABLED?.toLowerCase() === 'on';
+
+  let ids: string[] = [];
+  let eventName: string;
+
+  if (designerEnabled) {
+    const { data: epRow } = await supabase
+      .from('episodes')
+      .select('metadata')
+      .eq('id', episodeId)
+      .maybeSingle();
+    const meta = ((epRow as { metadata?: unknown } | null)?.metadata as Record<string, unknown> | null) ?? {};
+    const pending = (meta.designer_fanout_pending as string[] | undefined) ?? [];
+
+    if (pending.length === 0) {
+      throw new ConflictError(
+        'No shots queued in designer_fanout_pending — either episode already fanned out, or pilots ran via legacy path before Day 3.2.',
+      );
+    }
+
+    const events = pending.map((shotId) => ({
+      name: 'sandystudio/exec-eref-designer/plan' as const,
+      data: { episodeId, shotId } as never,
+    }));
+    const sendResult = await inngest.send(events);
+    ids = sendResult.ids;
+    eventName = 'sandystudio/exec-eref-designer/plan';
+
+    // Clear the pending list — Designer will produce per-shot Plan assets,
+    // and each Plan APPROVE then fires its own execute-from-plan downstream.
+    const nextMeta = { ...meta };
+    delete nextMeta.designer_fanout_pending;
+    await supabase
+      .from('episodes')
+      .update({ metadata: nextMeta as never })
+      .eq('id', episodeId);
+  } else {
+    const sendResult = await inngest.send({
+      name: 'sandystudio/exec-eref/fanout-trigger',
+      data: {
+        episodeId,
+        start_index: pilotCount,
+      } as never,
+    });
+    ids = sendResult.ids;
+    eventName = 'sandystudio/exec-eref/fanout-trigger';
+  }
 
   await supabase.from('activity_events').insert({
     event_type: 'manual_trigger',
     severity: 'info',
-    title: 'EREF fan-out triggered',
-    description: `Director ${user.email ?? user.id} approved direction; fanning out from index ${pilotCount}`,
+    title: designerEnabled ? 'Designer fan-out triggered' : 'EREF fan-out triggered',
+    description: `Director ${user.email ?? user.id} approved direction; fanning out ${ids.length} ${designerEnabled ? 'Designer Plan' : 'EREF'} event(s)`,
     actor: user.id,
     episode_id: episodeId,
     metadata: {
-      kind: 'eref_fanout',
+      kind: designerEnabled ? 'designer_fanout' : 'eref_fanout',
       pilot_count: pilotCount,
       approved_pilots: progress.approvedCount,
+      event_name: eventName,
+      event_count: ids.length,
       inngest_event_ids: ids,
     },
   } as never);
@@ -171,7 +227,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     triggered: true,
     pilot_state: 'FANOUT_RUNNING',
     start_index: pilotCount,
-    inngest_event: 'sandystudio/exec-eref/fanout-trigger',
+    inngest_event: eventName,
     inngest_event_ids: ids,
   });
 });

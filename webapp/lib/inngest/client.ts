@@ -377,7 +377,10 @@ type Events = {
        */
       threadId?: string | null;
       episodeId?: string | null;
-      source: 'ambient' | 'claude_message';
+      // TD-25 P2 (2026-05-21): `watchdog` source added so exec-pa-react /
+      // chat-internal can distinguish a real new event from a watchdog
+      // re-ping after open-loop stall.
+      source: 'ambient' | 'claude_message' | 'watchdog';
       /** Either an activity_events.id or a concierge_turns.id for traceability. */
       triggerId: string;
       /** Echo of the upstream event_type ('agent_completed' etc) when ambient. */
