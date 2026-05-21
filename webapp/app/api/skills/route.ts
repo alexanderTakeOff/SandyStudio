@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import { requireDirector } from '@/lib/api/auth';
+import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk, apiCreated } from '@/lib/api/response';
 import { parseJson, parseSearchParams } from '@/lib/api/zod-helpers';
@@ -106,14 +107,16 @@ export const POST = withApiHandler(async (req) => {
     body: body.body,
   });
 
-  await supabase.from('activity_events').insert({
+  // TD-29.5 (2026-05-21): route through logEvent so rule_approved /
+  // rule_proposal can emit pa/notify-needed when actionable.
+  await logEvent(supabase, {
     event_type: body.status === 'ACTIVE' ? 'rule_approved' : 'rule_proposal',
     severity: 'info',
     title: `Skill ${body.slug} created via /api/skills (${body.status})`,
     description: `Created by ${user.email ?? user.id}. Scope: ${JSON.stringify(body.applies_when ?? {})}`,
     actor: user.id,
     metadata: { slug: body.slug, hard: body.hard, scope: body.applies_when ?? {} },
-  } as never);
+  });
 
   return apiCreated({ slug: written.slug, frontmatter, filePath: written.filePath });
 });

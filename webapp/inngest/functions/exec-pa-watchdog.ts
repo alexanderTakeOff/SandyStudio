@@ -28,6 +28,7 @@
 
 import { inngest } from '@/lib/inngest/client';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { logEvent } from '@/lib/api/events';
 
 /** Minimum age of the awaiting turn before we escalate. Gives Director a
  *  reasonable window to read and reply naturally before the watchdog nags. */
@@ -129,7 +130,9 @@ export const execPaWatchdog = inngest.createFunction(
         });
 
         // Log escalation so the cooldown sees it next minute.
-        await sb.from('activity_events').insert({
+        // TD-29.5 (2026-05-21): route through logEvent for consistency —
+        // pa_watchdog_escalation is non-actionable so no Inngest fan-out fires.
+        await logEvent(sb, {
           event_type: 'pa_watchdog_escalation',
           severity: 'info',
           title: 'PA open-loop watchdog escalation',
@@ -145,7 +148,7 @@ export const execPaWatchdog = inngest.createFunction(
                 (awaiting.awaiting_director_input as { question?: string } | undefined)
                   ?.question ?? null
               ),
-          } as never,
+          },
         });
 
         return { turnId: turn.id };

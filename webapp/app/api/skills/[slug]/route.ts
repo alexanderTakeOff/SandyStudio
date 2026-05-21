@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import path from 'node:path';
 import { requireDirector } from '@/lib/api/auth';
+import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
@@ -102,7 +103,9 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     eventType = 'rule_rejected';
   }
 
-  await supabase.from('activity_events').insert({
+  // TD-29.5 (2026-05-21): route through logEvent so rule_* events can emit
+  // pa/notify-needed when actionable.
+  await logEvent(supabase, {
     event_type: eventType,
     severity: 'info',
     title: `Skill ${slug} updated via /api/skills (status=${nextFrontmatter.status})`,
@@ -115,7 +118,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
       body_changed: patch.body !== undefined,
       scope_changed: patch.applies_when !== undefined,
     },
-  } as never);
+  });
 
   return apiOk({ slug: written.slug, frontmatter: nextFrontmatter, filePath: written.filePath });
 });
@@ -132,14 +135,15 @@ export const DELETE = withApiHandler(async (_req, ctx) => {
   const existing = await loadOr404(slug);
   const result = await deleteSkillFile(slug);
 
-  await supabase.from('activity_events').insert({
+  // TD-29.5 (2026-05-21): route through logEvent for consistency.
+  await logEvent(supabase, {
     event_type: 'rule_rejected' satisfies SkillEventType,
     severity: 'warning',
     title: `Skill ${slug} deleted via /api/skills`,
     description: `Deleted by ${user.email ?? user.id}. Prior status=${existing.frontmatter.status}.`,
     actor: user.id,
     metadata: { slug, prior_status: existing.frontmatter.status, removed: result.removed },
-  } as never);
+  });
 
   return apiOk({ slug, removed: result.removed });
 });

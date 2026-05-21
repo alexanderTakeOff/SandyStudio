@@ -22,6 +22,7 @@
 
 import { z } from 'zod';
 import { requireDirector } from '@/lib/api/auth';
+import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
@@ -159,7 +160,10 @@ export const POST = withApiHandler(async (req, ctx) => {
     agent_id: j.agent_id,
     inngest_event: j.inngest_event,
   }));
-  await supabase.from('activity_events').insert({
+  // TD-29.5 (2026-05-21): route through logEvent for consistency. Whether
+  // episode_archived is in the actionable whitelist or not, the side-effect
+  // is harmless — non-actionable events skip the Inngest send.
+  await logEvent(supabase, {
     event_type: 'episode_archived',
     severity: 'info',
     title: `Episode ${ep.episode_code} archived (${body.state} · ${completedShots}/${totalShots ?? '?'} shots)`,
@@ -171,7 +175,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       archival,
       cancelled_jobs: cancelledSummary,
     },
-  } as never);
+  });
 
   return apiOk({
     episode_id: episodeId,

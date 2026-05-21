@@ -18,6 +18,7 @@
 
 import { z } from 'zod';
 import { requireDirector } from '@/lib/api/auth';
+import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
@@ -395,7 +396,9 @@ export const POST = withApiHandler(async (req, ctx) => {
     .single();
   if (insErr) throw new Error(`asset insert failed: ${insErr.message}`);
 
-  await sb.from('activity_events').insert({
+  // TD-29.5 (2026-05-21): route through logEvent so the row consistently
+  // emits pa/notify-needed when the event_type is actionable.
+  await logEvent(sb, {
     event_type: 'asset_updated',
     severity: 'info',
     title: `Video regenerated: shot ${shotId} → ${versionTag}`,
@@ -413,7 +416,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       duration_seconds: durationSeconds,
       mode_at_time: decision.modeAtTime,
     },
-  } as never);
+  });
 
   return apiOk({
     asset_id: insertedAsset?.id,

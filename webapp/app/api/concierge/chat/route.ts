@@ -25,6 +25,7 @@ import type {
 } from 'openai/resources/chat/completions';
 import { getServerEnv, PUBLIC_ENV } from '@/lib/env';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { logEvent } from '@/lib/api/events';
 import path from 'node:path';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { detectAwaitingDirectorInput } from '@/lib/concierge/await-detector';
@@ -580,7 +581,8 @@ export async function POST(req: Request) {
           const match = assistantBuffer.match(BANNED_RE);
           if (match) {
             try {
-              await supabase.from('activity_events').insert({
+              // TD-29.5 (2026-05-21): route through logEvent.
+              await logEvent(supabase, {
                 event_type: 'manual_trigger',
                 severity: 'warning',
                 title: 'PA behavior drift: permission-asking phrase detected',
