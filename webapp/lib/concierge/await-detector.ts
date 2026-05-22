@@ -46,11 +46,18 @@ const PASSIVE_WAIT_PATTERN =
   /(?:^|[\s.\-—«("'`])(жду|ожидаю|мониторю|слежу за|наблюдаю за|следующ(?:ее|ий) (?:действие|шаг)[^.\n]*(?:монитор|следить|подож|ожида)|waiting for|wait for|monitoring|watching for|will (?:wait|react|monitor)|next (?:concrete )?step[^.\n]*(?:wait|monitor|watch))(?=[\s.,!?\-—»)]|$)/i;
 
 /**
+ * @deprecated 2026-05-22 — TD-25 P4. Use the `markAwaitingDirector` PA tool
+ * instead. Regex-based detection over-fires on passive narration phrasings
+ * (e.g. "мониторю" / "жду авто-подхвата") and was the root-cause regex that
+ * fueled the watchdog→exec-pa-react loop which burned 14 GB of Supabase
+ * egress on 2026-05-22. The chat route now prefers the tool's metadataPatch;
+ * this detector remains as a fallback for turns where Polina forgets the
+ * tool, and emits a console.warn on every fire so we can monitor adoption.
+ * Slated for removal after one clean week of `markAwaitingDirector` usage.
+ *
  * Inspect Polina's full assistant turn and return an awaiting-input descriptor
  * when she's stalled on Director input. Returns null when the turn looks
  * self-contained (no pending ask).
- *
- * Pure function — no I/O, no logging. Safe to call on every persist.
  */
 export function detectAwaitingDirectorInput(
   content: string,
@@ -75,6 +82,14 @@ export function detectAwaitingDirectorInput(
   // Polina forgot the prompt rule. Still flag so Director isn't stranded.
   if (PASSIVE_WAIT_PATTERN.test(content)) {
     const snippet = extractWaitSnippet(content);
+    // TD-25 P4 (2026-05-22): log when the deprecated fallback fires so we can
+    // track adoption of `markAwaitingDirector`. After a week of clean usage
+    // this whole function gets deleted.
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[await-detector] DEPRECATED fallback fired — Polina should call markAwaitingDirector instead. Snippet:',
+      snippet?.slice(0, 100),
+    );
     return {
       question: snippet
         ? `жду — ${truncate(snippet, 160)}`

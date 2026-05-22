@@ -37,7 +37,20 @@ export interface ToolContext {
 
 /** Standard tool result envelope. Always JSON-serialisable. */
 export type ToolResult =
-  | { ok: true; data: unknown; summary?: string }
+  | {
+      ok: true;
+      data: unknown;
+      summary?: string;
+      /**
+       * TD-25 P4 (2026-05-22): optional metadata patch the route merges into
+       * the persisted assistant turn at end-of-round. Used by intent-declaring
+       * tools like `markAwaitingDirector` to record structured state on the
+       * turn (`awaiting_director_input`) instead of letting a downstream
+       * regex sniff for it. The route shallow-merges multiple patches if
+       * several tools in the same round produce them.
+       */
+      metadataPatch?: Record<string, unknown>;
+    }
   | { ok: false; error: string; code?: string };
 
 /** OpenAI Chat Completions tool definition shape (function calling). */
@@ -76,6 +89,21 @@ export interface Tool<TArgs = Record<string, unknown>> {
 /** Helper to produce ok results with optional human summary. */
 export function ok(data: unknown, summary?: string): ToolResult {
   return summary ? { ok: true, data, summary } : { ok: true, data };
+}
+
+/**
+ * TD-25 P4 (2026-05-22): helper for tools that need to attach a metadata
+ * patch to the persisted assistant turn (e.g. `markAwaitingDirector`).
+ * The route's runTool() shallow-merges the patch into turn.metadata.
+ */
+export function okWithPatch(
+  data: unknown,
+  metadataPatch: Record<string, unknown>,
+  summary?: string,
+): ToolResult {
+  return summary
+    ? { ok: true, data, summary, metadataPatch }
+    : { ok: true, data, metadataPatch };
 }
 
 export function fail(error: string, code?: string): ToolResult {

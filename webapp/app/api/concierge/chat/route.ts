@@ -301,6 +301,12 @@ async function handleChatPOST(req: Request) {
     async start(controller) {
       const encoder = new TextEncoder();
       let assistantBuffer = '';
+      // TD-25 P4 (2026-05-22): accumulate metadataPatches from tool calls in
+      // this round. At end-of-turn, these are shallow-merged into the
+      // persisted assistant turn's metadata. `markAwaitingDirector` is the
+      // first user — it patches `awaiting_director_input` deliberately,
+      // bypassing the legacy regex detector.
+      const accumulatedMetadataPatch: Record<string, unknown> = {};
       let closed = false;
       const writeEvent = (event: Record<string, unknown>): void => {
         if (closed) return;
@@ -481,6 +487,15 @@ async function handleChatPOST(req: Request) {
 
             const result = await runToolWithTimeout(call, toolCtx, PER_TOOL_TIMEOUT_MS);
 
+            // TD-25 P4 (2026-05-22): collect any metadataPatch the tool
+            // returned so the route can stamp it onto the persisted assistant
+            // turn at the end. Multiple tools in the same round shallow-merge
+            // (last writer wins per key). markAwaitingDirector is the primary
+            // user but the mechanism is general.
+            if (result.ok && result.metadataPatch) {
+              Object.assign(accumulatedMetadataPatch, result.metadataPatch);
+            }
+
             // TD-20.A — emit tool_result (or tool_timeout) event so the client
             // can swap the plashka for a compact "ok" / "error" / "timeout" chip.
             if (result.timedOut) {
@@ -551,21 +566,29 @@ async function handleChatPOST(req: Request) {
         closed = true;
         try { controller.close(); } catch { /* already closed */ }
         if (threadId && assistantBuffer.trim() !== '') {
-          // TD-25 P1+P3 (2026-05-21): detect if Polina ended the turn with an
-          // explicit q-format question or a passive "жду" without an ask, and
-          // stamp `awaiting_director_input` into metadata. ConciergePanel
-          // renders a yellow "🟡 Полина ждёт ответа" chip above the bubble
-          // when this is present, so Director sees the pending ask without
-          // having to scan the whole text.
-          const awaiting = detectAwaitingDirectorInput(assistantBuffer);
+          // TD-25 P4 (2026-05-22): prefer tool-driven awaiting marker over
+          // the legacy regex detector. If Polina called markAwaitingDirector
+          // in this round, `accumulatedMetadataPatch.awaiting_director_input`
+          // is set deliberately — use it verbatim. Otherwise fall back to
+          // regex detection (deprecated; will be removed after one-week
+          // grace per TD-25 P4 plan).
+          const toolAwaiting = accumulatedMetadataPatch.awaiting_director_input;
+          const awaiting = toolAwaiting
+            ? toolAwaiting
+            : detectAwaitingDirectorInput(assistantBuffer);
+          // Compose final metadata: model + tool patches + awaiting (which is
+          // already in the patch if tool path took it).
+          const finalMetadata: Record<string, unknown> = {
+            model,
+            ...accumulatedMetadataPatch,
+            ...(awaiting && !toolAwaiting ? { awaiting_director_input: awaiting } : {}),
+          };
           try {
             await persistTurn(supabase, threadId, {
               role: 'assistant',
               event_type: 'message',
               content: assistantBuffer,
-              metadata: awaiting
-                ? { model, awaiting_director_input: awaiting }
-                : { model },
+              metadata: finalMetadata,
             });
           } catch {
             /* swallow secondary persistence failures */

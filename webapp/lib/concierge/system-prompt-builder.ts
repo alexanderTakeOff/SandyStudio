@@ -498,9 +498,24 @@ const openLoopAwareness: Block = () => {
   return `[OPEN_LOOP_AWARENESS]
 Never silently wait. If your turn ends with «жду / waiting for X / let me see if it auto-picks up», you MUST also end the turn with an explicit q-format question to Director — never leave a passive "waiting" without a corresponding ask. Use the existing question numbering scheme (continuous q1..qN across the session — see Director communication rules).
 
-Examples of correct wording:
-- «Жду авто-подхвата regen для SH04. **q3y/q3n: запустить regenerateImage вручную сейчас, если за 30 сек ничего не прилетит?**»
-- «Designer plans для SH05+SH06 в очереди. **q4: следить тихо или дёрнуть тебе breakdown как только готовы?**»
+TD-25 P4 (2026-05-22): when you have a genuine blocking question for Director, prefer the **\`markAwaitingDirector\`** tool over writing passive "жду" prose. The tool stamps a structured pending-decision marker on this turn so:
+- Director sees a yellow chip in the chat panel with your question and any choices, one-glance visible
+- An escalation timer with your specified deadline runs server-side — if Director doesn't reply within deadline, the timer pings him once and exits (no fixed-interval polling)
+- The pending state is intentional and tracked, not regex-sniffed from prose
+
+Call it like:
+\`\`\`
+markAwaitingDirector({
+  question: "одобряешь регенерацию SH08 с новой continuity-формулой?",
+  choices: [{id:"q5y", label:"Да"}, {id:"q5n", label:"Нет, поправить план"}],
+  deadline_sec: 90
+})
+\`\`\`
+Call it ONCE per turn, only on genuine blocking decisions — not on every narration. Choices are optional (yes/no defaults shown above are typical for q<N>y/q<N>n; multi-choice uses q<N>a/q<N>b/...). deadline_sec defaults to 90 if omitted; clamped to [30, 3600].
+
+Examples of correct wording (with the tool call):
+- Tool: \`markAwaitingDirector({question:"запустить regenerateImage вручную, если за 30 сек ничего не прилетит?", choices:[{id:"q3y",label:"Да"},{id:"q3n",label:"Нет, оставь"}], deadline_sec:30})\` then prose: «Жду авто-подхвата regen для SH04.»
+- Tool: \`markAwaitingDirector({question:"следить тихо или дёрнуть breakdown как только готовы?", choices:[{id:"q4a",label:"Тихо"},{id:"q4b",label:"Дёрни"}], deadline_sec:120})\` then prose: «Designer plans для SH05+SH06 в очереди.»
 
 Director directive scope = atomic. When Director writes «сделай X», «регенерируй», «запусти», «дёрни» — that approval covers ALL logical sub-actions needed to complete the operation, not just the first one. Don't split «регенерируй SH04» into:
   step 1: requestRevision (executes)

@@ -34,10 +34,11 @@ import {
   getGagVerdict,
   regenerateGagPlan,
 } from './gagad';
+import { markAwaitingDirector } from './mark-awaiting';
 import type { OpenAIToolSchema, Tool } from './types';
 
 export type { Tool, ToolContext, ToolResult, OpenAIToolSchema } from './types';
-export { ok, fail } from './types';
+export { ok, okWithPatch, fail } from './types';
 
 /**
  * Canonical registry. Add a tool here once it's implemented; the chat route
@@ -73,6 +74,9 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   getGagPlan as unknown as AnyTool,
   listGagPlans as unknown as AnyTool,
   getGagVerdict as unknown as AnyTool,
+  // TD-25 P4 — intent declaration (replaces regex await-detector). Read-only:
+  // doesn't change studio state, only annotates the assistant turn metadata.
+  markAwaitingDirector as unknown as AnyTool,
   // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
   approveAsset as unknown as AnyTool,
