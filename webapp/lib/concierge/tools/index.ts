@@ -23,6 +23,7 @@ import { createEpisode, findEpisode, editBrief } from './episode-create';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from './skills';
 import { getRefPlan, listRefPlans, getCriticVerdict, regenerateRefPlan } from './eref';
 import { regenerateImageFromPlan } from './eref-execute';
+import { listShots } from './storyboard';
 import {
   getShotPlan,
   listShotPlans,
@@ -67,6 +68,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   getRefPlan as unknown as AnyTool,
   listRefPlans as unknown as AnyTool,
   getCriticVerdict as unknown as AnyTool,
+  // 2026-05-22 — storyboard shot resolution. Closes vocabulary gap where
+  // Polina was asking Director for shotIds instead of fetching them from
+  // the APPROVED STB asset.
+  listShots as unknown as AnyTool,
   // Animator Shot Plan inspection (Day 8.5)
   getShotPlan as unknown as AnyTool,
   listShotPlans as unknown as AnyTool,

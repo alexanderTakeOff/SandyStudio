@@ -160,6 +160,95 @@ export function getStoryboardShotById(
   return null;
 }
 
+/**
+ * 2026-05-22 — `listStoryboardShots(content)` returns every shot from the
+ * storyboard in production order, paired with its act number and the index
+ * inside that act. Used by the PA `listShots` tool so Polina can answer
+ * questions like "give me the shotId of SH09" without asking the Director.
+ *
+ * Pure parser — no DB calls. Returns empty array when content is malformed
+ * or has no acts/shots.
+ */
+export interface StoryboardShotSummary {
+  shotId: string;
+  act: number;
+  shotIndex: number; // 0-based within the act
+  globalIndex: number; // 0-based across the whole episode
+  shotRole?: string;
+  durationSeconds?: number;
+  /** Truncated action prose for at-a-glance recognition (≤120 chars). */
+  actionPreview?: string;
+  expectedGag?: string | null;
+  cameraAngle?: string;
+  charactersPresent: string[];
+  /** Either the flat string location or the bible-locked slug. */
+  location?: string;
+}
+
+export function listStoryboardShots(
+  content: string,
+): StoryboardShotSummary[] {
+  const json = parseStoryboardJson(content);
+  if (!json || !Array.isArray(json.acts)) return [];
+  const out: StoryboardShotSummary[] = [];
+  let globalIndex = 0;
+  for (const act of json.acts) {
+    if (!act || typeof act !== 'object') continue;
+    const a = act as { act?: unknown; shots?: unknown };
+    const actNum = typeof a.act === 'number' ? a.act : 0;
+    if (!Array.isArray(a.shots)) continue;
+    let idxInAct = 0;
+    for (const raw of a.shots) {
+      const sh = shotToV2(raw);
+      if (!sh) continue;
+      // Pull a couple of extra fields not already on StoryboardShotV2 for
+      // a richer summary.
+      const rawObj = raw as Record<string, unknown>;
+      const charactersPresent: string[] = [];
+      if (Array.isArray(sh.characters)) {
+        for (const c of sh.characters) {
+          if (c.bible_slug) charactersPresent.push(c.bible_slug);
+        }
+      } else if (Array.isArray(sh.characters_present)) {
+        for (const slug of sh.characters_present) {
+          if (typeof slug === 'string' && slug) charactersPresent.push(slug);
+        }
+      }
+      let locationStr: string | undefined;
+      const locRaw = rawObj.location;
+      if (typeof locRaw === 'string') {
+        locationStr = locRaw;
+      } else if (locRaw && typeof locRaw === 'object') {
+        const slug = (locRaw as { slug?: unknown }).slug;
+        if (typeof slug === 'string' && slug.length > 0) locationStr = slug;
+      }
+      const action = sh.action_prose ?? sh.action ?? sh.key_beat ?? undefined;
+      out.push({
+        shotId: sh.shot_id,
+        act: actNum,
+        shotIndex: idxInAct,
+        globalIndex,
+        shotRole: sh.shot_role,
+        durationSeconds: sh.duration_seconds,
+        actionPreview:
+          typeof action === 'string' && action.length > 0
+            ? action.length <= 120
+              ? action
+              : `${action.slice(0, 119).trimEnd()}…`
+            : undefined,
+        expectedGag:
+          typeof sh.expected_gag === 'string' ? sh.expected_gag : null,
+        cameraAngle: sh.camera_angle,
+        charactersPresent,
+        location: locationStr,
+      });
+      idxInAct += 1;
+      globalIndex += 1;
+    }
+  }
+  return out;
+}
+
 // ── Pilot picker ─────────────────────────────────────────────────────────────
 
 /**

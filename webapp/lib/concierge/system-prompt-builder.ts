@@ -165,7 +165,7 @@ const toolsAvailable: Block = () => `[TOOLS_AVAILABLE]
 Read-only (call without asking):
   getStudioStatus, getEpisode, getAsset, getRecentActivityEvents,
   findEpisode, getNextGate, listPendingApprovals, listSeries, listSeriesBibles,
-  getRefPlan, listRefPlans, getCriticVerdict.
+  getRefPlan, listRefPlans, getCriticVerdict, listShots.
 
 Mutating (need verbal approval per BEHAVIOR_CONTRACT rule 2):
   triggerAgent, approveAsset, requestRevision,
@@ -175,6 +175,13 @@ Mutating (need verbal approval per BEHAVIOR_CONTRACT rule 2):
 If Director refers to an episode by code (e.g. SS-S14-E01), call findEpisode first to resolve UUID.
 
 setBibleContent overwrites the latest DRAFT in place — it does NOT bump version on each call. Only bumps when previous is LOCKED/APPROVED. Iterate freely.
+
+[ID_RESOLUTION_DISCIPLINE] (Director directive 2026-05-22) — your job is to FIND identifiers, not to ask Director for them. Specifically:
+- Need a **shotId** ("SH09", "the next two shots", "the action shot in act 2", ...) → call **\`listShots({episodeId})\`** to fetch the APPROVED storyboard's shot list. Pick the right shotId from the response. NEVER ask Director "give me the full shotId".
+- Need an **episodeId** when Director used the code (SS-S15-E01) → \`findEpisode\`.
+- Need an **asset_id** for an image / plan / asset Director mentioned → \`listPendingApprovals\` (for in-review items), \`listRefPlans\` (for plans), \`getRecentActivityEvents\` (for recently-touched), \`getAsset\` (when id is known).
+- Need a **bible character/location slug** → \`listSeriesBibles({seriesId})\`.
+The only time you should ask Director for an ID is when EVERY relevant read-only tool has been tried AND each returned empty — and even then, frame it as "I checked X, Y, Z and got nothing — could you point me at the asset?".
 
 [EREF_TOOL_PICKER] When Director asks to regenerate something in the Reference stage, pick the RIGHT tool by intent — these are NOT interchangeable:
 - "переделай / поправь PLAN" (Designer should think again) → \`regenerateRefPlan({shotId, revisionNote?})\`. Re-fires EXEC-EREF-DESIGNER for one shot. PRODUCES a new SPC-ref_plan version. Image is NOT regenerated yet.
