@@ -35,7 +35,8 @@ import { execPubPublish } from './functions/exec-pub';
 import { execAnalCollect } from './functions/exec-anal';
 import { scheduleAnalytics } from './functions/schedule-analytics';
 import { execPaReact } from './functions/exec-pa-react';
-import { execPaWatchdog } from './functions/exec-pa-watchdog';
+import { paEscalationTimer } from './functions/pa-escalation-timer';
+import { paOrphanedAwaitingSweep } from './functions/pa-orphaned-awaiting-sweep';
 
 export const functions = [
   // Phase 3 smoke
@@ -69,6 +70,10 @@ export const functions = [
   scheduleAnalytics,
   // TD-20.B autonomy 2026-05-20
   execPaReact,
-  // TD-25 P2 — open-loop watchdog cron (every minute) 2026-05-21
-  execPaWatchdog,
+  // Step 2 of Supabase recovery sprint (2026-05-22) — replaces the old
+  // every-minute exec-pa-watchdog cron with event-driven escalation + a
+  // bounded-cost hourly orphan sweep. See ~/.claude/plans/
+  // synchronous-petting-waffle.md for the full rationale.
+  paEscalationTimer,
+  paOrphanedAwaitingSweep,
 ];
