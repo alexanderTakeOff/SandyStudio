@@ -32,6 +32,7 @@ import { detectAwaitingDirectorInput } from '@/lib/concierge/await-detector';
 import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
+import { mapChatError } from '@/lib/concierge/chat-error-envelope';
 import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
 import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
 import {
@@ -78,6 +79,19 @@ function normaliseMode(value: unknown): ConciergeMode {
 }
 
 export async function POST(req: Request) {
+  try {
+    return await handleChatPOST(req);
+  } catch (err) {
+    // 2026-05-22 outer guard. Any throw that escapes handleChatPOST before
+    // the stream is created (Supabase exception, OpenAI init crash, etc.)
+    // lands here and becomes a structured JSON envelope. The frontend
+    // ConciergePanel reads this as JSON instead of raw HTML.
+    const env = mapChatError(err);
+    return NextResponse.json(env, { status: env.status });
+  }
+}
+
+async function handleChatPOST(req: Request) {
   let body: ChatRequest;
   try {
     body = (await req.json()) as ChatRequest;

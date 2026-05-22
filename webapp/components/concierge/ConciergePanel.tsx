@@ -605,6 +605,36 @@ export function ConciergePanel() {
         setThreadId(newThreadId);
         try { localStorage.setItem(THREAD_KEY, newThreadId); } catch { /* ignore */ }
       }
+      // 2026-05-22 — server-side error envelope detection BEFORE stream parse.
+      // When chat route's outer try-catch fires (Supabase quota / unavailable
+      // / unexpected throw before stream started), the server returns
+      // `{ ok: false, error, detail }` JSON with a 4xx/5xx status. Detect by
+      // content-type and short-circuit into a structured assistant bubble
+      // message instead of trying to read a non-existent stream.
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!res.ok || contentType.includes('application/json')) {
+        let envelopeDetail = `chat route returned HTTP ${res.status}`;
+        try {
+          const env = (await res.json()) as { error?: string; detail?: string };
+          if (env?.detail) {
+            envelopeDetail = env.detail;
+          } else if (env?.error) {
+            envelopeDetail = env.error;
+          }
+        } catch {
+          /* not JSON either — keep generic */
+        }
+        setMessages((prev) => {
+          const copy = [...prev];
+          copy[copy.length - 1] = {
+            role: 'assistant',
+            content: `❌ ${envelopeDetail}`,
+          };
+          return copy;
+        });
+        return;
+      }
+
       if (!res.body) throw new Error('No response body');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -623,10 +653,35 @@ export function ConciergePanel() {
       let buffer = '';
       let cancelledByServer = false;
       let serverError: string | null = null;
+      // 2026-05-22 — belt-and-braces HTML detection. If somehow the response
+      // is HTML (Next.js error page, proxy redirect to login, etc.) we
+      // surface a clean message instead of rendering raw <!DOCTYPE> into
+      // Polina's bubble. Inspected on the very first chunk only.
+      let firstChunkChecked = false;
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
+        // 2026-05-22 — peek at first ~120 bytes for HTML prefix. The outer
+        // error envelope above catches the common case (JSON content-type);
+        // this is a last-resort safety net for proxies / streaming HTML.
+        if (!firstChunkChecked) {
+          firstChunkChecked = true;
+          const head = buffer.slice(0, 120).toLowerCase().trimStart();
+          if (head.startsWith('<!doctype') || head.startsWith('<html')) {
+            setMessages((prev) => {
+              const copy = [...prev];
+              copy[copy.length - 1] = {
+                role: 'assistant',
+                content:
+                  '❌ Server returned HTML instead of stream — check Next.js dev console for the underlying error.',
+              };
+              return copy;
+            });
+            try { reader.cancel(); } catch { /* ignore */ }
+            return;
+          }
+        }
         let nlIndex = buffer.indexOf('\n');
         while (nlIndex !== -1) {
           const line = buffer.slice(0, nlIndex);
