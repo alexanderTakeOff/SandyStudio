@@ -35,6 +35,15 @@ function mockSupabase(opts: {
       if (col === 'file_type' && typeof val === 'string') lastFileType = val;
       return builder;
     };
+    // 2026-05-22 — listRefPlans now uses .or('file_type.eq.X,file_type.like.X-%')
+    // to match both bare SPC-ref_plan and TD-24 SPC-ref_plan-<shot_id> shapes.
+    // Treat any .or() call that includes "SPC-ref_plan" as the plan-list path.
+    builder.or = (expr: string) => {
+      if (typeof expr === 'string' && expr.includes('SPC-ref_plan')) {
+        lastFileType = 'SPC-ref_plan';
+      }
+      return builder;
+    };
     builder.order = () => builder;
     builder.maybeSingle = async () => ({ data: opts.asset ?? null, error: null });
     // Make the builder awaitable so `await q` works for list queries.
@@ -124,6 +133,36 @@ describe('getRefPlan', () => {
     if (!r.ok) expect(r.code).toBe('wrong_type');
   });
 
+  it('accepts TD-24 SPC-ref_plan-<shot_id> file_type shape', async () => {
+    // 2026-05-22 — Director's smoke: getRefPlan was rejecting Designer-emitted
+    // plans because their file_type is `SPC-ref_plan-<shot_id>`, not the bare
+    // `SPC-ref_plan`. Mirrors the loadPlanOverrides accept-both pattern.
+    const sb = mockSupabase({
+      asset: {
+        id: 'plan-td24',
+        file_type: 'SPC-ref_plan-SS-S15-E01-A2-SC04-SH08',
+        filename: 'SS-S15-E01-SPC-ref_plan-SS-S15-E01-A2-SC04-SH08-v03-DRAFT.md',
+        status: 'REVIEW',
+        version: 3,
+        episode_id: 'ep-1',
+        description: 'Plan SH08 v03',
+        content: '# Plan\n```json\n{"shot_id":"SH08"}\n```',
+        metadata: { shot_id: 'SH08' },
+        created_at: '',
+        updated_at: '',
+      },
+    });
+    const r = await getRefPlan.execute(
+      { planAssetId: 'plan-td24' },
+      { ...ctx, supabase: sb },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const data = r.data as { bodyJson?: { shot_id?: string } };
+      expect(data.bodyJson?.shot_id).toBe('SH08');
+    }
+  });
+
   it('parse validates planAssetId required', () => {
     expect(() => getRefPlan.parse('{}')).toThrow(/planAssetId is required/);
     expect(() => getRefPlan.parse('not-json')).toThrow();
@@ -188,6 +227,58 @@ describe('listRefPlans', () => {
       expect(data.plans[0]?.criticVerdict).toBe('PASS');
       expect(data.plans[1]?.criticVerdict).toBe('REVISE');
       expect(data.plans[1]?.criticFailedCount).toBe(1);
+    }
+  });
+
+  it('finds TD-24 shape plans (SPC-ref_plan-<shot_id> file_type) and extracts shotId from file_type when metadata lacks it', async () => {
+    // Director's 2026-05-22 finding: listRefPlans returned 0 plans even though
+    // SH08 plan v03 existed. Root cause: filter was `.eq('file_type','SPC-ref_plan')`
+    // but Designer writes `SPC-ref_plan-<shot_id>`. Fixed via .or() filter.
+    const sb = mockSupabase({
+      assetList: [
+        {
+          id: 'plan-td24-1',
+          file_type: 'SPC-ref_plan-SS-S15-E01-A2-SC04-SH08',
+          filename: 'SS-S15-E01-SPC-ref_plan-SS-S15-E01-A2-SC04-SH08-v03-DRAFT.md',
+          status: 'REVIEW',
+          version: 3,
+          description: 'Plan SH08 v03',
+          metadata: null, // <-- no metadata.shot_id, shotId must come from file_type
+          created_at: '2026-05-22T10:00:00Z',
+          updated_at: '2026-05-22T10:00:00Z',
+        },
+        {
+          id: 'plan-td24-2',
+          file_type: 'SPC-ref_plan-SS-S15-E01-A2-SC03-SH07',
+          filename: 'SS-S15-E01-SPC-ref_plan-SS-S15-E01-A2-SC03-SH07-v01-APPROVED.md',
+          status: 'APPROVED',
+          version: 1,
+          description: 'Plan SH07',
+          metadata: { shot_id: 'SS-S15-E01-A2-SC03-SH07' },
+          created_at: '2026-05-22T09:00:00Z',
+          updated_at: '2026-05-22T09:00:00Z',
+        },
+      ],
+      criticList: [],
+    });
+    const r = await listRefPlans.execute(
+      { episodeId: 'ep-1' },
+      { ...ctx, supabase: sb },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const data = r.data as {
+        count: number;
+        plans: Array<{ id: string; shotId: string | null; fileType: string }>;
+      };
+      expect(data.count).toBe(2);
+      // Plan with metadata.shot_id absent — shotId still extracted from file_type suffix.
+      const sh08 = data.plans.find((p) => p.id === 'plan-td24-1');
+      expect(sh08?.shotId).toBe('SS-S15-E01-A2-SC04-SH08');
+      expect(sh08?.fileType).toBe('SPC-ref_plan-SS-S15-E01-A2-SC04-SH08');
+      // Plan with metadata.shot_id present — same value comes through.
+      const sh07 = data.plans.find((p) => p.id === 'plan-td24-2');
+      expect(sh07?.shotId).toBe('SS-S15-E01-A2-SC03-SH07');
     }
   });
 

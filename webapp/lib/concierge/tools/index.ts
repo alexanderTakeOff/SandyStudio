@@ -22,6 +22,7 @@ import {
 import { createEpisode, findEpisode, editBrief } from './episode-create';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from './skills';
 import { getRefPlan, listRefPlans, getCriticVerdict, regenerateRefPlan } from './eref';
+import { regenerateImageFromPlan } from './eref-execute';
 import {
   getShotPlan,
   listShotPlans,
@@ -92,6 +93,11 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   updateSkill as unknown as AnyTool,
   approveSkill as unknown as AnyTool,
   regenerateRefPlan as unknown as AnyTool,
+  // 2026-05-22 — plan-driven single-shot image execution. Closes the
+  // architectural gap where Polina had no path to execute an APPROVED Plan
+  // without going through triggerAgent(EXEC-EREF), which routes to pilot
+  // pass and ignores planAssetId.
+  regenerateImageFromPlan as unknown as AnyTool,
   regenerateShotPlan as unknown as AnyTool,
   regenerateGagPlan as unknown as AnyTool,
 ]);

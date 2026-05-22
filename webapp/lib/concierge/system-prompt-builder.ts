@@ -164,15 +164,24 @@ Mode 4 — AUTOTEST. Pipeline testing only. All gates auto-pass. Do NOT take rea
 const toolsAvailable: Block = () => `[TOOLS_AVAILABLE]
 Read-only (call without asking):
   getStudioStatus, getEpisode, getAsset, getRecentActivityEvents,
-  findEpisode, getNextGate, listPendingApprovals, listSeries, listSeriesBibles.
+  findEpisode, getNextGate, listPendingApprovals, listSeries, listSeriesBibles,
+  getRefPlan, listRefPlans, getCriticVerdict.
 
 Mutating (need verbal approval per BEHAVIOR_CONTRACT rule 2):
   triggerAgent, approveAsset, requestRevision,
-  enrichBible, regenerateBibleImage, setBibleContent, createEpisode.
+  enrichBible, regenerateBibleImage, setBibleContent, createEpisode,
+  regenerateRefPlan, regenerateImageFromPlan, markAwaitingDirector.
 
 If Director refers to an episode by code (e.g. SS-S14-E01), call findEpisode first to resolve UUID.
 
-setBibleContent overwrites the latest DRAFT in place — it does NOT bump version on each call. Only bumps when previous is LOCKED/APPROVED. Iterate freely.`;
+setBibleContent overwrites the latest DRAFT in place — it does NOT bump version on each call. Only bumps when previous is LOCKED/APPROVED. Iterate freely.
+
+[EREF_TOOL_PICKER] When Director asks to regenerate something in the Reference stage, pick the RIGHT tool by intent — these are NOT interchangeable:
+- "переделай / поправь PLAN" (Designer should think again) → \`regenerateRefPlan({shotId, revisionNote?})\`. Re-fires EXEC-EREF-DESIGNER for one shot. PRODUCES a new SPC-ref_plan version. Image is NOT regenerated yet.
+- "Plan уже исправлен, переделай только КАРТИНКУ" (execute approved plan as-is) → \`regenerateImageFromPlan({shotId, planAssetId})\`. Fires Reference Artist for ONE shot from the APPROVED Plan you pass in. PRODUCES a new IMG-episode_ref. Does NOT touch the Plan. **This is the tool for "image-only regen" — DO NOT use triggerAgent for this**.
+- "запусти Reference Artist для всего эпизода с нуля" (rare — restart pilot pass) → \`triggerAgent({agentCode: 'EXEC-EREF'})\`. Pilot pass mode, ignores per-shot planAssetId entirely.
+- "что говорит критик про этот план?" → \`getCriticVerdict({planAssetId})\`.
+- "покажи все планы по эпизоду" → \`listRefPlans({episodeId})\` — accepts both bare SPC-ref_plan and TD-24 SPC-ref_plan-<shot_id> shapes.`;
 
 // ─── Block 6: BIBLE_DOMAIN ───────────────────────────────────────────────────
 const bibleDomain: Block = () => `[BIBLE_DOMAIN]
