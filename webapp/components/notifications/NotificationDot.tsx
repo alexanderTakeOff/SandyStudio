@@ -5,43 +5,27 @@
 // event (canon_extension_proposed, decision_requested, input_requested).
 // Director's 2026-05-02 request: visible attention marker so an asset doesn't
 // fall through cracks.
+//
+// 2026-05-22 (Step 4 of Supabase recovery sprint): swapped from 12s SWR
+// polling to a per-asset Supabase Realtime subscription. Each visible asset
+// previously fired 5 polls/min against `/api/activity` → Supabase reads;
+// the Episode sidebar with 10-20 visible assets ran 50-100 polls/min
+// 24/7. Realtime gives one socket per asset id with idle = zero polls.
+// See ~/.claude/plans/synchronous-petting-waffle.md for the audit.
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
 
-import useSWR from 'swr';
-import { fetcher } from '@/lib/swr';
+import { useAssetNotificationRealtime } from '@/hooks/useAssetNotificationRealtime';
 
 interface NotificationDotProps {
   assetId: string;
   /** Visual size in px. Default 8. */
   size?: number;
-  /** Pause polling — default 12s, set 0 to disable. */
-  refreshIntervalMs?: number;
 }
 
-/** Returns the unresolved-event count for the given asset (across urgent types). */
-async function fetchUnresolvedCount(assetId: string): Promise<number> {
-  // Query each urgent type in one /api/activity round-trip via OR-style filter.
-  // The current /api/activity supports single event_type per request — we run
-  // the canon_extension_proposed query (most common) and treat anything > 0
-  // as "needs attention". Future: extend API to accept type[] for batched check.
-  const res = (await fetcher(
-    `/api/activity?asset_id=${assetId}&type=canon_extension_proposed&unresolved=true&limit=1`,
-  )) as { data?: unknown[] } | null;
-  return Array.isArray(res?.data) ? res.data.length : 0;
-}
-
-export function NotificationDot({
-  assetId,
-  size = 8,
-  refreshIntervalMs = 12_000,
-}: NotificationDotProps) {
-  const { data: count } = useSWR<number>(
-    `notif:${assetId}`,
-    () => fetchUnresolvedCount(assetId),
-    { refreshInterval: refreshIntervalMs, revalidateOnFocus: true },
-  );
+export function NotificationDot({ assetId, size = 8 }: NotificationDotProps) {
+  const { count } = useAssetNotificationRealtime(assetId);
 
   if (!count || count <= 0) return null;
 
