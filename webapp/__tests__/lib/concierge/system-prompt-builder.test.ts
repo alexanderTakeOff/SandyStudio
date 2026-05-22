@@ -65,15 +65,20 @@ describe('buildSystemPrompt — OPEN_LOOP_AWARENESS block (TD-25 P1)', () => {
 describe('buildSystemPrompt — block ordering and presence', () => {
   test('OPEN_LOOP_AWARENESS comes after AUTO_REACT_GUIDANCE on auto-react turns', () => {
     const out = buildSystemPrompt(baseCtx({ autoReact: true }));
-    const autoIdx = out.indexOf('AUTO_REACT_GUIDANCE');
-    const openIdx = out.indexOf('OPEN_LOOP_AWARENESS');
+    // Use the block header (with brackets) so this assertion isn't tripped
+    // by cross-reference mentions of the name inside other blocks (TD-34
+    // added a cross-ref from OPEN_LOOP_AWARENESS body to AUTO_REACT_GUIDANCE).
+    const autoIdx = out.indexOf('[AUTO_REACT_GUIDANCE]');
+    const openIdx = out.indexOf('[OPEN_LOOP_AWARENESS]');
     expect(autoIdx).toBeGreaterThanOrEqual(0);
     expect(openIdx).toBeGreaterThan(autoIdx);
   });
 
-  test('does not render AUTO_REACT_GUIDANCE on Director-typed turns', () => {
+  test('does not render AUTO_REACT_GUIDANCE block on Director-typed turns', () => {
     const out = buildSystemPrompt(baseCtx());
-    expect(out).not.toContain('AUTO_REACT_GUIDANCE');
+    // Block header check — substring mentions in OPEN_LOOP_AWARENESS body
+    // are intentional cross-references (TD-34) and must not trip this test.
+    expect(out).not.toContain('[AUTO_REACT_GUIDANCE]');
   });
 });
 
@@ -127,5 +132,59 @@ describe('buildSystemPrompt — BASE_BEHAVIOR fabrication rule clarified (Fix C)
     // …but must also permit reading published structured data.
     expect(out.toLowerCase()).toContain('no source');
     expect(out).toContain('refs:');
+  });
+});
+
+describe('buildSystemPrompt — TD-34 STANDING_APPROVAL_SCOPE (2026-05-22)', () => {
+  test('AUTO_REACT_GUIDANCE includes STANDING APPROVAL SCOPE paragraph with recognition phrases', () => {
+    const out = buildSystemPrompt(baseCtx({ autoReact: true }));
+    expect(out).toContain('STANDING APPROVAL SCOPE');
+    expect(out).toContain('STAYS ACTIVE');
+    // At least one Russian + one English recognition phrase example so the
+    // LLM picks up the pattern.
+    expect(out).toMatch(/(одобряю последовательность|автопроталкивай|продолжай batch)/);
+    expect(out).toMatch(/(pre-approved continuing|do the whole batch|i pre-approve the rest)/);
+    // Director must be told scope cancels on explicit revoke, not on auto-react.
+    expect(out).toMatch(/(стоп|cancel|revoke)/);
+  });
+
+  test('AUTO_REACT_GUIDANCE lists TD-34 banned phrases verbatim', () => {
+    const out = buildSystemPrompt(baseCtx({ autoReact: true }));
+    // The exact Russian regression phrases Polina emitted during the
+    // 2026-05-22 SS-S15-E01 smoke — locked verbatim so future prompt edits
+    // can't silently drop them.
+    expect(out).toContain('инструменты в этом триггере запрещены');
+    expect(out).toContain('инструменты в авто-триггере запрещены');
+    expect(out).toContain('без свежего одобрения мутаций не запускаю');
+    expect(out).toContain('жду Director или следующий pipeline event');
+    // Block header must call this out as a TD-34 indicator.
+    expect(out).toContain('BANNED PHRASES');
+    expect(out).toContain('TD-34');
+  });
+
+  test('AUTO_REACT_GUIDANCE enumerates read-only tools as ALWAYS allowed', () => {
+    const out = buildSystemPrompt(baseCtx({ autoReact: true }));
+    // Must explicitly name the read-only tools so Polina knows "tools
+    // forbidden" is never correct for these.
+    expect(out).toContain('ALWAYS allowed');
+    expect(out).toContain('getAsset');
+    expect(out).toContain('listRefPlans');
+    expect(out).toContain('getCriticVerdict');
+    expect(out).toContain('listShots');
+    expect(out).toContain('getRecentActivityEvents');
+    // Must explicitly reject the "tools forbidden" misinterpretation.
+    expect(out.toLowerCase()).toContain('"tools forbidden" is never a correct statement');
+  });
+
+  test('OPEN_LOOP_AWARENESS atomic-scope rule extended to cover auto-react sub-operations', () => {
+    const out = buildSystemPrompt(baseCtx({ autoReact: true }));
+    expect(out).toContain('OPEN_LOOP_AWARENESS');
+    expect(out).toContain('TD-34');
+    // The extension paragraph must specifically mention auto-react context
+    // as covered by atomic scope, and cross-reference STANDING_APPROVAL_SCOPE
+    // so a future LLM read picks up the link.
+    expect(out.toLowerCase()).toContain('auto-react');
+    expect(out.toLowerCase()).toContain('atomic');
+    expect(out).toMatch(/STANDING_APPROVAL_SCOPE|STANDING APPROVAL SCOPE/);
   });
 });
