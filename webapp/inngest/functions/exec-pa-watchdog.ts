@@ -59,6 +59,17 @@ export const execPaWatchdog = inngest.createFunction(
   // Every minute. Inngest cron minimum is 1 min — that's our resolution.
   { cron: '* * * * *' },
   async ({ step, logger }) => {
+    // KILL-SWITCH (2026-05-22): Supabase project exceed_egress_quota
+    // surfaced this morning. Suspected root cause: watchdog → exec-pa-react
+    // → new assistant turn with awaiting_director_input=true → next minute
+    // watchdog finds new turn (different id, cooldown by asset_id doesn't
+    // protect) → escalates → loop. Disable until: (a) cooldown changed to
+    // thread-level instead of turn-level, OR (b) Director re-enables via
+    // WATCHDOG_ENABLED=true once egress quota recovers / is upgraded.
+    if (process.env.WATCHDOG_ENABLED !== 'true') {
+      logger.info('watchdog: disabled by env (WATCHDOG_ENABLED!=true)');
+      return { skipped: 'disabled_by_env', escalations: 0 };
+    }
     const sb = createSupabaseServiceRoleClient();
 
     // ── Step 1: load open threads ─────────────────────────────────────────
