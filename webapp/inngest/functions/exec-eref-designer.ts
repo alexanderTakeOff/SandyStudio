@@ -14,6 +14,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { createAgentInngestFunction } from '@/lib/agents/factory';
+import { shortShotLabel } from '@/lib/api/vgen-shot-helpers';
 
 export const execErefDesignerPlan = createAgentInngestFunction({
   id: 'exec-eref-designer-plan',
@@ -30,6 +31,15 @@ export const execErefDesignerPlan = createAgentInngestFunction({
     const shotId =
       typeof eventData.shotId === 'string' ? (eventData.shotId as string) : undefined;
     return shotId ? { shotId } : {};
+  },
+  // 2026-05-22 — surface shot label in activity titles.
+  resolveActivityContext: (eventData) => {
+    const shotId =
+      typeof eventData.shotId === 'string' ? eventData.shotId : '';
+    return {
+      shortLabel: shortShotLabel(shotId),
+      metadata: { shot_id: shotId || null },
+    };
   },
   // Day 4 wiring (2026-05-19): auto-fire Critic on the freshly-saved Plan.
   // The Critic runs V01-V09 hard checks and either PASSes (Plan stays in

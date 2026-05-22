@@ -10,6 +10,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { createAgentInngestFunction } from '@/lib/agents/factory';
+import { shortShotLabel } from '@/lib/api/vgen-shot-helpers';
 
 export const execVanimPlan = createAgentInngestFunction({
   id: 'exec-vanim-plan',
@@ -23,6 +24,15 @@ export const execVanimPlan = createAgentInngestFunction({
     const shotId =
       typeof eventData.shotId === 'string' ? (eventData.shotId as string) : undefined;
     return shotId ? { shotId } : {};
+  },
+  // 2026-05-22 — surface shot label in activity titles.
+  resolveActivityContext: (eventData) => {
+    const shotId =
+      typeof eventData.shotId === 'string' ? eventData.shotId : '';
+    return {
+      shortLabel: shortShotLabel(shotId),
+      metadata: { shot_id: shotId || null },
+    };
   },
   // Day 8 wiring: auto-fire Animator's Critic on the freshly-saved Plan.
   nextEvent: (saved, eventData) => {

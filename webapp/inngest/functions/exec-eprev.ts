@@ -18,6 +18,7 @@
 import { createAgentInngestFunction } from '@/lib/agents/factory';
 import type { AgentResult } from '@/lib/agents/types';
 import { isComedyLikeGenre } from '@/lib/api/genre';
+import { shortShotLabel } from '@/lib/api/vgen-shot-helpers';
 
 export const execEprevReviewPlan = createAgentInngestFunction({
   id: 'exec-eprev-review-plan',
@@ -37,6 +38,17 @@ export const execEprevReviewPlan = createAgentInngestFunction({
     if (shotId) args.shotId = shotId;
     if (planAssetId) args.planAssetId = planAssetId;
     return args;
+  },
+  // 2026-05-22 — surface shot label in activity titles.
+  resolveActivityContext: (eventData) => {
+    const shotId =
+      typeof eventData.shotId === 'string' ? eventData.shotId : '';
+    const planAssetId =
+      typeof eventData.planAssetId === 'string' ? eventData.planAssetId : null;
+    return {
+      shortLabel: shortShotLabel(shotId),
+      metadata: { shot_id: shotId || null, plan_asset_id: planAssetId },
+    };
   },
   /**
    * Auto-chain (two outputs by verdict):

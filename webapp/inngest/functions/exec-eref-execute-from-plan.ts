@@ -14,6 +14,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { createAgentInngestFunction } from '@/lib/agents/factory';
+import { shortShotLabel } from '@/lib/api/vgen-shot-helpers';
 
 export const execErefExecuteFromPlan = createAgentInngestFunction({
   id: 'exec-eref-execute-from-plan',
@@ -36,6 +37,23 @@ export const execErefExecuteFromPlan = createAgentInngestFunction({
     if (shotId) args.shotId = shotId;
     if (planAssetId) args.planAssetId = planAssetId;
     return args;
+  },
+  // 2026-05-22 — surface the shot label so the activity feed reads
+  // "Reference Artist started — SH08" instead of "Reference Artist started"
+  // (which Director can't distinguish across concurrent runs).
+  resolveActivityContext: (eventData) => {
+    const shotId =
+      typeof eventData.shotId === 'string' ? eventData.shotId : '';
+    const planAssetId =
+      typeof eventData.planAssetId === 'string' ? eventData.planAssetId : null;
+    return {
+      shortLabel: shortShotLabel(shotId),
+      metadata: {
+        shot_id: shotId || null,
+        plan_asset_id: planAssetId,
+        operation: 'execute-from-plan',
+      },
+    };
   },
   // No auto-chain — the saved IMG-episode_ref goes to Director review like
   // every other EREF asset, and the existing approve-route handlers (v2

@@ -3,7 +3,10 @@
 // numbering, and tolerance to optional fields. 2026-05-22 vocabulary-gap fix.
 
 import { describe, expect, test } from 'vitest';
-import { listStoryboardShots } from '@/lib/api/vgen-shot-helpers';
+import {
+  listStoryboardShots,
+  shortShotLabel,
+} from '@/lib/api/vgen-shot-helpers';
 
 function makeStb(acts: Array<{ act: number; shots: Array<Record<string, unknown>> }>): string {
   return [
@@ -130,6 +133,21 @@ describe('listStoryboardShots', () => {
     expect(first.durationSeconds).toBe(5);
     expect(first.cameraAngle).toBe('WIDE');
     expect(first.expectedGag).toBe('Trumeau wobble');
+  });
+
+  test('shortShotLabel extracts SH## from canonical shotId', () => {
+    expect(shortShotLabel('SS-S15-E01-A2-SC04-SH08')).toBe('SH08');
+    expect(shortShotLabel('SS-S99-E99-A10-SC123-SH456')).toBe('SH456');
+    expect(shortShotLabel('SH09')).toBe('SH09');
+    expect(shortShotLabel('sh08')).toBe('SH08'); // case-normalized
+  });
+
+  test('shortShotLabel passes through unparseable input', () => {
+    expect(shortShotLabel('')).toBe('');
+    expect(shortShotLabel(null)).toBe('');
+    expect(shortShotLabel(undefined)).toBe('');
+    // No SH<digits> pattern → return as-is (don't crash, don't lie).
+    expect(shortShotLabel('something-else')).toBe('something-else');
   });
 
   test('skips shots that lack a shot_id', () => {

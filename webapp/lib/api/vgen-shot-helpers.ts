@@ -185,6 +185,25 @@ export interface StoryboardShotSummary {
   location?: string;
 }
 
+/**
+ * 2026-05-22 — extract a short, human-friendly shot label from a full
+ * canonical shotId. Used by per-shot agent functions to surface readable
+ * context in `agent_started` / `agent_completed` activity titles.
+ *
+ *   "SS-S15-E01-A2-SC04-SH08"  → "SH08"
+ *   "SS-S15-E01-A2-SC04-SH123" → "SH123"
+ *   "SH08"                      → "SH08"
+ *   ""                          → ""
+ *   "random-string"             → "random-string" (passthrough)
+ *
+ * Pure function. Director sees "SH08" not the UUID-shaped full id.
+ */
+export function shortShotLabel(shotId: string | null | undefined): string {
+  if (!shotId || typeof shotId !== 'string') return '';
+  const m = shotId.match(/SH\d+/i);
+  return m ? m[0].toUpperCase() : shotId;
+}
+
 export function listStoryboardShots(
   content: string,
 ): StoryboardShotSummary[] {
