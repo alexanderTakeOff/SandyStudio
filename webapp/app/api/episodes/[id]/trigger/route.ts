@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { requireDirector } from '@/lib/api/auth';
+import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
@@ -127,7 +128,9 @@ export const POST = withApiHandler(async (req, ctx) => {
       }));
       const { ids } = await inngest.send(pilotEvents as never);
 
-      await supabase.from('activity_events').insert({
+      // TD-29.5 (2026-05-21): route through logEvent — manual_trigger is in
+      // the actionable whitelist, so Polina gets a pa/notify-needed signal.
+      await logEvent(supabase, {
         event_type: 'manual_trigger',
         severity: 'warning',
         title: `Manual trigger: EXEC-VGEN (Pilot Pass, ${pilots.length} shots)`,
@@ -142,7 +145,7 @@ export const POST = withApiHandler(async (req, ctx) => {
           pilot_shot_ids: pilots.map((p) => p.shotId),
           inngest_event_ids: ids,
         },
-      } as never);
+      });
 
       return apiOk({
         triggered: true,
@@ -174,7 +177,9 @@ export const POST = withApiHandler(async (req, ctx) => {
     data: eventPayload as never,
   });
 
-  await supabase.from('activity_events').insert({
+  // TD-29.5 (2026-05-21): route through logEvent — manual_trigger is in the
+  // actionable whitelist, so Polina gets a pa/notify-needed signal.
+  await logEvent(supabase, {
     event_type: 'manual_trigger',
     severity: 'warning',
     title: `Manual trigger: ${body.agentCode}`,
@@ -188,7 +193,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       payload: body.payload ?? null,
       inngest_event_ids: ids,
     },
-  } as never);
+  });
 
   return apiOk({
     triggered: true,

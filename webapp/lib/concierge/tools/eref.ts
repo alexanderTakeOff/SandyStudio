@@ -80,9 +80,15 @@ export const getRefPlan: Tool<GetRefPlanArgs> = {
       .maybeSingle();
     if (error) return fail(`asset fetch failed: ${error.message}`);
     if (!data) return fail(`Plan ${args.planAssetId} not found`, 'not_found');
-    if (data.file_type !== 'SPC-ref_plan') {
+    // TD-24 (2026-05-20): Designer runner writes file_type as
+    // `SPC-ref_plan-<shot_id>`, not bare `SPC-ref_plan`. Accept both shapes,
+    // same as `loadPlanOverrides` in episode-references.ts:776.
+    if (
+      data.file_type !== 'SPC-ref_plan' &&
+      !data.file_type.startsWith('SPC-ref_plan-')
+    ) {
       return fail(
-        `asset ${args.planAssetId} is ${data.file_type}, not SPC-ref_plan`,
+        `asset ${args.planAssetId} is ${data.file_type}, not SPC-ref_plan or SPC-ref_plan-*`,
         'wrong_type',
       );
     }
@@ -152,11 +158,15 @@ export const listRefPlans: Tool<ListRefPlansArgs> = {
     if (!episodeId) {
       return fail('episodeId required — no active episode.');
     }
+    // TD-24 (2026-05-20): Designer writes file_type as `SPC-ref_plan-<shot_id>`
+    // (per-shot), not bare `SPC-ref_plan`. Match both shapes via PostgREST `or`
+    // filter — `like` pattern handles the TD-24 shape, equality catches any
+    // legacy bare-shape rows pre-TD-24.
     let q = ctx.supabase
       .from('assets')
-      .select('id,filename,status,version,description,metadata,created_at,updated_at')
+      .select('id,file_type,filename,status,version,description,metadata,created_at,updated_at')
       .eq('episode_id', episodeId)
-      .eq('file_type', 'SPC-ref_plan')
+      .or('file_type.eq.SPC-ref_plan,file_type.like.SPC-ref_plan-%')
       .order('created_at', { ascending: true });
     if (args.status) q = q.eq('status', args.status as never);
     const { data, error } = await q;
@@ -189,11 +199,20 @@ export const listRefPlans: Tool<ListRefPlansArgs> = {
 
     const plans = (data ?? []).map((p) => {
       const meta = p.metadata as { shot_id?: unknown } | null;
-      const shotId = typeof meta?.shot_id === 'string' ? meta.shot_id : null;
+      // TD-24: shot_id may live either in metadata (Designer-emitted) or
+      // be parseable from the file_type suffix (`SPC-ref_plan-<shot_id>`).
+      // Prefer metadata, fall back to filename suffix parse.
+      const shotIdFromMeta = typeof meta?.shot_id === 'string' ? meta.shot_id : null;
+      const fileType = (p as { file_type?: string | null }).file_type ?? '';
+      const shotIdFromType = fileType.startsWith('SPC-ref_plan-')
+        ? fileType.slice('SPC-ref_plan-'.length)
+        : null;
+      const shotId = shotIdFromMeta ?? shotIdFromType ?? null;
       const critic = criticByPlanId.get(p.id) ?? null;
       return {
         id: p.id,
         filename: p.filename,
+        fileType,
         status: p.status,
         version: p.version,
         shotId,

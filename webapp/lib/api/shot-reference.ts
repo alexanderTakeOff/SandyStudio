@@ -70,9 +70,25 @@ export type GenerationTriggeredBy =
   | 'director_edit'    // Director edited prompt or switched provider
   | 'auto_upscale';    // Phase E.5 upscale step after AI-APPROVE
 
-/** One reference image fed into the provider for this generation. */
+/**
+ * One reference image fed into the provider for this generation.
+ *
+ * TD-30 (2026-05-21): added `scene_continuity` kind — when Designer detects
+ * a prior APPROVED IMG-episode_ref in the same location, it embeds that
+ * asset as a 4th anchor (alongside identity/location/style) to stabilise
+ * spatial layout across shots. Reduces trumeau-drift / furniture-drift
+ * observed across SH01-SH06 of SS-S15-E01. `bible_asset_id` for this kind
+ * is the prior IMG asset id, NOT a Bible-locked image — naming preserved
+ * for backward compatibility with @v1/@v2 readers.
+ */
 export interface ReferenceUsed {
-  kind: 'identity' | 'location' | 'style';
+  // TD-33 (2026-05-22): `temporal_continuity` added alongside spatial scene_continuity.
+  kind:
+    | 'identity'
+    | 'location'
+    | 'style'
+    | 'scene_continuity'
+    | 'temporal_continuity';
   bible_asset_id: string;
   /** 0..1 — only meaningful for providers that support per-ref weighting. */
   weight?: number;
@@ -188,6 +204,16 @@ export interface ShotReferenceContract {
    * disabled (`app_config.eref_upscale_enabled = false`) or has not run yet.
    */
   final_4k_url: string | null;
+
+  /**
+   * TD-30 (2026-05-21): bible-locked location slug for this shot (verbatim
+   * from storyboard JSON, e.g. "bedroom_main", "kitchen_morning"). Stored
+   * here so later queries can look up "latest APPROVED IMG-episode_ref in
+   * the same location for this episode" without string-splitting filenames.
+   * Null only for legacy @v2 rows generated before this field shipped, or
+   * for shots whose storyboard has no resolvable location.
+   */
+  location_slug?: string | null;
 }
 
 // ── Type guards ─────────────────────────────────────────────────────────────

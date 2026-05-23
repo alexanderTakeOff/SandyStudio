@@ -12,7 +12,9 @@ const PUBLIC_PATHS = ['/login', '/auth/callback', '/api/health'];
 // Server-to-server webhook endpoints — auth handled by upstream signature
 // verification (Inngest signing key) or Bearer token, NOT by Supabase user
 // session. Sprint α 2026-05-14: added /api/team-chat/* for CLI agent posts.
-const WEBHOOK_PATHS = ['/api/inngest', '/api/team-chat'];
+// TD-20.B 2026-05-20: added /api/concierge/chat-internal for the Inngest
+// exec-pa-react function (PA_INTERNAL_TOKEN Bearer).
+const WEBHOOK_PATHS = ['/api/inngest', '/api/team-chat', '/api/concierge/chat-internal'];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

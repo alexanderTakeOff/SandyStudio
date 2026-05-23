@@ -20,6 +20,7 @@
 
 import { createAgentInngestFunction } from '@/lib/agents/factory';
 import type { AgentResult } from '@/lib/agents/types';
+import { shortShotLabel } from '@/lib/api/vgen-shot-helpers';
 
 // ── Phase plan ───────────────────────────────────────────────────────────────
 
@@ -75,6 +76,21 @@ export const execGagadReviewRefPlan = createAgentInngestFunction({
     if (planAssetId) args.planAssetId = planAssetId;
     if (shotId) args.shotId = shotId;
     return args;
+  },
+  // 2026-05-22 — surface shot label in activity titles.
+  resolveActivityContext: (eventData) => {
+    const shotId =
+      typeof eventData.shotId === 'string' ? eventData.shotId : '';
+    const planAssetId =
+      typeof eventData.planAssetId === 'string' ? eventData.planAssetId : null;
+    return {
+      shortLabel: shortShotLabel(shotId),
+      metadata: {
+        shot_id: shotId || null,
+        plan_asset_id: planAssetId,
+        gag_phase: 'eref_review',
+      },
+    };
   },
   // On REVISE + counter < 2: re-fire Designer with acceptance_criteria.
   // On HALT or PASS: no chain.
@@ -138,6 +154,21 @@ export const execGagadReviewShotPlan = createAgentInngestFunction({
     if (planAssetId) args.planAssetId = planAssetId;
     if (shotId) args.shotId = shotId;
     return args;
+  },
+  // 2026-05-22 — surface shot label in activity titles.
+  resolveActivityContext: (eventData) => {
+    const shotId =
+      typeof eventData.shotId === 'string' ? eventData.shotId : '';
+    const planAssetId =
+      typeof eventData.planAssetId === 'string' ? eventData.planAssetId : null;
+    return {
+      shortLabel: shortShotLabel(shotId),
+      metadata: {
+        shot_id: shotId || null,
+        plan_asset_id: planAssetId,
+        gag_phase: 'vanim_review',
+      },
+    };
   },
   nextEvent: (_saved, eventData, result: AgentResult) => {
     const meta = result.metadata as

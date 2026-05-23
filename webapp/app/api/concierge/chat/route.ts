@@ -25,11 +25,14 @@ import type {
 } from 'openai/resources/chat/completions';
 import { getServerEnv, PUBLIC_ENV } from '@/lib/env';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { logEvent } from '@/lib/api/events';
 import path from 'node:path';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
+import { detectAwaitingDirectorInput } from '@/lib/concierge/await-detector';
 import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
+import { mapChatError } from '@/lib/concierge/chat-error-envelope';
 import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
 import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
 import {
@@ -76,6 +79,19 @@ function normaliseMode(value: unknown): ConciergeMode {
 }
 
 export async function POST(req: Request) {
+  try {
+    return await handleChatPOST(req);
+  } catch (err) {
+    // 2026-05-22 outer guard. Any throw that escapes handleChatPOST before
+    // the stream is created (Supabase exception, OpenAI init crash, etc.)
+    // lands here and becomes a structured JSON envelope. The frontend
+    // ConciergePanel reads this as JSON instead of raw HTML.
+    const env = mapChatError(err);
+    return NextResponse.json(env, { status: env.status });
+  }
+}
+
+async function handleChatPOST(req: Request) {
   let body: ChatRequest;
   try {
     body = (await req.json()) as ChatRequest;
@@ -274,15 +290,43 @@ export async function POST(req: Request) {
   const buildPrompt = (turns: ConciergeTurnRow[]) =>
     buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model, availablePlaybooks });
 
+  // TD-20.A 2026-05-20 — Cancel support via req.signal. AbortController is
+  // created client-side; when Director hits Cancel, fetch's signal aborts,
+  // which propagates here as req.signal.aborted = true. The tool loop checks
+  // this between rounds and between tool calls, then writes a {"t":"cancelled"}
+  // event and closes the stream.
+  const reqSignal: AbortSignal | undefined = (req as Request & { signal?: AbortSignal }).signal;
+
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
       let assistantBuffer = '';
+      // TD-25 P4 (2026-05-22): accumulate metadataPatches from tool calls in
+      // this round. At end-of-turn, these are shallow-merged into the
+      // persisted assistant turn's metadata. `markAwaitingDirector` is the
+      // first user — it patches `awaiting_director_input` deliberately,
+      // bypassing the legacy regex detector.
+      const accumulatedMetadataPatch: Record<string, unknown> = {};
+      let closed = false;
+      const writeEvent = (event: Record<string, unknown>): void => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
+        } catch {
+          /* controller already closed — ignore */
+        }
+      };
+      // Backwards-compat text writer (also accumulates into assistantBuffer
+      // for the final persistTurn at the end of finally{}). For incremental
+      // token emission during the streaming round we use writeEvent({t:'token'})
+      // directly AND accumulate buffer separately.
       const writeToClient = (text: string) => {
         if (!text) return;
         assistantBuffer += text;
-        controller.enqueue(encoder.encode(text));
+        writeEvent({ t: 'text', v: text });
       };
+      const PER_TOOL_TIMEOUT_MS = 120_000;
+      let cancelled = false;
       try {
         const conversation: ChatCompletionMessageParam[] = [
           { role: 'system', content: buildPrompt([]) },
@@ -296,6 +340,7 @@ export async function POST(req: Request) {
         // execute them, persist `tool_call` + `tool_result` turns, append
         // to conversation, repeat. Otherwise stream the final text and exit.
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+          if (reqSignal?.aborted) { cancelled = true; break; }
           const isLastRound = round === MAX_TOOL_ROUNDS - 1;
 
           // Refresh recent turns each round so verbal-approval detection
@@ -324,6 +369,14 @@ export async function POST(req: Request) {
           };
 
           const toolsThisRound = isLastRound ? undefined : [...openaiSchemas];
+
+          // TD-20.A streaming: on rounds that COULD emit tool_calls, we keep
+          // stream:false — tool-call delta aggregation is complex and adds
+          // little UX win since tools are the bottleneck. On the final round
+          // (tools disabled, model is forced to write natural language) we
+          // switch to stream:true and emit tokens incrementally so Director
+          // sees the answer word-by-word.
+          const useStreaming = !toolsThisRound;
           const params: Parameters<typeof client.chat.completions.create>[0] = {
             model,
             messages: conversation,
@@ -332,7 +385,7 @@ export async function POST(req: Request) {
             // to produce a final natural-language answer.
             tools: toolsThisRound,
             tool_choice: toolsThisRound ? 'auto' : undefined,
-            stream: false,
+            stream: useStreaming,
           };
           if (!isGpt5 && Number.isFinite(temperature)) {
             params.temperature = temperature;
@@ -345,11 +398,34 @@ export async function POST(req: Request) {
             (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
           }
 
+          // Branch: streaming round (final answer) vs non-streaming round
+          // (tool-capable). Mirrors useStreaming above.
+          if (useStreaming) {
+            // Final-answer streaming round. OpenAI returns AsyncIterable; we
+            // emit each delta.content as a token event. No tool_calls expected
+            // because tools=undefined.
+            const streamedParams = { ...params, stream: true } as Parameters<typeof client.chat.completions.create>[0];
+            const iter = (await client.chat.completions.create(streamedParams)) as AsyncIterable<{
+              choices?: Array<{ delta?: { content?: string | null } }>;
+            }>;
+            for await (const chunk of iter) {
+              if (reqSignal?.aborted) { cancelled = true; break; }
+              const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
+              if (tokenText) {
+                assistantBuffer += tokenText;
+                writeEvent({ t: 'token', v: tokenText });
+              }
+            }
+            // Streaming round always concludes the conversation.
+            break;
+          }
+
           const completion = await client.chat.completions.create(params);
+          if (reqSignal?.aborted) { cancelled = true; break; }
           // `stream: false` so the response is a single completion object,
           // not an async iterable — narrow the type accordingly.
           if (Symbol.asyncIterator in (completion as object)) {
-            throw new Error('expected non-streaming completion');
+            throw new Error('expected non-streaming completion on tool-capable round');
           }
           const msg = (completion as { choices: Array<{ message: ChatCompletionAssistantMessageParam }> })
             .choices[0]?.message;
@@ -361,7 +437,7 @@ export async function POST(req: Request) {
           const toolCalls = msg.tool_calls ?? [];
 
           if (toolCalls.length === 0) {
-            // Final answer — emit text to client and exit.
+            // Final answer arrived on a tool-capable round — emit text and exit.
             const text = typeof msg.content === 'string' ? msg.content : '';
             writeToClient(text);
             break;
@@ -399,7 +475,44 @@ export async function POST(req: Request) {
 
           // Execute each tool call sequentially and append the result.
           for (const call of toolCalls) {
-            const result = await runTool(call, toolCtx);
+            if (reqSignal?.aborted) { cancelled = true; break; }
+            // TD-20.A — emit tool_start event so the client can show
+            // "Вызывает getAsset…" plashka with a seconds counter.
+            writeEvent({
+              t: 'tool_start',
+              id: call.id,
+              name: call.function.name,
+              args_preview: truncate(call.function.arguments ?? '', 120),
+            });
+
+            const result = await runToolWithTimeout(call, toolCtx, PER_TOOL_TIMEOUT_MS);
+
+            // TD-25 P4 (2026-05-22): collect any metadataPatch the tool
+            // returned so the route can stamp it onto the persisted assistant
+            // turn at the end. Multiple tools in the same round shallow-merge
+            // (last writer wins per key). markAwaitingDirector is the primary
+            // user but the mechanism is general.
+            if (result.ok && result.metadataPatch) {
+              Object.assign(accumulatedMetadataPatch, result.metadataPatch);
+            }
+
+            // TD-20.A — emit tool_result (or tool_timeout) event so the client
+            // can swap the plashka for a compact "ok" / "error" / "timeout" chip.
+            if (result.timedOut) {
+              writeEvent({
+                t: 'tool_timeout',
+                id: call.id,
+                name: call.function.name,
+              });
+            } else {
+              writeEvent({
+                t: 'tool_result',
+                id: call.id,
+                name: call.function.name,
+                ok: result.ok,
+              });
+            }
+
             const resultJson = safeStringify(result);
 
             // Persist tool_result turn for audit + future Skill Editor signal.
@@ -426,19 +539,56 @@ export async function POST(req: Request) {
               content: resultJson,
             });
           }
+          if (cancelled) break;
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        writeToClient(`\n\n⚠️ Upstream error: ${message}`);
+        writeEvent({ t: 'error', message });
       } finally {
-        controller.close();
+        if (cancelled) {
+          writeEvent({ t: 'cancelled' });
+          // Persist a cancellation marker turn for audit; the regular
+          // assistant turn (with whatever text streamed before cancel) is
+          // still persisted below if assistantBuffer is non-empty.
+          if (threadId) {
+            try {
+              await persistTurn(supabase, threadId, {
+                role: 'system',
+                event_type: 'message',
+                content: 'Director cancelled this turn before completion.',
+                metadata: { kind: 'cancelled', partial_chars: assistantBuffer.length },
+              });
+            } catch {
+              /* swallow audit failures */
+            }
+          }
+        }
+        closed = true;
+        try { controller.close(); } catch { /* already closed */ }
         if (threadId && assistantBuffer.trim() !== '') {
+          // TD-25 P4 (2026-05-22): prefer tool-driven awaiting marker over
+          // the legacy regex detector. If Polina called markAwaitingDirector
+          // in this round, `accumulatedMetadataPatch.awaiting_director_input`
+          // is set deliberately — use it verbatim. Otherwise fall back to
+          // regex detection (deprecated; will be removed after one-week
+          // grace per TD-25 P4 plan).
+          const toolAwaiting = accumulatedMetadataPatch.awaiting_director_input;
+          const awaiting = toolAwaiting
+            ? toolAwaiting
+            : detectAwaitingDirectorInput(assistantBuffer);
+          // Compose final metadata: model + tool patches + awaiting (which is
+          // already in the patch if tool path took it).
+          const finalMetadata: Record<string, unknown> = {
+            model,
+            ...accumulatedMetadataPatch,
+            ...(awaiting && !toolAwaiting ? { awaiting_director_input: awaiting } : {}),
+          };
           try {
             await persistTurn(supabase, threadId, {
               role: 'assistant',
               event_type: 'message',
               content: assistantBuffer,
-              metadata: { model },
+              metadata: finalMetadata,
             });
           } catch {
             /* swallow secondary persistence failures */
@@ -468,7 +618,8 @@ export async function POST(req: Request) {
           const match = assistantBuffer.match(BANNED_RE);
           if (match) {
             try {
-              await supabase.from('activity_events').insert({
+              // TD-29.5 (2026-05-21): route through logEvent.
+              await logEvent(supabase, {
                 event_type: 'manual_trigger',
                 severity: 'warning',
                 title: 'PA behavior drift: permission-asking phrase detected',
@@ -508,6 +659,38 @@ export async function POST(req: Request) {
         : {}),
     },
   });
+}
+
+/**
+ * TD-20.A — Tool timeout shim. Returns the underlying ToolResult unchanged,
+ * or a synthesised { ok: false, timedOut: true } if the tool exceeds
+ * timeoutMs. The runner does NOT cancel the underlying tool work — a tool
+ * cannot be safely aborted mid-flight without per-tool cancellation hooks
+ * (most tools today wrap fire-and-forget HTTP / Supabase calls). The
+ * timeout exists to release the chat round so Director sees feedback and
+ * can cancel rather than hanging on a stuck tool.
+ */
+async function runToolWithTimeout(
+  call: ChatCompletionMessageToolCall,
+  ctx: ToolContext,
+  timeoutMs: number,
+): Promise<ToolResult & { timedOut?: boolean }> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<ToolResult & { timedOut: true }>((resolve) => {
+    timer = setTimeout(() => {
+      resolve({
+        ok: false,
+        error: `tool ${call.function.name} did not finish within ${Math.round(timeoutMs / 1000)}s`,
+        timedOut: true,
+      });
+    }, timeoutMs);
+  });
+  try {
+    const winner = await Promise.race([runTool(call, ctx), timeoutPromise]);
+    return winner;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** Execute a single tool_call against the registry. Unknown tools fail safely. */

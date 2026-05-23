@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { requireDirector } from '@/lib/api/auth';
+import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
@@ -323,11 +324,62 @@ async function computeNextEvents(
         }
         const shots = stbContent ? extractShotsFromStoryboard(stbContent) : [];
         if (shots.length > 0) {
-          for (const shot of shots) {
+          // Pilot Pass (Director directive 2026-05-20): only fire the first
+          // PILOT_COUNT shots as Designer Plans. Director reviews / approves
+          // both pilots, then we fan out the remaining shots in a second
+          // batch. Mirrors the EREF v2 generate-references → fanout-trigger
+          // pattern. Previously this fan-out was N×shots all at once, which
+          // generated 22 Plans in one go and forced Director to triage all
+          // of them before a single execute-from-plan could run. The
+          // remaining shot ids are stashed into episodes.metadata so a
+          // future auto-fanout-on-last-pilot trigger (or PA `fanoutDesigner`
+          // tool) can pick them up without re-reading the storyboard.
+          const PILOT_COUNT_DESIGNER = 2;
+          const pilotShots = shots.slice(0, PILOT_COUNT_DESIGNER);
+          const pendingShotIds = shots.slice(PILOT_COUNT_DESIGNER).map((s) => s.shot_id);
+          for (const shot of pilotShots) {
             events.push({
               name: 'sandystudio/exec-eref-designer/plan',
               data: { episodeId: ep, shotId: shot.shot_id },
             });
+          }
+          // Stash remaining shot ids for the post-pilot fanout, AND mirror the
+          // pilot shotIds into the Track-A `eref_pilot_shot_ids` field so the
+          // browser-side EREFPilotPillbar (components/pipeline/EREFPilotPillbar.tsx)
+          // can count the 2 approved pilot IMGs and activate the
+          // "Approve Direction & Fan Out" button. Without this mirror, the UI
+          // counter stays "0/2" forever because the Designer-chain branch
+          // (Track B) writes only `designer_*` keys, but the pillbar reads
+          // `eref_pilot_shot_ids` (Track A).
+          //
+          // TD-23 / TD-24 follow-up 2026-05-20.
+          //
+          // We do this AFTER queueing events so a transient metadata write
+          // failure does not block the pilots — those still fire.
+          try {
+            const { data: epRow } = await supabase
+              .from('episodes')
+              .select('metadata')
+              .eq('id', ep)
+              .maybeSingle();
+            const existingMeta = (epRow?.metadata as Record<string, unknown> | null) ?? {};
+            const pilotShotIds = pilotShots.map((s) => s.shot_id);
+            const nextMeta: Record<string, unknown> = {
+              ...existingMeta,
+              designer_pilot_count: PILOT_COUNT_DESIGNER,
+              designer_fanout_total: shots.length,
+              // Mirror Track-A pilot shotIds so the pillbar counter works.
+              eref_pilot_shot_ids: pilotShotIds,
+            };
+            if (pendingShotIds.length > 0) {
+              nextMeta.designer_fanout_pending = pendingShotIds;
+            }
+            await supabase
+              .from('episodes')
+              .update({ metadata: nextMeta as never } as never)
+              .eq('id', ep);
+          } catch {
+            /* non-fatal — pilots will still fire */
           }
         } else {
           // Defensive fallback — fire legacy single event so REV-world_check
@@ -367,7 +419,13 @@ async function computeNextEvents(
   // exactly one IMG-episode_ref using the Plan's provider/size/prompt
   // decisions. Idempotency check is keyed per Plan asset id (not per agent
   // for the whole episode) so each Plan triggers its own execute event.
-  if (ft === 'SPC-ref_plan' && designerChainEnabled()) {
+  // TD-24 (2026-05-20): Designer runner writes file_type as
+  // `SPC-ref_plan-<shot_id>` (e.g. `SPC-ref_plan-SS-S15-E01-A1-SC01-SH01`)
+  // per its documented format. The original strict `===` check missed every
+  // real Plan asset and `fired_events: []` blocked Phase 5 of the q2b smoke
+  // for SS-S15-E01. Hot-fix accepts both shapes. Helper refactor for the
+  // other 4 prod sites in follow-up (TD-24.B).
+  if ((ft === 'SPC-ref_plan' || ft.startsWith('SPC-ref_plan-')) && designerChainEnabled()) {
     // Extract shotId from the Plan asset's JSON body so the executor knows
     // which shot to generate. We trust the body — Director would not have
     // approved a Plan with a malformed shot_id (and the Designer runner
@@ -755,6 +813,15 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
 
   // 3. Audit event
+  //
+  // TD-29 (2026-05-21): MUST route through logEvent helper, NOT direct
+  // `supabase.from('activity_events').insert(...)`. logEvent's side-effect
+  // fires the `sandystudio/pa/notify-needed` Inngest event when the
+  // event_type is in the actionable whitelist (approval_granted is). Direct
+  // insert bypasses that fan-out → Polina silently misses every Director
+  // approve, which is exactly what caused the 13-min auto-react gap
+  // observed at 08:42-08:43Z. Same class of bug as the factory.ts fix
+  // landed in b6c83e7 yesterday.
   const evtType =
     body.decision === 'APPROVE'
       ? 'approval_granted'
@@ -763,7 +830,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       : body.decision === 'REJECT'
       ? 'approval_rejected'
       : 'asset_updated';
-  await supabase.from('activity_events').insert({
+  await logEvent(supabase, {
     event_type: evtType,
     severity: body.decision === 'REJECT' ? 'warning' : 'info',
     title: `${body.decision} on ${asset.filename}`,
@@ -772,7 +839,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     asset_id: id,
     episode_id: asset.episode_id,
     metadata: { decision: body.decision, file_type: asset.file_type },
-  } as never);
+  });
 
   // 4. Brief approval also flips the episode milestone status so the
   // "Approve Brief" banner disappears from Pipeline View.

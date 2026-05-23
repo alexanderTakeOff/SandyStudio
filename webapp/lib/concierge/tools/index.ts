@@ -17,10 +17,13 @@ import {
   setBibleContent,
   regenerateBibleImage,
   createSeries,
+  copyAssetImage,
 } from './series';
 import { createEpisode, findEpisode, editBrief } from './episode-create';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from './skills';
 import { getRefPlan, listRefPlans, getCriticVerdict, regenerateRefPlan } from './eref';
+import { regenerateImageFromPlan } from './eref-execute';
+import { listShots } from './storyboard';
 import {
   getShotPlan,
   listShotPlans,
@@ -33,10 +36,11 @@ import {
   getGagVerdict,
   regenerateGagPlan,
 } from './gagad';
+import { markAwaitingDirector } from './mark-awaiting';
 import type { OpenAIToolSchema, Tool } from './types';
 
 export type { Tool, ToolContext, ToolResult, OpenAIToolSchema } from './types';
-export { ok, fail } from './types';
+export { ok, okWithPatch, fail } from './types';
 
 /**
  * Canonical registry. Add a tool here once it's implemented; the chat route
@@ -64,6 +68,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   getRefPlan as unknown as AnyTool,
   listRefPlans as unknown as AnyTool,
   getCriticVerdict as unknown as AnyTool,
+  // 2026-05-22 — storyboard shot resolution. Closes vocabulary gap where
+  // Polina was asking Director for shotIds instead of fetching them from
+  // the APPROVED STB asset.
+  listShots as unknown as AnyTool,
   // Animator Shot Plan inspection (Day 8.5)
   getShotPlan as unknown as AnyTool,
   listShotPlans as unknown as AnyTool,
@@ -72,6 +80,9 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   getGagPlan as unknown as AnyTool,
   listGagPlans as unknown as AnyTool,
   getGagVerdict as unknown as AnyTool,
+  // TD-25 P4 — intent declaration (replaces regex await-detector). Read-only:
+  // doesn't change studio state, only annotates the assistant turn metadata.
+  markAwaitingDirector as unknown as AnyTool,
   // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
   approveAsset as unknown as AnyTool,
@@ -79,6 +90,7 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   enrichBible as unknown as AnyTool,
   setBibleContent as unknown as AnyTool,
   regenerateBibleImage as unknown as AnyTool,
+  copyAssetImage as unknown as AnyTool,
   createSeries as unknown as AnyTool,
   createEpisode as unknown as AnyTool,
   editBrief as unknown as AnyTool,
@@ -86,6 +98,11 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   updateSkill as unknown as AnyTool,
   approveSkill as unknown as AnyTool,
   regenerateRefPlan as unknown as AnyTool,
+  // 2026-05-22 — plan-driven single-shot image execution. Closes the
+  // architectural gap where Polina had no path to execute an APPROVED Plan
+  // without going through triggerAgent(EXEC-EREF), which routes to pilot
+  // pass and ignores planAssetId.
+  regenerateImageFromPlan as unknown as AnyTool,
   regenerateShotPlan as unknown as AnyTool,
   regenerateGagPlan as unknown as AnyTool,
 ]);

@@ -4,7 +4,7 @@
 // DRAFT asset that has no `metadata.image_prompt` history yet.
 //
 // Routes by file_type:
-//   SBL-character/location/object/style   → EXEC-BIBLE-AUTHOR (Sonnet description + gpt-image-1)
+//   SBL-character/location/object/style   → EXEC-BIBLE-AUTHOR (Sonnet description + gpt-image-2)
 //   IMG-episode_ref_*                     → (deferred to Slice D — call EREF runner with shot context)
 //   IMG-thumbnail                         → (deferred — calls EXEC-THUMB runner)
 //

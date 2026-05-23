@@ -1,13 +1,13 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // app/api/series/[id]/bible/generate-image/route.ts
-// Director-triggered gpt-image-1 generation for a Bible asset.
+// Director-triggered gpt-image-2 generation for a Bible asset.
 //
 // Flow:
 //   1. Director fills Add Hero modal (name, description) and clicks Generate.
 //   2. This route reads the description + the Style guide entries from the
 //      target series (if any LOCKED SBL-style_* exists, its content is added
 //      to the prompt to keep canonical art direction).
-//   3. Calls openai-image (gpt-image-1) — paid call ~$0.04.
+//   3. Calls openai-image (gpt-image-2) — paid call ~$0.04.
 //   4. Persists binary via persistBinary (local cache + Drive when on).
 //   5. Returns staging URL for live preview. Director then POSTs to
 //      /api/series/[id]/bible to persist the asset row using the staging URL.
@@ -22,6 +22,8 @@ import { NotFoundError } from '@/lib/api/errors';
 import { generateImageOpenAI } from '@/lib/agents/providers/openai-image';
 import { persistBinary } from '@/lib/agents/persist-binary';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { logEvent } from '@/lib/api/events';
+import { resolveBibleImageSize } from '@/lib/api/bible-image-size';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -107,9 +109,13 @@ export const POST = withApiHandler(async (req, ctx) => {
     styleGuides,
   });
 
+  // Director 2026-05-20 — was hardcoded 1024×1024. Section-aware default
+  // (characters/objects → square, locations/style → landscape).
+  // See lib/api/bible-image-size.ts.
+  const resolvedSize = resolveBibleImageSize({ section: body.section });
   const real = await generateImageOpenAI({
     prompt,
-    size: '1024x1024',
+    size: resolvedSize,
     quality: body.quality ?? 'medium',
   });
 
@@ -121,17 +127,27 @@ export const POST = withApiHandler(async (req, ctx) => {
     ext: 'png',
     driveFilename: filename,
     localHint: `bible-${body.section}-${slugSafe}`,
-    episodeCode: undefined,
+    // Director directive 2026-05-20 — Bible Library lands under series root:
+    //   /SandyStudio/<series.code>/bible/images/<file>
+    seriesCode: series.code,
+    bucket: 'bible',
+    assetType: 'images',
     supabase: sb,
   });
 
-  // Audit
-  await sb.from('activity_events').insert({
-    event_type: 'asset_created',
+  // Audit — written through logEvent so the row passes the CHECK
+  // constraint AND the Postgres trigger mirrors it into concierge_turns
+  // AND logEvent fires `pa/notify-needed` so Polina auto-acknowledges.
+  // event_type was 'asset_created' before — that value is NOT in the
+  // activity_events_type_valid CHECK list, so every previous insert
+  // silently failed (caught nowhere visible). Switched to 'agent_completed'
+  // with actor='EXEC-BIBLE-AUTHOR' to align with other agent flows.
+  await logEvent(sb, {
+    event_type: 'agent_completed',
     severity: 'info',
-    title: `Bible: image generated (${body.section}_${slugSafe})`,
-    description: `Director ${user.email ?? user.id} generated a ${body.section} reference via gpt-image-1`,
-    actor: user.id,
+    title: `Bible image generated: ${body.section}/${slugSafe}`,
+    description: `Library reference generated via gpt-image-2 ($${real.cost_usd.toFixed(4)})`,
+    actor: 'EXEC-BIBLE-AUTHOR',
     asset_id: null,
     episode_id: null,
     metadata: {
@@ -142,8 +158,9 @@ export const POST = withApiHandler(async (req, ctx) => {
       width: real.width,
       height: real.height,
       drive_file_id: persisted.driveFileId,
+      director_id: user.id,
     },
-  } as never);
+  });
 
   return apiOk({
     staging_url: persisted.browserUrl,

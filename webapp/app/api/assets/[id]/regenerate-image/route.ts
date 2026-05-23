@@ -38,8 +38,10 @@ import { generateImageOpenAI } from '@/lib/agents/providers/openai-image';
 import { persistBinary } from '@/lib/agents/persist-binary';
 import { runStyleCheck } from '@/lib/agents/runners/style-check';
 import { getStyleGuardianMode } from '@/lib/api/style-guardian-config';
+import { resolveBibleImageSize } from '@/lib/api/bible-image-size';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
+import { logEvent } from '@/lib/api/events';
 import {
   type AssetMetadataDoc,
   type ImagePromptHistoryEntry,
@@ -68,6 +70,11 @@ export const dynamic = 'force-dynamic';
 const ProviderIdSchema = z.enum([
   'openai-edits-multi',
   'flux-pro-1.1-ultra',
+  // Sprint φ 2026-05-18 upgrade: openai-image.ts moved to gpt-image-2.
+  // 'gpt-image-1' kept as accepted alias for backward compat with stale
+  // history rows + UI dropdowns that may still pass the old string;
+  // resolved to gpt-image-2 in execution (see fallback in else-branch).
+  'gpt-image-2',
   'gpt-image-1',
 ]);
 
@@ -250,12 +257,14 @@ export const POST = withApiHandler(async (req, ctx) => {
       .eq('id', assetId);
     if (upd.error) throw new Error(`asset restore failed: ${upd.error.message}`);
 
-    await sb.from('activity_events').insert({
-      event_type: 'asset_updated',
+    // Use logEvent + agent_completed so Polina auto-acknowledges via
+    // pa/notify-needed. Director attribution preserved in metadata.
+    await logEvent(sb, {
+      event_type: 'agent_completed',
       severity: 'info',
       title: `Image restored: ${asset.filename} → v${target.version}`,
-      description: `Director ${user.email ?? user.id} rolled back to version ${target.version}`,
-      actor: user.id,
+      description: `Rolled back to version ${target.version}`,
+      actor: 'EXEC-BIBLE-AUTHOR',
       asset_id: assetId,
       episode_id: asset.episode_id,
       metadata: {
@@ -263,8 +272,9 @@ export const POST = withApiHandler(async (req, ctx) => {
         from_version: target.version,
         new_version: nextVersion,
         mode_at_time: decision.modeAtTime,
+        director_id: user.id,
       },
-    } as never);
+    });
 
     return apiOk({
       asset_id: assetId,
@@ -356,8 +366,14 @@ export const POST = withApiHandler(async (req, ctx) => {
   let realCost: number;
   let realWidth: number;
   let realHeight: number;
-  let realProviderId = 'gpt-image-1';
-  let realModel = 'gpt-image-1';
+  // Sprint φ 2026-05-18 — defaults moved off the deprecated gpt-image-1.
+  // openai-image.ts hits the gpt-image-2 endpoint; previously the default
+  // string was stamped into metadata.image_prompt.history.provider_id
+  // for the non-v2 branch (which never reassigned it from the result),
+  // so Bible Library asset history rows were mislabeled. Director
+  // surfaced this 2026-05-20.
+  let realProviderId = 'gpt-image-2';
+  let realModel = 'gpt-image-2';
   let v2RefsUsed: ReferenceUsed[] = [];
 
   // For v2 EREF assets we ALWAYS go through the multi-image path so identity
@@ -449,15 +465,60 @@ export const POST = withApiHandler(async (req, ctx) => {
       (r): ReferenceUsed => ({ kind: r.kind, bible_asset_id: r.bible_asset_id }),
     );
   } else {
+    // Director 2026-05-20 — was hardcoded 1024×1024 for Bible regenerate
+    // (the non-v2 path). Resolve section from SBL-* file_type prefix and
+    // apply section-aware size: characters/objects → square, locations/
+    // style → landscape. See lib/api/bible-image-size.ts.
+    const sbMatch = /^SBL-(character|location|object|style)/.exec(asset.file_type);
+    const bibleSection = sbMatch ? (sbMatch[1] as 'character' | 'location' | 'object' | 'style') : null;
+    const regenSize: '1024x1024' | '1024x1536' | '1536x1024' = bibleSection
+      ? resolveBibleImageSize({ section: bibleSection })
+      : '1024x1024';
     const real = await generateImageOpenAI({
       prompt: promptToSend,
-      size: '1024x1024',
+      size: regenSize,
       quality: body.quality ?? 'medium',
     });
     realB64 = real.b64_data;
     realCost = real.cost_usd;
     realWidth = real.width;
     realHeight = real.height;
+    // Sprint φ 2026-05-18 + Director surface 2026-05-20 — stamp the actual
+    // provider/model returned by generateImageOpenAI so metadata.image_prompt
+    // history reflects gpt-image-2 (not the stale gpt-image-1 default).
+    // OpenAIImageResult.provider is the literal 'gpt-image-2'.
+    realProviderId = real.provider;
+    realModel = real.provider;
+  }
+
+  // Director directive 2026-05-20 — pick the new Drive layout based on
+  // asset kind. SBL-* (Bible Library) is series-scoped → bucket='bible'.
+  // IMG-* (episode reference / thumbnail) is episode-scoped → bucket=E<NN>.
+  // Resolve series.code (and episode.code for IMG-*) so persistBinary
+  // can place the file under /SandyStudio/<series>/<bucket>/<assetType>/.
+  let layoutSeriesCode: string | undefined;
+  let layoutBucket: string | undefined;
+  if (asset.file_type.startsWith('SBL-') && asset.series_id) {
+    const { data: srow } = await sb
+      .from('series')
+      .select('code')
+      .eq('id', asset.series_id)
+      .maybeSingle();
+    layoutSeriesCode = (srow as { code?: string } | null)?.code;
+    if (layoutSeriesCode) layoutBucket = 'bible';
+  } else if (asset.file_type.startsWith('IMG-') && asset.episode_id) {
+    const { data: erow } = await sb
+      .from('episodes')
+      .select('episode_code,series_id')
+      .eq('id', asset.episode_id)
+      .maybeSingle();
+    const epCode = (erow as { episode_code?: string } | null)?.episode_code;
+    // episode_code is canonical like "SS-S15-E01" — parse series + episode short.
+    const match = epCode ? /^(SS-[A-Z0-9]+)-(E\d+)$/.exec(epCode) : null;
+    if (match) {
+      layoutSeriesCode = match[1];
+      layoutBucket = match[2];
+    }
   }
 
   const persisted = await persistBinary({
@@ -467,7 +528,9 @@ export const POST = withApiHandler(async (req, ctx) => {
       .replace(/-(v\d+)-([A-Z]+)\.[a-z]+$/, `-$1-$2.png`)
       .replace(/\.md$/, '.png'),
     localHint: `regen-${assetId.slice(-8)}`,
-    episodeCode: undefined,
+    seriesCode: layoutSeriesCode,
+    bucket: layoutBucket,
+    assetType: 'images',
     supabase: sb,
   });
 
@@ -556,12 +619,12 @@ export const POST = withApiHandler(async (req, ctx) => {
     .eq('id', assetId);
   if (upd.error) throw new Error(`asset update failed: ${upd.error.message}`);
 
-  await sb.from('activity_events').insert({
-    event_type: 'asset_updated',
+  await logEvent(sb, {
+    event_type: 'agent_completed',
     severity: 'info',
     title: `Image regenerated: ${asset.filename} → v${nextVersion}`,
-    description: `Director ${user.email ?? user.id} edited prompt and rerolled (cost $${realCost.toFixed(4)})`,
-    actor: user.id,
+    description: `Prompt-edited reroll via ${realProviderId} ($${realCost.toFixed(4)})`,
+    actor: 'EXEC-BIBLE-AUTHOR',
     asset_id: assetId,
     episode_id: asset.episode_id,
     metadata: {
@@ -572,9 +635,10 @@ export const POST = withApiHandler(async (req, ctx) => {
       height: realHeight,
       provider_id: realProviderId,
       mode_at_time: decision.modeAtTime,
+      director_id: user.id,
       regen_count: regenCount,
     },
-  } as never);
+  });
 
   return apiOk({
     asset_id: assetId,

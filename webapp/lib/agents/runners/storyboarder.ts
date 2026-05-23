@@ -31,7 +31,13 @@ import {
 import { parseSkillSelection } from '../../skills/parse-skill-selection';
 
 export const SB_CONTRACT = 'storyboarder@v2';
-export const SB_MODEL = 'claude-sonnet-4-6';
+// 2026-05-20 — upgraded sonnet-4-6 → opus-4-7 per Director directive.
+// Sonnet kept producing cosmetic-only re-writes when asked to apply a
+// hard-contract revisionNote (Polina: «revision не выполнен как надо»);
+// Opus has stronger instruction-following on structured-removal prompts.
+// Cost delta: storyboard is one call per episode (not fan-out), so the
+// ~5× per-call jump lands at ~$0.30-0.80 / episode vs ~$0.06-0.16.
+export const SB_MODEL = 'claude-opus-4-7';
 // Sprint φ.2 — two-step skill activation. Step 1 uses Haiku (cheap, fast,
 // reasons over capability manifest only — no body context). Step 2 is the
 // existing Sonnet 4.6 main authoring call. Skipped (single-call shortcut)
@@ -131,8 +137,18 @@ function buildUserMessage(args: {
    *  Pre-formatted ACTIVE SKILLS markdown block. Empty string = no skills
    *  matched (no genre, no .claude/skills dir, or all skills DRAFT). */
   activeSkillsBlock?: string;
+  /**
+   * 2026-05-20 — Director's surgical revision note. When this run was
+   * triggered by requestRevision, Polina (or the Director) provides a
+   * specific list of fixes. Treat it as the strongest acceptance gate —
+   * each item must be visibly addressed in the new storyboard. Without
+   * this block (before today), the runner re-generated against the same
+   * inputs and produced cosmetic-only diffs — Polina kept reporting
+   * 'revision не выполнен как надо'.
+   */
+  revisionNote?: string;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes, activeSkillsBlock } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes, activeSkillsBlock, revisionNote } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -154,12 +170,37 @@ function buildUserMessage(args: {
           '',
         ].join('\n')
       : '';
+  // Director's surgical revision note (when re-fired by requestRevision).
+  // Top of the prompt because it OVERRIDES every other instruction below
+  // for the specific items it names. Each numbered line = a hard fix.
+  const revisionBlock = revisionNote && revisionNote.trim().length > 0
+    ? [
+        '## REVISION NOTE — HARD CONTRACT FROM DIRECTOR',
+        '',
+        'This run was triggered by requestRevision on the prior storyboard',
+        'version. The Director / Prod Assistant flagged specific issues that the',
+        'previous version FAILED to address. The new storyboard MUST visibly',
+        'satisfy every item below. Acknowledging without changing the output',
+        'is a fail; cosmetic re-wording is a fail. Each numbered point is an',
+        'acceptance gate.',
+        '',
+        'If a point demands removing existing material — REMOVE IT.',
+        'If a point demands replacing existing material — REPLACE IT exactly.',
+        'If a point demands a new beat — ADD IT within the existing runtime.',
+        '',
+        '<director_revision_note>',
+        revisionNote.trim(),
+        '</director_revision_note>',
+        '',
+      ].join('\n')
+    : '';
   return [
     '# Task',
     `Break the screenplay below into a shot-by-shot storyboard for episode ${episodeCode} — "${episodeTitle}".`,
     '',
     activeSkillsBlock && activeSkillsBlock.length > 0 ? activeSkillsBlock : '',
     activeSkillsBlock && activeSkillsBlock.length > 0 ? '' : '',
+    revisionBlock,
     notesBlock,
     '## Episode Brief (canonical input — APPROVED)',
     '',
@@ -278,12 +319,21 @@ function buildUserMessage(args: {
 
 export interface StoryboarderRunArgs {
   inputs: AgentInputs;
+  /**
+   * Director's surgical revision note from requestRevision flow. When set,
+   * the agent treats it as a HARD CONTRACT — top priority over normal
+   * upstream notes. Was silently ignored before 2026-05-20; Polina kept
+   * surfacing 'revision не выполнен как надо' because the note never
+   * reached this runner. Symmetric with runScreenwriter / EREF Designer /
+   * Animator / GAGAD revisionNote pipelines.
+   */
+  revisionNote?: string;
 }
 
 export async function runStoryboarder(
   args: StoryboarderRunArgs,
 ): Promise<StoryboarderRunResult> {
-  const { inputs } = args;
+  const { inputs, revisionNote } = args;
 
   const ep = inputs.episode as
     | { episode_code?: string; title_working?: string | null }
@@ -430,6 +480,7 @@ export async function runStoryboarder(
     bible,
     upstreamNotes,
     activeSkillsBlock,
+    revisionNote,
   });
 
   let result: AnthropicTextResult;

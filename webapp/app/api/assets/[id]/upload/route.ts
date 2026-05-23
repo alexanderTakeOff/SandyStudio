@@ -28,6 +28,7 @@ import { apiOk } from '@/lib/api/response';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
+import { logEvent } from '@/lib/api/events';
 import {
   type AssetMetadataDoc,
   type ImagePromptHistoryEntry,
@@ -199,12 +200,18 @@ export const POST = withApiHandler(async (req, ctx) => {
     .eq('id', assetId);
   if (upd.error) throw new Error(`asset update failed: ${upd.error.message}`);
 
-  await sb.from('activity_events').insert({
-    event_type: 'asset_updated',
+  // TD-20.B 2026-05-20 — write through logEvent + agent_completed so the
+  // event lands in the actionable whitelist of migration 0030's trigger
+  // (mirrors into concierge_turns) AND triggers pa/notify-needed → Polina
+  // auto-react. Was 'asset_updated' (not actionable) → Director observed
+  // 'Polina never reacts to my uploads'. Director attribution preserved
+  // in metadata.director_id.
+  await logEvent(sb, {
+    event_type: 'agent_completed',
     severity: 'info',
     title: `File uploaded: ${asset.filename} → v${nextVersion}`,
-    description: `Director ${user.email ?? user.id} uploaded ${(blob as File).name ?? 'file'} (${blob.size} bytes, ${mime})`,
-    actor: user.id,
+    description: `Direct upload (${(blob as File).name ?? 'file'}, ${Math.round(blob.size / 1024)}KB ${mime})`,
+    actor: 'EXEC-BIBLE-AUTHOR',
     asset_id: assetId,
     episode_id: asset.episode_id,
     metadata: {
@@ -214,8 +221,9 @@ export const POST = withApiHandler(async (req, ctx) => {
       bytes: blob.size,
       original_filename: (blob as File).name ?? null,
       mode_at_time: decision.modeAtTime,
+      director_id: user.id,
     },
-  } as never);
+  });
 
   return apiOk({
     asset_id: assetId,

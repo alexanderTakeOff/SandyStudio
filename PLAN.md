@@ -13,8 +13,123 @@
 ## CURRENT STATE
 
 ```
-Phase:    **Sprint «Дизайнер и Аниматор» — DAY 1-11 SHIPPED 2026-05-19** (Director smoke + master merge pending)
-Status:   ✅ **Sprint Day 1-11 ALL CODE LANDED on `claude/quizzical-brown-462555`** (6 sprint commits: 191ef3a Day 3.2, 8f33f95 Day 4, 296606d Day 4.5, 3a575ce Day 6-7, 62c4b82 Day 8, c3c9b59 Day 8.5). Verify: tsc clean · vitest **308/308** · replay-pilot **29/29**.
+Phase:    **Sprint q7a — Continuity Stability (TD-33 + TD-35) — SHIPPED 2026-05-23 morning**
+          Multi-axis continuity anchors on Designer Plan (`continuity_anchors[]` array
+          with `kind: spatial_same_location | temporal_previous_shot`), with back-compat
+          parser tolerance for legacy `scene_continuity_anchor_asset_id` (13 existing
+          S15-E01 Plans unaffected). TD-35 freshness guard: REST + executor + PA tool
+          layered, hard-fail `PLAN_ANCHOR_STALE` directs Polина to `regenerateRefPlan`.
+          Vanim Plan end_image/seed/quality_tier wired from Animator → runner → Seedance
+          (4 previously-stripped fields now reach the provider). Plan:
+          `~/.claude/plans/q7a-structured-zephyr.md`.
+
+Status:   ✅ tsc clean · vitest **481/481** (+30 new) · replay-pilot **29/29**.
+          14 files modified + 2 new (freshness module + tests). Squash-merged to master.
+
+          🔴 **Mid-sprint diagnosis (2026-05-22 evening, Director surfaced):** «все шоты
+          с одного ракурса, кровать всегда слева кроме шота с дыркой». Root cause is
+          architectural, NOT today's sprint:
+          • Designer writes diverse `camera_intent` (WIDE/MEDIUM/CLOSE/CLOSE_UP) with
+            explicit contrastive rationale — DECISIONS are correct.
+          • `openai-edits-multi.ts:13-17` self-documents: «No `strength` parameter is
+            exposed by the API → identity is locked hard, emotion/action prompt has
+            weaker influence... Per-reference weight not supported».
+          • Single canonical Location Bible reference image (one viewpoint) is passed
+            as equal-weighted ref in every multi-edit call → gpt-image-2 copies its
+            layout → all shots same angle.
+          • TD-30 (spatial anchor, yesterday) + q7a (temporal anchor, today) are
+            amplifiers — they add MORE same-angle refs. They are NOT the root cause
+            (first shot in location, no TD-30 anchor, already showed locked angle).
+          • IMG metadata.shot_reference loses camera_angle/sub_area Designer decisions
+            entirely — no audit trail on which angle landed.
+
+          ⏳ **OPEN q15/q16/q17** for Director decision (deferred from 2026-05-22 PM):
+          • q15 — confirm root-cause diagnosis
+          • q16 — immediate next step (a: flag-gate anchors temp-fix; b: Bible sub-area
+            refs spring; c: switch to Flux Pro Ultra Redux with per-ref weight; d: ...)
+          • q17 — q7a sprint disposition (a: behind flag; b: rollback TD-30+TD-33; c:
+            leave as-is) — Director chose merge-to-master (≈ q17c).
+          ⚠️ **Do not push more shots through pipeline until q16 decided** — same-angle
+          bug reproduces on every new shot.
+
+Next:    1. Restart smoke (SH21/SH22 plan-level regen + onwards) — ONLY after q16.
+          2. Polина briefing: q6 skill update from yesterday is SUPERSEDED by q7a Step 7
+             (eref-shot-composition trimmed to Plan-contract one-liner).
+          3. TD-36 (StudioShell ergonomics — 3 fixes dictated 2026-05-22 evening,
+             not urgent) — Director still owes screenshot for fix #3.
+
+Mode:    ===5=== authorized for commit+push+merge (Director directive 2026-05-23 AM).
+         Mode 1 governance.
+Date:    2026-05-23
+```
+
+### Previous phase (archived — see docs/PLAN-history.md when room)
+
+```
+Phase:    **Polina autonomy chain end-to-end + Drive layout + Storyboarder opus — SHIPPED 2026-05-20**
+          (plans `~/.claude/plans/soft-swimming-thunder.md` C1-C6 + rollout
+           `~/.claude/plans/polina-fix-rollout-and-resume.md`). Branch
+           `claude/quizzical-brown-462555` accumulated 19 значимых коммитов
+           f0caf09 → b6c83e7 since master `12d708f`. Branch cleanup deferred.
+Status:   ✅ **All C1-C6 + 13 follow-up fixes SHIPPED 2026-05-20**. Full session
+            memo: `~/.claude/projects/C--SandyStudio/memory/session_2026-05-20_polina_autonomy_full_chain_fix.md`.
+
+            Key landing points (commit order):
+            • f0caf09 skill abstraction principle (global meta-doc) + library-style-first rewrite
+            • c0bf70e C4 autonomy infra (pa/notify-needed Inngest, exec-pa-react,
+                     /api/concierge/chat-internal, AUTO_REACT_GUIDANCE block)
+            • db2f8e3 streaming + cancel + per-tool plashka + TD-21 logged
+            • 48ff9ec CEL ternary debounce + middleware bypass for chat-internal
+            • 6f54ddd Library generation visibility — routes through logEvent
+            • be42dc5 disabled silent-ack client trigger (root cause «Polina never reacts»)
+            • fcd685b UI renders auto-react assistant turns (Realtime + reload backlog)
+            • f0661ec runBibleAuthor emits agent_completed for enrichBible auto-react
+            • 2370b44 bible-author prompt fix — Primary Object Reference Rule
+                     (no characters/squirrels/dogs in object refs, single hero view)
+            • 1465b5f 15s polling fallback for dead Realtime WebSocket
+            • 9b08dca stamp gpt-image-2 in history label (was stale gpt-image-1)
+            • 5aa2232 copyAssetImage PA tool + endpoint + upload UI block
+            • e992086 consolidated /upload + Sandy S14→S15 carry-over executed
+            • 29d810b **Drive layout: /SandyStudio/<series>/<bucket>/<assetType>/<file>**
+                     13/13 S15 Bible files migrated (Sandy carry-over skipped — shared S14)
+            • d1cc216 Bible aspect-ratio policy (characters/objects square,
+                     locations/style landscape) — was hardcoded 1024×1024
+            • da31f81 Storyboarder revisionNote wired into prompt (был silently dropped)
+            • fd991bf **Storyboarder upgrade sonnet-4-6 → opus-4-7** for hard-contract
+                     instruction-following on requestRevision
+            • b6c83e7 **factory.ts → logEvent — THE ROOT FIX** for «Polina не реагирует
+                     на pipeline events». Was 3 inline activity_events.insert in
+                     factory wrapper, bypassed logEvent → pa/notify-needed never fired
+                     for real production events. Now все 3 точки через logEvent.
+
+          🔴 **Late-session smoke surfaced 2 production blockers (both FIXED)**:
+            • **e5ffa22** + migration 0034 — schema `assets_file_type_check`
+                     regex `[a-z0-9_-]+` rejected UPPERCASE shot_ids in
+                     `SPC-ref_plan-SS-S15-E01-A1-SC01-SH01` etc. All 22 Designer
+                     jobs for SS-S15-E01 failed at save step. Relaxed regex
+                     `[A-Za-z0-9_-]+`. Migration applied to production.
+            • **cdb7f9f** — approve/route.ts REV-world_check.APPROVED branch
+                     fan-outed N×Designer events (one per shot in storyboard,
+                     22 in our case) instead of Pilot Pass=2. Director:
+                     «должны запуститься первых два пилотных как всегда было».
+                     Fix: `PILOT_COUNT_DESIGNER=2`, remaining shot ids stashed
+                     in `episodes.metadata.designer_fanout_pending` for
+                     future auto-fanout-trigger (TD-23 below).
+
+            Verify trio: tsc clean · vitest **327/327** · replay-pilot **29/29**.
+            Director name codified — **Александр** (NOT Кирилл — my hallucination,
+            corrected 2026-05-20 via `~/.claude/projects/C--SandyStudio/memory/director_name_alexander.md`).
+
+          🟡 **AWAITING SMOKE (post-clear):** Director triggered new STB requestRevision
+            after b6c83e7+fd991bf+da31f81 landed. Expected:
+              - v4 description shows claude-opus-4-7
+              - v4 visibly applies all 5 of Polina's blocking items
+              - Polina auto-reacts to agent_completed within 15s, no Director prompt
+            If all three observed — entire autonomy chain validated on real
+            production event (not synthetic curl smoke).
+
+          Mode: ===5=== · Mode 1 governance · auto-sync OFF.
+          Date: 2026-05-20
             • Skills-as-capabilities refactor (lazy two-step API + 2 broad capability playbooks)
             • EREF chain bug fix (review-id → underlying STB resolution) + RejectModal directorConfirm
             • EREF pilot state mirror в episodes.metadata (closes UI gap FANOUT_RUNNING → FANOUT_COMPLETE)
@@ -501,6 +616,9 @@ Sprints S0–S8 (foundation + spec) all COMPLETE 2026-04-23..28 — details in `
 | 17 | Videomatic FFmpeg export aspect ratio: requested 16:9, observed 1:1 with content centered. First real MP4 produced 2026-05-08. Inspect ffmpeg canvas dims, source clip dimensions, padding/crop in `webapp/lib/agents/providers/ffmpeg-stitch.ts` | Reliability |
 | 18 | Prod Assistant TTS quality — Director confirmed 2026-05-08 smoke: голос "как больной робот". Web Speech SpeechSynthesis на Windows = системные голоса (Pavel/Irina). Upgrade path: ElevenLabs или OpenAI TTS API (~$0.015/1K chars). Decision deferred until 2nd use | UX |
 | 20 | **PA chat streaming + cancel button + alive-indicator.** Surfaced 2026-05-19 SS-S15-E01 smoke: Polina chat is sync POST `/api/concierge/chat` that hangs 50-110+ sec per turn (multi-roundtrip OpenAI + tool_calls). Client shows static thinking dots — no progress, no cancel, no per-tool visibility. When OpenAI errored on 450KB context bomb (since fixed via listSeriesBibles strip), UI stuck in `isLoading=true` indefinitely with no timeout. Three layered remediation: (a) **Level 1 cosmetic** ~30-40 min — fix dot animation CSS keyframes + client-side 90s timeout with toast/auto-recover + fake cancel button (closes fetch, server keeps spending). (b) **Level 2 SSE streaming + real cancel** ~4-6h — `/api/concierge/chat` returns Server-Sent Events stream; client renders text deltas as they arrive + per-tool plashka «Polina вызывает createSeries…»; real cancel via AbortController on client → server detects req.signal.aborted → cancels OpenAI mid-flight via AbortController on SDK call. (c) **Level 3 activity feed integration** +1-2h on Level 2 — emit `activity_events(event_type=pa_tool_call)` for each tool dispatch so events also show in main activity panel (not just chat); Realtime subscription pushes them to UI. Director-preferred minimum at session 2026-05-19: q1b (Level 1 + listSeriesBibles strip = the strip is done in commit 55958c8). Q for next session: Level 2 + 3 as one «PA Streaming + Cancel» mini-sprint. Decision deferred until after SS-S15-E01 first complete cycle. | UX / Reliability |
+| 23 | **Designer post-pilot auto-fanout-trigger (NEW gap 2026-05-20).** After `cdb7f9f` Pilot Pass fix, REV-world_check.APPROVED fan-outs only first 2 shots as SPC-ref_plan events. Remaining shot ids land in `episodes.metadata.designer_fanout_pending` (+ `designer_pilot_count` + `designer_fanout_total`). Missing: mechanism that auto-fan-outs the remaining shot ids when Director approves both pilot SPC-ref_plan assets. Mirror EREF v2 `sandystudio/exec-eref/fanout-trigger` event pattern: (a) new Inngest event `sandystudio/exec-eref-designer/fanout-trigger`; (b) approve route detects last-pilot-approved condition (count APPROVED SPC-ref_plan == designer_pilot_count) and fires the event; (c) handler reads `designer_fanout_pending`, fires one Designer plan event per stashed shot id, clears the array. Effort: ~2-3h with tests. Today's smoke can be unblocked by Polina manually calling `triggerAgent('EXEC-EREF-DESIGNER', {shotId})` per remaining shot (20×). Required for the next series so production doesn't need manual fan-out | Reliability / UX |
+| 22 | **DELETE asset / asset_updated events not actionable for PA auto-react.** When Director deletes an asset from Library, the handler writes `event_type='asset_updated'` which is NOT in the Postgres trigger's actionable whitelist (migration 0030). Polina therefore can't autonomously react to «Director deleted X». Two options: widen whitelist to include 'asset_updated' (potentially noisy on every edit), or refactor delete handler to use `agent_completed` with `actor='EXEC-BIBLE-AUTHOR'` (already validated pattern from `6f54ddd`). Effort: ~30 min. Defer with TD-22 priority — low (auto-react on deletes is nice-to-have, not blocking) | UX |
+| 21 | **Brief↔Bible consistency validator missing (NEW gap 2026-05-20).** Discovered during plan `soft-swimming-thunder.md`. ART-HW writes `SPC-story_brief`; EXEC-SW reads it directly; EXEC-SREV reviews the **script**, not the brief; nobody verifies brief is compatible with Series Bible (character canon, world rules, declared style anchor). Risk: brief asks for behavior/look the Bible forbids; contradiction surfaces three layers downstream as Designer/Animator HALT, costing wall-clock + tokens with no clear cause. Options: (a) new Critic agent EXEC-HW-CRITIC between ART-HW APPROVED and EXEC-SW trigger — symmetric with EREF Designer's Critic + Animator's Critic shipped in Sprint «Дизайнер и Аниматор» (recommended); (b) extend EXEC-SREV to also re-read the brief and flag brief↔Bible drift in addition to script↔brief drift; (c) light pre-check in `gate.ts` for SPC-story_brief APPROVED transition mirroring the Bible canon precondition EXEC-EREF already does at gate.ts:286. Effort: ~6-10h for option (a). Defer until current Polina fix lands + SS-S15 smoke completes | Reliability / Creative |
 | 19 | **Asset content edits overwrite in place — no version increment.** Surfaced 2026-05-19 SS-S15-E01 «Heavy Friend» smoke. `PUT /api/assets/[id]/content` (UI «Edit brief» button + PA tool `editBrief`) mutates same row → filename stays `v01`, no audit between agent and Director edits, «approve» targets ambiguous last-writer-wins state. Director's expected model: «my edit = v02 · agent's edit = v03 · approve targets a specific version». Affects ALL Plan-assets (SPC-brief / SCR-script / STB-storyboard / SPC-ref_plan / SPC-shot_plan / SPC-gag_plan / BIB-*). `setBibleContent` PA tool already does «create new version» correctly — this is the inconsistency to fix. Remediation: endpoint INSERT row v+1 instead of UPDATE; status DRAFT for new version; old row stays. ~30-40 min endpoint + ~15 min regression test. UI version selector dropdown is separate ~2h. Decision deferred per Director 2026-05-19 — keep current behaviour through smoke, fix before next series | Reliability / Audit |
 
 **Already fixed in Phase 5c** (don't re-add): #3 Story phantom stage hidden · #9 Multi-asset milestone chain via `computeNextEvents` (STB×3, animatic fan-out, metadata→thumb, ready→pub) · #10 Pipeline View stage filter · #11 Factory writes `agent_completed` · #12 STAGE_FROM_ASSET prefix matching.

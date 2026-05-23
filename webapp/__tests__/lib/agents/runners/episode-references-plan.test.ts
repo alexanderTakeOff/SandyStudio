@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import {
   EpisodeReferencesError,
   loadPlanOverrides,
+  parseContinuityAnchors,
   planSizeToProviderSize,
 } from '@/lib/agents/runners/episode-references';
 
@@ -319,5 +320,267 @@ describe('loadPlanOverrides — error class', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(EpisodeReferencesError);
     }
+  });
+});
+
+// ── TD-33 + back-compat shim (q7a sprint, Step 1+4) ────────────────────────
+// Exercises parseContinuityAnchors directly + verifies loadPlanOverrides
+// honours both Plan shapes (new TD-33 array, legacy TD-30 singular field).
+
+describe('parseContinuityAnchors — new TD-33 shape wins', () => {
+  it('parses a Plan with both spatial and temporal anchors', () => {
+    const out = parseContinuityAnchors(
+      {
+        continuity_anchors: [
+          {
+            kind: 'spatial_same_location',
+            asset_id: 'asset-spatial-1',
+            resolved_at: '2026-05-22T10:00:00.000Z',
+          },
+          {
+            kind: 'temporal_previous_shot',
+            asset_id: 'asset-temporal-1',
+            resolved_at: '2026-05-22T10:00:01.000Z',
+          },
+        ],
+      },
+      '2026-01-01T00:00:00.000Z',
+    );
+    expect(out).toEqual([
+      {
+        kind: 'spatial_same_location',
+        assetId: 'asset-spatial-1',
+        resolvedAt: '2026-05-22T10:00:00.000Z',
+      },
+      {
+        kind: 'temporal_previous_shot',
+        assetId: 'asset-temporal-1',
+        resolvedAt: '2026-05-22T10:00:01.000Z',
+      },
+    ]);
+  });
+
+  it('drops unknown kinds silently (forward-compat)', () => {
+    const out = parseContinuityAnchors(
+      {
+        continuity_anchors: [
+          {
+            kind: 'callback_to_future_shot',
+            asset_id: 'asset-x',
+            resolved_at: '2026-05-22T10:00:00.000Z',
+          },
+          {
+            kind: 'spatial_same_location',
+            asset_id: 'asset-y',
+            resolved_at: '2026-05-22T10:00:00.000Z',
+          },
+        ],
+      },
+      '2026-01-01T00:00:00.000Z',
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].assetId).toBe('asset-y');
+  });
+
+  it('drops entries with missing asset_id', () => {
+    const out = parseContinuityAnchors(
+      {
+        continuity_anchors: [
+          { kind: 'spatial_same_location' },
+          {
+            kind: 'temporal_previous_shot',
+            asset_id: '',
+          },
+          {
+            kind: 'spatial_same_location',
+            asset_id: '   ',
+          },
+        ],
+      },
+      '2026-01-01T00:00:00.000Z',
+    );
+    expect(out).toEqual([]);
+  });
+
+  it('falls back to planCreatedAt when resolved_at missing/blank', () => {
+    const out = parseContinuityAnchors(
+      {
+        continuity_anchors: [
+          { kind: 'spatial_same_location', asset_id: 'asset-1' },
+          {
+            kind: 'temporal_previous_shot',
+            asset_id: 'asset-2',
+            resolved_at: '   ',
+          },
+        ],
+      },
+      '2026-01-01T00:00:00.000Z',
+    );
+    expect(out).toHaveLength(2);
+    expect(out[0].resolvedAt).toBe('2026-01-01T00:00:00.000Z');
+    expect(out[1].resolvedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('new array shape WINS even when legacy field also present (drift safety)', () => {
+    const out = parseContinuityAnchors(
+      {
+        continuity_anchors: [
+          {
+            kind: 'spatial_same_location',
+            asset_id: 'asset-new-shape',
+            resolved_at: '2026-05-22T10:00:00.000Z',
+          },
+        ],
+        scene_continuity_anchor_asset_id: 'asset-legacy-shape',
+      },
+      '2026-01-01T00:00:00.000Z',
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].assetId).toBe('asset-new-shape');
+  });
+});
+
+describe('parseContinuityAnchors — legacy TD-30 fallback', () => {
+  it('synthesises one spatial entry from legacy scene_continuity_anchor_asset_id', () => {
+    const out = parseContinuityAnchors(
+      { scene_continuity_anchor_asset_id: 'asset-legacy' },
+      '2026-01-01T00:00:00.000Z',
+    );
+    expect(out).toEqual([
+      {
+        kind: 'spatial_same_location',
+        assetId: 'asset-legacy',
+        resolvedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('returns empty array when legacy field is null/empty', () => {
+    expect(
+      parseContinuityAnchors(
+        { scene_continuity_anchor_asset_id: null },
+        '2026-01-01T00:00:00.000Z',
+      ),
+    ).toEqual([]);
+    expect(
+      parseContinuityAnchors(
+        { scene_continuity_anchor_asset_id: '' },
+        '2026-01-01T00:00:00.000Z',
+      ),
+    ).toEqual([]);
+    expect(
+      parseContinuityAnchors(
+        { scene_continuity_anchor_asset_id: '   ' },
+        '2026-01-01T00:00:00.000Z',
+      ),
+    ).toEqual([]);
+  });
+
+  it('returns empty array when neither shape present', () => {
+    expect(parseContinuityAnchors({}, '2026-01-01T00:00:00.000Z')).toEqual([]);
+  });
+});
+
+describe('loadPlanOverrides — continuity anchors end-to-end', () => {
+  it('exposes continuityAnchors[] from new TD-33 Plan shape', async () => {
+    const row = {
+      id: 'plan-1',
+      file_type: 'SPC-ref_plan',
+      status: 'APPROVED',
+      created_at: '2026-05-22T10:00:00.000Z',
+      content: planContent({
+        continuity_anchors: [
+          {
+            kind: 'spatial_same_location',
+            asset_id: 'asset-spatial-1',
+            resolved_at: '2026-05-22T10:00:00.000Z',
+          },
+          {
+            kind: 'temporal_previous_shot',
+            asset_id: 'asset-temporal-1',
+            resolved_at: '2026-05-22T10:00:01.000Z',
+          },
+        ],
+      }),
+    };
+    const overrides = await loadPlanOverrides(
+      mockSupabaseWithAsset(row),
+      'plan-1',
+      'SS-S99-E99-A1-SC01-SH01',
+    );
+    expect(overrides.continuityAnchors).toHaveLength(2);
+    expect(overrides.continuityAnchors[0]).toMatchObject({
+      kind: 'spatial_same_location',
+      assetId: 'asset-spatial-1',
+    });
+    expect(overrides.continuityAnchors[1]).toMatchObject({
+      kind: 'temporal_previous_shot',
+      assetId: 'asset-temporal-1',
+    });
+  });
+
+  it('returns empty continuityAnchors[] when Plan body declares no anchors', async () => {
+    const row = {
+      id: 'plan-1',
+      file_type: 'SPC-ref_plan',
+      status: 'APPROVED',
+      created_at: '2026-05-22T10:00:00.000Z',
+      content: planContent(),
+    };
+    const overrides = await loadPlanOverrides(
+      mockSupabaseWithAsset(row),
+      'plan-1',
+      'SS-S99-E99-A1-SC01-SH01',
+    );
+    expect(overrides.continuityAnchors).toEqual([]);
+  });
+
+  it('synthesises continuityAnchors from a legacy Plan with singular scene_continuity_anchor_asset_id', async () => {
+    const row = {
+      id: 'plan-1',
+      file_type: 'SPC-ref_plan',
+      status: 'APPROVED',
+      created_at: '2026-05-21T08:00:00.000Z',
+      content: planContent({
+        scene_continuity_anchor_asset_id: 'legacy-anchor-asset',
+      }),
+    };
+    const overrides = await loadPlanOverrides(
+      mockSupabaseWithAsset(row),
+      'plan-1',
+      'SS-S99-E99-A1-SC01-SH01',
+    );
+    expect(overrides.continuityAnchors).toEqual([
+      {
+        kind: 'spatial_same_location',
+        assetId: 'legacy-anchor-asset',
+        resolvedAt: '2026-05-21T08:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('exposes temporal-only continuityAnchors when Plan has only temporal kind', async () => {
+    const row = {
+      id: 'plan-1',
+      file_type: 'SPC-ref_plan',
+      status: 'APPROVED',
+      created_at: '2026-05-22T10:00:00.000Z',
+      content: planContent({
+        continuity_anchors: [
+          {
+            kind: 'temporal_previous_shot',
+            asset_id: 'asset-temporal-only',
+            resolved_at: '2026-05-22T10:00:00.000Z',
+          },
+        ],
+      }),
+    };
+    const overrides = await loadPlanOverrides(
+      mockSupabaseWithAsset(row),
+      'plan-1',
+      'SS-S99-E99-A1-SC01-SH01',
+    );
+    expect(overrides.continuityAnchors).toHaveLength(1);
+    expect(overrides.continuityAnchors[0]?.kind).toBe('temporal_previous_shot');
   });
 });

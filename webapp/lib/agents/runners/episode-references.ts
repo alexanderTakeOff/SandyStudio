@@ -63,9 +63,14 @@ import {
 import type {
   MultiImageGenProvider,
   MultiImageRef,
+  MultiImageRefKind,
 } from '../providers/image-gen-multi';
 import { MultiImageGenError } from '../providers/image-gen-multi';
 import { readBibleImageAsBase64 } from '../providers/openai-image-edit';
+import {
+  checkPlanAnchorFreshness,
+  formatStaleAnchorMessage,
+} from './episode-reference-freshness';
 import { upscaleToFourK, UpscaleError } from '../providers/upscale-fal';
 import { runEREFCheck, type ReviewBibleRef } from './eref-check';
 import { isErefCancelled } from '../../api/eref-cancel';
@@ -137,6 +142,15 @@ interface ParsedShot {
   act: number;
   /** Flat location string for filename / description. */
   location: string;
+  /**
+   * Bible-locked canonical location slug (e.g. "bedroom_main", "kitchen_morning")
+   * — verbatim from storyboard JSON's `location.slug`. TD-30 (2026-05-21):
+   * used by Designer to look up the latest APPROVED IMG-episode_ref in the
+   * same location and embed it as `scene_continuity_anchor` to stabilise
+   * spatial layout across shots. Undefined when storyboard has flat string
+   * location (no Bible link).
+   */
+  location_slug?: string;
   /** Optional sub-area inside the location ("entrance end", "counter centre", "shelf side") — drives spatial anchor in the prompt. */
   location_sub_area?: string;
   characters_present: string[];
@@ -338,6 +352,7 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
 
       let flatLocation = 'unknown';
       let locationSubArea: string | undefined;
+      let locationSlug: string | undefined; // TD-30 — bible-locked canonical
       if (typeof sh.location === 'string') {
         flatLocation = sh.location;
       } else if (sh.location && typeof sh.location === 'object') {
@@ -345,6 +360,7 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         const sub = sh.location.sub_area;
         flatLocation = sub ? `${slug} — ${sub}` : slug;
         if (typeof sub === 'string' && sub.length > 0) locationSubArea = sub;
+        if (slug && slug !== 'unknown') locationSlug = slug;
       }
 
       const v2Chars = Array.isArray(sh.characters)
@@ -373,6 +389,7 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         shot_id: String(sh.shot_id),
         act: Number(a.act ?? 0),
         location: flatLocation,
+        location_slug: locationSlug,
         location_sub_area: locationSubArea,
         characters_present: flatChars,
         action: flatAction,
@@ -616,7 +633,21 @@ function composePromptFromTestPlan(job: ShotJob): string {
     .join('\n');
 }
 
-function buildMultiImageRefs(job: ShotJob): MultiImageRef[] {
+/**
+ * TD-30 (2026-05-21) + TD-33 (2026-05-22): append continuity anchors after
+ * the bible refs. Bible refs (identity / location / style) lead — the
+ * multi-image edit provider treats earlier refs as higher-priority. Then
+ * anchors in Plan-write order (spatial first, temporal second when both).
+ *
+ * openai-edits-multi.ts caps at MAX_REFS=16. Worst-case bible side ≈ 3-4
+ * (one identity per present character + 1 location + 1 style); plus up to
+ * 2 anchors → 6-7 refs in the worst real case. Comfortably under the cap;
+ * cap-trimming is left to the provider adapter to keep policy in one place.
+ */
+function buildMultiImageRefs(
+  job: ShotJob,
+  continuityRefs: ReadonlyArray<MultiImageRef> = [],
+): MultiImageRef[] {
   const refs: MultiImageRef[] = [];
   for (const r of job.bibleRefs) {
     if (!r.image_b64) continue;
@@ -626,7 +657,43 @@ function buildMultiImageRefs(job: ShotJob): MultiImageRef[] {
       image_b64: r.image_b64,
     });
   }
+  for (const cr of continuityRefs) {
+    refs.push(cr);
+  }
   return refs;
+}
+
+/**
+ * TD-33 (2026-05-22): Load image bytes for a continuity anchor (spatial OR
+ * temporal). Maps `ContinuityAnchorKind` to the corresponding
+ * `MultiImageRefKind`. Returns null on any failure (missing row, missing
+ * staging file, read error) — executor degrades gracefully (one fewer ref).
+ *
+ * Replaces TD-30's `loadSceneContinuityAnchor` which handled only the
+ * spatial axis. Kept exported as a test seam.
+ */
+const ANCHOR_KIND_TO_REF_KIND: Record<ContinuityAnchorKind, MultiImageRefKind> = {
+  spatial_same_location: 'scene_continuity',
+  temporal_previous_shot: 'temporal_continuity',
+};
+
+async function loadContinuityAnchor(
+  supabase: SupabaseClient<Database>,
+  anchor: ContinuityAnchor,
+): Promise<MultiImageRef | null> {
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,staging_path,status')
+    .eq('id', anchor.assetId)
+    .maybeSingle();
+  if (error || !data?.staging_path) return null;
+  const b64 = await readBibleImageAsBase64(data.staging_path);
+  if (!b64) return null;
+  return {
+    kind: ANCHOR_KIND_TO_REF_KIND[anchor.kind],
+    bible_asset_id: data.id,
+    image_b64: b64,
+  };
 }
 
 function reviewerBibleRefs(job: ShotJob): ReviewBibleRef[] {
@@ -673,6 +740,27 @@ export interface EpisodeReferencesRunArgs {
 }
 
 /**
+ * TD-33 (2026-05-22): continuity anchor axes the Designer Plan can declare.
+ *  - `spatial_same_location` — prior APPROVED IMG-episode_ref at the same
+ *    location (TD-30 spatial anchor; kept under a typed kind so future axes
+ *    don't fight for the same field).
+ *  - `temporal_previous_shot` — APPROVED IMG-episode_ref for the previous
+ *    shot in narrative order (the Designer decides scope: same scene, hard
+ *    cut, cutaway — see episode_reference_designer.md).
+ */
+export type ContinuityAnchorKind =
+  | 'spatial_same_location'
+  | 'temporal_previous_shot';
+
+/** A single continuity anchor declared by the Designer Plan. */
+export interface ContinuityAnchor {
+  kind: ContinuityAnchorKind;
+  assetId: string;
+  /** ISO-8601 timestamp at which the Designer resolved this anchor. */
+  resolvedAt: string;
+}
+
+/**
  * Overrides extracted from an APPROVED SPC-ref_plan asset's JSON body.
  * Designer's contract (see agents/exec/episode_reference_designer.md + the
  * fenced JSON block emitted by runEpisodeReferenceDesigner). All fields
@@ -688,6 +776,14 @@ interface PlanOverrides {
   negative: readonly string[];
   continuityMode: string;
   policyNotes: readonly string[];
+  /**
+   * TD-33 (2026-05-22): every continuity anchor the Designer Plan declared,
+   * in Plan-write order. Empty array when none. Legacy Plans (singular
+   * `scene_continuity_anchor_asset_id` only) are synthesised into one
+   * `spatial_same_location` entry by the parser with
+   * `resolvedAt = plan.created_at` — see parseContinuityAnchors.
+   */
+  continuityAnchors: ReadonlyArray<ContinuityAnchor>;
 }
 
 /** Provider enum sizes the multi-image-gen contract honours. */
@@ -733,7 +829,7 @@ export function planSizeToProviderSize(size: {
  * Director can read the markdown narrative and the executor can read the
  * machine-readable JSON.
  */
-function parseLastJsonBlock(content: string): Record<string, unknown> | null {
+export function parseLastJsonBlock(content: string): Record<string, unknown> | null {
   const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
   if (matches.length === 0) return null;
   const last = matches[matches.length - 1]?.[1];
@@ -760,7 +856,7 @@ export async function loadPlanOverrides(
 ): Promise<PlanOverrides> {
   const { data, error } = await supabase
     .from('assets')
-    .select('id,file_type,status,content')
+    .select('id,file_type,status,content,created_at')
     .eq('id', planAssetId)
     .maybeSingle();
   if (error) {
@@ -771,9 +867,11 @@ export async function loadPlanOverrides(
   if (!data) {
     throw new EpisodeReferencesError(`Plan asset ${planAssetId} not found`);
   }
-  if (data.file_type !== 'SPC-ref_plan') {
+  // TD-24 (2026-05-20): Designer runner writes file_type as `SPC-ref_plan-<shot_id>`,
+  // not bare `SPC-ref_plan`. Accept both shapes. Mirrors approve route line 410 fix.
+  if (data.file_type !== 'SPC-ref_plan' && !data.file_type.startsWith('SPC-ref_plan-')) {
     throw new EpisodeReferencesError(
-      `Plan asset ${planAssetId} has file_type="${data.file_type}", expected "SPC-ref_plan"`,
+      `Plan asset ${planAssetId} has file_type="${data.file_type}", expected "SPC-ref_plan" or "SPC-ref_plan-*"`,
     );
   }
   if (data.status !== 'APPROVED') {
@@ -852,6 +950,24 @@ export async function loadPlanOverrides(
     if (typeof v === 'string' && v.trim().length > 0) policyNotes.push(v.trim());
   }
 
+  // TD-30 + TD-33: continuity anchors are OPTIONAL. The Plan body may carry
+  // either shape:
+  //   - NEW (TD-33): `continuity_anchors: [{kind, asset_id, resolved_at}, ...]`
+  //     — a typed list; Designer's preferred write shape going forward.
+  //   - LEGACY (TD-30): `scene_continuity_anchor_asset_id: string | null`
+  //     — single spatial anchor; what's already on 13 S15-E01 Plans and any
+  //     production Plan authored before this sprint.
+  // When the new array is present it wins outright; legacy field is ignored.
+  // When only legacy is present we synthesise one `spatial_same_location`
+  // entry using the Plan asset's `created_at` as `resolved_at`. When neither
+  // is present we return an empty array (no anchors) — buildMultiImageRefs
+  // degrades to identity+location+style only.
+  const planCreatedAt =
+    typeof data.created_at === 'string'
+      ? data.created_at
+      : new Date(0).toISOString();
+  const continuityAnchors = parseContinuityAnchors(body, planCreatedAt);
+
   return {
     shotId,
     planAssetId,
@@ -862,7 +978,70 @@ export async function loadPlanOverrides(
     negative,
     continuityMode,
     policyNotes,
+    continuityAnchors,
   };
+}
+
+/**
+ * Parse the Plan body's continuity-anchor declarations. Prefers the new TD-33
+ * array shape; falls back to synthesising one entry from the legacy TD-30
+ * singular field. Exported as a test seam.
+ *
+ * @param body raw parsed JSON from the Plan's last fenced ```json block.
+ * @param planCreatedAt ISO timestamp from `assets.created_at`, used as
+ *  `resolved_at` for legacy-synthesised entries (no other timestamp exists).
+ */
+export function parseContinuityAnchors(
+  body: Record<string, unknown>,
+  planCreatedAt: string,
+): ContinuityAnchor[] {
+  const arrayRaw = body.continuity_anchors;
+  if (Array.isArray(arrayRaw)) {
+    const out: ContinuityAnchor[] = [];
+    for (const entry of arrayRaw) {
+      if (!entry || typeof entry !== 'object') continue;
+      const e = entry as Record<string, unknown>;
+      const kindRaw = e.kind;
+      const assetIdRaw = e.asset_id;
+      const resolvedAtRaw = e.resolved_at;
+      if (
+        kindRaw !== 'spatial_same_location' &&
+        kindRaw !== 'temporal_previous_shot'
+      ) {
+        // Unknown kind — silently drop. Forward-compat: a future Designer
+        // version that adds a new anchor kind won't break this executor;
+        // it just loses that anchor.
+        continue;
+      }
+      if (typeof assetIdRaw !== 'string' || assetIdRaw.trim().length === 0) {
+        continue;
+      }
+      const resolvedAt =
+        typeof resolvedAtRaw === 'string' && resolvedAtRaw.trim().length > 0
+          ? resolvedAtRaw.trim()
+          : planCreatedAt;
+      out.push({
+        kind: kindRaw,
+        assetId: assetIdRaw.trim(),
+        resolvedAt,
+      });
+    }
+    return out;
+  }
+
+  // Legacy single-field shape (TD-30).
+  const legacyRaw = body.scene_continuity_anchor_asset_id;
+  if (typeof legacyRaw === 'string' && legacyRaw.trim().length > 0) {
+    return [
+      {
+        kind: 'spatial_same_location',
+        assetId: legacyRaw.trim(),
+        resolvedAt: planCreatedAt,
+      },
+    ];
+  }
+
+  return [];
 }
 
 export async function runEpisodeReferences(
@@ -910,6 +1089,32 @@ export async function runEpisodeReferences(
   const epCode = episodeCode ?? ep?.episode_code ?? 'SS-unknown';
   const governanceMode = ((ep?.governance_mode ?? 1) as GovernanceModeNum) || 1;
   const episodeId = ep?.id ?? inputs.episode_id;
+
+  // ── TD-35 freshness guard (defense-in-depth) ──────────────────────────────
+  // REST guard at /api/episodes/[id]/regenerate-image-from-plan/route.ts
+  // catches the common path. The executor guard catches anything that
+  // dispatched the Inngest event bypassing the REST surface (auto-chain from
+  // approve-route, future PA tools, replay-pilot fixtures with edited
+  // anchors). When stale, abort the runner with EpisodeReferencesError so
+  // the factory wrapper emits agent_failed with the structured detail —
+  // Polина's ambient feed surfaces the failure with the regenerateRefPlan
+  // recommendation embedded.
+  if (planDriven && planOverrides && typeof episodeId === 'string' && episodeId) {
+    const freshness = await checkPlanAnchorFreshness(
+      supabase,
+      episodeId,
+      planOverrides.continuityAnchors,
+    );
+    if (!freshness.ok) {
+      throw new EpisodeReferencesError(
+        formatStaleAnchorMessage(
+          planOverrides.planAssetId,
+          planOverrides.shotId,
+          freshness.stale,
+        ),
+      );
+    }
+  }
 
   // ── Preconditions ──────────────────────────────────────────────────────────
   const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
@@ -1155,7 +1360,22 @@ export async function runEpisodeReferences(
       // Don't block on Guardian outage.
     }
 
-    const refsForGen = buildMultiImageRefs(job);
+    // TD-30 (spatial) + TD-33 (temporal): load every continuity anchor the
+    // Designer Plan declared. Each missing/unreadable anchor degrades
+    // gracefully (filtered to null). Order preserved from Plan write order
+    // (spatial first, temporal second — Designer is instructed to emit them
+    // in this order; if a future Plan reorders, the executor honours that).
+    const continuityRefsLoaded = planOverrides
+      ? (
+          await Promise.all(
+            planOverrides.continuityAnchors.map((anchor) =>
+              loadContinuityAnchor(supabase, anchor),
+            ),
+          )
+        ).filter((r): r is MultiImageRef => r !== null)
+      : [];
+
+    const refsForGen = buildMultiImageRefs(job, continuityRefsLoaded);
     const reviewerRefs = reviewerBibleRefs(job);
 
     // History accumulators for this shot.
@@ -1410,6 +1630,11 @@ export async function runEpisodeReferences(
       retry_count: retryHistory.length,
       retry_history: retryHistory,
       final_4k_url: final4kUrl ?? (approvedAttempt.is_4k ? approvedAttempt.image_url : null),
+      // TD-30: persist bible-locked location slug so Designer's
+      // findLatestApprovedImgByLocation can match future shots in the same
+      // location. Null when storyboard had a flat-string location with no
+      // canonical slug.
+      location_slug: job.shot.location_slug ?? null,
     };
 
     // Legacy fields kept populated for the current AssetDetailDrawer.

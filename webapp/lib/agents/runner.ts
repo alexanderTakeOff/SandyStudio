@@ -33,6 +33,7 @@ import {
   makeCharacterCanonSnippets,
   effectiveDurationSeconds,
   getApprovedEREFForShot,
+  getAssetImageBase64ById,
   getStoryboardShotById,
   type StoryboardShotV2,
 } from '../api/vgen-shot-helpers';
@@ -459,7 +460,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
       if (hasAnthropicKey) {
         try {
-          const r = await runStoryboarder({ inputs });
+          const r = await runStoryboarder({ inputs, revisionNote: args.revisionNote });
           return {
             outputKind: 'text-md',
             result: {
@@ -624,6 +625,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             inputs,
             shotId,
             revisionNote: args.revisionNote,
+            // TD-30 (2026-05-21): pass supabase so Designer can query prior
+            // APPROVED IMG-episode_ref in the same location and embed it as
+            // a scene_continuity anchor. Falls back to null gracefully when
+            // supabase is undefined (e.g. replay-pilot mock harness).
+            supabase,
           });
           return {
             outputKind: 'text-md',
@@ -1430,7 +1436,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // defaults plumbing happens at the call site (Inngest function reads
       // app_config); the runner just trusts what's in the event payload.
       const effectiveAspect: '16:9' | '9:16' | '1:1' = aspectRatio ?? '16:9';
-      const effectiveQuality: 'fast' | 'standard' = qualityTier ?? 'fast';
+      // TD-33 (q7a Step 6): mutated post-plan-load when an Animator Plan
+      // specifies `quality_tier`. Plan beats event arg (Animator's decision
+      // of record). Falls back to event arg → 'fast'.
+      let effectiveQuality: 'fast' | 'standard' = qualityTier ?? 'fast';
 
       // ── Resolve approved EREF reference image (img2vid) ───────────────────
       // Skipped when supabase is unavailable (replay-pilot mock harness) or
@@ -1524,7 +1533,16 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // When planAssetId is set on EXEC-VGEN, load the APPROVED SPC-shot_plan
       // and use its prompt verbatim (Animator's decision-of-record). Otherwise
       // fall back to buildShotPromptV2 template (legacy path, replay-pilot).
+      //
+      // TD-33 (2026-05-22, q7a sprint Step 6): also extract end_image,
+      // seed_strategy, and quality_tier from the Plan body. Previously the
+      // Animator wrote these fields (agents/exec/animator.md lines 101-109)
+      // but the runner silently stripped everything except `prompt`,
+      // starving Seedance's existing end-frame img2vid support.
       let planPrompt: string | null = null;
+      let planEndImageAssetId: string | null = null;
+      let planSeed: number | null = null;
+      let planQualityOverride: 'fast' | 'standard' | null = null;
       if (planAssetId && supabase) {
         try {
           const { data: planRow } = await supabase
@@ -1542,12 +1560,41 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             const last = matches[matches.length - 1]?.[1];
             if (last) {
               try {
-                const body = JSON.parse(last.trim()) as { prompt?: unknown };
+                const body = JSON.parse(last.trim()) as {
+                  prompt?: unknown;
+                  end_image?: unknown;
+                  seed_strategy?: unknown;
+                  quality_tier?: unknown;
+                };
                 if (typeof body.prompt === 'string' && body.prompt.length > 0) {
                   planPrompt = body.prompt;
                 }
+                // end_image: { asset_id: "<uuid>" } — null/missing = no end frame.
+                if (body.end_image && typeof body.end_image === 'object') {
+                  const ei = body.end_image as { asset_id?: unknown };
+                  if (typeof ei.asset_id === 'string' && ei.asset_id.length > 0) {
+                    planEndImageAssetId = ei.asset_id;
+                  }
+                }
+                // seed_strategy: { seed: <int> } — Seedance reproducibility hook.
+                if (
+                  body.seed_strategy &&
+                  typeof body.seed_strategy === 'object'
+                ) {
+                  const ss = body.seed_strategy as { seed?: unknown };
+                  if (typeof ss.seed === 'number' && Number.isFinite(ss.seed)) {
+                    planSeed = Math.floor(ss.seed);
+                  }
+                }
+                // quality_tier: 'fast' | 'standard' — Plan beats event arg.
+                if (
+                  body.quality_tier === 'fast' ||
+                  body.quality_tier === 'standard'
+                ) {
+                  planQualityOverride = body.quality_tier;
+                }
               } catch {
-                /* leave planPrompt null */
+                /* leave plan fields null */
               }
             }
           }
@@ -1560,6 +1607,28 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         (storyboardShot
           ? buildShotPromptV2(storyboardShot, episodeTitle, characterCanon)
           : buildShotPrompt(inputs, shotId));
+
+      // TD-33 (q7a Step 6): apply Plan quality_tier override (Plan beats event).
+      if (planQualityOverride) {
+        effectiveQuality = planQualityOverride;
+      }
+
+      // TD-33 (q7a Step 6): load end_image bytes when the Plan named one and
+      // we have supabase (real-video path only — mock skips this for replay-
+      // pilot parity). Failure to load is non-fatal: provider falls back to
+      // start-frame-only img2vid.
+      let endImageBase64: string | null = null;
+      let endImageMime: 'image/png' | 'image/jpeg' = 'image/png';
+      if (planEndImageAssetId && supabase && isRealVideo) {
+        const loaded = await getAssetImageBase64ById(
+          supabase,
+          planEndImageAssetId,
+        );
+        if (loaded) {
+          endImageBase64 = loaded.base64;
+          endImageMime = loaded.mime;
+        }
+      }
 
       if (isRealVideo) {
         if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
@@ -1593,6 +1662,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           ...(referenceImageBase64
             ? { referenceImageBase64, referenceImageMime: 'image/png' as const }
             : {}),
+          // TD-33 (q7a Step 6): wire Animator Plan's end_image + seed.
+          // Seedance honours both; Veo ignores end_image (capability flag).
+          ...(endImageBase64 ? { endImageBase64, endImageMime } : {}),
+          ...(planSeed !== null ? { seed: planSeed } : {}),
         });
         const safeShotId = shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
         const persisted = await persistBinary({
@@ -1633,6 +1706,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               reference_eref_asset_id: referenceErefAssetId,
               storyboard_asset_id: storyboardAssetId,
               vgen_pilot: vgenPilot === true,
+              // TD-33 (q7a Step 6): audit which Plan fields actually reached
+              // the provider. Helps Director debug "why does the clip still
+              // not bridge to the next shot?" by checking whether end_image
+              // bytes loaded successfully or the asset_id silently degraded.
+              end_image_asset_id: planEndImageAssetId,
+              end_image_bytes_loaded: Boolean(endImageBase64),
+              seed: planSeed,
             }),
           },
         };

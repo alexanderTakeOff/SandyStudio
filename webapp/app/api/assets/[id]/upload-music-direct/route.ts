@@ -25,6 +25,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { requireDirector } from '@/lib/api/auth';
+import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
@@ -170,7 +171,9 @@ export const POST = withApiHandler(async (req, ctx) => {
     throw new Error(`asset update failed: ${updateErr.message}`);
   }
 
-  await sb.from('activity_events').insert({
+  // TD-29.5 (2026-05-21): route through logEvent so the row consistently
+  // emits pa/notify-needed when the event_type is actionable.
+  await logEvent(sb, {
     event_type: 'asset_updated',
     severity: 'info',
     title: `Director uploaded music for ${asset.filename}`,
@@ -186,7 +189,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       mime,
       mode_at_time: decision.modeAtTime,
     },
-  } as never);
+  });
 
   return apiOk({
     asset_id: assetId,

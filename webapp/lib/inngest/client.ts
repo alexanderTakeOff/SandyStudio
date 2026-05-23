@@ -358,6 +358,86 @@ type Events = {
       collectionPoint: 'T+1h' | 'T+24h' | 'T+7d' | 'T+30d';
     };
   };
+
+  /**
+   * TD-20.B autonomy 2026-05-20 — Polina auto-reaction signal. Fired
+   * fire-and-forget by `logEvent` (after an actionable `activity_events`
+   * row) and by `/api/team-chat/post` (after a claude_message turn). The
+   * single consumer `exec-pa-react` throttles 5s per thread, dispatches an
+   * internal chat invocation so PA can acknowledge the non-Director event
+   * without waiting for the Director to type. Source labels the trigger
+   * for telemetry / debugging only.
+   */
+  'sandystudio/pa/notify-needed': {
+    data: {
+      /**
+       * Concierge thread to react in. Optional — when fired from logEvent
+       * we may only know the episode; the consumer resolves the latest
+       * open thread the same way migration 0030's Postgres trigger does.
+       */
+      threadId?: string | null;
+      episodeId?: string | null;
+      // TD-25 P2 (2026-05-21): `watchdog` source added so exec-pa-react /
+      // chat-internal can distinguish a real new event from a watchdog
+      // re-ping after open-loop stall. `timer` (2026-05-22) is the
+      // replacement for `watchdog` — fired by the event-driven
+      // pa-escalation-timer after a deadline expires.
+      source: 'ambient' | 'claude_message' | 'watchdog' | 'timer';
+      /** Either an activity_events.id or a concierge_turns.id for traceability. */
+      triggerId: string;
+      /** Echo of the upstream event_type ('agent_completed' etc) when ambient. */
+      eventType?: string;
+    };
+  };
+
+  /**
+   * Step 2 of Supabase recovery sprint (2026-05-22). Fired by
+   * `persistTurn()` whenever it writes an assistant turn whose metadata
+   * contains `awaiting_director_input`. The consumer `pa-escalation-timer`
+   * arms a `step.sleep(deadline)` then re-checks state and (optionally)
+   * fires `pa/notify-needed` ONCE. Replaces the every-minute
+   * `exec-pa-watchdog` cron.
+   */
+  'sandystudio/pa/awaiting-set': {
+    data: {
+      threadId: string;
+      turnId: string;
+      episodeId?: string | null;
+      /** Verbatim question — surfaced if the timer escalates. */
+      question: string;
+      /**
+       * Deadline in seconds — if Director doesn't reply within this window,
+       * timer escalates ONCE. Clamped to [30, 3600] by markAwaitingDirector
+       * already, but defenders re-clamp here too.
+       */
+      deadlineSec: number;
+      /** Provenance: 'tool' (markAwaitingDirector) | 'regex' (deprecated detector). */
+      source: 'tool' | 'regex';
+    };
+  };
+
+  /**
+   * Step 2 of Supabase recovery sprint (2026-05-22). Fired by
+   * `persistTurn()` on EVERY turn insert. The `pa-escalation-timer`
+   * subscribes via `cancelOn`: when a turn with role='director' lands in
+   * the same thread, the timer's sleep is cancelled — no Supabase reads
+   * triggered, no escalation fires. This is the event-driven replacement
+   * for the watchdog's per-minute polling cycle.
+   */
+  'sandystudio/concierge/turn-inserted': {
+    data: {
+      threadId: string;
+      turnId: string;
+      role: 'director' | 'assistant' | 'tool' | 'system';
+      /**
+       * Mirrors `ConciergeEventType` from `lib/concierge/types.ts`. Kept
+       * as a plain string here to avoid a circular import between the
+       * inngest client and the concierge types module — consumers should
+       * narrow at use-site if they care about specific event_type values.
+       */
+      eventType: string;
+    };
+  };
 };
 
 export type StudioEventName = keyof Events;

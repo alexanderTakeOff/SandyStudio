@@ -189,6 +189,23 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged }: AssetPr
         />
       )}
 
+      {/* Image asset (SBL-* / IMG-*): Director affordance — manual upload.
+          Closes Director's 2026-05-20 gap: "почему в превью нет опции
+          загрузить вручную". Useful when Director has a hand-made ref
+          (designed externally) and wants to skip gpt-image-2 generation.
+          Status stays as-is — upload is not implicit approval. */}
+      {(asset.file_type.startsWith('SBL-') || asset.file_type.startsWith('IMG-')) &&
+        asset.status !== 'LOCKED' && (
+          <ImageUploadBlock
+            assetId={asset.id}
+            filename={asset.filename}
+            onChanged={() => {
+              void mutate();
+              onAssetChanged?.();
+            }}
+          />
+        )}
+
       {/* VGEN VID-shot: show Universal Core controls + per-shot approve/reject
           so Director can act on a shot from the activity feed Preview drawer
           and the EpisodeTimeline "Open shot →" link. Regenerate creates a NEW
@@ -500,6 +517,101 @@ function MGENActionsBlock({
         ref={fileInputRef}
         type="file"
         accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handleUpload(f);
+          e.target.value = '';
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * ImageUploadBlock — Director affordance for SBL-* / IMG-* image assets.
+ *
+ * Single action: upload your own PNG / JPG / WebP → replaces asset binary
+ * via /api/assets/[id]/upload-image-direct. Status stays as-is (typically
+ * DRAFT or REVIEW) — upload is not implicit approval. The uploaded image
+ * is appended to metadata.image_prompt.history with source='director_upload'
+ * so the rollback ladder in /regenerate-image still works.
+ *
+ * Mounted under any image asset preview that is not LOCKED. Closes
+ * Director's 2026-05-20 finding "в превью нет опции загрузить вручную".
+ */
+function ImageUploadBlock({
+  assetId,
+  filename,
+  onChanged,
+}: {
+  assetId: string;
+  filename: string;
+  onChanged: () => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleUpload(file: File): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      // TD-20.B 2026-05-20 — use existing /api/assets/[id]/upload which
+      // accepts image/video/audio MIMEs and writes via logEvent. The
+      // standalone /upload-image-direct route that briefly existed was
+      // a duplicate of this path and was removed in the same commit.
+      const res = await fetch(`/api/assets/${assetId}/upload`, {
+        method: 'POST',
+        body: fd,
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Upload failed');
+      }
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 pt-2 border-t border-glass">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={busy}
+          title={`Replace image binary for ${filename}`}
+        >
+          {busy ? (
+            <>
+              <Loader2 size={12} className="animate-spin" /> Uploading…
+            </>
+          ) : (
+            <>
+              <Upload size={12} /> Upload image
+            </>
+          )}
+        </Button>
+      </div>
+      <p className="text-[11px] text-text-muted">
+        Upload your own PNG / JPG / WebP to replace the reference. Status stays as-is — approve below when ready. Appended to image_prompt history with source=director_upload.
+      </p>
+      {error && (
+        <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
+          {error}
+        </span>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/jpg,image/webp"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

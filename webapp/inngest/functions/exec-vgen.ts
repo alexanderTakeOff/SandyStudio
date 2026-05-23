@@ -16,6 +16,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { createAgentInngestFunction } from '@/lib/agents/factory';
+import { shortShotLabel } from '@/lib/api/vgen-shot-helpers';
 import { inngest } from '@/lib/inngest/client';
 import { concurrencyFor } from '@/lib/inngest/concurrency';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
@@ -46,6 +47,15 @@ export const execVgenLegacyGenerateShot = createAgentInngestFunction({
   resolveRunArgs: (eventData) => ({
     shotId: eventData.shotId as string,
   }),
+  // 2026-05-22 — surface shot label in activity titles.
+  resolveActivityContext: (eventData) => {
+    const shotId =
+      typeof eventData.shotId === 'string' ? eventData.shotId : '';
+    return {
+      shortLabel: shortShotLabel(shotId),
+      metadata: { shot_id: shotId || null },
+    };
+  },
 });
 
 // ── v2 Universal Core: pilot + fan-out + single-shot ──────────────────────────

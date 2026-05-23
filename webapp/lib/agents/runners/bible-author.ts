@@ -2,7 +2,7 @@
 // lib/agents/runners/bible-author.ts
 // EXEC-BIBLE-AUTHOR — enriches a freshly-created Bible DRAFT with:
 //   1. A rich, section-appropriate description (Anthropic Sonnet)
-//   2. A first reference image (gpt-image-1, anchored on Style Bible)
+//   2. A first reference image (gpt-image-2, anchored on Style Bible)
 //   3. Provenance + image_prompt v1 + description_history v1 in metadata
 //
 // Called inline from POST /api/series/[id]/bible/extensions when Director
@@ -10,7 +10,7 @@
 // treat metadata.image_prompt.history.length > 0 as "already enriched"
 // and short-circuit.
 //
-// Failure mode: if either Sonnet or gpt-image-1 fails we still keep the
+// Failure mode: if either Sonnet or gpt-image-2 fails we still keep the
 // DRAFT row alive (caller can retry); we surface the error so the route
 // can record a blocker_raised activity_event and let Director retry.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -27,6 +27,8 @@ import type {
   DescriptionHistoryEntry,
 } from '../../api/series-bible';
 import { buildProvenance } from '../../api/series-bible';
+import { logEvent } from '../../api/events';
+import { resolveBibleImageSize } from '../../api/bible-image-size';
 
 export class BibleAuthorError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -112,12 +114,16 @@ const SECTION_GUIDANCE: Record<BibleSection, string> = {
   ].join('\n'),
   object: [
     'Cover (in this exact order):',
-    '1. **Identity** — name, function in story.',
-    '2. **Form & materials** — shape, scale, texture, weight.',
+    '1. **Identity** — name, function in story. Use the most specific production noun (e.g. "trumeau vanity dresser with mirror", not "mirror"; "flat-strap dog leash", not "rope").',
+    '2. **Form & materials** — shape, scale, texture, weight of the SINGLE canonical object.',
     '3. **Palette** — dominant colours, finish.',
-    '4. **State variations** — how it changes (broken, glowing, hidden).',
-    '5. **How characters interact with it** — held, worn, avoided.',
-    '6. **Visual canon notes** — recurring framing or detail.',
+    '4. **Visual canon notes** — recurring framing or detail when this object appears on screen.',
+    '',
+    'After the canonical sections above, you MAY add the following as TEXT-ONLY animation notes (they document behaviour but MUST NOT be drawn into the primary object reference image):',
+    '- *Animation notes — state variations* (broken, glowing, hidden, etc.) — text only.',
+    '- *Animation notes — character interactions* (held, worn, avoided) — text only.',
+    '',
+    'Hard rule: the primary object reference is ONE clean hero view of ONE canonical object instance. No characters, hands, animals, silhouettes. No variant sheet, no contact sheet, no rows/columns. State/interaction notes live in TEXT only and do not justify multi-view image output. See ~/.claude/skills/library-style-first-visual-generation-protocol.',
   ].join('\n'),
   style: [
     'Cover (in this exact order):',
@@ -196,10 +202,40 @@ function buildImagePrompt(args: {
     lines.push('', 'Series art direction (must follow):');
     lines.push(styleGuide.trim().slice(0, 1200));
   }
-  lines.push(
-    '',
-    'Render as a clean reference image — front-facing or three-quarter view, neutral background, full-body if a character, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
-  );
+  // Per-section closing instruction. Objects MUST be single-hero-view without
+  // characters/variants — the description may contain *Animation notes — state
+  // variations* and *Animation notes — character interactions* sections, those
+  // are TEXT canon only and must not be drawn. The primary object reference
+  // exists to be consumed as identity canon downstream; variants pollute it.
+  // See ~/.claude/skills/library-style-first-visual-generation-protocol.
+  if (section === 'object') {
+    lines.push(
+      '',
+      'Render exactly ONE clean hero view of ONE canonical object instance — front-facing or three-quarter view, neutral background, no text overlay, no logo, no watermark.',
+      'HARD CONSTRAINTS for this primary object reference (violation = unusable canon):',
+      '- no characters, no humans, no animals, no squirrels, no dogs, no hands, no arms, no silhouettes, no reflected characters in mirrors/glass.',
+      '- no multi-view sheet, no contact sheet, no turnaround grid, no rows/columns of variants, no scale chart, no exploded view.',
+      '- no state variations in the image (broken, damaged, hidden, glowing). Even if the Description mentions them as *Animation notes*, those are TEXT only — do NOT depict.',
+      '- no surrounding props, no scene context. Empty / neutral backdrop only.',
+      'If the Description includes sections titled "Animation notes — state variations" or "Animation notes — character interactions", treat them as text canon for downstream animation only. They are NOT permission to add characters or variants to this primary reference.',
+    );
+  } else if (section === 'character') {
+    lines.push(
+      '',
+      'Render as a clean reference image — front-facing or three-quarter view, neutral background, full-body, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
+    );
+  } else if (section === 'location') {
+    lines.push(
+      '',
+      'Render as a clean establishing reference of the empty location — no characters present, neutral natural lighting, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
+    );
+  } else {
+    // style sample
+    lines.push(
+      '',
+      'Render as a clean style sample frame illustrating the aesthetic thesis. Neutral subject if applicable. No text overlay, no logo, no watermark.',
+    );
+  }
   return lines.join('\n');
 }
 
@@ -327,18 +363,25 @@ export async function runBibleAuthor(
     throw err;
   }
 
-  // ── 2. First reference image via gpt-image-1 ────────────────────────────────
+  // ── 2. First reference image via gpt-image-2 ────────────────────────────────
   const imagePrompt = buildImagePrompt({
     seriesTitle: ctx.series.title,
     section,
     description: descriptionMd,
     styleGuide,
   });
+  // Director 2026-05-20 — was hardcoded 1024×1024 (1:1), which did not suit
+  // landscape shows. Section-aware default: characters/objects → square
+  // (best for a single hero specimen on neutral backdrop), locations/style
+  // → landscape (environment + framing references match show format).
+  // series.metadata.delivery_targets is not a column today; if it becomes
+  // one later, callers can pass it through resolveBibleImageSize.
+  const resolvedSize = resolveBibleImageSize({ section });
   let imgResult;
   try {
     imgResult = await generateImageOpenAI({
       prompt: imagePrompt,
-      size: '1024x1024',
+      size: resolvedSize,
       quality: 'medium',
     });
   } catch (err: unknown) {
@@ -353,7 +396,12 @@ export async function runBibleAuthor(
     ext: 'png',
     driveFilename: filename.replace(/\.md$/, '.png'),
     localHint: `bible-${section}-${slug}`,
-    episodeCode: undefined,
+    // Director directive 2026-05-20 — new layout for S15+:
+    //   /SandyStudio/<seriesCode>/bible/images/<file>
+    // S14 Bible files already in /SandyStudio/<root> stay there (not touched).
+    seriesCode: ctx.series.code,
+    bucket: 'bible',
+    assetType: 'images',
     supabase,
   });
 
@@ -434,6 +482,32 @@ export async function runBibleAuthor(
   if (update.error) {
     throw new BibleAuthorError(`asset update failed: ${update.error.message}`);
   }
+
+  // TD-20.B 2026-05-20 — emit agent_completed so Polina auto-reacts to her
+  // own Library enrichment completing. Without this the runner finished
+  // silently and Director's expectation "the asset appeared, she should
+  // notice" was never met. Fire-and-forget; logEvent itself sends
+  // `pa/notify-needed` via Inngest after a successful row insert.
+  await logEvent(supabase, {
+    event_type: 'agent_completed',
+    severity: 'info',
+    title: `Bible Editor enriched: ${section}/${slug}`,
+    description: `Library asset ready (${imgResult.width}×${imgResult.height}, $${totalCost.toFixed(4)})`,
+    actor: 'EXEC-BIBLE-AUTHOR',
+    asset_id: assetId,
+    episode_id: null,
+    metadata: {
+      kind: 'bible_enrichment',
+      section,
+      slug,
+      cost_usd: totalCost,
+      width: imgResult.width,
+      height: imgResult.height,
+      style_anchor_asset_id: ctx.styleAnchor?.id ?? null,
+      filename,
+      source,
+    },
+  });
 
   return {
     contentMd: descriptionMd,

@@ -56,6 +56,13 @@ export interface StoryboardShotV2 {
   characters?: StoryboardShotCharacter[];
   /** v1 fallback. */
   characters_present?: string[];
+  /**
+   * TD-30 (2026-05-21): bible-locked location object (or flat string for
+   * legacy storyboards). Designer reads `location.slug` to look up prior
+   * APPROVED IMG-episode_ref in the same location and embed it as a
+   * scene_continuity anchor.
+   */
+  location?: string | { slug?: string; sub_area?: string };
 }
 
 interface StoryboardJson {
@@ -111,6 +118,23 @@ function shotToV2(s: unknown): StoryboardShotV2 | null {
     characters_present: Array.isArray(sh.characters_present)
       ? sh.characters_present.filter((x): x is string => typeof x === 'string')
       : undefined,
+    // TD-30: preserve location field (string OR { slug, sub_area } object)
+    // so Designer can extract the bible-locked location_slug.
+    location:
+      typeof sh.location === 'string'
+        ? sh.location
+        : sh.location && typeof sh.location === 'object'
+          ? {
+              slug:
+                typeof (sh.location as { slug?: unknown }).slug === 'string'
+                  ? String((sh.location as { slug?: unknown }).slug)
+                  : undefined,
+              sub_area:
+                typeof (sh.location as { sub_area?: unknown }).sub_area === 'string'
+                  ? String((sh.location as { sub_area?: unknown }).sub_area)
+                  : undefined,
+            }
+          : undefined,
   };
 }
 
@@ -134,6 +158,114 @@ export function getStoryboardShotById(
     }
   }
   return null;
+}
+
+/**
+ * 2026-05-22 — `listStoryboardShots(content)` returns every shot from the
+ * storyboard in production order, paired with its act number and the index
+ * inside that act. Used by the PA `listShots` tool so Polina can answer
+ * questions like "give me the shotId of SH09" without asking the Director.
+ *
+ * Pure parser — no DB calls. Returns empty array when content is malformed
+ * or has no acts/shots.
+ */
+export interface StoryboardShotSummary {
+  shotId: string;
+  act: number;
+  shotIndex: number; // 0-based within the act
+  globalIndex: number; // 0-based across the whole episode
+  shotRole?: string;
+  durationSeconds?: number;
+  /** Truncated action prose for at-a-glance recognition (≤120 chars). */
+  actionPreview?: string;
+  expectedGag?: string | null;
+  cameraAngle?: string;
+  charactersPresent: string[];
+  /** Either the flat string location or the bible-locked slug. */
+  location?: string;
+}
+
+/**
+ * 2026-05-22 — extract a short, human-friendly shot label from a full
+ * canonical shotId. Used by per-shot agent functions to surface readable
+ * context in `agent_started` / `agent_completed` activity titles.
+ *
+ *   "SS-S15-E01-A2-SC04-SH08"  → "SH08"
+ *   "SS-S15-E01-A2-SC04-SH123" → "SH123"
+ *   "SH08"                      → "SH08"
+ *   ""                          → ""
+ *   "random-string"             → "random-string" (passthrough)
+ *
+ * Pure function. Director sees "SH08" not the UUID-shaped full id.
+ */
+export function shortShotLabel(shotId: string | null | undefined): string {
+  if (!shotId || typeof shotId !== 'string') return '';
+  const m = shotId.match(/SH\d+/i);
+  return m ? m[0].toUpperCase() : shotId;
+}
+
+export function listStoryboardShots(
+  content: string,
+): StoryboardShotSummary[] {
+  const json = parseStoryboardJson(content);
+  if (!json || !Array.isArray(json.acts)) return [];
+  const out: StoryboardShotSummary[] = [];
+  let globalIndex = 0;
+  for (const act of json.acts) {
+    if (!act || typeof act !== 'object') continue;
+    const a = act as { act?: unknown; shots?: unknown };
+    const actNum = typeof a.act === 'number' ? a.act : 0;
+    if (!Array.isArray(a.shots)) continue;
+    let idxInAct = 0;
+    for (const raw of a.shots) {
+      const sh = shotToV2(raw);
+      if (!sh) continue;
+      // Pull a couple of extra fields not already on StoryboardShotV2 for
+      // a richer summary.
+      const rawObj = raw as Record<string, unknown>;
+      const charactersPresent: string[] = [];
+      if (Array.isArray(sh.characters)) {
+        for (const c of sh.characters) {
+          if (c.bible_slug) charactersPresent.push(c.bible_slug);
+        }
+      } else if (Array.isArray(sh.characters_present)) {
+        for (const slug of sh.characters_present) {
+          if (typeof slug === 'string' && slug) charactersPresent.push(slug);
+        }
+      }
+      let locationStr: string | undefined;
+      const locRaw = rawObj.location;
+      if (typeof locRaw === 'string') {
+        locationStr = locRaw;
+      } else if (locRaw && typeof locRaw === 'object') {
+        const slug = (locRaw as { slug?: unknown }).slug;
+        if (typeof slug === 'string' && slug.length > 0) locationStr = slug;
+      }
+      const action = sh.action_prose ?? sh.action ?? sh.key_beat ?? undefined;
+      out.push({
+        shotId: sh.shot_id,
+        act: actNum,
+        shotIndex: idxInAct,
+        globalIndex,
+        shotRole: sh.shot_role,
+        durationSeconds: sh.duration_seconds,
+        actionPreview:
+          typeof action === 'string' && action.length > 0
+            ? action.length <= 120
+              ? action
+              : `${action.slice(0, 119).trimEnd()}…`
+            : undefined,
+        expectedGag:
+          typeof sh.expected_gag === 'string' ? sh.expected_gag : null,
+        cameraAngle: sh.camera_angle,
+        charactersPresent,
+        location: locationStr,
+      });
+      idxInAct += 1;
+      globalIndex += 1;
+    }
+  }
+  return out;
 }
 
 // ── Pilot picker ─────────────────────────────────────────────────────────────
@@ -269,6 +401,45 @@ export async function getApprovedEREFForShot(
     }
   }
   return { asset: match, image_b64: imageB64 };
+}
+
+/**
+ * TD-33 (2026-05-22): load an asset's image bytes by id alone. Used by the
+ * EXEC-VGEN plan-driven branch to fetch the Animator's `end_image.asset_id`
+ * for Seedance's end-frame img2vid feature. Returns null when the asset row
+ * has no staging_path or the file can't be read — caller degrades to
+ * start-frame-only video (no end-frame anchor).
+ *
+ * Mirrors getApprovedEREFForShot's staging-path read logic; staging_path is
+ * the only path that exists in dev — the runner doesn't talk to Drive for
+ * bytes during a render.
+ */
+export async function getAssetImageBase64ById(
+  supabase: SupabaseClient<Database>,
+  assetId: string,
+): Promise<{ base64: string; mime: 'image/png' | 'image/jpeg' } | null> {
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,staging_path,file_type')
+    .eq('id', assetId)
+    .maybeSingle();
+  if (error || !data?.staging_path) return null;
+  const stagingPath = data.staging_path;
+  if (!stagingPath.startsWith('/staging/')) return null;
+  try {
+    const path = await import('node:path');
+    const fs = await import('node:fs/promises');
+    const abs = path.join(process.cwd(), 'public', stagingPath.slice(1));
+    const buf = await fs.readFile(abs);
+    const mime: 'image/png' | 'image/jpeg' = stagingPath
+      .toLowerCase()
+      .endsWith('.jpg')
+      ? 'image/jpeg'
+      : 'image/png';
+    return { base64: buf.toString('base64'), mime };
+  } catch {
+    return null;
+  }
 }
 
 // ── Prompt builder ───────────────────────────────────────────────────────────
