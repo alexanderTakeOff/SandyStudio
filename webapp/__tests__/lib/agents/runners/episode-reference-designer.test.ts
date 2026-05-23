@@ -441,9 +441,9 @@ describe('runEpisodeReferenceDesigner — happy path', () => {
 //
 // Helper-level test for findLatestApprovedImgByLocation + Designer-runner
 // integration tests that the user message correctly carries anchor context
-// for the LLM. Executor wiring (planOverrides.sceneContinuityAnchorAssetId
-// → loadSceneContinuityAnchor → buildMultiImageRefs with 4th ref) is covered
-// by `episode-references-plan.test.ts` (data-side seam already there).
+// for the LLM. Executor wiring (planOverrides.continuityAnchors[] →
+// loadContinuityAnchor → buildMultiImageRefs with anchor refs appended)
+// is covered by `episode-references-plan.test.ts` (data-side seam there).
 
 describe('findLatestApprovedImgByLocation (TD-30)', () => {
   /** Build a chainable mock that satisfies the helper's query shape:
@@ -612,10 +612,14 @@ describe('runEpisodeReferenceDesigner — scene continuity context (TD-30)', () 
       supabase: sb as unknown as Parameters<typeof runEpisodeReferenceDesigner>[0]['supabase'],
     });
     const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
-    expect(call.userMessage).toContain('Scene-continuity anchor');
+    // TD-33 rename: section header is now "Continuity anchors" (with spatial
+    // + temporal subsections). Concrete anchor uuid still surfaces.
+    expect(call.userMessage).toContain('Continuity anchors');
+    expect(call.userMessage).toContain('Spatial anchor');
     expect(call.userMessage).toContain('prior-img-uuid-42');
     expect(call.userMessage).toContain('bedroom_main');
-    expect(call.userMessage).toContain('scene_continuity_anchor_asset_id');
+    expect(call.userMessage).toContain('continuity_anchors');
+    expect(call.userMessage).toContain('spatial_same_location');
   });
 
   it('says "first shot in location" when no prior anchor exists', async () => {
@@ -638,10 +642,189 @@ describe('runEpisodeReferenceDesigner — scene continuity context (TD-30)', () 
     const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
     // Block still renders to keep prompt shape stable, but Designer is told
     // explicitly that NO lookup happened — so it can't claim "first shot".
-    expect(call.userMessage).toContain('Scene-continuity');
-    expect(call.userMessage).toContain('lookup was NOT performed');
+    expect(call.userMessage).toContain('Continuity anchors');
+    // Both spatial and temporal lookup-not-performed messages render.
+    expect(call.userMessage).toContain('Spatial-continuity lookup was NOT performed');
+    expect(call.userMessage).toContain('Temporal-continuity lookup was NOT performed');
     expect(call.userMessage).not.toContain('FIRST shot in location');
     // Must NOT mention any concrete anchor uuid — there is no lookup.
     expect(call.userMessage).not.toContain('prior-img-uuid');
+  });
+});
+
+// ── TD-33 temporal anchor (q7a sprint, Step 2+3) ───────────────────────────
+describe('runEpisodeReferenceDesigner — temporal continuity context (TD-33)', () => {
+  /** Mock supabase whose .from('assets').select(...).eq(...).eq(...).order(...).limit(...)
+   *  resolves to a row matching the given shot_id in metadata.shot_reference. Returns no
+   *  rows when assetId is null. Mirrors mockSupabaseWithMatch in the TD-30 block. */
+  function mockSupabaseForTemporal(assetId: string | null, prevShotId: string) {
+    const rows = assetId
+      ? [
+          {
+            id: assetId,
+            file_type: 'IMG-episode_ref',
+            status: 'APPROVED',
+            metadata: { shot_reference: { shot_id: prevShotId } },
+            created_at: '2026-05-22T10:00:00Z',
+          },
+        ]
+      : [];
+    const promise = Promise.resolve({ data: rows, error: null });
+    const limit = vi.fn(() => promise);
+    const order = vi.fn(() => ({ limit }));
+    const eq2 = vi.fn(() => ({ order }));
+    const eq1 = vi.fn(() => ({ eq: eq2 }));
+    const select = vi.fn(() => ({ eq: eq1 }));
+    return { from: vi.fn(() => ({ select })) };
+  }
+
+  const STB_TWO_SHOTS = (() => {
+    const stb = [
+      '# Storyboard',
+      '',
+      '```json',
+      JSON.stringify({
+        acts: [
+          {
+            shots: [
+              {
+                shot_id: 'SS-S99-E99-A1-SC01-SH01',
+                shot_role: 'establishing',
+                camera_angle: 'WIDE',
+                action_prose: 'Sandy enters.',
+                location: { slug: 'bedroom_main' },
+                characters: [{ bible_slug: 'sandy' }],
+              },
+              {
+                shot_id: 'SS-S99-E99-A1-SC01-SH02',
+                shot_role: 'reaction',
+                camera_angle: 'CLOSE',
+                action_prose: 'Sandy reacts.',
+                location: { slug: 'bedroom_main' },
+                characters: [{ bible_slug: 'sandy' }],
+              },
+            ],
+          },
+        ],
+      }),
+      '```',
+    ].join('\n');
+    return {
+      id: 'stb-asset-uuid-1',
+      file_type: 'STB-storyboard',
+      status: 'APPROVED',
+      content: stb,
+    };
+  })();
+
+  const inputsWithTwoShots = () => ({
+    episode_id: 'ep-1',
+    episode: {
+      id: 'ep-1',
+      episode_code: 'SS-S99-E99',
+      title_working: 'Test Episode',
+      metadata: {},
+    },
+    upstream_assets: [STB_TWO_SHOTS],
+    bible: {
+      series_id: null,
+      general_idea: null,
+      characters: [],
+      locations: [],
+      styles: [],
+      total_entries: 0,
+    },
+  });
+
+  it('surfaces the previous shot id and its anchor when supabase finds an APPROVED reference', async () => {
+    const sb = mockSupabaseForTemporal('prev-shot-img-uuid', 'SS-S99-E99-A1-SC01-SH01');
+    await runEpisodeReferenceDesigner({
+      inputs: inputsWithTwoShots(),
+      shotId: 'SS-S99-E99-A1-SC01-SH02',
+      supabase: sb as unknown as Parameters<typeof runEpisodeReferenceDesigner>[0]['supabase'],
+    });
+    const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
+    expect(call.userMessage).toContain('Temporal anchor');
+    expect(call.userMessage).toContain('SS-S99-E99-A1-SC01-SH01');
+    expect(call.userMessage).toContain('prev-shot-img-uuid');
+    expect(call.userMessage).toContain('temporal_previous_shot');
+    // Skip-cases guidance must surface so Designer knows when NOT to use it.
+    expect(call.userMessage).toContain('cutaway');
+    expect(call.userMessage).toContain('hard cut');
+  });
+
+  it('reports first shot of episode when current shot is SH01 (no predecessor)', async () => {
+    const sb = mockSupabaseForTemporal('any-uuid', 'whatever');
+    await runEpisodeReferenceDesigner({
+      inputs: inputsWithTwoShots(),
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+      supabase: sb as unknown as Parameters<typeof runEpisodeReferenceDesigner>[0]['supabase'],
+    });
+    const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
+    expect(call.userMessage).toContain('first shot of the episode');
+    expect(call.userMessage).not.toContain('Do not emit a temporal anchor.\n\nNote'); // no candidate uuid surfaces
+  });
+
+  it('reports missing approved reference when previous shot exists but has none yet', async () => {
+    const sb = mockSupabaseForTemporal(null, 'SS-S99-E99-A1-SC01-SH01');
+    await runEpisodeReferenceDesigner({
+      inputs: inputsWithTwoShots(),
+      shotId: 'SS-S99-E99-A1-SC01-SH02',
+      supabase: sb as unknown as Parameters<typeof runEpisodeReferenceDesigner>[0]['supabase'],
+    });
+    const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
+    expect(call.userMessage).toContain('SS-S99-E99-A1-SC01-SH01');
+    expect(call.userMessage).toContain('no APPROVED IMG-episode_ref yet');
+  });
+});
+
+describe('getPreviousShotIdInSequence (TD-33)', () => {
+  const stb = (shotIds: string[]) => {
+    const content = [
+      '```json',
+      JSON.stringify({
+        acts: [
+          {
+            shots: shotIds.map((id) => ({ shot_id: id, characters: [] })),
+          },
+        ],
+      }),
+      '```',
+    ].join('\n');
+    return content;
+  };
+
+  it('returns null for the first shot in the episode', async () => {
+    const { getPreviousShotIdInSequence } = await import(
+      '@/lib/agents/runners/episode-reference-designer'
+    );
+    expect(
+      getPreviousShotIdInSequence(stb(['SH01', 'SH02', 'SH03']), 'SH01'),
+    ).toBeNull();
+  });
+
+  it('returns the previous shot in narrative order', async () => {
+    const { getPreviousShotIdInSequence } = await import(
+      '@/lib/agents/runners/episode-reference-designer'
+    );
+    expect(
+      getPreviousShotIdInSequence(stb(['SH01', 'SH02', 'SH03']), 'SH03'),
+    ).toBe('SH02');
+  });
+
+  it('returns null when shotId not found', async () => {
+    const { getPreviousShotIdInSequence } = await import(
+      '@/lib/agents/runners/episode-reference-designer'
+    );
+    expect(
+      getPreviousShotIdInSequence(stb(['SH01', 'SH02']), 'SH99'),
+    ).toBeNull();
+  });
+
+  it('returns null on malformed STB content', async () => {
+    const { getPreviousShotIdInSequence } = await import(
+      '@/lib/agents/runners/episode-reference-designer'
+    );
+    expect(getPreviousShotIdInSequence('not a storyboard', 'SH01')).toBeNull();
   });
 });

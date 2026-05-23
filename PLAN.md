@@ -13,6 +13,59 @@
 ## CURRENT STATE
 
 ```
+Phase:    **Sprint q7a — Continuity Stability (TD-33 + TD-35) — SHIPPED 2026-05-23 morning**
+          Multi-axis continuity anchors on Designer Plan (`continuity_anchors[]` array
+          with `kind: spatial_same_location | temporal_previous_shot`), with back-compat
+          parser tolerance for legacy `scene_continuity_anchor_asset_id` (13 existing
+          S15-E01 Plans unaffected). TD-35 freshness guard: REST + executor + PA tool
+          layered, hard-fail `PLAN_ANCHOR_STALE` directs Polина to `regenerateRefPlan`.
+          Vanim Plan end_image/seed/quality_tier wired from Animator → runner → Seedance
+          (4 previously-stripped fields now reach the provider). Plan:
+          `~/.claude/plans/q7a-structured-zephyr.md`.
+
+Status:   ✅ tsc clean · vitest **481/481** (+30 new) · replay-pilot **29/29**.
+          14 files modified + 2 new (freshness module + tests). Squash-merged to master.
+
+          🔴 **Mid-sprint diagnosis (2026-05-22 evening, Director surfaced):** «все шоты
+          с одного ракурса, кровать всегда слева кроме шота с дыркой». Root cause is
+          architectural, NOT today's sprint:
+          • Designer writes diverse `camera_intent` (WIDE/MEDIUM/CLOSE/CLOSE_UP) with
+            explicit contrastive rationale — DECISIONS are correct.
+          • `openai-edits-multi.ts:13-17` self-documents: «No `strength` parameter is
+            exposed by the API → identity is locked hard, emotion/action prompt has
+            weaker influence... Per-reference weight not supported».
+          • Single canonical Location Bible reference image (one viewpoint) is passed
+            as equal-weighted ref in every multi-edit call → gpt-image-2 copies its
+            layout → all shots same angle.
+          • TD-30 (spatial anchor, yesterday) + q7a (temporal anchor, today) are
+            amplifiers — they add MORE same-angle refs. They are NOT the root cause
+            (first shot in location, no TD-30 anchor, already showed locked angle).
+          • IMG metadata.shot_reference loses camera_angle/sub_area Designer decisions
+            entirely — no audit trail on which angle landed.
+
+          ⏳ **OPEN q15/q16/q17** for Director decision (deferred from 2026-05-22 PM):
+          • q15 — confirm root-cause diagnosis
+          • q16 — immediate next step (a: flag-gate anchors temp-fix; b: Bible sub-area
+            refs spring; c: switch to Flux Pro Ultra Redux with per-ref weight; d: ...)
+          • q17 — q7a sprint disposition (a: behind flag; b: rollback TD-30+TD-33; c:
+            leave as-is) — Director chose merge-to-master (≈ q17c).
+          ⚠️ **Do not push more shots through pipeline until q16 decided** — same-angle
+          bug reproduces on every new shot.
+
+Next:    1. Restart smoke (SH21/SH22 plan-level regen + onwards) — ONLY after q16.
+          2. Polина briefing: q6 skill update from yesterday is SUPERSEDED by q7a Step 7
+             (eref-shot-composition trimmed to Plan-contract one-liner).
+          3. TD-36 (StudioShell ergonomics — 3 fixes dictated 2026-05-22 evening,
+             not urgent) — Director still owes screenshot for fix #3.
+
+Mode:    ===5=== authorized for commit+push+merge (Director directive 2026-05-23 AM).
+         Mode 1 governance.
+Date:    2026-05-23
+```
+
+### Previous phase (archived — see docs/PLAN-history.md when room)
+
+```
 Phase:    **Polina autonomy chain end-to-end + Drive layout + Storyboarder opus — SHIPPED 2026-05-20**
           (plans `~/.claude/plans/soft-swimming-thunder.md` C1-C6 + rollout
            `~/.claude/plans/polina-fix-rollout-and-resume.md`). Branch

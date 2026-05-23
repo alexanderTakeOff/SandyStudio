@@ -1,14 +1,13 @@
 ---
 name: eref-shot-composition
-description: How EXEC-EREF (Reference Artist) composes the keyframe reference image for each storyboard shot — camera language vocabulary, contrastive picking across consecutive shots, location sub-area anchoring, and character canonical fragment anchoring. The Reference Artist's composition playbook.
+description: How EXEC-EREF-DESIGNER composes Reference Plans for storyboard shots — camera language, contrastive picking, location anchoring, character anchors, and cross-shot spatial continuity.
 status: ACTIVE
 owner: Director
 applies_when:
-  agent: [EXEC-EREF]
+  agent: [EXEC-EREF-DESIGNER]
 hard: false
 created: 2026-05-16
 ---
-
 # EREF — Shot Composition
 
 This is your craft playbook for composing reference keyframes. EREF
@@ -101,6 +100,27 @@ shot's `characters[].bible_slug` field. Never invent a slug. If a
 character has multiple canonical fragments (e.g. neutral, smitten,
 angry), pick the one closest to the shot's `expected_emotion`.
 
+## Cross-shot spatial continuity
+
+Continuity anchors are a **Plan contract**: `Plan.continuity_anchors[]` holds zero or more entries of kind `spatial_same_location` (TD-30) or `temporal_previous_shot` (TD-33). The runner surfaces both candidates in the user prompt with explicit "use this when / don't emit when" guidance — pick deliberately, per shot. The executor enforces freshness at generation time: if an anchor has been superseded by a newer APPROVED reference, the runner returns `PLAN_ANCHOR_STALE` and blocks the image-only regen. **For continuity drift, regen MUST go through `regenerateRefPlan` (plan-level), not `regenerateImageFromPlan` (image-only).**
+
+Beyond the anchor contract, when composing the prompt body **preserve established spatial facts** unless the storyboard explicitly changes them:
+
+- key object placement in the room/environment;
+- attachment/contact relationships between objects and surfaces;
+- screen side / left-right relationship of important elements;
+- shape, size, orientation, and position of damage marks, openings, stains, props, plugs, labels, or other continuity-critical details;
+- whether an object is in foreground/background, against a surface, on a surface, inside/outside another object, hidden/revealed, intact/damaged.
+
+A follow-up shot may change action, pose, camera angle, or character emotion, but it must not silently move established objects, flip sides, resize/reshape continuity marks, or detach an object from the surface/environment that caused the previous beat.
+
+Self-check:
+
+1. What was the last approved visual state of this physical setup?
+2. Which objects/marks/props are continuity-critical?
+3. Did their side, position, size, shape, contact point, and room relationship survive into this shot?
+4. If something changed, is that change explicitly motivated by the storyboard?
+
 ## Worked examples
 
 ### Example A — Two-shot variety in the gym (E21 SH01 → SH02)
@@ -175,6 +195,7 @@ register the joke landing.
    in `characters_present`?
 4. Does my prompt body describe a still frame, not a stage action?
 5. Are the standard negative-prompt terms included?
+6. For sequential shots, did I compare against the deterministic continuity anchor and preserve continuity-critical spatial facts?
 
 ## Cross-references
 

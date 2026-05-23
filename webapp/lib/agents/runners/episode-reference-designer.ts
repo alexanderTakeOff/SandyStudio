@@ -43,7 +43,11 @@ import {
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
-import { getStoryboardShotById, type StoryboardShotV2 } from '../../api/vgen-shot-helpers';
+import {
+  getStoryboardShotById,
+  listStoryboardShots,
+  type StoryboardShotV2,
+} from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
 
 export const EREF_DESIGNER_CONTRACT = 'episode_reference_designer@v1';
@@ -120,6 +124,72 @@ export async function findLatestApprovedImgByLocation(
     }
   }
   return null;
+}
+
+/**
+ * TD-33 (2026-05-22): Find the latest APPROVED IMG-episode_ref for a specific
+ * upstream shot in this episode. Used by Designer to embed a temporal
+ * continuity anchor — the previous shot's reference image — alongside any
+ * spatial anchor. Designer LLM decides per shot whether to use it (q10c
+ * Director ruling: scope is LLM's call; runner just supplies the candidate).
+ *
+ * Mirrors findLatestApprovedImgByLocation's shape: matches the asset row's
+ * `metadata.shot_reference.shot_id` field. Returns the asset_id of the most
+ * recently APPROVED matching row, or null when no APPROVED reference exists
+ * for that shot yet.
+ *
+ * Exported as a test seam.
+ */
+export async function findLatestApprovedImgByShotId(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  shotId: string,
+): Promise<string | null> {
+  if (!episodeId || !shotId) return null;
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,file_type,status,metadata,created_at')
+    .eq('episode_id', episodeId)
+    .eq('status', 'APPROVED')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error || !data) return null;
+  for (const row of data) {
+    const ft = (row.file_type as string | null) ?? '';
+    if (ft !== 'IMG-episode_ref' && !ft.startsWith('IMG-episode_ref')) continue;
+    const meta = (row.metadata ?? null) as Record<string, unknown> | null;
+    if (!meta) continue;
+    const sr = meta.shot_reference as { shot_id?: unknown } | undefined;
+    const id = sr && typeof sr.shot_id === 'string' ? sr.shot_id : null;
+    if (id === shotId) {
+      return String(row.id);
+    }
+  }
+  return null;
+}
+
+/**
+ * TD-33 (2026-05-22): Resolve the previous shot's id in narrative production
+ * order from the storyboard asset content. Uses listStoryboardShots() which
+ * already iterates acts → shots in declaration order and assigns globalIndex.
+ * Returns null when the current shot is the first shot of the episode, or
+ * when shotId can't be found in the storyboard at all.
+ *
+ * The Designer LLM (q10c) is responsible for deciding whether the previous
+ * shot is a meaningful temporal anchor (same scene / character continuity)
+ * or a hard cut / cutaway / flashback to skip. This helper only finds the
+ * candidate; it does NOT filter by scene boundary.
+ *
+ * Exported as a test seam.
+ */
+export function getPreviousShotIdInSequence(
+  stbContent: string,
+  shotId: string,
+): string | null {
+  const shots = listStoryboardShots(stbContent);
+  const idx = shots.findIndex((s) => s.shotId === shotId);
+  if (idx <= 0) return null;
+  return shots[idx - 1]?.shotId ?? null;
 }
 
 export interface EREFDesignerRunArgs {
@@ -278,6 +348,12 @@ function buildUserMessage(args: {
    * null with a policy_note instead.
    */
   sceneContinuityLookupPerformed?: boolean;
+  /** TD-33: previous shot in narrative order, or null when SH01 / not found. */
+  previousShotId?: string | null;
+  /** TD-33: APPROVED IMG-episode_ref for the previous shot, or null when not yet approved. */
+  priorTemporalAnchorAssetId?: string | null;
+  /** TD-33: true iff temporal lookup actually executed. False → Designer leaves the temporal entry off. */
+  temporalAnchorLookupPerformed?: boolean;
 }): string {
   const {
     episodeCode,
@@ -291,6 +367,9 @@ function buildUserMessage(args: {
     priorSceneContinuityAnchorAssetId,
     locationSlug,
     sceneContinuityLookupPerformed,
+    previousShotId,
+    priorTemporalAnchorAssetId,
+    temporalAnchorLookupPerformed,
   } = args;
 
   const biblePromptBlock = formatBibleForPrompt(bible);
@@ -354,15 +433,31 @@ function buildUserMessage(args: {
     '',
     `Provider allowlist for this sprint (Director directive 2026-05-18): ${EREF_DESIGNER_PROVIDER_ALLOWLIST.join(', ')}. Do not select any other provider. Justify the choice from this list in provider.rationale.`,
     '',
-    '## Scene-continuity anchor (TD-30 — 2026-05-21)',
+    '## Continuity anchors (TD-30 spatial + TD-33 temporal — 2026-05-22)',
+    '',
+    'Two independent anchor axes can be declared in `continuity_anchors[]`. Each entry is a `{kind, asset_id, resolved_at}` object. Use ONLY the kinds listed below. Anchor entries are advisory references the executor will pass into the multi-image-edit call alongside identity / location / style — stronger anchors = tighter continuity but less prompt freedom. Choose deliberately per shot, not by default.',
+    '',
+    '### Spatial anchor — `kind: spatial_same_location`',
     '',
     !sceneContinuityLookupPerformed
-      ? 'Scene-continuity lookup was NOT performed in this runner invocation (no DB access). Leave `scene_continuity_anchor_asset_id` null and add a policy_note flagging the absent lookup.'
+      ? 'Spatial-continuity lookup was NOT performed in this runner invocation (no DB access). Do NOT emit a `spatial_same_location` anchor; add a policy_note flagging the absent lookup.'
       : locationSlug
         ? priorSceneContinuityAnchorAssetId
-          ? `A prior APPROVED IMG-episode_ref in location \`${locationSlug}\` exists for this episode (asset_id: \`${priorSceneContinuityAnchorAssetId}\`). When continuity_strategy.mode = openai-edits-multi, set \`scene_continuity_anchor_asset_id\` to this id so the executor embeds it as a 4th multi-image ref alongside identity / location / style. This stabilises spatial layout (furniture position, set dressing) across shots in the same room. If you choose a different continuity_strategy.mode, leave the field null and note in policy_notes.`
-          : `This is the FIRST shot in location \`${locationSlug}\` for this episode — no prior APPROVED IMG-episode_ref to anchor on. Leave \`scene_continuity_anchor_asset_id\` null.`
-        : 'Shot has no resolvable bible-locked location slug — leave `scene_continuity_anchor_asset_id` null.',
+          ? `A prior APPROVED IMG-episode_ref in location \`${locationSlug}\` exists for this episode (asset_id: \`${priorSceneContinuityAnchorAssetId}\`, lookup_at: now). When continuity_strategy.mode = openai-edits-multi, append an entry \`{"kind":"spatial_same_location","asset_id":"${priorSceneContinuityAnchorAssetId}","resolved_at":"<lookup ISO timestamp>"}\` to \`continuity_anchors\`. Stabilises spatial layout (furniture, set dressing) across shots in the same room.`
+          : `This is the FIRST shot in location \`${locationSlug}\` for this episode — no prior APPROVED reference to anchor on. Do not emit a spatial anchor.`
+        : 'Shot has no resolvable bible-locked location slug — do not emit a spatial anchor.',
+    '',
+    '### Temporal anchor — `kind: temporal_previous_shot`',
+    '',
+    !temporalAnchorLookupPerformed
+      ? 'Temporal-continuity lookup was NOT performed in this runner invocation. Do NOT emit a `temporal_previous_shot` anchor; add a policy_note flagging the absent lookup.'
+      : previousShotId
+        ? priorTemporalAnchorAssetId
+          ? `The previous shot in narrative order is \`${previousShotId}\` and its APPROVED reference image exists (asset_id: \`${priorTemporalAnchorAssetId}\`). You MAY emit \`{"kind":"temporal_previous_shot","asset_id":"${priorTemporalAnchorAssetId}","resolved_at":"<lookup ISO timestamp>"}\` to carry forward visible state changes (props introduced, costume marks, lighting beats, character pose continuity). USE THIS WHEN: a) the previous shot is in the same scene with continuous time; b) characters and key props overlap; c) a beat from the previous shot must visibly survive (e.g. wall hole from prior gag, broken cup on table, blood smear). DO NOT emit when: a) hard cut to a new scene/location; b) a cutaway, flashback, or POV switch; c) no character or prop overlap; d) the previous shot is itself an establishing wide where carrying detail forward would over-constrain the new framing.`
+          : `The previous shot in narrative order is \`${previousShotId}\` but it has no APPROVED IMG-episode_ref yet. Do not emit a temporal anchor.`
+        : 'This shot is the first shot of the episode (no narrative predecessor). Do not emit a temporal anchor.',
+    '',
+    'Note: `continuity_anchors` can be `[]` (no anchors), have one entry of either kind, or have both. Order spatial first, temporal second when both are present (executor uses this order to slot them into the multi-image ref array).',
     '',
     revisionNote
       ? [
@@ -435,7 +530,9 @@ function buildUserMessage(args: {
     '    "anchor_assets": ["<bible character/location slug>", ...],',
     '    "rationale": "<one sentence>"',
     '  },',
-    '  "scene_continuity_anchor_asset_id": <null | "<asset_id of prior APPROVED IMG-episode_ref in same location, TD-30>">,',
+    '  "continuity_anchors": [',
+    '    <zero or more entries — each {"kind":"spatial_same_location"|"temporal_previous_shot","asset_id":"<asset_id>","resolved_at":"<ISO-8601 timestamp>"}. Spatial first, temporal second when both present. Use [] when no anchors apply. Emit as valid JSON — no inline comments inside the array.>',
+    '  ],',
     '  "prompt": "<full prompt text — same as Промпт section above, machine-readable>",',
     '  "negative": ["<term>", "<term>", ...],',
     '  "camera_intent": {',
@@ -543,22 +640,58 @@ export async function runEpisodeReferenceDesigner(
   }
   let priorSceneContinuityAnchorAssetId: string | null = null;
   let sceneContinuityLookupPerformed = false;
-  if (supabase && locationSlug) {
-    const episodeId = (ep as { id?: unknown } | undefined)?.id;
-    if (typeof episodeId === 'string' && episodeId.length > 0) {
+  // TD-33: temporal anchor — previous shot in narrative production order.
+  // Designer LLM decides whether to actually emit it (q10c — same scene,
+  // hard cut, cutaway are all up to the LLM's judgment with prompt guidance).
+  const previousShotId = getPreviousShotIdInSequence(stbAsset.content, shotId);
+  let priorTemporalAnchorAssetId: string | null = null;
+  let temporalAnchorLookupPerformed = false;
+  const episodeIdResolved = (() => {
+    const v = (ep as { id?: unknown } | undefined)?.id;
+    return typeof v === 'string' && v.length > 0 ? v : null;
+  })();
+  if (supabase && episodeIdResolved) {
+    // Run spatial + temporal lookups in parallel — both target the assets
+    // table and are independent.
+    const spatialPromise = locationSlug
+      ? findLatestApprovedImgByLocation(supabase, episodeIdResolved, locationSlug)
+      : Promise.resolve(null);
+    const temporalPromise = previousShotId
+      ? findLatestApprovedImgByShotId(supabase, episodeIdResolved, previousShotId)
+      : Promise.resolve(null);
+    const [spatialResult, temporalResult] = await Promise.all([
+      spatialPromise,
+      temporalPromise,
+    ]);
+    if (locationSlug) {
       sceneContinuityLookupPerformed = true;
-      priorSceneContinuityAnchorAssetId = await findLatestApprovedImgByLocation(
-        supabase,
-        episodeId,
-        locationSlug,
-      );
-      if (priorSceneContinuityAnchorAssetId) {
+      priorSceneContinuityAnchorAssetId = spatialResult;
+      if (spatialResult) {
         notes.push(
-          `Scene-continuity anchor: ${priorSceneContinuityAnchorAssetId} (location=${locationSlug})`,
+          `Spatial continuity anchor candidate: ${spatialResult} (location=${locationSlug})`,
         );
       } else {
-        notes.push(`Scene-continuity: first shot in location=${locationSlug}`);
+        notes.push(`Spatial continuity: first shot in location=${locationSlug}`);
       }
+    }
+    // We ran the temporal "lookup logic" — even SH01 with no predecessor is
+    // a definitive answer, not "we didn't check". Designer must know which
+    // case it's in: lookup-not-performed (skip silently), no-predecessor
+    // (don't emit anchor), or predecessor-without-approved-img (also skip).
+    temporalAnchorLookupPerformed = true;
+    if (previousShotId) {
+      priorTemporalAnchorAssetId = temporalResult;
+      if (temporalResult) {
+        notes.push(
+          `Temporal continuity anchor candidate: ${temporalResult} (prev_shot=${previousShotId})`,
+        );
+      } else {
+        notes.push(
+          `Temporal continuity: previous shot ${previousShotId} has no APPROVED reference yet`,
+        );
+      }
+    } else {
+      notes.push('Temporal continuity: first shot of episode (no predecessor)');
     }
   }
 
@@ -575,6 +708,9 @@ export async function runEpisodeReferenceDesigner(
     locationSlug,
     priorSceneContinuityAnchorAssetId,
     sceneContinuityLookupPerformed,
+    previousShotId,
+    priorTemporalAnchorAssetId,
+    temporalAnchorLookupPerformed,
   });
 
   let result: AnthropicTextResult;

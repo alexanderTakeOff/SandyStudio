@@ -82,7 +82,13 @@ export type GenerationTriggeredBy =
  * for backward compatibility with @v1/@v2 readers.
  */
 export interface ReferenceUsed {
-  kind: 'identity' | 'location' | 'style' | 'scene_continuity';
+  // TD-33 (2026-05-22): `temporal_continuity` added alongside spatial scene_continuity.
+  kind:
+    | 'identity'
+    | 'location'
+    | 'style'
+    | 'scene_continuity'
+    | 'temporal_continuity';
   bible_asset_id: string;
   /** 0..1 — only meaningful for providers that support per-ref weighting. */
   weight?: number;

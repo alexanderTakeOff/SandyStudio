@@ -403,6 +403,45 @@ export async function getApprovedEREFForShot(
   return { asset: match, image_b64: imageB64 };
 }
 
+/**
+ * TD-33 (2026-05-22): load an asset's image bytes by id alone. Used by the
+ * EXEC-VGEN plan-driven branch to fetch the Animator's `end_image.asset_id`
+ * for Seedance's end-frame img2vid feature. Returns null when the asset row
+ * has no staging_path or the file can't be read — caller degrades to
+ * start-frame-only video (no end-frame anchor).
+ *
+ * Mirrors getApprovedEREFForShot's staging-path read logic; staging_path is
+ * the only path that exists in dev — the runner doesn't talk to Drive for
+ * bytes during a render.
+ */
+export async function getAssetImageBase64ById(
+  supabase: SupabaseClient<Database>,
+  assetId: string,
+): Promise<{ base64: string; mime: 'image/png' | 'image/jpeg' } | null> {
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,staging_path,file_type')
+    .eq('id', assetId)
+    .maybeSingle();
+  if (error || !data?.staging_path) return null;
+  const stagingPath = data.staging_path;
+  if (!stagingPath.startsWith('/staging/')) return null;
+  try {
+    const path = await import('node:path');
+    const fs = await import('node:fs/promises');
+    const abs = path.join(process.cwd(), 'public', stagingPath.slice(1));
+    const buf = await fs.readFile(abs);
+    const mime: 'image/png' | 'image/jpeg' = stagingPath
+      .toLowerCase()
+      .endsWith('.jpg')
+      ? 'image/jpeg'
+      : 'image/png';
+    return { base64: buf.toString('base64'), mime };
+  } catch {
+    return null;
+  }
+}
+
 // ── Prompt builder ───────────────────────────────────────────────────────────
 
 function characterLine(c: StoryboardShotCharacter): string | null {

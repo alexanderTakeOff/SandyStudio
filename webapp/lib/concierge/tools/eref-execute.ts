@@ -141,6 +141,16 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
         body && typeof body === 'object'
           ? JSON.stringify(body)
           : `HTTP ${resp.status}`;
+      // TD-35: surface PLAN_ANCHOR_STALE as a Polина-readable instruction.
+      // The REST guard returns a ValidationError whose message starts with
+      // "PLAN_ANCHOR_STALE: …" — translate to a tool result the conversation
+      // model can immediately act on (call regenerateRefPlan instead).
+      if (typeof detail === 'string' && detail.includes('PLAN_ANCHOR_STALE')) {
+        return fail(
+          `Plan ${args.planAssetId.slice(0, 8)}… for shot ${args.shotId} references stale continuity anchors. Image-only regen is blocked because it would reproduce outdated continuity. Call regenerateRefPlan({ shotId: "${args.shotId}", revisionNote: "<formula referencing the fresh anchors>" }) to author a v+1 Plan that picks up the current anchors, await Director's approval of the new Plan, then re-fire regenerateImageFromPlan against the new planAssetId.`,
+          'plan_anchor_stale',
+        );
+      }
       return fail(`regenerate-image-from-plan failed: ${detail}`);
     }
     return ok(

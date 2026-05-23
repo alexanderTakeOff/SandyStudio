@@ -36,6 +36,14 @@ import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { inngest } from '@/lib/inngest/client';
+import {
+  parseContinuityAnchors,
+  parseLastJsonBlock,
+} from '@/lib/agents/runners/episode-references';
+import {
+  checkPlanAnchorFreshness,
+  formatStaleAnchorMessage,
+} from '@/lib/agents/runners/episode-reference-freshness';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,9 +72,13 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (!ep) throw new NotFoundError(`Episode ${episodeId}`);
 
   // ── Validate Plan asset: exists, type, status, episode link ─────────────
+  // TD-35: pull content + created_at too so we can run freshness check on
+  // the Plan's continuity anchors before firing the executor.
   const { data: plan, error: planErr } = await supabase
     .from('assets')
-    .select('id,file_type,status,episode_id,metadata,filename')
+    .select(
+      'id,file_type,status,episode_id,metadata,filename,content,created_at',
+    )
     .eq('id', body.planAssetId)
     .maybeSingle();
   if (planErr) throw new Error(`plan asset fetch failed: ${planErr.message}`);
@@ -103,6 +115,54 @@ export const POST = withApiHandler(async (req, ctx) => {
     throw new ValidationError(
       `Plan ${body.planAssetId} is for shot ${planShotId}, not ${body.shotId}`,
     );
+  }
+
+  // ── TD-35 freshness guard ───────────────────────────────────────────────
+  // Parse the Plan's continuity_anchors[] from its content JSON block and
+  // verify each one is still the latest APPROVED at its scope. Hard-fail
+  // with PLAN_ANCHOR_STALE (q9a Director ruling) so Polина switches to
+  // regenerateRefPlan instead of reproducing outdated continuity.
+  if (plan.content) {
+    const planJsonBody = parseLastJsonBlock(plan.content);
+    if (planJsonBody) {
+      const planCreatedAt =
+        typeof plan.created_at === 'string'
+          ? plan.created_at
+          : new Date(0).toISOString();
+      const anchors = parseContinuityAnchors(planJsonBody, planCreatedAt);
+      const freshness = await checkPlanAnchorFreshness(
+        supabase,
+        episodeId,
+        anchors,
+      );
+      if (!freshness.ok) {
+        const detail = formatStaleAnchorMessage(
+          body.planAssetId,
+          body.shotId,
+          freshness.stale,
+        );
+        // Audit the rejection so Director's activity feed shows what was
+        // attempted and why it was blocked.
+        await logEvent(supabase, {
+          event_type: 'plan_anchor_stale_block',
+          severity: 'warning',
+          title: `Image regen blocked — Plan anchors stale (shot ${body.shotId})`,
+          description: detail,
+          actor: user.id,
+          episode_id: episodeId,
+          asset_id: body.planAssetId,
+          metadata: {
+            agent: 'EXEC-EREF',
+            operation: 'execute-from-plan-rejected',
+            shot_id: body.shotId,
+            plan_asset_id: body.planAssetId,
+            stale_anchors: freshness.stale,
+            reason: 'PLAN_ANCHOR_STALE',
+          },
+        });
+        throw new ValidationError(detail);
+      }
+    }
   }
 
   // ── Fire Inngest event ──────────────────────────────────────────────────
