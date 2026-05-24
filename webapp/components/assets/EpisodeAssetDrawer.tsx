@@ -247,6 +247,34 @@ export function EpisodeAssetDrawer({
       });
   }, [isV2, shotId, assetsData?.data, asset.id]);
 
+  // TD-43 (2026-05-24): VID-shot version-picker — same Candidates-strip UI
+  // the EREF v2 panel uses, applied to VID-shot rows so Director can
+  // switch between e.g. legacy v01 + plan-driven v02 in the drawer.
+  // shot_id lives directly on VID-shot metadata (not under shot_reference).
+  const vidShotId =
+    isVidShot &&
+    typeof (asset.metadata as { shot_id?: unknown })?.shot_id === 'string'
+      ? ((asset.metadata as { shot_id: string }).shot_id)
+      : null;
+
+  const vidShotSiblings = useMemo(() => {
+    if (!isVidShot || !vidShotId || !assetsData?.data) return [] as EpisodeAsset[];
+    return assetsData.data
+      .filter((a) => a.file_type.startsWith('VID-shot'))
+      .filter((a) => {
+        const sid = (a.metadata as { shot_id?: unknown } | null)?.shot_id;
+        return typeof sid === 'string' && sid === vidShotId;
+      })
+      .sort((a, b) => {
+        // Current first, then by version desc (newest variant on the left).
+        if (a.id === asset.id) return -1;
+        if (b.id === asset.id) return 1;
+        const va = a.version ?? 0;
+        const vb = b.version ?? 0;
+        return vb - va;
+      });
+  }, [isVidShot, vidShotId, assetsData?.data, asset.id]);
+
   // Existing APPROVED for this shot (replace-confirm gate). May be the current asset.
   const existingApprovedForShot = useMemo(() => {
     if (!isV2 || !shotId) return null;
@@ -514,16 +542,32 @@ export function EpisodeAssetDrawer({
 
           {/* ── VGEN: VID-shot Universal Core panel (extracted to keep drawer < 800 lines) ── */}
           {isVidShot && (
-            <VGENShotSection
-              assetId={asset.id}
-              filename={asset.filename}
-              metadata={asset.metadata}
-              drivePath={asset.drive_path}
-              driveWebViewUrl={asset.drive_web_view_url}
-              stagingPath={asset.staging_path}
-              editable={editable}
-              onChanged={onChange}
-            />
+            <>
+              <VGENShotSection
+                assetId={asset.id}
+                filename={asset.filename}
+                metadata={asset.metadata}
+                drivePath={asset.drive_path}
+                driveWebViewUrl={asset.drive_web_view_url}
+                stagingPath={asset.staging_path}
+                editable={editable}
+                onChanged={onChange}
+              />
+              {/* TD-43: version-picker — only renders when ≥2 candidates */}
+              <CandidatesStrip
+                currentAssetId={asset.id}
+                candidates={vidShotSiblings.map((a) => ({
+                  id: a.id,
+                  filename: a.filename,
+                  status: a.status,
+                  staging_path: a.staging_path,
+                  drive_path: a.drive_path,
+                  drive_web_view_url: a.drive_web_view_url,
+                  metadata: a.metadata as never,
+                }))}
+                onPick={(id) => onPickAsset?.(id)}
+              />
+            </>
           )}
 
           {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Candidates ── */}
