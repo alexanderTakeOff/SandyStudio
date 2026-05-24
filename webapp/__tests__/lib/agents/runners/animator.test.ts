@@ -123,9 +123,10 @@ describe('ASPECT_BY_DELIVERY_TARGET', () => {
 });
 
 describe('VANIM_PROVIDER_ALLOWLIST', () => {
-  it('contains exactly the 3 sprint providers', () => {
+  it('contains exactly the sprint providers (incl. seedance-standard added 2026-05-24)', () => {
     expect(VANIM_PROVIDER_ALLOWLIST).toEqual([
       'seedance-fast',
+      'seedance-standard',
       'veo-standard',
       'seedance-with-end-image',
     ]);

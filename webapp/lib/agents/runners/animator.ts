@@ -42,9 +42,19 @@ export const VANIM_MODEL = 'claude-sonnet-4-6';
 export const VANIM_MAX_TOKENS = 6000;
 export const VANIM_COST_CEILING_USD = 0.15;
 
-/** Sprint-scope provider allowlist for Animator. */
+/** Sprint-scope provider allowlist for Animator.
+ *
+ * 2026-05-24 — `seedance-standard` added per Director directive (q49b):
+ * episode-level Seedance lock for SS-S15-E01, with `standard` quality tier
+ * available for character-heavy shots (Sandy push trumeau in SH01 needs
+ * higher motion fidelity than `fast` provides). Runner extracts
+ * `quality_tier: 'standard'` from Plan body (q7a Step 6 wiring) and
+ * passes through to Seedance provider's standard model endpoint
+ * ($0.3024/s vs $0.2419/s for fast).
+ */
 export const VANIM_PROVIDER_ALLOWLIST = [
   'seedance-fast',
+  'seedance-standard',
   'veo-standard',
   'seedance-with-end-image',
 ] as const;
