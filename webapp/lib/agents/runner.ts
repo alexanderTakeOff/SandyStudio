@@ -1543,6 +1543,16 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       let planEndImageAssetId: string | null = null;
       let planSeed: number | null = null;
       let planQualityOverride: 'fast' | 'standard' | null = null;
+      // TD-44 (2026-05-24): Animator's provider.id is the single source of
+      // truth for both provider AND quality tier in plan-driven mode.
+      // resolveVanimProviderId() maps the Animator vocab («seedance-standard»)
+      // to concretes {providerImpl, qualityTier}. Closes the silent drift
+      // where Plan v03 declared «seedance-standard» but runtime fell back
+      // to `provider_assignments.character_video` default.
+      let planProviderImplOverride:
+        | 'seedance-fal-img2vid'
+        | 'veo-3-img2vid'
+        | null = null;
       if (planAssetId && supabase) {
         try {
           const { data: planRow } = await supabase
@@ -1565,9 +1575,29 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
                   end_image?: unknown;
                   seed_strategy?: unknown;
                   quality_tier?: unknown;
+                  provider?: unknown;
                 };
                 if (typeof body.prompt === 'string' && body.prompt.length > 0) {
                   planPrompt = body.prompt;
+                }
+                // TD-44 (2026-05-24): provider.id is the single source of
+                // truth — derive both provider impl AND quality tier from it.
+                // Falls back to body.quality_tier when provider absent.
+                if (body.provider && typeof body.provider === 'object') {
+                  const pid = (body.provider as { id?: unknown }).id;
+                  if (typeof pid === 'string') {
+                    try {
+                      const { resolveVanimProviderId } = await import(
+                        './runners/animator'
+                      );
+                      const resolved = resolveVanimProviderId(pid);
+                      planProviderImplOverride = resolved.providerImpl;
+                      planQualityOverride = resolved.qualityTier;
+                    } catch {
+                      // Unknown provider.id — leave overrides null; runner
+                      // falls back to event-arg/DB-config + body.quality_tier.
+                    }
+                  }
                 }
                 // end_image: { asset_id: "<uuid>" } — null/missing = no end frame.
                 if (body.end_image && typeof body.end_image === 'object') {
@@ -1643,17 +1673,27 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         //   when a reference image is attached.
         // This is a Veo-only quirk; Seedance 2.0 accepts any 4-15s on either
         // tier so we leave its duration untouched.
+        // TD-44 (2026-05-24): plan-driven provider override. When Animator
+        // wrote provider.id in Plan body, that wins over event-arg /
+        // DB-config defaults. Both providerImpl and qualityTier already
+        // resolved together via resolveVanimProviderId() above.
+        const effectiveProviderId =
+          planProviderImplOverride ?? provider!.providerId;
+        const effectiveIsVeoProvider =
+          effectiveProviderId === 'veo-3-img2vid' ||
+          effectiveProviderId.startsWith('veo-');
+
         const hasReferenceImage = Boolean(referenceImageBase64);
         const generationDuration =
-          isVeoProvider && hasReferenceImage && effectiveQuality === 'standard'
+          effectiveIsVeoProvider && hasReferenceImage && effectiveQuality === 'standard'
             ? 8
             : finalDuration;
         // eslint-disable-next-line no-console
         console.info(
-          `[exec-vgen] shot=${shotId} → provider=${provider!.providerId} durationSeconds=${generationDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, clamped=${generationDuration !== finalDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}`,
+          `[exec-vgen] shot=${shotId} → provider=${effectiveProviderId} (planOverride=${planProviderImplOverride ?? 'none'}) durationSeconds=${generationDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, clamped=${generationDuration !== finalDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}`,
         );
 
-        const videoProvider = getMultiVideoProvider(provider!.providerId);
+        const videoProvider = getMultiVideoProvider(effectiveProviderId);
         const real = await videoProvider.generate({
           prompt,
           durationSeconds: generationDuration,
