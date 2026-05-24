@@ -44,6 +44,24 @@ function designerChainEnabled(): boolean {
   return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
 }
 
+/**
+ * ANIMATOR_CHAIN_ENABLED env flag (symmetric to designerChainEnabled). When
+ * on:
+ *   - VID-animatic.APPROVED fires `exec-vanim/plan` per pilot shot
+ *     (Animator authors a SPC-shot_plan for each — Critic chain in
+ *     exec-vanim.nextEvent runs automatically).
+ *   - SPC-shot_plan.APPROVED fires `exec-vgen/start` with planAssetId so
+ *     the Plan body drives the video provider (q7a Step 6 wired end_image,
+ *     seed, quality_tier extraction from Plan).
+ * Off → legacy direct fire-to-VGEN path with buildShotPromptV2 template
+ *       (replay-pilot fixtures + pre-Animator episodes).
+ */
+function animatorChainEnabled(): boolean {
+  const v = process.env.ANIMATOR_CHAIN_ENABLED;
+  if (!v) return false;
+  return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
+}
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -469,6 +487,78 @@ async function computeNextEvents(
     }
   }
 
+  // ── SPC-shot_plan.APPROVED → exec-vgen/start with planAssetId
+  //    (q7a Step 6 wired runner.ts to extract end_image, seed, quality_tier
+  //    from Plan body; this branch is what triggers that flow). Mirrors the
+  //    SPC-ref_plan branch above. Gated by ANIMATOR_CHAIN_ENABLED so a
+  //    pre-flag episode that received Plans manually can't accidentally
+  //    fire VGEN twice. Per-Plan idempotency via metadata.provenance.
+  //    plan_asset_id on the resulting VID-shot.
+  if (
+    (ft === 'SPC-shot_plan' || ft.startsWith('SPC-shot_plan-')) &&
+    animatorChainEnabled()
+  ) {
+    let shotId: string | null = null;
+    let durationSecondsFromPlan: number | null = null;
+    if (typeof asset.content === 'string') {
+      const matches = [...asset.content.matchAll(/```json\s*([\s\S]+?)```/g)];
+      const last = matches[matches.length - 1]?.[1];
+      if (last) {
+        try {
+          const body = JSON.parse(last.trim()) as {
+            shot_id?: unknown;
+            duration_seconds?: unknown;
+          };
+          if (typeof body.shot_id === 'string') shotId = body.shot_id;
+          if (typeof body.duration_seconds === 'number' && body.duration_seconds > 0) {
+            durationSecondsFromPlan = body.duration_seconds;
+          }
+        } catch {
+          /* leave shotId null */
+        }
+      }
+    }
+    // Per-Plan idempotency: VGEN runner stamps every VID-shot with
+    // metadata.provenance.plan_asset_id. If any VID-shot already carries
+    // this Plan id, suppress re-fire.
+    let planAlreadyExecuted = false;
+    const { data: vidRows } = await supabase
+      .from('assets')
+      .select('metadata')
+      .eq('episode_id', ep)
+      .like('file_type', 'VID-shot%');
+    for (const row of (vidRows ?? []) as Array<{ metadata?: unknown }>) {
+      const meta = row.metadata as
+        | { provenance?: { plan_asset_id?: unknown } }
+        | null;
+      if (meta?.provenance?.plan_asset_id === asset.id) {
+        planAlreadyExecuted = true;
+        break;
+      }
+    }
+    if (shotId && !planAlreadyExecuted) {
+      const data: {
+        episodeId: string;
+        shotId: string;
+        planAssetId: string;
+        duration_seconds?: number;
+        pilot: boolean;
+      } = {
+        episodeId: ep,
+        shotId,
+        planAssetId: asset.id,
+        pilot: true,
+      };
+      if (durationSecondsFromPlan !== null) {
+        data.duration_seconds = durationSecondsFromPlan;
+      }
+      events.push({
+        name: 'sandystudio/exec-vgen/start',
+        data,
+      });
+    }
+  }
+
   // ── Episode references OR music APPROVED → EXEC-EDIT (animatic)
   // Phase A.2 PR γ: animatic creation now waits for BOTH approved EREF v1
   // (or via /eref/advance for v2) AND approved music. This unblocks
@@ -526,8 +616,15 @@ async function computeNextEvents(
   // mock pilot or pre-shot-list episodes), fall through to the old 3-shot
   // fan-out so replay-pilot keeps passing.
   if (ft === 'VID-animatic') {
-    if (!(await hasJob(supabase, ep, 'EXEC-VGEN', { since }))) {
-      const animaticMeta = (asset as { metadata?: unknown }).metadata;
+    const animaticMeta = (asset as { metadata?: unknown }).metadata;
+    // ANIMATOR_CHAIN: idempotency on EXEC-VANIM (Plan author); legacy:
+    // EXEC-VGEN. Picking the wrong one would either re-fire pilots on
+    // double-click (animator chain) or block animator chain firing at all.
+    const animatorChain = animatorChainEnabled();
+    const alreadyFired = animatorChain
+      ? await hasJob(supabase, ep, 'EXEC-VANIM', { since })
+      : await hasJob(supabase, ep, 'EXEC-VGEN', { since });
+    if (!alreadyFired) {
       if (isAnimaticV1(animaticMeta)) {
         const v1 = (animaticMeta as { animatic_v1: AnimaticContract }).animatic_v1;
         const shotList = v1.shot_list ?? [];
@@ -537,16 +634,35 @@ async function computeNextEvents(
           // it after each pilot finishes. Doing it here means the UI reflects
           // "pilot in flight" the moment Director clicks Approve animatic.
           await setVgenPilotState(supabase, ep, 'PENDING_REVIEW');
-          for (const p of pilots) {
-            events.push({
-              name: 'sandystudio/exec-vgen/start',
-              data: {
-                episodeId: ep,
-                shotId: p.shotId,
-                duration_seconds: p.durationSeconds,
-                pilot: true,
-              },
-            });
+          if (animatorChain) {
+            // ANIMATOR_CHAIN ON: per-shot Animator authors SPC-shot_plan →
+            // exec-vprev (Critic) auto-chained → comedy → GAGAD review →
+            // Director approves Plan → SPC-shot_plan.APPROVED branch below
+            // fires exec-vgen/start with planAssetId for plan-driven video.
+            // Closes the 2026-05-19 «~30 LoC follow-up» gap. Symmetric to
+            // designer chain (REV-world_check → exec-eref-designer per shot).
+            for (const p of pilots) {
+              events.push({
+                name: 'sandystudio/exec-vanim/plan',
+                data: {
+                  episodeId: ep,
+                  shotId: p.shotId,
+                },
+              });
+            }
+          } else {
+            // Legacy direct-to-VGEN (buildShotPromptV2 template path).
+            for (const p of pilots) {
+              events.push({
+                name: 'sandystudio/exec-vgen/start',
+                data: {
+                  episodeId: ep,
+                  shotId: p.shotId,
+                  duration_seconds: p.durationSeconds,
+                  pilot: true,
+                },
+              });
+            }
           }
         }
       } else {

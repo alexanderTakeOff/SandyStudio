@@ -62,6 +62,26 @@ export interface RunEREFCheckArgs {
   episodeCode: string;
   /** Shot id for context (e.g. "SS-S14-E01-A1-SC01-SH01"). */
   shotId: string;
+  /**
+   * TD-38 (2026-05-23): plan-driven intent — when present, the reviewer
+   * scores the image against the Designer Plan's prompt + negative list
+   * INSTEAD of the storyboard `testPlan.expected_gag`. This closes the
+   * Reviewer Plan-blindness regression where storyboard's legacy
+   * `expected_gag` (e.g. "Sandy puddle below mirror") drifts the
+   * retry-loop away from Director's iteratively-refined Plan intent.
+   *
+   * `testPlan` is still passed alongside — it carries character bible_slugs
+   * + role_in_shot for identity anchoring, which Plan body doesn't
+   * structurally enumerate. Only the `expected_gag` / action-clarity
+   * source of truth switches.
+   *
+   * When undefined → legacy behaviour: reviewer reads testPlan as before.
+   * Replay-pilot fixtures don't set this → 29/29 untouched.
+   */
+  planIntent?: {
+    prompt: string;
+    negativeList?: readonly string[];
+  };
 }
 
 /** Subset of EREFReview that gets returned when the checker is bypassed. */
@@ -179,6 +199,63 @@ function formatTestPlanText(args: RunEREFCheckArgs): string {
   return lines.join('\n');
 }
 
+/**
+ * TD-38 (2026-05-23): renders the reviewer's spec from the Designer Plan
+ * body. Replaces `formatTestPlanText` in plan-driven mode so the reviewer
+ * scores against the SAME source of truth the generator followed (Plan
+ * prompt + negative list), not the storyboard's legacy `expected_gag`.
+ *
+ * Keeps the character roster from `testPlan` as a thin identity-anchoring
+ * frame — Plan body doesn't structurally enumerate `bible_slug`s the way
+ * `testPlan.characters[]` does, but the reviewer still needs them to score
+ * identity consistency against Bible refs.
+ *
+ * Exported as a test seam.
+ */
+export function formatPlanIntentText(args: RunEREFCheckArgs): string {
+  const { planIntent, testPlan, episodeCode, shotId } = args;
+  if (!planIntent) {
+    // Defensive: this function should only be called when planIntent is set.
+    // Fall back to legacy formatter rather than throwing — never block the
+    // reviewer for a missing-arg programming error.
+    return formatTestPlanText(args);
+  }
+  const lines: string[] = [];
+  lines.push(`# Shot ${shotId}  (episode ${episodeCode})`);
+  lines.push(`shot_role: ${testPlan.shot_role}`);
+  lines.push('');
+  lines.push('## Designer Plan specification — SOURCE OF TRUTH for this shot');
+  lines.push(
+    'The image must match this Plan exactly. The Plan was iteratively',
+  );
+  lines.push(
+    "refined by Director through revisions; it SUPERSEDES the storyboard's",
+  );
+  lines.push(
+    'legacy `expected_gag` whenever they disagree. Score against the Plan.',
+  );
+  lines.push('');
+  lines.push('### Prompt the generator was instructed to follow');
+  lines.push(planIntent.prompt);
+  if (planIntent.negativeList && planIntent.negativeList.length > 0) {
+    lines.push('');
+    lines.push('### Negative constraints (must NOT appear in the image)');
+    for (const n of planIntent.negativeList) {
+      lines.push(`- ${n}`);
+    }
+  }
+  lines.push('');
+  lines.push('## Characters expected in frame (identity anchoring only)');
+  if (testPlan.characters.length === 0) {
+    lines.push('(none — pure environment shot)');
+  } else {
+    for (const c of testPlan.characters) {
+      lines.push(`- ${c.bible_slug}  (role: ${c.role_in_shot})`);
+    }
+  }
+  return lines.join('\n');
+}
+
 function buildVisionImages(args: RunEREFCheckArgs): VisionImage[] {
   const out: VisionImage[] = [];
   // Bible refs first — give the model identity ground truth before the candidate.
@@ -270,7 +347,12 @@ export async function runEREFCheck(args: RunEREFCheckArgs): Promise<EREFCheckRes
   }
 
   const systemPrompt = buildSystemPrompt();
-  const planText = formatTestPlanText(args);
+  // TD-38: when planIntent is set, reviewer's spec comes from Designer Plan
+  // (the same source the generator followed). Legacy storyboard-driven path
+  // unchanged when planIntent is absent (replay-pilot + non-plan-driven).
+  const planText = args.planIntent
+    ? formatPlanIntentText(args)
+    : formatTestPlanText(args);
   const descRefs = appendDescriptionOnlyRefs(args);
   const trail = [planText, descRefs].filter(Boolean).join('\n\n');
   const images = buildVisionImages(args);

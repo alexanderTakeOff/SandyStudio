@@ -63,9 +63,16 @@ export interface AudioTrack {
  * Forward-compat reader: returns `audio_tracks[]` if the contract has it,
  * otherwise fabricates a single-element list from the legacy `music_url`
  * field. Always safe to call — `[]` if the asset has no audio at all.
+ *
+ * 2026-05-23 — the `audio_tracks` check requires a non-empty array; an
+ * empty `audio_tracks: []` produced by upstream writers (e.g. EXEC-STITCH
+ * fan-out before MGEN landed) used to short-circuit the fallback even
+ * though `music_url` was correctly populated. SS-S15-E01 animatic
+ * exhibited this — music asset existed and `music_url` was set, but
+ * `audio_tracks: []` ate the fallback → no audio rendered in AnimaticPlayer.
  */
 export function getAudioTracks(contract: AnimaticContract): AudioTrack[] {
-  if (Array.isArray(contract.audio_tracks)) {
+  if (Array.isArray(contract.audio_tracks) && contract.audio_tracks.length > 0) {
     return contract.audio_tracks;
   }
   if (contract.music_url) {
