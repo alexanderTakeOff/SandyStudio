@@ -815,10 +815,13 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                 </button>
                 {/* TD-43.C: hover-popover with version picker + inline approve.
                     Renders only when this cell is hovered AND has ≥1 version.
-                    Falls back to a simple tooltip when no versions yet. */}
+                    Falls back to a simple tooltip when no versions yet.
+                    Bridge fix 2026-05-24: top-0 (no gap) so cursor moves
+                    from cell to popover without crossing the wrapper boundary —
+                    mouseLeave used to fire on the 8px gap and hide popover. */}
                 {showPopover && (
                   <div
-                    className="absolute z-40 left-1/2 -translate-x-1/2 -top-2 -translate-y-full whitespace-nowrap rounded-md text-[11px]"
+                    className="absolute z-40 left-1/2 -translate-x-1/2 top-0 -translate-y-full whitespace-nowrap rounded-md text-[11px]"
                     style={{
                       background: 'var(--panel-glass-strong-bg, rgba(20,20,20,0.95))',
                       color: 'var(--text-primary)',
