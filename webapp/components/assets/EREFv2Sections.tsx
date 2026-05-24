@@ -380,8 +380,21 @@ export function CandidatesStrip({ currentAssetId, candidates, onPick }: Candidat
               disabled={isCurrent}
             >
               {src ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={src} alt={c.filename} className="w-full h-full object-cover" />
+                // TD-43 (2026-05-24): VID-shot rows have .mp4 staging_path.
+                // <img> can't render mp4 → use <video> with muted+autoplay
+                // (first-frame preview, no audio). Otherwise <img>.
+                /\.(mp4|mov|webm)(\?|$)/i.test(src) ? (
+                  <video
+                    src={src}
+                    className="w-full h-full object-cover"
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={src} alt={c.filename} className="w-full h-full object-cover" />
+                )
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[9px] text-text-muted bg-[var(--bg-base)]">
                   no img
