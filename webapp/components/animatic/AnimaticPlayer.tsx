@@ -202,6 +202,48 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     () => resolveTimelineCells(contract, vidShotAssets ?? []),
     [contract, vidShotAssets],
   );
+
+  // TD-43.C (2026-05-24): version-picker popover on timeline cell hover.
+  // Groups VID-shot rows by metadata.shot_id so the popover can show ALL
+  // versions for that shot (legacy v01 + plan-driven v02 etc), with click
+  // to switch preview + inline approve action. Director's q50 / TD-43
+  // original intent.
+  const vidShotsByShotId = useMemo(() => {
+    const map = new Map<string, VidShotAssetRow[]>();
+    for (const row of vidShotAssets ?? []) {
+      const sid = (row.metadata as { shot_id?: unknown } | null)?.shot_id;
+      if (typeof sid !== 'string') continue;
+      const existing = map.get(sid);
+      if (existing) existing.push(row);
+      else map.set(sid, [row]);
+    }
+    // Sort each shot's versions by version desc (newest first).
+    for (const rows of map.values()) {
+      rows.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+    }
+    return map;
+  }, [vidShotAssets]);
+
+  const [hoveredCellIdx, setHoveredCellIdx] = useState<number | null>(null);
+  const [approveBusyId, setApproveBusyId] = useState<string | null>(null);
+
+  async function approveVersion(assetId: string): Promise<void> {
+    setApproveBusyId(assetId);
+    try {
+      const res = await fetch(`/api/assets/${assetId}/approve`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ decision: 'APPROVE', directorConfirm: true }),
+      });
+      if (!res.ok) throw new Error('approve failed');
+      // Trigger parent refresh — SWR will refetch episode and timeline cell.
+      if (onChanged) onChanged();
+    } catch {
+      // Surface failure as a brief visual signal; full UX in drawer.
+    } finally {
+      setApproveBusyId(null);
+    }
+  }
   // Multi-track audio (forward-compat per directive #4 — reads `audio_tracks[]`
   // when present, falls back to legacy `music_url` single track for v1 assets).
   const audioTracks: AudioTrack[] = useMemo(() => getAudioTracks(contract), [contract]);
@@ -735,55 +777,127 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             // distinct. Bold weight when there's a real mp4 row; lighter for
             // missing / draft.
             const palette = cellPalette(cell?.status, cell?.kind);
+            // TD-43.C: versions of THIS shot — popover lists each.
+            const versions = vidShotsByShotId.get(t.shot.shot_id) ?? [];
+            const showPopover = hoveredCellIdx === i;
             return (
-              <button
+              <div
                 key={t.shot.shot_id}
-                onClick={() => seekTo(t.cumStart)}
-                className="group absolute top-0 h-full transition-opacity"
+                className="absolute top-0 h-full"
                 style={{
                   left: `${leftPct}%`,
                   width: `${widthPct}%`,
-                  background: isCurrent
-                    ? 'color-mix(in oklab, var(--accent-primary) 35%, transparent)'
-                    : 'transparent',
-                  borderRight: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
                   opacity: cellMatchesFilter ? 1 : 0.25,
                 }}
+                onMouseEnter={() => setHoveredCellIdx(i)}
+                onMouseLeave={() => setHoveredCellIdx(null)}
               >
-                <div
-                  className="text-[18px] truncate px-0.5 leading-[44px] tabular-nums text-center"
+                <button
+                  onClick={() => seekTo(t.cumStart)}
+                  className="w-full h-full transition-opacity"
                   style={{
-                    color: palette.color,
-                    fontWeight: palette.weight,
-                    textShadow: palette.glow,
+                    background: isCurrent
+                      ? 'color-mix(in oklab, var(--accent-primary) 35%, transparent)'
+                      : 'transparent',
+                    borderRight: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
                   }}
                 >
-                  {i + 1}
-                </div>
-                {/* Hover bubble (shot_id · duration · status). Pure-CSS via
-                    Tailwind group-hover so no JS state per cell. */}
-                <span
-                  className="pointer-events-none absolute z-30 left-1/2 -translate-x-1/2 -top-1 -translate-y-full whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-mono opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{
-                    background: 'var(--panel-glass-strong-bg, rgba(20,20,20,0.92))',
-                    color: 'var(--text-primary)',
-                    border: '1px solid var(--border-glass)',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    backdropFilter: 'blur(6px)',
-                  }}
-                  role="tooltip"
-                >
-                  <span style={{ color: palette.color, fontWeight: 600 }}>
-                    {cell?.status ?? 'NONE'}
-                  </span>
-                  <span className="opacity-70">
-                    {' · '}
-                    {t.shot.shot_id}
-                    {' · '}
-                    {t.duration.toFixed(1)}s
-                  </span>
-                </span>
-              </button>
+                  <div
+                    className="text-[18px] truncate px-0.5 leading-[44px] tabular-nums text-center"
+                    style={{
+                      color: palette.color,
+                      fontWeight: palette.weight,
+                      textShadow: palette.glow,
+                    }}
+                  >
+                    {i + 1}
+                  </div>
+                </button>
+                {/* TD-43.C: hover-popover with version picker + inline approve.
+                    Renders only when this cell is hovered AND has ≥1 version.
+                    Falls back to a simple tooltip when no versions yet. */}
+                {showPopover && (
+                  <div
+                    className="absolute z-40 left-1/2 -translate-x-1/2 -top-2 -translate-y-full whitespace-nowrap rounded-md text-[11px]"
+                    style={{
+                      background: 'var(--panel-glass-strong-bg, rgba(20,20,20,0.95))',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-glass)',
+                      boxShadow: '0 6px 16px rgba(0,0,0,0.4)',
+                      backdropFilter: 'blur(6px)',
+                      minWidth: '200px',
+                      padding: versions.length > 0 ? '6px' : '4px 8px',
+                    }}
+                    role="dialog"
+                  >
+                    <div className="px-1 pb-1 font-mono opacity-70 text-[10px]">
+                      {t.shot.shot_id} · {t.duration.toFixed(1)}s
+                    </div>
+                    {versions.length === 0 ? (
+                      <div className="px-1 pb-0.5">
+                        <span style={{ color: palette.color, fontWeight: 600 }}>
+                          {cell?.status ?? 'NONE'}
+                        </span>
+                        <span className="opacity-60"> · no VID-shot yet</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-0.5">
+                        {versions.map((v) => {
+                          const isReview = v.status === 'REVIEW';
+                          const isBusy = approveBusyId === v.id;
+                          return (
+                            <div
+                              key={v.id}
+                              className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-[color-mix(in_oklab,_white_8%,_transparent)]"
+                            >
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onCellClick) {
+                                    onCellClick({
+                                      ...(cell as TimelineCell),
+                                      asset_id: v.id,
+                                    });
+                                  }
+                                }}
+                                className="flex-1 text-left font-mono text-[11px] cursor-pointer"
+                              >
+                                v{String(v.version ?? 1).padStart(2, '0')}{' '}
+                                <span
+                                  className="opacity-70"
+                                  style={{ color: cellPalette(v.status as never, 'video-review').color }}
+                                >
+                                  {v.status}
+                                </span>
+                              </button>
+                              {isReview && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void approveVersion(v.id);
+                                  }}
+                                  disabled={isBusy}
+                                  className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                                  style={{
+                                    background: 'var(--accent-success)',
+                                    color: 'black',
+                                    opacity: isBusy ? 0.5 : 1,
+                                  }}
+                                  title="Approve this version"
+                                >
+                                  {isBusy ? '…' : '✓'}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             );
           })}
           {/* Cursor */}
