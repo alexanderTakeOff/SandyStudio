@@ -48,6 +48,12 @@ export interface PreviewDrawerProps {
    * instead of waiting for the 30s SWR tick. Phase A.1 bug fix 2026-05-08.
    */
   onAssetChanged?: () => void;
+  /**
+   * TD-43 (2026-05-24): VID-shot version-picker callback — pass-through
+   * to AssetPreview. Caller wires this to its own previewAssetId state
+   * setter so clicking a sibling candidate navigates the drawer.
+   */
+  onPickAsset?: (assetId: string) => void;
 }
 
 const WIDTHS: Record<PreviewDrawerSize, string> = {
@@ -67,6 +73,7 @@ export function PreviewDrawer({
   navLabel,
   onRegenerated,
   onAssetChanged,
+  onPickAsset,
 }: PreviewDrawerProps) {
   const [size, setSize] = useState<PreviewDrawerSize>('small');
 
@@ -215,6 +222,7 @@ export function PreviewDrawer({
               assetId={assetId}
               onRegenerated={onRegenerated}
               onAssetChanged={onAssetChanged}
+              onPickAsset={onPickAsset}
             />
           ) : (
             <p className="text-sm text-text-secondary">No asset selected.</p>

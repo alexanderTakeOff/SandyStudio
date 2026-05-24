@@ -26,8 +26,9 @@ import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
+import { CandidatesStrip } from '@/components/assets/EREFv2Sections';
 import { Button } from '@/components/ui/Button';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 
@@ -43,6 +44,13 @@ export interface AssetPreviewProps {
    * 2026-05-08.
    */
   onAssetChanged?: () => void;
+  /**
+   * TD-43 (2026-05-24): clicking a sibling candidate in the version-picker
+   * switches the preview to that asset. Parent (EpisodeTimelineSection)
+   * wires this to `setPreviewAssetId` so Director navigates between
+   * VID-shot v01/v02/... without closing the drawer.
+   */
+  onPickAsset?: (assetId: string) => void;
 }
 
 interface AssetRow {
@@ -86,11 +94,44 @@ function isHttpishUrl(path: string | null): boolean {
   return path.startsWith('/') || path.startsWith('http://') || path.startsWith('https://');
 }
 
-export function AssetPreview({ assetId, onRegenerated, onAssetChanged }: AssetPreviewProps) {
+export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAsset }: AssetPreviewProps) {
   const { data: meta, error: metaErr, mutate } = useSWR<{ data: AssetRow }>(
     `/api/assets/${assetId}`,
     fetcher,
   );
+
+  // TD-43 (2026-05-24): VID-shot sibling versions for the version-picker.
+  // Fetch ALL assets in the episode (limit 200), filter to VID-shot rows
+  // sharing the same metadata.shot_id. CandidatesStrip self-hides when ≤1.
+  const isVidShotCurrent = meta?.data?.file_type.startsWith('VID-shot') ?? false;
+  const episodeIdForSiblings = meta?.data?.episode_id ?? null;
+  const { data: episodeAssets } = useSWR<{ data: AssetRow[] }>(
+    isVidShotCurrent && episodeIdForSiblings
+      ? `/api/assets?episode_id=${episodeIdForSiblings}&limit=200`
+      : null,
+    fetcher,
+  );
+  const vidShotSiblings = useMemo(() => {
+    if (!isVidShotCurrent || !meta?.data || !episodeAssets?.data) {
+      return [] as AssetRow[];
+    }
+    const currentShotId = (meta.data.metadata as { shot_id?: unknown } | null)
+      ?.shot_id;
+    if (typeof currentShotId !== 'string') return [] as AssetRow[];
+    return episodeAssets.data
+      .filter((a) => a.file_type.startsWith('VID-shot'))
+      .filter((a) => {
+        const sid = (a.metadata as { shot_id?: unknown } | null)?.shot_id;
+        return typeof sid === 'string' && sid === currentShotId;
+      })
+      .sort((a, b) => {
+        if (a.id === meta.data.id) return -1;
+        if (b.id === meta.data.id) return 1;
+        const va = a.version ?? 0;
+        const vb = b.version ?? 0;
+        return vb - va;
+      });
+  }, [isVidShotCurrent, meta?.data, episodeAssets?.data]);
 
   if (metaErr) {
     return (
@@ -227,6 +268,23 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged }: AssetPr
               onAssetChanged?.();
             }}
             onRegenerated={onRegenerated}
+          />
+          {/* TD-43 (2026-05-24): version-picker — Director can switch between
+              VID-shot versions for the same shot_id (e.g. legacy v01 vs
+              plan-driven v02). Self-hides when ≤1 candidate. Clicks navigate
+              the parent's previewAssetId state via onPickAsset. */}
+          <CandidatesStrip
+            currentAssetId={asset.id}
+            candidates={vidShotSiblings.map((a) => ({
+              id: a.id,
+              filename: a.filename,
+              status: a.status,
+              staging_path: a.staging_path,
+              drive_path: a.drive_path,
+              drive_web_view_url: a.drive_web_view_url,
+              metadata: a.metadata as never,
+            }))}
+            onPick={(id) => onPickAsset?.(id)}
           />
           {asset.status === 'REVIEW' && (
             <PilotApproveButtons
