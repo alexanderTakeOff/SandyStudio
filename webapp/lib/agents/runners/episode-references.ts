@@ -1473,6 +1473,18 @@ export async function runEpisodeReferences(
           bibleRefs: reviewerRefs,
           episodeCode: epCode,
           shotId: job.shot.shot_id,
+          // TD-38 (2026-05-23): in plan-driven mode the reviewer must
+          // score against the same Designer Plan body that drove the
+          // generator. Otherwise reviewer falls back to storyboard's
+          // legacy `expected_gag` → retry loop drifts away from Plan →
+          // REGENERATE_EXHAUSTED with the wrong final image (SH22 puddle
+          // regression, SH19 fist-bump regression).
+          planIntent: planOverrides
+            ? {
+                prompt: planOverrides.prompt,
+                negativeList: planOverrides.negative,
+              }
+            : undefined,
         });
       } catch (err) {
         console.error(

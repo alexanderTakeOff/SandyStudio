@@ -70,6 +70,14 @@ interface VgenEventData {
   /** Phase 2 (2026-05-13) — UI dropdown override. Skips
    *  `provider_assignments` global lookup when set. */
   provider?: 'veo-3-img2vid' | 'seedance-fal-img2vid';
+  /**
+   * ANIMATOR_CHAIN (2026-05-23): when SPC-shot_plan.APPROVED auto-fires
+   * this event, the Plan asset id rides along. Runner's runAgent honours
+   * `planAssetId` and extracts end_image / seed / quality_tier from the
+   * Plan body (q7a Step 6 wiring), bypassing the legacy template prompt.
+   * Absent → legacy buildShotPromptV2 path.
+   */
+  planAssetId?: string;
 }
 
 const TARGET_STATUS_BY_MODE = (mode: number | null | undefined): 'APPROVED' | 'REVIEW' =>
@@ -178,6 +186,10 @@ export const execVgenStart = inngest.createFunction(
           qualityTier: data.quality_tier,
           durationSeconds: data.duration_seconds,
           vgenPilot: true,
+          // ANIMATOR_CHAIN (2026-05-23): when present, runner reads the
+          // approved SPC-shot_plan body and overrides prompt + end_image
+          // + seed + quality_tier. Otherwise legacy template path.
+          ...(data.planAssetId ? { planAssetId: data.planAssetId } : {}),
         });
       });
 
