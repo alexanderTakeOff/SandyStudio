@@ -21,6 +21,7 @@ export type PipelineStageId =
   | 'episode_references'
   | 'music_generator'
   | 'animatic'
+  | 'shot_planning'
   | 'visual_generator'
   | 'final_cut'
   | 'copywriter'
@@ -118,7 +119,8 @@ const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   { id: 'episode_references',  label: 'Reference Artist',   agents: ['EXEC-EREF'],    phase: 'production',     emoji: '🖼️' },
   { id: 'music_generator',     label: 'Composer',           agents: ['EXEC-MGEN'],    phase: 'production',     emoji: '🎵' },
   { id: 'animatic',            label: 'Editor',             agents: ['EXEC-EDIT'],    phase: 'production',     emoji: '🎞️' },
-  { id: 'visual_generator',    label: 'Animator',           agents: ['EXEC-VGEN'],    phase: 'generation',     emoji: '🎥' },
+  { id: 'shot_planning',       label: 'Video Designer',     agents: ['EXEC-VANIM'],   phase: 'generation',     emoji: '📝' },
+  { id: 'visual_generator',    label: 'Video Artist',       agents: ['EXEC-VGEN'],    phase: 'generation',     emoji: '🎥' },
   { id: 'final_cut',           label: 'Online Editor',      agents: ['EXEC-STITCH'],  phase: 'generation',     emoji: '🎬' },
   { id: 'copywriter',          label: 'Publicist',          agents: ['EXEC-COPY'],    phase: 'distribution',   emoji: '📝' },
   { id: 'thumbnail_creator',   label: 'Key Art Designer',   agents: ['EXEC-THUMB'],   phase: 'distribution',   emoji: '🖼️' },
@@ -136,6 +138,7 @@ const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
   if (ft === 'REV-world_check')   return 'continuity_check';
   if (ft.startsWith('IMG-episode_ref')) return 'episode_references';
   if (ft.startsWith('VID-animatic'))   return 'animatic';
+  if (ft.startsWith('SPC-shot_plan'))  return 'shot_planning';
   if (ft.startsWith('VID-shot'))       return 'visual_generator';
   if (ft.startsWith('VID-final_cut'))  return 'final_cut';
   if (ft.startsWith('AUD-music'))      return 'music_generator';
@@ -155,6 +158,7 @@ const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'EXEC-WCHK':  'continuity_check', // legacy WCHK feeds the Continuity row when CONT is not yet shipped
   'EXEC-EREF':  'episode_references',
   'EXEC-EDIT':  'animatic',
+  'EXEC-VANIM': 'shot_planning',
   'EXEC-VGEN':   'visual_generator',
   'EXEC-STITCH': 'final_cut',
   'EXEC-MGEN':   'music_generator',

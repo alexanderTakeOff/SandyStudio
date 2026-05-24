@@ -399,8 +399,10 @@ const agentNames: Block = () =>
 | EXEC-WCHK | Script Supervisor |
 | EXEC-ARCH | Archivist |
 | EXEC-EREF | Reference Artist |
+| EXEC-EREF-DESIGNER | Reference Designer |
 | EXEC-EDIT | Editor |
-| EXEC-VGEN | Animator |
+| EXEC-VANIM | Video Designer |
+| EXEC-VGEN | Video Artist |
 | EXEC-MGEN | Composer |
 | EXEC-STITCH | Online Editor |
 | EXEC-COPY | Publicist |
@@ -501,7 +503,29 @@ How to respond:
     • «без свежего одобрения мутаций не запускаю» — WRONG when standing scope is active; check ACTIVE_INTENT first
     • «жду Director или следующий pipeline event» — WRONG without first checking standing scope
     • English equivalents: "tools are forbidden in this trigger", "I can't act without fresh approval", "waiting for Director" — same ban.
-  **Read-only tools (getAsset, listRefPlans, getCriticVerdict, listShots, getRecentActivityEvents, listPendingApprovals, getNextGate, getEpisode, findEpisode, listSeries, listSeriesBibles, getRefPlan, getShotPlan, getGagPlan, listShotPlans, listGagPlans, getAnimatorCriticVerdict, getGagVerdict) are ALWAYS allowed** — they have no governance gate, no auto-react restriction, no Mode restriction. "Tools forbidden" is never a correct statement about read-only tools.`;
+  **Read-only tools (getAsset, listRefPlans, getCriticVerdict, listShots, getRecentActivityEvents, listPendingApprovals, getNextGate, getEpisode, findEpisode, listSeries, listSeriesBibles, getRefPlan, getShotPlan, getGagPlan, listShotPlans, listGagPlans, getAnimatorCriticVerdict, getGagVerdict) are ALWAYS allowed** — they have no governance gate, no auto-react restriction, no Mode restriction. "Tools forbidden" is never a correct statement about read-only tools.
+
+[PLAN_AUTHOR_AUTO_PICKUP] (TD-46.b, 2026-05-24) — when \`agent_completed\` fires and \`refs:\` shows \`actor=EXEC-VANIM\` (Video Designer) or \`actor=EXEC-EREF-DESIGNER\` (Reference Designer), the artifact is a Plan in REVIEW awaiting Director verdict. Your mandatory chain WITHOUT waiting for Director's «давай посмотри» cue:
+
+  1. \`getAsset(assetId, includeContent=true)\` — read full Plan body.
+  2. Fetch the matching Critic verdict (read-only — never gated):
+     - VANIM Plan → \`getAnimatorCriticVerdict({planAssetId})\`
+     - EREF-DESIGNER Plan → \`getCriticVerdict({planAssetId})\`
+  3. Surface a 3–5 line pre-analysis to Director:
+     - for VANIM: provider + quality_tier + duration_seconds (1 line)
+     - key staging / intent (1 line)
+     - continuity anchors (Bible character ref, end_image, EREF id) (1 line)
+     - Critic verdict blocking issues if any (1 line, skip if no verdict yet or no issues)
+     - your recommendation: «Approve» / «Request revision because <reason>» (1 line)
+  4. End with a single q-format question: «q<N>y/q<N>n — одобряю / поправить?». Use the continuous session q-counter.
+
+BANNED in PLAN_AUTHOR_AUTO_PICKUP trigger (TD-46.b regression markers):
+  - «Plan готов, жду указаний»
+  - «дождусь Director'а чтобы открыть Plan»
+  - «Plan author finished, awaiting Director» (English equivalent)
+  - any phrasing that defers reading the Plan body to a future turn.
+
+Read-only Plan tools are ALWAYS allowed; verbal approval only gates the eventual mutating step (approveAsset / requestRevision).`;
 };
 
 // ─── Block: OPEN_LOOP_AWARENESS (TD-25 P1, 2026-05-21) ───────────────────────
