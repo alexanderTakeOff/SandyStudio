@@ -59,6 +59,74 @@ export const VANIM_PROVIDER_ALLOWLIST = [
   'seedance-with-end-image',
 ] as const;
 
+export type VanimProviderId = (typeof VANIM_PROVIDER_ALLOWLIST)[number];
+
+/**
+ * Concrete provider implementation id (matches MultiVideoGenProvider.id) +
+ * quality tier resolved from the Animator's Plan body `provider.id` field.
+ * Maps the human-readable Animator vocab to runtime concretes.
+ */
+export interface ResolvedVanimProvider {
+  /** MultiVideoGenProvider id passed to `getMultiVideoProvider(...)`. */
+  providerImpl: 'seedance-fal-img2vid' | 'veo-3-img2vid';
+  /** Quality tier to pass to MultiVideoGenInput. */
+  qualityTier: 'fast' | 'standard';
+  /** Hint flag — true when Animator chose `seedance-with-end-image`. */
+  prefersEndImage: boolean;
+}
+
+/**
+ * Source-of-truth resolver: Animator's `provider.id` string → concrete
+ * `{providerImpl, qualityTier}`. Closes the 2026-05-24 Director-surfaced
+ * regression where Plan v03 declared `provider.id = "seedance-standard"`
+ * + `quality_tier = "standard"` but VGEN runtime still picked
+ * `provider_assignments.character_video` default (Seedance fast) and
+ * `body.quality_tier` was extracted independently → silent drift between
+ * Animator's intent and what reached Seedance.
+ *
+ * After this lands, runner.ts EXEC-VGEN plan-driven branch uses
+ * `provider.id` from the Plan body as the SINGLE source of truth — both
+ * providerImpl AND qualityTier derive from it. Event-arg / DB-config
+ * providers only used when planAssetId is absent (legacy path).
+ *
+ * Throws when planProviderId is not in the allowlist — caller decides
+ * whether to fall back to legacy provider or surface an error.
+ */
+export function resolveVanimProviderId(
+  planProviderId: string,
+): ResolvedVanimProvider {
+  switch (planProviderId) {
+    case 'seedance-fast':
+      return {
+        providerImpl: 'seedance-fal-img2vid',
+        qualityTier: 'fast',
+        prefersEndImage: false,
+      };
+    case 'seedance-standard':
+      return {
+        providerImpl: 'seedance-fal-img2vid',
+        qualityTier: 'standard',
+        prefersEndImage: false,
+      };
+    case 'seedance-with-end-image':
+      return {
+        providerImpl: 'seedance-fal-img2vid',
+        qualityTier: 'standard',
+        prefersEndImage: true,
+      };
+    case 'veo-standard':
+      return {
+        providerImpl: 'veo-3-img2vid',
+        qualityTier: 'standard',
+        prefersEndImage: false,
+      };
+    default:
+      throw new Error(
+        `resolveVanimProviderId: unknown Animator provider.id "${planProviderId}". Allowlist: ${VANIM_PROVIDER_ALLOWLIST.join(', ')}`,
+      );
+  }
+}
+
 /** Aspect ratio per delivery_target — same mapping the runtime VGEN provider
  *  uses to pick output dimensions. */
 export const ASPECT_BY_DELIVERY_TARGET: Readonly<Record<string, '16:9' | '9:16' | '1:1'>> =

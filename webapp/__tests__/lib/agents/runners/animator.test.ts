@@ -21,6 +21,7 @@ import {
   ASPECT_BY_DELIVERY_TARGET,
   AnimatorError,
   resolveAnimatorDeliveryTargets,
+  resolveVanimProviderId,
   runAnimator,
   _resetAnimatorPromptCacheForTests,
 } from '@/lib/agents/runners/animator';
@@ -130,6 +131,52 @@ describe('VANIM_PROVIDER_ALLOWLIST', () => {
       'veo-standard',
       'seedance-with-end-image',
     ]);
+  });
+});
+
+// TD-44 (2026-05-24): provider.id → {providerImpl, qualityTier} resolver.
+// Single source of truth for the Animator-to-VGEN provider/quality bridge.
+describe('resolveVanimProviderId — TD-44', () => {
+  it('seedance-fast → seedance-fal-img2vid + fast', () => {
+    expect(resolveVanimProviderId('seedance-fast')).toEqual({
+      providerImpl: 'seedance-fal-img2vid',
+      qualityTier: 'fast',
+      prefersEndImage: false,
+    });
+  });
+
+  it('seedance-standard → seedance-fal-img2vid + standard (the SH01 regression case)', () => {
+    expect(resolveVanimProviderId('seedance-standard')).toEqual({
+      providerImpl: 'seedance-fal-img2vid',
+      qualityTier: 'standard',
+      prefersEndImage: false,
+    });
+  });
+
+  it('seedance-with-end-image → seedance-fal-img2vid + standard + end-image hint', () => {
+    expect(resolveVanimProviderId('seedance-with-end-image')).toEqual({
+      providerImpl: 'seedance-fal-img2vid',
+      qualityTier: 'standard',
+      prefersEndImage: true,
+    });
+  });
+
+  it('veo-standard → veo-3-img2vid + standard', () => {
+    expect(resolveVanimProviderId('veo-standard')).toEqual({
+      providerImpl: 'veo-3-img2vid',
+      qualityTier: 'standard',
+      prefersEndImage: false,
+    });
+  });
+
+  it('throws on unknown provider id (out-of-allowlist)', () => {
+    expect(() => resolveVanimProviderId('flux-pro-ultra')).toThrow(
+      /unknown Animator provider/,
+    );
+  });
+
+  it('throws on empty string', () => {
+    expect(() => resolveVanimProviderId('')).toThrow(/unknown Animator provider/);
   });
 });
 
