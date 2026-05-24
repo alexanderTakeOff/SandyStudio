@@ -542,18 +542,20 @@ async function computeNextEvents(
         shotId: string;
         planAssetId: string;
         duration_seconds?: number;
-        pilot: boolean;
       } = {
         episodeId: ep,
         shotId,
         planAssetId: asset.id,
-        pilot: true,
       };
       if (durationSecondsFromPlan !== null) {
         data.duration_seconds = durationSecondsFromPlan;
       }
+      // TD-47.a (2026-05-24): emit `single-shot` (not `start`/Pilot Pass).
+      // Pilot Pass marks output as `vgen_pilot=true` and forces fast tier —
+      // both wrong for Plan-driven path. The Plan IS the preview; we want a
+      // single canonical VID-shot at the tier the Plan specifies.
       events.push({
-        name: 'sandystudio/exec-vgen/start',
+        name: 'sandystudio/exec-vgen/single-shot',
         data,
       });
     }

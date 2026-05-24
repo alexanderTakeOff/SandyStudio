@@ -525,7 +525,23 @@ BANNED in PLAN_AUTHOR_AUTO_PICKUP trigger (TD-46.b regression markers):
   - «Plan author finished, awaiting Director» (English equivalent)
   - any phrasing that defers reading the Plan body to a future turn.
 
-Read-only Plan tools are ALWAYS allowed; verbal approval only gates the eventual mutating step (approveAsset / requestRevision).`;
+Read-only Plan tools are ALWAYS allowed; verbal approval only gates the eventual mutating step (approveAsset / requestRevision).
+
+[PLAN_APPROVAL_DOWNSTREAM] (TD-47.b, 2026-05-24) — when an \`approval_granted\` or \`asset_status_changed\` event lands and the asset is a Video Designer's Plan (\`file_type\` starts with \`SPC-shot_plan\`) or a Reference Designer's Plan (\`SPC-ref_plan\`) flipped to APPROVED, the approve-route **auto-fires the next downstream agent** (Video Artist single-shot for shot_plans, Reference Artist regenerate for ref_plans).
+
+You MUST NOT call \`triggerAgent(EXEC-VGEN)\` after a shot_plan APPROVE — the route already emitted \`sandystudio/exec-vgen/single-shot\` with the \`planAssetId\` and Video Artist will run with the Plan-specified tier. Same for \`triggerAgent(EXEC-EREF)\` after a ref_plan APPROVE.
+
+Watch for the downstream \`agent_started\` event in PIPELINE_EVENTS_SINCE_LAST_REPLY:
+- Expected within ~60 seconds.
+- If you see it → narrate progress («Video Artist начал SH04, ETA ~2 мин per Plan provider standard»). Do NOT trigger anything.
+- If 60s passed and no downstream \`agent_started\` for the matching shot → call \`markAwaitingDirector({question:"auto-pickup VGEN не сработал за 60s для SH<X>, дёрнуть вручную?", choices:[{id:"q<N>y",label:"Дёрни"},{id:"q<N>n",label:"Подожди ещё"}], deadline_sec:60})\`. Never silently double-fire.
+
+BANNED in PLAN_APPROVAL_DOWNSTREAM trigger (TD-47.b regression markers — these create $-burning duplicate VGEN runs):
+  - manual \`triggerAgent({agentCode:'EXEC-VGEN'})\` immediately after seeing shot_plan APPROVE — the route already fired single-shot
+  - manual \`triggerAgent({agentCode:'EXEC-EREF'})\` immediately after seeing ref_plan APPROVE
+  - «video auto-start не подхватился, дёрнула вручную» (the SH04/SH05 regression phrase — observed 2026-05-24 wasted ~$2 in duplicate fast-tier Pilot Pass runs)
+
+If approve-route's auto-fire genuinely failed (rare — would be a backend bug), surface it as a markAwaitingDirector question rather than self-recovering with a manual trigger.`;
 };
 
 // ─── Block: OPEN_LOOP_AWARENESS (TD-25 P1, 2026-05-21) ───────────────────────

@@ -475,6 +475,11 @@ export const execVgenSingleShot = inngest.createFunction(
           qualityTier: data.quality_tier,
           durationSeconds: data.duration_seconds,
           vgenPilot: false,
+          // TD-47.a (2026-05-24): SPC-shot_plan.APPROVED in approve-route now
+          // emits single-shot (not Pilot Pass) for the Plan-driven path.
+          // Plan body drives prompt + end_image + seed + quality_tier per
+          // q7a Step 6 wiring. Absent → legacy buildShotPromptV2 path.
+          ...(data.planAssetId ? { planAssetId: data.planAssetId } : {}),
         });
       });
 
