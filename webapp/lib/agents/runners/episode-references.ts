@@ -173,7 +173,7 @@ interface ParsedShot {
 }
 
 /** Bundle of everything one shot needs for generation + review. */
-interface ShotJob {
+export interface ShotJob {
   /** File-safe slug used in `IMG-episode_ref_{slug}` file_type. */
   slug: string;
   shot: ParsedShot;
@@ -645,23 +645,49 @@ function composePromptFromTestPlan(job: ShotJob): string {
  * 2 anchors → 6-7 refs in the worst real case. Comfortably under the cap;
  * cap-trimming is left to the provider adapter to keep policy in one place.
  */
-function buildMultiImageRefs(
+/**
+ * TD-53 (2026-05-25): Ref-order contract.
+ *
+ * The Phase 1 LAYOUT LOCK prompt template explicitly says «The first
+ * attached anchor image is the LOCKED LOCATION BIBLE master… Treat it
+ * as the canonical layout.» Before this fix, refs were emitted in
+ * insertion order from `job.bibleRefs` which was built [characters...,
+ * location, style] — so identity came first and gpt-image-2 happily
+ * adopted Sandy's portrait as the canonical layout, dropping mirror /
+ * rug / bookshelf along the way. Empirically observed on SS-S15-E01
+ * SH08 v05/v06/v07 (all REGENERATE_EXHAUSTED with mirror missing).
+ *
+ * Order is now stable and matches the prompt contract:
+ *   1. location  (canonical layout — must be first)
+ *   2. identity  (one or more characters)
+ *   3. style     (rendering rules)
+ *   4. continuity (spatial / temporal — TD-30/33)
+ *
+ * Identity locking on gpt-image-2 from slot 2+ is empirically strong;
+ * the model still copies face/palette/silhouette reliably. The fix is
+ * therefore safe to apply uniformly — no per-Plan strategy flag needed.
+ */
+export function buildMultiImageRefs(
   job: ShotJob,
   continuityRefs: ReadonlyArray<MultiImageRef> = [],
 ): MultiImageRef[] {
-  const refs: MultiImageRef[] = [];
+  const byKind: Record<'location' | 'identity' | 'style', MultiImageRef[]> = {
+    location: [],
+    identity: [],
+    style: [],
+  };
   for (const r of job.bibleRefs) {
     if (!r.image_b64) continue;
-    refs.push({
+    const ref: MultiImageRef = {
       kind: r.kind === 'character' ? 'identity' : r.kind,
       bible_asset_id: r.asset.id,
       image_b64: r.image_b64,
-    });
+    };
+    if (r.kind === 'location') byKind.location.push(ref);
+    else if (r.kind === 'style') byKind.style.push(ref);
+    else byKind.identity.push(ref);
   }
-  for (const cr of continuityRefs) {
-    refs.push(cr);
-  }
-  return refs;
+  return [...byKind.location, ...byKind.identity, ...byKind.style, ...continuityRefs];
 }
 
 /**
@@ -1244,7 +1270,13 @@ async function runAnchorPairGeneration(
     const slug = nameFromBibleFilename(c);
     if (slug) charBySlug.set(slug, c);
   }
-  const baseRefs: MultiImageRef[] = [];
+  // TD-53 (2026-05-25): scene_master MUST be the first attached ref to
+  // match the LAYOUT LOCK preamble's «first attached anchor image is the
+  // canonical layout» promise. Identity refs in slot 2+ still lock face /
+  // palette / silhouette reliably on gpt-image-2 (empirically verified
+  // when buildMultiImageRefs was reshuffled in the same commit). Style ref
+  // last — its rendering rules don't fight composition, just polish.
+  const identityRefs: MultiImageRef[] = [];
   const identityCharNames: string[] = [];
   const chars_v2 =
     shot.characters_v2 && shot.characters_v2.length > 0
@@ -1264,7 +1296,7 @@ async function runAnchorPairGeneration(
     if (!asset) continue;
     const b64 = await loadBibleImage(asset);
     if (b64) {
-      baseRefs.push({
+      identityRefs.push({
         kind: 'identity',
         bible_asset_id: asset.id,
         image_b64: b64,
@@ -1273,18 +1305,18 @@ async function runAnchorPairGeneration(
     }
   }
   const styleB64 = await loadBibleImage(styleAsset);
-  if (styleB64) {
-    baseRefs.push({
-      kind: 'style',
-      bible_asset_id: styleAsset.id,
-      image_b64: styleB64,
-    });
-  }
-  baseRefs.push({
-    kind: 'scene_continuity',
-    bible_asset_id: anchorCtx.scene_master_asset.asset_id,
-    image_b64: sceneMasterB64,
-  });
+  const styleRef: MultiImageRef | null = styleB64
+    ? { kind: 'style', bible_asset_id: styleAsset.id, image_b64: styleB64 }
+    : null;
+  const baseRefs: MultiImageRef[] = [
+    {
+      kind: 'scene_continuity',
+      bible_asset_id: anchorCtx.scene_master_asset.asset_id,
+      image_b64: sceneMasterB64,
+    },
+    ...identityRefs,
+    ...(styleRef ? [styleRef] : []),
+  ];
 
   // 6. Provider — explicit openai-edits-multi (q4a Director directive 2026-05-25).
   const provider = getImageGenMultiProvider('openai-edits-multi');
