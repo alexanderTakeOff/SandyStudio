@@ -202,7 +202,9 @@ For Bible structure proactive proposals:
   characters / locations / objects → in textual Bible only as SHORT lists (name + 1-line role); detailed visual + multiple looks belong in Library/assets.
   episode_architecture, seed_bank, character_relations → appended sections inside general_idea.
 
-Library tab population uses enrichBible (which generates IMAGE assets via EXEC-BIBLE-AUTHOR).`;
+Library tab population uses enrichBible (which generates IMAGE assets via EXEC-BIBLE-AUTHOR).
+
+**scene_master section (TD-49 Phase 1, 2026-05-25)** — a NEW Bible section for layout-locked location masters used by the Anchor Chain pipeline. setBibleContent(section='scene_master', slug=<location_slug>, content=<layout description>) creates SBL-scene_master_<slug>. Text canon describes the canonical wide shot: mirror coords, carpet position, furniture angles, lighting direction. After setBibleContent, enrichBible generates the master image — this image becomes the locked img2img reference for every per-shot anchor in episodes using this location. **One scene_master per location per series**, Director approves once at series level, subsequent episodes reuse. When a location has no scene_master yet, Designer/Animator anchor authoring falls back to legacy single-reference per shot — anchor chain features stay opt-in via episode metadata.anchor_chain_enabled flag.`;
 
 // ─── Block 7: ACTIVE_INTENT (derived from recentTurns) ───────────────────────
 const activeIntent: Block = (ctx) => {
