@@ -44,7 +44,23 @@ export const EPREV_MAX_TOKENS = 4000;
 /** Per-Plan cost ceiling — Critic is cheap (~$0.01-0.03 typical). */
 export const EPREV_COST_CEILING_USD = 0.08;
 
-export type CriticVerdict = 'PASS' | 'REVISE' | 'FAIL' | 'UNKNOWN';
+/**
+ * Critic verdict enum.
+ *
+ * TD-49 Phase 2 P2.3 (2026-05-25): `PASS_WITH_UNCERTAINTY` added to mirror
+ * Animator-Critic's P2.5 4-tier verdict. Emitted when the Plan passes all
+ * V01-V09 hard checks + anchor_pair structural validation, but a
+ * craft-judgment dimension (e.g. whether an anchor pair's prompt actually
+ * captures the intended camera angle vs the master layout) is ambiguous.
+ * Mode-handling at the approve-route layer mirrors the VPREV behaviour
+ * documented in animator-critic.ts.
+ */
+export type CriticVerdict =
+  | 'PASS'
+  | 'PASS_WITH_UNCERTAINTY'
+  | 'REVISE'
+  | 'FAIL'
+  | 'UNKNOWN';
 
 export class EpisodeReferenceCriticError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -128,9 +144,13 @@ async function loadPlanRow(
       `Plan asset ${planAssetId} not found`,
     );
   }
-  if (data.file_type !== 'SPC-ref_plan') {
+  // TD-24 + TD-49 P2.3: accept both shapes Designer writes —
+  // `SPC-ref_plan` (legacy bare) and `SPC-ref_plan-<shot_id>` (current
+  // Designer runner writes shot_id-suffixed form). Mirrors approve-route
+  // pattern at app/api/assets/[id]/approve/route.ts:446.
+  if (data.file_type !== 'SPC-ref_plan' && !data.file_type.startsWith('SPC-ref_plan-')) {
     throw new EpisodeReferenceCriticError(
-      `Plan asset ${planAssetId} has file_type="${data.file_type}", expected SPC-ref_plan`,
+      `Plan asset ${planAssetId} has file_type="${data.file_type}", expected SPC-ref_plan or SPC-ref_plan-*`,
     );
   }
   if (!data.content || data.content.trim().length === 0) {
@@ -171,8 +191,103 @@ function buildUserMessage(args: {
 function parseVerdict(body: Record<string, unknown> | null): CriticVerdict {
   if (!body) return 'UNKNOWN';
   const v = body.verdict;
-  if (v === 'PASS' || v === 'REVISE' || v === 'FAIL') return v;
+  if (
+    v === 'PASS' ||
+    v === 'PASS_WITH_UNCERTAINTY' ||
+    v === 'REVISE' ||
+    v === 'FAIL'
+  ) {
+    return v;
+  }
   return 'UNKNOWN';
+}
+
+/**
+ * TD-49 Phase 2 P2.3 (2026-05-25): structural validator for the Designer's
+ * `anchor_pair` block. Deterministic checks the Critic LLM cannot get wrong
+ * (role enum membership, role+handoff_link_to_shot_id reciprocity, shot_id
+ * ref shape). Cross-Plan reciprocity (this shot's start ↔ prior shot's end
+ * across two separate Plans) is enforced at the approve-route batch flow
+ * (P2.6 v2 — not v1).
+ *
+ * Returns an array of violation strings — empty array = structurally clean
+ * or anchor_pair absent (legacy mode). Callers fold these into Critic's
+ * `failed_checks[]` so the verdict logic uses the same input shape.
+ *
+ * Defensive: Plans without an `anchor_pair` block return an empty array
+ * (no violations). Back-compat with all legacy SPC-ref_plan Plans.
+ *
+ * Exported as a test seam.
+ */
+const START_ANCHOR_ROLES: readonly string[] = ['establishing', 'shared', 'cut_in'] as const;
+const END_ANCHOR_ROLES: readonly string[] = ['shared', 'cut_out', 'final'] as const;
+const SHOT_ID_REF_RE = /^SS-S\d+-E\d+-A\d+-SC\d+-SH\d+$/;
+
+export function validateAnchorPairStructure(
+  planBody: Record<string, unknown> | null,
+): readonly string[] {
+  if (!planBody) return [];
+  const apRaw = planBody.anchor_pair;
+  if (!apRaw || typeof apRaw !== 'object') return [];
+  const ap = apRaw as Record<string, unknown>;
+  const violations: string[] = [];
+
+  validateAnchorSide(ap.start, 'start', START_ANCHOR_ROLES, violations);
+  validateAnchorSide(ap.end, 'end', END_ANCHOR_ROLES, violations);
+
+  if (!ap.start && !ap.end) {
+    violations.push('anchor_pair: both start and end are absent — emit no anchor_pair field instead, or fill at least one side');
+  }
+
+  return violations;
+}
+
+function validateAnchorSide(
+  raw: unknown,
+  sideName: 'start' | 'end',
+  allowedRoles: readonly string[],
+  violations: string[],
+): void {
+  if (raw === undefined || raw === null) return; // side is optional
+  if (typeof raw !== 'object') {
+    violations.push(`anchor_pair.${sideName}: must be an object, got ${typeof raw}`);
+    return;
+  }
+  const obj = raw as Record<string, unknown>;
+  const role = obj.role;
+  if (typeof role !== 'string') {
+    violations.push(`anchor_pair.${sideName}.role: required string, got ${typeof role}`);
+    return;
+  }
+  if (!allowedRoles.includes(role)) {
+    violations.push(
+      `anchor_pair.${sideName}.role="${role}" not in allowed set: ${allowedRoles.join(', ')}`,
+    );
+    return;
+  }
+  const prompt = obj.prompt;
+  if (typeof prompt !== 'string' || prompt.trim().length === 0) {
+    violations.push(`anchor_pair.${sideName}.prompt: required non-empty string`);
+  }
+  const handoff = obj.handoff_link_to_shot_id;
+  if (role === 'shared') {
+    if (typeof handoff !== 'string' || handoff.trim().length === 0) {
+      violations.push(
+        `anchor_pair.${sideName}.role="shared" REQUIRES handoff_link_to_shot_id to be a non-empty shot_id reference (got ${JSON.stringify(handoff)})`,
+      );
+    } else if (!SHOT_ID_REF_RE.test(handoff.trim())) {
+      violations.push(
+        `anchor_pair.${sideName}.handoff_link_to_shot_id="${handoff}" does not match shot_id format SS-S<NN>-E<NN>-A<N>-SC<NN>-SH<NN>`,
+      );
+    }
+  } else {
+    // role !== 'shared' → handoff must be null/absent
+    if (handoff !== null && handoff !== undefined) {
+      violations.push(
+        `anchor_pair.${sideName}.role="${role}" REQUIRES handoff_link_to_shot_id=null (got ${JSON.stringify(handoff)})`,
+      );
+    }
+  }
 }
 
 function parseFailedChecks(
@@ -268,17 +383,42 @@ export async function runEpisodeReferenceCritic(
     );
   }
 
-  const verdict = parseVerdict(result.body);
+  let verdict = parseVerdict(result.body);
   const failedChecks = parseFailedChecks(result.body);
   const passedChecks = parsePassedChecks(result.body);
   const acceptanceCriteria = parseAcceptanceCriteria(result.body);
+
+  // TD-49 Phase 2 P2.3 (2026-05-25): deterministic anchor_pair structural
+  // checks the LLM cannot get wrong. Augments LLM-side failed_checks with
+  // hard-violation entries. When violations exist and the LLM emitted PASS,
+  // force verdict to REVISE so the Designer re-runs with the violations as
+  // acceptance criteria.
+  const anchorViolations = result.body ? validateAnchorPairStructure(result.body) : [];
+  if (anchorViolations.length > 0) {
+    for (const v of anchorViolations) {
+      failedChecks.push({
+        check: 'V10_ANCHOR_PAIR_STRUCTURE',
+        diagnosis: v,
+      });
+      acceptanceCriteria.push(v);
+    }
+    if (verdict === 'PASS' || verdict === 'PASS_WITH_UNCERTAINTY') {
+      notes.push(
+        `Verdict forced REVISE: ${anchorViolations.length} structural anchor_pair violation(s) — LLM missed them`,
+      );
+      verdict = 'REVISE';
+    }
+  }
 
   const description = [
     `Critic verdict ${verdict} · ${EPREV_CONTRACT} · ${EPREV_MODEL}`,
     `· ${failedChecks.length} failed`,
     `· ${passedChecks.length} passed`,
+    anchorViolations.length > 0 ? `· ${anchorViolations.length} anchor` : '',
     `· cost $${result.costUsd.toFixed(4)}`,
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return {
     markdown: result.markdown,

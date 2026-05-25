@@ -49,6 +49,7 @@ import {
   type StoryboardShotV2,
 } from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
+import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
 
 export const EREF_DESIGNER_CONTRACT = 'episode_reference_designer@v1';
 export const EREF_DESIGNER_MODEL = 'claude-sonnet-4-6';
@@ -313,6 +314,18 @@ function readDeliveryTargetsFromMetadata(meta: unknown): readonly string[] | nul
   return out;
 }
 
+/**
+ * TD-49 Phase 2 P2.3 (2026-05-25): read the episode-level opt-in flag
+ * `anchor_chain_enabled` from `episodes.metadata`. When `true`, Designer
+ * loads anchor-chain context and authors paired anchors per shot; when
+ * false / absent, Designer falls back to legacy single-IMG mode.
+ */
+function readAnchorChainEnabled(meta: unknown): boolean {
+  if (!meta || typeof meta !== 'object') return false;
+  const m = meta as Record<string, unknown>;
+  return m.anchor_chain_enabled === true;
+}
+
 function buildDeliveryTargetsTable(targets: readonly string[]): string {
   const rows = targets.map((slug) => {
     const dims = SIZE_BY_DELIVERY_TARGET[slug];
@@ -320,6 +333,72 @@ function buildDeliveryTargetsTable(targets: readonly string[]): string {
     return `  - ${slug}: ${dims.width}×${dims.height}`;
   });
   return rows.join('\n');
+}
+
+/**
+ * TD-49 Phase 2 P2.3 (2026-05-25): compose the four user-message sections
+ * activated when `episodes.metadata.anchor_chain_enabled === true`. Surfaces
+ * adjacent shots, prior anchors, scene_master, and the explicit instruction
+ * to emit an `anchor_pair` block in the Plan JSON.
+ *
+ * When the storyboard / shot is missing from context (loadAnchorChainContext
+ * returned a partially-empty structure), we still emit the sections — the
+ * Designer LLM sees the absence and either skips the anchor_pair block
+ * (legacy fallback) or flags via policy_notes per the system prompt.
+ */
+function buildAnchorChainSections(ctx: AnchorChainContext): string {
+  const adjacentPriorLine = ctx.adjacent_shots.prior
+    ? `${ctx.adjacent_shots.prior.shotId} (role: ${ctx.adjacent_shots.prior.shotRole ?? 'unspecified'})`
+    : '(none — current shot is first in narrative order)';
+  const adjacentNextLine = ctx.adjacent_shots.next
+    ? `${ctx.adjacent_shots.next.shotId} (role: ${ctx.adjacent_shots.next.shotRole ?? 'unspecified'})`
+    : '(none — current shot is last in narrative order)';
+  const priorAnchorsBlock =
+    ctx.prior_anchors.length === 0
+      ? '(none — this is the first shot whose anchors have been authored, or no anchors are APPROVED yet)'
+      : ctx.prior_anchors
+          .map(
+            (a) =>
+              `  - shot ${a.shotId} · side ${a.side} · asset_id ${a.asset_id}`,
+          )
+          .join('\n');
+  const sceneMasterBlock = ctx.scene_master_asset
+    ? [
+        `  - asset_id: ${ctx.scene_master_asset.asset_id}`,
+        `  - source: ${ctx.scene_master_asset.source} (${ctx.scene_master_asset.source === 'scene_master' ? 'preferred layout master' : 'fallback location asset'})`,
+        `  - filename: ${ctx.scene_master_asset.filename ?? '(unknown)'}`,
+      ].join('\n')
+    : '(none — no SBL-scene_master_* nor LOCKED SBL-location_* for this shot location. Flag via policy_notes and skip anchor_pair authoring.)';
+
+  return [
+    '## Anchor Chain Context (TD-49 Phase 2 — anchor_chain_enabled=true)',
+    '',
+    `Total shots in episode: ${ctx.full_storyboard.length}`,
+    `Current shot: ${ctx.current_shot?.shotId ?? '(unresolved)'}`,
+    `Adjacent prior: ${adjacentPriorLine}`,
+    `Adjacent next:  ${adjacentNextLine}`,
+    '',
+    '## Prior Anchors (APPROVED IMG-anchor_* from earlier shots, narrative order)',
+    '',
+    priorAnchorsBlock,
+    '',
+    '## Scene Master (layout reference for anchor pair generation)',
+    '',
+    sceneMasterBlock,
+    '',
+    '## Walking-Forward Anchor Pair Authoring — output requirement',
+    '',
+    'Because `anchor_chain_enabled=true` for this episode, your Plan JSON MUST include an `anchor_pair` block (schema below). Both `start` and `end` are optional fields inside the block — author both when both sides exist in the storyboard flow; author one side only when the other cannot exist (e.g. last shot of episode → no `end.role=shared` peer; first shot → `start.role=establishing` with no prior).',
+    '',
+    'For each side you author:',
+    '  - `role` MUST be from the enum (start: establishing|shared|cut_in; end: shared|cut_out|final).',
+    '  - `handoff_link_to_shot_id` MUST be the full shot_id of the paired shot when `role=shared`, otherwise `null`.',
+    '  - `prompt` MUST include a LAYOUT LOCK preamble citing scene_master as the canonical layout, plus camera intent and character pose for THIS anchor moment.',
+    '  - `rationale` is one sentence explaining the role choice.',
+    '',
+    'If `scene_master_asset` above is null, emit a `canon_extension_proposed` rationale in `policy_notes` and OMIT the `anchor_pair` block entirely — do not fabricate anchors against an unset master.',
+    '',
+  ].join('\n');
 }
 
 /**
@@ -354,6 +433,11 @@ function buildUserMessage(args: {
   priorTemporalAnchorAssetId?: string | null;
   /** TD-33: true iff temporal lookup actually executed. False → Designer leaves the temporal entry off. */
   temporalAnchorLookupPerformed?: boolean;
+  /** TD-49 Phase 2 P2.3 (2026-05-25): shot-scoped anchor chain context. Present
+   *  iff `episodes.metadata.anchor_chain_enabled === true` AND a supabase
+   *  client was passed to the runner. Drives the four new prompt sections +
+   *  the anchor_pair block expectation in the JSON output. */
+  anchorChainContext?: AnchorChainContext | null;
 }): string {
   const {
     episodeCode,
@@ -370,6 +454,7 @@ function buildUserMessage(args: {
     previousShotId,
     priorTemporalAnchorAssetId,
     temporalAnchorLookupPerformed,
+    anchorChainContext,
   } = args;
 
   const biblePromptBlock = formatBibleForPrompt(bible);
@@ -469,6 +554,7 @@ function buildUserMessage(args: {
           '',
         ].join('\n')
       : '',
+    anchorChainContext ? buildAnchorChainSections(anchorChainContext) : '',
     '## Output format',
     '',
     'Respond in markdown with this structure:',
@@ -539,6 +625,26 @@ function buildUserMessage(args: {
     '    "angle": "<MEDIUM | WIDE | CLOSE | ...>",',
     '    "sub_area_variation": "<one sentence on viewpoint variation vs sibling shots>"',
     '  },',
+    anchorChainContext
+      ? [
+          '  "anchor_pair": {',
+          '    "start": {',
+          '      "role": "<establishing | shared | cut_in>",',
+          '      "handoff_link_to_shot_id": "<full shot_id of prior shot> | null",',
+          '      "prompt": "<LAYOUT LOCK preamble + camera intent + character pose for start anchor>",',
+          '      "rationale": "<one sentence>"',
+          '    },',
+          '    "end": {',
+          '      "role": "<shared | cut_out | final>",',
+          '      "handoff_link_to_shot_id": "<full shot_id of next shot> | null",',
+          '      "prompt": "<LAYOUT LOCK preamble + camera intent + character pose for end anchor>",',
+          '      "rationale": "<one sentence>"',
+          '    }',
+          '  },',
+          '  // Omit anchor_pair entirely if scene_master_asset is null. Both sides',
+          '  // are optional inside the block — author start only, end only, or both.',
+        ].join('\n')
+      : '',
     '  "estimated_cost_usd": <number>,',
     '  "policy_notes": ["<any MVP fallback / missing-canon flag>"]',
     '}',
@@ -550,6 +656,9 @@ function buildUserMessage(args: {
     '- The fenced JSON must be valid JSON. No trailing commas. No comments.',
     '- KEEP THE MARKDOWN TIGHT. The JSON block at the end is MANDATORY and must not be truncated. If you find yourself running long, shorten markdown narrative — never skip the JSON.',
     '- DO NOT call any provider. You only write the Plan. Execution happens downstream after Director approves the Plan.',
+    anchorChainContext
+      ? '- ANCHOR MODE ACTIVE — anchor_pair block MUST be included unless scene_master_asset is null. role enum + reciprocity rules are HARD; Critic will REJECT mismatches.'
+      : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -695,6 +804,34 @@ export async function runEpisodeReferenceDesigner(
     }
   }
 
+  // TD-49 Phase 2 P2.3 (2026-05-25): shot-scoped anchor chain context. Loaded
+  // only when the episode is opted in via `episodes.metadata.anchor_chain_enabled`.
+  // The four context blocks (full_storyboard, current_shot+adjacent, prior_anchors,
+  // scene_master_asset) drive the Designer's anchor_pair authoring. When the
+  // flag is off, this stays null and buildUserMessage skips the anchor sections.
+  let anchorChainContext: AnchorChainContext | null = null;
+  const anchorChainEnabled = readAnchorChainEnabled(ep?.metadata);
+  if (anchorChainEnabled && supabase && episodeIdResolved) {
+    try {
+      anchorChainContext = await loadAnchorChainContext({
+        supabase,
+        episodeId: episodeIdResolved,
+        shotId,
+      });
+      notes.push(
+        `Anchor chain context: ${anchorChainContext.full_storyboard.length} shots, ${anchorChainContext.prior_anchors.length} prior anchors, scene_master ${anchorChainContext.scene_master_asset ? 'present' : 'absent'}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notes.push(`Anchor chain context load failed (${msg.slice(0, 100)}) — falling back to legacy mode`);
+      anchorChainContext = null;
+    }
+  } else if (anchorChainEnabled) {
+    notes.push(
+      'Anchor chain enabled but supabase/episodeId unavailable — Designer skips anchor_pair authoring',
+    );
+  }
+
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
     episodeCode,
@@ -711,6 +848,7 @@ export async function runEpisodeReferenceDesigner(
     previousShotId,
     priorTemporalAnchorAssetId,
     temporalAnchorLookupPerformed,
+    anchorChainContext,
   });
 
   let result: AnthropicTextResult;
@@ -755,6 +893,28 @@ export async function runEpisodeReferenceDesigner(
     notes.push(
       `Designer chose provider="${providerId}" outside sprint allowlist — Critic should REVISE`,
     );
+  }
+
+  // TD-49 Phase 2 P2.3 soft sanity-check: when anchor mode is active, surface
+  // in notes whether the Designer actually emitted an anchor_pair block. Hard
+  // validation (role enum, reciprocity) lives in the Critic (Task #4).
+  if (anchorChainContext) {
+    const anchorPairRaw = (result.body as { anchor_pair?: unknown }).anchor_pair;
+    if (anchorPairRaw && typeof anchorPairRaw === 'object') {
+      const ap = anchorPairRaw as { start?: unknown; end?: unknown };
+      const sides: string[] = [];
+      if (ap.start && typeof ap.start === 'object') sides.push('start');
+      if (ap.end && typeof ap.end === 'object') sides.push('end');
+      notes.push(
+        sides.length > 0
+          ? `anchor_pair emitted with sides: ${sides.join(', ')}`
+          : 'anchor_pair object present but neither start nor end populated — Critic should REVISE',
+      );
+    } else if (anchorChainContext.scene_master_asset === null) {
+      notes.push('anchor_pair omitted (expected — scene_master absent, per system prompt)');
+    } else {
+      notes.push('anchor_pair MISSING despite anchor mode + scene_master present — Critic should REVISE');
+    }
   }
 
   const sizeBody = (result.body as { size?: { width?: unknown; height?: unknown } }).size;

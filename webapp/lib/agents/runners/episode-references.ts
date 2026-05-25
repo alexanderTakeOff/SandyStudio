@@ -60,6 +60,7 @@ import {
   getImageGenMultiProvider,
   resolveAvailableProviderId,
 } from '../providers/image-gen-multi-registry';
+import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
 import type {
   MultiImageGenProvider,
   MultiImageRef,
@@ -172,7 +173,7 @@ interface ParsedShot {
 }
 
 /** Bundle of everything one shot needs for generation + review. */
-interface ShotJob {
+export interface ShotJob {
   /** File-safe slug used in `IMG-episode_ref_{slug}` file_type. */
   slug: string;
   shot: ParsedShot;
@@ -644,23 +645,49 @@ function composePromptFromTestPlan(job: ShotJob): string {
  * 2 anchors → 6-7 refs in the worst real case. Comfortably under the cap;
  * cap-trimming is left to the provider adapter to keep policy in one place.
  */
-function buildMultiImageRefs(
+/**
+ * TD-53 (2026-05-25): Ref-order contract.
+ *
+ * The Phase 1 LAYOUT LOCK prompt template explicitly says «The first
+ * attached anchor image is the LOCKED LOCATION BIBLE master… Treat it
+ * as the canonical layout.» Before this fix, refs were emitted in
+ * insertion order from `job.bibleRefs` which was built [characters...,
+ * location, style] — so identity came first and gpt-image-2 happily
+ * adopted Sandy's portrait as the canonical layout, dropping mirror /
+ * rug / bookshelf along the way. Empirically observed on SS-S15-E01
+ * SH08 v05/v06/v07 (all REGENERATE_EXHAUSTED with mirror missing).
+ *
+ * Order is now stable and matches the prompt contract:
+ *   1. location  (canonical layout — must be first)
+ *   2. identity  (one or more characters)
+ *   3. style     (rendering rules)
+ *   4. continuity (spatial / temporal — TD-30/33)
+ *
+ * Identity locking on gpt-image-2 from slot 2+ is empirically strong;
+ * the model still copies face/palette/silhouette reliably. The fix is
+ * therefore safe to apply uniformly — no per-Plan strategy flag needed.
+ */
+export function buildMultiImageRefs(
   job: ShotJob,
   continuityRefs: ReadonlyArray<MultiImageRef> = [],
 ): MultiImageRef[] {
-  const refs: MultiImageRef[] = [];
+  const byKind: Record<'location' | 'identity' | 'style', MultiImageRef[]> = {
+    location: [],
+    identity: [],
+    style: [],
+  };
   for (const r of job.bibleRefs) {
     if (!r.image_b64) continue;
-    refs.push({
+    const ref: MultiImageRef = {
       kind: r.kind === 'character' ? 'identity' : r.kind,
       bible_asset_id: r.asset.id,
       image_b64: r.image_b64,
-    });
+    };
+    if (r.kind === 'location') byKind.location.push(ref);
+    else if (r.kind === 'style') byKind.style.push(ref);
+    else byKind.identity.push(ref);
   }
-  for (const cr of continuityRefs) {
-    refs.push(cr);
-  }
-  return refs;
+  return [...byKind.location, ...byKind.identity, ...byKind.style, ...continuityRefs];
 }
 
 /**
@@ -761,10 +788,33 @@ export interface ContinuityAnchor {
 }
 
 /**
+ * TD-49 Phase 2 P2.3 (2026-05-25): one side of a Designer anchor pair, parsed
+ * from `anchor_pair.start` / `anchor_pair.end`. Mirrors animator.ts P2.1 shape
+ * but uses `handoff_link_to_shot_id` (a string shot_id ref) instead of the
+ * Animator's `handoff_link_to` (a concrete IMG-anchor asset_id), because at
+ * Designer-stage the anchor IMGs have not been generated yet.
+ */
+export type AnchorPairStartRole = 'establishing' | 'shared' | 'cut_in';
+export type AnchorPairEndRole = 'shared' | 'cut_out' | 'final';
+
+export interface ParsedAnchorSide {
+  role: AnchorPairStartRole | AnchorPairEndRole;
+  /** Full shot_id of the paired shot when role='shared'; null otherwise. */
+  handoff_link_to_shot_id: string | null;
+  prompt: string;
+  rationale: string | null;
+}
+
+export interface ParsedAnchorPair {
+  start: ParsedAnchorSide | null;
+  end: ParsedAnchorSide | null;
+}
+
+/**
  * Overrides extracted from an APPROVED SPC-ref_plan asset's JSON body.
  * Designer's contract (see agents/exec/episode_reference_designer.md + the
- * fenced JSON block emitted by runEpisodeReferenceDesigner). All fields
- * required — the loader throws if the Plan body is missing any of them.
+ * fenced JSON block emitted by runEpisodeReferenceDesigner). All non-optional
+ * fields required — the loader throws if the Plan body is missing any.
  */
 interface PlanOverrides {
   shotId: string;
@@ -784,6 +834,14 @@ interface PlanOverrides {
    * `resolvedAt = plan.created_at` — see parseContinuityAnchors.
    */
   continuityAnchors: ReadonlyArray<ContinuityAnchor>;
+  /**
+   * TD-49 Phase 2 P2.3 (2026-05-25): anchor pair the Designer authored for
+   * this shot. Non-null when `anchor_chain_enabled=true` AND Designer emitted
+   * the block. Each side independently optional — both may be present, only
+   * one, or both null (in which case the field itself is null and the Artist
+   * falls back to legacy single-IMG generation).
+   */
+  anchorPair: ParsedAnchorPair | null;
 }
 
 /** Provider enum sizes the multi-image-gen contract honours. */
@@ -967,6 +1025,7 @@ export async function loadPlanOverrides(
       ? data.created_at
       : new Date(0).toISOString();
   const continuityAnchors = parseContinuityAnchors(body, planCreatedAt);
+  const anchorPair = parseAnchorPair(body);
 
   return {
     shotId,
@@ -979,7 +1038,73 @@ export async function loadPlanOverrides(
     continuityMode,
     policyNotes,
     continuityAnchors,
+    anchorPair,
   };
+}
+
+/**
+ * TD-49 Phase 2 P2.3 (2026-05-25): parse the Designer's `anchor_pair` block
+ * out of the Plan body. Returns null when the field is absent (legacy Plan,
+ * non-anchor episode, or anchor episode where Designer correctly omitted the
+ * block because scene_master was missing).
+ *
+ * Defensive: tolerates either side being absent (e.g. only `start` authored).
+ * Returns null entirely if both sides parse to null — keeps the call sites
+ * branching on a clean null vs ParsedAnchorPair.
+ *
+ * Structural validity (role enum match, role+handoff_link_to_shot_id
+ * consistency, shot_id ref format) is the Designer Critic's job (Task #4) —
+ * this parser is permissive, it only filters obvious shape violations.
+ *
+ * Exported as a test seam.
+ */
+const START_ANCHOR_ROLES_ART: readonly AnchorPairStartRole[] = [
+  'establishing',
+  'shared',
+  'cut_in',
+] as const;
+const END_ANCHOR_ROLES_ART: readonly AnchorPairEndRole[] = [
+  'shared',
+  'cut_out',
+  'final',
+] as const;
+
+function parseAnchorSide<R extends string>(
+  raw: unknown,
+  allowedRoles: readonly R[],
+): { role: R; handoff_link_to_shot_id: string | null; prompt: string; rationale: string | null } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const role = typeof obj.role === 'string' ? obj.role : null;
+  if (!role || !(allowedRoles as readonly string[]).includes(role)) return null;
+  const prompt = typeof obj.prompt === 'string' && obj.prompt.trim().length > 0 ? obj.prompt : null;
+  if (!prompt) return null;
+  const handoffRaw = obj.handoff_link_to_shot_id;
+  const handoff_link_to_shot_id =
+    typeof handoffRaw === 'string' && handoffRaw.trim().length > 0
+      ? handoffRaw.trim()
+      : null;
+  const rationaleRaw = obj.rationale;
+  const rationale =
+    typeof rationaleRaw === 'string' && rationaleRaw.trim().length > 0
+      ? rationaleRaw.trim()
+      : null;
+  return {
+    role: role as R,
+    handoff_link_to_shot_id,
+    prompt,
+    rationale,
+  };
+}
+
+export function parseAnchorPair(body: Record<string, unknown>): ParsedAnchorPair | null {
+  const raw = body.anchor_pair;
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const start = parseAnchorSide(obj.start, START_ANCHOR_ROLES_ART);
+  const end = parseAnchorSide(obj.end, END_ANCHOR_ROLES_ART);
+  if (!start && !end) return null;
+  return { start, end };
 }
 
 /**
@@ -1044,6 +1169,310 @@ export function parseContinuityAnchors(
   return [];
 }
 
+// ── TD-49 Phase 2 P2.3 — Anchor Pair Generation ──────────────────────────────
+//
+// When Designer's Plan has an `anchor_pair` block (anchor_chain_enabled
+// episodes), the Artist generates 1-2 IMG-anchor_<shot_id_lower>_(start|end)
+// assets instead of the legacy single IMG-episode_ref. Each anchor uses
+// scene_master_asset bytes as a `scene_continuity` reference plus identity +
+// style refs from Bible. Director directive q4a 2026-05-25: stay on
+// openai-edits-multi (no new img2img/denoise provider) and rely on
+// prompt-level LAYOUT LOCK + scene_master as equal-weight ref. Each generated
+// anchor is REVIEW status → Director approval; P2.6 backbone fan-outs VANIM
+// after 2×N approvals.
+//
+// This function is invoked from `runEpisodeReferences` when planOverrides
+// carries a non-null `anchorPair`. It is self-contained — independent of the
+// legacy per-shot loop, scene-coverage manifest, EREF check, upscale, or
+// pilot/fan-out state machinery (none of which apply to anchor mode v1).
+
+interface AnchorPairGenerationArgs {
+  inputs: AgentInputs;
+  supabase: SupabaseClient<Database>;
+  episodeId: string;
+  episodeCode: string;
+  governanceMode: GovernanceModeNum;
+  planOverrides: PlanOverrides;
+  anchorPair: ParsedAnchorPair;
+}
+
+const ANCHOR_LAYOUT_LOCK_PREAMBLE = [
+  '[LAYOUT LOCK — TD-49 Phase 2 anchor pair, 2026-05-25]',
+  'The attached "scene_continuity" reference image is the canonical layout master for this location. Every recurring object position (mirror, carpets, bed, lamps, furniture, windows, doors) MUST appear in the same screen-space positions as in this reference. Only camera angle, character pose, and transient action props may vary between this anchor and the master. Do not rearrange furniture. Do not move the mirror. Do not change carpet pattern, room scale, or architectural geometry.',
+  '',
+].join('\n');
+
+async function runAnchorPairGeneration(
+  args: AnchorPairGenerationArgs,
+): Promise<EpisodeReferencesRunResult> {
+  const { inputs, supabase, episodeId, episodeCode, governanceMode, planOverrides, anchorPair } = args;
+
+  // 1. Anchor chain context — primary source of scene_master_asset.
+  const anchorCtx = await loadAnchorChainContext({
+    supabase,
+    episodeId,
+    shotId: planOverrides.shotId,
+  });
+  if (!anchorCtx.scene_master_asset) {
+    throw new EpisodeReferencesError(
+      `Anchor mode but no scene_master_asset for shot ${planOverrides.shotId}. Authoring this anchor requires either SBL-scene_master_<slug> or LOCKED SBL-location_<slug> for the shot's location.`,
+    );
+  }
+
+  // 2. Load scene_master image bytes.
+  const { data: smRow } = await supabase
+    .from('assets')
+    .select('id,staging_path')
+    .eq('id', anchorCtx.scene_master_asset.asset_id)
+    .maybeSingle();
+  if (!smRow?.staging_path) {
+    throw new EpisodeReferencesError(
+      `Scene master asset ${anchorCtx.scene_master_asset.asset_id} has no staging_path — cannot load reference bytes`,
+    );
+  }
+  const sceneMasterB64 = await readBibleImageAsBase64(smRow.staging_path);
+  if (!sceneMasterB64) {
+    throw new EpisodeReferencesError(
+      `Scene master bytes unreadable from ${smRow.staging_path}`,
+    );
+  }
+
+  // 3. Bible canon (identity refs + style ref).
+  const seriesId = await seriesIdForEpisode(supabase, episodeId);
+  if (!seriesId) {
+    throw new EpisodeReferencesError('Episode has no parent series_id');
+  }
+  const bible = await loadBibleCanon(supabase, seriesId);
+  if (bible.styles.length === 0) {
+    throw new EpisodeReferencesError(
+      'Series Bible has no LOCKED style — required for anchor generation',
+    );
+  }
+  const styleAsset = bible.styles[0]!;
+
+  // 4. Resolve current shot from storyboard (for character list).
+  const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
+  const stbAsset = findApprovedAsset(upstream, 'STB-storyboard');
+  if (!stbAsset?.content) {
+    throw new EpisodeReferencesError('No APPROVED storyboard with content');
+  }
+  const allShots = extractScenesFromStoryboard(stbAsset.content);
+  const shot = allShots.find((s) => s.shot_id === planOverrides.shotId);
+  if (!shot) {
+    throw new EpisodeReferencesError(
+      `Shot ${planOverrides.shotId} not found in storyboard (have ${allShots.length} shots)`,
+    );
+  }
+
+  // 5. Build refs: identity character(s) + style + scene_master.
+  const charBySlug = new Map<string, BibleAssetLike>();
+  for (const c of bible.characters) {
+    const slug = nameFromBibleFilename(c);
+    if (slug) charBySlug.set(slug, c);
+  }
+  // TD-53 (2026-05-25): scene_master MUST be the first attached ref to
+  // match the LAYOUT LOCK preamble's «first attached anchor image is the
+  // canonical layout» promise. Identity refs in slot 2+ still lock face /
+  // palette / silhouette reliably on gpt-image-2 (empirically verified
+  // when buildMultiImageRefs was reshuffled in the same commit). Style ref
+  // last — its rendering rules don't fight composition, just polish.
+  const identityRefs: MultiImageRef[] = [];
+  const identityCharNames: string[] = [];
+  const chars_v2 =
+    shot.characters_v2 && shot.characters_v2.length > 0
+      ? shot.characters_v2
+      : shot.characters_present.map((s) => ({
+          bible_slug: s,
+          expected_emotion: '',
+          expected_action: '',
+          role_in_shot: 'subject',
+        }));
+  for (const c of chars_v2) {
+    const slug = c.bible_slug.toLowerCase();
+    const asset =
+      charBySlug.get(slug) ??
+      [...charBySlug.entries()].find(([k]) => slug.includes(k) || k.includes(slug))?.[1] ??
+      null;
+    if (!asset) continue;
+    const b64 = await loadBibleImage(asset);
+    if (b64) {
+      identityRefs.push({
+        kind: 'identity',
+        bible_asset_id: asset.id,
+        image_b64: b64,
+      });
+      identityCharNames.push(nameFromBibleFilename(asset) ?? slug);
+    }
+  }
+  const styleB64 = await loadBibleImage(styleAsset);
+  const styleRef: MultiImageRef | null = styleB64
+    ? { kind: 'style', bible_asset_id: styleAsset.id, image_b64: styleB64 }
+    : null;
+  const baseRefs: MultiImageRef[] = [
+    {
+      kind: 'scene_continuity',
+      bible_asset_id: anchorCtx.scene_master_asset.asset_id,
+      image_b64: sceneMasterB64,
+    },
+    ...identityRefs,
+    ...(styleRef ? [styleRef] : []),
+  ];
+
+  // 6. Provider — explicit openai-edits-multi (q4a Director directive 2026-05-25).
+  const provider = getImageGenMultiProvider('openai-edits-multi');
+
+  // 7. Versioning — query existing IMG-anchor_<shotIdLower>_* assets for this episode.
+  const shotIdLower = planOverrides.shotId.toLowerCase().replace(/-/g, '_');
+  const { data: existingRows } = await supabase
+    .from('assets')
+    .select('version,file_type')
+    .eq('episode_id', episodeId)
+    .like('file_type', `IMG-anchor_${shotIdLower}_%`);
+  const versionByType = new Map<string, number>();
+  for (const r of (existingRows ?? []) as Array<{ version: number | null; file_type: string }>) {
+    const cur = versionByType.get(r.file_type) ?? 0;
+    if ((r.version ?? 0) > cur) versionByType.set(r.file_type, r.version ?? 0);
+  }
+
+  // 8. Per-side generation loop.
+  const sidesToRun: Array<{ name: 'start' | 'end'; side: ParsedAnchorSide }> = [];
+  if (anchorPair.start) sidesToRun.push({ name: 'start', side: anchorPair.start });
+  if (anchorPair.end) sidesToRun.push({ name: 'end', side: anchorPair.end });
+
+  const insertedAssetIds: string[] = [];
+  const perShot: EpisodeReferencesRunResult['perShot'] = [];
+  let totalCost = 0;
+  const nowIso = new Date().toISOString();
+
+  for (const { name, side } of sidesToRun) {
+    const fileType = `IMG-anchor_${shotIdLower}_${name}`.slice(0, 80);
+    const nextV = (versionByType.get(fileType) ?? 0) + 1;
+    versionByType.set(fileType, nextV);
+    const versionTag = `v${String(nextV).padStart(2, '0')}`;
+    const filename = `${episodeCode}-${fileType}-${versionTag}-DRAFT.png`;
+
+    const fullPrompt = `${ANCHOR_LAYOUT_LOCK_PREAMBLE}${side.prompt}`;
+
+    let genB64: string;
+    let genCost: number;
+    let genWidth: number;
+    let genHeight: number;
+    try {
+      const result = await provider.generate({
+        prompt: fullPrompt,
+        references: baseRefs.slice(0, provider.capabilities.max_references),
+        quality: EREF_QUALITY,
+        size: '1536x1024',
+      });
+      genB64 = result.b64_data;
+      genCost = result.cost_usd;
+      genWidth = result.width;
+      genHeight = result.height;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[eref-anchor] provider failed for ${planOverrides.shotId}/${name}: ${(err as Error).message}`,
+      );
+      continue;
+    }
+    totalCost += genCost;
+
+    const persisted = await persistBinary({
+      base64: genB64,
+      ext: 'png',
+      driveFilename: filename,
+      localHint: `eref-anchor-${shotIdLower}-${name}`,
+      episodeCode,
+      supabase,
+    });
+
+    const description = `Anchor ${name} for ${planOverrides.shotId} · role=${side.role} · ${genWidth}×${genHeight} · cost $${genCost.toFixed(4)}`;
+    const metadata = {
+      provenance: {
+        created_by: 'EXEC-EREF',
+        created_by_kind: 'agent' as const,
+        created_at: nowIso,
+        source: 'plan_driven' as const,
+        mode_at_time: governanceMode,
+        plan_asset_id: planOverrides.planAssetId,
+        plan_provider_id: planOverrides.providerId,
+      },
+      provider_used: provider.id,
+      anchor_position: name,
+      anchor_role: side.role,
+      handoff_link_to_shot_id: side.handoff_link_to_shot_id,
+      anchor_rationale: side.rationale,
+      scene_master_asset_id: anchorCtx.scene_master_asset.asset_id,
+      identity_character_slugs: identityCharNames,
+      shot_reference: {
+        shot_id: planOverrides.shotId,
+        shot_role: shot.shot_role ?? 'anchor',
+        location_slug: shot.location_slug ?? null,
+        anchor_position: name,
+        anchor_role: side.role,
+      },
+    };
+
+    const { data: inserted, error } = await supabase
+      .from('assets')
+      .insert({
+        episode_id: episodeId,
+        series_id: null,
+        agent_id: 'EXEC-EREF',
+        file_type: fileType,
+        filename,
+        description,
+        staging_path: persisted.browserUrl,
+        drive_path: persisted.browserUrl,
+        drive_file_id: persisted.driveFileId,
+        drive_web_view_url: persisted.driveWebViewUrl,
+        status: 'REVIEW',
+        version: nextV,
+        content: null,
+        metadata: metadata as unknown as Record<string, unknown>,
+      } as never)
+      .select('id')
+      .single();
+
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error(`[eref-anchor] insert failed for ${filename}: ${error.message}`);
+      continue;
+    }
+    insertedAssetIds.push(inserted.id);
+    perShot.push({
+      shot_id: planOverrides.shotId,
+      final_verdict: 'APPROVE',
+      retries: 0,
+      cost_usd: genCost,
+      is_4k: false,
+    });
+  }
+
+  if (insertedAssetIds.length === 0) {
+    throw new EpisodeReferencesError(
+      `Anchor mode produced no inserted assets for ${planOverrides.shotId} — all sides failed`,
+    );
+  }
+
+  const charNames = bible.characters
+    .map((c) => nameFromBibleFilename(c))
+    .filter((s): s is string => Boolean(s));
+  const locNames = bible.locations
+    .map((c) => nameFromBibleFilename(c))
+    .filter((s): s is string => Boolean(s));
+
+  return {
+    insertedAssetIds,
+    costUsd: totalCost,
+    totalImages: insertedAssetIds.length,
+    description: `Anchor pair by EXEC-EREF · ${planOverrides.shotId} · ${insertedAssetIds.length}/${sidesToRun.length} sides · cost $${totalCost.toFixed(4)} · scene_master=${anchorCtx.scene_master_asset.asset_id}`,
+    contract: EREF_CONTRACT,
+    bibleSnapshot: { characters: charNames, locations: locNames },
+    perShot,
+  };
+}
+
 export async function runEpisodeReferences(
   args: EpisodeReferencesRunArgs,
 ): Promise<EpisodeReferencesRunResult> {
@@ -1089,6 +1518,29 @@ export async function runEpisodeReferences(
   const epCode = episodeCode ?? ep?.episode_code ?? 'SS-unknown';
   const governanceMode = ((ep?.governance_mode ?? 1) as GovernanceModeNum) || 1;
   const episodeId = ep?.id ?? inputs.episode_id;
+
+  // ── TD-49 Phase 2 P2.3 anchor pair branch ─────────────────────────────────
+  // When the Designer Plan carries an anchor_pair block, the Artist diverges
+  // from the legacy single-IMG path entirely: runAnchorPairGeneration loads
+  // scene_master, builds identity+style+scene_master refs, generates one IMG
+  // per declared anchor side, and persists with the IMG-anchor_<shot>_<side>
+  // file_type that the approve-route P2.6 batch flow recognises.
+  //
+  // Skipped: freshness guard (anchor mode uses scene_master, not TD-30/TD-33
+  // continuity anchors), buildShotJobs, idempotency-by-IMG-episode_ref,
+  // pilot/fan-out state, style guardian rewrites, eref-check reviewer,
+  // 4K upscale. These layers all assume legacy single-IMG-per-shot semantics.
+  if (planDriven && planOverrides && planOverrides.anchorPair && typeof episodeId === 'string' && episodeId) {
+    return await runAnchorPairGeneration({
+      inputs,
+      supabase,
+      episodeId,
+      episodeCode: epCode,
+      governanceMode,
+      planOverrides,
+      anchorPair: planOverrides.anchorPair,
+    });
+  }
 
   // ── TD-35 freshness guard (defense-in-depth) ──────────────────────────────
   // REST guard at /api/episodes/[id]/regenerate-image-from-plan/route.ts
