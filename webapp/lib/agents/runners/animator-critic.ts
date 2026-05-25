@@ -20,13 +20,40 @@ import {
 } from '../providers/anthropic-text';
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
+import { extractAnchorChain } from './animator';
 
 export const VPREV_CONTRACT = 'animator_critic@v1';
 export const VPREV_MODEL = 'claude-sonnet-4-6';
 export const VPREV_MAX_TOKENS = 4000;
 export const VPREV_COST_CEILING_USD = 0.08;
 
-export type AnimatorCriticVerdict = 'PASS' | 'REVISE' | 'FAIL' | 'UNKNOWN';
+/**
+ * Critic verdict enum.
+ *
+ * TD-49 Phase 2 P2.5 (2026-05-25): `PASS_WITH_UNCERTAINTY` added for Mode 3
+ * DELEGATED governance (per CLAUDE.md §6 + the plan's mode-compatibility
+ * matrix). The Critic emits this verdict when the Plan passes ALL structural
+ * checks (V01-V09 + new anchor pair validation) but a craft-judgment
+ * dimension is ambiguous — e.g. an anchor pair's "scene-time alignment"
+ * looks structurally correct but the Critic cannot decide if the two
+ * different-angle stills truly depict the same moment.
+ *
+ * Mode-handling at the approve-route layer:
+ *   Mode 1/2.5 — Director sees the verdict + uncertainty notes on the
+ *               approval card; Director approves as usual
+ *   Mode 2/3   — `PASS` → EXEC-DIR-AI auto-approves; `PASS_WITH_UNCERTAINTY`
+ *               → escalate to Director; `REVISE` / `FAIL` → revise / reject
+ *   Mode 4     — all gates auto-pass; uncertainty notes preserved for audit
+ *
+ * Reads as a 4-value union from Plan body verdict field. Legacy plans
+ * emitting only PASS/REVISE/FAIL still parse correctly via parseVerdict.
+ */
+export type AnimatorCriticVerdict =
+  | 'PASS'
+  | 'PASS_WITH_UNCERTAINTY'
+  | 'REVISE'
+  | 'FAIL'
+  | 'UNKNOWN';
 
 export class AnimatorCriticError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -140,8 +167,61 @@ function buildUserMessage(args: {
 function parseVerdict(body: Record<string, unknown> | null): AnimatorCriticVerdict {
   if (!body) return 'UNKNOWN';
   const v = body.verdict;
-  if (v === 'PASS' || v === 'REVISE' || v === 'FAIL') return v;
+  if (
+    v === 'PASS' ||
+    v === 'PASS_WITH_UNCERTAINTY' ||
+    v === 'REVISE' ||
+    v === 'FAIL'
+  ) {
+    return v;
+  }
   return 'UNKNOWN';
+}
+
+/**
+ * TD-49 Phase 2 P2.5 — Structural anchor-chain validator. Deterministic
+ * checks the Critic LLM cannot get wrong (role enum, reciprocal
+ * handoff_link_to within the same Plan body). Cross-shot reciprocity (this
+ * shot's start ↔ prior shot's end across two separate Plans) is enforced
+ * at the approve-route batch flow (P2.6) — that's the only place both
+ * Plans are available simultaneously.
+ *
+ * Returns an array of violation strings — empty array = structurally clean.
+ * Callers fold these into Critic's `failed_checks[]` so the verdict logic
+ * (PASS / PASS_WITH_UNCERTAINTY / REVISE / FAIL) uses the same input shape.
+ *
+ * Defensive: legacy plans without start_anchor / end_anchor return an
+ * empty array (no violations) — back-compat with TD-33 q7a Plans.
+ */
+export function validateAnchorChainStructure(
+  planBody: Record<string, unknown> | null,
+): readonly string[] {
+  if (!planBody) return [];
+  try {
+    const chain = extractAnchorChain(planBody);
+    const violations: string[] = [];
+
+    // Duration sanity: if both opening_camera_motion and
+    // closing_static_hold_seconds are set, the shot's duration_seconds must
+    // be ≥ closing_static_hold + a minimum opening-motion budget (0.25s).
+    const closingHold = chain.closing_static_hold_seconds ?? 0;
+    const openingPresent = chain.opening_camera_motion !== null;
+    const openingBudget = openingPresent ? 0.25 : 0;
+    const rawDuration = (planBody as { duration_seconds?: unknown }).duration_seconds;
+    const duration =
+      typeof rawDuration === 'number' && Number.isFinite(rawDuration) && rawDuration > 0
+        ? rawDuration
+        : null;
+    if (duration !== null && duration < closingHold + openingBudget) {
+      violations.push(
+        `duration_seconds=${duration} too short for closing_static_hold_seconds=${closingHold} + opening_motion (min ${openingBudget}s).`,
+      );
+    }
+    return violations;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return [`anchor-chain structural violation: ${message}`];
+  }
 }
 
 function parseFailedChecks(
