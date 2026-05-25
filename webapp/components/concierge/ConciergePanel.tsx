@@ -14,7 +14,13 @@
 
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import {
   MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles,
   PanelLeftClose, PanelRightClose,
@@ -60,9 +66,16 @@ interface Message {
 const STORAGE_KEY = 'sandystudio.prodassistant.history';
 const THREAD_KEY = 'sandystudio.prodassistant.threadId';
 const TTS_KEY = 'sandystudio.prodassistant.ttsEnabled';
-const SIDE_KEY = 'sandystudio.prodassistant.side';
+// 2026-05-25 — bumped to .v2 so stale 'left' dock from Director's old
+// sessions resets to the new 'right' default. Old key abandoned in place.
+const SIDE_KEY = 'sandystudio.prodassistant.side.v2';
 const WIDTH_KEY = 'sandystudio.prodassistant.width';
+const OPEN_KEY = 'sandystudio.prodassistant.open';
+const INPUT_HEIGHT_KEY = 'sandystudio.prodassistant.inputHeight';
 const MAX_HISTORY_TURNS = 20;
+const INPUT_MIN_PX = 48;
+const INPUT_MAX_PX = 500;
+const INPUT_DEFAULT_PX = 80;
 
 /** Silence tolerance for continuous mic. Director wanted ≥5s for thinking pauses. */
 const MIC_SILENCE_TIMEOUT_MS = 5500;
@@ -201,7 +214,9 @@ function speakText(text: string) {
 }
 
 export function ConciergePanel() {
-  const [open, setOpen] = useState(false);
+  // Default open=true per Director directive 2026-05-25 — page-load lands with
+  // PA already expanded. Persisted in localStorage so an explicit close sticks.
+  const [open, setOpen] = useState(true);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
@@ -209,6 +224,10 @@ export function ConciergePanel() {
   const [micError, setMicError] = useState<string | null>(null);
   const [side, setSide] = useState<'left' | 'right'>('right');
   const [panelWidth, setPanelWidth] = useState<number>(420);
+  // Input height persisted across submits — without this, clearing the
+  // textarea collapses it back to the `rows={2}` band ("узенькая полоска").
+  const [inputHeight, setInputHeight] = useState<number>(INPUT_DEFAULT_PX);
+  const inputResizeRef = useRef<{ startY: number; startH: number } | null>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -258,15 +277,55 @@ export function ConciergePanel() {
       const w = parseInt(localStorage.getItem(WIDTH_KEY) ?? '', 10);
       if (Number.isFinite(w) && w >= 320 && w <= 900) setPanelWidth(w);
     } catch { /* ignore */ }
+    try {
+      const o = localStorage.getItem(OPEN_KEY);
+      // Only honour an explicit '0' (Director chose to close last time).
+      // Anything else — first visit, '1', unrecognised — keeps the default-open.
+      if (o === '0') setOpen(false);
+    } catch { /* ignore */ }
+    try {
+      const h = parseInt(localStorage.getItem(INPUT_HEIGHT_KEY) ?? '', 10);
+      if (Number.isFinite(h) && h >= INPUT_MIN_PX && h <= INPUT_MAX_PX) setInputHeight(h);
+    } catch { /* ignore */ }
   }, []);
 
-  // Persist panel side / width.
+  // Persist panel side / width / open / input height.
   useEffect(() => {
     try { localStorage.setItem(SIDE_KEY, side); } catch { /* ignore */ }
   }, [side]);
   useEffect(() => {
     try { localStorage.setItem(WIDTH_KEY, String(panelWidth)); } catch { /* ignore */ }
   }, [panelWidth]);
+  useEffect(() => {
+    try { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); } catch { /* ignore */ }
+  }, [open]);
+  useEffect(() => {
+    try { localStorage.setItem(INPUT_HEIGHT_KEY, String(inputHeight)); } catch { /* ignore */ }
+  }, [inputHeight]);
+
+  // Inverted vertical resize for the PA input. Handle sits at the TOP of the
+  // textarea — dragging up grows it (more chat space above the input bar),
+  // dragging down shrinks. Mirrors the panel-width resize at line ~1000 which
+  // also inverts depending on which edge the handle lives on.
+  function onInputResizeStart(e: ReactMouseEvent): void {
+    e.preventDefault();
+    inputResizeRef.current = { startY: e.clientY, startH: inputHeight };
+    const handleMove = (ev: MouseEvent): void => {
+      const ref = inputResizeRef.current;
+      if (!ref) return;
+      const dy = ev.clientY - ref.startY;
+      // Drag up → dy negative → startH - dy = startH + |dy| → grow.
+      const next = Math.min(INPUT_MAX_PX, Math.max(INPUT_MIN_PX, ref.startH - dy));
+      setInputHeight(next);
+    };
+    const handleUp = (): void => {
+      inputResizeRef.current = null;
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+  }
 
   // Reserve layout space in the StudioShell so the panel pushes content
   // instead of overlapping it. Cleared on close / unmount.
@@ -1218,19 +1277,40 @@ export function ConciergePanel() {
           >
             {listening ? <MicOff size={16} /> : <Mic size={16} />}
           </button>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e as unknown as FormEvent);
-              }
-            }}
-            rows={2}
-            placeholder="Ask the Prod Assistant… (Shift+Enter = newline, drag bottom-right to resize)"
-            className="flex-1 resize-y rounded-lg bg-[var(--bg-elevated)] border border-glass px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--accent-primary)] min-h-[3rem] max-h-[60vh]"
-          />
+          <div className="relative flex-1">
+            {/* Inverted resize handle — sits along the TOP edge. Drag up = grow,
+                drag down = shrink. Persists across submits. */}
+            <button
+              type="button"
+              aria-label="Resize input (drag up to grow)"
+              title="Drag up to grow, down to shrink"
+              onMouseDown={onInputResizeStart}
+              className={cn(
+                'absolute -top-1 left-1/2 -translate-x-1/2 z-10',
+                'h-2 w-16 rounded-full cursor-ns-resize',
+                'bg-glass hover:bg-glass-active transition-colors',
+                'flex items-center justify-center',
+              )}
+            >
+              <span
+                aria-hidden
+                className="block h-0.5 w-8 rounded-full bg-text-muted/60"
+              />
+            </button>
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e as unknown as FormEvent);
+                }
+              }}
+              style={{ height: `${inputHeight}px` }}
+              placeholder="Ask the Prod Assistant… (Shift+Enter = newline, drag handle above to resize)"
+              className="block w-full resize-none rounded-lg bg-[var(--bg-elevated)] border border-glass px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--accent-primary)]"
+            />
+          </div>
           {streaming ? (
             <Button
               type="button"

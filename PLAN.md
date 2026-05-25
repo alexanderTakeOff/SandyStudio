@@ -87,15 +87,57 @@ Status:   ✅ tsc clean · vitest **481/481** (+30 new) · replay-pilot **29/29*
           smallest patch — ~30 LoC PA-tool parameter + dispatch.ts switch.
           #2-4 are followup work.
 
+          🔴 **TD-39 — PA delivery acknowledgment gap (Director surfaced 2026-05-25)**
+          When Polина calls a dispatch tool (`requestRevision`, `approveAsset`,
+          `regenerateRefPlan`, `triggerAgent`, `setBibleContent`...) the tool
+          returns "succeeded" as soon as the HTTP endpoint replies 200. That
+          endpoint only proves: (a) DB row was written, (b) Inngest event was
+          emitted. It does NOT prove: (c) Inngest function actually picked the
+          event up, (d) a `jobs` row reached `status='RUNNING'`, (e) the agent
+          stays alive past first checkpoint, (f) the work didn't immediately
+          fail. Polина then tells Director «отправлено» and moves on. In Mode 1
+          (manual) Director eyeballs the DAG and notices. In **Mode 3 / Mode 4
+          this is catastrophic** — silent loss, no escalation, pipeline just
+          stops with nobody knowing.
+          Architectural confirmation: `lib/concierge/tools/dispatch.ts:256-271`
+          `parseFetchResponse` returns `ok()` purely on HTTP status. No probe
+          back into `jobs` table. No wait. No retry.
+          Layered fix proposal:
+          • **Layer 1 — sync ack inside the tool (~2-3h, 80% coverage).**
+              After `internalFetch`, poll for `jobs.status IN ('RUNNING',
+              'COMPLETED')` OR `activity_events(event_type='agent_started')`
+              tagged with the new asset/event for up to N seconds (default 10s,
+              configurable). If not seen → return `fail('dispatched but no
+              executor pickup within Ns', 'pickup_timeout')` so Polина
+              naturally tells Director "отправил, но не подхватили — чек
+              Inngest".
+          • **Layer 2 — watchdog cron (~6h).** Scheduled Inngest function every
+              60s scans `jobs WHERE status='RUNNING' AND updated_at < NOW() -
+              INTERVAL '5 min'` → marks FAILED + emits `activity_event
+              (event_type='job_stalled')`. Polина's existing `auto-react`
+              + `pa-orphaned-awaiting-sweep` already listens to activity →
+              naturally escalates to Director.
+          • **Layer 3 — proactive PA awareness (~1-2 day).** After each
+              dispatch, Polина records `awaiting_jobs[]` in her thread metadata.
+              Next turn (auto-react or ambient tick) she calls a new
+              `checkAwaitingJobs` tool that reports COMPLETED → continue,
+              FAILED → escalate, RUNNING > N min → ask Director, NOT STARTED
+              > N sec → resend OR escalate. Closes Mode 3/4 properly.
+          Layer 1 is the must-have for Mode 3/4 to be usable. Estimated patch:
+          ~50-80 LoC in `dispatch.ts` + new `lib/concierge/tools/wait-for-pickup.ts`
+          + 1 SQL helper + tests. Layers 2+3 are followups.
+
 Next:    1. Restart smoke (SH21/SH22 plan-level regen + onwards) — ONLY after q16.
           2. Polина briefing: q6 skill update from yesterday is SUPERSEDED by q7a Step 7
              (eref-shot-composition trimmed to Plan-contract one-liner).
           3. TD-36 (StudioShell ergonomics — 3 fixes dictated 2026-05-22 evening,
              not urgent) — Director still owes screenshot for fix #3.
+          4. **TD-39 Layer 1 — PA delivery ack (Director-flagged 2026-05-25, MUST-have
+             before any Mode 3/Mode 4 run).**
 
 Mode:    ===5=== authorized for commit+push+merge (Director directive 2026-05-23 AM).
          Mode 1 governance.
-Date:    2026-05-23
+Date:    2026-05-25
 ```
 
 ## SPRINT STATUS
@@ -145,6 +187,7 @@ Sprints S0–S8 (foundation + spec) all COMPLETE 2026-04-23..28 — details in `
 | 23 | **Designer post-pilot auto-fanout-trigger (NEW gap 2026-05-20).** After `cdb7f9f` Pilot Pass fix, REV-world_check.APPROVED fan-outs only first 2 shots as SPC-ref_plan events. Remaining shot ids land in `episodes.metadata.designer_fanout_pending` (+ `designer_pilot_count` + `designer_fanout_total`). Missing: mechanism that auto-fan-outs the remaining shot ids when Director approves both pilot SPC-ref_plan assets. Mirror EREF v2 `sandystudio/exec-eref/fanout-trigger` event pattern: (a) new Inngest event `sandystudio/exec-eref-designer/fanout-trigger`; (b) approve route detects last-pilot-approved condition (count APPROVED SPC-ref_plan == designer_pilot_count) and fires the event; (c) handler reads `designer_fanout_pending`, fires one Designer plan event per stashed shot id, clears the array. Effort: ~2-3h with tests. Today's smoke can be unblocked by Polina manually calling `triggerAgent('EXEC-EREF-DESIGNER', {shotId})` per remaining shot (20×). Required for the next series so production doesn't need manual fan-out | Reliability / UX |
 | 22 | **DELETE asset / asset_updated events not actionable for PA auto-react.** When Director deletes an asset from Library, the handler writes `event_type='asset_updated'` which is NOT in the Postgres trigger's actionable whitelist (migration 0030). Polina therefore can't autonomously react to «Director deleted X». Two options: widen whitelist to include 'asset_updated' (potentially noisy on every edit), or refactor delete handler to use `agent_completed` with `actor='EXEC-BIBLE-AUTHOR'` (already validated pattern from `6f54ddd`). Effort: ~30 min. Defer with TD-22 priority — low (auto-react on deletes is nice-to-have, not blocking) | UX |
 | 21 | **Brief↔Bible consistency validator missing (NEW gap 2026-05-20).** Discovered during plan `soft-swimming-thunder.md`. ART-HW writes `SPC-story_brief`; EXEC-SW reads it directly; EXEC-SREV reviews the **script**, not the brief; nobody verifies brief is compatible with Series Bible (character canon, world rules, declared style anchor). Risk: brief asks for behavior/look the Bible forbids; contradiction surfaces three layers downstream as Designer/Animator HALT, costing wall-clock + tokens with no clear cause. Options: (a) new Critic agent EXEC-HW-CRITIC between ART-HW APPROVED and EXEC-SW trigger — symmetric with EREF Designer's Critic + Animator's Critic shipped in Sprint «Дизайнер и Аниматор» (recommended); (b) extend EXEC-SREV to also re-read the brief and flag brief↔Bible drift in addition to script↔brief drift; (c) light pre-check in `gate.ts` for SPC-story_brief APPROVED transition mirroring the Bible canon precondition EXEC-EREF already does at gate.ts:286. Effort: ~6-10h for option (a). Defer until current Polina fix lands + SS-S15 smoke completes | Reliability / Creative |
+| 39 | **PA delivery acknowledgment gap (BLOCKS Mode 3/4).** Director surfaced 2026-05-25. PA dispatch tools (`requestRevision`, `approveAsset`, `regenerateRefPlan`, `triggerAgent`, `setBibleContent`) return success on HTTP 200 from the underlying API endpoint — proves DB write + Inngest event emit, NOT that the Inngest function actually picked up the work. Polина reports «отправил» to Director and proceeds. In Mode 1 Director eyeballs the DAG; in **Mode 3 / Mode 4 = silent loss**. Architectural confirmation: `lib/concierge/tools/dispatch.ts:256-271 parseFetchResponse`. Layered fix: **L1** sync ack — after internalFetch, poll `jobs.status IN (RUNNING,COMPLETED)` OR `activity_events(event_type='agent_started')` for ≤10s; return `pickup_timeout` if not seen; ~50-80 LoC + tests (~2-3h, 80% coverage, MUST before Mode 3/4). **L2** Inngest cron every 60s marks `jobs RUNNING > 5min` as FAILED + emits `job_stalled` event for Polина auto-react (~6h). **L3** Polина records `awaiting_jobs[]` per thread + new `checkAwaitingJobs` tool reads status next turn → COMPLETED/FAILED/escalate (~1-2d). See CURRENT STATE TD-39 for full proposal. | Reliability / Mode 3-4 blocker |
 | 19 | **Asset content edits overwrite in place — no version increment.** Surfaced 2026-05-19 SS-S15-E01 «Heavy Friend» smoke. `PUT /api/assets/[id]/content` (UI «Edit brief» button + PA tool `editBrief`) mutates same row → filename stays `v01`, no audit between agent and Director edits, «approve» targets ambiguous last-writer-wins state. Director's expected model: «my edit = v02 · agent's edit = v03 · approve targets a specific version». Affects ALL Plan-assets (SPC-brief / SCR-script / STB-storyboard / SPC-ref_plan / SPC-shot_plan / SPC-gag_plan / BIB-*). `setBibleContent` PA tool already does «create new version» correctly — this is the inconsistency to fix. Remediation: endpoint INSERT row v+1 instead of UPDATE; status DRAFT for new version; old row stays. ~30-40 min endpoint + ~15 min regression test. UI version selector dropdown is separate ~2h. Decision deferred per Director 2026-05-19 — keep current behaviour through smoke, fix before next series | Reliability / Audit |
 
 **Already fixed in Phase 5c** (don't re-add): #3 Story phantom stage hidden · #9 Multi-asset milestone chain via `computeNextEvents` (STB×3, animatic fan-out, metadata→thumb, ready→pub) · #10 Pipeline View stage filter · #11 Factory writes `agent_completed` · #12 STAGE_FROM_ASSET prefix matching.
