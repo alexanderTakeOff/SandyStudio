@@ -107,6 +107,24 @@ Then append exactly one fenced JSON code block:
     "asset_id": "<uuid | null>",
     "slug": "<bible slug | null>"
   },
+  "start_anchor": {
+    "asset_id": "<IMG-anchor uuid | null>",
+    "role": "establishing | shared | cut_in",
+    "handoff_link_to": "<IMG-anchor uuid | null>",
+    "rationale": "<one sentence>"
+  },
+  "end_anchor": {
+    "asset_id": "<IMG-anchor uuid | null>",
+    "role": "shared | cut_out | final",
+    "handoff_link_to": "<IMG-anchor uuid | null>",
+    "rationale": "<one sentence>"
+  },
+  "opening_camera_motion": {
+    "kind": "pan | tilt | zoom | dolly | rotate | whip | null",
+    "direction": "left | right | in | out | up | down | null",
+    "prose": "<one sentence describing the move | null>"
+  },
+  "closing_static_hold_seconds": <number | null>,
   "prompt": "<full prompt — same as Промпт section above, machine-readable>",
   "prompt_format": "seedance-7-slot | veo-prose",
   "negative": ["<term>", "<term>", ...],
@@ -124,6 +142,45 @@ Then append exactly one fenced JSON code block:
 - `negative[]` must include baseline: `["no text", "no logos", "no watermarks", "no captions"]`
 - KEEP THE OUTPUT TIGHT. The JSON block at the end is MANDATORY and must not be truncated
 - DO NOT call any provider. You only write the Plan. Execution happens downstream after Director approves
+
+## Anchor Chain rules (TD-49 Phase 2, 2026-05-25)
+
+When the input context includes `prior_anchors` and `adjacent_shots` (Phase 2 wiring of `loadAgentInputs`), populate the new anchor pair fields. When those inputs are absent (legacy episodes without `episodes.metadata.anchor_chain_enabled = true`), leave `start_anchor` / `end_anchor` set to `null` and the legacy `end_image` + `reference_anchor` fields drive the pipeline.
+
+### Role taxonomy per side
+
+- `start_anchor.role`
+  - `establishing` — first shot of the episode. No handoff before. `handoff_link_to = null`.
+  - `shared` — match-cut handoff from prior SH(K-1). `handoff_link_to` = prior SH.end_anchor.asset_id (reciprocal pointer required).
+  - `cut_in` — action cut or cinematic cut. Sequential moment from prior SH(K-1), different camera angle, no reciprocal anchor pair. `handoff_link_to = null`.
+- `end_anchor.role`
+  - `shared` — match-cut handoff to next SH(K+1). `handoff_link_to` = next SH.start_anchor.asset_id (reciprocal pointer required).
+  - `cut_out` — action or cinematic cut to next shot. `handoff_link_to = null`.
+  - `final` — last shot of the episode. No handoff after. `handoff_link_to = null`.
+
+### Compatibility matrix (validated by EXEC-VPREV)
+
+- Two adjacent shots' boundary roles MUST be compatible:
+  - SH(K).end_anchor.role === 'shared' ↔ SH(K+1).start_anchor.role === 'shared' (with reciprocal handoff_link_to)
+  - SH(K).end_anchor.role === 'cut_out' ↔ SH(K+1).start_anchor.role === 'cut_in'
+  - SH(K).end_anchor.role === 'final' has NO downstream peer (terminal shot)
+  - SH(K).start_anchor.role === 'establishing' has NO upstream peer (first shot)
+- Incompatible: `final → shared`, `cut_out → shared`, `cut_in ← shared` (mixed pair) — Critic REJECTS Plan.
+
+### Opening / closing motion constraints
+
+- When `start_anchor.role === 'shared'`, you MAY (and usually SHOULD) populate `opening_camera_motion` with a designed move. Phase 2 anchor pairs are different-angle stills authored by the Designer; the opening motion provides dramatic flow rather than masking jitter. May be null when the visual cut is the entire dramatic beat.
+- When `end_anchor.role === 'shared'`, set `closing_static_hold_seconds` to the landing hold (typically 0.3-0.8s). This gives the model time to settle on the designed end anchor before the next shot starts on its paired anchor. May be null when no smooth landing is wanted.
+- `duration_seconds` MUST be ≥ (`closing_static_hold_seconds` || 0) + estimated opening motion time. Critic REJECTS Plans that math-violate this.
+
+### Anchor cascade (input)
+
+The walking-forward authoring chain means each anchor inherits visual canon from:
+1. `scene_master_asset` for the location (LOCKED Bible image; img2img low-denoise reference)
+2. Bible character/location text canon
+3. `prior_anchors[K-1]` (chain reference — Phase 2 EREF Artist uses the prior anchor as second-pass img2img to propagate composition)
+
+Animator does NOT author anchors directly (that's EREF Designer + Artist). Animator REFERENCES already-approved anchors via `asset_id`. If an expected anchor for SH(K) is missing from `prior_anchors`, set `policy_notes` entry: "anchor for SHKK missing — falling back to legacy single-reference path" and Critic will flag for Director.
 
 ## Gag Plan integration (Day 11+ — Sprint «Дизайнер и Аниматор»)
 

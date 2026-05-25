@@ -139,6 +139,279 @@ export const ASPECT_BY_DELIVERY_TARGET: Readonly<Record<string, '16:9' | '9:16' 
     print_poster: '16:9',
   });
 
+// ── TD-49 Phase 2 — Anchor chain schema (2026-05-25) ─────────────────────────
+//
+// The Animator's Plan body gains two new fields, `start_anchor` and
+// `end_anchor`, each pointing to an `IMG-anchor_*` Bible-level asset (designed
+// by EREF Designer) plus a role enum and a reciprocal `handoff_link_to` for
+// match-cut handoffs. Legacy `end_image.eref_asset_id` stays for back-compat
+// — episodes without `metadata.anchor_chain_enabled = true` leave anchor
+// fields null and the legacy path drives VGEN.
+
+export type StartAnchorRole = 'establishing' | 'shared' | 'cut_in';
+export type EndAnchorRole = 'shared' | 'cut_out' | 'final';
+
+export const START_ANCHOR_ROLES: readonly StartAnchorRole[] = [
+  'establishing',
+  'shared',
+  'cut_in',
+] as const;
+
+export const END_ANCHOR_ROLES: readonly EndAnchorRole[] = [
+  'shared',
+  'cut_out',
+  'final',
+] as const;
+
+export interface VanimStartAnchor {
+  asset_id: string;
+  role: StartAnchorRole;
+  /** Reciprocal pointer to prior SH.end_anchor.asset_id; required when
+   *  role === 'shared', must be null otherwise. */
+  handoff_link_to: string | null;
+  rationale?: string;
+}
+
+export interface VanimEndAnchor {
+  asset_id: string;
+  role: EndAnchorRole;
+  /** Reciprocal pointer to next SH.start_anchor.asset_id; required when
+   *  role === 'shared', must be null otherwise. */
+  handoff_link_to: string | null;
+  rationale?: string;
+}
+
+export type OpeningCameraMotionKind =
+  | 'pan'
+  | 'tilt'
+  | 'zoom'
+  | 'dolly'
+  | 'rotate'
+  | 'whip';
+
+export type OpeningCameraMotionDirection =
+  | 'left'
+  | 'right'
+  | 'in'
+  | 'out'
+  | 'up'
+  | 'down';
+
+export interface VanimOpeningCameraMotion {
+  kind: OpeningCameraMotionKind | null;
+  direction: OpeningCameraMotionDirection | null;
+  prose: string | null;
+}
+
+/**
+ * Parsed anchor-chain section of a VANIM Plan body. All fields are nullable
+ * — legacy plans without anchor chain return all nulls, callers fall through
+ * to existing single-reference path.
+ */
+export interface ParsedAnchorChain {
+  start_anchor: VanimStartAnchor | null;
+  end_anchor: VanimEndAnchor | null;
+  opening_camera_motion: VanimOpeningCameraMotion | null;
+  closing_static_hold_seconds: number | null;
+}
+
+function isUuidish(value: unknown): value is string {
+  return typeof value === 'string' && value.length >= 8;
+}
+
+function parseStartAnchor(raw: unknown): VanimStartAnchor | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  if (!isUuidish(obj.asset_id)) return null;
+  if (typeof obj.role !== 'string' || !(START_ANCHOR_ROLES as readonly string[]).includes(obj.role)) {
+    throw new AnimatorError(
+      `Plan body start_anchor.role invalid: "${String(obj.role)}". Allowed: ${START_ANCHOR_ROLES.join(', ')}.`,
+    );
+  }
+  const role = obj.role as StartAnchorRole;
+  const handoffLinkTo =
+    obj.handoff_link_to === null || obj.handoff_link_to === undefined
+      ? null
+      : isUuidish(obj.handoff_link_to)
+        ? obj.handoff_link_to
+        : null;
+  if (role === 'shared' && !handoffLinkTo) {
+    throw new AnimatorError(
+      'Plan body start_anchor.role="shared" requires handoff_link_to to be a non-null asset_id (reciprocal pair with prior SH.end_anchor).',
+    );
+  }
+  if (role !== 'shared' && handoffLinkTo) {
+    throw new AnimatorError(
+      `Plan body start_anchor.role="${role}" must have handoff_link_to=null; got "${handoffLinkTo}".`,
+    );
+  }
+  const rationale =
+    typeof obj.rationale === 'string' && obj.rationale.length > 0
+      ? obj.rationale
+      : undefined;
+  return {
+    asset_id: obj.asset_id,
+    role,
+    handoff_link_to: handoffLinkTo,
+    ...(rationale ? { rationale } : {}),
+  };
+}
+
+function parseEndAnchor(raw: unknown): VanimEndAnchor | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  if (!isUuidish(obj.asset_id)) return null;
+  if (typeof obj.role !== 'string' || !(END_ANCHOR_ROLES as readonly string[]).includes(obj.role)) {
+    throw new AnimatorError(
+      `Plan body end_anchor.role invalid: "${String(obj.role)}". Allowed: ${END_ANCHOR_ROLES.join(', ')}.`,
+    );
+  }
+  const role = obj.role as EndAnchorRole;
+  const handoffLinkTo =
+    obj.handoff_link_to === null || obj.handoff_link_to === undefined
+      ? null
+      : isUuidish(obj.handoff_link_to)
+        ? obj.handoff_link_to
+        : null;
+  if (role === 'shared' && !handoffLinkTo) {
+    throw new AnimatorError(
+      'Plan body end_anchor.role="shared" requires handoff_link_to to be a non-null asset_id (reciprocal pair with next SH.start_anchor).',
+    );
+  }
+  if (role !== 'shared' && handoffLinkTo) {
+    throw new AnimatorError(
+      `Plan body end_anchor.role="${role}" must have handoff_link_to=null; got "${handoffLinkTo}".`,
+    );
+  }
+  const rationale =
+    typeof obj.rationale === 'string' && obj.rationale.length > 0
+      ? obj.rationale
+      : undefined;
+  return {
+    asset_id: obj.asset_id,
+    role,
+    handoff_link_to: handoffLinkTo,
+    ...(rationale ? { rationale } : {}),
+  };
+}
+
+function parseOpeningCameraMotion(
+  raw: unknown,
+): VanimOpeningCameraMotion | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const allowedKinds = new Set([
+    'pan',
+    'tilt',
+    'zoom',
+    'dolly',
+    'rotate',
+    'whip',
+  ]);
+  const allowedDirs = new Set(['left', 'right', 'in', 'out', 'up', 'down']);
+  const kind =
+    typeof obj.kind === 'string' && allowedKinds.has(obj.kind)
+      ? (obj.kind as OpeningCameraMotionKind)
+      : null;
+  const direction =
+    typeof obj.direction === 'string' && allowedDirs.has(obj.direction)
+      ? (obj.direction as OpeningCameraMotionDirection)
+      : null;
+  const prose = typeof obj.prose === 'string' && obj.prose.length > 0 ? obj.prose : null;
+  if (!kind && !direction && !prose) return null;
+  return { kind, direction, prose };
+}
+
+/**
+ * Extract + validate the anchor-chain section of a VANIM Plan body.
+ * Returns all-null when fields are absent (legacy path). Throws
+ * AnimatorError on structural violations (invalid role, missing reciprocal
+ * link, type mismatch) so callers / Critic can REJECT the Plan rather than
+ * silently mis-route.
+ *
+ * Phase 2 entry point — used by Critic (VPREV, P2.5), runner.ts q7a Step 6
+ * extension (P2.4), and approve-route batch flow (P2.6).
+ */
+export function extractAnchorChain(planBody: unknown): ParsedAnchorChain {
+  if (!planBody || typeof planBody !== 'object') {
+    return {
+      start_anchor: null,
+      end_anchor: null,
+      opening_camera_motion: null,
+      closing_static_hold_seconds: null,
+    };
+  }
+  const body = planBody as Record<string, unknown>;
+  const start_anchor = parseStartAnchor(body.start_anchor);
+  const end_anchor = parseEndAnchor(body.end_anchor);
+  const opening_camera_motion = parseOpeningCameraMotion(
+    body.opening_camera_motion,
+  );
+  const rawHold = body.closing_static_hold_seconds;
+  const closing_static_hold_seconds =
+    typeof rawHold === 'number' && Number.isFinite(rawHold) && rawHold >= 0
+      ? rawHold
+      : null;
+  return {
+    start_anchor,
+    end_anchor,
+    opening_camera_motion,
+    closing_static_hold_seconds,
+  };
+}
+
+/**
+ * Cross-pair compatibility check. Given SH(K).end_anchor + SH(K+1).start_anchor
+ * from two adjacent Plans, return null when compatible, or a violation
+ * message describing the mismatch. Match-cut pairing requires reciprocal
+ * handoff_link_to pointers; action-cut requires cut_out↔cut_in. Used by
+ * VPREV (P2.5) and approve-route gate (P2.6).
+ */
+export function checkAnchorPairCompatibility(
+  prevEnd: VanimEndAnchor | null,
+  nextStart: VanimStartAnchor | null,
+): string | null {
+  if (!prevEnd && !nextStart) return null;
+  if (!prevEnd) {
+    if (nextStart && nextStart.role === 'shared') {
+      return 'next shot start_anchor.role="shared" but prior shot has no end_anchor';
+    }
+    return null;
+  }
+  if (!nextStart) {
+    if (prevEnd.role === 'shared') {
+      return 'prior shot end_anchor.role="shared" but next shot has no start_anchor';
+    }
+    return null;
+  }
+  // `final` is terminal — ANY next anchor is a violation, regardless of its
+  // role. Check first to short-circuit the cut/shared matrix below.
+  if (prevEnd.role === 'final') {
+    return 'prior shot end_anchor.role="final" has no downstream peer — next shot exists but final terminal expected';
+  }
+  if (prevEnd.role === 'shared' && nextStart.role !== 'shared') {
+    return `boundary mismatch: prior end_anchor.role="shared" but next start_anchor.role="${nextStart.role}"`;
+  }
+  if (prevEnd.role !== 'shared' && nextStart.role === 'shared') {
+    return `boundary mismatch: next start_anchor.role="shared" but prior end_anchor.role="${prevEnd.role}"`;
+  }
+  if (prevEnd.role === 'shared' && nextStart.role === 'shared') {
+    if (prevEnd.handoff_link_to !== nextStart.asset_id) {
+      return `match-cut handoff missing reciprocal: prior end_anchor.handoff_link_to="${prevEnd.handoff_link_to}" does not point to next start_anchor.asset_id="${nextStart.asset_id}"`;
+    }
+    if (nextStart.handoff_link_to !== prevEnd.asset_id) {
+      return `match-cut handoff missing reciprocal: next start_anchor.handoff_link_to="${nextStart.handoff_link_to}" does not point to prior end_anchor.asset_id="${prevEnd.asset_id}"`;
+    }
+  }
+  if (prevEnd.role === 'cut_out' && nextStart.role !== 'cut_in') {
+    return `boundary mismatch: prior end_anchor.role="cut_out" but next start_anchor.role="${nextStart.role}" (expected "cut_in")`;
+  }
+  if (prevEnd.role !== 'cut_out' && nextStart.role === 'cut_in') {
+    return `boundary mismatch: next start_anchor.role="cut_in" but prior end_anchor.role="${prevEnd.role}" (expected "cut_out")`;
+  }
+  return null;
+}
+
 export class AnimatorError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
     super(message);
