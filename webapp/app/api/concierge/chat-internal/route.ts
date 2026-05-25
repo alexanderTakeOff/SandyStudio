@@ -28,6 +28,8 @@ import OpenAI from 'openai';
 import type {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionMessageParam,
+  ChatCompletionMessageToolCall,
+  ChatCompletionAssistantMessageParam,
 } from 'openai/resources/chat/completions';
 import { z } from 'zod';
 import { getServerEnv } from '@/lib/env';
@@ -35,6 +37,7 @@ import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
+import { TOOLS, findTool, openaiSchemas, type ToolContext } from '@/lib/concierge/tools';
 import type { ConciergeMode } from '@/lib/concierge/types';
 
 export const runtime = 'nodejs';
@@ -42,6 +45,28 @@ export const dynamic = 'force-dynamic';
 
 const ANTI_CASCADE_WINDOW_MS = 10_000;
 const RECENT_TURN_WINDOW = 80;
+
+/**
+ * TD-51 (2026-05-25): auto-react tool loop cap. Polina may call read-only /
+ * analysis tools to inspect what just happened (getAsset, getRecentActivityEvents,
+ * getAnimatorCriticVerdict, etc.) before composing her narrative response.
+ * 3 rounds keeps her bounded: typical agent_completed pickup needs 1-2 reads
+ * + a final text round. Mutating tools (triggerAgent, requestRevision,
+ * approveAsset) are blocked by the per-tool guard regardless of rounds.
+ */
+const MAX_AUTO_REACT_TOOL_ROUNDS = 3;
+
+/**
+ * TD-51 (2026-05-25): read-only / analysis subset of the concierge tool
+ * registry. Filtered by Tool.mutating: false. Cached at module load — the
+ * registry is frozen and module-lived so this list never changes at runtime.
+ */
+const READ_ONLY_TOOL_NAMES = new Set(
+  TOOLS.filter((t) => t.mutating === false).map((t) => t.name),
+);
+const READ_ONLY_TOOL_SCHEMAS = openaiSchemas.filter((s) =>
+  READ_ONLY_TOOL_NAMES.has(s.function.name),
+);
 
 const Body = z.object({
   thread_id: z.string().uuid(),
@@ -151,10 +176,31 @@ export async function POST(req: Request) {
       : parsed.source === 'watchdog'
         ? `[autonomous trigger] **OPEN-LOOP WATCHDOG re-ping** — your prior turn (${parsed.trigger_id}) had awaiting_director_input set but nothing has resolved it for >90s. Director may have missed your question or you may need to take the next concrete step yourself.`
         : `[autonomous trigger] team-chat message from Тео (turn ${parsed.trigger_id})`;
-  const userInstruction =
-    parsed.source === 'watchdog'
-      ? 'Read your prior assistant turn (above). Either (a) take the next concrete sub-step yourself if the original Director directive logically covers it — don\'t wait for new approval; or (b) re-ask Director more explicitly with a fresh q-format question and a tighter framing. Do not just echo your previous wait. Do not request tools.'
-      : 'Recap what just happened in this thread (read the recent turns above) and decide whether to act now or wait for Director. Keep the response short. Do not request tools.';
+
+  // TD-51 (2026-05-25): per-source tool policy.
+  // - watchdog: still no tools. Goal is re-prompting Director, not acting.
+  //             Director must see Polina's re-ping as a text message, not a
+  //             tool-call burst.
+  // - ambient (agent_completed / agent_failed / approval_revision / etc) +
+  //   claude_message: read-only / analysis tools allowed (getAsset,
+  //   getRecentActivityEvents, getCriticVerdict, getAnimatorCriticVerdict,
+  //   getGagVerdict, listShots, etc). Mutating tools (triggerAgent,
+  //   approveAsset, requestRevision, regenerate*) remain blocked at the
+  //   per-tool guard — Polina may "suggest" them in her text response, and
+  //   Director invokes via the next Director turn.
+  const allowTools = parsed.source !== 'watchdog';
+  const userInstruction = allowTools
+    ? [
+        'Recap what just happened in this thread (read the recent turns above) and decide whether to ACT now or WAIT for Director.',
+        '',
+        'You MAY call READ-ONLY and ANALYSIS tools to inspect the artifact this event references (getAsset, getRecentActivityEvents, getCriticVerdict, getAnimatorCriticVerdict, getGagVerdict, listShots, listPendingApprovals, etc). Use them when the event references an asset_id you have not yet read — silent-stall is worse than a tool call.',
+        '',
+        'You MUST NOT call MUTATING tools (triggerAgent, approveAsset, requestRevision, regenerateRefPlan, regenerateImageFromPlan, regenerateShotPlan, regenerateGagPlan, enrichBible, setBibleContent, createSeries, createEpisode, editBrief, copyAssetImage, proposeSkill, updateSkill, approveSkill). Those require explicit Director approval. If a mutation is the right next step, propose it in your text response and let Director invoke it.',
+        '',
+        'After your tool calls (if any), produce a SHORT final text: name the artifact, give the verdict status, list 1-3 concrete observations, and either (a) recommend an approve/revise/regen action for Director to invoke, or (b) explain why no action yet.',
+      ].join('\n')
+    : 'Read your prior assistant turn (above). Either (a) take the next concrete sub-step yourself if the original Director directive logically covers it — don\'t wait for new approval; or (b) re-ask Director more explicitly with a fresh q-format question and a tighter framing. Do not just echo your previous wait. Do not request tools.';
+
   const conversation: ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
     {
@@ -163,35 +209,135 @@ export async function POST(req: Request) {
     },
   ];
 
-  const params: ChatCompletionCreateParamsNonStreaming = {
-    model,
-    messages: conversation,
-    max_completion_tokens: maxCompletionTokens,
-    stream: false,
+  // ── Tool execution context (read-only/analysis only — mutating tools are
+  //    blocked at the per-tool guard regardless of what the model emits). No
+  //    cookieHeader — auto-react runs server-to-server without Director's
+  //    session, which is fine: read-only tools use the service-role supabase
+  //    client; mutating tools would error on auth even if not blocked here.
+  const appOrigin = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+  const toolCtx: ToolContext = {
+    supabase,
+    threadId: parsed.thread_id,
+    mode,
+    episodeId,
+    cookieHeader: null,
+    appOrigin,
+    recentTurns,
   };
-  if (!isGpt5 && Number.isFinite(temperature)) {
-    params.temperature = temperature;
-  }
-  if (reasoningEffort && isGpt5) {
-    (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
-  }
 
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   let assistantText = '';
+
+  // ── TD-51 (2026-05-25) tool-call loop ────────────────────────────────────
+  // Per-round shape mirrors /api/concierge/chat#L342-L443 but trimmed: no
+  // streaming, no metadata patches, no per-tool timeout (auto-react is
+  // server-to-server and not Director-facing — slow tools just slow the
+  // batch). Last round force-disables tools so the model produces a final
+  // text response instead of looping.
+  let roundCount = 0;
   try {
-    const completion = await client.chat.completions.create(params);
-    if (Symbol.asyncIterator in (completion as object)) {
-      throw new Error('expected non-streaming completion');
+    for (let round = 0; round < MAX_AUTO_REACT_TOOL_ROUNDS; round++) {
+      roundCount = round + 1;
+      const isLastRound = round === MAX_AUTO_REACT_TOOL_ROUNDS - 1;
+      const toolsThisRound = allowTools && !isLastRound ? [...READ_ONLY_TOOL_SCHEMAS] : undefined;
+
+      const params: ChatCompletionCreateParamsNonStreaming = {
+        model,
+        messages: conversation,
+        max_completion_tokens: maxCompletionTokens,
+        stream: false,
+        tools: toolsThisRound,
+        tool_choice: toolsThisRound ? 'auto' : undefined,
+      };
+      if (!isGpt5 && Number.isFinite(temperature)) {
+        params.temperature = temperature;
+      }
+      // gpt-5* rejects tools + reasoning_effort combination — only pass
+      // reasoning_effort on tool-disabled rounds (mirror main /chat).
+      if (reasoningEffort && isGpt5 && !toolsThisRound) {
+        (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
+      }
+
+      const completion = await client.chat.completions.create(params);
+      if (Symbol.asyncIterator in (completion as object)) {
+        throw new Error('expected non-streaming completion');
+      }
+      const msg = (completion as {
+        choices: Array<{ message: ChatCompletionAssistantMessageParam }>;
+      }).choices[0]?.message;
+      if (!msg) break;
+
+      const toolCalls = msg.tool_calls ?? [];
+
+      if (toolCalls.length === 0) {
+        // Final text from the model — exit the loop.
+        const text = typeof msg.content === 'string' ? msg.content.trim() : '';
+        assistantText = text;
+        break;
+      }
+
+      // Persist the intermediate tool_call turn so Director's UI shows the
+      // chips and the audit trail matches Director-turn flow.
+      await persistTurn(supabase, parsed.thread_id, {
+        role: 'assistant',
+        event_type: 'tool_call',
+        content: toolCalls
+          .map((c) => `🔧 ${c.function.name}(${truncateForLog(c.function.arguments ?? '', 120)})`)
+          .join('\n'),
+        metadata: {
+          model,
+          auto_react: true,
+          source: parsed.source,
+          trigger_id: parsed.trigger_id,
+          tool_calls: toolCalls.map((c) => ({
+            id: c.id,
+            name: c.function.name,
+            arguments: c.function.arguments,
+          })),
+        },
+      });
+
+      // OpenAI protocol: the assistant message with tool_calls must precede
+      // its matching tool result messages.
+      conversation.push({
+        role: 'assistant',
+        content: msg.content ?? null,
+        tool_calls: toolCalls,
+      });
+
+      // Execute tools sequentially. Read-only / analysis only — mutating
+      // tools are rejected by the per-tool guard with a structured error
+      // the model can read in the next round.
+      for (const call of toolCalls) {
+        const result = await runAutoReactTool(call, toolCtx);
+        const resultJson = JSON.stringify(result);
+
+        await persistTurn(supabase, parsed.thread_id, {
+          role: 'tool',
+          event_type: 'tool_result',
+          content: truncateForLog(resultJson, 700),
+          metadata: {
+            ok: result.ok,
+            tool_name: call.function.name,
+            tool_call_id: call.id,
+            auto_react: true,
+          },
+        });
+
+        conversation.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: resultJson,
+        });
+      }
     }
-    const msg = (completion as { choices: Array<{ message: { content?: string | null } }> }).choices[0]?.message;
-    assistantText = (msg?.content ?? '').trim();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown OpenAI error';
     return NextResponse.json({ error: 'openai_failed', detail: message }, { status: 502 });
   }
 
   if (!assistantText) {
-    return NextResponse.json({ skipped: 'empty_response' }, { status: 200 });
+    return NextResponse.json({ skipped: 'empty_response', rounds: roundCount }, { status: 200 });
   }
 
   await persistTurn(supabase, parsed.thread_id, {
@@ -203,6 +349,7 @@ export async function POST(req: Request) {
       source: parsed.source,
       trigger_id: parsed.trigger_id,
       event_type: parsed.event_type ?? null,
+      tool_rounds: roundCount,
     },
   });
 
@@ -210,5 +357,50 @@ export async function POST(req: Request) {
     ok: true,
     thread_id: parsed.thread_id,
     chars: assistantText.length,
+    tool_rounds: roundCount,
   });
+}
+
+/**
+ * TD-51 (2026-05-25): execute one tool call in auto-react context.
+ * Hard-gates mutating tools — Polina may "want" to call them but
+ * cannot without a Director turn. Returns a structured error that
+ * the model reads in the next round and turns into a recommendation
+ * for Director to invoke.
+ */
+async function runAutoReactTool(
+  call: ChatCompletionMessageToolCall,
+  ctx: ToolContext,
+): Promise<
+  | { ok: true; data: unknown; summary?: string }
+  | { ok: false; error: string; code?: string }
+> {
+  const tool = findTool(call.function.name);
+  if (!tool) {
+    return { ok: false, error: `unknown tool: ${call.function.name}` };
+  }
+  if (tool.mutating) {
+    return {
+      ok: false,
+      error: `tool "${tool.name}" is MUTATING — blocked in auto-react context. Suggest the action in your text response so Director can invoke it on the next turn.`,
+      code: 'auto_react_mutating_blocked',
+    };
+  }
+  let args: Record<string, unknown>;
+  try {
+    args = tool.parse(call.function.arguments ?? '{}') as Record<string, unknown>;
+  } catch (e) {
+    return { ok: false, error: `parse error: ${(e as Error).message}` };
+  }
+  try {
+    const result = await tool.execute(args, ctx);
+    return result;
+  } catch (e) {
+    return { ok: false, error: `execute error: ${(e as Error).message}` };
+  }
+}
+
+function truncateForLog(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}… [${s.length - max} more chars]`;
 }
