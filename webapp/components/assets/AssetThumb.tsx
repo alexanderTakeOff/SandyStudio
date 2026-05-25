@@ -64,12 +64,14 @@ export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbP
   // 2026-05-25 Director feedback: thumbs lacked a visible version chip so
   // sibling refs were indistinguishable without hovering. Show a compact
   // `v01` / `v02` badge in the bottom-left of each tile.
+  // 2026-05-25 follow-up: Director asked to halve the chip size — original
+  // divisor was /5.5, now /11 (font), with tighter padding to match.
   const versionLabel =
     asset.version != null ? `v${String(asset.version).padStart(2, '0')}` : null;
   // Scale chip font with tile size — readable from 32px upward, hidden on
   // very tiny tiles (≤28px) to avoid visual noise on dense grids.
   const showVersionChip = versionLabel != null && size >= 32;
-  const chipFontSize = Math.max(8, Math.round(size / 5.5));
+  const chipFontSize = Math.max(7, Math.round(size / 11));
   const style: CSSProperties = {
     width: size,
     height: size,
@@ -99,7 +101,7 @@ export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbP
           className="absolute bottom-0.5 left-0.5 rounded-sm font-mono font-semibold tabular-nums leading-none"
           style={{
             fontSize: chipFontSize,
-            padding: '1px 3px',
+            padding: '0 2px',
             color: 'var(--text-primary)',
             background: 'rgba(0,0,0,0.55)',
             backdropFilter: 'blur(2px)',
