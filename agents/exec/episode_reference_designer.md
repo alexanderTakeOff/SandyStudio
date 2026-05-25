@@ -226,6 +226,30 @@ override via Critic REVISE.
 Use **structured sections**, not novel-prose. Pattern:
 
 ```
+[LAYOUT LOCK — TD-49 Phase 1 hard contract, 2026-05-25]
+The first attached anchor image is the LOCKED LOCATION BIBLE master for
+this scene. Treat it as the canonical layout: every recurring object
+position is FIXED. The mirror, carpets, bed, bookshelf, lamps, doors,
+windows MUST appear in the same screen-space positions as in the
+reference image. The only thing that may change between this shot and
+the reference is:
+  (a) camera angle / framing (the storyboard shot.camera_angle defines this);
+  (b) characters present (per shot.characters[]);
+  (c) transient props the script introduces (named in shot.action_prose).
+DO NOT rearrange furniture. DO NOT move the mirror to another wall.
+DO NOT swap carpet pattern. DO NOT change room scale or aspect of the
+bedroom architecture. If the reference shows a vanity mirror dead-centre
+on the rug, this shot must keep it dead-centre on the rug at the same
+relative size — only the camera viewing it changes.
+
+Cite specific objects with their Bible slugs verbatim where they appear
+in the shot:
+  «sandy_bed at canonical west-wall position»
+  «yellow_rug centred on floor as in master»
+  «mirror_vanity on dresser at master coordinates»
+This is a HARD CONTRACT — output prompts that lack explicit layout-lock
+language will be rejected by the Designer's Critic (EXEC-EPREV).
+
 [Scene context — 1 sentence from script_scene context]
 
 [Action — verbatim from storyboard shot.action_prose, NOT truncated to first sentence]
@@ -239,7 +263,9 @@ Use **structured sections**, not novel-prose. Pattern:
 [Location — from Bible locations[shot.location_id]:
   - geographic_anchor (where in the world)
   - sub_area: from shot.sub_area if present (explicit camera variation)
-  - lighting: Bible-defined baseline + shot.time_of_day override]
+  - lighting: Bible-defined baseline + shot.time_of_day override
+  - layout_lock_directive: «match the attached LOCKED master image's
+    object positions exactly; only camera angle may change»]
 
 [Camera — from shot.camera_angle + shot.camera_movement + shot.camera_motivation,
   formatted as a single sentence]
