@@ -61,6 +61,15 @@ export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbP
   const src = pickPreviewSrc(asset);
   const statusColor = STATUS_COLORS[asset.status] ?? 'var(--text-muted)';
   const isLocked = asset.status === 'LOCKED';
+  // 2026-05-25 Director feedback: thumbs lacked a visible version chip so
+  // sibling refs were indistinguishable without hovering. Show a compact
+  // `v01` / `v02` badge in the bottom-left of each tile.
+  const versionLabel =
+    asset.version != null ? `v${String(asset.version).padStart(2, '0')}` : null;
+  // Scale chip font with tile size — readable from 32px upward, hidden on
+  // very tiny tiles (≤28px) to avoid visual noise on dense grids.
+  const showVersionChip = versionLabel != null && size >= 32;
+  const chipFontSize = Math.max(8, Math.round(size / 5.5));
   const style: CSSProperties = {
     width: size,
     height: size,
@@ -83,6 +92,22 @@ export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbP
       ) : (
         <span className="flex items-center justify-center w-full h-full text-[6px] text-text-muted uppercase">
           —
+        </span>
+      )}
+      {showVersionChip && (
+        <span
+          className="absolute bottom-0.5 left-0.5 rounded-sm font-mono font-semibold tabular-nums leading-none"
+          style={{
+            fontSize: chipFontSize,
+            padding: '1px 3px',
+            color: 'var(--text-primary)',
+            background: 'rgba(0,0,0,0.55)',
+            backdropFilter: 'blur(2px)',
+            // Tight contrast pill — always readable over any thumbnail.
+          }}
+          aria-hidden="true"
+        >
+          {versionLabel}
         </span>
       )}
       {/* Status indicator dot — bottom-right, tiny */}
