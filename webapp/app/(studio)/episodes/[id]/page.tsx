@@ -19,6 +19,7 @@ import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { EpisodeReferencesGallery } from '@/components/episode/EpisodeReferencesGallery';
 import { EREFPilotPillbar } from '@/components/pipeline/EREFPilotPillbar';
+import { EpisodeSettingsCard } from '@/components/episode/EpisodeSettingsCard';
 import { VGENPilotPillbar } from '@/components/pipeline/VGENPilotPillbar';
 import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
 import { EpisodeTimelineSection } from '@/components/timeline/EpisodeTimelineSection';
@@ -57,7 +58,12 @@ interface Episode {
   budget_ceiling: number | null;
   budget_spent: number | null;
   series_id: string;
-  metadata?: { archival?: EpisodeArchival } | null;
+  metadata?: {
+    archival?: EpisodeArchival;
+    /** TD-49 Phase 2 P2.3 (2026-05-25): opt episode into the anchor pair
+     *  pipeline. EpisodeSettingsCard toggles it via the settings PATCH. */
+    anchor_chain_enabled?: boolean;
+  } | null;
 }
 
 interface ActivityRow {
@@ -251,6 +257,12 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
           for that shot's per-asset review. */}
       <div className="mb-4">
         <EpisodeTimelineSection episodeId={id} />
+      </div>
+
+      {/* TD-49 Phase 2 P2.3 (2026-05-25): per-episode settings — currently
+          just the anchor_chain_enabled toggle. Director-only PATCH surface. */}
+      <div className="mb-4">
+        <EpisodeSettingsCard episodeId={id} initialMetadata={episode.metadata ?? null} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
