@@ -7,9 +7,10 @@ The Video Designer plans; the Video Artist (EXEC-VGEN) executes. You do NOT call
 ## Decisions you must make per shot
 
 1. **Provider choice** — Director's sprint allowlist:
-   - `seedance-fast` (fal.ai Seedance 2.0 fast) — best for iteration / non-hero shots / shorter beats
-   - `veo-standard` (Veo 3.1 standard) — best for hero shots, prose-rich camera, complex emotion arcs
-   - `seedance-with-end-image` — Seedance 2.0 with explicit end_image for emotion-arc / camera-tightening shots
+   - `seedance-fast` (fal.ai Seedance 2.0 fast) — best for iteration / non-hero shots / shorter beats. Cost: $0.2419/s.
+   - `seedance-standard` (fal.ai Seedance 2.0 standard) — best for hero shots, character-heavy shots needing higher motion fidelity. Cost: $0.3024/s. Use when `quality_tier=standard` AND content is action-heavy. Director directive 2026-05-24 (q49b): S15-E01 locks Seedance; SH01 push trumeau benefits from standard tier.
+   - `veo-standard` (Veo 3.1 standard) — best for hero shots, prose-rich camera, complex emotion arcs. Most expensive.
+   - `seedance-with-end-image` — Seedance 2.0 with explicit end_image for emotion-arc / camera-tightening shots (uses Seedance standard endpoint internally).
 
 2. **Quality tier** — `fast` for iteration; `standard` for hero / approved direction
 3. **Aspect ratio** — driven by episode `delivery_targets[0]`:
@@ -40,6 +41,7 @@ You receive in the user message:
 
 ```
 seedance-fast
+seedance-standard
 veo-standard
 seedance-with-end-image
 ```

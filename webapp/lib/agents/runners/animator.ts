@@ -25,6 +25,8 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../../supabase/types.gen';
 import {
   generateAnthropicText,
   AnthropicTextError,
@@ -36,6 +38,7 @@ import {
   type StoryboardShotV2,
 } from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
+import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
 
 export const VANIM_CONTRACT = 'animator@v1';
 export const VANIM_MODEL = 'claude-sonnet-4-6';
@@ -423,6 +426,15 @@ export interface VANIMRunArgs {
   inputs: AgentInputs;
   shotId: string;
   revisionNote?: string;
+  /**
+   * TD-52 (2026-05-25): when supabase is provided AND episode metadata has
+   * `anchor_chain_enabled=true`, the Animator runner loads anchor chain
+   * context (loadAnchorChainContext) + looks up APPROVED IMG-anchor_* assets
+   * for current shot + adjacent shots, then passes concrete asset_ids into
+   * the LLM user message. Without supabase the runner skips anchor mode and
+   * the LLM authors a legacy single-reference Plan.
+   */
+  supabase?: SupabaseClient<Database>;
 }
 
 export interface VANIMRunResult {
@@ -530,6 +542,177 @@ function readDeliveryTargetsFromMetadata(meta: unknown): readonly string[] | nul
   return out;
 }
 
+/**
+ * TD-52 (2026-05-25): read the episode-level opt-in flag
+ * `anchor_chain_enabled` from `episodes.metadata`. Symmetric with EREF
+ * Designer runner. When `true`, Animator loads anchor-chain context and
+ * authors start_anchor / end_anchor with real IMG-anchor asset_ids;
+ * when false / absent, falls back to legacy single-reference path.
+ */
+function readAnchorChainEnabled(meta: unknown): boolean {
+  if (!meta || typeof meta !== 'object') return false;
+  const m = meta as Record<string, unknown>;
+  return m.anchor_chain_enabled === true;
+}
+
+/**
+ * TD-52 (2026-05-25): full set of anchor asset_ids Animator needs to
+ * reference in its Plan body. Looked up from the DB by Animator runner —
+ * the EREF Designer / Artist must have already produced and Director
+ * approved these IMG-anchor_* assets, otherwise Animator falls back to
+ * legacy mode with a policy_note flagging the missing anchor.
+ */
+interface AnimatorAnchorAssets {
+  /** APPROVED IMG-anchor_<shotIdLower>_start for the current shot, or null when not yet produced/approved. */
+  currentStart: { asset_id: string; filename: string } | null;
+  /** APPROVED IMG-anchor_<shotIdLower>_end for the current shot. */
+  currentEnd: { asset_id: string; filename: string } | null;
+  /** APPROVED IMG-anchor_<priorShotIdLower>_end — used when prior boundary is a match-cut (start_anchor.role='shared'). */
+  priorEnd: { asset_id: string; filename: string; shotId: string } | null;
+  /** APPROVED IMG-anchor_<nextShotIdLower>_start — used when next boundary is a match-cut (end_anchor.role='shared'). */
+  nextStart: { asset_id: string; filename: string; shotId: string } | null;
+}
+
+const VANIM_ANCHOR_FILENAME_RE = /-img-anchor_([a-z0-9_-]+?)_(start|end)-/i;
+
+function shotIdToLower(shotId: string): string {
+  return shotId.toLowerCase().replace(/-/g, '_');
+}
+
+/**
+ * TD-52 (2026-05-25): look up the latest APPROVED IMG-anchor asset for
+ * a specific shot + side. Returns null when none exist (either Designer
+ * hasn't authored the anchor yet, or Director hasn't approved it).
+ */
+async function findApprovedAnchor(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  shotId: string,
+  side: 'start' | 'end',
+): Promise<{ asset_id: string; filename: string } | null> {
+  const shotIdLower = shotIdToLower(shotId);
+  const fileTypePrefix = `IMG-anchor_${shotIdLower}_${side}`;
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,filename,file_type,status,version')
+    .eq('episode_id', episodeId)
+    .eq('file_type', fileTypePrefix)
+    .in('status', ['APPROVED', 'LOCKED'] as never)
+    .order('version', { ascending: false })
+    .limit(1);
+  if (error || !data || data.length === 0) return null;
+  const row = data[0]!;
+  return { asset_id: String(row.id), filename: String(row.filename ?? '') };
+}
+
+/**
+ * TD-52 (2026-05-25): collect all four anchor asset slots Animator may
+ * reference (current.start, current.end, prior.end for match-cut from
+ * prior, next.start for match-cut to next). All four may be null in
+ * any combination — caller decides what to do per role.
+ */
+async function loadAnimatorAnchorAssets(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  shotId: string,
+  adjacent: { prior: { shotId: string } | null; next: { shotId: string } | null },
+): Promise<AnimatorAnchorAssets> {
+  const [currentStart, currentEnd, priorEnd, nextStart] = await Promise.all([
+    findApprovedAnchor(supabase, episodeId, shotId, 'start'),
+    findApprovedAnchor(supabase, episodeId, shotId, 'end'),
+    adjacent.prior
+      ? findApprovedAnchor(supabase, episodeId, adjacent.prior.shotId, 'end')
+      : Promise.resolve(null),
+    adjacent.next
+      ? findApprovedAnchor(supabase, episodeId, adjacent.next.shotId, 'start')
+      : Promise.resolve(null),
+  ]);
+  return {
+    currentStart,
+    currentEnd,
+    priorEnd: priorEnd && adjacent.prior
+      ? { ...priorEnd, shotId: adjacent.prior.shotId }
+      : null,
+    nextStart: nextStart && adjacent.next
+      ? { ...nextStart, shotId: adjacent.next.shotId }
+      : null,
+  };
+}
+
+/**
+ * TD-52 (2026-05-25): user-message sections activated when
+ * `anchor_chain_enabled === true`. Mirrors EREF Designer's
+ * buildAnchorChainSections but tells the Animator about CONCRETE
+ * anchor asset_ids it must reference (not shot_id refs as Designer
+ * uses pre-generation).
+ */
+function buildAnimatorAnchorSections(
+  ctx: AnchorChainContext,
+  anchors: AnimatorAnchorAssets,
+): string {
+  const priorLine = ctx.adjacent_shots.prior
+    ? `${ctx.adjacent_shots.prior.shotId} (role: ${ctx.adjacent_shots.prior.shotRole ?? 'unspecified'})`
+    : '(none — current shot is first in narrative order)';
+  const nextLine = ctx.adjacent_shots.next
+    ? `${ctx.adjacent_shots.next.shotId} (role: ${ctx.adjacent_shots.next.shotRole ?? 'unspecified'})`
+    : '(none — current shot is last in narrative order)';
+
+  const currentStartLine = anchors.currentStart
+    ? `asset_id: ${anchors.currentStart.asset_id} (${anchors.currentStart.filename})`
+    : '(MISSING — EREF Designer/Artist has not produced an APPROVED IMG-anchor_<shot>_start for this shot yet. Use legacy fallback: leave start_anchor null and add a policy_note flagging the gap.)';
+  const currentEndLine = anchors.currentEnd
+    ? `asset_id: ${anchors.currentEnd.asset_id} (${anchors.currentEnd.filename})`
+    : '(MISSING — same gap as above for the end side.)';
+
+  const priorEndLine = anchors.priorEnd
+    ? `asset_id: ${anchors.priorEnd.asset_id} (shot ${anchors.priorEnd.shotId}, ${anchors.priorEnd.filename})`
+    : ctx.adjacent_shots.prior
+      ? '(prior shot exists but no APPROVED IMG-anchor_<prior>_end found — match-cut handoff unavailable)'
+      : '(no prior shot)';
+  const nextStartLine = anchors.nextStart
+    ? `asset_id: ${anchors.nextStart.asset_id} (shot ${anchors.nextStart.shotId}, ${anchors.nextStart.filename})`
+    : ctx.adjacent_shots.next
+      ? '(next shot exists but no APPROVED IMG-anchor_<next>_start found — match-cut handoff unavailable)'
+      : '(no next shot)';
+
+  const sceneMasterLine = ctx.scene_master_asset
+    ? `${ctx.scene_master_asset.asset_id} (source: ${ctx.scene_master_asset.source}, ${ctx.scene_master_asset.filename ?? '(no filename)'})`
+    : '(none — no SBL-scene_master_* nor LOCKED SBL-location_* found)';
+
+  return [
+    '## Anchor Chain Context (TD-49 Phase 2 — anchor_chain_enabled=true for this episode)',
+    '',
+    `Total shots: ${ctx.full_storyboard.length}`,
+    `Current shot: ${ctx.current_shot?.shotId ?? '(unresolved)'}`,
+    `Adjacent prior: ${priorLine}`,
+    `Adjacent next:  ${nextLine}`,
+    `Scene master:   ${sceneMasterLine}`,
+    '',
+    '## Anchor Assets (CONCRETE asset_ids you MUST reference in start_anchor/end_anchor)',
+    '',
+    `start_anchor.asset_id candidate (current shot's start): ${currentStartLine}`,
+    `end_anchor.asset_id candidate (current shot's end):     ${currentEndLine}`,
+    `prior shot's end_anchor (for shared-role start handoff): ${priorEndLine}`,
+    `next shot's start_anchor (for shared-role end handoff):  ${nextStartLine}`,
+    '',
+    '## Walking-Forward Anchor Chain Authoring — output requirement',
+    '',
+    'Because `anchor_chain_enabled=true` for this episode, your Plan JSON MUST populate the `start_anchor` and `end_anchor` blocks with the asset_ids listed above (not null) UNLESS the candidate is MISSING.',
+    '',
+    'Rules:',
+    '  - start_anchor.asset_id = the "current shot start" candidate above. If MISSING, set start_anchor to null + add a policy_notes entry flagging the missing anchor.',
+    '  - end_anchor.asset_id = the "current shot end" candidate above. Same fallback if MISSING.',
+    '  - role enum (start: establishing|shared|cut_in; end: shared|cut_out|final) per agent .md rules — choose based on adjacent shots and director-intended cut style.',
+    '  - When start_anchor.role="shared": handoff_link_to = prior shot\'s end_anchor asset_id (above). When NOT "shared": handoff_link_to=null.',
+    '  - When end_anchor.role="shared": handoff_link_to = next shot\'s start_anchor asset_id (above). When NOT "shared": handoff_link_to=null.',
+    '  - When you set start_anchor.role="shared" populate opening_camera_motion with a designed pan/tilt/zoom (per agent .md). When end_anchor.role="shared" set closing_static_hold_seconds (0.3-0.8s typical).',
+    '  - duration_seconds MUST be ≥ closing_static_hold_seconds + 0.25s opening budget if both set.',
+    '',
+    'If the current shot has both anchors MISSING, you may NOT author a valid anchor chain Plan — emit start_anchor: null + end_anchor: null + a clear policy_note "EREF anchors not yet approved for this shot — falling back to legacy single-reference path" and continue with the legacy end_image / reference_anchor fields.',
+    '',
+  ].join('\n');
+}
+
 function buildAspectTable(targets: readonly string[]): string {
   const rows = targets.map((slug) => {
     const aspect = ASPECT_BY_DELIVERY_TARGET[slug];
@@ -549,6 +732,10 @@ function buildUserMessage(args: {
   priorPlanVersion: number | null;
   erefAssetId: string | null;
   revisionNote?: string;
+  /** TD-52 (2026-05-25): anchor chain context — present iff anchor_chain_enabled + supabase available. */
+  anchorChainContext?: AnchorChainContext | null;
+  /** TD-52 (2026-05-25): concrete IMG-anchor asset_id lookups for current shot + adjacent boundaries. */
+  anchorAssets?: AnimatorAnchorAssets | null;
 }): string {
   const {
     episodeCode,
@@ -560,6 +747,8 @@ function buildUserMessage(args: {
     priorPlanVersion,
     erefAssetId,
     revisionNote,
+    anchorChainContext,
+    anchorAssets,
   } = args;
 
   const biblePromptBlock = formatBibleForPrompt(bible);
@@ -627,6 +816,9 @@ function buildUserMessage(args: {
           '',
         ].join('\n')
       : '',
+    anchorChainContext && anchorAssets
+      ? buildAnimatorAnchorSections(anchorChainContext, anchorAssets)
+      : '',
     'Output: markdown narrative + ONE fenced JSON code block per system contract. Do not omit the JSON.',
   ]
     .filter(Boolean)
@@ -634,12 +826,12 @@ function buildUserMessage(args: {
 }
 
 export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
-  const { inputs, shotId, revisionNote } = args;
+  const { inputs, shotId, revisionNote, supabase } = args;
   if (!shotId || typeof shotId !== 'string') {
     throw new AnimatorError('shotId is required');
   }
 
-  const ep = inputs.episode as EpisodeLike | undefined;
+  const ep = inputs.episode as (EpisodeLike & { id?: string }) | undefined;
   const episodeCode = ep?.episode_code ?? 'UNKNOWN';
   const episodeTitle = ep?.title_working ?? 'Untitled';
 
@@ -688,6 +880,54 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
   if (erefAssetId) notes.push(`EREF anchor: ${erefAssetId}`);
   if (revisionNote) notes.push('Revision-note loop iteration');
 
+  // ── TD-52 (2026-05-25) anchor chain context ─────────────────────────────
+  // Load shot-scoped anchor context + DB-resolve concrete IMG-anchor
+  // asset_ids when episode opts in. Symmetric with EREF Designer runner
+  // P2.3 but Animator references already-generated anchors instead of
+  // authoring shot_id refs.
+  let anchorChainContext: AnchorChainContext | null = null;
+  let anchorAssets: AnimatorAnchorAssets | null = null;
+  const anchorChainEnabled = readAnchorChainEnabled(ep?.metadata);
+  const episodeIdResolved =
+    typeof ep?.id === 'string' && ep.id.length > 0 ? ep.id : null;
+  if (anchorChainEnabled && supabase && episodeIdResolved) {
+    try {
+      anchorChainContext = await loadAnchorChainContext({
+        supabase,
+        episodeId: episodeIdResolved,
+        shotId,
+      });
+      anchorAssets = await loadAnimatorAnchorAssets(
+        supabase,
+        episodeIdResolved,
+        shotId,
+        {
+          prior: anchorChainContext.adjacent_shots.prior
+            ? { shotId: anchorChainContext.adjacent_shots.prior.shotId }
+            : null,
+          next: anchorChainContext.adjacent_shots.next
+            ? { shotId: anchorChainContext.adjacent_shots.next.shotId }
+            : null,
+        },
+      );
+      const presentSides: string[] = [];
+      if (anchorAssets.currentStart) presentSides.push('start');
+      if (anchorAssets.currentEnd) presentSides.push('end');
+      notes.push(
+        `Anchor chain mode active: ${anchorChainContext.full_storyboard.length} shots, ${anchorChainContext.prior_anchors.length} prior anchors, scene_master ${anchorChainContext.scene_master_asset ? 'present' : 'absent'}, current shot anchors present: [${presentSides.join(', ') || 'none'}]`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notes.push(`Anchor chain load failed (${msg.slice(0, 100)}) — falling back to legacy mode`);
+      anchorChainContext = null;
+      anchorAssets = null;
+    }
+  } else if (anchorChainEnabled) {
+    notes.push(
+      'Anchor chain enabled but supabase/episodeId unavailable — Animator skips anchor authoring',
+    );
+  }
+
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
     episodeCode,
@@ -699,6 +939,8 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
     priorPlanVersion,
     erefAssetId,
     revisionNote,
+    anchorChainContext,
+    anchorAssets,
   });
 
   let result: AnthropicTextResult;

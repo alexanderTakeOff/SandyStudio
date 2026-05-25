@@ -931,6 +931,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             inputs,
             shotId,
             revisionNote: args.revisionNote,
+            // TD-52 (2026-05-25): pass supabase so the Animator can load
+            // anchor chain context + DB-resolve IMG-anchor asset_ids when
+            // episode opts into TD-49 Phase 2 anchor pipeline.
+            supabase: args.supabase,
           });
           return {
             outputKind: 'text-md',
