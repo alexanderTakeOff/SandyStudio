@@ -1774,6 +1774,15 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       let planEndImageAssetId: string | null = null;
       let planSeed: number | null = null;
       let planQualityOverride: 'fast' | 'standard' | null = null;
+      // TD-49 Phase 2 P2.4 (2026-05-25): Anchor chain pair — Animator's Plan
+      // may specify start_anchor + end_anchor (each its own asset_id) that
+      // override the legacy reference resolution. When the Animator writes
+      // start_anchor, that asset overrides the EREF lookup as `image_url`
+      // for Seedance. When end_anchor is set, it takes priority over the
+      // legacy `end_image.eref_asset_id` field for the `end_image_url`.
+      // Both fall back to legacy when null (back-compat preserved).
+      let planStartAnchorAssetId: string | null = null;
+      let planEndAnchorAssetId: string | null = null;
       // TD-44 (2026-05-24): Animator's provider.id is the single source of
       // truth for both provider AND quality tier in plan-driven mode.
       // resolveVanimProviderId() maps the Animator vocab («seedance-standard»)
@@ -1837,6 +1846,27 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
                     planEndImageAssetId = ei.asset_id;
                   }
                 }
+                // TD-49 Phase 2 P2.4 (2026-05-25): anchor pair extraction.
+                // Schema enforcement (role + reciprocal handoff_link_to) is
+                // done by extractAnchorChain which throws AnimatorError on
+                // structural violations. Caught by the outer try/catch so
+                // an invalid Plan falls back to legacy single-reference path
+                // rather than crashing the agent run.
+                try {
+                  const { extractAnchorChain } = await import(
+                    './runners/animator'
+                  );
+                  const chain = extractAnchorChain(body);
+                  if (chain.start_anchor) {
+                    planStartAnchorAssetId = chain.start_anchor.asset_id;
+                  }
+                  if (chain.end_anchor) {
+                    planEndAnchorAssetId = chain.end_anchor.asset_id;
+                  }
+                } catch {
+                  // Plan declared anchor fields with bad shape — leave both
+                  // null; legacy end_image / EREF lookup drives the call.
+                }
                 // seed_strategy: { seed: <int> } — Seedance reproducibility hook.
                 if (
                   body.seed_strategy &&
@@ -1874,16 +1904,36 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         effectiveQuality = planQualityOverride;
       }
 
-      // TD-33 (q7a Step 6): load end_image bytes when the Plan named one and
-      // we have supabase (real-video path only — mock skips this for replay-
-      // pilot parity). Failure to load is non-fatal: provider falls back to
-      // start-frame-only img2vid.
-      let endImageBase64: string | null = null;
-      let endImageMime: 'image/png' | 'image/jpeg' = 'image/png';
-      if (planEndImageAssetId && supabase && isRealVideo) {
+      // TD-49 Phase 2 P2.4 (2026-05-25): override `referenceImageBase64`
+      // (start frame for img2vid providers) with the start_anchor asset
+      // when Animator specified one. Falls through to the EREF-resolved
+      // value otherwise. Non-fatal on load failure — provider degrades
+      // to whatever was resolved before.
+      if (planStartAnchorAssetId && supabase && isRealVideo) {
         const loaded = await getAssetImageBase64ById(
           supabase,
-          planEndImageAssetId,
+          planStartAnchorAssetId,
+        );
+        if (loaded) {
+          referenceImageBase64 = loaded.base64;
+          referenceErefAssetId = planStartAnchorAssetId;
+        }
+      }
+
+      // TD-33 (q7a Step 6) + TD-49 Phase 2 P2.4: load end-frame bytes for
+      // Seedance `end_image_url`. Preference order:
+      //   1. planEndAnchorAssetId (TD-49 anchor pair end side)
+      //   2. planEndImageAssetId (legacy q7a end_image.eref_asset_id)
+      // Failure to load is non-fatal — provider falls back to start-frame-
+      // only img2vid.
+      let endImageBase64: string | null = null;
+      let endImageMime: 'image/png' | 'image/jpeg' = 'image/png';
+      const endImageAssetIdToLoad =
+        planEndAnchorAssetId ?? planEndImageAssetId;
+      if (endImageAssetIdToLoad && supabase && isRealVideo) {
+        const loaded = await getAssetImageBase64ById(
+          supabase,
+          endImageAssetIdToLoad,
         );
         if (loaded) {
           endImageBase64 = loaded.base64;
