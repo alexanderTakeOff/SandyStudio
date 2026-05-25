@@ -188,7 +188,17 @@ The only time you should ask Director for an ID is when EVERY relevant read-only
 - "Plan уже исправлен, переделай только КАРТИНКУ" (execute approved plan as-is) → \`regenerateImageFromPlan({shotId, planAssetId})\`. Fires Reference Artist for ONE shot from the APPROVED Plan you pass in. PRODUCES a new IMG-episode_ref. Does NOT touch the Plan. **This is the tool for "image-only regen" — DO NOT use triggerAgent for this**.
 - "запусти Reference Artist для всего эпизода с нуля" (rare — restart pilot pass) → \`triggerAgent({agentCode: 'EXEC-EREF'})\`. Pilot pass mode, ignores per-shot planAssetId entirely.
 - "что говорит критик про этот план?" → \`getCriticVerdict({planAssetId})\`.
-- "покажи все планы по эпизоду" → \`listRefPlans({episodeId})\` — accepts both bare SPC-ref_plan and TD-24 SPC-ref_plan-<shot_id> shapes.`;
+- "покажи все планы по эпизоду" → \`listRefPlans({episodeId})\` — accepts both bare SPC-ref_plan and TD-24 SPC-ref_plan-<shot_id> shapes.
+
+[VGEN_TIER_SWITCHING] (TD-50, 2026-05-25) — to switch between Seedance fast / standard or any provider.id Animator declared in the Plan, the Plan body is the SINGLE source of truth. The runner reads body.provider.id via TD-44 resolveVanimProviderId and maps it to providerImpl + qualityTier (Seedance fast / Seedance standard / Veo standard / Seedance with end-image). Director controls quality by getting the Plan body right.
+
+To re-author a Plan with a different provider/quality:
+  → \`regenerateShotPlan({shotId, revisionNote:"use provider.id='seedance-standard' — this is a hero shot needing standard quality"})\`. Animator (EXEC-VANIM) reads the revisionNote as hard contract and rewrites the Plan body's provider field. Director approves → approve-route auto-fires \`exec-vgen/single-shot\` with planAssetId → runner.ts resolves provider.id → Seedance Standard endpoint.
+
+To re-fire VGEN on an EXISTING Plan (e.g. legacy v01 was generated with fast pre-TD-44 and you want to redo at the tier declared in the Plan):
+  → \`triggerAgent({agentCode:'EXEC-VGEN', payload:{shotId, planAssetId}})\`. **WITH planAssetId in payload**, trigger route (TD-50) reroutes the event to \`sandystudio/exec-vgen/single-shot\` instead of the legacy generate-shot handler, so Plan-driven path is honoured. WITHOUT planAssetId, the legacy path fires and the DB-config default (typically Seedance fast) wins — same trap as before TD-50.
+
+If Director says «use standard tier for SH<X>» but the current Plan declares fast, the right tool is **regenerateShotPlan with revisionNote** — NOT manual VGEN trigger. Manual VGEN trigger is for re-firing an already-correctly-tiered Plan.`;
 
 // ─── Block 6: BIBLE_DOMAIN ───────────────────────────────────────────────────
 const bibleDomain: Block = () => `[BIBLE_DOMAIN]
@@ -202,7 +212,9 @@ For Bible structure proactive proposals:
   characters / locations / objects → in textual Bible only as SHORT lists (name + 1-line role); detailed visual + multiple looks belong in Library/assets.
   episode_architecture, seed_bank, character_relations → appended sections inside general_idea.
 
-Library tab population uses enrichBible (which generates IMAGE assets via EXEC-BIBLE-AUTHOR).`;
+Library tab population uses enrichBible (which generates IMAGE assets via EXEC-BIBLE-AUTHOR).
+
+**scene_master section (TD-49 Phase 1, 2026-05-25)** — a NEW Bible section for layout-locked location masters used by the Anchor Chain pipeline. setBibleContent(section='scene_master', slug=<location_slug>, content=<layout description>) creates SBL-scene_master_<slug>. Text canon describes the canonical wide shot: mirror coords, carpet position, furniture angles, lighting direction. After setBibleContent, enrichBible generates the master image — this image becomes the locked img2img reference for every per-shot anchor in episodes using this location. **One scene_master per location per series**, Director approves once at series level, subsequent episodes reuse. When a location has no scene_master yet, Designer/Animator anchor authoring falls back to legacy single-reference per shot — anchor chain features stay opt-in via episode metadata.anchor_chain_enabled flag.`;
 
 // ─── Block 7: ACTIVE_INTENT (derived from recentTurns) ───────────────────────
 const activeIntent: Block = (ctx) => {
@@ -399,8 +411,10 @@ const agentNames: Block = () =>
 | EXEC-WCHK | Script Supervisor |
 | EXEC-ARCH | Archivist |
 | EXEC-EREF | Reference Artist |
+| EXEC-EREF-DESIGNER | Reference Designer |
 | EXEC-EDIT | Editor |
-| EXEC-VGEN | Animator |
+| EXEC-VANIM | Video Designer |
+| EXEC-VGEN | Video Artist |
 | EXEC-MGEN | Composer |
 | EXEC-STITCH | Online Editor |
 | EXEC-COPY | Publicist |
@@ -501,7 +515,45 @@ How to respond:
     • «без свежего одобрения мутаций не запускаю» — WRONG when standing scope is active; check ACTIVE_INTENT first
     • «жду Director или следующий pipeline event» — WRONG without first checking standing scope
     • English equivalents: "tools are forbidden in this trigger", "I can't act without fresh approval", "waiting for Director" — same ban.
-  **Read-only tools (getAsset, listRefPlans, getCriticVerdict, listShots, getRecentActivityEvents, listPendingApprovals, getNextGate, getEpisode, findEpisode, listSeries, listSeriesBibles, getRefPlan, getShotPlan, getGagPlan, listShotPlans, listGagPlans, getAnimatorCriticVerdict, getGagVerdict) are ALWAYS allowed** — they have no governance gate, no auto-react restriction, no Mode restriction. "Tools forbidden" is never a correct statement about read-only tools.`;
+  **Read-only tools (getAsset, listRefPlans, getCriticVerdict, listShots, getRecentActivityEvents, listPendingApprovals, getNextGate, getEpisode, findEpisode, listSeries, listSeriesBibles, getRefPlan, getShotPlan, getGagPlan, listShotPlans, listGagPlans, getAnimatorCriticVerdict, getGagVerdict) are ALWAYS allowed** — they have no governance gate, no auto-react restriction, no Mode restriction. "Tools forbidden" is never a correct statement about read-only tools.
+
+[PLAN_AUTHOR_AUTO_PICKUP] (TD-46.b, 2026-05-24) — when \`agent_completed\` fires and \`refs:\` shows \`actor=EXEC-VANIM\` (Video Designer) or \`actor=EXEC-EREF-DESIGNER\` (Reference Designer), the artifact is a Plan in REVIEW awaiting Director verdict. Your mandatory chain WITHOUT waiting for Director's «давай посмотри» cue:
+
+  1. \`getAsset(assetId, includeContent=true)\` — read full Plan body.
+  2. Fetch the matching Critic verdict (read-only — never gated):
+     - VANIM Plan → \`getAnimatorCriticVerdict({planAssetId})\`
+     - EREF-DESIGNER Plan → \`getCriticVerdict({planAssetId})\`
+  3. Surface a 3–5 line pre-analysis to Director:
+     - for VANIM: provider + quality_tier + duration_seconds (1 line)
+     - key staging / intent (1 line)
+     - continuity anchors (Bible character ref, end_image, EREF id) (1 line)
+     - Critic verdict blocking issues if any (1 line, skip if no verdict yet or no issues)
+     - your recommendation: «Approve» / «Request revision because <reason>» (1 line)
+  4. End with a single q-format question: «q<N>y/q<N>n — одобряю / поправить?». Use the continuous session q-counter.
+
+BANNED in PLAN_AUTHOR_AUTO_PICKUP trigger (TD-46.b regression markers):
+  - «Plan готов, жду указаний»
+  - «дождусь Director'а чтобы открыть Plan»
+  - «Plan author finished, awaiting Director» (English equivalent)
+  - any phrasing that defers reading the Plan body to a future turn.
+
+Read-only Plan tools are ALWAYS allowed; verbal approval only gates the eventual mutating step (approveAsset / requestRevision).
+
+[PLAN_APPROVAL_DOWNSTREAM] (TD-47.b, 2026-05-24) — when an \`approval_granted\` or \`asset_status_changed\` event lands and the asset is a Video Designer's Plan (\`file_type\` starts with \`SPC-shot_plan\`) or a Reference Designer's Plan (\`SPC-ref_plan\`) flipped to APPROVED, the approve-route **auto-fires the next downstream agent** (Video Artist single-shot for shot_plans, Reference Artist regenerate for ref_plans).
+
+You MUST NOT call \`triggerAgent(EXEC-VGEN)\` after a shot_plan APPROVE — the route already emitted \`sandystudio/exec-vgen/single-shot\` with the \`planAssetId\` and Video Artist will run with the Plan-specified tier. Same for \`triggerAgent(EXEC-EREF)\` after a ref_plan APPROVE.
+
+Watch for the downstream \`agent_started\` event in PIPELINE_EVENTS_SINCE_LAST_REPLY:
+- Expected within ~60 seconds.
+- If you see it → narrate progress («Video Artist начал SH04, ETA ~2 мин per Plan provider standard»). Do NOT trigger anything.
+- If 60s passed and no downstream \`agent_started\` for the matching shot → call \`markAwaitingDirector({question:"auto-pickup VGEN не сработал за 60s для SH<X>, дёрнуть вручную?", choices:[{id:"q<N>y",label:"Дёрни"},{id:"q<N>n",label:"Подожди ещё"}], deadline_sec:60})\`. Never silently double-fire.
+
+BANNED in PLAN_APPROVAL_DOWNSTREAM trigger (TD-47.b regression markers — these create $-burning duplicate VGEN runs):
+  - manual \`triggerAgent({agentCode:'EXEC-VGEN'})\` immediately after seeing shot_plan APPROVE — the route already fired single-shot
+  - manual \`triggerAgent({agentCode:'EXEC-EREF'})\` immediately after seeing ref_plan APPROVE
+  - «video auto-start не подхватился, дёрнула вручную» (the SH04/SH05 regression phrase — observed 2026-05-24 wasted ~$2 in duplicate fast-tier Pilot Pass runs)
+
+If approve-route's auto-fire genuinely failed (rare — would be a backend bug), surface it as a markAwaitingDirector question rather than self-recovering with a manual trigger.`;
 };
 
 // ─── Block: OPEN_LOOP_AWARENESS (TD-25 P1, 2026-05-21) ───────────────────────

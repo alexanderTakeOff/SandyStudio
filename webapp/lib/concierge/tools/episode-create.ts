@@ -132,17 +132,27 @@ export const findEpisode: Tool<FindEpisodeArgs> = {
     const { supabase } = ctx;
     const needle = args.query.trim();
 
-    // Extract a likely episode_code (E01 / SS-S14-E01 → E01) for direct hit first.
-    const epCodeMatch = needle.match(/E\d{1,3}/i);
-    const epCode = epCodeMatch ? epCodeMatch[0].toUpperCase() : null;
+    // 2026-05-25 fix: episode_code in DB is the FULL form like 'SS-S15-E01',
+    // not the short 'E01'. The previous regex extracted only 'E01' and queried
+    // episode_code = 'E01' → 0 matches for current schema. New extraction:
+    //   1. Prefer the full 'SS-S\d{2}-E\d{2,3}' or 'SS-PILOT-E\d{2,3}' shape
+    //   2. Then 'SS-S\d{2}' (series only — fall through to ilike since
+    //      episode_code is per-episode)
+    //   3. Fall back to ilike on episode_code or title_working
+    const fullCodeMatch = needle.match(/SS-(?:S\d{2}|PILOT)(?:-E\d{1,3})?/i);
+    const fullCode = fullCodeMatch ? fullCodeMatch[0].toUpperCase() : null;
 
     let q = supabase
       .from('episodes')
       .select('id,episode_code,title_working,series_id,status,governance_mode,created_at')
       .order('created_at', { ascending: false })
       .limit(10);
-    if (epCode) {
-      q = q.eq('episode_code', epCode);
+    if (fullCode && /-E\d/i.test(fullCode)) {
+      // Has episode segment — exact match on episode_code.
+      q = q.eq('episode_code', fullCode);
+    } else if (fullCode) {
+      // Series-only code (SS-S15) — ilike prefix on episode_code.
+      q = q.ilike('episode_code', `${fullCode}%`);
     } else {
       q = q.ilike('title_working', `%${needle}%`);
     }

@@ -16,7 +16,7 @@ const baseAsset = {
 };
 
 describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
-  it('returns 14 per-agent rows in canonical order (Phase A.2: Music before Animatic, Final Cut after VGEN)', () => {
+  it('returns 15 per-agent rows in canonical order (TD-46: shot_planning between animatic and visual_generator)', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     expect(stages.map((s) => s.id)).toEqual([
       'brief',
@@ -27,6 +27,7 @@ describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
       'episode_references',
       'music_generator',
       'animatic',
+      'shot_planning',
       'visual_generator',
       'final_cut',
       'copywriter',
@@ -65,6 +66,36 @@ describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
       'pre-production',
     ]);
     expect(phases[phases.length - 1]).toBe('analytics');
+  });
+
+  it('SPC-shot_plan asset routes to shot_planning row, EXEC-VANIM job too (TD-46)', () => {
+    const stages = buildPipelineSnapshot(
+      'GENERATION_IN_PROGRESS',
+      [
+        {
+          ...baseAsset,
+          filename:
+            'SS-S15-E01-SPC-shot_plan-SS-S15-E01-A1-SC01-SH01-v01-REVIEW.md',
+          file_type: 'SPC-shot_plan-SS-S15-E01-A1-SC01-SH01',
+          status: 'REVIEW',
+        },
+      ],
+      [{ id: 'j1', agent_id: 'EXEC-VANIM', status: 'RUNNING' }],
+    );
+    const sp = stages.find((s) => s.id === 'shot_planning')!;
+    expect(sp.label).toBe('Video Designer');
+    expect(sp.agents).toEqual(['EXEC-VANIM']);
+    expect(sp.phase).toBe('generation');
+    expect(sp.state).toBe('blocked'); // REVIEW asset → blocked
+    expect(sp.assets_in_review).toBe(1);
+    expect(sp.job_count?.running).toBe(1);
+  });
+
+  it('visual_generator row carries the Video Artist label (TD-46)', () => {
+    const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
+    const vg = stages.find((s) => s.id === 'visual_generator')!;
+    expect(vg.label).toBe('Video Artist');
+    expect(vg.agents).toEqual(['EXEC-VGEN']);
   });
 
   it('VID-final_cut asset routes to final_cut row, EXEC-STITCH job too', () => {

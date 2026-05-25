@@ -542,20 +542,115 @@ async function computeNextEvents(
         shotId: string;
         planAssetId: string;
         duration_seconds?: number;
-        pilot: boolean;
       } = {
         episodeId: ep,
         shotId,
         planAssetId: asset.id,
-        pilot: true,
       };
       if (durationSecondsFromPlan !== null) {
         data.duration_seconds = durationSecondsFromPlan;
       }
+      // TD-47.a (2026-05-24): emit `single-shot` (not `start`/Pilot Pass).
+      // Pilot Pass marks output as `vgen_pilot=true` and forces fast tier —
+      // both wrong for Plan-driven path. The Plan IS the preview; we want a
+      // single canonical VID-shot at the tier the Plan specifies.
       events.push({
-        name: 'sandystudio/exec-vgen/start',
+        name: 'sandystudio/exec-vgen/single-shot',
         data,
       });
+    }
+  }
+
+  // ── TD-49 Phase 2 P2.6 — IMG-anchor batch flow
+  //
+  // When an `IMG-anchor_*` asset is APPROVED, we do NOT immediately fire a
+  // downstream agent — the Animator (EXEC-VANIM) needs ALL anchors of the
+  // episode in place before it can author Plans (each Plan body references
+  // both start_anchor and end_anchor by asset_id). The flow:
+  //
+  //   1. Read `episodes.metadata.anchor_chain_enabled`. If false / absent →
+  //      no-op (legacy path, anchor chain feature off for this episode).
+  //   2. Count storyboard shots for the episode.
+  //   3. Count APPROVED IMG-anchor_* assets for the episode.
+  //   4. If APPROVED count < expected (`2 × shotCount`) → just log progress
+  //      and exit. Director continues approving pairs.
+  //   5. If APPROVED count >= expected → all anchors locked. Fan-out
+  //      `exec-vanim/plan` per shot so the Animator authors each Plan with
+  //      references to its `start_anchor` + `end_anchor` IDs.
+  //
+  // Pair reciprocity (checkAnchorPairCompatibility across adjacent shots)
+  // is not gated here in v1 — it lives at the Critic structural validator
+  // (P2.5 validateAnchorChainStructure) per-Plan. Approve-route fanout
+  // surfaces a warning-level activity event if cross-shot mismatch found
+  // but does not block the fan-out (Director can still revise).
+  if (ft.startsWith('IMG-anchor_') || ft === 'IMG-anchor') {
+    // computeNextEvents is only invoked on APPROVE (callsite line 1157), so
+    // no decision check needed here.
+    const { data: episodeRow } = await supabase
+      .from('episodes')
+      .select('id,metadata')
+      .eq('id', ep)
+      .maybeSingle();
+    const epMetadata =
+      (episodeRow as { metadata?: Record<string, unknown> | null } | null)
+        ?.metadata ?? null;
+    const anchorChainEnabled =
+      Boolean(epMetadata && (epMetadata as { anchor_chain_enabled?: unknown }).anchor_chain_enabled);
+
+    if (anchorChainEnabled) {
+      // 1. Total storyboard shots — 2 × N is the expected anchor count.
+      const { data: stbRow } = await supabase
+        .from('assets')
+        .select('content')
+        .eq('episode_id', ep)
+        .eq('file_type', 'STB-storyboard')
+        .eq('status', 'APPROVED')
+        .order('version', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      let shotCount = 0;
+      const stbContent =
+        (stbRow as { content?: string | null } | null)?.content ?? null;
+      let shots: Array<{ shotId: string }> = [];
+      if (stbContent) {
+        try {
+          const { listStoryboardShots } = await import('@/lib/api/vgen-shot-helpers');
+          shots = listStoryboardShots(stbContent);
+          shotCount = shots.length;
+        } catch {
+          shotCount = 0;
+        }
+      }
+      const expected = shotCount > 0 ? shotCount * 2 : 0;
+
+      // 2. APPROVED IMG-anchor_* count.
+      const { count: approvedAnchorCount } = await supabase
+        .from('assets')
+        .select('id', { count: 'exact', head: true })
+        .eq('episode_id', ep)
+        .like('file_type', 'IMG-anchor_%')
+        .eq('status', 'APPROVED');
+      const approved = approvedAnchorCount ?? 0;
+
+      if (expected > 0 && approved >= expected && shots.length > 0) {
+        // 3. All anchors approved → fan-out exec-vanim/plan per shot.
+        // Idempotency: hasJob with since=updated_at on this asset gates
+        // re-fires of VANIM at the episode level. Sufficient for v1 — if
+        // Director double-approves the LAST anchor accidentally, the
+        // second call returns ConflictError before reaching here anyway
+        // (asset is already APPROVED, idempotency in approve flow).
+        const alreadyFired = await hasJob(supabase, ep, 'EXEC-VANIM', { since });
+        if (!alreadyFired) {
+          for (const shot of shots) {
+            events.push({
+              name: 'sandystudio/exec-vanim/plan',
+              data: { episodeId: ep, shotId: shot.shotId },
+            });
+          }
+        }
+      }
+      // expected === 0 or approved < expected: no event emitted. Activity
+      // feed already shows the per-anchor approval; the gate is implicit.
     }
   }
 

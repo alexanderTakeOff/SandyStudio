@@ -215,7 +215,7 @@ export const enrichBible: Tool<EnrichBibleArgs> = {
 
 interface SetBibleContentArgs {
   seriesId: string;
-  section: 'general_idea' | 'character' | 'location' | 'object' | 'style' | 'audio';
+  section: 'general_idea' | 'character' | 'location' | 'object' | 'style' | 'audio' | 'scene_master';
   slug?: string;
   content: string;
   description?: string;
@@ -237,7 +237,7 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
           seriesId: { type: 'string', description: 'Series UUID.' },
           section: {
             type: 'string',
-            enum: ['general_idea', 'character', 'location', 'object', 'style', 'audio'],
+            enum: ['general_idea', 'character', 'location', 'object', 'style', 'audio', 'scene_master'],
           },
           slug: {
             type: 'string',
@@ -276,7 +276,7 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
     const content = typeof obj.content === 'string' ? obj.content : '';
     const description = typeof obj.description === 'string' ? obj.description : undefined;
     if (!seriesId) throw new Error('seriesId is required');
-    const VALID_SECTIONS = ['general_idea', 'character', 'location', 'object', 'style', 'audio'];
+    const VALID_SECTIONS = ['general_idea', 'character', 'location', 'object', 'style', 'audio', 'scene_master'];
     if (!VALID_SECTIONS.includes(section as string)) {
       throw new Error(`section must be one of ${VALID_SECTIONS.join(', ')}`);
     }

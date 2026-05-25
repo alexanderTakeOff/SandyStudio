@@ -37,6 +37,12 @@ import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 // ── Legacy single-event path ──────────────────────────────────────────────────
 // Kept for back-compat with replay-pilot harness and any in-flight
 // /generate-shot events from the pre-Pilot-Pass world.
+//
+// TD-50 (2026-05-25) defence-in-depth: even though the trigger route now
+// reroutes plan-driven payloads to `single-shot` directly, the legacy handler
+// also extracts planAssetId so any historical in-flight `generate-shot` event
+// (replay-pilot fixtures, queued retries, third-party callers) still routes
+// to the TD-44 resolveVanimProviderId path when a Plan asset id is supplied.
 export const execVgenLegacyGenerateShot = createAgentInngestFunction({
   id: 'exec-vgen-generate-shot',
   name: 'EXEC-VGEN: Generate Shot (legacy)',
@@ -46,6 +52,14 @@ export const execVgenLegacyGenerateShot = createAgentInngestFunction({
   operation: 'video_generation',
   resolveRunArgs: (eventData) => ({
     shotId: eventData.shotId as string,
+    // TD-50: when the event payload carries planAssetId, surface it so
+    // runner.ts q7a Step 6 + TD-44 resolveVanimProviderId fire. Legacy
+    // events without planAssetId continue working unchanged (falls back
+    // to event-arg / DB-config provider resolution).
+    ...(typeof eventData.planAssetId === 'string' &&
+    eventData.planAssetId.length > 0
+      ? { planAssetId: eventData.planAssetId }
+      : {}),
   }),
   // 2026-05-22 — surface shot label in activity titles.
   resolveActivityContext: (eventData) => {
@@ -475,6 +489,11 @@ export const execVgenSingleShot = inngest.createFunction(
           qualityTier: data.quality_tier,
           durationSeconds: data.duration_seconds,
           vgenPilot: false,
+          // TD-47.a (2026-05-24): SPC-shot_plan.APPROVED in approve-route now
+          // emits single-shot (not Pilot Pass) for the Plan-driven path.
+          // Plan body drives prompt + end_image + seed + quality_tier per
+          // q7a Step 6 wiring. Absent → legacy buildShotPromptV2 path.
+          ...(data.planAssetId ? { planAssetId: data.planAssetId } : {}),
         });
       });
 

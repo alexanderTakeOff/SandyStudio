@@ -60,7 +60,27 @@ function isApproved(a: EpisodeAsset): boolean {
 }
 
 function toGridAsset(a: EpisodeAsset): AssetGridAsset {
+  // 2026-05-25 Director feedback: hover tooltip showed the long snake_case
+  // file_type slug (e.g. "ss_s15_e01_a1_sc02_sh03_sandy_bedroom_continuity_...")
+  // — useless for distinguishing siblings. Lead with version + status, then
+  // the short shot id (sh03) so versions are scannable at a glance.
+  const shotId =
+    isShotReferenceV2(a.metadata)
+      ? (a.metadata as { shot_reference: { shot_id: string } }).shot_reference.shot_id
+      : null;
+  const shortShot =
+    shotId?.match(/SH\d+/i)?.[0]?.toUpperCase() ??
+    a.file_type.match(/sh\d+/i)?.[0]?.toUpperCase() ??
+    null;
+  const versionStr = a.version != null ? `v${String(a.version).padStart(2, '0')}` : '';
+  const parts: string[] = [];
+  if (shortShot) parts.push(shortShot);
+  if (versionStr) parts.push(versionStr);
+  parts.push(a.status);
+  // Slug retained as the tail for disambiguation when several different
+  // reference families share the same shot (e.g. character vs hourglass).
   const slug = a.file_type.replace(/^IMG-episode_ref_?/, '') || bibleSlug(a.file_type) || '';
+  if (slug) parts.push(slug);
   return {
     id: a.id,
     filename: a.filename,
@@ -71,7 +91,7 @@ function toGridAsset(a: EpisodeAsset): AssetGridAsset {
     drive_path: a.drive_path,
     drive_web_view_url: a.drive_web_view_url,
     metadata: a.metadata,
-    hoverName: slug || a.filename,
+    hoverName: parts.join(' · '),
   };
 }
 

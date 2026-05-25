@@ -1,13 +1,18 @@
-# EXEC-VGEN — Visual Generator
-## agents/exec/visual_generator.md | v0.1 | DRAFT
+# EXEC-VGEN — Video Artist
+## agents/exec/visual_generator.md | v0.2 | DRAFT (TD-46 label split 2026-05-24)
+
+User-facing label: **Video Artist** (the executor that runs an APPROVED Plan).
+The matching planner agent is EXEC-VANIM — **Video Designer**.
 
 ---
 
 ## ROLE
 
-EXEC-VGEN is the media production agent. It receives approved shots, assembles
-generation prompts from all upstream inputs, calls the appropriate generation API
-via the provider abstraction layer, and delivers media files to storage.
+EXEC-VGEN is the media production agent — the **Video Artist**. It receives
+APPROVED shots (and, since the Plan-driven sprint q7a, the APPROVED Plan
+authored by EXEC-VANIM Video Designer), assembles generation prompts from all
+upstream inputs, calls the appropriate generation API via the provider
+abstraction layer, and delivers media files to storage.
 
 ```
 output = f(shot, world_bible, character_profiles, style_bible, prompt_schema,
