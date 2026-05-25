@@ -198,6 +198,237 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
   };
 }
 
+// ── TD-49 Phase 2 P2.2 — Anchor Chain context loader ─────────────────────────
+//
+// The Animator's Plan body (P2.1) gains start_anchor + end_anchor fields, the
+// EREF Designer's Plan body gains pair handoff authoring. Both decisions need
+// shot-scoped context that loadAgentInputs (episode-scoped) doesn't expose:
+//
+//   - full_storyboard: all shots in narrative order (not just current shot)
+//   - current_shot / adjacent_shots: prior + next storyboard entries
+//   - prior_anchors: already-APPROVED IMG-anchor_* assets for earlier shots
+//   - scene_master_asset: LOCKED Bible-level layout master for the location
+//
+// This helper is invoked by Designer (P2.3) and the approve-route batch flow
+// (P2.6) when the episode is opted into anchor chain via
+// `episodes.metadata.anchor_chain_enabled = true`. It is a separate function
+// from loadAgentInputs because (a) it requires a shotId argument that not all
+// agents use, and (b) it issues additional queries that legacy agents don't
+// need.
+
+import { listStoryboardShots, type StoryboardShotSummary } from '../api/vgen-shot-helpers';
+
+export interface PriorAnchorRef {
+  /** Asset UUID of the IMG-anchor_* asset. */
+  asset_id: string;
+  /** Shot id this anchor belongs to (lowercase form, e.g. ss-s15-e01-a1-sc01-sh07). */
+  shotId: string;
+  /** Which side of the shot this anchor represents. */
+  side: 'start' | 'end';
+  /** Storage filename — kept for audit / debugging. */
+  filename: string;
+  /** Storyboard sequence index, ascending — for narrative ordering. */
+  seq: number;
+}
+
+export interface SceneMasterRef {
+  /** Asset UUID of the SBL-scene_master_<slug> or SBL-location_<slug> asset. */
+  asset_id: string;
+  /** Concrete file_type — Designer chooses how to use it (scene_master > location). */
+  file_type: string;
+  filename: string;
+  /** Source kind — 'scene_master' is the canonical layout lock; 'location' is the
+   *  fallback when no scene_master is authored yet. */
+  source: 'scene_master' | 'location';
+}
+
+export interface AnchorChainContext {
+  /** Storyboard shots in narrative order, all parsed from the latest APPROVED STB. */
+  full_storyboard: StoryboardShotSummary[];
+  /** The specific shot the agent is currently authoring for. */
+  current_shot: StoryboardShotSummary | null;
+  adjacent_shots: {
+    prior: StoryboardShotSummary | null;
+    next: StoryboardShotSummary | null;
+  };
+  /** All APPROVED IMG-anchor_* assets for prior shots, in narrative order. */
+  prior_anchors: PriorAnchorRef[];
+  /** LOCKED scene_master for the current shot's location, or fallback location asset. */
+  scene_master_asset: SceneMasterRef | null;
+}
+
+interface LoadAnchorChainContextArgs {
+  supabase: SupabaseClient<Database>;
+  episodeId: string;
+  shotId: string;
+}
+
+const ANCHOR_FILENAME_RE = /-img-anchor_([a-z0-9_-]+?)_(start|end)-/i;
+
+function extractAnchorRef(asset: {
+  id: string;
+  file_type: string | null;
+  filename: string;
+}): { shotIdLower: string; side: 'start' | 'end' } | null {
+  // Filename format: SS-S15-E01-IMG-anchor_ss_s15_e01_a1_sc01_sh01_start-v01-APPROVED.png
+  // Extract the shot id between `anchor_` and `_(start|end)`.
+  const m = asset.filename.match(ANCHOR_FILENAME_RE);
+  if (!m) return null;
+  const shotIdLower = (m[1] ?? '').toLowerCase();
+  const side = (m[2] ?? '').toLowerCase() as 'start' | 'end';
+  if (!shotIdLower || (side !== 'start' && side !== 'end')) return null;
+  return { shotIdLower, side };
+}
+
+function shotIdToLower(shotId: string): string {
+  return shotId.toLowerCase().replace(/-/g, '_');
+}
+
+function resolveLocationSlug(shot: StoryboardShotSummary | null): string | null {
+  if (!shot) return null;
+  const loc = (shot as unknown as { location?: { slug?: unknown } | string }).location;
+  if (!loc) return null;
+  if (typeof loc === 'string') return loc.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  if (typeof loc === 'object') {
+    const slug = (loc as { slug?: unknown }).slug;
+    if (typeof slug === 'string' && slug.length > 0) return slug.toLowerCase();
+  }
+  return null;
+}
+
+/**
+ * Loads shot-scoped anchor chain context for VANIM / EREF Designer authoring.
+ * Returns an empty-but-structured object when the storyboard is missing or
+ * shotId can't be resolved — callers fall back to the legacy single-reference
+ * path. Phase 2 entry point.
+ */
+export async function loadAnchorChainContext(
+  args: LoadAnchorChainContextArgs,
+): Promise<AnchorChainContext> {
+  const { supabase, episodeId, shotId } = args;
+
+  const empty: AnchorChainContext = {
+    full_storyboard: [],
+    current_shot: null,
+    adjacent_shots: { prior: null, next: null },
+    prior_anchors: [],
+    scene_master_asset: null,
+  };
+
+  // 1. Latest APPROVED STB-storyboard for this episode.
+  const { data: stbRows } = await supabase
+    .from('assets')
+    .select('id,file_type,status,content,version,created_at')
+    .eq('episode_id', episodeId)
+    .eq('file_type', 'STB-storyboard')
+    .eq('status', 'APPROVED')
+    .order('version', { ascending: false })
+    .limit(1);
+  const stb = stbRows?.[0];
+  if (!stb || typeof stb.content !== 'string') return empty;
+
+  let shots: StoryboardShotSummary[] = [];
+  try {
+    shots = listStoryboardShots(stb.content);
+  } catch {
+    return empty;
+  }
+  if (shots.length === 0) return empty;
+
+  const currentIdx = shots.findIndex((s) => s.shotId === shotId);
+  const current_shot = currentIdx >= 0 ? shots[currentIdx]! : null;
+  const adjacent_shots = {
+    prior: currentIdx > 0 ? shots[currentIdx - 1]! : null,
+    next: currentIdx >= 0 && currentIdx + 1 < shots.length ? shots[currentIdx + 1]! : null,
+  };
+
+  // 2. APPROVED IMG-anchor_* assets for prior shots in narrative order.
+  const shotIdLowerToSeq = new Map<string, number>();
+  shots.forEach((s, i) => shotIdLowerToSeq.set(shotIdToLower(s.shotId), i));
+
+  const prior_anchors: PriorAnchorRef[] = [];
+  const { data: anchorRows } = await supabase
+    .from('assets')
+    .select('id,file_type,filename,status,created_at')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'IMG-anchor_%')
+    .in('status', ['APPROVED', 'LOCKED'] as never)
+    .order('created_at', { ascending: true })
+    .limit(200);
+  for (const row of anchorRows ?? []) {
+    const ref = extractAnchorRef({
+      id: String(row.id),
+      file_type: row.file_type ?? null,
+      filename: String(row.filename ?? ''),
+    });
+    if (!ref) continue;
+    const seq = shotIdLowerToSeq.get(ref.shotIdLower);
+    if (seq === undefined) continue;
+    // Only include anchors whose shot is BEFORE the current shot in narrative
+    // order — these are the "prior" cascade. The current shot's own anchors
+    // are NOT included here (Designer/Animator authors them).
+    if (currentIdx >= 0 && seq >= currentIdx) continue;
+    prior_anchors.push({
+      asset_id: String(row.id),
+      shotId: ref.shotIdLower,
+      side: ref.side,
+      filename: String(row.filename ?? ''),
+      seq,
+    });
+  }
+  prior_anchors.sort((a, b) => a.seq - b.seq);
+
+  // 3. scene_master_asset: series-level LOCKED Bible image for the location.
+  //    Preference: SBL-scene_master_<slug> (TD-49 canonical layout master)
+  //                → SBL-location_<slug>     (existing Bible location image)
+  //    Both are series-scoped (`series_id IS NOT NULL`, `episode_id IS NULL`).
+  let scene_master_asset: SceneMasterRef | null = null;
+  const locationSlug = resolveLocationSlug(current_shot);
+  if (locationSlug) {
+    const { data: episode } = await supabase
+      .from('episodes')
+      .select('series_id')
+      .eq('id', episodeId)
+      .single();
+    const seriesId = (episode as { series_id?: string | null } | null)?.series_id ?? null;
+    if (seriesId) {
+      const tryFetch = async (
+        fileType: string,
+        source: SceneMasterRef['source'],
+      ): Promise<SceneMasterRef | null> => {
+        const { data: rows } = await supabase
+          .from('assets')
+          .select('id,file_type,filename,status')
+          .eq('series_id', seriesId)
+          .eq('file_type', fileType)
+          .in('status', ['APPROVED', 'LOCKED'] as never)
+          .order('version', { ascending: false })
+          .limit(1);
+        const row = rows?.[0];
+        if (!row) return null;
+        return {
+          asset_id: String(row.id),
+          file_type: String(row.file_type),
+          filename: String(row.filename ?? ''),
+          source,
+        };
+      };
+      scene_master_asset =
+        (await tryFetch(`SBL-scene_master_${locationSlug}`, 'scene_master')) ??
+        (await tryFetch(`SBL-location_${locationSlug}`, 'location')) ??
+        null;
+    }
+  }
+
+  return {
+    full_storyboard: shots,
+    current_shot,
+    adjacent_shots,
+    prior_anchors,
+    scene_master_asset,
+  };
+}
+
 // ── Agent execution (mock-only in Phase 4) ────────────────────────────────────
 
 export interface RunAgentArgs {
