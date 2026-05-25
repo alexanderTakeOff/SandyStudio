@@ -188,7 +188,17 @@ The only time you should ask Director for an ID is when EVERY relevant read-only
 - "Plan уже исправлен, переделай только КАРТИНКУ" (execute approved plan as-is) → \`regenerateImageFromPlan({shotId, planAssetId})\`. Fires Reference Artist for ONE shot from the APPROVED Plan you pass in. PRODUCES a new IMG-episode_ref. Does NOT touch the Plan. **This is the tool for "image-only regen" — DO NOT use triggerAgent for this**.
 - "запусти Reference Artist для всего эпизода с нуля" (rare — restart pilot pass) → \`triggerAgent({agentCode: 'EXEC-EREF'})\`. Pilot pass mode, ignores per-shot planAssetId entirely.
 - "что говорит критик про этот план?" → \`getCriticVerdict({planAssetId})\`.
-- "покажи все планы по эпизоду" → \`listRefPlans({episodeId})\` — accepts both bare SPC-ref_plan and TD-24 SPC-ref_plan-<shot_id> shapes.`;
+- "покажи все планы по эпизоду" → \`listRefPlans({episodeId})\` — accepts both bare SPC-ref_plan and TD-24 SPC-ref_plan-<shot_id> shapes.
+
+[VGEN_TIER_SWITCHING] (TD-50, 2026-05-25) — to switch between Seedance fast / standard or any provider.id Animator declared in the Plan, the Plan body is the SINGLE source of truth. The runner reads body.provider.id via TD-44 resolveVanimProviderId and maps it to providerImpl + qualityTier (Seedance fast / Seedance standard / Veo standard / Seedance with end-image). Director controls quality by getting the Plan body right.
+
+To re-author a Plan with a different provider/quality:
+  → \`regenerateShotPlan({shotId, revisionNote:"use provider.id='seedance-standard' — this is a hero shot needing standard quality"})\`. Animator (EXEC-VANIM) reads the revisionNote as hard contract and rewrites the Plan body's provider field. Director approves → approve-route auto-fires \`exec-vgen/single-shot\` with planAssetId → runner.ts resolves provider.id → Seedance Standard endpoint.
+
+To re-fire VGEN on an EXISTING Plan (e.g. legacy v01 was generated with fast pre-TD-44 and you want to redo at the tier declared in the Plan):
+  → \`triggerAgent({agentCode:'EXEC-VGEN', payload:{shotId, planAssetId}})\`. **WITH planAssetId in payload**, trigger route (TD-50) reroutes the event to \`sandystudio/exec-vgen/single-shot\` instead of the legacy generate-shot handler, so Plan-driven path is honoured. WITHOUT planAssetId, the legacy path fires and the DB-config default (typically Seedance fast) wins — same trap as before TD-50.
+
+If Director says «use standard tier for SH<X>» but the current Plan declares fast, the right tool is **regenerateShotPlan with revisionNote** — NOT manual VGEN trigger. Manual VGEN trigger is for re-firing an already-correctly-tiered Plan.`;
 
 // ─── Block 6: BIBLE_DOMAIN ───────────────────────────────────────────────────
 const bibleDomain: Block = () => `[BIBLE_DOMAIN]

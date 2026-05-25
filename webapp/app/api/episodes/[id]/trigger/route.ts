@@ -171,9 +171,36 @@ export const POST = withApiHandler(async (req, ctx) => {
     eventPayload.confirmedBy = user.id;
   }
 
+  // TD-50 (2026-05-25) — Plan-driven VGEN through manual triggerAgent.
+  //
+  // Live SS-S15-E0X smoke surfaced the bug: Polина's `triggerAgent({agentCode:
+  // 'EXEC-VGEN', payload:{shotId, planAssetId}})` routed to the legacy
+  // `generate-shot` event handler (line 49 above), which historically only
+  // extracts shotId via resolveRunArgs and ignores planAssetId. Result: even
+  // when the Animator's Plan body declared `provider.id="seedance-standard"`,
+  // the manual-trigger path silently dropped to the DB-config default
+  // (Seedance Fast) because TD-44's resolveVanimProviderId never saw the
+  // Plan body — planAssetId was discarded at the legacy handler boundary.
+  //
+  // Approve-route already emits `single-shot` for Plan-driven path (TD-47
+  // commit 6adb91e). This block extends the same routing to manual triggers
+  // so the plan-driven path is honoured regardless of who fires VGEN.
+  let effectiveEventName: string = eventName;
+  if (body.agentCode === 'EXEC-VGEN') {
+    const payloadShotId =
+      typeof body.payload?.shotId === 'string' ? body.payload.shotId : null;
+    const payloadPlanAssetId =
+      typeof body.payload?.planAssetId === 'string'
+        ? body.payload.planAssetId
+        : null;
+    if (payloadShotId && payloadPlanAssetId) {
+      effectiveEventName = 'sandystudio/exec-vgen/single-shot';
+    }
+  }
+
   const { ids } = await inngest.send({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    name: eventName as any,
+    name: effectiveEventName as any,
     data: eventPayload as never,
   });
 
@@ -182,23 +209,26 @@ export const POST = withApiHandler(async (req, ctx) => {
   await logEvent(supabase, {
     event_type: 'manual_trigger',
     severity: 'warning',
-    title: `Manual trigger: ${body.agentCode}`,
+    title: `Manual trigger: ${body.agentCode}${effectiveEventName !== eventName ? ' (plan-driven)' : ''}`,
     description: body.reason,
     actor: user.id,
     episode_id: id,
     metadata: {
       agent: body.agentCode,
-      event: eventName,
+      event: effectiveEventName,
       reason: body.reason,
       payload: body.payload ?? null,
       inngest_event_ids: ids,
+      ...(effectiveEventName !== eventName
+        ? { original_event: eventName, rerouted_reason: 'planAssetId-in-payload' }
+        : {}),
     },
   });
 
   return apiOk({
     triggered: true,
     agent: body.agentCode,
-    inngest_event: eventName,
+    inngest_event: effectiveEventName,
     inngest_event_ids: ids,
   });
 });
