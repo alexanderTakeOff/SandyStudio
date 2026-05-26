@@ -96,14 +96,15 @@ export function StudioSidebar() {
   return (
     <aside
       className={cn(
-        'group/sidebar relative z-20 hidden md:flex flex-col shrink-0 border-r border-glass bg-panel-glass backdrop-blur-md',
+        'group/sidebar relative z-20 hidden md:flex flex-col h-full shrink-0 border-r border-glass bg-panel-glass backdrop-blur-md',
         'transition-[width] duration-200 ease-out',
         collapsed ? 'w-14' : 'w-60',
       )}
       aria-label="Primary"
     >
-      {/* Brand — hover reveals the collapse toggle */}
-      <div className="group/brand relative border-b border-glass">
+      {/* Brand — hover reveals the collapse toggle. shrink-0 so it never
+          scrolls away even if nav becomes very long (TD-54.1). */}
+      <div className="group/brand relative shrink-0 border-b border-glass">
         <Link
           href="/"
           className={cn(
@@ -152,8 +153,9 @@ export function StudioSidebar() {
         </button>
       </div>
 
-      {/* Nav */}
-      <nav className={cn('flex-1 py-4 space-y-0.5', collapsed ? 'px-2' : 'px-3')}>
+      {/* Nav — independent overflow so the brand stays put and the
+          surrounding shell never scrolls the sidebar away (TD-54.1). */}
+      <nav className={cn('flex-1 overflow-y-auto py-4 space-y-0.5', collapsed ? 'px-2' : 'px-3')}>
         {NAV.map((item) => {
           const active =
             item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
@@ -207,8 +209,8 @@ export function StudioSidebar() {
         })}
       </nav>
 
-      {/* Bottom — Settings */}
-      <div className={cn('pb-4 border-t border-glass pt-3', collapsed ? 'px-2' : 'px-3')}>
+      {/* Bottom — Settings. shrink-0 keeps it pinned below the scrollable nav. */}
+      <div className={cn('shrink-0 pb-4 border-t border-glass pt-3', collapsed ? 'px-2' : 'px-3')}>
         <Link
           href="/settings"
           title={collapsed ? 'Settings' : undefined}

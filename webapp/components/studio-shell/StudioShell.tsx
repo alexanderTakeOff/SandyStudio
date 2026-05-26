@@ -1,9 +1,18 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // components/studio-shell/StudioShell.tsx
-// Top-level shell per uiux.md §8 — Sidebar + Topbar + ContentFrame + Ambient.
-// Uses the z-index model from §8.2.
-// AmbientAssetField and ConciergePanel are 'use client' components; they
-// guard their own browser-only APIs internally.
+// Top-level shell per uiux.md §8 — Sidebar + ConciergePanel + Content
+// arranged in a 3-column grid. AmbientAssetField paints behind everything.
+//
+// TD-54.3 (2026-05-26): Column order locked as
+//   [Sidebar (w-14/w-60)]  [ConciergePanel (0 when closed)]  [Content (1fr)]
+// driven by two CSS vars on documentElement:
+//   --sidebar-width  → owned by StudioSidebar (collapse toggle)
+//   --pa-mid-width   → owned by ConciergePanel (open/close + drag-resize)
+// Both are kept in sync via setProperty so the grid template animates
+// columns smoothly when either changes.
+//
+// AmbientAssetField + ConciergePanel are 'use client'; they guard their own
+// browser-only APIs internally.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { ReactNode } from 'react';
@@ -20,36 +29,38 @@ interface StudioShellProps {
 }
 
 export function StudioShell({ children, governanceMode, systemMode }: StudioShellProps) {
-  // The Prod Assistant panel writes --pa-pad-left / --pa-pad-right on the
-  // document root via useEffect (see ConciergePanel.tsx). The wrapper here
-  // reserves space for the panel via padding so the rest of the UI shrinks
-  // instead of being overlapped. Falls back to 0 when the panel is closed
-  // or the vars are unset (initial server render).
   return (
     <div
-      className="relative min-h-screen flex transition-[padding] duration-200 ease-out"
+      className="relative min-h-screen grid"
       style={{
-        paddingLeft: 'var(--pa-pad-left, 0px)',
-        paddingRight: 'var(--pa-pad-right, 0px)',
+        gridTemplateColumns: 'var(--sidebar-width, 15rem) var(--pa-mid-width, 0px) minmax(0, 1fr)',
+        transition: 'grid-template-columns 200ms ease-out',
       }}
     >
       {/* Notification dot keyframes — global once per shell */}
       <NotificationDotStyles />
 
-      {/* z-0 / -z-10 — Ambient background */}
+      {/* z-0 / -z-10 — Ambient background painted behind every column */}
       <AmbientAssetField />
 
-      {/* z-20 — Sidebar */}
-      <StudioSidebar />
-
-      {/* z-20 — Topbar + Content */}
-      <div className="relative z-20 flex-1 flex flex-col min-w-0">
-        <StudioTopbar governanceMode={governanceMode} systemMode={systemMode} />
-        {children}
+      {/* z-20 — Sidebar, column 1. h-screen sticky so it survives page scroll. */}
+      <div className="relative z-20 h-screen sticky top-0 self-start">
+        <StudioSidebar />
       </div>
 
-      {/* z-30 — Prod Assistant docked panel (writes the CSS vars above) */}
+      {/* z-30 — Prod Assistant, column 2 (collapses to 0 when closed) */}
       <ConciergePanel />
+
+      {/* z-20 — Topbar + Content, column 3.
+          TD-54.2: scroll lives HERE, not on document. Topbar stays sticky
+          at the top of the content viewport via the sticky wrapper below;
+          each child page can adopt its own subsection-scoped scroll. */}
+      <div className="relative z-20 flex flex-col min-w-0 h-screen overflow-y-auto">
+        <div className="sticky top-0 z-10 bg-[var(--bg)]">
+          <StudioTopbar governanceMode={governanceMode} systemMode={systemMode} />
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
