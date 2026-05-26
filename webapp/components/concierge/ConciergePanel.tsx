@@ -79,18 +79,64 @@ const INPUT_DEFAULT_PX = 80;
 // 2026-05-26 — Director directive: certain pipeline event types are
 // redundant with Polina's own report and just spam the chat. They stay
 // in the Activity feed via a separate channel — only the chat surface
-// is filtered. Keep agent_completed / agent_failed / approval_* /
-// blocker_raised / decision_requested / input_requested visible so
-// Director still sees signals that need a reaction.
+// is filtered. Keep agent_started / agent_completed / agent_failed /
+// approval_* / blocker_raised / decision_requested / input_requested
+// visible — Director said «здесь следить удобнее порой чем в activity
+// feed». Content is shortened on render (see formatPipelineContent).
 const AMBIENT_CHAT_NOISE_EVENT_TYPES: ReadonlySet<string> = new Set([
   'manual_trigger',
-  'agent_started',
 ]);
 function isAmbientChatNoise(eventType: unknown): boolean {
   return (
     typeof eventType === 'string' &&
     AMBIENT_CHAT_NOISE_EVENT_TYPES.has(eventType)
   );
+}
+
+// 2026-05-26 — Director directive: re-render pipeline rows with the
+// `[ambient pipeline event · TYPE]` noise stripped, agent narration
+// compressed to "agent <FRIENDLY> started/completed — SH09", approval
+// rows reduced to their semantic core, and `\n\n` paragraph breaks
+// inserted around natural separators so the bubble reads as paragraphs
+// instead of one long monospace line. Render side uses
+// `whitespace-pre-line` so the newlines survive.
+function formatPipelineContent(raw: string): string {
+  // Strip the trailing `(actor=...)` suffix that the Postgres trigger
+  // always appends — it's audit metadata, not chat content.
+  const trimmed = raw.replace(/\s*\(actor=[^)]+\)\s*$/, '');
+
+  const m = trimmed.match(/^\[ambient pipeline event · (\w+)\]\s*(.*)$/s);
+  if (!m) return trimmed;
+  const eventType = m[1] ?? '';
+  const body = (m[2] ?? '').trim();
+
+  if (eventType === 'agent_started' || eventType === 'agent_completed') {
+    const verb = eventType === 'agent_started' ? 'started' : 'completed';
+    const friendlyMatch = body.match(
+      new RegExp(`^(.+?)\\s+${verb}\\b`, 'i'),
+    );
+    const friendly = (friendlyMatch?.[1] ?? 'agent').trim().toUpperCase();
+    const shotMatch = body.match(/\bSH\d+\b/);
+    const shot = shotMatch?.[0];
+    return `agent <${friendly}> ${verb}${shot ? ` — ${shot}` : ''}`;
+  }
+
+  if (eventType.startsWith('approval_')) {
+    // Drop "<DECISION> on <filename> — " prefix; keep the explanatory
+    // tail. Add paragraph breaks around natural separators.
+    const withoutFilePrefix = body.replace(
+      /^\s*[A-Z_]+\s+on\s+\S+\s*[—-]+\s*/,
+      '',
+    );
+    const withParagraphs = withoutFilePrefix
+      .replace(/\s+—\s+Director said:/g, '\n\nDirector said:')
+      .replace(/;\s+([a-zA-Zа-яА-Я])/g, (_match, c: string) => `;\n\n${c}`);
+    return `[${eventType}] ${withParagraphs}`;
+  }
+
+  // Default: replace the noisy "ambient pipeline event · " prefix with
+  // the bare `[event_type]` tag and keep the body.
+  return `[${eventType}] ${body}`;
 }
 
 /** Silence tolerance for continuous mic. Director wanted ≥5s for thinking pauses. */
@@ -1212,10 +1258,14 @@ export function ConciergePanel() {
                 : m.severity === 'warning'
                   ? 'var(--accent-warning)'
                   : 'var(--text-muted)';
+            // 2026-05-26 — reformat pipeline body to a compressed, paragraphed
+            // shape (see formatPipelineContent). whitespace-pre-line honours
+            // the \n\n separators we inject.
+            const formatted = formatPipelineContent(m.content);
             return (
               <div
                 key={key}
-                className="rounded-md px-2 py-1 text-[11px] font-mono mx-2"
+                className="rounded-md px-2 py-1 text-[11px] font-mono mx-2 whitespace-pre-line leading-relaxed"
                 style={{
                   background: 'color-mix(in oklab, currentColor 4%, transparent)',
                   color: accent,
@@ -1223,7 +1273,7 @@ export function ConciergePanel() {
                 }}
                 title="Pipeline event"
               >
-                {m.content}
+                {formatted}
               </div>
             );
           })}

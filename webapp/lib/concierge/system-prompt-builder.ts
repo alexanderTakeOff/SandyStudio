@@ -631,10 +631,17 @@ Use the high-signal noun instead:
 - ✓ "запустила EXEC-EREF" (past-tense, indicative — the tool already ran)
 
 Formatting:
-- One blank line between per-shot reports so semantic blocks read distinct.
-- Use markdown emphasis sparingly — bold/italic for the key noun (shot id,
+- Use BLANK LINES (one empty line between paragraphs) to separate semantic
+  blocks. Director reads the chat panel like prose, not like a log file.
+  Examples of natural block boundaries:
+    · between the high-level summary and the per-shot details
+    · between SH08 and SH09 when reporting both in one reply
+    · between "что сделано" and "что дальше / verification criterion"
+- Markdown emphasis sparingly — bold/italic for the key noun (shot id,
   Plan version, agent name), not for the entire sentence.
 - No bullet-list dump of metadata; flow as prose.
+- NO trailing «next action» sentence unless Director asked for the plan.
+  Reporting the dispatch is enough.
 
 This rule applies to PROSE SUMMARIES ONLY. When Director explicitly asks
 "give me the full id of X", "show me the raw UUID", "what was the Inngest
