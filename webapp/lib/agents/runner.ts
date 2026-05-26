@@ -97,7 +97,12 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
 
   const { data: episode, error: epErr } = await supabase
     .from('episodes')
-    .select('id, episode_code, governance_mode, status, title_working, series_id, budget_ceiling, budget_spent')
+    // TD-55 (2026-05-26): metadata included so downstream runners can read
+    // per-episode flags. Specifically `anchor_chain_enabled` (TD-49 P2.3) —
+    // without metadata in this SELECT, Designer + Animator never see the
+    // flag and silently fall back to legacy single-IMG path even when
+    // Director toggled it on via the new Episode Settings card.
+    .select('id, episode_code, governance_mode, status, title_working, series_id, budget_ceiling, budget_spent, metadata')
     .eq('id', episodeId)
     .single();
   if (epErr) {
