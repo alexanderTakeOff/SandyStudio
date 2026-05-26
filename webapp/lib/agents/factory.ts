@@ -464,10 +464,19 @@ export function createAgentInngestFunction<E extends string>(
       // is the call site's responsibility, not the factory's.
       type SendEventPayload = Parameters<typeof step.sendEvent>[1];
 
-      // Auto-chain only in Mode 4 (AUTOTEST). In Modes 1-3 the next agent is
+      // Auto-chain only in Mode 4 (AUTOTEST) for downstream EXECUTOR agents.
+      // In Modes 1-3 the next executor (e.g. Artist after Plan APPROVED) is
       // fired by Director's asset approval (POST /api/assets/[id]/approve);
       // chaining here would cause the next agent to FAIL its gate because
       // the just-saved asset is REVIEW, not APPROVED.
+      //
+      // TD-58 (2026-05-26): CRITICs are special-case — they validate Plan-in-
+      // REVIEW and don't gate on APPROVED status. Critic chain MUST fire in
+      // all modes, otherwise Director approves Plans blindly without any
+      // structural validation. This was broken since Sprint Day 4 wiring
+      // 2026-05-19; live diagnosis 2026-05-26 surfaced it after SH09 EREF
+      // Plan v03 + SH08 VANIM Plan v05 both landed with hasVerdict=false.
+      // Critic events recognized by their event name prefix.
       const autoChain = await step.run('check-mode', async () => {
         const supabase = createSupabaseServiceRoleClient();
         const { data } = await supabase
@@ -478,12 +487,21 @@ export function createAgentInngestFunction<E extends string>(
         return data?.governance_mode === 4;
       });
 
-      if (autoChain) {
-        if (spec.nextEvent) {
-          const next = spec.nextEvent(saved, eventData, exec.result);
-          if (next) {
-            await step.sendEvent('fan-out', next as SendEventPayload);
-          }
+      const nextEventCandidate = spec.nextEvent
+        ? spec.nextEvent(saved, eventData, exec.result)
+        : null;
+      // Critic chain detection: only single-event form qualifies. Array (fan-out)
+      // form from spec.nextEvent is not used by Critic events today; if a future
+      // spec returns array of Critic events, extend this check to any-element match.
+      const isCriticChain =
+        nextEventCandidate !== null &&
+        !Array.isArray(nextEventCandidate) &&
+        (nextEventCandidate.name.startsWith('sandystudio/exec-eprev/') ||
+          nextEventCandidate.name.startsWith('sandystudio/exec-vprev/'));
+
+      if (autoChain || isCriticChain) {
+        if (nextEventCandidate) {
+          await step.sendEvent('fan-out', nextEventCandidate as SendEventPayload);
         }
         // runAgent may also return its own next_event (e.g. EXEC-PUB → published).
         if (exec.result.next_event) {

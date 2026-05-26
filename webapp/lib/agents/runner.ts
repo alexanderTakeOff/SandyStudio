@@ -222,6 +222,7 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
 // need.
 
 import { listStoryboardShots, type StoryboardShotSummary } from '../api/vgen-shot-helpers';
+import { seriesIdForEpisode } from '../api/series-bible';
 
 export interface PriorAnchorRef {
   /** Asset UUID of the IMG-anchor_* asset. */
@@ -390,12 +391,13 @@ export async function loadAnchorChainContext(
   let scene_master_asset: SceneMasterRef | null = null;
   const locationSlug = resolveLocationSlug(current_shot);
   if (locationSlug) {
-    const { data: episode } = await supabase
-      .from('episodes')
-      .select('series_id')
-      .eq('id', episodeId)
-      .single();
-    const seriesId = (episode as { series_id?: string | null } | null)?.series_id ?? null;
+    // TD-59 (2026-05-26): episodes.series_id stores series CODE ("SS-S15") while
+    // assets.series_id stores UUID — they cannot be compared directly. Live
+    // failure 2026-05-26 SH09 EREF: this function returned scene_master_asset=null
+    // even though SBL-location_sandy_bedroom_continuity LOCKED existed. The
+    // existing seriesIdForEpisode helper handles both legacy code and UUID
+    // formats — use it instead of a naïve read.
+    const seriesId = await seriesIdForEpisode(supabase, episodeId);
     if (seriesId) {
       const tryFetch = async (
         fileType: string,
