@@ -412,6 +412,11 @@ export function ConciergePanel() {
       // arrives via the streaming POST response) does NOT have this flag,
       // so the de-dup-with-streaming concern from Realtime stays solved.
       if (turn.role === 'assistant' && m.auto_react === true) {
+        // 2026-05-26 — chat-internal persists intermediate `🔧 toolName(args)`
+        // tool_call turns with auto_react=true for audit. Director sees them
+        // as visual noise in the chat. Drop them on the UI side; the
+        // tool_calls metadata + audit trail in DB are preserved.
+        if (turn.event_type === 'tool_call') return;
         setMessages((prev) => {
           if (prev.some((p) => p.turnId === turn.id)) return prev;
           const awaiting = readAwaitingFromMetadata(m);
@@ -495,6 +500,13 @@ export function ConciergePanel() {
           // chat-internal). Restore so reload doesn't lose Polina's
           // autonomous reactions.
           if (t.role === 'assistant' && meta.auto_react === true) {
+            // 2026-05-26 — skip intermediate tool_call rows persisted by
+            // chat-internal for audit; they're visual noise in chat.
+            // Detect via presence of tool_calls in metadata (set by
+            // chat-internal:281-298).
+            if (Array.isArray(meta.tool_calls) && meta.tool_calls.length > 0) {
+              continue;
+            }
             const awaiting = readAwaitingFromMetadata(meta);
             additions.push({
               role: 'assistant',
@@ -578,6 +590,10 @@ export function ConciergePanel() {
         for (const t of [...rows].reverse()) {
           const meta = (t.metadata ?? {}) as Record<string, unknown>;
           if (t.role === 'assistant' && meta.auto_react === true) {
+            // 2026-05-26 — skip tool_call audit rows (see DB-load filter).
+            if (Array.isArray(meta.tool_calls) && meta.tool_calls.length > 0) {
+              continue;
+            }
             const awaiting = readAwaitingFromMetadata(meta);
             additions.push({
               role: 'assistant',
