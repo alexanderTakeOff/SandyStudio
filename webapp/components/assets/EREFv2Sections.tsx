@@ -21,6 +21,7 @@ import type {
   EREFReviewIssue,
   EREFReviewSeverity,
   EREFReviewVerdict,
+  GenerationAttempt,
   ShotReferenceContract,
 } from '@/lib/api/shot-reference';
 
@@ -410,6 +411,139 @@ export function CandidatesStrip({ currentAssetId, candidates, onPick }: Candidat
                 {c.status}
               </span>
             </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Generation attempts strip — TD-56 (2026-05-26) ──────────────────────────
+// The EREF Artist auto-regen loop runs up to 3 attempts when the AI reviewer
+// rejects with REGENERATE. Each attempt persists its own binary to /staging
+// AND records full provenance (URL, prompt, cost, triggered_by) in
+// shot_reference.generation_history[]. Before this strip, only the final
+// attempt was visible in UI — earlier attempts existed on disk but were
+// invisible. Director's request 2026-05-26: surface all attempts so he can
+// pick the best one visually instead of trusting the AI reviewer's final
+// pick blindly.
+//
+// Read-only view for now. «Promote attempt N to primary» (swap staging_path
+// in the asset row) is a separate follow-up if Director wants that motion.
+
+export interface AttemptsStripProps {
+  attempts: readonly GenerationAttempt[];
+  /** Final attempt version that landed as the asset's primary staging_path. */
+  finalVersion?: number | null;
+}
+
+export function AttemptsStrip({ attempts, finalVersion }: AttemptsStripProps) {
+  if (!attempts || attempts.length <= 1) return null;
+  return (
+    <div
+      className="rounded-lg border border-glass p-3 space-y-2"
+      style={{ background: 'var(--bg-elevated)' }}
+    >
+      <div className="flex items-center justify-between">
+        <div className="text-xs uppercase tracking-wider text-text-muted">
+          Generation attempts ({attempts.length})
+        </div>
+        <div className="text-[10px] text-text-muted">
+          Hover for details · click opens full size
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {attempts.map((att) => {
+          const isFinal = finalVersion != null && att.version === finalVersion;
+          const triggerLabel =
+            att.triggered_by === 'pipeline'
+              ? 'first'
+              : att.triggered_by === 'auto_regen'
+                ? 'auto-regen'
+                : att.triggered_by === 'auto_upscale'
+                  ? 'upscale'
+                  : att.triggered_by === 'director_edit'
+                    ? 'director edit'
+                    : String(att.triggered_by);
+          const cost =
+            typeof att.cost_usd === 'number' ? `$${att.cost_usd.toFixed(3)}` : '';
+          const dims =
+            att.width && att.height ? `${att.width}×${att.height}` : '';
+          const title = [
+            `attempt #${att.version}`,
+            triggerLabel,
+            att.provider_id,
+            dims,
+            cost,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(att.image_url);
+          return (
+            <a
+              key={`${att.version}-${att.at}`}
+              href={att.image_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={title}
+              aria-label={title}
+              className="relative w-20 h-14 rounded-md overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-all hover:scale-[1.04]"
+              style={{
+                border: `2px solid ${isFinal ? 'var(--accent-success)' : 'var(--panel-glass-border)'}`,
+              }}
+            >
+              {att.image_url ? (
+                isVideo ? (
+                  <video
+                    src={att.image_url}
+                    className="w-full h-full object-cover"
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={att.image_url}
+                    alt={title}
+                    className="w-full h-full object-cover"
+                  />
+                )
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[9px] text-text-muted bg-[var(--bg-base)]">
+                  no preview
+                </div>
+              )}
+              <span
+                className="absolute top-0 left-0 px-1 py-0.5 text-[9px] font-mono"
+                style={{
+                  background: 'color-mix(in oklab, black 65%, transparent)',
+                  color: '#ffffff',
+                }}
+              >
+                #{att.version}
+              </span>
+              {isFinal && (
+                <span
+                  className="absolute top-0 right-0 px-1 py-0.5 text-[8px] uppercase tracking-wider font-semibold"
+                  style={{
+                    background: 'var(--accent-success)',
+                    color: '#0d1f17',
+                  }}
+                >
+                  final
+                </span>
+              )}
+              <span
+                className="absolute bottom-0 left-0 right-0 text-[8px] text-center py-0.5"
+                style={{
+                  background: 'color-mix(in oklab, black 55%, transparent)',
+                  color: '#ffffff',
+                }}
+              >
+                {triggerLabel}
+              </span>
+            </a>
           );
         })}
       </div>
