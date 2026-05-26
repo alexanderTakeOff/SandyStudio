@@ -23,6 +23,7 @@ import { createEpisode, findEpisode, editBrief } from './episode-create';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from './skills';
 import { getRefPlan, listRefPlans, getCriticVerdict, regenerateRefPlan } from './eref';
 import { regenerateImageFromPlan } from './eref-execute';
+import { regenerateVideoFromPlan } from './vgen-execute';
 import { listShots } from './storyboard';
 import {
   getShotPlan,
@@ -103,6 +104,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // without going through triggerAgent(EXEC-EREF), which routes to pilot
   // pass and ignores planAssetId.
   regenerateImageFromPlan as unknown as AnyTool,
+  // 2026-05-26 — sister of regenerateImageFromPlan but for video. Routes
+  // via /api/episodes/:id/trigger with planAssetId so TD-50 reroute keeps
+  // the Plan-driven path (Animator-declared provider + quality_tier).
+  regenerateVideoFromPlan as unknown as AnyTool,
   regenerateShotPlan as unknown as AnyTool,
   regenerateGagPlan as unknown as AnyTool,
 ]);
