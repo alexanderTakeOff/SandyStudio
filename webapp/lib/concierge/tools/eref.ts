@@ -24,6 +24,7 @@
 
 import { checkVerbalApproval } from '../approval-check';
 import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { ackOrFailOnPickup } from './wait-for-pickup';
 
 function safeParse(raw: string): Record<string, unknown> {
   try {
@@ -380,6 +381,8 @@ export const regenerateRefPlan: Tool<RegenerateRefPlanArgs> = {
       `/api/episodes/${encodeURIComponent(episodeId)}/trigger`,
       ctx.appOrigin,
     );
+    // TD-39 L1: T0 before fetch.
+    const sinceIso = new Date().toISOString();
     const resp = await fetch(url.toString(), {
       method: 'POST',
       headers: {
@@ -406,7 +409,14 @@ export const regenerateRefPlan: Tool<RegenerateRefPlanArgs> = {
         `trigger failed: HTTP ${resp.status} ${typeof body === 'object' ? JSON.stringify(body) : ''}`,
       );
     }
-    return ok(body, `Designer re-fired for shot ${args.shotId}`);
+    const result = ok(body, `Designer re-fired for shot ${args.shotId}`);
+    return ackOrFailOnPickup(result, {
+      supabase: ctx.supabase,
+      episodeId,
+      agentHint: 'EXEC-EREF-DESIGNER',
+      sinceIso,
+      label: `regenerateRefPlan(${args.shotId})`,
+    });
   },
 };
 

@@ -19,6 +19,7 @@
 
 import { checkVerbalApproval } from '../approval-check';
 import { fail, ok, type Tool, type ToolResult } from './types';
+import { ackOrFailOnPickup } from './wait-for-pickup';
 
 interface RegenerateImageFromPlanArgs {
   shotId: string;
@@ -118,6 +119,8 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
       `/api/episodes/${encodeURIComponent(episodeId)}/regenerate-image-from-plan`,
       ctx.appOrigin,
     );
+    // TD-39 L1: T0 before fetch.
+    const sinceIso = new Date().toISOString();
     const resp = await fetch(url.toString(), {
       method: 'POST',
       headers: {
@@ -153,9 +156,16 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
       }
       return fail(`regenerate-image-from-plan failed: ${detail}`);
     }
-    return ok(
+    const result = ok(
       body,
       `Reference Artist re-fired from Plan ${args.planAssetId.slice(0, 8)}… for shot ${args.shotId}`,
     );
+    return ackOrFailOnPickup(result, {
+      supabase: ctx.supabase,
+      episodeId,
+      agentHint: 'EXEC-EREF',
+      sinceIso,
+      label: `regenerateImageFromPlan(${args.shotId})`,
+    });
   },
 };

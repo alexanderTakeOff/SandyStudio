@@ -9,6 +9,7 @@
 
 import { checkVerbalApproval } from '../approval-check';
 import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { ackOrFailOnPickup } from './wait-for-pickup';
 
 type AnyArgs = Record<string, unknown>;
 
@@ -91,6 +92,10 @@ export const triggerAgent: Tool<TriggerAgentArgs> = {
       return fail(approval.reason, 'verbal_approval_required');
     }
 
+    // TD-39 L1: capture T0 BEFORE the fetch so the pickup poller can find
+    // the resulting jobs row (created inside the Inngest function after
+    // `created_at >= T0`).
+    const sinceIso = new Date().toISOString();
     const resp = await internalFetch(
       ctx,
       `/api/episodes/${encodeURIComponent(episodeId)}/trigger`,
@@ -100,7 +105,17 @@ export const triggerAgent: Tool<TriggerAgentArgs> = {
         payload: args.payload,
       },
     );
-    return parseFetchResponse(resp, `triggerAgent(${args.agentCode})`);
+    const parsed = await parseFetchResponse(
+      resp,
+      `triggerAgent(${args.agentCode})`,
+    );
+    return ackOrFailOnPickup(parsed, {
+      supabase: ctx.supabase,
+      episodeId,
+      agentHint: args.agentCode,
+      sinceIso,
+      label: `triggerAgent(${args.agentCode})`,
+    });
   },
 };
 
