@@ -1196,9 +1196,24 @@ interface AnchorPairGenerationArgs {
   anchorPair: ParsedAnchorPair;
 }
 
+// TD-65a softened preamble (2026-05-26): after TD-65 ref-order revert failed
+// to lock Sandy hourglass identity (v07 still rendered as a yellow cub),
+// hypothesis is that the absolute layout directives («MUST appear / Do not
+// move / Do not change») in the original preamble consume the provider's
+// attention budget for ALL refs — not just slot 1 — leaving identity refs
+// starved regardless of position. Soften to advisory phrasing, AND add an
+// explicit identity-preservation counter-directive that names the failure
+// mode (Sandy → animal substitution) directly.
+//
+// If this fixes Sandy: preamble strength was the root cause, anchor mode
+// pipeline is salvageable with prompt-level fix alone. If Sandy still
+// renders as an animal: provider has absolute Sandy-shape bias regardless
+// of prompt instruction — escalate to TD-65b pre-composite refs.
 const ANCHOR_LAYOUT_LOCK_PREAMBLE = [
-  '[LAYOUT LOCK — TD-49 Phase 2 anchor pair, 2026-05-25]',
-  'The attached "scene_continuity" reference image is the canonical layout master for this location. Every recurring object position (mirror, carpets, bed, lamps, furniture, windows, doors) MUST appear in the same screen-space positions as in this reference. Only camera angle, character pose, and transient action props may vary between this anchor and the master. Do not rearrange furniture. Do not move the mirror. Do not change carpet pattern, room scale, or architectural geometry.',
+  '[ANCHOR DIRECTIVE — TD-65a softened, 2026-05-26]',
+  'Among the attached references, one image shows the canonical room layout (the scene continuity master). Use it as the spatial guide for furniture placement and architectural geometry. The other attached references are CHARACTER CANON — one image per recurring character or hero object. Each character MUST be rendered in the exact body shape, palette, and silhouette of its canonical reference image. Identity preservation takes precedence over layout exactness.',
+  '',
+  'CRITICAL — Sandy_hourglass body shape: Sandy is a transparent two-bulb hourglass character with rubber-hose dark-grey arms, oversized mitten hands, and a Sandy-Gold sand column inside the glass. Sandy is NOT an animal, NOT a bear, NOT a cub, NOT a squirrel, NOT any furry creature. If the action prose mentions Sandy in motion (lunging, running, stretching), render the hourglass body in that motion — never substitute a different creature form. The Sandy character canon reference image is authoritative.',
   '',
 ].join('\n');
 
