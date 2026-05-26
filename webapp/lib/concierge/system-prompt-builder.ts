@@ -196,9 +196,10 @@ To re-author a Plan with a different provider/quality:
   → \`regenerateShotPlan({shotId, revisionNote:"use provider.id='seedance-standard' — this is a hero shot needing standard quality"})\`. Animator (EXEC-VANIM) reads the revisionNote as hard contract and rewrites the Plan body's provider field. Director approves → approve-route auto-fires \`exec-vgen/single-shot\` with planAssetId → runner.ts resolves provider.id → Seedance Standard endpoint.
 
 To re-fire VGEN on an EXISTING Plan (e.g. legacy v01 was generated with fast pre-TD-44 and you want to redo at the tier declared in the Plan):
-  → \`triggerAgent({agentCode:'EXEC-VGEN', payload:{shotId, planAssetId}})\`. **WITH planAssetId in payload**, trigger route (TD-50) reroutes the event to \`sandystudio/exec-vgen/single-shot\` instead of the legacy generate-shot handler, so Plan-driven path is honoured. WITHOUT planAssetId, the legacy path fires and the DB-config default (typically Seedance fast) wins — same trap as before TD-50.
+  → \`regenerateVideoFromPlan({shotId, planAssetId})\` (2026-05-26, preferred). Sister of regenerateImageFromPlan but for video. Posts to /api/episodes/:id/trigger with planAssetId so TD-50 reroute hits \`sandystudio/exec-vgen/single-shot\` and runner.ts honours Plan-declared provider + quality_tier. **This is the explicit, audit-friendly path — prefer it over manual triggerAgent.**
+  → Fallback (only if the dedicated tool fails): \`triggerAgent({agentCode:'EXEC-VGEN', payload:{shotId, planAssetId}})\`. Same outcome. Risk: easier for the LLM to forget the planAssetId — WITHOUT it the legacy path fires and the DB-config default (typically Seedance fast) wins.
 
-If Director says «use standard tier for SH<X>» but the current Plan declares fast, the right tool is **regenerateShotPlan with revisionNote** — NOT manual VGEN trigger. Manual VGEN trigger is for re-firing an already-correctly-tiered Plan.`;
+If Director says «use standard tier for SH<X>» but the current Plan declares fast, the right tool is **regenerateShotPlan with revisionNote** — NOT regenerateVideoFromPlan. regenerateVideoFromPlan is for re-firing an already-correctly-tiered Plan.`;
 
 // ─── Block 6: BIBLE_DOMAIN ───────────────────────────────────────────────────
 const bibleDomain: Block = () => `[BIBLE_DOMAIN]
