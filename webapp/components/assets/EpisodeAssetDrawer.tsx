@@ -42,6 +42,7 @@ import {
   ScoreBars,
   IssuesList,
   CandidatesStrip,
+  AttemptsStrip,
 } from './EREFv2Sections';
 import { InboxNotePromptModal } from '@/components/inbox/InboxNotePromptModal';
 import { fetcher } from '@/lib/swr';
@@ -570,13 +571,26 @@ export function EpisodeAssetDrawer({
             </>
           )}
 
-          {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Candidates ── */}
+          {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Attempts / Candidates ── */}
           {isV2 && shotRef && (
             <>
               <TestPlanCard shotRef={shotRef} />
               <VerdictPill review={shotRef.review} />
               <ScoreBars review={shotRef.review} />
               {shotRef.review && <IssuesList issues={shotRef.review.issues} />}
+              {/* TD-56 (2026-05-26): Artist auto-regen loop runs up to 3
+                  attempts; previously only the final landed in UI. Strip
+                  exposes all attempts (with image_url + provider + cost)
+                  so Director can visually compare and pick. Read-only —
+                  promote-to-primary action is a follow-up. */}
+              <AttemptsStrip
+                attempts={shotRef.generation_history ?? []}
+                finalVersion={
+                  shotRef.generation_history && shotRef.generation_history.length > 0
+                    ? shotRef.generation_history[shotRef.generation_history.length - 1]!.version
+                    : null
+                }
+              />
               <CandidatesStrip
                 currentAssetId={asset.id}
                 candidates={siblingCandidates.map((a) => ({
