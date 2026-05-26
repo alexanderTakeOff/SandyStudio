@@ -42,7 +42,16 @@ import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
 
 export const VANIM_CONTRACT = 'animator@v1';
 export const VANIM_MODEL = 'claude-sonnet-4-6';
-export const VANIM_MAX_TOKENS = 6000;
+/** Output budget for the Animator Sonnet call.
+ *
+ *  History mirrors EREF_DESIGNER_MAX_TOKENS — 6000 was the pre-TD-49
+ *  baseline; bumped to 12000 in TD-57 (2026-05-26) after Director's
+ *  SH09 live retry hit `stop_reason=max_tokens` on the Designer side.
+ *  Animator (TD-52) loads the same anchor chain context + does extra
+ *  DB lookup for IMG-anchor asset_ids, so its user message is even
+ *  larger when anchor_chain_enabled. 12000 gives 2x headroom; legacy
+ *  episodes (anchor mode off) still finish well under the old 6000. */
+export const VANIM_MAX_TOKENS = 12000;
 export const VANIM_COST_CEILING_USD = 0.15;
 
 /** Sprint-scope provider allowlist for Animator.
