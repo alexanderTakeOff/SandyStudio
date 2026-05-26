@@ -53,9 +53,20 @@ import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
 
 export const EREF_DESIGNER_CONTRACT = 'episode_reference_designer@v1';
 export const EREF_DESIGNER_MODEL = 'claude-sonnet-4-6';
-/** Plans rarely exceed 3K tokens; 6000 gives headroom for elaborate Bible canon
- *  injections without truncating the trailing JSON block. */
-export const EREF_DESIGNER_MAX_TOKENS = 6000;
+/** Output budget for the Designer Sonnet call.
+ *
+ *  History:
+ *  - 6000 was the pre-TD-49 baseline — enough for legacy single-shot Plans
+ *    with elaborate Bible canon injections.
+ *  - TD-57 (2026-05-26): bumped to 12000 after live SH09 retry under TD-55
+ *    hit `stop_reason=max_tokens` at 21243 chars output (~5300 tokens)
+ *    without ever emitting the trailing JSON block. Root cause: TD-55 +
+ *    P2.3 added four new user-message sections (Anchor Chain Context,
+ *    Prior Anchors, Scene Master, Walking-Forward output requirement)
+ *    which prompts Sonnet to write a much longer markdown narrative
+ *    before reaching the mandatory JSON tail. 12000 gives 2x headroom;
+ *    Sonnet's typical anchor-mode Plan output lands ~7-9K tokens. */
+export const EREF_DESIGNER_MAX_TOKENS = 12000;
 /** Per-Plan cost ceiling. Sonnet input-heavy Plans should land ~$0.02-0.05. */
 export const EREF_DESIGNER_COST_CEILING_USD = 0.15;
 
