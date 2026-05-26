@@ -98,10 +98,16 @@ const TARGET_STATUS_BY_MODE = (mode: number | null | undefined): 'APPROVED' | 'R
   mode === 4 ? 'APPROVED' : 'REVIEW';
 
 // Helper: emit a single-shot event for one remaining shot during fan-out.
+// 2026-05-26 (TD-50 follow-up): when an APPROVED SPC-shot_plan exists for
+// the shot, forward its planAssetId so the single-shot handler routes to
+// the Plan-driven path (Animator-declared provider + quality_tier). Without
+// this, every fan-out shot fell back to the legacy template path and
+// silently dropped to Seedance fast regardless of what the Animator wrote.
 async function emitSingleShot(
   episodeId: string,
   shotId: string,
   durationSeconds: number,
+  planAssetId?: string,
 ): Promise<void> {
   await inngest.send({
     name: 'sandystudio/exec-vgen/single-shot',
@@ -109,6 +115,7 @@ async function emitSingleShot(
       episodeId,
       shotId,
       duration_seconds: durationSeconds,
+      ...(planAssetId ? { planAssetId } : {}),
     } as never,
   });
 }
@@ -400,11 +407,34 @@ export const execVgenFanoutTrigger = inngest.createFunction(
         }
       }
 
+      // TD-50 follow-up (2026-05-26): build a shot_id → planAssetId map
+      // from APPROVED SPC-shot_plan rows so each fan-out emit carries its
+      // Plan. Pre-this-fix the fan-out path dropped planAssetId and every
+      // remaining shot ran the legacy template, forcing Seedance fast.
+      const { data: planRows } = await supabase
+        .from('assets')
+        .select('id,metadata')
+        .eq('episode_id', episodeId)
+        .eq('file_type', 'SPC-shot_plan')
+        .eq('status', 'APPROVED');
+      const planByShotId = new Map<string, string>();
+      for (const row of (planRows ?? []) as Array<{
+        id: string;
+        metadata?: unknown;
+      }>) {
+        const meta = row.metadata as { shot_id?: unknown } | null;
+        const sid = typeof meta?.shot_id === 'string' ? meta.shot_id : null;
+        if (sid) planByShotId.set(sid, row.id);
+      }
+
       let emitted = 0;
       let skipped = 0;
+      let withPlan = 0;
       for (const s of shotList) {
         if (skipShotIds.has(s.shot_id)) { skipped += 1; continue; }
-        await emitSingleShot(episodeId, s.shot_id, s.duration_seconds);
+        const planAssetId = planByShotId.get(s.shot_id);
+        if (planAssetId) withPlan += 1;
+        await emitSingleShot(episodeId, s.shot_id, s.duration_seconds, planAssetId);
         emitted += 1;
       }
       return {
@@ -412,6 +442,7 @@ export const execVgenFanoutTrigger = inngest.createFunction(
         skipped,
         total: shotList.length,
         pilots: pilotShotIds.size,
+        with_plan: withPlan,
       };
     });
 
