@@ -1,12 +1,14 @@
 ---
 name: eref-shot-composition
-description: How EXEC-EREF-DESIGNER composes Reference Plans for storyboard shots — camera language, contrastive picking, location anchoring, character anchors, and cross-shot spatial continuity.
+description: How EXEC-EREF-DESIGNER composes Reference Plans for storyboard shots — dramatic intent, emotional read, continuity function, camera language, contrastive picking, location anchoring, character anchors, and cross-shot spatial continuity.
 status: ACTIVE
 owner: Director
 applies_when:
   agent: [EXEC-EREF-DESIGNER]
 hard: false
 created: 2026-05-16
+updated: 2026-05-26
+flavor: process
 ---
 # EREF — Shot Composition
 
@@ -32,6 +34,63 @@ asset selection, negative prompt).
   is visually varied enough (e.g. fan-out review).
 - The storyboard has multiple consecutive shots in the same location
   and you must decide how to avoid same-look repetition.
+
+## Dramatic Intent / Emotional Read / Continuity Function (MANDATORY)
+
+Every Reference Plan MUST open with a compact production block BEFORE
+any prompt body, subjects, camera, or style sections. Camera and
+composition are downstream of dramatic intent — pick framing AFTER you
+have decided what the shot must convey.
+
+The block is six fields. All six are required for every Plan:
+
+- **Dramatic intent** — what the viewer must understand in 0.5 seconds.
+  One sentence, in plain language. The audience read, not the technical
+  description.
+- **Emotional read per subject** — every living character AND every
+  hero-grade object (story-prop with character status, per
+  [[hero-prop-canon-classification]]) gets a readable emotion / attitude
+  / animate state. Lifeless background props are exempt.
+- **Continuity-in** — what visual / action / spatial / emotional state
+  is inherited from the previous shot. Cite the previous shot id when
+  one exists, or note "first shot of scene / episode" when none.
+- **Continuity-out** — what state THIS reference must hand to the next
+  shot for the scene to flow. Cite the next shot id when known, or note
+  "scene-end cut-out" when this is the last shot of the scene.
+- **Gag function** — the role of this shot in its gag arc. One of:
+  `setup` · `escalation` · `impact` · `reaction` · `cut-out` · `bridge`.
+  Comedy genres require this; drama/thriller substitute with `beat`
+  taxonomy from the Bible.
+- **Static-frame translation** — re-express the action as a single
+  readable frozen moment, not motion prose. gpt-image-2 visualises
+  text literally; «runs across the room» renders worse than «mid-stride,
+  legs scissored, body inclined forward, dust kicked up at trailing
+  foot».
+
+This block is the bridge between storyboard intent and prompt mechanics.
+Without it, the Designer technically delivers anchors / layout / identity
+but is not obliged to articulate what the audience must read, what each
+subject feels, or how the shot couples to its neighbours. Plans that
+skip this block compose images that look correct but say nothing.
+
+**Sources to consult before composing the block:**
+
+- Storyboard shot `expected_gag` + `action_prose` + `continuity_notes`
+- Storyboard `characters_v2[].expected_emotion` + `expected_action`
+- Previous and next storyboard shots (same fields) for continuity-in /
+  continuity-out
+- Bible character / prop entries for emotional palette per subject
+- Bible style / world entries for the dramatic register of the series
+
+**The block flows top-down into the prompt:**
+
+- Camera choice from `## Camera language vocabulary` should make the
+  dramatic intent landable in 0.5 seconds.
+- Each subject's `current_action` + `current_mood` in the prompt body
+  cites the emotional read from the block.
+- Continuity-in shapes the temporal anchor reference attached to the
+  shot; continuity-out shapes the "state delivered" that the next
+  shot's Plan will list as its continuity-in.
 
 ## Camera language vocabulary
 
@@ -187,22 +246,41 @@ register the joke landing.
 
 ## Self-check before emitting an EREF prompt
 
-1. Did I pick a framing token that contrasts with the previous shot in
+1. Did I open the Plan with the mandatory **Dramatic Intent / Emotional
+   Read / Continuity Function** block, with all six fields populated?
+2. Does every living character AND every hero-grade object in the shot
+   have a declared emotional read?
+3. Did I cite continuity-in (previous shot id or scene-start) and
+   continuity-out (next shot id or scene-end cut-out) explicitly?
+4. Did I pick a framing token that contrasts with the previous shot in
    this scene?
-2. If the location has multiple sub-areas in the Bible, did I pick a
+5. If the location has multiple sub-areas in the Bible, did I pick a
    specific one and did it differ from the last shot's sub-area?
-3. Did I attach the canonical character fragment for every character
+6. Did I attach the canonical character fragment for every character
    in `characters_present`?
-4. Does my prompt body describe a still frame, not a stage action?
-5. Are the standard negative-prompt terms included?
-6. For sequential shots, did I compare against the deterministic continuity anchor and preserve continuity-critical spatial facts?
+7. Does my prompt body describe a still frame (static-frame
+   translation), not a stage action?
+8. Are the standard negative-prompt terms included?
+9. For sequential shots, did I compare against the deterministic
+   continuity anchor and preserve continuity-critical spatial facts?
 
 ## Cross-references
 
 - Bible character canonical fragments — your anchor source.
 - Bible location refs (incl. sub-areas) — your wall/area source.
 - Storyboard shot fields — `location.slug`, `location.sub_area`,
-  `characters[].bible_slug`, `characters[].expected_emotion`.
+  `characters[].bible_slug`, `characters[].expected_emotion`,
+  `characters[].expected_action`, `expected_gag`, `action_prose`,
+  `continuity_notes`. Continuity-in / continuity-out blocks read the
+  previous and next shot's storyboard rows.
 - `seedance-prompting` skill (Animator capability) — your EREF feeds
   the Animator's reference slot. The cleaner your reference, the less
-  prompt-engineering Seedance needs downstream.
+  prompt-engineering Seedance needs downstream. Animator inherits the
+  Dramatic Intent block when chaining anchors → video.
+- `[[hero-prop-canon-classification]]` — what makes an object a
+  hero-grade subject vs background prop. The Emotional Read field
+  applies to hero-grade objects, not to lifeless background props.
+- `~/.claude/rules/common/skill-creation.md` §"Two skill flavors" —
+  this skill is `flavor: process` and stays generalizable across
+  series. Project-specific characters / emotions / gag thresholds
+  belong to Bible + Brief, not here.
