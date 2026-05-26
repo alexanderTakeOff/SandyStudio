@@ -76,6 +76,23 @@ const INPUT_MIN_PX = 48;
 const INPUT_MAX_PX = 500;
 const INPUT_DEFAULT_PX = 80;
 
+// 2026-05-26 — Director directive: certain pipeline event types are
+// redundant with Polina's own report and just spam the chat. They stay
+// in the Activity feed via a separate channel — only the chat surface
+// is filtered. Keep agent_completed / agent_failed / approval_* /
+// blocker_raised / decision_requested / input_requested visible so
+// Director still sees signals that need a reaction.
+const AMBIENT_CHAT_NOISE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'manual_trigger',
+  'agent_started',
+]);
+function isAmbientChatNoise(eventType: unknown): boolean {
+  return (
+    typeof eventType === 'string' &&
+    AMBIENT_CHAT_NOISE_EVENT_TYPES.has(eventType)
+  );
+}
+
 /** Silence tolerance for continuous mic. Director wanted ≥5s for thinking pauses. */
 const MIC_SILENCE_TIMEOUT_MS = 5500;
 
@@ -413,6 +430,10 @@ export function ConciergePanel() {
       if (turn.role !== 'system') return; // user/assistant flow through chat route
       const kind = m.kind as string | undefined;
       if (kind !== 'claude_message' && kind !== 'pipeline_event') return;
+      // 2026-05-26 — drop redundant pipeline plashki (manual_trigger /
+      // agent_started). They duplicate Polina's own dispatch report
+      // and clutter the chat. Activity feed still receives them.
+      if (kind === 'pipeline_event' && isAmbientChatNoise(m.event_type)) return;
 
       setMessages((prev) => {
         // Dedupe by turnId in case of re-subscribe / strict-mode dupes.
@@ -493,6 +514,8 @@ export function ConciergePanel() {
               author: (meta.author as string | undefined) ?? 'Claude',
             });
           } else if (kind === 'pipeline_event') {
+            // 2026-05-26 — drop redundant pipeline plashki here too.
+            if (isAmbientChatNoise(meta.event_type)) continue;
             additions.push({
               role: 'pipeline',
               content: t.content,
@@ -574,6 +597,8 @@ export function ConciergePanel() {
               author: (meta.author as string | undefined) ?? 'Claude',
             });
           } else if (kind === 'pipeline_event') {
+            // 2026-05-26 — drop redundant pipeline plashki here too.
+            if (isAmbientChatNoise(meta.event_type)) continue;
             additions.push({
               role: 'pipeline',
               content: t.content,
@@ -761,14 +786,17 @@ export function ConciergePanel() {
             setToolPlashka(null);
             // Annotate the assistant bubble with a compact chip so the
             // Director can see what just ran even after the plashka clears.
+            // 2026-05-26: render as muted aside ("…Polina thinking · ✓ name")
+            // rather than a loud bullet — Director called these visually
+            // dominant. Italic markdown renders subdued in prose-invert.
             const name = typeof event.name === 'string' ? event.name : 'tool';
             const ok = t === 'tool_result' ? Boolean(event.ok) : false;
             const chip =
               t === 'tool_timeout'
-                ? `\n_⏱ ${name}: timeout_\n`
+                ? `\n_…Polina thinking · ⏱ ${name} timed out_\n`
                 : ok
-                  ? `\n_✓ ${name}_\n`
-                  : `\n_✗ ${name}_\n`;
+                  ? `\n_…Polina thinking · ✓ ${name}_\n`
+                  : `\n_…Polina thinking · ✗ ${name}_\n`;
             acc += chip;
             setMessages((prev) => {
               const copy = [...prev];

@@ -608,6 +608,40 @@ Watchdog mindset. If you wrote in a prior turn «если X не сработа�
 If you cannot formulate a clean q-format question because you genuinely don't know what to ask — say so out loud: «I'm stuck — last directive was X, I expected Y, neither happened. Director, what do you want me to do?». Silence is the worst answer.`;
 };
 
+// ─── Block: BREVITY_FOR_DIRECTOR ─────────────────────────────────────────────
+// Director directive 2026-05-26 — Polина's dispatch reports include raw UUIDs,
+// Inngest event ids, full event_type paths, and full shotIds. He sees them
+// as "мегашум" in the chat. Tell her to compress to high-signal nouns.
+const brevityForDirector: Block = () => `[BREVITY_FOR_DIRECTOR]
+When summarising a tool result to Director, compress to noun-phrase signals.
+Director's chat is the operator console; raw identifiers belong in tool
+internals + activity feed, not in your prose.
+
+Strip these from prose summaries:
+- ✗ planAssetId UUIDs (e.g. 67c6cf91-b3fe-4e2e-8508-…)
+- ✗ Inngest event ids / run ids (e.g. 01KSHJRY5CWR0H8M…)
+- ✗ full event_type paths (e.g. sandystudio/exec-eref/execute-from-plan)
+- ✗ full shotIds in running prose (e.g. SS-S15-E01-A2-SC04-SH09)
+- ✗ asset_id UUIDs
+
+Use the high-signal noun instead:
+- ✓ "Reference Artist image-only из approved Ref Plan v03"
+- ✓ "SH09" (shorthand) — full id only when Director asks for traceability
+- ✓ "Video Artist из Shot Plan v05"
+- ✓ "запустила EXEC-EREF" (past-tense, indicative — the tool already ran)
+
+Formatting:
+- One blank line between per-shot reports so semantic blocks read distinct.
+- Use markdown emphasis sparingly — bold/italic for the key noun (shot id,
+  Plan version, agent name), not for the entire sentence.
+- No bullet-list dump of metadata; flow as prose.
+
+This rule applies to PROSE SUMMARIES ONLY. When Director explicitly asks
+"give me the full id of X", "show me the raw UUID", "what was the Inngest
+event id" — comply with the precise identifier. The tool-result data
+remains structured in your context; you read it freely and quote when
+asked.`;
+
 const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'BASE_BEHAVIOR', render: baseBehavior },
   { name: 'BEHAVIOR_CONTRACT', render: behaviorContract },
@@ -624,6 +658,7 @@ const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'TEAM_CHAT_FROM_CLAUDE', render: teamChatFromClaude },
   { name: 'AUTO_REACT_GUIDANCE', render: autoReactGuidance },
   { name: 'OPEN_LOOP_AWARENESS', render: openLoopAwareness },
+  { name: 'BREVITY_FOR_DIRECTOR', render: brevityForDirector },
 ];
 
 export function buildSystemPrompt(ctx: PromptContext): string {
