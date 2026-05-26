@@ -1304,6 +1304,27 @@ async function runAnchorPairGeneration(
       identityCharNames.push(nameFromBibleFilename(asset) ?? slug);
     }
   }
+  // TD-63 (2026-05-26): after iterating storyboard chars_v2, fall through to
+  // ALL LOCKED Bible character canon for the series. characters_v2 historically
+  // lists only living subjects with emotion/action; hero story-objects
+  // (mirror_vanity in S15-E01, future hero props in other episodes) are LOCKED
+  // as SBL-character_* but absent from characters_v2. In anchor mode every
+  // canonical actor of the series should ride along — provider has MAX_REFS=16,
+  // ample room. Without this, mirror_vanity canon sat in Bible but never
+  // reached gpt-image-2 attention.
+  const addedAssetIds = new Set<string>(identityRefs.map((r) => r.bible_asset_id));
+  for (const [slug, asset] of charBySlug.entries()) {
+    if (addedAssetIds.has(asset.id)) continue;
+    const b64 = await loadBibleImage(asset);
+    if (!b64) continue;
+    identityRefs.push({
+      kind: 'identity',
+      bible_asset_id: asset.id,
+      image_b64: b64,
+    });
+    identityCharNames.push(nameFromBibleFilename(asset) ?? slug);
+    addedAssetIds.add(asset.id);
+  }
   const styleB64 = await loadBibleImage(styleAsset);
   const styleRef: MultiImageRef | null = styleB64
     ? { kind: 'style', bible_asset_id: styleAsset.id, image_b64: styleB64 }
