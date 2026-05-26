@@ -1270,12 +1270,31 @@ async function runAnchorPairGeneration(
     const slug = nameFromBibleFilename(c);
     if (slug) charBySlug.set(slug, c);
   }
-  // TD-53 (2026-05-25): scene_master MUST be the first attached ref to
-  // match the LAYOUT LOCK preamble's «first attached anchor image is the
-  // canonical layout» promise. Identity refs in slot 2+ still lock face /
-  // palette / silhouette reliably on gpt-image-2 (empirically verified
-  // when buildMultiImageRefs was reshuffled in the same commit). Style ref
-  // last — its rendering rules don't fight composition, just polish.
+  // TD-65 empirical rollback (2026-05-26): SH09 anchor pair v02→v05 showed
+  // Sandy drifting to «yellow cub/squirrel» despite his LOCKED character
+  // canon being in the ref payload (verified via metadata
+  // identity_character_slugs). Diagnosis: TD-53 moved scene_master to slot 1
+  // to align with ANCHOR_LAYOUT_LOCK_PREAMBLE, but that preamble is so
+  // strong («MUST appear / Do not move / Do not change») it consumes
+  // gpt-image-2's attention budget. Identity refs at slot 2+ get attention-
+  // starved. Conventional shapes (anvil, mirror_vanity) auto-anchor from
+  // their canon ref even with weak attention; Sandy's transparent two-bulb
+  // hourglass shape is outside trained character archetypes — without
+  // strong attention the provider falls back to «nearest cartoon archetype»
+  // = furry animal. The TD-53 assertion «slot 2+ locks reliably» was based
+  // on buildMultiImageRefs (regular mode), which has NO LAYOUT LOCK
+  // preamble and was never empirically tested against anchor mode +
+  // unconventional canon shapes.
+  //
+  // Empirical test: revert ref order for anchor mode only (this function)
+  // back to pre-TD-53 [identity..., style, scene_master]. Mirror_vanity now
+  // has its own LOCKED character canon (Director added 2026-05-26) and
+  // gets locked via that ref + Plan SUBJECT 3 directive. buildMultiImageRefs
+  // (regular mode) is NOT touched — TD-53 fix for SH08 mirror-on-wall stays.
+  //
+  // If Sandy holds hourglass and mirror also stays centred → root cause
+  // confirmed, no rollback to TD-53. If mirror drifts → real trade-off,
+  // escalate to TD-65 pre-composite refs architecture.
   const identityRefs: MultiImageRef[] = [];
   const identityCharNames: string[] = [];
   const chars_v2 =
@@ -1330,13 +1349,13 @@ async function runAnchorPairGeneration(
     ? { kind: 'style', bible_asset_id: styleAsset.id, image_b64: styleB64 }
     : null;
   const baseRefs: MultiImageRef[] = [
+    ...identityRefs,
+    ...(styleRef ? [styleRef] : []),
     {
       kind: 'scene_continuity',
       bible_asset_id: anchorCtx.scene_master_asset.asset_id,
       image_b64: sceneMasterB64,
     },
-    ...identityRefs,
-    ...(styleRef ? [styleRef] : []),
   ];
 
   // 6. Provider — explicit openai-edits-multi (q4a Director directive 2026-05-25).
