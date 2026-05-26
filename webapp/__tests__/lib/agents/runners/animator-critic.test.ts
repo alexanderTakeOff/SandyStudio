@@ -189,6 +189,36 @@ describe('runAnimatorCritic', () => {
     ).rejects.toThrow(/expected SPC-shot_plan/);
   });
 
+  // TD-66 (2026-05-26): Animator writes file_type as `SPC-shot_plan-<shot_id>`
+  // (e.g. `SPC-shot_plan-SS-S15-E01-A2-SC04-SH09`). Live SH09 v01 crashed the
+  // Critic here on strict equality. Same widening as TD-24 applied to EREF.
+  it('accepts SPC-shot_plan-<shot_id> file_type (TD-66)', async () => {
+    const row = {
+      id: 'plan-1',
+      file_type: 'SPC-shot_plan-SS-S15-E01-A2-SC04-SH09',
+      status: 'REVIEW',
+      content: VALID_CONTENT,
+    };
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: 'PASS',
+      body: {
+        verdict: 'PASS',
+        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V05', 'V06', 'V07', 'V08', 'V09'],
+        failed_checks: [],
+        acceptance_criteria: [],
+      },
+      costUsd: 0.02,
+      model: VPREV_MODEL,
+    });
+    const r = await runAnimatorCritic({
+      inputs: {} as never,
+      supabase: mockSupabase(row),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S15-E01-A2-SC04-SH09',
+    });
+    expect(r.verdict).toBe('PASS');
+  });
+
   it('throws when content empty', async () => {
     const row = { id: 'plan-1', file_type: 'SPC-shot_plan', status: 'REVIEW', content: '' };
     await expect(

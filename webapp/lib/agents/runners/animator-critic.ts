@@ -127,9 +127,15 @@ async function loadPlanRow(
   if (!data) {
     throw new AnimatorCriticError(`Plan asset ${planAssetId} not found`);
   }
-  if (data.file_type !== 'SPC-shot_plan') {
+  // TD-66 (2026-05-26): accept both legacy bare `SPC-shot_plan` and the
+  // shot-id-suffixed form `SPC-shot_plan-<shot_id>` that Animator currently
+  // writes. Same widening pattern that TD-24 applied to EREF execute-from-plan
+  // and Critic paths. Live SH09 v01 (10:32 UTC) crashed Video Designer's Critic
+  // here on the strict-equality check despite the Plan being structurally
+  // valid — Animator's file_type is `SPC-shot_plan-SS-S15-E01-A2-SC04-SH09`.
+  if (data.file_type !== 'SPC-shot_plan' && !data.file_type.startsWith('SPC-shot_plan-')) {
     throw new AnimatorCriticError(
-      `Plan asset ${planAssetId} has file_type="${data.file_type}", expected SPC-shot_plan`,
+      `Plan asset ${planAssetId} has file_type="${data.file_type}", expected SPC-shot_plan or SPC-shot_plan-*`,
     );
   }
   if (!data.content || data.content.trim().length === 0) {
