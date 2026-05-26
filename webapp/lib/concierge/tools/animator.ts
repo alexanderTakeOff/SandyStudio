@@ -12,6 +12,7 @@
 
 import { checkVerbalApproval } from '../approval-check';
 import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { ackOrFailOnPickup } from './wait-for-pickup';
 
 function safeParse(raw: string): Record<string, unknown> {
   try {
@@ -342,6 +343,8 @@ export const regenerateShotPlan: Tool<RegenerateShotPlanArgs> = {
       `/api/episodes/${encodeURIComponent(episodeId)}/trigger`,
       ctx.appOrigin,
     );
+    // TD-39 L1: T0 before fetch.
+    const sinceIso = new Date().toISOString();
     const resp = await fetch(url.toString(), {
       method: 'POST',
       headers: {
@@ -368,6 +371,13 @@ export const regenerateShotPlan: Tool<RegenerateShotPlanArgs> = {
         `trigger failed: HTTP ${resp.status} ${typeof body === 'object' ? JSON.stringify(body) : ''}`,
       );
     }
-    return ok(body, `Animator re-fired for shot ${args.shotId}`);
+    const result = ok(body, `Animator re-fired for shot ${args.shotId}`);
+    return ackOrFailOnPickup(result, {
+      supabase: ctx.supabase,
+      episodeId,
+      agentHint: 'EXEC-VANIM',
+      sinceIso,
+      label: `regenerateShotPlan(${args.shotId})`,
+    });
   },
 };
