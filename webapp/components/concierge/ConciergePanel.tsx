@@ -23,7 +23,6 @@ import {
 } from 'react';
 import {
   MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles,
-  PanelLeftClose, PanelRightClose,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
@@ -66,9 +65,9 @@ interface Message {
 const STORAGE_KEY = 'sandystudio.prodassistant.history';
 const THREAD_KEY = 'sandystudio.prodassistant.threadId';
 const TTS_KEY = 'sandystudio.prodassistant.ttsEnabled';
-// 2026-05-25 — bumped to .v2 so stale 'left' dock from Director's old
-// sessions resets to the new 'right' default. Old key abandoned in place.
-const SIDE_KEY = 'sandystudio.prodassistant.side.v2';
+// 2026-05-26 (TD-54.3) — left/right dock retired. PA now lives in the middle
+// grid column between Sidebar and Content. SIDE_KEY removed; old localStorage
+// values are abandoned in place.
 const WIDTH_KEY = 'sandystudio.prodassistant.width';
 const OPEN_KEY = 'sandystudio.prodassistant.open';
 const INPUT_HEIGHT_KEY = 'sandystudio.prodassistant.inputHeight';
@@ -222,7 +221,6 @@ export function ConciergePanel() {
   const [streaming, setStreaming] = useState(false);
   const [listening, setListening] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
-  const [side, setSide] = useState<'left' | 'right'>('right');
   const [panelWidth, setPanelWidth] = useState<number>(420);
   // Input height persisted across submits — without this, clearing the
   // textarea collapses it back to the `rows={2}` band ("узенькая полоска").
@@ -270,10 +268,6 @@ export function ConciergePanel() {
       if (tts === '1') setTtsEnabled(true);
     } catch { /* ignore */ }
     try {
-      const s = localStorage.getItem(SIDE_KEY);
-      if (s === 'left' || s === 'right') setSide(s);
-    } catch { /* ignore */ }
-    try {
       const w = parseInt(localStorage.getItem(WIDTH_KEY) ?? '', 10);
       if (Number.isFinite(w) && w >= 320 && w <= 900) setPanelWidth(w);
     } catch { /* ignore */ }
@@ -289,10 +283,7 @@ export function ConciergePanel() {
     } catch { /* ignore */ }
   }, []);
 
-  // Persist panel side / width / open / input height.
-  useEffect(() => {
-    try { localStorage.setItem(SIDE_KEY, side); } catch { /* ignore */ }
-  }, [side]);
+  // Persist panel width / open / input height.
   useEffect(() => {
     try { localStorage.setItem(WIDTH_KEY, String(panelWidth)); } catch { /* ignore */ }
   }, [panelWidth]);
@@ -327,27 +318,17 @@ export function ConciergePanel() {
     window.addEventListener('mouseup', handleUp);
   }
 
-  // Reserve layout space in the StudioShell so the panel pushes content
-  // instead of overlapping it. Cleared on close / unmount.
+  // TD-54.3 — PA now lives in the middle grid column of StudioShell.
+  // Write --pa-mid-width so the grid template can collapse the column to 0
+  // when the panel is closed.
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const root = document.documentElement;
-    const px = `${panelWidth}px`;
-    if (open && side === 'right') {
-      root.style.setProperty('--pa-pad-right', px);
-      root.style.setProperty('--pa-pad-left', '0px');
-    } else if (open && side === 'left') {
-      root.style.setProperty('--pa-pad-left', px);
-      root.style.setProperty('--pa-pad-right', '0px');
-    } else {
-      root.style.setProperty('--pa-pad-right', '0px');
-      root.style.setProperty('--pa-pad-left', '0px');
-    }
+    root.style.setProperty('--pa-mid-width', open ? `${panelWidth}px` : '0px');
     return () => {
-      root.style.setProperty('--pa-pad-right', '0px');
-      root.style.setProperty('--pa-pad-left', '0px');
+      root.style.setProperty('--pa-mid-width', '0px');
     };
-  }, [open, side, panelWidth]);
+  }, [open, panelWidth]);
 
   // Stop TTS on panel close so the Director isn't followed by speech.
   useEffect(() => {
@@ -1007,7 +988,9 @@ export function ConciergePanel() {
 
   return (
     <>
-      {/* Floating trigger — anchored to the user-chosen side */}
+      {/* Floating trigger — anchored at bottom-left next to sidebar.
+          Only rendered when the panel is closed (TD-54.3 — PA lives in
+          the middle grid column, so its open-state hides the icon). */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
@@ -1016,37 +999,30 @@ export function ConciergePanel() {
             'fixed bottom-5 z-30 h-14 w-14 rounded-full shadow-[var(--panel-shadow)]',
             'flex items-center justify-center text-[var(--text-inverse)]',
             'transition-transform hover:scale-105 active:scale-95',
-            side === 'right' ? 'right-5' : 'left-5',
           )}
           style={{
             background: `linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))`,
+            left: 'calc(var(--sidebar-width, 15rem) + 1.25rem)',
           }}
         >
           <MessageCircle size={22} strokeWidth={2} />
         </button>
       )}
 
-      {/* Panel */}
+      {/* Panel — sticks within the middle grid column.
+          When closed → returns null (column collapses to 0 via --pa-mid-width). */}
+      {open && (
       <aside
         className={cn(
-          'fixed top-0 z-40 h-screen max-w-[100vw] flex flex-col',
-          'bg-panel-glass-strong backdrop-blur-md shadow-[var(--panel-shadow)]',
-          'transition-transform duration-300 ease-out',
-          side === 'right'
-            ? 'right-0 border-l border-glass'
-            : 'left-0 border-r border-glass',
-          open
-            ? 'translate-x-0'
-            : side === 'right'
-              ? 'translate-x-full'
-              : '-translate-x-full',
+          'sticky top-0 z-40 h-screen flex flex-col self-start',
+          'border-r border-glass bg-panel-glass-strong backdrop-blur-md shadow-[var(--panel-shadow)]',
         )}
         style={{
           backdropFilter: 'blur(var(--panel-glass-blur))',
           width: `${panelWidth}px`,
         }}
       >
-        {/* Resize handle — drag horizontally to grow/shrink the panel. */}
+        {/* Resize handle — drag the RIGHT edge horizontally to grow/shrink. */}
         <div
           role="separator"
           aria-orientation="vertical"
@@ -1056,8 +1032,8 @@ export function ConciergePanel() {
             const startW = panelWidth;
             const onMove = (mv: MouseEvent) => {
               const dx = mv.clientX - startX;
-              const delta = side === 'right' ? -dx : dx;
-              const w = Math.max(320, Math.min(900, startW + delta));
+              // Handle on the right edge → drag right = grow.
+              const w = Math.max(320, Math.min(900, startW + dx));
               setPanelWidth(w);
             };
             const onUp = () => {
@@ -1070,7 +1046,7 @@ export function ConciergePanel() {
           className={cn(
             'absolute top-0 h-full w-1.5 cursor-ew-resize z-50',
             'hover:bg-[var(--accent-primary)]/30',
-            side === 'right' ? 'left-0 -translate-x-1/2' : 'right-0 translate-x-1/2',
+            'right-0 translate-x-1/2',
           )}
           aria-label="Resize panel"
           title="Drag to resize"
@@ -1092,14 +1068,6 @@ export function ConciergePanel() {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setSide((s) => (s === 'right' ? 'left' : 'right'))}
-              aria-label={side === 'right' ? 'Dock to left side' : 'Dock to right side'}
-              title={side === 'right' ? 'Dock left' : 'Dock right'}
-              className="h-8 w-8 rounded-md flex items-center justify-center text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary"
-            >
-              {side === 'right' ? <PanelLeftClose size={16} /> : <PanelRightClose size={16} />}
-            </button>
             <button
               onClick={toggleTts}
               aria-label={ttsEnabled ? 'Disable voice replies' : 'Enable voice replies'}
@@ -1336,6 +1304,7 @@ export function ConciergePanel() {
           )}
         </form>
       </aside>
+      )}
     </>
   );
 }
