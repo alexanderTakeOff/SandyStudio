@@ -147,10 +147,33 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
   const asset = meta.data;
   const cat = categoryFor(asset.file_type);
 
+  // TD-shot-preview L0a (2026-05-26): surface the asset version as a real
+  // badge in the drawer header rather than burying "·v01" deep in the
+  // meta-row. Closes the audit gap where Director couldn't tell at a
+  // glance which version of a shot he was reviewing — relevant whenever a
+  // VID-shot has multiple renders (CandidatesStrip lists them; this badge
+  // labels the active one in the header itself).
+  const versionLabel = asset.version
+    ? `v${String(asset.version).padStart(2, '0')}`
+    : null;
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] text-text-muted">
         <span className="text-text-primary font-medium font-mono">{asset.filename}</span>
+        {versionLabel && (
+          <span
+            className="inline-flex items-center px-1.5 h-5 rounded-full text-[10px] font-semibold font-mono leading-none border"
+            style={{
+              background: 'color-mix(in oklab, var(--accent-primary) 14%, transparent)',
+              color: 'var(--accent-primary)',
+              borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, transparent)',
+            }}
+            title={`Asset version ${versionLabel}`}
+          >
+            {versionLabel}
+          </span>
+        )}
         <span>{asset.status}</span>
         <span>·</span>
         <span>{asset.file_type}</span>
@@ -158,12 +181,6 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
           <>
             <span>·</span>
             <span title={asset.agent_id}>{agentDisplayName(asset.agent_id)}</span>
-          </>
-        )}
-        {asset.version && (
-          <>
-            <span>·</span>
-            <span>v{String(asset.version).padStart(2, '0')}</span>
           </>
         )}
       </div>
