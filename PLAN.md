@@ -13,6 +13,39 @@
 ## CURRENT STATE
 
 ```
+Phase:    **TD-72 SHIPPED to PR + TD-74 designed (2026-05-27 afternoon)**
+          V04 Animator's Critic softened from «single verb phrase» to «ONE primary
+          causal chain on ONE subject» — chains of caused beats PASS, reactive
+          secondary micro-beats PASS, only genuinely parallel independent actions
+          REVISE. Synced across `agents/exec/animator_critic.md` + `animator.md`
+          + `.claude/skills/seedance-prompting/SKILL.md`. SH21↔SH22 positional
+          swap applied in-place to `STB-storyboard-v04-APPROVED` for S15-E01
+          act 3 (anvil-pat-puddle moves to middle, cushion-plug ends episode).
+          Shot ids stayed attached to content — no downstream cascade. Plan:
+          `~/.claude/plans/radiant-puzzling-boot.md`.
+
+Status:   ✅ tsc clean · animator-critic.test.ts **11/11** · replay-pilot **29/29**.
+          6 files (4 markdown + 1 test + 2 audit-trail scripts), 373/+10 diff.
+          PR: https://github.com/alexanderTakeOff/SandyStudio/pull/24 (q7b — not
+          pushed directly to master per Director). V04 softening is LIVE on
+          local dev servers (Critic reads markdown from disk at every call).
+
+Next:     **Director smoke gate (q8c).** Полина regenerates SH19 Shot Plan with
+          the same multi-beat ACTION prompt as the rejected v05 — expected
+          Critic V04+V12 PASS on first iteration (no infinite REVISE loop).
+          If smoke validates softened V04, TD-72 PR merges + TD-74 (verdict
+          `PASS_WITH_WARNINGS` + hard/soft check categorization + Director
+          override mechanism) starts in next sprint.
+
+Mode:     Mode 1 MANUAL (default)
+Date:     2026-05-27
+```
+
+---
+
+## Earlier — Sprint q7a — Continuity Stability (TD-33 + TD-35) — SHIPPED 2026-05-23 morning
+
+```
 Phase:    **Sprint q7a — Continuity Stability (TD-33 + TD-35) — SHIPPED 2026-05-23 morning**
           Multi-axis continuity anchors on Designer Plan (`continuity_anchors[]` array
           with `kind: spatial_same_location | temporal_previous_shot`), with back-compat
