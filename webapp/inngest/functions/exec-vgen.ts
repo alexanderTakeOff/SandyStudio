@@ -30,6 +30,19 @@ import {
 } from '@/lib/agents/runner';
 import { resolveProvider } from '@/lib/agents/provider-resolver';
 import { recordCost } from '@/lib/budget';
+import { logEvent } from '@/lib/api/events';
+import { agentDisplayName } from '@/lib/api/agent-names';
+
+// TD-69 (2026-05-27): VGEN single-shot + start handlers are hand-rolled
+// (`inngest.createFunction` direct), not factory.ts-built. Factory's
+// `insert-job-row` step automatically also emits `agent_started` activity
+// (factory.ts:232). Hand-rolled handlers must replicate the emit explicitly,
+// otherwise approve-route auto-chain VGEN runs invisibly — Director sees
+// approval_granted then jumps straight to agent_completed with no «Video
+// Artist started — SH<N>» entry in the Activity Feed / Polина's ambient
+// stream. Manual triggerAgent paths log start via the trigger route's own
+// manual_trigger event, so the gap is auto-chain only.
+const EXEC_VGEN_EXPECTED_SECONDS = 150;
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import { isVgenCancelled, clearVgenCancel } from '@/lib/api/vgen-cancel';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
@@ -158,7 +171,7 @@ export const execVgenStart = inngest.createFunction(
 
     const job = await step.run('insert-job-row', async () => {
       const supabase = createSupabaseServiceRoleClient();
-      return insertJobRow({
+      const created = await insertJobRow({
         supabase,
         agentId: 'EXEC-VGEN',
         episodeId,
@@ -166,6 +179,27 @@ export const execVgenStart = inngest.createFunction(
         inngestRunId: runId,
         inputSnapshot: data as unknown as Record<string, unknown>,
       });
+      // TD-69 (2026-05-27): emit agent_started so Activity Feed + Polина
+      // see «Video Artist started — SH<N>» right after job row insert.
+      const label = shortShotLabel(shotId);
+      await logEvent(supabase, {
+        event_type: 'agent_started',
+        severity: 'info',
+        title: `${agentDisplayName('EXEC-VGEN')} started${label ? ` — ${label}` : ''}`,
+        description: `Working on ${label || 'pilot pass'} (EXEC-VGEN)…`,
+        actor: 'EXEC-VGEN',
+        episode_id: episodeId,
+        metadata: {
+          file_type: 'VID-shot',
+          job_id: created.id,
+          inngest_run_id: runId,
+          expected_seconds: EXEC_VGEN_EXPECTED_SECONDS,
+          shot_id: shotId,
+          vgen_pilot: true,
+          plan_asset_id: data.planAssetId ?? null,
+        },
+      });
+      return created;
     });
 
     try {
@@ -477,7 +511,7 @@ export const execVgenSingleShot = inngest.createFunction(
 
     const job = await step.run('insert-job-row', async () => {
       const supabase = createSupabaseServiceRoleClient();
-      return insertJobRow({
+      const created = await insertJobRow({
         supabase,
         agentId: 'EXEC-VGEN',
         episodeId,
@@ -485,6 +519,29 @@ export const execVgenSingleShot = inngest.createFunction(
         inngestRunId: runId,
         inputSnapshot: data as unknown as Record<string, unknown>,
       });
+      // TD-69 (2026-05-27): emit agent_started so approve-route auto-chain
+      // VGEN runs are visible in Activity Feed + Polина's ambient stream.
+      // Without this, Director sees approval_granted → silent gap →
+      // agent_completed, with no «Video Artist started — SH<N>» between.
+      const label = shortShotLabel(shotId);
+      await logEvent(supabase, {
+        event_type: 'agent_started',
+        severity: 'info',
+        title: `${agentDisplayName('EXEC-VGEN')} started${label ? ` — ${label}` : ''}`,
+        description: `Working on ${label || 'shot'} (EXEC-VGEN)…`,
+        actor: 'EXEC-VGEN',
+        episode_id: episodeId,
+        metadata: {
+          file_type: 'VID-shot',
+          job_id: created.id,
+          inngest_run_id: runId,
+          expected_seconds: EXEC_VGEN_EXPECTED_SECONDS,
+          shot_id: shotId,
+          vgen_pilot: false,
+          plan_asset_id: data.planAssetId ?? null,
+        },
+      });
+      return created;
     });
 
     try {
