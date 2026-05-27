@@ -45,6 +45,11 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 interface Message {
   role: 'user' | 'assistant' | 'claude' | 'pipeline';
   content: string;
+  /** ISO timestamp. Director directive 2026-05-26 — show Dubai time on every
+   *  chat bubble + pipeline row. For user/assistant turns initiated client
+   *  side we stamp Date.now(); for Realtime / DB-load / polling arrivals we
+   *  use the row's `created_at`. */
+  createdAt?: string;
   /** DB turn id, only for system turns; lets us dedupe Realtime arrivals. */
   turnId?: string;
   /** For `pipeline` messages — severity hint for the bubble accent. */
@@ -162,6 +167,45 @@ function formatPipelineContent(raw: string): string {
   // Default: replace the noisy "ambient pipeline event · " prefix with
   // the bare `[event_type]` tag and keep the body.
   return `[${eventType}] ${body}`;
+}
+
+// 2026-05-26 — Dubai-local short timestamp for chat bubbles. Director is in
+// Dubai (UTC+4); database stores UTC. We format on the client so the wall
+// clock matches the Director's reading context. Locale 'en-GB' yields
+// 24-hour "HH:mm" which is the most compact reading.
+const DUBAI_TIME_FORMATTER =
+  typeof Intl !== 'undefined'
+    ? new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Dubai',
+      })
+    : null;
+const DUBAI_FULL_FORMATTER =
+  typeof Intl !== 'undefined'
+    ? new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZone: 'Asia/Dubai',
+        timeZoneName: 'short',
+      })
+    : null;
+
+function formatDubaiTime(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return DUBAI_TIME_FORMATTER ? DUBAI_TIME_FORMATTER.format(d) : null;
+}
+
+function formatDubaiFull(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return DUBAI_FULL_FORMATTER ? DUBAI_FULL_FORMATTER.format(d) : null;
 }
 
 /** Silence tolerance for continuous mic. Director wanted ≥5s for thinking pauses. */
@@ -488,6 +532,7 @@ export function ConciergePanel() {
         // as visual noise in the chat. Drop them on the UI side; the
         // tool_calls metadata + audit trail in DB are preserved.
         if (turn.event_type === 'tool_call') return;
+        const createdAt = (turn as { created_at?: string }).created_at;
         setMessages((prev) => {
           if (prev.some((p) => p.turnId === turn.id)) return prev;
           const awaiting = readAwaitingFromMetadata(m);
@@ -497,6 +542,7 @@ export function ConciergePanel() {
               role: 'assistant',
               content: turn.content,
               turnId: turn.id,
+              ...(createdAt ? { createdAt } : {}),
               ...(awaiting ? { awaitingDirectorInput: awaiting } : {}),
             },
           ];
@@ -511,6 +557,7 @@ export function ConciergePanel() {
       // and clutter the chat. Activity feed still receives them.
       if (kind === 'pipeline_event' && isAmbientChatNoise(m.event_type)) return;
 
+      const createdAt = (turn as { created_at?: string }).created_at;
       setMessages((prev) => {
         // Dedupe by turnId in case of re-subscribe / strict-mode dupes.
         if (prev.some((p) => p.turnId === turn.id)) return prev;
@@ -520,12 +567,14 @@ export function ConciergePanel() {
               content: turn.content,
               turnId: turn.id,
               author: (m.author as string | undefined) ?? 'Claude',
+              ...(createdAt ? { createdAt } : {}),
             }
           : {
               role: 'pipeline',
               content: turn.content,
               turnId: turn.id,
               severity: (m.severity as 'info' | 'warning' | 'error' | undefined) ?? 'info',
+              ...(createdAt ? { createdAt } : {}),
             };
         return [...prev, next];
       });
@@ -583,6 +632,7 @@ export function ConciergePanel() {
               role: 'assistant',
               content: t.content,
               turnId: t.id,
+              createdAt: t.created_at,
               ...(awaiting ? { awaitingDirectorInput: awaiting } : {}),
             });
             continue;
@@ -595,6 +645,7 @@ export function ConciergePanel() {
               content: t.content,
               turnId: t.id,
               author: (meta.author as string | undefined) ?? 'Claude',
+              createdAt: t.created_at,
             });
           } else if (kind === 'pipeline_event') {
             // 2026-05-26 — drop redundant pipeline plashki here too.
@@ -604,6 +655,7 @@ export function ConciergePanel() {
               content: t.content,
               turnId: t.id,
               severity: (meta.severity as 'info' | 'warning' | 'error' | undefined) ?? 'info',
+              createdAt: t.created_at,
             });
           }
         }
@@ -670,6 +722,7 @@ export function ConciergePanel() {
               role: 'assistant',
               content: t.content,
               turnId: t.id,
+              createdAt: t.created_at,
               ...(awaiting ? { awaitingDirectorInput: awaiting } : {}),
             });
             continue;
@@ -682,6 +735,7 @@ export function ConciergePanel() {
               content: t.content,
               turnId: t.id,
               author: (meta.author as string | undefined) ?? 'Claude',
+              createdAt: t.created_at,
             });
           } else if (kind === 'pipeline_event') {
             // 2026-05-26 — drop redundant pipeline plashki here too.
@@ -691,6 +745,7 @@ export function ConciergePanel() {
               content: t.content,
               turnId: t.id,
               severity: (meta.severity as 'info' | 'warning' | 'error' | undefined) ?? 'info',
+              createdAt: t.created_at,
             });
           }
         }
@@ -721,11 +776,18 @@ export function ConciergePanel() {
     const text = input.trim();
     if (!text || streaming) return;
 
-    const next: Message[] = [...messages, { role: 'user', content: text }];
+    const submittedAt = new Date().toISOString();
+    const next: Message[] = [
+      ...messages,
+      { role: 'user', content: text, createdAt: submittedAt },
+    ];
     setMessages(next);
     setInput('');
     setStreaming(true);
-    setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+    setMessages((prev) => [
+      ...prev,
+      { role: 'assistant', content: '', createdAt: new Date().toISOString() },
+    ]);
 
     try {
       // Sprint α 2026-05-14 — filter UI-only roles out of the wire payload.
@@ -1209,13 +1271,24 @@ export function ConciergePanel() {
           )}
           {messages.map((m, i) => {
             const key = m.turnId ?? `local-${i}`;
+            // 2026-05-26 — Dubai-local short timestamp for every bubble.
+            const timeShort = formatDubaiTime(m.createdAt);
+            const timeFull = formatDubaiFull(m.createdAt);
+            const timeChip = timeShort ? (
+              <span
+                className="text-[10px] text-text-muted tabular-nums select-none"
+                title={timeFull ?? undefined}
+              >
+                {timeShort}
+              </span>
+            ) : null;
             if (m.role === 'user') {
               return (
-                <div
-                  key={key}
-                  className="rounded-xl px-3 py-2 text-sm bg-[var(--accent-primary)] text-[var(--text-inverse)] ml-8"
-                >
-                  <div className="whitespace-pre-wrap">{m.content}</div>
+                <div key={key} className="ml-8 flex flex-col items-end gap-0.5">
+                  <div className="rounded-xl px-3 py-2 text-sm bg-[var(--accent-primary)] text-[var(--text-inverse)]">
+                    <div className="whitespace-pre-wrap">{m.content}</div>
+                  </div>
+                  {timeChip}
                 </div>
               );
             }
@@ -1256,24 +1329,27 @@ export function ConciergePanel() {
                       <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
                     </div>
                   </div>
+                  {timeChip && <div className="self-start pl-1">{timeChip}</div>}
                 </div>
               );
             }
             if (m.role === 'claude') {
               return (
-                <div
-                  key={key}
-                  className="rounded-xl px-3 py-2 text-sm border mr-8"
-                  style={{
-                    background: 'color-mix(in oklab, var(--accent-info) 8%, transparent)',
-                    borderColor: 'color-mix(in oklab, var(--accent-info) 35%, transparent)',
-                    color: 'var(--text-primary)',
-                  }}
-                  title={`Team chat — ${m.author ?? 'Claude'}`}
-                >
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
+                <div key={key} className="mr-8 flex flex-col gap-0.5">
+                  <div
+                    className="rounded-xl px-3 py-2 text-sm border"
+                    style={{
+                      background: 'color-mix(in oklab, var(--accent-info) 8%, transparent)',
+                      borderColor: 'color-mix(in oklab, var(--accent-info) 35%, transparent)',
+                      color: 'var(--text-primary)',
+                    }}
+                    title={`Team chat — ${m.author ?? 'Claude'}`}
+                  >
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
+                    </div>
                   </div>
+                  {timeChip && <div className="self-start pl-1">{timeChip}</div>}
                 </div>
               );
             }
@@ -1291,15 +1367,16 @@ export function ConciergePanel() {
             return (
               <div
                 key={key}
-                className="rounded-md px-2 py-1 text-[11px] font-mono mx-2 whitespace-pre-line leading-relaxed"
+                className="rounded-md px-2 py-1 text-[11px] font-mono mx-2 whitespace-pre-line leading-relaxed flex items-start justify-between gap-2"
                 style={{
                   background: 'color-mix(in oklab, currentColor 4%, transparent)',
                   color: accent,
                   borderLeft: `2px solid ${accent}`,
                 }}
-                title="Pipeline event"
+                title={timeFull ? `Pipeline event · ${timeFull}` : 'Pipeline event'}
               >
-                {formatted}
+                <span className="flex-1 min-w-0">{formatted}</span>
+                {timeChip && <span className="shrink-0">{timeChip}</span>}
               </div>
             );
           })}
