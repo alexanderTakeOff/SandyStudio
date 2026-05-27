@@ -360,6 +360,45 @@ describe('unstickPlanForApproval (TD-76)', () => {
     expect(capture.lastStatus).toBeUndefined();
   });
 
+  it('TD-79: matches REV by plan_asset_id parsed from content when metadata.plan_asset_id is null', async () => {
+    // Real-world pre-TD-77 scenario: REV row exists for the Plan, but
+    // metadata is null (TD-77 backfill not applied). plan_asset_id lives
+    // only inside content's fenced JSON.
+    const capture79: { lastStatus?: string } = {};
+    const criticMarkdown79 = [
+      '# Verdict',
+      '```json',
+      JSON.stringify({
+        plan_asset_id: 'plan-79',
+        verdict: 'PASS_WITH_UNCERTAINTY',
+      }),
+      '```',
+    ].join('\n');
+    const sb79 = mockUnstickSupabase({
+      plan: {
+        id: 'plan-79',
+        file_type: 'SPC-shot_plan-shot-79',
+        status: 'REVISION',
+        episode_id: 'ep-1',
+        version: 8,
+      },
+      criticRows: [
+        {
+          id: 'rev-79',
+          metadata: null,
+          content: criticMarkdown79,
+        },
+      ],
+      captureUpdate: capture79,
+    });
+    const r79 = await unstickPlanForApproval.execute(
+      { planAssetId: 'plan-79' },
+      { ...ctx, supabase: sb79, recentTurns: APPROVAL_TURNS },
+    );
+    expect(r79.ok).toBe(true);
+    expect(capture79.lastStatus).toBe('REVIEW');
+  });
+
   it('falls back to parsing verdict from Critic markdown when metadata is null', async () => {
     const capture: { lastStatus?: string } = {};
     const criticMarkdown = [

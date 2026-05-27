@@ -331,16 +331,39 @@ interface CriticRowMinimal {
 }
 
 function extractVerdictFromContent(content: string | null): string | null {
+  const obj = extractCriticJsonFromContent(content);
+  if (!obj) return null;
+  const v = obj.verdict;
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+/**
+ * TD-79 (2026-05-27): extract plan_asset_id from Critic content fenced JSON.
+ * Companion to extractVerdictFromContent — both pull from the same fenced
+ * block. Required because REV-shot_plan rows written before the TD-77
+ * metadata-persistence fix (2026-05-27 ~17:55 deploy) carry metadata=null,
+ * so `unstickPlanForApproval`'s metadata.plan_asset_id lookup misses every
+ * historical row. Polина hit this on SH19 v08: REV existed with verdict
+ * PASS_WITH_UNCERTAINTY in content, but metadata.plan_asset_id was null
+ * because the REV row predates TD-77.
+ */
+function extractPlanAssetIdFromContent(content: string | null): string | null {
+  const obj = extractCriticJsonFromContent(content);
+  if (!obj) return null;
+  const pid = obj.plan_asset_id;
+  return typeof pid === 'string' && pid.length > 0 ? pid : null;
+}
+
+function extractCriticJsonFromContent(
+  content: string | null,
+): Record<string, unknown> | null {
   if (!content) return null;
   const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
   if (matches.length === 0) return null;
   const last = matches[matches.length - 1]?.[1];
   if (!last) return null;
   try {
-    const obj = JSON.parse(last.trim()) as Record<string, unknown>;
-    const v = obj.verdict;
-    if (typeof v === 'string' && v.length > 0) return v;
-    return null;
+    return JSON.parse(last.trim()) as Record<string, unknown>;
   } catch {
     return null;
   }
@@ -434,11 +457,19 @@ export const unstickPlanForApproval: Tool<UnstickPlanArgs> = {
       .order('created_at', { ascending: false });
     if (criticErr) return fail(`Critic lookup failed: ${criticErr.message}`);
 
+    // TD-79 (2026-05-27): match by metadata.plan_asset_id (post-TD-77 path)
+    // OR by plan_asset_id extracted from the REV's content fenced JSON
+    // (legacy / pre-TD-77 path — metadata is null for those rows but the
+    // Critic's JSON body still carries the linkage). Same pattern as
+    // verdict reading below.
     const verdictRow = (criticRows ?? []).find((row) => {
-      const m = (row as { metadata?: unknown }).metadata as
-        | { plan_asset_id?: unknown }
-        | null;
-      return typeof m?.plan_asset_id === 'string' && m.plan_asset_id === args.planAssetId;
+      const r = row as CriticRowMinimal;
+      const m = r.metadata as { plan_asset_id?: unknown } | null;
+      if (typeof m?.plan_asset_id === 'string' && m.plan_asset_id === args.planAssetId) {
+        return true;
+      }
+      const contentPid = extractPlanAssetIdFromContent(r.content);
+      return contentPid === args.planAssetId;
     });
     if (!verdictRow) {
       return fail(
