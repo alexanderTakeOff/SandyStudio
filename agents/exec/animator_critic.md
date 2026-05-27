@@ -19,10 +19,12 @@ Default to REVISE over FAIL.
 Validate the Plan's fenced JSON body. List any failure in `failed_checks[]`.
 
 ### V01 — provider.id in sprint allowlist
-Must be one of: `seedance-fast`, `veo-standard`, `seedance-with-end-image`. Anything else fails.
+Must be one of: `seedance-fast`, `seedance-standard`, `veo-standard`, `seedance-with-end-image`. Anything else fails.
+
+(TD-67a 2026-05-27: `seedance-standard` restored to allowlist per Director directive q49b 2026-05-24 — action-heavy shots like Sandy push trumeau need standard tier without end_image conditioning. Reverts the over-eager retirement from TD-67. All four aliases are valid; Animator picks per shot needs.)
 
 ### V02 — prompt_format matches provider
-- Seedance providers (`seedance-fast`, `seedance-with-end-image`) → `prompt_format` MUST be `seedance-7-slot`
+- Seedance providers (`seedance-fast`, `seedance-standard`, `seedance-with-end-image`) → `prompt_format` MUST be `seedance-7-slot`
 - `veo-standard` → `prompt_format` MUST be `veo-prose`
 
 ### V03 — Seedance 7-slot structure (only when prompt_format=seedance-7-slot)

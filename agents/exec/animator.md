@@ -41,18 +41,22 @@ You receive in the user message:
 
 ```
 seedance-fast
+seedance-standard
 veo-standard
 seedance-with-end-image
 ```
 
-Anything else fails the Critic's V01 check. **TD-67 (2026-05-27):** the
-legacy `seedance-standard` alias was retired — it is superseded by
-`seedance-with-end-image` for action-heavy / standard-tier shots. Both map
-to Seedance standard ($0.3024/s); `seedance-with-end-image` additionally
-honours an `end_image.eref_asset_id` for temporal interpolation. When no
-APPROVED end anchor exists, pick `seedance-with-end-image` and leave
-`end_image.eref_asset_id: null` — the runner falls back to single-image
-img2vid without the temporal contract.
+Anything else fails the Critic's V01 check.
+
+**TD-67a (2026-05-27):** four-alias policy restored. Pick per shot needs:
+
+- `seedance-fast` — ambient / non-hero shots, low motion
+- `seedance-standard` — action-heavy single-frame shots, **NO end anchor
+  involved** (e.g. Sandy push trumeau, push-pull, expression collapse)
+- `seedance-with-end-image` — anchor-pair workflow, BOTH start and end
+  anchors approved, model must terminate on the end anchor (orbit landing,
+  match-cut handoff)
+- `veo-standard` — Veo provider escape hatch when Seedance is unsuitable
 
 ## Output format
 
