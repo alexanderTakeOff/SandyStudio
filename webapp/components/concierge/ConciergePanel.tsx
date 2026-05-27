@@ -118,7 +118,9 @@ function formatPipelineContent(raw: string): string {
     const friendly = (friendlyMatch?.[1] ?? 'agent').trim().toUpperCase();
     const shotMatch = body.match(/\bSH\d+\b/);
     const shot = shotMatch?.[0];
-    return `agent <${friendly}> ${verb}${shot ? ` — ${shot}` : ''}`;
+    // 2026-05-26 (follow-up): Director preferred the plain
+    // `FRIENDLY — verb — SH##` shape over the `agent <FRIENDLY>` framing.
+    return `${friendly} — ${verb}${shot ? ` — ${shot}` : ''}`;
   }
 
   if (eventType.startsWith('approval_')) {
@@ -845,26 +847,14 @@ export function ConciergePanel() {
             const name = typeof event.name === 'string' ? event.name : 'tool';
             setToolPlashka({ id, name, startedAt: Date.now() });
           } else if (t === 'tool_result' || t === 'tool_timeout') {
+            // 2026-05-26 (follow-up): Director said the in-body chips
+            // were too many — when Polina runs 20+ tool calls per turn,
+            // the bubble fills with "…Polina thinking · ✓ name" lines.
+            // The bottom-of-chat `Polina is thinking…` indicator already
+            // signals activity; chips here add noise without info. The
+            // server still persists tool_call audit rows + the toolPlashka
+            // pulse is shown during execution.
             setToolPlashka(null);
-            // Annotate the assistant bubble with a compact chip so the
-            // Director can see what just ran even after the plashka clears.
-            // 2026-05-26: render as muted aside ("…Polina thinking · ✓ name")
-            // rather than a loud bullet — Director called these visually
-            // dominant. Italic markdown renders subdued in prose-invert.
-            const name = typeof event.name === 'string' ? event.name : 'tool';
-            const ok = t === 'tool_result' ? Boolean(event.ok) : false;
-            const chip =
-              t === 'tool_timeout'
-                ? `\n_…Polina thinking · ⏱ ${name} timed out_\n`
-                : ok
-                  ? `\n_…Polina thinking · ✓ ${name}_\n`
-                  : `\n_…Polina thinking · ✗ ${name}_\n`;
-            acc += chip;
-            setMessages((prev) => {
-              const copy = [...prev];
-              copy[copy.length - 1] = { role: 'assistant', content: acc };
-              return copy;
-            });
           } else if (t === 'cancelled') {
             cancelledByServer = true;
           } else if (t === 'error') {
@@ -1225,7 +1215,20 @@ export function ConciergePanel() {
                       🟡 Полина ждёт ответа: «{m.awaitingDirectorInput.question}»
                     </div>
                   )}
-                  <div className="rounded-xl px-3 py-2 text-sm bg-panel-glass border border-glass text-text-primary">
+                  {/* 2026-05-26 — Director said the assistant body read
+                      too bright next to the muted Activity-feed plashki.
+                      `--tw-prose-body` is the prose plugin's body-text
+                      token; we point it at `--text-secondary` (same family
+                      Activity feed uses for info-severity rows) so prose
+                      colors all inherit the dimmer tone without overriding
+                      individual elements. */}
+                  <div
+                    className="rounded-xl px-3 py-2 text-sm bg-panel-glass border border-glass text-text-secondary"
+                    style={{
+                      ['--tw-prose-body' as string]: 'var(--text-secondary)',
+                      ['--tw-prose-bold' as string]: 'var(--text-primary)',
+                    }}
+                  >
                     <div className="prose prose-invert prose-sm max-w-none">
                       <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
                     </div>
