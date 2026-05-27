@@ -2619,11 +2619,33 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
 
   // Persist agent-specific structured payloads to the JSONB `metadata` column
   // so downstream UI / runners can read them. We pick only opted-in keys:
-  // `animatic_v1` is the only one for now, but this list is expected to grow
-  // as new contracts (animatic_v2, vgen_shot_v1, etc.) emerge. Keys like
-  // `markdown`, `staging_path`, `description` are already promoted to columns
-  // and would just bloat metadata, so they are NOT included here.
-  const PERSIST_METADATA_KEYS = ['animatic_v1'] as const;
+  // Keys like `markdown`, `staging_path`, `description` are already promoted
+  // to columns and would just bloat metadata, so they are NOT included here.
+  //
+  // TD-77 (2026-05-27): added critic-verdict keys so PA tools
+  // (`getAnimatorCriticVerdict`, `unstickPlanForApproval`) can read the
+  // structured verdict directly from `assets.metadata` instead of re-parsing
+  // the REV markdown body each time. Auto-chain (factory.ts nextEvent) was
+  // already reading verdict from the in-memory `result.metadata` before
+  // save dropped it; this fix closes the read-after-save gap.
+  const PERSIST_METADATA_KEYS = [
+    'animatic_v1',
+    // Critic verdict fields (TD-77) — EXEC-EPREV / EXEC-VPREV / EXEC-GAGAD outputs
+    'verdict',
+    'failed_checks',
+    'passed_checks',
+    'acceptance_criteria',
+    'warnings',
+    'plan_asset_id',
+    'shot_id',
+    'review_kind',
+    'plan_status_after_critic',
+    // GAGAD-specific
+    'gag_phase',
+    'gag_plan_asset_id',
+    'revision_count_before',
+    'revision_count_after',
+  ] as const;
   let metadataPayload: Record<string, unknown> | null = null;
   for (const key of PERSIST_METADATA_KEYS) {
     const v = result.metadata[key];

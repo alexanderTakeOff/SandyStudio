@@ -7,6 +7,7 @@ import {
   getShotPlan,
   listShotPlans,
   getAnimatorCriticVerdict,
+  unstickPlanForApproval,
 } from '@/lib/concierge/tools/animator';
 import type { ToolContext } from '@/lib/concierge/tools/types';
 
@@ -222,5 +223,192 @@ describe('getAnimatorCriticVerdict', () => {
       expect(d.verdict).toBe('REVISE');
       expect(d.acceptanceCriteria).toContain('use one verb');
     }
+  });
+});
+
+// TD-76 (2026-05-27) — unstickPlanForApproval state-machine recovery.
+
+function mockUnstickSupabase(opts: {
+  plan: { id: string; filename?: string; file_type?: string; status: string; episode_id?: string | null; version?: number } | null;
+  criticRows?: Array<{ id: string; filename?: string; metadata: Record<string, unknown> | null; content?: string | null; created_at?: string }>;
+  updateError?: { message: string } | null;
+  captureUpdate?: { lastStatus?: string; lastWhereId?: string };
+}) {
+  return {
+    from: (table: string) => {
+      if (table !== 'assets') throw new Error(`unexpected table ${table}`);
+      return {
+        select: () => ({
+          eq: (col: string, val: unknown) => {
+            if (col === 'id') {
+              return {
+                maybeSingle: async () => ({ data: opts.plan, error: null }),
+              };
+            }
+            // episode_id branch — returns the .or().order() chain for criticRows.
+            const result = { data: opts.criticRows ?? [], error: null };
+            return {
+              or: () => ({
+                order: () => Promise.resolve(result),
+              }),
+            };
+          },
+        }),
+        update: (patch: { status?: string }) => ({
+          eq: (_col: string, val: unknown) => {
+            if (opts.captureUpdate) {
+              opts.captureUpdate.lastStatus = patch.status;
+              opts.captureUpdate.lastWhereId = String(val);
+            }
+            return Promise.resolve({ error: opts.updateError ?? null });
+          },
+        }),
+      };
+    },
+  } as never;
+}
+
+const APPROVAL_TURNS = [
+  {
+    id: 't-approval',
+    thread_id: 'th',
+    role: 'director' as const,
+    event_type: 'message' as const,
+    content: 'давай',
+    metadata: {},
+    token_count: null,
+    created_at: new Date().toISOString(),
+  },
+];
+
+describe('unstickPlanForApproval (TD-76)', () => {
+  it('flips REVISION → REVIEW when Critic verdict is PASS_WITH_UNCERTAINTY', async () => {
+    const capture: { lastStatus?: string; lastWhereId?: string } = {};
+    const sb = mockUnstickSupabase({
+      plan: {
+        id: 'plan-1',
+        filename: 'Plan.md',
+        file_type: 'SPC-shot_plan-shot-1',
+        status: 'REVISION',
+        episode_id: 'ep-1',
+        version: 7,
+      },
+      criticRows: [
+        {
+          id: 'rev-1',
+          filename: 'REV.md',
+          metadata: {
+            plan_asset_id: 'plan-1',
+            verdict: 'PASS_WITH_UNCERTAINTY',
+          },
+        },
+      ],
+      captureUpdate: capture,
+    });
+    const r = await unstickPlanForApproval.execute(
+      { planAssetId: 'plan-1' },
+      { ...ctx, supabase: sb, recentTurns: APPROVAL_TURNS },
+    );
+    expect(r.ok).toBe(true);
+    expect(capture.lastStatus).toBe('REVIEW');
+    expect(capture.lastWhereId).toBe('plan-1');
+  });
+
+  it('refuses to unstick when Critic verdict is REVISE', async () => {
+    const sb = mockUnstickSupabase({
+      plan: {
+        id: 'plan-2',
+        file_type: 'SPC-shot_plan-shot-2',
+        status: 'REVISION',
+        episode_id: 'ep-1',
+        version: 3,
+      },
+      criticRows: [
+        {
+          id: 'rev-2',
+          metadata: { plan_asset_id: 'plan-2', verdict: 'REVISE' },
+        },
+      ],
+    });
+    const r = await unstickPlanForApproval.execute(
+      { planAssetId: 'plan-2' },
+      { ...ctx, supabase: sb, recentTurns: APPROVAL_TURNS },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.code).toBe('verdict_blocks');
+    }
+  });
+
+  it('idempotent on REVIEW — no-op success', async () => {
+    const capture: { lastStatus?: string } = {};
+    const sb = mockUnstickSupabase({
+      plan: {
+        id: 'plan-3',
+        file_type: 'SPC-shot_plan-shot-3',
+        status: 'REVIEW',
+        episode_id: 'ep-1',
+        version: 4,
+      },
+      captureUpdate: capture,
+    });
+    const r = await unstickPlanForApproval.execute(
+      { planAssetId: 'plan-3' },
+      { ...ctx, supabase: sb, recentTurns: APPROVAL_TURNS },
+    );
+    expect(r.ok).toBe(true);
+    expect(capture.lastStatus).toBeUndefined();
+  });
+
+  it('falls back to parsing verdict from Critic markdown when metadata is null', async () => {
+    const capture: { lastStatus?: string } = {};
+    const criticMarkdown = [
+      '# Verdict',
+      '```json',
+      JSON.stringify({ verdict: 'PASS_WITH_UNCERTAINTY' }),
+      '```',
+    ].join('\n');
+    const sb = mockUnstickSupabase({
+      plan: {
+        id: 'plan-4',
+        file_type: 'SPC-shot_plan-shot-4',
+        status: 'REVISION',
+        episode_id: 'ep-1',
+        version: 5,
+      },
+      criticRows: [
+        {
+          id: 'rev-4',
+          metadata: { plan_asset_id: 'plan-4' },
+          content: criticMarkdown,
+        },
+      ],
+      captureUpdate: capture,
+    });
+    const r = await unstickPlanForApproval.execute(
+      { planAssetId: 'plan-4' },
+      { ...ctx, supabase: sb, recentTurns: APPROVAL_TURNS },
+    );
+    expect(r.ok).toBe(true);
+    expect(capture.lastStatus).toBe('REVIEW');
+  });
+
+  it('refuses when no Critic verdict found', async () => {
+    const sb = mockUnstickSupabase({
+      plan: {
+        id: 'plan-5',
+        file_type: 'SPC-shot_plan-shot-5',
+        status: 'REVISION',
+        episode_id: 'ep-1',
+        version: 1,
+      },
+      criticRows: [],
+    });
+    const r = await unstickPlanForApproval.execute(
+      { planAssetId: 'plan-5' },
+      { ...ctx, supabase: sb, recentTurns: APPROVAL_TURNS },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('no_verdict');
   });
 });

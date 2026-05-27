@@ -293,6 +293,200 @@ export const getAnimatorCriticVerdict: Tool<GetVprevArgs> = {
   },
 };
 
+// ── unstickPlanForApproval (mutating) ────────────────────────────────────────
+//
+// TD-76 (2026-05-27) — recover Shot Plans that ended up stuck in REVISION
+// despite a clean Critic verdict (PASS or PASS_WITH_UNCERTAINTY). Background:
+// before TD-75 fixed the runner.ts EXEC-VPREV verdict→status mapping, the
+// PASS_WITH_UNCERTAINTY branch swept the Plan to REVISION even though the
+// verdict explicitly let it through. Approve route only permits
+// REVIEW → APPROVED, so the Plan was stranded. Polина's previous workaround
+// was to regenerate the Plan — but that's a *content-generating* LLM call
+// (~$1.50, non-deterministic, may drift the gag arc). Wrong tool for a
+// state-machine recovery.
+//
+// This tool is the right tool: it touches ONLY the Plan's `status` column,
+// gated on the latest Critic verdict for the Plan being PASS or
+// PASS_WITH_UNCERTAINTY. No regen, no content change, no LLM call.
+
+interface UnstickPlanArgs {
+  planAssetId: string;
+}
+
+interface PlanRowMinimal {
+  id: string;
+  filename: string | null;
+  file_type: string | null;
+  status: string;
+  episode_id: string | null;
+  version: number;
+}
+
+interface CriticRowMinimal {
+  id: string;
+  filename: string | null;
+  metadata: Record<string, unknown> | null;
+  content: string | null;
+  created_at: string;
+}
+
+function extractVerdictFromContent(content: string | null): string | null {
+  if (!content) return null;
+  const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
+  if (matches.length === 0) return null;
+  const last = matches[matches.length - 1]?.[1];
+  if (!last) return null;
+  try {
+    const obj = JSON.parse(last.trim()) as Record<string, unknown>;
+    const v = obj.verdict;
+    if (typeof v === 'string' && v.length > 0) return v;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export const unstickPlanForApproval: Tool<UnstickPlanArgs> = {
+  name: 'unstickPlanForApproval',
+  description:
+    "TD-76: flip a Shot Plan stuck in REVISION → REVIEW when the latest Critic verdict is PASS or PASS_WITH_UNCERTAINTY. Use this INSTEAD of regenerateShotPlan whenever the Plan content is already correct and only the state machine needs to be corrected (typical case: post-TD-74 PASS_WITH_UNCERTAINTY landed before TD-75 fix was deployed). Does NOT regenerate or modify content. Idempotent — no-op when Plan already in REVIEW/APPROVED. Verbal approval required.",
+  mutating: true,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'unstickPlanForApproval',
+      description:
+        'Flip Shot Plan status REVISION → REVIEW gated on latest Critic PASS / PASS_WITH_UNCERTAINTY verdict.',
+      parameters: {
+        type: 'object',
+        properties: {
+          planAssetId: {
+            type: 'string',
+            description: 'Plan asset UUID to unstick.',
+          },
+        },
+        required: ['planAssetId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const planAssetId = typeof obj.planAssetId === 'string' ? obj.planAssetId : '';
+    if (!planAssetId) throw new Error('planAssetId is required');
+    return { planAssetId };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    if (!approval.approved) return fail(approval.reason, 'verbal_approval_required');
+
+    // 1. Lookup Plan.
+    const { data: planRow, error: planErr } = await ctx.supabase
+      .from('assets')
+      .select('id,filename,file_type,status,episode_id,version')
+      .eq('id', args.planAssetId)
+      .maybeSingle();
+    if (planErr) return fail(`Plan fetch failed: ${planErr.message}`);
+    if (!planRow) return fail(`Plan ${args.planAssetId} not found`, 'not_found');
+    const plan = planRow as PlanRowMinimal;
+    if (
+      plan.file_type !== 'SPC-shot_plan' &&
+      !(plan.file_type ?? '').startsWith('SPC-shot_plan-')
+    ) {
+      return fail(
+        `asset ${args.planAssetId} is ${plan.file_type}, not SPC-shot_plan / SPC-shot_plan-*`,
+        'wrong_type',
+      );
+    }
+
+    // 2. Idempotent shortcuts.
+    if (plan.status === 'REVIEW' || plan.status === 'APPROVED') {
+      return ok(
+        { planAssetId: plan.id, status: plan.status, action: 'noop' },
+        `Plan ${plan.filename ?? plan.id} already in ${plan.status} — nothing to unstick.`,
+      );
+    }
+    if (plan.status === 'LOCKED') {
+      return fail(
+        `Plan ${plan.filename ?? plan.id} is LOCKED — refuse to modify (CLAUDE.md §7).`,
+        'locked',
+      );
+    }
+    if (plan.status !== 'REVISION' && plan.status !== 'DRAFT') {
+      return fail(
+        `Plan ${plan.filename ?? plan.id} has status ${plan.status} — only REVISION / DRAFT can be unstuck (refuse REJECTED / INVALIDATED).`,
+        'wrong_status',
+      );
+    }
+    if (!plan.episode_id) {
+      return fail(`Plan ${plan.filename ?? plan.id} has no episode_id`, 'no_episode');
+    }
+
+    // 3. Find latest Critic verdict for this Plan. TD-75 widened file_type;
+    //    TD-77 made metadata.verdict reliably present on new REV rows. For
+    //    older REVs without persisted metadata.verdict we fall back to
+    //    parsing the markdown content.
+    const { data: criticRows, error: criticErr } = await ctx.supabase
+      .from('assets')
+      .select('id,filename,metadata,content,created_at')
+      .eq('episode_id', plan.episode_id)
+      .or('file_type.eq.REV-shot_plan,file_type.like.REV-shot_plan-%')
+      .order('created_at', { ascending: false });
+    if (criticErr) return fail(`Critic lookup failed: ${criticErr.message}`);
+
+    const verdictRow = (criticRows ?? []).find((row) => {
+      const m = (row as { metadata?: unknown }).metadata as
+        | { plan_asset_id?: unknown }
+        | null;
+      return typeof m?.plan_asset_id === 'string' && m.plan_asset_id === args.planAssetId;
+    });
+    if (!verdictRow) {
+      return fail(
+        `No Critic verdict found for Plan ${plan.filename ?? plan.id} — cannot unstick without a verdict gate.`,
+        'no_verdict',
+      );
+    }
+    const v = verdictRow as CriticRowMinimal;
+    const metaVerdict =
+      typeof (v.metadata as { verdict?: unknown } | null)?.verdict === 'string'
+        ? ((v.metadata as { verdict: string }).verdict)
+        : null;
+    const verdict = metaVerdict ?? extractVerdictFromContent(v.content);
+    if (!verdict) {
+      return fail(
+        `Critic verdict for Plan ${plan.filename ?? plan.id} is unreadable (metadata.verdict missing, content not parseable). Cannot unstick.`,
+        'unreadable_verdict',
+      );
+    }
+
+    if (verdict !== 'PASS' && verdict !== 'PASS_WITH_UNCERTAINTY') {
+      return fail(
+        `Critic verdict is ${verdict} — Plan legitimately blocked, refuse to unstick. Address the Critic feedback or use regenerateShotPlan with revisionNote.`,
+        'verdict_blocks',
+      );
+    }
+
+    // 4. Flip status.
+    const { error: updErr } = await ctx.supabase
+      .from('assets')
+      .update({ status: 'REVIEW' } as never)
+      .eq('id', plan.id);
+    if (updErr) return fail(`Plan status update failed: ${updErr.message}`);
+
+    return ok(
+      {
+        planAssetId: plan.id,
+        previousStatus: plan.status,
+        newStatus: 'REVIEW',
+        verdict,
+        criticAssetId: v.id,
+        action: 'unstuck',
+      },
+      `Unstuck Plan ${plan.filename ?? plan.id}: ${plan.status} → REVIEW (Critic verdict ${verdict}). Director can now approve via UI.`,
+    );
+  },
+};
+
 // ── regenerateShotPlan (mutating) ────────────────────────────────────────────
 
 interface DirectorOverrideArg {

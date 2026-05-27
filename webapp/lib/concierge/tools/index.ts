@@ -30,6 +30,7 @@ import {
   listShotPlans,
   getAnimatorCriticVerdict,
   regenerateShotPlan,
+  unstickPlanForApproval,
 } from './animator';
 import {
   getGagPlan,
@@ -109,6 +110,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // the Plan-driven path (Animator-declared provider + quality_tier).
   regenerateVideoFromPlan as unknown as AnyTool,
   regenerateShotPlan as unknown as AnyTool,
+  // TD-76 (2026-05-27) — state-machine recovery for Plans stuck in
+  // REVISION despite a clean Critic verdict. Use INSTEAD of regenerateShotPlan
+  // when content is already correct but state is wrong.
+  unstickPlanForApproval as unknown as AnyTool,
   regenerateGagPlan as unknown as AnyTool,
 ]);
 
