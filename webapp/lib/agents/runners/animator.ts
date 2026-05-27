@@ -64,9 +64,23 @@ export const VANIM_COST_CEILING_USD = 0.15;
  * passes through to Seedance provider's standard model endpoint
  * ($0.3024/s vs $0.2419/s for fast).
  */
+// TD-67 (2026-05-27): `seedance-standard` removed from the allowlist. Live
+// SH10 Plan v01 surfaced the drift: the Animator markdown prompt + this TS
+// constant both included `seedance-standard`, but the Critic markdown
+// (`agents/exec/animator_critic.md` V01 check) only accepted three IDs and
+// REVISE-d every Plan that selected `seedance-standard`. Direct conflict —
+// Animator told to pick from 4, Critic enforces 3.
+//
+// Resolution: `seedance-standard` is superseded by `seedance-with-end-image`
+// for all real use cases. Both map to Seedance standard tier ($0.3024/s);
+// `seedance-with-end-image` additionally honours an end_image asset for
+// temporal interpolation contract (the anchor-pair workflow needs this
+// for arc motion vs ambient wobble). Action-heavy shots that previously
+// would have picked `seedance-standard` should pick `seedance-with-end-image`
+// instead, leaving `end_image.eref_asset_id` populated when an APPROVED end
+// anchor exists or null when it doesn't. No semantic loss.
 export const VANIM_PROVIDER_ALLOWLIST = [
   'seedance-fast',
-  'seedance-standard',
   'veo-standard',
   'seedance-with-end-image',
 ] as const;
@@ -114,12 +128,9 @@ export function resolveVanimProviderId(
         qualityTier: 'fast',
         prefersEndImage: false,
       };
-    case 'seedance-standard':
-      return {
-        providerImpl: 'seedance-fal-img2vid',
-        qualityTier: 'standard',
-        prefersEndImage: false,
-      };
+    // TD-67 (2026-05-27): `seedance-standard` case removed — superseded by
+    // `seedance-with-end-image` (same qualityTier=standard, plus end_image
+    // honouring). See VANIM_PROVIDER_ALLOWLIST comment above.
     case 'seedance-with-end-image':
       return {
         providerImpl: 'seedance-fal-img2vid',

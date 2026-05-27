@@ -177,7 +177,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   // 'EXEC-VGEN', payload:{shotId, planAssetId}})` routed to the legacy
   // `generate-shot` event handler (line 49 above), which historically only
   // extracts shotId via resolveRunArgs and ignores planAssetId. Result: even
-  // when the Animator's Plan body declared `provider.id="seedance-standard"`,
+  // when the Animator's Plan body declared `provider.id="seedance-with-end-image"`,
   // the manual-trigger path silently dropped to the DB-config default
   // (Seedance Fast) because TD-44's resolveVanimProviderId never saw the
   // Plan body — planAssetId was discarded at the legacy handler boundary.
