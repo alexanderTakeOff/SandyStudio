@@ -37,10 +37,17 @@ function mockSupabase(opts: {
     };
     // 2026-05-22 — listRefPlans now uses .or('file_type.eq.X,file_type.like.X-%')
     // to match both bare SPC-ref_plan and TD-24 SPC-ref_plan-<shot_id> shapes.
-    // Treat any .or() call that includes "SPC-ref_plan" as the plan-list path.
+    // TD-78 (2026-05-27) extended the same widening to REV-ref_plan for the
+    // criticRows query inside listRefPlans + getCriticVerdict.
     builder.or = (expr: string) => {
-      if (typeof expr === 'string' && expr.includes('SPC-ref_plan')) {
-        lastFileType = 'SPC-ref_plan';
+      if (typeof expr === 'string') {
+        // Order matters: REV-ref_plan check first so we don't match the SPC
+        // branch when the expression mentions REV.
+        if (expr.includes('REV-ref_plan')) {
+          lastFileType = 'REV-ref_plan';
+        } else if (expr.includes('SPC-ref_plan')) {
+          lastFileType = 'SPC-ref_plan';
+        }
       }
       return builder;
     };
@@ -309,32 +316,37 @@ describe('getCriticVerdict', () => {
                 }),
               };
             }
-            // episode_id+file_type chain
-            return {
-              eq: () => ({
-                order: () =>
-                  Promise.resolve({
-                    data: [
-                      {
-                        id: 'rev-1',
-                        filename: 'REV.md',
-                        status: 'REVIEW',
-                        content: 'verdict narrative',
-                        metadata: {
-                          plan_asset_id: 'plan-1',
-                          verdict: 'REVISE',
-                          failed_checks: [
-                            { check: 'V05', diagnosis: 'oops' },
-                          ],
-                          passed_checks: ['V01', 'V02'],
-                          acceptance_criteria: ['fix negative list'],
-                        },
-                        created_at: '2026-05-19',
+            // episode_id+file_type chain. TD-78 (2026-05-27): getCriticVerdict
+            // now uses `.or('file_type.eq.X,file_type.like.X-%')`.
+            // The mock's second-level chain must offer both `.eq()` (legacy)
+            // and `.or()` (new) returning the same shape.
+            const finalRows = {
+              order: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      id: 'rev-1',
+                      filename: 'REV.md',
+                      status: 'REVIEW',
+                      content: 'verdict narrative',
+                      metadata: {
+                        plan_asset_id: 'plan-1',
+                        verdict: 'REVISE',
+                        failed_checks: [
+                          { check: 'V05', diagnosis: 'oops' },
+                        ],
+                        passed_checks: ['V01', 'V02'],
+                        acceptance_criteria: ['fix negative list'],
                       },
-                    ],
-                    error: null,
-                  }),
-              }),
+                      created_at: '2026-05-19',
+                    },
+                  ],
+                  error: null,
+                }),
+            };
+            return {
+              eq: () => finalRows,
+              or: () => finalRows,
             };
           },
         }),

@@ -1836,103 +1836,136 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         | 'veo-3-img2vid'
         | null = null;
       if (planAssetId && supabase) {
+        // TD-78 (2026-05-27): hard-fail semantics + file_type widening.
+        //
+        // The previous shape silently fell through to legacy storyboard
+        // prompt whenever the Plan couldn't be loaded — strict file_type
+        // equality, status mismatch, parse failure, missing prompt, all
+        // hit the same `catch { /* leave planPrompt null */ }`. Result for
+        // SH19 v02: caller passed Plan v08 explicitly, runner silently
+        // produced a 4-second «aligns perfectly» fast-tier video from the
+        // ancient storyboard, ~$0.50 burnt + Director confused.
+        //
+        // New contract: if `planAssetId` is in the event payload, runner
+        // either loads the Plan cleanly or throws. No silent storyboard
+        // fallback. Each failure mode reports a distinct reason so PA /
+        // Director knows whether to fix the Plan, re-approve it, or pass
+        // a different planAssetId.
+        //
+        // file_type widening: Animator writes `SPC-shot_plan-<shot_id>`
+        // (TD-66 widening). Accept both bare and suffixed forms here, same
+        // pattern as TD-75 fix for PA tools.
+
+        const { data: planRow, error: loadErr } = await supabase
+          .from('assets')
+          .select('content,status,file_type')
+          .eq('id', planAssetId)
+          .maybeSingle();
+
+        if (loadErr) {
+          throw new Error(
+            `EXEC-VGEN: planAssetId=${planAssetId} fetch failed (${loadErr.message}). Refusing silent storyboard fallback.`,
+          );
+        }
+        if (!planRow) {
+          throw new Error(
+            `EXEC-VGEN: planAssetId=${planAssetId} not found. Refusing silent storyboard fallback.`,
+          );
+        }
+        const planFileType = (planRow as { file_type?: string }).file_type ?? '';
+        const planStatus = (planRow as { status?: string }).status ?? '';
+        const isShotPlanType =
+          planFileType === 'SPC-shot_plan' || planFileType.startsWith('SPC-shot_plan-');
+        if (!isShotPlanType) {
+          throw new Error(
+            `EXEC-VGEN: planAssetId=${planAssetId} has file_type="${planFileType}", expected SPC-shot_plan / SPC-shot_plan-*. Refusing silent storyboard fallback.`,
+          );
+        }
+        if (planStatus !== 'APPROVED') {
+          throw new Error(
+            `EXEC-VGEN: planAssetId=${planAssetId} has status=${planStatus}, expected APPROVED. Refusing silent storyboard fallback.`,
+          );
+        }
+
+        const content = (planRow as { content?: string | null }).content ?? '';
+        const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
+        const last = matches[matches.length - 1]?.[1];
+        if (!last) {
+          throw new Error(
+            `EXEC-VGEN: planAssetId=${planAssetId} content has no fenced \`\`\`json block. Refusing silent storyboard fallback.`,
+          );
+        }
+        let body: {
+          prompt?: unknown;
+          end_image?: unknown;
+          seed_strategy?: unknown;
+          quality_tier?: unknown;
+          provider?: unknown;
+        };
         try {
-          const { data: planRow } = await supabase
-            .from('assets')
-            .select('content,status,file_type')
-            .eq('id', planAssetId)
-            .maybeSingle();
-          if (
-            planRow &&
-            (planRow as { file_type?: string }).file_type === 'SPC-shot_plan' &&
-            (planRow as { status?: string }).status === 'APPROVED'
-          ) {
-            const content = (planRow as { content?: string | null }).content ?? '';
-            const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
-            const last = matches[matches.length - 1]?.[1];
-            if (last) {
-              try {
-                const body = JSON.parse(last.trim()) as {
-                  prompt?: unknown;
-                  end_image?: unknown;
-                  seed_strategy?: unknown;
-                  quality_tier?: unknown;
-                  provider?: unknown;
-                };
-                if (typeof body.prompt === 'string' && body.prompt.length > 0) {
-                  planPrompt = body.prompt;
-                }
-                // TD-44 (2026-05-24): provider.id is the single source of
-                // truth — derive both provider impl AND quality tier from it.
-                // Falls back to body.quality_tier when provider absent.
-                if (body.provider && typeof body.provider === 'object') {
-                  const pid = (body.provider as { id?: unknown }).id;
-                  if (typeof pid === 'string') {
-                    try {
-                      const { resolveVanimProviderId } = await import(
-                        './runners/animator'
-                      );
-                      const resolved = resolveVanimProviderId(pid);
-                      planProviderImplOverride = resolved.providerImpl;
-                      planQualityOverride = resolved.qualityTier;
-                    } catch {
-                      // Unknown provider.id — leave overrides null; runner
-                      // falls back to event-arg/DB-config + body.quality_tier.
-                    }
-                  }
-                }
-                // end_image: { asset_id: "<uuid>" } — null/missing = no end frame.
-                if (body.end_image && typeof body.end_image === 'object') {
-                  const ei = body.end_image as { asset_id?: unknown };
-                  if (typeof ei.asset_id === 'string' && ei.asset_id.length > 0) {
-                    planEndImageAssetId = ei.asset_id;
-                  }
-                }
-                // TD-49 Phase 2 P2.4 (2026-05-25): anchor pair extraction.
-                // Schema enforcement (role + reciprocal handoff_link_to) is
-                // done by extractAnchorChain which throws AnimatorError on
-                // structural violations. Caught by the outer try/catch so
-                // an invalid Plan falls back to legacy single-reference path
-                // rather than crashing the agent run.
-                try {
-                  const { extractAnchorChain } = await import(
-                    './runners/animator'
-                  );
-                  const chain = extractAnchorChain(body);
-                  if (chain.start_anchor) {
-                    planStartAnchorAssetId = chain.start_anchor.asset_id;
-                  }
-                  if (chain.end_anchor) {
-                    planEndAnchorAssetId = chain.end_anchor.asset_id;
-                  }
-                } catch {
-                  // Plan declared anchor fields with bad shape — leave both
-                  // null; legacy end_image / EREF lookup drives the call.
-                }
-                // seed_strategy: { seed: <int> } — Seedance reproducibility hook.
-                if (
-                  body.seed_strategy &&
-                  typeof body.seed_strategy === 'object'
-                ) {
-                  const ss = body.seed_strategy as { seed?: unknown };
-                  if (typeof ss.seed === 'number' && Number.isFinite(ss.seed)) {
-                    planSeed = Math.floor(ss.seed);
-                  }
-                }
-                // quality_tier: 'fast' | 'standard' — Plan beats event arg.
-                if (
-                  body.quality_tier === 'fast' ||
-                  body.quality_tier === 'standard'
-                ) {
-                  planQualityOverride = body.quality_tier;
-                }
-              } catch {
-                /* leave plan fields null */
-              }
+          body = JSON.parse(last.trim()) as typeof body;
+        } catch (parseErr) {
+          throw new Error(
+            `EXEC-VGEN: planAssetId=${planAssetId} JSON block parse failed (${String(parseErr)}). Refusing silent storyboard fallback.`,
+          );
+        }
+        if (typeof body.prompt !== 'string' || body.prompt.length === 0) {
+          throw new Error(
+            `EXEC-VGEN: planAssetId=${planAssetId} JSON has no non-empty \`prompt\` field. Refusing silent storyboard fallback.`,
+          );
+        }
+        planPrompt = body.prompt;
+
+        // TD-44 (2026-05-24): provider.id drives provider impl + quality tier.
+        if (body.provider && typeof body.provider === 'object') {
+          const pid = (body.provider as { id?: unknown }).id;
+          if (typeof pid === 'string') {
+            try {
+              const { resolveVanimProviderId } = await import('./runners/animator');
+              const resolved = resolveVanimProviderId(pid);
+              planProviderImplOverride = resolved.providerImpl;
+              planQualityOverride = resolved.qualityTier;
+            } catch {
+              // Unknown provider.id is a soft fail — leave overrides null
+              // so runner falls back to event-arg/DB-config + body.quality_tier.
+              // (Throwing would be too strict — Animator allowlist may grow
+              // and the runner shouldn't break on a new entry.)
             }
           }
+        }
+        // end_image: { asset_id: "<uuid>" } — null/missing = no end frame.
+        if (body.end_image && typeof body.end_image === 'object') {
+          const ei = body.end_image as { asset_id?: unknown };
+          if (typeof ei.asset_id === 'string' && ei.asset_id.length > 0) {
+            planEndImageAssetId = ei.asset_id;
+          }
+        }
+        // TD-49 Phase 2 P2.4 (2026-05-25): anchor pair extraction.
+        try {
+          const { extractAnchorChain } = await import('./runners/animator');
+          const chain = extractAnchorChain(body);
+          if (chain.start_anchor) {
+            planStartAnchorAssetId = chain.start_anchor.asset_id;
+          }
+          if (chain.end_anchor) {
+            planEndAnchorAssetId = chain.end_anchor.asset_id;
+          }
         } catch {
-          /* leave planPrompt null — fall back to legacy template */
+          // Plan declared anchor fields with bad shape — leave both null,
+          // legacy end_image / EREF lookup drives the call. Anchor mode
+          // is opt-in, malformed anchors should not block the Plan-driven
+          // path entirely.
+        }
+        // seed_strategy: { seed: <int> } — Seedance reproducibility hook.
+        if (body.seed_strategy && typeof body.seed_strategy === 'object') {
+          const ss = body.seed_strategy as { seed?: unknown };
+          if (typeof ss.seed === 'number' && Number.isFinite(ss.seed)) {
+            planSeed = Math.floor(ss.seed);
+          }
+        }
+        // quality_tier: 'fast' | 'standard' — Plan beats event arg.
+        if (body.quality_tier === 'fast' || body.quality_tier === 'standard') {
+          planQualityOverride = body.quality_tier;
         }
       }
       const prompt =
