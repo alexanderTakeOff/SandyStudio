@@ -21,7 +21,7 @@ The Video Designer plans; the Video Artist (EXEC-VGEN) executes. You do NOT call
 5. **Seed strategy** — `random` (first iteration) or `locked` (after Director-approve for batch consistency)
 6. **End-image strategy** — when shot needs camera-tighten, character-enter, or emotion peak: name which APPROVED EREF asset to use as `end_image`. Otherwise `null`.
 7. **Prompt** — provider-specific format:
-   - **Seedance**: 7-slot structure (SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE) — single line per slot, ≤1 primary action (Seedance hard rule #4 — multi-action causes blur)
+   - **Seedance**: 7-slot structure (SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE) — ONE primary causal chain on one subject (a chain may span multiple beats like «tap → launch → smash → vibrate»); a reactive micro-beat on a secondary subject (e.g. character recoil) is permitted. What fails is genuinely parallel independent actions — see Critic V04.
    - **Veo**: cinematic prose with explicit camera direction, action, character emotion, lighting, style
 8. **Negative term list** — baseline `["no text", "no logos", "no watermarks", "no captions"]` plus shot-specific guards (e.g. `"no doppelgangers"` for solo-character shots)
 9. **Reference anchor** — Bible character / EREF asset id used as `referenceImageBase64` for continuity-locked subjects
@@ -150,7 +150,7 @@ Then append exactly one fenced JSON code block:
 - `provider.id` MUST be in the sprint allowlist above
 - `prompt_format` MUST match the provider: Seedance providers → `seedance-7-slot`; Veo → `veo-prose`
 - For Seedance: prompt must follow 7-slot order (SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE) — Critic V04 enforces this
-- **ONE primary causal action per shot** (Seedance hard rule #4 — multi-action causes blur). This means ONE motion verb chain (e.g. «launch → smash → vibrate» is one chain — the finger touch causes a launch trajectory that ends in impact + residual motion). It does NOT mean «one short sentence». See ACTION BEAT STRUCTURE below.
+- **ONE primary causal action per shot** (Seedance hard rule #4 — multi-action causes blur). This means ONE motion verb chain (e.g. «launch → smash → vibrate» is one chain — the finger touch causes a launch trajectory that ends in impact + residual motion). It does NOT mean «one short sentence». **A reactive micro-beat on a secondary subject (e.g. character recoil from the primary impact) is also permitted — see V04.** See ACTION BEAT STRUCTURE below.
 - `negative[]` must include baseline: `["no text", "no logos", "no watermarks", "no captions"]`
 - KEEP THE OUTPUT TIGHT. The JSON block at the end is MANDATORY and must not be truncated
 - DO NOT call any provider. You only write the Plan. Execution happens downstream after Director approves

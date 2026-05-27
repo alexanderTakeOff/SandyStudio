@@ -30,8 +30,32 @@ Must be one of: `seedance-fast`, `seedance-standard`, `veo-standard`, `seedance-
 ### V03 — Seedance 7-slot structure (only when prompt_format=seedance-7-slot)
 The `prompt` string MUST contain all 7 slot labels in order: SUBJECT, ACTION, CAMERA, LIGHTING, STYLE, CONTINUITY, NEGATIVE. Missing slot is a REVISE.
 
-### V04 — ≤1 primary action (Seedance hard rule #4)
-For Seedance providers, the ACTION slot must describe ONE primary action (single verb phrase). Multi-action ("walks AND drinks", "talks AND gestures") fails — causes Seedance blur.
+### V04 — ONE primary causal chain (Seedance hard rule #4, softened 2026-05-27)
+
+For Seedance providers, the ACTION slot must describe ONE primary causal chain on
+ONE primary subject. A "chain" is a sequence of beats where each beat is caused by
+the previous one (e.g. «finger taps → trumeau launches → slams wall → vibrates» —
+one chain, four beats, one subject). This is NOT "one verb phrase" — V12 REQUIRES
+the chain to span ≥3 sentences with initiation → trajectory → termination → consequence.
+
+PASS conditions (ALL must hold):
+- The ACTION beats form a single causal sequence on ONE primary subject. Each beat
+  is the physical consequence of the previous beat, not an independent action.
+- Secondary subjects may have ONE REACTIVE micro-beat triggered by the primary
+  chain (e.g. «Sandy's eyes snap wide» as recoil from the impact). Reactive beats
+  PASS — Seedance 2 renders these without blur.
+
+REVISE conditions:
+- Two or more INDEPENDENT actions on the SAME subject not connected by causation
+  («Sandy walks AND drinks», «Anvil talks AND gestures»). Diagnosis: "V04 parallel
+  actions: split into one causal chain or two shots".
+- Two or more INDEPENDENT actions on DIFFERENT subjects acting in parallel with no
+  causal link («Sandy paces while Anvil hammers in background»). Diagnosis: "V04
+  parallel-subject actions: pick one primary, demote others to CONTINUITY slot
+  or split shot".
+
+V04 is a STRUCTURAL check on causality, not a length check. V12 governs length
+and beat completeness. Both must PASS independently.
 
 ### V05 — negative covers baseline
 `negative[]` must include at minimum: `"no text"`, `"no logos"`, `"no watermarks"`, `"no captions"`.

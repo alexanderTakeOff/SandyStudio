@@ -95,9 +95,9 @@ describe('runAnimatorCritic', () => {
       markdown: 'REVISE',
       body: {
         verdict: 'REVISE',
-        failed_checks: [{ check: 'V04', diagnosis: 'multi-action in ACTION slot' }],
+        failed_checks: [{ check: 'V04', diagnosis: 'V04 parallel actions: two independent verbs on same subject' }],
         passed_checks: ['V01', 'V02', 'V03'],
-        acceptance_criteria: ['Reduce ACTION slot to ONE verb phrase'],
+        acceptance_criteria: ['Reduce ACTION slot to ONE causal chain on one primary subject'],
       },
       costUsd: 0.02,
       model: VPREV_MODEL,
@@ -110,7 +110,7 @@ describe('runAnimatorCritic', () => {
     });
     expect(r.verdict).toBe('REVISE');
     expect(r.failedChecks[0]?.check).toBe('V04');
-    expect(r.acceptanceCriteria[0]).toContain('ONE verb');
+    expect(r.acceptanceCriteria[0]).toContain('ONE causal chain');
   });
 
   it('extracts FAIL verdict', async () => {
