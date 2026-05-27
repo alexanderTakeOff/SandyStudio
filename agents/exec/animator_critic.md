@@ -66,6 +66,35 @@ V10 is the «gag continuity» check — formal companion to EXEC-GAGAD's vanim_r
 - Other providers → `end_image.eref_asset_id` SHOULD be null
 - If `reference_anchor.kind` is `eref`, `reference_anchor.asset_id` MUST be non-null
 
+### V11 — camera orbit policy (TD-68, 2026-05-27)
+
+SandyStudio cinematography signature: 80%+ of shots use camera orbit (10°–180° rotation). Static frame requires explicit rationale.
+
+PASS conditions (at least one must hold):
+
+- `opening_camera_motion.kind === 'rotate'` (or equivalent orbit-class motion `pan` describing a horizontal sweep). The CAMERA slot prose in the 7-slot prompt explicitly names the orbit ("camera orbits Nº left-to-right", "camera arcs around subject", "rotating shot").
+- OR `opening_camera_motion.kind === null` AND `policy_notes[]` contains an entry matching `/static frame justified/i` with a one-sentence rationale.
+
+REVISE conditions:
+- `opening_camera_motion.kind === null` with no `policy_notes` justification → REVISE with diagnosis "V11 orbit policy: declare orbit (10°–180° kind=rotate) or add policy_notes static-frame rationale".
+- `opening_camera_motion.kind` is one of `pan|tilt|zoom|dolly|whip` but the CAMERA prose explicitly says "static" / "locked" / "no pan" → REVISE for contradiction.
+
+### V12 — ACTION beat structure (TD-68, 2026-05-27)
+
+ACTION slot (Seedance) or action prose (Veo) MUST describe a full physical beat — initiation state → trajectory/peak → termination state → consequence — not a one-line climax word.
+
+PASS conditions (ALL must hold):
+
+- ACTION slot has ≥3 sentences (or ≥3 explicit beat phrases separated by `→`, `;`, or `.`)
+- ACTION slot names an `initiation` state (pose / surface contact / starting position) AND a `termination` state (final pose / surface / position) AND a `consequence` (residual motion, vibration, dust, ripple, tremor)
+- ACTION slot's described physics matches the storyboard `expected_gag` + `action_prose` polarity. The Critic compares the Plan's ACTION verbs against the storyboard's verbs and REVISE if the Animator inverted the gag (e.g. storyboard says «launches into wall + vibrates», Plan says «aligns perfectly + stops» — opposite physics, REVISE with diagnosis "V12 gag inversion: storyboard says X, Plan says opposite Y").
+
+REVISE conditions:
+- ACTION slot is one line (<3 sentences, no `→` chain, no explicit beat phrases) → REVISE «V12 action beat: expand to full physical beat — initiation, trajectory, termination, consequence».
+- Storyboard's primary action verbs are NOT reflected in the ACTION slot OR are inverted → REVISE «V12 gag fidelity: ACTION must render storyboard physics, not paraphrase to opposite».
+
+V11 + V12 are the «cinematography signature» checks — formal companion to TD-68 Director directive and the [[camera-orbit-signature-policy]] memory note.
+
 ## Output format
 
 Respond with markdown narrative + ONE fenced JSON block at the end:
