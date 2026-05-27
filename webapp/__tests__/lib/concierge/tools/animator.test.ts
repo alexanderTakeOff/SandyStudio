@@ -32,6 +32,14 @@ function mockSupabase(opts: {
       if (col === 'file_type' && typeof val === 'string') lastFileType = val;
       return builder;
     };
+    // TD-75 (2026-05-27): listShotPlans + getAnimatorCriticVerdict now use
+    // `.or('file_type.eq.X,file_type.like.X-%')` to match both bare and
+    // suffixed file_type. Parse the first eq.X token to set lastFileType.
+    builder.or = (expr: string) => {
+      const m = /file_type\.eq\.([^,]+)/.exec(expr ?? '');
+      if (m && m[1]) lastFileType = m[1];
+      return builder;
+    };
     builder.order = () => builder;
     builder.maybeSingle = async () => ({ data: opts.asset ?? null, error: null });
     (builder as { then?: unknown }).then = (
@@ -170,29 +178,35 @@ describe('getAnimatorCriticVerdict', () => {
                 }),
               };
             }
-            return {
-              eq: () => ({
-                order: () =>
-                  Promise.resolve({
-                    data: [
-                      {
-                        id: 'rev-1',
-                        filename: 'REV.md',
-                        status: 'REVIEW',
-                        content: 'narrative',
-                        metadata: {
-                          plan_asset_id: 'plan-1',
-                          verdict: 'REVISE',
-                          failed_checks: [{ check: 'V04', diagnosis: 'multi-action' }],
-                          passed_checks: ['V01'],
-                          acceptance_criteria: ['use one verb'],
-                        },
-                        created_at: '',
+            // TD-75 (2026-05-27): getAnimatorCriticVerdict now does
+            //   .eq('episode_id', ...).or('file_type.eq.X,file_type.like.X-%').order(...)
+            // — the inline mock's second-level chain must provide `.or()`
+            // returning the same shape `.eq()` used to.
+            const finalRows = {
+              order: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      id: 'rev-1',
+                      filename: 'REV.md',
+                      status: 'REVIEW',
+                      content: 'narrative',
+                      metadata: {
+                        plan_asset_id: 'plan-1',
+                        verdict: 'REVISE',
+                        failed_checks: [{ check: 'V04', diagnosis: 'multi-action' }],
+                        passed_checks: ['V01'],
+                        acceptance_criteria: ['use one verb'],
                       },
-                    ],
-                    error: null,
-                  }),
-              }),
+                      created_at: '',
+                    },
+                  ],
+                  error: null,
+                }),
+            };
+            return {
+              eq: () => finalRows,
+              or: () => finalRows,
             };
           },
         }),
