@@ -124,9 +124,10 @@ describe('ASPECT_BY_DELIVERY_TARGET', () => {
 });
 
 describe('VANIM_PROVIDER_ALLOWLIST', () => {
-  it('contains exactly the sprint providers (TD-67 2026-05-27: seedance-standard retired, superseded by seedance-with-end-image)', () => {
+  it('contains exactly the sprint providers (TD-67a 2026-05-27: four-alias policy restored — seedance-standard re-added per Director directive q49b)', () => {
     expect(VANIM_PROVIDER_ALLOWLIST).toEqual([
       'seedance-fast',
+      'seedance-standard',
       'veo-standard',
       'seedance-with-end-image',
     ]);
@@ -144,14 +145,15 @@ describe('resolveVanimProviderId — TD-44', () => {
     });
   });
 
-  // TD-67 (2026-05-27): seedance-standard retired. Verify it now throws
-  // instead of returning the resolved tuple — the SH01 regression case is
-  // now served by `seedance-with-end-image` with `end_image: null` when no
-  // end anchor exists.
-  it('seedance-standard → throws (TD-67 retired)', () => {
-    expect(() => resolveVanimProviderId('seedance-standard')).toThrow(
-      /unknown Animator provider\.id "seedance-standard"/,
-    );
+  // TD-67a (2026-05-27): seedance-standard RESTORED per Director directive
+  // q49b. SH01 regression case again served by this alias for action-heavy
+  // single-frame shots (no end anchor required).
+  it('seedance-standard → seedance-fal-img2vid + standard (TD-67a restored)', () => {
+    expect(resolveVanimProviderId('seedance-standard')).toEqual({
+      providerImpl: 'seedance-fal-img2vid',
+      qualityTier: 'standard',
+      prefersEndImage: false,
+    });
   });
 
   it('seedance-with-end-image → seedance-fal-img2vid + standard + end-image hint', () => {

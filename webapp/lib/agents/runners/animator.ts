@@ -64,23 +64,25 @@ export const VANIM_COST_CEILING_USD = 0.15;
  * passes through to Seedance provider's standard model endpoint
  * ($0.3024/s vs $0.2419/s for fast).
  */
-// TD-67 (2026-05-27): `seedance-standard` removed from the allowlist. Live
-// SH10 Plan v01 surfaced the drift: the Animator markdown prompt + this TS
-// constant both included `seedance-standard`, but the Critic markdown
-// (`agents/exec/animator_critic.md` V01 check) only accepted three IDs and
-// REVISE-d every Plan that selected `seedance-standard`. Direct conflict —
-// Animator told to pick from 4, Critic enforces 3.
+// TD-67a (2026-05-27): `seedance-standard` RESTORED to the allowlist per
+// Director directive q49b 2026-05-24. The earlier TD-67 retirement was
+// over-eager: action-heavy shots that need Seedance standard tier WITHOUT
+// end_image conditioning (e.g. Sandy push trumeau in SH01 — single-frame
+// path, no end anchor) are a legitimate use case. `seedance-with-end-image`
+// would force null end_image and the runner's prefersEndImage hint would
+// still propagate confusion to single-frame path.
 //
-// Resolution: `seedance-standard` is superseded by `seedance-with-end-image`
-// for all real use cases. Both map to Seedance standard tier ($0.3024/s);
-// `seedance-with-end-image` additionally honours an end_image asset for
-// temporal interpolation contract (the anchor-pair workflow needs this
-// for arc motion vs ambient wobble). Action-heavy shots that previously
-// would have picked `seedance-standard` should pick `seedance-with-end-image`
-// instead, leaving `end_image.eref_asset_id` populated when an APPROVED end
-// anchor exists or null when it doesn't. No semantic loss.
+// Four-alias policy:
+//   - seedance-fast: ambient / non-hero shots
+//   - seedance-standard: action-heavy single-frame shots (no end anchor)
+//   - seedance-with-end-image: anchor-pair workflow (start+end anchors)
+//   - veo-standard: Veo provider escape hatch
+//
+// Critic V01 check in agents/exec/animator_critic.md restored to accept
+// all four — TD-67a fix synced both surfaces.
 export const VANIM_PROVIDER_ALLOWLIST = [
   'seedance-fast',
+  'seedance-standard',
   'veo-standard',
   'seedance-with-end-image',
 ] as const;
@@ -128,9 +130,16 @@ export function resolveVanimProviderId(
         qualityTier: 'fast',
         prefersEndImage: false,
       };
-    // TD-67 (2026-05-27): `seedance-standard` case removed — superseded by
-    // `seedance-with-end-image` (same qualityTier=standard, plus end_image
-    // honouring). See VANIM_PROVIDER_ALLOWLIST comment above.
+    case 'seedance-standard':
+      // TD-67a (2026-05-27): restored. Action-heavy single-frame shots
+      // (Sandy push trumeau, SH13-15 with collapsed beat) need standard
+      // tier without end_image. Distinct from `seedance-with-end-image`
+      // which forces anchor-pair temporal contract.
+      return {
+        providerImpl: 'seedance-fal-img2vid',
+        qualityTier: 'standard',
+        prefersEndImage: false,
+      };
     case 'seedance-with-end-image':
       return {
         providerImpl: 'seedance-fal-img2vid',
