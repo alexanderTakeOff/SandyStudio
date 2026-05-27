@@ -28,6 +28,7 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { withHardBreaks } from '@/lib/markdown-breaks';
+import { agentDisplayName } from '@/lib/api/agent-names';
 import {
   useConciergeTurnsRealtime,
   type ConciergeTurnRow,
@@ -101,6 +102,14 @@ function isAmbientChatNoise(eventType: unknown): boolean {
 // instead of one long monospace line. Render side uses
 // `whitespace-pre-line` so the newlines survive.
 function formatPipelineContent(raw: string): string {
+  // Extract the `(actor=EXEC-XXX)` actor code BEFORE stripping it from
+  // content — it's the most reliable source for the agent name. The body
+  // text format varies (some events lead with the friendly name, some
+  // with "Working on SHxx" or just an agent code), so regex over the body
+  // alone misses cases and falls back to "AGENT".
+  const actorMatch = raw.match(/\(actor=([^)]+)\)/);
+  const actorCode = actorMatch?.[1]?.trim() ?? '';
+
   // Strip the trailing `(actor=...)` suffix that the Postgres trigger
   // always appends — it's audit metadata, not chat content.
   const trimmed = raw.replace(/\s*\(actor=[^)]+\)\s*$/, '');
@@ -112,10 +121,24 @@ function formatPipelineContent(raw: string): string {
 
   if (eventType === 'agent_started' || eventType === 'agent_completed') {
     const verb = eventType === 'agent_started' ? 'started' : 'completed';
+    // Prefer the body's leading "<friendly name> verb" if it parses,
+    // falling back to actor → agentDisplayName when it doesn't. This
+    // keeps richer body labels (e.g. "Designer's Critic") while
+    // covering events where the body starts with a shot label or an
+    // agent code.
     const friendlyMatch = body.match(
       new RegExp(`^(.+?)\\s+${verb}\\b`, 'i'),
     );
-    const friendly = (friendlyMatch?.[1] ?? 'agent').trim().toUpperCase();
+    const looksLikeAgentCode = (s: string): boolean =>
+      /^EXEC-/i.test(s) || /^ART-/i.test(s) || /^BOARD-/i.test(s);
+    let resolved = friendlyMatch?.[1]?.trim() ?? '';
+    if (!resolved || looksLikeAgentCode(resolved)) {
+      resolved = actorCode ? agentDisplayName(actorCode) : resolved;
+    }
+    if (!resolved) {
+      resolved = actorCode ? agentDisplayName(actorCode) : 'agent';
+    }
+    const friendly = resolved.toUpperCase();
     const shotMatch = body.match(/\bSH\d+\b/);
     const shot = shotMatch?.[0];
     // 2026-05-26 (follow-up): Director preferred the plain
