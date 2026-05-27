@@ -175,6 +175,45 @@ export function EpisodeTimelineSection({
       }));
   }, [data]);
 
+  // TD-80 (2026-05-27): group Shot Plan assets by shot_id for the
+  // AnimaticPlayer hover popover. Director surfaces «Plan: vNN STATUS»
+  // rows with a click that opens the existing PreviewDrawer — so Plans
+  // are reviewable without leaving the timeline. shot_id derived from
+  // metadata.shot_id (Animator save path) or from the file_type suffix
+  // (TD-66 widening: `SPC-shot_plan-<shot_id>`). Newest-version-first
+  // ordering matches the existing video version popover.
+  const shotPlansByShotId = useMemo(() => {
+    const assets = data?.data.assets ?? [];
+    const map = new Map<string, Array<{ id: string; version: number | null; status: string }>>();
+    for (const a of assets) {
+      if (
+        a.file_type !== 'SPC-shot_plan' &&
+        !a.file_type.startsWith('SPC-shot_plan-')
+      ) {
+        continue;
+      }
+      let shotId: string | null = null;
+      const meta = a.metadata as { shot_id?: unknown } | null;
+      if (typeof meta?.shot_id === 'string') {
+        shotId = meta.shot_id;
+      } else if (a.file_type.startsWith('SPC-shot_plan-')) {
+        // file_type = "SPC-shot_plan-SS-S15-E01-A2-SC09-SH19"
+        shotId = a.file_type.slice('SPC-shot_plan-'.length);
+      }
+      if (!shotId) continue;
+      if (!map.has(shotId)) map.set(shotId, []);
+      map.get(shotId)!.push({
+        id: a.id,
+        version: a.version,
+        status: a.status,
+      });
+    }
+    for (const arr of map.values()) {
+      arr.sort((x, y) => (y.version ?? 0) - (x.version ?? 0));
+    }
+    return map;
+  }, [data]);
+
   // Compute resolved cells once, used by both the toolbar (counts/bulk) and
   // the drawer (prev/next nav). The player computes the same internally —
   // duplicating this is cheap (pure function, ~O(shots × vid-shots)).
@@ -355,6 +394,16 @@ export function EpisodeTimelineSection({
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
               animaticStatus={animaticAsset.status}
+              // TD-80 (2026-05-27): Plan-row click on popover opens the
+              // existing PreviewDrawer via setPreviewAssetId — bypasses the
+              // image-fallback path that handleCellClick uses (which would
+              // otherwise enable the «Generate VGEN» footer on a Plan view).
+              shotPlansByShotId={shotPlansByShotId}
+              onOpenAsset={(id) => {
+                setPendingGenerateShotId(null);
+                setGenError(null);
+                setPreviewAssetId(id);
+              }}
             />
           </div>
         )}
