@@ -1796,10 +1796,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       let planEndAnchorAssetId: string | null = null;
       // TD-44 (2026-05-24): Animator's provider.id is the single source of
       // truth for both provider AND quality tier in plan-driven mode.
-      // resolveVanimProviderId() maps the Animator vocab («seedance-standard»)
+      // resolveVanimProviderId() maps the Animator vocab («seedance-with-end-image»)
       // to concretes {providerImpl, qualityTier}. Closes the silent drift
-      // where Plan v03 declared «seedance-standard» but runtime fell back
+      // where Plan v03 declared a specific provider but runtime fell back
       // to `provider_assignments.character_video` default.
+      // TD-67 (2026-05-27): legacy alias `seedance-standard` retired —
+      // see VANIM_PROVIDER_ALLOWLIST comment in animator.ts.
       let planProviderImplOverride:
         | 'seedance-fal-img2vid'
         | 'veo-3-img2vid'

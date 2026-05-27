@@ -41,12 +41,18 @@ You receive in the user message:
 
 ```
 seedance-fast
-seedance-standard
 veo-standard
 seedance-with-end-image
 ```
 
-Anything else fails the Critic's V01 check.
+Anything else fails the Critic's V01 check. **TD-67 (2026-05-27):** the
+legacy `seedance-standard` alias was retired — it is superseded by
+`seedance-with-end-image` for action-heavy / standard-tier shots. Both map
+to Seedance standard ($0.3024/s); `seedance-with-end-image` additionally
+honours an `end_image.eref_asset_id` for temporal interpolation. When no
+APPROVED end anchor exists, pick `seedance-with-end-image` and leave
+`end_image.eref_asset_id: null` — the runner falls back to single-image
+img2vid without the temporal contract.
 
 ## Output format
 
