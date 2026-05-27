@@ -1320,8 +1320,14 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             // PASS_WITH_UNCERTAINTY with diagnosis preserved in warnings[].
             directorOverrides,
           });
-          const targetPlanStatus =
-            r.verdict === 'PASS'
+          // TD-75 (2026-05-27): explicit verdict → status mapping. The prior
+          // PASS-or-else-REVISE tertiary swept PASS_WITH_UNCERTAINTY (the
+          // TD-74 / TD-49 P2.5 verdict) into REVISION, which blocked Director
+          // from approving a Plan the Critic explicitly let through under
+          // a Director waiver. Director-authorised PASS_WITH_UNCERTAINTY
+          // must surface in approvals like a regular PASS.
+          const targetPlanStatus: string | null =
+            r.verdict === 'PASS' || r.verdict === 'PASS_WITH_UNCERTAINTY'
               ? null
               : r.verdict === 'FAIL'
               ? 'REJECTED'
@@ -1418,8 +1424,14 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           // flips to REVISION (Designer re-runs via Critic's nextEvent);
           // FAIL flips to REJECTED for Director escalation. UNKNOWN (no
           // parseable JSON) is treated as REVISE — Designer must redo it.
-          const targetPlanStatus =
-            r.verdict === 'PASS'
+          // TD-75 (2026-05-27): explicit verdict → status mapping. The prior
+          // PASS-or-else-REVISE tertiary swept PASS_WITH_UNCERTAINTY (the
+          // TD-74 / TD-49 P2.5 verdict) into REVISION, which blocked Director
+          // from approving a Plan the Critic explicitly let through under
+          // a Director waiver. Director-authorised PASS_WITH_UNCERTAINTY
+          // must surface in approvals like a regular PASS.
+          const targetPlanStatus: string | null =
+            r.verdict === 'PASS' || r.verdict === 'PASS_WITH_UNCERTAINTY'
               ? null
               : r.verdict === 'FAIL'
               ? 'REJECTED'

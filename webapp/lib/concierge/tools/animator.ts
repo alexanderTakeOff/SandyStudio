@@ -78,9 +78,11 @@ export const getShotPlan: Tool<GetShotPlanArgs> = {
       .maybeSingle();
     if (error) return fail(`asset fetch failed: ${error.message}`);
     if (!data) return fail(`Plan ${args.planAssetId} not found`, 'not_found');
-    if (data.file_type !== 'SPC-shot_plan') {
+    // TD-75 (2026-05-27): accept both bare `SPC-shot_plan` and the
+    // shot-id-suffixed form `SPC-shot_plan-<shot_id>` written by Animator.
+    if (data.file_type !== 'SPC-shot_plan' && !data.file_type.startsWith('SPC-shot_plan-')) {
       return fail(
-        `asset ${args.planAssetId} is ${data.file_type}, not SPC-shot_plan`,
+        `asset ${args.planAssetId} is ${data.file_type}, not SPC-shot_plan / SPC-shot_plan-*`,
         'wrong_type',
       );
     }
@@ -142,11 +144,15 @@ export const listShotPlans: Tool<ListShotPlansArgs> = {
     const episodeId = args.episodeId ?? ctx.episodeId;
     if (!episodeId) return fail('episodeId required — no active episode.');
 
+    // TD-75 (2026-05-27): widen file_type match — Animator writes
+    // file_type as `SPC-shot_plan-<shot_id>` (TD-66 widening), so the bare
+    // strict-equality filter misses every modern Plan. Same fix as the
+    // Critic runner already does in lib/agents/runners/animator-critic.ts.
     let q = ctx.supabase
       .from('assets')
       .select('id,filename,status,version,description,metadata,created_at,updated_at')
       .eq('episode_id', episodeId)
-      .eq('file_type', 'SPC-shot_plan')
+      .or('file_type.eq.SPC-shot_plan,file_type.like.SPC-shot_plan-%')
       .order('created_at', { ascending: true });
     if (args.status) q = q.eq('status', args.status as never);
     const { data, error } = await q;
@@ -156,7 +162,7 @@ export const listShotPlans: Tool<ListShotPlansArgs> = {
       .from('assets')
       .select('id,filename,status,metadata,created_at')
       .eq('episode_id', episodeId)
-      .eq('file_type', 'REV-shot_plan');
+      .or('file_type.eq.REV-shot_plan,file_type.like.REV-shot_plan-%');
 
     const criticByPlanId = new Map<
       string,
@@ -241,11 +247,13 @@ export const getAnimatorCriticVerdict: Tool<GetVprevArgs> = {
     const episodeId = (planRow as { episode_id?: string | null }).episode_id;
     if (!episodeId) return fail('Plan has no episode_id', 'no_episode');
 
+    // TD-75 (2026-05-27): widen file_type — REV-shot_plan rows are written
+    // as `REV-shot_plan-<shot_id>` so strict equality misses everything.
     const { data, error } = await ctx.supabase
       .from('assets')
       .select('id,filename,status,content,metadata,created_at')
       .eq('episode_id', episodeId)
-      .eq('file_type', 'REV-shot_plan')
+      .or('file_type.eq.REV-shot_plan,file_type.like.REV-shot_plan-%')
       .order('created_at', { ascending: false });
     if (error) return fail(`Critic lookup failed: ${error.message}`);
 
