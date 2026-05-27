@@ -76,12 +76,19 @@ async function main(): Promise<void> {
   const nextVersion = (existing[0]?.version ?? 0) + 1;
   const versionTag = `v${String(nextVersion).padStart(2, '0')}`;
   const canonicalFilename = `SS-S15-E01-VID-shot-${SHOT_SLUG}-${versionTag}-APPROVED.mp4`;
-  const canonicalStagingPath = `/staging/${canonicalFilename}`;
+  // Convention (probe-staging-paths.ts 2026-05-27 confirmed across 22 rows):
+  //   staging_path = absolute Windows disk path — used by EXEC-STITCH /
+  //                  ffmpeg / fs.open at runtime
+  //   drive_path   = URL-relative path — used by browser preview drawer
+  //   drive_file_id = Google Drive id when uploaded (null for local-only)
+  // Earlier version of this script had the two swapped, which caused
+  // EXEC-STITCH to fail with ENOENT on Windows-resolving /staging → C:\staging.
+  const canonicalDiskPath = join(stagingDir, canonicalFilename);
+  const canonicalDrivePath = `/staging/${canonicalFilename}`;
   console.log(`\nNext version: ${versionTag}`);
   console.log(`Canonical filename: ${canonicalFilename}`);
 
   // 3. Copy MP4 to canonical filename so /staging/<filename> serves it.
-  const canonicalDiskPath = join(stagingDir, canonicalFilename);
   copyFileSync(sourcePath, canonicalDiskPath);
   console.log(`Copied to: ${canonicalDiskPath}`);
 
@@ -118,7 +125,8 @@ async function main(): Promise<void> {
       agent_id: 'EXEC-VGEN',
       file_type: `VID-shot-${SHOT_SLUG}`,
       filename: canonicalFilename,
-      staging_path: canonicalStagingPath,
+      staging_path: canonicalDiskPath,
+      drive_path: canonicalDrivePath,
       status: 'APPROVED',
       version: nextVersion,
       description: `SH19 manual direct-fal-vgen result — two-anchor test (SH19→SH22), Plan v09 prompt, Seedance 2.0 standard 5s 16:9 720p. Director-approved 2026-05-27.`,
@@ -187,7 +195,7 @@ async function main(): Promise<void> {
   console.log(`\n══════════════════════════════════════════════════════════════════`);
   console.log(`SH19 is now APPROVED in DB. Episode ready for next stage (stitch).`);
   console.log(`══════════════════════════════════════════════════════════════════`);
-  console.log(`  View: http://localhost:3000${canonicalStagingPath}`);
+  console.log(`  View: http://localhost:3000${canonicalDrivePath}`);
   console.log(`  Asset id: ${assetId}`);
 }
 
