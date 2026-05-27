@@ -248,12 +248,28 @@ type Events = {
    * Legacy per-shot fan-out trigger (pre-Pilot Pass). Kept registered so
    * historical Inngest log entries continue to type-check. New flows fire
    * `sandystudio/exec-vgen/start` (pilot) → `/fanout-trigger` → `/single-shot`.
+   *
+   * TD-61 (2026-05-27): `planAssetId` added so approve-route auto-chain
+   * from SPC-shot_plan APPROVED can carry the Plan id all the way to the
+   * runner's plan-driven branch (runner.ts:1807-1906). Without it, Inngest
+   * EventSchemas strip the field and the runner's `if (planAssetId)` guard
+   * never fires — silently falling back to the legacy `buildShotPromptV2`
+   * template path (the «2D animated comedy short...» fallback prompt).
+   *
    * @deprecated Remove after one release once no in-flight events remain.
    */
   'sandystudio/exec-vgen/generate-shot': {
     data: AssetTrigger & {
       shotId: string;
       animaticAssetId: string;
+      /**
+       * TD-61: APPROVED SPC-shot_plan asset id. When present, runner
+       * loads the Plan body and uses provider.id / quality_tier /
+       * start_anchor / end_image / prompt body as the single source of
+       * truth. Absent → legacy template path (replay-pilot, pre-Plan
+       * shots).
+       */
+      planAssetId?: string;
     };
   };
 
@@ -286,6 +302,12 @@ type Events = {
   /**
    * VGEN v2 single-shot generation. Fired by the fan-out trigger (per shot)
    * and by the per-shot Re-generate UI button. Concurrency 3 per episode.
+   *
+   * TD-61 (2026-05-27): `planAssetId` added — Inngest EventSchemas were
+   * silently stripping the field from `triggerAgent({agentCode:'EXEC-VGEN',
+   * payload:{shotId, planAssetId}})` and `regenerateVideoFromPlan` PA tool
+   * payloads. Schema now declares it explicitly so the runner's plan-driven
+   * branch (runner.ts:1807-1906) actually engages.
    */
   'sandystudio/exec-vgen/single-shot': {
     data: BaseEpisodeEvent & {
@@ -293,6 +315,8 @@ type Events = {
       aspect_ratio?: '16:9' | '9:16' | '1:1';
       quality_tier?: 'fast' | 'standard';
       duration_seconds?: number;
+      /** TD-61: APPROVED SPC-shot_plan asset id. See generate-shot above. */
+      planAssetId?: string;
     };
   };
 
