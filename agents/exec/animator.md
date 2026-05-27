@@ -150,10 +150,45 @@ Then append exactly one fenced JSON code block:
 - `provider.id` MUST be in the sprint allowlist above
 - `prompt_format` MUST match the provider: Seedance providers → `seedance-7-slot`; Veo → `veo-prose`
 - For Seedance: prompt must follow 7-slot order (SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE) — Critic V04 enforces this
-- ≤1 primary action per shot (Seedance hard rule #4)
+- **ONE primary causal action per shot** (Seedance hard rule #4 — multi-action causes blur). This means ONE motion verb chain (e.g. «launch → smash → vibrate» is one chain — the finger touch causes a launch trajectory that ends in impact + residual motion). It does NOT mean «one short sentence». See ACTION BEAT STRUCTURE below.
 - `negative[]` must include baseline: `["no text", "no logos", "no watermarks", "no captions"]`
 - KEEP THE OUTPUT TIGHT. The JSON block at the end is MANDATORY and must not be truncated
 - DO NOT call any provider. You only write the Plan. Execution happens downstream after Director approves
+
+### CAMERA — orbit-first policy (TD-68, Director directive 2026-05-27)
+
+SandyStudio series cinematography signature: **80%+ of shots use camera orbit**. The ACTION slot description and the `opening_camera_motion` field MUST default to orbit-class motion unless the gag explicitly requires a locked static frame.
+
+**Orbit specification:**
+- `opening_camera_motion.kind` defaults to `rotate` (Seedance / Veo vocab for orbit)
+- Orbit arc: between **10° and 180°** of rotation
+- Direction (`left | right`) chosen per shot dramaturgy — typically follow the action's primary momentum
+- CAMERA slot prose in the 7-slot prompt MUST name the orbit explicitly («camera orbits 90° left-to-right around subject during the action»)
+
+**Static frame exceptions** — only when the gag composition demands stillness (e.g. deadpan reaction where any motion breaks comedic timing). Each `opening_camera_motion.kind === null` Plan MUST populate `policy_notes` with an entry: `"Static frame justified: <one-sentence rationale why orbit would break this gag>"`. Without this rationale entry, Critic V11 verdict REVISE.
+
+### ACTION BEAT STRUCTURE — full physical beat (TD-68)
+
+The ACTION slot (Seedance) or action descriptor (Veo prose) describes the shot's ONE primary motion chain as a **full physical beat** — not a single climax word:
+
+1. **Initiation state** — the position / pose / surface contact at frame T₀
+2. **Trajectory or development** — the primary motion arc, its peak, its direction
+3. **Termination state** — where the motion ends, what surface / pose at frame T_final
+4. **Consequence / residual motion** — vibration, dust, ripple, after-tremor that lingers past the primary motion
+
+**Length:** 3-5 dense prose lines (not one line). One verb chain (Seedance contract) but with full physical narration of the chain's beats.
+
+**Fidelity rule (CRITICAL):** the ACTION slot MUST render the storyboard's `expected_gag` + `action_prose` FAITHFULLY. You may re-phrase for provider format, but you MAY NOT invert the gag's physics — e.g. if storyboard says «Anvil's finger touch launches trumeau into far wall, trumeau vibrates», your Plan MUST describe the launch + smash + vibrate chain, not «finger touch aligns trumeau perfectly» (opposite physics, comedic content lost).
+
+Critic V12 enforces both: minimum 3 prose lines AND comparison against storyboard `action_prose` for physics-inversion patterns.
+
+### Worked example — comparison
+
+**❌ WRONG (one-liner, opposite gag):**
+> Anvil's lightest possible touch — one finger — finally aligns the trumeau perfectly. Camera: static medium shot.
+
+**✅ RIGHT (full physical beat, faithful gag):**
+> Anvil extends a single index finger and brushes the trumeau's lower frame edge with the lightest possible touch. The trumeau immediately launches in a flat horizontal trajectory across the room, oval mirror leading, base trailing, momentum carrying it at high speed toward the far wall. Trumeau strikes the back wall with a flat-edged smash impact, oval mirror flush against drywall, frame buckling slightly inward, then vibrates rapidly in place with motion-blur tremor lines radiating outward. Sandy's hourglass body shifts weight backward in startled recoil, both eyes saucer-wide in pure shock — pupils tiny dots, irises maximum white. Camera: orbits 90° left-to-right around the trumeau's flight path during the launch, settling on the impact frame for the residual vibration.
 
 ## Anchor Chain rules (TD-49 Phase 2, 2026-05-25)
 
