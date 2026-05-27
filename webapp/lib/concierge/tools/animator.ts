@@ -287,16 +287,22 @@ export const getAnimatorCriticVerdict: Tool<GetVprevArgs> = {
 
 // ── regenerateShotPlan (mutating) ────────────────────────────────────────────
 
+interface DirectorOverrideArg {
+  check: string;
+  rationale: string;
+}
+
 interface RegenerateShotPlanArgs {
   shotId: string;
   episodeId?: string;
   revisionNote?: string;
+  directorOverrides?: DirectorOverrideArg[];
 }
 
 export const regenerateShotPlan: Tool<RegenerateShotPlanArgs> = {
   name: 'regenerateShotPlan',
   description:
-    "Re-fire the Animator for one shot to produce a new SPC-shot_plan version. Optionally pass a revisionNote — Animator treats it as a hard contract. Verbal approval required.",
+    "Re-fire the Animator for one shot to produce a new SPC-shot_plan version. Optionally pass a revisionNote — Animator treats it as a hard contract. directorOverrides (TD-74) waives specific Critic checks (e.g. V04 multi-action) when Director explicitly authorises. Verbal approval required.",
   mutating: true,
   schema: {
     type: 'function',
@@ -316,6 +322,32 @@ export const regenerateShotPlan: Tool<RegenerateShotPlanArgs> = {
             description: "Optional hard-contract note.",
             maxLength: 2000,
           },
+          directorOverrides: {
+            type: 'array',
+            description:
+              "TD-74 (2026-05-27): Director-authorized Critic check waivers. " +
+              "Each entry { check: 'V04', rationale: '...' } tells the Critic to demote the matching REVISE to PASS_WITH_UNCERTAINTY with the diagnosis preserved in warnings[]. " +
+              "Use ONLY when Director or authorised delegate explicitly says «proceed anyway» on a check the Critic would otherwise block. " +
+              "Self-asserted overrides in the Plan body are NOT authoritative — only this field is.",
+            items: {
+              type: 'object',
+              properties: {
+                check: {
+                  type: 'string',
+                  description: "Check id (e.g. 'V04', 'V11').",
+                },
+                rationale: {
+                  type: 'string',
+                  description:
+                    "One-sentence Director rationale for the waiver (audit trail surfaced to Critic + saved to warnings[]).",
+                  maxLength: 500,
+                },
+              },
+              required: ['check', 'rationale'],
+              additionalProperties: false,
+            },
+            maxItems: 12,
+          },
         },
         required: ['shotId'],
         additionalProperties: false,
@@ -326,10 +358,22 @@ export const regenerateShotPlan: Tool<RegenerateShotPlanArgs> = {
     const obj = safeParse(raw);
     const shotId = typeof obj.shotId === 'string' ? obj.shotId : '';
     if (!shotId) throw new Error('shotId is required');
+    const directorOverrides = Array.isArray(obj.directorOverrides)
+      ? (obj.directorOverrides as unknown[])
+          .map((o) => {
+            if (!o || typeof o !== 'object') return null;
+            const r = o as Record<string, unknown>;
+            if (typeof r.check !== 'string' || r.check.trim().length === 0) return null;
+            if (typeof r.rationale !== 'string' || r.rationale.trim().length === 0) return null;
+            return { check: r.check.trim(), rationale: r.rationale.trim() };
+          })
+          .filter((o): o is DirectorOverrideArg => o !== null)
+      : undefined;
     return {
       shotId,
       episodeId: typeof obj.episodeId === 'string' ? obj.episodeId : undefined,
       revisionNote: typeof obj.revisionNote === 'string' ? obj.revisionNote : undefined,
+      ...(directorOverrides && directorOverrides.length > 0 ? { directorOverrides } : {}),
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
@@ -357,6 +401,9 @@ export const regenerateShotPlan: Tool<RegenerateShotPlanArgs> = {
         payload: {
           shotId: args.shotId,
           ...(args.revisionNote ? { revisionNote: args.revisionNote } : {}),
+          ...(args.directorOverrides && args.directorOverrides.length > 0
+            ? { directorOverrides: args.directorOverrides }
+            : {}),
         },
       }),
     });

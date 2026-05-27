@@ -472,6 +472,14 @@ export interface RunAgentArgs {
    */
   revisionNote?: string;
   /**
+   * TD-74 (2026-05-27) — Director-authorized check waivers from upstream
+   * event payload. Animator's Critic treats matching checks as
+   * PASS_WITH_UNCERTAINTY instead of REVISE. Animator writes traceability
+   * to Plan policy_notes. Only PA tools / Director-trigger routes mutate;
+   * Animator's self-asserted policy_notes claims are NOT authoritative.
+   */
+  directorOverrides?: ReadonlyArray<{ check: string; rationale: string }>;
+  /**
    * Sprint «Дизайнер и Аниматор» Day 3.2 (2026-05-18) — APPROVED SPC-ref_plan
    * asset id. When set, EXEC-EREF runner switches into Plan-driven branch:
    * reads the Plan's JSON body for provider/size/variants/prompt/negative
@@ -573,6 +581,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     planAssetId,
     gagPhase,
     scriptAssetId,
+    directorOverrides,
   } = args;
   void provider; // referenced inside individual cases
   const episodeId = inputs.episode_id;
@@ -938,6 +947,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             inputs,
             shotId,
             revisionNote: args.revisionNote,
+            // TD-74 (2026-05-27): Director-authorized check waivers from
+            // event payload. Animator surfaces traceability in policy_notes;
+            // the same value is propagated by Animator's nextEvent to VPREV.
+            directorOverrides,
             // TD-52 (2026-05-25): pass supabase so the Animator can load
             // anchor chain context + DB-resolve IMG-anchor asset_ids when
             // episode opts into TD-49 Phase 2 anchor pipeline.
@@ -1302,6 +1315,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             supabase,
             planAssetId,
             shotId,
+            // TD-74 (2026-05-27): Director-authorized check waivers from
+            // event payload. Critic demotes matching REVISE to
+            // PASS_WITH_UNCERTAINTY with diagnosis preserved in warnings[].
+            directorOverrides,
           });
           const targetPlanStatus =
             r.verdict === 'PASS'

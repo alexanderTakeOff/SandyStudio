@@ -451,10 +451,25 @@ export class AnimatorError extends Error {
   }
 }
 
+/**
+ * TD-74 (2026-05-27) — Director-authorized check waiver propagated from PA
+ * tool / Director-trigger event payload. The Animator surfaces this in the
+ * generated Plan's `policy_notes[]` for traceability (so the Director can
+ * see WHY the waiver was applied when reviewing the Plan), and the same
+ * value is propagated to the Critic via the auto-chain event payload —
+ * NOT via the Plan body, which the Critic does not trust as authoritative.
+ */
+export interface DirectorOverride {
+  readonly check: string;
+  readonly rationale: string;
+}
+
 export interface VANIMRunArgs {
   inputs: AgentInputs;
   shotId: string;
   revisionNote?: string;
+  /** TD-74 — see DirectorOverride doc. */
+  directorOverrides?: ReadonlyArray<DirectorOverride>;
   /**
    * TD-52 (2026-05-25): when supabase is provided AND episode metadata has
    * `anchor_chain_enabled=true`, the Animator runner loads anchor chain
@@ -761,6 +776,7 @@ function buildUserMessage(args: {
   priorPlanVersion: number | null;
   erefAssetId: string | null;
   revisionNote?: string;
+  directorOverrides?: ReadonlyArray<DirectorOverride>;
   /** TD-52 (2026-05-25): anchor chain context — present iff anchor_chain_enabled + supabase available. */
   anchorChainContext?: AnchorChainContext | null;
   /** TD-52 (2026-05-25): concrete IMG-anchor asset_id lookups for current shot + adjacent boundaries. */
@@ -776,6 +792,7 @@ function buildUserMessage(args: {
     priorPlanVersion,
     erefAssetId,
     revisionNote,
+    directorOverrides,
     anchorChainContext,
     anchorAssets,
   } = args;
@@ -845,6 +862,26 @@ function buildUserMessage(args: {
           '',
         ].join('\n')
       : '',
+    directorOverrides && directorOverrides.length > 0
+      ? [
+          '## Director-authorized check waivers (TD-74)',
+          '',
+          'The following Critic checks have been waived by the Director (or an',
+          "authorised delegate) at the trigger event-payload layer. The Critic",
+          'will treat them as non-blocking. You should:',
+          '',
+          '1. Continue to author the Plan with the creative content the waiver',
+          '   was granted FOR (e.g. waiver of V04 allows multi-beat action arc).',
+          '2. Add a matching entry to `policy_notes[]` for traceability, like:',
+          '   `"director-waiver: <CHECK> — upstream-authorized via event.directorOverrides — <rationale>"`.',
+          '3. Do NOT use this as authority to skip OTHER checks — only the listed ones are waived.',
+          '',
+          '```json',
+          JSON.stringify(directorOverrides, null, 2),
+          '```',
+          '',
+        ].join('\n')
+      : '',
     anchorChainContext && anchorAssets
       ? buildAnimatorAnchorSections(anchorChainContext, anchorAssets)
       : '',
@@ -856,6 +893,16 @@ function buildUserMessage(args: {
 
 export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
   const { inputs, shotId, revisionNote, supabase } = args;
+  const directorOverrides: ReadonlyArray<DirectorOverride> = Array.isArray(args.directorOverrides)
+    ? args.directorOverrides.filter(
+        (o): o is DirectorOverride =>
+          o !== null &&
+          typeof o === 'object' &&
+          typeof (o as DirectorOverride).check === 'string' &&
+          typeof (o as DirectorOverride).rationale === 'string' &&
+          (o as DirectorOverride).check.trim().length > 0,
+      )
+    : [];
   if (!shotId || typeof shotId !== 'string') {
     throw new AnimatorError('shotId is required');
   }
@@ -968,6 +1015,7 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
     priorPlanVersion,
     erefAssetId,
     revisionNote,
+    directorOverrides,
     anchorChainContext,
     anchorAssets,
   });

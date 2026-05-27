@@ -147,6 +147,15 @@ type Events = {
     data: BaseEpisodeEvent & {
       shotId: string;
       revisionNote?: string;
+      /**
+       * TD-74 (2026-05-27) — Director-authorized check waivers. Animator
+       * propagates these to its auto-chain to VPREV; Critic treats matching
+       * checks as PASS_WITH_UNCERTAINTY instead of REVISE, with the original
+       * diagnosis preserved in `warnings[]`. Only mutable by PA tools or
+       * Director-trigger routes; Animator's policy_notes self-assertion is
+       * NOT authoritative. Empty/absent → no overrides applied.
+       */
+      directorOverrides?: ReadonlyArray<{ check: string; rationale: string }>;
     };
   };
 
@@ -159,6 +168,12 @@ type Events = {
     data: BaseEpisodeEvent & {
       planAssetId: string;
       shotId: string;
+      /**
+       * TD-74 (2026-05-27) — same shape as on /exec-vanim/plan, propagated
+       * by Animator's nextEvent. Critic uses this to demote matching-check
+       * REVISE verdicts to PASS_WITH_UNCERTAINTY.
+       */
+      directorOverrides?: ReadonlyArray<{ check: string; rationale: string }>;
     };
   };
 
