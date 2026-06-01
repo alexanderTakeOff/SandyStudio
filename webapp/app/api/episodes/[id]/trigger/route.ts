@@ -54,6 +54,9 @@ const AGENT_TO_EVENT: Record<string, StudioEventName> = {
   // generic path below already injects episodeId, so no special handling.
   'EXEC-STITCH': 'sandystudio/exec-stitch/assemble-episode',
   'EXEC-COPY':   'sandystudio/exec-copy/write-metadata',
+  // Distribution tail 2026-06-01 — viral thumbnail is plan-first: the Designer
+  // authors SPC-thumb_plan, the renderer (EXEC-THUMB) consumes the APPROVED plan.
+  'EXEC-THUMB-DESIGNER': 'sandystudio/exec-thumb-designer/plan',
   'EXEC-THUMB':  'sandystudio/exec-thumb/generate-thumbnail',
   'EXEC-PUB':    'sandystudio/exec-pub/publish',
   'EXEC-ANAL':   'sandystudio/exec-anal/collect',
@@ -195,6 +198,27 @@ export const POST = withApiHandler(async (req, ctx) => {
         : null;
     if (payloadShotId && payloadPlanAssetId) {
       effectiveEventName = 'sandystudio/exec-vgen/single-shot';
+    }
+  }
+
+  // Distribution tail 2026-06-01 — "Key Art Designer" is plan-first now.
+  // Triggering EXEC-THUMB (the renderer) before an APPROVED SPC-thumb_plan
+  // exists would hard-fail its gate (the failure Director hit via Polina).
+  // Reroute such a trigger to the Designer so it authors the plan first.
+  // Once an approved plan exists, the trigger renders as normal.
+  if (body.agentCode === 'EXEC-THUMB') {
+    const payloadPlanAssetId =
+      typeof body.payload?.planAssetId === 'string' ? body.payload.planAssetId : null;
+    if (!payloadPlanAssetId) {
+      const { count } = await supabase
+        .from('assets')
+        .select('id', { count: 'exact', head: true })
+        .eq('episode_id', id)
+        .eq('file_type', 'SPC-thumb_plan')
+        .eq('status', 'APPROVED');
+      if (!count || count === 0) {
+        effectiveEventName = 'sandystudio/exec-thumb-designer/plan';
+      }
     }
   }
 
