@@ -1814,6 +1814,15 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       let planEndImageAssetId: string | null = null;
       let planSeed: number | null = null;
       let planQualityOverride: 'fast' | 'standard' | null = null;
+      // TD-85 (2026-06-01): resolution declared in the Plan body. Extracted
+      // leniently below (raw value only); the authoritative validation
+      // against the resolved provider's contract runs at the generate() site
+      // (outside this Plan-load block) so an unsupported declared value fails
+      // fast instead of silently degrading to the provider's 720p default.
+      // Null = not declared → back-compat: provider applies its own default;
+      // the Critic V13 gate requires presence at authoring time so new plans
+      // always declare.
+      let planResolution: '480p' | '720p' | '1080p' | null = null;
       // TD-49 Phase 2 P2.4 (2026-05-25): Anchor chain pair — Animator's Plan
       // may specify start_anchor + end_anchor (each its own asset_id) that
       // override the legacy reference resolution. When the Animator writes
@@ -1901,6 +1910,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           seed_strategy?: unknown;
           quality_tier?: unknown;
           provider?: unknown;
+          resolution?: unknown;
         };
         try {
           body = JSON.parse(last.trim()) as typeof body;
@@ -1966,6 +1976,18 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         // quality_tier: 'fast' | 'standard' — Plan beats event arg.
         if (body.quality_tier === 'fast' || body.quality_tier === 'standard') {
           planQualityOverride = body.quality_tier;
+        }
+        // TD-85 (2026-06-01): resolution — lenient raw extraction only.
+        // Accept only the known contract values; anything else stays null.
+        // The authoritative member-of-supported-set validation runs at the
+        // generate() site so a bad value fails the run loudly rather than
+        // silently degrading to the provider's 720p default.
+        if (
+          body.resolution === '480p' ||
+          body.resolution === '720p' ||
+          body.resolution === '1080p'
+        ) {
+          planResolution = body.resolution;
         }
       }
       const prompt =
@@ -2046,10 +2068,36 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             : finalDuration;
         // eslint-disable-next-line no-console
         console.info(
-          `[exec-vgen] shot=${shotId} → provider=${effectiveProviderId} (planOverride=${planProviderImplOverride ?? 'none'}) durationSeconds=${generationDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, clamped=${generationDuration !== finalDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}`,
+          `[exec-vgen] shot=${shotId} → provider=${effectiveProviderId} (planOverride=${planProviderImplOverride ?? 'none'}) durationSeconds=${generationDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, clamped=${generationDuration !== finalDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}, resolution=${planResolution ?? 'provider-default'}`,
         );
 
         const videoProvider = getMultiVideoProvider(effectiveProviderId);
+
+        // TD-85 (2026-06-01): hard-gate the Plan-declared resolution against
+        // the resolved provider's contract. A Plan that declares a resolution
+        // its provider does not support must fail the run loudly, not silently
+        // degrade to the 720p default (the exact bug TD-85 fixes). When the
+        // provider is fixed-resolution (empty supported set, e.g. Veo) the
+        // declared value is ignored, not passed downstream. A null
+        // planResolution (legacy / not-declared plan) skips the gate entirely
+        // → provider default applies (back-compat preserved).
+        const supportedResolutions =
+          videoProvider.capabilities.supports_resolutions;
+        if (
+          planAssetId &&
+          planResolution &&
+          supportedResolutions.length > 0 &&
+          !supportedResolutions.includes(planResolution)
+        ) {
+          throw new Error(
+            `[exec-vgen] Plan declares resolution="${planResolution}" unsupported by provider="${effectiveProviderId}" (supported: ${supportedResolutions.join(', ')}). Fix the Plan's resolution field to a contract value.`,
+          );
+        }
+        const effectiveResolution =
+          planResolution && supportedResolutions.length > 0
+            ? planResolution
+            : null;
+
         const real = await videoProvider.generate({
           prompt,
           durationSeconds: generationDuration,
@@ -2062,6 +2110,9 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           // Seedance honours both; Veo ignores end_image (capability flag).
           ...(endImageBase64 ? { endImageBase64, endImageMime } : {}),
           ...(planSeed !== null ? { seed: planSeed } : {}),
+          // TD-85: wire the Plan's contract-validated resolution. Omitted for
+          // fixed-resolution providers (effectiveResolution null).
+          ...(effectiveResolution ? { resolution: effectiveResolution } : {}),
         });
         const safeShotId = shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
         const persisted = await persistBinary({
@@ -2098,6 +2149,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               size_bytes: real.size_bytes,
               aspect_ratio: effectiveAspect,
               quality_tier: effectiveQuality,
+              // TD-85 (2026-06-01): persist the resolution that actually drove
+              // generation so the VID-shot asset records 720p vs 1080p and the
+              // UI / reruns inherit it. null when the provider is
+              // fixed-resolution or the Plan did not declare one.
+              ...(effectiveResolution ? { resolution: effectiveResolution } : {}),
               prompt,
               reference_eref_asset_id: referenceErefAssetId,
               storyboard_asset_id: storyboardAssetId,

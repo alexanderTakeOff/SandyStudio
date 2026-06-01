@@ -27,6 +27,7 @@ import {
   type VGENShotPanelStoryboardShot,
   type VgenProvider,
 } from './VGENShotPanel';
+import type { VideoResolution } from '@/lib/api/provider-capabilities';
 
 interface VidShotMetadataLoose {
   shot_id?: string;
@@ -39,9 +40,13 @@ interface VidShotMetadataLoose {
   prompt?: string;
   /** Phase 2 — provider id stamped by runner / regenerate-video. */
   provider_id?: string;
+  /** TD-85 — resolution the render actually used (stamped by runner /
+   *  regenerate-video). Seeds the panel selector. */
+  resolution?: string;
   vgen_settings?: Partial<VGENShotPanelSettings> & {
     reference_eref_asset_id?: string;
     provider_id?: string;
+    resolution?: string;
   };
 }
 
@@ -66,6 +71,11 @@ function pickAspect(value: unknown): AspectRatio {
 function pickQuality(value: unknown): QualityTier {
   if (value === 'fast' || value === 'standard') return value;
   return 'fast';
+}
+
+function pickResolution(value: unknown): VideoResolution | undefined {
+  if (value === '480p' || value === '720p' || value === '1080p') return value;
+  return undefined;
 }
 
 function pickProvider(value: unknown): VgenProvider | undefined {
@@ -108,6 +118,7 @@ export function VGENShotSection({
     const prompt = settings.prompt ?? m.prompt ?? '';
     const shotId = m.storyboard_shot?.shot_id ?? m.shot_id ?? filename;
     const providerId = pickProvider(settings.provider_id ?? m.provider_id);
+    const resolution = pickResolution(settings.resolution ?? m.resolution);
     const stub: VGENShotPanelStoryboardShot = m.storyboard_shot ?? { shot_id: shotId };
     const cs: VGENShotPanelSettings = {
       prompt,
@@ -116,6 +127,7 @@ export function VGENShotSection({
       duration_seconds: duration,
       reference_asset_id: refId,
       ...(providerId ? { provider_id: providerId } : {}),
+      ...(resolution ? { resolution } : {}),
     };
     return { storyboardShot: stub, currentSettings: cs };
   }, [metadata, filename]);

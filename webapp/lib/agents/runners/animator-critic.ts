@@ -20,7 +20,7 @@ import {
 } from '../providers/anthropic-text';
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
-import { extractAnchorChain } from './animator';
+import { extractAnchorChain, buildResolutionContractBlock } from './animator';
 
 export const VPREV_CONTRACT = 'animator_critic@v1';
 export const VPREV_MODEL = 'claude-sonnet-4-6';
@@ -175,7 +175,7 @@ function buildUserMessage(args: {
     `Plan asset id: ${args.planAssetId}`,
     `Current Plan status: ${args.planStatus}`,
     '',
-    'Run V01-V09 hard checks against the Plan body below. Output verdict + JSON per system contract.',
+    'Run the hard checks (V01-V13) against the Plan body below. Output verdict + JSON per system contract.',
   ];
 
   // TD-74 (2026-05-27) — Director-authorized check waivers from upstream
@@ -217,6 +217,11 @@ function buildUserMessage(args: {
     '<plan>',
     args.planContent,
     '</plan>',
+    '',
+    // TD-85 (2026-06-01): inject the same provider resolution contracts the
+    // Animator saw, so V13 can validate `resolution` membership against the
+    // SSOT instead of a hardcoded enum in the critic prompt.
+    buildResolutionContractBlock(),
     '',
     'Hard rules:',
     `- The JSON block must include shot_id="${args.shotId}" and plan_asset_id="${args.planAssetId}".`,

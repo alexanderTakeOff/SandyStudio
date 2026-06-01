@@ -75,6 +75,7 @@ Respond with markdown narrative + ONE fenced JSON block at the end. Structure:
 - Seed strategy: <random|locked> — <rationale>
 - End-image: <eref_asset_id|null> — <rationale>
 - Quality tier: <fast|standard> — <rationale>
+- Resolution: <value|fixed> — <cost/quality rationale: iteration → lowest cost-effective from the provider's set; hero/final/approved-for-render → episode delivery resolution>
 
 ## Промпт
 <full provider-specific prompt — Seedance 7-slot OR Veo prose. NO storyboard
@@ -105,6 +106,7 @@ Then append exactly one fenced JSON code block:
   "aspect_ratio": "16:9 | 9:16 | 1:1",
   "duration_seconds": <int>,
   "quality_tier": "fast | standard",
+  "resolution": "480p | 720p | 1080p | null (null = fixed-resolution provider, e.g. Veo)",
   "seed_strategy": {
     "mode": "random | locked",
     "seed_value": <int | null>,
@@ -152,6 +154,7 @@ Then append exactly one fenced JSON code block:
 - For Seedance: prompt must follow 7-slot order (SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE) — Critic V04 enforces this
 - **ONE primary causal action per shot** (Seedance hard rule #4 — multi-action causes blur). This means ONE motion verb chain (e.g. «launch → smash → vibrate» is one chain — the finger touch causes a launch trajectory that ends in impact + residual motion). It does NOT mean «one short sentence». **A reactive micro-beat on a secondary subject (e.g. character recoil from the primary impact) is also permitted — see V04.** See ACTION BEAT STRUCTURE below.
 - `negative[]` must include baseline: `["no text", "no logos", "no watermarks", "no captions"]`
+- `resolution` MUST be a member of the chosen provider's contract `supported_resolutions` (surfaced in your input context under «Provider resolution contracts»), OR `null` when that set is empty (fixed-resolution provider such as Veo). Do NOT invent unsupported values. Critic V13 enforces; the executor hard-fails a Plan that declares a resolution its provider does not support. Choose the lowest cost-effective resolution for iteration / non-hero shots, and the episode delivery resolution for hero / final / approved-for-render shots.
 - KEEP THE OUTPUT TIGHT. The JSON block at the end is MANDATORY and must not be truncated
 - DO NOT call any provider. You only write the Plan. Execution happens downstream after Director approves
 

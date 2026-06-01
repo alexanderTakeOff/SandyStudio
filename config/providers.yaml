@@ -231,6 +231,20 @@ image:
 # CONTRACT: VideoProvider
 # Used by: EXEC-VGEN for non-character shots (backgrounds, establishing, abstract)
 # ─────────────────────────────────────────────────────────────
+#
+# TD-85 (2026-06-01) — RESOLUTION SSOT NOTE.
+# The `supported_resolutions` keys below are LEGACY and NON-AUTHORITATIVE for
+# the plan-driven video path. They use an older provider taxonomy
+# (veo-3 / runway-gen4 / kling-3-elements) that the runtime no longer routes
+# through, no TS code reads this key (the runtime reads `supports_resolutions`
+# — note the spelling), and the values drift from reality (e.g. they omit
+# 480p, and there is no seedance entry here at all).
+# The single source of truth for which resolutions a provider supports — and
+# what the Animator Plan + Critic V13 + EXEC-VGEN hard-gate validate against —
+# is the capability manifest in code:
+#   webapp/lib/api/provider-capabilities.ts  (VIDEO_PROVIDER_CAPS)
+#   webapp/lib/agents/providers/video-gen-multi.ts  (SEEDANCE/VEO_CAPABILITIES)
+# Do not trust the resolution values below; update the manifest instead.
 
 video:
   primary: veo-3

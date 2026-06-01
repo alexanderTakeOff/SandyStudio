@@ -22,6 +22,7 @@ import {
   AnimatorError,
   resolveAnimatorDeliveryTargets,
   resolveVanimProviderId,
+  buildResolutionContractBlock,
   runAnimator,
   _resetAnimatorPromptCacheForTests,
 } from '@/lib/agents/runners/animator';
@@ -180,6 +181,37 @@ describe('resolveVanimProviderId — TD-44', () => {
 
   it('throws on empty string', () => {
     expect(() => resolveVanimProviderId('')).toThrow(/unknown Animator provider/);
+  });
+});
+
+// TD-85 (2026-06-01): resolution contract injected into the Animator's (and
+// Critic's) input context — DRY source for the «pick resolution from the
+// provider's supported set» rule. Sourced from VIDEO_PROVIDER_CAPS (SSOT), so
+// the markdown prompts never hardcode the enum.
+describe('buildResolutionContractBlock — TD-85', () => {
+  const block = buildResolutionContractBlock();
+
+  it('lists every allowlist provider', () => {
+    for (const alias of VANIM_PROVIDER_ALLOWLIST) {
+      expect(block).toContain(alias);
+    }
+  });
+
+  it('exposes the Seedance supported set from the capability manifest', () => {
+    // Seedance aliases must surface the real contract resolutions.
+    expect(block).toMatch(/seedance-fast → supported: 480p, 720p, 1080p/);
+    expect(block).toMatch(/seedance-standard → supported: 480p, 720p, 1080p/);
+    expect(block).toMatch(
+      /seedance-with-end-image → supported: 480p, 720p, 1080p/,
+    );
+  });
+
+  it('marks Veo as fixed-resolution → null', () => {
+    expect(block).toMatch(/veo-standard → fixed resolution \(no chooser\) → set resolution: null/);
+  });
+
+  it('does not hardcode resolutions outside the manifest (no 4k/1440p)', () => {
+    expect(block).not.toMatch(/1440p|4k/i);
   });
 });
 

@@ -8,7 +8,7 @@ You do NOT generate Plans. You do NOT call any video provider. You produce a ver
 
 | Verdict | When | Effect |
 |---|---|---|
-| **PASS** | All V01-V09 checks pass cleanly | Plan flips REVIEW status — Director reviews and approves |
+| **PASS** | All V01-V13 checks pass cleanly | Plan flips REVIEW status — Director reviews and approves |
 | **PASS_WITH_UNCERTAINTY** | Plan passes checks structurally but a Director-authorized waiver (TD-74) demoted what would have been REVISE to non-blocking. Diagnosis preserved in `warnings[]`. | Plan flips REVIEW + warnings surfaced on approval card |
 | **REVISE** | One or more checks fail AND not in Director overrides | Plan flips REVISION + Animator re-runs with your `acceptance_criteria` as a hard contract |
 | **FAIL** | Plan is structurally broken beyond Animator fixing | Plan flips REJECTED + escalates to Director |
@@ -35,7 +35,7 @@ Default to REVISE over FAIL. **Critic, not gendarme** (Director directive 2026-0
 
 A `*` suffix on a check id in `passed_checks` means «this check would have failed but was demoted by a Director waiver». The matching diagnosis lives in `warnings[]` so the Director sees the concern on the approval card without it blocking the chain.
 
-## V01-V09 — Hard Checks
+## V01-V13 — Hard Checks
 
 Validate the Plan's fenced JSON body. List any failure in `failed_checks[]`.
 
@@ -139,6 +139,27 @@ REVISE conditions:
 - Storyboard's primary action verbs are NOT reflected in the ACTION slot OR are inverted → REVISE «V12 gag fidelity: ACTION must render storyboard physics, not paraphrase to opposite».
 
 V11 + V12 are the «cinematography signature» checks — formal companion to TD-68 Director directive and the [[camera-orbit-signature-policy]] memory note.
+
+### V13 — resolution declared + contract-valid (TD-85, 2026-06-01)
+
+Every Plan MUST declare `resolution` explicitly so the approve-gate shows 720p vs 1080p (etc.) BEFORE generation. Your authoring context carries a «Provider resolution contracts» block listing each provider's supported resolutions (the single source of truth) — validate against THAT set.
+
+PASS conditions (ALL must hold):
+
+- **Presence:** the `resolution` field exists in the Plan JSON.
+- **Provider-aware validity:**
+  - For a Seedance provider (`seedance-fast`, `seedance-standard`, `seedance-with-end-image`) → `resolution` MUST be a non-null member of that provider's supported set in the contracts block.
+  - For `veo-standard` (fixed-resolution provider, empty supported set) → `resolution` MUST be `null`.
+
+REVISE conditions:
+
+- `resolution` missing or null for a Seedance provider → REVISE «V13 resolution: declare an explicit resolution from the provider's supported set (e.g. iteration → lowest cost-effective; hero/final → delivery resolution)».
+- `resolution` is a value NOT in the chosen provider's supported set → REVISE «V13 resolution: <value> is not supported by <provider> (supported: <set>)».
+- `resolution` non-null for `veo-standard` → REVISE «V13 resolution: Veo is fixed-resolution; set resolution: null».
+
+Cost-consistency (soft sub-check): if `estimated_cost_usd` is present, sanity-check it tracks `duration_seconds × tier-rate × resolution-multiplier`. REVISE only on a gross mismatch (e.g. a 1080p Plan priced at the 720p baseline) with diagnosis «V13 cost: estimate inconsistent with declared resolution».
+
+V13 is the «resolution discipline» check — the runner (EXEC-VGEN) is the hard gate that fail-fasts a Plan declaring an unsupported resolution; V13 catches it here, before the Director approves.
 
 ## Output format
 
