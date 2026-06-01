@@ -39,6 +39,7 @@ import {
 } from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
 import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
+import { VIDEO_PROVIDER_CAPS } from '../../api/provider-capabilities';
 
 export const VANIM_CONTRACT = 'animator@v1';
 export const VANIM_MODEL = 'claude-sonnet-4-6';
@@ -757,6 +758,33 @@ function buildAnimatorAnchorSections(
   ].join('\n');
 }
 
+/**
+ * TD-85 (2026-06-01): DRY injection of each allowlist provider's
+ * contract-supported resolutions into the Animator's input context. The
+ * agent prompt (animator.md) and skill (animator/SKILL.md) refer to
+ * `supported_resolutions` by ROLE; the concrete enum is sourced here from
+ * the capability manifest (SSOT) so it is never hardcoded in markdown and
+ * cannot drift when a provider gains/loses a resolution tier.
+ */
+export function buildResolutionContractBlock(): string {
+  const lines = VANIM_PROVIDER_ALLOWLIST.map((alias) => {
+    const { providerImpl } = resolveVanimProviderId(alias);
+    const set = VIDEO_PROVIDER_CAPS[providerImpl].supports_resolutions;
+    const label =
+      set.length > 0
+        ? `supported: ${set.join(', ')}`
+        : 'fixed resolution (no chooser) → set resolution: null';
+    return `  - ${alias} → ${label}`;
+  });
+  return [
+    '## Provider resolution contracts (pick `resolution` from the chosen provider\'s set)',
+    '',
+    ...lines,
+    '',
+    'Choose the lowest cost-effective resolution for iteration / non-hero shots; the episode delivery resolution for hero / final / approved-for-render shots. For a fixed-resolution provider, set resolution: null.',
+  ].join('\n');
+}
+
 function buildAspectTable(targets: readonly string[]): string {
   const rows = targets.map((slug) => {
     const aspect = ASPECT_BY_DELIVERY_TARGET[slug];
@@ -851,6 +879,8 @@ function buildUserMessage(args: {
     '## Provider sprint-scope',
     '',
     `Allowlist (Director directive 2026-05-19): ${VANIM_PROVIDER_ALLOWLIST.join(', ')}. Do not select anything else.`,
+    '',
+    buildResolutionContractBlock(),
     '',
     revisionNote
       ? [

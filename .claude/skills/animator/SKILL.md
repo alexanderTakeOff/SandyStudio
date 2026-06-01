@@ -89,6 +89,29 @@ Pick `eref_asset_id` = the APPROVED IMG-episode_ref for THIS shot (continuity
 anchor). When no EREF exists for the shot yet → set `end_image.eref_asset_id: null`
 and use plain `seedance-fast` or `veo-standard` instead.
 
+### Resolution per delivery target
+
+Resolution is NOT a fixed «always 1080p» — it is read from the chosen
+provider's contract. Your input context carries a «Provider resolution
+contracts» block listing each provider's `supported_resolutions` (sourced
+from the capability manifest, the single source of truth). Pick from THAT set:
+
+- If the provider's set is **empty**, the provider is fixed-resolution
+  (no chooser) → set `resolution: null`. Do not invent a value.
+- **Iteration / draft / non-hero** shots → choose the **lowest cost-effective**
+  resolution the contract offers. Same intent as the `fast` quality tier:
+  iteration burns budget, so do not pay for the top tier while looping.
+- **Hero / final / approved-for-render** shots → choose the **episode delivery
+  resolution** (the high end of the supported set), so the approved Plan's
+  cost estimate is truthful for the final render. Tie this to the same
+  `shot_role=hero` / Director-approved-direction marker that gates
+  `quality_tier: standard`.
+
+Resolution multiplies cost (see `resolution_cost_mult` / `estimateCost` in
+the capability manifest) — a higher tier is a real budget decision, not a
+free default. Never declare a resolution outside the provider's supported
+set: Critic V13 returns the Plan for revision, and the executor hard-fails it.
+
 ### Prompt formulation
 
 Lazy-load the sub-skill per chosen provider:
@@ -157,6 +180,7 @@ says so.
 - Runner: [`webapp/lib/agents/runners/animator.ts`](../../../webapp/lib/agents/runners/animator.ts)
 - Critic: [`agents/exec/animator_critic.md`](../../../agents/exec/animator_critic.md) (Day 8)
 - Providers: [`fal-seedance.ts`](../../../webapp/lib/agents/providers/fal-seedance.ts), [`veo-gemini.ts`](../../../webapp/lib/agents/providers/veo-gemini.ts)
+- Resolution SSOT (supported_resolutions + cost multiplier): [`provider-capabilities.ts`](../../../webapp/lib/api/provider-capabilities.ts)
 - Bible style canon: S14 STYLE CANON v1.1 (outline-only pencil edge, flat vector fills, no hatching)
 - Shot rhythm: [`technology.md`](../../../technology.md) §3.5 (3-5s cuts, gag floor)
 - Seedance prompting: [`seedance-prompting`](../seedance-prompting/SKILL.md) v0.1+

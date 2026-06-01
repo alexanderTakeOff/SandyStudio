@@ -525,7 +525,7 @@ How to respond:
      - VANIM Plan → \`getAnimatorCriticVerdict({planAssetId})\`
      - EREF-DESIGNER Plan → \`getCriticVerdict({planAssetId})\`
   3. Surface a 3–5 line pre-analysis to Director:
-     - for VANIM: provider + quality_tier + duration_seconds (1 line)
+     - for VANIM: provider + quality_tier + resolution + duration_seconds (1 line)
      - key staging / intent (1 line)
      - continuity anchors (Bible character ref, end_image, EREF id) (1 line)
      - Critic verdict blocking issues if any (1 line, skip if no verdict yet or no issues)

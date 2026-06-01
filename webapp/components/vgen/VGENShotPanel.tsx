@@ -35,8 +35,10 @@ import { ProviderControlPanel } from '@/components/vgen/ProviderControlPanel';
 import {
   VIDEO_PROVIDER_CAPS,
   normalizeControls,
+  estimateCost,
   type VideoControlsValue,
   type VideoProviderId,
+  type VideoResolution,
 } from '@/lib/api/provider-capabilities';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -94,6 +96,11 @@ export interface VGENShotPanelSettings {
   /** Phase 2 (2026-05-13). Provider id; omit when unknown — panel falls back
    *  to the new default (Seedance 2.0). */
   provider_id?: VgenProvider;
+  /** TD-85 (2026-06-01). Resolution that drove the last render (from the Plan
+   *  or a prior manual regen). Seeds the selector so it reflects 1080p instead
+   *  of resetting to the 720p default. Omit / undefined for fixed-resolution
+   *  providers or pre-TD-85 assets. */
+  resolution?: VideoResolution;
 }
 
 export interface VGENShotPanelProps {
@@ -164,6 +171,9 @@ export function VGENShotPanel({
         aspect_ratio: currentSettings.aspect_ratio,
         quality_tier: currentSettings.quality_tier,
         duration_seconds: clampDuration(currentSettings.duration_seconds),
+        // TD-85: seed the resolution so the selector reflects the persisted
+        // value (e.g. 1080p) instead of normalizeControls' 720p fallback.
+        ...(currentSettings.resolution ? { resolution: currentSettings.resolution } : {}),
       },
       VIDEO_PROVIDER_CAPS[currentSettings.provider_id ?? 'seedance-fal-img2vid'],
     ),
@@ -198,6 +208,8 @@ export function VGENShotPanel({
           aspect_ratio: currentSettings.aspect_ratio,
           quality_tier: currentSettings.quality_tier,
           duration_seconds: clampDuration(currentSettings.duration_seconds),
+          // TD-85: preserve persisted resolution across asset switches.
+          ...(currentSettings.resolution ? { resolution: currentSettings.resolution } : {}),
         },
         VIDEO_PROVIDER_CAPS[nextProvider],
       ),
@@ -210,9 +222,17 @@ export function VGENShotPanel({
   }, [assetId]);
 
   const costEstimate = useMemo(() => {
-    const rate = COST_RATE_USD_PER_SECOND[provider][quality];
-    return Math.round(rate * duration * 1000) / 1000; // $0.001 precision
-  }, [provider, quality, duration]);
+    // TD-85 (2026-06-01): route through estimateCost so the displayed price
+    // honours resolution_cost_mult (e.g. 1080p = 2.25× the 720p baseline).
+    // Previously this used a flat provider×quality×duration rate and
+    // under-reported the cost of higher-resolution renders.
+    const raw = estimateCost(VIDEO_PROVIDER_CAPS[provider], {
+      quality_tier: quality,
+      duration_seconds: duration,
+      resolution: controls.resolution,
+    });
+    return Math.round(raw * 1000) / 1000; // $0.001 precision
+  }, [provider, quality, duration, controls.resolution]);
 
   const dirty = useMemo(() => {
     return (
@@ -438,7 +458,19 @@ export function VGENShotPanel({
             <span>
               Will cost ~<span className="font-mono text-text-primary">${costEstimate.toFixed(3)}</span>{' '}
               <span className="text-text-muted">
-                ({duration}s × ${COST_RATE_USD_PER_SECOND[provider][quality].toFixed(4)}/s)
+                ({duration}s × ${COST_RATE_USD_PER_SECOND[provider][quality].toFixed(4)}/s
+                {(() => {
+                  // TD-85: surface the resolution multiplier so the breakdown
+                  // reconciles with the estimate (e.g. 1080p = ×2.25).
+                  const mult =
+                    controls.resolution
+                      ? VIDEO_PROVIDER_CAPS[provider].resolution_cost_mult?.[controls.resolution]
+                      : undefined;
+                  return mult && mult !== 1
+                    ? ` × ${mult} (${controls.resolution})`
+                    : '';
+                })()}
+                )
               </span>
             </span>
           </div>
