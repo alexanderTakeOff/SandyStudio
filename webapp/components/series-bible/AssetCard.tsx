@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { bibleSlug, type BibleAsset, type SbSection } from '@/lib/api/series-bible';
 import { NotificationDot } from '@/components/notifications/NotificationDot';
 import { AssetDetailDrawer } from './AssetDetailDrawer';
+import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'var(--accent-info)',
@@ -39,19 +40,13 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Pick first browser-loadable URL — staging_path may legacy-store a Windows
-  // absolute path (`C:\...`) that <img> can't render; fall through to drive_path.
-  const previewCandidates: Array<string | null | undefined> = [
-    asset.drive_path,
-    asset.staging_path,
-    asset.drive_web_view_url,
+  // Pick first browser-loadable URL via the shared resolver — staging_path may
+  // legacy-store a Windows absolute path (`C:\...`) that <img> can't render.
+  const promptEntry =
     asset.metadata?.image_prompt?.history?.[
       (asset.metadata.image_prompt.current_version ?? 1) - 1
-    ]?.staging_path,
-  ];
-  const previewSrc = previewCandidates.find(
-    (c): c is string => typeof c === 'string' && (c.startsWith('/') || c.startsWith('http')),
-  ) ?? null;
+    ];
+  const previewSrc = resolvePreviewSrc(asset, promptEntry);
   const isImage = !!previewSrc;
   const statusColor = STATUS_COLORS[asset.status] ?? 'var(--text-muted)';
   const isLocked = asset.status === 'LOCKED';

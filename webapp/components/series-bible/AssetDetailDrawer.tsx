@@ -29,6 +29,7 @@ import { AssetCollapsibleSection } from '@/components/assets/AssetCollapsibleSec
 import { AssetProvenanceChip } from '@/components/assets/AssetProvenanceChip';
 import { AssetImagePromptSection } from '@/components/assets/AssetImagePromptSection';
 import type { BibleAsset, ImagePromptHistoryEntry, SbSection } from '@/lib/api/series-bible';
+import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
 
 const EDITABLE_STATUSES = new Set(['DRAFT', 'REVIEW', 'REVISION']);
 
@@ -142,19 +143,9 @@ export function AssetDetailDrawer({
     ? promptDoc.history.find((h) => h.version === promptDoc.current_version)
     : undefined;
 
-  // Pick first browser-loadable URL across candidates (legacy assets may store
-  // OS-specific abs paths in staging_path; fall through to drive_path or history).
-  const candidates: Array<string | null | undefined> = [
-    asset.drive_path,
-    asset.staging_path,
-    asset.drive_web_view_url,
-    currentPromptEntry?.staging_path,
-    currentPromptEntry?.drive_web_view_url,
-  ];
-  const previewSrc =
-    candidates.find(
-      (c): c is string => typeof c === 'string' && (c.startsWith('/') || c.startsWith('http')),
-    ) ?? null;
+  // Pick first browser-loadable URL via the shared resolver (legacy assets may
+  // store OS-specific abs paths in staging_path; fall through to drive_path/history).
+  const previewSrc = resolvePreviewSrc(asset, currentPromptEntry);
   const isImage = !!previewSrc;
 
   async function saveTextEdits() {

@@ -185,16 +185,24 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     required: [{ fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' }],
     governance: 'AGENT_RUN',
   },
-  'EXEC-THUMB': {
+  'EXEC-THUMB-DESIGNER': {
     required: [
       { fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' },
       { fileTypePrefix: 'SPC-metadata', minCount: 1, label: 'Approved Metadata' },
     ],
     governance: 'AGENT_RUN',
   },
+  'EXEC-THUMB': {
+    required: [
+      { fileTypePrefix: 'SPC-thumb_plan', minCount: 1, label: 'Approved Thumbnail Plan' },
+    ],
+    governance: 'AGENT_RUN',
+  },
   'EXEC-PUB': {
     required: [
-      { fileTypePrefix: 'VID-animatic', minCount: 1, label: 'Episode video' },
+      // 2026-06-01: gate on the real stitched final cut, not the rough
+      // animatic — publishing the animatic was a latent bug (Director-confirmed).
+      { fileTypePrefix: 'VID-final_cut', minCount: 1, label: 'Final cut' },
       { fileTypePrefix: 'SPC-metadata', minCount: 1, label: 'Metadata' },
       { fileTypePrefix: 'IMG-thumbnail', minCount: 1, label: 'Thumbnail' },
     ],

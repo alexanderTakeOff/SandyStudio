@@ -353,10 +353,31 @@ type Events = {
     data: BaseEpisodeEvent;
   };
 
+  /**
+   * EXEC-THUMB-DESIGNER — Distribution-tail viral thumbnail Plan author
+   * (2026-06-01). Fired when SPC-metadata is APPROVED. Reads the script +
+   * Bible canon + `viral-thumbnail-design` skill and writes one
+   * SPC-thumb_plan asset holding N distinct high-CTR concepts. Director
+   * approves the Plan; APPROVED Plan fires `exec-thumb/generate-thumbnail`
+   * with the planAssetId so the executor renders the variants.
+   */
+  'sandystudio/exec-thumb-designer/plan': {
+    data: AssetTrigger & {
+      /** Optional revision note on a re-fire after REQUEST_REVISION. */
+      revisionNote?: string;
+    };
+  };
+
   'sandystudio/exec-thumb/generate-thumbnail': {
     data: AssetTrigger & {
-      scriptAssetId: string;
-      metadataAssetId: string;
+      scriptAssetId?: string;
+      metadataAssetId?: string;
+      /**
+       * APPROVED SPC-thumb_plan asset id. When present the executor renders
+       * the plan's N variants (1280×720 + overlay). Absent → mock placeholder
+       * (replay-pilot / no key).
+       */
+      planAssetId?: string;
     };
   };
 

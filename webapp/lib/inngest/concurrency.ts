@@ -79,6 +79,8 @@ export const CONCURRENCY_LIMITS = {
   // per episode. One stitch at a time keeps the staging dir tidy and avoids
   // ffmpeg fighting itself for CPU when multiple episodes are in flight.
   'exec-stitch': 1,
+  // LLM thumbnail Plan author — pure Anthropic cost, low fan-out.
+  'exec-thumb-designer': 3,
   // Image — Midjourney/fal.ai.
   'exec-thumb': 4,
   // YouTube Data API — sequential to avoid quota burn.
