@@ -2506,12 +2506,28 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
     case 'EXEC-THUMB': {
       // Plan-driven executor: render the APPROVED SPC-thumb_plan's N variants
-      // (gpt-image-1 1536×1024 → sharp crop 16:9 1280×720 → overlay text →
-      // N sibling IMG-thumbnail rows). Inserts directly (skip_save).
-      const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
-      if (hasOpenAI && supabase && planAssetId) {
+      // via Ideogram v3 on fal (native bold text, 16:9, character mode) → N
+      // sibling IMG-thumbnail rows. Inserts directly (skip_save).
+      const hasFal = Boolean((process.env.FAL_KEY ?? process.env.FAL_API_KEY)?.trim());
+      // Resolve the plan: prefer the explicit planAssetId from the event; else
+      // fall back to the latest APPROVED SPC-thumb_plan for the episode. Without
+      // this, a manual EXEC-THUMB trigger (no planAssetId) silently mocked even
+      // though an approved plan existed — the v06-mock bug Director hit.
+      let effectivePlanId = planAssetId;
+      if (!effectivePlanId && supabase) {
+        const { data: planRows } = await supabase
+          .from('assets')
+          .select('id')
+          .eq('episode_id', episodeId)
+          .eq('file_type', 'SPC-thumb_plan')
+          .eq('status', 'APPROVED')
+          .order('version', { ascending: false })
+          .limit(1);
+        effectivePlanId = (planRows?.[0] as { id?: string } | undefined)?.id ?? undefined;
+      }
+      if (hasFal && supabase && effectivePlanId) {
         try {
-          const r = await runThumbnailRenderer({ inputs, supabase, episodeCode, planAssetId });
+          const r = await runThumbnailRenderer({ inputs, supabase, episodeCode, planAssetId: effectivePlanId });
           return {
             outputKind: 'image-png',
             result: {
@@ -2519,8 +2535,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               cost_usd: r.costUsd,
               metadata: {
                 agent_id: agentId,
-                provider_id: 'gpt-image-1',
-                provider_used: 'gpt-image-1',
+                provider_id: 'fal-ai/ideogram',
+                provider_used: 'fal-ai/ideogram',
                 description: r.description,
                 skip_save: true,
                 inserted_asset_ids: r.insertedAssetIds,
