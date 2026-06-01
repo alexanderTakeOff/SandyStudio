@@ -10,6 +10,10 @@
 
 /** Minimal shape needed to resolve a preview src — structurally compatible with AssetRow and drawer asset shapes. */
 export interface PreviewSource {
+  /** Asset id — enables the stable Drive-backed media route. */
+  id?: string | null;
+  /** When set with `id`, the asset is Drive-backed and served via /api/media/<id>. */
+  drive_file_id?: string | null;
   drive_path?: string | null;
   staging_path?: string | null;
   drive_web_view_url?: string | null;
@@ -31,6 +35,13 @@ export function resolvePreviewSrc(
   asset: PreviewSource,
   promptEntry?: PreviewSource | null,
 ): string | null {
+  // Prefer the stable Drive-backed media route when the asset is Drive-backed.
+  // It survives worktree deletion and doesn't depend on the local /staging
+  // cache or symlinks (the breakage that wiped every preview). Falls through to
+  // the legacy local candidates for mock/local-only assets without a Drive id.
+  if (asset.id && asset.drive_file_id) {
+    return `/api/media/${asset.id}`;
+  }
   const candidates: Array<string | null | undefined> = [
     asset.drive_path,
     asset.staging_path,

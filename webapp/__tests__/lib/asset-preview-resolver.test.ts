@@ -42,4 +42,20 @@ describe('resolvePreviewSrc', () => {
   it('returns null when no candidate is loadable', () => {
     expect(resolvePreviewSrc({ drive_path: 'C:\\x', staging_path: null })).toBeNull();
   });
+
+  it('prefers the Drive-backed /api/media route when id + drive_file_id present', () => {
+    expect(
+      resolvePreviewSrc({
+        id: 'asset-123',
+        drive_file_id: 'drive-abc',
+        drive_path: '/staging/a.png',
+      }),
+    ).toBe('/api/media/asset-123');
+  });
+
+  it('falls back to legacy candidates when drive_file_id is absent', () => {
+    expect(
+      resolvePreviewSrc({ id: 'asset-123', drive_file_id: null, staging_path: '/staging/b.png' }),
+    ).toBe('/staging/b.png');
+  });
 });
