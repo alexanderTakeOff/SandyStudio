@@ -93,6 +93,22 @@ export interface AnimaticPlayerProps {
    */
   filter?: 'all' | 'review' | 'approved' | 'missing';
   /**
+   * TD-80 (2026-05-27): Shot Plan versions per shot_id, surfaced in the
+   * hover-popover so Director can open a Plan in the existing PreviewDrawer
+   * BEFORE the video burns. Pre-TD-80 the only way to read a Plan was the
+   * approvals queue or PA chat — both required leaving the timeline. Pass
+   * empty map / undefined to suppress the section (legacy mode).
+   */
+  shotPlansByShotId?: Map<string, Array<{ id: string; version: number | null; status: string }>>;
+  /**
+   * TD-80 (2026-05-27): opens an arbitrary asset id in the parent's
+   * PreviewDrawer without entering the «missing VGEN» branch that
+   * `onCellClick` uses for image-fallback cells. Plan rows in the popover
+   * call this with the Plan's asset_id — drawer reads the markdown body
+   * + JSON and surfaces existing approve/reject controls.
+   */
+  onOpenAsset?: (assetId: string) => void;
+  /**
    * Phase A.2 Bug C fix (Director report 2026-05-08): the asset status of
    * the animatic itself, used to hide the footer Approve/Reject row once
    * the animatic is past REVIEW. Without this prop, the footer shows on
@@ -192,6 +208,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     vidShotAssets,
     onCellClick,
     filter = 'all',
+    shotPlansByShotId,
+    onOpenAsset,
     animaticStatus,
   },
   ref,
@@ -836,6 +854,37 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                     <div className="px-1 pb-1 font-mono opacity-70 text-[10px]">
                       {t.shot.shot_id} · {t.duration.toFixed(1)}s
                     </div>
+                    {/* TD-80 (2026-05-27) — Shot Plan versions for this shot.
+                        Director can open the latest (or any) Plan in the
+                        existing PreviewDrawer BEFORE the video burns. Pre-TD-80
+                        the Plans were reachable only via approvals queue / PA
+                        chat — both required leaving the timeline. */}
+                    {(shotPlansByShotId?.get(t.shot.shot_id) ?? []).length > 0 && (
+                      <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
+                        <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
+                          plan
+                        </div>
+                        {(shotPlansByShotId?.get(t.shot.shot_id) ?? []).map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onOpenAsset) onOpenAsset(p.id);
+                            }}
+                            className="text-left font-mono text-[11px] cursor-pointer hover:bg-[color-mix(in_oklab,_white_8%,_transparent)] rounded px-1 py-0.5"
+                          >
+                            v{String(p.version ?? 1).padStart(2, '0')}{' '}
+                            <span
+                              className="opacity-70"
+                              style={{ color: cellPalette(p.status as never, 'plan').color }}
+                            >
+                              {p.status}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {versions.length === 0 ? (
                       <div className="px-1 pb-0.5">
                         <span style={{ color: palette.color, fontWeight: 600 }}>

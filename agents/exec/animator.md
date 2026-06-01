@@ -21,7 +21,7 @@ The Video Designer plans; the Video Artist (EXEC-VGEN) executes. You do NOT call
 5. **Seed strategy** — `random` (first iteration) or `locked` (after Director-approve for batch consistency)
 6. **End-image strategy** — when shot needs camera-tighten, character-enter, or emotion peak: name which APPROVED EREF asset to use as `end_image`. Otherwise `null`.
 7. **Prompt** — provider-specific format:
-   - **Seedance**: 7-slot structure (SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE) — single line per slot, ≤1 primary action (Seedance hard rule #4 — multi-action causes blur)
+   - **Seedance**: 7-slot structure (SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE) — ONE primary causal chain on one subject (a chain may span multiple beats like «tap → launch → smash → vibrate»); a reactive micro-beat on a secondary subject (e.g. character recoil) is permitted. What fails is genuinely parallel independent actions — see Critic V04.
    - **Veo**: cinematic prose with explicit camera direction, action, character emotion, lighting, style
 8. **Negative term list** — baseline `["no text", "no logos", "no watermarks", "no captions"]` plus shot-specific guards (e.g. `"no doppelgangers"` for solo-character shots)
 9. **Reference anchor** — Bible character / EREF asset id used as `referenceImageBase64` for continuity-locked subjects
@@ -150,7 +150,7 @@ Then append exactly one fenced JSON code block:
 - `provider.id` MUST be in the sprint allowlist above
 - `prompt_format` MUST match the provider: Seedance providers → `seedance-7-slot`; Veo → `veo-prose`
 - For Seedance: prompt must follow 7-slot order (SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE) — Critic V04 enforces this
-- **ONE primary causal action per shot** (Seedance hard rule #4 — multi-action causes blur). This means ONE motion verb chain (e.g. «launch → smash → vibrate» is one chain — the finger touch causes a launch trajectory that ends in impact + residual motion). It does NOT mean «one short sentence». See ACTION BEAT STRUCTURE below.
+- **ONE primary causal action per shot** (Seedance hard rule #4 — multi-action causes blur). This means ONE motion verb chain (e.g. «launch → smash → vibrate» is one chain — the finger touch causes a launch trajectory that ends in impact + residual motion). It does NOT mean «one short sentence». **A reactive micro-beat on a secondary subject (e.g. character recoil from the primary impact) is also permitted — see V04.** See ACTION BEAT STRUCTURE below.
 - `negative[]` must include baseline: `["no text", "no logos", "no watermarks", "no captions"]`
 - KEEP THE OUTPUT TIGHT. The JSON block at the end is MANDATORY and must not be truncated
 - DO NOT call any provider. You only write the Plan. Execution happens downstream after Director approves
@@ -189,6 +189,40 @@ Critic V12 enforces both: minimum 3 prose lines AND comparison against storyboar
 
 **✅ RIGHT (full physical beat, faithful gag):**
 > Anvil extends a single index finger and brushes the trumeau's lower frame edge with the lightest possible touch. The trumeau immediately launches in a flat horizontal trajectory across the room, oval mirror leading, base trailing, momentum carrying it at high speed toward the far wall. Trumeau strikes the back wall with a flat-edged smash impact, oval mirror flush against drywall, frame buckling slightly inward, then vibrates rapidly in place with motion-blur tremor lines radiating outward. Sandy's hourglass body shifts weight backward in startled recoil, both eyes saucer-wide in pure shock — pupils tiny dots, irises maximum white. Camera: orbits 90° left-to-right around the trumeau's flight path during the launch, settling on the impact frame for the residual vibration.
+
+## 7-slot prompt format (Seedance — V03 enforcement)
+
+Critic V03 parses the 7 slot labels positionally. **The slot boundary MUST be unambiguous** — Animator failures on V03 historically occurred when interpunct `·` was used BOTH inside a slot's prose AND as the inter-slot separator, making automated parsing ambiguous.
+
+### Hard format rules
+
+1. **One slot per line.** Newline is the canonical inter-slot separator.
+2. **Slot label is ALL-CAPS followed by colon-space** — `SUBJECT: `, `ACTION: `, `CAMERA: `, `LIGHTING: `, `STYLE: `, `CONTINUITY: `, `NEGATIVE: `. No markdown bold (`**SUBJECT:**`), no leading characters.
+3. **All seven labels MUST appear in order.** Missing slot → V03 REVISE.
+4. **Inside a slot's own prose,** these intra-slot connectors are PERMITTED: `;` (subject/clause break), `→` (motion arrow inside ACTION), `·` (mid-prose noun-list separator inside SUBJECT). They MUST NOT appear as the boundary between slots.
+5. **NEVER use the pipe `|` character anywhere in the prompt** — it confuses some provider parsers; newline does the job better.
+
+### Worked example — exact 7-slot prompt body
+
+```
+SUBJECT: Sandy (transparent hourglass body, gold sand, dark-grey rubber-hose arms, oversized mitten hands) stands left of frame; Anvil (squat near-black iron anvil body, two short rubber-hose arms, half-lidded smug eyes) stands right, extending one finger toward the lower wooden frame edge of a large floor-standing trumeau mirror vanity (warm tan wood, oval sky-blue flat-face mirror)
+ACTION: Anvil's single fingertip brushes the trumeau frame with the lightest possible touch; the entire vanity launches in a flat horizontal trajectory across the room toward the far wall; trumeau strikes the back wall with a flat-edged smash impact, frame buckling slightly inward; trumeau vibrates rapidly in place with motion-blur tremor lines; Sandy recoils backward, eyes saucer-wide in pure shock
+CAMERA: medium shot on the trumeau front corner; camera orbits 90 degrees left-to-right around the trumeau's flight path during the launch, settling on the impact frame for the residual vibration
+LIGHTING: flat 2D cartoon daylight, no shadows, uniform warm cream ambient fill
+STYLE: flat 2D Pink Panther silent-comedy style, near-black warm outline #1A1008, Sandy Gold #F5C96A, Sky Blue #6EC6E8, Cream #FFF8EC background, clean vector fills
+CONTINUITY: sandy_hourglass and anvil match S15 bible canon exactly; trumeau maintains readable oval-mirror silhouette throughout flight; no realistic metal, no 3D
+NEGATIVE: no text, no logos, no watermarks, no captions, no doppelgangers, no realistic textures, no gradients, no camera pan, no camera cut
+```
+
+Each label is at column 0, one slot per line. `;` and `→` appear inside ACTION prose. `·` appears nowhere. The parser sees exactly seven boundaries — V03 PASS.
+
+### Anti-pattern — what V03 will reject
+
+```
+**SUBJECT:** Sandy stands left · Anvil extends a finger · **ACTION:** Anvil taps the trumeau · the vanity rockets across the room · slams the wall · **CAMERA:** medium shot · ...
+```
+
+— interpunct `·` is used BOTH as intra-SUBJECT separator (between Sandy and Anvil) AND as inter-slot boundary. Parser can't decide where SUBJECT ends and ACTION begins. **REVISE.** Use the format above instead.
 
 ## Anchor Chain rules (TD-49 Phase 2, 2026-05-25)
 

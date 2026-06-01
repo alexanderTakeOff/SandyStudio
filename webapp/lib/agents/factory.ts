@@ -312,6 +312,20 @@ export function createAgentInngestFunction<E extends string>(
           revisionNote: typeof eventData.revisionNote === 'string'
             ? eventData.revisionNote
             : undefined,
+          // TD-74 (2026-05-27) — Director-authorized check waivers. Same
+          // forward-from-event-payload pattern as revisionNote. Animator
+          // writes traceability; Critic uses to demote REVISE to
+          // PASS_WITH_UNCERTAINTY on matching checks.
+          directorOverrides: Array.isArray(eventData.directorOverrides)
+            ? (eventData.directorOverrides as unknown[])
+                .filter(
+                  (o): o is { check: string; rationale: string } =>
+                    o !== null &&
+                    typeof o === 'object' &&
+                    typeof (o as { check?: unknown }).check === 'string' &&
+                    typeof (o as { rationale?: unknown }).rationale === 'string',
+                )
+            : undefined,
           ...(spec.resolveRunArgs ? spec.resolveRunArgs(eventData) : {}),
         };
         return runAgent(runArgs);

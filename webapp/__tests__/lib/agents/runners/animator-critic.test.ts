@@ -95,9 +95,9 @@ describe('runAnimatorCritic', () => {
       markdown: 'REVISE',
       body: {
         verdict: 'REVISE',
-        failed_checks: [{ check: 'V04', diagnosis: 'multi-action in ACTION slot' }],
+        failed_checks: [{ check: 'V04', diagnosis: 'V04 parallel actions: two independent verbs on same subject' }],
         passed_checks: ['V01', 'V02', 'V03'],
-        acceptance_criteria: ['Reduce ACTION slot to ONE verb phrase'],
+        acceptance_criteria: ['Reduce ACTION slot to ONE causal chain on one primary subject'],
       },
       costUsd: 0.02,
       model: VPREV_MODEL,
@@ -110,7 +110,67 @@ describe('runAnimatorCritic', () => {
     });
     expect(r.verdict).toBe('REVISE');
     expect(r.failedChecks[0]?.check).toBe('V04');
-    expect(r.acceptanceCriteria[0]).toContain('ONE verb');
+    expect(r.acceptanceCriteria[0]).toContain('ONE causal chain');
+  });
+
+  it('TD-74: directorOverrides demotes REVISE to PASS_WITH_UNCERTAINTY + warnings populated', async () => {
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: 'PASS_WITH_UNCERTAINTY',
+      body: {
+        verdict: 'PASS_WITH_UNCERTAINTY',
+        failed_checks: [],
+        passed_checks: ['V01', 'V02', 'V03', 'V04*', 'V05', 'V06', 'V07', 'V08', 'V09'],
+        warnings: [
+          'V04* (Director waiver — multi-beat causal chain preserved per Director directive 2026-05-27): ACTION slot encodes four beats (tap → launch → smash → vibrate) — would have been REVISE but Director authorised.',
+        ],
+        acceptance_criteria: [],
+      },
+      costUsd: 0.018,
+      model: VPREV_MODEL,
+    });
+    const r = await runAnimatorCritic({
+      inputs: {} as never,
+      supabase: mockSupabase(makePlanRow(VALID_CONTENT)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+      directorOverrides: [
+        {
+          check: 'V04',
+          rationale: 'multi-beat causal chain preserved per Director directive 2026-05-27',
+        },
+      ],
+    });
+    expect(r.verdict).toBe('PASS_WITH_UNCERTAINTY');
+    expect(r.passedChecks).toContain('V04*');
+    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]).toContain('V04*');
+    expect(r.warnings[0]).toContain('Director waiver');
+    // Verify the user message sent to Anthropic carries the authoritative-override block.
+    const callArgs = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string } | undefined;
+    expect(callArgs?.userMessage).toContain('UPSTREAM AUTHORITATIVE OVERRIDES');
+    expect(callArgs?.userMessage).toContain('"check": "V04"');
+  });
+
+  it('TD-74: no directorOverrides → user message has no authoritative-override block', async () => {
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: 'PASS',
+      body: {
+        verdict: 'PASS',
+        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V05', 'V06', 'V07', 'V08', 'V09'],
+        failed_checks: [],
+        acceptance_criteria: [],
+      },
+      costUsd: 0.014,
+      model: VPREV_MODEL,
+    });
+    await runAnimatorCritic({
+      inputs: {} as never,
+      supabase: mockSupabase(makePlanRow(VALID_CONTENT)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    const callArgs = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string } | undefined;
+    expect(callArgs?.userMessage).not.toContain('UPSTREAM AUTHORITATIVE OVERRIDES');
   });
 
   it('extracts FAIL verdict', async () => {

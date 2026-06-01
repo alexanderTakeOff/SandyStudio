@@ -27,9 +27,23 @@ export const execVprevReviewPlan = createAgentInngestFunction({
       typeof eventData.planAssetId === 'string'
         ? (eventData.planAssetId as string)
         : undefined;
-    const args: { shotId?: string; planAssetId?: string } = {};
+    // TD-74 (2026-05-27) — Director check waivers propagated from upstream
+    // event payload. The factory's top-level extractor (factory.ts) also
+    // handles this for the RunAgentArgs path, but resolveRunArgs is the
+    // explicit per-agent override surface.
+    const args: {
+      shotId?: string;
+      planAssetId?: string;
+      directorOverrides?: ReadonlyArray<{ check: string; rationale: string }>;
+    } = {};
     if (shotId) args.shotId = shotId;
     if (planAssetId) args.planAssetId = planAssetId;
+    if (Array.isArray(eventData.directorOverrides)) {
+      args.directorOverrides = eventData.directorOverrides as ReadonlyArray<{
+        check: string;
+        rationale: string;
+      }>;
+    }
     return args;
   },
   // 2026-05-22 — surface shot label in activity titles.
@@ -67,12 +81,21 @@ export const execVprevReviewPlan = createAgentInngestFunction({
         criteria.length > 0
           ? `Critic verdict REVISE — hard acceptance criteria:\n- ${criteria.join('\n- ')}`
           : 'Critic verdict REVISE — re-derive the Plan from inputs.';
+      // TD-74 (2026-05-27) — preserve Director waivers across the REVISE
+      // re-fire loop so Polина doesn't have to re-attach them on each
+      // iteration. Animator picks them up the same way it did first time.
+      const directorOverrides = Array.isArray(eventData.directorOverrides)
+        ? (eventData.directorOverrides as ReadonlyArray<{ check: string; rationale: string }>)
+        : undefined;
       return {
         name: 'sandystudio/exec-vanim/plan',
         data: {
           episodeId: eventData.episodeId as string,
           shotId,
           revisionNote,
+          ...(directorOverrides && directorOverrides.length > 0
+            ? { directorOverrides }
+            : {}),
         },
       };
     }

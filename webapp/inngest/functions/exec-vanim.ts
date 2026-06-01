@@ -39,12 +39,22 @@ export const execVanimPlan = createAgentInngestFunction({
     const shotId =
       typeof eventData.shotId === 'string' ? (eventData.shotId as string) : null;
     if (!shotId) return null;
+    // TD-74 (2026-05-27) — propagate Director check waivers downstream to
+    // Critic. Self-asserted Plan body claims are not authoritative; the
+    // event payload IS — so we copy the upstream payload's overrides
+    // verbatim into the next-event payload.
+    const directorOverrides = Array.isArray(eventData.directorOverrides)
+      ? (eventData.directorOverrides as ReadonlyArray<{ check: string; rationale: string }>)
+      : undefined;
     return {
       name: 'sandystudio/exec-vprev/review-plan',
       data: {
         episodeId: eventData.episodeId as string,
         planAssetId: saved.assetId,
         shotId,
+        ...(directorOverrides && directorOverrides.length > 0
+          ? { directorOverrides }
+          : {}),
       },
     };
   },
