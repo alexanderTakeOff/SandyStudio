@@ -445,11 +445,16 @@ export const execVgenFanoutTrigger = inngest.createFunction(
       // from APPROVED SPC-shot_plan rows so each fan-out emit carries its
       // Plan. Pre-this-fix the fan-out path dropped planAssetId and every
       // remaining shot ran the legacy template, forcing Seedance fast.
+      //
+      // TD-78 (2026-05-27): widen file_type — Animator writes
+      // `SPC-shot_plan-<shot_id>` (TD-66 widening). Strict equality matched
+      // none of the modern Plans and every fan-out shot lost its Plan,
+      // silently falling back to storyboard template same way as SH19 v02.
       const { data: planRows } = await supabase
         .from('assets')
         .select('id,metadata')
         .eq('episode_id', episodeId)
-        .eq('file_type', 'SPC-shot_plan')
+        .or('file_type.eq.SPC-shot_plan,file_type.like.SPC-shot_plan-%')
         .eq('status', 'APPROVED');
       const planByShotId = new Map<string, string>();
       for (const row of (planRows ?? []) as Array<{

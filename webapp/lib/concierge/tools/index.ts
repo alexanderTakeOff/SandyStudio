@@ -30,6 +30,7 @@ import {
   listShotPlans,
   getAnimatorCriticVerdict,
   regenerateShotPlan,
+  unstickPlanForApproval,
 } from './animator';
 import {
   getGagPlan,
@@ -37,6 +38,7 @@ import {
   getGagVerdict,
   regenerateGagPlan,
 } from './gagad';
+import { reorderShots } from './shot-reorder';
 import { markAwaitingDirector } from './mark-awaiting';
 import type { OpenAIToolSchema, Tool } from './types';
 
@@ -109,6 +111,14 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // the Plan-driven path (Animator-declared provider + quality_tier).
   regenerateVideoFromPlan as unknown as AnyTool,
   regenerateShotPlan as unknown as AnyTool,
+  // TD-76 (2026-05-27) — state-machine recovery for Plans stuck in
+  // REVISION despite a clean Critic verdict. Use INSTEAD of regenerateShotPlan
+  // when content is already correct but state is wrong.
+  unstickPlanForApproval as unknown as AnyTool,
+  // TD-86 (2026-05-27) — Director-initiated shot swap. Atomically updates
+  // storyboard shots[] AND animatic shot_list. Use when Director says
+  // «поменяй кадры местами» / «swap shots». NOT a content regen.
+  reorderShots as unknown as AnyTool,
   regenerateGagPlan as unknown as AnyTool,
 ]);
 

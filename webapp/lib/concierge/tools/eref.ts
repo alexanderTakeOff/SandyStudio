@@ -174,11 +174,14 @@ export const listRefPlans: Tool<ListRefPlansArgs> = {
     if (error) return fail(`list failed: ${error.message}`);
 
     // Pair each Plan with its latest REV-ref_plan (Critic) row by metadata link.
+    // TD-78 (2026-05-27): widen file_type — REV-ref_plan rows are written
+    // as `REV-ref_plan-<shot_id>` (TD-66 widening). Same fix as TD-75 applied
+    // to the shot_plan PA tools.
     const { data: criticRows } = await ctx.supabase
       .from('assets')
       .select('id,filename,status,metadata,created_at')
       .eq('episode_id', episodeId)
-      .eq('file_type', 'REV-ref_plan');
+      .or('file_type.eq.REV-ref_plan,file_type.like.REV-ref_plan-%');
 
     const criticByPlanId = new Map<string, { id: string; verdict: string; failedCount: number }>();
     for (const row of (criticRows ?? []) as Array<{
@@ -273,11 +276,13 @@ export const getCriticVerdict: Tool<GetCriticVerdictArgs> = {
     const episodeId = (planRow as { episode_id?: string | null }).episode_id;
     if (!episodeId) return fail('Plan has no episode_id', 'no_episode');
 
+    // TD-78 (2026-05-27): widen file_type — REV-ref_plan rows are written
+    // as `REV-ref_plan-<shot_id>`. Strict equality matched nothing.
     const { data, error } = await ctx.supabase
       .from('assets')
       .select('id,filename,status,content,metadata,created_at')
       .eq('episode_id', episodeId)
-      .eq('file_type', 'REV-ref_plan')
+      .or('file_type.eq.REV-ref_plan,file_type.like.REV-ref_plan-%')
       .order('created_at', { ascending: false });
     if (error) return fail(`Critic lookup failed: ${error.message}`);
 

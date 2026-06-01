@@ -140,9 +140,13 @@ camera tests; switch to 1080p when locked.
    the reference, or supply an `end_image_url` that conveys the close-up
    target.
 
-4. **No more than ONE primary action per shot.** Comedy rhythm (technology.md
-   §3.5) is 3-5s per cut. Two stacked actions in one Seedance shot read as
-   blurry physics. Split into two shots if needed.
+4. **One primary causal chain per shot**, not one verb (softened 2026-05-27).
+   Beats may chain causally («tap → launch → smash → vibrate» — four beats,
+   one subject, one chain) and a reactive micro-beat on a secondary subject
+   is fine (e.g. character recoil from the primary impact). Seedance 2
+   renders these without blur. What DOES blur Seedance is genuinely parallel
+   independent actions — split those into two shots. Comedy rhythm
+   (technology.md §3.5) remains 3-5s per cut.
 
 5. **Negative prompt is not optional.** At minimum:
    `no extra limbs, no face morphing, no costume changes, no extra characters,
