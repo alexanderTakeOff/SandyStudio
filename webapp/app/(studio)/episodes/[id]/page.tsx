@@ -9,12 +9,13 @@ import { use, useState, type KeyboardEvent } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Archive } from 'lucide-react';
+import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Archive, ChevronDown, ChevronRight } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { StageKebabMenu } from '@/components/pipeline/StageKebabMenu';
+import { StageWorkspacePanel, type WorkstationStage } from '@/components/pipeline/StageWorkspacePanel';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { EpisodeReferencesGallery } from '@/components/episode/EpisodeReferencesGallery';
@@ -30,11 +31,21 @@ import { fetcher } from '@/lib/swr';
 interface Stage {
   id: string;
   label: string;
+  subtitle?: string;
+  emoji?: string;
+  phase?: string;
+  /** Topic 3 — 'primary' renders full-weight; 'muted' collapses under `serves`. */
+  tier?: 'primary' | 'muted';
+  role?: 'input' | 'author' | 'designer' | 'critic' | 'artist' | 'editor' | 'publisher' | 'analyst';
+  /** Topic 3 — MUTED row → the PRIMARY stage id it serves. */
+  serves?: string;
   state: 'idle' | 'running' | 'approved' | 'blocked' | 'failed';
   agents: string[];
   job_count?: { total: number; done: number; running: number; failed: number };
   latest_asset_id?: string;
   latest_asset_type?: string;
+  latest_verdict?: 'PASS' | 'REVISE' | 'FAIL';
+  unstaffed?: boolean;
   assets_in_review?: number;
 }
 
@@ -102,6 +113,13 @@ const NODE_COLOR: Record<Stage['state'], string> = {
   failed: 'var(--accent-danger)',
 };
 
+// Topic 3 — Critic verdict chip color (semantic tokens only).
+const VERDICT_COLOR: Record<NonNullable<Stage['latest_verdict']>, string> = {
+  PASS: 'var(--accent-success)',
+  REVISE: 'var(--accent-warning)',
+  FAIL: 'var(--accent-danger)',
+};
+
 function relativeTime(iso: string): string {
   const t = new Date(iso).getTime();
   const diff = Date.now() - t;
@@ -114,6 +132,9 @@ function relativeTime(iso: string): string {
 export default function PipelinePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
+  // Topic 3 — which PRIMARY rows have their MUTED Designer/Critic children
+  // expanded. Collapsed by default (q9b).
+  const [expandedPrimaries, setExpandedPrimaries] = useState<Set<string>>(new Set());
   const [triggerOpen, setTriggerOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
@@ -152,6 +173,16 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
     publish: ['REV-publish'],
     analytics: ['REV-analytics'],
   };
+  // Topic 3 — the selected stage object + the Critic that gates it (so the
+  // Artist's workstation can also surface the Critic verdict, q10a).
+  const selectedStageObj = selectedStage
+    ? stages.find((s) => s.id === selectedStage) ?? null
+    : null;
+  const servingCritic =
+    selectedStageObj && selectedStageObj.role !== 'critic'
+      ? stages.find((s) => s.role === 'critic' && s.serves === selectedStageObj.id) ?? null
+      : null;
+
   const filtered = selectedStage
     ? feed.filter((e) => {
         const stage = stages.find((s) => s.id === selectedStage);
@@ -266,206 +297,132 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* DAG (left) */}
+        {/* DAG (left) — Topic 3: PRIMARY rows full-weight, MUTED Designer/Critic
+            rows collapse indented under the PRIMARY they serve, expand on click. */}
         <Card className="lg:col-span-2">
           <CardBody>
             <div className="text-xs uppercase tracking-wider text-text-muted mb-3">Pipeline</div>
-            <ol className="space-y-0.5">
-              {stages.map((s, i) => {
-                const active = selectedStage === s.id;
-                const onActivate = () => setSelectedStage(active ? null : s.id);
-                const onRowKey = (e: KeyboardEvent<HTMLDivElement>) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onActivate();
-                  }
-                };
-                // Phase header — render a tiny label whenever the phase
-                // changes between consecutive rows. Backbone v2.5 groups
-                // 13 agent rows into 5 phases.
-                const prevPhase = i > 0 ? (stages[i - 1] as { phase?: string }).phase : null;
-                // Cast — `phase` is added in pipeline-stages.ts; older
-                // PipelineStageSnapshot typing may not expose it yet.
-                const phase = (s as unknown as { phase?: string }).phase;
-                const showPhase = phase && phase !== prevPhase;
-                const phaseLabel =
-                  phase === 'pre-production'
-                    ? 'Pre-production'
-                    : phase === 'production'
-                      ? 'Production'
-                      : phase === 'generation'
-                        ? 'Generation'
-                        : phase === 'distribution'
-                          ? 'Distribution'
-                          : phase === 'analytics'
-                            ? 'Analytics'
-                            : '';
-                return (
-                  <li key={s.id}>
-                    {showPhase && (
-                      <div
-                        className="text-[10px] uppercase tracking-[0.15em] mt-3 mb-1 px-2"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        {phaseLabel}
-                      </div>
-                    )}
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={onActivate}
-                      onKeyDown={onRowKey}
-                      className="group flex items-center gap-3 w-full px-2 py-1.5 rounded-lg transition-colors text-left cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-info)]"
-                      style={{
-                        background: active ? 'var(--panel-hover-bg)' : 'transparent',
-                      }}
-                    >
-                      <span
-                        className="text-2xl leading-none w-6 text-center"
-                        style={{ color: NODE_COLOR[s.state] }}
-                      >
-                        {NODE_GLYPH[s.state]}
-                      </span>
-                      <span className="flex-1 text-sm text-text-primary">
-                        {(s as unknown as { emoji?: string }).emoji && (
-                          <span className="mr-1.5 text-xs">
-                            {(s as unknown as { emoji?: string }).emoji}
-                          </span>
-                        )}
-                        {s.label}
-                      </span>
-                      {s.job_count && s.job_count.total > 0 && (
-                        <span className="text-[10px] uppercase tracking-wider text-text-muted">
-                          {s.job_count.done}/{s.job_count.total}
-                        </span>
-                      )}
-                      <StageKebabMenu
-                        episodeId={id}
-                        stageId={s.id as PipelineStageId}
-                        stageLabel={s.label}
-                        stageAgents={s.agents}
-                        stageState={s.state}
-                        assetsInReview={s.assets_in_review}
-                        latestAssetId={s.latest_asset_id}
-                        latestAssetType={s.latest_asset_type}
-                        onOpenPreview={(assetId, title) => {
-                          setPreviewAssetId(assetId);
-                          setPreviewTitle(title);
-                        }}
-                        onChanged={() => mutate()}
-                      />
-                    </div>
-                    {i < stages.length - 1 && (
-                      <div
-                        className="ml-5 h-2 w-px"
-                        style={{ background: NODE_COLOR[s.state], opacity: 0.4 }}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+            <PipelineDag
+              stages={stages}
+              episodeId={id}
+              selectedStage={selectedStage}
+              onSelect={(sid) => setSelectedStage(selectedStage === sid ? null : sid)}
+              expandedPrimaries={expandedPrimaries}
+              onToggleExpand={(pid) =>
+                setExpandedPrimaries((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(pid)) next.delete(pid);
+                  else next.add(pid);
+                  return next;
+                })
+              }
+              onOpenPreview={(assetId, title) => {
+                setPreviewAssetId(assetId);
+                setPreviewTitle(title);
+              }}
+              onChanged={() => mutate()}
+            />
             <div className="mt-4 pt-3 border-t border-glass space-y-1 text-[10px] text-text-muted">
               <div>● approved · ◐ running · ◇ blocked · ✗ failed · ○ idle</div>
-              <div>Click a stage to filter the feed →</div>
+              <div>Click a stage → workstation. Designers/Critics tuck under their stage.</div>
               <div>Hover any stage for actions ⋯</div>
             </div>
           </CardBody>
         </Card>
 
-        {/* Feed (right) */}
+        {/* Right pane — Topic 3: a selected stage opens its WORKSTATION
+            (assets + critic verdict + actions), NOT the activity feed. The
+            feed is the default surface when nothing is selected. */}
         <Card className="lg:col-span-3">
           <CardBody>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-xs uppercase tracking-wider text-text-muted">
-                {selectedStage
-                  ? `Activity — ${stages.find((s) => s.id === selectedStage)?.label}`
-                  : 'Activity feed'}
-              </div>
-              {selectedStage && (
-                <button
-                  onClick={() => setSelectedStage(null)}
-                  className="text-[11px] text-text-secondary hover:text-text-primary"
-                >
-                  Clear filter
-                </button>
-              )}
-            </div>
-
-            {/* When the selected stage is Episode references — render the gallery
-                in place of (or above) the activity feed. Director's request:
-                small thumbnails, click → Drawer with ← back. */}
-            {selectedStage === 'episode_references' && (
-              <div className="mb-3 space-y-3">
-                <EREFPilotPillbar
+            {selectedStageObj ? (
+              <div className="space-y-3">
+                <div className="text-xs uppercase tracking-wider text-text-muted mb-1">
+                  Workstation
+                </div>
+                <StageWorkspacePanel
                   episodeId={id}
-                  stageRunning={
-                    stages.find((s) => s.id === 'episode_references')?.state === 'running'
-                  }
+                  stage={selectedStageObj as WorkstationStage}
+                  critic={servingCritic as WorkstationStage | null}
+                  onClose={() => setSelectedStage(null)}
+                  onChanged={() => mutate()}
+                  onOpenPreview={(assetId, title) => {
+                    setPreviewAssetId(assetId);
+                    setPreviewTitle(title);
+                  }}
                 />
-                <EpisodeReferencesGallery episodeId={id} seriesId={episode.series_id} />
-              </div>
-            )}
 
-            {/* When the selected stage is Visual Generator — render the VGEN
-                pilot pillbar + collapsed-by-default batch defaults panel. */}
-            {selectedStage === 'visual_generator' && (
-              <div className="mb-3 space-y-3">
-                <VGENPilotPillbar
-                  episodeId={id}
-                  stageRunning={
-                    stages.find((s) => s.id === 'visual_generator')?.state === 'running'
-                  }
-                />
-                <VGENBatchPanel
-                  episodeId={id}
-                  seriesId={episode.series_id}
-                />
-              </div>
-            )}
-
-            {filtered.length === 0 && (
-              <p className="text-sm text-text-secondary">
-                {selectedStage ? 'No activity for this stage yet.' : 'Pipeline is idle.'}
-              </p>
-            )}
-
-            <div className="space-y-2">
-              {filtered.map((e) => {
-                const hasAsset = Boolean(e.asset_id);
-                return (
-                  <div
-                    key={e.id}
-                    className="group rounded-lg border border-glass bg-panel-glass-strong px-3 py-2"
-                  >
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-text-primary font-medium flex-1 min-w-0 truncate">
-                        {e.title}
-                      </span>
-                      <span className="text-text-muted">{relativeTime(e.created_at)}</span>
-                      {hasAsset && (
-                        <button
-                          onClick={() => {
-                            setPreviewAssetId(e.asset_id ?? null);
-                            setPreviewTitle(e.title);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary"
-                          title="Open preview"
-                          aria-label="Open preview"
-                        >
-                          <Eye size={12} strokeWidth={1.7} />
-                        </button>
-                      )}
-                    </div>
-                    {e.description && (
-                      <div className="text-[12px] text-text-secondary mt-1 leading-snug">
-                        {e.description}
-                      </div>
-                    )}
+                {/* Artist-specific batch surfaces remain available inside the
+                    workstation context for the two high-volume Artist stages. */}
+                {selectedStage === 'episode_references' && (
+                  <div className="space-y-3 pt-2 border-t border-glass">
+                    <EREFPilotPillbar
+                      episodeId={id}
+                      stageRunning={selectedStageObj.state === 'running'}
+                    />
+                    <EpisodeReferencesGallery episodeId={id} seriesId={episode.series_id} />
                   </div>
-                );
-              })}
-            </div>
+                )}
+                {selectedStage === 'visual_generator' && (
+                  <div className="space-y-3 pt-2 border-t border-glass">
+                    <VGENPilotPillbar
+                      episodeId={id}
+                      stageRunning={selectedStageObj.state === 'running'}
+                    />
+                    <VGENBatchPanel episodeId={id} seriesId={episode.series_id} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-xs uppercase tracking-wider text-text-muted">
+                    Activity feed
+                  </div>
+                </div>
+
+                {filtered.length === 0 && (
+                  <p className="text-sm text-text-secondary">Pipeline is idle.</p>
+                )}
+
+                <div className="space-y-2">
+                  {filtered.map((e) => {
+                    const hasAsset = Boolean(e.asset_id);
+                    return (
+                      <div
+                        key={e.id}
+                        className="group rounded-lg border border-glass bg-panel-glass-strong px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-text-primary font-medium flex-1 min-w-0 truncate">
+                            {e.title}
+                          </span>
+                          <span className="text-text-muted">{relativeTime(e.created_at)}</span>
+                          {hasAsset && (
+                            <button
+                              onClick={() => {
+                                setPreviewAssetId(e.asset_id ?? null);
+                                setPreviewTitle(e.title);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary"
+                              title="Open preview"
+                              aria-label="Open preview"
+                            >
+                              <Eye size={12} strokeWidth={1.7} />
+                            </button>
+                          )}
+                        </div>
+                        {e.description && (
+                          <div className="text-[12px] text-text-secondary mt-1 leading-snug">
+                            {e.description}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </CardBody>
         </Card>
       </div>
@@ -492,6 +449,229 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         title={previewTitle}
       />
     </StudioContentFrame>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// PipelineDag — Topic 3 tier-aware vertical DAG. PRIMARY rows render full-weight
+// in order; their MUTED Designer/Critic children (rows whose `serves` points at
+// the primary) nest indented below, collapsed by default, expanded on click.
+// ──────────────────────────────────────────────────────────────────────────────
+
+const PHASE_LABELS: Record<string, string> = {
+  'pre-production': 'Pre-production',
+  production: 'Production',
+  generation: 'Generation',
+  distribution: 'Distribution',
+  analytics: 'Analytics',
+};
+
+interface PipelineDagProps {
+  stages: Stage[];
+  episodeId: string;
+  selectedStage: string | null;
+  onSelect: (stageId: string) => void;
+  expandedPrimaries: Set<string>;
+  onToggleExpand: (primaryId: string) => void;
+  onOpenPreview: (assetId: string, title?: string) => void;
+  onChanged: () => void;
+}
+
+function PipelineDag({
+  stages,
+  episodeId,
+  selectedStage,
+  onSelect,
+  expandedPrimaries,
+  onToggleExpand,
+  onOpenPreview,
+  onChanged,
+}: PipelineDagProps) {
+  // Group MUTED rows under the PRIMARY id they serve.
+  const childrenByPrimary = new Map<string, Stage[]>();
+  for (const s of stages) {
+    if (s.tier === 'muted' && s.serves) {
+      if (!childrenByPrimary.has(s.serves)) childrenByPrimary.set(s.serves, []);
+      childrenByPrimary.get(s.serves)!.push(s);
+    }
+  }
+
+  // Top-level rows = PRIMARY rows, plus any MUTED row whose parent isn't
+  // present among the stages (defensive — keeps every row reachable even if
+  // `serves` is stale).
+  const presentIds = new Set(stages.map((s) => s.id));
+  const orderedTop = stages.filter(
+    (s) => s.tier !== 'muted' || !s.serves || !presentIds.has(s.serves),
+  );
+
+  let prevPhase: string | null = null;
+
+  return (
+    <ol className="space-y-0.5">
+      {orderedTop.map((s, i) => {
+        const phase = s.phase ?? null;
+        const showPhase = phase != null && phase !== prevPhase;
+        prevPhase = phase;
+        const kids = childrenByPrimary.get(s.id) ?? [];
+        const expanded = expandedPrimaries.has(s.id);
+        return (
+          <li key={s.id}>
+            {showPhase && (
+              <div
+                className="text-[10px] uppercase tracking-[0.15em] mt-3 mb-1 px-2"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {PHASE_LABELS[phase!] ?? ''}
+              </div>
+            )}
+            <PipelineRow
+              stage={s}
+              episodeId={episodeId}
+              active={selectedStage === s.id}
+              onSelect={onSelect}
+              onOpenPreview={onOpenPreview}
+              onChanged={onChanged}
+              childCount={kids.length}
+              expanded={expanded}
+              onToggleExpand={kids.length > 0 ? () => onToggleExpand(s.id) : undefined}
+            />
+            {/* MUTED Designer/Critic children — collapsed by default (q9b). */}
+            {kids.length > 0 && expanded && (
+              <div className="ml-6 mt-0.5 space-y-0.5 border-l border-glass pl-2">
+                {kids.map((k) => (
+                  <PipelineRow
+                    key={k.id}
+                    stage={k}
+                    episodeId={episodeId}
+                    active={selectedStage === k.id}
+                    onSelect={onSelect}
+                    onOpenPreview={onOpenPreview}
+                    onChanged={onChanged}
+                    muted
+                  />
+                ))}
+              </div>
+            )}
+            {i < orderedTop.length - 1 && (
+              <div
+                className="ml-5 h-2 w-px"
+                style={{ background: NODE_COLOR[s.state], opacity: 0.4 }}
+              />
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+interface PipelineRowProps {
+  stage: Stage;
+  episodeId: string;
+  active: boolean;
+  onSelect: (stageId: string) => void;
+  onOpenPreview: (assetId: string, title?: string) => void;
+  onChanged: () => void;
+  muted?: boolean;
+  childCount?: number;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+}
+
+function PipelineRow({
+  stage: s,
+  episodeId,
+  active,
+  onSelect,
+  onOpenPreview,
+  onChanged,
+  muted = false,
+  childCount = 0,
+  expanded = false,
+  onToggleExpand,
+}: PipelineRowProps) {
+  const onRowKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(s.id);
+    }
+  };
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(s.id)}
+      onKeyDown={onRowKey}
+      className="group flex items-center gap-2.5 w-full px-2 py-1.5 rounded-lg transition-colors text-left cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-info)]"
+      style={{ background: active ? 'var(--panel-hover-bg)' : 'transparent' }}
+    >
+      <span
+        className={`leading-none text-center ${muted ? 'text-base w-4' : 'text-2xl w-6'}`}
+        style={{ color: s.unstaffed ? 'var(--text-muted)' : NODE_COLOR[s.state] }}
+      >
+        {NODE_GLYPH[s.state]}
+      </span>
+      <span
+        className={`flex-1 ${muted ? 'text-[12px] text-text-secondary' : 'text-sm text-text-primary'}`}
+      >
+        {s.emoji && <span className="mr-1.5 text-xs">{s.emoji}</span>}
+        {s.label}
+        {muted && s.role && (
+          <span className="ml-1.5 text-[10px] uppercase tracking-wider text-text-muted">
+            {s.role}
+          </span>
+        )}
+        {s.unstaffed && (
+          <span className="ml-1.5 text-[10px] italic text-text-muted">not staffed</span>
+        )}
+      </span>
+      {/* Critic verdict chip — visible on the muted Critic row at a glance. */}
+      {s.latest_verdict && (
+        <span
+          className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+          style={{
+            color: VERDICT_COLOR[s.latest_verdict],
+            background: `color-mix(in oklab, ${VERDICT_COLOR[s.latest_verdict]} 14%, transparent)`,
+          }}
+        >
+          {s.latest_verdict}
+        </span>
+      )}
+      {!muted && s.job_count && s.job_count.total > 0 && (
+        <span className="text-[10px] uppercase tracking-wider text-text-muted">
+          {s.job_count.done}/{s.job_count.total}
+        </span>
+      )}
+      {/* Expand/collapse toggle for a PRIMARY that has muted children. */}
+      {onToggleExpand && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand();
+          }}
+          className="inline-flex items-center justify-center w-6 h-6 rounded-md text-text-muted hover:bg-[var(--panel-hover-bg)] hover:text-text-primary"
+          title={expanded ? 'Collapse designers/critics' : `Show ${childCount} designer/critic step${childCount > 1 ? 's' : ''}`}
+          aria-label={expanded ? 'Collapse' : 'Expand'}
+          aria-expanded={expanded}
+        >
+          {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        </button>
+      )}
+      {!s.unstaffed && (
+        <StageKebabMenu
+          episodeId={episodeId}
+          stageId={s.id as PipelineStageId}
+          stageLabel={s.label}
+          stageAgents={s.agents}
+          stageState={s.state}
+          assetsInReview={s.assets_in_review}
+          latestAssetId={s.latest_asset_id}
+          latestAssetType={s.latest_asset_type}
+          onOpenPreview={onOpenPreview}
+          onChanged={onChanged}
+        />
+      )}
+    </div>
   );
 }
 
