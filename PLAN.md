@@ -18,12 +18,18 @@ Master: f44381f
 Just shipped (this session):
   • PR #26 TD-85 · PR #27 Key Art thumbnail (art gate PASS, v12) · PR #28 TOPIC 3 systematic
     pipeline (15→19 stages, Designer→Critic→Artist, StageWorkspacePanel, Critic-canon vocab).
-  • MEDIA fix (f44381f): all media display via /api/media cache route; branch /staging retired —
-    persist writes to worktree-independent FILMS/_media_cache flat <S>/<E>/media/. Remaining:
-    upload routes (upload/music) still write /staging — repoint next (smaller path).
+  • MEDIA: no media in branches — DONE. Display via /api/media cache route (f44381f) + persist
+    AND upload routes write to worktree-independent FILMS/_media_cache flat <S>/<E>/media/ (item 5, d1a58cf).
   • SERIES ACTIVE derived (430918c): a series is ACTIVE iff its general_idea Bible is LOCKED (no
-    stored flag, no backfill). Fixed: every produced series sat DRAFT forever → listSeries(ACTIVE)=0
-    stranded Polina. S15+S14 now ACTIVE. Glossary + PA prompt updated. tsc · 642 · 30.
+    stored flag, no backfill). Fixed listSeries(ACTIVE)=0 that stranded Polina. S15+S14 now ACTIVE.
+
+Hardening backlog (audit 2026-06-02, BEFORE the 10-20 episode run — see docs):
+  • #1 episode.status stuck BRIEF_APPROVED (never→PUBLISHED) — approve/route.ts, S, 20/20 impact.
+  • #3 fan-out step.sendEvent not in step.run → assets stuck REVIEW on dispatch fail — factory.ts, M.
+  • #4 schedule-analytics silent-fail if EXEC-PUB next_event dispatch throws — wrap in step.run, S.
+  • #5 trigger route doesn't validate episode.status (operator can fire any agent any time), M.
+  • naming-validator code-dir whitelist fix READY on branch worktree-agent-a998b0b832df50dce —
+    HELD: governance-hook self-mod, needs explicit Director OK to merge (reviewed safe).
 
 Active / next (orchestrated master-session + worktree subagents):
   • TOPIC 3 — MERGED; Director UX-smoke in progress (workstation panel, muted rows, verdicts).
