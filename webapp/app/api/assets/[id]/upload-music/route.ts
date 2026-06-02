@@ -24,6 +24,8 @@ import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import { localCacheAbsPath } from '@/lib/media-cache';
+import { uploadCacheFilename } from '@/lib/api/upload-cache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -126,15 +128,15 @@ export const POST = withApiHandler(async (req, ctx) => {
     throw new ValidationError(`File too large: ${blob.size} bytes; max ${MAX_BYTES}`);
   }
 
-  // Persist locally — same staging convention as /upload.
+  // Persist into the worktree-independent media cache — same convention as
+  // /upload (no media in branches — 2026-06-02). Served via /api/media/<file>.
   const buf = Buffer.from(await blob.arrayBuffer());
   const hash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
-  const dir = path.join(process.cwd(), 'public', 'staging', 'music');
-  await fs.mkdir(dir, { recursive: true });
-  const filename = `${hash}.${ext}`;
-  const absolutePath = path.join(dir, filename);
+  const cacheFilename = uploadCacheFilename(asset.filename, hash, ext);
+  const absolutePath = localCacheAbsPath(cacheFilename);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, buf);
-  const browserUrl = `/staging/music/${filename}`;
+  const browserUrl = `/api/media/${encodeURIComponent(cacheFilename)}`;
   const originalFilename = blob.name ?? `music.${ext}`;
 
   // Patch metadata.animatic_v1.music_* fields, leave the rest of metadata
