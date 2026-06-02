@@ -511,7 +511,14 @@ export function createAgentInngestFunction<E extends string>(
         nextEventCandidate !== null &&
         !Array.isArray(nextEventCandidate) &&
         (nextEventCandidate.name.startsWith('sandystudio/exec-eprev/') ||
-          nextEventCandidate.name.startsWith('sandystudio/exec-vprev/'));
+          nextEventCandidate.name.startsWith('sandystudio/exec-vprev/') ||
+          // Script Critic (Story Editor) auto-reads the Writer's draft before the
+          // Director sees it — parity with the Reference/Video critics (Director
+          // 2026-06-02: «критик разве не должен сам читать?»). Safe re: the Mode-1
+          // gate — SREV's PASS→Storyboard event is NOT a critic chain, so the
+          // script still stops for the Director's approval, now WITH the Critic's
+          // verdict attached. REVISE→Writer mirrors the other critics' loop policy.
+          nextEventCandidate.name.startsWith('sandystudio/exec-srev/'));
 
       if (autoChain || isCriticChain) {
         if (nextEventCandidate) {
