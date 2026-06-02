@@ -11,40 +11,43 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-02
-Mode:   ===5=== EDIT (master-session authorized) · Governance Mode 1 MANUAL
-Master: f44381f
+Date:   2026-06-02 (session cleared here — resume from this block)
+Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: dffe5b3
 
-Just shipped (this session):
-  • PR #26 TD-85 · PR #27 Key Art thumbnail (art gate PASS, v12) · PR #28 TOPIC 3 systematic
-    pipeline (15→19 stages, Designer→Critic→Artist, StageWorkspacePanel, Critic-canon vocab).
-  • MEDIA: no media in branches — DONE. Display via /api/media cache route (f44381f) + persist
-    AND upload routes write to worktree-independent FILMS/_media_cache flat <S>/<E>/media/ (item 5, d1a58cf).
-  • SERIES ACTIVE derived (430918c): a series is ACTIVE iff its general_idea Bible is LOCKED (no
-    stored flag, no backfill). Fixed listSeries(ACTIVE)=0 that stranded Polina. S15+S14 now ACTIVE.
+▶ RESUME PRIORITY #1 — TD-39 (PA delivery ack). Recurring pain: Polina reports
+  «запустила» but the job never runs (HTTP 200 on dispatch ≠ executor pickup —
+  silent loss when worker down / fan-out lost). Root Mode-2.5/3 blocker, only
+  worked-around so far. FIX Layer 1: after a PA dispatch, poll jobs.status IN
+  (RUNNING,COMPLETED) OR activity agent_started ≤10s; else return pickup_timeout
+  so Polina says «не подхватилось» instead of false success. (long-debt #39 + audit.)
 
-Hardening backlog (audit 2026-06-02, BEFORE the 10-20 episode run — see docs):
-  • #1 episode.status stuck BRIEF_APPROVED (never→PUBLISHED) — approve/route.ts, S, 20/20 impact.
-  • #3 fan-out step.sendEvent not in step.run → assets stuck REVIEW on dispatch fail — factory.ts, M.
-  • #4 schedule-analytics silent-fail if EXEC-PUB next_event dispatch throws — wrap in step.run, S.
-  • #5 trigger route doesn't validate episode.status (operator can fire any agent any time), M.
-  • naming-validator code-dir whitelist fix READY on branch worktree-agent-a998b0b832df50dce —
-    HELD: governance-hook self-mod, needs explicit Director OK to merge (reviewed safe).
+E02 «The Tidy Tornado» (id 8b32b3e0-…): Writer Script v02 (RU, 61s, no dialogue,
+  blackout finale) in REVIEW — awaiting DIRECTOR approval. Story-Editor auto-read
+  shipped (dffe5b3) AFTER v02 was made → SREV won't retro-run on v02; Director
+  either has Polina trigger Story Editor on v02 then approve, or approves as-is.
 
-Active / next (orchestrated master-session + worktree subagents):
-  • TOPIC 3 — MERGED; Director UX-smoke in progress (workstation panel, muted rows, verdicts).
-  • OUTPUT-CRITIC architecture — DESIGNED (docs/output-critic-architecture-design.md); adversarial
-    verdict=needs_revision. Mode-3 autonomy key (AI judges generated artifacts, not just plans).
-    CRITICAL open: sync-vs-async invocation + per-episode regen budget cap. Dedicated sprint AFTER Topic-2.
-  • TOPIC 2 (q6) — finish distribution (COPY/PUB) + Audience Analyst → full E02 smoke on clean pipeline.
-    Real publish+analytics DEFERRED to ~10-20 Shorts (mock until then).
+OPERATING DOCTRINE (memory: nudge_polina_dont_act_for_her):
+  • Тео = Director's proxy. Nudge Polina via team-chat (POST /api/team-chat/post,
+    author=Тео, Bearer TEAM_CHAT_TOKEN) in Director's voice; she executes + LEARNS.
+  • Discriminator: Polina misused a working tool → TEACH (nudge); SYSTEM broke
+    (tool/gate/dispatch/worker) → Тео FIXES CODE. Mode 2.5: only Director's verbal
+    «да» authorizes Polina mutations — Director nudges+approves, Тео on-call for bugs.
+  • Keep Inngest worker (:8288) + dev (:3000) alive via preview_start, NEVER manual
+    bash (double-supervisor = port-8288 war; killing worker = silent stall).
 
-Open architectural threads (carried, see docs/PLAN-history.md):
-  • Camera same-angle (q16) — openai-edits-multi has no per-ref weight; single Location ref
-    locks layout → all shots same angle. Options: flag-gate / Bible sub-area refs / Flux Redux.
-  • TD-39 — PA delivery ack gap BLOCKS Mode 3/4 (long-debt #39).
+Shipped this session: PR#26 TD-85 · PR#27 Key Art (v12) · PR#28 TOPIC 3 pipeline ·
+  media-no-branches (d1a58cf) · series-active-derived (430918c) · screenwriter
+  max_tokens 8000→16000 RU truncation fix (5b7fc1d) · SREV Script-Critic auto-read (dffe5b3).
 
-Budget E21: $4.46 / $25.  Episodes: SS-S15-E01 "Heavy Friend" (full pipeline, S15 active series).
+Hardening backlog (before 10-20 episode run): #1 episode.status stuck BRIEF_APPROVED
+  (approve/route.ts,S) · #3 fan-out sendEvent not in step.run (factory.ts,M) · #4
+  schedule-analytics silent-fail (S) · #5 trigger doesn't validate episode.status ·
+  critic REVISE→producer bounce doesn't auto-close in Mode 1 (SREV/EPREV/VPREV; add
+  + revision cap 2-3 → HALT) · WCHK Continuity Critic same auto-read gap · naming-hook
+  whitelist HELD on branch worktree-agent-a998b0b832df50dce (needs Director OK, gov-hook).
+OUTPUT-CRITIC design (docs/output-critic-architecture-design.md): needs_revision
+  (sync-vs-async + per-episode regen budget cap). Mode-3 key. Sprint AFTER Topic-2.
+Camera same-angle (q16) carried. Episodes: S15-E01 "Heavy Friend", S15-E02 in prod.
 ```
 
 ---
