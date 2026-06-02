@@ -13,25 +13,21 @@
 ```
 Date:   2026-06-02
 Mode:   ===5=== EDIT (master-session authorized) · Governance Mode 1 MANUAL
-Master: baa1e00
+Master: 280719b
 
-Just shipped:
-  • PR #26 → 072194e — TD-85 resolution discipline in Shot Plan pipeline.
-  • PR #27 → baa1e00 — Key Art Designer: multi-canon thumbnail pipeline (EXEC-THUMB-DESIGNER
-    → SPC-thumb_plan → EXEC-THUMB renderer, openai-edits-multi + sharp 1280×720 + overlay)
-    + Drive-backed /api/media/[id] (kills worktree-fragile /staging). tsc · 637 tests · 30 replay.
-    Live art gate PASSED on SS-S15-E01 ($0.34): 3 on-model thumbnails, Director picked v12 (scale-led).
+Just shipped (this session):
+  • PR #26 TD-85 resolution discipline · PR #27 Key Art Designer thumbnail pipeline (art gate
+    PASSED SS-S15-E01 $0.34, v12 winner) · PR #28 TOPIC 3 systematic pipeline: 15→19 stages,
+    Designer→Critic→Artist triad, StageWorkspacePanel (click stage → agent workstation, NOT feed),
+    single role vocab (Critic canon). tsc · 642 tests · 30 replay. ⏳ awaiting Director UX smoke.
 
-Active work — orchestrated master-session + worktree subagents:
-  • TOPIC 3 (PRIORITY, q8a) — SYSTEMATIC PIPELINE. Stages today don't reflect the real agent
-    graph consistently (reference shows only Artist; video shows Designer+Artist; key art shows
-    Designer that also renders). Goal: every agent/block visible, Critic visible, per-stage
-    check/edit/retrigger, primary stages prominent + intermediate (critic/designer) muted but
-    present, ONE name per role (supervisor==critic). Folds in old StageWorkspacePanel (q2).
-    → read-only inventory workflow running (real graph vs displayed + naming gaps) → design → build.
-  • TOPIC 2 (q6) — finish distribution (COPY/PUB) + Audience Analyst (ANAL) blocks so E02 runs a
-    FULL chain. Real YouTube publish + real analytics DEFERRED until ~10-20 Shorts volume (mock until then).
-  • Then: full E02 smoke on the CLEAN pipeline.
+Active / next (orchestrated master-session + worktree subagents):
+  • TOPIC 3 — MERGED; Director live-smoke pending (muted-row collapse/expand, workstation panel, verdicts).
+  • OUTPUT-CRITIC architecture — DESIGNED (docs/output-critic-architecture-design.md); adversarial
+    verdict=needs_revision. Mode-3 autonomy key (AI judges generated artifacts, not just plans).
+    CRITICAL open: sync-vs-async invocation + per-episode regen budget cap. Dedicated sprint AFTER Topic-2.
+  • TOPIC 2 (q6) — finish distribution (COPY/PUB) + Audience Analyst → full E02 smoke on clean pipeline.
+    Real publish+analytics DEFERRED to ~10-20 Shorts (mock until then).
 
 Open architectural threads (carried, see docs/PLAN-history.md):
   • Camera same-angle (q16) — openai-edits-multi has no per-ref weight; single Location ref
