@@ -25,10 +25,13 @@ import type { AgentInputs } from '../types';
 
 export const SCREENWRITER_CONTRACT = 'screenwriter@v1';
 export const SCREENWRITER_MODEL = 'claude-sonnet-4-6';
-// Sonnet outputs Russian/Cyrillic at ~2-3 tokens per word — a 60s comedy
-// script + 6-9 scenes JSON block routinely exceeds 4000 tokens.
-// 8000 gives comfortable headroom while staying well under cost ceiling.
-export const SCREENWRITER_MAX_TOKENS = 8000;
+// Sonnet outputs Russian/Cyrillic at ~2-3 tokens per word. 8000 was empirically
+// too low: a 60s comedy rewrite with 28-32 gag beats in Russian + the scenes JSON
+// block hit the cap and truncated before the closing ```json fence → parser failed
+// ("Expected fenced json block at end of response"), Writer FAILED (SS-S15-E02 v02,
+// 2026-06-02). Bumped to 16000 (matches Storyboarder; SREV is 12000) — headroom for
+// verbose languages + dense beat counts, still well under the cost ceiling.
+export const SCREENWRITER_MAX_TOKENS = 16000;
 export const SCREENWRITER_COST_CEILING_USD = 0.5;
 
 export class ScreenwriterError extends Error {
