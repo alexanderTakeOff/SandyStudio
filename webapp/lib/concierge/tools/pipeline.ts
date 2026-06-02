@@ -228,11 +228,15 @@ function stageSummary(s: PipelineStageSnapshot) {
 function stageOf(ft: string): string | null {
   if (ft.startsWith('SPC-brief')) return 'brief';
   if (ft.startsWith('SCR')) return 'screenwriter';
-  if (ft === 'REV-script_qa') return 'script_reviewer';
+  if (ft === 'REV-script_qa') return 'script_critic';
   if (ft.startsWith('STB')) return 'storyboarder';
-  if (ft === 'REV-world_check') return 'continuity_check';
+  if (ft === 'REV-world_check' || ft === 'REV-continuity') return 'continuity_critic';
+  if (ft.startsWith('SPC-ref_plan')) return 'reference_designer';
+  if (ft.startsWith('REV-ref_plan')) return 'reference_critic';
   if (ft.startsWith('IMG-episode_ref')) return 'episode_references';
   if (ft.startsWith('VID-animatic')) return 'animatic';
+  if (ft.startsWith('SPC-shot_plan')) return 'shot_designer';
+  if (ft.startsWith('REV-shot_plan')) return 'shot_critic';
   if (ft.startsWith('VID-shot')) return 'visual_generator';
   if (ft.startsWith('VID-final_cut')) return 'final_cut';
   if (ft.startsWith('AUD-music')) return 'music_generator';

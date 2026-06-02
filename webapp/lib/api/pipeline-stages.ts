@@ -1,34 +1,56 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // lib/api/pipeline-stages.ts
-// Episode pipeline view derivation — backbone v2.5 (Step 5).
+// Episode pipeline view derivation — Topic 3 systematization (19-row model).
 //
 // Pre-Step-5 design grouped agents into stages (e.g. "Script" hid both EXEC-SW
 // and EXEC-SREV under one row). Director's feedback (2026-05-01): show every
-// agent as its own row, including background validators (`EXEC-SREV`,
-// `EXEC-CONT` once it lands), so nothing happens invisibly.
+// agent as its own row, including background critics (`EXEC-SREV`,
+// `EXEC-WCHK`, etc.), so nothing happens invisibly.
 //
-// Pipeline rows now correspond 1-to-1 with agents, grouped visually by phase.
+// Topic 3 (2026-06-02, docs/topic3-pipeline-systematization-design.md): the
+// pipeline now reflects the per-artifact operating model
+//   Designer (plan) → Plan-Critic (verdict) → Artist (generate, $) → Output-Critic
+// 19 ordered rows, each tagged `tier`:
+//   - PRIMARY = Artist/Author/Editor + hard-gate stages (the ones that produce
+//     the artifact the Director acts on)
+//   - MUTED   = Designer (plan) + Critic (verdict) stages — they support a
+//     PRIMARY row and collapse under it in the UI.
+// `latest_verdict` (PASS/REVISE/FAIL) surfaces a Critic row's most recent
+// judgment, parsed from the REV / Plan asset body or description.
+// `serves` ties a MUTED row to the PRIMARY it gates (UI indent / collapse).
+//
 // `stage` was kept as the type name for backward compat, but conceptually
-// each row is now a pipeline-agent slot.
+// each row is now a pipeline-agent slot. Legacy ids are preserved so old test
+// fixtures and cached episode pages still resolve.
 // ──────────────────────────────────────────────────────────────────────────────
 
 export type PipelineStageId =
   | 'brief'
   | 'screenwriter'
-  | 'script_reviewer'
+  | 'script_critic'
   | 'storyboarder'
-  | 'continuity_check'
+  | 'continuity_critic'
+  | 'reference_designer'
+  | 'reference_critic'
   | 'episode_references'
   | 'music_generator'
   | 'animatic'
-  | 'shot_planning'
+  | 'shot_designer'
+  | 'shot_critic'
   | 'visual_generator'
   | 'final_cut'
   | 'copywriter'
+  | 'thumbnail_designer'
+  | 'thumbnail_critic'
   | 'thumbnail_creator'
   | 'publisher'
   | 'analytics_collector'
-  // Legacy ids kept so old test fixtures still compile during transition.
+  // Legacy ids kept so old test fixtures + cached pages still compile/resolve.
+  // Topic 3 renamed: script_reviewer→script_critic, continuity_check→
+  // continuity_critic, shot_planning→shot_designer. Old ids alias the new ones.
+  | 'script_reviewer'
+  | 'continuity_check'
+  | 'shot_planning'
   | 'script'
   | 'storyboard'
   | 'episode_reference'
@@ -53,19 +75,62 @@ export type PipelinePhase =
   | 'distribution'
   | 'analytics';
 
+/**
+ * Visual tier (Topic 3 §3). PRIMARY rows render full-weight; MUTED rows
+ * (Designer plan + Critic verdict) collapse to a thin sub-line indented under
+ * the PRIMARY they `serves`, expanding on click.
+ */
+export type PipelineTier = 'primary' | 'muted';
+
+/**
+ * Role-word per Topic 3 §2 vocabulary. Drives the subtitle / icon affordance
+ * but is informational — tier is what the UI keys off for muting.
+ */
+export type PipelineRole =
+  | 'input'
+  | 'author'
+  | 'designer'
+  | 'critic'
+  | 'artist'
+  | 'editor'
+  | 'publisher'
+  | 'analyst';
+
+/** Critic verdict surfaced on a row (Topic 3 §4 — workstation + muted line). */
+export type PipelineVerdict = 'PASS' | 'REVISE' | 'FAIL';
+
 export interface PipelineStageSnapshot {
   id: PipelineStageId;
   /** Human label shown in the UI row. */
   label: string;
+  /** Optional role-specific subtitle (e.g. "Story Editor"). */
+  subtitle?: string;
   /** Agents that contribute to this row. Now usually a single id. */
   agents: string[];
   /** Visual phase grouping for the pipeline view. */
   phase: PipelinePhase;
+  /** Visual tier — PRIMARY full-weight, MUTED collapses under its `serves`. */
+  tier: PipelineTier;
+  /** Canonical role-word (Topic 3 §2). */
+  role: PipelineRole;
+  /**
+   * For MUTED rows: the PRIMARY stage id this row serves (Critic tucks under
+   * the artifact it gates; Designer tucks under the Artist it plans for).
+   */
+  serves?: PipelineStageId;
   /** Optional emoji for the row icon (matches registry.ts). */
   emoji?: string;
   state: PipelineNodeState;
   latest_asset_id?: string;
   latest_asset_type?: string;
+  /** Most-recent Critic verdict for this row, if any (PASS/REVISE/FAIL). */
+  latest_verdict?: PipelineVerdict;
+  /**
+   * True when the row is an honest empty slot — a role acknowledged in the
+   * model but not yet staffed by an agent (Topic 3 §3 q11a, e.g.
+   * `thumbnail_critic`). Renders "not staffed" and carries no actions.
+   */
+  unstaffed?: boolean;
   job_count?: { total: number; done: number; running: number; failed: number };
   /** Count of assets in this stage with status REVIEW. */
   assets_in_review?: number;
@@ -78,6 +143,10 @@ interface AssetLike {
   status: string;
   agent_id: string | null;
   created_at: string;
+  /** Optional — Critic verdict is parsed from here when present. */
+  description?: string | null;
+  /** Optional — Plan/REV body parsed for verdict when description absent. */
+  content?: string | null;
 }
 
 interface JobLike {
@@ -89,43 +158,48 @@ interface JobLike {
 interface RowDef {
   id: PipelineStageId;
   label: string;
+  subtitle?: string;
   agents: string[];
   phase: PipelinePhase;
+  tier: PipelineTier;
+  role: PipelineRole;
+  serves?: PipelineStageId;
   emoji: string;
+  /** Honest empty slot — no agent yet (Topic 3 q11a). */
+  unstaffed?: boolean;
 }
 
-// Per-agent rows. `world_check` (EXEC-WCHK) stays out of MVP pipeline view
-// until Series Bible exists (Step 7+) — gate.ts and registry.ts still know
-// about it for legacy compatibility.
+// Topic 3 (2026-06-02) — 19 ordered rows reflecting the per-artifact loop
+// Designer → Plan-Critic → Artist → Output-Critic. Tier rule (systematic):
+//   Artist/Author/Editor + hard-gate = PRIMARY; Designer(plan) + Critic(verdict) = MUTED.
 //
-// Phase A.2 (2026-05-08, Director directive q3b / LT-04): Music moved BEFORE
-// Animatic. The audio reorg fires MGEN in parallel with EREF after world_check
-// approves; EDIT (animatic) gates on BOTH being approved so the animatic
-// preview already plays with music for pacing review. Director observed the
-// pipeline view was still showing Music after Visual Generator — that was a
-// stale visualisation; the actual event chain in approve/route.ts §189–258
-// runs Music early. This row order now matches the event chain.
+// Labels are short English industry-standard role names per
+// `lib/api/agent-names.ts`. Subtitles keep the friendly descriptor. Mirror any
+// change in agent-names.ts + registry.ts display labels.
 //
-// Phase A.2 also added EXEC-STITCH (final cut) after VGEN — added here as
-// `final_cut` so the DAG reflects the assembly stage Director can see.
-// Labels are short English industry-standard role names per `lib/api/agent-names.ts`
-// (Director directive 2026-05-12). Mirror any change in agent-names.ts.
+// Music sits in production phase BEFORE Animatic (audio reorg LT-04): EDIT
+// gates on BOTH MGEN + EREF approved so the animatic preview plays with music.
 const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
-  { id: 'brief',               label: 'Brief',              agents: ['Director'],     phase: 'pre-production', emoji: '🎬' },
-  { id: 'screenwriter',        label: 'Writer',             agents: ['EXEC-SW'],      phase: 'pre-production', emoji: '✍️' },
-  { id: 'script_reviewer',     label: 'Story Editor',       agents: ['EXEC-SREV'],    phase: 'pre-production', emoji: '🔍' },
-  { id: 'storyboarder',        label: 'Storyboard Artist',  agents: ['EXEC-SB'],      phase: 'production',     emoji: '🎬' },
-  { id: 'continuity_check',    label: 'Script Supervisor',  agents: ['EXEC-CONT'],    phase: 'production',     emoji: '🌍' },
-  { id: 'episode_references',  label: 'Reference Artist',   agents: ['EXEC-EREF'],    phase: 'production',     emoji: '🖼️' },
-  { id: 'music_generator',     label: 'Composer',           agents: ['EXEC-MGEN'],    phase: 'production',     emoji: '🎵' },
-  { id: 'animatic',            label: 'Editor',             agents: ['EXEC-EDIT'],    phase: 'production',     emoji: '🎞️' },
-  { id: 'shot_planning',       label: 'Video Designer',     agents: ['EXEC-VANIM'],   phase: 'generation',     emoji: '📝' },
-  { id: 'visual_generator',    label: 'Video Artist',       agents: ['EXEC-VGEN'],    phase: 'generation',     emoji: '🎥' },
-  { id: 'final_cut',           label: 'Online Editor',      agents: ['EXEC-STITCH'],  phase: 'generation',     emoji: '🎬' },
-  { id: 'copywriter',          label: 'Publicist',          agents: ['EXEC-COPY'],    phase: 'distribution',   emoji: '📝' },
-  { id: 'thumbnail_creator',   label: 'Key Art Designer',   agents: ['EXEC-THUMB'],   phase: 'distribution',   emoji: '🖼️' },
-  { id: 'publisher',           label: 'Distribution',       agents: ['EXEC-PUB'],     phase: 'distribution',   emoji: '🚀' },
-  { id: 'analytics_collector', label: 'Audience Analyst',   agents: ['EXEC-ANAL'],    phase: 'analytics',      emoji: '📊' },
+  { id: 'brief',               label: 'Brief',             agents: ['Director'],            phase: 'pre-production', tier: 'primary', role: 'input',     emoji: '🎬' },
+  { id: 'screenwriter',        label: 'Writer',            agents: ['EXEC-SW'],             phase: 'pre-production', tier: 'primary', role: 'author',    emoji: '✍️' },
+  { id: 'script_critic',       label: 'Script Critic',     subtitle: 'Story Editor',        agents: ['EXEC-SREV'],   phase: 'pre-production', tier: 'muted',   role: 'critic',  serves: 'screenwriter', emoji: '🔍' },
+  { id: 'storyboarder',        label: 'Storyboard Artist', agents: ['EXEC-SB'],             phase: 'production',     tier: 'primary', role: 'author',    emoji: '🎬' },
+  { id: 'continuity_critic',   label: 'Continuity Critic', subtitle: 'Script Supervisor',   agents: ['EXEC-CONT'],   phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'storyboarder', emoji: '🌍' },
+  { id: 'reference_designer',  label: 'Reference Designer', agents: ['EXEC-EREF-DESIGNER'], phase: 'production',     tier: 'muted',   role: 'designer', serves: 'episode_references', emoji: '🧠' },
+  { id: 'reference_critic',    label: 'Reference Critic',  agents: ['EXEC-EPREV'],          phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'episode_references', emoji: '🧐' },
+  { id: 'episode_references',  label: 'Reference Artist',  agents: ['EXEC-EREF'],           phase: 'production',     tier: 'primary', role: 'artist',   emoji: '🖼️' },
+  { id: 'music_generator',     label: 'Composer',          agents: ['EXEC-MGEN'],           phase: 'production',     tier: 'primary', role: 'artist',   emoji: '🎵' },
+  { id: 'animatic',            label: 'Editor',            agents: ['EXEC-EDIT'],           phase: 'production',     tier: 'primary', role: 'editor',   emoji: '🎞️' },
+  { id: 'shot_designer',       label: 'Video Designer',    agents: ['EXEC-VANIM'],          phase: 'generation',     tier: 'muted',   role: 'designer', serves: 'visual_generator', emoji: '📝' },
+  { id: 'shot_critic',         label: 'Video Critic',      agents: ['EXEC-VPREV'],          phase: 'generation',     tier: 'muted',   role: 'critic',  serves: 'visual_generator', emoji: '🧐' },
+  { id: 'visual_generator',    label: 'Video Artist',      agents: ['EXEC-VGEN'],           phase: 'generation',     tier: 'primary', role: 'artist',   emoji: '🎥' },
+  { id: 'final_cut',           label: 'Online Editor',     agents: ['EXEC-STITCH'],         phase: 'generation',     tier: 'primary', role: 'editor',   emoji: '🎬' },
+  { id: 'copywriter',          label: 'Publicist',         agents: ['EXEC-COPY'],           phase: 'distribution',   tier: 'primary', role: 'author',    emoji: '📝' },
+  { id: 'thumbnail_designer',  label: 'Key Art Designer',  agents: ['EXEC-THUMB-DESIGNER'], phase: 'distribution',   tier: 'muted',   role: 'designer', serves: 'thumbnail_creator', emoji: '🎨' },
+  { id: 'thumbnail_critic',    label: 'Key Art Critic',    subtitle: 'not staffed',         agents: [],              phase: 'distribution',   tier: 'muted',   role: 'critic',  serves: 'thumbnail_creator', emoji: '🧐', unstaffed: true },
+  { id: 'thumbnail_creator',   label: 'Key Art Artist',    agents: ['EXEC-THUMB'],          phase: 'distribution',   tier: 'primary', role: 'artist',   emoji: '🖼️' },
+  { id: 'publisher',           label: 'Distribution',      agents: ['EXEC-PUB'],            phase: 'distribution',   tier: 'primary', role: 'publisher', emoji: '🚀' },
+  { id: 'analytics_collector', label: 'Audience Analyst',  agents: ['EXEC-ANAL'],           phase: 'analytics',      tier: 'primary', role: 'analyst',  emoji: '📊' },
 ];
 
 // Map a file_type → row id. Each agent's primary asset goes to its own row.
@@ -133,40 +207,90 @@ const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
   const ft = asset.file_type;
   if (ft.startsWith('SPC-brief')) return 'brief';
   if (ft.startsWith('SCR'))       return 'screenwriter';
-  if (ft === 'REV-script_qa')     return 'script_reviewer';
+  if (ft === 'REV-script_qa')     return 'script_critic';
   if (ft.startsWith('STB'))       return 'storyboarder';
-  if (ft === 'REV-world_check')   return 'continuity_check';
+  if (ft === 'REV-world_check' || ft === 'REV-continuity') return 'continuity_critic';
+  if (ft.startsWith('SPC-ref_plan'))   return 'reference_designer';
+  if (ft === 'REV-ref_plan' || ft.startsWith('REV-ref_plan')) return 'reference_critic';
   if (ft.startsWith('IMG-episode_ref')) return 'episode_references';
   if (ft.startsWith('VID-animatic'))   return 'animatic';
-  if (ft.startsWith('SPC-shot_plan'))  return 'shot_planning';
+  if (ft.startsWith('SPC-shot_plan'))  return 'shot_designer';
+  if (ft === 'REV-shot_plan' || ft.startsWith('REV-shot_plan')) return 'shot_critic';
   if (ft.startsWith('VID-shot'))       return 'visual_generator';
   if (ft.startsWith('VID-final_cut'))  return 'final_cut';
   if (ft.startsWith('AUD-music'))      return 'music_generator';
   if (ft.startsWith('SPC-metadata') || ft.startsWith('SPC-copy')) return 'copywriter';
+  if (ft.startsWith('SPC-thumb_plan')) return 'thumbnail_designer';
   if (ft.startsWith('IMG-thumbnail')) return 'thumbnail_creator';
   if (ft.startsWith('REV-publish'))   return 'publisher';
   if (ft.startsWith('REV-analytics')) return 'analytics_collector';
   return null;
 };
 
+// Topic 3: GAGAD folds into the relevant Critic row by review phase. GAGAD
+// reviewing reference plans → reference_critic; reviewing shot plans →
+// shot_critic. Without per-job phase context the routing keys on the agent's
+// pairing (it only ever runs alongside EREF or VANIM critics) — jobs route to
+// shot_critic by default since that is GAGAD's most common live phase; the
+// asset-level routing (SPC-ref_plan / SPC-shot_plan) remains authoritative for
+// state. See STAGE_FROM_AGENT_GAGAD for the phase-aware override the caller
+// may pass.
 const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'Director':   'brief',
   'EXEC-SW':    'screenwriter',
-  'EXEC-SREV':  'script_reviewer',
+  'EXEC-SREV':  'script_critic',
   'EXEC-SB':    'storyboarder',
-  'EXEC-CONT':  'continuity_check',
-  'EXEC-WCHK':  'continuity_check', // legacy WCHK feeds the Continuity row when CONT is not yet shipped
+  'EXEC-CONT':  'continuity_critic',
+  'EXEC-WCHK':  'continuity_critic', // legacy WCHK feeds the Continuity row when CONT is not yet shipped
+  'EXEC-EREF-DESIGNER': 'reference_designer',
+  'EXEC-EPREV': 'reference_critic',
   'EXEC-EREF':  'episode_references',
   'EXEC-EDIT':  'animatic',
-  'EXEC-VANIM': 'shot_planning',
+  'EXEC-VANIM': 'shot_designer',
+  'EXEC-VPREV': 'shot_critic',
+  'EXEC-GAGAD': 'shot_critic', // GAGAD dual-role; default to its most common live phase
   'EXEC-VGEN':   'visual_generator',
   'EXEC-STITCH': 'final_cut',
   'EXEC-MGEN':   'music_generator',
   'EXEC-COPY':  'copywriter',
+  'EXEC-THUMB-DESIGNER': 'thumbnail_designer',
   'EXEC-THUMB': 'thumbnail_creator',
   'EXEC-PUB':   'publisher',
   'EXEC-ANAL':  'analytics_collector',
 };
+
+/**
+ * Parse a Critic verdict (PASS / REVISE / FAIL) out of a REV / Plan asset.
+ * Critics persist their verdict two ways:
+ *   - in `description`: "… · verdict PASS · cost …" (script/animator critics)
+ *   - in the trailing JSON body: `"verdict": "REVISE"`
+ * We check description first (cheap, always present on critic outputs), then
+ * fall back to a JSON-body scan. Unknown / absent → undefined.
+ */
+function parseVerdict(asset: AssetLike): PipelineVerdict | undefined {
+  const norm = (v: string): PipelineVerdict | undefined => {
+    const u = v.toUpperCase();
+    if (u === 'PASS' || u === 'PASS_WITH_UNCERTAINTY') return 'PASS';
+    if (u === 'REVISE') return 'REVISE';
+    if (u === 'FAIL') return 'FAIL';
+    return undefined;
+  };
+  const desc = asset.description ?? '';
+  const descMatch = /verdict\s+(PASS_WITH_UNCERTAINTY|PASS|REVISE|FAIL)/i.exec(desc);
+  if (descMatch?.[1]) return norm(descMatch[1]);
+  const body = asset.content ?? '';
+  const bodyMatch = /"verdict"\s*:\s*"(PASS_WITH_UNCERTAINTY|PASS|REVISE|FAIL)"/i.exec(body);
+  if (bodyMatch?.[1]) return norm(bodyMatch[1]);
+  return undefined;
+}
+
+/** Critic row ids whose `latest_verdict` is meaningful. */
+const CRITIC_ROW_IDS: ReadonlySet<PipelineStageId> = new Set<PipelineStageId>([
+  'script_critic',
+  'continuity_critic',
+  'reference_critic',
+  'shot_critic',
+]);
 
 /**
  * Minimal shape of `episodes.metadata` the snapshot builder cares about.
@@ -243,28 +367,11 @@ export function buildPipelineSnapshot(
     // on a stage that has produced only 2/24 references. Same trap from
     // the opposite direction: "pilots in REVIEW + fan-out running" is
     // PRODUCTIVE work, not `blocked`.
-    //
-    // Pilot-state lifecycle drives the override:
-    //   PENDING_REVIEW   → pilots done, awaiting Director's Approve
-    //                      Direction. Stage MUST be `blocked` (gate) even
-    //                      if both pilots are APPROVED — the rest of the
-    //                      shots haven't been touched yet.
-    //   FANOUT_RUNNING   → fan-out in flight. Stage = `running` (◐).
-    //   FANOUT_COMPLETE  → all shots generated. Legacy rule applies:
-    //                      `approved` only when every shot has an
-    //                      APPROVED variant (handled by hasApprovedAsset
-    //                      combined with the Pillbar's stricter shot-level
-    //                      check — `Advance to Animatic` is the real gate).
-    //   NONE / undefined → no v2 run yet, legacy rule applies.
     if (def.id === 'episode_references') {
       const pilotState = episodeMetadata?.eref_pilot_state;
       if (pilotState === 'PENDING_REVIEW') {
-        // Pilot pass complete, awaiting Director's Approve Direction. The
-        // stage is gated — not green — even if both pilots are APPROVED.
         state = 'blocked';
       } else if (pilotState === 'FANOUT_RUNNING' && hasRunningJob) {
-        // Fan-out actively producing remaining shots. Show running over
-        // any default that would otherwise say blocked/approved.
         state = 'running';
       }
       // FANOUT_COMPLETE / NONE: fall through to default rule above.
@@ -278,15 +385,26 @@ export function buildPipelineSnapshot(
       b.created_at.localeCompare(a.created_at),
     )[0];
 
+    // Topic 3 — surface the most recent Critic verdict on Critic rows.
+    const latest_verdict = CRITIC_ROW_IDS.has(def.id) && latest
+      ? parseVerdict(latest)
+      : undefined;
+
     return {
       id: def.id,
       label: def.label,
+      subtitle: def.subtitle,
       agents: def.agents,
       phase: def.phase,
+      tier: def.tier,
+      role: def.role,
+      serves: def.serves,
       emoji: def.emoji,
+      unstaffed: def.unstaffed,
       state,
       latest_asset_id: latest?.id,
       latest_asset_type: latest?.file_type,
+      latest_verdict,
       assets_in_review: stageAssets.filter((a) => a.status === 'REVIEW').length,
       job_count: {
         total: stageJobs.length,

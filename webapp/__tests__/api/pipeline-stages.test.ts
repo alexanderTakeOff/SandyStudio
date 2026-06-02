@@ -15,26 +15,110 @@ const baseAsset = {
   created_at: '2026-04-29T00:00:00Z',
 };
 
-describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
-  it('returns 15 per-agent rows in canonical order (TD-46: shot_planning between animatic and visual_generator)', () => {
+describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () => {
+  it('returns 19 per-agent rows in canonical Topic 3 order', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     expect(stages.map((s) => s.id)).toEqual([
       'brief',
       'screenwriter',
-      'script_reviewer',
+      'script_critic',
       'storyboarder',
-      'continuity_check',
+      'continuity_critic',
+      'reference_designer',
+      'reference_critic',
       'episode_references',
       'music_generator',
       'animatic',
-      'shot_planning',
+      'shot_designer',
+      'shot_critic',
       'visual_generator',
       'final_cut',
       'copywriter',
+      'thumbnail_designer',
+      'thumbnail_critic',
       'thumbnail_creator',
       'publisher',
       'analytics_collector',
     ]);
+  });
+
+  it('tiers: Artist/Author/Editor + hard-gate = primary; Designer/Critic = muted', () => {
+    const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
+    const byId = new Map(stages.map((s) => [s.id, s]));
+    // PRIMARY
+    for (const id of ['brief', 'screenwriter', 'storyboarder', 'episode_references', 'music_generator', 'animatic', 'visual_generator', 'final_cut', 'copywriter', 'thumbnail_creator', 'publisher', 'analytics_collector'] as const) {
+      expect(byId.get(id)!.tier).toBe('primary');
+    }
+    // MUTED — Designers + Critics
+    for (const id of ['script_critic', 'continuity_critic', 'reference_designer', 'reference_critic', 'shot_designer', 'shot_critic', 'thumbnail_designer', 'thumbnail_critic'] as const) {
+      expect(byId.get(id)!.tier).toBe('muted');
+    }
+  });
+
+  it('muted Critic rows declare the PRIMARY they serve', () => {
+    const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
+    const byId = new Map(stages.map((s) => [s.id, s]));
+    expect(byId.get('script_critic')!.serves).toBe('screenwriter');
+    expect(byId.get('continuity_critic')!.serves).toBe('storyboarder');
+    expect(byId.get('reference_critic')!.serves).toBe('episode_references');
+    expect(byId.get('reference_designer')!.serves).toBe('episode_references');
+    expect(byId.get('shot_critic')!.serves).toBe('visual_generator');
+    expect(byId.get('shot_designer')!.serves).toBe('visual_generator');
+    expect(byId.get('thumbnail_designer')!.serves).toBe('thumbnail_creator');
+  });
+
+  it('thumbnail_critic is an honest unstaffed empty slot (q11a)', () => {
+    const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
+    const tc = stages.find((s) => s.id === 'thumbnail_critic')!;
+    expect(tc.unstaffed).toBe(true);
+    expect(tc.agents).toEqual([]);
+    expect(tc.tier).toBe('muted');
+    expect(tc.role).toBe('critic');
+  });
+
+  it('Reference Designer plan + Reference Critic verdict route to their own rows', () => {
+    const stages = buildPipelineSnapshot(
+      'PRODUCTION_IN_PROGRESS',
+      [
+        {
+          ...baseAsset,
+          filename: 'SS-S01-E01-SPC-ref_plan-SC01-SH01-v01-REVIEW.md',
+          file_type: 'SPC-ref_plan-SC01-SH01',
+          status: 'REVIEW',
+        },
+        {
+          ...baseAsset,
+          id: 'a2',
+          filename: 'SS-S01-E01-REV-ref_plan-SC01-SH01-v01-APPROVED.md',
+          file_type: 'REV-ref_plan-SC01-SH01',
+          status: 'APPROVED',
+          description: 'Produced by EXEC-EPREV · verdict PASS · cost $0.02',
+        },
+      ],
+      [{ id: 'j1', agent_id: 'EXEC-EREF-DESIGNER', status: 'COMPLETED' }],
+    );
+    expect(stages.find((s) => s.id === 'reference_designer')!.state).toBe('blocked');
+    const rc = stages.find((s) => s.id === 'reference_critic')!;
+    expect(rc.state).toBe('approved');
+    expect(rc.latest_verdict).toBe('PASS');
+  });
+
+  it('shot_critic surfaces REVISE verdict from the latest REV body', () => {
+    const stages = buildPipelineSnapshot(
+      'GENERATION_IN_PROGRESS',
+      [
+        {
+          ...baseAsset,
+          filename: 'SS-S01-E01-REV-shot_plan-SC01-SH01-v01-REVISION.md',
+          file_type: 'REV-shot_plan-SC01-SH01',
+          status: 'REVISION',
+          content: 'notes\n```json\n{ "verdict": "REVISE" }\n```',
+        },
+      ],
+      [],
+    );
+    const sc = stages.find((s) => s.id === 'shot_critic')!;
+    expect(sc.latest_verdict).toBe('REVISE');
   });
 
   it('Music row sits in production phase BEFORE Animatic (audio reorg LT-04)', () => {
@@ -68,7 +152,7 @@ describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
     expect(phases[phases.length - 1]).toBe('analytics');
   });
 
-  it('SPC-shot_plan asset routes to shot_planning row, EXEC-VANIM job too (TD-46)', () => {
+  it('SPC-shot_plan asset routes to shot_designer row, EXEC-VANIM job too (Topic 3 rename)', () => {
     const stages = buildPipelineSnapshot(
       'GENERATION_IN_PROGRESS',
       [
@@ -82,10 +166,11 @@ describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
       ],
       [{ id: 'j1', agent_id: 'EXEC-VANIM', status: 'RUNNING' }],
     );
-    const sp = stages.find((s) => s.id === 'shot_planning')!;
+    const sp = stages.find((s) => s.id === 'shot_designer')!;
     expect(sp.label).toBe('Video Designer');
     expect(sp.agents).toEqual(['EXEC-VANIM']);
     expect(sp.phase).toBe('generation');
+    expect(sp.tier).toBe('muted');
     expect(sp.state).toBe('blocked'); // REVIEW asset → blocked
     expect(sp.assets_in_review).toBe(1);
     expect(sp.job_count?.running).toBe(1);
@@ -131,7 +216,7 @@ describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
     expect(stages.find((s) => s.id === 'brief')?.state).toBe('approved');
   });
 
-  it('REV-script_qa goes to its own script_reviewer row, not screenwriter', () => {
+  it('REV-script_qa goes to its own script_critic row, not screenwriter', () => {
     const stages = buildPipelineSnapshot(
       'SCRIPT_REVIEW',
       [
@@ -152,7 +237,7 @@ describe('buildPipelineSnapshot — per-agent rows (backbone v2.5)', () => {
       [],
     );
     expect(stages.find((s) => s.id === 'screenwriter')?.state).toBe('approved');
-    expect(stages.find((s) => s.id === 'script_reviewer')?.state).toBe('blocked');
+    expect(stages.find((s) => s.id === 'script_critic')?.state).toBe('blocked');
   });
 
   it('failed VGEN job → visual_generator row failed', () => {
