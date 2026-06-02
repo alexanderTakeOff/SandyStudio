@@ -19,9 +19,11 @@ Just shipped (this session):
   • PR #26 TD-85 · PR #27 Key Art thumbnail (art gate PASS, v12) · PR #28 TOPIC 3 systematic
     pipeline (15→19 stages, Designer→Critic→Artist, StageWorkspacePanel, Critic-canon vocab).
   • MEDIA fix (f44381f): all media display via /api/media cache route; branch /staging retired —
-    persist writes to worktree-independent FILMS/_media_cache flat <S>/<E>/media/; route accepts
-    id OR filename. tsc · 642 tests · 30 replay. Remaining: upload routes (upload/music) still
-    write /staging — repoint next (smaller path).
+    persist writes to worktree-independent FILMS/_media_cache flat <S>/<E>/media/. Remaining:
+    upload routes (upload/music) still write /staging — repoint next (smaller path).
+  • SERIES ACTIVE derived (430918c): a series is ACTIVE iff its general_idea Bible is LOCKED (no
+    stored flag, no backfill). Fixed: every produced series sat DRAFT forever → listSeries(ACTIVE)=0
+    stranded Polina. S15+S14 now ACTIVE. Glossary + PA prompt updated. tsc · 642 · 30.
 
 Active / next (orchestrated master-session + worktree subagents):
   • TOPIC 3 — MERGED; Director UX-smoke in progress (workstation panel, muted rows, verdicts).

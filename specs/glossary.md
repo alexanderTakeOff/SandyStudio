@@ -85,6 +85,8 @@ PA-proxy tool that lets Director ask a specific agent (Designer / Animator / etc
 ### Series / Сериал
 Top-level production unit (e.g. "Sandy & Friends"). Owns its own bible, libraries, audio palette, visual style. Spans multiple seasons. Series-level assets are LOCKED once approved and reused across all child episodes.
 
+**Series status (DRAFT · ACTIVE · ARCHIVED).** `ACTIVE` is **derived, not stored** (Director directive 2026-06-02): a series counts as ACTIVE once its `general_idea` Bible doc (`SBL-general_idea`) is **LOCKED** — the moment its concept is canonized and it enters production. New series are stored `DRAFT` and stay DRAFT until the Director locks the general idea (a Director-only act, CLAUDE.md §6). `ARCHIVED` is an explicit stored override. No stored ACTIVE flag ⇒ no drift, no backfill; a series reverts to DRAFT if its general idea is unlocked for a new version. Computed by `webapp/lib/api/series-status.ts`.
+
 ### Season / Сезон
 Numbered grouping of episodes within a Series (e.g. `S01`, `S02`). May introduce new characters or refine style, but inherits Series Bible. Code: `S{NN}`.
 
