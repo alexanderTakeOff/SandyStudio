@@ -50,6 +50,8 @@ import { runScriptReviewer, ScriptReviewerError } from './runners/script-reviewe
 import { runStoryboarder, StoryboarderError } from './runners/storyboarder';
 import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-check';
 import { runCopywriter, CopywriterError } from './runners/copywriter';
+import { runThumbnailDesigner, ThumbnailDesignerError } from './runners/thumbnail-designer';
+import { runThumbnailRenderer, ThumbnailRendererError } from './runners/thumbnail-renderer';
 import { runEpisodeReferences, EpisodeReferencesError } from './runners/episode-references';
 import {
   runEpisodeReferenceDesigner,
@@ -529,18 +531,6 @@ function buildShotPrompt(inputs: AgentInputs, shotId?: string): string {
   return [
     `Single shot from animated comedy "${title}" (shot ${shotId ?? '?'}).`,
     'Vibrant 2D animation, dynamic action, comedic timing, 16:9 framing, no text.',
-  ].join(' ');
-}
-
-function buildThumbnailPrompt(inputs: AgentInputs): string {
-  const ep = inputs.episode as { episode_code?: string; title_working?: string | null };
-  const code = ep.episode_code ?? 'episode';
-  const title = ep.title_working ?? 'Untitled comedy short';
-  return [
-    `YouTube thumbnail for an animated comedy short titled "${title}" (${code}).`,
-    'Style: stylised 2D-ish animation aesthetic, vibrant colours, dynamic composition,',
-    'a clear focal subject readable at 320×180, comedy/sketch art direction.',
-    'No text, no watermark, 16:9 framing, high contrast.',
   ].join(' ');
 }
 
@@ -2457,40 +2447,113 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       };
     }
 
-    case 'EXEC-THUMB': {
-      if (provider?.providerId === 'gpt-image-1') {
-        if (!supabase) throw new Error('EXEC-THUMB real path requires supabase in runArgs');
-        const real = await generateImageOpenAI({
-          prompt: buildThumbnailPrompt(inputs),
-          size: '1536x1024',
-          quality: 'medium',
-        });
-        const persisted = await persistBinary({
-          base64: real.b64_data,
-          ext: 'png',
-          driveFilename: `${episodeCode ?? 'SS-unknown'}-IMG-thumbnail-v01-DRAFT.png`,
-          localHint: `thumb-${episodeId.slice(-8)}`,
-          episodeCode,
-          supabase,
-        });
-        return {
-          outputKind: 'image-png',
-          result: {
-            asset_paths: [persisted.browserUrl],
-            cost_usd: real.cost_usd,
-            metadata: metadataFromPersisted(persisted, {
-              agent_id: agentId,
-              provider_id: 'gpt-image-1',
-              provider_used: 'gpt-image-1',
-              format: real.format,
-              width: real.width,
-              height: real.height,
-              size_bytes: real.size_bytes,
-              revised_prompt: real.revised_prompt ?? null,
-            }),
-          },
-        };
+    case 'EXEC-THUMB-DESIGNER': {
+      // LLM viral-thumbnail Plan author — pure Anthropic cost, no image gen.
+      // Reads the viral-thumbnail-design skill + Bible canon and writes one
+      // SPC-thumb_plan asset with N distinct high-CTR concepts. Director
+      // approves; the EXEC-THUMB executor then renders the variants.
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runThumbnailDesigner({ inputs, revisionNote: args.revisionNote });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                script_asset_id: r.scriptAssetId,
+                designer_notes: r.notes,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                plan_kind: 'thumb_plan',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof ThumbnailDesignerError) {
+            throw new Error(`EXEC-THUMB-DESIGNER: ${err.message}`);
+          }
+          throw err;
+        }
       }
+      // Fallback: mockLLM so replay-pilot + tests without a key keep running.
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: llm.body as Record<string, unknown>,
+            description: 'Stub EXEC-THUMB-DESIGNER mock — set ANTHROPIC_API_KEY for real path',
+            plan_kind: 'thumb_plan',
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-THUMB': {
+      // Plan-driven executor: render the APPROVED SPC-thumb_plan's N variants
+      // via multi-canon gpt-image-2 edits (openai-edits-multi — ALL LOCKED Bible
+      // character canon + style fed together so Sandy + Anvil + … stay on-model),
+      // then a punchy sharp text overlay → N sibling IMG-thumbnail rows. Inserts
+      // directly (skip_save).
+      const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
+      // Resolve the plan: prefer the explicit planAssetId from the event; else
+      // fall back to the latest APPROVED SPC-thumb_plan for the episode. Without
+      // this, a manual EXEC-THUMB trigger (no planAssetId) silently mocked even
+      // though an approved plan existed — the v06-mock bug Director hit.
+      let effectivePlanId = planAssetId;
+      if (!effectivePlanId && supabase) {
+        const { data: planRows } = await supabase
+          .from('assets')
+          .select('id')
+          .eq('episode_id', episodeId)
+          .eq('file_type', 'SPC-thumb_plan')
+          .eq('status', 'APPROVED')
+          .order('version', { ascending: false })
+          .limit(1);
+        effectivePlanId = (planRows?.[0] as { id?: string } | undefined)?.id ?? undefined;
+      }
+      if (hasOpenAI && supabase && effectivePlanId) {
+        try {
+          const r = await runThumbnailRenderer({ inputs, supabase, episodeCode, planAssetId: effectivePlanId });
+          return {
+            outputKind: 'image-png',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                provider_id: 'openai-edits-multi',
+                provider_used: 'gpt-image-2',
+                description: r.description,
+                skip_save: true,
+                inserted_asset_ids: r.insertedAssetIds,
+                total_images: r.totalImages,
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof ThumbnailRendererError) {
+            throw new Error(`EXEC-THUMB: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Fallback: mock placeholder (replay-pilot, no key, or no plan yet).
       const image = await mockImage({
         episodeId,
         assetId: `thumbnail-${episodeId.slice(-8)}`,
@@ -2580,6 +2643,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-WCHK': 'REV-world_check',
   'EXEC-EREF': 'IMG-episode_ref', // backbone v2: between Storyboard and Animatic
   'EXEC-EREF-DESIGNER': 'SPC-ref_plan', // Sprint «Дизайнер и Аниматор» — Plan asset feeds EXEC-EREF executor
+  'EXEC-THUMB-DESIGNER': 'SPC-thumb_plan', // distribution tail — viral thumbnail Plan feeds EXEC-THUMB executor
   'EXEC-EPREV': 'REV-ref_plan', // Day 4 — Designer's Critic verdict (one REV row per Plan)
   'EXEC-VANIM': 'SPC-shot_plan', // Day 6-7 — Animator video Plan per shot
   'EXEC-VPREV': 'REV-shot_plan', // Day 8 — Animator's Critic verdict

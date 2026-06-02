@@ -13,5 +13,12 @@ export const execThumbGenerateThumbnail = createAgentInngestFunction({
   concurrencyId: 'exec-thumb',
   eventName: 'sandystudio/exec-thumb/generate-thumbnail',
   operation: 'thumbnail_generation',
-  // Terminal — thumbnail joins the pile awaiting Director approval before publish.
+  // Plan-driven: carry the APPROVED SPC-thumb_plan id into the runner so the
+  // executor renders the designed variants (absent → mock placeholder).
+  resolveRunArgs: (eventData) => {
+    const planAssetId =
+      typeof eventData.planAssetId === 'string' ? (eventData.planAssetId as string) : undefined;
+    return planAssetId ? { planAssetId } : {};
+  },
+  // Terminal — thumbnails join the pile awaiting Director approval before publish.
 });

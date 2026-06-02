@@ -290,16 +290,34 @@ async function happyPathReplay(): Promise<void> {
   for (const shotId of shotIds) {
     const r = await runPipelineStep(h, 'EXEC-VGEN', { runArgs: { shotId } });
     assert(r.success, `EXEC-VGEN shot ${shotId.slice(-4)}`);
+    const shotAsset = supabase.tables.assets.find((a) => a.id === r.assetId);
+    if (shotAsset) shotAsset.file_type = 'VID-shot';
   }
   const mgen = await runPipelineStep(h, 'EXEC-MGEN', { runArgs: { section: 'main' } });
   assert(mgen.success, `EXEC-MGEN produced music`);
 
-  // Phase D — copy + thumbnail
+  // Publish now gates on the real VID-final_cut, not the animatic. The replay
+  // doesn't exercise ffmpeg EXEC-STITCH (it needs real shot mp4s); inject an
+  // APPROVED final cut so the publish gate is satisfied — mirrors how the
+  // harness fakes downstream file_types above.
+  supabase.tables.assets.push({
+    id: 'final-cut-pilot',
+    episode_id: supabase.tables.episodes[0].id,
+    file_type: 'VID-final_cut',
+    status: 'APPROVED',
+  } as never);
+
+  // Phase D — copy + thumbnail (designer Plan → renderer)
   info('Phase D: metadata + thumbnail');
   const copy = await runPipelineStep(h, 'EXEC-COPY');
   assert(copy.success, `EXEC-COPY produced metadata`);
   const meta = supabase.tables.assets.find((a) => a.id === copy.assetId);
   if (meta) meta.file_type = 'SPC-metadata';
+
+  const thumbPlan = await runPipelineStep(h, 'EXEC-THUMB-DESIGNER');
+  assert(thumbPlan.success, `EXEC-THUMB-DESIGNER authored the thumbnail plan`);
+  const planAsset = supabase.tables.assets.find((a) => a.id === thumbPlan.assetId);
+  if (planAsset) planAsset.file_type = 'SPC-thumb_plan';
 
   const thumb = await runPipelineStep(h, 'EXEC-THUMB');
   assert(thumb.success, `EXEC-THUMB produced thumbnail`);
@@ -327,12 +345,14 @@ async function happyPathReplay(): Promise<void> {
   header('Cross-cutting checks');
 
   const completedJobs = supabase.tables.jobs.filter((j) => j.status === 'COMPLETED');
-  // Expected (backbone v2): SW + SREV + SB + WCHK + EREF + EDIT + 3*VGEN + MGEN
-  //                       + COPY + THUMB + PUB + 4*ANAL = 17
+  // Expected: SW + SREV + SB + WCHK + EREF + EDIT + 3*VGEN + MGEN
+  //         + COPY + THUMB-DESIGNER + THUMB + PUB + 4*ANAL = 18
+  // (distribution tail 2026-06-01 added the THUMB-DESIGNER stage; the final
+  // cut is injected as a fixture rather than run through ffmpeg EXEC-STITCH)
   assert(
-    completedJobs.length === 17,
+    completedJobs.length === 18,
     'jobs.status: every step COMPLETED',
-    `expected 17, found ${completedJobs.length}`,
+    `expected 18, found ${completedJobs.length}`,
   );
 
   const totalSpent = supabase.tables.episodes[0].budget_spent;
@@ -368,7 +388,7 @@ async function governanceRegression(): Promise<void> {
       },
     ],
     assets: [
-      { id: 'a1', episode_id: 'ep-mode1', file_type: 'VID-animatic', status: 'APPROVED' },
+      { id: 'a1', episode_id: 'ep-mode1', file_type: 'VID-final_cut', status: 'APPROVED' },
       { id: 'a2', episode_id: 'ep-mode1', file_type: 'SPC-metadata', status: 'APPROVED' },
       { id: 'a3', episode_id: 'ep-mode1', file_type: 'IMG-thumbnail', status: 'APPROVED' },
     ],

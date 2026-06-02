@@ -297,21 +297,36 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     category: 'distribution',
     model: 'haiku',
     skills: ['content-engine', 'seo', 'brand-voice'],
-    next_agent: 'EXEC-THUMB',
+    next_agent: 'EXEC-THUMB-DESIGNER',
     governance: 'B',
     prompt_file: 'copywriter.md',
+    has_inngest_function: true,
+  },
+
+  'EXEC-THUMB-DESIGNER': {
+    id: 'EXEC-THUMB-DESIGNER',
+    code: 'exec-thumb-designer',
+    display_ru: 'Дизайнер обложек',
+    display_en: 'Thumbnail Designer',
+    emoji: '🎨',
+    category: 'distribution',
+    model: 'sonnet', // LLM art-director: reads viral-thumbnail-design skill + Bible canon
+    skills: ['viral-thumbnail-design'],
+    next_agent: 'EXEC-THUMB', // approved Plan → executor renders variants
+    governance: 'B',
+    prompt_file: 'thumbnail-designer.md',
     has_inngest_function: true,
   },
 
   'EXEC-THUMB': {
     id: 'EXEC-THUMB',
     code: 'exec-thumb',
-    display_ru: 'Иллюстратор обложек',
-    display_en: 'Thumbnail Creator',
+    display_ru: 'Рендер обложек',
+    display_en: 'Thumbnail Renderer',
     emoji: '🖼️',
     category: 'media',
-    model: 'haiku',
-    skills: ['fal-ai-media', 'gan-generator', 'prompt-optimizer'],
+    model: 'haiku', // deterministic executor — renders the approved Plan's variants
+    skills: [],
     next_agent: null,
     governance: 'B',
     prompt_file: 'thumbnail_creator.md',

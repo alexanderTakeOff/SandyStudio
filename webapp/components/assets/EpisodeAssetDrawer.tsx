@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import { withHardBreaks } from '@/lib/markdown-breaks';
+import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
 import {
   ArrowLeft,
   X,
@@ -292,17 +293,7 @@ export function EpisodeAssetDrawer({
     ? promptDoc.history.find((h) => h.version === promptDoc.current_version)
     : undefined;
 
-  const previewCandidates: Array<string | null | undefined> = [
-    asset.drive_path,
-    asset.staging_path,
-    asset.drive_web_view_url,
-    currentPromptEntry?.staging_path,
-    currentPromptEntry?.drive_web_view_url,
-  ];
-  const previewSrc =
-    previewCandidates.find(
-      (c): c is string => typeof c === 'string' && (c.startsWith('/') || c.startsWith('http')),
-    ) ?? null;
+  const previewSrc = resolvePreviewSrc(asset, currentPromptEntry);
   const isImage = !!previewSrc;
 
   async function saveTextEdits() {

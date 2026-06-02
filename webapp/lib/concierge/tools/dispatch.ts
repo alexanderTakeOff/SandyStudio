@@ -23,7 +23,7 @@ interface TriggerAgentArgs {
 export const triggerAgent: Tool<TriggerAgentArgs> = {
   name: 'triggerAgent',
   description:
-    "Manually trigger an EXEC-* agent for an episode. Use this when a stage is idle or you need to restart a failed step. Requires verbal approval from the Director in the conversation (look for 'да', 'одобряю', 'go', 'yes'). Allowed agents: EXEC-SW, EXEC-SREV, EXEC-SB, EXEC-WCHK, EXEC-EREF, EXEC-EDIT, EXEC-VGEN, EXEC-MGEN, EXEC-STITCH, EXEC-COPY, EXEC-THUMB, EXEC-PUB (Director-only), EXEC-ANAL.",
+    "Manually trigger an EXEC-* agent for an episode. Use this when a stage is idle or you need to restart a failed step. Requires verbal approval from the Director in the conversation (look for 'да', 'одобряю', 'go', 'yes'). Allowed agents: EXEC-SW, EXEC-SREV, EXEC-SB, EXEC-WCHK, EXEC-EREF, EXEC-EDIT, EXEC-VGEN, EXEC-MGEN, EXEC-STITCH, EXEC-COPY, EXEC-THUMB-DESIGNER, EXEC-THUMB, EXEC-PUB (Director-only), EXEC-ANAL. Thumbnails are PLAN-FIRST: to make a YouTube thumbnail, trigger EXEC-THUMB-DESIGNER (it authors an SPC-thumb_plan with viral concepts the Director approves); EXEC-THUMB then renders the approved plan. Triggering EXEC-THUMB before an approved plan exists auto-reroutes to the designer.",
   mutating: true,
   schema: {
     type: 'function',
@@ -46,7 +46,7 @@ export const triggerAgent: Tool<TriggerAgentArgs> = {
               'EXEC-EDIT', 'EXEC-VGEN', 'EXEC-VANIM', 'EXEC-VPREV',
               'EXEC-GAGAD',
               'EXEC-MGEN', 'EXEC-STITCH',
-              'EXEC-COPY', 'EXEC-THUMB', 'EXEC-PUB', 'EXEC-ANAL',
+              'EXEC-COPY', 'EXEC-THUMB-DESIGNER', 'EXEC-THUMB', 'EXEC-PUB', 'EXEC-ANAL',
             ],
           },
           reason: {

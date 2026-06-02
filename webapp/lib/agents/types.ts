@@ -27,6 +27,7 @@ export type AgentId =
   | 'EXEC-VGEN'
   | 'EXEC-MGEN'
   | 'EXEC-STITCH'
+  | 'EXEC-THUMB-DESIGNER' // distribution tail 2026-06-01 — viral thumbnail Plan author
   | 'EXEC-THUMB'
   | 'EXEC-COPY'
   | 'EXEC-PUB'
@@ -55,6 +56,7 @@ export type AgentCode =
   | 'exec-vgen'
   | 'exec-mgen'
   | 'exec-stitch'
+  | 'exec-thumb-designer'
   | 'exec-thumb'
   | 'exec-copy'
   | 'exec-pub'

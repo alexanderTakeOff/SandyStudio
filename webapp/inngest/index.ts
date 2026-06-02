@@ -30,6 +30,7 @@ import {
 import { execMgenGenerateMusic } from './functions/exec-mgen';
 import { execStitchAssembleEpisode } from './functions/exec-stitch';
 import { execCopyWriteMetadata } from './functions/exec-copy';
+import { execThumbDesignerPlan } from './functions/exec-thumb-designer';
 import { execThumbGenerateThumbnail } from './functions/exec-thumb';
 import { execPubPublish } from './functions/exec-pub';
 import { execAnalCollect } from './functions/exec-anal';
@@ -63,6 +64,7 @@ export const functions = [
   execMgenGenerateMusic,
   execStitchAssembleEpisode,
   execCopyWriteMetadata,
+  execThumbDesignerPlan,
   execThumbGenerateThumbnail,
   execPubPublish,
   execAnalCollect,

@@ -818,13 +818,25 @@ async function computeNextEvents(
   // ── Metadata APPROVED → EXEC-THUMB (covered also by EXEC-COPY's auto-chain
   //    from factory.nextEvent in Mode 4; in Mode 1-3 chain is suppressed and
   //    Director's metadata approval is what fires THUMB).
-  if (ft === 'SPC-metadata' && !(await hasJob(supabase, ep, 'EXEC-THUMB', { since }))) {
+  if (ft === 'SPC-metadata' && !(await hasJob(supabase, ep, 'EXEC-THUMB-DESIGNER', { since }))) {
+    events.push({
+      name: 'sandystudio/exec-thumb-designer/plan',
+      data: {
+        episodeId: ep,
+        assetId: asset.id,
+      },
+    });
+  }
+
+  // ── Thumbnail Plan APPROVED → EXEC-THUMB executor renders the designed
+  //    variants from the plan (1280×720 + overlay). Director's APPROVE click
+  //    on the SPC-thumb_plan is what fires rendering in Mode 1-3.
+  if (ft === 'SPC-thumb_plan' && !(await hasJob(supabase, ep, 'EXEC-THUMB', { since }))) {
     events.push({
       name: 'sandystudio/exec-thumb/generate-thumbnail',
       data: {
         episodeId: ep,
-        scriptAssetId: '', // optional in event schema; THUMB doesn't strictly need it
-        metadataAssetId: asset.id,
+        planAssetId: asset.id,
       },
     });
   }
@@ -833,10 +845,26 @@ async function computeNextEvents(
   //    thumbnail all APPROVED) → EXEC-PUB. Director's APPROVE click on the
   //    thumbnail is the implicit publish-confirm in Mode 1-3.
   if (ft === 'IMG-thumbnail') {
-    const animaticOk = (await countApproved(supabase, ep, 'VID-animatic')) >= 1;
+    // 2026-06-01: publish-ready now requires the real final cut, not the animatic.
+    const finalCutOk = (await countApproved(supabase, ep, 'VID-final_cut')) >= 1;
     const metadataOk = (await countApproved(supabase, ep, 'SPC-metadata')) >= 1;
     const thumbOk = (await countApproved(supabase, ep, 'IMG-thumbnail')) >= 1;
-    if (animaticOk && metadataOk && thumbOk && !(await hasJob(supabase, ep, 'EXEC-PUB', { since }))) {
+    if (finalCutOk && metadataOk && thumbOk && !(await hasJob(supabase, ep, 'EXEC-PUB', { since }))) {
+      events.push({
+        name: 'sandystudio/exec-pub/publish',
+        data: { episodeId: ep, directorConfirm: true, confirmedBy: directorUserId },
+      });
+    }
+  }
+
+  // ── Final cut APPROVED → if metadata + thumbnail are also approved, the
+  //    episode is publish-ready (final_cut may be the last of the three to
+  //    be approved). Mirrors the thumbnail branch so order doesn't matter.
+  if (ft === 'VID-final_cut') {
+    const finalCutOk = (await countApproved(supabase, ep, 'VID-final_cut')) >= 1;
+    const metadataOk = (await countApproved(supabase, ep, 'SPC-metadata')) >= 1;
+    const thumbOk = (await countApproved(supabase, ep, 'IMG-thumbnail')) >= 1;
+    if (finalCutOk && metadataOk && thumbOk && !(await hasJob(supabase, ep, 'EXEC-PUB', { since }))) {
       events.push({
         name: 'sandystudio/exec-pub/publish',
         data: { episodeId: ep, directorConfirm: true, confirmedBy: directorUserId },
@@ -1205,8 +1233,15 @@ function revisionEventForAsset(fileType: string): string | null {
   if (fileType.startsWith('VID-animatic'))              return 'sandystudio/exec-edit/create-animatic';
   if (fileType === 'SPC-metadata' || fileType.startsWith('SPC-copy'))
                                                         return 'sandystudio/exec-copy/write-metadata';
+  // Thumbnail Plan or a rendered thumbnail → re-fire the Designer to author a
+  // fresh viral Plan (closes the dead-end Polina hit: requestRevision used to
+  // only flip status with no re-author). 2026-06-01 distribution tail.
+  if (fileType === 'SPC-thumb_plan' || fileType.startsWith('IMG-thumbnail'))
+                                                        return 'sandystudio/exec-thumb-designer/plan';
+  // Final cut revision → re-assemble (re-stitch) rather than dead-ending.
+  if (fileType.startsWith('VID-final_cut'))             return 'sandystudio/exec-stitch/assemble-episode';
   // Per-shot VGEN regen goes through /regenerate-video, not the wide event.
   // EREF revision per-shot is similar — handled by Director UI, not a global rerun.
-  // Thumbnail / publish — terminal, no automatic rerun.
+  // Publish — terminal, no automatic rerun.
   return null;
 }

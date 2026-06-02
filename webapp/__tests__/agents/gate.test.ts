@@ -70,7 +70,7 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
     const sup = makeMockSupabase({
       episodes: [{ id: 'ep-1', governance_mode: 1 }],
       assets: [
-        { id: 'a1', episode_id: 'ep-1', file_type: 'VID-animatic', status: 'APPROVED' },
+        { id: 'a1', episode_id: 'ep-1', file_type: 'VID-final_cut', status: 'APPROVED' },
         { id: 'a2', episode_id: 'ep-1', file_type: 'SPC-metadata', status: 'APPROVED' },
         { id: 'a3', episode_id: 'ep-1', file_type: 'IMG-thumbnail', status: 'APPROVED' },
       ],
@@ -88,7 +88,7 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
     const sup = makeMockSupabase({
       episodes: [{ id: 'ep-1', governance_mode: 1 }],
       assets: [
-        { id: 'a1', episode_id: 'ep-1', file_type: 'VID-animatic', status: 'APPROVED' },
+        { id: 'a1', episode_id: 'ep-1', file_type: 'VID-final_cut', status: 'APPROVED' },
         { id: 'a2', episode_id: 'ep-1', file_type: 'SPC-metadata', status: 'APPROVED' },
         { id: 'a3', episode_id: 'ep-1', file_type: 'IMG-thumbnail', status: 'APPROVED' },
       ],
@@ -106,7 +106,7 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
     const sup = makeMockSupabase({
       episodes: [{ id: 'ep-1', governance_mode: 4 }],
       assets: [
-        { id: 'a1', episode_id: 'ep-1', file_type: 'VID-animatic', status: 'APPROVED' },
+        { id: 'a1', episode_id: 'ep-1', file_type: 'VID-final_cut', status: 'APPROVED' },
         { id: 'a2', episode_id: 'ep-1', file_type: 'SPC-metadata', status: 'APPROVED' },
         { id: 'a3', episode_id: 'ep-1', file_type: 'IMG-thumbnail', status: 'APPROVED' },
       ],

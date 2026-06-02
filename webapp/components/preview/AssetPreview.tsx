@@ -18,6 +18,7 @@
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import { withHardBreaks } from '@/lib/markdown-breaks';
+import { isHttpishUrl, resolvePreviewSrc } from '@/lib/asset-preview-resolver';
 import { Download, FileWarning, ExternalLink, CloudOff, Upload, Sparkles, Loader2 } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
@@ -89,10 +90,6 @@ function categoryFor(file_type: string): 'text' | 'image' | 'video' | 'audio' | 
   return 'unknown';
 }
 
-function isHttpishUrl(path: string | null): boolean {
-  if (!path) return false;
-  return path.startsWith('/') || path.startsWith('http://') || path.startsWith('https://');
-}
 
 export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAsset }: AssetPreviewProps) {
   const { data: meta, error: metaErr, mutate } = useSWR<{ data: AssetRow }>(
@@ -807,7 +804,8 @@ function TextBody({ assetId }: { assetId: string }) {
 }
 
 function ImageBody({ asset }: { asset: AssetRow }) {
-  if (!isHttpishUrl(asset.drive_path)) {
+  const previewSrc = resolvePreviewSrc(asset);
+  if (!previewSrc) {
     return (
       <FallbackBody
         message="Mock image — no browser-loadable URL. Switch the image provider to gpt-image-1 in Settings → Providers and re-trigger to see a real preview."
@@ -822,7 +820,7 @@ function ImageBody({ asset }: { asset: AssetRow }) {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={asset.drive_path ?? ''}
+        src={previewSrc}
         alt={asset.filename}
         className="w-full h-auto block"
       />
@@ -831,7 +829,8 @@ function ImageBody({ asset }: { asset: AssetRow }) {
 }
 
 function VideoBody({ asset }: { asset: AssetRow }) {
-  if (!isHttpishUrl(asset.drive_path)) {
+  const previewSrc = resolvePreviewSrc(asset);
+  if (!previewSrc) {
     return (
       <FallbackBody
         message="Mock video — no browser-loadable URL. Switch the video provider to a real one and re-trigger."
@@ -841,8 +840,8 @@ function VideoBody({ asset }: { asset: AssetRow }) {
   }
   return (
     <video
-      key={asset.drive_path ?? 'no-src'}
-      src={asset.drive_path ?? ''}
+      key={previewSrc}
+      src={previewSrc}
       controls
       className="w-full rounded-lg border border-glass"
       style={{ background: 'var(--bg-elevated)' }}
@@ -851,7 +850,8 @@ function VideoBody({ asset }: { asset: AssetRow }) {
 }
 
 function AudioBody({ asset }: { asset: AssetRow }) {
-  if (!isHttpishUrl(asset.drive_path)) {
+  const previewSrc = resolvePreviewSrc(asset);
+  if (!previewSrc) {
     return (
       <FallbackBody
         message="Mock audio — no browser-loadable URL."
@@ -859,7 +859,7 @@ function AudioBody({ asset }: { asset: AssetRow }) {
       />
     );
   }
-  // `key={drive_path}` forces React to unmount + remount the <audio> element
+  // `key={previewSrc}` forces React to unmount + remount the <audio> element
   // when the URL changes (e.g. after Director uploads a replacement track via
   // /upload-music-direct). Without the key, React reuses the same DOM node
   // and the browser audio engine keeps streaming the previously-buffered
@@ -867,8 +867,8 @@ function AudioBody({ asset }: { asset: AssetRow }) {
   // updated. 2026-05-13 evening regression report.
   return (
     <audio
-      key={asset.drive_path ?? 'no-src'}
-      src={asset.drive_path ?? ''}
+      key={previewSrc}
+      src={previewSrc}
       controls
       className="w-full"
     />
