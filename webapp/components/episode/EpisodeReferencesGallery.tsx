@@ -51,8 +51,18 @@ interface ShotGroup {
 }
 
 function shotIdFor(a: EpisodeAsset): string | null {
-  if (!isShotReferenceV2(a.metadata)) return null;
-  return (a.metadata as { shot_reference: { shot_id: string } }).shot_reference.shot_id ?? null;
+  if (isShotReferenceV2(a.metadata)) {
+    return (a.metadata as { shot_reference: { shot_id: string } }).shot_reference.shot_id ?? null;
+  }
+  // Anchor images (and slug-shaped refs) carry no v2 metadata — derive the
+  // shot id from the file_type slug, e.g.
+  //   IMG-anchor_ss_s15_e02_a1_sc02_sh02_end → SS-S15-E02-A1-SC02-SH02
+  // so start/end anchors group under their shot instead of falling to legacy.
+  const m = a.file_type.match(/(s\d+)_(e\d+)_(a\d+)_(sc\d+)_(sh\d+)/i);
+  if (m) {
+    return `SS-${m[1]}-${m[2]}-${m[3]}-${m[4]}-${m[5]}`.toUpperCase();
+  }
+  return null;
 }
 
 function isApproved(a: EpisodeAsset): boolean {
@@ -79,7 +89,15 @@ function toGridAsset(a: EpisodeAsset): AssetGridAsset {
   parts.push(a.status);
   // Slug retained as the tail for disambiguation when several different
   // reference families share the same shot (e.g. character vs hourglass).
-  const slug = a.file_type.replace(/^IMG-episode_ref_?/, '') || bibleSlug(a.file_type) || '';
+  // Anchor images get a compact "anchor start/end" label instead of the long
+  // location slug so a shot's pair reads at a glance.
+  let slug: string;
+  if (a.file_type.startsWith('IMG-anchor')) {
+    const pos = /_(start|end)$/i.exec(a.file_type)?.[1]?.toLowerCase();
+    slug = pos ? `anchor ${pos}` : 'anchor';
+  } else {
+    slug = a.file_type.replace(/^IMG-episode_ref_?/, '') || bibleSlug(a.file_type) || '';
+  }
   if (slug) parts.push(slug);
   return {
     id: a.id,
@@ -107,8 +125,16 @@ export function EpisodeReferencesGallery({
     fetcher,
   );
 
+  // Show episode references AND anchor-chain images. Anchor-mode episodes
+  // (TD-49 — scene_master + per-shot start/end anchors) produce `IMG-anchor_*`
+  // instead of `IMG-episode_ref_*`; without this they were invisible here even
+  // though the Reference Artist generated them (Director 2026-06-02).
   const refs = useMemo(
-    () => (data?.data ?? []).filter((a) => a.file_type.startsWith('IMG-episode_ref')),
+    () =>
+      (data?.data ?? []).filter(
+        (a) =>
+          a.file_type.startsWith('IMG-episode_ref') || a.file_type.startsWith('IMG-anchor'),
+      ),
     [data?.data],
   );
 
