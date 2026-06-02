@@ -13,16 +13,18 @@
 ```
 Date:   2026-06-02
 Mode:   ===5=== EDIT (master-session authorized) · Governance Mode 1 MANUAL
-Master: 280719b
+Master: f44381f
 
 Just shipped (this session):
-  • PR #26 TD-85 resolution discipline · PR #27 Key Art Designer thumbnail pipeline (art gate
-    PASSED SS-S15-E01 $0.34, v12 winner) · PR #28 TOPIC 3 systematic pipeline: 15→19 stages,
-    Designer→Critic→Artist triad, StageWorkspacePanel (click stage → agent workstation, NOT feed),
-    single role vocab (Critic canon). tsc · 642 tests · 30 replay. ⏳ awaiting Director UX smoke.
+  • PR #26 TD-85 · PR #27 Key Art thumbnail (art gate PASS, v12) · PR #28 TOPIC 3 systematic
+    pipeline (15→19 stages, Designer→Critic→Artist, StageWorkspacePanel, Critic-canon vocab).
+  • MEDIA fix (f44381f): all media display via /api/media cache route; branch /staging retired —
+    persist writes to worktree-independent FILMS/_media_cache flat <S>/<E>/media/; route accepts
+    id OR filename. tsc · 642 tests · 30 replay. Remaining: upload routes (upload/music) still
+    write /staging — repoint next (smaller path).
 
 Active / next (orchestrated master-session + worktree subagents):
-  • TOPIC 3 — MERGED; Director live-smoke pending (muted-row collapse/expand, workstation panel, verdicts).
+  • TOPIC 3 — MERGED; Director UX-smoke in progress (workstation panel, muted rows, verdicts).
   • OUTPUT-CRITIC architecture — DESIGNED (docs/output-critic-architecture-design.md); adversarial
     verdict=needs_revision. Mode-3 autonomy key (AI judges generated artifacts, not just plans).
     CRITICAL open: sync-vs-async invocation + per-episode regen budget cap. Dedicated sprint AFTER Topic-2.
