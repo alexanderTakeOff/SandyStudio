@@ -81,8 +81,22 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
   'EXEC-WCHK': {
     // Real EXEC-SB now produces ONE storyboard asset with 3 acts inline,
     // not 3 separate STB rows. Threshold lowered to 1.
+    //
+    // 2026-06-02: allow REVIEW status — parity with EXEC-SREV. The Continuity
+    // Critic auto-reads the Storyboarder's DRAFT (REVIEW) board the moment it
+    // is produced (isCriticChain in factory.ts), so the Director sees board +
+    // continuity verdict together. Requiring APPROVED here was the same
+    // chicken-and-egg the Script Critic gate had: the Critic IS what informs
+    // the Director's approval, so it cannot wait for that approval to run.
+    // Executors downstream (EREF / EREF-DESIGNER / VGEN) keep requiring
+    // APPROVED — they spend money and must wait for the Director's gate.
     required: [
-      { fileTypePrefix: 'STB', minCount: 1, label: 'Approved storyboard' },
+      {
+        fileTypePrefix: 'STB',
+        minCount: 1,
+        label: 'Storyboard (REVIEW or APPROVED)',
+        allowedStatuses: ['REVIEW', 'REVISION', 'APPROVED'],
+      },
     ],
     governance: 'AGENT_RUN',
   },

@@ -99,6 +99,52 @@ export async function ensureCachedMedia(args: {
   return abs;
 }
 
+/**
+ * Read an asset's image bytes as base64, resolving them the same way the
+ * `/api/media` route serves previews — robust to the media-no-branches
+ * migration (d1a58cf). Agents that need img2img reference bytes (scene_master,
+ * continuity anchors, Bible identity/style refs) used to read a `/staging/<file>`
+ * browser URL straight off the filesystem. That path lives inside a git
+ * worktree and breaks when the worktree is deleted OR when the asset was
+ * regenerated post-migration (its bytes go to the cache/Drive, not `/staging/`).
+ *
+ * Resolution order:
+ *   1. Warm cache hit by canonical filename (covers persist-warmed + mock).
+ *   2. Drive-backed: download into the cache, then read.
+ *   3. Legacy `/staging/<file>` fallback (pre-migration files still on disk).
+ *
+ * Returns null when no readable bytes can be found — callers turn this into a
+ * descriptive agent error.
+ */
+export async function readAssetMediaAsBase64(args: {
+  filename?: string | null;
+  driveFileId?: string | null;
+  stagingPath?: string | null;
+}): Promise<string | null> {
+  if (args.filename) {
+    const hit = await cachedFileIfPresent(args.filename);
+    if (hit) return (await fs.readFile(hit)).toString('base64');
+  }
+  if (args.filename && args.driveFileId) {
+    try {
+      const abs = await ensureCachedMedia({ filename: args.filename, driveFileId: args.driveFileId });
+      return (await fs.readFile(abs)).toString('base64');
+    } catch {
+      // fall through to legacy staging path
+    }
+  }
+  // Legacy: bytes still sitting in a worktree's public/staging.
+  if (args.stagingPath && args.stagingPath.startsWith('/staging/')) {
+    const abs = path.join(process.cwd(), 'public', args.stagingPath.slice(1));
+    try {
+      return (await fs.readFile(abs)).toString('base64');
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 const CONTENT_TYPE_BY_EXT: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',

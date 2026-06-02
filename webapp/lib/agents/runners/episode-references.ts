@@ -67,7 +67,7 @@ import type {
   MultiImageRefKind,
 } from '../providers/image-gen-multi';
 import { MultiImageGenError } from '../providers/image-gen-multi';
-import { readBibleImageAsBase64 } from '../providers/openai-image-edit';
+import { readAssetMediaAsBase64 } from '@/lib/media-cache';
 import {
   checkPlanAnchorFreshness,
   formatStaleAnchorMessage,
@@ -133,6 +133,7 @@ interface BibleAssetLike {
   description: string | null;
   content: string | null;
   staging_path: string | null;
+  drive_file_id?: string | null;
   drive_web_view_url: string | null;
   status: string;
   file_type: string;
@@ -411,8 +412,11 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
 // ── Build per-shot test plans + Bible refs ───────────────────────────────────
 
 async function loadBibleImage(asset: BibleAssetLike): Promise<string | null> {
-  if (!asset.staging_path) return null;
-  return await readBibleImageAsBase64(asset.staging_path);
+  return await readAssetMediaAsBase64({
+    filename: asset.filename,
+    driveFileId: asset.drive_file_id,
+    stagingPath: asset.staging_path,
+  });
 }
 
 async function buildShotJobs(
@@ -710,11 +714,15 @@ async function loadContinuityAnchor(
 ): Promise<MultiImageRef | null> {
   const { data, error } = await supabase
     .from('assets')
-    .select('id,staging_path,status')
+    .select('id,filename,drive_file_id,staging_path,status')
     .eq('id', anchor.assetId)
     .maybeSingle();
-  if (error || !data?.staging_path) return null;
-  const b64 = await readBibleImageAsBase64(data.staging_path);
+  if (error || !data) return null;
+  const b64 = await readAssetMediaAsBase64({
+    filename: data.filename,
+    driveFileId: data.drive_file_id,
+    stagingPath: data.staging_path,
+  });
   if (!b64) return null;
   return {
     kind: ANCHOR_KIND_TO_REF_KIND[anchor.kind],
@@ -1234,21 +1242,28 @@ async function runAnchorPairGeneration(
     );
   }
 
-  // 2. Load scene_master image bytes.
+  // 2. Load scene_master image bytes — resolve via cache/Drive (media-no-branches
+  // safe), not the legacy /staging path which dies on regenerated or
+  // worktree-deleted masters.
   const { data: smRow } = await supabase
     .from('assets')
-    .select('id,staging_path')
+    .select('id,filename,drive_file_id,staging_path')
     .eq('id', anchorCtx.scene_master_asset.asset_id)
     .maybeSingle();
-  if (!smRow?.staging_path) {
+  if (!smRow) {
     throw new EpisodeReferencesError(
-      `Scene master asset ${anchorCtx.scene_master_asset.asset_id} has no staging_path — cannot load reference bytes`,
+      `Scene master asset ${anchorCtx.scene_master_asset.asset_id} not found — cannot load reference bytes`,
     );
   }
-  const sceneMasterB64 = await readBibleImageAsBase64(smRow.staging_path);
+  const sceneMasterB64 = await readAssetMediaAsBase64({
+    filename: smRow.filename,
+    driveFileId: smRow.drive_file_id,
+    stagingPath: smRow.staging_path,
+  });
   if (!sceneMasterB64) {
     throw new EpisodeReferencesError(
-      `Scene master bytes unreadable from ${smRow.staging_path}`,
+      `Scene master bytes unreadable for ${smRow.filename ?? anchorCtx.scene_master_asset.asset_id} ` +
+        `(cache miss + no Drive id + staging_path=${smRow.staging_path ?? 'null'}). Regenerate the scene master.`,
     );
   }
 

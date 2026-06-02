@@ -9,7 +9,7 @@
 
 import { checkVerbalApproval } from '../approval-check';
 import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
-import { ackOrFailOnPickup } from './wait-for-pickup';
+import { ackFanoutPickup, ackOrFailOnPickup } from './wait-for-pickup';
 
 type AnyArgs = Record<string, unknown>;
 
@@ -185,12 +185,22 @@ export const approveAsset: Tool<ApproveAssetArgs> = {
       directorConfirm: true,
     };
 
+    // TD-39 L1: anchor pickup poll to the moment before dispatch so the
+    // fan-out job row (created inside the downstream Inngest function) is
+    // found by `created_at >= sinceIso`.
+    const sinceIso = new Date().toISOString();
     const resp = await internalFetch(
       ctx,
       `/api/assets/${encodeURIComponent(args.assetId)}/approve`,
       body,
     );
-    return parseFetchResponse(resp, `approveAsset(${args.assetId})`);
+    const parsed = await parseFetchResponse(resp, `approveAsset(${args.assetId})`);
+    return ackFanoutPickup(parsed, {
+      supabase: ctx.supabase,
+      ctxEpisodeId: ctx.episodeId,
+      sinceIso,
+      label: `approveAsset(${args.assetId})`,
+    });
   },
 };
 
@@ -238,6 +248,9 @@ export const requestRevision: Tool<RequestRevisionArgs> = {
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
+    // TD-39 L1: REQUEST_REVISION auto-chains the producing agent (revision
+    // event). Confirm that re-run actually picked up, same as approve.
+    const sinceIso = new Date().toISOString();
     const resp = await internalFetch(
       ctx,
       `/api/assets/${encodeURIComponent(args.assetId)}/approve`,
@@ -248,7 +261,13 @@ export const requestRevision: Tool<RequestRevisionArgs> = {
         preview_acknowledged: true,
       },
     );
-    return parseFetchResponse(resp, `requestRevision(${args.assetId})`);
+    const parsed = await parseFetchResponse(resp, `requestRevision(${args.assetId})`);
+    return ackFanoutPickup(parsed, {
+      supabase: ctx.supabase,
+      ctxEpisodeId: ctx.episodeId,
+      sinceIso,
+      label: `requestRevision(${args.assetId})`,
+    });
   },
 };
 

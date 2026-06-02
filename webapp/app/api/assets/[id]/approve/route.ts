@@ -1207,6 +1207,9 @@ export const POST = withApiHandler(async (req, ctx) => {
   return apiOk({
     decision: body.decision,
     asset_status: targetStatus,
+    // TD-39 L1: episode anchor lets the PA dispatch wrapper poll for the
+    // fan-out job row created by the downstream Inngest function.
+    episode_id: asset.episode_id,
     fired_events: firedEvents,
     demoted_prior_asset_id: demotedPriorAssetId,
   });

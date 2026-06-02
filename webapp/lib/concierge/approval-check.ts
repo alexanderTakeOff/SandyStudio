@@ -79,6 +79,15 @@ function approvalPosition(text: string): number {
       if (m.index > last) last = m.index;
     }
   }
+  // Director's documented numbered-answer format (director-communication.md):
+  // `q<N>y` = yes. Catches "q19y" and "q19 Y". Token-set matching can't see
+  // this — tokenisation splits "q19 Y" into ["q19","y"] and whitelisting a
+  // bare "y" globally is too false-positive-prone. Multi-choice answers
+  // (`q<N>a/b/c/d`) are intentionally NOT treated as approval — they pick an
+  // option, and only the PA knows whether the chosen option implies a mutation.
+  for (const m of lower.matchAll(/(?:^|[\s\p{P}\p{S}])q\d+\s*y(?=$|[\s\p{P}\p{S}])/gu)) {
+    if (m.index !== undefined && m.index > last) last = m.index;
+  }
   return last;
 }
 
@@ -103,6 +112,11 @@ function rejectionPosition(text: string): number {
     while ((m = re.exec(lower)) !== null) {
       if (m.index > last) last = m.index;
     }
+  }
+  // Director's documented numbered-answer format: `q<N>n` = no. Catches
+  // "q19n" and "q19 N". Mirror of the q-yes match in approvalPosition.
+  for (const m of lower.matchAll(/(?:^|[\s\p{P}\p{S}])q\d+\s*n(?=$|[\s\p{P}\p{S}])/gu)) {
+    if (m.index !== undefined && m.index > last) last = m.index;
   }
   return last;
 }
@@ -217,7 +231,7 @@ export function checkVerbalApproval(
   return {
     approved: false,
     reason:
-      'No verbal approval found in the last few turns. Ask the Director "Можно запускать? / Should I proceed?" and wait for "да" / "yes" / "одобряю" before retrying.',
+      'No verbal approval found in the last few turns. Ask the Director "Можно запускать? / Should I proceed?" and wait for "да" / "yes" / "одобряю" / "q<N>y" before retrying.',
   };
 }
 

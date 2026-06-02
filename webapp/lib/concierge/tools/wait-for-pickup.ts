@@ -146,6 +146,74 @@ export async function ackOrFailOnPickup(
   );
 }
 
+/**
+ * TD-39 L1 — pickup-ack for the APPROVE / REQUEST_REVISION path.
+ *
+ * Unlike `triggerAgent`, an approval does not always launch a downstream
+ * agent: approving a terminal asset, or one whose multi-asset gate isn't
+ * complete yet, legitimately fires zero events. The approve route reports
+ * exactly what it fired via `fired_events`, so we only run the pickup poll
+ * when something was actually dispatched — otherwise we'd report a false
+ * `pickup_timeout` on a perfectly valid no-op approval.
+ *
+ * The fan-out may target several agents (e.g. animatic fan-out). For L1 we
+ * confirm that *at least one* downstream job row appeared for the episode —
+ * proof the queue is live. Per-event correlation (catching a partial
+ * fan-out loss) needs the `inngest_event_id` column and is deferred to L1.5.
+ */
+export async function ackFanoutPickup(
+  result: ToolResult,
+  args: {
+    supabase: SupabaseClient<Database>;
+    /** Episode focused in the conversation — fallback anchor. */
+    ctxEpisodeId?: string | null;
+    sinceIso: string;
+    timeoutMs?: number;
+    intervalMs?: number;
+    label: string;
+  },
+): Promise<ToolResult> {
+  if (!result.ok) return result;
+
+  const payload = extractApprovePayload(result.data);
+  const firedCount = payload.firedEvents.length;
+
+  // No downstream agent to launch → nothing to confirm. Make the no-op
+  // explicit so Polina doesn't imply work started when none was meant to.
+  if (firedCount === 0) {
+    const base = result.summary ?? args.label;
+    return ok(result.data, `${base} (no downstream agent launched — nothing to confirm)`);
+  }
+
+  // Prefer the episode the route actually acted on; fall back to context.
+  const episodeId = payload.episodeId ?? args.ctxEpisodeId ?? null;
+
+  return ackOrFailOnPickup(result, {
+    supabase: args.supabase,
+    episodeId,
+    sinceIso: args.sinceIso,
+    timeoutMs: args.timeoutMs,
+    intervalMs: args.intervalMs,
+    label: `${args.label} → ${firedCount} downstream event${firedCount > 1 ? 's' : ''}`,
+  });
+}
+
+/** Pull `episode_id` + `fired_events` out of the approve route's
+ *  `{ success, data: { ... } }` envelope, defensively. */
+function extractApprovePayload(data: unknown): {
+  episodeId: string | null;
+  firedEvents: unknown[];
+} {
+  const envelope = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+  const inner =
+    envelope.data && typeof envelope.data === 'object'
+      ? (envelope.data as Record<string, unknown>)
+      : envelope;
+  const episodeId = typeof inner.episode_id === 'string' ? inner.episode_id : null;
+  const firedEvents = Array.isArray(inner.fired_events) ? inner.fired_events : [];
+  return { episodeId, firedEvents };
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);

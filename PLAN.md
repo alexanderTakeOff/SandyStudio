@@ -11,15 +11,20 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-02 (session cleared here — resume from this block)
-Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: dffe5b3
+Date:   2026-06-02 (TD-39 L1 closed this session)
+Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 15be610 (+ uncommitted TD-39 approve-path)
 
-▶ RESUME PRIORITY #1 — TD-39 (PA delivery ack). Recurring pain: Polina reports
-  «запустила» but the job never runs (HTTP 200 on dispatch ≠ executor pickup —
-  silent loss when worker down / fan-out lost). Root Mode-2.5/3 blocker, only
-  worked-around so far. FIX Layer 1: after a PA dispatch, poll jobs.status IN
-  (RUNNING,COMPLETED) OR activity agent_started ≤10s; else return pickup_timeout
-  so Polina says «не подхватилось» instead of false success. (long-debt #39 + audit.)
+✅ TD-39 Layer 1 COMPLETE (both paths). Trigger path (triggerAgent + 4 plan-execute
+  tools) was already merged 3c781c7 (~05-26) — PLAN had stale "not started". This
+  session closed the GAP: approve path (approveAsset/requestRevision) now runs
+  ackFanoutPickup — only when approve route reports non-empty fired_events, so
+  terminal/no-op approvals don't false-timeout. That was the dominant phantom-
+  «запустила» path (most reports come from approvals fanning out the next stage).
+  +episode_id on approve response (anchor). tsc·646·30 green. NEXT: live PA smoke
+  to confirm pickup_timeout surfaces when worker is down. L1.5 (per-event corr via
+  inngest_event_id column) deferred — current anchor is episode+time composite.
+  Polina prompt fixed: added canonical gate chain (SB fires on Script-Critic REVIEW
+  approval, NOT on script approval — was her surprise).
 
 E02 «The Tidy Tornado» (id 8b32b3e0-…): Writer Script v02 (RU, 61s, no dialogue,
   blackout finale) in REVIEW — awaiting DIRECTOR approval. Story-Editor auto-read
@@ -43,8 +48,16 @@ Hardening backlog (before 10-20 episode run): #1 episode.status stuck BRIEF_APPR
   (approve/route.ts,S) · #3 fan-out sendEvent not in step.run (factory.ts,M) · #4
   schedule-analytics silent-fail (S) · #5 trigger doesn't validate episode.status ·
   critic REVISE→producer bounce doesn't auto-close in Mode 1 (SREV/EPREV/VPREV; add
-  + revision cap 2-3 → HALT) · WCHK Continuity Critic same auto-read gap · naming-hook
-  whitelist HELD on branch worktree-agent-a998b0b832df50dce (needs Director OK, gov-hook).
+  + revision cap 2-3 → HALT) · WCHK Continuity Critic auto-read FIXED 2026-06-02
+  (exec-wchk/ in factory isCriticChain + gate allowedStatuses REVIEW — full SREV
+  parity) · PA approval-gate now recognizes Director's q<N>y/q<N>n format (was
+  blocking mutations on «q19 Y») · EREF Reference Artist FIXED — scene_master /
+  continuity-anchor / Bible-ref bytes now resolve via media-cache+Drive (new
+  readAssetMediaAsBase64), not dead /staging path (media-no-branches regression;
+  E02 «Scene master bytes unreadable») · Key Art Critic
+  (thumbnail_critic) UNSTAFFED — agents:[], no agent/event; needs full build like
+  EPREV/VPREV (Director scope call) · naming-hook whitelist HELD on branch
+  worktree-agent-a998b0b832df50dce (needs Director OK, gov-hook).
 OUTPUT-CRITIC design (docs/output-critic-architecture-design.md): needs_revision
   (sync-vs-async + per-episode regen budget cap). Mode-3 key. Sprint AFTER Topic-2.
 Camera same-angle (q16) carried. Episodes: S15-E01 "Heavy Friend", S15-E02 in prod.
@@ -93,7 +106,7 @@ Sprints S0–S8 (foundation + spec) COMPLETE 2026-04-23..28 — `docs/PLAN-histo
 | 21 | Brief↔Bible consistency validator missing — new EXEC-HW-CRITIC or extend SREV (~6-10h) | Reliability |
 | 22 | DELETE asset `asset_updated` event not in PA auto-react whitelist (~30 min) | UX |
 | 23 | Designer post-pilot auto-fanout: remaining shot ids stashed but not auto-fired on pilot approve | Reliability |
-| 39 | **PA delivery ack gap — BLOCKS Mode 3/4.** L1 sync ack must-have (~2-3h). Detail in PLAN-history | Mode 3/4 blocker |
+| 39 | PA delivery ack — L1 DONE (trigger+approve paths, 2026-06-02). L1.5 per-event corr (inngest_event_id col) deferred | ~~Mode 3/4 blocker~~ |
 
 Fixed in Phase 5c (don't re-add): #1 friendly names · #3 phantom stage · #9 multi-asset chain · #10 stage filter · #11 agent_completed · #12 prefix match.
 

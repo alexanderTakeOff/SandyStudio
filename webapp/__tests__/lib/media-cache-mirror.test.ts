@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
-import { mirroredCachePath } from '@/lib/media-cache';
+import { mirroredCachePath, readAssetMediaAsBase64 } from '@/lib/media-cache';
 
 // Layout 2026-06-02 (Director): flat per-episode `<SEASON>/<EPISODE>/media/<file>`
 // — supersedes the old raw/approved/<type> 3-tier mirror (findability + cleanup).
@@ -49,5 +49,26 @@ describe('mirroredCachePath', () => {
     const rel = mirroredCachePath('SS-S15-E01-IMG-x.png');
     expect(rel).not.toBeNull();
     expect(rel!.includes('..')).toBe(false);
+  });
+});
+
+// TD: media-no-branches reader — agents must not die on a stale /staging path
+// (regenerated or worktree-deleted masters). Regression guard for the
+// 2026-06-02 "Scene master bytes unreadable from /staging/regen-…png" failure.
+describe('readAssetMediaAsBase64', () => {
+  it('returns null when there is nothing to read (no filename, no drive, no staging)', async () => {
+    expect(await readAssetMediaAsBase64({})).toBeNull();
+  });
+
+  it('returns null for a stale /staging path with no file on disk', async () => {
+    const out = await readAssetMediaAsBase64({
+      stagingPath: '/staging/regen-deadbeef-0000.png',
+    });
+    expect(out).toBeNull();
+  });
+
+  it('ignores a non-/staging legacy path (no traversal escape)', async () => {
+    const out = await readAssetMediaAsBase64({ stagingPath: '/etc/passwd' });
+    expect(out).toBeNull();
   });
 });

@@ -518,7 +518,16 @@ export function createAgentInngestFunction<E extends string>(
           // gate — SREV's PASS→Storyboard event is NOT a critic chain, so the
           // script still stops for the Director's approval, now WITH the Critic's
           // verdict attached. REVISE→Writer mirrors the other critics' loop policy.
-          nextEventCandidate.name.startsWith('sandystudio/exec-srev/'));
+          nextEventCandidate.name.startsWith('sandystudio/exec-srev/') ||
+          // Continuity Critic (EXEC-WCHK) — same gap the Script Critic had until
+          // dffe5b3. The Storyboarder declares nextEvent → exec-wchk/check-world,
+          // but without this entry WCHK only fired on the Director's manual
+          // storyboard approval, never reading the board forward on its own
+          // (Director 2026-06-02: «Continuity Critic сам не запустился»). Safe re:
+          // the Mode-1 gate — WCHK's own nextEvent is exec-edit/create-animatic,
+          // NOT a critic chain, so the storyboard still stops for the Director's
+          // approval, now WITH the continuity verdict attached.
+          nextEventCandidate.name.startsWith('sandystudio/exec-wchk/'));
 
       if (autoChain || isCriticChain) {
         if (nextEventCandidate) {

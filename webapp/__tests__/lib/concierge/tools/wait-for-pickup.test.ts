@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest';
 import {
   waitForJobPickup,
   ackOrFailOnPickup,
+  ackFanoutPickup,
 } from '@/lib/concierge/tools/wait-for-pickup';
 import { ok, fail } from '@/lib/concierge/tools/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -154,5 +155,87 @@ describe('ackOrFailOnPickup', () => {
       expect(out.summary).toMatch(/pickup confirmed/i);
       expect(out.summary).toMatch(/job-abcd/);
     }
+  });
+});
+
+/** Build the approve route's `{ success, data: {...} }` envelope as a tool result. */
+function approveResult(
+  fired: Array<{ name: string; ids: string[] }>,
+  episodeId: string | null,
+): ReturnType<typeof ok> {
+  return ok(
+    { success: true, data: { decision: 'APPROVE', episode_id: episodeId, fired_events: fired } },
+    'approveAsset(asset-1) succeeded.',
+  );
+}
+
+describe('ackFanoutPickup', () => {
+  test('no-op approval (zero fired_events) returns ok without polling', async () => {
+    const { client, selectCalls } = makeSupabaseStub([]);
+    const out = await ackFanoutPickup(approveResult([], 'ep-1'), {
+      supabase: client,
+      ctxEpisodeId: 'ep-1',
+      sinceIso: new Date().toISOString(),
+      label: 'approveAsset(asset-1)',
+    });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.summary).toMatch(/no downstream agent launched/i);
+    }
+    // Crucially: a valid no-op must NOT trigger a pickup poll.
+    expect(selectCalls()).toBe(0);
+  });
+
+  test('fan-out that picks up confirms via the route episode_id anchor', async () => {
+    const { client } = makeSupabaseStub([{ id: 'job-fan01234' }]);
+    const out = await ackFanoutPickup(
+      approveResult([{ name: 'sandystudio/exec-sb/create-storyboard', ids: ['evt-1'] }], 'ep-9'),
+      {
+        supabase: client,
+        ctxEpisodeId: 'ep-9',
+        sinceIso: new Date().toISOString(),
+        label: 'approveAsset(asset-1)',
+        timeoutMs: 1_000,
+        intervalMs: 50,
+      },
+    );
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.summary).toMatch(/pickup confirmed/i);
+    }
+  });
+
+  test('fan-out that never picks up downgrades to pickup_timeout', async () => {
+    const { client } = makeSupabaseStub([]);
+    const out = await ackFanoutPickup(
+      approveResult([{ name: 'sandystudio/exec-sb/create-storyboard', ids: ['evt-1'] }], 'ep-9'),
+      {
+        supabase: client,
+        ctxEpisodeId: 'ep-9',
+        sinceIso: new Date().toISOString(),
+        label: 'approveAsset(asset-1)',
+        timeoutMs: 150,
+        intervalMs: 50,
+      },
+    );
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.code).toBe('pickup_timeout');
+    }
+  });
+
+  test('passes through dispatch failures unchanged', async () => {
+    const { client, selectCalls } = makeSupabaseStub([]);
+    const out = await ackFanoutPickup(fail('approve failed', 'http_409'), {
+      supabase: client,
+      ctxEpisodeId: 'ep-1',
+      sinceIso: new Date().toISOString(),
+      label: 'approveAsset(asset-1)',
+    });
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.code).toBe('http_409');
+    }
+    expect(selectCalls()).toBe(0);
   });
 });
