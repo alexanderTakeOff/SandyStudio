@@ -821,5 +821,32 @@ the historical tail.
 
 ---
 
-*SandyStudio PLAN-history.md | archive created 2026-05-11 | write-once*
-*Source: PLAN.md sections SPRINT MAP S0–S8 + CHANGE LOG 2026-04-23..2026-04-30 + Post-pilot tasks + Open decisions history*
+## Appended 2026-06-02 — PLAN.md compaction (CURRENT STATE history 2026-05-23..27 + CHANGE LOG 2026-05-06..12)
+
+### Sprint q7a — Continuity Stability (TD-33 + TD-35) — SHIPPED 2026-05-23
+Multi-axis continuity anchors on Designer Plan (`continuity_anchors[]`, `kind: spatial_same_location | temporal_previous_shot`), back-compat parser for legacy `scene_continuity_anchor_asset_id` (13 S15-E01 Plans unaffected). TD-35 freshness guard: REST + executor + PA tool layered, hard-fail `PLAN_ANCHOR_STALE` → `regenerateRefPlan`. Vanim Plan end_image/seed/quality_tier wired Animator → runner → Seedance. tsc clean · vitest 481/481 (+30) · replay-pilot 29/29. Squash-merged to master. Plan: `~/.claude/plans/q7a-structured-zephyr.md`.
+
+### Camera same-angle architectural diagnosis (2026-05-22, q15/q16/q17)
+«Все шоты с одного ракурса, кровать всегда слева». Root cause architectural, NOT q7a: Designer writes diverse `camera_intent` (decisions correct), but `openai-edits-multi.ts` exposes no `strength`/per-ref weight → identity locked hard, single canonical Location Bible ref (one viewpoint) passed equal-weight every call → gpt-image-2 copies its layout → same angle. TD-30 (spatial) + q7a (temporal) anchors are amplifiers, not root cause. IMG metadata.shot_reference loses camera_angle/sub_area audit trail. q16 options: (a) flag-gate anchors temp-fix; (b) Bible sub-area refs; (c) switch to Flux Pro Ultra Redux with per-ref weight. Director chose merge-to-master (q17c). **Status carried forward as open architectural thread.**
+
+### TD-37 — feedback-loop integrity (q21y, 2026-05-23)
+Storyboarder-class «silent drop в runner» CLOSED for 3 modern runners (Designer/Animator/GAGAD — revisionNote injected as HARD CRITERION). Remaining losses: 🔴 CRITICAL Polина-as-mediator (Director verbatim paraphrased before regenerateRefPlan; fix = `revisionNoteMode: 'paraphrase'|'verbatim'`); 🟡 `[Prod Assistant]` prefix wrapping in dispatch.ts:187; 🟡 Critic acceptance_criteria flattening in exec-eprev.ts; 🟡 concurrent revision-notes collision (no merge/history → append-only `revision_log[]`); 🟢 upstreamApprovalNotes silent-empty on mock supabase. Fix priority #1 (verbatim mode) ~30 LoC.
+
+### TD-39 — PA delivery acknowledgment gap (2026-05-25, BLOCKS Mode 3/4)
+PA dispatch tools return success on HTTP 200 (proves DB write + Inngest emit, NOT executor pickup). Mode 1 Director eyeballs DAG; Mode 3/4 = silent loss. `dispatch.ts:256-271 parseFetchResponse`. Layered fix: L1 sync ack — poll `jobs.status IN (RUNNING,COMPLETED)` OR `agent_started` event ≤10s, return `pickup_timeout` (~50-80 LoC, ~2-3h, MUST before Mode 3/4); L2 Inngest cron 60s marks `RUNNING>5min` FAILED + `job_stalled` (~6h); L3 PA `awaiting_jobs[]` + `checkAwaitingJobs` tool (~1-2d).
+
+### TD-72 / TD-74 — Animator's Critic V04 softening (SHIPPED PR #24, 2026-05-27)
+V04 softened «single verb phrase» → «ONE primary causal chain on ONE subject»: caused-beat chains PASS, reactive micro-beats PASS, only parallel independent actions REVISE. Synced animator_critic.md + animator.md + seedance-prompting. SH21↔SH22 positional swap in STB-storyboard-v04-APPROVED (S15-E01 act 3). tsc clean · animator-critic 11/11 · replay-pilot 29/29. TD-74 (verdict PASS_WITH_WARNINGS + hard/soft categorization + Director override) designed, deferred. (Later superseded by TD-83 critic-revision-cap + TD-85 resolution discipline merged via PR #26 → master 072194e.)
+
+### CHANGE LOG 2026-05-06 .. 2026-05-12 (condensed)
+- 2026-05-06..08: Veo 3.1 upgrade + EpisodeTimeline Phase A (PR #11-13); Bible enrich CTA (PR #10); Universal Video Editor + Pilot Pass (PR #9); buildShotPromptV2 + theme tokens (PR #16); VGEN provider stamp + Bible canon (PR #17); regen rebuild (PR #18).
+- 2026-05-08: **Phase A.2 MERGED (PR #22)** — VGEN auto-COMPLETE + EXEC-STITCH (local ffmpeg) + Audio reorg LT-04 + Bug A/C. SS-S14-E01 final-cut.mp4.
+- 2026-05-10: §12 Operational Rituals added (root cause: stale PLAN.md). Pipeline DAG order Music-before-Animatic.
+- 2026-05-11: Mode 2.5 Phase 1-B — 13 OpenAI function-calling tools + verbal approval gate (Cyrillic-safe) + voice mic (PR #23).
+- 2026-05-12: **PR #23 MERGED** (`8fa5c00`). Mode 2.5 Phase A — gpt-5.5 + reasoning=none + BEHAVIOR_CONTRACT 10-block prompt. Writer↔Story Editor internal loop closed. Agent role-name sweep (`lib/api/agent-names.ts`; long-debt #1 closed). 5 Operational-Ritual hooks. CLAUDE.md slim 604→347. Library kebab DELETE. PA event-awareness tools.
+- 2026-05-18: **Sprint φ + gpt-image-2 MERGED** (`cc43944`, 206 commits). Skills-as-capabilities lazy API + 2 capability playbooks. EREF chain fix. E21 Stage A: 22/22 EREF, 2 VGEN pilots, $4.46/$25. Sprint «Дизайнер и Аниматор» kickoff.
+
+---
+
+*SandyStudio PLAN-history.md | archive created 2026-05-11 | append-on-compaction*
+*Source: PLAN.md SPRINT MAP S0–S8 + CHANGE LOG ≤2026-04-30 + Post-pilot + Open decisions + (2026-06-02) CURRENT STATE 2026-05-23..27 + CHANGE LOG 2026-05-06..12*
