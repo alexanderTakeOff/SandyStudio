@@ -5,7 +5,9 @@
 //
 // Behaviour:
 //   - Multipart POST (Content-Type: multipart/form-data) with a single 'file' field.
-//   - File saved under webapp/public/staging/uploads/ with a hash-of-bytes name.
+//   - File saved into the worktree-independent media cache (lib/media-cache),
+//     keyed by a canonical-prefixed name; served via /api/media/<filename>
+//     (Director directive 2026-06-02 — no media in branches).
 //   - metadata.image_prompt.history gets a new entry with source='director_upload',
 //     prompt = "(uploaded by Director)", upload_original_filename = original name.
 //   - Asset row's staging_path / drive_path point at the new uploaded URL.
@@ -29,6 +31,8 @@ import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import { logEvent } from '@/lib/api/events';
+import { localCacheAbsPath } from '@/lib/media-cache';
+import { uploadCacheFilename } from '@/lib/api/upload-cache';
 import {
   type AssetMetadataDoc,
   type ImagePromptHistoryEntry,
@@ -138,15 +142,16 @@ export const POST = withApiHandler(async (req, ctx) => {
     throw new ValidationError(`File too large: ${blob.size} bytes; max ${MAX_BYTES}`);
   }
 
-  // Persist to webapp/public/staging/uploads/<hash>.<ext>
+  // Persist into the worktree-independent media cache, keyed by a
+  // canonical-prefixed name (no media in branches — 2026-06-02). Served via
+  // /api/media/<filename>, which reads this same cache as a warm hit.
   const buf = Buffer.from(await blob.arrayBuffer());
   const hash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
-  const dir = path.join(process.cwd(), 'public', 'staging', 'uploads');
-  await fs.mkdir(dir, { recursive: true });
-  const filename = `${hash}.${ext}`;
-  const absolutePath = path.join(dir, filename);
+  const cacheFilename = uploadCacheFilename(asset.filename, hash, ext);
+  const absolutePath = localCacheAbsPath(cacheFilename);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, buf);
-  const browserUrl = `/staging/uploads/${filename}`;
+  const browserUrl = `/api/media/${encodeURIComponent(cacheFilename)}`;
 
   // ── Update metadata ───────────────────────────────────────────────────────
   const meta: AssetMetadataDoc = (asset.metadata ?? {}) as AssetMetadataDoc;

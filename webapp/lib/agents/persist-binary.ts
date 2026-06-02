@@ -1,9 +1,11 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // lib/agents/persist-binary.ts
 // Single helper for binary persistence used by EXEC-THUMB / EXEC-EDIT /
-// EXEC-VGEN. Always writes a local cache under webapp/public/staging/ so the
-// browser can render fast; additionally uploads to Drive when the resolver
-// reports storage='drive_native'.
+// EXEC-VGEN. Always writes a local cache into the worktree-independent media
+// cache (lib/media-cache → FILMS/_media_cache, NOT webapp/public/staging/ —
+// Director directive 2026-06-02, no media in branches) so the browser can
+// render fast; additionally uploads to Drive when the resolver reports
+// storage='drive_native'.
 //
 // Per provider_strategy.md §5: Drive is the canonical store for binaries,
 // the local cache is best-effort fast-load. If Drive upload fails, the agent
@@ -71,7 +73,7 @@ function deriveAssetTypeFromExt(ext: BinaryExt): 'images' | 'video' | 'audio' {
 }
 
 export interface PersistedBinary {
-  /** Public URL the browser can fetch — always set. e.g. "/staging/<file>". */
+  /** Public URL the browser can fetch — always set. e.g. "/api/media/<file>". */
   browserUrl: string;
   /** Server-side absolute path to the local cache. */
   absolutePath: string;

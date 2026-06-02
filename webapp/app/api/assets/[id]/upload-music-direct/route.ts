@@ -31,6 +31,8 @@ import { apiOk } from '@/lib/api/response';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
+import { localCacheAbsPath } from '@/lib/media-cache';
+import { uploadCacheFilename } from '@/lib/api/upload-cache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -129,15 +131,15 @@ export const POST = withApiHandler(async (req, ctx) => {
     throw new ValidationError(`File too large: ${blob.size} bytes; max ${MAX_BYTES}`);
   }
 
-  // Persist locally — same staging convention as /upload-music.
+  // Persist into the worktree-independent media cache — same convention as
+  // /upload-music (no media in branches — 2026-06-02). Served via /api/media/.
   const buf = Buffer.from(await blob.arrayBuffer());
   const hash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16);
-  const dir = path.join(process.cwd(), 'public', 'staging', 'music');
-  await fs.mkdir(dir, { recursive: true });
-  const filename = `${hash}.${ext}`;
-  const absolutePath = path.join(dir, filename);
+  const cacheFilename = uploadCacheFilename(asset.filename, hash, ext);
+  const absolutePath = localCacheAbsPath(cacheFilename);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, buf);
-  const browserUrl = `/staging/music/${filename}`;
+  const browserUrl = `/api/media/${encodeURIComponent(cacheFilename)}`;
   const originalFilename = blob.name ?? `music.${ext}`;
 
   // Update the asset row's binary columns + flag the metadata so downstream
@@ -161,7 +163,9 @@ export const POST = withApiHandler(async (req, ctx) => {
     .from('assets')
     .update({
       drive_path: browserUrl,
-      staging_path: absolutePath,
+      // Served media route, not a worktree filesystem path (no media in
+      // branches — 2026-06-02). The cache abs path is server-only.
+      staging_path: browserUrl,
       drive_file_id: null, // local-only — no Drive id
       drive_web_view_url: null,
       metadata: newMeta as unknown as Record<string, unknown>,
@@ -194,7 +198,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   return apiOk({
     asset_id: assetId,
     drive_path: browserUrl,
-    staging_path: absolutePath,
+    staging_path: browserUrl,
     original_filename: originalFilename,
     bytes: blob.size,
     mime,
