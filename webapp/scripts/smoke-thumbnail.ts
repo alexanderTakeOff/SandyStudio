@@ -105,13 +105,26 @@ async function main() {
   }
 
   // Persist the plan as an APPROVED SPC-thumb_plan so the renderer can load it.
+  // filename has a UNIQUE constraint and earlier smoke/prod runs may already hold a
+  // SPC-thumb_plan for this episode — compute the next free version instead of v01.
+  const existingPlans = await sb
+    .from('assets')
+    .select('filename')
+    .eq('episode_id', episode.id)
+    .eq('file_type', 'SPC-thumb_plan');
+  const maxV = (existingPlans.data ?? []).reduce((m, a) => {
+    const match = /-v(\d+)-/.exec((a as { filename: string }).filename ?? '');
+    return match ? Math.max(m, Number(match[1])) : m;
+  }, 0);
+  const planVersion = String(maxV + 1).padStart(2, '0');
+  console.log(`  plan version = v${planVersion} (${maxV} existing SPC-thumb_plan rows)`);
   const planInsert = await sb
     .from('assets')
     .insert({
       episode_id: episode.id,
       agent_id: 'EXEC-THUMB-DESIGNER',
       file_type: 'SPC-thumb_plan',
-      filename: `${episode.episode_code}-SPC-thumb_plan-v01-APPROVED.md`,
+      filename: `${episode.episode_code}-SPC-thumb_plan-v${planVersion}-APPROVED.md`,
       status: 'APPROVED',
       content: plan.markdown,
       description: plan.description,
