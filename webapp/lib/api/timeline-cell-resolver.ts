@@ -97,6 +97,8 @@ function pickLatestVidShot(rows: VidShotAssetRow[]): VidShotAssetRow {
 }
 
 function bestVideoUrl(asset: VidShotAssetRow): string | null {
+  // Drive-backed media → stable /api/media/<id> cache route (post-2026-06-01).
+  if (asset.id && asset.drive_web_view_url) return `/api/media/${asset.id}`;
   return asset.drive_path || asset.staging_path || asset.drive_web_view_url || null;
 }
 

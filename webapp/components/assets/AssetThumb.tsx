@@ -41,6 +41,9 @@ export interface AssetThumbProps {
 }
 
 function pickPreviewSrc(a: AssetThumbProps['asset']): string | null {
+  // Drive-backed media → stable /api/media/<id> route (post-2026-06-01 cache
+  // migration); /staging is dead, drive_web_view_url is a viewer page not an image.
+  if (a.id && a.drive_web_view_url) return `/api/media/${a.id}`;
   const promptDoc = a.metadata?.image_prompt;
   const currentEntry = promptDoc?.history.find((h) => h.version === promptDoc.current_version);
   const candidates: Array<string | null | undefined> = [

@@ -26,6 +26,26 @@ export function isHttpishUrl(path: string | null | undefined): boolean {
 }
 
 /**
+ * The stable, worktree-independent media route for a Drive-backed asset.
+ * After the 2026-06-01 media-cache migration this is the ONLY renderable source
+ * for generated media — `/staging/*` no longer serves and `drive_web_view_url`
+ * is a Drive *viewer page*, not an image. The `/api/media/<id>` route resolves
+ * `drive_file_id` server-side, so the browser only needs the asset id. We treat
+ * an asset as Drive-backed when EITHER `drive_file_id` or `drive_web_view_url`
+ * is set (they are populated together at persist time) — this avoids having to
+ * thread `drive_file_id` through every SELECT, since `drive_web_view_url` is
+ * already carried everywhere. Returns null for local-only / mock assets.
+ */
+export function driveBackedMediaUrl(a: {
+  id?: string | null;
+  drive_file_id?: string | null;
+  drive_web_view_url?: string | null;
+}): string | null {
+  if (a.id && (a.drive_file_id || a.drive_web_view_url)) return `/api/media/${a.id}`;
+  return null;
+}
+
+/**
  * Resolve the first browser-loadable preview URL for an asset.
  * Candidate order (highest priority first): the asset's own drive_path,
  * staging_path, drive_web_view_url, then an optional prompt-history entry's
@@ -39,9 +59,8 @@ export function resolvePreviewSrc(
   // It survives worktree deletion and doesn't depend on the local /staging
   // cache or symlinks (the breakage that wiped every preview). Falls through to
   // the legacy local candidates for mock/local-only assets without a Drive id.
-  if (asset.id && asset.drive_file_id) {
-    return `/api/media/${asset.id}`;
-  }
+  const route = driveBackedMediaUrl(asset) ?? driveBackedMediaUrl(promptEntry ?? {});
+  if (route) return route;
   const candidates: Array<string | null | undefined> = [
     asset.drive_path,
     asset.staging_path,

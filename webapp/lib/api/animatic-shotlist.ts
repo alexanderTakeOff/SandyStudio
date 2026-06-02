@@ -211,6 +211,10 @@ interface ApprovedEREFAssetRow {
 const FALLBACK_DURATION_S = 2.5;
 
 function bestImageUrl(asset: ApprovedEREFAssetRow): string {
+  // Drive-backed media is served via the stable /api/media/<id> cache route
+  // (post-2026-06-01 migration); /staging is dead and drive_web_view_url is a
+  // viewer page, not an image. drive_web_view_url presence ⇒ Drive-backed.
+  if (asset.id && asset.drive_web_view_url) return `/api/media/${asset.id}`;
   return (
     asset.staging_path ||
     asset.drive_web_view_url ||

@@ -31,40 +31,48 @@ function safeName(filename: string): string {
   return path.basename(filename).replace(/[^A-Za-z0-9._-]/g, '_');
 }
 
-/** Media tier a SS asset TYPE code maps to (CLAUDE.md §2 Tier-3 layout). */
-const MEDIA_DIR_BY_TYPE: Readonly<Record<string, 'video' | 'images' | 'audio'>> =
-  Object.freeze({ VID: 'video', IMG: 'images', AUD: 'audio' });
-
 /**
- * Map a canonical SS filename to the Drive-mirrored cache sub-path
- * (Director directive 2026-06-01 — findability + 3-tier §2 consistency):
+ * Map a canonical SS filename to a flat, human-navigable per-episode cache
+ * sub-path (Director directive 2026-06-02 — supersedes the 2026-06-01
+ * raw/approved/<type> 3-tier mirror; the nesting hurt findability + cleanup):
  *
- *   <season>/e<NN>/<raw|approved>/<images|video|audio>/<safe filename>
+ *   <SEASON>/<EPISODE>/media/<filename>
+ *   e.g. `SS-S15-E01-IMG-thumbnail-v03-APPROVED.png`
+ *          → `S15/E01/media/SS-S15-E01-IMG-thumbnail-v03-APPROVED.png`
  *
- * e.g. `SS-S15-E01-IMG-thumbnail-v03-APPROVED.png`
- *        → `S15/e01/approved/images/SS-S15-E01-IMG-thumbnail-v03-APPROVED.png`
- *
- * Only IMG / VID / AUD assets carry binary media; other TYPEs (text artifacts)
- * never reach this cache. `raw` vs `approved` follows the filename STATUS tail
- * (APPROVED / LOCKED → approved, everything else → raw). Returns `null` when the
- * filename does not match the SS convention — caller falls back to a flat key
- * so the cache never fails on an unexpected name.
+ * Clear one episode's cache: delete `<root>/S15/E01/`. Clear everything: delete
+ * the root. Status + media type live in the filename, so no extra nesting is
+ * needed. Only IMG / VID / AUD assets carry binary media; other TYPEs return
+ * `null` and the caller falls back to a flat key so the cache never fails on an
+ * unexpected name.
  */
 export function mirroredCachePath(filename: string): string | null {
   const base = path.basename(filename);
-  const m = /^SS-(S\d+|PILOT)-(E\d+|PILOT)-(IMG|VID|AUD)-.+?(?:-(DRAFT|REVIEW|REVISION|APPROVED|LOCKED))?\.[A-Za-z0-9]+$/i.exec(
-    base,
-  );
+  const m = /^SS-(S\d+|PILOT)-(E\d+|PILOT)-(IMG|VID|AUD)-.+\.[A-Za-z0-9]+$/i.exec(base);
   if (!m) return null;
   const season = m[1].toUpperCase();
-  const episodeRaw = m[2].toUpperCase();
-  const type = m[3].toUpperCase();
-  const status = (m[4] ?? 'DRAFT').toUpperCase();
-  const mediaDir = MEDIA_DIR_BY_TYPE[type];
-  if (!mediaDir) return null;
-  const episodeDir = episodeRaw === 'PILOT' ? 'pilot' : `e${episodeRaw.slice(1)}`;
-  const tier = status === 'APPROVED' || status === 'LOCKED' ? 'approved' : 'raw';
-  return path.join(season, episodeDir, tier, mediaDir, safeName(base));
+  const episode = m[2].toUpperCase();
+  return path.join(season, episode, 'media', safeName(base));
+}
+
+/** Absolute cache path for a filename — where persist writes and the media route reads. */
+export function localCacheAbsPath(filename: string): string {
+  return path.join(CACHE_ROOT, mirroredCachePath(filename) ?? safeName(filename));
+}
+
+/**
+ * Return the cached absolute path if the file already exists locally (no Drive
+ * fetch). Lets the media route serve persist-warmed files — including mock /
+ * local-only assets that have no `drive_file_id` — straight from the cache.
+ */
+export async function cachedFileIfPresent(filename: string): Promise<string | null> {
+  const abs = localCacheAbsPath(filename);
+  try {
+    await fs.access(abs);
+    return abs;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -78,8 +86,7 @@ export async function ensureCachedMedia(args: {
   filename: string;
   driveFileId: string;
 }): Promise<string> {
-  const rel = mirroredCachePath(args.filename) ?? safeName(args.filename);
-  const abs = path.join(CACHE_ROOT, rel);
+  const abs = localCacheAbsPath(args.filename);
   try {
     await fs.access(abs);
     return abs; // cache hit

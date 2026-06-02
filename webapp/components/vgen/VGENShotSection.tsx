@@ -132,8 +132,11 @@ export function VGENShotSection({
     return { storyboardShot: stub, currentSettings: cs };
   }, [metadata, filename]);
 
-  // Best-available mp4 URL — prefer Drive (signed), fall back to staging.
-  const videoUrl = drivePath ?? driveWebViewUrl ?? stagingPath ?? null;
+  // Best-available mp4 URL. Drive-backed media → stable /api/media/<id> cache
+  // route (post-2026-06-01); /staging is dead, drive_web_view_url is a viewer
+  // page not a playable mp4. drive_web_view_url presence ⇒ Drive-backed.
+  const videoUrl =
+    assetId && driveWebViewUrl ? `/api/media/${assetId}` : drivePath ?? stagingPath ?? null;
 
   return (
     <VGENShotPanel

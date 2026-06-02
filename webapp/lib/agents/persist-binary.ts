@@ -13,11 +13,11 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
 import { ensureFolder, uploadBinary, DriveError } from './providers/drive';
 import { resolveProvider } from './provider-resolver';
+import { localCacheAbsPath } from '../media-cache';
 
 export type BinaryExt = 'png' | 'jpg' | 'webp' | 'mp4' | 'mov' | 'wav' | 'mp3';
 
@@ -85,22 +85,25 @@ export interface PersistedBinary {
   driveUploadFailed: boolean;
 }
 
-const STAGING_DIR_NAME = ['public', 'staging'] as const;
-
+/**
+ * Write the local copy into the worktree-independent media cache
+ * (`FILMS/_media_cache/<S>/<E>/media/<filename>`) keyed by the canonical
+ * filename — NOT into `webapp/public/staging/` (Director directive 2026-06-02:
+ * no media in branches). The `/api/media/<id|filename>` route reads from this
+ * same cache, so a persisted file is an instant cache hit with no Drive fetch.
+ * The returned `browserUrl` is the filename-keyed media route, which works for
+ * Drive-backed AND mock/local-only assets (the latter have no asset id yet).
+ */
 async function writeLocalCache(args: {
   base64: string;
-  ext: BinaryExt;
-  hint?: string;
+  driveFilename: string;
 }): Promise<{ browserUrl: string; absolutePath: string }> {
-  const dir = path.join(process.cwd(), ...STAGING_DIR_NAME);
-  await fs.mkdir(dir, { recursive: true });
-  const rand = crypto.randomBytes(6).toString('hex');
-  const filename = `${args.hint ? `${args.hint}-` : ''}${rand}.${args.ext}`;
-  const absolutePath = path.join(dir, filename);
+  const absolutePath = localCacheAbsPath(args.driveFilename);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await fs.writeFile(absolutePath, Buffer.from(args.base64, 'base64'));
   return {
     absolutePath,
-    browserUrl: `/staging/${filename}`,
+    browserUrl: `/api/media/${encodeURIComponent(path.basename(args.driveFilename))}`,
   };
 }
 
@@ -156,11 +159,11 @@ async function uploadToDrive(args: {
 }
 
 export async function persistBinary(args: PersistBinaryArgs): Promise<PersistedBinary> {
-  // 1. Local cache — always succeeds (fs writable).
+  // 1. Local cache — always succeeds (fs writable). Writes to the
+  //    worktree-independent media cache, NOT public/staging (2026-06-02).
   const local = await writeLocalCache({
     base64: args.base64,
-    ext: args.ext,
-    hint: args.localHint,
+    driveFilename: args.driveFilename,
   });
 
   // 2. Resolve storage provider. On error (no row, contract disabled), default

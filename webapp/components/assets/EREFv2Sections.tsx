@@ -324,6 +324,8 @@ interface CandidateAsset {
 }
 
 function pickPreview(a: CandidateAsset): string | null {
+  // Drive-backed media → stable /api/media/<id> route (post-2026-06-01 cache migration).
+  if (a.id && a.drive_web_view_url) return `/api/media/${a.id}`;
   const ip = a.metadata?.image_prompt;
   const cur = ip?.history.find((h) => h.version === ip.current_version);
   const cands: Array<string | null | undefined> = [
