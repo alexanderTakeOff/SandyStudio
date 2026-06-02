@@ -3,7 +3,9 @@
 // Series + Bible tools for the new-episode-from-scratch smoke flow.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { checkVerbalApproval } from '../approval-check';
+import { withEffectiveStatus } from '@/lib/api/series-status';
 import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
 
 type AnyArgs = Record<string, unknown>;
@@ -44,29 +46,26 @@ export const listSeries: Tool<ListSeriesArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    let query = (ctx.supabase as unknown as {
-      from: (t: string) => {
-        select: (s: string) => {
-          order: (c: string, o: { ascending: boolean }) => unknown;
-        };
-      };
-    })
+    const sb = ctx.supabase as unknown as SupabaseClient;
+    const { data, error } = await sb
       .from('series')
       .select('id,code,title,genre,audience,logline,status,created_at')
       .order('created_at', { ascending: false });
-    // Status filter applied via dynamic property chain because `series` is not
-    // in the generated Database type yet.
-    const qWithFilter = args.status
-      ? (query as { eq: (c: string, v: string) => unknown }).eq('status', args.status)
-      : query;
-    const limited = (qWithFilter as { limit: (n: number) => Promise<{ data: unknown; error: { message: string } | null }> })
-      .limit(args.limit ?? 50);
-    const { data, error } = await limited;
     if (error) return fail(`series list failed: ${error.message}`);
-    const rows = (data as Array<Record<string, unknown>>) ?? [];
+    // Series ACTIVE is DERIVED from a LOCKED general_idea (lib/api/series-status) —
+    // compute the effective status, then filter on it; the stored column never
+    // holds ACTIVE, so an SQL `status=ACTIVE` filter would always return 0.
+    const all = await withEffectiveStatus(
+      sb,
+      (data as Array<{ id: string; status?: string | null }>) ?? [],
+    );
+    const filtered = (args.status ? all.filter((r) => r.status === args.status) : all).slice(
+      0,
+      args.limit ?? 50,
+    );
     return ok(
-      { series: rows },
-      `${rows.length} series found${args.status ? ` (status=${args.status})` : ''}.`,
+      { series: filtered },
+      `${filtered.length} series found${args.status ? ` (status=${args.status})` : ''}.`,
     );
   },
 };

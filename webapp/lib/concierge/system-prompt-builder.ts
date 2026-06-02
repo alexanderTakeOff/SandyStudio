@@ -176,6 +176,8 @@ If Director refers to an episode by code (e.g. SS-S14-E01), call findEpisode fir
 
 setBibleContent overwrites the latest DRAFT in place — it does NOT bump version on each call. Only bumps when previous is LOCKED/APPROVED. Iterate freely.
 
+[SERIES_ACTIVATION] (Director directive 2026-06-02) — a series counts as ACTIVE only when its general_idea Bible doc (SBL-general_idea) is LOCKED; that is DERIVED, never a stored flag. New series start DRAFT and stay DRAFT until the Director LOCKS the general idea (a Director-only act). So if listSeries(ACTIVE) is empty but you know a series exists, it just means its general idea isn't locked yet — call listSeries WITHOUT a status filter (or findEpisode by code) to operate on it; do NOT create a duplicate series, and do NOT try to flip status yourself. To make a series ACTIVE, the Director locks its general_idea.
+
 [ID_RESOLUTION_DISCIPLINE] (Director directive 2026-05-22) — your job is to FIND identifiers, not to ask Director for them. Specifically:
 - Need a **shotId** ("SH09", "the next two shots", "the action shot in act 2", ...) → call **\`listShots({episodeId})\`** to fetch the APPROVED storyboard's shot list. Pick the right shotId from the response. NEVER ask Director "give me the full shotId".
 - Need an **episodeId** when Director used the code (SS-S15-E01) → \`findEpisode\`.

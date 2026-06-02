@@ -12,6 +12,7 @@ import { parseJson, parseSearchParams } from '@/lib/api/zod-helpers';
 import { ConflictError } from '@/lib/api/errors';
 import type { SeriesRow, AuthorityCategory, AuthorityApprover } from '@/lib/supabase/types-phase5b';
 import { HARD_LOCKED_CATEGORIES } from '@/lib/supabase/types-phase5b';
+import { withEffectiveStatus } from '@/lib/api/series-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,16 +39,17 @@ export const GET = withApiHandler(async (req) => {
   const { supabase } = await requireDirector();
   const q = parseSearchParams(req.url, ListQuery);
 
-  let query = supabase
+  // Series ACTIVE is DERIVED from a LOCKED general_idea (lib/api/series-status) —
+  // never stored. Fetch all, compute effective status, then filter on it; the
+  // stored column only ever holds DRAFT or ARCHIVED.
+  const { data, error } = await supabase
     .from('series' as never)
     .select('*')
-    .order('created_at', { ascending: false })
-    .limit(q.limit);
-  if (q.status) query = query.eq('status', q.status);
-
-  const { data, error } = await query;
+    .order('created_at', { ascending: false });
   if (error) throw new Error(`series list failed: ${error.message}`);
-  return apiOk(data as unknown as SeriesRow[], { total: (data ?? []).length });
+  const rows = await withEffectiveStatus(supabase, (data as unknown as SeriesRow[]) ?? []);
+  const filtered = (q.status ? rows.filter((r) => r.status === q.status) : rows).slice(0, q.limit);
+  return apiOk(filtered as unknown as SeriesRow[], { total: filtered.length });
 });
 
 export const POST = withApiHandler(async (req) => {
