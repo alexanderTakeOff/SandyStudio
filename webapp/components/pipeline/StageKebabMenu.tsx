@@ -33,21 +33,30 @@ import type { PipelineNodeState, PipelineStageId } from '@/lib/api/pipeline-stag
 // Each row = single agent → single primary file_type prefix.
 // Legacy ids kept for back-compat with old episode pages still in cache.
 const STAGE_PREFIX_MAP: Record<string, string[]> = {
-  // Backbone v2.5 — per-agent rows
+  // Topic 3 (2026-06-02) — per-agent rows, 19-row model
   brief:               ['SPC-brief'],
   screenwriter:        ['SCR'],
-  script_reviewer:     ['REV-script_qa'],
+  script_critic:       ['REV-script_qa'],
   storyboarder:        ['STB'],
-  continuity_check:    ['REV-world_check', 'REV-continuity'],
+  continuity_critic:   ['REV-world_check', 'REV-continuity'],
+  reference_designer:  ['SPC-ref_plan'],
+  reference_critic:    ['REV-ref_plan'],
   episode_references:  ['IMG-episode_ref'],
   animatic:            ['VID-animatic'],
+  shot_designer:       ['SPC-shot_plan'],
+  shot_critic:         ['REV-shot_plan'],
   visual_generator:    ['VID-shot'],
   final_cut:           ['VID-final_cut'],
   music_generator:     ['AUD-music'],
   copywriter:          ['SPC-metadata', 'SPC-copy'],
+  thumbnail_designer:  ['SPC-thumb_plan'],
   thumbnail_creator:   ['IMG-thumbnail'],
   publisher:           ['REV-publish'],
   analytics_collector: ['REV-analytics'],
+  // Legacy renamed ids — keep mapping so cached pages still resolve
+  script_reviewer:     ['REV-script_qa'],
+  continuity_check:    ['REV-world_check', 'REV-continuity'],
+  shot_planning:       ['SPC-shot_plan'],
   // Legacy ids — old code paths
   script:        ['SCR', 'REV-script_qa'],
   storyboard:    ['STB'],

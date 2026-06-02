@@ -1,7 +1,14 @@
 # SandyStudio — Episode Pipeline View
-## specs/system/pipeline_view.md | v0.1 | DRAFT
+## specs/system/pipeline_view.md | v0.2 | DRAFT
 
 > **Status:** Phase 5a UX architecture spec. Implementation: Phase 5c.
+> **v0.2 (2026-06-02 · Topic 3 systematization):** the DAG now models the
+> per-artifact operating loop **Designer → Plan-Critic → Artist → Output-Critic**
+> across **19 ordered rows** (§3.1a), each tagged `tier: primary | muted`. MUTED
+> Designer/Critic rows collapse under the PRIMARY they serve and expand on
+> click. Clicking any stage opens the **StageWorkspacePanel** (§3.5) — the
+> agent's workstation (assets preview + Critic verdict + actions), NOT the
+> activity feed. Full design: `docs/topic3-pipeline-systematization-design.md`.
 
 ---
 
@@ -110,6 +117,58 @@ are derived from the agent registry and the episode's status enum:
 Stage 7 (Generation) is a fan-out container — one parent node with a child
 counter `◐ 6/12` showing 6 of 12 shots approved. Click expands the children
 inline.
+
+### 3.1a Stage model — 19 ordered rows (Topic 3, v0.2)
+
+The list above is the original 10-stage summary. The implementation
+(`lib/api/pipeline-stages.ts` `ROW_DEFINITIONS`) renders **19 per-agent rows**
+that make the per-artifact loop **Designer → Plan-Critic → Artist →
+Output-Critic** honest and visible. Each row carries a `tier`:
+
+- **PRIMARY** — Artist / Author / Editor + hard-gate rows. Full visual weight.
+- **MUTED** — Designer (plan) + Critic (verdict) rows. Reduced weight; collapse
+  to a thin sub-line indented under the PRIMARY they `serves`, expand on click.
+
+Tier rule (systematic, not per-stage taste): *Artist/Author/Editor + hard-gate
+= PRIMARY; Designer(plan) + Critic(verdict) = MUTED.*
+
+| # | stage id | role | label (subtitle) | tier | agent(s) | serves |
+|---|----------|------|------------------|------|----------|--------|
+| 1 | `brief` | input | Brief | PRIMARY | Director | — |
+| 2 | `screenwriter` | author | Writer | PRIMARY | EXEC-SW | — |
+| 3 | `script_critic` | critic | Script Critic (Story Editor) | MUTED | EXEC-SREV | screenwriter |
+| 4 | `storyboarder` | author | Storyboard Artist | PRIMARY | EXEC-SB | — |
+| 5 | `continuity_critic` | critic | Continuity Critic (Script Supervisor) | MUTED | EXEC-WCHK/CONT | storyboarder |
+| 6 | `reference_designer` | designer | Reference Designer | MUTED | EXEC-EREF-DESIGNER | episode_references |
+| 7 | `reference_critic` | critic | Reference Critic | MUTED | EXEC-EPREV (+GAGAD eref) | episode_references |
+| 8 | `episode_references` | artist | Reference Artist | PRIMARY | EXEC-EREF | — |
+| 9 | `music_generator` | artist | Composer | PRIMARY | EXEC-MGEN | — |
+| 10 | `animatic` | editor | Editor | PRIMARY | EXEC-EDIT | — |
+| 11 | `shot_designer` | designer | Video Designer | MUTED | EXEC-VANIM | visual_generator |
+| 12 | `shot_critic` | critic | Video Critic | MUTED | EXEC-VPREV (+GAGAD vanim) | visual_generator |
+| 13 | `visual_generator` | artist | Video Artist | PRIMARY | EXEC-VGEN | — |
+| 14 | `final_cut` | editor | Online Editor | PRIMARY | EXEC-STITCH | — |
+| 15 | `copywriter` | author | Publicist | PRIMARY | EXEC-COPY | — |
+| 16 | `thumbnail_designer` | designer | Key Art Designer | MUTED | EXEC-THUMB-DESIGNER | thumbnail_creator |
+| 17 | `thumbnail_critic` | critic | Key Art Critic (not staffed) | MUTED | — (empty slot) | thumbnail_creator |
+| 18 | `thumbnail_creator` | artist | Key Art Artist | PRIMARY | EXEC-THUMB | — |
+| 19 | `publisher` | publisher | Distribution | PRIMARY (hard gate) | EXEC-PUB | — |
+| 20 | `analytics_collector` | analyst | Audience Analyst | PRIMARY | EXEC-ANAL | — |
+
+(20 lines, 19 staffed rows + 1 honest empty slot.) New rows vs the legacy
+15-row backbone: `reference_designer`, `reference_critic`, `shot_critic`,
+`thumbnail_designer`. Renamed (legacy id kept as alias):
+`script_reviewer`→`script_critic`, `continuity_check`→`continuity_critic`,
+`shot_planning`→`shot_designer`.
+
+**Empty-slot honesty (q11a):** `thumbnail_critic` is rendered as a MUTED row
+marked `unstaffed: true` ("Critic — not staffed"). It reflects the real gap —
+the Output-Critic for Key Art is a future sprint (EXEC-THUMB-CRIT). The
+agent does not exist yet; the slot does.
+
+**GAGAD by phase:** `EXEC-GAGAD` does not own a row. Its plan phase folds into
+the relevant Designer; its review phases fold into `reference_critic` (eref) and
+`shot_critic` (vanim) per its dual role (see glossary).
 
 ### 3.2 Node states (canonical)
 
@@ -327,6 +386,56 @@ visually different from normal flow.
 
 ---
 
+## 3.5 StageWorkspacePanel (Topic 3 v0.2) — click-a-stage → workstation
+
+> Supersedes the old "click DAG node ⟶ filter the activity feed" behavior for
+> the right pane. The activity feed remains, but the canonical right-side
+> surface for a selected stage is now the agent's **workstation**, not the feed.
+
+**Clicking a stage line opens the right-side StageWorkspacePanel** = that
+stage's asset(s) preview + the Critic verdict (which V-checks passed/failed) +
+actions. It is the place the Director acts on one stage's work without leaving
+the page. The activity/chat surface stays in the assistant panel, not here.
+
+Panel contents, top to bottom:
+
+1. **Header** — stage label + subtitle, role-word chip (Author / Designer /
+   Critic / Artist / Editor), state glyph, and (for Critic rows) the
+   `latest_verdict` chip (PASS green / REVISE amber / FAIL red).
+2. **Artifact preview** — the stage's latest asset(s). Text → markdown body via
+   `/api/assets/[id]/content`; binary (IMG/VID/AUD) → the existing
+   `PreviewDrawer`. Reference/Video artist rows may embed their galleries.
+3. **Critic verdict block** — for a PRIMARY Artist/Author row, the verdict of
+   the Critic that gates it is surfaced here too (q10a: the Critic is its own
+   MUTED row in the DAG **and** its verdict shows inside the Artist's
+   workstation). Lists which hard checks (V01-V13 etc.) passed/failed when the
+   Critic body carries them.
+4. **Actions** — `[Edit] [Retrigger] [Approve] [Change provider]`, each wired to
+   the **existing** endpoints:
+   - Edit → `EditorModal` (PUT `/api/assets/[id]/content`)
+   - Retrigger → `RetriggerStageModal` (POST `/api/episodes/[id]/trigger`)
+   - Approve → POST `/api/assets/[id]/approve`
+   - Change provider → stub link to provider settings (re-route flow is Phase 8)
+   Actions are filtered per stage `tier`/`role` + state, mirroring
+   `StageKebabMenu` logic (e.g. Director-only Publish; `unstaffed` rows show no
+   actions, only the "not staffed" note).
+
+**Muting behavior (q9b):** MUTED Designer/Critic rows render as thin indented
+sub-lines under the PRIMARY they `serves`. They collapse by default and expand
+on click. Reduced visual weight (smaller glyph, muted text token). All motion
+respects `prefers-reduced-motion`. Clicking a muted row opens its own
+workstation just like a primary row.
+
+**Revision/regen loop affordance:** a small `↻ revise ≤N` icon is rendered on
+the Designer↔Critic and Artist↔Output-Critic relationship (even if only an
+icon + label), reflecting the critic-revision-cap doctrine.
+
+No raw hex anywhere — semantic theme tokens only (`var(--accent-success)`,
+`var(--accent-warning)`, `var(--accent-danger)`, `var(--text-muted)`,
+`var(--panel-hover-bg)`, …) per `uiux.md`.
+
+---
+
 ## 9. Mobile / Narrow Viewport
 
 The two-pane layout collapses on viewports narrower than 1024 px:
@@ -370,10 +479,20 @@ The `pipeline` GET shape:
   data: {
     episode: { id, code, status, governance_mode, budget_spent, budget_ceiling, ... },
     stages: Array<{
-      id: 'brief'|'story'|'script'|'storyboard'|'world_check'|'animatic'|'generation'|'distribution'|'publish'|'analytics',
+      id: PipelineStageId,                  // 19-row Topic 3 union + legacy aliases
+      label: string,
+      subtitle?: string,
+      role: 'input'|'author'|'designer'|'critic'|'artist'|'editor'|'publisher'|'analyst',
+      tier: 'primary'|'muted',              // Topic 3 v0.2 — MUTED rows collapse under `serves`
+      serves?: PipelineStageId,             // MUTED row → the PRIMARY it gates/plans for
       state: 'idle'|'running'|'approved'|'blocked'|'failed',
-      agents: string[],   // codes contributing to this stage
+      agents: string[],                     // codes contributing to this stage ([] when unstaffed)
       latest_asset_id?: string,
+      latest_asset_type?: string,
+      latest_verdict?: 'PASS'|'REVISE'|'FAIL',  // Critic rows — parsed from REV/Plan body
+      unstaffed?: boolean,                  // honest empty slot (e.g. thumbnail_critic)
+      phase: PipelinePhase,
+      assets_in_review?: number,
       job_count?: { total: number, done: number, running: number, failed: number },
     }>,
     feed: Array<AgentReportCard>,

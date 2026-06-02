@@ -13,26 +13,29 @@
 
 export const AGENT_DISPLAY_NAME: Readonly<Record<string, string>> = Object.freeze({
   // Execution (production) tier — short English industry-standard roles
+  // Topic 3 (2026-06-02) rename map — single Critic word replaces the
+  // Reviewer / Checker / Supervisor / "X's Critic" sprawl. Friendly subtitle
+  // retained in pipeline-stages.ts ROW_DEFINITIONS.subtitle.
   'EXEC-ORCH':          'Showrunner',
   'EXEC-SW':            'Writer',
-  'EXEC-SREV':          'Story Editor',
+  'EXEC-SREV':          'Script Critic',
   'EXEC-STY':           'Production Designer',
   'EXEC-SB':            'Storyboard Artist',
-  'EXEC-WCHK':          'Script Supervisor',
-  'EXEC-CONT':          'Script Supervisor', // legacy alias of WCHK while CONT lands
+  'EXEC-WCHK':          'Continuity Critic',
+  'EXEC-CONT':          'Continuity Critic', // legacy alias of WCHK while CONT lands
   'EXEC-ARCH':          'Archivist',
   'EXEC-EREF':          'Reference Artist',
   'EXEC-EREF-DESIGNER': 'Reference Designer',
-  'EXEC-EPREV':         "Designer's Critic",
+  'EXEC-EPREV':         'Reference Critic',
   'EXEC-VANIM':         'Video Designer',
-  'EXEC-VPREV':         "Video Designer's Critic",
-  'EXEC-GAGAD':         'Gag AD',
+  'EXEC-VPREV':         'Video Critic',
+  'EXEC-GAGAD':         'Gag Critic', // Designer in plan phase, Critic in review phases
   'EXEC-EDIT':          'Editor',
   'EXEC-VGEN':          'Video Artist',
   'EXEC-MGEN':          'Composer',
   'EXEC-STITCH':        'Online Editor',
   'EXEC-COPY':          'Publicist',
-  'EXEC-THUMB':         'Key Art Designer',
+  'EXEC-THUMB':         'Key Art Artist', // renders the approved Key Art plan
   'EXEC-PUB':           'Distribution',
   'EXEC-ANAL':          'Audience Analyst',
   'EXEC-BIBLE-AUTHOR':  'Bible Editor',

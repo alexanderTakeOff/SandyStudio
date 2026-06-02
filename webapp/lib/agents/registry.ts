@@ -66,7 +66,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     id: 'EXEC-SREV',
     code: 'exec-srev',
     display_ru: 'Критик-редактор',
-    display_en: 'Script Reviewer',
+    display_en: 'Script Critic', // Topic 3 rename (subtitle "Story Editor")
     emoji: '🔍',
     category: 'review',
     model: 'sonnet',
@@ -100,7 +100,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     id: 'EXEC-WCHK',
     code: 'exec-wchk',
     display_ru: 'Хранитель мира',
-    display_en: 'World Checker',
+    display_en: 'Continuity Critic', // Topic 3 rename (subtitle "Script Supervisor")
     emoji: '🌍',
     category: 'review',
     model: 'sonnet',
@@ -130,7 +130,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     id: 'EXEC-EPREV',
     code: 'exec-eprev',
     display_ru: 'Критик дизайнера',
-    display_en: "Designer's Critic",
+    display_en: 'Reference Critic', // Topic 3 rename
     emoji: '🧐',
     category: 'review',
     // Sonnet 4.6 — Critic enforces V01-V09 hard checks against the Plan JSON
@@ -166,7 +166,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     id: 'EXEC-GAGAD',
     code: 'exec-gagad',
     display_ru: 'Гэг-режиссёр',
-    display_en: 'Gag AD',
+    display_en: 'Gag Critic', // Topic 3: Gag Designer (plan phase) / Gag Critic (review phases)
     emoji: '🎭',
     category: 'review',
     // Sonnet 4.6 — cross-layer gag continuity supervisor.
@@ -185,7 +185,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     id: 'EXEC-VPREV',
     code: 'exec-vprev',
     display_ru: 'Критик аниматора',
-    display_en: "Animator's Critic",
+    display_en: 'Video Critic', // Topic 3 rename
     emoji: '🧐',
     category: 'review',
     // Sonnet 4.6 — V01-V09 hard checks against shot Plan JSON body (provider
@@ -307,7 +307,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     id: 'EXEC-THUMB-DESIGNER',
     code: 'exec-thumb-designer',
     display_ru: 'Дизайнер обложек',
-    display_en: 'Thumbnail Designer',
+    display_en: 'Key Art Designer', // Topic 3 rename
     emoji: '🎨',
     category: 'distribution',
     model: 'sonnet', // LLM art-director: reads viral-thumbnail-design skill + Bible canon
@@ -322,7 +322,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     id: 'EXEC-THUMB',
     code: 'exec-thumb',
     display_ru: 'Рендер обложек',
-    display_en: 'Thumbnail Renderer',
+    display_en: 'Key Art Artist', // Topic 3 rename — it RENDERS the approved plan
     emoji: '🖼️',
     category: 'media',
     model: 'haiku', // deterministic executor — renders the approved Plan's variants

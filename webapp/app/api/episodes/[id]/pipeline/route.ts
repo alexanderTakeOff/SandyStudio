@@ -32,7 +32,7 @@ export const GET = withApiHandler(async (req, ctx) => {
     supabase.from('episodes').select('*').eq('id', id).maybeSingle(),
     supabase
       .from('assets')
-      .select('id,filename,file_type,status,agent_id,created_at,description,version')
+      .select('id,filename,file_type,status,agent_id,created_at,description,version,content')
       .eq('episode_id', id)
       .order('created_at', { ascending: true }),
     supabase
@@ -65,6 +65,9 @@ export const GET = withApiHandler(async (req, ctx) => {
       status: a.status,
       agent_id: a.agent_id,
       created_at: a.created_at,
+      // Topic 3 — verdict is parsed from description (cheap) or body.
+      description: (a as { description?: string | null }).description ?? null,
+      content: (a as { content?: string | null }).content ?? null,
     })),
     (jobsRes.data ?? []).map((j) => ({
       id: j.id,
