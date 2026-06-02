@@ -2506,9 +2506,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
     case 'EXEC-THUMB': {
       // Plan-driven executor: render the APPROVED SPC-thumb_plan's N variants
-      // via Ideogram v3 on fal (native bold text, 16:9, character mode) → N
-      // sibling IMG-thumbnail rows. Inserts directly (skip_save).
-      const hasFal = Boolean((process.env.FAL_KEY ?? process.env.FAL_API_KEY)?.trim());
+      // via multi-canon gpt-image-2 edits (openai-edits-multi — ALL LOCKED Bible
+      // character canon + style fed together so Sandy + Anvil + … stay on-model),
+      // then a punchy sharp text overlay → N sibling IMG-thumbnail rows. Inserts
+      // directly (skip_save).
+      const hasOpenAI = Boolean(process.env.OPENAI_API_KEY?.trim());
       // Resolve the plan: prefer the explicit planAssetId from the event; else
       // fall back to the latest APPROVED SPC-thumb_plan for the episode. Without
       // this, a manual EXEC-THUMB trigger (no planAssetId) silently mocked even
@@ -2525,7 +2527,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           .limit(1);
         effectivePlanId = (planRows?.[0] as { id?: string } | undefined)?.id ?? undefined;
       }
-      if (hasFal && supabase && effectivePlanId) {
+      if (hasOpenAI && supabase && effectivePlanId) {
         try {
           const r = await runThumbnailRenderer({ inputs, supabase, episodeCode, planAssetId: effectivePlanId });
           return {
@@ -2535,8 +2537,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               cost_usd: r.costUsd,
               metadata: {
                 agent_id: agentId,
-                provider_id: 'fal-ai/ideogram',
-                provider_used: 'fal-ai/ideogram',
+                provider_id: 'openai-edits-multi',
+                provider_used: 'gpt-image-2',
                 description: r.description,
                 skip_save: true,
                 inserted_asset_ids: r.insertedAssetIds,

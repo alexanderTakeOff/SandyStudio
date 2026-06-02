@@ -2,9 +2,11 @@
 //
 //   EXEC-THUMB-DESIGNER (real Anthropic Sonnet) → SPC-thumb_plan with N viral
 //   variant concepts → insert as APPROVED plan → EXEC-THUMB renderer (real
-//   gpt-image-1 + sharp crop 1280×720 + overlay) → N IMG-thumbnail REVIEW rows.
+//   multi-canon gpt-image-2 edits + sharp crop 1280×720 + text overlay) → N
+//   IMG-thumbnail REVIEW rows.
 //
-// PAID: ~$0.01 Anthropic + ~$0.04 × N gpt-image. Default N=3 → ~$0.13. Don't loop.
+// PAID: ~$0.02 Anthropic + ~$0.08 × N gpt-image-2 edits (1536×1024 medium).
+//       Default N=3 → ~$0.26. Don't loop.
 //
 //   npx tsx --env-file=.env.local scripts/smoke-thumbnail.ts [SS-S15-E01]
 
@@ -123,8 +125,8 @@ async function main() {
   console.log(`  plan asset = ${planAssetId}`);
   }
 
-  // ── Stage 2: Renderer (real gpt-image-1 + sharp) ────────────────────────────
-  console.log(`\n[smoke] Stage 2 — Renderer (gpt-image-1 + sharp crop/overlay)...`);
+  // ── Stage 2: Renderer (real multi-canon gpt-image-2 edits + sharp) ──────────
+  console.log(`\n[smoke] Stage 2 — Renderer (multi-canon gpt-image-2 edits + sharp crop/overlay)...`);
   const t1 = Date.now();
   const render = await runThumbnailRenderer({
     inputs,

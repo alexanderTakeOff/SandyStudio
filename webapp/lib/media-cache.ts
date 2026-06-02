@@ -31,24 +31,62 @@ function safeName(filename: string): string {
   return path.basename(filename).replace(/[^A-Za-z0-9._-]/g, '_');
 }
 
+/** Media tier a SS asset TYPE code maps to (CLAUDE.md §2 Tier-3 layout). */
+const MEDIA_DIR_BY_TYPE: Readonly<Record<string, 'video' | 'images' | 'audio'>> =
+  Object.freeze({ VID: 'video', IMG: 'images', AUD: 'audio' });
+
+/**
+ * Map a canonical SS filename to the Drive-mirrored cache sub-path
+ * (Director directive 2026-06-01 — findability + 3-tier §2 consistency):
+ *
+ *   <season>/e<NN>/<raw|approved>/<images|video|audio>/<safe filename>
+ *
+ * e.g. `SS-S15-E01-IMG-thumbnail-v03-APPROVED.png`
+ *        → `S15/e01/approved/images/SS-S15-E01-IMG-thumbnail-v03-APPROVED.png`
+ *
+ * Only IMG / VID / AUD assets carry binary media; other TYPEs (text artifacts)
+ * never reach this cache. `raw` vs `approved` follows the filename STATUS tail
+ * (APPROVED / LOCKED → approved, everything else → raw). Returns `null` when the
+ * filename does not match the SS convention — caller falls back to a flat key
+ * so the cache never fails on an unexpected name.
+ */
+export function mirroredCachePath(filename: string): string | null {
+  const base = path.basename(filename);
+  const m = /^SS-(S\d+|PILOT)-(E\d+|PILOT)-(IMG|VID|AUD)-.+?(?:-(DRAFT|REVIEW|REVISION|APPROVED|LOCKED))?\.[A-Za-z0-9]+$/i.exec(
+    base,
+  );
+  if (!m) return null;
+  const season = m[1].toUpperCase();
+  const episodeRaw = m[2].toUpperCase();
+  const type = m[3].toUpperCase();
+  const status = (m[4] ?? 'DRAFT').toUpperCase();
+  const mediaDir = MEDIA_DIR_BY_TYPE[type];
+  if (!mediaDir) return null;
+  const episodeDir = episodeRaw === 'PILOT' ? 'pilot' : `e${episodeRaw.slice(1)}`;
+  const tier = status === 'APPROVED' || status === 'LOCKED' ? 'approved' : 'raw';
+  return path.join(season, episodeDir, tier, mediaDir, safeName(base));
+}
+
 /**
  * Return the local absolute path for an asset's media, downloading it from
- * Drive into the stable cache on a miss. The cache file is keyed by the asset
- * filename (which already encodes `SS-<S>-<E>-<TYPE>-…`), so it is human-readable
- * and collision-free across versions.
+ * Drive into the stable cache on a miss. The cache path mirrors the Drive /
+ * 3-tier folder structure (`<season>/e<NN>/<raw|approved>/<media>/<file>`) so
+ * the cache is browsable and consistent with the canonical store; filenames
+ * that don't match the SS convention fall back to a flat key under the root.
  */
 export async function ensureCachedMedia(args: {
   filename: string;
   driveFileId: string;
 }): Promise<string> {
-  const abs = path.join(CACHE_ROOT, safeName(args.filename));
+  const rel = mirroredCachePath(args.filename) ?? safeName(args.filename);
+  const abs = path.join(CACHE_ROOT, rel);
   try {
     await fs.access(abs);
     return abs; // cache hit
   } catch {
     // cache miss — fall through to download
   }
-  await fs.mkdir(CACHE_ROOT, { recursive: true });
+  await fs.mkdir(path.dirname(abs), { recursive: true });
   const bytes = Buffer.from(await downloadFile(args.driveFileId));
   await fs.writeFile(abs, bytes);
   return abs;
