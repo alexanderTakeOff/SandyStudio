@@ -243,6 +243,17 @@ export function EpisodeAssetDrawer({
     : null;
   const anchorPlanAssetId = isAnchor ? anchorMeta?.provenance?.plan_asset_id ?? null : null;
 
+  // Anchors carry a useful free-text rationale in metadata but never populate
+  // assets.content, so the "Description (markdown body)" section reads empty.
+  // Surface anchor_rationale as a read-only fallback body for anchors that have
+  // no real content of their own. Display-only — no data write.
+  const anchorRationale =
+    isAnchor && typeof (asset.metadata as { anchor_rationale?: unknown })?.anchor_rationale === 'string'
+      ? ((asset.metadata as { anchor_rationale: string }).anchor_rationale).trim()
+      : '';
+  const showAnchorRationaleFallback =
+    isAnchor && anchorRationale.length > 0 && content.trim().length === 0;
+
   // Fetch sibling assets for the same shot (candidates strip + replace-confirm).
   // Always called (hook rule) — but only used when v2.
   const { data: assetsData } = useSWR<{ data: EpisodeAsset[] }>(
@@ -745,16 +756,43 @@ export function EpisodeAssetDrawer({
             open={bodyOpen}
             onToggle={() => setBodyOpen((v) => !v)}
             label="Description (markdown body)"
-            meta={`${content.split('\n').length} lines · ${content.length} chars`}
+            meta={
+              showAnchorRationaleFallback
+                ? 'anchor rationale'
+                : `${content.split('\n').length} lines · ${content.length} chars`
+            }
           >
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              readOnly={!editable}
-              rows={14}
-              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary font-sans leading-relaxed focus:outline-none focus:border-[var(--accent-primary)]"
-              placeholder="Full description in markdown…"
-            />
+            {showAnchorRationaleFallback ? (
+              <div className="space-y-2">
+                <div className="text-[10px] uppercase tracking-wider text-text-muted">
+                  Anchor rationale (from plan) — no description body yet
+                </div>
+                <p
+                  className="rounded-lg p-3 border border-glass text-xs text-text-secondary leading-relaxed whitespace-pre-wrap break-words"
+                  style={{ background: 'var(--bg-elevated)' }}
+                >
+                  {anchorRationale}
+                </p>
+                {editable && (
+                  <textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    rows={6}
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary font-sans leading-relaxed focus:outline-none focus:border-[var(--accent-primary)]"
+                    placeholder="Add a description body in markdown… (saving replaces the rationale fallback above)"
+                  />
+                )}
+              </div>
+            ) : (
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                readOnly={!editable}
+                rows={14}
+                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary font-sans leading-relaxed focus:outline-none focus:border-[var(--accent-primary)]"
+                placeholder="Full description in markdown…"
+              />
+            )}
           </AssetCollapsibleSection>
 
           <AssetImagePromptSection
