@@ -201,6 +201,22 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
+  // 2026-06-02 — Plan-driven EREF (anchor / per-shot reference) regen. Same
+  // discard-the-plan bug as VGEN above: a "Regenerate" from the asset drawer
+  // on an IMG-anchor passes {shotId, planAssetId} to re-run ONE shot's anchor
+  // pair (with scene_master + identity refs). Without this reroute EXEC-EREF
+  // fires the pilot-pass `start` event and re-runs the whole episode's pilot
+  // instead — and the per-shot Plan (provider, prompt, anchor pairing) is lost.
+  if (body.agentCode === 'EXEC-EREF') {
+    const payloadShotId =
+      typeof body.payload?.shotId === 'string' ? body.payload.shotId : null;
+    const payloadPlanAssetId =
+      typeof body.payload?.planAssetId === 'string' ? body.payload.planAssetId : null;
+    if (payloadShotId && payloadPlanAssetId) {
+      effectiveEventName = 'sandystudio/exec-eref/execute-from-plan';
+    }
+  }
+
   // Distribution tail 2026-06-01 — "Key Art Designer" is plan-first now.
   // Triggering EXEC-THUMB (the renderer) before an APPROVED SPC-thumb_plan
   // exists would hard-fail its gate (the failure Director hit via Polina).

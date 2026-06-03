@@ -51,7 +51,11 @@ Hardening backlog (before 10-20 episode run): #1 episode.status stuck BRIEF_APPR
   + revision cap 2-3 → HALT) · WCHK Continuity Critic auto-read FIXED 2026-06-02
   (exec-wchk/ in factory isCriticChain + gate allowedStatuses REVIEW — full SREV
   parity) · PA approval-gate now recognizes Director's q<N>y/q<N>n format (was
-  blocking mutations on «q19 Y») · EREF Reference Artist FIXED — scene_master /
+  blocking mutations on «q19 Y») · EREF gallery now shows IMG-anchor_* (anchor
+  episodes were invisible; d76722c, live-verified E02 4 anchors) · anchor drawer
+  now has full action bar Regenerate/Request-revision/Approve (regen reroutes
+  EXEC-EREF+planAssetId→execute-from-plan, was mis-firing pilot start; also fixes
+  PA regenerateImageFromPlan for EREF; live-verified) · EREF Reference Artist FIXED — scene_master /
   continuity-anchor / Bible-ref bytes now resolve via media-cache+Drive (new
   readAssetMediaAsBase64), not dead /staging path (media-no-branches regression;
   E02 «Scene master bytes unreadable») · Key Art Critic

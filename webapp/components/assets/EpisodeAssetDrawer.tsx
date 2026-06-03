@@ -182,6 +182,7 @@ export function EpisodeAssetDrawer({
     useState<'openai-edits-multi' | 'flux-pro-1.1-ultra' | ''>('');
   const [notePrompt, setNotePrompt] = useState<null | 'REJECT' | 'REQUEST_REVISION'>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const [anchorRegenBusy, setAnchorRegenBusy] = useState(false);
 
   const [imageOpen, setImageOpen] = useState(true);
   const [summaryOpen, setSummaryOpen] = useState(true);
@@ -222,6 +223,24 @@ export function EpisodeAssetDrawer({
 
   // ── VID-shot (VGEN) detection ───────────────────────────────────────────
   const isVidShot = asset.file_type.startsWith('VID-shot');
+
+  // ── Anchor (TD-49) detection — anchors are "the first two references" the
+  // Director wants treated like any standard reference: same Approve / Request
+  // revision / Regenerate actions. Their Regenerate re-runs the anchor flow
+  // (scene_master + identity refs) via execute-from-plan, NOT the ref-less
+  // /regenerate-image path. shotId + planAssetId come from the anchor metadata.
+  const isAnchor = asset.file_type.startsWith('IMG-anchor');
+  const anchorMeta = asset.metadata as
+    | { shot_reference?: { shot_id?: string }; provenance?: { plan_asset_id?: string } }
+    | null;
+  const anchorShotId = isAnchor
+    ? anchorMeta?.shot_reference?.shot_id ??
+      (() => {
+        const m = asset.file_type.match(/(s\d+)_(e\d+)_(a\d+)_(sc\d+)_(sh\d+)/i);
+        return m ? `SS-${m[1]}-${m[2]}-${m[3]}-${m[4]}-${m[5]}`.toUpperCase() : null;
+      })()
+    : null;
+  const anchorPlanAssetId = isAnchor ? anchorMeta?.provenance?.plan_asset_id ?? null : null;
 
   // Fetch sibling assets for the same shot (candidates strip + replace-confirm).
   // Always called (hook rule) — but only used when v2.
@@ -360,6 +379,49 @@ export function EpisodeAssetDrawer({
       return;
     }
     void postDecision('APPROVE');
+  }
+
+  // Regenerate an anchor by re-running its shot's anchor flow (execute-from-plan)
+  // — keeps scene_master layout + identity refs in the payload so Sandy holds
+  // his canon, unlike the ref-less /regenerate-image path used for v2 refs.
+  async function regenAnchor() {
+    if (!asset.episode_id || !anchorShotId) {
+      setError('Cannot regenerate anchor — missing episode or shot id in metadata.');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Regenerate the anchor for ${anchorShotId}?\n` +
+          `Re-runs the Reference Artist anchor flow (scene_master layout + Bible ` +
+          `character canon). Creates a new candidate in REVIEW — does not auto-approve.`,
+      )
+    ) {
+      return;
+    }
+    setAnchorRegenBusy(true);
+    setError(null);
+    try {
+      const payload: Record<string, unknown> = { shotId: anchorShotId };
+      if (anchorPlanAssetId) payload.planAssetId = anchorPlanAssetId;
+      const res = await fetch(`/api/episodes/${asset.episode_id}/trigger`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          agentCode: 'EXEC-EREF',
+          reason: `Director regenerate anchor ${anchorShotId} from drawer`,
+          payload,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Anchor regenerate failed');
+      }
+      onChange();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAnchorRegenBusy(false);
+    }
   }
 
   async function regenWithProvider() {
@@ -786,6 +848,56 @@ export function EpisodeAssetDrawer({
                 )}
               </Button>
             </div>
+          )}
+
+          {isAnchor && (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void regenAnchor()}
+                disabled={anchorRegenBusy || decisionBusy !== null}
+                title="Re-run this shot's anchor flow (scene_master + character canon). New candidate in REVIEW."
+              >
+                {anchorRegenBusy ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" /> Regenerating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={12} /> Regenerate
+                  </>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setNotePrompt('REQUEST_REVISION')}
+                disabled={decisionBusy !== null || anchorRegenBusy}
+              >
+                <RotateCcw size={12} /> Request revision
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => void postDecision('APPROVE')}
+                disabled={decisionBusy !== null || anchorRegenBusy}
+              >
+                {decisionBusy === 'APPROVE' ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" /> Approving…
+                  </>
+                ) : decisionDone === 'APPROVE' ? (
+                  <>
+                    <CheckCircle2 size={12} /> Approved
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={12} /> Approve
+                  </>
+                )}
+              </Button>
+            </>
           )}
 
           {isV2 && (
