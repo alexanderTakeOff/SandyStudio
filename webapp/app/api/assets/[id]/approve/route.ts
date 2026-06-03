@@ -633,20 +633,39 @@ async function computeNextEvents(
       const approved = approvedAnchorCount ?? 0;
 
       if (expected > 0 && approved >= expected && shots.length > 0) {
-        // 3. All anchors approved → fan-out exec-vanim/plan per shot.
+        // 3. All anchors approved → ONE animatic pass (pacing gate) before
+        // any video. TD-49 Phase 2 re-wire: previously this fanned out
+        // exec-vanim/plan per shot, skipping the pacing preview. Now it fires
+        // a single exec-edit/create-animatic with anchor_mode so EXEC-EDIT
+        // builds the animatic from APPROVED IMG-anchor START frames. The
+        // animatic→video gate (Director approves the animatic) is what fans
+        // out per-shot planning afterwards (VID-animatic APPROVED branch).
+        //
         // Idempotency: hasJob with since=updated_at on this asset gates
-        // re-fires of VANIM at the episode level. Sufficient for v1 — if
-        // Director double-approves the LAST anchor accidentally, the
-        // second call returns ConflictError before reaching here anyway
-        // (asset is already APPROVED, idempotency in approve flow).
-        const alreadyFired = await hasJob(supabase, ep, 'EXEC-VANIM', { since });
+        // re-fires of EXEC-EDIT at the episode level.
+        const alreadyFired = await hasJob(supabase, ep, 'EXEC-EDIT', { since });
         if (!alreadyFired) {
-          for (const shot of shots) {
-            events.push({
-              name: 'sandystudio/exec-vanim/plan',
-              data: { episodeId: ep, shotId: shot.shotId },
-            });
-          }
+          // Optional: attach newest APPROVED music so the animatic plays with
+          // the real track for pacing review (graceful — absent → silent).
+          const { data: musicRow } = await supabase
+            .from('assets')
+            .select('id')
+            .eq('episode_id', ep)
+            .eq('file_type', 'AUD-music')
+            .eq('status', 'APPROVED')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const musicAssetId = (musicRow as { id?: string } | null)?.id ?? null;
+          events.push({
+            name: 'sandystudio/exec-edit/create-animatic',
+            data: {
+              episodeId: ep,
+              storyboardAssetIds: [],
+              anchor_mode: true,
+              ...(musicAssetId ? { musicAssetId } : {}),
+            },
+          });
         }
       }
       // expected === 0 or approved < expected: no event emitted. Activity
@@ -712,6 +731,116 @@ async function computeNextEvents(
   // fan-out so replay-pilot keeps passing.
   if (ft === 'VID-animatic') {
     const animaticMeta = (asset as { metadata?: unknown }).metadata;
+
+    // TD-49 Phase 2 (anchor_chain_enabled): in anchor mode the per-shot Plans
+    // already exist (Animator authored them before the anchors). The animatic
+    // is now the PACING GATE, and approving it advances into video — without
+    // re-planning existing Plans (LOCKED idempotency) and still respecting the
+    // pilot gate (q13 LOCKED — KEEP pilot, do NOT fan out all shots).
+    const { data: anchorEpRow } = await supabase
+      .from('episodes')
+      .select('metadata')
+      .eq('id', ep)
+      .maybeSingle();
+    const anchorEpMeta =
+      (anchorEpRow as { metadata?: Record<string, unknown> | null } | null)
+        ?.metadata ?? null;
+    const anchorMode = Boolean(
+      anchorEpMeta &&
+        (anchorEpMeta as { anchor_chain_enabled?: unknown }).anchor_chain_enabled ===
+          true,
+    );
+
+    if (anchorMode) {
+      // Anchor-mode gate. Idempotency on EXEC-VGEN — advancing approved Plans
+      // fires video-gen, never the Animator (plans are not regenerated).
+      const alreadyFiredAnchor = await hasJob(supabase, ep, 'EXEC-VGEN', { since });
+      if (!alreadyFiredAnchor && isAnimaticV1(animaticMeta)) {
+        const v1 = (animaticMeta as { animatic_v1: AnimaticContract }).animatic_v1;
+        const shotList = v1.shot_list ?? [];
+        // q13 LOCKED — KEEP pilot: only the pilot shots advance, not all shots.
+        const pilots = pickPilotVgenShots(shotList);
+        if (pilots.length > 0) {
+          // Map shot_id → existing SPC-shot_plan (id + status). E02 already has
+          // all 30 plans, so this map is fully populated and NO planning fires.
+          const { data: planRows } = await supabase
+            .from('assets')
+            .select('id,content,metadata')
+            .eq('episode_id', ep)
+            .or('file_type.eq.SPC-shot_plan,file_type.like.SPC-shot_plan-%');
+          const planByShotId = new Map<string, { id: string }>();
+          for (const row of (planRows ?? []) as Array<{
+            id: string;
+            content?: string | null;
+            metadata?: unknown;
+          }>) {
+            // Prefer metadata.shot_id; fall back to content fenced JSON shot_id.
+            let shotId: string | null = null;
+            const meta = row.metadata as { shot_id?: unknown } | null;
+            if (typeof meta?.shot_id === 'string') shotId = meta.shot_id;
+            if (!shotId && typeof row.content === 'string') {
+              const matches = [...row.content.matchAll(/```json\s*([\s\S]+?)```/g)];
+              const last = matches[matches.length - 1]?.[1];
+              if (last) {
+                try {
+                  const body = JSON.parse(last.trim()) as { shot_id?: unknown };
+                  if (typeof body.shot_id === 'string') shotId = body.shot_id;
+                } catch {
+                  /* leave shotId null */
+                }
+              }
+            }
+            if (!shotId) continue;
+            // Newest-wins: keep the last row seen (query is unordered; the
+            // existence of ANY plan is what gates re-planning, so this is safe).
+            planByShotId.set(shotId, { id: row.id });
+          }
+
+          // Per-Plan video idempotency: a VID-shot stamped with the plan's
+          // asset_id means that plan was already executed → never re-fire.
+          const { data: vidRows } = await supabase
+            .from('assets')
+            .select('metadata')
+            .eq('episode_id', ep)
+            .like('file_type', 'VID-shot%');
+          const executedPlanIds = new Set<string>();
+          for (const row of (vidRows ?? []) as Array<{ metadata?: unknown }>) {
+            const m = row.metadata as
+              | { provenance?: { plan_asset_id?: unknown } }
+              | null;
+            if (typeof m?.provenance?.plan_asset_id === 'string') {
+              executedPlanIds.add(m.provenance.plan_asset_id);
+            }
+          }
+
+          await setVgenPilotState(supabase, ep, 'PENDING_REVIEW');
+          for (const p of pilots) {
+            const existingPlan = planByShotId.get(p.shotId);
+            if (existingPlan) {
+              // IDEMPOTENCY LOCKED — existing plan: advance to video-gen via the
+              // plan-driven single-shot path (mirrors SPC-shot_plan.APPROVED
+              // branch). Skip if its plan already produced a VID-shot.
+              if (executedPlanIds.has(existingPlan.id)) continue;
+              events.push({
+                name: 'sandystudio/exec-vgen/single-shot',
+                data: {
+                  episodeId: ep,
+                  shotId: p.shotId,
+                  planAssetId: existingPlan.id,
+                  duration_seconds: p.durationSeconds,
+                },
+              });
+            } else {
+              // No plan yet for this pilot shot → author one (Animator chain).
+              events.push({
+                name: 'sandystudio/exec-vanim/plan',
+                data: { episodeId: ep, shotId: p.shotId },
+              });
+            }
+          }
+        }
+      }
+    } else {
     // ANIMATOR_CHAIN: idempotency on EXEC-VANIM (Plan author); legacy:
     // EXEC-VGEN. Picking the wrong one would either re-fire pilots on
     // double-click (animator chain) or block animator chain firing at all.
@@ -772,6 +901,7 @@ async function computeNextEvents(
     }
     // (Phase A.2 PR γ) MGEN no longer fires here — moved to REV-world_check
     // approval so music is ready BEFORE animatic. See branch above.
+    } // end non-anchor (else) branch
   }
 
   // ── Last VID-shot APPROVED → if all shots have an APPROVED row, fire

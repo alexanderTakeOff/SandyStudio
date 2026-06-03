@@ -68,7 +68,11 @@ import {
   GagAssistantDirectorError,
   type GagadPhase,
 } from './runners/gag-assistant-director';
-import { runAnimaticSlideshow, AnimaticSlideshowError } from './runners/animatic-slideshow';
+import {
+  runAnimaticSlideshow,
+  runAnchorAnimaticSlideshow,
+  AnimaticSlideshowError,
+} from './runners/animatic-slideshow';
 import { loadSeriesBibleCanon } from './bible-loader';
 import type { AgentId, AgentInputs, AgentResult } from './types';
 
@@ -1572,6 +1576,53 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       const upstream = inputs.upstream_assets as
         | ReadonlyArray<{ file_type?: string | null; status?: string | null }>
         | undefined;
+
+      // TD-49 Phase 2 (anchor_chain_enabled): when this episode opted into the
+      // anchor chain, the animatic frames come from APPROVED IMG-anchor_*
+      // START frames, NOT IMG-episode_ref. Detect via the episode metadata
+      // already loaded by loadAgentInputs. When on + supabase present, route
+      // to the anchor runner; otherwise the legacy EREF branch below is
+      // unchanged.
+      const episodeMetadata = (inputs.episode as { metadata?: unknown } | undefined)
+        ?.metadata;
+      const anchorMode =
+        Boolean(
+          episodeMetadata &&
+            typeof episodeMetadata === 'object' &&
+            (episodeMetadata as { anchor_chain_enabled?: unknown })
+              .anchor_chain_enabled === true,
+        );
+      if (anchorMode && supabase) {
+        try {
+          const slide = await runAnchorAnimaticSlideshow({ inputs, supabase, episodeCode });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: slide.costUsd,
+              metadata: {
+                agent_id: agentId,
+                contract: slide.contract,
+                provider_id: 'slideshow',
+                provider_used: 'slideshow',
+                markdown: slide.markdown,
+                body: slide.body,
+                description: slide.description,
+                animatic_kind: 'slideshow_v1',
+                total_duration_s: slide.totalDurationS,
+                frame_count: slide.frameCount,
+                ...(slide.animaticV1 ? { animatic_v1: slide.animaticV1 } : {}),
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof AnimaticSlideshowError) {
+            throw new Error(`EXEC-EDIT (anchor slideshow): ${err.message}`);
+          }
+          throw err;
+        }
+      }
+
       const hasApprovedRefs = (upstream ?? []).some(
         (a) =>
           typeof a.file_type === 'string' &&

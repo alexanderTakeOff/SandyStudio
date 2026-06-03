@@ -257,9 +257,28 @@ export function EpisodeTimelineSection({
   }
 
   if (!animaticAsset) {
-    // Section quietly hides until an animatic v1 exists. The pre-animatic
-    // experience is already covered by storyboard / EREF surfaces.
-    return null;
+    // Explicit low-key empty state (q12). The section never silently vanishes:
+    // it announces that the animatic is the next pacing gate. For anchor-chain
+    // episodes it is produced automatically once all anchors are approved.
+    return (
+      <div
+        className="rounded-lg border border-glass px-3 py-3"
+        style={{
+          background: 'color-mix(in oklab, var(--accent-primary) 3%, var(--bg-elevated))',
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <Film size={14} className="text-text-muted" />
+          <span className="text-sm font-medium text-text-primary">
+            Animatic not generated yet
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] text-text-muted">
+          The pacing preview appears here. Anchor-chain episodes produce it
+          automatically once all anchors are approved.
+        </p>
+      </div>
+    );
   }
 
   const contract = (animaticAsset.metadata as { animatic_v1: AnimaticContract })

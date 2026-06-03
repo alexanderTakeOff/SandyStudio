@@ -296,6 +296,113 @@ export async function buildShotListFromApprovedEREF(
 }
 
 /**
+ * Anchor-chain shot_list builder (TD-49 Phase 2 — anchor_chain_enabled).
+ *
+ * Symmetric to `buildShotListFromApprovedEREF` but sources its frame images
+ * from APPROVED `IMG-anchor_*` assets instead of `IMG-episode_ref` assets.
+ * The anchor chain produces a START + END anchor per shot; for the animatic
+ * pacing preview we use the START anchor of each shot (the frame the shot
+ * opens on). Per-shot duration is resolved from the shot's APPROVED
+ * SPC-shot_plan when one exists (its `duration_seconds`), falling back to the
+ * storyboard `duration_seconds`, then to `FALLBACK_DURATION_S`.
+ *
+ * Returns the SAME `AnimaticShot` contract as the EREF builder so all
+ * downstream consumers (newAnimaticContract, /animatic-timing PATCH,
+ * AnimaticPlayer) are unchanged.
+ *
+ * Throws if the storyboard has no shots or zero shots resolve to an anchor.
+ */
+export async function buildShotListFromAnchorChain(
+  supabase: SupabaseClient,
+  episodeId: string,
+  approvedStoryboardContent: string,
+): Promise<AnimaticShot[]> {
+  const shots = extractShotsFromStoryboard(approvedStoryboardContent);
+  if (shots.length === 0) {
+    throw new Error('Storyboard has no parseable shots[]');
+  }
+
+  // 1. APPROVED IMG-anchor_* assets → keep only the START anchor per shot.
+  const { data: anchorAssets, error: anchorErr } = await supabase
+    .from('assets')
+    .select('id,file_type,status,staging_path,drive_path,drive_web_view_url,filename,metadata')
+    .eq('episode_id', episodeId)
+    .eq('status', 'APPROVED')
+    .like('file_type', 'IMG-anchor_%');
+  if (anchorErr) throw new Error(`approved IMG-anchor fetch: ${anchorErr.message}`);
+  const anchors = (anchorAssets ?? []) as ApprovedEREFAssetRow[];
+  if (anchors.length === 0) {
+    throw new Error('No APPROVED IMG-anchor_* assets — approve anchors first');
+  }
+
+  // filename → shotId + position. e.g. SS-...-IMG-anchor_<shot>_start-v01-APPROVED.png
+  const anchorByShotId = new Map<string, ApprovedEREFAssetRow>();
+  const ANCHOR_RE = /-img-anchor_([a-z0-9_-]+?)_(start|end)-/i;
+  for (const a of anchors) {
+    const m = a.filename.match(ANCHOR_RE);
+    if (!m) continue;
+    const shotId = m[1]?.toLowerCase();
+    const position = m[2]?.toLowerCase();
+    if (!shotId || position !== 'start') continue;
+    if (!anchorByShotId.has(shotId)) anchorByShotId.set(shotId, a);
+  }
+
+  // 2. APPROVED SPC-shot_plan assets → shot_id → duration_seconds.
+  const { data: planAssets, error: planErr } = await supabase
+    .from('assets')
+    .select('content')
+    .eq('episode_id', episodeId)
+    .eq('status', 'APPROVED')
+    .like('file_type', 'SPC-shot_plan%');
+  if (planErr) throw new Error(`approved SPC-shot_plan fetch: ${planErr.message}`);
+  const planDurationByShotId = new Map<string, number>();
+  for (const row of (planAssets ?? []) as Array<{ content: string | null }>) {
+    if (!row.content) continue;
+    const matches = [...row.content.matchAll(/```json\s*([\s\S]+?)```/g)];
+    const last = matches[matches.length - 1]?.[1];
+    if (!last) continue;
+    let body: unknown;
+    try {
+      body = JSON.parse(last.trim());
+    } catch {
+      continue;
+    }
+    const b = body as { shot_id?: unknown; duration_seconds?: unknown };
+    if (
+      typeof b.shot_id === 'string' &&
+      typeof b.duration_seconds === 'number' &&
+      b.duration_seconds > 0
+    ) {
+      planDurationByShotId.set(b.shot_id, b.duration_seconds);
+    }
+  }
+
+  // 3. Walk storyboard order, resolve start anchor + duration per shot.
+  const shotList: AnimaticShot[] = [];
+  for (const shot of shots) {
+    const chosen = anchorByShotId.get(shot.shot_id.toLowerCase());
+    if (!chosen) continue;
+    const duration =
+      planDurationByShotId.get(shot.shot_id) ??
+      shot.duration_seconds ??
+      FALLBACK_DURATION_S;
+    const captionSource = shot.key_beat ?? shot.action ?? '';
+    shotList.push({
+      shot_id: shot.shot_id,
+      asset_id: chosen.id,
+      image_url: bestImageUrl(chosen),
+      duration_seconds: duration,
+      shot_role: shot.shot_role,
+      caption: captionSource ? captionSource.slice(0, 200) : undefined,
+    });
+  }
+  if (shotList.length === 0) {
+    throw new Error('Could not align any storyboard shots to approved IMG-anchor START frames');
+  }
+  return shotList;
+}
+
+/**
  * Build a fresh `AnimaticContract` payload (no overrides yet, no music yet).
  */
 export function newAnimaticContract(shotList: AnimaticShot[]): AnimaticContract {

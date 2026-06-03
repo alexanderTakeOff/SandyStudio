@@ -17,8 +17,10 @@ import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
 import {
   buildShotListFromApprovedEREF,
+  buildShotListFromAnchorChain,
   newAnimaticContract,
   type AnimaticContract,
+  type AnimaticShot,
 } from '../../api/animatic-shotlist';
 
 export const ANIMATIC_CONTRACT = 'animatic_slideshow@v1';
@@ -251,6 +253,109 @@ function buildMarkdown(args: {
   return lines.join('\n');
 }
 
+/**
+ * Bake an APPROVED AUD-music URL into an animatic@v1 contract when one exists.
+ * Shared by the EREF and anchor-chain runners. Graceful: on any failure the
+ * original contract is returned unchanged (animatic still works silently).
+ */
+async function bakeApprovedMusic(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  contract: AnimaticContract,
+): Promise<AnimaticContract> {
+  try {
+    const { data: musicRow } = await supabase
+      .from('assets')
+      .select('drive_path,staging_path,filename')
+      .eq('episode_id', episodeId)
+      .eq('file_type', 'AUD-music')
+      .eq('status', 'APPROVED')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const m = musicRow as
+      | { drive_path?: string | null; staging_path?: string | null; filename?: string }
+      | null;
+    const musicUrl = m?.drive_path ?? m?.staging_path ?? null;
+    if (!musicUrl) return contract;
+    return {
+      ...contract,
+      music_url: musicUrl,
+      music_filename: m?.filename ?? null,
+      audio_tracks: [
+        {
+          layer: 'music',
+          url: musicUrl,
+          filename: m?.filename ?? 'music.mp3',
+          volume: 1.0,
+          muted: false,
+        },
+      ],
+    };
+  } catch {
+    return contract;
+  }
+}
+
+/**
+ * Assemble the full AnimaticSlideshowResult from a resolved shot list. The
+ * markdown body + frame[] view derive from the v1 shot_list so both the
+ * EREF and anchor-chain runners produce a structurally identical asset.
+ */
+function buildResultFromShotList(args: {
+  episodeCode: string;
+  episodeTitle: string;
+  shotList: AnimaticShot[];
+  animaticV1: AnimaticContract;
+}): AnimaticSlideshowResult {
+  const { episodeCode, episodeTitle, shotList, animaticV1 } = args;
+  const frames: Frame[] = shotList.map((s, i) => ({
+    index: i,
+    shot_id: s.shot_id,
+    ref_filename: s.asset_id,
+    ref_url: s.image_url,
+    duration_seconds: s.duration_seconds,
+    caption: s.caption ?? '',
+  }));
+  const totalDurationS = frames.reduce((sum, f) => sum + f.duration_seconds, 0);
+
+  const markdown = buildMarkdown({
+    episodeCode,
+    episodeTitle,
+    frames,
+    totalDurationS,
+  });
+
+  const body = {
+    kind: 'slideshow_v1' as const,
+    episode_id: episodeCode,
+    total_duration_s: totalDurationS,
+    frame_count: frames.length,
+    frames: frames.map((f) => ({
+      shot_id: f.shot_id,
+      ref_url: f.ref_url,
+      ref_filename: f.ref_filename,
+      duration_seconds: f.duration_seconds,
+      caption: f.caption,
+    })),
+  };
+
+  const description =
+    `Produced by EXEC-EDIT · ${ANIMATIC_CONTRACT} · slideshow · ` +
+    `${frames.length} frames / ${totalDurationS}s · cost $0 (no music yet)`;
+
+  return {
+    markdown,
+    body,
+    costUsd: 0,
+    description,
+    contract: ANIMATIC_CONTRACT,
+    totalDurationS,
+    frameCount: frames.length,
+    animaticV1,
+  };
+}
+
 export interface AnimaticSlideshowRunArgs {
   inputs: AgentInputs;
   supabase: SupabaseClient<Database>;
@@ -403,4 +508,67 @@ export async function runAnimaticSlideshow(
     frameCount: frames.length,
     animaticV1,
   };
+}
+
+/**
+ * Anchor-chain animatic (TD-49 Phase 2 — anchor_chain_enabled).
+ *
+ * Restores the pacing gate the anchor chain currently skips: after all
+ * IMG-anchor_* pairs are approved, this produces the SAME animatic@v1 asset
+ * as `runAnimaticSlideshow`, but the frame images come from the per-shot
+ * START anchors (via `buildShotListFromAnchorChain`) instead of EREF refs.
+ *
+ * Mirrors `runAnimaticSlideshow`'s input resolution (APPROVED STB-storyboard
+ * from upstream), result shape, and optional/graceful music bake. The v1
+ * shot_list IS the source of truth — the markdown body is derived from it so
+ * the asset is structurally identical to the EREF animatic.
+ */
+export async function runAnchorAnimaticSlideshow(
+  args: AnimaticSlideshowRunArgs,
+): Promise<AnimaticSlideshowResult> {
+  const { inputs, supabase, episodeCode } = args;
+
+  const ep = inputs.episode as
+    | { episode_code?: string; title_working?: string | null }
+    | undefined;
+  const epCode = episodeCode ?? ep?.episode_code ?? 'SS-unknown';
+  const epTitle = ep?.title_working ?? 'Untitled';
+
+  const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
+
+  const sbAsset = findApprovedAsset(upstream, 'STB-storyboard');
+  if (!sbAsset?.content) {
+    throw new AnimaticSlideshowError('No APPROVED storyboard with content');
+  }
+
+  const episodeId =
+    (inputs.episode as { id?: string } | undefined)?.id ??
+    (inputs as { episode_id?: string }).episode_id;
+  if (!episodeId) {
+    throw new AnimaticSlideshowError(
+      'No episodeId in inputs.episode.id or inputs.episode_id',
+    );
+  }
+
+  let shotList: AnimaticShot[];
+  try {
+    shotList = await buildShotListFromAnchorChain(supabase, episodeId, sbAsset.content);
+  } catch (err) {
+    throw new AnimaticSlideshowError(
+      `anchor-chain shot list build failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      err,
+    );
+  }
+
+  let animaticV1 = newAnimaticContract(shotList);
+  animaticV1 = await bakeApprovedMusic(supabase, episodeId, animaticV1);
+
+  return buildResultFromShotList({
+    episodeCode: epCode,
+    episodeTitle: epTitle,
+    shotList,
+    animaticV1,
+  });
 }

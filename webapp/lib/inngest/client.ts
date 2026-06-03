@@ -256,6 +256,13 @@ type Events = {
        * runs silent (legacy fallback for episodes without music yet).
        */
       musicAssetId?: string;
+      /**
+       * TD-49 Phase 2 (anchor_chain_enabled): when true, EXEC-EDIT sources
+       * the animatic shot_list from APPROVED IMG-anchor_* START frames via
+       * `runAnchorAnimaticSlideshow` instead of the EREF builder. Absent /
+       * false → legacy EREF animatic path.
+       */
+      anchor_mode?: boolean;
     };
   };
 
