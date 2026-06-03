@@ -34,6 +34,7 @@ import {
 import { resolveExtensionRequest } from '@/lib/api/canon-extensions';
 import { runBibleAuthor, BibleAuthorError } from '@/lib/agents/runners/bible-author';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { recordCost } from '@/lib/budget';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -182,6 +183,22 @@ export const POST = withApiHandler(async (req, ctx) => {
         });
         enriched = true;
         costUsd = r.costUsd;
+        // Direct Bible-extension spend → budget_log (best-effort). Closes the
+        // last manual-gen cost leak. jobId=null; enforceCeiling=false.
+        try {
+          await recordCost(serviceSupabase, {
+            jobId: null,
+            episodeId: evRow.episode_id ?? null,
+            agentId: 'EXEC-EREF',
+            costUsd: r.costUsd,
+            apiProvider: 'gpt-image-2',
+            modelOrTier: 'gpt-image-2',
+            operation: 'bible_extension',
+            enforceCeiling: false,
+          });
+        } catch {
+          /* non-fatal — image already generated; accounting is best-effort */
+        }
       } catch (err: unknown) {
         enrichmentError =
           err instanceof BibleAuthorError ? err.message : err instanceof Error ? err.message : String(err);

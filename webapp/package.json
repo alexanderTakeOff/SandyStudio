@@ -27,6 +27,7 @@
     "trigger-stage": "tsx --env-file=.env.local scripts/trigger-stage.ts",
     "seed-sandy-bible": "tsx --env-file=.env.local scripts/seed-sandy-bible.ts",
     "episode-timing": "tsx --env-file=.env.local tools/episode-timing.ts",
+    "backfill-direct-costs": "tsx --env-file=.env.local tools/backfill-direct-costs.ts",
     "verify": "npm run typecheck && npm test"
   },
   "dependencies": {

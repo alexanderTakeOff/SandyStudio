@@ -44,11 +44,13 @@ Shipped this session: PR#26 TD-85 · PR#27 Key Art (v12) · PR#28 TOPIC 3 pipeli
   media-no-branches (d1a58cf) · series-active-derived (430918c) · screenwriter
   max_tokens 8000→16000 RU truncation fix (5b7fc1d) · SREV Script-Critic auto-read (dffe5b3).
 
-Cost-accounting FIXED 2026-06-03: recordCost was called ONLY in factory.ts —
-  every manual reroll (regenerate-image/-video) + direct Bible gen (generate-image,
-  enrich) spent real money invisibly (budget tab under-reported ~⅓: $98 tracked /
-  ~$48 untracked). Now 4 direct routes call recordCost (jobId=null, enforceCeiling
-  =false). Remaining leak: bible/extensions (conditional cost) — small follow-up.
+Cost-accounting FIXED 2026-06-03: recordCost now in ALL 5 direct routes (regen
+  image/video, bible generate-image/enrich/extensions) + factory — leak closed.
+  Historical ~$48.68 BACKFILLED to budget_log (npm run backfill-direct-costs,
+  idempotent; tab now $147.96 was $98.59). PA batch-stall watchdog SHIPPED
+  (pa-batch-stall-watchdog, 5-min cron): FANOUT_RUNNING + idle>6m → nudge Polina
+  to continue (fixes silent mid-batch stop; awaiting-only nets were too slow).
+  Tools: npm run episode-timing <EP> (compute/hands-on/wall-clock).
 
 Hardening backlog (before 10-20 episode run): #1 episode.status stuck BRIEF_APPROVED
   (approve/route.ts,S) · #3 fan-out sendEvent not in step.run (factory.ts,M) · #4

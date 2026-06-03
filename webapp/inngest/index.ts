@@ -38,6 +38,7 @@ import { scheduleAnalytics } from './functions/schedule-analytics';
 import { execPaReact } from './functions/exec-pa-react';
 import { paEscalationTimer } from './functions/pa-escalation-timer';
 import { paOrphanedAwaitingSweep } from './functions/pa-orphaned-awaiting-sweep';
+import { paBatchStallWatchdog } from './functions/pa-batch-stall-watchdog';
 
 export const functions = [
   // Phase 3 smoke
@@ -78,4 +79,8 @@ export const functions = [
   // synchronous-petting-waffle.md for the full rationale.
   paEscalationTimer,
   paOrphanedAwaitingSweep,
+  // 2026-06-03 — fast scope-aware watchdog for silent mid-batch stalls
+  // (FANOUT_RUNNING + idle → nudge Polina to continue). Complements the
+  // awaiting-only safety nets above.
+  paBatchStallWatchdog,
 ];
