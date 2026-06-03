@@ -1166,6 +1166,62 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
+  // 1.6. Anchor auto-demote — same single-approved-per-shot invariant as the
+  // EREF block above, but for IMG-anchor. Difference: there is NO DB unique
+  // index for anchors, so MULTIPLE prior approved versions can have piled up
+  // (e.g. SH01 with v1/v2/v3 all APPROVED). Demote ALL prior APPROVED anchors
+  // of the SAME shot_id AND anchor_position to REJECTED (superseded). Distinct
+  // start/end slots are never collapsed — approving a START never demotes the END.
+  const demotedAnchorPriors: Array<{ id: string; status: string }> = [];
+  const anchorMeta = asset.metadata as
+    | { shot_reference?: { shot_id?: unknown }; anchor_position?: unknown }
+    | null;
+  const anchorShotId = anchorMeta?.shot_reference?.shot_id;
+  const anchorPos = anchorMeta?.anchor_position;
+  const isAnchorApprove =
+    body.decision === 'APPROVE' &&
+    Boolean(asset.episode_id) &&
+    typeof asset.file_type === 'string' &&
+    asset.file_type.startsWith('IMG-anchor') &&
+    typeof anchorShotId === 'string' &&
+    (anchorPos === 'start' || anchorPos === 'end');
+  if (isAnchorApprove && asset.episode_id) {
+    const { data: priorAnchors, error: paErr } = await supabase
+      .from('assets')
+      .select('id,status,metadata')
+      .eq('episode_id', asset.episode_id)
+      .eq('status', 'APPROVED')
+      .like('file_type', 'IMG-anchor%')
+      .neq('id', id);
+    if (paErr) throw new Error(`prior-approved anchor fetch failed: ${paErr.message}`);
+    for (const row of (priorAnchors ?? []) as Array<{ id: string; status: string; metadata?: unknown }>) {
+      const m = row.metadata as
+        | { shot_reference?: { shot_id?: unknown }; anchor_position?: unknown }
+        | null;
+      if (m?.shot_reference?.shot_id !== anchorShotId) continue;
+      if (m?.anchor_position !== anchorPos) continue;
+      const newMeta = {
+        ...((m as Record<string, unknown>) ?? {}),
+        demoted_reason: `superseded_by_${id}`,
+      };
+      const { error: dErr } = await supabase
+        .from('assets')
+        .update({
+          status: 'REJECTED',
+          metadata: newMeta as unknown as Record<string, unknown>,
+        } as never)
+        .eq('id', row.id);
+      if (dErr) {
+        // Best-effort restore of anchors already demoted in this loop.
+        for (const d of demotedAnchorPriors) {
+          await supabase.from('assets').update({ status: d.status } as never).eq('id', d.id);
+        }
+        throw new Error(`auto-demote of prior approved anchor ${row.id} failed: ${dErr.message}`);
+      }
+      demotedAnchorPriors.push({ id: row.id, status: row.status });
+    }
+  }
+
   // 2. Update asset status (+ filename status suffix per CLAUDE.md §3)
   const patch: Record<string, unknown> = { status: targetStatus };
   if (body.decision === 'REQUEST_REVISION' && body.note) {
@@ -1194,6 +1250,9 @@ export const POST = withApiHandler(async (req, ctx) => {
         .from('assets')
         .update({ status: demotedPriorAssetStatus } as never)
         .eq('id', demotedPriorAssetId);
+    }
+    for (const d of demotedAnchorPriors) {
+      await supabase.from('assets').update({ status: d.status } as never).eq('id', d.id);
     }
     throw new Error(`asset status update failed: ${upErr.message}`);
   }
