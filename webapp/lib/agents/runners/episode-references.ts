@@ -1481,6 +1481,25 @@ async function runAnchorPairGeneration(
         anchor_position: name,
         anchor_role: side.role,
       },
+      // Surface the EXACT prompt sent to the provider — same shape normal
+      // references use (metadata.image_prompt). Without this the asset drawer
+      // had no prompt to show for anchors (Director: "no prompt, no description").
+      // The AssetImagePromptSection reads this directly, so anchors now match
+      // the proven reference UX with no drawer-component change.
+      image_prompt: {
+        current_version: nextV,
+        history: [
+          {
+            version: nextV,
+            prompt: fullPrompt,
+            source: 'EXEC-EREF' as const,
+            at: nowIso,
+            cost_usd: genCost,
+            staging_path: persisted.browserUrl,
+            drive_file_id: persisted.driveFileId,
+          },
+        ],
+      },
     };
 
     const { data: inserted, error } = await supabase

@@ -189,6 +189,7 @@ export function EpisodeAssetDrawer({
   const [bodyOpen, setBodyOpen] = useState(false);
   const [contentMdOpen, setContentMdOpen] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
+  const [planPromptOpen, setPlanPromptOpen] = useState(true);
   const [metaOpen, setMetaOpen] = useState(true);
 
   useEffect(() => {
@@ -311,6 +312,18 @@ export function EpisodeAssetDrawer({
   const currentPromptEntry: ImagePromptHistoryEntry | undefined = promptDoc
     ? promptDoc.history.find((h) => h.version === promptDoc.current_version)
     : undefined;
+
+  // Anchor fallback — anchors generated before the image_prompt fix carry no
+  // prompt on the asset; their prompt lives in the linked Plan (SPC-ref_plan).
+  // Fetch the Plan body so the drawer can show "what was sent to the provider"
+  // for those legacy anchors without forcing a re-spend. New anchors have
+  // image_prompt and skip this entirely.
+  const { data: anchorPlanData } = useSWR<{ data: { content: string | null } }>(
+    open && isAnchor && !promptDoc && anchorPlanAssetId
+      ? `/api/assets/${anchorPlanAssetId}/content`
+      : null,
+    fetcher,
+  );
 
   const previewSrc = resolvePreviewSrc(asset, currentPromptEntry);
   const isImage = !!previewSrc;
@@ -743,6 +756,22 @@ export function EpisodeAssetDrawer({
             assetType={asset.file_type}
             seriesId={seriesId ?? asset.series_id ?? null}
           />
+
+          {/* Legacy-anchor fallback: anchors made before the image_prompt fix
+              show the prompt straight from their Plan, so the Director sees what
+              was sent to the provider without a re-spend. */}
+          {isAnchor && !promptDoc && anchorPlanData?.data?.content && (
+            <AssetCollapsibleSection
+              open={planPromptOpen}
+              onToggle={() => setPlanPromptOpen((v) => !v)}
+              label="Prompt sent to provider (from Plan)"
+              meta="read-only"
+            >
+              <pre className="whitespace-pre-wrap break-words text-[12px] text-text-secondary font-mono leading-relaxed max-h-96 overflow-auto">
+                {anchorPlanData.data.content}
+              </pre>
+            </AssetCollapsibleSection>
+          )}
 
           <AssetCollapsibleSection
             open={metaOpen}
