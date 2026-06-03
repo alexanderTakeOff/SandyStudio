@@ -31,6 +31,8 @@ import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { detectAwaitingDirectorInput } from '@/lib/concierge/await-detector';
 import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
+import { appendApprovalLine, loadWorkPlanDoc } from '@/lib/concierge/tools/work-plan';
+import { checkVerbalApproval } from '@/lib/concierge/approval-check';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
 import { mapChatError } from '@/lib/concierge/chat-error-envelope';
 import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
@@ -212,6 +214,37 @@ async function handleChatPOST(req: Request) {
     }
   }
 
+  // Unit A (2026-06-03) q6 — DETERMINISTIC APPROVAL APPEND. The instant the
+  // Director's incoming turn carries an approval token, durably record it in
+  // the episode's work-plan ledger server-side. This guarantees the standing
+  // approval survives the conversation window independent of whether the model
+  // remembers to call updateWorkPlan.
+  //
+  // Guard: only fire when THIS message is itself an approval (windowSize=1 over
+  // the single just-received Director turn) — never fabricate, and never
+  // re-append the same standing approval on later neutral turns. Best-effort;
+  // a failure here must not break the chat turn.
+  if (episodeId && threadId && !persistenceError) {
+    try {
+      const thisTurn: ConciergeTurnRow = {
+        id: 'incoming',
+        thread_id: threadId,
+        role: 'director',
+        event_type: 'message',
+        content: lastUserMessage.content,
+        metadata: {},
+        token_count: null,
+        created_at: new Date().toISOString(),
+      } as ConciergeTurnRow;
+      const approval = checkVerbalApproval([thisTurn], 1);
+      if (approval.approved) {
+        await appendApprovalLine(supabase, episodeId, lastUserMessage.content);
+      }
+    } catch {
+      /* ledger append is best-effort — never block the chat turn */
+    }
+  }
+
   // Marker-driven bundle capture (with window of prior turns).
   if (marker && threadId) {
     try {
@@ -287,8 +320,22 @@ async function handleChatPOST(req: Request) {
   // See docs/skills-as-capabilities.md.
   const { availablePlaybooks } = await resolveSkillsContext(supabase, episodeId);
 
+  // Unit A (2026-06-03) — fetch Polina's durable work-plan / decision ledger
+  // for the focused episode so the [WORK_PLAN] system-prompt block carries her
+  // standing approvals + todo list every turn. Direct Supabase read (no internal
+  // HTTP round-trip). Best-effort: a missing/failed read degrades to a null doc
+  // ("no work plan yet"), never blocks the chat turn.
+  let workPlanDoc: string | null = null;
+  if (episodeId) {
+    try {
+      workPlanDoc = await loadWorkPlanDoc(supabase, episodeId);
+    } catch {
+      /* degrade to null — block renders "no work plan yet" */
+    }
+  }
+
   const buildPrompt = (turns: ConciergeTurnRow[]) =>
-    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model, availablePlaybooks });
+    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model, availablePlaybooks, workPlanDoc });
 
   // TD-20.A 2026-05-20 — Cancel support via req.signal. AbortController is
   // created client-side; when Director hits Cancel, fetch's signal aborts,

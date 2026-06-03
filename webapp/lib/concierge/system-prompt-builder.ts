@@ -39,6 +39,13 @@ export interface PromptContext {
    * `lib/concierge/skill-manifest.ts::formatSkillManifestForPrompt`.
    */
   availablePlaybooks?: string | null;
+  /**
+   * Unit A (2026-06-03) — Polina's durable per-episode work-plan / decision
+   * ledger (STA-work_plan STATE asset content), fetched fresh by the route
+   * handlers each turn and rendered as the [WORK_PLAN] block. Null/absent when
+   * no episode is in focus or the episode has no work plan yet.
+   */
+  workPlanDoc?: string | null;
   /** Recent turns (oldest-first) used to derive ACTIVE_INTENT. */
   recentTurns?: ConciergeTurnRow[];
   /** OpenAI model id — so PA can answer "what model are you?" honestly. */
@@ -173,12 +180,18 @@ const toolsAvailable: Block = () => `[TOOLS_AVAILABLE]
 Read-only (call without asking):
   getStudioStatus, getEpisode, getAsset, getRecentActivityEvents,
   findEpisode, getNextGate, listPendingApprovals, listSeries, listSeriesBibles,
-  getRefPlan, listRefPlans, getCriticVerdict, listShots.
+  getRefPlan, listRefPlans, getCriticVerdict, listShots, getWorkPlan.
 
 Mutating (need verbal approval per BEHAVIOR_CONTRACT rule 2):
   triggerAgent, approveAsset, requestRevision,
   enrichBible, regenerateBibleImage, setBibleContent, createEpisode,
   regenerateRefPlan, regenerateImageFromPlan, markAwaitingDirector.
+
+updateWorkPlan is NOT a creative gate — it is your own durable memory (the
+[WORK_PLAN] ledger above). Call it WITHOUT verbal approval whenever the Director
+makes/changes a standing decision, approval, or todo so it survives the session.
+Server-side, any Director approval is ALSO auto-appended to that ledger — but
+keep the todo list + plan structure current yourself.
 
 If Director refers to an episode by code (e.g. SS-S14-E01), call findEpisode first to resolve UUID.
 
@@ -279,6 +292,28 @@ const activeIntent: Block = (ctx) => {
     );
   }
   return lines.join('\n');
+};
+
+// ─── Block: WORK_PLAN (Unit A 2026-06-03) ────────────────────────────────────
+//
+// Polina's durable plan & decision ledger for the focused episode. Persisted
+// as the STA-work_plan STATE asset, fetched fresh by the route handlers each
+// turn (ctx.workPlanDoc), and rendered HIGH in the order — right after
+// ACTIVE_INTENT — so it gets strong attention. This is her memory of what was
+// already decided: standing Director approvals + the current todo list. It
+// survives the whole session, unlike the 80-turn conversation window.
+const workPlan: Block = (ctx) => {
+  const header = [
+    '[WORK_PLAN] — Your durable plan & decision ledger for THIS episode (persisted, survives the whole session).',
+    "It records the Director's standing approvals and the current todo list. READ IT EVERY TURN before acting —",
+    'it is your memory of what was already decided. When the Director makes or changes a decision/approval/plan,',
+    'update it via the updateWorkPlan tool (no verbal approval needed — it is operational state you maintain).',
+    'Do NOT re-ask about things already recorded here.',
+  ].join('\n');
+  const body = ctx.workPlanDoc && ctx.workPlanDoc.trim() !== ''
+    ? ctx.workPlanDoc.trim()
+    : 'no work plan yet — start one with updateWorkPlan when the Director makes a standing decision.';
+  return `${header}\n\n${body}`;
 };
 
 // ─── Block 8: STUDIO_STATE ───────────────────────────────────────────────────
@@ -668,6 +703,7 @@ const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
   { name: 'BIBLE_DOMAIN', render: bibleDomain },
   { name: 'AGENT_NAMES', render: agentNames },
   { name: 'ACTIVE_INTENT', render: activeIntent },
+  { name: 'WORK_PLAN', render: workPlan },
   { name: 'STUDIO_STATE', render: studioState },
   { name: 'FEEDBACK_PROTOCOL', render: feedbackProtocol },
   { name: 'AVAILABLE_PLAYBOOKS', render: availablePlaybooks },

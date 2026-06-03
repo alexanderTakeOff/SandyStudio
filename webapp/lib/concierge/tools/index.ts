@@ -40,6 +40,7 @@ import {
 } from './gagad';
 import { reorderShots } from './shot-reorder';
 import { markAwaitingDirector } from './mark-awaiting';
+import { getWorkPlan, updateWorkPlan } from './work-plan';
 import type { OpenAIToolSchema, Tool } from './types';
 
 export type { Tool, ToolContext, ToolResult, OpenAIToolSchema } from './types';
@@ -83,9 +84,17 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   getGagPlan as unknown as AnyTool,
   listGagPlans as unknown as AnyTool,
   getGagVerdict as unknown as AnyTool,
+  // Unit A (2026-06-03) — durable per-episode work-plan / decision ledger.
+  // Read-only: surfaces the STA-work_plan STATE asset content. The same doc is
+  // auto-loaded into the [WORK_PLAN] system-prompt block every turn.
+  getWorkPlan as unknown as AnyTool,
   // TD-25 P4 — intent declaration (replaces regex await-detector). Read-only:
   // doesn't change studio state, only annotates the assistant turn metadata.
   markAwaitingDirector as unknown as AnyTool,
+  // Unit A (2026-06-03) — Polina maintains her own durable ledger. NOT mutating:
+  // operational STATE she keeps current, not a creative gate, so no verbal
+  // approval. Overwrites the STA-work_plan STATE asset in place.
+  updateWorkPlan as unknown as AnyTool,
   // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
   approveAsset as unknown as AnyTool,

@@ -23,6 +23,7 @@ import { requireDirector } from '@/lib/api/auth';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
+import { loadWorkPlanDoc } from '@/lib/concierge/tools/work-plan';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
 import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
 
@@ -127,6 +128,18 @@ export async function POST(req: Request) {
   // manifest only; bodies load on demand via `getSkill`.
   const { availablePlaybooks } = await resolveSkillsContext(supabase, episodeId);
 
+  // Unit A (2026-06-03) — load the durable work-plan ledger so the autonomous
+  // auto-react loop gets the same [WORK_PLAN] standing-approval context the
+  // chat turn does. Best-effort: degrade to null on miss/error.
+  let workPlanDoc: string | null = null;
+  if (episodeId) {
+    try {
+      workPlanDoc = await loadWorkPlanDoc(supabase, episodeId);
+    } catch {
+      /* degrade to null — block renders "no work plan yet" */
+    }
+  }
+
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const model = env.OPENAI_MODEL || 'gpt-5.4-mini';
   const temperature = env.OPENAI_TEMPERATURE ? Number(env.OPENAI_TEMPERATURE) : 0.2;
@@ -146,6 +159,7 @@ export async function POST(req: Request) {
     recentTurns,
     modelId: model,
     availablePlaybooks,
+    workPlanDoc,
   });
 
   const conversation: ChatCompletionMessageParam[] = [
