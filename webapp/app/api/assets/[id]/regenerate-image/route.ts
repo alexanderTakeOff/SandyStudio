@@ -42,6 +42,8 @@ import { resolveBibleImageSize } from '@/lib/api/bible-image-size';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import { logEvent } from '@/lib/api/events';
+import { recordCost } from '@/lib/budget';
+import type { AgentId } from '@/lib/agents/types';
 import {
   type AssetMetadataDoc,
   type ImagePromptHistoryEntry,
@@ -489,6 +491,29 @@ export const POST = withApiHandler(async (req, ctx) => {
     // OpenAIImageResult.provider is the literal 'gpt-image-2'.
     realProviderId = real.provider;
     realModel = real.provider;
+  }
+
+  // Record the REAL direct cost in budget_log so the expenses tab counts manual
+  // rerolls — previously only the automated pipeline (factory.ts) recorded cost,
+  // so every Director reroll spent real money invisibly. jobId=null (no Inngest
+  // job); enforceCeiling=false because the money is already spent here.
+  // Best-effort: a budget-log hiccup must not fail an already-generated reroll.
+  try {
+    const costAgentId: AgentId = asset.file_type.startsWith('IMG-thumbnail')
+      ? 'EXEC-THUMB'
+      : 'EXEC-EREF';
+    await recordCost(sb, {
+      jobId: null,
+      episodeId: asset.episode_id ?? null,
+      agentId: costAgentId,
+      costUsd: realCost,
+      apiProvider: realProviderId,
+      modelOrTier: realModel,
+      operation: 'image_reroll',
+      enforceCeiling: false,
+    });
+  } catch {
+    /* non-fatal — image already generated; accounting is best-effort here */
   }
 
   // Director directive 2026-05-20 — pick the new Drive layout based on

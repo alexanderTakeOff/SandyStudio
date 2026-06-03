@@ -55,7 +55,13 @@ export class BudgetExceededError extends Error {
 }
 
 export interface RecordCostInput {
-  jobId: string;
+  /**
+   * Idempotency key — the Inngest job id for pipeline runs. NULL for direct
+   * Director-triggered spends (regenerate-image / -video / Bible image gen)
+   * which have no job row; the partial unique index ignores NULL job_ids, so
+   * each manual reroll is its own audited cost row.
+   */
+  jobId: string | null;
   episodeId: string | null;
   agentId: AgentId;
   costUsd: number;
@@ -67,6 +73,13 @@ export interface RecordCostInput {
   operation: string;
   tokensUsed?: number;
   durationMs?: number;
+  /**
+   * Pre-spend ceiling enforcement. Default true (pipeline path: throw + fail the
+   * job before the cascade continues). Direct Director rerolls pass false — the
+   * money is already spent by the time we record, so blocking would only lose
+   * the audit row; we always record and let the ceiling surface in the report.
+   */
+  enforceCeiling?: boolean;
 }
 
 export interface RecordCostResult {
@@ -111,8 +124,8 @@ export async function recordCost(
     ceiling = episode.budget_ceiling ?? Number.POSITIVE_INFINITY;
   }
 
-  // ── Step 2: hard ceiling check ─────────────────────────────────────────────
-  if (currentSpent + costUsd > ceiling) {
+  // ── Step 2: hard ceiling check (pre-spend pipeline path only) ──────────────
+  if ((input.enforceCeiling ?? true) && currentSpent + costUsd > ceiling) {
     throw new BudgetExceededError({
       episodeId: episodeId ?? '<no-episode>',
       currentSpent,

@@ -24,6 +24,7 @@ import { persistBinary } from '@/lib/agents/persist-binary';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { logEvent } from '@/lib/api/events';
 import { resolveBibleImageSize } from '@/lib/api/bible-image-size';
+import { recordCost } from '@/lib/budget';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -161,6 +162,24 @@ export const POST = withApiHandler(async (req, ctx) => {
       director_id: user.id,
     },
   });
+
+  // Direct Bible-image spend → budget_log so the expenses tab counts it
+  // (series-level, no episode). Previously invisible — only the pipeline
+  // recorded cost. jobId=null; enforceCeiling=false. Best-effort.
+  try {
+    await recordCost(sb, {
+      jobId: null,
+      episodeId: null,
+      agentId: 'EXEC-EREF',
+      costUsd: real.cost_usd,
+      apiProvider: real.provider,
+      modelOrTier: real.provider,
+      operation: 'bible_image_generation',
+      enforceCeiling: false,
+    });
+  } catch {
+    /* non-fatal — image already generated; accounting is best-effort here */
+  }
 
   return apiOk({
     staging_url: persisted.browserUrl,

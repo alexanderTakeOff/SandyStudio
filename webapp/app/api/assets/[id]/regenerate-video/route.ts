@@ -29,6 +29,7 @@ import { persistBinary } from '@/lib/agents/persist-binary';
 import { loadSeriesBibleCanon } from '@/lib/agents/bible-loader';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
+import { recordCost } from '@/lib/budget';
 import {
   buildShotPromptV2,
   makeCharacterCanonSnippets,
@@ -395,6 +396,24 @@ export const POST = withApiHandler(async (req, ctx) => {
     .select('id')
     .single();
   if (insErr) throw new Error(`asset insert failed: ${insErr.message}`);
+
+  // Record the real video cost in budget_log so the expenses tab counts manual
+  // rerolls (previously only the automated pipeline recorded cost). jobId=null
+  // (no Inngest job); enforceCeiling=false — money already spent. Best-effort.
+  try {
+    await recordCost(sb, {
+      jobId: null,
+      episodeId: asset.episode_id ?? null,
+      agentId: 'EXEC-VGEN',
+      costUsd: real.cost_usd,
+      apiProvider: real.model_id ?? real.operation_name ?? 'video',
+      modelOrTier: real.model_id ?? 'video',
+      operation: 'video_reroll',
+      enforceCeiling: false,
+    });
+  } catch {
+    /* non-fatal — video already generated; accounting is best-effort here */
+  }
 
   // TD-29.5 (2026-05-21): route through logEvent so the row consistently
   // emits pa/notify-needed when the event_type is actionable.

@@ -25,6 +25,7 @@ import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { runBibleAuthor, BibleAuthorError, type BibleSection } from '@/lib/agents/runners/bible-author';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { recordCost } from '@/lib/budget';
 import { enforceMode } from '@/lib/governance';
 import {
   bibleSlugFromFileType,
@@ -141,6 +142,22 @@ export const POST = withApiHandler(async (req, ctx) => {
         filename: asset.filename,
         source: 'manual_add',
       });
+      // Direct Bible-enrich spend → budget_log (series-level, no episode).
+      // Best-effort; money already spent. jobId=null; enforceCeiling=false.
+      try {
+        await recordCost(sb, {
+          jobId: null,
+          episodeId: null,
+          agentId: 'EXEC-EREF',
+          costUsd: r.costUsd,
+          apiProvider: 'gpt-image-2',
+          modelOrTier: 'gpt-image-2',
+          operation: 'bible_enrich',
+          enforceCeiling: false,
+        });
+      } catch {
+        /* non-fatal — image already generated; accounting is best-effort */
+      }
       return apiOk({
         asset_id: assetId,
         cost_usd: r.costUsd,
