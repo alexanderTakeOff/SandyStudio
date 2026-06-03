@@ -266,9 +266,40 @@ export async function validateAgentInputs(
   const { supabase, agentId, episodeId, eventContext = {} } = args;
   const spec = AGENT_GATES[agentId];
 
+  // ── Step 0: anchor-chain gate override ─────────────────────────────────────
+  // EXEC-EDIT (animatic) normally requires APPROVED IMG-episode_ref. In
+  // anchor-chain mode the episode has NO episode_refs — the animatic is built
+  // from APPROVED IMG-anchor START frames (TD-49 Phase 2). Swap the upstream
+  // requirement so the pacing gate doesn't block on refs that don't exist in
+  // this mode. Non-anchor episodes are unaffected (metadata flag absent/false).
+  let effectiveRequired: readonly AgentDependency[] = spec.required;
+  if (agentId === 'EXEC-EDIT') {
+    let anchorMode = false;
+    try {
+      const { data: epRow } = await supabase
+        .from('episodes')
+        .select('metadata')
+        .eq('id', episodeId)
+        .maybeSingle();
+      anchorMode = Boolean(
+        (epRow as { metadata?: { anchor_chain_enabled?: unknown } | null } | null)
+          ?.metadata?.anchor_chain_enabled,
+      );
+    } catch {
+      // Fail-safe: if the metadata read fails, fall back to the static
+      // (episode_ref) requirement rather than crashing the gate.
+      anchorMode = false;
+    }
+    if (anchorMode) {
+      effectiveRequired = [
+        { fileTypePrefix: 'IMG-anchor', minCount: 1, label: 'Approved anchor frames' },
+      ];
+    }
+  }
+
   // ── Step 1: asset completeness ─────────────────────────────────────────────
   const missing: string[] = [];
-  for (const dep of spec.required) {
+  for (const dep of effectiveRequired) {
     const allowedStatuses = dep.allowedStatuses ?? ['APPROVED'];
     // Use .eq() for single-status (default) so existing mock-supabase tests
     // keep working — .in() requires multi-status mock support which the test
