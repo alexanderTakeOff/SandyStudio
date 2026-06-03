@@ -107,6 +107,7 @@ export function EpisodeSettingsCard({
         throw new Error(b.error ?? `HTTP ${res.status}`);
       }
       setState((s) => ({ ...s, budget_ceiling: next }));
+      setBudgetInput(next != null ? String(next) : '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Update failed');
     } finally {
@@ -116,7 +117,7 @@ export function EpisodeSettingsCard({
 
   async function toggleAnchorChain(next: boolean) {
     const previous = state.anchor_chain_enabled;
-    setState({ ...state, anchor_chain_enabled: next });
+    setState((s) => ({ ...s, anchor_chain_enabled: next }));
     setPending(true);
     setError(null);
     try {
@@ -130,8 +131,9 @@ export function EpisodeSettingsCard({
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
     } catch (err) {
-      // Rollback on failure.
-      setState({ ...state, anchor_chain_enabled: previous });
+      // Rollback on failure (functional updater — don't clobber a concurrent
+      // budget_ceiling save).
+      setState((s) => ({ ...s, anchor_chain_enabled: previous }));
       setError(err instanceof Error ? err.message : 'Update failed');
     } finally {
       setPending(false);

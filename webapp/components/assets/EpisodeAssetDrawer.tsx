@@ -250,6 +250,19 @@ export function EpisodeAssetDrawer({
     fetcher,
   );
 
+  // Anchor fallback — anchors generated before the image_prompt fix carry no
+  // prompt on the asset; their prompt lives in the linked Plan (SPC-ref_plan).
+  // Fetch the Plan body so the drawer can show "what was sent to the provider"
+  // for those legacy anchors without forcing a re-spend. New anchors have
+  // image_prompt and skip this (key is null). MUST stay above the early return
+  // below — hooks must run on every render.
+  const { data: anchorPlanData } = useSWR<{ data: { content: string | null } }>(
+    open && isAnchor && !asset.metadata?.image_prompt && anchorPlanAssetId
+      ? `/api/assets/${anchorPlanAssetId}/content`
+      : null,
+    fetcher,
+  );
+
   const siblingCandidates = useMemo(() => {
     if (!isV2 || !shotId || !assetsData?.data) return [] as EpisodeAsset[];
     return assetsData.data
@@ -312,18 +325,6 @@ export function EpisodeAssetDrawer({
   const currentPromptEntry: ImagePromptHistoryEntry | undefined = promptDoc
     ? promptDoc.history.find((h) => h.version === promptDoc.current_version)
     : undefined;
-
-  // Anchor fallback — anchors generated before the image_prompt fix carry no
-  // prompt on the asset; their prompt lives in the linked Plan (SPC-ref_plan).
-  // Fetch the Plan body so the drawer can show "what was sent to the provider"
-  // for those legacy anchors without forcing a re-spend. New anchors have
-  // image_prompt and skip this entirely.
-  const { data: anchorPlanData } = useSWR<{ data: { content: string | null } }>(
-    open && isAnchor && !promptDoc && anchorPlanAssetId
-      ? `/api/assets/${anchorPlanAssetId}/content`
-      : null,
-    fetcher,
-  );
 
   const previewSrc = resolvePreviewSrc(asset, currentPromptEntry);
   const isImage = !!previewSrc;
@@ -400,6 +401,16 @@ export function EpisodeAssetDrawer({
   async function regenAnchor() {
     if (!asset.episode_id || !anchorShotId) {
       setError('Cannot regenerate anchor — missing episode or shot id in metadata.');
+      return;
+    }
+    // Without a planAssetId the trigger route can't reroute to execute-from-plan
+    // and would fire the whole-episode EREF pilot pass instead of this one shot.
+    // Refuse rather than silently re-run (and re-bill) the entire episode.
+    if (!anchorPlanAssetId) {
+      setError(
+        'This anchor predates plan-linking (no plan_asset_id) — per-shot regen unavailable. ' +
+          'Re-run the Reference Artist for the whole episode from the stage workstation instead.',
+      );
       return;
     }
     if (

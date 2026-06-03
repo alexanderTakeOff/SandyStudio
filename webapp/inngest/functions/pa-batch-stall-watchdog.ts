@@ -68,13 +68,16 @@ export const paBatchStallWatchdog = inngest.createFunction(
         }
 
         // Idle check — latest job activity for the episode.
-        const { data: lastJob } = await sb
+        const { data: lastJob, error: jobErr } = await sb
           .from('jobs')
           .select('started_at,completed_at')
           .eq('episode_id', ep.id)
           .order('started_at', { ascending: false })
           .limit(1)
           .maybeSingle();
+        // A failed query must NOT be read as "no activity → stalled" (that would
+        // fire a spurious nudge). Skip this episode on error; next tick retries.
+        if (jobErr) continue;
         const lastTs = lastJob
           ? Math.max(
               lastJob.completed_at ? new Date(lastJob.completed_at).getTime() : 0,

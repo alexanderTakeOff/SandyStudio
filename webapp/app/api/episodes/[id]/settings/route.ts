@@ -31,7 +31,7 @@ const Body = z
     // Per-episode hard budget cap in USD (lives in the budget_ceiling COLUMN,
     // not metadata). recordCost throws BudgetExceededError once spend would
     // cross it. `null` clears the cap (no limit). Omit = no change.
-    budget_ceiling: z.number().positive().max(10000).nullable().optional(),
+    budget_ceiling: z.number().finite().positive().max(10000).nullable().optional(),
   })
   .strict();
 
