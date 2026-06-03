@@ -765,12 +765,20 @@ async function computeNextEvents(
           // all 30 plans, so this map is fully populated and NO planning fires.
           const { data: planRows } = await supabase
             .from('assets')
-            .select('id,content,metadata')
+            .select('id,status,content,metadata')
             .eq('episode_id', ep)
             .or('file_type.eq.SPC-shot_plan,file_type.like.SPC-shot_plan-%');
-          const planByShotId = new Map<string, { id: string }>();
+          // Only an APPROVED plan may advance to video. A plan that merely
+          // EXISTS (REVIEW/REVISION) has NOT passed the Animator's Critic — so
+          // firing video on it bypasses the quality gate AND is rejected
+          // downstream by EXEC-VGEN ("expected APPROVED", runner.ts). Track
+          // APPROVED plans separately from "any plan exists" so unapproved shots
+          // WAIT for plan approval instead of spawning doomed video jobs.
+          const approvedPlanByShotId = new Map<string, { id: string }>();
+          const shotsWithAnyPlan = new Set<string>();
           for (const row of (planRows ?? []) as Array<{
             id: string;
+            status?: string | null;
             content?: string | null;
             metadata?: unknown;
           }>) {
@@ -791,9 +799,9 @@ async function computeNextEvents(
               }
             }
             if (!shotId) continue;
-            // Newest-wins: keep the last row seen (query is unordered; the
-            // existence of ANY plan is what gates re-planning, so this is safe).
-            planByShotId.set(shotId, { id: row.id });
+            shotsWithAnyPlan.add(shotId);
+            // Newest-wins: any APPROVED plan for the shot is enough to advance it.
+            if (row.status === 'APPROVED') approvedPlanByShotId.set(shotId, { id: row.id });
           }
 
           // Per-Plan video idempotency: a VID-shot stamped with the plan's
@@ -813,31 +821,40 @@ async function computeNextEvents(
             }
           }
 
-          await setVgenPilotState(supabase, ep, 'PENDING_REVIEW');
+          let firedPilotVideo = false;
           for (const p of pilots) {
-            const existingPlan = planByShotId.get(p.shotId);
-            if (existingPlan) {
-              // IDEMPOTENCY LOCKED — existing plan: advance to video-gen via the
-              // plan-driven single-shot path (mirrors SPC-shot_plan.APPROVED
-              // branch). Skip if its plan already produced a VID-shot.
-              if (executedPlanIds.has(existingPlan.id)) continue;
+            const approvedPlan = approvedPlanByShotId.get(p.shotId);
+            if (approvedPlan) {
+              // APPROVED plan → advance to video via the plan-driven single-shot
+              // path. Skip if its plan already produced a VID-shot.
+              if (executedPlanIds.has(approvedPlan.id)) continue;
               events.push({
                 name: 'sandystudio/exec-vgen/single-shot',
                 data: {
                   episodeId: ep,
                   shotId: p.shotId,
-                  planAssetId: existingPlan.id,
+                  planAssetId: approvedPlan.id,
                   duration_seconds: p.durationSeconds,
                 },
               });
+              firedPilotVideo = true;
+            } else if (shotsWithAnyPlan.has(p.shotId)) {
+              // Plan exists but is NOT APPROVED (REVIEW/REVISION) — it has not
+              // cleared the Animator's Critic. Do NOT fire video (that bypasses
+              // the gate and EXEC-VGEN rejects it) and do NOT re-author. The shot
+              // advances on its own when its SPC-shot_plan.APPROVED fires.
+              continue;
             } else {
-              // No plan yet for this pilot shot → author one (Animator chain).
+              // No plan at all for this pilot shot → author one (Animator chain).
               events.push({
                 name: 'sandystudio/exec-vanim/plan',
                 data: { episodeId: ep, shotId: p.shotId },
               });
             }
           }
+          // Only mark pilots PENDING_REVIEW when a pilot video actually fired —
+          // not when every pilot is waiting on plan approval (E02's case).
+          if (firedPilotVideo) await setVgenPilotState(supabase, ep, 'PENDING_REVIEW');
         }
       }
     } else {
