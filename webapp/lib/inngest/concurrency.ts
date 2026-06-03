@@ -46,9 +46,17 @@ export const CONCURRENCY_LIMITS = {
   // Plan-driven executor (Day 3.2 2026-05-18) — single-shot image generation
   // from an APPROVED SPC-ref_plan. Same rate-limit logic as legacy exec-eref
   // (gpt-image-2 fan-out, expensive), but here parallelism is one shot per
-  // event so episodes can have 2-3 shots in flight without colliding on the
-  // long internal per-shot loop.
-  'exec-eref-execute': 2,
+  // event so multiple shots can be in flight without colliding on the long
+  // internal per-shot loop.
+  //
+  // 2026-06-03 (Director q20): bumped 2 → 4 to roughly halve wall-time on
+  // multi-shot episodes. Safe because the factory runs these with retries:2 +
+  // Inngest exponential backoff + per-Plan idempotency, so a transient gpt-image
+  // 429 retries rather than dropping the shot. If SUSTAINED 429s appear (OpenAI
+  // tier images-per-minute ceiling), roll back to 3 — the previously-tested-safe
+  // cap. No single-call batch API exists for gpt-image-2; this fan-out cap is
+  // the throughput lever.
+  'exec-eref-execute': 4,
   'exec-edit':  5,
   'exec-copy':  5,
   // Visual generation — strictest. Highest cost, lowest provider tolerance.
