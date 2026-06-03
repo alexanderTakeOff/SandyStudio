@@ -330,10 +330,10 @@ export async function buildShotListFromAnchorChain(
     .eq('status', 'APPROVED')
     .like('file_type', 'IMG-anchor_%');
   if (anchorErr) throw new Error(`approved IMG-anchor fetch: ${anchorErr.message}`);
+  // anchors MAY be empty if every shot uses an episode_ref fallback instead
+  // (Director rule: for the animatic a ref ≡ an anchor). The final
+  // empty-shotList check below is the real guard, not this fetch.
   const anchors = (anchorAssets ?? []) as ApprovedEREFAssetRow[];
-  if (anchors.length === 0) {
-    throw new Error('No APPROVED IMG-anchor_* assets — approve anchors first');
-  }
 
   // filename → shotId + position. e.g. SS-...-IMG-anchor_<shot>_start-v01-APPROVED.png
   const anchorByShotId = new Map<string, ApprovedEREFAssetRow>();
@@ -345,6 +345,23 @@ export async function buildShotListFromAnchorChain(
     const position = m[2]?.toLowerCase();
     if (!shotId || position !== 'start') continue;
     if (!anchorByShotId.has(shotId)) anchorByShotId.set(shotId, a);
+  }
+
+  // 1b. Per-shot episode_ref fallback (Director: ref ≡ anchor for the animatic).
+  // Shots whose START anchor is missing (e.g. SH01/SH02 whose anchors failed in
+  // the Reference Artist stage) but that DO have an APPROVED IMG-episode_ref use
+  // that ref as the frame. Same shot_id matching as buildShotListFromApprovedEREF.
+  const { data: refAssets, error: refErr } = await supabase
+    .from('assets')
+    .select('*')
+    .eq('episode_id', episodeId)
+    .eq('status', 'APPROVED')
+    .like('file_type', 'IMG-episode_ref%');
+  if (refErr) throw new Error(`approved IMG-episode_ref fetch: ${refErr.message}`);
+  const refByShotId = new Map<string, ApprovedEREFAssetRow>();
+  for (const a of (refAssets ?? []) as ApprovedEREFAssetRow[]) {
+    const id = shotIdFromMetadata(a.metadata);
+    if (id && !refByShotId.has(id)) refByShotId.set(id, a);
   }
 
   // 2. APPROVED SPC-shot_plan assets → shot_id → duration_seconds.
@@ -380,7 +397,11 @@ export async function buildShotListFromAnchorChain(
   // 3. Walk storyboard order, resolve start anchor + duration per shot.
   const shotList: AnimaticShot[] = [];
   for (const shot of shots) {
-    const chosen = anchorByShotId.get(shot.shot_id.toLowerCase());
+    // anchor START preferred; fall back to an APPROVED episode_ref for the shot
+    // (Director: ref ≡ anchor for the animatic — take the start frame).
+    const chosen =
+      anchorByShotId.get(shot.shot_id.toLowerCase()) ??
+      refByShotId.get(shot.shot_id);
     if (!chosen) continue;
     const duration =
       planDurationByShotId.get(shot.shot_id) ??
@@ -397,7 +418,7 @@ export async function buildShotListFromAnchorChain(
     });
   }
   if (shotList.length === 0) {
-    throw new Error('Could not align any storyboard shots to approved IMG-anchor START frames');
+    throw new Error('Could not align any storyboard shots to approved anchor START frames or episode_ref fallbacks');
   }
   return shotList;
 }
