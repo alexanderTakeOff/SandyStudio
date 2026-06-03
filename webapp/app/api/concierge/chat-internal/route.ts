@@ -72,7 +72,9 @@ const Body = z.object({
   thread_id: z.string().uuid(),
   // TD-25 P2 (2026-05-21): 'watchdog' source — re-ping after Polina's
   // prior turn left an unresolved awaiting_director_input flag.
-  source: z.enum(['ambient', 'claude_message', 'watchdog']),
+  // 2026-06-03: 'timer' — escalation-timer + orphaned-awaiting-sweep post this
+  // (typed in client.ts but missing here → silent 400s killed Polina's proactive nudges).
+  source: z.enum(['ambient', 'claude_message', 'watchdog', 'timer']),
   trigger_id: z.string().min(1),
   event_type: z.string().optional(),
 });
