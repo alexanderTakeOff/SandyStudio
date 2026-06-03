@@ -328,7 +328,13 @@ export async function buildShotListFromAnchorChain(
     .select('id,file_type,status,staging_path,drive_path,drive_web_view_url,filename,metadata')
     .eq('episode_id', episodeId)
     .eq('status', 'APPROVED')
-    .like('file_type', 'IMG-anchor_%');
+    .like('file_type', 'IMG-anchor_%')
+    // Newest version FIRST so the first match per shot (kept below) is the
+    // LATEST approved anchor. Without this the query is unordered and an older
+    // version (e.g. the original yellow-Sandy drift frame) can win over a
+    // freshly regenerated + approved one — which is exactly what happened.
+    .order('version', { ascending: false })
+    .order('created_at', { ascending: false });
   if (anchorErr) throw new Error(`approved IMG-anchor fetch: ${anchorErr.message}`);
   // anchors MAY be empty if every shot uses an episode_ref fallback instead
   // (Director rule: for the animatic a ref ≡ an anchor). The final
@@ -361,7 +367,10 @@ export async function buildShotListFromAnchorChain(
     .select('*')
     .eq('episode_id', episodeId)
     .eq('status', 'APPROVED')
-    .like('file_type', 'IMG-episode_ref%');
+    .like('file_type', 'IMG-episode_ref%')
+    // Newest version first → keep the latest approved ref per shot (below).
+    .order('version', { ascending: false })
+    .order('created_at', { ascending: false });
   if (refErr) throw new Error(`approved IMG-episode_ref fetch: ${refErr.message}`);
   const refByShotId = new Map<string, ApprovedEREFAssetRow>();
   for (const a of (refAssets ?? []) as ApprovedEREFAssetRow[]) {
