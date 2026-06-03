@@ -61,6 +61,24 @@ export function localCacheAbsPath(filename: string): string {
 }
 
 /**
+ * Absolute path for a resized thumbnail of `filename`, sized to `width` px and
+ * served as WebP. Mirrors the original-file layout but drops the rendered
+ * thumbnails into a sibling `.thumb/` directory so they never collide with the
+ * source bytes and an episode's thumbs can be cleared independently:
+ *
+ *   <root>/S15/E01/media/.thumb/SS-...-v03-APPROVED.png.w64.webp
+ *
+ * The original keying/behaviour (`localCacheAbsPath`) is untouched; this only
+ * adds a derived-artifact path next to it. Width is baked into the name so
+ * different requested sizes cache separately.
+ */
+export function thumbnailCacheAbsPath(filename: string, width: number): string {
+  const orig = localCacheAbsPath(filename);
+  const dir = path.join(path.dirname(orig), '.thumb');
+  return path.join(dir, `${path.basename(orig)}.w${width}.webp`);
+}
+
+/**
  * Return the cached absolute path if the file already exists locally (no Drive
  * fetch). Lets the media route serve persist-warmed files — including mock /
  * local-only assets that have no `drive_file_id` — straight from the cache.

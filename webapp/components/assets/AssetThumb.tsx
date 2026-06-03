@@ -7,7 +7,7 @@
 
 'use client';
 
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Lock } from 'lucide-react';
 import type { AssetMetadataDoc } from '@/lib/api/series-bible';
 import { NotificationDot } from '@/components/notifications/NotificationDot';
@@ -60,8 +60,30 @@ function pickPreviewSrc(a: AssetThumbProps['asset']): string | null {
   );
 }
 
+// Tiles render small (~32px). At this size, shipping a full-resolution PNG is
+// pure waste, so for the dynamic `/api/media/<id>` route we ask for a resized
+// WebP thumbnail (`?w=`). DPR-aware: 2× the CSS size keeps the tile crisp on
+// retina without hauling the original. Only the media route understands the
+// thumb param — static `/staging`/`http` URLs are passed through untouched.
+const THUMB_DPR = 2;
+const THUMB_GATE_PX = 96; // only request thumbs for genuinely small grid tiles
+
+function withThumbParam(src: string, size: number): string {
+  if (size > THUMB_GATE_PX) return src;
+  if (!src.startsWith('/api/media/')) return src;
+  const width = Math.max(16, Math.round(size * THUMB_DPR));
+  const sep = src.includes('?') ? '&' : '?';
+  return `${src}${sep}w=${width}`;
+}
+
 export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbProps) {
-  const src = pickPreviewSrc(asset);
+  const rawSrc = pickPreviewSrc(asset);
+  const src = rawSrc != null ? withThumbParam(rawSrc, size) : null;
+  // Turn silent broken-images into a visible, debuggable state: on a load
+  // failure we drop the <img> and render the same "—" placeholder used when no
+  // src exists, plus a subtle danger ring.
+  const [hasError, setHasError] = useState(false);
+  const showImg = src != null && !hasError;
   const statusColor = STATUS_COLORS[asset.status] ?? 'var(--text-muted)';
   const isLocked = asset.status === 'LOCKED';
   // 2026-05-25 Director feedback: thumbs lacked a visible version chip so
@@ -85,15 +107,31 @@ export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbP
       type="button"
       onClick={onClick}
       title={hoverName ?? asset.filename}
-      className="relative shrink-0 rounded-md overflow-hidden border border-glass hover:border-[var(--accent-primary)] transition-colors group"
+      className={`relative shrink-0 rounded-md overflow-hidden border transition-colors group ${
+        hasError
+          ? 'border-[var(--accent-danger)]'
+          : 'border-glass hover:border-[var(--accent-primary)]'
+      }`}
       style={style}
     >
       <span className="absolute top-0 left-0 z-10">
         <NotificationDot assetId={asset.id} size={Math.max(4, Math.round(size / 6))} />
       </span>
-      {src ? (
+      {showImg ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={asset.filename} className="w-full h-full object-cover block" />
+        <img
+          src={src}
+          alt={asset.filename}
+          loading="lazy"
+          decoding="async"
+          className="w-full h-full object-cover block"
+          onError={() => {
+            // Surface the failing URL so a broken tile is debuggable instead of
+            // silently blank. Then fall back to the placeholder + error ring.
+            console.warn(`[AssetThumb] image failed to load: ${src}`);
+            setHasError(true);
+          }}
+        />
       ) : (
         <span className="flex items-center justify-center w-full h-full text-[6px] text-text-muted uppercase">
           —
