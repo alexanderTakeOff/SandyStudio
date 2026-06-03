@@ -374,7 +374,7 @@ export async function getApprovedEREFForShot(
   const { data, error } = await supabase
     .from('assets')
     .select(
-      'id,file_type,status,filename,staging_path,drive_path,drive_web_view_url,metadata',
+      'id,file_type,status,filename,staging_path,drive_path,drive_web_view_url,drive_file_id,metadata',
     )
     .eq('episode_id', episodeId)
     .eq('status', 'APPROVED')
@@ -386,20 +386,16 @@ export async function getApprovedEREFForShot(
   const match = refs.find((row) => shotIdFromMetadata(row.metadata) === shotId);
   if (!match) return null;
 
-  // Lazy import to keep this module loadable in non-Node test environments.
-  const stagingPath = match.staging_path;
-  let imageB64: string | null = null;
-  if (stagingPath && stagingPath.startsWith('/staging/')) {
-    try {
-      const path = await import('node:path');
-      const fs = await import('node:fs/promises');
-      const abs = path.join(process.cwd(), 'public', stagingPath.slice(1));
-      const buf = await fs.readFile(abs);
-      imageB64 = buf.toString('base64');
-    } catch {
-      imageB64 = null;
-    }
-  }
+  // Resolve image bytes via the Drive-backed reader (disk-cache → Drive →
+  // legacy /staging). Post-media-migration the asset's staging_path is an
+  // /api/media/<id> URL, NOT a /staging file — reading it as a local file (the
+  // old behaviour) returned null and starved img2vid of its start frame (422).
+  const { readAssetMediaAsBase64 } = await import('@/lib/media-cache');
+  const imageB64 = await readAssetMediaAsBase64({
+    filename: match.filename,
+    driveFileId: (match as { drive_file_id?: string | null }).drive_file_id ?? null,
+    stagingPath: match.staging_path,
+  });
   return { asset: match, image_b64: imageB64 };
 }
 
@@ -410,9 +406,10 @@ export async function getApprovedEREFForShot(
  * has no staging_path or the file can't be read — caller degrades to
  * start-frame-only video (no end-frame anchor).
  *
- * Mirrors getApprovedEREFForShot's staging-path read logic; staging_path is
- * the only path that exists in dev — the runner doesn't talk to Drive for
- * bytes during a render.
+ * 2026-06-03: resolves bytes via the Drive-backed reader (disk-cache → Drive →
+ * legacy /staging). The old /staging-only read returned null for Drive-backed
+ * assets (staging_path = /api/media/<id> URL post-migration), which starved
+ * Seedance of image_url and produced a fal 422.
  */
 export async function getAssetImageBase64ById(
   supabase: SupabaseClient<Database>,
@@ -420,26 +417,22 @@ export async function getAssetImageBase64ById(
 ): Promise<{ base64: string; mime: 'image/png' | 'image/jpeg' } | null> {
   const { data, error } = await supabase
     .from('assets')
-    .select('id,staging_path,file_type')
+    .select('id,staging_path,filename,drive_file_id,file_type')
     .eq('id', assetId)
     .maybeSingle();
-  if (error || !data?.staging_path) return null;
-  const stagingPath = data.staging_path;
-  if (!stagingPath.startsWith('/staging/')) return null;
-  try {
-    const path = await import('node:path');
-    const fs = await import('node:fs/promises');
-    const abs = path.join(process.cwd(), 'public', stagingPath.slice(1));
-    const buf = await fs.readFile(abs);
-    const mime: 'image/png' | 'image/jpeg' = stagingPath
-      .toLowerCase()
-      .endsWith('.jpg')
-      ? 'image/jpeg'
-      : 'image/png';
-    return { base64: buf.toString('base64'), mime };
-  } catch {
-    return null;
-  }
+  if (error || !data) return null;
+  const filename = (data as { filename?: string | null }).filename ?? null;
+  const { readAssetMediaAsBase64 } = await import('@/lib/media-cache');
+  const base64 = await readAssetMediaAsBase64({
+    filename,
+    driveFileId: (data as { drive_file_id?: string | null }).drive_file_id ?? null,
+    stagingPath: data.staging_path,
+  });
+  if (!base64) return null;
+  const lower = (filename ?? data.staging_path ?? '').toLowerCase();
+  const mime: 'image/png' | 'image/jpeg' =
+    lower.endsWith('.jpg') || lower.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+  return { base64, mime };
 }
 
 // ── Prompt builder ───────────────────────────────────────────────────────────
