@@ -26,6 +26,7 @@
     "reset-episode-after-brief": "tsx --env-file=.env.local scripts/reset-episode-after-brief.ts",
     "trigger-stage": "tsx --env-file=.env.local scripts/trigger-stage.ts",
     "seed-sandy-bible": "tsx --env-file=.env.local scripts/seed-sandy-bible.ts",
+    "episode-timing": "tsx --env-file=.env.local tools/episode-timing.ts",
     "verify": "npm run typecheck && npm test"
   },
   "dependencies": {
