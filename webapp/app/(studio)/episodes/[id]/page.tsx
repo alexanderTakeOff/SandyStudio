@@ -293,7 +293,11 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
       {/* TD-49 Phase 2 P2.3 (2026-05-25): per-episode settings — currently
           just the anchor_chain_enabled toggle. Director-only PATCH surface. */}
       <div className="mb-4">
-        <EpisodeSettingsCard episodeId={id} initialMetadata={episode.metadata ?? null} />
+        <EpisodeSettingsCard
+          episodeId={id}
+          initialMetadata={episode.metadata ?? null}
+          initialBudgetCeiling={episode.budget_ceiling ?? null}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">

@@ -25,10 +25,13 @@ interface EpisodeSettingsCardProps {
    *  without an extra fetch on first render. The component then refetches via
    *  the settings GET to stay consistent with the canonical write surface. */
   initialMetadata?: Record<string, unknown> | null;
+  /** Initial per-episode budget cap (USD) from the page payload. null = no cap. */
+  initialBudgetCeiling?: number | null;
 }
 
 interface SettingsState {
   anchor_chain_enabled: boolean;
+  budget_ceiling: number | null;
 }
 
 function readAnchorChainEnabled(meta: Record<string, unknown> | null | undefined): boolean {
@@ -36,30 +39,80 @@ function readAnchorChainEnabled(meta: Record<string, unknown> | null | undefined
   return meta.anchor_chain_enabled === true;
 }
 
-export function EpisodeSettingsCard({ episodeId, initialMetadata }: EpisodeSettingsCardProps) {
+export function EpisodeSettingsCard({
+  episodeId,
+  initialMetadata,
+  initialBudgetCeiling = null,
+}: EpisodeSettingsCardProps) {
   const [state, setState] = useState<SettingsState>({
     anchor_chain_enabled: readAnchorChainEnabled(initialMetadata ?? null),
+    budget_ceiling: initialBudgetCeiling,
   });
+  const [budgetInput, setBudgetInput] = useState(
+    initialBudgetCeiling != null ? String(initialBudgetCeiling) : '',
+  );
   const [pending, setPending] = useState(false);
+  const [budgetPending, setBudgetPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/episodes/${episodeId}/settings`)
       .then((r) => r.json())
-      .then((j: { data?: { metadata?: Record<string, unknown> } }) => {
-        if (cancelled || !j.data) return;
-        setState({
-          anchor_chain_enabled: readAnchorChainEnabled(j.data.metadata ?? null),
-        });
-      })
+      .then(
+        (j: {
+          data?: { metadata?: Record<string, unknown>; budget_ceiling?: number | null };
+        }) => {
+          if (cancelled || !j.data) return;
+          const cap = j.data.budget_ceiling ?? null;
+          setState({
+            anchor_chain_enabled: readAnchorChainEnabled(j.data.metadata ?? null),
+            budget_ceiling: cap,
+          });
+          setBudgetInput(cap != null ? String(cap) : '');
+        },
+      )
       .catch(() => {
-        // Non-fatal — keep initialMetadata-derived state.
+        // Non-fatal — keep initial-prop-derived state.
       });
     return () => {
       cancelled = true;
     };
   }, [episodeId]);
+
+  async function saveBudgetCeiling() {
+    const trimmed = budgetInput.trim();
+    // Empty input clears the cap (null). Otherwise must be a positive number.
+    let next: number | null;
+    if (trimmed === '') {
+      next = null;
+    } else {
+      const parsed = Number(trimmed);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setError('Budget cap must be a positive number (or empty to clear).');
+        return;
+      }
+      next = parsed;
+    }
+    setBudgetPending(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/settings`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ budget_ceiling: next }),
+      });
+      if (!res.ok) {
+        const b = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(b.error ?? `HTTP ${res.status}`);
+      }
+      setState((s) => ({ ...s, budget_ceiling: next }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setBudgetPending(false);
+    }
+  }
 
   async function toggleAnchorChain(next: boolean) {
     const previous = state.anchor_chain_enabled;
@@ -127,6 +180,41 @@ export function EpisodeSettingsCard({ episodeId, initialMetadata }: EpisodeSetti
               )}
             </div>
           </label>
+
+          {/* Per-episode budget cap (Director directive 2026-06-03). Writes the
+              budget_ceiling COLUMN via the settings PATCH. Empty = no cap. */}
+          <div className="border-t border-glass pt-3">
+            <div className="text-sm font-medium text-text-primary">Episode budget cap</div>
+            <div className="text-xs text-text-muted mt-0.5 leading-relaxed">
+              Hard USD ceiling. Generation jobs fail once spend would cross it. Empty = no cap.{' '}
+              {state.budget_ceiling == null && (
+                <span style={{ color: 'var(--accent-danger)' }}>
+                  No cap set — over-spend is NOT blocked.
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-sm text-text-muted">$</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={budgetInput}
+                onChange={(e) => setBudgetInput(e.target.value)}
+                placeholder="e.g. 25"
+                disabled={budgetPending}
+                className="w-28 px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+              />
+              <button
+                type="button"
+                onClick={() => void saveBudgetCeiling()}
+                disabled={budgetPending}
+                className="px-3 py-1 rounded-md text-xs font-medium bg-[var(--accent-primary)] text-white disabled:opacity-50"
+              >
+                {budgetPending ? 'Saving…' : 'Save cap'}
+              </button>
+            </div>
+          </div>
         </div>
       </CardBody>
     </Card>
