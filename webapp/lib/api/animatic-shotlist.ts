@@ -335,16 +335,21 @@ export async function buildShotListFromAnchorChain(
   // empty-shotList check below is the real guard, not this fetch.
   const anchors = (anchorAssets ?? []) as ApprovedEREFAssetRow[];
 
-  // filename → shotId + position. e.g. SS-...-IMG-anchor_<shot>_start-v01-APPROVED.png
+  // Map shot_id → START anchor, keyed on metadata.shot_reference.shot_id
+  // (e.g. "SS-S15-E02-A2-SC11-SH11") — the SAME format as the storyboard
+  // shot_id. The anchor FILENAME embeds a different form (lowercase-underscored
+  // "ss_s15_e02_a2_sc11_sh11") that never matches the storyboard id, which is
+  // why filename-based matching silently dropped every anchor. This mirrors the
+  // metadata-based matching the episode_ref fallback uses below.
   const anchorByShotId = new Map<string, ApprovedEREFAssetRow>();
-  const ANCHOR_RE = /-img-anchor_([a-z0-9_-]+?)_(start|end)-/i;
   for (const a of anchors) {
-    const m = a.filename.match(ANCHOR_RE);
-    if (!m) continue;
-    const shotId = m[1]?.toLowerCase();
-    const position = m[2]?.toLowerCase();
-    if (!shotId || position !== 'start') continue;
-    if (!anchorByShotId.has(shotId)) anchorByShotId.set(shotId, a);
+    const meta = a.metadata as
+      | { shot_reference?: { shot_id?: unknown }; anchor_position?: unknown }
+      | null;
+    if (meta?.anchor_position !== 'start') continue;
+    const sid = meta?.shot_reference?.shot_id;
+    if (typeof sid !== 'string') continue;
+    if (!anchorByShotId.has(sid)) anchorByShotId.set(sid, a);
   }
 
   // 1b. Per-shot episode_ref fallback (Director: ref ≡ anchor for the animatic).
@@ -400,7 +405,7 @@ export async function buildShotListFromAnchorChain(
     // anchor START preferred; fall back to an APPROVED episode_ref for the shot
     // (Director: ref ≡ anchor for the animatic — take the start frame).
     const chosen =
-      anchorByShotId.get(shot.shot_id.toLowerCase()) ??
+      anchorByShotId.get(shot.shot_id) ??
       refByShotId.get(shot.shot_id);
     if (!chosen) continue;
     const duration =

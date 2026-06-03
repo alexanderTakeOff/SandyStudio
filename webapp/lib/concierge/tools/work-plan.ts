@@ -166,7 +166,11 @@ export async function upsertWorkPlan(
     .from('assets')
     .insert({
       episode_id: episodeId,
-      series_id: (episode.series_id as string | null) ?? null,
+      // episodes.series_id holds a series CODE ("SS-S15"), NOT a UUID; the
+      // assets.series_id column is a UUID FK, so copying it threw
+      // "invalid input syntax for type uuid". Other asset rows leave it null —
+      // the work-plan row is uniquely keyed by episode_id + file_type anyway.
+      series_id: null,
       file_type: WORK_PLAN_FILE_TYPE,
       filename,
       status: 'DRAFT',
