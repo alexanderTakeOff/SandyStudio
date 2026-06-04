@@ -328,7 +328,15 @@ async function gatherReferencedMediaAssets(
     agentId === 'EXEC-EDIT'
       ? ['IMG-episode_ref%']
       : agentId === 'EXEC-VGEN'
-        ? ['VID-animatic%', 'IMG-episode_ref%']
+        ? // VGEN loads the per-shot reference (plan start_anchor in plan-driven
+          // mode, or APPROVED episode_ref in legacy mode) — NOT the animatic
+          // bytes (the animatic is consumed as metadata: shot_list + durations).
+          // Preflighting VID-animatic byte-reachability blocked the render on an
+          // asset it never opens (same over-strict pattern as the VANIM drop
+          // above) — surfaced 2026-06-04 when an APPROVED-but-byteless anchor-mode
+          // animatic failed the gate. The plan's actual anchor is guarded by the
+          // runner's loud loader (Phase 1 backstop).
+          ['IMG-episode_ref%']
         : [];
 
   if (families.length === 0) return [];
