@@ -25,12 +25,16 @@ GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
         VPREV/EPREV now enforce cap=2→HALT→Director (was uncapped infinite loop);
         counter = plan version (survives re-author). +6 unit tests.
      ✅ U2/I4+I6 fold (cff8007) — execVgenStart+SingleShot → ONE gated execVgenRun
-        (multi-event, isPilot); gate+agent_failed added, −~160 lines, dead
-        exec-vgen-pilot cap removed. NOTE: trio skips Inngest handlers → validate
-        on paid smoke WITH Director.
-     ⏳ Remaining: U3 media-preflight shot-scope (preventive; 0 unreachable now).
-        U5/I8 idempotency (mostly covered by fan-out skip-status). EREF gate-fold.
-        Phase 3 = OUTPUT-critic (frame-sampler → vision) + camera/quality checks.
+        (multi-event, isPilot); gate+agent_failed, −~160 lines, dead pilot cap gone.
+     ✅ EREF-fold (bb0669c) — gate + agent_failed for EXEC-EREF (same as U2).
+     ✅ U3/I3 (37a2390) — dropped EXEC-VANIM from media-preflight (loads no bytes;
+        was blocking whole stage on one bad anchor). Subtractive, no shotId thread.
+     ✅ U5/I8 CLOSED-as-covered: fan-out skip-status + Inngest step-memoization +
+        I7 budget ceiling cover the common cases; narrow residual (double-spend on
+        mid-step failure) needs runAgent step-split — deferred, bounded by ceiling.
+  Phase 2 code COMPLETE. NOTE: trio doesn't exercise Inngest handlers → VALIDATE
+  U1+U2+EREF-fold on paid Veo/Seedance smoke WITH Director before push (q9).
+  Phase 3 = OUTPUT-critic (frame-sampler → vision) + camera/quality_tier checks.
   Verify after each unit: tsc·0 / vitest 664 / replay-pilot 30. Paid smoke = WITH Director.
 
 E02 «The Tidy Tornado» (id 8b32b3e0-…): Writer Script v02 (RU, 61s, no dialogue,
