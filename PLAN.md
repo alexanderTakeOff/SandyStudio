@@ -24,9 +24,13 @@ GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
      ✅ U4/I9 critic auto-bounce (108e8ee) — critic-loop.ts applyCriticVerdict:
         VPREV/EPREV now enforce cap=2→HALT→Director (was uncapped infinite loop);
         counter = plan version (survives re-author). +6 unit tests.
-     ⏳ U2/I4+I6 fold VGEN/EREF hand-rolled → gate+agent_failed (merge twin
-        handlers, exec-eref pattern, −~250 lines). U3 media-preflight shot-scope.
-        U5/I8 idempotency (lean on existing skip-status). Phase 3 = OUTPUT-critic.
+     ✅ U2/I4+I6 fold (cff8007) — execVgenStart+SingleShot → ONE gated execVgenRun
+        (multi-event, isPilot); gate+agent_failed added, −~160 lines, dead
+        exec-vgen-pilot cap removed. NOTE: trio skips Inngest handlers → validate
+        on paid smoke WITH Director.
+     ⏳ Remaining: U3 media-preflight shot-scope (preventive; 0 unreachable now).
+        U5/I8 idempotency (mostly covered by fan-out skip-status). EREF gate-fold.
+        Phase 3 = OUTPUT-critic (frame-sampler → vision) + camera/quality checks.
   Verify after each unit: tsc·0 / vitest 664 / replay-pilot 30. Paid smoke = WITH Director.
 
 E02 «The Tidy Tornado» (id 8b32b3e0-…): Writer Script v02 (RU, 61s, no dialogue,
