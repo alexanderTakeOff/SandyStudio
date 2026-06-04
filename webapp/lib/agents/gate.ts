@@ -250,12 +250,21 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
 // preflight bug must never falsely block a healthy job. The executor-side loud
 // loaders (Unit 2 media-preflight loaders) are the hard backstop.
 
-/** Agents whose run consumes upstream media bytes (not just text assets). */
+/**
+ * Agents whose run actually LOADS upstream media bytes (not just text assets).
+ *
+ * EXEC-VANIM is deliberately NOT here: the Animator is a pure LLM plan author —
+ * it references anchor / episode-ref asset_ids in the Plan body but never opens
+ * their bytes (zero base64/getAssetImage calls in its runner), and it already
+ * handles missing anchors gracefully in its prompt. Byte-reachability is enforced
+ * downstream at EXEC-VGEN, which actually loads the frames. Preflighting VANIM on
+ * media it never reads only let one unreachable anchor block the whole authoring
+ * stage for every shot — a check that protected nothing. (U3, 2026-06-04.)
+ */
 const MEDIA_DEPENDENT_AGENTS: ReadonlySet<AgentId> = new Set<AgentId>([
   'EXEC-EREF',
   'EXEC-VGEN',
   'EXEC-EDIT',
-  'EXEC-VANIM',
 ]);
 
 /** Minimal asset shape the media-preflight loader needs. */
@@ -290,8 +299,6 @@ function toReferencedMediaAsset(row: AssetRefRow): ReferencedMediaAsset {
  *   - EXEC-EDIT  : APPROVED episode references (`IMG-episode_ref%`) the animatic uses.
  *   - EXEC-VGEN  : APPROVED animatic (`VID-animatic%`) + APPROVED episode refs
  *                  (`IMG-episode_ref%`) used as plan end_image / anchors.
- *   - EXEC-VANIM : APPROVED episode refs (`IMG-episode_ref%`) + per-shot anchors
- *                  (`IMG-anchor_%`) used as start/end anchors and end_image.
  *
  * Returns [] when nothing obvious is referenced — the asset-completeness loop
  * already guards row existence, so an empty set here means "nothing to open".
@@ -322,9 +329,7 @@ async function gatherReferencedMediaAssets(
       ? ['IMG-episode_ref%']
       : agentId === 'EXEC-VGEN'
         ? ['VID-animatic%', 'IMG-episode_ref%']
-        : agentId === 'EXEC-VANIM'
-          ? ['IMG-episode_ref%', 'IMG-anchor_%']
-          : [];
+        : [];
 
   if (families.length === 0) return [];
 
