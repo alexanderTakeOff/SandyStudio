@@ -11,20 +11,23 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-02 (TD-39 L1 closed this session)
-Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 15be610 (+ uncommitted TD-39 approve-path)
+Date:   2026-06-04 (Gate-Hardening Phase 2 in progress)
+Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 108e8ee (NOT pushed — q9 push gated on paid Veo smoke done WITH Director)
 
-✅ TD-39 Layer 1 COMPLETE (both paths). Trigger path (triggerAgent + 4 plan-execute
-  tools) was already merged 3c781c7 (~05-26) — PLAN had stale "not started". This
-  session closed the GAP: approve path (approveAsset/requestRevision) now runs
-  ackFanoutPickup — only when approve route reports non-empty fired_events, so
-  terminal/no-op approvals don't false-timeout. That was the dominant phantom-
-  «запустила» path (most reports come from approvals fanning out the next stage).
-  +episode_id on approve response (anchor). tsc·646·30 green. NEXT: live PA smoke
-  to confirm pickup_timeout surfaces when worker is down. L1.5 (per-event corr via
-  inngest_event_id column) deferred — current anchor is episode+time composite.
-  Polina prompt fixed: added canonical gate chain (SB fires on Script-Critic REVIEW
-  approval, NOT on script approval — was her surprise).
+GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
+  ✅ Phase 1 SHIPPED (7c76a05): single-approved→INVALIDATED+DB indexes (0036),
+     loud Drive-aware resolver + media-preflight gate, atomic pre-spend budget
+     ceiling (0037, no double-charge). Applied to prod DB.
+  🔨 Phase 2 in progress:
+     ✅ U1/I5 provider contract (b8ef059) — img2vid throws imageless (Seedance-422
+        / t2v-drift fix), one check from capability model, no per-provider dup.
+     ✅ U4/I9 critic auto-bounce (108e8ee) — critic-loop.ts applyCriticVerdict:
+        VPREV/EPREV now enforce cap=2→HALT→Director (was uncapped infinite loop);
+        counter = plan version (survives re-author). +6 unit tests.
+     ⏳ U2/I4+I6 fold VGEN/EREF hand-rolled → gate+agent_failed (merge twin
+        handlers, exec-eref pattern, −~250 lines). U3 media-preflight shot-scope.
+        U5/I8 idempotency (lean on existing skip-status). Phase 3 = OUTPUT-critic.
+  Verify after each unit: tsc·0 / vitest 664 / replay-pilot 30. Paid smoke = WITH Director.
 
 E02 «The Tidy Tornado» (id 8b32b3e0-…): Writer Script v02 (RU, 61s, no dialogue,
   blackout finale) in REVIEW — awaiting DIRECTOR approval. Story-Editor auto-read
