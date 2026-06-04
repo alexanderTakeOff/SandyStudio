@@ -86,15 +86,22 @@ async function callIncrementBudgetSpent(
 ): Promise<BudgetAvailability> {
   // The RPC name is not in the generated Functions map yet; bypass the empty
   // map without inventing a type, then narrow the result safely.
-  const rpc = (
-    supabase as unknown as {
-      rpc: (
-        fn: string,
-        args: Record<string, unknown>
-      ) => Promise<{ data: unknown; error: { message: string } | null }>;
-    }
-  ).rpc;
-  const { data, error } = await rpc('increment_budget_spent', {
+  //
+  // Call rpc AS A METHOD on the client (`sb.rpc(...)`), NOT via an extracted
+  // bare reference (`const rpc = sb.rpc; rpc(...)`). supabase-js's rpc()
+  // dereferences `this.rest` internally; extracting it loses the `this` binding
+  // → "Cannot read properties of undefined (reading 'rest')". The mock-supabase
+  // rpc is a standalone fn with no `this` dependency, so replay-pilot/vitest
+  // never caught this — only the real PostgREST client surfaces it (live E02
+  // SH01/SH02 render, 2026-06-04). The cast only bypasses the not-yet-regenerated
+  // Functions type map.
+  const sb = supabase as unknown as {
+    rpc: (
+      fn: string,
+      args: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: { message: string } | null }>;
+  };
+  const { data, error } = await sb.rpc('increment_budget_spent', {
     p_episode: episodeId,
     p_cost: costUsd,
   });
