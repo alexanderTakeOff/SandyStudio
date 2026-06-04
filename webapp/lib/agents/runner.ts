@@ -2119,6 +2119,17 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
         const videoProvider = getMultiVideoProvider(effectiveProviderId);
 
+        // I5 (gate-hardening 2026-06-04): img2vid providers CANNOT run imageless.
+        // Enforced at the single provider call-site from the provider's own
+        // capability contract — no per-provider duplication. A missing frame here
+        // means an upstream gate let an unanchored shot through; fail loud BEFORE
+        // reserving budget or calling the paid API (was: silent t2v drift / 422).
+        if (videoProvider.capabilities.requires_reference_image && !referenceImageBase64) {
+          throw new Error(
+            `[exec-vgen] provider="${effectiveProviderId}" is img2vid and requires a reference image, but none resolved for shot=${shotId} (planStartAnchor=${planStartAnchorAssetId ?? 'none'}, eref=${referenceErefAssetId ?? 'none'}). Approve a start anchor / EREF for this shot before generating.`,
+          );
+        }
+
         // TD-85 (2026-06-01): hard-gate the Plan-declared resolution against
         // the resolved provider's contract. A Plan that declares a resolution
         // its provider does not support must fail the run loudly, not silently

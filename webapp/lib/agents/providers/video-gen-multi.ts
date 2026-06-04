@@ -84,6 +84,14 @@ export interface MultiVideoGenCapabilities {
   supports_aspects: ReadonlyArray<MultiVideoAspectRatio>;
   supports_qualities: ReadonlyArray<MultiVideoQualityTier>;
   supports_reference_image: boolean;
+  /**
+   * I5 (gate-hardening 2026-06-04): provider is img2vid and CANNOT run
+   * imageless. "accepts a reference" (supports_reference_image) is not the same
+   * as "requires one" — an img2vid model run without a frame silently degrades
+   * to text-to-video and drifts identity (Sandy → squirrel) or 422s. When true,
+   * the runner throws BEFORE the paid call if no reference image resolved.
+   */
+  requires_reference_image: boolean;
   /** Min/max clip duration in seconds. */
   min_duration_s: number;
   max_duration_s: number;
@@ -119,6 +127,7 @@ const VEO_CAPABILITIES: MultiVideoGenCapabilities = {
   supports_aspects: ['16:9', '9:16', '1:1'],
   supports_qualities: ['fast', 'standard'],
   supports_reference_image: true,
+  requires_reference_image: true,
   min_duration_s: 4,
   max_duration_s: 8,
   // Veo 3 renders at fixed model resolution; do not expose a chooser.
@@ -184,6 +193,7 @@ const SEEDANCE_CAPABILITIES: MultiVideoGenCapabilities = {
   supports_aspects: ['16:9', '9:16', '1:1', '21:9', '4:3', '3:4', 'auto'],
   supports_qualities: ['fast', 'standard'],
   supports_reference_image: true,
+  requires_reference_image: true,
   // Sprint β 2026-05-14: full native range exposed (was capped at 8s for Phase 2
   // animatic parity). UI control panel now lets Director pick anywhere in [4,15].
   min_duration_s: 4,
