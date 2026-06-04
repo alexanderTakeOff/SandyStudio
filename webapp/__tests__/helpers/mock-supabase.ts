@@ -124,6 +124,11 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
         }
         return Promise.resolve({ data: filtered[0], error: null });
       },
+      // Like single() but 0 rows → { data: null, error: null } (no PGRST116).
+      maybeSingle: () => {
+        const filtered = applyFilters();
+        return Promise.resolve({ data: filtered[0] ?? null, error: null });
+      },
       // For count-only queries
       then: (resolve: (v: unknown) => unknown) => {
         const filtered = applyFilters();

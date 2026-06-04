@@ -29,6 +29,7 @@ import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { persistBinary, type PersistedBinary } from './persist-binary';
 import { assertBudgetAvailable, BudgetExceededError } from '../budget';
+import { applyCriticVerdict, type CriticVerdict } from './critic-loop';
 import {
   SEEDANCE_COST_USD_PER_SECOND,
   SEEDANCE_RESOLUTION_COST_MULT,
@@ -1325,18 +1326,21 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           // from approving a Plan the Critic explicitly let through under
           // a Director waiver. Director-authorised PASS_WITH_UNCERTAINTY
           // must surface in approvals like a regular PASS.
-          const targetPlanStatus: string | null =
-            r.verdict === 'PASS' || r.verdict === 'PASS_WITH_UNCERTAINTY'
-              ? null
-              : r.verdict === 'FAIL'
-              ? 'REJECTED'
-              : 'REVISION';
-          if (targetPlanStatus) {
-            await supabase
-              .from('assets')
-              .update({ status: targetPlanStatus } as never)
-              .eq('id', planAssetId);
-          }
+          // I9 (2026-06-04): cap-aware verdict application. Flips the Plan
+          // status, enforces the revision cap (a REVISE past the cap becomes
+          // HALT), and escalates to the Director on HALT. effectiveVerdict (not
+          // raw r.verdict) drives metadata.verdict so the critic's nextEvent
+          // stops re-firing the Animator once the cap is reached. Replaces the
+          // bespoke uncapped flip — VPREV/EPREV now share one mechanic.
+          const cv = await applyCriticVerdict({
+            supabase,
+            rawVerdict: r.verdict as CriticVerdict,
+            planAssetId,
+            episodeId,
+            shotId,
+            actor: 'EXEC-VPREV',
+            reviewKind: 'shot_plan',
+          });
           return {
             outputKind: 'text-md',
             result: {
@@ -1351,12 +1355,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
                 description: r.description,
                 shot_id: r.shotId,
                 plan_asset_id: r.planAssetId,
-                verdict: r.verdict,
+                verdict: cv.effectiveVerdict,
                 acceptance_criteria: r.acceptanceCriteria,
                 failed_checks: r.failedChecks,
                 passed_checks: r.passedChecks,
                 critic_notes: r.notes,
-                plan_status_after_critic: targetPlanStatus ?? 'REVIEW',
+                plan_status_after_critic: cv.planStatusAfter ?? 'REVIEW',
                 provider_id: r.model,
                 provider_used: 'anthropic',
                 review_kind: 'shot_plan_critic',
@@ -1429,18 +1433,20 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           // from approving a Plan the Critic explicitly let through under
           // a Director waiver. Director-authorised PASS_WITH_UNCERTAINTY
           // must surface in approvals like a regular PASS.
-          const targetPlanStatus: string | null =
-            r.verdict === 'PASS' || r.verdict === 'PASS_WITH_UNCERTAINTY'
-              ? null
-              : r.verdict === 'FAIL'
-              ? 'REJECTED'
-              : 'REVISION';
-          if (targetPlanStatus) {
-            await supabase
-              .from('assets')
-              .update({ status: targetPlanStatus } as never)
-              .eq('id', planAssetId);
-          }
+          // I9 (2026-06-04): cap-aware verdict application — shared with VPREV.
+          // Flips the Plan status, enforces the revision cap (REVISE past the cap
+          // → HALT), and escalates to the Director on HALT. effectiveVerdict
+          // drives metadata.verdict so the critic's nextEvent stops re-firing the
+          // Designer once the cap is reached.
+          const cv = await applyCriticVerdict({
+            supabase,
+            rawVerdict: r.verdict as CriticVerdict,
+            planAssetId,
+            episodeId,
+            shotId,
+            actor: 'EXEC-EPREV',
+            reviewKind: 'ref_plan',
+          });
           return {
             outputKind: 'text-md',
             result: {
@@ -1455,12 +1461,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
                 description: r.description,
                 shot_id: r.shotId,
                 plan_asset_id: r.planAssetId,
-                verdict: r.verdict,
+                verdict: cv.effectiveVerdict,
                 acceptance_criteria: r.acceptanceCriteria,
                 failed_checks: r.failedChecks,
                 passed_checks: r.passedChecks,
                 critic_notes: r.notes,
-                plan_status_after_critic: targetPlanStatus ?? 'REVIEW',
+                plan_status_after_critic: cv.planStatusAfter ?? 'REVIEW',
                 provider_id: r.model,
                 provider_used: 'anthropic',
                 review_kind: 'ref_plan_critic',
