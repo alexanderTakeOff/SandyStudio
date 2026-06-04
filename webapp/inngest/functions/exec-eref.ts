@@ -29,6 +29,10 @@ import {
 import { runUpscaleOnly } from '@/lib/agents/runners/eref-upscale-only';
 import { clearErefCancel } from '@/lib/api/eref-cancel';
 import { loadAgentInputs, insertJobRow, markJobCompleted, markJobFailed } from '@/lib/agents/runner';
+import { validateAgentInputs } from '@/lib/agents/gate';
+import { logEvent } from '@/lib/api/events';
+import { agentDisplayName } from '@/lib/api/agent-names';
+import { NonRetriableError } from 'inngest';
 
 interface ErefEventData {
   episodeId: string;
@@ -106,6 +110,24 @@ export const execErefStart = inngest.createFunction(
         });
       }
 
+      // I4 (gate universality, 2026-06-04): the same readiness gate every
+      // factory agent passes — upstream APPROVED storyboard + LOCKED Series
+      // Bible canon + media-reachability preflight — BEFORE the paid gpt-image
+      // fan-out. Replaces the hand-rolled factory-bypass. Only the start/fanout
+      // generation path is gated (the upscale branch returned earlier).
+      const gate = await step.run('load-and-validate', async () => {
+        const supabase = createSupabaseServiceRoleClient();
+        await loadAgentInputs({ supabase, agentId: 'EXEC-EREF', episodeId });
+        return validateAgentInputs({ supabase, agentId: 'EXEC-EREF', episodeId });
+      });
+      if (!gate.passed) {
+        await step.run('mark-failed-gate', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          await markJobFailed(supabase, job.id, gate.reason ?? 'Gate failed');
+        });
+        throw new NonRetriableError(gate.reason ?? 'Gate failed for EXEC-EREF');
+      }
+
       const result = await step.run('run-episode-references', async () => {
         const supabase = createSupabaseServiceRoleClient();
         const inputs = await loadAgentInputs({
@@ -177,6 +199,26 @@ export const execErefStart = inngest.createFunction(
             : err instanceof Error
               ? err.message
               : 'unknown error';
+        // I6 (loud observability): emit agent_failed (pa/notify-needed fires →
+        // Polина/Director see it) instead of a silent console-only markJobFailed.
+        try {
+          await logEvent(supabase, {
+            event_type: 'agent_failed',
+            severity: 'error',
+            title: `${agentDisplayName('EXEC-EREF')} failed`,
+            description: message.slice(0, 500),
+            actor: 'EXEC-EREF',
+            episode_id: episodeId,
+            job_id: job.id,
+            metadata: {
+              agent: 'EXEC-EREF',
+              inngest_run_id: runId,
+              error: message.slice(0, 500),
+            },
+          });
+        } catch {
+          // Swallow logging errors so we don't mask the original failure.
+        }
         await markJobFailed(supabase, job.id, message);
       });
       throw err;
