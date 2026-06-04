@@ -262,6 +262,14 @@ export const execVgenStart = inngest.createFunction(
           apiProvider: providerUsed,
           modelOrTier: providerUsed,
           operation: 'video_generation',
+          // UNIT 3 / I7: the runner pre-reserved the estimated cost against the
+          // ceiling (assertBudgetAvailable) and stamped it here. Pass it so
+          // recordCost applies only the (actual − reserved) delta and skips the
+          // ceiling re-check — otherwise the cost is charged twice.
+          reservedUsd:
+            typeof exec.result.metadata?.budget_reserved_usd === 'number'
+              ? exec.result.metadata.budget_reserved_usd
+              : 0,
         });
       });
 
@@ -604,6 +612,14 @@ export const execVgenSingleShot = inngest.createFunction(
           apiProvider: providerUsed,
           modelOrTier: providerUsed,
           operation: 'video_generation',
+          // UNIT 3 / I7: the runner pre-reserved the estimated cost against the
+          // ceiling (assertBudgetAvailable) and stamped it here. Pass it so
+          // recordCost applies only the (actual − reserved) delta and skips the
+          // ceiling re-check — otherwise the cost is charged twice.
+          reservedUsd:
+            typeof exec.result.metadata?.budget_reserved_usd === 'number'
+              ? exec.result.metadata.budget_reserved_usd
+              : 0,
         });
       });
 

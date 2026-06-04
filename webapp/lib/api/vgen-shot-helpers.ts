@@ -29,6 +29,23 @@ import {
 
 export { effectiveDurationSeconds };
 
+/**
+ * Thrown by `loadApprovedMediaOrThrow` when an asset's media cannot be resolved
+ * to readable bytes through the canonical Drive-aware reader. Callers that need
+ * img2vid bytes (a Director-supplied reference / end-frame) MUST let this
+ * propagate — silently dropping the reference turns img2vid into t2v, which is
+ * exactly the identity-drift failure this path exists to prevent (I3).
+ */
+export class ReferenceLoadError extends Error {
+  constructor(
+    public readonly assetId: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ReferenceLoadError';
+  }
+}
+
 // ── Storyboard v2 shape ──────────────────────────────────────────────────────
 //
 // Mirrors the parser in animatic-shotlist but exposes more fields the prompt
@@ -378,7 +395,11 @@ export async function getApprovedEREFForShot(
     )
     .eq('episode_id', episodeId)
     .eq('status', 'APPROVED')
-    .like('file_type', 'IMG-episode_ref%');
+    .like('file_type', 'IMG-episode_ref%')
+    // Transitional safety until single-approved EREF is enforced: when several
+    // rows match a shot, prefer the highest version, then the most recent.
+    .order('version', { ascending: false })
+    .order('created_at', { ascending: false });
   if (error) {
     throw new Error(`approved EREF fetch failed: ${error.message}`);
   }
@@ -397,6 +418,59 @@ export async function getApprovedEREFForShot(
     stagingPath: match.staging_path,
   });
   return { asset: match, image_b64: imageB64 };
+}
+
+/**
+ * Load an asset's media bytes through the canonical Drive-aware reader and
+ * THROW `ReferenceLoadError` when nothing resolves. This is the LOUD path (I3):
+ * use it whenever a missing reference must abort the operation rather than
+ * silently degrade (e.g. a Director-supplied img2vid reference / end-frame).
+ *
+ * Widens the asset select to `filename, drive_file_id, staging_path` so the
+ * reader can try every resolution tier, not just legacy staging.
+ */
+export async function loadApprovedMediaOrThrow(
+  supabase: SupabaseClient<Database>,
+  assetId: string,
+): Promise<{ base64: string; mime: 'image/png' | 'image/jpeg' }> {
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,filename,staging_path,drive_file_id,file_type')
+    .eq('id', assetId)
+    .maybeSingle();
+  if (error) {
+    throw new ReferenceLoadError(
+      assetId,
+      `asset fetch failed for reference ${assetId}: ${error.message}`,
+    );
+  }
+  if (!data) {
+    throw new ReferenceLoadError(assetId, `reference asset ${assetId} not found`);
+  }
+  const row = data as {
+    filename?: string | null;
+    staging_path?: string | null;
+    drive_file_id?: string | null;
+  };
+  const { readAssetMediaAsBase64 } = await import('@/lib/media-cache');
+  const base64 = await readAssetMediaAsBase64({
+    filename: row.filename ?? null,
+    driveFileId: row.drive_file_id ?? null,
+    stagingPath: row.staging_path ?? null,
+  });
+  if (!base64 || base64.length === 0) {
+    throw new ReferenceLoadError(
+      assetId,
+      `reference asset ${assetId} has no resolvable media (no disk-cache hit, no Drive bytes, no legacy staging file)`,
+    );
+  }
+  const looksJpeg =
+    (row.filename ?? '').toLowerCase().endsWith('.jpg') ||
+    (row.filename ?? '').toLowerCase().endsWith('.jpeg') ||
+    (row.staging_path ?? '').toLowerCase().endsWith('.jpg') ||
+    (row.staging_path ?? '').toLowerCase().endsWith('.jpeg');
+  const mime: 'image/png' | 'image/jpeg' = looksJpeg ? 'image/jpeg' : 'image/png';
+  return { base64, mime };
 }
 
 /**

@@ -147,8 +147,54 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
     return builder;
   }
 
+  // ── RPC ──────────────────────────────────────────────────────────────────
+  // Mirrors the `increment_budget_spent` Postgres function (migration 0037):
+  // atomic ceiling-guarded increment of episodes.budget_spent. Returns a single
+  // table row { spent, ceiling, allowed }; PostgREST surfaces it as an array.
+  function rpc(fnName: string, args: Record<string, unknown>) {
+    if (fnName === 'increment_budget_spent') {
+      const episodeId = args.p_episode;
+      const cost = typeof args.p_cost === 'number' ? args.p_cost : Number(args.p_cost ?? 0);
+      const episode = tables.episodes.find((e) => e.id === episodeId);
+      if (!episode) {
+        // Episode not found → no increment, not allowed.
+        return Promise.resolve({
+          data: [{ spent: 0, ceiling: null, allowed: false }],
+          error: null,
+        });
+      }
+      const currentSpent =
+        typeof episode.budget_spent === 'number'
+          ? episode.budget_spent
+          : Number(episode.budget_spent ?? 0);
+      const ceiling =
+        episode.budget_ceiling === null || episode.budget_ceiling === undefined
+          ? null
+          : typeof episode.budget_ceiling === 'number'
+            ? episode.budget_ceiling
+            : Number(episode.budget_ceiling);
+      const newSpent = currentSpent + cost;
+      const allowed = ceiling === null || newSpent <= ceiling;
+      if (allowed) {
+        episode.budget_spent = newSpent;
+        return Promise.resolve({
+          data: [{ spent: newSpent, ceiling, allowed: true }],
+          error: null,
+        });
+      }
+      // Would exceed ceiling → leave budget_spent unchanged.
+      return Promise.resolve({
+        data: [{ spent: currentSpent, ceiling, allowed: false }],
+        error: null,
+      });
+    }
+    // Unknown RPC → benign default.
+    return Promise.resolve({ data: null, error: null });
+  }
+
   const client = {
     from: (table: string) => buildQuery(table as keyof InMemoryTables),
+    rpc,
   } as unknown as SupabaseClient<Database>;
 
   return { client, tables };

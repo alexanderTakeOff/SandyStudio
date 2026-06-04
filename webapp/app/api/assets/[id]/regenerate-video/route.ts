@@ -36,7 +36,7 @@ import {
   getApprovedEREFForShot,
   getStoryboardShotById,
 } from '@/lib/api/vgen-shot-helpers';
-import { readBibleImageAsBase64 } from '@/lib/agents/providers/openai-image-edit';
+import { readAssetMediaAsBase64 } from '@/lib/media-cache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -207,14 +207,33 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (body.reference_asset_id) {
     const { data: ref } = await sb
       .from('assets')
-      .select('id,staging_path')
+      .select('id,filename,staging_path,drive_file_id')
       .eq('id', body.reference_asset_id)
       .maybeSingle();
-    const stagingPath = (ref as { staging_path?: string | null } | null)?.staging_path;
-    if (stagingPath) {
-      referenceImageBase64 = await readBibleImageAsBase64(stagingPath);
-      referenceErefAssetId = (ref as { id?: string } | null)?.id ?? null;
+    const refRow = ref as {
+      id?: string;
+      filename?: string | null;
+      staging_path?: string | null;
+      drive_file_id?: string | null;
+    } | null;
+    if (!refRow) {
+      throw new ValidationError(
+        `Reference asset ${body.reference_asset_id} not found`,
+      );
     }
+    referenceImageBase64 = await readAssetMediaAsBase64({
+      filename: refRow.filename ?? null,
+      driveFileId: refRow.drive_file_id ?? null,
+      stagingPath: refRow.staging_path ?? null,
+    });
+    // Director explicitly chose this reference — if its media can't resolve we
+    // must NOT silently drop it (that turns img2vid into t2v). Fail LOUD.
+    if (!referenceImageBase64) {
+      throw new ValidationError(
+        `Reference asset ${body.reference_asset_id} has no resolvable media (no disk-cache hit, no Drive bytes, no legacy staging file)`,
+      );
+    }
+    referenceErefAssetId = refRow.id ?? body.reference_asset_id;
   } else {
     const ref = await getApprovedEREFForShot(sb, asset.episode_id, shotId);
     if (ref) {
@@ -228,12 +247,30 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (body.end_image_asset_id) {
     const { data: endRef } = await sb
       .from('assets')
-      .select('staging_path')
+      .select('id,filename,staging_path,drive_file_id')
       .eq('id', body.end_image_asset_id)
       .maybeSingle();
-    const endPath = (endRef as { staging_path?: string | null } | null)?.staging_path;
-    if (endPath) {
-      endImageBase64 = await readBibleImageAsBase64(endPath);
+    const endRow = endRef as {
+      filename?: string | null;
+      staging_path?: string | null;
+      drive_file_id?: string | null;
+    } | null;
+    if (!endRow) {
+      throw new ValidationError(
+        `End-image asset ${body.end_image_asset_id} not found`,
+      );
+    }
+    endImageBase64 = await readAssetMediaAsBase64({
+      filename: endRow.filename ?? null,
+      driveFileId: endRow.drive_file_id ?? null,
+      stagingPath: endRow.staging_path ?? null,
+    });
+    // Director explicitly chose this end-frame — fail LOUD rather than silently
+    // dropping it and degrading the start→end transition.
+    if (!endImageBase64) {
+      throw new ValidationError(
+        `End-image asset ${body.end_image_asset_id} has no resolvable media (no disk-cache hit, no Drive bytes, no legacy staging file)`,
+      );
     }
   }
 

@@ -137,17 +137,21 @@ export async function editImageOpenAI(input: OpenAIImageEditInput): Promise<Open
   };
 }
 
-/** Helper: read a local staging file (browserUrl like `/staging/...`) → base64. */
+/**
+ * @deprecated Use `readAssetMediaAsBase64` from `lib/media-cache` directly with
+ * the full `{ filename, driveFileId, stagingPath }` descriptor — that resolves
+ * disk-cache → Drive → legacy staging. This helper only receives a staging URL,
+ * so it can resolve Drive-backed assets only when their bytes already sit in the
+ * worktree's `public/staging` (legacy, pre-migration files). It now delegates to
+ * the canonical reader so any remaining caller is at least Drive-aware for the
+ * paths the reader can derive from a `/staging/...` URL; callers should migrate
+ * to pass `filename` + `driveFileId` so Drive resolution actually works.
+ *
+ * Signature preserved (`(browserUrl: string) => Promise<string | null>`) so
+ * existing callers don't break.
+ */
 export async function readBibleImageAsBase64(browserUrl: string): Promise<string | null> {
   if (!browserUrl.startsWith('/staging/')) return null;
-  // Convert /staging/<file> → webapp/public/staging/<file>
-  const path = await import('node:path');
-  const fs = await import('node:fs/promises');
-  const abs = path.join(process.cwd(), 'public', browserUrl.slice(1));
-  try {
-    const buf = await fs.readFile(abs);
-    return buf.toString('base64');
-  } catch {
-    return null;
-  }
+  const { readAssetMediaAsBase64 } = await import('../../media-cache');
+  return readAssetMediaAsBase64({ stagingPath: browserUrl });
 }

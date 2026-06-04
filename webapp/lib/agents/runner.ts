@@ -28,6 +28,11 @@ import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { persistBinary, type PersistedBinary } from './persist-binary';
+import { assertBudgetAvailable, BudgetExceededError } from '../budget';
+import {
+  SEEDANCE_COST_USD_PER_SECOND,
+  SEEDANCE_RESOLUTION_COST_MULT,
+} from './providers/fal-seedance';
 import {
   buildShotPromptV2,
   makeCharacterCanonSnippets,
@@ -2139,6 +2144,47 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             ? planResolution
             : null;
 
+        // ── UNIT 3 / I7: pre-spend ceiling gate ────────────────────────────
+        // The episode budget ceiling MUST be checked BEFORE the paid provider
+        // call, not after (recordCost runs post-generation in the Inngest
+        // function). Compute a conservative cost estimate and atomically
+        // reserve it against the ceiling; if the reservation is rejected, throw
+        // BEFORE spending. The reservation is the actual spend reservation — the
+        // post-generation recordCost MUST pass reservedUsd (this estimate) so
+        // the ceiling is reconciled by the (actual − reserved) delta and never
+        // double-counted.
+        //
+        // Estimate model: worst-case per-second Seedance rate (the priciest
+        // video provider) × duration × resolution multiplier. Over-estimating
+        // is the safe direction for a pre-spend reservation — a real cost lower
+        // than the estimate simply leaves a little headroom that the
+        // authoritative recordCost reconciles.
+        let budgetReservedUsd = 0;
+        if (episodeId && supabase) {
+          const perSecond = Math.max(
+            SEEDANCE_COST_USD_PER_SECOND.standard,
+            SEEDANCE_COST_USD_PER_SECOND.fast,
+          );
+          const resolutionMult = effectiveResolution
+            ? SEEDANCE_RESOLUTION_COST_MULT[effectiveResolution]
+            : SEEDANCE_RESOLUTION_COST_MULT['1080p'];
+          const estCostUsd = generationDuration * perSecond * resolutionMult;
+          const avail = await assertBudgetAvailable(
+            supabase,
+            episodeId,
+            estCostUsd,
+          );
+          if (!avail.allowed) {
+            throw new BudgetExceededError({
+              episodeId,
+              currentSpent: avail.spent,
+              attemptedCost: estCostUsd,
+              ceiling: avail.ceiling ?? Number.POSITIVE_INFINITY,
+            });
+          }
+          budgetReservedUsd = estCostUsd;
+        }
+
         const real = await videoProvider.generate({
           prompt,
           durationSeconds: generationDuration,
@@ -2206,6 +2252,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               end_image_asset_id: planEndImageAssetId,
               end_image_bytes_loaded: Boolean(endImageBase64),
               seed: planSeed,
+              // UNIT 3 / I7: the estimated cost reserved against the ceiling
+              // BEFORE this paid call. The post-generation record-cost step
+              // reconciles the authoritative actual cost against this reservation
+              // (recordCost reservedUsd) so the ceiling is never double-charged.
+              budget_reserved_usd: budgetReservedUsd,
             }),
           },
         };

@@ -29,6 +29,7 @@
     "episode-timing": "tsx --env-file=.env.local tools/episode-timing.ts",
     "backfill-direct-costs": "tsx --env-file=.env.local tools/backfill-direct-costs.ts",
     "backfill-anchor-prompts": "tsx --env-file=.env.local tools/backfill-anchor-prompts.ts",
+    "dedup-approved-anchors": "tsx --env-file=.env.local tools/dedup-approved-anchors.ts",
     "verify": "npm run typecheck && npm test"
   },
   "dependencies": {

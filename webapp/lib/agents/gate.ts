@@ -18,6 +18,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '../supabase/types.gen';
 import { enforceMode } from '../governance';
+import { assertMediaResolves } from './media-preflight';
 import type { AgentId, GateResult, GovernanceAction } from './types';
 
 // ── Agent dependency declarations ────────────────────────────────────────────
@@ -236,6 +237,154 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
   'EXEC-CONC': { required: [], governance: 'AGENT_RUN' },
 };
 
+// ── Media-reachability preflight (I3) ─────────────────────────────────────────
+// The asset-completeness loop above proves rows EXIST. It does NOT prove the
+// referenced media actually RESOLVES (bytes openable). A row can point at a
+// drive_file_id / staging_path that 404s, was garbage-collected, or never
+// finished uploading — and the paid executor then dies mid-run on a dead ref.
+// For MEDIA-DEPENDENT agents we resolve the obvious referenced media ids and
+// verify they open BEFORE the executor spends money, so the job fails at the
+// gate with a readable Activity Feed reason instead of a paid mid-run crash.
+//
+// The check is best-effort and FAILS OPEN on its own internal errors: a
+// preflight bug must never falsely block a healthy job. The executor-side loud
+// loaders (Unit 2 media-preflight loaders) are the hard backstop.
+
+/** Agents whose run consumes upstream media bytes (not just text assets). */
+const MEDIA_DEPENDENT_AGENTS: ReadonlySet<AgentId> = new Set<AgentId>([
+  'EXEC-EREF',
+  'EXEC-VGEN',
+  'EXEC-EDIT',
+  'EXEC-VANIM',
+]);
+
+/** Minimal asset shape the media-preflight loader needs. */
+interface ReferencedMediaAsset {
+  id: string;
+  filename?: string;
+  driveFileId?: string;
+  stagingPath?: string;
+}
+
+type AssetRefRow = Pick<
+  Database['public']['Tables']['assets']['Row'],
+  'id' | 'filename' | 'drive_file_id' | 'staging_path'
+>;
+
+function toReferencedMediaAsset(row: AssetRefRow): ReferencedMediaAsset {
+  return {
+    id: row.id,
+    filename: row.filename ?? undefined,
+    driveFileId: row.drive_file_id ?? undefined,
+    stagingPath: row.staging_path ?? undefined,
+  };
+}
+
+/**
+ * Resolve the OBVIOUS referenced media rows for a media-dependent agent, by the
+ * same file_type families the executor consumes. Pragmatic by design — we do
+ * not parse the Plan body here (the gate has no plan handle); we preflight the
+ * upstream media families the agent is contractually wired to read:
+ *
+ *   - EXEC-EREF  : LOCKED Series Bible canon (`SBL-%`) it anchors episode refs on.
+ *   - EXEC-EDIT  : APPROVED episode references (`IMG-episode_ref%`) the animatic uses.
+ *   - EXEC-VGEN  : APPROVED animatic (`VID-animatic%`) + APPROVED episode refs
+ *                  (`IMG-episode_ref%`) used as plan end_image / anchors.
+ *   - EXEC-VANIM : APPROVED episode refs (`IMG-episode_ref%`) + per-shot anchors
+ *                  (`IMG-anchor_%`) used as start/end anchors and end_image.
+ *
+ * Returns [] when nothing obvious is referenced — the asset-completeness loop
+ * already guards row existence, so an empty set here means "nothing to open".
+ */
+async function gatherReferencedMediaAssets(
+  supabase: SupabaseClient<Database>,
+  agentId: AgentId,
+  episodeId: string,
+): Promise<ReferencedMediaAsset[]> {
+  if (agentId === 'EXEC-EREF') {
+    // Bible canon is series-scoped + LOCKED, not episode-scoped.
+    const { seriesIdForEpisode } = await import('../api/series-bible');
+    const seriesId = await seriesIdForEpisode(supabase, episodeId);
+    if (!seriesId) return [];
+    const { data, error } = await supabase
+      .from('assets')
+      .select('id,filename,drive_file_id,staging_path')
+      .eq('series_id', seriesId)
+      .eq('status', 'LOCKED')
+      .like('file_type', 'SBL-%');
+    if (error) throw new Error(`SBL canon ref lookup: ${error.message}`);
+    return (data ?? []).map(toReferencedMediaAsset);
+  }
+
+  // Episode-scoped, APPROVED media families per agent.
+  const families: ReadonlyArray<string> =
+    agentId === 'EXEC-EDIT'
+      ? ['IMG-episode_ref%']
+      : agentId === 'EXEC-VGEN'
+        ? ['VID-animatic%', 'IMG-episode_ref%']
+        : agentId === 'EXEC-VANIM'
+          ? ['IMG-episode_ref%', 'IMG-anchor_%']
+          : [];
+
+  if (families.length === 0) return [];
+
+  const byId = new Map<string, ReferencedMediaAsset>();
+  for (const family of families) {
+    const { data, error } = await supabase
+      .from('assets')
+      .select('id,filename,drive_file_id,staging_path')
+      .eq('episode_id', episodeId)
+      .eq('status', 'APPROVED')
+      .like('file_type', family);
+    if (error) throw new Error(`media ref lookup (${family}): ${error.message}`);
+    for (const row of data ?? []) {
+      // De-dupe across families (a row can match only one, but stay safe).
+      if (!byId.has(row.id)) byId.set(row.id, toReferencedMediaAsset(row));
+    }
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Run the media-reachability preflight for media-dependent agents.
+ * Returns a failing GateResult when referenced media is unreachable, or `null`
+ * when the gate should proceed (agent not media-dependent, nothing referenced,
+ * all media resolves, or the check itself errored → fail-open).
+ */
+async function preflightReferencedMedia(
+  supabase: SupabaseClient<Database>,
+  agentId: AgentId,
+  episodeId: string,
+): Promise<GateResult | null> {
+  if (!MEDIA_DEPENDENT_AGENTS.has(agentId)) return null;
+  // Mock/replay mode (no OPENAI_API_KEY) stubs all generation — assets are
+  // fabricated rows with no real Drive/staging bytes, so a byte-reachability
+  // check would false-block. Production always has the key. Same mock signal
+  // the runner uses (hasOpenAI / isRealVideo). Skip the reachability check.
+  if (!process.env.OPENAI_API_KEY?.trim()) return null;
+  try {
+    const assets = await gatherReferencedMediaAssets(supabase, agentId, episodeId);
+    if (assets.length === 0) return null;
+    const result = await assertMediaResolves(supabase, assets);
+    if (result.ok) return null;
+    const deadIds = result.dead.map((d) => d.assetId).join(', ');
+    const missing = result.dead.map((d) => `${d.assetId}: ${d.reason}`);
+    return {
+      passed: false,
+      missing,
+      reason: `Media unreachable for ${agentId}: ${deadIds}`,
+    };
+  } catch (err: unknown) {
+    // Fail OPEN for the check itself — a preflight bug must never block a
+    // healthy job. Executor-side loud loaders remain the hard backstop.
+    const message = err instanceof Error ? err.message : 'unknown error';
+    console.warn(
+      `[gate] media-reachability preflight skipped for ${agentId}/${episodeId} (fail-open): ${message}`,
+    );
+    return null;
+  }
+}
+
 // ── Validation entry point ────────────────────────────────────────────────────
 
 export interface ValidateInputsArgs {
@@ -391,6 +540,13 @@ export async function validateAgentInputs(
       reason: decision.reason ?? 'Governance blocked',
     };
   }
+
+  // ── Step 3: media-reachability preflight (I3) ─────────────────────────────
+  // For media-dependent agents, prove referenced media actually opens BEFORE
+  // the paid executor runs. Fails the job AT THE GATE with a readable reason;
+  // fails OPEN on its own internal error (executor loaders are the backstop).
+  const mediaResult = await preflightReferencedMedia(supabase, agentId, episodeId);
+  if (mediaResult) return mediaResult;
 
   return {
     passed: true,

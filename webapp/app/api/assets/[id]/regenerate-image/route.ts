@@ -64,7 +64,7 @@ import {
 } from '@/lib/agents/providers/image-gen-multi-registry';
 import type { EREFProviderId } from '@/lib/api/eref-config';
 import type { MultiImageRef } from '@/lib/agents/providers/image-gen-multi';
-import { readBibleImageAsBase64 } from '@/lib/agents/providers/openai-image-edit';
+import { readAssetMediaAsBase64 } from '@/lib/media-cache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -440,13 +440,23 @@ export const POST = withApiHandler(async (req, ctx) => {
     for (const r of refIds) {
       const { data: bibleAsset } = await sb
         .from('assets')
-        .select('id,staging_path')
+        .select('id,filename,staging_path,drive_file_id')
         .eq('id', r.id)
         .maybeSingle();
-      const stagingPath = (bibleAsset as { staging_path?: string | null } | null)
-        ?.staging_path;
-      if (!stagingPath) continue;
-      const b64 = await readBibleImageAsBase64(stagingPath);
+      const refRow = bibleAsset as {
+        filename?: string | null;
+        staging_path?: string | null;
+        drive_file_id?: string | null;
+      } | null;
+      if (!refRow) continue;
+      // Drive-aware byte load (disk-cache → Drive → legacy staging). These refs
+      // are reconstructed from the saved test_plan, not a per-request Director
+      // override, so a miss is skipped rather than thrown.
+      const b64 = await readAssetMediaAsBase64({
+        filename: refRow.filename ?? null,
+        driveFileId: refRow.drive_file_id ?? null,
+        stagingPath: refRow.staging_path ?? null,
+      });
       if (!b64) continue;
       refs.push({ kind: r.kind, bible_asset_id: r.id, image_b64: b64 });
     }
