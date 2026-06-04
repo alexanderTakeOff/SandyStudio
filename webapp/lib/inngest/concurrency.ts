@@ -63,8 +63,6 @@ export const CONCURRENCY_LIMITS = {
   // Legacy single-event path kept for backward-compat (old replay-pilot tests
   // and any in-flight `/generate-shot` events).
   'exec-vgen':  3,
-  // Pilot Pass: walk through 1-2 shots sequentially so cost is deterministic.
-  'exec-vgen-pilot':   1,
   // Fan-out trigger: one runner per episode, then it fans out via /single-shot.
   'exec-vgen-fanout':  1,
   // Per-shot single-shot generation; this is where Veo's per-episode

@@ -23,9 +23,8 @@ import {
 import { execEditCreateAnimatic } from './functions/exec-edit';
 import {
   execVgenLegacyGenerateShot,
-  execVgenStart,
+  execVgenRun,
   execVgenFanoutTrigger,
-  execVgenSingleShot,
 } from './functions/exec-vgen';
 import { execMgenGenerateMusic } from './functions/exec-mgen';
 import { execStitchAssembleEpisode } from './functions/exec-stitch';
@@ -59,9 +58,8 @@ export const functions = [
   execGagadReviewShotPlan,
   execEditCreateAnimatic,
   execVgenLegacyGenerateShot,
-  execVgenStart,
+  execVgenRun,
   execVgenFanoutTrigger,
-  execVgenSingleShot,
   execMgenGenerateMusic,
   execStitchAssembleEpisode,
   execCopyWriteMetadata,

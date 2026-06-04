@@ -127,9 +127,10 @@ export const POST = withApiHandler(async (req, ctx) => {
     );
   }
 
-  // Fire the per-shot event. Per-shot handler (exec-vgen.ts:execVgenSingleShot)
-  // looks up storyboard shot + EREF internally, applies Universal Core defaults,
-  // and produces the mp4. Concurrency-1-or-2 per episode (concurrency.ts).
+  // Fire the per-shot event. Unified handler (exec-vgen.ts:execVgenRun, the
+  // /start + /single-shot subscriber) looks up storyboard shot + EREF internally,
+  // applies Universal Core defaults, and produces the mp4. Concurrency-2 per
+  // episode (concurrency.ts, exec-vgen-shot).
   await inngest.send({
     name: 'sandystudio/exec-vgen/single-shot',
     data: {
