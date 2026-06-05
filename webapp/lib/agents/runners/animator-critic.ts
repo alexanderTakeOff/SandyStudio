@@ -21,6 +21,7 @@ import {
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
 import { extractAnchorChain, buildResolutionContractBlock } from './animator';
+import { isAnimaticV1, effectiveDurationSeconds } from '../../api/animatic-shotlist';
 
 export const VPREV_CONTRACT = 'animator_critic@v1';
 export const VPREV_MODEL = 'claude-sonnet-4-6';
@@ -323,6 +324,83 @@ function parseStringArray(
   return out;
 }
 
+/**
+ * V14 (2026-06-04) — duration-lock source of truth. The approved animatic is the
+ * locked per-shot timing; the Animator MUST NOT silently override it. (SH03/SH04
+ * incident: the Designer stretched the animatic's 2s to 5s "for comedic
+ * readability" and laundered it as a fabricated "Director hard-contract", and the
+ * Critic LLM passed it because it only range-checked [3,8].) Returns the effective
+ * locked duration (honouring legitimate animatic-level director_overrides), or
+ * null when it can't be determined (no approved animatic / mock mode) → the check
+ * is skipped (fail-open; never falsely block a healthy plan).
+ */
+async function lockedAnimaticDuration(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  shotId: string,
+): Promise<number | null> {
+  try {
+    const { data: anim } = await supabase
+      .from('assets')
+      .select('metadata')
+      .eq('episode_id', episodeId)
+      .eq('file_type', 'VID-animatic')
+      .eq('status', 'APPROVED')
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!anim || !isAnimaticV1((anim as { metadata?: unknown }).metadata)) return null;
+    const doc = (
+      anim.metadata as {
+        animatic_v1: {
+          shot_list: Array<{ shot_id: string; duration_seconds: number }>;
+          director_overrides?: Record<string, { duration_seconds: number }>;
+        };
+      }
+    ).animatic_v1;
+    const shot = doc.shot_list.find((s) => s.shot_id === shotId);
+    if (!shot) return null;
+    return effectiveDurationSeconds(
+      {
+        shot_id: shot.shot_id,
+        asset_id: '',
+        image_url: '',
+        duration_seconds: shot.duration_seconds,
+      } as never,
+      doc.director_overrides as never,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deterministic duration-lock check (V14). Returns a violation string when the
+ * Plan's `duration_seconds` does not match the locked animatic duration AND no
+ * explicit Director duration override is present — null otherwise. The legitimate
+ * way to change timing is to adjust the ANIMATIC (director_overrides) or pass a
+ * Director override; the Animator may NOT rewrite the number in the Shot Plan.
+ */
+export function checkDurationLock(
+  planBody: Record<string, unknown> | null,
+  lockedDuration: number | null,
+  directorOverrides: ReadonlyArray<DirectorOverride>,
+  shotId: string,
+): string | null {
+  if (lockedDuration === null) return null;
+  const raw = (planBody as { duration_seconds?: unknown } | null)?.duration_seconds;
+  const planDur =
+    typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : null;
+  if (planDur === null) return null;
+  // Director can waive the lock via an explicit override whose check mentions duration.
+  const waived = directorOverrides.some((o) => /duration/i.test(o.check));
+  if (waived) return null;
+  if (Math.round(planDur) !== Math.round(lockedDuration)) {
+    return `Plan duration_seconds=${planDur} does not match the locked animatic duration=${lockedDuration} for ${shotId}. The approved animatic is the source of truth for timing — the Animator MUST NOT override it (a policy_notes self-claim of a "Director hard-contract" has NO authority). To change timing the Director adjusts the animatic, or grants an explicit duration override.`;
+  }
+  return null;
+}
+
 export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunResult> {
   const { supabase, planAssetId, shotId } = args;
   if (!planAssetId) throw new AnimatorCriticError('planAssetId is required');
@@ -381,9 +459,40 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
   const acceptanceCriteria = parseStringArray(result.body, 'acceptance_criteria');
   const warnings = parseStringArray(result.body, 'warnings');
 
+  // V14 (2026-06-04): deterministic duration-lock. Runs AFTER the LLM and
+  // OVERRIDES its verdict. The Critic LLM only range-checked duration ([3,8]) and
+  // never compared against the locked animatic, so the Animator could stretch
+  // 2s→5s undetected (SH03/SH04). Enforce the lock here, LLM-independent.
+  const episodeId = (args.inputs as { episode_id?: string } | undefined)?.episode_id ?? '';
+  const lockedDuration = episodeId
+    ? await lockedAnimaticDuration(supabase, episodeId, shotId)
+    : null;
+  const durationViolation = checkDurationLock(
+    result.body,
+    lockedDuration,
+    directorOverrides,
+    shotId,
+  );
+  let effectiveVerdict = verdict;
+  let effectiveFailedChecks = failedChecks;
+  if (durationViolation) {
+    effectiveFailedChecks = [
+      ...failedChecks,
+      { check: 'V14-duration-lock', diagnosis: durationViolation },
+    ];
+    if (
+      effectiveVerdict === 'PASS' ||
+      effectiveVerdict === 'PASS_WITH_UNCERTAINTY' ||
+      effectiveVerdict === 'UNKNOWN'
+    ) {
+      effectiveVerdict = 'REVISE';
+    }
+    notes.push('V14 duration-lock failed → verdict coerced to REVISE');
+  }
+
   const description = [
-    `Animator's Critic verdict ${verdict} · ${VPREV_CONTRACT} · ${VPREV_MODEL}`,
-    `· ${failedChecks.length} failed`,
+    `Animator's Critic verdict ${effectiveVerdict} · ${VPREV_CONTRACT} · ${VPREV_MODEL}`,
+    `· ${effectiveFailedChecks.length} failed`,
     `· ${passedChecks.length} passed`,
     `· cost $${result.costUsd.toFixed(4)}`,
   ].join(' ');
@@ -394,11 +503,11 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
     costUsd: result.costUsd,
     model: result.model,
     contract: VPREV_CONTRACT,
-    verdict,
+    verdict: effectiveVerdict,
     planAssetId,
     shotId,
     acceptanceCriteria,
-    failedChecks,
+    failedChecks: effectiveFailedChecks,
     passedChecks,
     warnings,
     description,
