@@ -257,7 +257,9 @@ export function EpisodeAssetDrawer({
   // Fetch sibling assets for the same shot (candidates strip + replace-confirm).
   // Always called (hook rule) — but only used when v2.
   const { data: assetsData } = useSWR<{ data: EpisodeAsset[] }>(
-    open && asset.episode_id ? `/api/assets?episode_id=${asset.episode_id}&limit=200` : null,
+    open && asset.episode_id
+      ? `/api/assets?episode_id=${asset.episode_id}&file_type_prefix=IMG-episode_ref,VID-shot&limit=200`
+      : null,
     fetcher,
   );
 

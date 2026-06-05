@@ -120,8 +120,11 @@ export function EpisodeReferencesGallery({
 }: EpisodeReferencesGalleryProps) {
   const [openAssetId, setOpenAssetId] = useState<string | null>(null);
 
+  // Scope the fetch to IMG references server-side so older anchor rows are never
+  // truncated by the list cap when an episode accumulates many plan/review/video
+  // assets. The client filter below still refines (excludes IMG-thumbnail etc.).
   const { data, mutate } = useSWR<AssetsResponse>(
-    `/api/assets?episode_id=${episodeId}&limit=200`,
+    `/api/assets?episode_id=${episodeId}&file_type_prefix=IMG-episode_ref,IMG-anchor&limit=200`,
     fetcher,
   );
 

@@ -122,10 +122,14 @@ export function StageKebabMenu({
   const [editorAssetFilename, setEditorAssetFilename] = useState<string | undefined>();
 
   async function fetchStageAssets(): Promise<AssetLite[]> {
-    const res = await fetch(`/api/assets?episode_id=${episodeId}&limit=200`);
+    const prefixes = STAGE_PREFIX_MAP[stageId] ?? [];
+    // Scope server-side to this stage's file_type prefixes so the cap can't
+    // truncate older matching rows (the client filter below still applies).
+    const qs = new URLSearchParams({ episode_id: episodeId, limit: '200' });
+    if (prefixes.length > 0) qs.set('file_type_prefix', prefixes.join(','));
+    const res = await fetch(`/api/assets?${qs.toString()}`);
     if (!res.ok) return [];
     const j = (await res.json()) as { data: AssetLite[] };
-    const prefixes = STAGE_PREFIX_MAP[stageId] ?? [];
     return j.data.filter((a) =>
       prefixes.some((p) => a.file_type?.startsWith(p)),
     );

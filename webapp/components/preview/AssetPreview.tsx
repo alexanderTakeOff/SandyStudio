@@ -104,7 +104,7 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
   const episodeIdForSiblings = meta?.data?.episode_id ?? null;
   const { data: episodeAssets } = useSWR<{ data: AssetRow[] }>(
     isVidShotCurrent && episodeIdForSiblings
-      ? `/api/assets?episode_id=${episodeIdForSiblings}&limit=200`
+      ? `/api/assets?episode_id=${episodeIdForSiblings}&file_type_prefix=VID-shot&limit=200`
       : null,
     fetcher,
   );

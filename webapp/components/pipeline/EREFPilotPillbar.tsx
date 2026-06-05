@@ -144,7 +144,7 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
     { refreshInterval: 30_000 },
   );
   const { data: assetsData, mutate: mutateAssets } = useSWR<AssetsResponse>(
-    `/api/assets?episode_id=${episodeId}&limit=200`,
+    `/api/assets?episode_id=${episodeId}&file_type_prefix=IMG-episode_ref&limit=200`,
     fetcher,
     { refreshInterval: 30_000 },
   );
