@@ -28,7 +28,11 @@ export const ASSET_TRANSITIONS: Record<AssetStatus, ReadonlyArray<AssetStatus>> 
   LOCKED:            [],                              // terminal
   NEEDS_HUMAN_TWEAK: ['REVIEW', 'REVISION', 'REJECTED'],
   REJECTED:          ['INVALIDATED', 'REVISION'],
-  INVALIDATED:       [],                              // terminal
+  // INVALIDATED = auto-superseded by a sibling's approval. Director may OVERRIDE
+  // and re-choose a superseded version: APPROVE it directly (demoteSiblingApproved
+  // then swaps the current winner out) or send it to REVISION. LOCKED is the only
+  // truly terminal state. (q13 2026-06-05: Director couldn't re-pick a version.)
+  INVALIDATED:       ['APPROVED', 'REVISION'],
   TEST:              ['INVALIDATED'],                 // Mode 4 outputs never promote
 };
 

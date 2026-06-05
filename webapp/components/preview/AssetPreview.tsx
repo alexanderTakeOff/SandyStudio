@@ -157,7 +157,12 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] text-text-muted">
-        <span className="text-text-primary font-medium font-mono">{asset.filename}</span>
+        {/* Strip the frozen status token from the filename: it is baked in at
+            creation and NOT updated on demotion, so "…-v02-APPROVED.mp4" can lie
+            when the DB status is INVALIDATED. Trust the live status badge below. */}
+        <span className="text-text-primary font-medium font-mono">
+          {asset.filename.replace(/-(DRAFT|REVIEW|REVISION|APPROVED|LOCKED)(\.[^.]+)$/i, '$2')}
+        </span>
         {versionLabel && (
           <span
             className="inline-flex items-center px-1.5 h-5 rounded-full text-[10px] font-semibold font-mono leading-none border"
@@ -300,7 +305,10 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
             }))}
             onPick={(id) => onPickAsset?.(id)}
           />
-          {asset.status === 'REVIEW' && (
+          {(asset.status === 'REVIEW' || asset.status === 'INVALIDATED') && (
+            // INVALIDATED = a version auto-superseded by a sibling's approval.
+            // Director can re-pick it: "Approve" makes THIS version win (the
+            // current winner is demoted), "Reject" sends it to REVISION. (q13)
             <PilotApproveButtons
               assetId={asset.id}
               variant="review"

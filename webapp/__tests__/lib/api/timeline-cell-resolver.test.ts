@@ -150,6 +150,28 @@ describe('resolveTimelineCells — directive #6 fast iteration / latest wins', (
     expect(cells[0]!.status).toBe('REVIEW');
   });
 
+  it('skips a higher-version INVALIDATED row and surfaces the APPROVED video (q13)', () => {
+    const v01Approved = vidShot({
+      id: 'keep',
+      version: 1,
+      status: 'APPROVED',
+      drive_path: '/staging/v01.mp4',
+      created_at: '2026-06-05T09:00:00Z',
+    });
+    const v02Invalidated = vidShot({
+      id: 'superseded',
+      version: 2,
+      status: 'INVALIDATED',
+      drive_path: '/staging/v02.mp4',
+      created_at: '2026-06-05T10:00:00Z',
+    });
+    const cells = resolveTimelineCells(baseContract, [v01Approved, v02Invalidated]);
+    // INVALIDATED v02 is dropped BEFORE the latest-pick, so the real v01 video
+    // surfaces instead of vanishing into the animatic fallback.
+    expect(cells[0]!.kind).toBe('video-canonical');
+    expect(cells[0]!.url).toBe('/staging/v01.mp4');
+  });
+
   it('within same version, newer created_at wins', () => {
     const earlier = vidShot({
       id: 'a',

@@ -147,7 +147,13 @@ export function resolveTimelineCells(
       return typeof ov === 'number' && ov > 0 ? ov : shot.duration_seconds;
     })();
 
-    const rows = byShot.get(shot.shot_id);
+    // INVALIDATED is a terminal "auto-superseded" status with no display value.
+    // pickLatestVidShot is version-blind, so a higher-version INVALIDATED row
+    // would win the pick and then fail the display guard below — hiding an older
+    // APPROVED video that actually exists (shot SH07: v01 APPROVED + v02
+    // INVALIDATED showed nothing). Drop INVALIDATED before picking the latest.
+    const allRows = byShot.get(shot.shot_id);
+    const rows = allRows?.filter((r) => r.status !== 'INVALIDATED');
     if (rows && rows.length > 0) {
       const latest = pickLatestVidShot(rows);
       const url = bestVideoUrl(latest);
