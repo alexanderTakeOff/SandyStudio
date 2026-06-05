@@ -253,10 +253,11 @@ export function VGENShotPanel({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          // Send `prompt` ONLY when Director explicitly edited the textarea.
-          // Otherwise omit so the server rebuilds via buildShotPromptV2 with
-          // current Bible canon. (See `promptEdited` comment above.)
-          ...(promptEdited ? { prompt } : {}),
+          // Send whatever is currently in the textarea — what you see is what
+          // regenerates. Server rebuilds via buildShotPromptV2 with current
+          // Bible canon only when the box is empty. (Fixes: edit dropped on the
+          // second regen because `promptEdited` reset after each success.)
+          ...(prompt && prompt.trim().length > 0 ? { prompt } : {}),
           aspect_ratio: aspect,
           quality_tier: quality,
           provider,
