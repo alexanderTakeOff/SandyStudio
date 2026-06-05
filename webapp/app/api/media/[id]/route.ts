@@ -20,7 +20,8 @@
 // this uses the service-role client to look up the asset.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'node:fs';
+import { promises as fs, createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
@@ -61,9 +62,46 @@ function etagFor(filename: string, size: number, mtimeMs: number): string {
 }
 
 /**
- * Build a 200 (or 304) response for a file on disk. Adds an ETag + strong
+ * Parse a single-range `bytes=start-end` (or suffix `bytes=-N`) header against
+ * the file size. Returns the inclusive byte window, `'unsatisfiable'` (→ 416),
+ * or `null` when the header isn't a parseable single range (→ serve full 200).
+ */
+function parseRange(
+  header: string,
+  size: number,
+): { start: number; end: number } | 'unsatisfiable' | null {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!m) return null;
+  const [, rawStart, rawEnd] = m;
+  if (rawStart === '' && rawEnd === '') return null;
+
+  let start: number;
+  let end: number;
+  if (rawStart === '') {
+    // Suffix range: the final N bytes.
+    const suffix = Number.parseInt(rawEnd, 10);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number.parseInt(rawStart, 10);
+    end = rawEnd === '' ? size - 1 : Number.parseInt(rawEnd, 10);
+  }
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start > end || start >= size) return 'unsatisfiable';
+  return { start, end: Math.min(end, size - 1) };
+}
+
+/**
+ * Build a 200 / 206 / 304 response for a file on disk. Adds an ETag + strong
  * cache-control so conditional GETs can short-circuit. `contentType` overrides
  * the filename-derived type (used when serving a WebP thumbnail of a PNG).
+ *
+ * Honors HTTP `Range` requests (2026-06-05): `<video>` elements always issue
+ * them, and many browsers won't start playback off a plain 200 of a multi-MB
+ * MP4 — they wait for the whole download. A `206` + `Accept-Ranges: bytes`
+ * streamed via `createReadStream` lets video play + seek immediately and stops
+ * buffering whole files into Node memory. Full 200s now advertise range support.
  */
 async function serveFile(
   abs: string,
@@ -74,6 +112,7 @@ async function serveFile(
   const stat = await fs.stat(abs);
   const etag = etagFor(abs, stat.size, stat.mtimeMs);
   const cacheControl = cacheControlForFilename(filename);
+  const type = contentType ?? contentTypeForFilename(filename);
 
   const ifNoneMatch = req.headers.get('if-none-match');
   if (ifNoneMatch && ifNoneMatch === etag) {
@@ -83,11 +122,41 @@ async function serveFile(
     });
   }
 
+  const rangeHeader = req.headers.get('range');
+  if (rangeHeader) {
+    const parsed = parseRange(rangeHeader, stat.size);
+    if (parsed === 'unsatisfiable') {
+      return new Response(null, {
+        status: 416,
+        headers: { 'content-range': `bytes */${stat.size}`, 'accept-ranges': 'bytes' },
+      });
+    }
+    if (parsed) {
+      const { start, end } = parsed;
+      const body = Readable.toWeb(
+        createReadStream(abs, { start, end }),
+      ) as ReadableStream<Uint8Array>;
+      return new Response(body, {
+        status: 206,
+        headers: {
+          'content-type': type,
+          'content-range': `bytes ${start}-${end}/${stat.size}`,
+          'content-length': String(end - start + 1),
+          'accept-ranges': 'bytes',
+          'cache-control': cacheControl,
+          etag,
+        },
+      });
+    }
+  }
+
   const bytes = await fs.readFile(abs);
   return new Response(new Uint8Array(bytes), {
     status: 200,
     headers: {
-      'content-type': contentType ?? contentTypeForFilename(filename),
+      'content-type': type,
+      'content-length': String(stat.size),
+      'accept-ranges': 'bytes',
       'cache-control': cacheControl,
       etag,
     },
