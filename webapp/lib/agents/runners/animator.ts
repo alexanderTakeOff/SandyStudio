@@ -509,6 +509,11 @@ interface EpisodeLike {
   metadata?: unknown;
 }
 
+// Process-lifetime cache: editing agents/exec/animator.md does NOT take effect
+// until THIS module reloads (dev: an HMR recompile of animator.ts; prod: deploy).
+// _resetAnimatorPromptCacheForTests() forces a re-read. Gotcha hit 2026-06-04 —
+// the q9 duration-lock prompt edit was invisible to the long-running dev process
+// until animator.ts was touched.
 let systemPromptCache: string | null = null;
 
 async function loadSystemPrompt(): Promise<string> {
