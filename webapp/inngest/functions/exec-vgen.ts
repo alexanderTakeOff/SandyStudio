@@ -39,6 +39,7 @@ import {
 import { validateAgentInputs } from '@/lib/agents/gate';
 import { resolveProvider } from '@/lib/agents/provider-resolver';
 import { recordCost } from '@/lib/budget';
+import { isFalBalanceLock } from '@/lib/agents/providers/fal-seedance';
 import { logEvent } from '@/lib/api/events';
 import { agentDisplayName } from '@/lib/api/agent-names';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
@@ -466,6 +467,13 @@ export const execVgenRun = inngest.createFunction(
         }
         await markJobFailed(supabase, job.id, errMsg);
       });
+      // q12 (2026-06-05): a provider balance-lock (fal "Exhausted balance" 403)
+      // is terminal — wrap as NonRetriableError so Inngest stops the 3× retry
+      // that burned the retry budget and leaked pre-spend reservations. Detect
+      // by message so it survives MultiVideoGenError wrapping.
+      if (err instanceof Error && isFalBalanceLock(err.message)) {
+        throw new NonRetriableError(err.message, { cause: err });
+      }
       throw err;
     }
   },

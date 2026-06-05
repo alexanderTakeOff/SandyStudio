@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { recordCost, BudgetExceededError } from '@/lib/budget';
+import {
+  recordCost,
+  BudgetExceededError,
+  releaseBudgetReservation,
+  getBudgetSummary,
+} from '@/lib/budget';
 import { makeMockSupabase } from '../helpers/mock-supabase';
 
 describe('recordCost — idempotency + ceiling enforcement', () => {
@@ -101,5 +106,54 @@ describe('recordCost — idempotency + ceiling enforcement', () => {
       operation: 'concierge_chat',
     });
     expect(result.recorded).toBe(true);
+  });
+});
+
+describe('releaseBudgetReservation — refund a failed pre-spend reservation (q12)', () => {
+  it('decrements budget_spent by the reserved amount', async () => {
+    const supabase = makeMockSupabase({
+      episodes: [
+        { id: 'ep-1', episode_code: 'SS-S01-E01', budget_ceiling: 100, budget_spent: 5, governance_mode: 4 },
+      ],
+    });
+    await releaseBudgetReservation(supabase.client, 'ep-1', 3);
+    expect(supabase.tables.episodes[0].budget_spent).toBe(2);
+  });
+
+  it('is a no-op for zero / negative reserved amounts', async () => {
+    const supabase = makeMockSupabase({
+      episodes: [
+        { id: 'ep-1', episode_code: 'SS-S01-E01', budget_ceiling: 100, budget_spent: 5, governance_mode: 4 },
+      ],
+    });
+    await releaseBudgetReservation(supabase.client, 'ep-1', 0);
+    await releaseBudgetReservation(supabase.client, 'ep-1', -4);
+    expect(supabase.tables.episodes[0].budget_spent).toBe(5);
+  });
+});
+
+describe('getBudgetSummary — accountant view over budget_log (q12)', () => {
+  it('aggregates spend by provider+operation and reports spent/ceiling', async () => {
+    const supabase = makeMockSupabase({
+      episodes: [
+        { id: 'ep-1', episode_code: 'SS-S01-E01', budget_ceiling: 50, budget_spent: 0, governance_mode: 4 },
+      ],
+    });
+    await recordCost(supabase.client, { jobId: 'j1', episodeId: 'ep-1', agentId: 'EXEC-VGEN', costUsd: 3, apiProvider: 'fal_ai', modelOrTier: 'seedance', operation: 'video_generation' });
+    await recordCost(supabase.client, { jobId: 'j2', episodeId: 'ep-1', agentId: 'EXEC-VGEN', costUsd: 2, apiProvider: 'fal_ai', modelOrTier: 'seedance', operation: 'video_generation' });
+    await recordCost(supabase.client, { jobId: 'j3', episodeId: 'ep-1', agentId: 'EXEC-EREF', costUsd: 0.08, apiProvider: 'openai', modelOrTier: 'gpt-image-2', operation: 'image_generation' });
+
+    const sum = await getBudgetSummary(supabase.client, 'ep-1');
+    expect(sum.spent).toBeCloseTo(5.08);
+    expect(sum.ceiling).toBe(50);
+    // sorted by cost desc → the two fal video calls collapse to one $5 / 2-call row, first.
+    expect(sum.byProviderOperation[0]).toMatchObject({
+      apiProvider: 'fal_ai',
+      operation: 'video_generation',
+      costUsd: 5,
+      calls: 2,
+    });
+    const img = sum.byProviderOperation.find((r) => r.operation === 'image_generation');
+    expect(img).toMatchObject({ apiProvider: 'openai', calls: 1 });
   });
 });

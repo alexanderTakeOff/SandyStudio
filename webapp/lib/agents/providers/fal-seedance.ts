@@ -89,6 +89,33 @@ export class FalSeedanceError extends Error {
   }
 }
 
+/**
+ * Signature of a fal "out of money / account locked" rejection. fal returns a
+ * 403 whose body reads e.g. {"detail":"User is locked. Reason: Exhausted
+ * balance. Top up your balance at fal.ai/dashboard/billing."}. This is a
+ * TERMINAL condition — retrying just burns the retry budget and leaks pre-spend
+ * reservations (observed 2026-06-05: ~$11 phantom on 3× retries of a locked
+ * account). Detect by text so it survives error-wrapping (MultiVideoGenError).
+ * Shared by every fal provider (seedance / flux / upscale / ideogram) — same
+ * `Authorization: Key` + same 403 body.
+ */
+export function isFalBalanceLock(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return /exhausted balance|user is locked|account is locked|insufficient.{0,12}balance/i.test(
+    text,
+  );
+}
+
+/** Typed terminal error for a fal balance-lock (403). Callers map this to a
+ *  NonRetriableError so Inngest does not retry a provider that has no funds. */
+export class FalBalanceError extends FalSeedanceError {
+  readonly isBalanceLock = true as const;
+  constructor(message: string, status: number | null = null, body: string | null = null) {
+    super(message, status, body);
+    this.name = 'FalBalanceError';
+  }
+}
+
 // Seedance 2.0 model slugs. Override via env if fal renames them.
 //   FAL_SEEDANCE_MODEL_STANDARD — overrides 'standard' tier
 //   FAL_SEEDANCE_MODEL_FAST     — overrides 'fast' tier
@@ -260,11 +287,12 @@ export async function generateVideoFalSeedance(
   });
   if (!submitRes.ok) {
     const body = (await submitRes.text()).slice(0, 800);
-    throw new FalSeedanceError(
-      `fal submit failed (${submitRes.status}) — ${body || '<empty body>'}`,
-      submitRes.status,
-      body,
-    );
+    const message = `fal submit failed (${submitRes.status}) — ${body || '<empty body>'}`;
+    if (submitRes.status === 403 && isFalBalanceLock(body)) {
+      // Out of money / locked account — terminal, do NOT retry.
+      throw new FalBalanceError(message, submitRes.status, body);
+    }
+    throw new FalSeedanceError(message, submitRes.status, body);
   }
   const submitJson = (await submitRes.json()) as QueueSubmitResponse;
   if (!submitJson.request_id) {

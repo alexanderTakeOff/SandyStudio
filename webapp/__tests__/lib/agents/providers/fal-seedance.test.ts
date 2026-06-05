@@ -7,6 +7,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   generateVideoFalSeedance,
   FalSeedanceError,
+  FalBalanceError,
+  isFalBalanceLock,
   SEEDANCE_COST_USD_PER_SECOND,
 } from '@/lib/agents/providers/fal-seedance';
 
@@ -206,18 +208,20 @@ describe('generateVideoFalSeedance', () => {
     expect(visited).toContain('https://queue.fal.run/bytedance/seedance-2.0/requests/qrz');
   });
 
-  it('surfaces 429 RESOURCE_EXHAUSTED as a typed error', async () => {
+  it('classifies an exhausted-balance 403 as a terminal FalBalanceError', async () => {
     globalThis.fetch = vi.fn(async () =>
       jsonResponse(
         {
-          detail: 'Exhausted balance. Top up your balance at fal.ai/dashboard/billing.',
+          detail: 'User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing.',
         },
         403,
       ) as unknown as Response,
     ) as unknown as typeof fetch;
-    await expect(generateVideoFalSeedance({ prompt: 'p' })).rejects.toThrow(
-      /fal submit failed \(403\)/,
-    );
+    const err = await generateVideoFalSeedance({ prompt: 'p' }).catch((e) => e);
+    expect(err).toBeInstanceOf(FalBalanceError);
+    expect((err as FalBalanceError).isBalanceLock).toBe(true);
+    expect((err as FalBalanceError).status).toBe(403);
+    expect((err as Error).message).toMatch(/fal submit failed \(403\)/);
   });
 
   it('throws when fal returns FAILED status', async () => {

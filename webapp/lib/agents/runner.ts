@@ -28,7 +28,7 @@ import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { persistBinary, type PersistedBinary } from './persist-binary';
-import { assertBudgetAvailable, BudgetExceededError } from '../budget';
+import { assertBudgetAvailable, releaseBudgetReservation, BudgetExceededError } from '../budget';
 import { applyCriticVerdict, type CriticVerdict } from './critic-loop';
 import {
   SEEDANCE_COST_USD_PER_SECOND,
@@ -2202,22 +2202,35 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           budgetReservedUsd = estCostUsd;
         }
 
-        const real = await videoProvider.generate({
-          prompt,
-          durationSeconds: generationDuration,
-          aspectRatio: effectiveAspect,
-          quality: effectiveQuality,
-          ...(referenceImageBase64
-            ? { referenceImageBase64, referenceImageMime: 'image/png' as const }
-            : {}),
-          // TD-33 (q7a Step 6): wire Animator Plan's end_image + seed.
-          // Seedance honours both; Veo ignores end_image (capability flag).
-          ...(endImageBase64 ? { endImageBase64, endImageMime } : {}),
-          ...(planSeed !== null ? { seed: planSeed } : {}),
-          // TD-85: wire the Plan's contract-validated resolution. Omitted for
-          // fixed-resolution providers (effectiveResolution null).
-          ...(effectiveResolution ? { resolution: effectiveResolution } : {}),
-        });
+        let real: Awaited<ReturnType<typeof videoProvider.generate>>;
+        try {
+          real = await videoProvider.generate({
+            prompt,
+            durationSeconds: generationDuration,
+            aspectRatio: effectiveAspect,
+            quality: effectiveQuality,
+            ...(referenceImageBase64
+              ? { referenceImageBase64, referenceImageMime: 'image/png' as const }
+              : {}),
+            // TD-33 (q7a Step 6): wire Animator Plan's end_image + seed.
+            // Seedance honours both; Veo ignores end_image (capability flag).
+            ...(endImageBase64 ? { endImageBase64, endImageMime } : {}),
+            ...(planSeed !== null ? { seed: planSeed } : {}),
+            // TD-85: wire the Plan's contract-validated resolution. Omitted for
+            // fixed-resolution providers (effectiveResolution null).
+            ...(effectiveResolution ? { resolution: effectiveResolution } : {}),
+          });
+        } catch (genErr) {
+          // q12 (2026-06-05): the paid call failed BEFORE producing output (e.g.
+          // fal balance-lock 403). Release the pre-spend reservation so a failed/
+          // retried generation doesn't leak budget into the ceiling. Only the
+          // generate() call is guarded — a later persist failure means the money
+          // was already spent, so it must NOT refund.
+          if (budgetReservedUsd > 0 && episodeId && supabase) {
+            await releaseBudgetReservation(supabase, episodeId, budgetReservedUsd);
+          }
+          throw genErr;
+        }
         const safeShotId = shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
         const persisted = await persistBinary({
           base64: real.mp4_b64,

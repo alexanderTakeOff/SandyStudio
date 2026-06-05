@@ -151,6 +151,85 @@ export async function assertBudgetAvailable(
   return callIncrementBudgetSpent(supabase, episodeId, estCostUsd);
 }
 
+/**
+ * Release a pre-spend reservation made by `assertBudgetAvailable` when the paid
+ * call FAILED before producing a real cost (e.g. a fal balance-lock 403). Without
+ * this, a failed/retried generation leaks `estCostUsd` into `budget_spent` per
+ * attempt and silently eats the ceiling (observed 2026-06-05: $100.81 → $111.69
+ * on locked-account retries that never produced video). Reuses the same atomic
+ * RPC with a NEGATIVE delta — no new infrastructure. Best-effort: never throw,
+ * so it cannot mask the original generation error.
+ */
+export async function releaseBudgetReservation(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  reservedUsd: number
+): Promise<void> {
+  if (!reservedUsd || reservedUsd <= 0) return;
+  try {
+    await callIncrementBudgetSpent(supabase, episodeId, -reservedUsd);
+  } catch {
+    // Swallow — a failed refund must not mask the upstream failure that triggered it.
+  }
+}
+
+export interface BudgetSummaryRow {
+  apiProvider: string;
+  operation: string;
+  costUsd: number;
+  calls: number;
+}
+
+export interface BudgetSummary {
+  spent: number;
+  ceiling: number | null;
+  byProviderOperation: BudgetSummaryRow[];
+}
+
+/**
+ * Accountant view (BOARD-FIN runtime): aggregate the live `budget_log` for an
+ * episode by `api_provider` + `operation`, plus the episode's spent/ceiling.
+ * Read-only — the source of truth for "where did the money actually go", instead
+ * of BOARD-FIN's spec-only PLAN.md markdown. Aggregation is done in JS (the rows
+ * per episode are bounded — a few hundred at most).
+ */
+export async function getBudgetSummary(
+  supabase: SupabaseClient<Database>,
+  episodeId: string
+): Promise<BudgetSummary> {
+  const { data: ep } = await supabase
+    .from('episodes')
+    .select('budget_spent, budget_ceiling')
+    .eq('id', episodeId)
+    .single();
+  const { data: rows } = await supabase
+    .from('budget_log')
+    .select('api_provider, operation, cost_usd')
+    .eq('episode_id', episodeId);
+
+  const agg = new Map<string, BudgetSummaryRow>();
+  for (const r of (rows ?? []) as Array<{
+    api_provider: string | null;
+    operation: string | null;
+    cost_usd: number | null;
+  }>) {
+    const apiProvider = r.api_provider ?? 'unknown';
+    const operation = r.operation ?? 'unknown';
+    const key = `${apiProvider}::${operation}`;
+    const cur =
+      agg.get(key) ?? { apiProvider, operation, costUsd: 0, calls: 0 };
+    cur.costUsd += Number(r.cost_usd ?? 0);
+    cur.calls += 1;
+    agg.set(key, cur);
+  }
+
+  return {
+    spent: ep?.budget_spent ?? 0,
+    ceiling: ep?.budget_ceiling ?? null,
+    byProviderOperation: [...agg.values()].sort((a, b) => b.costUsd - a.costUsd),
+  };
+}
+
 export interface RecordCostInput {
   /**
    * Idempotency key — the Inngest job id for pipeline runs. NULL for direct
