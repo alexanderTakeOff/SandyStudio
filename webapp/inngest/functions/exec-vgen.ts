@@ -362,6 +362,14 @@ export const execVgenRun = inngest.createFunction(
           storyboard_asset_id: existingMeta.storyboard_asset_id ?? null,
           provider_id: existingMeta.provider_id ?? null,
           provider_used: existingMeta.provider_used ?? null,
+          // 2026-06-05: persist resolution + plan_asset_id. Their absence made
+          // the drawer's regen control panel fall back to its 720p default even
+          // for a 1080p video (Director couldn't tell the real resolution, and a
+          // regen would silently DOWNGRADE to 720p). resolution comes from the
+          // runner's effectiveResolution; plan_asset_id proves the render was
+          // plan-driven (was always null in metadata even when a plan drove it).
+          resolution: existingMeta.resolution ?? null,
+          plan_asset_id: data.planAssetId ?? null,
           // Provider verification stamp (Phase A.1 directive 2026-05-07).
           model_id: existingMeta.model_id ?? null,
           operation_name: existingMeta.operation_name ?? null,
@@ -370,7 +378,7 @@ export const execVgenRun = inngest.createFunction(
         // green box — Director audits model_id at a glance from the drawer.
         const cost = typeof exec.result.cost_usd === 'number' ? exec.result.cost_usd : null;
         const description = existingMeta.model_id
-          ? `model=${existingMeta.model_id} · ${existingMeta.aspect_ratio ?? '?'} · ${existingMeta.quality_tier ?? '?'} · ${existingMeta.duration_seconds ?? '?'}s${cost !== null ? ` · cost $${cost.toFixed(3)}` : ''} · op=${existingMeta.operation_name ?? '?'}`
+          ? `model=${existingMeta.model_id} · ${existingMeta.aspect_ratio ?? '?'} · ${existingMeta.quality_tier ?? '?'} · ${existingMeta.resolution ?? 'provider-default'} · ${existingMeta.duration_seconds ?? '?'}s${cost !== null ? ` · cost $${cost.toFixed(3)}` : ''} · op=${existingMeta.operation_name ?? '?'}`
           : null;
         await supabase
           .from('assets')
