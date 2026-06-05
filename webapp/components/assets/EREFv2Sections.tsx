@@ -386,7 +386,10 @@ export function CandidatesStrip({ currentAssetId, candidates, onPick }: Candidat
                 // TD-43 (2026-05-24): VID-shot rows have .mp4 staging_path.
                 // <img> can't render mp4 → use <video> with muted+autoplay
                 // (first-frame preview, no audio). Otherwise <img>.
-                /\.(mp4|mov|webm)(\?|$)/i.test(src) ? (
+                // 2026-06-05: /api/media/<id> URLs carry no extension, so also
+                // detect video via the -VID- type code in the filename.
+                /\.(mp4|mov|webm)(\?|$)/i.test(src) ||
+                /-VID-|\.(mp4|mov|webm)$/i.test(c.filename) ? (
                   <video
                     src={src}
                     className="w-full h-full object-cover"
