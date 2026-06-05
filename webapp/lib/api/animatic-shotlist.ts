@@ -289,9 +289,7 @@ export async function buildShotListFromApprovedEREF(
       caption: captionSource ? captionSource.slice(0, 200) : undefined,
     });
   }
-  if (shotList.length === 0) {
-    throw new Error('Could not align any storyboard shots to approved references');
-  }
+  assertCompleteShotList(shotList, shots, 'buildShotListFromApprovedEREF');
   return shotList;
 }
 
@@ -431,10 +429,30 @@ export async function buildShotListFromAnchorChain(
       caption: captionSource ? captionSource.slice(0, 200) : undefined,
     });
   }
-  if (shotList.length === 0) {
-    throw new Error('Could not align any storyboard shots to approved anchor START frames or episode_ref fallbacks');
-  }
+  assertCompleteShotList(shotList, shots, 'buildShotListFromAnchorChain');
   return shotList;
+}
+
+/**
+ * Fail-loud guard for animatic shot_list builders. Replaces the older
+ * `shotList.length === 0` checks: a builder that silently drops even ONE shot
+ * (e.g. its START anchor stuck in REVIEW) corrupts the visual layout of the
+ * entire animatic — UI positions thereafter all shift by one and Director
+ * sees the wrong shot under each timeline button. 2026-06-05 incident: E02
+ * v06 lost SH12 (anchor REVIEW), button 12 then showed SH13 etc.
+ */
+export function assertCompleteShotList(
+  shotList: AnimaticShot[],
+  shots: ReadonlyArray<{ shot_id: string }>,
+  builderName: string,
+): void {
+  if (shotList.length === shots.length) return;
+  const got = new Set(shotList.map((s) => s.shot_id));
+  const missing = shots.filter((s) => !got.has(s.shot_id)).map((s) => s.shot_id);
+  throw new Error(
+    `${builderName} dropped ${missing.length}/${shots.length} shot(s) silently: ` +
+      `${missing.join(', ')} — check APPROVED status of their anchor START / episode_ref.`,
+  );
 }
 
 /**
