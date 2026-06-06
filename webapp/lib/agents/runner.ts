@@ -2491,6 +2491,25 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           console.log('[stitch] reading FS (resolved from URL):', absPath);
           return await fsPromises.readFile(absPath);
         }
+        // 2026-06-06 — relative /api/media/{filename} URLs come from the
+        // worktree-independent media cache (f44381f). Same middleware-bypass
+        // rationale as /staging/ — resolve to the cache file directly. Without
+        // this branch fetch() received a relative URL and Node 18+ threw
+        // "Failed to parse URL from /api/media/..." (the Online Editor
+        // failure Director hit on the SH12 fix follow-up stitch).
+        if (url.startsWith('/api/media/')) {
+          const filename = url.slice('/api/media/'.length).split('?')[0]!;
+          const { cachedFileIfPresent } = await import('@/lib/media-cache');
+          const absPath = await cachedFileIfPresent(filename);
+          if (absPath) {
+            // eslint-disable-next-line no-console
+            console.log('[stitch] reading media-cache:', absPath);
+            return await fsPromises.readFile(absPath);
+          }
+          throw new Error(
+            `[stitch] media-cache miss for ${filename} — Drive sync has not populated the local cache yet; retry after the asset is mirrored or replace the music track`,
+          );
+        }
         // Fallback for Drive https URLs (drive_native storage).
         const res = await fetch(url);
         if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`);
