@@ -667,6 +667,30 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
           >
             <span className="font-mono">{currentShot.shot_id}</span>
+            {/* 2026-06-06 — surface "which version is on screen right now". The
+                cell resolver already drops INVALIDATED and picks the highest
+                non-invalidated version, so the first entry of vidShotsByShotId
+                is exactly the playing version. Director Issue B: caption used to
+                say only shot_id, so "is this v01 or v03?" required opening the
+                popover. */}
+            {(() => {
+              const winner = vidShotsByShotId.get(currentShot.shot_id)?.[0];
+              if (!winner) return null;
+              return (
+                <span
+                  className="ml-2 px-1.5 rounded font-mono text-[10px] tabular-nums"
+                  style={{
+                    background:
+                      winner.status === 'APPROVED' || winner.status === 'LOCKED'
+                        ? 'color-mix(in oklab, var(--accent-success, #22c55e) 30%, transparent)'
+                        : 'color-mix(in oklab, var(--accent-warning, #f59e0b) 30%, transparent)',
+                  }}
+                  title="Playing this version (newest non-invalidated)"
+                >
+                  v{String(winner.version ?? 1).padStart(2, '0')} {winner.status}
+                </span>
+              );
+            })()}
             {currentShot.shot_role && <span className="ml-2 opacity-80">· {currentShot.shot_role}</span>}
             <span className="ml-2 opacity-80">· {currentDuration.toFixed(1)}s</span>
             {isHybridMode && currentCell && (
@@ -897,10 +921,24 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                         {versions.map((v) => {
                           const isReview = v.status === 'REVIEW';
                           const isBusy = approveBusyId === v.id;
+                          // 2026-06-06 — flag the version that's actually on
+                          // screen right now (the cell's currently-resolved
+                          // asset_id). Director Issue B: popover used to show
+                          // three REVIEWs side-by-side with no way to tell
+                          // which one was playing.
+                          const isPlaying = v.id === cell?.asset_id;
                           return (
                             <div
                               key={v.id}
                               className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-[color-mix(in_oklab,_white_8%,_transparent)]"
+                              style={
+                                isPlaying
+                                  ? {
+                                      background:
+                                        'color-mix(in oklab, var(--accent-primary, #6EC6E8) 20%, transparent)',
+                                    }
+                                  : undefined
+                              }
                             >
                               <button
                                 type="button"
@@ -915,6 +953,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                                 }}
                                 className="flex-1 text-left font-mono text-[11px] cursor-pointer"
                               >
+                                {isPlaying ? '▶ ' : '  '}
                                 v{String(v.version ?? 1).padStart(2, '0')}{' '}
                                 <span
                                   className="opacity-70"
@@ -922,6 +961,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                                 >
                                   {v.status}
                                 </span>
+                                {isPlaying && (
+                                  <span className="ml-1 opacity-60 text-[9px] uppercase tracking-wider">
+                                    on screen
+                                  </span>
+                                )}
                               </button>
                               {isReview && (
                                 <button
