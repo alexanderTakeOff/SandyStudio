@@ -22,6 +22,7 @@ import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
 import { extractAnchorChain, buildResolutionContractBlock } from './animator';
 import { isAnimaticV1, effectiveDurationSeconds } from '../../api/animatic-shotlist';
+import { loadSeriesBibleCanon, formatBibleForPrompt } from '../bible-loader';
 
 export const VPREV_CONTRACT = 'animator_critic@v1';
 export const VPREV_MODEL = 'claude-sonnet-4-6';
@@ -169,6 +170,15 @@ function buildUserMessage(args: {
   planContent: string;
   planStatus: string;
   directorOverrides: ReadonlyArray<DirectorOverride>;
+  /**
+   * 2026-06-06 — closing the Critic-blind-to-Bible gap: Director's standing
+   * orders live in `SBL-general_idea` (and other SBL-* LOCKED assets). The
+   * Animator already sees this canon in its user message; the Critic must
+   * see the SAME canon so it can validate the Plan against Director's
+   * locked orders (e.g. "all shots 1080p"), not only against the provider
+   * compatibility contract. Empty / missing canon → omitted.
+   */
+  bibleBlock: string;
 }): string {
   const sections: string[] = [
     '# Task',
@@ -211,6 +221,20 @@ function buildUserMessage(args: {
     );
   }
 
+  // 2026-06-06 — Bible canon BEFORE the Plan so the Critic reads Director's
+  // LOCKED standing orders (e.g. resolution / duration floors written into
+  // SBL-general_idea) as context for validating the Plan body below. Empty
+  // canon falls through silently — back-compat preserved for episodes
+  // without a series Bible yet.
+  if (args.bibleBlock.length > 0) {
+    sections.push(
+      '',
+      '## Series Bible canon (LOCKED — Plan must comply with any Director standing orders in this block)',
+      '',
+      args.bibleBlock,
+    );
+  }
+
   sections.push(
     '',
     '## Plan asset (raw markdown — read the fenced JSON block to validate)',
@@ -227,6 +251,7 @@ function buildUserMessage(args: {
     'Hard rules:',
     `- The JSON block must include shot_id="${args.shotId}" and plan_asset_id="${args.planAssetId}".`,
     '- Never skip the JSON block.',
+    '- If the Series Bible canon above declares a Director standing order (resolution floor, duration floor, provider restriction, etc.), the Plan MUST comply. A Plan that violates a LOCKED Bible order should emit REVISE with the specific violation listed in failed_checks[].',
   );
 
   return sections.join('\n');
@@ -419,12 +444,31 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
 
   const plan = await loadPlanRow(supabase, planAssetId);
   const systemPrompt = await loadSystemPrompt();
+
+  // 2026-06-06 — read Director's LOCKED standing orders from the Series Bible
+  // (SBL-* assets) so the Critic validates against them, not only against the
+  // provider-compatibility contract. Same loader the Animator already uses,
+  // so the two agents see identical canon. Failure to load is non-fatal —
+  // the Critic degrades to its prior behaviour (no Bible context).
+  const episodeIdForBible =
+    (args.inputs as { episode_id?: string } | undefined)?.episode_id ?? '';
+  let bibleBlock = '';
+  if (episodeIdForBible) {
+    try {
+      const canon = await loadSeriesBibleCanon(supabase, episodeIdForBible);
+      bibleBlock = formatBibleForPrompt(canon);
+    } catch {
+      // Non-fatal: Critic continues without Bible context.
+    }
+  }
+
   const userMessage = buildUserMessage({
     planAssetId,
     shotId,
     planContent: plan.content,
     planStatus: plan.status,
     directorOverrides,
+    bibleBlock,
   });
 
   const notes: string[] = [];

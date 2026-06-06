@@ -13,7 +13,27 @@ vi.mock('@/lib/agents/providers/anthropic-text', () => ({
   generateAnthropicText: vi.fn(),
 }));
 
+// 2026-06-06 — Bible loader is exercised by runAnimatorCritic so the Critic
+// validates the Plan against Director's LOCKED standing orders in SBL-* assets.
+// Mock it here so the test never touches real Supabase. Default: empty canon
+// (so existing tests stay green); individual tests override per case.
+vi.mock('@/lib/agents/bible-loader', () => ({
+  loadSeriesBibleCanon: vi.fn(async () => ({
+    series_id: null,
+    general_idea: null,
+    characters: [],
+    locations: [],
+    styles: [],
+    total_entries: 0,
+  })),
+  formatBibleForPrompt: vi.fn(() => ''),
+}));
+
 import { generateAnthropicText } from '@/lib/agents/providers/anthropic-text';
+import {
+  loadSeriesBibleCanon,
+  formatBibleForPrompt,
+} from '@/lib/agents/bible-loader';
 import {
   VPREV_CONTRACT,
   VPREV_MODEL,
@@ -149,6 +169,84 @@ describe('runAnimatorCritic', () => {
     const callArgs = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string } | undefined;
     expect(callArgs?.userMessage).toContain('UPSTREAM AUTHORITATIVE OVERRIDES');
     expect(callArgs?.userMessage).toContain('"check": "V04"');
+  });
+
+  it('2026-06-06: Bible standing orders appear in Critic user message when canon is non-empty', async () => {
+    // The Critic must validate against Director's LOCKED standing orders in
+    // SBL-general_idea / other SBL-* assets — not only against the provider
+    // compatibility contract. This regression-locks the Critic-blind-to-Bible
+    // gap that let SH27 ship at 720p despite the Director's 1080p directive.
+    (loadSeriesBibleCanon as unknown as MockedAnthropic).mockResolvedValueOnce({
+      series_id: 'SS-S99',
+      general_idea: {
+        slug: '',
+        file_type: 'SBL-general_idea',
+        filename: 'SS-S99-BIB-general_idea-v01-LOCKED.md',
+        description: '',
+        content: 'Director standing orders: all shots must render at 1080p; minimum duration 3s.',
+        drive_web_view_url: null,
+      },
+      characters: [],
+      locations: [],
+      styles: [],
+      total_entries: 1,
+    });
+    (formatBibleForPrompt as unknown as MockedAnthropic).mockReturnValueOnce(
+      '## Series Bible canon (LOCKED)\n\n### General idea\n\nDirector standing orders: all shots must render at 1080p; minimum duration 3s.',
+    );
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: 'PASS',
+      body: {
+        verdict: 'PASS',
+        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V05', 'V06', 'V07', 'V08', 'V09'],
+        failed_checks: [],
+        acceptance_criteria: [],
+      },
+      costUsd: 0.02,
+      model: VPREV_MODEL,
+    });
+    await runAnimatorCritic({
+      inputs: { episode_id: 'ep-1' } as never,
+      supabase: mockSupabase(makePlanRow(VALID_CONTENT)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    const callArgs = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string } | undefined;
+    expect(callArgs?.userMessage).toContain('Director standing orders');
+    expect(callArgs?.userMessage).toContain('1080p');
+    expect(callArgs?.userMessage).toContain('Series Bible canon');
+    // And the explicit instruction telling the Critic to honour LOCKED Bible orders.
+    expect(callArgs?.userMessage).toContain('LOCKED Bible order');
+  });
+
+  it('2026-06-06: empty Bible → no Series Bible canon block in user message (back-compat)', async () => {
+    // Default Bible-loader mock returns empty canon + empty formatted block.
+    // Verify the Critic user message omits the section entirely so existing
+    // episodes without a series Bible see the same prompt as before.
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: 'PASS',
+      body: {
+        verdict: 'PASS',
+        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V05', 'V06', 'V07', 'V08', 'V09'],
+        failed_checks: [],
+        acceptance_criteria: [],
+      },
+      costUsd: 0.02,
+      model: VPREV_MODEL,
+    });
+    await runAnimatorCritic({
+      inputs: { episode_id: 'ep-1' } as never,
+      supabase: mockSupabase(makePlanRow(VALID_CONTENT)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    const callArgs = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string } | undefined;
+    // The injected canon section header is precise — the Hard-rules tail mentions
+    // "Series Bible canon above" in its conditional instruction (intentional, so the
+    // Critic still hears the rule even when canon is empty for this run).
+    expect(callArgs?.userMessage).not.toContain(
+      '## Series Bible canon (LOCKED — Plan must comply',
+    );
   });
 
   it('TD-74: no directorOverrides → user message has no authoritative-override block', async () => {
