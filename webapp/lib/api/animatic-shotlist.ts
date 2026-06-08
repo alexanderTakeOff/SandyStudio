@@ -78,6 +78,14 @@ export interface AudioTrack {
   trim_in_seconds?: number;
   /** Seconds at which to stop reading the source (atrim=end=N). Default: full length. */
   trim_out_seconds?: number;
+  /**
+   * 2026-06-06 — preserved original (unshaped) source URL. Set on the first
+   * Save that introduces fade/trim — at that point `url` may be rewritten to
+   * point at a derived processed file. When Director later clears all
+   * shaping controls, the route restores `url` from `original_url` and unsets
+   * this field so the asset returns to its raw playback state.
+   */
+  original_url?: string;
 }
 
 /**

@@ -35,6 +35,10 @@ import {
   type AnimaticDirectorOverride,
   type AudioTrack,
 } from '@/lib/api/animatic-shotlist';
+import { processMusicTrack, type AudioExt } from '@/lib/agents/providers/music-processor';
+import { cachedFileIfPresent, localCacheAbsPath } from '@/lib/media-cache';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,6 +58,9 @@ const AudioTrackSchema = z.object({
   fade_out_seconds: z.number().min(0).max(30).optional(),
   trim_in_seconds: z.number().min(0).optional(),
   trim_out_seconds: z.number().positive().optional(),
+  // 2026-06-06 — Director-set fields above; the original_url is bookkeeping
+  // the route writes back so the client doesn't need to remember it.
+  original_url: z.string().optional(),
 });
 
 const Body = z.object({
@@ -79,6 +86,48 @@ interface AssetRow {
   file_type: string;
   status: string;
   metadata: unknown;
+}
+
+// 2026-06-06 — resolve the raw bytes behind a music track URL. Mirrors the
+// `loadBytes` helper in lib/agents/runner.ts (EXEC-STITCH) — the music URL
+// can be a /api/media/{filename} cached file, a /staging/* relative path
+// (legacy), or an absolute Drive https URL. ffmpeg pre-process needs the
+// actual bytes, not a URL.
+async function readMusicSourceBytes(url: string): Promise<Buffer> {
+  if (!url) throw new Error('readMusicSourceBytes: empty url');
+  if (url.startsWith('/api/media/')) {
+    const filename = decodeURIComponent(url.slice('/api/media/'.length).split('?')[0]!);
+    const abs = await cachedFileIfPresent(filename);
+    if (abs) return fs.readFile(abs);
+    throw new Error(`media-cache miss for ${filename}`);
+  }
+  if (url.startsWith('/staging/')) {
+    const abs = path.join(process.cwd(), 'public', url);
+    return fs.readFile(abs);
+  }
+  if (/^https?:\/\//i.test(url)) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  throw new Error(`unsupported music URL scheme: ${url}`);
+}
+
+function inferAudioExt(filename: string): AudioExt {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith('.wav')) return 'wav';
+  if (lower.endsWith('.m4a')) return 'm4a';
+  if (lower.endsWith('.aac')) return 'aac';
+  return 'mp3';
+}
+
+function withProcessedSuffix(filename: string): string {
+  // Replace the extension with `-processed.mp3` (the processor always emits mp3).
+  // Keeps the original file's hash prefix so the processed file lives next
+  // to it in the media-cache (same episode folder via mirroredCachePath).
+  const dot = filename.lastIndexOf('.');
+  const stem = dot >= 0 ? filename.slice(0, dot) : filename;
+  return `${stem}-processed.mp3`;
 }
 
 async function resolveMode(
@@ -180,9 +229,68 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   // 2026-06-06 — replace audio_tracks wholesale when supplied. Director edits
   // in the AnimaticPlayer fan out as a complete replacement list (same
   // pattern as `overrides`, just whole-array since track count is small).
-  const newAudioTracks: AudioTrack[] | undefined = body.audio_tracks
+  let newAudioTracks: AudioTrack[] | undefined = body.audio_tracks
     ? (body.audio_tracks as AudioTrack[])
     : v1.audio_tracks;
+
+  // 2026-06-06 — server-side pre-process the music track so the AnimaticPlayer
+  // <audio> element plays the SAME shaped audio that EXEC-STITCH will mux
+  // into the final cut. Without this, the preview ignored Director's fade /
+  // trim entirely until the (much later) STITCH pass.
+  //
+  // ffmpeg failure is non-fatal — we log + keep the raw URL so preview still
+  // plays. This is the same graceful-degradation pattern the stitch path
+  // uses when ffmpeg is missing on PATH.
+  if (newAudioTracks && newAudioTracks.length > 0) {
+    newAudioTracks = await Promise.all(
+      newAudioTracks.map(async (track): Promise<AudioTrack> => {
+        if (track.layer !== 'music') return track;
+        const hasShaping = Boolean(
+          track.fade_in_seconds ||
+            track.fade_out_seconds ||
+            track.trim_in_seconds ||
+            track.trim_out_seconds,
+        );
+        // Stamp / restore the original URL bookkeeping field.
+        const originalUrl = track.original_url ?? track.url;
+        if (!hasShaping) {
+          // All shaping cleared → revert to the raw source and drop the
+          // bookkeeping field (cleaner metadata for old assets).
+          return {
+            ...track,
+            url: originalUrl,
+            original_url: undefined,
+          };
+        }
+        try {
+          const sourceBytes = await readMusicSourceBytes(originalUrl);
+          const ext = inferAudioExt(track.filename);
+          const { bytes: processedBytes, shaped } = await processMusicTrack({
+            sourceBytes,
+            ext,
+            filters: track,
+            totalVideoSeconds: newTotal,
+          });
+          if (!shaped) return track; // defensive — buildMusicAudioFilter said no-op
+          const processedFilename = withProcessedSuffix(track.filename);
+          const absPath = localCacheAbsPath(processedFilename);
+          await fs.mkdir(path.dirname(absPath), { recursive: true });
+          await fs.writeFile(absPath, processedBytes);
+          return {
+            ...track,
+            original_url: originalUrl,
+            url: `/api/media/${encodeURIComponent(processedFilename)}`,
+          };
+        } catch (err) {
+          // ffmpeg missing or processing failed — keep the previous URL so
+          // playback still works; the audit event below records the issue.
+          console.error('[animatic-timing] music pre-process failed:', err);
+          return track;
+        }
+      }),
+    );
+  }
+
   const newV1: AnimaticContract = {
     ...v1,
     director_overrides: mergedOverrides,

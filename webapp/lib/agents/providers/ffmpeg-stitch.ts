@@ -201,7 +201,9 @@ export async function ffmpegInstalled(): Promise<boolean> {
  * Resolves with stderr (ffmpeg writes its progress logs there) on exit code 0;
  * rejects with FfmpegStitchError otherwise.
  */
-async function runFfmpeg(args: ReadonlyArray<string>): Promise<string> {
+// 2026-06-06 — exported so music-processor.ts can reuse the same spawn +
+// stderr-capture path without duplicating the binary-resolution dance.
+export async function runFfmpeg(args: ReadonlyArray<string>): Promise<string> {
   const ffmpegBin = await resolveFfmpegPath();
   if (!ffmpegBin) {
     throw new FfmpegStitchError(
