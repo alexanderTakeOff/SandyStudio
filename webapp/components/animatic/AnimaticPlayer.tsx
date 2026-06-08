@@ -47,9 +47,9 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import {
-  ANIMATIC_CONTRACT,
   computeTotalDuration,
   computeEffectivePlayback,
+  effectiveDurationSeconds,
   getAudioTracks,
   type AnimaticContract,
   type AnimaticDirectorOverride,
@@ -62,9 +62,11 @@ import {
   type VidShotAssetRow,
 } from '@/lib/api/timeline-cell-resolver';
 
-const SECOND_STEP = 1.0;
 const MIN_SHOT_S = 0.5;
 const MAX_SHOT_S = 60;
+// Per Director (2026-06-08): tail trim steps ±0.5s, matching head trim — fine
+// pacing control. Previously ±1s, which over-shot on short comedy beats.
+const SHOT_STEP = 0.5;
 
 export interface AnimaticPlayerProps {
   assetId: string;
@@ -531,11 +533,16 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     (shotId: string, value: number) => {
       const safe = Math.max(0, Math.min(30, Math.round(value * 10) / 10));
       setOverrides((prev) => {
-        const cur = prev[shotId];
-        // Need at least a duration_seconds to satisfy the type; default to
-        // the existing override or 0 (effective shot duration will fall
-        // through to shot.duration_seconds when override === 0).
-        const baseDuration = cur?.duration_seconds ?? 0;
+        // 2026-06-08 — seed duration_seconds from the shot's DECLARED duration
+        // (override or storyboard), never 0. Previously `?? 0` poisoned the
+        // override with duration_seconds: 0 when Director adjusted head trim on
+        // a shot without a prior duration override — the route's
+        // `z.number().positive()` rejected it, breaking every subsequent Save
+        // ("Request body failed validation") until reload.
+        const shot = contract.shot_list.find((s) => s.shot_id === shotId);
+        const baseDuration = shot
+          ? effectiveDurationSeconds(shot, prev)
+          : (prev[shotId]?.duration_seconds ?? 0);
         return {
           ...prev,
           [shotId]: {
@@ -547,7 +554,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       });
       setDirty(true);
     },
-    [],
+    [contract.shot_list],
   );
 
   // ── Save timing ──────────────────────────────────────────────────────────
@@ -678,7 +685,18 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // ── Render ───────────────────────────────────────────────────────────────
 
   const currentShot = times[currentIndex]?.shot;
-  const currentDuration = times[currentIndex]?.duration ?? 0;
+  // 2026-06-08 — the editor must read the TRUE override value, NOT the visual
+  // cell duration. buildTimeline inflates excluded shots (≤0.5s) to
+  // EXCLUDED_VISUAL_SECONDS (1.5) for clickability, which made the −/+ buttons
+  // jump 1 → 1.5 instead of 1 → 0.5. Two honest values:
+  //   tail = Director's declared length (override or storyboard), drives −/+
+  //   net  = what actually plays in the final cut (after head trim + clip clamp)
+  const currentTailDuration = currentShot
+    ? effectiveDurationSeconds(currentShot, overrides)
+    : 0;
+  const currentNetDuration = currentShot
+    ? computeEffectivePlayback(currentShot, overrides, clipLengths)
+    : 0;
   // 2026-06-06 — pass clipLengths so the displayed total reflects the
   // HONEST final-cut duration (clamped to actual VID-shot lengths) instead
   // of unreachable animatic-declared durations.
@@ -738,19 +756,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
 
   return (
     <div className="space-y-3">
-      {/* Header info */}
-      <div className="flex items-baseline justify-between text-xs text-text-secondary">
-        <div>
-          <span className="font-mono text-text-primary">{ANIMATIC_CONTRACT}</span>
-          <span className="ml-2">{contract.shot_list.length} shots · {fmt(newTotal)}</span>
-          {dirty && (
-            <span className="ml-2" style={{ color: 'var(--accent-warning)' }}>· unsaved</span>
-          )}
-        </div>
-        <div className="font-mono text-text-primary">
-          {fmt(currentT)} / {fmt(newTotal)}
-        </div>
-      </div>
+      {/* 2026-06-08 — episode duration INFO moved down into the Timeline header
+          row (Director: reading it above the preview was inconvenient). */}
 
       {/* Preview area — hybrid: <video> for VID-shot cells (canonical/review),
           <img> for animatic image fallback. Cell border color reflects status:
@@ -853,7 +860,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
               );
             })()}
             {currentShot.shot_role && <span className="ml-2 opacity-80">· {currentShot.shot_role}</span>}
-            <span className="ml-2 opacity-80">· {currentDuration.toFixed(1)}s</span>
+            <span className="ml-2 opacity-80">· {currentNetDuration.toFixed(1)}s</span>
             {isHybridMode && currentCell && (
               <button
                 type="button"
@@ -1045,7 +1052,16 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           hover bubble tooltip showing shot_id · duration · status. Strip height
           bumped 36→44 for the larger numbers; per-cell bubble shows on hover. */}
       <div className="space-y-1.5">
-        <div className="text-[10px] uppercase tracking-wider text-text-muted">Timeline</div>
+        {/* 2026-06-08 — episode duration INFO lives here now (was above preview). */}
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-text-muted">Timeline</span>
+          <span className="text-xs text-text-secondary font-mono">
+            {contract.shot_list.length} shots · {fmt(currentT)} / {fmt(newTotal)}
+            {dirty && (
+              <span className="ml-1" style={{ color: 'var(--accent-warning)' }}>· unsaved</span>
+            )}
+          </span>
+        </div>
         <div
           className="relative rounded-md border border-glass"
           style={{ height: 44, background: 'var(--bg-elevated)' }}
@@ -1312,9 +1328,13 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
         </Button>
       </div>
 
-      {/* Inline duration editor (current shot) */}
+      {/* Inline trim editor (current shot). 2026-06-08 — relabelled per Director:
+          "cut start" / "cut end" are just labels for the existing decrement
+          buttons (head / tail). One numeric field "duration" shows the net
+          final-cut length, updating as either edge is trimmed. */}
       {currentShot && (() => {
         const currentTrimStart = overrides[currentShot.shot_id]?.trim_start_seconds ?? 0;
+        const excluded = currentNetDuration <= MIN_SHOT_S;
         return (
         <div
           className="rounded-lg p-2.5 border border-glass space-y-1.5"
@@ -1323,7 +1343,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           <div className="text-[10px] uppercase tracking-wider text-text-muted">
             Editing current shot
           </div>
-          {/* Row 1 — playback duration (controls the tail / outpoint). */}
+          {/* Header — shot id + role. */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="font-mono text-sm text-text-primary">
               {currentShot.shot_id}
@@ -1331,64 +1351,25 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             {currentShot.shot_role && (
               <div className="text-xs text-text-secondary">{currentShot.shot_role}</div>
             )}
-            <div className="flex-1" />
-            <span className="text-[10px] text-text-muted uppercase tracking-wider" title="Total playback duration; ffmpeg uses this as outpoint">
-              duration
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDuration(currentShot.shot_id, currentDuration - SECOND_STEP)}
-              disabled={currentDuration <= MIN_SHOT_S}
-            >
-              −1s
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDuration(currentShot.shot_id, currentDuration + SECOND_STEP)}
-              disabled={currentDuration >= MAX_SHOT_S}
-            >
-              +1s
-            </Button>
-            <input
-              key={`${currentShot.shot_id}-${currentDuration}`}
-              type="number"
-              min={MIN_SHOT_S}
-              max={MAX_SHOT_S}
-              step={0.1}
-              defaultValue={currentDuration.toFixed(1)}
-              onBlur={(e) => {
-                const v = parseFloat(e.target.value);
-                if (Number.isFinite(v) && v > 0 && Math.abs(v - currentDuration) > 0.01) {
-                  setDuration(currentShot.shot_id, v);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              }}
-              className="w-16 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-glass text-xs text-text-primary text-right font-mono focus:outline-none focus:border-[var(--accent-primary)]"
-            />
-            <span className="text-xs text-text-muted">s</span>
           </div>
-          {/* Row 2 — head trim (controls the head / inpoint). 2026-06-06 —
-              Director can drop a slow lead-in without re-rendering. Default 0
-              = clip starts from the beginning. */}
+          {/* cut start — trims the HEAD (ffmpeg inpoint). Buttons only. */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] text-text-secondary opacity-70">
-              skip start (head)
-            </span>
-            <div className="flex-1" />
             <span
               className="text-[10px] text-text-muted uppercase tracking-wider"
-              title="Skips this many seconds at the start of the shot clip; ffmpeg inpoint directive"
+              title="Trim seconds off the START of the shot (ffmpeg inpoint)"
             >
-              from start
+              cut start
             </span>
+            {currentTrimStart > 0 && (
+              <span className="text-[11px] text-text-secondary opacity-70 font-mono">
+                {currentTrimStart.toFixed(1)}s
+              </span>
+            )}
+            <div className="flex-1" />
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setTrimStart(currentShot.shot_id, currentTrimStart - 0.5)}
+              onClick={() => setTrimStart(currentShot.shot_id, currentTrimStart - SHOT_STEP)}
               disabled={currentTrimStart <= 0}
             >
               −0.5s
@@ -1396,22 +1377,63 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setTrimStart(currentShot.shot_id, currentTrimStart + 0.5)}
+              onClick={() => setTrimStart(currentShot.shot_id, currentTrimStart + SHOT_STEP)}
             >
               +0.5s
             </Button>
+          </div>
+          {/* cut end — trims the TAIL (drives duration_seconds / outpoint). */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="text-[10px] text-text-muted uppercase tracking-wider"
+              title="Trim seconds off the END of the shot (ffmpeg outpoint)"
+            >
+              cut end
+            </span>
+            <div className="flex-1" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDuration(currentShot.shot_id, currentTailDuration - SHOT_STEP)}
+              disabled={currentTailDuration <= MIN_SHOT_S}
+            >
+              −0.5s
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDuration(currentShot.shot_id, currentTailDuration + SHOT_STEP)}
+              disabled={currentTailDuration >= MAX_SHOT_S}
+            >
+              +0.5s
+            </Button>
+          </div>
+          {/* duration — net final-cut length (after both trims + clip clamp).
+              Editable: typing sets the shot length (tail / outpoint). */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="text-[10px] text-text-muted uppercase tracking-wider"
+              title="Net length that plays in the final cut (after cut start + cut end)"
+            >
+              duration
+            </span>
+            {excluded && (
+              <span className="text-[11px] font-medium" style={{ color: 'var(--accent-warning)' }}>
+                excluded (≤0.5s)
+              </span>
+            )}
+            <div className="flex-1" />
             <input
-              key={`${currentShot.shot_id}-trimStart-${currentTrimStart}`}
+              key={`${currentShot.shot_id}-dur-${currentNetDuration}`}
               type="number"
-              min={0}
-              max={30}
+              min={MIN_SHOT_S}
+              max={MAX_SHOT_S}
               step={0.1}
-              defaultValue={currentTrimStart.toFixed(1)}
+              defaultValue={currentNetDuration.toFixed(1)}
               onBlur={(e) => {
                 const v = parseFloat(e.target.value);
-                const safe = Number.isFinite(v) && v >= 0 ? v : 0;
-                if (Math.abs(safe - currentTrimStart) > 0.01) {
-                  setTrimStart(currentShot.shot_id, safe);
+                if (Number.isFinite(v) && v > 0 && Math.abs(v - currentNetDuration) > 0.01) {
+                  setDuration(currentShot.shot_id, v);
                 }
               }}
               onKeyDown={(e) => {
