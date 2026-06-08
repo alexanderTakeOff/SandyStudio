@@ -46,6 +46,14 @@ export interface FfmpegStitchInput {
     bytes: Buffer;
     /** Container hint — driven by source filename ext or content sniffing. */
     ext: 'mp3' | 'wav' | 'm4a' | 'aac';
+    // ── Director audio shaping (2026-06-06) ───────────────────────────────
+    // Mirrors the `AudioTrack` shaping fields from animatic-shotlist.ts; the
+    // EXEC-STITCH runner forwards them here so all `afade`/`atrim` filter
+    // construction lives in one place. All optional — absence = no transform.
+    fade_in_seconds?: number;
+    fade_out_seconds?: number;
+    trim_in_seconds?: number;
+    trim_out_seconds?: number;
   };
 }
 
@@ -56,6 +64,13 @@ export interface FfmpegStitchResult {
   sizeBytes: number;
   /** The exact ffmpeg command we ran — persisted in asset metadata for audit. */
   ffmpegCommand: string;
+  /**
+   * Final mp4 duration in seconds — probed via ffprobe on the output. Lets
+   * EXEC-STITCH persist the real cut length in VID-final_cut metadata
+   * (closing the audit gap where metadata was null after the first E02 run).
+   * Null when ffprobe is unavailable on PATH.
+   */
+  durationSeconds: number | null;
 }
 
 export class FfmpegStitchError extends Error {
@@ -91,6 +106,46 @@ async function probeFfmpegBinary(candidate: string): Promise<boolean> {
     proc.on('error', () => resolve(false));
     proc.on('exit', (code) => resolve(code === 0));
   });
+}
+
+/**
+ * 2026-06-06 — probe an mp4 file's duration via ffprobe. Used to stamp
+ * VID-final_cut metadata with the real assembled length (previously null in
+ * DB for the first E02 cut). Resolves the ffprobe binary the same way
+ * `resolveFfmpegPath` resolves ffmpeg: env override → PATH → winget canonical
+ * path. Throws if no ffprobe is reachable.
+ */
+async function probeMp4Duration(mp4Path: string): Promise<number | null> {
+  const candidates: string[] = [];
+  if (process.env.FFPROBE_PATH?.trim()) candidates.push(process.env.FFPROBE_PATH.trim());
+  candidates.push('ffprobe');
+  if (process.platform === 'win32') {
+    candidates.push(
+      'C:\\Program Files\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-7.1-full_build\\bin\\ffprobe.exe',
+    );
+  }
+  for (const bin of candidates) {
+    try {
+      const out = await new Promise<string>((resolve, reject) => {
+        let stdout = '';
+        const proc = spawn(bin, [
+          '-v', 'error',
+          '-show_entries', 'format=duration',
+          '-of', 'default=noprint_wrappers=1:nokey=1',
+          mp4Path,
+        ]);
+        proc.stdout.on('data', (chunk) => { stdout += String(chunk); });
+        proc.on('error', reject);
+        proc.on('exit', (code) => code === 0 ? resolve(stdout) : reject(new Error(`ffprobe exit ${code}`)));
+      });
+      const dur = parseFloat(out.trim());
+      if (Number.isFinite(dur) && dur > 0) return Math.round(dur * 1000) / 1000;
+      return null;
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
 }
 
 let cachedFfmpegPath: string | null | undefined = undefined;
@@ -298,6 +353,19 @@ export async function ffmpegStitchEpisode(
       // 2026-05-13 regression caught right after STITCH ran on E20.
       args.push('-stream_loop', '-1', '-i', musicPath);
     }
+    // 2026-06-06 — Director audio shaping. Pure builder (`buildMusicAudioFilter`)
+    // returns null when no shaping is requested → no flag means zero overhead,
+    // ffmpeg simply passes the audio through.
+    const totalVideoSeconds = input.shotMp4Bytes.reduce(
+      (acc, s) => acc + (s.durationSeconds ?? 0),
+      0,
+    );
+    const audioFilter = musicPath && input.music
+      ? buildMusicAudioFilter(input.music, totalVideoSeconds)
+      : null;
+    if (audioFilter) {
+      args.push('-filter:a', audioFilter);
+    }
     args.push(
       '-map',
       '0:v',
@@ -315,11 +383,25 @@ export async function ffmpegStitchEpisode(
       '+faststart',
     );
     if (musicPath) {
-      // With `-stream_loop -1` music is now infinite — switch the trim
-      // anchor to video duration (`-fflags +genpts` ensures concat output
-      // has clean PTS so ffmpeg's "shortest" math matches the actual
-      // stitched length, then `-shortest` truncates at the video end).
-      args.push('-shortest');
+      // 2026-06-06 — when music loops infinitely (`-stream_loop -1`), the
+      // video stream is the only finite track; without explicit `-t` ffmpeg
+      // would render forever. Compute the target total from the (already
+      // trimmed) per-shot durations and bind output length to that. This
+      // ALSO replaces the prior `-shortest` flag which produced an abrupt
+      // cut at the music end if shortest didn't behave as expected (Director
+      // saw the E02 final cut end "как обрыв"). Music fade-out is now
+      // pre-anchored in the audio filter (above) so the fade lands cleanly.
+      const totalVideoSeconds = input.shotMp4Bytes.reduce(
+        (acc, s) => acc + (s.durationSeconds ?? 0),
+        0,
+      );
+      if (totalVideoSeconds > 0) {
+        args.push('-t', totalVideoSeconds.toFixed(3));
+      } else {
+        // No per-shot durations supplied → fall back to legacy `-shortest`
+        // behaviour so we don't render forever on edge cases.
+        args.push('-shortest');
+      }
     }
     args.push(outPath);
 
@@ -329,10 +411,22 @@ export async function ffmpegStitchEpisode(
     const mp4Bytes = await fs.readFile(outPath);
     const ffmpegCommand = `ffmpeg ${args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`;
 
+    // 2026-06-06 — probe the actual output duration so VID-final_cut metadata
+    // carries it (Director hit a metadata=null case earlier today and we had
+    // no audit trail of the real cut length). Failure is non-fatal — we
+    // simply omit duration from the result.
+    let durationSeconds: number | null = null;
+    try {
+      durationSeconds = await probeMp4Duration(outPath);
+    } catch {
+      // ffprobe missing or output unparseable — leave null.
+    }
+
     return {
       mp4Base64: mp4Bytes.toString('base64'),
       sizeBytes: mp4Bytes.length,
       ffmpegCommand,
+      durationSeconds,
     };
   } finally {
     // Best-effort cleanup. Don't throw on cleanup failures.
@@ -353,6 +447,60 @@ export interface ConcatShotEntry {
    * many seconds. Omit (or pass 0/undefined) to use the input's native length.
    */
   durationSeconds?: number;
+}
+
+/**
+ * Build the music-track audio filter chain for ffmpeg's `-filter:a` flag.
+ * Pure function — exposed for unit tests.
+ *
+ * Order matters: `atrim` cuts the source first so subsequent fades anchor to
+ * the trimmed window. `afade=t=out` needs an explicit start timestamp (`st=`)
+ * because we strip `-shortest` when the music loops infinitely; the start is
+ * derived from the total stitched video duration (= sum of per-shot trimmed
+ * durations) minus the requested fade length.
+ *
+ * Returns `null` when no shaping is requested — the caller then omits the
+ * `-filter:a` flag entirely and ffmpeg passes the audio through.
+ *
+ * 2026-06-06 — added alongside the animatic = final-cut consolidation fix
+ * after Director hit "конец как обрыв" on the first E02 final cut.
+ */
+export function buildMusicAudioFilter(
+  music: {
+    fade_in_seconds?: number;
+    fade_out_seconds?: number;
+    trim_in_seconds?: number;
+    trim_out_seconds?: number;
+  },
+  totalVideoSeconds: number,
+): string | null {
+  const segments: string[] = [];
+  const trimIn = music.trim_in_seconds;
+  const trimOut = music.trim_out_seconds;
+  if (
+    (typeof trimIn === 'number' && trimIn > 0) ||
+    (typeof trimOut === 'number' && trimOut > 0)
+  ) {
+    const parts: string[] = [];
+    if (typeof trimIn === 'number' && trimIn > 0) parts.push(`start=${trimIn}`);
+    if (typeof trimOut === 'number' && trimOut > 0) parts.push(`end=${trimOut}`);
+    segments.push(`atrim=${parts.join(':')}`);
+    segments.push('asetpts=PTS-STARTPTS');
+  }
+  if (typeof music.fade_in_seconds === 'number' && music.fade_in_seconds > 0) {
+    segments.push(`afade=t=in:d=${music.fade_in_seconds}`);
+  }
+  if (
+    typeof music.fade_out_seconds === 'number' &&
+    music.fade_out_seconds > 0 &&
+    totalVideoSeconds > music.fade_out_seconds
+  ) {
+    const startAt = totalVideoSeconds - music.fade_out_seconds;
+    segments.push(
+      `afade=t=out:st=${startAt.toFixed(3)}:d=${music.fade_out_seconds}`,
+    );
+  }
+  return segments.length > 0 ? segments.join(',') : null;
 }
 
 /**

@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildConcatList,
   buildFfmpegArgs,
+  buildMusicAudioFilter,
 } from '@/lib/agents/providers/ffmpeg-stitch';
 
 describe('buildConcatList', () => {
@@ -144,5 +145,64 @@ describe('buildFfmpegArgs', () => {
   it('places output path last (ffmpeg argv convention)', () => {
     const args = buildFfmpegArgs({ listPath, outPath, musicPath: null });
     expect(args[args.length - 1]).toBe(outPath);
+  });
+});
+
+describe('buildMusicAudioFilter — Director audio shaping (2026-06-06)', () => {
+  // Closes the "конец как обрыв" feedback on the first E02 final cut. The
+  // filter chain string is what ffmpeg sees behind `-filter:a`; the test
+  // doesn't run ffmpeg, just asserts the canonical filter shape.
+
+  it('returns null when no shaping requested — caller omits -filter:a entirely', () => {
+    expect(buildMusicAudioFilter({}, 60)).toBeNull();
+  });
+
+  it('emits afade=t=in only when fade_in_seconds > 0', () => {
+    const f = buildMusicAudioFilter({ fade_in_seconds: 2 }, 60);
+    expect(f).toBe('afade=t=in:d=2');
+  });
+
+  it('anchors afade=t=out to (total - fade_out_seconds) so the fade lands at video end', () => {
+    const f = buildMusicAudioFilter({ fade_out_seconds: 1.5 }, 72.125);
+    // 72.125 - 1.5 = 70.625
+    expect(f).toBe('afade=t=out:st=70.625:d=1.5');
+  });
+
+  it('skips fade-out when totalVideoSeconds <= fade duration (no room to fade)', () => {
+    // Edge case: a 1s video with a 2s fade can't fit — we just skip it
+    // rather than emit a nonsense negative st= value.
+    expect(buildMusicAudioFilter({ fade_out_seconds: 2 }, 1)).toBeNull();
+  });
+
+  it('emits atrim with asetpts=PTS-STARTPTS so fades anchor to the trimmed window', () => {
+    const f = buildMusicAudioFilter(
+      { trim_in_seconds: 5, trim_out_seconds: 30 },
+      20,
+    );
+    expect(f).toBe('atrim=start=5:end=30,asetpts=PTS-STARTPTS');
+  });
+
+  it('combines trim + fade-in + fade-out in canonical order (trim first, then fades)', () => {
+    const f = buildMusicAudioFilter(
+      {
+        trim_in_seconds: 5,
+        trim_out_seconds: 50,
+        fade_in_seconds: 2,
+        fade_out_seconds: 1.5,
+      },
+      72.125,
+    );
+    expect(f).toBe(
+      'atrim=start=5:end=50,asetpts=PTS-STARTPTS,afade=t=in:d=2,afade=t=out:st=70.625:d=1.5',
+    );
+  });
+
+  it('zero / negative values are ignored (treated as "no shaping for this control")', () => {
+    expect(
+      buildMusicAudioFilter(
+        { fade_in_seconds: 0, fade_out_seconds: 0, trim_in_seconds: 0 },
+        60,
+      ),
+    ).toBeNull();
   });
 });

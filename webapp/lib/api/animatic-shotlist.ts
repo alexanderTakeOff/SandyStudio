@@ -57,6 +57,19 @@ export interface AudioTrack {
   muted?: boolean;
   /** Optional offset in seconds — track starts at this point in the timeline. */
   start_at_seconds?: number;
+  // ── Director-editable shaping (2026-06-06) ────────────────────────────────
+  // Mirrors the per-shot `director_overrides` pattern: small optional fields
+  // persisted in-place on the asset; EXEC-STITCH translates them into ffmpeg
+  // `afade` / `atrim` filters at assembly time. Closes Director's "конец как
+  // обрыв" feedback on the first E02 final cut.
+  /** Seconds of audio fade-in at the start (afade=t=in:d=N). Default 0. */
+  fade_in_seconds?: number;
+  /** Seconds of audio fade-out at the end (afade=t=out:d=N). Default 0. */
+  fade_out_seconds?: number;
+  /** Seconds to skip from the start of the source (atrim=start=N). Default 0. */
+  trim_in_seconds?: number;
+  /** Seconds at which to stop reading the source (atrim=end=N). Default: full length. */
+  trim_out_seconds?: number;
 }
 
 /**
@@ -134,13 +147,34 @@ export function effectiveDurationSeconds(
 
 /**
  * Recompute the total runtime by summing per-shot durations (with overrides).
+ *
+ * 2026-06-06 — accepts an optional `clipLengths` map (shot_id → real VID-shot
+ * duration). When passed, each effective per-shot duration is clamped to
+ * `min(override, clipLength)` — ffmpeg's `outpoint` directive in EXEC-STITCH
+ * does the same clamp by definition, so the AnimaticPlayer total now reports
+ * the honest final-cut length instead of an unreachable animatic-declared
+ * length (Director's "1:40 vs 1:12" confusion).
+ *
+ * Without `clipLengths` the function behaves exactly as before
+ * (backward-compat for any caller that doesn't have VID asset metadata).
+ *
+ * Shots whose effective duration is ≤ 0.5s are SKIPPED — the same threshold
+ * EXEC-STITCH uses to exclude shots from the final cut, so the timeline
+ * total matches what ffmpeg will actually emit.
  */
 export function computeTotalDuration(
   shotList: AnimaticShot[],
   overrides: Record<string, AnimaticDirectorOverride> | undefined,
+  clipLengths?: ReadonlyMap<string, number>,
 ): number {
   let total = 0;
-  for (const s of shotList) total += effectiveDurationSeconds(s, overrides);
+  for (const s of shotList) {
+    const effective = effectiveDurationSeconds(s, overrides);
+    if (effective <= 0.5) continue; // skipped — see EXEC-STITCH exclusion
+    const clip = clipLengths?.get(s.shot_id);
+    const clamped = typeof clip === 'number' && clip > 0 ? Math.min(effective, clip) : effective;
+    total += clamped;
+  }
   return Math.round(total * 100) / 100;
 }
 

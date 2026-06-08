@@ -33,18 +33,40 @@ import {
   computeTotalDuration,
   type AnimaticContract,
   type AnimaticDirectorOverride,
+  type AudioTrack,
 } from '@/lib/api/animatic-shotlist';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// 2026-06-06 — extend in-place to also persist Director's audio shaping
+// (fade-in/out + trim per track). Mirrors the per-shot overrides pattern; we
+// reuse this single PATCH endpoint instead of forking /update-audio-tracks
+// (anti-additivity). `overrides` may now be empty when only audio is edited.
+const AudioTrackSchema = z.object({
+  layer: z.enum(['music', 'voice', 'sfx', 'ambience']),
+  url: z.string(),
+  filename: z.string(),
+  volume: z.number().min(0).max(1).optional(),
+  muted: z.boolean().optional(),
+  start_at_seconds: z.number().min(0).optional(),
+  fade_in_seconds: z.number().min(0).max(30).optional(),
+  fade_out_seconds: z.number().min(0).max(30).optional(),
+  trim_in_seconds: z.number().min(0).optional(),
+  trim_out_seconds: z.number().positive().optional(),
+});
+
 const Body = z.object({
-  overrides: z.record(
-    z.string(),
-    z.object({
-      duration_seconds: z.number().positive().max(60),
-    }),
-  ),
+  overrides: z
+    .record(
+      z.string(),
+      z.object({
+        duration_seconds: z.number().positive().max(60),
+      }),
+    )
+    .optional()
+    .default({}),
+  audio_tracks: z.array(AudioTrackSchema).optional(),
   directorConfirm: z.boolean().optional(),
 });
 
@@ -147,10 +169,17 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   }
 
   const newTotal = computeTotalDuration(v1.shot_list, mergedOverrides);
+  // 2026-06-06 — replace audio_tracks wholesale when supplied. Director edits
+  // in the AnimaticPlayer fan out as a complete replacement list (same
+  // pattern as `overrides`, just whole-array since track count is small).
+  const newAudioTracks: AudioTrack[] | undefined = body.audio_tracks
+    ? (body.audio_tracks as AudioTrack[])
+    : v1.audio_tracks;
   const newV1: AnimaticContract = {
     ...v1,
     director_overrides: mergedOverrides,
     total_duration: newTotal,
+    ...(newAudioTracks !== undefined ? { audio_tracks: newAudioTracks } : {}),
   };
   const newMeta = { ...metaRaw, animatic_v1: newV1 };
 

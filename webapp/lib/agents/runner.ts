@@ -2442,6 +2442,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         durationSeconds: number;
       }> = [];
       const missing: string[] = [];
+      // 2026-06-06 — track which shots Director excluded via the ≤0.5s
+      // duration threshold (Path A from the plan). Reported in metadata so
+      // it's auditable; absence from `orderedShots` is what actually skips
+      // the ffmpeg concat.
+      const excludedShots: string[] = [];
       for (const shot of shotList) {
         const found = byShotId.get(shot.shot_id);
         if (!found || (!found.stagingPath && !found.url)) {
@@ -2451,6 +2456,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         const ov = overrides[shot.shot_id]?.duration_seconds;
         const effectiveDuration =
           typeof ov === 'number' && ov > 0 ? ov : shot.duration_seconds;
+        // 2026-06-06 — Path A shot exclusion: a Director override at or
+        // below 0.5s means "skip this shot from the final cut". Same
+        // threshold the AnimaticPlayer uses to dim the cell visually.
+        if (effectiveDuration <= 0.5) {
+          excludedShots.push(shot.shot_id);
+          continue;
+        }
         orderedShots.push({
           shotId: shot.shot_id,
           assetId: found.id,
@@ -2563,10 +2575,31 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         if (audMusic?.id) musicAssetId = audMusic.id;
       }
 
+      // 2026-06-06 — forward Director audio shaping (fade-in/out + trim)
+      // from the animatic music track to ffmpeg's filter graph. Optional
+      // fields, no transform applied when absent.
+      const musicWithShaping = musicInput
+        ? {
+            ...musicInput,
+            ...(typeof musicTrack?.fade_in_seconds === 'number'
+              ? { fade_in_seconds: musicTrack.fade_in_seconds }
+              : {}),
+            ...(typeof musicTrack?.fade_out_seconds === 'number'
+              ? { fade_out_seconds: musicTrack.fade_out_seconds }
+              : {}),
+            ...(typeof musicTrack?.trim_in_seconds === 'number'
+              ? { trim_in_seconds: musicTrack.trim_in_seconds }
+              : {}),
+            ...(typeof musicTrack?.trim_out_seconds === 'number'
+              ? { trim_out_seconds: musicTrack.trim_out_seconds }
+              : {}),
+          }
+        : undefined;
+
       // 5. Run ffmpeg.
       const stitched = await ffmpegStitchEpisode({
         shotMp4Bytes,
-        ...(musicInput ? { music: musicInput } : {}),
+        ...(musicWithShaping ? { music: musicWithShaping } : {}),
       });
 
       // 6. Persist.
@@ -2589,9 +2622,16 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           metadata: metadataFromPersisted(persisted, {
             agent_id: agentId,
             shot_ids: orderedShots.map((s) => s.shotId),
+            // 2026-06-06 — surface excluded shots in metadata so audit can
+            // tell why the final cut length differs from the shot_list
+            // length without digging into individual director_overrides.
+            excluded_shot_ids: excludedShots,
             music_asset_id: musicAssetId,
             ffmpeg_command: stitched.ffmpegCommand,
             size_bytes: stitched.sizeBytes,
+            // 2026-06-06 — probed output duration so VID-final_cut row no
+            // longer ships with metadata.duration_seconds = undefined.
+            duration_seconds: stitched.durationSeconds,
             assembled_at: new Date().toISOString(),
           }),
         },

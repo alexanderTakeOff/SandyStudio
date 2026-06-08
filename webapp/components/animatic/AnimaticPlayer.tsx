@@ -133,22 +133,54 @@ export interface AnimaticPlayerHandle {
 
 interface ShotTime {
   shot: AnimaticShot;
-  duration: number;       // effective (override applied)
+  duration: number;       // effective (override applied, clamped to clip length)
   cumStart: number;       // cumulative start (s) from t=0
+  /** True when this shot is excluded from the final cut (effective <= 0.5s). */
+  excluded: boolean;
 }
 
+/**
+ * 2026-06-06 — accepts `clipLengths` (shot_id → real VID-shot duration). When
+ * passed, each per-shot duration is clamped to `min(override, clipLength)` so
+ * the timeline reports the HONEST final-cut layout instead of an unreachable
+ * animatic-declared length (closes Director's "animatic 1:40 vs final cut
+ * 1:12" confusion). Shots whose effective duration is ≤ 0.5s are still placed
+ * in `times` (so the cell count stays stable in the UI) but flagged
+ * `excluded` and contribute zero to the total — same threshold EXEC-STITCH
+ * uses to skip from the final cut.
+ */
 function buildTimeline(
   shotList: AnimaticShot[],
   overrides: Record<string, AnimaticDirectorOverride> | undefined,
-): { times: ShotTime[]; total: number } {
+  clipLengths?: ReadonlyMap<string, number>,
+): { times: ShotTime[]; total: number; visualSpan: number } {
   const times: ShotTime[] = [];
-  let cum = 0;
+  // Visual cumulative — used to lay out cells in the strip. Includes a
+  // minimum width for excluded cells so they remain clickable (the cell
+  // count must stay stable in the UI even when shots are skipped from the
+  // final cut). `total` (returned + used for progress) counts ONLY included
+  // shots so the progress bar matches what EXEC-STITCH will actually emit.
+  const EXCLUDED_VISUAL_SECONDS = 1.5; // ~enough to dim + click in the strip
+  let visualCum = 0;
+  let realTotal = 0;
   for (const shot of shotList) {
-    const duration = effectiveDurationSeconds(shot, overrides);
-    times.push({ shot, duration, cumStart: cum });
-    cum += duration;
+    const effective = effectiveDurationSeconds(shot, overrides);
+    const clip = clipLengths?.get(shot.shot_id);
+    const clamped = typeof clip === 'number' && clip > 0 ? Math.min(effective, clip) : effective;
+    const excluded = clamped <= 0.5;
+    const visualDuration = excluded ? EXCLUDED_VISUAL_SECONDS : clamped;
+    times.push({ shot, duration: visualDuration, cumStart: visualCum, excluded });
+    visualCum += visualDuration;
+    if (!excluded) realTotal += clamped;
   }
-  return { times, total: Math.round(cum * 100) / 100 };
+  // total = honest playback / final-cut length (for progress display); visualSpan
+  // = sum of strip cell widths (for per-cell left/width %). Most of the time
+  // the two are identical — they diverge only when some shots are excluded.
+  return {
+    times,
+    total: Math.round(realTotal * 100) / 100,
+    visualSpan: Math.round(visualCum * 100) / 100,
+  };
 }
 
 function fmt(t: number): string {
@@ -262,9 +294,6 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       setApproveBusyId(null);
     }
   }
-  // Multi-track audio (forward-compat per directive #4 — reads `audio_tracks[]`
-  // when present, falls back to legacy `music_url` single track for v1 assets).
-  const audioTracks: AudioTrack[] = useMemo(() => getAudioTracks(contract), [contract]);
   // Local copy of overrides so Director can edit live without round-tripping
   // to DB on every click. Saved via Save Timing button.
   const [overrides, setOverrides] = useState<Record<string, AnimaticDirectorOverride>>(
@@ -272,15 +301,42 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   );
   const [dirty, setDirty] = useState(false);
 
+  // 2026-06-06 — local copy of audio tracks. Director can tweak fade-in/out
+  // + trim on the music row; the same /animatic-timing PATCH persists both
+  // shot overrides and full audio_tracks[] (anti-additive — one save path).
+  // Forward-compat per directive #4: reads `audio_tracks[]` when present,
+  // falls back to legacy `music_url` single track for v1 assets.
+  const [audioTracksLocal, setAudioTracksLocal] = useState<AudioTrack[]>(
+    () => getAudioTracks(contract),
+  );
+  const audioTracks: AudioTrack[] = audioTracksLocal;
+
   // Re-seed overrides whenever the asset row changes (e.g. parent SWR refetch).
   useEffect(() => {
     setOverrides({ ...(contract.director_overrides ?? {}) });
+    setAudioTracksLocal(getAudioTracks(contract));
     setDirty(false);
   }, [contract]);
 
-  const { times, total } = useMemo(
-    () => buildTimeline(contract.shot_list, overrides),
-    [contract.shot_list, overrides],
+  // 2026-06-06 — build a shot_id → real VID-shot duration map from the
+  // already-fetched vidShotsByShotId (no extra fetch). Used by buildTimeline
+  // to clamp each per-shot duration to the actual clip length so the
+  // timeline reflects the honest final-cut layout, not the unreachable
+  // animatic-declared one.
+  const clipLengths = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [shotId, rows] of vidShotsByShotId) {
+      const latest = rows[0];
+      const meta = latest?.metadata as { duration_seconds?: unknown } | null;
+      const dur = meta?.duration_seconds;
+      if (typeof dur === 'number' && dur > 0) map.set(shotId, dur);
+    }
+    return map;
+  }, [vidShotsByShotId]);
+
+  const { times, total, visualSpan } = useMemo(
+    () => buildTimeline(contract.shot_list, overrides, clipLengths),
+    [contract.shot_list, overrides, clipLengths],
   );
 
   // Playback state
@@ -453,7 +509,14 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       const res = await fetch(`/api/assets/${assetId}/animatic-timing`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ overrides: overridesPayload, directorConfirm: true }),
+        // 2026-06-06 — also persist Director's audio shaping (fade/trim) when
+        // the local copy has been edited. Server merges in place onto
+        // metadata.animatic_v1.audio_tracks (route extended same day).
+        body: JSON.stringify({
+          overrides: overridesPayload,
+          audio_tracks: audioTracksLocal,
+          directorConfirm: true,
+        }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -466,7 +529,22 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     } finally {
       setSavingTiming(false);
     }
-  }, [assetId, onChanged, overrides]);
+  }, [assetId, onChanged, overrides, audioTracksLocal]);
+
+  // 2026-06-06 — mutate a single audio track in-place and mark dirty so the
+  // existing "Save timing" button picks it up (anti-additive — one save
+  // path for both shot timing and audio shaping).
+  const updateAudioTrack = useCallback(
+    (index: number, patch: Partial<AudioTrack>) => {
+      setAudioTracksLocal((prev) => {
+        const next = [...prev];
+        if (next[index]) next[index] = { ...next[index], ...patch };
+        return next;
+      });
+      setDirty(true);
+    },
+    [],
+  );
 
   // ── Approve / Reject — fires the same /approve route the drawer footer uses,
   // which in turn triggers `computeNextEvents` to emit VGEN×3 + MGEN events
@@ -534,7 +612,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
 
   const currentShot = times[currentIndex]?.shot;
   const currentDuration = times[currentIndex]?.duration ?? 0;
-  const newTotal = computeTotalDuration(contract.shot_list, overrides);
+  // 2026-06-06 — pass clipLengths so the displayed total reflects the
+  // HONEST final-cut duration (clamped to actual VID-shot lengths) instead
+  // of unreachable animatic-declared durations.
+  const newTotal = computeTotalDuration(contract.shot_list, overrides, clipLengths);
 
   // In hybrid mode, the cell index corresponds 1:1 with shot index — fetch the
   // resolved cell for the current frame so we can decide between <img> / <video>
@@ -760,6 +841,89 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                   className="w-full"
                   style={{ height: 32 }}
                 />
+                {/* 2026-06-06 — Director audio shaping (music track only).
+                    Inline fade-in / fade-out + trim controls. Persist via
+                    the same "Save timing" button (sets dirty on edit). */}
+                {track.layer === 'music' && (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-text-secondary px-1 pt-1">
+                    <label className="flex items-center gap-1.5">
+                      <span className="opacity-70">Fade in</span>
+                      <input
+                        key={`${track.url}-fadeIn-${track.fade_in_seconds ?? 0}`}
+                        type="number"
+                        min={0}
+                        max={30}
+                        step={0.1}
+                        defaultValue={(track.fade_in_seconds ?? 0).toFixed(1)}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value);
+                          const safe = Number.isFinite(v) && v >= 0 ? Math.min(v, 30) : 0;
+                          updateAudioTrack(i, { fade_in_seconds: safe > 0 ? safe : undefined });
+                        }}
+                        className="w-14 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-glass text-right font-mono"
+                      />
+                      <span className="opacity-50">s</span>
+                    </label>
+                    <label className="flex items-center gap-1.5">
+                      <span className="opacity-70">Fade out</span>
+                      <input
+                        key={`${track.url}-fadeOut-${track.fade_out_seconds ?? 0}`}
+                        type="number"
+                        min={0}
+                        max={30}
+                        step={0.1}
+                        defaultValue={(track.fade_out_seconds ?? 0).toFixed(1)}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value);
+                          const safe = Number.isFinite(v) && v >= 0 ? Math.min(v, 30) : 0;
+                          updateAudioTrack(i, { fade_out_seconds: safe > 0 ? safe : undefined });
+                        }}
+                        className="w-14 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-glass text-right font-mono"
+                      />
+                      <span className="opacity-50">s</span>
+                    </label>
+                    <label className="flex items-center gap-1.5">
+                      <span className="opacity-70">Trim start</span>
+                      <input
+                        key={`${track.url}-trimIn-${track.trim_in_seconds ?? 0}`}
+                        type="number"
+                        min={0}
+                        step={0.1}
+                        defaultValue={(track.trim_in_seconds ?? 0).toFixed(1)}
+                        onBlur={(e) => {
+                          const v = parseFloat(e.target.value);
+                          const safe = Number.isFinite(v) && v >= 0 ? v : 0;
+                          updateAudioTrack(i, { trim_in_seconds: safe > 0 ? safe : undefined });
+                        }}
+                        className="w-16 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-glass text-right font-mono"
+                      />
+                      <span className="opacity-50">s</span>
+                    </label>
+                    <label className="flex items-center gap-1.5">
+                      <span className="opacity-70">Trim end</span>
+                      <input
+                        key={`${track.url}-trimOut-${track.trim_out_seconds ?? ''}`}
+                        type="number"
+                        min={0}
+                        step={0.1}
+                        placeholder="full"
+                        defaultValue={typeof track.trim_out_seconds === 'number' ? track.trim_out_seconds.toFixed(1) : ''}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim();
+                          if (raw === '') {
+                            updateAudioTrack(i, { trim_out_seconds: undefined });
+                            return;
+                          }
+                          const v = parseFloat(raw);
+                          const safe = Number.isFinite(v) && v > 0 ? v : undefined;
+                          updateAudioTrack(i, { trim_out_seconds: safe });
+                        }}
+                        className="w-16 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-glass text-right font-mono"
+                      />
+                      <span className="opacity-50">s</span>
+                    </label>
+                  </div>
+                )}
               </div>
             );
           })
@@ -801,8 +965,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           style={{ height: 44, background: 'var(--bg-elevated)' }}
         >
           {times.map((t, i) => {
-            const widthPct = total > 0 ? (t.duration / total) * 100 : 0;
-            const leftPct = total > 0 ? (t.cumStart / total) * 100 : 0;
+            // Layout uses visualSpan (includes a minimum width for excluded
+            // cells); progress cursor (below) uses `total` (honest playback).
+            const widthPct = visualSpan > 0 ? (t.duration / visualSpan) * 100 : 0;
+            const leftPct = visualSpan > 0 ? (t.cumStart / visualSpan) * 100 : 0;
             const isCurrent = i === currentIndex;
             const cell = timelineCells[i];
             const cellMatchesFilter =
@@ -829,10 +995,16 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                 style={{
                   left: `${leftPct}%`,
                   width: `${widthPct}%`,
-                  opacity: cellMatchesFilter ? 1 : 0.25,
+                  // 2026-06-06 — excluded cells (effective ≤ 0.5s, skipped by
+                  // EXEC-STITCH) are dimmed AND get a strikethrough so Director
+                  // sees they won't appear in the final cut, but the cell stays
+                  // clickable and the numbering is stable.
+                  opacity: t.excluded ? 0.35 : cellMatchesFilter ? 1 : 0.25,
+                  textDecoration: t.excluded ? 'line-through' : undefined,
                 }}
                 onMouseEnter={() => setHoveredCellIdx(i)}
                 onMouseLeave={() => setHoveredCellIdx(null)}
+                title={t.excluded ? `${t.shot.shot_id} — excluded from final cut (≤0.5s)` : undefined}
               >
                 <button
                   onClick={() => seekTo(t.cumStart)}
@@ -996,11 +1168,13 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
               </div>
             );
           })}
-          {/* Cursor */}
+          {/* Cursor — positioned on the visual strip, so use visualSpan
+              (includes excluded cells' minimum width). currentT is bounded by
+              total (honest playback length); we just rescale to strip coords. */}
           <div
             className="absolute top-0 h-full pointer-events-none"
             style={{
-              left: total > 0 ? `${(currentT / total) * 100}%` : '0%',
+              left: visualSpan > 0 ? `${(currentT / visualSpan) * 100}%` : '0%',
               width: 2,
               background: 'var(--accent-primary)',
               boxShadow: '0 0 8px var(--accent-primary)',
