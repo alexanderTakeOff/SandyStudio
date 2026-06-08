@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest';
 import {
   computeTotalDuration,
   computeEffectivePlayback,
+  clipLengthsFromVidShotRows,
   type AnimaticShot,
   type AnimaticDirectorOverride,
 } from '@/lib/api/animatic-shotlist';
@@ -128,5 +129,40 @@ describe('computeTotalDuration — clipLengths clamp + ≤0.5s exclusion', () =>
     };
     const clipLengths = new Map<string, number>([['SH02', 4]]);
     expect(computeEffectivePlayback(list[1]!, overrides, clipLengths)).toBe(0);
+  });
+});
+
+// 2026-06-08 — the shared clipLengths builder now used by AnimaticPlayer, the
+// /animatic-timing route AND EXEC-STITCH, so all three clamp to the same real
+// clip lengths (closes the timeline-60s vs Save-76.5s vs final-cut divergence).
+describe('clipLengthsFromVidShotRows', () => {
+  it('builds shot_id → duration from VID-shot metadata', () => {
+    const map = clipLengthsFromVidShotRows([
+      { metadata: { shot_id: 'SH01', duration_seconds: 4 } },
+      { metadata: { shot_id: 'SH02', duration_seconds: 5.5 } },
+    ]);
+    expect(map.get('SH01')).toBe(4);
+    expect(map.get('SH02')).toBe(5.5);
+    expect(map.size).toBe(2);
+  });
+
+  it('keeps the FIRST positive duration per shot_id (caller passes newest first)', () => {
+    const map = clipLengthsFromVidShotRows([
+      { metadata: { shot_id: 'SH01', duration_seconds: 4 } }, // newest
+      { metadata: { shot_id: 'SH01', duration_seconds: 9 } }, // older — ignored
+    ]);
+    expect(map.get('SH01')).toBe(4);
+    expect(map.size).toBe(1);
+  });
+
+  it('skips rows with missing / non-positive / malformed metadata', () => {
+    const map = clipLengthsFromVidShotRows([
+      { metadata: { shot_id: 'SH01', duration_seconds: 0 } }, // non-positive
+      { metadata: { shot_id: 'SH02' } }, // no duration
+      { metadata: { duration_seconds: 3 } }, // no shot_id
+      { metadata: null },
+      {},
+    ]);
+    expect(map.size).toBe(0);
   });
 });

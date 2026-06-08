@@ -227,6 +227,31 @@ export function computeTotalDuration(
   return Math.round(total * 100) / 100;
 }
 
+/**
+ * 2026-06-08 — single source of truth for the `shot_id → real clip duration`
+ * map used to clamp per-shot playback to actual VID-shot lengths. Previously
+ * built ad-hoc in three places (AnimaticPlayer, /animatic-timing route,
+ * EXEC-STITCH) which let the UI clamp (≈60s) while Save persisted the unclamped
+ * total (76.5s) and stitch did a third thing — the same number disagreeing
+ * across layers. Reads `metadata.shot_id` + `metadata.duration_seconds` from
+ * APPROVED VID-shot rows. Keeps the FIRST positive duration seen per shot_id,
+ * so callers should pass rows newest-version-first (or one row per shot).
+ */
+export function clipLengthsFromVidShotRows(
+  rows: ReadonlyArray<{ metadata?: unknown }>,
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    const meta = (row?.metadata ?? {}) as { shot_id?: unknown; duration_seconds?: unknown };
+    const sid = meta.shot_id;
+    const dur = meta.duration_seconds;
+    if (typeof sid === 'string' && typeof dur === 'number' && dur > 0 && !map.has(sid)) {
+      map.set(sid, dur);
+    }
+  }
+  return map;
+}
+
 // ── Storyboard v2 parsing ──────────────────────────────────────────────────────
 
 interface StoryboardShotV2 {

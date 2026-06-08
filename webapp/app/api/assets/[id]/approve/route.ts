@@ -404,6 +404,23 @@ function resolveSlotDescriptor(asset: AssetForSlot): SlotDescriptor | null {
     }
   }
 
+  // ── VID-animatic: ONE approved animatic per episode. Approving a new one
+  // supersedes every prior APPROVED animatic. 2026-06-08 — without this slot,
+  // v06 stayed APPROVED after v07 was approved, so EXEC-STITCH (which loads all
+  // APPROVED animatics unordered) could stitch the STALE v06 while Director
+  // edited v07 → every re-render was byte-identical. The stitch-picks-newest
+  // guard in runner.ts is the belt; this slot is the suspenders (keeps the DB
+  // to a single APPROVED animatic, which gates + critic also assume).
+  if (ft.startsWith('VID-animatic')) {
+    return {
+      ...base,
+      fileTypeLike: 'VID-animatic%',
+      matches: (_meta, candidateFileType) =>
+        typeof candidateFileType === 'string' &&
+        candidateFileType.startsWith('VID-animatic'),
+    };
+  }
+
   return null;
 }
 

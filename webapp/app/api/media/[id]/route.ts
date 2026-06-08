@@ -41,15 +41,22 @@ const DEFAULT_THUMB_WIDTH = 64;
 const MIN_THUMB_WIDTH = 16;
 const MAX_THUMB_WIDTH = 512;
 
-// A canonical SS filename carries a `-v<NN>-` version token, so its bytes are
-// immutable for that name — safe to cache for a year. Anything else gets a short
-// revalidating TTL.
+// A canonical SS filename carries a `-v<NN>-` version token AND a status token.
+// Only FINALIZED bytes (APPROVED / LOCKED) are truly immutable — safe to cache
+// for a year. DRAFT / REVIEW / REVISION files can be overwritten in place (a
+// re-stitched final cut keeps the same `-vNN-DRAFT-` name), so caching them as
+// `immutable` made the browser serve a year-stale copy no matter how many times
+// Director re-rendered (the "final cut never changes" bug, 2026-06-08). Those
+// revalidate via ETag instead. Anything unversioned also gets the short TTL.
 const VERSION_TOKEN = /-v\d+-/i;
+const FINAL_STATUS_TOKEN = /-(APPROVED|LOCKED)\.[A-Za-z0-9]+$/i;
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 const REVALIDATE_CACHE = 'public, max-age=3600';
 
 function cacheControlForFilename(filename: string): string {
-  return VERSION_TOKEN.test(filename) ? IMMUTABLE_CACHE : REVALIDATE_CACHE;
+  return VERSION_TOKEN.test(filename) && FINAL_STATUS_TOKEN.test(filename)
+    ? IMMUTABLE_CACHE
+    : REVALIDATE_CACHE;
 }
 
 /** Weak-ish strong ETag from identity bytes (filename + size + mtime). */

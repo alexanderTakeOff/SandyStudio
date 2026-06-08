@@ -126,6 +126,15 @@ async function probeFfmpegBinary(candidate: string): Promise<boolean> {
 async function probeMp4Duration(mp4Path: string): Promise<number | null> {
   const candidates: string[] = [];
   if (process.env.FFPROBE_PATH?.trim()) candidates.push(process.env.FFPROBE_PATH.trim());
+  // 2026-06-08 — derive ffprobe from the RESOLVED ffmpeg path: ffprobe ships in
+  // the same bin/ dir. The hardcoded winget candidate below was pinned to
+  // ffmpeg-7.1 while resolveFfmpegPath finds ffmpeg-8.1.1 under a different
+  // root, so ffprobe was never found → final_cut metadata.duration_seconds was
+  // null on every render (Director's missing-duration audit gap).
+  const resolvedFfmpeg = await resolveFfmpegPath();
+  if (resolvedFfmpeg && /ffmpeg(\.exe)?$/i.test(resolvedFfmpeg)) {
+    candidates.push(resolvedFfmpeg.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1'));
+  }
   candidates.push('ffprobe');
   if (process.platform === 'win32') {
     candidates.push(

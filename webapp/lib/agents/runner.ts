@@ -46,6 +46,8 @@ import {
 import {
   getAudioTracks,
   isAnimaticV1,
+  computeEffectivePlayback,
+  clipLengthsFromVidShotRows,
   type AnimaticContract,
 } from '../api/animatic-shotlist';
 import { ffmpegStitchEpisode } from './providers/ffmpeg-stitch';
@@ -2358,17 +2360,27 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         id: string;
         file_type: string;
         status?: string;
+        version?: number | null;
         metadata?: unknown;
         drive_path?: string | null;
         staging_path?: string | null;
         drive_web_view_url?: string | null;
       }>;
-      const animaticAsset = upstream.find(
-        (a) =>
-          a.file_type === 'VID-animatic' &&
-          a.status === 'APPROVED' &&
-          isAnimaticV1(a.metadata),
-      );
+      // 2026-06-08 — pick the NEWEST approved animatic, not the first match.
+      // loadAgentInputs loads ALL APPROVED assets unordered; when two animatics
+      // are APPROVED at once (e.g. v06 stayed APPROVED after v07 was approved),
+      // `.find()` non-deterministically grabbed the STALE one — so Director's
+      // timeline edits (which land in the newest animatic) never reached the
+      // final cut and every re-stitch produced a byte-identical render. Sort by
+      // version desc (then keep insertion order as tiebreak) and take the top.
+      const animaticAsset = upstream
+        .filter(
+          (a) =>
+            a.file_type === 'VID-animatic' &&
+            a.status === 'APPROVED' &&
+            isAnimaticV1(a.metadata),
+        )
+        .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
       if (!animaticAsset) {
         throw new Error('EXEC-STITCH: no APPROVED VID-animatic with animatic@v1 found in upstream');
       }
@@ -2384,8 +2396,18 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         .select('id,file_type,status,version,created_at,drive_path,staging_path,drive_web_view_url,metadata')
         .eq('episode_id', episodeId)
         .like('file_type', 'VID-shot%')
-        .eq('status', 'APPROVED');
+        .eq('status', 'APPROVED')
+        // 2026-06-08 — newest version first so clipLengthsFromVidShotRows keeps
+        // the latest clip duration per shot (same source the UI timeline uses).
+        .order('version', { ascending: false });
       if (rowsErr) throw new Error(`EXEC-STITCH: fetch VID-shot rows failed: ${rowsErr.message}`);
+
+      // 2026-06-08 — real clip lengths so per-shot duration is clamped EXACTLY
+      // like the AnimaticPlayer timeline (computeEffectivePlayback below). Stops
+      // the third divergent duration math: UI clamped (~60s) vs stitch's old
+      // unclamped declared sum (~76.5s intended) → final cut now matches what
+      // Director sees on the timeline.
+      const clipLengths = clipLengthsFromVidShotRows(vidShotRows ?? []);
 
       // Group by shot_id, pick latest by version → created_at.
       // Track BOTH stagingPath (FS absolute, for direct read) and url
@@ -2454,18 +2476,20 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           missing.push(shot.shot_id);
           continue;
         }
-        const ov = overrides[shot.shot_id]?.duration_seconds;
-        const effectiveDuration =
-          typeof ov === 'number' && ov > 0 ? ov : shot.duration_seconds;
-        // 2026-06-06 — Path A shot exclusion: a Director override at or
-        // below 0.5s means "skip this shot from the final cut". Same
-        // threshold the AnimaticPlayer uses to dim the cell visually.
-        if (effectiveDuration <= 0.5) {
+        // 2026-06-08 — single source of truth for per-shot playback length:
+        // computeEffectivePlayback applies the duration override, head trim AND
+        // real clip-length clamp EXACTLY like the AnimaticPlayer timeline, so
+        // the final cut equals what Director sees (no more UI-60s vs stitch-76s
+        // divergence). ≤0.5s → excluded (same threshold the timeline dims at).
+        const playable = computeEffectivePlayback(shot, overrides, clipLengths);
+        if (playable <= 0.5) {
           excludedShots.push(shot.shot_id);
           continue;
         }
-        // 2026-06-06 — head trim from director_overrides flows into the
-        // concat demuxer's `inpoint` directive (complement to outpoint).
+        // Head trim → concat demuxer `inpoint`; `durationSeconds` (= playable)
+        // is the post-trim span, so buildConcatList emits outpoint = inpoint +
+        // playable. computeEffectivePlayback already subtracted the head, so we
+        // pass the span (not the raw declared duration) here.
         const trimStart = overrides[shot.shot_id]?.trim_start_seconds;
         const inpointSeconds =
           typeof trimStart === 'number' && trimStart > 0 ? trimStart : 0;
@@ -2474,7 +2498,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           assetId: found.id,
           stagingPath: found.stagingPath,
           url: found.url,
-          durationSeconds: effectiveDuration,
+          durationSeconds: playable,
           inpointSeconds,
         });
       }
@@ -2642,7 +2666,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             size_bytes: stitched.sizeBytes,
             // 2026-06-06 — probed output duration so VID-final_cut row no
             // longer ships with metadata.duration_seconds = undefined.
-            duration_seconds: stitched.durationSeconds,
+            // 2026-06-08 — fall back to the summed playback length when ffprobe
+            // is unavailable, so the field is NEVER null (it was null on every
+            // E02 render because ffprobe couldn't be resolved).
+            duration_seconds:
+              stitched.durationSeconds ??
+              Math.round(orderedShots.reduce((a, s) => a + s.durationSeconds, 0) * 100) / 100,
             assembled_at: new Date().toISOString(),
           }),
         },
@@ -2933,7 +2962,7 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
   const nextVersion = maxExistingVersion + 1;
   const versionTag = `v${String(nextVersion).padStart(2, '0')}`;
   const filename = `${episodeCode}-${fileType}-${versionTag}-DRAFT.${ext}`;
-  const drivePath = result.asset_paths[0] ?? null;
+  let drivePath = result.asset_paths[0] ?? null;
 
   // Markdown body lives in the dedicated `content` column (migration 0013).
   // `description` keeps its original role: a short summary line — currently
@@ -2947,10 +2976,41 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
   // Real provider adapters that produce binaries (e.g. gpt-image-1) write the
   // file under webapp/public/staging/ and pass the absolute path through
   // metadata.staging_path. Mock outputs never set this — staging_path stays null.
-  const stagingPath =
+  let stagingPath =
     typeof result.metadata.staging_path === 'string'
       ? (result.metadata.staging_path as string)
       : null;
+
+  // 2026-06-08 — enforce media filename == row filename for video renders.
+  // Runners persist the binary under a placeholder name (they can't know the
+  // version yet), so every re-render's drive_path/staging_path pointed at the
+  // FIRST render's file (the hardcoded `…-v01-DRAFT.mp4`). Combined with
+  // /api/media's year-long immutable cache, Director saw a stale cut no matter
+  // how many times he re-stitched. We own the canonical vNN name here, so move
+  // the cache file to match and repoint both columns → each version is its own
+  // file. Video-only to keep blast radius tight; EREF (skip_save, returns
+  // early above) and image assets are untouched.
+  if (ext === 'mp4' && stagingPath) {
+    const nodePath = await import('node:path');
+    if (nodePath.basename(stagingPath) !== filename) {
+      try {
+        const { localCacheAbsPath } = await import('../media-cache');
+        const fsp = await import('node:fs/promises');
+        const canonicalAbs = localCacheAbsPath(filename);
+        await fsp.mkdir(nodePath.dirname(canonicalAbs), { recursive: true });
+        await fsp.rename(stagingPath, canonicalAbs);
+        stagingPath = canonicalAbs;
+        drivePath = `/api/media/${encodeURIComponent(filename)}`;
+      } catch (e) {
+        // rename failed (already moved / cross-device) — keep runner paths; the
+        // DRAFT-revalidate cache fix still prevents a stale immutable copy.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[saveAgentOutput] cache rename → ${filename} failed: ${(e as Error).message}`,
+        );
+      }
+    }
+  }
 
   // Drive identity (when storage provider = drive_native and upload succeeded)
   // — read by AssetPreview as a fallback when local cache misses, by future
@@ -3000,6 +3060,17 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
     'gag_plan_asset_id',
     'revision_count_before',
     'revision_count_after',
+    // 2026-06-08 — EXEC-STITCH final-cut audit. Without these the VID-final_cut
+    // row landed with shot_ids=[] / duration_seconds=undefined (the runner set
+    // them but saveAgentOutput dropped every non-allowlisted key), so there was
+    // no audit trail of cut length, excluded shots, or the ffmpeg command.
+    'shot_ids',
+    'excluded_shot_ids',
+    'music_asset_id',
+    'duration_seconds',
+    'ffmpeg_command',
+    'size_bytes',
+    'assembled_at',
   ] as const;
   let metadataPayload: Record<string, unknown> | null = null;
   for (const key of PERSIST_METADATA_KEYS) {

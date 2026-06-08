@@ -31,6 +31,7 @@ import { enforceMode } from '@/lib/governance';
 import {
   isAnimaticV1,
   computeTotalDuration,
+  clipLengthsFromVidShotRows,
   type AnimaticContract,
   type AnimaticDirectorOverride,
   type AudioTrack,
@@ -225,7 +226,22 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     };
   }
 
-  const newTotal = computeTotalDuration(v1.shot_list, mergedOverrides);
+  // 2026-06-08 — clamp the persisted total to real VID-shot clip lengths, the
+  // SAME way the AnimaticPlayer timeline does, so Save no longer stores an
+  // unclamped 76.5s while the timeline shows ~60s (Director's number mismatch).
+  // Newest version first so clipLengthsFromVidShotRows keeps the latest per shot.
+  let clipLengths: Map<string, number> | undefined;
+  if (asset.episode_id) {
+    const { data: vidShotRows } = await sb
+      .from('assets')
+      .select('metadata')
+      .eq('episode_id', asset.episode_id)
+      .like('file_type', 'VID-shot%')
+      .eq('status', 'APPROVED')
+      .order('version', { ascending: false });
+    clipLengths = clipLengthsFromVidShotRows(vidShotRows ?? []);
+  }
+  const newTotal = computeTotalDuration(v1.shot_list, mergedOverrides, clipLengths);
   // 2026-06-06 — replace audio_tracks wholesale when supplied. Director edits
   // in the AnimaticPlayer fan out as a complete replacement list (same
   // pattern as `overrides`, just whole-array since track count is small).
