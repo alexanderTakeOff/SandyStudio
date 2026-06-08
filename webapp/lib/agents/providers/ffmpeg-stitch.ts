@@ -40,6 +40,14 @@ export interface FfmpegStitchInput {
      * fixed 8s clips but animatic shot may want 3s).
      */
     durationSeconds?: number;
+    /**
+     * 2026-06-06 — optional head trim in seconds. When set, the concat
+     * demuxer emits an `inpoint <seconds>` directive so this shot starts
+     * reading the source at this timestamp. Pairs with `durationSeconds`
+     * for shots where Director wants to drop a slow lead-in without
+     * re-rendering. Default 0 = read from the start of the file.
+     */
+    inpointSeconds?: number;
   }>;
   /** Optional music track. If absent, assembled mp4 keeps the per-shot audio. */
   music?: {
@@ -279,7 +287,7 @@ export async function ffmpegStitchEpisode(
   console.log('[stitch] tmp dir:', tmpDir, 'shots:', input.shotMp4Bytes.length);
   try {
     // 1. Write per-shot mp4s + music.
-    const shotEntries: Array<{ path: string; durationSeconds?: number }> = [];
+    const shotEntries: ConcatShotEntry[] = [];
     for (let i = 0; i < input.shotMp4Bytes.length; i++) {
       const shot = input.shotMp4Bytes[i]!;
       // Phase A.2 PR β fix 2026-05-08: keep filenames ASCII-only and avoid
@@ -298,10 +306,14 @@ export async function ffmpegStitchEpisode(
         shot.bytes.length,
         'bytes',
         shot.durationSeconds !== undefined ? `(trim→${shot.durationSeconds}s)` : '',
+        shot.inpointSeconds ? `(head→${shot.inpointSeconds}s)` : '',
       );
-      const entry: { path: string; durationSeconds?: number } = { path: fpath };
+      const entry: ConcatShotEntry = { path: fpath };
       if (shot.durationSeconds !== undefined && shot.durationSeconds > 0) {
         entry.durationSeconds = shot.durationSeconds;
+      }
+      if (shot.inpointSeconds !== undefined && shot.inpointSeconds > 0) {
+        entry.inpointSeconds = shot.inpointSeconds;
       }
       shotEntries.push(entry);
     }
@@ -438,15 +450,23 @@ export async function ffmpegStitchEpisode(
   }
 }
 
-/** One concat-list entry: a shot file with optional trim duration. */
+/** One concat-list entry: a shot file with optional trim window. */
 export interface ConcatShotEntry {
   /** Absolute path to the shot mp4 on disk. */
   path: string;
   /**
-   * Optional `outpoint <seconds>` directive — trims the clip to exactly this
-   * many seconds. Omit (or pass 0/undefined) to use the input's native length.
+   * Optional desired playback duration in seconds. With `inpoint=0` this maps
+   * directly to ffmpeg's `outpoint <seconds>`; with a non-zero inpoint the
+   * outpoint becomes `inpoint + durationSeconds` (ffmpeg's outpoint is an
+   * absolute source timestamp, not a relative duration).
    */
   durationSeconds?: number;
+  /**
+   * 2026-06-06 — optional head trim. When set, emits `inpoint <seconds>`
+   * before the `file '<path>'` line so concat reads the source starting at
+   * this timestamp. Use 0/undefined to read from the file start.
+   */
+  inpointSeconds?: number;
 }
 
 /**
@@ -521,10 +541,23 @@ export function buildConcatList(
   return shots
     .map((s) => {
       const fileLine = `file '${s.path.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`;
+      const lines: string[] = [fileLine];
+      // 2026-06-06 — `inpoint` is an absolute source timestamp at which the
+      // demuxer starts reading; `outpoint` is the absolute timestamp at which
+      // it stops. With a non-zero inpoint, outpoint must therefore be
+      // inpoint + durationSeconds (NOT the bare duration), otherwise ffmpeg
+      // would read `[inpoint, durationSeconds]` instead of the intended
+      // `[inpoint, inpoint+durationSeconds]`. The order on the line is the
+      // canonical concat-demuxer order: `file '...'` first, then `inpoint`,
+      // then `outpoint`.
+      const inpoint = s.inpointSeconds;
+      const hasInpoint = typeof inpoint === 'number' && inpoint > 0;
+      if (hasInpoint) lines.push(`inpoint ${inpoint!.toFixed(3)}`);
       if (s.durationSeconds !== undefined && s.durationSeconds > 0) {
-        return `${fileLine}\noutpoint ${s.durationSeconds.toFixed(3)}`;
+        const outpoint = hasInpoint ? inpoint! + s.durationSeconds : s.durationSeconds;
+        lines.push(`outpoint ${outpoint.toFixed(3)}`);
       }
-      return fileLine;
+      return lines.join('\n');
     })
     .join('\n');
 }

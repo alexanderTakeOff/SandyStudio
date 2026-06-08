@@ -134,9 +134,18 @@ export interface AnimaticPlayerHandle {
 interface ShotTime {
   shot: AnimaticShot;
   duration: number;       // effective (override applied, clamped to clip length)
-  cumStart: number;       // cumulative start (s) from t=0
+  /** Cell position in the strip layout (visualSpan denominator). */
+  cumStart: number;
   /** True when this shot is excluded from the final cut (effective <= 0.5s). */
   excluded: boolean;
+  /**
+   * 2026-06-06 — playback offset (excludes skipped shots). The master clock
+   * advances through this coord-space, so an excluded cell is silently jumped
+   * over in the preview the same way EXEC-STITCH skips it in the final cut.
+   * For excluded cells this equals the NEXT non-excluded cell's playStart
+   * (so seeking to an excluded cell just lands on the next playable one).
+   */
+  playStart: number;
 }
 
 /**
@@ -162,23 +171,32 @@ function buildTimeline(
   // shots so the progress bar matches what EXEC-STITCH will actually emit.
   const EXCLUDED_VISUAL_SECONDS = 1.5; // ~enough to dim + click in the strip
   let visualCum = 0;
-  let realTotal = 0;
+  let playCum = 0;
   for (const shot of shotList) {
     const effective = effectiveDurationSeconds(shot, overrides);
     const clip = clipLengths?.get(shot.shot_id);
     const clamped = typeof clip === 'number' && clip > 0 ? Math.min(effective, clip) : effective;
     const excluded = clamped <= 0.5;
     const visualDuration = excluded ? EXCLUDED_VISUAL_SECONDS : clamped;
-    times.push({ shot, duration: visualDuration, cumStart: visualCum, excluded });
+    times.push({
+      shot,
+      duration: visualDuration,
+      cumStart: visualCum,
+      excluded,
+      // Excluded cells share their playStart with the NEXT non-excluded shot,
+      // so clicking an excluded cell or having the playhead reach one jumps
+      // forward instead of stalling on a 0.5s frame.
+      playStart: playCum,
+    });
     visualCum += visualDuration;
-    if (!excluded) realTotal += clamped;
+    if (!excluded) playCum += clamped;
   }
   // total = honest playback / final-cut length (for progress display); visualSpan
   // = sum of strip cell widths (for per-cell left/width %). Most of the time
   // the two are identical — they diverge only when some shots are excluded.
   return {
     times,
-    total: Math.round(realTotal * 100) / 100,
+    total: Math.round(playCum * 100) / 100,
     visualSpan: Math.round(visualCum * 100) / 100,
   };
 }
@@ -359,11 +377,17 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   }, [currentT]);
 
   // ── Playback engine ──────────────────────────────────────────────────────
+  // 2026-06-06 — `t` is in PLAYBACK coords (excluded shots consume 0 time).
+  // Walk backwards through non-excluded entries by their `playStart`; an
+  // excluded cell shares its playStart with the next non-excluded one, so
+  // looking at playStart alone gives us the right "currently-playing" index
+  // without ever landing on an excluded cell.
   const computeIndex = useCallback(
     (t: number): number => {
-      // Walk forward; small list (<100) so linear scan is fine.
       for (let i = times.length - 1; i >= 0; i--) {
-        if (t >= times[i]!.cumStart) return i;
+        const entry = times[i]!;
+        if (entry.excluded) continue;
+        if (t >= entry.playStart) return i;
       }
       return 0;
     },
@@ -472,7 +496,9 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       seekToShot: (shotId: string) => {
         const idx = contract.shot_list.findIndex((s) => s.shot_id === shotId);
         if (idx < 0) return;
-        const time = times[idx]?.cumStart ?? 0;
+        // 2026-06-06 — seek in PLAYBACK coords (excluded shots consume 0
+        // time); for excluded targets this lands on the next playable shot.
+        const time = times[idx]?.playStart ?? 0;
         seekTo(time);
       },
     }),
@@ -486,8 +512,38 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       const safe = Math.max(MIN_SHOT_S, Math.min(MAX_SHOT_S, Math.round(value * 10) / 10));
       setOverrides((prev) => ({
         ...prev,
-        [shotId]: { duration_seconds: safe, edited_at: new Date().toISOString() },
+        [shotId]: {
+          ...(prev[shotId] ?? {}),
+          duration_seconds: safe,
+          edited_at: new Date().toISOString(),
+        },
       }));
+      setDirty(true);
+    },
+    [],
+  );
+
+  // 2026-06-06 — head trim handler. Mirrors setDuration; clamped to [0, 30]s
+  // (anything beyond half a minute on a single shot is almost certainly a
+  // typo). Setting 0 explicitly clears the override.
+  const setTrimStart = useCallback(
+    (shotId: string, value: number) => {
+      const safe = Math.max(0, Math.min(30, Math.round(value * 10) / 10));
+      setOverrides((prev) => {
+        const cur = prev[shotId];
+        // Need at least a duration_seconds to satisfy the type; default to
+        // the existing override or 0 (effective shot duration will fall
+        // through to shot.duration_seconds when override === 0).
+        const baseDuration = cur?.duration_seconds ?? 0;
+        return {
+          ...prev,
+          [shotId]: {
+            duration_seconds: baseDuration,
+            ...(safe > 0 ? { trim_start_seconds: safe } : {}),
+            edited_at: new Date().toISOString(),
+          },
+        };
+      });
       setDirty(true);
     },
     [],
@@ -502,9 +558,19 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     setSavingTiming(true);
     setError(null);
     try {
-      const overridesPayload: Record<string, { duration_seconds: number }> = {};
+      const overridesPayload: Record<
+        string,
+        { duration_seconds: number; trim_start_seconds?: number }
+      > = {};
       for (const [k, v] of Object.entries(overrides)) {
-        overridesPayload[k] = { duration_seconds: v.duration_seconds };
+        overridesPayload[k] = {
+          duration_seconds: v.duration_seconds,
+          // 2026-06-06 — forward head trim when set; the route accepts it
+          // as an optional field in the per-shot override schema.
+          ...(typeof v.trim_start_seconds === 'number' && v.trim_start_seconds > 0
+            ? { trim_start_seconds: v.trim_start_seconds }
+            : {}),
+        };
       }
       const res = await fetch(`/api/assets/${assetId}/animatic-timing`, {
         method: 'PATCH',
@@ -622,7 +688,9 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // and color-code the status pill.
   const currentCell = timelineCells[currentIndex];
   const isHybridMode = (vidShotAssets?.length ?? 0) > 0;
-  const currentCellStart = times[currentIndex]?.cumStart ?? 0;
+  // 2026-06-06 — in PLAYBACK coords (excluded shots consume 0 time), so the
+  // in-cell offset for the inline-video sync below is `currentT - playStart`.
+  const currentCellStart = times[currentIndex]?.playStart ?? 0;
 
   // ── Inline-video sync (Phase A.1 fix for bugs 1+2) ──────────────────────
   // The inline <video> only takes its `autoPlay` prop into account at MOUNT.
@@ -882,8 +950,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                       />
                       <span className="opacity-50">s</span>
                     </label>
-                    <label className="flex items-center gap-1.5">
-                      <span className="opacity-70">Trim start</span>
+                    <label
+                      className="flex items-center gap-1.5"
+                      title="Skip the first N seconds of the music source. e.g. set 5 to drop a 5-second intro/silence at the start of the file."
+                    >
+                      <span className="opacity-70">Skip from start</span>
                       <input
                         key={`${track.url}-trimIn-${track.trim_in_seconds ?? 0}`}
                         type="number"
@@ -899,8 +970,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                       />
                       <span className="opacity-50">s</span>
                     </label>
-                    <label className="flex items-center gap-1.5">
-                      <span className="opacity-70">Trim end</span>
+                    <label
+                      className="flex items-center gap-1.5"
+                      title="Stop reading the music source at this absolute timestamp. e.g. set 90 to use only the first 90 seconds of a 2:23 track. Empty = use the entire remaining track."
+                    >
+                      <span className="opacity-70">Use until</span>
                       <input
                         key={`${track.url}-trimOut-${track.trim_out_seconds ?? ''}`}
                         type="number"
@@ -920,7 +994,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                         }}
                         className="w-16 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-glass text-right font-mono"
                       />
-                      <span className="opacity-50">s</span>
+                      <span className="opacity-50">s in source</span>
                     </label>
                   </div>
                 )}
@@ -1007,7 +1081,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                 title={t.excluded ? `${t.shot.shot_id} — excluded from final cut (≤0.5s)` : undefined}
               >
                 <button
-                  onClick={() => seekTo(t.cumStart)}
+                  // 2026-06-06 — seek in PLAYBACK coords; excluded cells share
+                  // their playStart with the next non-excluded shot, so a
+                  // click on an excluded cell lands on the next playable one.
+                  onClick={() => seekTo(t.playStart)}
                   className="w-full h-full transition-opacity"
                   style={{
                     background: isCurrent
@@ -1168,13 +1245,23 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
               </div>
             );
           })}
-          {/* Cursor — positioned on the visual strip, so use visualSpan
-              (includes excluded cells' minimum width). currentT is bounded by
-              total (honest playback length); we just rescale to strip coords. */}
+          {/* Cursor — positioned on the visual strip. currentT is in PLAYBACK
+              coords (excluded shots consume 0 time); convert to visual coords
+              by finding the current shot via playStart and interpolating its
+              cumStart + offset-within-shot. Without this conversion the
+              cursor would slide too fast over excluded cells. */}
           <div
             className="absolute top-0 h-full pointer-events-none"
             style={{
-              left: visualSpan > 0 ? `${(currentT / visualSpan) * 100}%` : '0%',
+              left: (() => {
+                if (visualSpan <= 0) return '0%';
+                const idx = computeIndex(currentT);
+                const cur = times[idx];
+                if (!cur) return '0%';
+                const inShot = Math.max(0, currentT - cur.playStart);
+                const visualX = cur.cumStart + Math.min(inShot, cur.duration);
+                return `${(visualX / visualSpan) * 100}%`;
+              })(),
               width: 2,
               background: 'var(--accent-primary)',
               boxShadow: '0 0 8px var(--accent-primary)',
@@ -1214,14 +1301,17 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       </div>
 
       {/* Inline duration editor (current shot) */}
-      {currentShot && (
+      {currentShot && (() => {
+        const currentTrimStart = overrides[currentShot.shot_id]?.trim_start_seconds ?? 0;
+        return (
         <div
-          className="rounded-lg p-2.5 border border-glass"
+          className="rounded-lg p-2.5 border border-glass space-y-1.5"
           style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
         >
-          <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5">
+          <div className="text-[10px] uppercase tracking-wider text-text-muted">
             Editing current shot
           </div>
+          {/* Row 1 — playback duration (controls the tail / outpoint). */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="font-mono text-sm text-text-primary">
               {currentShot.shot_id}
@@ -1230,6 +1320,9 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
               <div className="text-xs text-text-secondary">{currentShot.shot_role}</div>
             )}
             <div className="flex-1" />
+            <span className="text-[10px] text-text-muted uppercase tracking-wider" title="Total playback duration; ffmpeg uses this as outpoint">
+              duration
+            </span>
             <Button
               variant="ghost"
               size="sm"
@@ -1266,11 +1359,62 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             />
             <span className="text-xs text-text-muted">s</span>
           </div>
+          {/* Row 2 — head trim (controls the head / inpoint). 2026-06-06 —
+              Director can drop a slow lead-in without re-rendering. Default 0
+              = clip starts from the beginning. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] text-text-secondary opacity-70">
+              skip start (head)
+            </span>
+            <div className="flex-1" />
+            <span
+              className="text-[10px] text-text-muted uppercase tracking-wider"
+              title="Skips this many seconds at the start of the shot clip; ffmpeg inpoint directive"
+            >
+              from start
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTrimStart(currentShot.shot_id, currentTrimStart - 0.5)}
+              disabled={currentTrimStart <= 0}
+            >
+              −0.5s
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTrimStart(currentShot.shot_id, currentTrimStart + 0.5)}
+            >
+              +0.5s
+            </Button>
+            <input
+              key={`${currentShot.shot_id}-trimStart-${currentTrimStart}`}
+              type="number"
+              min={0}
+              max={30}
+              step={0.1}
+              defaultValue={currentTrimStart.toFixed(1)}
+              onBlur={(e) => {
+                const v = parseFloat(e.target.value);
+                const safe = Number.isFinite(v) && v >= 0 ? v : 0;
+                if (Math.abs(safe - currentTrimStart) > 0.01) {
+                  setTrimStart(currentShot.shot_id, safe);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+              className="w-16 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-glass text-xs text-text-primary text-right font-mono focus:outline-none focus:border-[var(--accent-primary)]"
+            />
+            <span className="text-xs text-text-muted">s</span>
+          </div>
           {currentShot.caption && (
-            <div className="text-xs text-text-secondary mt-1.5 italic">{currentShot.caption}</div>
+            <div className="text-xs text-text-secondary italic">{currentShot.caption}</div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Approve / Reject — fires /approve route which emits VGEN×3 + MGEN
           events, advancing pipeline to Visual Generator + Music. In Mode 4

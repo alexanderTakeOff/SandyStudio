@@ -36,6 +36,14 @@ export interface AnimaticShot {
 /** Director's per-shot duration tweaks, persisted alongside the canonical list. */
 export interface AnimaticDirectorOverride {
   duration_seconds: number;
+  /**
+   * 2026-06-06 — optional head trim. When set, EXEC-STITCH emits an `inpoint
+   * <seconds>` directive on the concat demuxer so this shot starts reading
+   * its mp4 from this timestamp. Pairs naturally with `outpoint` (driven by
+   * `duration_seconds`) to give Director both head and tail control over
+   * each shot without re-rendering. Default 0 = read from the start.
+   */
+  trim_start_seconds?: number;
   edited_at?: string;
 }
 

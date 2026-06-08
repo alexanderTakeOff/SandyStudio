@@ -2440,6 +2440,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         stagingPath: string | null;
         url: string | null;
         durationSeconds: number;
+        inpointSeconds: number;
       }> = [];
       const missing: string[] = [];
       // 2026-06-06 — track which shots Director excluded via the ≤0.5s
@@ -2463,12 +2464,18 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           excludedShots.push(shot.shot_id);
           continue;
         }
+        // 2026-06-06 — head trim from director_overrides flows into the
+        // concat demuxer's `inpoint` directive (complement to outpoint).
+        const trimStart = overrides[shot.shot_id]?.trim_start_seconds;
+        const inpointSeconds =
+          typeof trimStart === 'number' && trimStart > 0 ? trimStart : 0;
         orderedShots.push({
           shotId: shot.shot_id,
           assetId: found.id,
           stagingPath: found.stagingPath,
           url: found.url,
           durationSeconds: effectiveDuration,
+          inpointSeconds,
         });
       }
       if (missing.length > 0) {
@@ -2533,6 +2540,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         shotId: string;
         bytes: Buffer;
         durationSeconds: number;
+        inpointSeconds?: number;
       }> = [];
       for (const s of orderedShots) {
         const bytes = await loadBytes(s.stagingPath, s.url);
@@ -2540,6 +2548,9 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           shotId: s.shotId,
           bytes,
           durationSeconds: s.durationSeconds,
+          // 2026-06-06 — forward head trim (inpoint) when Director set a
+          // trim_start_seconds override on this shot.
+          ...(s.inpointSeconds > 0 ? { inpointSeconds: s.inpointSeconds } : {}),
         });
       }
 

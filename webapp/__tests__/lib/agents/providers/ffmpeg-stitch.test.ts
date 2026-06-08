@@ -70,6 +70,46 @@ describe('buildConcatList', () => {
       ].join('\n'),
     );
   });
+
+  it('emits `inpoint <seconds>` head-trim directive when inpointSeconds is set (2026-06-06)', () => {
+    const list = buildConcatList([
+      { path: '/tmp/a.mp4', inpointSeconds: 1.2 },
+    ]);
+    expect(list).toBe([
+      `file '/tmp/a.mp4'`,
+      'inpoint 1.200',
+    ].join('\n'),
+    );
+  });
+
+  it('with both inpoint AND duration set, outpoint = inpoint + duration (absolute timestamp)', () => {
+    // ffmpeg outpoint is absolute in the source file. A 2s head trim + a
+    // 3s desired playback duration must read source seconds [2, 5), not
+    // [2, 3) — otherwise we get a 1s clip instead of a 3s one.
+    const list = buildConcatList([
+      { path: '/tmp/a.mp4', inpointSeconds: 2, durationSeconds: 3 },
+    ]);
+    expect(list).toBe([
+      `file '/tmp/a.mp4'`,
+      'inpoint 2.000',
+      'outpoint 5.000',
+    ].join('\n'),
+    );
+  });
+
+  it('omits inpoint when inpointSeconds is 0 or undefined (no head trim requested)', () => {
+    const list = buildConcatList([
+      { path: '/tmp/a.mp4', inpointSeconds: 0, durationSeconds: 3 },
+      { path: '/tmp/b.mp4', durationSeconds: 4 },
+    ]);
+    expect(list).toBe([
+      `file '/tmp/a.mp4'`,
+      'outpoint 3.000',
+      `file '/tmp/b.mp4'`,
+      'outpoint 4.000',
+    ].join('\n'),
+    );
+  });
 });
 
 describe('buildFfmpegArgs', () => {

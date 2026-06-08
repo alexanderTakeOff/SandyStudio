@@ -62,6 +62,8 @@ const Body = z.object({
       z.string(),
       z.object({
         duration_seconds: z.number().positive().max(60),
+        // 2026-06-06 — optional head trim per shot (inpoint).
+        trim_start_seconds: z.number().min(0).max(60).optional(),
       }),
     )
     .optional()
@@ -164,6 +166,12 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   for (const [shotId, override] of Object.entries(body.overrides)) {
     mergedOverrides[shotId] = {
       duration_seconds: override.duration_seconds,
+      // 2026-06-06 — preserve head trim when set; omit otherwise so the
+      // metadata blob stays small (no `trim_start_seconds: undefined` keys).
+      ...(typeof override.trim_start_seconds === 'number' &&
+      override.trim_start_seconds > 0
+        ? { trim_start_seconds: override.trim_start_seconds }
+        : {}),
       edited_at: nowIso,
     };
   }
