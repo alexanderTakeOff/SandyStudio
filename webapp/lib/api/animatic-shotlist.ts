@@ -143,6 +143,11 @@ export function isAnimaticV1(meta: unknown): meta is { animatic_v1: AnimaticCont
 
 /**
  * Effective duration for a shot, applying any Director override.
+ *
+ * 2026-06-06 — does NOT subtract `trim_start_seconds` here. The bare duration
+ * override is Director's raw intent for tail (outpoint); the actual playable
+ * length after head trim and clip-length clamp is computed by
+ * `computeEffectivePlayback` which has the clipLengths context.
  */
 export function effectiveDurationSeconds(
   shot: AnimaticShot,
@@ -151,6 +156,36 @@ export function effectiveDurationSeconds(
   const override = overrides?.[shot.shot_id]?.duration_seconds;
   if (typeof override === 'number' && override > 0) return override;
   return shot.duration_seconds;
+}
+
+/**
+ * 2026-06-06 — single source of truth for "how many seconds of THIS shot
+ * actually play in the final cut". Combines:
+ *   - Director duration override (or storyboard duration as fallback)
+ *   - Head trim (trim_start_seconds) — eats from the available clip window
+ *   - Real clip length (clipLengths Map) — ffmpeg can't read beyond EOF
+ *
+ * The math:
+ *   playable = min(durationDeclared, clipLength - trimStart)
+ *   if playable <= 0 → 0 (shot fully excluded)
+ *
+ * Why: when Director sets trim_start=2s on a 4s clip with duration=3s,
+ * ffmpeg reads [2, 5) but the clip ends at 4 → only 2s play. The preview
+ * timeline must reflect this, otherwise the total counter and the playback
+ * engine drift from what the final cut emits.
+ */
+export function computeEffectivePlayback(
+  shot: AnimaticShot,
+  overrides: Record<string, AnimaticDirectorOverride> | undefined,
+  clipLengths?: ReadonlyMap<string, number>,
+): number {
+  const durationDeclared = effectiveDurationSeconds(shot, overrides);
+  const trimStart = overrides?.[shot.shot_id]?.trim_start_seconds;
+  const head = typeof trimStart === 'number' && trimStart > 0 ? trimStart : 0;
+  const clip = clipLengths?.get(shot.shot_id);
+  const available = typeof clip === 'number' && clip > 0 ? clip - head : Infinity;
+  const playable = Math.min(durationDeclared, available);
+  return playable > 0 ? playable : 0;
 }
 
 /**
@@ -177,11 +212,9 @@ export function computeTotalDuration(
 ): number {
   let total = 0;
   for (const s of shotList) {
-    const effective = effectiveDurationSeconds(s, overrides);
-    if (effective <= 0.5) continue; // skipped — see EXEC-STITCH exclusion
-    const clip = clipLengths?.get(s.shot_id);
-    const clamped = typeof clip === 'number' && clip > 0 ? Math.min(effective, clip) : effective;
-    total += clamped;
+    const playable = computeEffectivePlayback(s, overrides, clipLengths);
+    if (playable <= 0.5) continue; // skipped — see EXEC-STITCH exclusion
+    total += playable;
   }
   return Math.round(total * 100) / 100;
 }

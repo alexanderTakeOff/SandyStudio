@@ -49,7 +49,7 @@ import { Button } from '@/components/ui/Button';
 import {
   ANIMATIC_CONTRACT,
   computeTotalDuration,
-  effectiveDurationSeconds,
+  computeEffectivePlayback,
   getAudioTracks,
   type AnimaticContract,
   type AnimaticDirectorOverride,
@@ -173,9 +173,10 @@ function buildTimeline(
   let visualCum = 0;
   let playCum = 0;
   for (const shot of shotList) {
-    const effective = effectiveDurationSeconds(shot, overrides);
-    const clip = clipLengths?.get(shot.shot_id);
-    const clamped = typeof clip === 'number' && clip > 0 ? Math.min(effective, clip) : effective;
+    // 2026-06-06 — playable = effective duration after head trim and clip
+    // length clamp. This is what ffmpeg actually emits for the shot, so the
+    // preview timeline matches the final cut frame-for-frame.
+    const clamped = computeEffectivePlayback(shot, overrides, clipLengths);
     const excluded = clamped <= 0.5;
     const visualDuration = excluded ? EXCLUDED_VISUAL_SECONDS : clamped;
     times.push({
@@ -698,6 +699,14 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // it explicitly via ref. Also keep video.currentTime in lockstep with the
   // master clock when isPlaying flips on, so resume after pause stays at the
   // exact in-cell offset.
+  // 2026-06-06 — read the active head-trim override for the current shot,
+  // so the <video> element starts (and resumes) at the trimmed-in offset.
+  // Without this the preview plays the slow lead-in that EXEC-STITCH will
+  // skip — Director couldn't see what the final cut would look like.
+  const currentTrimStart = currentShot
+    ? overrides[currentShot.shot_id]?.trim_start_seconds ?? 0
+    : 0;
+
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
@@ -705,24 +714,27 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       currentCell?.kind === 'video-canonical' ||
       currentCell?.kind === 'video-review';
     if (!isVideoCell) return;
+    // 2026-06-06 — seek to trim_start + in-cell offset so the preview matches
+    // what ffmpeg's `inpoint` directive will read from the source clip.
+    const inCellOffset = Math.max(0, currentTRef.current - currentCellStart);
+    const seekTarget = currentTrimStart + inCellOffset;
+    try {
+      vid.currentTime = seekTarget;
+    } catch {
+      /* seeking before metadata loaded — browser will seek when ready */
+    }
     if (isPlaying) {
-      // Re-anchor video to the master clock's in-cell offset before play.
-      const inCellOffset = Math.max(0, currentTRef.current - currentCellStart);
-      try {
-        vid.currentTime = inCellOffset;
-      } catch {
-        /* seeking before metadata loaded — browser will seek when ready */
-      }
       void vid.play().catch(() => {
         /* autoplay rejected by browser policy — fall back to user gesture */
       });
     } else {
       vid.pause();
     }
-    // Re-run when isPlaying changes OR when currentCell switches to a new mp4
-    // (key change rebuilds the ref; but the effect needs to re-anchor).
+    // Re-run when isPlaying changes, when currentCell switches to a new mp4
+    // (key change rebuilds the ref), or when Director edits trim_start so
+    // the preview re-anchors to the new in-point immediately.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, currentCell?.url]);
+  }, [isPlaying, currentCell?.url, currentTrimStart]);
 
   return (
     <div className="space-y-3">

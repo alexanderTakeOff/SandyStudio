@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   computeTotalDuration,
+  computeEffectivePlayback,
   type AnimaticShot,
   type AnimaticDirectorOverride,
 } from '@/lib/api/animatic-shotlist';
@@ -92,5 +93,40 @@ describe('computeTotalDuration — clipLengths clamp + ≤0.5s exclusion', () =>
       SH03: { duration_seconds: 0.2 },
     };
     expect(computeTotalDuration(list, overrides)).toBe(0);
+  });
+
+  it('subtracts trim_start from available clip length (head trim eats from the window)', () => {
+    // 2026-06-06 — clip = 4s, trim_start = 2, duration_declared = 3:
+    // ffmpeg reads [2, 5) but the clip ends at 4 → 2s of actual playback.
+    const overrides: Record<string, AnimaticDirectorOverride> = {
+      SH02: { duration_seconds: 3, trim_start_seconds: 2 },
+    };
+    const clipLengths = new Map<string, number>([['SH02', 4]]);
+    const playable = computeEffectivePlayback(list[1]!, overrides, clipLengths);
+    expect(playable).toBeCloseTo(2, 2);
+  });
+
+  it('total reflects head-trim reduction (Director sees the honest length)', () => {
+    const overrides: Record<string, AnimaticDirectorOverride> = {
+      SH01: { duration_seconds: 3 },                              // 3
+      SH02: { duration_seconds: 5, trim_start_seconds: 2 },      // 4-2=2 (clip 4)
+      SH03: { duration_seconds: 4 },                              // 4 (clip 4)
+    };
+    const clipLengths = new Map<string, number>([
+      ['SH01', 3.96],
+      ['SH02', 4],
+      ['SH03', 4],
+    ]);
+    // 3 (SH01) + 2 (SH02 clamped by head trim) + 4 (SH03) = 9
+    expect(computeTotalDuration(list, overrides, clipLengths)).toBeCloseTo(9, 2);
+  });
+
+  it('head-trim larger than clip length excludes the shot', () => {
+    // A 5s trim_start on a 4s clip leaves 0s available → excluded.
+    const overrides: Record<string, AnimaticDirectorOverride> = {
+      SH02: { duration_seconds: 3, trim_start_seconds: 5 },
+    };
+    const clipLengths = new Map<string, number>([['SH02', 4]]);
+    expect(computeEffectivePlayback(list[1]!, overrides, clipLengths)).toBe(0);
   });
 });
