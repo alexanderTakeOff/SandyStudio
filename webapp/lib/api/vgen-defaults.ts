@@ -15,6 +15,7 @@ import type { Database } from '../supabase/types.gen';
 
 export type VgenAspectRatio = '16:9' | '9:16' | '1:1';
 export type VgenQualityTier = 'fast' | 'standard';
+export type VgenResolution = '480p' | '720p' | '1080p';
 // Phase 2 (2026-05-13): widened to include Seedance 2.0 via fal.ai. Director
 // directive: new default is Seedance Fast; Veo remains available via dropdown.
 export type VgenProviderId = 'veo-3-img2vid' | 'seedance-fal-img2vid';
@@ -23,6 +24,9 @@ export interface VgenDefaults {
   aspect_ratio: VgenAspectRatio;
   quality_tier: VgenQualityTier;
   provider_id: VgenProviderId;
+  /** Episode-config resolver fallback (pitfall #5). Optional — series defaults
+   *  predate resolution; absent → resolver lets the provider apply its own. */
+  resolution?: VgenResolution;
 }
 
 const KEY_PREFIX = 'vgen_defaults:';
@@ -43,6 +47,10 @@ function isQuality(v: unknown): v is VgenQualityTier {
 
 function isProviderId(v: unknown): v is VgenProviderId {
   return v === 'veo-3-img2vid' || v === 'seedance-fal-img2vid';
+}
+
+function isResolution(v: unknown): v is VgenResolution {
+  return v === '480p' || v === '720p' || v === '1080p';
 }
 
 /**
@@ -69,6 +77,7 @@ export async function getVgenDefaults(
     aspect_ratio: isAspect(r.aspect_ratio) ? r.aspect_ratio : FALLBACK_DEFAULTS.aspect_ratio,
     quality_tier: isQuality(r.quality_tier) ? r.quality_tier : FALLBACK_DEFAULTS.quality_tier,
     provider_id: isProviderId(r.provider_id) ? r.provider_id : FALLBACK_DEFAULTS.provider_id,
+    ...(isResolution(r.resolution) ? { resolution: r.resolution } : {}),
   };
 }
 

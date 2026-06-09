@@ -52,6 +52,9 @@ interface VidShotMetadataLoose {
 
 export interface VGENShotSectionProps {
   assetId: string;
+  /** Episode id — forwarded to VGENShotPanel so it can lock format controls
+   *  when the episode's generation_config owns them (overrides off). */
+  episodeId?: string | null;
   filename: string;
   metadata?: unknown;
   drivePath: string | null;
@@ -89,6 +92,7 @@ function pickProvider(value: unknown): VgenProvider | undefined {
 
 export function VGENShotSection({
   assetId,
+  episodeId,
   filename,
   metadata,
   drivePath,
@@ -141,6 +145,7 @@ export function VGENShotSection({
   return (
     <VGENShotPanel
       assetId={assetId}
+      episodeId={episodeId}
       videoUrl={videoUrl}
       storyboardShot={storyboardShot}
       currentSettings={currentSettings}

@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { Layers } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { PeekHint } from '@/components/ui/PeekHint';
+import { EpisodeGenerationConfig } from './EpisodeGenerationConfig';
 
 interface EpisodeSettingsCardProps {
   episodeId: string;
@@ -217,6 +218,12 @@ export function EpisodeSettingsCard({
               </button>
             </div>
           </div>
+
+          {/* Episode-authoritative generation config (provider/format) — q28. */}
+          <EpisodeGenerationConfig
+            episodeId={episodeId}
+            initialMetadata={initialMetadata ?? null}
+          />
         </div>
       </CardBody>
     </Card>

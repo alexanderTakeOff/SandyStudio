@@ -39,7 +39,10 @@ import {
 } from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
 import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
-import { VIDEO_PROVIDER_CAPS } from '../../api/provider-capabilities';
+import {
+  VIDEO_PROVIDER_CAPS,
+  ASPECT_BY_DELIVERY_TARGET,
+} from '../../api/provider-capabilities';
 
 export const VANIM_CONTRACT = 'animator@v1';
 export const VANIM_MODEL = 'claude-sonnet-4-6';
@@ -160,17 +163,11 @@ export function resolveVanimProviderId(
   }
 }
 
-/** Aspect ratio per delivery_target — same mapping the runtime VGEN provider
- *  uses to pick output dimensions. */
-export const ASPECT_BY_DELIVERY_TARGET: Readonly<Record<string, '16:9' | '9:16' | '1:1'>> =
-  Object.freeze({
-    youtube_landscape: '16:9',
-    youtube_shorts: '9:16',
-    instagram_reels: '9:16',
-    instagram_post: '1:1',
-    tiktok: '9:16',
-    print_poster: '16:9',
-  });
+/** Aspect ratio per delivery_target. Single source of truth moved to the
+ *  shared manifest (`lib/api/provider-capabilities.ts`) so the generation-
+ *  params resolver and the Animator share one map; re-exported here for
+ *  back-compat with existing importers (e.g. animator.test.ts). */
+export { ASPECT_BY_DELIVERY_TARGET };
 
 // ── TD-49 Phase 2 — Anchor chain schema (2026-05-25) ─────────────────────────
 //

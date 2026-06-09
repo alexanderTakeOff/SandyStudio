@@ -82,7 +82,52 @@ import {
   AnimaticSlideshowError,
 } from './runners/animatic-slideshow';
 import { loadSeriesBibleCanon } from './bible-loader';
+import {
+  deliveryAspectFor,
+  type VideoAspectRatio,
+  type VideoProviderId,
+} from '../api/provider-capabilities';
+import { getVgenDefaults } from '../api/vgen-defaults';
+import {
+  resolveVideoParams,
+  type EpisodeVideoConfig,
+} from '../api/resolve-generation-params';
 import type { AgentId, AgentInputs, AgentResult } from './types';
+
+// ── Episode-authoritative generation config (2026-06-09) ───────────────────────
+// Read the FORMAT config the resolver consumes from `episodes.metadata.
+// generation_config.video` + the delivery_targets[] used for the delivery-
+// derived aspect fallback. Both tolerate any metadata shape (returns
+// null/empty) so an un-configured episode resolves to legacy behaviour.
+function readEpisodeVideoConfig(episode: unknown): EpisodeVideoConfig | null {
+  if (!episode || typeof episode !== 'object') return null;
+  const meta = (episode as { metadata?: unknown }).metadata;
+  if (!meta || typeof meta !== 'object') return null;
+  const gen = (meta as { generation_config?: unknown }).generation_config;
+  if (!gen || typeof gen !== 'object') return null;
+  const video = (gen as { video?: unknown }).video;
+  if (!video || typeof video !== 'object') return null;
+  return video as EpisodeVideoConfig;
+}
+
+function readEpisodeDeliveryTargets(episode: unknown): string[] {
+  if (!episode || typeof episode !== 'object') return [];
+  const meta = (episode as { metadata?: unknown }).metadata;
+  if (!meta || typeof meta !== 'object') return [];
+  const raw = (meta as { delivery_targets?: unknown }).delivery_targets;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((t): t is string => typeof t === 'string' && t.length > 0);
+}
+
+/** Coerce a raw resolved-provider id (which may be a legacy alias like
+ *  `veo-3` / `seedance-fal`, or `mock`) into a canonical VideoProviderId for
+ *  the resolver's `assignmentProviderId` layer. Returns null for unknown / mock
+ *  so the resolver falls through to series/fallback. */
+function coerceVideoProviderId(raw: string | null | undefined): VideoProviderId | null {
+  if (raw === 'veo-3' || raw === 'veo-3-img2vid') return 'veo-3-img2vid';
+  if (raw === 'seedance-fal' || raw === 'seedance-fal-img2vid') return 'seedance-fal-img2vid';
+  return null;
+}
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
 
@@ -1756,14 +1801,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       const isVeoProvider =
         provider?.providerId === 'veo-3-img2vid' || provider?.providerId === 'veo-3';
 
-      // ── Universal Core defaults ───────────────────────────────────────────
-      // Per-event override → series defaults → hardcoded fallback. Series
-      // defaults plumbing happens at the call site (Inngest function reads
-      // app_config); the runner just trusts what's in the event payload.
-      const effectiveAspect: '16:9' | '9:16' | '1:1' = aspectRatio ?? '16:9';
-      // TD-33 (q7a Step 6): mutated post-plan-load when an Animator Plan
-      // specifies `quality_tier`. Plan beats event arg (Animator's decision
-      // of record). Falls back to event arg → 'fast'.
+      // ── Format params (2026-06-09: episode-authoritative resolver) ────────
+      // Initial fallbacks; OVERWRITTEN below by resolveVideoParams once the
+      // Animator Plan has been loaded (its provider/quality/resolution are the
+      // per-shot override channel). The resolver gives episode config authority
+      // over these for declared fields; an un-configured episode reproduces the
+      // legacy event-arg → fallback chain so nothing regresses.
+      let effectiveAspect: VideoAspectRatio = aspectRatio ?? '16:9';
       let effectiveQuality: 'fast' | 'standard' = qualityTier ?? 'fast';
 
       // ── Resolve approved EREF reference image (img2vid) ───────────────────
@@ -2050,10 +2094,38 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           ? buildShotPromptV2(storyboardShot, episodeTitle, characterCanon)
           : buildShotPrompt(inputs, shotId));
 
-      // TD-33 (q7a Step 6): apply Plan quality_tier override (Plan beats event).
-      if (planQualityOverride) {
-        effectiveQuality = planQualityOverride;
-      }
+      // ── Episode-authoritative format resolution (2026-06-09) ─────────────
+      // Single precedence authority (resolve-generation-params.ts). The
+      // Animator Plan's provider/quality/resolution + the event aspect arg
+      // form the per-shot override channel; episode config wins for declared
+      // fields unless allow_shot_overrides. This replaces the old scattered
+      // `?? '16:9'/'fast'` hardcodes, the provider_assignments-as-primary, and
+      // the per-field plan overrides — so a Director directive on the episode
+      // can no longer be silently dropped on the fan-out path.
+      const assignmentProviderId = coerceVideoProviderId(provider?.providerId);
+      const seriesDefaultsForResolve =
+        supabase && (inputs.episode as { series_id?: string | null })?.series_id
+          ? await getVgenDefaults(
+              supabase,
+              (inputs.episode as { series_id?: string | null }).series_id,
+            )
+          : null;
+      const resolvedFormat = resolveVideoParams({
+        episodeConfig: readEpisodeVideoConfig(inputs.episode),
+        shotOverride: {
+          provider_id: planProviderImplOverride,
+          aspect_ratio: aspectRatio ?? null,
+          // Plan beats event arg (Animator's decision of record), preserving
+          // the prior TD-33 precedence within the shot-override channel.
+          quality_tier: planQualityOverride ?? qualityTier ?? null,
+          resolution: planResolution,
+        },
+        assignmentProviderId,
+        seriesDefaults: seriesDefaultsForResolve,
+        deliveryAspect: deliveryAspectFor(readEpisodeDeliveryTargets(inputs.episode)),
+      });
+      effectiveAspect = resolvedFormat.aspectRatio;
+      effectiveQuality = resolvedFormat.qualityTier;
 
       // TD-49 Phase 2 P2.4 (2026-05-25): override `referenceImageBase64`
       // (start frame for img2vid providers) with the start_anchor asset
@@ -2109,8 +2181,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         // wrote provider.id in Plan body, that wins over event-arg /
         // DB-config defaults. Both providerImpl and qualityTier already
         // resolved together via resolveVanimProviderId() above.
-        const effectiveProviderId =
-          planProviderImplOverride ?? provider!.providerId;
+        // 2026-06-09: provider now comes from the episode-authoritative
+        // resolver (episode config → plan override → assignment → series →
+        // fallback), not the raw planOverride ?? assignment pair.
+        const effectiveProviderId = resolvedFormat.providerId;
         const effectiveIsVeoProvider =
           effectiveProviderId === 'veo-3-img2vid' ||
           effectiveProviderId.startsWith('veo-');
@@ -2158,10 +2232,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             `[exec-vgen] Plan declares resolution="${planResolution}" unsupported by provider="${effectiveProviderId}" (supported: ${supportedResolutions.join(', ')}). Fix the Plan's resolution field to a contract value.`,
           );
         }
-        const effectiveResolution =
-          planResolution && supportedResolutions.length > 0
-            ? planResolution
-            : null;
+        // 2026-06-09: effective resolution comes from the resolver (episode
+        // config authority, plan resolution as shot override, clamped to the
+        // provider contract). The TD-85 throw above still guards an explicitly
+        // unsupported PLAN-declared resolution against the effective provider.
+        const effectiveResolution = resolvedFormat.resolution;
 
         // ── UNIT 3 / I7: pre-spend ceiling gate ────────────────────────────
         // The episode budget ceiling MUST be checked BEFORE the paid provider

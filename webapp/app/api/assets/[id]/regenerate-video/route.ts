@@ -25,6 +25,17 @@ import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { getMultiVideoProvider } from '@/lib/agents/providers/video-gen-multi';
 import { getVgenDefaults, type VgenProviderId } from '@/lib/api/vgen-defaults';
+import {
+  deliveryAspectFor,
+  type VideoAspectRatio,
+  type VideoProviderId,
+  type VideoQualityTier,
+  type VideoResolution,
+} from '@/lib/api/provider-capabilities';
+import {
+  resolveVideoParams,
+  type EpisodeVideoConfig,
+} from '@/lib/api/resolve-generation-params';
 import { persistBinary } from '@/lib/agents/persist-binary';
 import { loadSeriesBibleCanon } from '@/lib/agents/bible-loader';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
@@ -175,11 +186,21 @@ export const POST = withApiHandler(async (req, ctx) => {
   // Episode title for prompt context
   const { data: epRow } = await sb
     .from('episodes')
-    .select('episode_code,title_working')
+    .select('episode_code,title_working,metadata')
     .eq('id', asset.episode_id)
     .maybeSingle();
   const episodeCode = (epRow as { episode_code?: string } | null)?.episode_code ?? 'SS-unknown';
   const episodeTitle = (epRow as { title_working?: string | null } | null)?.title_working ?? '';
+  const episodeMeta = ((epRow as { metadata?: unknown } | null)?.metadata ?? null) as
+    | Record<string, unknown>
+    | null;
+  const episodeVideoConfig =
+    (episodeMeta?.generation_config as { video?: EpisodeVideoConfig } | undefined)?.video ?? null;
+  const episodeDeliveryTargets = Array.isArray(episodeMeta?.delivery_targets)
+    ? (episodeMeta!.delivery_targets as unknown[]).filter(
+        (t): t is string => typeof t === 'string',
+      )
+    : [];
 
   // Phase A.1 — load Bible character canon to anchor character visuals in the
   // prompt alongside the EREF reference image. Failure is non-fatal: degrade
@@ -274,34 +295,46 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
-  const aspectRatio =
-    body.aspect_ratio ??
-    (typeof meta.aspect_ratio === 'string'
-      ? (meta.aspect_ratio as '16:9' | '9:16' | '1:1' | '21:9' | '4:3' | '3:4' | 'auto')
-      : '16:9');
-  const qualityTier = body.quality_tier ?? (typeof meta.quality_tier === 'string' ? (meta.quality_tier as 'fast' | 'standard') : 'fast');
-  // Sprint β: resolution / seed / end-image as optional overrides.
-  const resolution =
-    body.resolution ??
-    (typeof meta.resolution === 'string'
-      ? (meta.resolution as '480p' | '720p' | '1080p')
-      : undefined);
   const seed = typeof body.seed === 'number' ? body.seed : undefined;
 
-  // Provider resolution chain: explicit body override → previous asset's
-  // metadata.provider_id (preserve per-shot history) → series default →
-  // VgenDefaults fallback.
+  // Map a previous asset's stored provider_id (which may be a legacy alias)
+  // into the canonical id for the shot-override channel.
   function normalizeProviderId(raw: string | null | undefined): VgenProviderId | null {
     if (raw === 'veo-3' || raw === 'veo-3-img2vid') return 'veo-3-img2vid';
     if (raw === 'seedance-fal' || raw === 'seedance-fal-img2vid') return 'seedance-fal-img2vid';
     return null;
   }
-  const providerFromMeta = normalizeProviderId(
-    typeof meta.provider_id === 'string' ? (meta.provider_id as string) : null,
-  );
+
+  // 2026-06-09: single resolver authority (same as the runner). Director's
+  // explicit drawer edits (body) and the previous asset's metadata form the
+  // per-shot override channel; episode generation_config wins for declared
+  // fields unless allow_shot_overrides is on. duration + seed stay per-shot
+  // (q27). For an un-configured episode this reproduces the prior
+  // body → meta → series → fallback chain — no regression.
   const seriesDefaults = await getVgenDefaults(sb, asset.series_id);
-  const providerId: VgenProviderId =
-    body.provider ?? providerFromMeta ?? seriesDefaults.provider_id;
+  const resolved = resolveVideoParams({
+    episodeConfig: episodeVideoConfig,
+    shotOverride: {
+      provider_id:
+        body.provider ??
+        normalizeProviderId(typeof meta.provider_id === 'string' ? meta.provider_id : null),
+      aspect_ratio:
+        body.aspect_ratio ??
+        (typeof meta.aspect_ratio === 'string' ? (meta.aspect_ratio as VideoAspectRatio) : null),
+      quality_tier:
+        body.quality_tier ??
+        (typeof meta.quality_tier === 'string' ? (meta.quality_tier as VideoQualityTier) : null),
+      resolution:
+        body.resolution ??
+        (typeof meta.resolution === 'string' ? (meta.resolution as VideoResolution) : null),
+    },
+    seriesDefaults,
+    deliveryAspect: deliveryAspectFor(episodeDeliveryTargets),
+  });
+  const providerId: VideoProviderId = resolved.providerId;
+  const aspectRatio = resolved.aspectRatio;
+  const qualityTier = resolved.qualityTier;
+  const resolution: VideoResolution | undefined = resolved.resolution ?? undefined;
   const videoProvider = getMultiVideoProvider(providerId);
   const cap = videoProvider.capabilities;
 

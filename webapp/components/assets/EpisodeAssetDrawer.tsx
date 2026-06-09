@@ -636,6 +636,7 @@ export function EpisodeAssetDrawer({
             <>
               <VGENShotSection
                 assetId={asset.id}
+                episodeId={asset.episode_id}
                 filename={asset.filename}
                 metadata={asset.metadata}
                 drivePath={asset.drive_path}

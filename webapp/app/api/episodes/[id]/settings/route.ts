@@ -20,10 +20,37 @@ import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
-import { NotFoundError } from '@/lib/api/errors';
+import { NotFoundError, ValidationError } from '@/lib/api/errors';
+import { VIDEO_PROVIDER_CAPS } from '@/lib/api/provider-capabilities';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+// Episode-authoritative generation config (2026-06-09). Stored at
+// `episodes.metadata.generation_config`. FORMAT only — duration + creative stay
+// per-shot (q27). Whitelist-strict; the resolver (resolve-generation-params.ts)
+// reads it as the precedence authority for every video-gen consumer.
+const VideoGenConfig = z
+  .object({
+    provider_id: z.enum(['seedance-fal-img2vid', 'veo-3-img2vid']).optional(),
+    aspect_ratio: z.enum(['16:9', '9:16', '1:1', '21:9', '4:3', '3:4', 'auto']).optional(),
+    quality_tier: z.enum(['fast', 'standard']).optional(),
+    resolution: z.enum(['480p', '720p', '1080p']).optional(),
+    allow_shot_overrides: z.boolean().optional(),
+  })
+  .strict();
+const ImageGenConfig = z
+  .object({
+    provider_id: z.enum(['openai-edits-multi', 'flux-pro-1.1-ultra']).optional(),
+    quality: z.enum(['low', 'medium', 'high', 'auto']).optional(),
+  })
+  .strict();
+const GenerationConfig = z
+  .object({
+    video: VideoGenConfig.optional(),
+    image: ImageGenConfig.optional(),
+  })
+  .strict();
 
 const Body = z
   .object({
@@ -32,8 +59,39 @@ const Body = z
     // not metadata). recordCost throws BudgetExceededError once spend would
     // cross it. `null` clears the cap (no limit). Omit = no change.
     budget_ceiling: z.number().finite().positive().max(10000).nullable().optional(),
+    generation_config: GenerationConfig.optional(),
   })
   .strict();
+
+/**
+ * Reject a video config whose format values the chosen provider cannot render
+ * (CLAUDE plan §pitfall #7 — server-side caps validation, not just UI gating).
+ * Throws ValidationError → 400. Only fields actually present are checked; the
+ * resolver applies the same caps at read time, so this is defence-in-depth that
+ * keeps the stored config honest.
+ */
+function assertVideoConfigValid(
+  video: z.infer<typeof VideoGenConfig> | undefined,
+): void {
+  if (!video) return;
+  const providerId = video.provider_id ?? 'seedance-fal-img2vid';
+  const caps = VIDEO_PROVIDER_CAPS[providerId];
+  if (video.aspect_ratio && !caps.supports_aspects.includes(video.aspect_ratio)) {
+    throw new ValidationError(
+      `aspect_ratio="${video.aspect_ratio}" not supported by provider "${providerId}" (supported: ${caps.supports_aspects.join(', ')})`,
+    );
+  }
+  if (video.quality_tier && !caps.supports_qualities.includes(video.quality_tier)) {
+    throw new ValidationError(
+      `quality_tier="${video.quality_tier}" not supported by provider "${providerId}"`,
+    );
+  }
+  if (video.resolution && !caps.supports_resolutions.includes(video.resolution)) {
+    throw new ValidationError(
+      `resolution="${video.resolution}" not supported by provider "${providerId}" (supported: ${caps.supports_resolutions.join(', ') || 'fixed/none'})`,
+    );
+  }
+}
 
 export const PATCH = withApiHandler(async (req, ctx) => {
   const params = (await ctx?.params) as { id: string } | undefined;
@@ -63,6 +121,24 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   if (body.anchor_chain_enabled !== undefined) {
     patch.anchor_chain_enabled = body.anchor_chain_enabled;
   }
+  // generation_config — deep-merge video/image sub-objects so a PATCH touching
+  // only the video block preserves a previously-saved image block (and vice
+  // versa). Validate the video block against provider caps before persisting.
+  if (body.generation_config !== undefined) {
+    assertVideoConfigValid(body.generation_config.video);
+    const curGen = (currentMeta.generation_config ?? {}) as {
+      video?: Record<string, unknown>;
+      image?: Record<string, unknown>;
+    };
+    const mergedGen: Record<string, unknown> = { ...curGen };
+    if (body.generation_config.video) {
+      mergedGen.video = { ...(curGen.video ?? {}), ...body.generation_config.video };
+    }
+    if (body.generation_config.image) {
+      mergedGen.image = { ...(curGen.image ?? {}), ...body.generation_config.image };
+    }
+    patch.generation_config = mergedGen;
+  }
   const newMeta = { ...currentMeta, ...patch };
   const nextCeiling = body.budget_ceiling !== undefined ? body.budget_ceiling : currentCeiling;
 
@@ -89,7 +165,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
       severity: 'info',
       title: `Episode ${ep.episode_code} settings updated`,
       description: `Director set: ${Object.entries(auditPatch)
-        .map(([k, v]) => `${k}=${String(v)}`)
+        .map(([k, v]) => `${k}=${typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}`)
         .join(', ')}`,
       actor: user.email ?? user.id,
       episode_id: episodeId,

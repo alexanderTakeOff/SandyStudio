@@ -115,6 +115,76 @@ export const SIZE_BY_DELIVERY_TARGET: Readonly<
   print_poster: { width: 1536, height: 1024 },
 });
 
+// ──────────────────────────────────────────────────────────────────────────────
+// IMAGE provider manifest (q28 2026-06-09) — episode-authoritative image
+// provider + quality for the Artist (multi-ref edit). Frontend-safe mirror of
+// the provider impls (providers/openai-image.ts, providers/flux-*). Reference
+// SIZE stays delivery-target-derived (SIZE_BY_DELIVERY_TARGET) — not a knob
+// here. Used by EpisodeSettingsCard's image section to render the dropdown +
+// capability-gated quality selector.
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type ImageProviderId = 'openai-edits-multi' | 'flux-pro-1.1-ultra';
+export type ImageQuality = 'low' | 'medium' | 'high' | 'auto';
+
+export interface ImageProviderCapabilities {
+  label: string;
+  sub: string;
+  /** Quality tiers the provider exposes; empty → no quality knob. */
+  supports_qualities: ReadonlyArray<ImageQuality>;
+  /** Max reference images for a multi-ref edit. */
+  max_reference_images: number;
+  /** Whether the provider exposes a denoise/strength knob (Flux). */
+  supports_strength: boolean;
+}
+
+export const IMAGE_PROVIDER_CAPS: Readonly<
+  Record<ImageProviderId, ImageProviderCapabilities>
+> = {
+  'openai-edits-multi': {
+    label: 'gpt-image-2 (multi-ref edit)',
+    sub: 'identity-lock · up to 16 refs',
+    supports_qualities: ['low', 'medium', 'high', 'auto'],
+    max_reference_images: 16,
+    supports_strength: false,
+  },
+  'flux-pro-1.1-ultra': {
+    label: 'Flux Pro 1.1 Ultra',
+    sub: 'denoise knob · single ref',
+    supports_qualities: [],
+    max_reference_images: 1,
+    supports_strength: true,
+  },
+};
+
+/** Aspect ratio per delivery_target — the delivery-derived fallback layer for
+ *  the generation-params resolver (resolve-generation-params.ts) and the
+ *  Animator's Plan aspect. Single source of truth lives HERE (shared manifest);
+ *  `runners/animator.ts` re-exports it for back-compat. */
+export const ASPECT_BY_DELIVERY_TARGET: Readonly<
+  Record<string, VideoAspectRatio>
+> = Object.freeze({
+  youtube_landscape: '16:9',
+  youtube_shorts: '9:16',
+  instagram_reels: '9:16',
+  instagram_post: '1:1',
+  tiktok: '9:16',
+  print_poster: '16:9',
+});
+
+/** Map an episode's delivery_targets[] to the primary aspect ratio (first
+ *  recognised target wins). Returns null when none map — caller falls through
+ *  to the next precedence layer. */
+export function deliveryAspectFor(
+  deliveryTargets: ReadonlyArray<string> | null | undefined,
+): VideoAspectRatio | null {
+  for (const t of deliveryTargets ?? []) {
+    const a = ASPECT_BY_DELIVERY_TARGET[t];
+    if (a) return a;
+  }
+  return null;
+}
+
 /** Clamp the supplied value to the provider's supported set / range. Used by
  *  callers that store settings from one provider and switch to another. */
 export function normalizeControls(

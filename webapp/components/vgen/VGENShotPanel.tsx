@@ -103,8 +103,25 @@ export interface VGENShotPanelSettings {
   resolution?: VideoResolution;
 }
 
+/** Episode-authoritative video format (2026-06-09). When the episode declares
+ *  generation_config.video and `allow_shot_overrides` is off, this panel's
+ *  format controls are LOCKED — the server (regenerate-video resolver) ignores
+ *  per-shot format anyway, so editing here would silently "not work" (the exact
+ *  trap CLAUDE plan §pitfall #4 warns about). Showing the lock keeps it honest. */
+interface EpisodeVideoLock {
+  provider_id?: VideoProviderId;
+  aspect_ratio?: string;
+  quality_tier?: string;
+  resolution?: VideoResolution;
+  allow_shot_overrides?: boolean;
+}
+
 export interface VGENShotPanelProps {
   assetId: string;
+  /** Episode id — when set, the panel fetches the episode generation_config and
+   *  locks format controls unless per-shot overrides are enabled. Omit → no
+   *  lock (back-compat). */
+  episodeId?: string | null;
   /** Drive or staging URL of the generated mp4. Null while generating or before first run. */
   videoUrl: string | null;
   /** Storyboard shot row — used as fallback when prompt is empty. */
@@ -146,6 +163,7 @@ function buildPromptFromShot(shot: VGENShotPanelStoryboardShot): string {
 
 export function VGENShotPanel({
   assetId,
+  episodeId,
   videoUrl,
   storyboardShot,
   currentSettings,
@@ -191,6 +209,45 @@ export function VGENShotPanel({
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Episode-authoritative format lock (2026-06-09). Fetched from the episode
+  // settings; null until loaded / when no episodeId. When the episode declares
+  // a video config and per-shot overrides are off, format controls are locked.
+  const [episodeVideo, setEpisodeVideo] = useState<EpisodeVideoLock | null>(null);
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  useEffect(() => {
+    if (!episodeId) {
+      setEpisodeVideo(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/episodes/${episodeId}/settings`)
+      .then((r) => r.json())
+      .then((j: { data?: { metadata?: Record<string, unknown> } }) => {
+        if (cancelled) return;
+        const v = (
+          j.data?.metadata?.generation_config as { video?: EpisodeVideoLock } | undefined
+        )?.video;
+        setEpisodeVideo(v ?? null);
+      })
+      .catch(() => {
+        // Non-fatal — no lock shown, server still enforces episode authority.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [episodeId]);
+
+  // The episode declares at least one FORMAT field → it's an authority.
+  const episodeDeclaresFormat = Boolean(
+    episodeVideo &&
+      (episodeVideo.provider_id ||
+        episodeVideo.aspect_ratio ||
+        episodeVideo.quality_tier ||
+        episodeVideo.resolution),
+  );
+  const allowShotOverrides = episodeVideo?.allow_shot_overrides === true;
+  const formatLocked = episodeDeclaresFormat && !allowShotOverrides;
 
   // Re-seed local state when a different asset is opened or upstream metadata changes.
   useEffect(() => {
@@ -244,6 +301,28 @@ export function VGENShotPanel({
     );
   }, [prompt, aspect, quality, provider, duration, currentSettings]);
 
+  // When per-shot overrides are ALLOWED, surface whether the current panel
+  // values diverge from the episode authority — q26b requires an explicit
+  // confirm before a divergent regenerate (no silent override).
+  const overrideDiffs = useMemo(() => {
+    if (!episodeDeclaresFormat || !allowShotOverrides) return [];
+    const diffs: string[] = [];
+    if (episodeVideo?.provider_id && episodeVideo.provider_id !== provider) {
+      diffs.push(`provider ${episodeVideo.provider_id}→${provider}`);
+    }
+    if (episodeVideo?.aspect_ratio && episodeVideo.aspect_ratio !== aspect) {
+      diffs.push(`aspect ${episodeVideo.aspect_ratio}→${aspect}`);
+    }
+    if (episodeVideo?.quality_tier && episodeVideo.quality_tier !== quality) {
+      diffs.push(`quality ${episodeVideo.quality_tier}→${quality}`);
+    }
+    if (episodeVideo?.resolution && episodeVideo.resolution !== controls.resolution) {
+      diffs.push(`res ${episodeVideo.resolution}→${controls.resolution ?? 'default'}`);
+    }
+    return diffs;
+  }, [episodeDeclaresFormat, allowShotOverrides, episodeVideo, provider, aspect, quality, controls.resolution]);
+  const needsOverrideConfirm = overrideDiffs.length > 0 && !overrideConfirmed;
+
   async function regenerate() {
     setBusy(true);
     setSuccess(false);
@@ -294,6 +373,9 @@ export function VGENShotPanel({
   }
 
   const disabled = readOnly === true || busy;
+  // Format controls (provider / aspect / quality / resolution) are additionally
+  // frozen when the episode authority owns them and overrides are off.
+  const formatDisabled = disabled || formatLocked;
 
   return (
     <div className="space-y-3" aria-label="VGEN shot panel">
@@ -335,6 +417,30 @@ export function VGENShotPanel({
         )}
       </div>
 
+      {/* ── Episode format lock notice (q26b / pitfall #4) ───────────── */}
+      {formatLocked && (
+        <div
+          className="rounded-md px-2.5 py-2 text-[11px] leading-snug border"
+          style={{
+            background: 'color-mix(in oklab, var(--accent-info, #38bdf8) 10%, transparent)',
+            borderColor: 'color-mix(in oklab, var(--accent-info, #38bdf8) 35%, transparent)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          🔒 Format is locked by <strong>Episode Settings</strong> (
+          {[
+            episodeVideo?.provider_id,
+            episodeVideo?.aspect_ratio,
+            episodeVideo?.quality_tier,
+            episodeVideo?.resolution,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+          ). Enable “Allow per-shot overrides” on the episode to edit per-shot.
+          Prompt / seed / end-frame remain editable.
+        </div>
+      )}
+
       {/* ── Provider select (gate to capability surface) ────────────── */}
       <label className="block">
         <span className="text-[10px] uppercase tracking-wider text-text-muted">Provider</span>
@@ -343,10 +449,11 @@ export function VGENShotPanel({
           onChange={(e) => {
             const next = e.target.value as VgenProvider;
             setProvider(next);
+            setOverrideConfirmed(false);
             // Re-normalise controls against the new provider's capabilities.
             setControls((prev) => normalizeControls(prev, VIDEO_PROVIDER_CAPS[next]));
           }}
-          disabled={disabled}
+          disabled={formatDisabled}
           aria-label="Video provider"
           className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
         >
@@ -362,10 +469,42 @@ export function VGENShotPanel({
       <ProviderControlPanel
         provider={provider}
         value={controls}
-        onChange={setControls}
+        onChange={(next) => {
+          setControls(next);
+          setOverrideConfirmed(false);
+        }}
         disabled={disabled}
         density="full"
+        fields={
+          formatLocked
+            ? ['duration', 'seed', 'endImage']
+            : ['aspect', 'quality', 'resolution', 'duration', 'seed', 'endImage']
+        }
       />
+
+      {/* ── Override-episode confirm (q26b) ──────────────────────────── */}
+      {overrideDiffs.length > 0 && (
+        <label
+          className="flex items-start gap-2 cursor-pointer rounded-md px-2.5 py-2 text-[11px] leading-snug border"
+          style={{
+            background: 'color-mix(in oklab, var(--accent-warning, #f59e0b) 10%, transparent)',
+            borderColor: 'color-mix(in oklab, var(--accent-warning, #f59e0b) 40%, transparent)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <input
+            type="checkbox"
+            className="mt-0.5 h-3.5 w-3.5 accent-[var(--accent-warning,#f59e0b)] cursor-pointer"
+            checked={overrideConfirmed}
+            disabled={disabled}
+            onChange={(e) => setOverrideConfirmed(e.target.checked)}
+          />
+          <span>
+            This shot <strong>overrides episode settings</strong> ({overrideDiffs.join(', ')}).
+            Confirm to regenerate with the per-shot format.
+          </span>
+        </label>
+      )}
 
       {/* Reference image — read-only chip; Replace picker is a follow-up. */}
       <div className="block">
@@ -486,13 +625,15 @@ export function VGENShotPanel({
         <button
           type="button"
           onClick={regenerate}
-          disabled={disabled}
+          disabled={disabled || needsOverrideConfirm}
           title={
             readOnly
               ? 'Asset is locked'
-              : dirty
-                ? 'Generate a new mp4 with the current settings'
-                : 'Re-generate with the same settings'
+              : needsOverrideConfirm
+                ? 'Confirm the per-shot override checkbox first'
+                : dirty
+                  ? 'Generate a new mp4 with the current settings'
+                  : 'Re-generate with the same settings'
           }
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all border-2 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{

@@ -26,6 +26,14 @@ import {
   type VideoResolution,
 } from '@/lib/api/provider-capabilities';
 
+export type ProviderControlField =
+  | 'aspect'
+  | 'quality'
+  | 'resolution'
+  | 'duration'
+  | 'seed'
+  | 'endImage';
+
 interface ProviderControlPanelProps {
   provider: VideoProviderId;
   value: VideoControlsValue;
@@ -37,6 +45,10 @@ interface ProviderControlPanelProps {
   density?: 'compact' | 'full';
   /** Disable all inputs while pending request. */
   disabled?: boolean;
+  /** Which controls to render. Default = all. Episode-level FORMAT settings
+   *  pass `['aspect','quality','resolution']` — duration / seed / end-frame
+   *  are per-shot creative (q27) and don't belong on the episode card. */
+  fields?: ReadonlyArray<ProviderControlField>;
 }
 
 const ASPECT_LABEL: Record<VideoAspectRatio, string> = {
@@ -54,6 +66,15 @@ const QUALITY_LABEL: Record<VideoQualityTier, string> = {
   standard: 'Standard · final',
 };
 
+const ALL_FIELDS: ReadonlyArray<ProviderControlField> = [
+  'aspect',
+  'quality',
+  'resolution',
+  'duration',
+  'seed',
+  'endImage',
+];
+
 export function ProviderControlPanel({
   provider,
   value,
@@ -61,8 +82,10 @@ export function ProviderControlPanel({
   showCost = true,
   density = 'full',
   disabled = false,
+  fields = ALL_FIELDS,
 }: ProviderControlPanelProps) {
   const caps: VideoProviderCapabilities = VIDEO_PROVIDER_CAPS[provider];
+  const show = (f: ProviderControlField): boolean => fields.includes(f);
   const cost = estimateCost(caps, {
     quality_tier: value.quality_tier,
     duration_seconds: value.duration_seconds,
@@ -78,6 +101,7 @@ export function ProviderControlPanel({
   return (
     <div className={`flex flex-col ${fieldGap}`}>
       {/* Aspect ratio */}
+      {show('aspect') && (
       <div>
         <label className={labelCls}>Aspect ratio</label>
         <select
@@ -95,8 +119,10 @@ export function ProviderControlPanel({
           ))}
         </select>
       </div>
+      )}
 
       {/* Quality tier */}
+      {show('quality') && (
       <div>
         <label className={labelCls}>Quality</label>
         <select
@@ -114,9 +140,10 @@ export function ProviderControlPanel({
           ))}
         </select>
       </div>
+      )}
 
       {/* Resolution — only when supported */}
-      {caps.supports_resolutions.length > 0 && (
+      {show('resolution') && caps.supports_resolutions.length > 0 && (
         <div>
           <label className={labelCls}>
             Resolution
@@ -144,6 +171,7 @@ export function ProviderControlPanel({
       )}
 
       {/* Duration */}
+      {show('duration') && (
       <div>
         <label className={labelCls}>
           Duration · {value.duration_seconds}s
@@ -164,9 +192,10 @@ export function ProviderControlPanel({
           }
         />
       </div>
+      )}
 
       {/* Seed — only when supported */}
-      {caps.supports_seed && (
+      {show('seed') && caps.supports_seed && (
         <div>
           <label className={labelCls}>
             Seed
@@ -213,7 +242,7 @@ export function ProviderControlPanel({
 
       {/* End image — only when supported. MVP: accept an asset id string;
           richer picker is a follow-up. */}
-      {caps.supports_end_image && (
+      {show('endImage') && caps.supports_end_image && (
         <div>
           <label className={labelCls}>End frame (optional)</label>
           <input
