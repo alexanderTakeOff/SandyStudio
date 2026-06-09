@@ -6,7 +6,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import { requireDirector } from '@/lib/api/auth';
+import { assertHumanDirector, requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
@@ -25,7 +25,9 @@ const GovernanceBody = z.object({
 });
 
 export const POST = withApiHandler(async (req) => {
-  const { user, supabase } = await requireDirector();
+  const ctx = await requireDirector();
+  assertHumanDirector(ctx); // hard limit — MODE_CHANGE is human-Director-only
+  const { user, supabase } = ctx;
   const body = await parseJson(req, GovernanceBody);
   if (!body.confirm) throw new ValidationError('confirm must be true');
 

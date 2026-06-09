@@ -4,8 +4,8 @@
 // flow where the Director dictates premise and metadata via voice.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { checkVerbalApproval } from '../approval-check';
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { gateMutation } from '../approval-check';
+import { authHeaders, fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
 
 type AnyArgs = Record<string, unknown>;
 
@@ -60,7 +60,10 @@ export const createEpisode: Tool<CreateEpisodeArgs> = {
     return { seriesId, episodeCode, titleWorking, premise, targetRuntimeSeconds: target, governanceMode };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('createEpisode', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -77,7 +80,7 @@ export const createEpisode: Tool<CreateEpisodeArgs> = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+        ...authHeaders(ctx),
       },
       body: JSON.stringify(body),
     });
@@ -231,7 +234,10 @@ export const editBrief: Tool<EditBriefArgs> = {
     return { episodeId, content };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('editBrief', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -278,7 +284,7 @@ export const editBrief: Tool<EditBriefArgs> = {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+          ...authHeaders(ctx),
         },
         body: JSON.stringify({ content: args.content }),
       },

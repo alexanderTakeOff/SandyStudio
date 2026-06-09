@@ -37,6 +37,12 @@ import { createSupabaseServiceRoleClient } from '../supabase/server';
 import { logEvent } from '../api/events';
 import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
+// TD-87 (2026-06-09): the Mode-4 autonomous chain now routes forward through
+// the SAME rich fan-out router the Director-driven approve route uses, instead
+// of the thin per-agent `spec.nextEvent`. Closes the Mode-4 divergence where
+// WCHK → straight to EXEC-EDIT skipped the EREF + MGEN fan-out and per-shot
+// designer/animator advancement, leaving EXEC-EDIT to fail with no episode refs.
+import { computeNextEvents, type AssetForChain } from './next-events';
 
 // Maps an agent to the provider contract it consumes. Agents not listed here
 // don't go through the resolver (text-only agents → Anthropic / mock LLM).
@@ -529,10 +535,76 @@ export function createAgentInngestFunction<E extends string>(
           // approval, now WITH the continuity verdict attached.
           nextEventCandidate.name.startsWith('sandystudio/exec-wchk/'));
 
-      if (autoChain || isCriticChain) {
-        if (nextEventCandidate) {
-          await step.sendEvent('fan-out', nextEventCandidate as SendEventPayload);
+      // TD-87 (2026-06-09): Mode-4 forward routing now goes through
+      // computeNextEvents — the SAME rich router the Director-driven approve
+      // route uses — instead of the thin per-agent `spec.nextEvent`. The
+      // factory's step.5 already auto-promoted the output asset to APPROVED in
+      // Mode 4, so we feed that APPROVED asset to computeNextEvents and dispatch
+      // EVERY returned event. This restores the full fan-out (e.g. WCHK
+      // APPROVED → EREF + MGEN in parallel, per-shot designer/animator
+      // advancement) that the linear `spec.nextEvent` was silently skipping,
+      // which left EXEC-EDIT firing with zero episode reference frames.
+      //
+      // hasJob idempotency inside computeNextEvents makes re-dispatch safe, so
+      // there is no double-fire risk vs. the approve route running the same
+      // milestone later.
+      //
+      // The Critic-chain path is ORTHOGONAL and still fires the thin
+      // `nextEventCandidate` in ALL modes — critics validate Plans-in-REVIEW
+      // and must auto-advance whether or not Mode-4 auto-chaining is on.
+      if (autoChain) {
+        const richEvents = await step.run('compute-next-events', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          // Fetch the just-saved + auto-approved asset row so computeNextEvents
+          // sees the same shape the approve route passes it (id, file_type,
+          // episode_id, updated_at, metadata, content). updated_at is the
+          // idempotency "since" floor.
+          const { data: row } = await supabase
+            .from('assets')
+            .select('id,filename,file_type,episode_id,updated_at,metadata,content')
+            .eq('id', saved.assetId)
+            .maybeSingle();
+          const assetForChain: AssetForChain = {
+            id: saved.assetId,
+            filename:
+              (row as { filename?: string } | null)?.filename ?? saved.assetId,
+            file_type:
+              (row as { file_type?: string } | null)?.file_type ??
+              (FILE_TYPE_HINT_BY_AGENT[spec.agentId] ?? ''),
+            episode_id:
+              (row as { episode_id?: string | null } | null)?.episode_id ??
+              episodeId,
+            updated_at: (row as { updated_at?: string | null } | null)?.updated_at ?? null,
+            metadata: (row as { metadata?: unknown } | null)?.metadata,
+            content: (row as { content?: string | null } | null)?.content ?? null,
+          };
+          // 'AUTOTEST' sentinel for confirmedBy — only consumed by the EXEC-PUB
+          // branch, and Mode 4 auto-passes the publish gate anyway.
+          return computeNextEvents(supabase, assetForChain, 'AUTOTEST');
+        });
+        // Dispatch as ONE batched sendEvent (matches the runner-fan-out path
+        // below). computeNextEvents can return multiple events — including
+        // several with the SAME name (e.g. one `exec-eref-designer/plan` per
+        // pilot shot) — so a per-event loop would need indexed step ids;
+        // batching sidesteps that and keeps a single idempotent step.
+        if (richEvents.length > 0) {
+          await step.sendEvent(
+            'fan-out-next-events',
+            richEvents.map((ev) => ({ name: ev.name, data: ev.data })) as unknown as SendEventPayload,
+          );
         }
+      }
+
+      // Critic chain (all modes) + runner-emitted events. In Mode 4 the rich
+      // router above already covered the forward EXECUTOR routing, so here we
+      // only fire the thin candidate when it is a Critic chain (it would
+      // otherwise duplicate a milestone computeNextEvents handles). In Modes
+      // 1-3 autoChain is false, so the forward executor fires from the approve
+      // route, never here — only the Critic candidate dispatches.
+      if (isCriticChain && nextEventCandidate) {
+        await step.sendEvent('fan-out', nextEventCandidate as SendEventPayload);
+      }
+      if (autoChain || isCriticChain) {
         // runAgent may also return its own next_event (e.g. EXEC-PUB → published).
         if (exec.result.next_event) {
           await step.sendEvent('runner-next', exec.result.next_event as SendEventPayload);

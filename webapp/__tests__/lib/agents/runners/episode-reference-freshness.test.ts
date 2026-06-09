@@ -138,7 +138,7 @@ describe('checkPlanAnchorFreshness — fresh paths', () => {
 });
 
 describe('checkPlanAnchorFreshness — stale paths', () => {
-  it('flags spatial anchor as stale when a newer APPROVED IMG exists at same location', async () => {
+  it('does NOT flag spatial anchor as stale when a newer APPROVED IMG exists at same location (relaxed 2026-06-09 — static room, any approved frame is a valid spatial anchor; only TEMPORAL anchors care about newer-at-scope)', async () => {
     const sb = buildMock({
       assetById: {
         'anchor-spatial-1': {
@@ -148,7 +148,9 @@ describe('checkPlanAnchorFreshness — stale paths', () => {
         },
       },
       lookupRows: [
-        // Newer asset at SAME location wins; anchor-spatial-1 is no longer latest.
+        // A newer approved frame at the SAME location no longer invalidates a
+        // still-APPROVED spatial anchor (Director «бред» ruling; the old
+        // behaviour caused a serialization trap that failed same-room batches).
         {
           id: 'newer-asset-v2',
           status: 'APPROVED',
@@ -159,14 +161,8 @@ describe('checkPlanAnchorFreshness — stale paths', () => {
       ],
     });
     const out = await checkPlanAnchorFreshness(sb, 'ep-1', [SPATIAL_ANCHOR]);
-    expect(out.ok).toBe(false);
-    expect(out.stale).toHaveLength(1);
-    expect(out.stale[0]).toEqual<StaleAnchorEntry>({
-      kind: 'spatial_same_location',
-      planAnchorAssetId: 'anchor-spatial-1',
-      latestAssetId: 'newer-asset-v2',
-      reason: 'newer_approved_asset_at_same_scope',
-    });
+    expect(out.ok).toBe(true);
+    expect(out.stale).toEqual([]);
   });
 
   it('flags anchor as stale when anchor asset is no longer APPROVED (auto-demote ripple)', async () => {

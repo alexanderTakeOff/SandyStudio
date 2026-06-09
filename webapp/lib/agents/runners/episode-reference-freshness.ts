@@ -155,30 +155,35 @@ export async function checkPlanAnchorFreshness(
     }
 
     // Anchor itself is still APPROVED — but is it still the LATEST at its
-    // scope? If a newer APPROVED asset exists at the same scope, the anchor
-    // is technically outdated even though it's still approved.
-    let latestAssetId: string | null = null;
-    if (anchor.kind === 'spatial_same_location' && view.locationSlug) {
-      latestAssetId = await findLatestApprovedImgByLocation(
-        supabase,
-        episodeId,
-        view.locationSlug,
-      );
-    } else if (anchor.kind === 'temporal_previous_shot' && view.shotId) {
-      latestAssetId = await findLatestApprovedImgByShotId(
+    // scope?
+    //
+    // TD (2026-06-09, Director «бред» ruling, empirically confirmed): the
+    // "newer-at-scope" staleness applies ONLY to TEMPORAL anchors (continuity
+    // from the immediately-previous shot, where the most-recent re-shot
+    // genuinely matters). For SPATIAL (same-location) anchors it is a
+    // serialization trap: in a single-location episode every newly-APPROVED
+    // frame advances the "location latest" pointer, so a fan-out of N
+    // same-room shots fails ~all-but-the-first with PLAN_ANCHOR_STALE the
+    // moment any sibling approves (live: E03 batch, 12/16 shots failed this
+    // way 2026-06-09). A static room is a static room — ANY approved
+    // same-location frame is a valid spatial anchor, so an already-APPROVED
+    // spatial anchor is never "stale" merely because a newer sibling exists.
+    // Genuinely-broken spatial anchors (demoted / missing) are still caught
+    // above (anchor_no_longer_approved / anchor_asset_missing).
+    if (anchor.kind === 'temporal_previous_shot' && view.shotId) {
+      const latestAssetId = await findLatestApprovedImgByShotId(
         supabase,
         episodeId,
         view.shotId,
       );
-    }
-
-    if (latestAssetId && latestAssetId !== anchor.assetId) {
-      stale.push({
-        kind: anchor.kind,
-        planAnchorAssetId: anchor.assetId,
-        latestAssetId,
-        reason: 'newer_approved_asset_at_same_scope',
-      });
+      if (latestAssetId && latestAssetId !== anchor.assetId) {
+        stale.push({
+          kind: anchor.kind,
+          planAnchorAssetId: anchor.assetId,
+          latestAssetId,
+          reason: 'newer_approved_asset_at_same_scope',
+        });
+      }
     }
   }
 

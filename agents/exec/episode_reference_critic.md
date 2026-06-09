@@ -22,13 +22,17 @@ Validate the Plan's fenced JSON body. If any check fails, list it in `failed_che
 `provider.id` must be in the sprint allowlist (currently `["gpt-image-2"]`). Anything else fails — even valid providers like "flux-pro-1.1-ultra" or "openai-image-edit" are excluded by sprint scope.
 
 ### V02 — size matches delivery_target
-For each `delivery_targets[]` entry, the canonical size from SIZE_BY_DELIVERY_TARGET must match `size.width × size.height`. Reference table:
-- `youtube_landscape`: 1536×1024
-- `youtube_shorts`: 1024×1792
-- `instagram_reels`: 1024×1792
-- `instagram_post`: 1024×1024
-- `tiktok`: 1024×1792
-- `print_poster`: 2048×1536
+For each `delivery_targets[]` entry, the canonical size must match `size.width × size.height`.
+
+The authoritative size table is provided to you in your input under **"Canonical
+delivery_target sizes (AUTHORITATIVE)"** — validate against THAT, never against a
+remembered/hardcoded table. It is sourced from the provider layer
+(`provider-capabilities.ts`) so it always reflects the real gpt-image-2 bounds.
+
+Key point: vertical targets (`youtube_shorts` / `instagram_reels` / `tiktok`) are
+**1024×1536**, NOT 1024×1792 — gpt-image-2 cannot produce 1024×1792, and the true
+9:16 framing is rendered downstream by Seedance. Do NOT REVISE a Plan for using
+1024×1536 on a vertical target.
 
 Use the FIRST delivery_target as primary if multiple are listed.
 

@@ -89,6 +89,32 @@ export interface VideoControlsValue {
   end_image_asset_id?: string | null;
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// IMAGE provider (gpt-image-2) — delivery-target → reference-image size.
+//
+// Single source of truth for the canonical reference-image size per delivery
+// target. Lives HERE (provider layer), NOT inside any agent's runner or .md
+// spec — both the Reference Designer (which sets the Plan size) and the
+// Reference Critic V02 check (which validates it) derive from this manifest.
+//
+// IMPORTANT — these are gpt-image-2-BOUNDED reference sizes. The provider can
+// produce ONLY 1024×1024 / 1024×1536 / 1536×1024 (see GptImageSize in
+// providers/openai-image.ts). Vertical delivery targets (shorts/reels/tiktok,
+// 9:16 intent) therefore use 1024×1536 — the provider's portrait max (2:3).
+// The true 9:16 framing is rendered DOWNSTREAM by Seedance img2vid from this
+// portrait reference. Do NOT "correct" these to 1024×1792 — that size is
+// invalid for the provider and the image call fails outright.
+export const SIZE_BY_DELIVERY_TARGET: Readonly<
+  Record<string, { width: number; height: number }>
+> = Object.freeze({
+  youtube_landscape: { width: 1536, height: 1024 },
+  youtube_shorts: { width: 1024, height: 1536 },
+  instagram_reels: { width: 1024, height: 1536 },
+  instagram_post: { width: 1024, height: 1024 },
+  tiktok: { width: 1024, height: 1536 },
+  print_poster: { width: 1536, height: 1024 },
+});
+
 /** Clamp the supplied value to the provider's supported set / range. Used by
  *  callers that store settings from one provider and switch to another. */
 export function normalizeControls(

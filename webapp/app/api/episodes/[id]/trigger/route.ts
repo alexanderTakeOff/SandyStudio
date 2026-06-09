@@ -7,7 +7,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import { requireDirector } from '@/lib/api/auth';
+import { assertHumanDirector, requireDirector } from '@/lib/api/auth';
 import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
@@ -67,8 +67,16 @@ export const POST = withApiHandler(async (req, ctx) => {
   const id = params?.id;
   if (!id) throw new NotFoundError('Episode');
 
-  const { user, supabase } = await requireDirector();
+  const dir = await requireDirector();
+  const { user, supabase } = dir;
   const body = await parseJson(req, TriggerBody);
+
+  // q9 defence-in-depth: publishing (EXEC-PUB) is a hard limit (CLAUDE.md §6).
+  // The EXEC-DIR-AI service token must never dispatch it, even though
+  // gateMutation already blocks the publish tool upstream in every mode.
+  if (body.agentCode === 'EXEC-PUB') {
+    assertHumanDirector(dir);
+  }
 
   const eventName = AGENT_TO_EVENT[body.agentCode];
   if (!eventName) {

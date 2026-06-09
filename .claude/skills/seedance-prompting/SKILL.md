@@ -154,6 +154,17 @@ camera tests; switch to 1080p when locked.
    surcharge of including this list is zero and it visibly reduces defect
    rate (E20 probe 2026-05-13).
 
+6. **Reference/start-image ASPECT must match the render `aspect_ratio`**
+   (2026-06-09, E03 Shorts probe). A 16:9 landscape ref (1536×1024) into a
+   `9:16` render makes Seedance crop ~44% horizontally and recompose the frame
+   → content loss + identity drift. This is distinct from rule 3 (framing):
+   rule 3 is wide-vs-close, this is landscape-vs-portrait. For vertical delivery
+   (Shorts / Reels / TikTok) the reference MUST be authored portrait
+   (1024×1792 per the EREF Designer size table). If you receive a landscape ref
+   for a 9:16 shot, STOP and flag upstream — do NOT render. Root cause on E03:
+   the episode had no `delivery_targets`, so the EREF Designer silently fell
+   back to `youtube_landscape` and authored landscape refs.
+
 ## Known quirks (collected from production probes)
 
 - **Parent-truncated status URLs** — fal returns `…/seedance-2.0/requests/<id>/status`

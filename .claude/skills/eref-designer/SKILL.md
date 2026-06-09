@@ -239,6 +239,27 @@ If any check fails → emit `canon_extension_proposed` activity_event with
 the specific gap, do NOT write a Plan. EXEC-ORCH / Director resolves
 upstream before retry.
 
+### 2026-06-09 — `delivery_targets` fallback is a RED FLAG, not a pass (E03 Shorts)
+
+Pre-flight check #4 ("delivery_targets[] resolves (episode → series → fallback)")
+is necessary but **not sufficient**. Resolving *via the fallback*
+(`youtube_landscape`, 16:9) means NEITHER episode NOR series declared a target —
+which silently produces **landscape** refs. If the episode is meant to be
+vertical (Shorts / Reels / TikTok) this ships the wrong aspect end-to-end, and
+Seedance img2vid then crops the landscape ref into 9:16 (content loss + identity
+drift — see `seedance-prompting` hard rule 6).
+
+**Rule:** when `delivery_targets` resolves ONLY by fallback (episode.metadata
+AND series.metadata both empty), do NOT silently default. Emit
+`decision_requested` naming the gap ("episode has no delivery_targets — confirm
+landscape, or set the vertical target before refs"). Aspect is owned by
+episode/series config (Brief / Episode Settings), never guessed by the Designer.
+
+Root cause E03 (2026-06-09): episode created for vertical Shorts but
+`episode.metadata.delivery_targets` was never set → Designer authored 1536×1024
+landscape plans. Durable prevention: delivery_target as a first-class field in
+the Episode Settings card (TD-86), set before the pipeline runs.
+
 ## Revision loop (Critic REVISE → Designer v02)
 
 When Critic returns REVISE with a `revisionNote`, treat each numbered

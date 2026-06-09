@@ -320,7 +320,17 @@ async function gatherReferencedMediaAssets(
       .eq('status', 'LOCKED')
       .like('file_type', 'SBL-%');
     if (error) throw new Error(`SBL canon ref lookup: ${error.message}`);
-    return (data ?? []).map(toReferencedMediaAsset);
+    // Only VISUAL canon is opened as media by the EREF artist. Text-only Bible
+    // sections (SBL-general_idea, SBL-world, *.md) carry no image bytes, so
+    // preflighting their byte-reachability false-blocks the whole stage — the
+    // same over-strict pattern already fixed for VANIM (U3) and VGEN/animatic.
+    // The runner reads prose sections as TEXT, not media. Filter to image assets
+    // by filename extension. (2026-06-09: E03 SH01/SH02 EREF died "Media
+    // unreachable" on SS-S15-SBL-general_idea_main-v01-LOCKED.md.)
+    const IMAGE_EXT = /\.(png|jpe?g|webp|gif|avif)$/i;
+    return (data ?? [])
+      .filter((r) => IMAGE_EXT.test(r.filename ?? ''))
+      .map(toReferencedMediaAsset);
   }
 
   // Episode-scoped, APPROVED media families per agent.

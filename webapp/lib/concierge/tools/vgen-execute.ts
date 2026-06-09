@@ -19,8 +19,8 @@
 //   → runner.ts honours body.provider.id + body.quality_tier from the Plan.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { checkVerbalApproval } from '../approval-check';
-import { fail, ok, type Tool, type ToolResult } from './types';
+import { gateMutation } from '../approval-check';
+import { authHeaders, fail, ok, type Tool, type ToolResult } from './types';
 import { ackOrFailOnPickup } from './wait-for-pickup';
 
 interface RegenerateVideoFromPlanArgs {
@@ -111,7 +111,10 @@ export const regenerateVideoFromPlan: Tool<RegenerateVideoFromPlanArgs> = {
     if (!episodeId) {
       return fail('episodeId required — no active episode in conversation context.');
     }
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('regenerateVideoFromPlan', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -130,7 +133,7 @@ export const regenerateVideoFromPlan: Tool<RegenerateVideoFromPlanArgs> = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(ctx.cookieHeader ? { cookie: ctx.cookieHeader } : {}),
+        ...authHeaders(ctx),
       },
       body: JSON.stringify({
         agentCode: 'EXEC-VGEN',

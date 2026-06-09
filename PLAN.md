@@ -11,8 +11,16 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-04 (Gate-Hardening Phase 2 in progress)
-Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 108e8ee (NOT pushed — q9 push gated on paid Veo smoke done WITH Director)
+Date:   2026-06-08 (E02 final-cut WYSIWYG fix shipped + pushed)
+Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: e7c76d7 (pushed)
+
+E02 FINAL-CUT WYSIWYG (2026-06-08, a7dcb0c+e7c76d7): re-stitch gave byte-identical
+  renders — Director's edits never reached the cut. ROOT: two APPROVED animatics
+  (v06+v07) → stitch .find()'d stale v06. Fixed: stitch picks newest + approve
+  adds VID-animatic slot (invalidates prior); saveAgentOutput renames media→vNN +
+  /api/media -DRAFT revalidates; clipLengths shared UI/route/stitch + ffprobe fix.
+  +AnimaticPlayer cut-start/end + Save-validation. tsc·0/715/30. NEXT: Director
+  re-stitch E02 → confirm new SHA + 30 shots (v07).
 
 GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
   ✅ Phase 1 SHIPPED (7c76a05): single-approved→INVALIDATED+DB indexes (0036),
@@ -37,10 +45,12 @@ GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
   Phase 3 = OUTPUT-critic (frame-sampler → vision) + camera/quality_tier checks.
   Verify after each unit: tsc·0 / vitest 664 / replay-pilot 30. Paid smoke = WITH Director.
 
-E02 «The Tidy Tornado» (id 8b32b3e0-…): Writer Script v02 (RU, 61s, no dialogue,
-  blackout finale) in REVIEW — awaiting DIRECTOR approval. Story-Editor auto-read
-  shipped (dffe5b3) AFTER v02 was made → SREV won't retro-run on v02; Director
-  either has Polina trigger Story Editor on v02 then approve, or approves as-is.
+E03 «Shorts Test» (bf175902-…, Mode4/$50/anchor=true): FIRST live Inngest Mode-4
+  brief→final. CORE BUG (TD-87): Mode-4 auto-chain (factory nextEvent) ≠ computeNextEvents
+  → WCHK jumps to EDIT, SKIPS EREF+MGEN → EDIT dies; manual recovery EREF-DESIGNER failed
+  (needs per-shot shotId), MGEN ok (NEW music≠E02 reuse). anchor viable (LOCKED bedroom loc).
+  FIX=converge Mode-4 on computeNextEvents (one router→lib). TD-86: EpisodeSettingsCard=
+  single source (provider/format/res/quality)+post-brief gate (budget=hard,settings=warn).
 
 OPERATING DOCTRINE (memory: nudge_polina_dont_act_for_her):
   • Тео = Director's proxy. Nudge Polina via team-chat (POST /api/team-chat/post,

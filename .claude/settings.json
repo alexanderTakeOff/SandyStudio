@@ -72,6 +72,16 @@
       }
     ],
     "PostToolUse": [],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/SandyStudio/.claude/hooks/training-capture.cjs\""
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

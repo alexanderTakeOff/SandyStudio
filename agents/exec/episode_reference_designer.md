@@ -179,16 +179,23 @@ the decision table moves into the skill — agent code remains unchanged.
 
 ### Step 2 — Decide size per delivery_target
 
-For each entry in `delivery_targets[]`:
+For each entry in `delivery_targets[]`, use the canonical size from the
+authoritative table injected into your input (sourced from the provider layer
+`provider-capabilities.ts` → `SIZE_BY_DELIVERY_TARGET`). The values below are a
+human reference only — the injected table is authoritative if they ever differ:
 
 | Target slug | Image size |
 |---|---|
 | `youtube_landscape` | 1536×1024 |
-| `youtube_shorts` | 1024×1792 |
-| `instagram_reels` | 1024×1792 |
+| `youtube_shorts` | 1024×1536 |
+| `instagram_reels` | 1024×1536 |
 | `instagram_post` | 1024×1024 |
-| `tiktok` | 1024×1792 |
-| `print_poster` | 2048×1536 |
+| `tiktok` | 1024×1536 |
+| `print_poster` | 1536×1024 |
+
+**gpt-image-2 produces ONLY 1024×1024 / 1024×1536 / 1536×1024.** Vertical targets
+use 1024×1536 (portrait max); the true 9:16 is rendered downstream by Seedance.
+Never emit 1024×1792 — the provider call fails.
 
 If only one target → single size. If multiple targets requiring different aspects →
 either generate primary target first + crop-safe zone for the other (cheaper) or

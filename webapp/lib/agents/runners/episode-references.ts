@@ -908,6 +908,40 @@ export function parseLastJsonBlock(content: string): Record<string, unknown> | n
 }
 
 /**
+ * True when an EPREV critic verdict with `verdict: "PASS"` exists for the given
+ * Plan in the episode. Used by the autonomous-chain self-heal: a Mode-4 Plan
+ * that passed its critic but was never flipped to APPROVED is still safe to
+ * generate. Best-effort — any lookup error returns false (caller then throws
+ * the normal "expected APPROVED" error, preserving the strict default).
+ */
+async function planHasPassingCriticVerdict(
+  supabase: SupabaseClient<Database>,
+  episodeId: string | null,
+  planAssetId: string,
+): Promise<boolean> {
+  if (!episodeId) return false;
+  const { data } = await supabase
+    .from('assets')
+    .select('content')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'REV-ref_plan%')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  for (const row of (data ?? []) as Array<{ content?: string | null }>) {
+    const body = parseLastJsonBlock(row.content ?? '');
+    if (
+      body &&
+      body.plan_asset_id === planAssetId &&
+      typeof body.verdict === 'string' &&
+      body.verdict.toUpperCase() === 'PASS'
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Load an APPROVED SPC-ref_plan asset and extract executor-facing overrides.
  * Throws on missing/invalid fields — Plan body must round-trip the Designer
  * contract exactly. Caller guarantees `planAssetId` is non-empty.
@@ -922,7 +956,7 @@ export async function loadPlanOverrides(
 ): Promise<PlanOverrides> {
   const { data, error } = await supabase
     .from('assets')
-    .select('id,file_type,status,content,created_at')
+    .select('id,file_type,status,content,created_at,episode_id')
     .eq('id', planAssetId)
     .maybeSingle();
   if (error) {
@@ -941,9 +975,25 @@ export async function loadPlanOverrides(
     );
   }
   if (data.status !== 'APPROVED') {
-    throw new EpisodeReferencesError(
-      `Plan asset ${planAssetId} status="${data.status}", expected APPROVED`,
+    // Autonomous-chain self-heal (2026-06-09): in Mode-4 the designer→critic
+    // chain leaves the Plan DRAFT — the factory auto-approve does not stick for
+    // re-authored ref_plans and there is no post-critic status flip — so a Plan
+    // that genuinely PASSed its EPREV critic could never generate. The critic
+    // PASS *is* the approval signal in the autonomous chain: if a PASS verdict
+    // exists for this Plan, promote it to APPROVED and proceed. Director-driven
+    // Modes 1-3 are unaffected (the Director's approve already set APPROVED, so
+    // this branch is never entered there).
+    const passed = await planHasPassingCriticVerdict(
+      supabase,
+      data.episode_id ?? null,
+      planAssetId,
     );
+    if (!passed) {
+      throw new EpisodeReferencesError(
+        `Plan asset ${planAssetId} status="${data.status}", expected APPROVED (no PASSing critic verdict found either)`,
+      );
+    }
+    await supabase.from('assets').update({ status: 'APPROVED' }).eq('id', planAssetId);
   }
   if (!data.content) {
     throw new EpisodeReferencesError(`Plan asset ${planAssetId} content empty`);

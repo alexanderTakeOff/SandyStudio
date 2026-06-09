@@ -39,5 +39,23 @@ The episode should come from the repeated interaction:
 4. The workaround amplifies chaos.
 5. The final punch reveals Sandy trapped by the same force at a larger scale.
 
+## Physical gag staging discipline
+For silent visual comedy, every gag must be physically causal and visually unambiguous for Storyboard, Image, and Video agents.
+
+Before delivering a script, the Writer must audit each gag beat against these checks:
+
+1. **Visible cause → visible effect.** The audience and downstream artists must see what action causes the gag. Avoid outcomes that only make sense as narration.
+2. **No impossible staging geometry.** Do not combine two actions that block each other physically. Example: if books have just buried the floor, a round table cannot immediately roll freely through that same book-covered path. Split such ideas into separate beats with a clear reset or different area.
+3. **No hidden-audio-dependent gags.** A Sandy short may use sound, but the gag must read visually without relying on off-screen noises. Blackout sequences cannot be explained only by “we hear crashing”; use visible flashes, silhouettes, quick light returns, or replace with a fully visible action.
+4. **Keep mirror/reflection beats simple.** AI image/video generation treats reflections as a black box. Avoid subtle reflection logic, delayed reflections, portals, “perfect circles” that a character tries to enter, or any gag requiring precise mirror semantics. Safe mirror beat: Sandy wipes a dirty mirror, smears the dirt, sees himself looking dirtier, then realizes the dirt is on the glass.
+5. **Name canon props concretely.** Use the actual available set pieces. If the set has a dresser/cabinet with book shelves rather than a standalone bookshelf, call it “dresser/cabinet with book shelves” so artists do not invent a new object.
+6. **Do not hide the hero when the acting is the point.** If a beat says Sandy is covered head-to-toe, he cannot also visibly look down or sell facial confusion. For readable acting, leave face/eyes visible or stage the mess around him instead.
+7. **Prefer forceful, readable physical verbs.** “Shoves too many objects into a drawer until it spits them out,” “yanks the lamp until the cord snaps,” “shakes a rug indoors and releases black dust,” and “fluffs a pillow until feathers fill the room” are stronger than abstract tidying.
+8. **Separate chained gags unless the chain is visually clean.** If a book-pyramid collapse, rolling table, lamp cord snap, and pillow explosion all occur, each needs its own clear frame logic. Do not stack them so the next action becomes impossible to understand or animate.
+
+For cleanup-chaos episodes such as *The Tidy Tornado*, the final payoff should be simple and readable: the room is visibly much worse than at the start, Sandy is visibly dirty/confused with cleaning rag or brush in hand, and he may proudly polish one tiny clean spot. Avoid conceptual finales where Sandy himself is “tidied away” unless the staging makes the joke unmistakable.
+
 ## Output expectation
 The Writer should make the local engine visible in the draft notes or story structure so the Director can judge whether the episode conflict is mechanically clear.
+
+The Writer must also include a short self-audit note confirming the physical gag staging discipline above: any beat depending on subtle geometry, hidden sound, mirror ambiguity, or impossible object placement must be revised before submission.

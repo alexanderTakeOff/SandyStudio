@@ -7,8 +7,8 @@
 // upstream attributes the action to the real human.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { checkVerbalApproval } from '../approval-check';
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { gateMutation } from '../approval-check';
+import { authHeaders, fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
 import { ackFanoutPickup, ackOrFailOnPickup } from './wait-for-pickup';
 
 type AnyArgs = Record<string, unknown>;
@@ -87,7 +87,14 @@ export const triggerAgent: Tool<TriggerAgentArgs> = {
         'episodeId required — no active episode in conversation context.',
       );
     }
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    // q9: triggerAgent is mode-aware. EXEC-PUB (publish) is a HARD LIMIT —
+    // gateMutation keeps it Director-gated in every mode; all other agent
+    // dispatches auto-pass in bold modes (3/4).
+    const approval = gateMutation('triggerAgent', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+      args: { agentCode: args.agentCode },
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -170,7 +177,10 @@ export const approveAsset: Tool<ApproveAssetArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('approveAsset', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -244,7 +254,10 @@ export const requestRevision: Tool<RequestRevisionArgs> = {
     return { assetId, note };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('requestRevision', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -281,7 +294,7 @@ async function internalFetch(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+      ...authHeaders(ctx),
     },
     body: JSON.stringify(body),
   });

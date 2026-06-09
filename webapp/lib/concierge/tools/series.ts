@@ -4,9 +4,9 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { checkVerbalApproval } from '../approval-check';
+import { gateMutation } from '../approval-check';
 import { withEffectiveStatus } from '@/lib/api/series-status';
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { authHeaders, fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
 
 type AnyArgs = Record<string, unknown>;
 
@@ -106,7 +106,7 @@ export const listSeriesBibles: Tool<ListSeriesBiblesArgs> = {
       `${ctx.appOrigin.replace(/\/$/, '')}/api/series/${encodeURIComponent(args.seriesId)}/bible`,
       {
         method: 'GET',
-        headers: { ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}) },
+        headers: { ...authHeaders(ctx) },
       },
     );
     let body: unknown = null;
@@ -184,7 +184,10 @@ export const enrichBible: Tool<EnrichBibleArgs> = {
     return { assetId: obj.assetId };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('enrichBible', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -194,7 +197,7 @@ export const enrichBible: Tool<EnrichBibleArgs> = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+          ...authHeaders(ctx),
         },
         body: JSON.stringify({ directorConfirm: true }),
       },
@@ -286,7 +289,10 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
     return { seriesId, section, slug, content, description };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('setBibleContent', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -316,7 +322,7 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+            ...authHeaders(ctx),
           },
           body: JSON.stringify({ content: args.content }),
         },
@@ -351,7 +357,7 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+          ...authHeaders(ctx),
         },
         body: JSON.stringify(body),
       },
@@ -437,7 +443,10 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
     return { assetId: obj.assetId, prompt: obj.prompt, quality, styleAnchorAssetId };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('regenerateBibleImage', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -447,7 +456,7 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+          ...authHeaders(ctx),
         },
         body: JSON.stringify({
           prompt: args.prompt,
@@ -571,7 +580,10 @@ export const createSeries: Tool<CreateSeriesArgs> = {
     return { code, title, audience, genre, logline, episode_budget_ceiling };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('createSeries', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -581,7 +593,7 @@ export const createSeries: Tool<CreateSeriesArgs> = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(ctx.cookieHeader ? { cookie: ctx.cookieHeader } : {}),
+        ...authHeaders(ctx),
       },
       body: JSON.stringify({
         code: args.code,
@@ -644,7 +656,10 @@ export const copyAssetImage: Tool<CopyAssetImageArgs> = {
     return { fromAssetId, toAssetId };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('copyAssetImage', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -654,7 +669,7 @@ export const copyAssetImage: Tool<CopyAssetImageArgs> = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(ctx.cookieHeader ? { Cookie: ctx.cookieHeader } : {}),
+          ...authHeaders(ctx),
         },
         body: JSON.stringify({ fromAssetId: args.fromAssetId, directorConfirm: true }),
       },

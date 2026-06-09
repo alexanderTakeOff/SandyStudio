@@ -17,8 +17,8 @@
 // REST middleware (requireDirector) handles auth + audit consistency.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { checkVerbalApproval } from '../approval-check';
-import { fail, ok, type Tool, type ToolResult } from './types';
+import { gateMutation } from '../approval-check';
+import { authHeaders, fail, ok, type Tool, type ToolResult } from './types';
 import { ackOrFailOnPickup } from './wait-for-pickup';
 
 interface RegenerateImageFromPlanArgs {
@@ -106,7 +106,10 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
     if (!episodeId) {
       return fail('episodeId required — no active episode in conversation context.');
     }
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('regenerateImageFromPlan', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -125,7 +128,7 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(ctx.cookieHeader ? { cookie: ctx.cookieHeader } : {}),
+        ...authHeaders(ctx),
       },
       body: JSON.stringify({
         shotId: args.shotId,

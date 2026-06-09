@@ -13,7 +13,7 @@
 // Verbal-approval gated.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { checkVerbalApproval } from '../approval-check';
+import { gateMutation } from '../approval-check';
 import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
 
 function safeParse(raw: string): Record<string, unknown> {
@@ -124,7 +124,10 @@ export const reorderShots: Tool<ReorderShotsArgs> = {
     const episodeId = args.episodeId ?? ctx.episodeId;
     if (!episodeId) return fail('episodeId required — no active episode.');
 
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('reorderShots', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) return fail(approval.reason, 'verbal_approval_required');
 
     // 1. Find latest APPROVED storyboard.

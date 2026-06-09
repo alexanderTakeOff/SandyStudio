@@ -35,6 +35,27 @@ import {
 } from '../providers/anthropic-text';
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
+import { SIZE_BY_DELIVERY_TARGET } from '../../api/provider-capabilities';
+
+/**
+ * Render the canonical delivery_target → size manifest as an authoritative
+ * block injected into the Critic's prompt. Single source of truth lives in
+ * `provider-capabilities.ts`; V02 validates the Plan's declared size against
+ * THIS (not a hand-maintained copy in the .md spec). gpt-image-2-bounded —
+ * vertical targets are 1024×1536 (portrait max), NOT 1024×1792.
+ */
+function canonicalSizeBlock(): string {
+  const rows = Object.entries(SIZE_BY_DELIVERY_TARGET).map(
+    ([target, { width, height }]) => `- \`${target}\`: ${width}×${height}`,
+  );
+  return [
+    '## Canonical delivery_target sizes (AUTHORITATIVE — validate V02 against THIS)',
+    'These are gpt-image-2-bounded reference sizes. Vertical targets are 1024×1536',
+    '(the provider cannot produce 1024×1792); true 9:16 is rendered downstream by',
+    'Seedance. Do NOT REVISE a Plan for using 1024×1536 on a vertical target.',
+    ...rows,
+  ].join('\n');
+}
 
 export const EPREV_CONTRACT = 'episode_reference_critic@v1';
 export const EPREV_MODEL = 'claude-sonnet-4-6';
@@ -180,6 +201,8 @@ function buildUserMessage(args: {
     '<plan>',
     args.planContent,
     '</plan>',
+    '',
+    canonicalSizeBlock(),
     '',
     'Hard rules:',
     '- Output one markdown narrative and exactly one fenced JSON block at the end.',

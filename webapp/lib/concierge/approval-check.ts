@@ -13,7 +13,100 @@
 // Unicode-aware punctuation/whitespace handles both alphabets correctly.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import type { ConciergeTurnRow } from './types';
+import type { ConciergeMode, ConciergeTurnRow } from './types';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// q9 (2026-06-09): mode-aware "bold" gate for the Prod Assistant.
+//
+// Two governance modes are treated as BOLD: '3' (DELEGATED) and '4' (AUTOTEST).
+// In those modes EXEC-DIR-AI / the pipeline may fire NON-hard-limit mutating
+// tools WITHOUT a fresh per-action Director token (CLAUDE.md §6 + governance.ts
+// Category-B Mode-2/3 auto-fire). Modes '1' (MANUAL) and '2'/'2.5' stay strict —
+// they continue to require verbal approval, unchanged.
+//
+// HARD LIMITS are Director-only in EVERY mode (CLAUDE.md §6: Publish · LOCKED ·
+// Budget · Mode change). They are NEVER auto-allowed by mode. We classify them
+// by the concierge tool NAME so the single chokepoint below can keep them gated:
+//   - triggerAgent → only a hard limit when it would PUBLISH (agentCode
+//     EXEC-PUB). Other agent runs are Category-B creative gates.
+//   - proposeSkill / updateSkill / approveSkill → durable skill canon writes
+//     (LOCK-class). Conservative: always Director-gated.
+// When unsure whether a tool is a hard limit, prefer treating it as one.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Modes in which non-hard-limit mutations may auto-fire without a fresh token. */
+const BOLD_MODES: ReadonlySet<ConciergeMode> = new Set(['3', '4']);
+
+/**
+ * Concierge mutating tools that are ALWAYS Director-only (hard limits), even in
+ * bold modes. Skill-canon writes are LOCK-class. `triggerAgent` is handled
+ * separately because it is only a hard limit for the EXEC-PUB (publish) agent.
+ */
+const HARD_LIMIT_TOOLS: ReadonlySet<string> = new Set([
+  'proposeSkill',
+  'updateSkill',
+  'approveSkill',
+]);
+
+/** EXEC agent codes that constitute a hard limit when dispatched. */
+const HARD_LIMIT_AGENT_CODES: ReadonlySet<string> = new Set(['EXEC-PUB']);
+
+/**
+ * Is this concierge tool invocation a hard limit (Director-only in all modes)?
+ *
+ * `args` is the parsed tool args — inspected only for `triggerAgent` to detect
+ * a publish dispatch (agentCode EXEC-PUB). All other tools classify purely by
+ * name.
+ */
+export function isHardLimitTool(
+  toolName: string,
+  args?: Record<string, unknown> | null,
+): boolean {
+  if (HARD_LIMIT_TOOLS.has(toolName)) return true;
+  if (toolName === 'triggerAgent') {
+    const code = args && typeof args.agentCode === 'string' ? args.agentCode : '';
+    return HARD_LIMIT_AGENT_CODES.has(code);
+  }
+  return false;
+}
+
+/**
+ * Single chokepoint for the per-action mutating-tool gate. Replaces the
+ * duplicated `checkVerbalApproval(ctx.recentTurns ?? [])` idiom that lived in
+ * ~20 tool execute() bodies, making it mode-aware in one place.
+ *
+ *   - Hard-limit tools → ALWAYS require verbal approval (every mode).
+ *   - Bold modes ('3' DELEGATED / '4' AUTOTEST), non-hard-limit → auto-pass.
+ *   - Strict modes ('1' / '2' / '2.5') → require verbal approval (unchanged).
+ *
+ * The cost backstop (assertBudgetAvailable, migration 0037) still applies
+ * downstream — bold mode does NOT bypass the budget ceiling.
+ */
+export function gateMutation(
+  toolName: string,
+  opts: {
+    mode: ConciergeMode;
+    turns: ConciergeTurnRow[];
+    args?: Record<string, unknown> | null;
+  },
+): ApprovalCheck {
+  const hardLimit = isHardLimitTool(toolName, opts.args);
+  if (!hardLimit && BOLD_MODES.has(opts.mode)) {
+    return {
+      approved: true,
+      reason: `Mode ${opts.mode} (bold) — non-hard-limit tool "${toolName}" auto-allowed without a fresh Director token (CLAUDE.md §6).`,
+    };
+  }
+  // Strict mode, or a hard-limit tool in any mode → verbal-approval gate.
+  const check = checkVerbalApproval(opts.turns);
+  if (!check.approved && hardLimit) {
+    return {
+      ...check,
+      reason: `"${toolName}" is a HARD LIMIT (Publish / LOCK / Budget / Mode per CLAUDE.md §6) — Director must confirm in every mode. ${check.reason}`,
+    };
+  }
+  return check;
+}
 
 /** Single-token approvals — exact match after lower-case + Unicode tokenisation. */
 const APPROVAL_TOKENS: ReadonlySet<string> = new Set([

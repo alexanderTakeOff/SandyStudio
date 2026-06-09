@@ -18,7 +18,7 @@ import path from 'node:path';
 import { loadSkillFile, type AppliesWhen, type SkillFrontmatter, type SkillStatus } from '@/lib/skills/load-skill-file';
 import { selectSkills, clearSkillsCache } from '@/lib/skills/select-skills';
 import { writeSkillFile, isValidSlug } from '@/lib/skills/write-skill-file';
-import { checkVerbalApproval } from '../approval-check';
+import { gateMutation } from '../approval-check';
 import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
 
 type AnyArgs = Record<string, unknown>;
@@ -280,7 +280,11 @@ export const proposeSkill: Tool<ProposeSkillArgs> = {
     return { slug, name, description, body, hard, owner, applies_when };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    // q9: skill-canon writes are HARD LIMITS — Director-gated in every mode.
+    const approval = gateMutation('proposeSkill', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -383,7 +387,11 @@ export const updateSkill: Tool<UpdateSkillArgs> = {
     return out;
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    // q9: skill-canon writes are HARD LIMITS — Director-gated in every mode.
+    const approval = gateMutation('updateSkill', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -463,7 +471,11 @@ export const approveSkill: Tool<ApproveSkillArgs> = {
     return { slug };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    // q9: skill-canon writes are HARD LIMITS — Director-gated in every mode.
+    const approval = gateMutation('approveSkill', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }

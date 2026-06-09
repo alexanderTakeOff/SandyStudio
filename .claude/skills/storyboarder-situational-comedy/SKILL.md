@@ -94,6 +94,39 @@ shot inside the micro-cycle:
   slightly longer than action shots (~2-3s vs. 1-1.5s) — the laugh
   needs a beat.
 
+## Camera VARIETY across shots — angle / orbit / vantage (anti-flat-plate)
+
+> Added 2026-06-09 after a systematic defect: 22 shots in ONE bedroom (SS-S15-E03)
+> came out with near-identical flat angles → the downstream Reference Critic
+> REVISE-flagged 12 of them for insufficient camera variation. Root cause was
+> HERE (storyboard), not downstream — the reference designer only inherits the
+> angles the storyboard declares. The section above governs camera *movement per
+> shot's comic function*; THIS governs camera *angle/vantage variation ACROSS
+> the sequence*. Both must hold.
+
+The rule: **consecutive shots — and ESPECIALLY multiple shots sharing one
+location — must deliberately shift camera angle, height, and vantage so the
+sequence does not read as one repeated flat plate.** Sand-physics comedy lives
+on reading the space from new angles as the chaos escalates.
+
+For every shot, when ≥2 shots share a `location`:
+1. Look at the sibling shots' `camera_angle` + sub-area already chosen.
+2. Pick a **deliberately different** vantage — change at least one of: angle
+   (eye-level ↔ high ↔ low ↔ overhead), orbit position around the subject,
+   or framed sub-area of the room (drawer wall ↔ bed ↔ vanity ↔ under-bed).
+3. Never emit the same `camera_angle` for two consecutive same-location shots
+   without an explicit in-shot reason (a deliberate repeat-for-rhyme per the
+   Comic-timing section is the only exception, and must be labelled as such).
+
+**Apply the project's camera-orbit signature** declared in the Style Bible
+(SandyStudio: most shots favour an orbit / vantage drift; static frames need a
+justification). Read the threshold and the orbit vocabulary from the Bible —
+do NOT invent your own. If the Bible declares no camera signature, flag it
+rather than defaulting to static repetition.
+
+Cost of ignoring this: flat-plate fan-out → Reference Critic REVISE loops →
+wasted regeneration. Variation is cheaper authored here than patched downstream.
+
 ## Worked examples — Director's canon
 
 These examples are dictated by the Director on 2026-05-15. Treat them as

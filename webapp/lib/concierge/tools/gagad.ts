@@ -12,8 +12,8 @@
 //                                       Phase plan with optional hard contract
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { checkVerbalApproval } from '../approval-check';
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { gateMutation } from '../approval-check';
+import { authHeaders, fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
 
 function safeParse(raw: string): Record<string, unknown> {
   try {
@@ -313,7 +313,10 @@ export const regenerateGagPlan: Tool<RegenerateGagPlanArgs> = {
     const episodeId = args.episodeId ?? ctx.episodeId;
     if (!episodeId) return fail('episodeId required — no active episode.');
 
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('regenerateGagPlan', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) return fail(approval.reason, 'verbal_approval_required');
 
     const url = new URL(
@@ -324,7 +327,7 @@ export const regenerateGagPlan: Tool<RegenerateGagPlanArgs> = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(ctx.cookieHeader ? { cookie: ctx.cookieHeader } : {}),
+        ...authHeaders(ctx),
       },
       body: JSON.stringify({
         agentCode: 'EXEC-GAGAD',

@@ -75,19 +75,14 @@ export const EREF_DESIGNER_COST_CEILING_USD = 0.15;
  *  extend this without code change. */
 export const EREF_DESIGNER_PROVIDER_ALLOWLIST = ['gpt-image-2'] as const;
 
-/** Size table per delivery_target (per agents/exec/episode_reference_designer.md
- *  Step 2). Pure data — Designer's prompt cites this so the LLM picks the right
- *  size; runtime validation uses the same table. */
-export const SIZE_BY_DELIVERY_TARGET: Readonly<
-  Record<string, { width: number; height: number }>
-> = Object.freeze({
-  youtube_landscape: { width: 1536, height: 1024 },
-  youtube_shorts: { width: 1024, height: 1792 },
-  instagram_reels: { width: 1024, height: 1792 },
-  instagram_post: { width: 1024, height: 1024 },
-  tiktok: { width: 1024, height: 1792 },
-  print_poster: { width: 2048, height: 1536 },
-});
+/** Size table per delivery_target — single source of truth lives in the
+ *  provider layer (`lib/api/provider-capabilities.ts`), NOT in this agent's
+ *  runner. Re-exported here for back-compat with existing importers. The
+ *  Designer cites it in its prompt; the Critic V02 check validates against the
+ *  same manifest (injected into its prompt). See provider-capabilities.ts for
+ *  the gpt-image-2 bounds rationale. */
+import { SIZE_BY_DELIVERY_TARGET } from '@/lib/api/provider-capabilities';
+export { SIZE_BY_DELIVERY_TARGET };
 
 export class EpisodeReferenceDesignerError extends Error {
   constructor(message: string, public readonly cause?: unknown) {

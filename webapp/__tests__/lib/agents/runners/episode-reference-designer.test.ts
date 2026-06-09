@@ -432,7 +432,7 @@ describe('runEpisodeReferenceDesigner — happy path', () => {
     });
     const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
     expect(call.userMessage).toContain('youtube_landscape: 1536×1024');
-    expect(call.userMessage).toContain('youtube_shorts: 1024×1792');
+    expect(call.userMessage).toContain('youtube_shorts: 1024×1536');
     expect(call.userMessage).toContain('gpt-image-2');
   });
 });

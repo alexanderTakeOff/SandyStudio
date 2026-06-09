@@ -10,7 +10,8 @@
 //   - regenerateShotPlan(shotId)      → MUTATING. Re-fire Animator. Verbal approval.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { checkVerbalApproval } from '../approval-check';
+import { gateMutation } from '../approval-check';
+import { authHeaders } from './types';
 import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
 import { ackOrFailOnPickup } from './wait-for-pickup';
 
@@ -400,7 +401,10 @@ export const unstickPlanForApproval: Tool<UnstickPlanArgs> = {
     return { planAssetId };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('unstickPlanForApproval', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) return fail(approval.reason, 'verbal_approval_required');
 
     // 1. Lookup Plan.
@@ -613,7 +617,10 @@ export const regenerateShotPlan: Tool<RegenerateShotPlanArgs> = {
     const episodeId = args.episodeId ?? ctx.episodeId;
     if (!episodeId) return fail('episodeId required — no active episode.');
 
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('regenerateShotPlan', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) return fail(approval.reason, 'verbal_approval_required');
 
     const url = new URL(
@@ -626,7 +633,7 @@ export const regenerateShotPlan: Tool<RegenerateShotPlanArgs> = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(ctx.cookieHeader ? { cookie: ctx.cookieHeader } : {}),
+        ...authHeaders(ctx),
       },
       body: JSON.stringify({
         agentCode: 'EXEC-VANIM',

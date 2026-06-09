@@ -24,7 +24,7 @@
 // series.metadata.delivery_targets explicitly later.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { SIZE_BY_DELIVERY_TARGET } from '../agents/runners/episode-reference-designer';
+import { SIZE_BY_DELIVERY_TARGET } from './provider-capabilities';
 
 export type GptImage2Size = '1024x1024' | '1024x1536' | '1536x1024';
 export type BibleSectionForSize = 'character' | 'location' | 'object' | 'style' | 'general_idea' | 'audio';

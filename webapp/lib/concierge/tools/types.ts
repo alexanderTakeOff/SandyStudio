@@ -31,8 +31,30 @@ export interface ToolContext {
    * trail attributed to the real human and respects existing governance.
    */
   cookieHeader?: string | null;
+  /**
+   * q9 (2026-06-09): EXEC-DIR-AI service-token bearer for server-to-server
+   * mutating calls in bold modes (3/4). Auto-react has no Director cookie, so
+   * mutating tools forward this `Authorization: Bearer <EXEC_DIR_AI_TOKEN>`
+   * header instead — `requireDirector()` accepts it as Director-equivalent
+   * (but hard-limit routes reject it via assertHumanDirector). Null in normal
+   * Director-typed chat (cookieHeader is used there).
+   */
+  authHeader?: string | null;
   /** Origin used for internal fetch (defaults to NEXT_PUBLIC_APP_URL). */
   appOrigin: string;
+}
+
+/**
+ * Build the auth headers a mutating tool's internal fetch must forward:
+ * the Director's session cookie (typed chat) OR the EXEC-DIR-AI bearer
+ * (q9 bold-mode auto-react). Centralises the cookie/authorization spread so
+ * every tool's fetch authenticates consistently.
+ */
+export function authHeaders(ctx: ToolContext): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (ctx.cookieHeader) h.Cookie = ctx.cookieHeader;
+  if (ctx.authHeader) h.Authorization = ctx.authHeader;
+  return h;
 }
 
 /** Standard tool result envelope. Always JSON-serialisable. */

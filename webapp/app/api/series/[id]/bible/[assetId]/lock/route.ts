@@ -7,7 +7,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import { requireDirector } from '@/lib/api/auth';
+import { assertHumanDirector, requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
@@ -28,7 +28,9 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (!seriesId) throw new NotFoundError('Series');
   if (!assetId) throw new NotFoundError('Bible asset');
 
-  const { user, supabase } = await requireDirector();
+  const dir = await requireDirector();
+  assertHumanDirector(dir); // hard limit — LOCKED is human-Director-only
+  const { user, supabase } = dir;
   const body = await parseJson(req, LockBody);
 
   const { data: asset, error } = await supabase

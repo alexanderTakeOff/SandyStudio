@@ -7,8 +7,6 @@ applies_when:
   agent: [EXEC-EREF-DESIGNER]
 hard: false
 created: 2026-05-16
-updated: 2026-05-26
-flavor: process
 ---
 # EREF — Shot Composition
 
@@ -180,6 +178,16 @@ Self-check:
 3. Did their side, position, size, shape, contact point, and room relationship survive into this shot?
 4. If something changed, is that change explicitly motivated by the storyboard?
 
+## Provider-safe vertical source dimensions for Shorts
+
+For `youtube_shorts` / vertical episode references, do **not** require the canonical Shorts delivery canvas (for example `1024x1792`) at the Reference Image stage when the current image provider cannot reliably produce that exact size.
+
+Use the nearest provider-supported vertical source size instead — currently `1024x1536` for gpt-image reference generation — and state the rationale explicitly in the Plan: `provider-safe vertical source; Seedance/video stage crops/adapts to Shorts`.
+
+Critic / reviewer logic must not request revision solely because a Shorts Reference Plan uses `1024x1536` rather than `1024x1792`, when `1024x1536` is the provider-safe source size. The Plan should still declare the intended downstream format as Shorts / vertical; the mismatch is an intentional provider-capability accommodation, not a composition error.
+
+This rule prevents infinite plan-regeneration loops and provider failures caused by asking the image model for unsupported Shorts-sized stills. Delivery aspect compliance is handled downstream by the video provider/crop stage.
+
 ## Worked examples
 
 ### Example A — Two-shot variety in the gym (E21 SH01 → SH02)
@@ -263,6 +271,7 @@ register the joke landing.
 8. Are the standard negative-prompt terms included?
 9. For sequential shots, did I compare against the deterministic
    continuity anchor and preserve continuity-critical spatial facts?
+10. For Shorts / vertical references, am I using the provider-safe source size (`1024x1536` when required) and not forcing an unsupported delivery canvas (`1024x1792`) at the still-image stage?
 
 ## Cross-references
 

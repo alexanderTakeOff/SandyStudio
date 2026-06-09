@@ -22,8 +22,8 @@
 //                                   mediated REVISE. Verbal approval required.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { checkVerbalApproval } from '../approval-check';
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { gateMutation } from '../approval-check';
+import { authHeaders, fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
 import { ackOrFailOnPickup } from './wait-for-pickup';
 
 function safeParse(raw: string): Record<string, unknown> {
@@ -374,7 +374,10 @@ export const regenerateRefPlan: Tool<RegenerateRefPlanArgs> = {
     if (!episodeId) {
       return fail('episodeId required — no active episode.');
     }
-    const approval = checkVerbalApproval(ctx.recentTurns ?? []);
+    const approval = gateMutation('regenerateRefPlan', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
     if (!approval.approved) {
       return fail(approval.reason, 'verbal_approval_required');
     }
@@ -392,7 +395,7 @@ export const regenerateRefPlan: Tool<RegenerateRefPlanArgs> = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(ctx.cookieHeader ? { cookie: ctx.cookieHeader } : {}),
+        ...authHeaders(ctx),
       },
       body: JSON.stringify({
         agentCode: 'EXEC-EREF-DESIGNER',
