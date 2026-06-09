@@ -11,16 +11,29 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-08 (E02 final-cut WYSIWYG fix shipped + pushed)
-Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: e7c76d7 (pushed)
+Date:   2026-06-09 (TD-86 generation-config + music-fix SHIPPED+pushed; E03 1st final-cut stitched)
+Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 6929ba6 (pushed)
 
-E02 FINAL-CUT WYSIWYG (2026-06-08, a7dcb0c+e7c76d7): re-stitch gave byte-identical
-  renders — Director's edits never reached the cut. ROOT: two APPROVED animatics
-  (v06+v07) → stitch .find()'d stale v06. Fixed: stitch picks newest + approve
-  adds VID-animatic slot (invalidates prior); saveAgentOutput renames media→vNN +
-  /api/media -DRAFT revalidates; clipLengths shared UI/route/stitch + ffprobe fix.
-  +AnimaticPlayer cut-start/end + Save-validation. tsc·0/715/30. NEXT: Director
-  re-stitch E02 → confirm new SHA + 30 shots (v07).
+TD-86 GEN-CONFIG (2026-06-09, plan eager-launching-anchor.md): Director's provider/
+  format directives no longer lost. NEW resolve-generation-params.ts = single
+  precedence authority (episode generation_config.video > shot/plan override >
+  assignment > series > delivery-aspect > fallback; episode-authority only on
+  declared fields → no regression). Wired into the TWO real consumers — runner
+  EXEC-VGEN (covers pilot/single-shot/fanout/legacy) + regenerate-video route;
+  emitters stay dumb (subtractive: 6 sites→2, anti-additivity). settings-route
+  persists generation_config{video,image}+caps-validate; EpisodeSettingsCard gains
+  collapsible video+image provider panel (reuses ProviderControlPanel +fields prop)
+  +allow_shot_overrides toggle; VGENShotPanel locks format when override off
+  (+confirm badge, q26b). ASPECT_BY_DELIVERY_TARGET consolidated to provider-
+  capabilities. tsc·0/vitest 754/replay-pilot 30. SHIPPED+pushed 6929ba6 (+music-fix
+  f978921: replaceMusicLayer — Replace-music wrote only music_url, stale audio_tracks
+  [music] shadowed it → E03 v03 regression). E03 1st final-cut STITCHED v01 63s/24sh
+  (Director verified file OK, expected косяки). NEXT: Director smoke — E03 9:16/standard
+  → re-fanout → confirm metadata aspect/res.
+
+E02 FINAL-CUT WYSIWYG (2026-06-08, e7c76d7, SHIPPED+pushed): re-stitch byte-identical
+  → stitch .find()'d stale v06 of two APPROVED animatics. Fixed (newest-wins +
+  approve-slot + media→vNN rename + shared clipLengths). NEXT: Director re-stitch E02.
 
 GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
   ✅ Phase 1 SHIPPED (7c76a05): single-approved→INVALIDATED+DB indexes (0036),
