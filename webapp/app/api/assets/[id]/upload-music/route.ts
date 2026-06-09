@@ -23,7 +23,11 @@ import { apiOk } from '@/lib/api/response';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
-import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import {
+  isAnimaticV1,
+  replaceMusicLayer,
+  type AnimaticContract,
+} from '@/lib/api/animatic-shotlist';
 import { localCacheAbsPath } from '@/lib/media-cache';
 import { uploadCacheFilename } from '@/lib/api/upload-cache';
 
@@ -139,15 +143,19 @@ export const POST = withApiHandler(async (req, ctx) => {
   const browserUrl = `/api/media/${encodeURIComponent(cacheFilename)}`;
   const originalFilename = blob.name ?? `music.${ext}`;
 
-  // Patch metadata.animatic_v1.music_* fields, leave the rest of metadata
-  // (markdown, body, etc.) untouched.
+  // Replace the canonical music layer. CANONICAL READER = getAudioTracks(),
+  // which PREFERS `audio_tracks[]` over `music_url` (animatic-shotlist.ts). The
+  // pre-2026-06-09 path patched ONLY music_url, so a stale non-empty
+  // audio_tracks[music] (e.g. the mock wav written at animatic build) shadowed
+  // the fresh upload → player + EXEC-STITCH both played the old track and the
+  // Director's Replace silently "did nothing" (SS-S15-E03 v03 regression). Fix:
+  // atomically rewrite the music-layer track in audio_tracks AND keep the
+  // legacy music_url/music_filename in sync. Non-music layers (voice/sfx/
+  // ambience) are preserved. Shaping (fade/trim) is intentionally reset — a new
+  // source file; Director re-shapes via /animatic-timing afterward.
   const metaRaw = (asset.metadata ?? {}) as Record<string, unknown>;
   const v1 = (metaRaw.animatic_v1 ?? {}) as AnimaticContract;
-  const newV1: AnimaticContract = {
-    ...v1,
-    music_url: browserUrl,
-    music_filename: originalFilename,
-  };
+  const newV1 = replaceMusicLayer(v1, { url: browserUrl, filename: originalFilename });
   const newMeta = { ...metaRaw, animatic_v1: newV1 };
 
   const { error: updateErr } = await sb

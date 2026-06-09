@@ -116,6 +116,42 @@ export function getAudioTracks(contract: AnimaticContract): AudioTrack[] {
   return [];
 }
 
+/**
+ * Canonical WRITER for the music layer — the mirror of `getAudioTracks` (the
+ * canonical reader). Returns a NEW contract whose music-layer track points at
+ * the supplied url/filename, with non-music layers (voice/sfx/ambience)
+ * preserved and the legacy `music_url`/`music_filename` kept in sync.
+ *
+ * Why this exists: `getAudioTracks` PREFERS a non-empty `audio_tracks[]` over
+ * the legacy `music_url`. So a Replace-music flow that wrote only `music_url`
+ * left a stale `audio_tracks[music]` shadowing the fresh upload — the player
+ * and EXEC-STITCH both kept playing the old track (SS-S15-E03 v03 regression,
+ * 2026-06-09). Writing through here keeps reader and writer in lockstep.
+ *
+ * Shaping (fade/trim) is intentionally NOT carried over — the new source is a
+ * different file; the Director re-shapes via /animatic-timing afterward.
+ */
+export function replaceMusicLayer(
+  contract: AnimaticContract,
+  track: { url: string; filename: string },
+): AnimaticContract {
+  const existing = Array.isArray(contract.audio_tracks) ? contract.audio_tracks : [];
+  const nonMusic = existing.filter((t) => t.layer !== 'music');
+  const musicTrack: AudioTrack = {
+    layer: 'music',
+    url: track.url,
+    filename: track.filename,
+    volume: 1.0,
+    muted: false,
+  };
+  return {
+    ...contract,
+    audio_tracks: [musicTrack, ...nonMusic],
+    music_url: track.url,
+    music_filename: track.filename,
+  };
+}
+
 /** The full v1 animatic payload stored at `assets.metadata.animatic_v1`. */
 export interface AnimaticContract {
   contract: AnimaticContractId;
