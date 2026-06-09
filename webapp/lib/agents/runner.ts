@@ -2541,7 +2541,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         // "Failed to parse URL from /api/media/..." (the Online Editor
         // failure Director hit on the SH12 fix follow-up stitch).
         if (url.startsWith('/api/media/')) {
-          const filename = url.slice('/api/media/'.length).split('?')[0]!;
+          // 2026-06-08 — decodeURIComponent: the persisted URL is
+          // `/api/media/${encodeURIComponent(filename)}`, so a music track like
+          // "Twang Relay-processed.mp3" arrives as "Twang%20Relay-processed.mp3".
+          // The cache file on disk has the real space, so without decoding the
+          // lookup missed → "media-cache miss for …%20…" (final cut failed on a
+          // file the browser plays fine, since /api/media GET already decodes).
+          const filename = decodeURIComponent(url.slice('/api/media/'.length).split('?')[0]!);
           const { cachedFileIfPresent } = await import('@/lib/media-cache');
           const absPath = await cachedFileIfPresent(filename);
           if (absPath) {
