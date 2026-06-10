@@ -36,7 +36,11 @@ import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { isComedyLikeGenre } from '@/lib/api/genre';
 import { genreForEpisode } from '@/lib/api/series-bible';
-import { designerChainEnabled, animatorChainEnabled } from '@/lib/agents/chain-flags';
+import {
+  designerChainEnabled,
+  animatorChainEnabled,
+  readabilityGateEnabled,
+} from '@/lib/agents/chain-flags';
 
 export type AssetForChain = {
   id: string;
@@ -234,14 +238,68 @@ export async function computeNextEvents(
     }
   }
 
-  // ── Storyboard APPROVED → EXEC-WCHK (Continuity Supervisor)
+  // ── Storyboard APPROVED → EXEC-CREAD (Readability Critic) when the C1-Gate
+  //    flag is on, otherwise EXEC-WCHK (Continuity Supervisor) directly.
   // Backbone v2.5: Bible canon validation BEFORE generating episode refs.
+  // C1-Gate sprint 2026-06-10 — the universal Creative Readability Critic is
+  // slotted ahead of WCHK; when READABILITY_GATE_ENABLED is on, approving the
+  // storyboard fires CREAD (which PASS→WCHK on its own verdict). Flag off →
+  // byte-identical legacy WCHK fire (replay-pilot keeps passing).
   if (ft.startsWith('STB-')) {
     const stbCount = await countApproved(supabase, ep, 'STB');
-    if (stbCount >= 1 && !(await hasJob(supabase, ep, 'EXEC-WCHK', { since }))) {
+    if (stbCount >= 1) {
+      if (readabilityGateEnabled()) {
+        if (!(await hasJob(supabase, ep, 'EXEC-CREAD', { since }))) {
+          events.push({
+            name: 'sandystudio/exec-cread/review-storyboard',
+            data: { episodeId: ep, storyboardAssetId: asset.id },
+          });
+        }
+      } else if (!(await hasJob(supabase, ep, 'EXEC-WCHK', { since }))) {
+        events.push({
+          name: 'sandystudio/exec-wchk/check-world',
+          data: { episodeId: ep, storyboardAssetIds: [asset.id] },
+        });
+      }
+    }
+  }
+
+  // ── Readability review APPROVED → EXEC-WCHK (PASS) or EXEC-SB (AUTOTEST
+  //    REVISE). Mirrors the REV-ref_plan Mode-4 branch: parse the last fenced
+  //    JSON, route by verdict. In Modes 1-3 the Director's approval of the
+  //    REV-readability asset is what reaches here; the PASS branch advances to
+  //    continuity. The AUTOTEST REVISE branch closes the Mode-4 loop so the
+  //    storyboard re-authors with the readability acceptance_criteria.
+  if (ft === 'REV-readability' || ft.startsWith('REV-readability')) {
+    const body = parseLastJsonBlock(asset.content);
+    const verdict = typeof body?.verdict === 'string' ? body.verdict : null;
+    if (
+      (verdict === 'PASS' || verdict === 'PASS_WITH_UNCERTAINTY') &&
+      !(await hasJob(supabase, ep, 'EXEC-WCHK', { since }))
+    ) {
+      const stbId = await findLatestApprovedAssetId(supabase, ep, 'STB-storyboard');
       events.push({
         name: 'sandystudio/exec-wchk/check-world',
-        data: { episodeId: ep, storyboardAssetIds: [asset.id] },
+        data: { episodeId: ep, storyboardAssetIds: [stbId ?? asset.id] },
+      });
+    } else if (verdict === 'REVISE' && directorUserId === 'AUTOTEST') {
+      const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
+      const criteria = Array.isArray(body?.acceptance_criteria)
+        ? (body.acceptance_criteria as unknown[]).filter(
+            (v): v is string => typeof v === 'string' && v.trim().length > 0,
+          )
+        : [];
+      const revisionNote =
+        criteria.length > 0
+          ? criteria.join('; ')
+          : 'Readability Critic verdict REVISE — re-author the storyboard for readability.';
+      events.push({
+        name: 'sandystudio/exec-sb/create-storyboard',
+        data: {
+          episodeId: ep,
+          scriptAssetId: scrId ?? '',
+          revisionNote,
+        },
       });
     }
   }

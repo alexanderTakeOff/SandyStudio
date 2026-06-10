@@ -6,6 +6,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { createAgentInngestFunction } from '@/lib/agents/factory';
+import { readabilityGateEnabled } from '@/lib/agents/chain-flags';
 
 export const execSbCreateStoryboard = createAgentInngestFunction({
   id: 'exec-sb-create-storyboard',
@@ -14,14 +15,28 @@ export const execSbCreateStoryboard = createAgentInngestFunction({
   concurrencyId: 'exec-sb',
   eventName: 'sandystudio/exec-sb/create-storyboard',
   operation: 'storyboard_generation',
-  nextEvent: (saved, eventData) => ({
-    name: 'sandystudio/exec-wchk/check-world',
-    data: {
-      episodeId: eventData.episodeId as string,
-      // Mock mode produces a single storyboard asset with all 3 acts inline.
-      // Real mode will pass an array of 3 act asset ids; the gate checks
-      // for STB count regardless.
-      storyboardAssetIds: [saved.assetId],
-    },
-  }),
+  nextEvent: (saved, eventData) => {
+    // C1-Gate sprint 2026-06-10 — when READABILITY_GATE_ENABLED is on, the
+    // Creative Readability Critic reads the storyboard BEFORE the Continuity
+    // Critic. Flag off → byte-identical legacy WCHK fire (replay-pilot).
+    if (readabilityGateEnabled()) {
+      return {
+        name: 'sandystudio/exec-cread/review-storyboard',
+        data: {
+          episodeId: eventData.episodeId as string,
+          storyboardAssetId: saved.assetId,
+        },
+      };
+    }
+    return {
+      name: 'sandystudio/exec-wchk/check-world',
+      data: {
+        episodeId: eventData.episodeId as string,
+        // Mock mode produces a single storyboard asset with all 3 acts inline.
+        // Real mode will pass an array of 3 act asset ids; the gate checks
+        // for STB count regardless.
+        storyboardAssetIds: [saved.assetId],
+      },
+    };
+  },
 });

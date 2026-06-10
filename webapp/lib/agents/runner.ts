@@ -69,6 +69,10 @@ import {
   runEpisodeReferenceCritic,
   EpisodeReferenceCriticError,
 } from './runners/episode-reference-critic';
+import {
+  runCreativeReadabilityCritic,
+  CreativeReadabilityCriticError,
+} from './runners/creative-readability-critic';
 import { runAnimator, AnimatorError } from './runners/animator';
 import { runAnimatorCritic, AnimatorCriticError } from './runners/animator-critic';
 import {
@@ -548,6 +552,13 @@ export interface RunAgentArgs {
   /** EXEC-GAGAD Phase plan — APPROVED SCR-script asset id (optional —
    *  runner can resolve via upstream_assets too). */
   scriptAssetId?: string;
+  /**
+   * C1-Gate sprint 2026-06-10 — STB-storyboard asset id under readability
+   * review. When set, EXEC-CREAD loads exactly that storyboard; when unset it
+   * falls back to the newest APPROVED STB in upstream_assets. Resolver in
+   * inngest/functions/exec-cread.ts forwards it from the event payload.
+   */
+  storyboardAssetId?: string;
 }
 
 // Helper: assemble metadata payload for binary outputs, encapsulating the
@@ -622,6 +633,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     planAssetId,
     gagPhase,
     scriptAssetId,
+    storyboardAssetId,
     directorOverrides,
   } = args;
   void provider; // referenced inside individual cases
@@ -790,6 +802,99 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             model: agentMeta.model,
             markdown: llm.markdown,
             body: llm.body as Record<string, unknown>,
+            provider_id: 'mock',
+            provider_used: 'mock',
+          },
+        },
+      };
+    }
+
+    case 'EXEC-CREAD': {
+      // C1-Gate sprint 2026-06-10 — Creative Readability Critic (universal,
+      // process-invariant). Reads the APPROVED/REVIEW storyboard, loads the
+      // genre playbook from the skill shelf, runs the R01-R06 readability
+      // checks. Pure Sonnet call; cheap (~$0.01-0.03). No image generation.
+      //
+      // HALT-without-paid-call rule lives INSIDE the runner: if zero genre
+      // playbooks match (including genre=null), it returns verdict HALT before
+      // any Anthropic call. The case below treats that like any other verdict.
+      if (!supabase) {
+        throw new Error(`EXEC-CREAD requires supabase client`);
+      }
+      const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+      if (hasAnthropicKey) {
+        try {
+          const r = await runCreativeReadabilityCritic({
+            inputs,
+            supabase,
+            storyboardAssetId,
+          });
+          // Cap-aware verdict application — shared with the plan critics.
+          // Flips the storyboard's status (REVISE → REVISION re-fires the
+          // Storyboarder; PASS/HALT leave it in REVIEW for the Director), and
+          // escalates to the Director Inbox on HALT. A HALT verdict produced
+          // by the no-playbook rule is NOT counted as a revision (the runner
+          // emits HALT directly, applyCriticVerdict leaves it as HALT).
+          const cv = await applyCriticVerdict({
+            supabase,
+            rawVerdict: r.verdict as CriticVerdict,
+            planAssetId: r.storyboardAssetId,
+            episodeId,
+            shotId: r.storyboardAssetId, // storyboard-level: shot label = asset id
+            actor: 'EXEC-CREAD',
+            reviewKind: 'storyboard_readability',
+          });
+          return {
+            outputKind: 'text-md',
+            result: {
+              asset_paths: [],
+              cost_usd: r.costUsd,
+              metadata: {
+                agent_id: agentId,
+                model: r.model,
+                contract: r.contract,
+                markdown: r.markdown,
+                body: r.body,
+                description: r.description,
+                verdict: cv.effectiveVerdict,
+                acceptance_criteria: r.acceptanceCriteria,
+                failed_checks: r.failedChecks,
+                passed_checks: r.passedChecks,
+                critic_notes: r.notes,
+                storyboard_asset_id: r.storyboardAssetId,
+                plan_status_after_critic: cv.planStatusAfter ?? 'REVIEW',
+                active_playbooks: r.activePlaybooks,
+                provider_id: r.model,
+                provider_used: 'anthropic',
+                review_kind: 'storyboard_readability_critic',
+              },
+            },
+          };
+        } catch (err: unknown) {
+          if (err instanceof CreativeReadabilityCriticError) {
+            throw new Error(`EXEC-CREAD: ${err.message}`);
+          }
+          throw err;
+        }
+      }
+      // Mock fallback — replay-pilot / no API key. Default to PASS so the
+      // chain progresses for self-tests (READABILITY_GATE_ENABLED is unset in
+      // replay-pilot, so this case is not even reached there; the fallback
+      // exists purely so a key-less unit/integration run never crashes).
+      const llm = await mockLLM({ agentId, episodeId });
+      return {
+        outputKind: 'text-md',
+        result: {
+          asset_paths: [],
+          cost_usd: llm.cost_usd,
+          metadata: {
+            agent_id: agentId,
+            model: agentMeta.model,
+            markdown: llm.markdown,
+            body: { verdict: 'PASS' } as Record<string, unknown>,
+            description: 'Stub EXEC-CREAD mock — set ANTHROPIC_API_KEY for real path',
+            verdict: 'PASS' as const,
+            review_kind: 'storyboard_readability_critic',
             provider_id: 'mock',
             provider_used: 'mock',
           },
@@ -2946,6 +3051,7 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-SW': 'SCR-script',
   'EXEC-SREV': 'REV-script_qa',
   'EXEC-SB': 'STB-storyboard',
+  'EXEC-CREAD': 'REV-readability', // C1-Gate — Creative Readability Critic verdict (one REV row per storyboard)
   'EXEC-WCHK': 'REV-world_check',
   'EXEC-EREF': 'IMG-episode_ref', // backbone v2: between Storyboard and Animatic
   'EXEC-EREF-DESIGNER': 'SPC-ref_plan', // Sprint «Дизайнер и Аниматор» — Plan asset feeds EXEC-EREF executor

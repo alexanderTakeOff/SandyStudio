@@ -8,6 +8,7 @@ import { ping } from './functions/ping';
 import { execSwWriteScript } from './functions/exec-sw';
 import { execSrevReviewScript } from './functions/exec-srev';
 import { execSbCreateStoryboard } from './functions/exec-sb';
+import { execCreadReviewStoryboard } from './functions/exec-cread';
 import { execWchkCheckWorld } from './functions/exec-wchk';
 import { execErefStart } from './functions/exec-eref';
 import { execErefDesignerPlan } from './functions/exec-eref-designer';
@@ -46,6 +47,7 @@ export const functions = [
   execSwWriteScript,
   execSrevReviewScript,
   execSbCreateStoryboard,
+  execCreadReviewStoryboard,
   execWchkCheckWorld,
   execErefStart,
   execErefDesignerPlan,
