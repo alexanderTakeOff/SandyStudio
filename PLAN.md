@@ -11,15 +11,21 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-10 (C1-Gate Phases 1-3 implemented; tsc·0 / vitest 761/761 / replay-pilot 30/30)
-Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 6929ba6 (pushed)
+Date:   2026-06-10 (C1-Gate sprint COMPLETE: Phases 1-5; tsc·0 / vitest 773/773 / replay-pilot 30/30)
+Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 7a7f568 (local, 6 commits unpushed)
 
-C1-GATE Phases 1-3 (2026-06-10): Genre single-source fix (GAGAD was silent 0 fires
-  because episodes.series_id stores CODE not UUID → all genre lookups null). genreForEpisode
-  reuses seriesIdForEpisode code→UUID resolver. EPREV V10 injects DB fact (no hallucination).
-  chain-flags.ts new module (3 flags, absorbed from next-events.ts). exec-vgen: decideFanoutEmit
-  pure helper + C1-gate step + c1_valid metaPatch. +2 test files (761 total). NEXT: dry-run
-  smoke (Phase 4 CREAD wiring pending separate session).
+C1-GATE SPRINT (2026-06-10, plan humor-readability-linked-ullman.md, 6 commits 9988c5f…7a7f568):
+  Root fixes from E02-vs-E03 humor analysis. (1) Genre single-source: genreForEpisode reuses
+  TD-59 code→UUID resolver — GAGAD was silent 0-fires forever, genre skills never activated
+  (storyboarder-situational-comedy DEAD in E03). (2) EPREV V10 validates vs DB fact (was
+  hallucinating gag plans). (3) chain-flags.ts + decideFanoutEmit: every fanout shot gets an
+  animator plan; plan-less single-shot dies (C1 gate); c1_valid metadata. (4) EXEC-CREAD —
+  universal Creative Readability Critic (R01-R06 genre-neutral; genre engine = skills on
+  shelves; readability-comedy-slapstick = E02 six-stage formula; HALT w/o paid call if no
+  playbook). Gate STB→CREAD→WCHK behind READABILITY_GATE_ENABLED (default OFF). (5) Writer
+  skill-shelf + E02 formula into sandy-gag-library §17 + storyboarder skill; series_id
+  frontmatter fix. NEXT: push + dry-run (gate+animator flags ON, dev episode SS-S15):
+  GAGAD first-ever fire → CREAD verdict → fanout plans → then cheap E03-rewrite C1-test (~$2).
 
 TD-86 GEN-CONFIG (2026-06-09, plan eager-launching-anchor.md): Director's provider/
   format directives no longer lost. NEW resolve-generation-params.ts = single
