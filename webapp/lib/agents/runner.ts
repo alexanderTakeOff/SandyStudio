@@ -233,22 +233,16 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
     };
   }
 
-  // Sprint σ.1 (2026-05-15) — series.genre surfaced for the Skill selector.
-  // Non-fatal: replay-pilot mock supabase doesn't implement `series`; degrade
-  // to null and let the agent treat genre as unspecified (skill selector then
-  // only matches skills without a `genre` constraint).
+  // Sprint C1-Gate (2026-06-10): replaced direct .eq('id', episode.series_id)
+  // lookup (which silently returned null when series_id stores a CODE like
+  // "SS-S15" not UUID) with genreForEpisode which reuses the
+  // seriesIdForEpisode code→UUID resolver. Non-fatal: degrades to null on any
+  // error (mock supabase, missing table).
   let seriesGenre: string | null = null;
-  if (episode?.series_id) {
-    try {
-      const { data: seriesRow } = await supabase
-        .from('series')
-        .select('id,genre')
-        .eq('id', episode.series_id)
-        .single();
-      seriesGenre = (seriesRow as { genre?: string | null } | null)?.genre ?? null;
-    } catch {
-      // mock supabase fallthrough
-    }
+  try {
+    seriesGenre = await genreForEpisode(supabase, episodeId);
+  } catch {
+    // mock supabase / transient error — degrade to null
   }
 
   return {
@@ -281,7 +275,7 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
 // need.
 
 import { listStoryboardShots, type StoryboardShotSummary } from '../api/vgen-shot-helpers';
-import { seriesIdForEpisode } from '../api/series-bible';
+import { seriesIdForEpisode, genreForEpisode } from '../api/series-bible';
 
 export interface PriorAnchorRef {
   /** Asset UUID of the IMG-anchor_* asset. */

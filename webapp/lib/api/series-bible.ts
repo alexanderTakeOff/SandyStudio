@@ -369,3 +369,28 @@ export async function seriesIdForEpisode(
 
   return raw ?? null;
 }
+
+/**
+ * Look up the parent series genre for an episode.
+ * Reuses seriesIdForEpisode() for the code→UUID resolution so the
+ * code-vs-UUID bug (episodes.series_id stores CODE "SS-S15" not UUID)
+ * that caused GAGAD to never fire is fixed at one source.
+ * Returns null if the series is not found or on any error (mock-safe).
+ */
+export async function genreForEpisode(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+): Promise<string | null> {
+  try {
+    const seriesUuid = await seriesIdForEpisode(supabase, episodeId);
+    if (!seriesUuid) return null;
+    const result = await supabase
+      .from('series')
+      .select('genre')
+      .eq('id', seriesUuid)
+      .maybeSingle();
+    return (result.data as { genre?: string | null } | null)?.genre ?? null;
+  } catch {
+    return null;
+  }
+}

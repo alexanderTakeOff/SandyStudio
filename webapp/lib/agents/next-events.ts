@@ -35,38 +35,8 @@ import {
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { isComedyLikeGenre } from '@/lib/api/genre';
-
-/**
- * Sprint «Дизайнер и Аниматор» Day 3.2 (2026-05-18) — feature flag for the
- * Designer chain (q2c soft switch). When unset/false: REV-world_check.APPROVED
- * fires the legacy `exec-eref/generate-references` event (current behaviour).
- * When `true`: REV-world_check fans out one `exec-eref-designer/plan` event
- * per shot, and SPC-ref_plan.APPROVED fires `exec-eref/execute-from-plan`.
- * One env var, no destructive deletes — rollback by unsetting.
- */
-function designerChainEnabled(): boolean {
-  const v = process.env.DESIGNER_CHAIN_ENABLED;
-  if (!v) return false;
-  return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
-}
-
-/**
- * ANIMATOR_CHAIN_ENABLED env flag (symmetric to designerChainEnabled). When
- * on:
- *   - VID-animatic.APPROVED fires `exec-vanim/plan` per pilot shot
- *     (Animator authors a SPC-shot_plan for each — Critic chain in
- *     exec-vanim.nextEvent runs automatically).
- *   - SPC-shot_plan.APPROVED fires `exec-vgen/start` with planAssetId so
- *     the Plan body drives the video provider (q7a Step 6 wired end_image,
- *     seed, quality_tier extraction from Plan).
- * Off → legacy direct fire-to-VGEN path with buildShotPromptV2 template
- *       (replay-pilot fixtures + pre-Animator episodes).
- */
-function animatorChainEnabled(): boolean {
-  const v = process.env.ANIMATOR_CHAIN_ENABLED;
-  if (!v) return false;
-  return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
-}
+import { genreForEpisode } from '@/lib/api/series-bible';
+import { designerChainEnabled, animatorChainEnabled } from '@/lib/agents/chain-flags';
 
 export type AssetForChain = {
   id: string;
@@ -163,31 +133,6 @@ async function countApproved(
 }
 
 /**
- * Resolve `series.genre` for an episode via the episodes→series JOIN.
- * Used by GAGAD chain (Day 11+ 2026-05-19) to fire only on comedy-like
- * genres. Returns null on lookup failure — `isComedyLikeGenre(null)` is
- * false, so the chain safely skips GAGAD in that case.
- */
-async function resolveEpisodeGenre(
-  supabase: SupabaseClientLike,
-  episodeId: string,
-): Promise<string | null> {
-  const { data: ep } = await supabase
-    .from('episodes')
-    .select('series_id')
-    .eq('id', episodeId)
-    .maybeSingle();
-  const seriesId = (ep as { series_id?: string | null } | null)?.series_id ?? null;
-  if (!seriesId) return null;
-  const { data: sr } = await supabase
-    .from('series')
-    .select('genre')
-    .eq('id', seriesId)
-    .maybeSingle();
-  return (sr as { genre?: string | null } | null)?.genre ?? null;
-}
-
-/**
  * Find the latest APPROVED upstream asset of a given file_type prefix for
  * the episode. Used by the auto-chain when a REV-* approval needs to fire
  * the next agent — the agent expects the underlying creative asset's id
@@ -276,7 +221,7 @@ export async function computeNextEvents(
   // Designer/Animator + their Critics consume cross-layer. Genre-conditional
   // via isComedyLikeGenre helper — drama/doc/sci_fi skip GAGAD entirely.
   if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-GAGAD', { since }))) {
-    const seriesGenre = await resolveEpisodeGenre(supabase, ep);
+    const seriesGenre = await genreForEpisode(supabase, ep);
     if (isComedyLikeGenre(seriesGenre)) {
       const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
       events.push({
