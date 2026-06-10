@@ -210,6 +210,48 @@ Run this pass over the storyboard as a whole, not just per-shot:
    the next shot. The rope is still on his head. Cascade is funny only
    if it persists.
 
+## E02 formula at shot level
+
+Each shot must declare which stage of the object-causality formula it serves.
+Use the shot's `shot_role` and `key_beat` fields to make this explicit. The
+six stages map to shot assignments as follows:
+
+| Formula stage | Shot role | Requirement |
+|---|---|---|
+| 1. Tiny mess | `setup` | Names the specific object/disorder Sandy notices |
+| 2. Overconfident shortcut | `gag` | action_prose leads with a **goal-verb** (sweep/stack/wipe/scoop/polish) |
+| 3. False success | `reaction` or `pose` | Sandy believes he succeeded — **must be its own shot**, never folded into the backfire shot |
+| 4. Object-specific backfire | `gag` or `punchline` | The SAME object strikes back; consequence is concrete and screen-visible |
+| 5. Accumulation | any subsequent shot | action_prose acknowledges persisting state from previous backfire |
+| 6. Micro-victory delusion | `punchline` | Sandy celebrates a tiny win, misreading the scale of the disaster |
+
+### False success is its own shot — hard rule
+
+Never fold the false-success beat into the backfire shot. They serve opposite
+emotional functions: false success builds the audience's false belief; backfire
+destroys it. Merging them skips the belief-building step and the joke lands
+flat. If the storyboard has fewer shots than stages require, extend the shot
+count rather than merging these two.
+
+### Goal-verb test for action_prose
+
+Before finalising each `action_prose` for a gag or punchline shot, check:
+- Does the prose contain at least one goal-verb (sweep, stack, wipe, scoop,
+  polish, stuff, sort, fold, mop, scrub)?
+- If the prose contains ONLY kinetic chain-verbs (spin, windmill, catapult,
+  ricochet, cascade, pinwheel, slide, launch, fling, bounce) and no goal-verb,
+  rewrite it. Kinetic motion without a readable cleaning intent is filler,
+  not comedy.
+
+### Object-state continuity across shots
+
+Each shot's aftermath must be visible in subsequent shots' descriptions. Write
+the persistent state explicitly in the action_prose of shots that inherit it:
+- "The mop is still tangled around his leg from the previous beat."
+- "The toppled stack of boxes remains in the background."
+Continuity is what makes accumulation (stage 5) land — the audience needs to
+SEE the chaos growing, not imagine it.
+
 ## Cross-references
 
 - Style Bible camera vocabulary — your `camera_*` field values must come

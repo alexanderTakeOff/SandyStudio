@@ -5,7 +5,7 @@ status: ACTIVE
 owner: EXEC-HW (Head Writer) · EXEC-SW (Writer) · EXEC-GAGAD (planned, Day 11+ sprint)
 applies_when:
   agent: [EXEC-HW, EXEC-SW, EXEC-SREV, EXEC-SB, EXEC-GAGAD]
-  series: [SS-S14, SS-S15]
+  series_id: [SS-S14, SS-S15]
 hard: false
 maturity: v0.1-2026-05-19
 created: 2026-05-19
@@ -516,6 +516,52 @@ To be answered after E22 + E15-E01 smoke retros:
 - Можно ли формализовать **gag readability score** (0-10) для EXEC-GAGAD'а?
 - Какие **antagonist'ы** работают для разных тем? (table расширить после 5+ эпизодов)
 - Frequency rule для combo gags — каждый эпизод или раз в 3 эпизода?
+
+## 17. Object-causality formula (E02 canon)
+
+Эмпирически валидированная формула из SS-S15-E02 «The Tidy Tornado» —
+подтверждённый позитивный контроль против E03 v01 (который потерял читаемость).
+Шесть стадий обязательны в указанном порядке; каждая — отдельный visible beat.
+
+1. **Tiny mess** — Sandy замечает ОДНО конкретное маленькое нарушение порядка
+   (один объект, одна поверхность). Не «беспорядок вообще» — конкретный предмет.
+
+2. **Overconfident shortcut** — он применяет слишком быстрый / слишком грубый
+   метод уборки. Метод выражается **goal-глаголом**: wipe, sweep, stack, stuff,
+   polish, scoop. Зритель ЧИТАЕТ намерение через глагол-действие.
+
+3. **False success beat** — Sandy считает, что справился. Гордый кивок,
+   довольная поза, секунда самодовольства. **Это ОБЯЗАТЕЛЬНЫЙ отдельный beat**,
+   НЕ совмещённый с backfire — зрителю нужен момент, чтобы поверить в победу.
+
+4. **Object-specific backfire** — ТОТ ЖЕ объект (или перемещённый мусор)
+   наносит ответный удар физически причинным способом. Последствие конкретное
+   и видимое на экране — не абстрактный «хаос».
+
+5. **Accumulation** — каждый backfire оставляет **persistent state**, который
+   наследует следующий gag. Что опрокинулось — стоит опрокинутым. Что упало —
+   лежит на полу. Нарушение continuity = нарушение comedy logic.
+
+6. **Micro-victory delusion** — финальный payoff: Sandy находит ОДНУ крошечную
+   «победу» среди катастрофы и отмечает её, не замечая масштаба разрушения.
+   Ironic resolution темы через ложное самоощущение.
+
+### Verb grammar (anti-E03 rule)
+
+Комедийный beat читается через **goal-verb**, побеждаемый объектом:
+
+| ✅ goal-verbs (читаемо) | ❌ kinetic chain-verbs (нечитаемо) |
+|---|---|
+| sweep, stack, wipe, scoop, polish | spin, windmill, catapult, ricochet, cascade, pinwheel, slide |
+
+**Beat, содержащий только kinetic chain-verbs и ни одного goal-verb, — НЕ gag.
+Это filler.** Зритель видит движение, но не читает намерение → юмор пропадает.
+
+Диагностика: спроси «что Sandy пытается сделать с уборкой в этом beat?»
+Если ответ невозможен без backstory → beat нечитаем → переписать с goal-verb.
+
+**Референс E02:** sweep/stuff/stack/polish → читаемо.
+**Антирефeренс E03 v01:** spin/windmill/catapult/slide/pinwheel → нечитаемо.
 
 ---
 

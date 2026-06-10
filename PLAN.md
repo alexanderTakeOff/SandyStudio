@@ -11,8 +11,15 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-09 (TD-86 generation-config + music-fix SHIPPED+pushed; E03 1st final-cut stitched)
+Date:   2026-06-10 (C1-Gate Phases 1-3 implemented; tsc·0 / vitest 761/761 / replay-pilot 30/30)
 Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 6929ba6 (pushed)
+
+C1-GATE Phases 1-3 (2026-06-10): Genre single-source fix (GAGAD was silent 0 fires
+  because episodes.series_id stores CODE not UUID → all genre lookups null). genreForEpisode
+  reuses seriesIdForEpisode code→UUID resolver. EPREV V10 injects DB fact (no hallucination).
+  chain-flags.ts new module (3 flags, absorbed from next-events.ts). exec-vgen: decideFanoutEmit
+  pure helper + C1-gate step + c1_valid metaPatch. +2 test files (761 total). NEXT: dry-run
+  smoke (Phase 4 CREAD wiring pending separate session).
 
 TD-86 GEN-CONFIG (2026-06-09, plan eager-launching-anchor.md): Director's provider/
   format directives no longer lost. NEW resolve-generation-params.ts = single

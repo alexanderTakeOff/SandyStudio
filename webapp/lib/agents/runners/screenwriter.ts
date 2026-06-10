@@ -22,6 +22,13 @@ import {
 } from '../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
+import {
+  getAgentSkillManifest,
+  loadAgentSkillBodies,
+  composeSkillSelectionPrompt,
+  composeActivePlaybooksBlock,
+} from '../load-skills';
+import { parseSkillSelection } from '../../skills/parse-skill-selection';
 
 export const SCREENWRITER_CONTRACT = 'screenwriter@v1';
 export const SCREENWRITER_MODEL = 'claude-sonnet-4-6';
@@ -33,6 +40,11 @@ export const SCREENWRITER_MODEL = 'claude-sonnet-4-6';
 // verbose languages + dense beat counts, still well under the cost ceiling.
 export const SCREENWRITER_MAX_TOKENS = 16000;
 export const SCREENWRITER_COST_CEILING_USD = 0.5;
+
+// Sprint φ.2 — two-step skill activation (ported from storyboarder.ts).
+export const SW_SELECTION_MODEL = 'claude-haiku-4-5';
+export const SW_SELECTION_MAX_TOKENS = 400;
+const SKILL_SELECTION_THRESHOLD = 2;
 
 export class ScreenwriterError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -105,8 +117,9 @@ function buildUserMessage(args: {
   briefContent: string;
   bible: SeriesBibleCanon;
   revisionNote?: string;
+  activeSkillsBlock?: string;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, bible, revisionNote } = args;
+  const { episodeCode, episodeTitle, briefContent, bible, revisionNote, activeSkillsBlock } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -115,6 +128,8 @@ function buildUserMessage(args: {
     '# Task',
     `Write the screenplay for episode ${episodeCode} — "${episodeTitle}".`,
     '',
+    activeSkillsBlock && activeSkillsBlock.length > 0 ? activeSkillsBlock : '',
+    activeSkillsBlock && activeSkillsBlock.length > 0 ? '' : '',
     '## Episode Brief (canonical input — APPROVED)',
     '',
     '<brief>',
@@ -253,12 +268,89 @@ export async function runScreenwriter(
   }
 
   const systemPrompt = await loadSystemPrompt();
+
+  // ── Sprint φ.2 — two-step skill activation (ported from storyboarder.ts) ──
+  // Step 1: list capability manifest (frontmatter only — no body context).
+  // Step 2: if the manifest is non-trivial, run a cheap Haiku selection
+  //         call to let the agent pick which skills to apply. Below
+  //         SKILL_SELECTION_THRESHOLD entries we skip Step 2 and activate
+  //         all matching skills directly.
+  // Step 3: load bodies for activated slugs and compose the Active
+  //         Playbooks block injected into the main Sonnet call.
+  // Non-fatal at every step: missing .claude/skills/ or empty selector
+  // yields an empty block and the runner proceeds.
+  const seriesGenre =
+    typeof inputs.series_genre === 'string' ? inputs.series_genre : undefined;
+  const seriesId =
+    (inputs.episode as { series_id?: string | null } | undefined)?.series_id ?? undefined;
+
+  const manifestResult = await getAgentSkillManifest({
+    agentId: 'EXEC-SW',
+    genre: seriesGenre,
+    series_id: seriesId ?? undefined,
+    episode_id: inputs.episode_id,
+  });
+
+  let activatedSlugs: readonly string[] = [];
+  let selectionCostUsd = 0;
+  let selectionSkipped = true;
+
+  if (manifestResult.count > 0) {
+    if (manifestResult.count <= SKILL_SELECTION_THRESHOLD) {
+      activatedSlugs = manifestResult.available.map((m) => m.slug);
+      notes.push(
+        `Skill selection skipped — ${manifestResult.count} matching skill${manifestResult.count === 1 ? '' : 's'} ≤ threshold (${SKILL_SELECTION_THRESHOLD}); activated all`,
+      );
+    } else {
+      const selectionPrompt = composeSkillSelectionPrompt(
+        manifestResult.available,
+        `Writing screenplay for episode ${episodeCode} "${episodeTitle}" (${manifestResult.count} candidate skills)`,
+      );
+      try {
+        const selectionResult = await generateAnthropicText({
+          systemPrompt:
+            'You are EXEC-SW (Screenwriter) preparing for a screenplay authoring task. Your only job in this turn is to pick which craft playbooks to activate from your repertoire.',
+          userMessage: selectionPrompt,
+          model: SW_SELECTION_MODEL,
+          maxOutputTokens: SW_SELECTION_MAX_TOKENS,
+          expectsJson: false,
+        });
+        selectionCostUsd = selectionResult.costUsd;
+        const parsed = parseSkillSelection(selectionResult.markdown);
+        const knownSlugs = new Set(manifestResult.available.map((m) => m.slug));
+        activatedSlugs = parsed.slugs.filter((s) => knownSlugs.has(s));
+        selectionSkipped = false;
+        notes.push(
+          `Skill selection (${SW_SELECTION_MODEL}): ${activatedSlugs.length}/${manifestResult.count} activated · source=${parsed.source} · cost $${selectionCostUsd.toFixed(4)}`,
+        );
+        if (parsed.error) {
+          notes.push(`Skill selection parse note: ${parsed.error}`);
+        }
+      } catch (err) {
+        // Step 2 failure must not block the main authoring call. Fall back
+        // to activating all matching skills — equivalent to pre-φ behaviour.
+        activatedSlugs = manifestResult.available.map((m) => m.slug);
+        const msg = err instanceof Error ? err.message : String(err);
+        notes.push(`Skill selection failed (${msg.slice(0, 200)}); activated all ${manifestResult.count} as fallback`);
+      }
+    }
+  }
+
+  const bodiesResult = await loadAgentSkillBodies(activatedSlugs);
+  if (bodiesResult.loaded.length > 0) {
+    notes.push(
+      `Active playbooks loaded: ${bodiesResult.loaded.map((s) => s.slug).join(', ')} (${bodiesResult.totalChars} chars${bodiesResult.truncatedCount > 0 ? ` · ${bodiesResult.truncatedCount} truncated for budget` : ''})`,
+    );
+  }
+  const activeSkillsBlock = composeActivePlaybooksBlock(bodiesResult.loaded);
+
   const userMessage = buildUserMessage({
     episodeCode,
     episodeTitle,
     briefContent: briefAsset.content,
     bible,
     revisionNote,
+    activeSkillsBlock,
   });
 
   let result: AnthropicTextResult;
@@ -290,12 +382,16 @@ export async function runScreenwriter(
     );
   }
 
-  const description = `Produced by EXEC-SW · ${SCREENWRITER_CONTRACT} · ${SCREENWRITER_MODEL} · cost $${result.costUsd.toFixed(4)} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
+  const totalCostUsd = result.costUsd + selectionCostUsd;
+  const selectionTag = selectionSkipped
+    ? ''
+    : ` (+$${selectionCostUsd.toFixed(4)} skill selection)`;
+  const description = `Produced by EXEC-SW · ${SCREENWRITER_CONTRACT} · ${SCREENWRITER_MODEL} · cost $${totalCostUsd.toFixed(4)}${selectionTag} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
 
   return {
     markdown: result.markdown,
     body: result.body,
-    costUsd: result.costUsd,
+    costUsd: totalCostUsd,
     model: result.model,
     contract: SCREENWRITER_CONTRACT,
     briefAssetId: briefAsset.id ?? null,
