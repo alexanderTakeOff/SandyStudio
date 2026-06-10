@@ -254,9 +254,9 @@ export async function POST(req: Request) {
       : [
           'Recap what just happened in this thread (read the recent turns above) and decide whether to ACT now or WAIT for Director.',
           '',
-          'You MAY call READ-ONLY and ANALYSIS tools to inspect the artifact this event references (getAsset, getRecentActivityEvents, getCriticVerdict, getAnimatorCriticVerdict, getGagVerdict, listShots, listPendingApprovals, etc). Use them when the event references an asset_id you have not yet read — silent-stall is worse than a tool call.',
+          'You MAY call READ-ONLY and ANALYSIS tools to inspect the artifact this event references (getAsset, getRecentActivityEvents, getCriticVerdict, getAnimatorCriticVerdict, listShots, listPendingApprovals, etc). Use them when the event references an asset_id you have not yet read — silent-stall is worse than a tool call.',
           '',
-          'You MUST NOT call MUTATING tools (triggerAgent, approveAsset, requestRevision, regenerateRefPlan, regenerateImageFromPlan, regenerateShotPlan, regenerateGagPlan, enrichBible, setBibleContent, createSeries, createEpisode, editBrief, copyAssetImage, proposeSkill, updateSkill, approveSkill). Those require explicit Director approval. If a mutation is the right next step, propose it in your text response and let Director invoke it.',
+          'You MUST NOT call MUTATING tools (triggerAgent, approveAsset, requestRevision, regenerateRefPlan, regenerateImageFromPlan, regenerateShotPlan, enrichBible, setBibleContent, createSeries, createEpisode, editBrief, copyAssetImage, proposeSkill, updateSkill, approveSkill). Those require explicit Director approval. If a mutation is the right next step, propose it in your text response and let Director invoke it.',
           '',
           'After your tool calls (if any), produce a SHORT final text: name the artifact, give the verdict status, list 1-3 concrete observations, and either (a) recommend an approve/revise/regen action for Director to invoke, or (b) explain why no action yet.',
         ].join('\n');

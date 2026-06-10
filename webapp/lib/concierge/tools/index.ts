@@ -32,12 +32,6 @@ import {
   regenerateShotPlan,
   unstickPlanForApproval,
 } from './animator';
-import {
-  getGagPlan,
-  listGagPlans,
-  getGagVerdict,
-  regenerateGagPlan,
-} from './gagad';
 import { reorderShots } from './shot-reorder';
 import { markAwaitingDirector } from './mark-awaiting';
 import { getWorkPlan, updateWorkPlan } from './work-plan';
@@ -80,10 +74,6 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   getShotPlan as unknown as AnyTool,
   listShotPlans as unknown as AnyTool,
   getAnimatorCriticVerdict as unknown as AnyTool,
-  // Gag AD inspection (Day 11+)
-  getGagPlan as unknown as AnyTool,
-  listGagPlans as unknown as AnyTool,
-  getGagVerdict as unknown as AnyTool,
   // Unit A (2026-06-03) — durable per-episode work-plan / decision ledger.
   // Read-only: surfaces the STA-work_plan STATE asset content. The same doc is
   // auto-loaded into the [WORK_PLAN] system-prompt block every turn.
@@ -128,7 +118,6 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // storyboard shots[] AND animatic shot_list. Use when Director says
   // «поменяй кадры местами» / «swap shots». NOT a content regen.
   reorderShots as unknown as AnyTool,
-  regenerateGagPlan as unknown as AnyTool,
 ]);
 
 const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(

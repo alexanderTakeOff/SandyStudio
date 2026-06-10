@@ -18,6 +18,7 @@
 import { createAgentInngestFunction } from '@/lib/agents/factory';
 import type { AgentResult } from '@/lib/agents/types';
 import { isComedyLikeGenre } from '@/lib/api/genre';
+import { readabilityGateEnabled } from '@/lib/agents/chain-flags';
 import { shortShotLabel } from '@/lib/api/vgen-shot-helpers';
 
 export const execEprevReviewPlan = createAgentInngestFunction({
@@ -56,10 +57,11 @@ export const execEprevReviewPlan = createAgentInngestFunction({
    *   verdict=REVISE → re-fire the Designer with acceptance_criteria as
    *     a hard-contract revisionNote.
    *
-   *   verdict=PASS  → fire EXEC-GAGAD eref_review IF series_genre is
-   *     comedy-like. GAGAD performs cross-layer check that the SPC-ref_plan
-   *     delivers the gag intent declared by the episode's SPC-gag_plan.
-   *     (GAGAD soft-skips if no gag_plan APPROVED yet.) Day 11+ wiring.
+   *   verdict=PASS  → fire EXEC-CREAD eref readability review IF the
+   *     READABILITY_GATE_ENABLED flag is on AND series_genre is comedy-like.
+   *     CREAD checks the SPC-ref_plan still delivers the storyboard's readable
+   *     intent against the genre playbook (T1 — absorbed the retired GAGAD
+   *     eref_review). Flag off ⇒ null (pre-GAGAD legacy: Plan waits for Director).
    */
   nextEvent: (_saved, eventData, result: AgentResult) => {
     const meta = result.metadata as
@@ -100,9 +102,9 @@ export const execEprevReviewPlan = createAgentInngestFunction({
         typeof meta?.series_genre === 'string' ? meta.series_genre : null;
       const planAssetId =
         typeof meta?.plan_asset_id === 'string' ? meta.plan_asset_id : null;
-      if (isComedyLikeGenre(seriesGenre) && planAssetId) {
+      if (readabilityGateEnabled() && isComedyLikeGenre(seriesGenre) && planAssetId) {
         return {
-          name: 'sandystudio/exec-gagad/review-ref-plan',
+          name: 'sandystudio/exec-cread/review-ref-plan',
           data: {
             episodeId: eventData.episodeId as string,
             planAssetId,

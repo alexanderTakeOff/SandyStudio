@@ -183,25 +183,6 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: true,
   },
 
-  'EXEC-GAGAD': {
-    id: 'EXEC-GAGAD',
-    code: 'exec-gagad',
-    display_ru: 'Гэг-режиссёр',
-    display_en: 'Gag Critic', // Topic 3: Gag Designer (plan phase) / Gag Critic (review phases)
-    emoji: '🎭',
-    category: 'review',
-    // Sonnet 4.6 — cross-layer gag continuity supervisor.
-    // 3 phases: plan (after SREV) / eref_review (per-shot) / vanim_review (per-shot).
-    // Genre-conditional: fires only when isComedyLikeGenre(series.genre).
-    // Revision cap=2 with escalation event for Director attention.
-    model: 'sonnet',
-    skills: ['sandy-gag-library'],
-    next_agent: null, // terminal review role (REVISE re-fires upstream, not chains forward)
-    governance: 'B',
-    prompt_file: 'gag_assistant_director.md',
-    has_inngest_function: true,
-  },
-
   'EXEC-VPREV': {
     id: 'EXEC-VPREV',
     code: 'exec-vprev',

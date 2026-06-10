@@ -187,7 +187,6 @@ function buildUserMessage(args: {
   shotId: string;
   planContent: string;
   planStatus: string;
-  gagPlanFact: string;
 }): string {
   return [
     '# Task',
@@ -204,9 +203,6 @@ function buildUserMessage(args: {
     '</plan>',
     '',
     canonicalSizeBlock(),
-    '',
-    '## Gag Plan Fact (DB-injected — do NOT override or ignore)',
-    args.gagPlanFact,
     '',
     'Hard rules:',
     '- Output one markdown narrative and exactly one fenced JSON block at the end.',
@@ -371,38 +367,11 @@ export async function runEpisodeReferenceCritic(
   const plan = await loadPlanRow(supabase, planAssetId);
   const systemPrompt = await loadSystemPrompt();
 
-  // V10 DB-fact injection: query actual APPROVED gag plans so the Critic
-  // evaluates V10 against reality, not a hallucinated assumption.
-  // Wrapped in try/catch so mock supabase (missing .or/.order methods) degrades
-  // gracefully to the N/A message rather than throwing.
-  const episodeId = (args.inputs as { episode_id?: string }).episode_id ?? '';
-  let gagPlanFact: string;
-  try {
-    const { data: gagRows } = await supabase
-      .from('assets')
-      .select('id,content,created_at')
-      .eq('episode_id', episodeId)
-      .eq('status', 'APPROVED')
-      .or('file_type.eq.SPC-gag_plan,file_type.like.SPC-gag_plan-%')
-      .order('created_at', { ascending: false });
-    const rows = (gagRows ?? []) as Array<{ id: string; content?: string | null; created_at?: string }>;
-    if (rows.length === 0) {
-      gagPlanFact = "DB FACT: zero APPROVED SPC-gag_plan assets exist for this episode. V10 is N/A — record 'V10 (N/A — no gag plan)' in passed_checks. Do NOT assume or invent a gag plan.";
-    } else {
-      const newest = rows[0];
-      const content = (newest.content ?? '').slice(0, 6000);
-      gagPlanFact = `DB FACT: APPROVED gag plan exists — validate V10 against THIS:\n\n${content}`;
-    }
-  } catch {
-    gagPlanFact = 'DB FACT: gag plan lookup failed — treat V10 as N/A.';
-  }
-
   const userMessage = buildUserMessage({
     planAssetId,
     shotId,
     planContent: plan.content,
     planStatus: plan.status,
-    gagPlanFact,
   });
 
   const notes: string[] = [];

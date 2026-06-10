@@ -680,7 +680,6 @@ function revisionEventForAsset(fileType: string): string | null {
   if (fileType === 'REV-script_qa')                     return 'sandystudio/exec-srev/review-script';
   if (fileType.startsWith('STB'))                       return 'sandystudio/exec-sb/create-storyboard';
   if (fileType === 'REV-world_check')                   return 'sandystudio/exec-wchk/check-world';
-  if (fileType === 'SPC-gag_plan')                      return 'sandystudio/exec-gagad/plan';
   if (fileType.startsWith('AUD-music'))                 return 'sandystudio/exec-mgen/generate-music';
   if (fileType.startsWith('VID-animatic'))              return 'sandystudio/exec-edit/create-animatic';
   if (fileType === 'SPC-metadata' || fileType.startsWith('SPC-copy'))

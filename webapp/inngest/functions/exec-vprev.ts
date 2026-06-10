@@ -11,6 +11,7 @@
 import { createAgentInngestFunction } from '@/lib/agents/factory';
 import type { AgentResult } from '@/lib/agents/types';
 import { isComedyLikeGenre } from '@/lib/api/genre';
+import { readabilityGateEnabled } from '@/lib/agents/chain-flags';
 import { shortShotLabel } from '@/lib/api/vgen-shot-helpers';
 
 export const execVprevReviewPlan = createAgentInngestFunction({
@@ -105,9 +106,9 @@ export const execVprevReviewPlan = createAgentInngestFunction({
         typeof meta?.series_genre === 'string' ? meta.series_genre : null;
       const planAssetId =
         typeof meta?.plan_asset_id === 'string' ? meta.plan_asset_id : null;
-      if (isComedyLikeGenre(seriesGenre) && planAssetId) {
+      if (readabilityGateEnabled() && isComedyLikeGenre(seriesGenre) && planAssetId) {
         return {
-          name: 'sandystudio/exec-gagad/review-shot-plan',
+          name: 'sandystudio/exec-cread/review-shot-plan',
           data: {
             episodeId: eventData.episodeId as string,
             planAssetId,

@@ -72,14 +72,10 @@ import {
 import {
   runCreativeReadabilityCritic,
   CreativeReadabilityCriticError,
+  CREAD_CONTRACT,
 } from './runners/creative-readability-critic';
 import { runAnimator, AnimatorError } from './runners/animator';
 import { runAnimatorCritic, AnimatorCriticError } from './runners/animator-critic';
-import {
-  runGagAssistantDirector,
-  GagAssistantDirectorError,
-  type GagadPhase,
-} from './runners/gag-assistant-director';
 import {
   runAnimaticSlideshow,
   runAnchorAnimaticSlideshow,
@@ -545,20 +541,19 @@ export interface RunAgentArgs {
    */
   planAssetId?: string;
   /**
-   * Sprint «Дизайнер и Аниматор» Day 11+ (2026-05-19) — EXEC-GAGAD phase
-   * selector. plan = write SPC-gag_plan; eref_review/vanim_review = critic.
-   */
-  gagPhase?: 'plan' | 'eref_review' | 'vanim_review';
-  /** EXEC-GAGAD Phase plan — APPROVED SCR-script asset id (optional —
-   *  runner can resolve via upstream_assets too). */
-  scriptAssetId?: string;
-  /**
    * C1-Gate sprint 2026-06-10 — STB-storyboard asset id under readability
    * review. When set, EXEC-CREAD loads exactly that storyboard; when unset it
    * falls back to the newest APPROVED STB in upstream_assets. Resolver in
    * inngest/functions/exec-cread.ts forwards it from the event payload.
    */
   storyboardAssetId?: string;
+  /**
+   * T1 consolidation 2026-06-10 — EXEC-CREAD per-shot phase selector. When
+   * 'eref'/'vanim', the critic reviews the per-shot plan referenced by
+   * planAssetId+shotId instead of the storyboard (absorbed the retired
+   * EXEC-GAGAD eref_review/vanim_review). Unset = storyboard readability.
+   */
+  creadPhase?: 'eref' | 'vanim';
 }
 
 // Helper: assemble metadata payload for binary outputs, encapsulating the
@@ -631,9 +626,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     durationSeconds,
     vgenPilot,
     planAssetId,
-    gagPhase,
-    scriptAssetId,
     storyboardAssetId,
+    creadPhase,
     directorOverrides,
   } = args;
   void provider; // referenced inside individual cases
@@ -822,6 +816,164 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         throw new Error(`EXEC-CREAD requires supabase client`);
       }
       const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+
+      // ── Per-shot phases (eref/vanim) — absorbed from the retired EXEC-GAGAD
+      //    cross-layer reviews (T1, 2026-06-10). Judge whether a Designer
+      //    SPC-ref_plan / Animator SPC-shot_plan still delivers the readable
+      //    intent the storyboard promised, against the genre playbook. REVISE
+      //    bounces the producer; cap→HALT via the shared applyCriticVerdict.
+      if (creadPhase === 'eref' || creadPhase === 'vanim') {
+        if (!planAssetId) {
+          throw new Error(`EXEC-CREAD ${creadPhase} requires planAssetId`);
+        }
+        if (!shotId) {
+          throw new Error(`EXEC-CREAD ${creadPhase} requires shotId`);
+        }
+        let r: Awaited<ReturnType<typeof runCreativeReadabilityCritic>>;
+        if (hasAnthropicKey) {
+          try {
+            r = await runCreativeReadabilityCritic({
+              inputs,
+              supabase,
+              phase: creadPhase,
+              planAssetId,
+              shotId,
+            });
+          } catch (err: unknown) {
+            if (err instanceof CreativeReadabilityCriticError) {
+              throw new Error(`EXEC-CREAD ${creadPhase}: ${err.message}`);
+            }
+            throw err;
+          }
+        } else {
+          // Mock fallback: PASS verdict so the chain progresses in replay-pilot.
+          r = {
+            phase: creadPhase,
+            markdown: `Mock CREAD ${creadPhase} — PASS`,
+            body: { verdict: 'PASS' },
+            costUsd: 0,
+            model: 'mock',
+            contract: CREAD_CONTRACT,
+            verdict: 'PASS',
+            reviewedAssetId: planAssetId,
+            shotId,
+            acceptanceCriteria: [],
+            failedChecks: [],
+            passedChecks: [],
+            activePlaybooks: [],
+            description: `Stub EXEC-CREAD ${creadPhase} mock`,
+            notes: [],
+          };
+        }
+
+        // Cap-aware verdict application — shared with the plan critics. Flips
+        // the PLAN status (REVISE → REVISION re-fires the producer; PASS/HALT
+        // leave it in REVIEW), enforces the cap, escalates on HALT. version is
+        // the counter — each REVISE re-authors a new plan version. (No bespoke
+        // counter — that retired with GAGAD.)
+        const cv = await applyCriticVerdict({
+          supabase,
+          rawVerdict: r.verdict as CriticVerdict,
+          planAssetId,
+          episodeId,
+          shotId,
+          actor: 'EXEC-CREAD',
+          reviewKind:
+            creadPhase === 'eref' ? 'ref_plan_readability' : 'shot_plan_readability',
+        });
+
+        // Save the REV-readability verdict row directly (skip_save bypass) —
+        // per-shot versioning keyed on the shot label, mirroring the EREF/VPREV
+        // verdict-row pattern.
+        const epRowC = inputs.episode as { episode_code?: string } | undefined;
+        const epCodeC = epRowC?.episode_code ?? 'SS-UNKNOWN';
+        const safeShotC = shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+        const { data: existingRevC } = await supabase
+          .from('assets')
+          .select('version')
+          .eq('episode_id', episodeId)
+          .eq('file_type', 'REV-readability')
+          .like('filename', `%${safeShotC}%`);
+        const maxVC = (existingRevC ?? []).reduce(
+          (m, x) => Math.max(m, x.version ?? 0),
+          0,
+        );
+        const nextVC = maxVC + 1;
+        const vStrC = `v${String(nextVC).padStart(2, '0')}`;
+        const filenameC = `${epCodeC}-REV-readability-${creadPhase}-${safeShotC}-${vStrC}-DRAFT.md`;
+
+        const { data: insertedC, error: insErrC } = await supabase
+          .from('assets')
+          .insert({
+            episode_id: episodeId,
+            series_id: null,
+            agent_id: 'EXEC-CREAD',
+            file_type: 'REV-readability',
+            filename: filenameC,
+            description: r.description,
+            status: 'REVIEW',
+            version: nextVC,
+            content: r.markdown,
+            metadata: {
+              ...(r.body as Record<string, unknown>),
+              phase: creadPhase,
+              plan_asset_id: planAssetId,
+              shot_id: shotId,
+              verdict: cv.effectiveVerdict,
+              acceptance_criteria: r.acceptanceCriteria,
+              failed_checks: r.failedChecks,
+              passed_checks: r.passedChecks,
+              plan_status_after_critic: cv.planStatusAfter ?? 'REVIEW',
+              active_playbooks: r.activePlaybooks,
+              agent_id: 'EXEC-CREAD',
+              model: r.model,
+              contract: r.contract,
+              provider_id: r.model,
+              provider_used: hasAnthropicKey ? 'anthropic' : 'mock',
+            } as unknown as Record<string, unknown>,
+          } as never)
+          .select('id')
+          .single();
+        if (insErrC) {
+          throw new Error(`EXEC-CREAD ${creadPhase} insert failed: ${insErrC.message}`);
+        }
+
+        return {
+          outputKind: 'text-md',
+          result: {
+            asset_paths: [],
+            cost_usd: r.costUsd,
+            metadata: {
+              agent_id: agentId,
+              model: r.model,
+              contract: r.contract,
+              markdown: r.markdown,
+              body: r.body,
+              description: r.description,
+              cread_phase: creadPhase,
+              plan_asset_id: planAssetId,
+              shot_id: shotId,
+              verdict: cv.effectiveVerdict,
+              acceptance_criteria: r.acceptanceCriteria,
+              failed_checks: r.failedChecks,
+              passed_checks: r.passedChecks,
+              plan_status_after_critic: cv.planStatusAfter ?? 'REVIEW',
+              active_playbooks: r.activePlaybooks,
+              critic_notes: r.notes,
+              skip_save: true,
+              inserted_asset_ids: [insertedC.id],
+              provider_id: r.model,
+              provider_used: hasAnthropicKey ? 'anthropic' : 'mock',
+              review_kind:
+                creadPhase === 'eref'
+                  ? 'ref_plan_readability_critic'
+                  : 'shot_plan_readability_critic',
+            },
+          },
+        };
+      }
+
+      // ── Storyboard phase (existing behaviour).
       if (hasAnthropicKey) {
         try {
           const r = await runCreativeReadabilityCritic({
@@ -838,9 +990,9 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           const cv = await applyCriticVerdict({
             supabase,
             rawVerdict: r.verdict as CriticVerdict,
-            planAssetId: r.storyboardAssetId,
+            planAssetId: r.reviewedAssetId,
             episodeId,
-            shotId: r.storyboardAssetId, // storyboard-level: shot label = asset id
+            shotId: r.reviewedAssetId, // storyboard-level: shot label = asset id
             actor: 'EXEC-CREAD',
             reviewKind: 'storyboard_readability',
           });
@@ -861,7 +1013,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
                 failed_checks: r.failedChecks,
                 passed_checks: r.passedChecks,
                 critic_notes: r.notes,
-                storyboard_asset_id: r.storyboardAssetId,
+                storyboard_asset_id: r.reviewedAssetId,
                 plan_status_after_critic: cv.planStatusAfter ?? 'REVIEW',
                 active_playbooks: r.activePlaybooks,
                 provider_id: r.model,
@@ -1147,294 +1299,6 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             plan_kind: 'shot_plan',
             provider_id: 'mock',
             provider_used: 'mock',
-          },
-        },
-      };
-    }
-
-    case 'EXEC-GAGAD': {
-      // Sprint «Дизайнер и Аниматор» Day 11+ 2026-05-19 — Gag Assistant Director.
-      // Three phases dispatched on `gagPhase`:
-      //   - plan: write SPC-gag_plan asset (factory's saveAgentOutput handles)
-      //   - eref_review: validate SPC-ref_plan vs gag_plan; skip_save + manual
-      //     REV-gag_check_ref insert + revision counter side-effect
-      //   - vanim_review: same for SPC-shot_plan; REV-gag_check_shot insert
-      if (!gagPhase) {
-        throw new Error(`EXEC-GAGAD requires gagPhase in event payload`);
-      }
-      if (!supabase) {
-        throw new Error(`EXEC-GAGAD requires supabase client`);
-      }
-      const hasAnthropicKeyG = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
-
-      // ── Phase=plan: factory's saveAgentOutput handles SPC-gag_plan asset.
-      if (gagPhase === 'plan') {
-        if (hasAnthropicKeyG) {
-          try {
-            const r = await runGagAssistantDirector({
-              phase: 'plan',
-              inputs,
-              supabase,
-              scriptAssetId,
-              revisionNote: args.revisionNote,
-            });
-            return {
-              outputKind: 'text-md',
-              result: {
-                asset_paths: [],
-                cost_usd: r.costUsd,
-                metadata: {
-                  agent_id: agentId,
-                  model: r.model,
-                  contract: r.contract,
-                  markdown: r.markdown,
-                  body: r.body,
-                  description: r.description,
-                  gag_phase: 'plan' as const,
-                  script_asset_id: r.scriptAssetId ?? null,
-                  gagad_notes: r.notes,
-                  provider_id: r.model,
-                  provider_used: 'anthropic',
-                  plan_kind: 'gag_plan',
-                },
-              },
-            };
-          } catch (err: unknown) {
-            if (err instanceof GagAssistantDirectorError) {
-              throw new Error(`EXEC-GAGAD plan: ${err.message}`);
-            }
-            throw err;
-          }
-        }
-        // Mock fallback for replay-pilot / no API key.
-        const llmG = await mockLLM({ agentId, episodeId });
-        return {
-          outputKind: 'text-md',
-          result: {
-            asset_paths: [],
-            cost_usd: llmG.cost_usd,
-            metadata: {
-              agent_id: agentId,
-              model: agentMeta.model,
-              markdown: llmG.markdown,
-              body: llmG.body as Record<string, unknown>,
-              description: 'Stub EXEC-GAGAD plan mock — set ANTHROPIC_API_KEY for real path',
-              gag_phase: 'plan' as const,
-              plan_kind: 'gag_plan',
-              provider_id: 'mock',
-              provider_used: 'mock',
-            },
-          },
-        };
-      }
-
-      // ── Review phases: eref_review / vanim_review
-      const reviewPhase: GagadPhase = gagPhase;
-      if (!planAssetId) {
-        throw new Error(`EXEC-GAGAD ${reviewPhase} requires planAssetId`);
-      }
-      if (!shotId) {
-        throw new Error(`EXEC-GAGAD ${reviewPhase} requires shotId`);
-      }
-
-      let reviewResult: Awaited<ReturnType<typeof runGagAssistantDirector>>;
-      if (hasAnthropicKeyG) {
-        try {
-          reviewResult = await runGagAssistantDirector({
-            phase: reviewPhase,
-            inputs,
-            supabase,
-            planAssetId,
-            shotId,
-          });
-        } catch (err: unknown) {
-          if (err instanceof GagAssistantDirectorError) {
-            throw new Error(`EXEC-GAGAD ${reviewPhase}: ${err.message}`);
-          }
-          throw err;
-        }
-      } else {
-        // Mock fallback: PASS verdict so chain progresses in replay-pilot.
-        reviewResult = {
-          phase: reviewPhase,
-          markdown: `Mock GAGAD ${reviewPhase} — PASS`,
-          body: { verdict: 'PASS' },
-          costUsd: 0,
-          model: 'mock',
-          contract: 'gag_assistant_director@v1' as const,
-          description: `Stub EXEC-GAGAD ${reviewPhase} mock`,
-          notes: [],
-          verdict: 'PASS' as const,
-          planAssetId,
-          shotId,
-          gagPlanAssetId: null,
-          revisionCountBefore: 0,
-          acceptanceCriteria: [],
-          failedChecks: [],
-          passedChecks: [],
-        };
-      }
-
-      // ── Side-effects: revision counter + status flip + halt-escalation event
-      const verdict = reviewResult.verdict ?? 'UNKNOWN';
-      const beforeCount = reviewResult.revisionCountBefore ?? 0;
-      const upstreamStatusAfter =
-        verdict === 'PASS'
-          ? null
-          : verdict === 'HALT'
-            ? null // do NOT flip on HALT — Plan stays REVIEW for Director attention
-            : verdict === 'REVISE'
-              ? 'REVISION'
-              : null;
-      let afterCount = beforeCount;
-      if (verdict === 'REVISE') {
-        afterCount = beforeCount + 1;
-      }
-
-      // Update upstream Plan: counter + status (only for REVISE)
-      if (verdict === 'REVISE' || verdict === 'HALT') {
-        try {
-          const { data: upstream } = await supabase
-            .from('assets')
-            .select('metadata,status')
-            .eq('id', planAssetId)
-            .maybeSingle();
-          const upMeta = (upstream?.metadata as Record<string, unknown> | null) ?? {};
-          const newMeta = {
-            ...upMeta,
-            gagad_revision_count: afterCount,
-            gagad_last_verdict: verdict,
-            gagad_last_verdict_at: new Date().toISOString(),
-          };
-          const patch: Record<string, unknown> = { metadata: newMeta as unknown };
-          if (upstreamStatusAfter) patch.status = upstreamStatusAfter;
-          await supabase
-            .from('assets')
-            .update(patch as never)
-            .eq('id', planAssetId);
-        } catch {
-          // Non-fatal: counter persistence best-effort. Worst case next review
-          // sees stale counter — still bounded by Director intervention.
-        }
-      }
-
-      // Halt escalation: emit activity event so Director Inbox surfaces it
-      if (verdict === 'HALT') {
-        try {
-          await supabase
-            .from('activity_events')
-            .insert({
-              event_type: 'revision_requested',
-              severity: 'warning',
-              title: `GAGAD HALT — manual review needed (${reviewPhase})`,
-              description: `GAGAD reached revision cap (count=${beforeCount}) on shot ${shotId}. Director attention required.`,
-              actor: 'EXEC-GAGAD',
-              episode_id: episodeId,
-              asset_id: planAssetId,
-              metadata: {
-                gagad_escalation: true,
-                reason: 'cap_reached_2',
-                phase: reviewPhase,
-                target_asset_id: planAssetId,
-                shot_id: shotId,
-                revision_count: beforeCount,
-              },
-            } as never);
-        } catch {
-          // Non-fatal: log only.
-        }
-      }
-
-      // ── Save the REV verdict asset directly (skip_save bypass)
-      // Compose REV-gag_check_ref / _shot filename + insert
-      const targetFileType =
-        reviewPhase === 'eref_review' ? 'REV-gag_check_ref' : 'REV-gag_check_shot';
-      const epRow = inputs.episode as { episode_code?: string } | undefined;
-      const epCode = epRow?.episode_code ?? 'SS-UNKNOWN';
-      const safeShot = shotId.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
-
-      // Find next version for this combination
-      const { data: existingRev } = await supabase
-        .from('assets')
-        .select('version')
-        .eq('episode_id', episodeId)
-        .eq('file_type', targetFileType)
-        .like('filename', `%${safeShot}%`);
-      const maxV = (existingRev ?? []).reduce(
-        (m, r) => Math.max(m, r.version ?? 0),
-        0,
-      );
-      const nextV = maxV + 1;
-      const vStr = `v${String(nextV).padStart(2, '0')}`;
-      const filename = `${epCode}-REV-gag_check_${reviewPhase === 'eref_review' ? 'ref' : 'shot'}-${safeShot}-${vStr}-DRAFT.md`;
-
-      const { data: inserted, error: insErr } = await supabase
-        .from('assets')
-        .insert({
-          episode_id: episodeId,
-          series_id: null,
-          agent_id: 'EXEC-GAGAD',
-          file_type: targetFileType,
-          filename,
-          description: reviewResult.description,
-          status: 'REVIEW',
-          version: nextV,
-          content: reviewResult.markdown,
-          metadata: {
-            ...(reviewResult.body as Record<string, unknown>),
-            phase: reviewPhase,
-            plan_asset_id: planAssetId,
-            shot_id: shotId,
-            gag_plan_asset_id: reviewResult.gagPlanAssetId,
-            verdict,
-            acceptance_criteria: reviewResult.acceptanceCriteria,
-            failed_checks: reviewResult.failedChecks,
-            passed_checks: reviewResult.passedChecks,
-            revision_count_before: beforeCount,
-            revision_count_after: afterCount,
-            upstream_status_after: upstreamStatusAfter,
-            agent_id: 'EXEC-GAGAD',
-            model: reviewResult.model,
-            contract: reviewResult.contract,
-            provider_id: reviewResult.model,
-            provider_used: hasAnthropicKeyG ? 'anthropic' : 'mock',
-          } as unknown as Record<string, unknown>,
-        } as never)
-        .select('id')
-        .single();
-
-      if (insErr) {
-        throw new Error(`EXEC-GAGAD ${reviewPhase} insert failed: ${insErr.message}`);
-      }
-
-      return {
-        outputKind: 'text-md',
-        result: {
-          asset_paths: [],
-          cost_usd: reviewResult.costUsd,
-          metadata: {
-            agent_id: agentId,
-            model: reviewResult.model,
-            contract: reviewResult.contract,
-            markdown: reviewResult.markdown,
-            body: reviewResult.body,
-            description: reviewResult.description,
-            gag_phase: reviewPhase,
-            plan_asset_id: planAssetId,
-            shot_id: shotId,
-            gag_plan_asset_id: reviewResult.gagPlanAssetId,
-            verdict,
-            acceptance_criteria: reviewResult.acceptanceCriteria,
-            failed_checks: reviewResult.failedChecks,
-            passed_checks: reviewResult.passedChecks,
-            revision_count_before: beforeCount,
-            revision_count_after: afterCount,
-            upstream_status_after: upstreamStatusAfter,
-            // Tell factory.ts to skip its own save — we already inserted above.
-            skip_save: true,
-            inserted_asset_ids: [inserted.id],
-            provider_id: reviewResult.model,
-            provider_used: hasAnthropicKeyG ? 'anthropic' : 'mock',
           },
         },
       };
@@ -3059,7 +2923,6 @@ const FILE_TYPE_BY_AGENT: Record<AgentId, string> = {
   'EXEC-EPREV': 'REV-ref_plan', // Day 4 — Designer's Critic verdict (one REV row per Plan)
   'EXEC-VANIM': 'SPC-shot_plan', // Day 6-7 — Animator video Plan per shot
   'EXEC-VPREV': 'REV-shot_plan', // Day 8 — Animator's Critic verdict
-  'EXEC-GAGAD': 'SPC-gag_plan', // Day 11+ — default for Phase plan; review phases use skip_save + manual insert
   'EXEC-EDIT': 'VID-animatic', // animatic produces a video asset; spec is metadata
   'EXEC-VGEN': 'VID-shot',
   'EXEC-MGEN': 'AUD-music',
@@ -3226,7 +3089,7 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
   // save dropped it; this fix closes the read-after-save gap.
   const PERSIST_METADATA_KEYS = [
     'animatic_v1',
-    // Critic verdict fields (TD-77) — EXEC-EPREV / EXEC-VPREV / EXEC-GAGAD outputs
+    // Critic verdict fields (TD-77) — EXEC-EPREV / EXEC-VPREV / EXEC-CREAD outputs
     'verdict',
     'failed_checks',
     'passed_checks',
@@ -3236,11 +3099,7 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
     'shot_id',
     'review_kind',
     'plan_status_after_critic',
-    // GAGAD-specific
-    'gag_phase',
-    'gag_plan_asset_id',
-    'revision_count_before',
-    'revision_count_after',
+    'cread_phase', // EXEC-CREAD per-shot readability phase (eref/vanim)
     // 2026-06-08 — EXEC-STITCH final-cut audit. Without these the VID-final_cut
     // row landed with shot_ids=[] / duration_seconds=undefined (the runner set
     // them but saveAgentOutput dropped every non-allowlisted key), so there was

@@ -227,14 +227,6 @@ const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
   return null;
 };
 
-// Topic 3: GAGAD folds into the relevant Critic row by review phase. GAGAD
-// reviewing reference plans → reference_critic; reviewing shot plans →
-// shot_critic. Without per-job phase context the routing keys on the agent's
-// pairing (it only ever runs alongside EREF or VANIM critics) — jobs route to
-// shot_critic by default since that is GAGAD's most common live phase; the
-// asset-level routing (SPC-ref_plan / SPC-shot_plan) remains authoritative for
-// state. See STAGE_FROM_AGENT_GAGAD for the phase-aware override the caller
-// may pass.
 const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'Director':   'brief',
   'EXEC-SW':    'screenwriter',
@@ -248,7 +240,6 @@ const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'EXEC-EDIT':  'animatic',
   'EXEC-VANIM': 'shot_designer',
   'EXEC-VPREV': 'shot_critic',
-  'EXEC-GAGAD': 'shot_critic', // GAGAD dual-role; default to its most common live phase
   'EXEC-VGEN':   'visual_generator',
   'EXEC-STITCH': 'final_cut',
   'EXEC-MGEN':   'music_generator',

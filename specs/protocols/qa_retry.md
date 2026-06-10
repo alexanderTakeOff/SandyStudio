@@ -28,7 +28,7 @@ Every escalation surfaces exactly why the agent cannot resolve the issue.
 `retry_count` in the QA report (specs/schemas/qa_report.md) tracks attempt number.
 Attempt #1 = first review. Attempt #3 = third and final before escalation.
 
-### Plan critics (EPREV / VPREV / GAGAD) — enforced in code
+### Plan critics (EPREV / VPREV / CREAD) — enforced in code
 
 The per-shot **plan** critics enforce this protocol automatically (I9, 2026-06-04,
 `lib/agents/critic-loop.ts` `applyCriticVerdict`). A REVISE re-fires the
@@ -43,7 +43,7 @@ so it survives the re-authoring that creates a fresh Plan asset each cycle.
 |-------|--------|-----|-----------------|
 | SPC-ref_plan | EXEC-EPREV | 2 | 2 revisions → HALT |
 | SPC-shot_plan | EXEC-VPREV | 2 | 2 revisions → HALT |
-| SPC-gag_plan review | EXEC-GAGAD | 2 | 2 revisions → HALT |
+| SPC-ref_plan / SPC-shot_plan readability | EXEC-CREAD | 2 | 2 revisions → HALT |
 
 ---
 

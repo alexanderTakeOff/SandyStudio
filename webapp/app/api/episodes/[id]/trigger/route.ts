@@ -41,10 +41,6 @@ const AGENT_TO_EVENT: Record<string, StudioEventName> = {
   // Day 6-7 + Day 8 (Sprint «Дизайнер и Аниматор» 2026-05-19)
   'EXEC-VANIM': 'sandystudio/exec-vanim/plan',
   'EXEC-VPREV': 'sandystudio/exec-vprev/review-plan',
-  // Day 11+ (Sprint «Дизайнер и Аниматор» 2026-05-19) — Gag AD manual re-fire.
-  // Only Phase plan exposed for manual trigger. Review phases auto-fire from
-  // EPREV/VPREV nextEvent on PASS verdict.
-  'EXEC-GAGAD': 'sandystudio/exec-gagad/plan',
   'EXEC-EDIT':  'sandystudio/exec-edit/create-animatic',
   'EXEC-VGEN':   'sandystudio/exec-vgen/generate-shot',
   'EXEC-MGEN':   'sandystudio/exec-mgen/generate-music',

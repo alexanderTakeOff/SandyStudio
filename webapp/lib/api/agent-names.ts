@@ -29,7 +29,6 @@ export const AGENT_DISPLAY_NAME: Readonly<Record<string, string>> = Object.freez
   'EXEC-EPREV':         'Reference Critic',
   'EXEC-VANIM':         'Video Designer',
   'EXEC-VPREV':         'Video Critic',
-  'EXEC-GAGAD':         'Gag Critic', // Designer in plan phase, Critic in review phases
   'EXEC-EDIT':          'Editor',
   'EXEC-VGEN':          'Video Artist',
   'EXEC-MGEN':          'Composer',

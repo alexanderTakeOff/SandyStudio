@@ -78,22 +78,53 @@ export class CreativeReadabilityCriticError extends Error {
   }
 }
 
-export interface CREADRunArgs {
+/**
+ * CREAD reviews readability at three creative-construction stages. The genre
+ * engine (skill shelf) and the HALT-no-playbook rule are identical across all
+ * three — only the artifact under review differs:
+ *   storyboard — the whole STB shot sequence (bounces the Storyboarder).
+ *   eref       — one Designer SPC-ref_plan per shot (bounces the Designer).
+ *   vanim      — one Animator SPC-shot_plan per shot (bounces the Animator).
+ * The eref/vanim phases absorb the retired EXEC-GAGAD cross-layer reviews
+ * (T1 consolidation 2026-06-10): they judge whether the per-shot plan still
+ * DELIVERS the readable intent the storyboard promised, against the same genre
+ * playbook — gag-fidelity re-sourced from storyboard+skill, not a gag_plan.
+ */
+export type CreadPhase = 'storyboard' | 'eref' | 'vanim';
+
+interface CREADRunArgsBase {
   inputs: AgentInputs;
   supabase: SupabaseClient<Database>;
+}
+
+export interface CREADStoryboardArgs extends CREADRunArgsBase {
+  phase?: 'storyboard';
   /** STB-storyboard asset id under review. When absent, the runner falls back
    *  to the newest APPROVED STB in upstream_assets. */
   storyboardAssetId?: string;
 }
 
+export interface CREADReviewArgs extends CREADRunArgsBase {
+  phase: 'eref' | 'vanim';
+  /** The per-shot plan under review: SPC-ref_plan (eref) / SPC-shot_plan (vanim). */
+  planAssetId: string;
+  shotId: string;
+}
+
+export type CREADRunArgs = CREADStoryboardArgs | CREADReviewArgs;
+
 export interface CREADRunResult {
+  phase: CreadPhase;
   markdown: string;
   body: Record<string, unknown>;
   costUsd: number;
   model: string;
   contract: typeof CREAD_CONTRACT;
   verdict: CriticVerdict;
-  storyboardAssetId: string;
+  /** The asset the critic judged — storyboard id (storyboard) or plan id (eref/vanim). */
+  reviewedAssetId: string;
+  /** Per-shot phases only. */
+  shotId?: string;
   acceptanceCriteria: readonly string[];
   failedChecks: ReadonlyArray<{ check: string; diagnosis: string }>;
   passedChecks: readonly string[];
@@ -348,8 +379,173 @@ function parseStringArray(
   return out;
 }
 
+/**
+ * Load the per-shot plan under review for the eref/vanim phases. Soft-tolerant
+ * of suffixed file types (e.g. SPC-ref_plan-<shot>) — checks the prefix only.
+ */
+async function loadPlan(
+  supabase: SupabaseClient<Database>,
+  planAssetId: string,
+  expectedPrefix: 'SPC-ref_plan' | 'SPC-shot_plan',
+): Promise<{ id: string; content: string }> {
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,file_type,content')
+    .eq('id', planAssetId)
+    .maybeSingle();
+  if (error) {
+    throw new CreativeReadabilityCriticError(`Plan asset fetch failed: ${error.message}`);
+  }
+  const row = data as { id?: string; file_type?: string; content?: string | null } | null;
+  if (!row) {
+    throw new CreativeReadabilityCriticError(`Plan asset ${planAssetId} not found`);
+  }
+  if (typeof row.file_type === 'string' && !row.file_type.startsWith(expectedPrefix)) {
+    throw new CreativeReadabilityCriticError(
+      `Asset ${planAssetId} has file_type="${row.file_type}", expected ${expectedPrefix}*`,
+    );
+  }
+  if (!row.content || row.content.trim().length === 0) {
+    throw new CreativeReadabilityCriticError(`Plan asset ${planAssetId} content is empty`);
+  }
+  return { id: row.id ?? planAssetId, content: row.content };
+}
+
+/** Newest APPROVED STB excerpt from upstream — the readable intent the per-shot
+ *  plan must preserve. Soft: returns a placeholder when no STB is present. */
+function storyboardExcerpt(inputs: AgentInputs, maxChars = 4000): string {
+  const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
+  const stb = (upstream ?? [])
+    .filter((a) => a.file_type?.startsWith('STB-') && a.status === 'APPROVED' && a.content)
+    .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
+  if (!stb?.content) return '<no STB upstream>';
+  return (
+    stb.content.slice(0, maxChars) +
+    (stb.content.length > maxChars ? '\n... [truncated]' : '')
+  );
+}
+
+function buildReviewUserMessage(args: {
+  phase: 'eref' | 'vanim';
+  planAssetId: string;
+  shotId: string;
+  planContent: string;
+  storyboardExcerpt: string;
+  activeSkillsBlock: string;
+}): string {
+  const planLabel =
+    args.phase === 'eref'
+      ? 'Designer reference plan (SPC-ref_plan)'
+      : 'Animator shot plan (SPC-shot_plan)';
+  return [
+    '# Task',
+    `Review the ${planLabel} below for READABILITY against the genre playbook.`,
+    `Judge whether this plan still DELIVERS the readable intent the storyboard promised`,
+    `for shot ${args.shotId} — the comedic/dramatic beat must survive the translation`,
+    `into this plan (visual keys, staging, timing). Apply the same R01-R06 lens,`,
+    `interpreted through the Active Playbooks engine. Do NOT impose any genre rule`,
+    `that is not present in the playbook.`,
+    '',
+    `shot_id: ${args.shotId}`,
+    `plan_asset_id: ${args.planAssetId}`,
+    '',
+    '## Plan under review',
+    '',
+    '<plan>',
+    args.planContent,
+    '</plan>',
+    '',
+    '## Storyboard context (excerpt — the readable intent to preserve)',
+    '',
+    '<storyboard>',
+    args.storyboardExcerpt,
+    '</storyboard>',
+    '',
+    args.activeSkillsBlock,
+    '',
+    'Hard rules:',
+    '- Output one markdown narrative and exactly one fenced JSON block at the end.',
+    `- The JSON block must include verdict, plan_asset_id="${args.planAssetId}", shot_id="${args.shotId}", acceptance_criteria[], failed_checks[], passed_checks[].`,
+    '- Never skip the JSON block — it is parsed by downstream code.',
+  ].join('\n');
+}
+
+/**
+ * The HALT-no-playbook result, shared by every phase. Zero genre playbooks
+ * loaded (including genre=null) → HALT WITHOUT the paid Anthropic call. A
+ * readability critic with no genre engine cannot judge readability.
+ */
+function haltNoPlaybook(args: {
+  phase: CreadPhase;
+  reviewedAssetId: string;
+  shotId?: string;
+  seriesGenre: string | null;
+  selectionCostUsd: number;
+  notes: string[];
+}): CREADRunResult {
+  const { phase, reviewedAssetId, shotId, seriesGenre, selectionCostUsd, notes } = args;
+  const diagnosis =
+    `No genre readability playbook matched (series_genre=${JSON.stringify(seriesGenre)}). ` +
+    'EXEC-CREAD has no genre engine to judge against and HALTs without calling the model. ' +
+    'Likely cause: genre resolution returned null (series_id code↔uuid mismatch) or no ' +
+    'readability-* skill lists this genre in applies_when. Director attention required.';
+  notes.push(`HALT — ${diagnosis}`);
+  const body: Record<string, unknown> = {
+    verdict: 'HALT',
+    reviewed_asset_id: reviewedAssetId,
+    ...(phase === 'storyboard'
+      ? { storyboard_asset_id: reviewedAssetId }
+      : { plan_asset_id: reviewedAssetId, shot_id: shotId }),
+    failed_checks: [{ check: 'GENRE_ENGINE', diagnosis }],
+    passed_checks: [],
+    acceptance_criteria: [],
+  };
+  const markdown = [
+    `# Readability Critic — HALT`,
+    '',
+    `**Verdict:** HALT`,
+    '',
+    '## Summary',
+    diagnosis,
+    '',
+    '```json',
+    JSON.stringify(body, null, 2),
+    '```',
+  ].join('\n');
+  return {
+    phase,
+    markdown,
+    body,
+    costUsd: selectionCostUsd, // only the (skipped) selection step may have cost
+    model: CREAD_MODEL,
+    contract: CREAD_CONTRACT,
+    verdict: 'HALT',
+    reviewedAssetId,
+    ...(shotId ? { shotId } : {}),
+    acceptanceCriteria: [],
+    failedChecks: [{ check: 'GENRE_ENGINE', diagnosis }],
+    passedChecks: [],
+    activePlaybooks: [],
+    description: `Readability critic HALT (no genre playbook) · ${phase} · ${CREAD_CONTRACT}`,
+    notes,
+  };
+}
+
+/** Phase dispatcher. eref/vanim review a per-shot plan; storyboard reviews the
+ *  whole STB. All three share the genre engine and the HALT-no-playbook rule. */
 export async function runCreativeReadabilityCritic(
   args: CREADRunArgs,
+): Promise<CREADRunResult> {
+  // `phase` is an optional discriminant, which TS won't fully narrow across
+  // this call boundary — the runtime check is authoritative, so we cast.
+  if (args.phase === 'eref' || args.phase === 'vanim') {
+    return runReviewPhase(args as CREADReviewArgs);
+  }
+  return runStoryboardPhase(args as CREADStoryboardArgs);
+}
+
+async function runStoryboardPhase(
+  args: CREADStoryboardArgs,
 ): Promise<CREADRunResult> {
   const { inputs, supabase } = args;
 
@@ -363,52 +559,14 @@ export async function runCreativeReadabilityCritic(
   // ── Skill shelf — genre engine arrives here (or NOT, which is the HALT case).
   const shelf = await resolveActivePlaybooks({ inputs, episodeLabel, notes });
 
-  // ── CRITICAL HALT RULE (skill-creation conflict rule). Zero genre playbooks
-  // loaded (including genre=null) → return HALT WITHOUT the paid Anthropic call.
-  // A readability critic with no genre engine cannot judge readability.
   if (shelf.activatedSlugs.length === 0) {
-    const seriesGenre =
-      typeof inputs.series_genre === 'string' ? inputs.series_genre : null;
-    const diagnosis =
-      `No genre readability playbook matched (series_genre=${JSON.stringify(seriesGenre)}). ` +
-      'EXEC-CREAD has no genre engine to judge against and HALTs without calling the model. ' +
-      'Likely cause: genre resolution returned null (series_id code↔uuid mismatch) or no ' +
-      'readability-* skill lists this genre in applies_when. Director attention required.';
-    notes.push(`HALT — ${diagnosis}`);
-    const body: Record<string, unknown> = {
-      verdict: 'HALT',
-      storyboard_asset_id: storyboard.id,
-      failed_checks: [{ check: 'GENRE_ENGINE', diagnosis }],
-      passed_checks: [],
-      acceptance_criteria: [],
-    };
-    const markdown = [
-      `# Readability Critic — HALT`,
-      '',
-      `**Verdict:** HALT`,
-      '',
-      '## Summary',
-      diagnosis,
-      '',
-      '```json',
-      JSON.stringify(body, null, 2),
-      '```',
-    ].join('\n');
-    return {
-      markdown,
-      body,
-      costUsd: shelf.selectionCostUsd, // only the (skipped) selection step may have cost
-      model: CREAD_MODEL,
-      contract: CREAD_CONTRACT,
-      verdict: 'HALT',
-      storyboardAssetId: storyboard.id,
-      acceptanceCriteria: [],
-      failedChecks: [{ check: 'GENRE_ENGINE', diagnosis }],
-      passedChecks: [],
-      activePlaybooks: [],
-      description: `Readability critic HALT (no genre playbook) · ${CREAD_CONTRACT}`,
+    return haltNoPlaybook({
+      phase: 'storyboard',
+      reviewedAssetId: storyboard.id,
+      seriesGenre: typeof inputs.series_genre === 'string' ? inputs.series_genre : null,
+      selectionCostUsd: shelf.selectionCostUsd,
       notes,
-    };
+    });
   }
 
   const systemPrompt = await loadSystemPrompt();
@@ -438,8 +596,6 @@ export async function runCreativeReadabilityCritic(
   }
 
   if (!result.body) {
-    // Body absent — narrative without JSON. Surface markdown to Director but
-    // verdict is UNKNOWN; the cap-aware applyCriticVerdict treats it as REVISE.
     notes.push('Critic returned no parseable JSON block — UNKNOWN verdict');
   }
 
@@ -456,7 +612,7 @@ export async function runCreativeReadabilityCritic(
   const acceptanceCriteria = parseStringArray(result.body, 'acceptance_criteria');
 
   const description = [
-    `Readability verdict ${verdict} · ${CREAD_CONTRACT} · ${CREAD_MODEL}`,
+    `Readability verdict ${verdict} · storyboard · ${CREAD_MODEL}`,
     `· playbooks ${shelf.activatedSlugs.join('+') || 'none'}`,
     `· ${failedChecks.length} failed`,
     `· ${passedChecks.length} passed`,
@@ -464,13 +620,109 @@ export async function runCreativeReadabilityCritic(
   ].join(' ');
 
   return {
+    phase: 'storyboard',
     markdown: result.markdown,
     body: result.body ?? {},
     costUsd: totalCost,
     model: result.model,
     contract: CREAD_CONTRACT,
     verdict,
-    storyboardAssetId: storyboard.id,
+    reviewedAssetId: storyboard.id,
+    acceptanceCriteria,
+    failedChecks,
+    passedChecks,
+    activePlaybooks: shelf.activatedSlugs,
+    description,
+    notes,
+  };
+}
+
+async function runReviewPhase(args: CREADReviewArgs): Promise<CREADRunResult> {
+  const { inputs, supabase, phase, planAssetId, shotId } = args;
+  const notes: string[] = [];
+
+  const expectedPrefix = phase === 'eref' ? 'SPC-ref_plan' : 'SPC-shot_plan';
+  const plan = await loadPlan(supabase, planAssetId, expectedPrefix);
+
+  const episodeLabel =
+    (inputs.episode as { episode_code?: string } | undefined)?.episode_code ??
+    inputs.episode_id;
+
+  // ── Same genre engine as the storyboard phase.
+  const shelf = await resolveActivePlaybooks({ inputs, episodeLabel, notes });
+  if (shelf.activatedSlugs.length === 0) {
+    return haltNoPlaybook({
+      phase,
+      reviewedAssetId: planAssetId,
+      shotId,
+      seriesGenre: typeof inputs.series_genre === 'string' ? inputs.series_genre : null,
+      selectionCostUsd: shelf.selectionCostUsd,
+      notes,
+    });
+  }
+
+  const systemPrompt = await loadSystemPrompt();
+  const userMessage = buildReviewUserMessage({
+    phase,
+    planAssetId,
+    shotId,
+    planContent: plan.content,
+    storyboardExcerpt: storyboardExcerpt(inputs),
+    activeSkillsBlock: shelf.block,
+  });
+
+  let result: AnthropicTextResult;
+  try {
+    result = await generateAnthropicText({
+      systemPrompt,
+      userMessage,
+      model: CREAD_MODEL,
+      maxOutputTokens: CREAD_MAX_TOKENS,
+      expectsJson: true,
+    });
+  } catch (err: unknown) {
+    if (err instanceof AnthropicTextError) {
+      throw new CreativeReadabilityCriticError(
+        `Anthropic generation failed: ${err.message}`,
+        err,
+      );
+    }
+    throw err;
+  }
+
+  if (!result.body) {
+    notes.push('Critic returned no parseable JSON block — UNKNOWN verdict');
+  }
+
+  const totalCost = result.costUsd + shelf.selectionCostUsd;
+  if (totalCost > CREAD_COST_CEILING_USD) {
+    notes.push(
+      `Cost overrun: $${totalCost.toFixed(4)} > ceiling $${CREAD_COST_CEILING_USD}`,
+    );
+  }
+
+  const verdict = parseVerdict(result.body);
+  const failedChecks = parseFailedChecks(result.body);
+  const passedChecks = parseStringArray(result.body, 'passed_checks');
+  const acceptanceCriteria = parseStringArray(result.body, 'acceptance_criteria');
+
+  const description = [
+    `Readability verdict ${verdict} · ${phase} · ${CREAD_MODEL}`,
+    `· playbooks ${shelf.activatedSlugs.join('+') || 'none'}`,
+    `· ${failedChecks.length} failed`,
+    `· cost $${totalCost.toFixed(4)}`,
+  ].join(' ');
+
+  return {
+    phase,
+    markdown: result.markdown,
+    body: result.body ?? {},
+    costUsd: totalCost,
+    model: result.model,
+    contract: CREAD_CONTRACT,
+    verdict,
+    reviewedAssetId: planAssetId,
+    shotId,
     acceptanceCriteria,
     failedChecks,
     passedChecks,

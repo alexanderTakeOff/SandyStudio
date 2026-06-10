@@ -34,8 +34,6 @@ import {
 } from '@/lib/api/animatic-shotlist';
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
-import { isComedyLikeGenre } from '@/lib/api/genre';
-import { genreForEpisode } from '@/lib/api/series-bible';
 import {
   designerChainEnabled,
   animatorChainEnabled,
@@ -217,25 +215,6 @@ export async function computeNextEvents(
       name: 'sandystudio/exec-sb/create-storyboard',
       data: { episodeId: ep, scriptAssetId: scrId ?? asset.id },
     });
-  }
-
-  // ── Script review APPROVED → EXEC-GAGAD plan (Day 11+ 2026-05-19)
-  // Sprint «Дизайнер и Аниматор» Gag Assistant Director — fires in parallel
-  // with EXEC-SB when the series is comedy-like. Writes SPC-gag_plan that
-  // Designer/Animator + their Critics consume cross-layer. Genre-conditional
-  // via isComedyLikeGenre helper — drama/doc/sci_fi skip GAGAD entirely.
-  if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-GAGAD', { since }))) {
-    const seriesGenre = await genreForEpisode(supabase, ep);
-    if (isComedyLikeGenre(seriesGenre)) {
-      const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
-      events.push({
-        name: 'sandystudio/exec-gagad/plan',
-        data: {
-          episodeId: ep,
-          ...(scrId ? { scriptAssetId: scrId } : {}),
-        },
-      });
-    }
   }
 
   // ── Storyboard APPROVED → EXEC-CREAD (Readability Critic) when the C1-Gate

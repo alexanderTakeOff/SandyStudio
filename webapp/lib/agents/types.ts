@@ -23,7 +23,6 @@ export type AgentId =
   | 'EXEC-EPREV' // Sprint «Дизайнер и Аниматор» 2026-05-19 — Designer's Critic (Plan validator)
   | 'EXEC-VANIM' // Sprint «Дизайнер и Аниматор» Day 6-7 2026-05-19 — Animator (VID Plan author)
   | 'EXEC-VPREV' // Sprint «Дизайнер и Аниматор» Day 8 2026-05-19 — Animator's Critic
-  | 'EXEC-GAGAD' // Sprint «Дизайнер и Аниматор» Day 11+ 2026-05-19 — Gag Assistant Director (cross-layer gag continuity)
   | 'EXEC-EDIT'
   | 'EXEC-VGEN'
   | 'EXEC-MGEN'
@@ -53,7 +52,6 @@ export type AgentCode =
   | 'exec-eprev'
   | 'exec-vanim'
   | 'exec-vprev'
-  | 'exec-gagad'
   | 'exec-edit'
   | 'exec-vgen'
   | 'exec-mgen'

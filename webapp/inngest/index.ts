@@ -8,7 +8,11 @@ import { ping } from './functions/ping';
 import { execSwWriteScript } from './functions/exec-sw';
 import { execSrevReviewScript } from './functions/exec-srev';
 import { execSbCreateStoryboard } from './functions/exec-sb';
-import { execCreadReviewStoryboard } from './functions/exec-cread';
+import {
+  execCreadReviewStoryboard,
+  execCreadReviewRefPlan,
+  execCreadReviewShotPlan,
+} from './functions/exec-cread';
 import { execWchkCheckWorld } from './functions/exec-wchk';
 import { execErefStart } from './functions/exec-eref';
 import { execErefDesignerPlan } from './functions/exec-eref-designer';
@@ -16,11 +20,6 @@ import { execEprevReviewPlan } from './functions/exec-eprev';
 import { execErefExecuteFromPlan } from './functions/exec-eref-execute-from-plan';
 import { execVanimPlan } from './functions/exec-vanim';
 import { execVprevReviewPlan } from './functions/exec-vprev';
-import {
-  execGagadPlan,
-  execGagadReviewRefPlan,
-  execGagadReviewShotPlan,
-} from './functions/exec-gagad';
 import { execEditCreateAnimatic } from './functions/exec-edit';
 import {
   execVgenLegacyGenerateShot,
@@ -48,6 +47,8 @@ export const functions = [
   execSrevReviewScript,
   execSbCreateStoryboard,
   execCreadReviewStoryboard,
+  execCreadReviewRefPlan,
+  execCreadReviewShotPlan,
   execWchkCheckWorld,
   execErefStart,
   execErefDesignerPlan,
@@ -55,9 +56,6 @@ export const functions = [
   execErefExecuteFromPlan,
   execVanimPlan,
   execVprevReviewPlan,
-  execGagadPlan,
-  execGagadReviewRefPlan,
-  execGagadReviewShotPlan,
   execEditCreateAnimatic,
   execVgenLegacyGenerateShot,
   execVgenRun,
