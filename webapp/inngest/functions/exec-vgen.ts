@@ -45,6 +45,7 @@ import { agentDisplayName } from '@/lib/api/agent-names';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import { isVgenCancelled, clearVgenCancel } from '@/lib/api/vgen-cancel';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
+import { animatorChainEnabled } from '@/lib/agents/chain-flags';
 
 const EXEC_VGEN_EXPECTED_SECONDS = 150;
 
@@ -233,6 +234,38 @@ export const execVgenRun = inngest.createFunction(
       return created;
     });
 
+    // C1 gate: single-shot without a plan is forbidden while ANIMATOR_CHAIN is on.
+    // Placed before the main try/catch so the catch block's markJobFailed
+    // does not double-fail. NonRetriableError inside step.run causes Inngest
+    // to mark the run failed without retrying.
+    if (!isPilot && animatorChainEnabled() && !data.planAssetId) {
+      await step.run('c1-gate-check', async () => {
+        const supabase = createSupabaseServiceRoleClient();
+        const label = shortShotLabel(shotId);
+        const errMsg = 'C1 gate: single-shot generation without an approved animator plan is forbidden while ANIMATOR_CHAIN_ENABLED. Author a Plan (exec-vanim/plan) first.';
+        try {
+          await logEvent(supabase, {
+            event_type: 'agent_failed',
+            severity: 'error',
+            title: `${agentDisplayName('EXEC-VGEN')} C1 gate blocked${label ? ` — ${label}` : ''}`,
+            description: errMsg,
+            actor: 'EXEC-VGEN',
+            episode_id: episodeId,
+            job_id: job.id,
+            metadata: {
+              agent: 'EXEC-VGEN',
+              shot_id: shotId,
+              vgen_pilot: isPilot,
+            },
+          });
+        } catch {
+          // Swallow logging errors — don't mask the gate error.
+        }
+        await markJobFailed(supabase, job.id, errMsg);
+        throw new NonRetriableError(errMsg);
+      });
+    }
+
     try {
       // Clear any stale cancel token on a fresh pilot start.
       if (isPilot) {
@@ -371,6 +404,7 @@ export const execVgenRun = inngest.createFunction(
           // plan-driven (was always null in metadata even when a plan drove it).
           resolution: existingMeta.resolution ?? null,
           plan_asset_id: data.planAssetId ?? null,
+          c1_valid: Boolean(data.planAssetId),
           // Provider verification stamp (Phase A.1 directive 2026-05-07).
           model_id: existingMeta.model_id ?? null,
           operation_name: existingMeta.operation_name ?? null,
@@ -479,6 +513,36 @@ export const execVgenRun = inngest.createFunction(
   },
 );
 
+/**
+ * Pure per-shot fanout decision. Exported as a test seam.
+ * When animatorChainOn is true AND no approved plan exists for the shot:
+ *   → route to exec-vanim/plan so Animator authors a Plan first.
+ * Otherwise: emit single-shot (with planAssetId when available).
+ * Flag off → byte-identical legacy behavior.
+ */
+export function decideFanoutEmit(
+  episodeId: string,
+  shot: { shot_id: string; duration_seconds: number },
+  planAssetId: string | undefined,
+  animatorChainOn: boolean,
+): { event: string; data: Record<string, unknown> } {
+  if (animatorChainOn && planAssetId === undefined) {
+    return {
+      event: 'sandystudio/exec-vanim/plan',
+      data: { episodeId, shotId: shot.shot_id },
+    };
+  }
+  return {
+    event: 'sandystudio/exec-vgen/single-shot',
+    data: {
+      episodeId,
+      shotId: shot.shot_id,
+      duration_seconds: shot.duration_seconds,
+      ...(planAssetId !== undefined ? { planAssetId } : {}),
+    },
+  };
+}
+
 // ── Fan-out trigger handler (concurrency 1 / episode) ─────────────────────────
 export const execVgenFanoutTrigger = inngest.createFunction(
   {
@@ -570,12 +634,20 @@ export const execVgenFanoutTrigger = inngest.createFunction(
       let emitted = 0;
       let skipped = 0;
       let withPlan = 0;
+      let planned = 0;
+      const chainOn = animatorChainEnabled();
       for (const s of shotList) {
         if (skipShotIds.has(s.shot_id)) { skipped += 1; continue; }
         const planAssetId = planByShotId.get(s.shot_id);
         if (planAssetId) withPlan += 1;
-        await emitSingleShot(episodeId, s.shot_id, s.duration_seconds, planAssetId);
-        emitted += 1;
+        const decision = decideFanoutEmit(episodeId, s, planAssetId, chainOn);
+        if (decision.event === 'sandystudio/exec-vanim/plan') {
+          await inngest.send({ name: decision.event as never, data: decision.data as never });
+          planned += 1;
+        } else {
+          await emitSingleShot(episodeId, s.shot_id, s.duration_seconds, planAssetId);
+          emitted += 1;
+        }
       }
       return {
         emitted,
@@ -583,6 +655,7 @@ export const execVgenFanoutTrigger = inngest.createFunction(
         total: shotList.length,
         pilots: pilotShotIds.size,
         with_plan: withPlan,
+        planned,
       };
     });
 
