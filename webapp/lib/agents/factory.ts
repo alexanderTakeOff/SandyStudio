@@ -63,6 +63,7 @@ const EXPECTED_RUNTIME_SECONDS: Partial<Record<AgentId, number>> = {
   'EXEC-SW':    70,   // Sonnet ~6k output tokens
   'EXEC-SREV':  50,   // Sonnet ~3k output tokens
   'EXEC-SB':    140,  // Sonnet ~8k output tokens, 16-shot JSON
+  'EXEC-CREAD': 60,   // C1-Gate — Sonnet readability verdict, short output
   'EXEC-WCHK':  60,   // Sonnet ~3k output tokens (Continuity)
   'EXEC-EREF':  180,  // gpt-image-1 fan-out (up to 6 images × 25-40s)
   'EXEC-EREF-DESIGNER': 30, // Sonnet 4.6 Plan generation per shot (~6-12s typical)
@@ -85,6 +86,7 @@ const FILE_TYPE_HINT_BY_AGENT: Partial<Record<AgentId, string>> = {
   'EXEC-SW':    'SCR-script',
   'EXEC-SREV':  'REV-script_qa',
   'EXEC-SB':    'STB-storyboard',
+  'EXEC-CREAD': 'REV-readability',
   'EXEC-WCHK':  'REV-world_check',
   'EXEC-EREF':  'IMG-episode_ref',
   'EXEC-EREF-DESIGNER': 'SPC-ref_plan',
@@ -147,6 +149,7 @@ export interface AgentFunctionSpec<EventName extends string = string> {
       | 'planAssetId'
       | 'gagPhase'
       | 'scriptAssetId'
+      | 'storyboardAssetId'
     >
   >;
   /**
@@ -525,6 +528,15 @@ export function createAgentInngestFunction<E extends string>(
           // script still stops for the Director's approval, now WITH the Critic's
           // verdict attached. REVISE→Writer mirrors the other critics' loop policy.
           nextEventCandidate.name.startsWith('sandystudio/exec-srev/') ||
+          // Creative Readability Critic (EXEC-CREAD) — C1-Gate sprint
+          // 2026-06-10. Same gap the other critics had: the Storyboarder
+          // declares nextEvent → exec-cread/review-storyboard (flag on), but
+          // without this entry CREAD would only fire on the Director's manual
+          // storyboard approval, never reading the board forward on its own.
+          // Safe re: the Mode-1 gate — CREAD's PASS→exec-wchk event is NOT a
+          // critic chain, so the storyboard still stops for the Director's
+          // approval, now WITH the readability verdict attached.
+          nextEventCandidate.name.startsWith('sandystudio/exec-cread/') ||
           // Continuity Critic (EXEC-WCHK) — same gap the Script Critic had until
           // dffe5b3. The Storyboarder declares nextEvent → exec-wchk/check-world,
           // but without this entry WCHK only fired on the Director's manual

@@ -96,6 +96,27 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentRegistryEntry>> = {
     has_inngest_function: true,
   },
 
+  'EXEC-CREAD': {
+    id: 'EXEC-CREAD',
+    code: 'exec-cread',
+    display_ru: 'Критик читаемости',
+    display_en: 'Readability Critic',
+    emoji: '🧐',
+    category: 'review',
+    // C1-Gate sprint 2026-06-10 — universal (process-invariant) Creative
+    // Readability Critic. Slot after STB-storyboard, before EXEC-WCHK. The
+    // genre engine arrives at runtime via Active Playbooks (skill shelf);
+    // the agent itself is genre-neutral. Sonnet 4.6 — short verdict output,
+    // cheap (~$0.01-0.03 per storyboard). Verdict drives the readability gate:
+    // PASS → EXEC-WCHK; REVISE → re-fire Storyboarder with acceptance_criteria.
+    model: 'sonnet',
+    skills: [],
+    next_agent: 'EXEC-WCHK', // after readability PASS, continuity check is next
+    governance: 'B',
+    prompt_file: 'creative_readability_critic.md',
+    has_inngest_function: true,
+  },
+
   'EXEC-WCHK': {
     id: 'EXEC-WCHK',
     code: 'exec-wchk',

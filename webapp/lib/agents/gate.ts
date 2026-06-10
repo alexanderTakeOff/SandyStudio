@@ -79,6 +79,21 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     required: [{ fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' }],
     governance: 'AGENT_RUN',
   },
+  'EXEC-CREAD': {
+    // C1-Gate sprint 2026-06-10 — Creative Readability Critic. Reads the
+    // storyboard it reviews (REVIEW or APPROVED) exactly like the Continuity
+    // Critic gate: the Critic IS what informs the Director's approval, so it
+    // cannot wait for that approval to run.
+    required: [
+      {
+        fileTypePrefix: 'STB',
+        minCount: 1,
+        label: 'Storyboard (REVIEW or APPROVED)',
+        allowedStatuses: ['REVIEW', 'REVISION', 'APPROVED'],
+      },
+    ],
+    governance: 'AGENT_RUN',
+  },
   'EXEC-WCHK': {
     // Real EXEC-SB now produces ONE storyboard asset with 3 acts inline,
     // not 3 separate STB rows. Threshold lowered to 1.

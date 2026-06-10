@@ -16,6 +16,7 @@ export type AgentId =
   | 'EXEC-SW'
   | 'EXEC-SREV'
   | 'EXEC-SB'
+  | 'EXEC-CREAD' // C1-Gate sprint 2026-06-10 — universal Creative Readability Critic (slot after STB, before WCHK)
   | 'EXEC-WCHK'
   | 'EXEC-EREF'
   | 'EXEC-EREF-DESIGNER' // Sprint «Дизайнер и Аниматор» 2026-05-18 — Plan writer for EREF
@@ -45,6 +46,7 @@ export type AgentCode =
   | 'exec-sw'
   | 'exec-srev'
   | 'exec-sb'
+  | 'exec-cread'
   | 'exec-wchk'
   | 'exec-eref'
   | 'exec-eref-designer'

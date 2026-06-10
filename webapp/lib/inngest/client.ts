@@ -63,6 +63,22 @@ type Events = {
   };
 
   /**
+   * EXEC-CREAD — Creative Readability Critic (C1-Gate sprint 2026-06-10).
+   * Universal (process-invariant) critic slotted after STB-storyboard and
+   * before EXEC-WCHK. Fired by EXEC-SB's nextEvent (and the next-events STB
+   * branch) when READABILITY_GATE_ENABLED is on. Reads the APPROVED/REVIEW
+   * storyboard, loads the genre playbook from the skill shelf, and runs the
+   * R01-R06 readability checks. PASS → exec-wchk/check-world; REVISE →
+   * re-fire the Storyboarder with acceptance_criteria as a hard contract;
+   * HALT/FAIL → no next event (Director escalation).
+   */
+  'sandystudio/exec-cread/review-storyboard': {
+    data: AssetTrigger & {
+      storyboardAssetId: string;
+    };
+  };
+
+  /**
    * Legacy (pre-v2 Pilot Pass) entry point. Kept registered so historical
    * Inngest log entries continue to type-check. Replaced by
    * `sandystudio/exec-eref/start` (full episode, default pilot_count) and

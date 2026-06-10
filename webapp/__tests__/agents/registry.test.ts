@@ -26,7 +26,7 @@ describe('AGENT_REGISTRY structural integrity', () => {
     }
   });
 
-  it('exactly 19 agents have Inngest functions (distribution tail 2026-06-01: +EXEC-THUMB-DESIGNER)', () => {
+  it('exactly 20 agents have Inngest functions (C1-Gate 2026-06-10: +EXEC-CREAD)', () => {
     // Backbone v2 (2026-05-01) added EXEC-EREF (12). Phase A.2 PR β
     // (2026-05-08) adds EXEC-STITCH → 13. Sprint «Дизайнер и Аниматор»
     // (2026-05-18) adds EXEC-EREF-DESIGNER → 14. Day 4 (2026-05-19) adds
@@ -34,8 +34,9 @@ describe('AGENT_REGISTRY structural integrity', () => {
     // → 17. Day 11+ (2026-05-19) adds EXEC-GAGAD (Gag Assistant Director,
     // cross-layer gag continuity supervisor with 3 phases) → 18. Distribution
     // tail (2026-06-01) adds EXEC-THUMB-DESIGNER (viral thumbnail Plan) → 19.
+    // C1-Gate (2026-06-10) adds EXEC-CREAD (Creative Readability Critic) → 20.
     const inngestable = inngestAgents();
-    expect(inngestable).toHaveLength(19);
+    expect(inngestable).toHaveLength(20);
   });
 
   it('every Inngest agent has a prompt_file (no orphaned prompts)', () => {

@@ -13,6 +13,9 @@ export const CONCURRENCY_LIMITS = {
   'exec-sw':    5,
   'exec-srev':  5,
   'exec-sb':    5,
+  // C1-Gate sprint 2026-06-10 — Creative Readability Critic. Pure Anthropic
+  // Sonnet cost (no provider fan-out), one call per storyboard. Moderate cap.
+  'exec-cread': 5,
   'exec-wchk':  5,
   // Episode reference generator. EREF v2 runner is a single long-running
   // function that walks all 13 shots internally with its own per-shot loop
