@@ -75,6 +75,8 @@ If no `SPC-gag_plan` exists for the episode (drama/doc, or comedy not yet planne
 
 V10 is the «gag continuity» check — the formal companion to EXEC-GAGAD's cross-layer review. EPREV catches it at the formal checklist level; GAGAD catches deeper semantic mismatches.
 
+The runner injects the factual gag-plan existence from the DB directly into the prompt; evaluate V10 substantively only when the injected DB FACT states that a plan exists — if it says V10 is N/A, record it in passed_checks without further evaluation.
+
 ### V09 — policy_notes flag known limitations
 If the Plan's primary `delivery_targets[0]` is NOT `youtube_landscape` (sprint baseline) OR the Series Bible was empty (Designer ran MVP-mode), `policy_notes[]` should reflect that. Missing flag is a soft REVISE — Designer should be explicit about what they assumed.
 
