@@ -11,21 +11,26 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-10 (C1-Gate sprint COMPLETE: Phases 1-5; tsc·0 / vitest 773/773 / replay-pilot 30/30)
-Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 7a7f568 (local, 6 commits unpushed)
+Date:   2026-06-10 (T1 GAGAD→CREAD consolidation COMPLETE; tsc·0 / vitest 764/764 / replay-pilot 30/30)
+Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 4c5da77 (local, 7 commits unpushed)
+
+T1 CONSOLIDATION (2026-06-10, plan zazzy-launching-hollerith.md, commit 4c5da77, net −1598 LoC):
+  Anti-additivity. EXEC-GAGAD (never ran in prod — genre bug + dead-by-construction plan-phase)
+  RETIRED; its per-shot reviews absorbed into EXEC-CREAD as eref/vanim phases (judge ref/shot
+  plan vs storyboard's readable intent against genre skill — gag-fidelity, no SPC-gag_plan).
+  Dropped: plan-phase + gag_plan artifact, V10 in EPREV+VPREV (dead), GAGAD bespoke counter
+  (→ shared applyCriticVerdict), 4 PA gag tools, registry/gate/types/events. EPREV/VPREV PASS
+  now fires CREAD eref/vanim only when READABILITY_GATE_ENABLED + comedy (flag OFF = legacy).
+  NEXT: Director push; then dry-run (flags ON, dev SS-S15): CREAD storyboard+eref+vanim verdicts
+  → fanout plans → cheap E03-rewrite C1-test (~$2). Per-shot readability live but unexercised.
 
 C1-GATE SPRINT (2026-06-10, plan humor-readability-linked-ullman.md, 6 commits 9988c5f…7a7f568):
   Root fixes from E02-vs-E03 humor analysis. (1) Genre single-source: genreForEpisode reuses
-  TD-59 code→UUID resolver — GAGAD was silent 0-fires forever, genre skills never activated
-  (storyboarder-situational-comedy DEAD in E03). (2) EPREV V10 validates vs DB fact (was
-  hallucinating gag plans). (3) chain-flags.ts + decideFanoutEmit: every fanout shot gets an
-  animator plan; plan-less single-shot dies (C1 gate); c1_valid metadata. (4) EXEC-CREAD —
-  universal Creative Readability Critic (R01-R06 genre-neutral; genre engine = skills on
-  shelves; readability-comedy-slapstick = E02 six-stage formula; HALT w/o paid call if no
-  playbook). Gate STB→CREAD→WCHK behind READABILITY_GATE_ENABLED (default OFF). (5) Writer
-  skill-shelf + E02 formula into sandy-gag-library §17 + storyboarder skill; series_id
-  frontmatter fix. NEXT: push + dry-run (gate+animator flags ON, dev episode SS-S15):
-  GAGAD first-ever fire → CREAD verdict → fanout plans → then cheap E03-rewrite C1-test (~$2).
+  TD-59 code→UUID resolver (genre skills now activate). (2) chain-flags.ts + decideFanoutEmit:
+  every fanout shot gets an animator plan; plan-less single-shot dies (C1 gate). (3) EXEC-CREAD
+  universal Creative Readability Critic (R01-R06 genre-neutral; genre engine = skills on shelves;
+  HALT w/o paid call if no playbook); gate STB→CREAD→WCHK behind READABILITY_GATE_ENABLED (OFF).
+  (4) Writer skill-shelf + E02 formula into sandy-gag-library + storyboarder skill.
 
 TD-86 GEN-CONFIG (2026-06-09, plan eager-launching-anchor.md): Director's provider/
   format directives no longer lost. NEW resolve-generation-params.ts = single
@@ -71,12 +76,8 @@ GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
   Phase 3 = OUTPUT-critic (frame-sampler → vision) + camera/quality_tier checks.
   Verify after each unit: tsc·0 / vitest 664 / replay-pilot 30. Paid smoke = WITH Director.
 
-E03 «Shorts Test» (bf175902-…, Mode4/$50/anchor=true): FIRST live Inngest Mode-4
-  brief→final. CORE BUG (TD-87): Mode-4 auto-chain (factory nextEvent) ≠ computeNextEvents
-  → WCHK jumps to EDIT, SKIPS EREF+MGEN → EDIT dies; manual recovery EREF-DESIGNER failed
-  (needs per-shot shotId), MGEN ok (NEW music≠E02 reuse). anchor viable (LOCKED bedroom loc).
-  FIX=converge Mode-4 on computeNextEvents (one router→lib). TD-86: EpisodeSettingsCard=
-  single source (provider/format/res/quality)+post-brief gate (budget=hard,settings=warn).
+E03 «Shorts Test» (TD-87): Mode-4 auto-chain (factory nextEvent) ≠ computeNextEvents → WCHK
+  skips EREF+MGEN. FIX=converge Mode-4 on computeNextEvents (one router→lib). Anchor viable.
 
 OPERATING DOCTRINE (memory: nudge_polina_dont_act_for_her):
   • Тео = Director's proxy. Nudge Polina via team-chat (POST /api/team-chat/post,
@@ -91,13 +92,9 @@ Shipped this session: PR#26 TD-85 · PR#27 Key Art (v12) · PR#28 TOPIC 3 pipeli
   media-no-branches (d1a58cf) · series-active-derived (430918c) · screenwriter
   max_tokens 8000→16000 RU truncation fix (5b7fc1d) · SREV Script-Critic auto-read (dffe5b3).
 
-Cost-accounting FIXED 2026-06-03: recordCost now in ALL 5 direct routes (regen
-  image/video, bible generate-image/enrich/extensions) + factory — leak closed.
-  Historical ~$48.68 BACKFILLED to budget_log (npm run backfill-direct-costs,
-  idempotent; tab now $147.96 was $98.59). PA batch-stall watchdog SHIPPED
-  (pa-batch-stall-watchdog, 5-min cron): FANOUT_RUNNING + idle>6m → nudge Polina
-  to continue (fixes silent mid-batch stop; awaiting-only nets were too slow).
-  Tools: npm run episode-timing <EP> (compute/hands-on/wall-clock).
+Cost-accounting FIXED 2026-06-03: recordCost in ALL 5 direct routes + factory; ~$48.68
+  backfilled (idempotent). PA batch-stall watchdog SHIPPED (5-min cron: FANOUT_RUNNING+idle>6m
+  → nudge Polina). Tool: npm run episode-timing <EP>.
 
 Hardening backlog (before 10-20 episode run): #1 episode.status stuck BRIEF_APPROVED
   (approve/route.ts,S) · #3 fan-out sendEvent not in step.run (factory.ts,M) · #4
