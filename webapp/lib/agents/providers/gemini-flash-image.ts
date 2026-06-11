@@ -22,7 +22,12 @@ import type { MultiImageGenProvider, MultiImageGenInput, MultiImageGenResult } f
 import { MultiImageGenError } from './image-gen-multi';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const DEFAULT_MODEL = 'gemini-2.5-flash-preview-05-20';
+// 2026-06-11 live-verified: the image-capable model is `gemini-2.5-flash-image`
+// (the "Nano Banana" image model). The previously shipped
+// `gemini-2.5-flash-preview-05-20` is a TEXT preview and returns
+// "not supported for generateContent". Override via GEMINI_FLASH_IMAGE_MODEL.
+// Newer options seen in ListModels: gemini-3.1-flash-image, gemini-3-pro-image.
+const DEFAULT_MODEL = 'gemini-2.5-flash-image';
 
 function getModel(): string {
   return process.env.GEMINI_FLASH_IMAGE_MODEL?.trim() || DEFAULT_MODEL;
