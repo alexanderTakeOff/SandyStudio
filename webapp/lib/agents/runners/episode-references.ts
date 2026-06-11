@@ -1438,8 +1438,17 @@ async function runAnchorPairGeneration(
     },
   ];
 
-  // 6. Provider — explicit openai-edits-multi (q4a Director directive 2026-05-25).
-  const provider = getImageGenMultiProvider('openai-edits-multi');
+  // 6. Provider — resolved from `app_config.eref_provider` like the legacy
+  // path (Director directive 2026-06-11 q7: anchors follow the configured
+  // provider; supersedes the q4a 2026-05-25 openai-edits-multi hardcode).
+  const anchorPreferredId = await getEREFProvider(supabase);
+  const anchorProviderId = resolveAvailableProviderId(anchorPreferredId);
+  if (!anchorProviderId) {
+    throw new EpisodeReferencesError(
+      `No EREF provider has its env key set (preferred: ${anchorPreferredId})`,
+    );
+  }
+  const provider = getImageGenMultiProvider(anchorProviderId);
 
   // 7. Versioning — query existing IMG-anchor_<shotIdLower>_* assets for this episode.
   const shotIdLower = planOverrides.shotId.toLowerCase().replace(/-/g, '_');
