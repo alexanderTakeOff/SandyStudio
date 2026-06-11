@@ -26,6 +26,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
+  // q9 follow-up (2026-06-11): API requests carrying an Authorization header
+  // are server-to-server calls (EXEC_DIR_AI_TOKEN bearer from bold-mode PA
+  // tools / CLI). They have no Supabase cookie by design — redirecting them
+  // to /login returns HTML instead of a 401 and silently breaks every
+  // bold-mode mutation. Let them through; `requireDirector()` in each route
+  // validates the bearer and 401s invalid tokens.
+  if (pathname.startsWith('/api/') && request.headers.has('authorization')) {
+    return NextResponse.next({ request });
+  }
+
   const { supabaseResponse, user } = await updateSupabaseSession(request);
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
