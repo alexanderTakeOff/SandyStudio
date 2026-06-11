@@ -14,17 +14,20 @@
 import type { MultiImageGenProvider } from './image-gen-multi';
 import { openAIEditsMultiProvider } from './openai-edits-multi';
 import { fluxProUltraFalProvider } from './flux-pro-ultra-fal';
+import { geminiFlashImageProvider } from './gemini-flash-image';
 import type { EREFProviderId } from '../../api/eref-config';
 
 const PROVIDERS: Record<EREFProviderId, MultiImageGenProvider> = {
   'openai-edits-multi': openAIEditsMultiProvider,
   'flux-pro-1.1-ultra': fluxProUltraFalProvider,
+  'gemini-flash-image': geminiFlashImageProvider,
 };
 
 /** Required env var per provider. null = no key (mock or already covered above). */
 const ENV_KEY: Record<EREFProviderId, string | null> = {
   'openai-edits-multi': 'OPENAI_API_KEY',
   'flux-pro-1.1-ultra': 'FAL_KEY',
+  'gemini-flash-image': 'GEMINI_API_KEY',
 };
 
 export function getImageGenMultiProvider(id: EREFProviderId): MultiImageGenProvider {

@@ -19,7 +19,8 @@ import type { Database } from '../supabase/types.gen';
 /** Allowed values for `eref_provider`. Add new providers here when wiring more. */
 export type EREFProviderId =
   | 'openai-edits-multi'
-  | 'flux-pro-1.1-ultra';
+  | 'flux-pro-1.1-ultra'
+  | 'gemini-flash-image';
 
 export const DEFAULT_EREF_PROVIDER: EREFProviderId = 'openai-edits-multi';
 export const DEFAULT_EREF_UPSCALE_ENABLED = true;
@@ -27,6 +28,7 @@ export const DEFAULT_EREF_UPSCALE_ENABLED = true;
 const VALID_PROVIDERS: ReadonlySet<EREFProviderId> = new Set([
   'openai-edits-multi',
   'flux-pro-1.1-ultra',
+  'gemini-flash-image',
 ]);
 
 function readJsonbScalar(raw: unknown): string | boolean | null {

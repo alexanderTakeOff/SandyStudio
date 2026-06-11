@@ -26,6 +26,10 @@ import {
   generateVideoFalSeedance,
   type FalSeedanceResult,
 } from './fal-seedance';
+import {
+  generateVideoFalWan,
+  type FalWanResult,
+} from './fal-wan';
 
 // ── Universal Core types ─────────────────────────────────────────────────────
 
@@ -248,21 +252,83 @@ export const seedanceFalProvider: MultiVideoGenProvider = {
   },
 };
 
-/** Lookup a provider by id. Phase 1 shipped Veo 3.1; Phase 2 (2026-05-13) adds
- *  Seedance 2.0 via fal.ai. Future providers (Kling, Hailuo, Sora) plug in by
+// ── Wan 2.6 Flash (fal.ai) wrapper ───────────────────────────────────────────
+
+const WAN_FLASH_CAPABILITIES: MultiVideoGenCapabilities = {
+  supports_aspects: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+  supports_qualities: ['fast'],
+  supports_reference_image: true,
+  requires_reference_image: true,
+  min_duration_s: 5,
+  max_duration_s: 15,
+  supports_resolutions: ['720p'],
+  supports_seed: false,
+  supports_end_image: false,
+  max_prompt_chars: 2000,
+};
+
+function wan26ResultToMulti(r: FalWanResult): MultiVideoGenResult {
+  return {
+    status: 'success',
+    provider: r.provider,
+    format: r.format,
+    width: r.width,
+    height: r.height,
+    duration_seconds: r.duration_seconds,
+    size_bytes: r.size_bytes,
+    mp4_b64: r.mp4_b64,
+    cost_usd: r.cost_usd,
+    model_id: r.model_id,
+    operation_name: r.operation_name,
+  };
+}
+
+export const wan26FlashProvider: MultiVideoGenProvider = {
+  id: 'wan-26-flash',
+  capabilities: WAN_FLASH_CAPABILITIES,
+  async generate(input: MultiVideoGenInput): Promise<MultiVideoGenResult> {
+    const aspect = (input.aspectRatio === '21:9' || input.aspectRatio === 'auto')
+      ? '16:9'
+      : input.aspectRatio;
+    const duration = (input.durationSeconds === 4 ? 5
+      : input.durationSeconds === 6 || input.durationSeconds === 7 ? 5
+      : input.durationSeconds === 8 ? 10
+      : input.durationSeconds != null && input.durationSeconds > 10 ? 15
+      : input.durationSeconds) as 5 | 10 | 15 | undefined;
+    try {
+      const r = await generateVideoFalWan({
+        prompt: input.prompt,
+        aspectRatio: aspect as import('./fal-wan').WanAspectRatio | undefined,
+        durationSeconds: duration,
+        referenceImageBase64: input.referenceImageBase64,
+        referenceImageMime: input.referenceImageMime,
+      });
+      return wan26ResultToMulti(r);
+    } catch (err) {
+      throw new MultiVideoGenError(
+        err instanceof Error ? err.message : 'Wan 2.6 Flash generation failed',
+        'wan-26-flash',
+        err,
+      );
+    }
+  },
+};
+
+/** Lookup a provider by id. Future providers (Kling, Hailuo, Sora) plug in by
  *  exporting a `MultiVideoGenProvider` and adding a branch here. */
 export function getMultiVideoProvider(id: string): MultiVideoGenProvider {
   if (id === 'veo-3-img2vid' || id === 'veo-3') return veo3Provider;
   if (id === 'seedance-fal-img2vid' || id === 'seedance-fal') return seedanceFalProvider;
+  if (id === 'wan-26-flash') return wan26FlashProvider;
   throw new MultiVideoGenError(
-    `Unknown video provider id "${id}" — supported: veo-3-img2vid, seedance-fal-img2vid`,
+    `Unknown video provider id "${id}" — supported: veo-3-img2vid, seedance-fal-img2vid, wan-26-flash`,
     id,
   );
 }
 
-/** Known provider ids that the router dispatches. Order is UI-display order
- *  (Seedance first since it's the new default). */
+/** Known provider ids that the router dispatches. Order is UI-display order. */
 export const KNOWN_VIDEO_PROVIDER_IDS: ReadonlyArray<string> = [
   'seedance-fal-img2vid',
   'veo-3-img2vid',
+  'wan-26-flash',
 ];

@@ -66,6 +66,14 @@ export function getProviderCatalog(): ProviderCatalog {
         adapter_ready: false,
       },
       {
+        id: 'gemini-flash-image',
+        display_name: 'Gemini 2.5 Flash Image',
+        vendor: 'Google AI Studio',
+        envKey: 'GEMINI_API_KEY',
+        adapter_ready: true,
+        cost_hint: 'free tier · 500 img/day (debug/iteration)',
+      },
+      {
         id: 'dall-e-3',
         display_name: 'DALL·E 3',
         vendor: 'OpenAI',
@@ -75,6 +83,14 @@ export function getProviderCatalog(): ProviderCatalog {
     ],
     video: [
       MOCK,
+      {
+        id: 'wan-26-flash',
+        display_name: 'Wan 2.6 Flash (image-to-video)',
+        vendor: 'Wan AI via fal.ai',
+        envKey: 'FAL_KEY',
+        adapter_ready: true,
+        cost_hint: '~$0.05/s — 5× cheaper than Seedance fast (debug tier)',
+      },
       {
         id: 'seedance-fal',
         display_name: 'Seedance 2.0 (text-to-video)',
@@ -101,6 +117,14 @@ export function getProviderCatalog(): ProviderCatalog {
     ],
     character_video: [
       MOCK,
+      {
+        id: 'wan-26-flash',
+        display_name: 'Wan 2.6 Flash (image-to-video)',
+        vendor: 'Wan AI via fal.ai',
+        envKey: 'FAL_KEY',
+        adapter_ready: true,
+        cost_hint: '~$0.05/s — debug/iteration tier',
+      },
       {
         id: 'seedance-fal-img2vid',
         display_name: 'Seedance 2.0 (image-to-video)',
