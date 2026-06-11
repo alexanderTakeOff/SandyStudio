@@ -218,24 +218,22 @@ export async function computeNextEvents(
     });
   }
 
-  // ── Storyboard APPROVED → EXEC-CREAD (Readability Critic) when the C1-Gate
-  //    flag is on, otherwise EXEC-WCHK (Continuity Supervisor) directly.
+  // ── Storyboard APPROVED → EXEC-WCHK (Continuity Supervisor) — legacy path,
+  //    READABILITY_GATE_ENABLED off only.
   // Backbone v2.5: Bible canon validation BEFORE generating episode refs.
-  // C1-Gate sprint 2026-06-10 — the universal Creative Readability Critic is
-  // slotted ahead of WCHK; when READABILITY_GATE_ENABLED is on, approving the
-  // storyboard fires CREAD (which PASS→WCHK on its own verdict). Flag off →
-  // byte-identical legacy WCHK fire (replay-pilot keeps passing).
+  // Dedup 2026-06-11 (E06 double-fire): when the flag is ON, CREAD fires ONLY
+  // via the factory critic chain (exec-sb spec.nextEvent at Storyboarder
+  // completion, all modes). The STB→CREAD push that used to live here
+  // double-fired deterministically in Mode 4: the factory runs
+  // computeNextEvents on the auto-APPROVED storyboard BEFORE sending its own
+  // critic-chain event, so hasJob never saw a CREAD job (E06: two identical
+  // REVISE verdicts → two parallel re-authors). Doctrine: critics fire from
+  // the critic chain; this router advances EXECUTOR milestones only.
+  // Flag off → byte-identical legacy WCHK fire (replay-pilot keeps passing).
   if (ft.startsWith('STB-')) {
     const stbCount = await countApproved(supabase, ep, 'STB');
-    if (stbCount >= 1) {
-      if (readabilityGateEnabled()) {
-        if (!(await hasJob(supabase, ep, 'EXEC-CREAD', { since }))) {
-          events.push({
-            name: 'sandystudio/exec-cread/review-storyboard',
-            data: { episodeId: ep, storyboardAssetId: asset.id },
-          });
-        }
-      } else if (!(await hasJob(supabase, ep, 'EXEC-WCHK', { since }))) {
+    if (stbCount >= 1 && !readabilityGateEnabled()) {
+      if (!(await hasJob(supabase, ep, 'EXEC-WCHK', { since }))) {
         events.push({
           name: 'sandystudio/exec-wchk/check-world',
           data: { episodeId: ep, storyboardAssetIds: [asset.id] },
@@ -244,25 +242,27 @@ export async function computeNextEvents(
     }
   }
 
-  // ── Readability review APPROVED → EXEC-WCHK (PASS) or EXEC-SB (AUTOTEST
-  //    REVISE). Mirrors the REV-ref_plan Mode-4 branch: parse the last fenced
-  //    JSON, route by verdict. In Modes 1-3 the Director's approval of the
-  //    REV-readability asset is what reaches here; the PASS branch advances to
-  //    continuity. The AUTOTEST REVISE branch closes the Mode-4 loop so the
-  //    storyboard re-authors with the readability acceptance_criteria.
+  // ── Readability review APPROVED → EXEC-SB re-author (AUTOTEST REVISE only).
+  //    Dedup 2026-06-11: the PASS→WCHK push moved out of this router — CREAD's
+  //    own spec.nextEvent (PASS → exec-wchk/check-world) is a critic chain
+  //    firing in ALL modes at CREAD completion, so the push here was the same
+  //    Mode-4 deterministic double-fire the STB→CREAD branch had
+  //    (computeNextEvents runs before the critic-chain event lands; hasJob
+  //    misses). The AUTOTEST REVISE branch stays — it is the ONLY Mode-4
+  //    re-author path (exec-sb is not a critic chain, so the thin candidate
+  //    never dispatches it).
+  //    Phase guard: per-shot eref/vanim REV-readability rows (T1 consolidation)
+  //    are closed by applyCriticVerdict inside the runner — routing them here
+  //    would re-author the whole storyboard off a single shot-plan verdict.
   if (ft === 'REV-readability' || ft.startsWith('REV-readability')) {
-    const body = parseLastJsonBlock(asset.content);
+    const metaPhase =
+      asset.metadata && typeof asset.metadata === 'object'
+        ? (asset.metadata as { phase?: unknown }).phase
+        : null;
+    const isShotPhase = metaPhase === 'eref' || metaPhase === 'vanim';
+    const body = isShotPhase ? null : parseLastJsonBlock(asset.content);
     const verdict = typeof body?.verdict === 'string' ? body.verdict : null;
-    if (
-      (verdict === 'PASS' || verdict === 'PASS_WITH_UNCERTAINTY') &&
-      !(await hasJob(supabase, ep, 'EXEC-WCHK', { since }))
-    ) {
-      const stbId = await findLatestApprovedAssetId(supabase, ep, 'STB-storyboard');
-      events.push({
-        name: 'sandystudio/exec-wchk/check-world',
-        data: { episodeId: ep, storyboardAssetIds: [stbId ?? asset.id] },
-      });
-    } else if (verdict === 'REVISE' && directorUserId === 'AUTOTEST') {
+    if (verdict === 'REVISE' && directorUserId === 'AUTOTEST') {
       const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
       const criteria = Array.isArray(body?.acceptance_criteria)
         ? (body.acceptance_criteria as unknown[]).filter(

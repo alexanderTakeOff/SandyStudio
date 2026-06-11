@@ -1,0 +1,136 @@
+id: continuity_check
+version: 2
+agent: EXEC-CONT
+display:
+  ru: Хранитель канона
+  en: Continuity Supervisor
+
+# v2 (2026-06-11, Motor 1 «State Ledger» — WCHK strengthening):
+#   - state-evolution pass behind CONTINUITY_LEDGER_ENABLED: Haiku extraction
+#     (shot prose → ShotStateDelta[]) + deterministic state-ledger judge
+#     (lib/agents/state-ledger.ts) — CHK-W08 alive;
+#   - CHK-W05 per-shot duration limits (deterministic, 1.5–8.0s);
+#   - CHK-W02 lighting + CHK-W07 appearance advisory labels in per_shot;
+#   - comedy-soft verdict policy (Director q2): deterministic layer never
+#     emits FAIL; PASS→REVISE only when the MAJOR pool (ledger MAJORs +
+#     duration violations + canon conflicts) ≥ 3;
+#   - max_output_tokens 3000→6000 (fixes the long-standing yaml/code desync);
+#   - cost ceiling covers the extra Haiku extraction call (~$0.005-0.01).
+# Flag off → byte-identical v1 behaviour (membership checks only).
+
+# ─── Model & cost ────────────────────────────────────────────────────────────
+model: claude-sonnet-4-6
+extraction_model: claude-haiku-4-5   # state-delta extraction (Motor 1)
+max_output_tokens: 6000
+cost_ceiling_usd: 0.30
+sla_minutes: 4
+
+# ─── Inputs ──────────────────────────────────────────────────────────────────
+input:
+  required:
+    - { id: storyboard, file_type: STB-storyboard, status: APPROVED }
+  required_series:
+    - { id: bible_characters, file_type_prefix: SBL-character_, status: LOCKED, min_count: 1 }
+    - { id: bible_style,      file_type_prefix: SBL-style_,     status: LOCKED, min_count: 1 }
+  optional_series:
+    - { id: bible_locations, file_type_prefix: SBL-location_, status: LOCKED }
+    - { id: bible_objects,   file_type_prefix: SBL-object_,   status: LOCKED }
+
+# ─── Output ──────────────────────────────────────────────────────────────────
+output:
+  primary:
+    file_type: REV-continuity
+    naming: "{episode_code}-REV-continuity-v{NN}-DRAFT.md"
+    status_on_create: DRAFT
+  fields:
+    markdown:
+      required: true
+      note: "v2 appends a Russian '## State Ledger' section when the flag is on"
+    json_block:
+      required: true
+      schema_ref: continuity_v2
+      shape:
+        episode_id: string
+        storyboard_version: integer
+        verdict: enum [PASS, REVISE, FAIL]
+        per_shot:
+          type: array
+          items:
+            shot_id: string
+            location_canon: enum [PASS, MISSING, UNKNOWN]
+            characters_canon: enum [PASS, MISSING, UNKNOWN]
+            # v2, flag on only — advisory labels (CHK-W02 / CHK-W07):
+            lighting_canon: enum [PASS, CONFLICT, N/A]
+            appearance_canon: enum [PASS, CONFLICT, N/A]
+            issues: string[]
+        summary: string
+        canon_used:
+          characters: string[]
+          locations: string[]
+        violations: string[]
+        # v2, flag on only — deterministic layer results:
+        state_violations:
+          type: array
+          items:
+            rule: enum [REPEAT_FIRST_DISCOVERY, STATE_REVERT_NO_CAUSE, STATE_CHANGE_NO_CAUSE, ENTITY_FROM_NOWHERE]
+            entity: string
+            shot_id: string
+            prior_shot_id: string?
+            severity: enum [MAJOR, MINOR]
+            description: string
+        duration_violations:
+          type: array
+          items:
+            shot_id: string
+            duration_seconds: number
+            description: string
+        canon_conflicts: integer
+        # Motor 2 — CHK-W04 cascading inventory (Bible SBL-object_* ∪ brief
+        # prop_delta). Data-gated: empty union → status NO_INVENTORY, check
+        # inert. UNRESOLVED_PROP is always MINOR — never enters the MAJOR pool.
+        inventory:
+          status: enum [OK, NO_INVENTORY, SKIPPED_NO_EXTRACTION]
+          inventory_size: integer
+          resolved: integer?
+          unresolved_entities: string[]?
+          violations:
+            type: array
+            items:
+              rule: enum [UNRESOLVED_PROP]
+              entity: string
+              shot_id: string
+              severity: enum [MINOR]
+              description: string
+        ledger:
+          status: enum [OK, EXTRACTION_FAILED, NO_SHOTS]
+          error: string?
+          dropped_entries: integer
+          major_pool: integer
+          revise_threshold: integer
+          downgraded_verdict: boolean
+
+# ─── Pre / Postconditions ────────────────────────────────────────────────────
+preconditions:
+  - "APPROVED storyboard exists with parseable shots[]"
+  - "Parent series has ≥1 LOCKED SBL-character_* AND ≥1 LOCKED SBL-style_*"
+
+postconditions:
+  - "REV-continuity asset created"
+  - "Verdict recorded; if not PASS, violations[] or state_violations[] non-empty"
+  - "EXTRACTION_FAILED is surfaced in ledger.status + markdown — never silent"
+
+# ─── Approval gate ───────────────────────────────────────────────────────────
+approval_gate:
+  approver: director
+  category: B
+  action_on_approve: "fanout EXEC-EREF (episode reference generator)"
+  action_on_revise:  "block; Director sends storyboard back to EXEC-SB"
+
+escalation:
+  on_invalid_json: "retry once with explicit schema reminder; then NEEDS_HUMAN_TWEAK"
+  on_anthropic_error: "retry up to 2 times; then NEEDS_HUMAN_TWEAK"
+  on_extraction_failed: "proceed with membership verdict; ledger.status=EXTRACTION_FAILED surfaced to Director"
+
+audit:
+  records: [job_id, model, input_tokens, output_tokens, cost_usd, verdict, ledger_status, major_pool]
+  storage: jobs + costs

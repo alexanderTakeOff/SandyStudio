@@ -1056,8 +1056,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
     case 'EXEC-WCHK': {
       // Pivoted: was "World Checker", now Continuity Supervisor — validates
-      // storyboard against LOCKED Series Bible canon. Contract:
-      // specs/contracts/continuity_check@v1.yaml.
+      // storyboard against LOCKED Series Bible canon; with
+      // CONTINUITY_LEDGER_ENABLED also runs the deterministic state ledger
+      // (CHK-W05/W08 + W02/W07 advisory). Contract:
+      // specs/contracts/continuity_check@v2.yaml.
       const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
       if (hasAnthropicKey && supabase) {
         try {

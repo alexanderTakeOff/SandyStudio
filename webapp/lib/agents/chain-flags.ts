@@ -39,6 +39,21 @@ export function readabilityGateEnabled(): boolean {
 }
 
 /**
+ * CONTINUITY_LEDGER_ENABLED — Motor 1 of the WCHK strengthening (2026-06-11).
+ * When on, EXEC-WCHK adds the state-evolution pass: a cheap Haiku extraction
+ * turns shot prose into ShotStateDelta[], the deterministic state-ledger
+ * judges transitions (revert-without-cause, repeated first-discovery,
+ * causeless autonomous change, entity-from-nowhere), and W05 duration limits
+ * + W02/W07 advisory canon checks activate. Default off → byte-identical
+ * membership-only legacy check (replay-pilot keeps passing).
+ */
+export function continuityLedgerEnabled(): boolean {
+  const v = process.env.CONTINUITY_LEDGER_ENABLED;
+  if (!v) return false;
+  return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
+}
+
+/**
  * C1_STOP_BEFORE_EREF — verification kill-switch. When on, REV-world_check
  * approval does NOT fan out EREF (no paid reference-image generation); the
  * autonomous chain halts after the creative-text layer (script → storyboard →

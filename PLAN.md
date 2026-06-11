@@ -11,18 +11,21 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-10 (T1 GAGAD→CREAD consolidation COMPLETE; tsc·0 / vitest 764/764 / replay-pilot 30/30)
-Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: 4c5da77 (local, 7 commits unpushed)
+Date:   2026-06-11 (WCHK STRENGTHENING: state-ledger + inventory-cascade + CREAD double-fire dedup; tsc·0 / vitest 787/787 / replay-pilot 30/30)
+Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: c6fc100 + uncommitted WCHK sprint
 
-T1 CONSOLIDATION (2026-06-10, plan zazzy-launching-hollerith.md, commit 4c5da77, net −1598 LoC):
-  Anti-additivity. EXEC-GAGAD (never ran in prod — genre bug + dead-by-construction plan-phase)
-  RETIRED; its per-shot reviews absorbed into EXEC-CREAD as eref/vanim phases (judge ref/shot
-  plan vs storyboard's readable intent against genre skill — gag-fidelity, no SPC-gag_plan).
-  Dropped: plan-phase + gag_plan artifact, V10 in EPREV+VPREV (dead), GAGAD bespoke counter
-  (→ shared applyCriticVerdict), 4 PA gag tools, registry/gate/types/events. EPREV/VPREV PASS
-  now fires CREAD eref/vanim only when READABILITY_GATE_ENABLED + comedy (flag OFF = legacy).
-  NEXT: Director push; then dry-run (flags ON, dev SS-S15): CREAD storyboard+eref+vanim verdicts
-  → fanout plans → cheap E03-rewrite C1-test (~$2). Per-shot readability live but unexercised.
+WCHK STRENGTHENING (2026-06-11, Director go q2-soft/q3a-brief/q4n-all-checks):
+  Root: E02 gag-bank audit found 12 continuity defects, old WCHK (membership-only, 2/8 checks)
+  catches 0. (1) CREAD double-fire KILLED at root: critics fire ONLY via factory critic-chain;
+  computeNextEvents STB→CREAD + REV-readability PASS→WCHK pushes removed (deterministic dup:
+  rich router ran before critic-chain event landed); per-shot eref/vanim REV rows phase-guarded
+  (would re-author whole storyboard). (2) Motor 1 state-ledger (CHK-W08): Haiku extraction →
+  pure deterministic judge (4 rules: revert-no-cause, repeat-first-discovery, causeless-change,
+  entity-from-nowhere). (3) CHK-W05 durations + W02/W07 advisory labels. (4) Motor 2
+  inventory-cascade (CHK-W04): union(Bible SBL-object_* ∪ brief prop_delta), data-gated,
+  MINOR-only. Comedy-soft verdict (q2): never FAIL, REVISE only at MAJOR-pool ≥3. All behind
+  CONTINUITY_LEDGER_ENABLED (off = byte-identical). Contract continuity_check@v2 + skill v0.2.
+  NEXT: commit; clean E06 re-run (mode 4, flags ON + ledger) → CREAD converge + ledger live smoke.
 
 C1-GATE SPRINT (2026-06-10, plan humor-readability-linked-ullman.md, 6 commits 9988c5f…7a7f568):
   Root fixes from E02-vs-E03 humor analysis. (1) Genre single-source: genreForEpisode reuses
@@ -42,16 +45,13 @@ TD-86 GEN-CONFIG (2026-06-09, plan eager-launching-anchor.md): Director's provid
   persists generation_config{video,image}+caps-validate; EpisodeSettingsCard gains
   collapsible video+image provider panel (reuses ProviderControlPanel +fields prop)
   +allow_shot_overrides toggle; VGENShotPanel locks format when override off
-  (+confirm badge, q26b). ASPECT_BY_DELIVERY_TARGET consolidated to provider-
-  capabilities. tsc·0/vitest 754/replay-pilot 30. SHIPPED+pushed 6929ba6 (+music-fix
-  f978921: replaceMusicLayer — Replace-music wrote only music_url, stale audio_tracks
-  [music] shadowed it → E03 v03 regression). E03 1st final-cut STITCHED v01 63s/24sh
-  (Director verified file OK, expected косяки). NEXT: Director smoke — E03 9:16/standard
-  → re-fanout → confirm metadata aspect/res.
+  (+confirm badge, q26b). SHIPPED+pushed 6929ba6 (+music-fix f978921: replaceMusicLayer
+  — stale audio_tracks shadowed new music_url → E03 v03 regression). E03 1st final-cut
+  STITCHED v01 63s/24sh (Director verified, expected косяки). NEXT: Director smoke —
+  E03 9:16/standard → re-fanout → confirm metadata aspect/res.
 
-E02 FINAL-CUT WYSIWYG (2026-06-08, e7c76d7, SHIPPED+pushed): re-stitch byte-identical
-  → stitch .find()'d stale v06 of two APPROVED animatics. Fixed (newest-wins +
-  approve-slot + media→vNN rename + shared clipLengths). NEXT: Director re-stitch E02.
+E02 FINAL-CUT WYSIWYG (2026-06-08, e7c76d7, SHIPPED+pushed): stale-v06 stitch fixed
+  (newest-wins + approve-slot + vNN rename). NEXT: Director re-stitch E02.
 
 GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
   ✅ Phase 1 SHIPPED (7c76a05): single-approved→INVALIDATED+DB indexes (0036),

@@ -21,6 +21,46 @@ EXEC-WCHK does not fix shots. It does not rewrite. It finds deviations and docum
 
 ---
 
+## RUNTIME IMPLEMENTATION STATUS (2026-06-11, Motor 1 — honest map)
+
+The 8 checks below are executed by THREE different engines. When you run as
+the LLM half of this agent, your task is ONLY the LLM-side checks — the
+deterministic ones are done by code before/after your call, and you must not
+fake their results.
+
+| Check | Engine | Status |
+|---|---|---|
+| CHK-W01 location canon | LLM (this prompt's task layer) | ✅ live |
+| CHK-W02 lighting vs location description | LLM — advisory `lighting_canon` label per shot | ✅ live (flag CONTINUITY_LEDGER_ENABLED) |
+| CHK-W03 character canon | LLM | ✅ live |
+| CHK-W04 props vs inventory | deterministic code (`inventory-cascade`) over union(Bible SBL-object_* ∪ brief `prop_delta`) | ✅ live (flag), data-gated: empty inventory → NO_INVENTORY, check inert. Violations always MINOR. |
+| CHK-W05 durations | deterministic code (`checkShotDurations`) | ✅ live (flag) |
+| CHK-W06 physics rules | LLM advisory — prop geometry notes from the inventory are injected into your context («Prop canon» block); flag contradictions as issues | ✅ live (flag), data-gated: no geometry data → nothing to judge |
+| CHK-W07 appearance vs canonical description | LLM — advisory `appearance_canon` label per shot | ✅ live (flag) |
+| CHK-W08 state continuity | mechanical Haiku extraction → deterministic state-ledger (`lib/agents/state-ledger.ts`) | ✅ live (flag) |
+
+**Severity policy (Director q2, 2026-06-11 — comedy cartoon tolerance):** the
+deterministic layer NEVER emits FAIL. Single MAJOR findings are notes; the
+verdict downgrades PASS → REVISE only when the MAJOR pool (state-ledger MAJORs
++ duration violations + lighting/appearance CONFLICTs) reaches 3. Cartoon
+logic (exaggeration, over-reaction, montage jumps) is legal by default —
+only contradictions of established state/canon are violations.
+
+**CHK-W02/W07 labelling rules (LLM side):** emit `CONFLICT` only on a real
+contradiction of the Bible description (location described windowless but the
+shot floods sunlight; canonical body transparent but prose paints it opaque).
+Motion, behaviour, temporary physically-motivated states (dust, soot) are
+`PASS`/`N/A`. When the Bible says nothing — `N/A`, never guess.
+
+**Inventory cascade doctrine (CHK-W04, Director 2026-06-11):** recurrent-
+location props are Bible canon (`SBL-object_*`, LOCKED; metadata may carry
+`aliases` + `geometry`); per-episode additions live in the brief's fenced-JSON
+`prop_delta` array. A location/prop recurring across 2-3 episodes is PROMOTED
+to the Bible — manually: PA proposes, Director confirms. The check judges
+against the UNION of both levels.
+
+---
+
 ## AUTHORITY & LIMITS
 
 | EXEC-WCHK CAN | EXEC-WCHK CANNOT |
@@ -356,5 +396,6 @@ failed_shot_ids: [list of shot_ids that failed, empty if PASS]
 
 ---
 
-*SandyStudio world_checker.md | v0.1 | Status: APPROVED*
+*SandyStudio world_checker.md | v0.2 | Status: APPROVED*
+*Contract: specs/contracts/continuity_check@v2.yaml · Motor 1 (state ledger) live 2026-06-11*
 *EXEC-WCHK is the last gate before budget is spent. Catch problems here, not in generation.*

@@ -80,6 +80,12 @@ export interface StoryboardShotV2 {
    * scene_continuity anchor.
    */
   location?: string | { slug?: string; sub_area?: string };
+  /**
+   * Storyboarder's shot-to-shot carry-over note (pose, prop state, lighting
+   * that must match the previous frame). Feeds the WCHK state-ledger
+   * extraction (Motor 1, 2026-06-11).
+   */
+  continuity_notes?: string;
 }
 
 interface StoryboardJson {
@@ -131,6 +137,8 @@ function shotToV2(s: unknown): StoryboardShotV2 | null {
     expected_gag: typeof sh.expected_gag === 'string' ? sh.expected_gag : undefined,
     expected_emotion:
       typeof sh.expected_emotion === 'string' ? sh.expected_emotion : undefined,
+    continuity_notes:
+      typeof sh.continuity_notes === 'string' ? sh.continuity_notes : undefined,
     characters,
     characters_present: Array.isArray(sh.characters_present)
       ? sh.characters_present.filter((x): x is string => typeof x === 'string')
@@ -153,6 +161,27 @@ function shotToV2(s: unknown): StoryboardShotV2 | null {
             }
           : undefined,
   };
+}
+
+/**
+ * Every shot of the storyboard as full V2 objects in production order.
+ * Pure parser — no DB calls. Empty array when content is malformed.
+ * Added 2026-06-11 for the WCHK state-ledger extraction (Motor 1): the
+ * extraction needs action_prose + continuity_notes + duration of EVERY shot
+ * in timeline order, which the Summary shape does not carry.
+ */
+export function listStoryboardShotsV2(content: string): StoryboardShotV2[] {
+  const json = parseStoryboardJson(content);
+  if (!json || !Array.isArray(json.acts)) return [];
+  const out: StoryboardShotV2[] = [];
+  for (const act of json.acts) {
+    if (!act || !Array.isArray(act.shots)) continue;
+    for (const raw of act.shots) {
+      const sh = shotToV2(raw);
+      if (sh) out.push(sh);
+    }
+  }
+  return out;
 }
 
 /**

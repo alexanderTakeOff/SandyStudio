@@ -1,9 +1,14 @@
-// next-events readability-gate routing (C1-Gate sprint 2026-06-10).
+// next-events readability-gate routing (C1-Gate sprint 2026-06-10,
+// dedup 2026-06-11 — single fire path doctrine).
 // Covers the EXEC-CREAD wiring in computeNextEvents:
-//   - STB-* APPROVED → CREAD when READABILITY_GATE_ENABLED is on
+//   - STB-* APPROVED → NOTHING when READABILITY_GATE_ENABLED is on (CREAD is
+//     fired by the factory critic chain at Storyboarder completion; the push
+//     here double-fired deterministically in Mode 4)
 //   - STB-* APPROVED → WCHK when the flag is off (byte-identical legacy)
-//   - REV-readability PASS → WCHK
+//   - REV-readability PASS → NOTHING (CREAD's spec.nextEvent critic chain
+//     owns the PASS→WCHK fire)
 //   - REV-readability REVISE under AUTOTEST → exec-sb with revisionNote
+//   - per-shot eref/vanim REV-readability rows are ignored (phase guard)
 //
 // A purpose-built mock supabase models just the query shapes computeNextEvents
 // uses in these branches: count queries (countApproved / hasJob) and the
@@ -111,17 +116,16 @@ describe('computeNextEvents — STB readability routing', () => {
     expect(names).not.toContain('sandystudio/exec-cread/review-storyboard');
   });
 
-  it('flag ON: STB approval fires EXEC-CREAD instead of WCHK', async () => {
+  it('flag ON: STB approval fires NOTHING — critic chain owns the CREAD fire', async () => {
     process.env.READABILITY_GATE_ENABLED = 'true';
     const sb = mockSupabase({
       assets: [{ id: 'stb-1', episode_id: EP, file_type: 'STB-storyboard', status: 'APPROVED' }],
       jobs: [],
     });
     const events = await computeNextEvents(sb, stbAsset(), 'director-1');
-    const cread = events.find((e) => e.name === 'sandystudio/exec-cread/review-storyboard');
-    expect(cread).toBeDefined();
-    expect(cread?.data.storyboardAssetId).toBe('stb-1');
-    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-wchk/check-world');
+    const names = events.map((e) => e.name);
+    expect(names).not.toContain('sandystudio/exec-cread/review-storyboard');
+    expect(names).not.toContain('sandystudio/exec-wchk/check-world');
   });
 });
 
@@ -138,7 +142,7 @@ describe('computeNextEvents — REV-readability routing', () => {
     };
   }
 
-  it('PASS → EXEC-WCHK with resolved STB id', async () => {
+  it('PASS fires NOTHING — CREAD spec.nextEvent critic chain owns PASS→WCHK', async () => {
     const sb = mockSupabase({
       assets: [
         { id: 'stb-9', episode_id: EP, file_type: 'STB-storyboard', status: 'APPROVED', version: 2 },
@@ -146,9 +150,22 @@ describe('computeNextEvents — REV-readability routing', () => {
       jobs: [],
     });
     const events = await computeNextEvents(sb, revAsset('PASS'), 'director-1');
-    const wchk = events.find((e) => e.name === 'sandystudio/exec-wchk/check-world');
-    expect(wchk).toBeDefined();
-    expect(wchk?.data.storyboardAssetIds).toEqual(['stb-9']);
+    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-wchk/check-world');
+  });
+
+  it('per-shot eref/vanim phase rows are ignored even on AUTOTEST REVISE', async () => {
+    const sb = mockSupabase({
+      assets: [
+        { id: 'scr-1', episode_id: EP, file_type: 'SCR-script', status: 'APPROVED', version: 1 },
+      ],
+      jobs: [],
+    });
+    const shotRev: AssetForChain = {
+      ...revAsset('REVISE', { acceptance_criteria: ['per-shot note'] }),
+      metadata: { phase: 'vanim' },
+    };
+    const events = await computeNextEvents(sb, shotRev, 'AUTOTEST');
+    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-sb/create-storyboard');
   });
 
   it('AUTOTEST REVISE → exec-sb with joined revisionNote', async () => {
