@@ -41,7 +41,10 @@ type GeminiPart = GeminiInlinePart | GeminiTextPart;
 
 interface GeminiRequest {
   contents: Array<{ parts: GeminiPart[] }>;
-  generationConfig: { responseModalities: string[] };
+  generationConfig: {
+    responseModalities: string[];
+    imageConfig?: { aspectRatio: string };
+  };
 }
 
 interface GeminiResponsePart {
@@ -53,9 +56,10 @@ interface GeminiResponse {
   error?: { message?: string; code?: number };
 }
 
-// Nominal dimensions for size-hint reporting (Gemini output size is model-
-// determined; we report the requested hint so the rest of the pipeline has
-// consistent metadata even if the actual pixels differ slightly).
+// Nominal dimensions for size-hint reporting — FALLBACK ONLY when the actual
+// PNG header can't be parsed. Real dims come from parsePngDims (E07 smoke
+// 2026-06-11: Gemini ignored the hint and returned 1024×1024 while metadata
+// claimed 1536×1024 — never report dimensions we didn't verify).
 const SIZE_DIMS: Record<string, { width: number; height: number }> = {
   '1024x1024': { width: 1024, height: 1024 },
   '1024x1536': { width: 1024, height: 1536 },
@@ -64,6 +68,33 @@ const SIZE_DIMS: Record<string, { width: number; height: number }> = {
   '2752x1536': { width: 2752, height: 1536 },
   '1536x2752': { width: 1536, height: 2752 },
 };
+
+// Size keys encode the DELIVERY aspect (landscape / portrait / square — see
+// SIZE_BY_DELIVERY_TARGET), not gpt-image-2 pixel counts. Gemini accepts a
+// native aspectRatio, so map by orientation: landscape → 16:9, portrait → 9:16
+// (the delivery targets behind these keys are YouTube landscape / Shorts).
+const ASPECT_BY_SIZE: Record<string, string> = {
+  '1024x1024': '1:1',
+  '2048x2048': '1:1',
+  '1536x1024': '16:9',
+  '2752x1536': '16:9',
+  '1024x1536': '9:16',
+  '1536x2752': '9:16',
+};
+
+/** Width/height from the PNG IHDR chunk (bytes 16-23 after the signature). */
+function parsePngDims(b64: string): { width: number; height: number } | null {
+  try {
+    const head = Buffer.from(b64.slice(0, 48), 'base64');
+    if (head.length < 24 || head.readUInt32BE(0) !== 0x89504e47) return null;
+    const width = head.readUInt32BE(16);
+    const height = head.readUInt32BE(20);
+    if (width === 0 || height === 0) return null;
+    return { width, height };
+  } catch {
+    return null;
+  }
+}
 
 // ── Provider implementation ───────────────────────────────────────────────────
 
@@ -80,9 +111,14 @@ async function generate(input: MultiImageGenInput): Promise<MultiImageGenResult>
   }
   parts.push({ text: input.prompt });
 
+  const size = input.size ?? '1024x1024';
+  const aspectRatio = ASPECT_BY_SIZE[size] ?? '1:1';
   const body: GeminiRequest = {
     contents: [{ parts }],
-    generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+      imageConfig: { aspectRatio },
+    },
   };
 
   const res = await fetch(
@@ -112,8 +148,7 @@ async function generate(input: MultiImageGenInput): Promise<MultiImageGenResult>
     );
   }
 
-  const size = input.size ?? '1024x1024';
-  const dims = SIZE_DIMS[size] ?? SIZE_DIMS['1024x1024'];
+  const dims = parsePngDims(b64) ?? SIZE_DIMS[size] ?? SIZE_DIMS['1024x1024'];
 
   return {
     b64_data: b64,
