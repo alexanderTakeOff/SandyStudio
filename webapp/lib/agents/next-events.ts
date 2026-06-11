@@ -38,6 +38,7 @@ import {
   designerChainEnabled,
   animatorChainEnabled,
   readabilityGateEnabled,
+  stopBeforeErefEnabled,
 } from '@/lib/agents/chain-flags';
 
 export type AssetForChain = {
@@ -296,7 +297,12 @@ export async function computeNextEvents(
     // independently; APPROVED Plan fires `exec-eref/execute-from-plan` below.
     // Legacy path (flag off) keeps firing the single generate-references
     // event — replay-pilot and in-flight episodes continue to work.
-    if (designerChainEnabled()) {
+    //
+    // C1_STOP_BEFORE_EREF (verification): halt the chain here, before any paid
+    // image generation. MGEN (below) still fires so the run is otherwise whole.
+    if (stopBeforeErefEnabled()) {
+      // intentionally fire no EREF events — chain stops before images.
+    } else if (designerChainEnabled()) {
       if (!(await hasJob(supabase, ep, 'EXEC-EREF-DESIGNER', { since }))) {
         const stbId = await findLatestApprovedAssetId(
           supabase,

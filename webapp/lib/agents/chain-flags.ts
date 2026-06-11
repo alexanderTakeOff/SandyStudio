@@ -37,3 +37,16 @@ export function readabilityGateEnabled(): boolean {
   if (!v) return false;
   return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
 }
+
+/**
+ * C1_STOP_BEFORE_EREF — verification kill-switch. When on, REV-world_check
+ * approval does NOT fan out EREF (no paid reference-image generation); the
+ * autonomous chain halts after the creative-text layer (script → storyboard →
+ * readability → continuity). Lets a Mode-4 run be evaluated for humor
+ * readability at the storyboard level cheaply. Default off → normal pipeline.
+ */
+export function stopBeforeErefEnabled(): boolean {
+  const v = process.env.C1_STOP_BEFORE_EREF;
+  if (!v) return false;
+  return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
+}
