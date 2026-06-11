@@ -23,6 +23,19 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import Anthropic from '@anthropic-ai/sdk';
+import { generateGeminiTextRaw } from './gemini-text';
+
+/**
+ * TEXT_LLM_DEBUG_TIER (Director q8b 2026-06-11): when on, EVERY text-agent
+ * call in this server process routes to the Gemini free tier instead of
+ * Anthropic — for Mode-4 / smoke pipeline runs so they cost $0 in API
+ * credits. Process-wide by design (smoke servers run one episode at a time);
+ * Mode 1-3 production servers must keep this flag OFF.
+ */
+function debugTierEnabled(): boolean {
+  const v = process.env.TEXT_LLM_DEBUG_TIER;
+  return v === 'true' || v === '1';
+}
 
 export interface AnthropicTextInput {
   /** System prompt — usually loaded from agents/exec/<role>.md by the caller. */
@@ -129,38 +142,75 @@ export function extractLastJsonBlock(markdown: string): Record<string, unknown> 
 export async function generateAnthropicText(
   input: AnthropicTextInput,
 ): Promise<AnthropicTextResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!apiKey) {
-    throw new AnthropicTextError('ANTHROPIC_API_KEY is not set');
-  }
-
-  const client = new Anthropic({ apiKey });
   const maxTokens = input.maxOutputTokens ?? 4000;
 
-  let response: Awaited<ReturnType<typeof client.messages.create>>;
-  try {
-    response = await client.messages.create({
-      model: input.model,
-      max_tokens: maxTokens,
-      system: input.systemPrompt,
-      messages: [{ role: 'user', content: input.userMessage }],
-    });
-  } catch (err: unknown) {
-    throw new AnthropicTextError(
-      `Anthropic call failed: ${err instanceof Error ? err.message : String(err)}`,
-      err,
-    );
-  }
+  let markdown: string;
+  let model: string;
+  let stopReason: string | null;
+  let usage: { inputTokens: number; outputTokens: number };
+  let costUsd: number;
 
-  const markdown = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('\n')
-    .trim();
+  if (debugTierEnabled()) {
+    // Debug tier — Gemini free tier, $0. Same raw shape; the shared JSON
+    // post-processing below applies identically to both branches.
+    let raw: Awaited<ReturnType<typeof generateGeminiTextRaw>>;
+    try {
+      raw = await generateGeminiTextRaw({
+        systemPrompt: input.systemPrompt,
+        userMessage: input.userMessage,
+        maxOutputTokens: maxTokens,
+      });
+    } catch (err: unknown) {
+      throw new AnthropicTextError(
+        `Debug-tier (gemini) call failed: ${err instanceof Error ? err.message : String(err)}`,
+        err,
+      );
+    }
+    markdown = raw.markdown;
+    model = raw.model;
+    stopReason = raw.stopReason;
+    usage = raw.usage;
+    costUsd = 0;
+  } else {
+    const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+    if (!apiKey) {
+      throw new AnthropicTextError('ANTHROPIC_API_KEY is not set');
+    }
+
+    const client = new Anthropic({ apiKey });
+
+    let response: Awaited<ReturnType<typeof client.messages.create>>;
+    try {
+      response = await client.messages.create({
+        model: input.model,
+        max_tokens: maxTokens,
+        system: input.systemPrompt,
+        messages: [{ role: 'user', content: input.userMessage }],
+      });
+    } catch (err: unknown) {
+      throw new AnthropicTextError(
+        `Anthropic call failed: ${err instanceof Error ? err.message : String(err)}`,
+        err,
+      );
+    }
+
+    markdown = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    model = input.model;
+    stopReason = response.stop_reason ?? null;
+    usage = {
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+    };
+    costUsd = computeCostUsd(usage, model);
+  }
 
   if (!markdown) {
     throw new AnthropicTextError(
-      `Empty response from ${input.model} (stop_reason=${response.stop_reason ?? 'unknown'})`,
+      `Empty response from ${model} (stop_reason=${stopReason ?? 'unknown'})`,
     );
   }
 
@@ -169,22 +219,17 @@ export async function generateAnthropicText(
     body = extractLastJsonBlock(markdown);
     if (!body) {
       throw new AnthropicTextError(
-        `Expected fenced \`\`\`json block at end of response but none parsed (stop_reason=${response.stop_reason ?? 'unknown'}, output ${markdown.length} chars)`,
+        `Expected fenced \`\`\`json block at end of response but none parsed (stop_reason=${stopReason ?? 'unknown'}, output ${markdown.length} chars)`,
       );
     }
   }
 
-  const usage = {
-    inputTokens: response.usage?.input_tokens ?? 0,
-    outputTokens: response.usage?.output_tokens ?? 0,
-  };
-
   return {
     markdown,
     body,
-    costUsd: computeCostUsd(usage, input.model),
-    model: input.model,
-    stopReason: response.stop_reason ?? null,
+    costUsd,
+    model,
+    stopReason,
     usage,
   };
 }
