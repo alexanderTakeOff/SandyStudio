@@ -24,6 +24,16 @@ import type { StoryboardShotV2 } from '../../api/vgen-shot-helpers';
 export const EXTRACT_MODEL = 'claude-haiku-4-5';
 // 17-shot storyboard × ~4 actions × ~120 tokens of JSON ≈ 8k worst case.
 export const EXTRACT_MAX_TOKENS = 8000;
+// F6 (2026-06-12, E07 smoke): a 38-shot storyboard produced ~26k chars of
+// JSON and hit the 8k output cap → EXTRACTION_FAILED (loud and graceful —
+// the fail-visible design worked, but the whole episode lost the ledger).
+// Extraction is now chunked: ≤ CHUNK_SIZE shots per call (12 × ~4 actions
+// × ~120 tokens ≈ 5.8k, comfortable under the cap), deltas merged in code.
+// Chunks run SEQUENTIALLY and each later chunk receives the canonical
+// entity-id vocabulary accumulated so far — otherwise "lamp cord" in chunk
+// 1 and "the cord" in chunk 3 mint two ids and the deterministic judge
+// reports phantom entity-from-nowhere violations at every chunk boundary.
+export const EXTRACT_CHUNK_SIZE = 12;
 
 export class ContinuityExtractError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -52,14 +62,32 @@ const SYSTEM_PROMPT = [
   '"round_side_table"). Never emit two ids for one object.',
 ].join('\n');
 
-function buildUserMessage(shots: readonly StoryboardShotV2[]): string {
+export function buildUserMessage(
+  shots: readonly StoryboardShotV2[],
+  /** Global ordinal of the first shot in this chunk (chunked extraction). */
+  indexOffset = 0,
+  /** Canonical entity ids minted by earlier chunks — MUST be reused. */
+  knownEntityIds: readonly string[] = [],
+): string {
   const lines = shots.map((s, i) => {
     const prose = s.action_prose ?? s.action ?? s.key_beat ?? '';
     const cont = s.continuity_notes ? ` || continuity_notes: ${s.continuity_notes}` : '';
-    return `${i}. [${s.shot_id}] ${prose}${cont}`;
+    return `${indexOffset + i}. [${s.shot_id}] ${prose}${cont}`;
   });
 
+  const knownIdsBlock =
+    knownEntityIds.length > 0
+      ? [
+          '# Known canonical entity ids (from earlier shots of this storyboard)',
+          'Reuse these EXACT ids whenever the prose refers to the same physical',
+          'object — do NOT mint a new id for an object already listed here:',
+          knownEntityIds.join(', '),
+          '',
+        ]
+      : [];
+
   return [
+    ...knownIdsBlock,
     '# Shots (timeline order)',
     ...lines,
     '',
@@ -175,6 +203,15 @@ export function parseShotStateDeltas(body: unknown): {
   return { deltas, droppedEntries: dropped };
 }
 
+/** Split shots into timeline-ordered chunks of at most EXTRACT_CHUNK_SIZE. */
+export function chunkShots<T>(shots: readonly T[], size = EXTRACT_CHUNK_SIZE): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < shots.length; i += size) {
+    out.push(shots.slice(i, i + size) as T[]);
+  }
+  return out;
+}
+
 export async function runContinuityExtract(
   shots: readonly StoryboardShotV2[],
 ): Promise<ContinuityExtractResult> {
@@ -182,29 +219,57 @@ export async function runContinuityExtract(
     throw new ContinuityExtractError('No shots to extract state deltas from');
   }
 
-  let result: AnthropicTextResult;
-  try {
-    result = await generateAnthropicText({
-      systemPrompt: SYSTEM_PROMPT,
-      userMessage: buildUserMessage(shots),
-      model: EXTRACT_MODEL,
-      maxOutputTokens: EXTRACT_MAX_TOKENS,
-      expectsJson: true,
-    });
-  } catch (err: unknown) {
-    if (err instanceof AnthropicTextError) {
+  const chunks = chunkShots(shots);
+  const allDeltas: ShotStateDelta[] = [];
+  let droppedTotal = 0;
+  let costTotal = 0;
+  let modelUsed = EXTRACT_MODEL;
+  // Vocabulary carried chunk-to-chunk so canonical naming stays global.
+  const knownIds = new Set<string>();
+
+  let offset = 0;
+  for (const chunk of chunks) {
+    let result: AnthropicTextResult;
+    try {
+      result = await generateAnthropicText({
+        systemPrompt: SYSTEM_PROMPT,
+        userMessage: buildUserMessage(chunk, offset, [...knownIds]),
+        model: EXTRACT_MODEL,
+        maxOutputTokens: EXTRACT_MAX_TOKENS,
+        expectsJson: true,
+      });
+    } catch (err: unknown) {
+      if (err instanceof AnthropicTextError) {
+        throw new ContinuityExtractError(
+          `Extraction call failed (shots ${offset}-${offset + chunk.length - 1}): ${err.message}`,
+          err,
+        );
+      }
+      throw err;
+    }
+
+    if (!result.body) {
       throw new ContinuityExtractError(
-        `Extraction call failed: ${err.message}`,
-        err,
+        `No JSON block in extraction response (shots ${offset}-${offset + chunk.length - 1})`,
       );
     }
-    throw err;
+
+    const { deltas, droppedEntries } = parseShotStateDeltas(result.body);
+    for (const d of deltas) {
+      for (const id of d.entities_introduced ?? []) knownIds.add(id);
+      for (const a of d.actions) knownIds.add(a.entity);
+    }
+    allDeltas.push(...deltas);
+    droppedTotal += droppedEntries;
+    costTotal += result.costUsd;
+    modelUsed = result.model;
+    offset += chunk.length;
   }
 
-  if (!result.body) {
-    throw new ContinuityExtractError('No JSON block in extraction response');
-  }
-
-  const { deltas, droppedEntries } = parseShotStateDeltas(result.body);
-  return { deltas, droppedEntries, costUsd: result.costUsd, model: result.model };
+  return {
+    deltas: allDeltas,
+    droppedEntries: droppedTotal,
+    costUsd: costTotal,
+    model: modelUsed,
+  };
 }
