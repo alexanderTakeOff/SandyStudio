@@ -72,11 +72,20 @@ export const execPaReact = inngest.createFunction(
     // per target. If thread is unknown at fire time, fall back to episode,
     // else a global bucket. CEL `||` is boolean OR, not nullish coalescing —
     // use ternary on `has()` instead.
+    //
+    // F4 (2026-06-12, E07 smoke): FAILURES get their OWN debounce bucket.
+    // With one shared bucket an agent_failed arriving inside a burst of
+    // routine agent_started/completed events collapsed into a single
+    // invocation that carried only the LAST event's trigger_id — the
+    // failure became invisible to Polina (SH03 Designer died silently for
+    // 20 min). The `:fail` suffix keeps the failure reaction alive without
+    // re-introducing reaction storms for routine traffic.
     debounce: {
       period: '5s',
       key:
-        'has(event.data.threadId) && event.data.threadId != null ? event.data.threadId : ' +
-        '(has(event.data.episodeId) && event.data.episodeId != null ? event.data.episodeId : "global")',
+        '(has(event.data.threadId) && event.data.threadId != null ? event.data.threadId : ' +
+        '(has(event.data.episodeId) && event.data.episodeId != null ? event.data.episodeId : "global")) + ' +
+        '(has(event.data.eventType) && event.data.eventType == "agent_failed" ? ":fail" : "")',
     },
     // Cap parallelism so a flood of cross-episode events can't blow up the
     // OpenAI rate limit. Key is per-thread when known, else per-episode.

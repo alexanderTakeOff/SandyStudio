@@ -54,8 +54,15 @@ const RECENT_TURN_WINDOW = 80;
  * 3 rounds keeps her bounded: typical agent_completed pickup needs 1-2 reads
  * + a final text round. Mutating tools (triggerAgent, requestRevision,
  * approveAsset) are blocked by the per-tool guard regardless of rounds.
+ *
+ * F5 (2026-06-12, E07 smoke): in BOLD modes (3/4) Polina ACTS in auto-react —
+ * a batch step is read(1-2) + mutate(1) + verify(1) + final text, which does
+ * not fit in 3. The E07 hour-long stall was exactly this: she ANNOUNCED the
+ * next dispatch, ran out of rounds before the tool_call, and nothing woke
+ * her again. Strict modes stay at 3 (read + narrate needs no more).
  */
 const MAX_AUTO_REACT_TOOL_ROUNDS = 3;
+const MAX_AUTO_REACT_TOOL_ROUNDS_BOLD = 5;
 
 /**
  * TD-51 (2026-05-25): read-only / analysis subset of the concierge tool
@@ -145,8 +152,16 @@ export async function POST(req: Request) {
   // Anti-cascade guard: if the last turn is already an assistant turn newer
   // than ANTI_CASCADE_WINDOW_MS, PA just spoke — don't pile on. This
   // protects against tool-fired-event-fired-PA-fired-tool storms.
+  //
+  // F4 (2026-06-12, E07 smoke): FAILURES bypass the guard. During an active
+  // batch Polina narrates constantly, so an agent_failed landing right after
+  // her turn was swallowed as `recent_assistant_turn` — the Director learned
+  // about the dead Designer 20 minutes later by looking himself. A failure
+  // must always produce a reaction; the per-bucket debounce in exec-pa-react
+  // still caps the rate.
+  const isFailureTrigger = parsed.event_type === 'agent_failed';
   const lastTurn = recentTurns[recentTurns.length - 1];
-  if (lastTurn && lastTurn.role === 'assistant') {
+  if (!isFailureTrigger && lastTurn && lastTurn.role === 'assistant') {
     const lastTs = new Date(lastTurn.created_at).getTime();
     if (Number.isFinite(lastTs) && Date.now() - lastTs < ANTI_CASCADE_WINDOW_MS) {
       return NextResponse.json({ skipped: 'recent_assistant_turn' }, { status: 200 });
@@ -302,10 +317,13 @@ export async function POST(req: Request) {
   // batch). Last round force-disables tools so the model produces a final
   // text response instead of looping.
   let roundCount = 0;
+  const maxRounds = boldMode
+    ? MAX_AUTO_REACT_TOOL_ROUNDS_BOLD
+    : MAX_AUTO_REACT_TOOL_ROUNDS;
   try {
-    for (let round = 0; round < MAX_AUTO_REACT_TOOL_ROUNDS; round++) {
+    for (let round = 0; round < maxRounds; round++) {
       roundCount = round + 1;
-      const isLastRound = round === MAX_AUTO_REACT_TOOL_ROUNDS - 1;
+      const isLastRound = round === maxRounds - 1;
       // q9: bold modes (3/4) expose mutating tools (minus hard limits) so Polina
       // can ACT; strict modes keep the read-only surface.
       const roundSchemas = boldMode ? BOLD_TOOL_SCHEMAS : READ_ONLY_TOOL_SCHEMAS;

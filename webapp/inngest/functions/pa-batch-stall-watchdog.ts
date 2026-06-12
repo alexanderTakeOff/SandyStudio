@@ -28,6 +28,9 @@ import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 const IDLE_MIN = 6; // no job activity for this long while FANOUT_RUNNING = stalled
 const COOLDOWN_MIN = 12; // don't re-nudge the same episode within this window
 const SCAN_LIMIT = 20; // bound the per-tick read cost
+// F4 (2026-06-12): Mode-4 idle sweep — only episodes that ran something within
+// this window count as "active session"; older idleness is a parked episode.
+const ACTIVE_WINDOW_H = 2;
 
 export const paBatchStallWatchdog = inngest.createFunction(
   {
@@ -52,13 +55,41 @@ export const paBatchStallWatchdog = inngest.createFunction(
         logger.warn(`batch-watchdog: episode query failed: ${error.message}`);
         return { skipped: 'query_failed' as const, error: error.message };
       }
-      if (!eps || eps.length === 0) {
+
+      // F4 (2026-06-12, E07 smoke): the FANOUT_RUNNING flag covers only the
+      // EREF fan-out phase — both real stalls of the smoke (SH03 Designer
+      // deadlock, 20 min; "announced but never executed", 60 min) happened
+      // OUTSIDE it and the watchdog stayed silent. Second sweep scope:
+      // Mode-4 (AUTOTEST) episodes are autonomous by definition — the chain
+      // must keep moving until the episode is done. One that ran something
+      // within the last ACTIVE_WINDOW_H hours but has been idle ≥ IDLE_MIN
+      // is stalled, whatever the phase. Polina re-evaluates state before
+      // acting, so a nudge after legitimate completion is harmless (and the
+      // cooldown caps spam).
+      const { data: mode4Eps, error: m4Err } = await sb
+        .from('episodes')
+        .select('id,metadata')
+        .eq('governance_mode', 4)
+        .limit(SCAN_LIMIT);
+      if (m4Err) {
+        logger.warn(`batch-watchdog: mode-4 query failed: ${m4Err.message}`);
+      }
+      const byId = new Map<string, { id: string; metadata: Record<string, unknown> | null }>();
+      for (const e of (eps ?? []) as Array<{ id: string; metadata: Record<string, unknown> | null }>) {
+        byId.set(e.id, e);
+      }
+      for (const e of (mode4Eps ?? []) as Array<{ id: string; metadata: Record<string, unknown> | null }>) {
+        if (!byId.has(e.id)) byId.set(e.id, e);
+      }
+      const candidates = [...byId.values()];
+      if (candidates.length === 0) {
         return { ok: true as const, scanned: 0, nudged: 0 };
       }
 
       let nudged = 0;
-      for (const ep of eps as Array<{ id: string; metadata: Record<string, unknown> | null }>) {
+      for (const ep of candidates) {
         const meta = ep.metadata ?? {};
+        const isFanoutRunning = meta.eref_pilot_state === 'FANOUT_RUNNING';
 
         // Cooldown — skip if we nudged this episode recently.
         const lastNudge = meta.batch_watchdog_nudged_at;
@@ -86,6 +117,12 @@ export const paBatchStallWatchdog = inngest.createFunction(
           : 0;
         // If something ran within IDLE_MIN, the batch is still moving — leave it.
         if (lastTs > 0 && now - lastTs < IDLE_MIN * 60_000) continue;
+        // Mode-4-only candidates (no FANOUT_RUNNING flag): require recent
+        // activity inside ACTIVE_WINDOW_H — an episode idle for days is
+        // parked, not stalled; nudging it would be noise.
+        if (!isFanoutRunning) {
+          if (lastTs === 0 || now - lastTs > ACTIVE_WINDOW_H * 3_600_000) continue;
+        }
 
         // Stalled → nudge Polina to re-evaluate and continue. exec-pa-react
         // resolves the thread, debounces, and she re-checks scope before acting.
@@ -110,7 +147,7 @@ export const paBatchStallWatchdog = inngest.createFunction(
         logger.info(`batch-watchdog: nudged stalled fan-out for episode ${ep.id}`);
       }
 
-      return { ok: true as const, scanned: eps.length, nudged };
+      return { ok: true as const, scanned: candidates.length, nudged };
     });
   },
 );
