@@ -237,6 +237,7 @@ export async function runContinuityExtract(
         model: EXTRACT_MODEL,
         maxOutputTokens: EXTRACT_MAX_TOKENS,
         expectsJson: true,
+        agentClass: 'checker', // F7: mechanical extraction rides the free tier
       });
     } catch (err: unknown) {
       if (err instanceof AnthropicTextError) {

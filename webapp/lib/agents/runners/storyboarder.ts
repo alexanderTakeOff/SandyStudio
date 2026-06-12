@@ -600,7 +600,7 @@ export async function runStoryboarder(
   const selectionTag = selectionSkipped
     ? ''
     : ` (+$${selectionCostUsd.toFixed(4)} skill selection)`;
-  const description = `Produced by EXEC-SB · ${SB_CONTRACT} · ${SB_MODEL} · ${totalShots} shots / ${totalDurationS}s · cost $${totalCostUsd.toFixed(4)}${selectionTag} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
+  const description = `Produced by EXEC-SB · ${SB_CONTRACT} · ${result.model} · ${totalShots} shots / ${totalDurationS}s · cost $${totalCostUsd.toFixed(4)}${selectionTag} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
 
   return {
     markdown: result.markdown,

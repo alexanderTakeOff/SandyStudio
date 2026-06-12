@@ -262,6 +262,7 @@ export async function runScriptReviewer(
       model: SREV_MODEL,
       maxOutputTokens: SREV_MAX_TOKENS,
       expectsJson: true,
+      agentClass: 'checker', // F7: critics ride the free tier (CHECKERS_FREE_TIER)
     });
   } catch (err: unknown) {
     if (err instanceof AnthropicTextError) {
@@ -282,7 +283,7 @@ export async function runScriptReviewer(
       ? verdictRaw
       : 'UNKNOWN';
 
-  const description = `Produced by EXEC-SREV · ${SREV_CONTRACT} · ${SREV_MODEL} · verdict ${verdict} · cost $${result.costUsd.toFixed(4)} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
+  const description = `Produced by EXEC-SREV · ${SREV_CONTRACT} · ${result.model} · verdict ${verdict} · cost $${result.costUsd.toFixed(4)} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
 
   return {
     markdown: result.markdown,

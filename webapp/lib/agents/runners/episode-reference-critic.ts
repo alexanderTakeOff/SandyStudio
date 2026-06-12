@@ -383,6 +383,7 @@ export async function runEpisodeReferenceCritic(
       model: EPREV_MODEL,
       maxOutputTokens: EPREV_MAX_TOKENS,
       expectsJson: true,
+      agentClass: 'checker', // F7: critics ride the free tier (CHECKERS_FREE_TIER)
     });
   } catch (err: unknown) {
     if (err instanceof AnthropicTextError) {
@@ -435,7 +436,7 @@ export async function runEpisodeReferenceCritic(
   }
 
   const description = [
-    `Critic verdict ${verdict} · ${EPREV_CONTRACT} · ${EPREV_MODEL}`,
+    `Critic verdict ${verdict} · ${EPREV_CONTRACT} · ${result.model}`,
     `· ${failedChecks.length} failed`,
     `· ${passedChecks.length} passed`,
     anchorViolations.length > 0 ? `· ${anchorViolations.length} anchor` : '',

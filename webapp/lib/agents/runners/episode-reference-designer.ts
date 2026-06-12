@@ -935,7 +935,7 @@ export async function runEpisodeReferenceDesigner(
   const estCostNum = typeof estCost === 'number' ? estCost : null;
 
   const description = [
-    `Plan by EXEC-EREF Designer · ${EREF_DESIGNER_CONTRACT} · ${EREF_DESIGNER_MODEL}`,
+    `Plan by EXEC-EREF Designer · ${EREF_DESIGNER_CONTRACT} · ${result.model}`,
     providerId ? `· provider=${providerId}` : '',
     w && h ? `· ${w}×${h}` : '',
     typeof variantsCount === 'number' ? `· ${variantsCount} variants` : '',

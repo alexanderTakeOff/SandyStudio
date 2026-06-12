@@ -54,6 +54,22 @@ export function continuityLedgerEnabled(): boolean {
 }
 
 /**
+ * CHECKERS_FREE_TIER — F7 per-agent-class LLM routing (2026-06-12, q8b
+ * extension). When on (DEFAULT), text agents of class `checker` (SREV,
+ * CREAD, WCHK, VPREV, EPREV, ledger extraction) run on the Gemini free tier
+ * in ALL governance modes — the E07 smoke proved free-tier critics stay
+ * strict (5 failed / 7 passed verdicts, all on merit). Creators (SW / SB /
+ * Designer / Animator) keep Anthropic in Modes 1-3; TEXT_LLM_DEBUG_TIER
+ * remains the process-wide Mode-4/smoke kill-switch that frees EVERYTHING.
+ * Rollback: CHECKERS_FREE_TIER=false — one env var, one class.
+ */
+export function checkersFreeTierEnabled(): boolean {
+  const v = process.env.CHECKERS_FREE_TIER;
+  if (!v) return true; // default ON per Director q8b follow-up
+  return !(v.toLowerCase() === 'false' || v === '0' || v.toLowerCase() === 'off');
+}
+
+/**
  * C1_STOP_BEFORE_EREF — verification kill-switch. When on, REV-world_check
  * approval does NOT fan out EREF (no paid reference-image generation); the
  * autonomous chain halts after the creative-text layer (script → storyboard →

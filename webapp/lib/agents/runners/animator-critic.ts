@@ -480,6 +480,7 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
       model: VPREV_MODEL,
       maxOutputTokens: VPREV_MAX_TOKENS,
       expectsJson: true,
+      agentClass: 'checker', // F7: critics ride the free tier (CHECKERS_FREE_TIER)
     });
   } catch (err: unknown) {
     if (err instanceof AnthropicTextError) {
@@ -535,7 +536,9 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
   }
 
   const description = [
-    `Animator's Critic verdict ${effectiveVerdict} · ${VPREV_CONTRACT} · ${VPREV_MODEL}`,
+    // F7 honesty: result.model is the ACTUAL model (gemini on the free tier),
+    // not the requested constant — descriptions are the Director's audit trail.
+    `Animator's Critic verdict ${effectiveVerdict} · ${VPREV_CONTRACT} · ${result.model}`,
     `· ${effectiveFailedChecks.length} failed`,
     `· ${passedChecks.length} passed`,
     `· cost $${result.costUsd.toFixed(4)}`,

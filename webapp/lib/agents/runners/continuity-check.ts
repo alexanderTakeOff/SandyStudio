@@ -521,6 +521,7 @@ export async function runContinuityCheck(
       model: CONT_MODEL,
       maxOutputTokens: CONT_MAX_TOKENS,
       expectsJson: true,
+      agentClass: 'checker', // F7: critics ride the free tier (CHECKERS_FREE_TIER)
     });
   } catch (err: unknown) {
     if (err instanceof AnthropicTextError) {
@@ -646,7 +647,7 @@ export async function runContinuityCheck(
       ` (pool ${String((body.ledger as { major_pool?: unknown })?.major_pool ?? 0)})`
     : '';
   const description =
-    `Produced by EXEC-CONT · ${CONT_CONTRACT} · ${CONT_MODEL} · ` +
+    `Produced by EXEC-CONT · ${CONT_CONTRACT} · ${result.model} · ` +
     `verdict ${verdict} · ` +
     `${bible.characters.length} canon characters / ${bible.locations.length} locations · ` +
     `cost $${totalCostUsd.toFixed(4)}${ledgerSuffix}`;

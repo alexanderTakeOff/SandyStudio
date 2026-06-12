@@ -180,6 +180,7 @@ export async function runStyleCheck(args: RunStyleCheckArgs): Promise<StyleCheck
       model: STYLE_CHECK_MODEL,
       maxOutputTokens: 1500,
       expectsJson: true,
+      agentClass: 'checker', // F7: Style Guardian is a validator — free tier
     });
   } catch (err: unknown) {
     if (err instanceof AnthropicTextError) {

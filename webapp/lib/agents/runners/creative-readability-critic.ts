@@ -269,6 +269,7 @@ async function resolveActivePlaybooks(args: {
           model: CREAD_SELECTION_MODEL,
           maxOutputTokens: CREAD_SELECTION_MAX_TOKENS,
           expectsJson: false,
+          agentClass: 'checker', // F7: mechanical skill pick — free tier
         });
         selectionCostUsd = selectionResult.costUsd;
         const parsed = parseSkillSelection(selectionResult.markdown);
@@ -584,6 +585,7 @@ async function runStoryboardPhase(
       model: CREAD_MODEL,
       maxOutputTokens: CREAD_MAX_TOKENS,
       expectsJson: true,
+      agentClass: 'checker', // F7: critics ride the free tier (CHECKERS_FREE_TIER)
     });
   } catch (err: unknown) {
     if (err instanceof AnthropicTextError) {
@@ -612,7 +614,7 @@ async function runStoryboardPhase(
   const acceptanceCriteria = parseStringArray(result.body, 'acceptance_criteria');
 
   const description = [
-    `Readability verdict ${verdict} · storyboard · ${CREAD_MODEL}`,
+    `Readability verdict ${verdict} · storyboard · ${result.model}`,
     `· playbooks ${shelf.activatedSlugs.join('+') || 'none'}`,
     `· ${failedChecks.length} failed`,
     `· ${passedChecks.length} passed`,
@@ -679,6 +681,7 @@ async function runReviewPhase(args: CREADReviewArgs): Promise<CREADRunResult> {
       model: CREAD_MODEL,
       maxOutputTokens: CREAD_MAX_TOKENS,
       expectsJson: true,
+      agentClass: 'checker', // F7: critics ride the free tier (CHECKERS_FREE_TIER)
     });
   } catch (err: unknown) {
     if (err instanceof AnthropicTextError) {
@@ -707,7 +710,7 @@ async function runReviewPhase(args: CREADReviewArgs): Promise<CREADRunResult> {
   const acceptanceCriteria = parseStringArray(result.body, 'acceptance_criteria');
 
   const description = [
-    `Readability verdict ${verdict} · ${phase} · ${CREAD_MODEL}`,
+    `Readability verdict ${verdict} · ${phase} · ${result.model}`,
     `· playbooks ${shelf.activatedSlugs.join('+') || 'none'}`,
     `· ${failedChecks.length} failed`,
     `· cost $${totalCost.toFixed(4)}`,

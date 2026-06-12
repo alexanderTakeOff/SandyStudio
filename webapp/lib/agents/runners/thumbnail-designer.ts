@@ -263,7 +263,7 @@ export async function runThumbnailDesigner(
     throw new ThumbnailDesignerError('Postcondition failed: Claude returned no parseable JSON Plan');
   }
 
-  const description = `Produced by EXEC-THUMB-DESIGNER · ${THUMBNAIL_DESIGNER_CONTRACT} · ${THUMBNAIL_DESIGNER_MODEL} · cost $${result.costUsd.toFixed(4)} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
+  const description = `Produced by EXEC-THUMB-DESIGNER · ${THUMBNAIL_DESIGNER_CONTRACT} · ${result.model} · cost $${result.costUsd.toFixed(4)} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
 
   return {
     markdown: result.markdown,

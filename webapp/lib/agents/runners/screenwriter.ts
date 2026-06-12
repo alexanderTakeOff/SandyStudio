@@ -378,7 +378,7 @@ export async function runScreenwriter(
   const selectionTag = selectionSkipped
     ? ''
     : ` (+$${selectionCostUsd.toFixed(4)} skill selection)`;
-  const description = `Produced by EXEC-SW · ${SCREENWRITER_CONTRACT} · ${SCREENWRITER_MODEL} · cost $${totalCostUsd.toFixed(4)}${selectionTag} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
+  const description = `Produced by EXEC-SW · ${SCREENWRITER_CONTRACT} · ${result.model} · cost $${totalCostUsd.toFixed(4)}${selectionTag} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
 
   return {
     markdown: result.markdown,

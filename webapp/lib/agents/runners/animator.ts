@@ -1092,7 +1092,7 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
   const estCost = (result.body as { estimated_cost_usd?: unknown }).estimated_cost_usd;
 
   const description = [
-    `Plan by EXEC-VANIM · ${VANIM_CONTRACT} · ${VANIM_MODEL}`,
+    `Plan by EXEC-VANIM · ${VANIM_CONTRACT} · ${result.model}`,
     providerId ? `· provider=${providerId}` : '',
     typeof aspect === 'string' ? `· ${aspect}` : '',
     typeof duration === 'number' ? `· ${duration}s` : '',

@@ -210,7 +210,7 @@ export async function runCopywriter(
 
   if (!result.body) throw new CopywriterError('No JSON block in response');
 
-  const description = `Produced by EXEC-COPY · ${COPY_CONTRACT} · ${COPY_MODEL} · cost $${result.costUsd.toFixed(4)} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
+  const description = `Produced by EXEC-COPY · ${COPY_CONTRACT} · ${result.model} · cost $${result.costUsd.toFixed(4)} · ${result.usage.inputTokens}→${result.usage.outputTokens} tokens`;
 
   return {
     markdown: result.markdown,

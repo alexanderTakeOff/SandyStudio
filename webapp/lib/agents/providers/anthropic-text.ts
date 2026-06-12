@@ -24,6 +24,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { generateGeminiTextRaw } from './gemini-text';
+import { checkersFreeTierEnabled } from '../chain-flags';
 
 /**
  * TEXT_LLM_DEBUG_TIER (Director q8b 2026-06-11): when on, EVERY text-agent
@@ -35,6 +36,18 @@ import { generateGeminiTextRaw } from './gemini-text';
 function debugTierEnabled(): boolean {
   const v = process.env.TEXT_LLM_DEBUG_TIER;
   return v === 'true' || v === '1';
+}
+
+/**
+ * F7 (2026-06-12) — pure routing decision, exported as a test seam.
+ * Free tier when: the process-wide debug kill-switch is on (Mode-4 smokes,
+ * frees EVERYTHING), or the call is a `checker` and CHECKERS_FREE_TIER is on
+ * (default). Creators stay on paid Anthropic in Modes 1-3.
+ */
+export function wantsGeminiFreeTier(agentClass?: 'creator' | 'checker'): boolean {
+  return (
+    debugTierEnabled() || (agentClass === 'checker' && checkersFreeTierEnabled())
+  );
 }
 
 export interface AnthropicTextInput {
@@ -52,6 +65,14 @@ export interface AnthropicTextInput {
    * fails, throws AnthropicTextError (caller can decide to retry or fail).
    */
   expectsJson?: boolean;
+  /**
+   * F7 (2026-06-12) — per-agent-class routing. `checker` (critics, reviewers,
+   * mechanical extraction) routes to the Gemini free tier in ALL modes while
+   * CHECKERS_FREE_TIER is on (default). Default class is `creator` (paid
+   * Anthropic, unless the process-wide TEXT_LLM_DEBUG_TIER kill-switch frees
+   * everything for Mode-4 smokes).
+   */
+  agentClass?: 'creator' | 'checker';
 }
 
 export interface AnthropicTextResult {
@@ -150,7 +171,20 @@ export async function generateAnthropicText(
   let usage: { inputTokens: number; outputTokens: number };
   let costUsd: number;
 
-  if (debugTierEnabled()) {
+  // F7 routing: process-wide debug tier (Mode-4 smokes) frees everything;
+  // otherwise checkers ride the free tier per CHECKERS_FREE_TIER (default on).
+  // Missing GEMINI_API_KEY falls back to Anthropic LOUDLY rather than killing
+  // the critic chain — free tier is an optimisation, not a dependency.
+  const wantsFreeTier = wantsGeminiFreeTier(input.agentClass);
+  const geminiKeyOk = Boolean(process.env.GEMINI_API_KEY?.trim());
+  if (wantsFreeTier && !geminiKeyOk && !debugTierEnabled()) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[anthropic-text] checker free tier requested but GEMINI_API_KEY missing — falling back to Anthropic (paid)',
+    );
+  }
+
+  if (wantsFreeTier && (geminiKeyOk || debugTierEnabled())) {
     // Debug tier — Gemini free tier, $0. Same raw shape; the shared JSON
     // post-processing below applies identically to both branches.
     let raw: Awaited<ReturnType<typeof generateGeminiTextRaw>>;
