@@ -50,6 +50,7 @@ import {
 } from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
 import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
+import { findApprovedAsset } from '../upstream';
 
 export const EREF_DESIGNER_CONTRACT = 'episode_reference_designer@v1';
 export const EREF_DESIGNER_MODEL = 'claude-sonnet-4-6';
@@ -274,17 +275,10 @@ export function _resetSystemPromptCacheForTests(): void {
   systemPromptCache = null;
 }
 
-function findApprovedAsset(
-  upstream: readonly UpstreamAssetLike[] | undefined,
-  fileType: string,
-): UpstreamAssetLike | null {
-  if (!upstream) return null;
-  return (
-    upstream.find(
-      (a) => a.file_type === fileType && a.status === 'APPROVED',
-    ) ?? null
-  );
-}
+// F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
+// (lib/agents/upstream.ts). The local copy here was an UNSORTED `.find()` —
+// with two APPROVED storyboards (E07 SREV double-fire) the Designer read
+// STB v1 while the Artist's sorted copy read v2 → SH03 mirror deadlock.
 
 /**
  * Resolve `delivery_targets[]` for an episode. Precedence:

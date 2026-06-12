@@ -29,6 +29,7 @@ import {
   composeActivePlaybooksBlock,
 } from '../load-skills';
 import { parseSkillSelection } from '../../skills/parse-skill-selection';
+import { findApprovedAsset } from '../upstream';
 
 export const SCREENWRITER_CONTRACT = 'screenwriter@v1';
 export const SCREENWRITER_MODEL = 'claude-sonnet-4-6';
@@ -99,17 +100,8 @@ async function loadSystemPrompt(): Promise<string> {
   );
 }
 
-function findApprovedAsset(
-  upstream: readonly UpstreamAssetLike[] | undefined,
-  fileType: string,
-): UpstreamAssetLike | null {
-  if (!upstream) return null;
-  return (
-    upstream.find(
-      (a) => a.file_type === fileType && a.status === 'APPROVED',
-    ) ?? null
-  );
-}
+// F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
+// (lib/agents/upstream.ts; the local copy was an unsorted `.find()`).
 
 function buildUserMessage(args: {
   episodeCode: string;

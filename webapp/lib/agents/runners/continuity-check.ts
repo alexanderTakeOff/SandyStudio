@@ -29,6 +29,7 @@ import {
 } from '../providers/anthropic-text';
 import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
 import { continuityLedgerEnabled } from '../chain-flags';
+import { findApprovedAsset } from '../upstream';
 import {
   validateStateLedger,
   reviseImpactForMajorPool,
@@ -127,17 +128,8 @@ async function loadSystemPrompt(): Promise<string> {
   return systemPromptCache;
 }
 
-function findApprovedAsset(
-  upstream: readonly UpstreamAssetLike[] | undefined,
-  fileType: string,
-): UpstreamAssetLike | null {
-  if (!upstream) return null;
-  const approved = upstream.filter(
-    (a) => a.file_type === fileType && a.status === 'APPROVED',
-  );
-  approved.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
-  return approved[0] ?? null;
-}
+// F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
+// (lib/agents/upstream.ts; was a local copy, one of ten).
 
 // Canonical slug lookup goes through lib/api/series-bible.bibleSlug — DO NOT
 // re-introduce a local filename regex here. See JSDoc on bibleSlugFromFileType

@@ -39,6 +39,7 @@ import {
 } from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
 import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
+import { findApprovedAsset } from '../upstream';
 import {
   VIDEO_PROVIDER_CAPS,
   ASPECT_BY_DELIVERY_TARGET,
@@ -538,15 +539,9 @@ export function _resetAnimatorPromptCacheForTests(): void {
   systemPromptCache = null;
 }
 
-function findApprovedAsset(
-  upstream: readonly UpstreamAssetLike[] | undefined,
-  fileType: string,
-): UpstreamAssetLike | null {
-  if (!upstream) return null;
-  return (
-    upstream.find((a) => a.file_type === fileType && a.status === 'APPROVED') ?? null
-  );
-}
+// F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
+// (lib/agents/upstream.ts; the local copy was an unsorted `.find()` — with
+// two APPROVED storyboards the Animator could plan against the stale one).
 
 function findApprovedEREFForShot(
   upstream: readonly UpstreamAssetLike[] | undefined,

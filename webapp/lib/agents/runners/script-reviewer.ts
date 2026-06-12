@@ -21,6 +21,7 @@ import {
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
+import { findApprovedAsset as findUpstreamAsset } from '../upstream';
 import type { AgentInputs } from '../types';
 
 export const SREV_CONTRACT = 'script_reviewer@v1';
@@ -85,22 +86,16 @@ async function loadSystemPrompt(): Promise<string> {
   );
 }
 
+// F2 (2026-06-12): local copy → shared newest-wins resolver
+// (lib/agents/upstream.ts). Story Editor reviews the latest version in a
+// REVIEWABLE status — it IS the gate that decides whether that version
+// becomes APPROVED, so REVIEW/REVISION are accepted alongside APPROVED.
+const REVIEWABLE: ReadonlySet<string> = new Set(['REVIEW', 'REVISION', 'APPROVED']);
 function findApprovedAsset(
   upstream: readonly UpstreamAssetLike[] | undefined,
   fileType: string,
 ): UpstreamAssetLike | null {
-  if (!upstream) return null;
-  // Pick the latest version (highest `version`) in a reviewable status.
-  // For Story Editor's input we accept REVIEW + REVISION + APPROVED — Story
-  // Editor IS the gate that decides if the latest version becomes APPROVED.
-  // Brief itself is always APPROVED upstream, so 'APPROVED' alone is still
-  // valid for the brief lookup.
-  const REVIEWABLE: ReadonlySet<string> = new Set(['REVIEW', 'REVISION', 'APPROVED']);
-  const candidates = upstream.filter(
-    (a) => a.file_type === fileType && REVIEWABLE.has(a.status ?? ''),
-  );
-  candidates.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
-  return candidates[0] ?? null;
+  return findUpstreamAsset(upstream, fileType, REVIEWABLE);
 }
 
 function buildUserMessage(args: {

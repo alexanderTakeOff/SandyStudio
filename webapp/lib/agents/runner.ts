@@ -177,7 +177,15 @@ export async function loadAgentInputs(args: LoadInputsArgs): Promise<AgentInputs
     // Supabase typed-client narrows `status` to a literal union; widen via cast
     // at the boundary so the runtime-supplied `allowedStatuses` strings flow
     // through. Caller is responsible for using valid asset_status values.
-    .in('status', statuses as never);
+    .in('status', statuses as never)
+    // F2 (2026-06-12): newest-wins for raw `.find()` consumers too. Without
+    // an ORDER BY the rows arrive in heap order, so any consumer that takes
+    // the first match of a file_type silently binds to an arbitrary version
+    // when two APPROVED rows coexist (E07: Designer on STB v1, Artist on v2).
+    // findApprovedAsset (lib/agents/upstream.ts) re-sorts defensively; this
+    // makes the unsorted `.find()` sites inherit the same rule.
+    .order('version', { ascending: false })
+    .order('created_at', { ascending: false });
   if (asErr) {
     throw new Error(`loadAgentInputs: assets lookup failed: ${asErr.message}`);
   }

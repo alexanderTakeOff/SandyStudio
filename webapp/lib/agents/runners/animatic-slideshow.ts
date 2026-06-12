@@ -15,6 +15,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
+import { findApprovedAsset } from '../upstream';
 import {
   buildShotListFromApprovedEREF,
   buildShotListFromAnchorChain,
@@ -82,17 +83,8 @@ export interface AnimaticSlideshowResult {
   animaticV1: AnimaticContract | null;
 }
 
-function findApprovedAsset(
-  upstream: readonly UpstreamAssetLike[] | undefined,
-  fileType: string,
-): UpstreamAssetLike | null {
-  if (!upstream) return null;
-  const approved = upstream.filter(
-    (a) => a.file_type === fileType && a.status === 'APPROVED',
-  );
-  approved.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
-  return approved[0] ?? null;
-}
+// F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
+// (lib/agents/upstream.ts; was a local copy, one of ten).
 
 function listApprovedRefs(
   upstream: readonly UpstreamAssetLike[] | undefined,

@@ -93,6 +93,7 @@ import type {
 } from '../../api/shot-reference';
 import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
 import { selectSkills } from '../../skills/select-skills';
+import { findApprovedAsset } from '../upstream';
 import type { AgentInputs } from '../types';
 import type {
   GovernanceModeNum,
@@ -270,17 +271,8 @@ export function pickPilotShots(shots: readonly ParsedShot[], n: number): ParsedS
 
 // ── Asset / Bible helpers ────────────────────────────────────────────────────
 
-function findApprovedAsset(
-  upstream: readonly UpstreamAssetLike[] | undefined,
-  fileType: string,
-): UpstreamAssetLike | null {
-  if (!upstream) return null;
-  const approved = upstream.filter(
-    (a) => a.file_type === fileType && a.status === 'APPROVED',
-  );
-  approved.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
-  return approved[0] ?? null;
-}
+// F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
+// (lib/agents/upstream.ts; was a local copy, one of ten).
 
 const nameFromBibleFilename = (asset: { file_type?: string | null }): string | null =>
   asset.file_type ? bibleSlug(asset.file_type) : null;

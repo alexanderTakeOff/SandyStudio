@@ -13,6 +13,7 @@ import {
 } from '../providers/anthropic-text';
 import type { SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
+import { findApprovedAsset } from '../upstream';
 
 export const COPY_CONTRACT = 'copywriter@v1';
 export const COPY_MODEL = 'claude-haiku-4-5';
@@ -69,17 +70,8 @@ async function loadSystemPrompt(): Promise<string> {
   return systemPromptCache;
 }
 
-function findApprovedAsset(
-  upstream: readonly UpstreamAssetLike[] | undefined,
-  fileType: string,
-): UpstreamAssetLike | null {
-  if (!upstream) return null;
-  const approved = upstream.filter(
-    (a) => a.file_type === fileType && a.status === 'APPROVED',
-  );
-  approved.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
-  return approved[0] ?? null;
-}
+// F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
+// (lib/agents/upstream.ts; was a local copy, one of ten).
 
 function buildUserMessage(args: {
   episodeCode: string;

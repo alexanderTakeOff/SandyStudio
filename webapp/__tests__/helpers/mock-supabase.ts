@@ -45,7 +45,9 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
   function buildQuery(table: keyof InMemoryTables) {
     let rows = tables[table];
     let isCount = false;
+    let limitN: number | null = null;
     const filters: Array<(r: Record<string, unknown>) => boolean> = [];
+    const sorts: Array<{ col: string; asc: boolean }> = [];
 
     const builder = {
       select: (_cols: string, opts?: { count?: string; head?: boolean }) => {
@@ -114,6 +116,17 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
         rows = applyFilters();
         return builder;
       },
+      // F2 (2026-06-12): loadAgentInputs now orders upstream assets
+      // version-desc (newest-wins). Multi-column: first order() is primary,
+      // later calls are tie-breakers — matches PostgREST semantics.
+      order: (col: string, opts?: { ascending?: boolean }) => {
+        sorts.push({ col, asc: opts?.ascending ?? true });
+        return builder;
+      },
+      limit: (n: number) => {
+        limitN = n;
+        return builder;
+      },
       single: () => {
         const filtered = applyFilters();
         if (filtered.length === 0) {
@@ -146,6 +159,24 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
     function applyFilters() {
       let r = tables[table];
       for (const f of filters) r = r.filter(f);
+      if (sorts.length > 0) {
+        // Numeric when both sides parse as numbers; lexicographic otherwise
+        // (ISO timestamps order correctly as strings).
+        const cmp = (x: unknown, y: unknown): number => {
+          const nx = Number(x ?? 0);
+          const ny = Number(y ?? 0);
+          if (!Number.isNaN(nx) && !Number.isNaN(ny)) return nx - ny;
+          return String(x ?? '').localeCompare(String(y ?? ''));
+        };
+        r = [...r].sort((a, b) => {
+          for (const s of sorts) {
+            const d = cmp(a[s.col], b[s.col]);
+            if (d !== 0) return s.asc ? d : -d;
+          }
+          return 0;
+        });
+      }
+      if (limitN !== null) r = r.slice(0, limitN);
       return r;
     }
 
