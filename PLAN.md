@@ -11,21 +11,36 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-11 (WCHK STRENGTHENING: state-ledger + inventory-cascade + CREAD double-fire dedup; tsc·0 / vitest 787/787 / replay-pilot 30/30)
-Mode:   ===5=== EDIT · Governance Mode 1 MANUAL.  Master: c6fc100 + uncommitted WCHK sprint
+Date:   2026-06-12 (F1-F8 fix-sprint DONE — all E07 smoke defects closed at root)
+Mode:   ===5=== EDIT · Governance Mode 1 MANUAL. Master: 6 commits local-unpushed (9685845…e4dcf77)
 
-WCHK STRENGTHENING (2026-06-11, Director go q2-soft/q3a-brief/q4n-all-checks):
-  Root: E02 gag-bank audit found 12 continuity defects, old WCHK (membership-only, 2/8 checks)
-  catches 0. (1) CREAD double-fire KILLED at root: critics fire ONLY via factory critic-chain;
-  computeNextEvents STB→CREAD + REV-readability PASS→WCHK pushes removed (deterministic dup:
-  rich router ran before critic-chain event landed); per-shot eref/vanim REV rows phase-guarded
-  (would re-author whole storyboard). (2) Motor 1 state-ledger (CHK-W08): Haiku extraction →
-  pure deterministic judge (4 rules: revert-no-cause, repeat-first-discovery, causeless-change,
-  entity-from-nowhere). (3) CHK-W05 durations + W02/W07 advisory labels. (4) Motor 2
-  inventory-cascade (CHK-W04): union(Bible SBL-object_* ∪ brief prop_delta), data-gated,
-  MINOR-only. Comedy-soft verdict (q2): never FAIL, REVISE only at MAJOR-pool ≥3. All behind
-  CONTINUITY_LEDGER_ENABLED (off = byte-identical). Contract continuity_check@v2 + skill v0.2.
-  NEXT: commit; clean E06 re-run (mode 4, flags ON + ledger) → CREAD converge + ledger live smoke.
+F1-F8 FIX-SPRINT — DONE (2026-06-12, q10a, plan e07-fix-sprint-and-clean-episode.md):
+  F1 9685845 single-dispatch: SREV out of SCR-router (critic chain owns); plan branches
+  Mode-1-3-only; NEW REV-shot_plan PASS promotion (missing vanim mirror = Mode-4 TD-76);
+  per-plan idempotency reads BOTH metadata shapes (was blind to VID top-level
+  plan_asset_id — the SH03 +$1.21); VGEN runner dedup before paid call (regenerate=true
+  bypass for deliberate re-renders). F2 418b275 newest-wins: findApprovedAsset 10 copies
+  → 1 (lib/agents/upstream.ts; 4 were unsorted .find() — the v1-vs-v2 deadlock root);
+  loadAgentInputs orders version desc. F3 975f768 TD-76 ROOT (diagnosed on live E07 DB):
+  factory's post-insert status flip was UNCHECKED supabase update → silent fail → plan
+  DRAFT forever; status now rides IN the insert; critics lift DRAFT→REVIEW on clean
+  verdicts. F4+F5 e105f90: agent_failed gets own debounce bucket + bypasses anti-cascade;
+  watchdog sweeps Mode-4 idle (≥6min, active ≤2h); PA contract 8a-8c (announced work
+  survives turn, verify real results, silent agent >3min = incident); bold auto-react
+  cap 3→5. F6 6f848f6 extraction chunked ≤12 shots + cross-chunk entity vocabulary.
+  F7 e4dcf77 CHECKERS_FREE_TIER (default ON, all modes; rollback 1 env var) + honest
+  result.model in 12 descriptions. F8 reverts DONE: TEXT_LLM_DEBUG_TIER=false,
+  eref_provider=openai-edits-multi, E07 frozen mode 1, SH03 dup INVALIDATED, thread
+  0d5de76a unlinked. tsc·0 / 824 / 30. REMAINS: Anthropic console top-up (Director),
+  push 6 commits, restart prod server (env change), THEN Mode-4 regression (~$0) → D1-D4
+  → clean episode Mode 2.5.
+
+WCHK STRENGTHENING (2026-06-11 AM, commit 4ff5262, Director go q2-soft/q3a-brief/q4n):
+  CREAD double-fire killed at root (critics fire ONLY via factory critic-chain); Motor 1
+  state-ledger (CHK-W08, Haiku extract → deterministic judge, 4 rules); CHK-W05 durations +
+  W02/W07 advisory; Motor 2 inventory-cascade (CHK-W04, Bible ∪ brief prop_delta, MINOR-only).
+  Comedy-soft verdict: never FAIL, REVISE at MAJOR-pool ≥3. Behind CONTINUITY_LEDGER_ENABLED.
+  Contract continuity_check@v2 + skill v0.2. tsc·0 / 787/787 / 30/30.
 
 C1-GATE SPRINT (2026-06-10, plan humor-readability-linked-ullman.md, 6 commits 9988c5f…7a7f568):
   Root fixes from E02-vs-E03 humor analysis. (1) Genre single-source: genreForEpisode reuses
