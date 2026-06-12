@@ -165,6 +165,49 @@ async function findLatestApprovedAssetId(
   return (data as { id?: string } | null)?.id ?? null;
 }
 
+/**
+ * Read the executing Plan's asset id off a produced asset's metadata.
+ * Two historical shapes exist: EREF stamps `provenance.plan_asset_id`
+ * (IMG-episode_ref), VGEN stamps top-level `plan_asset_id` (VID-shot,
+ * exec-vgen.ts metaPatch). Every per-Plan idempotency check below MUST
+ * read both — the provenance-only readers were blind to VID-shots
+ * (E07 smoke 2026-06-11: SH03 generated twice, +$1.21).
+ */
+export function planIdFromAssetMeta(meta: unknown): string | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const m = meta as {
+    provenance?: { plan_asset_id?: unknown };
+    plan_asset_id?: unknown;
+  };
+  if (typeof m.provenance?.plan_asset_id === 'string') {
+    return m.provenance.plan_asset_id;
+  }
+  if (typeof m.plan_asset_id === 'string') return m.plan_asset_id;
+  return null;
+}
+
+/**
+ * Per-Plan idempotency: has this Plan already produced an output asset?
+ * One shared scan for all branches (was 3 inline copies, each reading only
+ * the provenance shape).
+ */
+async function planAlreadyExecuted(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+  outputFileTypePrefix: 'IMG-episode_ref' | 'VID-shot',
+  planAssetId: string,
+): Promise<boolean> {
+  const { data: rows } = await supabase
+    .from('assets')
+    .select('metadata')
+    .eq('episode_id', episodeId)
+    .like('file_type', `${outputFileTypePrefix}%`);
+  for (const row of (rows ?? []) as Array<{ metadata?: unknown }>) {
+    if (planIdFromAssetMeta(row.metadata) === planAssetId) return true;
+  }
+  return false;
+}
+
 // Asset approval → which Inngest event(s) to fire next.
 //
 // Single-asset milestones return one event. Multi-asset milestones (storyboard,
@@ -189,14 +232,18 @@ export async function computeNextEvents(
     });
   }
 
-  // ── Script APPROVED → EXEC-SREV (single) AND EXEC-COPY (parallel chain start)
+  // ── Script APPROVED → EXEC-COPY (parallel chain start)
+  // Dedup 2026-06-12 (E07 SREV double-fire, jobs 12:38:24/12:38:41): the
+  // Script Critic fires ONLY via the factory critic chain (exec-sw
+  // spec.nextEvent at Writer completion, all modes — factory.ts isCriticChain
+  // since 2026-06-02). The SCR→SREV push that lived here double-fired
+  // deterministically in Mode 4: the factory runs computeNextEvents on the
+  // auto-APPROVED script BEFORE its own critic-chain event lands a job, so
+  // hasJob never saw an SREV job → two SREVs → two storyboards with
+  // DIFFERENT shot numbering → mirror deadlock on SH03. Doctrine (4ff5262):
+  // critics fire from the critic chain; this router advances EXECUTOR
+  // milestones only.
   if (ft === 'SCR-script') {
-    if (!(await hasJob(supabase, ep, 'EXEC-SREV', { since }))) {
-      events.push({
-        name: 'sandystudio/exec-srev/review-script',
-        data: { episodeId: ep, scriptAssetId: asset.id },
-      });
-    }
     if (!(await hasJob(supabase, ep, 'EXEC-COPY', { since }))) {
       events.push({
         name: 'sandystudio/exec-copy/write-metadata',
@@ -438,22 +485,7 @@ export async function computeNextEvents(
       // Promote the Plan so the Artist's APPROVED gate passes.
       await supabase.from('assets').update({ status: 'APPROVED' }).eq('id', planAssetId);
       // Per-Plan idempotency: skip if an IMG already references this Plan.
-      let planAlreadyExecuted = false;
-      const { data: imgRows } = await supabase
-        .from('assets')
-        .select('metadata')
-        .eq('episode_id', ep)
-        .like('file_type', 'IMG-episode_ref%');
-      for (const row of (imgRows ?? []) as Array<{ metadata?: unknown }>) {
-        const meta = row.metadata as
-          | { provenance?: { plan_asset_id?: unknown } }
-          | null;
-        if (meta?.provenance?.plan_asset_id === planAssetId) {
-          planAlreadyExecuted = true;
-          break;
-        }
-      }
-      if (!planAlreadyExecuted) {
+      if (!(await planAlreadyExecuted(supabase, ep, 'IMG-episode_ref', planAssetId))) {
         events.push({
           name: 'sandystudio/exec-eref/execute-from-plan',
           data: { episodeId: ep, shotId, planAssetId },
@@ -482,6 +514,18 @@ export async function computeNextEvents(
   // Mode-4 Artist fire post-critic; this branch handles the Director-approved
   // (APPROVED) path in Modes 1-3.
   if ((ft === 'SPC-ref_plan' || ft.startsWith('SPC-ref_plan-')) && designerChainEnabled()) {
+    // Mode-4 dedup (2026-06-12, E07 Artist double-fire 25s apart): in
+    // AUTOTEST the factory auto-approves the Designer's fresh plan and runs
+    // computeNextEvents on it → this branch fired the Artist BEFORE the
+    // EPREV critic ever saw the plan (gate bypass), then the REV-ref_plan
+    // PASS branch above fired it AGAIN post-critic (the IMG-provenance
+    // idempotency is blind while the first image is still generating,
+    // ~6 min). The comment below always declared this branch the
+    // Director-approval (Modes 1-3) path — now it actually is. Mode-4
+    // canonical source: REV-ref_plan PASS branch, post-critic, only.
+    if (directorUserId === 'AUTOTEST') {
+      return events;
+    }
     const { data: planRow } = await supabase
       .from('assets')
       .select('status')
@@ -511,29 +555,70 @@ export async function computeNextEvents(
         }
       }
     }
-    // Per-Plan idempotency: runner stamps every IMG with
-    // metadata.provenance.plan_asset_id. If any IMG already carries this
-    // Plan id, suppress re-fire (handles Director double-click, HMR retrigger).
-    let planAlreadyExecuted = false;
-    const { data: metadataRows } = await supabase
-      .from('assets')
-      .select('metadata')
-      .eq('episode_id', ep)
-      .like('file_type', 'IMG-episode_ref%');
-    for (const row of (metadataRows ?? []) as Array<{ metadata?: unknown }>) {
-      const meta = row.metadata as
-        | { provenance?: { plan_asset_id?: unknown } }
-        | null;
-      if (meta?.provenance?.plan_asset_id === asset.id) {
-        planAlreadyExecuted = true;
-        break;
-      }
-    }
-    if (shotId && !planAlreadyExecuted) {
+    // Per-Plan idempotency: any IMG already carrying this Plan id suppresses
+    // the re-fire (handles Director double-click, HMR retrigger).
+    if (shotId && !(await planAlreadyExecuted(supabase, ep, 'IMG-episode_ref', asset.id))) {
       events.push({
         name: 'sandystudio/exec-eref/execute-from-plan',
         data: { episodeId: ep, shotId, planAssetId: asset.id },
       });
+    }
+  }
+
+  // ── Shot Plan Critic PASS (Mode 4 only) → flip Plan APPROVED + fire VGEN.
+  // Mirror of the REV-ref_plan branch above, added 2026-06-12 (E07 smoke):
+  // this branch DID NOT EXIST — the eref side got its post-critic promotion
+  // on 2026-06-09 but the vanim side never got the mirror. Consequences in
+  // the smoke: (a) re-authored SPC-shot_plan versions sat DRAFT forever at
+  // clean VPREV verdicts (TD-76 — Полина's unstickPlanForApproval + manual
+  // DRAFT→REVIEW→approve were the workaround), and (b) the SPC-shot_plan
+  // branch below fired VGEN off the factory auto-approve BEFORE the critic
+  // ran (paid render on an unvalidated plan). Mode-4 canonical source for
+  // plan-driven video: THIS branch, post-VPREV, only.
+  //
+  // PASS_WITH_UNCERTAINTY also advances: AUTOTEST auto-passes Director
+  // gates by definition, and the smoke's clean-but-uncertain verdicts are
+  // exactly the rows that stuck. CREAD's vanim phase still reviews after
+  // (advisory in Mode 4, same ordering as the eref side).
+  if (
+    (ft === 'REV-shot_plan' || ft.startsWith('REV-shot_plan-')) &&
+    directorUserId === 'AUTOTEST' &&
+    animatorChainEnabled()
+  ) {
+    const body = parseLastJsonBlock(asset.content);
+    const verdict = typeof body?.verdict === 'string' ? body.verdict : null;
+    const planAssetId =
+      typeof body?.plan_asset_id === 'string' ? body.plan_asset_id : null;
+    const shotId = typeof body?.shot_id === 'string' ? body.shot_id : null;
+    const cleanVerdict = verdict === 'PASS' || verdict === 'PASS_WITH_UNCERTAINTY';
+    if (cleanVerdict && planAssetId && shotId) {
+      await supabase.from('assets').update({ status: 'APPROVED' }).eq('id', planAssetId);
+      if (!(await planAlreadyExecuted(supabase, ep, 'VID-shot', planAssetId))) {
+        // duration_seconds rides from the Plan body (runner clamps anyway,
+        // but passing it keeps event payloads honest).
+        const { data: planRow } = await supabase
+          .from('assets')
+          .select('content')
+          .eq('id', planAssetId)
+          .maybeSingle();
+        const planBody = parseLastJsonBlock(
+          (planRow as { content?: string | null } | null)?.content,
+        );
+        const duration =
+          typeof planBody?.duration_seconds === 'number' &&
+          planBody.duration_seconds > 0
+            ? planBody.duration_seconds
+            : null;
+        events.push({
+          name: 'sandystudio/exec-vgen/single-shot',
+          data: {
+            episodeId: ep,
+            shotId,
+            planAssetId,
+            ...(duration !== null ? { duration_seconds: duration } : {}),
+          },
+        });
+      }
     }
   }
 
@@ -542,11 +627,18 @@ export async function computeNextEvents(
   //    from Plan body; this branch is what triggers that flow). Mirrors the
   //    SPC-ref_plan branch above. Gated by ANIMATOR_CHAIN_ENABLED so a
   //    pre-flag episode that received Plans manually can't accidentally
-  //    fire VGEN twice. Per-Plan idempotency via metadata.provenance.
-  //    plan_asset_id on the resulting VID-shot.
+  //    fire VGEN twice. Per-Plan idempotency via metadata plan_asset_id on
+  //    the resulting VID-shot (both provenance and top-level shapes).
+  //
+  //    Mode-4 dedup (2026-06-12): AUTOTEST skips this branch — the factory
+  //    feeds the freshly auto-approved plan here BEFORE the VPREV critic has
+  //    reviewed it (gate bypass + double fire vs the REV-shot_plan branch
+  //    above). Modes 1-3 only: Director's manual Plan approval is the
+  //    canonical trigger.
   if (
     (ft === 'SPC-shot_plan' || ft.startsWith('SPC-shot_plan-')) &&
-    animatorChainEnabled()
+    animatorChainEnabled() &&
+    directorUserId !== 'AUTOTEST'
   ) {
     let shotId: string | null = null;
     let durationSecondsFromPlan: number | null = null;
@@ -568,25 +660,9 @@ export async function computeNextEvents(
         }
       }
     }
-    // Per-Plan idempotency: VGEN runner stamps every VID-shot with
-    // metadata.provenance.plan_asset_id. If any VID-shot already carries
-    // this Plan id, suppress re-fire.
-    let planAlreadyExecuted = false;
-    const { data: vidRows } = await supabase
-      .from('assets')
-      .select('metadata')
-      .eq('episode_id', ep)
-      .like('file_type', 'VID-shot%');
-    for (const row of (vidRows ?? []) as Array<{ metadata?: unknown }>) {
-      const meta = row.metadata as
-        | { provenance?: { plan_asset_id?: unknown } }
-        | null;
-      if (meta?.provenance?.plan_asset_id === asset.id) {
-        planAlreadyExecuted = true;
-        break;
-      }
-    }
-    if (shotId && !planAlreadyExecuted) {
+    // Per-Plan idempotency: any VID-shot already carrying this Plan id
+    // (either metadata shape) suppresses the re-fire.
+    if (shotId && !(await planAlreadyExecuted(supabase, ep, 'VID-shot', asset.id))) {
       const data: {
         episodeId: string;
         shotId: string;
@@ -863,12 +939,8 @@ export async function computeNextEvents(
             .like('file_type', 'VID-shot%');
           const executedPlanIds = new Set<string>();
           for (const row of (vidRows ?? []) as Array<{ metadata?: unknown }>) {
-            const m = row.metadata as
-              | { provenance?: { plan_asset_id?: unknown } }
-              | null;
-            if (typeof m?.provenance?.plan_asset_id === 'string') {
-              executedPlanIds.add(m.provenance.plan_asset_id);
-            }
+            const pid = planIdFromAssetMeta(row.metadata);
+            if (pid) executedPlanIds.add(pid);
           }
 
           let firedPilotVideo = false;

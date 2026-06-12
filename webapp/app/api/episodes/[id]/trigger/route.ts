@@ -202,6 +202,12 @@ export const POST = withApiHandler(async (req, ctx) => {
         : null;
     if (payloadShotId && payloadPlanAssetId) {
       effectiveEventName = 'sandystudio/exec-vgen/single-shot';
+      // Manual trigger = deliberate regeneration (Polина's verbal-approval
+      // gated regenerateVideoFromPlan / Director's drawer). Bypass the
+      // runner-side per-Plan dedup (exec-vgen.ts plan-dedup-check,
+      // 2026-06-12) — that gate exists to stop ACCIDENTAL double-dispatch,
+      // not an explicit re-render of the same plan.
+      eventPayload.regenerate = true;
     }
   }
 

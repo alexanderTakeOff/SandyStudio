@@ -107,6 +107,13 @@ interface VgenEventData {
    * Absent → legacy buildShotPromptV2 path.
    */
   planAssetId?: string;
+  /**
+   * Deliberate re-render flag (2026-06-12). Set by the manual trigger route
+   * (PA regenerateVideoFromPlan / Director drawer) to bypass the per-Plan
+   * dedup gate below. Auto-dispatch paths (computeNextEvents, fan-out)
+   * never set it — an existing VID-shot for the same plan suppresses them.
+   */
+  regenerate?: boolean;
 }
 
 const TARGET_STATUS_BY_MODE = (mode: number | null | undefined): 'APPROVED' | 'REVIEW' =>
@@ -264,6 +271,68 @@ export const execVgenRun = inngest.createFunction(
         await markJobFailed(supabase, job.id, errMsg);
         throw new NonRetriableError(errMsg);
       });
+    }
+
+    // Runner-side per-Plan idempotency (2026-06-12, E07 smoke: SH03 rendered
+    // twice — approve-route auto-dispatch + manual fire — extra $1.21). The
+    // emit-time checks in computeNextEvents can't see each other's in-flight
+    // events, and manual surfaces (generate-single-shot route, PA tools,
+    // scripts) bypass them entirely. This is the LAST gate before money:
+    // if any VID-shot already carries this planAssetId (either metadata
+    // shape — top-level `plan_asset_id` is what this file's own save step
+    // writes), complete the job as a duplicate-suppression no-op.
+    if (data.planAssetId && data.regenerate !== true) {
+      const duplicateOf = await step.run('plan-dedup-check', async () => {
+        const supabase = createSupabaseServiceRoleClient();
+        const { data: vidRows } = await supabase
+          .from('assets')
+          .select('id,metadata')
+          .eq('episode_id', episodeId)
+          .like('file_type', 'VID-shot%');
+        for (const row of (vidRows ?? []) as Array<{ id: string; metadata?: unknown }>) {
+          const m = row.metadata as
+            | { provenance?: { plan_asset_id?: unknown }; plan_asset_id?: unknown }
+            | null;
+          const pid =
+            typeof m?.provenance?.plan_asset_id === 'string'
+              ? m.provenance.plan_asset_id
+              : typeof m?.plan_asset_id === 'string'
+                ? m.plan_asset_id
+                : null;
+          if (pid === data.planAssetId) return row.id;
+        }
+        return null;
+      });
+      if (duplicateOf) {
+        await step.run('complete-as-duplicate', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          const label = shortShotLabel(shotId);
+          await markJobCompleted(supabase, job.id, duplicateOf);
+          await logEvent(supabase, {
+            event_type: 'agent_completed',
+            severity: 'info',
+            title: `${agentDisplayName('EXEC-VGEN')} duplicate suppressed${label ? ` — ${label}` : ''}`,
+            description: `VID-shot for plan ${data.planAssetId} already exists (asset ${duplicateOf}) — generation skipped, $0 spent.`,
+            actor: 'EXEC-VGEN',
+            episode_id: episodeId,
+            asset_id: duplicateOf,
+            job_id: job.id,
+            metadata: {
+              agent: 'EXEC-VGEN',
+              kind: 'duplicate_suppressed',
+              shot_id: shotId,
+              plan_asset_id: data.planAssetId,
+            },
+          });
+        });
+        return {
+          ok: true,
+          kind: 'duplicate-suppressed',
+          jobId: job.id,
+          assetId: duplicateOf,
+          cost_usd: 0,
+        };
+      }
     }
 
     try {

@@ -1,0 +1,291 @@
+// Single-dispatch doctrine — F1 fix-sprint 2026-06-12 (E07 smoke fallout).
+// Each agent has exactly ONE dispatch source. These tests pin the closed
+// double-fire paths:
+//
+//   1. SCR-script APPROVED → NO exec-srev (critic chain at Writer completion
+//      owns SREV; the push here was the SREV×2 → STB×2 → SH03-deadlock root).
+//   2. SPC-ref_plan in AUTOTEST → NOTHING (REV-ref_plan PASS branch owns the
+//      Mode-4 Artist fire; this branch fired pre-critic + duplicated 25s later).
+//   3. NEW REV-shot_plan PASS (AUTOTEST) → promote plan + exec-vgen/single-shot
+//      exactly once (mirror of REV-ref_plan; absence was the TD-76 DRAFT-stick
+//      for re-authored Animator plans).
+//   4. SPC-shot_plan in AUTOTEST → NOTHING (same pre-critic bypass class).
+//   5. Per-Plan idempotency reads BOTH metadata shapes — top-level
+//      `plan_asset_id` (what exec-vgen writes) and `provenance.plan_asset_id`
+//      (what EREF writes). The provenance-only readers were blind to VID-shots
+//      (SH03 rendered twice, +$1.21).
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import {
+  computeNextEvents,
+  planIdFromAssetMeta,
+  type AssetForChain,
+} from '@/lib/agents/next-events';
+import { mockSupabase } from './helpers/mock-supabase-next-events';
+
+const EP = 'ep-1';
+
+const FLAGS = ['DESIGNER_CHAIN_ENABLED', 'ANIMATOR_CHAIN_ENABLED'] as const;
+const ORIGINAL: Record<string, string | undefined> = {};
+beforeEach(() => {
+  for (const f of FLAGS) {
+    ORIGINAL[f] = process.env[f];
+    delete process.env[f];
+  }
+});
+afterEach(() => {
+  for (const f of FLAGS) {
+    if (ORIGINAL[f] === undefined) delete process.env[f];
+    else process.env[f] = ORIGINAL[f];
+  }
+});
+
+function jsonContent(body: Record<string, unknown>): string {
+  return ['# Doc', '```json', JSON.stringify(body), '```'].join('\n');
+}
+
+describe('SCR-script approval — SREV is critic-chain-only', () => {
+  it('fires EXEC-COPY but never exec-srev', async () => {
+    const { client } = mockSupabase({ assets: [], jobs: [] });
+    const asset: AssetForChain = {
+      id: 'scr-1',
+      filename: 'scr',
+      file_type: 'SCR-script',
+      episode_id: EP,
+      updated_at: '2026-06-12T00:00:00Z',
+    };
+    const events = await computeNextEvents(client, asset, 'director-1');
+    const names = events.map((e) => e.name);
+    expect(names).toContain('sandystudio/exec-copy/write-metadata');
+    expect(names).not.toContain('sandystudio/exec-srev/review-script');
+  });
+
+  it('AUTOTEST (Mode 4) — same: no exec-srev from the router', async () => {
+    const { client } = mockSupabase({ assets: [], jobs: [] });
+    const asset: AssetForChain = {
+      id: 'scr-1',
+      filename: 'scr',
+      file_type: 'SCR-script',
+      episode_id: EP,
+      updated_at: '2026-06-12T00:00:00Z',
+    };
+    const events = await computeNextEvents(client, asset, 'AUTOTEST');
+    expect(events.map((e) => e.name)).not.toContain(
+      'sandystudio/exec-srev/review-script',
+    );
+  });
+});
+
+describe('SPC-ref_plan — Modes 1-3 only; AUTOTEST is owned by REV-ref_plan PASS', () => {
+  function refPlan(): AssetForChain {
+    return {
+      id: 'plan-img-1',
+      filename: 'plan',
+      file_type: 'SPC-ref_plan-SS-S15-E07-A1-SC01-SH01',
+      episode_id: EP,
+      updated_at: '2026-06-12T00:00:00Z',
+      content: jsonContent({ shot_id: 'SS-S15-E07-A1-SC01-SH01' }),
+    };
+  }
+
+  it('AUTOTEST: approved plan fires NOTHING (pre-critic bypass closed)', async () => {
+    process.env.DESIGNER_CHAIN_ENABLED = 'true';
+    const { client } = mockSupabase({
+      assets: [
+        {
+          id: 'plan-img-1',
+          episode_id: EP,
+          file_type: 'SPC-ref_plan-SS-S15-E07-A1-SC01-SH01',
+          status: 'APPROVED',
+        },
+      ],
+      jobs: [],
+    });
+    const events = await computeNextEvents(client, refPlan(), 'AUTOTEST');
+    expect(events.map((e) => e.name)).not.toContain(
+      'sandystudio/exec-eref/execute-from-plan',
+    );
+  });
+
+  it('Director mode: approved plan fires execute-from-plan once', async () => {
+    process.env.DESIGNER_CHAIN_ENABLED = 'true';
+    const { client } = mockSupabase({
+      assets: [
+        {
+          id: 'plan-img-1',
+          episode_id: EP,
+          file_type: 'SPC-ref_plan-SS-S15-E07-A1-SC01-SH01',
+          status: 'APPROVED',
+        },
+      ],
+      jobs: [],
+    });
+    const events = await computeNextEvents(client, refPlan(), 'director-1');
+    const fires = events.filter(
+      (e) => e.name === 'sandystudio/exec-eref/execute-from-plan',
+    );
+    expect(fires).toHaveLength(1);
+    expect(fires[0].data.planAssetId).toBe('plan-img-1');
+  });
+});
+
+describe('REV-shot_plan PASS (AUTOTEST) — promote plan + fire VGEN once', () => {
+  function vprevVerdict(verdict: string): AssetForChain {
+    return {
+      id: 'rev-vp-1',
+      filename: 'rev',
+      file_type: 'REV-shot_plan-SS-S15-E07-A1-SC01-SH03',
+      episode_id: EP,
+      updated_at: '2026-06-12T00:00:00Z',
+      content: jsonContent({
+        verdict,
+        plan_asset_id: 'plan-vid-1',
+        shot_id: 'SS-S15-E07-A1-SC01-SH03',
+      }),
+    };
+  }
+  const planRow = () => ({
+    id: 'plan-vid-1',
+    episode_id: EP,
+    file_type: 'SPC-shot_plan-SS-S15-E07-A1-SC01-SH03',
+    status: 'REVIEW',
+    content: jsonContent({
+      shot_id: 'SS-S15-E07-A1-SC01-SH03',
+      duration_seconds: 4,
+      prompt: 'orbit 90',
+    }),
+  });
+
+  it('PASS: plan flips APPROVED and single-shot fires with duration', async () => {
+    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
+    const { client, updates } = mockSupabase({
+      assets: [planRow()],
+      jobs: [],
+    });
+    const events = await computeNextEvents(client, vprevVerdict('PASS'), 'AUTOTEST');
+    const fires = events.filter((e) => e.name === 'sandystudio/exec-vgen/single-shot');
+    expect(fires).toHaveLength(1);
+    expect(fires[0].data.planAssetId).toBe('plan-vid-1');
+    expect(fires[0].data.duration_seconds).toBe(4);
+    const promo = updates.find(
+      (u) =>
+        u.table === 'assets' &&
+        u.patch.status === 'APPROVED' &&
+        u.filters.some((f) => f.col === 'id' && f.val === 'plan-vid-1'),
+    );
+    expect(promo).toBeDefined();
+  });
+
+  it('PASS_WITH_UNCERTAINTY also advances in AUTOTEST', async () => {
+    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
+    const { client } = mockSupabase({ assets: [planRow()], jobs: [] });
+    const events = await computeNextEvents(
+      client,
+      vprevVerdict('PASS_WITH_UNCERTAINTY'),
+      'AUTOTEST',
+    );
+    expect(events.map((e) => e.name)).toContain('sandystudio/exec-vgen/single-shot');
+  });
+
+  it('REVISE does not fire video', async () => {
+    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
+    const { client } = mockSupabase({ assets: [planRow()], jobs: [] });
+    const events = await computeNextEvents(client, vprevVerdict('REVISE'), 'AUTOTEST');
+    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
+  });
+
+  it('Director mode ignores the branch (Mode-4 only)', async () => {
+    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
+    const { client } = mockSupabase({ assets: [planRow()], jobs: [] });
+    const events = await computeNextEvents(client, vprevVerdict('PASS'), 'director-1');
+    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
+  });
+
+  it('existing VID-shot with top-level plan_asset_id suppresses the fire (dual-shape)', async () => {
+    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
+    const { client } = mockSupabase({
+      assets: [
+        planRow(),
+        {
+          id: 'vid-1',
+          episode_id: EP,
+          file_type: 'VID-shot-ss-s15-e07-a1-sc01-sh03',
+          status: 'REVIEW',
+          // exec-vgen.ts metaPatch shape: TOP-LEVEL plan_asset_id (no provenance).
+          metadata: { shot_id: 'SS-S15-E07-A1-SC01-SH03', plan_asset_id: 'plan-vid-1' },
+        },
+      ],
+      jobs: [],
+    });
+    const events = await computeNextEvents(client, vprevVerdict('PASS'), 'AUTOTEST');
+    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
+  });
+});
+
+describe('SPC-shot_plan — Modes 1-3 only', () => {
+  function shotPlan(): AssetForChain {
+    return {
+      id: 'plan-vid-1',
+      filename: 'plan',
+      file_type: 'SPC-shot_plan-SS-S15-E07-A1-SC01-SH03',
+      episode_id: EP,
+      updated_at: '2026-06-12T00:00:00Z',
+      content: jsonContent({
+        shot_id: 'SS-S15-E07-A1-SC01-SH03',
+        duration_seconds: 4,
+      }),
+    };
+  }
+
+  it('AUTOTEST: approved plan fires NOTHING (REV-shot_plan branch owns Mode 4)', async () => {
+    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
+    const { client } = mockSupabase({ assets: [], jobs: [] });
+    const events = await computeNextEvents(client, shotPlan(), 'AUTOTEST');
+    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
+  });
+
+  it('Director mode: approval fires single-shot once', async () => {
+    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
+    const { client } = mockSupabase({ assets: [], jobs: [] });
+    const events = await computeNextEvents(client, shotPlan(), 'director-1');
+    const fires = events.filter((e) => e.name === 'sandystudio/exec-vgen/single-shot');
+    expect(fires).toHaveLength(1);
+  });
+
+  it('Director mode: VID with top-level plan_asset_id suppresses re-fire', async () => {
+    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
+    const { client } = mockSupabase({
+      assets: [
+        {
+          id: 'vid-1',
+          episode_id: EP,
+          file_type: 'VID-shot-ss-s15-e07-a1-sc01-sh03',
+          status: 'APPROVED',
+          metadata: { plan_asset_id: 'plan-vid-1' },
+        },
+      ],
+      jobs: [],
+    });
+    const events = await computeNextEvents(client, shotPlan(), 'director-1');
+    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
+  });
+});
+
+describe('planIdFromAssetMeta — both historical shapes', () => {
+  it('reads provenance.plan_asset_id (EREF shape)', () => {
+    expect(planIdFromAssetMeta({ provenance: { plan_asset_id: 'p1' } })).toBe('p1');
+  });
+  it('reads top-level plan_asset_id (VGEN shape)', () => {
+    expect(planIdFromAssetMeta({ plan_asset_id: 'p2' })).toBe('p2');
+  });
+  it('provenance wins when both present', () => {
+    expect(
+      planIdFromAssetMeta({ provenance: { plan_asset_id: 'a' }, plan_asset_id: 'b' }),
+    ).toBe('a');
+  });
+  it('null on absent/malformed', () => {
+    expect(planIdFromAssetMeta(null)).toBeNull();
+    expect(planIdFromAssetMeta({})).toBeNull();
+    expect(planIdFromAssetMeta({ provenance: { plan_asset_id: 5 } })).toBeNull();
+  });
+});
