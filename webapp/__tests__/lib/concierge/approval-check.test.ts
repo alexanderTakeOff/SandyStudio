@@ -67,3 +67,80 @@ describe('checkVerbalApproval — numbered-answer format', () => {
     expect(checkVerbalApproval([directorTurn('да')]).approved).toBe(true);
   });
 });
+
+// q3 (2026-06-12) — authorized principal: a system turn posted via team-chat
+// WITH the EXEC-DIR-AI role token carries metadata.authorized_principal=true
+// and counts as an approval source for Category-B actions. Hard limits
+// (directorOnly) still require the human Director. The right rides on the
+// role token, not the author label.
+function systemTurn(
+  content: string,
+  metadata: Record<string, unknown>,
+  i = 0,
+): ConciergeTurnRow {
+  return {
+    id: `sys-${i}`,
+    thread_id: 'thread-1',
+    role: 'system',
+    event_type: 'message',
+    content,
+    metadata,
+    token_count: null,
+    created_at: new Date(2026, 5, 12, 12, 0, i).toISOString(),
+  };
+}
+
+describe('checkVerbalApproval — authorized principal (q3)', () => {
+  test('authorized system turn approves Category-B', () => {
+    const out = checkVerbalApproval([
+      systemTurn('**Тео:** одобряю, запускай генерацию SH05', {
+        kind: 'claude_message',
+        authorized_principal: true,
+      }),
+    ]);
+    expect(out.approved).toBe(true);
+  });
+
+  test('UNauthorized system turn never counts, whatever the author label', () => {
+    const out = checkVerbalApproval([
+      systemTurn('**Александр:** одобряю, запускай', { kind: 'claude_message' }),
+    ]);
+    expect(out.approved).toBe(false);
+  });
+
+  test('directorOnly (hard limits) ignores authorized system turns', () => {
+    const out = checkVerbalApproval(
+      [
+        systemTurn('**Тео:** одобряю публикацию', {
+          kind: 'claude_message',
+          authorized_principal: true,
+        }),
+      ],
+      4,
+      { directorOnly: true },
+    );
+    expect(out.approved).toBe(false);
+  });
+
+  test('authorized rejection cancels an earlier Director approval', () => {
+    const out = checkVerbalApproval([
+      directorTurn('одобряю', 0),
+      systemTurn('**Тео:** стоп, не запускай — нашёл дефект', {
+        kind: 'claude_message',
+        authorized_principal: true,
+      }, 1),
+    ]);
+    expect(out.approved).toBe(false);
+  });
+
+  test('Director approval still works with neutral authorized turns after it', () => {
+    const out = checkVerbalApproval([
+      directorTurn('одобряю генерацию', 0),
+      systemTurn('**Тео:** статус: конвейер катится', {
+        kind: 'claude_message',
+        authorized_principal: true,
+      }, 1),
+    ]);
+    expect(out.approved).toBe(true);
+  });
+});

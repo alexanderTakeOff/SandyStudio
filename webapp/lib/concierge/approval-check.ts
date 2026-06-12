@@ -98,7 +98,10 @@ export function gateMutation(
     };
   }
   // Strict mode, or a hard-limit tool in any mode → verbal-approval gate.
-  const check = checkVerbalApproval(opts.turns);
+  // q3 (2026-06-12): hard limits accept the HUMAN Director only — an
+  // authorized-principal system turn (Тео via EXEC_DIR_AI_TOKEN) may approve
+  // Category-B actions but never Publish / LOCK / Budget / Mode (CLAUDE.md §6).
+  const check = checkVerbalApproval(opts.turns, 4, { directorOnly: hardLimit });
   if (!check.approved && hardLimit) {
     return {
       ...check,
@@ -261,6 +264,18 @@ export interface ApprovalCheck {
 export function checkVerbalApproval(
   turns: ConciergeTurnRow[],
   windowSize = 4,
+  opts?: {
+    /**
+     * q3 (2026-06-12): when true, ONLY role='director' turns count (hard
+     * limits). When false (default), turns from an AUTHORIZED PRINCIPAL also
+     * count: role='system' with metadata.authorized_principal === true — set
+     * exclusively by /api/team-chat/post when the caller presents
+     * EXEC_DIR_AI_TOKEN (the EXEC-DIR-AI role token, CLAUDE.md §4 delegation).
+     * The right rides on the ROLE TOKEN, not on the author label — the
+     * «Александр» name-masking workaround is retired.
+     */
+    directorOnly?: boolean;
+  },
 ): ApprovalCheck {
   if (turns.length === 0) {
     return {
@@ -269,6 +284,13 @@ export function checkVerbalApproval(
         'No conversation history yet. Ask the Director to confirm before triggering this action.',
     };
   }
+  const directorOnly = opts?.directorOnly === true;
+  const isPrincipalTurn = (turn: ConciergeTurnRow): boolean =>
+    turn.role === 'director' ||
+    (!directorOnly &&
+      turn.role === 'system' &&
+      (turn.metadata as { authorized_principal?: unknown } | null)
+        ?.authorized_principal === true);
 
   // Walk backwards through Director turns ONLY — most recent first. A
   // rejection in this window invalidates any earlier approval (so "stop" /
@@ -288,7 +310,7 @@ export function checkVerbalApproval(
   let foundApproval: { i: number; text: string } | null = null;
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
-    if (turn.role !== 'director') continue;
+    if (!isPrincipalTurn(turn)) continue;
     if (directorTurnsSeen >= windowSize) break;
     directorTurnsSeen++;
     const text = turn.content.trim();

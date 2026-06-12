@@ -227,6 +227,32 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
+  // In-flight per-plan guard (2026-06-12, caught live by the E08 regression):
+  // Polina's bold-mode auto-react "executed" an APPROVED plan 13s after the
+  // auto-chain had already started the Artist on it — the asset-level dedups
+  // only see COMPLETED outputs, so the in-flight window is exactly where the
+  // duplicates (and duplicate spend) live. ONE chokepoint: every manual /PA
+  // trigger that targets a specific plan is refused while a QUEUED/RUNNING
+  // job of the same agent already holds that planAssetId. Completed jobs do
+  // NOT block — deliberate re-renders stay possible (regenerate=true).
+  const guardPlanAssetId =
+    typeof body.payload?.planAssetId === 'string' ? body.payload.planAssetId : null;
+  if (guardPlanAssetId) {
+    const { data: inFlight } = await supabase
+      .from('jobs')
+      .select('id,status,started_at')
+      .eq('episode_id', id)
+      .eq('agent_id', body.agentCode)
+      .in('status', ['QUEUED', 'RUNNING'])
+      .eq('input_snapshot->>planAssetId' as never, guardPlanAssetId)
+      .limit(1);
+    if (inFlight && inFlight.length > 0) {
+      throw new ConflictError(
+        `${body.agentCode} is already running for plan ${guardPlanAssetId} (job ${inFlight[0].id}, since ${inFlight[0].started_at}). Not dispatching a duplicate — wait for the run to finish or fail.`,
+      );
+    }
+  }
+
   // Distribution tail 2026-06-01 — "Key Art Designer" is plan-first now.
   // Triggering EXEC-THUMB (the renderer) before an APPROVED SPC-thumb_plan
   // exists would hard-fail its gate (the failure Director hit via Polina).

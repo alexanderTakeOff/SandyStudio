@@ -56,8 +56,19 @@ export const POST = withApiHandler(async (req) => {
   if (!expected) {
     throw new Error('TEAM_CHAT_TOKEN env var is not configured');
   }
+  // q3 (2026-06-12, Director: «авторизованное на действие лицо/роль»):
+  // presenting the EXEC-DIR-AI role token (CLAUDE.md §4 delegation) marks the
+  // turn as an AUTHORIZED PRINCIPAL — checkVerbalApproval then accepts its
+  // approvals for Category-B actions in strict modes (hard limits stay
+  // human-Director-only). The right rides on the ROLE TOKEN, not the author
+  // label; the «Александр» masking workaround is retired — author can
+  // honestly say «Тео».
+  const dirAiToken = process.env.EXEC_DIR_AI_TOKEN?.trim();
   const presented = getAuthToken(req);
-  if (!presented || presented !== expected) {
+  const isAuthorizedPrincipal = Boolean(
+    presented && dirAiToken && presented === dirAiToken,
+  );
+  if (!presented || (presented !== expected && !isAuthorizedPrincipal)) {
     throw new UnauthorizedError('Invalid or missing Bearer token for /api/team-chat/post');
   }
 
@@ -112,6 +123,7 @@ export const POST = withApiHandler(async (req) => {
       author: body.author,
       tag: body.tag ?? null,
       posted_at: new Date().toISOString(),
+      ...(isAuthorizedPrincipal ? { authorized_principal: true } : {}),
     },
   });
 
