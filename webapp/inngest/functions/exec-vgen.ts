@@ -484,7 +484,9 @@ export const execVgenRun = inngest.createFunction(
         const description = existingMeta.model_id
           ? `model=${existingMeta.model_id} · ${existingMeta.aspect_ratio ?? '?'} · ${existingMeta.quality_tier ?? '?'} · ${existingMeta.resolution ?? 'provider-default'} · ${existingMeta.duration_seconds ?? '?'}s${cost !== null ? ` · cost $${cost.toFixed(3)}` : ''} · op=${existingMeta.operation_name ?? '?'}`
           : null;
-        await supabase
+        // F3 class (2026-06-12): error-checked — a silent {error} here would
+        // leave the VID-shot DRAFT with no trace (same disease as TD-76).
+        const { error: patchErr } = await supabase
           .from('assets')
           .update({
             status: targetStatus,
@@ -492,6 +494,11 @@ export const execVgenRun = inngest.createFunction(
             ...(description ? { description } : {}),
           } as never)
           .eq('id', out.assetId);
+        if (patchErr) {
+          throw new Error(
+            `exec-vgen save: status/metadata patch failed for ${out.assetId}: ${patchErr.message}`,
+          );
+        }
 
         // Mirror factory.ts behaviour — write activity_event so the Pipeline
         // View feed surfaces the completed shot. Without this the asset is

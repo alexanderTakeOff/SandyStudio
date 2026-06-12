@@ -374,6 +374,19 @@ export function createAgentInngestFunction<E extends string>(
           (eventData.shotId as string | undefined) ??
           (eventData.section as string | undefined) ??
           (eventData.collectionPoint as string | undefined);
+
+        // Mode 4 (AUTOTEST) — APPROVED so downstream gates pass without
+        // Director approval (mirrors replay-pilot's autoApproveOutput flag).
+        // Modes 1-3 — REVIEW so the asset surfaces in the Director Inbox.
+        //
+        // F3 / TD-76 root fix (2026-06-12): the status now rides IN the
+        // insert (saveAgentOutput initialStatus) instead of a separate
+        // unchecked update after it. That second update could fail silently
+        // (supabase returns {error}, never throws) — the job completed,
+        // the plan stayed DRAFT forever, Director couldn't approve, and
+        // Полина's unstickPlanForApproval became routine (E07 smoke:
+        // SH01 v04 / SH02 v04-v05, updated_at === created_at).
+        const targetStatus = ep.governance_mode === 4 ? 'APPROVED' : 'REVIEW';
         const out = await saveAgentOutput({
           supabase,
           agentId: spec.agentId,
@@ -382,19 +395,24 @@ export function createAgentInngestFunction<E extends string>(
           result: exec.result,
           outputKind: exec.outputKind,
           variant,
+          initialStatus: targetStatus,
         });
+        // skip_save agents (CREAD / EREF / THUMB renderer) insert their rows
+        // themselves with a hard 'REVIEW' — initialStatus never reaches them.
+        // Keep the legacy flip for that path only, now ERROR-CHECKED: the
+        // silent {error} swallow here was the TD-76 root.
+        if (exec.result.metadata.skip_save === true) {
+          const { error: flipErr } = await supabase
+            .from('assets')
+            .update({ status: targetStatus })
+            .eq('id', out.assetId);
+          if (flipErr) {
+            throw new Error(
+              `save-and-complete: status flip → ${targetStatus} failed for ${out.assetId}: ${flipErr.message}`,
+            );
+          }
+        }
         await markJobCompleted(supabase, job.id, out.assetId);
-
-        // Mode 4 (AUTOTEST) — auto-promote DRAFT → APPROVED so downstream
-        // gates pass without Director approval. Mirrors replay-pilot's
-        // autoApproveOutput flag. Modes 1-3 flip DRAFT → REVIEW so the
-        // asset surfaces in the Director Inbox; approval there fires the
-        // next agent.
-        const targetStatus = ep.governance_mode === 4 ? 'APPROVED' : 'REVIEW';
-        await supabase
-          .from('assets')
-          .update({ status: targetStatus })
-          .eq('id', out.assetId);
 
         // (Removed 2026-05-02) Earlier code spoofed STB-act2 + STB-act3 mock
         // rows after EXEC-SB to satisfy a legacy WCHK gate that required

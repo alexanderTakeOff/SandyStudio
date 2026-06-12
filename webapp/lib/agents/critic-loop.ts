@@ -101,16 +101,20 @@ export async function applyCriticVerdict(
     cap = DEFAULT_CRITIC_REVISION_CAP,
   } = args;
 
-  // Read the plan's version as the attempt counter. v01 = attempt 1 = 0 revisions.
+  // Read the plan's version (attempt counter) + current status (DRAFT-stick
+  // recovery below). v01 = attempt 1 = 0 revisions.
   let version = 1;
+  let currentStatus: string | null = null;
   try {
     const { data: planRow } = await supabase
       .from('assets')
-      .select('version')
+      .select('version,status')
       .eq('id', planAssetId)
       .maybeSingle();
     const v = (planRow as { version?: unknown } | null)?.version;
     if (typeof v === 'number' && v > 0) version = Math.floor(v);
+    const s = (planRow as { status?: unknown } | null)?.status;
+    if (typeof s === 'string') currentStatus = s;
   } catch {
     // Fall back to version 1 (0 revisions) — fail open, never block on a read.
   }
@@ -121,7 +125,16 @@ export async function applyCriticVerdict(
   const effectiveVerdict: CriticVerdict =
     rawVerdict === 'REVISE' && revisionsSoFar >= cap ? 'HALT' : rawVerdict;
 
-  const planStatusAfter = mapVerdictToPlanStatus(effectiveVerdict);
+  let planStatusAfter = mapVerdictToPlanStatus(effectiveVerdict);
+  // F3 / TD-76 recovery (2026-06-12): "leave as-is" on PASS/HALT assumed the
+  // plan already sits in REVIEW. When the save-time status was lost (the old
+  // silent-flip bug, or any future residual path), a clean verdict landed on a
+  // DRAFT plan the Director cannot approve — Полина's unstickPlanForApproval
+  // was the manual workaround. A critic verdict on a DRAFT plan now lifts it
+  // to REVIEW. Never touches REVIEW/APPROVED (no demotion).
+  if (planStatusAfter === null && currentStatus === 'DRAFT') {
+    planStatusAfter = 'REVIEW';
+  }
   if (planStatusAfter) {
     try {
       await supabase

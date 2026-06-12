@@ -92,6 +92,59 @@ describe('applyCriticVerdict — cap enforcement', () => {
     expect(tables.activity_events).toHaveLength(0);
   });
 
+  it('PASS on a DRAFT plan lifts it to REVIEW (TD-76 recovery, F3 2026-06-12)', async () => {
+    const { client, tables } = makeMockSupabase({
+      assets: [{ id: PLAN_ID, version: 4, status: 'DRAFT', file_type: 'SPC-shot_plan' }],
+    });
+    const res = await applyCriticVerdict({
+      supabase: client,
+      rawVerdict: 'PASS',
+      planAssetId: PLAN_ID,
+      episodeId: EPISODE_ID,
+      shotId: SHOT_ID,
+      actor: 'EXEC-VPREV',
+      reviewKind: 'shot_plan',
+    });
+    expect(res.effectiveVerdict).toBe('PASS');
+    expect(res.planStatusAfter).toBe('REVIEW');
+    expect(tables.assets[0]!.status).toBe('REVIEW');
+  });
+
+  it('HALT on a DRAFT plan also lifts it to REVIEW so the Director can act', async () => {
+    const { client, tables } = makeMockSupabase({
+      assets: [{ id: PLAN_ID, version: 5, status: 'DRAFT', file_type: 'SPC-shot_plan' }],
+    });
+    const res = await applyCriticVerdict({
+      supabase: client,
+      rawVerdict: 'HALT',
+      planAssetId: PLAN_ID,
+      episodeId: EPISODE_ID,
+      shotId: SHOT_ID,
+      actor: 'EXEC-VPREV',
+      reviewKind: 'shot_plan',
+    });
+    expect(res.effectiveVerdict).toBe('HALT');
+    expect(tables.assets[0]!.status).toBe('REVIEW');
+    expect(tables.activity_events).toHaveLength(1);
+  });
+
+  it('PASS never demotes an APPROVED plan', async () => {
+    const { client, tables } = makeMockSupabase({
+      assets: [{ id: PLAN_ID, version: 2, status: 'APPROVED', file_type: 'SPC-shot_plan' }],
+    });
+    const res = await applyCriticVerdict({
+      supabase: client,
+      rawVerdict: 'PASS',
+      planAssetId: PLAN_ID,
+      episodeId: EPISODE_ID,
+      shotId: SHOT_ID,
+      actor: 'EXEC-VPREV',
+      reviewKind: 'shot_plan',
+    });
+    expect(res.planStatusAfter).toBeNull();
+    expect(tables.assets[0]!.status).toBe('APPROVED');
+  });
+
   it('FAIL flips the Plan to REJECTED', async () => {
     const { client, tables } = seedPlan(1);
     const res = await applyCriticVerdict({

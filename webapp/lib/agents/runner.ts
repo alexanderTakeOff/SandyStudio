@@ -2959,6 +2959,12 @@ export interface SaveOutputArgs {
   outputKind: RunResult['outputKind'];
   /** Optional discriminator for assets that come in multiple per agent (shots, music sections). */
   variant?: string;
+  /**
+   * Initial asset status for the insert (default 'DRAFT'). F3 / TD-76:
+   * the factory passes its mode-derived target (REVIEW / APPROVED) so the
+   * status lands atomically with the row — no separate flip to fail silently.
+   */
+  initialStatus?: 'DRAFT' | 'REVIEW' | 'APPROVED';
 }
 
 /**
@@ -3142,7 +3148,16 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       staging_path: stagingPath,
       drive_file_id: driveFileId,
       drive_web_view_url: driveWebViewUrl,
-      status: 'DRAFT',
+      // F3 / TD-76 root (2026-06-12): the caller's target status lands IN the
+      // insert. Previously the factory inserted DRAFT here and flipped to
+      // REVIEW/APPROVED with a SEPARATE unchecked update — when that update
+      // failed silently (supabase returns {error}, never throws) the job
+      // still completed and the plan sat DRAFT forever (E07: SH01 v04,
+      // SH02 v04/v05 — updated_at === created_at to the microsecond, while
+      // Полина needed unstickPlanForApproval + manual approves). One insert,
+      // zero flip window. Filename keeps the -DRAFT suffix (cosmetic; the
+      // old flip never renamed either).
+      status: args.initialStatus ?? 'DRAFT',
       version: nextVersion,
       content,
       description,
