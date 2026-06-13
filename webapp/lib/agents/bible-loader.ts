@@ -42,6 +42,17 @@ export interface SeriesBibleCanon {
   characters: BibleEntry[];
   locations: BibleEntry[];
   styles: BibleEntry[];
+  /**
+   * SBL-object_* canon (props that compose ONTO clean locations — e.g. an
+   * elevator button cluster on a clean cab wall). 2026-06-13: previously the
+   * generation-side loader dropped objects entirely (only WCHK saw them), so
+   * the Storyboarder + EREF Designer never knew interactive props existed →
+   * the Director's "clean wall + object" canon-split rendered as bare walls.
+   * Now surfaced to every text agent that reads the Bible. Optional so the
+   * many existing empty-canon fallback literals across runners/tests stay
+   * valid without churn — the loader always populates it.
+   */
+  objects?: BibleEntry[];
   /** Total entries — quick "is the Bible empty?" predicate for runners. */
   total_entries: number;
 }
@@ -89,6 +100,7 @@ export async function loadSeriesBibleCanon(
       characters: [],
       locations: [],
       styles: [],
+      objects: [],
       total_entries: 0,
     };
   }
@@ -114,6 +126,9 @@ export async function loadSeriesBibleCanon(
   const styles = rows
     .filter((r) => r.file_type.startsWith('SBL-style_'))
     .map(toEntry);
+  const objects = rows
+    .filter((r) => r.file_type.startsWith('SBL-object_'))
+    .map(toEntry);
 
   return {
     series_id: seriesId,
@@ -121,6 +136,7 @@ export async function loadSeriesBibleCanon(
     characters,
     locations,
     styles,
+    objects,
     total_entries: rows.length,
   };
 }
@@ -140,9 +156,12 @@ export function formatBibleForPrompt(canon: SeriesBibleCanon): string {
   lines.push('');
   lines.push(
     'These descriptions are the single source of truth for the series. ' +
-      'Use the **slug names** below verbatim when referencing characters or ' +
-      'locations in your output. Do not invent new characters or locations. ' +
-      'Do not contradict the visual / behavioural specs below.',
+      'Use the **slug names** below verbatim when referencing characters, ' +
+      'locations, or objects in your output. Do not invent new characters, ' +
+      'locations, or objects. Do not contradict the visual / behavioural specs below. ' +
+      'OBJECTS are interactive props that COMPOSE onto a location (e.g. a button ' +
+      'cluster placed on a clean cab wall) — when a shot uses an object, name its ' +
+      'slug so the reference stage composites the canon prop, not an invented one.',
   );
   lines.push('');
 
@@ -182,6 +201,24 @@ export function formatBibleForPrompt(canon: SeriesBibleCanon): string {
       }
       if (l.content && l.content !== l.description) {
         lines.push(l.content);
+        lines.push('');
+      }
+    }
+  }
+
+  const objects = canon.objects ?? [];
+  if (objects.length > 0) {
+    lines.push('### Objects / Props (compose onto locations — reference by slug)');
+    lines.push('');
+    for (const o of objects) {
+      lines.push(`#### ${o.slug}`);
+      lines.push('');
+      if (o.description) {
+        lines.push(o.description);
+        lines.push('');
+      }
+      if (o.content && o.content !== o.description) {
+        lines.push(o.content);
         lines.push('');
       }
     }
