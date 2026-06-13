@@ -428,3 +428,38 @@ IMG (первый image-spend) → ты смотришь 2 картинки → 
 finding 08:14 + [[backlog_td_polina_workplan_tracker]]) + строгий режим (read-only
 auto-react). Прямое обращение = единственный надёжный триггер её активности. Это
 ровно то, что чинит work-plan-tracker + nudge-доктрина. → пост-прогонное обучение.
+
+---
+
+## Cycle 8 — пилоты утверждены, фан-аут 20 шотов, 3 находки (2026-06-13 ~12:40 UTC)
+
+**Пилоты SH01/SH02 утверждены Директором** (через Полину, verbal «да»/«поехали»):
+ref-планы v2 APPROVED, EPREV+CREAD PASS, IMG-anchor'ы start/end сгенерены ($0.08/шт).
+Director одобрил фан-аут остальных → 20 шотов SH03–SH22 поехали.
+
+**Находка 1 — пол/плинтус на пилотах (Director: «оставить как есть, в лифте кругом
+стены»).** Корень: Reference Designer-LLM в одном промпте пишет И «DO NOT add floor
+plane» И «Sandy must be grounded to floor plane / anchor to floor plane / no floating
+characters» → gpt-image-2 слушает «grounded» → рисует пол + плинтус (стык). НЕ канон
+(стены залочены чистыми), НЕ шаблон (слова нет в скилле/коде) — LLM сам. EPREV не
+ловит (V01-V09, не минимализм). Director решил пол оставить → фикс НЕ делаем; урок
+для будущих серий (минимализм → Style Bible → Designer).
+
+**Находка 2 — «Полина не реактивна, может моде не тот?» — НЕТ, режим ни при чём.**
+`exec-pa-react` режимом НЕ гейтится (Mode 1/2 не выключает). Триггер — `pa/notify-needed`
+от actionable событий (agent_started/completed, approval_*), потребляет Inngest-воркер.
+«Тишина» 12:12–12:31 = пайплайн стоял на Director-гейте (нет событий → нет реакции,
+корректно). После аппрува события пошли — Полина ожила. Реальный риск немоты — падение
+Inngest-воркера, не режим.
+
+**Находка 3 — Reference Designer FAILED у Полины (Director-запрос «почему упал»).**
+12:37:03 FAILED `EXEC-EREF-DESIGNER requires shotId in event payload`. Полина дёрнула
+GENERIC manual-trigger (без shotId), Designer — per-shot. Безвредно. Через 2 мин
+(12:39:15+) пошёл ПРАВИЛЬНЫЙ per-shot фан-аут (`fanoutDesigner`, событие/шот с shotId)
+— 20 шотов поехали, EPREV+CREAD ревьюят параллельно. TD: убрать per-shot агентов из
+generic-trigger (анти-аддитивно) → [[backlog_td_fanout_trigger_shape]]. Побочно:
+`designer_fanout_pending` не прунится (20 при готовых SH03/SH04) — stale, низкий приор.
+
+**Watch next:** 20 шотов через Designer→EPREV→CREAD; сколько в REVISE (surgical
+re-author при REVISE ручной в Mode 2 — [[backlog_td_surgical_revision_after_critique]]);
+затем аппрув планов → IMG (image-spend, гейт Директора) → Animator.
