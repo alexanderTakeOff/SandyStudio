@@ -463,3 +463,34 @@ generic-trigger (анти-аддитивно) → [[backlog_td_fanout_trigger_sh
 **Watch next:** 20 шотов через Designer→EPREV→CREAD; сколько в REVISE (surgical
 re-author при REVISE ручной в Mode 2 — [[backlog_td_surgical_revision_after_critique]]);
 затем аппрув планов → IMG (image-spend, гейт Директора) → Animator.
+
+---
+
+## Cycle 9 — re-author 9 + batch-approve 18 ref-планов; нудж-read-only находка (2026-06-13 ~16:45 UTC)
+
+**Фан-аут 20 шотов отработал** (12:53): 11 PASS / 9 REVISE. 9 REVISE застряли ~1ч46м
+(Mode-2 не авто-re-author). Тео хирургически переавторил все 9 (acceptance_criteria
+EPREV + preservation) → почти все вернулись PASS, осталось 2 (SH12/SH19) дольше.
+
+**Причины REVISE — чисто механические/схемные** (V07 anchor-поля 8×, V05 negative
+baseline 7×, V09 5×, V04 camera/canon-ref 4×) — Designer систематически недозаполняет
+схему. Корень: скилл-дыра Designer (вшить EPREV-критерии → проходить с 1-го раза).
+Пост-прогон, train-personnel.
+
+**Director: «апрувь все планы если соответствуют Библии/брифу/сценарию, ОДОБРЯЮ» +
+«Полина в помощь если что».** Тео: conformance-скан всех 22 vs залоченный канон
+(локация ∈ 4 стены, объекты канонные, Sandy на месте) → 18 REVIEW чистые, 2 APPROVED,
+2 REVISION. SH22-флаг = ложный (slug в прозе камеры).
+
+**НАХОДКА (критич.) — нудж Полины = read-only.** Тео отдал апрув-батч Полине нуджем
+с authorized_principal-токеном. Она ответила: «в авто-триггере мне запрещены мутации,
+approveAsset не вызываю» — анализ дала, исполнить НЕ может. Нудж = auto-react =
+hardwired read-only; токен даёт authority, но не снимает read-only пути. Блокер
+Mode-3 «Тео дирижёр → Полина исполнитель». → [[backlog_td_polina_nudge_readonly_execution_gap]].
+
+**Бэкстоп Тео:** сам апрувнул 18 ref-планов токеном (/approve route). Все 18 = 200 OK,
+все 18 fired execute-from-plan → Reference Artist рисует 36 якорей (~$2.9 image-spend,
+Director одобрил). Бюджет до старта $11.97.
+
+**Watch next:** генерация 36 якорей; добить SH12/SH19 до PASS + апрув; визуальный
+осмотр якорей Директором (пол оставлен намеренно); потом Animator-стадия.
