@@ -326,3 +326,26 @@ ACTIONS (Тео от имени Директора):
 
 NEXT: проверить, что EXEC-SB отработал; дальше канон-чейн (STB APPROVED → CREAD →
 WCHK → EREF). EREF теперь увидит объекты (loader-фикс) на чистых стенах.
+
+---
+
+## MILESTONE — Storyboard v2 PASS (surgical revision held) → waits at Director gate (2026-06-13 ~11:05 UTC)
+
+q13a re-author с preservation-контрактом (22 критерия CREAD + «не перекраивать»):
+- **Structure preserved** (Director-забота закрыта): v2 = те же 22 шота, те же
+  канон-локации (corridor_door_wall/cab_plain_wall/cab_door_wall_clean), те же
+  объекты (button_cluster/floor_indicator), размер 38.7k→37.2k. false-success
+  биты 1→~45 (правка применена, остальное не тронуто).
+- **CREAD v2 = PASS** (0 failed). Читаемость доволена.
+- EXEC-WCHK FAILED — ДОБРОКАЧЕСТВЕННО: «APPROVED STB-storyboard not found».
+  Критик-цепь (CREAD PASS → WCHK) выстрелила до аппрува раскадровки; в mode 2 STB
+  v2 = REVIEW, нужен Director-аппрув → тогда WCHK пойдёт чисто. Тот же класс, что
+  SB-gate-до-approve-script. Кандидат в системную правку (критик-цепь не должна
+  стрелять precondition-gated executor до аппрува, ИЛИ WCHK читает REVIEW как критики).
+
+**Следующий гейт — ТВОЙ креативный:** ревью + аппрув Storyboard v2 (комедия) когда
+будешь у экрана. Потом continuity (WCHK) → EREF (там начинается image-spend, ещё
+гейт). Не аппрувлю раскадровку сам — это твой вкус, и ты сейчас не можешь её глянуть.
+
+**Всё, что просил разблокировать — сделано:** canon stitch, indicator LOCKED,
+script approved, loader-фикс (объекты дошли), surgical-revision доктрина записана.
