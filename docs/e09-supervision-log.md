@@ -349,3 +349,28 @@ q13a re-author с preservation-контрактом (22 критерия CREAD +
 
 **Всё, что просил разблокировать — сделано:** canon stitch, indicator LOCKED,
 script approved, loader-фикс (объекты дошли), surgical-revision доктрина записана.
+
+---
+
+## FINDING + ACTION — WCHK ordering bug (Director-flagged 2026-06-13 ~11:52)
+
+Director утвердил Storyboard v2 (APPROVED 11:50), но **WCHK после аппрува не
+запустился** — единственный прогон был преждевременный (11:04, FAILED на
+precondition), вердикта нет, E09 застрял.
+
+КОРЕНЬ: при READABILITY_GATE_ENABLED on WCHK дёргается от **CREAD PASS**, а CREAD
+читает раскадровку в REVIEW (ДО аппрува) → его выстрел в WCHK прилетел до APPROVED
+→ WCHK упал на «APPROVED STB not found». Аппрув раскадровки WCHK **повторно не
+дёргает** (STB-ветка computeNextEvents при readability-gate on не пушит WCHK).
+Итог — WCHK никем не запущен, эпизод стоит.
+
+Director-инстинкт верный: CREAD проверяет ДО аппрува, а WCHK требует APPROVED и
+стоит после — рассинхрон. Оба критика должны давать вердикт ДО аппрува Директора.
+
+СИСТЕМНЫЙ ФИКС (пост-прогон): выровнять WCHK с CREAD — WCHK читает REVIEW-доску
+(снять APPROVED-precondition, как у CREAD), даёт continuity-вердикт ДО аппрува;
+Директор жмёт «утвердить» уже видя И читаемость, И континьюити. (Либо: аппрув
+раскадровки должен (ре)дёргать WCHK.) → memory backlog_td_wchk_preapproval_ordering.
+
+ACTION (Тео): сейчас доска APPROVED, предусловие выполнено — WCHK триггернут руками
+(event 01KV0DACSG…) для расстопорки. Free-tier, без трат.
