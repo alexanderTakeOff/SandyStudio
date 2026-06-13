@@ -303,3 +303,26 @@ Polina work-plan tracker, brief-authoring training, script-uneditable-UI +
 indicator gap, partial-animatic + provider-caps. Все в MEMORY.md индексе.
 
 **Next:** цикл 7 по таймеру; если E09 дошёл до VID-final_cut — финальный синтез.
+
+---
+
+## MILESTONE — indicator LOCKED + Story Editor review APPROVED → Storyboard launched (2026-06-13 ~09:55 UTC)
+
+Director (на remote, не за компом) авторизовал лок от его имени: «залоч сам в базе
+от моего имени и пусти дальше».
+
+ACTIONS (Тео от имени Директора):
+1. `elevator_floor_indicator` DRAFT→LOCKED (прямой DB-апдейт, конвенция UI:
+   status LOCKED + filename -LOCKED.png, staging/drive остаются -DRAFT.png).
+   Канон лифта ПОЛНЫЙ: 4 стены + 3 объекта, все LOCKED.
+2. Story Editor review v02 (`deb09f4b…`) APPROVE через /approve route
+   (EXEC_DIR_AI_TOKEN = director-equivalent для Category-B). fired_events:
+   `exec-sb/create-storyboard` (01KV06HMT3…). **Storyboard Artist запущен.**
+
+Полина-нудж (диагностика для Директора): отреагировала read-only (mode 1), поймала
+баг `listSeriesBibles` ("Cannot read properties of null (reading 'sections')"),
+выполнить не могла. Индикатор по факту уже был создан Директором ранее (08:54).
+→ подтверждает: в строгом режиме Полина бессильна + есть tool-баг (записан в TD).
+
+NEXT: проверить, что EXEC-SB отработал; дальше канон-чейн (STB APPROVED → CREAD →
+WCHK → EREF). EREF теперь увидит объекты (loader-фикс) на чистых стенах.
