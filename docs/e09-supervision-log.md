@@ -374,3 +374,24 @@ Director-инстинкт верный: CREAD проверяет ДО аппру
 
 ACTION (Тео): сейчас доска APPROVED, предусловие выполнено — WCHK триггернут руками
 (event 01KV0DACSG…) для расстопорки. Free-tier, без трат.
+
+---
+
+## BUG — WCHK verdict stamp mismatch: content=PASS vs metadata=REVISE (2026-06-13 ~12:00)
+
+Director видел PASS; Тео ошибочно доложил REVISE (доверился metadata). Сверка
+REV-world_check-v01:
+- `content` (UI-отчёт): «## Verdict PASS», все шоты location/characters PASS,
+  issues [] — континьюити реально ПРОШЁЛ. Аппрув Директора корректен.
+- `metadata.verdict` + `description`: «REVISE» («ledger OK (pool 63)»).
+РАСХОЖДЕНИЕ витрина↔хранилище: детерминированный ledger (pool 63) застампил
+metadata/description в REVISE, а LLM-отчёт = PASS; не сведены.
+
+Последствий для E09 нет (аппрув продвинул цепь, EREF идёт). Но баг латентный:
+в Mode 4 metadata.verdict=REVISE мог бы авто-бацнуть раскадровку, хотя отчёт PASS.
+ФИКС (пост-прогон): свести в continuity-check.ts стамп metadata.verdict с
+markdown-вердиктом (единый источник); проверить логику ledger major_pool→verdict
+(pool 63 при «ledger OK» — подозрительно). → memory backlog_td_wchk_verdict_stamp_mismatch.
+
+Урок Тео: при докладе вердикта читать ОТЧЁТ (content), не только metadata —
+metadata может расходиться (verify real results на самом артефакте).
