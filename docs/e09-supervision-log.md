@@ -107,3 +107,37 @@ Director: «Полина должна вести план, отмечать/уд
 контент → нужен ===5===; по sequencing Директора — в пост-прогонное обучение
 персонала. Опционально СЕЙЧАС: nudge Полине обновить план (mark done + prune +
 reconcile + доложить несработавшее) — живой тест способности.
+
+---
+
+## Cycle 3 — 2026-06-13 ~08:20 UTC
+
+**Канон УСТАКАНИВАЕТСЯ — локации локаются.** Director залочил 4 чистые
+ортографические лифт-стены (LOCKED): `elevator_corridor_door_wall`,
+`elevator_cab_plain_wall`, `elevator_cab_door_wall_clean`,
+`elevator_cab_side_wall_clean`. Исполнение canon-split (чистые стены, кнопки —
+отдельные Object-ассеты). EXEC-BIBLE-AUTHOR генерит по дизайн-constraints
+Директора (flat, dead-on orthographic, no props baked, no gradients).
+
+**Полина — образцовая сдержанность:** «WAIT for Director», «не approving from
+autonomous trigger», читает каждый ассет, советует LOCK-или-regen. 0 авто-мутаций
+канона.
+
+**E09 эпизод:** без движения (script v2 / REV v2 REVIEW, $0.34) — корректно ждёт
+канон.
+
+**Выводы:**
+1. ✅ Canon-hardening почти завершён по локациям (4 LOCKED). Подтверждает: фаза
+   была дизайн/канон, не episode-pipeline.
+2. 🚩 Slug'и снова сменились (`*_clean`/`*_plain_wall`) и LOCKED, но ≠ скриптовым
+   `elevator_corridor`/`elevator_cab`. Сшивка скрипт↔канон = ГЕЙТ перед Storyboard,
+   всё ещё открыт.
+3. 🧩 Director вручную исполняет роль Art Director / Production Designer
+   (решения: нужна локация, view-split, prop-vs-background, look-constraints) +
+   breakdown. Это отсутствующая ступень пайплайна (между Story Editor PASS и
+   Storyboard). РЕШЕНО (q8a/q9a): воплотить как рантайм ART-AD, спроектировать в
+   пост-прогонном синтезе. См. memory backlog_td_canon_existence_preflight
+   (роль-уровень) + backlog_td_artdir_breakdown_role.
+
+**Watch next:** сшивка скрипт-slug↔LOCKED-канон; аппрув Story Editor review →
+старт Storyboard; не стрельнёт ли EREF без сшивки.
