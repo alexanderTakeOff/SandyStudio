@@ -251,3 +251,27 @@ Director: «поработай отсутствующей ART-AD/breakdown-ст�
 
 **Готово к approve** (Director через Полину или сам) → Story Editor review →
 Storyboard. Эта ручная сшивка = ровно та работа ART-AD/breakdown ступени (TD).
+
+---
+
+## Cycle 6 + ACTIONS — 2026-06-13 ~09:00 UTC
+
+**Asset-loss проверка (Director-запрос) — НАЙДЕНА и ЗАКРЫТА дыра:**
+`loadSeriesBibleCanon` (канон для Writer/Storyboarder/EREF-Designer) грузил `SBL-%`,
+но раскладывал только в characters/locations/styles — `SBL-object_*` ВЫБРАСЫВАЛСЯ.
+→ Сториборщик и EREF-Designer НИКОГДА не видели объекты (call_button, button_cluster,
+будущий floor_indicator). Только WCHK (отдельный loader) видел их для геометрии.
+Итог: canon-split «чистая стена + объект» рендерился бы голыми стенами.
+**Fix (commit dfa4e36, q11a):** loader грузит objects + промпт-секция «Objects/Props»
+с инструкцией compose-by-slug. tsc·0/829/30. Сервер пересобран+перезапущен (health 200).
+
+**E09:** без движения — script v2 / REV v2 REVIEW, $0.34. Полина idle с 08:37.
+Канон: 4 стены + 2 объекта LOCKED. Скрипт сшит (все 10 сцен ∈ canon, commit в БД).
+
+**Готовность E09 к Storyboard — осталось 2 шага (оба за Директором):**
+1. indicator-объект `elevator_floor_indicator` — создать+залочить (q10b, Director толкнёт Полину).
+2. approve script (Story Editor review v2) → Storyboard.
+
+**Вывод (повтор):** все три находки — object-loss, indicator-дыра, незамеченность —
+это отсутствие ART-AD/breakdown ступени + пассивность Полины. Loader-фикс убрал
+системную потерю объектов; остальное (роль, work-plan, canon-preflight) — пост-прогон.
