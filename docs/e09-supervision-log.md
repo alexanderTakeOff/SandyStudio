@@ -275,3 +275,31 @@ Storyboard. Эта ручная сшивка = ровно та работа ART-
 **Вывод (повтор):** все три находки — object-loss, indicator-дыра, незамеченность —
 это отсутствие ART-AD/breakdown ступени + пассивность Полины. Loader-фикс убрал
 системную потерю объектов; остальное (роль, work-plan, canon-preflight) — пост-прогон.
+
+---
+
+## RESUME ANCHOR @ /compact — 2026-06-13 ~09:10 UTC
+
+**Goal активна:** следить за прогоном E09 (каждые ~10 мин читать тред Полины +
+сверять пайплайн, выводы в этот файл; после прогона — анализ/синтез/обучение).
+Helper: `cd C:\SandyStudio\webapp; npx tsx tmp-pa-watch.ts`. E09 id `4b4a00f3…`,
+тред Полины `0d5de76a`.
+
+**Состояние сейчас:**
+- E09 на script-v2 REVIEW, mode 2, $0.34/$100. Канон: 4 стены + 2 объекта LOCKED.
+- Скрипт СШИТ с каноном (Тео, все 10 сцен ∈ canon, в БД).
+- Loader-фикс (объекты доходят до агентов) — commit dfa4e36, сервер перезапущен.
+- Формат Полины (абзацы + emoji на action-строках) — вшит.
+
+**🔴 E09 ждёт 2 шага Директора → Storyboard:**
+1. создать+залочить объект `elevator_floor_indicator` (q10b, через Полину);
+2. аппрув скрипта (Story Editor review v2).
+
+**Незапушено в git:** коммиты supervision + фиксы (последний dfa4e36 + лог-коммиты)
+— проверить `git log origin/master..master`, запушить по запросу Директора.
+
+**Пост-прогонный синтез (TODO в memory):** ART-AD/breakdown роль, canon-preflight,
+Polina work-plan tracker, brief-authoring training, script-uneditable-UI +
+indicator gap, partial-animatic + provider-caps. Все в MEMORY.md индексе.
+
+**Next:** цикл 7 по таймеру; если E09 дошёл до VID-final_cut — финальный синтез.
