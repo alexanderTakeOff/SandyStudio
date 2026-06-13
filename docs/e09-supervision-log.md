@@ -395,3 +395,36 @@ markdown-вердиктом (единый источник); проверить 
 
 Урок Тео: при докладе вердикта читать ОТЧЁТ (content), не только metadata —
 metadata может расходиться (verify real results на самом артефакте).
+
+---
+
+## Cycle 7 — EPREV surgical re-author PASS + Pilot-Pass прояснён (2026-06-13 ~12:14 UTC)
+
+**Хирургический переавтор сработал.** «go a» → я перезапустил Designer'а на оба
+ref-плана с критериями EPREV + preservation-контрактом. Результат:
+- SPC-ref_plan SH01 v2 REVIEW (19.3k) ← EPREV v2 **PASS** (12:12, meta=PASS, content=PASS, СВЕДЕНЫ).
+- SPC-ref_plan SH02 v2 REVIEW (17.0k) ← EPREV v2 **PASS** (12:12, meta=PASS, content=PASS).
+- v1 обоих остались REVISION (EPREV v1 REVISE) — newest-wins, чисто.
+Jobs: EREF-DESIGNER ×2 (12:10, мои ре-триггеры) → EPREV ×2 PASS → CREAD ×2 COMPLETED. Без сбоев.
+
+**«Только 2 ref-плана из 22» — НЕ баг, штатный Pilot Pass.** next-events.ts REV-world_check
+ветка: `PILOT_COUNT_DESIGNER = 2` — намеренно выпускает первые 2 шота (SH01/SH02)
+как пилотные направления; остальные 20 → `episodes.metadata.designer_fanout_pending`,
+фанятся вторым батчем после аппрува пилотов (кнопка «Approve Direction & Fan Out» /
+PA `fanoutDesigner`). Дизайн 2026-05-20 (Director directive): не заставлять Директора
+триажить 22 плана разом. IMG (Reference Artist) ещё none — ждёт аппрува пилотов.
+
+**Бюджет:** $5.53/$100 (был $0.34 — прирост = MGEN/Suno музыка 11:56, не картинки;
+чекеры на free tier). Image-spend ещё НЕ начат.
+
+**🔴 Следующий гейт — ТВОЙ (креатив + spend):** ревью + аппрув 2 пилотных ref-планов
+(направление кадра/референсы для SH01/SH02). Аппрув → Reference Artist рисует пилотные
+IMG (первый image-spend) → ты смотришь 2 картинки → «Approve Direction & Fan Out» →
+остальные 20 шотов. Сам не аппрувлю — это вкусовой + денежный гейт.
+
+**Наблюдение Director: «Полина ожила после обращения».** Подтверждает находку cycle-5:
+Полина РЕАКТИВНА (отвечает на прямое обращение), но не ПРОАКТИВНА на разблокировке
+(сама не двигает гейт). Корень — пассивный work-plan (не трекает «сделать X»: см.
+finding 08:14 + [[backlog_td_polina_workplan_tracker]]) + строгий режим (read-only
+auto-react). Прямое обращение = единственный надёжный триггер её активности. Это
+ровно то, что чинит work-plan-tracker + nudge-доктрина. → пост-прогонное обучение.
