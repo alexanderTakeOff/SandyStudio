@@ -224,3 +224,30 @@ slug'ах). Это двойное подтверждение находок: (1)
 
 **Watch next:** кто сделает сшивку (Director/я/Полина по нуджу); закрытие
 indicator-дыры; approve → Storyboard.
+
+---
+
+## ACTION — ART-AD stitch performed by Тео (Director-authorized 2026-06-13 ~08:49 UTC)
+
+Director: «поработай отсутствующей ART-AD/breakdown-ступенью — сшей и замени в базе
+прямо (UI-редактирования скрипта нет, в отличие от брифа)».
+
+Выполнено (in-place edit of SCR-script v02 content, id a7a12e2c):
+- Per-scene location slugs реконсилированы к LOCKED канону (JSON 10/10 + markdown
+  Location-строки 10/10). Verify: ВСЕ 10 сцен ∈ LOCKED canon ✓.
+  Маппинг: corridor сцены → elevator_corridor_door_wall; cab панель (SC03/04/05/07/09)
+  → elevator_cab_plain_wall (+obj elevator_button_cluster); cab двери (SC06/08) →
+  elevator_cab_door_wall_clean. cab_side_wall_clean в резерве.
+- assumptions: убрана ложная «not yet in canonical registry»; добавлены ART-AD
+  stitch note + CANON GAP по indicator.
+- Story Editor review v2 остаётся валиден (менялись только slug'и, не креатив).
+- Остаток: 3 prose/QA-токена `elevator_cab/corridor` (нарратив «threshold», self-QA
+  summary) — не операционные, оставлены намеренно.
+
+**ОТКРЫТО, блокирует EREF — нужно решение Директора:** indicator display
+(SC05/08/09, гэг 4→4.5) не заведён в канон. Бэйкнуть в `elevator_cab_door_wall_clean`
+ИЛИ завести объект `elevator_floor_indicator`. До решения — EREF индикаторных
+сцен неполон.
+
+**Готово к approve** (Director через Полину или сам) → Story Editor review →
+Storyboard. Эта ручная сшивка = ровно та работа ART-AD/breakdown ступени (TD).
