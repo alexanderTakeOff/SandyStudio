@@ -1,0 +1,46 @@
+# E09 run — supervision log (Тео)
+
+> Goal (Director 2026-06-13): следить за прогоном Полины по E09, каждые ~10 мин
+> читать переписку + сверять с реальным состоянием пайплайна, выводы → git.
+> После прогона — анализ, синтез, обучение персонала.
+> Thread наблюдения: concierge `0d5de76a` (сейчас episode_id=null, mode=1 — НЕ
+> пришпилен к E09; работа по E09 идёт через focus). E09 id `4b4a00f3…`.
+
+---
+
+## Cycle 1 — 2026-06-13 ~08:05 (Dubai +4 / ~04:05 UTC по таймстампам ниже UTC)
+
+**Состояние E09:** status BRIEF_APPROVED · mode 2 · $0.34/$100. SCR-script v2 +
+REV-script_qa v2 в REVIEW (Story Editor PASS по v02). STA-work_plan v1 DRAFT
+(план Полины).
+
+**Канон S15 — лифт заведён (всё DRAFT):**
+- `SBL-location_elevator_corridor_call_wall`
+- `SBL-location_elevator_cab_button_wall`
+- `SBL-location_elevator_cab_door_wall`
+- `SBL-location_elevator_cab_side_wall_a`
+- `SBL-location_elevator_cab_side_wall_b`
+- `SBL-object_elevator_call_button`, `SBL-object_elevator_button_cluster`
+- `SBL-style_s15_style_canon_2d_v2_sandy` (новый style-entry)
+
+**Выводы:**
+1. ✅ Канон-дыра (которую я флагнул) закрывается правильно — генерим канон
+   эпизода, а не фолбэчим на спальню. 4 стены кабины + corridor совпадают с
+   геометрией брифа (4 вида + 180°).
+2. ✅ Полина дисциплинирована: читает каждый ассет, даёт observations+recs, НЕ
+   авто-аппрувит канон («series Library asset, не episode gate; Director
+   проверяет/локает»). Поймала реальный рассинхрон текст-канон vs картинка на
+   corridor-стене (текст «wall/panel», картинка «bare buttons, no wall») →
+   советует править текст. Хороший verify-real-results.
+3. 🚩 РИСК (открыт): slug-mismatch скрипт↔канон. Скрипт v02 ссылается на
+   `elevator_corridor`/`elevator_cab`; канон-slug'и — `…_call_wall`,
+   `…_cab_button_wall` и т.д. Точного совпадения нет → WCHK/EREF (location ∈
+   canon) не найдут. + модельный сдвиг: скрипт = 1 локация-кабина с 4 видами,
+   канон = 4 отдельные локации-стены. Нужна сшивка per-scene. Это та же
+   canon-existence проблема в новой форме — генерация канона ≠ решение, если
+   slug'и не матчатся точно в обе стороны. (→ усиливает TD canon-preflight.)
+4. 🟡 Тред Полины `0d5de76a` не пришпилен к E09 (episode_id=null). Работает
+   через focus, но при параллельных эпизодах это хрупко.
+
+**Watch next:** аппрувятся/локаются ли локации; перепривязывается ли скрипт на
+реальные slug'и; не стрельнёт ли Storyboard на нестыкующихся slug'ах.
