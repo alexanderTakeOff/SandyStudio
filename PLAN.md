@@ -27,9 +27,14 @@ ARCH SPRINT 2026-06-14 (Director: pipeline = full traversable process surface; f
   preflight) + validateCanonExists; D2 casting API POST /api/episodes/[id]/cast (canon-preflight
   HARD GATE → SPC-episode_cast DRAFT → approve locks scoping); D3 'casting' stage node in registry
   (before brief, ART-AD). tsc·0 / 829 / 30.
-  NEXT (Phase D tail): casting UI (LibraryFeeds bind-to-episode) + PA cast tool so Polина/Director
-  cast in-app. Then A2 shot_id SSOT, A3 atomic boundary, Phase B registry. Director: ALL phases
-  before E10 launch. E09 anchors still polluted (regen on clean E10, not patched).
+  Phase D DONE (backend): + A2 shot_id SSOT (b900ad9) + castEpisode PA tool (565f357). Casting fully
+  usable via system (API + preflight + PA tool + stage node). Casting UI panel (StageWorkspacePanel,
+  episode-scoped) DEFERRED to a frontend session (needs live app).
+  NEXT (each deserves a FOCUSED careful pass — thorny, не латки): WCHK ordering (factory critic-chain
+  + runner precondition) + WCHK verdict-stamp (ledger↔markdown reconcile in continuity-check.ts);
+  anchor visual gate (eref-check on anchor path, no silent-pass); A3 atomic boundary (needs CREATE
+  FUNCTION migration = live-DB gate); Phase B registry; Phase C series tier. Director: ALL phases
+  before E10. 7 commits unpushed. E09 anchors polluted except SH07/SH08 (regen on clean E10).
 
 F1-F8 E07 fix-sprint — DONE 2026-06-12 (commits 9685845…e4dcf77; detail in git log). REMAINS:
   Anthropic top-up, push, prod restart, Mode-4 regression → D1-D4.
