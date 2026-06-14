@@ -28,6 +28,7 @@ import {
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
 import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
+import { loadEpisodeCastSlugs } from '../episode-cast';
 import { continuityLedgerEnabled } from '../chain-flags';
 import { findApprovedAsset } from '../upstream';
 import {
@@ -138,6 +139,7 @@ async function loadSystemPrompt(): Promise<string> {
 async function loadBibleCanon(
   supabase: SupabaseClient<Database>,
   seriesId: string,
+  castSlugs: Set<string> | null,
 ): Promise<{
   characters: BibleAssetLike[];
   locations: BibleAssetLike[];
@@ -152,13 +154,23 @@ async function loadBibleCanon(
     .like('file_type', 'SBL-%');
   if (error) throw new ContinuityCheckError(`Bible canon fetch: ${error.message}`);
   const all = (data ?? []) as BibleAssetLike[];
+  // Episode casting (2026-06-14): the continuity critic validates the storyboard
+  // against the episode's CAST, not all-series canon — a character/object/
+  // location the episode wasn't cast for must read as "not allowed here", not
+  // "valid because it's somewhere in the series". `castSlugs === null` → no
+  // gallery → unscoped (pre-casting behaviour). Styles stay series-wide.
+  const inCast = (a: BibleAssetLike): boolean => {
+    if (!castSlugs) return true;
+    const slug = bibleSlug(a.file_type);
+    return slug != null && castSlugs.has(slug.toLowerCase());
+  };
   return {
-    characters: all.filter((a) => a.file_type.startsWith('SBL-character_')),
-    locations: all.filter((a) => a.file_type.startsWith('SBL-location_')),
+    characters: all.filter((a) => a.file_type.startsWith('SBL-character_') && inCast(a)),
+    locations: all.filter((a) => a.file_type.startsWith('SBL-location_') && inCast(a)),
     styles: all.filter((a) => a.file_type.startsWith('SBL-style_')),
     // Motor 2 (CHK-W04): the v1 contract declared SBL-object_ as
     // optional_series from day one — the runner just never loaded it.
-    objects: all.filter((a) => a.file_type.startsWith('SBL-object_')),
+    objects: all.filter((a) => a.file_type.startsWith('SBL-object_') && inCast(a)),
   };
 }
 
@@ -486,7 +498,8 @@ export async function runContinuityCheck(
     );
   }
 
-  const bible = await loadBibleCanon(supabase, seriesId);
+  const castSlugs = await loadEpisodeCastSlugs(supabase, ep?.id ?? inputs.episode_id);
+  const bible = await loadBibleCanon(supabase, seriesId, castSlugs);
 
   const ledgerOn = continuityLedgerEnabled();
 

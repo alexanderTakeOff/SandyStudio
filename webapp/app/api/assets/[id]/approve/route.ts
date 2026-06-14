@@ -35,6 +35,7 @@ import {
   computeNextEvents,
   type SupabaseClientLike,
 } from '@/lib/agents/next-events';
+import { EPISODE_CAST_FILE_TYPE, syncAppearsIn } from '@/lib/agents/episode-cast';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -495,6 +496,29 @@ export const POST = withApiHandler(async (req, ctx) => {
     // without one — see plan §"Approve transaction".)
     await restoreDemotedSiblings(supabase, demotedSiblings);
     throw new Error(`asset status update failed: ${upErr.message}`);
+  }
+
+  // 2.5. Episode cast gallery → appears_in projection (2026-06-14).
+  //
+  // When an SPC-episode_cast is APPROVED (or LOCKED), recompute
+  // `metadata.appears_in` on the series' SBL canon so each asset records which
+  // episodes it is cast into. The gallery is the authority; this is its
+  // denormalized cross-check. Reference loaders read the gallery directly, so
+  // this projection is for Director review / query, not the scoping path.
+  if (
+    (body.decision === 'APPROVE' || targetStatus === 'LOCKED') &&
+    asset.file_type === EPISODE_CAST_FILE_TYPE &&
+    asset.episode_id
+  ) {
+    const { data: epRow } = await supabase
+      .from('episodes')
+      .select('episode_code')
+      .eq('id', asset.episode_id)
+      .maybeSingle();
+    const episodeCode = (epRow as { episode_code?: string } | null)?.episode_code;
+    if (episodeCode) {
+      await syncAppearsIn(supabase, asset.episode_id, episodeCode);
+    }
   }
 
   // 3. Audit event

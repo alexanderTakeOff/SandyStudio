@@ -95,6 +95,17 @@ export const openAIEditsMultiProvider: MultiImageGenProvider = {
     const size = clampSize(input.size);
     const quality: GptImageQuality = input.quality ?? 'medium';
 
+    // gpt-image edits has no `negative_prompt` API param, so fold the Plan's
+    // negative terms into the prompt. Placed at the END as a single advisory
+    // line (NOT a hard "MUST NOT" preamble) — per the attention-pollution
+    // finding (2026-05-26), hard negative directives up front starve the
+    // identity reference images of attention.
+    const negativeTerms = (input.negative ?? []).map((t) => t.trim()).filter(Boolean);
+    const promptWithNegative =
+      negativeTerms.length > 0
+        ? `${input.prompt}\n\nAvoid depicting: ${negativeTerms.join('; ')}.`
+        : input.prompt;
+
     const formData = new FormData();
     // Append every reference under `image[]` — OpenAI accepts repeated keys.
     input.references.forEach((ref, idx) => {
@@ -102,7 +113,7 @@ export const openAIEditsMultiProvider: MultiImageGenProvider = {
       const blob = new Blob([new Uint8Array(buf)], { type: 'image/png' });
       formData.append('image[]', blob, `ref-${idx}-${ref.kind}.png`);
     });
-    formData.append('prompt', input.prompt);
+    formData.append('prompt', promptWithNegative);
     formData.append('model', MODEL);
     formData.append('size', size);
     formData.append('quality', quality);

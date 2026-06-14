@@ -83,12 +83,14 @@ export type GenerationTriggeredBy =
  */
 export interface ReferenceUsed {
   // TD-33 (2026-05-22): `temporal_continuity` added alongside spatial scene_continuity.
+  // 2026-06-14: `object` added — per-shot canon prop ref.
   kind:
     | 'identity'
     | 'location'
     | 'style'
     | 'scene_continuity'
-    | 'temporal_continuity';
+    | 'temporal_continuity'
+    | 'object';
   bible_asset_id: string;
   /** 0..1 — only meaningful for providers that support per-ref weighting. */
   weight?: number;

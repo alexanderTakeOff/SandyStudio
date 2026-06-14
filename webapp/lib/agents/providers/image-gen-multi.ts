@@ -24,13 +24,16 @@
 
 /** Roles a reference image can play in the conditioning.
  *  TD-30 (2026-05-21): `scene_continuity` added for spatial-same-location anchor.
- *  TD-33 (2026-05-22): `temporal_continuity` added for previous-shot anchor. */
+ *  TD-33 (2026-05-22): `temporal_continuity` added for previous-shot anchor.
+ *  2026-06-14: `object` added — per-shot canon prop (e.g. elevator button panel)
+ *  composited onto the location so the provider stops hallucinating it. */
 export type MultiImageRefKind =
   | 'identity'
   | 'location'
   | 'style'
   | 'scene_continuity'
-  | 'temporal_continuity';
+  | 'temporal_continuity'
+  | 'object';
 
 export interface MultiImageRef {
   kind: MultiImageRefKind;
@@ -60,6 +63,16 @@ export interface MultiImageGenInput {
    */
   size?: '1024x1024' | '1024x1536' | '1536x1024' | '2048x2048' | '2752x1536' | '1536x2752';
   quality?: 'low' | 'medium' | 'high';
+  /**
+   * Negative constraints from the Plan (`negative[]`). Things that must NOT
+   * appear (extra limbs, reflections, intruder props). Previously parsed but
+   * only sent to the reviewer — now forwarded to the provider so it actually
+   * shapes generation. Provider-specific:
+   *   - openai-edits-multi : gpt-image API has no negative_prompt param, so the
+   *     terms are appended to the prompt as an explicit "Do NOT include" line.
+   *   - flux-pro-ultra-fal : passed through where the model supports it.
+   */
+  negative?: readonly string[];
 }
 
 export interface MultiImageGenResult {

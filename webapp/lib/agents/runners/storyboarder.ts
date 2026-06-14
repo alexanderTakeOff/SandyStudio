@@ -145,6 +145,7 @@ function buildUserMessage(args: {
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
   const locationSlugs = bible.locations.map((l) => l.slug).filter(Boolean);
+  const objectSlugs = (bible.objects ?? []).map((o) => o.slug).filter(Boolean);
   const notesBlock =
     upstreamNotes && upstreamNotes.length > 0
       ? [
@@ -265,6 +266,9 @@ function buildUserMessage(args: {
     '            }',
     '          ],',
     '          "expected_gag": "<one short sentence describing the visual joke this shot delivers, OR null if shot is a setup/transition/reaction-without-gag>",',
+    hasCanon && objectSlugs.length > 0
+      ? `          "props_in_frame": [<zero or more canon prop slugs visible in this shot, each one of: ${objectSlugs.join(', ')}. These attach the canonical prop reference image so the prop is not hallucinated. Use [] if no canon prop is on screen.>],`
+      : '          "props_in_frame": [<zero or more prop slugs visible in this shot, lowercase_with_underscores, or [] if none>],',
     '          "action_prose": "<one paragraph of visual action — what is on screen, written for the storyboard reader. Can include all characters and props in motion. This is your prose narration of the shot.>",',
     '          "duration_seconds": <integer>,',
     '          "key_beat": "<which brief beat this shot delivers, OR \\"transition\\" / \\"setup\\">",',
@@ -296,6 +300,9 @@ function buildUserMessage(args: {
     '- For each character: `expected_emotion` and `expected_action` are the two values the downstream AI image reviewer will use to score the generated image. Be specific and physical (not abstract). "happy" is too vague; "wide-eyed admiration" is good. "moving" is too vague; "leaning forward toward vial, hands flat on table" is good.',
     '- `role_in_shot`: "subject" = main focus, "co-star" = also active in this shot, "background" = visible but passive.',
     '- `expected_gag` is null only for transitions/setups. Every shot tagged `shot_role: "gag" | "punchline"` MUST have a non-null `expected_gag`.',
+    hasCanon && objectSlugs.length > 0
+      ? `- \`props_in_frame\` MUST list every canon prop physically visible in the shot, by exact slug from: ${objectSlugs.join(', ')}. This is what attaches the prop's canonical reference image at generation time — a prop omitted here will be hallucinated (wrong button count, wrong shape). A prop named only in \`action_prose\` but absent from \`props_in_frame\` will NOT be locked. Use [] when no canon prop is on screen.`
+      : '- `props_in_frame` lists prop slugs visible in the shot, or [] if none.',
     hasCanon
       ? '- Every visual description in `action_prose` MUST be consistent with the Bible canon above. Do not contradict canonical character appearance, location layout, or style direction.'
       : '',

@@ -94,6 +94,7 @@ import type {
 import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
 import { selectSkills } from '../../skills/select-skills';
 import { findApprovedAsset } from '../upstream';
+import { loadEpisodeCastSlugs } from '../episode-cast';
 import type { AgentInputs } from '../types';
 import type {
   GovernanceModeNum,
@@ -172,6 +173,14 @@ interface ParsedShot {
     expected_action: string;
     role_in_shot: string;
   }>;
+  /**
+   * Canon prop slugs visible in this shot (storyboard `props_in_frame`, from the
+   * World Bible inventory). 2026-06-14: previously unparsed → object refs never
+   * attached → provider hallucinated props (E09 elevator button panel: 1 vs 2
+   * buttons across the pair). Resolved against cast-scoped `SBL-object_*` canon
+   * and attached as `kind:'object'` refs.
+   */
+  props_in_frame?: string[];
 }
 
 /** Bundle of everything one shot needs for generation + review. */
@@ -280,10 +289,12 @@ const nameFromBibleFilename = (asset: { file_type?: string | null }): string | n
 async function loadBibleCanon(
   supabase: SupabaseClient<Database>,
   seriesId: string,
+  castSlugs: Set<string> | null,
 ): Promise<{
   characters: BibleAssetLike[];
   locations: BibleAssetLike[];
   styles: BibleAssetLike[];
+  objects: BibleAssetLike[];
 }> {
   const { data, error } = await supabase
     .from('assets')
@@ -295,10 +306,19 @@ async function loadBibleCanon(
     throw new EpisodeReferencesError(`Bible canon fetch: ${error.message}`);
   }
   const all = (data ?? []) as BibleAssetLike[];
+  // Episode casting (2026-06-14): scope characters + locations + objects to the
+  // episode's cast gallery. `castSlugs === null` → no gallery → unscoped (all
+  // series canon, the pre-casting behaviour). Styles are series-wide, never scoped.
+  const inCast = (a: BibleAssetLike): boolean => {
+    if (!castSlugs) return true;
+    const slug = bibleSlug(a.file_type);
+    return slug != null && castSlugs.has(slug.toLowerCase());
+  };
   return {
-    characters: all.filter((a) => a.file_type.startsWith('SBL-character_')),
-    locations: all.filter((a) => a.file_type.startsWith('SBL-location_')),
+    characters: all.filter((a) => a.file_type.startsWith('SBL-character_') && inCast(a)),
+    locations: all.filter((a) => a.file_type.startsWith('SBL-location_') && inCast(a)),
     styles: all.filter((a) => a.file_type.startsWith('SBL-style_')),
+    objects: all.filter((a) => a.file_type.startsWith('SBL-object_') && inCast(a)),
   };
 }
 
@@ -341,6 +361,7 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         camera_angle?: string;
         camera_movement?: string;
         camera_motivation?: string;
+        props_in_frame?: unknown[];
       };
       if (!sh.shot_id) continue;
 
@@ -394,6 +415,9 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         camera_angle: sh.camera_angle ? String(sh.camera_angle) : undefined,
         camera_movement: sh.camera_movement ? String(sh.camera_movement) : undefined,
         camera_motivation: sh.camera_motivation ? String(sh.camera_motivation) : undefined,
+        props_in_frame: Array.isArray(sh.props_in_frame)
+          ? sh.props_in_frame.map(String).filter((s) => s.trim().length > 0)
+          : [],
         characters_v2: v2Chars,
       });
     }
@@ -824,6 +848,13 @@ interface PlanOverrides {
   variantsCount: number;
   prompt: string;
   negative: readonly string[];
+  /**
+   * 2026-06-14: canon prop slugs the Designer declared for this shot
+   * (`objects[]` in the Plan JSON). Authoritative per-shot object list; when
+   * present it supersedes the storyboard's `props_in_frame`. Resolved against
+   * cast-scoped `SBL-object_*` canon and attached as `kind:'object'` refs.
+   */
+  objects: readonly string[];
   continuityMode: string;
   policyNotes: readonly string[];
   /**
@@ -1044,6 +1075,12 @@ export async function loadPlanOverrides(
     if (typeof v === 'string' && v.trim().length > 0) negative.push(v.trim());
   }
 
+  const objectsRaw = Array.isArray(body.objects) ? body.objects : [];
+  const objects: string[] = [];
+  for (const v of objectsRaw) {
+    if (typeof v === 'string' && v.trim().length > 0) objects.push(v.trim());
+  }
+
   const continuityObj = body.continuity_strategy as
     | { mode?: unknown }
     | undefined;
@@ -1085,6 +1122,7 @@ export async function loadPlanOverrides(
     variantsCount,
     prompt,
     negative,
+    objects,
     continuityMode,
     policyNotes,
     continuityAnchors,
@@ -1314,7 +1352,8 @@ async function runAnchorPairGeneration(
   if (!seriesId) {
     throw new EpisodeReferencesError('Episode has no parent series_id');
   }
-  const bible = await loadBibleCanon(supabase, seriesId);
+  const castSlugs = await loadEpisodeCastSlugs(supabase, episodeId);
+  const bible = await loadBibleCanon(supabase, seriesId, castSlugs);
   if (bible.styles.length === 0) {
     throw new EpisodeReferencesError(
       'Series Bible has no LOCKED style — required for anchor generation',
@@ -1395,33 +1434,55 @@ async function runAnchorPairGeneration(
       identityCharNames.push(nameFromBibleFilename(asset) ?? slug);
     }
   }
-  // TD-63 (2026-05-26): after iterating storyboard chars_v2, fall through to
-  // ALL LOCKED Bible character canon for the series. characters_v2 historically
-  // lists only living subjects with emotion/action; hero story-objects
-  // (mirror_vanity in S15-E01, future hero props in other episodes) are LOCKED
-  // as SBL-character_* but absent from characters_v2. In anchor mode every
-  // canonical actor of the series should ride along — provider has MAX_REFS=16,
-  // ample room. Without this, mirror_vanity canon sat in Bible but never
-  // reached gpt-image-2 attention.
-  const addedAssetIds = new Set<string>(identityRefs.map((r) => r.bible_asset_id));
-  for (const [slug, asset] of charBySlug.entries()) {
-    if (addedAssetIds.has(asset.id)) continue;
+  // TD-63 removed (2026-06-14): the blanket "ride along ALL LOCKED series
+  // characters" fall-through injected every canonical actor (anvil,
+  // mirror_vanity) into EVERY anchor — the root cause of the E09 elevator
+  // pollution (40/40 anchors carried the anvil + vanity mirror). Episode
+  // casting replaces it: identity refs come from this shot's declared
+  // characters_v2 only, already scoped to the episode cast gallery via
+  // loadBibleCanon(castSlugs). A hero prop that must appear in a shot is now
+  // declared per-shot by the storyboarder, not force-fed series-wide.
+
+  // Object refs (2026-06-14): attach the shot's canon props so the provider
+  // composites the real button panel / indicator instead of hallucinating one
+  // (the E09 "1 vs 2 buttons" defect). Source: the Designer Plan's `objects[]`
+  // (authoritative) → fallback to the storyboard `props_in_frame`. Resolved
+  // against cast-scoped `bible.objects`, so a prop the episode wasn't cast for
+  // can't ride in. Placed after identity (which needs attention priority) and
+  // before style/scene_master.
+  const objBySlug = new Map<string, BibleAssetLike>();
+  for (const o of bible.objects) {
+    const n = nameFromBibleFilename(o);
+    if (n) objBySlug.set(n, o);
+  }
+  const objectSlugs =
+    planOverrides.objects.length > 0
+      ? planOverrides.objects
+      : (shot.props_in_frame ?? []);
+  const objectRefs: MultiImageRef[] = [];
+  const objectNames: string[] = [];
+  const seenObjIds = new Set<string>();
+  for (const raw of objectSlugs) {
+    const slug = raw.toLowerCase();
+    const asset =
+      objBySlug.get(slug) ??
+      [...objBySlug.entries()].find(([k]) => slug.includes(k) || k.includes(slug))?.[1] ??
+      null;
+    if (!asset || seenObjIds.has(asset.id)) continue;
     const b64 = await loadBibleImage(asset);
     if (!b64) continue;
-    identityRefs.push({
-      kind: 'identity',
-      bible_asset_id: asset.id,
-      image_b64: b64,
-    });
-    identityCharNames.push(nameFromBibleFilename(asset) ?? slug);
-    addedAssetIds.add(asset.id);
+    objectRefs.push({ kind: 'object', bible_asset_id: asset.id, image_b64: b64 });
+    objectNames.push(nameFromBibleFilename(asset) ?? slug);
+    seenObjIds.add(asset.id);
   }
+
   const styleB64 = await loadBibleImage(styleAsset);
   const styleRef: MultiImageRef | null = styleB64
     ? { kind: 'style', bible_asset_id: styleAsset.id, image_b64: styleB64 }
     : null;
   const baseRefs: MultiImageRef[] = [
     ...identityRefs,
+    ...objectRefs,
     ...(styleRef ? [styleRef] : []),
     {
       kind: 'scene_continuity',
@@ -1484,6 +1545,7 @@ async function runAnchorPairGeneration(
         references: baseRefs.slice(0, provider.capabilities.max_references),
         quality: EREF_QUALITY,
         size: '1536x1024',
+        negative: planOverrides.negative,
       });
       genB64 = result.b64_data;
       genCost = result.cost_usd;
@@ -1525,6 +1587,7 @@ async function runAnchorPairGeneration(
       anchor_rationale: side.rationale,
       scene_master_asset_id: anchorCtx.scene_master_asset.asset_id,
       identity_character_slugs: identityCharNames,
+      object_slugs: objectNames,
       shot_reference: {
         shot_id: planOverrides.shotId,
         shot_role: shot.shot_role ?? 'anchor',
@@ -1720,7 +1783,8 @@ export async function runEpisodeReferences(
     throw new EpisodeReferencesError('Episode has no parent series_id');
   }
 
-  const bible = await loadBibleCanon(supabase, seriesId);
+  const castSlugs = await loadEpisodeCastSlugs(supabase, episodeId);
+  const bible = await loadBibleCanon(supabase, seriesId, castSlugs);
   if (bible.characters.length === 0 || bible.styles.length === 0) {
     throw new EpisodeReferencesError(
       'Series Bible canon insufficient — need ≥1 LOCKED character + ≥1 LOCKED style',

@@ -23,6 +23,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
 import { bibleSlug, seriesIdForEpisode } from '../api/series-bible';
+import { loadEpisodeCastSlugs, scopeToCast } from './episode-cast';
 
 export interface BibleEntry {
   /** Bible-canonical slug (e.g. "sandy_hourglass"). Empty for general_idea. */
@@ -117,18 +118,32 @@ export async function loadSeriesBibleCanon(
 
   const rows = (data ?? []) as BibleAssetRow[];
   const generalIdeaRow = rows.find((r) => r.file_type === 'SBL-general_idea');
-  const characters = rows
-    .filter((r) => r.file_type.startsWith('SBL-character_'))
-    .map(toEntry);
-  const locations = rows
-    .filter((r) => r.file_type.startsWith('SBL-location_'))
-    .map(toEntry);
+
+  // Episode casting (2026-06-14): scope the *actors* (characters / objects /
+  // locations) to the episode's cast gallery so canon the episode was not cast
+  // for never bleeds into its prompts. Styles + general_idea are series-wide and
+  // stay unscoped. `cast === null` → no gallery → all-series canon (unchanged).
+  const cast = await loadEpisodeCastSlugs(supabase, episodeId);
+  const slugOfEntry = (e: BibleEntry) => e.slug;
+
+  const characters = scopeToCast(
+    rows.filter((r) => r.file_type.startsWith('SBL-character_')).map(toEntry),
+    cast,
+    slugOfEntry,
+  );
+  const locations = scopeToCast(
+    rows.filter((r) => r.file_type.startsWith('SBL-location_')).map(toEntry),
+    cast,
+    slugOfEntry,
+  );
   const styles = rows
     .filter((r) => r.file_type.startsWith('SBL-style_'))
     .map(toEntry);
-  const objects = rows
-    .filter((r) => r.file_type.startsWith('SBL-object_'))
-    .map(toEntry);
+  const objects = scopeToCast(
+    rows.filter((r) => r.file_type.startsWith('SBL-object_')).map(toEntry),
+    cast,
+    slugOfEntry,
+  );
 
   return {
     series_id: seriesId,
@@ -137,7 +152,12 @@ export async function loadSeriesBibleCanon(
     locations,
     styles,
     objects,
-    total_entries: rows.length,
+    total_entries:
+      (generalIdeaRow ? 1 : 0) +
+      characters.length +
+      locations.length +
+      styles.length +
+      objects.length,
   };
 }
 

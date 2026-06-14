@@ -621,6 +621,7 @@ function buildUserMessage(args: {
     '  ],',
     '  "prompt": "<full prompt text — same as Промпт section above, machine-readable>",',
     '  "negative": ["<term>", "<term>", ...],',
+    '  "objects": [<zero or more canon prop slugs visible in this shot — copy the storyboard shot\'s props_in_frame verbatim. These attach the prop\'s canonical reference image at generation so the prop is locked, not hallucinated. Use [] if the shot has no canon prop.>],',
     '  "camera_intent": {',
     '    "angle": "<MEDIUM | WIDE | CLOSE | ...>",',
     '    "sub_area_variation": "<one sentence on viewpoint variation vs sibling shots>"',
