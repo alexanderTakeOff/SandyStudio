@@ -33,6 +33,7 @@ import {
   unstickPlanForApproval,
 } from './animator';
 import { reorderShots } from './shot-reorder';
+import { castEpisode } from './cast';
 import { markAwaitingDirector } from './mark-awaiting';
 import { getWorkPlan, updateWorkPlan } from './work-plan';
 import type { OpenAIToolSchema, Tool } from './types';
@@ -118,6 +119,9 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // storyboard shots[] AND animatic shot_list. Use when Director says
   // «поменяй кадры местами» / «swap shots». NOT a content regen.
   reorderShots as unknown as AnyTool,
+  // Phase D (2026-06-14) — ART-AD Casting stage. Polина drafts the episode cast
+  // gallery from canon slugs; canon-existence HARD GATE; Director ratifies the DRAFT.
+  castEpisode as unknown as AnyTool,
 ]);
 
 const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(
