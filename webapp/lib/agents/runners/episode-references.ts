@@ -95,6 +95,7 @@ import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
 import { selectSkills } from '../../skills/select-skills';
 import { findApprovedAsset } from '../upstream';
 import { loadEpisodeCastSlugs } from '../episode-cast';
+import { logEvent } from '../../api/events';
 import type { AgentInputs } from '../types';
 import type {
   GovernanceModeNum,
@@ -2230,6 +2231,37 @@ export async function runEpisodeReferences(
       }
       latestReview = reviewResult.review;
       totalCost += latestReview.reviewer_cost_usd;
+
+      // 2026-06-14 mode-aware checker fallback + statistics (Director q):
+      // when the AI checker was bypassed/failed (skipped), DON'T silently
+      // auto-APPROVE. Always record a stat (dashboard visibility) and route by
+      // governance mode: Mode 4 keeps auto-pass (autotest resilience); Modes 1-3
+      // land HUMAN_REVIEW so the Director (1/2) or EXEC-DIR-AI deputy (3) judges.
+      const checkerSkipped = (reviewResult as { skipped?: boolean }).skipped === true;
+      if (checkerSkipped) {
+        const reason =
+          (reviewResult as { skipped_reason?: string }).skipped_reason ?? 'checker bypassed';
+        await logEvent(supabase, {
+          event_type: 'checker_fallback',
+          severity: governanceMode === 4 ? 'info' : 'warning',
+          title: `EREF checker fallback (mode ${governanceMode}) — shot ${job.shot.shot_id}`,
+          description: reason,
+          actor: 'EXEC-EREF-CHECK',
+          episode_id: episodeId,
+          metadata: {
+            agent: 'EXEC-EREF-CHECK',
+            shot_id: job.shot.shot_id,
+            mode: governanceMode,
+            reason,
+            path: 'regular',
+            dashboard_flag: governanceMode === 3,
+          },
+        });
+        finalVerdict = governanceMode === 4 ? 'APPROVE' : 'HUMAN_REVIEW';
+        approvedAttempt = attempt;
+        approvedB64 = genB64;
+        break;
+      }
 
       const verdict = latestReview.verdict;
       if (verdict === 'APPROVE') {
