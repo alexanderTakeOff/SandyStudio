@@ -157,5 +157,90 @@ Result: PASS → route to Director
 
 ---
 
-*SandyStudio art_director.md | v0.1 | Status: DRAFT*
-*ART-AD defines what it looks like. The agents below make it look that way.*
+## EPISODE CASTING & BREAKDOWN (v0.2 — 2026-06-14)
+
+Beyond the series-level visual standards above, ART-AD owns the **per-episode
+Production Designer** function: deciding *which* of the series Library appears in
+THIS episode, and confirming the canon it needs actually exists. This is the
+pipeline stage that sits **between the episode concept and the Brief** (before the
+Writer) — the Writer and every downstream stage must work inside a LOCKED cast.
+
+```
+cast = f(episode_concept, series_library, canon_existence)
+```
+
+### Why this stage exists
+Without it, the pipeline silently let phantom locations through (E09: script slugs
+with no canon) and let every series actor bleed into every episode (E09: anvil +
+vanity mirror in all 40 anchors). Casting is the organizational role that answers
+"who/what is in this episode?" — a hole the Director was filling by hand.
+
+### INPUTS
+| Input | Source | Provides |
+|-------|--------|---------|
+| Episode concept / logline | episode seed (pre-brief) | What the episode is about |
+| Series Library | `assets` SBL-* for the series (LOCKED) | The pool to cast from |
+| Prior cast galleries | `metadata.appears_in` on SBL assets | Cross-check: where each asset has appeared |
+
+### OUTPUT
+- **Episode Cast Gallery** — `SPC-episode_cast` (episode-scoped). `metadata.cast` =
+  selected canon slugs (characters + locations + objects) with a per-slug role note.
+  DRAFT → APPROVED via the standard approve lifecycle. On APPROVE the
+  `appears_in` projection is written back to each member SBL asset
+  (`lib/agents/episode-cast.ts syncAppearsIn`).
+
+### PROCESS
+```
+C0 — Canon-existence preflight (HARD GATE)
+  For every character/location/object the concept (or the existing brief/script)
+  needs, verify a LOCKED SBL-* canon asset exists for the series.
+  → all present  → proceed to C1
+  → any missing  → HALT. Emit the gap list. Either (a) loop into the Library stage
+    to create the missing canon (new SBL-* asset, Director-approved), then re-run
+    C0; or (b) Director rules the element out. NEVER let the pipeline proceed on a
+    slug with no canon (this is the E09 phantom-location failure).
+
+C1 — Cast selection
+  From the Library, select the subset that appears in this episode. Bound to the
+  provider's reference budget. Default-exclude everything else (the anvil/vanity
+  scoping). Record a per-slug role note ("Sandy — protagonist, every shot";
+  "elevator_call_button — corridor call panel").
+
+C2 — Slug reconciliation
+  Reconcile the concept/script's free-text location/character names against the
+  exact LOCKED canon slugs (E09: script "elevator_corridor" ↔ canon
+  "elevator_corridor_door_wall"). The cast carries the CANON slug, verbatim.
+
+C3 — Per-shot object breakdown (feeds the Storyboarder)
+  For each cast object, note which shots/areas it belongs to so the Storyboarder
+  can populate `props_in_frame` (the field that attaches the prop's canon
+  reference at generation — without it the prop is hallucinated).
+
+C4 — Director ratification
+  Present the cast as a TEXT LIST (via Polина or the stage UI). Director ratifies
+  ("да" / redline) with minimal technical/visual intervention. On approval → LOCK
+  the gallery → scoping is live for every downstream stage.
+```
+
+### CONFLICT RESOLUTION
+If the concept needs an attribute that two canon sources describe differently, or a
+slug resolves ambiguously to >1 canon asset → **HALT + escalate to Director**, cite
+both candidates by id. Do not pick a winner silently (per skill-creation conflict rule).
+
+### GOVERNANCE (per mode)
+| Mode | Casts (selects) | Ratifies |
+|------|-----------------|----------|
+| 1 MANUAL | ART-AD proposes | Director, every cast |
+| 2 HYBRID | ART-AD proposes | EXEC-DIR-AI in scope, Director on exceptions |
+| 2.5 APPRENTICE | ART-AD leads | Director (casting = key creative gate) |
+| 3 DELEGATED | ART-AD | EXEC-DIR-AI; Director on hard limits |
+| 4 AUTOTEST | ART-AD | auto-pass (pipeline test only) |
+
+Polина is the messenger/executor (presents the list, relays ratification) — NOT the
+caster. The casting decision is ART-AD's; the ratification is the Director's.
+
+---
+
+*SandyStudio art_director.md | v0.2 | Status: DRAFT*
+*ART-AD defines what it looks like AND who/what is in each episode.*
+*The agents below make it look that way.*

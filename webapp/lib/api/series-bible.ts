@@ -394,3 +394,43 @@ export async function genreForEpisode(
     return null;
   }
 }
+
+/**
+ * Canon-existence preflight (ART-AD stage C0 — 2026-06-14).
+ *
+ * Given a list of required canon slugs (characters / locations / objects the
+ * episode wants to use), verify each has a LOCKED `SBL-*` asset in the series.
+ * Returns the missing slugs so the caller can HALT and either create the canon
+ * (loop into the Library stage) or have the Director rule the element out.
+ *
+ * Root fix for the E09 phantom-location class: the pipeline used to proceed on a
+ * script/storyboard slug with no canon, producing references the artist invented.
+ * `missing` is lowercased-deduped; comparison is case-insensitive.
+ *
+ * `seriesId` must be the series UUID (resolve via seriesIdForEpisode first).
+ */
+export async function validateCanonExists(
+  supabase: SupabaseClient<Database>,
+  seriesId: string,
+  requiredSlugs: readonly string[],
+): Promise<{ ok: boolean; missing: string[] }> {
+  const want = [...new Set(requiredSlugs.map((s) => s.trim().toLowerCase()).filter(Boolean))];
+  if (want.length === 0) return { ok: true, missing: [] };
+
+  const { data, error } = await supabase
+    .from('assets')
+    .select('file_type')
+    .eq('series_id', seriesId)
+    .eq('status', 'LOCKED')
+    .like('file_type', 'SBL-%');
+  if (error) throw new Error(`validateCanonExists: ${error.message}`);
+
+  const have = new Set<string>();
+  for (const row of (data ?? []) as Array<{ file_type: string }>) {
+    const slug = bibleSlug(row.file_type);
+    if (slug) have.add(slug.toLowerCase());
+  }
+
+  const missing = want.filter((s) => !have.has(s));
+  return { ok: missing.length === 0, missing };
+}

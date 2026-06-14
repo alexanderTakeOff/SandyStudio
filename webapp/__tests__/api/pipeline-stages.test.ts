@@ -16,9 +16,10 @@ const baseAsset = {
 };
 
 describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () => {
-  it('returns 19 per-agent rows in canonical Topic 3 order', () => {
+  it('returns per-agent rows in canonical Topic 3 order (casting first — Phase D)', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     expect(stages.map((s) => s.id)).toEqual([
+      'casting',
       'brief',
       'screenwriter',
       'script_critic',

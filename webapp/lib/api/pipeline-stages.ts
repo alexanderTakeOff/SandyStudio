@@ -25,6 +25,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 export type PipelineStageId =
+  | 'casting'
   | 'brief'
   | 'screenwriter'
   | 'script_critic'
@@ -180,6 +181,7 @@ interface RowDef {
 // Music sits in production phase BEFORE Animatic (audio reorg LT-04): EDIT
 // gates on BOTH MGEN + EREF approved so the animatic preview plays with music.
 const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
+  { id: 'casting',             label: 'Casting',           subtitle: 'Production Designer',  agents: ['ART-AD'],     phase: 'pre-production', tier: 'primary', role: 'designer', emoji: '🎭' },
   { id: 'brief',               label: 'Brief',             agents: ['Director'],            phase: 'pre-production', tier: 'primary', role: 'input',     emoji: '🎬' },
   { id: 'screenwriter',        label: 'Writer',            agents: ['EXEC-SW'],             phase: 'pre-production', tier: 'primary', role: 'author',    emoji: '✍️' },
   { id: 'script_critic',       label: 'Script Critic',     subtitle: 'Story Editor',        agents: ['EXEC-SREV'],   phase: 'pre-production', tier: 'muted',   role: 'critic',  serves: 'screenwriter', emoji: '🔍' },
@@ -205,6 +207,7 @@ const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
 // Map a file_type → row id. Each agent's primary asset goes to its own row.
 const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
   const ft = asset.file_type;
+  if (ft.startsWith('SPC-episode_cast')) return 'casting';
   if (ft.startsWith('SPC-brief')) return 'brief';
   if (ft.startsWith('SCR'))       return 'screenwriter';
   if (ft === 'REV-script_qa')     return 'script_critic';
@@ -228,6 +231,7 @@ const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
 };
 
 const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
+  'ART-AD':     'casting',
   'Director':   'brief',
   'EXEC-SW':    'screenwriter',
   'EXEC-SREV':  'script_critic',

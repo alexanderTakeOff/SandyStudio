@@ -11,29 +11,28 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-12 (F1-F8 fix-sprint DONE — all E07 smoke defects closed at root)
-Mode:   ===5=== EDIT · Governance Mode 1 MANUAL. Master: 6 commits local-unpushed (9685845…e4dcf77)
+Date:   2026-06-14 (ARCH SPRINT — two-tier pipeline + identity foundation; plan ~/.claude/plans/lazy-swinging-sundae.md)
+Mode:   ===5=== EDIT · Governance Mode 1. Master: commits local-unpushed incl. fa10591, 6caf41e.
 
-F1-F8 FIX-SPRINT — DONE (2026-06-12, q10a, plan e07-fix-sprint-and-clean-episode.md):
-  F1 9685845 single-dispatch: SREV out of SCR-router (critic chain owns); plan branches
-  Mode-1-3-only; NEW REV-shot_plan PASS promotion (missing vanim mirror = Mode-4 TD-76);
-  per-plan idempotency reads BOTH metadata shapes (was blind to VID top-level
-  plan_asset_id — the SH03 +$1.21); VGEN runner dedup before paid call (regenerate=true
-  bypass for deliberate re-renders). F2 418b275 newest-wins: findApprovedAsset 10 copies
-  → 1 (lib/agents/upstream.ts; 4 were unsorted .find() — the v1-vs-v2 deadlock root);
-  loadAgentInputs orders version desc. F3 975f768 TD-76 ROOT (diagnosed on live E07 DB):
-  factory's post-insert status flip was UNCHECKED supabase update → silent fail → plan
-  DRAFT forever; status now rides IN the insert; critics lift DRAFT→REVIEW on clean
-  verdicts. F4+F5 e105f90: agent_failed gets own debounce bucket + bypasses anti-cascade;
-  watchdog sweeps Mode-4 idle (≥6min, active ≤2h); PA contract 8a-8c (announced work
-  survives turn, verify real results, silent agent >3min = incident); bold auto-react
-  cap 3→5. F6 6f848f6 extraction chunked ≤12 shots + cross-chunk entity vocabulary.
-  F7 e4dcf77 CHECKERS_FREE_TIER (default ON, all modes; rollback 1 env var) + honest
-  result.model in 12 descriptions. F8 reverts DONE: TEXT_LLM_DEBUG_TIER=false,
-  eref_provider=openai-edits-multi, E07 frozen mode 1, SH03 dup INVALIDATED, thread
-  0d5de76a unlinked. tsc·0 / 824 / 30. REMAINS: Anthropic console top-up (Director),
-  push 6 commits, restart prod server (env change), THEN Mode-4 regression (~$0) → D1-D4
-  → clean episode Mode 2.5.
+ARCH SPRINT 2026-06-14 (Director: pipeline = full traversable process surface; fix recurring
+  uuid fragility systemically, not patches). One root: no single declarative model of stages +
+  polymorphic identity. Plan = identity-foundation-first → declarative 2-tier registry → series
+  tier → casting stage → render tail → clean E10. Decisions: identity first; unify registry,
+  migrate next-events.ts incrementally behind flag.
+  DONE: Thread 0+2 (fa10591) — episode cast scoping + TD-63 injector removed + object reference
+  contract end-to-end. A1 (6caf41e) — episodes.series_id code→UUID + FK (migration 0038 live;
+  heals genre+thumbnail latent bugs). E09 VERIFIED visually: SH07 intruders gone, SH08 panel canon
+  (object refs work end-to-end; panel proven via manual objects[] inject on old E09 plans).
+  Phase D core (uncommitted→committing): D1 ART-AD contract v0.2 (episode casting+breakdown+
+  preflight) + validateCanonExists; D2 casting API POST /api/episodes/[id]/cast (canon-preflight
+  HARD GATE → SPC-episode_cast DRAFT → approve locks scoping); D3 'casting' stage node in registry
+  (before brief, ART-AD). tsc·0 / 829 / 30.
+  NEXT (Phase D tail): casting UI (LibraryFeeds bind-to-episode) + PA cast tool so Polина/Director
+  cast in-app. Then A2 shot_id SSOT, A3 atomic boundary, Phase B registry. Director: ALL phases
+  before E10 launch. E09 anchors still polluted (regen on clean E10, not patched).
+
+F1-F8 E07 fix-sprint — DONE 2026-06-12 (commits 9685845…e4dcf77; detail in git log). REMAINS:
+  Anthropic top-up, push, prod restart, Mode-4 regression → D1-D4.
 
 WCHK STRENGTHENING (2026-06-11 AM, commit 4ff5262, Director go q2-soft/q3a-brief/q4n):
   CREAD double-fire killed at root (critics fire ONLY via factory critic-chain); Motor 1
