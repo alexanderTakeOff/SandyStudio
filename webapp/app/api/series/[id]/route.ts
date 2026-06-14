@@ -36,7 +36,8 @@ export const GET = withApiHandler(async (_req, ctx) => {
     supabase
       .from('episodes')
       .select('id', { count: 'exact', head: true })
-      .eq('series_id', seriesRow.code),
+      // 0038: episodes.series_id is the series UUID FK now (was series.code).
+      .eq('series_id', id),
   ]);
 
   return apiOk({

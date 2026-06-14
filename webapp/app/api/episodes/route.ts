@@ -48,18 +48,10 @@ export const GET = withApiHandler(async (req) => {
     .limit(q.limit);
 
   if (q.series_id) {
-    // Match either by uuid (resolve to code first) or by code text directly.
-    if (/^[0-9a-f-]{36}$/i.test(q.series_id)) {
-      const { data: srow } = await supabase
-        .from('series' as never)
-        .select('code')
-        .eq('id', q.series_id)
-        .maybeSingle();
-      const code = (srow as { code?: string } | null)?.code;
-      if (code) query = query.eq('series_id', code);
-    } else {
-      query = query.eq('series_id', q.series_id);
-    }
+    // 0038 (2026-06-14): episodes.series_id is now the series UUID (FK). Query
+    // it directly — the legacy uuid→code translation is gone. A code passed here
+    // simply won't match (nothing stores code form any more).
+    query = query.eq('series_id', q.series_id);
   }
   if (q.status) query = query.eq('status', q.status as never);
 
@@ -76,7 +68,7 @@ export const POST = withApiHandler(async (req) => {
   const { user, supabase } = await requireDirector();
   const body = await parseJson(req, CreateBody);
 
-  // Resolve series row → series_id text code
+  // Resolve series row (its UUID becomes episodes.series_id FK)
   const { data: srow, error: serr } = await supabase
     .from('series' as never)
     .select('*')
@@ -94,7 +86,9 @@ export const POST = withApiHandler(async (req) => {
 
   // Insert episode
   const epPayload = {
-    series_id: series.code,
+    // 0038 (2026-06-14): store the series UUID (FK), not the code. Root fix for
+    // the code-vs-UUID polymorphism that broke series/genre/thumbnail lookups.
+    series_id: series.id,
     episode_code: fullEpisodeCode,
     title_working: body.title_working,
     status: 'BRIEF_PENDING' as const,
