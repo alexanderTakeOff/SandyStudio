@@ -30,11 +30,15 @@ ARCH SPRINT 2026-06-14 (Director: pipeline = full traversable process surface; f
   Phase D DONE (backend): + A2 shot_id SSOT (b900ad9) + castEpisode PA tool (565f357). Casting fully
   usable via system (API + preflight + PA tool + stage node). Casting UI panel (StageWorkspacePanel,
   episode-scoped) DEFERRED to a frontend session (needs live app).
-  NEXT (each deserves a FOCUSED careful pass — thorny, не латки): WCHK ordering (factory critic-chain
-  + runner precondition) + WCHK verdict-stamp (ledger↔markdown reconcile in continuity-check.ts);
-  anchor visual gate (eref-check on anchor path, no silent-pass); A3 atomic boundary (needs CREATE
-  FUNCTION migration = live-DB gate); Phase B registry; Phase C series tier. Director: ALL phases
-  before E10. 7 commits unpushed. E09 anchors polluted except SH07/SH08 (regen on clean E10).
+  WCHK ×2 DONE (cb5d974): ordering — exec-wchk inputAllowedStatuses+REVIEW, runner resolves board
+  REVIEWABLE (mirror Script Critic) → validates pre-approval, no stall; verdict-stamp — authoritative
+  banner so content headline == metadata.verdict. + regular-path negative→provider (5ea1151).
+  ALL pushed to origin (…cb5d974).
+  NEXT (each a FOCUSED pass — не латки): anchor visual gate + regular-path object refs (both touch
+  eref-check — one pass; gate adds per-anchor vision cost → flag-gated default-off); A3 atomic
+  boundary (🔴 needs CREATE FUNCTION migration = Director OK); Phase B registry; Phase C series tier;
+  casting UI panel; brief-authoring skill. Director: ALL phases before E10. E09 anchors polluted
+  except SH07/SH08 (regen on clean E10).
 
 F1-F8 E07 fix-sprint — DONE 2026-06-12 (commits 9685845…e4dcf77; detail in git log). REMAINS:
   Anthropic top-up, push, prod restart, Mode-4 regression → D1-D4.
