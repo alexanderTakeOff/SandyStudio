@@ -31,6 +31,10 @@ import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
 import { loadEpisodeCastSlugs } from '../episode-cast';
 import { continuityLedgerEnabled } from '../chain-flags';
 import { findApprovedAsset } from '../upstream';
+
+// WCHK runs pre-approval (CREAD-PASS chain) — accept the latest board in any
+// reviewable status, mirroring the Script Critic's SCR-script resolution.
+const STB_REVIEWABLE: ReadonlySet<string> = new Set(['REVIEW', 'REVISION', 'APPROVED']);
 import {
   validateStateLedger,
   reviseImpactForMajorPool,
@@ -481,10 +485,16 @@ export async function runContinuityCheck(
   const episodeCode = ep?.episode_code ?? 'UNKNOWN';
 
   const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
-  const sbAsset = findApprovedAsset(upstream, 'STB-storyboard');
+  // 2026-06-14 WCHK ordering fix: the Continuity Critic IS the gate that decides
+  // whether the storyboard becomes APPROVED, so it must read the latest board in
+  // a REVIEWABLE status (it runs pre-approval from the CREAD-PASS chain) — same
+  // rule the Script Critic uses for SCR-script. APPROVED-only here was the E09
+  // "APPROVED STB not found → never re-fires" stall. The brief below stays
+  // APPROVED-only (it is approved upstream of the storyboard).
+  const sbAsset = findApprovedAsset(upstream, 'STB-storyboard', STB_REVIEWABLE);
   if (!sbAsset?.content) {
     throw new ContinuityCheckError(
-      'Precondition failed: APPROVED STB-storyboard with content not found',
+      'Precondition failed: STB-storyboard (REVIEW/REVISION/APPROVED) with content not found',
     );
   }
 
@@ -552,6 +562,7 @@ export async function runContinuityCheck(
     verdictRaw === 'PASS' || verdictRaw === 'REVISE' || verdictRaw === 'FAIL'
       ? verdictRaw
       : 'UNKNOWN';
+  let downgradedByLedger = false;
 
   // ── Motor 1 (CONTINUITY_LEDGER_ENABLED): CHK-W05 durations + CHK-W08 state
   //    ledger + CHK-W02/W07 conflict counting. Flag off → byte-identical
@@ -618,7 +629,10 @@ export async function runContinuityCheck(
     const majorPool = ledgerMajors + durationViolations.length + canonConflicts;
     const downgraded =
       verdict === 'PASS' && reviseImpactForMajorPool(majorPool) === 'REVISE';
-    if (downgraded) verdict = 'REVISE';
+    if (downgraded) {
+      verdict = 'REVISE';
+      downgradedByLedger = true;
+    }
 
     body.verdict = verdict;
     body.state_violations = ledgerViolations;
@@ -674,6 +688,16 @@ export async function runContinuityCheck(
   const styleNames = bible.styles
     .map((c) => bibleSlug(c.file_type))
     .filter((s): s is string => Boolean(s));
+
+  // 2026-06-14 verdict-stamp fix: the LLM's prose verdict can be stale after a
+  // state-ledger downgrade (PASS in prose, REVISE in body.verdict + metadata —
+  // the E09 content↔metadata mismatch). Prepend the authoritative final verdict
+  // so the content headline always agrees with body.verdict and metadata.verdict.
+  const verdictBanner =
+    `## Continuity verdict: ${verdict}` +
+    (downgradedByLedger ? ' — downgraded from PASS by the state-ledger (see below)' : '') +
+    '\n\n';
+  markdown = verdictBanner + markdown;
 
   return {
     markdown,

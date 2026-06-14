@@ -13,6 +13,13 @@ export const execWchkCheckWorld = createAgentInngestFunction({
   concurrencyId: 'exec-wchk',
   eventName: 'sandystudio/exec-wchk/check-world',
   operation: 'world_check',
+  // 2026-06-14 WCHK ordering fix: the Continuity Critic, like the Script Critic
+  // (exec-srev), runs PRE-approval — fired from the CREAD-PASS critic chain
+  // while the storyboard is still REVIEW. Default ['APPROVED'] left upstream
+  // empty of the board → runContinuityCheck's precondition threw "APPROVED
+  // STB not found", and it never re-fired on approval (the E09 stall). Accept
+  // reviewable statuses so the REVIEW board is in upstream, mirroring SREV.
+  inputAllowedStatuses: ['APPROVED', 'REVIEW', 'REVISION'],
   nextEvent: (_saved, eventData) => ({
     name: 'sandystudio/exec-edit/create-animatic',
     data: {
