@@ -36,6 +36,7 @@ import {
   type SupabaseClientLike,
 } from '@/lib/agents/next-events';
 import { EPISODE_CAST_FILE_TYPE, syncAppearsIn } from '@/lib/agents/episode-cast';
+import { resolveShotId } from '@/lib/api/shot-identity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -110,28 +111,11 @@ interface AssetForSlot {
 }
 
 /**
- * Extract a Plan/shot `shot_id` from metadata, falling back to the last fenced
- * JSON block in the markdown body. SPC-shot_plan / SPC-ref_plan / VID-shot all
- * carry `metadata.shot_id`; older Plans only embedded it in the content body.
+ * Extract a Plan/shot `shot_id`. Thin wrapper over the shared `resolveShotId`
+ * SSOT (A2 2026-06-14) — kept for the existing call-site signature.
  */
 function extractShotId(metadata: unknown, content?: string | null): string | null {
-  const metaShotId = (metadata as { shot_id?: unknown } | null)?.shot_id;
-  if (typeof metaShotId === 'string' && metaShotId.length > 0) return metaShotId;
-  if (typeof content === 'string') {
-    const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
-    const last = matches[matches.length - 1]?.[1];
-    if (last) {
-      try {
-        const body = JSON.parse(last.trim()) as { shot_id?: unknown };
-        if (typeof body.shot_id === 'string' && body.shot_id.length > 0) {
-          return body.shot_id;
-        }
-      } catch {
-        /* malformed body — fall through to null */
-      }
-    }
-  }
-  return null;
+  return resolveShotId({ metadata, content });
 }
 
 /**

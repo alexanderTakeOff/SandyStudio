@@ -33,6 +33,7 @@ import {
   type AnimaticContract,
 } from '@/lib/api/animatic-shotlist';
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
+import { resolveShotId } from '@/lib/api/shot-identity';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import {
   designerChainEnabled,
@@ -908,22 +909,8 @@ export async function computeNextEvents(
             content?: string | null;
             metadata?: unknown;
           }>) {
-            // Prefer metadata.shot_id; fall back to content fenced JSON shot_id.
-            let shotId: string | null = null;
-            const meta = row.metadata as { shot_id?: unknown } | null;
-            if (typeof meta?.shot_id === 'string') shotId = meta.shot_id;
-            if (!shotId && typeof row.content === 'string') {
-              const matches = [...row.content.matchAll(/```json\s*([\s\S]+?)```/g)];
-              const last = matches[matches.length - 1]?.[1];
-              if (last) {
-                try {
-                  const body = JSON.parse(last.trim()) as { shot_id?: unknown };
-                  if (typeof body.shot_id === 'string') shotId = body.shot_id;
-                } catch {
-                  /* leave shotId null */
-                }
-              }
-            }
+            // A2 (2026-06-14): shared shot_id SSOT resolver.
+            const shotId = resolveShotId({ metadata: row.metadata, content: row.content });
             if (!shotId) continue;
             shotsWithAnyPlan.add(shotId);
             // Newest-wins: any APPROVED plan for the shot is enough to advance it.

@@ -21,6 +21,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
+import { resolveShotId } from './shot-identity';
 
 export interface ShotApprovalProgress {
   totalShots: number;
@@ -60,16 +61,9 @@ function parseStoryboardShots(content: string): StoryboardShot[] {
   return shots;
 }
 
-interface AssetMetadataShotRef {
-  shot_reference?: { shot_id?: unknown } | null;
-}
-
 function readShotIdFromMetadata(meta: unknown): string | null {
-  if (!meta || typeof meta !== 'object') return null;
-  const sr = (meta as AssetMetadataShotRef).shot_reference;
-  if (!sr || typeof sr !== 'object') return null;
-  const id = (sr as { shot_id?: unknown }).shot_id;
-  return typeof id === 'string' && id.length > 0 ? id : null;
+  // A2 (2026-06-14): delegate to the shared shot_id SSOT resolver.
+  return resolveShotId({ metadata: meta });
 }
 
 export async function getShotApprovalProgress(
