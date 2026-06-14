@@ -81,3 +81,17 @@ export function stopBeforeErefEnabled(): boolean {
   if (!v) return false;
   return v.toLowerCase() === 'true' || v === '1' || v.toLowerCase() === 'on';
 }
+
+/**
+ * ANCHOR_VISUAL_GATE — run the EREF AI checker on anchor frames too (2026-06-14,
+ * Director q "default ON"). Advisory: stamps a visual verdict + flags intruders
+ * (extraneous_objects) into the anchor's metadata and emits a stat on bypass; it
+ * does NOT block — anchors still land REVIEW for the Director's eye. The
+ * regular EREF path always ran the checker; anchors used to skip it entirely.
+ * Default ON; set ANCHOR_VISUAL_GATE=false/0/off to disable.
+ */
+export function anchorVisualGateEnabled(): boolean {
+  const v = process.env.ANCHOR_VISUAL_GATE;
+  if (!v) return true; // default ON per Director
+  return !(v.toLowerCase() === 'false' || v === '0' || v.toLowerCase() === 'off');
+}

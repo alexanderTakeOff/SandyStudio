@@ -96,6 +96,7 @@ import { selectSkills } from '../../skills/select-skills';
 import { findApprovedAsset } from '../upstream';
 import { loadEpisodeCastSlugs } from '../episode-cast';
 import { logEvent } from '../../api/events';
+import { anchorVisualGateEnabled } from '../chain-flags';
 import type { AgentInputs } from '../types';
 import type {
   GovernanceModeNum,
@@ -1551,6 +1552,58 @@ async function runAnchorPairGeneration(
     },
   ];
 
+  // Anchor visual gate (2026-06-14, ANCHOR_VISUAL_GATE default ON): the EREF AI
+  // checker always ran on the regular path but anchors skipped it. Assemble the
+  // reviewer refs + a synthetic test plan from the canon attached above so the
+  // checker can flag intruders / drift on anchor frames too (advisory — see loop).
+  const visualGateOn = anchorVisualGateEnabled();
+  const anchorReviewRefs: ReviewBibleRef[] = [];
+  identityRefs.forEach((r, i) => {
+    const slug = identityCharNames[i] ?? '';
+    const a = charBySlug.get(slug);
+    anchorReviewRefs.push({
+      slug,
+      kind: 'character',
+      image_b64: r.image_b64,
+      description: a?.description ?? a?.content ?? '',
+    });
+  });
+  objectRefs.forEach((r, i) => {
+    const slug = objectNames[i] ?? '';
+    const a = objBySlug.get(slug);
+    anchorReviewRefs.push({
+      slug,
+      kind: 'object',
+      image_b64: r.image_b64,
+      description: a?.description ?? a?.content ?? '',
+    });
+  });
+  if (styleRef) {
+    anchorReviewRefs.push({
+      slug: nameFromBibleFilename(styleAsset) ?? 'style',
+      kind: 'style',
+      image_b64: styleRef.image_b64,
+      description: styleAsset.description ?? styleAsset.content ?? '',
+    });
+  }
+  const anchorTestPlan: ShotTestPlan = {
+    characters: chars_v2.map((c) => ({
+      bible_slug: c.bible_slug.toLowerCase(),
+      identity_anchor_asset_id: null,
+      expected_emotion: c.expected_emotion,
+      expected_action: c.expected_action,
+      role_in_shot:
+        c.role_in_shot === 'co-star' || c.role_in_shot === 'background'
+          ? c.role_in_shot
+          : 'subject',
+    })),
+    location_anchor_asset_id: null,
+    style_anchor_asset_id: styleAsset.id,
+    expected_gag: shot.expected_gag === undefined ? null : shot.expected_gag,
+    shot_role: shot.shot_role ?? 'anchor',
+    objects: objectNames.map((s) => ({ slug: s })),
+  };
+
   // 6. Provider — resolved from `app_config.eref_provider` like the legacy
   // path (Director directive 2026-06-11 q7: anchors follow the configured
   // provider; supersedes the q4a 2026-05-25 openai-edits-multi hardcode).
@@ -1620,6 +1673,85 @@ async function runAnchorPairGeneration(
     }
     totalCost += genCost;
 
+    // Anchor visual gate (advisory). Runs the EREF checker on the frame; stamps
+    // the verdict + any intruders into metadata and emits a stat. Does NOT block
+    // — the anchor still lands REVIEW for the Director's eye (mode-aware on a
+    // checker bypass mirrors the regular path).
+    let visualReview: {
+      verdict: string;
+      extraneous_objects: string[];
+      consistency_score: number;
+      skipped: boolean;
+    } | null = null;
+    if (visualGateOn) {
+      try {
+        const rv = await runEREFCheck({
+          candidateImageB64: genB64,
+          testPlan: anchorTestPlan,
+          bibleRefs: anchorReviewRefs,
+          episodeCode,
+          shotId: planOverrides.shotId,
+          planIntent: { prompt: side.prompt, negativeList: planOverrides.negative },
+        });
+        const review = rv.review;
+        const skipped = (rv as { skipped?: boolean }).skipped === true;
+        totalCost += review.reviewer_cost_usd;
+        visualReview = {
+          verdict: review.verdict,
+          extraneous_objects: review.extraneous_objects,
+          consistency_score: review.consistency_score,
+          skipped,
+        };
+        if (skipped) {
+          await logEvent(supabase, {
+            event_type: 'checker_fallback',
+            severity: governanceMode === 4 ? 'info' : 'warning',
+            title: `Anchor checker fallback (mode ${governanceMode}) — ${planOverrides.shotId}/${name}`,
+            description: (rv as { skipped_reason?: string }).skipped_reason ?? 'checker bypassed',
+            actor: 'EXEC-EREF-CHECK',
+            episode_id: episodeId,
+            metadata: {
+              agent: 'EXEC-EREF-CHECK',
+              shot_id: planOverrides.shotId,
+              mode: governanceMode,
+              path: 'anchor',
+              dashboard_flag: governanceMode === 3,
+            },
+          });
+        } else if (review.extraneous_objects.length > 0) {
+          await logEvent(supabase, {
+            event_type: 'anchor_intruder_flag',
+            severity: 'warning',
+            title: `Anchor intruder flag — ${planOverrides.shotId}/${name}`,
+            description: review.extraneous_objects.join('; ').slice(0, 400),
+            actor: 'EXEC-EREF-CHECK',
+            episode_id: episodeId,
+            metadata: {
+              agent: 'EXEC-EREF-CHECK',
+              shot_id: planOverrides.shotId,
+              extraneous_objects: review.extraneous_objects,
+              path: 'anchor',
+            },
+          });
+        }
+      } catch (err) {
+        await logEvent(supabase, {
+          event_type: 'checker_fallback',
+          severity: governanceMode === 4 ? 'info' : 'warning',
+          title: `Anchor checker threw (mode ${governanceMode}) — ${planOverrides.shotId}/${name}`,
+          description: (err as Error).message.slice(0, 200),
+          actor: 'EXEC-EREF-CHECK',
+          episode_id: episodeId,
+          metadata: {
+            agent: 'EXEC-EREF-CHECK',
+            shot_id: planOverrides.shotId,
+            mode: governanceMode,
+            path: 'anchor',
+          },
+        });
+      }
+    }
+
     const persisted = await persistBinary({
       base64: genB64,
       ext: 'png',
@@ -1648,6 +1780,7 @@ async function runAnchorPairGeneration(
       scene_master_asset_id: anchorCtx.scene_master_asset.asset_id,
       identity_character_slugs: identityCharNames,
       object_slugs: objectNames,
+      visual_review: visualReview,
       shot_reference: {
         shot_id: planOverrides.shotId,
         shot_role: shot.shot_role ?? 'anchor',
