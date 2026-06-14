@@ -44,7 +44,7 @@ export class EREFCheckError extends Error {
 /** Bible reference image bundled with its slug + role hint for the reviewer. */
 export interface ReviewBibleRef {
   slug: string;
-  kind: 'character' | 'location' | 'style';
+  kind: 'character' | 'location' | 'style' | 'object';
   /** Base64 PNG (no data: prefix). null = description-only ref, no image. */
   image_b64: string | null;
   /** Long-form Bible description — read by reviewer when image is null. */

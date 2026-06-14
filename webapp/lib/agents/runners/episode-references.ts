@@ -192,7 +192,7 @@ export interface ShotJob {
   /** Bible refs (with description + image_b64 + asset row) for prompt and reviewer. */
   bibleRefs: Array<{
     asset: BibleAssetLike;
-    kind: 'character' | 'location' | 'style';
+    kind: 'character' | 'location' | 'style' | 'object';
     slug: string;
     description: string;
     image_b64: string | null;
@@ -441,6 +441,7 @@ async function buildShotJobs(
     characters: BibleAssetLike[];
     locations: BibleAssetLike[];
     styles: BibleAssetLike[];
+    objects?: BibleAssetLike[];
   },
 ): Promise<ShotJob[]> {
   const charBySlug = new Map<string, BibleAssetLike>();
@@ -452,6 +453,11 @@ async function buildShotJobs(
   for (const l of bible.locations) {
     const n = nameFromBibleFilename(l);
     if (n) locBySlug.set(n, l);
+  }
+  const objBySlug = new Map<string, BibleAssetLike>();
+  for (const o of bible.objects ?? []) {
+    const n = nameFromBibleFilename(o);
+    if (n) objBySlug.set(n, o);
   }
   const styleAsset = bible.styles[0];
   if (!styleAsset) {
@@ -534,12 +540,40 @@ async function buildShotJobs(
       ? locationAsset.description ?? locationAsset.content ?? ''
       : '';
 
+    // Objects (2026-06-14): resolve the shot's props_in_frame against cast-scoped
+    // SBL-object_* canon so the prop's reference image is attached (no more
+    // hallucinated panels). Mirrors the anchor path.
+    type ResolvedObject = {
+      bibleAsset: BibleAssetLike;
+      slug: string;
+      description: string;
+      image_b64: string | null;
+    };
+    const resolvedObjects: ResolvedObject[] = [];
+    const seenObjIds = new Set<string>();
+    for (const raw of shot.props_in_frame ?? []) {
+      const slug = raw.toLowerCase();
+      const asset =
+        objBySlug.get(slug) ??
+        [...objBySlug.entries()].find(([k]) => slug.includes(k) || k.includes(slug))?.[1] ??
+        null;
+      if (!asset || seenObjIds.has(asset.id)) continue;
+      seenObjIds.add(asset.id);
+      resolvedObjects.push({
+        bibleAsset: asset,
+        slug: nameFromBibleFilename(asset) ?? slug,
+        description: asset.description ?? asset.content ?? '',
+        image_b64: await getCachedImage(asset),
+      });
+    }
+
     const testPlan: ShotTestPlan = {
       characters: resolvedChars.map((c) => c.planEntry),
       location_anchor_asset_id: locationAsset && locationImg ? locationAsset.id : null,
       style_anchor_asset_id: styleAsset.id,
       expected_gag: shot.expected_gag === undefined ? null : shot.expected_gag,
       shot_role: shot.shot_role ?? 'action',
+      objects: resolvedObjects.map((o) => ({ slug: o.slug, description: o.description })),
     };
 
     const charsKey = resolvedChars.map((c) => c.slug).sort().join('_');
@@ -566,6 +600,15 @@ async function buildShotJobs(
         slug: nameFromBibleFilename(locationAsset) ?? locKeyRaw,
         description: locDescription,
         image_b64: locationImg,
+      });
+    }
+    for (const o of resolvedObjects) {
+      bibleRefs.push({
+        asset: o.bibleAsset,
+        kind: 'object',
+        slug: o.slug,
+        description: o.description,
+        image_b64: o.image_b64,
       });
     }
     bibleRefs.push({
@@ -600,6 +643,9 @@ function composePromptFromTestPlan(job: ShotJob): string {
   const styleBlocks = bibleRefs
     .filter((r) => r.kind === 'style')
     .map((r) => `Series art direction — ${r.description}`);
+  const objBlocks = bibleRefs
+    .filter((r) => r.kind === 'object')
+    .map((r) => `Prop "${r.slug}" — ${r.description}`);
 
   const charDirectives = testPlan.characters.map(
     (c) =>
@@ -643,6 +689,10 @@ function composePromptFromTestPlan(job: ShotJob): string {
     'Canonical references (must match exactly):',
     ...charBlocks.map((b) => `- ${b}`),
     ...locBlocks.map((b) => `- ${b}`),
+    ...objBlocks.map((b) => `- ${b}`),
+    objBlocks.length > 0
+      ? 'The props above are attached as canon reference images — render them exactly as shown (shape, count, layout). Do not invent or duplicate prop variants.'
+      : null,
     '',
     'Series art direction (must follow):',
     ...styleBlocks.map((b) => `- ${b}`),
@@ -691,9 +741,10 @@ export function buildMultiImageRefs(
   job: ShotJob,
   continuityRefs: ReadonlyArray<MultiImageRef> = [],
 ): MultiImageRef[] {
-  const byKind: Record<'location' | 'identity' | 'style', MultiImageRef[]> = {
+  const byKind: Record<'location' | 'identity' | 'object' | 'style', MultiImageRef[]> = {
     location: [],
     identity: [],
+    object: [],
     style: [],
   };
   for (const r of job.bibleRefs) {
@@ -705,9 +756,17 @@ export function buildMultiImageRefs(
     };
     if (r.kind === 'location') byKind.location.push(ref);
     else if (r.kind === 'style') byKind.style.push(ref);
+    else if (r.kind === 'object') byKind.object.push(ref);
     else byKind.identity.push(ref);
   }
-  return [...byKind.location, ...byKind.identity, ...byKind.style, ...continuityRefs];
+  // Order: location (layout) → identity (characters) → object (props) → style → continuity.
+  return [
+    ...byKind.location,
+    ...byKind.identity,
+    ...byKind.object,
+    ...byKind.style,
+    ...continuityRefs,
+  ];
 }
 
 /**

@@ -60,6 +60,12 @@ export interface ShotTestPlan {
   expected_gag: string | null;
   /** Storyboard `shot_role` enum — used by reviewer to pick QC criteria. */
   shot_role: string;
+  /**
+   * Canon props in frame (2026-06-14). Slugs from the storyboard `props_in_frame`
+   * resolved against cast-scoped `SBL-object_*` canon — drives object reference
+   * attachment + lets the reviewer flag a prop that drifted from its canon.
+   */
+  objects?: Array<{ slug: string; description?: string }>;
 }
 
 // ── Generation result history (per attempt: pipeline, auto_regen, director_edit, auto_upscale) ───
