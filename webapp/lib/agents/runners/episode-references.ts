@@ -2067,6 +2067,9 @@ export async function runEpisodeReferences(
           references: refsForGen,
           quality: EREF_QUALITY,
           size: effectiveSize,
+          // 2026-06-14: forward the Plan's negative to the provider (was only
+          // sent to the reviewer). Symmetric with the anchor path.
+          negative: planOverrides?.negative,
         });
         genB64 = result.b64_data;
         genCost = result.cost_usd;
@@ -2471,6 +2474,7 @@ async function callProviderWithFallback(
     references: MultiImageRef[];
     quality: 'low' | 'medium' | 'high';
     size: ProviderSize;
+    negative?: readonly string[];
   },
 ) {
   // If provider doesn't accept references at all (degenerate case) we still
@@ -2489,5 +2493,6 @@ async function callProviderWithFallback(
     references: refs,
     size: args.size,
     quality: args.quality,
+    negative: args.negative,
   });
 }
