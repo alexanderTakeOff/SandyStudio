@@ -34,11 +34,14 @@ ARCH SPRINT 2026-06-14 (Director: pipeline = full traversable process surface; f
   REVIEWABLE (mirror Script Critic) → validates pre-approval, no stall; verdict-stamp — authoritative
   banner so content headline == metadata.verdict. + regular-path negative→provider (5ea1151).
   ALL pushed to origin (…cb5d974).
-  NEXT (each a FOCUSED pass — не латки): anchor visual gate + regular-path object refs (both touch
-  eref-check — one pass; gate adds per-anchor vision cost → flag-gated default-off); A3 atomic
-  boundary (🔴 needs CREATE FUNCTION migration = Director OK); Phase B registry; Phase C series tier;
-  casting UI panel; brief-authoring skill. Director: ALL phases before E10. E09 anchors polluted
-  except SH07/SH08 (regen on clean E10).
+  #2-batch DONE (Director go): #3 regular-path object refs (70f8da2, contract symmetric both paths) +
+  #1 mode-aware checker fallback + stats (c953c54: skip→Mode4 pass / Mode1-2 Director / Mode3 EXEC-DIR-AI
+  +dashboard_flag, always a checker_fallback stat) + #2 anchor visual gate (24bbf1a: ANCHOR_VISUAL_GATE
+  default ON, advisory — stamps metadata.visual_review + anchor_intruder_flag stat, non-blocking).
+  ALL pushed (…24bbf1a). tsc·0/829/30.
+  NEXT: A3 atomic boundary (🔴 CREATE FUNCTION migration = Director OK); Phase B registry; Phase C
+  series tier; casting UI panel (frontend); brief-authoring skill. Director: ALL phases before E10.
+  E09 anchors polluted except SH07/SH08 (regen on clean E10).
 
 F1-F8 E07 fix-sprint — DONE 2026-06-12 (commits 9685845…e4dcf77; detail in git log). REMAINS:
   Anthropic top-up, push, prod restart, Mode-4 regression → D1-D4.
