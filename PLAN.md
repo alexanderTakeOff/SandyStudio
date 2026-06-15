@@ -11,8 +11,31 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-14 (ARCH SPRINT — two-tier pipeline + identity foundation; plan ~/.claude/plans/lazy-swinging-sundae.md)
-Mode:   ===5=== EDIT · Governance Mode 1. Master PUSHED to origin (…5ea1151) 2026-06-14.
+Date:   2026-06-15 (E10 anchor run + provider-cost firefight; master @ 7cd2238)
+Mode:   ===5=== EDIT · Governance Mode 4 (E10). Master PUSHED to origin (…7cd2238).
+
+2026-06-15 SESSION (memo: memory/session_2026-06-15_e10-gemini-cap-fixes.md). 3 root fixes pushed:
+  regen-cap (d2cdd40, lib/api/plan-regen-guard.ts — autonomous regen cap, in-flight guard) ·
+  Mode-4 supersede (83f5235, lib/api/single-approved.ts — demote prior APPROVED slot sibling +
+  approve WHOLE anchor pair) · Polina→Gemini (7cd2238, lib/concierge/llm.ts, CONCIERGE_PROVIDER=gemini
+  OpenAI-compat, live-verified tool-calling). E10: 28/28 anchors generated on GEMINI-FREE plans
+  (Anthropic credits dry → TEXT_LLM_DEBUG_TIER=true). OpenAI hit `Billing hard limit` → blocked ALL
+  gpt-image too → Director topped up (images STAY on OpenAI). SH07 doors slide-fixed; SH09 regen
+  cons=100; SH22 unblocked (q6 override of cosmetic EPREV).
+  🔴 SH23 RUNAWAY (forensics): cosmetic-EPREV doom-loop × Polina Mode-4 containment auto-react →
+  58 plan versions / 45 imgs (36 invalidated) / 39 Polina regens over 3h → burned OpenAI limit.
+  regen-cap MISSED it (per-planAssetId; new-plan-per-iteration bypasses). CODE-PHASE (q1=6/q2=note):
+  ✅(1) finding#2 EPREV cosmetic→PASS — V05/V09 advisory + V07 deterministic re-validate + executor
+  baseline-negatives by construction; lone-cosmetic REVISE→PASS downgrade. ✅(2) SHOT-level cap
+  shotRegenCap()=6 across all plan versions (img+plan), factory pre-run = universal chokepoint (auto-
+  chain+Mode-4+Polina), early-return HALT+escalate. tsc·0/847/30. LOCAL-UNPUSHED. STILL OPEN code:
+  (3)≈covered by (2); (4) Polina auto-recovery per shot; (5) loud Anthropic→gemini fallback; (6)
+  provider badge UI; (7) REVISION→APPROVED human Director; (8) buildShotListFromAnchorChain. SH23
+  cleanup (58 plans) — after these land.
+  OPEN: SH25/SH26 canon (button-panel/location — await Polina review); music (Director uploads via
+  upload-music; idea: media-assets in Library); worktree cleanup (diff a410e+ad3d, clean ~16 dead);
+  Vercel+Inngest-Cloud migration (future sprint); A/B Polina-model test scheduled 2026-06-22.
+  Config: desktop = always-on host, home via Chrome Remote Desktop.
 
 ARCH SPRINT 2026-06-14 (Director: pipeline = full traversable process surface; fix recurring
   uuid fragility systemically, not patches). One root: no single declarative model of stages +
@@ -51,61 +74,20 @@ E10 CLEAN-RUN (Mode 4, brief+cast verbatim E09): identity contract proven by con
   in-flight guard) + /regenerate-image-from-plan. tsc·0/836/30. Findings #2-#5 → TD backlog.
   E09 anchors polluted except SH07/SH08 (regen on clean E10).
 
-F1-F8 E07 fix-sprint — DONE 2026-06-12 (commits 9685845…e4dcf77; detail in git log). REMAINS:
-  Anthropic top-up, push, prod restart, Mode-4 regression → D1-D4.
-
-WCHK STRENGTHENING (2026-06-11 AM, commit 4ff5262, Director go q2-soft/q3a-brief/q4n):
-  CREAD double-fire killed at root (critics fire ONLY via factory critic-chain); Motor 1
-  state-ledger (CHK-W08, Haiku extract → deterministic judge, 4 rules); CHK-W05 durations +
-  W02/W07 advisory; Motor 2 inventory-cascade (CHK-W04, Bible ∪ brief prop_delta, MINOR-only).
-  Comedy-soft verdict: never FAIL, REVISE at MAJOR-pool ≥3. Behind CONTINUITY_LEDGER_ENABLED.
-  Contract continuity_check@v2 + skill v0.2. tsc·0 / 787/787 / 30/30.
-
-C1-GATE SPRINT (2026-06-10, plan humor-readability-linked-ullman.md, 6 commits 9988c5f…7a7f568):
-  Root fixes from E02-vs-E03 humor analysis. (1) Genre single-source: genreForEpisode reuses
-  TD-59 code→UUID resolver (genre skills now activate). (2) chain-flags.ts + decideFanoutEmit:
-  every fanout shot gets an animator plan; plan-less single-shot dies (C1 gate). (3) EXEC-CREAD
-  universal Creative Readability Critic (R01-R06 genre-neutral; genre engine = skills on shelves;
-  HALT w/o paid call if no playbook); gate STB→CREAD→WCHK behind READABILITY_GATE_ENABLED (OFF).
-  (4) Writer skill-shelf + E02 formula into sandy-gag-library + storyboarder skill.
-
-TD-86 GEN-CONFIG (2026-06-09, plan eager-launching-anchor.md): Director's provider/
-  format directives no longer lost. NEW resolve-generation-params.ts = single
-  precedence authority (episode generation_config.video > shot/plan override >
-  assignment > series > delivery-aspect > fallback; episode-authority only on
-  declared fields → no regression). Wired into the TWO real consumers — runner
-  EXEC-VGEN (covers pilot/single-shot/fanout/legacy) + regenerate-video route;
-  emitters stay dumb (subtractive: 6 sites→2, anti-additivity). settings-route
-  persists generation_config{video,image}+caps-validate; EpisodeSettingsCard gains
-  collapsible video+image provider panel (reuses ProviderControlPanel +fields prop)
-  +allow_shot_overrides toggle; VGENShotPanel locks format when override off
-  (+confirm badge, q26b). SHIPPED+pushed 6929ba6 (+music-fix f978921: replaceMusicLayer
-  — stale audio_tracks shadowed new music_url → E03 v03 regression). E03 1st final-cut
-  STITCHED v01 63s/24sh (Director verified, expected косяки). NEXT: Director smoke —
-  E03 9:16/standard → re-fanout → confirm metadata aspect/res.
+SHIPPED (in git log, condensed): WCHK STRENGTHENING (4ff5262, 06-11 — CREAD double-fire killed,
+  state-ledger CHK-W08 + inventory-cascade CHK-W04, comedy-soft verdict, CONTINUITY_LEDGER_ENABLED) ·
+  C1-GATE SPRINT (9988c5f…7a7f568, 06-10 — genre single-source, C1 plan-gate, EXEC-CREAD universal
+  readability critic behind READABILITY_GATE_ENABLED) · TD-86 GEN-CONFIG (6929ba6, 06-09 —
+  resolve-generation-params.ts single precedence authority, settings UI provider panels).
 
 GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
-  ✅ Phase 1 SHIPPED (7c76a05): single-approved→INVALIDATED+DB indexes (0036),
-     loud Drive-aware resolver + media-preflight gate, atomic pre-spend budget
-     ceiling (0037, no double-charge). Applied to prod DB.
-  🔨 Phase 2 in progress:
-     ✅ U1/I5 provider contract (b8ef059) — img2vid throws imageless (Seedance-422
-        / t2v-drift fix), one check from capability model, no per-provider dup.
-     ✅ U4/I9 critic auto-bounce (108e8ee) — critic-loop.ts applyCriticVerdict:
-        VPREV/EPREV now enforce cap=2→HALT→Director (was uncapped infinite loop);
-        counter = plan version (survives re-author). +6 unit tests.
-     ✅ U2/I4+I6 fold (cff8007) — execVgenStart+SingleShot → ONE gated execVgenRun
-        (multi-event, isPilot); gate+agent_failed, −~160 lines, dead pilot cap gone.
-     ✅ EREF-fold (bb0669c) — gate + agent_failed for EXEC-EREF (same as U2).
-     ✅ U3/I3 (37a2390) — dropped EXEC-VANIM from media-preflight (loads no bytes;
-        was blocking whole stage on one bad anchor). Subtractive, no shotId thread.
-     ✅ U5/I8 CLOSED-as-covered: fan-out skip-status + Inngest step-memoization +
-        I7 budget ceiling cover the common cases; narrow residual (double-spend on
-        mid-step failure) needs runAgent step-split — deferred, bounded by ceiling.
-  Phase 2 code COMPLETE. NOTE: trio doesn't exercise Inngest handlers → VALIDATE
-  U1+U2+EREF-fold on paid Veo/Seedance smoke WITH Director before push (q9).
-  Phase 3 = OUTPUT-critic (frame-sampler → vision) + camera/quality_tier checks.
-  Verify after each unit: tsc·0 / vitest 664 / replay-pilot 30. Paid smoke = WITH Director.
+  ✅ Phase 1 SHIPPED (7c76a05): single-approved→INVALIDATED+DB indexes (0036), loud Drive-aware
+     resolver + media-preflight gate, atomic pre-spend budget ceiling (0037). Prod DB applied.
+  ✅ Phase 2 code COMPLETE (b8ef059/108e8ee/cff8007/bb0669c/37a2390): provider contract (img2vit
+     throws imageless), critic auto-bounce cap=2→HALT, VGEN/EREF fold+gate+agent_failed.
+     NOTE: critic cap=2 is per-plan-version — SH23 runaway proved it doesn't bound a SHOT (new
+     plan per iter). See 2026-06-15 NEXT (shot-level cap).
+  🔨 Phase 3 PENDING = OUTPUT-critic (frame-sampler → vision) + camera/quality_tier checks.
 
 OPERATING DOCTRINE (memory: nudge_polina_dont_act_for_her):
   • Тео = Director's proxy. Nudge Polina via team-chat (POST /api/team-chat/post,

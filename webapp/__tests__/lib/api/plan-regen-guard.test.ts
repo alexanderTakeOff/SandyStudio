@@ -4,7 +4,11 @@
 // is the mechanical chokepoint that terminates the loop by construction.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { assertPlanRegenWithinCap } from '@/lib/api/plan-regen-guard';
+import {
+  assertPlanRegenWithinCap,
+  countShotAutonomousAttempts,
+} from '@/lib/api/plan-regen-guard';
+import { shotRegenCap } from '@/lib/agents/chain-flags';
 import { ConflictError } from '@/lib/api/errors';
 
 type Job = { id: string; status: string; started_at?: string };
@@ -122,5 +126,68 @@ describe('assertPlanRegenWithinCap — read error fails CLOSED', () => {
     await expect(
       assertPlanRegenWithinCap({ ...BASE, supabase: errClient, principal: 'exec_dir_ai' }),
     ).rejects.toThrow(/Could not verify/i);
+  });
+});
+
+// ── Shot-level cap (E10 SH23 doom-loop fix 2026-06-15) ─────────────────────
+// countShotAutonomousAttempts spans ALL plan versions per shot; shotRegenCap()
+// defaults to 6. The factory pre-run hook compares the two.
+
+/** Thenable builder returning { count, error } for the head:true count query. */
+function mockCountClient(result: { count: number | null; error: unknown }) {
+  const b: Record<string, unknown> = {};
+  b.select = () => b;
+  b.eq = () => b;
+  b.in = () => b;
+  b.then = (resolve: (v: unknown) => unknown) => resolve(result);
+  return { from: () => b } as never;
+}
+
+describe('shotRegenCap — default + env override', () => {
+  const SFLAG = 'SHOT_REGEN_CAP';
+  let sOriginal: string | undefined;
+  beforeEach(() => {
+    sOriginal = process.env[SFLAG];
+    delete process.env[SFLAG];
+  });
+  afterEach(() => {
+    if (sOriginal === undefined) delete process.env[SFLAG];
+    else process.env[SFLAG] = sOriginal;
+  });
+
+  it('defaults to 6', () => {
+    expect(shotRegenCap()).toBe(6);
+  });
+
+  it('respects a custom env override', () => {
+    process.env[SFLAG] = '4';
+    expect(shotRegenCap()).toBe(4);
+  });
+
+  it('ignores a non-positive / non-numeric override (falls back to 6)', () => {
+    process.env[SFLAG] = '0';
+    expect(shotRegenCap()).toBe(6);
+    process.env[SFLAG] = 'nope';
+    expect(shotRegenCap()).toBe(6);
+  });
+});
+
+describe('countShotAutonomousAttempts', () => {
+  it('returns the exact count across plan versions', async () => {
+    const client = mockCountClient({ count: 5, error: null });
+    const r = await countShotAutonomousAttempts(client, 'ep-1', 'SH23');
+    expect(r).toEqual({ count: 5, readError: false });
+  });
+
+  it('returns count 0 (not undefined) when the head query reports null', async () => {
+    const client = mockCountClient({ count: null, error: null });
+    const r = await countShotAutonomousAttempts(client, 'ep-1', 'SH23');
+    expect(r).toEqual({ count: 0, readError: false });
+  });
+
+  it('signals readError (fail-closed) when the query errors', async () => {
+    const client = mockCountClient({ count: null, error: { message: 'boom' } });
+    const r = await countShotAutonomousAttempts(client, 'ep-1', 'SH23');
+    expect(r.readError).toBe(true);
   });
 });

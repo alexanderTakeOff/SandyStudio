@@ -101,6 +101,29 @@ export function planRegenCap(): number {
 }
 
 /**
+ * SHOT_REGEN_CAP — max AUTONOMOUS attempts (image-gen + plan-regen COMBINED)
+ * for ONE shot ACROSS ALL plan versions, before the factory pre-run hook HALTs
+ * and escalates to the human Director. Default 6.
+ *
+ * Why a SECOND cap on top of planRegenCap(): every existing cap is keyed to a
+ * unit that RESETS when a new plan version is born — planRegenCap() is per
+ * `planAssetId`, the critic-loop revision cap is per revision chain. The E10
+ * SH23 doom-loop (2026-06-15) created a NEW plan each iteration, so both
+ * counters reset every turn → 58 plan versions / 45 images / 39 Polina regens
+ * on a single shot, burning the OpenAI image billing limit. `HALT` was even
+ * stamped at v3/v11/v17 but the loop continued because the counter started
+ * over. This cap is keyed to the SHOT (input_snapshot->>shotId), spans every
+ * plan version, and never resets — so a runaway terminates by construction
+ * regardless of how many fresh plans the loop spawns. The human Director is
+ * never capped (she is the escalation target).
+ */
+export function shotRegenCap(): number {
+  const v = process.env.SHOT_REGEN_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 6;
+}
+
+/**
  * ANCHOR_VISUAL_GATE — run the EREF AI checker on anchor frames too (2026-06-14,
  * Director q "default ON"). Advisory: stamps a visual verdict + flags intruders
  * (extraneous_objects) into the anchor's metadata and emits a stat on bypass; it

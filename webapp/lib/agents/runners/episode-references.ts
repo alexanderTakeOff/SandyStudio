@@ -2717,6 +2717,31 @@ async function callProviderWithFallback(
     references: refs,
     size: args.size,
     quality: args.quality,
-    negative: args.negative,
+    negative: withBaselineNegatives(args.negative),
   });
+}
+
+/**
+ * Baseline negative guards always sent to the image provider, regardless of
+ * what the Plan declared. This makes EPREV's V05 check ("negative[] must
+ * include 'no text' / 'no logos'") true by construction at the only point that
+ * matters — the provider call — so the Critic can treat V05 as advisory and
+ * stop bouncing Plans for a cosmetic JSON-field omission (the E10 SH23
+ * doom-loop fuel, 2026-06-15). Case-insensitive de-dup keeps the Plan's own
+ * richer terms ("no watermarks", etc.) intact.
+ */
+export const BASELINE_NEGATIVES = ['no text', 'no logos'] as const;
+
+export function withBaselineNegatives(
+  negative: readonly string[] | undefined,
+): string[] {
+  const out = [...(negative ?? [])];
+  const seen = new Set(out.map((t) => t.trim().toLowerCase()));
+  for (const term of BASELINE_NEGATIVES) {
+    if (!seen.has(term)) {
+      out.push(term);
+      seen.add(term);
+    }
+  }
+  return out;
 }

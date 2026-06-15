@@ -27,6 +27,14 @@ import { ConflictError } from './errors';
 import { logEvent } from './events';
 import { planRegenCap } from '@/lib/agents/chain-flags';
 
+/**
+ * Agents whose jobs count toward the per-shot runaway cap: the image executor
+ * (the money — gpt-image) and the plan regenerator (the wall-clock + loop
+ * fuel). EPREV (critic, free tier) is deliberately excluded — it is cheap and
+ * is neutralised at the source by the cosmetic-downgrade fix.
+ */
+export const SHOT_REGEN_AGENT_IDS = ['EXEC-EREF', 'EXEC-EREF-DESIGNER'] as const;
+
 export interface PlanRegenGuardArgs {
   supabase: ServerSupabaseClient;
   episodeId: string;
@@ -114,4 +122,44 @@ export async function assertPlanRegenWithinCap(
         `whether to change the Plan, accept the current frame, or override.`,
     );
   }
+}
+
+export interface ShotAttemptCount {
+  /** image-gen + plan-regen jobs already produced for this shot, all plan versions. */
+  count: number;
+  /** True when the jobs read failed — caller MUST fail closed (treat as over-cap). */
+  readError: boolean;
+}
+
+/**
+ * Count AUTONOMOUS attempts for ONE shot ACROSS ALL plan versions — the
+ * shot-level runaway cap's input (E10 SH23, 2026-06-15). Counts image-gen
+ * (EXEC-EREF) + plan-regen (EXEC-EREF-DESIGNER) jobs keyed on
+ * `input_snapshot->>shotId`, which is stable because factory writes the full
+ * event payload as input_snapshot and both events carry `shotId`.
+ *
+ * Statuses QUEUED/RUNNING/COMPLETED only — FAILED jobs are excluded so a
+ * transient provider failure (e.g. a billing-limit 400) does not permanently
+ * lock the shot out of recovery. Mirrors `assertPlanRegenWithinCap` semantics.
+ *
+ * Returns `readError: true` (not a throw) so the factory pre-run hook can fail
+ * CLOSED — HALT+escalate — without making Inngest retry the whole function.
+ */
+export async function countShotAutonomousAttempts(
+  supabase: ServerSupabaseClient,
+  episodeId: string,
+  shotId: string,
+): Promise<ShotAttemptCount> {
+  const { count, error } = await supabase
+    .from('jobs')
+    .select('id', { count: 'exact', head: true })
+    .eq('episode_id', episodeId)
+    .in('agent_id', SHOT_REGEN_AGENT_IDS as unknown as string[])
+    .in('status', ['QUEUED', 'RUNNING', 'COMPLETED'])
+    .eq('input_snapshot->>shotId' as never, shotId);
+
+  if (error) {
+    return { count: 0, readError: true };
+  }
+  return { count: count ?? 0, readError: false };
 }

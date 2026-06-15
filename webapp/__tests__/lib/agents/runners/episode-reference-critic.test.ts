@@ -116,7 +116,7 @@ describe('runEpisodeReferenceCritic', () => {
     expect(r.contract).toBe(EPREV_CONTRACT);
   });
 
-  it('extracts REVISE verdict + acceptance_criteria for re-fire', async () => {
+  it('extracts REVISE verdict + acceptance_criteria for a REAL hard check (V04)', async () => {
     mockedAnthropic.mockResolvedValueOnce({
       markdown: '# Critic Verdict\nREVISE',
       body: {
@@ -124,13 +124,10 @@ describe('runEpisodeReferenceCritic', () => {
         plan_asset_id: 'plan-1',
         shot_id: 'SS-S99-E99-A1-SC01-SH01',
         failed_checks: [
-          { check: 'V05', diagnosis: 'negative missing "no text"' },
+          { check: 'V04', diagnosis: 'prompt is generic prose with no camera direction' },
         ],
-        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V06', 'V07', 'V08'],
-        acceptance_criteria: [
-          'Add "no text" to negative[]',
-          'Add "no logos" to negative[]',
-        ],
+        passed_checks: ['V01', 'V02', 'V03', 'V06', 'V07', 'V08'],
+        acceptance_criteria: ['Add a camera direction term and a Bible canon reference'],
       },
       costUsd: 0.018,
       model: EPREV_MODEL,
@@ -143,11 +140,160 @@ describe('runEpisodeReferenceCritic', () => {
     });
     expect(r.verdict).toBe('REVISE');
     expect(r.failedChecks).toHaveLength(1);
-    expect(r.failedChecks[0]?.check).toBe('V05');
+    expect(r.failedChecks[0]?.check).toBe('V04');
     expect(r.acceptanceCriteria).toEqual([
-      'Add "no text" to negative[]',
-      'Add "no logos" to negative[]',
+      'Add a camera direction term and a Bible canon reference',
     ]);
+  });
+
+  // ── E10 SH23 doom-loop fix: cosmetic-only REVISE → PASS downgrade ─────────
+  it('downgrades a V05-only REVISE to PASS (baseline negatives injected downstream)', async () => {
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: '# Critic Verdict\nREVISE',
+      body: {
+        verdict: 'REVISE',
+        plan_asset_id: 'plan-1',
+        shot_id: 'SS-S99-E99-A1-SC01-SH01',
+        failed_checks: [{ check: 'V05', diagnosis: 'negative missing "no text"' }],
+        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V06', 'V07', 'V08'],
+        acceptance_criteria: ['Add "no text" to negative[]'],
+      },
+      costUsd: 0.018,
+      model: EPREV_MODEL,
+    });
+    const r = await runEpisodeReferenceCritic({
+      inputs: {} as never,
+      supabase: mockSupabase(makePlanRow(VALID_PLAN_CONTENT)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    expect(r.verdict).toBe('PASS');
+    expect(r.failedChecks).toHaveLength(0);
+    expect(r.acceptanceCriteria).toHaveLength(0);
+    expect(r.notes.some((n) => n.includes('cosmetic-only REVISE downgraded'))).toBe(true);
+  });
+
+  it('downgrades a V05+V09 cosmetic REVISE to PASS', async () => {
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: '# Critic Verdict\nREVISE',
+      body: {
+        verdict: 'REVISE',
+        plan_asset_id: 'plan-1',
+        shot_id: 'SS-S99-E99-A1-SC01-SH01',
+        failed_checks: [
+          { check: 'V05', diagnosis: 'negative missing "no logos"' },
+          { check: 'V09', diagnosis: 'policy_notes empty' },
+        ],
+        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V06', 'V07', 'V08'],
+        acceptance_criteria: ['Add no logos', 'Fill policy_notes'],
+      },
+      costUsd: 0.018,
+      model: EPREV_MODEL,
+    });
+    const r = await runEpisodeReferenceCritic({
+      inputs: {} as never,
+      supabase: mockSupabase(makePlanRow(VALID_PLAN_CONTENT)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    expect(r.verdict).toBe('PASS');
+    expect(r.failedChecks).toHaveLength(0);
+  });
+
+  it('drops a FALSE-POSITIVE V07 (Plan JSON satisfies the rule) → PASS', async () => {
+    // VALID_PLAN_CONTENT has mode=openai-edits-multi with anchor_assets=['sandy']
+    // → V07 is satisfied; the LLM's V07 is a false positive and must be dropped.
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: '# Critic Verdict\nREVISE',
+      body: {
+        verdict: 'REVISE',
+        plan_asset_id: 'plan-1',
+        shot_id: 'SS-S99-E99-A1-SC01-SH01',
+        failed_checks: [
+          { check: 'V07', diagnosis: 'continuity_anchors field is redundant' },
+        ],
+        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V05', 'V06', 'V08'],
+        acceptance_criteria: ['Remove redundant field'],
+      },
+      costUsd: 0.018,
+      model: EPREV_MODEL,
+    });
+    const r = await runEpisodeReferenceCritic({
+      inputs: {} as never,
+      supabase: mockSupabase(makePlanRow(VALID_PLAN_CONTENT)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    expect(r.verdict).toBe('PASS');
+    expect(r.failedChecks).toHaveLength(0);
+  });
+
+  it('KEEPS a REAL V07 (edits mode + empty anchor_assets) → stays REVISE', async () => {
+    const planEmptyAnchors = [
+      '# Plan',
+      '```json',
+      JSON.stringify({
+        shot_id: 'SS-S99-E99-A1-SC01-SH01',
+        provider: { id: 'gpt-image-2' },
+        size: { width: 1536, height: 1024 },
+        variants: { count: 1 },
+        prompt: 'WIDE shot, sandy in bar.',
+        negative: ['no text', 'no logos'],
+        continuity_strategy: { mode: 'openai-edits-multi', anchor_assets: [] },
+      }),
+      '```',
+    ].join('\n');
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: '# Critic Verdict\nREVISE',
+      body: {
+        verdict: 'REVISE',
+        plan_asset_id: 'plan-1',
+        shot_id: 'SS-S99-E99-A1-SC01-SH01',
+        failed_checks: [
+          { check: 'V07', diagnosis: 'anchor_assets empty but mode is openai-edits-multi' },
+        ],
+        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V05', 'V06', 'V08'],
+        acceptance_criteria: ['Add at least one Bible slug to anchor_assets'],
+      },
+      costUsd: 0.018,
+      model: EPREV_MODEL,
+    });
+    const r = await runEpisodeReferenceCritic({
+      inputs: {} as never,
+      supabase: mockSupabase(makePlanRow(planEmptyAnchors)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    expect(r.verdict).toBe('REVISE');
+    expect(r.failedChecks.some((c) => c.check === 'V07')).toBe(true);
+  });
+
+  it('keeps REVISE when a cosmetic check rides alongside a REAL hard check', async () => {
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: '# Critic Verdict\nREVISE',
+      body: {
+        verdict: 'REVISE',
+        plan_asset_id: 'plan-1',
+        shot_id: 'SS-S99-E99-A1-SC01-SH01',
+        failed_checks: [
+          { check: 'V05', diagnosis: 'negative missing "no text"' },
+          { check: 'V01', diagnosis: 'provider.id not in allowlist' },
+        ],
+        passed_checks: ['V02', 'V03', 'V04', 'V06', 'V07', 'V08'],
+        acceptance_criteria: ['Add no text', 'Use gpt-image-2'],
+      },
+      costUsd: 0.018,
+      model: EPREV_MODEL,
+    });
+    const r = await runEpisodeReferenceCritic({
+      inputs: {} as never,
+      supabase: mockSupabase(makePlanRow(VALID_PLAN_CONTENT)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    expect(r.verdict).toBe('REVISE');
+    expect(r.failedChecks).toHaveLength(1);
+    expect(r.failedChecks[0]?.check).toBe('V01');
   });
 
   it('extracts FAIL verdict on structural break', async () => {

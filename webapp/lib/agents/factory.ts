@@ -35,6 +35,11 @@ import type { AgentResult } from './types';
 import { resolveModelId } from './registry';
 import { createSupabaseServiceRoleClient } from '../supabase/server';
 import { logEvent } from '../api/events';
+import { shotRegenCap } from './chain-flags';
+import {
+  countShotAutonomousAttempts,
+  SHOT_REGEN_AGENT_IDS,
+} from '../api/plan-regen-guard';
 import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
 // TD-87 (2026-06-09): the Mode-4 autonomous chain now routes forward through
@@ -214,6 +219,61 @@ export function createAgentInngestFunction<E extends string>(
       let capturedJobId: string | null = null;
 
       try {
+
+      // ── Step 0: shot-level runaway cap (autonomous loops only) ───────────
+      // Universal chokepoint for the E10 SH23 doom-loop: both the image
+      // executor (EXEC-EREF) and the plan regenerator (EXEC-EREF-DESIGNER)
+      // route through this factory, so ONE check here catches EVERY dispatch
+      // path — approve-route auto-chain, Mode-4 auto-approve, EPREV REVISE→
+      // Designer auto-chain, and Polina's manual re-fires. The per-plan cap in
+      // plan-regen-guard.ts misses this loop because the loop spawns a fresh
+      // plan each turn (resetting the per-plan counter); this cap is keyed to
+      // the SHOT and spans all plan versions, so it never resets. We early
+      // RETURN (not throw) so Inngest does not retry: no job row, no provider
+      // call (no money), no fan-out (the loop terminates by construction). The
+      // human Director is never capped — she is the escalation target.
+      const shotIdForCap =
+        typeof eventData.shotId === 'string' ? (eventData.shotId as string) : null;
+      if (
+        shotIdForCap &&
+        (SHOT_REGEN_AGENT_IDS as readonly string[]).includes(spec.agentId)
+      ) {
+        const halted = await step.run('shot-regen-cap-check', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          const cap = shotRegenCap();
+          const { count, readError } = await countShotAutonomousAttempts(
+            supabase,
+            episodeId,
+            shotIdForCap,
+          );
+          // Fail CLOSED on a read error — an uncapped runaway burning render
+          // budget is worse than one blocked autonomous attempt.
+          if (!readError && count < cap) return false;
+          await logEvent(supabase, {
+            event_type: 'regen_cap_halt',
+            severity: 'warning',
+            title: `Shot regen cap reached — ${spec.agentId} (${shotIdForCap})`,
+            description: readError
+              ? `Could not verify shot regeneration history (failing closed). ` +
+                `Auto-recovery HALTED; needs the human Director.`
+              : `${count} autonomous attempts already made for this shot across ` +
+                `all plan versions (cap ${cap}). Auto-recovery HALTED; needs the ` +
+                `human Director.`,
+            actor: 'exec-dir-ai',
+            episode_id: episodeId,
+            metadata: {
+              agent: spec.agentId,
+              shot_id: shotIdForCap,
+              attempts: count,
+              cap,
+              read_error: readError,
+              reason: 'SHOT_REGEN_CAP_REACHED',
+            },
+          });
+          return true;
+        });
+        if (halted) return;
+      }
 
       // ── Step 1: insert RUNNING job row + emit agent_started activity ─────
       const job = await step.run('insert-job-row', async () => {

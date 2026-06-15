@@ -36,6 +36,7 @@ import {
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
 import { SIZE_BY_DELIVERY_TARGET } from '../../api/provider-capabilities';
+import { parseLastJsonBlock } from './episode-references';
 
 /**
  * Render the canonical delivery_target → size manifest as an authoritative
@@ -353,6 +354,84 @@ function parseAcceptanceCriteria(body: Record<string, unknown> | null): string[]
   return out;
 }
 
+// E10 SH23 doom-loop fix (2026-06-15). The cosmetic REVISE triggers that drove
+// the runaway, neutralised deterministically. See runEpisodeReferenceCritic.
+const COSMETIC_EDITS_MODES = ['openai-edits-multi', 'openai-edits-single'] as const;
+
+/** Normalise an LLM check label ("V05_NEGATIVE" / "v05" / " V05 ") to "V05". */
+function normalizeCheckLabel(check: string): string {
+  const m = check.trim().toUpperCase().match(/^V\d{2}/);
+  return m ? m[0] : check.trim().toUpperCase();
+}
+
+/**
+ * V07 ("continuity_strategy.anchor_assets[] must be non-empty when mode is an
+ * edits mode") re-validated against the Plan JSON. The LLM emits this as a
+ * false positive constantly; we keep it only when the JSON actually violates
+ * it. Returns false (drop the LLM's V07) when the Plan can't be parsed or the
+ * rule is satisfied.
+ */
+function v07IsRealFailure(planContent: string): boolean {
+  const body = parseLastJsonBlock(planContent);
+  if (!body) return false;
+  const cs = (body as Record<string, unknown>).continuity_strategy;
+  if (!cs || typeof cs !== 'object') return false;
+  const mode = (cs as Record<string, unknown>).mode;
+  if (
+    typeof mode !== 'string' ||
+    !(COSMETIC_EDITS_MODES as readonly string[]).includes(mode)
+  ) {
+    return false; // mode doesn't require anchors → any V07 is a false positive
+  }
+  const anchors = (cs as Record<string, unknown>).anchor_assets;
+  const hasAnchor =
+    Array.isArray(anchors) &&
+    anchors.some((a) => typeof a === 'string' && a.trim().length > 0);
+  return !hasAnchor; // edits mode + empty anchors = a REAL V07 failure
+}
+
+/**
+ * Strip cosmetic REVISE triggers from the LLM's failed_checks. V05 (auto-
+ * satisfied by withBaselineNegatives at the provider call) and V09 (policy_notes,
+ * spec-declared "soft") are always dropped to advisory notes. V07 is dropped
+ * unless the Plan JSON deterministically confirms the failure. Mutates nothing
+ * — returns the kept checks and pushes advisory lines into `notes`.
+ */
+function neutralizeCosmeticChecks(
+  failedChecks: ReadonlyArray<{ check: string; diagnosis: string }>,
+  planContent: string,
+  notes: string[],
+): Array<{ check: string; diagnosis: string }> {
+  const kept: Array<{ check: string; diagnosis: string }> = [];
+  let droppedV05 = 0;
+  let droppedV09 = 0;
+  let droppedV07 = 0;
+  for (const fc of failedChecks) {
+    const label = normalizeCheckLabel(fc.check);
+    if (label === 'V05') {
+      droppedV05 += 1;
+      continue;
+    }
+    if (label === 'V09') {
+      droppedV09 += 1;
+      continue;
+    }
+    if (label === 'V07') {
+      if (v07IsRealFailure(planContent)) kept.push(fc);
+      else droppedV07 += 1;
+      continue;
+    }
+    kept.push(fc);
+  }
+  if (droppedV05 > 0)
+    notes.push(`V05 advisory: baseline negatives injected downstream (${droppedV05} dropped)`);
+  if (droppedV09 > 0)
+    notes.push(`V09 advisory: policy_notes non-blocking (${droppedV09} dropped)`);
+  if (droppedV07 > 0)
+    notes.push(`V07 false positive dropped: Plan JSON does not require anchors (${droppedV07})`);
+  return kept;
+}
+
 export async function runEpisodeReferenceCritic(
   args: EPREVRunArgs,
 ): Promise<EPREVRunResult> {
@@ -409,9 +488,21 @@ export async function runEpisodeReferenceCritic(
   }
 
   let verdict = parseVerdict(result.body);
-  const failedChecks = parseFailedChecks(result.body);
+  let failedChecks = parseFailedChecks(result.body);
   const passedChecks = parsePassedChecks(result.body);
-  const acceptanceCriteria = parseAcceptanceCriteria(result.body);
+  let acceptanceCriteria = parseAcceptanceCriteria(result.body);
+
+  // E10 SH23 doom-loop fix (2026-06-15): neutralise the cosmetic REVISE
+  // triggers BEFORE the anchor block + verdict downgrade. Grounded in the
+  // SH22/SH23 forensics — three checks drove ~all the runaway churn:
+  //   V05 (negative baseline) — auto-satisfied downstream (withBaselineNegatives
+  //        injects 'no text'/'no logos' at the provider call) → drop, advisory.
+  //   V09 (policy_notes) — spec already calls it "soft REVISE" → drop, advisory.
+  //   V07 (continuity anchors) — semantically real but the LLM constantly emits
+  //        FALSE positives ("field redundant", "needs asset IDs not slugs",
+  //        flagged even when mode=openai-image). Re-validate deterministically
+  //        against the Plan JSON; keep only a TRUE failure.
+  failedChecks = neutralizeCosmeticChecks(failedChecks, plan.content, notes);
 
   // TD-49 Phase 2 P2.3 (2026-05-25): deterministic anchor_pair structural
   // checks the LLM cannot get wrong. Augments LLM-side failed_checks with
@@ -433,6 +524,22 @@ export async function runEpisodeReferenceCritic(
       );
       verdict = 'REVISE';
     }
+  }
+
+  // E10 SH23 doom-loop fix (2026-06-15): if the only thing the LLM flagged was
+  // cosmetic (V05/V09/false-V07, now stripped above) and no real hard check or
+  // anchor violation remains, a REVISE is a false alarm — downgrade to PASS so
+  // the Plan goes to Director review instead of bouncing back to the Designer
+  // and spawning yet another plan version. This is the loop's source fix; the
+  // shot-level cap in factory.ts is the hard backstop.
+  if (
+    verdict === 'REVISE' &&
+    failedChecks.length === 0 &&
+    anchorViolations.length === 0
+  ) {
+    notes.push('cosmetic-only REVISE downgraded to PASS (V05/V09/false-V07 neutralized)');
+    acceptanceCriteria = [];
+    verdict = 'PASS';
   }
 
   const description = [
