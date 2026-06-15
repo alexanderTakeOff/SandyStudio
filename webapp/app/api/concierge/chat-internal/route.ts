@@ -25,6 +25,11 @@
 
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import {
+  createConciergeClient,
+  conciergeModel,
+  conciergeMaxTokensParam,
+} from '@/lib/concierge/llm';
 import type {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionMessageParam,
@@ -204,7 +209,7 @@ export async function POST(req: Request) {
 
   const { availablePlaybooks } = await resolveSkillsContext(supabase, episodeId);
 
-  const model = env.OPENAI_MODEL || 'gpt-5.4-mini';
+  const model = conciergeModel();
   const temperature = env.OPENAI_TEMPERATURE ? Number(env.OPENAI_TEMPERATURE) : 0.2;
   const maxCompletionTokens = env.OPENAI_MAX_OUTPUT_TOKENS
     ? Number(env.OPENAI_MAX_OUTPUT_TOKENS)
@@ -307,7 +312,7 @@ export async function POST(req: Request) {
     recentTurns,
   };
 
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  const client = createConciergeClient();
   let assistantText = '';
 
   // ── TD-51 (2026-05-25) tool-call loop ────────────────────────────────────
@@ -332,7 +337,7 @@ export async function POST(req: Request) {
       const params: ChatCompletionCreateParamsNonStreaming = {
         model,
         messages: conversation,
-        max_completion_tokens: maxCompletionTokens,
+        ...conciergeMaxTokensParam(maxCompletionTokens),
         stream: false,
         tools: toolsThisRound,
         tool_choice: toolsThisRound ? 'auto' : undefined,

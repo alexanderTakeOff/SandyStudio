@@ -17,6 +17,11 @@
 
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import {
+  createConciergeClient,
+  conciergeModel,
+  conciergeMaxTokensParam,
+} from '@/lib/concierge/llm';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { getServerEnv } from '@/lib/env';
 import { requireDirector } from '@/lib/api/auth';
@@ -140,8 +145,8 @@ export async function POST(req: Request) {
     }
   }
 
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const model = env.OPENAI_MODEL || 'gpt-5.4-mini';
+  const client = createConciergeClient();
+  const model = conciergeModel();
   const temperature = env.OPENAI_TEMPERATURE ? Number(env.OPENAI_TEMPERATURE) : 0.2;
   const maxCompletionTokens = env.OPENAI_MAX_OUTPUT_TOKENS
     ? Math.min(800, Number(env.OPENAI_MAX_OUTPUT_TOKENS))
@@ -170,7 +175,7 @@ export async function POST(req: Request) {
   const params: Parameters<typeof client.chat.completions.create>[0] = {
     model,
     messages: conversation,
-    max_completion_tokens: maxCompletionTokens,
+    ...conciergeMaxTokensParam(maxCompletionTokens),
     stream: false,
   };
   if (!isGpt5 && Number.isFinite(temperature)) {

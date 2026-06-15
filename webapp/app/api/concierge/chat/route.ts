@@ -18,6 +18,11 @@
 
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import {
+  createConciergeClient,
+  conciergeModel,
+  conciergeMaxTokensParam,
+} from '@/lib/concierge/llm';
 import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionMessageParam,
@@ -297,8 +302,8 @@ async function handleChatPOST(req: Request) {
     } catch { /* best-effort */ }
   }
 
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const model = env.OPENAI_MODEL || 'gpt-5.4-mini';
+  const client = createConciergeClient();
+  const model = conciergeModel();
   const temperature = env.OPENAI_TEMPERATURE ? Number(env.OPENAI_TEMPERATURE) : 0.2;
   const maxCompletionTokens = env.OPENAI_MAX_OUTPUT_TOKENS
     ? Number(env.OPENAI_MAX_OUTPUT_TOKENS)
@@ -427,7 +432,7 @@ async function handleChatPOST(req: Request) {
           const params: Parameters<typeof client.chat.completions.create>[0] = {
             model,
             messages: conversation,
-            max_completion_tokens: maxCompletionTokens,
+            ...conciergeMaxTokensParam(maxCompletionTokens),
             // Disable tools on the very last round so the model is forced
             // to produce a final natural-language answer.
             tools: toolsThisRound,
