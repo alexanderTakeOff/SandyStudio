@@ -43,6 +43,16 @@ import type { AgentId } from './types';
 // WCHK → straight to EXEC-EDIT skipped the EREF + MGEN fan-out and per-shot
 // designer/animator advancement, leaving EXEC-EDIT to fail with no episode refs.
 import { computeNextEvents, type AssetForChain } from './next-events';
+// 2026-06-15 supersede fix: the Mode-4 auto-approve now demotes the prior
+// APPROVED sibling of the same slot before occupying it, sharing the exact
+// helper the Director approve route uses. Without it, regenerating an
+// already-approved anchor/plan in Mode 4 collided with the per-slot unique
+// index (assets_one_approved_per_anchor / _ref_plan).
+import {
+  resolveSlotDescriptor,
+  demoteSiblingApproved,
+  type AssetForSlot,
+} from '../api/single-approved';
 
 // Maps an agent to the provider contract it consumes. Agents not listed here
 // don't go through the resolver (text-only agents → Anthropic / mock LLM).
@@ -375,18 +385,24 @@ export function createAgentInngestFunction<E extends string>(
           (eventData.section as string | undefined) ??
           (eventData.collectionPoint as string | undefined);
 
-        // Mode 4 (AUTOTEST) — APPROVED so downstream gates pass without
-        // Director approval (mirrors replay-pilot's autoApproveOutput flag).
-        // Modes 1-3 — REVIEW so the asset surfaces in the Director Inbox.
+        // Mode 4 (AUTOTEST) auto-approves so downstream gates pass without a
+        // Director click (mirrors replay-pilot's autoApproveOutput); Modes 1-3
+        // land REVIEW for the Director Inbox.
         //
-        // F3 / TD-76 root fix (2026-06-12): the status now rides IN the
-        // insert (saveAgentOutput initialStatus) instead of a separate
-        // unchecked update after it. That second update could fail silently
-        // (supabase returns {error}, never throws) — the job completed,
-        // the plan stayed DRAFT forever, Director couldn't approve, and
-        // Полина's unstickPlanForApproval became routine (E07 smoke:
-        // SH01 v04 / SH02 v04-v05, updated_at === created_at).
-        const targetStatus = ep.governance_mode === 4 ? 'APPROVED' : 'REVIEW';
+        // 2026-06-15 supersede fix: in Mode 4 we must NOT insert/flip straight
+        // to APPROVED — the per-slot unique index (assets_one_approved_per_anchor
+        // / _ref_plan, migration 0036) rejects a 2nd APPROVED per slot, so
+        // regenerating an already-approved anchor/plan exploded (E10: SH12
+        // anchor, SH07 ref_plan). So we always INSERT as REVIEW, then in Mode 4
+        // demote the prior APPROVED sibling of each produced asset's slot (shared
+        // single-approved helper — same as the approve route) and flip it
+        // APPROVED. This also approves the WHOLE anchor pair (start+end), where
+        // before only `out.assetId` (one side) flipped — leaving the end anchor
+        // REVIEW so the anchor-chain gate never reached the animatic.
+        //
+        // F3 / TD-76 (2026-06-12): Modes 1-3 still get status atomically in the
+        // insert (no flip window). The Mode-4 flip below is ERROR-CHECKED.
+        const autoApprove = ep.governance_mode === 4;
         const out = await saveAgentOutput({
           supabase,
           agentId: spec.agentId,
@@ -395,21 +411,40 @@ export function createAgentInngestFunction<E extends string>(
           result: exec.result,
           outputKind: exec.outputKind,
           variant,
-          initialStatus: targetStatus,
+          // Never insert APPROVED directly — see supersede note above.
+          initialStatus: 'REVIEW',
         });
-        // skip_save agents (CREAD / EREF / THUMB renderer) insert their rows
-        // themselves with a hard 'REVIEW' — initialStatus never reaches them.
-        // Keep the legacy flip for that path only, now ERROR-CHECKED: the
-        // silent {error} swallow here was the TD-76 root.
-        if (exec.result.metadata.skip_save === true) {
-          const { error: flipErr } = await supabase
-            .from('assets')
-            .update({ status: targetStatus })
-            .eq('id', out.assetId);
-          if (flipErr) {
-            throw new Error(
-              `save-and-complete: status flip → ${targetStatus} failed for ${out.assetId}: ${flipErr.message}`,
-            );
+
+        if (autoApprove) {
+          // Every asset this run produced. skip_save agents (EREF anchors,
+          // THUMB) insert a pair/list themselves and report inserted_asset_ids;
+          // normal agents produce the single out.assetId.
+          const producedIds: string[] =
+            exec.result.metadata.skip_save === true
+              ? ((exec.result.metadata.inserted_asset_ids as unknown[] | undefined) ?? [])
+                  .filter((v): v is string => typeof v === 'string')
+              : [out.assetId];
+          for (const assetId of producedIds) {
+            const { data: row } = await supabase
+              .from('assets')
+              .select('file_type,episode_id,series_id,metadata,content')
+              .eq('id', assetId)
+              .maybeSingle();
+            if (row) {
+              const slot = resolveSlotDescriptor(row as AssetForSlot);
+              if (slot) {
+                await demoteSiblingApproved(supabase, { slot, currentId: assetId });
+              }
+            }
+            const { error: flipErr } = await supabase
+              .from('assets')
+              .update({ status: 'APPROVED' })
+              .eq('id', assetId);
+            if (flipErr) {
+              throw new Error(
+                `save-and-complete: Mode-4 approve flip failed for ${assetId}: ${flipErr.message}`,
+              );
+            }
           }
         }
         await markJobCompleted(supabase, job.id, out.assetId);
@@ -488,7 +523,7 @@ export function createAgentInngestFunction<E extends string>(
           job_id: job.id,
           metadata: {
             agent: spec.agentId,
-            status: targetStatus,
+            status: autoApprove ? 'APPROVED' : 'REVIEW',
             ...(completedCtx?.metadata ?? {}),
           },
         });
