@@ -41,6 +41,14 @@ ARCH SPRINT 2026-06-14 (Director: pipeline = full traversable process surface; f
   ALL pushed (…24bbf1a). tsc·0/829/30.
   NEXT: A3 atomic boundary (🔴 CREATE FUNCTION migration = Director OK); Phase B registry; Phase C
   series tier; casting UI panel (frontend); brief-authoring skill. Director: ALL phases before E10.
+
+E10 CLEAN-RUN (Mode 4, brief+cast verbatim E09): identity contract proven by construction (SH01-06/
+  09/10 anchors all identity=[sandy_hourglass]). Finding-#1 FIXED 2026-06-14 (data disproved the
+  factory-double-fire hypothesis): root = Polina's UNCAPPED "Mode 4 auto-recovery" — she re-fired
+  /regenerate-image-from-plan up to 6×/plan (SH10) on advisory visual-gate flags, ~4min+$ each, no
+  escalation. FIX = shared assertPlanRegenWithinCap chokepoint (in-flight + autonomous cap
+  PLAN_REGEN_CAP=3 → HALT+escalate Director; human uncapped), wired into /trigger (folded old
+  in-flight guard) + /regenerate-image-from-plan. tsc·0/836/30. Findings #2-#5 → TD backlog.
   E09 anchors polluted except SH07/SH08 (regen on clean E10).
 
 F1-F8 E07 fix-sprint — DONE 2026-06-12 (commits 9685845…e4dcf77; detail in git log). REMAINS:
@@ -76,9 +84,6 @@ TD-86 GEN-CONFIG (2026-06-09, plan eager-launching-anchor.md): Director's provid
   STITCHED v01 63s/24sh (Director verified, expected косяки). NEXT: Director smoke —
   E03 9:16/standard → re-fanout → confirm metadata aspect/res.
 
-E02 FINAL-CUT WYSIWYG (2026-06-08, e7c76d7, SHIPPED+pushed): stale-v06 stitch fixed
-  (newest-wins + approve-slot + vNN rename). NEXT: Director re-stitch E02.
-
 GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
   ✅ Phase 1 SHIPPED (7c76a05): single-approved→INVALIDATED+DB indexes (0036),
      loud Drive-aware resolver + media-preflight gate, atomic pre-spend budget
@@ -102,9 +107,6 @@ GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
   Phase 3 = OUTPUT-critic (frame-sampler → vision) + camera/quality_tier checks.
   Verify after each unit: tsc·0 / vitest 664 / replay-pilot 30. Paid smoke = WITH Director.
 
-E03 «Shorts Test» (TD-87): Mode-4 auto-chain (factory nextEvent) ≠ computeNextEvents → WCHK
-  skips EREF+MGEN. FIX=converge Mode-4 on computeNextEvents (one router→lib). Anchor viable.
-
 OPERATING DOCTRINE (memory: nudge_polina_dont_act_for_her):
   • Тео = Director's proxy. Nudge Polina via team-chat (POST /api/team-chat/post,
     author=Тео, Bearer TEAM_CHAT_TOKEN) in Director's voice; she executes + LEARNS.
@@ -113,14 +115,6 @@ OPERATING DOCTRINE (memory: nudge_polina_dont_act_for_her):
     «да» authorizes Polina mutations — Director nudges+approves, Тео on-call for bugs.
   • Keep Inngest worker (:8288) + dev (:3000) alive via preview_start, NEVER manual
     bash (double-supervisor = port-8288 war; killing worker = silent stall).
-
-Shipped this session: PR#26 TD-85 · PR#27 Key Art (v12) · PR#28 TOPIC 3 pipeline ·
-  media-no-branches (d1a58cf) · series-active-derived (430918c) · screenwriter
-  max_tokens 8000→16000 RU truncation fix (5b7fc1d) · SREV Script-Critic auto-read (dffe5b3).
-
-Cost-accounting FIXED 2026-06-03: recordCost in ALL 5 direct routes + factory; ~$48.68
-  backfilled (idempotent). PA batch-stall watchdog SHIPPED (5-min cron: FANOUT_RUNNING+idle>6m
-  → nudge Polina). Tool: npm run episode-timing <EP>.
 
 Hardening backlog (before 10-20 episode run): #1 episode.status stuck BRIEF_APPROVED
   (approve/route.ts,S) · #3 fan-out sendEvent not in step.run (factory.ts,M) · #4

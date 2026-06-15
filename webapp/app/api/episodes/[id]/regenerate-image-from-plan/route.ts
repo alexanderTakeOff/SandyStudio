@@ -44,6 +44,7 @@ import {
   checkPlanAnchorFreshness,
   formatStaleAnchorMessage,
 } from '@/lib/agents/runners/episode-reference-freshness';
+import { assertPlanRegenWithinCap } from '@/lib/api/plan-regen-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   const episodeId = params?.id;
   if (!episodeId) throw new NotFoundError('Episode');
 
-  const { user, supabase } = await requireDirector();
+  const { user, supabase, principal } = await requireDirector();
   const body = await parseJson(req, Body);
 
   // ── Validate episode exists ─────────────────────────────────────────────
@@ -164,6 +165,21 @@ export const POST = withApiHandler(async (req, ctx) => {
       }
     }
   }
+
+  // ── In-flight + runaway-cap guard ───────────────────────────────────────
+  // The chokepoint Polina's "Mode 4 auto-recovery" loop bypassed: an advisory
+  // visual-gate flag had her re-fire this route up to 6× per plan (E10 SH10),
+  // each a ~4-min paid render with no escalation. The cap HALTs autonomous
+  // re-fires after PLAN_REGEN_CAP attempts and tells her to escalate; the human
+  // Director is never capped.
+  await assertPlanRegenWithinCap({
+    supabase,
+    episodeId,
+    agentId: 'EXEC-EREF',
+    planAssetId: body.planAssetId,
+    principal,
+    shotId: body.shotId,
+  });
 
   // ── Fire Inngest event ──────────────────────────────────────────────────
   const { ids } = await inngest.send({

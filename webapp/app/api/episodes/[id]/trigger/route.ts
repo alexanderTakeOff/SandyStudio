@@ -17,6 +17,7 @@ import { inngest, type StudioEventName } from '@/lib/inngest/client';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
+import { assertPlanRegenWithinCap } from '@/lib/api/plan-regen-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -227,30 +228,28 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
-  // In-flight per-plan guard (2026-06-12, caught live by the E08 regression):
-  // Polina's bold-mode auto-react "executed" an APPROVED plan 13s after the
-  // auto-chain had already started the Artist on it — the asset-level dedups
-  // only see COMPLETED outputs, so the in-flight window is exactly where the
-  // duplicates (and duplicate spend) live. ONE chokepoint: every manual /PA
-  // trigger that targets a specific plan is refused while a QUEUED/RUNNING
-  // job of the same agent already holds that planAssetId. Completed jobs do
-  // NOT block — deliberate re-renders stay possible (regenerate=true).
+  // In-flight + runaway-cap per-plan guard. Consolidated into the shared
+  // assertPlanRegenWithinCap chokepoint (2026-06-14) so this route and its
+  // sibling /regenerate-image-from-plan enforce the SAME rule:
+  //   - in-flight (2026-06-12 E08): refuse a duplicate while a QUEUED/RUNNING
+  //     job of the same agent already holds this planAssetId.
+  //   - runaway cap (E10 SH10): HALT autonomous (EXEC-DIR-AI) re-fires after
+  //     PLAN_REGEN_CAP attempts and escalate to the human Director, who is
+  //     never capped. COMPLETED jobs count toward the cap but do not block the
+  //     human's deliberate re-renders.
   const guardPlanAssetId =
     typeof body.payload?.planAssetId === 'string' ? body.payload.planAssetId : null;
   if (guardPlanAssetId) {
-    const { data: inFlight } = await supabase
-      .from('jobs')
-      .select('id,status,started_at')
-      .eq('episode_id', id)
-      .eq('agent_id', body.agentCode)
-      .in('status', ['QUEUED', 'RUNNING'])
-      .eq('input_snapshot->>planAssetId' as never, guardPlanAssetId)
-      .limit(1);
-    if (inFlight && inFlight.length > 0) {
-      throw new ConflictError(
-        `${body.agentCode} is already running for plan ${guardPlanAssetId} (job ${inFlight[0].id}, since ${inFlight[0].started_at}). Not dispatching a duplicate — wait for the run to finish or fail.`,
-      );
-    }
+    const guardShotId =
+      typeof body.payload?.shotId === 'string' ? body.payload.shotId : undefined;
+    await assertPlanRegenWithinCap({
+      supabase,
+      episodeId: id,
+      agentId: body.agentCode,
+      planAssetId: guardPlanAssetId,
+      principal: dir.principal,
+      shotId: guardShotId,
+    });
   }
 
   // Distribution tail 2026-06-01 — "Key Art Designer" is plan-first now.

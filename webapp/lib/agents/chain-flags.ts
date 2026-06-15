@@ -83,6 +83,24 @@ export function stopBeforeErefEnabled(): boolean {
 }
 
 /**
+ * PLAN_REGEN_CAP — max AUTONOMOUS (EXEC-DIR-AI / Polina) plan-driven re-fires
+ * per plan before the runaway-recovery guard HALTs and escalates to the human
+ * Director (critic_revision_cap doctrine: 2-3 attempts, then stop). The human
+ * Director is never capped — she is the escalation target. Default 3.
+ *
+ * Root incident (E10 SH10, 2026-06-14): Polina's uncapped "Mode 4 auto-recovery"
+ * loop regenerated one anchor 6× on an advisory visual-gate flag — ~4 min +
+ * image cost each, no escalation. The cap makes the loop terminate by
+ * construction regardless of Polina's behaviour (the only reliable defence —
+ * prompt rules alone never stopped her, per the 2026-06-12 E08 finding).
+ */
+export function planRegenCap(): number {
+  const v = process.env.PLAN_REGEN_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 3;
+}
+
+/**
  * ANCHOR_VISUAL_GATE — run the EREF AI checker on anchor frames too (2026-06-14,
  * Director q "default ON"). Advisory: stamps a visual verdict + flags intruders
  * (extraneous_objects) into the anchor's metadata and emits a stat on bypass; it
