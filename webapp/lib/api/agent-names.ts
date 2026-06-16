@@ -70,6 +70,28 @@ export function agentDisplayName(code: string | null | undefined): string {
   return AGENT_DISPLAY_NAME[code] ?? code;
 }
 
+// ── Actor classification (2026-06-16) ────────────────────────────────────────
+// Activity events carry an `actor`: a HUMAN Director is a UUID user id; an agent
+// is its code (`EXEC-*`); the autonomous AI Director is `exec-dir-ai`; pipeline
+// internals are null. The feed highlights human-Director commands so the
+// Director can spot what HE did amid the automated stream.
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type ActorKind = 'director' | 'ai-director' | 'agent' | 'system';
+
+export function actorKind(actor: string | null | undefined): ActorKind {
+  if (!actor) return 'system';
+  if (UUID_RE.test(actor)) return 'director';
+  if (actor === 'exec-dir-ai' || actor === 'EXEC-DIR-AI') return 'ai-director';
+  return 'agent';
+}
+
+/** True when an activity event was a HUMAN Director command (UUID actor). */
+export function isDirectorAction(actor: string | null | undefined): boolean {
+  return actorKind(actor) === 'director';
+}
+
 /**
  * Maps an array of agent codes to their display names. Skips empty / null
  * entries. Useful for pipeline stage rows that own multiple agents.

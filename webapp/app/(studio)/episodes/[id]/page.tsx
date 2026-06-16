@@ -26,6 +26,7 @@ import { VGENBatchPanel } from '@/components/vgen/VGENBatchPanel';
 import { EpisodeTimelineSection } from '@/components/timeline/EpisodeTimelineSection';
 import type { PipelineStageId } from '@/lib/api/pipeline-stages';
 import { agentDisplayName } from '@/lib/api/agent-names';
+import { ActivityEventRow } from '@/components/activity/ActivityEventRow';
 import { fetcher } from '@/lib/swr';
 
 interface Stage {
@@ -119,15 +120,6 @@ const VERDICT_COLOR: Record<NonNullable<Stage['latest_verdict']>, string> = {
   REVISE: 'var(--accent-warning)',
   FAIL: 'var(--accent-danger)',
 };
-
-function relativeTime(iso: string): string {
-  const t = new Date(iso).getTime();
-  const diff = Date.now() - t;
-  if (diff < 60_000) return 'just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
-}
 
 export default function PipelinePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -390,40 +382,27 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                 )}
 
                 <div className="space-y-2">
-                  {filtered.map((e) => {
-                    const hasAsset = Boolean(e.asset_id);
-                    return (
-                      <div
-                        key={e.id}
-                        className="group rounded-lg border border-glass bg-panel-glass-strong px-3 py-2"
-                      >
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-text-primary font-medium flex-1 min-w-0 truncate">
-                            {e.title}
-                          </span>
-                          <span className="text-text-muted">{relativeTime(e.created_at)}</span>
-                          {hasAsset && (
-                            <button
-                              onClick={() => {
-                                setPreviewAssetId(e.asset_id ?? null);
-                                setPreviewTitle(e.title);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary"
-                              title="Open preview"
-                              aria-label="Open preview"
-                            >
-                              <Eye size={12} strokeWidth={1.7} />
-                            </button>
-                          )}
-                        </div>
-                        {e.description && (
-                          <div className="text-[12px] text-text-secondary mt-1 leading-snug">
-                            {e.description}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {filtered.map((e) => (
+                    <ActivityEventRow
+                      key={e.id}
+                      event={e}
+                      trailing={
+                        e.asset_id ? (
+                          <button
+                            onClick={() => {
+                              setPreviewAssetId(e.asset_id ?? null);
+                              setPreviewTitle(e.title);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary shrink-0"
+                            title="Open preview"
+                            aria-label="Open preview"
+                          >
+                            <Eye size={12} strokeWidth={1.7} />
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                  ))}
                 </div>
               </>
             )}
