@@ -64,7 +64,7 @@ export default function ActivityPage() {
           )}
           <div className="space-y-2">
             {events.map((e) => (
-              <ActivityEventRow key={e.id} event={e} showType />
+              <ActivityEventRow key={e.id} event={e} />
             ))}
           </div>
         </CardBody>
