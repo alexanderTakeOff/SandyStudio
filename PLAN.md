@@ -11,8 +11,16 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-16 (E10 furniture-root-fix + q13 mode-source + perf; master @ <next>)
+Date:   2026-06-16 PM (Polina episode-routing root-fix + VGEN pillbar ghost; master @ 03c4613)
 Mode:   ===5=== EDIT · E10 governance Mode **2** now (Director switched off auto-approve). Single source = episode.governance_mode.
+
+2026-06-16 PM. Polina "can't see storyboard" ROOT (613cb17 pillbar, 03c4613 routing): every
+  episode-scoped concierge tool resolved `args.episodeId ?? ctx.episodeId` → trusted Gemini's guessed
+  episode CODE over the thread-bound UUID → `.eq('episode_id', code)` = 0 rows = false "not found".
+  Shared resolveEpisodeId/resolveEpisodeCode (tools/types.ts): thread binding is authority. STB v2 was
+  APPROVED all along. Also VGEN pillbar ghost: `has_vid_shots` kept "Cancel VGEN" banner alive forever →
+  scared Director after each editor approval; now visible only on real running work. tsc·0/850/concierge175.
+  Timeline cell resolver (f31e28b) now picks APPROVED over newer draft. NEXT: kick servers + Polina retest.
 
 2026-06-16 SESSION. E10 furniture-bug ROOT FOUND + fixed: `agents/exec/episode_reference_designer.md`
   LAYOUT LOCK had a hardcoded BEDROOM example («mirror, carpets, bed… MUST appear») the Designer-LLM
@@ -34,16 +42,10 @@ Mode:   ===5=== EDIT · E10 governance Mode **2** now (Director switched off aut
   (Anthropic credits dry → TEXT_LLM_DEBUG_TIER=true). OpenAI hit `Billing hard limit` → blocked ALL
   gpt-image too → Director topped up (images STAY on OpenAI). SH07 doors slide-fixed; SH09 regen
   cons=100; SH22 unblocked (q6 override of cosmetic EPREV).
-  🔴 SH23 RUNAWAY (forensics): cosmetic-EPREV doom-loop × Polina Mode-4 containment auto-react →
-  58 plan versions / 45 imgs (36 invalidated) / 39 Polina regens over 3h → burned OpenAI limit.
-  regen-cap MISSED it (per-planAssetId; new-plan-per-iteration bypasses). CODE-PHASE (q1=6/q2=note):
-  ✅(1) finding#2 EPREV cosmetic→PASS — V05/V09 advisory + V07 deterministic re-validate + executor
-  baseline-negatives by construction; lone-cosmetic REVISE→PASS downgrade. ✅(2) SHOT-level cap
-  shotRegenCap()=6 across all plan versions (img+plan), factory pre-run = universal chokepoint (auto-
-  chain+Mode-4+Polina), early-return HALT+escalate. tsc·0/847/30. PUSHED 58a039f. STILL OPEN code:
-  (3)≈covered by (2); (4) Polina auto-recovery per shot; (5) loud Anthropic→gemini fallback; (6)
-  provider badge UI; (7) REVISION→APPROVED human Director; (8) buildShotListFromAnchorChain. SH23
-  cleanup (58 plans) — after these land.
+  🔴 SH23 RUNAWAY fixed (58a039f, memo): cosmetic-EPREV doom-loop × Mode-4 auto-react = 58 plans/45 imgs/
+  39 regens/3h. Fixed: EPREV cosmetic→PASS (V05/V09 advisory + V07 re-validate) + SHOT-level cap=6 at
+  factory pre-run (universal chokepoint). OPEN code: Polina per-shot auto-recovery; loud Anthropic→gemini
+  fallback; provider badge UI; (8) buildShotListFromAnchorChain. SH23 cleanup (58 plans) pending.
   OPEN: SH25/SH26 canon (button-panel/location — await Polina review); music (Director uploads via
   upload-music; idea: media-assets in Library); worktree cleanup (diff a410e+ad3d, clean ~16 dead);
   Vercel+Inngest-Cloud migration (future sprint); A/B Polina-model test scheduled 2026-06-22.
