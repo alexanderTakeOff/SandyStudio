@@ -260,22 +260,24 @@ export async function POST(req: Request) {
     ? 'Read your prior assistant turn (above). Either (a) take the next concrete sub-step yourself if the original Director directive logically covers it — don\'t wait for new approval; or (b) re-ask Director more explicitly with a fresh q-format question and a tighter framing. Do not just echo your previous wait. Do not request tools.'
     : boldMode
       ? [
-          `Recap what just happened in this thread (read the recent turns above). You are in Mode ${mode} (DELEGATED/AUTOTEST) — you have delegated authority to ACT now without waiting for a fresh Director token.`,
+          `Run the [WORK_PLAN] loop (reconcile → advance → act). Recap what just happened in this thread (read the recent turns above). You are in Mode ${mode} (DELEGATED/AUTOTEST) — you have delegated authority to ACT now without waiting for a fresh Director token.`,
           '',
-          'You MAY call READ-ONLY tools to inspect the artifact, AND MUTATING tools to ACT (triggerAgent, approveAsset, requestRevision, regenerate*, etc.) when the next step is clear. The cost ceiling still backstops spend; surface your decisions for Director awareness.',
+          'You MAY call READ-ONLY tools to inspect the artifact, AND MUTATING tools to ACT (triggerAgent, approveAsset, requestRevision, regenerate*, etc.) when the next step is clear. Judge done-ness from REAL status (APPROVED = done; REVISION / REVISE / FAIL = blocked-pending-rework), not from events. The cost ceiling still backstops spend; surface your decisions for Director awareness.',
+          '',
+          'After you act, MARK THE STEP DONE via updateWorkPlan and move to the next concrete step — keep the plan current. If the SAME step has failed or stalled across repeated attempts, do NOT keep retrying: call markAwaitingDirector with a one-line summary of what was tried and why it is stuck.',
           '',
           'HARD LIMITS remain Director-only in every mode and are NOT available to you: publishing (triggerAgent EXEC-PUB), marking LOCKED, changing budget, changing governance mode, and skill-canon writes. If one of those is the right step, propose it for the Director instead.',
           '',
           'After your tool calls, produce a SHORT final text: name the artifact, the action you took (or recommend, for a hard limit), and 1-3 observations.',
         ].join('\n')
       : [
-          'Recap what just happened in this thread (read the recent turns above) and decide whether to ACT now or WAIT for Director.',
+          'Run the [WORK_PLAN] loop (reconcile → advance → report). Recap what just happened in this thread (read the recent turns above), then decide whether to ACT now or WAIT for Director.',
           '',
-          'You MAY call READ-ONLY and ANALYSIS tools to inspect the artifact this event references (getAsset, getRecentActivityEvents, getCriticVerdict, getAnimatorCriticVerdict, listShots, listPendingApprovals, etc). Use them when the event references an asset_id you have not yet read — silent-stall is worse than a tool call.',
+          'You MAY call READ-ONLY and ANALYSIS tools to inspect the artifact this event references (getAsset, getRecentActivityEvents, getCriticVerdict, getAnimatorCriticVerdict, listShots, listPendingApprovals, etc). Use them when the event references an asset_id you have not yet read — silent-stall is worse than a tool call. JUDGE DONE-NESS FROM REAL STATUS, not from the presence/absence of events: an asset is DONE only when APPROVED; a REVISION status or REVISE/FAIL verdict is blocked-pending-rework, NOT "still working". Never report "still in progress" without having read the artifact status this turn.',
           '',
           'You MUST NOT call MUTATING tools (triggerAgent, approveAsset, requestRevision, regenerateRefPlan, regenerateImageFromPlan, regenerateShotPlan, enrichBible, setBibleContent, createSeries, createEpisode, editBrief, copyAssetImage, proposeSkill, updateSkill, approveSkill). Those require explicit Director approval. If a mutation is the right next step, propose it in your text response and let Director invoke it.',
           '',
-          'After your tool calls (if any), produce a SHORT final text: name the artifact, give the verdict status, list 1-3 concrete observations, and either (a) recommend an approve/revise/regen action for Director to invoke, or (b) explain why no action yet.',
+          'After your tool calls (if any), produce a SHORT final text: name the artifact, give its REAL status/verdict, list 1-3 concrete observations, and state the SINGLE concrete next step — either (a) the one approve/revise/regen action you need the Director to invoke, or (b) why no action is possible yet. Do not narrate the whole episode.',
         ].join('\n');
 
   const conversation: ChatCompletionMessageParam[] = [

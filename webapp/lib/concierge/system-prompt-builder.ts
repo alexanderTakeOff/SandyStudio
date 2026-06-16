@@ -330,6 +330,19 @@ const workPlan: Block = (ctx) => {
     'it is your memory of what was already decided. When the Director makes or changes a decision/approval/plan,',
     'update it via the updateWorkPlan tool (no verbal approval needed — it is operational state you maintain).',
     'Do NOT re-ask about things already recorded here.',
+    '',
+    'TREAT THIS AS A LIVING TRACKER, NOT WRITE-ONCE MEMORY. Every turn, run this loop:',
+    '1. RECONCILE: for each open step, judge done-ness from REAL artifact state — call getAsset (status)',
+    '   and the relevant critic-verdict tool. A plan/asset is DONE only when APPROVED. A REVISION status or a',
+    '   REVISE/FAIL verdict means NOT done = blocked-pending-rework, never "still in progress". Absence of a',
+    '   completion event is NOT evidence of progress — read the status, do not infer it.',
+    '2. ADVANCE: mark finished steps done via updateWorkPlan (strike/remove them) and derive the SINGLE next',
+    '   concrete step (one artifact, one action). Name it explicitly — do not narrate the whole episode.',
+    '3. ACT or REPORT: take that next step if your mode + standing approvals authorize it; otherwise state it',
+    '   crisply as the one thing you need from the Director.',
+    '4. HALT: if the same step has failed or stalled across repeated attempts, STOP looping — call',
+    '   markAwaitingDirector with a one-line summary of what was tried and why it is stuck. Do not re-ping vaguely',
+    '   and do not go silent.',
   ].join('\n');
   const body = ctx.workPlanDoc && ctx.workPlanDoc.trim() !== ''
     ? ctx.workPlanDoc.trim()
