@@ -28,6 +28,7 @@ import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { persistBinary, type PersistedBinary } from './persist-binary';
+import { parseShotPlanContract } from '../api/shot-plan-contract';
 import { assertBudgetAvailable, releaseBudgetReservation, BudgetExceededError } from '../budget';
 import { applyCriticVerdict, type CriticVerdict } from './critic-loop';
 import {
@@ -1968,14 +1969,23 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         }
 
         const content = (planRow as { content?: string | null }).content ?? '';
-        const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
-        const last = matches[matches.length - 1]?.[1];
-        if (!last) {
+        // TD-84 (2026-06-16): parse via the shared shot-plan-contract module so
+        // the runner and the Director's contract page (ShotPlanContract.tsx)
+        // read the json block the SAME way — no drift. Hard-fail semantics
+        // (TD-78) preserved: a missing/unparseable block or empty prompt throws
+        // rather than silently falling back to the storyboard prompt.
+        const parsedPlan = parseShotPlanContract(content);
+        if (parsedPlan.error || !parsedPlan.raw) {
           throw new Error(
-            `EXEC-VGEN: planAssetId=${planAssetId} content has no fenced \`\`\`json block. Refusing silent storyboard fallback.`,
+            `EXEC-VGEN: planAssetId=${planAssetId} ${parsedPlan.error ?? 'plan parse failed'} Refusing silent storyboard fallback.`,
           );
         }
-        let body: {
+        if (!parsedPlan.prompt) {
+          throw new Error(
+            `EXEC-VGEN: planAssetId=${planAssetId} JSON has no non-empty \`prompt\` field. Refusing silent storyboard fallback.`,
+          );
+        }
+        const body = parsedPlan.raw as {
           prompt?: unknown;
           end_image?: unknown;
           seed_strategy?: unknown;
@@ -1983,19 +1993,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           provider?: unknown;
           resolution?: unknown;
         };
-        try {
-          body = JSON.parse(last.trim()) as typeof body;
-        } catch (parseErr) {
-          throw new Error(
-            `EXEC-VGEN: planAssetId=${planAssetId} JSON block parse failed (${String(parseErr)}). Refusing silent storyboard fallback.`,
-          );
-        }
-        if (typeof body.prompt !== 'string' || body.prompt.length === 0) {
-          throw new Error(
-            `EXEC-VGEN: planAssetId=${planAssetId} JSON has no non-empty \`prompt\` field. Refusing silent storyboard fallback.`,
-          );
-        }
-        planPrompt = body.prompt;
+        planPrompt = parsedPlan.prompt;
 
         // TD-44 (2026-05-24): provider.id drives provider impl + quality tier.
         if (body.provider && typeof body.provider === 'object') {

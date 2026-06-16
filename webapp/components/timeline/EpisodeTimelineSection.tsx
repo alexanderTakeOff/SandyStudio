@@ -22,7 +22,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
-import { ChevronDown, ChevronUp, Film, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronUp, Film, CheckCircle2, Loader2 } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { AnimaticPlayer, type AnimaticPlayerHandle } from '@/components/animatic/AnimaticPlayer';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
@@ -82,19 +82,11 @@ export function EpisodeTimelineSection({
   const [filter, setFilter] = useState<FilterKey>('all');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
-  // When Director clicks a missing-VGEN cell (image fallback), we open the
-  // EREF in the drawer AND remember the shot_id so the drawer footer offers
-  // a "Generate VGEN" button. Cleared when previewAssetId moves to a real
-  // VID-shot or the drawer closes.
-  const [pendingGenerateShotId, setPendingGenerateShotId] = useState<string | null>(null);
-  const [genBusy, setGenBusy] = useState(false);
-  const [genError, setGenError] = useState<string | null>(null);
-  // Phase 2 (2026-05-13): provider dropdown. Defaults to Seedance 2.0 (new
-  // Director default) — Veo 3.1 still selectable for quick iteration when
-  // Seedance burns a different quota bucket.
-  const [genProvider, setGenProvider] = useState<'seedance-fal-img2vid' | 'veo-3-img2vid'>(
-    'seedance-fal-img2vid',
-  );
+  // TD-84 (2026-06-16): the legacy "Generate VGEN" drawer footer (provider
+  // dropdown + Fast/Standard) was removed. It fired the plan-less
+  // generate-single-shot path, which the C1 gate silently rejected, and it
+  // duplicated provider config that now lives in the Shot Plan. Generation
+  // is triggered FROM the plan contract page (ShotPlanContract) instead.
   // Imperative ref to AnimaticPlayer — used to seek the playhead after a
   // regenerate completes (Phase A.1 directive — auto-focus the new candidate).
   const playerRef = useRef<AnimaticPlayerHandle | null>(null);
@@ -285,51 +277,10 @@ export function EpisodeTimelineSection({
     .animatic_v1;
 
   function handleCellClick(cell: TimelineCell): void {
-    setGenError(null);
-    if (cell.asset_id) {
-      setPreviewAssetId(cell.asset_id);
-      // Image fallback / placeholder: cell.asset_id points to the EREF (or
-      // null). Remember the shot so the drawer footer shows Generate VGEN.
-      // For real VID-shot cells, clear the pending state — drawer's own
-      // VGEN controls handle regenerate.
-      const isMissingVgen =
-        cell.kind === 'image' || cell.kind === 'placeholder';
-      setPendingGenerateShotId(isMissingVgen ? cell.shot_id : null);
-    }
-  }
-
-  async function generateMissingShot(qualityTier: 'fast' | 'standard' = 'fast'): Promise<void> {
-    if (!pendingGenerateShotId) return;
-    setGenBusy(true);
-    setGenError(null);
-    try {
-      const res = await fetch(
-        `/api/episodes/${episodeId}/vgen/generate-single-shot`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            shot_id: pendingGenerateShotId,
-            quality_tier: qualityTier,
-            provider: genProvider,
-            directorConfirm: true,
-          }),
-        },
-      );
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? 'Generate failed');
-      }
-      // Optimistic UX: close the drawer; SWR refresh will surface the new
-      // job in activity, and once mp4 lands the cell flips to video-review.
-      setPreviewAssetId(null);
-      setPendingGenerateShotId(null);
-      void mutate();
-    } catch (e) {
-      setGenError((e as Error).message);
-    } finally {
-      setGenBusy(false);
-    }
+    // Open whatever the cell resolves to (VID-shot, EREF image fallback, …) in
+    // the drawer. Generation of a missing shot is no longer a drawer-footer
+    // action — it lives on the Shot Plan contract page (TD-84).
+    if (cell.asset_id) setPreviewAssetId(cell.asset_id);
   }
 
   async function bulkApproveReview(): Promise<void> {
@@ -418,11 +369,7 @@ export function EpisodeTimelineSection({
               // image-fallback path that handleCellClick uses (which would
               // otherwise enable the «Generate VGEN» footer on a Plan view).
               shotPlansByShotId={shotPlansByShotId}
-              onOpenAsset={(id) => {
-                setPendingGenerateShotId(null);
-                setGenError(null);
-                setPreviewAssetId(id);
-              }}
+              onOpenAsset={(id) => setPreviewAssetId(id)}
             />
           </div>
         )}
@@ -430,11 +377,7 @@ export function EpisodeTimelineSection({
 
       <PreviewDrawer
         open={previewAssetId !== null}
-        onClose={() => {
-          setPreviewAssetId(null);
-          setPendingGenerateShotId(null);
-          setGenError(null);
-        }}
+        onClose={() => setPreviewAssetId(null)}
         assetId={previewAssetId}
         onPrev={onPrev}
         onNext={onNext}
@@ -442,92 +385,6 @@ export function EpisodeTimelineSection({
         onRegenerated={handleRegenerated}
         onAssetChanged={() => void mutate()}
         onPickAsset={(id) => setPreviewAssetId(id)}
-        footer={
-          pendingGenerateShotId ? (
-            <div className="flex items-center gap-2 w-full">
-              <span className="text-[11px] text-text-muted flex-1">
-                No VGEN yet for{' '}
-                <span className="font-mono text-text-secondary">
-                  {pendingGenerateShotId}
-                </span>{' '}
-                — animatic frame shown as fallback.
-              </span>
-              {genError && (
-                <span
-                  className="text-[11px] px-1.5 py-0.5 rounded"
-                  style={{
-                    background: 'color-mix(in oklab, var(--accent-danger) 12%, transparent)',
-                    color: 'var(--accent-danger)',
-                  }}
-                >
-                  {genError}
-                </span>
-              )}
-              {/* Phase 2 (2026-05-13) — provider dropdown. Default Seedance 2.0
-                  per Director directive: significantly better motion / camera
-                  control over Veo 3.1 (probe 2026-05-13 dance + 360° orbit).
-                  Quality tier stays in the button label below. */}
-              <select
-                value={genProvider}
-                onChange={(e) =>
-                  setGenProvider(e.target.value as 'seedance-fal-img2vid' | 'veo-3-img2vid')
-                }
-                disabled={genBusy}
-                aria-label="Video provider"
-                title="Video generation provider"
-                className="px-2 py-1.5 rounded-md text-[12px] bg-[var(--bg-elevated)] border border-glass text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
-              >
-                <option value="seedance-fal-img2vid">Seedance 2.0</option>
-                <option value="veo-3-img2vid">Veo 3.1</option>
-              </select>
-              {/* Two quality tiers — Fast (cheaper, hits the same Veo
-                  quota that overloads first) and Standard (separate quota
-                  bucket, costs ~2× but reliably bypasses 429s when Fast is
-                  throttled). Director directive 2026-05-13 — surfaced when
-                  fan-out fast tier hit 429 storm on E20. */}
-              <button
-                onClick={() => generateMissingShot('fast')}
-                disabled={genBusy}
-                title="Veo 3.1 Fast (~$0.075/s) — cheaper, can hit 429 first"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium border transition-colors disabled:opacity-50"
-                style={{
-                  background:
-                    'color-mix(in oklab, var(--accent-primary) 14%, transparent)',
-                  color: 'var(--accent-primary)',
-                  borderColor:
-                    'color-mix(in oklab, var(--accent-primary) 35%, transparent)',
-                }}
-              >
-                {genBusy ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Sparkles size={12} />
-                )}
-                {genBusy ? 'Triggering…' : 'Generate · Fast'}
-              </button>
-              <button
-                onClick={() => generateMissingShot('standard')}
-                disabled={genBusy}
-                title="Veo 3.1 Standard (~$0.15/s) — separate quota bucket, bypasses Fast 429s"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium border transition-colors disabled:opacity-50"
-                style={{
-                  background:
-                    'color-mix(in oklab, var(--accent-success) 14%, transparent)',
-                  color: 'var(--accent-success)',
-                  borderColor:
-                    'color-mix(in oklab, var(--accent-success) 35%, transparent)',
-                }}
-              >
-                {genBusy ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Sparkles size={12} />
-                )}
-                {genBusy ? 'Triggering…' : 'Generate · Standard'}
-              </button>
-            </div>
-          ) : undefined
-        }
       />
     </>
   );

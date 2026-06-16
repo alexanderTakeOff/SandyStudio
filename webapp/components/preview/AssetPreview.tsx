@@ -27,6 +27,7 @@ import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
+import { ShotPlanContract } from '@/components/preview/ShotPlanContract';
 import { CandidatesStrip } from '@/components/assets/EREFv2Sections';
 import { Button } from '@/components/ui/Button';
 import { useMemo, useRef, useState } from 'react';
@@ -88,6 +89,22 @@ function categoryFor(file_type: string): 'text' | 'image' | 'video' | 'audio' | 
   if (code === 'VID') return 'video';
   if (code === 'AUD') return 'audio';
   return 'unknown';
+}
+
+// TD-84: Animator Shot Plan (bare `SPC-shot_plan` or TD-66 suffixed
+// `SPC-shot_plan-<shot_id>`) renders as the contract page, not raw markdown.
+function isShotPlan(file_type: string): boolean {
+  return file_type === 'SPC-shot_plan' || file_type.startsWith('SPC-shot_plan-');
+}
+
+/** Canonical shot_id a plan drives — metadata first, else file_type suffix. */
+function shotIdForPlan(file_type: string, metadata: unknown): string | null {
+  const fromMeta = (metadata as { shot_id?: unknown } | null)?.shot_id;
+  if (typeof fromMeta === 'string' && fromMeta.length > 0) return fromMeta;
+  if (file_type.startsWith('SPC-shot_plan-')) {
+    return file_type.slice('SPC-shot_plan-'.length) || null;
+  }
+  return null;
 }
 
 
@@ -216,7 +233,21 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
         />
       ) : (
         <>
-          {cat === 'text' && <TextBody assetId={asset.id} />}
+          {cat === 'text' &&
+            (isShotPlan(asset.file_type) ? (
+              <ShotPlanContract
+                assetId={asset.id}
+                status={asset.status}
+                episodeId={asset.episode_id}
+                shotId={shotIdForPlan(asset.file_type, asset.metadata)}
+                onChanged={() => {
+                  void mutate();
+                  onAssetChanged?.();
+                }}
+              />
+            ) : (
+              <TextBody assetId={asset.id} />
+            ))}
           {cat === 'image' && <ImageBody asset={asset} />}
           {/* VID-shot has its own player inside VGENShotPanel — skip the
               generic VideoBody to avoid rendering the mp4 twice. */}
@@ -310,6 +341,35 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
             // INVALIDATED = a version auto-superseded by a sibling's approval.
             // Director can re-pick it: "Approve" makes THIS version win (the
             // current winner is demoted), "Reject" sends it to REVISION. (q13)
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="review"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
+          )}
+          {asset.status === 'APPROVED' && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="approved"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
+          )}
+        </>
+      )}
+
+      {/* TD-84: Shot Plan approve/revise — same shared buttons as VID-shot.
+          REVIEW/REVISION → Approve (auto-fires plan-driven VGEN) or send to
+          revision; APPROVED → demote to REVISION so the Director can edit the
+          plan (content route forbids editing APPROVED). */}
+      {isShotPlan(asset.file_type) && (
+        <>
+          {(asset.status === 'REVIEW' || asset.status === 'REVISION') && (
             <PilotApproveButtons
               assetId={asset.id}
               variant="review"
