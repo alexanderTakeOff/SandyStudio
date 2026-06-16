@@ -18,6 +18,7 @@ import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { assertPlanRegenWithinCap } from '@/lib/api/plan-regen-guard';
+import { validateShotReadyForGeneration } from '@/lib/api/shot-readiness';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -250,6 +251,29 @@ export const POST = withApiHandler(async (req, ctx) => {
       principal: dir.principal,
       shotId: guardShotId,
     });
+  }
+
+  // q21 (2026-06-16) — readiness preflight for plan-driven video. Catch a
+  // doomed render BEFORE the paid dispatch (silent C1 reject, dead refs,
+  // unparseable plan, unsupported provider params) and refuse with the
+  // concrete blockers, so the failure costs $0 and the Director sees why at
+  // the click instead of inside a failed Inngest run. VGEN plan path only;
+  // factory/autonomous + other routes are wired in the next slice.
+  if (body.agentCode === 'EXEC-VGEN' && guardPlanAssetId) {
+    const readyShotId =
+      typeof body.payload?.shotId === 'string' ? body.payload.shotId : null;
+    if (readyShotId) {
+      const readiness = await validateShotReadyForGeneration(supabase, {
+        shotId: readyShotId,
+        episodeId: id,
+        planAssetId: guardPlanAssetId,
+      });
+      if (!readiness.ok) {
+        throw new ValidationError(
+          `Shot not ready: ${readiness.blockers.map((b) => b.message).join('; ')}`,
+        );
+      }
+    }
   }
 
   // Distribution tail 2026-06-01 — "Key Art Designer" is plan-first now.
