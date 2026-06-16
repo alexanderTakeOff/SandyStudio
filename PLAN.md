@@ -11,8 +11,37 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-16 PM (Polina episode-routing root-fix + VGEN pillbar ghost; master @ 03c4613)
-Mode:   ===5=== EDIT · E10 governance Mode **2** now (Director switched off auto-approve). Single source = episode.governance_mode.
+Date:   2026-06-16 PM-4 (activity-feed + q10-cancel + approve-REVISION sprint; master @ a465213, pushed)
+Mode:   ===5=== EDIT (Director activated 2026-06-16 PM-3) · E10 governance Mode **2**. Single source = episode.governance_mode.
+
+2026-06-16 PM-4 (UI/observability, master @ a465213). Activity feed: shared `ActivityEventRow` (3 feeds→1,
+  −dup markup) + Director-command highlight (UUID actor=human) + critic verdict in row (·REVISE + warning
+  severity, factory.ts — neighbour-session work, committed by Тео). q10 cancel: stale VGEN token silently
+  aborted manual renders (kind:cancelled) → now q21-gate HONEST block ($0, reason) + ✕ Clear-block on banner;
+  runner check fan-out-only. Plan-contract: human-Director approve REVISION→APPROVED (#7) + reason on
+  Generate-from-plan. Cleared stale E10 token. tsc·0/873/replay30. ⚠️ parallel session shares C:\SandyStudio
+  working tree — coordinate commits.
+
+2026-06-16 PM-3. Diagnosed E10 "Reference Artist re-ran" alarm: episode-level exec-eref/start (no
+  shotId) re-fires the WHOLE-episode pilot pass → redundant IMG-episode_ref SH01/SH02 (REVIEW, ~$0.11)
+  on an episode already done (28×2 IMG-anchor + animatic v58 APPROVED). Root: trigger route reroutes EREF
+  to per-shot only when shotId+planAssetId present; bare episode trigger = pilot start, no idempotence
+  guard (→ fan-out-trigger-shape backlog). NOT blocking video. Polina passivity: model reverted Gemini→
+  gpt-5.5 (.env.local, needs restart) + LIVING WORK-PLAN LOOP (4b01a23): reconcile (real status not
+  events; APPROVED=done, REVISION/REVISE=blocked) → advance (mark done + single next step) → act/report →
+  HALT (markAwaitingDirector). Protocol on existing machinery, no new orchestrator. tsc·0/tests-pass.
+  PENDING: server restart to load gpt-5.5+loop. Loop auto-EXECUTES only in bold modes (3/4) — Mode 2 =
+  sharp reconcile+report, still needs Director "да"; hands-free ⇒ flip E10 to Mode 3.
+
+2026-06-16 PM-2. TD-84 Shot Plan = editable CONTRACT PAGE (prompt+provider+quality+resolution+seed+anchors;
+  PUT /content edit; «Generate from plan» = canonical /trigger path, provider from plan). Removed legacy
+  drawer footer (Fast/Standard + provider dropdown → fired plan-less generate-single-shot → silent C1-reject).
+  One shared parser `lib/api/shot-plan-contract.ts` read by runner AND contract page (no drift, +9 tests).
+  Resolver status-priority APPROVED>REVIEW>image (f31e28b, fixes SH02 hidden video). Worktree cleanup: 18 dead
+  removed + naming-validator studio-code whitelist on master (36f0445). q21 readiness-gate CORE (0d8adfb):
+  validateShotReadyForGeneration orchestrates plan-parse+provider-caps+media-preflight → fail-loud BEFORE
+  paid dispatch; wired into /trigger VGEN plan-path (the silent-C1 path). NEXT q21 slice: factory/autonomous
+  + other routes. q21 not stricter than runner (provider/duration→warnings, won't false-block Polina). tsc·0/870/replay30. master @ 6d430c8 (pushed).
 
 2026-06-16 PM. Polina "can't see storyboard" ROOT (613cb17 pillbar, 03c4613 routing): every
   episode-scoped concierge tool resolved `args.episodeId ?? ctx.episodeId` → trusted Gemini's guessed
@@ -34,22 +63,9 @@ Mode:   ===5=== EDIT · E10 governance Mode **2** now (Director switched off aut
   critic canon-check, surgical-revision, approve-route forward principal. Polina on Gemini: works but
   drops required tool args (reason/episodeId) — model weakness.
 
-2026-06-15 SESSION (memo: memory/session_2026-06-15_e10-gemini-cap-fixes.md). 3 root fixes pushed:
-  regen-cap (d2cdd40, lib/api/plan-regen-guard.ts — autonomous regen cap, in-flight guard) ·
-  Mode-4 supersede (83f5235, lib/api/single-approved.ts — demote prior APPROVED slot sibling +
-  approve WHOLE anchor pair) · Polina→Gemini (7cd2238, lib/concierge/llm.ts, CONCIERGE_PROVIDER=gemini
-  OpenAI-compat, live-verified tool-calling). E10: 28/28 anchors generated on GEMINI-FREE plans
-  (Anthropic credits dry → TEXT_LLM_DEBUG_TIER=true). OpenAI hit `Billing hard limit` → blocked ALL
-  gpt-image too → Director topped up (images STAY on OpenAI). SH07 doors slide-fixed; SH09 regen
-  cons=100; SH22 unblocked (q6 override of cosmetic EPREV).
-  🔴 SH23 RUNAWAY fixed (58a039f, memo): cosmetic-EPREV doom-loop × Mode-4 auto-react = 58 plans/45 imgs/
-  39 regens/3h. Fixed: EPREV cosmetic→PASS (V05/V09 advisory + V07 re-validate) + SHOT-level cap=6 at
-  factory pre-run (universal chokepoint). OPEN code: Polina per-shot auto-recovery; loud Anthropic→gemini
-  fallback; provider badge UI; (8) buildShotListFromAnchorChain. SH23 cleanup (58 plans) pending.
-  OPEN: SH25/SH26 canon (button-panel/location — await Polina review); music (Director uploads via
-  upload-music; idea: media-assets in Library); worktree cleanup (diff a410e+ad3d, clean ~16 dead);
-  Vercel+Inngest-Cloud migration (future sprint); A/B Polina-model test scheduled 2026-06-22.
-  Config: desktop = always-on host, home via Chrome Remote Desktop.
+2026-06-15 SESSION (memo: session_2026-06-15_e10-gemini-cap-fixes.md). regen-cap (d2cdd40) · Mode-4
+  supersede (83f5235) · SH23 RUNAWAY fixed (58a039f: EPREV cosmetic→PASS + SHOT-cap=6). OPEN: SH25/26
+  canon; music; Vercel+Inngest-Cloud migration; loud Anthropic→gemini fallback; provider badge UI.
 
 ARCH SPRINT 2026-06-14 (Director: pipeline = full traversable process surface; fix recurring
   uuid fragility systemically, not patches). One root: no single declarative model of stages +
