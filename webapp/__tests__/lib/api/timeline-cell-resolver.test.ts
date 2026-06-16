@@ -127,8 +127,8 @@ describe('resolveTimelineCells — directive #2 REVIEW vs APPROVED', () => {
   });
 });
 
-describe('resolveTimelineCells — directive #6 fast iteration / latest wins', () => {
-  it('higher version beats older row', () => {
+describe('resolveTimelineCells — status-priority resolution (Director 2026-06-16)', () => {
+  it('APPROVED beats a newer REVIEW row (status priority, not version)', () => {
     const v01Approved = vidShot({
       id: 'old',
       version: 1,
@@ -144,10 +144,64 @@ describe('resolveTimelineCells — directive #6 fast iteration / latest wins', (
       created_at: '2026-05-06T10:00:00Z',
     });
     const cells = resolveTimelineCells(baseContract, [v01Approved, v02Review]);
-    // v02 is latest → its REVIEW status wins, even though older v01 was APPROVED.
+    // Canonical tier wins: the APPROVED v01 stays on screen until a newer
+    // version is itself APPROVED. A REVIEW pilot does not auto-replace it.
+    expect(cells[0]!.kind).toBe('video-canonical');
+    expect(cells[0]!.url).toBe('/staging/v01.mp4');
+    expect(cells[0]!.status).toBe('APPROVED');
+  });
+
+  it('APPROVED v01 survives behind newer DRAFT versions (SH02 regression)', () => {
+    const v01Approved = vidShot({
+      id: 'approved',
+      version: 1,
+      status: 'APPROVED',
+      drive_path: '/staging/v01.mp4',
+      created_at: '2026-06-15T09:00:00Z',
+    });
+    const drafts = [2, 3, 4].map((v) =>
+      vidShot({
+        id: `draft-v${v}`,
+        version: v,
+        status: 'DRAFT',
+        drive_path: `/staging/v0${v}.mp4`,
+        created_at: `2026-06-15T1${v}:00:00Z`,
+      }),
+    );
+    const cells = resolveTimelineCells(baseContract, [v01Approved, ...drafts]);
+    // The exact SH02 bug: 3× DRAFT + 1× APPROVED must show the APPROVED video,
+    // not fall back to the animatic image.
+    expect(cells[0]!.kind).toBe('video-canonical');
+    expect(cells[0]!.url).toBe('/staging/v01.mp4');
+    expect(cells[0]!.status).toBe('APPROVED');
+  });
+
+  it('newer DRAFT does not shadow an older REVIEW when no APPROVED exists', () => {
+    const v01Review = vidShot({
+      id: 'review',
+      version: 1,
+      status: 'REVIEW',
+      drive_path: '/staging/v01.mp4',
+      created_at: '2026-06-15T09:00:00Z',
+    });
+    const v02Draft = vidShot({
+      id: 'draft',
+      version: 2,
+      status: 'DRAFT',
+      drive_path: '/staging/v02.mp4',
+      created_at: '2026-06-15T10:00:00Z',
+    });
+    const cells = resolveTimelineCells(baseContract, [v01Review, v02Draft]);
     expect(cells[0]!.kind).toBe('video-review');
-    expect(cells[0]!.url).toBe('/staging/v02.mp4');
+    expect(cells[0]!.url).toBe('/staging/v01.mp4');
     expect(cells[0]!.status).toBe('REVIEW');
+  });
+
+  it('falls back to animatic image when only DRAFT versions exist', () => {
+    const draft = vidShot({ status: 'DRAFT' });
+    const cells = resolveTimelineCells(baseContract, [draft]);
+    expect(cells[0]!.kind).toBe('image');
+    expect(cells[0]!.status).toBe('NONE');
   });
 
   it('skips a higher-version INVALIDATED row and surfaces the APPROVED video (q13)', () => {
@@ -172,7 +226,9 @@ describe('resolveTimelineCells — directive #6 fast iteration / latest wins', (
     expect(cells[0]!.url).toBe('/staging/v01.mp4');
   });
 
-  it('within same version, newer created_at wins', () => {
+  it('within the same tier and version, newer created_at wins', () => {
+    // Both APPROVED v01 → tiebreak is created_at (the tiebreak now applies
+    // WITHIN a status tier, not across the whole row set).
     const earlier = vidShot({
       id: 'a',
       version: 1,
@@ -183,7 +239,7 @@ describe('resolveTimelineCells — directive #6 fast iteration / latest wins', (
     const later = vidShot({
       id: 'b',
       version: 1,
-      status: 'REVIEW',
+      status: 'APPROVED',
       created_at: '2026-05-06T11:00:00Z',
       drive_path: '/staging/b.mp4',
     });

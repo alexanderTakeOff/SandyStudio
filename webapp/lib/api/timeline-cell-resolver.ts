@@ -155,24 +155,41 @@ export function resolveTimelineCells(
     const allRows = byShot.get(shot.shot_id);
     const rows = allRows?.filter((r) => r.status !== 'INVALIDATED');
     if (rows && rows.length > 0) {
-      const latest = pickLatestVidShot(rows);
-      const url = bestVideoUrl(latest);
-      const isCanonical = latest.status === 'APPROVED' || latest.status === 'LOCKED';
-      const isReview = latest.status === 'REVIEW';
-      // Only show video for canonical or REVIEW. REVISION / REJECTED rows fall
-      // through to the animatic image (still tentative — Director must
-      // regenerate to get back into canonical).
-      if (url && (isCanonical || isReview)) {
-        return {
-          shot_id: shot.shot_id,
-          kind: isCanonical ? 'video-canonical' : 'video-review',
-          url,
-          caption: shot.caption,
-          duration_seconds: duration,
-          status: statusToPill(latest.status),
-          asset_id: latest.id,
-          shot,
-        };
+      // Resolution priority is by STATUS, not by raw version (Director
+      // 2026-06-16). The old code picked the highest-version row overall and
+      // only THEN checked its status, so a newer DRAFT (v04) shadowed an older
+      // APPROVED video (v01) → the approved clip vanished into the animatic
+      // image (shot SH02). This is the same class of bug the INVALIDATED filter
+      // above patched for SH07 — now fixed at the root. Walk the documented
+      // tiers (header §"Resolution priority"): latest among APPROVED/LOCKED,
+      // else latest among REVIEW; REVISION / REJECTED / DRAFT fall through to
+      // the animatic image (still tentative — regenerate to get back canonical).
+      const canonicalRows = rows.filter(
+        (r) => r.status === 'APPROVED' || r.status === 'LOCKED',
+      );
+      const reviewRows = rows.filter((r) => r.status === 'REVIEW');
+      const tier =
+        canonicalRows.length > 0
+          ? canonicalRows
+          : reviewRows.length > 0
+            ? reviewRows
+            : null;
+      if (tier) {
+        const latest = pickLatestVidShot(tier);
+        const url = bestVideoUrl(latest);
+        const isCanonical = latest.status === 'APPROVED' || latest.status === 'LOCKED';
+        if (url) {
+          return {
+            shot_id: shot.shot_id,
+            kind: isCanonical ? 'video-canonical' : 'video-review',
+            url,
+            caption: shot.caption,
+            duration_seconds: duration,
+            status: statusToPill(latest.status),
+            asset_id: latest.id,
+            shot,
+          };
+        }
       }
     }
 
