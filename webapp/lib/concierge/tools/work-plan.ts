@@ -21,7 +21,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/supabase/types.gen';
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { fail, ok, resolveEpisodeId, type Tool, type ToolContext, type ToolResult } from './types';
 
 type AnyArgs = Record<string, unknown>;
 
@@ -249,7 +249,7 @@ export const getWorkPlan: Tool<GetWorkPlanArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId ?? null;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) {
       return fail(
         'No episode in focus — pass episodeId explicitly or open an episode first.',
@@ -322,7 +322,7 @@ export const updateWorkPlan: Tool<UpdateWorkPlanArgs> = {
     return { episodeId, content };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId ?? null;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) {
       return fail(
         'No episode in focus — pass episodeId explicitly or open an episode first.',

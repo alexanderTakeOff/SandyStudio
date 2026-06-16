@@ -3,7 +3,7 @@
 // Read-only tools for studio context.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { fail, ok, resolveEpisodeId, type Tool, type ToolContext, type ToolResult } from './types';
 import { agentDisplayName } from '@/lib/api/agent-names';
 
 type AnyArgs = Record<string, unknown>;
@@ -142,7 +142,7 @@ export const getEpisode: Tool<GetEpisodeArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId ?? null;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) {
       return fail(
         'episodeId is required — no active episode in conversation context. Ask the Director which episode they mean and call again with episodeId.',

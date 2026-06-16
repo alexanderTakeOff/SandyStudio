@@ -12,7 +12,7 @@
 
 import { gateMutation } from '../approval-check';
 import { authHeaders } from './types';
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { fail, ok, resolveEpisodeId, type Tool, type ToolContext, type ToolResult } from './types';
 import { ackOrFailOnPickup } from './wait-for-pickup';
 
 function safeParse(raw: string): Record<string, unknown> {
@@ -142,7 +142,7 @@ export const listShotPlans: Tool<ListShotPlansArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) return fail('episodeId required — no active episode.');
 
     // TD-75 (2026-05-27): widen file_type match — Animator writes
@@ -614,7 +614,7 @@ export const regenerateShotPlan: Tool<RegenerateShotPlanArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) return fail('episodeId required — no active episode.');
 
     const approval = gateMutation('regenerateShotPlan', {

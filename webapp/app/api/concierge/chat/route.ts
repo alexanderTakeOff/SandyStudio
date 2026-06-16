@@ -114,7 +114,8 @@ async function handleChatPOST(req: Request) {
     );
   }
 
-  const episodeId = body.episodeId ?? null;
+  let episodeId = body.episodeId ?? null;
+  let episodeCode: string | null = null;
   const nextGate = body.nextGate ?? null;
   const lastUserMessage = body.messages[body.messages.length - 1];
   if (lastUserMessage.role !== 'user' || !lastUserMessage.content.trim()) {
@@ -164,16 +165,31 @@ async function handleChatPOST(req: Request) {
   }
 
   // q13 (2026-06-15): an EXISTING thread's own episode binding is the authority
-  // — the request often carries no episodeId, but the thread may be bound to an
-  // episode (e.g. E10). Re-resolve so Polina reports the mode of the episode her
-  // thread is actually working on, keeping her self-report in sync with the UI
-  // badge + the pipeline.
+  // — the request often carries no episodeId (the ConciergePanel UI sends only
+  // messages + threadId), but the thread may be bound to an episode (e.g. E10).
+  // Adopt the thread's bound episode as the request episode so BOTH the reported
+  // mode AND every episode-scoped tool (listShots, listRefPlans, triggerAgent…)
+  // operate on the right UUID — instead of Polina having to GUESS the episodeId
+  // and passing an episode CODE / hallucinated id that finds nothing. Root of
+  // her repeated "no APPROVED storyboard"/"forgot episodeId" failures (Director
+  // 2026-06-16: a repeating error is our bug, not the model).
   if (threadId) {
     const boundThread = await getThread(supabase, threadId);
     const boundEpisodeId = boundThread?.episode_id ?? null;
     if (boundEpisodeId && boundEpisodeId !== episodeId) {
+      episodeId = boundEpisodeId;
       mode = await resolveEffectiveConciergeMode(supabase, boundEpisodeId);
     }
+  }
+
+  // Resolve episodeCode for display and tool fallback
+  if (episodeId) {
+    const { data: ep } = await supabase
+      .from('episodes')
+      .select('episode_code')
+      .eq('id', episodeId)
+      .maybeSingle();
+    episodeCode = (ep as { episode_code?: string | null } | null)?.episode_code ?? null;
   }
 
   // Director-side feedback markers — captured BEFORE the LLM sees the
@@ -426,6 +442,7 @@ async function handleChatPOST(req: Request) {
             threadId: threadId ?? '',
             mode,
             episodeId,
+            episodeCode,
             cookieHeader,
             appOrigin,
             recentTurns,

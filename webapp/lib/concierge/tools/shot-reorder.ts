@@ -14,7 +14,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { gateMutation } from '../approval-check';
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { fail, ok, resolveEpisodeId, type Tool, type ToolContext, type ToolResult } from './types';
 
 function safeParse(raw: string): Record<string, unknown> {
   try {
@@ -121,7 +121,7 @@ export const reorderShots: Tool<ReorderShotsArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) return fail('episodeId required — no active episode.');
 
     const approval = gateMutation('reorderShots', {

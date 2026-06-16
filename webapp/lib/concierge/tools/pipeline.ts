@@ -4,7 +4,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { buildPipelineSnapshot, type PipelineStageSnapshot } from '@/lib/api/pipeline-stages';
-import { fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { fail, ok, resolveEpisodeId, type Tool, type ToolContext, type ToolResult } from './types';
 
 type AnyArgs = Record<string, unknown>;
 
@@ -49,7 +49,7 @@ export const getNextGate: Tool<GetNextGateArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId ?? null;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) {
       return fail(
         'episodeId is required — no active episode in conversation context.',
@@ -185,7 +185,7 @@ export const listPendingApprovals: Tool<ListPendingApprovalsArgs> = {
   },
   async execute(args, ctx): Promise<ToolResult> {
     const limit = args.limit ?? 20;
-    const episodeId = args.episodeId ?? ctx.episodeId ?? undefined;
+    const episodeId = resolveEpisodeId(args, ctx) ?? undefined;
     let query = ctx.supabase
       .from('assets')
       .select('id,episode_id,file_type,filename,agent_id,status,created_at')

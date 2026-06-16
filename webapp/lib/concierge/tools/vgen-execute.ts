@@ -20,7 +20,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { gateMutation } from '../approval-check';
-import { authHeaders, fail, ok, type Tool, type ToolResult } from './types';
+import { authHeaders, fail, ok, resolveEpisodeId, type Tool, type ToolResult } from './types';
 import { ackOrFailOnPickup } from './wait-for-pickup';
 
 interface RegenerateVideoFromPlanArgs {
@@ -107,7 +107,7 @@ export const regenerateVideoFromPlan: Tool<RegenerateVideoFromPlanArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) {
       return fail('episodeId required — no active episode in conversation context.');
     }

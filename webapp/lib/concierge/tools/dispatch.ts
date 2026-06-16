@@ -8,7 +8,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { gateMutation } from '../approval-check';
-import { authHeaders, fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { authHeaders, fail, ok, resolveEpisodeId, type Tool, type ToolContext, type ToolResult } from './types';
 import { ackFanoutPickup, ackOrFailOnPickup } from './wait-for-pickup';
 
 type AnyArgs = Record<string, unknown>;
@@ -80,7 +80,7 @@ export const triggerAgent: Tool<TriggerAgentArgs> = {
     return { episodeId, agentCode, reason: reason.trim(), payload };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) {
       return fail(
         'episodeId required — no active episode in conversation context.',

@@ -177,6 +177,7 @@ export async function POST(req: Request) {
   // Resolve the episode in focus: the thread's pinned episode first, else the
   // episode that owns the triggering activity event (ambient pipeline reaction).
   let episodeId: string | null = thread.episode_id ?? null;
+  let episodeCode: string | null = null;
   if (!episodeId && parsed.source === 'ambient') {
     const { data: evt } = await supabase
       .from('activity_events')
@@ -184,6 +185,15 @@ export async function POST(req: Request) {
       .eq('id', parsed.trigger_id)
       .maybeSingle();
     episodeId = (evt as { episode_id?: string | null } | null)?.episode_id ?? null;
+  }
+  // Resolve episodeCode for display in system prompt (helps Polina see which episode)
+  if (episodeId) {
+    const { data: ep } = await supabase
+      .from('episodes')
+      .select('episode_code')
+      .eq('id', episodeId)
+      .maybeSingle();
+    episodeCode = (ep as { episode_code?: string | null } | null)?.episode_code ?? null;
   }
 
   // q13 (2026-06-15): single source of truth — episode.governance_mode (override)
@@ -293,6 +303,7 @@ export async function POST(req: Request) {
     threadId: parsed.thread_id,
     mode,
     episodeId,
+    episodeCode,
     cookieHeader: null,
     authHeader,
     appOrigin,

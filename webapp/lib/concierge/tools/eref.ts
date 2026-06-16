@@ -23,7 +23,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { gateMutation } from '../approval-check';
-import { authHeaders, fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { authHeaders, fail, ok, resolveEpisodeId, type Tool, type ToolContext, type ToolResult } from './types';
 import { ackOrFailOnPickup } from './wait-for-pickup';
 
 function safeParse(raw: string): Record<string, unknown> {
@@ -155,7 +155,7 @@ export const listRefPlans: Tool<ListRefPlansArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) {
       return fail('episodeId required — no active episode.');
     }
@@ -370,7 +370,7 @@ export const regenerateRefPlan: Tool<RegenerateRefPlanArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId;
+    const episodeId = resolveEpisodeId(args, ctx);
     if (!episodeId) {
       return fail('episodeId required — no active episode.');
     }

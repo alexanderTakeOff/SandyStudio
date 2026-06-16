@@ -20,6 +20,8 @@ export interface ToolContext {
   mode: ConciergeMode;
   /** Episode currently in focus, if any. Many tools default to this when args omit episodeId. */
   episodeId?: string | null;
+  /** Episode code (e.g. "SS-S15-E10") for display and fallback resolution. */
+  episodeCode?: string | null;
   /** Director's auth user id for activity_events provenance. */
   directorUserId?: string | null;
   /** Recent thread turns, oldest-first. Used for verbal-approval detection. */
@@ -55,6 +57,58 @@ export function authHeaders(ctx: ToolContext): Record<string, string> {
   if (ctx.cookieHeader) h.Cookie = ctx.cookieHeader;
   if (ctx.authHeader) h.Authorization = ctx.authHeader;
   return h;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True when `v` is a syntactically valid UUID string. */
+export function isUuid(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v);
+}
+
+/**
+ * Resolve the episode a tool should act on.
+ *
+ * The thread-bound episode (`ctx.episodeId`) is the AUTHORITY. The chat route
+ * adopts the thread's bound episode into ctx (q13, 2026-06-15), so for a bound
+ * thread ctx.episodeId is always the correct UUID. The model-supplied
+ * `args.episodeId` is unreliable — Gemini-Polina jams the episode CODE
+ * ("SS-S15-E10") or a hallucinated UUID into it, and the old
+ * `args.episodeId ?? ctx.episodeId` precedence let that SILENTLY override the
+ * right UUID → every episode-scoped query missed → her recurring "no APPROVED
+ * storyboard" / "wrong episode" / "forgot episodeId" failures (Director
+ * 2026-06-16: a repeating error is our bug, not the model).
+ *
+ * Precedence:
+ *   1. ctx.episodeId — thread binding wins whenever present.
+ *   2. args.episodeId — only when it is a VALID UUID AND the thread is unbound
+ *      (studio-wide conversation with no episode of its own).
+ * A non-UUID args.episodeId (a code in the wrong field) is never used as an id;
+ * `resolveEpisodeCode` surfaces it for code-based DB resolution instead.
+ */
+export function resolveEpisodeId(
+  args: { episodeId?: string | null },
+  ctx: ToolContext,
+): string | null {
+  if (ctx.episodeId) return ctx.episodeId;
+  if (isUuid(args.episodeId)) return args.episodeId;
+  return null;
+}
+
+/**
+ * Resolve an episode CODE candidate for tools that fall back to code-based
+ * lookup (e.g. listShots). A non-UUID value in `args.episodeId` is almost
+ * always the episode CODE placed in the wrong field, so it is treated as a code
+ * candidate: explicit `args.episodeCode` wins, then the misfiled id, then
+ * ctx.episodeCode.
+ */
+export function resolveEpisodeCode(
+  args: { episodeId?: string | null; episodeCode?: string | null },
+  ctx: ToolContext,
+): string | null {
+  const miscodedId = !isUuid(args.episodeId) ? args.episodeId ?? null : null;
+  return args.episodeCode ?? miscodedId ?? ctx.episodeCode ?? null;
 }
 
 /** Standard tool result envelope. Always JSON-serialisable. */

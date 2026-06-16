@@ -19,10 +19,19 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { listStoryboardShots } from '@/lib/api/vgen-shot-helpers';
-import { fail, ok, type Tool, type ToolResult } from './types';
+import {
+  fail,
+  ok,
+  resolveEpisodeCode,
+  resolveEpisodeId,
+  type Tool,
+  type ToolResult,
+} from './types';
 
 interface ListShotsArgs {
   episodeId?: string;
+  /** Optional: episode code (e.g., "SS-S15-E10") as fallback when episodeId is unavailable. */
+  episodeCode?: string;
   /** Optional: filter to a single act for noisy episodes (1-based). */
   act?: number;
   /** Optional: cap on returned shots (default 200). */
@@ -64,6 +73,11 @@ export const listShots: Tool<ListShotsArgs> = {
             description:
               'Episode UUID. Omit to use active conversation episode.',
           },
+          episodeCode: {
+            type: 'string',
+            description:
+              'Episode code (e.g., "SS-S15-E10") as fallback when episodeId is unavailable.',
+          },
           act: {
             type: 'number',
             description:
@@ -83,6 +97,8 @@ export const listShots: Tool<ListShotsArgs> = {
     return {
       episodeId:
         typeof obj.episodeId === 'string' ? obj.episodeId : undefined,
+      episodeCode:
+        typeof obj.episodeCode === 'string' ? obj.episodeCode : undefined,
       act:
         typeof obj.act === 'number' && Number.isFinite(obj.act)
           ? obj.act
@@ -94,10 +110,27 @@ export const listShots: Tool<ListShotsArgs> = {
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
-    const episodeId = args.episodeId ?? ctx.episodeId;
+    let episodeId = resolveEpisodeId(args, ctx);
+    const episodeCodeUsed = resolveEpisodeCode(args, ctx);
+
+    // Fallback: if episodeId not available, try to resolve via episodeCode
+    if (!episodeId && episodeCodeUsed) {
+      const { data: ep } = await ctx.supabase
+        .from('episodes')
+        .select('id')
+        .eq('episode_code', episodeCodeUsed)
+        .maybeSingle();
+      episodeId = ep?.id ?? null;
+      if (!episodeId) {
+        return fail(
+          `Could not resolve episode code "${episodeCodeUsed}" — not found in database.`,
+        );
+      }
+    }
+
     if (!episodeId) {
       return fail(
-        'episodeId required — no active episode in conversation context.',
+        'episodeId required — provide episodeId, episodeCode, or set active episode in conversation context.',
       );
     }
 
