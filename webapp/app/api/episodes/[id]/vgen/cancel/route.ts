@@ -16,7 +16,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError } from '@/lib/api/errors';
-import { setVgenCancel } from '@/lib/api/vgen-cancel';
+import { setVgenCancel, clearVgenCancel } from '@/lib/api/vgen-cancel';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 
 export const runtime = 'nodejs';
@@ -64,4 +64,31 @@ export const POST = withApiHandler(async (req, ctx) => {
     cancelled: true,
     pilot_state: 'CANCELLED',
   });
+});
+
+// DELETE — clear the cancel block (q10 2026-06-16). The kill-switch must have a
+// visible OFF: the × on the pillbar's "VGEN cancelled" banner calls this to drop
+// the stale token + reset the pilot state, so a deliberate render can proceed
+// (and so a cancel can never linger as an invisible episode-wide lock).
+export const DELETE = withApiHandler(async (_req, ctx) => {
+  const params = (await ctx?.params) as { id: string } | undefined;
+  const episodeId = params?.id;
+  if (!episodeId) throw new NotFoundError('Episode');
+
+  const { user, supabase } = await requireDirector();
+
+  await clearVgenCancel(supabase, episodeId);
+  await setVgenPilotState(supabase, episodeId, 'NONE');
+
+  await supabase.from('activity_events').insert({
+    event_type: 'manual_trigger',
+    severity: 'info',
+    title: 'VGEN cancel cleared',
+    description: `Director ${user.email ?? user.id} cleared the VGEN cancel block`,
+    actor: user.id,
+    episode_id: episodeId,
+    metadata: { kind: 'vgen_cancel_clear' },
+  } as never);
+
+  return apiOk({ cancelled: false, pilot_state: 'NONE' });
 });

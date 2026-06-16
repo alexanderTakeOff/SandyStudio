@@ -96,7 +96,7 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
     runningJobs: s?.running_jobs ?? 0,
   };
 
-  const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel' | 'approve_all'>(null);
+  const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel' | 'uncancel' | 'approve_all'>(null);
   const [success, setSuccess] = useState<null | 'approve_pilots' | 'cancel' | 'approve_all'>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -201,6 +201,28 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
     }
   }
 
+  // q10 (2026-06-16): clear the cancel block — the OFF switch for the kill
+  // switch. The × on the "VGEN cancelled" banner drops the stale token + resets
+  // pilot state so a deliberate render can proceed (and the gate stops blocking).
+  async function uncancel() {
+    setBusy('uncancel');
+    setError(null);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/vgen/cancel`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Clear failed');
+      }
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   const isPilotMode = pilotState === 'PENDING_REVIEW';
@@ -251,6 +273,14 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
           <span className="flex items-center gap-2 text-sm text-text-secondary">
             <XCircle size={14} className="shrink-0" style={{ color: 'var(--accent-danger)' }} />
             VGEN cancelled — re-trigger to start over.
+            <button
+              onClick={uncancel}
+              disabled={busy === 'uncancel'}
+              className="ml-1 underline opacity-80 hover:opacity-100 disabled:opacity-50 disabled:no-underline"
+              title="Clear the cancel block so VGEN can run again"
+            >
+              {busy === 'uncancel' ? 'Clearing…' : 'Clear block'}
+            </button>
           </span>
         ) : (
           <ReviewHeadline

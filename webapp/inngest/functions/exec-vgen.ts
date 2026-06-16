@@ -195,8 +195,12 @@ export const execVgenRun = inngest.createFunction(
       };
     }
 
-    // Cancel switch — abort before paid call (single-shot path). The pilot is a
-    // fresh start and instead CLEARS any stale token below.
+    // Cancel switch — abort the in-flight FAN-OUT between shots (the pilot is a
+    // fresh start and instead CLEARS any stale token below). Deliberate
+    // /trigger renders are caught EARLIER and HONESTLY at the q21 readiness gate
+    // (shot-readiness.ts → /trigger returns a clear "cancelled — clear the
+    // block" blocker, $0, before dispatch) rather than dying silently here, so
+    // this runner-side abort now only stops auto-dispatched fan-out shots.
     if (!isPilot) {
       const cancelled = await step.run('check-cancel', async () => {
         const supabase = createSupabaseServiceRoleClient();

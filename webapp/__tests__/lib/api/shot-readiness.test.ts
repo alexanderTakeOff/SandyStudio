@@ -47,6 +47,15 @@ describe('validateShotReadyForGeneration', () => {
     expect(r.blockers).toEqual([]);
   });
 
+  it('blocks (fail-loud) when VGEN is cancelled for the episode', async () => {
+    // q10: an active cancel is caught HERE at the gate, not silently in the
+    // runner. The mock returns the cancel token shape from maybeSingle().
+    const sb = makeSupabase({ plan: { value: { cancelled: true } } });
+    const r = await validateShotReadyForGeneration(sb, ARGS);
+    expect(r.ok).toBe(false);
+    expect(r.blockers.map((b) => b.code)).toContain('vgen_cancelled');
+  });
+
   it('blocks when the plan is missing', async () => {
     const sb = makeSupabase({ plan: null });
     const r = await validateShotReadyForGeneration(sb, ARGS);

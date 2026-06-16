@@ -19,6 +19,7 @@ import { parseShotPlanContract } from '@/lib/api/shot-plan-contract';
 import { resolveVanimProviderId } from '@/lib/agents/runners/animator';
 import { VIDEO_PROVIDER_CAPS } from '@/lib/api/provider-capabilities';
 import { assertMediaResolves, type PreflightAsset } from '@/lib/agents/media-preflight';
+import { isVgenCancelled } from '@/lib/api/vgen-cancel';
 
 export interface ReadinessFinding {
   code: string;
@@ -96,6 +97,19 @@ export async function validateShotReadyForGeneration(
   const blockers: ReadinessFinding[] = [];
   const warnings: ReadinessFinding[] = [];
   const details: Record<string, unknown> = { shotId: args.shotId };
+
+  // 0. VGEN cancel switch — an active episode cancel is an honest readiness
+  // blocker (q10 2026-06-16). The deliberate render is refused HERE at the
+  // gate, $0, with a reason and a pointer to the × that clears it — instead of
+  // dying silently as `kind:cancelled` inside the runner (the E10 false-start).
+  if (await isVgenCancelled(supabase, args.episodeId)) {
+    blockers.push({
+      code: 'vgen_cancelled',
+      message:
+        'VGEN is cancelled for this episode — clear the block (× on the VGEN banner) before generating.',
+    });
+    return { ok: false, blockers, warnings, details };
+  }
 
   // 1. Plan present + APPROVED.
   const { plan, reason } = await loadPlan(
