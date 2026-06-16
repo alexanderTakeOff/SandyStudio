@@ -580,10 +580,26 @@ export function createAgentInngestFunction<E extends string>(
           ? ` — ${completedCtx.shortLabel}`
           : '';
 
+        // 2026-06-16 (Director): surface a critic's outcome in the feed row —
+        // "Video Critic completed — SH06 · REVISE" instead of a meaningless
+        // "completed". Critics stamp `result.metadata.verdict` with the
+        // effective verdict (PASS / REVISE / FAIL …); non-critic agents leave it
+        // absent → no suffix. A non-PASS verdict also bumps severity to warning
+        // so it stands out in the feed.
+        const rawVerdict = (exec.result.metadata as { verdict?: unknown })?.verdict;
+        const completedVerdict = typeof rawVerdict === 'string' ? rawVerdict : null;
+        const verdictSuffix = completedVerdict ? ` · ${completedVerdict}` : '';
+        const completedSeverity: 'info' | 'warning' =
+          completedVerdict &&
+          completedVerdict !== 'PASS' &&
+          completedVerdict !== 'PASS_WITH_UNCERTAINTY'
+            ? 'warning'
+            : 'info';
+
         await logEvent(supabase, {
           event_type: 'agent_completed',
-          severity: 'info',
-          title: `${agentDisplayName(spec.agentId)} completed${completedSuffix}`,
+          severity: completedSeverity,
+          title: `${agentDisplayName(spec.agentId)} completed${completedSuffix}${verdictSuffix}`,
           description: spec.name,
           actor: spec.agentId,
           episode_id: episodeId,
@@ -592,6 +608,7 @@ export function createAgentInngestFunction<E extends string>(
           metadata: {
             agent: spec.agentId,
             status: autoApprove ? 'APPROVED' : 'REVIEW',
+            ...(completedVerdict ? { verdict: completedVerdict } : {}),
             ...(completedCtx?.metadata ?? {}),
           },
         });
