@@ -85,7 +85,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   const id = params?.id;
   if (!id) throw new NotFoundError('Asset');
 
-  const { user, supabase } = await requireDirector();
+  const { user, supabase, principal } = await requireDirector();
   const body = await parseJson(req, ApproveBody);
 
   // Fetch asset + episode context
@@ -117,7 +117,20 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
 
   const targetStatus = STATUS_AFTER_DECISION[body.decision];
-  assertAssetTransition(asset.status as AssetStatus, targetStatus);
+  // Backlog #7 (2026-06-16): the human Director is BOTH reworker and approver.
+  // The FSM forbids REVISION / NEEDS_HUMAN_TWEAK → APPROVED (the autonomous
+  // pipeline routes a reworked asset through a second REVIEW), but for a human
+  // Director editing the asset on the contract page that re-review is
+  // bureaucratic. Allow the direct approve ONLY for the human principal — agents
+  // (exec_dir_ai) still must go through REVIEW. Everything else keeps the strict
+  // FSM. Governance (enforceMode) below is unaffected.
+  const humanDirectApprove =
+    principal === 'director' &&
+    body.decision === 'APPROVE' &&
+    (asset.status === 'REVISION' || asset.status === 'NEEDS_HUMAN_TWEAK');
+  if (!humanDirectApprove) {
+    assertAssetTransition(asset.status as AssetStatus, targetStatus);
+  }
 
   // Governance check (Phase 4: PUBLISH-only enforcement; rest pass through)
   let episode: GovernanceEpisode | null = null;

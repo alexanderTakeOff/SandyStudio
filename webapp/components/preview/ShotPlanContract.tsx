@@ -122,6 +122,8 @@ export function ShotPlanContract({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           agentCode: 'EXEC-VGEN',
+          // /trigger requires a non-empty reason (z.string().min(3)).
+          reason: 'Director: generate video from approved shot plan',
           payload: { shotId, planAssetId: assetId },
         }),
       });
