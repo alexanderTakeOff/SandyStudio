@@ -905,7 +905,7 @@ export function ConciergePanel() {
             acc += line;
             setMessages((prev) => {
               const copy = [...prev];
-              copy[copy.length - 1] = { role: 'assistant', content: acc };
+              copy[copy.length - 1] = { ...copy[copy.length - 1], role: 'assistant', content: acc };
               return copy;
             });
             continue;
@@ -917,7 +917,7 @@ export function ConciergePanel() {
               acc += v;
               setMessages((prev) => {
                 const copy = [...prev];
-                copy[copy.length - 1] = { role: 'assistant', content: acc };
+                copy[copy.length - 1] = { ...copy[copy.length - 1], role: 'assistant', content: acc };
                 return copy;
               });
             }
@@ -958,6 +958,7 @@ export function ConciergePanel() {
           const tail = copy[copy.length - 1];
           if (tail?.role === 'assistant') {
             copy[copy.length - 1] = {
+              ...tail,
               role: 'assistant',
               content: (tail.content || '') + (tail.content ? '\n\n' : '') + '_(cancelled)_',
             };
@@ -968,6 +969,7 @@ export function ConciergePanel() {
         setMessages((prev) => {
           const copy = [...prev];
           copy[copy.length - 1] = {
+            ...copy[copy.length - 1],
             role: 'assistant',
             content: (acc || '') + (acc ? '\n\n' : '') + `⚠️ ${serverError}`,
           };
@@ -988,6 +990,7 @@ export function ConciergePanel() {
         const tail = copy[copy.length - 1];
         const partial = tail?.role === 'assistant' ? tail.content || '' : '';
         copy[copy.length - 1] = {
+          ...copy[copy.length - 1],
           role: 'assistant',
           content: isAbort
             ? partial + (partial ? '\n\n' : '') + '_(cancelled)_'
@@ -1272,15 +1275,19 @@ export function ConciergePanel() {
             const timeShort = formatDubaiTime(m.createdAt);
             const timeFull = formatDubaiFull(m.createdAt);
             const author = authorLabel(m);
-            const prefix = timeShort ? `${timeShort} ${author}: ` : `${author}: `;
+            // Author + time as a muted header line above the bubble (Director
+            // 2026-06-16: dim the name/time, break after the name). Still a real
+            // DOM text line, so a copy-paste of the chat keeps "13:53 · Полина".
+            const meta = timeShort ? `${timeShort} · ${author}` : author;
             if (m.role === 'user') {
               return (
                 <div key={key} className="ml-8 flex flex-col items-end gap-0.5">
+                  <div className="text-[10px] text-text-muted px-1">{meta}</div>
                   <div
                     className="rounded-xl px-3 py-2 text-sm bg-[var(--accent-primary)] text-[var(--text-inverse)]"
                     title={timeFull ?? undefined}
                   >
-                    <div className="whitespace-pre-wrap">{prefix}{m.content}</div>
+                    <div className="whitespace-pre-wrap">{m.content}</div>
                   </div>
                 </div>
               );
@@ -1288,6 +1295,7 @@ export function ConciergePanel() {
             if (m.role === 'assistant') {
               return (
                 <div key={key} className="mr-8 flex flex-col gap-1.5">
+                  <div className="text-[10px] text-text-muted px-1">{meta}</div>
                   {/* TD-25 P3 (2026-05-21): yellow "🟡 Полина ждёт" chip
                       above the bubble when Polina is explicitly waiting on
                       Director input. Closes the silent-wait UX bug. */}
@@ -1319,7 +1327,7 @@ export function ConciergePanel() {
                     }}
                   >
                     <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown>{`${prefix}\n\n${withHardBreaks(m.content) || '…'}`}</ReactMarkdown>
+                      <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
                     </div>
                   </div>
                 </div>
@@ -1328,6 +1336,7 @@ export function ConciergePanel() {
             if (m.role === 'claude') {
               return (
                 <div key={key} className="mr-8 flex flex-col gap-0.5">
+                  <div className="text-[10px] text-text-muted px-1">{meta}</div>
                   <div
                     className="rounded-xl px-3 py-2 text-sm border"
                     style={{
@@ -1338,7 +1347,7 @@ export function ConciergePanel() {
                     title={`Team chat — ${m.author ?? 'Claude'}`}
                   >
                     <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown>{`${prefix}\n\n${withHardBreaks(m.content) || '…'}`}</ReactMarkdown>
+                      <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
                     </div>
                   </div>
                 </div>
