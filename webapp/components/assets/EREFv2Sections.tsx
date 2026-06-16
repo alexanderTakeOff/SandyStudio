@@ -16,6 +16,7 @@
 
 'use client';
 
+import { withThumbParam } from '@/lib/media-thumb';
 import type {
   EREFReview,
   EREFReviewIssue,
@@ -399,7 +400,7 @@ export function CandidatesStrip({ currentAssetId, candidates, onPick }: Candidat
                   />
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={src} alt={c.filename} className="w-full h-full object-cover" />
+                  <img src={withThumbParam(src, 64)} alt={c.filename} className="w-full h-full object-cover" />
                 )
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[9px] text-text-muted bg-[var(--bg-base)]">
@@ -509,7 +510,7 @@ export function AttemptsStrip({ attempts, finalVersion }: AttemptsStripProps) {
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={att.image_url}
+                    src={withThumbParam(att.image_url, 80)}
                     alt={title}
                     className="w-full h-full object-cover"
                   />

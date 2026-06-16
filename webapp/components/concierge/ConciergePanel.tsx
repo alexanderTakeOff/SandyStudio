@@ -185,6 +185,23 @@ function formatDubaiFull(iso: string | undefined): string | null {
   return DUBAI_FULL_FORMATTER ? DUBAI_FULL_FORMATTER.format(d) : null;
 }
 
+// Director 2026-06-15 — author label per role, baked into the copy-friendly
+// "HH:MM Author: " text prefix so a copy-paste of the chat shows who said what.
+function authorLabel(m: Message): string {
+  switch (m.role) {
+    case 'user':
+      return 'Александр';
+    case 'assistant':
+      return 'Полина';
+    case 'claude':
+      return m.author ?? 'Claude';
+    case 'pipeline':
+      return 'Pipeline';
+    default:
+      return 'Сообщение';
+  }
+}
+
 /** Silence tolerance for continuous mic. Director wanted ≥5s for thinking pauses. */
 const MIC_SILENCE_TIMEOUT_MS = 5500;
 
@@ -1248,24 +1265,23 @@ export function ConciergePanel() {
           )}
           {messages.map((m, i) => {
             const key = m.turnId ?? `local-${i}`;
-            // 2026-05-26 — Dubai-local short timestamp for every bubble.
+            // Director 2026-06-15 — bake "HH:MM Author: " INTO the message text
+            // (the standalone time chip didn't survive copy-paste). timeShort is
+            // Dubai-local; author per role. Display-only: m.content (wire / TTS /
+            // storage) is untouched.
             const timeShort = formatDubaiTime(m.createdAt);
             const timeFull = formatDubaiFull(m.createdAt);
-            const timeChip = timeShort ? (
-              <span
-                className="text-[10px] text-text-muted tabular-nums select-none"
-                title={timeFull ?? undefined}
-              >
-                {timeShort}
-              </span>
-            ) : null;
+            const author = authorLabel(m);
+            const prefix = timeShort ? `${timeShort} ${author}: ` : `${author}: `;
             if (m.role === 'user') {
               return (
                 <div key={key} className="ml-8 flex flex-col items-end gap-0.5">
-                  <div className="rounded-xl px-3 py-2 text-sm bg-[var(--accent-primary)] text-[var(--text-inverse)]">
-                    <div className="whitespace-pre-wrap">{m.content}</div>
+                  <div
+                    className="rounded-xl px-3 py-2 text-sm bg-[var(--accent-primary)] text-[var(--text-inverse)]"
+                    title={timeFull ?? undefined}
+                  >
+                    <div className="whitespace-pre-wrap">{prefix}{m.content}</div>
                   </div>
-                  {timeChip}
                 </div>
               );
             }
@@ -1303,10 +1319,9 @@ export function ConciergePanel() {
                     }}
                   >
                     <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
+                      <ReactMarkdown>{`${prefix}\n\n${withHardBreaks(m.content) || '…'}`}</ReactMarkdown>
                     </div>
                   </div>
-                  {timeChip && <div className="self-start pl-1">{timeChip}</div>}
                 </div>
               );
             }
@@ -1323,10 +1338,9 @@ export function ConciergePanel() {
                     title={`Team chat — ${m.author ?? 'Claude'}`}
                   >
                     <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown>{withHardBreaks(m.content) || '…'}</ReactMarkdown>
+                      <ReactMarkdown>{`${prefix}\n\n${withHardBreaks(m.content) || '…'}`}</ReactMarkdown>
                     </div>
                   </div>
-                  {timeChip && <div className="self-start pl-1">{timeChip}</div>}
                 </div>
               );
             }
@@ -1352,8 +1366,7 @@ export function ConciergePanel() {
                 }}
                 title={timeFull ? `Pipeline event · ${timeFull}` : 'Pipeline event'}
               >
-                <span className="flex-1 min-w-0">{formatted}</span>
-                {timeChip && <span className="shrink-0">{timeChip}</span>}
+                <span className="flex-1 min-w-0">{timeShort ? `${timeShort} ` : ''}{formatted}</span>
               </div>
             );
           })}

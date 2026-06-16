@@ -232,10 +232,18 @@ export function createAgentInngestFunction<E extends string>(
       // RETURN (not throw) so Inngest does not retry: no job row, no provider
       // call (no money), no fan-out (the loop terminates by construction). The
       // human Director is never capped — she is the escalation target.
+      // The human Director is NEVER capped — she is the escalation target, so a
+      // Director-approved regen (event carries principal='director', e.g. the
+      // approve-route execute-from-plan after a human APPROVE) bypasses the cap
+      // even past the limit. Mirrors assertPlanRegenWithinCap's director
+      // exemption; without it a legit post-cleanup re-approval is false-halted
+      // (E10 SH26 hit 6 attempts during the furniture debacle — 2026-06-15).
       const shotIdForCap =
         typeof eventData.shotId === 'string' ? (eventData.shotId as string) : null;
+      const isDirectorPrincipal = eventData.principal === 'director';
       if (
         shotIdForCap &&
+        !isDirectorPrincipal &&
         (SHOT_REGEN_AGENT_IDS as readonly string[]).includes(spec.agentId)
       ) {
         const halted = await step.run('shot-regen-cap-check', async () => {

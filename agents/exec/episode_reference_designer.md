@@ -36,7 +36,7 @@ the same Plan, and editable by Director before any money is spent.
 
 ## Scene Master (TD-49 Phase 1, 2026-05-25)
 
-A `scene_master` is a NEW kind of Bible-level asset (file_type `SBL-scene_master_<location_slug>`, series-scoped) that locks the canonical layout of a recurring location — mirror coords, carpet position, furniture angles, lighting. Approved once per series per location.
+A `scene_master` is a NEW kind of Bible-level asset (file_type `SBL-scene_master_<location_slug>`, series-scoped) that locks the canonical layout of a recurring location — the screen-space positions, scale, and lighting of whatever objects that location's canon actually contains (derive them from the master image; never assume a default room). Approved once per series per location.
 
 In Phase 1 of the Anchor Chain rollout, scene_master assets are created via the existing tool flow (no new Designer agent code):
 
@@ -233,29 +233,35 @@ override via Critic REVISE.
 Use **structured sections**, not novel-prose. Pattern:
 
 ```
-[LAYOUT LOCK — TD-49 Phase 1 hard contract, 2026-05-25]
-The first attached anchor image is the LOCKED LOCATION BIBLE master for
-this scene. Treat it as the canonical layout: every recurring object
-position is FIXED. The mirror, carpets, bed, bookshelf, lamps, doors,
-windows MUST appear in the same screen-space positions as in the
-reference image. The only thing that may change between this shot and
-the reference is:
+[LAYOUT LOCK — hard contract]
+The first attached anchor image is the LOCKED LOCATION master (scene_master) for
+THIS shot's location. Treat it as the canonical layout: every recurring object
+visible in that master is FIXED in its screen-space position. In the prompt,
+enumerate the objects that ACTUALLY appear in THIS location's master — each by
+its real Bible slug — and state that each MUST keep its master position. The only
+things that may change between this shot and the reference are:
   (a) camera angle / framing (the storyboard shot.camera_angle defines this);
   (b) characters present (per shot.characters[]);
   (c) transient props the script introduces (named in shot.action_prose).
-DO NOT rearrange furniture. DO NOT move the mirror to another wall.
-DO NOT swap carpet pattern. DO NOT change room scale or aspect of the
-bedroom architecture. If the reference shows a vanity mirror dead-centre
-on the rug, this shot must keep it dead-centre on the rug at the same
-relative size — only the camera viewing it changes.
+DO NOT add, remove, or rearrange any canon object. DO NOT change the scale or
+architecture of the space. Only the camera viewing it changes.
 
-Cite specific objects with their Bible slugs verbatim where they appear
-in the shot:
-  «sandy_bed at canonical west-wall position»
-  «yellow_rug centred on floor as in master»
-  «mirror_vanity on dresser at master coordinates»
-This is a HARD CONTRACT — output prompts that lack explicit layout-lock
-language will be rejected by the Designer's Critic (EXEC-EPREV).
+ANTI-INVENTION RULE: the LOCATION's STANDING objects (its persistent set-dressing)
+come ONLY from the scene_master / location Bible — never carry another location's
+furniture in, never invent standing set-dressing, never assume a default room.
+This does NOT restrict the STORY: any prop or object the script / storyboard
+`action_prose` explicitly introduces for THIS shot IS allowed and expected (that
+is carve-out (c) above) — add it, and cite its source beat so it reads as
+intentional. The ban is narrow: do not INVENT persistent location objects that
+the canon doesn't declare; it is not a ban on staging what the script calls for.
+
+Format each locked object as «<object_bible_slug> at <its position in the
+master>», derived from the master image + the location's Bible entry. Do NOT copy
+any object name from this instruction — the object list is data you read from the
+canon at author time, not a template you fill from memory.
+This is a HARD CONTRACT — prompts that lack explicit canon-derived layout-lock
+language, OR that name objects absent from the location canon, will be rejected
+by the Designer's Critic (EXEC-EPREV).
 
 [Scene context — 1 sentence from script_scene context]
 
@@ -448,7 +454,7 @@ If `prior_anchors` is empty (you are SH01 or the first authored shot), `start.ro
 
 The LAYOUT LOCK directive (introduced in Phase 1 for legacy single-IMG mode) becomes **mandatory** in anchor mode. Each anchor's `prompt` field MUST contain:
 
-1. The full LAYOUT LOCK preamble citing `scene_master_asset` as the canonical layout reference (mirror, carpet, furniture, room scale all fixed).
+1. The full LAYOUT LOCK preamble citing `scene_master_asset` as the canonical layout reference — locking the screen-space positions and scale of the objects THIS location's master actually contains (derive the object list from the master; never name objects absent from the location canon).
 2. The camera angle / framing for THIS anchor (start vs end may share an angle for a static shot, or differ for a moving camera).
 3. The character pose / action at this moment (start = scene-time T₀ of the shot; end = scene-time T_n).
 4. The style-canon citation (S15 STYLE CANON or current series' style).

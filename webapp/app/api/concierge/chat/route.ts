@@ -42,6 +42,7 @@ import { resolveSkillsContext } from '@/lib/concierge/build-context';
 import { mapChatError } from '@/lib/concierge/chat-error-envelope';
 import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
 import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
+import { resolveEffectiveConciergeMode } from '@/lib/concierge/resolve-mode';
 import {
   captureFeedback,
   captureSimple,
@@ -67,7 +68,6 @@ interface ChatRequest {
   nextGate?: string | null;
 }
 
-const VALID_MODES: ReadonlyArray<ConciergeMode> = ['1', '2', '2.5', '3', '4'];
 const MAX_TOOL_ROUNDS = 5;
 // Sprint γ 2026-05-14 hotfix — bumped 20 → 80. With Postgres trigger writing
 // a system turn per pipeline event + Claude posting team-chat bubbles in the
@@ -77,13 +77,6 @@ const MAX_TOOL_ROUNDS = 5;
 // per-block filters (PIPELINE_EVENTS_SINCE_LAST_REPLY, TEAM_CHAT_FROM_CLAUDE)
 // trim the final volume back down.
 const RECENT_TURN_WINDOW = 80;
-
-function normaliseMode(value: unknown): ConciergeMode {
-  if (typeof value !== 'string') return '1';
-  return (VALID_MODES as ReadonlyArray<string>).includes(value)
-    ? (value as ConciergeMode)
-    : '1';
-}
 
 export async function POST(req: Request) {
   try {
@@ -121,7 +114,6 @@ async function handleChatPOST(req: Request) {
     );
   }
 
-  const mode = normaliseMode(body.mode);
   const episodeId = body.episodeId ?? null;
   const nextGate = body.nextGate ?? null;
   const lastUserMessage = body.messages[body.messages.length - 1];
@@ -136,6 +128,12 @@ async function handleChatPOST(req: Request) {
   // For mutating tools we forward the Director's cookies to existing API routes
   // so requireDirector() still applies and audit attribution is preserved.
   const supabase = createSupabaseServiceRoleClient();
+  // q13 (2026-06-15): Polina's mode is derived from episode.governance_mode via
+  // the single resolver — NOT the client-sent body.mode (which defaulted to '1'
+  // and was the source of her "Mode 1" self-report on a Mode-2/4 episode). For a
+  // brand-new thread the binding episode is body.episodeId; an existing thread's
+  // own episode binding wins (re-resolved after the thread block below).
+  let mode: ConciergeMode = await resolveEffectiveConciergeMode(supabase, episodeId);
   const cookieHeader = req.headers.get('cookie');
   const appOrigin = PUBLIC_ENV.APP_URL || 'http://localhost:3000';
 
@@ -163,6 +161,19 @@ async function handleChatPOST(req: Request) {
     }
   } catch (err) {
     persistenceError = err instanceof Error ? err.message : 'unknown persistence error';
+  }
+
+  // q13 (2026-06-15): an EXISTING thread's own episode binding is the authority
+  // — the request often carries no episodeId, but the thread may be bound to an
+  // episode (e.g. E10). Re-resolve so Polina reports the mode of the episode her
+  // thread is actually working on, keeping her self-report in sync with the UI
+  // badge + the pipeline.
+  if (threadId) {
+    const boundThread = await getThread(supabase, threadId);
+    const boundEpisodeId = boundThread?.episode_id ?? null;
+    if (boundEpisodeId && boundEpisodeId !== episodeId) {
+      mode = await resolveEffectiveConciergeMode(supabase, boundEpisodeId);
+    }
   }
 
   // Director-side feedback markers — captured BEFORE the LLM sees the

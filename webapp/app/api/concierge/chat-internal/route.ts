@@ -45,6 +45,7 @@ import { resolveSkillsContext } from '@/lib/concierge/build-context';
 import { TOOLS, findTool, openaiSchemas, type ToolContext } from '@/lib/concierge/tools';
 import { isHardLimitTool } from '@/lib/concierge/approval-check';
 import type { ConciergeMode } from '@/lib/concierge/types';
+import { resolveEffectiveConciergeMode } from '@/lib/concierge/resolve-mode';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -185,25 +186,11 @@ export async function POST(req: Request) {
     episodeId = (evt as { episode_id?: string | null } | null)?.episode_id ?? null;
   }
 
-  // q (2026-06-09): the gate's effective governance mode is the EPISODE's
-  // governance_mode when Polina works on an episode — NOT the stale per-thread
-  // active_mode. This is the Mode-3-readiness fix: declaring an episode Mode 3
-  // (DELEGATED) / Mode 4 (AUTOTEST) actually lifts Polina's autonomous mutation
-  // gate ON THAT EPISODE, instead of her staying boxed in the thread's default
-  // Mode 1. Falls back to thread.active_mode for non-episode reactions. Hard
-  // limits remain Director-only via assertHumanDirector() in every mode.
-  let mode: ConciergeMode = (thread.active_mode as ConciergeMode | null) ?? '1';
-  if (episodeId) {
-    const { data: epRow } = await supabase
-      .from('episodes')
-      .select('governance_mode')
-      .eq('id', episodeId)
-      .maybeSingle();
-    const gm = (epRow as { governance_mode?: number | null } | null)?.governance_mode;
-    if (typeof gm === 'number' && gm >= 1 && gm <= 4) {
-      mode = String(gm) as ConciergeMode;
-    }
-  }
+  // q13 (2026-06-15): single source of truth — episode.governance_mode (override)
+  // layered over the global default. Shared with the interactive chat + auto-react
+  // routes so every concierge surface reports the SAME mode the pipeline runs under
+  // (was: per-route inline reads that drifted — see lib/concierge/resolve-mode.ts).
+  const mode: ConciergeMode = await resolveEffectiveConciergeMode(supabase, episodeId);
   const nextGate: string | null = thread.active_gate ?? null;
   const today = new Date().toISOString().slice(0, 10);
 

@@ -11,6 +11,7 @@ import { useState, type CSSProperties } from 'react';
 import { Lock } from 'lucide-react';
 import type { AssetMetadataDoc } from '@/lib/api/series-bible';
 import { NotificationDot } from '@/components/notifications/NotificationDot';
+import { withThumbParam } from '@/lib/media-thumb';
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'var(--accent-info)',
@@ -60,21 +61,8 @@ function pickPreviewSrc(a: AssetThumbProps['asset']): string | null {
   );
 }
 
-// Tiles render small (~32px). At this size, shipping a full-resolution PNG is
-// pure waste, so for the dynamic `/api/media/<id>` route we ask for a resized
-// WebP thumbnail (`?w=`). DPR-aware: 2× the CSS size keeps the tile crisp on
-// retina without hauling the original. Only the media route understands the
-// thumb param — static `/staging`/`http` URLs are passed through untouched.
-const THUMB_DPR = 2;
-const THUMB_GATE_PX = 96; // only request thumbs for genuinely small grid tiles
-
-function withThumbParam(src: string, size: number): string {
-  if (size > THUMB_GATE_PX) return src;
-  if (!src.startsWith('/api/media/')) return src;
-  const width = Math.max(16, Math.round(size * THUMB_DPR));
-  const sep = src.includes('?') ? '&' : '?';
-  return `${src}${sep}w=${width}`;
-}
+// Thumbnail sizing for grid tiles lives in lib/media-thumb.ts (`withThumbParam`)
+// so the EREF reference/anchor strips reuse the exact same logic.
 
 export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbProps) {
   const rawSrc = pickPreviewSrc(asset);

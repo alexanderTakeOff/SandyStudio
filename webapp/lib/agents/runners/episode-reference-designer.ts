@@ -246,6 +246,11 @@ interface EpisodeLike {
 }
 
 // In-process cache for the system prompt — read once per process.
+// NOTE: editing the skill .md alone does NOT refresh this cache (it is keyed to
+// process lifetime); a code edit here (HMR) or a server restart is required to
+// reload it. 2026-06-15 — skill LAYOUT LOCK example de-leaked (was a hardcoded
+// bedroom furniture list that the Designer copied into elevator plans, painting
+// furniture into a bare cab); this touch busts the stale cache.
 let systemPromptCache: string | null = null;
 
 async function loadSystemPrompt(): Promise<string> {

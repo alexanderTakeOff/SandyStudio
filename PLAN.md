@@ -11,8 +11,20 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-15 (E10 anchor run + provider-cost firefight; master @ 7cd2238)
-Mode:   ===5=== EDIT · Governance Mode 4 (E10). Master PUSHED to origin (…7cd2238).
+Date:   2026-06-16 (E10 furniture-root-fix + q13 mode-source + perf; master @ <next>)
+Mode:   ===5=== EDIT · E10 governance Mode **2** now (Director switched off auto-approve). Single source = episode.governance_mode.
+
+2026-06-16 SESSION. E10 furniture-bug ROOT FOUND + fixed: `agents/exec/episode_reference_designer.md`
+  LAYOUT LOCK had a hardcoded BEDROOM example («mirror, carpets, bed… MUST appear») the Designer-LLM
+  copied verbatim into EVERY plan → gpt-image painted furniture into the elevator (SH01/SH26). De-leaked
+  to location-agnostic (scene_master/location-Bible/object_slug); softened anti-invention so script props
+  still allowed. SH01 reverted v02→v01 (clean); SH25/SH26 re-authored + anchors regenerated CLEAN
+  (verified by eye). Other fixes: q13 single mode-source `lib/concierge/resolve-mode.ts` (episode>global>1,
+  both chat routes); factory shot-cap now exempts principal='director'; chat copy-format (time+author in
+  text, ConciergePanel); gallery perf — EREF strips request `?w=` thumbnails (1.7MB→0.9KB/tile) via shared
+  `lib/media-thumb.ts`. tsc·0/847. Backlog: skill-abstraction audit (eref-shot-composition elevator-set +4),
+  critic canon-check, surgical-revision, approve-route forward principal. Polina on Gemini: works but
+  drops required tool args (reason/episodeId) — model weakness.
 
 2026-06-15 SESSION (memo: memory/session_2026-06-15_e10-gemini-cap-fixes.md). 3 root fixes pushed:
   regen-cap (d2cdd40, lib/api/plan-regen-guard.ts — autonomous regen cap, in-flight guard) ·
@@ -28,7 +40,7 @@ Mode:   ===5=== EDIT · Governance Mode 4 (E10). Master PUSHED to origin (…7cd
   ✅(1) finding#2 EPREV cosmetic→PASS — V05/V09 advisory + V07 deterministic re-validate + executor
   baseline-negatives by construction; lone-cosmetic REVISE→PASS downgrade. ✅(2) SHOT-level cap
   shotRegenCap()=6 across all plan versions (img+plan), factory pre-run = universal chokepoint (auto-
-  chain+Mode-4+Polina), early-return HALT+escalate. tsc·0/847/30. LOCAL-UNPUSHED. STILL OPEN code:
+  chain+Mode-4+Polina), early-return HALT+escalate. tsc·0/847/30. PUSHED 58a039f. STILL OPEN code:
   (3)≈covered by (2); (4) Polina auto-recovery per shot; (5) loud Anthropic→gemini fallback; (6)
   provider badge UI; (7) REVISION→APPROVED human Director; (8) buildShotListFromAnchorChain. SH23
   cleanup (58 plans) — after these land.
