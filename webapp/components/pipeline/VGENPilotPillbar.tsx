@@ -102,15 +102,25 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmApproveAll, setConfirmApproveAll] = useState(false);
 
-  // Visibility heuristic — show whenever:
-  //   • the state endpoint reports a non-NONE pilot state, OR
+  // Visibility — show ONLY when there is genuine VGEN work to see or act on:
+  //   • a non-NONE pilot state (PENDING_REVIEW / FANOUT_RUNNING / CANCELLED), OR
   //   • the stage is currently running, OR
-  //   • there is at least one VID-shot asset already.
-  const hasVidShots = s?.has_vid_shots === true;
+  //   • EXEC-VGEN jobs are actually RUNNING, OR
+  //   • shots are sitting in REVIEW awaiting the Director.
+  //
+  // Legacy (removed 2026-06-16): the condition also included `has_vid_shots`, so
+  // once the first pilot landed the pillbar — and its "Cancel VGEN" button —
+  // stuck around forever. Every animatic re-approval then LOOKED like it kicked
+  // off a fresh in-flight run (Director: "пугает после каждого апрува едитора").
+  // No run actually fires (next-events.ts per-plan idempotency skips already
+  // rendered pilots), so the cure is to stop rendering the ghost when nothing
+  // is running and nothing awaits review. The bare "N shots missing" pilot-phase
+  // state is informational, not actionable here, so it no longer forces visibility.
+  const activeWork = (s?.running_jobs ?? 0) > 0 || (s?.review_count ?? 0) > 0;
   const visible =
     Boolean(pilotState && pilotState !== 'NONE') ||
     Boolean(stageRunning) ||
-    hasVidShots;
+    activeWork;
   if (!visible) return null;
   if (pilotState === 'COMPLETE') return null;
 
@@ -197,6 +207,15 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
   const cancelled = pilotState === 'CANCELLED';
   const fanoutRunning = pilotState === 'FANOUT_RUNNING' || stageRunning === true;
   const pilotCount = progress.pilotShotIds.length || 2;
+  // Only offer "Cancel VGEN" when something is genuinely cancellable — an active
+  // run or a pilot awaiting direction. When the pillbar is visible only because
+  // shots sit in REVIEW (idle), there is nothing to cancel; showing the button
+  // there is the phantom "in-flight run" the Director kept hitting after every
+  // editor approval.
+  const canCancel =
+    progress.runningJobs > 0 ||
+    pilotState === 'PENDING_REVIEW' ||
+    pilotState === 'FANOUT_RUNNING';
   // Bulk-approve targets actual REVIEW rows (not the delta of total-approved).
   const reviewCount = s?.review_count ?? 0;
   // Missing = shot_ids that have NO row at all in approved/review status.
@@ -280,7 +299,7 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
             </Button>
           )}
 
-          {!cancelled && (
+          {!cancelled && canCancel && (
             <Button
               size="sm"
               variant="ghost"
