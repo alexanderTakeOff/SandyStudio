@@ -5,7 +5,7 @@
 
 'use client';
 
-import { use, useState, type KeyboardEvent } from 'react';
+import { use, useState, useEffect, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type CSSProperties } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
@@ -131,6 +131,40 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string | undefined>();
+
+  // Resizable left-rail width (px), persisted. Mirrors ConciergePanel's resize
+  // handle (no new dependency). Hydrated from localStorage in an effect so SSR
+  // renders the default; clamped to a sane band.
+  const [leftWidth, setLeftWidth] = useState(360);
+  useEffect(() => {
+    try {
+      const w = parseInt(localStorage.getItem('sandystudio.episode.pipelineWidth') ?? '', 10);
+      if (Number.isFinite(w) && w >= 280 && w <= 760) setLeftWidth(w);
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem('sandystudio.episode.pipelineWidth', String(leftWidth));
+    } catch { /* ignore */ }
+  }, [leftWidth]);
+  function onPipelineResizeStart(e: ReactMouseEvent): void {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = leftWidth;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'ew-resize';
+    const onMove = (mv: MouseEvent): void => {
+      setLeftWidth(Math.max(280, Math.min(760, startW + (mv.clientX - startX))));
+    };
+    const onUp = (): void => {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
 
   const { data, mutate } = useSWR<PipelineResponse>(
     `/api/episodes/${id}/pipeline`,
@@ -275,27 +309,20 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         />
       )}
 
-      {/* Episode timeline — unified progressive review surface (Phase A).
-          Auto-hides when no animatic v1 yet. Click any cell → drawer opens
-          for that shot's per-asset review. */}
-      <div className="mb-4">
-        <EpisodeTimelineSection episodeId={id} />
-      </div>
-
-      {/* TD-49 Phase 2 P2.3 (2026-05-25): per-episode settings — currently
-          just the anchor_chain_enabled toggle. Director-only PATCH surface. */}
-      <div className="mb-4">
-        <EpisodeSettingsCard
-          episodeId={id}
-          initialMetadata={episode.metadata ?? null}
-          initialBudgetCeiling={episode.budget_ceiling ?? null}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* DAG (left) — Topic 3: PRIMARY rows full-weight, MUTED Designer/Critic
-            rows collapse indented under the PRIMARY they serve, expand on click. */}
-        <Card className="lg:col-span-2">
+      {/* Resizable split (Director 2026-06-17): the pipeline becomes a full-height
+          left RAIL pinned from the top; timeline + settings + workstation/feed live
+          in the right column which scrolls. The divider between them drags to
+          redistribute width (rail shrinks → right grows and vice-versa). The resize
+          mechanic mirrors ConciergePanel's handle — no new dependency. Below lg the
+          split stacks vertically and the rail spans full width (no resize). */}
+      <div className="flex flex-col lg:flex-row lg:gap-3 items-start">
+        {/* LEFT RAIL — pipeline DAG. Width from --rail-w (lg only); sticky so it
+            stays put while the right column scrolls; self-scrolls if tall. */}
+        <aside
+          style={{ '--rail-w': `${leftWidth}px` } as CSSProperties}
+          className="w-full lg:w-[var(--rail-w)] lg:shrink-0 lg:sticky lg:top-0 lg:self-start lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto"
+        >
+        <Card>
           <CardBody>
             <div className="text-xs uppercase tracking-wider text-text-muted mb-3">Pipeline</div>
             <PipelineDag
@@ -325,11 +352,35 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             </div>
           </CardBody>
         </Card>
+        </aside>
 
-        {/* Right pane — Topic 3: a selected stage opens its WORKSTATION
-            (assets + critic verdict + actions), NOT the activity feed. The
-            feed is the default surface when nothing is selected. */}
-        <Card className="lg:col-span-3">
+        {/* DIVIDER — drag to resize the rail / right column. Mirrors
+            ConciergePanel's separator; hidden below lg (stacked layout). */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize pipeline panel"
+          title="Drag to resize"
+          onMouseDown={onPipelineResizeStart}
+          className="hidden lg:block lg:sticky lg:top-0 lg:h-[calc(100vh-1.5rem)] w-1.5 shrink-0 cursor-ew-resize rounded-full bg-glass hover:bg-[var(--accent-primary)]/40 transition-colors"
+        />
+
+        {/* RIGHT COLUMN — scrolls with <main>; flex-1 auto-fills the remaining
+            width so shrinking the rail grows this side and vice-versa. */}
+        <div className="w-full lg:flex-1 min-w-0 space-y-4">
+          {/* Episode timeline — unified progressive review surface (Phase A).
+              Auto-hides when no animatic v1 yet. Click any cell → drawer opens. */}
+          <EpisodeTimelineSection episodeId={id} />
+
+          {/* Per-episode settings (collapsible). Director-only PATCH surface. */}
+          <EpisodeSettingsCard
+            episodeId={id}
+            initialMetadata={episode.metadata ?? null}
+            initialBudgetCeiling={episode.budget_ceiling ?? null}
+          />
+
+          {/* Workstation (selected stage) OR activity feed (default surface). */}
+          <Card>
           <CardBody>
             {selectedStageObj ? (
               <div className="space-y-3">
@@ -407,7 +458,8 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
               </>
             )}
           </CardBody>
-        </Card>
+          </Card>
+        </div>
       </div>
 
       <TriggerModal

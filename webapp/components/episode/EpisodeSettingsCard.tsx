@@ -15,7 +15,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Layers } from 'lucide-react';
+import { Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { PeekHint } from '@/components/ui/PeekHint';
 import { EpisodeGenerationConfig } from './EpisodeGenerationConfig';
@@ -55,6 +55,11 @@ export function EpisodeSettingsCard({
   const [pending, setPending] = useState(false);
   const [budgetPending, setBudgetPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Collapsed by default (Director 2026-06-17): the settings carry destructive
+  // toggles (Anchor Chain / budget cap / generation config). Hiding them behind
+  // a click-to-expand header makes accidental changes near-impossible, esp. in
+  // ===1=== where the page is otherwise read-only.
+  const [collapsed, setCollapsed] = useState(true); // default collapsed
 
   useEffect(() => {
     let cancelled = false;
@@ -143,15 +148,30 @@ export function EpisodeSettingsCard({
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Layers size={14} className="text-text-muted" />
-          <CardTitle>Episode Settings</CardTitle>
-          <PeekHint autoPeekMs={3500}>
-            Per-episode toggles that change pipeline behaviour. Director-only.
-          </PeekHint>
-        </div>
+      <CardHeader
+        role="button"
+        tabIndex={0}
+        onClick={() => setCollapsed((c) => !c)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setCollapsed((c) => !c);
+          }
+        }}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? 'Expand episode settings' : 'Collapse episode settings'}
+        className="flex items-center gap-2 cursor-pointer select-none focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-info)] rounded-lg"
+      >
+        <Layers size={14} className="text-text-muted" />
+        <CardTitle>Episode Settings</CardTitle>
+        <PeekHint autoPeekMs={3500}>
+          Per-episode toggles that change pipeline behaviour. Director-only.
+        </PeekHint>
+        <span className="ml-auto text-text-muted">
+          {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+        </span>
       </CardHeader>
+      {!collapsed && (
       <CardBody>
         <div className="space-y-3">
           <label className="flex items-start gap-3 cursor-pointer">
@@ -226,6 +246,7 @@ export function EpisodeSettingsCard({
           />
         </div>
       </CardBody>
+      )}
     </Card>
   );
 }
