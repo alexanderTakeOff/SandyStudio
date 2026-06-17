@@ -149,12 +149,13 @@ Full mapping (each agent → assigned ECC skills/agents/commands) → `docs/CLAU
 ### System modes
 | Mode | Code | Behaviour |
 |------|------|-----------|
-| **ANALYTICS MODE** | `===1===` | Default. Read-only. No files created, modified, or deleted. |
-| **EDIT MODE** | `===5===` | File writes permitted. Activated by appending `===5===` to a command. |
+| **ANALYTICS MODE** | `===1===` | Default. Read-only for PROJECT / FILM content. **Exception:** the meta surfaces below stay editable. |
+| **EDIT MODE** | `===5===` | File writes permitted everywhere. Activated by appending `===5===` to a command. |
 
 - Every session starts in `===1===` regardless of previous state.
 - Only the CEO / Director can activate `===5===`.
-- If asked to write a file in `===1===` mode, respond: *"Mode is ===1===. To apply changes, append ===5=== to your command."*
+- **Always editable, even in `===1===` (meta / bootstrap surfaces):** `PLAN.md` (the living anchor — so mode + state can always be updated) and **memory files** (`~/.claude/projects/.../memory/*`). Also project config under `.claude/` (settings, hooks, skills, agents) and root config (`CLAUDE.md`, `.env*`, `.gitignore`, `.gitattributes`, `README.md`). This carve-out is enforced by the `mode-validator.cjs` bypass list — keep this doc and that hook in sync if either changes.
+- If asked to write a PROJECT / FILM file (anything NOT in the always-editable set above) while in `===1===`, respond: *"Mode is ===1===. To apply changes, append ===5=== to your command."*
 
 ### Governance Modes (Approval Authority)
 | Mode | Code | Who approves |
