@@ -190,6 +190,22 @@ export function vanimAliasFor(
   return prefersEndImage ? 'seedance-with-end-image' : 'seedance-standard';
 }
 
+/**
+ * Acceptable Plan aliases for an episode's IMPL provider_id (+ optional quality).
+ * The episode config speaks impl vocab; the Plan + Critic allowlist speak alias
+ * vocab. seedance-fal-img2vid+standard accepts BOTH `seedance-standard` and
+ * `seedance-with-end-image` (same impl/quality, end-image is a per-shot choice).
+ */
+export function episodeProviderAliases(
+  providerImpl: VideoProviderId,
+  qualityTier: 'fast' | 'standard' | null,
+): VanimProviderId[] {
+  if (providerImpl === 'veo-3-img2vid') return ['veo-standard'];
+  if (qualityTier === 'fast') return ['seedance-fast'];
+  if (qualityTier === 'standard') return ['seedance-standard', 'seedance-with-end-image'];
+  return ['seedance-fast', 'seedance-standard', 'seedance-with-end-image'];
+}
+
 /** Aspect ratio per delivery_target. Single source of truth moved to the
  *  shared manifest (`lib/api/provider-capabilities.ts`) so the generation-
  *  params resolver and the Animator share one map; re-exported here for
@@ -850,8 +866,15 @@ function buildAspectTable(targets: readonly string[]): string {
  */
 export function buildEpisodeFormatAuthorityBlock(cfg: EpisodeVideoConfig | null): string {
   if (!cfg) return '';
+  // The episode stores provider in IMPL vocab (seedance-fal-img2vid / veo-3-img2vid),
+  // but the Plan + allowlist speak ALIAS vocab. Translate so the LLM (and its Critic)
+  // see acceptable aliases, NOT the impl string (which would read as a mismatch /
+  // off-allowlist value). One impl+quality can map to >1 alias.
+  const providerLine = cfg.provider_id
+    ? `  - provider: ${episodeProviderAliases(cfg.provider_id, cfg.quality_tier ?? null).join(' OR ')}`
+    : null;
   const fields = [
-    cfg.provider_id ? `  - provider: ${cfg.provider_id}` : null,
+    providerLine,
     cfg.aspect_ratio ? `  - aspect_ratio: ${cfg.aspect_ratio}` : null,
     cfg.quality_tier ? `  - quality_tier: ${cfg.quality_tier}` : null,
     cfg.resolution ? `  - resolution: ${cfg.resolution}` : null,
@@ -1255,7 +1278,22 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
       const durChanged = clampedDur !== null && clampedDur !== rawDur;
       const costChanged = recomputedCost !== null && priorCost !== recomputedCost;
 
-      if (formatChanged || durChanged || costChanged) {
+      // A fabricated "Director hard-contract" FORMAT claim must be scrubbed even when
+      // the LLM already authored the correct (conformed) value — FORMAT is episode-
+      // authoritative, never a Director hard-contract the Animator can claim. Gated on
+      // the episode declaring FORMAT (so un-configured episodes stay byte-for-byte).
+      const FAB_FORMAT_RE = /Director hard-contract honoured.*(resolution|provider|aspect|quality)/i;
+      const existingPolicyNotes = Array.isArray((result.body as { policy_notes?: unknown }).policy_notes)
+        ? (result.body as { policy_notes: unknown[] }).policy_notes.filter(
+            (n): n is string => typeof n === 'string',
+          )
+        : null;
+      const scrubNeeded =
+        episodeVideoConfig !== null &&
+        existingPolicyNotes !== null &&
+        existingPolicyNotes.some((n) => FAB_FORMAT_RE.test(n));
+
+      if (formatChanged || durChanged || costChanged || scrubNeeded) {
         const patch: ShotPlanPatch = {};
         if (providerChanged) patch.providerId = finalAlias;
         if (qualityChanged) patch.qualityTier = resolved.qualityTier;
@@ -1264,20 +1302,11 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
         if (durChanged && clampedDur !== null) patch.durationSeconds = clampedDur;
         if (costChanged && recomputedCost !== null) patch.estimatedCostUsd = recomputedCost;
 
-        // On a FORMAT change, scrub fabricated "Director hard-contract" FORMAT claims
-        // the producer just overrode and record the honest conform rationale.
         let scrubbedNotes: string[] | undefined;
-        if (formatChanged) {
-          const existing = Array.isArray((result.body as { policy_notes?: unknown }).policy_notes)
-            ? (result.body as { policy_notes: unknown[] }).policy_notes.filter(
-                (n): n is string => typeof n === 'string',
-              )
-            : [];
-          scrubbedNotes = existing.filter(
-            (n) => !/Director hard-contract honoured.*(resolution|provider|aspect|quality)/i.test(n),
-          );
+        if ((formatChanged || scrubNeeded) && existingPolicyNotes !== null) {
+          scrubbedNotes = existingPolicyNotes.filter((n) => !FAB_FORMAT_RE.test(n));
           scrubbedNotes.push(
-            `Rationale (Animator): FORMAT conformed to episode authority (allow_shot_overrides=${episodeVideoConfig?.allow_shot_overrides === true}).`,
+            `Rationale (Animator): FORMAT is episode-authoritative (allow_shot_overrides=${episodeVideoConfig?.allow_shot_overrides === true}); any "Director hard-contract" claim on FORMAT was removed.`,
           );
           patch.policyNotes = scrubbedNotes;
         }

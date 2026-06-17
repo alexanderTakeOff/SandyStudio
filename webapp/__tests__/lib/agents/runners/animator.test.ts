@@ -23,6 +23,7 @@ import {
   resolveAnimatorDeliveryTargets,
   resolveVanimProviderId,
   vanimAliasFor,
+  episodeProviderAliases,
   buildResolutionContractBlock,
   buildEpisodeFormatAuthorityBlock,
   runAnimator,
@@ -417,6 +418,19 @@ describe('vanimAliasFor — reverse provider map', () => {
   });
 });
 
+describe('episodeProviderAliases — impl → acceptable plan aliases', () => {
+  it('maps impl+quality to the alias set the Plan/Critic allowlist uses', () => {
+    expect(episodeProviderAliases('veo-3-img2vid', 'standard')).toEqual(['veo-standard']);
+    expect(episodeProviderAliases('seedance-fal-img2vid', 'fast')).toEqual(['seedance-fast']);
+    expect(episodeProviderAliases('seedance-fal-img2vid', 'standard')).toEqual([
+      'seedance-standard',
+      'seedance-with-end-image',
+    ]);
+    // no quality declared → all seedance aliases acceptable
+    expect(episodeProviderAliases('seedance-fal-img2vid', null)).toContain('seedance-standard');
+  });
+});
+
 describe('buildEpisodeFormatAuthorityBlock', () => {
   it('returns empty string for an un-configured episode', () => {
     expect(buildEpisodeFormatAuthorityBlock(null)).toBe('');
@@ -425,11 +439,16 @@ describe('buildEpisodeFormatAuthorityBlock', () => {
   it('lists declared fields + BINDING semantics when overrides off', () => {
     const b = buildEpisodeFormatAuthorityBlock({
       provider_id: 'seedance-fal-img2vid',
+      quality_tier: 'standard',
       resolution: '720p',
       allow_shot_overrides: false,
     });
     expect(b).toContain('720p');
     expect(b).toContain('BINDING');
+    // provider is shown in ALIAS vocab (not the impl string) so the Critic's
+    // allowlist V01 check does not read it as a mismatch / off-allowlist value.
+    expect(b).toContain('seedance-standard');
+    expect(b).not.toContain('seedance-fal-img2vid');
   });
   it('signals override-allowed when overrides on', () => {
     const b = buildEpisodeFormatAuthorityBlock({ resolution: '720p', allow_shot_overrides: true });
@@ -496,7 +515,7 @@ describe('runAnimator — episode FORMAT authority conform', () => {
     expect(r.body.estimated_cost_usd).not.toBe(2.722);
     const notes = r.body.policy_notes as string[];
     expect(notes.some((n) => /Director hard-contract honoured.*resolution/i.test(n))).toBe(false);
-    expect(notes.some((n) => /Rationale \(Animator\): FORMAT conformed/.test(n))).toBe(true);
+    expect(notes.some((n) => /Rationale \(Animator\): FORMAT is episode-authoritative/.test(n))).toBe(true);
   });
 
   it('keeps the LLM resolution (1080p) when allow_shot_overrides is on', async () => {
@@ -522,6 +541,26 @@ describe('runAnimator — episode FORMAT authority conform', () => {
       { provider_id: 'seedance-fal-img2vid', quality_tier: 'standard', aspect_ratio: '16:9', resolution: '720p', allow_shot_overrides: false },
     );
     expect((r.body.provider as { id: string }).id).toBe('seedance-with-end-image');
+  });
+
+  it('scrubs a fabricated FORMAT hard-contract even when the Plan already matches the episode (no format change)', async () => {
+    // SH13 case: the LLM conformed resolution to 720p itself BUT still stamped a
+    // fabricated "Director hard-contract honoured: provider/resolution...". Format
+    // didn't change, but the fabrication must still be scrubbed.
+    const r = await run(
+      baseBody({
+        resolution: '720p',
+        policy_notes: [
+          "Director hard-contract honoured: provider seedance-standard, resolution 720p, quality standard",
+          'Honours gag_intent.atoms: slap → handprint',
+        ],
+      }),
+      { provider_id: 'seedance-fal-img2vid', resolution: '720p', quality_tier: 'standard', aspect_ratio: '16:9', allow_shot_overrides: false },
+    );
+    const notes = r.body.policy_notes as string[];
+    expect(notes.some((n) => /Director hard-contract honoured.*(provider|resolution)/i.test(n))).toBe(false);
+    // a non-FORMAT note is preserved
+    expect(notes.some((n) => /Honours gag_intent/.test(n))).toBe(true);
   });
 
   it('legacy passthrough: no episode generation_config → FORMAT untouched', async () => {
