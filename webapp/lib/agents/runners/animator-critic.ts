@@ -20,8 +20,14 @@ import {
 } from '../providers/anthropic-text';
 import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
-import { extractAnchorChain, buildResolutionContractBlock } from './animator';
+import {
+  extractAnchorChain,
+  buildResolutionContractBlock,
+  buildDurationContractBlock,
+  resolveVanimProviderId,
+} from './animator';
 import { isAnimaticV1, effectiveDurationSeconds } from '../../api/animatic-shotlist';
+import { VIDEO_PROVIDER_CAPS, clampRenderDuration } from '../../api/provider-capabilities';
 import { loadSeriesBibleCanon, formatBibleForPrompt } from '../bible-loader';
 
 export const VPREV_CONTRACT = 'animator_critic@v1';
@@ -248,6 +254,13 @@ function buildUserMessage(args: {
     // SSOT instead of a hardcoded enum in the critic prompt.
     buildResolutionContractBlock(),
     '',
+    // 2026-06-16: inject the same provider render-duration contracts the Animator
+    // saw, so V07 validates `duration_seconds` against the chosen provider's
+    // [min,max] from the manifest instead of a hardcoded [3,8]. A sub-floor creative
+    // cut is expected — the producer clamps it up to the render floor — so the
+    // critic judges the (already-clamped) render duration against the provider range.
+    buildDurationContractBlock(),
+    '',
     'Hard rules:',
     `- The JSON block must include shot_id="${args.shotId}" and plan_asset_id="${args.planAssetId}".`,
     '- Never skip the JSON block.',
@@ -351,13 +364,16 @@ function parseStringArray(
 
 /**
  * V14 (2026-06-04) — duration-lock source of truth. The approved animatic is the
- * locked per-shot timing; the Animator MUST NOT silently override it. (SH03/SH04
- * incident: the Designer stretched the animatic's 2s to 5s "for comedic
- * readability" and laundered it as a fabricated "Director hard-contract", and the
- * Critic LLM passed it because it only range-checked [3,8].) Returns the effective
- * locked duration (honouring legitimate animatic-level director_overrides), or
+ * locked per-shot CUT timing; the Animator MUST NOT silently override it. (SH03/SH04
+ * incident: the Designer stretched the animatic's 2s to 5s "for comedic readability"
+ * and laundered it as a fabricated "Director hard-contract".) Returns the effective
+ * locked CUT duration (honouring legitimate animatic-level director_overrides), or
  * null when it can't be determined (no approved animatic / mock mode) → the check
  * is skipped (fail-open; never falsely block a healthy plan).
+ *
+ * NB the returned value is the creative CUT length, which may sit BELOW the
+ * generator's render floor; checkDurationLock clamps it into the provider's render
+ * range before comparing against the Plan's render duration (2026-06-16).
  */
 async function lockedAnimaticDuration(
   supabase: SupabaseClient<Database>,
@@ -400,11 +416,16 @@ async function lockedAnimaticDuration(
 }
 
 /**
- * Deterministic duration-lock check (V14). Returns a violation string when the
- * Plan's `duration_seconds` does not match the locked animatic duration AND no
- * explicit Director duration override is present — null otherwise. The legitimate
- * way to change timing is to adjust the ANIMATIC (director_overrides) or pass a
- * Director override; the Animator may NOT rewrite the number in the Shot Plan.
+ * Deterministic duration-lock check (V14). The animatic stores the creative CUT
+ * length (which may be BELOW the provider's render floor — e.g. a 2s comedic beat).
+ * The Plan's `duration_seconds` is the RENDER duration the generator produces, so it
+ * must equal the cut clamped into the chosen provider's [min,max] render range
+ * (a 2s cut + Seedance floor 4 → render 4s; the 4s clip is trimmed back to 2s
+ * downstream at stitch via computeEffectivePlayback). Comparing the Plan against the
+ * RAW sub-floor cut (the pre-2026-06-16 behaviour) produced an unsatisfiable lock —
+ * the provider cannot render 2s — and deadlocked the critic. Returns a violation
+ * string on mismatch, null otherwise (incl. fail-open when the provider can't be
+ * resolved, so a healthy plan is never falsely blocked).
  */
 export function checkDurationLock(
   planBody: Record<string, unknown> | null,
@@ -420,8 +441,27 @@ export function checkDurationLock(
   // Director can waive the lock via an explicit override whose check mentions duration.
   const waived = directorOverrides.some((o) => /duration/i.test(o.check));
   if (waived) return null;
-  if (Math.round(planDur) !== Math.round(lockedDuration)) {
-    return `Plan duration_seconds=${planDur} does not match the locked animatic duration=${lockedDuration} for ${shotId}. The approved animatic is the source of truth for timing — the Animator MUST NOT override it (a policy_notes self-claim of a "Director hard-contract" has NO authority). To change timing the Director adjusts the animatic, or grants an explicit duration override.`;
+
+  // Clamp the creative cut into the Plan provider's render range before comparing.
+  const providerObj = (planBody as { provider?: { id?: unknown } } | null)?.provider;
+  const providerId =
+    providerObj && typeof providerObj === 'object' && typeof providerObj.id === 'string'
+      ? providerObj.id
+      : null;
+  let lockedRender = Math.round(lockedDuration);
+  if (providerId) {
+    try {
+      const { providerImpl } = resolveVanimProviderId(providerId);
+      lockedRender = clampRenderDuration(VIDEO_PROVIDER_CAPS[providerImpl], lockedDuration);
+    } catch {
+      // Off-allowlist / unresolvable provider → can't compute the render floor;
+      // fall open rather than false-block (V14's standing fail-open posture).
+      return null;
+    }
+  }
+
+  if (Math.round(planDur) !== Math.round(lockedRender)) {
+    return `Plan duration_seconds=${planDur}s does not match the provider-clamped animatic timing=${lockedRender}s for ${shotId} (animatic cut=${lockedDuration}s, floored to the generator's render minimum). The approved animatic is the source of truth for timing — to change it the Director adjusts the animatic or grants an explicit duration override. Sub-floor creative timing is achieved by trimming the rendered clip at stitch, NOT by writing a sub-floor duration into the Plan.`;
   }
   return null;
 }

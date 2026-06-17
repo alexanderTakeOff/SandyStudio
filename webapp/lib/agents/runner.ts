@@ -85,6 +85,8 @@ import {
 import { loadSeriesBibleCanon } from './bible-loader';
 import {
   deliveryAspectFor,
+  clampRenderDuration,
+  VIDEO_PROVIDER_CAPS,
   type VideoAspectRatio,
   type VideoProviderId,
 } from '../api/provider-capabilities';
@@ -1838,20 +1840,21 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         }
       }
 
+      // Raw candidate RENDER duration, rounded (Veo rejects fractional durations
+      // with HTTP 400). The provider-derived floor/ceiling is applied LATER, once
+      // the resolved provider is known, via clampRenderDuration → `renderDuration`.
+      // The old hardcoded [4,8] here assumed Veo's range for EVERY provider and
+      // silently capped Seedance (real max 15) at 8 (Director directive 2026-06-16:
+      // never hardcode duration — derive from the provider contract).
       const finalDuration = (() => {
-        // Veo rejects fractional or out-of-range durations with HTTP 400
-        // ("between 4 and 8, inclusive"). Always round AND clamp on every
-        // branch — earlier the explicit-arg branch skipped Math.round,
-        // letting a 3.x or 5.5 leak through and crash the call.
-        // Surfaced 2026-05-13 evening on E20 single-shot regen.
         if (typeof durationSeconds === 'number' && durationSeconds > 0) {
-          return Math.min(8, Math.max(4, Math.round(durationSeconds)));
+          return Math.round(durationSeconds);
         }
         if (resolvedDurationSeconds !== null) {
-          return Math.min(8, Math.max(4, Math.round(resolvedDurationSeconds)));
+          return Math.round(resolvedDurationSeconds);
         }
         if (storyboardShot?.duration_seconds && storyboardShot.duration_seconds > 0) {
-          return Math.min(8, Math.max(4, Math.round(storyboardShot.duration_seconds)));
+          return Math.round(storyboardShot.duration_seconds);
         }
         return 5;
       })();
@@ -2098,6 +2101,17 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       effectiveAspect = resolvedFormat.aspectRatio;
       effectiveQuality = resolvedFormat.qualityTier;
 
+      // Provider-derived RENDER-duration clamp (Director directive 2026-06-16):
+      // bound the raw candidate to the RESOLVED provider's [min,max] from the
+      // manifest — Seedance 4-15, Veo 4-8 — never a hardcoded range. The shot's
+      // creative CUT length (which may be below the floor) lives in the animatic
+      // and is applied downstream at stitch via computeEffectivePlayback. Covers
+      // both the real-generation and mock paths (resolvedFormat is in scope here).
+      const renderDuration = clampRenderDuration(
+        VIDEO_PROVIDER_CAPS[resolvedFormat.providerId],
+        finalDuration,
+      );
+
       // TD-49 Phase 2 P2.4 (2026-05-25): override `referenceImageBase64`
       // (start frame for img2vid providers) with the start_anchor asset
       // when Animator specified one. Falls through to the EREF-resolved
@@ -2164,10 +2178,10 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         const generationDuration =
           effectiveIsVeoProvider && hasReferenceImage && effectiveQuality === 'standard'
             ? 8
-            : finalDuration;
+            : renderDuration;
         // eslint-disable-next-line no-console
         console.info(
-          `[exec-vgen] shot=${shotId} → provider=${effectiveProviderId} (planOverride=${planProviderImplOverride ?? 'none'}) durationSeconds=${generationDuration} (raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, clamped=${generationDuration !== finalDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}, resolution=${planResolution ?? 'provider-default'}`,
+          `[exec-vgen] shot=${shotId} → provider=${effectiveProviderId} (planOverride=${planProviderImplOverride ?? 'none'}) durationSeconds=${generationDuration} (candidate=${finalDuration}, render=${renderDuration}, raw=${durationSeconds}, resolved=${resolvedDurationSeconds}, stb=${storyboardShot?.duration_seconds}, hasRef=${hasReferenceImage}, providerClamped=${renderDuration !== finalDuration}, veoForced=${generationDuration !== renderDuration}), aspect=${effectiveAspect}, quality=${effectiveQuality}, resolution=${planResolution ?? 'provider-default'}`,
         );
 
         const videoProvider = getMultiVideoProvider(effectiveProviderId);
@@ -2340,7 +2354,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         };
       }
 
-      const video = await mockVideo({ episodeId, shotId, durationSeconds: finalDuration });
+      const video = await mockVideo({ episodeId, shotId, durationSeconds: renderDuration });
       return {
         outputKind: 'video-mp4',
         result: {
@@ -2354,7 +2368,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             provider_used: 'mock',
             aspect_ratio: effectiveAspect,
             quality_tier: effectiveQuality,
-            duration_seconds: finalDuration,
+            duration_seconds: renderDuration,
             prompt,
             reference_eref_asset_id: referenceErefAssetId,
             storyboard_asset_id: storyboardAssetId,

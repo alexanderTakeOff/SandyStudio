@@ -11,8 +11,18 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-16 PM-4 (activity-feed + q10-cancel + approve-REVISION sprint; master @ a465213, pushed)
+Date:   2026-06-16 PM-5 (recovered frozen session 4ad23077 — render-duration model; uncommitted on master tree)
 Mode:   ===5=== EDIT (Director activated 2026-06-16 PM-3) · E10 governance Mode **2**. Single source = episode.governance_mode.
+
+2026-06-16 PM-5 (render-duration model — recovered stalled session 4ad23077, frozen mid-Edit 15:23). Kills
+  hardcoded duration: `duration_seconds`=RENDER duration clamped to the provider manifest [min,max], NOT the
+  raw animatic cut. Creative CUT lives in animatic, trimmed at stitch. Stack: provider-capabilities
+  (clampRenderDuration+estimateCost), shot-plan-contract (serialize estimatedCostUsd), runner.ts (drop
+  hardcoded [4,8] → provider-derived clamp; Seedance now reaches its real max 15), animator.ts (producer
+  authors+clamps render dur, recomputes cost, injects contract block), animator-critic V14 (compare vs
+  provider-clamped cut — resolves the unsatisfiable 2s sub-floor deadlock), animator SKILL.md + animator.md
+  (knob#4/output/gag aligned). +2 V14 clamp tests. tsc·0/875/replay30. ⚠️ uncommitted; parallel session
+  shares tree — coordinate before commit.
 
 2026-06-16 PM-4 (UI/observability, master @ a465213). Activity feed: shared `ActivityEventRow` (3 feeds→1,
   −dup markup) + Director-command highlight (UUID actor=human) + critic verdict in row (·REVISE + warning

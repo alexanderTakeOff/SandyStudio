@@ -185,6 +185,19 @@ export function deliveryAspectFor(
   return null;
 }
 
+/** Clamp a desired render duration into a provider's [min,max] range, rounded to
+ *  an integer (Veo rejects fractional durations with HTTP 400). Single source of
+ *  truth for the render-duration floor/ceiling — reused by the runner dispatch
+ *  clamp, the Animator producer, and the Critic V14 duration-lock so none of them
+ *  re-hardcode a range. The shot's CREATIVE cut length (which may be below the
+ *  floor) lives in the animatic; this only bounds what the generator renders. */
+export function clampRenderDuration(
+  caps: Pick<VideoProviderCapabilities, 'min_duration_s' | 'max_duration_s'>,
+  seconds: number,
+): number {
+  return Math.min(caps.max_duration_s, Math.max(caps.min_duration_s, Math.round(seconds)));
+}
+
 /** Clamp the supplied value to the provider's supported set / range. Used by
  *  callers that store settings from one provider and switch to another. */
 export function normalizeControls(
@@ -197,10 +210,7 @@ export function normalizeControls(
   const quality = caps.supports_qualities.includes(value.quality_tier)
     ? value.quality_tier
     : caps.supports_qualities[0]!;
-  const duration = Math.min(
-    caps.max_duration_s,
-    Math.max(caps.min_duration_s, Math.round(value.duration_seconds)),
-  );
+  const duration = clampRenderDuration(caps, value.duration_seconds);
   const resolution =
     caps.supports_resolutions.length === 0
       ? undefined

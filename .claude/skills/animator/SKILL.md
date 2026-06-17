@@ -56,16 +56,25 @@ Lookup from `episode.metadata.delivery_targets[0]`:
 | instagram_post | 1:1 |
 | print_poster | 16:9 (static, but reuse 16:9 for video) |
 
-### Duration with action-complexity reasoning
+### Render duration vs creative cut
 
-Per technology.md §3.5 (3-5s cuts, gag floor):
+`duration_seconds` in your Plan is the **RENDER duration** — what the generator
+produces — and MUST lie within the chosen provider's render range. That range is
+sourced live from the capability manifest (the input-context block "Provider
+render-duration contracts" lists each allowlisted provider's [min,max]); it is
+NEVER hardcoded here. The runner re-clamps deterministically, so author in range.
 
-| Action complexity | Duration |
+A short creative beat (a 1-2s reaction) is NOT written as a sub-floor render
+duration. The creative **CUT length** lives in the animatic; the rendered clip is
+trimmed to it downstream at stitch. So pick the render duration that lets the action
+read, at or above the provider floor:
+
+| Action complexity | Render duration |
 |---|---|
-| Static beat (talking head, reaction shot) | 3s |
-| Single action (one verb, one move) | 4-5s |
-| Compound action (verb + camera move) | 5-7s |
-| Complex sequence (multi-step, multi-character) | 8s (Veo Standard only — see below) |
+| Static / reaction beat | provider floor (min) |
+| Single action (one verb, one move) | floor … +1s |
+| Compound action (verb + camera move) | mid-range |
+| Complex sequence (multi-step, multi-character) | upper-range (Veo Standard with reference forces 8s — see below) |
 
 **Veo 3.1 image-to-video Standard quirk** (technology.md §3.5):
 when a reference image is attached, only `duration=8s` is accepted. If your

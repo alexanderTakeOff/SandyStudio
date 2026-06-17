@@ -43,7 +43,10 @@ import { findApprovedAsset } from '../upstream';
 import {
   VIDEO_PROVIDER_CAPS,
   ASPECT_BY_DELIVERY_TARGET,
+  clampRenderDuration,
+  estimateCost,
 } from '../../api/provider-capabilities';
+import { serializeShotPlanContract } from '../../api/shot-plan-contract';
 
 export const VANIM_CONTRACT = 'animator@v1';
 export const VANIM_MODEL = 'claude-sonnet-4-6';
@@ -782,6 +785,29 @@ export function buildResolutionContractBlock(): string {
   ].join('\n');
 }
 
+/**
+ * Director directive 2026-06-16: DRY injection of each allowlist provider's
+ * render-duration contract [min,max] from the capability manifest (SSOT), mirroring
+ * buildResolutionContractBlock. `duration_seconds` in the Plan is the RENDER duration
+ * the generator produces — never a hardcoded number in markdown. Sub-floor creative
+ * timing (a 1-2s comedic beat) is NOT written here: it lives in the animatic and is
+ * achieved by trimming the rendered clip downstream at stitch.
+ */
+export function buildDurationContractBlock(): string {
+  const lines = VANIM_PROVIDER_ALLOWLIST.map((alias) => {
+    const { providerImpl } = resolveVanimProviderId(alias);
+    const caps = VIDEO_PROVIDER_CAPS[providerImpl];
+    return `  - ${alias} → render ${caps.min_duration_s}-${caps.max_duration_s}s`;
+  });
+  return [
+    '## Provider render-duration contracts (set `duration_seconds` within the chosen provider\'s range)',
+    '',
+    ...lines,
+    '',
+    '`duration_seconds` is the RENDER duration — what the generator produces — and MUST lie in the chosen provider\'s [min,max] above. Do NOT write a sub-floor number to express a short beat: the creative CUT length lives in the animatic, and the rendered clip is trimmed to it downstream. (The runner re-clamps deterministically; author it in range so the Critic does not flag a mismatch.)',
+  ].join('\n');
+}
+
 function buildAspectTable(targets: readonly string[]): string {
   const rows = targets.map((slug) => {
     const aspect = ASPECT_BY_DELIVERY_TARGET[slug];
@@ -878,6 +904,8 @@ function buildUserMessage(args: {
     `Allowlist (Director directive 2026-05-19): ${VANIM_PROVIDER_ALLOWLIST.join(', ')}. Do not select anything else.`,
     '',
     buildResolutionContractBlock(),
+    '',
+    buildDurationContractBlock(),
     '',
     revisionNote
       ? [
@@ -1087,9 +1115,64 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
     );
   }
 
-  const aspect = (result.body as { aspect_ratio?: unknown }).aspect_ratio;
-  const duration = (result.body as { duration_seconds?: unknown }).duration_seconds;
-  const estCost = (result.body as { estimated_cost_usd?: unknown }).estimated_cost_usd;
+  // Deterministic render-duration + cost enforcement (Director directive 2026-06-16):
+  // make the Plan valid-by-construction so the Critic never bounces on a sub-floor
+  // duration or a hallucinated cost (V13). `duration_seconds` is the RENDER duration —
+  // clamp it into the chosen provider's [min,max] from the manifest (the creative
+  // sub-floor cut lives in the animatic); recompute `estimated_cost_usd` from the same
+  // manifest. Off-allowlist provider → leave untouched (Critic REVISEs separately).
+  let finalMarkdown = result.markdown;
+  let finalBody: Record<string, unknown> = result.body;
+  if (providerId && (VANIM_PROVIDER_ALLOWLIST as readonly string[]).includes(providerId)) {
+    try {
+      const { providerImpl, qualityTier } = resolveVanimProviderId(providerId);
+      const caps = VIDEO_PROVIDER_CAPS[providerImpl];
+      const rawDur = (result.body as { duration_seconds?: unknown }).duration_seconds;
+      if (typeof rawDur === 'number' && Number.isFinite(rawDur) && rawDur > 0) {
+        const clampedDur = clampRenderDuration(caps, rawDur);
+        const planQuality = (result.body as { quality_tier?: unknown }).quality_tier;
+        const effQuality =
+          planQuality === 'fast' || planQuality === 'standard' ? planQuality : qualityTier;
+        const planRes = (result.body as { resolution?: unknown }).resolution;
+        const effRes =
+          planRes === '480p' || planRes === '720p' || planRes === '1080p' ? planRes : undefined;
+        const recomputedCost =
+          Math.round(
+            estimateCost(caps, {
+              quality_tier: effQuality,
+              duration_seconds: clampedDur,
+              ...(effRes ? { resolution: effRes } : {}),
+            }) * 1000,
+          ) / 1000;
+        const priorCost = (result.body as { estimated_cost_usd?: unknown }).estimated_cost_usd;
+        if (clampedDur !== rawDur || priorCost !== recomputedCost) {
+          finalMarkdown = serializeShotPlanContract(result.markdown, {
+            durationSeconds: clampedDur,
+            estimatedCostUsd: recomputedCost,
+          });
+          finalBody = {
+            ...result.body,
+            duration_seconds: clampedDur,
+            estimated_cost_usd: recomputedCost,
+          };
+          if (clampedDur !== rawDur) {
+            notes.push(
+              `Render duration clamped ${rawDur}s → ${clampedDur}s for provider ${providerImpl} [${caps.min_duration_s},${caps.max_duration_s}]; creative cut stays in the animatic.`,
+            );
+          }
+        }
+      }
+    } catch (clampErr) {
+      // Non-fatal: keep the LLM's markdown/body; the runner re-clamps at dispatch.
+      notes.push(
+        `Render-duration clamp skipped (${clampErr instanceof Error ? clampErr.message.slice(0, 80) : 'error'})`,
+      );
+    }
+  }
+
+  const aspect = (finalBody as { aspect_ratio?: unknown }).aspect_ratio;
+  const duration = (finalBody as { duration_seconds?: unknown }).duration_seconds;
+  const estCost = (finalBody as { estimated_cost_usd?: unknown }).estimated_cost_usd;
 
   const description = [
     `Plan by EXEC-VANIM · ${VANIM_CONTRACT} · ${result.model}`,
@@ -1103,8 +1186,8 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
     .join(' ');
 
   return {
-    markdown: result.markdown,
-    body: result.body,
+    markdown: finalMarkdown,
+    body: finalBody,
     costUsd: result.costUsd,
     model: result.model,
     contract: VANIM_CONTRACT,

@@ -88,8 +88,16 @@ For Plan's `delivery_targets[0]`:
 - `instagram_post` → `1:1`
 - `print_poster` → `16:9` (static-but-reuse)
 
-### V07 — duration_seconds in [3, 8]
-Bound by storyboard `duration_seconds` and provider limits. Outside [3, 8] is a REVISE.
+### V07 — duration_seconds within the chosen provider's render range
+`duration_seconds` is the **RENDER** duration and must lie within the chosen
+provider's `[min,max]` from the injected "Provider render-duration contracts" block
+(NOT a fixed [3,8] — that hardcode wrongly bounced legitimate sub-floor cuts and
+over-long Seedance renders). The creative CUT in the storyboard may sit BELOW the
+render floor (e.g. a 2s beat); the producer clamps it up to the floor before you
+see the Plan, so judge the value AS-WRITTEN against the provider range. Outside that
+range is a REVISE. A Bible-declared Director duration floor, if any, still applies on
+top. Do NOT REVISE a render duration merely for being "below 3s" — there is no global
+3s minimum; the floor is the provider's.
 
 ### V08 — shot_id matches event payload
 `shot_id` must match the event's `shotId`. Mismatch is a FAIL.

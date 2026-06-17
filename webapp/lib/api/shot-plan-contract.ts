@@ -144,6 +144,9 @@ export interface ShotPlanPatch {
   resolution?: Resolution;
   seed?: number | null;
   durationSeconds?: number;
+  /** Render-duration cost, recomputed deterministically by the producer from the
+   *  provider manifest (estimateCost) rather than trusting the LLM's arithmetic. */
+  estimatedCostUsd?: number;
 }
 
 /**
@@ -170,6 +173,7 @@ export function serializeShotPlanContract(content: string, patch: ShotPlanPatch)
   if (patch.qualityTier !== undefined) next.quality_tier = patch.qualityTier;
   if (patch.resolution !== undefined) next.resolution = patch.resolution;
   if (patch.durationSeconds !== undefined) next.duration_seconds = patch.durationSeconds;
+  if (patch.estimatedCostUsd !== undefined) next.estimated_cost_usd = patch.estimatedCostUsd;
   if (patch.providerId !== undefined) {
     const prev = (body.provider && typeof body.provider === 'object'
       ? (body.provider as Record<string, unknown>)
