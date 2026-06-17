@@ -11,8 +11,15 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-17 (episode FORMAT authority — Slice 1 on master @4493648 pushed; Slice 2 IMAGE code-complete, uncommitted)
-Mode:   ===5=== EDIT (Director activated 2026-06-17 for UI sticky-pipeline + settings-collapse) · E10 governance Mode **2**. Single source = episode.governance_mode.
+Date:   2026-06-17 (anchor-mode B regenerate-surfaces @cde49fd+48fe57f local; A @a3735eb on origin)
+Mode:   ===5=== EDIT (Director activated 2026-06-17 — anchor-mode doctrine: orbit⇒ref-only). A+B done; C (8 shots) PARKED per Director. · E10 governance Mode **2**.
+
+2026-06-17 PM-8 (anchor-mode doctrine B — regenerate surfaces, local-unpushed cde49fd+48fe57f). orbit⇒ref-only
+  is the default (E10 A/B smoke). B1: VGENShotPanel anchor toggle «🎯 только реф / 🔗 два якоря» — ref-only nulls
+  end_image + hides picker, two-anchor reveals it + fails loud if empty; reuses ProviderControlPanel fields-whitelist
+  (ProviderControlPanel untouched). B2: regenerateShot PA tool (thin wrapper over regenerate-video REST; «перегени
+  SH07 без якорей»→ref-only; resolves shotId→newest VID-shot via ilike; concierge.md rule 10). C PARKED (Director:
+  «только построить B», no renders this session). tsc·0/912/replay30 (+13 tests). NEXT: Director push; C when go on spend.
 
 2026-06-17 PM-7 (episode FORMAT authority — Slice 2 IMAGE, code-complete UNCOMMITTED). Root: `resolveImageParams`
   was DEAD (never called) → image FORMAT entirely ungoverned; EREF executor hardcoded `EREF_QUALITY='medium'`,
@@ -36,15 +43,9 @@ Mode:   ===5=== EDIT (Director activated 2026-06-17 for UI sticky-pipeline + set
   re-author → resolution 720p, cost $1.21 (was $2.72), no fabrication, critic PASS — days-long deadlock
   broken.** tsc·0/886/replay30. Remaining E10 1080p-drift shots conform on next re-author. (Slice 2 → PM-7.)
 
-2026-06-16 PM-5 (render-duration model — recovered stalled session 4ad23077, frozen mid-Edit 15:23). Kills
-  hardcoded duration: `duration_seconds`=RENDER duration clamped to the provider manifest [min,max], NOT the
-  raw animatic cut. Creative CUT lives in animatic, trimmed at stitch. Stack: provider-capabilities
-  (clampRenderDuration+estimateCost), shot-plan-contract (serialize estimatedCostUsd), runner.ts (drop
-  hardcoded [4,8] → provider-derived clamp; Seedance now reaches its real max 15), animator.ts (producer
-  authors+clamps render dur, recomputes cost, injects contract block), animator-critic V14 (compare vs
-  provider-clamped cut — resolves the unsatisfiable 2s sub-floor deadlock), animator SKILL.md + animator.md
-  (knob#4/output/gag aligned). +2 V14 clamp tests. tsc·0/875/replay30. ⚠️ uncommitted; parallel session
-  shares tree — coordinate before commit.
+2026-06-16 PM-5 (render-duration model, @67d9d74, in memory session_2026-06-17). `duration_seconds`=RENDER
+  duration clamped to provider manifest [min,max] (not raw animatic cut); creative cut trimmed at stitch.
+  animator-critic V14 compares vs provider-clamped cut. +2 tests.
 
 2026-06-16 PM-4 (UI/observability, master @ a465213). Activity feed: shared `ActivityEventRow` (3 feeds→1,
   −dup markup) + Director-command highlight (UUID actor=human) + critic verdict in row (·REVISE + warning
