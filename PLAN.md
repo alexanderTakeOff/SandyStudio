@@ -11,8 +11,20 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-16 PM-5 (recovered frozen session 4ad23077 — render-duration model; uncommitted on master tree)
-Mode:   ===5=== EDIT (Director activated 2026-06-16 PM-3) · E10 governance Mode **2**. Single source = episode.governance_mode.
+Date:   2026-06-17 (episode FORMAT authority — Slice 1 SHIPPED + live-smoke PASS; master @ fee8fd6)
+Mode:   ===1=== ANALYTICS (Director set after PM-5) · E10 governance Mode **2**. Single source = episode.governance_mode.
+
+2026-06-17 (episode FORMAT authority — Slice 1, master @ fee8fd6). Root: episode `generation_config`
+  (provider/aspect/quality/resolution) was the single source of truth ONLY at render; the Animator authoring
+  path was blind → invented FORMAT. E10 (cfg=720p, overrides OFF) → Animator wrote 1080p → phantom 2.25× cost,
+  critic HALT, fabricated "Director hard-contract: resolution=1080p". FIX: producer conforms FORMAT via the
+  SAME resolver the render uses (resolveVideoParams), honouring allow_shot_overrides (NOT hardcoding episode-
+  wins); provider vocab impl↔alias (vanimAliasFor/episodeProviderAliases); unconditional fab-scrub; Option B
+  (prose stops restating format/dur/cost numbers); critic gets the authority block. **Live smoke: SH12/SH13
+  re-author → resolution 720p, cost $1.21 (was $2.72), no fabrication, critic PASS — days-long deadlock
+  broken.** tsc·0/886/replay30. NEXT: Slice 2 (IMAGE: resolveImageParams into EREF designer/critic + kill
+  hardcodes in episode-references/thumbnail-renderer — resolveImageParams currently DEAD), Slice 3 (dispatch
+  shot-override payload for overrides-ON). Remaining E10 1080p-drift shots conform on next re-author.
 
 2026-06-16 PM-5 (render-duration model — recovered stalled session 4ad23077, frozen mid-Edit 15:23). Kills
   hardcoded duration: `duration_seconds`=RENDER duration clamped to the provider manifest [min,max], NOT the
