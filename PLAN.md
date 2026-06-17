@@ -18,8 +18,12 @@ Mode:   ===5=== EDIT (Director activated 2026-06-17 — anchor-mode doctrine: or
   is the default (E10 A/B smoke). B1: VGENShotPanel anchor toggle «🎯 только реф / 🔗 два якоря» — ref-only nulls
   end_image + hides picker, two-anchor reveals it + fails loud if empty; reuses ProviderControlPanel fields-whitelist
   (ProviderControlPanel untouched). B2: regenerateShot PA tool (thin wrapper over regenerate-video REST; «перегени
-  SH07 без якорей»→ref-only; resolves shotId→newest VID-shot via ilike; concierge.md rule 10). C PARKED (Director:
-  «только построить B», no renders this session). tsc·0/912/replay30 (+13 tests). NEXT: Director push; C when go on spend.
+  SH07 без якорей»→ref-only; resolves shotId→newest VID-shot via ilike; concierge.md rule 10). tsc·0/912/replay30 (+13
+  tests). PUSHED origin @9563bb2. **SMOKE PASSED 2026-06-17:** E10 SH25+SH26 (2 of 4 ungenerated, run end-to-end by
+  Polина autonomously via authorized_principal nudge): Animator DISCRIMINATES — SH26 orbit→ref-only (cited doctrine),
+  SH25 static→two-anchor; V15 PASS both; rendered; Director accepted («нет дёрганий как с двумя якорями»). Caveat→
+  backlog: VGEN render never stamps end_image metadata (can't verify two-anchor honored; possible plan→render gap).
+  C (regen 8 infected ref-only) still PARKED till Director go on spend.
 
 2026-06-17 PM-7 (episode FORMAT authority — Slice 2 IMAGE, code-complete UNCOMMITTED). Root: `resolveImageParams`
   was DEAD (never called) → image FORMAT entirely ungoverned; EREF executor hardcoded `EREF_QUALITY='medium'`,
