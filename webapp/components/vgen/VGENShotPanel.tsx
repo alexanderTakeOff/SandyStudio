@@ -31,7 +31,10 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { ProviderControlPanel } from '@/components/vgen/ProviderControlPanel';
+import {
+  ProviderControlPanel,
+  type ProviderControlField,
+} from '@/components/vgen/ProviderControlPanel';
 import {
   VIDEO_PROVIDER_CAPS,
   normalizeControls,
@@ -179,6 +182,13 @@ export function VGENShotPanel({
   const [provider, setProvider] = useState<VgenProvider>(
     currentSettings.provider_id ?? 'seedance-fal-img2vid',
   );
+  // Anchor-mode doctrine (2026-06-17, E10 A/B smoke): on camera-orbit shots a
+  // pinned end_image fights the orbit → ref-only is the default; two anchors are
+  // the STATIC non-orbit match-cut exception. This toggle governs the end-frame
+  // control below: 'ref-only' hides it + nulls end_image; 'two-anchor' reveals it.
+  // Default 'ref-only' on open (currentSettings carries no end_image signal — the
+  // visible toggle prevents a silent surprise on a legit two-anchor shot).
+  const [anchorMode, setAnchorMode] = useState<'ref-only' | 'two-anchor'>('ref-only');
   // Sprint β 2026-05-14 — capability-aware controls. Aspect/quality/duration
   // live in VideoControlsValue now; resolution/seed/end-image are rendered
   // only when the active provider supports them.
@@ -272,11 +282,25 @@ export function VGENShotPanel({
       ),
     );
     setPromptEdited(false);
+    setAnchorMode('ref-only');
     setError(null);
     setSuccess(false);
     // intentionally key on assetId so we don't reset state on every parent rerender
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assetId]);
+
+  // Switching to ref-only nulls the end frame so a stale uuid is never shipped;
+  // switching to two-anchor just reveals the picker (Director fills it).
+  function changeAnchorMode(next: 'ref-only' | 'two-anchor') {
+    setAnchorMode(next);
+    setOverrideConfirmed(false);
+    if (next === 'ref-only') {
+      setControls((prev) => ({ ...prev, end_image_asset_id: null }));
+    }
+  }
+
+  // Anchor toggle only applies to providers that accept an end frame (Seedance).
+  const supportsEndImage = VIDEO_PROVIDER_CAPS[provider].supports_end_image;
 
   const costEstimate = useMemo(() => {
     // TD-85 (2026-06-01): route through estimateCost so the displayed price
@@ -324,6 +348,12 @@ export function VGENShotPanel({
   const needsOverrideConfirm = overrideDiffs.length > 0 && !overrideConfirmed;
 
   async function regenerate() {
+    // fail-loud (anchor-mode doctrine): two anchors require an end frame. Never
+    // silently degrade to ref-only — make the missing end frame explicit.
+    if (supportsEndImage && anchorMode === 'two-anchor' && !controls.end_image_asset_id) {
+      setError('Нет end-якоря для этого шота — выбери кадр или переключись на «только реф».');
+      return;
+    }
     setBusy(true);
     setSuccess(false);
     setError(null);
@@ -465,6 +495,45 @@ export function VGENShotPanel({
         </select>
       </label>
 
+      {/* ── Anchor mode (orbit ⇒ ref-only doctrine, 2026-06-17) ──────── */}
+      {supportsEndImage && (
+        <div className="block">
+          <span className="text-[10px] uppercase tracking-wider text-text-muted">
+            Режим якоря
+          </span>
+          <div className="mt-1 flex gap-1.5" role="group" aria-label="Anchor mode">
+            {([
+              { mode: 'ref-only' as const, label: '🎯 только реф', hint: 'единственный якорь — лучший выбор для орбиты камеры (дефолт)' },
+              { mode: 'two-anchor' as const, label: '🔗 два якоря', hint: 'start + end_image — только для статичного non-orbit match-cut' },
+            ]).map(({ mode, label, hint }) => {
+              const active = anchorMode === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => changeAnchorMode(mode)}
+                  disabled={disabled}
+                  title={hint}
+                  aria-pressed={active}
+                  className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: active
+                      ? 'color-mix(in oklab, var(--accent-primary) 18%, transparent)'
+                      : 'var(--bg-elevated)',
+                    color: active ? 'var(--accent-primary)' : 'var(--text-muted)',
+                    borderColor: active
+                      ? 'color-mix(in oklab, var(--accent-primary) 50%, transparent)'
+                      : 'color-mix(in oklab, var(--text-muted) 22%, transparent)',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Capability-aware controls (Sprint β) ─────────────────────── */}
       <ProviderControlPanel
         provider={provider}
@@ -475,11 +544,15 @@ export function VGENShotPanel({
         }}
         disabled={disabled}
         density="full"
-        fields={
-          formatLocked
-            ? ['duration', 'seed', 'endImage']
-            : ['aspect', 'quality', 'resolution', 'duration', 'seed', 'endImage']
-        }
+        fields={(() => {
+          // Anchor-mode doctrine: the end-frame picker shows ONLY in two-anchor
+          // mode. ref-only (the orbit default) hides it (end_image stays null).
+          const base: ProviderControlField[] = formatLocked
+            ? ['duration', 'seed']
+            : ['aspect', 'quality', 'resolution', 'duration', 'seed'];
+          if (anchorMode === 'two-anchor') base.push('endImage');
+          return base;
+        })()}
       />
 
       {/* ── Override-episode confirm (q26b) ──────────────────────────── */}
