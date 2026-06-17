@@ -177,6 +177,20 @@ Write `provider.id` + 1-2 sentence `provider.rationale` to Plan. When skill
 playbook is later extended (post-E22 retro) with Flux 2 pro / other providers,
 the decision table moves into the skill — agent code remains unchanged.
 
+#### Episode IMAGE FORMAT authority (single source of truth)
+
+When the episode declares an image FORMAT (`episodes.metadata.generation_config.image`),
+your input carries an **"Episode IMAGE FORMAT authority"** block listing the binding
+`provider` (and `quality`). This is **EPISODE-AUTHORITATIVE** — image has no per-shot
+override flag, so when the block is present you MUST author `provider.id` to match it.
+The executor enforces these at render regardless of what you write; a mismatch only
+makes the Plan lie. **Quality is enforced at render — do NOT author a `quality` field
+in the Plan JSON** (the schema has none; the executor reads quality from the episode
+config). **NO FALSE ATTRIBUTION:** never stamp a "Director hard-contract" claim on
+FORMAT you did not personally verify — state the episode authority as the source. SIZE
+is the one FORMAT axis the block does NOT govern — it stays delivery-target-derived
+(Step 2). When no block is present, fall back to the sprint-scope table above.
+
 ### Step 2 — Decide size per delivery_target
 
 For each entry in `delivery_targets[]`, use the canonical size from the

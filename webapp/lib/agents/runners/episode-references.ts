@@ -60,7 +60,15 @@ import {
   getImageGenMultiProvider,
   resolveAvailableProviderId,
 } from '../providers/image-gen-multi-registry';
-import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
+import {
+  loadAnchorChainContext,
+  readEpisodeImageConfig,
+  type AnchorChainContext,
+} from '../runner';
+import {
+  resolveImageParams,
+  imageQualityForProvider,
+} from '../../api/resolve-generation-params';
 import type {
   MultiImageGenProvider,
   MultiImageRef,
@@ -109,9 +117,19 @@ export const EREF_CONTRACT = SHOT_REFERENCE_CONTRACT; // 'episode_references@v2'
 export const EREF_MAX_REFS_CAP = 49;
 /** Per Director's plan: ≤2 auto-regenerations, then HUMAN_REVIEW. */
 export const EREF_MAX_RETRIES = 2;
-export const EREF_QUALITY = 'medium' as const;
 /** Image dimensions ≥ this on either axis count as 4K. */
 const FOUR_K_THRESHOLD = 3840;
+
+/** Coerce a raw app_config EREF provider id into the resolver's ImageProviderId
+ *  vocab. `gemini-flash-image` is NOT in IMAGE_PROVIDER_CAPS → return null so the
+ *  resolver's config layer is skipped (quality is still governed universally;
+ *  the provider instance still comes from resolveAvailableProviderId). Mirror of
+ *  runner.ts coerceVideoProviderId. */
+function coerceImageProviderId(
+  raw: EREFProviderId,
+): 'openai-edits-multi' | 'flux-pro-1.1-ultra' | null {
+  return raw === 'gemini-flash-image' ? null : raw;
+}
 
 export class EpisodeReferencesError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -1608,10 +1626,20 @@ async function runAnchorPairGeneration(
   // path (Director directive 2026-06-11 q7: anchors follow the configured
   // provider; supersedes the q4a 2026-05-25 openai-edits-multi hardcode).
   const anchorPreferredId = await getEREFProvider(supabase);
-  const anchorProviderId = resolveAvailableProviderId(anchorPreferredId);
+  // Slice 2 — same episode IMAGE FORMAT authority as the regular path.
+  const anchorImageParams = resolveImageParams({
+    episodeConfig: readEpisodeImageConfig(inputs.episode),
+    configProviderId: coerceImageProviderId(anchorPreferredId),
+  });
+  const anchorQuality = imageQualityForProvider(anchorImageParams.quality);
+  const anchorDesiredId: EREFProviderId =
+    anchorImageParams.source.provider === 'episode'
+      ? anchorImageParams.providerId
+      : anchorPreferredId;
+  const anchorProviderId = resolveAvailableProviderId(anchorDesiredId);
   if (!anchorProviderId) {
     throw new EpisodeReferencesError(
-      `No EREF provider has its env key set (preferred: ${anchorPreferredId})`,
+      `No EREF provider has its env key set (preferred: ${anchorDesiredId})`,
     );
   }
   const provider = getImageGenMultiProvider(anchorProviderId);
@@ -1656,7 +1684,7 @@ async function runAnchorPairGeneration(
       const result = await provider.generate({
         prompt: fullPrompt,
         references: baseRefs.slice(0, provider.capabilities.max_references),
-        quality: EREF_QUALITY,
+        quality: anchorQuality,
         size: '1536x1024',
         negative: planOverrides.negative,
       });
@@ -1909,6 +1937,7 @@ export async function runEpisodeReferences(
         episode_code?: string;
         series_id?: string | null;
         governance_mode?: number;
+        metadata?: unknown;
       }
     | undefined;
   const epCode = episodeCode ?? ep?.episode_code ?? 'SS-unknown';
@@ -1994,10 +2023,24 @@ export async function runEpisodeReferences(
   const upscaleEnabled = await getEREFUpscaleEnabled(supabase);
   const guardianMode = await getStyleGuardianMode(supabase);
 
-  const effectiveProviderId = resolveAvailableProviderId(preferredProviderId);
+  // Slice 2 — episode IMAGE FORMAT authority. provider + quality come from
+  // episodes.metadata.generation_config.image when the episode declares them;
+  // otherwise the app_config provider + quality fallback. Makes the Episode
+  // Settings panel promise ("every image job honours these") true for image.
+  const imageParams = resolveImageParams({
+    episodeConfig: readEpisodeImageConfig(inputs.episode),
+    configProviderId: coerceImageProviderId(preferredProviderId),
+  });
+  const effectiveQuality = imageQualityForProvider(imageParams.quality);
+  // Episode wins for provider only when it explicitly declared one; otherwise
+  // keep the app_config id (which may be gemini, absent from the resolver vocab).
+  const desiredProviderId: EREFProviderId =
+    imageParams.source.provider === 'episode' ? imageParams.providerId : preferredProviderId;
+
+  const effectiveProviderId = resolveAvailableProviderId(desiredProviderId);
   if (!effectiveProviderId) {
     throw new EpisodeReferencesError(
-      `No EREF provider has its env key set (preferred: ${preferredProviderId})`,
+      `No EREF provider has its env key set (preferred: ${desiredProviderId})`,
     );
   }
   const provider = getImageGenMultiProvider(effectiveProviderId);
@@ -2258,7 +2301,7 @@ export async function runEpisodeReferences(
         const result = await callProviderWithFallback(provider, {
           prompt,
           references: refsForGen,
-          quality: EREF_QUALITY,
+          quality: effectiveQuality,
           size: effectiveSize,
           // 2026-06-14: forward the Plan's negative to the provider (was only
           // sent to the reviewer). Symmetric with the anchor path.
@@ -2552,7 +2595,7 @@ export async function runEpisodeReferences(
       drive_web_view_url: g.drive_web_view_url,
       width: g.width,
       height: g.height,
-      quality: EREF_QUALITY,
+      quality: effectiveQuality,
       style_check_verdict: g.triggered_by === 'pipeline' ? styleVerdictPre : null,
       style_check_rewritten: g.triggered_by === 'pipeline' ? styleRewrittenPre : false,
       mode_at_time: g.mode_at_time,

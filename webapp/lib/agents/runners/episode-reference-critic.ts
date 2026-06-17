@@ -37,6 +37,8 @@ import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
 import { SIZE_BY_DELIVERY_TARGET } from '../../api/provider-capabilities';
 import { parseLastJsonBlock } from './episode-references';
+import { buildEpisodeImageFormatAuthorityBlock } from './episode-reference-designer';
+import { readEpisodeImageConfig } from '../runner';
 
 /**
  * Render the canonical delivery_target → size manifest as an authoritative
@@ -188,6 +190,8 @@ function buildUserMessage(args: {
   shotId: string;
   planContent: string;
   planStatus: string;
+  /** Slice 2: pre-rendered episode IMAGE FORMAT authority block (or ''). */
+  episodeImageFormatBlock?: string;
 }): string {
   return [
     '# Task',
@@ -205,6 +209,7 @@ function buildUserMessage(args: {
     '',
     canonicalSizeBlock(),
     '',
+    args.episodeImageFormatBlock ? args.episodeImageFormatBlock : '',
     'Hard rules:',
     '- Output one markdown narrative and exactly one fenced JSON block at the end.',
     `- The JSON block must include shot_id="${args.shotId}" and plan_asset_id="${args.planAssetId}".`,
@@ -435,7 +440,7 @@ function neutralizeCosmeticChecks(
 export async function runEpisodeReferenceCritic(
   args: EPREVRunArgs,
 ): Promise<EPREVRunResult> {
-  const { supabase, planAssetId, shotId } = args;
+  const { inputs, supabase, planAssetId, shotId } = args;
   if (!planAssetId) {
     throw new EpisodeReferenceCriticError('planAssetId is required');
   }
@@ -451,6 +456,9 @@ export async function runEpisodeReferenceCritic(
     shotId,
     planContent: plan.content,
     planStatus: plan.status,
+    episodeImageFormatBlock: buildEpisodeImageFormatAuthorityBlock(
+      readEpisodeImageConfig(inputs.episode),
+    ),
   });
 
   const notes: string[] = [];

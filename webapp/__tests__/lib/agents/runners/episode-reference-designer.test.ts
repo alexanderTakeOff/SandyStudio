@@ -27,6 +27,7 @@ import {
   resolveDeliveryTargets,
   runEpisodeReferenceDesigner,
   findLatestApprovedImgByLocation,
+  buildEpisodeImageFormatAuthorityBlock,
   _resetSystemPromptCacheForTests,
 } from '@/lib/agents/runners/episode-reference-designer';
 
@@ -826,5 +827,25 @@ describe('getPreviousShotIdInSequence (TD-33)', () => {
       '@/lib/agents/runners/episode-reference-designer'
     );
     expect(getPreviousShotIdInSequence('not a storyboard', 'SH01')).toBeNull();
+  });
+});
+
+// ── Slice 2: episode IMAGE FORMAT authority block ───────────────────────────────
+describe('buildEpisodeImageFormatAuthorityBlock', () => {
+  it('returns empty string for an un-configured episode (legacy prompt byte-for-byte)', () => {
+    expect(buildEpisodeImageFormatAuthorityBlock(null)).toBe('');
+    expect(buildEpisodeImageFormatAuthorityBlock({})).toBe('');
+  });
+
+  it('surfaces provider as the plan-alias gpt-image-2 + quality, never size/override', () => {
+    const block = buildEpisodeImageFormatAuthorityBlock({
+      provider_id: 'openai-edits-multi',
+      quality: 'high',
+    });
+    expect(block).toContain('gpt-image-2');
+    expect(block).toContain('high');
+    expect(block).not.toContain('openai-edits-multi'); // translated to alias
+    expect(block).not.toMatch(/size/i);
+    expect(block).not.toMatch(/allow_shot_overrides/i);
   });
 });

@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest';
 import {
   resolveVideoParams,
   resolveImageParams,
+  imageProviderAlias,
+  imageQualityForProvider,
 } from '@/lib/api/resolve-generation-params';
 import type { VgenDefaults } from '@/lib/api/vgen-defaults';
 
@@ -153,5 +155,25 @@ describe('resolveImageParams', () => {
     expect(r.providerId).toBe('flux-pro-1.1-ultra');
     expect(r.source.provider).toBe('config');
     expect(r.quality).toBe('high'); // hard fallback
+  });
+});
+
+describe('imageProviderAlias', () => {
+  it('translates openai-edits-multi to the plan-alias gpt-image-2', () => {
+    expect(imageProviderAlias('openai-edits-multi')).toBe('gpt-image-2');
+  });
+  it('passes flux through unchanged', () => {
+    expect(imageProviderAlias('flux-pro-1.1-ultra')).toBe('flux-pro-1.1-ultra');
+  });
+});
+
+describe('imageQualityForProvider', () => {
+  it('clamps auto to high (provider arg has no auto)', () => {
+    expect(imageQualityForProvider('auto')).toBe('high');
+  });
+  it('passes low/medium/high through', () => {
+    expect(imageQualityForProvider('low')).toBe('low');
+    expect(imageQualityForProvider('medium')).toBe('medium');
+    expect(imageQualityForProvider('high')).toBe('high');
   });
 });

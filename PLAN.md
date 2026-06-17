@@ -11,8 +11,20 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-17 (episode FORMAT authority — Slice 1 SHIPPED + live-smoke PASS; master @ fee8fd6)
-Mode:   ===1=== ANALYTICS (Director set after PM-5) · E10 governance Mode **2**. Single source = episode.governance_mode.
+Date:   2026-06-17 (episode FORMAT authority — Slice 1 on master @4493648 pushed; Slice 2 IMAGE code-complete, uncommitted)
+Mode:   ===5=== EDIT (Director activated 2026-06-17 for UI sticky-pipeline + settings-collapse) · E10 governance Mode **2**. Single source = episode.governance_mode.
+
+2026-06-17 PM-7 (episode FORMAT authority — Slice 2 IMAGE, code-complete UNCOMMITTED). Root: `resolveImageParams`
+  was DEAD (never called) → image FORMAT entirely ungoverned; EREF executor hardcoded `EREF_QUALITY='medium'`,
+  ignoring `generation_config.image` (E10 had explicit quality=high, rendered medium). FIX (EREF-only scope per
+  Director): Layer A enforcement — `readEpisodeImageConfig` + `resolveImageParams` wired into
+  episode-references.ts (regular + anchor + legacy-stamp), removed EREF_QUALITY hardcode (episode wins for
+  provider+quality; gemini coerced→null, stays via app_config). Layer B awareness —
+  `buildEpisodeImageFormatAuthorityBlock` (impl→alias gpt-image-2; no size, no override; quality enforced at
+  render, NOT a plan field) injected into Designer + EPREV critic + 2 skill .md. Default quality for
+  un-configured episodes = high (Director q). SIZE stays delivery-derived. tsc·0/892/replay30 (+6 tests).
+  NEXT: live smoke E10 (single-shot regen → quality=high via Polina); then Slice 3 (dispatch override payload),
+  Slice 2b (thumbnail + bible quality).
 
 2026-06-17 (episode FORMAT authority — Slice 1, master @ fee8fd6). Root: episode `generation_config`
   (provider/aspect/quality/resolution) was the single source of truth ONLY at render; the Animator authoring
@@ -22,9 +34,7 @@ Mode:   ===1=== ANALYTICS (Director set after PM-5) · E10 governance Mode **2**
   wins); provider vocab impl↔alias (vanimAliasFor/episodeProviderAliases); unconditional fab-scrub; Option B
   (prose stops restating format/dur/cost numbers); critic gets the authority block. **Live smoke: SH12/SH13
   re-author → resolution 720p, cost $1.21 (was $2.72), no fabrication, critic PASS — days-long deadlock
-  broken.** tsc·0/886/replay30. NEXT: Slice 2 (IMAGE: resolveImageParams into EREF designer/critic + kill
-  hardcodes in episode-references/thumbnail-renderer — resolveImageParams currently DEAD), Slice 3 (dispatch
-  shot-override payload for overrides-ON). Remaining E10 1080p-drift shots conform on next re-author.
+  broken.** tsc·0/886/replay30. Remaining E10 1080p-drift shots conform on next re-author. (Slice 2 → PM-7.)
 
 2026-06-16 PM-5 (render-duration model — recovered stalled session 4ad23077, frozen mid-Edit 15:23). Kills
   hardcoded duration: `duration_seconds`=RENDER duration clamped to the provider manifest [min,max], NOT the
@@ -85,30 +95,10 @@ Mode:   ===1=== ANALYTICS (Director set after PM-5) · E10 governance Mode **2**
   critic canon-check, surgical-revision, approve-route forward principal. Polina on Gemini: works but
   drops required tool args (reason/episodeId) — model weakness.
 
-2026-06-15 SESSION (memo: session_2026-06-15_e10-gemini-cap-fixes.md). regen-cap (d2cdd40) · Mode-4
-  supersede (83f5235) · SH23 RUNAWAY fixed (58a039f: EPREV cosmetic→PASS + SHOT-cap=6). OPEN: SH25/26
-  canon; music; Vercel+Inngest-Cloud migration; loud Anthropic→gemini fallback; provider badge UI.
-
-ARCH SPRINT 2026-06-14 (Director: pipeline = full traversable process surface; fix recurring
-  uuid fragility systemically, not patches). One root: no single declarative model of stages +
-  polymorphic identity. Plan = identity-foundation-first → declarative 2-tier registry → series
-  tier → casting stage → render tail → clean E10. Decisions: identity first; unify registry,
-  migrate next-events.ts incrementally behind flag.
-  DONE: Thread 0+2 (fa10591) — episode cast scoping + TD-63 injector removed + object reference
-  contract end-to-end. A1 (6caf41e) — episodes.series_id code→UUID + FK (migration 0038 live;
-  heals genre+thumbnail latent bugs). E09 VERIFIED visually: SH07 intruders gone, SH08 panel canon
-  (object refs work end-to-end; panel proven via manual objects[] inject on old E09 plans).
-  Phase D core (uncommitted→committing): D1 ART-AD contract v0.2 (episode casting+breakdown+
-  preflight) + validateCanonExists; D2 casting API POST /api/episodes/[id]/cast (canon-preflight
-  HARD GATE → SPC-episode_cast DRAFT → approve locks scoping); D3 'casting' stage node in registry
-  (before brief, ART-AD). tsc·0 / 829 / 30.
-  Phase D DONE (backend): + A2 shot_id SSOT (b900ad9) + castEpisode PA tool (565f357). Casting fully
-  usable via system (API + preflight + PA tool + stage node). Casting UI panel (StageWorkspacePanel,
-  episode-scoped) DEFERRED to a frontend session (needs live app).
-  WCHK ×2 DONE (cb5d974): ordering — exec-wchk inputAllowedStatuses+REVIEW, runner resolves board
-  REVIEWABLE (mirror Script Critic) → validates pre-approval, no stall; verdict-stamp — authoritative
-  banner so content headline == metadata.verdict. + regular-path negative→provider (5ea1151).
-  ALL pushed to origin (…cb5d974).
+2026-06-15/-14 SESSIONS → archived in session memos (session_2026-06-15_e10-gemini-cap-fixes.md,
+  session_2026-06-14_arch-sprint-identity-casting.md). Key landed: regen/SHOT caps + Mode-4 supersede;
+  ARCH sprint — episode cast scoping, series_id UUID migration 0038, Phase D casting core (API + preflight
+  + PA tool + 'casting' stage node), shot_id SSOT, WCHK ×2. All pushed (…cb5d974). Casting UI panel DEFERRED.
   #2-batch DONE (Director go): #3 regular-path object refs (70f8da2, contract symmetric both paths) +
   #1 mode-aware checker fallback + stats (c953c54: skip→Mode4 pass / Mode1-2 Director / Mode3 EXEC-DIR-AI
   +dashboard_flag, always a checker_fallback stat) + #2 anchor visual gate (24bbf1a: ANCHOR_VISUAL_GATE

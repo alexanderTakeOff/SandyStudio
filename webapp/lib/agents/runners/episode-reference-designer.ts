@@ -49,7 +49,15 @@ import {
   type StoryboardShotV2,
 } from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
-import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
+import {
+  loadAnchorChainContext,
+  readEpisodeImageConfig,
+  type AnchorChainContext,
+} from '../runner';
+import {
+  imageProviderAlias,
+  type EpisodeImageConfig,
+} from '@/lib/api/resolve-generation-params';
 import { findApprovedAsset } from '../upstream';
 
 export const EREF_DESIGNER_CONTRACT = 'episode_reference_designer@v1';
@@ -407,6 +415,35 @@ function buildAnchorChainSections(ctx: AnchorChainContext): string {
 }
 
 /**
+ * Slice 2 — episode IMAGE FORMAT authority block. When the episode declares
+ * `generation_config.image`, surface its provider (translated to the plan-alias
+ * the allowlist speaks) + quality so the Designer authors WITHIN the episode's
+ * binding format. Image has no `allow_shot_overrides` flag → the episode is
+ * unconditionally authoritative when present. SIZE is NOT included — it stays
+ * delivery-target-derived. Quality is enforced at render (the EREF executor) —
+ * the Plan must NOT author a quality field. Returns '' for an un-configured
+ * episode → legacy prompt byte-for-byte. Mirror of the video animator block.
+ */
+export function buildEpisodeImageFormatAuthorityBlock(cfg: EpisodeImageConfig | null): string {
+  if (!cfg || (!cfg.provider_id && !cfg.quality)) return '';
+  const lines: string[] = [
+    '## Episode IMAGE FORMAT authority (single source of truth)',
+    '',
+    'This episode declares a binding image FORMAT in its settings. It is',
+    'EPISODE-AUTHORITATIVE — author the Plan to match it (image has no per-shot',
+    'override). The executor enforces these at render regardless.',
+  ];
+  if (cfg.provider_id) {
+    lines.push(`  - provider: ${imageProviderAlias(cfg.provider_id)} (choose this; justify in provider.rationale)`);
+  }
+  if (cfg.quality) {
+    lines.push(`  - quality: ${cfg.quality} — enforced at render; do NOT author a quality field in the Plan JSON.`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
  * Compose the user message handed to the Designer LLM. Self-contained: every
  * decision the agent needs is in this string. The system prompt
  * (episode_reference_designer.md) tells the agent how to think; the user
@@ -443,6 +480,9 @@ function buildUserMessage(args: {
    *  client was passed to the runner. Drives the four new prompt sections +
    *  the anchor_pair block expectation in the JSON output. */
   anchorChainContext?: AnchorChainContext | null;
+  /** Slice 2: pre-rendered episode IMAGE FORMAT authority block (or '' when the
+   *  episode declares no image config). */
+  episodeImageFormatBlock?: string;
 }): string {
   const {
     episodeCode,
@@ -460,6 +500,7 @@ function buildUserMessage(args: {
     priorTemporalAnchorAssetId,
     temporalAnchorLookupPerformed,
     anchorChainContext,
+    episodeImageFormatBlock,
   } = args;
 
   const biblePromptBlock = formatBibleForPrompt(bible);
@@ -519,6 +560,7 @@ function buildUserMessage(args: {
       ? `Active targets and their canonical sizes:\n${buildDeliveryTargetsTable(deliveryTargets)}`
       : 'No delivery targets resolved — fallback to youtube_landscape (1536×1024).',
     '',
+    episodeImageFormatBlock ? episodeImageFormatBlock : '',
     '## Provider sprint-scope',
     '',
     `Provider allowlist for this sprint (Director directive 2026-05-18): ${EREF_DESIGNER_PROVIDER_ALLOWLIST.join(', ')}. Do not select any other provider. Justify the choice from this list in provider.rationale.`,
@@ -855,6 +897,9 @@ export async function runEpisodeReferenceDesigner(
     priorTemporalAnchorAssetId,
     temporalAnchorLookupPerformed,
     anchorChainContext,
+    episodeImageFormatBlock: buildEpisodeImageFormatAuthorityBlock(
+      readEpisodeImageConfig(inputs.episode),
+    ),
   });
 
   let result: AnthropicTextResult;

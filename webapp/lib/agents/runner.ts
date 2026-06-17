@@ -94,6 +94,7 @@ import { getVgenDefaults } from '../api/vgen-defaults';
 import {
   resolveVideoParams,
   type EpisodeVideoConfig,
+  type EpisodeImageConfig,
 } from '../api/resolve-generation-params';
 import type { AgentId, AgentInputs, AgentResult } from './types';
 
@@ -114,6 +115,22 @@ export function readEpisodeVideoConfig(episode: unknown): EpisodeVideoConfig | n
   const video = (gen as { video?: unknown }).video;
   if (!video || typeof video !== 'object') return null;
   return video as EpisodeVideoConfig;
+}
+
+/** Image twin of readEpisodeVideoConfig — reads `episodes.metadata.
+ *  generation_config.image` ({provider_id, quality}). Tolerates any metadata
+ *  shape (returns null) so an un-configured episode resolves to legacy
+ *  behaviour. Reused by the EREF executor + Designer + EPREV critic so all
+ *  three honour the same episode authority the panel promises. */
+export function readEpisodeImageConfig(episode: unknown): EpisodeImageConfig | null {
+  if (!episode || typeof episode !== 'object') return null;
+  const meta = (episode as { metadata?: unknown }).metadata;
+  if (!meta || typeof meta !== 'object') return null;
+  const gen = (meta as { generation_config?: unknown }).generation_config;
+  if (!gen || typeof gen !== 'object') return null;
+  const image = (gen as { image?: unknown }).image;
+  if (!image || typeof image !== 'object') return null;
+  return image as EpisodeImageConfig;
 }
 
 function readEpisodeDeliveryTargets(episode: unknown): string[] {

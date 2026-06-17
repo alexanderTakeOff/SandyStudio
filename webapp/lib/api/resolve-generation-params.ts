@@ -272,3 +272,16 @@ export function resolveImageParams(
     },
   };
 }
+
+/** Translate an impl-vocab ImageProviderId into the plan-alias the EREF Designer
+ *  and EPREV critic speak (their allowlist uses `gpt-image-2`, not the config id
+ *  `openai-edits-multi`). Mirror of video `episodeProviderAliases`. */
+export function imageProviderAlias(impl: ImageProviderId): string {
+  return impl === 'openai-edits-multi' ? 'gpt-image-2' : 'flux-pro-1.1-ultra';
+}
+
+/** Clamp a resolved ImageQuality to the set the provider `.generate()` arg
+ *  accepts (`low|medium|high` — no `auto`). */
+export function imageQualityForProvider(q: ImageQuality): 'low' | 'medium' | 'high' {
+  return q === 'auto' ? 'high' : q;
+}

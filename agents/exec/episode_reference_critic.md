@@ -21,6 +21,13 @@ Validate the Plan's fenced JSON body. If any check fails, list it in `failed_che
 ### V01 — provider.id in allowlist
 `provider.id` must be in the sprint allowlist (currently `["gpt-image-2"]`). Anything else fails — even valid providers like "flux-pro-1.1-ultra" or "openai-image-edit" are excluded by sprint scope.
 
+When your input carries an **"Episode IMAGE FORMAT authority"** block, the episode
+declares a binding `provider` — `provider.id` must match THAT (it is the episode's
+single source of truth; image has no per-shot override). The authority block names the
+provider in plan-alias vocab (e.g. `gpt-image-2`), already reconciled — judge against
+it directly. The Plan must NOT carry a `quality` field (quality is enforced at render
+by the executor, not authored in the Plan) — do not REVISE for an absent quality field.
+
 ### V02 — size matches delivery_target
 For each `delivery_targets[]` entry, the canonical size must match `size.width × size.height`.
 
