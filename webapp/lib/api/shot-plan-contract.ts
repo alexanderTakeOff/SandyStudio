@@ -19,6 +19,10 @@
 
 export type QualityTier = 'fast' | 'standard';
 export type Resolution = '480p' | '720p' | '1080p';
+/** Local aspect union — mirrors VideoAspectRatio (provider-capabilities). Declared
+ *  here (not imported) so this module stays dependency-free / browser-safe, like
+ *  QualityTier above. Keep in sync if VideoAspectRatio gains a member. */
+export type AspectRatio = '16:9' | '9:16' | '1:1' | '21:9' | '4:3' | '3:4' | 'auto';
 
 export interface ShotPlanContract {
   /** Verbatim video prompt the Animator authored (decision-of-record). */
@@ -141,12 +145,19 @@ export interface ShotPlanPatch {
   prompt?: string;
   providerId?: string;
   qualityTier?: QualityTier;
-  resolution?: Resolution;
+  aspectRatio?: AspectRatio;
+  /** `null` writes a JSON `resolution: null` — for fixed-resolution providers
+   *  (e.g. Veo) where the episode authority resolves to no chooser. */
+  resolution?: Resolution | null;
   seed?: number | null;
   durationSeconds?: number;
   /** Render-duration cost, recomputed deterministically by the producer from the
    *  provider manifest (estimateCost) rather than trusting the LLM's arithmetic. */
   estimatedCostUsd?: number;
+  /** Full replacement of `policy_notes[]` — the producer uses this to scrub
+   *  fabricated "Director hard-contract" FORMAT claims after conforming the plan
+   *  to the episode authority. */
+  policyNotes?: string[];
 }
 
 /**
@@ -171,9 +182,11 @@ export function serializeShotPlanContract(content: string, patch: ShotPlanPatch)
   const next = { ...body };
   if (patch.prompt !== undefined) next.prompt = patch.prompt;
   if (patch.qualityTier !== undefined) next.quality_tier = patch.qualityTier;
+  if (patch.aspectRatio !== undefined) next.aspect_ratio = patch.aspectRatio;
   if (patch.resolution !== undefined) next.resolution = patch.resolution;
   if (patch.durationSeconds !== undefined) next.duration_seconds = patch.durationSeconds;
   if (patch.estimatedCostUsd !== undefined) next.estimated_cost_usd = patch.estimatedCostUsd;
+  if (patch.policyNotes !== undefined) next.policy_notes = patch.policyNotes;
   if (patch.providerId !== undefined) {
     const prev = (body.provider && typeof body.provider === 'object'
       ? (body.provider as Record<string, unknown>)

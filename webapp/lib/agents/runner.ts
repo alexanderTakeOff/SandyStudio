@@ -102,7 +102,10 @@ import type { AgentId, AgentInputs, AgentResult } from './types';
 // generation_config.video` + the delivery_targets[] used for the delivery-
 // derived aspect fallback. Both tolerate any metadata shape (returns
 // null/empty) so an un-configured episode resolves to legacy behaviour.
-function readEpisodeVideoConfig(episode: unknown): EpisodeVideoConfig | null {
+// Exported (2026-06-17): the Animator producer reuses this to conform its Plan
+// FORMAT to the same episode authority the render path resolves against — one
+// reader, no reimplementation.
+export function readEpisodeVideoConfig(episode: unknown): EpisodeVideoConfig | null {
   if (!episode || typeof episode !== 'object') return null;
   const meta = (episode as { metadata?: unknown }).metadata;
   if (!meta || typeof meta !== 'object') return null;

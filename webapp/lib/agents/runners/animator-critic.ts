@@ -24,8 +24,10 @@ import {
   extractAnchorChain,
   buildResolutionContractBlock,
   buildDurationContractBlock,
+  buildEpisodeFormatAuthorityBlock,
   resolveVanimProviderId,
 } from './animator';
+import { readEpisodeVideoConfig } from '../runner';
 import { isAnimaticV1, effectiveDurationSeconds } from '../../api/animatic-shotlist';
 import { VIDEO_PROVIDER_CAPS, clampRenderDuration } from '../../api/provider-capabilities';
 import { loadSeriesBibleCanon, formatBibleForPrompt } from '../bible-loader';
@@ -185,6 +187,10 @@ function buildUserMessage(args: {
    * compatibility contract. Empty / missing canon → omitted.
    */
   bibleBlock: string;
+  /** 2026-06-17: episode-authoritative FORMAT — so the Critic validates the
+   *  Plan's provider/aspect/quality/resolution against the same source of truth
+   *  the producer conformed to. '' for un-configured episodes. */
+  episodeFormatBlock: string;
 }): string {
   const sections: string[] = [
     '# Task',
@@ -260,6 +266,11 @@ function buildUserMessage(args: {
     // cut is expected — the producer clamps it up to the render floor — so the
     // critic judges the (already-clamped) render duration against the provider range.
     buildDurationContractBlock(),
+    '',
+    // 2026-06-17: inject the episode FORMAT authority so V07/V13 judge the Plan's
+    // provider/aspect/quality/resolution against the episode source of truth (the
+    // producer conforms the Plan to it; this lets the Critic confirm, not re-invent).
+    args.episodeFormatBlock,
     '',
     'Hard rules:',
     `- The JSON block must include shot_id="${args.shotId}" and plan_asset_id="${args.planAssetId}".`,
@@ -502,6 +513,10 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
     }
   }
 
+  const episodeFormatBlock = buildEpisodeFormatAuthorityBlock(
+    readEpisodeVideoConfig((args.inputs as { episode?: unknown } | undefined)?.episode),
+  );
+
   const userMessage = buildUserMessage({
     planAssetId,
     shotId,
@@ -509,6 +524,7 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
     planStatus: plan.status,
     directorOverrides,
     bibleBlock,
+    episodeFormatBlock,
   });
 
   const notes: string[] = [];

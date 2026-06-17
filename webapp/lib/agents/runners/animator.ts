@@ -38,15 +38,19 @@ import {
   type StoryboardShotV2,
 } from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
-import { loadAnchorChainContext, type AnchorChainContext } from '../runner';
+import { loadAnchorChainContext, readEpisodeVideoConfig, type AnchorChainContext } from '../runner';
 import { findApprovedAsset } from '../upstream';
 import {
   VIDEO_PROVIDER_CAPS,
   ASPECT_BY_DELIVERY_TARGET,
   clampRenderDuration,
   estimateCost,
+  deliveryAspectFor,
+  type VideoProviderId,
 } from '../../api/provider-capabilities';
-import { serializeShotPlanContract } from '../../api/shot-plan-contract';
+import { resolveVideoParams, type EpisodeVideoConfig } from '../../api/resolve-generation-params';
+import { getVgenDefaults } from '../../api/vgen-defaults';
+import { serializeShotPlanContract, type ShotPlanPatch } from '../../api/shot-plan-contract';
 
 export const VANIM_CONTRACT = 'animator@v1';
 export const VANIM_MODEL = 'claude-sonnet-4-6';
@@ -165,6 +169,25 @@ export function resolveVanimProviderId(
         `resolveVanimProviderId: unknown Animator provider.id "${planProviderId}". Allowlist: ${VANIM_PROVIDER_ALLOWLIST.join(', ')}`,
       );
   }
+}
+
+/**
+ * Reverse of `resolveVanimProviderId`: map a resolved (providerImpl, qualityTier)
+ * back to the Animator allowlist alias the Plan JSON carries. The forward map is
+ * non-injective — `(seedance-fal-img2vid, standard)` is BOTH `seedance-standard`
+ * and `seedance-with-end-image` — so the caller passes the ORIGINAL plan's
+ * `prefersEndImage` to disambiguate, preserving end-image semantics when the
+ * episode authority did not force a family/quality change. The resolver can only
+ * ever return one of the two `VideoProviderId`s, so this map is total.
+ */
+export function vanimAliasFor(
+  providerImpl: VideoProviderId,
+  qualityTier: 'fast' | 'standard',
+  prefersEndImage: boolean,
+): VanimProviderId {
+  if (providerImpl === 'veo-3-img2vid') return 'veo-standard';
+  if (qualityTier === 'fast') return 'seedance-fast';
+  return prefersEndImage ? 'seedance-with-end-image' : 'seedance-standard';
 }
 
 /** Aspect ratio per delivery_target. Single source of truth moved to the
@@ -817,6 +840,35 @@ function buildAspectTable(targets: readonly string[]): string {
   return rows.join('\n');
 }
 
+/**
+ * Episode-authoritative FORMAT block (2026-06-17). Surfaces the binding
+ * provider/aspect/quality/resolution the episode declared + the allow_shot_overrides
+ * semantics. Role-neutral so BOTH the Animator (authoring guidance) and its Critic
+ * (validation rule) inject the same source of truth. Returns '' for un-configured
+ * episodes (no new prose → legacy prompt unchanged). Secondary to the deterministic
+ * producer conform — guidance, not the guarantee.
+ */
+export function buildEpisodeFormatAuthorityBlock(cfg: EpisodeVideoConfig | null): string {
+  if (!cfg) return '';
+  const fields = [
+    cfg.provider_id ? `  - provider: ${cfg.provider_id}` : null,
+    cfg.aspect_ratio ? `  - aspect_ratio: ${cfg.aspect_ratio}` : null,
+    cfg.quality_tier ? `  - quality_tier: ${cfg.quality_tier}` : null,
+    cfg.resolution ? `  - resolution: ${cfg.resolution}` : null,
+  ].filter(Boolean) as string[];
+  if (fields.length === 0) return '';
+  const overrides = cfg.allow_shot_overrides === true;
+  return [
+    '## Episode FORMAT authority (single source of truth)',
+    '',
+    ...fields,
+    '',
+    overrides
+      ? '`allow_shot_overrides` is ON — a per-shot FORMAT choice MAY override the values above; the shot override is legitimate and wins.'
+      : '`allow_shot_overrides` is OFF — these episode values are BINDING. The Plan\'s provider/aspect/quality/resolution MUST equal them (the runner deterministically conforms any mismatch). A "Director hard-contract" must NOT be claimed for any FORMAT value — these come from the episode config, not from the Animator.',
+  ].join('\n');
+}
+
 function buildUserMessage(args: {
   episodeCode: string;
   episodeTitle: string;
@@ -832,6 +884,8 @@ function buildUserMessage(args: {
   anchorChainContext?: AnchorChainContext | null;
   /** TD-52 (2026-05-25): concrete IMG-anchor asset_id lookups for current shot + adjacent boundaries. */
   anchorAssets?: AnimatorAnchorAssets | null;
+  /** 2026-06-17: episode-authoritative FORMAT — surfaced so the LLM matches it. */
+  episodeVideoConfig?: EpisodeVideoConfig | null;
 }): string {
   const {
     episodeCode,
@@ -846,6 +900,7 @@ function buildUserMessage(args: {
     directorOverrides,
     anchorChainContext,
     anchorAssets,
+    episodeVideoConfig,
   } = args;
 
   const biblePromptBlock = formatBibleForPrompt(bible);
@@ -907,6 +962,8 @@ function buildUserMessage(args: {
     '',
     buildDurationContractBlock(),
     '',
+    buildEpisodeFormatAuthorityBlock(episodeVideoConfig ?? null),
+    '',
     revisionNote
       ? [
           '## Revision request from Critic / Director — HARD ACCEPTANCE CRITERIA',
@@ -965,6 +1022,10 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
   const ep = inputs.episode as (EpisodeLike & { id?: string }) | undefined;
   const episodeCode = ep?.episode_code ?? 'UNKNOWN';
   const episodeTitle = ep?.title_working ?? 'Untitled';
+  // Episode-authoritative FORMAT (provider/aspect/quality/resolution). Reused by
+  // both the prompt block (so the LLM matches) and the post-LLM conform (the hard
+  // guarantee). null → un-configured episode → legacy passthrough everywhere.
+  const episodeVideoConfig = readEpisodeVideoConfig(inputs.episode);
 
   const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
   const stbAsset = findApprovedAsset(upstream, 'STB-storyboard');
@@ -1073,6 +1134,7 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
     directorOverrides,
     anchorChainContext,
     anchorAssets,
+    episodeVideoConfig,
   });
 
   let result: AnthropicTextResult;
@@ -1115,57 +1177,142 @@ export async function runAnimator(args: VANIMRunArgs): Promise<VANIMRunResult> {
     );
   }
 
-  // Deterministic render-duration + cost enforcement (Director directive 2026-06-16):
-  // make the Plan valid-by-construction so the Critic never bounces on a sub-floor
-  // duration or a hallucinated cost (V13). `duration_seconds` is the RENDER duration —
-  // clamp it into the chosen provider's [min,max] from the manifest (the creative
-  // sub-floor cut lives in the animatic); recompute `estimated_cost_usd` from the same
-  // manifest. Off-allowlist provider → leave untouched (Critic REVISEs separately).
+  // Deterministic FORMAT + render-duration + cost conform (Director 2026-06-16 / 2026-06-17):
+  // make the Plan valid-by-construction so the Critic never bounces and the Plan ==
+  // what render will actually produce. Two guarantees:
+  //   • FORMAT (provider/aspect/quality/resolution) is conformed to the EPISODE
+  //     authority via the SAME resolver the render path uses (resolveVideoParams),
+  //     honouring `allow_shot_overrides` — NOT hardcoding "episode wins".
+  //   • `duration_seconds` (RENDER duration) is clamped into the RESOLVED provider's
+  //     [min,max]; `estimated_cost_usd` recomputed from the manifest.
+  // No episode config → resolver echoes the LLM's own values → legacy passthrough.
+  // Off-allowlist provider → skip (Critic REVISEs separately).
   let finalMarkdown = result.markdown;
   let finalBody: Record<string, unknown> = result.body;
   if (providerId && (VANIM_PROVIDER_ALLOWLIST as readonly string[]).includes(providerId)) {
     try {
-      const { providerImpl, qualityTier } = resolveVanimProviderId(providerId);
-      const caps = VIDEO_PROVIDER_CAPS[providerImpl];
+      const original = resolveVanimProviderId(providerId);
+
+      const planQualityRaw = (result.body as { quality_tier?: unknown }).quality_tier;
+      const planQuality: 'fast' | 'standard' =
+        planQualityRaw === 'fast' || planQualityRaw === 'standard' ? planQualityRaw : original.qualityTier;
+      const planResRaw = (result.body as { resolution?: unknown }).resolution;
+      const planRes: '480p' | '720p' | '1080p' | null =
+        planResRaw === '480p' || planResRaw === '720p' || planResRaw === '1080p' ? planResRaw : null;
+      const planAspectRaw = (result.body as { aspect_ratio?: unknown }).aspect_ratio;
+      const planAspect: '16:9' | '9:16' | '1:1' | null =
+        planAspectRaw === '16:9' || planAspectRaw === '9:16' || planAspectRaw === '1:1' ? planAspectRaw : null;
+
+      // Same call shape as the render path (runner.ts). With no episode config the
+      // resolver returns the shot (LLM) values unchanged → legacy passthrough.
+      const seriesId = (ep as { series_id?: string | null } | undefined)?.series_id ?? null;
+      const resolved = resolveVideoParams({
+        episodeConfig: episodeVideoConfig,
+        shotOverride: {
+          provider_id: original.providerImpl,
+          aspect_ratio: planAspect,
+          quality_tier: planQuality,
+          resolution: planRes,
+        },
+        assignmentProviderId: null,
+        seriesDefaults: episodeVideoConfig && supabase ? await getVgenDefaults(supabase, seriesId) : null,
+        deliveryAspect: deliveryAspectFor([...deliveryTargets]),
+      });
+
+      // Reverse-map resolved provider → plan alias; keep the LLM alias when family +
+      // quality are unchanged (preserves seedance-with-end-image's end-image intent).
+      const familyOrQualityChanged =
+        resolved.providerId !== original.providerImpl || resolved.qualityTier !== original.qualityTier;
+      const finalAlias = familyOrQualityChanged
+        ? vanimAliasFor(resolved.providerId, resolved.qualityTier, original.prefersEndImage)
+        : providerId;
+
+      const caps = VIDEO_PROVIDER_CAPS[resolved.providerId];
       const rawDur = (result.body as { duration_seconds?: unknown }).duration_seconds;
-      if (typeof rawDur === 'number' && Number.isFinite(rawDur) && rawDur > 0) {
-        const clampedDur = clampRenderDuration(caps, rawDur);
-        const planQuality = (result.body as { quality_tier?: unknown }).quality_tier;
-        const effQuality =
-          planQuality === 'fast' || planQuality === 'standard' ? planQuality : qualityTier;
-        const planRes = (result.body as { resolution?: unknown }).resolution;
-        const effRes =
-          planRes === '480p' || planRes === '720p' || planRes === '1080p' ? planRes : undefined;
-        const recomputedCost =
-          Math.round(
-            estimateCost(caps, {
-              quality_tier: effQuality,
-              duration_seconds: clampedDur,
-              ...(effRes ? { resolution: effRes } : {}),
-            }) * 1000,
-          ) / 1000;
-        const priorCost = (result.body as { estimated_cost_usd?: unknown }).estimated_cost_usd;
-        if (clampedDur !== rawDur || priorCost !== recomputedCost) {
-          finalMarkdown = serializeShotPlanContract(result.markdown, {
-            durationSeconds: clampedDur,
-            estimatedCostUsd: recomputedCost,
-          });
-          finalBody = {
-            ...result.body,
-            duration_seconds: clampedDur,
-            estimated_cost_usd: recomputedCost,
-          };
-          if (clampedDur !== rawDur) {
-            notes.push(
-              `Render duration clamped ${rawDur}s → ${clampedDur}s for provider ${providerImpl} [${caps.min_duration_s},${caps.max_duration_s}]; creative cut stays in the animatic.`,
-            );
-          }
+      const clampedDur =
+        typeof rawDur === 'number' && Number.isFinite(rawDur) && rawDur > 0
+          ? clampRenderDuration(caps, rawDur)
+          : null;
+      const recomputedCost =
+        clampedDur !== null
+          ? Math.round(
+              estimateCost(caps, {
+                quality_tier: resolved.qualityTier,
+                duration_seconds: clampedDur,
+                ...(resolved.resolution ? { resolution: resolved.resolution } : {}),
+              }) * 1000,
+            ) / 1000
+          : null;
+      const priorCost = (result.body as { estimated_cost_usd?: unknown }).estimated_cost_usd;
+
+      // Conform aspect only when the LLM authored one (never inject a missing field —
+      // keeps un-configured episodes byte-for-byte; render fills aspect anyway).
+      const aspectChanged = planAspect !== null && resolved.aspectRatio !== planAspect;
+      const resChanged = (resolved.resolution ?? null) !== planRes;
+      const qualityChanged = resolved.qualityTier !== planQuality;
+      const providerChanged = finalAlias !== providerId;
+      const formatChanged = aspectChanged || resChanged || qualityChanged || providerChanged;
+      const durChanged = clampedDur !== null && clampedDur !== rawDur;
+      const costChanged = recomputedCost !== null && priorCost !== recomputedCost;
+
+      if (formatChanged || durChanged || costChanged) {
+        const patch: ShotPlanPatch = {};
+        if (providerChanged) patch.providerId = finalAlias;
+        if (qualityChanged) patch.qualityTier = resolved.qualityTier;
+        if (resChanged) patch.resolution = resolved.resolution; // may be null (Veo fixed-res)
+        if (aspectChanged) patch.aspectRatio = resolved.aspectRatio;
+        if (durChanged && clampedDur !== null) patch.durationSeconds = clampedDur;
+        if (costChanged && recomputedCost !== null) patch.estimatedCostUsd = recomputedCost;
+
+        // On a FORMAT change, scrub fabricated "Director hard-contract" FORMAT claims
+        // the producer just overrode and record the honest conform rationale.
+        let scrubbedNotes: string[] | undefined;
+        if (formatChanged) {
+          const existing = Array.isArray((result.body as { policy_notes?: unknown }).policy_notes)
+            ? (result.body as { policy_notes: unknown[] }).policy_notes.filter(
+                (n): n is string => typeof n === 'string',
+              )
+            : [];
+          scrubbedNotes = existing.filter(
+            (n) => !/Director hard-contract honoured.*(resolution|provider|aspect|quality)/i.test(n),
+          );
+          scrubbedNotes.push(
+            `Rationale (Animator): FORMAT conformed to episode authority (allow_shot_overrides=${episodeVideoConfig?.allow_shot_overrides === true}).`,
+          );
+          patch.policyNotes = scrubbedNotes;
+        }
+
+        finalMarkdown = serializeShotPlanContract(result.markdown, patch);
+        finalBody = { ...result.body };
+        if (patch.providerId) {
+          const prevProv =
+            typeof result.body.provider === 'object' && result.body.provider
+              ? (result.body.provider as Record<string, unknown>)
+              : {};
+          finalBody.provider = { ...prevProv, id: patch.providerId };
+        }
+        if (patch.qualityTier) finalBody.quality_tier = patch.qualityTier;
+        if (patch.resolution !== undefined) finalBody.resolution = patch.resolution;
+        if (patch.aspectRatio) finalBody.aspect_ratio = patch.aspectRatio;
+        if (patch.durationSeconds !== undefined) finalBody.duration_seconds = patch.durationSeconds;
+        if (patch.estimatedCostUsd !== undefined) finalBody.estimated_cost_usd = patch.estimatedCostUsd;
+        if (scrubbedNotes) finalBody.policy_notes = scrubbedNotes;
+
+        if (durChanged) {
+          notes.push(
+            `Render duration clamped ${rawDur}s → ${clampedDur}s for provider ${resolved.providerId} [${caps.min_duration_s},${caps.max_duration_s}]; creative cut stays in the animatic.`,
+          );
+        }
+        if (formatChanged) {
+          notes.push(
+            `FORMAT conformed to episode authority: provider=${finalAlias}, quality=${resolved.qualityTier}, resolution=${resolved.resolution ?? 'provider-default'}, aspect=${resolved.aspectRatio} (sources ${resolved.source.provider}/${resolved.source.quality}/${resolved.source.resolution}).`,
+          );
         }
       }
-    } catch (clampErr) {
-      // Non-fatal: keep the LLM's markdown/body; the runner re-clamps at dispatch.
+    } catch (conformErr) {
+      // Non-fatal: keep the LLM's markdown/body; the runner re-resolves at dispatch.
       notes.push(
-        `Render-duration clamp skipped (${clampErr instanceof Error ? clampErr.message.slice(0, 80) : 'error'})`,
+        `FORMAT/duration conform skipped (${conformErr instanceof Error ? conformErr.message.slice(0, 80) : 'error'})`,
       );
     }
   }
