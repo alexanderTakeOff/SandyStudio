@@ -477,6 +477,60 @@ export function checkDurationLock(
   return null;
 }
 
+/**
+ * V15 (2026-06-17) — orbit ⇒ ref-only. Empirically validated by the E10 SH07+SH03
+ * A/B smoke (seed-locked, only end_image varied; Director verdict «с рефом гораздо
+ * лучше»): on a camera-orbit shot a pinned end_image fights the orbit — the camera
+ * hitches / morphs toward the locked end frame instead of arcing freely. Two anchors
+ * (`end_image` / `seedance-with-end-image`) are therefore reserved for STATIC,
+ * non-orbit match-cut landings only. Since 80%+ of shots orbit (TD-68), ref-only is
+ * the default and two-anchor is the exception.
+ *
+ * Deterministic post-LLM check, mirrors V14: if the Plan declares orbit motion AND a
+ * non-null end_image (or the with-end-image provider), coerce REVISE. The LLM critic
+ * historically PASSed this combo (the Animator skill even recommended end_image for
+ * "orbit landing"), so enforce it LLM-independently here. Director can waive via an
+ * override whose `check` mentions 'orbit', 'anchor' or 'end_image'. Returns a
+ * violation string or null (fail-open — never falsely block a clean plan).
+ */
+export function checkOrbitEndImage(
+  planBody: Record<string, unknown> | null,
+  directorOverrides: ReadonlyArray<DirectorOverride>,
+  shotId: string,
+): string | null {
+  if (!planBody) return null;
+
+  // Two-anchor signal: a non-null end_image asset OR the with-end-image provider.
+  const endImage = (planBody as { end_image?: { eref_asset_id?: unknown } }).end_image;
+  const endId =
+    endImage && typeof endImage === 'object' ? endImage.eref_asset_id : null;
+  const hasEnd = typeof endId === 'string' && endId.trim().length > 0;
+  const providerObj = (planBody as { provider?: { id?: unknown } }).provider;
+  const providerId =
+    providerObj && typeof providerObj === 'object' && typeof providerObj.id === 'string'
+      ? providerObj.id
+      : '';
+  const twoAnchor = hasEnd || providerId === 'seedance-with-end-image';
+  if (!twoAnchor) return null;
+
+  // Orbit signal: opening_camera_motion.kind === 'rotate' OR orbit/rotate prose.
+  const cam = (
+    planBody as { opening_camera_motion?: { kind?: unknown; prose?: unknown } }
+  ).opening_camera_motion;
+  const kind =
+    cam && typeof cam === 'object' && typeof cam.kind === 'string' ? cam.kind : '';
+  const prose =
+    cam && typeof cam === 'object' && typeof cam.prose === 'string' ? cam.prose : '';
+  const orbit = kind === 'rotate' || /\borbit|\brotat/i.test(prose);
+  if (!orbit) return null;
+
+  // Director waiver (TD-74 channel): an override whose check names this axis.
+  const waived = directorOverrides.some((o) => /orbit|anchor|end[_ ]?image/i.test(o.check));
+  if (waived) return null;
+
+  return `Plan for ${shotId} pairs a camera ORBIT (opening_camera_motion.kind=${kind || 'rotate-prose'}) with a pinned end_image / two-anchor provider (${providerId || 'end_image set'}). Empirically the end-frame lock fights the orbit — the camera hitches/morphs toward the locked frame instead of arcing freely (E10 SH07/SH03 A/B, Director verdict). Orbit shots MUST render ref-only: provider seedance-standard or seedance-fast, end_image.eref_asset_id=null. Two anchors are reserved for STATIC, non-orbit match-cut landings. Fix: drop the end_image, or (rarely) replace the orbit with a justified static frame.`;
+}
+
 export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunResult> {
   const { supabase, planAssetId, shotId } = args;
   if (!planAssetId) throw new AnimatorCriticError('planAssetId is required');
@@ -589,6 +643,26 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
       effectiveVerdict = 'REVISE';
     }
     notes.push('V14 duration-lock failed → verdict coerced to REVISE');
+  }
+
+  // V15 (2026-06-17): deterministic orbit ⇒ ref-only. Runs AFTER the LLM and
+  // OVERRIDES its verdict — the LLM critic historically PASSed orbit+end_image
+  // because the Animator skill recommended it ("orbit landing"). E10 A/B smoke
+  // proved the end-frame lock fights the orbit; enforce ref-only here.
+  const orbitViolation = checkOrbitEndImage(result.body, directorOverrides, shotId);
+  if (orbitViolation) {
+    effectiveFailedChecks = [
+      ...effectiveFailedChecks,
+      { check: 'V15-orbit-ref-only', diagnosis: orbitViolation },
+    ];
+    if (
+      effectiveVerdict === 'PASS' ||
+      effectiveVerdict === 'PASS_WITH_UNCERTAINTY' ||
+      effectiveVerdict === 'UNKNOWN'
+    ) {
+      effectiveVerdict = 'REVISE';
+    }
+    notes.push('V15 orbit-ref-only failed → verdict coerced to REVISE');
   }
 
   const description = [
