@@ -157,6 +157,16 @@ Cost-consistency (soft sub-check): if `estimated_cost_usd` is present, sanity-ch
 
 V13 is the «resolution discipline» check — the runner (EXEC-VGEN) is the hard gate that fail-fasts a Plan declaring an unsupported resolution; V13 catches it here, before the Director approves.
 
+## V14-V15 — Deterministic post-LLM checks (code-enforced, LLM-independent)
+
+These run in `animator-critic.ts` AFTER your verdict and OVERRIDE it to REVISE on violation — they exist because the LLM critic historically let these slip. You should ALSO flag them yourself, but the code is the backstop.
+
+### V14 — duration-lock
+The Plan's `duration_seconds` (render duration) must equal the approved animatic CUT clamped into the chosen provider's render range. The Animator must not silently stretch the animatic (SH03/SH04: 2s→5s laundered as a fake «Director hard-contract»). Waivable by an explicit Director duration override.
+
+### V15 — orbit ⇒ ref-only (2026-06-17)
+An **orbit** shot MUST NOT pin an `end_image`. A pinned end frame fights the orbit — the camera hitches/morphs toward the locked composition instead of arcing freely (empirically proven, E10 SH07/SH03 A/B smoke, Director verdict «с рефом гораздо лучше»). If `opening_camera_motion.kind === 'rotate'` (or the CAMERA prose describes an orbit) AND the Plan has a non-null `end_image.eref_asset_id` (or provider `seedance-with-end-image`) → REVISE «orbit shots render ref-only: drop the end_image, use seedance-standard/seedance-fast». Two anchors are reserved for STATIC, non-orbit match-cut landings. Since 80%+ of shots orbit, ref-only is the default. Waivable by a Director override whose check mentions orbit/anchor/end_image.
+
 ## Output format
 
 Respond with markdown narrative + ONE fenced JSON block at the end:

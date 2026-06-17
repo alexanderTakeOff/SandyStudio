@@ -33,7 +33,7 @@ updated: 2026-05-19
 |---|---|---|
 | Establishing wide / non-hero / iteration loop | `seedance-fast` | Cheapest, fastest, "good enough" frame quality for iteration |
 | Hero shot · complex prose · long emotion arc | `veo-standard` | Cinematic prose handling, character emotion fidelity |
-| Camera-tightening · character-enter · emotion peak | `seedance-with-end-image` | Use approved EREF as end_image for arc continuity |
+| **STATIC** camera-tightening · character-enter · emotion peak | `seedance-with-end-image` | Use approved EREF as end_image for arc continuity. **NEVER on an orbit shot** — orbit ⇒ ref-only (`seedance-standard`), Critic V15. |
 
 When in doubt: `seedance-fast` first. Director's Stage A 2026-05-18 baseline.
 
@@ -89,14 +89,22 @@ shorter duration, the executor will force 8s — flag in policy_notes.
 
 ### End-image strategy
 
-Use `seedance-with-end-image` provider when:
-- Shot is a camera-tightening (wide → medium → close-up over the clip)
-- Shot has a character-enter beat (frame ends with the character in place)
-- Shot is an emotion peak that should land on a held composition
+> **Orbit ⇒ ref-only (empirical, 2026-06-17).** A pinned `end_image` fights a
+> camera orbit — the camera hitches/morphs toward the locked frame instead of
+> arcing (E10 SH07/SH03 A/B smoke, Director verdict «с рефом гораздо лучше»).
+> So `end_image` applies ONLY to **STATIC** shots. If `opening_camera_motion.kind
+> === 'rotate'` (orbit) — which is 80%+ of shots — set `end_image.eref_asset_id:
+> null` and use `seedance-standard`/`seedance-fast`. Critic V15 REVISES any orbit
+> Plan that pins an end_image.
+
+Use `seedance-with-end-image` provider ONLY on a **static (non-orbit)** shot that:
+- is a camera-tightening landing on a held frame (wide → medium → close-up), OR
+- has a character-enter beat ending with the character in a fixed place, OR
+- is an emotion peak that should land on a held composition.
 
 Pick `eref_asset_id` = the APPROVED IMG-episode_ref for THIS shot (continuity
-anchor). When no EREF exists for the shot yet → set `end_image.eref_asset_id: null`
-and use plain `seedance-fast` or `veo-standard` instead.
+anchor). When the shot orbits, or no EREF exists yet → set `end_image.eref_asset_id:
+null` and use plain `seedance-standard` / `seedance-fast`.
 
 ### Resolution per delivery target
 

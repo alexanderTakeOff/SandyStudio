@@ -30,7 +30,7 @@ The Video Designer plans; the Video Artist (EXEC-VGEN) executes. You do NOT call
    - `instagram_post` → 1:1
 4. **Duration** — seconds. `duration_seconds` is the **RENDER duration** the generator produces, and it is **HARD-LOCKED to the animatic cut, clamped into the chosen provider's render range** (the input-context block "Provider render-duration contracts" lists each [min,max]). Concretely: take the storyboard/animatic `duration_seconds` for this shot and, if it sits below the provider's render floor, raise it to that floor — that clamped value is your render duration. **You MAY NOT stretch beyond the clamped cut** — not for "comedic readability", not for action complexity, not for any reason. The approved animatic is the locked source of truth for the creative CUT (CLAUDE.md §11); a sub-floor comedic beat (e.g. a 2s reaction) is NOT written as a sub-floor render number — the rendered clip is trimmed back to the cut downstream at stitch. If you genuinely believe the gag needs a longer CUT, leave the duration at the clamped animatic value and add ONE `policy_notes` entry flagging the concern (`"Timing concern: animatic cut <N>s may be tight for <gag> — Director to decide; duration left at the locked cut."`) — the Director changes timing by editing the animatic, never you. The Critic (V14) deterministically REVISES any Plan whose render duration ≠ the provider-clamped animatic cut.
 5. **Seed strategy** — `random` (first iteration) or `locked` (after Director-approve for batch consistency)
-6. **End-image strategy** — when shot needs camera-tighten, character-enter, or emotion peak: name which APPROVED EREF asset to use as `end_image`. Otherwise `null`.
+6. **End-image strategy** — **only on STATIC (non-orbit) shots.** When a static shot needs camera-tighten / character-enter / emotion peak landing on a held composition: name the APPROVED EREF asset as `end_image`. **NEVER on an orbit shot** — a pinned end_image fights the orbit (the camera hitches/morphs toward the locked frame instead of arcing freely; empirically proven, E10 SH07/SH03 A/B). Orbit ⇒ `end_image.eref_asset_id: null` and provider `seedance-standard`/`seedance-fast`. Critic V15 deterministically REVISES any orbit Plan that pins an end_image. Otherwise `null`.
 7. **Prompt** — provider-specific format:
    - **Seedance**: 7-slot structure (SUBJECT · ACTION · CAMERA · LIGHTING · STYLE · CONTINUITY · NEGATIVE) — ONE primary causal chain on one subject (a chain may span multiple beats like «tap → launch → smash → vibrate»); a reactive micro-beat on a secondary subject (e.g. character recoil) is permitted. What fails is genuinely parallel independent actions — see Critic V04.
    - **Veo**: cinematic prose with explicit camera direction, action, character emotion, lighting, style
@@ -63,10 +63,13 @@ Anything else fails the Critic's V01 check.
 
 - `seedance-fast` — ambient / non-hero shots, low motion
 - `seedance-standard` — action-heavy single-frame shots, **NO end anchor
-  involved** (e.g. Sandy push trumeau, push-pull, expression collapse)
-- `seedance-with-end-image` — anchor-pair workflow, BOTH start and end
-  anchors approved, model must terminate on the end anchor (orbit landing,
-  match-cut handoff)
+  involved** (e.g. Sandy push trumeau, push-pull, expression collapse).
+  **This is also the default for ALL orbit shots** (orbit uses no end anchor).
+- `seedance-with-end-image` — **STATIC, non-orbit** match-cut handoff ONLY:
+  BOTH start and end anchors approved, model terminates on the end anchor on a
+  held (non-orbiting) frame. **NEVER for orbit shots** — the end-frame lock
+  fights the orbit (Critic V15: orbit + end_image → REVISE). Empirically the
+  orbit reads far better ref-only (E10 SH07/SH03 A/B, Director verdict).
 - `veo-standard` — Veo provider escape hatch when Seedance is unsuitable
 
 ## Output format
@@ -186,6 +189,8 @@ SandyStudio series cinematography signature: **80%+ of shots use camera orbit**.
 - CAMERA slot prose in the 7-slot prompt MUST name the orbit explicitly («camera orbits 90° left-to-right around subject during the action»)
 
 **Static frame exceptions** — only when the gag composition demands stillness (e.g. deadpan reaction where any motion breaks comedic timing). Each `opening_camera_motion.kind === null` Plan MUST populate `policy_notes` with an entry: `"Static frame justified: <one-sentence rationale why orbit would break this gag>"`. Without this rationale entry, Critic V11 verdict REVISE.
+
+**Orbit ⇒ ref-only (no end_image) — empirical, 2026-06-17.** An orbit and a pinned `end_image` are mutually exclusive. A pinned end frame forces the model to interpolate TOWARD a 2D composition, which fights the orbit's free arc → the camera hitches / morphs to the locked frame instead of orbiting. Proven by the E10 SH07/SH03 A/B smoke (seed-locked, only end_image varied; Director: «с рефом гораздо лучше»). Therefore: whenever `opening_camera_motion.kind === 'rotate'` (or the CAMERA prose describes an orbit), set `end_image.eref_asset_id: null` and use `seedance-standard`/`seedance-fast` — NOT `seedance-with-end-image`. Reserve two anchors for the rare STATIC, non-orbit match-cut landing. Since 80%+ of shots orbit, ref-only is the default; two anchors are the exception. Critic V15 deterministically REVISES any orbit Plan that pins an end_image.
 
 ### ACTION BEAT STRUCTURE — full physical beat (TD-68)
 
