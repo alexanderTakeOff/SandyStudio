@@ -170,3 +170,186 @@ export const regenerateVideoFromPlan: Tool<RegenerateVideoFromPlanArgs> = {
     });
   },
 };
+
+// ──────────────────────────────────────────────────────────────────────────────
+// regenerateShot — anchor-mode flip (orbit ⇒ ref-only doctrine, 2026-06-17).
+//
+// Empirically (E10 A/B smoke): on camera-orbit shots a pinned end_image fights
+// the orbit → ref-only renders much better. Since 80%+ shots orbit (TD-68),
+// ref-only is the default; two anchors are the STATIC non-orbit match-cut
+// exception. This tool lets Director tell Polина «перегени SH07 без якорей» and
+// have her re-render the shot ref-only without editing the Plan.
+//
+// Thin wrapper over the existing REST route /api/assets/:id/regenerate-video
+// (which already accepts provider + end_image_asset_id and auto-resolves the
+// approved EREF as reference) — no logic duplicated. Mirrors
+// regenerateVideoFromPlan's gate/auth/pickup shape.
+// ──────────────────────────────────────────────────────────────────────────────
+
+type AnchorMode = 'ref-only' | 'two-anchor';
+
+interface RegenerateShotArgs {
+  shotId: string;
+  anchorMode: AnchorMode;
+  endImageAssetId?: string;
+  episodeId?: string;
+  reason?: string;
+}
+
+export const regenerateShot: Tool<RegenerateShotArgs> = {
+  name: 'regenerateShot',
+  description:
+    "Re-render one VID-shot with an explicit ANCHOR MODE (orbit⇒ref-only doctrine). " +
+    "Use when Director wants to flip how a shot is anchored without re-authoring " +
+    "the Plan — typical case is 'перегени SH07 без якорей' / 'только реф' → " +
+    "anchorMode='ref-only' (the orbit default; nulls end_image). For the rare " +
+    "STATIC non-orbit match-cut, anchorMode='two-anchor' AND pass endImageAssetId " +
+    "(the end frame) — omitting it fails loud, never silently degrades. Re-renders " +
+    "the newest VID-shot for the shotId via Seedance, reusing the approved EREF as " +
+    "reference. Distinct from regenerateVideoFromPlan (which executes an APPROVED " +
+    "Plan as-is). Verbal approval required.",
+  mutating: true,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'regenerateShot',
+      description:
+        'Re-render one VID-shot with an explicit anchor mode (ref-only = orbit default; two-anchor needs an end frame). Verbal approval required.',
+      parameters: {
+        type: 'object',
+        properties: {
+          shotId: {
+            type: 'string',
+            description:
+              "Storyboard shot id (e.g. 'SS-S15-E01-A2-SC04-SH07'). Resolves to the newest VID-shot asset for this shot.",
+          },
+          anchorMode: {
+            type: 'string',
+            enum: ['ref-only', 'two-anchor'],
+            description:
+              "'ref-only' (default, best for camera orbit — single anchor, end_image null) or 'two-anchor' (STATIC non-orbit match-cut only — requires endImageAssetId).",
+          },
+          endImageAssetId: {
+            type: 'string',
+            description:
+              "UUID of the end-frame image asset. REQUIRED when anchorMode='two-anchor'; ignored for 'ref-only'.",
+          },
+          episodeId: {
+            type: 'string',
+            description: 'Episode UUID. Omit to use the active conversation episode.',
+          },
+          reason: {
+            type: 'string',
+            description:
+              "Short audit reason — paraphrase Director's spoken intent.",
+            maxLength: 500,
+          },
+        },
+        required: ['shotId', 'anchorMode'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const shotId = typeof obj.shotId === 'string' ? obj.shotId.trim() : '';
+    if (!shotId) throw new Error('shotId is required');
+    const anchorMode: AnchorMode =
+      obj.anchorMode === 'two-anchor' ? 'two-anchor' : 'ref-only';
+    const endImageAssetId =
+      typeof obj.endImageAssetId === 'string' && obj.endImageAssetId.trim()
+        ? obj.endImageAssetId.trim()
+        : undefined;
+    return {
+      shotId,
+      anchorMode,
+      endImageAssetId,
+      episodeId: typeof obj.episodeId === 'string' ? obj.episodeId : undefined,
+      reason: typeof obj.reason === 'string' ? obj.reason : undefined,
+    };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const episodeId = resolveEpisodeId(args, ctx);
+    if (!episodeId) {
+      return fail('episodeId required — no active episode in conversation context.');
+    }
+    // fail-loud: two anchors require an end frame. Never silently degrade.
+    if (args.anchorMode === 'two-anchor' && !args.endImageAssetId) {
+      return fail(
+        "anchorMode='two-anchor' requires endImageAssetId (the end frame). " +
+          "Pass it, or use anchorMode='ref-only'.",
+      );
+    }
+    const approval = gateMutation('regenerateShot', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
+    if (!approval.approved) {
+      return fail(approval.reason, 'verbal_approval_required');
+    }
+
+    // Resolve shotId → newest VID-shot asset. ilike makes file_type matching
+    // case-insensitive (robust to VID-shot / vid-shot casing drift).
+    const { data: rows, error: lookupErr } = await ctx.supabase
+      .from('assets')
+      .select('id, file_type, status, created_at')
+      .eq('episode_id', episodeId)
+      .ilike('file_type', 'VID-shot%')
+      .eq('metadata->>shot_id', args.shotId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (lookupErr) {
+      return fail(`regenerateShot lookup failed: ${lookupErr.message}`);
+    }
+    const assetId = rows?.[0]?.id;
+    if (!assetId) {
+      return fail(
+        `No VID-shot asset found for shot ${args.shotId} — generate the video first.`,
+      );
+    }
+
+    const url = new URL(
+      `/api/assets/${encodeURIComponent(assetId)}/regenerate-video`,
+      ctx.appOrigin,
+    );
+    // TD-39 L1: T0 before fetch.
+    const sinceIso = new Date().toISOString();
+    const resp = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...authHeaders(ctx),
+      },
+      body: JSON.stringify({
+        provider: 'seedance-fal-img2vid',
+        end_image_asset_id:
+          args.anchorMode === 'ref-only' ? null : args.endImageAssetId,
+        directorConfirm: true,
+      }),
+    });
+    let body: unknown = null;
+    try {
+      body = await resp.json();
+    } catch {
+      /* body may be empty */
+    }
+    if (!resp.ok) {
+      const detail =
+        body && typeof body === 'object' ? JSON.stringify(body) : `HTTP ${resp.status}`;
+      return fail(`regenerateShot failed: ${detail}`);
+    }
+    const result = ok(
+      body,
+      `Shot ${args.shotId} re-rendering as ${args.anchorMode}${
+        args.anchorMode === 'ref-only' ? ' (🎯 only ref)' : ' (🔗 two anchors)'
+      }`,
+    );
+    return ackOrFailOnPickup(result, {
+      supabase: ctx.supabase,
+      episodeId,
+      agentHint: 'EXEC-VGEN',
+      sinceIso,
+      label: `regenerateShot(${args.shotId}, ${args.anchorMode})`,
+    });
+  },
+};

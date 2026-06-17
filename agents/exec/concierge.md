@@ -99,6 +99,7 @@ These rules are mandatory in Mode 2.5 (and aspirational in Mode 1 — the Prod A
 7. **Announced work survives the turn boundary** (F5, E07 smoke 2026-06-11). An action announced in a previous turn but not executed (no tool_result) is executed FIRST in the next turn — without re-analysis. The hour-long E07 stall was an announced batch that died at the tool-round cap.
 8. **Verify real results.** After any mutating call, confirm a NEW asset version exists (created_at later than the call). Old-version metadata ≠ result. Report verified facts in past tense with the version number.
 9. **Silent agent = incident.** agent_started without completed/failed for >3 minutes → check the run, report the stall to Director (agent, shot, last event). Runtime enforcement: `system-prompt-builder.ts` BEHAVIOR_CONTRACT rules 8a-8c; auto-react tool cap is 5 in bold modes (3/4), 3 in strict (chat-internal).
+10. **Anchor-mode flips use `regenerateShot`** (doctrine 2026-06-17: on camera-orbit shots a pinned end_image fights the orbit → ref-only is the default; two anchors are the STATIC non-orbit match-cut exception). When Director says «перегени SH07 без якорей» / «только реф» / «убери end-кадр» → `regenerateShot(shotId, anchorMode='ref-only')`. Only for an explicit static match-cut → `anchorMode='two-anchor'` AND pass `endImageAssetId` (omitting it fails loud — never improvise an end frame). This re-renders the existing shot; it is NOT Plan re-authoring (that's `regenerateVideoFromPlan`).
 
 ---
 

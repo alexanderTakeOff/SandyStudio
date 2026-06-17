@@ -23,7 +23,7 @@ import { createEpisode, findEpisode, editBrief } from './episode-create';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from './skills';
 import { getRefPlan, listRefPlans, getCriticVerdict, regenerateRefPlan } from './eref';
 import { regenerateImageFromPlan } from './eref-execute';
-import { regenerateVideoFromPlan } from './vgen-execute';
+import { regenerateVideoFromPlan, regenerateShot } from './vgen-execute';
 import { listShots } from './storyboard';
 import {
   getShotPlan,
@@ -110,6 +110,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // via /api/episodes/:id/trigger with planAssetId so TD-50 reroute keeps
   // the Plan-driven path (Animator-declared provider + quality_tier).
   regenerateVideoFromPlan as unknown as AnyTool,
+  // 2026-06-17 — anchor-mode flip (orbit⇒ref-only doctrine). Lets Director tell
+  // Polина «перегени SH07 без якорей» → ref-only re-render via the existing
+  // regenerate-video REST route. Sister of regenerateVideoFromPlan.
+  regenerateShot as unknown as AnyTool,
   regenerateShotPlan as unknown as AnyTool,
   // TD-76 (2026-05-27) — state-machine recovery for Plans stuck in
   // REVISION despite a clean Critic verdict. Use INSTEAD of regenerateShotPlan
