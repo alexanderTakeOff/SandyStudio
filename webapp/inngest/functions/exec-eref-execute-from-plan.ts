@@ -33,9 +33,19 @@ export const execErefExecuteFromPlan = createAgentInngestFunction({
       typeof eventData.planAssetId === 'string'
         ? (eventData.planAssetId as string)
         : undefined;
-    const args: { shotId?: string; planAssetId?: string } = {};
+    // Targeted-anchor regen (2026-06-20): which side(s) to render. Default
+    // `both` when absent → first-generation / plan-change semantics unchanged.
+    const at = eventData.anchorTarget;
+    const anchorTarget =
+      at === 'start' || at === 'end' || at === 'both' ? at : undefined;
+    const args: {
+      shotId?: string;
+      planAssetId?: string;
+      anchorTarget?: 'start' | 'end' | 'both';
+    } = {};
     if (shotId) args.shotId = shotId;
     if (planAssetId) args.planAssetId = planAssetId;
+    if (anchorTarget) args.anchorTarget = anchorTarget;
     return args;
   },
   // 2026-05-22 — surface the shot label so the activity feed reads

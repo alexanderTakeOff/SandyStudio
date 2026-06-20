@@ -26,6 +26,7 @@ interface RegenerateImageFromPlanArgs {
   planAssetId: string;
   episodeId?: string;
   reason?: string;
+  anchorTarget?: 'start' | 'end' | 'both';
 }
 
 function safeParse(raw: string): Record<string, unknown> {
@@ -49,7 +50,11 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
     "Director says 'переделай картинку SH08 по обновлённому плану'). " +
     "Do NOT use this to start a fresh Designer round (use regenerateRefPlan for that) " +
     "or to re-fire the whole episode pilot pass (use triggerAgent with agentCode=EXEC-EREF " +
-    "for that — rare). Verbal approval required.",
+    "for that — rare). " +
+    "ANCHOR MODE: if the shot's Plan has a start+end anchor_pair and only ONE side rendered " +
+    "badly, pass anchorTarget='start' or 'end' to regen ONLY that side — the opposite APPROVED " +
+    "anchor is left untouched (saves time + cost). Omit anchorTarget (or 'both') for the whole pair. " +
+    "Verbal approval required.",
   mutating: true,
   schema: {
     type: 'function',
@@ -80,6 +85,12 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
               "Short audit reason — paraphrase Director's spoken intent (default: generic 'execute approved plan').",
             maxLength: 500,
           },
+          anchorTarget: {
+            type: 'string',
+            enum: ['start', 'end', 'both'],
+            description:
+              "Anchor mode only: regen ONLY this side of the anchor_pair when just one anchor is bad ('start' or 'end'). Omit / 'both' = whole pair.",
+          },
         },
         required: ['shotId', 'planAssetId'],
         additionalProperties: false,
@@ -93,12 +104,15 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
     const planAssetId =
       typeof obj.planAssetId === 'string' ? obj.planAssetId.trim() : '';
     if (!planAssetId) throw new Error('planAssetId is required');
+    const at = obj.anchorTarget;
     return {
       shotId,
       planAssetId,
       episodeId:
         typeof obj.episodeId === 'string' ? obj.episodeId : undefined,
       reason: typeof obj.reason === 'string' ? obj.reason : undefined,
+      anchorTarget:
+        at === 'start' || at === 'end' || at === 'both' ? at : undefined,
     };
   },
   async execute(args, ctx): Promise<ToolResult> {
@@ -134,6 +148,7 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
         shotId: args.shotId,
         planAssetId: args.planAssetId,
         reason,
+        ...(args.anchorTarget ? { anchorTarget: args.anchorTarget } : {}),
       }),
     });
     let body: unknown = null;

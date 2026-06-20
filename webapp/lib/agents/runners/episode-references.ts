@@ -837,6 +837,15 @@ function reviewerBibleRefs(job: ShotJob): ReviewBibleRef[] {
 
 // ── Run ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Targeted-anchor regeneration (2026-06-20, Polина's efficiency request).
+ * When a shot's anchor_pair has both sides but only ONE rendered badly, regen
+ * only that side instead of paying for the whole pair. The opposite APPROVED
+ * anchor is left untouched (each side is an independent versioned file_type).
+ * Default `both` preserves first-generation + plan-change semantics.
+ */
+export type AnchorTarget = 'start' | 'end' | 'both';
+
 export interface EpisodeReferencesRunArgs {
   inputs: AgentInputs;
   supabase: SupabaseClient<Database>;
@@ -867,6 +876,12 @@ export interface EpisodeReferencesRunArgs {
    * otherwise.
    */
   shotId?: string;
+  /**
+   * Anchor-mode only: which side(s) of the anchor_pair to (re)generate.
+   * Default `both`. Use `start`/`end` to regen only the flagged side and
+   * preserve the opposite APPROVED anchor.
+   */
+  anchorTarget?: AnchorTarget;
 }
 
 /**
@@ -1361,6 +1376,8 @@ interface AnchorPairGenerationArgs {
   governanceMode: GovernanceModeNum;
   planOverrides: PlanOverrides;
   anchorPair: ParsedAnchorPair;
+  /** Which anchor side(s) to generate. Default `both`. */
+  anchorTarget?: AnchorTarget;
 }
 
 // TD-65a softened preamble (2026-05-26): after TD-65 ref-order revert failed
@@ -1388,6 +1405,7 @@ async function runAnchorPairGeneration(
   args: AnchorPairGenerationArgs,
 ): Promise<EpisodeReferencesRunResult> {
   const { inputs, supabase, episodeId, episodeCode, governanceMode, planOverrides, anchorPair } = args;
+  const anchorTarget: AnchorTarget = args.anchorTarget ?? 'both';
 
   // 1. Anchor chain context — primary source of scene_master_asset.
   const anchorCtx = await loadAnchorChainContext({
@@ -1658,9 +1676,14 @@ async function runAnchorPairGeneration(
   }
 
   // 8. Per-side generation loop.
+  // anchorTarget filter (2026-06-20): regen only the requested side(s). The
+  // opposite side is simply not pushed → its existing APPROVED anchor stays
+  // untouched (separate versioned file_type), no extra DRAFT, no extra cost.
   const sidesToRun: Array<{ name: 'start' | 'end'; side: ParsedAnchorSide }> = [];
-  if (anchorPair.start) sidesToRun.push({ name: 'start', side: anchorPair.start });
-  if (anchorPair.end) sidesToRun.push({ name: 'end', side: anchorPair.end });
+  if (anchorPair.start && (anchorTarget === 'both' || anchorTarget === 'start'))
+    sidesToRun.push({ name: 'start', side: anchorPair.start });
+  if (anchorPair.end && (anchorTarget === 'both' || anchorTarget === 'end'))
+    sidesToRun.push({ name: 'end', side: anchorPair.end });
 
   const insertedAssetIds: string[] = [];
   const perShot: EpisodeReferencesRunResult['perShot'] = [];
@@ -1900,7 +1923,7 @@ async function runAnchorPairGeneration(
 export async function runEpisodeReferences(
   args: EpisodeReferencesRunArgs,
 ): Promise<EpisodeReferencesRunResult> {
-  const { inputs, supabase, episodeCode, pilot_count, start_index, planAssetId, shotId } = args;
+  const { inputs, supabase, episodeCode, pilot_count, start_index, planAssetId, shotId, anchorTarget } = args;
   if (pilot_count !== undefined && start_index !== undefined) {
     throw new EpisodeReferencesError(
       'pilot_count and start_index are mutually exclusive',
@@ -1964,6 +1987,7 @@ export async function runEpisodeReferences(
       governanceMode,
       planOverrides,
       anchorPair: planOverrides.anchorPair,
+      anchorTarget,
     });
   }
 

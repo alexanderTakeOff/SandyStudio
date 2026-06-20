@@ -61,7 +61,7 @@ import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-c
 import { runCopywriter, CopywriterError } from './runners/copywriter';
 import { runThumbnailDesigner, ThumbnailDesignerError } from './runners/thumbnail-designer';
 import { runThumbnailRenderer, ThumbnailRendererError } from './runners/thumbnail-renderer';
-import { runEpisodeReferences, EpisodeReferencesError } from './runners/episode-references';
+import { runEpisodeReferences, EpisodeReferencesError, type AnchorTarget } from './runners/episode-references';
 import {
   runEpisodeReferenceDesigner,
   EpisodeReferenceDesignerError,
@@ -572,6 +572,11 @@ export interface RunAgentArgs {
    */
   planAssetId?: string;
   /**
+   * Anchor-mode targeted regen (2026-06-20) — which anchor side(s) to render.
+   * Forwarded from the execute-from-plan event; default `both`.
+   */
+  anchorTarget?: AnchorTarget;
+  /**
    * C1-Gate sprint 2026-06-10 — STB-storyboard asset id under readability
    * review. When set, EXEC-CREAD loads exactly that storyboard; when unset it
    * falls back to the newest APPROVED STB in upstream_assets. Resolver in
@@ -657,6 +662,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     durationSeconds,
     vgenPilot,
     planAssetId,
+    anchorTarget,
     storyboardAssetId,
     creadPhase,
     directorOverrides,
@@ -1571,6 +1577,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             episodeCode,
             planAssetId,
             shotId,
+            anchorTarget,
           });
           return {
             outputKind: 'image-png',

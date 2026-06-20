@@ -53,6 +53,9 @@ const Body = z.object({
   shotId: z.string().min(1, 'shotId is required'),
   planAssetId: z.string().uuid('planAssetId must be a UUID'),
   reason: z.string().min(3).max(500),
+  // Anchor-mode targeted regen (2026-06-20): regen only one side of the
+  // anchor_pair. Omit / 'both' = legacy whole-pair behaviour.
+  anchorTarget: z.enum(['start', 'end', 'both']).optional(),
 });
 
 export const POST = withApiHandler(async (req, ctx) => {
@@ -188,6 +191,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       episodeId,
       shotId: body.shotId,
       planAssetId: body.planAssetId,
+      ...(body.anchorTarget ? { anchorTarget: body.anchorTarget } : {}),
     },
   });
 

@@ -239,6 +239,11 @@ type Events = {
     data: BaseEpisodeEvent & {
       shotId: string;
       planAssetId: string;
+      /**
+       * Anchor-mode targeted regen (2026-06-20): which side(s) of the
+       * anchor_pair to render. Omit / 'both' = whole-pair (legacy default).
+       */
+      anchorTarget?: 'start' | 'end' | 'both';
     };
   };
 
