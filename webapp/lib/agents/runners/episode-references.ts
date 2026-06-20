@@ -53,7 +53,6 @@ import { runStyleCheck } from './style-check';
 import { getStyleGuardianMode } from '../../api/style-guardian-config';
 import {
   getEREFProvider,
-  getEREFUpscaleEnabled,
   type EREFProviderId,
 } from '../../api/eref-config';
 import {
@@ -80,7 +79,6 @@ import {
   checkPlanAnchorFreshness,
   formatStaleAnchorMessage,
 } from './episode-reference-freshness';
-import { upscaleToFourK, UpscaleError } from '../providers/upscale-fal';
 import { runEREFCheck, type ReviewBibleRef } from './eref-check';
 import { isErefCancelled } from '../../api/eref-cancel';
 import { setPilotState } from '../../api/eref-pilot-state';
@@ -2044,7 +2042,6 @@ export async function runEpisodeReferences(
 
   // ── Provider + config ─────────────────────────────────────────────────────
   const preferredProviderId = await getEREFProvider(supabase);
-  const upscaleEnabled = await getEREFUpscaleEnabled(supabase);
   const guardianMode = await getStyleGuardianMode(supabase);
 
   // Slice 2 — episode IMAGE FORMAT authority. provider + quality come from
@@ -2508,64 +2505,20 @@ export async function runEpisodeReferences(
       continue;
     }
 
-    // ── Phase E.5: 4K upscale on AI-APPROVE ───────────────────────────────
-    let final4kUrl: string | null = null;
-    let final4k = approvedAttempt.is_4k;
-    if (
-      finalVerdict === 'APPROVE' &&
-      upscaleEnabled &&
-      !approvedAttempt.is_4k &&
-      Boolean(process.env.FAL_KEY?.trim() || process.env.FAL_API_KEY?.trim())
-    ) {
-      try {
-        const upscaled = await upscaleToFourK({ image_b64: approvedB64, target: '4K' });
-        totalCost += upscaled.cost_usd;
-        const upscaledPersisted = await persistBinary({
-          base64: upscaled.b64_data,
-          ext: 'png',
-          driveFilename: `${epCode}-IMG-episode_ref_${job.slug}-4k.png`,
-          localHint: `eref-${job.slug}-4k`,
-          episodeCode: epCode,
-          supabase,
-        });
-        attemptVersion++;
-        const upscaleAttempt: GenerationAttempt = {
-          version: attemptVersion,
-          provider_id: upscaled.provider_id,
-          model: upscaled.model,
-          prompt: '(upscale only — no prompt)',
-          references_used: [
-            { kind: 'identity', bible_asset_id: approvedAttempt.image_url ? 'self' : 'self' },
-          ],
-          strength: null,
-          cost_usd: upscaled.cost_usd,
-          image_url: upscaledPersisted.browserUrl,
-          drive_file_id: upscaledPersisted.driveFileId,
-          drive_web_view_url: upscaledPersisted.driveWebViewUrl,
-          width: upscaled.width,
-          height: upscaled.height,
-          is_4k: upscaled.width >= FOUR_K_THRESHOLD || upscaled.height >= FOUR_K_THRESHOLD,
-          at: new Date().toISOString(),
-          triggered_by: 'auto_upscale',
-          mode_at_time: governanceMode,
-        };
-        generationHistory.push(upscaleAttempt);
-        final4kUrl = upscaledPersisted.browserUrl;
-        final4k = upscaleAttempt.is_4k;
-        // Promote upscaled image as the "primary" persisted image so the
-        // asset row points at the 4K version.
-        approvedB64 = upscaled.b64_data;
-        approvedAttempt = upscaleAttempt;
-      } catch (err) {
-        if (err instanceof UpscaleError) {
-          console.error(
-            `[eref] upscale failed for ${job.shot.shot_id}: ${err.message} (keeping 1024 image)`,
-          );
-        } else {
-          throw err;
-        }
-      }
-    }
+    // ── 4K upscale moved to POST-approval (2026-06-20, Director q5) ────────
+    // Previously this was "Phase E.5": it upscaled here on the INTERNAL AI
+    // reviewer's APPROVE (finalVerdict === 'APPROVE'), BEFORE the Director's
+    // final approval — so the studio paid ~$0.03 to upscale candidates that
+    // could still be rejected / superseded / regenerated. The paid 4K upscale
+    // now fires ONLY on the Director/authorized APPROVE decision, via
+    // app/api/assets/[id]/approve → 'sandystudio/exec-eref/upscale-final' →
+    // runUpscaleOnly (lib/agents/runners/eref-upscale-only.ts). Assets land in
+    // REVIEW at native 1536×1024 with final_4k_url=null; downstream (VGEN /
+    // animatic) works on the native frame and resolves by newest-approved, not
+    // by final_4k_url. `upscaleToFourK` import is retained for the upscale-only
+    // runner via its own module; nothing upscales in this generation path now.
+    const final4kUrl: string | null = null;
+    const final4k = approvedAttempt.is_4k;
 
     // ── Persist asset row ─────────────────────────────────────────────────
     const fileType = `IMG-episode_ref_${job.slug}`.slice(0, 80);

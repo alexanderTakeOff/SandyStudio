@@ -21,6 +21,7 @@ import {
   isShotReferenceV2,
   type ShotReferenceContract,
 } from '@/lib/api/shot-reference';
+import { getEREFUpscaleEnabled } from '@/lib/api/eref-config';
 import {
   isAnimaticV1,
   type AnimaticContract,
@@ -398,12 +399,20 @@ export const POST = withApiHandler(async (req, ctx) => {
 
     // v2 EREF: trigger Director-approve 4K upscale per technology.md §3
     // unless explicitly skipped or asset is already 4K.
+    //
+    // 2026-06-20 (Director q5): this is now the SOLE 4K upscale point — the
+    // pre-approval Phase E.5 in episode-references.ts was removed so the paid
+    // upscale fires ONLY on the final (human/authorized) APPROVE, never on
+    // candidates that may be rejected/regenerated. The global eref_upscale_enabled
+    // kill-switch is honoured HERE now that its former (pre-approval) consumer is
+    // gone.
     if (isV2EREFApprove) {
       const sr = (asset.metadata as unknown as { shot_reference: ShotReferenceContract })
         .shot_reference;
       const skipUpscale = body.eref_options?.skip_upscale === true;
       const alreadyFourK = Boolean(sr.final_4k_url);
-      if (!skipUpscale && !alreadyFourK) {
+      const upscaleEnabled = await getEREFUpscaleEnabled(supabase);
+      if (upscaleEnabled && !skipUpscale && !alreadyFourK) {
         const { ids } = await inngest.send({
           name: 'sandystudio/exec-eref/upscale-final',
           data: { episodeId: asset.episode_id, assetId: id } as never,
