@@ -17,6 +17,25 @@ export interface PreviewSource {
   drive_path?: string | null;
   staging_path?: string | null;
   drive_web_view_url?: string | null;
+  /**
+   * Cache-bust inputs. Regenerating an image keeps the same asset id + filename,
+   * so `/api/media/<id>` is byte-stale in the browser cache (DRAFT files carry
+   * max-age=3600). Appending `?t=<freshness>` gives each regen a distinct URL.
+   * `image_prompt.current_version` bumps on every (re)generation; `version` is
+   * the row-level fallback.
+   */
+  version?: number | null;
+  /** Loosely typed so `AssetRow.metadata` (unknown) stays assignable; narrowed in `previewFreshness`. */
+  metadata?: unknown;
+}
+
+/** Best available "image changed" signal for cache-busting the media URL. */
+export function previewFreshness(s?: PreviewSource | null): number | null {
+  if (!s) return null;
+  const ip = (s.metadata as { image_prompt?: { current_version?: number | null } | null } | null)
+    ?.image_prompt;
+  if (typeof ip?.current_version === 'number') return ip.current_version;
+  return typeof s.version === 'number' ? s.version : null;
 }
 
 /** True when the path is something the browser can load directly (absolute root path or http(s) URL). */
@@ -36,12 +55,20 @@ export function isHttpishUrl(path: string | null | undefined): boolean {
  * thread `drive_file_id` through every SELECT, since `drive_web_view_url` is
  * already carried everywhere. Returns null for local-only / mock assets.
  */
-export function driveBackedMediaUrl(a: {
-  id?: string | null;
-  drive_file_id?: string | null;
-  drive_web_view_url?: string | null;
-}): string | null {
-  if (a.id && (a.drive_file_id || a.drive_web_view_url)) return `/api/media/${a.id}`;
+export function driveBackedMediaUrl(
+  a: {
+    id?: string | null;
+    drive_file_id?: string | null;
+    drive_web_view_url?: string | null;
+  },
+  freshness?: string | number | null,
+): string | null {
+  if (a.id && (a.drive_file_id || a.drive_web_view_url)) {
+    const base = `/api/media/${a.id}`;
+    // `?t=` is ignored by the media route (it only reads `?w=`/`?thumb=`) and
+    // coexists with `?w=` via withThumbParam — safe cache-bust on the URL only.
+    return freshness != null ? `${base}?t=${encodeURIComponent(String(freshness))}` : base;
+  }
   return null;
 }
 
@@ -59,7 +86,9 @@ export function resolvePreviewSrc(
   // It survives worktree deletion and doesn't depend on the local /staging
   // cache or symlinks (the breakage that wiped every preview). Falls through to
   // the legacy local candidates for mock/local-only assets without a Drive id.
-  const route = driveBackedMediaUrl(asset) ?? driveBackedMediaUrl(promptEntry ?? {});
+  const freshness = previewFreshness(asset) ?? previewFreshness(promptEntry);
+  const route =
+    driveBackedMediaUrl(asset, freshness) ?? driveBackedMediaUrl(promptEntry ?? {}, freshness);
   if (route) return route;
   const candidates: Array<string | null | undefined> = [
     asset.drive_path,
