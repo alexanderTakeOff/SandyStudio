@@ -41,6 +41,7 @@ import { checkVerbalApproval } from '@/lib/concierge/approval-check';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
 import { mapChatError } from '@/lib/concierge/chat-error-envelope';
 import type { ToolContext, ToolResult } from '@/lib/concierge/tools';
+import { isUuid } from '@/lib/concierge/tools/types';
 import type { ConciergeMode, ConciergeTurnRow } from '@/lib/concierge/types';
 import { resolveEffectiveConciergeMode } from '@/lib/concierge/resolve-mode';
 import {
@@ -790,6 +791,29 @@ async function runTool(
       ok: false,
       error: err instanceof Error ? err.message : 'invalid tool arguments',
     };
+  }
+  // Durable phantom-episode guard (2026-06-20). On an UNBOUND thread,
+  // resolveEpisodeId trusts ANY well-formed UUID the model puts in
+  // args.episodeId — a hallucinated id (gemini's 3291d90d on E11) then sails
+  // through and every episode-scoped query SILENTLY misses ("no APPROVED
+  // storyboard…"). Validate existence once, here at the single dispatch
+  // chokepoint, and fail LOUD so the model self-corrects instead of looping on
+  // an invisible miss. Only when the thread is unbound (ctx.episodeId absent) —
+  // a bound thread's binding wins in resolveEpisodeId and the model's arg is
+  // already ignored, so no DB hit is needed there.
+  if (!ctx.episodeId && isUuid(parsedArgs.episodeId)) {
+    const { data: epRow } = await ctx.supabase
+      .from('episodes')
+      .select('id')
+      .eq('id', parsedArgs.episodeId)
+      .maybeSingle();
+    if (!epRow) {
+      return {
+        ok: false,
+        error: `episode ${parsedArgs.episodeId} does not exist. Do NOT invent or guess episode UUIDs — omit episodeId to use the active episode, or ask the Director for the correct id.`,
+        code: 'episode_not_found',
+      };
+    }
   }
   try {
     return await tool.execute(parsedArgs, ctx);
