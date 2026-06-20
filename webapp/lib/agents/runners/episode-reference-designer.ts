@@ -259,6 +259,12 @@ interface EpisodeLike {
 // reload it. 2026-06-15 — skill LAYOUT LOCK example de-leaked (was a hardcoded
 // bedroom furniture list that the Designer copied into elevator plans, painting
 // furniture into a bare cab); this touch busts the stale cache.
+// 2026-06-20 (q15а) — .md LAYOUT LOCK block made spatial-kind aware: flat FIELD
+// (spatial_layout=false) now SKIPS layout-lock/scene_master in single-ref mode
+// (was leaking the scene_master preamble into empty_background plans). Gating
+// moved to non-emitted prose; flat field uses a clean [Background] block (no
+// trigger words). Also dropped the redundant layout_lock_directive from [Location]
+// and the "floor" word from [Background]. This touch busts the stale cache.
 let systemPromptCache: string | null = null;
 
 async function loadSystemPrompt(): Promise<string> {

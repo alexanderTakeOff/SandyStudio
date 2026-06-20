@@ -244,7 +244,12 @@ override via Critic REVISE.
 
 ### Step 5 — Compose smart-canon prompt (Director directive 2026-05-18)
 
-Use **structured sections**, not novel-prose. Pattern:
+Use **structured sections**, not novel-prose. Choose the location block by the
+shot's location kind: a spatial SET (`spatial_layout=true` — room / interior /
+street with persistent geometry) uses `[LAYOUT LOCK]`; a flat FIELD
+(`spatial_layout=false`, e.g. an empty background) uses `[Background]` instead.
+Emit exactly ONE of the two, never both, and never emit this guidance paragraph
+itself. Pattern:
 
 ```
 [LAYOUT LOCK — hard contract]
@@ -277,6 +282,12 @@ This is a HARD CONTRACT — prompts that lack explicit canon-derived layout-lock
 language, OR that name objects absent from the location canon, will be rejected
 by the Designer's Critic (EXEC-EPREV).
 
+[Background]
+An open, uniform field of the canonical background colour — no built environment
+and no standing set-dressing, only the empty field. Every object in frame (the fan,
+a blanket, any prop) is a TRANSIENT prop the action introduces; name each and cite
+its source beat. Stage the character pose and camera intent against this open field.
+
 [Scene context — 1 sentence from script_scene context]
 
 [Action — verbatim from storyboard shot.action_prose, NOT truncated to first sentence]
@@ -305,9 +316,7 @@ by the Designer's Critic (EXEC-EPREV).
 [Location — from Bible locations[shot.location_id]:
   - geographic_anchor (where in the world)
   - sub_area: from shot.sub_area if present (explicit camera variation)
-  - lighting: Bible-defined baseline + shot.time_of_day override
-  - layout_lock_directive: «match the attached LOCKED master image's
-    object positions exactly; only camera angle may change»]
+  - lighting: Bible-defined baseline + shot.time_of_day override]
 
 [Camera — from shot.camera_angle + shot.camera_movement + shot.camera_motivation,
   formatted as a single sentence]
