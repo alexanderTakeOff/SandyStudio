@@ -454,7 +454,7 @@ describe('findLatestApprovedImgByLocation (TD-30)', () => {
     const limit = vi.fn(() => promise);
     const order = vi.fn(() => ({ limit }));
     const eq2 = vi.fn(() => ({ order }));
-    const eq1 = vi.fn(() => ({ eq: eq2 }));
+    const eq1 = vi.fn(() => ({ eq: eq2, order }));
     const select = vi.fn(() => ({ eq: eq1 }));
     const from = vi.fn(() => ({ select }));
     return { from } as unknown as Parameters<typeof findLatestApprovedImgByLocation>[0];
@@ -554,7 +554,7 @@ describe('runEpisodeReferenceDesigner — scene continuity context (TD-30)', () 
     const limit = vi.fn(() => promise);
     const order = vi.fn(() => ({ limit }));
     const eq2 = vi.fn(() => ({ order }));
-    const eq1 = vi.fn(() => ({ eq: eq2 }));
+    const eq1 = vi.fn(() => ({ eq: eq2, order }));
     const select = vi.fn(() => ({ eq: eq1 }));
     return { from: vi.fn(() => ({ select })) };
   }
@@ -674,7 +674,7 @@ describe('runEpisodeReferenceDesigner — temporal continuity context (TD-33)', 
     const limit = vi.fn(() => promise);
     const order = vi.fn(() => ({ limit }));
     const eq2 = vi.fn(() => ({ order }));
-    const eq1 = vi.fn(() => ({ eq: eq2 }));
+    const eq1 = vi.fn(() => ({ eq: eq2, order }));
     const select = vi.fn(() => ({ eq: eq1 }));
     return { from: vi.fn(() => ({ select })) };
   }
