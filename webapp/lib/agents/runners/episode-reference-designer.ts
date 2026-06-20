@@ -359,7 +359,10 @@ function buildDeliveryTargetsTable(targets: readonly string[]): string {
  * Designer LLM sees the absence and either skips the anchor_pair block
  * (legacy fallback) or flags via policy_notes per the system prompt.
  */
-function buildAnchorChainSections(ctx: AnchorChainContext): string {
+function buildAnchorChainSections(
+  ctx: AnchorChainContext,
+  locationHasSpatialLayout: boolean,
+): string {
   const adjacentPriorLine = ctx.adjacent_shots.prior
     ? `${ctx.adjacent_shots.prior.shotId} (role: ${ctx.adjacent_shots.prior.shotRole ?? 'unspecified'})`
     : '(none — current shot is first in narrative order)';
@@ -375,7 +378,9 @@ function buildAnchorChainSections(ctx: AnchorChainContext): string {
               `  - shot ${a.shotId} · side ${a.side} · asset_id ${a.asset_id}`,
           )
           .join('\n');
-  const sceneMasterBlock = ctx.scene_master_asset
+  const sceneMasterBlock = !locationHasSpatialLayout
+    ? '(this location is a flat FIELD — `spatial_layout=false`. A master plate may exist but it fixes ONLY the background colour/texture, NOT a layout. Do NOT emit a LAYOUT LOCK or cite the master as a canonical layout. Author the anchor poses against the flat field + identity refs.)'
+    : ctx.scene_master_asset
     ? [
         `  - asset_id: ${ctx.scene_master_asset.asset_id}`,
         `  - source: ${ctx.scene_master_asset.source} (${ctx.scene_master_asset.source === 'scene_master' ? 'preferred layout master' : 'fallback location asset'})`,
@@ -406,7 +411,9 @@ function buildAnchorChainSections(ctx: AnchorChainContext): string {
     'For each side you author:',
     '  - `role` MUST be from the enum (start: establishing|shared|cut_in; end: shared|cut_out|final).',
     '  - `handoff_link_to_shot_id` MUST be the full shot_id of the paired shot when `role=shared`, otherwise `null`.',
-    '  - `prompt` MUST include a LAYOUT LOCK preamble citing scene_master as the canonical layout, plus camera intent and character pose for THIS anchor moment.',
+    locationHasSpatialLayout
+      ? '  - `prompt` MUST include a LAYOUT LOCK preamble citing scene_master as the canonical layout, plus camera intent and character pose for THIS anchor moment.'
+      : '  - `prompt` MUST NOT emit a LAYOUT LOCK or cite a layout master — this location is a flat FIELD with no layout to lock. State only that the background is a flat field of the canonical colour, plus camera intent and character pose for THIS anchor moment.',
     '  - `rationale` is one sentence explaining the role choice.',
     '',
     'If `scene_master_asset` above is null, emit a `canon_extension_proposed` rationale in `policy_notes` and OMIT the `anchor_pair` block entirely — do not fabricate anchors against an unset master.',
@@ -463,6 +470,13 @@ function buildUserMessage(args: {
   /** TD-30: bible-locked location slug for this shot — surfaced so Designer can reason. */
   locationSlug?: string | null;
   /**
+   * q10 (2026-06-20): does this location have a persistent spatial layout to
+   * lock? Default true (a SET). False for a flat FIELD (empty_background, void)
+   * declared `spatial_layout=false` in canon. Drives whether LAYOUT LOCK /
+   * standing objects / spatial anchor apply — one axis, no per-slug branches.
+   */
+  locationHasSpatialLayout?: boolean;
+  /**
    * TD-30: true iff caller actually performed the lookup (supabase present
    * AND locationSlug resolvable). False → Designer should NOT claim "first
    * shot in location" because we never checked — Plan must mark the field
@@ -495,6 +509,7 @@ function buildUserMessage(args: {
     revisionNote,
     priorSceneContinuityAnchorAssetId,
     locationSlug,
+    locationHasSpatialLayout = true,
     sceneContinuityLookupPerformed,
     previousShotId,
     priorTemporalAnchorAssetId,
@@ -573,8 +588,8 @@ function buildUserMessage(args: {
     '',
     !sceneContinuityLookupPerformed
       ? 'Spatial-continuity lookup was NOT performed in this runner invocation (no DB access). Do NOT emit a `spatial_same_location` anchor; add a policy_note flagging the absent lookup.'
-      : locationSlug === 'empty_background'
-        ? 'Location is `empty_background` — a flat field with NO persistent spatial layout / set-dressing. Do NOT emit a `spatial_same_location` anchor: there is nothing spatial to stabilise, and anchoring on a prior shot would copy that frame\'s incidental composition (any furniture/room) forward and propagate it. Each empty-background shot is generated fresh against the flat field + identity refs only.'
+      : !locationHasSpatialLayout
+        ? 'This location is a flat FIELD — NO persistent spatial layout / set-dressing (declared `spatial_layout=false` in canon). Do NOT emit a `spatial_same_location` anchor: there is nothing spatial to stabilise, and anchoring on a prior shot would copy that frame\'s incidental composition (any furniture/room) forward and propagate it. Each shot is generated fresh against the flat field + identity refs only.'
       : locationSlug
         ? priorSceneContinuityAnchorAssetId
           ? `A prior APPROVED IMG-episode_ref in location \`${locationSlug}\` exists for this episode (asset_id: \`${priorSceneContinuityAnchorAssetId}\`, lookup_at: now). When continuity_strategy.mode = openai-edits-multi, append an entry \`{"kind":"spatial_same_location","asset_id":"${priorSceneContinuityAnchorAssetId}","resolved_at":"<lookup ISO timestamp>"}\` to \`continuity_anchors\`. Stabilises spatial layout (furniture, set dressing) across shots in the same room.`
@@ -603,21 +618,23 @@ function buildUserMessage(args: {
           '',
         ].join('\n')
       : '',
-    // q14/E11 guard (2026-06-19): empty_background has ZERO standing objects.
-    // The designer LLM sometimes mis-classifies gag furniture (shelf/rug/bed) as
-    // LOCKED standing set-dressing → the image renders a whole room. On an empty
-    // background nothing persists: every visible object is a TRANSIENT per-shot prop
-    // (no LAYOUT LOCK, no cross-shot drift). Force that here. Conditional on the
-    // empty_background slug — no other location is affected.
-    locationSlug === 'empty_background'
+    // q10 (2026-06-20): FLAT-FIELD location override. A location declared
+    // `spatial_layout=false` in canon (empty_background, void, colour cyclorama)
+    // has NO persistent geometry — nothing to LAYOUT LOCK. The designer LLM
+    // otherwise mis-classifies gag furniture (shelf/rug/bed) as LOCKED standing
+    // set-dressing → the image renders a whole room. On a field nothing persists:
+    // every visible object is a TRANSIENT per-shot prop. Driven by the one
+    // location-kind axis — a SET (room/elevator/street) keeps LAYOUT LOCK and
+    // never enters this branch.
+    !locationHasSpatialLayout
       ? [
-          '## EMPTY-BACKGROUND LOCATION OVERRIDE (HARD) — no standing objects',
+          '## FLAT-FIELD LOCATION OVERRIDE (HARD) — no standing objects, no layout to lock',
           '',
-          "This shot's location `empty_background` is a flat, uniform Cream #FFF8EC field with ZERO canonical standing objects and no environment geometry. The LAYOUT LOCK preamble MUST state there are NO standing objects to lock (nothing from a master to keep in a fixed screen position). Do NOT enumerate any furniture, set-dressing, or location object as locked/standing — not even if the storyboard lists props. EVERY object visible in this shot (a closet, bookshelf, rug, bench, umbrella, etc.) is a TRANSIENT per-shot prop that the action introduces for THIS shot only: list such items as transient props, NEVER as locked standing objects, and expect them gone next shot (no continuity drift). The background stays a clean flat #FFF8EC field — no room, no walls, no floor line, no horizon, no persistent furniture.",
+          "This shot's location is a flat, uniform FIELD with ZERO canonical standing objects and no environment geometry (declared `spatial_layout=false`). Do NOT emit a LAYOUT LOCK and do NOT cite any master as a layout — there is no layout, only a background colour/texture. Do NOT enumerate any furniture, set-dressing, or location object as locked/standing — not even if the storyboard lists props. EVERY object visible in this shot (a closet, bookshelf, rug, bench, umbrella, etc.) is a TRANSIENT per-shot prop that the action introduces for THIS shot only: list such items as transient props, NEVER as locked standing objects, and expect them gone next shot (no continuity drift). The background stays a clean flat field of the canonical colour — no room, no walls, no floor line, no horizon, no persistent furniture.",
           '',
         ].join('\n')
       : '',
-    anchorChainContext ? buildAnchorChainSections(anchorChainContext) : '',
+    anchorChainContext ? buildAnchorChainSections(anchorChainContext, locationHasSpatialLayout) : '',
     '## Output format',
     '',
     'Respond in markdown with this structure:',
@@ -695,13 +712,13 @@ function buildUserMessage(args: {
           '    "start": {',
           '      "role": "<establishing | shared | cut_in>",',
           '      "handoff_link_to_shot_id": "<full shot_id of prior shot> | null",',
-          '      "prompt": "<LAYOUT LOCK preamble + camera intent + character pose for start anchor>",',
+          '      "prompt": "<anchor preamble per the Scene Master guidance above + camera intent + character pose for start anchor>",',
           '      "rationale": "<one sentence>"',
           '    },',
           '    "end": {',
           '      "role": "<shared | cut_out | final>",',
           '      "handoff_link_to_shot_id": "<full shot_id of next shot> | null",',
-          '      "prompt": "<LAYOUT LOCK preamble + camera intent + character pose for end anchor>",',
+          '      "prompt": "<anchor preamble per the Scene Master guidance above + camera intent + character pose for end anchor>",',
           '      "rationale": "<one sentence>"',
           '    }',
           '  },',
@@ -868,6 +885,30 @@ export async function runEpisodeReferenceDesigner(
     }
   }
 
+  // q10 (2026-06-20): does this location HAVE a spatial layout to lock? This is
+  // the one axis that governs LAYOUT LOCK / standing objects / spatial anchor —
+  // replacing the hardcoded `empty_background` slug-check (which would sprawl a
+  // new branch per flat background). Default TRUE: a SET (bedroom, elevator,
+  // street) has persistent geometry → LAYOUT LOCK is meaningful, behaves exactly
+  // as before. A flat FIELD (empty_background, void, colour cyclorama) declares
+  // `metadata.spatial_layout === false` on its canon plate → nothing to lock.
+  // Default-true means every existing location is unaffected; only declared
+  // fields opt out. New flat backgrounds = declare once in canon, zero code.
+  let locationHasSpatialLayout = true;
+  if (supabase && locationSlug) {
+    const { data: locRow } = await supabase
+      .from('assets')
+      .select('metadata')
+      .eq('file_type', `SBL-location_${locationSlug}`)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const lm = (locRow?.[0]?.metadata ?? null) as { spatial_layout?: unknown } | null;
+    if (lm?.spatial_layout === false) locationHasSpatialLayout = false;
+  }
+  notes.push(
+    `Location kind: ${locationHasSpatialLayout ? 'SET (layout-lockable)' : 'FIELD (no layout to lock)'} — ${locationSlug ?? 'unresolved'}`,
+  );
+
   // TD-49 Phase 2 P2.3 (2026-05-25): shot-scoped anchor chain context. Loaded
   // only when the episode is opted in via `episodes.metadata.anchor_chain_enabled`.
   // The four context blocks (full_storyboard, current_shot+adjacent, prior_anchors,
@@ -907,6 +948,7 @@ export async function runEpisodeReferenceDesigner(
     priorPlanVersion,
     revisionNote,
     locationSlug,
+    locationHasSpatialLayout,
     priorSceneContinuityAnchorAssetId,
     sceneContinuityLookupPerformed,
     previousShotId,
