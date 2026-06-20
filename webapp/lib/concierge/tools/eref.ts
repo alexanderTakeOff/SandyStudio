@@ -333,13 +333,13 @@ interface RegenerateRefPlanArgs {
 export const regenerateRefPlan: Tool<RegenerateRefPlanArgs> = {
   name: 'regenerateRefPlan',
   description:
-    "Re-fire the Designer for one shot to produce a new SPC-ref_plan version. Use when the Director wants different direction without waiting for the Critic to REVISE. Optionally pass a revisionNote — Designer treats it as a hard contract. Verbal approval required.",
+    "Re-fire the Designer for one shot to produce a new SPC-ref_plan version. This IS the tool to send a Ref Plan back for revision after a Critic REVISE/HALT verdict — there is NO separate requestRevision / rejectPlan tool, do not invent one. Optionally pass a revisionNote — Designer treats it as a hard contract. Verbal approval required.",
   mutating: true,
   schema: {
     type: 'function',
     function: {
       name: 'regenerateRefPlan',
-      description: 'Re-fire EXEC-EREF-DESIGNER for one shot. Verbal approval required.',
+      description: 'Re-fire EXEC-EREF-DESIGNER for one shot — the revision path for a Ref Plan (no requestRevision tool exists). Verbal approval required.',
       parameters: {
         type: 'object',
         properties: {
