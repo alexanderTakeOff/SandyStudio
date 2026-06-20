@@ -573,6 +573,8 @@ function buildUserMessage(args: {
     '',
     !sceneContinuityLookupPerformed
       ? 'Spatial-continuity lookup was NOT performed in this runner invocation (no DB access). Do NOT emit a `spatial_same_location` anchor; add a policy_note flagging the absent lookup.'
+      : locationSlug === 'empty_background'
+        ? 'Location is `empty_background` — a flat field with NO persistent spatial layout / set-dressing. Do NOT emit a `spatial_same_location` anchor: there is nothing spatial to stabilise, and anchoring on a prior shot would copy that frame\'s incidental composition (any furniture/room) forward and propagate it. Each empty-background shot is generated fresh against the flat field + identity refs only.'
       : locationSlug
         ? priorSceneContinuityAnchorAssetId
           ? `A prior APPROVED IMG-episode_ref in location \`${locationSlug}\` exists for this episode (asset_id: \`${priorSceneContinuityAnchorAssetId}\`, lookup_at: now). When continuity_strategy.mode = openai-edits-multi, append an entry \`{"kind":"spatial_same_location","asset_id":"${priorSceneContinuityAnchorAssetId}","resolved_at":"<lookup ISO timestamp>"}\` to \`continuity_anchors\`. Stabilises spatial layout (furniture, set dressing) across shots in the same room.`
@@ -598,6 +600,20 @@ function buildUserMessage(args: {
           revisionNote,
           '',
           'Treat each item above as a HARD CONTRACT, not a hint. The new Plan must visibly differ from the prior version in at least the dimensions flagged. Do not "minimally tweak" a previously rejected decision — re-derive it from inputs. Before finalising output, self-validate against the criteria. If any criterion fails, fix it in the same response.',
+          '',
+        ].join('\n')
+      : '',
+    // q14/E11 guard (2026-06-19): empty_background has ZERO standing objects.
+    // The designer LLM sometimes mis-classifies gag furniture (shelf/rug/bed) as
+    // LOCKED standing set-dressing → the image renders a whole room. On an empty
+    // background nothing persists: every visible object is a TRANSIENT per-shot prop
+    // (no LAYOUT LOCK, no cross-shot drift). Force that here. Conditional on the
+    // empty_background slug — no other location is affected.
+    locationSlug === 'empty_background'
+      ? [
+          '## EMPTY-BACKGROUND LOCATION OVERRIDE (HARD) — no standing objects',
+          '',
+          "This shot's location `empty_background` is a flat, uniform Cream #FFF8EC field with ZERO canonical standing objects and no environment geometry. The LAYOUT LOCK preamble MUST state there are NO standing objects to lock (nothing from a master to keep in a fixed screen position). Do NOT enumerate any furniture, set-dressing, or location object as locked/standing — not even if the storyboard lists props. EVERY object visible in this shot (a closet, bookshelf, rug, bench, umbrella, etc.) is a TRANSIENT per-shot prop that the action introduces for THIS shot only: list such items as transient props, NEVER as locked standing objects, and expect them gone next shot (no continuity drift). The background stays a clean flat #FFF8EC field — no room, no walls, no floor line, no horizon, no persistent furniture.",
           '',
         ].join('\n')
       : '',

@@ -329,6 +329,60 @@ export interface StoryboarderRunArgs {
   revisionNote?: string;
 }
 
+/**
+ * Force EPISODE-CONTINUOUS SH numbering across the whole storyboard
+ * (SH01, SH02, … in shot order), preserving each shot's `A<n>-SC<nn>` prefix.
+ *
+ * The storyboarder LLM is NOT consistent about the SH counter: opus numbered SH
+ * continuously across the episode (E10: …SC02-SH05, SC03-SH07), gemini resets SH
+ * per scene (E11: every scene restarts at SH01). That drift breaks ordering /
+ * tracking by SH and differs episode-to-episode. We make it deterministic in code
+ * regardless of model (Director directive 2026-06-19 q14a: SH is episode-continuous,
+ * never per-scene).
+ *
+ * Mutates `body.acts[].shots[].shot_id` in place and rewrites the markdown. The
+ * rewrite is a two-pass placeholder swap so a freshly-assigned id can never clobber
+ * an as-yet-unprocessed old id (e.g. old SC02-SH01 → SC02-SH03 collides with the
+ * old SC02-SH03 of the same scene). Returns the renumbered markdown.
+ */
+function renumberShotsContinuous(
+  markdown: string,
+  body: Record<string, unknown>,
+): string {
+  const acts = Array.isArray(body.acts) ? (body.acts as unknown[]) : [];
+  const idMap = new Map<string, string>(); // old shot_id → new shot_id
+  let counter = 0;
+  for (const act of acts) {
+    const shots = Array.isArray((act as { shots?: unknown[] }).shots)
+      ? ((act as { shots: unknown[] }).shots)
+      : [];
+    for (const sh of shots) {
+      const shot = sh as { shot_id?: unknown };
+      if (typeof shot.shot_id !== 'string') continue;
+      counter += 1;
+      const oldId = shot.shot_id;
+      const newSh = `SH${String(counter).padStart(2, '0')}`;
+      const prefix = /^(.*-A\d+-SC\d+)-SH\d+$/.exec(oldId);
+      const newId = prefix ? `${prefix[1]}-${newSh}` : oldId.replace(/-SH\d+$/, `-${newSh}`);
+      shot.shot_id = newId;
+      if (newId !== oldId) idMap.set(oldId, newId);
+    }
+  }
+  if (idMap.size === 0) return markdown;
+  let out = markdown;
+  const fromPlaceholder = new Map<string, string>();
+  let p = 0;
+  for (const [oldId, newId] of idMap) {
+    const ph = ` SHID${p++} `;
+    fromPlaceholder.set(ph, newId);
+    out = out.split(oldId).join(ph);
+  }
+  for (const [ph, newId] of fromPlaceholder) {
+    out = out.split(ph).join(newId);
+  }
+  return out;
+}
+
 export async function runStoryboarder(
   args: StoryboarderRunArgs,
 ): Promise<StoryboarderRunResult> {
@@ -507,6 +561,10 @@ export async function runStoryboarder(
   // Validate act count and shot totals — easy to enforce, hard for the model
   // to silently break.
   const acts = Array.isArray(result.body.acts) ? result.body.acts : [];
+  // q14a (2026-06-19): force episode-continuous SH numbering regardless of model
+  // (gemini resets SH per scene; opus ran it continuous). Mutates body.acts shot_ids
+  // in place (so `acts` + validation below see the new ids) and rewrites markdown.
+  result.markdown = renumberShotsContinuous(result.markdown, result.body);
   if (acts.length !== 3) {
     throw new StoryboarderError(
       `Postcondition failed: expected exactly 3 acts, got ${acts.length}`,

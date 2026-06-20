@@ -51,6 +51,20 @@ Preflight is a string-comparison check:
 
 If any positive attribute is missing or any negative attribute leaks into the positive prompt, stop and rewrite the prompt before generation. Never let a generation through preflight on the basis of «close enough».
 
+## Canon Reference Description Standard (обязательные поля)
+
+Каждое описание канон-референса, идущее в генерацию, ОБЯЗАНО нести структурированный набор полей. Тонкий блёрб («щётка») — это preflight-фейл: он не даёт контроля над стилем и идентичностью и рождает off-canon (фотореализм там, где серия стилизована; гибрид с посторонним объектом/животным). Значения берутся из Series Bible (раздел стиля + `general_idea`) и Brief — этот скилл их НЕ называет (см. «What this skill does NOT prescribe»):
+
+- **Стиль:** явная привязка к одобренному style anchor серии (медиум / контур / закраску объявляет Bible, не этот скилл).
+- **Палитра / цвета:** канонические цвета элемента (из Bible/Brief).
+- **Силуэт / форма:** узнаваемая форма.
+- **Размер / пропорции:** относительно canary / протагониста.
+- **Материал / поверхность:** из чего сделан, как читается.
+- **Ключевые признаки:** немногие идентичность-определяющие детали, неизменные во всех видах.
+- **Негативы:** чем элемент НЕ является (чужой медиум, фотореализм при стилизованной серии, гибрид с животным/объектом, лишние пропсы).
+
+Если любое поле отсутствует — HALT и дополнить описание до генерации; не генерировать из недоопределённого канон-спека. Набор полей обязателен; значения — из Bible+Brief. Агент и GUI-фронт, готовящие канон-референсы (EXEC-BIBLE-AUTHOR + Library-фронт), ОБЯЗАНЫ собирать эти поля, а не одну строку.
+
 ## Style Anchor Rule
 
 After Director approves the style sample, every character, object, and location generation must reference that anchor as the style source. Generating without the approved anchor — or with a different anchor — is not allowed.

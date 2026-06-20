@@ -1,6 +1,6 @@
 ---
 name: eref-shot-composition
-description: How EXEC-EREF-DESIGNER composes Reference Plans for storyboard shots — dramatic intent, emotional read, continuity function, camera language, contrastive picking, location anchoring, character anchors, and cross-shot spatial continuity.
+description: Adds preflight canon-gap rule and elevator minimum location canon set before Reference planning.
 status: ACTIVE
 owner: Director
 applies_when:
@@ -87,8 +87,7 @@ skip this block compose images that look correct but say nothing.
 - Each subject's `current_action` + `current_mood` in the prompt body
   cites the emotional read from the block.
 - Continuity-in shapes the temporal anchor reference attached to the
-  shot; continuity-out shapes the "state delivered" that the next
-  shot's Plan will list as its continuity-in.
+  shot; continuity-out shapes the "state delivered" that the next shot's Plan will list as its continuity-in.
 
 ## Camera language vocabulary
 
@@ -142,6 +141,29 @@ Decision rule: storyboard `location.sub_area` field (if populated) is
 authoritative. If empty and the Bible has multiple sub-areas, pick the
 one that best matches the action prose; vary across consecutive shots
 in the same location.
+
+## Preflight canon check before accepting new locations
+
+For every episode with a new or renamed location, EREF Designer must not let the pipeline proceed on script/storyboard slugs alone. Before Reference planning, verify that the required Bible canon exists for:
+
+- the main character(s), especially Sandy's approved character reference;
+- every location slug used by the episode;
+- every required sub-area / wall / viewpoint that will be reused for continuity;
+- hero-grade objects that drive gags, such as a call button panel, cab button wall, doors, sensor, lever, vending spiral, etc.
+
+If a location slug appears in the script or storyboard but has no real Bible/Library canon, stop and surface a Director-facing canon gap: name the missing slugs and ask for or propose generation of the needed canon references before approving downstream Reference Plans. Do not treat a Script Critic PASS as proof that visual canon exists; critic checks can validate text intent while the Library still lacks images.
+
+### Elevator episode minimum canon set
+
+For elevator/button silent-comedy episodes, generate and use a small fixed set of location references before shot references:
+
+1. `elevator_corridor_call_wall` — exterior elevator wall only: elevator doors plus call button on a clean wall; no deep illustrated background, no people, no extra story clutter. Use one interesting simple color/palette treatment from the series style so the wall is readable but not noisy.
+2. `elevator_cab_button_wall` — inside the elevator: the wall with the floor buttons / control panel; this is the main gag surface.
+3. `elevator_cab_door_wall` — inside the elevator looking toward the doors; doors are the spatial anchor for entries/exits and squeezes.
+4. `elevator_cab_side_wall_a` — a plain side wall usable for body-physics impacts, sliding, stretching, and rebound gags.
+5. `elevator_cab_side_wall_b` — optional opposite side wall when the storyboard needs left/right spatial variety; if production is tight, one side-wall canon can serve both sides, but the Designer must state that reuse deliberately.
+
+These are location/sub-area canons, not finished episode shots. They should be clean, empty, character-free plates with enough geometry for continuity. The Reference Designer then picks from this set per shot instead of inventing a new elevator wall every time.
 
 ## Character canonical fragment anchoring
 
@@ -232,6 +254,7 @@ register the joke landing.
 - **Mismatched emotion anchor.** Shot's `expected_emotion` is
   "smitten" but you pass the neutral canonical fragment → reference
   reads dead. Match emotion to the fragment available.
+- **Accepting text-only location slugs as real canon.** A script may name `elevator_corridor` or `elevator_cab`, but without Library/Bible location plates the Reference stage will invent walls shot-by-shot. This breaks silent comedy continuity. Escalate the canon gap before Reference planning.
 
 ## Known quirks (gpt-image-1)
 
@@ -272,6 +295,8 @@ register the joke landing.
 9. For sequential shots, did I compare against the deterministic
    continuity anchor and preserve continuity-critical spatial facts?
 10. For Shorts / vertical references, am I using the provider-safe source size (`1024x1536` when required) and not forcing an unsupported delivery canvas (`1024x1792`) at the still-image stage?
+11. For new/renamed locations, did I verify real Bible/Library canon exists for the location and its reusable sub-areas before letting Reference planning proceed?
+12. For elevator/button episodes, did I use the minimum elevator canon set — exterior call wall, cab button wall, cab door wall, side wall A, and optional side wall B — instead of inventing per-shot walls?
 
 ## Cross-references
 
