@@ -281,11 +281,26 @@ by the Designer's Critic (EXEC-EPREV).
 
 [Action — verbatim from storyboard shot.action_prose, NOT truncated to first sentence]
 
+[Acting — LEAD THE POSITIVE WITH THIS. The single most important quality lever:
+  the focal character's emotional beat made VISIBLE. State, in this order:
+  - facial expression: eye state (wide / narrowed / squeezed shut) + mouth state
+    (clenched / open / gritted / grin);
+  - body attitude / silhouette: how the pose carries the emotion (leaning hard into
+    the wind, recoiling, braced, deflated);
+  - readable intent: what the audience instantly reads the character is trying to do.
+  SOURCE: shot.expected_emotion. When it is `(none)`/absent, DERIVE the beat from
+  shot.action_prose + shot.expected_gag — NEVER leave the character emotionally
+  neutral. For a comedy series the acting IS the product: a flat face kills the gag.
+  Bad:  "Sandy reaches for the switch."
+  Good: "Sandy lunges for the switch with panicked determination — eyes wide, mouth
+         clenched, body stretched forward while the wind shoves him back."]
+
 [Subject — for each character in shot.characters[]:
   - name
   - physical_anchors: structured Bible fields (proportions, palette, distinguishing features)
   - costume: from Bible costume field
-  - current_mood: from shot.expected_emotion]
+  - current_mood: from shot.expected_emotion (this restates the Acting beat above
+    in structured form — keep them consistent)]
 
 [Location — from Bible locations[shot.location_id]:
   - geographic_anchor (where in the world)
@@ -301,6 +316,12 @@ by the Designer's Critic (EXEC-EPREV).
   pencil edge, flat vector fills, no hatching, warm cinematic palette")]
 
 [Gag / Beat — if shot.expected_gag present, one sentence explaining the visual gag]
+
+[Gag-object attachment — when the gag involves an interactive control (a button,
+  lever, switch, panel, dial, handle), state EXPLICITLY which object's body/base it
+  is physically mounted on, e.g. «the red OFF button is mounted on the fan's own
+  body/base», never on a wall and never floating in space. Ambiguous attachment is
+  what made SH09 draw a wall switch / floating button.]
 ```
 
 **Critical rules (closing the 2026-05-18 dispute on smart-canon B):**
@@ -314,10 +335,18 @@ by the Designer's Critic (EXEC-EPREV).
   `firstSentence()` clamp in buildShotPromptV2 was a 2026-05-13 over-correction.
 - Include camera_movement + camera_motivation, not just camera_angle. The
   legacy `describeCamera()` lookup table ignored both.
+- **ACTING-FIRST, NEGATIVE-LIGHT (Director directive 2026-06-20).** The positive
+  must LEAD with the `[Acting]` block (face + body + intent) — that is the first
+  thing the model reads, not layout boilerplate. The negative block must stay
+  **compact** and MUST NOT be longer or more detailed than the positive acting
+  core. A prompt that spends most of its tokens on prohibitions while the desired
+  image is one thin sentence is the defect we are fixing.
 
 ### Step 6 — Compose negative list
 
-Always include baseline:
+Keep it COMPACT — baseline + only shot-critical exclusions. The negative must not
+dominate the prompt or out-length the positive acting core (see ACTING-FIRST rule
+above). Always include baseline:
 
 ```
 - no extra limbs
@@ -327,7 +356,9 @@ Always include baseline:
 - no on-screen captions
 ```
 
-Append running negative list from `app_config.eref_negative_baseline` +
+Append ONLY shot-critical exclusions (the specific failure this shot risks, e.g.
+`no wall switch, no floating button` for SH09). Append running negative list from
+`app_config.eref_negative_baseline` +
 per-episode addenda (e.g. from E20 retro: `no granular body distortion on Sandy`).
 
 ### Step 7 — Decide camera coverage / sub_area variation

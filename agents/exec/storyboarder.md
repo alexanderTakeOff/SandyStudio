@@ -209,12 +209,27 @@ characters_present: # character_ids from script scene — exact strings from pro
 action:            # one sentence — what the camera sees
                    # subject + movement/state + reaction/expression
                    # must not go beyond what the script action describes
-                   # must not include internal states or emotions as text
+                   # keep this line factual — the visible ACTING beat goes in the
+                   # dedicated `expected_emotion` field below, NOT smuggled in here
+
+expected_emotion:  # MANDATORY (Director directive 2026-06-20) — the focal
+                   # character's VISIBLE acting beat for THIS shot, so the
+                   # Reference Designer renders real emotion instead of inventing
+                   # a flat face. One short clause covering:
+                   #   - facial expression: eye state + mouth state
+                   #   - body attitude: how the pose carries the feeling
+                   #   - readable intent: what we instantly read them trying to do
+                   # Derive from the script beat + comic_beat. For a comedy series
+                   # the acting IS the product — never leave this empty.
+                   # Example: "panicked determination — eyes wide, mouth clenched,
+                   #           body stretched forward against the wind"
 
 dialogue:          # if script has dialogue in this scene, assign to shot where it occurs
                    # copy from script exactly — do not paraphrase
 
-mood:              # from Style Bible mood vocabulary
+mood:              # from Style Bible mood vocabulary — the SCENE-level tone
+                   # (distinct from per-shot `expected_emotion`, which is the
+                   # character's visible acting beat)
                    # must match the emotional function of the shot in the sequence
 
 duration_seconds:  # estimate per Style Bible shot duration guidelines
