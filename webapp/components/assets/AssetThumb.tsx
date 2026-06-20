@@ -12,6 +12,7 @@ import { Lock } from 'lucide-react';
 import type { AssetMetadataDoc } from '@/lib/api/series-bible';
 import { NotificationDot } from '@/components/notifications/NotificationDot';
 import { withThumbParam } from '@/lib/media-thumb';
+import { driveBackedMediaUrl, previewFreshness } from '@/lib/asset-preview-resolver';
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'var(--accent-info)',
@@ -41,10 +42,29 @@ export interface AssetThumbProps {
   onClick?: () => void;
 }
 
+// Role badge for EREF tiles (Director 2026-06-20): a shot's reference gallery
+// previously showed only a version plate (v01…), so anchor pairs vs single
+// references were indistinguishable at a glance. Derive a compact role mark
+// purely from the file_type slug:
+//   IMG-anchor_*_start → 'start'   IMG-anchor_*_end → 'end'   (two-anchor pair)
+//   IMG-episode_ref_*  → 'ref'                                (single reference)
+// Any other asset family (Bible cards, character refs, …) returns null, so no
+// badge leaks into non-EREF galleries that reuse this generic tile.
+function anchorRoleLabel(fileType: string): 'start' | 'end' | 'ref' | null {
+  if (fileType.startsWith('IMG-anchor')) {
+    const pos = /_(start|end)$/i.exec(fileType)?.[1]?.toLowerCase();
+    return pos === 'start' || pos === 'end' ? pos : null;
+  }
+  if (fileType.startsWith('IMG-episode_ref')) return 'ref';
+  return null;
+}
+
 function pickPreviewSrc(a: AssetThumbProps['asset']): string | null {
   // Drive-backed media → stable /api/media/<id> route (post-2026-06-01 cache
   // migration); /staging is dead, drive_web_view_url is a viewer page not an image.
-  if (a.id && a.drive_web_view_url) return `/api/media/${a.id}`;
+  // Cache-bust via current_version so regenerated images aren't served stale.
+  const route = driveBackedMediaUrl(a, previewFreshness(a));
+  if (route) return route;
   const promptDoc = a.metadata?.image_prompt;
   const currentEntry = promptDoc?.history.find((h) => h.version === promptDoc.current_version);
   const candidates: Array<string | null | undefined> = [
@@ -81,9 +101,13 @@ export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbP
   // divisor was /5.5, now /11 (font), with tighter padding to match.
   const versionLabel =
     asset.version != null ? `v${String(asset.version).padStart(2, '0')}` : null;
+  // Anchor/ref role mark (Director 2026-06-20) — sits in the same bottom-left
+  // chip ahead of the version so a shot's start/end pair vs a single ref reads
+  // without hovering.
+  const roleLabel = anchorRoleLabel(asset.file_type);
   // Scale chip font with tile size — readable from 32px upward, hidden on
   // very tiny tiles (≤28px) to avoid visual noise on dense grids.
-  const showVersionChip = versionLabel != null && size >= 32;
+  const showVersionChip = (versionLabel != null || roleLabel != null) && size >= 32;
   const chipFontSize = Math.max(7, Math.round(size / 11));
   const style: CSSProperties = {
     width: size,
@@ -139,6 +163,14 @@ export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbP
           aria-hidden="true"
         >
           {versionLabel}
+          {roleLabel && (
+            <span
+              className="lowercase ml-1"
+              style={{ color: 'var(--accent-primary)', fontSize: '0.85em' }}
+            >
+              {roleLabel}
+            </span>
+          )}
         </span>
       )}
       {/* Status indicator dot — bottom-right, tiny */}
