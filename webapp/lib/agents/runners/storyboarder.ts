@@ -9,7 +9,8 @@
 //
 // Outputs (consumed by runner.ts case 'EXEC-SB'):
 //   - markdown: storyboard report + fenced JSON block
-//   - body: storyboard_v1 with exactly 3 acts × shots[]
+//   - body: storyboard_v1 with N acts × shots[] (N = the script's act count,
+//     read from its Act headers — not assumed; see countScriptActs)
 //   - cost_usd, model: cost ledger fields
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,50 @@ async function loadSystemPrompt(): Promise<string> {
 // F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
 // (lib/agents/upstream.ts; was a local copy, one of ten).
 
+/**
+ * 2026-06-22 — number of acts the screenplay defines, read from its
+ * "## Act N" / "### Act N" headers. The act count is NARRATIVE STRUCTURE owned
+ * by the script (Writer), NOT a constant the Storyboarder may assume
+ * (CLAUDE.md §11 Rule 8; skill-creation.md abstraction principle). Every episode
+ * through S15-E10 happened to be 3 acts, which masked a hardcoded "exactly 3
+ * acts" until E11 — the first 4-act script — drifted: Act-4 shots got filed
+ * under act:3 with A4 shot_ids. Returns the count of distinct act numbers; 0
+ * when the script carries no parseable Act header (caller falls back).
+ */
+export function countScriptActs(scriptContent: string): number {
+  const nums = new Set<number>();
+  for (const m of (scriptContent || '').matchAll(/^#{1,4}\s*Act\s+(\d+)\b/gim)) {
+    nums.add(Number(m[1]));
+  }
+  return nums.size;
+}
+
+/**
+ * Highest act number A# appearing in any shot_id of the storyboard body. The
+ * shot_id prefix encodes the act the shot belongs to ("<ep>-A<N>-SC<NN>-SH<NN>").
+ * Used by the post-generation invariant so a mismatch between act-objects and
+ * shot_id acts fails loudly at generation, not three stages downstream.
+ */
+export function maxActInShotIds(
+  body: { acts?: unknown } | null | undefined,
+): number {
+  const acts = Array.isArray(body?.acts) ? (body!.acts as unknown[]) : [];
+  let max = 0;
+  for (const act of acts) {
+    const shots = Array.isArray((act as { shots?: unknown[] }).shots)
+      ? (act as { shots: unknown[] }).shots
+      : [];
+    for (const sh of shots) {
+      const id = (sh as { shot_id?: unknown }).shot_id;
+      if (typeof id === 'string') {
+        const m = id.match(/A(\d+)-SC\d+-SH\d+/i);
+        if (m) max = Math.max(max, Number(m[1]));
+      }
+    }
+  }
+  return max;
+}
+
 function buildUserMessage(args: {
   episodeCode: string;
   episodeTitle: string;
@@ -187,6 +232,25 @@ function buildUserMessage(args: {
         '',
       ].join('\n')
     : '';
+  // 2026-06-22 — act count is read from the script, never assumed. Drives the
+  // template headers, the JSON example, and the hard rule below so a 4-act (or
+  // 5-act) script produces the matching number of act-objects instead of being
+  // forced into a hardcoded 3 (the E11 root cause).
+  const actCount = Math.max(1, countScriptActs(scriptContent) || 3);
+  const actTemplateLines: string[] = [];
+  for (let a = 1; a <= actCount; a++) {
+    actTemplateLines.push(`## ACT ${a} — <act beat summary>`);
+    actTemplateLines.push(
+      a === 1
+        ? '<for each shot: shot id, camera, location, action prose, duration, key beat>'
+        : '<same>',
+    );
+    if (a < actCount) actTemplateLines.push('');
+  }
+  const actJsonExampleLines: string[] = [];
+  for (let a = 2; a <= actCount; a++) {
+    actJsonExampleLines.push(`    { "act": ${a}, ... }${a < actCount ? ',' : ''}`);
+  }
   return [
     '# Task',
     `Break the screenplay below into a shot-by-shot storyboard for episode ${episodeCode} — "${episodeTitle}".`,
@@ -225,14 +289,7 @@ function buildUserMessage(args: {
     '## Shot list summary',
     '<one paragraph: total shot count, total runtime, beats coverage>',
     '',
-    '## ACT 1 — <act beat summary>',
-    '<for each shot: shot id, camera, location, action prose, duration, key beat>',
-    '',
-    '## ACT 2 — <act beat summary>',
-    '<same>',
-    '',
-    '## ACT 3 — <act beat summary>',
-    '<same>',
+    ...actTemplateLines,
     '```',
     '',
     'Then append exactly one fenced JSON code block with this shape (storyboarder@v2):',
@@ -276,8 +333,7 @@ function buildUserMessage(args: {
     '        }',
     '      ]',
     '    },',
-    '    { "act": 2, ... },',
-    '    { "act": 3, ... }',
+    ...actJsonExampleLines,
     '  ],',
     hasCanon
       ? '  "assumptions": ["<minor episode-local visual choices not covered by Series Bible canon — keep this list short; major drift goes through Continuity Check>"],'
@@ -288,7 +344,7 @@ function buildUserMessage(args: {
     '```',
     '',
     'Hard rules (storyboarder@v2):',
-    '- Exactly THREE acts in `acts[]`. No more, no fewer.',
+    `- Exactly ${actCount} act${actCount === 1 ? '' : 's'} in \`acts[]\` — matching the ${actCount} acts of the script above. No more, no fewer. Each shot's \`shot_id\` act prefix A<N> MUST equal the \`act\` of the object it sits in (an Act-4 shot belongs in the act:4 object, never folded into act:3).`,
     '- Every shot needs a unique `shot_id` following the pattern `<episode>-A<N>-SC<NN>-SH<NN>`.',
     hasCanon
       ? `- \`location.slug\` MUST be one of the Bible location slugs (verbatim, lowercase): ${locationSlugs.join(', ') || '(none)'}. Use \`location.sub_area\` for a specific zone within that location (e.g. slug=\`neon_cafe\`, sub_area=\`window table\`). Never invent a new location slug.`
@@ -565,9 +621,22 @@ export async function runStoryboarder(
   // (gemini resets SH per scene; opus ran it continuous). Mutates body.acts shot_ids
   // in place (so `acts` + validation below see the new ids) and rewrites markdown.
   result.markdown = renumberShotsContinuous(result.markdown, result.body);
-  if (acts.length !== 3) {
+  // Act-structure integrity (2026-06-22, E11 root cause). The act count is
+  // owned by the script, never assumed here. Enforce the triple invariant:
+  //   act-objects === highest A# in shot_ids === script's Act-header count.
+  // The old check only counted act-objects, so E11 (first 4-act script) passed
+  // with 3 objects while its finale shots carried A4 prefixes — the drift
+  // surfaced three stages downstream. Now it HALTs loudly at generation.
+  const maxShotAct = maxActInShotIds(result.body);
+  const scriptActs = countScriptActs(scriptAsset.content);
+  if (
+    acts.length !== maxShotAct ||
+    (scriptActs > 0 && acts.length !== scriptActs)
+  ) {
     throw new StoryboarderError(
-      `Postcondition failed: expected exactly 3 acts, got ${acts.length}`,
+      `Postcondition failed: act structure inconsistent — ${acts.length} act object(s), ` +
+        `highest shot_id act = A${maxShotAct}, script defines ${scriptActs} act(s). ` +
+        `All three must match (act-objects = shot_id acts = script acts).`,
     );
   }
 

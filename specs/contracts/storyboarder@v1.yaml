@@ -66,7 +66,7 @@ preconditions:
 
 postconditions:
   - "One STB-storyboard asset created with status = DRAFT"
-  - "JSON acts[] has exactly 3 entries"
+  - "JSON acts[] entry count == the script's Act-header count == highest A# in shot_ids (act count is owned by the script, not assumed; E11 root-cause 2026-06-22)"
   - "Every shot has a unique shot_id and a non-generic location"
   - "Sum of shot durations within 10% of runtime_target_seconds"
 
@@ -80,7 +80,7 @@ approval_gate:
 # ─── Escalation ──────────────────────────────────────────────────────────────
 escalation:
   on_invalid_json:        "retry once with explicit schema reminder; then NEEDS_HUMAN_TWEAK"
-  on_act_count_mismatch:  "retry once asking model for exactly 3 acts; then NEEDS_HUMAN_TWEAK"
+  on_act_count_mismatch:  "retry once asking model for exactly the script's act count (act-objects = shot_id acts = script acts); then NEEDS_HUMAN_TWEAK"
   on_anthropic_error:     "retry up to 2 times; then NEEDS_HUMAN_TWEAK"
   on_cost_overrun:        "abort job, mark FAILED, log in costs table"
 
