@@ -12,15 +12,17 @@
 
 ```
 Date:   2026-06-22 (E11 «Мощный вентилятор» video-generation run; AI EP role piloted by Тео-as-Pascal)
-Mode:   ===1=== ANALYTICS (Director). E11 governance Mode 3.
+Mode:   ===5=== EDIT (Director-authorized 2026-06-22 — fix-спринт нумерации/сборки). E11 governance Mode 3.
 
-2026-06-22 (E11 video run + AI-EP readiness probe). Тео ведёт прогон в роли AI EP (Pascal), Полина — исполнитель.
-  Видео-генерация эпизода в работе (~24+/36 шотов с одобренным видео; хвост гоню по одному). Смержено в master 4 фикса:
-  37a6cca полный ключ A#-SC##-SH## в feed/gallery; 7ab24b8 shot-level guard — нет авто-перегенерации видео ($0);
-  5247cae Полина слушается+отвечает на прямые приказы AI EP (chat-internal); 431af2a длина рендера = episode-timeline
-  (animatic overrides), не устаревший план (cost: 4с, не 8с). Конвенция 0.5с=удалён-шот (stitch исключает; TD — соблюсти
-  в генерации). Дыры AI EP → memory/ai_ep_conception_gaps.md. tsc·0 / 912 тестов.
-  NEXT: добить 36/36 → подгон 2:23 + fade 6s → финальный cut. (PLAN >200 строк — отдельный долг на архив-трим.)
+2026-06-22 PM (E11 video run + AI-EP readiness probe). Тео ведёт прогон в роли AI EP (Pascal), Полина — исполнитель.
+  31/36 с видео (5 недостающих: A2-SC18/21/24/25-SH01 + A4-SC02-SH02; SC13=удалён 0.5с). fal пополнен Director'ом.
+  3 фикса смержены в master (tsc·0 / 926 тестов / replay·30):
+  (1) normalizeShotId на единой trigger-двери — короткий ключ→canonical (был корень 18/20 падений «not found in STB»);
+  (2) Storyboarder: число актов из сценария, не хардкод «3» (E11 — первый 4-актный → дрейф A4 под act:3; тройной
+  инвариант act-объекты==max A#==scriptActs, HALT на генерации); (3) STITCH/автостарт исключают удалённый ≤0.5с-шот
+  (общий isDeletedShot) — раньше гейт ждал аппрува удалённого кадра (не стартовал) + ручной STITCH падал на missing.
+  Дыры AI EP → memory/ai_ep_conception_gaps.md (gaps #10,#12). Борд E11: Акт4 под act:3 — правка ПОСЛЕ финала (q8b).
+  NEXT: добить 5 шотов → 35/35 → STITCH 2:23 + fade 6s → финальный cut. (PLAN >200 строк — отдельный долг на архив-трим.)
 
 2026-06-17 PM-7 (episode FORMAT authority — Slice 2 IMAGE, code-complete UNCOMMITTED). Root: `resolveImageParams`
   was DEAD (never called) → image FORMAT entirely ungoverned; EREF executor hardcoded `EREF_QUALITY='medium'`,
