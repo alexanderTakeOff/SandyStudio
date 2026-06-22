@@ -30,6 +30,7 @@ import {
 import {
   extractShotsFromStoryboard,
   isAnimaticV1,
+  isDeletedShot,
   type AnimaticContract,
 } from '@/lib/api/animatic-shotlist';
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
@@ -1048,8 +1049,16 @@ export async function computeNextEvents(
     const animMeta = (animaticRow as { metadata?: unknown } | null)?.metadata;
     if (isAnimaticV1(animMeta)) {
       const v1 = (animMeta as { animatic_v1: AnimaticContract }).animatic_v1;
-      const totalShots = v1.shot_list?.length ?? 0;
-      if (totalShots > 0) {
+      // 2026-06-22 — a shot the Director deleted (duration ≤0.5s) sits in
+      // shot_list but can never be APPROVED. Counting it in the denominator
+      // meant the gate never reached the threshold and the final cut never
+      // auto-started; Director's only workaround was to "approve" the deleted
+      // shot (a cheat). Exclude deleted shots: require every LIVE shot approved.
+      const overrides = v1.director_overrides;
+      const liveShotIds = (v1.shot_list ?? [])
+        .filter((s) => !isDeletedShot(s, overrides))
+        .map((s) => s.shot_id);
+      if (liveShotIds.length > 0) {
         const { data: approvedRows } = await supabase
           .from('assets')
           .select('metadata')
@@ -1061,7 +1070,7 @@ export async function computeNextEvents(
           const sid = (row.metadata as { shot_id?: unknown } | null)?.shot_id;
           if (typeof sid === 'string') approvedShotIds.add(sid);
         }
-        if (approvedShotIds.size >= totalShots) {
+        if (liveShotIds.every((id) => approvedShotIds.has(id))) {
           events.push({
             name: 'sandystudio/exec-stitch/assemble-episode',
             data: { episodeId: ep },

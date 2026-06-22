@@ -203,6 +203,32 @@ export function effectiveDurationSeconds(
 }
 
 /**
+ * Threshold (seconds) at/below which a shot is treated as DELETED by the
+ * Director — the "collapse duration to ≤0.5s = remove this shot" gesture. Single
+ * source for the magic 0.5 that EXEC-STITCH, the completeness gate, and the
+ * timeline-total all key off.
+ */
+export const DELETED_SHOT_MAX_SECONDS = 0.5;
+
+/**
+ * 2026-06-22 — a shot the Director soft-deleted by collapsing its effective
+ * duration to ≤0.5s. Such a shot is excluded EVERYWHERE: it must not be rendered,
+ * must not block EXEC-STITCH for missing media, and must not count toward the
+ * "all shots approved → auto-start final cut" gate. Root cause: the deleted shot
+ * sat in `shot_list` (so the completeness denominator counted it) but could never
+ * be APPROVED → the gate never fired and a manual STITCH threw on missing media.
+ * Override-based, so it's decidable without clip lengths (the completeness gate
+ * has no media context). Pairs with computeEffectivePlayback's ≤0.5 clamp, which
+ * additionally catches trim-collapsed shots that DO have media.
+ */
+export function isDeletedShot(
+  shot: AnimaticShot,
+  overrides: Record<string, AnimaticDirectorOverride> | undefined,
+): boolean {
+  return effectiveDurationSeconds(shot, overrides) <= DELETED_SHOT_MAX_SECONDS;
+}
+
+/**
  * 2026-06-06 — single source of truth for "how many seconds of THIS shot
  * actually play in the final cut". Combines:
  *   - Director duration override (or storyboard duration as fallback)

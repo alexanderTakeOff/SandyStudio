@@ -48,6 +48,7 @@ import {
   getAudioTracks,
   isAnimaticV1,
   computeEffectivePlayback,
+  isDeletedShot,
   clipLengthsFromVidShotRows,
   type AnimaticContract,
 } from '../api/animatic-shotlist';
@@ -2564,6 +2565,15 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // the ffmpeg concat.
       const excludedShots: string[] = [];
       for (const shot of shotList) {
+        // 2026-06-22 — Director-deleted shots (override duration ≤0.5s) are
+        // excluded FIRST, before the missing-media check. Previously a deleted
+        // shot with no APPROVED VID-shot fell into `missing` and threw, so a
+        // manually-triggered final cut crashed on the very shot the cut is meant
+        // to skip. Override-based, so no media is required to decide.
+        if (isDeletedShot(shot, overrides)) {
+          excludedShots.push(shot.shot_id);
+          continue;
+        }
         const found = byShotId.get(shot.shot_id);
         if (!found || (!found.stagingPath && !found.url)) {
           missing.push(shot.shot_id);
@@ -2573,7 +2583,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         // computeEffectivePlayback applies the duration override, head trim AND
         // real clip-length clamp EXACTLY like the AnimaticPlayer timeline, so
         // the final cut equals what Director sees (no more UI-60s vs stitch-76s
-        // divergence). ≤0.5s → excluded (same threshold the timeline dims at).
+        // divergence). ≤0.5s → excluded (catches trim-collapsed shots WITH media
+        // that the override-only isDeletedShot above doesn't).
         const playable = computeEffectivePlayback(shot, overrides, clipLengths);
         if (playable <= 0.5) {
           excludedShots.push(shot.shot_id);

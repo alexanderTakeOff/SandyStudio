@@ -16,6 +16,8 @@ import {
   computeTotalDuration,
   computeEffectivePlayback,
   clipLengthsFromVidShotRows,
+  isDeletedShot,
+  DELETED_SHOT_MAX_SECONDS,
   type AnimaticShot,
   type AnimaticDirectorOverride,
 } from '@/lib/api/animatic-shotlist';
@@ -164,5 +166,34 @@ describe('clipLengthsFromVidShotRows', () => {
       {},
     ]);
     expect(map.size).toBe(0);
+  });
+});
+
+describe('isDeletedShot — Director ≤0.5s soft-delete', () => {
+  it('flags a shot whose override duration is ≤0.5s', () => {
+    const overrides: Record<string, AnimaticDirectorOverride> = {
+      SH02: { duration_seconds: 0.5 },
+      SH03: { duration_seconds: 0.1 },
+    };
+    expect(isDeletedShot(shot('SH02', 4), overrides)).toBe(true);
+    expect(isDeletedShot(shot('SH03', 4), overrides)).toBe(true);
+  });
+
+  it('does NOT flag a live shot (override above threshold, or no override)', () => {
+    const overrides: Record<string, AnimaticDirectorOverride> = {
+      SH01: { duration_seconds: 3 },
+    };
+    expect(isDeletedShot(shot('SH01', 3), overrides)).toBe(false);
+    expect(isDeletedShot(shot('SH04', 4), overrides)).toBe(false); // no override
+    expect(isDeletedShot(shot('SH05', 4), undefined)).toBe(false);
+  });
+
+  it('is decidable without clip lengths (override drives the verdict)', () => {
+    // The completeness gate has no media context — the verdict must come from
+    // the override alone, which it does.
+    const overrides: Record<string, AnimaticDirectorOverride> = {
+      SH01: { duration_seconds: DELETED_SHOT_MAX_SECONDS },
+    };
+    expect(isDeletedShot(shot('SH01', 8), overrides)).toBe(true);
   });
 });
