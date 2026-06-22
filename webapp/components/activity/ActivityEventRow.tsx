@@ -93,7 +93,12 @@ function formatActivity(e: ActivityEventLike): Formatted {
   if (!verdict && trailing) verdict = trailing[1] ?? null;
   title = title.replace(/·\s*[A-Z_]+\s*$/, '').trim();
 
-  const shot = (title.match(/SH\d+/) ?? [])[0] ?? null;
+  // 2026-06-22 (Director, urgent): show the scene-qualified key (A2-SC04-SH08),
+  // never bare "SH08" — SH resets per scene, so dozens of shots share "SH01"
+  // and the feed was unreadable. Prefer the full A#-SC##-SH## key; fall back to
+  // bare SH## only when no scene context is present in the title.
+  const shot =
+    (title.match(/A\d+-SC\d+-SH\d+/i) ?? title.match(/SH\d+/i) ?? [])[0]?.toUpperCase() ?? null;
 
   let action = title;
   if (e.event_type === 'approval_granted' || /^[A-Z_]+ on /.test(title)) {

@@ -78,7 +78,11 @@ function toGridAsset(a: EpisodeAsset): AssetGridAsset {
     isShotReferenceV2(a.metadata)
       ? (a.metadata as { shot_reference: { shot_id: string } }).shot_reference.shot_id
       : null;
+  // 2026-06-22 (Director): scene-qualified key (A2-SC04-SH08), not bare SH —
+  // SH resets per scene so bare labels collide. Prefer the full key.
   const shortShot =
+    shotId?.match(/A\d+-SC\d+-SH\d+/i)?.[0]?.toUpperCase() ??
+    a.file_type.match(/a\d+-sc\d+-sh\d+/i)?.[0]?.toUpperCase() ??
     shotId?.match(/SH\d+/i)?.[0]?.toUpperCase() ??
     a.file_type.match(/sh\d+/i)?.[0]?.toUpperCase() ??
     null;

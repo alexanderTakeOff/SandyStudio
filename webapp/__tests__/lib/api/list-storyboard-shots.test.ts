@@ -135,11 +135,15 @@ describe('listStoryboardShots', () => {
     expect(first.expectedGag).toBe('Trumeau wobble');
   });
 
-  test('shortShotLabel extracts SH## from canonical shotId', () => {
-    expect(shortShotLabel('SS-S15-E01-A2-SC04-SH08')).toBe('SH08');
-    expect(shortShotLabel('SS-S99-E99-A10-SC123-SH456')).toBe('SH456');
+  test('shortShotLabel returns the scene-qualified key from canonical shotId', () => {
+    // 2026-06-22 (q1a): bare "SH08" is ambiguous (SH resets per scene) — the
+    // label must carry the act+scene so the feed/PA never conflate shots.
+    expect(shortShotLabel('SS-S15-E01-A2-SC04-SH08')).toBe('A2-SC04-SH08');
+    expect(shortShotLabel('SS-S99-E99-A10-SC123-SH456')).toBe('A10-SC123-SH456');
+    expect(shortShotLabel('a2-sc04-sh08')).toBe('A2-SC04-SH08'); // case-normalized
+    // Legacy fallback: a bare SH## with no scene context passes through.
     expect(shortShotLabel('SH09')).toBe('SH09');
-    expect(shortShotLabel('sh08')).toBe('SH08'); // case-normalized
+    expect(shortShotLabel('sh08')).toBe('SH08');
   });
 
   test('shortShotLabel passes through unparseable input', () => {

@@ -236,18 +236,26 @@ export interface StoryboardShotSummary {
  * canonical shotId. Used by per-shot agent functions to surface readable
  * context in `agent_started` / `agent_completed` activity titles.
  *
- *   "SS-S15-E01-A2-SC04-SH08"  → "SH08"
- *   "SS-S15-E01-A2-SC04-SH123" → "SH123"
- *   "SH08"                      → "SH08"
+ *   "SS-S15-E01-A2-SC04-SH08"  → "A2-SC04-SH08"
+ *   "SS-S15-E01-A2-SC04-SH123" → "A2-SC04-SH123"
+ *   "A2-SC04-SH08"             → "A2-SC04-SH08"
+ *   "SH08"                     → "SH08" (legacy fallback)
  *   ""                          → ""
  *   "random-string"             → "random-string" (passthrough)
  *
- * Pure function. Director sees "SH08" not the UUID-shaped full id.
+ * 2026-06-22 (Director q1a): the label MUST be the scene-qualified key, not
+ * bare "SH08". SH numbering resets per scene, so dozens of shots share
+ * "SH01" — the bare label made the activity feed (and Polina, who reads it)
+ * conflate different shots into one. Prefer the full A#-SC##-SH## key.
+ *
+ * Pure function. Director sees "A2-SC04-SH08", never the UUID-shaped full id.
  */
 export function shortShotLabel(shotId: string | null | undefined): string {
   if (!shotId || typeof shotId !== 'string') return '';
-  const m = shotId.match(/SH\d+/i);
-  return m ? m[0].toUpperCase() : shotId;
+  const full = shotId.match(/A\d+-SC\d+-SH\d+/i);
+  if (full) return full[0].toUpperCase();
+  const shOnly = shotId.match(/SH\d+/i);
+  return shOnly ? shOnly[0].toUpperCase() : shotId;
 }
 
 export function listStoryboardShots(
