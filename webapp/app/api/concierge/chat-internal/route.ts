@@ -165,9 +165,42 @@ export async function POST(req: Request) {
   // about the dead Designer 20 minutes later by looking himself. A failure
   // must always produce a reaction; the per-bucket debounce in exec-pa-react
   // still caps the rate.
+  // 2026-06-22 (Director): a direct team-chat message addressed to Polina is a
+  // direct order from her producer (Pascal / AI EP) — she MUST always react to
+  // it, even if she just spoke, and she must obey + reply (it looked rude /
+  // broken that she ignored Pascal). Fetch the actual message so we can inject
+  // its content + an obey-and-acknowledge directive below, and let it bypass
+  // the anti-cascade guard like a failure does.
+  const isDirectAddress = parsed.source === 'claude_message';
+  let directMessage: { author: string; content: string; authorized: boolean } | null = null;
+  if (isDirectAddress) {
+    const { data: trig } = await supabase
+      .from('concierge_turns')
+      .select('content, metadata')
+      .eq('id', parsed.trigger_id)
+      .maybeSingle();
+    if (trig) {
+      const meta = ((trig as { metadata?: unknown }).metadata ?? {}) as {
+        author?: unknown;
+        authorized_principal?: unknown;
+      };
+      const rawContent =
+        typeof (trig as { content?: unknown }).content === 'string'
+          ? ((trig as { content: string }).content)
+          : '';
+      // Strip the persisted "**Author:** " prefix so the model reads the order cleanly.
+      const cleaned = rawContent.replace(/^\*\*[^*]+:\*\*\s*/, '').trim();
+      directMessage = {
+        author: typeof meta.author === 'string' ? meta.author : 'Pascal',
+        content: cleaned,
+        authorized: meta.authorized_principal === true,
+      };
+    }
+  }
+
   const isFailureTrigger = parsed.event_type === 'agent_failed';
   const lastTurn = recentTurns[recentTurns.length - 1];
-  if (!isFailureTrigger && lastTurn && lastTurn.role === 'assistant') {
+  if (!isFailureTrigger && !isDirectAddress && lastTurn && lastTurn.role === 'assistant') {
     const lastTs = new Date(lastTurn.created_at).getTime();
     if (Number.isFinite(lastTs) && Date.now() - lastTs < ANTI_CASCADE_WINDOW_MS) {
       return NextResponse.json({ skipped: 'recent_assistant_turn' }, { status: 200 });
@@ -233,12 +266,13 @@ export async function POST(req: Request) {
   // Synthetic user message that names what triggered the reaction. Anchors
   // the model's attention since pure system-prompt-only calls can be hit
   // and miss with gpt-5.* on long threads.
+  const directAuthor = directMessage?.author ?? 'Pascal';
   const triggerLabel =
     parsed.source === 'ambient'
       ? `[autonomous trigger] pipeline event ${parsed.event_type ?? 'unknown'} (activity_event ${parsed.trigger_id})`
       : parsed.source === 'watchdog'
         ? `[autonomous trigger] **OPEN-LOOP WATCHDOG re-ping** — your prior turn (${parsed.trigger_id}) had awaiting_director_input set but nothing has resolved it for >90s. Director may have missed your question or you may need to take the next concrete step yourself.`
-        : `[autonomous trigger] team-chat message from Тео (turn ${parsed.trigger_id})`;
+        : `[DIRECT MESSAGE TO YOU] ${directAuthor}${directMessage?.authorized ? ' (your Executive Producer, acting under delegated Director authority)' : ''} just wrote to you:\n\n«${directMessage?.content ?? '(see the latest team-chat turn above)'}»`;
 
   // TD-51 (2026-05-25): per-source tool policy.
   // - watchdog: still no tools. Goal is re-prompting Director, not acting.
@@ -258,7 +292,18 @@ export async function POST(req: Request) {
   const boldMode = BOLD_MODES.has(mode);
   const userInstruction = !allowTools
     ? 'Read your prior assistant turn (above). Either (a) take the next concrete sub-step yourself if the original Director directive logically covers it — don\'t wait for new approval; or (b) re-ask Director more explicitly with a fresh q-format question and a tighter framing. Do not just echo your previous wait. Do not request tools.'
-    : boldMode
+    : isDirectAddress
+      ? [
+          `${directAuthor} addressed you DIRECTLY (message above). This is a direct instruction from your Executive Producer — treat it as the authoritative next task, ahead of your own work-plan reading.`,
+          `FIRST: acknowledge ${directAuthor} by name in one short line.`,
+          boldMode
+            ? `THEN EXECUTE exactly what the message asks as your next concrete tool action(s) NOW. You are in Mode ${mode} with delegated authority — do NOT wait for a separate Director token. If it names a shot_key and tools (approveAsset / triggerAgent / etc.), call them THIS turn. Do not merely read getWorkPlan and stop.`
+            : `THEN, because you are in Mode ${mode} (not a bold/delegated mode), you cannot fire mutating tools yourself — state that explicitly to ${directAuthor} and propose the exact action for the Director to confirm.`,
+          'NEVER re-generate a shot that already has a video — one render per shot; re-generation only on an explicit Director decision after visual review.',
+          'HARD LIMITS (publish, LOCK, budget, governance mode, skill-canon) stay Director-only in every mode — if one is asked for, propose it instead of firing it.',
+          `END with a SHORT reply to ${directAuthor}: what you just did (or will do) and the single next step.`,
+        ].join('\n')
+      : boldMode
       ? [
           `Run the [WORK_PLAN] loop (reconcile → advance → act). Recap what just happened in this thread (read the recent turns above). You are in Mode ${mode} (DELEGATED/AUTOTEST) — you have delegated authority to ACT now without waiting for a fresh Director token.`,
           '',
