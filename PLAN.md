@@ -11,19 +11,16 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-17 (anchor-mode B regenerate-surfaces @cde49fd+48fe57f local; A @a3735eb on origin)
-Mode:   ===5=== EDIT (Director activated 2026-06-17 — anchor-mode doctrine: orbit⇒ref-only). A+B done; C (8 shots) PARKED per Director. · E10 governance Mode **2**.
+Date:   2026-06-22 (E11 «Мощный вентилятор» video-generation run; AI EP role piloted by Тео-as-Pascal)
+Mode:   ===1=== ANALYTICS (Director). E11 governance Mode 3.
 
-2026-06-17 PM-8 (anchor-mode doctrine B — regenerate surfaces, local-unpushed cde49fd+48fe57f). orbit⇒ref-only
-  is the default (E10 A/B smoke). B1: VGENShotPanel anchor toggle «🎯 только реф / 🔗 два якоря» — ref-only nulls
-  end_image + hides picker, two-anchor reveals it + fails loud if empty; reuses ProviderControlPanel fields-whitelist
-  (ProviderControlPanel untouched). B2: regenerateShot PA tool (thin wrapper over regenerate-video REST; «перегени
-  SH07 без якорей»→ref-only; resolves shotId→newest VID-shot via ilike; concierge.md rule 10). tsc·0/912/replay30 (+13
-  tests). PUSHED origin @9563bb2. **SMOKE PASSED 2026-06-17:** E10 SH25+SH26 (2 of 4 ungenerated, run end-to-end by
-  Polина autonomously via authorized_principal nudge): Animator DISCRIMINATES — SH26 orbit→ref-only (cited doctrine),
-  SH25 static→two-anchor; V15 PASS both; rendered; Director accepted («нет дёрганий как с двумя якорями»). Caveat→
-  backlog: VGEN render never stamps end_image metadata (can't verify two-anchor honored; possible plan→render gap).
-  C (regen 8 infected ref-only) still PARKED till Director go on spend.
+2026-06-22 (E11 video run + AI-EP readiness probe). Тео ведёт прогон в роли AI EP (Pascal), Полина — исполнитель.
+  Видео-генерация эпизода в работе (~24+/36 шотов с одобренным видео; хвост гоню по одному). Смержено в master 4 фикса:
+  37a6cca полный ключ A#-SC##-SH## в feed/gallery; 7ab24b8 shot-level guard — нет авто-перегенерации видео ($0);
+  5247cae Полина слушается+отвечает на прямые приказы AI EP (chat-internal); 431af2a длина рендера = episode-timeline
+  (animatic overrides), не устаревший план (cost: 4с, не 8с). Конвенция 0.5с=удалён-шот (stitch исключает; TD — соблюсти
+  в генерации). Дыры AI EP → memory/ai_ep_conception_gaps.md. tsc·0 / 912 тестов.
+  NEXT: добить 36/36 → подгон 2:23 + fade 6s → финальный cut. (PLAN >200 строк — отдельный долг на архив-трим.)
 
 2026-06-17 PM-7 (episode FORMAT authority — Slice 2 IMAGE, code-complete UNCOMMITTED). Root: `resolveImageParams`
   was DEAD (never called) → image FORMAT entirely ungoverned; EREF executor hardcoded `EREF_QUALITY='medium'`,
@@ -206,7 +203,7 @@ Sprints S0–S8 (foundation + spec) COMPLETE 2026-04-23..28 — `docs/PLAN-histo
 | 16 | EXEC-VGEN base file_type duplicate `shot` token (`VID-shot-shot1`) | Cosmetic |
 | 17 | FFmpeg export aspect: requested 16:9, observed 1:1 centered — `ffmpeg-stitch.ts` | Reliability |
 | 18 | PA TTS quality "больной робот" — upgrade to ElevenLabs/OpenAI TTS; deferred to 2nd use | UX |
-| 19 | Asset content edit overwrites in place, no version increment — endpoint should INSERT v+1 | Reliability/Audit |
+| 19 | Version-aware text editor — save=new REVIEW version (INSERT v+1, no in-place overwrite), per-version approve/reject/un-approve(→work/critic/producer), version rail, one window all text artifacts. **Plan APPROVED 2026-06-20** (`~/.claude/plans/workstation-reference-designerdesigner-r-twinkling-hamming.md`); slice-0 of shot-centric refactor (memory `backlog_shot_centric_paradigm`). IN PROGRESS | Reliability/Audit |
 | 20 | PA chat sync POST hangs 50-110s, no progress/cancel — L1 done; L2 SSE streaming + cancel deferred | UX/Reliability |
 | 21 | Brief↔Bible consistency validator missing — new EXEC-HW-CRITIC or extend SREV (~6-10h) | Reliability |
 | 22 | DELETE asset `asset_updated` event not in PA auto-react whitelist (~30 min) | UX |
