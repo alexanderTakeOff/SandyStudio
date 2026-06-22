@@ -15,7 +15,7 @@ import { parseJson } from '@/lib/api/zod-helpers';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/api/errors';
 import { inngest, type StudioEventName } from '@/lib/inngest/client';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
-import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
+import { pickPilotVgenShots, normalizeShotId } from '@/lib/api/vgen-shot-helpers';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { assertPlanRegenWithinCap } from '@/lib/api/plan-regen-guard';
 import { validateShotReadyForGeneration } from '@/lib/api/shot-readiness';
@@ -90,6 +90,18 @@ export const POST = withApiHandler(async (req, ctx) => {
     .maybeSingle();
   if (epErr) throw new Error(`episode fetch failed: ${epErr.message}`);
   if (!ep) throw new NotFoundError(`Episode ${id}`);
+
+  // 2026-06-22 — shotId canonicalization (conception-gap #10). This route is
+  // the single door every dispatch funnels through (PA tools, tmp scripts, UI,
+  // future auto-EP). Polина + the activity feed surface the bare key
+  // "A2-SC25-SH01", but runners match the storyboard by the EXACT full id
+  // "SS-S15-E11-A2-SC25-SH01" → a bare key hard-fails "not found in STB".
+  // Normalize ONCE here so the full id flows everywhere below (pilot path,
+  // VGEN/EREF reroutes, regen-cap guard, q21 readiness). Idempotent: already-
+  // full ids and unrecognised shapes pass through untouched.
+  if (typeof body.payload?.shotId === 'string') {
+    body.payload.shotId = normalizeShotId(body.payload.shotId, ep.episode_code);
+  }
 
   // ── EXEC-VGEN special path: route to Pilot Pass if animatic_v1 is approved
   // and no explicit shotId override is in payload.

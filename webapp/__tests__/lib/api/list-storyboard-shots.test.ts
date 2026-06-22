@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest';
 import {
   listStoryboardShots,
   shortShotLabel,
+  normalizeShotId,
 } from '@/lib/api/vgen-shot-helpers';
 
 function makeStb(acts: Array<{ act: number; shots: Array<Record<string, unknown>> }>): string {
@@ -167,5 +168,44 @@ describe('listStoryboardShots', () => {
     ]);
     const result = listStoryboardShots(stb);
     expect(result.map((s) => s.shotId)).toEqual(['SH01', 'SH02']);
+  });
+});
+
+describe('normalizeShotId', () => {
+  // 2026-06-22 (conception-gap #10): the trigger route canonicalizes the bare,
+  // human-facing key into the full id runners match by, ONCE, at the door.
+  test('prefixes a bare scene-qualified suffix with the episode code', () => {
+    expect(normalizeShotId('A2-SC25-SH01', 'SS-S15-E11')).toBe(
+      'SS-S15-E11-A2-SC25-SH01',
+    );
+    expect(normalizeShotId('A10-SC123-SH456', 'SS-S99-E99')).toBe(
+      'SS-S99-E99-A10-SC123-SH456',
+    );
+  });
+
+  test('upper-cases the suffix when prefixing', () => {
+    expect(normalizeShotId('a2-sc25-sh01', 'SS-S15-E11')).toBe(
+      'SS-S15-E11-A2-SC25-SH01',
+    );
+  });
+
+  test('is idempotent on an already-full canonical id', () => {
+    expect(normalizeShotId('SS-S15-E11-A2-SC25-SH01', 'SS-S15-E11')).toBe(
+      'SS-S15-E11-A2-SC25-SH01',
+    );
+    // even against a different episode code — already-full wins, no double prefix
+    expect(normalizeShotId('SS-S15-E11-A2-SC25-SH01', 'SS-S01-E01')).toBe(
+      'SS-S15-E11-A2-SC25-SH01',
+    );
+  });
+
+  test('leaves unnormalizable shapes untouched (fails loud downstream)', () => {
+    // bare SH## has no scene context → ambiguous, must not be guessed
+    expect(normalizeShotId('SH01', 'SS-S15-E11')).toBe('SH01');
+    // no episode code → cannot build a full id
+    expect(normalizeShotId('A2-SC25-SH01', null)).toBe('A2-SC25-SH01');
+    expect(normalizeShotId('A2-SC25-SH01', undefined)).toBe('A2-SC25-SH01');
+    // junk passes through
+    expect(normalizeShotId('something-else', 'SS-S15-E11')).toBe('something-else');
   });
 });

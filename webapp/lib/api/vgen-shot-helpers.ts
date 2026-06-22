@@ -258,6 +258,43 @@ export function shortShotLabel(shotId: string | null | undefined): string {
   return shOnly ? shOnly[0].toUpperCase() : shotId;
 }
 
+/** Full canonical shot id, e.g. "SS-S15-E11-A2-SC25-SH01". Mirrors the strict
+ *  regex EXEC-EREF's Critic already uses (episode-reference-critic.ts). */
+const FULL_SHOT_ID_RE = /^SS-S\d+-E\d+-A\d+-SC\d+-SH\d+$/i;
+/** Bare scene-qualified suffix Polina + the activity feed surface to humans. */
+const BARE_SHOT_SUFFIX_RE = /^A\d+-SC\d+-SH\d+$/i;
+
+/**
+ * 2026-06-22 — reverse of {@link shortShotLabel}: turn the bare, human-facing
+ * key "A2-SC25-SH01" into the full canonical id "SS-S15-E11-A2-SC25-SH01" by
+ * prefixing the episode code. Runners (EXEC-VANIM et al.) match shots in the
+ * storyboard by EXACT canonical id, so a bare key hard-fails "not found in STB".
+ *
+ * Applied ONCE at the trigger route (the single door every dispatch funnels
+ * through) so the full id flows everywhere downstream; the short form survives
+ * only as a display label. This closes conception-gap #10.
+ *
+ *   normalizeShotId("A2-SC25-SH01", "SS-S15-E11") → "SS-S15-E11-A2-SC25-SH01"
+ *   normalizeShotId("ss-s15-e11-a2-sc25-sh01", x) → unchanged (already full, idempotent)
+ *   normalizeShotId("SS-S15-E11-A2-SC25-SH01", x) → unchanged (idempotent)
+ *   normalizeShotId("SH01", code)                 → "SH01" (ambiguous, no scene → leave; fails loud downstream)
+ *   normalizeShotId("A2-SC25-SH01", null)         → "A2-SC25-SH01" (no episode code → leave)
+ *
+ * Deliberately NOT a fallback inside the lookup: the lookup stays strict so a
+ * genuinely wrong id (non-existent scene/shot) still fails loudly. Pure function.
+ */
+export function normalizeShotId(
+  shotId: string,
+  episodeCode: string | null | undefined,
+): string {
+  if (typeof shotId !== 'string') return shotId;
+  if (FULL_SHOT_ID_RE.test(shotId)) return shotId; // already canonical
+  if (episodeCode && BARE_SHOT_SUFFIX_RE.test(shotId)) {
+    return `${episodeCode}-${shotId.toUpperCase()}`;
+  }
+  return shotId; // unrecognised shape → leave; strict lookup fails loud
+}
+
 export function listStoryboardShots(
   content: string,
 ): StoryboardShotSummary[] {
