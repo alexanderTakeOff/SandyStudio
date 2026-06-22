@@ -339,6 +339,60 @@ export const execVgenRun = inngest.createFunction(
       }
     }
 
+    // Shot-level dedup (2026-06-22, Director: NO automatic video re-generation).
+    // The plan-level check above is keyed on planAssetId, so a RE-AUTHORED plan
+    // (new asset id) for an already-rendered shot slips through and re-renders
+    // it — wasted money. This shot-level gate is the by-construction backstop:
+    // if ANY VID-shot already exists for this shotId and the caller did not
+    // explicitly pass regenerate:true, suppress at $0. Covers every event path
+    // (auto-chain computeNextEvents, manual triggerAgent, PA tools). Re-gen is
+    // allowed ONLY via the explicit Director surfaces (regenerate-video route is
+    // a separate inline path; PA/drawer set regenerate:true) — i.e. after the
+    // Director's visual review + per-shot decision, never automatically.
+    if (data.regenerate !== true) {
+      const normShot = (s: string | null | undefined): string =>
+        (s ?? '').toUpperCase().match(/A\d+-SC\d+-SH\d+/)?.[0] ?? (s ?? '');
+      const target = normShot(shotId);
+      const existingShotVid = await step.run('shot-dedup-check', async () => {
+        const supabase = createSupabaseServiceRoleClient();
+        const { data: vidRows } = await supabase
+          .from('assets')
+          .select('id,metadata')
+          .eq('episode_id', episodeId)
+          .like('file_type', 'VID-shot%');
+        for (const row of (vidRows ?? []) as Array<{ id: string; metadata?: unknown }>) {
+          const sid = (row.metadata as { shot_id?: unknown } | null)?.shot_id;
+          if (typeof sid === 'string' && normShot(sid) === target && target) return row.id;
+        }
+        return null;
+      });
+      if (existingShotVid) {
+        await step.run('complete-as-shot-duplicate', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          const label = shortShotLabel(shotId);
+          await markJobCompleted(supabase, job.id, existingShotVid);
+          await logEvent(supabase, {
+            event_type: 'agent_completed',
+            severity: 'warning',
+            title: `${agentDisplayName('EXEC-VGEN')} re-gen blocked${label ? ` — ${label}` : ''}`,
+            description: `Shot ${shotId} already has a VID-shot (asset ${existingShotVid}) — automatic re-generation suppressed, $0 spent. Re-render requires the explicit Director regenerate surface after visual review.`,
+            actor: 'EXEC-VGEN',
+            episode_id: episodeId,
+            asset_id: existingShotVid,
+            job_id: job.id,
+            metadata: { agent: 'EXEC-VGEN', kind: 'regen_blocked', shot_id: shotId },
+          });
+        });
+        return {
+          ok: true,
+          kind: 'regen-blocked',
+          jobId: job.id,
+          assetId: existingShotVid,
+          cost_usd: 0,
+        };
+      }
+    }
+
     try {
       // Clear any stale cancel token on a fresh pilot start.
       if (isPilot) {
