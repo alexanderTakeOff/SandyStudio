@@ -1874,11 +1874,17 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // silently capped Seedance (real max 15) at 8 (Director directive 2026-06-16:
       // never hardcode duration — derive from the provider contract).
       const finalDuration = (() => {
+        // 2026-06-22 (Director): RENDER length = the episode-timeline (animatic
+        // director_overrides) duration, NOT the (possibly stale) plan's value.
+        // Render length is cost — 8s vs 4s ≈ doubles episode spend — so the
+        // animatic timing the Director set on the timeline is authoritative for
+        // how long we actually generate. Animatic override wins; the plan/event
+        // duration is only a fallback for non-animatic paths (replay-pilot mock).
+        if (resolvedDurationSeconds !== null && resolvedDurationSeconds > 0) {
+          return Math.round(resolvedDurationSeconds);
+        }
         if (typeof durationSeconds === 'number' && durationSeconds > 0) {
           return Math.round(durationSeconds);
-        }
-        if (resolvedDurationSeconds !== null) {
-          return Math.round(resolvedDurationSeconds);
         }
         if (storyboardShot?.duration_seconds && storyboardShot.duration_seconds > 0) {
           return Math.round(storyboardShot.duration_seconds);
