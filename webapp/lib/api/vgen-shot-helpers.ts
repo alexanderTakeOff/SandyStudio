@@ -196,12 +196,31 @@ export function getStoryboardShotById(
 ): StoryboardShotV2 | null {
   const json = parseStoryboardJson(content);
   if (!json || !Array.isArray(json.acts)) return null;
+  const all: StoryboardShotV2[] = [];
   for (const act of json.acts) {
     if (!act || !Array.isArray(act.shots)) continue;
     for (const raw of act.shots) {
       const sh = shotToV2(raw);
-      if (sh && sh.shot_id === shotId) return sh;
+      if (sh) all.push(sh);
     }
+  }
+  // 1. Exact canonical match — the strict, primary path.
+  const exact = all.find((sh) => sh.shot_id === shotId);
+  if (exact) return exact;
+  // 2. SH-number fallback (2026-06-23). Under the episode-continuous numbering
+  //    invariant (collectShotIdViolations, 7094c8d) every shot has a GLOBALLY
+  //    UNIQUE SH token, so a shotId whose act/scene prefix is wrong but whose SH
+  //    token is valid — an operator passing "…-A1-SC01-SH03" when canon is
+  //    "…-A1-SC02-SH03" — resolves unambiguously. Guarded on a UNIQUE match: if
+  //    the SH token is absent, or appears more than once (a legacy per-scene-reset
+  //    board), return null so the caller still fails loud. A genuinely wrong id is
+  //    never silently masked; this only forgives a misremembered scene/act prefix.
+  const wantSh = shotId.match(/SH\d+/i)?.[0]?.toUpperCase();
+  if (wantSh) {
+    const shMatches = all.filter(
+      (sh) => sh.shot_id.match(/SH\d+/i)?.[0]?.toUpperCase() === wantSh,
+    );
+    if (shMatches.length === 1) return shMatches[0];
   }
   return null;
 }

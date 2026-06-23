@@ -7,6 +7,7 @@ import {
   listStoryboardShots,
   shortShotLabel,
   normalizeShotId,
+  getStoryboardShotById,
 } from '@/lib/api/vgen-shot-helpers';
 
 function makeStb(acts: Array<{ act: number; shots: Array<Record<string, unknown>> }>): string {
@@ -207,5 +208,56 @@ describe('normalizeShotId', () => {
     expect(normalizeShotId('A2-SC25-SH01', undefined)).toBe('A2-SC25-SH01');
     // junk passes through
     expect(normalizeShotId('something-else', 'SS-S15-E11')).toBe('something-else');
+  });
+});
+
+describe('getStoryboardShotById — SH-number fallback (2026-06-23)', () => {
+  // Episode-continuous numbering: SH tokens are globally unique. SH03 lives in
+  // SC02, SH01/SH02 in SC01 — the prefix is decorative, the SH token identifies.
+  const stb = makeStb([
+    {
+      act: 1,
+      shots: [
+        { shot_id: 'SS-S15-E12-A1-SC01-SH01', action_prose: 'Sandy walks.' },
+        { shot_id: 'SS-S15-E12-A1-SC01-SH02', action_prose: 'Sandy notices phone.' },
+      ],
+    },
+    {
+      act: 1,
+      shots: [
+        { shot_id: 'SS-S15-E12-A1-SC02-SH03', action_prose: 'Phone slides in.' },
+        { shot_id: 'SS-S15-E12-A1-SC02-SH04', action_prose: 'Sandy reaches.' },
+      ],
+    },
+  ]);
+
+  test('exact canonical id matches (primary strict path)', () => {
+    expect(getStoryboardShotById(stb, 'SS-S15-E12-A1-SC02-SH03')?.shot_id).toBe(
+      'SS-S15-E12-A1-SC02-SH03',
+    );
+  });
+
+  test('a wrong scene/act prefix resolves by the unique SH token', () => {
+    // The live failure: Polина guessed SC01, canon is SC02. SH03 is globally
+    // unique → resolves instead of "shotId not found in STB".
+    expect(getStoryboardShotById(stb, 'SS-S15-E12-A1-SC01-SH03')?.shot_id).toBe(
+      'SS-S15-E12-A1-SC02-SH03',
+    );
+    // a bare SH token resolves too when unique
+    expect(getStoryboardShotById(stb, 'SH04')?.shot_id).toBe(
+      'SS-S15-E12-A1-SC02-SH04',
+    );
+  });
+
+  test('a genuinely absent SH still fails loud (null) — never masked', () => {
+    expect(getStoryboardShotById(stb, 'SS-S15-E12-A9-SC09-SH99')).toBeNull();
+  });
+
+  test('ambiguous SH (legacy per-scene reset) does NOT guess — returns null', () => {
+    const dup = makeStb([
+      { act: 1, shots: [{ shot_id: 'SS-S15-E01-A1-SC01-SH01' }] },
+      { act: 2, shots: [{ shot_id: 'SS-S15-E01-A2-SC02-SH01' }] }, // SH01 again
+    ]);
+    expect(getStoryboardShotById(dup, 'SS-S15-E01-A3-SC03-SH01')).toBeNull();
   });
 });
