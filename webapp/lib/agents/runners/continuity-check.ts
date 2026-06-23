@@ -627,8 +627,18 @@ export async function runContinuityCheck(
       (v) => v.severity === 'MAJOR',
     ).length;
     const majorPool = ledgerMajors + durationViolations.length + canonConflicts;
+    // q15 block→warning (2026-06-23): the state-ledger's soft state-drift
+    // (STATE_CHANGE_NO_CAUSE / STATE_REVERT_NO_CAUSE — pupil dilation, glow,
+    // sand level, body-parts-as-props) is now ADVISORY. It still surfaces in the
+    // section below + `major_pool` as warnings, but it NO LONGER bounces the
+    // board. Only the genuine-canon (CHK-W02/W07 lighting/appearance CONFLICT)
+    // and duration deterministic pool keeps the hard REVISE gate — plus the LLM
+    // critic's own per-shot location/character canon verdict, untouched. This
+    // kills the over-strict 61-micro-flag false-REVISE that stalled E12 while
+    // preserving the real canon guard the Director asked to keep hard.
+    const hardPool = durationViolations.length + canonConflicts;
     const downgraded =
-      verdict === 'PASS' && reviseImpactForMajorPool(majorPool) === 'REVISE';
+      verdict === 'PASS' && reviseImpactForMajorPool(hardPool) === 'REVISE';
     if (downgraded) {
       verdict = 'REVISE';
       downgradedByLedger = true;

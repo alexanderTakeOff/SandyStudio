@@ -64,32 +64,20 @@ export const execCreadReviewStoryboard = createAgentInngestFunction({
           ? (eventData.storyboardAssetId as string)
           : null;
 
-    // REVISE → bounce to the Storyboarder with hard acceptance criteria.
-    if (verdict === 'REVISE') {
-      const criteria = Array.isArray(meta?.acceptance_criteria)
-        ? (meta.acceptance_criteria as unknown[]).filter(
-            (v): v is string => typeof v === 'string' && v.trim().length > 0,
-          )
-        : [];
-      const revisionNote =
-        criteria.length > 0
-          ? `Readability Critic verdict REVISE — hard acceptance criteria:\n- ${criteria.join('\n- ')}`
-          : 'Readability Critic verdict REVISE — re-author the storyboard for readability.';
-      return {
-        name: 'sandystudio/exec-sb/create-storyboard',
-        data: {
-          episodeId: eventData.episodeId as string,
-          // create-storyboard requires scriptAssetId; the Storyboarder runner
-          // resolves the script from upstream_assets itself, so an empty
-          // string is acceptable (matches the SREV→SB revision bounce shape).
-          scriptAssetId: '',
-          revisionNote,
-        },
-      };
-    }
-
-    // PASS / PASS_WITH_UNCERTAINTY → continuity check.
-    if (verdict === 'PASS' || verdict === 'PASS_WITH_UNCERTAINTY') {
+    // q15 block→warning (2026-06-23): Readability is a SOFT (advisory) critic —
+    // it INFORMS the Director's approval, it does not HALT the chain. Previously
+    // REVISE bounced the whole storyboard back to the Storyboarder; an over-strict
+    // false-REVISE (the E02 cleaning-gag rubric demanding a "six-stage cleaning
+    // engine" from a phone-scroll episode) stalled E12 and pushed operators into
+    // the planless bypass. Now PASS *and* REVISE both advance to the continuity
+    // check — the readability verdict still surfaces as a warning in the feed
+    // (the REV-readability asset + "EXEC-CREAD completed · REVISE" warning row),
+    // so the Director can choose to re-author, but the pipeline no longer stalls.
+    if (
+      verdict === 'PASS' ||
+      verdict === 'PASS_WITH_UNCERTAINTY' ||
+      verdict === 'REVISE'
+    ) {
       return {
         name: 'sandystudio/exec-wchk/check-world',
         data: {
@@ -99,7 +87,8 @@ export const execCreadReviewStoryboard = createAgentInngestFunction({
       };
     }
 
-    // HALT / FAIL / UNKNOWN → no next event (Director escalation).
+    // HALT / FAIL / UNKNOWN → no next event. A genuine critic failure (not an
+    // advisory readability note) still escalates to the Director.
     return null;
   },
 });
