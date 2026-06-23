@@ -46,6 +46,11 @@ import { TOOLS, findTool, openaiSchemas, type ToolContext } from '@/lib/concierg
 import { isHardLimitTool } from '@/lib/concierge/approval-check';
 import type { ConciergeMode } from '@/lib/concierge/types';
 import { resolveEffectiveConciergeMode } from '@/lib/concierge/resolve-mode';
+import {
+  AUTO_REACT_ROUND_BACKSTOP,
+  evaluateRound,
+  type RoundCall,
+} from '@/lib/concierge/auto-react-loop';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,21 +59,16 @@ const ANTI_CASCADE_WINDOW_MS = 10_000;
 const RECENT_TURN_WINDOW = 80;
 
 /**
- * TD-51 (2026-05-25): auto-react tool loop cap. Polina may call read-only /
- * analysis tools to inspect what just happened (getAsset, getRecentActivityEvents,
- * getAnimatorCriticVerdict, etc.) before composing her narrative response.
- * 3 rounds keeps her bounded: typical agent_completed pickup needs 1-2 reads
- * + a final text round. Mutating tools (triggerAgent, requestRevision,
- * approveAsset) are blocked by the per-tool guard regardless of rounds.
- *
- * F5 (2026-06-12, E07 smoke): in BOLD modes (3/4) Polina ACTS in auto-react —
- * a batch step is read(1-2) + mutate(1) + verify(1) + final text, which does
- * not fit in 3. The E07 hour-long stall was exactly this: she ANNOUNCED the
- * next dispatch, ran out of rounds before the tool_call, and nothing woke
- * her again. Strict modes stay at 3 (read + narrate needs no more).
+ * Auto-react tool loop cap (goal-loop slice 1, 2026-06-23). REPLACES the old
+ * 3 (strict) / 5 (bold) split, which functionally capped Polina's WORK at 3-5
+ * think→act cycles → she ran out of rounds mid-task, "announced + waited", and
+ * nothing woke her (the E07 hour-long stall). The cap is now a runaway BACKSTOP
+ * ({@link AUTO_REACT_ROUND_BACKSTOP}): a real task ends far sooner because the
+ * model returns no tool calls when done; the loop also stops on SPIN
+ * (evaluateRound — duplicate mutating call or no forward progress). Strict vs
+ * bold still differ in the TOOL SET exposed (read-only vs mutating), not in the
+ * round count.
  */
-const MAX_AUTO_REACT_TOOL_ROUNDS = 3;
-const MAX_AUTO_REACT_TOOL_ROUNDS_BOLD = 5;
 
 /**
  * TD-51 (2026-05-25): read-only / analysis subset of the concierge tool
@@ -367,9 +367,13 @@ export async function POST(req: Request) {
   // batch). Last round force-disables tools so the model produces a final
   // text response instead of looping.
   let roundCount = 0;
-  const maxRounds = boldMode
-    ? MAX_AUTO_REACT_TOOL_ROUNDS_BOLD
-    : MAX_AUTO_REACT_TOOL_ROUNDS;
+  const maxRounds = AUTO_REACT_ROUND_BACKSTOP;
+  // Spin guard state, threaded across rounds (see lib/concierge/auto-react-loop).
+  const seenToolSigs = new Set<string>();
+  const spinState = { noProgress: 0 };
+  let stalledReason: string | null = null;
+  let cutoff = false;
+  let prevRoundActed = false;
   try {
     for (let round = 0; round < maxRounds; round++) {
       roundCount = round + 1;
@@ -408,9 +412,32 @@ export async function POST(req: Request) {
       const toolCalls = msg.tool_calls ?? [];
 
       if (toolCalls.length === 0) {
-        // Final text from the model — exit the loop.
+        // Final text from the model — exit the loop. If this is the forced
+        // tools-disabled last round AND she was still acting the round before,
+        // she was CUT OFF mid-task (not naturally done) → escalate below.
         const text = typeof msg.content === 'string' ? msg.content.trim() : '';
         assistantText = text;
+        if (isLastRound && prevRoundActed) cutoff = true;
+        break;
+      }
+
+      // Spin guard (goal-loop slice 1): stop BEFORE executing a duplicate
+      // mutating call (= duplicate generation = wasted spend) or after several
+      // rounds with no forward progress. Her LLM rounds are not budget-tracked,
+      // so this is the runaway bound at the working end of the loop.
+      const verdict = evaluateRound(
+        toolCalls.map(
+          (c): RoundCall => ({
+            name: c.function.name,
+            argsJson: c.function.arguments,
+            mutating: !READ_ONLY_TOOL_NAMES.has(c.function.name),
+          }),
+        ),
+        seenToolSigs,
+        spinState,
+      );
+      if (verdict.stop) {
+        stalledReason = verdict.reason;
         break;
       }
 
@@ -468,10 +495,52 @@ export async function POST(req: Request) {
           content: resultJson,
         });
       }
+      prevRoundActed = true;
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown OpenAI error';
     return NextResponse.json({ error: 'openai_failed', detail: message }, { status: 502 });
+  }
+
+  // Stall / cut-off escalation (goal-loop slice 1): if the loop ended because of
+  // the runaway backstop or the spin guard — NOT because the model finished —
+  // surface a VISIBLE blocker instead of the old silent "announce + sleep".
+  // Persisting a turn with metadata.awaiting_director_input arms the existing
+  // pa-escalation-timer (threads.ts → sandystudio/pa/awaiting-set), so Director
+  // sees the question and a re-wake fires if it goes unanswered.
+  if (stalledReason || cutoff) {
+    const note = stalledReason
+      ? `Остановилась: ${stalledReason}. Нужно решение Директора, чтобы продолжить к цели.`
+      : `Уперлась в предохранитель цикла (${maxRounds} раундов) с незавершённой задачей — нужно решение/уточнение Директора.`;
+    const content =
+      assistantText && assistantText.trim().length > 0 ? assistantText.trim() : note;
+    await persistTurn(supabase, parsed.thread_id, {
+      role: 'assistant',
+      event_type: 'message',
+      content,
+      metadata: {
+        auto_react: true,
+        source: parsed.source,
+        trigger_id: parsed.trigger_id,
+        event_type: parsed.event_type ?? null,
+        tool_rounds: roundCount,
+        stalled_reason: stalledReason ?? 'round_backstop',
+        awaiting_director_input: {
+          question: note,
+          deadline_sec: 90,
+          source: 'loop_guard',
+        },
+      },
+    });
+    return NextResponse.json(
+      {
+        ok: true,
+        thread_id: parsed.thread_id,
+        stalled: stalledReason ?? 'round_backstop',
+        tool_rounds: roundCount,
+      },
+      { status: 200 },
+    );
   }
 
   if (!assistantText) {

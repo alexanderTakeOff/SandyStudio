@@ -36,6 +36,11 @@ import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { detectAwaitingDirectorInput } from '@/lib/concierge/await-detector';
 import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
+import {
+  AUTO_REACT_ROUND_BACKSTOP,
+  evaluateRound,
+  type RoundCall,
+} from '@/lib/concierge/auto-react-loop';
 import { appendApprovalLine, loadWorkPlanDoc } from '@/lib/concierge/tools/work-plan';
 import { checkVerbalApproval } from '@/lib/concierge/approval-check';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
@@ -69,7 +74,12 @@ interface ChatRequest {
   nextGate?: string | null;
 }
 
-const MAX_TOOL_ROUNDS = 5;
+// goal-loop slice 1 (2026-06-23): the round cap is a runaway BACKSTOP, not a
+// work limit. The old 5 forced Polina to stop mid-task and "announce + wait";
+// now she runs until the model is done (0 tool calls) or the spin guard fires
+// (evaluateRound). Director is present here, so on a stall we just emit a note —
+// no escalation timer (that path is for the away/auto-react case).
+const MAX_TOOL_ROUNDS = AUTO_REACT_ROUND_BACKSTOP;
 // Sprint γ 2026-05-14 hotfix — bumped 20 → 80. With Postgres trigger writing
 // a system turn per pipeline event + Claude posting team-chat bubbles in the
 // same channel, the previous 20-row window pushed user/assistant turns out
@@ -416,6 +426,9 @@ async function handleChatPOST(req: Request) {
           })),
         ];
 
+        // Spin guard state (goal-loop slice 1), threaded across rounds.
+        const seenToolSigs = new Set<string>();
+        const spinState = { noProgress: 0 };
         // Tool-call loop. Each round: ask the model. If it emits tool_calls,
         // execute them, persist `tool_call` + `tool_result` turns, append
         // to conversation, repeat. Otherwise stream the final text and exit.
@@ -521,6 +534,28 @@ async function handleChatPOST(req: Request) {
             // Final answer arrived on a tool-capable round — emit text and exit.
             const text = typeof msg.content === 'string' ? msg.content : '';
             writeToClient(text);
+            break;
+          }
+
+          // Spin guard (goal-loop slice 1): with the cap now a high backstop,
+          // stop a stuck/looping model BEFORE it re-fires a duplicate mutating
+          // call or spins with no progress. Director is watching, so just emit a
+          // short note and let the normal final-text persistence run.
+          const spinVerdict = evaluateRound(
+            toolCalls.map(
+              (c): RoundCall => ({
+                name: c.function.name,
+                argsJson: c.function.arguments,
+                mutating: findTool(c.function.name)?.mutating !== false,
+              }),
+            ),
+            seenToolSigs,
+            spinState,
+          );
+          if (spinVerdict.stop) {
+            writeToClient(
+              `\n\n⏸️ Остановилась, чтобы не крутить вхолостую (${spinVerdict.reason}). Скажи, как продолжить.`,
+            );
             break;
           }
 
