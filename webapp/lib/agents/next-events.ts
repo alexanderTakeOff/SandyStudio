@@ -226,11 +226,34 @@ export async function computeNextEvents(
   const since = asset.updated_at ?? null;
   const events: Array<{ name: StudioEventName; data: Record<string, unknown> }> = [];
 
-  // ── Brief APPROVED → EXEC-SW (single)
-  if (ft === 'SPC-brief' && !(await hasJob(supabase, ep, 'EXEC-SW', { since }))) {
+  // ── Brief APPROVED → Casting gate → Writer (2026-06-23, Director q22a/q30a:
+  //    «кастинг ПОСЛЕ брифа, ПЕРЕД writer» — after the brief it's clear which
+  //    characters/objects the episode needs).
+  //
+  //    Casting is TOOL-ONLY: the Director/Polina draft it via castEpisode →
+  //    SPC-episode_cast → approve. It has NO Inngest executor, so a fully
+  //    autonomous run can't perform it. Therefore:
+  //      • AUTOTEST (Mode 4 / replay-pilot — signalled by directorUserId ===
+  //        'AUTOTEST', the factory's auto-chain marker): keep the direct
+  //        Brief→Writer edge so the headless DAG still completes.
+  //      • Director-driven modes (1/2/2.5/3): Brief does NOT fire the Writer;
+  //        the Writer fires only once the cast is approved (branch below).
+  const isAutotest = directorUserId === 'AUTOTEST';
+  if (ft === 'SPC-brief' && isAutotest && !(await hasJob(supabase, ep, 'EXEC-SW', { since }))) {
     events.push({
       name: 'sandystudio/exec-sw/write-script',
       data: { episodeId: ep, briefAssetId: asset.id },
+    });
+  }
+
+  // ── Casting APPROVED → EXEC-SW. The gate the Brief no longer skips in
+  //    Director modes. Resolve the approved brief id so the Writer's event
+  //    payload stays honest. Harmless in AUTOTEST (no SPC-episode_cast there).
+  if (ft === 'SPC-episode_cast' && !(await hasJob(supabase, ep, 'EXEC-SW', { since }))) {
+    const briefId = await findLatestApprovedAssetId(supabase, ep, 'SPC-brief');
+    events.push({
+      name: 'sandystudio/exec-sw/write-script',
+      data: { episodeId: ep, briefAssetId: briefId },
     });
   }
 

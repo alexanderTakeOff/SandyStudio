@@ -62,7 +62,11 @@ export const castEpisode: Tool<CastEpisodeArgs> = {
     "anvil/vanity-style bleed). The route runs a canon-existence HARD GATE: every slug " +
     "must already have LOCKED canon, else it returns the missing list (create it in the " +
     "Library or drop it). Creates a DRAFT — the Director then ratifies via approveAsset. " +
-    "Use when the Director dictates the cast list for an episode. Verbal approval required.",
+    "Use when the Director dictates the cast list for an episode. " +
+    "Casting runs AFTER the Brief is approved and BEFORE the Writer (Brief -> Casting -> " +
+    "Writer): once the brief is set you know which characters/objects the episode needs, " +
+    "and approving the cast is what releases the Writer. This is YOUR step - use castEpisode, " +
+    "NOT triggerAgent('ART-AD') (ART-AD has no executor and is rejected). Verbal approval required.",
   mutating: true,
   schema: {
     type: 'function',

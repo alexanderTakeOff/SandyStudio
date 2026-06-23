@@ -76,6 +76,48 @@ describe('SCR-script approval — SREV is critic-chain-only', () => {
   });
 });
 
+describe('Brief → Casting → Writer gate (2026-06-23, q22a/q30a)', () => {
+  function brief(): AssetForChain {
+    return {
+      id: 'brief-1',
+      filename: 'brief',
+      file_type: 'SPC-brief',
+      episode_id: EP,
+      updated_at: '2026-06-23T00:00:00Z',
+    };
+  }
+
+  it('AUTOTEST: Brief APPROVED fires the Writer directly (no casting executor headless)', async () => {
+    const { client } = mockSupabase({ assets: [], jobs: [] });
+    const events = await computeNextEvents(client, brief(), 'AUTOTEST');
+    expect(events.map((e) => e.name)).toContain('sandystudio/exec-sw/write-script');
+  });
+
+  it('Director mode: Brief APPROVED does NOT fire the Writer — Casting is the next gate', async () => {
+    const { client } = mockSupabase({ assets: [], jobs: [] });
+    const events = await computeNextEvents(client, brief(), 'director-1');
+    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-sw/write-script');
+  });
+
+  it('Director mode: Casting APPROVED fires the Writer with the approved brief id', async () => {
+    const { client } = mockSupabase({
+      assets: [{ id: 'brief-1', episode_id: EP, file_type: 'SPC-brief', status: 'APPROVED' }],
+      jobs: [],
+    });
+    const cast: AssetForChain = {
+      id: 'cast-1',
+      filename: 'cast',
+      file_type: 'SPC-episode_cast',
+      episode_id: EP,
+      updated_at: '2026-06-23T00:00:00Z',
+    };
+    const events = await computeNextEvents(client, cast, 'director-1');
+    const fires = events.filter((e) => e.name === 'sandystudio/exec-sw/write-script');
+    expect(fires).toHaveLength(1);
+    expect(fires[0].data.briefAssetId).toBe('brief-1');
+  });
+});
+
 describe('SPC-ref_plan — Modes 1-3 only; AUTOTEST is owned by REV-ref_plan PASS', () => {
   function refPlan(): AssetForChain {
     return {
