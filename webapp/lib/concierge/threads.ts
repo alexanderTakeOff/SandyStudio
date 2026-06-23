@@ -79,6 +79,27 @@ export async function getThread(
   return (data as unknown as ConciergeThreadRow) ?? null;
 }
 
+/**
+ * Re-bind a thread to a different episode (2026-06-23, Director «чат должен
+ * следовать за открытым эпизодом»). The chat route calls this when the
+ * Director's OPEN episode page differs from the thread's current binding, so a
+ * single global Prod-Assistant thread follows whatever episode the Director is
+ * looking at instead of being pinned to the first episode forever.
+ */
+export async function updateThreadEpisode(
+  client: Client,
+  threadId: string,
+  episodeId: string,
+): Promise<void> {
+  const { error } = await client
+    .from(THREADS_TABLE)
+    .update({ episode_id: episodeId })
+    .eq('id', threadId);
+  if (error) {
+    throw new Error(`[concierge.threads] updateThreadEpisode failed: ${error.message}`);
+  }
+}
+
 export async function endThread(
   client: Client,
   threadId: string,

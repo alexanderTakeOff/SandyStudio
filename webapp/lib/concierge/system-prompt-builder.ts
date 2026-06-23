@@ -30,6 +30,9 @@ export interface PromptContext {
   today: string;
   mode: ConciergeMode;
   episodeId?: string | null;
+  /** Human-readable code of the active episode (e.g. SS-S15-E12). Surfaced so PA
+   *  knows WHICH episode she's on, not just the opaque UUID (2026-06-23). */
+  episodeCode?: string | null;
   nextGate?: string | null;
   studioState?: string | null;
   /**
@@ -356,11 +359,22 @@ const workPlan: Block = (ctx) => {
 const studioState: Block = (ctx) => {
   if (!ctx.studioState && !ctx.episodeId && !ctx.nextGate) return null;
   const lines: string[] = ['[STUDIO_STATE]'];
-  if (ctx.episodeId) lines.push(`- Active episode: ${ctx.episodeId}`);
+  if (ctx.episodeId) {
+    const label = ctx.episodeCode
+      ? `${ctx.episodeCode} (UUID: ${ctx.episodeId})`
+      : ctx.episodeId;
+    lines.push(`- Active episode: ${label}`);
+    lines.push(
+      '- This is the episode the Director currently has OPEN. Every episode-scoped action (approve / trigger / read) targets THIS episode by default — do NOT ask the Director for an episode code or UUID you can already see right here.',
+    );
+  }
   if (ctx.nextGate) lines.push(`- Next pipeline gate hint (from URL): ${ctx.nextGate}`);
   if (ctx.studioState) lines.push(ctx.studioState);
   if (ctx.episodeId) {
     lines.push('- Call getNextGate before proposing the next step — URL hint may be stale.');
+    lines.push(
+      '- If a request is genuinely ambiguous (which episode / asset / version), ask ONE short clarifying question. Never stall, and never reply «пришли uuid / я не знаю» for something you can resolve yourself via findEpisode or the active episode above (Director 2026-06-23: «уточнять можно, но не тупить»).',
+    );
   }
   return lines.join('\n');
 };

@@ -34,7 +34,7 @@ import { logEvent } from '@/lib/api/events';
 import path from 'node:path';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { detectAwaitingDirectorInput } from '@/lib/concierge/await-detector';
-import { createThread, getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
+import { createThread, getThread, loadRecentTurns, persistTurn, updateThreadEpisode } from '@/lib/concierge/threads';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import {
   AUTO_REACT_ROUND_BACKSTOP,
@@ -175,19 +175,29 @@ async function handleChatPOST(req: Request) {
     persistenceError = err instanceof Error ? err.message : 'unknown persistence error';
   }
 
-  // q13 (2026-06-15): an EXISTING thread's own episode binding is the authority
-  // — the request often carries no episodeId (the ConciergePanel UI sends only
-  // messages + threadId), but the thread may be bound to an episode (e.g. E10).
-  // Adopt the thread's bound episode as the request episode so BOTH the reported
-  // mode AND every episode-scoped tool (listShots, listRefPlans, triggerAgent…)
-  // operate on the right UUID — instead of Polina having to GUESS the episodeId
-  // and passing an episode CODE / hallucinated id that finds nothing. Root of
-  // her repeated "no APPROVED storyboard"/"forgot episodeId" failures (Director
-  // 2026-06-16: a repeating error is our bug, not the model).
+  // Episode authority (2026-06-23, Director «чат должен следовать за открытым
+  // эпизодом»). body.episodeId comes from the OPEN episode page — ConciergePanel
+  // reads it from the route — a TRUSTED HUMAN signal (NOT a model-supplied tool
+  // arg; q13's distrust was about Gemini jamming codes into tool args, not about
+  // the UI). So the open page WINS and RE-BINDS the thread, making one global
+  // chat follow whatever episode the Director is looking at. When the UI sends
+  // no episode (non-episode page), fall back to the thread's own binding — which
+  // still beats Polina GUESSING the id (the q13 fix this preserves).
   if (threadId) {
     const boundThread = await getThread(supabase, threadId);
     const boundEpisodeId = boundThread?.episode_id ?? null;
-    if (boundEpisodeId && boundEpisodeId !== episodeId) {
+    if (isUuid(episodeId)) {
+      // Open page is authoritative — re-bind the thread if it drifted.
+      if (boundEpisodeId !== episodeId) {
+        try {
+          await updateThreadEpisode(supabase, threadId, episodeId!);
+        } catch {
+          /* non-fatal: context still resolved below for this turn */
+        }
+      }
+      mode = await resolveEffectiveConciergeMode(supabase, episodeId);
+    } else if (boundEpisodeId) {
+      // No open-page episode → the thread's own binding is the authority.
       episodeId = boundEpisodeId;
       mode = await resolveEffectiveConciergeMode(supabase, boundEpisodeId);
     }
@@ -378,7 +388,7 @@ async function handleChatPOST(req: Request) {
   }
 
   const buildPrompt = (turns: ConciergeTurnRow[]) =>
-    buildSystemPrompt({ today, mode, episodeId, nextGate, recentTurns: turns, modelId: model, availablePlaybooks, workPlanDoc });
+    buildSystemPrompt({ today, mode, episodeId, episodeCode, nextGate, recentTurns: turns, modelId: model, availablePlaybooks, workPlanDoc });
 
   // TD-20.A 2026-05-20 — Cancel support via req.signal. AbortController is
   // created client-side; when Director hits Cancel, fetch's signal aborts,
