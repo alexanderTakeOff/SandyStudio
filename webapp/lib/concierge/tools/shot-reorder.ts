@@ -11,6 +11,15 @@
 //
 // Idempotent: re-running with the same pair lands the same final state.
 // Verbal-approval gated.
+//
+// SH is STABLE IDENTITY, not playback position. shot_id is assigned once at
+// generation (renumberShotsContinuous → episode-continuous SH01..SHnn, verified
+// by storyboarder's collectShotIdViolations postcondition) and assets/metadata
+// reference it by value. Reordering therefore swaps shot OBJECTS and leaves
+// shot_id strings untouched — after a reorder SH numbers intentionally no longer
+// equal playback position. Do NOT "fix" this by renumbering on reorder: that
+// would orphan every IMG/VID asset keyed to the old id. The generation-time SH
+// invariant deliberately does not run here.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { gateMutation } from '../approval-check';

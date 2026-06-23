@@ -158,6 +158,71 @@ export function maxActInShotIds(
   return max;
 }
 
+/** Canonical shot_id tail every shot must carry: an act, a scene, and a shot
+ *  counter ("…-A<N>-SC<NN>-SH<NN>"). The capture group is the SH number. */
+const CANONICAL_SHOT_TAIL_RE = /-A\d+-SC\d+-SH(\d+)$/i;
+
+/**
+ * Verify the shot_id numbering AFTER {@link renumberShotsContinuous} has run.
+ *
+ * renumberShotsContinuous *forces* episode-continuous SH numbering, but it has
+ * no self-check: if a shot_id lacks the canonical `-A<n>-SC<nn>-SH<nn>` tail its
+ * regex misses and the id is left untouched (storyboarder.ts fallback) — so a
+ * malformed or duplicate id can slip through silently. That is exactly the E11
+ * class of defect (gap #1: ~33 shots sharing bare SH01 because gemini reset SH
+ * per scene) and the gap #12 lesson — an invariant must verify ALL
+ * representations, not assume the forcing step worked. This helper is the
+ * verifying postcondition, mirroring the act-count triple invariant.
+ *
+ * Returns a list of human-readable violations (empty = valid). Pure function;
+ * the caller turns a non-empty result into a loud HALT.
+ *
+ * Rules (across acts[].shots[] in order, 1-based position N):
+ *   - every shot_id matches `-A\d+-SC\d+-SH\d+$` (else: malformed);
+ *   - the SH number equals its episode position N (else: not continuous);
+ *   - every shot_id is globally unique within the episode (else: duplicate).
+ */
+export function collectShotIdViolations(
+  body: { acts?: unknown } | null | undefined,
+): string[] {
+  const acts = Array.isArray(body?.acts) ? (body!.acts as unknown[]) : [];
+  const violations: string[] = [];
+  const seen = new Set<string>();
+  let position = 0;
+  for (const act of acts) {
+    const shots = Array.isArray((act as { shots?: unknown[] }).shots)
+      ? (act as { shots: unknown[] }).shots
+      : [];
+    for (const sh of shots) {
+      position += 1;
+      const id = (sh as { shot_id?: unknown }).shot_id;
+      if (typeof id !== 'string' || id.length === 0) {
+        violations.push(`shot #${position} has no shot_id`);
+        continue;
+      }
+      if (seen.has(id)) {
+        violations.push(`duplicate shot_id: ${id}`);
+      } else {
+        seen.add(id);
+      }
+      const m = CANONICAL_SHOT_TAIL_RE.exec(id);
+      if (!m) {
+        violations.push(
+          `malformed shot_id (expected …-A<n>-SC<nn>-SH<nn>): ${id}`,
+        );
+        continue;
+      }
+      const shNum = Number(m[1]);
+      if (shNum !== position) {
+        violations.push(
+          `shot_id ${id} has SH${m[1]}, expected SH${String(position).padStart(2, '0')} (episode-continuous)`,
+        );
+      }
+    }
+  }
+  return violations;
+}
+
 function buildUserMessage(args: {
   episodeCode: string;
   episodeTitle: string;
@@ -637,6 +702,18 @@ export async function runStoryboarder(
       `Postcondition failed: act structure inconsistent — ${acts.length} act object(s), ` +
         `highest shot_id act = A${maxShotAct}, script defines ${scriptActs} act(s). ` +
         `All three must match (act-objects = shot_id acts = script acts).`,
+    );
+  }
+
+  // shot_id numbering integrity (E11 root cause, gap #1). renumberShotsContinuous
+  // above FORCES episode-continuous SH numbering but does not self-verify — a
+  // malformed prefix slips past its regex untouched. Confirm every shot_id is
+  // canonical, SH-continuous (1..N), and unique, else HALT loudly here rather
+  // than letting per-scene SH01 duplicates poison the feed downstream.
+  const shotIdProblems = collectShotIdViolations(result.body);
+  if (shotIdProblems.length > 0) {
+    throw new StoryboarderError(
+      `Postcondition failed: shot_id numbering invalid after renumber — ${shotIdProblems.join('; ')}`,
     );
   }
 

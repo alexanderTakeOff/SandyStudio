@@ -6,6 +6,7 @@
 
 import { describe, expect, test } from 'vitest';
 import {
+  collectShotIdViolations,
   countScriptActs,
   maxActInShotIds,
 } from '@/lib/agents/runners/storyboarder';
@@ -74,5 +75,68 @@ describe('maxActInShotIds', () => {
     expect(maxActInShotIds(null)).toBe(0);
     expect(maxActInShotIds({})).toBe(0);
     expect(maxActInShotIds({ acts: [{ act: 1, shots: [{}, { shot_id: 5 }] }] })).toBe(0);
+  });
+});
+
+describe('collectShotIdViolations', () => {
+  const shot = (shot_id: string) => ({ shot_id });
+
+  test('passes a continuous, unique, canonical board', () => {
+    const body = {
+      acts: [
+        { act: 1, shots: [shot('SS-S15-E12-A1-SC01-SH01'), shot('SS-S15-E12-A1-SC01-SH02')] },
+        { act: 2, shots: [shot('SS-S15-E12-A2-SC02-SH03')] },
+      ],
+    };
+    expect(collectShotIdViolations(body)).toEqual([]);
+  });
+
+  test('flags the E11 symptom — per-scene SH reset breaks continuity', () => {
+    // Each scene restarts SH at 01 (what gemini produced for E11). Full ids are
+    // unique (different SC) but SH no longer equals episode position.
+    const body = {
+      acts: [
+        { act: 1, shots: [shot('SS-S15-E11-A1-SC01-SH01'), shot('SS-S15-E11-A1-SC02-SH01')] },
+        { act: 2, shots: [shot('SS-S15-E11-A2-SC03-SH01')] },
+      ],
+    };
+    const v = collectShotIdViolations(body);
+    expect(v.length).toBeGreaterThan(0);
+    // shot #2 should be SH02, shot #3 should be SH03
+    expect(v.some((m) => m.includes('expected SH02'))).toBe(true);
+    expect(v.some((m) => m.includes('expected SH03'))).toBe(true);
+  });
+
+  test('flags a malformed shot_id with no canonical -SH tail', () => {
+    const body = {
+      acts: [{ act: 1, shots: [shot('SS-S15-E12-A1-SC01')] }],
+    };
+    const v = collectShotIdViolations(body);
+    expect(v.some((m) => m.startsWith('malformed shot_id'))).toBe(true);
+  });
+
+  test('flags duplicate full shot_ids', () => {
+    const body = {
+      acts: [
+        {
+          act: 1,
+          shots: [shot('SS-S15-E12-A1-SC01-SH01'), shot('SS-S15-E12-A1-SC01-SH01')],
+        },
+      ],
+    };
+    const v = collectShotIdViolations(body);
+    expect(v.some((m) => m.startsWith('duplicate shot_id'))).toBe(true);
+  });
+
+  test('flags a shot missing its shot_id', () => {
+    const body = { acts: [{ act: 1, shots: [{}] }] };
+    const v = collectShotIdViolations(body);
+    expect(v.some((m) => m.includes('no shot_id'))).toBe(true);
+  });
+
+  test('tolerates missing/empty bodies', () => {
+    expect(collectShotIdViolations(null)).toEqual([]);
+    expect(collectShotIdViolations({})).toEqual([]);
+    expect(collectShotIdViolations({ acts: [] })).toEqual([]);
   });
 });

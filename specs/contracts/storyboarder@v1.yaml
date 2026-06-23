@@ -40,14 +40,15 @@ output:
         runtime_target_seconds: integer
         acts:
           type: array
-          length: 3
+          # count owned by the script's Act headers, NOT a constant (E11 = first
+          # 4-act script; hardcoded "3" was the root cause, fixed 2026-06-22)
           items:
-            act: integer       # 1, 2, 3
+            act: integer       # 1..N, matches the script's act count
             beat_summary: string
             shots:
               type: array
               items:
-                shot_id: string         # {episode_code}-A{N}-SC{NN}-SH{NN}
+                shot_id: string         # {episode_code}-A{N}-SC{NN}-SH{NN}; SH is episode-continuous (SH01..SHnn in shot order), not per-scene
                 camera_angle: enum [wide, medium, medium_wide, close_up, extreme_close_up, over_shoulder, top_down, low_angle, dutch]
                 location: string         # name from brief, NOT generic
                 action: string           # one paragraph of visual action
@@ -68,6 +69,7 @@ postconditions:
   - "One STB-storyboard asset created with status = DRAFT"
   - "JSON acts[] entry count == the script's Act-header count == highest A# in shot_ids (act count is owned by the script, not assumed; E11 root-cause 2026-06-22)"
   - "Every shot has a unique shot_id and a non-generic location"
+  - "SH numbering is episode-continuous (SH01..SHnn in shot order, never per-scene reset), A<n>-SC<nn> prefix preserved — forced by renumberShotsContinuous, verified by the collectShotIdViolations postcondition (E11 root-cause: ~33 shots shared bare SH01)"
   - "Sum of shot durations within 10% of runtime_target_seconds"
 
 # ─── Approval gate ───────────────────────────────────────────────────────────
