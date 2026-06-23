@@ -384,6 +384,46 @@ export const POST = withApiHandler(async (req, ctx) => {
       });
       firedEvents.push({ name: reviseEvent, ids });
     }
+
+    // EREF reference image revised (Director directive 2026-06-23): a per-shot
+    // image has no whole-stage rerun, so `revisionEventForAsset` returns null for
+    // it — which left a Director's Revise note recorded but INERT ("кануло в
+    // лету"). Route the note to the DESIGNER instead: it re-authors the Plan with
+    // the note as hard acceptance criteria (the runner already injects
+    // revisionNote — episode-reference-designer.ts §"HARD ACCEPTANCE CRITERIA"),
+    // then the existing chain re-runs (Plan → Critic → approve → re-render). This
+    // is exactly what the `regenerateRefPlan` PA tool fires — reused, not new.
+    const ft = typeof asset.file_type === 'string' ? asset.file_type : '';
+    if (ft.startsWith('IMG-episode_ref') || ft.startsWith('IMG-anchor')) {
+      const shotIdFromMeta = isShotReferenceV2(asset.metadata)
+        ? (asset.metadata as unknown as { shot_reference: ShotReferenceContract })
+            .shot_reference.shot_id
+        : null;
+      // Fallback: the canonical SH token from the filename. getStoryboardShotById
+      // resolves a bare/mis-prefixed SH token to the canonical shot (the
+      // SH-number fallback), so a bare "SH04" still lands on the right shot.
+      const shotIdFromName =
+        typeof asset.filename === 'string'
+          ? asset.filename.match(/sh\d+/i)?.[0]?.toUpperCase() ?? null
+          : null;
+      const shotId = shotIdFromMeta || shotIdFromName;
+      if (shotId) {
+        const { ids } = await inngest.send({
+          name: 'sandystudio/exec-eref-designer/plan',
+          data: {
+            episodeId: asset.episode_id,
+            shotId,
+            revisionNote: body.note ?? null,
+          } as never,
+        });
+        firedEvents.push({ name: 'sandystudio/exec-eref-designer/plan', ids });
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[approve] EREF revision on ${asset.filename ?? asset.id}: could not resolve a shotId — note saved on the asset, but no Designer re-fire`,
+        );
+      }
+    }
   }
 
   if (body.decision === 'APPROVE' && asset.episode_id) {
