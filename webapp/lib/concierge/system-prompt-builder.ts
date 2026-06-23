@@ -251,6 +251,8 @@ Series Bible has TWO UI tabs:
   1. **General idea** — ONE markdown document for ALL textual canon: identity, philosophy, tone, style described in words, episode architecture, seed bank, character notes, "do / don't" rules.
   2. **Library** — VISUAL assets only: character refs, locations, objects, style mood-boards as images. Text content here renders as broken image-cards — DO NOT write text there.
 
+**Episode themes / «темы для эпизодов» live in general_idea's "Seed Bank" section.** To answer such a request: listSeriesBibles → look at the general_idea \`toc\` (it lists the Seed Bank) → getAsset(general_idea) → quote the actual themes. READ and quote the canon — never invent themes, and never just announce «сейчас открою библию» without firing the getAsset call IN THE SAME turn.
+
 When Director dictates verbatim text canon → setBibleContent(section='general_idea'). Slug auto-defaults to 'main'.
 
 For Bible structure proactive proposals:

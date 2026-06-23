@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { gateMutation } from '../approval-check';
 import { withEffectiveStatus } from '@/lib/api/series-status';
 import { authHeaders, fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { headingToc } from '../doc-toc';
 
 type AnyArgs = Record<string, unknown>;
 
@@ -77,7 +78,7 @@ interface ListSeriesBiblesArgs {
 export const listSeriesBibles: Tool<ListSeriesBiblesArgs> = {
   name: 'listSeriesBibles',
   description:
-    "Get the Series Bible sections (general_idea, characters, locations, objects, styles, audio) for a series. Returns metadata only — each asset's id, filename, slug, status, version, file_type, content_chars (size in chars). Use this to discover what exists. To read the actual markdown of one asset, call `getAsset(id)` afterwards. NEVER expects the full body in this list — content is stripped to keep PA context window safe (a single LOCKED Bible can exceed 400 KB and choke OpenAI).",
+    "Get the Series Bible sections (general_idea, characters, locations, objects, styles, audio) for a series. Returns metadata only — each asset's id, filename, slug, status, version, file_type, content_chars, AND `toc` (its heading outline). Use `toc` to see WHERE things live before reading — e.g. general_idea's toc shows a 'Seed Bank' section that holds the episode themes. To read the actual markdown of one asset, call `getAsset(id)` afterwards. NEVER expects the full body in this list — content is stripped to keep PA context window safe (a single LOCKED Bible can exceed 400 KB and choke OpenAI).",
   mutating: false,
   schema: {
     type: 'function',
@@ -134,6 +135,13 @@ export const listSeriesBibles: Tool<ListSeriesBiblesArgs> = {
     // gpt-5.5 silently (HTTP 200, no assistant reply). Now we return only
     // metadata + content_chars indicator; Polina calls getAsset(id) to fetch
     // any specific asset's actual content.
+    //
+    // 2026-06-23 (Director «Полина должна знать структуру приложения»): stripping
+    // the body hid the document's STRUCTURE — she saw general_idea=17188 chars
+    // but not that it contains a "§34 Seed Bank" with the episode themes, and
+    // looped "I'll open the Bible" for half an hour. We now also return a cheap
+    // `toc` (heading outline) per asset so she sees WHERE things live before
+    // reading the full section.
     const stripped = (payload.sections ?? []).map((sec) => ({
       section: sec.section,
       label: sec.label,
@@ -143,13 +151,17 @@ export const listSeriesBibles: Tool<ListSeriesBiblesArgs> = {
           typeof content === 'string' ? content.length : null;
         const { content: _omit, ...rest } = a;
         void _omit;
-        return { ...rest, content_chars: contentChars };
+        return {
+          ...rest,
+          content_chars: contentChars,
+          toc: typeof content === 'string' ? headingToc(content) : [],
+        };
       }),
     }));
 
     return ok(
       { series: payload.series, sections: stripped },
-      'Series Bible sections loaded (metadata only — use getAsset(id) for actual content).',
+      'Series Bible sections loaded (metadata + per-asset `toc` outline). Use the toc to locate a section, then getAsset(id) to read it in full — e.g. general_idea → "Seed Bank" holds the episode themes.',
     );
   },
 };
