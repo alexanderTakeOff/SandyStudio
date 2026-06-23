@@ -102,6 +102,7 @@ import { selectSkills } from '../../skills/select-skills';
 import { findApprovedAsset } from '../upstream';
 import { loadEpisodeCastSlugs } from '../episode-cast';
 import { logEvent } from '../../api/events';
+import { agentDisplayName } from '../../api/agent-names';
 import { anchorVisualGateEnabled } from '../chain-flags';
 import type { AgentInputs } from '../types';
 import type {
@@ -251,49 +252,22 @@ export interface EpisodeReferencesRunResult {
 // ── Pilot Pass helper ───────────────────────────────────────────────────────
 
 /**
- * Pick up to `n` representative shots for the Pilot Pass (technology.md §4).
- * Strategy:
- *   1. First shot tagged 'establishing' (calm setup baseline)
- *   2. First shot tagged 'action' / 'gag' / 'punchline' (motion/comedy probe)
- *   3. Fallback: first N raw shots when no role variety
+ * Pick the first `n` shots (in storyboard order) for the Pilot Pass
+ * (technology.md §4).
  *
- * Goal: 1-2 representative frames so Director can validate visual direction
- * cheap (~$0.10) before fan-out generates the rest (~$1.00).
+ * Contiguous-from-start BY DESIGN: the fan-out pass resumes via
+ * `start_index = pilot_count` (skip the first N already produced), so the pilot
+ * MUST cover the first N shots in order. A non-contiguous pilot (e.g. picking
+ * establishing SH01 + action SH03) desynchronises fan-out — it would re-skip
+ * SH02 or duplicate SH03. The Director also reasons about the pilot as "the
+ * first two shots". One slice keeps pilot-selection and fan-out-resume in lockstep.
+ *
+ * Goal: 1-2 frames so Director can validate visual direction cheap (~$0.10)
+ * before fan-out generates the rest (~$1.00).
  */
 export function pickPilotShots(shots: readonly ParsedShot[], n: number): ParsedShot[] {
   if (n <= 0 || shots.length === 0) return [];
-  const limit = Math.min(n, shots.length);
-  const picked: ParsedShot[] = [];
-  const used = new Set<string>();
-
-  const establishing = shots.find((s) => s.shot_role === 'establishing');
-  if (establishing) {
-    picked.push(establishing);
-    used.add(establishing.shot_id);
-  }
-
-  if (picked.length < limit) {
-    const action = shots.find(
-      (s) =>
-        !used.has(s.shot_id) &&
-        (s.shot_role === 'action' || s.shot_role === 'gag' || s.shot_role === 'punchline'),
-    );
-    if (action) {
-      picked.push(action);
-      used.add(action.shot_id);
-    }
-  }
-
-  // Fallback fill from first-N when no role variety.
-  for (const s of shots) {
-    if (picked.length >= limit) break;
-    if (!used.has(s.shot_id)) {
-      picked.push(s);
-      used.add(s.shot_id);
-    }
-  }
-
-  return picked;
+  return shots.slice(0, Math.min(n, shots.length));
 }
 
 // ── Asset / Bible helpers ────────────────────────────────────────────────────
@@ -2228,6 +2202,27 @@ export async function runEpisodeReferences(
       cancelled = true;
       break;
     }
+
+    // Per-shot start event so the activity feed shows "Reference Artist
+    // started — SHxx" (restored 2026-06-23 — the v2 hand-rolled handler dropped
+    // the per-shot agent_started the legacy factory path emitted, so the feed
+    // jumped straight from trigger → completed and the Director couldn't see
+    // the run had begun). Mirrors the factory's started/completed shot context.
+    if (episodeId) {
+      const shotLabel = (
+        job.shot.shot_id.match(/sh\d+/i)?.[0] ?? job.shot.shot_id
+      ).toUpperCase();
+      await logEvent(supabase, {
+        event_type: 'agent_started',
+        severity: 'info',
+        title: `${agentDisplayName('EXEC-EREF')} started — ${shotLabel}`,
+        description: `Generating episode reference for ${job.shot.shot_id}…`,
+        actor: 'EXEC-EREF',
+        episode_id: episodeId,
+        metadata: { agent: 'EXEC-EREF', shot_id: job.shot.shot_id, shot_label: shotLabel },
+      });
+    }
+
     // ── Prompt source ────────────────────────────────────────────────────────
     // Default path: build the prompt from the storyboard test plan + Bible
     // canon (the legacy fan-out behaviour).
