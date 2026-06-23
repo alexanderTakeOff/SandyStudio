@@ -228,6 +228,8 @@ export interface EREFDesignerRunResult {
   body: Record<string, unknown>;
   costUsd: number;
   model: string;
+  /** Which text engine produced the Plan — surfaces a Gemini-overload fallback. */
+  provider: import('../providers/anthropic-text').AnthropicTextResult['provider'];
   contract: typeof EREF_DESIGNER_CONTRACT;
   shotId: string;
   storyboardAssetId: string | null;
@@ -1049,8 +1051,16 @@ export async function runEpisodeReferenceDesigner(
   const estCost = (result.body as { estimated_cost_usd?: unknown }).estimated_cost_usd;
   const estCostNum = typeof estCost === 'number' ? estCost : null;
 
+  // Engine marker: when Claude was overloaded (529) and Gemini carried the plan,
+  // make it loud in the plan description so the Director sees which engine ran.
+  const engineNote =
+    result.provider === 'gemini-fallback'
+      ? `· ⚠ Gemini fallback (Anthropic 529)`
+      : '';
+
   const description = [
     `Plan by EXEC-EREF Designer · ${EREF_DESIGNER_CONTRACT} · ${result.model}`,
+    engineNote,
     providerId ? `· provider=${providerId}` : '',
     w && h ? `· ${w}×${h}` : '',
     typeof variantsCount === 'number' ? `· ${variantsCount} variants` : '',
@@ -1065,6 +1075,7 @@ export async function runEpisodeReferenceDesigner(
     body: result.body,
     costUsd: result.costUsd,
     model: result.model,
+    provider: result.provider,
     contract: EREF_DESIGNER_CONTRACT,
     shotId,
     storyboardAssetId: stbAsset.id ?? null,

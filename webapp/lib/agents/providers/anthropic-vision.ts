@@ -131,5 +131,6 @@ export async function generateAnthropicVision(
     model: input.model,
     stopReason: response.stop_reason ?? null,
     usage,
+    provider: 'anthropic',
   };
 }

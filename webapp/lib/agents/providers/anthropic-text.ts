@@ -87,6 +87,15 @@ export interface AnthropicTextResult {
   /** Anthropic stop reason — `end_turn` is normal, `max_tokens` means truncated. */
   stopReason: string | null;
   usage: { inputTokens: number; outputTokens: number };
+  /**
+   * Which engine actually produced this text:
+   *   'anthropic'       — the requested Claude model (normal path)
+   *   'gemini'          — Gemini free tier by routing (debug tier / checker free tier)
+   *   'gemini-fallback' — Claude was OVERLOADED (HTTP 529) so we fell back to Gemini
+   * Runners surface this so the activity feed shows when a shot was carried by
+   * the fallback engine instead of failing on an Anthropic overload.
+   */
+  provider: 'anthropic' | 'gemini' | 'gemini-fallback';
 }
 
 export class AnthropicTextError extends Error {
@@ -160,16 +169,31 @@ export function extractLastJsonBlock(markdown: string): Record<string, unknown> 
   }
 }
 
+/**
+ * True for an Anthropic HTTP 529 `overloaded_error` — a transient capacity
+ * signal that warrants a fallback, NOT a content/auth/contract failure (those
+ * must still fail loud). Matches the SDK error `.status` and the message body.
+ */
+function isOverloadError(err: unknown): boolean {
+  const status = (err as { status?: unknown })?.status;
+  if (status === 529) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\b529\b|overloaded_error|"type"\s*:\s*"overloaded_error"|overloaded/i.test(msg);
+}
+
 export async function generateAnthropicText(
   input: AnthropicTextInput,
 ): Promise<AnthropicTextResult> {
   const maxTokens = input.maxOutputTokens ?? 4000;
 
-  let markdown: string;
-  let model: string;
-  let stopReason: string | null;
-  let usage: { inputTokens: number; outputTokens: number };
-  let costUsd: number;
+  // Definite-assignment: every non-throwing path through the branches below
+  // assigns all six (gemini debug tier · anthropic success · gemini-fallback).
+  let markdown!: string;
+  let model!: string;
+  let stopReason!: string | null;
+  let usage!: { inputTokens: number; outputTokens: number };
+  let costUsd!: number;
+  let provider!: AnthropicTextResult['provider'];
 
   // F7 routing: process-wide debug tier (Mode-4 smokes) frees everything;
   // otherwise checkers ride the free tier per CHECKERS_FREE_TIER (default on).
@@ -205,6 +229,7 @@ export async function generateAnthropicText(
     stopReason = raw.stopReason;
     usage = raw.usage;
     costUsd = 0;
+    provider = 'gemini';
   } else {
     const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
     if (!apiKey) {
@@ -213,7 +238,7 @@ export async function generateAnthropicText(
 
     const client = new Anthropic({ apiKey });
 
-    let response: Awaited<ReturnType<typeof client.messages.create>>;
+    let response: Awaited<ReturnType<typeof client.messages.create>> | null = null;
     try {
       response = await client.messages.create({
         model: input.model,
@@ -222,24 +247,61 @@ export async function generateAnthropicText(
         messages: [{ role: 'user', content: input.userMessage }],
       });
     } catch (err: unknown) {
-      throw new AnthropicTextError(
-        `Anthropic call failed: ${err instanceof Error ? err.message : String(err)}`,
-        err,
-      );
+      // Overload fallback (2026-06-23, Director): a 529 `overloaded_error` is a
+      // TRANSIENT Anthropic-capacity signal, not a content/contract failure.
+      // Rather than bouncing the whole shot (the live "Reference Designer failed
+      // — 529" loop), fall back to the Gemini free tier so the work lands. The
+      // result is tagged `gemini-fallback` so the activity feed shows which
+      // engine carried it. Only overload falls back — auth/4xx/JSON errors still
+      // fail loud. Needs GEMINI_API_KEY; absent → original Anthropic error.
+      const geminiAvailable = Boolean(process.env.GEMINI_API_KEY?.trim());
+      if (isOverloadError(err) && geminiAvailable) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[anthropic-text] ${input.model} overloaded (529) — falling back to Gemini free tier`,
+        );
+        try {
+          const raw = await generateGeminiTextRaw({
+            systemPrompt: input.systemPrompt,
+            userMessage: input.userMessage,
+            maxOutputTokens: maxTokens,
+          });
+          markdown = raw.markdown;
+          model = raw.model;
+          stopReason = raw.stopReason;
+          usage = raw.usage;
+          costUsd = 0;
+          provider = 'gemini-fallback';
+          response = null; // handled below by the provider branch
+        } catch (geminiErr: unknown) {
+          throw new AnthropicTextError(
+            `Anthropic overloaded (529) and Gemini fallback also failed: ${geminiErr instanceof Error ? geminiErr.message : String(geminiErr)}`,
+            geminiErr,
+          );
+        }
+      } else {
+        throw new AnthropicTextError(
+          `Anthropic call failed: ${err instanceof Error ? err.message : String(err)}`,
+          err,
+        );
+      }
     }
 
-    markdown = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n')
-      .trim();
-    model = input.model;
-    stopReason = response.stop_reason ?? null;
-    usage = {
-      inputTokens: response.usage?.input_tokens ?? 0,
-      outputTokens: response.usage?.output_tokens ?? 0,
-    };
-    costUsd = computeCostUsd(usage, model);
+    if (response) {
+      markdown = response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('\n')
+        .trim();
+      model = input.model;
+      stopReason = response.stop_reason ?? null;
+      usage = {
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+      };
+      costUsd = computeCostUsd(usage, model);
+      provider = 'anthropic';
+    }
   }
 
   if (!markdown) {
@@ -265,5 +327,6 @@ export async function generateAnthropicText(
     model,
     stopReason,
     usage,
+    provider,
   };
 }
