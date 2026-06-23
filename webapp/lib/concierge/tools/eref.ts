@@ -333,7 +333,7 @@ interface RegenerateRefPlanArgs {
 export const regenerateRefPlan: Tool<RegenerateRefPlanArgs> = {
   name: 'regenerateRefPlan',
   description:
-    "Re-fire the Designer for one shot to produce a new SPC-ref_plan version. This IS the tool to send a Ref Plan back for revision after a Critic REVISE/HALT verdict — there is NO separate requestRevision / rejectPlan tool, do not invent one. Optionally pass a revisionNote — Designer treats it as a hard contract. Verbal approval required.",
+    "Fire the Reference Designer for ONE shot to produce its SPC-ref_plan (a new shot's plan or a new version). This is THE per-shot Designer entry, and the per-shot path is the ONLY manual one: call it ONCE per shotId. When the Director lists several shots or asks for them sequentially ('сначала SH03, потом SH04 через 30 сек'), make SEPARATE calls in order — never collapse a sequential instruction into a batch, and never reach for triggerAgent('EXEC-EREF-DESIGNER') (that fans out ALL remaining shots and strips the Director's per-shot control). It is ALSO the tool to send a Ref Plan back for revision after a Critic REVISE/HALT verdict — there is NO separate requestRevision / rejectPlan tool, do not invent one. Optionally pass a revisionNote — Designer treats it as a hard contract. Verbal approval required.",
   mutating: true,
   schema: {
     type: 'function',
