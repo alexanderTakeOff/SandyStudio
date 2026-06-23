@@ -5,10 +5,11 @@
 // the episode cast gallery (SPC-episode_cast) from a Director-dictated canon slug
 // list. The REST route runs the canon-existence preflight HARD GATE; on a gap it
 // returns a Polина-readable instruction (create the missing canon in the Library,
-// or drop it from the cast). The DRAFT is then ratified by the Director via
-// approveAsset — proposal → ratify, per the casting governance.
+// or drop it from the cast). The gallery lands in REVIEW (so the Director's normal
+// Approve button surfaces on the Casting stage) and is then ratified by the
+// Director via approveAsset — proposal → ratify, per the casting governance.
 //
-//   PA tool → POST /api/episodes/:id/cast → SPC-episode_cast DRAFT
+//   PA tool → POST /api/episodes/:id/cast → SPC-episode_cast REVIEW
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { gateMutation } from '../approval-check';
@@ -61,7 +62,8 @@ export const castEpisode: Tool<CastEpisodeArgs> = {
     "episode. Anything not cast is scoped OUT of every downstream stage (kills the " +
     "anvil/vanity-style bleed). The route runs a canon-existence HARD GATE: every slug " +
     "must already have LOCKED canon, else it returns the missing list (create it in the " +
-    "Library or drop it). Creates a DRAFT — the Director then ratifies via approveAsset. " +
+    "Library or drop it). Creates it in REVIEW so the Director's Approve button appears on " +
+    "the Casting stage — the Director then ratifies via approveAsset. " +
     "Use when the Director dictates the cast list for an episode. " +
     "Casting runs AFTER the Brief is approved and BEFORE the Writer (Brief -> Casting -> " +
     "Writer): once the brief is set you know which characters/objects the episode needs, " +

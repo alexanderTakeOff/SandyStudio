@@ -2,9 +2,13 @@
 // app/api/episodes/[id]/cast/route.ts
 // ART-AD Casting stage (Phase D, 2026-06-14). Creates/updates the episode cast
 // gallery (SPC-episode_cast) from a Director/ART-AD-selected slug list, gated by a
-// canon-existence preflight (stage C0). The gallery is created DRAFT; Director
-// ratifies it via the standard approve route, which flips scoping live and writes
-// the appears_in projection.
+// canon-existence preflight (stage C0). The gallery is created in REVIEW so it
+// lands in the standard Approval Queue / Casting-stage workstation with the normal
+// Approve button (DRAFT was invisible to the approval UI — `assets_in_review`
+// counts only REVIEW, and the asset state-machine forbids DRAFT→APPROVED, so a
+// DRAFT cast could never be ratified and the episode ran silently unscoped). The
+// Director ratifies it via the standard approve route, which flips scoping live and
+// writes the appears_in projection.
 //
 // Why a dedicated route: casting was only doable via ad-hoc scripts. This makes it
 // a first-class, Polина/Director-callable stage with the preflight HARD GATE that
@@ -75,13 +79,14 @@ export const POST = withApiHandler(async (req, ctx) => {
     body.cast.map((c) => `- **${c.slug}**${c.role ? ` — ${c.role}` : ''}`).join('\n') +
     `\n\n\`\`\`json\n${JSON.stringify({ cast: slugs }, null, 2)}\n\`\`\`\n`;
 
-  // Supersede any prior DRAFT cast gallery for this episode (one live draft).
+  // Supersede any prior un-ratified cast gallery for this episode (one live
+  // proposal). Covers legacy DRAFT and the current REVIEW state.
   await supabase
     .from('assets')
     .update({ status: 'INVALIDATED' } as never)
     .eq('episode_id', episodeId)
     .eq('file_type', EPISODE_CAST_FILE_TYPE)
-    .eq('status', 'DRAFT');
+    .in('status', ['DRAFT', 'REVIEW']);
 
   const { data: existing } = await supabase
     .from('assets')
@@ -99,10 +104,10 @@ export const POST = withApiHandler(async (req, ctx) => {
       episode_id: episodeId,
       series_id: null,
       file_type: EPISODE_CAST_FILE_TYPE,
-      filename: `${episodeCode}-SPC-episode_cast-${versionTag}-DRAFT.md`,
+      filename: `${episodeCode}-SPC-episode_cast-${versionTag}-REVIEW.md`,
       description: `Episode cast gallery — ${body.cast.length} canon members. Ratify to lock scoping.`,
       version: nextVersion,
-      status: 'DRAFT',
+      status: 'REVIEW',
       agent_id: 'ART-AD',
       content,
       metadata: { cast: slugs },
@@ -115,7 +120,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   await logEvent(supabase, {
     event_type: 'asset_updated',
     severity: 'info',
-    title: `Cast drafted for ${episodeCode} (${body.cast.length} members)`,
+    title: `Cast proposed for ${episodeCode} (${body.cast.length} members) — awaiting ratification`,
     description: body.note ?? `ART-AD cast: ${slugs.join(', ')}`,
     actor: user.id,
     asset_id: assetId,
@@ -127,7 +132,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     cast_asset_id: assetId,
     episode_id: episodeId,
     cast: slugs,
-    status: 'DRAFT',
+    status: 'REVIEW',
     // Director ratifies via POST /api/assets/{cast_asset_id}/approve {decision:'APPROVE'}.
     next: 'approve to lock scoping + write appears_in',
   });
