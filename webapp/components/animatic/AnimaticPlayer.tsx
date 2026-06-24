@@ -60,6 +60,7 @@ import {
   resolveTimelineCells,
   type TimelineCell,
   type VidShotAssetRow,
+  type ImgRefAssetRow,
 } from '@/lib/api/timeline-cell-resolver';
 import { liveStagePalette, type WorkPhase } from '@/lib/api/pipeline-stages';
 
@@ -68,15 +69,6 @@ const MAX_SHOT_S = 60;
 // Per Director (2026-06-08): tail trim steps ±0.5s, matching head trim — fine
 // pacing control. Previously ±1s, which over-shot on short comedy beats.
 const SHOT_STEP = 0.5;
-
-/** Minimal IMG-episode_ref row the cell kebab needs to list ref versions. */
-export interface ImgRefAssetRow {
-  id: string;
-  status: string;
-  version: number | null;
-  /** carries `shot_reference.shot_id` (the storyboard shot id). */
-  metadata: unknown;
-}
 
 export interface AnimaticPlayerProps {
   assetId: string;
@@ -306,8 +298,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // Hybrid mode: resolver maps each shot_id to its current canonical cell
   // (mp4-canonical / mp4-review / image fallback / placeholder).
   const timelineCells: TimelineCell[] = useMemo(
-    () => resolveTimelineCells(contract, vidShotAssets ?? []),
-    [contract, vidShotAssets],
+    () => resolveTimelineCells(contract, vidShotAssets ?? [], imgRefAssets ?? []),
+    [contract, vidShotAssets, imgRefAssets],
   );
 
   // TD-43.C (2026-05-24): version-picker popover on timeline cell hover.

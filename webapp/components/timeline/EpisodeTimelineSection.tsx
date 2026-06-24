@@ -27,13 +27,13 @@ import { fetcher } from '@/lib/swr';
 import {
   AnimaticPlayer,
   type AnimaticPlayerHandle,
-  type ImgRefAssetRow,
 } from '@/components/animatic/AnimaticPlayer';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import {
   resolveTimelineCells,
   countCellsByStatus,
   type VidShotAssetRow,
+  type ImgRefAssetRow,
   type TimelineCell,
   type CellStatusPill,
 } from '@/lib/api/timeline-cell-resolver';
@@ -208,6 +208,9 @@ export function EpisodeTimelineSection({
         status: a.status,
         version: a.version,
         metadata: a.metadata,
+        drive_path: a.drive_path,
+        staging_path: a.staging_path,
+        drive_web_view_url: a.drive_web_view_url,
       }));
   }, [data]);
 
@@ -257,8 +260,8 @@ export function EpisodeTimelineSection({
     if (!animaticAsset) return [];
     const contract = (animaticAsset.metadata as { animatic_v1: AnimaticContract })
       .animatic_v1;
-    return resolveTimelineCells(contract, vidShotAssets);
-  }, [animaticAsset, vidShotAssets]);
+    return resolveTimelineCells(contract, vidShotAssets, imgRefAssets);
+  }, [animaticAsset, vidShotAssets, imgRefAssets]);
 
   const counts = useMemo(() => countCellsByStatus(cells), [cells]);
 

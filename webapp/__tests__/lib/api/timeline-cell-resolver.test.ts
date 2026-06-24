@@ -9,6 +9,7 @@ import {
   resolveTimelineCells,
   countCellsByStatus,
   type VidShotAssetRow,
+  type ImgRefAssetRow,
 } from '@/lib/api/timeline-cell-resolver';
 import type { AnimaticContract } from '@/lib/api/animatic-shotlist';
 
@@ -287,5 +288,85 @@ describe('countCellsByStatus — filter chip counts', () => {
     expect(counts.APPROVED).toBe(1);
     expect(counts.REVIEW).toBe(1);
     expect(counts.NONE).toBe(0);
+  });
+});
+
+// 2026-06-24 — live reference frame. The frozen animatic contract goes stale the
+// moment a ref is approved AFTER the last rebuild (Director hit this on SH18: the
+// tint + kebab showed an approved ref, but the cell frame was blank because the
+// contract had image_url=null). The resolver now resolves the frame live.
+function imgRef(shotId: string, o: Partial<ImgRefAssetRow> = {}): ImgRefAssetRow {
+  return {
+    id: 'ref-' + Math.random().toString(36).slice(2, 7),
+    status: 'APPROVED',
+    version: 1,
+    metadata: { shot_reference: { shot_id: shotId } },
+    drive_path: '/staging/ref.png',
+    staging_path: null,
+    drive_web_view_url: null,
+    ...o,
+  };
+}
+
+const SH01 = 'SS-S14-E01-A1-SC01-SH01';
+const nullFrozenContract: AnimaticContract = {
+  ...baseContract,
+  shot_list: [
+    { ...baseContract.shot_list[0]!, image_url: null, asset_id: null },
+    baseContract.shot_list[1]!,
+  ],
+};
+
+describe('resolveTimelineCells — live reference frame (SH18 stale-frozen fix)', () => {
+  it('fills a null-frozen shot from a live APPROVED ref', () => {
+    const ref = imgRef(SH01, { id: 'live-1', drive_path: '/staging/live-1.png' });
+    const cells = resolveTimelineCells(nullFrozenContract, [], [ref]);
+    expect(cells[0]!.kind).toBe('image');
+    expect(cells[0]!.url).toBe('/staging/live-1.png');
+    expect(cells[0]!.asset_id).toBe('live-1');
+  });
+
+  it('live APPROVED ref overrides a frozen contract image_url', () => {
+    const ref = imgRef(SH01, { id: 'live-9', drive_path: '/staging/live-9.png' });
+    const cells = resolveTimelineCells(baseContract, [], [ref]);
+    expect(cells[0]!.url).toBe('/staging/live-9.png'); // not /staging/eref-1.png
+    expect(cells[0]!.asset_id).toBe('live-9');
+  });
+
+  it('prefers APPROVED over REVIEW, newest version within a tier', () => {
+    const cells = resolveTimelineCells(baseContract, [], [
+      imgRef(SH01, { id: 'rev', status: 'REVIEW', version: 9, drive_path: '/staging/rev.png' }),
+      imgRef(SH01, { id: 'app1', status: 'APPROVED', version: 1, drive_path: '/staging/app1.png' }),
+      imgRef(SH01, { id: 'app2', status: 'APPROVED', version: 2, drive_path: '/staging/app2.png' }),
+    ]);
+    expect(cells[0]!.asset_id).toBe('app2');
+  });
+
+  it('uses a REVIEW ref as the frame when no approved ref exists', () => {
+    const ref = imgRef(SH01, { id: 'rev1', status: 'REVIEW', drive_path: '/staging/rev1.png' });
+    const cells = resolveTimelineCells(nullFrozenContract, [], [ref]);
+    expect(cells[0]!.kind).toBe('image');
+    expect(cells[0]!.asset_id).toBe('rev1');
+  });
+
+  it('ignores DRAFT/REVISION/REJECTED refs (never the frame)', () => {
+    const cells = resolveTimelineCells(nullFrozenContract, [], [
+      imgRef(SH01, { id: 'd', status: 'DRAFT' }),
+      imgRef(SH01, { id: 'rv', status: 'REVISION' }),
+    ]);
+    expect(cells[0]!.kind).toBe('placeholder'); // null frozen + no usable ref
+  });
+
+  it('drive-backed ref resolves via /api/media/<id>', () => {
+    const ref = imgRef(SH01, { id: 'drv', drive_web_view_url: 'https://drive/view' });
+    const cells = resolveTimelineCells(baseContract, [], [ref]);
+    expect(cells[0]!.url).toBe('/api/media/drv');
+  });
+
+  it('a VID-shot still wins over a live ref (video is downstream-canonical)', () => {
+    const vid = vidShot({ status: 'APPROVED', metadata: { shot_id: SH01 } });
+    const ref = imgRef(SH01, { id: 'r', status: 'APPROVED' });
+    const cells = resolveTimelineCells(baseContract, [vid], [ref]);
+    expect(cells[0]!.kind).toBe('video-canonical');
   });
 });

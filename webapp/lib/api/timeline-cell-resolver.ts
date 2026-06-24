@@ -38,6 +38,23 @@ export interface VidShotAssetRow {
   metadata: unknown;
 }
 
+/**
+ * Subset of an IMG-episode_ref asset row the resolver needs to render a shot's
+ * reference frame LIVE (newest approved/review per shot) instead of from the
+ * frozen animatic contract. Carries the URL fields so the frame stays in sync
+ * with approvals without an animatic rebuild.
+ */
+export interface ImgRefAssetRow {
+  id: string;
+  status: string;
+  version: number | null;
+  /** carries `shot_reference.shot_id` (the storyboard shot id). */
+  metadata: unknown;
+  drive_path: string | null;
+  staging_path: string | null;
+  drive_web_view_url: string | null;
+}
+
 export type CellKind = 'video-canonical' | 'video-review' | 'image' | 'placeholder';
 
 export type CellStatusPill =
@@ -102,6 +119,26 @@ function bestVideoUrl(asset: VidShotAssetRow): string | null {
   return asset.drive_path || asset.staging_path || asset.drive_web_view_url || null;
 }
 
+/** Best browser-loadable URL for a reference image (same /api/media rule). */
+function bestRefImageUrl(ref: ImgRefAssetRow): string | null {
+  if (ref.id && ref.drive_web_view_url) return `/api/media/${ref.id}`;
+  return ref.drive_path || ref.staging_path || ref.drive_web_view_url || null;
+}
+
+/** Storyboard shot id from an IMG-episode_ref's metadata.shot_reference.shot_id. */
+function refShotId(meta: unknown): string | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const sid = (meta as { shot_reference?: { shot_id?: unknown } }).shot_reference?.shot_id;
+  return typeof sid === 'string' && sid.length > 0 ? sid : null;
+}
+
+/** Status rank for picking a shot's frame: approved/locked > review > (ignore). */
+function refStatusRank(status: string): number {
+  if (status === 'APPROVED' || status === 'LOCKED') return 2;
+  if (status === 'REVIEW') return 1;
+  return 0; // DRAFT/REVISION/REJECTED/INVALIDATED never become the frame
+}
+
 function statusToPill(status: string): CellStatusPill {
   switch (status) {
     case 'APPROVED':
@@ -129,6 +166,7 @@ function statusToPill(status: string): CellStatusPill {
 export function resolveTimelineCells(
   contract: AnimaticContract,
   vidShotAssets: VidShotAssetRow[],
+  imgRefAssets: ImgRefAssetRow[] = [],
 ): TimelineCell[] {
   const overrides = contract.director_overrides;
   // Group VID-shot rows by canonical shot_id (skip rows with no shot_id metadata
@@ -139,6 +177,27 @@ export function resolveTimelineCells(
     if (!sid) continue;
     if (!byShot.has(sid)) byShot.set(sid, []);
     byShot.get(sid)!.push(asset);
+  }
+
+  // Live per-shot reference frame (2026-06-24). The animatic CONTRACT freezes
+  // image_url at build time, so a ref APPROVED after the last rebuild left the
+  // cell blank while the kebab + tint (which read live) showed the ref existed
+  // (Director hit this on SH18). Resolve the frame live — newest APPROVED/LOCKED
+  // ref per shot, else newest REVIEW — so the frame tracks approvals with no
+  // rebuild. The frozen contract image_url stays as a last-resort fallback.
+  const liveRefByShot = new Map<string, ImgRefAssetRow>();
+  for (const ref of imgRefAssets) {
+    const sid = refShotId(ref.metadata);
+    const rank = refStatusRank(ref.status);
+    if (!sid || rank === 0) continue;
+    const cur = liveRefByShot.get(sid);
+    if (
+      !cur ||
+      rank > refStatusRank(cur.status) ||
+      (rank === refStatusRank(cur.status) && (ref.version ?? 0) > (cur.version ?? 0))
+    ) {
+      liveRefByShot.set(sid, ref);
+    }
   }
 
   return contract.shot_list.map((shot) => {
@@ -193,7 +252,25 @@ export function resolveTimelineCells(
       }
     }
 
-    // Fallback to animatic image frame.
+    // Live reference frame (preferred) — keeps the cell in sync with approvals
+    // even when the frozen contract predates the ref. asset_id is the live ref so
+    // the kebab "on screen" marker + click-to-open resolve to the right asset.
+    const liveRef = liveRefByShot.get(shot.shot_id);
+    const liveRefUrl = liveRef ? bestRefImageUrl(liveRef) : null;
+    if (liveRef && liveRefUrl) {
+      return {
+        shot_id: shot.shot_id,
+        kind: 'image',
+        url: liveRefUrl,
+        caption: shot.caption,
+        duration_seconds: duration,
+        status: 'NONE',
+        asset_id: liveRef.id,
+        shot,
+      };
+    }
+
+    // Fallback to the frozen animatic image frame.
     if (shot.image_url) {
       return {
         shot_id: shot.shot_id,
