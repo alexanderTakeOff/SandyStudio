@@ -58,8 +58,9 @@ interface StoryboardShot {
 interface Frame {
   index: number;
   shot_id: string | null;
-  ref_filename: string;
-  ref_url: string;
+  /** null = placeholder shot (no approved ref yet — cell renders dark/empty). */
+  ref_filename: string | null;
+  ref_url: string | null;
   duration_seconds: number;
   caption: string;
 }
@@ -207,11 +208,15 @@ function buildMarkdown(args: {
   for (const f of frames) {
     lines.push(`## Frame ${f.index + 1} — ${f.shot_id ?? '?'} · ${f.duration_seconds}s`);
     lines.push('');
-    lines.push(`![${f.shot_id ?? 'frame'}](${f.ref_url})`);
+    lines.push(
+      f.ref_url
+        ? `![${f.shot_id ?? 'frame'}](${f.ref_url})`
+        : `_(no approved reference yet — placeholder)_`,
+    );
     lines.push('');
     lines.push(`> ${f.caption}`);
     lines.push('');
-    lines.push(`_ref: \`${f.ref_filename}\`_`);
+    lines.push(`_ref: \`${f.ref_filename ?? '—'}\`_`);
     lines.push('');
     lines.push('---');
     lines.push('');

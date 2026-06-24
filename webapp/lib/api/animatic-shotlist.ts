@@ -21,10 +21,14 @@ export type AnimaticContractId = typeof ANIMATIC_CONTRACT;
 export interface AnimaticShot {
   /** Storyboard shot id (e.g. "ss_s14_e01_a2_sc02_sh03"). */
   shot_id: string;
-  /** UUID of the approved IMG-episode_ref asset that supplies the image. */
-  asset_id: string;
-  /** Best browser-loadable URL for the image (drive_web_view_url or staging). */
-  image_url: string;
+  /**
+   * UUID of the approved IMG-episode_ref asset that supplies the image, or
+   * `null` for a placeholder shot (storyboard shot with no approved ref yet —
+   * the cell renders dark/empty rather than borrowing another shot's image).
+   */
+  asset_id: string | null;
+  /** Best browser-loadable URL for the image, or `null` for a placeholder shot. */
+  image_url: string | null;
   /** Initial duration from storyboard `duration_seconds`. Director can override. */
   duration_seconds: number;
   /** From storyboard, optional. e.g. "establishing", "action", "punchline". */
@@ -440,20 +444,25 @@ export async function buildShotListFromApprovedEREF(
     if (id) byShotId.set(id, a);
   }
 
+  // v2 = at least one approved ref carries shot_id metadata → we can match each
+  // storyboard shot to ITS ref deterministically. v1 (legacy, no shot_id on any
+  // ref) has no key to match on, so it round-robins by index as a best effort.
+  // CRITICAL (2026-06-23): in v2 a shot with NO approved ref must get a
+  // PLACEHOLDER (null image), never a round-robined borrow of another shot's
+  // image. The old unconditional `refs[i % refs.length]` fallback meant that
+  // with only SH01/SH02 approved, every other shot displayed SH01/SH02's image.
+  const isV1 = byShotId.size === 0;
+
   const shotList: AnimaticShot[] = [];
   for (let i = 0; i < shots.length; i++) {
     const shot = shots[i]!;
-    let chosen: ApprovedEREFAssetRow | undefined = byShotId.get(shot.shot_id);
-    if (!chosen) {
-      // v1 fallback: round-robin by index.
-      chosen = refs[i % refs.length];
-    }
-    if (!chosen) continue;
+    const chosen: ApprovedEREFAssetRow | undefined =
+      byShotId.get(shot.shot_id) ?? (isV1 ? refs[i % refs.length] : undefined);
     const captionSource = shot.key_beat ?? shot.action ?? '';
     shotList.push({
       shot_id: shot.shot_id,
-      asset_id: chosen.id,
-      image_url: bestImageUrl(chosen),
+      asset_id: chosen?.id ?? null,
+      image_url: chosen ? bestImageUrl(chosen) : null,
       duration_seconds: shot.duration_seconds ?? FALLBACK_DURATION_S,
       shot_role: shot.shot_role,
       caption: captionSource ? captionSource.slice(0, 200) : undefined,
