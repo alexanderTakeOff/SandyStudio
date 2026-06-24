@@ -69,6 +69,15 @@ const MAX_SHOT_S = 60;
 // pacing control. Previously ±1s, which over-shot on short comedy beats.
 const SHOT_STEP = 0.5;
 
+/** Minimal IMG-episode_ref row the cell kebab needs to list ref versions. */
+export interface ImgRefAssetRow {
+  id: string;
+  status: string;
+  version: number | null;
+  /** carries `shot_reference.shot_id` (the storyboard shot id). */
+  metadata: unknown;
+}
+
 export interface AnimaticPlayerProps {
   assetId: string;
   contract: AnimaticContract;
@@ -130,6 +139,14 @@ export interface AnimaticPlayerProps {
    * Undefined / empty = no live work; cells rest at their asset colour.
    */
   liveStageByShot?: ReadonlyMap<string, WorkPhase>;
+  /**
+   * Image-version parity (2026-06-24) — live IMG-episode_ref rows for the
+   * episode (all statuses). The cell kebab lists each shot's reference versions
+   * with the on-screen marker + inline ✓ approve, mirroring the video list. The
+   * approve route (/api/assets/[id]/approve) is generic, so this reuses the
+   * exact video-version controls.
+   */
+  imgRefAssets?: ImgRefAssetRow[];
 }
 
 /**
@@ -282,6 +299,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     onOpenAsset,
     animaticStatus,
     liveStageByShot,
+    imgRefAssets,
   },
   ref,
 ) {
@@ -312,6 +330,26 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     }
     return map;
   }, [vidShotAssets]);
+
+  // Image-version parity — group IMG-episode_ref rows by their storyboard shot
+  // id (metadata.shot_reference.shot_id — a DIFFERENT shape than VID-shot's
+  // metadata.shot_id), newest version first. Mirrors vidShotsByShotId so the
+  // kebab can list ref versions exactly like video versions.
+  const imgRefsByShotId = useMemo(() => {
+    const map = new Map<string, ImgRefAssetRow[]>();
+    for (const row of imgRefAssets ?? []) {
+      const sid = (row.metadata as { shot_reference?: { shot_id?: unknown } } | null)
+        ?.shot_reference?.shot_id;
+      if (typeof sid !== 'string') continue;
+      const existing = map.get(sid);
+      if (existing) existing.push(row);
+      else map.set(sid, [row]);
+    }
+    for (const rows of map.values()) {
+      rows.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+    }
+    return map;
+  }, [imgRefAssets]);
 
   const [hoveredCellIdx, setHoveredCellIdx] = useState<number | null>(null);
   const [approveBusyId, setApproveBusyId] = useState<string | null>(null);
@@ -1209,6 +1247,81 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                             </span>
                           </button>
                         ))}
+                      </div>
+                    )}
+                    {/* Image-version parity (2026-06-24) — per-shot reference
+                        versions, mirroring the video list: version + status
+                        colour + on-screen marker (the ref the cell currently
+                        shows) + inline ✓ approve for REVIEW. Reuses the generic
+                        approveVersion + onOpenAsset; no new endpoint. */}
+                    {(imgRefsByShotId.get(t.shot.shot_id) ?? []).length > 0 && (
+                      <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
+                        <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
+                          ref
+                        </div>
+                        {(imgRefsByShotId.get(t.shot.shot_id) ?? []).map((r) => {
+                          const isReview = r.status === 'REVIEW';
+                          const isBusy = approveBusyId === r.id;
+                          // The image actually on screen = the cell's resolved
+                          // asset_id when it's showing an image (not a video).
+                          const isShown = cell?.kind === 'image' && r.id === cell?.asset_id;
+                          return (
+                            <div
+                              key={r.id}
+                              className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-[color-mix(in_oklab,_white_8%,_transparent)]"
+                              style={
+                                isShown
+                                  ? {
+                                      background:
+                                        'color-mix(in oklab, var(--accent-primary, #6EC6E8) 20%, transparent)',
+                                    }
+                                  : undefined
+                              }
+                            >
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (onOpenAsset) onOpenAsset(r.id);
+                                }}
+                                className="flex-1 text-left font-mono text-[11px] cursor-pointer"
+                              >
+                                {isShown ? '▶ ' : '  '}
+                                v{String(r.version ?? 1).padStart(2, '0')}{' '}
+                                <span
+                                  className="opacity-70"
+                                  style={{ color: cellPalette(r.status as never, 'image').color }}
+                                >
+                                  {r.status}
+                                </span>
+                                {isShown && (
+                                  <span className="ml-1 opacity-60 text-[9px] uppercase tracking-wider">
+                                    on screen
+                                  </span>
+                                )}
+                              </button>
+                              {isReview && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void approveVersion(r.id);
+                                  }}
+                                  disabled={isBusy}
+                                  className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                                  style={{
+                                    background: 'var(--accent-success)',
+                                    color: 'black',
+                                    opacity: isBusy ? 0.5 : 1,
+                                  }}
+                                  title="Approve this reference"
+                                >
+                                  {isBusy ? '…' : '✓'}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                     {versions.length === 0 ? (

@@ -24,7 +24,11 @@ import { useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { ChevronDown, ChevronUp, Film, CheckCircle2, Loader2 } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
-import { AnimaticPlayer, type AnimaticPlayerHandle } from '@/components/animatic/AnimaticPlayer';
+import {
+  AnimaticPlayer,
+  type AnimaticPlayerHandle,
+  type ImgRefAssetRow,
+} from '@/components/animatic/AnimaticPlayer';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 import {
   resolveTimelineCells,
@@ -189,6 +193,20 @@ export function EpisodeTimelineSection({
         drive_path: a.drive_path,
         staging_path: a.staging_path,
         drive_web_view_url: a.drive_web_view_url,
+        metadata: a.metadata,
+      }));
+  }, [data]);
+
+  // Image-version parity — IMG-episode_ref rows (all statuses) for the cell
+  // kebab's per-shot reference version list + inline approve.
+  const imgRefAssets: ImgRefAssetRow[] = useMemo(() => {
+    const assets = data?.data.assets ?? [];
+    return assets
+      .filter((a) => a.file_type.startsWith('IMG-episode_ref'))
+      .map((a) => ({
+        id: a.id,
+        status: a.status,
+        version: a.version,
         metadata: a.metadata,
       }));
   }, [data]);
@@ -394,6 +412,7 @@ export function EpisodeTimelineSection({
               assetId={animaticAsset.id}
               contract={contract}
               vidShotAssets={vidShotAssets}
+              imgRefAssets={imgRefAssets}
               filter={filter}
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
