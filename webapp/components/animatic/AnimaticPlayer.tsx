@@ -1149,6 +1149,18 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             // TD-43.C: versions of THIS shot — popover lists each.
             const versions = vidShotsByShotId.get(t.shot.shot_id) ?? [];
             const showPopover = hoveredCellIdx === i;
+            // 2026-06-24 — edge-aware popover anchor. Centering (`left-1/2
+            // -translate-x-1/2`) overflows the content-frame's left/right edge
+            // for the first/last cells, and the frame's `overflow-y-auto`
+            // (which forces overflow-x:auto) CLIPS the overflowing half — so the
+            // SH01 popover's version rows + approve ✓ were cut off. Anchor the
+            // popover inward at the extremes so it always stays inside the strip.
+            const popoverAnchor =
+              leftPct < 25
+                ? 'left-0'
+                : leftPct > 75
+                  ? 'right-0'
+                  : 'left-1/2 -translate-x-1/2';
             return (
               <div
                 key={t.shot.shot_id}
@@ -1203,7 +1215,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                     mouseLeave used to fire on the 8px gap and hide popover. */}
                 {showPopover && (
                   <div
-                    className="absolute z-40 left-1/2 -translate-x-1/2 top-0 -translate-y-full whitespace-nowrap rounded-md text-[11px]"
+                    className={`absolute z-50 ${popoverAnchor} top-0 -translate-y-full whitespace-nowrap rounded-md text-[11px]`}
                     style={{
                       background: 'var(--panel-glass-strong-bg, rgba(20,20,20,0.95))',
                       color: 'var(--text-primary)',
