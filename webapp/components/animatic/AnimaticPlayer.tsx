@@ -1161,6 +1161,20 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                 : leftPct > 75
                   ? 'right-0'
                   : 'left-1/2 -translate-x-1/2';
+            // 2026-06-24 — "this shot HAS a reference image" signal, on a channel
+            // orthogonal to the number colour (which carries video/live status):
+            // a faint --asset-image (theme) background tint when a ref exists at
+            // all, a more saturated one once a ref is APPROVED. Empty cells stay
+            // clear, so the Director can scan which shots have art at a glance.
+            const cellRefs = imgRefsByShotId.get(t.shot.shot_id) ?? [];
+            const hasApprovedRef = cellRefs.some(
+              (r) => r.status === 'APPROVED' || r.status === 'LOCKED',
+            );
+            const refTint = hasApprovedRef
+              ? 'color-mix(in oklab, var(--asset-image) 22%, transparent)'
+              : cellRefs.length > 0
+                ? 'color-mix(in oklab, var(--asset-image) 9%, transparent)'
+                : 'transparent';
             return (
               <div
                 key={t.shot.shot_id}
@@ -1188,7 +1202,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                   style={{
                     background: isCurrent
                       ? 'color-mix(in oklab, var(--accent-primary) 35%, transparent)'
-                      : 'transparent',
+                      : refTint,
                     borderRight: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
                   }}
                 >
