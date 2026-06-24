@@ -23,24 +23,37 @@ import OpenAI from 'openai';
 import { getServerEnv } from '@/lib/env';
 
 const GEMINI_OPENAI_BASE = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+// Anthropic ships an OpenAI-compatible surface at /v1/ (same OpenAI SDK, just a
+// different baseURL + key + model). Routing the concierge here keeps the whole
+// existing tool-loop unchanged while running Polina on Claude (Director 2026-06-24:
+// try Opus 4.8 for Polina — costs/time/nerves vs gpt-5.*). Tokens use `max_tokens`
+// like Gemini; isGpt5 is false for a claude-* model → temperature sent, no
+// reasoning_effort (exactly what Claude wants).
+const ANTHROPIC_OPENAI_BASE = 'https://api.anthropic.com/v1/';
 
-export type ConciergeProvider = 'openai' | 'gemini';
+export type ConciergeProvider = 'openai' | 'gemini' | 'anthropic';
 
 export function conciergeProvider(): ConciergeProvider {
-  return (process.env.CONCIERGE_PROVIDER ?? '').toLowerCase() === 'gemini'
-    ? 'gemini'
-    : 'openai';
+  const p = (process.env.CONCIERGE_PROVIDER ?? '').toLowerCase();
+  if (p === 'gemini') return 'gemini';
+  if (p === 'anthropic' || p === 'opus' || p === 'claude') return 'anthropic';
+  return 'openai';
 }
 
 export function conciergeModel(): string {
-  if (conciergeProvider() === 'gemini') {
+  const provider = conciergeProvider();
+  if (provider === 'gemini') {
     return process.env.CONCIERGE_GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+  }
+  if (provider === 'anthropic') {
+    return process.env.CONCIERGE_ANTHROPIC_MODEL?.trim() || 'claude-opus-4-8';
   }
   return getServerEnv().OPENAI_MODEL || 'gpt-5.4-mini';
 }
 
 export function createConciergeClient(): OpenAI {
-  if (conciergeProvider() === 'gemini') {
+  const provider = conciergeProvider();
+  if (provider === 'gemini') {
     const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey) {
       throw new Error(
@@ -49,15 +62,24 @@ export function createConciergeClient(): OpenAI {
     }
     return new OpenAI({ apiKey, baseURL: GEMINI_OPENAI_BASE });
   }
+  if (provider === 'anthropic') {
+    const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+    if (!apiKey) {
+      throw new Error(
+        'CONCIERGE_PROVIDER=anthropic but ANTHROPIC_API_KEY is missing — set it or unset CONCIERGE_PROVIDER',
+      );
+    }
+    return new OpenAI({ apiKey, baseURL: ANTHROPIC_OPENAI_BASE });
+  }
   return new OpenAI({ apiKey: getServerEnv().OPENAI_API_KEY });
 }
 
 /**
  * Output-token cap under the param name the active provider expects.
- * OpenAI: max_completion_tokens · Gemini compat: max_tokens.
+ * OpenAI: max_completion_tokens · Gemini & Anthropic OpenAI-compat: max_tokens.
  */
 export function conciergeMaxTokensParam(n: number): Record<string, number> {
-  return conciergeProvider() === 'gemini'
-    ? { max_tokens: n }
-    : { max_completion_tokens: n };
+  return conciergeProvider() === 'openai'
+    ? { max_completion_tokens: n }
+    : { max_tokens: n };
 }
