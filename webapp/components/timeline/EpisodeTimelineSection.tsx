@@ -253,6 +253,31 @@ export function EpisodeTimelineSection({
     return map;
   }, [data]);
 
+  // Ref Plan (SPC-ref_plan) — the EREF Designer's per-shot plan that produced the
+  // reference image. Surfaced in the kebab so the plan is reachable from EVERY
+  // shot (Director 2026-06-24: SH09 had a ref plan but the kebab showed nothing;
+  // when generation jams he must be able to open the plan to see what went wrong).
+  // Keyed by the unique SHxx token because ref_plan metadata.shot_id is sometimes
+  // the full storyboard id and sometimes the short "SH16" form.
+  const refPlansByShotId = useMemo(() => {
+    const token = (s: string): string | null => s.match(/sh\d+/i)?.[0]?.toUpperCase() ?? null;
+    const assets = data?.data.assets ?? [];
+    const map = new Map<string, Array<{ id: string; version: number | null; status: string }>>();
+    for (const a of assets) {
+      if (!a.file_type.startsWith('SPC-ref_plan')) continue;
+      const meta = a.metadata as { shot_id?: unknown } | null;
+      const raw = typeof meta?.shot_id === 'string' ? meta.shot_id : a.filename;
+      const key = token(raw) ?? token(a.filename);
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push({ id: a.id, version: a.version, status: a.status });
+    }
+    for (const arr of map.values()) {
+      arr.sort((x, y) => (y.version ?? 0) - (x.version ?? 0));
+    }
+    return map;
+  }, [data]);
+
   // Compute resolved cells once, used by both the toolbar (counts/bulk) and
   // the drawer (prev/next nav). The player computes the same internally —
   // duplicating this is cheap (pure function, ~O(shots × vid-shots)).
@@ -427,6 +452,7 @@ export function EpisodeTimelineSection({
               // image-fallback path that handleCellClick uses (which would
               // otherwise enable the «Generate VGEN» footer on a Plan view).
               shotPlansByShotId={shotPlansByShotId}
+              refPlansByShotId={refPlansByShotId}
               onOpenAsset={(id) => setPreviewAssetId(id)}
             />
           </div>

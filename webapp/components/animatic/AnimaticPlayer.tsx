@@ -105,6 +105,12 @@ export interface AnimaticPlayerProps {
    */
   shotPlansByShotId?: Map<string, Array<{ id: string; version: number | null; status: string }>>;
   /**
+   * Ref Plan (SPC-ref_plan) versions per shot, keyed by the unique SHxx token.
+   * The EREF Designer's plan that produced the reference — surfaced in the kebab
+   * so the plan is reachable from EVERY shot (open via onOpenAsset). 2026-06-24.
+   */
+  refPlansByShotId?: Map<string, Array<{ id: string; version: number | null; status: string }>>;
+  /**
    * TD-80 (2026-05-27): opens an arbitrary asset id in the parent's
    * PreviewDrawer without entering the «missing VGEN» branch that
    * `onCellClick` uses for image-fallback cells. Plan rows in the popover
@@ -288,6 +294,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     onCellClick,
     filter = 'all',
     shotPlansByShotId,
+    refPlansByShotId,
     onOpenAsset,
     animaticStatus,
     liveStageByShot,
@@ -1208,6 +1215,12 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             // all, a more saturated one once a ref is APPROVED. Empty cells stay
             // clear, so the Director can scan which shots have art at a glance.
             const cellRefs = imgRefsByShotId.get(t.shot.shot_id) ?? [];
+            // Ref-plan rows for this shot — keyed by the unique SHxx token so a
+            // ref_plan saved with the short "SH16" shot_id still matches.
+            const refPlanRows =
+              refPlansByShotId?.get(
+                (t.shot.shot_id.match(/sh\d+/i)?.[0] ?? t.shot.shot_id).toUpperCase(),
+              ) ?? [];
             const hasApprovedRef = cellRefs.some(
               (r) => r.status === 'APPROVED' || r.status === 'LOCKED',
             );
@@ -1285,6 +1298,36 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                     <div className="px-1 pb-1 font-mono opacity-70 text-[10px]">
                       {t.shot.shot_id} · {t.duration.toFixed(1)}s
                     </div>
+                    {/* Ref Plan (SPC-ref_plan) — first row, the earliest artifact
+                        of the shot. Reachable from EVERY shot so the Director can
+                        open it and see what the EREF Designer planned / what went
+                        wrong when generation jams (2026-06-24). */}
+                    {refPlanRows.length > 0 && (
+                      <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
+                        <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
+                          ref plan
+                        </div>
+                        {refPlanRows.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onOpenAsset) onOpenAsset(p.id);
+                            }}
+                            className="text-left font-mono text-[11px] cursor-pointer hover:bg-[color-mix(in_oklab,_white_8%,_transparent)] rounded px-1 py-0.5"
+                          >
+                            v{String(p.version ?? 1).padStart(2, '0')}{' '}
+                            <span
+                              className="opacity-70"
+                              style={{ color: cellPalette(p.status as never, 'plan').color }}
+                            >
+                              {p.status}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {/* TD-80 (2026-05-27) — Shot Plan versions for this shot.
                         Director can open the latest (or any) Plan in the
                         existing PreviewDrawer BEFORE the video burns. Pre-TD-80
