@@ -43,7 +43,10 @@ export const GET = withApiHandler(async (_req, ctx) => {
       .select('*')
       .eq('episode_id', id)
       .order('created_at', { ascending: false })
-      .limit(50),
+      // q4a — the timeline reads input_snapshot.shotId from these jobs to pulse
+      // per-shot live work; 50 could truncate an early shot's RUNNING job on a
+      // busy episode, so match the pipeline route's 200 ceiling.
+      .limit(200),
   ]);
 
   if (epRes.error) throw new Error(`episode fetch failed: ${epRes.error.message}`);

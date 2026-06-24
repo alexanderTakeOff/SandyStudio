@@ -61,6 +61,7 @@ import {
   type TimelineCell,
   type VidShotAssetRow,
 } from '@/lib/api/timeline-cell-resolver';
+import { liveStagePalette, type WorkPhase } from '@/lib/api/pipeline-stages';
 
 const MIN_SHOT_S = 0.5;
 const MAX_SHOT_S = 60;
@@ -122,6 +123,13 @@ export interface AnimaticPlayerProps {
    * When `'APPROVED'` / `'LOCKED'` / anything else — hide the footer row.
    */
   animaticStatus?: string;
+  /**
+   * q4a (2026-06-22) — per-shot live work overlay: shot_id → active WorkPhase
+   * (design/animate) for shots whose designer / video-artist job is RUNNING
+   * right now. A matched cell recolours + pulses (live wins over asset status).
+   * Undefined / empty = no live work; cells rest at their asset colour.
+   */
+  liveStageByShot?: ReadonlyMap<string, WorkPhase>;
 }
 
 /**
@@ -219,7 +227,16 @@ function fmt(t: number): string {
 function cellPalette(
   status: string | undefined,
   kind: string | undefined,
-): { color: string; weight: number; glow?: string } {
+  liveStage?: WorkPhase,
+): { color: string; weight: number; glow?: string; pulse?: boolean } {
+  // q4a (2026-06-22) — live work ALWAYS wins: a job RUNNING on this shot
+  // recolours the cell (even an APPROVED/green one) and pulses until the job
+  // finishes, then it settles back to the asset-derived colour below. Colour
+  // logic lives in node-safe liveStagePalette (theme tokens, no inline hex).
+  if (liveStage) {
+    const lp = liveStagePalette(liveStage);
+    return { color: lp.color, weight: 700, glow: lp.glow, pulse: true };
+  }
   switch (status) {
     case 'APPROVED':
     case 'LOCKED':
@@ -264,6 +281,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     shotPlansByShotId,
     onOpenAsset,
     animaticStatus,
+    liveStageByShot,
   },
   ref,
 ) {
@@ -1086,7 +1104,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             // Phase A.1 colour palette — every non-final state is visually
             // distinct. Bold weight when there's a real mp4 row; lighter for
             // missing / draft.
-            const palette = cellPalette(cell?.status, cell?.kind);
+            // q4a — per-shot live overlay: if a designer/video-artist job is
+            // RUNNING for THIS shot, it recolours + pulses (live wins).
+            const liveStage = liveStageByShot?.get(t.shot.shot_id);
+            const palette = cellPalette(cell?.status, cell?.kind, liveStage);
             // TD-43.C: versions of THIS shot — popover lists each.
             const versions = vidShotsByShotId.get(t.shot.shot_id) ?? [];
             const showPopover = hoveredCellIdx === i;
@@ -1122,11 +1143,15 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                   }}
                 >
                   <div
-                    className="text-[18px] truncate px-0.5 leading-[44px] tabular-nums text-center"
+                    className={`text-[18px] truncate px-0.5 leading-[44px] tabular-nums text-center${palette.pulse ? ' cell-stage-pulse' : ''}`}
                     style={{
                       color: palette.color,
                       fontWeight: palette.weight,
                       textShadow: palette.glow,
+                      // Drive the breathe glow with the live stage colour.
+                      ...(palette.pulse
+                        ? { ['--stage-glow' as string]: palette.color }
+                        : {}),
                     }}
                   >
                     {i + 1}

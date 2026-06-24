@@ -46,6 +46,9 @@
      in EpisodeTimeline shot strip. Used by AnimaticPlayer cellPalette. */
   --accent-orange:    #F97316;
   --accent-purple:    #A855F7;
+  /* q4a — per-shot live work stages on the timeline strip (AnimaticPlayer). */
+  --accent-stage-design:  #818CF8;
+  --accent-stage-animate: #A855F7;
 
   /* Status chips */
   --status-draft:    #64748B;
@@ -116,6 +119,9 @@
   /* Phase A.1 — palette parity for REVISION + NEEDS_HUMAN_TWEAK on Sand Gold theme. */
   --accent-orange:    #E0834C;
   --accent-purple:    #B89968;
+  /* q4a — per-shot live work stages on the timeline strip (AnimaticPlayer). */
+  --accent-stage-design:  #7FA8C9;
+  --accent-stage-animate: #B98BB0;
 
   --status-draft:    #8C7A60;
   --status-review:   #FBBF24;
@@ -173,6 +179,9 @@
   --accent-orange:    #FB923C;
   --accent-purple:    #C084FC;
   --accent-info:      #818CF8;
+  /* q4a — per-shot live work stages on the timeline strip (AnimaticPlayer). */
+  --accent-stage-design:  #5EC8E8;
+  --accent-stage-animate: #F472D0;
 
   --status-draft:    #6E6390;
   --status-review:   #818CF8;
@@ -212,6 +221,20 @@
   --ambient-line-opacity:      0;
   --ambient-node-opacity:      0;
   --ambient-glow-strength:     0;
+}
+
+/* ─── Live stage pulse (EpisodeTimeline per-shot work signal, q4a) ───────────
+   Cells are coloured NUMBERS, so we breathe text-shadow + opacity (not box-
+   shadow/transform). --stage-glow is set inline per cell = the stage colour,
+   so one class serves both design (blue) and animate (violet). The global
+   reduced-motion rule below neutralises the breathe — the colour still shows. */
+@keyframes stage-pulse {
+  0%, 100% { opacity: 0.72; text-shadow: 0 0 4px var(--stage-glow, transparent); }
+  50%      { opacity: 1;    text-shadow: 0 0 9px var(--stage-glow, transparent); }
+}
+.cell-stage-pulse {
+  animation: stage-pulse 1.8s ease-in-out infinite;
+  will-change: opacity, text-shadow;
 }
 
 /* ─── Reduced motion ─────────────────────────────────────────────────────── */

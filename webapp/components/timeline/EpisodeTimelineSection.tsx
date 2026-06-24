@@ -35,6 +35,11 @@ import {
 } from '@/lib/api/timeline-cell-resolver';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
 import { StitchStatusPill } from '@/components/timeline/StitchStatusPill';
+import {
+  activeWorkPhaseByShot,
+  workPhaseForAgent,
+  type WorkPhase,
+} from '@/lib/api/pipeline-stages';
 
 interface AssetRow {
   id: string;
@@ -49,10 +54,19 @@ interface AssetRow {
   created_at: string;
 }
 
+interface JobRow {
+  id: string;
+  agent_id: string;
+  status: string;
+  /** Full Inngest event payload; per-shot jobs carry `shotId` here. */
+  input_snapshot: unknown;
+}
+
 interface EpisodeResponse {
   data: {
     episode: { id: string };
     assets: AssetRow[];
+    jobs: JobRow[];
   };
 }
 
@@ -74,7 +88,19 @@ export function EpisodeTimelineSection({
   const { data, mutate } = useSWR<EpisodeResponse>(
     `/api/episodes/${episodeId}`,
     fetcher,
-    { refreshInterval: 30_000 },
+    {
+      // q4a — poll faster while a per-shot designer / video-artist job is live
+      // so the cell pulse stays responsive; fall back to 30s when idle.
+      refreshInterval: (latest) => {
+        const jobs = latest?.data.jobs ?? [];
+        const live = jobs.some(
+          (j) =>
+            (j.status === 'RUNNING' || j.status === 'QUEUED') &&
+            workPhaseForAgent(j.agent_id) !== null,
+        );
+        return live ? 6_000 : 30_000;
+      },
+    },
   );
 
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -217,6 +243,14 @@ export function EpisodeTimelineSection({
   }, [animaticAsset, vidShotAssets]);
 
   const counts = useMemo(() => countCellsByStatus(cells), [cells]);
+
+  // q4a — shot_id → live work phase (design/animate) for shots whose
+  // designer / video-artist job is RUNNING now. Derived from the jobs already
+  // in the episode payload (input_snapshot.shotId) — no extra fetch.
+  const liveStageByShot = useMemo<ReadonlyMap<string, WorkPhase>>(
+    () => activeWorkPhaseByShot(data?.data.jobs ?? []),
+    [data],
+  );
 
   const navigableAssetIds = useMemo(() => {
     return cells
@@ -364,6 +398,8 @@ export function EpisodeTimelineSection({
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
               animaticStatus={animaticAsset.status}
+              // q4a — per-shot live work overlay (designer/video-artist running now).
+              liveStageByShot={liveStageByShot}
               // TD-80 (2026-05-27): Plan-row click on popover opens the
               // existing PreviewDrawer via setPreviewAssetId — bypasses the
               // image-fallback path that handleCellClick uses (which would

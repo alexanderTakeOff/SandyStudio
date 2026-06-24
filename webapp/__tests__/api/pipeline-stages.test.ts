@@ -4,7 +4,12 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
-import { buildPipelineSnapshot } from '@/lib/api/pipeline-stages';
+import {
+  buildPipelineSnapshot,
+  workPhaseForAgent,
+  activeWorkPhaseByShot,
+  liveStagePalette,
+} from '@/lib/api/pipeline-stages';
 
 const baseAsset = {
   id: 'a1',
@@ -279,5 +284,98 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
     expect(vgen.job_count?.running).toBe(1);
     expect(vgen.job_count?.failed).toBe(1);
     expect(vgen.job_count?.done).toBe(1);
+  });
+});
+
+// ── q4a — per-shot live work phase (timeline strip overlay, 2026-06-22) ───────
+describe('workPhaseForAgent', () => {
+  it('classifies designer-group agents → design', () => {
+    expect(workPhaseForAgent('EXEC-EREF-DESIGNER')).toBe('design');
+    expect(workPhaseForAgent('EXEC-EPREV')).toBe('design');
+    expect(workPhaseForAgent('EXEC-EREF')).toBe('design');
+  });
+  it('classifies video-artist-group agents → animate', () => {
+    expect(workPhaseForAgent('EXEC-VANIM')).toBe('animate');
+    expect(workPhaseForAgent('EXEC-VPREV')).toBe('animate');
+    expect(workPhaseForAgent('EXEC-VGEN')).toBe('animate');
+  });
+  it('returns null for agents outside both per-shot groups', () => {
+    for (const a of ['EXEC-SW', 'EXEC-MGEN', 'EXEC-EDIT', 'Director', 'NOPE']) {
+      expect(workPhaseForAgent(a)).toBeNull();
+    }
+  });
+});
+
+describe('activeWorkPhaseByShot', () => {
+  const job = (agent_id: string, status: string, shotId?: string) => ({
+    agent_id,
+    status,
+    input_snapshot: shotId ? { shotId } : {},
+  });
+
+  it('maps a RUNNING designer job to design for its shot', () => {
+    expect(activeWorkPhaseByShot([job('EXEC-EREF', 'RUNNING', 'SH01')]).get('SH01')).toBe('design');
+  });
+
+  it('maps a RUNNING video job to animate for its shot', () => {
+    expect(activeWorkPhaseByShot([job('EXEC-VGEN', 'RUNNING', 'SH01')]).get('SH01')).toBe('animate');
+  });
+
+  it('treats QUEUED the same as RUNNING', () => {
+    expect(activeWorkPhaseByShot([job('EXEC-VANIM', 'QUEUED', 'SH02')]).get('SH02')).toBe('animate');
+  });
+
+  it('ignores COMPLETED / FAILED jobs (shot rests at asset colour)', () => {
+    const m = activeWorkPhaseByShot([
+      job('EXEC-VGEN', 'COMPLETED', 'SH01'),
+      job('EXEC-EREF', 'FAILED', 'SH02'),
+    ]);
+    expect(m.size).toBe(0);
+  });
+
+  it('animate wins over design on one shot, order-independent (q4a priority)', () => {
+    const a = activeWorkPhaseByShot([
+      job('EXEC-EREF-DESIGNER', 'RUNNING', 'SH01'),
+      job('EXEC-VGEN', 'RUNNING', 'SH01'),
+    ]);
+    const b = activeWorkPhaseByShot([
+      job('EXEC-VGEN', 'RUNNING', 'SH01'),
+      job('EXEC-EREF-DESIGNER', 'RUNNING', 'SH01'),
+    ]);
+    expect(a.get('SH01')).toBe('animate');
+    expect(b.get('SH01')).toBe('animate');
+  });
+
+  it('skips jobs without a shotId, and non-per-shot agents', () => {
+    const m = activeWorkPhaseByShot([
+      job('EXEC-VGEN', 'RUNNING', undefined),
+      job('EXEC-MGEN', 'RUNNING', 'SH01'),
+    ]);
+    expect(m.size).toBe(0);
+  });
+
+  it('keeps shots independent (per-button)', () => {
+    const m = activeWorkPhaseByShot([
+      job('EXEC-EREF', 'RUNNING', 'SH01'),
+      job('EXEC-VGEN', 'RUNNING', 'SH02'),
+    ]);
+    expect(m.get('SH01')).toBe('design');
+    expect(m.get('SH02')).toBe('animate');
+    expect(m.size).toBe(2);
+  });
+});
+
+describe('liveStagePalette — theme tokens only, no hardcoded hex (q2)', () => {
+  it('animate → stage-animate token + matching glow', () => {
+    const p = liveStagePalette('animate');
+    expect(p.color).toBe('var(--accent-stage-animate)');
+    expect(p.glow).toContain('var(--accent-stage-animate)');
+    expect(p.color).not.toMatch(/#[0-9a-f]/i); // never inline hex
+  });
+  it('design → stage-design token + matching glow', () => {
+    const p = liveStagePalette('design');
+    expect(p.color).toBe('var(--accent-stage-design)');
+    expect(p.glow).toContain('var(--accent-stage-design)');
+    expect(p.color).not.toMatch(/#[0-9a-f]/i);
   });
 });

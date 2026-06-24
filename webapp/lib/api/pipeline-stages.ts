@@ -413,3 +413,97 @@ export function buildPipelineSnapshot(
     };
   });
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Per-shot LIVE work phase (EpisodeTimeline q4a — 2026-06-22).
+//
+// The timeline strip colours each shot cell by the work happening on THAT shot
+// right now: a RUNNING/QUEUED job whose `input_snapshot.shotId` matches the cell.
+// We reuse STAGE_FROM_AGENT (the single source of truth for agent→stage) and
+// fold its stages into two visible groups the Director cares about:
+//   - 'design'  — the reference is being produced (Reference Designer/Critic/Artist)
+//   - 'animate' — the video is being produced (Video Designer/Critic/Artist)
+// Colour + pulse live entirely in the UI; this module only classifies.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Visible per-shot work group for the live timeline overlay. */
+export type WorkPhase = 'design' | 'animate';
+
+/** Stages that mean "the reference is being made" → blue. */
+const DESIGN_STAGE_IDS: ReadonlySet<PipelineStageId> = new Set<PipelineStageId>([
+  'reference_designer', // EXEC-EREF-DESIGNER
+  'reference_critic',   // EXEC-EPREV
+  'episode_references', // EXEC-EREF
+]);
+
+/** Stages that mean "the video is being made" → violet. */
+const ANIMATE_STAGE_IDS: ReadonlySet<PipelineStageId> = new Set<PipelineStageId>([
+  'shot_designer',    // EXEC-VANIM
+  'shot_critic',      // EXEC-VPREV
+  'visual_generator', // EXEC-VGEN
+]);
+
+/**
+ * Map an agent id to its live work phase for the timeline overlay, or null if
+ * the agent is not part of either per-shot group. Derived from STAGE_FROM_AGENT
+ * so the agent→group mapping has exactly one source of truth.
+ */
+export function workPhaseForAgent(agentId: string): WorkPhase | null {
+  const stage = STAGE_FROM_AGENT[agentId];
+  if (!stage) return null;
+  if (ANIMATE_STAGE_IDS.has(stage)) return 'animate';
+  if (DESIGN_STAGE_IDS.has(stage)) return 'design';
+  return null;
+}
+
+/** Minimal job shape needed to attribute live work to a shot. */
+export interface JobForShotPhase {
+  agent_id: string;
+  status: string;
+  input_snapshot: unknown;
+}
+
+/** Read the canonical shot_id the factory stamps into every per-shot job. */
+function snapshotShotId(snapshot: unknown): string | null {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const sid = (snapshot as { shotId?: unknown }).shotId;
+  return typeof sid === 'string' && sid.length > 0 ? sid : null;
+}
+
+/**
+ * Pure: build `shot_id → active WorkPhase` from the episode's jobs. Only
+ * RUNNING/QUEUED jobs count (work happening right now). When both a design and
+ * an animate job are live for the same shot, 'animate' wins — Director priority
+ * q4a (video-artist over designer). The returned shot_id values are the
+ * canonical form matching `AnimaticContract.shot_list[].shot_id`.
+ */
+export function activeWorkPhaseByShot(
+  jobs: ReadonlyArray<JobForShotPhase>,
+): Map<string, WorkPhase> {
+  const map = new Map<string, WorkPhase>();
+  for (const j of jobs) {
+    if (j.status !== 'RUNNING' && j.status !== 'QUEUED') continue;
+    const phase = workPhaseForAgent(j.agent_id);
+    if (!phase) continue;
+    const shotId = snapshotShotId(j.input_snapshot);
+    if (!shotId) continue;
+    // 'animate' is dominant — never let a 'design' job downgrade it.
+    if (map.get(shotId) === 'animate') continue;
+    map.set(shotId, phase);
+  }
+  return map;
+}
+
+/**
+ * CSS token + glow for a live work phase — the timeline cell recolours to this
+ * while a designer / video-artist job runs on the shot (q4a). Theme tokens only
+ * (Director: «не хардкод»); kept here (node-safe) so it is unit-testable without
+ * importing the client AnimaticPlayer component.
+ */
+export function liveStagePalette(phase: WorkPhase): { color: string; glow: string } {
+  const slot = phase === 'animate' ? 'animate' : 'design';
+  return {
+    color: `var(--accent-stage-${slot})`,
+    glow: `0 0 6px color-mix(in oklab, var(--accent-stage-${slot}) 60%, transparent)`,
+  };
+}
