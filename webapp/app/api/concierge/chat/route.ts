@@ -22,6 +22,7 @@ import {
   createConciergeClient,
   conciergeModel,
   conciergeMaxTokensParam,
+  conciergeSupportsTemperature,
 } from '@/lib/concierge/llm';
 import type {
   ChatCompletionAssistantMessageParam,
@@ -491,7 +492,7 @@ async function handleChatPOST(req: Request) {
             tool_choice: toolsThisRound ? 'auto' : undefined,
             stream: useStreaming,
           };
-          if (!isGpt5 && Number.isFinite(temperature)) {
+          if (!isGpt5 && conciergeSupportsTemperature() && Number.isFinite(temperature)) {
             params.temperature = temperature;
           }
           // OpenAI 400: gpt-5* in /v1/chat/completions rejects the combination

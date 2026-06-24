@@ -83,3 +83,12 @@ export function conciergeMaxTokensParam(n: number): Record<string, number> {
     ? { max_completion_tokens: n }
     : { max_tokens: n };
 }
+
+/**
+ * Whether to send the `temperature` param. Opus 4.x via Anthropic OpenAI-compat
+ * rejects it ("`temperature` is deprecated for this model" → 400), so the
+ * concierge routes must omit it there. OpenAI (non-gpt5) + Gemini still take it.
+ */
+export function conciergeSupportsTemperature(): boolean {
+  return conciergeProvider() !== 'anthropic';
+}

@@ -29,6 +29,7 @@ import {
   createConciergeClient,
   conciergeModel,
   conciergeMaxTokensParam,
+  conciergeSupportsTemperature,
 } from '@/lib/concierge/llm';
 import type {
   ChatCompletionCreateParamsNonStreaming,
@@ -391,7 +392,7 @@ export async function POST(req: Request) {
         tools: toolsThisRound,
         tool_choice: toolsThisRound ? 'auto' : undefined,
       };
-      if (!isGpt5 && Number.isFinite(temperature)) {
+      if (!isGpt5 && conciergeSupportsTemperature() && Number.isFinite(temperature)) {
         params.temperature = temperature;
       }
       // gpt-5* rejects tools + reasoning_effort combination — only pass

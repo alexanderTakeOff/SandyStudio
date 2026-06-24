@@ -21,6 +21,7 @@ import {
   createConciergeClient,
   conciergeModel,
   conciergeMaxTokensParam,
+  conciergeSupportsTemperature,
 } from '@/lib/concierge/llm';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { getServerEnv } from '@/lib/env';
@@ -178,7 +179,7 @@ export async function POST(req: Request) {
     ...conciergeMaxTokensParam(maxCompletionTokens),
     stream: false,
   };
-  if (!isGpt5 && Number.isFinite(temperature)) {
+  if (!isGpt5 && conciergeSupportsTemperature() && Number.isFinite(temperature)) {
     params.temperature = temperature;
   }
   if (reasoningEffort && isGpt5) {
