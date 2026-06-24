@@ -879,11 +879,17 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             playsInline
             preload="auto"
           />
-        ) : currentShot && currentShot.image_url ? (
+        ) : currentCell?.kind === 'image' && currentCell.url ? (
+          // 2026-06-24 — render the RESOLVED cell url (live newest ref), NOT the
+          // frozen contract's currentShot.image_url. The frozen url is null for a
+          // ref approved after the last animatic rebuild, so the preview was blank
+          // for most shots even though the tint/kebab (live) showed the ref. key
+          // forces a re-render when the url changes between shots.
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={currentShot.image_url}
-            alt={currentShot.shot_id}
+            key={currentCell.url}
+            src={currentCell.url}
+            alt={currentShot?.shot_id ?? 'frame'}
             className="absolute inset-0 w-full h-full object-contain"
           />
         ) : (
