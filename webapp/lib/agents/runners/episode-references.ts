@@ -2191,6 +2191,7 @@ export async function runEpisodeReferences(
   // ── Per-shot loop ─────────────────────────────────────────────────────────
   const insertedAssetIds: string[] = [];
   const perShot: EpisodeReferencesRunResult['perShot'] = [];
+  const failureReasons: string[] = [];
   let totalCost = 0;
   let cancelled = false;
 
@@ -2294,6 +2295,7 @@ export async function runEpisodeReferences(
     let approvedAttempt: GenerationAttempt | null = null;
     let approvedB64: string | null = null;
     let attemptVersion = 0;
+    let shotFailReason: string | undefined;
 
     for (let retry = 0; retry <= EREF_MAX_RETRIES; retry++) {
       attemptVersion++;
@@ -2329,9 +2331,13 @@ export async function runEpisodeReferences(
         genHeight = result.height;
         genRevisedPrompt = result.revised_prompt;
       } catch (err) {
+        const msg = (err as Error).message;
         console.error(
-          `[eref] provider ${provider.id} failed on shot ${job.shot.shot_id}: ${(err as Error).message}`,
+          `[eref] provider ${provider.id} failed on shot ${job.shot.shot_id}: ${msg}`,
         );
+        // A (2026-06-24): capture the real provider error so it surfaces in the
+        // thrown message / job error_message instead of being console-only.
+        shotFailReason = `provider ${provider.id} — ${msg.slice(0, 200)}`;
         // Skip this shot entirely if generation can't even start.
         break;
       }
@@ -2490,6 +2496,13 @@ export async function runEpisodeReferences(
 
     if (!approvedAttempt || !approvedB64) {
       // Generation never produced anything successful — skip persistence.
+      // A: record WHY (captured provider error, else exhausted retries) so the
+      // final failure message names the real cause, not a blank catch-all.
+      failureReasons.push(
+        `${job.shot.shot_id}: ${
+          shotFailReason ?? `no usable image after ${generationHistory.length} attempt(s)`
+        }`,
+      );
       perShot.push({
         shot_id: job.shot.shot_id,
         final_verdict: 'REGENERATE_EXHAUSTED',
@@ -2664,15 +2677,27 @@ export async function runEpisodeReferences(
     }
   }
 
-  if (insertedAssetIds.length === 0 && !cancelled) {
-    throw new EpisodeReferencesError('No episode reference assets inserted');
+  // B (2026-06-24): zero inserts is only a FAILURE when real work was attempted.
+  // When there were no jobs to run — every targeted shot already had an approved
+  // ref, or the pilot/start_index filter excluded them — nothing was attempted,
+  // so this is a completed no-op, NOT a red failure (the old blanket throw made
+  // Polina re-fire fan-out → "tonns" of false fails). A: when it IS a real
+  // failure, name the per-shot causes (the previously-swallowed provider errors).
+  const nothingToDo = jobs.length === 0;
+  if (insertedAssetIds.length === 0 && !cancelled && !nothingToDo) {
+    throw new EpisodeReferencesError(
+      `No episode reference assets inserted — ${
+        failureReasons.join(' · ') || 'all targeted shots failed generation'
+      }`,
+    );
   }
 
-  const description =
-    `Produced by EXEC-EREF · ${EREF_CONTRACT} · ${provider.id} · ` +
-    `${insertedAssetIds.length} refs · cost $${totalCost.toFixed(4)} · ` +
-    `verdicts: ${perShot.map((s) => s.final_verdict).join(',')}` +
-    (cancelled ? ' · CANCELLED' : '');
+  const description = nothingToDo
+    ? `EXEC-EREF no-op · ${EREF_CONTRACT} · all targeted shots already have an approved ref — nothing to generate`
+    : `Produced by EXEC-EREF · ${EREF_CONTRACT} · ${provider.id} · ` +
+      `${insertedAssetIds.length} refs · cost $${totalCost.toFixed(4)} · ` +
+      `verdicts: ${perShot.map((s) => s.final_verdict).join(',')}` +
+      (cancelled ? ' · CANCELLED' : '');
 
   const charNames = bible.characters
     .map((c) => nameFromBibleFilename(c))
