@@ -132,11 +132,18 @@ function refShotId(meta: unknown): string | null {
   return typeof sid === 'string' && sid.length > 0 ? sid : null;
 }
 
-/** Status rank for picking a shot's frame: approved/locked > review > (ignore). */
+/**
+ * Status rank for picking a shot's frame. Like video, approved is canonical and
+ * wins; but ANY generated frame is viewable (Director 2026-06-24: "если есть хоть
+ * какой-то сгенерированный кадр мы видим его при нажатии — утверждён или нет это
+ * другое"), so REVIEW/REVISION/DRAFT/NEEDS_HUMAN_TWEAK still show (their status is
+ * a label in the kebab, not a gate). INVALIDATED (superseded) + REJECTED never.
+ */
 function refStatusRank(status: string): number {
-  if (status === 'APPROVED' || status === 'LOCKED') return 2;
-  if (status === 'REVIEW') return 1;
-  return 0; // DRAFT/REVISION/REJECTED/INVALIDATED never become the frame
+  if (status === 'APPROVED' || status === 'LOCKED') return 3;
+  if (status === 'REVIEW') return 2;
+  if (status === 'REVISION' || status === 'DRAFT' || status === 'NEEDS_HUMAN_TWEAK') return 1;
+  return 0; // INVALIDATED / REJECTED never become the frame
 }
 
 function statusToPill(status: string): CellStatusPill {
@@ -189,7 +196,9 @@ export function resolveTimelineCells(
   for (const ref of imgRefAssets) {
     const sid = refShotId(ref.metadata);
     const rank = refStatusRank(ref.status);
-    if (!sid || rank === 0) continue;
+    // Only refs with a loadable image can be the frame — otherwise a newer but
+    // url-less DRAFT could shadow an older REVIEW that actually has an image.
+    if (!sid || rank === 0 || !bestRefImageUrl(ref)) continue;
     const cur = liveRefByShot.get(sid);
     if (
       !cur ||

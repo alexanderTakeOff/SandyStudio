@@ -363,6 +363,49 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       setApproveBusyId(null);
     }
   }
+
+  // Approve tick (2026-06-24) — two visual states so a bright ✓ never reads as
+  // "already approved" when it's really an action: a MUTED/outline ✓ on a REVIEW
+  // row = "click to approve" (REVIEW→APPROVED is the only legal direct approve),
+  // a BRIGHT solid ✓ on an APPROVED/LOCKED row = "this is the approved one"
+  // (state indicator, persists, not a button). Other statuses get no tick.
+  function approveTick(status: string, assetId: string) {
+    const isBusy = approveBusyId === assetId;
+    const isApproved = status === 'APPROVED' || status === 'LOCKED';
+    if (isApproved) {
+      return (
+        <span
+          className="text-[10px] px-1.5 py-0.5 rounded font-semibold select-none"
+          style={{ background: 'var(--accent-success)', color: 'black' }}
+          title="Approved"
+          aria-label="Approved"
+        >
+          ✓
+        </span>
+      );
+    }
+    if (status !== 'REVIEW') return null;
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          void approveVersion(assetId);
+        }}
+        disabled={isBusy}
+        className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+        style={{
+          background: 'transparent',
+          border: '1px solid color-mix(in oklab, var(--accent-success) 45%, transparent)',
+          color: 'var(--accent-success)',
+          opacity: isBusy ? 0.4 : 0.7,
+        }}
+        title="Approve"
+      >
+        {isBusy ? '…' : '✓'}
+      </button>
+    );
+  }
   // Local copy of overrides so Director can edit live without round-tripping
   // to DB on every click. Saved via Save Timing button.
   const [overrides, setOverrides] = useState<Record<string, AnimaticDirectorOverride>>(
@@ -1278,8 +1321,6 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                           ref
                         </div>
                         {(imgRefsByShotId.get(t.shot.shot_id) ?? []).map((r) => {
-                          const isReview = r.status === 'REVIEW';
-                          const isBusy = approveBusyId === r.id;
                           // The image actually on screen = the cell's resolved
                           // asset_id when it's showing an image (not a video).
                           const isShown = cell?.kind === 'image' && r.id === cell?.asset_id;
@@ -1318,25 +1359,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                                   </span>
                                 )}
                               </button>
-                              {isReview && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void approveVersion(r.id);
-                                  }}
-                                  disabled={isBusy}
-                                  className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
-                                  style={{
-                                    background: 'var(--accent-success)',
-                                    color: 'black',
-                                    opacity: isBusy ? 0.5 : 1,
-                                  }}
-                                  title="Approve this reference"
-                                >
-                                  {isBusy ? '…' : '✓'}
-                                </button>
-                              )}
+                              {approveTick(r.status, r.id)}
                             </div>
                           );
                         })}
@@ -1352,8 +1375,6 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                     ) : (
                       <div className="flex flex-col gap-0.5">
                         {versions.map((v) => {
-                          const isReview = v.status === 'REVIEW';
-                          const isBusy = approveBusyId === v.id;
                           // 2026-06-06 — flag the version that's actually on
                           // screen right now (the cell's currently-resolved
                           // asset_id). Director Issue B: popover used to show
@@ -1400,25 +1421,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                                   </span>
                                 )}
                               </button>
-                              {isReview && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void approveVersion(v.id);
-                                  }}
-                                  disabled={isBusy}
-                                  className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
-                                  style={{
-                                    background: 'var(--accent-success)',
-                                    color: 'black',
-                                    opacity: isBusy ? 0.5 : 1,
-                                  }}
-                                  title="Approve this version"
-                                >
-                                  {isBusy ? '…' : '✓'}
-                                </button>
-                              )}
+                              {approveTick(v.status, v.id)}
                             </div>
                           );
                         })}

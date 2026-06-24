@@ -349,12 +349,34 @@ describe('resolveTimelineCells — live reference frame (SH18 stale-frozen fix)'
     expect(cells[0]!.asset_id).toBe('rev1');
   });
 
-  it('ignores DRAFT/REVISION/REJECTED refs (never the frame)', () => {
+  it('shows a REVISION frame — any generated frame is viewable (status is a label)', () => {
     const cells = resolveTimelineCells(nullFrozenContract, [], [
-      imgRef(SH01, { id: 'd', status: 'DRAFT' }),
-      imgRef(SH01, { id: 'rv', status: 'REVISION' }),
+      imgRef(SH01, { id: 'rv', status: 'REVISION', drive_path: '/staging/rv.png' }),
     ]);
-    expect(cells[0]!.kind).toBe('placeholder'); // null frozen + no usable ref
+    expect(cells[0]!.kind).toBe('image');
+    expect(cells[0]!.asset_id).toBe('rv');
+  });
+
+  it('still ignores INVALIDATED / REJECTED refs (never the frame)', () => {
+    const cells = resolveTimelineCells(nullFrozenContract, [], [
+      imgRef(SH01, { id: 'inv', status: 'INVALIDATED' }),
+      imgRef(SH01, { id: 'rej', status: 'REJECTED' }),
+    ]);
+    expect(cells[0]!.kind).toBe('placeholder');
+  });
+
+  it('skips a url-less ref so a viewable lower-status ref wins', () => {
+    const cells = resolveTimelineCells(nullFrozenContract, [], [
+      imgRef(SH01, {
+        id: 'noUrl',
+        status: 'DRAFT',
+        drive_path: null,
+        staging_path: null,
+        drive_web_view_url: null,
+      }),
+      imgRef(SH01, { id: 'rev', status: 'REVIEW', drive_path: '/staging/rev.png' }),
+    ]);
+    expect(cells[0]!.asset_id).toBe('rev');
   });
 
   it('drive-backed ref resolves via /api/media/<id>', () => {
