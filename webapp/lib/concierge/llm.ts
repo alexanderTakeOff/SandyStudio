@@ -51,6 +51,22 @@ export function conciergeModel(): string {
   return getServerEnv().OPENAI_MODEL || 'gpt-5.4-mini';
 }
 
+const PROVIDER_DISPLAY: Record<ConciergeProvider, string> = {
+  openai: 'OpenAI',
+  gemini: 'Gemini',
+  anthropic: 'Anthropic',
+};
+
+/**
+ * Honest, human-readable name of the model that ACTUALLY serves the Prod
+ * Assistant right now — e.g. "OpenAI · gpt-5.5", "Anthropic · claude-opus-4-8".
+ * Read live from env (same source the client uses), so the chat header never
+ * lies about which provider/model is running. Surfaced via GET /api/concierge/chat.
+ */
+export function conciergeModelLabel(): string {
+  return `${PROVIDER_DISPLAY[conciergeProvider()]} · ${conciergeModel()}`;
+}
+
 export function createConciergeClient(): OpenAI {
   const provider = conciergeProvider();
   if (provider === 'gemini') {

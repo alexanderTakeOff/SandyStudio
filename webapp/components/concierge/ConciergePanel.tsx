@@ -365,6 +365,23 @@ export function ConciergePanel() {
   const recognitionRef = useRef<SpeechRec | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Live model identity shown in the header — fetched from GET /api/concierge/chat
+  // so it reflects the provider/model ACTUALLY serving the PA right now (honest,
+  // no stale agent/mode label). Null until loaded.
+  const [modelLabel, setModelLabel] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/concierge/chat')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive && d?.label) setModelLabel(d.label as string);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // TD-20.A 2026-05-20 — AbortController for the in-flight chat request so
   // the Director can cancel a hanging turn. abortControllerRef holds the
   // current controller during streaming; null when no request is in flight.
@@ -1236,7 +1253,7 @@ export function ConciergePanel() {
             </div>
             <div className="leading-tight">
               <div className="text-sm font-semibold text-text-primary">Prod Assistant</div>
-              <div className="text-[10px] uppercase tracking-wider text-text-muted">EXEC-CONC · Mode 2.5 Phase 1</div>
+              <div className="text-[10px] uppercase tracking-wider text-text-muted">{modelLabel ?? '…'}</div>
             </div>
           </div>
           <div className="flex items-center gap-1">
