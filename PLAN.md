@@ -22,8 +22,10 @@ Mode:   ===5=== EDIT (Director-authorized 2026-06-25 — concierge cost/loop fix
   80→24; W5 backstop 25→6, auto-react output→800. Держим Opus, харден. Deferred (после отладки): W4.b tool-allowlist,
   W4.c prompt-reorder, native Anthropic cache, интерактив cost-record + episode-budget вид. ⚠️ Anthropic доливать можно
   (breaker $20 страхует). План: ~/.claude/plans/functional-tickling-ullman.md.
-  Также: E12 EREF SH13 разблокирован — толерантный shot_id-гард в episode-references.ts (canonical план-body vs голый
-  event-shot; reuse shortShotLabel). NEXT: смоук на тест-всплеске (breaker), затем добить E12 EREF.
+  Также: E12 EREF SH13 разблокирован — толерантный shot_id-гард (reuse shortShotLabel). И закрыта дыра дубль-диспатча
+  EREF (E12 SH10 — два прогона одного шота): per-shot in-flight дедуп в factory.ts Step-0 (reuse shotIdsMatchLoose,
+  fail-open, все принципалы, блокит только одновременный дубль; commit e27b5c2). Deferred: single-approved-инвариант.
+  NEXT: смоук на тест-всплеске (breaker + дубль), затем добить E12 EREF.
 
 2026-06-22 PM (E11 video run + AI-EP readiness probe). Тео ведёт прогон в роли AI EP (Pascal), Полина — исполнитель.
   31/36 с видео (5 недостающих: A2-SC18/21/24/25-SH01 + A4-SC02-SH02; SC13=удалён 0.5с). fal пополнен Director'ом.
