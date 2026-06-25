@@ -100,6 +100,7 @@ import type {
 import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
 import { selectSkills } from '../../skills/select-skills';
 import { findApprovedAsset } from '../upstream';
+import { shortShotLabel } from '../../api/vgen-shot-helpers';
 import { loadEpisodeCastSlugs } from '../episode-cast';
 import { logEvent } from '../../api/events';
 import { agentDisplayName } from '../../api/agent-names';
@@ -1031,6 +1032,31 @@ async function planHasPassingCriticVerdict(
 }
 
 /**
+ * 2026-06-24 — tolerant shot-id match for the plan↔event sanity guard.
+ *
+ * The plan is already pinned by `planAssetId` (a UUID); this guard only catches
+ * a gross plan↔shot mixup. EXEC-EREF can write the canonical id
+ * ("SS-S15-E12-A2-SC07-SH13") into the plan body while the dispatch event
+ * carries the bare metadata form ("SH13") — strict `===` then rejected a
+ * perfectly-matching plan and blocked SH13 image-gen (E12). `normalizeShotId`
+ * can't reconcile them (bare "SH13" has no scene to expand), so compare on the
+ * scene-qualified label both reduce to (reusing shortShotLabel), and fall back
+ * to the bare SH token ONLY when one side lacks scene qualification. If both are
+ * scene-qualified and still differ, it's a real mismatch — keep the guard strict.
+ */
+function shotIdsMatchLoose(a: string, b: string): boolean {
+  const la = shortShotLabel(a); // "A2-SC07-SH13" or "SH13"
+  const lb = shortShotLabel(b);
+  if (la === lb) return true;
+  const aBare = /^SH\d+$/i.test(la);
+  const bBare = /^SH\d+$/i.test(lb);
+  if (!aBare && !bBare) return false;
+  const sa = a.match(/SH\d+/i)?.[0].toUpperCase();
+  const sb = b.match(/SH\d+/i)?.[0].toUpperCase();
+  return Boolean(sa && sb && sa === sb);
+}
+
+/**
  * Load an APPROVED SPC-ref_plan asset and extract executor-facing overrides.
  * Throws on missing/invalid fields — Plan body must round-trip the Designer
  * contract exactly. Caller guarantees `planAssetId` is non-empty.
@@ -1100,7 +1126,7 @@ export async function loadPlanOverrides(
       `Plan ${planAssetId} JSON missing string shot_id`,
     );
   }
-  if (shotId !== expectedShotId) {
+  if (!shotIdsMatchLoose(shotId, expectedShotId)) {
     throw new EpisodeReferencesError(
       `Plan shot_id="${shotId}" does not match event shotId="${expectedShotId}"`,
     );

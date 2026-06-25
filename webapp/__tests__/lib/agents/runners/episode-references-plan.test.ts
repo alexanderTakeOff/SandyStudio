@@ -259,6 +259,43 @@ describe('loadPlanOverrides — rejection paths', () => {
     ).rejects.toThrow(/does not match event shotId/);
   });
 
+  // 2026-06-24 — E12 SH13 regression: the Designer wrote the canonical id into
+  // the Plan body while the dispatch event carried the bare metadata form. The
+  // strict `===` guard rejected a matching plan and blocked image-gen. The
+  // loose guard must accept a bare event shot id against a canonical body id.
+  it('accepts a bare event shot id against a canonical Plan body id', async () => {
+    const row = {
+      id: 'plan-1',
+      file_type: 'SPC-ref_plan',
+      status: 'APPROVED',
+      content: planContent(), // body shot_id = SS-S99-E99-A1-SC01-SH01
+    };
+    const overrides = await loadPlanOverrides(
+      mockSupabaseWithAsset(row),
+      'plan-1',
+      'SH01', // bare event form — no scene to expand
+    );
+    expect(overrides.providerId).toBe('gpt-image-2');
+  });
+
+  // Guard stays strict when BOTH ids are scene-qualified but genuinely differ,
+  // so a cross-scene same-SH collision can't slip a wrong plan through.
+  it('still throws when both ids are scene-qualified but differ', async () => {
+    const row = {
+      id: 'plan-1',
+      file_type: 'SPC-ref_plan',
+      status: 'APPROVED',
+      content: planContent({ shot_id: 'SS-S99-E99-A3-SC09-SH01' }),
+    };
+    await expect(
+      loadPlanOverrides(
+        mockSupabaseWithAsset(row),
+        'plan-1',
+        'SS-S99-E99-A1-SC01-SH01',
+      ),
+    ).rejects.toThrow(/does not match event shotId/);
+  });
+
   it('throws when provider.id is missing', async () => {
     const row = {
       id: 'plan-1',
