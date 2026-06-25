@@ -16,6 +16,14 @@ describe('isActionableEventType', () => {
     expect(isActionableEventType('asset_updated')).toBe(false);
     expect(isActionableEventType('whatever')).toBe(false);
   });
+
+  it('does NOT wake on agent_started (cost harness 2026-06-25 — ambient context only)', () => {
+    // An agent merely starting must not spend a model call; the chain advances
+    // mechanically and agent_completed/agent_failed carry the actionable signal.
+    expect(isActionableEventType('agent_started')).toBe(false);
+    expect(isActionableEventType('agent_completed')).toBe(true);
+    expect(isActionableEventType('agent_failed')).toBe(true);
+  });
 });
 
 describe('isSelfCausedNotify — loop-breaker for the concierge auto-react spiral', () => {

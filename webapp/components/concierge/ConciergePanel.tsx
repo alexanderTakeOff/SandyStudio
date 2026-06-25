@@ -365,16 +365,19 @@ export function ConciergePanel() {
   const recognitionRef = useRef<SpeechRec | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Live model identity shown in the header — fetched from GET /api/concierge/chat
-  // so it reflects the provider/model ACTUALLY serving the PA right now (honest,
-  // no stale agent/mode label). Null until loaded.
+  // Live header status — fetched from GET /api/concierge/chat so it reflects the
+  // provider/model ACTUALLY serving the PA right now AND whether the autonomous
+  // auto-react loop is armed (honest, no stale agent/mode label). Null until loaded.
   const [modelLabel, setModelLabel] = useState<string | null>(null);
+  const [autoReact, setAutoReact] = useState<boolean | null>(null);
   useEffect(() => {
     let alive = true;
     fetch('/api/concierge/chat')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (alive && d?.label) setModelLabel(d.label as string);
+        if (!alive || !d) return;
+        if (d.label) setModelLabel(d.label as string);
+        if (typeof d.autoReact === 'boolean') setAutoReact(d.autoReact);
       })
       .catch(() => {});
     return () => {
@@ -1253,7 +1256,32 @@ export function ConciergePanel() {
             </div>
             <div className="leading-tight">
               <div className="text-sm font-semibold text-text-primary">Prod Assistant</div>
-              <div className="text-[10px] uppercase tracking-wider text-text-muted">{modelLabel ?? '…'}</div>
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted">
+                <span>{modelLabel ?? '…'}</span>
+                {autoReact !== null && (
+                  <span
+                    title={
+                      autoReact
+                        ? 'Auto-react ARMED — Polina reacts autonomously to pipeline events'
+                        : 'Auto-react OFF — Polina answers only the Director (no autonomous loop)'
+                    }
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-1.5 py-px font-medium',
+                      autoReact
+                        ? 'bg-[var(--accent-primary)]/15 text-[var(--accent-primary)]'
+                        : 'bg-[var(--bg-elevated)] text-text-muted',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        autoReact ? 'bg-[var(--accent-primary)]' : 'bg-text-muted',
+                      )}
+                    />
+                    auto {autoReact ? 'on' : 'off'}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-1">

@@ -36,6 +36,7 @@ import {
   recordConciergeCost,
   isConciergeBudgetTripped,
   conciergeBudgetCapConfig,
+  conciergeAutoReactEnabled,
 } from '@/lib/concierge/cost';
 import type {
   ChatCompletionCreateParamsNonStreaming,
@@ -221,12 +222,18 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── Cost circuit-breaker (2026-06-25) ────────────────────────────────────────
-  // Disarm AUTONOMOUS auto-react when concierge spend has crossed the rolling
-  // cap, so Anthropic credits can never silently hit $0 again (the root incident).
-  // Direct messages (claude_message) are deliberate, low-volume orders from the
-  // Director/AI-EP — let those through; the interactive /chat route is never gated.
+  // ── Auto-react harness (2026-06-25) ──────────────────────────────────────────
+  // The autonomous loop is gated by two PROVIDER-INDEPENDENT reins, in order:
+  //   1. master kill-switch — CONCIERGE_AUTO_REACT_ENABLED=false fully disarms the
+  //      loop (the visible header flag). Director chat (claude_message + /chat) is
+  //      never gated, so disarming the loop never silences the Director's PA.
+  //   2. rolling-window breaker — trips on call-COUNT (universal) or $ spend.
+  // Direct messages (claude_message) are deliberate, low-volume Director/AI-EP
+  // orders — let those through; the interactive /chat route is never gated.
   if (parsed.source !== 'claude_message') {
+    if (!conciergeAutoReactEnabled()) {
+      return NextResponse.json({ skipped: 'auto_react_disabled' }, { status: 200 });
+    }
     const cap = conciergeBudgetCapConfig();
     const status = await isConciergeBudgetTripped(supabase, cap);
     if (status.tripped) {
@@ -234,17 +241,22 @@ export async function POST(req: Request) {
         lastTurn?.role === 'assistant' &&
         !!(lastTurn.metadata as { concierge_budget_tripped?: unknown } | null)
           ?.concierge_budget_tripped;
+      // Honest limb attribution: which rein tripped (count vs $).
+      const limb =
+        status.reason === 'calls'
+          ? `${status.calls} авто-реакт вызовов (cap ${status.maxCalls})`
+          : `расход $${status.spent.toFixed(2)} (cap $${cap.capUsd})`;
       if (!alreadyNotified) {
         await persistTurn(supabase, parsed.thread_id, {
           role: 'assistant',
           event_type: 'message',
           content:
-            `⚠️ Авто-реакт приостановлен: расход Полины за ${cap.windowHours}ч достиг ` +
-            `$${status.spent.toFixed(2)} (cap $${cap.capUsd}). Жду Директора — поднять ` +
-            `CONCIERGE_DAILY_CAP_USD или разобрать причину всплеска.`,
+            `⚠️ Авто-реакт приостановлен: за ${cap.windowHours}ч достигнут предел — ${limb}. ` +
+            `Жду Директора — поднять лимит (CONCIERGE_AUTO_REACT_MAX_CALLS / ` +
+            `CONCIERGE_DAILY_CAP_USD) или разобрать причину всплеска.`,
           metadata: {
             awaiting_director_input: {
-              question: `Concierge budget cap reached ($${status.spent.toFixed(2)} / $${cap.capUsd} per ${cap.windowHours}h). Raise cap or investigate the spend?`,
+              question: `Concierge auto-react fence tripped (${limb} per ${cap.windowHours}h). Raise the limit or investigate the spike?`,
               deadline_sec: 3600,
               source: 'markAwaitingDirector',
             },
@@ -253,7 +265,14 @@ export async function POST(req: Request) {
         });
       }
       return NextResponse.json(
-        { skipped: 'concierge_budget_tripped', spent: status.spent, cap: status.cap },
+        {
+          skipped: 'concierge_budget_tripped',
+          reason: status.reason,
+          spent: status.spent,
+          cap: status.cap,
+          calls: status.calls,
+          maxCalls: status.maxCalls,
+        },
         { status: 200 },
       );
     }

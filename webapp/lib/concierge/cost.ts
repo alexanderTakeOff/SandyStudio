@@ -67,17 +67,25 @@ export interface ConciergeBudgetStatus {
   tripped: boolean;
   spent: number;
   cap: number;
+  calls: number;
+  maxCalls: number;
+  /** Which limb tripped — for an honest skip reason. */
+  reason: 'cost' | 'calls' | null;
 }
 
 /**
- * Rolling-window circuit-breaker: sum concierge spend (agent_id=EXEC-CONC) over
- * the last `windowHours`; tripped when it reaches `capUsd`. FAILS OPEN on a read
- * error — the cap is a cost backstop, not a security control, and we must not
- * wedge Polina over a transient query failure.
+ * Rolling-window circuit-breaker for autonomous concierge spend. Trips on the
+ * FIRST of two limbs over the last `windowHours`:
+ *   • cost   — Σ cost_usd ≥ capUsd  (price-aware, but provider-dependent)
+ *   • calls  — row count ≥ maxCalls (PROVIDER-INDEPENDENT — the universal fence:
+ *              it caps autonomous volume regardless of which model/price runs,
+ *              so a mispriced provider can never slip past the cost limb)
+ * FAILS OPEN on a read error — the cap is a cost backstop, not a security
+ * control, and must not wedge Polina over a transient query failure.
  */
 export async function isConciergeBudgetTripped(
   client: Client,
-  opts: { capUsd: number; windowHours: number },
+  opts: { capUsd: number; windowHours: number; maxCalls: number },
 ): Promise<ConciergeBudgetStatus> {
   const sinceIso = new Date(
     Date.now() - opts.windowHours * 3_600_000,
@@ -88,18 +96,33 @@ export async function isConciergeBudgetTripped(
     .eq('agent_id', CONCIERGE_AGENT_ID)
     .gte('created_at', sinceIso);
   if (error) {
-    return { tripped: false, spent: 0, cap: opts.capUsd };
+    return { tripped: false, spent: 0, cap: opts.capUsd, calls: 0, maxCalls: opts.maxCalls, reason: null };
   }
-  const spent = ((data ?? []) as Array<{ cost_usd: number | null }>).reduce(
-    (s, r) => s + (r.cost_usd ?? 0),
-    0,
-  );
-  return { tripped: spent >= opts.capUsd, spent, cap: opts.capUsd };
+  const rows = (data ?? []) as Array<{ cost_usd: number | null }>;
+  const spent = rows.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
+  const calls = rows.length;
+  const reason: 'cost' | 'calls' | null =
+    calls >= opts.maxCalls ? 'calls' : spent >= opts.capUsd ? 'cost' : null;
+  return { tripped: reason !== null, spent, cap: opts.capUsd, calls, maxCalls: opts.maxCalls, reason };
 }
 
 /** Cap config from env, with safe defaults (loop-fixed spend is far below). */
-export function conciergeBudgetCapConfig(): { capUsd: number; windowHours: number } {
+export function conciergeBudgetCapConfig(): {
+  capUsd: number;
+  windowHours: number;
+  maxCalls: number;
+} {
   const capUsd = Number(process.env.CONCIERGE_DAILY_CAP_USD) || 20;
   const windowHours = Number(process.env.CONCIERGE_CAP_WINDOW_H) || 24;
-  return { capUsd, windowHours };
+  const maxCalls = Number(process.env.CONCIERGE_AUTO_REACT_MAX_CALLS) || 40;
+  return { capUsd, windowHours, maxCalls };
+}
+
+/**
+ * Master kill-switch for Polina's autonomous auto-react loop. Default ON.
+ * Set CONCIERGE_AUTO_REACT_ENABLED=false to fully disarm the loop while keeping
+ * her interactive Director chat alive. Provider-independent — the hardest fence.
+ */
+export function conciergeAutoReactEnabled(): boolean {
+  return (process.env.CONCIERGE_AUTO_REACT_ENABLED ?? 'true').toLowerCase() !== 'false';
 }

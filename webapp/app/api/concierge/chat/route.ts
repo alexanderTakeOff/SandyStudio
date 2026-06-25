@@ -27,6 +27,7 @@ import {
   conciergeSupportsTemperature,
   conciergeReasoningParam,
 } from '@/lib/concierge/llm';
+import { conciergeAutoReactEnabled } from '@/lib/concierge/cost';
 import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionMessageParam,
@@ -65,14 +66,16 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Live model identity for the chat header — reads the same env source the chat
-// loop uses, so the header shows the provider/model that is ACTUALLY answering
-// right now (gpt-5.5, claude-opus-4-8, …) instead of a stale agent/mode label.
+// Live status for the chat header — reads the same env source the chat loop uses,
+// so the header honestly shows (a) the provider/model ACTUALLY answering right now
+// (gpt-5.5, claude-opus-4-8, …) and (b) whether the autonomous auto-react loop is
+// armed. Both replace the old stale agent/mode label.
 export function GET() {
   return NextResponse.json({
     provider: conciergeProvider(),
     model: conciergeModel(),
     label: conciergeModelLabel(),
+    autoReact: conciergeAutoReactEnabled(),
   });
 }
 

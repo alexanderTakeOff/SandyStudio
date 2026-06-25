@@ -1,17 +1,25 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // lib/api/event-actionable.ts
-// The canonical list of activity_events.event_type values that the Postgres
-// trigger tg_inject_activity_event_into_concierge (migration 0030) mirrors
-// into concierge_turns as pipeline events. Same list reused server-side to
-// decide whether logEvent should ALSO fire a `pa/notify-needed` Inngest
-// event for autonomous Polina reaction.
+// WAKE-worthy activity_events.event_type values: the ones that justify firing a
+// `pa/notify-needed` Inngest event to wake the (expensive) Prod Assistant for an
+// autonomous reaction. Used by logEvent (the notify gate) and the batch-stall
+// watchdog (the "new actionable state" check).
 //
-// Source of truth lives in migration 0030 — when adding a new actionable
-// event_type, update BOTH the migration and this list, with the same commit.
+// NOT the same as "mirrored to concierge_turns": the Postgres trigger
+// tg_inject_activity_event_into_concierge (migration 0030) + the ambient
+// formatter (lib/concierge/ambient-events.ts) inject a BROADER set as cheap
+// CONTEXT turns (no LLM). This narrower set is purely "should we spend a model
+// call on this?".
+//
+// 2026-06-25 (cost harness): `agent_started` REMOVED. An agent merely starting
+// needs no reaction — the chain advances mechanically (computeNextEvents /
+// factory) and the actionable signal is the `agent_completed` / `agent_failed`
+// that follows. Waking the expensive model on every start was ~40% of the
+// auto-react burn for zero benefit. It is still injected as ambient context, so
+// Polina stays aware of it without a paid wake.
 // ──────────────────────────────────────────────────────────────────────────────
 
 export const ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'agent_started',
   'agent_completed',
   'agent_failed',
   'approval_granted',
