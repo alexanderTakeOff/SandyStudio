@@ -42,6 +42,7 @@ import {
   readabilityGateEnabled,
   stopBeforeErefEnabled,
 } from '@/lib/agents/chain-flags';
+import { logEvent } from '@/lib/api/events';
 
 export type AssetForChain = {
   id: string;
@@ -168,6 +169,26 @@ async function findLatestApprovedAssetId(
 }
 
 /**
+ * Existence check: does the episode already have ANY asset of this file-type
+ * prefix, regardless of status? Used to guard auto-start triggers that must
+ * fire only on a "fresh" (empty) episode and never re-fire once an artifact
+ * exists. Idempotency by produced ARTIFACT, not by job — a job can fail or be
+ * absent while the artifact is the real state of the stage.
+ */
+async function episodeHasAnyAsset(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+  fileTypePrefix: string,
+): Promise<boolean> {
+  const { count } = await supabase
+    .from('assets')
+    .select('*', { count: 'exact', head: true })
+    .eq('episode_id', episodeId)
+    .like('file_type', `${fileTypePrefix}%`);
+  return (count ?? 0) > 0;
+}
+
+/**
  * Read the executing Plan's asset id off a produced asset's metadata.
  * Two historical shapes exist: EREF stamps `provenance.plan_asset_id`
  * (IMG-episode_ref), VGEN stamps top-level `plan_asset_id` (VID-shot,
@@ -250,11 +271,35 @@ export async function computeNextEvents(
   //    Director modes. Resolve the approved brief id so the Writer's event
   //    payload stays honest. Harmless in AUTOTEST (no SPC-episode_cast there).
   if (ft === 'SPC-episode_cast' && !(await hasJob(supabase, ep, 'EXEC-SW', { since }))) {
-    const briefId = await findLatestApprovedAssetId(supabase, ep, 'SPC-brief');
-    events.push({
-      name: 'sandystudio/exec-sw/write-script',
-      data: { episodeId: ep, briefAssetId: briefId },
-    });
+    // Guard (2026-06-25, Director): the Writer auto-start fires ONLY for a fresh
+    // episode (no script yet). A cast RE-approval on an episode that already has
+    // a script must NOT re-run the Writer — a new script version risks a
+    // regression cascade (storyboard → refs → video rebuilt), blowing away
+    // near-complete downstream work. Live case: E12 cast v02 re-approve spawned
+    // redundant SCR v05/v06. Signal is the produced ARTIFACT (script exists),
+    // not the job — honest idempotency by output existence.
+    if (await episodeHasAnyAsset(supabase, ep, 'SCR-script')) {
+      // Suppressed — but never silently: surface a warning into the feed so the
+      // Director/Polina see WHY the Writer didn't fire and can re-run manually
+      // if the rewrite is intentional. Passive (non-actionable) by design — a
+      // deliberate no-op must not wake Polina (avoids the notify spiral).
+      await logEvent(supabase, {
+        event_type: 'pipeline/writer-autostart-skipped',
+        severity: 'warning',
+        title: 'Каст переаппрувлен — Writer не перезапущен',
+        description:
+          'У эпизода уже есть скрипт. Авто-запуск Writer пропущен во избежание ' +
+          'регресса downstream. Перезапиши скрипт вручную, если это намеренно.',
+        episode_id: ep,
+        asset_id: asset.id,
+      });
+    } else {
+      const briefId = await findLatestApprovedAssetId(supabase, ep, 'SPC-brief');
+      events.push({
+        name: 'sandystudio/exec-sw/write-script',
+        data: { episodeId: ep, briefAssetId: briefId },
+      });
+    }
   }
 
   // ── Script APPROVED → EXEC-COPY (parallel chain start)
