@@ -2210,7 +2210,15 @@ export async function runEpisodeReferences(
     // the per-shot agent_started the legacy factory path emitted, so the feed
     // jumped straight from trigger → completed and the Director couldn't see
     // the run had begun). Mirrors the factory's started/completed shot context.
-    if (episodeId) {
+    //
+    // 2026-06-25 (Director): suppress this for single-shot plan-override runs.
+    // factory.ts Step-1 already emits a per-JOB agent_started carrying the shot
+    // label (via resolveActivityContext) for an execute-from-plan run, so this
+    // per-SHOT emission double-logs the start of the SAME shot — the feed showed
+    // "Reference Artist started — SH10" twice for one job (the factory one has a
+    // job_id, this one doesn't). Fan-out runs (no planOverrides, many shots per
+    // job) still need per-shot starts, so only gate the single-shot case.
+    if (episodeId && !planOverrides) {
       const shotLabel = (
         job.shot.shot_id.match(/sh\d+/i)?.[0] ?? job.shot.shot_id
       ).toUpperCase();
