@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   assertPlanRegenWithinCap,
   countShotAutonomousAttempts,
+  findInFlightShotDuplicate,
 } from '@/lib/api/plan-regen-guard';
 import { shotRegenCap } from '@/lib/agents/chain-flags';
 import { ConflictError } from '@/lib/api/errors';
@@ -189,5 +190,50 @@ describe('countShotAutonomousAttempts', () => {
     const client = mockCountClient({ count: null, error: { message: 'boom' } });
     const r = await countShotAutonomousAttempts(client, 'ep-1', 'SH23');
     expect(r.readError).toBe(true);
+  });
+});
+
+// ── Per-shot in-flight dedup (E12 SH10 double-dispatch fix 2026-06-25) ──────
+describe('findInFlightShotDuplicate', () => {
+  it('matches a bare incoming shot against a canonical in-flight job', () => {
+    const jobs = [{ id: 'j1', input_snapshot: { shotId: 'SS-S15-E12-A2-SC06-SH10' } }];
+    expect(findInFlightShotDuplicate(jobs, 'SH10')).toBe('j1');
+  });
+
+  it('matches a canonical incoming shot against a bare in-flight job', () => {
+    const jobs = [{ id: 'j2', input_snapshot: { shotId: 'SH10' } }];
+    expect(findInFlightShotDuplicate(jobs, 'SS-S15-E12-A2-SC06-SH10')).toBe('j2');
+  });
+
+  it('matches two canonical forms of the same shot', () => {
+    const jobs = [{ id: 'j3', input_snapshot: { shotId: 'A2-SC06-SH10' } }];
+    expect(findInFlightShotDuplicate(jobs, 'SS-S15-E12-A2-SC06-SH10')).toBe('j3');
+  });
+
+  it('does NOT match a genuinely different shot', () => {
+    const jobs = [{ id: 'j4', input_snapshot: { shotId: 'A2-SC06-SH11' } }];
+    expect(findInFlightShotDuplicate(jobs, 'A2-SC06-SH10')).toBeNull();
+  });
+
+  it('does NOT cross-match two scene-qualified shots that share an SH number', () => {
+    const jobs = [{ id: 'j5', input_snapshot: { shotId: 'A3-SC09-SH10' } }];
+    expect(findInFlightShotDuplicate(jobs, 'A2-SC06-SH10')).toBeNull();
+  });
+
+  it('ignores jobs with missing / malformed input_snapshot', () => {
+    const jobs = [
+      { id: 'j6', input_snapshot: null },
+      { id: 'j7', input_snapshot: {} },
+      { id: 'j8' },
+      { id: 'j9', input_snapshot: { shotId: 'A2-SC06-SH10' } },
+    ];
+    expect(findInFlightShotDuplicate(jobs, 'SH10')).toBe('j9');
+  });
+
+  it('returns null on an empty job list or empty incoming id', () => {
+    expect(findInFlightShotDuplicate([], 'SH10')).toBeNull();
+    expect(
+      findInFlightShotDuplicate([{ id: 'j1', input_snapshot: { shotId: 'SH10' } }], ''),
+    ).toBeNull();
   });
 });

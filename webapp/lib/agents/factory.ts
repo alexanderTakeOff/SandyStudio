@@ -38,6 +38,7 @@ import { logEvent } from '../api/events';
 import { shotRegenCap } from './chain-flags';
 import {
   countShotAutonomousAttempts,
+  findInFlightShotDuplicate,
   SHOT_REGEN_AGENT_IDS,
 } from '../api/plan-regen-guard';
 import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
@@ -281,6 +282,60 @@ export function createAgentInngestFunction<E extends string>(
           return true;
         });
         if (halted) return;
+      }
+
+      // ── Step 0b: per-shot IN-FLIGHT dedup (2026-06-25, E12 SH10 double-run) ─
+      // The per-PLAN in-flight guard (plan-regen-guard) and the EXACT-match shot
+      // cap both miss when TWO plans — or a bare "SH10" racing a canonical
+      // "A2-SC06-SH10" — dispatch for the SAME shot: both execute and
+      // double-generate the image. Refuse a SECOND concurrent run of the SAME
+      // agent for the SAME shot. This is concurrency correctness, NOT an autonomy
+      // cap → it applies to EVERY principal (incl. the Director: nobody needs two
+      // simultaneous EREF runs for one shot). Sequential regen still works (the
+      // prior job is no longer QUEUED/RUNNING), and Designer→Artist progression
+      // is fine (different agent_id). FAIL OPEN on a read error — a rare duplicate
+      // beats dropping a legitimate generation.
+      if (
+        shotIdForCap &&
+        (SHOT_REGEN_AGENT_IDS as readonly string[]).includes(spec.agentId)
+      ) {
+        const dupId = await step.run('eref-inflight-dedup-check', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          const INFLIGHT_WINDOW_MS = 10 * 60_000; // > EREF ~6min run; stale jobs don't wedge
+          const sinceIso = new Date(Date.now() - INFLIGHT_WINDOW_MS).toISOString();
+          const { data, error } = await supabase
+            .from('jobs')
+            .select('id,input_snapshot')
+            .eq('episode_id', episodeId)
+            .eq('agent_id', spec.agentId)
+            .in('status', ['QUEUED', 'RUNNING'])
+            .gte('started_at', sinceIso);
+          if (error) return null; // fail open
+          const match = findInFlightShotDuplicate(
+            (data ?? []) as Array<{ id: string; input_snapshot?: unknown }>,
+            shotIdForCap,
+          );
+          if (!match) return null;
+          await logEvent(supabase, {
+            event_type: 'regen_duplicate_skipped',
+            severity: 'info',
+            title: `Duplicate ${spec.agentId} skipped — ${shotIdForCap}`,
+            description:
+              `A ${spec.agentId} job for this shot is already in flight (job ` +
+              `${match}). Skipped this concurrent duplicate dispatch to avoid a ` +
+              `double generation.`,
+            actor: (eventData.principal as string) ?? null,
+            episode_id: episodeId,
+            metadata: {
+              agent: spec.agentId,
+              shot_id: shotIdForCap,
+              inflight_job_id: match,
+              reason: 'EREF_INFLIGHT_DUPLICATE',
+            },
+          });
+          return match;
+        });
+        if (dupId) return;
       }
 
       // ── Step 1: insert RUNNING job row + emit agent_started activity ─────

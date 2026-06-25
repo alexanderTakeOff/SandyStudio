@@ -26,6 +26,7 @@ import type { DirectorPrincipal, ServerSupabaseClient } from './auth';
 import { ConflictError } from './errors';
 import { logEvent } from './events';
 import { planRegenCap } from '@/lib/agents/chain-flags';
+import { shotIdsMatchLoose } from './vgen-shot-helpers';
 
 /**
  * Agents whose jobs count toward the per-shot runaway cap: the image executor
@@ -162,4 +163,38 @@ export async function countShotAutonomousAttempts(
     return { count: 0, readError: true };
   }
   return { count: count ?? 0, readError: false };
+}
+
+/** A jobs row shape sufficient for the in-flight shot match. */
+export interface JobShotRow {
+  id: string;
+  input_snapshot?: unknown;
+}
+
+/**
+ * 2026-06-25 — per-shot in-flight dedup for EREF dispatch (E12 SH10 double-run).
+ *
+ * The existing in-flight guard ({@link assertPlanRegenWithinCap}) keys on
+ * `planAssetId`, and {@link countShotAutonomousAttempts} does an EXACT `shotId`
+ * match — so two DIFFERENT plans for one shot, or a bare "SH10" dispatch racing
+ * a canonical "A2-SC06-SH10" one, both slip through and double-generate. This
+ * pure matcher closes that hole: given the already-fetched in-flight jobs (caller
+ * filters status/window/agent in SQL), return the FIRST whose `input_snapshot.shotId`
+ * refers to the same shot as `incomingShotId` via {@link shotIdsMatchLoose}
+ * (bare/canonical agnostic). Returns its id, or null when no duplicate is in flight.
+ *
+ * Pure (no DB) so it is unit-tested without a Supabase mock.
+ */
+export function findInFlightShotDuplicate(
+  inFlightJobs: ReadonlyArray<JobShotRow>,
+  incomingShotId: string,
+): string | null {
+  if (!incomingShotId) return null;
+  for (const j of inFlightJobs) {
+    const sid = (j.input_snapshot as { shotId?: unknown } | null)?.shotId;
+    if (typeof sid === 'string' && shotIdsMatchLoose(sid, incomingShotId)) {
+      return j.id;
+    }
+  }
+  return null;
 }

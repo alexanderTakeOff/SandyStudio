@@ -277,6 +277,29 @@ export function shortShotLabel(shotId: string | null | undefined): string {
   return shOnly ? shOnly[0].toUpperCase() : shotId;
 }
 
+/**
+ * 2026-06-24 — tolerant shot-id match. Two ids refer to the same shot when their
+ * scene-qualified labels (via {@link shortShotLabel}) are equal; fall back to the
+ * bare SH token ONLY when one side lacks scene qualification (e.g. the concierge
+ * dispatches a bare "SH10" while the plan body / chain uses canonical
+ * "A2-SC06-SH10"). If BOTH sides are scene-qualified and still differ, it is a
+ * genuine mismatch — stay strict (so a cross-scene same-SH pair never false-matches).
+ *
+ * Used by (a) the EREF plan↔event sanity guard (episode-references.ts, SH13 fix)
+ * and (b) the per-shot in-flight dedup (plan-regen-guard.ts, E12 SH10 double-dispatch).
+ */
+export function shotIdsMatchLoose(a: string, b: string): boolean {
+  const la = shortShotLabel(a); // "A2-SC07-SH13" or "SH13"
+  const lb = shortShotLabel(b);
+  if (la === lb) return true;
+  const aBare = /^SH\d+$/i.test(la);
+  const bBare = /^SH\d+$/i.test(lb);
+  if (!aBare && !bBare) return false;
+  const sa = a.match(/SH\d+/i)?.[0].toUpperCase();
+  const sb = b.match(/SH\d+/i)?.[0].toUpperCase();
+  return Boolean(sa && sb && sa === sb);
+}
+
 /** Full canonical shot id, e.g. "SS-S15-E11-A2-SC25-SH01". Mirrors the strict
  *  regex EXEC-EREF's Critic already uses (episode-reference-critic.ts). */
 const FULL_SHOT_ID_RE = /^SS-S\d+-E\d+-A\d+-SC\d+-SH\d+$/i;
