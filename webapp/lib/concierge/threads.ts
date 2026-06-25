@@ -230,6 +230,76 @@ async function fireAwaitingSetEventIfApplicable(
 }
 
 /**
+ * Resolve the target OPEN concierge thread for an episode the same way the
+ * Postgres trigger (migration 0030) and exec-pa-react's resolver do: latest
+ * open thread for the episode, else the latest open thread globally. Shared so
+ * the watchdog and the auto-react consumer agree on "which thread" (2026-06-25,
+ * loop-fix W1.b — the watchdog needs thread awareness to stop re-nudging).
+ */
+export async function resolveOpenThreadId(
+  client: Client,
+  episodeId: string | null | undefined,
+): Promise<string | null> {
+  if (episodeId) {
+    const { data } = await client
+      .from(THREADS_TABLE)
+      .select('id')
+      .is('ended_at', null)
+      .eq('episode_id', episodeId)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data?.id) return (data as { id: string }).id;
+  }
+  const { data: anyOpen } = await client
+    .from(THREADS_TABLE)
+    .select('id')
+    .is('ended_at', null)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (anyOpen as { id: string } | null)?.id ?? null;
+}
+
+/**
+ * Close (set ended_at) OPEN threads whose latest turn is older than ttlMin.
+ * A closed thread is skipped by exec-pa-react and the ambient injection, so
+ * this structurally stops watchdog / ambient nudges from landing on dead
+ * threads (a contributor to the 2026-06-25 runaway: many stale OPEN threads
+ * each polled by the watchdog). Bounded scan, best-effort, resilient per-row.
+ * Empty threads (no turns yet) are left alone. Returns count closed.
+ */
+export async function closeStaleConciergeThreads(
+  client: Client,
+  ttlMin: number,
+  scanLimit = 50,
+): Promise<number> {
+  const { data: open } = await client
+    .from(THREADS_TABLE)
+    .select('id')
+    .is('ended_at', null)
+    .order('started_at', { ascending: false })
+    .limit(scanLimit);
+  const rows = (open as Array<{ id: string }> | null) ?? [];
+  if (rows.length === 0) return 0;
+  const cutoff = Date.now() - ttlMin * 60_000;
+  let closed = 0;
+  for (const t of rows) {
+    try {
+      const last = (await loadRecentTurns(client, t.id, 1))[0];
+      if (!last) continue; // empty/just-created thread — leave it
+      const lastTs = last.created_at ? new Date(last.created_at).getTime() : 0;
+      if (lastTs >= cutoff) continue; // active recently
+      await endThread(client, t.id);
+      closed += 1;
+    } catch {
+      // best-effort: a single bad thread must not abort the sweep
+    }
+  }
+  return closed;
+}
+
+/**
  * Load the most recent N turns for a thread, oldest-first. Used to seed the
  * LLM with conversation history when the page reloads.
  */

@@ -25,6 +25,7 @@
 import { inngest } from '@/lib/inngest/client';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { PUBLIC_ENV } from '@/lib/env';
+import { resolveOpenThreadId } from '@/lib/concierge/threads';
 
 interface ResolvedTarget {
   threadId: string;
@@ -38,29 +39,12 @@ async function resolveThreadId(args: {
     // Caller already resolved it (team-chat post path).
     return { threadId: args.threadId };
   }
+  // Shared resolver (lib/concierge/threads): latest open thread for the
+  // episode, else latest open globally. Same logic the watchdog uses so both
+  // agree on "which thread".
   const sb = createSupabaseServiceRoleClient();
-  // Step 1: latest open thread for this episode.
-  if (args.episodeId) {
-    const { data } = await sb
-      .from('concierge_threads')
-      .select('id')
-      .is('ended_at', null)
-      .eq('episode_id', args.episodeId)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (data?.id) return { threadId: data.id };
-  }
-  // Step 2: latest open thread globally.
-  const { data: anyOpen } = await sb
-    .from('concierge_threads')
-    .select('id')
-    .is('ended_at', null)
-    .order('started_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (anyOpen?.id) return { threadId: anyOpen.id };
-  return null;
+  const threadId = await resolveOpenThreadId(sb, args.episodeId ?? null);
+  return threadId ? { threadId } : null;
 }
 
 export const execPaReact = inngest.createFunction(
@@ -81,7 +65,11 @@ export const execPaReact = inngest.createFunction(
     // 20 min). The `:fail` suffix keeps the failure reaction alive without
     // re-introducing reaction storms for routine traffic.
     debounce: {
-      period: '5s',
+      // 2026-06-25 — widened 5s→20s (env PA_REACT_DEBOUNCE_SEC) so an EREF
+      // fan-out's staggered per-shot completions collapse into ONE auto-react
+      // instead of one-per-shot. The `:fail` segment below keeps failures in
+      // their own bucket (F4), so widening can't swallow a failure reaction.
+      period: `${Math.max(1, Number(process.env.PA_REACT_DEBOUNCE_SEC) || 20)}s`,
       key:
         '(has(event.data.threadId) && event.data.threadId != null ? event.data.threadId : ' +
         '(has(event.data.episodeId) && event.data.episodeId != null ? event.data.episodeId : "global")) + ' +

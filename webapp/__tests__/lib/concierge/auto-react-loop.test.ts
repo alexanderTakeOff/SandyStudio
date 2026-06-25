@@ -23,8 +23,11 @@ const mutate = (name: string, argsJson?: string): RoundCall => ({
 });
 
 describe('constants', () => {
-  test('backstop is a generous runaway cap, not a work limit', () => {
-    expect(AUTO_REACT_ROUND_BACKSTOP).toBeGreaterThanOrEqual(20);
+  test('backstop is a tight per-wake runaway cap (2026-06-25: 25→6, env-driven)', () => {
+    // The SPIN guard stops earlier on duplicate/no-progress; the cap is a
+    // last-resort bound that fails safe-and-visible (cut-off escalates).
+    expect(AUTO_REACT_ROUND_BACKSTOP).toBeGreaterThanOrEqual(2);
+    expect(AUTO_REACT_ROUND_BACKSTOP).toBeLessThanOrEqual(10);
     expect(MAX_NOPROGRESS_ROUNDS).toBe(3);
   });
 });

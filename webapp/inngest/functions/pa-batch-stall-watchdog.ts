@@ -24,6 +24,12 @@
 
 import { inngest } from '@/lib/inngest/client';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import {
+  resolveOpenThreadId,
+  loadRecentTurns,
+  closeStaleConciergeThreads,
+} from '@/lib/concierge/threads';
+import { isActionableEventType, isSelfCausedNotify } from '@/lib/api/event-actionable';
 
 const IDLE_MIN = 6; // no job activity for this long while FANOUT_RUNNING = stalled
 const COOLDOWN_MIN = 12; // don't re-nudge the same episode within this window
@@ -31,6 +37,9 @@ const SCAN_LIMIT = 20; // bound the per-tick read cost
 // F4 (2026-06-12): Mode-4 idle sweep — only episodes that ran something within
 // this window count as "active session"; older idleness is a parked episode.
 const ACTIVE_WINDOW_H = 2;
+// 2026-06-25 (loop-fix W1.b): close OPEN concierge threads idle longer than this
+// so the watchdog/ambient can't keep nudging dead threads. Env-overridable.
+const THREAD_TTL_MIN = Math.max(30, Number(process.env.CONCIERGE_THREAD_TTL_MIN) || 180);
 
 export const paBatchStallWatchdog = inngest.createFunction(
   {
@@ -43,6 +52,10 @@ export const paBatchStallWatchdog = inngest.createFunction(
     return step.run('sweep-stalled-batches', async () => {
       const sb = createSupabaseServiceRoleClient();
       const now = Date.now();
+
+      // Reap stale OPEN threads first so we never nudge a dead conversation
+      // (and so resolveOpenThreadId below picks a genuinely live thread).
+      const reaped = await closeStaleConciergeThreads(sb, THREAD_TTL_MIN).catch(() => 0);
 
       // Episodes whose EREF fan-out is marked running (the explicit
       // "batch in progress" flag, mirrored into episode metadata).
@@ -83,7 +96,7 @@ export const paBatchStallWatchdog = inngest.createFunction(
       }
       const candidates = [...byId.values()];
       if (candidates.length === 0) {
-        return { ok: true as const, scanned: 0, nudged: 0 };
+        return { ok: true as const, scanned: 0, nudged: 0, reaped };
       }
 
       let nudged = 0;
@@ -124,8 +137,49 @@ export const paBatchStallWatchdog = inngest.createFunction(
           if (lastTs === 0 || now - lastTs > ACTIVE_WINDOW_H * 3_600_000) continue;
         }
 
-        // Stalled → nudge Polina to re-evaluate and continue. exec-pa-react
-        // resolves the thread, debounces, and she re-checks scope before acting.
+        // ── Loop-fix W1.b (2026-06-25): thread-aware "no NEW state" guard ──────
+        // The original watchdog re-fired forever: its stall test reads only
+        // `jobs` timestamps with no thread awareness, so a flagged-but-DONE
+        // episode satisfied "idle ≥6min" every cooldown and nudged Polina into
+        // an empty Opus auto-react each time. Two guards stop the ping-pong:
+        //   (1) if Polina already spoke recently in the thread, a nudge is echo;
+        //   (2) only nudge when there is genuinely NEW actionable state (an
+        //       actionable, non-self-caused activity_event newer than her last
+        //       turn / last nudge). No new state → nothing to react to → skip.
+        const threadId = await resolveOpenThreadId(sb, ep.id);
+        if (!threadId) continue; // no live thread to nudge
+        const lastTurn = (await loadRecentTurns(sb, threadId, 1))[0];
+        const lastTurnTs = lastTurn?.created_at
+          ? new Date(lastTurn.created_at).getTime()
+          : 0;
+        // (1) She spoke within IDLE_MIN — give her room, don't echo.
+        if (
+          lastTurn?.role === 'assistant' &&
+          lastTurnTs > 0 &&
+          now - lastTurnTs < IDLE_MIN * 60_000
+        ) {
+          continue;
+        }
+        // (2) Require new actionable state since the later of {last turn, last nudge}.
+        const lastNudgeTs =
+          typeof lastNudge === 'string' ? new Date(lastNudge).getTime() : 0;
+        const sinceIso = new Date(Math.max(lastTurnTs, lastNudgeTs)).toISOString();
+        const { data: freshEvents, error: feErr } = await sb
+          .from('activity_events')
+          .select('event_type,actor,created_at')
+          .eq('episode_id', ep.id)
+          .gt('created_at', sinceIso)
+          .order('created_at', { ascending: false })
+          .limit(20);
+        if (feErr) continue; // query failed — don't fabricate a stall, retry next tick
+        const hasNewActionable = (freshEvents ?? []).some(
+          (e: { event_type: string; actor: string | null }) =>
+            isActionableEventType(e.event_type) &&
+            !isSelfCausedNotify(e.event_type, e.actor),
+        );
+        if (!hasNewActionable) continue; // nothing new to react to → no nudge
+
+        // Stalled WITH new state → nudge Polina to re-evaluate and continue.
         await inngest.send({
           name: 'sandystudio/pa/notify-needed',
           data: {
@@ -147,7 +201,7 @@ export const paBatchStallWatchdog = inngest.createFunction(
         logger.info(`batch-watchdog: nudged stalled fan-out for episode ${ep.id}`);
       }
 
-      return { ok: true as const, scanned: candidates.length, nudged };
+      return { ok: true as const, scanned: candidates.length, nudged, reaped };
     });
   },
 );

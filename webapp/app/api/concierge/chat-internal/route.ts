@@ -30,7 +30,13 @@ import {
   conciergeModel,
   conciergeMaxTokensParam,
   conciergeSupportsTemperature,
+  conciergeReasoningParam,
 } from '@/lib/concierge/llm';
+import {
+  recordConciergeCost,
+  isConciergeBudgetTripped,
+  conciergeBudgetCapConfig,
+} from '@/lib/concierge/cost';
 import type {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionMessageParam,
@@ -57,7 +63,14 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const ANTI_CASCADE_WINDOW_MS = 10_000;
-const RECENT_TURN_WINDOW = 80;
+// 2026-06-25 cost trim (W4.a): auto-react only needs the recent burst + her last
+// turn to react to an event, not 80 turns of (mostly tool_call/tool_result)
+// history that inflated input to ~24k tokens/call. Env-overridable. Interactive
+// /chat keeps its own deeper window for real Director conversations.
+const RECENT_TURN_WINDOW = Math.max(
+  4,
+  Number(process.env.CONCIERGE_AUTO_REACT_TURN_WINDOW) || 24,
+);
 
 /**
  * Auto-react tool loop cap (goal-loop slice 1, 2026-06-23). REPLACES the old
@@ -208,6 +221,44 @@ export async function POST(req: Request) {
     }
   }
 
+  // ── Cost circuit-breaker (2026-06-25) ────────────────────────────────────────
+  // Disarm AUTONOMOUS auto-react when concierge spend has crossed the rolling
+  // cap, so Anthropic credits can never silently hit $0 again (the root incident).
+  // Direct messages (claude_message) are deliberate, low-volume orders from the
+  // Director/AI-EP — let those through; the interactive /chat route is never gated.
+  if (parsed.source !== 'claude_message') {
+    const cap = conciergeBudgetCapConfig();
+    const status = await isConciergeBudgetTripped(supabase, cap);
+    if (status.tripped) {
+      const alreadyNotified =
+        lastTurn?.role === 'assistant' &&
+        !!(lastTurn.metadata as { concierge_budget_tripped?: unknown } | null)
+          ?.concierge_budget_tripped;
+      if (!alreadyNotified) {
+        await persistTurn(supabase, parsed.thread_id, {
+          role: 'assistant',
+          event_type: 'message',
+          content:
+            `⚠️ Авто-реакт приостановлен: расход Полины за ${cap.windowHours}ч достиг ` +
+            `$${status.spent.toFixed(2)} (cap $${cap.capUsd}). Жду Директора — поднять ` +
+            `CONCIERGE_DAILY_CAP_USD или разобрать причину всплеска.`,
+          metadata: {
+            awaiting_director_input: {
+              question: `Concierge budget cap reached ($${status.spent.toFixed(2)} / $${cap.capUsd} per ${cap.windowHours}h). Raise cap or investigate the spend?`,
+              deadline_sec: 3600,
+              source: 'markAwaitingDirector',
+            },
+            concierge_budget_tripped: true,
+          },
+        });
+      }
+      return NextResponse.json(
+        { skipped: 'concierge_budget_tripped', spent: status.spent, cap: status.cap },
+        { status: 200 },
+      );
+    }
+  }
+
   // Resolve the episode in focus: the thread's pinned episode first, else the
   // episode that owns the triggering activity event (ambient pipeline reaction).
   let episodeId: string | null = thread.episode_id ?? null;
@@ -242,9 +293,10 @@ export async function POST(req: Request) {
 
   const model = conciergeModel();
   const temperature = env.OPENAI_TEMPERATURE ? Number(env.OPENAI_TEMPERATURE) : 0.2;
-  const maxCompletionTokens = env.OPENAI_MAX_OUTPUT_TOKENS
-    ? Number(env.OPENAI_MAX_OUTPUT_TOKENS)
-    : 2000;
+  // W5 (2026-06-25): auto-react replies are short (name artifact + status + next
+  // step). Cap output at 800 (Opus output is $75/M) instead of the 8000 the
+  // interactive path uses. Env-overridable.
+  const maxCompletionTokens = Number(process.env.CONCIERGE_AUTO_REACT_MAX_TOKENS) || 800;
   const reasoningEffort = env.OPENAI_REASONING_EFFORT as
     | 'minimal'
     | 'low'
@@ -400,10 +452,31 @@ export async function POST(req: Request) {
       if (reasoningEffort && isGpt5 && !toolsThisRound) {
         (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
       }
+      // 2026-06-25 $-fix: cap Opus extended thinking on EVERY round (returns {}
+      // for non-anthropic). This is the single biggest per-call cost lever — the
+      // root cause was Opus running UNCAPPED thinking because the isGpt5 gate
+      // above dropped reasoning_effort for claude-*.
+      Object.assign(params, conciergeReasoningParam());
 
       const completion = await client.chat.completions.create(params);
       if (Symbol.asyncIterator in (completion as object)) {
         throw new Error('expected non-streaming completion');
+      }
+      // Record this call's tokens+cost (best-effort, fire-and-forget). Was
+      // previously UNTRACKED — the reason the Opus drain was invisible.
+      const usage = (completion as {
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      }).usage;
+      if (usage) {
+        void recordConciergeCost(supabase, {
+          model,
+          usage: {
+            promptTokens: usage.prompt_tokens ?? 0,
+            completionTokens: usage.completion_tokens ?? 0,
+          },
+          source: 'auto_react',
+          episodeId,
+        });
       }
       const msg = (completion as {
         choices: Array<{ message: ChatCompletionAssistantMessageParam }>;

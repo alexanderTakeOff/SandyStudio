@@ -7,17 +7,23 @@
 // task (read → act → verify → report) finishes in ONE wake because the model
 // itself returns no tool calls when done. The cap only catches a stuck model.
 //
-// Because Polina's own LLM rounds are NOT budget-tracked (the per-episode
-// ceiling in lib/budget.ts only bills mutating jobs, not her inference), a high
-// cap needs a SPIN guard or a stuck model could burn tokens. The guard also
-// directly addresses the Director's "несколько почти одинаковых генераций
-// подряд": a repeated MUTATING call is a duplicate generation = wasted spend and
-// is stopped BEFORE it fires.
+// Polina's LLM rounds are now cost-tracked (lib/concierge/cost.ts, 2026-06-25)
+// and a rolling circuit-breaker disarms auto-react over a daily cap — but a tight
+// per-wake round cap + SPIN guard are still the first line of defence against a
+// stuck/looping model burning Opus tokens. The guard also addresses the
+// Director's "несколько почти одинаковых генераций подряд": a repeated MUTATING
+// call is a duplicate generation = wasted spend, stopped BEFORE it fires.
 // ──────────────────────────────────────────────────────────────────────────────
 
-/** Generous runaway backstop for both concierge tool loops. A real task ends far
- *  sooner (model returns 0 tool calls); this only catches a stuck/looping model. */
-export const AUTO_REACT_ROUND_BACKSTOP = 25;
+/** Per-wake runaway backstop for both concierge tool loops. A real task ends far
+ *  sooner (model returns 0 tool calls); this only catches a stuck/looping model.
+ *  2026-06-25: tightened 25→6 (env CONCIERGE_AUTO_REACT_BACKSTOP) — the SPIN guard
+ *  already stops earlier on duplicate/no-progress, and a lower cap fails
+ *  safe-and-visible (the cut-off escalates to Director). */
+export const AUTO_REACT_ROUND_BACKSTOP = Math.max(
+  2,
+  Number(process.env.CONCIERGE_AUTO_REACT_BACKSTOP) || 6,
+);
 
 /** Consecutive rounds that introduce NO new tool-call signature before we declare
  *  a stall and stop the loop. */

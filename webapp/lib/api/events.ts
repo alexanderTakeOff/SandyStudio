@@ -5,7 +5,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { ServerSupabaseClient } from './auth';
-import { isActionableEventType } from './event-actionable';
+import { isActionableEventType, isSelfCausedNotify } from './event-actionable';
 import { inngest } from '@/lib/inngest/client';
 
 export type EventSeverity = 'info' | 'warning' | 'error';
@@ -63,6 +63,11 @@ export async function logEvent(
   }
 
   if (!isActionableEventType(input.event_type)) return;
+  // Loop-breaker (2026-06-25): never wake Polina to react to her OWN decision /
+  // dispatch (actor = AI principal). The audit row above is already written; we
+  // skip only the `pa/notify-needed` fan-out. Pipeline advance is mechanical,
+  // so the chain still progresses. Stops the watchdog↔auto-react cost spiral.
+  if (isSelfCausedNotify(input.event_type, input.actor)) return;
   const triggerId = data?.id;
   if (!triggerId) return;
 

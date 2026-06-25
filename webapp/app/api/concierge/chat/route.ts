@@ -23,6 +23,7 @@ import {
   conciergeModel,
   conciergeMaxTokensParam,
   conciergeSupportsTemperature,
+  conciergeReasoningParam,
 } from '@/lib/concierge/llm';
 import type {
   ChatCompletionAssistantMessageParam,
@@ -502,6 +503,10 @@ async function handleChatPOST(req: Request) {
           if (reasoningEffort && isGpt5 && !toolsThisRound) {
             (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
           }
+          // 2026-06-25 $-fix: cap Opus extended thinking on EVERY round (returns
+          // {} for non-anthropic). Without this Opus runs uncapped thinking
+          // (billed at output rate) on the interactive path too.
+          Object.assign(params, conciergeReasoningParam());
 
           // Branch: streaming round (final answer) vs non-streaming round
           // (tool-capable). Mirrors useStreaming above.

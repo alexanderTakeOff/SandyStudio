@@ -11,8 +11,19 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-22 (E11 «Мощный вентилятор» video-generation run; AI EP role piloted by Тео-as-Pascal)
-Mode:   ===5=== EDIT (Director-authorized 2026-06-22 — fix-спринт нумерации/сборки). E11 governance Mode 3.
+Date:   2026-06-25 (Полина Anthropic-дренаж root-fix; E12 EREF SH13 shot_id fix)
+Mode:   ===5=== EDIT (Director-authorized 2026-06-25 — concierge cost/loop fix).
+
+2026-06-25 (Полина $100/сутки Anthropic-дренаж — root-fix). Диагноз: петля watchdog↔auto-react × Opus 4.8
+  (695 вызовов/сутки, 81% auto-react; budget_log не трекал консьерж → расход был невидим, не «Opus дорогой»).
+  Лечение в master (tsc·0 / vitest 997 / replay·30): W1 петля — self-echo skip (events.ts isSelfCausedNotify),
+  watchdog no-new-state + close-stale-threads, debounce 5s→20s; W2 reasoning OFF на Opus (был uncapped — гл. причина
+  цены); W3 cost-трекинг в budget_log с episode_id (вне budget_spent) + дневной circuit-breaker $20/24ч; W4.a история
+  80→24; W5 backstop 25→6, auto-react output→800. Держим Opus, харден. Deferred (после отладки): W4.b tool-allowlist,
+  W4.c prompt-reorder, native Anthropic cache, интерактив cost-record + episode-budget вид. ⚠️ Anthropic доливать можно
+  (breaker $20 страхует). План: ~/.claude/plans/functional-tickling-ullman.md.
+  Также: E12 EREF SH13 разблокирован — толерантный shot_id-гард в episode-references.ts (canonical план-body vs голый
+  event-shot; reuse shortShotLabel). NEXT: смоук на тест-всплеске (breaker), затем добить E12 EREF.
 
 2026-06-22 PM (E11 video run + AI-EP readiness probe). Тео ведёт прогон в роли AI EP (Pascal), Полина — исполнитель.
   31/36 с видео (5 недостающих: A2-SC18/21/24/25-SH01 + A4-SC02-SH02; SC13=удалён 0.5с). fal пополнен Director'ом.
@@ -24,17 +35,6 @@ Mode:   ===5=== EDIT (Director-authorized 2026-06-22 — fix-спринт нум
   Дыры AI EP → memory/ai_ep_conception_gaps.md (gaps #10,#12). Борд E11: Акт4 под act:3 — правка ПОСЛЕ финала (q8b).
   NEXT: добить 5 шотов → 35/35 → STITCH 2:23 + fade 6s → финальный cut. (PLAN >200 строк — отдельный долг на архив-трим.)
 
-2026-06-17 PM-7 (episode FORMAT authority — Slice 2 IMAGE, code-complete UNCOMMITTED). Root: `resolveImageParams`
-  was DEAD (never called) → image FORMAT entirely ungoverned; EREF executor hardcoded `EREF_QUALITY='medium'`,
-  ignoring `generation_config.image` (E10 had explicit quality=high, rendered medium). FIX (EREF-only scope per
-  Director): Layer A enforcement — `readEpisodeImageConfig` + `resolveImageParams` wired into
-  episode-references.ts (regular + anchor + legacy-stamp), removed EREF_QUALITY hardcode (episode wins for
-  provider+quality; gemini coerced→null, stays via app_config). Layer B awareness —
-  `buildEpisodeImageFormatAuthorityBlock` (impl→alias gpt-image-2; no size, no override; quality enforced at
-  render, NOT a plan field) injected into Designer + EPREV critic + 2 skill .md. Default quality for
-  un-configured episodes = high (Director q). SIZE stays delivery-derived. tsc·0/892/replay30 (+6 tests).
-  NEXT: live smoke E10 (single-shot regen → quality=high via Polina); then Slice 3 (dispatch override payload),
-  Slice 2b (thumbnail + bible quality).
 
 2026-06-17 (episode FORMAT authority — Slice 1, master @ fee8fd6). Root: episode `generation_config`
   (provider/aspect/quality/resolution) was the single source of truth ONLY at render; the Animator authoring

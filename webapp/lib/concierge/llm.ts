@@ -92,3 +92,23 @@ export function conciergeMaxTokensParam(n: number): Record<string, number> {
 export function conciergeSupportsTemperature(): boolean {
   return conciergeProvider() !== 'anthropic';
 }
+
+/**
+ * Reasoning-budget param for the anthropic provider (2026-06-25 cost fix).
+ *
+ * Root cause of the $100/day drain: Opus 4.x defaults to UNCAPPED extended
+ * thinking (billed at output rate), and the routes only sent `reasoning_effort`
+ * when `isGpt5` — so for claude-opus-4-8 it was dropped and thinking ran free.
+ * Polina is a dispatcher (call a tool / answer short), so thinking should be
+ * minimal. On Anthropic's OpenAI-compat surface the lever is `reasoning_effort`
+ * (the native `thinking:{type:disabled}` struct isn't exposed there); 'minimal'
+ * is the lowest setting. Override via CONCIERGE_REASONING_EFFORT.
+ *
+ * OpenAI (gpt-5) keeps its existing route-side reasoning handling (applied only
+ * on tool-disabled rounds) → return {} here. Gemini → {}.
+ */
+export function conciergeReasoningParam(): Record<string, string> {
+  if (conciergeProvider() !== 'anthropic') return {};
+  const effort = process.env.CONCIERGE_REASONING_EFFORT?.trim() || 'minimal';
+  return { reasoning_effort: effort };
+}
