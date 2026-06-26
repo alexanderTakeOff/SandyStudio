@@ -12,11 +12,10 @@
 
 import { describe, expect, test } from 'vitest';
 import {
-  canonicalShotId,
   collectShotIdViolations,
   countScriptActs,
-  episodeShort,
 } from '@/lib/agents/runners/storyboarder';
+import { canonicalShotId, episodeShort } from '@/lib/api/shot-id';
 
 describe('countScriptActs', () => {
   test('counts distinct Act headers (## or ###, any dash suffix)', () => {

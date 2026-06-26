@@ -31,6 +31,7 @@ import {
 } from '../load-skills';
 import { parseSkillSelection } from '../../skills/parse-skill-selection';
 import { findApprovedAsset } from '../upstream';
+import { SHOT_ID_RE, canonicalShotId, episodeShort } from '../../api/shot-id';
 
 export const SB_CONTRACT = 'storyboarder@v2';
 // 2026-05-20 — upgraded sonnet-4-6 → opus-4-7 per Director directive.
@@ -132,31 +133,11 @@ export function countScriptActs(scriptContent: string): number {
   return nums.size;
 }
 
-/**
- * Canonical shot identity (refactor 2026-06-26, Director q2): series · episode ·
- * shot — `S{season}-E{episode}-SH{number}`, e.g. `S15-E12-SH07`. NO studio
- * prefix, NO act, NO scene. Act/scene are POSITION, not identity — they drift on
- * board re-version / agent re-number / human templating, which was the root of
- * every SH numbering bug (SH10, SH12/13/14, E11 "18/20 not found"). They live in
- * the act object + derived display metadata, never baked into the id.
- */
-export const SHOT_ID_RE = /^S\d+-E\d+-SH\d+$/i;
-/** SH counter capture used by the continuity postcondition. */
+// Shot identity (SHOT_ID_RE / episodeShort / canonicalShotId) lives in the single
+// source of truth `lib/api/shot-id.ts` — imported above. Only the SH-counter
+// capture used by the continuity postcondition below is local to the validator.
+/** SH counter capture used by {@link collectShotIdViolations}. */
 const SHOT_ID_TAIL_RE = /-SH(\d+)$/i;
-
-/** Episode code without the studio prefix: "SS-S15-E12" → "S15-E12". The shot-id
- *  identity space drops `SS` (q2); asset filenames keep it (q7), so the two are
- *  intentionally decoupled — a shot_id is NOT `${episode_code}`-prefixed. */
-export function episodeShort(episodeCode: string): string {
-  return (episodeCode || '').replace(/^SS-/i, '');
-}
-
-/** Build the canonical shot id for a 1-based episode position. The number is
- *  assigned by POSITION in code (never by the model), making the id
- *  deterministic and model-independent — the core of this refactor. */
-export function canonicalShotId(episodeCode: string, position: number): string {
-  return `${episodeShort(episodeCode)}-SH${String(position).padStart(2, '0')}`;
-}
 
 /**
  * Verify the shot_id numbering AFTER {@link renumberShotsContinuous} has run.
