@@ -133,34 +133,30 @@ export function countScriptActs(scriptContent: string): number {
 }
 
 /**
- * Highest act number A# appearing in any shot_id of the storyboard body. The
- * shot_id prefix encodes the act the shot belongs to ("<ep>-A<N>-SC<NN>-SH<NN>").
- * Used by the post-generation invariant so a mismatch between act-objects and
- * shot_id acts fails loudly at generation, not three stages downstream.
+ * Canonical shot identity (refactor 2026-06-26, Director q2): series · episode ·
+ * shot — `S{season}-E{episode}-SH{number}`, e.g. `S15-E12-SH07`. NO studio
+ * prefix, NO act, NO scene. Act/scene are POSITION, not identity — they drift on
+ * board re-version / agent re-number / human templating, which was the root of
+ * every SH numbering bug (SH10, SH12/13/14, E11 "18/20 not found"). They live in
+ * the act object + derived display metadata, never baked into the id.
  */
-export function maxActInShotIds(
-  body: { acts?: unknown } | null | undefined,
-): number {
-  const acts = Array.isArray(body?.acts) ? (body!.acts as unknown[]) : [];
-  let max = 0;
-  for (const act of acts) {
-    const shots = Array.isArray((act as { shots?: unknown[] }).shots)
-      ? (act as { shots: unknown[] }).shots
-      : [];
-    for (const sh of shots) {
-      const id = (sh as { shot_id?: unknown }).shot_id;
-      if (typeof id === 'string') {
-        const m = id.match(/A(\d+)-SC\d+-SH\d+/i);
-        if (m) max = Math.max(max, Number(m[1]));
-      }
-    }
-  }
-  return max;
+export const SHOT_ID_RE = /^S\d+-E\d+-SH\d+$/i;
+/** SH counter capture used by the continuity postcondition. */
+const SHOT_ID_TAIL_RE = /-SH(\d+)$/i;
+
+/** Episode code without the studio prefix: "SS-S15-E12" → "S15-E12". The shot-id
+ *  identity space drops `SS` (q2); asset filenames keep it (q7), so the two are
+ *  intentionally decoupled — a shot_id is NOT `${episode_code}`-prefixed. */
+export function episodeShort(episodeCode: string): string {
+  return (episodeCode || '').replace(/^SS-/i, '');
 }
 
-/** Canonical shot_id tail every shot must carry: an act, a scene, and a shot
- *  counter ("…-A<N>-SC<NN>-SH<NN>"). The capture group is the SH number. */
-const CANONICAL_SHOT_TAIL_RE = /-A\d+-SC\d+-SH(\d+)$/i;
+/** Build the canonical shot id for a 1-based episode position. The number is
+ *  assigned by POSITION in code (never by the model), making the id
+ *  deterministic and model-independent — the core of this refactor. */
+export function canonicalShotId(episodeCode: string, position: number): string {
+  return `${episodeShort(episodeCode)}-SH${String(position).padStart(2, '0')}`;
+}
 
 /**
  * Verify the shot_id numbering AFTER {@link renumberShotsContinuous} has run.
@@ -178,7 +174,8 @@ const CANONICAL_SHOT_TAIL_RE = /-A\d+-SC\d+-SH(\d+)$/i;
  * the caller turns a non-empty result into a loud HALT.
  *
  * Rules (across acts[].shots[] in order, 1-based position N):
- *   - every shot_id matches `-A\d+-SC\d+-SH\d+$` (else: malformed);
+ *   - every shot_id matches `^S\d+-E\d+-SH\d+$` (else: malformed — rejects the
+ *     legacy `SS-…-A…-SC…-SH…` compound, which is exactly the point);
  *   - the SH number equals its episode position N (else: not continuous);
  *   - every shot_id is globally unique within the episode (else: duplicate).
  */
@@ -205,17 +202,17 @@ export function collectShotIdViolations(
       } else {
         seen.add(id);
       }
-      const m = CANONICAL_SHOT_TAIL_RE.exec(id);
-      if (!m) {
+      if (!SHOT_ID_RE.test(id)) {
         violations.push(
-          `malformed shot_id (expected …-A<n>-SC<nn>-SH<nn>): ${id}`,
+          `malformed shot_id (expected S<season>-E<episode>-SH<NN>): ${id}`,
         );
         continue;
       }
-      const shNum = Number(m[1]);
+      const m = SHOT_ID_TAIL_RE.exec(id);
+      const shNum = m ? Number(m[1]) : NaN;
       if (shNum !== position) {
         violations.push(
-          `shot_id ${id} has SH${m[1]}, expected SH${String(position).padStart(2, '0')} (episode-continuous)`,
+          `shot_id ${id} has SH${m ? m[1] : '??'}, expected SH${String(position).padStart(2, '0')} (episode-continuous)`,
         );
       }
     }
@@ -302,6 +299,11 @@ function buildUserMessage(args: {
   // 5-act) script produces the matching number of act-objects instead of being
   // forced into a hardcoded 3 (the E11 root cause).
   const actCount = Math.max(1, countScriptActs(scriptContent) || 3);
+  // Identity space drops the SS studio prefix (q2): schema example + hard rule
+  // below show shot_ids as `S15-E12-SH01`, never `SS-…-A…-SC…`. The runner
+  // re-mints them deterministically by position anyway, but a correct example
+  // keeps the model's intermediate references consistent.
+  const epShort = episodeShort(episodeCode);
   const actTemplateLines: string[] = [];
   for (let a = 1; a <= actCount; a++) {
     actTemplateLines.push(`## ACT ${a} — <act beat summary>`);
@@ -371,7 +373,7 @@ function buildUserMessage(args: {
     '      "beat_summary": "<one short sentence — what this act delivers>",',
     '      "shots": [',
     '        {',
-    `          "shot_id": "${episodeCode}-A1-SC01-SH01",`,
+    `          "shot_id": "${epShort}-SH01",`,
     '          "camera_angle": "wide" | "medium" | "medium_wide" | "close_up" | "extreme_close_up" | "over_shoulder" | "top_down" | "low_angle" | "dutch",',
     '          "shot_role": "establishing" | "action" | "reaction" | "gag" | "punchline" | "transition",',
     hasCanon
@@ -409,8 +411,8 @@ function buildUserMessage(args: {
     '```',
     '',
     'Hard rules (storyboarder@v2):',
-    `- Exactly ${actCount} act${actCount === 1 ? '' : 's'} in \`acts[]\` — matching the ${actCount} acts of the script above. No more, no fewer. Each shot's \`shot_id\` act prefix A<N> MUST equal the \`act\` of the object it sits in (an Act-4 shot belongs in the act:4 object, never folded into act:3).`,
-    '- Every shot needs a unique `shot_id` following the pattern `<episode>-A<N>-SC<NN>-SH<NN>`.',
+    `- Exactly ${actCount} act${actCount === 1 ? '' : 's'} in \`acts[]\` — matching the ${actCount} acts of the script above. No more, no fewer. Put each shot in its correct act object (an Act-4 shot belongs in the act:4 object, never folded into act:3).`,
+    `- Every shot needs a unique \`shot_id\` of the form \`<series>-<episode>-SH<NN>\` — exactly like \`${epShort}-SH01\`. Number SH continuously across the WHOLE episode in shot order (SH01, SH02, SH03 …), never resetting per scene. Do NOT put a studio prefix, act, or scene in the shot_id — act lives in the act object only.`,
     hasCanon
       ? `- \`location.slug\` MUST be one of the Bible location slugs (verbatim, lowercase): ${locationSlugs.join(', ') || '(none)'}. Use \`location.sub_area\` for a specific zone within that location (e.g. slug=\`neon_cafe\`, sub_area=\`window table\`). Never invent a new location slug.`
       : '- `location.slug` must be a stable lowercase_with_underscores identifier derived from the brief.',
@@ -461,14 +463,18 @@ export interface StoryboarderRunArgs {
  * regardless of model (Director directive 2026-06-19 q14a: SH is episode-continuous,
  * never per-scene).
  *
- * Mutates `body.acts[].shots[].shot_id` in place and rewrites the markdown. The
- * rewrite is a two-pass placeholder swap so a freshly-assigned id can never clobber
- * an as-yet-unprocessed old id (e.g. old SC02-SH01 → SC02-SH03 collides with the
- * old SC02-SH03 of the same scene). Returns the renumbered markdown.
+ * Mutates `body.acts[].shots[].shot_id` in place and rewrites the markdown. Each
+ * id is RECONSTRUCTED from scratch by episode position — `canonicalShotId` —
+ * rather than patched, so whatever the model emitted (compound, SS-prefixed,
+ * per-scene-reset, malformed) is overwritten with the deterministic
+ * `S{season}-E{episode}-SH{position}`. The markdown rewrite is a two-pass
+ * placeholder swap so a freshly-assigned id can never clobber an
+ * as-yet-unprocessed old id. Returns the renumbered markdown.
  */
 function renumberShotsContinuous(
   markdown: string,
   body: Record<string, unknown>,
+  episodeCode: string,
 ): string {
   const acts = Array.isArray(body.acts) ? (body.acts as unknown[]) : [];
   const idMap = new Map<string, string>(); // old shot_id → new shot_id
@@ -482,9 +488,7 @@ function renumberShotsContinuous(
       if (typeof shot.shot_id !== 'string') continue;
       counter += 1;
       const oldId = shot.shot_id;
-      const newSh = `SH${String(counter).padStart(2, '0')}`;
-      const prefix = /^(.*-A\d+-SC\d+)-SH\d+$/.exec(oldId);
-      const newId = prefix ? `${prefix[1]}-${newSh}` : oldId.replace(/-SH\d+$/, `-${newSh}`);
+      const newId = canonicalShotId(episodeCode, counter);
       shot.shot_id = newId;
       if (newId !== oldId) idMap.set(oldId, newId);
     }
@@ -685,23 +689,20 @@ export async function runStoryboarder(
   // q14a (2026-06-19): force episode-continuous SH numbering regardless of model
   // (gemini resets SH per scene; opus ran it continuous). Mutates body.acts shot_ids
   // in place (so `acts` + validation below see the new ids) and rewrites markdown.
-  result.markdown = renumberShotsContinuous(result.markdown, result.body);
-  // Act-structure integrity (2026-06-22, E11 root cause). The act count is
-  // owned by the script, never assumed here. Enforce the triple invariant:
-  //   act-objects === highest A# in shot_ids === script's Act-header count.
-  // The old check only counted act-objects, so E11 (first 4-act script) passed
-  // with 3 objects while its finale shots carried A4 prefixes — the drift
-  // surfaced three stages downstream. Now it HALTs loudly at generation.
-  const maxShotAct = maxActInShotIds(result.body);
+  result.markdown = renumberShotsContinuous(result.markdown, result.body, episodeCode);
+  // Act-structure integrity (2026-06-22, E11 root cause; simplified 2026-06-26).
+  // The act count is owned by the script, never assumed here. Act is no longer
+  // part of the shot_id (refactor q2), so the old triple invariant collapses to
+  // a DOUBLE one: act-objects === script's Act-header count. The "shot_id act
+  // prefix === act object" cross-check is gone by construction — a shot's act is
+  // now ONLY its act object, it can no longer disagree with a duplicated copy in
+  // the id. HALTs loudly at generation if the board carries the wrong act count.
   const scriptActs = countScriptActs(scriptAsset.content);
-  if (
-    acts.length !== maxShotAct ||
-    (scriptActs > 0 && acts.length !== scriptActs)
-  ) {
+  if (scriptActs > 0 && acts.length !== scriptActs) {
     throw new StoryboarderError(
-      `Postcondition failed: act structure inconsistent — ${acts.length} act object(s), ` +
-        `highest shot_id act = A${maxShotAct}, script defines ${scriptActs} act(s). ` +
-        `All three must match (act-objects = shot_id acts = script acts).`,
+      `Postcondition failed: act structure inconsistent — ${acts.length} act object(s) ` +
+        `but the script defines ${scriptActs} act(s). The act count is script-owned; ` +
+        `the storyboard must carry exactly that many act objects.`,
     );
   }
 

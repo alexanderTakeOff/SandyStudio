@@ -1,14 +1,21 @@
-// Unit tests for the act-structure helpers behind the E11 root-cause fix
-// (2026-06-22). The Storyboarder used to hardcode "exactly 3 acts"; every
-// episode through S15-E10 was 3-act so it never surfaced. E11 (first 4-act
-// script) drifted — A4 shots got filed under act:3. These helpers make the act
-// count script-owned and let the postcondition assert the triple invariant.
+// Unit tests for the act-structure + shot-identity helpers.
+//
+// Act-count history (2026-06-22): the Storyboarder used to hardcode "exactly 3
+// acts"; every episode through S15-E10 was 3-act so it never surfaced. E11 (first
+// 4-act script) drifted. The act count is now script-owned.
+//
+// Shot-identity refactor (2026-06-26, Director q2): shot_id = `S{season}-
+// E{episode}-SH{number}` — no studio prefix, no act, no scene. Act/scene were
+// POSITION baked into the id and drifted (root of SH10 / SH12-14 / E11 chaos).
+// Numbers are now assigned deterministically by position (canonicalShotId), and
+// collectShotIdViolations rejects the legacy compound id as malformed.
 
 import { describe, expect, test } from 'vitest';
 import {
+  canonicalShotId,
   collectShotIdViolations,
   countScriptActs,
-  maxActInShotIds,
+  episodeShort,
 } from '@/lib/agents/runners/storyboarder';
 
 describe('countScriptActs', () => {
@@ -39,42 +46,17 @@ describe('countScriptActs', () => {
   });
 });
 
-describe('maxActInShotIds', () => {
-  const shot = (shot_id: string) => ({ shot_id });
-
-  test('returns the highest A# across all shot_ids', () => {
-    const body = {
-      acts: [
-        { act: 1, shots: [shot('SS-S15-E11-A1-SC01-SH01')] },
-        { act: 2, shots: [shot('SS-S15-E11-A2-SC25-SH01')] },
-        // E11 drift: act-object 3 carries both A3 and A4 shot_ids
-        {
-          act: 3,
-          shots: [
-            shot('SS-S15-E11-A3-SC01-SH01'),
-            shot('SS-S15-E11-A4-SC02-SH02'),
-          ],
-        },
-      ],
-    };
-    expect(maxActInShotIds(body)).toBe(4); // exposes the 3-objects/4-acts drift
+describe('episodeShort / canonicalShotId', () => {
+  test('strips the SS studio prefix from the episode code', () => {
+    expect(episodeShort('SS-S15-E12')).toBe('S15-E12');
+    expect(episodeShort('S15-E12')).toBe('S15-E12'); // idempotent
+    expect(episodeShort('')).toBe('');
   });
 
-  test('matches act-object count for a clean 3-act board', () => {
-    const body = {
-      acts: [
-        { act: 1, shots: [shot('SS-S15-E10-A1-SC01-SH01')] },
-        { act: 2, shots: [shot('SS-S15-E10-A2-SC01-SH01')] },
-        { act: 3, shots: [shot('SS-S15-E10-A3-SC01-SH01')] },
-      ],
-    };
-    expect(maxActInShotIds(body)).toBe(3);
-  });
-
-  test('tolerates missing/!malformed bodies and shot_ids', () => {
-    expect(maxActInShotIds(null)).toBe(0);
-    expect(maxActInShotIds({})).toBe(0);
-    expect(maxActInShotIds({ acts: [{ act: 1, shots: [{}, { shot_id: 5 }] }] })).toBe(0);
+  test('builds a zero-padded, SS-free, act/scene-free id by position', () => {
+    expect(canonicalShotId('SS-S15-E12', 7)).toBe('S15-E12-SH07');
+    expect(canonicalShotId('SS-S15-E12', 1)).toBe('S15-E12-SH01');
+    expect(canonicalShotId('SS-S15-E12', 123)).toBe('S15-E12-SH123');
   });
 });
 
@@ -84,32 +66,38 @@ describe('collectShotIdViolations', () => {
   test('passes a continuous, unique, canonical board', () => {
     const body = {
       acts: [
-        { act: 1, shots: [shot('SS-S15-E12-A1-SC01-SH01'), shot('SS-S15-E12-A1-SC01-SH02')] },
-        { act: 2, shots: [shot('SS-S15-E12-A2-SC02-SH03')] },
+        { act: 1, shots: [shot('S15-E12-SH01'), shot('S15-E12-SH02')] },
+        { act: 2, shots: [shot('S15-E12-SH03')] },
       ],
     };
     expect(collectShotIdViolations(body)).toEqual([]);
   });
 
-  test('flags the E11 symptom — per-scene SH reset breaks continuity', () => {
-    // Each scene restarts SH at 01 (what gemini produced for E11). Full ids are
-    // unique (different SC) but SH no longer equals episode position.
+  test('flags non-continuous SH numbering (position drift)', () => {
+    // SH must equal episode position; here #2 has SH05 and #3 has SH06.
     const body = {
       acts: [
-        { act: 1, shots: [shot('SS-S15-E11-A1-SC01-SH01'), shot('SS-S15-E11-A1-SC02-SH01')] },
-        { act: 2, shots: [shot('SS-S15-E11-A2-SC03-SH01')] },
+        { act: 1, shots: [shot('S15-E11-SH01'), shot('S15-E11-SH05')] },
+        { act: 2, shots: [shot('S15-E11-SH06')] },
       ],
     };
     const v = collectShotIdViolations(body);
     expect(v.length).toBeGreaterThan(0);
-    // shot #2 should be SH02, shot #3 should be SH03
     expect(v.some((m) => m.includes('expected SH02'))).toBe(true);
     expect(v.some((m) => m.includes('expected SH03'))).toBe(true);
   });
 
+  test('flags the legacy compound shot_id as malformed (rejects SS/A/SC)', () => {
+    const body = {
+      acts: [{ act: 1, shots: [shot('SS-S15-E12-A1-SC01-SH01')] }],
+    };
+    const v = collectShotIdViolations(body);
+    expect(v.some((m) => m.startsWith('malformed shot_id'))).toBe(true);
+  });
+
   test('flags a malformed shot_id with no canonical -SH tail', () => {
     const body = {
-      acts: [{ act: 1, shots: [shot('SS-S15-E12-A1-SC01')] }],
+      acts: [{ act: 1, shots: [shot('S15-E12')] }],
     };
     const v = collectShotIdViolations(body);
     expect(v.some((m) => m.startsWith('malformed shot_id'))).toBe(true);
@@ -120,7 +108,7 @@ describe('collectShotIdViolations', () => {
       acts: [
         {
           act: 1,
-          shots: [shot('SS-S15-E12-A1-SC01-SH01'), shot('SS-S15-E12-A1-SC01-SH01')],
+          shots: [shot('S15-E12-SH01'), shot('S15-E12-SH01')],
         },
       ],
     };
