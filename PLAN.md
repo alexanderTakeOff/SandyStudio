@@ -11,8 +11,18 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-25 (Полина Anthropic-дренаж root-fix; E12 EREF SH13 shot_id fix)
+Date:   2026-06-27 (Shot-identity refactor S-E-SH MERGED to master; E12 done)
 Mode:   ===5=== EDIT (Director-authorized 2026-06-25 — concierge cost/loop fix).
+
+2026-06-27 (Shot-identity refactor → master `4b1f3f4`). E12 done → gate cleared. Слита ветка
+  claude/shot-identity-S-E-SH (5 фаз): identity = `S{сезон}-E{эпизод}-SH{номер}` (no SS/act/scene),
+  номер присваивается ПО ПОЗИЦИИ в коде (canonicalShotId) → независимость от модели; collectShotIdViolations
+  = HARD HALT-гейт (отвергает legacy-компаунд); снесены пластыри normalizeShotId/shotIdsMatchLoose/SH-fallback;
+  single-source lib/api/shot-id.ts + resolveShotId (button-number вход "7"/"SH7"/full); feed/UI → SH-токен+статус+версия.
+  E01-E12 = LEGACY (opaque, без миграции данных). master был +1 (8722b04 perf-timeline) — авто-мерж без конфликтов.
+  Verify на слитом: tsc·0 / vitest 1010 / replay·30. Doctrine «решено»→«в master». ⚠️ worktree dev: turbopack падает
+  на junction node_modules (симлинк out-of-root) — запускать Next без --turbopack ИЛИ из главного репо.
+  NEXT: первый ЖИВОЙ E13-прогон провалидирует гейт на реальной модели (mock/replay его не ловит).
 
 2026-06-25 (Полина $100/сутки Anthropic-дренаж — root-fix). Диагноз: петля watchdog↔auto-react × Opus 4.8
   (695 вызовов/сутки, 81% auto-react; budget_log не трекал консьерж → расход был невидим, не «Opus дорогой»).
