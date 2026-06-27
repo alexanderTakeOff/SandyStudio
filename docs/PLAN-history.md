@@ -850,3 +850,18 @@ V04 softened «single verb phrase» → «ONE primary causal chain on ONE subjec
 
 *SandyStudio PLAN-history.md | archive created 2026-05-11 | append-on-compaction*
 *Source: PLAN.md SPRINT MAP S0–S8 + CHANGE LOG ≤2026-04-30 + Post-pilot + Open decisions + (2026-06-02) CURRENT STATE 2026-05-23..27 + CHANGE LOG 2026-05-06..12*
+
+---
+
+### 2026-06-27 compaction (PLAN.md 269 → <200)
+
+Trimmed the dated CURRENT STATE entries **2026-06-17 → 2026-06-14** out of PLAN.md to hold the ≤200-line cap:
+FORMAT-authority Slice-1 (master `fee8fd6`), the 2026-06-16 PM series (render-duration model, UI/observability
+`a465213`, E10 re-run diagnosis, TD-84 shot-plan contract, q21 readiness-gate core, Polina episode-id root fix,
+E10 furniture-bug root fix), E10 CLEAN-RUN (Finding-#1 uncapped-regen fix), the 2026-06-15/-14 arch sprint
+(identity contract + series_id UUID 0038 + Phase D casting + shot_id SSOT + WCHK ×2), and the condensed SHIPPED
+block (WCHK strengthening `4ff5262`, C1-gate sprint, TD-86 gen-config `6929ba6`). Also compressed the Hardening
+backlog wall to a memory pointer.
+
+Full verbatim text: `git log -p -- PLAN.md` (before this commit) + session memos
+`session_2026-06-15_e10-gemini-cap-fixes.md`, `session_2026-06-17_*`, `session_2026-06-14_arch-sprint-identity-casting.md`.

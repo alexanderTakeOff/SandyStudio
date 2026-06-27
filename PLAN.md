@@ -8,11 +8,28 @@
 
 ---
 
+## 🧭 NORTH-STAR (re-anchor here every turn — see rules/common/partnership.md "Compass")
+
+- **Goal (Star):** AI movie factory — first product *Silent Sandy*, a multi-episode AI-animated comedy series, Director-gated at every step.
+- **Phase:** E12 done + shot-identity (S-E-SH) merged; next = first LIVE **E13 прогон** (validates the HALT-gate on a real model) → then version-editor (slice 0) → shot-centric refactor.
+- **Active intents (drift-check against these):** (1) E13 live run = real gate test; (2) hold PLAN.md + Compass partnership discipline; (3) keep cost sane (Polина harness); (4) finish E12 distribution (copy/thumbnail).
+> Stable block — change only when goal/phase/intents genuinely shift, not per session.
+
+---
+
 ## CURRENT STATE
 
 ```
-Date:   2026-06-27 (Shot-identity refactor S-E-SH MERGED to master; E12 done)
-Mode:   ===5=== EDIT (Director-authorized 2026-06-25 — concierge cost/loop fix).
+Date:   2026-06-27 (PM — Compass v2 + PLAN master-only + E12 copy/thumbnail; shot-identity S-E-SH merged earlier)
+Mode:   ===5=== EDIT (Director-authorized 2026-06-27 this session — q7 PLAN hygiene + q8a thumbnail + q4 portable doctrine).
+
+2026-06-27 PM (Compass + PLAN master-only + E12 distribution copy). Built **the Compass** (anti-drift
+  forcing-function): per-turn re-anchor to North-Star, Director msg = HYPOTHESIS not order, drift-check,
+  visible header v2 `Star/Planet/Course` (rules/common/partnership.md). **PLAN.md = master-only** (feature
+  branches never touch it; `.gitattributes merge=union` safety; branch-aware plan-md-update-guard) — CLAUDE.md
+  §12. **E12 copy fixed at ROOT:** specs/distribution/metadata.md v0.2 (cold-viewer/SEO-first, English) +
+  copywriter.md + thumbnail-designer.md (overlay English); live E12 SPC-metadata rewritten (asset df9ac692).
+  NEXT: q8a E12 thumbnail overlay МОЁ ВРЕМЯ!→MY TIME!; q4 portable doctrine repo+bootstrap.
 
 2026-06-27 (Shot-identity refactor → master `4b1f3f4`). E12 done → gate cleared. Слита ветка
   claude/shot-identity-S-E-SH (5 фаз): identity = `S{сезон}-E{эпизод}-SH{номер}` (no SS/act/scene),
@@ -20,131 +37,34 @@ Mode:   ===5=== EDIT (Director-authorized 2026-06-25 — concierge cost/loop fix
   = HARD HALT-гейт (отвергает legacy-компаунд); снесены пластыри normalizeShotId/shotIdsMatchLoose/SH-fallback;
   single-source lib/api/shot-id.ts + resolveShotId (button-number вход "7"/"SH7"/full); feed/UI → SH-токен+статус+версия.
   E01-E12 = LEGACY (opaque, без миграции данных). master был +1 (8722b04 perf-timeline) — авто-мерж без конфликтов.
-  Verify на слитом: tsc·0 / vitest 1010 / replay·30. Doctrine «решено»→«в master». ⚠️ worktree dev: turbopack падает
-  на junction node_modules (симлинк out-of-root) — запускать Next без --turbopack ИЛИ из главного репо.
+  Verify на слитом: tsc·0 / vitest 1010 / replay·30. ⚠️ worktree dev: turbopack падает на junction node_modules
+  (симлинк out-of-root) — запускать Next без --turbopack ИЛИ из главного репо.
   NEXT: первый ЖИВОЙ E13-прогон провалидирует гейт на реальной модели (mock/replay его не ловит).
 
 2026-06-25 (Полина $100/сутки Anthropic-дренаж — root-fix). Диагноз: петля watchdog↔auto-react × Opus 4.8
   (695 вызовов/сутки, 81% auto-react; budget_log не трекал консьерж → расход был невидим, не «Opus дорогой»).
   Лечение в master (tsc·0 / vitest 997 / replay·30): W1 петля — self-echo skip (events.ts isSelfCausedNotify),
-  watchdog no-new-state + close-stale-threads, debounce 5s→20s; W2 reasoning OFF на Opus (был uncapped — гл. причина
-  цены); W3 cost-трекинг в budget_log с episode_id (вне budget_spent) + дневной circuit-breaker $20/24ч; W4.a история
-  80→24; W5 backstop 25→6, auto-react output→800. Держим Opus, харден. Deferred (после отладки): W4.b tool-allowlist,
-  W4.c prompt-reorder, native Anthropic cache, интерактив cost-record + episode-budget вид. ⚠️ Anthropic доливать можно
-  (breaker $20 страхует). План: ~/.claude/plans/functional-tickling-ullman.md.
-  Также: E12 EREF SH13 разблокирован — толерантный shot_id-гард (reuse shortShotLabel). И закрыта дыра дубль-диспатча
-  EREF (E12 SH10 — два прогона одного шота): per-shot in-flight дедуп в factory.ts Step-0 (reuse shotIdsMatchLoose,
-  fail-open, все принципалы, блокит только одновременный дубль; commit e27b5c2). Deferred: single-approved-инвариант.
-  NEXT: смоук на тест-всплеске (breaker + дубль), затем добить E12 EREF.
+  watchdog no-new-state + close-stale-threads, debounce 5s→20s; W2 reasoning OFF на Opus (гл. причина цены);
+  W3 cost-трекинг в budget_log с episode_id + дневной circuit-breaker $20/24ч; W4.a история 80→24; W5 backstop
+  25→6, auto-react output→800. Держим Opus, харден. Также: E12 EREF SH13 разблокирован (толерантный shot_id-гард);
+  закрыта дыра дубль-диспатча EREF (per-shot in-flight дедуп factory.ts Step-0, commit e27b5c2).
+  План: ~/.claude/plans/functional-tickling-ullman.md.
 
 2026-06-22 PM (E11 video run + AI-EP readiness probe). Тео ведёт прогон в роли AI EP (Pascal), Полина — исполнитель.
-  31/36 с видео (5 недостающих: A2-SC18/21/24/25-SH01 + A4-SC02-SH02; SC13=удалён 0.5с). fal пополнен Director'ом.
-  3 фикса смержены в master (tsc·0 / 926 тестов / replay·30):
-  (1) normalizeShotId на единой trigger-двери — короткий ключ→canonical (был корень 18/20 падений «not found in STB»);
-  (2) Storyboarder: число актов из сценария, не хардкод «3» (E11 — первый 4-актный → дрейф A4 под act:3; тройной
-  инвариант act-объекты==max A#==scriptActs, HALT на генерации); (3) STITCH/автостарт исключают удалённый ≤0.5с-шот
-  (общий isDeletedShot) — раньше гейт ждал аппрува удалённого кадра (не стартовал) + ручной STITCH падал на missing.
-  Дыры AI EP → memory/ai_ep_conception_gaps.md (gaps #10,#12). Борд E11: Акт4 под act:3 — правка ПОСЛЕ финала (q8b).
-  NEXT: добить 5 шотов → 35/35 → STITCH 2:23 + fade 6s → финальный cut. (PLAN >200 строк — отдельный долг на архив-трим.)
+  E11 DONE (1-й 4-актный эпизод). 3 фикса в master (tsc·0 / 926 / replay·30): (1) normalizeShotId на единой
+  trigger-двери; (2) Storyboarder: число актов из сценария, не хардкод «3» (тройной act-инвариант, HALT);
+  (3) STITCH/автостарт исключают удалённый ≤0.5с-шот (isDeletedShot). Дыры AI EP → memory/ai_ep_conception_gaps.md.
 
-
-2026-06-17 (episode FORMAT authority — Slice 1, master @ fee8fd6). Root: episode `generation_config`
-  (provider/aspect/quality/resolution) was the single source of truth ONLY at render; the Animator authoring
-  path was blind → invented FORMAT. E10 (cfg=720p, overrides OFF) → Animator wrote 1080p → phantom 2.25× cost,
-  critic HALT, fabricated "Director hard-contract: resolution=1080p". FIX: producer conforms FORMAT via the
-  SAME resolver the render uses (resolveVideoParams), honouring allow_shot_overrides (NOT hardcoding episode-
-  wins); provider vocab impl↔alias (vanimAliasFor/episodeProviderAliases); unconditional fab-scrub; Option B
-  (prose stops restating format/dur/cost numbers); critic gets the authority block. **Live smoke: SH12/SH13
-  re-author → resolution 720p, cost $1.21 (was $2.72), no fabrication, critic PASS — days-long deadlock
-  broken.** tsc·0/886/replay30. Remaining E10 1080p-drift shots conform on next re-author. (Slice 2 → PM-7.)
-
-2026-06-16 PM-5 (render-duration model, @67d9d74, in memory session_2026-06-17). `duration_seconds`=RENDER
-  duration clamped to provider manifest [min,max] (not raw animatic cut); creative cut trimmed at stitch.
-  animator-critic V14 compares vs provider-clamped cut. +2 tests.
-
-2026-06-16 PM-4 (UI/observability, master @ a465213). Activity feed: shared `ActivityEventRow` (3 feeds→1,
-  −dup markup) + Director-command highlight (UUID actor=human) + critic verdict in row (·REVISE + warning
-  severity, factory.ts — neighbour-session work, committed by Тео). q10 cancel: stale VGEN token silently
-  aborted manual renders (kind:cancelled) → now q21-gate HONEST block ($0, reason) + ✕ Clear-block on banner;
-  runner check fan-out-only. Plan-contract: human-Director approve REVISION→APPROVED (#7) + reason on
-  Generate-from-plan. Cleared stale E10 token. tsc·0/873/replay30. ⚠️ parallel session shares C:\SandyStudio
-  working tree — coordinate commits.
-
-2026-06-16 PM-3. Diagnosed E10 "Reference Artist re-ran" alarm: episode-level exec-eref/start (no
-  shotId) re-fires the WHOLE-episode pilot pass → redundant IMG-episode_ref SH01/SH02 (REVIEW, ~$0.11)
-  on an episode already done (28×2 IMG-anchor + animatic v58 APPROVED). Root: trigger route reroutes EREF
-  to per-shot only when shotId+planAssetId present; bare episode trigger = pilot start, no idempotence
-  guard (→ fan-out-trigger-shape backlog). NOT blocking video. Polina passivity: model reverted Gemini→
-  gpt-5.5 (.env.local, needs restart) + LIVING WORK-PLAN LOOP (4b01a23): reconcile (real status not
-  events; APPROVED=done, REVISION/REVISE=blocked) → advance (mark done + single next step) → act/report →
-  HALT (markAwaitingDirector). Protocol on existing machinery, no new orchestrator. tsc·0/tests-pass.
-  PENDING: server restart to load gpt-5.5+loop. Loop auto-EXECUTES only in bold modes (3/4) — Mode 2 =
-  sharp reconcile+report, still needs Director "да"; hands-free ⇒ flip E10 to Mode 3.
-
-2026-06-16 PM-2. TD-84 Shot Plan = editable CONTRACT PAGE (prompt+provider+quality+resolution+seed+anchors;
-  PUT /content edit; «Generate from plan» = canonical /trigger path, provider from plan). Removed legacy
-  drawer footer (Fast/Standard + provider dropdown → fired plan-less generate-single-shot → silent C1-reject).
-  One shared parser `lib/api/shot-plan-contract.ts` read by runner AND contract page (no drift, +9 tests).
-  Resolver status-priority APPROVED>REVIEW>image (f31e28b, fixes SH02 hidden video). Worktree cleanup: 18 dead
-  removed + naming-validator studio-code whitelist on master (36f0445). q21 readiness-gate CORE (0d8adfb):
-  validateShotReadyForGeneration orchestrates plan-parse+provider-caps+media-preflight → fail-loud BEFORE
-  paid dispatch; wired into /trigger VGEN plan-path (the silent-C1 path). NEXT q21 slice: factory/autonomous
-  + other routes. q21 not stricter than runner (provider/duration→warnings, won't false-block Polina). tsc·0/870/replay30. master @ 6d430c8 (pushed).
-
-2026-06-16 PM. Polina "can't see storyboard" ROOT (613cb17 pillbar, 03c4613 routing): every
-  episode-scoped concierge tool resolved `args.episodeId ?? ctx.episodeId` → trusted Gemini's guessed
-  episode CODE over the thread-bound UUID → `.eq('episode_id', code)` = 0 rows = false "not found".
-  Shared resolveEpisodeId/resolveEpisodeCode (tools/types.ts): thread binding is authority. STB v2 was
-  APPROVED all along. Also VGEN pillbar ghost: `has_vid_shots` kept "Cancel VGEN" banner alive forever →
-  scared Director after each editor approval; now visible only on real running work. tsc·0/850/concierge175.
-  Timeline cell resolver (f31e28b) now picks APPROVED over newer draft. NEXT: kick servers + Polina retest.
-
-2026-06-16 SESSION. E10 furniture-bug ROOT FOUND + fixed: `agents/exec/episode_reference_designer.md`
-  LAYOUT LOCK had a hardcoded BEDROOM example («mirror, carpets, bed… MUST appear») the Designer-LLM
-  copied verbatim into EVERY plan → gpt-image painted furniture into the elevator (SH01/SH26). De-leaked
-  to location-agnostic (scene_master/location-Bible/object_slug); softened anti-invention so script props
-  still allowed. SH01 reverted v02→v01 (clean); SH25/SH26 re-authored + anchors regenerated CLEAN
-  (verified by eye). Other fixes: q13 single mode-source `lib/concierge/resolve-mode.ts` (episode>global>1,
-  both chat routes); factory shot-cap now exempts principal='director'; chat copy-format (time+author in
-  text, ConciergePanel); gallery perf — EREF strips request `?w=` thumbnails (1.7MB→0.9KB/tile) via shared
-  `lib/media-thumb.ts`. tsc·0/847. Backlog: skill-abstraction audit (eref-shot-composition elevator-set +4),
-  critic canon-check, surgical-revision, approve-route forward principal. Polina on Gemini: works but
-  drops required tool args (reason/episodeId) — model weakness.
-
-2026-06-15/-14 SESSIONS → archived in session memos (session_2026-06-15_e10-gemini-cap-fixes.md,
-  session_2026-06-14_arch-sprint-identity-casting.md). Key landed: regen/SHOT caps + Mode-4 supersede;
-  ARCH sprint — episode cast scoping, series_id UUID migration 0038, Phase D casting core (API + preflight
-  + PA tool + 'casting' stage node), shot_id SSOT, WCHK ×2. All pushed (…cb5d974). Casting UI panel DEFERRED.
-  #2-batch DONE (Director go): #3 regular-path object refs (70f8da2, contract symmetric both paths) +
-  #1 mode-aware checker fallback + stats (c953c54: skip→Mode4 pass / Mode1-2 Director / Mode3 EXEC-DIR-AI
-  +dashboard_flag, always a checker_fallback stat) + #2 anchor visual gate (24bbf1a: ANCHOR_VISUAL_GATE
-  default ON, advisory — stamps metadata.visual_review + anchor_intruder_flag stat, non-blocking).
-  ALL pushed (…24bbf1a). tsc·0/829/30.
-  NEXT: A3 atomic boundary (🔴 CREATE FUNCTION migration = Director OK); Phase B registry; Phase C
-  series tier; casting UI panel (frontend); brief-authoring skill. Director: ALL phases before E10.
-
-E10 CLEAN-RUN (Mode 4, brief+cast verbatim E09): identity contract proven by construction (SH01-06/
-  09/10 anchors all identity=[sandy_hourglass]). Finding-#1 FIXED 2026-06-14 (data disproved the
-  factory-double-fire hypothesis): root = Polina's UNCAPPED "Mode 4 auto-recovery" — she re-fired
-  /regenerate-image-from-plan up to 6×/plan (SH10) on advisory visual-gate flags, ~4min+$ each, no
-  escalation. FIX = shared assertPlanRegenWithinCap chokepoint (in-flight + autonomous cap
-  PLAN_REGEN_CAP=3 → HALT+escalate Director; human uncapped), wired into /trigger (folded old
-  in-flight guard) + /regenerate-image-from-plan. tsc·0/836/30. Findings #2-#5 → TD backlog.
-  E09 anchors polluted except SH07/SH08 (regen on clean E10).
-
-SHIPPED (in git log, condensed): WCHK STRENGTHENING (4ff5262, 06-11 — CREAD double-fire killed,
-  state-ledger CHK-W08 + inventory-cascade CHK-W04, comedy-soft verdict, CONTINUITY_LEDGER_ENABLED) ·
-  C1-GATE SPRINT (9988c5f…7a7f568, 06-10 — genre single-source, C1 plan-gate, EXEC-CREAD universal
-  readability critic behind READABILITY_GATE_ENABLED) · TD-86 GEN-CONFIG (6929ba6, 06-09 —
-  resolve-generation-params.ts single precedence authority, settings UI provider panels).
+2026-06-17 → 2026-06-14 entries (FORMAT-authority slice-1, the 06-16 PM UI/observability/contract series,
+  E10 clean-run, identity+casting arch sprint, condensed SHIPPED) → trimmed 2026-06-27 to docs/PLAN-history.md
+  + `git log -p -- PLAN.md` + session memos (session_2026-06-15/-16/-17, _2026-06-14_arch-sprint).
 
 GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
   ✅ Phase 1 SHIPPED (7c76a05): single-approved→INVALIDATED+DB indexes (0036), loud Drive-aware
      resolver + media-preflight gate, atomic pre-spend budget ceiling (0037). Prod DB applied.
-  ✅ Phase 2 code COMPLETE (b8ef059/108e8ee/cff8007/bb0669c/37a2390): provider contract (img2vit
+  ✅ Phase 2 code COMPLETE (b8ef059/108e8ee/cff8007/bb0669c/37a2390): provider contract (img2vid
      throws imageless), critic auto-bounce cap=2→HALT, VGEN/EREF fold+gate+agent_failed.
-     NOTE: critic cap=2 is per-plan-version — SH23 runaway proved it doesn't bound a SHOT (new
-     plan per iter). See 2026-06-15 NEXT (shot-level cap).
+     NOTE: critic cap=2 is per-plan-version — SH23 runaway proved it doesn't bound a SHOT (new plan per iter).
   🔨 Phase 3 PENDING = OUTPUT-critic (frame-sampler → vision) + camera/quality_tier checks.
 
 OPERATING DOCTRINE (memory: nudge_polina_dont_act_for_her):
@@ -156,27 +76,12 @@ OPERATING DOCTRINE (memory: nudge_polina_dont_act_for_her):
   • Keep Inngest worker (:8288) + dev (:3000) alive via preview_start, NEVER manual
     bash (double-supervisor = port-8288 war; killing worker = silent stall).
 
-Hardening backlog (before 10-20 episode run): #1 episode.status stuck BRIEF_APPROVED
-  (approve/route.ts,S) · #3 fan-out sendEvent not in step.run (factory.ts,M) · #4
-  schedule-analytics silent-fail (S) · #5 trigger doesn't validate episode.status ·
-  critic REVISE→producer bounce doesn't auto-close in Mode 1 (SREV/EPREV/VPREV; add
-  + revision cap 2-3 → HALT) · WCHK Continuity Critic auto-read FIXED 2026-06-02
-  (exec-wchk/ in factory isCriticChain + gate allowedStatuses REVIEW — full SREV
-  parity) · PA approval-gate now recognizes Director's q<N>y/q<N>n format (was
-  blocking mutations on «q19 Y») · EREF gallery now shows IMG-anchor_* (anchor
-  episodes were invisible; d76722c, live-verified E02 4 anchors) · anchor drawer
-  now has full action bar Regenerate/Request-revision/Approve (regen reroutes
-  EXEC-EREF+planAssetId→execute-from-plan, was mis-firing pilot start; also fixes
-  PA regenerateImageFromPlan for EREF; live-verified) · EREF Reference Artist FIXED — scene_master /
-  continuity-anchor / Bible-ref bytes now resolve via media-cache+Drive (new
-  readAssetMediaAsBase64), not dead /staging path (media-no-branches regression;
-  E02 «Scene master bytes unreadable») · Key Art Critic
-  (thumbnail_critic) UNSTAFFED — agents:[], no agent/event; needs full build like
-  EPREV/VPREV (Director scope call) · naming-hook whitelist HELD on branch
-  worktree-agent-a998b0b832df50dce (needs Director OK, gov-hook).
-OUTPUT-CRITIC design (docs/output-critic-architecture-design.md): needs_revision
-  (sync-vs-async + per-episode regen budget cap). Mode-3 key. Sprint AFTER Topic-2.
-Camera same-angle (q16) carried. Episodes: S15-E01 "Heavy Friend", S15-E02 in prod.
+Hardening backlog (before 10-20 ep run) — full list in memory (backlog_* memos): live items = #1 episode.status
+  stuck BRIEF_APPROVED, #3 fan-out sendEvent outside step.run, #4 schedule-analytics silent-fail, #5 trigger
+  doesn't validate episode.status, critic REVISE→producer auto-close + revision cap. (WCHK auto-read, PA q<N>y
+  gate, EREF gallery/anchor drawer, Reference-Artist Drive-bytes — all FIXED.)
+OUTPUT-CRITIC design (docs/output-critic-architecture-design.md): needs_revision (sync-vs-async + per-episode
+  regen budget cap). Mode-3 key. Camera same-angle (q16) carried. Episodes: S15-E01 "Heavy Friend", E02 in prod.
 ```
 
 ---
@@ -217,12 +122,12 @@ Sprints S0–S8 (foundation + spec) COMPLETE 2026-04-23..28 — `docs/PLAN-histo
 | 16 | EXEC-VGEN base file_type duplicate `shot` token (`VID-shot-shot1`) | Cosmetic |
 | 17 | FFmpeg export aspect: requested 16:9, observed 1:1 centered — `ffmpeg-stitch.ts` | Reliability |
 | 18 | PA TTS quality "больной робот" — upgrade to ElevenLabs/OpenAI TTS; deferred to 2nd use | UX |
-| 19 | Version-aware text editor — save=new REVIEW version (INSERT v+1, no in-place overwrite), per-version approve/reject/un-approve(→work/critic/producer), version rail, one window all text artifacts. **Plan APPROVED 2026-06-20** (`~/.claude/plans/workstation-reference-designerdesigner-r-twinkling-hamming.md`); slice-0 of shot-centric refactor (memory `backlog_shot_centric_paradigm`). IN PROGRESS | Reliability/Audit |
+| 19 | Version-aware text editor — save=new REVIEW version, per-version approve/reject, version rail, one window all text artifacts. **Plan APPROVED 2026-06-20** (`~/.claude/plans/workstation-reference-designerdesigner-r-twinkling-hamming.md`); slice-0 of shot-centric refactor (memory `backlog_shot_centric_paradigm`). IN PROGRESS | Reliability/Audit |
 | 20 | PA chat sync POST hangs 50-110s, no progress/cancel — L1 done; L2 SSE streaming + cancel deferred | UX/Reliability |
 | 21 | Brief↔Bible consistency validator missing — new EXEC-HW-CRITIC or extend SREV (~6-10h) | Reliability |
 | 22 | DELETE asset `asset_updated` event not in PA auto-react whitelist (~30 min) | UX |
 | 23 | Designer post-pilot auto-fanout: remaining shot ids stashed but not auto-fired on pilot approve | Reliability |
-| 39 | PA delivery ack — L1 DONE (trigger+approve paths, 2026-06-02). L1.5 per-event corr (inngest_event_id col) deferred | ~~Mode 3/4 blocker~~ |
+| 39 | PA delivery ack — L1 DONE (trigger+approve paths). L1.5 per-event corr (inngest_event_id col) deferred | ~~Mode 3/4 blocker~~ |
 
 Fixed in Phase 5c (don't re-add): #1 friendly names · #3 phantom stage · #9 multi-asset chain · #10 stage filter · #11 agent_completed · #12 prefix match.
 
@@ -249,11 +154,10 @@ Pre-2026-05-18 → `docs/PLAN-history.md`.
 
 | Date | Change | By |
 |------|--------|----|
-| 2026-06-02 | **PR #27 → master `baa1e00`** — Key Art Designer multi-canon thumbnail pipeline + Drive-backed media route. Live art gate PASS on SS-S15-E01 ($0.34, 3 thumbnails, v12 winner). +smoke collision fix. Topic 3 (systematic pipeline) inventory launched. PLAN.md compacted 339→≤200 (history → PLAN-history.md). | Master-session |
-| 2026-06-01 | **PR #26 → master `072194e`** — TD-85 resolution discipline in Shot Plan pipeline (runner hard-gates resolution vs provider contract, Critic V13). tsc · 610 tests · 29 replay. | Claude Code |
-| 2026-05-27 | TD-72 Animator's Critic V04 softening SHIPPED (PR #24); TD-74 designed (later → TD-83/85). Detail in PLAN-history. | Claude Code |
-| 2026-05-23 | Sprint q7a — multi-axis continuity anchors + freshness guard SHIPPED. Camera same-angle root-cause diagnosed (q16 open). TD-37 feedback-loop recon. | Claude Code |
-| 2026-05-18 | Sprint φ + gpt-image-2 MERGED (`cc43944`, 206 commits). Skills-as-capabilities. E21 Stage A 22/22 EREF + 2 VGEN pilots. Designer+Animator sprint kickoff. | Director + Claude |
+| 2026-06-27 | **Compass v2 + PLAN master-only** (partnership.md, CLAUDE.md §12, `.gitattributes merge=union`, branch-aware guard) · shot-identity S-E-SH merged `4b1f3f4` · E12 distribution copy → cold-viewer/SEO English (metadata.md v0.2 + agents + live asset df9ac692). PLAN compacted 269→<200. | Тео |
+| 2026-06-02 | **PR #27 → master `baa1e00`** — Key Art Designer multi-canon thumbnail pipeline + Drive-backed media route. Live art gate PASS on SS-S15-E01 ($0.34, 3 thumbnails, v12 winner). PLAN.md compacted 339→≤200. | Master-session |
+| 2026-06-01 | **PR #26 → master `072194e`** — TD-85 resolution discipline in Shot Plan pipeline (runner hard-gates resolution vs provider contract, Critic V13). | Claude Code |
+| 2026-05-18 | Sprint φ + gpt-image-2 MERGED (`cc43944`, 206 commits). Skills-as-capabilities. Designer+Animator sprint kickoff. | Director + Claude |
 
 ---
 
