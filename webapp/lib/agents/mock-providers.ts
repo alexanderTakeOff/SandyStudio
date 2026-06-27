@@ -16,6 +16,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { AgentId } from './types';
+import { canonicalShotId } from '../api/shot-id';
 
 /** Simulated provider latency in ms — matches providers.yaml mock.latency_ms. */
 const MOCK_LATENCY_MS = 50;
@@ -327,7 +328,7 @@ export async function mockLLM<T = Record<string, unknown>>(
           act,
           shots: [
             {
-              shot_id: `${episodeId}-A${act}-SC01-SH01`,
+              shot_id: canonicalShotId(episodeId, act),
               camera_angle: 'medium_wide',
               location: 'red_carpet_front',
               action: 'mock action',

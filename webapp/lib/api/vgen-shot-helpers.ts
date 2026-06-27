@@ -238,30 +238,25 @@ export interface StoryboardShotSummary {
 }
 
 /**
- * 2026-05-22 — extract a short, human-friendly shot label from a full
- * canonical shotId. Used by per-shot agent functions to surface readable
- * context in `agent_started` / `agent_completed` activity titles.
+ * Extract the short, human-facing shot label — the bare SH token — from any
+ * shot id. Used by per-shot agent functions for `agent_started` /
+ * `agent_completed` activity titles, and the Director-facing feed (q8).
  *
- *   "SS-S15-E01-A2-SC04-SH08"  → "A2-SC04-SH08"
- *   "SS-S15-E01-A2-SC04-SH123" → "A2-SC04-SH123"
- *   "A2-SC04-SH08"             → "A2-SC04-SH08"
- *   "SH08"                     → "SH08" (legacy fallback)
- *   ""                          → ""
- *   "random-string"             → "random-string" (passthrough)
+ *   "S15-E12-SH08"             → "SH08"   (new canonical identity)
+ *   "S15-E12-SH123"            → "SH123"
+ *   "SS-S15-E01-A2-SC04-SH08"  → "SH08"   (legacy compound — token only)
+ *   "SH08" / "sh08"            → "SH08"
+ *   "" / "random-string"       → ""  / "random-string" (passthrough)
  *
- * 2026-06-22 (Director q1a): the label MUST be the scene-qualified key, not
- * bare "SH08". SH numbering resets per scene, so dozens of shots share
- * "SH01" — the bare label made the activity feed (and Polina, who reads it)
- * conflate different shots into one. Prefer the full A#-SC##-SH## key.
- *
- * Pure function. Director sees "A2-SC04-SH08", never the UUID-shaped full id.
+ * Refactor 2026-06-26 (q8): act/scene are gone from identity and not shown.
+ * The SH token is episode-unique, so it alone disambiguates — the old
+ * scene-qualified "A2-SC04-SH08" label is dropped. The SH token is present in
+ * BOTH the new and legacy id shapes, so one extraction reads both. Pure function.
  */
 export function shortShotLabel(shotId: string | null | undefined): string {
   if (!shotId || typeof shotId !== 'string') return '';
-  const full = shotId.match(/A\d+-SC\d+-SH\d+/i);
-  if (full) return full[0].toUpperCase();
-  const shOnly = shotId.match(/SH\d+/i);
-  return shOnly ? shOnly[0].toUpperCase() : shotId;
+  const sh = shotId.match(/SH\d+/i);
+  return sh ? sh[0].toUpperCase() : shotId;
 }
 
 // DELETED 2026-06-26 (shot-identity refactor Phase 2): shotIdsMatchLoose,

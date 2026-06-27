@@ -28,6 +28,7 @@ import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { persistBinary, type PersistedBinary } from './persist-binary';
+import { canonicalShotId } from '../api/shot-id';
 import { parseShotPlanContract } from '../api/shot-plan-contract';
 import { assertBudgetAvailable, releaseBudgetReservation, BudgetExceededError } from '../budget';
 import { applyCriticVerdict, type CriticVerdict } from './critic-loop';
@@ -1726,7 +1727,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
       // Legacy real Veo path + mock path (kept for replay-pilot and Step 9).
       const llm = await mockLLM({ agentId, episodeId });
-      const shotIds = [1, 2, 3].map((act) => `${episodeId}-A${act}-SC01-SH01`);
+      const shotIds = [1, 2, 3].map((act) => canonicalShotId(episodeId, act));
 
       if (provider?.providerId === 'veo-3' || provider?.providerId === 'veo-3-img2vid') {
         if (!supabase) throw new Error('EXEC-EDIT real path requires supabase in runArgs');
