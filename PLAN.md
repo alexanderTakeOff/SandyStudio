@@ -21,7 +21,15 @@
 
 ```
 Date:   2026-06-27 (PM — Compass v2 + PLAN master-only + E12 copy/thumbnail; shot-identity S-E-SH merged earlier)
-Mode:   ===5=== EDIT (Director-authorized 2026-06-27 this session — q7 PLAN hygiene + q8a thumbnail + q4 portable doctrine).
+Mode:   ===5=== EDIT (Director-authorized 2026-06-27 — S1 cost-visibility refactor; q7/q8a/q4 earlier).
+
+2026-06-27 PM-2 (S1 cost-visibility SHIPPED). AI-factory autonomy+cost refactor planned (adversarial-hardened
+  by 3 lenses; plan `~/.claude/plans/calm-percolating-sifakis.md`; direction in NORTH_STAR §4 + PLANET.md).
+  S1 landed: cross-provider LLM pricing fix (MODEL_RATES += gpt-5.5/5.4-mini/5.4/gemini — non-Anthropic was
+  Sonnet-defaulted → concierge cost-breaker's cost-limb now works on ALL providers, was decorative); Полина
+  cost VISIBLE as per-episode `concierge` line (tokens×price, NO production ceiling — Director D1);
+  CONCIERGE_AUTO_REACT_MAX_CALLS 200→40. tsc·0/1014/replay30. gate_decision_log table → S3 (lands with its
+  writer `decideGate`); cost-rollup anchor/ref split → S2. NEXT: S2 leak-closing (dispatch_intent + FAILED-cap).
 
 2026-06-27 PM (Compass + PLAN master-only + E12 distribution copy). Built **the Compass** (anti-drift
   forcing-function): per-turn re-anchor to North-Star, Director msg = HYPOTHESIS not order, drift-check,

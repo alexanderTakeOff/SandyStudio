@@ -31,6 +31,38 @@ describe('anthropic-text — pure helpers', () => {
       expect(cost).toBeCloseTo(7.5, 4);
     });
 
+    it('prices gpt-5.5 at $5/M input + $30/M output (not Sonnet-default)', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        'gpt-5.5',
+      );
+      expect(cost).toBeCloseTo(35.0, 4);
+    });
+
+    it('prices gpt-5.4-mini at $0.75/M input + $4.50/M output (more-specific prefix wins)', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        'gpt-5.4-mini',
+      );
+      expect(cost).toBeCloseTo(5.25, 4);
+    });
+
+    it('prices gpt-5.4 (full) at $2.50/M input + $15/M output', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 0 },
+        'gpt-5.4',
+      );
+      expect(cost).toBeCloseTo(2.5, 4);
+    });
+
+    it('prices gemini-2.5-flash at $0.30/M input + $2.50/M output', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        'gemini-2.5-flash',
+      );
+      expect(cost).toBeCloseTo(2.8, 4);
+    });
+
     it('rounds to 4 decimal places', () => {
       const cost = computeCostUsd(
         { inputTokens: 7, outputTokens: 13 },
