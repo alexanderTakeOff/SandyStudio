@@ -78,11 +78,10 @@ function toGridAsset(a: EpisodeAsset): AssetGridAsset {
     isShotReferenceV2(a.metadata)
       ? (a.metadata as { shot_reference: { shot_id: string } }).shot_reference.shot_id
       : null;
-  // 2026-06-22 (Director): scene-qualified key (A2-SC04-SH08), not bare SH —
-  // SH resets per scene so bare labels collide. Prefer the full key.
+  // Bare SH token (refactor 2026-06-26 q8): SH is episode-unique, so it alone
+  // labels; act/scene are gone from identity and not shown. Read shot_id first,
+  // then the file_type slug. Version + status are appended below.
   const shortShot =
-    shotId?.match(/A\d+-SC\d+-SH\d+/i)?.[0]?.toUpperCase() ??
-    a.file_type.match(/a\d+-sc\d+-sh\d+/i)?.[0]?.toUpperCase() ??
     shotId?.match(/SH\d+/i)?.[0]?.toUpperCase() ??
     a.file_type.match(/sh\d+/i)?.[0]?.toUpperCase() ??
     null;

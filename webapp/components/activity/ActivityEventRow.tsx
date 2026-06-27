@@ -93,12 +93,14 @@ function formatActivity(e: ActivityEventLike): Formatted {
   if (!verdict && trailing) verdict = trailing[1] ?? null;
   title = title.replace(/·\s*[A-Z_]+\s*$/, '').trim();
 
-  // 2026-06-22 (Director, urgent): show the scene-qualified key (A2-SC04-SH08),
-  // never bare "SH08" — SH resets per scene, so dozens of shots share "SH01"
-  // and the feed was unreadable. Prefer the full A#-SC##-SH## key; fall back to
-  // bare SH## only when no scene context is present in the title.
-  const shot =
-    (title.match(/A\d+-SC\d+-SH\d+/i) ?? title.match(/SH\d+/i) ?? [])[0]?.toUpperCase() ?? null;
+  // Shot label = the bare SH token (refactor 2026-06-26 q8). SH is episode-unique,
+  // so it alone identifies the shot; act/scene are gone from identity and no longer
+  // shown. Reads the new `S15-E12-SH08` id and any legacy compound alike.
+  const shot = (title.match(/SH\d+/i) ?? [])[0]?.toUpperCase() ?? null;
+  // Asset version rides in the filename embedded in the title (…-v03-STATUS.ext) —
+  // surface it in the feed so the Director sees "…ref plan v03" (q8).
+  const vMatch = title.match(/-v(\d+)-/i);
+  const versionTag = vMatch ? `v${vMatch[1]}` : null;
 
   let action = title;
   if (e.event_type === 'approval_granted' || /^[A-Z_]+ on /.test(title)) {
@@ -115,7 +117,7 @@ function formatActivity(e: ActivityEventLike): Formatted {
             : /SPC-brief/.test(title)
               ? 'brief'
               : 'asset';
-    action = [decision, shot, assetKind].filter(Boolean).join(' ');
+    action = [decision, shot, assetKind, versionTag].filter(Boolean).join(' ');
   } else if (e.event_type === 'manual_trigger') {
     const ag = (title.match(/EXEC-[A-Z-]+/) ?? [])[0];
     action = `trigger ${ag ? agentDisplayName(ag) : ''}${shot ? ` ${shot}` : ''}`.replace(/\s+/g, ' ').trim();
