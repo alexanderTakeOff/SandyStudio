@@ -100,7 +100,6 @@ import type {
 import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
 import { selectSkills } from '../../skills/select-skills';
 import { findApprovedAsset } from '../upstream';
-import { shotIdsMatchLoose } from '../../api/vgen-shot-helpers';
 import { loadEpisodeCastSlugs } from '../episode-cast';
 import { logEvent } from '../../api/events';
 import { agentDisplayName } from '../../api/agent-names';
@@ -1101,7 +1100,7 @@ export async function loadPlanOverrides(
       `Plan ${planAssetId} JSON missing string shot_id`,
     );
   }
-  if (!shotIdsMatchLoose(shotId, expectedShotId)) {
+  if (shotId !== expectedShotId) {
     throw new EpisodeReferencesError(
       `Plan shot_id="${shotId}" does not match event shotId="${expectedShotId}"`,
     );

@@ -37,6 +37,7 @@ import type { Database } from '../../supabase/types.gen';
 import type { AgentInputs } from '../types';
 import { SIZE_BY_DELIVERY_TARGET } from '../../api/provider-capabilities';
 import { parseLastJsonBlock } from './episode-references';
+import { SHOT_ID_RE } from '../../api/shot-id';
 import { buildEpisodeImageFormatAuthorityBlock } from './episode-reference-designer';
 import { readEpisodeImageConfig } from '../runner';
 
@@ -250,7 +251,9 @@ function parseVerdict(body: Record<string, unknown> | null): CriticVerdict {
  */
 const START_ANCHOR_ROLES: readonly string[] = ['establishing', 'shared', 'cut_in'] as const;
 const END_ANCHOR_ROLES: readonly string[] = ['shared', 'cut_out', 'final'] as const;
-const SHOT_ID_REF_RE = /^SS-S\d+-E\d+-A\d+-SC\d+-SH\d+$/;
+// Shot-id format for anchor handoff refs — the single source of truth
+// (lib/api/shot-id.ts). Refactor 2026-06-26: was the strict legacy compound
+// /^SS-S\d+-E\d+-A\d+-SC\d+-SH\d+$/ which would reject the new S-E-SH ids.
 
 export function validateAnchorPairStructure(
   planBody: Record<string, unknown> | null,
@@ -304,9 +307,9 @@ function validateAnchorSide(
       violations.push(
         `anchor_pair.${sideName}.role="shared" REQUIRES handoff_link_to_shot_id to be a non-empty shot_id reference (got ${JSON.stringify(handoff)})`,
       );
-    } else if (!SHOT_ID_REF_RE.test(handoff.trim())) {
+    } else if (!SHOT_ID_RE.test(handoff.trim())) {
       violations.push(
-        `anchor_pair.${sideName}.handoff_link_to_shot_id="${handoff}" does not match shot_id format SS-S<NN>-E<NN>-A<N>-SC<NN>-SH<NN>`,
+        `anchor_pair.${sideName}.handoff_link_to_shot_id="${handoff}" does not match shot_id format S<NN>-E<NN>-SH<NN>`,
       );
     }
   } else {

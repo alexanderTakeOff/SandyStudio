@@ -6,9 +6,11 @@
 import { describe, expect, test } from 'vitest';
 import { validateAnchorPairStructure } from '@/lib/agents/runners/episode-reference-critic';
 
-const FULL_SHOT_ID_A = 'SS-S15-E02-A1-SC01-SH01';
-const FULL_SHOT_ID_B = 'SS-S15-E02-A1-SC01-SH02';
-const FULL_SHOT_ID_C = 'SS-S15-E02-A1-SC01-SH03';
+// Canonical shot-id format S-E-SH (refactor 2026-06-26) — handoff refs must
+// match it; the legacy compound SS-…-A…-SC…-SH… is now rejected as malformed.
+const FULL_SHOT_ID_A = 'S15-E02-SH01';
+const FULL_SHOT_ID_B = 'S15-E02-SH02';
+const FULL_SHOT_ID_C = 'S15-E02-SH03';
 
 describe('validateAnchorPairStructure — within-Plan structural checks', () => {
   test('legacy plan without anchor_pair field → no violations (back-compat)', () => {

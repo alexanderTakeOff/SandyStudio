@@ -204,25 +204,12 @@ export function getStoryboardShotById(
       if (sh) all.push(sh);
     }
   }
-  // 1. Exact canonical match — the strict, primary path.
-  const exact = all.find((sh) => sh.shot_id === shotId);
-  if (exact) return exact;
-  // 2. SH-number fallback (2026-06-23). Under the episode-continuous numbering
-  //    invariant (collectShotIdViolations, 7094c8d) every shot has a GLOBALLY
-  //    UNIQUE SH token, so a shotId whose act/scene prefix is wrong but whose SH
-  //    token is valid — an operator passing "…-A1-SC01-SH03" when canon is
-  //    "…-A1-SC02-SH03" — resolves unambiguously. Guarded on a UNIQUE match: if
-  //    the SH token is absent, or appears more than once (a legacy per-scene-reset
-  //    board), return null so the caller still fails loud. A genuinely wrong id is
-  //    never silently masked; this only forgives a misremembered scene/act prefix.
-  const wantSh = shotId.match(/SH\d+/i)?.[0]?.toUpperCase();
-  if (wantSh) {
-    const shMatches = all.filter(
-      (sh) => sh.shot_id.match(/SH\d+/i)?.[0]?.toUpperCase() === wantSh,
-    );
-    if (shMatches.length === 1) return shMatches[0];
-  }
-  return null;
+  // Exact canonical match only. shot_id is now stable identity (S-E-SH), assigned
+  // by position and resolved at the dispatch door (resolveShotId) — there is no
+  // unstable scene prefix left to misremember, so the old SH-number fallback
+  // (which forgave a guessed-wrong scene/act prefix) is deleted. A genuinely
+  // wrong id fails loud (null), as it should.
+  return all.find((sh) => sh.shot_id === shotId) ?? null;
 }
 
 /**
@@ -277,65 +264,12 @@ export function shortShotLabel(shotId: string | null | undefined): string {
   return shOnly ? shOnly[0].toUpperCase() : shotId;
 }
 
-/**
- * 2026-06-24 — tolerant shot-id match. Two ids refer to the same shot when their
- * scene-qualified labels (via {@link shortShotLabel}) are equal; fall back to the
- * bare SH token ONLY when one side lacks scene qualification (e.g. the concierge
- * dispatches a bare "SH10" while the plan body / chain uses canonical
- * "A2-SC06-SH10"). If BOTH sides are scene-qualified and still differ, it is a
- * genuine mismatch — stay strict (so a cross-scene same-SH pair never false-matches).
- *
- * Used by (a) the EREF plan↔event sanity guard (episode-references.ts, SH13 fix)
- * and (b) the per-shot in-flight dedup (plan-regen-guard.ts, E12 SH10 double-dispatch).
- */
-export function shotIdsMatchLoose(a: string, b: string): boolean {
-  const la = shortShotLabel(a); // "A2-SC07-SH13" or "SH13"
-  const lb = shortShotLabel(b);
-  if (la === lb) return true;
-  const aBare = /^SH\d+$/i.test(la);
-  const bBare = /^SH\d+$/i.test(lb);
-  if (!aBare && !bBare) return false;
-  const sa = a.match(/SH\d+/i)?.[0].toUpperCase();
-  const sb = b.match(/SH\d+/i)?.[0].toUpperCase();
-  return Boolean(sa && sb && sa === sb);
-}
-
-/** Full canonical shot id, e.g. "SS-S15-E11-A2-SC25-SH01". Mirrors the strict
- *  regex EXEC-EREF's Critic already uses (episode-reference-critic.ts). */
-const FULL_SHOT_ID_RE = /^SS-S\d+-E\d+-A\d+-SC\d+-SH\d+$/i;
-/** Bare scene-qualified suffix Polina + the activity feed surface to humans. */
-const BARE_SHOT_SUFFIX_RE = /^A\d+-SC\d+-SH\d+$/i;
-
-/**
- * 2026-06-22 — reverse of {@link shortShotLabel}: turn the bare, human-facing
- * key "A2-SC25-SH01" into the full canonical id "SS-S15-E11-A2-SC25-SH01" by
- * prefixing the episode code. Runners (EXEC-VANIM et al.) match shots in the
- * storyboard by EXACT canonical id, so a bare key hard-fails "not found in STB".
- *
- * Applied ONCE at the trigger route (the single door every dispatch funnels
- * through) so the full id flows everywhere downstream; the short form survives
- * only as a display label. This closes conception-gap #10.
- *
- *   normalizeShotId("A2-SC25-SH01", "SS-S15-E11") → "SS-S15-E11-A2-SC25-SH01"
- *   normalizeShotId("ss-s15-e11-a2-sc25-sh01", x) → unchanged (already full, idempotent)
- *   normalizeShotId("SS-S15-E11-A2-SC25-SH01", x) → unchanged (idempotent)
- *   normalizeShotId("SH01", code)                 → "SH01" (ambiguous, no scene → leave; fails loud downstream)
- *   normalizeShotId("A2-SC25-SH01", null)         → "A2-SC25-SH01" (no episode code → leave)
- *
- * Deliberately NOT a fallback inside the lookup: the lookup stays strict so a
- * genuinely wrong id (non-existent scene/shot) still fails loudly. Pure function.
- */
-export function normalizeShotId(
-  shotId: string,
-  episodeCode: string | null | undefined,
-): string {
-  if (typeof shotId !== 'string') return shotId;
-  if (FULL_SHOT_ID_RE.test(shotId)) return shotId; // already canonical
-  if (episodeCode && BARE_SHOT_SUFFIX_RE.test(shotId)) {
-    return `${episodeCode}-${shotId.toUpperCase()}`;
-  }
-  return shotId; // unrecognised shape → leave; strict lookup fails loud
-}
+// DELETED 2026-06-26 (shot-identity refactor Phase 2): shotIdsMatchLoose,
+// FULL_SHOT_ID_RE, BARE_SHOT_SUFFIX_RE, normalizeShotId. These were the
+// "normalize / loose-match the unstable scene prefix at the door" band-aids.
+// With identity = S-E-SH (no act/scene to misremember) and resolveShotId at the
+// single dispatch door (lib/api/shot-id.ts), every downstream comparison is an
+// exact `===` on a canonical id. Nothing left to normalize — the class is gone.
 
 export function listStoryboardShots(
   content: string,

@@ -6,7 +6,6 @@ import { describe, expect, test } from 'vitest';
 import {
   listStoryboardShots,
   shortShotLabel,
-  normalizeShotId,
   getStoryboardShotById,
 } from '@/lib/api/vgen-shot-helpers';
 
@@ -172,92 +171,40 @@ describe('listStoryboardShots', () => {
   });
 });
 
-describe('normalizeShotId', () => {
-  // 2026-06-22 (conception-gap #10): the trigger route canonicalizes the bare,
-  // human-facing key into the full id runners match by, ONCE, at the door.
-  test('prefixes a bare scene-qualified suffix with the episode code', () => {
-    expect(normalizeShotId('A2-SC25-SH01', 'SS-S15-E11')).toBe(
-      'SS-S15-E11-A2-SC25-SH01',
-    );
-    expect(normalizeShotId('A10-SC123-SH456', 'SS-S99-E99')).toBe(
-      'SS-S99-E99-A10-SC123-SH456',
-    );
-  });
-
-  test('upper-cases the suffix when prefixing', () => {
-    expect(normalizeShotId('a2-sc25-sh01', 'SS-S15-E11')).toBe(
-      'SS-S15-E11-A2-SC25-SH01',
-    );
-  });
-
-  test('is idempotent on an already-full canonical id', () => {
-    expect(normalizeShotId('SS-S15-E11-A2-SC25-SH01', 'SS-S15-E11')).toBe(
-      'SS-S15-E11-A2-SC25-SH01',
-    );
-    // even against a different episode code — already-full wins, no double prefix
-    expect(normalizeShotId('SS-S15-E11-A2-SC25-SH01', 'SS-S01-E01')).toBe(
-      'SS-S15-E11-A2-SC25-SH01',
-    );
-  });
-
-  test('leaves unnormalizable shapes untouched (fails loud downstream)', () => {
-    // bare SH## has no scene context → ambiguous, must not be guessed
-    expect(normalizeShotId('SH01', 'SS-S15-E11')).toBe('SH01');
-    // no episode code → cannot build a full id
-    expect(normalizeShotId('A2-SC25-SH01', null)).toBe('A2-SC25-SH01');
-    expect(normalizeShotId('A2-SC25-SH01', undefined)).toBe('A2-SC25-SH01');
-    // junk passes through
-    expect(normalizeShotId('something-else', 'SS-S15-E11')).toBe('something-else');
-  });
-});
-
-describe('getStoryboardShotById — SH-number fallback (2026-06-23)', () => {
-  // Episode-continuous numbering: SH tokens are globally unique. SH03 lives in
-  // SC02, SH01/SH02 in SC01 — the prefix is decorative, the SH token identifies.
+describe('getStoryboardShotById — exact canonical match only (refactor 2026-06-26)', () => {
+  // Identity = S-E-SH (no act/scene to misremember). The dispatch door resolves
+  // any human/tool reference to the canonical id (resolveShotId), so the lookup
+  // is a strict exact match — the old SH-number / wrong-scene fallback is gone.
   const stb = makeStb([
     {
       act: 1,
       shots: [
-        { shot_id: 'SS-S15-E12-A1-SC01-SH01', action_prose: 'Sandy walks.' },
-        { shot_id: 'SS-S15-E12-A1-SC01-SH02', action_prose: 'Sandy notices phone.' },
+        { shot_id: 'S15-E12-SH01', action_prose: 'Sandy walks.' },
+        { shot_id: 'S15-E12-SH02', action_prose: 'Sandy notices phone.' },
       ],
     },
     {
-      act: 1,
+      act: 2,
       shots: [
-        { shot_id: 'SS-S15-E12-A1-SC02-SH03', action_prose: 'Phone slides in.' },
-        { shot_id: 'SS-S15-E12-A1-SC02-SH04', action_prose: 'Sandy reaches.' },
+        { shot_id: 'S15-E12-SH03', action_prose: 'Phone slides in.' },
+        { shot_id: 'S15-E12-SH04', action_prose: 'Sandy reaches.' },
       ],
     },
   ]);
 
-  test('exact canonical id matches (primary strict path)', () => {
-    expect(getStoryboardShotById(stb, 'SS-S15-E12-A1-SC02-SH03')?.shot_id).toBe(
-      'SS-S15-E12-A1-SC02-SH03',
-    );
+  test('exact canonical id matches', () => {
+    expect(getStoryboardShotById(stb, 'S15-E12-SH03')?.shot_id).toBe('S15-E12-SH03');
+    expect(getStoryboardShotById(stb, 'S15-E12-SH01')?.action_prose).toBe('Sandy walks.');
   });
 
-  test('a wrong scene/act prefix resolves by the unique SH token', () => {
-    // The live failure: Polина guessed SC01, canon is SC02. SH03 is globally
-    // unique → resolves instead of "shotId not found in STB".
-    expect(getStoryboardShotById(stb, 'SS-S15-E12-A1-SC01-SH03')?.shot_id).toBe(
-      'SS-S15-E12-A1-SC02-SH03',
-    );
-    // a bare SH token resolves too when unique
-    expect(getStoryboardShotById(stb, 'SH04')?.shot_id).toBe(
-      'SS-S15-E12-A1-SC02-SH04',
-    );
+  test('a non-existent id fails loud (null) — never masked', () => {
+    expect(getStoryboardShotById(stb, 'S15-E12-SH99')).toBeNull();
   });
 
-  test('a genuinely absent SH still fails loud (null) — never masked', () => {
-    expect(getStoryboardShotById(stb, 'SS-S15-E12-A9-SC09-SH99')).toBeNull();
-  });
-
-  test('ambiguous SH (legacy per-scene reset) does NOT guess — returns null', () => {
-    const dup = makeStb([
-      { act: 1, shots: [{ shot_id: 'SS-S15-E01-A1-SC01-SH01' }] },
-      { act: 2, shots: [{ shot_id: 'SS-S15-E01-A2-SC02-SH01' }] }, // SH01 again
-    ]);
-    expect(getStoryboardShotById(dup, 'SS-S15-E01-A3-SC03-SH01')).toBeNull();
+  test('a bare or legacy-shaped id does NOT resolve here (resolve at the door first)', () => {
+    // The lookup is strict: a bare "SH03" or a legacy compound is not silently
+    // matched. Callers funnel through resolveShotId before reaching here.
+    expect(getStoryboardShotById(stb, 'SH03')).toBeNull();
+    expect(getStoryboardShotById(stb, 'SS-S15-E12-A2-SC02-SH03')).toBeNull();
   });
 });
