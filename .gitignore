@@ -8,6 +8,10 @@ FILMS/
 # Claude Code worktrees from parallel sessions
 .claude/worktrees/
 
+# Local durable change journal (change-journal.cjs hook) — per-machine breadcrumb that
+# survives /clear; churns on every edit, so keep it out of git.
+.claude/CHANGES.md
+
 # Environment variables
 .env
 .env.local
