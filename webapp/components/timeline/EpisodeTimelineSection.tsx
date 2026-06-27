@@ -94,7 +94,10 @@ export function EpisodeTimelineSection({
     fetcher,
     {
       // q4a — poll faster while a per-shot designer / video-artist job is live
-      // so the cell pulse stays responsive; fall back to 30s when idle.
+      // so the cell pulse stays responsive; fall back to a short idle cadence.
+      // 2026-06-26 (Director): idle 30s → 8s so a freshly-started job is noticed
+      // (and the cell starts pulsing) within ~8s instead of up to 30s — the gap
+      // that made "Polina started X but the timeline shows nothing" unnerving.
       refreshInterval: (latest) => {
         const jobs = latest?.data.jobs ?? [];
         const live = jobs.some(
@@ -102,7 +105,7 @@ export function EpisodeTimelineSection({
             (j.status === 'RUNNING' || j.status === 'QUEUED') &&
             workPhaseForAgent(j.agent_id) !== null,
         );
-        return live ? 6_000 : 30_000;
+        return live ? 4_000 : 8_000;
       },
     },
   );

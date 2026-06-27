@@ -169,7 +169,11 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   const { data, mutate } = useSWR<PipelineResponse>(
     `/api/episodes/${id}/pipeline`,
     fetcher,
-    { refreshInterval: 30_000 },
+    // 2026-06-26 (Director): 30s → 8s. This SWR drives BOTH the pipeline nodes
+    // AND the episode activity feed (which is poll-based here, not realtime), so
+    // a 30s cadence left a long gap between an agent's "started" and the UI
+    // reflecting it — unnerving when Polina reports a trigger and nothing moves.
+    { refreshInterval: 8_000 },
   );
 
   if (!data?.data) {
