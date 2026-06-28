@@ -25,6 +25,7 @@ interface InMemoryTables {
   budget_log: Array<Record<string, unknown>>;
   activity_events: Array<Record<string, unknown>>;
   dispatch_intent: Array<Record<string, unknown>>;
+  gate_decision_log: Array<Record<string, unknown>>;
 }
 
 export interface MockSupabase {
@@ -40,6 +41,7 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
     budget_log: seed.budget_log ? [...seed.budget_log] : [],
     activity_events: seed.activity_events ? [...seed.activity_events] : [],
     dispatch_intent: seed.dispatch_intent ? [...seed.dispatch_intent] : [],
+    gate_decision_log: seed.gate_decision_log ? [...seed.gate_decision_log] : [],
   };
 
   // ── Query builder ──────────────────────────────────────────────────────────

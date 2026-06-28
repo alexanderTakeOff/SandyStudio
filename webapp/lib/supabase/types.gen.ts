@@ -661,6 +661,53 @@ export type Database = {
           },
         ]
       }
+      gate_decision_log: {
+        Row: {
+          autonomous: boolean
+          created_at: string
+          decided_by: string
+          decision: string
+          episode_id: string
+          gate: string
+          gate_class: string
+          governance_mode: number | null
+          id: string
+          shot_id: string | null
+        }
+        Insert: {
+          autonomous: boolean
+          created_at?: string
+          decided_by: string
+          decision: string
+          episode_id: string
+          gate: string
+          gate_class: string
+          governance_mode?: number | null
+          id?: string
+          shot_id?: string | null
+        }
+        Update: {
+          autonomous?: boolean
+          created_at?: string
+          decided_by?: string
+          decision?: string
+          episode_id?: string
+          gate?: string
+          gate_class?: string
+          governance_mode?: number | null
+          id?: string
+          shot_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gate_decision_log_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jobs: {
         Row: {
           agent_id: string

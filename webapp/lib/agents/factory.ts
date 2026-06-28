@@ -47,6 +47,7 @@ import {
   type DispatchKey,
 } from './dispatch-intent';
 import { isPersistentBillingFailure } from './provider-failure';
+import { decideGate, recordGateDecision } from './gate-decision';
 import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
 // TD-87 (2026-06-09): the Mode-4 autonomous chain now routes forward through
@@ -540,7 +541,21 @@ export function createAgentInngestFunction<E extends string>(
         //
         // F3 / TD-76 (2026-06-12): Modes 1-3 still get status atomically in the
         // insert (no flip window). The Mode-4 flip below is ERROR-CHECKED.
-        const autoApprove = ep.governance_mode === 4;
+        // S3/P1 (2026-06-28): the autonomy decision now flows through the single
+        // `decideGate` choke-point (behaviour-preserving: autonomous = Mode 4) and
+        // is recorded to gate_decision_log for the E13 gate-taxonomy measurement.
+        const gateDecision = decideGate({
+          agentId: spec.agentId,
+          governanceMode: ep.governance_mode,
+        });
+        const autoApprove = gateDecision.autonomous;
+        await recordGateDecision(supabase, {
+          episodeId,
+          shotId: (eventData.shotId as string | undefined) ?? null,
+          agentId: spec.agentId,
+          governanceMode: ep.governance_mode,
+          decision: gateDecision,
+        });
         const out = await saveAgentOutput({
           supabase,
           agentId: spec.agentId,
@@ -717,7 +732,11 @@ export function createAgentInngestFunction<E extends string>(
           .select('governance_mode')
           .eq('id', episodeId)
           .single();
-        return data?.governance_mode === 4;
+        // S3/P1 — same single autonomy choke-point (behaviour-preserving).
+        return decideGate({
+          agentId: spec.agentId,
+          governanceMode: data?.governance_mode,
+        }).autonomous;
       });
 
       const nextEventCandidate = spec.nextEvent
