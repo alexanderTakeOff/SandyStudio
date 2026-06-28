@@ -20,17 +20,20 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-28 (S2(a) dispatch_intent shipped — атомарный per-shot claim закрыл дабл-фаер)
+Date:   2026-06-28 (S2(a)+(b) leak-closing SHIPPED — дабл-фаер + billing-петля закрыты)
 Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до конца фазы»).
 
-2026-06-28 (S2(a) leak-closing — dispatch_intent SHIPPED → master `862acc8`). Заменил racy Step 0b в
-  factory.ts («eref-inflight-dedup-check», TOCTOU read→оба рендерят: E07×2, E12 SH10 ~$1.21 дубль) на
-  АТОМАРНЫЙ claim: migration 0039 `dispatch_intent` UNIQUE(episode_id,shot_id,agent_id) + RPC
-  `claim_dispatch_intent` (INSERT…ON CONFLICT, терминальный статус → re-claim, последовательный regen жив).
-  input_hash = колонка-ledger, НЕ в ключе (в ключе он бы снова открыл E12 SH10). FAIL-OPEN на RPC-ошибке.
-  Субтракция: снёс осиротевший findInFlightShotDuplicate+тесты. tsc·0 / vitest 1018 / replay·30.
-  NEXT S2(b): billing-классификатор (isFalBalanceLock+OpenAI billing_hard_limit_reached) → эскалация
-  Директору, НЕ в auto-react петлю ($100-подсистема, +concierge-тесты); S2(c): FAILED transient-vs-persistent.
+2026-06-28 (S2(a)+(b) leak-closing SHIPPED → master `862acc8`,`df53433`). (a) dispatch_intent: заменил racy
+  Step 0b (TOCTOU read→оба рендерят: E07×2, E12 SH10 ~$1.21) на АТОМАРНЫЙ claim — migration 0039 table
+  UNIQUE(episode,shot,agent) + RPC `claim_dispatch_intent` (терминальный статус→re-claim, regen жив);
+  input_hash=ledger-колонка НЕ в ключе; снёс дублёр findInFlightShotDuplicate. (b) billing→escalate-not-loop:
+  `provider-failure.ts` классифицирует persistent-billing (fal+OpenAI+Anthropic, text-sig) → factory-catch
+  ставит «⛔ Provider out of funds» + metadata.auto_react=false → `logEvent` НЕ будит Полину (зеркалит
+  isSelfCausedNotify) → петля failure→wake→failure разорвана; within-wake уже ловил SPIN-guard.
+  tsc·0 / vitest 1030 / replay·30. ОСТАТОК (flagged): watchdog может нуднуть 1×/интервал (SPIN-bounded, не
+  петля) — полный close gate'ит watchdog на billing-halted эпизоде, отложено (нужен взгляд Директора на $100-сабсистему).
+  NEXT (решает Директор): S3 decideGate · watchdog-residual full-close · или явный S2(c) cap-distinction
+  (его ценность во многом поглощена (b)).
 
 2026-06-27 PM-2 (S1 cost-visibility SHIPPED). AI-factory autonomy+cost refactor planned (adversarial-hardened
   by 3 lenses; plan `~/.claude/plans/calm-percolating-sifakis.md`; direction in NORTH_STAR §4 + PLANET.md).
