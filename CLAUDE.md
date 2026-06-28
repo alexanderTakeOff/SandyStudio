@@ -173,6 +173,29 @@ Full mapping (each agent → assigned ECC skills/agents/commands) → `docs/CLAU
 - Active mode is stored in `PLAN.md ## Current Mode`.
 - Full spec: `specs/company/governance.md §4`
 
+### Studio Version & Compatibility Gate
+
+`studio_version: 0.10` — tracks studio **production-maturity**, a *different axis*
+from this document's Constitution version (do not conflate them). Set arbitrarily in
+the 0.x range for now; the Director bumps it.
+
+The gate is read by the theme-development skills and any per-episode tooling:
+
+- **Below 1.0 — research / experiment phase (current).** The mainstream production
+  line is not locked yet. **Legacy episodes E01–E12 are training experiments, NOT a
+  production catalog** — they are not ground truth for calibration, not a novelty
+  baseline, and earn **no backward compatibility**. Do not enforce cross-episode /
+  per-episode continuity or novelty during development, and do not grow back-compat
+  code for them.
+- **At `studio_version >= 1.0` — mainstream phase.** Per-episode compatibility turns
+  ON during development: novelty-vs-catalog, continuity, and serialization are
+  enforced, and shipped episodes become real ground truth.
+
+Machine source of truth: `config/defaults.yaml → studio.version` (the existing
+studio config layer, mirrored to the Supabase `app_config` `system` scope). This §6
+block is the human-readable governance statement; keep the two in sync. (There is no
+`specs/system/config.json` despite Rule 3 — `config/defaults.yaml` is the real layer.)
+
 ---
 
 ## 7. WORKFLOW RULES

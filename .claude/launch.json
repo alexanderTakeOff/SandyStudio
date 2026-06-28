@@ -4,9 +4,10 @@
     {
       "name": "next-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "webapp", "run", "dev"],
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "webapp",
       "port": 3000,
-      "autoPort": false
+      "autoPort": true
     },
     {
       "name": "inngest-dev",

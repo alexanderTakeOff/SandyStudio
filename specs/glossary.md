@@ -16,6 +16,7 @@
 7. [Status & gates / Статусы и гейты](#7-status--gates--статусы-и-гейты)
 8. [Operating modes / Режимы работы](#8-operating-modes--режимы-работы)
 9. [Scope discipline / Дисциплина скоупа](#9-scope-discipline--дисциплина-скоупа)
+10. [Entity identifier convention / Конвенция идентификаторов сущностей](#10-entity-identifier-convention--конвенция-идентификаторов-сущностей)
 
 ---
 
@@ -267,6 +268,37 @@ The 9 episode stages above (Brief → Publish). Producer cannot skip a stage, bu
 ### Versioning policy / Политика версий
 > **Policy lives in [`specs/rules/canon_versioning.md`](rules/canon_versioning.md).** Glossary holds definitions only.
 > Costume changes use Episode references; permanent canon changes create new Bible asset versions; errors are revisions of the current version. Full table in the rules document.
+
+---
+
+## 10. Entity identifier convention / Конвенция идентификаторов сущностей
+
+Stable, human-readable IDs for **recurring entities** (not files). An identifier names
+the entity *type*, never its role in a specific episode. Adopted 2026-06-28. This is a
+**distinct layer** from the file-naming convention (`SS-S0X-E0Y-TYPE-…`, CLAUDE.md §3)
+and from Bible-asset `file_type` slugs (`SBL-character_sandy`): those name files / DB
+rows; these name the entities the files are *about*.
+
+| Prefix | Meaning | Examples |
+|---|---|---|
+| `CHR-` | Recurring character | `CHR-Sandy`, `CHR-Heavy`, `CHR-Metelka` |
+| `PET-` | Companion / pet | `PET-Detonix` |
+| `OBJ-` | Physical object / prop | `OBJ-Smartphone`, `OBJ-Elevator`, `OBJ-Plates` |
+| `THEME-` | Episode theme / central conflict (a reusable gag engine) | `THEME-Infinite_Feed`, `THEME-Kitchen_Plates` |
+| `LOC-` | Location | `LOC-Kitchen`, `LOC-Beach` |
+| `LAW-` | World law / philosophy | `LAW-Illusion_of_Control` |
+
+Rules: a character is always `CHR-*` (never `OBJ-Sandy`). An `OBJ-*` may participate in
+many `THEME-*` (`OBJ-Smartphone` → `THEME-Infinite_Feed`, `THEME-Low_Battery`). **A new
+`OBJ-*` is not a new `THEME-*`** — the theme is the *engine*, not the prop.
+
+Mapping to existing layers: entity `CHR-Sandy` ↔ Bible asset `file_type
+SBL-character_sandy` ↔ files `SS-…`. One entity, three layers (entity-id / DB-asset /
+filename) — keep them mapped, never duplicated. The episode-theme bank (`SPC-theme_bank`
+asset, series Themes tab) is indexed by `THEME-*` id.
+
+Consumed by the theme-development skills (`series-episode-theme-generation` /
+`series-episode-theme-selection`) and by any spec that references recurring entities.
 
 ---
 
