@@ -13,11 +13,12 @@ import { use, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import useSWR from 'swr';
-import { ChevronLeft, BookOpen, Layers } from 'lucide-react';
+import { ChevronLeft, BookOpen, Layers, Lightbulb } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
 import { SeriesBibleView } from '@/components/series-bible/SeriesBibleView';
+import { SeriesThemesView } from '@/components/series-themes/SeriesThemesView';
 
 interface SeriesRow {
   id: string;
@@ -31,7 +32,7 @@ interface SeriesRow {
   created_at: string;
 }
 
-type Tab = 'overview' | 'bible';
+type Tab = 'overview' | 'bible' | 'themes';
 
 export default function SeriesDetailPage({
   params,
@@ -96,10 +97,14 @@ export default function SeriesDetailPage({
             <TabButton active={tab === 'bible'} onClick={() => setTab('bible')} icon={<BookOpen size={14} />}>
               Bible
             </TabButton>
+            <TabButton active={tab === 'themes'} onClick={() => setTab('themes')} icon={<Lightbulb size={14} />}>
+              Themes
+            </TabButton>
           </nav>
 
           {tab === 'overview' && <OverviewTab series={series} />}
           {tab === 'bible' && <SeriesBibleView seriesId={series.id} seriesCode={series.code} seriesTitle={series.title} />}
+          {tab === 'themes' && <SeriesThemesView seriesId={series.id} />}
         </>
       )}
     </StudioContentFrame>
