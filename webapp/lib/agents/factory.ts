@@ -38,9 +38,14 @@ import { logEvent } from '../api/events';
 import { shotRegenCap } from './chain-flags';
 import {
   countShotAutonomousAttempts,
-  findInFlightShotDuplicate,
   SHOT_REGEN_AGENT_IDS,
 } from '../api/plan-regen-guard';
+import {
+  claimDispatchIntent,
+  computeInputHash,
+  markDispatchIntent,
+  type DispatchKey,
+} from './dispatch-intent';
 import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
 // TD-87 (2026-06-09): the Mode-4 autonomous chain now routes forward through
@@ -218,6 +223,9 @@ export function createAgentInngestFunction<E extends string>(
       // when emitting agent_failed activity (closes the "PA can't see
       // pipeline failures" hole observed 2026-05-12).
       let capturedJobId: string | null = null;
+      // S2/P2 — the dispatch claim this run holds (shot-scoped agents only).
+      // Marked terminal on success/failure so a later sequential regen re-claims.
+      let claimedDispatchKey: DispatchKey | null = null;
 
       try {
 
@@ -284,58 +292,61 @@ export function createAgentInngestFunction<E extends string>(
         if (halted) return;
       }
 
-      // ── Step 0b: per-shot IN-FLIGHT dedup (2026-06-25, E12 SH10 double-run) ─
-      // The per-PLAN in-flight guard (plan-regen-guard) and the EXACT-match shot
-      // cap both miss when TWO plans — or a bare "SH10" racing a canonical
-      // "A2-SC06-SH10" — dispatch for the SAME shot: both execute and
-      // double-generate the image. Refuse a SECOND concurrent run of the SAME
-      // agent for the SAME shot. This is concurrency correctness, NOT an autonomy
-      // cap → it applies to EVERY principal (incl. the Director: nobody needs two
-      // simultaneous EREF runs for one shot). Sequential regen still works (the
-      // prior job is no longer QUEUED/RUNNING), and Designer→Artist progression
-      // is fine (different agent_id). FAIL OPEN on a read error — a rare duplicate
-      // beats dropping a legitimate generation.
+      // ── Step 0b: per-shot ATOMIC dispatch claim (S2/P2, 2026-06-28) ─────────
+      // Supersedes the prior racy "eref-inflight-dedup-check" (a TOCTOU read of
+      // in-flight jobs): two dispatches for the SAME shot both read "nothing in
+      // flight" and both render → the E07 ×2 / E12 SH10 double image bill (~$1.21
+      // each). claim_dispatch_intent (migration 0039) does an atomic INSERT…ON
+      // CONFLICT test-and-set keyed on (episode, shot, agent): an in-flight claim
+      // BLOCKS the duplicate; a terminal (done/failed) row is RE-CLAIMABLE so a
+      // SEQUENTIAL regen still works. Both shotIds are canonical S-E-SH at the
+      // dispatch door, so the exact key match is sufficient (same invariant the
+      // old matcher relied on). Concurrency correctness for EVERY principal (incl.
+      // the Director — nobody needs two simultaneous EREF runs for one shot);
+      // Designer→Artist progression is fine (different agent_id). FAIL OPEN inside
+      // the helper on RPC error. We early RETURN (not throw) so Inngest does not
+      // retry: no job row, no provider call (no money), no fan-out.
       if (
         shotIdForCap &&
         (SHOT_REGEN_AGENT_IDS as readonly string[]).includes(spec.agentId)
       ) {
-        const dupId = await step.run('eref-inflight-dedup-check', async () => {
+        const dispatchKey: DispatchKey = {
+          episodeId,
+          shotId: shotIdForCap,
+          agentId: spec.agentId,
+        };
+        const claim = await step.run('dispatch-intent-claim', async () => {
           const supabase = createSupabaseServiceRoleClient();
-          const INFLIGHT_WINDOW_MS = 10 * 60_000; // > EREF ~6min run; stale jobs don't wedge
-          const sinceIso = new Date(Date.now() - INFLIGHT_WINDOW_MS).toISOString();
-          const { data, error } = await supabase
-            .from('jobs')
-            .select('id,input_snapshot')
-            .eq('episode_id', episodeId)
-            .eq('agent_id', spec.agentId)
-            .in('status', ['QUEUED', 'RUNNING'])
-            .gte('started_at', sinceIso);
-          if (error) return null; // fail open
-          const match = findInFlightShotDuplicate(
-            (data ?? []) as Array<{ id: string; input_snapshot?: unknown }>,
-            shotIdForCap,
+          const result = await claimDispatchIntent(
+            supabase,
+            dispatchKey,
+            computeInputHash(eventData),
+            runId,
           );
-          if (!match) return null;
-          await logEvent(supabase, {
-            event_type: 'regen_duplicate_skipped',
-            severity: 'info',
-            title: `Duplicate ${spec.agentId} skipped — ${shotIdForCap}`,
-            description:
-              `A ${spec.agentId} job for this shot is already in flight (job ` +
-              `${match}). Skipped this concurrent duplicate dispatch to avoid a ` +
-              `double generation.`,
-            actor: (eventData.principal as string) ?? null,
-            episode_id: episodeId,
-            metadata: {
-              agent: spec.agentId,
-              shot_id: shotIdForCap,
-              inflight_job_id: match,
-              reason: 'EREF_INFLIGHT_DUPLICATE',
-            },
-          });
-          return match;
+          if (!result.claimed) {
+            await logEvent(supabase, {
+              event_type: 'regen_duplicate_skipped',
+              severity: 'info',
+              title: `Duplicate ${spec.agentId} skipped — ${shotIdForCap}`,
+              description:
+                `A ${spec.agentId} dispatch for this shot is already in flight ` +
+                `(run ${result.blockingRunId ?? 'unknown'}, status ` +
+                `${result.blockingStatus ?? 'unknown'}). Skipped this concurrent ` +
+                `duplicate to avoid a double generation.`,
+              actor: (eventData.principal as string) ?? null,
+              episode_id: episodeId,
+              metadata: {
+                agent: spec.agentId,
+                shot_id: shotIdForCap,
+                blocking_run_id: result.blockingRunId,
+                reason: 'DISPATCH_INTENT_DUPLICATE',
+              },
+            });
+          }
+          return result;
         });
-        if (dupId) return;
+        if (!claim.claimed) return;
+        claimedDispatchKey = dispatchKey;
       }
 
       // ── Step 1: insert RUNNING job row + emit agent_started activity ─────
@@ -411,6 +422,9 @@ export function createAgentInngestFunction<E extends string>(
         await step.run('mark-failed-gate', async () => {
           const supabase = createSupabaseServiceRoleClient();
           await markJobFailed(supabase, job.id, gate.reason ?? 'Gate failed');
+          if (claimedDispatchKey) {
+            await markDispatchIntent(supabase, claimedDispatchKey, 'failed');
+          }
         });
         throw new NonRetriableError(gate.reason ?? `Gate failed for ${spec.agentId}`);
       }
@@ -571,6 +585,11 @@ export function createAgentInngestFunction<E extends string>(
           }
         }
         await markJobCompleted(supabase, job.id, out.assetId);
+        // S2/P2 — release the dispatch claim so a later sequential regen of this
+        // shot can re-claim. No-op when this run held no claim.
+        if (claimedDispatchKey) {
+          await markDispatchIntent(supabase, claimedDispatchKey, 'done');
+        }
 
         // (Removed 2026-05-02) Earlier code spoofed STB-act2 + STB-act3 mock
         // rows after EXEC-SB to satisfy a legacy WCHK gate that required
@@ -862,6 +881,10 @@ export function createAgentInngestFunction<E extends string>(
             });
             if (capturedJobId) {
               await markJobFailed(supabase, capturedJobId, errMsg.slice(0, 500));
+            }
+            // S2/P2 — release the claim on failure so recovery can re-claim.
+            if (claimedDispatchKey) {
+              await markDispatchIntent(supabase, claimedDispatchKey, 'failed');
             }
           } catch {
             // Swallow logging errors so we don't mask the original failure.

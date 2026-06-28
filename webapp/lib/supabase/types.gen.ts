@@ -564,6 +564,53 @@ export type Database = {
           },
         ]
       }
+      dispatch_intent: {
+        Row: {
+          agent_id: string
+          blocked_count: number
+          created_at: string
+          episode_id: string
+          id: string
+          inngest_run_id: string | null
+          input_hash: string
+          shot_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          blocked_count?: number
+          created_at?: string
+          episode_id: string
+          id?: string
+          inngest_run_id?: string | null
+          input_hash?: string
+          shot_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          blocked_count?: number
+          created_at?: string
+          episode_id?: string
+          id?: string
+          inngest_run_id?: string | null
+          input_hash?: string
+          shot_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_intent_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       episodes: {
         Row: {
           budget_ceiling: number | null
@@ -604,7 +651,15 @@ export type Database = {
           title_working?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "episodes_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       jobs: {
         Row: {
@@ -699,6 +754,7 @@ export type Database = {
           genre: string | null
           id: string
           logline: string | null
+          metadata: Json
           status: string
           title: string
           updated_at: string
@@ -712,6 +768,7 @@ export type Database = {
           genre?: string | null
           id?: string
           logline?: string | null
+          metadata?: Json
           status?: string
           title: string
           updated_at?: string
@@ -725,6 +782,7 @@ export type Database = {
           genre?: string | null
           id?: string
           logline?: string | null
+          metadata?: Json
           status?: string
           title?: string
           updated_at?: string
@@ -812,7 +870,28 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      claim_dispatch_intent: {
+        Args: {
+          p_agent: string
+          p_episode: string
+          p_hash: string
+          p_run: string
+          p_shot: string
+        }
+        Returns: {
+          blocking_run_id: string
+          blocking_status: string
+          claimed: boolean
+        }[]
+      }
+      increment_budget_spent: {
+        Args: { p_cost: number; p_episode: string }
+        Returns: {
+          allowed: boolean
+          ceiling: number
+          spent: number
+        }[]
+      }
     }
     Enums: {
       asset_status:

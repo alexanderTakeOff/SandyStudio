@@ -163,37 +163,3 @@ export async function countShotAutonomousAttempts(
   }
   return { count: count ?? 0, readError: false };
 }
-
-/** A jobs row shape sufficient for the in-flight shot match. */
-export interface JobShotRow {
-  id: string;
-  input_snapshot?: unknown;
-}
-
-/**
- * 2026-06-25 — per-shot in-flight dedup for EREF dispatch (E12 SH10 double-run).
- *
- * The existing in-flight guard ({@link assertPlanRegenWithinCap}) keys on
- * `planAssetId`, and {@link countShotAutonomousAttempts} does an EXACT `shotId`
- * match — so two DIFFERENT plans for one shot would slip through and double-
- * generate. This pure matcher closes that hole: given the already-fetched
- * in-flight jobs (caller filters status/window/agent in SQL), return the FIRST
- * whose `input_snapshot.shotId` equals `incomingShotId`. Both sides are canonical
- * S-E-SH ids (resolved at the dispatch door), so an exact `===` is sufficient —
- * the old bare/canonical-tolerant match is gone with the rest of the band-aids.
- *
- * Pure (no DB) so it is unit-tested without a Supabase mock.
- */
-export function findInFlightShotDuplicate(
-  inFlightJobs: ReadonlyArray<JobShotRow>,
-  incomingShotId: string,
-): string | null {
-  if (!incomingShotId) return null;
-  for (const j of inFlightJobs) {
-    const sid = (j.input_snapshot as { shotId?: unknown } | null)?.shotId;
-    if (typeof sid === 'string' && sid === incomingShotId) {
-      return j.id;
-    }
-  }
-  return null;
-}

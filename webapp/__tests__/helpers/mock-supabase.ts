@@ -24,6 +24,7 @@ interface InMemoryTables {
   jobs: Array<Record<string, unknown>>;
   budget_log: Array<Record<string, unknown>>;
   activity_events: Array<Record<string, unknown>>;
+  dispatch_intent: Array<Record<string, unknown>>;
 }
 
 export interface MockSupabase {
@@ -38,6 +39,7 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
     jobs: seed.jobs ? [...seed.jobs] : [],
     budget_log: seed.budget_log ? [...seed.budget_log] : [],
     activity_events: seed.activity_events ? [...seed.activity_events] : [],
+    dispatch_intent: seed.dispatch_intent ? [...seed.dispatch_intent] : [],
   };
 
   // ── Query builder ──────────────────────────────────────────────────────────
@@ -86,15 +88,21 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
         };
       },
       update: (patch: Record<string, unknown>) => {
+        // PostgREST accumulates .eq() filters and applies the patch on await, so
+        // the sub-builder is chainable (multiple .eq) AND thenable.
+        const updateFilters: Array<(r: Record<string, unknown>) => boolean> = [];
+        const apply = () => {
+          for (const r of tables[table]) {
+            if (updateFilters.every((f) => f(r))) Object.assign(r, patch);
+          }
+          return { data: null, error: null };
+        };
         const subBuilder = {
           eq: (col: string, val: unknown) => {
-            for (const r of tables[table]) {
-              if (r[col] === val) {
-                Object.assign(r, patch);
-              }
-            }
-            return Promise.resolve({ data: null, error: null });
+            updateFilters.push((r) => r[col] === val);
+            return subBuilder;
           },
+          then: (resolve: (v: unknown) => unknown) => resolve(apply()),
         };
         return subBuilder;
       },
@@ -221,6 +229,57 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
       // Would exceed ceiling → leave budget_spent unchanged.
       return Promise.resolve({
         data: [{ spent: currentSpent, ceiling, allowed: false }],
+        error: null,
+      });
+    }
+    // Mirrors `claim_dispatch_intent` (migration 0039): atomic per-shot dispatch
+    // claim keyed on (episode_id, shot_id, agent_id). A claimed/running row blocks
+    // a duplicate; a done/failed row is re-claimable.
+    if (fnName === 'claim_dispatch_intent') {
+      const episodeId = args.p_episode;
+      const shotId = typeof args.p_shot === 'string' ? args.p_shot : '';
+      const agentId = args.p_agent;
+      const hash = typeof args.p_hash === 'string' ? args.p_hash : '';
+      const runId = typeof args.p_run === 'string' ? args.p_run : null;
+      const existing = tables.dispatch_intent.find(
+        (r) => r.episode_id === episodeId && r.shot_id === shotId && r.agent_id === agentId,
+      );
+      const isTerminal = (s: unknown) => s === 'done' || s === 'failed';
+      if (!existing) {
+        tables.dispatch_intent.push({
+          episode_id: episodeId,
+          shot_id: shotId,
+          agent_id: agentId,
+          input_hash: hash,
+          status: 'claimed',
+          inngest_run_id: runId,
+          blocked_count: 0,
+        });
+        return Promise.resolve({
+          data: [{ claimed: true, blocking_run_id: null, blocking_status: null }],
+          error: null,
+        });
+      }
+      if (isTerminal(existing.status)) {
+        existing.status = 'claimed';
+        existing.input_hash = hash;
+        existing.inngest_run_id = runId;
+        existing.blocked_count = 0;
+        return Promise.resolve({
+          data: [{ claimed: true, blocking_run_id: null, blocking_status: null }],
+          error: null,
+        });
+      }
+      // In flight → block the duplicate, record the waste.
+      existing.blocked_count = (Number(existing.blocked_count) || 0) + 1;
+      return Promise.resolve({
+        data: [
+          {
+            claimed: false,
+            blocking_run_id: existing.inngest_run_id ?? null,
+            blocking_status: existing.status ?? null,
+          },
+        ],
         error: null,
       });
     }
