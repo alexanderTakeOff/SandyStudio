@@ -20,8 +20,17 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-28 (S2(a)+(b) leak-closing SHIPPED — дабл-фаер + billing-петля закрыты)
+Date:   2026-06-28 (S2(a)+(b) + S3-measurement SHIPPED — дабл-фаер + billing-петля + gate-лог)
 Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до конца фазы»).
+
+2026-06-28 (S3-measurement SHIPPED → master `c8d412c`, Director q2a). decideGate choke-point + gate_decision_log.
+  `gate-decision.ts`: build-exhaustive GATE_CLASS Record<AgentId> (mechanical/creative/hard_limit — новый агент
+  не пройдёт нерасклассифицированным) + pure decideGate (behaviour-preserving: autonomous=Mode4) + writer.
+  migration 0040 gate_decision_log (только writer-колонки, без мёртвой схемы; human-ground-truth остаётся в
+  activity_events, E13-анализ джойнит). factory: 2 чтения governance_mode===4 (autoApprove/autoChain) теперь
+  через decideGate + 1 строка лога на ран. tsc·0/vitest 1040/replay·30 (Mode-4 не изменился, Mode 1-3 next-events
+  тесты целы). 6 форков next-events НЕ коллапсил — отложено в S6/S7 (anti-additive: шов не несущий пока).
+  NEXT (решает Директор): watchdog-residual full-close · S-reorder (pilot-first ref/video) · или E13 live-прогон.
 
 2026-06-28 (S2(a)+(b) leak-closing SHIPPED → master `862acc8`,`df53433`). (a) dispatch_intent: заменил racy
   Step 0b (TOCTOU read→оба рендерят: E07×2, E12 SH10 ~$1.21) на АТОМАРНЫЙ claim — migration 0039 table
@@ -31,9 +40,7 @@ Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до ко
   ставит «⛔ Provider out of funds» + metadata.auto_react=false → `logEvent` НЕ будит Полину (зеркалит
   isSelfCausedNotify) → петля failure→wake→failure разорвана; within-wake уже ловил SPIN-guard.
   tsc·0 / vitest 1030 / replay·30. ОСТАТОК (flagged): watchdog может нуднуть 1×/интервал (SPIN-bounded, не
-  петля) — полный close gate'ит watchdog на billing-halted эпизоде, отложено (нужен взгляд Директора на $100-сабсистему).
-  NEXT (решает Директор): S3 decideGate · watchdog-residual full-close · или явный S2(c) cap-distinction
-  (его ценность во многом поглощена (b)).
+  петля) — полный close gate'ит watchdog на billing-halted эпизоде, отложено. S2(c) поглощён (b).
 
 2026-06-27 PM-2 (S1 cost-visibility SHIPPED). AI-factory autonomy+cost refactor planned (adversarial-hardened
   by 3 lenses; plan `~/.claude/plans/calm-percolating-sifakis.md`; direction in NORTH_STAR §4 + PLANET.md).
