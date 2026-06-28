@@ -20,8 +20,17 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-27 (PM — Compass v2 + PLAN master-only + E12 copy/thumbnail; shot-identity S-E-SH merged earlier)
-Mode:   ===5=== EDIT (Director-authorized 2026-06-27 — S1 cost-visibility refactor; q7/q8a/q4 earlier).
+Date:   2026-06-28 (S2(a) dispatch_intent shipped — атомарный per-shot claim закрыл дабл-фаер)
+Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до конца фазы»).
+
+2026-06-28 (S2(a) leak-closing — dispatch_intent SHIPPED → master `862acc8`). Заменил racy Step 0b в
+  factory.ts («eref-inflight-dedup-check», TOCTOU read→оба рендерят: E07×2, E12 SH10 ~$1.21 дубль) на
+  АТОМАРНЫЙ claim: migration 0039 `dispatch_intent` UNIQUE(episode_id,shot_id,agent_id) + RPC
+  `claim_dispatch_intent` (INSERT…ON CONFLICT, терминальный статус → re-claim, последовательный regen жив).
+  input_hash = колонка-ledger, НЕ в ключе (в ключе он бы снова открыл E12 SH10). FAIL-OPEN на RPC-ошибке.
+  Субтракция: снёс осиротевший findInFlightShotDuplicate+тесты. tsc·0 / vitest 1018 / replay·30.
+  NEXT S2(b): billing-классификатор (isFalBalanceLock+OpenAI billing_hard_limit_reached) → эскалация
+  Директору, НЕ в auto-react петлю ($100-подсистема, +concierge-тесты); S2(c): FAILED transient-vs-persistent.
 
 2026-06-27 PM-2 (S1 cost-visibility SHIPPED). AI-factory autonomy+cost refactor planned (adversarial-hardened
   by 3 lenses; plan `~/.claude/plans/calm-percolating-sifakis.md`; direction in NORTH_STAR §4 + PLANET.md).
@@ -54,9 +63,8 @@ Mode:   ===5=== EDIT (Director-authorized 2026-06-27 — S1 cost-visibility refa
   Лечение в master (tsc·0 / vitest 997 / replay·30): W1 петля — self-echo skip (events.ts isSelfCausedNotify),
   watchdog no-new-state + close-stale-threads, debounce 5s→20s; W2 reasoning OFF на Opus (гл. причина цены);
   W3 cost-трекинг в budget_log с episode_id + дневной circuit-breaker $20/24ч; W4.a история 80→24; W5 backstop
-  25→6, auto-react output→800. Держим Opus, харден. Также: E12 EREF SH13 разблокирован (толерантный shot_id-гард);
-  закрыта дыра дубль-диспатча EREF (per-shot in-flight дедуп factory.ts Step-0, commit e27b5c2).
-  План: ~/.claude/plans/functional-tickling-ullman.md.
+  25→6, auto-react output→800. Держим Opus, харден. (EREF дубль-дедуп этой записи заменён атомарным
+  dispatch_intent в S2(a) 2026-06-28.) План: ~/.claude/plans/functional-tickling-ullman.md.
 
 2026-06-22 PM (E11 video run + AI-EP readiness probe). Тео ведёт прогон в роли AI EP (Pascal), Полина — исполнитель.
   E11 DONE (1-й 4-актный эпизод). 3 фикса в master (tsc·0 / 926 / replay·30): (1) normalizeShotId на единой
