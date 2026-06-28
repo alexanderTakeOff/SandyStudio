@@ -46,6 +46,7 @@ import {
   markDispatchIntent,
   type DispatchKey,
 } from './dispatch-intent';
+import { isPersistentBillingFailure } from './provider-failure';
 import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
 // TD-87 (2026-06-09): the Mode-4 autonomous chain now routes forward through
@@ -864,10 +865,19 @@ export function createAgentInngestFunction<E extends string>(
             const failedSuffix = failedCtx?.shortLabel
               ? ` — ${failedCtx.shortLabel}`
               : '';
+            // S2/F3 — a PERSISTENT billing/quota wall is terminal across retries.
+            // Escalate to the human Director (top-up is hers alone) and suppress
+            // the auto-react wake so Polina does not re-fire into the same wall
+            // (the cross-wake spend spiral). metadata.auto_react=false is the
+            // suppression flag honoured by logEvent.
+            const billingLocked = isPersistentBillingFailure(errMsg);
+            const failTitle = billingLocked
+              ? `⛔ Provider out of funds — ${agentDisplayName(spec.agentId)}${failedSuffix} (Director: top up)`
+              : `${agentDisplayName(spec.agentId)} failed${failedSuffix}`;
             await logEvent(supabase, {
               event_type: 'agent_failed',
               severity: 'error',
-              title: `${agentDisplayName(spec.agentId)} failed${failedSuffix}`,
+              title: failTitle,
               description: errMsg.slice(0, 500),
               actor: spec.agentId,
               episode_id: episodeId,
@@ -876,6 +886,9 @@ export function createAgentInngestFunction<E extends string>(
                 agent: spec.agentId,
                 inngest_run_id: runId,
                 error: errMsg.slice(0, 500),
+                ...(billingLocked
+                  ? { auto_react: false, reason: 'PROVIDER_BILLING_LOCK' }
+                  : {}),
                 ...(failedCtx?.metadata ?? {}),
               },
             });

@@ -81,6 +81,8 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
           select: (_c: string) => ({
             single: () =>
               Promise.resolve({ data: inserted[0] ?? null, error: null }),
+            maybeSingle: () =>
+              Promise.resolve({ data: inserted[0] ?? null, error: null }),
           }),
           // bare insert (no chained select) — return success
           then: (resolve: (v: unknown) => unknown) =>

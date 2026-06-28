@@ -68,6 +68,15 @@ export async function logEvent(
   // skip only the `pa/notify-needed` fan-out. Pipeline advance is mechanical,
   // so the chain still progresses. Stops the watchdog↔auto-react cost spiral.
   if (isSelfCausedNotify(input.event_type, input.actor)) return;
+  // Loop-breaker (2026-06-28, S2/F3): a PERSISTENT billing/quota failure returns
+  // the same wall on every retry. Waking Polina to "react" to it just makes her
+  // re-fire the agent into the same wall (cross-wake spend spiral). The emitter
+  // tags such events with metadata.auto_react=false → escalate to the human
+  // Director (the audit row IS written + visible in the feed), but DON'T spend a
+  // model wake. The Director is the only one who can top up funds.
+  if ((input.metadata as { auto_react?: unknown } | null | undefined)?.auto_react === false) {
+    return;
+  }
   const triggerId = data?.id;
   if (!triggerId) return;
 
