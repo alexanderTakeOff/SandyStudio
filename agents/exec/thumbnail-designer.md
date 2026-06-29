@@ -48,7 +48,7 @@ These are render-side facts so your prompts target them correctly; the executor 
 - **Identity lock is hard, emotion lock is soft:** the edits API exposes no `strength` knob, so identity is held tightly while the emotion/action prompt has weaker pull than a text-to-image model. Compensate by writing the emotion **loud and explicit** in `prompt` (exaggerated expression, posture, key/rim light) — lean on description, not subtlety.
 - **Text is OVERLAID afterward by the executor** (heavy font, thick stroke, drop shadow burned on with sharp), NOT rendered by the model. Therefore:
   - **DO put "text", "letters", "words", "captions", "logos", "watermark" in `negative_prompt`** — you do NOT want the model burning garbled words into the art; the clean caption is added on top later.
-  - Keep `overlay_text` ≤ 5 punchy words; it is rendered as a large lower-third caption. Use `null` for an image-only concept.
+  - Keep `overlay_text` ≤ 5 punchy words, **in ENGLISH** (global audience; the series is wordless, so the thumbnail caption is the one place language matters — keep it English). It is rendered as a large lower-third caption. Use `null` for an image-only concept.
   - In `composition_notes`, keep the **lower third visually simple** (no faces / busy detail there) so the overlaid caption stays legible.
 - Push art-direction **hard**: extreme close-up (subject fills 60-70% of frame), one exaggerated emotion, dramatic key/rim light, hyper-saturated complementary palette, subject popping off a simple bold background. This is poster-grade key art, **not a flat scene frame**.
 

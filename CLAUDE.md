@@ -173,6 +173,29 @@ Full mapping (each agent → assigned ECC skills/agents/commands) → `docs/CLAU
 - Active mode is stored in `PLAN.md ## Current Mode`.
 - Full spec: `specs/company/governance.md §4`
 
+### Studio Version & Compatibility Gate
+
+`studio_version: 0.10` — tracks studio **production-maturity**, a *different axis*
+from this document's Constitution version (do not conflate them). Set arbitrarily in
+the 0.x range for now; the Director bumps it.
+
+The gate is read by the theme-development skills and any per-episode tooling:
+
+- **Below 1.0 — research / experiment phase (current).** The mainstream production
+  line is not locked yet. **Legacy episodes E01–E12 are training experiments, NOT a
+  production catalog** — they are not ground truth for calibration, not a novelty
+  baseline, and earn **no backward compatibility**. Do not enforce cross-episode /
+  per-episode continuity or novelty during development, and do not grow back-compat
+  code for them.
+- **At `studio_version >= 1.0` — mainstream phase.** Per-episode compatibility turns
+  ON during development: novelty-vs-catalog, continuity, and serialization are
+  enforced, and shipped episodes become real ground truth.
+
+Machine source of truth: `config/defaults.yaml → studio.version` (the existing
+studio config layer, mirrored to the Supabase `app_config` `system` scope). This §6
+block is the human-readable governance statement; keep the two in sync. (There is no
+`specs/system/config.json` despite Rule 3 — `config/defaults.yaml` is the real layer.)
+
 ---
 
 ## 7. WORKFLOW RULES
@@ -336,11 +359,16 @@ Before /compact or task handoff, write a memory note `session_YYYY-MM-DD_<title>
 
 Add the note to `~/.claude/projects/C--SandyStudio/memory/` and link from `MEMORY.md` index.
 
-### Parallel-session discipline
+### Parallel-session discipline — PLAN.md is MASTER-ONLY (Director q6, 2026-06-27)
 
-When multiple worktrees are active, **one of them owns PLAN.md updates** per day. Default: whichever session is on `master` (or the one merging next). Other sessions read PLAN.md but don't write — they hand notes to the PLAN-owner session.
+**PLAN.md lives and is edited ONLY on `master`.** Feature branches / worktrees do NOT touch PLAN.md — this is what stops the merge conflicts and the "which copy is the truth" drift.
 
-Hard cap suggestion: **2 active parallel worktrees + main**. Dead worktrees (`claude/<name>` with no recent commits) should be deleted after Director approval.
+- **Writing:** update PLAN.md only via commits to `master` (tiny direct commits or a PLAN-only PR). A feature-branch code commit that leaves PLAN.md untouched is CORRECT, not a lapse.
+- **Reading latest from a branch:** read `master`'s copy (`git show origin/master:PLAN.md` or GitHub) — NOT your branch's stale working copy.
+- **Safety net:** `.gitattributes` sets `PLAN.md merge=union`, so a rare concurrent master edit auto-unions instead of hard-conflicting (history preserved).
+- **Enforcement:** the `plan-md-update-guard` hook nags about an un-updated PLAN.md only on `master`/`main` commits (branch-aware) — never on feature-branch commits.
+
+Hard cap: **2 active parallel worktrees + main**. Dead worktrees (`claude/<name>`, no recent commits) deleted after Director approval.
 
 ---
 

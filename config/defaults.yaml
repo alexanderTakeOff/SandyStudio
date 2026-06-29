@@ -21,6 +21,24 @@
 # ─────────────────────────────────────────────────────────────
 
 # ═════════════════════════════════════════════════════════════
+# STUDIO
+# Studio production-maturity gate. Consumed by: theme-development skills,
+# per-episode tooling. A DIFFERENT axis from CLAUDE.md Constitution version —
+# do not conflate. Governance summary: CLAUDE.md §6.
+# ═════════════════════════════════════════════════════════════
+
+studio:
+  version: "0.10"                       # arbitrary 0.x during research; Director bumps it
+  phase: "research"                     # research (<1.0) | mainstream (>=1.0) — derived from version
+  cross_episode_compatibility: false    # derived: (version >= 1.0)
+  # Gate semantics:
+  #   < 1.0  → research/experiment: legacy episodes (E01–E12) are training experiments,
+  #            NOT a catalog/ground-truth; no backward compatibility; per-episode
+  #            (cross-episode) continuity & novelty NOT enforced during development.
+  #   >= 1.0 → mainstream: per-episode compatibility (novelty/continuity/serialization)
+  #            turns ON; shipped episodes become ground truth.
+
+# ═════════════════════════════════════════════════════════════
 # PRODUCTION
 # Consumed by: ART-PROD
 # ═════════════════════════════════════════════════════════════

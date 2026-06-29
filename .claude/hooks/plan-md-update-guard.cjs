@@ -74,6 +74,17 @@ process.stdin.on('end', () => {
   const planTouched = allDocs.some(f => /(^|[\\/])PLAN\.md$/i.test(f));
   if (planTouched) return process.stdout.write(buf);
 
+  // Master-only PLAN.md rule (Director q6, 2026-06-27, CLAUDE.md §12): feature
+  // branches do NOT touch PLAN.md — only master/main does. So only nag when
+  // committing there; a feature-branch code commit legitimately leaves PLAN.md
+  // untouched and must pass silently.
+  try {
+    const branch = require('child_process')
+      .execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' })
+      .trim();
+    if (branch !== 'master' && branch !== 'main') return process.stdout.write(buf);
+  } catch (_) { /* branch undetectable → fall through to the warn */ }
+
   console.error(`[Hook] WARN: code change but PLAN.md not updated.`);
   console.error(`[Hook] CLAUDE.md §12 Ritual 1 — update PLAN.md '## CURRENT STATE' (Phase/Status/Next/Date) before commit.`);
   console.error(`[Hook] Files changed: ${allFiles.slice(0, 5).join(', ')}${allFiles.length > 5 ? `, +${allFiles.length - 5} more` : ''}`);

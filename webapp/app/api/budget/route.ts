@@ -66,7 +66,12 @@ export const GET = withApiHandler(async () => {
     const epLogs = logs.filter((l) => l.episode_id === e.id);
     const breakdown: Record<string, number> = {};
     for (const l of epLogs) {
-      breakdown[l.api_provider] = (breakdown[l.api_provider] ?? 0) + Number(l.cost_usd);
+      // Concierge (Polина) spend is folded into the episode TOTAL (Director
+      // 2026-06-27) but surfaced as its own distinct "concierge" line — not
+      // lumped into the raw provider bucket — so her orchestration cost is
+      // visible without consuming the production ceiling (D1: visible, no ceiling).
+      const bucket = l.agent_id === 'EXEC-CONC' ? 'concierge' : l.api_provider;
+      breakdown[bucket] = (breakdown[bucket] ?? 0) + Number(l.cost_usd);
     }
     return {
       episode_id: e.id,

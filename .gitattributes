@@ -1,0 +1,3 @@
+# Live status anchor — master-only (CLAUDE.md §12). Auto-union the rare
+# concurrent master edit instead of a hard merge conflict; history preserved.
+PLAN.md merge=union

@@ -105,20 +105,33 @@ export class AnthropicTextError extends Error {
   }
 }
 
-// Per-million-tokens USD rates. Source: Anthropic public pricing
-// (https://www.anthropic.com/pricing). Stored as a const map so cost computation
-// stays a pure function of (usage, model). When a new model lands, add a row.
+// Per-million-tokens USD rates. Stored as a const map so cost computation stays a
+// pure function of (usage, model). When a new model lands, add a row.
 //
-// We match by *prefix* — model ids include date suffixes (e.g. -20251001) that
-// we don't want to hardcode; the family id alone is enough for pricing.
+// Covers BOTH studio Anthropic agents AND the concierge (Polина) tiers — `cost.ts`
+// calls computeCostUsd on whatever model Polина runs on, so non-Anthropic ids MUST
+// be priced here or the cost ledger + the concierge cost-breaker silently default to
+// Sonnet (the 2026-06-27 mis-pricing bug). Sources: Anthropic public pricing
+// (anthropic.com/pricing); OpenAI (developers.openai.com/api/docs/pricing) + Gemini
+// (ai.google.dev/gemini-api/docs/pricing), verified 2026-06-27.
+//
+// We match by *prefix* — model ids include date suffixes (e.g. -20251001) we don't
+// hardcode; the family id alone is enough. ORDER MATTERS: find() returns the first
+// match, so a more-specific prefix (gpt-5.4-mini) MUST precede a less-specific one
+// (gpt-5.4).
 interface ModelRate {
   inputUsdPerMillion: number;
   outputUsdPerMillion: number;
 }
 const MODEL_RATES: ReadonlyArray<{ prefix: string; rate: ModelRate }> = [
-  { prefix: 'claude-haiku-4',  rate: { inputUsdPerMillion: 0.80, outputUsdPerMillion: 4.00 } },
-  { prefix: 'claude-sonnet-4', rate: { inputUsdPerMillion: 3.00, outputUsdPerMillion: 15.00 } },
-  { prefix: 'claude-opus-4',   rate: { inputUsdPerMillion: 15.00, outputUsdPerMillion: 75.00 } },
+  { prefix: 'claude-haiku-4',   rate: { inputUsdPerMillion: 0.80, outputUsdPerMillion: 4.00 } },
+  { prefix: 'claude-sonnet-4',  rate: { inputUsdPerMillion: 3.00, outputUsdPerMillion: 15.00 } },
+  { prefix: 'claude-opus-4',    rate: { inputUsdPerMillion: 15.00, outputUsdPerMillion: 75.00 } },
+  // Concierge (Polина) tiers — keep ahead-of-the-mini ordering in mind.
+  { prefix: 'gpt-5.5',          rate: { inputUsdPerMillion: 5.00, outputUsdPerMillion: 30.00 } },
+  { prefix: 'gpt-5.4-mini',     rate: { inputUsdPerMillion: 0.75, outputUsdPerMillion: 4.50 } },
+  { prefix: 'gpt-5.4',          rate: { inputUsdPerMillion: 2.50, outputUsdPerMillion: 15.00 } },
+  { prefix: 'gemini-2.5-flash', rate: { inputUsdPerMillion: 0.30, outputUsdPerMillion: 2.50 } },
 ];
 
 function rateFor(model: string): ModelRate {
