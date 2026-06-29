@@ -13,6 +13,7 @@ description: >-
   and picks. Series-aware: reads the series Bible for world / character physics /
   laws; never hardcodes a single series or video provider.
 flavor: process
+status: ACTIVE
 ---
 
 # Series Episode Theme Generation
