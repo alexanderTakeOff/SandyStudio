@@ -20,8 +20,18 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-28 (S2(a)+(b) + S3-measurement SHIPPED; themes merged; Polina→Opus для смоука)
+Date:   2026-06-30 (q9a Part B + Part A SHIPPED на master; §34 засеян в Themes; остался Bible-strip → Director LOCK)
 Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до конца фазы»).
+
+2026-06-30 (q9a Part B + Part A SHIPPED → master `0d7e1cc`,`67cf207`; unpushed). Part B (chat-гигиена): guard в
+  chat/route.ts не аппендит в ENDED-тред + endpoint/кнопка «Новый разговор» (архив+свежий, non-destructive).
+  Part A (темы как per-theme ассеты): `lib/api/series-themes.ts` (SPC-theme_{slug}, curation в metadata.theme_status
+  — без rename, без миграции) · route GET/POST/PATCH · SeriesThemesView сегментирован Approved/Draft/Invalidated +
+  карточки/inline-edit/Add · `proposeTheme` PA-tool (verbal-gated, закрыл «добавь в themes»). Seed: §34 Seed Bank
+  (13 → approved) + 3 E09-кандидата (кнопка лифта/авто-дверь/автомат → draft) ЖИВЫ в SS-S15. Verify: tsc·0/vitest
+  1040/replay·30; живой GET/POST/PATCH/DELETE-цикл + UI рендерит новый вид, консоль чистая. ОСТАЛОСЬ (Director-гейт):
+  Bible general_idea v02 минус §34 (DRAFT→Director ревьюит→Director LOCKает — hard limit). После — вернуть Polina
+  на gemini (сейчас Opus). NEXT: Bible-strip · push master? · E13 live.
 
 2026-06-28 (themes shipped via PR #30 + Polina-on-Opus смоук-подготовка). Theme-скиллы (generation+selection,
   `status:ACTIVE`), studio_version 0.10, Themes-UI влиты в origin/master (`b21a6e9`+`5ba3cec`). Реконсилил с
