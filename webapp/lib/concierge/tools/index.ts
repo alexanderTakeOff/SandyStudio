@@ -34,6 +34,7 @@ import {
 } from './animator';
 import { reorderShots } from './shot-reorder';
 import { castEpisode } from './cast';
+import { proposeTheme } from './themes';
 import { markAwaitingDirector } from './mark-awaiting';
 import { getWorkPlan, updateWorkPlan } from './work-plan';
 import type { OpenAIToolSchema, Tool } from './types';
@@ -126,6 +127,9 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // Phase D (2026-06-14) — ART-AD Casting stage. Polина drafts the episode cast
   // gallery from canon slugs; canon-existence HARD GATE; Director ratifies the DRAFT.
   castEpisode as unknown as AnyTool,
+  // q9a (2026-06-30) — Polина proposes ONE episode theme as DRAFT in the Themes
+  // surface (verbal-approval gated). Closes the smoke's "добавь в themes" no-op.
+  proposeTheme as unknown as AnyTool,
 ]);
 
 const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(

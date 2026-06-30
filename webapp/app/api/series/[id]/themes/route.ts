@@ -1,22 +1,15 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // app/api/series/[id]/themes/route.ts
-// GET  — fetch the series' episode-themes bank (single THM-bank markdown asset).
-// POST — create the bank doc (DRAFT) if it doesn't exist.
+// Per-theme assets surface (q9a, 2026-06-30). Replaces the single-bank editor.
 //
-// Episode themes are a SEPARATE surface from the Series Bible. We store the bank
-// as one series-scoped markdown asset.
+//   GET   — list this series' themes (one row per slug, with metadata.theme_status).
+//   POST  — create ONE theme asset { slug, description, content }, theme_status='draft'.
+//   PATCH — set metadata.theme_status (any→any) for a theme id — the curation move.
 //
-// file_type = `SPC-theme_bank` (a series-level spec doc). Two reasons it is NOT a
-// new `THM-*` prefix:
-//   1. assets.file_type has a CHECK constraint (migration 0017) limited to
-//      SCR|STB|IMG|VID|AUD|BIB|PRO|REV|SPC|STA|SBL — `THM` would be rejected at
-//      insert. Reusing an allowed prefix avoids a schema migration.
-//   2. `SPC-theme_bank` is NOT `SBL-%`, so the bank is invisible to the EREF
-//      canon-gate (countLockedBibleSections / validateCanonExists filter `SBL-%`),
-//      and it does not match the `SPC-shot_plan%` / `SPC-ref_plan%` pipeline
-//      filters. Series-scoped (episode_id null) → episode loaders ignore it.
-// The theme *entities* inside the content still carry `THEME-*` ids (Identifier
-// Convention) — that is a separate layer from this storage file_type.
+// Storage model + rationale live in lib/api/series-themes.ts. Each theme is its
+// own `SPC-theme_{slug}` asset (allowed prefix → no migration; not `SBL-%` → out
+// of every canon-gate). Curation status lives in metadata, NOT the asset status
+// enum, so a status flip never renames the file.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
@@ -25,45 +18,59 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
-import { buildProvenance, type AssetMetadataDoc } from '@/lib/api/series-bible';
+import {
+  buildProvenance,
+  stampLastModified,
+  type AssetMetadataDoc,
+  type AssetProvenance,
+} from '@/lib/api/series-bible';
+import {
+  listSeriesThemes,
+  themeFilename,
+  themeSlugify,
+  THEME_FILE_TYPE_PREFIX,
+  THEME_STATUSES,
+  type ThemeStatus,
+} from '@/lib/api/series-themes';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Single bank doc per series; allowed prefix, outside the `SBL-%` bible namespace. */
-const THEMES_FILE_TYPE = 'SPC-theme_bank';
+async function loadSeries(seriesId: string) {
+  const { supabase, user } = await requireDirector();
+  const { data: series, error } = await supabase
+    .from('series')
+    .select('id,code,title')
+    .eq('id', seriesId)
+    .maybeSingle();
+  if (error) throw new Error(`series fetch failed: ${error.message}`);
+  if (!series) throw new NotFoundError(`Series ${seriesId}`);
+  return { supabase, series, user };
+}
 
-const PostBody = z.object({
-  content: z.string().max(200_000).optional(),
-});
+// ── GET — list themes ─────────────────────────────────────────────────────────
 
 export const GET = withApiHandler(async (_req, ctx) => {
   const params = (await ctx?.params) as { id: string } | undefined;
   const seriesId = params?.id;
   if (!seriesId) throw new NotFoundError('Series');
 
-  const { supabase } = await requireDirector();
-
-  const { data: series, error: serr } = await supabase
-    .from('series')
-    .select('id,code,title')
-    .eq('id', seriesId)
-    .maybeSingle();
-  if (serr) throw new Error(`series fetch failed: ${serr.message}`);
-  if (!series) throw new NotFoundError(`Series ${seriesId}`);
-
-  const { data: assets, error } = await supabase
-    .from('assets')
-    .select('*')
-    .eq('series_id', seriesId)
-    .eq('file_type', THEMES_FILE_TYPE)
-    .order('version', { ascending: false });
-  if (error) throw new Error(`themes fetch failed: ${error.message}`);
+  const { supabase, series } = await loadSeries(seriesId);
+  const themes = await listSeriesThemes(supabase, seriesId);
 
   return apiOk({
     series: { id: series.id, code: series.code, title: series.title },
-    assets: assets ?? [],
+    themes,
   });
+});
+
+// ── POST — create one theme ─────────────────────────────────────────────────
+
+const PostBody = z.object({
+  slug: z.string().min(1).max(80).optional(),
+  description: z.string().max(2_000).optional(),
+  content: z.string().max(200_000).optional(),
+  theme_status: z.enum(['approved', 'draft', 'invalidated']).optional(),
 });
 
 export const POST = withApiHandler(async (req, ctx) => {
@@ -71,52 +78,53 @@ export const POST = withApiHandler(async (req, ctx) => {
   const seriesId = params?.id;
   if (!seriesId) throw new NotFoundError('Series');
 
-  const { user, supabase } = await requireDirector();
+  const { supabase, series, user } = await loadSeries(seriesId);
   const body = await parseJson(req, PostBody);
 
-  const { data: series, error: serr } = await supabase
-    .from('series')
-    .select('id,code')
-    .eq('id', seriesId)
-    .maybeSingle();
-  if (serr) throw new Error(`series fetch failed: ${serr.message}`);
-  if (!series) throw new NotFoundError(`Series ${seriesId}`);
+  // Slug derives from explicit arg, else the one-liner, else timestamp-free
+  // fallback. Must be non-empty after normalisation.
+  const rawSlug = body.slug ?? body.description ?? '';
+  const slug = themeSlugify(rawSlug);
+  if (!slug) {
+    throw new ValidationError('A theme needs a slug or a one-liner description to derive one from.');
+  }
 
-  // Same series + file_type → bump version (one logical bank, versioned).
-  const { data: existing } = await supabase
+  // One theme per slug — refuse to clobber an existing one (use PATCH/edit instead).
+  const fileType = `${THEME_FILE_TYPE_PREFIX}${slug}`;
+  const { data: clash } = await supabase
     .from('assets')
-    .select('version')
+    .select('id')
     .eq('series_id', seriesId)
-    .eq('file_type', THEMES_FILE_TYPE);
-  const nextVersion =
-    (existing ?? []).reduce((max, row) => Math.max(max, row.version ?? 0), 0) + 1;
+    .eq('file_type', fileType)
+    .maybeSingle();
+  if (clash) {
+    throw new ValidationError(`Theme "${slug}" already exists for this series.`);
+  }
 
-  const v = `v${String(nextVersion).padStart(2, '0')}`;
-  const filename = `${series.code}-SPC-theme_bank_main-${v}-DRAFT.md`;
-
-  // Provenance — Director-driven manual add (mirrors the Bible create path).
+  const themeStatus: ThemeStatus = body.theme_status ?? 'draft';
+  const filename = themeFilename(series.code, slug);
   const provenance = buildProvenance({
     by: user.email ?? user.id,
     byKind: 'director',
     source: 'manual_add',
   });
-  const seedMeta: AssetMetadataDoc = { provenance };
+  const seedMeta: AssetMetadataDoc = { provenance, theme_status: themeStatus };
 
   const { data: inserted, error: ierr } = await supabase
     .from('assets')
     .insert({
       series_id: seriesId,
       episode_id: null,
-      file_type: THEMES_FILE_TYPE,
+      file_type: fileType,
       filename,
-      description: null,
+      description: body.description ?? null,
       content: body.content ?? null,
       staging_path: null,
       drive_file_id: null,
       drive_web_view_url: null,
       drive_path: null,
       status: 'DRAFT',
-      version: nextVersion,
+      version: 1,
       agent_id: 'Director',
       metadata: seedMeta as unknown as Record<string, unknown>,
     } as never)
@@ -126,22 +134,85 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (ierr) {
     if (ierr.code === '23514') {
       throw new ValidationError(
-        'Themes asset must have series_id and no episode_id (constraint violation).',
+        'Theme asset must have series_id and no episode_id (constraint violation).',
       );
     }
-    throw new Error(`themes insert failed: ${ierr.message}`);
+    throw new Error(`theme insert failed: ${ierr.message}`);
   }
 
   await supabase.from('activity_events').insert({
     event_type: 'asset_created',
     severity: 'info',
-    title: `Themes: created ${filename}`,
-    description: `Director ${user.email ?? user.id} created the episode-themes bank`,
+    title: `Theme: created ${slug}`,
+    description: `Director ${user.email ?? user.id} created theme "${slug}" (${themeStatus})`,
     actor: user.id,
     asset_id: inserted.id,
     episode_id: null,
-    metadata: { kind: 'themes_create' },
+    metadata: { kind: 'theme_create', slug, theme_status: themeStatus },
   } as never);
 
   return apiOk(inserted);
+});
+
+// ── PATCH — set theme_status (the curation move) ─────────────────────────────
+
+const PatchBody = z.object({
+  themeId: z.string().uuid(),
+  theme_status: z.enum(['approved', 'draft', 'invalidated']),
+});
+
+export const PATCH = withApiHandler(async (req, ctx) => {
+  const params = (await ctx?.params) as { id: string } | undefined;
+  const seriesId = params?.id;
+  if (!seriesId) throw new NotFoundError('Series');
+
+  const { supabase, series, user } = await loadSeries(seriesId);
+  const body = await parseJson(req, PatchBody);
+  if (!THEME_STATUSES.includes(body.theme_status)) {
+    throw new ValidationError(`theme_status must be one of ${THEME_STATUSES.join(' | ')}.`);
+  }
+
+  // Fetch the theme, scoped to this series (no cross-series PATCH).
+  const { data: theme, error: terr } = await supabase
+    .from('assets')
+    .select('id, metadata, file_type, series_id')
+    .eq('id', body.themeId)
+    .eq('series_id', seriesId)
+    .maybeSingle();
+  if (terr) throw new Error(`theme fetch failed: ${terr.message}`);
+  if (!theme || !theme.file_type.startsWith(THEME_FILE_TYPE_PREFIX)) {
+    throw new NotFoundError(`Theme ${body.themeId} for series ${series.code}`);
+  }
+
+  const prevMeta = (theme.metadata ?? {}) as AssetMetadataDoc;
+  const prevProvenance = prevMeta.provenance;
+  const nextProvenance: AssetProvenance | undefined = prevProvenance
+    ? stampLastModified(prevProvenance, user.email ?? user.id, 'director')
+    : undefined;
+  const nextMeta: AssetMetadataDoc = {
+    ...prevMeta,
+    theme_status: body.theme_status,
+    ...(nextProvenance ? { provenance: nextProvenance } : {}),
+  };
+
+  const { data: updated, error: uerr } = await supabase
+    .from('assets')
+    .update({ metadata: nextMeta as unknown as Record<string, unknown> } as never)
+    .eq('id', body.themeId)
+    .select('*')
+    .single();
+  if (uerr) throw new Error(`theme status update failed: ${uerr.message}`);
+
+  await supabase.from('activity_events').insert({
+    event_type: 'asset_updated',
+    severity: 'info',
+    title: `Theme: status → ${body.theme_status}`,
+    description: `Director ${user.email ?? user.id} moved a theme to ${body.theme_status}`,
+    actor: user.id,
+    asset_id: body.themeId,
+    episode_id: null,
+    metadata: { kind: 'theme_status_change', theme_status: body.theme_status },
+  } as never);
+
+  return apiOk(updated);
 });
