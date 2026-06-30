@@ -23,7 +23,7 @@ import {
 } from 'react';
 import { usePathname } from 'next/navigation';
 import {
-  MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles,
+  MessageCircle, Mic, MicOff, Send, Volume2, VolumeX, X, Sparkles, MessageSquarePlus,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
@@ -1047,6 +1047,40 @@ export function ConciergePanel() {
     abortControllerRef.current?.abort();
   }
 
+  // q9a B2 (2026-06-30) — "Новый разговор": archive the current thread
+  // (ended_at) and open a fresh one bound to the open episode. Non-destructive —
+  // history is preserved in the DB, this just resets the live context so chat
+  // stops dragging a months-old thread along. Confirm first (it clears the view).
+  async function handleNewConversation() {
+    if (streaming) return;
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm(
+        'Начать новый разговор? Текущий будет архивирован (история сохранится), а чат очистится.',
+      );
+      if (!ok) return;
+    }
+    try {
+      const res = await fetch('/api/concierge/new-thread', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          threadId: threadId ?? undefined,
+          episodeId: openEpisodeId ?? undefined,
+        }),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { threadId?: string };
+      if (!data.threadId) return;
+      setThreadId(data.threadId);
+      try { localStorage.setItem(THREAD_KEY, data.threadId); } catch { /* ignore */ }
+      setMessages([]);
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[prod-assistant] new conversation failed', err);
+    }
+  }
+
   async function toggleVoice() {
     setMicError(null);
     const Ctor = getSpeechRecognition();
@@ -1285,6 +1319,15 @@ export function ConciergePanel() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={handleNewConversation}
+              disabled={streaming}
+              aria-label="Новый разговор"
+              title="Новый разговор (архивирует текущий)"
+              className="h-8 w-8 rounded-md text-text-secondary hover:bg-[var(--panel-hover-bg)] hover:text-text-primary flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <MessageSquarePlus size={16} />
+            </button>
             <button
               onClick={toggleTts}
               aria-label={ttsEnabled ? 'Disable voice replies' : 'Enable voice replies'}

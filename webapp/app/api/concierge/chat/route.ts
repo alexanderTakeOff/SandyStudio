@@ -180,7 +180,11 @@ async function handleChatPOST(req: Request) {
       threadId = thread.id;
     } else {
       const existing = await getThread(supabase, threadId);
-      if (!existing) {
+      // q9a B1 (2026-06-30): never append to a non-existent OR ENDED thread.
+      // A long-lived browser session kept the client-sent threadId of a months-old
+      // ENDED thread (E12 `bdbdafcf`) and chat POSTs were landing there. Falling
+      // through to createThread starts a fresh one. Mirrors chat-internal/route.ts.
+      if (!existing || existing.ended_at !== null) {
         const thread = await createThread(supabase, {
           episodeId,
           activeMode: mode,
