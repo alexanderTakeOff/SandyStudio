@@ -14,6 +14,7 @@ description: >-
   `series-episode-theme-generation` aims at. Series-aware: reads the series Bible;
   provider-agnostic — judges capability invariants, never a named provider.
 flavor: process
+status: ACTIVE
 ---
 
 # Series Episode Theme Selection
@@ -63,7 +64,13 @@ purpose: checkable, unlike a vanity score.
    beat. **FAIL** themes that depend on internal-sand hand-waving (spilling, "cement"
    from water, sloshing) or any physics-break without a real cause — the Bible
    over-hyperbolizes internal sand; do not inherit that. A failure caused by an
-   external object beats one hand-waved onto his interior.
+   external object beats one hand-waved onto his interior. **Sandy-specificity for
+   tier A can come from his FORM (rubber / glass / top-heavy / transparent) OR his
+   CHARACTER — his motives, behavioural patterns and social drives (the control-freak
+   / vain nature behind the series laws, gate 4).** Demote to B only if **neither** is
+   load-bearing — i.e. the theme would play identically with a generic character AND
+   engages none of his motives. Don't over-index on form: Tom & Jerry runs on
+   character, not anatomy.
 6. **Silent readability** — works with zero dialogue, signs, or wordplay.
 7. **Production simplicity** — one main location, one main system/prop, minimal
    background, stable camera, reusable assets, clean start/end poses. Penalise
