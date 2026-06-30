@@ -20,8 +20,16 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-28 (S2(a)+(b) + S3-measurement SHIPPED — дабл-фаер + billing-петля + gate-лог)
+Date:   2026-06-28 (S2(a)+(b) + S3-measurement SHIPPED; themes merged; Polina→Opus для смоука)
 Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до конца фазы»).
+
+2026-06-28 (themes shipped via PR #30 + Polina-on-Opus смоук-подготовка). Theme-скиллы (generation+selection,
+  `status:ACTIVE`), studio_version 0.10, Themes-UI влиты в origin/master (`b21a6e9`+`5ba3cec`). Реконсилил с
+  локальным master (мой избыточный merge `51d0022` + S2/S3) → merge `e8dadab`, без конфликтов, tsc·0/vitest 1040.
+  Носитель-тест: `selectSkills` отдаёт оба theme-скилла ACTIVE (2/2). Polina переведена на Opus 4.8
+  (`CONCIERGE_PROVIDER=anthropic`, cap 40 + $20/day breaker + SPIN + S2(b) escalate) для смоука судейства тем.
+  ⚠️ Наблюдение: в ACTIVE-селекторе ТОЛЬКО 2 скилла — прочие проектные скиллы без `status:ACTIVE` (грузятся
+  раннерами, не селектором). NEXT: чат-смоук в Полине (getSkill+follow?), вернуть на gemini после.
 
 2026-06-28 (S3-measurement SHIPPED → master `c8d412c`, Director q2a). decideGate choke-point + gate_decision_log.
   `gate-decision.ts`: build-exhaustive GATE_CLASS Record<AgentId> (mechanical/creative/hard_limit — новый агент
