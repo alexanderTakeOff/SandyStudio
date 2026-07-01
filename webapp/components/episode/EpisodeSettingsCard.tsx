@@ -19,6 +19,7 @@ import { Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { PeekHint } from '@/components/ui/PeekHint';
 import { EpisodeGenerationConfig } from './EpisodeGenerationConfig';
+import { readPipelineMode, type PipelineMode } from '@/lib/api/pipeline-mode';
 
 interface EpisodeSettingsCardProps {
   episodeId: string;
@@ -32,6 +33,7 @@ interface EpisodeSettingsCardProps {
 
 interface SettingsState {
   anchor_chain_enabled: boolean;
+  pipeline_mode: PipelineMode;
   budget_ceiling: number | null;
   budget_approved: boolean;
 }
@@ -55,6 +57,7 @@ export function EpisodeSettingsCard({
 }: EpisodeSettingsCardProps) {
   const [state, setState] = useState<SettingsState>({
     anchor_chain_enabled: readAnchorChainEnabled(initialMetadata ?? null),
+    pipeline_mode: readPipelineMode(initialMetadata ?? null),
     budget_ceiling: initialBudgetCeiling,
     budget_approved: readBudgetApproved(initialMetadata ?? null),
   });
@@ -82,6 +85,7 @@ export function EpisodeSettingsCard({
           const cap = j.data.budget_ceiling ?? null;
           setState({
             anchor_chain_enabled: readAnchorChainEnabled(j.data.metadata ?? null),
+            pipeline_mode: readPipelineMode(j.data.metadata ?? null),
             budget_ceiling: cap,
             budget_approved: readBudgetApproved(j.data.metadata ?? null),
           });
@@ -151,6 +155,30 @@ export function EpisodeSettingsCard({
     }
   }
 
+  async function setPipelineMode(next: PipelineMode) {
+    const previous = state.pipeline_mode;
+    if (next === previous) return;
+    setState((s) => ({ ...s, pipeline_mode: next }));
+    setPending(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/settings`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pipeline_mode: next }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      setState((s) => ({ ...s, pipeline_mode: previous }));
+      setError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function toggleAnchorChain(next: boolean) {
     const previous = state.anchor_chain_enabled;
     setState((s) => ({ ...s, anchor_chain_enabled: next }));
@@ -204,6 +232,40 @@ export function EpisodeSettingsCard({
       {!collapsed && (
       <CardBody>
         <div className="space-y-3">
+          {/* S-reorder (2026-07-01): pipeline mode. Sequential = today's
+              refs→animatic→video. Parallel = 2 refs→2 video pilots→fanout, per-ref
+              canon-gate, video not gated on an animatic. Switchable mid-run. */}
+          <div>
+            <div className="text-sm font-medium text-text-primary">Pipeline mode</div>
+            <div className="text-xs text-text-muted mt-0.5 leading-relaxed">
+              <strong>Sequential</strong> — all references → animatic review → video (default).{' '}
+              <strong>Parallel</strong> — 2 refs → 2 video pilots → approve → fan out the rest;
+              per-reference canon-check replaces the batch animatic review; video is not gated on an
+              animatic. Switchable mid-run (Sequential → Parallel is the clean direction).
+            </div>
+            <div className="mt-2 inline-flex rounded-md border border-glass overflow-hidden">
+              {(['sequential', 'parallel'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => void setPipelineMode(mode)}
+                  disabled={pending}
+                  aria-pressed={state.pipeline_mode === mode}
+                  className={
+                    'px-3 py-1 text-xs font-medium capitalize disabled:opacity-50 ' +
+                    (state.pipeline_mode === mode
+                      ? 'bg-[var(--accent-primary)] text-white'
+                      : 'bg-[var(--bg-elevated)] text-text-muted hover:text-text-primary')
+                  }
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-glass pt-3" />
+
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"

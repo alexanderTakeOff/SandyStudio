@@ -55,6 +55,11 @@ const GenerationConfig = z
 const Body = z
   .object({
     anchor_chain_enabled: z.boolean().optional(),
+    // S-reorder (2026-07-01): per-episode pipeline mode. 'sequential' = today's
+    // refs→animatic→video flow (default); 'parallel' = 2 refs→2 video pilots→
+    // fanout, per-ref canon-gate, video not gated on an animatic. Metadata (no
+    // migration). Not a hard limit → any Director may set it.
+    pipeline_mode: z.enum(['sequential', 'parallel']).optional(),
     // F13 (2026-07-01): Director's approval of the episode budget. Lives in
     // metadata (no migration). Category-A hard limit → HUMAN Director only
     // (guarded below). Gate.ts blocks all AGENT_RUN work until this is true.
@@ -125,6 +130,9 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   const patch: Record<string, unknown> = {};
   if (body.anchor_chain_enabled !== undefined) {
     patch.anchor_chain_enabled = body.anchor_chain_enabled;
+  }
+  if (body.pipeline_mode !== undefined) {
+    patch.pipeline_mode = body.pipeline_mode;
   }
   // F13: budget approval is a Category-A hard limit — HUMAN Director only
   // (the EXEC-DIR-AI service token is rejected by assertHumanDirector).

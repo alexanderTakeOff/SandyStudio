@@ -43,6 +43,7 @@ import {
   stopBeforeErefEnabled,
 } from '@/lib/agents/chain-flags';
 import { logEvent } from '@/lib/api/events';
+import { readPipelineMode, type PipelineMode } from '@/lib/api/pipeline-mode';
 
 export type AssetForChain = {
   id: string;
@@ -186,6 +187,44 @@ async function episodeHasAnyAsset(
     .eq('episode_id', episodeId)
     .like('file_type', `${fileTypePrefix}%`);
   return (count ?? 0) > 0;
+}
+
+/**
+ * S-reorder (2026-07-01): read the episode's pipeline mode. Absent/garbage ⇒
+ * 'sequential' (the existing behaviour). Read lazily only inside the parallel-
+ * relevant branches so the sequential path pays no extra query.
+ */
+async function readEpisodePipelineMode(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+): Promise<PipelineMode> {
+  const { data } = await supabase
+    .from('episodes')
+    .select('metadata')
+    .eq('id', episodeId)
+    .maybeSingle();
+  return readPipelineMode((data as { metadata?: unknown } | null)?.metadata);
+}
+
+/**
+ * Per-shot idempotency for the parallel ref→video edge: has this shot already
+ * got a Shot Plan? Prevents a re-approved reference from spawning a duplicate
+ * Video Designer run.
+ */
+async function shotHasPlan(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+  shotId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('assets')
+    .select('metadata,content')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'SPC-shot_plan%');
+  for (const r of (data ?? []) as Array<{ metadata?: unknown; content?: string | null }>) {
+    if (resolveShotId({ metadata: r.metadata, content: r.content }) === shotId) return true;
+  }
+  return false;
 }
 
 /**
@@ -869,6 +908,29 @@ export async function computeNextEvents(
     }
   }
 
+  // ── Parallel mode (S-reorder 2026-07-01): an APPROVED episode reference fires
+  //    the shot's Video Designer directly — ref → shot plan → critic → video —
+  //    WITHOUT waiting for a whole-episode animatic. The pilot-2 count is bounded
+  //    upstream (the Designer only fanned 2 shots), so this naturally yields the
+  //    2 video pilots; the pilot-video branch (below) releases the fanout for the
+  //    rest. Sequential mode is untouched (refs wait for the animatic gate).
+  if (ft.startsWith('IMG-episode_ref') && isShotReferenceV2((asset as { metadata?: unknown }).metadata)) {
+    if ((await readEpisodePipelineMode(supabase, ep)) === 'parallel') {
+      const shotId = (asset.metadata as unknown as { shot_reference?: { shot_id?: unknown } })
+        ?.shot_reference?.shot_id;
+      if (
+        typeof shotId === 'string' &&
+        shotId.length > 0 &&
+        !(await shotHasPlan(supabase, ep, shotId))
+      ) {
+        events.push({
+          name: 'sandystudio/exec-vanim/plan',
+          data: { episodeId: ep, shotId },
+        });
+      }
+    }
+  }
+
   // ── Episode references OR music APPROVED → EXEC-EDIT (animatic)
   // Phase A.2 PR γ: animatic creation now waits for BOTH approved EREF v1
   // (or via /eref/advance for v2) AND approved music. This unblocks
@@ -1097,6 +1159,47 @@ export async function computeNextEvents(
     // (Phase A.2 PR γ) MGEN no longer fires here — moved to REV-world_check
     // approval so music is ready BEFORE animatic. See branch above.
     } // end non-anchor (else) branch
+  }
+
+  // ── Parallel mode (S-reorder 2026-07-01): the APPROVED pilot videos release
+  //    the fanout. Once the 2 pilot videos are approved, the remaining shots'
+  //    Designers fire (stashed in `designer_fanout_pending` by the REV-world_check
+  //    pilot branch); each remaining ref then flows ref→video via the parallel
+  //    edge above. Fires once (`parallel_fanout_fired` guard). Sequential: no-op.
+  if (ft.startsWith('VID-shot')) {
+    if ((await readEpisodePipelineMode(supabase, ep)) === 'parallel') {
+      const { data: epRow } = await supabase
+        .from('episodes')
+        .select('metadata')
+        .eq('id', ep)
+        .maybeSingle();
+      const meta = ((epRow as { metadata?: Record<string, unknown> | null } | null)
+        ?.metadata ?? {}) as Record<string, unknown>;
+      const alreadyFired = meta.parallel_fanout_fired === true;
+      const pending = Array.isArray(meta.designer_fanout_pending)
+        ? (meta.designer_fanout_pending as unknown[]).filter(
+            (s): s is string => typeof s === 'string' && s.length > 0,
+          )
+        : [];
+      const PILOT_COUNT_PARALLEL = 2;
+      const approvedVideos = await countApproved(supabase, ep, 'VID-shot');
+      if (!alreadyFired && pending.length > 0 && approvedVideos >= PILOT_COUNT_PARALLEL) {
+        for (const shotId of pending) {
+          events.push({
+            name: 'sandystudio/exec-eref-designer/plan',
+            data: { episodeId: ep, shotId },
+          });
+        }
+        try {
+          await supabase
+            .from('episodes')
+            .update({ metadata: { ...meta, parallel_fanout_fired: true } as never } as never)
+            .eq('id', ep);
+        } catch {
+          /* non-fatal — guard is best-effort; duplicate designers dedup downstream */
+        }
+      }
+    }
   }
 
   // ── Last VID-shot APPROVED → if all shots have an APPROVED row, fire

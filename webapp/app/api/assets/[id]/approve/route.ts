@@ -37,6 +37,7 @@ import {
   type SupabaseClientLike,
 } from '@/lib/agents/next-events';
 import { EPISODE_CAST_FILE_TYPE, syncAppearsIn } from '@/lib/agents/episode-cast';
+import { collectRefCriticNotes, mergeRevisionNote } from '@/lib/api/critic-notes';
 import {
   resolveSlotDescriptor,
   demoteSiblingApproved,
@@ -385,19 +386,40 @@ export const POST = withApiHandler(async (req, ctx) => {
       firedEvents.push({ name: reviseEvent, ids });
     }
 
-    // EREF reference image revised (Director directive 2026-06-23): a per-shot
-    // image has no whole-stage rerun, so `revisionEventForAsset` returns null for
-    // it — which left a Director's Revise note recorded but INERT ("кануло в
-    // лету"). Route the note to the DESIGNER instead: it re-authors the Plan with
-    // the note as hard acceptance criteria (the runner already injects
-    // revisionNote — episode-reference-designer.ts §"HARD ACCEPTANCE CRITERIA"),
-    // then the existing chain re-runs (Plan → Critic → approve → re-render). This
-    // is exactly what the `regenerateRefPlan` PA tool fires — reused, not new.
+    // EREF reference / plan revised (Director directive 2026-06-23, extended
+    // 2026-07-01): route the Director's Revise note to the DESIGNER so it
+    // re-authors the Plan with the note as hard acceptance criteria (the runner
+    // injects revisionNote — episode-reference-designer.ts §"HARD ACCEPTANCE
+    // CRITERIA"), then the chain re-runs (Plan → Critic → approve → re-render).
+    // This is exactly what the `regenerateRefPlan` PA tool fires — reused, not new.
+    //
+    // Covers three shapes that all re-author via the same Designer event:
+    //   - IMG-episode_ref / IMG-anchor : a rendered per-shot reference.
+    //   - SPC-ref_plan(-<shot>)        : the plan itself. Was a DEAD-END —
+    //     revisionEventForAsset has no mapping for it, so a plan Revise sat in
+    //     REVISION with nobody re-firing (the "casting DRAFT dead-end" pattern).
+    //
+    // 2026-07-01 (Director): the persisted critic remarks (EPREV acceptance_criteria
+    // + CREAD readability) are now MERGED into the note. Previously only the
+    // Director's terse note reached the Designer, so the critics' hard contract
+    // was silently dropped on a manual Revise. collectRefCriticNotes reuses the
+    // acceptance_criteria/failed_checks the critics already persist.
     const ft = typeof asset.file_type === 'string' ? asset.file_type : '';
-    if (ft.startsWith('IMG-episode_ref') || ft.startsWith('IMG-anchor')) {
+    const isRefRevision =
+      ft.startsWith('IMG-episode_ref') ||
+      ft.startsWith('IMG-anchor') ||
+      ft.startsWith('SPC-ref_plan');
+    if (isRefRevision) {
+      const meta = asset.metadata as { shot_id?: unknown } | null;
       const shotIdFromMeta = isShotReferenceV2(asset.metadata)
         ? (asset.metadata as unknown as { shot_reference: ShotReferenceContract })
             .shot_reference.shot_id
+        : typeof meta?.shot_id === 'string'
+          ? meta.shot_id
+          : null;
+      // SPC-ref_plan-<shot_id> encodes the shot in the file_type suffix.
+      const shotIdFromType = ft.startsWith('SPC-ref_plan-')
+        ? ft.slice('SPC-ref_plan-'.length)
         : null;
       // Fallback: the canonical SH token from the filename. getStoryboardShotById
       // resolves a bare/mis-prefixed SH token to the canonical shot (the
@@ -406,14 +428,21 @@ export const POST = withApiHandler(async (req, ctx) => {
         typeof asset.filename === 'string'
           ? asset.filename.match(/sh\d+/i)?.[0]?.toUpperCase() ?? null
           : null;
-      const shotId = shotIdFromMeta || shotIdFromName;
+      const shotId = shotIdFromMeta || shotIdFromType || shotIdFromName;
       if (shotId) {
+        // Merge the persisted critic remarks into the note (2026-07-01 fix).
+        const criticBullets = await collectRefCriticNotes(
+          supabase,
+          asset.episode_id,
+          shotId,
+        );
+        const revisionNote = mergeRevisionNote(body.note, criticBullets);
         const { ids } = await inngest.send({
           name: 'sandystudio/exec-eref-designer/plan',
           data: {
             episodeId: asset.episode_id,
             shotId,
-            revisionNote: body.note ?? null,
+            revisionNote,
           } as never,
         });
         firedEvents.push({ name: 'sandystudio/exec-eref-designer/plan', ids });

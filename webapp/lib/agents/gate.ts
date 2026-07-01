@@ -19,6 +19,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
 import { enforceMode } from '../governance';
 import { assertMediaResolves } from './media-preflight';
+import { readPipelineMode } from '../api/pipeline-mode';
 import type { AgentId, GateResult, GovernanceAction } from './types';
 
 // ── Agent dependency declarations ────────────────────────────────────────────
@@ -476,6 +477,34 @@ export async function validateAgentInputs(
       effectiveRequired = [
         { fileTypePrefix: 'IMG-anchor', minCount: 1, label: 'Approved anchor frames' },
       ];
+    }
+  }
+
+  // ── Step 0a: pipeline-mode gate override (S-reorder 2026-07-01) ────────────
+  // EXEC-VGEN (video) normally requires an APPROVED VID-animatic — the sequential
+  // pacing gate. In PARALLEL mode video flows straight from an approved shot plan
+  // (2 pilots → fanout); per-reference canon-gating + the pilot-stop are the
+  // quality gates instead, and there is no pre-approved animatic to wait on. Drop
+  // the animatic requirement in parallel mode. Sequential / absent flag ⇒ the
+  // requirement is kept ⇒ replay-pilot and every existing episode are unchanged.
+  if (agentId === 'EXEC-VGEN') {
+    let parallel = false;
+    try {
+      const { data: epRow } = await supabase
+        .from('episodes')
+        .select('metadata')
+        .eq('id', episodeId)
+        .maybeSingle();
+      parallel =
+        readPipelineMode((epRow as { metadata?: unknown } | null)?.metadata) === 'parallel';
+    } catch {
+      // Fail-safe: on a metadata read error keep the static (animatic) gate.
+      parallel = false;
+    }
+    if (parallel) {
+      effectiveRequired = spec.required.filter(
+        (d) => d.fileTypePrefix !== 'VID-animatic',
+      );
     }
   }
 
