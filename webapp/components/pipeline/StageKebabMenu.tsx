@@ -35,6 +35,10 @@ import type { PipelineNodeState, PipelineStageId } from '@/lib/api/pipeline-stag
 const STAGE_PREFIX_MAP: Record<string, string[]> = {
   // Topic 3 (2026-06-02) — per-agent rows, 19-row model
   brief:               ['SPC-brief'],
+  // F-casting (2026-07-01): casting stage was missing here, so "Approve all in
+  // stage" resolved an empty prefix set → dropped every row → never POSTed →
+  // SPC-episode_cast stayed REVIEW no matter how often the Director clicked.
+  casting:             ['SPC-episode_cast'],
   screenwriter:        ['SCR'],
   script_critic:       ['REV-script_qa'],
   storyboarder:        ['STB'],

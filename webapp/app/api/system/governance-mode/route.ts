@@ -11,9 +11,42 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { ValidationError, NotFoundError } from '@/lib/api/errors';
+import { resolveEffectiveConciergeMode } from '@/lib/concierge/resolve-mode';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+// F11 (2026-07-01): the topbar badge previously read ONLY the global
+// app_config default and never the in-focus episode's own governance_mode —
+// so it showed "Mode 2" while an episode ran Mode 3 and cascaded. This GET
+// returns the EFFECTIVE mode (episode override → global default) so the badge
+// reflects what the pipeline actually runs under. `?episodeId=<uuid>` optional.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const GET = withApiHandler(async (req) => {
+  const { supabase } = await requireDirector();
+  const episodeId = new URL(req.url).searchParams.get('episodeId');
+
+  const { data: cfg } = await supabase
+    .from('app_config')
+    .select('value')
+    .eq('scope', 'system')
+    .eq('key', 'governance_mode_default')
+    .maybeSingle();
+  const globalMode = Number((cfg as { value?: unknown } | null)?.value) || 1;
+
+  if (!episodeId || !UUID_RE.test(episodeId)) {
+    return apiOk({ effective: globalMode, global: globalMode, episode: null, scope: 'global' });
+  }
+  const effective = Number(await resolveEffectiveConciergeMode(supabase, episodeId));
+  const { data: ep } = await supabase
+    .from('episodes')
+    .select('governance_mode')
+    .eq('id', episodeId)
+    .maybeSingle();
+  const episodeMode = (ep as { governance_mode?: number } | null)?.governance_mode ?? null;
+  return apiOk({ effective, global: globalMode, episode: episodeMode, scope: 'episode' });
+});
 
 const GovernanceBody = z.object({
   targetMode: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),

@@ -391,6 +391,21 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
           )}
         </>
       )}
+      {/* F-casting (2026-07-01): the episode cast (SPC-episode_cast) rendered as
+          read-only text with no Approve control, so the Director could not
+          approve it from the preview at all. Cast approval is what releases the
+          Writer (next-events.ts) — mount the shared review buttons here. */}
+      {asset.file_type === 'SPC-episode_cast' &&
+        (asset.status === 'REVIEW' || asset.status === 'REVISION') && (
+          <PilotApproveButtons
+            assetId={asset.id}
+            variant="review"
+            onChanged={() => {
+              void mutate();
+              onAssetChanged?.();
+            }}
+          />
+        )}
       <DriveBadge asset={asset} />
     </div>
   );

@@ -42,6 +42,17 @@ export interface ToolContext {
    * Director-typed chat (cookieHeader is used there).
    */
   authHeader?: string | null;
+  /**
+   * E13 (2026-07-01): authorized-principal operational override. When an
+   * authorized team-chat nudge (metadata.authorized_principal) drives Polina in
+   * a STRICT mode (1/2/2.5), operational mutating tools are permitted — the
+   * nudge carries the same trust the approval layer already extends
+   * (approval-check.ts checkVerbalApproval). Creative gate approvals
+   * (approveAsset) stay Director-only so the human approval gates survive.
+   * Undefined in normal Director-typed chat and in bold modes (which use their
+   * own boldMode branch).
+   */
+  authorizedOperational?: boolean;
   /** Origin used for internal fetch (defaults to NEXT_PUBLIC_APP_URL). */
   appOrigin: string;
 }

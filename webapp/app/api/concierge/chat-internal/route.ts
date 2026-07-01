@@ -51,7 +51,11 @@ import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
 import { TOOLS, findTool, openaiSchemas, type ToolContext } from '@/lib/concierge/tools';
-import { isHardLimitTool } from '@/lib/concierge/approval-check';
+import {
+  isHardLimitTool,
+  decideAutoReactMutation,
+  CREATIVE_APPROVAL_TOOL_NAMES,
+} from '@/lib/concierge/approval-check';
 import type { ConciergeMode } from '@/lib/concierge/types';
 import { resolveEffectiveConciergeMode } from '@/lib/concierge/resolve-mode';
 import {
@@ -109,6 +113,17 @@ const READ_ONLY_TOOL_SCHEMAS = openaiSchemas.filter((s) =>
 const BOLD_MODES: ReadonlySet<ConciergeMode> = new Set(['3', '4']);
 const BOLD_TOOL_SCHEMAS = openaiSchemas.filter(
   (s) => !isHardLimitTool(s.function.name),
+);
+
+/**
+ * E13: tool surface for an authorized-principal nudge in a STRICT mode —
+ * everything a bold-mode nudge may fire, MINUS the creative gate approvals.
+ * Lets Тео nudge the operational dispatch points (createEpisode, castEpisode,
+ * triggerAgent, regenerate*, eref advance) while the Director keeps every
+ * creative APPROVE. Cached at module load like the other schema sets.
+ */
+const AUTHORIZED_OP_TOOL_SCHEMAS = BOLD_TOOL_SCHEMAS.filter(
+  (s) => !CREATIVE_APPROVAL_TOOL_NAMES.has(s.function.name),
 );
 
 const Body = z.object({
@@ -362,6 +377,14 @@ export async function POST(req: Request) {
   // expose + permit the mutating tools (minus hard limits). Strict modes keep
   // the read-only surface and the propose-don't-act instruction.
   const boldMode = BOLD_MODES.has(mode);
+  // E13 (2026-07-01): authorized-principal operational override. A team-chat
+  // nudge stamped metadata.authorized_principal (Pascal / AI-EP / Тео holding
+  // EXEC_DIR_AI_TOKEN) may fire OPERATIONAL mutating tools even in a strict
+  // mode, so Тео can drive the ~4 dispatch points (create/cast/eref-advance/
+  // regen) while the Director keeps every creative gate approve. Creative
+  // approvals (CREATIVE_APPROVAL_TOOL_NAMES) are excluded from the surface AND
+  // hard-blocked in runAutoReactTool below. Bold modes keep their own branch.
+  const authorizedOperational = !boldMode && directMessage?.authorized === true;
   const userInstruction = !allowTools
     ? 'Read your prior assistant turn (above). Either (a) take the next concrete sub-step yourself if the original Director directive logically covers it — don\'t wait for new approval; or (b) re-ask Director more explicitly with a fresh q-format question and a tighter framing. Do not just echo your previous wait. Do not request tools.'
     : isDirectAddress
@@ -370,7 +393,9 @@ export async function POST(req: Request) {
           `FIRST: acknowledge ${directAuthor} by name in one short line.`,
           boldMode
             ? `THEN EXECUTE exactly what the message asks as your next concrete tool action(s) NOW. You are in Mode ${mode} with delegated authority — do NOT wait for a separate Director token. If it names a shot_key and tools (approveAsset / triggerAgent / etc.), call them THIS turn. Do not merely read getWorkPlan and stop.`
-            : `THEN, because you are in Mode ${mode} (not a bold/delegated mode), you cannot fire mutating tools yourself — state that explicitly to ${directAuthor} and propose the exact action for the Director to confirm.`,
+            : authorizedOperational
+              ? `THEN EXECUTE the OPERATIONAL action(s) the message asks for NOW (e.g. createEpisode, castEpisode, triggerAgent, regenerate*, eref advance) — this is an authorized order from ${directAuthor} and you may fire those tools THIS turn even though Mode ${mode} is strict. BUT creative gate APPROVALS stay with the Director: do NOT call approveAsset — if the message asks you to approve an asset, decline and tell ${directAuthor} the Director must approve it.`
+              : `THEN, because you are in Mode ${mode} (not a bold/delegated mode), you cannot fire mutating tools yourself — state that explicitly to ${directAuthor} and propose the exact action for the Director to confirm.`,
           'NEVER re-generate a shot that already has a video — one render per shot; re-generation only on an explicit Director decision after visual review.',
           'HARD LIMITS (publish, LOCK, budget, governance mode, skill-canon) stay Director-only in every mode — if one is asked for, propose it instead of firing it.',
           `END with a SHORT reply to ${directAuthor}: what you just did (or will do) and the single next step.`,
@@ -415,8 +440,10 @@ export async function POST(req: Request) {
   //   reject it (assertHumanDirector), so it cannot publish/LOCK/budget/mode.
   const appOrigin = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '');
   const execDirAiToken = process.env.EXEC_DIR_AI_TOKEN?.trim();
+  // E13: operational mutations under an authorized nudge (strict mode) also need
+  // the EXEC-DIR-AI bearer to authenticate against the Director-only REST routes.
   const authHeader =
-    boldMode && execDirAiToken ? `Bearer ${execDirAiToken}` : null;
+    (boldMode || authorizedOperational) && execDirAiToken ? `Bearer ${execDirAiToken}` : null;
   const toolCtx: ToolContext = {
     supabase,
     threadId: parsed.thread_id,
@@ -425,6 +452,7 @@ export async function POST(req: Request) {
     episodeCode,
     cookieHeader: null,
     authHeader,
+    authorizedOperational,
     appOrigin,
     recentTurns,
   };
@@ -452,7 +480,11 @@ export async function POST(req: Request) {
       const isLastRound = round === maxRounds - 1;
       // q9: bold modes (3/4) expose mutating tools (minus hard limits) so Polina
       // can ACT; strict modes keep the read-only surface.
-      const roundSchemas = boldMode ? BOLD_TOOL_SCHEMAS : READ_ONLY_TOOL_SCHEMAS;
+      const roundSchemas = boldMode
+        ? BOLD_TOOL_SCHEMAS
+        : authorizedOperational
+          ? AUTHORIZED_OP_TOOL_SCHEMAS
+          : READ_ONLY_TOOL_SCHEMAS;
       const toolsThisRound = allowTools && !isLastRound ? [...roundSchemas] : undefined;
 
       const params: ChatCompletionCreateParamsNonStreaming = {
@@ -691,26 +723,20 @@ async function runAutoReactTool(
   }
 
   if (tool.mutating) {
-    const bold = ctx.mode === '3' || ctx.mode === '4';
-    // Hard limits are never auto-runnable (any mode). gateMutation inside the
-    // tool is the real gate; this is an early, explicit refusal for clarity.
-    if (isHardLimitTool(tool.name, args)) {
-      return {
-        ok: false,
-        error: `tool "${tool.name}" is a HARD LIMIT (Publish / LOCK / Budget / Mode per CLAUDE.md §6) — Director-only in every mode. Recommend it in your text response instead.`,
-        code: 'auto_react_hard_limit_blocked',
-      };
+    // Single chokepoint (decideAutoReactMutation, approval-check.ts): hard limits
+    // never auto-run; bold modes run; an authorized-principal nudge runs
+    // OPERATIONAL mutations in a strict mode but not creative gate approvals.
+    // On pass, the tool's own gateMutation + the budget ceiling still apply, and
+    // Director-only routes authenticate via ctx.authHeader (EXEC-DIR-AI token).
+    const decision = decideAutoReactMutation({
+      toolName: tool.name,
+      mode: ctx.mode,
+      authorizedOperational: ctx.authorizedOperational,
+      args,
+    });
+    if (!decision.permitted) {
+      return { ok: false, error: decision.reason, code: decision.code };
     }
-    if (!bold) {
-      return {
-        ok: false,
-        error: `tool "${tool.name}" is MUTATING — blocked in auto-react context for Mode ${ctx.mode}. Suggest the action in your text response so Director can invoke it on the next turn.`,
-        code: 'auto_react_mutating_blocked',
-      };
-    }
-    // Bold mode: fall through and execute. The tool's own gateMutation will
-    // auto-pass it (non-hard-limit in mode 3/4) and the budget ceiling backs
-    // cost. Auth to Director-only routes uses ctx.authHeader (EXEC-DIR-AI token).
   }
 
   try {

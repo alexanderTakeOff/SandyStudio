@@ -573,7 +573,12 @@ const teamChatFromClaude: Block = (ctx) => {
       0,
       Math.round((Date.now() - new Date(t.created_at).getTime()) / 1000),
     );
-    return `- [${author}, ${ago}s ago] ${truncate(t.content, 600)}`;
+    // E13 2026-07-01 (F7): raised 600→4000. A 600-char cap silently clipped
+    // AI-EP operational instructions (a 1600-char nudge lost its whole concept
+    // tail), and Polina then reported false progress on an instruction she never
+    // fully received. Deliberate team-chat directives must survive intact; huge
+    // payloads still belong in artifacts, not chat.
+    return `- [${author}, ${ago}s ago] ${truncate(t.content, 4000)}`;
   });
   return [
     '[TEAM_CHAT_FROM_CLAUDE]',

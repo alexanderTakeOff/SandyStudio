@@ -111,6 +111,68 @@ export function gateMutation(
   return check;
 }
 
+/**
+ * E13 (2026-07-01): concierge tools that ARE the human creative approval gates —
+ * they flip a REVIEW asset to APPROVED and thereby fire the next pipeline stage
+ * (computeNextEvents). They stay Director-only even under an authorized-principal
+ * operational nudge, so the ~9 creative gates survive when Тео drives Polina in
+ * a strict mode. (requestRevision is intentionally excluded: sending an asset
+ * back for rework loops the gate, it does not pass it.)
+ */
+export const CREATIVE_APPROVAL_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'approveAsset',
+]);
+
+/** Result of the auto-react mutating-tool gate: run, or a surfaced block code. */
+export type AutoReactMutationDecision =
+  | { permitted: true }
+  | {
+      permitted: false;
+      code: 'auto_react_hard_limit_blocked' | 'auto_react_mutating_blocked';
+      reason: string;
+    };
+
+/**
+ * E13: the mutating-tool gate for the auto-react / nudge path (chat-internal).
+ * Pure + mode-aware, mirroring {@link gateMutation} so it is unit-testable:
+ *   - hard limits → never auto-runnable, any mode;
+ *   - bold modes ('3'/'4') → mutations run (the tool's own gateMutation auto-passes);
+ *   - authorized-principal nudge in a STRICT mode → OPERATIONAL mutations run,
+ *     but creative gate approvals ({@link CREATIVE_APPROVAL_TOOL_NAMES}) stay
+ *     Director-only;
+ *   - otherwise (strict + unauthorized) → blocked (propose-don't-act).
+ * The cost ceiling still backstops spend downstream — this gate is authz, not budget.
+ */
+export function decideAutoReactMutation(opts: {
+  toolName: string;
+  mode: ConciergeMode;
+  authorizedOperational?: boolean;
+  args?: Record<string, unknown> | null;
+}): AutoReactMutationDecision {
+  const { toolName, mode, args } = opts;
+  if (isHardLimitTool(toolName, args)) {
+    return {
+      permitted: false,
+      code: 'auto_react_hard_limit_blocked',
+      reason: `tool "${toolName}" is a HARD LIMIT (Publish / LOCK / Budget / Mode per CLAUDE.md §6) — Director-only in every mode. Recommend it in your text response instead.`,
+    };
+  }
+  const bold = BOLD_MODES.has(mode);
+  const authorizedOp = opts.authorizedOperational === true;
+  const isCreativeApproval = CREATIVE_APPROVAL_TOOL_NAMES.has(toolName);
+  if (bold || (authorizedOp && !isCreativeApproval)) {
+    return { permitted: true };
+  }
+  return {
+    permitted: false,
+    code: 'auto_react_mutating_blocked',
+    reason:
+      authorizedOp && isCreativeApproval
+        ? `tool "${toolName}" is a CREATIVE GATE APPROVAL — Director-only even under an authorized nudge. Tell the Director the asset is ready and let them approve it.`
+        : `tool "${toolName}" is MUTATING — blocked in auto-react context for Mode ${mode}. Suggest the action in your text response so Director can invoke it on the next turn.`,
+  };
+}
+
 /** Single-token approvals — exact match after lower-case + Unicode tokenisation. */
 const APPROVAL_TOKENS: ReadonlySet<string> = new Set([
   // Russian
