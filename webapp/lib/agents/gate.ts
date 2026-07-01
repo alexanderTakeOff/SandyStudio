@@ -76,7 +76,14 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     governance: 'AGENT_RUN',
   },
   'EXEC-SB': {
-    required: [{ fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' }],
+    required: [
+      { fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' },
+      // FIX 3 (2026-07-01): storyboard must not run without an APPROVED cast —
+      // casting grounds character presence, and the E13 cascade proved a
+      // brief→writer→storyboard path with no cast is possible. AUTOTEST (mode 4)
+      // is exempt (it never casts) via the Step-0 override in validateAgentInputs.
+      { fileTypePrefix: 'SPC-episode_cast', minCount: 1, label: 'Approved episode cast' },
+    ],
     governance: 'AGENT_RUN',
   },
   'EXEC-CREAD': {
@@ -469,6 +476,64 @@ export async function validateAgentInputs(
       effectiveRequired = [
         { fileTypePrefix: 'IMG-anchor', minCount: 1, label: 'Approved anchor frames' },
       ];
+    }
+  }
+
+  // ── Step 0b: EXEC-SB AUTOTEST cast exemption (FIX 3) ───────────────────────
+  // Storyboard now requires an APPROVED SPC-episode_cast in Director modes, but
+  // AUTOTEST (Mode 4 / replay-pilot, directorUserId 'AUTOTEST') never casts — the
+  // headless DAG goes brief→writer directly (next-events.ts). Drop the cast dep
+  // there so replay-pilot still completes; Director modes keep the requirement.
+  if (agentId === 'EXEC-SB') {
+    let isAutotest = false;
+    try {
+      const { data: epRow } = await supabase
+        .from('episodes')
+        .select('governance_mode')
+        .eq('id', episodeId)
+        .maybeSingle();
+      isAutotest =
+        (epRow as { governance_mode?: number } | null)?.governance_mode === 4;
+    } catch {
+      isAutotest = false;
+    }
+    if (isAutotest) {
+      effectiveRequired = spec.required.filter(
+        (d) => d.fileTypePrefix !== 'SPC-episode_cast',
+      );
+    }
+  }
+
+  // ── Step 0c: budget-approval gate (F13) ────────────────────────────────────
+  // Director rule (2026-07-01): after the brief, NO further creative/generation
+  // work runs until the Director has approved the episode budget. Scoped to
+  // AGENT_RUN agents (the work that spends) — the terminal PUBLISH hard limit is
+  // its own gate and runs post-generation (budget already approved by then), so
+  // it is not budget-gated here. AUTOTEST (Mode 4 / replay-pilot) is exempt so
+  // the headless DAG completes. The brief is synchronous at episode creation, not
+  // through this gate, so it is unaffected.
+  if (spec?.governance === 'AGENT_RUN') {
+    let budgetApproved = false;
+    let budgetMode: number | undefined;
+    try {
+      const { data: bRow } = await supabase
+        .from('episodes')
+        .select('metadata, governance_mode')
+        .eq('id', episodeId)
+        .maybeSingle();
+      budgetApproved =
+        (bRow as { metadata?: { budget_approved?: unknown } | null } | null)
+          ?.metadata?.budget_approved === true;
+      budgetMode = (bRow as { governance_mode?: number } | null)?.governance_mode;
+    } catch {
+      budgetApproved = false;
+    }
+    if (!budgetApproved && budgetMode !== 4) {
+      return {
+        passed: false,
+        missing: ['approved episode budget'],
+        reason: `${agentId} blocked: episode budget not approved by the Director. Approve the budget in Episode Settings before any post-brief work runs (Director rule 2026-07-01).`,
+      };
     }
   }
 

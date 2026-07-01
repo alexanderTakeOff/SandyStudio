@@ -33,11 +33,19 @@ interface EpisodeSettingsCardProps {
 interface SettingsState {
   anchor_chain_enabled: boolean;
   budget_ceiling: number | null;
+  budget_approved: boolean;
 }
 
 function readAnchorChainEnabled(meta: Record<string, unknown> | null | undefined): boolean {
   if (!meta || typeof meta !== 'object') return false;
   return meta.anchor_chain_enabled === true;
+}
+
+// F13: Director's budget approval flag (metadata). Gate.ts blocks all post-brief
+// AGENT_RUN work until this is true.
+function readBudgetApproved(meta: Record<string, unknown> | null | undefined): boolean {
+  if (!meta || typeof meta !== 'object') return false;
+  return meta.budget_approved === true;
 }
 
 export function EpisodeSettingsCard({
@@ -48,6 +56,7 @@ export function EpisodeSettingsCard({
   const [state, setState] = useState<SettingsState>({
     anchor_chain_enabled: readAnchorChainEnabled(initialMetadata ?? null),
     budget_ceiling: initialBudgetCeiling,
+    budget_approved: readBudgetApproved(initialMetadata ?? null),
   });
   const [budgetInput, setBudgetInput] = useState(
     initialBudgetCeiling != null ? String(initialBudgetCeiling) : '',
@@ -74,6 +83,7 @@ export function EpisodeSettingsCard({
           setState({
             anchor_chain_enabled: readAnchorChainEnabled(j.data.metadata ?? null),
             budget_ceiling: cap,
+            budget_approved: readBudgetApproved(j.data.metadata ?? null),
           });
           setBudgetInput(cap != null ? String(cap) : '');
         },
@@ -118,6 +128,26 @@ export function EpisodeSettingsCard({
       setError(err instanceof Error ? err.message : 'Update failed');
     } finally {
       setBudgetPending(false);
+    }
+  }
+
+  async function setBudgetApproved(next: boolean) {
+    const previous = state.budget_approved;
+    setState((s) => ({ ...s, budget_approved: next }));
+    setError(null);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/settings`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ budget_approved: next }),
+      });
+      if (!res.ok) {
+        const b = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(b.error ?? `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      setState((s) => ({ ...s, budget_approved: previous }));
+      setError(err instanceof Error ? err.message : 'Update failed');
     }
   }
 
@@ -236,6 +266,39 @@ export function EpisodeSettingsCard({
               >
                 {budgetPending ? 'Saving…' : 'Save cap'}
               </button>
+            </div>
+          </div>
+
+          {/* F13 (2026-07-01): Director budget approval — gates all post-brief
+              AGENT_RUN work (gate.ts Step 0c). Human-Director-only (Category-A). */}
+          <div className="border-t border-glass pt-3">
+            <div className="text-sm font-medium text-text-primary">Budget approval</div>
+            <div className="text-xs text-text-muted mt-0.5 leading-relaxed">
+              After the brief, no generation work runs until you approve the episode budget.
+            </div>
+            <div className="mt-2">
+              {state.budget_approved ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-text-primary">
+                    ✅ Budget approved — work may proceed.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void setBudgetApproved(false)}
+                    className="px-2 py-1 rounded-md text-xs border border-glass text-text-muted hover:bg-[var(--panel-hover-bg)]"
+                  >
+                    Revoke
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void setBudgetApproved(true)}
+                  className="px-3 py-1 rounded-md text-xs font-medium bg-[var(--accent-primary)] text-white"
+                >
+                  Approve episode budget
+                </button>
+              )}
             </div>
           </div>
 

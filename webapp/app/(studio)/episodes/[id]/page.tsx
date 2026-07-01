@@ -313,6 +313,21 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         />
       )}
 
+      {/* F13 (2026-07-01): budget-approval hint. After the brief is approved,
+          gate.ts blocks all AGENT_RUN generation until the Director approves the
+          episode budget — surface WHY the pipeline is paused, pointing to the
+          Episode Settings card below. */}
+      {episode.status === 'BRIEF_APPROVED' &&
+        (episode.metadata as { budget_approved?: unknown } | null)?.budget_approved !== true && (
+          <div
+            className="rounded-lg border px-4 py-3 text-sm text-text-primary"
+            style={{ borderColor: 'var(--accent-warning)', background: 'var(--bg-elevated)' }}
+          >
+            ⚠ Brief approved — generation is paused until you approve the episode
+            budget in <strong>Episode Settings</strong> below.
+          </div>
+        )}
+
       {/* Resizable split (Director 2026-06-17): the pipeline becomes a full-height
           left RAIL pinned from the top; timeline + settings + workstation/feed live
           in the right column which scrolls. The divider between them drags to

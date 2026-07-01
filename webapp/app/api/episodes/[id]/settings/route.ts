@@ -15,7 +15,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
-import { requireDirector } from '@/lib/api/auth';
+import { requireDirector, assertHumanDirector } from '@/lib/api/auth';
 import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
@@ -55,6 +55,10 @@ const GenerationConfig = z
 const Body = z
   .object({
     anchor_chain_enabled: z.boolean().optional(),
+    // F13 (2026-07-01): Director's approval of the episode budget. Lives in
+    // metadata (no migration). Category-A hard limit → HUMAN Director only
+    // (guarded below). Gate.ts blocks all AGENT_RUN work until this is true.
+    budget_approved: z.boolean().optional(),
     // Per-episode hard budget cap in USD (lives in the budget_ceiling COLUMN,
     // not metadata). recordCost throws BudgetExceededError once spend would
     // cross it. `null` clears the cap (no limit). Omit = no change.
@@ -98,7 +102,8 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   const episodeId = params?.id;
   if (!episodeId) throw new NotFoundError('Episode');
 
-  const { user, supabase } = await requireDirector();
+  const dirCtx = await requireDirector();
+  const { user, supabase } = dirCtx;
   const body = await parseJson(req, Body);
 
   // 1. Load current episode + metadata + budget cap.
@@ -120,6 +125,12 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   const patch: Record<string, unknown> = {};
   if (body.anchor_chain_enabled !== undefined) {
     patch.anchor_chain_enabled = body.anchor_chain_enabled;
+  }
+  // F13: budget approval is a Category-A hard limit — HUMAN Director only
+  // (the EXEC-DIR-AI service token is rejected by assertHumanDirector).
+  if (body.budget_approved !== undefined) {
+    assertHumanDirector(dirCtx);
+    patch.budget_approved = body.budget_approved;
   }
   // generation_config — deep-merge video/image sub-objects so a PATCH touching
   // only the video block preserves a previously-saved image block (and vice

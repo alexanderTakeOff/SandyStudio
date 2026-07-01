@@ -97,6 +97,21 @@ function isShotPlan(file_type: string): boolean {
   return file_type === 'SPC-shot_plan' || file_type.startsWith('SPC-shot_plan-');
 }
 
+// F-preview (2026-07-01): any approvable TEXT asset (script, storyboard, review
+// docs, SPC specs — cast / metadata / copy / thumb_plan / ref_plan) should
+// expose the shared approve control in preview. Previously only VID-shot,
+// shot_plan and (later) casting had it, so the Director could not approve e.g.
+// the Publicist metadata at all. shot_plan keeps its own ShotPlanContract UI, so
+// it is excluded here. BIB/SBL/STA/PRO are on the LOCK flow, not this approve
+// path, so they are excluded via the prefix allowlist.
+const APPROVABLE_TEXT_PREFIXES = ['SCR', 'STB', 'REV', 'SPC'];
+function isApprovableText(file_type: string): boolean {
+  if (categoryFor(file_type) !== 'text') return false;
+  if (isShotPlan(file_type)) return false;
+  const code = (file_type.split('-')[0] ?? '').toUpperCase();
+  return APPROVABLE_TEXT_PREFIXES.includes(code);
+}
+
 /** Canonical shot_id a plan drives — metadata first, else file_type suffix. */
 function shotIdForPlan(file_type: string, metadata: unknown): string | null {
   const fromMeta = (metadata as { shot_id?: unknown } | null)?.shot_id;
@@ -391,21 +406,36 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
           )}
         </>
       )}
-      {/* F-casting (2026-07-01): the episode cast (SPC-episode_cast) rendered as
-          read-only text with no Approve control, so the Director could not
-          approve it from the preview at all. Cast approval is what releases the
-          Writer (next-events.ts) — mount the shared review buttons here. */}
-      {asset.file_type === 'SPC-episode_cast' &&
-        (asset.status === 'REVIEW' || asset.status === 'REVISION') && (
-          <PilotApproveButtons
-            assetId={asset.id}
-            variant="review"
-            onChanged={() => {
-              void mutate();
-              onAssetChanged?.();
-            }}
-          />
-        )}
+      {/* F-preview (2026-07-01): generalized approve control for ALL approvable
+          text assets (script, storyboard, review docs, SPC specs incl. cast /
+          metadata / copy / thumb_plan / ref_plan). Subsumes the earlier
+          casting-only branch. VID-shot and shot_plan keep their own branches
+          above (special UI). Generic POST /api/assets/[id]/approve handles all
+          of these. */}
+      {isApprovableText(asset.file_type) && (
+        <>
+          {(asset.status === 'REVIEW' || asset.status === 'REVISION') && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="review"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
+          )}
+          {asset.status === 'APPROVED' && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="approved"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
+          )}
+        </>
+      )}
       <DriveBadge asset={asset} />
     </div>
   );
