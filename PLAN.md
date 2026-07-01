@@ -20,18 +20,20 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-30 (q9a Part B + Part A SHIPPED на master; §34 засеян в Themes; остался Bible-strip → Director LOCK)
+Date:   2026-06-30 (q9a ЗАВЕРШЁН + запушен; §34 в Themes; Bible урезан; Polina на Opus; next-эпизод = vending machine)
 Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до конца фазы»).
 
-2026-06-30 (q9a Part B + Part A SHIPPED → master `0d7e1cc`,`67cf207`; unpushed). Part B (chat-гигиена): guard в
-  chat/route.ts не аппендит в ENDED-тред + endpoint/кнопка «Новый разговор» (архив+свежий, non-destructive).
-  Part A (темы как per-theme ассеты): `lib/api/series-themes.ts` (SPC-theme_{slug}, curation в metadata.theme_status
-  — без rename, без миграции) · route GET/POST/PATCH · SeriesThemesView сегментирован Approved/Draft/Invalidated +
-  карточки/inline-edit/Add · `proposeTheme` PA-tool (verbal-gated, закрыл «добавь в themes»). Seed: §34 Seed Bank
-  (13 → approved) + 3 E09-кандидата (кнопка лифта/авто-дверь/автомат → draft) ЖИВЫ в SS-S15. Verify: tsc·0/vitest
-  1040/replay·30; живой GET/POST/PATCH/DELETE-цикл + UI рендерит новый вид, консоль чистая. ОСТАЛОСЬ (Director-гейт):
-  Bible general_idea v02 минус §34 (DRAFT→Director ревьюит→Director LOCKает — hard limit). После — вернуть Polina
-  на gemini (сейчас Opus). NEXT: Bible-strip · push master? · E13 live.
+2026-06-30 (q9a ЗАВЕРШЁН → master `3269e4a`, ЗАПУШЕН `b21a6e9..3269e4a`). Part B (chat-гигиена): guard в
+  chat/route.ts не аппендит в ENDED-тред + endpoint/кнопка «Новый разговор» (архив+свежий, non-destructive) →
+  `0d7e1cc`. Part A (темы как per-theme ассеты) → `67cf207`: `lib/api/series-themes.ts` (SPC-theme_{slug}, curation
+  в metadata.theme_status — без rename, без миграции) · route GET/POST/PATCH · SeriesThemesView сегментирован
+  Approved/Draft/Invalidated + карточки/inline-edit/Add · `proposeTheme` PA-tool (verbal-gated, закрыл «добавь в
+  themes»). Seed: §34 Seed Bank (13 → approved) + 3 E09-кандидата (кнопка лифта/авто-дверь/автомат → draft) ЖИВЫ в
+  SS-S15. Bible-strip (Director q1a «просто засени короткий, без лок-анлока, разрешил»): §34 вырезан ИЗ
+  general_idea IN PLACE (17188→15365, статус остался LOCKED, добавлен указатель на Themes). Verify: tsc·0/vitest
+  1040/replay·30; живой GET/POST/PATCH/DELETE + UI + Bible-strip проверены в браузере. Polina ОСТАЁТСЯ на Opus
+  (Director q2 — НЕ откатывать на gemini). NEXT: **следующий эпизод = The Vending Machine** (Director q4) — draft-тема
+  `the_vending_machine` в Themes; · E13 live-прогон остаётся открытым.
 
 2026-06-28 (themes shipped via PR #30 + Polina-on-Opus смоук-подготовка). Theme-скиллы (generation+selection,
   `status:ACTIVE`), studio_version 0.10, Themes-UI влиты в origin/master (`b21a6e9`+`5ba3cec`). Реконсилил с
