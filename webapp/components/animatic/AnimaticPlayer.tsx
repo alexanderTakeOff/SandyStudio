@@ -145,6 +145,16 @@ export interface AnimaticPlayerProps {
    * exact video-version controls.
    */
   imgRefAssets?: ImgRefAssetRow[];
+  /**
+   * Timeline-as-home (2026-07-02): when true, the player is rendering a
+   * SYNTHETIC contract derived live from the approved storyboard (no backing
+   * VID-animatic asset exists yet). Ref/video review + variant kebab all work
+   * off the live assets, but the timing editor + Save-timing + the animatic
+   * Approve/Reject footer are hidden because there is no asset to PATCH or
+   * approve. The pacing is read-only until the animatic is materialized on the
+   * first real edit (Phase 3). Default false = today's real-asset behaviour.
+   */
+  synthetic?: boolean;
 }
 
 /**
@@ -299,6 +309,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     animaticStatus,
     liveStageByShot,
     imgRefAssets,
+    synthetic = false,
   },
   ref,
 ) {
@@ -1524,23 +1535,28 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           <RotateCcw size={13} /> Reset
         </Button>
         <div className="flex-1" />
-        <Button
-          variant={dirty ? 'primary' : 'ghost'}
-          size="sm"
-          onClick={handleSaveTiming}
-          disabled={savingTiming || !dirty}
-          title={dirty ? 'Save updated per-shot durations' : 'No timing changes to save yet'}
-        >
-          {savingTiming ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{' '}
-          {dirty ? 'Save timing' : 'Saved'}
-        </Button>
+        {/* Synthetic (storyboard-derived) timeline has no backing VID-animatic
+            asset to PATCH — pacing is read-only until the animatic materializes
+            on the first real edit (Phase 3). Hide Save-timing in that state. */}
+        {!synthetic && (
+          <Button
+            variant={dirty ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={handleSaveTiming}
+            disabled={savingTiming || !dirty}
+            title={dirty ? 'Save updated per-shot durations' : 'No timing changes to save yet'}
+          >
+            {savingTiming ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{' '}
+            {dirty ? 'Save timing' : 'Saved'}
+          </Button>
+        )}
       </div>
 
       {/* Inline trim editor (current shot). 2026-06-08 — relabelled per Director:
           "cut start" / "cut end" are just labels for the existing decrement
           buttons (head / tail). One numeric field "duration" shows the net
           final-cut length, updating as either edge is trimmed. */}
-      {currentShot && (() => {
+      {!synthetic && currentShot && (() => {
         const currentTrimStart = overrides[currentShot.shot_id]?.trim_start_seconds ?? 0;
         const excluded = currentNetDuration <= MIN_SHOT_S;
         return (
@@ -1667,7 +1683,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           a note throws "REJECT requires a note". Once VGEN starts, neither
           action is meaningful. The pipeline DAG (VGEN pillbar / "Approve all
           REVIEW") owns advancement from here on. */}
-      {(animaticStatus === undefined || animaticStatus === 'REVIEW' || animaticStatus === 'DRAFT') && (
+      {!synthetic &&
+        (animaticStatus === undefined || animaticStatus === 'REVIEW' || animaticStatus === 'DRAFT') && (
         <div
           className="flex items-center gap-2 pt-2 border-t border-glass"
         >

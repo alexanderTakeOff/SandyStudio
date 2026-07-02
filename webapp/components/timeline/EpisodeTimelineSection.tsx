@@ -28,7 +28,13 @@ import {
   AnimaticPlayer,
   type AnimaticPlayerHandle,
 } from '@/components/animatic/AnimaticPlayer';
-import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import {
+  isAnimaticV1,
+  extractShotsFromStoryboard,
+  newAnimaticContract,
+  type AnimaticContract,
+  type AnimaticShot,
+} from '@/lib/api/animatic-shotlist';
 import {
   resolveTimelineCells,
   countCellsByStatus,
@@ -56,7 +62,14 @@ interface AssetRow {
   filename: string;
   version: number | null;
   created_at: string;
+  /** Storyboard/markdown body — present for STB-* rows, used to synth a
+   *  storyboard-derived skeleton contract when no animatic exists yet. */
+  content?: string | null;
 }
+
+/** Fallback per-shot duration when the storyboard omits one (mirrors
+ *  animatic-shotlist FALLBACK_DURATION_S, which is module-private there). */
+const SKELETON_FALLBACK_DURATION_S = 2.5;
 
 interface JobRow {
   id: string;
@@ -166,6 +179,55 @@ export function EpisodeTimelineSection({
       return a.created_at > best.created_at ? a : best;
     });
   }, [data]);
+
+  // Timeline-as-home (2026-07-02): when no APPROVED/LOCKED VID-animatic exists
+  // yet, synthesize a READ-ONLY skeleton contract from the newest APPROVED/
+  // LOCKED storyboard so the timeline is reachable the moment refs start
+  // landing — no animatic-approval prerequisite (the old chicken-and-egg: to
+  // approve refs in the timeline the timeline needed an animatic built from
+  // already-approved refs). The resolver fills ref frames + videos LIVE from
+  // imgRefAssets/vidShotAssets; the skeleton only supplies the shot skeleton
+  // (order + base duration + caption). Returns null when no approved storyboard
+  // exists yet → the narrow "storyboard pending" empty state.
+  const storyboardContract = useMemo<AnimaticContract | null>(() => {
+    if (animaticAsset) return null; // a real animatic wins; skeleton is fallback
+    const assets = data?.data.assets ?? [];
+    const boards = assets.filter(
+      (a) =>
+        a.file_type.startsWith('STB') &&
+        (a.status === 'APPROVED' || a.status === 'LOCKED') &&
+        typeof a.content === 'string' &&
+        a.content.length > 0,
+    );
+    if (boards.length === 0) return null;
+    const board = boards.reduce((best, a) => {
+      const bv = best.version ?? 0;
+      const av = a.version ?? 0;
+      if (av > bv) return a;
+      if (av < bv) return best;
+      return a.created_at > best.created_at ? a : best;
+    });
+    const shots = extractShotsFromStoryboard(board.content as string);
+    if (shots.length === 0) return null;
+    const shotList: AnimaticShot[] = shots.map((s) => ({
+      shot_id: s.shot_id,
+      asset_id: null,
+      image_url: null,
+      duration_seconds: s.duration_seconds ?? SKELETON_FALLBACK_DURATION_S,
+      shot_role: s.shot_role,
+      caption: (s.key_beat ?? s.action)?.slice(0, 200) || undefined,
+    }));
+    return newAnimaticContract(shotList);
+  }, [animaticAsset, data]);
+
+  // The contract that drives the timeline: the real animatic (with overrides/
+  // audio) when it exists, else the storyboard-derived skeleton. `isSynthetic`
+  // gates the editing surfaces that need a backing asset (Save-timing, trim,
+  // approve/reject) — they materialize in Phase 3 on the first real edit.
+  const activeContract: AnimaticContract | null = animaticAsset
+    ? (animaticAsset.metadata as { animatic_v1: AnimaticContract }).animatic_v1
+    : storyboardContract;
+  const isSynthetic = !animaticAsset && storyboardContract !== null;
 
   // Pick the freshest VID-final_cut asset (any status — REVIEW/APPROVED/LOCKED
    // all warrant the "ready" pill). Used by StitchStatusPill so the green
@@ -285,11 +347,9 @@ export function EpisodeTimelineSection({
   // the drawer (prev/next nav). The player computes the same internally —
   // duplicating this is cheap (pure function, ~O(shots × vid-shots)).
   const cells: TimelineCell[] = useMemo(() => {
-    if (!animaticAsset) return [];
-    const contract = (animaticAsset.metadata as { animatic_v1: AnimaticContract })
-      .animatic_v1;
-    return resolveTimelineCells(contract, vidShotAssets, imgRefAssets);
-  }, [animaticAsset, vidShotAssets, imgRefAssets]);
+    if (!activeContract) return [];
+    return resolveTimelineCells(activeContract, vidShotAssets, imgRefAssets);
+  }, [activeContract, vidShotAssets, imgRefAssets]);
 
   const counts = useMemo(() => countCellsByStatus(cells), [cells]);
 
@@ -331,10 +391,12 @@ export function EpisodeTimelineSection({
     );
   }
 
-  if (!animaticAsset) {
-    // Explicit low-key empty state (q12). The section never silently vanishes:
-    // it announces that the animatic is the next pacing gate. For anchor-chain
-    // episodes it is produced automatically once all anchors are approved.
+  if (!activeContract) {
+    // Timeline-as-home (2026-07-02): the only remaining empty state is "no
+    // approved storyboard yet" — the storyboard is the shot skeleton the
+    // timeline is built from. Once it's approved, the timeline appears
+    // immediately (skeleton contract) and references/videos fill in live; no
+    // animatic-approval step is required.
     return (
       <div
         className="rounded-lg border border-glass px-3 py-3"
@@ -345,19 +407,18 @@ export function EpisodeTimelineSection({
         <div className="flex items-center gap-2">
           <Film size={14} className="text-text-muted" />
           <span className="text-sm font-medium text-text-primary">
-            Animatic not generated yet
+            Timeline appears once the storyboard is approved
           </span>
         </div>
         <p className="mt-1 text-[11px] text-text-muted">
-          The pacing preview appears here. Anchor-chain episodes produce it
-          automatically once all anchors are approved.
+          The shot skeleton comes from the approved storyboard. After that, this
+          timeline is the home for reviewing references and videos per shot.
         </p>
       </div>
     );
   }
 
-  const contract = (animaticAsset.metadata as { animatic_v1: AnimaticContract })
-    .animatic_v1;
+  const contract = activeContract;
 
   function handleCellClick(cell: TimelineCell): void {
     // Open whatever the cell resolves to (VID-shot, EREF image fallback, …) in
@@ -440,14 +501,15 @@ export function EpisodeTimelineSection({
             />
             <AnimaticPlayer
               ref={playerRef}
-              assetId={animaticAsset.id}
+              assetId={animaticAsset?.id ?? ''}
               contract={contract}
+              synthetic={isSynthetic}
               vidShotAssets={vidShotAssets}
               imgRefAssets={imgRefAssets}
               filter={filter}
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
-              animaticStatus={animaticAsset.status}
+              animaticStatus={animaticAsset?.status}
               // q4a — per-shot live work overlay (designer/video-artist running now).
               liveStageByShot={liveStageByShot}
               // TD-80 (2026-05-27): Plan-row click on popover opens the
