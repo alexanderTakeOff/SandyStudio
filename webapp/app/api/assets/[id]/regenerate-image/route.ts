@@ -64,7 +64,8 @@ import {
 } from '@/lib/agents/providers/image-gen-multi-registry';
 import type { EREFProviderId } from '@/lib/api/eref-config';
 import type { MultiImageRef } from '@/lib/agents/providers/image-gen-multi';
-import { readAssetMediaAsBase64 } from '@/lib/media-cache';
+import { readAssetMediaAsBase64, localCacheAbsPath } from '@/lib/media-cache';
+import { promises as fsp } from 'node:fs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -342,19 +343,48 @@ export const POST = withApiHandler(async (req, ctx) => {
       ...((asset.metadata ?? {}) as Record<string, unknown>),
       shot_reference: newSr,
     };
+    // ROOT-CAUSE FIX (2026-07-02): make the chosen attempt the asset's CANONICAL
+    // media on disk. The server-side media reader (readAssetMediaAsBase64, used
+    // by the VGEN byte-reachability preflight AND runner loaders) resolves ONLY
+    // by the canonical `filename` (cache → Drive → /staging/); it does NOT read a
+    // `/api/media/…` staging URL. Before this, select-attempt repointed
+    // staging_path but left `filename` = `…-v01-APPROVED.png`, a file that never
+    // existed on disk for a variant-swapped ref → cache-miss + null Drive → the
+    // ref was byte-unreachable, and VGEN's EPISODE-WIDE ref preflight then
+    // blocked EVERY shot's video (E13 live incident: all Video Artists failed).
+    // Copying the attempt bytes onto the canonical filename makes the reader
+    // resolve the SELECTED variant. Best-effort — browser display already
+    // switches via staging_path below; a copy failure must not block the pick.
+    try {
+      const attemptName = decodeURIComponent(
+        String(target.image_url).split('/').pop() ?? '',
+      );
+      if (attemptName) {
+        const src = localCacheAbsPath(attemptName);
+        const dst = localCacheAbsPath(asset.filename);
+        if (src !== dst) await fsp.copyFile(src, dst);
+      }
+    } catch (copyErr) {
+      console.error(
+        '[select_attempt] canonical byte-copy failed (display still switches):',
+        copyErr,
+      );
+    }
+
     const upd = await sb
       .from('assets')
       .update({
         staging_path: target.image_url,
         drive_path: target.image_url,
-        // MUST be null: the timeline resolver returns `/api/media/{assetId}`
-        // (a shot-stable, immutably-cached URL) whenever drive_web_view_url is
-        // set — so every attempt would resolve to the SAME cached URL and the
-        // cell keeps showing the old image (Director hit this on SH15). Nulling
-        // it makes the resolver fall through to drive_path = the attempt's own
-        // `…-attemptN.png` URL — distinct per attempt, so the switch shows.
+        // Keep null: the browser resolver returns `/api/media/{assetId}` (a
+        // shot-stable, immutably-cached URL) whenever drive_web_view_url is set,
+        // so the cell would keep showing the OLD image. Null makes it fall
+        // through to drive_path = the attempt's distinct `…-attemptN.png` URL.
         drive_web_view_url: null,
-        drive_file_id: null,
+        // Carry the attempt's OWN Drive file (not null) so production keeps a
+        // Drive fallback: the reader downloads it INTO the canonical filename on
+        // a cache miss. Reads still hit the local canonical copy above first.
+        drive_file_id: target.drive_file_id ?? null,
         metadata: newMeta as unknown as Record<string, unknown>,
       } as never)
       .eq('id', assetId);
