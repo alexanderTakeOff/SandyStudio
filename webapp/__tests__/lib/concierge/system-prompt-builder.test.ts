@@ -56,9 +56,11 @@ describe('buildSystemPrompt — OPEN_LOOP_AWARENESS block (TD-25 P1)', () => {
     expect(out).toContain('requestRevision');
   });
 
-  test('teaches watchdog mindset for prior "если X не сработает" promises', () => {
+  test('teaches follow-through on prior "если X не сработает" promises', () => {
     const out = buildSystemPrompt(baseCtx());
-    expect(out.toLowerCase()).toContain('watchdog');
+    // Invariant (not the old "watchdog" scar-word): an unkept promise must be
+    // raised next turn, not silently dropped.
+    expect(out).toContain('если X не сработает');
   });
 });
 
@@ -135,56 +137,31 @@ describe('buildSystemPrompt — BASE_BEHAVIOR fabrication rule clarified (Fix C)
   });
 });
 
-describe('buildSystemPrompt — TD-34 STANDING_APPROVAL_SCOPE (2026-05-22)', () => {
-  test('AUTO_REACT_GUIDANCE includes STANDING APPROVAL SCOPE paragraph with recognition phrases', () => {
+describe('buildSystemPrompt — standing batch approval (invariant, de-accreted 2026-07-02)', () => {
+  // These assert the BEHAVIOUR, not the old TD-34 incident scar-text (verbatim
+  // banned-phrase catalogs were removed in the prompt de-accretion; the prompt
+  // now states the positive rule once instead of enumerating past failures).
+  test('teaches that a standing batch approval persists until the Director revokes', () => {
     const out = buildSystemPrompt(baseCtx({ autoReact: true }));
-    expect(out).toContain('STANDING APPROVAL SCOPE');
-    expect(out).toContain('STAYS ACTIVE');
-    // At least one Russian + one English recognition phrase example so the
-    // LLM picks up the pattern.
-    expect(out).toMatch(/(одобряю последовательность|автопроталкивай|продолжай batch)/);
-    expect(out).toMatch(/(pre-approved continuing|do the whole batch|i pre-approve the rest)/);
-    // Director must be told scope cancels on explicit revoke, not on auto-react.
-    expect(out).toMatch(/(стоп|cancel|revoke)/);
+    expect(out).toContain('STANDING APPROVAL');
+    // At least one batch-scope recognition phrase.
+    expect(out).toMatch(/(продолжай batch|batch approval|одобряю)/i);
+    // Scope cancels on explicit revoke, not on auto-react.
+    expect(out).toMatch(/(стоп|подожди|revoke|wait)/i);
   });
 
-  test('AUTO_REACT_GUIDANCE lists TD-34 banned phrases verbatim', () => {
+  test('auto-react guidance points to read-only tools for recovery (no "tools forbidden")', () => {
     const out = buildSystemPrompt(baseCtx({ autoReact: true }));
-    // The exact Russian regression phrases Polina emitted during the
-    // 2026-05-22 SS-S15-E01 smoke — locked verbatim so future prompt edits
-    // can't silently drop them.
-    expect(out).toContain('инструменты в этом триггере запрещены');
-    expect(out).toContain('инструменты в авто-триггере запрещены');
-    expect(out).toContain('без свежего одобрения мутаций не запускаю');
-    expect(out).toContain('жду Director или следующий pipeline event');
-    // Block header must call this out as a TD-34 indicator.
-    expect(out).toContain('BANNED PHRASES');
-    expect(out).toContain('TD-34');
-  });
-
-  test('AUTO_REACT_GUIDANCE enumerates read-only tools as ALWAYS allowed', () => {
-    const out = buildSystemPrompt(baseCtx({ autoReact: true }));
-    // Must explicitly name the read-only tools so Polina knows "tools
-    // forbidden" is never correct for these.
-    expect(out).toContain('ALWAYS allowed');
     expect(out).toContain('getAsset');
-    expect(out).toContain('listRefPlans');
     expect(out).toContain('getCriticVerdict');
-    expect(out).toContain('listShots');
-    expect(out).toContain('getRecentActivityEvents');
-    // Must explicitly reject the "tools forbidden" misinterpretation.
-    expect(out.toLowerCase()).toContain('"tools forbidden" is never a correct statement');
+    expect(out.toLowerCase()).toContain('read-only');
   });
 
-  test('OPEN_LOOP_AWARENESS atomic-scope rule extended to cover auto-react sub-operations', () => {
+  test('atomic-directive scope covers auto-react sub-operations', () => {
     const out = buildSystemPrompt(baseCtx({ autoReact: true }));
-    expect(out).toContain('OPEN_LOOP_AWARENESS');
-    expect(out).toContain('TD-34');
-    // The extension paragraph must specifically mention auto-react context
-    // as covered by atomic scope, and cross-reference STANDING_APPROVAL_SCOPE
-    // so a future LLM read picks up the link.
-    expect(out.toLowerCase()).toContain('auto-react');
     expect(out.toLowerCase()).toContain('atomic');
-    expect(out).toMatch(/STANDING_APPROVAL_SCOPE|STANDING APPROVAL SCOPE/);
+    // On an auto-react turn both the standing-approval rule and the auto-react
+    // guidance are present, tying batch scope to autonomous sub-steps.
+    expect(out).toMatch(/(auto-react|standing approval)/i);
   });
 });
