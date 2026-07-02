@@ -18,7 +18,6 @@ import { StageKebabMenu } from '@/components/pipeline/StageKebabMenu';
 import { StageWorkspacePanel, type WorkstationStage } from '@/components/pipeline/StageWorkspacePanel';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
 import { EditorModal } from '@/components/editor/EditorModal';
-import { EpisodeReferencesGallery } from '@/components/episode/EpisodeReferencesGallery';
 import { EREFPilotPillbar } from '@/components/pipeline/EREFPilotPillbar';
 import { EpisodeSettingsCard } from '@/components/episode/EpisodeSettingsCard';
 import { VGENPilotPillbar } from '@/components/pipeline/VGENPilotPillbar';
@@ -426,7 +425,13 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                       episodeId={id}
                       stageRunning={selectedStageObj.state === 'running'}
                     />
-                    <EpisodeReferencesGallery episodeId={id} seriesId={episode.series_id} />
+                    {/* Reference review moved to the always-on Episode Timeline
+                        above (unified home surface): per-shot cells open the rich
+                        drawer with Reject / regen-with-provider / AI verdict /
+                        side-by-side variant compare. The separate
+                        EpisodeReferencesGallery was retired (2026-07-02, Phase 4)
+                        — it only duplicated the timeline's listing while opening
+                        the same drawer. The pilot pillbar stays for pilot control. */}
                   </div>
                 )}
                 {selectedStage === 'visual_generator' && (
