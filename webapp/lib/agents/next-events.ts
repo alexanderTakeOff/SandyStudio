@@ -36,6 +36,7 @@ import {
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { resolveShotId } from '@/lib/api/shot-identity';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
+import { ensureEpisodeAnimaticEDL } from '@/lib/api/ensure-animatic';
 import {
   designerChainEnabled,
   animatorChainEnabled,
@@ -1199,6 +1200,12 @@ export async function computeNextEvents(
           /* non-fatal — guard is best-effort; duplicate designers dedup downstream */
         }
       }
+      // Timeline-as-home Phase 3 — materialize the silent EDL animatic once the
+      // pilots are approved, so the Episode Timeline flips from read-only
+      // (storyboard skeleton) to a real editable EDL for the rest of the run,
+      // and EXEC-STITCH's edit-decision-list is ready ahead of the final cut.
+      // Idempotent + parallel-only (this whole branch is gated on parallel).
+      await ensureEpisodeAnimaticEDL(supabase, ep);
     }
   }
 
@@ -1208,6 +1215,14 @@ export async function computeNextEvents(
   //    (after the BRIEF block) handles the episode FSM; this branch fires the
   //    actual stitching job. Idempotent via hasJob.
   if (ft.startsWith('VID-shot') && !(await hasJob(supabase, ep, 'EXEC-STITCH', { since }))) {
+    // Timeline-as-home Phase 3 — parallel episodes never ran the ref-animatic
+    // ceremony, so no VID-animatic exists to drive the final cut. Materialize
+    // the silent EDL now (idempotent; no-op in sequential, where the ceremony
+    // already produced one → replay-pilot unchanged). Without this, the stitch
+    // completeness check below finds no APPROVED animatic and never fires.
+    if ((await readEpisodePipelineMode(supabase, ep)) === 'parallel') {
+      await ensureEpisodeAnimaticEDL(supabase, ep);
+    }
     const { data: animaticRow } = await supabase
       .from('assets')
       .select('metadata')
