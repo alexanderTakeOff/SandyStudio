@@ -50,9 +50,9 @@ import {
 } from '@/components/assets/EpisodeAssetDrawer';
 import { StitchStatusPill } from '@/components/timeline/StitchStatusPill';
 import {
-  activeWorkPhaseByShot,
+  activeWorkByShot,
   workPhaseForAgent,
-  type WorkPhase,
+  type ShotWork,
 } from '@/lib/api/pipeline-stages';
 
 interface AssetRow {
@@ -398,11 +398,11 @@ export function EpisodeTimelineSection({
 
   const counts = useMemo(() => countCellsByStatus(cells), [cells]);
 
-  // q4a — shot_id → live work phase (design/animate) for shots whose
-  // designer / video-artist job is RUNNING now. Derived from the jobs already
+  // Unified language — shot_id → live work { object, roles } for shots whose
+  // designer / critic / artist job is RUNNING now. Derived from the jobs already
   // in the episode payload (input_snapshot.shotId) — no extra fetch.
-  const liveStageByShot = useMemo<ReadonlyMap<string, WorkPhase>>(
-    () => activeWorkPhaseByShot(data?.data.jobs ?? []),
+  const liveWorkByShot = useMemo<ReadonlyMap<string, ShotWork>>(
+    () => activeWorkByShot(data?.data.jobs ?? []),
     [data],
   );
 
@@ -609,8 +609,9 @@ export function EpisodeTimelineSection({
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
               animaticStatus={animaticAsset?.status}
-              // q4a — per-shot live work overlay (designer/video-artist running now).
-              liveStageByShot={liveStageByShot}
+              // Unified language — per-shot live work { object, roles } so the
+              // cell number recolours by role (designer/critic/both/artist).
+              liveWorkByShot={liveWorkByShot}
               // TD-80 (2026-05-27): Plan-row click on popover opens the
               // existing PreviewDrawer via setPreviewAssetId — bypasses the
               // image-fallback path that handleCellClick uses (which would

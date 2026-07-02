@@ -507,3 +507,106 @@ export function liveStagePalette(phase: WorkPhase): { color: string; glow: strin
     glow: `0 0 6px color-mix(in oklab, var(--accent-stage-${slot}) 60%, transparent)`,
   };
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Unified work-state language (2026-07-02) — one visual vocabulary shared by the
+// References and Video pipelines (they are the SAME shape: Designer → Critic →
+// Artist). The three questions a glance must answer:
+//   1. WHICH object?  → References vs Video (answered by POSITION: the object's
+//      button / the cell's R·V indicator — NOT by colour).
+//   2. WHICH stage / WHO is working?  → answered by COLOUR (role), below.
+//   3. Is it working?  → answered by the PULSE (running) vs solid (settled).
+// Colour = role (designer / critic / both / artist-generating); position = object.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Who is working on a shot right now — finer than WorkPhase (which is object). */
+export type WorkRole = 'designer' | 'critic' | 'artist';
+
+/** Stage → role, for the two per-shot pipelines (references + video). */
+const ROLE_OF_STAGE: Partial<Record<PipelineStageId, WorkRole>> = {
+  reference_designer: 'designer',
+  reference_critic: 'critic',
+  episode_references: 'artist',
+  shot_designer: 'designer',
+  shot_critic: 'critic',
+  visual_generator: 'artist',
+};
+
+/** Map an agent id to its work ROLE (designer/critic/artist), or null. */
+export function workRoleForAgent(agentId: string): WorkRole | null {
+  const stage = STAGE_FROM_AGENT[agentId];
+  if (!stage) return null;
+  return ROLE_OF_STAGE[stage] ?? null;
+}
+
+/** Live work on one shot: which object + which roles are running right now. */
+export interface ShotWork {
+  object: WorkPhase;
+  roles: WorkRole[];
+}
+
+/**
+ * Pure: build `shot_id → { object, roles }` from the episode's jobs. Only
+ * RUNNING/QUEUED jobs count. Extends `activeWorkPhaseByShot` with role detail so
+ * the timeline can answer "who's working" (designer / critic / both / artist),
+ * not just "which object". 'animate' remains the dominant object (q4a priority).
+ */
+export function activeWorkByShot(
+  jobs: ReadonlyArray<JobForShotPhase>,
+): Map<string, ShotWork> {
+  const acc = new Map<string, { object: WorkPhase; roles: Set<WorkRole> }>();
+  for (const j of jobs) {
+    if (j.status !== 'RUNNING' && j.status !== 'QUEUED') continue;
+    const object = workPhaseForAgent(j.agent_id);
+    const role = workRoleForAgent(j.agent_id);
+    if (!object || !role) continue;
+    const shotId = snapshotShotId(j.input_snapshot);
+    if (!shotId) continue;
+    const cur = acc.get(shotId);
+    if (cur) {
+      if (object === 'animate') cur.object = 'animate'; // animate dominant
+      cur.roles.add(role);
+    } else {
+      acc.set(shotId, { object, roles: new Set([role]) });
+    }
+  }
+  const out = new Map<string, ShotWork>();
+  for (const [k, v] of acc) out.set(k, { object: v.object, roles: [...v.roles] });
+  return out;
+}
+
+/**
+ * The unified role palette — colour + glow + label for a set of live roles.
+ * Colour keys off role, identically for references and video (single language):
+ *   designer → indigo · critic → amber · both → teal (distinct combined) ·
+ *   artist (generating, $) → violet.
+ * Theme tokens only (Director: «не хардкод»). Node-safe (unit-testable).
+ */
+export function workRolePalette(
+  roles: readonly WorkRole[],
+): { color: string; glow: string; label: string; token: 'designer' | 'critic' | 'both' | 'artist' } {
+  const hasDesigner = roles.includes('designer');
+  const hasCritic = roles.includes('critic');
+  let token: 'designer' | 'critic' | 'both' | 'artist';
+  let label: string;
+  if (hasDesigner && hasCritic) {
+    token = 'both';
+    label = 'Designer + Critic';
+  } else if (hasCritic) {
+    token = 'critic';
+    label = 'Critic';
+  } else if (hasDesigner) {
+    token = 'designer';
+    label = 'Designer';
+  } else {
+    token = 'artist';
+    label = 'Generating';
+  }
+  const color = `var(--accent-role-${token})`;
+  return {
+    color,
+    glow: `0 0 6px color-mix(in oklab, ${color} 60%, transparent)`,
+    label,
+    token,
+  };
+}

@@ -49,6 +49,13 @@
   /* q4a — per-shot live work stages on the timeline strip (AnimaticPlayer). */
   --accent-stage-design:  #818CF8;
   --accent-stage-animate: #A855F7;
+  /* Unified work-state language (2026-07-02) — COLOUR = who is working, shared
+     identically by the References and Video pipelines. Designer/Critic/Both/
+     Generating. Object (refs vs video) is shown by position, never colour. */
+  --accent-role-designer: #818CF8; /* indigo — Designer (plan) */
+  --accent-role-critic:   #F59E0B; /* amber  — Critic (verdict) */
+  --accent-role-both:     #14B8A6; /* teal   — Designer + Critic together */
+  --accent-role-artist:   #A855F7; /* violet — Artist generating ($) */
 
   /* Status chips */
   --status-draft:    #64748B;

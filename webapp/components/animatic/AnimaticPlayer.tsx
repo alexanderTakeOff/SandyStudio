@@ -62,7 +62,7 @@ import {
   type VidShotAssetRow,
   type ImgRefAssetRow,
 } from '@/lib/api/timeline-cell-resolver';
-import { liveStagePalette, type WorkPhase } from '@/lib/api/pipeline-stages';
+import { workRolePalette, type ShotWork } from '@/lib/api/pipeline-stages';
 
 const MIN_SHOT_S = 0.5;
 const MAX_SHOT_S = 60;
@@ -131,12 +131,13 @@ export interface AnimaticPlayerProps {
    */
   animaticStatus?: string;
   /**
-   * q4a (2026-06-22) — per-shot live work overlay: shot_id → active WorkPhase
-   * (design/animate) for shots whose designer / video-artist job is RUNNING
-   * right now. A matched cell recolours + pulses (live wins over asset status).
-   * Undefined / empty = no live work; cells rest at their asset colour.
+   * q4a (2026-06-22) → unified work language (2026-07-02): shot_id → live work
+   * { object, roles } for shots whose designer / critic / artist job is RUNNING
+   * right now. A matched cell recolours BY ROLE (designer=indigo / critic=amber /
+   * both=teal / artist=violet) + pulses (live wins over asset status). Undefined /
+   * empty = no live work; cells rest at their asset colour.
    */
-  liveStageByShot?: ReadonlyMap<string, WorkPhase>;
+  liveWorkByShot?: ReadonlyMap<string, ShotWork>;
   /**
    * Image-version parity (2026-06-24) — live IMG-episode_ref rows for the
    * episode (all statuses). The cell kebab lists each shot's reference versions
@@ -262,15 +263,16 @@ function fmt(t: number): string {
 function cellPalette(
   status: string | undefined,
   kind: string | undefined,
-  liveStage?: WorkPhase,
+  liveWork?: ShotWork,
 ): { color: string; weight: number; glow?: string; pulse?: boolean } {
-  // q4a (2026-06-22) — live work ALWAYS wins: a job RUNNING on this shot
-  // recolours the cell (even an APPROVED/green one) and pulses until the job
-  // finishes, then it settles back to the asset-derived colour below. Colour
-  // logic lives in node-safe liveStagePalette (theme tokens, no inline hex).
-  if (liveStage) {
-    const lp = liveStagePalette(liveStage);
-    return { color: lp.color, weight: 700, glow: lp.glow, pulse: true };
+  // Unified work language (2026-07-02) — live work ALWAYS wins: a job RUNNING on
+  // this shot recolours the cell (even an APPROVED/green one) BY ROLE and pulses
+  // until the job finishes, then it settles back to the asset-derived colour
+  // below. Colour = who is working (designer/critic/both/artist); node-safe
+  // workRolePalette owns the token mapping (no inline hex).
+  if (liveWork && liveWork.roles.length > 0) {
+    const rp = workRolePalette(liveWork.roles);
+    return { color: rp.color, weight: 700, glow: rp.glow, pulse: true };
   }
   switch (status) {
     case 'APPROVED':
@@ -317,7 +319,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     refPlansByShotId,
     onOpenAsset,
     animaticStatus,
-    liveStageByShot,
+    liveWorkByShot,
     imgRefAssets,
     synthetic = false,
     onGenerateVideo,
@@ -373,7 +375,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     return map;
   }, [imgRefAssets]);
 
-  const [hoveredCellIdx, setHoveredCellIdx] = useState<number | null>(null);
+  // 2026-07-02 (Director): the per-cell kebab now opens on CLICK, not hover —
+  // hover popovers were visual noise and felt unpredictable. Clicking a cell
+  // toggles its kebab; clicking again (or another cell) closes it.
+  const [openCellIdx, setOpenCellIdx] = useState<number | null>(null);
   const [approveBusyId, setApproveBusyId] = useState<string | null>(null);
 
   async function approveVersion(assetId: string): Promise<void> {
@@ -1215,11 +1220,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             // missing / draft.
             // q4a — per-shot live overlay: if a designer/video-artist job is
             // RUNNING for THIS shot, it recolours + pulses (live wins).
-            const liveStage = liveStageByShot?.get(t.shot.shot_id);
-            const palette = cellPalette(cell?.status, cell?.kind, liveStage);
+            const liveWork = liveWorkByShot?.get(t.shot.shot_id);
+            const palette = cellPalette(cell?.status, cell?.kind, liveWork);
             // TD-43.C: versions of THIS shot — popover lists each.
             const versions = vidShotsByShotId.get(t.shot.shot_id) ?? [];
-            const showPopover = hoveredCellIdx === i;
+            const showPopover = openCellIdx === i;
             // 2026-06-24 — edge-aware popover anchor. Centering (`left-1/2
             // -translate-x-1/2`) overflows the content-frame's left/right edge
             // for the first/last cells, and the frame's `overflow-y-auto`
@@ -1266,15 +1271,17 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                   opacity: t.excluded ? 0.35 : cellMatchesFilter ? 1 : 0.25,
                   textDecoration: t.excluded ? 'line-through' : undefined,
                 }}
-                onMouseEnter={() => setHoveredCellIdx(i)}
-                onMouseLeave={() => setHoveredCellIdx(null)}
                 title={t.excluded ? `${t.shot.shot_id} — excluded from final cut (≤0.5s)` : undefined}
               >
                 <button
                   // 2026-06-06 — seek in PLAYBACK coords; excluded cells share
                   // their playStart with the next non-excluded shot, so a
                   // click on an excluded cell lands on the next playable one.
-                  onClick={() => seekTo(t.playStart)}
+                  // 2026-07-02 — also toggles this cell's kebab (click, not hover).
+                  onClick={() => {
+                    seekTo(t.playStart);
+                    setOpenCellIdx((v) => (v === i ? null : i));
+                  }}
                   className="w-full h-full transition-opacity"
                   style={{
                     background: isCurrent
@@ -1321,6 +1328,26 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                     <div className="px-1 pb-1 font-mono opacity-70 text-[10px]">
                       {t.shot.shot_id} · {t.duration.toFixed(1)}s
                     </div>
+                    {/* Unified language — WHO is working right now (Q3), shown
+                        only while a job runs on this shot. Object (references vs
+                        video) comes from liveWork.object; role drives the colour. */}
+                    {liveWork && liveWork.roles.length > 0 && (() => {
+                      const rp = workRolePalette(liveWork.roles);
+                      const objectLabel = liveWork.object === 'animate' ? 'Video' : 'References';
+                      return (
+                        <div
+                          className="mx-1 mb-1 px-1.5 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1 cell-stage-pulse"
+                          style={{
+                            color: rp.color,
+                            background: `color-mix(in oklab, ${rp.color} 14%, transparent)`,
+                            border: `1px solid color-mix(in oklab, ${rp.color} 40%, transparent)`,
+                            ['--stage-glow' as string]: rp.color,
+                          }}
+                        >
+                          {objectLabel}: {rp.label}…
+                        </div>
+                      );
+                    })()}
                     {/* Ref Plan (SPC-ref_plan) — first row, the earliest artifact
                         of the shot. Reachable from EVERY shot so the Director can
                         open it and see what the EREF Designer planned / what went
