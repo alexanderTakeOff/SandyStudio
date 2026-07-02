@@ -229,6 +229,28 @@ async function shotHasPlan(
 }
 
 /**
+ * Set of shot_ids that already have a ref plan (the Reference Designer's own
+ * output). One scan → used to filter the pilot→fanout list so the fanout never
+ * regenerates a shot the parallel per-shot edge already advanced.
+ */
+async function shotsWithRefPlan(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from('assets')
+    .select('metadata,content')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'SPC-ref_plan%');
+  const set = new Set<string>();
+  for (const r of (data ?? []) as Array<{ metadata?: unknown; content?: string | null }>) {
+    const sid = resolveShotId({ metadata: r.metadata, content: r.content });
+    if (sid) set.add(sid);
+  }
+  return set;
+}
+
+/**
  * Read the executing Plan's asset id off a produced asset's metadata.
  * Two historical shapes exist: EREF stamps `provenance.plan_asset_id`
  * (IMG-episode_ref), VGEN stamps top-level `plan_asset_id` (VID-shot,
@@ -1185,16 +1207,34 @@ export async function computeNextEvents(
       const PILOT_COUNT_PARALLEL = 2;
       const approvedVideos = await countApproved(supabase, ep, 'VID-shot');
       if (!alreadyFired && pending.length > 0 && approvedVideos >= PILOT_COUNT_PARALLEL) {
-        for (const shotId of pending) {
+        // Per-shot idempotency (2026-07-03 fix, E13): fan out ONLY to shots the
+        // Reference Designer hasn't already produced a ref plan for. Without this
+        // the fanout blindly re-fired the Designer for EVERY pending shot —
+        // including the many the parallel per-shot edge had already advanced — so
+        // approving the 2nd pilot video REGENERATED refs across the whole episode
+        // (07-02 10:24–10:45 burst: ~14 shots got a duplicate SPC-ref_plan). One
+        // scan builds the "already has a ref plan" set; skip those shots.
+        const alreadyHasRefPlan = await shotsWithRefPlan(supabase, ep);
+        const freshShots = pending.filter((s) => !alreadyHasRefPlan.has(s));
+        for (const shotId of freshShots) {
           events.push({
             name: 'sandystudio/exec-eref-designer/plan',
             data: { episodeId: ep, shotId },
           });
         }
         try {
+          // Prune the pending list as we fire — the fanout is a one-shot
+          // transition. Leaving the full 36-shot list in metadata was a landmine:
+          // the approve-pilots pillbar route reads it WITHOUT the
+          // parallel_fanout_fired guard, so a stale list could re-drive a mass
+          // regeneration. Guard set + list dropped together make a second fanout
+          // impossible from either path.
+          const { designer_fanout_pending: _pruned, ...restMeta } = meta;
           await supabase
             .from('episodes')
-            .update({ metadata: { ...meta, parallel_fanout_fired: true } as never } as never)
+            .update({
+              metadata: { ...restMeta, parallel_fanout_fired: true } as never,
+            } as never)
             .eq('id', ep);
         } catch {
           /* non-fatal — guard is best-effort; duplicate designers dedup downstream */
