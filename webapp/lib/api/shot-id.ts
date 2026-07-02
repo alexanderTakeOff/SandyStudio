@@ -55,9 +55,23 @@ export function resolveShotId(
   if (typeof input !== 'string') return input;
   const s = input.trim();
   if (SHOT_ID_RE.test(s)) return s.toUpperCase();
-  const m = s.match(/^(?:SH)?0*(\d+)$/i);
-  if (m && episodeCode) {
-    return `${episodeShort(episodeCode)}-SH${m[1].padStart(2, '0')}`;
+
+  // Bare number / SH-token in the active episode → mint canonical by position.
+  const bare = s.match(/^(?:SH)?0*(\d+)$/i);
+  if (bare && episodeCode) {
+    return `${episodeShort(episodeCode)}-SH${bare[1].padStart(2, '0')}`;
   }
+
+  // Legacy / prefixed / compound reference carrying the identity tokens
+  // (e.g. "SS-S15-E13-A1-SC01-SH03", "SS-S15-E13-SH17"): extract S{s}-E{e}-SH{n}.
+  // This is the ENTRY door doing its stated job — canonicalising a tool-supplied
+  // reference — NOT the deleted loose-match band-aid (comparison sites stay exact
+  // `===`). Act/scene are POSITION, never identity, so they are dropped here.
+  const se = s.match(/S(\d+)-E(\d+)/i);
+  const sh = s.match(/SH(\d+)/i);
+  if (se && sh) {
+    return `S${se[1]}-E${se[2]}-SH${sh[1].padStart(2, '0')}`;
+  }
+
   return s;
 }

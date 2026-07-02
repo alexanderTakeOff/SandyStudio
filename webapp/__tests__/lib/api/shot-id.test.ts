@@ -55,11 +55,16 @@ describe('resolveShotId (q6 — button number is enough)', () => {
     expect(resolveShotId('s15-e12-sh07', ep)).toBe('S15-E12-SH07');
   });
 
-  test('legacy compound / unknown shape → passed through untouched', () => {
-    // Frozen legacy episode keeps its stored id; a wrong id fails loud later.
-    expect(resolveShotId('SS-S15-E11-A2-SC07-SH07', ep)).toBe(
-      'SS-S15-E11-A2-SC07-SH07',
-    );
+  test('entry-door canonicalises a legacy compound / SS-prefixed reference', () => {
+    // 2026-07-02: the door now EXTRACTS S{s}-E{e}-SH{n} from any reference that
+    // carries the identity tokens (act/scene are position → dropped; SS- stripped).
+    // This is the door doing its stated job, not the deleted comparison-site
+    // loose-match. It honours the reference's OWN episode (E11 here), not `ep`.
+    expect(resolveShotId('SS-S15-E11-A2-SC07-SH07', ep)).toBe('S15-E11-SH07');
+    // E13 live regression: the exact shapes that failed "not found in STB".
+    expect(resolveShotId('SS-S15-E13-A1-SC01-SH03', 'SS-S15-E13')).toBe('S15-E13-SH03');
+    expect(resolveShotId('SS-S15-E13-SH17', 'SS-S15-E13')).toBe('S15-E13-SH17');
+    // Truly unknown shape (no identity tokens) still passes through.
     expect(resolveShotId('garbage', ep)).toBe('garbage');
   });
 

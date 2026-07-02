@@ -68,7 +68,7 @@ export const regenerateVideoFromPlan: Tool<RegenerateVideoFromPlanArgs> = {
           shotId: {
             type: 'string',
             description:
-              "Storyboard shot id matching the Plan's metadata.shot_id (e.g. 'SS-S15-E01-A2-SC04-SH08').",
+              "Storyboard shot id — the bare token 'SH08' (in-episode this is enough) or canonical 'S15-E13-SH08'. Do NOT use act/scene prefixes.",
           },
           planAssetId: {
             type: 'string',
@@ -221,7 +221,7 @@ export const regenerateShot: Tool<RegenerateShotArgs> = {
           shotId: {
             type: 'string',
             description:
-              "Storyboard shot id (e.g. 'SS-S15-E01-A2-SC04-SH07'). Resolves to the newest VID-shot asset for this shot.",
+              "Storyboard shot id — 'SH07' or canonical 'S15-E13-SH07' (no act/scene prefix). Resolves to the newest VID-shot asset for this shot.",
           },
           anchorMode: {
             type: 'string',

@@ -105,7 +105,7 @@ export const reorderShots: Tool<ReorderShotsArgs> = {
           },
           shotIdA: {
             type: 'string',
-            description: "First shot id (e.g. 'SS-S15-E01-A3-SC10-SH21' or just 'SH21' — suffix match).",
+            description: "First shot id — 'SH21' (in-episode this is enough) or canonical 'S15-E13-SH21'. No act/scene prefix.",
           },
           shotIdB: {
             type: 'string',
