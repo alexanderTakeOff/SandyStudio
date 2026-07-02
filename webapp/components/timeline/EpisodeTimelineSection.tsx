@@ -168,6 +168,8 @@ export function EpisodeTimelineSection({
   // so the gallery's unique value moves into the timeline. Only one drawer is
   // open at a time — openAssetSmart() clears the other.
   const [refAssetId, setRefAssetId] = useState<string | null>(null);
+  // Phase 2b (2026-07-02): shot whose manual "generate video" flow is starting.
+  const [generatingVideoShotId, setGeneratingVideoShotId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -495,6 +497,35 @@ export function EpisodeTimelineSection({
 
   const refAsset = refAssetId ? assetById.get(refAssetId) ?? null : null;
 
+  // Phase 2b — manual "generate video" for an eligible shot (approved ref, no
+  // VID-shot yet). Fires the Video Designer flow (Designer → critic → generator)
+  // through the single trigger door; the cell then pulses live via the jobs
+  // feed. Video only actually renders past EXEC-VGEN in parallel mode (the
+  // animatic gate is dropped there) — sequential still needs the animatic.
+  async function handleGenerateVideo(shotId: string): Promise<void> {
+    setGeneratingVideoShotId(shotId);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/trigger`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          agentCode: 'EXEC-VANIM',
+          reason: 'Director — generate video for this shot from the timeline',
+          payload: { shotId },
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Generate video failed');
+      }
+      void mutate();
+    } catch (e) {
+      setBulkError((e as Error).message);
+    } finally {
+      setGeneratingVideoShotId(null);
+    }
+  }
+
   async function bulkApproveReview(): Promise<void> {
     setBulkBusy(true);
     setBulkError(null);
@@ -587,6 +618,8 @@ export function EpisodeTimelineSection({
               shotPlansByShotId={shotPlansByShotId}
               refPlansByShotId={refPlansByShotId}
               onOpenAsset={(id) => openAssetSmart(id)}
+              onGenerateVideo={(shotId) => void handleGenerateVideo(shotId)}
+              generatingVideoShotId={generatingVideoShotId}
             />
           </div>
         )}

@@ -155,6 +155,16 @@ export interface AnimaticPlayerProps {
    * first real edit (Phase 3). Default false = today's real-asset behaviour.
    */
   synthetic?: boolean;
+  /**
+   * Timeline-as-home (2026-07-02): manual "generate video" for a shot that has
+   * an approved reference but no VID-shot yet. Fires the flow (Video Designer →
+   * critic → generator) via the parent (which owns episodeId + the trigger
+   * fetch). Shown in the kebab's no-video row only when the shot is eligible
+   * (has an APPROVED/LOCKED reference). Without this prop the row is read-only.
+   */
+  onGenerateVideo?: (shotId: string) => void;
+  /** Shot currently kicking off a video flow (button spinner / disabled). */
+  generatingVideoShotId?: string | null;
 }
 
 /**
@@ -310,6 +320,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     liveStageByShot,
     imgRefAssets,
     synthetic = false,
+    onGenerateVideo,
+    generatingVideoShotId,
   },
   ref,
 ) {
@@ -1426,11 +1438,37 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                       </div>
                     )}
                     {versions.length === 0 ? (
-                      <div className="px-1 pb-0.5">
+                      <div className="px-1 pb-0.5 flex items-center gap-2">
                         <span style={{ color: palette.color, fontWeight: 600 }}>
                           {cell?.status ?? 'NONE'}
                         </span>
                         <span className="opacity-60"> · no VID-shot yet</span>
+                        {onGenerateVideo &&
+                          (imgRefsByShotId.get(t.shot.shot_id) ?? []).some(
+                            (r) => r.status === 'APPROVED' || r.status === 'LOCKED',
+                          ) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (generatingVideoShotId !== t.shot.shot_id) {
+                                  onGenerateVideo(t.shot.shot_id);
+                                }
+                              }}
+                              disabled={generatingVideoShotId === t.shot.shot_id}
+                              className="ml-auto px-2 py-0.5 rounded text-[10px] font-medium border transition-colors disabled:opacity-50"
+                              style={{
+                                background: 'color-mix(in oklab, var(--accent-primary) 14%, transparent)',
+                                color: 'var(--accent-primary)',
+                                borderColor: 'color-mix(in oklab, var(--accent-primary) 35%, transparent)',
+                              }}
+                              title="Start the video flow for this shot: Designer → critic → generator"
+                            >
+                              {generatingVideoShotId === t.shot.shot_id
+                                ? 'Starting…'
+                                : '🎬 Generate video'}
+                            </button>
+                          )}
                       </div>
                     ) : (
                       <div className="flex flex-col gap-0.5">
