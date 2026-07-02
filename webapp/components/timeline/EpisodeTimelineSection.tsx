@@ -44,6 +44,10 @@ import {
   type CellStatusPill,
 } from '@/lib/api/timeline-cell-resolver';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
+import {
+  EpisodeAssetDrawer,
+  type EpisodeAsset,
+} from '@/components/assets/EpisodeAssetDrawer';
 import { StitchStatusPill } from '@/components/timeline/StitchStatusPill';
 import {
   activeWorkPhaseByShot,
@@ -65,6 +69,40 @@ interface AssetRow {
   /** Storyboard/markdown body — present for STB-* rows, used to synth a
    *  storyboard-derived skeleton contract when no animatic exists yet. */
   content?: string | null;
+  // Extra columns present at runtime (/api/episodes select('*')) that the rich
+  // EpisodeAssetDrawer needs when a reference cell is opened (Phase 2).
+  description?: string | null;
+  drive_file_id?: string | null;
+  episode_id?: string | null;
+  series_id?: string | null;
+}
+
+/** Map a timeline asset row to the EpisodeAssetDrawer's EpisodeAsset shape.
+ *  All fields exist at runtime (select('*')); the timeline's AssetRow type is a
+ *  documented subset, so we coerce the nullable-optional fields explicitly. */
+function toEpisodeAsset(a: AssetRow): EpisodeAsset {
+  return {
+    id: a.id,
+    filename: a.filename,
+    file_type: a.file_type,
+    status: a.status,
+    version: a.version,
+    description: a.description ?? null,
+    content: a.content ?? null,
+    staging_path: a.staging_path,
+    drive_path: a.drive_path,
+    drive_web_view_url: a.drive_web_view_url,
+    drive_file_id: a.drive_file_id ?? null,
+    episode_id: a.episode_id ?? null,
+    series_id: a.series_id ?? null,
+    metadata: (a.metadata ?? null) as EpisodeAsset['metadata'],
+  };
+}
+
+/** Reference-family assets open the rich drawer; everything else (video, Plan
+ *  markdown, final cut) opens the light PreviewDrawer. */
+function isReferenceAsset(fileType: string): boolean {
+  return fileType.startsWith('IMG-episode_ref') || fileType.startsWith('IMG-anchor');
 }
 
 /** Fallback per-shot duration when the storyboard omits one (mirrors
@@ -81,7 +119,7 @@ interface JobRow {
 
 interface EpisodeResponse {
   data: {
-    episode: { id: string };
+    episode: { id: string; series_id?: string | null };
     assets: AssetRow[];
     jobs: JobRow[];
   };
@@ -125,6 +163,11 @@ export function EpisodeTimelineSection({
 
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+  // Phase 2 (2026-07-02): reference cells open the RICH EpisodeAssetDrawer
+  // (Reject / regen-with-provider / AI verdict / side-by-side variant compare),
+  // so the gallery's unique value moves into the timeline. Only one drawer is
+  // open at a time — openAssetSmart() clears the other.
+  const [refAssetId, setRefAssetId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -367,6 +410,14 @@ export function EpisodeTimelineSection({
       .map((c) => c.asset_id!) as string[];
   }, [cells]);
 
+  // Phase 2 — id → full asset row, for opening the rich drawer by cell/kebab id.
+  const assetById = useMemo(() => {
+    const m = new Map<string, AssetRow>();
+    for (const a of data?.data.assets ?? []) m.set(a.id, a);
+    return m;
+  }, [data]);
+  const seriesId = data?.data.episode.series_id ?? null;
+
   const navIndex = previewAssetId
     ? navigableAssetIds.indexOf(previewAssetId)
     : -1;
@@ -420,12 +471,29 @@ export function EpisodeTimelineSection({
 
   const contract = activeContract;
 
-  function handleCellClick(cell: TimelineCell): void {
-    // Open whatever the cell resolves to (VID-shot, EREF image fallback, …) in
-    // the drawer. Generation of a missing shot is no longer a drawer-footer
-    // action — it lives on the Shot Plan contract page (TD-84).
-    if (cell.asset_id) setPreviewAssetId(cell.asset_id);
+  // Phase 2 — route by asset family: reference images open the rich
+  // EpisodeAssetDrawer (Reject / regen-with-provider / AI verdict / side-by-side
+  // variant compare); everything else (VID-shot, Plan/ref-plan markdown, final
+  // cut) opens the light PreviewDrawer. Only one drawer open at a time.
+  function openAssetSmart(assetId: string): void {
+    const asset = assetById.get(assetId);
+    if (asset && isReferenceAsset(asset.file_type)) {
+      setPreviewAssetId(null);
+      setRefAssetId(assetId);
+    } else {
+      setRefAssetId(null);
+      setPreviewAssetId(assetId);
+    }
   }
+
+  function handleCellClick(cell: TimelineCell): void {
+    // Open whatever the cell resolves to (VID-shot, EREF image fallback, …).
+    // Generation of a missing shot is no longer a drawer-footer action — it
+    // lives on the Shot Plan contract page (TD-84).
+    if (cell.asset_id) openAssetSmart(cell.asset_id);
+  }
+
+  const refAsset = refAssetId ? assetById.get(refAssetId) ?? null : null;
 
   async function bulkApproveReview(): Promise<void> {
     setBulkBusy(true);
@@ -479,7 +547,7 @@ export function EpisodeTimelineSection({
             <StitchStatusPill
               episodeId={episodeId}
               finalCutAssetId={finalCutAsset?.id ?? null}
-              onOpen={(assetId) => setPreviewAssetId(assetId)}
+              onOpen={(assetId) => openAssetSmart(assetId)}
             />
           </div>
           <div className="flex-1" />
@@ -518,7 +586,7 @@ export function EpisodeTimelineSection({
               // otherwise enable the «Generate VGEN» footer on a Plan view).
               shotPlansByShotId={shotPlansByShotId}
               refPlansByShotId={refPlansByShotId}
-              onOpenAsset={(id) => setPreviewAssetId(id)}
+              onOpenAsset={(id) => openAssetSmart(id)}
             />
           </div>
         )}
@@ -535,6 +603,23 @@ export function EpisodeTimelineSection({
         onAssetChanged={() => void mutate()}
         onPickAsset={(id) => setPreviewAssetId(id)}
       />
+
+      {/* Phase 2 — rich reference drawer (Reject / regen-with-provider / AI
+          verdict / side-by-side variant compare). Opened only for reference
+          cells via openAssetSmart; onPickAsset lets CandidatesStrip switch to a
+          sibling variant. This is what retires the gallery (Phase 4). */}
+      {refAsset && (
+        <EpisodeAssetDrawer
+          open={true}
+          asset={toEpisodeAsset(refAsset)}
+          onClose={() => setRefAssetId(null)}
+          onBack={() => setRefAssetId(null)}
+          onChange={() => void mutate()}
+          onPickAsset={(id) => openAssetSmart(id)}
+          kindLabel="Episode reference"
+          seriesId={seriesId}
+        />
+      )}
     </>
   );
 }
