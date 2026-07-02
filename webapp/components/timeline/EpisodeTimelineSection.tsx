@@ -498,21 +498,38 @@ export function EpisodeTimelineSection({
   const refAsset = refAssetId ? assetById.get(refAssetId) ?? null : null;
 
   // Phase 2b — manual "generate video" for an eligible shot (approved ref, no
-  // VID-shot yet). Fires the Video Designer flow (Designer → critic → generator)
-  // through the single trigger door; the cell then pulses live via the jobs
-  // feed. Video only actually renders past EXEC-VGEN in parallel mode (the
-  // animatic gate is dropped there) — sequential still needs the animatic.
+  // VID-shot yet). Plan-aware (Director 2026-07-02): if the shot ALREADY has an
+  // APPROVED shot-plan, go straight to the render (EXEC-VGEN single-shot from
+  // that plan — with the route's q21 readiness preflight); only run the Video
+  // Designer when no plan exists yet. Previously it always re-ran the Designer,
+  // superseding an approved plan and looping the shot back a step.
   async function handleGenerateVideo(shotId: string): Promise<void> {
     setGeneratingVideoShotId(shotId);
     try {
+      const token = shotId.match(/sh\d+/i)?.[0]?.toUpperCase() ?? null;
+      const approvedPlan = token
+        ? (data?.data.assets ?? []).find(
+            (a) =>
+              a.file_type.startsWith('SPC-shot_plan') &&
+              (a.status === 'APPROVED' || a.status === 'LOCKED') &&
+              `${a.filename} ${a.file_type}`.toUpperCase().includes(token),
+          )
+        : undefined;
+      const body = approvedPlan
+        ? {
+            agentCode: 'EXEC-VGEN',
+            reason: 'Director — render video from approved plan (timeline)',
+            payload: { shotId, planAssetId: approvedPlan.id },
+          }
+        : {
+            agentCode: 'EXEC-VANIM',
+            reason: 'Director — plan + generate video for this shot (timeline)',
+            payload: { shotId },
+          };
       const res = await fetch(`/api/episodes/${episodeId}/trigger`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          agentCode: 'EXEC-VANIM',
-          reason: 'Director — generate video for this shot from the timeline',
-          payload: { shotId },
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
