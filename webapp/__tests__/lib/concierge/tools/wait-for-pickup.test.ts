@@ -16,35 +16,52 @@ interface FakeRow {
   id: string;
 }
 
-/** Minimal stub of the PostgrestFilterBuilder chain used by waitForJobPickup. */
-function makeSupabaseStub(rows: FakeRow[]): {
+/**
+ * Minimal stub of the PostgrestFilterBuilder chain. Two row sets: the per-job
+ * pickup poll (uses `.in('status', …)`) resolves to `pickupRows`; the liveness
+ * probe (uses `.or(…)`) resolves to `livenessRows`. Defaulting livenessRows to
+ * pickupRows preserves the pre-liveness tests (empty→empty, [row]→[row]).
+ */
+function makeSupabaseStub(
+  pickupRows: FakeRow[],
+  livenessRows: FakeRow[] = pickupRows,
+): {
   client: SupabaseClient<Database>;
   selectCalls: () => number;
 } {
   let selectCalls = 0;
-  const builder = {
-    eq() {
-      return builder;
-    },
-    gte() {
-      return builder;
-    },
-    in() {
-      return builder;
-    },
-    limit() {
-      return builder;
-    },
-    then(resolve: (v: { data: FakeRow[]; error: null }) => unknown) {
-      return Promise.resolve({ data: rows, error: null }).then(resolve);
-    },
-  };
+  function makeBuilder() {
+    let isLiveness = false;
+    const builder = {
+      eq() {
+        return builder;
+      },
+      gte() {
+        return builder;
+      },
+      in() {
+        return builder;
+      },
+      or() {
+        isLiveness = true;
+        return builder;
+      },
+      limit() {
+        return builder;
+      },
+      then(resolve: (v: { data: FakeRow[]; error: null }) => unknown) {
+        const data = isLiveness ? livenessRows : pickupRows;
+        return Promise.resolve({ data, error: null }).then(resolve);
+      },
+    };
+    return builder;
+  }
   const client = {
     from() {
       return {
         select() {
           selectCalls += 1;
-          return builder;
+          return makeBuilder();
         },
       };
     },
@@ -135,6 +152,46 @@ describe('ackOrFailOnPickup', () => {
     if (!out.ok) {
       expect(out.code).toBe('pickup_timeout');
       expect(out.error).toMatch(/no executor picked the event up/i);
+    }
+  });
+
+  test('advisory ok (NOT pickup_timeout) when the job is queued but the worker is alive', async () => {
+    // Per-job poll finds nothing, but a sibling job proves the worker is
+    // draining a batch → normal queue latency, not a failure (E13 2026-07-02).
+    const { client } = makeSupabaseStub([], [{ id: 'sibling-job-1' }]);
+    const original = ok({ triggered: true }, 'regenerateShotPlan(SH15) OK');
+    const out = await ackOrFailOnPickup(original, {
+      supabase: client,
+      episodeId: 'ep-1',
+      agentHint: 'EXEC-VANIM',
+      sinceIso: new Date().toISOString(),
+      label: 'regenerateShotPlan(SH15)',
+      timeoutMs: 150,
+      intervalMs: 50,
+    });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.summary).toMatch(/queued|queue latency|run shortly/i);
+      expect(out.summary).not.toMatch(/has NOT started/i);
+    }
+  });
+
+  test('hard pickup_timeout only when the worker shows NO recent life', async () => {
+    const { client } = makeSupabaseStub([], []); // no per-job row AND no liveness
+    const original = ok({ triggered: true }, 'triggerAgent(EXEC-VANIM) OK');
+    const out = await ackOrFailOnPickup(original, {
+      supabase: client,
+      episodeId: 'ep-1',
+      agentHint: 'EXEC-VANIM',
+      sinceIso: new Date().toISOString(),
+      label: 'triggerAgent(EXEC-VANIM)',
+      timeoutMs: 150,
+      intervalMs: 50,
+    });
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.code).toBe('pickup_timeout');
+      expect(out.error).toMatch(/no recent activity/i);
     }
   });
 

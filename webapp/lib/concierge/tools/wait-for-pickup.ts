@@ -59,6 +59,34 @@ export interface PickupResult {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_INTERVAL_MS = 250;
+// How far back a sibling job counts as "the worker is alive and draining a
+// queue". A job row is inserted only when a function BODY starts (factory.ts),
+// so under a saturated batch a freshly-dispatched job has NO row for >10s even
+// though it is queued and will run — the false-alarm source (E13 2026-07-02).
+const LIVENESS_LOOKBACK_MS = 180_000;
+
+/**
+ * Is the Inngest worker demonstrably alive for this episode? True when any job
+ * is currently RUNNING (any age) OR any job row appeared in the recent window.
+ * Used to tell "queue BUSY (job queued behind the batch — normal)" apart from
+ * "queue DEAD (Inngest down / not deployed — the real TD-39 alarm)". On a DB
+ * error we return false so a genuine outage still surfaces the hard alarm.
+ */
+async function workerLooksAlive(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  sinceIso: string,
+): Promise<boolean> {
+  const lookbackIso = new Date(Date.parse(sinceIso) - LIVENESS_LOOKBACK_MS).toISOString();
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('id')
+    .eq('episode_id', episodeId)
+    .or(`status.eq.RUNNING,created_at.gte.${lookbackIso}`)
+    .limit(1);
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
 
 export async function waitForJobPickup(args: WaitForPickupArgs): Promise<PickupResult> {
   const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -130,9 +158,26 @@ export async function ackOrFailOnPickup(
     intervalMs: args.intervalMs,
   });
   if (!pickup.pickedUp) {
+    const timeoutSec = (args.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000;
+    // Distinguish "queue BUSY" from "queue DEAD". A job row only appears when a
+    // function BODY starts, so under a saturated batch a queued job has no row
+    // yet — that is normal latency, NOT a failure. Only alarm when the worker
+    // shows NO life at all (the genuine TD-39 Inngest-down case).
+    const alive = await workerLooksAlive(args.supabase, args.episodeId, args.sinceIso);
+    if (alive) {
+      const base = result.summary ?? args.label;
+      return ok(
+        result.data,
+        `${base} — dispatched & queued (HTTP 200). The worker is busy with the active batch and ` +
+          `hasn't started this one within ${timeoutSec}s: normal queue latency, NOT a failure. It ` +
+          `will run shortly — watch for the agent_started event; only treat as stalled if it stays ` +
+          `silent past ~3 min.`,
+      );
+    }
     return fail(
-      `${args.label}: dispatched OK (HTTP 200) but no executor picked the event up within ${(args.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000}s. ` +
-        `Tell Director the work has NOT started. Likely causes: Inngest dev server down, function not deployed, or event payload mismatch. ` +
+      `${args.label}: dispatched OK (HTTP 200) but no executor picked the event up within ${timeoutSec}s ` +
+        `AND the worker shows no recent activity for this episode. The work has NOT started. Likely causes: ` +
+        `Inngest dev server down, function not deployed, or event payload mismatch. ` +
         `Check Inngest dashboard (/api/inngest) and the recent jobs table for context.`,
       'pickup_timeout',
     );
