@@ -99,11 +99,20 @@ export const execCreadReviewStoryboard = createAgentInngestFunction({
 // when READABILITY_GATE_ENABLED is on AND the series genre is comedy-like (the
 // genre gate lives in the EPREV/VPREV nextEvent, mirroring the old GAGAD wiring).
 //
-// Auto-chain by verdict:
-//   REVISE → re-fire the producer (Designer / Animator) with the readability
-//            acceptance_criteria as a hard-contract revisionNote.
-//   PASS / HALT / FAIL / UNKNOWN → no next event (the Plan stays in REVIEW for
-//            the Director; HALT escalates via applyCriticVerdict in the runner).
+// #5 one-attempt (2026-07-02): CREAD is the TASTE critic — it is now ADVISORY on
+// the per-shot phases too, extending the storyboard-phase q15 flip. A REVISE no
+// longer re-fires the producer (Designer / Animator); the Plan simply stays in
+// REVIEW and the readability verdict surfaces as advisory only (the REV-readability
+// asset + "EXEC-CREAD completed · REVISE" warning row), for the Director / AI-EP
+// to triage. This kills the taste-driven auto-regen loop (regen often regresses,
+// and the 2nd/3rd attempt is frequently worse) while the CANON critics
+// (EPREV / VPREV / WCHK) keep their hard REVISE gate — "если не канон". The
+// Director manually re-fires the few genuinely-weak shots.
+//
+// Auto-chain by verdict: NONE. Every verdict is advisory here — no next event.
+// (HALT still escalates via applyCriticVerdict in the runner; the verdict + its
+// acceptance_criteria remain readable in the REV-readability asset / critic-notes
+// so a Director-initiated REVISION can carry them.)
 // ──────────────────────────────────────────────────────────────────────────────
 
 function reviewResolveRunArgs(
@@ -144,40 +153,10 @@ function reviewResolveActivityContext(
   };
 }
 
-function reviewNextEvent(
-  producerEvent: string,
-  label: string,
-): (
-  saved: { assetId: string },
-  eventData: Record<string, unknown>,
-  result: AgentResult,
-) => { name: string; data: Record<string, unknown> } | null {
-  return (_saved, eventData, result) => {
-    const meta = result.metadata as
-      | { verdict?: unknown; acceptance_criteria?: unknown }
-      | undefined;
-    const verdict = typeof meta?.verdict === 'string' ? meta.verdict : null;
-    if (verdict !== 'REVISE') return null;
-
-    const shotId = typeof eventData.shotId === 'string' ? eventData.shotId : null;
-    if (!shotId) return null;
-
-    const criteria = Array.isArray(meta?.acceptance_criteria)
-      ? (meta.acceptance_criteria as unknown[]).filter(
-          (v): v is string => typeof v === 'string' && v.trim().length > 0,
-        )
-      : [];
-    const revisionNote =
-      criteria.length > 0
-        ? `Readability Critic (${label}) REVISE — hard acceptance criteria:\n- ${criteria.join('\n- ')}`
-        : `Readability Critic (${label}) REVISE — re-derive the plan to preserve the readable intent.`;
-
-    return {
-      name: producerEvent,
-      data: { episodeId: eventData.episodeId as string, shotId, revisionNote },
-    };
-  };
-}
+// Advisory per-shot readability: NO auto-re-author on any verdict (#5, 2026-07-02).
+// The verdict is surfaced (REV-readability asset + warning feed row) by the runner
+// regardless; this hook just declines to re-fire the producer, so attempt-1 ships.
+const advisoryNoReauthor = (): null => null;
 
 export const execCreadReviewRefPlan = createAgentInngestFunction({
   id: 'exec-cread-review-ref-plan',
@@ -188,7 +167,7 @@ export const execCreadReviewRefPlan = createAgentInngestFunction({
   operation: 'readability_review_ref_plan',
   resolveRunArgs: reviewResolveRunArgs('eref'),
   resolveActivityContext: reviewResolveActivityContext('eref'),
-  nextEvent: reviewNextEvent('sandystudio/exec-eref-designer/plan', 'eref'),
+  nextEvent: advisoryNoReauthor,
 });
 
 export const execCreadReviewShotPlan = createAgentInngestFunction({
@@ -200,5 +179,5 @@ export const execCreadReviewShotPlan = createAgentInngestFunction({
   operation: 'readability_review_shot_plan',
   resolveRunArgs: reviewResolveRunArgs('vanim'),
   resolveActivityContext: reviewResolveActivityContext('vanim'),
-  nextEvent: reviewNextEvent('sandystudio/exec-vanim/plan', 'vanim'),
+  nextEvent: advisoryNoReauthor,
 });
