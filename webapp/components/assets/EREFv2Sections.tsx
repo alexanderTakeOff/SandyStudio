@@ -444,9 +444,18 @@ export interface AttemptsStripProps {
   attempts: readonly GenerationAttempt[];
   /** Final attempt version that landed as the asset's primary staging_path. */
   finalVersion?: number | null;
+  /**
+   * Timeline-as-home (2026-07-02): when provided, each attempt becomes a
+   * PROMOTE button — clicking it makes that attempt the asset's primary image
+   * (the "pick a different one of the 3 variants" motion) instead of opening the
+   * image in a new tab. Without it the strip stays read-only (open-in-tab).
+   */
+  onPromote?: (att: GenerationAttempt) => void;
+  /** Attempt version currently being promoted (spinner / disabled state). */
+  busyVersion?: number | null;
 }
 
-export function AttemptsStrip({ attempts, finalVersion }: AttemptsStripProps) {
+export function AttemptsStrip({ attempts, finalVersion, onPromote, busyVersion }: AttemptsStripProps) {
   if (!attempts || attempts.length <= 1) return null;
   return (
     <div
@@ -458,12 +467,13 @@ export function AttemptsStrip({ attempts, finalVersion }: AttemptsStripProps) {
           Generation attempts ({attempts.length})
         </div>
         <div className="text-[10px] text-text-muted">
-          Hover for details · click opens full size
+          {onPromote ? 'Click a variant to make it the approved reference' : 'Hover for details · click opens full size'}
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
         {attempts.map((att) => {
           const isFinal = finalVersion != null && att.version === finalVersion;
+          const promoting = busyVersion != null && att.version === busyVersion;
           const triggerLabel =
             att.triggered_by === 'pipeline'
               ? 'first'
@@ -491,14 +501,28 @@ export function AttemptsStrip({ attempts, finalVersion }: AttemptsStripProps) {
           return (
             <a
               key={`${att.version}-${att.at}`}
-              href={att.image_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={title}
+              href={onPromote ? undefined : att.image_url}
+              target={onPromote ? undefined : '_blank'}
+              rel={onPromote ? undefined : 'noopener noreferrer'}
+              onClick={
+                onPromote
+                  ? (e) => {
+                      e.preventDefault();
+                      if (!promoting) onPromote(att);
+                    }
+                  : undefined
+              }
+              title={
+                onPromote
+                  ? `${title} · click to make this the approved reference`
+                  : title
+              }
               aria-label={title}
               className="relative w-20 h-14 rounded-md overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-all hover:scale-[1.04]"
               style={{
                 border: `2px solid ${isFinal ? 'var(--accent-success)' : 'var(--panel-glass-border)'}`,
+                cursor: onPromote ? 'pointer' : undefined,
+                opacity: promoting ? 0.5 : 1,
               }}
             >
               {att.image_url ? (

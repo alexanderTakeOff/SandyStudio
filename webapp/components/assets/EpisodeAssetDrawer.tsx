@@ -47,7 +47,7 @@ import {
 } from './EREFv2Sections';
 import { InboxNotePromptModal } from '@/components/inbox/InboxNotePromptModal';
 import { fetcher } from '@/lib/swr';
-import { isShotReferenceV2 } from '@/lib/api/shot-reference';
+import { isShotReferenceV2, type GenerationAttempt } from '@/lib/api/shot-reference';
 import { isAnimaticV1 } from '@/lib/api/animatic-shotlist';
 import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
@@ -183,6 +183,8 @@ export function EpisodeAssetDrawer({
   const [notePrompt, setNotePrompt] = useState<null | 'REJECT' | 'REQUEST_REVISION'>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [anchorRegenBusy, setAnchorRegenBusy] = useState(false);
+  // Timeline-as-home (2026-07-02): version being promoted via AttemptsStrip.
+  const [promotingVersion, setPromotingVersion] = useState<number | null>(null);
 
   const [imageOpen, setImageOpen] = useState(true);
   const [summaryOpen, setSummaryOpen] = useState(true);
@@ -517,6 +519,29 @@ export function EpisodeAssetDrawer({
     }
   }
 
+  // Timeline-as-home — promote a prior auto-regen attempt to the asset's primary
+  // image ("pick a different one of the 3 variants"). No paid call; status stays.
+  async function promoteAttempt(att: GenerationAttempt) {
+    setPromotingVersion(att.version);
+    setError(null);
+    try {
+      const res = await fetch(`/api/assets/${asset.id}/regenerate-image`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ select_attempt: att.version, directorConfirm: true }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Select variant failed');
+      }
+      onChange();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setPromotingVersion(null);
+    }
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-50 pointer-events-none" role="dialog" aria-modal="true">
       <div
@@ -672,8 +697,10 @@ export function EpisodeAssetDrawer({
               {/* TD-56 (2026-05-26): Artist auto-regen loop runs up to 3
                   attempts; previously only the final landed in UI. Strip
                   exposes all attempts (with image_url + provider + cost)
-                  so Director can visually compare and pick. Read-only —
-                  promote-to-primary action is a follow-up. */}
+                  so Director can visually compare and pick. Timeline-as-home
+                  (2026-07-02): clicking an attempt promotes it to the asset's
+                  primary image (select_attempt route) — the "pick a different
+                  one of the 3 variants" motion, no paid call, status unchanged. */}
               <AttemptsStrip
                 attempts={shotRef.generation_history ?? []}
                 finalVersion={
@@ -681,6 +708,8 @@ export function EpisodeAssetDrawer({
                     ? shotRef.generation_history[shotRef.generation_history.length - 1]!.version
                     : null
                 }
+                onPromote={promoteAttempt}
+                busyVersion={promotingVersion}
               />
               <CandidatesStrip
                 currentAssetId={asset.id}

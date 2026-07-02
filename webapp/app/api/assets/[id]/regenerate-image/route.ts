@@ -97,6 +97,15 @@ const Body = z.union([
     restore_version: z.number().int().positive(),
     directorConfirm: z.boolean().optional(),
   }),
+  z.object({
+    // Timeline-as-home (2026-07-02): promote one of the v2 EREF auto-regen
+    // attempts (shot_reference.generation_history[].version) to be the asset's
+    // primary image — the "pick a different one of the 3 variants" motion the
+    // Director wanted. Same no-paid-call repoint mechanism as restore_version,
+    // but sourced from generation_history instead of image_prompt.history.
+    select_attempt: z.number().int().positive(),
+    directorConfirm: z.boolean().optional(),
+  }),
 ]);
 
 /**
@@ -283,6 +292,88 @@ export const POST = withApiHandler(async (req, ctx) => {
       action: 'restore',
       restored_from_version: target.version,
       new_version: nextVersion,
+      cost_usd: 0,
+      mode_at_time: decision.modeAtTime,
+    });
+  }
+
+  // ── Branch A2: select a prior generation attempt as the primary image ──────
+  // Timeline-as-home (2026-07-02): the "pick a different one of the 3 variants"
+  // motion. The 3 variants are the auto-regen attempts in
+  // shot_reference.generation_history[] (each keeps its own image_url); the
+  // asset shows only the AI's final pick. This repoints the asset at the
+  // Director-chosen attempt — same no-paid-call mechanism as restore_version,
+  // sourced from generation_history. Status is untouched (stays APPROVED).
+  if ('select_attempt' in body) {
+    if (!isShotReferenceV2(asset.metadata)) {
+      throw new ValidationError(
+        'select_attempt is only valid for v2 EREF assets with generation_history',
+      );
+    }
+    const sr = (asset.metadata as { shot_reference: ShotReferenceContract }).shot_reference;
+    const attempts = sr.generation_history ?? [];
+    const target = attempts.find((a) => a.version === body.select_attempt);
+    if (!target) {
+      throw new ValidationError(
+        `No generation attempt with version ${body.select_attempt}`,
+      );
+    }
+    if (!target.image_url) {
+      throw new ValidationError(
+        `Attempt ${body.select_attempt} has no stored image URL — cannot select`,
+      );
+    }
+    // Record the manual pick as a new attempt entry ($0, director_edit) so the
+    // provenance trail shows the Director's selection, then repoint the asset's
+    // image fields at the chosen attempt.
+    const selectionEntry: GenerationAttempt = {
+      ...target,
+      version: (attempts[attempts.length - 1]?.version ?? target.version) + 1,
+      at: nowIso,
+      cost_usd: 0,
+      triggered_by: 'director_edit',
+      mode_at_time: decision.modeAtTime,
+    };
+    const newSr: ShotReferenceContract = {
+      ...sr,
+      generation_history: [...attempts, selectionEntry],
+    };
+    const newMeta = {
+      ...((asset.metadata ?? {}) as Record<string, unknown>),
+      shot_reference: newSr,
+    };
+    const upd = await sb
+      .from('assets')
+      .update({
+        staging_path: target.image_url,
+        drive_path: target.image_url,
+        drive_web_view_url: target.drive_web_view_url ?? null,
+        drive_file_id: target.drive_file_id ?? null,
+        metadata: newMeta as unknown as Record<string, unknown>,
+      } as never)
+      .eq('id', assetId);
+    if (upd.error) throw new Error(`asset select-attempt failed: ${upd.error.message}`);
+
+    await logEvent(sb, {
+      event_type: 'agent_completed',
+      severity: 'info',
+      title: `Reference variant selected: ${asset.filename} → attempt #${target.version}`,
+      description: `Director promoted generation attempt #${target.version} to the primary image`,
+      actor: 'EXEC-EREF-DESIGNER',
+      asset_id: assetId,
+      episode_id: asset.episode_id,
+      metadata: {
+        kind: 'eref_attempt_select',
+        selected_version: target.version,
+        mode_at_time: decision.modeAtTime,
+        director_id: user.id,
+      },
+    });
+
+    return apiOk({
+      asset_id: assetId,
+      action: 'select_attempt',
+      selected_version: target.version,
       cost_usd: 0,
       mode_at_time: decision.modeAtTime,
     });
