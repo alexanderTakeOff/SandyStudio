@@ -507,14 +507,32 @@ export function EpisodeTimelineSection({
     setGeneratingVideoShotId(shotId);
     try {
       const token = shotId.match(/sh\d+/i)?.[0]?.toUpperCase() ?? null;
-      const approvedPlan = token
-        ? (data?.data.assets ?? []).find(
+      const plansForShot = token
+        ? (data?.data.assets ?? []).filter(
             (a) =>
               a.file_type.startsWith('SPC-shot_plan') &&
-              (a.status === 'APPROVED' || a.status === 'LOCKED') &&
               `${a.filename} ${a.file_type}`.toUpperCase().includes(token),
           )
-        : undefined;
+        : [];
+      const approvedPlan = plansForShot.find(
+        (a) => a.status === 'APPROVED' || a.status === 'LOCKED',
+      );
+      // Ask 2 (backlog_kebab): a plan EXISTS but isn't approved yet
+      // (REVIEW/REVISION/DRAFT). Do NOT re-fire the Designer — that authors a
+      // fresh plan and supersedes the pending one, looping the shot back a step
+      // (the live SH05 spend bug). Surface it and open the plan so the presser
+      // approves first; the next Generate press then renders. Only a shot with
+      // NO plan at all falls through to the Designer.
+      if (!approvedPlan && plansForShot.length > 0) {
+        const pendingPlan = plansForShot
+          .slice()
+          .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0]!;
+        setBulkError(
+          `Shot ${token ?? shotId} has a video plan in ${pendingPlan.status} — approve it first, then Generate renders the video (re-planning would discard it).`,
+        );
+        setPreviewAssetId(pendingPlan.id);
+        return;
+      }
       const body = approvedPlan
         ? {
             agentCode: 'EXEC-VGEN',

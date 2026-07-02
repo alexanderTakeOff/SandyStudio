@@ -1357,47 +1357,38 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                         </div>
                       );
                     })()}
-                    {/* Ref Plan (SPC-ref_plan) — first row, the earliest artifact
-                        of the shot. Reachable from EVERY shot so the Director can
-                        open it and see what the EREF Designer planned / what went
-                        wrong when generation jams (2026-06-24). */}
-                    {refPlanRows.length > 0 && (
-                      <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
-                        <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
-                          ref plan
+                    {/* Ask 1 (backlog_kebab, 2026-07-02) — the dossier is split
+                        into two clearly-labelled zones so it's unambiguous which
+                        plan produced which artifact:
+                          REFERENCE = ref plan (SPC-ref_plan) + reference image
+                          VIDEO     = shot plan (SPC-shot_plan) + video (VID-shot)
+                        Zone headers carry an accent tint (image vs primary) so the
+                        two halves read distinctly even when a zone is still empty. */}
+                    <div
+                      className="px-1 py-0.5 mb-1 rounded text-[9px] font-semibold uppercase tracking-[0.12em]"
+                      style={{
+                        color: 'var(--asset-image)',
+                        background: 'color-mix(in oklab, var(--asset-image) 12%, transparent)',
+                      }}
+                    >
+                      Reference
+                    </div>
+                    {refPlanRows.length === 0 &&
+                      (imgRefsByShotId.get(t.shot.shot_id) ?? []).length === 0 && (
+                        <div className="px-1 pb-1 mb-1 border-b border-[var(--border-glass)] font-mono opacity-40 text-[10px]">
+                          none yet
                         </div>
-                        {refPlanRows.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onOpenAsset) onOpenAsset(p.id);
-                            }}
-                            className="text-left font-mono text-[11px] cursor-pointer hover:bg-[color-mix(in_oklab,_white_8%,_transparent)] rounded px-1 py-0.5"
-                          >
-                            v{String(p.version ?? 1).padStart(2, '0')}{' '}
-                            <span
-                              className="opacity-70"
-                              style={{ color: cellPalette(p.status as never, 'plan').color }}
-                            >
-                              {p.status}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {/* TD-80 (2026-05-27) — Shot Plan versions for this shot.
-                        Director can open the latest (or any) Plan in the
-                        existing PreviewDrawer BEFORE the video burns. Pre-TD-80
-                        the Plans were reachable only via approvals queue / PA
-                        chat — both required leaving the timeline. */}
-                    {(shotPlansByShotId?.get(t.shot.shot_id) ?? []).length > 0 && (
+                      )}
+                    {/* Ref Plan (SPC-ref_plan) — the earliest artifact of the shot.
+                        Reachable from EVERY shot so the Director can open it and see
+                        what the EREF Designer planned / what went wrong when
+                        generation jams (2026-06-24). */}
+                    {refPlanRows.length > 0 && (
                       <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
                         <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
                           plan
                         </div>
-                        {(shotPlansByShotId?.get(t.shot.shot_id) ?? []).map((p) => (
+                        {refPlanRows.map((p) => (
                           <button
                             key={p.id}
                             type="button"
@@ -1422,11 +1413,12 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                         versions, mirroring the video list: version + status
                         colour + on-screen marker (the ref the cell currently
                         shows) + inline ✓ approve for REVIEW. Reuses the generic
-                        approveVersion + onOpenAsset; no new endpoint. */}
+                        approveVersion + onOpenAsset; no new endpoint. Second row
+                        of the REFERENCE zone (the rendered artifact of the plan). */}
                     {(imgRefsByShotId.get(t.shot.shot_id) ?? []).length > 0 && (
                       <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
                         <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
-                          ref
+                          image
                         </div>
                         {(imgRefsByShotId.get(t.shot.shot_id) ?? []).map((r) => {
                           // The image actually on screen = the cell's resolved
@@ -1471,6 +1463,47 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+                    {/* ── VIDEO zone: the shot plan (SPC-shot_plan) + the video
+                        (VID-shot). Primary accent so it reads distinctly from the
+                        REFERENCE zone above. ── */}
+                    <div
+                      className="px-1 py-0.5 mb-1 rounded text-[9px] font-semibold uppercase tracking-[0.12em]"
+                      style={{
+                        color: 'var(--accent-primary)',
+                        background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+                      }}
+                    >
+                      Video
+                    </div>
+                    {/* Shot Plan versions (TD-80 2026-05-27) — open the latest (or
+                        any) Plan in the PreviewDrawer BEFORE the video burns. First
+                        row of the VIDEO zone (the plan the video renders from). */}
+                    {(shotPlansByShotId?.get(t.shot.shot_id) ?? []).length > 0 && (
+                      <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
+                        <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
+                          plan
+                        </div>
+                        {(shotPlansByShotId?.get(t.shot.shot_id) ?? []).map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onOpenAsset) onOpenAsset(p.id);
+                            }}
+                            className="text-left font-mono text-[11px] cursor-pointer hover:bg-[color-mix(in_oklab,_white_8%,_transparent)] rounded px-1 py-0.5"
+                          >
+                            v{String(p.version ?? 1).padStart(2, '0')}{' '}
+                            <span
+                              className="opacity-70"
+                              style={{ color: cellPalette(p.status as never, 'plan').color }}
+                            >
+                              {p.status}
+                            </span>
+                          </button>
+                        ))}
                       </div>
                     )}
                     {versions.length === 0 ? (
