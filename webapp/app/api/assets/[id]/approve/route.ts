@@ -99,17 +99,28 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (aerr) throw new Error(`asset fetch failed: ${aerr.message}`);
   if (!asset) throw new NotFoundError(`Asset ${id}`);
 
+  // q1a (2026-07-02): Reject on an already-APPROVED asset is semantically "send
+  // it back to redo", not a hard REJECTED — which the FSM forbids from APPROVED
+  // anyway (APPROVED → LOCKED | REVISION only). Reroute into the existing
+  // REQUEST_REVISION path so the asset flips to REVISION and the producing agent
+  // re-fires with the note as acceptance criteria. No parallel reject-on-approved
+  // machinery (anti-additive) — everything downstream keys off `decision`.
+  const decision =
+    body.decision === 'REJECT' && asset.status === 'APPROVED'
+      ? 'REQUEST_REVISION'
+      : body.decision;
+
   // Note + visual gate enforcement
-  if (body.decision === 'REQUEST_REVISION' || body.decision === 'REJECT') {
+  if (decision === 'REQUEST_REVISION' || decision === 'REJECT') {
     if (!body.note || body.note.trim().length === 0) {
       throw new ValidationError(
-        `${body.decision} requires a note explaining the requested change`,
+        `${decision} requires a note explaining the requested change`,
       );
     }
   }
   if (
     VISUAL_FILE_TYPES.has(asset.file_type) &&
-    body.decision === 'APPROVE' &&
+    decision === 'APPROVE' &&
     !body.preview_acknowledged
   ) {
     throw new ValidationError(
@@ -118,7 +129,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     );
   }
 
-  const targetStatus = STATUS_AFTER_DECISION[body.decision];
+  const targetStatus = STATUS_AFTER_DECISION[decision];
   // Backlog #7 (2026-06-16): the human Director is BOTH reworker and approver.
   // The FSM forbids REVISION / NEEDS_HUMAN_TWEAK → APPROVED (the autonomous
   // pipeline routes a reworked asset through a second REVIEW), but for a human
@@ -128,7 +139,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   // FSM. Governance (enforceMode) below is unaffected.
   const humanDirectApprove =
     principal === 'director' &&
-    body.decision === 'APPROVE' &&
+    decision === 'APPROVE' &&
     (asset.status === 'REVISION' || asset.status === 'NEEDS_HUMAN_TWEAK');
   if (!humanDirectApprove) {
     assertAssetTransition(asset.status as AssetStatus, targetStatus);
@@ -163,7 +174,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     .eq('approved_by', 'DIRECTOR')
     .maybeSingle();
 
-  if (existingApproval && body.decision === 'APPROVE' && asset.status === 'APPROVED') {
+  if (existingApproval && decision === 'APPROVE' && asset.status === 'APPROVED') {
     throw new ConflictError(
       `Asset ${asset.filename} is already APPROVED (idempotent no-op)`,
     );
@@ -174,7 +185,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     asset_id: id,
     episode_id: asset.episode_id,
     approved_by: 'DIRECTOR',
-    approval_type: body.decision,
+    approval_type: decision,
     notes: body.note ?? null,
   });
 
@@ -196,7 +207,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   let demotedSiblings: DemotedSibling[] = [];
   // Retained for the v2-EREF 4K-upscale trigger further down (step 5).
   const isV2EREFApprove =
-    body.decision === 'APPROVE' &&
+    decision === 'APPROVE' &&
     asset.episode_id &&
     typeof asset.file_type === 'string' &&
     asset.file_type.startsWith('IMG-episode_ref') &&
@@ -204,7 +215,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   // For SBL, "approval" is the LOCK action (targetStatus === 'LOCKED'); for
   // every other slot family it is the APPROVE decision.
   const occupiesSlotOnThisDecision =
-    body.decision === 'APPROVE' || targetStatus === 'LOCKED';
+    decision === 'APPROVE' || targetStatus === 'LOCKED';
   if (occupiesSlotOnThisDecision) {
     const slot = resolveSlotDescriptor(asset as unknown as AssetForSlot);
     if (slot) {
@@ -217,7 +228,7 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   // 2. Update asset status (+ filename status suffix per CLAUDE.md §3)
   const patch: Record<string, unknown> = { status: targetStatus };
-  if (body.decision === 'REQUEST_REVISION' && body.note) {
+  if (decision === 'REQUEST_REVISION' && body.note) {
     patch.revision_log = body.note;
   }
   // Sprint γ 2026-05-14: keep filename in sync with status. Director:
@@ -250,7 +261,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   // denormalized cross-check. Reference loaders read the gallery directly, so
   // this projection is for Director review / query, not the scoping path.
   if (
-    (body.decision === 'APPROVE' || targetStatus === 'LOCKED') &&
+    (decision === 'APPROVE' || targetStatus === 'LOCKED') &&
     asset.file_type === EPISODE_CAST_FILE_TYPE &&
     asset.episode_id
   ) {
@@ -276,27 +287,27 @@ export const POST = withApiHandler(async (req, ctx) => {
   // observed at 08:42-08:43Z. Same class of bug as the factory.ts fix
   // landed in b6c83e7 yesterday.
   const evtType =
-    body.decision === 'APPROVE'
+    decision === 'APPROVE'
       ? 'approval_granted'
-      : body.decision === 'REQUEST_REVISION'
+      : decision === 'REQUEST_REVISION'
       ? 'approval_revision'
-      : body.decision === 'REJECT'
+      : decision === 'REJECT'
       ? 'approval_rejected'
       : 'asset_updated';
   await logEvent(supabase, {
     event_type: evtType,
-    severity: body.decision === 'REJECT' ? 'warning' : 'info',
-    title: `${body.decision} on ${asset.filename}`,
-    description: body.note ?? `Director ${user.email ?? user.id} ${body.decision.toLowerCase()}`,
+    severity: decision === 'REJECT' ? 'warning' : 'info',
+    title: `${decision} on ${asset.filename}`,
+    description: body.note ?? `Director ${user.email ?? user.id} ${decision.toLowerCase()}`,
     actor: user.id,
     asset_id: id,
     episode_id: asset.episode_id,
-    metadata: { decision: body.decision, file_type: asset.file_type },
+    metadata: { decision: decision, file_type: asset.file_type },
   });
 
   // 4. Brief approval also flips the episode milestone status so the
   // "Approve Brief" banner disappears from Pipeline View.
-  if (body.decision === 'APPROVE' && asset.file_type === 'SPC-brief' && asset.episode_id) {
+  if (decision === 'APPROVE' && asset.file_type === 'SPC-brief' && asset.episode_id) {
     await supabase
       .from('episodes')
       .update({ status: 'BRIEF_APPROVED' })
@@ -314,7 +325,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   // generation window. Once the episode reaches GENERATION_APPROVED (or
   // beyond), re-approving a shot is a no-op.
   if (
-    body.decision === 'APPROVE' &&
+    decision === 'APPROVE' &&
     asset.file_type.startsWith('VID-shot') &&
     asset.episode_id
   ) {
@@ -375,7 +386,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   // context. Mode 3 readiness requirement.
   const firedEvents: Array<{ name: string; ids: string[] }> = [];
 
-  if (body.decision === 'REQUEST_REVISION' && asset.episode_id) {
+  if (decision === 'REQUEST_REVISION' && asset.episode_id) {
     const reviseEvent = revisionEventForAsset(asset.file_type);
     if (reviseEvent) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -455,7 +466,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
-  if (body.decision === 'APPROVE' && asset.episode_id) {
+  if (decision === 'APPROVE' && asset.episode_id) {
     const events = await computeNextEvents(supabase, asset, user.id);
     for (const ev of events) {
       const { ids } = await inngest.send({
@@ -495,7 +506,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
 
   return apiOk({
-    decision: body.decision,
+    decision: decision,
     asset_status: targetStatus,
     // TD-39 L1: episode anchor lets the PA dispatch wrapper poll for the
     // fan-out job row created by the downstream Inngest function.

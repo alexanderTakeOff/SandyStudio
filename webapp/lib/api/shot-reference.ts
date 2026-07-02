@@ -199,6 +199,17 @@ export interface ShotReferenceContract {
   /** Every generation attempt, oldest first. Length grows on retry/regen/upscale. */
   generation_history: GenerationAttempt[];
 
+  /**
+   * Timeline-as-home (2026-07-02): when the Director manually picks one of the
+   * generation_history attempts as the primary reference, this points at that
+   * attempt's `version` — an in-place pointer, NOT a duplicated history entry.
+   * Null / undefined = the primary is the latest attempt (default). Cleared
+   * back to null on any fresh generation (reroll/regen) so the pointer can
+   * never dangle past a new attempt. Consumers derive the primary version as
+   * `selected_version ?? generation_history.at(-1).version`.
+   */
+  selected_version?: number | null;
+
   /** AI-reviewer verdict on the latest non-upscale generation. Null between gen and review. */
   review: EREFReview | null;
 

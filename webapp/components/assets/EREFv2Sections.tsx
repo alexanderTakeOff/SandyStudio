@@ -564,7 +564,9 @@ export function AttemptsStrip({ attempts, finalVersion, onPromote, busyVersion }
                     color: '#0d1f17',
                   }}
                 >
-                  final
+                  {/* Marks the primary reference — the latest attempt by default,
+                      or the Director's manual pick (select-in-place). */}
+                  current
                 </span>
               )}
               <span

@@ -336,6 +336,13 @@ export function EpisodeAssetDrawer({
   if (!open || typeof document === 'undefined') return null;
 
   const editable = EDITABLE_STATUSES.has(asset.status);
+  // #3 status-aware footer (2026-07-02): once an asset is APPROVED/LOCKED the
+  // Approve button must not fire again — the approve route returns a ConflictError
+  // "already APPROVED (idempotent no-op)", which surfaced as a scary red error
+  // after a variant pick (select_attempt keeps status APPROVED). Show a settled
+  // "✓ Approved" state instead. Reject/Request-revision stay live: on an APPROVED
+  // asset they route to REVISION (q1a) = "send it back to redo".
+  const isApprovedOrLocked = asset.status === 'APPROVED' || asset.status === 'LOCKED';
   const promptDoc = asset.metadata?.image_prompt;
   const currentPromptEntry: ImagePromptHistoryEntry | undefined = promptDoc
     ? promptDoc.history.find((h) => h.version === promptDoc.current_version)
@@ -704,9 +711,13 @@ export function EpisodeAssetDrawer({
               <AttemptsStrip
                 attempts={shotRef.generation_history ?? []}
                 finalVersion={
-                  shotRef.generation_history && shotRef.generation_history.length > 0
+                  // The primary reference = the Director's manual pick when set,
+                  // else the latest attempt. select-in-place points at a variant
+                  // WITHOUT appending, so the badge follows selected_version.
+                  shotRef.selected_version ??
+                  (shotRef.generation_history && shotRef.generation_history.length > 0
                     ? shotRef.generation_history[shotRef.generation_history.length - 1]!.version
-                    : null
+                    : null)
                 }
                 onPromote={promoteAttempt}
                 busyVersion={promotingVersion}
@@ -991,13 +1002,18 @@ export function EpisodeAssetDrawer({
                 size="sm"
                 variant="primary"
                 onClick={() => void postDecision('APPROVE')}
-                disabled={decisionBusy !== null || anchorRegenBusy}
+                disabled={decisionBusy !== null || anchorRegenBusy || isApprovedOrLocked}
+                title={
+                  isApprovedOrLocked
+                    ? 'Already approved — Request revision to redo this anchor'
+                    : undefined
+                }
               >
                 {decisionBusy === 'APPROVE' ? (
                   <>
                     <Loader2 size={12} className="animate-spin" /> Approving…
                   </>
-                ) : decisionDone === 'APPROVE' ? (
+                ) : decisionDone === 'APPROVE' || isApprovedOrLocked ? (
                   <>
                     <CheckCircle2 size={12} /> Approved
                   </>
@@ -1025,6 +1041,11 @@ export function EpisodeAssetDrawer({
                 variant="danger"
                 onClick={() => setNotePrompt('REJECT')}
                 disabled={decisionBusy !== null}
+                title={
+                  isApprovedOrLocked
+                    ? 'This reference is approved — Reject sends it back for revision (REVISION)'
+                    : undefined
+                }
                 style={
                   decisionBusy === 'REJECT'
                     ? { opacity: 0.55, cursor: 'not-allowed' }
@@ -1051,11 +1072,16 @@ export function EpisodeAssetDrawer({
                 size="sm"
                 variant="primary"
                 onClick={onApproveClick}
-                disabled={decisionBusy !== null}
+                disabled={decisionBusy !== null || isApprovedOrLocked}
+                title={
+                  isApprovedOrLocked
+                    ? 'Already approved for this shot — pick a variant above or Request revision to redo'
+                    : undefined
+                }
                 style={
                   decisionBusy === 'APPROVE'
                     ? { opacity: 0.55, cursor: 'not-allowed' }
-                    : decisionDone === 'APPROVE'
+                    : decisionDone === 'APPROVE' || isApprovedOrLocked
                       ? {
                           opacity: 0.85,
                           background:
@@ -1071,7 +1097,7 @@ export function EpisodeAssetDrawer({
                   <>
                     <Loader2 size={12} className="animate-spin" /> Approving…
                   </>
-                ) : decisionDone === 'APPROVE' ? (
+                ) : decisionDone === 'APPROVE' || isApprovedOrLocked ? (
                   <>
                     <CheckCircle2 size={12} /> Approved
                   </>

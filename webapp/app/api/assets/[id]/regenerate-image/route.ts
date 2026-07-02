@@ -324,20 +324,15 @@ export const POST = withApiHandler(async (req, ctx) => {
         `Attempt ${body.select_attempt} has no stored image URL — cannot select`,
       );
     }
-    // Record the manual pick as a new attempt entry ($0, director_edit) so the
-    // provenance trail shows the Director's selection, then repoint the asset's
-    // image fields at the chosen attempt.
-    const selectionEntry: GenerationAttempt = {
-      ...target,
-      version: (attempts[attempts.length - 1]?.version ?? target.version) + 1,
-      at: nowIso,
-      cost_usd: 0,
-      triggered_by: 'director_edit',
-      mode_at_time: decision.modeAtTime,
-    };
+    // Select-in-place (2026-07-02 fix): point selected_version at the chosen
+    // attempt — do NOT append a duplicate history entry. The old code pushed a
+    // clone of the attempt on every click, so the AttemptsStrip grew by one tile
+    // per pick (11→12→13…) and the "final" badge chased the clone. The pointer
+    // keeps generation_history immutable; the asset's image fields (below) still
+    // repoint at the chosen attempt for display + byte reachability.
     const newSr: ShotReferenceContract = {
       ...sr,
-      generation_history: [...attempts, selectionEntry],
+      selected_version: target.version,
     };
     const newMeta = {
       ...((asset.metadata ?? {}) as Record<string, unknown>),
@@ -742,6 +737,10 @@ export const POST = withApiHandler(async (req, ctx) => {
       ...v2Sr,
       contract: SHOT_REFERENCE_CONTRACT,
       generation_history: [...v2Sr.generation_history, v2Attempt],
+      // A fresh generation becomes the primary (asset staging repointed below),
+      // so clear any manual variant pick — the pointer must never dangle past a
+      // newer attempt. Consumers fall back to the latest attempt when null.
+      selected_version: null,
     };
   }
 
