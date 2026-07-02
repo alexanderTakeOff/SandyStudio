@@ -1291,10 +1291,19 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                   }}
                 >
                   <div
-                    className={`text-[18px] truncate px-0.5 leading-[44px] tabular-nums text-center${palette.pulse ? ' cell-stage-pulse' : ''}`}
+                    className={`truncate px-0.5 leading-[44px] tabular-nums text-center${palette.pulse ? ' cell-stage-pulse' : ''}`}
                     style={{
                       color: palette.color,
-                      fontWeight: palette.weight,
+                      // Object dimension (Director 2026-07-02): References = thin,
+                      // Video = bold — same colours, so weight tells you WHICH
+                      // object at a glance. Colour still carries role/status.
+                      fontWeight:
+                        cell?.kind === 'video-canonical' || cell?.kind === 'video-review'
+                          ? 700
+                          : 400,
+                      // Scale the number DOWN as the shot count grows — at ~38
+                      // shots the old fixed 18px was unreadable (cells too narrow).
+                      fontSize: `${Math.max(7, Math.min(16, Math.round(400 / Math.max(1, times.length))))}px`,
                       textShadow: palette.glow,
                       // Drive the breathe glow with the live stage colour.
                       ...(palette.pulse

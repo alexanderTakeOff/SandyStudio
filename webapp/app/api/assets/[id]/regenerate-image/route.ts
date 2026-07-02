@@ -347,8 +347,14 @@ export const POST = withApiHandler(async (req, ctx) => {
       .update({
         staging_path: target.image_url,
         drive_path: target.image_url,
-        drive_web_view_url: target.drive_web_view_url ?? null,
-        drive_file_id: target.drive_file_id ?? null,
+        // MUST be null: the timeline resolver returns `/api/media/{assetId}`
+        // (a shot-stable, immutably-cached URL) whenever drive_web_view_url is
+        // set — so every attempt would resolve to the SAME cached URL and the
+        // cell keeps showing the old image (Director hit this on SH15). Nulling
+        // it makes the resolver fall through to drive_path = the attempt's own
+        // `…-attemptN.png` URL — distinct per attempt, so the switch shows.
+        drive_web_view_url: null,
+        drive_file_id: null,
         metadata: newMeta as unknown as Record<string, unknown>,
       } as never)
       .eq('id', assetId);
