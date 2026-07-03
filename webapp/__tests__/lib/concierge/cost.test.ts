@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   recordConciergeCost,
   isConciergeBudgetTripped,
+  isFreeConciergeProvider,
   conciergeAutoReactEnabled,
   CONCIERGE_AGENT_ID,
 } from '@/lib/concierge/cost';
@@ -23,7 +24,7 @@ function mockInsertCapture() {
 
 // Minimal supabase mock for the select→eq→gte read path.
 function mockSelect(
-  rows: Array<{ cost_usd: number | null }> | null,
+  rows: Array<{ cost_usd: number | null; api_provider?: string | null }> | null,
   error: unknown = null,
 ) {
   const builder: Record<string, unknown> = {
@@ -108,6 +109,63 @@ describe('isConciergeBudgetTripped — rolling-window circuit-breaker', () => {
     const client = mockSelect([{ cost_usd: null }, { cost_usd: 3 }]);
     const r = await isConciergeBudgetTripped(client, COST);
     expect(r.spent).toBeCloseTo(3, 4);
+  });
+});
+
+describe('isFreeConciergeProvider — free-tier exemption', () => {
+  it('gemini / google are free', () => {
+    expect(isFreeConciergeProvider('gemini')).toBe(true);
+    expect(isFreeConciergeProvider('gemini-2.5-flash')).toBe(true);
+    expect(isFreeConciergeProvider('google')).toBe(true);
+    expect(isFreeConciergeProvider('GEMINI')).toBe(true);
+  });
+  it('paid / unknown / null are not free', () => {
+    expect(isFreeConciergeProvider('anthropic')).toBe(false);
+    expect(isFreeConciergeProvider('openai')).toBe(false);
+    expect(isFreeConciergeProvider('mystery')).toBe(false);
+    expect(isFreeConciergeProvider(null)).toBe(false);
+    expect(isFreeConciergeProvider(undefined)).toBe(false);
+  });
+});
+
+describe('isConciergeBudgetTripped — provider-aware count-fence (Director 07-03)', () => {
+  it('free-provider (gemini) calls do NOT count toward the volume fence', async () => {
+    // 42 gemini calls, tiny spend — the real 07-03 blocker. maxCalls 40 must NOT trip.
+    const rows = Array.from({ length: 42 }, () => ({ cost_usd: 0.006, api_provider: 'gemini' }));
+    const r = await isConciergeBudgetTripped(mockSelect(rows), {
+      capUsd: 20,
+      windowHours: 24,
+      maxCalls: 40,
+    });
+    expect(r.tripped).toBe(false);
+    expect(r.reason).toBeNull();
+    expect(r.calls).toBe(0); // paid-call count
+    expect(r.spent).toBeCloseTo(0.252, 3);
+  });
+
+  it('paid-provider calls still count toward the fence', async () => {
+    const rows = Array.from({ length: 40 }, () => ({ cost_usd: 0.01, api_provider: 'anthropic' }));
+    const r = await isConciergeBudgetTripped(mockSelect(rows), { capUsd: 20, windowHours: 24, maxCalls: 40 });
+    expect(r.tripped).toBe(true);
+    expect(r.reason).toBe('calls');
+    expect(r.calls).toBe(40);
+  });
+
+  it('mixed: only paid calls count; free ones are ignored by the fence', async () => {
+    const rows = [
+      ...Array.from({ length: 100 }, () => ({ cost_usd: 0.006, api_provider: 'gemini' })),
+      ...Array.from({ length: 3 }, () => ({ cost_usd: 0.01, api_provider: 'openai' })),
+    ];
+    const r = await isConciergeBudgetTripped(mockSelect(rows), { capUsd: 20, windowHours: 24, maxCalls: 3 });
+    expect(r.reason).toBe('calls');
+    expect(r.calls).toBe(3); // 100 gemini exempt, 3 openai trip the fence
+  });
+
+  it('free calls still bounded by the $ cost-cap', async () => {
+    const rows = Array.from({ length: 5 }, () => ({ cost_usd: 5, api_provider: 'gemini' }));
+    const r = await isConciergeBudgetTripped(mockSelect(rows), { capUsd: 20, windowHours: 24, maxCalls: 40 });
+    expect(r.tripped).toBe(true);
+    expect(r.reason).toBe('cost'); // $25 ≥ $20 even though provider is "free"
   });
 });
 

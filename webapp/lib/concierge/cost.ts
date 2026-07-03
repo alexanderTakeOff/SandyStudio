@@ -74,12 +74,27 @@ export interface ConciergeBudgetStatus {
 }
 
 /**
+ * Providers whose per-call cost is negligible (a "free tier"). Director 07-03:
+ * «нет ограничений на бесплатные вызовы» — these are EXEMPT from the volume
+ * count-fence and governed solely by the $ cost-cap (which their spend never
+ * reaches). Paid/unknown providers still count toward the fence, so a mispriced
+ * provider can never slip past the volume backstop.
+ */
+const FREE_CONCIERGE_PROVIDERS = ['gemini', 'google'];
+export function isFreeConciergeProvider(provider: string | null | undefined): boolean {
+  if (!provider) return false;
+  const p = provider.toLowerCase();
+  return FREE_CONCIERGE_PROVIDERS.some((f) => p.includes(f));
+}
+
+/**
  * Rolling-window circuit-breaker for autonomous concierge spend. Trips on the
  * FIRST of two limbs over the last `windowHours`:
- *   • cost   — Σ cost_usd ≥ capUsd  (price-aware, but provider-dependent)
- *   • calls  — row count ≥ maxCalls (PROVIDER-INDEPENDENT — the universal fence:
- *              it caps autonomous volume regardless of which model/price runs,
- *              so a mispriced provider can never slip past the cost limb)
+ *   • cost   — Σ cost_usd ≥ capUsd  (price-aware; correctly priced for known models)
+ *   • calls  — PAID-provider row count ≥ maxCalls (volume backstop for paid/unknown
+ *              providers, so a mispriced one can never slip past the cost limb).
+ *              Free providers (see isFreeConciergeProvider) are exempt — the $ cap
+ *              alone governs them (Director 07-03: no limit on free calls).
  * FAILS OPEN on a read error — the cap is a cost backstop, not a security
  * control, and must not wedge Polina over a transient query failure.
  */
@@ -92,15 +107,16 @@ export async function isConciergeBudgetTripped(
   ).toISOString();
   const { data, error } = await client
     .from('budget_log')
-    .select('cost_usd')
+    .select('cost_usd, api_provider')
     .eq('agent_id', CONCIERGE_AGENT_ID)
     .gte('created_at', sinceIso);
   if (error) {
     return { tripped: false, spent: 0, cap: opts.capUsd, calls: 0, maxCalls: opts.maxCalls, reason: null };
   }
-  const rows = (data ?? []) as Array<{ cost_usd: number | null }>;
+  const rows = (data ?? []) as Array<{ cost_usd: number | null; api_provider: string | null }>;
   const spent = rows.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
-  const calls = rows.length;
+  // Count-fence counts only PAID/unknown-provider calls; free providers are exempt.
+  const calls = rows.filter((r) => !isFreeConciergeProvider(r.api_provider)).length;
   const reason: 'cost' | 'calls' | null =
     calls >= opts.maxCalls ? 'calls' : spent >= opts.capUsd ? 'cost' : null;
   return { tripped: reason !== null, spent, cap: opts.capUsd, calls, maxCalls: opts.maxCalls, reason };
