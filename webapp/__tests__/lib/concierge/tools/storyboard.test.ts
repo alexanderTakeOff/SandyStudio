@@ -56,6 +56,10 @@ function makeMockSupabase(opts: {
   builder.eq = () => builder;
   builder.order = () => builder;
   builder.limit = () => builder;
+  // `.like('file_type','VID-shot%')` is awaited directly (no maybeSingle) by the
+  // 2026-07-03 video-status enrichment; return an empty result so the video
+  // rollup computes cleanly without VID rows in these storyboard-shape tests.
+  builder.like = async () => ({ data: [], error: null });
   builder.maybeSingle = async () => ({
     data: opts.stbAsset ?? null,
     error: opts.error ?? null,

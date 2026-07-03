@@ -32,6 +32,7 @@ import {
   isAnimaticV1,
   extractShotsFromStoryboard,
   newAnimaticContract,
+  excludedShotIdsFromEpisodeMeta,
   type AnimaticContract,
   type AnimaticShot,
 } from '@/lib/api/animatic-shotlist';
@@ -119,7 +120,7 @@ interface JobRow {
 
 interface EpisodeResponse {
   data: {
-    episode: { id: string; series_id?: string | null };
+    episode: { id: string; series_id?: string | null; metadata?: unknown };
     assets: AssetRow[];
     jobs: JobRow[];
   };
@@ -419,6 +420,13 @@ export function EpisodeTimelineSection({
     return m;
   }, [data]);
   const seriesId = data?.data.episode.series_id ?? null;
+  // Explicit excluded ("button") shots — the stage-independent SSOT
+  // (episodes.metadata.excluded_shot_ids). Drives the cell strikethrough and the
+  // kebab toggle state; the same set the stitch gate / Polina's list read.
+  const excludedShotIds = useMemo(
+    () => excludedShotIdsFromEpisodeMeta(data?.data.episode.metadata),
+    [data],
+  );
 
   const navIndex = previewAssetId
     ? navigableAssetIds.indexOf(previewAssetId)
@@ -561,6 +569,27 @@ export function EpisodeTimelineSection({
     }
   }
 
+  // Toggle a shot's "excluded (button)" flag. Targets the EPISODE metadata (not
+  // the animatic asset), so it works at any stage incl. synthetic/parallel where
+  // no VID-animatic exists. The stitch gate, generation guards, and Polina's list
+  // all read the same episodes.metadata.excluded_shot_ids.
+  async function handleToggleExclusion(shotId: string, excluded: boolean): Promise<void> {
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/shot-exclusion`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ shotId, excluded }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Toggle exclusion failed');
+      }
+      void mutate();
+    } catch (e) {
+      setBulkError((e as Error).message);
+    }
+  }
+
   async function bulkApproveReview(): Promise<void> {
     setBulkBusy(true);
     setBulkError(null);
@@ -656,6 +685,10 @@ export function EpisodeTimelineSection({
               onOpenAsset={(id) => openAssetSmart(id)}
               onGenerateVideo={(shotId) => void handleGenerateVideo(shotId)}
               generatingVideoShotId={generatingVideoShotId}
+              excludedShotIds={excludedShotIds}
+              onToggleExclusion={(shotId, excluded) =>
+                void handleToggleExclusion(shotId, excluded)
+              }
             />
           </div>
         )}

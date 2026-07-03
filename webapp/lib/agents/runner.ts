@@ -50,6 +50,7 @@ import {
   isAnimaticV1,
   computeEffectivePlayback,
   isDeletedShot,
+  excludedShotIdsFromEpisodeMeta,
   clipLengthsFromVidShotRows,
   type AnimaticContract,
 } from '../api/animatic-shotlist';
@@ -2551,6 +2552,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // Standard=8s vs. storyboard 2-5s caused E20 final-cut to play at 96s
       // instead of 54s before this patch — 2026-05-13).
       const overrides = v1.director_overrides ?? {};
+      // 2026-07-03 — explicit exclusion flag (kebab toggle) alongside the legacy
+      // ≤0.5s duration gesture. Same SSOT the completeness gate + Polina's list read.
+      const excludedShotIds = excludedShotIdsFromEpisodeMeta(
+        (inputs.episode as { metadata?: unknown } | undefined)?.metadata,
+      );
       const orderedShots: Array<{
         shotId: string;
         assetId: string;
@@ -2571,7 +2577,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         // shot with no APPROVED VID-shot fell into `missing` and threw, so a
         // manually-triggered final cut crashed on the very shot the cut is meant
         // to skip. Override-based, so no media is required to decide.
-        if (isDeletedShot(shot, overrides)) {
+        if (isDeletedShot(shot, overrides, excludedShotIds)) {
           excludedShots.push(shot.shot_id);
           continue;
         }

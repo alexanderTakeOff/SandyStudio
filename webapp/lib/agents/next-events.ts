@@ -31,6 +31,7 @@ import {
   extractShotsFromStoryboard,
   isAnimaticV1,
   isDeletedShot,
+  excludedShotIdsFromEpisodeMeta,
   type AnimaticContract,
 } from '@/lib/api/animatic-shotlist';
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
@@ -308,6 +309,24 @@ export async function computeNextEvents(
   const ft = asset.file_type;
   const since = asset.updated_at ?? null;
   const events: Array<{ name: StudioEventName; data: Record<string, unknown> }> = [];
+
+  // Excluded ("button") shots — episodes.metadata.excluded_shot_ids. Fetched at
+  // most once, lazily, only when a generation edge or the stitch gate needs it.
+  // Slice 3 (2026-07-03): an excluded shot must NOT be generated (skip the
+  // per-shot dispatch) and must not gate the final cut.
+  let _excludedShotIds: Set<string> | null = null;
+  const getExcludedShotIds = async (): Promise<Set<string>> => {
+    if (_excludedShotIds) return _excludedShotIds;
+    const { data } = await supabase
+      .from('episodes')
+      .select('metadata')
+      .eq('id', ep)
+      .maybeSingle();
+    _excludedShotIds = excludedShotIdsFromEpisodeMeta(
+      (data as { metadata?: unknown } | null)?.metadata,
+    );
+    return _excludedShotIds;
+  };
 
   // ── Brief APPROVED → Casting gate → Writer (2026-06-23, Director q22a/q30a:
   //    «кастинг ПОСЛЕ брифа, ПЕРЕД writer» — after the brief it's clear which
@@ -689,7 +708,11 @@ export async function computeNextEvents(
     }
     // Per-Plan idempotency: any IMG already carrying this Plan id suppresses
     // the re-fire (handles Director double-click, HMR retrigger).
-    if (shotId && !(await planAlreadyExecuted(supabase, ep, 'IMG-episode_ref', asset.id))) {
+    if (
+      shotId &&
+      !(await getExcludedShotIds()).has(shotId) &&
+      !(await planAlreadyExecuted(supabase, ep, 'IMG-episode_ref', asset.id))
+    ) {
       events.push({
         name: 'sandystudio/exec-eref/execute-from-plan',
         data: { episodeId: ep, shotId, planAssetId: asset.id },
@@ -794,7 +817,11 @@ export async function computeNextEvents(
     }
     // Per-Plan idempotency: any VID-shot already carrying this Plan id
     // (either metadata shape) suppresses the re-fire.
-    if (shotId && !(await planAlreadyExecuted(supabase, ep, 'VID-shot', asset.id))) {
+    if (
+      shotId &&
+      !(await getExcludedShotIds()).has(shotId) &&
+      !(await planAlreadyExecuted(supabase, ep, 'VID-shot', asset.id))
+    ) {
       const data: {
         episodeId: string;
         shotId: string;
@@ -944,6 +971,7 @@ export async function computeNextEvents(
       if (
         typeof shotId === 'string' &&
         shotId.length > 0 &&
+        !(await getExcludedShotIds()).has(shotId) &&
         !(await shotHasPlan(supabase, ep, shotId))
       ) {
         events.push({
@@ -1215,7 +1243,10 @@ export async function computeNextEvents(
         // (07-02 10:24–10:45 burst: ~14 shots got a duplicate SPC-ref_plan). One
         // scan builds the "already has a ref plan" set; skip those shots.
         const alreadyHasRefPlan = await shotsWithRefPlan(supabase, ep);
-        const freshShots = pending.filter((s) => !alreadyHasRefPlan.has(s));
+        const excludedIds = await getExcludedShotIds();
+        const freshShots = pending.filter(
+          (s) => !alreadyHasRefPlan.has(s) && !excludedIds.has(s),
+        );
         for (const shotId of freshShots) {
           events.push({
             name: 'sandystudio/exec-eref-designer/plan',
@@ -1280,9 +1311,12 @@ export async function computeNextEvents(
       // meant the gate never reached the threshold and the final cut never
       // auto-started; Director's only workaround was to "approve" the deleted
       // shot (a cheat). Exclude deleted shots: require every LIVE shot approved.
+      // 2026-07-03 — also honor the explicit episodes.metadata.excluded_shot_ids
+      // flag (the kebab toggle), not just the ≤0.5s duration gesture.
       const overrides = v1.director_overrides;
+      const excludedShotIds = await getExcludedShotIds();
       const liveShotIds = (v1.shot_list ?? [])
-        .filter((s) => !isDeletedShot(s, overrides))
+        .filter((s) => !isDeletedShot(s, overrides, excludedShotIds))
         .map((s) => s.shot_id);
       if (liveShotIds.length > 0) {
         const { data: approvedRows } = await supabase

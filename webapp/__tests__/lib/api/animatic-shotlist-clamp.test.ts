@@ -17,6 +17,7 @@ import {
   computeEffectivePlayback,
   clipLengthsFromVidShotRows,
   isDeletedShot,
+  excludedShotIdsFromEpisodeMeta,
   DELETED_SHOT_MAX_SECONDS,
   type AnimaticShot,
   type AnimaticDirectorOverride,
@@ -195,5 +196,33 @@ describe('isDeletedShot — Director ≤0.5s soft-delete', () => {
       SH01: { duration_seconds: DELETED_SHOT_MAX_SECONDS },
     };
     expect(isDeletedShot(shot('SH01', 8), overrides)).toBe(true);
+  });
+
+  it('flags an explicitly excluded shot regardless of normal duration', () => {
+    // The kebab toggle sets episodes.metadata.excluded_shot_ids — a shot in that
+    // set is excluded even with a full-length duration and no override.
+    const excluded = new Set(['SH07']);
+    expect(isDeletedShot(shot('SH07', 4), undefined, excluded)).toBe(true);
+    // Not in the set + normal duration → still live.
+    expect(isDeletedShot(shot('SH08', 4), undefined, excluded)).toBe(false);
+    // Legacy ≤0.5s still wins even when the set is empty.
+    expect(
+      isDeletedShot(shot('SH09', 4), { SH09: { duration_seconds: 0.4 } }, new Set()),
+    ).toBe(true);
+  });
+});
+
+describe('excludedShotIdsFromEpisodeMeta', () => {
+  it('extracts a clean string set from metadata.excluded_shot_ids', () => {
+    const set = excludedShotIdsFromEpisodeMeta({
+      excluded_shot_ids: ['S15-E13-SH07', 'S15-E13-SH12', '', 3, null],
+    });
+    expect([...set].sort()).toEqual(['S15-E13-SH07', 'S15-E13-SH12']);
+  });
+
+  it('returns an empty set for absent / garbage metadata', () => {
+    expect(excludedShotIdsFromEpisodeMeta(null).size).toBe(0);
+    expect(excludedShotIdsFromEpisodeMeta({}).size).toBe(0);
+    expect(excludedShotIdsFromEpisodeMeta({ excluded_shot_ids: 'nope' }).size).toBe(0);
   });
 });

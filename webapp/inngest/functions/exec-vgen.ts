@@ -42,7 +42,11 @@ import { recordCost } from '@/lib/budget';
 import { isFalBalanceLock } from '@/lib/agents/providers/fal-seedance';
 import { logEvent } from '@/lib/api/events';
 import { agentDisplayName } from '@/lib/api/agent-names';
-import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
+import {
+  isAnimaticV1,
+  excludedShotIdsFromEpisodeMeta,
+  type AnimaticContract,
+} from '@/lib/api/animatic-shotlist';
 import { isVgenCancelled, clearVgenCancel } from '@/lib/api/vgen-cancel';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { animatorChainEnabled } from '@/lib/agents/chain-flags';
@@ -193,6 +197,27 @@ export const execVgenRun = inngest.createFunction(
         ok: false,
         reason: `exec-vgen/${isPilot ? 'start' : 'single-shot'} missing shotId`,
       };
+    }
+
+    // Excluded ("button") shot belt (Slice 3, 2026-07-03): an excluded shot must
+    // never render — a paid no-op. computeNextEvents already skips the auto-chain
+    // edges, but this catches DIRECT triggers (PA regenerateShot / kebab Generate
+    // video) that bypass it. $0, no job row, no provider call.
+    {
+      const excluded = await step.run('check-excluded', async () => {
+        const supabase = createSupabaseServiceRoleClient();
+        const { data: epRow } = await supabase
+          .from('episodes')
+          .select('metadata')
+          .eq('id', episodeId)
+          .maybeSingle();
+        return excludedShotIdsFromEpisodeMeta(
+          (epRow as { metadata?: unknown } | null)?.metadata,
+        ).has(shotId);
+      });
+      if (excluded) {
+        return { ok: false, kind: 'excluded', shotId };
+      }
     }
 
     // Cancel switch — abort the in-flight FAN-OUT between shots (the pilot is a

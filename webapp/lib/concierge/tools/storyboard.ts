@@ -19,6 +19,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { listStoryboardShots } from '@/lib/api/vgen-shot-helpers';
+import { resolveShotId } from '@/lib/api/shot-identity';
+import { excludedShotIdsFromEpisodeMeta } from '@/lib/api/animatic-shotlist';
 import {
   fail,
   ok,
@@ -55,16 +57,22 @@ export const listShots: Tool<ListShotsArgs> = {
   description:
     "List every shot from the APPROVED storyboard for one episode in production order. " +
     "Returns each shot's canonical shotId, act + index, shot_role, action preview, " +
-    "characters, and location. **Call this whenever you need a shotId you don't already have** — " +
-    "e.g. Director says 'next two shots' or 'SH09', or you need to map a Plan to its shot. " +
-    "Read-only. NEVER ask the Director for a shotId — fetch it via this tool.",
+    "characters, location, its VIDEO approval status (approved / review / draft / none), " +
+    "and whether it is excluded (a 'button' shot cut from the final cut). Also returns a " +
+    "`videoSummary` rollup: which shots are awaiting your approval and which have no video yet. " +
+    "**Call this whenever you need a shotId you don't already have** (e.g. 'next two shots', 'SH09', " +
+    "mapping a Plan to its shot) OR to answer 'which shots still need approval / generation' — read " +
+    "`videoSummary.awaiting_approval` (needs Director approval) and `videoSummary.missing` (no video yet). " +
+    "Read-only. NEVER ask the Director for a shotId or which shots need approval — fetch it via this tool.",
   mutating: false,
   schema: {
     type: 'function',
     function: {
       name: 'listShots',
       description:
-        'List shots from the APPROVED storyboard for one episode. Read-only.',
+        'List shots from the APPROVED storyboard for one episode, each with its video ' +
+        'approval status + excluded flag, plus a videoSummary of shots awaiting approval / ' +
+        'missing video. Read-only.',
       parameters: {
         type: 'object',
         properties: {
@@ -172,6 +180,106 @@ export const listShots: Tool<ListShotsArgs> = {
     const limit = args.limit ?? 200;
     const capped = filtered.slice(0, limit);
 
+    // ── Per-shot VIDEO status + exclusion (Director 2026-07-03) ──────────────
+    // Enrich each shot with its best VID-shot approval status + the episode's
+    // excluded ("button") flag, plus a top-level rollup, so Polina can answer
+    // "which shots still need approval / generation" from ONE call instead of
+    // cross-matching the storyboard against VID assets by hand.
+    const tokenOf = (s: string | null | undefined): string | null =>
+      s ? s.match(/sh\d+/i)?.[0]?.toUpperCase() ?? null : null;
+
+    const [vidRes, epRes] = await Promise.all([
+      ctx.supabase
+        .from('assets')
+        .select('id,filename,status,metadata')
+        .eq('episode_id', episodeId)
+        .like('file_type', 'VID-shot%'),
+      ctx.supabase
+        .from('episodes')
+        .select('metadata')
+        .eq('id', episodeId)
+        .maybeSingle(),
+    ]);
+    const excludedIds = excludedShotIdsFromEpisodeMeta(
+      (epRes.data as { metadata?: unknown } | null)?.metadata,
+    );
+    const excludedTokens = new Set(
+      [...excludedIds].map((e) => tokenOf(e)).filter((t): t is string => t !== null),
+    );
+    const isExcluded = (shotId: string): boolean =>
+      excludedIds.has(shotId) || excludedTokens.has(tokenOf(shotId) ?? '');
+
+    // Best VID-shot per shot token (APPROVED > REVIEW > REVISION > DRAFT).
+    const STATUS_RANK: Record<string, number> = {
+      APPROVED: 4, LOCKED: 4, REVIEW: 3, REVISION: 2, DRAFT: 1,
+    };
+    const bestVideoByToken = new Map<
+      string,
+      { id: string; filename: string; status: string; rank: number }
+    >();
+    for (const r of (vidRes.data ?? []) as Array<{
+      id: string; filename: string; status: string; metadata?: unknown;
+    }>) {
+      const tok =
+        tokenOf(resolveShotId({ metadata: r.metadata, content: null })) ??
+        tokenOf(r.filename);
+      if (!tok) continue;
+      const rank = STATUS_RANK[r.status] ?? 0;
+      const prev = bestVideoByToken.get(tok);
+      if (!prev || rank > prev.rank) {
+        bestVideoByToken.set(tok, { id: r.id, filename: r.filename, status: r.status, rank });
+      }
+    }
+    const normVideo = (status: string): 'approved' | 'review' | 'draft' | 'none' =>
+      status === 'APPROVED' || status === 'LOCKED'
+        ? 'approved'
+        : status === 'REVIEW' || status === 'REVISION'
+          ? 'review'
+          : status === 'DRAFT'
+            ? 'draft'
+            : 'none';
+    const videoFor = (shotId: string) => {
+      const v = bestVideoByToken.get(tokenOf(shotId) ?? '');
+      return v
+        ? { status: normVideo(v.status), asset_id: v.id, filename: v.filename }
+        : { status: 'none' as const, asset_id: null, filename: null };
+    };
+
+    // Rollup over ALL shots (not just the act-filtered/capped view).
+    const videoSummary = {
+      total: all.length,
+      approved: 0,
+      awaiting_approval: [] as Array<{ shotId: string; asset_id: string; filename: string }>,
+      missing: [] as string[],
+      excluded: [] as string[],
+      missing_note:
+        'Shots with no VID-shot row: not generated yet. Excluded "button" shots are listed under `excluded`, never `missing`.',
+    };
+    for (const s of all) {
+      if (isExcluded(s.shotId)) {
+        videoSummary.excluded.push(s.shotId);
+        continue;
+      }
+      const v = videoFor(s.shotId);
+      if (v.status === 'approved') {
+        videoSummary.approved++;
+      } else if (v.asset_id) {
+        videoSummary.awaiting_approval.push({
+          shotId: s.shotId,
+          asset_id: v.asset_id,
+          filename: v.filename!,
+        });
+      } else {
+        videoSummary.missing.push(s.shotId);
+      }
+    }
+
+    const shots = capped.map((s) => ({
+      ...s,
+      excluded: isExcluded(s.shotId),
+      video: videoFor(s.shotId),
+    }));
+
     return ok(
       {
         episodeId,
@@ -179,12 +287,15 @@ export const listShots: Tool<ListShotsArgs> = {
         storyboardFilename: data.filename,
         storyboardVersion: data.version,
         totalShots: all.length,
-        returnedShots: capped.length,
+        returnedShots: shots.length,
         truncated: filtered.length > limit,
         actFilter: args.act ?? null,
-        shots: capped,
+        shots,
+        videoSummary,
       },
-      `${capped.length}/${all.length} shot(s) from storyboard ${data.filename}`,
+      `${shots.length}/${all.length} shot(s) from storyboard ${data.filename} · video: ` +
+        `${videoSummary.approved}/${all.length} approved, ${videoSummary.awaiting_approval.length} awaiting approval, ` +
+        `${videoSummary.missing.length} missing, ${videoSummary.excluded.length} excluded.`,
     );
   },
 };

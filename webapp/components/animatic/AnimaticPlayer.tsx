@@ -166,6 +166,18 @@ export interface AnimaticPlayerProps {
   onGenerateVideo?: (shotId: string) => void;
   /** Shot currently kicking off a video flow (button spinner / disabled). */
   generatingVideoShotId?: string | null;
+  /**
+   * Explicit excluded ("button") shots — episodes.metadata.excluded_shot_ids.
+   * Drives the cell strikethrough (alongside the legacy ≤0.5s rule) and the
+   * kebab toggle's checked state.
+   */
+  excludedShotIds?: ReadonlySet<string>;
+  /**
+   * Toggle a shot's excluded flag (kebab checkbox). The parent owns the
+   * episode-level write + refetch (works at any stage, no animatic asset
+   * required). When absent the checkbox is hidden.
+   */
+  onToggleExclusion?: (shotId: string, excluded: boolean) => void;
 }
 
 /**
@@ -208,6 +220,7 @@ function buildTimeline(
   shotList: AnimaticShot[],
   overrides: Record<string, AnimaticDirectorOverride> | undefined,
   clipLengths?: ReadonlyMap<string, number>,
+  excludedShotIds?: ReadonlySet<string>,
 ): { times: ShotTime[]; total: number; visualSpan: number } {
   const times: ShotTime[] = [];
   // Visual cumulative — used to lay out cells in the strip. Includes a
@@ -223,7 +236,8 @@ function buildTimeline(
     // length clamp. This is what ffmpeg actually emits for the shot, so the
     // preview timeline matches the final cut frame-for-frame.
     const clamped = computeEffectivePlayback(shot, overrides, clipLengths);
-    const excluded = clamped <= 0.5;
+    // Excluded = the explicit "button" flag OR the legacy ≤0.5s duration gesture.
+    const excluded = excludedShotIds?.has(shot.shot_id) === true || clamped <= 0.5;
     const visualDuration = excluded ? EXCLUDED_VISUAL_SECONDS : clamped;
     times.push({
       shot,
@@ -324,6 +338,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     synthetic = false,
     onGenerateVideo,
     generatingVideoShotId,
+    excludedShotIds,
+    onToggleExclusion,
   },
   ref,
 ) {
@@ -482,8 +498,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   }, [vidShotsByShotId]);
 
   const { times, total, visualSpan } = useMemo(
-    () => buildTimeline(contract.shot_list, overrides, clipLengths),
-    [contract.shot_list, overrides, clipLengths],
+    () => buildTimeline(contract.shot_list, overrides, clipLengths, excludedShotIds),
+    [contract.shot_list, overrides, clipLengths, excludedShotIds],
   );
 
   // Playback state
@@ -1337,6 +1353,33 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                     <div className="px-1 pb-1 font-mono opacity-70 text-[10px]">
                       {t.shot.shot_id} · {t.duration.toFixed(1)}s
                     </div>
+                    {/* Exclude ("button") toggle — the explicit, stage-independent
+                        replacement for the ≤0.5s duration hack. Writes
+                        episodes.metadata.excluded_shot_ids via the parent, so it
+                        works at any stage (incl. synthetic/parallel with no
+                        animatic asset). Excluded shots are skipped by stitch AND
+                        never generated. */}
+                    {onToggleExclusion && (
+                      <label
+                        className="mx-1 mb-1 flex items-center gap-1.5 px-1 py-0.5 rounded cursor-pointer select-none hover:bg-[color-mix(in_oklab,_white_8%,_transparent)]"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Exclude this shot from the final cut (a 'button' shot). Works at any stage; no video needed. Excluded shots are not generated and not stitched."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={excludedShotIds?.has(t.shot.shot_id) ?? false}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            onToggleExclusion(t.shot.shot_id, e.target.checked);
+                          }}
+                          className="accent-[var(--accent-danger,#ef4444)]"
+                        />
+                        <span className="text-[10px] text-text-secondary">
+                          Exclude from final cut{' '}
+                          <span className="opacity-50">(button)</span>
+                        </span>
+                      </label>
+                    )}
                     {/* Unified language — WHO is working right now (Q3), shown
                         only while a job runs on this shot. Object (references vs
                         video) comes from liveWork.object; role drives the colour. */}

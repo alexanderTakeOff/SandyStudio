@@ -224,12 +224,42 @@ export const DELETED_SHOT_MAX_SECONDS = 0.5;
  * Override-based, so it's decidable without clip lengths (the completeness gate
  * has no media context). Pairs with computeEffectivePlayback's ≤0.5 clamp, which
  * additionally catches trim-collapsed shots that DO have media.
+ *
+ * 2026-07-03 — exclusion is now an EXPLICIT per-shot flag too. `excludedShotIds`
+ * is the episode's `metadata.excluded_shot_ids` set — a shot in it is excluded
+ * regardless of duration. The legacy ≤0.5s duration collapse still counts (zero
+ * migration), so both the old gesture and the new kebab toggle work. This is the
+ * one seam every reader (stitch gate, stitch runner, timeline, Polina's list)
+ * funnels through, so teaching them exclusion = passing this set here.
  */
 export function isDeletedShot(
   shot: AnimaticShot,
   overrides: Record<string, AnimaticDirectorOverride> | undefined,
+  excludedShotIds?: ReadonlySet<string>,
 ): boolean {
+  if (excludedShotIds?.has(shot.shot_id)) return true;
   return effectiveDurationSeconds(shot, overrides) <= DELETED_SHOT_MAX_SECONDS;
+}
+
+/**
+ * Extract the episode's explicit excluded-shot set from its metadata
+ * (`episodes.metadata.excluded_shot_ids: string[]`) — the stage-independent SSOT
+ * for the "excluded (button)" flag, reachable at any stage (no animatic asset
+ * required). Safe on absent/garbage metadata. Pass the result to `isDeletedShot`
+ * and the per-shot generation guards.
+ */
+export function excludedShotIdsFromEpisodeMeta(metadata: unknown): Set<string> {
+  const raw =
+    metadata && typeof metadata === 'object'
+      ? (metadata as { excluded_shot_ids?: unknown }).excluded_shot_ids
+      : null;
+  const set = new Set<string>();
+  if (Array.isArray(raw)) {
+    for (const v of raw) {
+      if (typeof v === 'string' && v.length > 0) set.add(v);
+    }
+  }
+  return set;
 }
 
 /**
