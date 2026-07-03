@@ -41,6 +41,19 @@ const ACTIVE_WINDOW_H = 2;
 // so the watchdog/ambient can't keep nudging dead threads. Env-overridable.
 const THREAD_TTL_MIN = Math.max(30, Number(process.env.CONCIERGE_THREAD_TTL_MIN) || 180);
 
+/**
+ * The "parked for hours" pre-filter (ACTIVE_WINDOW_H) applies only to plain
+ * Mode-4 idle-sweep candidates. FANOUT_RUNNING and autonomous-run episodes are
+ * explicitly-active sessions, so they skip it and rely purely on the
+ * thread-aware new-actionable-state guard to decide whether to nudge.
+ */
+export function appliesParkedFilter(flags: {
+  isFanoutRunning: boolean;
+  isAutonomousRun: boolean;
+}): boolean {
+  return !flags.isFanoutRunning && !flags.isAutonomousRun;
+}
+
 export const paBatchStallWatchdog = inngest.createFunction(
   {
     id: 'pa-batch-stall-watchdog',
@@ -52,6 +65,9 @@ export const paBatchStallWatchdog = inngest.createFunction(
     return step.run('sweep-stalled-batches', async () => {
       const sb = createSupabaseServiceRoleClient();
       const now = Date.now();
+      // Thin-agent kill-switch (2026-07-03): opt-in autonomous-run nudging.
+      // Off by default — only the flagged Mode-3 run episode is ever swept.
+      const thinAgentEnabled = process.env.THIN_AGENT_ENABLED === 'true';
 
       // Reap stale OPEN threads first so we never nudge a dead conversation
       // (and so resolveOpenThreadId below picks a genuinely live thread).
@@ -94,6 +110,28 @@ export const paBatchStallWatchdog = inngest.createFunction(
       for (const e of (mode4Eps ?? []) as Array<{ id: string; metadata: Record<string, unknown> | null }>) {
         if (!byId.has(e.id)) byId.set(e.id, e);
       }
+
+      // Thin-agent autonomous run (2026-07-03): a Mode-3 episode explicitly
+      // flagged metadata.autonomous_run drives the "thin agent + Polina" loop —
+      // the thin agent keeps Polina moving through every gate while Тео watches
+      // in the Director seat. Same idle-sweep as Mode 4, but opt-in per episode
+      // and behind THIN_AGENT_ENABLED so ordinary Mode-3 work is never nudged.
+      // Reuses every guard below; only the "parked" pre-filter is relaxed
+      // (isAutonomousRun) so approval gates with no fresh job still get driven.
+      if (thinAgentEnabled) {
+        const { data: autoEps, error: aErr } = await sb
+          .from('episodes')
+          .select('id,metadata')
+          .eq('governance_mode', 3)
+          .eq('metadata->>autonomous_run', 'true')
+          .limit(SCAN_LIMIT);
+        if (aErr) {
+          logger.warn(`batch-watchdog: autonomous-run query failed: ${aErr.message}`);
+        }
+        for (const e of (autoEps ?? []) as Array<{ id: string; metadata: Record<string, unknown> | null }>) {
+          if (!byId.has(e.id)) byId.set(e.id, e);
+        }
+      }
       const candidates = [...byId.values()];
       if (candidates.length === 0) {
         return { ok: true as const, scanned: 0, nudged: 0, reaped };
@@ -103,6 +141,10 @@ export const paBatchStallWatchdog = inngest.createFunction(
       for (const ep of candidates) {
         const meta = ep.metadata ?? {};
         const isFanoutRunning = meta.eref_pilot_state === 'FANOUT_RUNNING';
+        // Autonomous-run episodes are an explicitly-flagged active session, so
+        // they skip the "parked for hours" pre-filter below and rely purely on
+        // the thread-aware new-actionable-state guard to gate a nudge.
+        const isAutonomousRun = meta.autonomous_run === true;
 
         // Cooldown — skip if we nudged this episode recently.
         const lastNudge = meta.batch_watchdog_nudged_at;
@@ -133,7 +175,7 @@ export const paBatchStallWatchdog = inngest.createFunction(
         // Mode-4-only candidates (no FANOUT_RUNNING flag): require recent
         // activity inside ACTIVE_WINDOW_H — an episode idle for days is
         // parked, not stalled; nudging it would be noise.
-        if (!isFanoutRunning) {
+        if (appliesParkedFilter({ isFanoutRunning, isAutonomousRun })) {
           if (lastTs === 0 || now - lastTs > ACTIVE_WINDOW_H * 3_600_000) continue;
         }
 
