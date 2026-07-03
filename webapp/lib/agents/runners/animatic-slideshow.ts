@@ -23,6 +23,7 @@ import {
   type AnimaticContract,
   type AnimaticShot,
 } from '../../api/animatic-shotlist';
+import { bakeApprovedMusic } from '../music';
 
 export const ANIMATIC_CONTRACT = 'animatic_slideshow@v1';
 
@@ -248,50 +249,6 @@ function buildMarkdown(args: {
   lines.push('```');
 
   return lines.join('\n');
-}
-
-/**
- * Bake an APPROVED AUD-music URL into an animatic@v1 contract when one exists.
- * Shared by the EREF and anchor-chain runners. Graceful: on any failure the
- * original contract is returned unchanged (animatic still works silently).
- */
-async function bakeApprovedMusic(
-  supabase: SupabaseClient<Database>,
-  episodeId: string,
-  contract: AnimaticContract,
-): Promise<AnimaticContract> {
-  try {
-    const { data: musicRow } = await supabase
-      .from('assets')
-      .select('drive_path,staging_path,filename')
-      .eq('episode_id', episodeId)
-      .eq('file_type', 'AUD-music')
-      .eq('status', 'APPROVED')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const m = musicRow as
-      | { drive_path?: string | null; staging_path?: string | null; filename?: string }
-      | null;
-    const musicUrl = m?.drive_path ?? m?.staging_path ?? null;
-    if (!musicUrl) return contract;
-    return {
-      ...contract,
-      music_url: musicUrl,
-      music_filename: m?.filename ?? null,
-      audio_tracks: [
-        {
-          layer: 'music',
-          url: musicUrl,
-          filename: m?.filename ?? 'music.mp3',
-          volume: 1.0,
-          muted: false,
-        },
-      ],
-    };
-  } catch {
-    return contract;
-  }
 }
 
 /**

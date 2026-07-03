@@ -26,16 +26,22 @@
 
 ---
 
-## Фаза 0 — Музыка в parallel-EDL (быстрый win, F8) · маленький PR
+## Фаза 0 — Музыка в parallel-EDL (быстрый win) · маленький PR ✅ SHIPPED 2026-07-04
 **Цель:** финалка parallel-эпизода получает уже одобренную AUD-music (закрывает жалобу Директора #1).
-**Дизайн:**
-- Вынести `bakeApprovedMusic` в общий `lib/agents/music.ts` (или экспортнуть из animatic-slideshow).
-- `ensureEpisodeAnimaticEDL` вызывает его → `music_url`/`audio_tracks` в `animatic_v1`.
-- Прекондиция стича «музыка есть»: если нет APPROVED `AUD-music` → **не** собирать молча, а
-  эмитить читаемое событие («нет музыки — залей/утверди»).
-**Файлы:** `lib/api/ensure-animatic.ts`, `lib/agents/runners/animatic-slideshow.ts`, (нов.) `lib/agents/music.ts`.
-**Тесты (vitest):** parallel-EDL + APPROVED music → `music_url` установлен; без музыки → surfaced, не тихо.
-**Done:** пере-собрать E14 стич → музыка в финалке.
+**⚠️ Причина оказалась НЕ той, что в F8.** F8 гласил «bake только в sequential; parallel не зовёт».
+На деле `ensureEpisodeAnimaticEDL` музыку **уже печёт** (инлайн-дубликат). Настоящий баг — **порядок +
+идемпотентность**: EDL материализуется на approve пилотов (`next-events.ts:1279`) ДО одобрения музыки →
+печёт `null`; идемпотентный ранний-return потом отдаёт протухший (без музыки) аниматик; EXEC-STITCH
+читает музыку только из замороженного контракта (`runner.ts:2620`) → немой cut. «ВЕСТИ ≠ ЧИНИТЬ».
+**Что сделано:**
+- (нов.) `lib/agents/music.ts` — общий `bakeApprovedMusic` + `contractHasMusic`. Свёл ДВА дубликата в один.
+- `ensureEpisodeAnimaticEDL` — на идемпотентном пути **догоняет музыку** в существующий аниматик, если
+  APPROVED `AUD-music` появилась ПОЗЖЕ материализации (это и есть фикс причины).
+- Прекондиция стича: parallel Director-run без музыки → сурфейс `pipeline/stitch-blocked-no-music`,
+  не собирать молча. AUTOTEST/sequential не тронуты (replay-pilot без регрессии).
+**Файлы:** `lib/agents/music.ts` (нов.), `lib/api/ensure-animatic.ts`, `lib/agents/runners/animatic-slideshow.ts`, `lib/agents/next-events.ts`.
+**Verify:** tsc чисто · vitest 1105/1105 (7 нов. в ensure-animatic.test) · replay-pilot 30/30.
+**Осталось (не блокер):** живой ре-стич E14 с музыкой — отложено (Director: «забудь прогон»).
 
 ---
 

@@ -21,8 +21,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   buildShotListFromApprovedEREF,
   newAnimaticContract,
+  isAnimaticV1,
   type AnimaticContract,
 } from './animatic-shotlist';
+import { bakeApprovedMusic, contractHasMusic } from '../agents/music';
 
 /**
  * Ensure a parallel-pipeline episode has a VID-animatic EDL. Idempotent — if any
@@ -39,17 +41,34 @@ export async function ensureEpisodeAnimaticEDL(
   supabase: SupabaseClient,
   episodeId: string,
 ): Promise<string | null> {
-  // Idempotent: an animatic already exists (any status) → reuse it.
+  // Idempotent: an animatic already exists (any status) → reuse it. BUT: the EDL
+  // is materialized at pilot approval — BEFORE music is approved — so the first
+  // bake writes null, and without a refresh here EXEC-STITCH freezes that stale
+  // music-less contract into a silent final cut (Director complaint, E14). On the
+  // idempotent path, if the existing animatic carries no music but an APPROVED
+  // AUD-music now exists, re-bake it into the existing row. Idempotent: once
+  // music is present the refresh is a no-op.
   const { data: existing } = await supabase
     .from('assets')
-    .select('id')
+    .select('id,metadata')
     .eq('episode_id', episodeId)
     .like('file_type', 'VID-animatic%')
     .order('version', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if ((existing as { id?: string } | null)?.id) {
-    return (existing as { id: string }).id;
+  const existingRow = existing as { id?: string; metadata?: unknown } | null;
+  if (existingRow?.id) {
+    const meta = existingRow.metadata;
+    if (isAnimaticV1(meta) && !contractHasMusic(meta.animatic_v1)) {
+      const refreshed = await bakeApprovedMusic(supabase, episodeId, meta.animatic_v1);
+      if (contractHasMusic(refreshed)) {
+        await supabase
+          .from('assets')
+          .update({ metadata: { animatic_v1: refreshed } } as never)
+          .eq('id', existingRow.id);
+      }
+    }
+    return existingRow.id;
   }
 
   // Episode code — for the filename convention (mirrors saveAgentOutput).
@@ -88,40 +107,11 @@ export async function ensureEpisodeAnimaticEDL(
     return null;
   }
 
-  // Bake newest APPROVED music (mirrors runAnimaticSlideshow) — optional/graceful.
-  try {
-    const { data: musicRow } = await supabase
-      .from('assets')
-      .select('drive_path,staging_path,filename')
-      .eq('episode_id', episodeId)
-      .eq('file_type', 'AUD-music')
-      .eq('status', 'APPROVED')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const m = musicRow as
-      | { drive_path?: string | null; staging_path?: string | null; filename?: string }
-      | null;
-    const musicUrl = m?.drive_path ?? m?.staging_path ?? null;
-    if (musicUrl) {
-      contract = {
-        ...contract,
-        music_url: musicUrl,
-        music_filename: m?.filename ?? null,
-        audio_tracks: [
-          {
-            layer: 'music',
-            url: musicUrl,
-            filename: m?.filename ?? 'music.mp3',
-            volume: 1.0,
-            muted: false,
-          },
-        ],
-      };
-    }
-  } catch {
-    /* music bake is non-fatal — the EDL still assembles video-only */
-  }
+  // Bake newest APPROVED music into the fresh contract (shared with the
+  // sequential runner — single source of truth). No-op when no APPROVED music
+  // yet; the idempotent-path refresh above catches music approved LATER, after
+  // this first materialization.
+  contract = await bakeApprovedMusic(supabase, episodeId, contract);
 
   // Version + filename per the saveAgentOutput convention (auto-increment).
   const { data: existingRows } = await supabase

@@ -38,6 +38,7 @@ import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { resolveShotId } from '@/lib/api/shot-identity';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { ensureEpisodeAnimaticEDL } from '@/lib/api/ensure-animatic';
+import { contractHasMusic } from '@/lib/agents/music';
 import {
   designerChainEnabled,
   animatorChainEnabled,
@@ -1291,7 +1292,10 @@ export async function computeNextEvents(
     // the silent EDL now (idempotent; no-op in sequential, where the ceremony
     // already produced one → replay-pilot unchanged). Without this, the stitch
     // completeness check below finds no APPROVED animatic and never fires.
-    if ((await readEpisodePipelineMode(supabase, ep)) === 'parallel') {
+    const pipelineMode = await readEpisodePipelineMode(supabase, ep);
+    if (pipelineMode === 'parallel') {
+      // Refreshes music into the existing EDL if AUD-music was approved AFTER the
+      // EDL was first materialized at pilot approval (Фаза 0 staleness fix).
       await ensureEpisodeAnimaticEDL(supabase, ep);
     }
     const { data: animaticRow } = await supabase
@@ -1331,10 +1335,33 @@ export async function computeNextEvents(
           if (typeof sid === 'string') approvedShotIds.add(sid);
         }
         if (liveShotIds.every((id) => approvedShotIds.has(id))) {
-          events.push({
-            name: 'sandystudio/exec-stitch/assemble-episode',
-            data: { episodeId: ep },
-          });
+          // Фаза 0 — music precondition. By now ensureEpisodeAnimaticEDL (above,
+          // parallel) has baked any APPROVED music into `v1`. If a PARALLEL,
+          // Director-driven run STILL has no music track, an APPROVED AUD-music
+          // does not exist — do NOT assemble a silent cut behind the Director's
+          // back (E14 complaint #1). Surface a readable, actionable notice; the
+          // Director loads/approves music (re-fires this gate) or triggers
+          // EXEC-STITCH manually for a deliberate music-less cut. AUTOTEST
+          // (replay-pilot) and sequential keep their prior behaviour untouched.
+          if (pipelineMode === 'parallel' && !isAutotest && !contractHasMusic(v1)) {
+            await logEvent(supabase, {
+              event_type: 'pipeline/stitch-blocked-no-music',
+              severity: 'warning',
+              title: 'Финалка ждёт музыку — стич не запущен',
+              description:
+                'Все живые шоты одобрены, но у эпизода нет APPROVED AUD-music. ' +
+                'Залей и одобри музыку — финальный стич соберётся автоматически. ' +
+                'Нужен немой cut — запусти EXEC-STITCH вручную.',
+              actor: 'exec-dir-ai',
+              episode_id: ep,
+              metadata: { reason: 'STITCH_NO_APPROVED_MUSIC' },
+            });
+          } else {
+            events.push({
+              name: 'sandystudio/exec-stitch/assemble-episode',
+              data: { episodeId: ep },
+            });
+          }
         }
       }
     }
