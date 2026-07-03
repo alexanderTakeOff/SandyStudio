@@ -45,7 +45,13 @@
 
 ---
 
-## Фаза 1 — Матрица состояния (фундамент) · средний PR
+## Фаза 1 — Матрица состояния (фундамент) · средний PR ✅ SHIPPED 2026-07-04 (`5eb74bc`)
+**Сделано:** `lib/agents/state-matrix.ts` (`getEpisodeStateMatrix` — чистая read-only проекция над
+`assets`: per-shot × per-stage {status,version,asset_id,fresh,blocked_reason} + music/final_cut/gates;
+`downstreamCone`; `renderStateMatrixMarkdown`; `STAGE_ORDER`). API `GET /api/episodes/[id]/state-matrix`
+→ `{matrix, markdown}`. Generic freshness читает `metadata.input_versions` (absent → fresh, graceful).
+Verify: tsc · vitest +7 · replay 30/30. **Осталось Фаза 1b:** генераторы ПИШУТ `input_versions`
+(апстрим-версии) в раннерах — тогда freshness ловит stale вживую (сейчас read-side готов, write-side нет).
 **Цель:** единый читаемый SSOT статуса — «где всё сейчас», для кода/дирижёра/UI.
 **Дизайн:**
 - Тип `EpisodeStateMatrix`: `{ shots: [{ shot_id, excluded, stages: { ref_plan|ref_image|shot_plan|video: { status, version, asset_id, fresh: bool, blocked_reason?: string } } }], music: {...}, final_cut: {...}, gates: {...} }`.
@@ -64,6 +70,25 @@
 ---
 
 ## Фаза 2 — Код-механика над матрицей (Tier-0 auto-advance + self-heal) · крупный PR, ядро
+**Статус: 2a ✅ SHIPPED 2026-07-04 (`abbc104`) · 2b осталось (нужен смоук).**
+**2a сделано (чистое ядро, без мутаций, за флагом):**
+- `lib/agents/production-plan.ts` — контракт `ProductionPlan` + `production_plan.reserved_gates`,
+  `isShotInPlan`, `MECHANICS_AUTO_ADVANCE` флаг (default OFF), `DEFAULT_RESERVED_GATES` (централизован,
+  state-matrix переиспользует — дубликат убит).
+- `lib/agents/reconcile.ts` — **чистая** `planReconcileActions(ctx)` → `ReconcileAction[]`
+  (approve/stitch/halt/wait) + `collectCriticSignals`. Правила: критик-гейт (планы) авто-аппрув на PASS,
+  HALT на REVISE≥cap; механические артефакты (ref-image, video) авто-аппрув для non-reserved in-plan;
+  STALE не аппрувится; стич на «все live approved + музыка есть», пере-оценка на ЛЮБОЕ изменение (вкл. exclude).
+  Verify: vitest +11 · tsc · replay 30/30.
+**2b осталось (executor-проводка + self-heal — МУТИРУЕТ живой пайплайн, нужен смоук):**
+- `reconcileEpisode(episodeId)` — собрать `ReconcileContext` (матрица + REV-строки→`collectCriticSignals`
+  + reserved-shots [пилоты, если 'pilots' reserved] + `shotRegenCap`) и ИСПОЛНИТЬ действия:
+  approve → переиспользовать approve-логику из `/api/assets/[id]/approve` (**вызвать из кода, не HTTP** —
+  вынести внутренность роута в `lib/api/approve-asset.ts`, роут и reconciler зовут одно) → каскад
+  `computeNextEvents`; stitch → эмит `exec-stitch/assemble-episode`; halt → surface.
+- provider-fail retry N → PARK + surface (в `fal-seedance.ts` + reconcile).
+- Врезка: звать `reconcileEpisode` идемпотентно из обработчиков (approve-route, критик-раннеры,
+  exclude-toggle) ЗА флагом `MECHANICS_AUTO_ADVANCE`; узкий стич-гейт `next-events.ts:~1288` делегировать.
 **Цель:** убрать ~90% ручных approve; фабрика течёт от утверждённого плана до стича сама.
 **Дизайн:**
 - **Контракт «утверждённого плана»:** `episodes.metadata.production_plan = { shots, providers,
