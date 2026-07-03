@@ -20,8 +20,16 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-06-30 (q9a ЗАВЕРШЁН + запушен; §34 в Themes; Bible урезан; Polina на Opus; next-эпизод = vending machine)
+Date:   2026-07-03 (E13 live-run fixes влиты в master `aa52384`; предыдущий якорь — q9a/themes 2026-06-30)
 Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до конца фазы»).
+
+2026-07-03 (E13 live-run fixes → master `aa52384`, FF-merge ветки claude/e13-nudge-badge-casting-fixes,
+  21 коммитов). 4 фичи: reference-drawer cluster (select-in-place + reject-on-APPROVED→REVISION, faec572);
+  kebab-досье REFERENCE/VIDEO зоны + plan-aware Generate (dd3bfe1); fanout-идемпотентность — per-shot
+  ref_plan guard + prune pending, чинит «одобрил 1 пилот → регенит весь эпизод» (cb402ce); excluded-shot
+  явный флаг `episodes.metadata.excluded_shot_ids` (SSOT, stage-independent) + kebab-toggle + gen/stitch
+  skip + Polina listShots videoSummary (aa52384). Verify: tsc·0/vitest·1092/replay·30. NEXT: E13 live-прогон
+  идёт; открыто — ≤0.5 reading в listShots excluded, drawer-approve «ерунда», чистка stale ref_plan DRAFT.
 
 2026-06-30 (q9a ЗАВЕРШЁН → master `3269e4a`, ЗАПУШЕН `b21a6e9..3269e4a`). Part B (chat-гигиена): guard в
   chat/route.ts не аппендит в ENDED-тред + endpoint/кнопка «Новый разговор» (архив+свежий, non-destructive) →
@@ -78,32 +86,11 @@ Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до ко
   copywriter.md + thumbnail-designer.md (overlay English); live E12 SPC-metadata rewritten (asset df9ac692).
   NEXT: q8a E12 thumbnail overlay МОЁ ВРЕМЯ!→MY TIME!; q4 portable doctrine repo+bootstrap.
 
-2026-06-27 (Shot-identity refactor → master `4b1f3f4`). E12 done → gate cleared. Слита ветка
-  claude/shot-identity-S-E-SH (5 фаз): identity = `S{сезон}-E{эпизод}-SH{номер}` (no SS/act/scene),
-  номер присваивается ПО ПОЗИЦИИ в коде (canonicalShotId) → независимость от модели; collectShotIdViolations
-  = HARD HALT-гейт (отвергает legacy-компаунд); снесены пластыри normalizeShotId/shotIdsMatchLoose/SH-fallback;
-  single-source lib/api/shot-id.ts + resolveShotId (button-number вход "7"/"SH7"/full); feed/UI → SH-токен+статус+версия.
-  E01-E12 = LEGACY (opaque, без миграции данных). master был +1 (8722b04 perf-timeline) — авто-мерж без конфликтов.
-  Verify на слитом: tsc·0 / vitest 1010 / replay·30. ⚠️ worktree dev: turbopack падает на junction node_modules
-  (симлинк out-of-root) — запускать Next без --turbopack ИЛИ из главного репо.
-  NEXT: первый ЖИВОЙ E13-прогон провалидирует гейт на реальной модели (mock/replay его не ловит).
-
-2026-06-25 (Полина $100/сутки Anthropic-дренаж — root-fix). Диагноз: петля watchdog↔auto-react × Opus 4.8
-  (695 вызовов/сутки, 81% auto-react; budget_log не трекал консьерж → расход был невидим, не «Opus дорогой»).
-  Лечение в master (tsc·0 / vitest 997 / replay·30): W1 петля — self-echo skip (events.ts isSelfCausedNotify),
-  watchdog no-new-state + close-stale-threads, debounce 5s→20s; W2 reasoning OFF на Opus (гл. причина цены);
-  W3 cost-трекинг в budget_log с episode_id + дневной circuit-breaker $20/24ч; W4.a история 80→24; W5 backstop
-  25→6, auto-react output→800. Держим Opus, харден. (EREF дубль-дедуп этой записи заменён атомарным
-  dispatch_intent в S2(a) 2026-06-28.) План: ~/.claude/plans/functional-tickling-ullman.md.
-
-2026-06-22 PM (E11 video run + AI-EP readiness probe). Тео ведёт прогон в роли AI EP (Pascal), Полина — исполнитель.
-  E11 DONE (1-й 4-актный эпизод). 3 фикса в master (tsc·0 / 926 / replay·30): (1) normalizeShotId на единой
-  trigger-двери; (2) Storyboarder: число актов из сценария, не хардкод «3» (тройной act-инвариант, HALT);
-  (3) STITCH/автостарт исключают удалённый ≤0.5с-шот (isDeletedShot). Дыры AI EP → memory/ai_ep_conception_gaps.md.
-
-2026-06-17 → 2026-06-14 entries (FORMAT-authority slice-1, the 06-16 PM UI/observability/contract series,
-  E10 clean-run, identity+casting arch sprint, condensed SHIPPED) → trimmed 2026-06-27 to docs/PLAN-history.md
-  + `git log -p -- PLAN.md` + session memos (session_2026-06-15/-16/-17, _2026-06-14_arch-sprint).
+2026-06-27 → 2026-06-14 entries (shot-identity S-E-SH merged `4b1f3f4` + HARD HALT-gate; Полина $100/сутки
+  root-fix — watchdog↔auto-react loop, reasoning-OFF на Opus, $20/24ч breaker; E11 DONE 1st 4-act ep + 3 фикса;
+  FORMAT-authority slice-1, 06-16 UI/observability series, E10 clean-run, identity+casting arch sprint) →
+  trimmed to docs/PLAN-history.md + `git log -p -- PLAN.md` + memory memos (shot_identity_refactor_decision,
+  session_2026-06-14/-15/-16/-17/-22, ai_ep_conception_gaps).
 
 GATE-HARDENING RFC (docs/RFC-2026-06-04-…): 10 invariants, 3 phases.
   ✅ Phase 1 SHIPPED (7c76a05): single-approved→INVALIDATED+DB indexes (0036), loud Drive-aware
@@ -200,6 +187,7 @@ Pre-2026-05-18 → `docs/PLAN-history.md`.
 
 | Date | Change | By |
 |------|--------|----|
+| 2026-07-03 | **E13 live-run fixes → master `aa52384`** (FF-merge, 21 commits): reference-drawer cluster · kebab REFERENCE/VIDEO zones + plan-aware Generate · fanout idempotency · excluded-shot flag SSOT + Polina listShots. Verify tsc·0/vitest·1092/replay·30. | Тео |
 | 2026-06-27 | **Compass v2 + PLAN master-only** (partnership.md, CLAUDE.md §12, `.gitattributes merge=union`, branch-aware guard) · shot-identity S-E-SH merged `4b1f3f4` · E12 distribution copy → cold-viewer/SEO English (metadata.md v0.2 + agents + live asset df9ac692). PLAN compacted 269→<200. | Тео |
 | 2026-06-02 | **PR #27 → master `baa1e00`** — Key Art Designer multi-canon thumbnail pipeline + Drive-backed media route. Live art gate PASS on SS-S15-E01 ($0.34, 3 thumbnails, v12 winner). PLAN.md compacted 339→≤200. | Master-session |
 | 2026-06-01 | **PR #26 → master `072194e`** — TD-85 resolution discipline in Shot Plan pipeline (runner hard-gates resolution vs provider contract, Critic V13). | Claude Code |
