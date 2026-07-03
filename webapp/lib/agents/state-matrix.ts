@@ -24,6 +24,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
 import { extractShotsFromStoryboard, excludedShotIdsFromEpisodeMeta } from '../api/animatic-shotlist';
+import { resolveReservedGates } from './production-plan';
 
 /** Per-shot production stages, in dependency order (upstream → downstream). */
 export const STAGE_ORDER = ['ref_plan', 'ref_image', 'shot_plan', 'video'] as const;
@@ -46,19 +47,6 @@ const UPSTREAM_OF: Record<StageName, StageName | null> = {
   shot_plan: 'ref_image',
   video: 'shot_plan',
 };
-
-/** Default reserved gates — the human/Director keeps these even in autonomy.
- *  Overridable per-episode via metadata.production_plan.reserved_gates. */
-export const DEFAULT_RESERVED_GATES = [
-  'brief',
-  'script',
-  'canon',
-  'pilots',
-  'publish',
-  'lock',
-  'budget',
-  'mode',
-] as const;
 
 export interface StageState {
   /** DRAFT | REVIEW | APPROVED | LOCKED | REVISION | INVALIDATED | null(absent). */
@@ -299,15 +287,6 @@ function stageOfFileType(fileType: string | null): StageName | null {
     if (fileType.startsWith(FILE_TYPE_BY_STAGE[stage])) return stage;
   }
   return null;
-}
-
-function resolveReservedGates(episodeMeta: unknown): readonly string[] {
-  const meta = (episodeMeta ?? null) as { production_plan?: { reserved_gates?: unknown } } | null;
-  const rg = meta?.production_plan?.reserved_gates;
-  if (Array.isArray(rg) && rg.every((g) => typeof g === 'string') && rg.length > 0) {
-    return rg as string[];
-  }
-  return DEFAULT_RESERVED_GATES;
 }
 
 /**
