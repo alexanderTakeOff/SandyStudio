@@ -351,6 +351,58 @@ export function createAgentInngestFunction<E extends string>(
         claimedDispatchKey = dispatchKey;
       }
 
+      // ── Step 0.5: PRE-FLIGHT gate — validate BEFORE the agent "starts" ─────
+      // Director UX (2026-07-03): check the gate (budget-approval, input
+      // completeness, canon) BEFORE inserting a RUNNING job / emitting
+      // agent_started — so a blocked dispatch never shows the "started → failed"
+      // flicker nor leaves a phantom FAILED job. On block we surface ONE clear
+      // "blocked — not started" notice, release the dispatch claim, and return
+      // (no throw → the outer catch's failure path is not taken). When the
+      // precondition is met (e.g. Director approves the budget) a re-trigger
+      // re-claims and runs cleanly.
+      const gate = await step.run('preflight-validate', async () => {
+        const supabase = createSupabaseServiceRoleClient();
+        await loadAgentInputs({
+          supabase,
+          agentId: spec.agentId,
+          episodeId,
+          allowedStatuses: spec.inputAllowedStatuses,
+        });
+        return validateAgentInputs({
+          supabase,
+          agentId: spec.agentId,
+          episodeId,
+          eventContext: {
+            directorConfirm: eventData.directorConfirm as boolean | undefined,
+            confirmedBy: eventData.confirmedBy as string | undefined,
+          },
+        });
+      });
+
+      if (!gate.passed) {
+        await step.run('mark-blocked-before-start', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          await logEvent(supabase, {
+            event_type: 'agent_failed',
+            severity: 'warning',
+            title: `${agentDisplayName(spec.agentId)} blocked — not started`,
+            description: gate.reason ?? `${spec.agentId} gate not satisfied`,
+            actor: spec.agentId,
+            episode_id: episodeId,
+            metadata: {
+              file_type: FILE_TYPE_HINT_BY_AGENT[spec.agentId] ?? null,
+              inngest_run_id: runId,
+              blocked_before_start: true,
+              missing: gate.missing ?? null,
+            },
+          });
+          if (claimedDispatchKey) {
+            await markDispatchIntent(supabase, claimedDispatchKey, 'failed');
+          }
+        });
+        return { blocked: true as const, reason: gate.reason ?? null };
+      }
+
       // ── Step 1: insert RUNNING job row + emit agent_started activity ─────
       const job = await step.run('insert-job-row', async () => {
         const supabase = createSupabaseServiceRoleClient();
@@ -400,38 +452,7 @@ export function createAgentInngestFunction<E extends string>(
       });
       capturedJobId = job.id;
 
-      // ── Step 2: load + validate (one checkpoint) ───────────────────────────
-      const gate = await step.run('load-and-validate', async () => {
-        const supabase = createSupabaseServiceRoleClient();
-        await loadAgentInputs({
-          supabase,
-          agentId: spec.agentId,
-          episodeId,
-          allowedStatuses: spec.inputAllowedStatuses,
-        });
-        return validateAgentInputs({
-          supabase,
-          agentId: spec.agentId,
-          episodeId,
-          eventContext: {
-            directorConfirm: eventData.directorConfirm as boolean | undefined,
-            confirmedBy: eventData.confirmedBy as string | undefined,
-          },
-        });
-      });
-
-      if (!gate.passed) {
-        await step.run('mark-failed-gate', async () => {
-          const supabase = createSupabaseServiceRoleClient();
-          await markJobFailed(supabase, job.id, gate.reason ?? 'Gate failed');
-          if (claimedDispatchKey) {
-            await markDispatchIntent(supabase, claimedDispatchKey, 'failed');
-          }
-        });
-        throw new NonRetriableError(gate.reason ?? `Gate failed for ${spec.agentId}`);
-      }
-
-      // ── Step 3: execute agent ──────────────────────────────────────────────
+      // ── Step 2: execute agent (gate already passed pre-flight) ─────────────
       const exec = await step.run('execute-agent', async () => {
         const supabase = createSupabaseServiceRoleClient();
         const inputs = await loadAgentInputs({
