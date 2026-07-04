@@ -145,14 +145,33 @@ function rateFor(model: string): ModelRate {
   return found.rate;
 }
 
+// Anthropic prompt-caching price multipliers on the BASE input rate (uniform
+// across Claude tiers): a 5-minute cache WRITE costs 1.25× input, a cache READ
+// costs 0.10× input. Non-Claude models never send cache tokens, so these apply
+// only when cacheRead/cacheWrite are non-zero (Claude native path).
+const CACHE_WRITE_MULT = 1.25;
+const CACHE_READ_MULT = 0.1;
+
 export function computeCostUsd(
-  usage: { inputTokens: number; outputTokens: number },
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    // Optional native-Anthropic cache accounting. Default 0 → identical to the
+    // pre-cache math, so every existing caller stays byte-for-byte unchanged.
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  },
   model: string,
 ): number {
   const rate = rateFor(model);
+  const inPerTok = rate.inputUsdPerMillion / 1_000_000;
+  const outPerTok = rate.outputUsdPerMillion / 1_000_000;
   const usd =
-    (usage.inputTokens * rate.inputUsdPerMillion) / 1_000_000 +
-    (usage.outputTokens * rate.outputUsdPerMillion) / 1_000_000;
+    // native `input_tokens` already EXCLUDES cache read/write, so no double-count.
+    usage.inputTokens * inPerTok +
+    (usage.cacheWriteTokens ?? 0) * inPerTok * CACHE_WRITE_MULT +
+    (usage.cacheReadTokens ?? 0) * inPerTok * CACHE_READ_MULT +
+    usage.outputTokens * outPerTok;
   // Round to 4 decimals for predictable cost ledgers.
   return Math.round(usd * 10_000) / 10_000;
 }

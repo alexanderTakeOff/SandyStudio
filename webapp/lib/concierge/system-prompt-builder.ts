@@ -592,24 +592,30 @@ Treat a Director directive («сделай X / регенерируй / запу
 const brevityForDirector: Block = () => `[BREVITY_FOR_DIRECTOR]
 In PROSE summaries to the Director, compress to high-signal nouns — his chat is the operator console, not a log. Strip raw identifiers: planAssetId/asset_id UUIDs, Inngest event/run ids, full event_type paths, full shotIds (say "SH09", not the full path). Use the noun instead: "Reference Artist image-only из approved Ref Plan v03", "Video Artist из Shot Plan v05", "запустила EXEC-EREF" (past tense — the tool already ran). Separate paragraphs with blank lines; bold only the key noun (shot id / Plan version / agent). Quote a raw identifier ONLY when the Director explicitly asks for it.`;
 
-const BLOCKS: ReadonlyArray<{ name: string; render: Block }> = [
-  { name: 'BASE_BEHAVIOR', render: baseBehavior },
-  { name: 'BEHAVIOR_CONTRACT', render: behaviorContract },
-  { name: 'ENVIRONMENT', render: environment },
-  { name: 'ACTIVE_MODE', render: activeMode },
-  { name: 'TOOLS_AVAILABLE', render: toolsAvailable },
-  { name: 'BIBLE_DOMAIN', render: bibleDomain },
-  { name: 'AGENT_NAMES', render: agentNames },
-  { name: 'ACTIVE_INTENT', render: activeIntent },
-  { name: 'WORK_PLAN', render: workPlan },
-  { name: 'STUDIO_STATE', render: studioState },
-  { name: 'FEEDBACK_PROTOCOL', render: feedbackProtocol },
-  { name: 'AVAILABLE_PLAYBOOKS', render: availablePlaybooks },
-  { name: 'PIPELINE_EVENTS_SINCE_LAST_REPLY', render: pipelineEvents },
-  { name: 'TEAM_CHAT_FROM_CLAUDE', render: teamChatFromClaude },
-  { name: 'AUTO_REACT_GUIDANCE', render: autoReactGuidance },
-  { name: 'OPEN_LOOP_AWARENESS', render: openLoopAwareness },
-  { name: 'BREVITY_FOR_DIRECTOR', render: brevityForDirector },
+// `stable`: true → byte-identical across auto-react rounds within a session
+// (no per-CALL interpolation). These form the cacheable prefix for the native
+// Anthropic path (prompt caching). false → per-call dynamic (Date.now timestamps,
+// live episode/event state) — must NOT sit before the cache breakpoint.
+// Ordering in this array is unchanged (buildSystemPrompt reads it as-is, so the
+// live compat prompt is untouched); the split below re-groups by `stable`.
+const BLOCKS: ReadonlyArray<{ name: string; render: Block; stable: boolean }> = [
+  { name: 'BASE_BEHAVIOR', render: baseBehavior, stable: true },
+  { name: 'BEHAVIOR_CONTRACT', render: behaviorContract, stable: true },
+  { name: 'ENVIRONMENT', render: environment, stable: true },
+  { name: 'ACTIVE_MODE', render: activeMode, stable: false },
+  { name: 'TOOLS_AVAILABLE', render: toolsAvailable, stable: true },
+  { name: 'BIBLE_DOMAIN', render: bibleDomain, stable: true },
+  { name: 'AGENT_NAMES', render: agentNames, stable: true },
+  { name: 'ACTIVE_INTENT', render: activeIntent, stable: false },
+  { name: 'WORK_PLAN', render: workPlan, stable: false },
+  { name: 'STUDIO_STATE', render: studioState, stable: false },
+  { name: 'FEEDBACK_PROTOCOL', render: feedbackProtocol, stable: true },
+  { name: 'AVAILABLE_PLAYBOOKS', render: availablePlaybooks, stable: true },
+  { name: 'PIPELINE_EVENTS_SINCE_LAST_REPLY', render: pipelineEvents, stable: false },
+  { name: 'TEAM_CHAT_FROM_CLAUDE', render: teamChatFromClaude, stable: false },
+  { name: 'AUTO_REACT_GUIDANCE', render: autoReactGuidance, stable: true },
+  { name: 'OPEN_LOOP_AWARENESS', render: openLoopAwareness, stable: true },
+  { name: 'BREVITY_FOR_DIRECTOR', render: brevityForDirector, stable: true },
 ];
 
 export function buildSystemPrompt(ctx: PromptContext): string {
@@ -619,6 +625,34 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     if (out && out.trim() !== '') rendered.push(out);
   }
   return rendered.join('\n\n');
+}
+
+/**
+ * Native-Anthropic-only: the system prompt split into a STABLE cacheable prefix
+ * (all `stable` blocks, in array order) + a DYNAMIC suffix (per-call blocks).
+ * The native adapter emits these as two `system` content blocks with
+ * `cache_control:{type:'ephemeral'}` on the stable one, so Polina pays cache-read
+ * (~10% input) for the ~12-16 KB stable bulk after the first round writes it.
+ *
+ * NOTE: this REGROUPS block order (all stable first) vs buildSystemPrompt's
+ * interleaved order — a deliberate, flag-gated divergence. buildSystemPrompt
+ * (compat path, always live) is intentionally left byte-identical.
+ */
+export function buildConciergeSystemSplit(ctx: PromptContext): {
+  stable: string;
+  dynamic: string;
+} {
+  const stableParts: string[] = [];
+  const dynamicParts: string[] = [];
+  for (const { render, stable } of BLOCKS) {
+    const out = render(ctx);
+    if (!out || out.trim() === '') continue;
+    (stable ? stableParts : dynamicParts).push(out);
+  }
+  return {
+    stable: stableParts.join('\n\n'),
+    dynamic: dynamicParts.join('\n\n'),
+  };
 }
 
 function modeLabel(mode: ConciergeMode): string {

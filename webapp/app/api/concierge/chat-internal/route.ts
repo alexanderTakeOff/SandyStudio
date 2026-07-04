@@ -47,7 +47,11 @@ import type {
 import { z } from 'zod';
 import { getServerEnv } from '@/lib/env';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
-import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
+import {
+  buildSystemPrompt,
+  buildConciergeSystemSplit,
+} from '@/lib/concierge/system-prompt-builder';
+import { createConciergeCompletion } from '@/lib/concierge/anthropic-native';
 import { getThread, loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
 import { TOOLS, findTool, openaiSchemas, type ToolContext } from '@/lib/concierge/tools';
@@ -339,7 +343,7 @@ export async function POST(req: Request) {
     | undefined;
   const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
 
-  const systemPrompt = buildSystemPrompt({
+  const promptCtx = {
     today,
     mode,
     episodeId,
@@ -348,7 +352,12 @@ export async function POST(req: Request) {
     modelId: model,
     availablePlaybooks,
     autoReact: true,
-  });
+  };
+  const systemPrompt = buildSystemPrompt(promptCtx);
+  // Native-Anthropic path only: stable-prefix / dynamic-suffix split for prompt
+  // caching. Ignored by the compat passthrough (systemPrompt/conversation[0] stays
+  // authoritative there). Built from the SAME ctx so native == compat content.
+  const systemSplit = buildConciergeSystemSplit(promptCtx);
 
   // Synthetic user message that names what triggered the reaction. Anchors
   // the model's attention since pure system-prompt-only calls can be hit
@@ -509,21 +518,24 @@ export async function POST(req: Request) {
       // above dropped reasoning_effort for claude-*.
       Object.assign(params, conciergeReasoningParam());
 
-      const completion = await client.chat.completions.create(params);
+      const completion = await createConciergeCompletion(client, params, {
+        systemSplit,
+      });
       if (Symbol.asyncIterator in (completion as object)) {
         throw new Error('expected non-streaming completion');
       }
       // Record this call's tokens+cost (best-effort, fire-and-forget). Was
-      // previously UNTRACKED — the reason the Opus drain was invisible.
-      const usage = (completion as {
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
-      }).usage;
+      // previously UNTRACKED — the reason the Opus drain was invisible. Native
+      // path also threads cache read/write tokens so budget_log shows the savings.
+      const usage = completion.usage;
       if (usage) {
         void recordConciergeCost(supabase, {
           model,
           usage: {
             promptTokens: usage.prompt_tokens ?? 0,
             completionTokens: usage.completion_tokens ?? 0,
+            cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+            cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
           },
           source: 'auto_react',
           episodeId,

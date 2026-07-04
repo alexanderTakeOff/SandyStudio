@@ -27,6 +27,10 @@ export const CONCIERGE_AGENT_ID = 'EXEC-CONC';
 export interface ConciergeUsage {
   promptTokens: number;
   completionTokens: number;
+  // Native-Anthropic prompt-caching tokens (absent on the compat path → 0).
+  // promptTokens already EXCLUDES these (native input_tokens semantics).
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 /**
@@ -45,8 +49,20 @@ export async function recordConciergeCost(
   try {
     const inputTokens = args.usage.promptTokens || 0;
     const outputTokens = args.usage.completionTokens || 0;
-    if (inputTokens === 0 && outputTokens === 0) return; // nothing to record
-    const costUsd = computeCostUsd({ inputTokens, outputTokens }, args.model);
+    const cacheReadTokens = args.usage.cacheReadTokens || 0;
+    const cacheWriteTokens = args.usage.cacheWriteTokens || 0;
+    if (
+      inputTokens === 0 &&
+      outputTokens === 0 &&
+      cacheReadTokens === 0 &&
+      cacheWriteTokens === 0
+    ) {
+      return; // nothing to record
+    }
+    const costUsd = computeCostUsd(
+      { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens },
+      args.model,
+    );
     await client.from('budget_log').insert({
       job_id: null,
       episode_id: args.episodeId ?? null,
@@ -55,7 +71,7 @@ export async function recordConciergeCost(
       model_or_tier: args.model,
       operation: `concierge_${args.source}`,
       cost_usd: costUsd,
-      tokens_used: inputTokens + outputTokens,
+      tokens_used: inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens,
       duration_ms: null,
     });
   } catch {

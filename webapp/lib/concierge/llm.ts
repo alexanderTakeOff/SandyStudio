@@ -128,3 +128,21 @@ export function conciergeReasoningParam(): Record<string, string> {
   const effort = process.env.CONCIERGE_REASONING_EFFORT?.trim() || 'minimal';
   return { reasoning_effort: effort };
 }
+
+/**
+ * Native @anthropic-ai/sdk path for the concierge (prompt caching +
+ * thinking-disable), gated behind CONCIERGE_ANTHROPIC_NATIVE. Only meaningful
+ * when the provider is 'anthropic' — the OpenAI-compat surface Polina uses today
+ * silently drops both cache_control and thinking (docs-confirmed), and ignores
+ * reasoning_effort, so the native SDK is the only way to actually cache the
+ * ~12-16 KB stable prefix + cap reasoning.
+ *
+ * Default FALSE → the existing OpenAI-compat path (today's working behavior).
+ * Flip to true to enable; unset/false to instantly revert with no code change.
+ */
+export function conciergeAnthropicNativeEnabled(): boolean {
+  return (
+    conciergeProvider() === 'anthropic' &&
+    (process.env.CONCIERGE_ANTHROPIC_NATIVE ?? 'false').toLowerCase() === 'true'
+  );
+}
