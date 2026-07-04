@@ -35,7 +35,11 @@ import {
   collectCriticSignals,
   type ReconcileAction,
 } from './reconcile';
-import { readProductionPlan, mechanicsAutoAdvanceEnabled } from './production-plan';
+import {
+  readProductionPlan,
+  resolveReservedShots,
+  mechanicsAutoAdvanceEnabled,
+} from './production-plan';
 import { planRegenCap } from './chain-flags';
 
 export interface ReconcileOptions {
@@ -89,14 +93,19 @@ export async function reconcileEpisode(
     .select('metadata')
     .eq('id', episodeId)
     .maybeSingle();
-  const plan = readProductionPlan((epRow as { metadata?: unknown } | null)?.metadata);
+  const episodeMeta = (epRow as { metadata?: unknown } | null)?.metadata;
+  const plan = readProductionPlan(episodeMeta);
+  // SAFETY: default reservedShots to the pilot set (when 'pilots' is reserved) so
+  // pilots are never auto-approved past the Director's visual gate. An explicit
+  // opts.reservedShots overrides (tests / a conductor that computed its own set).
+  const reservedShots = opts.reservedShots ?? resolveReservedShots(episodeMeta);
 
   const actions = planReconcileActions({
     matrix,
     plan,
     verdicts,
     reviseCounts,
-    reservedShots: opts.reservedShots ?? new Set<string>(),
+    reservedShots,
     criticCap: opts.criticCap ?? planRegenCap(),
   });
 

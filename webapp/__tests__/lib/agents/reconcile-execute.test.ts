@@ -69,6 +69,22 @@ describe('reconcileEpisode', () => {
     expect(tables.assets.find((a) => a.id === 'sp1')?.status).toBe('REVIEW');
   });
 
+  it('does NOT auto-approve a pilot shot (reserved via episode metadata, no opts)', async () => {
+    // reserved_gates defaults to include 'pilots'; SH01 is a recorded pilot.
+    const { client, tables } = makeMockSupabase({
+      episodes: [{ id: EP, episode_code: 'SS-S1-E1', metadata: { eref_pilot_shot_ids: [SHOT] } }],
+      assets: [
+        storyboard([SHOT]),
+        { id: 'sp1', episode_id: EP, file_type: 'SPC-shot_plan', status: 'REVIEW', version: 1, metadata: { shot_id: SHOT } },
+        { id: 'rev1', episode_id: EP, file_type: 'REV-shot_plan', status: 'APPROVED', version: 1, metadata: { shot_id: SHOT, verdict: 'PASS' } },
+      ],
+    });
+    // No opts.reservedShots → reconcileEpisode must self-derive pilots from metadata.
+    const res = await reconcileEpisode(client, EP, { force: true });
+    expect(res.approvedAssetIds).toHaveLength(0);
+    expect(tables.assets.find((a) => a.id === 'sp1')?.status).toBe('REVIEW');
+  });
+
   it('HALTs and surfaces when a plan exceeds the critic cap', async () => {
     const { client, tables } = makeMockSupabase({
       episodes: [{ id: EP, episode_code: 'SS-S1-E1', metadata: {} }],

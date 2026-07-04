@@ -60,6 +60,26 @@ export function resolveReservedGates(episodeMeta: unknown): readonly string[] {
   return DEFAULT_RESERVED_GATES;
 }
 
+/**
+ * The shots the Director still gates when 'pilots' is a reserved gate — the
+ * pilot shots (persisted as `episodes.metadata.eref_pilot_shot_ids`). The
+ * reconciler must NEVER auto-approve these: the Director eyeballs the pilot
+ * images/videos before the rest fans out mechanically. Empty when 'pilots' is
+ * not reserved or no pilots were recorded.
+ *
+ * SAFETY: without this the reconciler would auto-approve pilots, bypassing the
+ * Director's visual gate — so reconcileEpisode calls it whenever the caller did
+ * not supply an explicit reservedShots set.
+ */
+export function resolveReservedShots(episodeMeta: unknown): Set<string> {
+  const reserved = resolveReservedGates(episodeMeta);
+  if (!reserved.includes('pilots')) return new Set<string>();
+  const meta = (episodeMeta ?? null) as { eref_pilot_shot_ids?: unknown } | null;
+  const ids = meta?.eref_pilot_shot_ids;
+  if (!Array.isArray(ids)) return new Set<string>();
+  return new Set(ids.filter((v): v is string => typeof v === 'string'));
+}
+
 /** Is a given shot inside the approved plan's allowlist? Absent/empty plan
  *  shot-list → every shot is in-plan (back-compat with un-planned episodes). */
 export function isShotInPlan(plan: ProductionPlan | null, shotId: string): boolean {
