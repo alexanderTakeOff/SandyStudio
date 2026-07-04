@@ -106,6 +106,22 @@ describe('getEpisodeStateMatrix', () => {
     expect(video.blocked_reason).toMatch(/stale/i);
   });
 
+  it('a newer INVALIDATED row does not mask the usable APPROVED version beneath it', async () => {
+    const { client } = makeMockSupabase({
+      episodes: [{ id: EP, metadata: {} }],
+      assets: [
+        storyboard(['SH01']),
+        asset({ id: 'ri1a', file_type: 'IMG-episode_ref', version: 1, status: 'APPROVED', metadata: { shot_reference: { shot_id: 'SH01' } } }),
+        asset({ id: 'ri1b', file_type: 'IMG-episode_ref', version: 2, status: 'INVALIDATED', metadata: { shot_reference: { shot_id: 'SH01' } } }),
+      ],
+    });
+    const m = await getEpisodeStateMatrix(client, EP);
+    const cell = m.shots[0].stages.ref_image;
+    expect(cell.status).toBe('APPROVED'); // the live v1, not the tombstone v2
+    expect(cell.version).toBe(1);
+    expect(cell.fresh).toBe(true);
+  });
+
   it('marks INVALIDATED assets as not fresh', async () => {
     const { client } = makeMockSupabase({
       episodes: [{ id: EP, metadata: {} }],

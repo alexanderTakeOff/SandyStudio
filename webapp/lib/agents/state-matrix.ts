@@ -113,14 +113,21 @@ function inputVersionsOf(row: AssetRow): Record<string, number> | null {
   return out;
 }
 
-/** Pick the current (highest-version) row from a group; ties break on created_at. */
+/** Pick the current (highest-version) row from a group; ties break on created_at.
+ *  INVALIDATED rows are tombstones (explicitly superseded), so the "current"
+ *  cell is the latest NON-INVALIDATED row — a newer INVALIDATED attempt must not
+ *  mask the still-usable APPROVED version beneath it (live finding: E14 SH01
+ *  ref_image v2 INVALIDATED shadowing the APPROVED v1, which would make a live
+ *  reconciler spuriously regenerate a shot that already has a good artifact). If
+ *  every row is INVALIDATED, surface the tombstone (nothing usable exists). */
 function pickLatest(rows: AssetRow[]): AssetRow | null {
   if (rows.length === 0) return null;
-  return [...rows].sort((a, b) => {
+  const sorted = [...rows].sort((a, b) => {
     const dv = (b.version ?? 0) - (a.version ?? 0);
     if (dv !== 0) return dv;
     return String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''));
-  })[0];
+  });
+  return sorted.find((r) => (r.status ?? '') !== 'INVALIDATED') ?? sorted[0];
 }
 
 const EMPTY_STAGE: StageState = { status: null, version: null, asset_id: null, fresh: true };
