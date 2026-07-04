@@ -34,10 +34,11 @@ import {
 } from './animator';
 import { reorderShots } from './shot-reorder';
 import { castEpisode } from './cast';
-import { proposeTheme } from './themes';
+import { listThemes, proposeTheme } from './themes';
 import { markAwaitingDirector } from './mark-awaiting';
 import { getWorkPlan, updateWorkPlan } from './work-plan';
 import { getStateMatrix, reconcileEpisode } from './conductor';
+import { fanoutShots } from './fanout';
 import type { OpenAIToolSchema, Tool } from './types';
 
 export type { Tool, ToolContext, ToolResult, OpenAIToolSchema } from './types';
@@ -93,6 +94,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   getStateMatrix as unknown as AnyTool,
   // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
+  // fanoutShots — the reliable per-shot Designer fan-out (reference/video). The
+  // capability Polina lacked: batch triggerAgent(EXEC-*-DESIGNER) fails "requires
+  // shotId"; this fires per-shot events WITH shotId. Bold-mode (Mode 3) tool.
+  fanoutShots as unknown as AnyTool,
   approveAsset as unknown as AnyTool,
   requestRevision as unknown as AnyTool,
   enrichBible as unknown as AnyTool,
@@ -131,8 +136,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // Phase D (2026-06-14) — ART-AD Casting stage. Polина drafts the episode cast
   // gallery from canon slugs; canon-existence HARD GATE; Director ratifies the DRAFT.
   castEpisode as unknown as AnyTool,
-  // q9a (2026-06-30) — Polина proposes ONE episode theme as DRAFT in the Themes
-  // surface (verbal-approval gated). Closes the smoke's "добавь в themes" no-op.
+  // q9a (2026-06-30) — Themes surface read + write.
+  // listThemes: read-only, call freely to answer «какие темы есть».
+  // proposeTheme: verbal-approval gated, persists a DRAFT theme.
+  listThemes as unknown as AnyTool,
   proposeTheme as unknown as AnyTool,
   // Фаза 4 (2026-07-04) — the conductor's hands: run one reconciler convergence
   // pass (auto-advance mechanical PASS stages + stitch). Mutating; the /reconcile
