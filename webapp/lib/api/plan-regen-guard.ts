@@ -28,12 +28,17 @@ import { logEvent } from './events';
 import { planRegenCap } from '@/lib/agents/chain-flags';
 
 /**
- * Agents whose jobs count toward the per-shot runaway cap: the image executor
- * (the money — gpt-image) and the plan regenerator (the wall-clock + loop
- * fuel). EPREV (critic, free tier) is deliberately excluded — it is cheap and
- * is neutralised at the source by the cosmetic-downgrade fix.
+ * Agents whose jobs count toward the per-shot runaway cap AND get the atomic
+ * dispatch claim (dedup): the image executor (money — gpt-image), the video
+ * executor (money — Seedance/Veo), and the plan regenerator (wall-clock + loop
+ * fuel). EXEC-VGEN added 2026-07-04: the Director-mode plan-critic-autofire hook
+ * makes the video fan-out self-drive, so VGEN needs the same race-free claim
+ * EXEC-EREF already has (otherwise only the blind `planAlreadyExecuted` guards
+ * it during the ~min gen window). Cap (SHOT_REGEN_CAP, default high) is generous
+ * — normal 1-2 renders/shot never approach it. EPREV/VPREV (critics, free tier)
+ * are deliberately excluded — cheap and neutralised at the source.
  */
-export const SHOT_REGEN_AGENT_IDS = ['EXEC-EREF', 'EXEC-EREF-DESIGNER'] as const;
+export const SHOT_REGEN_AGENT_IDS = ['EXEC-EREF', 'EXEC-EREF-DESIGNER', 'EXEC-VGEN'] as const;
 
 export interface PlanRegenGuardArgs {
   supabase: ServerSupabaseClient;

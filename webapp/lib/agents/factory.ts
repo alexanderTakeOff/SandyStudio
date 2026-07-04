@@ -734,6 +734,68 @@ export function createAgentInngestFunction<E extends string>(
       // is the call site's responsibility, not the factory's.
       type SendEventPayload = Parameters<typeof step.sendEvent>[1];
 
+      // ── Plan-critic PASS in Director auto-fire modes (2/3) → auto-approve the
+      //    Plan + fire the executor via the SAME next-events branch the manual
+      //    Director approve uses. Fixes the Designer-chain fan-out stall
+      //    (regression: Day 3.2 replaced the self-driving legacy fan-out, then
+      //    2f94b16e wired the critic-PASS→Artist fire for AUTOTEST only). In
+      //    Modes 2/3 nothing re-entered computeNextEvents after critic PASS, so
+      //    the 24-shot ref/video fan-out stalled — every Plan sat in REVIEW and
+      //    the image/video never generated. Mode 1 stays manual (skip); Mode 4
+      //    keeps flowing through next-events branch 1 (skip here). The REVISE
+      //    re-author loop is unaffected — it runs via the critic's spec.nextEvent
+      //    (critic-chain, all modes); this hook only fires on the terminal PASS.
+      //    Double-fire safety: eref is covered by the atomic claim_dispatch_intent
+      //    (EXEC-EREF ∈ SHOT_REGEN_AGENT_IDS); video parity via adding EXEC-VGEN.
+      const isPlanCritic =
+        spec.agentId === 'EXEC-EPREV' || spec.agentId === 'EXEC-VPREV';
+      if (isPlanCritic) {
+        await step.run('plan-critic-autofire', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          const { data: epRow } = await supabase
+            .from('episodes')
+            .select('governance_mode')
+            .eq('id', episodeId)
+            .single();
+          const mode = epRow?.governance_mode;
+          if (mode !== 2 && mode !== 3) return; // Mode 1 manual + Mode 4 branch-1 excluded
+          const verdict = (exec.result.metadata as { verdict?: unknown })?.verdict;
+          if (verdict !== 'PASS' && verdict !== 'PASS_WITH_UNCERTAINTY') return;
+          const planAssetId =
+            typeof eventData.planAssetId === 'string' ? eventData.planAssetId : null;
+          if (!planAssetId) return;
+          const { data: planRow } = await supabase
+            .from('assets')
+            .select('id,filename,file_type,episode_id,status,updated_at,metadata,content')
+            .eq('id', planAssetId)
+            .maybeSingle();
+          if (!planRow) return;
+          // Flip the Plan APPROVED (demote sibling first — per-slot unique index
+          // 0036), mirroring the Mode-4 flip above.
+          const slot = resolveSlotDescriptor(planRow as AssetForSlot);
+          if (slot) {
+            await demoteSiblingApproved(supabase, { slot, currentId: planAssetId });
+          }
+          await supabase.from('assets').update({ status: 'APPROVED' }).eq('id', planAssetId);
+          // Re-enter the proven next-events branch-2 (APPROVED Plan → executor)
+          // with a NON-AUTOTEST principal so branch-2 (not the AUTOTEST branch-1)
+          // fires. Branch-2 re-reads status from the DB, so the flip above is
+          // committed first. Its own guards (planAlreadyExecuted / excluded-shot)
+          // + the dispatch claim keep it idempotent.
+          const events = await computeNextEvents(
+            supabase,
+            { ...(planRow as AssetForChain), status: 'APPROVED' } as AssetForChain,
+            'exec-dir-ai',
+          );
+          if (events.length > 0) {
+            await step.sendEvent(
+              'plan-critic-autofire-events',
+              events.map((ev) => ({ name: ev.name, data: ev.data })) as unknown as SendEventPayload,
+            );
+          }
+        });
+      }
+
       // Auto-chain only in Mode 4 (AUTOTEST) for downstream EXECUTOR agents.
       // In Modes 1-3 the next executor (e.g. Artist after Plan APPROVED) is
       // fired by Director's asset approval (POST /api/assets/[id]/approve);
