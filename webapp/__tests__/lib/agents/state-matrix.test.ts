@@ -134,6 +134,22 @@ describe('getEpisodeStateMatrix', () => {
     expect(m.shots[0].stages.ref_plan.fresh).toBe(false);
   });
 
+  it('surfaces a stuck shot (generation failed, empty cell) in plain language', async () => {
+    const { client } = makeMockSupabase({
+      episodes: [{ id: EP, metadata: {} }],
+      assets: [storyboard(['SH16'])], // shot exists in board, but no video ever produced
+      activity_events: [
+        { episode_id: EP, event_type: 'agent_failed', description: 'fal request polling timed out', created_at: '2026-07-04T03:00:00Z', metadata: { shot_id: 'SH16', agent: 'EXEC-VGEN' } },
+        { episode_id: EP, event_type: 'agent_failed', description: 'fal request polling timed out', created_at: '2026-07-04T02:00:00Z', metadata: { shot_id: 'SH16', agent: 'EXEC-VGEN' } },
+      ],
+    });
+    const m = await getEpisodeStateMatrix(client, EP);
+    const video = m.shots[0].stages.video;
+    expect(video.status).toBeNull(); // never produced
+    expect(video.blocked_reason).toMatch(/упала ×2/);
+    expect(video.blocked_reason).toMatch(/timed out/);
+  });
+
   it('falls back to asset-derived spine when no approved storyboard exists', async () => {
     const { client } = makeMockSupabase({
       episodes: [{ id: EP, metadata: {} }],

@@ -264,6 +264,25 @@ export async function getEpisodeStateMatrix(
     return { shot_id: shotId, excluded: excluded.has(shotId), stages };
   });
 
+  // Фаза 3 — surface generation FAILURES in human language. A shot stuck because
+  // its generator kept failing (E14 SH16: provider timeout ×3) has an EMPTY cell
+  // at the stage where it died; stamp a blocked_reason there so the Director /
+  // conductor sees "why is this empty + how bad" without reading logs. The
+  // retry/park decision stays theirs — this only makes it visible. One query.
+  const failures = await loadGenerationFailures(supabase, episodeId);
+  if (failures.size > 0) {
+    for (const shot of shots) {
+      for (const stage of STAGE_ORDER) {
+        const cell = shot.stages[stage];
+        if (cell.status !== null) continue; // only truly-stuck (never produced) cells
+        const fail = failures.get(`${shot.shot_id}::${stage}`);
+        if (fail) {
+          cell.blocked_reason = `генерация упала ×${fail.count}${fail.lastMsg ? ` (${fail.lastMsg})` : ''} — нужен retry или park`;
+        }
+      }
+    }
+  }
+
   // Episode-level projections.
   const musicRow = pickLatest(
     allRows.filter((r) => r.file_type === 'AUD-music' && r.status === 'APPROVED'),
@@ -286,6 +305,50 @@ export async function getEpisodeStateMatrix(
     },
     gates: { reserved },
   };
+}
+
+/** Map a per-shot generator agent to the stage it produces (for failure surfacing). */
+const AGENT_STAGE: Record<string, StageName> = {
+  'EXEC-EREF-DESIGNER': 'ref_plan',
+  'EXEC-EREF': 'ref_image',
+  'EXEC-VANIM': 'shot_plan',
+  'EXEC-VGEN': 'video',
+};
+
+/** Count agent_failed events per (shot, stage) so the matrix can surface stuck
+ *  shots in plain language. Best-effort + read-only: any error yields an empty
+ *  map (no annotations), never blocking the projection. */
+async function loadGenerationFailures(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+): Promise<Map<string, { count: number; lastMsg: string | null }>> {
+  const out = new Map<string, { count: number; lastMsg: string | null }>();
+  try {
+    const { data } = await supabase
+      .from('activity_events')
+      .select('metadata,description,created_at')
+      .eq('episode_id', episodeId)
+      .eq('event_type', 'agent_failed')
+      .order('created_at', { ascending: false });
+    for (const row of (data ?? []) as Array<{ metadata?: unknown; description?: string | null }>) {
+      const meta = (row.metadata ?? null) as { shot_id?: unknown; agent?: unknown } | null;
+      const shotId = meta && typeof meta.shot_id === 'string' ? meta.shot_id : null;
+      const agent = meta && typeof meta.agent === 'string' ? meta.agent : null;
+      if (!shotId || !agent) continue;
+      const stage = AGENT_STAGE[agent];
+      if (!stage) continue;
+      const key = `${shotId}::${stage}`;
+      const prev = out.get(key);
+      out.set(key, {
+        count: (prev?.count ?? 0) + 1,
+        // rows are ordered newest-first, so the first seen description is latest.
+        lastMsg: prev?.lastMsg ?? (typeof row.description === 'string' ? row.description.slice(0, 80) : null),
+      });
+    }
+  } catch {
+    /* best-effort surfacing — never block the matrix */
+  }
+  return out;
 }
 
 function stageOfFileType(fileType: string | null): StageName | null {
