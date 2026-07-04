@@ -106,12 +106,26 @@ export function makeMockSupabase(seed: Partial<InMemoryTables> = {}): MockSupaba
             updateFilters.push((r) => r[col] === val);
             return subBuilder;
           },
+          neq: (col: string, val: unknown) => {
+            updateFilters.push((r) => r[col] !== val);
+            return subBuilder;
+          },
+          in: (col: string, vals: ReadonlyArray<unknown>) => {
+            const set = new Set(vals);
+            updateFilters.push((r) => set.has(r[col]));
+            return subBuilder;
+          },
           then: (resolve: (v: unknown) => unknown) => resolve(apply()),
         };
         return subBuilder;
       },
       eq: (col: string, val: unknown) => {
         filters.push((r) => r[col] === val);
+        rows = applyFilters();
+        return builder;
+      },
+      neq: (col: string, val: unknown) => {
+        filters.push((r) => r[col] !== val);
         rows = applyFilters();
         return builder;
       },
