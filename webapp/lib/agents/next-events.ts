@@ -384,6 +384,24 @@ export async function computeNextEvents(
     }
   }
 
+  // ── Casting APPROVED → EXEC-SB, when the SCRIPT is ALREADY approved
+  //    (writer→cast→storyboard order, Director 2026-07-04). Mirror of the
+  //    REV-script_qa→EXEC-SB branch below: whichever of {script, cast} is
+  //    approved LAST unblocks the Storyboard. hasJob(EXEC-SB) guards single-fire.
+  if (
+    ft === 'SPC-episode_cast' &&
+    (await findLatestApprovedAssetId(supabase, ep, 'REV-script_qa')) &&
+    !(await hasJob(supabase, ep, 'EXEC-SB', { since }))
+  ) {
+    const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
+    if (scrId) {
+      events.push({
+        name: 'sandystudio/exec-sb/create-storyboard',
+        data: { episodeId: ep, scriptAssetId: scrId },
+      });
+    }
+  }
+
   // ── Script APPROVED → EXEC-COPY (parallel chain start)
   // Dedup 2026-06-12 (E07 SREV double-fire, jobs 12:38:24/12:38:41): the
   // Script Critic fires ONLY via the factory critic chain (exec-sw
@@ -410,11 +428,31 @@ export async function computeNextEvents(
   // assets itself (so it survives without this), but passing the correct id
   // keeps event payloads honest and consistent with the EREF fix below.
   if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-SB', { since }))) {
-    const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
-    events.push({
-      name: 'sandystudio/exec-sb/create-storyboard',
-      data: { episodeId: ep, scriptAssetId: scrId ?? asset.id },
-    });
+    // EXEC-SB's gate requires ≥1 APPROVED cast ("found 0 cast" crash otherwise).
+    // AUTOTEST has no casting stage → keep the direct fire (replay-pilot intact).
+    // Director modes (writer→cast→storyboard, Director 2026-07-04): if the cast
+    // isn't approved yet, DON'T fire storyboard — the cast-approval branch above
+    // fires it once the cast lands. Whichever of {script, cast} is last unblocks SB.
+    const castReady =
+      isAutotest || (await countApproved(supabase, ep, 'SPC-episode_cast')) >= 1;
+    if (castReady) {
+      const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
+      events.push({
+        name: 'sandystudio/exec-sb/create-storyboard',
+        data: { episodeId: ep, scriptAssetId: scrId ?? asset.id },
+      });
+    } else {
+      await logEvent(supabase, {
+        event_type: 'pipeline/storyboard-waiting-cast',
+        severity: 'warning',
+        title: 'Раскадровка ждёт одобренный каст',
+        description:
+          'Сценарий одобрен, но одобренного каста ещё нет. Прогони кастинг ' +
+          '(castEpisode → approve) — раскадровка запустится сразу после аппрува каста.',
+        episode_id: ep,
+        asset_id: asset.id,
+      });
+    }
   }
 
   // ── Storyboard APPROVED → EXEC-WCHK (Continuity Supervisor) — legacy path,
