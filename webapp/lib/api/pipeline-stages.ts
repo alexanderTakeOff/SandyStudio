@@ -30,6 +30,7 @@ export type PipelineStageId =
   | 'screenwriter'
   | 'script_critic'
   | 'storyboarder'
+  | 'readability_critic'
   | 'continuity_critic'
   | 'reference_designer'
   | 'reference_critic'
@@ -189,6 +190,10 @@ const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   { id: 'screenwriter',        label: 'Writer',            agents: ['EXEC-SW'],             phase: 'pre-production', tier: 'primary', role: 'author',    emoji: '✍️' },
   { id: 'script_critic',       label: 'Script Critic',     subtitle: 'Story Editor',        agents: ['EXEC-SREV'],   phase: 'pre-production', tier: 'muted',   role: 'critic',  serves: 'screenwriter', emoji: '🔍' },
   { id: 'storyboarder',        label: 'Storyboard Artist', agents: ['EXEC-SB'],             phase: 'production',     tier: 'primary', role: 'author',    emoji: '🎬' },
+  // CREAD runs BEFORE continuity (registry.ts: EXEC-CREAD.next_agent=EXEC-WCHK).
+  // Was invisible in the pipeline view — REV-readability had no row/asset mapping,
+  // so a REVISE verdict silently gated the Reference Artist (Director 2026-07-04).
+  { id: 'readability_critic',  label: 'Readability Critic', subtitle: 'Comedy Editor',       agents: ['EXEC-CREAD'],  phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'storyboarder', emoji: '📖' },
   { id: 'continuity_critic',   label: 'Continuity Critic', subtitle: 'Script Supervisor',   agents: ['EXEC-CONT'],   phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'storyboarder', emoji: '🌍' },
   { id: 'reference_designer',  label: 'Reference Designer', agents: ['EXEC-EREF-DESIGNER'], phase: 'production',     tier: 'muted',   role: 'designer', serves: 'episode_references', emoji: '🧠' },
   { id: 'reference_critic',    label: 'Reference Critic',  agents: ['EXEC-EPREV'],          phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'episode_references', emoji: '🧐' },
@@ -215,6 +220,7 @@ const STAGE_FROM_ASSET = (asset: AssetLike): PipelineStageId | null => {
   if (ft.startsWith('SCR'))       return 'screenwriter';
   if (ft === 'REV-script_qa')     return 'script_critic';
   if (ft.startsWith('STB'))       return 'storyboarder';
+  if (ft === 'REV-readability' || ft.startsWith('REV-readability')) return 'readability_critic';
   if (ft === 'REV-world_check' || ft === 'REV-continuity') return 'continuity_critic';
   if (ft.startsWith('SPC-ref_plan'))   return 'reference_designer';
   if (ft === 'REV-ref_plan' || ft.startsWith('REV-ref_plan')) return 'reference_critic';
@@ -239,6 +245,7 @@ const STAGE_FROM_AGENT: Record<string, PipelineStageId> = {
   'EXEC-SW':    'screenwriter',
   'EXEC-SREV':  'script_critic',
   'EXEC-SB':    'storyboarder',
+  'EXEC-CREAD': 'readability_critic',
   'EXEC-CONT':  'continuity_critic',
   'EXEC-WCHK':  'continuity_critic', // legacy WCHK feeds the Continuity row when CONT is not yet shipped
   'EXEC-EREF-DESIGNER': 'reference_designer',
@@ -285,6 +292,7 @@ function parseVerdict(asset: AssetLike): PipelineVerdict | undefined {
 /** Critic row ids whose `latest_verdict` is meaningful. */
 const CRITIC_ROW_IDS: ReadonlySet<PipelineStageId> = new Set<PipelineStageId>([
   'script_critic',
+  'readability_critic',
   'continuity_critic',
   'reference_critic',
   'shot_critic',
