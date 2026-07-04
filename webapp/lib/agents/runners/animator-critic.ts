@@ -630,6 +630,8 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
   );
   let effectiveVerdict = verdict;
   let effectiveFailedChecks = failedChecks;
+  // V15 orbit is advisory (see below): warnings accumulate without touching verdict.
+  let effectiveWarnings = [...warnings];
   if (durationViolation) {
     effectiveFailedChecks = [
       ...failedChecks,
@@ -645,24 +647,17 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
     notes.push('V14 duration-lock failed → verdict coerced to REVISE');
   }
 
-  // V15 (2026-06-17): deterministic orbit ⇒ ref-only. Runs AFTER the LLM and
-  // OVERRIDES its verdict — the LLM critic historically PASSed orbit+end_image
-  // because the Animator skill recommended it ("orbit landing"). E10 A/B smoke
-  // proved the end-frame lock fights the orbit; enforce ref-only here.
+  // V15 (2026-06-17; softened 2026-07-04): orbit ⇒ ref-only. The empirical
+  // finding is real — a pinned end_image fights a camera orbit (E10 A/B smoke) —
+  // but a HARD REVISE forced a Director Override on EVERY orbit+end_image
+  // experiment (Director: «orbit должен быть ПРЕДУПРЕЖДЕНИЕМ, а не БЛОКОМ»). So
+  // V15 is now ADVISORY: surface a WARNING, preserve the verdict. The guidance
+  // stays; the Director (or an EREF frame_role='end' routing) can proceed without
+  // a waiver. checkOrbitEndImage itself is unchanged.
   const orbitViolation = checkOrbitEndImage(result.body, directorOverrides, shotId);
   if (orbitViolation) {
-    effectiveFailedChecks = [
-      ...effectiveFailedChecks,
-      { check: 'V15-orbit-ref-only', diagnosis: orbitViolation },
-    ];
-    if (
-      effectiveVerdict === 'PASS' ||
-      effectiveVerdict === 'PASS_WITH_UNCERTAINTY' ||
-      effectiveVerdict === 'UNKNOWN'
-    ) {
-      effectiveVerdict = 'REVISE';
-    }
-    notes.push('V15 orbit-ref-only failed → verdict coerced to REVISE');
+    effectiveWarnings = [...effectiveWarnings, `V15-orbit-ref-only: ${orbitViolation}`];
+    notes.push('V15 orbit-ref-only → advisory warning (verdict preserved)');
   }
 
   const description = [
@@ -686,7 +681,7 @@ export async function runAnimatorCritic(args: VPREVRunArgs): Promise<VPREVRunRes
     acceptanceCriteria,
     failedChecks: effectiveFailedChecks,
     passedChecks,
-    warnings,
+    warnings: effectiveWarnings,
     description,
     notes,
   };

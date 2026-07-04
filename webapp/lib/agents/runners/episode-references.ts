@@ -939,6 +939,13 @@ interface PlanOverrides {
    * falls back to legacy single-IMG generation).
    */
   anchorPair: ParsedAnchorPair | null;
+  /**
+   * frame_role (2026-07-04): 'start' (default) or 'end' — whether this shot's
+   * key reference is the FIRST frame (Seedance image_url) or the FINAL frame
+   * (end_image_url) of the video. Parsed from the Plan JSON `frame_role`; any
+   * missing/invalid value resolves to 'start' (back-compat).
+   */
+  frameRole: 'start' | 'end';
 }
 
 /** Provider enum sizes the multi-image-gen contract honours. */
@@ -1179,6 +1186,9 @@ export async function loadPlanOverrides(
       : new Date(0).toISOString();
   const continuityAnchors = parseContinuityAnchors(body, planCreatedAt);
   const anchorPair = parseAnchorPair(body);
+  // frame_role (2026-07-04): only 'end' opts a shot into end-frame conditioning;
+  // anything else (missing / typo / 'start') stays 'start' — back-compatible.
+  const frameRole: 'start' | 'end' = body.frame_role === 'end' ? 'end' : 'start';
 
   return {
     shotId,
@@ -1193,6 +1203,7 @@ export async function loadPlanOverrides(
     policyNotes,
     continuityAnchors,
     anchorPair,
+    frameRole,
   };
 }
 
@@ -2566,6 +2577,13 @@ export async function runEpisodeReferences(
       // location. Null when storyboard had a flat-string location with no
       // canonical slug.
       location_slug: job.shot.location_slug ?? null,
+      // frame_role (2026-07-04): 'end' only when the plan-driven EREF plan for
+      // THIS shot declared it (so the ref becomes the video's FINAL frame).
+      // Pilot/bulk shots and any non-matching shot default to 'start'.
+      frame_role:
+        planOverrides && planOverrides.shotId === job.shot.shot_id
+          ? planOverrides.frameRole
+          : 'start',
     };
 
     // Legacy fields kept populated for the current AssetDetailDrawer.

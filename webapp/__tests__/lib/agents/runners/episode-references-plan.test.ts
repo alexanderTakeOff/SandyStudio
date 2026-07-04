@@ -172,6 +172,32 @@ describe('loadPlanOverrides — happy path', () => {
     );
     expect(overrides.continuityMode).toBe('openai-edits-multi');
   });
+
+  it('parses frame_role="end" (2026-07-04)', async () => {
+    const row = {
+      id: 'plan-1',
+      file_type: 'SPC-ref_plan',
+      status: 'APPROVED',
+      content: planContent({ frame_role: 'end' }),
+    };
+    const overrides = await loadPlanOverrides(
+      mockSupabaseWithAsset(row),
+      'plan-1',
+      'SS-S99-E99-A1-SC01-SH01',
+    );
+    expect(overrides.frameRole).toBe('end');
+  });
+
+  it('defaults frame_role to "start" when absent or invalid', async () => {
+    for (const content of [planContent(), planContent({ frame_role: 'middle' })]) {
+      const overrides = await loadPlanOverrides(
+        mockSupabaseWithAsset({ id: 'plan-1', file_type: 'SPC-ref_plan', status: 'APPROVED', content }),
+        'plan-1',
+        'SS-S99-E99-A1-SC01-SH01',
+      );
+      expect(overrides.frameRole).toBe('start');
+    }
+  });
 });
 
 describe('loadPlanOverrides — rejection paths', () => {

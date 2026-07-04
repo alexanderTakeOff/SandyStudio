@@ -171,6 +171,33 @@ describe('runAnimatorCritic', () => {
     expect(callArgs?.userMessage).toContain('"check": "V04"');
   });
 
+  it('V15 (2026-07-04): orbit + end_image is now ADVISORY — PASS preserved, warning surfaced', async () => {
+    mockedAnthropic.mockResolvedValueOnce({
+      markdown: 'PASS',
+      body: {
+        verdict: 'PASS',
+        passed_checks: ['V01', 'V02', 'V03', 'V04', 'V05', 'V06', 'V07', 'V08', 'V09'],
+        failed_checks: [],
+        acceptance_criteria: [],
+        // Plan fields the Critic echoes — the orbit + pinned end_image combo V15 flags.
+        opening_camera_motion: { kind: 'rotate', prose: 'slow orbit around Sandy' },
+        end_image: { eref_asset_id: 'eref-end-1' },
+      },
+      costUsd: 0.02,
+      model: VPREV_MODEL,
+    });
+    const r = await runAnimatorCritic({
+      inputs: {} as never,
+      supabase: mockSupabase(makePlanRow(VALID_CONTENT)),
+      planAssetId: 'plan-1',
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    // Was a HARD REVISE before 2026-07-04; softened to advisory per Director.
+    expect(r.verdict).toBe('PASS');
+    expect(r.failedChecks.some((c) => c.check === 'V15-orbit-ref-only')).toBe(false);
+    expect(r.warnings.some((w) => w.includes('V15-orbit-ref-only'))).toBe(true);
+  });
+
   it('2026-06-06: Bible standing orders appear in Critic user message when canon is non-empty', async () => {
     // The Critic must validate against Director's LOCKED standing orders in
     // SBL-general_idea / other SBL-* assets — not only against the provider

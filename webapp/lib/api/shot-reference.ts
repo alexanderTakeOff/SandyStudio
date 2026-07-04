@@ -233,6 +233,17 @@ export interface ShotReferenceContract {
    * for shots whose storyboard has no resolvable location.
    */
   location_slug?: string | null;
+
+  /**
+   * Фаза frame_role (2026-07-04): which video frame this EREF conditions when
+   * fed to Seedance img2vid — 'start' (→ image_url, the FIRST frame; the default)
+   * or 'end' (→ end_image_url, the FINAL frame the clip arrives at). Set by the
+   * EREF Designer from the storyboard beat: a closing/landing/settle pose whose
+   * natural image is the shot's ENDING gets 'end', so the video is generated
+   * TOWARD it instead of animating away from it (E14 SH20 root cause). Absent on
+   * legacy rows ⇒ treated as 'start' everywhere.
+   */
+  frame_role?: 'start' | 'end';
 }
 
 // ── Type guards ─────────────────────────────────────────────────────────────

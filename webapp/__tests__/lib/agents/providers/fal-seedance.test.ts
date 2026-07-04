@@ -304,6 +304,34 @@ describe('generateVideoFalSeedance', () => {
     expect(String(captured.image_url)).toBe('data:image/png;base64,aGVsbG8=');
   });
 
+  it('attaches end_image_url and OMITS image_url for an end-only render (frame_role=end)', async () => {
+    let captured: Record<string, unknown> = {};
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: FetchInit) => {
+      const u = String(url);
+      if (u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')) {
+        captured = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+        return jsonResponse({
+          request_id: 'r',
+          status_url: 'https://queue.fal.run/p/requests/r/status',
+          response_url: 'https://queue.fal.run/p/requests/r',
+        }) as unknown as Response;
+      }
+      if (u.endsWith('/status')) return jsonResponse({ status: 'COMPLETED' }) as unknown as Response;
+      if (u.endsWith('/requests/r')) {
+        return jsonResponse({ video: { url: 'https://x/v.mp4' } }) as unknown as Response;
+      }
+      return mp4Response(new Uint8Array([1])) as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    await generateVideoFalSeedance({
+      prompt: 'p',
+      endImageBase64: 'aGVsbG8=',
+      endImageMime: 'image/png',
+    });
+    expect(String(captured.end_image_url)).toBe('data:image/png;base64,aGVsbG8=');
+    expect(captured.image_url).toBeUndefined();
+  });
+
   it('reports provider id `seedance-fal-img2vid` when reference image attached, else `seedance-fal`', async () => {
     function setupHappyPath(): void {
       globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
