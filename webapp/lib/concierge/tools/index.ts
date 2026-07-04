@@ -37,6 +37,7 @@ import { castEpisode } from './cast';
 import { proposeTheme } from './themes';
 import { markAwaitingDirector } from './mark-awaiting';
 import { getWorkPlan, updateWorkPlan } from './work-plan';
+import { getStateMatrix, reconcileEpisode } from './conductor';
 import type { OpenAIToolSchema, Tool } from './types';
 
 export type { Tool, ToolContext, ToolResult, OpenAIToolSchema } from './types';
@@ -87,6 +88,9 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // operational STATE she keeps current, not a creative gate, so no verbal
   // approval. Overwrites the STA-work_plan STATE asset in place.
   updateWorkPlan as unknown as AnyTool,
+  // Фаза 4 (2026-07-04) — the conductor's eyes: the canonical State Matrix
+  // projection. Read-only; read it before deciding the next move.
+  getStateMatrix as unknown as AnyTool,
   // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
   approveAsset as unknown as AnyTool,
@@ -130,6 +134,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // q9a (2026-06-30) — Polина proposes ONE episode theme as DRAFT in the Themes
   // surface (verbal-approval gated). Closes the smoke's "добавь в themes" no-op.
   proposeTheme as unknown as AnyTool,
+  // Фаза 4 (2026-07-04) — the conductor's hands: run one reconciler convergence
+  // pass (auto-advance mechanical PASS stages + stitch). Mutating; the /reconcile
+  // route + MECHANICS_AUTO_ADVANCE flag + reserved gates are the guards.
+  reconcileEpisode as unknown as AnyTool,
 ]);
 
 const TOOL_BY_NAME: ReadonlyMap<string, AnyTool> = new Map(
