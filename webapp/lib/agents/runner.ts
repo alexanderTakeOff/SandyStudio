@@ -28,6 +28,7 @@ import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { persistBinary, type PersistedBinary } from './persist-binary';
+import { computeInputVersions } from './input-versions';
 import { canonicalShotId } from '../api/shot-id';
 import { parseShotPlanContract } from '../api/shot-plan-contract';
 import { assertBudgetAvailable, releaseBudgetReservation, BudgetExceededError } from '../budget';
@@ -3198,6 +3199,24 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
       if (metadataPayload === null) metadataPayload = {};
       metadataPayload[key] = v;
     }
+  }
+
+  // Фаза 1b — stamp the upstream versions this per-shot artifact was built from,
+  // so the state matrix can detect staleness (a later upstream regen invalidates
+  // this cell). Guarded: computeInputVersions swallows errors and returns null,
+  // so a stamping failure can never block the save / generation.
+  const shotIdForVersions =
+    variant ??
+    (typeof result.metadata.shot_id === 'string' ? (result.metadata.shot_id as string) : null);
+  const inputVersions = await computeInputVersions(
+    supabase,
+    agentId,
+    episodeId,
+    shotIdForVersions,
+  );
+  if (inputVersions) {
+    if (metadataPayload === null) metadataPayload = {};
+    metadataPayload.input_versions = inputVersions;
   }
 
   const { data, error } = await supabase
