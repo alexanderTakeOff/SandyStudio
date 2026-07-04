@@ -38,6 +38,7 @@ import { execPaReact } from './functions/exec-pa-react';
 import { paEscalationTimer } from './functions/pa-escalation-timer';
 import { paOrphanedAwaitingSweep } from './functions/pa-orphaned-awaiting-sweep';
 import { paBatchStallWatchdog } from './functions/pa-batch-stall-watchdog';
+import { reconcileEpisodeFn } from './functions/reconcile-episode';
 
 export const functions = [
   // Phase 3 smoke
@@ -81,4 +82,6 @@ export const functions = [
   // (FANOUT_RUNNING + idle → nudge Polina to continue). Complements the
   // awaiting-only safety nets above.
   paBatchStallWatchdog,
+  // Фаза 2b — reconciler self-advance (inert unless MECHANICS_AUTO_ADVANCE).
+  reconcileEpisodeFn,
 ];
