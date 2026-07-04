@@ -304,7 +304,7 @@ describe('generateVideoFalSeedance', () => {
     expect(String(captured.image_url)).toBe('data:image/png;base64,aGVsbG8=');
   });
 
-  it('attaches end_image_url and OMITS image_url for an end-only render (frame_role=end)', async () => {
+  it('attaches BOTH image_url (start) and end_image_url (end) for a two-frame render', async () => {
     let captured: Record<string, unknown> = {};
     globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: FetchInit) => {
       const u = String(url);
@@ -325,11 +325,15 @@ describe('generateVideoFalSeedance', () => {
 
     await generateVideoFalSeedance({
       prompt: 'p',
-      endImageBase64: 'aGVsbG8=',
+      referenceImageBase64: 'c3RhcnQ=', // "start"
+      referenceImageMime: 'image/png',
+      endImageBase64: 'ZW5k', // "end"
       endImageMime: 'image/png',
     });
-    expect(String(captured.end_image_url)).toBe('data:image/png;base64,aGVsbG8=');
-    expect(captured.image_url).toBeUndefined();
+    // fal Seedance requires image_url (start); end_image_url pairs with it for the
+    // two-frame landing. End-only (no image_url) is rejected by fal with 422.
+    expect(String(captured.image_url)).toBe('data:image/png;base64,c3RhcnQ=');
+    expect(String(captured.end_image_url)).toBe('data:image/png;base64,ZW5k');
   });
 
   it('reports provider id `seedance-fal-img2vid` when reference image attached, else `seedance-fal`', async () => {

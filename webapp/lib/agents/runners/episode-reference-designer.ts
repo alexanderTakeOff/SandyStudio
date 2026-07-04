@@ -714,7 +714,7 @@ function buildUserMessage(args: {
     '    "angle": "<MEDIUM | WIDE | CLOSE | ...>",',
     '    "sub_area_variation": "<one sentence on viewpoint variation vs sibling shots>"',
     '  },',
-    '  "frame_role": "<start | end — set \'end\' ONLY when this key image depicts the shot\'s CLOSING / landing / settle pose (its natural FINAL frame); the video is then generated TOWARD it instead of animating away from it. Default \'start\' for opening / mid-action poses.>",',
+    '  "frame_role": "start",',
     anchorChainContext
       ? [
           '  "anchor_pair": {',
@@ -746,7 +746,7 @@ function buildUserMessage(args: {
     '- The fenced JSON must be valid JSON. No trailing commas. No comments.',
     '- KEEP THE MARKDOWN TIGHT. The JSON block at the end is MANDATORY and must not be truncated. If you find yourself running long, shorten markdown narrative — never skip the JSON.',
     '- DO NOT call any provider. You only write the Plan. Execution happens downstream after Director approves the Plan.',
-    "- frame_role: default 'start'. Set 'end' ONLY if the storyboard beat for this shot is a CLOSING/landing/settle moment whose key image is the shot's FINAL frame — then the video is conditioned to ARRIVE at this image (Seedance end_image_url) instead of starting from it. If unsure, use 'start'.",
+    "- START FRAME RULE (critical): the reference you design is the shot's FIRST frame — the video is generated FORWARD from it. Depict the OPENING pose/moment of the shot's action (where it BEGINS), NEVER its climax or final settle. If the beat is 'Sandy turns FROM the perfume and walks to the far-left table', the reference shows Sandy AT/NEAR the perfume at the START (about to move); the outward motion + arrival are carried by the video prompt, not baked as a finished end-state. A ref that depicts the ENDING makes the video animate backwards. Keep frame_role='start' (two-frame end-conditioning is a future capability).",
     anchorChainContext
       ? '- ANCHOR MODE ACTIVE — anchor_pair block MUST be included unless scene_master_asset is null. role enum + reciprocity rules are HARD; Critic will REJECT mismatches.'
       : '',

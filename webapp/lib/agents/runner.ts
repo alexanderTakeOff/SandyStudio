@@ -1826,11 +1826,6 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // intact for back-compat (29/29 replay-pilot expects the old shape).
       let referenceImageBase64: string | null = null;
       let referenceErefAssetId: string | null = null;
-      // frame_role='end' (2026-07-04): the approved EREF for this shot depicts the
-      // shot's FINAL frame, so its bytes are routed to Seedance end_image_url
-      // instead of image_url — the clip is generated TOWARD it. Folded into
-      // endImageBase64 below (explicit plan end-anchors still take priority).
-      let erefEndImageBase64: string | null = null;
       let storyboardShot: StoryboardShotV2 | null = null;
       let storyboardAssetId: string | null = null;
       let resolvedDurationSeconds: number | null = null;
@@ -1854,16 +1849,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         const ref = await getApprovedEREFForShot(supabase, episodeId, shotId);
         if (ref) {
           referenceErefAssetId = ref.asset.id;
-          const sr = (ref.asset.metadata as { shot_reference?: { frame_role?: unknown } } | null)
-            ?.shot_reference;
-          const frameRole = sr && sr.frame_role === 'end' ? 'end' : 'start';
-          if (frameRole === 'end') {
-            // Route this ref to the FINAL frame; leave referenceImageBase64 null
-            // → end-only conditioning (the relaxed gate below allows it).
-            erefEndImageBase64 = ref.image_b64;
-          } else {
-            referenceImageBase64 = ref.image_b64;
-          }
+          referenceImageBase64 = ref.image_b64;
         }
 
         // Apply animatic director-overrides for duration when present.
@@ -2201,13 +2187,6 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           endImageMime = loaded.mime;
         }
       }
-      // frame_role='end' fallback: when no explicit plan end-anchor loaded, use the
-      // shot's EREF routed to the end frame (explicit anchors keep priority). EREFs
-      // are PNG, so the default endImageMime is correct.
-      if (!endImageBase64 && erefEndImageBase64) {
-        endImageBase64 = erefEndImageBase64;
-      }
-
       if (isRealVideo) {
         if (!supabase) throw new Error('EXEC-VGEN real path requires supabase in runArgs');
 
@@ -2250,17 +2229,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         // capability contract — no per-provider duplication. A missing frame here
         // means an upstream gate let an unanchored shot through; fail loud BEFORE
         // reserving budget or calling the paid API (was: silent t2v drift / 422).
-        // frame_role='end' (2026-07-04): an EREF routed to the FINAL frame is a
-        // valid conditioning even with no start frame — but ONLY for providers
-        // that actually consume end_image_url (Seedance). Veo/Wan (supports_end_image
-        // = false) would silently drop it and run imageless, so they still fail loud.
-        const hasEndOnlyConditioning =
-          Boolean(endImageBase64) && videoProvider.capabilities.supports_end_image;
-        if (
-          videoProvider.capabilities.requires_reference_image &&
-          !referenceImageBase64 &&
-          !hasEndOnlyConditioning
-        ) {
+        // img2vid providers require a START frame (fal Seedance rejects an
+        // end_image_url-only request with 422). frame_role='end' end-only was
+        // reverted 2026-07-04; the reference is always the FIRST frame. Two-frame
+        // end-conditioning (start + end) lands with the cross-shot-handoff PR.
+        if (videoProvider.capabilities.requires_reference_image && !referenceImageBase64) {
           throw new Error(
             `[exec-vgen] provider="${effectiveProviderId}" is img2vid and requires a reference image, but none resolved for shot=${shotId} (planStartAnchor=${planStartAnchorAssetId ?? 'none'}, eref=${referenceErefAssetId ?? 'none'}). Approve a start anchor / EREF for this shot before generating.`,
           );
