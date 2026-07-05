@@ -58,7 +58,16 @@ interface AgentGateSpec {
  */
 const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
   'EXEC-SW': {
-    required: [{ fileTypePrefix: 'SPC-brief', minCount: 1, label: 'Brief' }],
+    required: [
+      { fileTypePrefix: 'SPC-brief', minCount: 1, label: 'Brief' },
+      // FIX (2026-07-05): the Writer must not run without an APPROVED cast —
+      // next-events.ts only soft-skips the AUTO-CHAIN trigger pending cast
+      // approval; a manual/retry trigger bypassed it entirely, letting E13
+      // run brief→writer with no cast (the same class of bug FIX 3 closed one
+      // stage later, at EXEC-SB). AUTOTEST (mode 4) is exempt via the Step-0b
+      // override below, same as EXEC-SB.
+      { fileTypePrefix: 'SPC-episode_cast', minCount: 1, label: 'Approved episode cast' },
+    ],
     governance: 'AGENT_RUN',
   },
   'EXEC-SREV': {
@@ -508,12 +517,13 @@ export async function validateAgentInputs(
     }
   }
 
-  // ── Step 0b: EXEC-SB AUTOTEST cast exemption (FIX 3) ───────────────────────
-  // Storyboard now requires an APPROVED SPC-episode_cast in Director modes, but
-  // AUTOTEST (Mode 4 / replay-pilot, directorUserId 'AUTOTEST') never casts — the
-  // headless DAG goes brief→writer directly (next-events.ts). Drop the cast dep
-  // there so replay-pilot still completes; Director modes keep the requirement.
-  if (agentId === 'EXEC-SB') {
+  // ── Step 0b: AUTOTEST cast exemption (FIX 3, extended 2026-07-05) ──────────
+  // Writer and Storyboard now require an APPROVED SPC-episode_cast in Director
+  // modes, but AUTOTEST (Mode 4 / replay-pilot, directorUserId 'AUTOTEST')
+  // never casts — the headless DAG goes brief→writer directly (next-events.ts).
+  // Drop the cast dep there so replay-pilot still completes; Director modes
+  // keep the requirement.
+  if (agentId === 'EXEC-SB' || agentId === 'EXEC-SW') {
     let isAutotest = false;
     try {
       const { data: epRow } = await supabase
