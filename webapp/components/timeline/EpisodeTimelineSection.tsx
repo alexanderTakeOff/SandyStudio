@@ -164,6 +164,9 @@ export function EpisodeTimelineSection({
 
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+  // S3 (kebab, 2026-07-05) — open the drawer 'wide' for VID-shot so the Director
+  // lands on the re-video provider controls; small for everything else.
+  const [drawerWide, setDrawerWide] = useState(false);
   // Phase 2 (2026-07-02): reference cells open the RICH EpisodeAssetDrawer
   // (Reject / regen-with-provider / AI verdict / side-by-side variant compare),
   // so the gallery's unique value moves into the timeline. Only one drawer is
@@ -171,6 +174,7 @@ export function EpisodeTimelineSection({
   const [refAssetId, setRefAssetId] = useState<string | null>(null);
   // Phase 2b (2026-07-02): shot whose manual "generate video" flow is starting.
   const [generatingVideoShotId, setGeneratingVideoShotId] = useState<string | null>(null);
+  const [generatingRefShotId, setGeneratingRefShotId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -389,6 +393,62 @@ export function EpisodeTimelineSection({
     return map;
   }, [data]);
 
+  // Critic reviews per shot (2026-07-05) — the kebab's Critic partition. Ref
+  // critic (REV-ref_plan) keyed by the SHxx token (aligned with refPlansByShotId);
+  // video critic (REV-shot_plan) keyed by metadata.shot_id / file_type suffix
+  // (aligned with shotPlansByShotId). `verdict` (PASS/REVISE/FAIL) is pulled from
+  // the review metadata so the kebab renders a compact verdict chip.
+  const refCriticsByShotId = useMemo(() => {
+    const token = (s: string): string | null => s.match(/sh\d+/i)?.[0]?.toUpperCase() ?? null;
+    const assets = data?.data.assets ?? [];
+    const map = new Map<
+      string,
+      Array<{ id: string; version: number | null; status: string; verdict?: string | null }>
+    >();
+    for (const a of assets) {
+      if (!a.file_type.startsWith('REV-ref_plan')) continue;
+      const meta = a.metadata as { shot_id?: unknown; verdict?: unknown } | null;
+      const raw = typeof meta?.shot_id === 'string' ? meta.shot_id : a.filename;
+      const key = token(raw) ?? token(a.filename);
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push({
+        id: a.id,
+        version: a.version,
+        status: a.status,
+        verdict: typeof meta?.verdict === 'string' ? meta.verdict : null,
+      });
+    }
+    for (const arr of map.values()) arr.sort((x, y) => (y.version ?? 0) - (x.version ?? 0));
+    return map;
+  }, [data]);
+
+  const shotCriticsByShotId = useMemo(() => {
+    const assets = data?.data.assets ?? [];
+    const map = new Map<
+      string,
+      Array<{ id: string; version: number | null; status: string; verdict?: string | null }>
+    >();
+    for (const a of assets) {
+      if (a.file_type !== 'REV-shot_plan' && !a.file_type.startsWith('REV-shot_plan-')) continue;
+      const meta = a.metadata as { shot_id?: unknown; verdict?: unknown } | null;
+      let shotId: string | null = null;
+      if (typeof meta?.shot_id === 'string') shotId = meta.shot_id;
+      else if (a.file_type.startsWith('REV-shot_plan-'))
+        shotId = a.file_type.slice('REV-shot_plan-'.length);
+      if (!shotId) continue;
+      if (!map.has(shotId)) map.set(shotId, []);
+      map.get(shotId)!.push({
+        id: a.id,
+        version: a.version,
+        status: a.status,
+        verdict: typeof meta?.verdict === 'string' ? meta.verdict : null,
+      });
+    }
+    for (const arr of map.values()) arr.sort((x, y) => (y.version ?? 0) - (x.version ?? 0));
+    return map;
+  }, [data]);
+
   // Compute resolved cells once, used by both the toolbar (counts/bulk) and
   // the drawer (prev/next nav). The player computes the same internally —
   // duplicating this is cheap (pure function, ~O(shots × vid-shots)).
@@ -492,6 +552,7 @@ export function EpisodeTimelineSection({
       setRefAssetId(assetId);
     } else {
       setRefAssetId(null);
+      setDrawerWide(asset?.file_type.startsWith('VID-shot') ?? false);
       setPreviewAssetId(assetId);
     }
   }
@@ -566,6 +627,62 @@ export function EpisodeTimelineSection({
       setBulkError((e as Error).message);
     } finally {
       setGeneratingVideoShotId(null);
+    }
+  }
+
+  // S2 (kebab, 2026-07-05) — manual "generate / regenerate reference" for a shot,
+  // mirroring handleGenerateVideo's plan-aware 3-way:
+  //   • APPROVED ref plan  → render the image from it (Reference Artist).
+  //   • pending ref plan   → DON'T re-author (would discard it) — open it to approve.
+  //   • no ref plan yet    → author one (EXEC-EREF-DESIGNER; auto-fires the critic).
+  async function handleGenerateReference(shotId: string): Promise<void> {
+    setGeneratingRefShotId(shotId);
+    try {
+      const token = shotId.match(/sh\d+/i)?.[0]?.toUpperCase() ?? null;
+      const plansForShot = token
+        ? (data?.data.assets ?? []).filter(
+            (a) =>
+              a.file_type.startsWith('SPC-ref_plan') &&
+              `${a.filename} ${a.file_type}`.toUpperCase().includes(token),
+          )
+        : [];
+      const approvedPlan = plansForShot.find(
+        (a) => a.status === 'APPROVED' || a.status === 'LOCKED',
+      );
+      if (!approvedPlan && plansForShot.length > 0) {
+        const pendingPlan = plansForShot
+          .slice()
+          .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0]!;
+        setBulkError(
+          `Shot ${token ?? shotId} has a reference plan in ${pendingPlan.status} — approve it first, then Generate renders the image (re-planning would discard it).`,
+        );
+        setPreviewAssetId(pendingPlan.id);
+        return;
+      }
+      const res = approvedPlan
+        ? await fetch(`/api/episodes/${episodeId}/regenerate-image-from-plan`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ shotId, planAssetId: approvedPlan.id }),
+          })
+        : await fetch(`/api/episodes/${episodeId}/trigger`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              agentCode: 'EXEC-EREF-DESIGNER',
+              reason: 'Director — author reference plan for this shot (timeline)',
+              payload: { shotId },
+            }),
+          });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Generate reference failed');
+      }
+      void mutate();
+    } catch (e) {
+      setBulkError((e as Error).message);
+    } finally {
+      setGeneratingRefShotId(null);
     }
   }
 
@@ -682,9 +799,13 @@ export function EpisodeTimelineSection({
               // otherwise enable the «Generate VGEN» footer on a Plan view).
               shotPlansByShotId={shotPlansByShotId}
               refPlansByShotId={refPlansByShotId}
+              refCriticsByShotId={refCriticsByShotId}
+              shotCriticsByShotId={shotCriticsByShotId}
               onOpenAsset={(id) => openAssetSmart(id)}
               onGenerateVideo={(shotId) => void handleGenerateVideo(shotId)}
               generatingVideoShotId={generatingVideoShotId}
+              onGenerateReference={(shotId) => void handleGenerateReference(shotId)}
+              generatingRefShotId={generatingRefShotId}
               excludedShotIds={excludedShotIds}
               onToggleExclusion={(shotId, excluded) =>
                 void handleToggleExclusion(shotId, excluded)
@@ -704,6 +825,7 @@ export function EpisodeTimelineSection({
         onRegenerated={handleRegenerated}
         onAssetChanged={() => void mutate()}
         onPickAsset={(id) => setPreviewAssetId(id)}
+        initialSize={drawerWide ? 'wide' : 'small'}
       />
 
       {/* Phase 2 — rich reference drawer (Reject / regen-with-provider / AI

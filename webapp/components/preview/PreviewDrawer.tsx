@@ -54,6 +54,13 @@ export interface PreviewDrawerProps {
    * setter so clicking a sibling candidate navigates the drawer.
    */
   onPickAsset?: (assetId: string) => void;
+  /**
+   * Size the drawer opens at (2026-07-05, kebab S3). VID-shot opens 'wide' so
+   * the Director lands directly on the re-video provider controls
+   * (VGENShotPanel + ProviderControlPanel). Defaults to 'small'. Resets to
+   * 'small' on close either way; the user can still toggle size while open.
+   */
+  initialSize?: PreviewDrawerSize;
 }
 
 const WIDTHS: Record<PreviewDrawerSize, string> = {
@@ -74,6 +81,7 @@ export function PreviewDrawer({
   onRegenerated,
   onAssetChanged,
   onPickAsset,
+  initialSize,
 }: PreviewDrawerProps) {
   const [size, setSize] = useState<PreviewDrawerSize>('small');
 
@@ -105,9 +113,12 @@ export function PreviewDrawer({
     };
   }, [open, onClose, onPrev, onNext]);
 
-  // Reset size when drawer closes so next open starts compact.
+  // Size on open follows initialSize (VID-shot opens 'wide' for the re-video
+  // controls, 2026-07-05); reset to 'small' on close. Keyed on `open` only so a
+  // manual resize while the drawer stays open isn't clobbered.
   useEffect(() => {
-    if (!open) setSize('small');
+    setSize(open ? (initialSize ?? 'small') : 'small');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   if (!open || typeof document === 'undefined') return null;

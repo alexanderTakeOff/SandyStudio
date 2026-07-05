@@ -62,7 +62,7 @@ import {
   type VidShotAssetRow,
   type ImgRefAssetRow,
 } from '@/lib/api/timeline-cell-resolver';
-import { workRolePalette, type ShotWork } from '@/lib/api/pipeline-stages';
+import { workRolePalette, type ShotWork, type WorkRole } from '@/lib/api/pipeline-stages';
 
 const MIN_SHOT_S = 0.5;
 const MAX_SHOT_S = 60;
@@ -178,6 +178,26 @@ export interface AnimaticPlayerProps {
    * required). When absent the checkbox is hidden.
    */
   onToggleExclusion?: (shotId: string, excluded: boolean) => void;
+  /**
+   * Kebab repartition (2026-07-05, Director) — Critic lines per track. The
+   * reference critic (REV-ref_plan) keyed by the SHxx token (aligned with
+   * refPlansByShotId) and the video critic (REV-shot_plan) keyed by
+   * metadata.shot_id (aligned with shotPlansByShotId). `verdict` is the
+   * critic's PASS/REVISE/FAIL pulled from the REV asset metadata, rendered as
+   * a compact chip. Undefined = no critic line (legacy).
+   */
+  refCriticsByShotId?: Map<string, Array<{ id: string; version: number | null; status: string; verdict?: string | null }>>;
+  shotCriticsByShotId?: Map<string, Array<{ id: string; version: number | null; status: string; verdict?: string | null }>>;
+  /**
+   * Kebab repartition (2026-07-05) — manual "generate / regenerate reference"
+   * for a shot, mirroring onGenerateVideo. Fires the reference flow (Designer →
+   * critic → artist) via the parent (owns episodeId + trigger fetch). Shown in
+   * the Image partition. Without this prop the reference generate button is
+   * hidden (S1 layout renders without it).
+   */
+  onGenerateReference?: (shotId: string) => void;
+  /** Shot currently kicking off a reference flow (button spinner / disabled). */
+  generatingRefShotId?: string | null;
 }
 
 /**
@@ -340,6 +360,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     generatingVideoShotId,
     excludedShotIds,
     onToggleExclusion,
+    refCriticsByShotId,
+    shotCriticsByShotId,
+    onGenerateReference,
+    generatingRefShotId,
   },
   ref,
 ) {
@@ -403,7 +427,13 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       const res = await fetch(`/api/assets/${assetId}/approve`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ decision: 'APPROVE', directorConfirm: true }),
+        // preview_acknowledged: harmless for text/plan rows, satisfies the
+        // visual-asset gate for IMG/VID without opening the drawer first.
+        body: JSON.stringify({
+          decision: 'APPROVE',
+          directorConfirm: true,
+          preview_acknowledged: true,
+        }),
       });
       if (!res.ok) throw new Error('approve failed');
       // Trigger parent refresh — SWR will refetch episode and timeline cell.
@@ -415,27 +445,75 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     }
   }
 
-  // Approve tick (2026-06-24) — two visual states so a bright ✓ never reads as
-  // "already approved" when it's really an action: a MUTED/outline ✓ on a REVIEW
-  // row = "click to approve" (REVIEW→APPROVED is the only legal direct approve),
-  // a BRIGHT solid ✓ on an APPROVED/LOCKED row = "this is the approved one"
-  // (state indicator, persists, not a button). Other statuses get no tick.
+  // Un-approve (2026-07-05, Director "кнопки должны работать в обратную сторону")
+  // — demote an APPROVED asset back to REVISION via the same generic approve
+  // route. The FSM allows APPROVED→REVISION (revoke a too-eager approval); for a
+  // ref/shot plan this also re-fires the producing agent (approve route's
+  // REQUEST_REVISION auto-chain). LOCKED is terminal and gets no revoke.
+  async function unapproveVersion(assetId: string): Promise<void> {
+    setApproveBusyId(assetId);
+    try {
+      const res = await fetch(`/api/assets/${assetId}/approve`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          decision: 'REQUEST_REVISION',
+          note: 'Director revoked approval from the timeline kebab',
+          directorConfirm: true,
+        }),
+      });
+      if (!res.ok) throw new Error('unapprove failed');
+      if (onChanged) onChanged();
+    } catch {
+      // Best-effort; full UX in drawer.
+    } finally {
+      setApproveBusyId(null);
+    }
+  }
+
+  // Two-directional approve tick (2026-07-05). Compact per-row control that
+  // works BOTH ways (Director q10a):
+  //   REVIEW | INVALIDATED → outline ✓  = click to APPROVE (INVALIDATED re-pick).
+  //   APPROVED             → amber   ↩  = click to UN-APPROVE (→ REVISION).
+  //   LOCKED               → solid   ✓  = terminal state indicator (no action).
+  //   anything else                     = no tick.
   function approveTick(status: string, assetId: string) {
     const isBusy = approveBusyId === assetId;
-    const isApproved = status === 'APPROVED' || status === 'LOCKED';
-    if (isApproved) {
+    if (status === 'LOCKED') {
       return (
         <span
           className="text-[10px] px-1.5 py-0.5 rounded font-semibold select-none"
           style={{ background: 'var(--accent-success)', color: 'black' }}
-          title="Approved"
-          aria-label="Approved"
+          title="Locked"
+          aria-label="Locked"
         >
           ✓
         </span>
       );
     }
-    if (status !== 'REVIEW') return null;
+    if (status === 'APPROVED') {
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void unapproveVersion(assetId);
+          }}
+          disabled={isBusy}
+          className="text-[10px] px-1.5 py-0.5 rounded font-semibold group/tick"
+          style={{
+            background: 'var(--accent-success)',
+            color: 'black',
+            opacity: isBusy ? 0.4 : 1,
+          }}
+          title="Снять утверждение (→ revision)"
+          aria-label="Un-approve"
+        >
+          {isBusy ? '…' : '✓'}
+        </button>
+      );
+    }
+    if (status !== 'REVIEW' && status !== 'INVALIDATED') return null;
     return (
       <button
         type="button"
@@ -455,6 +533,117 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       >
         {isBusy ? '…' : '✓'}
       </button>
+    );
+  }
+
+  // Compact critic verdict chip for the Critic partition (VerdictPill is a
+  // heavyweight card — too big for the dense kebab). PASS green / REVISE amber /
+  // FAIL red / else muted.
+  function verdictChip(verdict: string | null | undefined) {
+    if (!verdict) return null;
+    const v = verdict.toUpperCase();
+    const tone =
+      v === 'PASS'
+        ? 'var(--accent-success)'
+        : v === 'REVISE' || v === 'PASS_WITH_UNCERTAINTY'
+          ? 'var(--accent-warning)'
+          : v === 'FAIL'
+            ? 'var(--accent-danger)'
+            : 'var(--text-muted)';
+    return (
+      <span
+        className="text-[9px] px-1 py-0.5 rounded font-semibold uppercase tracking-wider select-none"
+        style={{
+          color: tone,
+          background: `color-mix(in oklab, ${tone} 14%, transparent)`,
+          border: `1px solid color-mix(in oklab, ${tone} 35%, transparent)`,
+        }}
+        title={`Critic verdict: ${v}`}
+      >
+        {v === 'PASS_WITH_UNCERTAINTY' ? 'PASS?' : v}
+      </span>
+    );
+  }
+
+  // Per-line "generating…" badge (2026-07-05, Director: badges live INSIDE their
+  // field's sub-line). Object-aware: the IMAGE field only lights up for
+  // reference work (object !== 'animate'), the VIDEO field only for animate
+  // work — so the same designer/critic role shows in the right field. Returns
+  // null when no matching live work.
+  function partitionBadge(
+    liveWork: ShotWork | undefined,
+    field: 'image' | 'video',
+    role: WorkRole,
+  ) {
+    if (!liveWork || liveWork.roles.length === 0) return null;
+    const objectMatches =
+      field === 'video' ? liveWork.object === 'animate' : liveWork.object !== 'animate';
+    if (!objectMatches || !liveWork.roles.includes(role)) return null;
+    const rp = workRolePalette(liveWork.roles);
+    const label = role === 'designer' ? 'writing…' : role === 'critic' ? 'reviewing…' : 'generating…';
+    return (
+      <span
+        className="text-[9px] px-1 py-0.5 rounded font-semibold inline-flex items-center gap-1 cell-stage-pulse"
+        style={{
+          color: rp.color,
+          background: `color-mix(in oklab, ${rp.color} 14%, transparent)`,
+          border: `1px solid color-mix(in oklab, ${rp.color} 40%, transparent)`,
+          ['--stage-glow' as string]: rp.color,
+        }}
+      >
+        {label}
+      </span>
+    );
+  }
+
+  // One compact version row (2026-07-05 two-field kebab) — open button (tag +
+  // vNN + optional verdict chip + status + on-screen marker) plus the
+  // two-directional approve/снять tick. Shared by every sub-line (plan / critic
+  // / image / video) in both fields.
+  function versionRow(opts: {
+    id: string;
+    version: number | null;
+    status: string;
+    tag?: string;
+    onScreen?: boolean;
+    verdict?: string | null;
+    paletteKind: 'plan' | 'image' | 'video-review';
+    onOpen: () => void;
+  }) {
+    return (
+      <div
+        key={opts.id}
+        className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-[color-mix(in_oklab,_white_8%,_transparent)]"
+        style={
+          opts.onScreen
+            ? { background: 'color-mix(in oklab, var(--accent-primary, #6EC6E8) 20%, transparent)' }
+            : undefined
+        }
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            opts.onOpen();
+          }}
+          className="flex-1 text-left font-mono text-[11px] cursor-pointer inline-flex items-center gap-1.5"
+        >
+          {opts.onScreen ? '▶' : ''}
+          {opts.tag && <span className="opacity-40">{opts.tag}</span>}
+          <span>v{String(opts.version ?? 1).padStart(2, '0')}</span>
+          {opts.verdict !== undefined && verdictChip(opts.verdict)}
+          <span
+            className="opacity-70"
+            style={{ color: cellPalette(opts.status as never, opts.paletteKind).color }}
+          >
+            {opts.status}
+          </span>
+          {opts.onScreen && (
+            <span className="opacity-60 text-[9px] uppercase tracking-wider">on screen</span>
+          )}
+        </button>
+        {approveTick(opts.status, opts.id)}
+      </div>
     );
   }
   // Local copy of overrides so Director can edit live without round-tripping
@@ -1261,10 +1450,14 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             const cellRefs = imgRefsByShotId.get(t.shot.shot_id) ?? [];
             // Ref-plan rows for this shot — keyed by the unique SHxx token so a
             // ref_plan saved with the short "SH16" shot_id still matches.
-            const refPlanRows =
-              refPlansByShotId?.get(
-                (t.shot.shot_id.match(/sh\d+/i)?.[0] ?? t.shot.shot_id).toUpperCase(),
-              ) ?? [];
+            const shotToken = (t.shot.shot_id.match(/sh\d+/i)?.[0] ?? t.shot.shot_id).toUpperCase();
+            const refPlanRows = refPlansByShotId?.get(shotToken) ?? [];
+            const shotPlanRows = shotPlansByShotId?.get(t.shot.shot_id) ?? [];
+            // Critic lines (2026-07-05) — ref critic keyed by SHxx token (aligned
+            // with ref plan), video critic by metadata.shot_id (aligned with shot
+            // plan). Both may be empty (legacy / critic not run yet).
+            const refCriticRows = refCriticsByShotId?.get(shotToken) ?? [];
+            const shotCriticRows = shotCriticsByShotId?.get(t.shot.shot_id) ?? [];
             const hasApprovedRef = cellRefs.some(
               (r) => r.status === 'APPROVED' || r.status === 'LOCKED',
             );
@@ -1380,263 +1573,210 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                         </span>
                       </label>
                     )}
-                    {/* Unified language — WHO is working right now (Q3), shown
-                        only while a job runs on this shot. Object (references vs
-                        video) comes from liveWork.object; role drives the colour. */}
-                    {liveWork && liveWork.roles.length > 0 && (() => {
-                      const rp = workRolePalette(liveWork.roles);
-                      const objectLabel = liveWork.object === 'animate' ? 'Video' : 'References';
-                      return (
-                        <div
-                          className="mx-1 mb-1 px-1.5 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1 cell-stage-pulse"
-                          style={{
-                            color: rp.color,
-                            background: `color-mix(in oklab, ${rp.color} 14%, transparent)`,
-                            border: `1px solid color-mix(in oklab, ${rp.color} 40%, transparent)`,
-                            ['--stage-glow' as string]: rp.color,
-                          }}
-                        >
-                          {objectLabel}: {rp.label}…
-                        </div>
-                      );
-                    })()}
-                    {/* Ask 1 (backlog_kebab, 2026-07-02) — the dossier is split
-                        into two clearly-labelled zones so it's unambiguous which
-                        plan produced which artifact:
-                          REFERENCE = ref plan (SPC-ref_plan) + reference image
-                          VIDEO     = shot plan (SPC-shot_plan) + video (VID-shot)
-                        Zone headers carry an accent tint (image vs primary) so the
-                        two halves read distinctly even when a zone is still empty. */}
-                    <div
-                      className="px-1 py-0.5 mb-1 rounded text-[9px] font-semibold uppercase tracking-[0.12em]"
-                      style={{
-                        color: 'var(--asset-image)',
-                        background: 'color-mix(in oklab, var(--asset-image) 12%, transparent)',
-                      }}
-                    >
-                      Reference
-                    </div>
-                    {refPlanRows.length === 0 &&
-                      (imgRefsByShotId.get(t.shot.shot_id) ?? []).length === 0 && (
-                        <div className="px-1 pb-1 mb-1 border-b border-[var(--border-glass)] font-mono opacity-40 text-[10px]">
-                          none yet
-                        </div>
-                      )}
-                    {/* Ref Plan (SPC-ref_plan) — the earliest artifact of the shot.
-                        Reachable from EVERY shot so the Director can open it and see
-                        what the EREF Designer planned / what went wrong when
-                        generation jams (2026-06-24). */}
-                    {refPlanRows.length > 0 && (
-                      <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
-                        <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
-                          plan
-                        </div>
-                        {refPlanRows.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onOpenAsset) onOpenAsset(p.id);
-                            }}
-                            className="text-left font-mono text-[11px] cursor-pointer hover:bg-[color-mix(in_oklab,_white_8%,_transparent)] rounded px-1 py-0.5"
-                          >
-                            v{String(p.version ?? 1).padStart(2, '0')}{' '}
-                            <span
-                              className="opacity-70"
-                              style={{ color: cellPalette(p.status as never, 'plan').color }}
-                            >
-                              {p.status}
-                            </span>
-                          </button>
-                        ))}
+                    {/* ── Two fields (2026-07-05, Director revision after live
+                        review): IMAGE and VIDEO, each with its OWN designer →
+                        critic → artifact sub-chain. Divider ONLY between the two
+                        fields (Image first → no top border; Video → border-t).
+                        Per-line "generating…" badge is object-aware (Image lights
+                        for reference work, Video for animate). ── */}
+                    {/* IMAGE field */}
+                    <div className="px-1 pt-0.5 pb-1">
+                      <div
+                        className="px-1 py-0.5 mb-1 rounded text-[9px] font-semibold uppercase tracking-[0.12em]"
+                        style={{
+                          color: 'var(--asset-image)',
+                          background: 'color-mix(in oklab, var(--asset-image) 12%, transparent)',
+                        }}
+                      >
+                        Image
                       </div>
-                    )}
-                    {/* Image-version parity (2026-06-24) — per-shot reference
-                        versions, mirroring the video list: version + status
-                        colour + on-screen marker (the ref the cell currently
-                        shows) + inline ✓ approve for REVIEW. Reuses the generic
-                        approveVersion + onOpenAsset; no new endpoint. Second row
-                        of the REFERENCE zone (the rendered artifact of the plan). */}
-                    {(imgRefsByShotId.get(t.shot.shot_id) ?? []).length > 0 && (
-                      <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
-                        <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
-                          image
-                        </div>
-                        {(imgRefsByShotId.get(t.shot.shot_id) ?? []).map((r) => {
-                          // The image actually on screen = the cell's resolved
-                          // asset_id when it's showing an image (not a video).
-                          const isShown = cell?.kind === 'image' && r.id === cell?.asset_id;
-                          return (
-                            <div
-                              key={r.id}
-                              className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-[color-mix(in_oklab,_white_8%,_transparent)]"
-                              style={
-                                isShown
-                                  ? {
-                                      background:
-                                        'color-mix(in oklab, var(--accent-primary, #6EC6E8) 20%, transparent)',
-                                    }
-                                  : undefined
-                              }
-                            >
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (onOpenAsset) onOpenAsset(r.id);
-                                }}
-                                className="flex-1 text-left font-mono text-[11px] cursor-pointer"
-                              >
-                                {isShown ? '▶ ' : '  '}
-                                v{String(r.version ?? 1).padStart(2, '0')}{' '}
-                                <span
-                                  className="opacity-70"
-                                  style={{ color: cellPalette(r.status as never, 'image').color }}
-                                >
-                                  {r.status}
-                                </span>
-                                {isShown && (
-                                  <span className="ml-1 opacity-60 text-[9px] uppercase tracking-wider">
-                                    on screen
-                                  </span>
-                                )}
-                              </button>
-                              {approveTick(r.status, r.id)}
-                            </div>
-                          );
-                        })}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono opacity-40 text-[9px] uppercase tracking-wider">plan</span>
+                        {partitionBadge(liveWork, 'image', 'designer')}
                       </div>
-                    )}
-                    {/* ── VIDEO zone: the shot plan (SPC-shot_plan) + the video
-                        (VID-shot). Primary accent so it reads distinctly from the
-                        REFERENCE zone above. ── */}
-                    <div
-                      className="px-1 py-0.5 mb-1 rounded text-[9px] font-semibold uppercase tracking-[0.12em]"
-                      style={{
-                        color: 'var(--accent-primary)',
-                        background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
-                      }}
-                    >
-                      Video
-                    </div>
-                    {/* Shot Plan versions (TD-80 2026-05-27) — open the latest (or
-                        any) Plan in the PreviewDrawer BEFORE the video burns. First
-                        row of the VIDEO zone (the plan the video renders from). */}
-                    {(shotPlansByShotId?.get(t.shot.shot_id) ?? []).length > 0 && (
-                      <div className="flex flex-col gap-0.5 px-1 pb-1 mb-1 border-b border-[var(--border-glass)]">
-                        <div className="font-mono opacity-50 text-[10px] uppercase tracking-wider">
-                          plan
-                        </div>
-                        {(shotPlansByShotId?.get(t.shot.shot_id) ?? []).map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onOpenAsset) onOpenAsset(p.id);
-                            }}
-                            className="text-left font-mono text-[11px] cursor-pointer hover:bg-[color-mix(in_oklab,_white_8%,_transparent)] rounded px-1 py-0.5"
-                          >
-                            v{String(p.version ?? 1).padStart(2, '0')}{' '}
-                            <span
-                              className="opacity-70"
-                              style={{ color: cellPalette(p.status as never, 'plan').color }}
-                            >
-                              {p.status}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {versions.length === 0 ? (
-                      <div className="px-1 pb-0.5 flex items-center gap-2">
-                        <span style={{ color: palette.color, fontWeight: 600 }}>
-                          {cell?.status ?? 'NONE'}
-                        </span>
-                        <span className="opacity-60"> · no VID-shot yet</span>
-                        {onGenerateVideo &&
-                          (imgRefsByShotId.get(t.shot.shot_id) ?? []).some(
-                            (r) => r.status === 'APPROVED' || r.status === 'LOCKED',
-                          ) && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (generatingVideoShotId !== t.shot.shot_id) {
-                                  onGenerateVideo(t.shot.shot_id);
-                                }
-                              }}
-                              disabled={generatingVideoShotId === t.shot.shot_id}
-                              className="ml-auto px-2 py-0.5 rounded text-[10px] font-medium border transition-colors disabled:opacity-50"
-                              style={{
-                                background: 'color-mix(in oklab, var(--accent-primary) 14%, transparent)',
-                                color: 'var(--accent-primary)',
-                                borderColor: 'color-mix(in oklab, var(--accent-primary) 35%, transparent)',
-                              }}
-                              title="Start the video flow for this shot: Designer → critic → generator"
-                            >
-                              {generatingVideoShotId === t.shot.shot_id
-                                ? 'Starting…'
-                                : '🎬 Generate video'}
-                            </button>
+                      {refPlanRows.length > 0 ? (
+                        <div className="flex flex-col gap-0.5 mb-1">
+                          {refPlanRows.map((p) =>
+                            versionRow({
+                              id: p.id,
+                              version: p.version,
+                              status: p.status,
+                              paletteKind: 'plan',
+                              onOpen: () => onOpenAsset?.(p.id),
+                            }),
                           )}
+                        </div>
+                      ) : (
+                        <div className="font-mono opacity-30 text-[10px] px-1 mb-1">—</div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono opacity-40 text-[9px] uppercase tracking-wider">critic</span>
+                        {partitionBadge(liveWork, 'image', 'critic')}
                       </div>
-                    ) : (
-                      <div className="flex flex-col gap-0.5">
-                        {versions.map((v) => {
-                          // 2026-06-06 — flag the version that's actually on
-                          // screen right now (the cell's currently-resolved
-                          // asset_id). Director Issue B: popover used to show
-                          // three REVIEWs side-by-side with no way to tell
-                          // which one was playing.
-                          const isPlaying = v.id === cell?.asset_id;
-                          return (
-                            <div
-                              key={v.id}
-                              className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-[color-mix(in_oklab,_white_8%,_transparent)]"
-                              style={
-                                isPlaying
-                                  ? {
-                                      background:
-                                        'color-mix(in oklab, var(--accent-primary, #6EC6E8) 20%, transparent)',
-                                    }
-                                  : undefined
+                      {refCriticRows.length > 0 ? (
+                        <div className="flex flex-col gap-0.5 mb-1">
+                          {refCriticRows.map((c) =>
+                            versionRow({
+                              id: c.id,
+                              version: c.version,
+                              status: c.status,
+                              verdict: c.verdict ?? null,
+                              paletteKind: 'plan',
+                              onOpen: () => onOpenAsset?.(c.id),
+                            }),
+                          )}
+                        </div>
+                      ) : (
+                        <div className="font-mono opacity-30 text-[10px] px-1 mb-1">—</div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono opacity-40 text-[9px] uppercase tracking-wider">image</span>
+                        {partitionBadge(liveWork, 'image', 'artist')}
+                      </div>
+                      {cellRefs.length > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          {cellRefs.map((r) =>
+                            versionRow({
+                              id: r.id,
+                              version: r.version,
+                              status: r.status,
+                              onScreen: cell?.kind === 'image' && r.id === cell?.asset_id,
+                              paletteKind: 'image',
+                              onOpen: () => onOpenAsset?.(r.id),
+                            }),
+                          )}
+                        </div>
+                      ) : (
+                        <div className="font-mono opacity-30 text-[10px] px-1">—</div>
+                      )}
+                      {onGenerateReference && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (generatingRefShotId !== t.shot.shot_id) {
+                              onGenerateReference(t.shot.shot_id);
+                            }
+                          }}
+                          disabled={generatingRefShotId === t.shot.shot_id}
+                          className="mt-1 px-2 py-0.5 rounded text-[10px] font-medium border transition-colors disabled:opacity-50"
+                          style={{
+                            background: 'color-mix(in oklab, var(--asset-image) 14%, transparent)',
+                            color: 'var(--asset-image)',
+                            borderColor: 'color-mix(in oklab, var(--asset-image) 35%, transparent)',
+                          }}
+                          title="Reference flow for this shot: Designer → critic → artist"
+                        >
+                          {generatingRefShotId === t.shot.shot_id
+                            ? 'Starting…'
+                            : cellRefs.length > 0
+                              ? '🎨 Regenerate reference'
+                              : '🎨 Generate reference'}
+                        </button>
+                      )}
+                    </div>
+                    {/* VIDEO field — divider above (only between the two fields). */}
+                    <div className="px-1 pt-1 pb-1 border-t border-[var(--border-glass)]">
+                      <div
+                        className="px-1 py-0.5 mb-1 rounded text-[9px] font-semibold uppercase tracking-[0.12em]"
+                        style={{
+                          color: 'var(--accent-primary)',
+                          background: 'color-mix(in oklab, var(--accent-primary) 12%, transparent)',
+                        }}
+                      >
+                        Video
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono opacity-40 text-[9px] uppercase tracking-wider">plan</span>
+                        {partitionBadge(liveWork, 'video', 'designer')}
+                      </div>
+                      {shotPlanRows.length > 0 ? (
+                        <div className="flex flex-col gap-0.5 mb-1">
+                          {shotPlanRows.map((p) =>
+                            versionRow({
+                              id: p.id,
+                              version: p.version,
+                              status: p.status,
+                              paletteKind: 'plan',
+                              onOpen: () => onOpenAsset?.(p.id),
+                            }),
+                          )}
+                        </div>
+                      ) : (
+                        <div className="font-mono opacity-30 text-[10px] px-1 mb-1">—</div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono opacity-40 text-[9px] uppercase tracking-wider">critic</span>
+                        {partitionBadge(liveWork, 'video', 'critic')}
+                      </div>
+                      {shotCriticRows.length > 0 ? (
+                        <div className="flex flex-col gap-0.5 mb-1">
+                          {shotCriticRows.map((c) =>
+                            versionRow({
+                              id: c.id,
+                              version: c.version,
+                              status: c.status,
+                              verdict: c.verdict ?? null,
+                              paletteKind: 'plan',
+                              onOpen: () => onOpenAsset?.(c.id),
+                            }),
+                          )}
+                        </div>
+                      ) : (
+                        <div className="font-mono opacity-30 text-[10px] px-1 mb-1">—</div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono opacity-40 text-[9px] uppercase tracking-wider">video</span>
+                        {partitionBadge(liveWork, 'video', 'artist')}
+                      </div>
+                      {versions.length > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          {versions.map((v) =>
+                            versionRow({
+                              id: v.id,
+                              version: v.version,
+                              status: v.status,
+                              onScreen: v.id === cell?.asset_id,
+                              paletteKind: 'video-review',
+                              onOpen: () => {
+                                if (onCellClick) {
+                                  onCellClick({ ...(cell as TimelineCell), asset_id: v.id });
+                                }
+                              },
+                            }),
+                          )}
+                        </div>
+                      ) : (
+                        <div className="font-mono opacity-30 text-[10px] px-1">—</div>
+                      )}
+                      {versions.length === 0 &&
+                        onGenerateVideo &&
+                        cellRefs.some(
+                          (r) => r.status === 'APPROVED' || r.status === 'LOCKED',
+                        ) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (generatingVideoShotId !== t.shot.shot_id) {
+                                onGenerateVideo(t.shot.shot_id);
                               }
-                            >
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (onCellClick) {
-                                    onCellClick({
-                                      ...(cell as TimelineCell),
-                                      asset_id: v.id,
-                                    });
-                                  }
-                                }}
-                                className="flex-1 text-left font-mono text-[11px] cursor-pointer"
-                              >
-                                {isPlaying ? '▶ ' : '  '}
-                                v{String(v.version ?? 1).padStart(2, '0')}{' '}
-                                <span
-                                  className="opacity-70"
-                                  style={{ color: cellPalette(v.status as never, 'video-review').color }}
-                                >
-                                  {v.status}
-                                </span>
-                                {isPlaying && (
-                                  <span className="ml-1 opacity-60 text-[9px] uppercase tracking-wider">
-                                    on screen
-                                  </span>
-                                )}
-                              </button>
-                              {approveTick(v.status, v.id)}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                            }}
+                            disabled={generatingVideoShotId === t.shot.shot_id}
+                            className="mt-1 px-2 py-0.5 rounded text-[10px] font-medium border transition-colors disabled:opacity-50"
+                            style={{
+                              background: 'color-mix(in oklab, var(--accent-primary) 14%, transparent)',
+                              color: 'var(--accent-primary)',
+                              borderColor: 'color-mix(in oklab, var(--accent-primary) 35%, transparent)',
+                            }}
+                            title="Start the video flow for this shot: Designer → critic → generator"
+                          >
+                            {generatingVideoShotId === t.shot.shot_id
+                              ? 'Starting…'
+                              : '🎬 Generate video'}
+                          </button>
+                        )}
+                    </div>
                   </div>
                 )}
               </div>
