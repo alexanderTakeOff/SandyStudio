@@ -285,6 +285,20 @@ body {
   color: var(--text-inverse);
 }
 
+/* Native <select> dropdowns (Director 2026-07-05 — old white-on-white bug).
+   The OPEN option list renders on the OS-default (white) surface unless each
+   <option> carries a solid color, so on a dark theme the text was near-white on
+   white = unreadable. Pin the control text and the option list to the theme's
+   solid elevated surface + primary text so every native dropdown is legible in
+   all three themes. Systemic fix — replaces per-component select styling. */
+select {
+  color: var(--text-primary);
+}
+option {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
 /* Subtle scrollbar matching theme */
 ::-webkit-scrollbar {
   width: 10px;
