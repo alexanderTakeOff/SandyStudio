@@ -194,6 +194,24 @@ export function resolveSlotDescriptor(asset: AssetForSlot): SlotDescriptor | nul
     };
   }
 
+  // ── IMG-thumbnail: ONE approved Key Art per episode. EXEC-THUMB renders the
+  // designer's 3 DISTINCT concept variants (emotion/curiosity/text-led) as
+  // sibling IMG-thumbnail assets — but each is stamped as a sequential version
+  // (v01/v02/v03). They are a "pick ONE of N" choice, NOT sequential revisions.
+  // Without this slot all 3 stayed APPROVED, the UI surfaced only the newest
+  // (v03), AND a kebab "approve all" fired one exec-pub/publish PER approved
+  // thumbnail → TRIPLE distribution (Director E15 2026-07-05). Approving one
+  // variant now supersedes the others. Episode-scoped, same shape as VID-animatic.
+  if (ft.startsWith('IMG-thumbnail')) {
+    return {
+      ...base,
+      fileTypeLike: 'IMG-thumbnail%',
+      matches: (_meta, candidateFileType) =>
+        typeof candidateFileType === 'string' &&
+        candidateFileType.startsWith('IMG-thumbnail'),
+    };
+  }
+
   return null;
 }
 

@@ -309,15 +309,23 @@ export function createAgentInngestFunction<E extends string>(
       // Designer→Artist progression is fine (different agent_id). FAIL OPEN inside
       // the helper on RPC error. We early RETURN (not throw) so Inngest does not
       // retry: no job row, no provider call (no money), no fan-out.
-      if (
+      // Per-shot key for regen agents; an EPISODE-scoped key for EXEC-PUB. The
+      // latter (Director E15 2026-07-05): a kebab "approve all" on 3 Key Art
+      // variants fires 3 parallel approves → 3 `exec-pub/publish` events → 3
+      // EXEC-PUB runs → TRIPLE YouTube upload. EXEC-PUB has no shotId so it
+      // skipped this claim; give it an episode sentinel so only the FIRST of the
+      // concurrent runs claims and the other two early-return (no job, no upload,
+      // no spend). Reuses the exact claim + terminal-mark lifecycle (the factory
+      // already marks claimedDispatchKey done/failed on completion), so a genuine
+      // re-publish (after a failure or a new thumbnail) can re-claim.
+      const dispatchKey: DispatchKey | null =
         shotIdForCap &&
         (SHOT_REGEN_AGENT_IDS as readonly string[]).includes(spec.agentId)
-      ) {
-        const dispatchKey: DispatchKey = {
-          episodeId,
-          shotId: shotIdForCap,
-          agentId: spec.agentId,
-        };
+          ? { episodeId, shotId: shotIdForCap, agentId: spec.agentId }
+          : spec.agentId === 'EXEC-PUB'
+            ? { episodeId, shotId: 'EPISODE', agentId: spec.agentId }
+            : null;
+      if (dispatchKey) {
         const claim = await step.run('dispatch-intent-claim', async () => {
           const supabase = createSupabaseServiceRoleClient();
           const result = await claimDispatchIntent(
@@ -330,17 +338,17 @@ export function createAgentInngestFunction<E extends string>(
             await logEvent(supabase, {
               event_type: 'regen_duplicate_skipped',
               severity: 'info',
-              title: `Duplicate ${spec.agentId} skipped — ${shotIdForCap}`,
+              title: `Duplicate ${spec.agentId} skipped — ${dispatchKey.shotId}`,
               description:
-                `A ${spec.agentId} dispatch for this shot is already in flight ` +
-                `(run ${result.blockingRunId ?? 'unknown'}, status ` +
+                `A ${spec.agentId} dispatch for this ${dispatchKey.shotId === 'EPISODE' ? 'episode' : 'shot'} ` +
+                `is already in flight (run ${result.blockingRunId ?? 'unknown'}, status ` +
                 `${result.blockingStatus ?? 'unknown'}). Skipped this concurrent ` +
-                `duplicate to avoid a double generation.`,
+                `duplicate to avoid a double ${spec.agentId === 'EXEC-PUB' ? 'publish' : 'generation'}.`,
               actor: (eventData.principal as string) ?? null,
               episode_id: episodeId,
               metadata: {
                 agent: spec.agentId,
-                shot_id: shotIdForCap,
+                shot_id: dispatchKey.shotId,
                 blocking_run_id: result.blockingRunId,
                 reason: 'DISPATCH_INTENT_DUPLICATE',
               },
