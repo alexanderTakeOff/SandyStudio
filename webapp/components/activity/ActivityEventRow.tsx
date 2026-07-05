@@ -18,26 +18,15 @@
 
 import { useState, type ReactNode } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
-import { actorKind, agentDisplayName } from '@/lib/api/agent-names';
+import {
+  formatActivity,
+  verdictColor,
+  SEVERITY_COLOR,
+  WHO_STYLE,
+  type ActivityEventLike,
+} from '@/lib/api/activity-format';
 
-export interface ActivityEventLike {
-  id: string;
-  event_type: string;
-  severity: string;
-  title: string;
-  description: string | null;
-  actor: string | null;
-  created_at: string;
-  metadata?: Record<string, unknown> | null;
-}
-
-type WhoKind = 'you' | 'polina' | 'agent' | 'ai' | 'system';
-
-const SEVERITY_COLOR: Record<string, string> = {
-  info: 'var(--accent-info)',
-  warning: 'var(--accent-warning)',
-  error: 'var(--accent-danger)',
-};
+export type { ActivityEventLike } from '@/lib/api/activity-format';
 
 export function relativeTime(iso: string): string {
   const t = new Date(iso).getTime();
@@ -53,103 +42,6 @@ export function relativeTime(iso: string): string {
 
 function clockTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-}
-
-/** Director-token actions are recorded with HIS uuid even when Polina fired them
- *  under his standing directive — the only signal is the "[Prod Assistant]" marker. */
-function isPolinaProxy(e: ActivityEventLike): boolean {
-  if ((e.description ?? '').startsWith('[Prod Assistant]')) return true;
-  const reason = e.metadata?.reason;
-  return typeof reason === 'string' && reason.startsWith('[Prod Assistant]');
-}
-
-interface Formatted {
-  who: string;
-  whoKind: WhoKind;
-  action: string;
-  verdict: string | null;
-}
-
-function formatActivity(e: ActivityEventLike): Formatted {
-  const kind = actorKind(e.actor);
-  const polina = kind === 'director' && isPolinaProxy(e);
-  const who =
-    kind === 'director'
-      ? polina
-        ? 'Polina'
-        : 'You'
-      : kind === 'ai-director'
-        ? 'AI EP'
-        : kind === 'agent'
-          ? agentDisplayName(e.actor)
-          : 'System';
-  const whoKind: WhoKind =
-    kind === 'director' ? (polina ? 'polina' : 'you') : kind === 'ai-director' ? 'ai' : kind === 'agent' ? 'agent' : 'system';
-
-  // Verdict: explicit metadata wins; else a trailing "· PASS" on the title.
-  let verdict = typeof e.metadata?.verdict === 'string' ? (e.metadata.verdict as string) : null;
-  let title = e.title;
-  const trailing = title.match(/·\s*([A-Z_]+)\s*$/);
-  if (!verdict && trailing) verdict = trailing[1] ?? null;
-  title = title.replace(/·\s*[A-Z_]+\s*$/, '').trim();
-
-  // Shot label = the bare SH token (refactor 2026-06-26 q8). SH is episode-unique,
-  // so it alone identifies the shot; act/scene are gone from identity and no longer
-  // shown. Reads the new `S15-E12-SH08` id and any legacy compound alike.
-  const shot = (title.match(/SH\d+/i) ?? [])[0]?.toUpperCase() ?? null;
-  // Asset version rides in the filename embedded in the title (…-v03-STATUS.ext) —
-  // surface it in the feed so the Director sees "…ref plan v03" (q8).
-  const vMatch = title.match(/-v(\d+)-/i);
-  const versionTag = vMatch ? `v${vMatch[1]}` : null;
-
-  let action = title;
-  if (e.event_type === 'approval_granted' || /^[A-Z_]+ on /.test(title)) {
-    const decisionRaw = (title.match(/^([A-Z_]+) on/) ?? [])[1] ?? 'APPROVE';
-    const decision = decisionRaw.toLowerCase().replace('request_revision', 'revise');
-    const assetKind = /shot_plan/.test(title)
-      ? 'plan'
-      : /ref_plan/.test(title)
-        ? 'ref plan'
-        : /VID-shot/.test(title)
-          ? 'video'
-          : /IMG-anchor/.test(title)
-            ? 'anchor'
-            : /SPC-brief/.test(title)
-              ? 'brief'
-              : 'asset';
-    action = [decision, shot, assetKind, versionTag].filter(Boolean).join(' ');
-  } else if (e.event_type === 'manual_trigger') {
-    const ag = (title.match(/EXEC-[A-Z-]+/) ?? [])[0];
-    action = `trigger ${ag ? agentDisplayName(ag) : ''}${shot ? ` ${shot}` : ''}`.replace(/\s+/g, ' ').trim();
-  } else if (kind === 'agent') {
-    // Agent rows are logged in two shapes — factory's "Video Artist completed —
-    // SH10" and the runner's "EXEC-VGEN completed (SS-…-SH10)". The agent name is
-    // already the WHO chip, so reduce to verb + shot ("completed SH10"). Falls
-    // back to the de-prefixed title when no verb is found.
-    const verb = (title.match(/\b(started|completed|failed)\b/i) ?? [])[0];
-    if (verb) {
-      action = `${verb.toLowerCase()}${shot ? ` ${shot}` : ''}`;
-    } else {
-      const dn = agentDisplayName(e.actor);
-      action = title.startsWith(dn) ? title.slice(dn.length).replace(/^\s*[—–-]?\s*/, '').trim() : title;
-    }
-  }
-
-  return { who, whoKind, action: action || title, verdict };
-}
-
-const WHO_STYLE: Record<WhoKind, { bg: string; fg: string }> = {
-  you: { bg: 'color-mix(in oklab, var(--accent-primary) 22%, transparent)', fg: 'var(--accent-primary)' },
-  polina: { bg: 'color-mix(in oklab, var(--accent-info) 22%, transparent)', fg: 'var(--accent-info)' },
-  ai: { bg: 'color-mix(in oklab, var(--accent-warning) 20%, transparent)', fg: 'var(--accent-warning)' },
-  agent: { bg: 'color-mix(in oklab, var(--text-muted) 16%, transparent)', fg: 'var(--text-secondary)' },
-  system: { bg: 'color-mix(in oklab, var(--text-muted) 14%, transparent)', fg: 'var(--text-muted)' },
-};
-
-function verdictColor(v: string): string {
-  if (v === 'PASS' || v === 'PASS_WITH_UNCERTAINTY') return 'var(--accent-success)';
-  if (v === 'FAIL' || v === 'REJECTED') return 'var(--accent-danger)';
-  return 'var(--accent-warning)'; // REVISE / HALT / UNKNOWN
 }
 
 export interface ActivityEventRowProps {

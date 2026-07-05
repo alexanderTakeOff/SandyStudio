@@ -640,6 +640,12 @@ export function createAgentInngestFunction<E extends string>(
         // output (or via `violations[]` for Continuity Check). Surface them as
         // an Inbox `canon_extension_proposed` event linking the producing
         // asset. Director's CanonExtensionsPanel approves/rejects per row.
+        // Read the produced asset once here — reused BOTH for canon-extension
+        // extraction AND for stamping the asset version onto the completion
+        // event (Director 2026-07-05: "версии нужны тоже" — completion rows must
+        // read "…completed SH20 video v03"). `filename` carries the version by
+        // SS naming convention (…-v03-STATUS.ext).
+        let completedAsset: { file_type: string | null; filename: string | null } | null = null;
         try {
           // Lazy import to avoid pulling Supabase types into the in-memory
           // replay-pilot harness.
@@ -648,9 +654,12 @@ export function createAgentInngestFunction<E extends string>(
           );
           const { data: assetRow } = await supabase
             .from('assets')
-            .select('content,file_type,episode_id')
+            .select('content,file_type,episode_id,filename')
             .eq('id', out.assetId)
             .maybeSingle();
+          completedAsset = assetRow
+            ? { file_type: assetRow.file_type ?? null, filename: assetRow.filename ?? null }
+            : null;
           const proposals = parseExtensionsFromContent(
             assetRow?.content ?? null,
             assetRow?.file_type ?? '',
@@ -692,6 +701,13 @@ export function createAgentInngestFunction<E extends string>(
           ? ` — ${completedCtx.shortLabel}`
           : '';
 
+        // Asset version from the produced filename (…-v03-STATUS.ext). Carried in
+        // metadata so the shared activity formatter (lib/api/activity-format.ts)
+        // shows it on completion rows in BOTH the feed and Polina's chat. file_type
+        // rides along so the formatter can name the asset kind (video/plan/…).
+        const versionFromFile = completedAsset?.filename?.match(/-v(\d+)-/i)?.[1];
+        const completedVersion = versionFromFile ? `v${versionFromFile}` : null;
+
         // 2026-06-16 (Director): surface a critic's outcome in the feed row —
         // "Video Critic completed — SH06 · REVISE" instead of a meaningless
         // "completed". Critics stamp `result.metadata.verdict` with the
@@ -721,6 +737,8 @@ export function createAgentInngestFunction<E extends string>(
             agent: spec.agentId,
             status: autoApprove ? 'APPROVED' : 'REVIEW',
             ...(completedVerdict ? { verdict: completedVerdict } : {}),
+            ...(completedVersion ? { version: completedVersion } : {}),
+            ...(completedAsset?.file_type ? { file_type: completedAsset.file_type } : {}),
             ...(completedCtx?.metadata ?? {}),
           },
         });
