@@ -17,7 +17,11 @@ import { findApprovedAsset } from '../upstream';
 
 export const COPY_CONTRACT = 'copywriter@v1';
 export const COPY_MODEL = 'claude-haiku-4-5';
-export const COPY_MAX_TOKENS = 1500;
+// 2026-07-05: raised 1500 → 4000. The publicist's SEO-first copy JSON grew past
+// ~1500 output tokens and was truncated mid-block (stop_reason=max_tokens, no
+// closing ```json fence) → hard parse failure on every run. 4000 gives ~2.6×
+// headroom; Haiku output is cheap so the extra budget is negligible.
+export const COPY_MAX_TOKENS = 4000;
 
 export class CopywriterError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
