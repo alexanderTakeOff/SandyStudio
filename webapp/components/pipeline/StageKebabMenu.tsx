@@ -27,7 +27,11 @@ import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { RejectModal } from '@/components/editor/RejectModal';
 import { RetriggerStageModal } from '@/components/pipeline/RetriggerStageModal';
-import type { PipelineNodeState, PipelineStageId } from '@/lib/api/pipeline-stages';
+import {
+  AWAITING_DIRECTOR_STATUSES,
+  type PipelineNodeState,
+  type PipelineStageId,
+} from '@/lib/api/pipeline-stages';
 
 // File-type prefix → row matching for backbone v2.5 per-agent rows.
 // Each row = single agent → single primary file_type prefix.
@@ -144,9 +148,9 @@ export function StageKebabMenu({
     setBusy(true);
     try {
       const assets = await fetchStageAssets();
-      const candidates = assets.filter((a) => a.status === 'REVIEW');
+      const candidates = assets.filter((a) => AWAITING_DIRECTOR_STATUSES.has(a.status));
       if (candidates.length === 0) {
-        alert(`Nothing to approve in ${stageLabel} — no REVIEW assets.`);
+        alert(`Nothing to approve in ${stageLabel} — no REVIEW/REVISION assets.`);
         return;
       }
       const results = await Promise.allSettled(
