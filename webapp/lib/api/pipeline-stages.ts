@@ -134,7 +134,7 @@ export interface PipelineStageSnapshot {
    */
   unstaffed?: boolean;
   job_count?: { total: number; done: number; running: number; failed: number };
-  /** Count of assets in this stage with status REVIEW. */
+  /** Count of assets in this stage awaiting a Director decision (REVIEW / REVISION / NEEDS_HUMAN_TWEAK). */
   assets_in_review?: number;
 }
 
@@ -156,6 +156,20 @@ interface JobLike {
   agent_id: string;
   status: string;
 }
+
+// Statuses where an asset awaits a Director decision, not just the agent-
+// produced REVIEW state. A Director can hand-edit an asset via the kebab
+// "Edit" action while it sits in REVISION (after Reject + revise) or
+// NEEDS_HUMAN_TWEAK (critic HALT) and then directly APPROVE the edited
+// version — /api/assets/[id]/approve's `humanDirectApprove` path already
+// allows this transition for the human principal. Both StageKebabMenu and
+// StageWorkspacePanel key their Approve action off `assets_in_review`, so
+// this is the one place that keeps both surfaces in sync.
+export const AWAITING_DIRECTOR_STATUSES: ReadonlySet<string> = new Set([
+  'REVIEW',
+  'REVISION',
+  'NEEDS_HUMAN_TWEAK',
+]);
 
 interface RowDef {
   id: PipelineStageId;
@@ -341,7 +355,7 @@ export function buildPipelineSnapshot(
     const hasApprovedAsset = stageAssets.some(
       (a) => a.status === 'APPROVED' || a.status === 'LOCKED',
     );
-    const hasReviewAsset = stageAssets.some((a) => a.status === 'REVIEW');
+    const hasReviewAsset = stageAssets.some((a) => AWAITING_DIRECTOR_STATUSES.has(a.status));
     const hasRunningJob = stageJobs.some(
       (j) => j.status === 'RUNNING' || j.status === 'QUEUED',
     );
@@ -411,7 +425,7 @@ export function buildPipelineSnapshot(
       latest_asset_id: latest?.id,
       latest_asset_type: latest?.file_type,
       latest_verdict,
-      assets_in_review: stageAssets.filter((a) => a.status === 'REVIEW').length,
+      assets_in_review: stageAssets.filter((a) => AWAITING_DIRECTOR_STATUSES.has(a.status)).length,
       job_count: {
         total: stageJobs.length,
         done: stageJobs.filter((j) => j.status === 'COMPLETED').length,
