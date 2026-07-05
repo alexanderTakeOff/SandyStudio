@@ -33,7 +33,20 @@ const ANTHROPIC_OPENAI_BASE = 'https://api.anthropic.com/v1/';
 
 export type ConciergeProvider = 'openai' | 'gemini' | 'anthropic';
 
+// ── Live provider override (Director 2026-07-05) ─────────────────────────────
+// The studio Settings → Providers "Полина" dropdown persists a { provider, model }
+// choice in app_config; concierge routes apply it into this process-level cache at
+// request start (applyConciergeProviderOverride in lib/api/concierge-provider-config).
+// All the sync resolvers below read the cache FIRST, then env — so a dropdown flip
+// takes effect on the next request with no restart. Global by design (studio-wide
+// choice), so the shared per-process cache converging on the latest value is correct.
+let _override: { provider: ConciergeProvider; model?: string } | null = null;
+export function _setConciergeOverride(o: { provider: ConciergeProvider; model?: string } | null): void {
+  _override = o;
+}
+
 export function conciergeProvider(): ConciergeProvider {
+  if (_override) return _override.provider;
   const p = (process.env.CONCIERGE_PROVIDER ?? '').toLowerCase();
   if (p === 'gemini') return 'gemini';
   if (p === 'anthropic' || p === 'opus' || p === 'claude') return 'anthropic';
@@ -42,6 +55,7 @@ export function conciergeProvider(): ConciergeProvider {
 
 export function conciergeModel(): string {
   const provider = conciergeProvider();
+  if (_override?.model && _override.provider === provider) return _override.model;
   if (provider === 'gemini') {
     return process.env.CONCIERGE_GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
   }

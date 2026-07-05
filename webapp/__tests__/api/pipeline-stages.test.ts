@@ -29,6 +29,7 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
       'screenwriter',
       'script_critic',
       'storyboarder',
+      'readability_critic',
       'continuity_critic',
       'reference_designer',
       'reference_critic',

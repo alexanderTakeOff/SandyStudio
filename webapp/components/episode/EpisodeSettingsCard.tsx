@@ -50,6 +50,18 @@ function readBudgetApproved(meta: Record<string, unknown> | null | undefined): b
   return meta.budget_approved === true;
 }
 
+// Director defaults 2026-07-05: 150 total, of which 30 for Polina. Shown as the
+// prefilled default when an episode has no explicit values yet.
+const DEFAULT_TOTAL_BUDGET_USD = 150;
+const DEFAULT_CONCIERGE_CAP_USD = 30;
+
+// Per-episode Polina (concierge) cost slice — a carve-out WITHIN the total budget.
+function readConciergeCap(meta: Record<string, unknown> | null | undefined): number | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const v = Number((meta as { concierge_cap_usd?: unknown }).concierge_cap_usd);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 export function EpisodeSettingsCard({
   episodeId,
   initialMetadata,
@@ -62,8 +74,13 @@ export function EpisodeSettingsCard({
     budget_approved: readBudgetApproved(initialMetadata ?? null),
   });
   const [budgetInput, setBudgetInput] = useState(
-    initialBudgetCeiling != null ? String(initialBudgetCeiling) : '',
+    initialBudgetCeiling != null ? String(initialBudgetCeiling) : String(DEFAULT_TOTAL_BUDGET_USD),
   );
+  // Polina's slice within the total budget. Prefilled to the default when unset.
+  const [conciergeInput, setConciergeInput] = useState(() => {
+    const cap = readConciergeCap(initialMetadata ?? null);
+    return cap != null ? String(cap) : String(DEFAULT_CONCIERGE_CAP_USD);
+  });
   const [pending, setPending] = useState(false);
   const [budgetPending, setBudgetPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +106,9 @@ export function EpisodeSettingsCard({
             budget_ceiling: cap,
             budget_approved: readBudgetApproved(j.data.metadata ?? null),
           });
-          setBudgetInput(cap != null ? String(cap) : '');
+          setBudgetInput(cap != null ? String(cap) : String(DEFAULT_TOTAL_BUDGET_USD));
+          const polina = readConciergeCap(j.data.metadata ?? null);
+          setConciergeInput(polina != null ? String(polina) : String(DEFAULT_CONCIERGE_CAP_USD));
         },
       )
       .catch(() => {
@@ -100,34 +119,44 @@ export function EpisodeSettingsCard({
     };
   }, [episodeId]);
 
-  async function saveBudgetCeiling() {
-    const trimmed = budgetInput.trim();
-    // Empty input clears the cap (null). Otherwise must be a positive number.
-    let next: number | null;
-    if (trimmed === '') {
-      next = null;
-    } else {
-      const parsed = Number(trimmed);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        setError('Budget cap must be a positive number (or empty to clear).');
-        return;
-      }
-      next = parsed;
+  // Parse an input: '' → null (clear); otherwise must be a positive number.
+  function parseCap(raw: string, label: string): { ok: true; value: number | null } | { ok: false } {
+    const trimmed = raw.trim();
+    if (trimmed === '') return { ok: true, value: null };
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setError(`${label} must be a positive number (or empty to clear).`);
+      return { ok: false };
+    }
+    return { ok: true, value: parsed };
+  }
+
+  // One save writes BOTH the total ceiling and Polina's slice (Director 2026-07-05).
+  async function saveBudget() {
+    setError(null);
+    const total = parseCap(budgetInput, 'Total budget');
+    if (!total.ok) return;
+    const polina = parseCap(conciergeInput, 'Polina cap');
+    if (!polina.ok) return;
+    // Polina's slice is a carve-out WITHIN the total — never larger than it.
+    if (polina.value != null && total.value != null && polina.value > total.value) {
+      setError('Polina cap cannot exceed the total budget.');
+      return;
     }
     setBudgetPending(true);
-    setError(null);
     try {
       const res = await fetch(`/api/episodes/${episodeId}/settings`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ budget_ceiling: next }),
+        body: JSON.stringify({ budget_ceiling: total.value, concierge_cap_usd: polina.value }),
       });
       if (!res.ok) {
         const b = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(b.error ?? `HTTP ${res.status}`);
       }
-      setState((s) => ({ ...s, budget_ceiling: next }));
-      setBudgetInput(next != null ? String(next) : '');
+      setState((s) => ({ ...s, budget_ceiling: total.value }));
+      setBudgetInput(total.value != null ? String(total.value) : '');
+      setConciergeInput(polina.value != null ? String(polina.value) : '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Update failed');
     } finally {
@@ -296,37 +325,55 @@ export function EpisodeSettingsCard({
             </div>
           </label>
 
-          {/* Per-episode budget cap (Director directive 2026-06-03). Writes the
-              budget_ceiling COLUMN via the settings PATCH. Empty = no cap. */}
+          {/* Per-episode budget cap (Director 2026-06-03; Polina slice 2026-07-05).
+              Total → budget_ceiling COLUMN; Polina → metadata.concierge_cap_usd, a
+              carve-out WITHIN the total. Both saved by one button. Empty total = no cap. */}
           <div className="border-t border-glass pt-3">
-            <div className="text-sm font-medium text-text-primary">Episode budget cap</div>
+            <div className="text-sm font-medium text-text-primary">Episode budget</div>
             <div className="text-xs text-text-muted mt-0.5 leading-relaxed">
-              Hard USD ceiling. Generation jobs fail once spend would cross it. Empty = no cap.{' '}
+              Hard USD ceiling — generation jobs fail once spend would cross it. «Полина» is her
+              share of that total (her auto-react pauses once her episode spend hits it). Empty total
+              = no cap.{' '}
               {state.budget_ceiling == null && (
                 <span style={{ color: 'var(--accent-danger)' }}>
                   No cap set — over-spend is NOT blocked.
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-sm text-text-muted">$</span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={budgetInput}
-                onChange={(e) => setBudgetInput(e.target.value)}
-                placeholder="e.g. 25"
-                disabled={budgetPending}
-                className="w-28 px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
-              />
+            <div className="flex flex-wrap items-end gap-3 mt-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">Всего ($)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={budgetInput}
+                  onChange={(e) => setBudgetInput(e.target.value)}
+                  placeholder={String(DEFAULT_TOTAL_BUDGET_USD)}
+                  disabled={budgetPending}
+                  className="w-24 px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">из них Полина ($)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={conciergeInput}
+                  onChange={(e) => setConciergeInput(e.target.value)}
+                  placeholder={String(DEFAULT_CONCIERGE_CAP_USD)}
+                  disabled={budgetPending}
+                  className="w-24 px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+                />
+              </label>
               <button
                 type="button"
-                onClick={() => void saveBudgetCeiling()}
+                onClick={() => void saveBudget()}
                 disabled={budgetPending}
                 className="px-3 py-1 rounded-md text-xs font-medium bg-[var(--accent-primary)] text-white disabled:opacity-50"
               >
-                {budgetPending ? 'Saving…' : 'Save cap'}
+                {budgetPending ? 'Saving…' : 'Save budget'}
               </button>
             </div>
           </div>

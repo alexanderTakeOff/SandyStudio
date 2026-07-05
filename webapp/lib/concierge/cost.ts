@@ -117,15 +117,22 @@ export function isFreeConciergeProvider(provider: string | null | undefined): bo
 export async function isConciergeBudgetTripped(
   client: Client,
   opts: { capUsd: number; windowHours: number; maxCalls: number },
+  episodeId?: string | null,
 ): Promise<ConciergeBudgetStatus> {
-  const sinceIso = new Date(
-    Date.now() - opts.windowHours * 3_600_000,
-  ).toISOString();
-  const { data, error } = await client
+  // Per-episode mode (Director 2026-07-05): when an episodeId is supplied, the cap
+  // is the episode's Polina slice and spend is LIFETIME for that episode (a budget,
+  // not a rolling window). Global mode (no episodeId) keeps the 24h runaway breaker.
+  let query = client
     .from('budget_log')
     .select('cost_usd, api_provider')
-    .eq('agent_id', CONCIERGE_AGENT_ID)
-    .gte('created_at', sinceIso);
+    .eq('agent_id', CONCIERGE_AGENT_ID);
+  if (episodeId) {
+    query = query.eq('episode_id', episodeId);
+  } else {
+    const sinceIso = new Date(Date.now() - opts.windowHours * 3_600_000).toISOString();
+    query = query.gte('created_at', sinceIso);
+  }
+  const { data, error } = await query;
   if (error) {
     return { tripped: false, spent: 0, cap: opts.capUsd, calls: 0, maxCalls: opts.maxCalls, reason: null };
   }
@@ -144,10 +151,33 @@ export function conciergeBudgetCapConfig(): {
   windowHours: number;
   maxCalls: number;
 } {
-  const capUsd = Number(process.env.CONCIERGE_DAILY_CAP_USD) || 20;
+  const capUsd = Number(process.env.CONCIERGE_DAILY_CAP_USD) || 30;
   const windowHours = Number(process.env.CONCIERGE_CAP_WINDOW_H) || 24;
   const maxCalls = Number(process.env.CONCIERGE_AUTO_REACT_MAX_CALLS) || 40;
   return { capUsd, windowHours, maxCalls };
+}
+
+/**
+ * Resolve the Polina cost cap for an episode (Director 2026-07-05): the per-episode
+ * slice `episodes.metadata.concierge_cap_usd`, set from the episode budget UI, with
+ * the global env `CONCIERGE_DAILY_CAP_USD` as fallback when the episode has none.
+ * Returns null on read failure so the caller can fall back to the global breaker
+ * (fail-open — the cap is a cost backstop, not a security control).
+ */
+export async function resolveConciergeCapUsd(
+  client: Client,
+  episodeId: string,
+): Promise<number | null> {
+  const { data, error } = await client
+    .from('episodes')
+    .select('metadata')
+    .eq('id', episodeId)
+    .maybeSingle();
+  if (error) return null;
+  const meta = (data?.metadata ?? {}) as { concierge_cap_usd?: unknown };
+  const perEp = Number(meta.concierge_cap_usd);
+  if (Number.isFinite(perEp) && perEp > 0) return perEp;
+  return conciergeBudgetCapConfig().capUsd;
 }
 
 /**

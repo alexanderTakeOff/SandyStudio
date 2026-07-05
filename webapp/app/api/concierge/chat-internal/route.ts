@@ -36,6 +36,7 @@ import {
   recordConciergeCost,
   isConciergeBudgetTripped,
   conciergeBudgetCapConfig,
+  resolveConciergeCapUsd,
   conciergeAutoReactEnabled,
 } from '@/lib/concierge/cost';
 import type {
@@ -47,6 +48,7 @@ import type {
 import { z } from 'zod';
 import { getServerEnv } from '@/lib/env';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { applyConciergeProviderOverride } from '@/lib/api/concierge-provider-config';
 import {
   buildSystemPrompt,
   buildConciergeSystemSplit,
@@ -177,6 +179,9 @@ export async function POST(req: Request) {
   }
 
   const supabase = createSupabaseServiceRoleClient();
+  // Apply the live provider override (studio Settings → Providers) before any
+  // resolver/cost-stamp reads the concierge provider/model.
+  await applyConciergeProviderOverride(supabase);
 
   // Verify the thread exists and is open before doing any expensive work.
   const thread = await getThread(supabase, parsed.thread_id);
@@ -249,12 +254,28 @@ export async function POST(req: Request) {
   //   2. rolling-window breaker — trips on call-COUNT (universal) or $ spend.
   // Direct messages (claude_message) are deliberate, low-volume Director/AI-EP
   // orders — let those through; the interactive /chat route is never gated.
+  // Resolve the episode in focus BEFORE the budget gate (Director 2026-07-05) so
+  // Polina's cap is the per-episode slice (metadata.concierge_cap_usd, set from the
+  // episode budget UI), not the global env breaker. Falls back to global when the
+  // reaction isn't tied to an episode.
+  let episodeId: string | null = thread.episode_id ?? null;
+  if (!episodeId && parsed.source === 'ambient') {
+    const { data: evt } = await supabase
+      .from('activity_events')
+      .select('episode_id')
+      .eq('id', parsed.trigger_id)
+      .maybeSingle();
+    episodeId = (evt as { episode_id?: string | null } | null)?.episode_id ?? null;
+  }
+
   if (parsed.source !== 'claude_message') {
     if (!conciergeAutoReactEnabled()) {
       return NextResponse.json({ skipped: 'auto_react_disabled' }, { status: 200 });
     }
-    const cap = conciergeBudgetCapConfig();
-    const status = await isConciergeBudgetTripped(supabase, cap);
+    const capCfg = conciergeBudgetCapConfig();
+    const perEpCap = episodeId ? await resolveConciergeCapUsd(supabase, episodeId) : null;
+    const cap = { ...capCfg, capUsd: perEpCap ?? capCfg.capUsd };
+    const status = await isConciergeBudgetTripped(supabase, cap, episodeId ?? undefined);
     if (status.tripped) {
       const alreadyNotified =
         lastTurn?.role === 'assistant' &&
@@ -270,8 +291,10 @@ export async function POST(req: Request) {
           role: 'assistant',
           event_type: 'message',
           content:
-            `⚠️ Авто-реакт приостановлен: за ${cap.windowHours}ч достигнут предел — ${limb}. ` +
-            `Жду Директора — поднять лимит (CONCIERGE_AUTO_REACT_MAX_CALLS / ` +
+            `⚠️ Авто-реакт приостановлен: ${
+              episodeId ? 'исчерпан бюджет Полины по эпизоду' : `за ${cap.windowHours}ч достигнут предел`
+            } — ${limb}. ` +
+            `Жду Директора — поднять лимит в бюджете эпизода (или CONCIERGE_AUTO_REACT_MAX_CALLS / ` +
             `CONCIERGE_DAILY_CAP_USD) или разобрать причину всплеска.`,
           metadata: {
             awaiting_director_input: {
@@ -297,19 +320,9 @@ export async function POST(req: Request) {
     }
   }
 
-  // Resolve the episode in focus: the thread's pinned episode first, else the
-  // episode that owns the triggering activity event (ambient pipeline reaction).
-  let episodeId: string | null = thread.episode_id ?? null;
+  // episodeId already resolved above (before the budget gate). Resolve episodeCode
+  // for display in system prompt (helps Polina see which episode).
   let episodeCode: string | null = null;
-  if (!episodeId && parsed.source === 'ambient') {
-    const { data: evt } = await supabase
-      .from('activity_events')
-      .select('episode_id')
-      .eq('id', parsed.trigger_id)
-      .maybeSingle();
-    episodeId = (evt as { episode_id?: string | null } | null)?.episode_id ?? null;
-  }
-  // Resolve episodeCode for display in system prompt (helps Polina see which episode)
   if (episodeId) {
     const { data: ep } = await supabase
       .from('episodes')

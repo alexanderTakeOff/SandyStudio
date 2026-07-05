@@ -35,6 +35,7 @@ import type {
 } from 'openai/resources/chat/completions';
 import { getServerEnv, PUBLIC_ENV } from '@/lib/env';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { applyConciergeProviderOverride } from '@/lib/api/concierge-provider-config';
 import { logEvent } from '@/lib/api/events';
 import path from 'node:path';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
@@ -158,6 +159,9 @@ async function handleChatPOST(req: Request) {
   // For mutating tools we forward the Director's cookies to existing API routes
   // so requireDirector() still applies and audit attribution is preserved.
   const supabase = createSupabaseServiceRoleClient();
+  // Apply the live provider override (studio Settings → Providers) before the
+  // client/model are resolved for this turn.
+  await applyConciergeProviderOverride(supabase);
   // q13 (2026-06-15): Polina's mode is derived from episode.governance_mode via
   // the single resolver — NOT the client-sent body.mode (which defaulted to '1'
   // and was the source of her "Mode 1" self-report on a Mode-2/4 episode). For a

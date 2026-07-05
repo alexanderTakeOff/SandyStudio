@@ -27,6 +27,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import { getServerEnv } from '@/lib/env';
 import { requireDirector } from '@/lib/api/auth';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import { applyConciergeProviderOverride } from '@/lib/api/concierge-provider-config';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { loadWorkPlanDoc } from '@/lib/concierge/tools/work-plan';
@@ -102,6 +103,7 @@ export async function POST(req: Request) {
   }
 
   const supabase = createSupabaseServiceRoleClient();
+  await applyConciergeProviderOverride(supabase);
   const threadId = body.threadId;
   const mode = normaliseMode(body.mode);
   const episodeId = body.episodeId ?? null;

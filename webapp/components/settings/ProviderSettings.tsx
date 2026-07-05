@@ -100,6 +100,126 @@ function HealthBadge({ row }: { row: AssignmentRow }) {
   );
 }
 
+// ── Polina (concierge assistant) LLM row (Director 2026-07-05) ───────────────
+// Separate endpoint from the media contracts (/api/providers/concierge). The
+// choice is an app_config override applied live — the next Polina request uses it
+// with no restart. env fallback when unset.
+interface ConciergeOption {
+  id: string;
+  provider: string;
+  model: string;
+  display_name: string;
+  envKey: string;
+  env_ok: boolean;
+}
+interface ConciergeData {
+  active_id: string;
+  source: 'app_config' | 'env';
+  options: ConciergeOption[];
+}
+
+function ConciergePolinaRow() {
+  const { data, mutate, isLoading } = useSWR<{ data: ConciergeData }>(
+    '/api/providers/concierge',
+    fetcher,
+  );
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cfg = data?.data;
+  const active = cfg?.options.find((o) => o.id === cfg.active_id);
+
+  async function onChange(id: string): Promise<void> {
+    const opt = cfg?.options.find((o) => o.id === id);
+    if (!opt) return;
+    setPending(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/providers/concierge', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: opt.provider, model: opt.model }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? `Update failed (${res.status})`);
+      }
+      await mutate();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div
+      className="grid grid-cols-12 gap-3 items-center px-3 py-2 rounded-lg border border-glass"
+      style={{ background: 'var(--bg-elevated)' }}
+    >
+      <div className="col-span-3 flex items-center gap-1.5">
+        <div className="text-sm font-medium text-text-primary">Полина (ассистент)</div>
+        <PeekHint side="right" autoPeekMs={0}>
+          Prod Assistant LLM. Switch takes effect on the fly (next request) — no restart. Env is the
+          fallback default.
+        </PeekHint>
+      </div>
+      <div className="col-span-5">
+        <select
+          value={cfg?.active_id ?? ''}
+          disabled={isLoading || pending}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full h-9 px-2.5 rounded-lg bg-[var(--panel-glass-strong-bg)] border border-glass text-sm"
+        >
+          {(cfg?.options ?? []).map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.display_name}
+              {!o.env_ok ? ' (no key)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="col-span-2 flex items-center gap-2">
+        {active &&
+          (active.env_ok ? (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+              style={{
+                background: 'color-mix(in oklab, var(--accent-success) 14%, transparent)',
+                color: 'var(--accent-success)',
+              }}
+            >
+              <CheckCircle2 size={10} /> live
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+              style={{
+                background: 'color-mix(in oklab, var(--accent-warning) 14%, transparent)',
+                color: 'var(--accent-warning)',
+              }}
+              title={`Env var ${active.envKey} is not set`}
+            >
+              <AlertTriangle size={10} /> no key
+            </span>
+          ))}
+        {cfg?.source === 'env' && (
+          <span className="text-[10px] uppercase tracking-wider text-text-muted" title="Using .env default (no override saved)">
+            env
+          </span>
+        )}
+      </div>
+      <div className="col-span-2 flex justify-end">
+        {pending && <span className="text-xs text-text-muted">Saving…</span>}
+      </div>
+      {error && (
+        <div className="col-span-12 text-xs" style={{ color: 'var(--accent-danger)' }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProviderSettings() {
   const { data, mutate, isLoading } = useSWR<{ data: AssignmentRow[] }>(
     '/api/providers/assignments',
@@ -250,6 +370,11 @@ export function ProviderSettings() {
             })}
           </div>
         )}
+
+        <div className="mt-3 pt-3 border-t border-glass space-y-2">
+          <div className="text-[11px] uppercase tracking-wider text-text-muted">Assistant</div>
+          <ConciergePolinaRow />
+        </div>
 
         <div className="mt-4 flex items-center gap-2 text-[11px] text-text-muted">
           <span>Health legend</span>

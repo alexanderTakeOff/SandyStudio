@@ -68,6 +68,11 @@ const Body = z
     // not metadata). recordCost throws BudgetExceededError once spend would
     // cross it. `null` clears the cap (no limit). Omit = no change.
     budget_ceiling: z.number().finite().positive().max(10000).nullable().optional(),
+    // Per-episode Polina (concierge) cost slice in USD — Director 2026-07-05.
+    // Lives in metadata (no migration). A carve-out WITHIN budget_ceiling ("of
+    // which Polina"), not additive. `null` clears it (→ falls back to the global
+    // env default). Validated ≤ the effective budget_ceiling below.
+    concierge_cap_usd: z.number().finite().positive().max(10000).nullable().optional(),
     generation_config: GenerationConfig.optional(),
   })
   .strict();
@@ -133,6 +138,22 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   }
   if (body.pipeline_mode !== undefined) {
     patch.pipeline_mode = body.pipeline_mode;
+  }
+  // Per-episode Polina cap (metadata). Must not exceed the effective total ceiling
+  // — it is a slice of the budget, not an addition on top of it.
+  if (body.concierge_cap_usd !== undefined) {
+    const effectiveCeiling =
+      body.budget_ceiling !== undefined ? body.budget_ceiling : currentCeiling;
+    if (
+      body.concierge_cap_usd !== null &&
+      effectiveCeiling != null &&
+      body.concierge_cap_usd > effectiveCeiling
+    ) {
+      throw new ValidationError(
+        `concierge_cap_usd (${body.concierge_cap_usd}) cannot exceed the episode budget ceiling (${effectiveCeiling})`,
+      );
+    }
+    patch.concierge_cap_usd = body.concierge_cap_usd;
   }
   // F13: budget approval is a Category-A hard limit — HUMAN Director only
   // (the EXEC-DIR-AI service token is rejected by assertHumanDirector).
