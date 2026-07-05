@@ -19,7 +19,7 @@ import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import { withHardBreaks } from '@/lib/markdown-breaks';
 import { isHttpishUrl, resolvePreviewSrc } from '@/lib/asset-preview-resolver';
-import { Download, FileWarning, ExternalLink, CloudOff, Upload, Sparkles, Loader2 } from 'lucide-react';
+import { Download, FileWarning, ExternalLink, CloudOff, Upload, Sparkles, Loader2, Pencil } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
 import { agentDisplayName } from '@/lib/api/agent-names';
@@ -29,6 +29,7 @@ import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import { ShotPlanContract } from '@/components/preview/ShotPlanContract';
 import { CandidatesStrip } from '@/components/assets/EREFv2Sections';
+import { EditorModal } from '@/components/editor/EditorModal';
 import { Button } from '@/components/ui/Button';
 import { useMemo, useRef, useState } from 'react';
 
@@ -162,6 +163,41 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
       });
   }, [isVidShotCurrent, meta?.data, episodeAssets?.data]);
 
+  // Fix 1b (Key Art, 2026-07-05): IMG-thumbnail concept variants. EXEC-THUMB
+  // renders 3 DIFFERENT concepts (emotion-led / curiosity-led / text-led) but
+  // stamps each as a sequential version v01/v02/v03 of one file_type
+  // 'IMG-thumbnail'. They are a "pick 1 of N" slot (single-approved), NOT
+  // versions of one image — so surface all of them like VID-shot candidates
+  // (pipeline-stages collapses the stage to latest=v03, hiding the other two).
+  // Episode-scoped (no shot_id): siblings = every IMG-thumbnail row in the
+  // same episode. CandidatesStrip self-hides when ≤1.
+  const isThumbnailCurrent = meta?.data?.file_type.startsWith('IMG-thumbnail') ?? false;
+  const { data: thumbnailAssets } = useSWR<{ data: AssetRow[] }>(
+    isThumbnailCurrent && episodeIdForSiblings
+      ? `/api/assets?episode_id=${episodeIdForSiblings}&file_type_prefix=IMG-thumbnail&limit=200`
+      : null,
+    fetcher,
+  );
+  const thumbnailSiblings = useMemo(() => {
+    if (!isThumbnailCurrent || !meta?.data || !thumbnailAssets?.data) {
+      return [] as AssetRow[];
+    }
+    return thumbnailAssets.data
+      .filter((a) => a.file_type.startsWith('IMG-thumbnail'))
+      .sort((a, b) => {
+        if (a.id === meta.data.id) return -1;
+        if (b.id === meta.data.id) return 1;
+        const va = a.version ?? 0;
+        const vb = b.version ?? 0;
+        return vb - va;
+      });
+  }, [isThumbnailCurrent, meta?.data, thumbnailAssets?.data]);
+
+  // Fix 3 (Key Art, 2026-07-05): the "Edit plan" affordance opens the linked
+  // SPC-thumb_plan (the JSON of 3 concepts) in the shared EditorModal. Declared
+  // here (before the early returns) so the hook order stays stable.
+  const [planEditorOpen, setPlanEditorOpen] = useState(false);
+
   if (metaErr) {
     return (
       <div className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--accent-danger)' }}>
@@ -175,6 +211,13 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
 
   const asset = meta.data;
   const cat = categoryFor(asset.file_type);
+
+  // Fix 3 (Key Art): the thumbnail renderer stamps metadata.plan_asset_id on
+  // every IMG-thumbnail variant (thumbnail-renderer.ts). Resolve it so the
+  // "Edit plan" button can open the concept plan in the shared EditorModal.
+  const thumbPlanAssetIdRaw = (asset.metadata as { plan_asset_id?: unknown } | null)?.plan_asset_id;
+  const thumbPlanAssetId =
+    isThumbnailCurrent && typeof thumbPlanAssetIdRaw === 'string' ? thumbPlanAssetIdRaw : null;
 
   // TD-shot-preview L0a (2026-05-26): surface the asset version as a real
   // badge in the drawer header rather than burying "·v01" deep in the
@@ -312,6 +355,75 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
           />
         )}
 
+      {/* Fix 1b (Key Art, 2026-07-05): IMG-thumbnail is a "pick 1 of 3
+          concepts" slot — surface every concept like VID-shot candidates so
+          Director sees all of them and picks one (pipeline-stages otherwise
+          exposes only the latest v03). Approving one → single-approved
+          invalidates the others → ONE publish (atomic EXEC-PUB claim), which
+          is why this drawer path is safer than the kebab (that fired 3 approves
+          at once). Reuses CandidatesStrip + PilotApproveButtons; strip
+          self-hides when ≤1. Mirrors the VID-shot branch: REVIEW/INVALIDATED →
+          Approve/Reject, APPROVED → Send to revision. */}
+      {isThumbnailCurrent && (
+        <>
+          <CandidatesStrip
+            currentAssetId={asset.id}
+            label={`Key Art concepts (${thumbnailSiblings.length})`}
+            candidates={thumbnailSiblings.map((a) => ({
+              id: a.id,
+              filename: a.filename,
+              status: a.status,
+              staging_path: a.staging_path,
+              drive_path: a.drive_path,
+              drive_web_view_url: a.drive_web_view_url,
+              metadata: a.metadata as never,
+            }))}
+            onPick={(id) => onPickAsset?.(id)}
+          />
+          {(asset.status === 'REVIEW' || asset.status === 'INVALIDATED') && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="review"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
+          )}
+          {asset.status === 'APPROVED' && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="approved"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
+          )}
+          {/* Fix 3 (Key Art, q10 = plan + upload): Edit the concept plan.
+              Opens the linked SPC-thumb_plan (JSON of the 3 concepts) in the
+              shared EditorModal. When the plan is APPROVED the modal is
+              read-only and tells the Director to request revision first; the
+              image-upload path is the ImageUploadBlock above. Re-approving the
+              edited plan re-renders the variants via computeNextEvents. */}
+          {thumbPlanAssetId && (
+            <div className="flex items-center gap-2 pt-2 border-t border-glass">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setPlanEditorOpen(true)}
+                title="Open the Key Art concept plan (SPC-thumb_plan) to view or edit the 3 concepts"
+              >
+                <Pencil size={12} /> Edit plan
+              </Button>
+              <span className="text-[11px] text-text-muted">
+                Edit the concept JSON, then re-approve the plan to re-render the variants.
+              </span>
+            </div>
+          )}
+        </>
+      )}
+
       {/* VGEN VID-shot: show Universal Core controls + per-shot approve/reject
           so Director can act on a shot from the activity feed Preview drawer
           and the EpisodeTimeline "Open shot →" link. Regenerate creates a NEW
@@ -437,6 +549,18 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
         </>
       )}
       <DriveBadge asset={asset} />
+
+      {thumbPlanAssetId && (
+        <EditorModal
+          open={planEditorOpen}
+          onClose={() => setPlanEditorOpen(false)}
+          assetId={thumbPlanAssetId}
+          onSaved={() => {
+            void mutate();
+            onAssetChanged?.();
+          }}
+        />
+      )}
     </div>
   );
 }

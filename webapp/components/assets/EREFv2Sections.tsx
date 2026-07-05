@@ -355,14 +355,21 @@ export interface CandidatesStripProps {
   currentAssetId: string;
   candidates: CandidateAsset[];
   onPick: (assetId: string) => void;
+  /**
+   * Heading above the strip. Defaults to the VID-shot wording; Key Art
+   * (IMG-thumbnail) passes "Key Art concepts (N)" since its siblings are
+   * distinct concepts, not shot renders. Count is caller-supplied so the
+   * wording stays flexible.
+   */
+  label?: string;
 }
 
-export function CandidatesStrip({ currentAssetId, candidates, onPick }: CandidatesStripProps) {
+export function CandidatesStrip({ currentAssetId, candidates, onPick, label }: CandidatesStripProps) {
   if (candidates.length <= 1) return null;
   return (
     <div className="rounded-lg border border-glass p-3 space-y-2" style={{ background: 'var(--bg-elevated)' }}>
       <div className="text-xs uppercase tracking-wider text-text-muted">
-        Candidates for this shot ({candidates.length})
+        {label ?? `Candidates for this shot (${candidates.length})`}
       </div>
       <div className="flex flex-wrap gap-2">
         {candidates.map((c) => {
