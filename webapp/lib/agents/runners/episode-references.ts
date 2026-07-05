@@ -103,7 +103,7 @@ import { findApprovedAsset } from '../upstream';
 import { loadEpisodeCastSlugs } from '../episode-cast';
 import { logEvent } from '../../api/events';
 import { agentDisplayName } from '../../api/agent-names';
-import { anchorVisualGateEnabled } from '../chain-flags';
+import { anchorVisualGateEnabled, resolveReferenceRegenCap } from '../chain-flags';
 import type { AgentInputs } from '../types';
 import type {
   GovernanceModeNum,
@@ -1949,6 +1949,9 @@ export async function runEpisodeReferences(
   const epCode = episodeCode ?? ep?.episode_code ?? 'SS-unknown';
   const governanceMode = ((ep?.governance_mode ?? 1) as GovernanceModeNum) || 1;
   const episodeId = ep?.id ?? inputs.episode_id;
+  // Per-episode reference-regen cap (Director 2026-07-06 — Episode Settings).
+  // Overrides EREF_MAX_RETRIES via episodes.metadata.reference_regen_cap.
+  const maxRetries = resolveReferenceRegenCap(ep?.metadata);
 
   // ── TD-49 Phase 2 P2.3 anchor pair branch ─────────────────────────────────
   // When the Designer Plan carries an anchor_pair block, the Artist diverges
@@ -2316,7 +2319,7 @@ export async function runEpisodeReferences(
     let attemptVersion = 0;
     let shotFailReason: string | undefined;
 
-    for (let retry = 0; retry <= EREF_MAX_RETRIES; retry++) {
+    for (let retry = 0; retry <= maxRetries; retry++) {
       attemptVersion++;
       const triggeredBy: GenerationTriggeredBy = retry === 0 ? 'pipeline' : 'auto_regen';
 
@@ -2494,7 +2497,7 @@ export async function runEpisodeReferences(
         break;
       }
       // REGENERATE
-      if (retry < EREF_MAX_RETRIES && latestReview.suggested_prompt_v2) {
+      if (retry < maxRetries && latestReview.suggested_prompt_v2) {
         retryHistory.push({
           at: new Date().toISOString(),
           reason: latestReview.issues.map((i) => i.description).join('; ').slice(0, 400) || 'AI verdict REGENERATE',

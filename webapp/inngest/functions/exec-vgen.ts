@@ -49,7 +49,7 @@ import {
 } from '@/lib/api/animatic-shotlist';
 import { isVgenCancelled, clearVgenCancel } from '@/lib/api/vgen-cancel';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
-import { animatorChainEnabled } from '@/lib/agents/chain-flags';
+import { animatorChainEnabled, resolveVideoRegenCap } from '@/lib/agents/chain-flags';
 
 const EXEC_VGEN_EXPECTED_SECONDS = 150;
 
@@ -378,32 +378,48 @@ export const execVgenRun = inngest.createFunction(
       const normShot = (s: string | null | undefined): string =>
         (s ?? '').toUpperCase().match(/A\d+-SC\d+-SH\d+/)?.[0] ?? (s ?? '');
       const target = normShot(shotId);
-      const existingShotVid = await step.run('shot-dedup-check', async () => {
+      // Per-episode video-regen cap (Director 2026-07-06 — Episode Settings).
+      // Count existing VID-shot rows for THIS shot and block automatic re-gen
+      // once we hit episodes.metadata.video_regen_cap (default 1 → today's
+      // "one auto-render then stop"). Director's explicit regenerate surface
+      // (regenerate:true) always bypasses this.
+      const dedup = await step.run('shot-dedup-check', async () => {
         const supabase = createSupabaseServiceRoleClient();
+        const { data: epRow } = await supabase
+          .from('episodes')
+          .select('metadata')
+          .eq('id', episodeId)
+          .maybeSingle();
+        const cap = resolveVideoRegenCap((epRow as { metadata?: unknown } | null)?.metadata);
         const { data: vidRows } = await supabase
           .from('assets')
           .select('id,metadata')
           .eq('episode_id', episodeId)
           .like('file_type', 'VID-shot%');
+        let count = 0;
+        let lastId: string | null = null;
         for (const row of (vidRows ?? []) as Array<{ id: string; metadata?: unknown }>) {
           const sid = (row.metadata as { shot_id?: unknown } | null)?.shot_id;
-          if (typeof sid === 'string' && normShot(sid) === target && target) return row.id;
+          if (typeof sid === 'string' && normShot(sid) === target && target) {
+            count++;
+            lastId = row.id;
+          }
         }
-        return null;
+        return { count, lastId, cap };
       });
-      if (existingShotVid) {
+      if (dedup.lastId && dedup.count >= dedup.cap) {
         await step.run('complete-as-shot-duplicate', async () => {
           const supabase = createSupabaseServiceRoleClient();
           const label = shortShotLabel(shotId);
-          await markJobCompleted(supabase, job.id, existingShotVid);
+          await markJobCompleted(supabase, job.id, dedup.lastId!);
           await logEvent(supabase, {
             event_type: 'agent_completed',
             severity: 'warning',
             title: `${agentDisplayName('EXEC-VGEN')} re-gen blocked${label ? ` — ${label}` : ''}`,
-            description: `Shot ${shotId} already has a VID-shot (asset ${existingShotVid}) — automatic re-generation suppressed, $0 spent. Re-render requires the explicit Director regenerate surface after visual review.`,
+            description: `Shot ${shotId} already has ${dedup.count} VID-shot(s) (cap ${dedup.cap}) — automatic re-generation suppressed, $0 spent. Re-render requires the explicit Director regenerate surface after visual review.`,
             actor: 'EXEC-VGEN',
             episode_id: episodeId,
-            asset_id: existingShotVid,
+            asset_id: dedup.lastId!,
             job_id: job.id,
             metadata: { agent: 'EXEC-VGEN', kind: 'regen_blocked', shot_id: shotId },
           });
@@ -412,7 +428,7 @@ export const execVgenRun = inngest.createFunction(
           ok: true,
           kind: 'regen-blocked',
           jobId: job.id,
-          assetId: existingShotVid,
+          assetId: dedup.lastId,
           cost_usd: 0,
         };
       }

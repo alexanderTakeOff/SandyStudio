@@ -73,6 +73,12 @@ const Body = z
     // which Polina"), not additive. `null` clears it (→ falls back to the global
     // env default). Validated ≤ the effective budget_ceiling below.
     concierge_cap_usd: z.number().finite().positive().max(10000).nullable().optional(),
+    // Per-episode retry caps (Director 2026-07-06) — attempts before HALT.
+    // Metadata (no migration). `null` clears → falls back to env/hard default.
+    // prompt-writing default 2, reference-gen default 2, video-gen default 1.
+    prompt_revision_cap: z.number().int().positive().max(20).nullable().optional(),
+    reference_regen_cap: z.number().int().positive().max(20).nullable().optional(),
+    video_regen_cap: z.number().int().positive().max(20).nullable().optional(),
     generation_config: GenerationConfig.optional(),
   })
   .strict();
@@ -139,6 +145,10 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   if (body.pipeline_mode !== undefined) {
     patch.pipeline_mode = body.pipeline_mode;
   }
+  // Per-episode retry caps (metadata; no cross-field validation needed).
+  if (body.prompt_revision_cap !== undefined) patch.prompt_revision_cap = body.prompt_revision_cap;
+  if (body.reference_regen_cap !== undefined) patch.reference_regen_cap = body.reference_regen_cap;
+  if (body.video_regen_cap !== undefined) patch.video_regen_cap = body.video_regen_cap;
   // Per-episode Polina cap (metadata). Must not exceed the effective total ceiling
   // — it is a slice of the budget, not an addition on top of it.
   if (body.concierge_cap_usd !== undefined) {

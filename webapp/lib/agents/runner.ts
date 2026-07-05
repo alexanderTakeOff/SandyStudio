@@ -33,6 +33,7 @@ import { canonicalShotId } from '../api/shot-id';
 import { parseShotPlanContract } from '../api/shot-plan-contract';
 import { assertBudgetAvailable, releaseBudgetReservation, BudgetExceededError } from '../budget';
 import { applyCriticVerdict, type CriticVerdict } from './critic-loop';
+import { resolvePromptRevisionCap } from './chain-flags';
 import {
   SEEDANCE_COST_USD_PER_SECOND,
   SEEDANCE_RESOLUTION_COST_MULT,
@@ -921,6 +922,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           actor: 'EXEC-CREAD',
           reviewKind:
             creadPhase === 'eref' ? 'ref_plan_readability' : 'shot_plan_readability',
+          cap: resolvePromptRevisionCap((inputs.episode as { metadata?: unknown } | undefined)?.metadata),
         });
 
         // Save the REV-readability verdict row directly (skip_save bypass) —
@@ -1036,6 +1038,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             shotId: r.reviewedAssetId, // storyboard-level: shot label = asset id
             actor: 'EXEC-CREAD',
             reviewKind: 'storyboard_readability',
+            cap: resolvePromptRevisionCap((inputs.episode as { metadata?: unknown } | undefined)?.metadata),
           });
           return {
             outputKind: 'text-md',
@@ -1393,6 +1396,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             shotId,
             actor: 'EXEC-VPREV',
             reviewKind: 'shot_plan',
+            cap: resolvePromptRevisionCap((inputs.episode as { metadata?: unknown } | undefined)?.metadata),
           });
           return {
             outputKind: 'text-md',
@@ -1501,6 +1505,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             shotId,
             actor: 'EXEC-EPREV',
             reviewKind: 'ref_plan',
+            cap: resolvePromptRevisionCap((inputs.episode as { metadata?: unknown } | undefined)?.metadata),
           });
           return {
             outputKind: 'text-md',

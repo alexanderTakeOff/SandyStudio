@@ -124,6 +124,54 @@ export function shotRegenCap(): number {
 }
 
 /**
+ * Per-episode retry caps (Director 2026-07-06 — Episode Settings). Three
+ * attempt limits the Director can tune per episode before the pipeline HALTs
+ * and escalates to her:
+ *   - prompt_revision_cap  (default 2) — designer/author re-writes after a
+ *     critic REVISE, before HALT (critic-loop).
+ *   - reference_regen_cap  (default 2) — EREF auto-regeneration attempts before
+ *     the shot lands HUMAN_REVIEW (episode-references loop).
+ *   - video_regen_cap      (default 1) — automatic VID-shot generations for a
+ *     shot before further auto-gen is suppressed (exec-vgen dedup gate).
+ * Each falls back to an env var, then the hard default. `resolve*` overlays the
+ * per-episode `episodes.metadata.<key>` over that env/default (mirrors
+ * resolveConciergeCapUsd in lib/concierge/cost.ts).
+ */
+function capFromMetadata(metadata: unknown, key: string, envDefault: () => number): number {
+  const raw = (metadata as Record<string, unknown> | null | undefined)?.[key];
+  const n =
+    typeof raw === 'number' ? raw : typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : envDefault();
+}
+
+export function promptRevisionCap(): number {
+  const v = process.env.PROMPT_REVISION_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 2;
+}
+export function resolvePromptRevisionCap(metadata: unknown): number {
+  return capFromMetadata(metadata, 'prompt_revision_cap', promptRevisionCap);
+}
+
+export function referenceRegenCap(): number {
+  const v = process.env.REFERENCE_REGEN_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 2;
+}
+export function resolveReferenceRegenCap(metadata: unknown): number {
+  return capFromMetadata(metadata, 'reference_regen_cap', referenceRegenCap);
+}
+
+export function videoRegenCap(): number {
+  const v = process.env.VIDEO_REGEN_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+export function resolveVideoRegenCap(metadata: unknown): number {
+  return capFromMetadata(metadata, 'video_regen_cap', videoRegenCap);
+}
+
+/**
  * ANCHOR_VISUAL_GATE — run the EREF AI checker on anchor frames too (2026-06-14,
  * Director q "default ON"). Advisory: stamps a visual verdict + flags intruders
  * (extraneous_objects) into the anchor's metadata and emits a stat on bypass; it

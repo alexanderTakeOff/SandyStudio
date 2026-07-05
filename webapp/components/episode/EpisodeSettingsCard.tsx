@@ -62,6 +62,16 @@ function readConciergeCap(meta: Record<string, unknown> | null | undefined): num
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
+// Per-episode retry caps (Director 2026-07-06) — attempts before HALT.
+const DEFAULT_PROMPT_REVISION_CAP = 2;
+const DEFAULT_REFERENCE_REGEN_CAP = 2;
+const DEFAULT_VIDEO_REGEN_CAP = 1;
+function readCap(meta: Record<string, unknown> | null | undefined, key: string): number | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const v = Number((meta as Record<string, unknown>)[key]);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 export function EpisodeSettingsCard({
   episodeId,
   initialMetadata,
@@ -81,6 +91,17 @@ export function EpisodeSettingsCard({
     const cap = readConciergeCap(initialMetadata ?? null);
     return cap != null ? String(cap) : String(DEFAULT_CONCIERGE_CAP_USD);
   });
+  // Retry caps (Director 2026-07-06). Prefilled to their defaults when unset.
+  const [promptCapInput, setPromptCapInput] = useState(() =>
+    String(readCap(initialMetadata ?? null, 'prompt_revision_cap') ?? DEFAULT_PROMPT_REVISION_CAP),
+  );
+  const [refCapInput, setRefCapInput] = useState(() =>
+    String(readCap(initialMetadata ?? null, 'reference_regen_cap') ?? DEFAULT_REFERENCE_REGEN_CAP),
+  );
+  const [videoCapInput, setVideoCapInput] = useState(() =>
+    String(readCap(initialMetadata ?? null, 'video_regen_cap') ?? DEFAULT_VIDEO_REGEN_CAP),
+  );
+  const [capsPending, setCapsPending] = useState(false);
   const [pending, setPending] = useState(false);
   const [budgetPending, setBudgetPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +130,15 @@ export function EpisodeSettingsCard({
           setBudgetInput(cap != null ? String(cap) : String(DEFAULT_TOTAL_BUDGET_USD));
           const polina = readConciergeCap(j.data.metadata ?? null);
           setConciergeInput(polina != null ? String(polina) : String(DEFAULT_CONCIERGE_CAP_USD));
+          setPromptCapInput(
+            String(readCap(j.data.metadata ?? null, 'prompt_revision_cap') ?? DEFAULT_PROMPT_REVISION_CAP),
+          );
+          setRefCapInput(
+            String(readCap(j.data.metadata ?? null, 'reference_regen_cap') ?? DEFAULT_REFERENCE_REGEN_CAP),
+          );
+          setVideoCapInput(
+            String(readCap(j.data.metadata ?? null, 'video_regen_cap') ?? DEFAULT_VIDEO_REGEN_CAP),
+          );
         },
       )
       .catch(() => {
@@ -161,6 +191,48 @@ export function EpisodeSettingsCard({
       setError(err instanceof Error ? err.message : 'Update failed');
     } finally {
       setBudgetPending(false);
+    }
+  }
+
+  // Retry caps (Director 2026-07-06). Whole numbers 1–20; empty clears the
+  // per-episode override (falls back to the env/hard default).
+  async function saveCaps() {
+    setError(null);
+    const parseIntCap = (raw: string, label: string): { ok: boolean; value: number | null } => {
+      const t = raw.trim();
+      if (t === '') return { ok: true, value: null };
+      const n = Number(t);
+      if (!Number.isInteger(n) || n <= 0 || n > 20) {
+        setError(`${label} must be a whole number 1–20 (or empty for the default).`);
+        return { ok: false, value: null };
+      }
+      return { ok: true, value: n };
+    };
+    const prompt = parseIntCap(promptCapInput, 'Prompt attempts');
+    if (!prompt.ok) return;
+    const ref = parseIntCap(refCapInput, 'Reference attempts');
+    if (!ref.ok) return;
+    const video = parseIntCap(videoCapInput, 'Video attempts');
+    if (!video.ok) return;
+    setCapsPending(true);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/settings`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          prompt_revision_cap: prompt.value,
+          reference_regen_cap: ref.value,
+          video_regen_cap: video.value,
+        }),
+      });
+      if (!res.ok) {
+        const b = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(b.error ?? `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setCapsPending(false);
     }
   }
 
@@ -374,6 +446,64 @@ export function EpisodeSettingsCard({
                 className="px-3 py-1 rounded-md text-xs font-medium bg-[var(--accent-primary)] text-white disabled:opacity-50"
               >
                 {budgetPending ? 'Saving…' : 'Save budget'}
+              </button>
+            </div>
+          </div>
+
+          {/* Retry caps (Director 2026-07-06) — attempts before HALT + escalation.
+              Empty = fall back to the env/hard default (2 / 2 / 1). */}
+          <div className="border-t border-glass pt-3">
+            <div className="text-sm font-medium text-text-primary">Retry caps (попытки до HALT)</div>
+            <div className="text-xs text-text-muted mt-0.5 leading-relaxed">
+              Сколько раз автоматически повторить перед остановкой и эскалацией Директору. Пусто = дефолт.
+            </div>
+            <div className="flex flex-wrap items-end gap-3 mt-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">Промпты</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={promptCapInput}
+                  onChange={(e) => setPromptCapInput(e.target.value)}
+                  placeholder={String(DEFAULT_PROMPT_REVISION_CAP)}
+                  disabled={capsPending}
+                  className="w-20 px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">Рефы</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={refCapInput}
+                  onChange={(e) => setRefCapInput(e.target.value)}
+                  placeholder={String(DEFAULT_REFERENCE_REGEN_CAP)}
+                  disabled={capsPending}
+                  className="w-20 px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">Видео</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={videoCapInput}
+                  onChange={(e) => setVideoCapInput(e.target.value)}
+                  placeholder={String(DEFAULT_VIDEO_REGEN_CAP)}
+                  disabled={capsPending}
+                  className="w-20 px-2 py-1 rounded-md bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void saveCaps()}
+                disabled={capsPending}
+                className="px-3 py-1 rounded-md text-xs font-medium bg-[var(--accent-primary)] text-white disabled:opacity-50"
+              >
+                {capsPending ? 'Saving…' : 'Save caps'}
               </button>
             </div>
           </div>
