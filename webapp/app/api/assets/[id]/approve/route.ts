@@ -37,7 +37,11 @@ import {
   type SupabaseClientLike,
 } from '@/lib/agents/next-events';
 import { EPISODE_CAST_FILE_TYPE, syncAppearsIn } from '@/lib/agents/episode-cast';
-import { collectRefCriticNotes, mergeRevisionNote } from '@/lib/api/critic-notes';
+import {
+  collectRefCriticNotes,
+  collectShotCriticNotes,
+  mergeRevisionNote,
+} from '@/lib/api/critic-notes';
 import {
   resolveSlotDescriptor,
   demoteSiblingApproved,
@@ -461,6 +465,55 @@ export const POST = withApiHandler(async (req, ctx) => {
         // eslint-disable-next-line no-console
         console.warn(
           `[approve] EREF revision on ${asset.filename ?? asset.id}: could not resolve a shotId — note saved on the asset, but no Designer re-fire`,
+        );
+      }
+    }
+
+    // Shot-plan (video) revision — parity with the reference block above. Fix
+    // 2026-07-06: this was a DEAD-END. revisionEventForAsset has NO SPC-shot_plan
+    // / REV-shot_plan mapping and the ref block excludes them, so a Director
+    // shot-plan Revise (proven: SH08 E16 kebab revoke 00:46 → zero EXEC-VANIM
+    // re-run) sat in REVISION with nobody re-authoring — even though animator.ts
+    // already injects revisionNote as HARD ACCEPTANCE CRITERIA. Route it to the
+    // Animator with the note (merged with the shot-plan critics' criteria), same
+    // shape as refs. Covers the plan itself AND its critic review (REV-shot_plan).
+    // VID-shot regen stays on /regenerate-video (separate per-shot path).
+    const isShotPlanRevision =
+      ft.startsWith('SPC-shot_plan') || ft.startsWith('REV-shot_plan');
+    if (isShotPlanRevision) {
+      const meta = asset.metadata as { shot_id?: unknown } | null;
+      const shotIdFromMeta =
+        typeof meta?.shot_id === 'string' ? meta.shot_id : null;
+      const shotIdFromType = ft.startsWith('SPC-shot_plan-')
+        ? ft.slice('SPC-shot_plan-'.length)
+        : ft.startsWith('REV-shot_plan-')
+          ? ft.slice('REV-shot_plan-'.length)
+          : null;
+      const shotIdFromName =
+        typeof asset.filename === 'string'
+          ? asset.filename.match(/sh\d+/i)?.[0]?.toUpperCase() ?? null
+          : null;
+      const shotId = shotIdFromMeta || shotIdFromType || shotIdFromName;
+      if (shotId) {
+        const criticBullets = await collectShotCriticNotes(
+          supabase,
+          asset.episode_id,
+          shotId,
+        );
+        const revisionNote = mergeRevisionNote(body.note, criticBullets);
+        const { ids } = await inngest.send({
+          name: 'sandystudio/exec-vanim/plan',
+          data: {
+            episodeId: asset.episode_id,
+            shotId,
+            revisionNote,
+          } as never,
+        });
+        firedEvents.push({ name: 'sandystudio/exec-vanim/plan', ids });
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[approve] shot-plan revision on ${asset.filename ?? asset.id}: could not resolve a shotId — note saved on the asset, but no Animator re-fire`,
         );
       }
     }

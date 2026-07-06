@@ -115,6 +115,55 @@ export async function collectRefCriticNotes(
 }
 
 /**
+ * Shot-plan (video) counterpart of collectRefCriticNotes: newest VPREV
+ * (`REV-shot_plan*`) + CREAD-vanim (`REV-readability`, `phase='vanim'`) remarks
+ * for `shotId`, as revisionNote bullets. So a Director REVISION on a shot plan
+ * re-authors the Animator's Plan WITH the critics' hard criteria, not just the
+ * terse note — parity with the reference path (fix 2026-07-06: the video plan
+ * revision was a dead-end; SH08 E16 revoke produced zero re-author). Best-effort;
+ * never throws. Kept parallel to the ref collector so the working ref path is
+ * untouched.
+ */
+export async function collectShotCriticNotes(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  shotId: string,
+): Promise<string[]> {
+  const { data } = await supabase
+    .from('assets')
+    .select('file_type,content,metadata,created_at')
+    .eq('episode_id', episodeId)
+    .or('file_type.like.REV-shot_plan%,file_type.eq.REV-readability')
+    .order('created_at', { ascending: false });
+
+  const rows = (data ?? []) as RevRow[];
+  const bullets: string[] = [];
+  const seenFamily = new Set<string>();
+
+  for (const r of rows) {
+    const meta = (r.metadata ?? null) as Record<string, unknown> | null;
+    // CREAD covers eref + vanim phases — only vanim-phase readability belongs to
+    // a shot-plan (video) revision.
+    if (r.file_type === 'REV-readability' && meta?.phase !== 'vanim') continue;
+
+    const body = parseLastJsonBlock(r.content);
+    const shotMatches =
+      (typeof meta?.shot_id === 'string' && meta.shot_id === shotId) ||
+      r.file_type === `REV-shot_plan-${shotId}` ||
+      (body != null && typeof body.shot_id === 'string' && body.shot_id === shotId);
+    if (!shotMatches) continue;
+
+    const family = r.file_type.startsWith('REV-shot_plan') ? 'vprev' : 'cread';
+    if (seenFamily.has(family)) continue; // newest-wins
+    seenFamily.add(family);
+
+    const fromMeta = extractBullets(meta);
+    bullets.push(...(fromMeta.length > 0 ? fromMeta : extractBullets(body)));
+  }
+  return bullets;
+}
+
+/**
  * Merge the Director's terse revision note with the critics' acceptance-criteria
  * bullets into ONE revisionNote the Designer treats as hard contract. Returns
  * null when there is nothing to say.
