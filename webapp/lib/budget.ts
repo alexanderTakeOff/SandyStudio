@@ -29,6 +29,18 @@ import type { AgentId } from './agents/types';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
+/**
+ * Default per-episode budget ceiling in USD (Director 2026-07-06 — applied at
+ * episode CREATION as a real hard limit, not just a UI prefill that needs a
+ * manual Save). A series-level `episode_budget_ceiling` overrides it; otherwise
+ * every new episode starts with this cap. Env `EPISODE_BUDGET_DEFAULT_USD`
+ * overrides the built-in 150.
+ */
+export function episodeBudgetDefaultUsd(): number {
+  const n = Number(process.env.EPISODE_BUDGET_DEFAULT_USD);
+  return Number.isFinite(n) && n > 0 ? n : 150;
+}
+
 export class BudgetExceededError extends Error {
   readonly episodeId: string;
   readonly currentSpent: number;

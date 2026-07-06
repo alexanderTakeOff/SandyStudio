@@ -15,6 +15,13 @@ import {
   generateBriefMarkdown,
   type BriefInput,
 } from '@/lib/agents/providers/anthropic-brief';
+import { episodeBudgetDefaultUsd } from '@/lib/budget';
+import { conciergeBudgetCapConfig } from '@/lib/concierge/cost';
+import {
+  promptRevisionCap,
+  referenceRegenCap,
+  videoRegenCap,
+} from '@/lib/agents/chain-flags';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -84,6 +91,19 @@ export const POST = withApiHandler(async (req) => {
   // (note: SS- prefix lives inside series.code, e.g. "SS-S01"; keep that.)
   const briefFilename = `${series.code}-${body.episode_code}-SPC-brief-v01-DRAFT.md`;
 
+  // Default caps applied AT CREATION as real hard limits (Director 2026-07-06 —
+  // «default numbers applied from the beginning, not after manual saving»). The
+  // episode is born with a real budget ceiling + the Polina slice + the three
+  // retry caps written into metadata, so enforcement + the Settings UI show live
+  // saved values, never unset placeholders. Each default is sourced from its
+  // canonical env/config reader (no magic numbers): budget 150, Polina 30,
+  // prompt/ref/video retry 2/2/1.
+  const epMetadata = {
+    concierge_cap_usd: conciergeBudgetCapConfig().capUsd,
+    prompt_revision_cap: promptRevisionCap(),
+    reference_regen_cap: referenceRegenCap(),
+    video_regen_cap: videoRegenCap(),
+  };
   // Insert episode
   const epPayload = {
     // 0038 (2026-06-14): store the series UUID (FK), not the code. Root fix for
@@ -93,8 +113,11 @@ export const POST = withApiHandler(async (req) => {
     title_working: body.title_working,
     status: 'BRIEF_PENDING' as const,
     governance_mode: body.governance_mode,
-    budget_ceiling: series.episode_budget_ceiling ?? null,
+    // A series-level ceiling still wins; otherwise apply the default cap (not
+    // null → unlimited). This is the actual hard-limit gap Director flagged.
+    budget_ceiling: series.episode_budget_ceiling ?? episodeBudgetDefaultUsd(),
     budget_spent: 0,
+    metadata: epMetadata,
   };
   const { data: ep, error: epErr } = await supabase
     .from('episodes')
