@@ -34,9 +34,15 @@ interface FanoutShotsArgs {
   reason?: string;
 }
 
+// Idempotency keys on the DESIGNER's OWN output — the plan — NOT the downstream
+// artifact (image/video). Regression 2026-07-04 (`5cfc64d`): keying on the final
+// image (`IMG-episode_ref`, which lags ~9min behind the designer) meant every
+// re-call during the gen window re-fired the designer for shots whose plan already
+// existed → 114 plan versions / 32 shots on E16 (v7 on some), vs 27/24 on E15. A
+// stage is "done" for a shot when THAT stage's output (the plan) exists.
 const STAGE_CONFIG = {
-  reference: { agentCode: 'EXEC-EREF-DESIGNER', outputPrefix: 'IMG-episode_ref' },
-  video: { agentCode: 'EXEC-VANIM', outputPrefix: 'VID-shot' },
+  reference: { agentCode: 'EXEC-EREF-DESIGNER', planPrefix: 'SPC-ref_plan' },
+  video: { agentCode: 'EXEC-VANIM', planPrefix: 'SPC-shot_plan' },
 } as const;
 
 /** Extract the zero-padded shot number (e.g. "08") from a shot_id or filename. */
@@ -71,7 +77,7 @@ function safeParse(raw: string): Record<string, unknown> {
 export const fanoutShots: Tool<FanoutShotsArgs> = {
   name: 'fanoutShots',
   description:
-    "Fan out a per-shot Designer stage across ALL shots that still need it — the reliable, one-call fan-out (what the Director's 'Approve Direction & Fan Out' button does). stage='reference' fires the Reference Designer (EXEC-EREF-DESIGNER) per shot; stage='video' fires the Video Designer (EXEC-VANIM) per shot. Use this AFTER the pilot shots are approved to generate every remaining shot in one call, instead of triggering shots one-by-one. Each fanned shot then self-drives through its Critic + Executor (reference image / shot video). CRITICAL: do NOT use triggerAgent(EXEC-EREF-DESIGNER / EXEC-VANIM) for fan-out — that fires WITHOUT a shotId and the Designer HARD-FAILS 'requires shotId in event payload'. This tool passes the shotId per shot, which is the whole point. By default it targets every APPROVED-storyboard shot missing the stage output (skipping excluded shots); pass shotIds to target specific shots. Verbal approval required (auto-passes in bold Mode 3).",
+    "Fan out a per-shot Designer stage across ALL shots that still need it — the reliable, one-call fan-out (what the Director's 'Approve Direction & Fan Out' button does). stage='reference' fires the Reference Designer (EXEC-EREF-DESIGNER) per shot; stage='video' fires the Video Designer (EXEC-VANIM) per shot. Use this AFTER the pilot shots are approved to generate every remaining shot in one call, instead of triggering shots one-by-one. Each fanned shot then self-drives through its Critic + Executor (reference image / shot video). CRITICAL: do NOT use triggerAgent(EXEC-EREF-DESIGNER / EXEC-VANIM) for fan-out — that fires WITHOUT a shotId and the Designer HARD-FAILS 'requires shotId in event payload'. This tool passes the shotId per shot, which is the whole point. By default it targets every APPROVED-storyboard shot that has NO plan yet for this stage (skipping excluded shots AND shots already planned — so calling it repeatedly during generation is safe and will NOT re-fire already-planned shots); pass shotIds to force specific shots. Verbal approval required (auto-passes in bold Mode 3).",
   mutating: true,
   schema: {
     type: 'function',
@@ -161,14 +167,19 @@ export const fanoutShots: Tool<FanoutShotsArgs> = {
         );
       }
 
-      // Shots that already have this stage's output.
-      const { data: outs } = await ctx.supabase
+      // Shots whose designer already ran — i.e. a PLAN exists (any status). This
+      // is the stage's OWN output; keying here (not on the downstream image/video)
+      // is what makes the fan-out idempotent, so a re-call during the ~9min gen
+      // window does NOT re-fire the designer for shots already planned. A shot
+      // that genuinely needs re-planning is the critic's REVISE loop, or an
+      // explicit shotIds override — never a blind whole-episode re-fan.
+      const { data: plans } = await ctx.supabase
         .from('assets')
         .select('filename')
         .eq('episode_id', episodeId)
-        .like('file_type', `${cfg.outputPrefix}%`);
+        .like('file_type', `${cfg.planPrefix}%`);
       const doneNums = new Set(
-        ((outs ?? []) as { filename: string }[])
+        ((plans ?? []) as { filename: string }[])
           .map((o) => shotNum(o.filename))
           .filter((n): n is string => n !== null),
       );
