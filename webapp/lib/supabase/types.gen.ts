@@ -611,6 +611,96 @@ export type Database = {
           },
         ]
       }
+      episode_scorecard: {
+        Row: {
+          agent_failures: number
+          approvals_creative_ai: number
+          approvals_creative_human: number
+          chain_fired_advances: number
+          churn_refires: number
+          codeable_touches_ai_ep: number
+          codeable_touches_human: number
+          codeable_touches_total: number
+          created_at: string
+          episode_id: string
+          failures_by_stage: Json
+          id: string
+          kpi1_runs_per_shot: number
+          latency_first_final_cut_s: number | null
+          metrics: Json
+          phase: string
+          runs_by_stage: Json
+          series_id: string | null
+          shot_count: number
+          stuck_shots_final: number
+          total_advances: number
+          total_agent_runs: number
+        }
+        Insert: {
+          agent_failures: number
+          approvals_creative_ai: number
+          approvals_creative_human: number
+          chain_fired_advances: number
+          churn_refires: number
+          codeable_touches_ai_ep: number
+          codeable_touches_human: number
+          codeable_touches_total: number
+          created_at?: string
+          episode_id: string
+          failures_by_stage?: Json
+          id?: string
+          kpi1_runs_per_shot: number
+          latency_first_final_cut_s?: number | null
+          metrics?: Json
+          phase: string
+          runs_by_stage?: Json
+          series_id?: string | null
+          shot_count: number
+          stuck_shots_final: number
+          total_advances: number
+          total_agent_runs: number
+        }
+        Update: {
+          agent_failures?: number
+          approvals_creative_ai?: number
+          approvals_creative_human?: number
+          chain_fired_advances?: number
+          churn_refires?: number
+          codeable_touches_ai_ep?: number
+          codeable_touches_human?: number
+          codeable_touches_total?: number
+          created_at?: string
+          episode_id?: string
+          failures_by_stage?: Json
+          id?: string
+          kpi1_runs_per_shot?: number
+          latency_first_final_cut_s?: number | null
+          metrics?: Json
+          phase?: string
+          runs_by_stage?: Json
+          series_id?: string | null
+          shot_count?: number
+          stuck_shots_final?: number
+          total_advances?: number
+          total_agent_runs?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "episode_scorecard_episode_id_fkey"
+            columns: ["episode_id"]
+            isOneToOne: false
+            referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "episode_scorecard_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       episodes: {
         Row: {
           budget_ceiling: number | null

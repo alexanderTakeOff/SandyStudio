@@ -981,6 +981,17 @@ export function createAgentInngestFunction<E extends string>(
         } as never);
       }
 
+      // Autonomy Scorecard snapshot — EXEC-STITCH completing = a final cut was
+      // assembled. Fire-and-forget: the episode-scorecard subscriber computes +
+      // writes the SSOT row and the REV-scorecard .md. Debounced per episode, so
+      // a re-stitch just refreshes. Cannot break the run (own Inngest function).
+      if (spec.agentId === 'EXEC-STITCH' && episodeId) {
+        await step.sendEvent('scorecard-snapshot', {
+          name: 'sandystudio/scorecard/refresh',
+          data: { episodeId },
+        } as never);
+      }
+
       return {
         ok: true,
         jobId: job.id,

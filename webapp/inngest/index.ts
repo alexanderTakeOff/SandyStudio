@@ -39,6 +39,7 @@ import { paEscalationTimer } from './functions/pa-escalation-timer';
 import { paOrphanedAwaitingSweep } from './functions/pa-orphaned-awaiting-sweep';
 import { paBatchStallWatchdog } from './functions/pa-batch-stall-watchdog';
 import { reconcileEpisodeFn } from './functions/reconcile-episode';
+import { episodeScorecard } from './functions/episode-scorecard';
 
 export const functions = [
   // Phase 3 smoke
@@ -84,4 +85,6 @@ export const functions = [
   paBatchStallWatchdog,
   // Фаза 2b — reconciler self-advance (inert unless MECHANICS_AUTO_ADVANCE).
   reconcileEpisodeFn,
+  // Episode Autonomy Scorecard — snapshot (EXEC-STITCH done) + published.
+  episodeScorecard,
 ];

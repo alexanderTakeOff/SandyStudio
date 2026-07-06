@@ -36,6 +36,19 @@ type Events = {
     };
   };
 
+  /**
+   * Episode Autonomy Scorecard — snapshot trigger. Emitted fire-and-forget by
+   * the factory choke-point when EXEC-STITCH completes (a final cut was
+   * assembled). The episode-scorecard subscriber computes KPI-1/KPI-2 from
+   * jobs + activity_events + gate_decision_log and writes the SSOT row + the
+   * REV-scorecard .md. Debounced per episode. `published` phase rides the
+   * existing exec-pub/published event; analytics phase is deferred until
+   * audience metrics are populated.
+   */
+  'sandystudio/scorecard/refresh': {
+    data: BaseEpisodeEvent;
+  };
+
   // ── Фаза 2b — reconciler self-advance trigger ─────────────────────────────
   // Emitted (behind MECHANICS_AUTO_ADVANCE) after any agent completes / on a
   // Director approve / on a shot exclude. The reconcile-episode function reads
