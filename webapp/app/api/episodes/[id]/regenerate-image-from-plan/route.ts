@@ -35,6 +35,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
+import { resolveShotId } from '@/lib/api/shot-id';
 import { inngest } from '@/lib/inngest/client';
 import {
   parseContinuityAnchors,
@@ -74,6 +75,14 @@ export const POST = withApiHandler(async (req, ctx) => {
     .maybeSingle();
   if (epErr) throw new Error(`episode fetch failed: ${epErr.message}`);
   if (!ep) throw new NotFoundError(`Episode ${episodeId}`);
+
+  // Normalize the shot reference at the door (bare "SH18" → canonical
+  // "S{s}-E{e}-SH{n}") using the same resolver the /trigger route applies. Polina
+  // is told bare tokens are enough (tool schema + system prompt), so without this
+  // the strict shot_id cross-check below rejected bare input and she burned
+  // auto-react rounds re-firing with the canonical form until the loop backstop
+  // cut her off. Resolve ONCE here so every downstream compare/lookup is canonical.
+  const shotId = resolveShotId(body.shotId, ep.episode_code);
 
   // ── Validate Plan asset: exists, type, status, episode link ─────────────
   // TD-35: pull content + created_at too so we can run freshness check on
@@ -115,9 +124,9 @@ export const POST = withApiHandler(async (req, ctx) => {
   const planMeta = (plan.metadata ?? null) as { shot_id?: unknown } | null;
   const planShotId =
     typeof planMeta?.shot_id === 'string' ? planMeta.shot_id : null;
-  if (planShotId && planShotId !== body.shotId) {
+  if (planShotId && planShotId !== shotId) {
     throw new ValidationError(
-      `Plan ${body.planAssetId} is for shot ${planShotId}, not ${body.shotId}`,
+      `Plan ${body.planAssetId} is for shot ${planShotId}, not ${shotId}`,
     );
   }
 
@@ -142,7 +151,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       if (!freshness.ok) {
         const detail = formatStaleAnchorMessage(
           body.planAssetId,
-          body.shotId,
+          shotId,
           freshness.stale,
         );
         // Audit the rejection so Director's activity feed shows what was
@@ -150,7 +159,7 @@ export const POST = withApiHandler(async (req, ctx) => {
         await logEvent(supabase, {
           event_type: 'plan_anchor_stale_block',
           severity: 'warning',
-          title: `Image regen blocked — Plan anchors stale (shot ${body.shotId})`,
+          title: `Image regen blocked — Plan anchors stale (shot ${shotId})`,
           description: detail,
           actor: user.id,
           episode_id: episodeId,
@@ -158,7 +167,7 @@ export const POST = withApiHandler(async (req, ctx) => {
           metadata: {
             agent: 'EXEC-EREF',
             operation: 'execute-from-plan-rejected',
-            shot_id: body.shotId,
+            shot_id: shotId,
             plan_asset_id: body.planAssetId,
             stale_anchors: freshness.stale,
             reason: 'PLAN_ANCHOR_STALE',
@@ -181,7 +190,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     agentId: 'EXEC-EREF',
     planAssetId: body.planAssetId,
     principal,
-    shotId: body.shotId,
+    shotId: shotId,
   });
 
   // ── Fire Inngest event ──────────────────────────────────────────────────
@@ -189,7 +198,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     name: 'sandystudio/exec-eref/execute-from-plan',
     data: {
       episodeId,
-      shotId: body.shotId,
+      shotId: shotId,
       planAssetId: body.planAssetId,
       ...(body.anchorTarget ? { anchorTarget: body.anchorTarget } : {}),
     },
@@ -199,7 +208,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   await logEvent(supabase, {
     event_type: 'manual_trigger',
     severity: 'warning',
-    title: `Manual trigger: EXEC-EREF execute-from-plan (shot ${body.shotId})`,
+    title: `Manual trigger: EXEC-EREF execute-from-plan (shot ${shotId})`,
     description: body.reason,
     actor: user.id,
     episode_id: episodeId,
@@ -208,7 +217,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       agent: 'EXEC-EREF',
       operation: 'execute-from-plan',
       event: 'sandystudio/exec-eref/execute-from-plan',
-      shot_id: body.shotId,
+      shot_id: shotId,
       plan_asset_id: body.planAssetId,
       reason: body.reason,
       inngest_event_ids: ids,
@@ -218,7 +227,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   return apiOk({
     triggered: true,
     operation: 'execute-from-plan',
-    shotId: body.shotId,
+    shotId: shotId,
     planAssetId: body.planAssetId,
     planFilename: plan.filename,
     inngest_event: 'sandystudio/exec-eref/execute-from-plan',

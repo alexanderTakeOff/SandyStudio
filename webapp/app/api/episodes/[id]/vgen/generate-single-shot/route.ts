@@ -28,6 +28,7 @@ import {
   ValidationError,
 } from '@/lib/api/errors';
 import { enforceMode, type GovernanceEpisode } from '@/lib/governance';
+import { resolveShotId } from '@/lib/api/shot-id';
 import { inngest } from '@/lib/inngest/client';
 import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
 
@@ -59,7 +60,6 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   const { user, supabase } = await requireDirector();
   const body = await parseJson(req, Body);
-  const shotId = body.shot_id;
 
   // Episode + governance.
   const { data: ep, error: epErr } = await supabase
@@ -69,6 +69,11 @@ export const POST = withApiHandler(async (req, ctx) => {
     .maybeSingle();
   if (epErr) throw new Error(`episode fetch: ${epErr.message}`);
   if (!ep) throw new NotFoundError(`Episode ${episodeId}`);
+
+  // Normalize the shot reference at the door (bare "SH18" → canonical), same as
+  // the /trigger route — so the shot_list lookup and the VID-shot dedup below
+  // compare canonical-to-canonical and never reject a bare id.
+  const shotId = resolveShotId(body.shot_id, ep.episode_code);
 
   const decision = enforceMode('AGENT_RUN', ep as GovernanceEpisode, {
     directorConfirm: body.directorConfirm ?? true,
