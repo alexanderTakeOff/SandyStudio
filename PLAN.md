@@ -20,8 +20,17 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-03 (E13 live-run fixes влиты в master `aa52384`; предыдущий якорь — q9a/themes 2026-06-30)
-Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до конца фазы»).
+Date:   2026-07-08 (системный fetch-timeout + listThemes-фикс влиты в master `71cafd3`; пред. якорь 2026-07-03 `aa52384`)
+Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-08 (E17 root-cause fix ЗАВЕРШЁН → master `71cafd3`). Системный fetch-timeout: все 27 голых `fetch(`
+  в 13 провайдерах переведены на `fetchWithTimeout` (PR #31, 3 коммита: критпуть артист+видео+критик /
+  картинки+auth+drive-чокпоинт / fal+veo-чокпоинты). Закрыл класс «зависший fetch держит слот concurrency →
+  стадия встаёт» (двухдневный E15/E17-firefight). Poll-fetch получили POLL_MS<MAX_WAIT — чинит Idiom-A defeat.
+  Побочно (PR #32, `52eb72b`): починен красный master — коммит `5cfc64d` вшил `import {listThemes}` без
+  реализации → tsc TS2305 + 6 красных тестов; дописан read-only `listThemes` (GET themes-роута). Verify:
+  tsc·0 / vitest 1149/1149. NEXT: свежий эпизод на укреплённом коде — отдельный worktree + стабильный сервер
+  (`inngest start`/`next start`) + reconciler `MECHANICS_AUTO_ADVANCE` с начала эпизода (память E17).
 
 2026-07-03 (E13 live-run fixes → master `aa52384`, FF-merge ветки claude/e13-nudge-badge-casting-fixes,
   21 коммитов). 4 фичи: reference-drawer cluster (select-in-place + reject-on-APPROVED→REVISION, faec572);
@@ -60,15 +69,9 @@ Mode:   ===5=== EDIT (Director-authorized — «погнали, иди до ко
   тесты целы). 6 форков next-events НЕ коллапсил — отложено в S6/S7 (anti-additive: шов не несущий пока).
   NEXT (решает Директор): watchdog-residual full-close · S-reorder (pilot-first ref/video) · или E13 live-прогон.
 
-2026-06-28 (S2(a)+(b) leak-closing SHIPPED → master `862acc8`,`df53433`). (a) dispatch_intent: заменил racy
-  Step 0b (TOCTOU read→оба рендерят: E07×2, E12 SH10 ~$1.21) на АТОМАРНЫЙ claim — migration 0039 table
-  UNIQUE(episode,shot,agent) + RPC `claim_dispatch_intent` (терминальный статус→re-claim, regen жив);
-  input_hash=ledger-колонка НЕ в ключе; снёс дублёр findInFlightShotDuplicate. (b) billing→escalate-not-loop:
-  `provider-failure.ts` классифицирует persistent-billing (fal+OpenAI+Anthropic, text-sig) → factory-catch
-  ставит «⛔ Provider out of funds» + metadata.auto_react=false → `logEvent` НЕ будит Полину (зеркалит
-  isSelfCausedNotify) → петля failure→wake→failure разорвана; within-wake уже ловил SPIN-guard.
-  tsc·0 / vitest 1030 / replay·30. ОСТАТОК (flagged): watchdog может нуднуть 1×/интервал (SPIN-bounded, не
-  петля) — полный close gate'ит watchdog на billing-halted эпизоде, отложено. S2(c) поглощён (b).
+2026-06-28 (S2(a)+(b) leak-closing SHIPPED → master `862acc8`,`df53433`): атомарный dispatch_intent claim
+  (migration 0039, чинит double-render TOCTOU) + billing→escalate-not-loop. Детали → memory
+  `session_2026-06-28_s2-leak-closing.md`.
 
 2026-06-27 PM-2 (S1 cost-visibility SHIPPED). AI-factory autonomy+cost refactor planned (adversarial-hardened
   by 3 lenses; plan `~/.claude/plans/calm-percolating-sifakis.md`; direction in NORTH_STAR §4 + PLANET.md).
