@@ -496,6 +496,10 @@ export async function POST(req: Request) {
   let stalledReason: string | null = null;
   let cutoff = false;
   let prevRoundActed = false;
+  // Last tool failure seen this wake — surfaced in the backstop escalation so the
+  // Director's blocker says WHY the loop stalled (e.g. a repeating validation
+  // error) instead of a bare "6 rounds". A run of these is what drains the fuse.
+  let lastToolError: string | null = null;
   try {
     for (let round = 0; round < maxRounds; round++) {
       roundCount = round + 1;
@@ -626,6 +630,15 @@ export async function POST(req: Request) {
       for (const call of toolCalls) {
         const result = await runAutoReactTool(call, toolCtx);
         const resultJson = JSON.stringify(result);
+        if (!result.ok) {
+          const errText = (result as { error?: unknown }).error;
+          lastToolError = truncateForLog(
+            `${call.function.name}: ${
+              typeof errText === 'string' ? errText : JSON.stringify(errText ?? 'unknown')
+            }`,
+            200,
+          );
+        }
 
         await persistTurn(supabase, parsed.thread_id, {
           role: 'tool',
@@ -661,7 +674,9 @@ export async function POST(req: Request) {
   if (stalledReason || cutoff) {
     const note = stalledReason
       ? `Остановилась: ${stalledReason}. Нужно решение Директора, чтобы продолжить к цели.`
-      : `Уперлась в предохранитель цикла (${maxRounds} раундов) с незавершённой задачей — нужно решение/уточнение Директора.`;
+      : lastToolError
+        ? `Уперлась в предохранитель цикла (${maxRounds} раундов). Последний сбой инструмента: «${lastToolError}». Нужно решение/уточнение Директора.`
+        : `Уперлась в предохранитель цикла (${maxRounds} раундов) с незавершённой задачей — нужно решение/уточнение Директора.`;
     const content =
       assistantText && assistantText.trim().length > 0 ? assistantText.trim() : note;
     await persistTurn(supabase, parsed.thread_id, {
@@ -675,6 +690,7 @@ export async function POST(req: Request) {
         event_type: parsed.event_type ?? null,
         tool_rounds: roundCount,
         stalled_reason: stalledReason ?? 'round_backstop',
+        last_tool_error: lastToolError,
         awaiting_director_input: {
           question: note,
           deadline_sec: 90,
