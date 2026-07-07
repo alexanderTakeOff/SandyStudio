@@ -12,6 +12,8 @@
 //   - veo via Vertex AI path (later, optional alternative to Gemini API)
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
+
 interface CachedToken {
   accessToken: string;
   expiresAt: number;
@@ -50,11 +52,11 @@ export async function getGoogleAccessToken(): Promise<string> {
     grant_type: 'refresh_token',
   });
 
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetchWithTimeout(TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
-  });
+  }, FETCH_TIMEOUTS.AUTH_MS);
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');

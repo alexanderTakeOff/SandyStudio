@@ -20,6 +20,7 @@
 
 import type { MultiImageGenProvider, MultiImageGenInput, MultiImageGenResult } from './image-gen-multi';
 import { MultiImageGenError } from './image-gen-multi';
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 // 2026-06-11 live-verified: the image-capable model is `gemini-2.5-flash-image`
@@ -121,13 +122,14 @@ async function generate(input: MultiImageGenInput): Promise<MultiImageGenResult>
     },
   };
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     },
+    FETCH_TIMEOUTS.IMAGE_API_MS,
   );
 
   const json = (await res.json()) as GeminiResponse;

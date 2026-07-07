@@ -16,6 +16,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { GptImageQuality, GptImageSize } from './openai-image';
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
 
 export interface OpenAIImageEditInput {
   /** Base64-encoded PNG of the source image (no data: URI prefix). */
@@ -92,13 +93,13 @@ export async function editImageOpenAI(input: OpenAIImageEditInput): Promise<Open
   formData.append('quality', quality);
   formData.append('n', '1');
 
-  const res = await fetch('https://api.openai.com/v1/images/edits', {
+  const res = await fetchWithTimeout('https://api.openai.com/v1/images/edits', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
     body: formData,
-  });
+  }, FETCH_TIMEOUTS.IMAGE_API_MS);
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
