@@ -19,6 +19,8 @@
 //   fast      — $0.2419/s  (model bytedance/seedance-2.0/fast/image-to-video)
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
+
 const QUEUE_BASE = 'https://queue.fal.run';
 const POLL_INTERVAL_MS = 4_000;
 const MAX_WAIT_MS = 12 * 60 * 1000; // Seedance Standard 8s typically runs 90-180s; allow generous headroom.
@@ -210,9 +212,9 @@ async function pollUntilDone(
 ): Promise<QueueStatusResponse> {
   const deadline = Date.now() + MAX_WAIT_MS;
   while (Date.now() < deadline) {
-    const res = await fetch(statusUrl, {
+    const res = await fetchWithTimeout(statusUrl, {
       headers: { Authorization: `Key ${apiKey}` },
-    });
+    }, FETCH_TIMEOUTS.POLL_MS);
     if (!res.ok) {
       const body = (await res.text()).slice(0, 600);
       throw new FalSeedanceError(
@@ -277,14 +279,14 @@ export async function generateVideoFalSeedance(
     payload.seed = Math.trunc(input.seed);
   }
 
-  const submitRes = await fetch(`${QUEUE_BASE}/${modelSlug}`, {
+  const submitRes = await fetchWithTimeout(`${QUEUE_BASE}/${modelSlug}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       Authorization: `Key ${apiKey}`,
     },
     body: JSON.stringify(payload),
-  });
+  }, FETCH_TIMEOUTS.QUEUE_SUBMIT_MS);
   if (!submitRes.ok) {
     const body = (await submitRes.text()).slice(0, 800);
     const message = `fal submit failed (${submitRes.status}) — ${body || '<empty body>'}`;
@@ -315,9 +317,9 @@ export async function generateVideoFalSeedance(
   // response_url. Try inline first.
   let videoUrl = extractVideoUrl(finalStatus);
   if (!videoUrl) {
-    const fres = await fetch(resultUrl, {
+    const fres = await fetchWithTimeout(resultUrl, {
       headers: { Authorization: `Key ${apiKey}` },
-    });
+    }, FETCH_TIMEOUTS.QUEUE_SUBMIT_MS);
     if (!fres.ok) {
       const body = (await fres.text()).slice(0, 800);
       throw new FalSeedanceError(
@@ -333,7 +335,7 @@ export async function generateVideoFalSeedance(
     throw new FalSeedanceError('fal result missing video.url — schema mismatch');
   }
 
-  const vres = await fetch(videoUrl);
+  const vres = await fetchWithTimeout(videoUrl, {}, FETCH_TIMEOUTS.BINARY_DOWNLOAD_MS);
   if (!vres.ok) {
     throw new FalSeedanceError(
       `Video download failed (${vres.status}) from ${videoUrl}`,

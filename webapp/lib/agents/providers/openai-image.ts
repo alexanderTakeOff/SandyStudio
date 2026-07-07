@@ -16,6 +16,8 @@
 // adapter result. Caller (saveAgentOutput) is responsible for persisting it.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
+
 export type GptImageSize = '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
 export type GptImageQuality = 'low' | 'medium' | 'high' | 'auto';
 
@@ -81,7 +83,7 @@ export async function generateImageOpenAI(
   const quality = input.quality ?? 'medium';
 
   const startedAt = Date.now();
-  const res = await fetch('https://api.openai.com/v1/images/generations', {
+  const res = await fetchWithTimeout('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -94,7 +96,7 @@ export async function generateImageOpenAI(
       size,
       quality,
     }),
-  });
+  }, FETCH_TIMEOUTS.IMAGE_API_MS);
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');

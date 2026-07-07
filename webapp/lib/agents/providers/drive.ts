@@ -16,6 +16,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { getGoogleAccessToken, GoogleAuthError } from './google-auth';
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files';
@@ -42,7 +43,7 @@ async function authedFetch(url: string, init: RequestInit = {}): Promise<Respons
   }
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${token}`);
-  return fetch(url, { ...init, headers });
+  return fetchWithTimeout(url, { ...init, headers }, FETCH_TIMEOUTS.DRIVE_MS);
 }
 
 export interface DriveFile {

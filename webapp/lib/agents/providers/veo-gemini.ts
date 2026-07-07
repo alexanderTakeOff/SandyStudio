@@ -13,6 +13,8 @@
 // generation step. For the test script we just await inline.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
+
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const POLL_INTERVAL_MS = 5_000;
 const MAX_WAIT_MS = 6 * 60 * 1000;
@@ -132,7 +134,7 @@ async function pollOperation(
 ): Promise<OperationResponse> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < MAX_WAIT_MS) {
-    const res = await fetch(`${API_BASE}/${operationName}?key=${encodeURIComponent(apiKey)}`);
+    const res = await fetchWithTimeout(`${API_BASE}/${operationName}?key=${encodeURIComponent(apiKey)}`, {}, FETCH_TIMEOUTS.POLL_MS);
     if (!res.ok) {
       throw new VeoGeminiError(
         `Operation poll failed (${res.status})`,
@@ -158,7 +160,7 @@ async function downloadVideoBytes(uri: string, apiKey: string): Promise<Uint8Arr
   // Gemini operation responses sometimes return a download URI that already
   // contains the auth, sometimes one that needs ?key=… appended.
   const url = uri.includes('?') ? `${uri}&key=${encodeURIComponent(apiKey)}` : `${uri}?key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url, {}, FETCH_TIMEOUTS.BINARY_DOWNLOAD_MS);
   if (!res.ok) {
     throw new VeoGeminiError(
       `Video download failed (${res.status})`,
@@ -200,13 +202,14 @@ export async function generateVideoVeoGemini(
     },
   };
 
-  const submitRes = await fetch(
+  const submitRes = await fetchWithTimeout(
     `${API_BASE}/models/${model}:predictLongRunning?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(reqBody),
     },
+    FETCH_TIMEOUTS.QUEUE_SUBMIT_MS,
   );
   if (!submitRes.ok) {
     // Surface the actual Veo response body in the error message so Inngest

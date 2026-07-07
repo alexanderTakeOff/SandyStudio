@@ -15,6 +15,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { isFalBalanceLock, FalBalanceError } from './fal-seedance';
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
 
 const QUEUE_BASE = 'https://queue.fal.run';
 const SLUG = 'wan/v2.6/image-to-video/flash';
@@ -87,7 +88,7 @@ interface WanOutput {
 async function pollUntilDone(apiKey: string, statusUrl: string): Promise<void> {
   const deadline = Date.now() + MAX_WAIT_MS;
   while (Date.now() < deadline) {
-    const res = await fetch(statusUrl, { headers: { Authorization: `Key ${apiKey}` } });
+    const res = await fetchWithTimeout(statusUrl, { headers: { Authorization: `Key ${apiKey}` } }, FETCH_TIMEOUTS.POLL_MS);
     if (!res.ok) {
       const body = (await res.text()).slice(0, 600);
       throw new FalWanError(`fal Wan status poll failed (${res.status})`, res.status, body);
@@ -119,11 +120,11 @@ export async function generateVideoFalWan(input: FalWanInput): Promise<FalWanRes
     payload.image_url = `data:${input.referenceImageMime};base64,${input.referenceImageBase64}`;
   }
 
-  const submitRes = await fetch(`${QUEUE_BASE}/${SLUG}`, {
+  const submitRes = await fetchWithTimeout(`${QUEUE_BASE}/${SLUG}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', Authorization: `Key ${apiKey}` },
     body: JSON.stringify(payload),
-  });
+  }, FETCH_TIMEOUTS.QUEUE_SUBMIT_MS);
   if (!submitRes.ok) {
     const body = (await submitRes.text()).slice(0, 800);
     if (isFalBalanceLock(body)) {
@@ -139,7 +140,7 @@ export async function generateVideoFalWan(input: FalWanInput): Promise<FalWanRes
 
   await pollUntilDone(apiKey, status_url);
 
-  const resultRes = await fetch(response_url, { headers: { Authorization: `Key ${apiKey}` } });
+  const resultRes = await fetchWithTimeout(response_url, { headers: { Authorization: `Key ${apiKey}` } }, FETCH_TIMEOUTS.QUEUE_SUBMIT_MS);
   if (!resultRes.ok) {
     throw new FalWanError(`fal Wan result fetch failed (${resultRes.status})`, resultRes.status, (await resultRes.text()).slice(0, 600));
   }
@@ -149,7 +150,7 @@ export async function generateVideoFalWan(input: FalWanInput): Promise<FalWanRes
     throw new FalWanError('fal Wan response had no video url', null, JSON.stringify(out).slice(0, 400));
   }
 
-  const vidRes = await fetch(videoUrl);
+  const vidRes = await fetchWithTimeout(videoUrl, {}, FETCH_TIMEOUTS.BINARY_DOWNLOAD_MS);
   if (!vidRes.ok) throw new FalWanError(`Wan video download failed (${vidRes.status})`, vidRes.status);
   const buf = Buffer.from(await vidRes.arrayBuffer());
 

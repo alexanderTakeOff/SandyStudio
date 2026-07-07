@@ -15,6 +15,8 @@
 // retire one without touching the other.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
+
 const PROVIDER_ID = 'fal-clarity-upscaler';
 const MODEL = 'clarity-upscaler';
 const ENDPOINT = `https://queue.fal.run/fal-ai/${MODEL}`;
@@ -71,13 +73,13 @@ interface FalUpscaleResponse {
 }
 
 async function falFetch<T>(url: string, init: RequestInit, apiKey: string): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     ...init,
     headers: {
       ...(init.headers ?? {}),
       Authorization: `Key ${apiKey}`,
     },
-  });
+  }, FETCH_TIMEOUTS.POLL_MS);
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new UpscaleError(`fal.ai upscale ${res.status} on ${url}: ${body.slice(0, 400)}`);
@@ -110,7 +112,7 @@ async function pollUntilComplete(initial: FalQueuedResponse, apiKey: string): Pr
 }
 
 async function downloadAsBase64(imageUrl: string): Promise<string> {
-  const res = await fetch(imageUrl);
+  const res = await fetchWithTimeout(imageUrl, {}, FETCH_TIMEOUTS.BINARY_DOWNLOAD_MS);
   if (!res.ok) {
     throw new UpscaleError(`Failed to download upscaled image (${res.status})`);
   }

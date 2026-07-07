@@ -16,6 +16,8 @@
 // anthropic-text (single shared post-processing path, and no import cycle).
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { fetchWithTimeout, FetchTimeoutError, FETCH_TIMEOUTS } from './fetch-with-timeout';
+
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 // gemini-3.5-flash rejected for this role: thinking-on-by-default consumes the
 // maxOutputTokens budget (live test returned 7 visible tokens of 200).
@@ -86,11 +88,12 @@ export async function generateGeminiTextRaw(
   // concurrent calls and can leave the socket open indefinitely; a hung fetch here
   // never resolves, the Inngest run never returns, and its concurrency slot is held
   // forever (E17: 5 hung eprev runs saturated limit-5 → whole critic stage stalled
-  // for 90+ min). AbortError is re-thrown as a GeminiTextError so the runner treats
-  // it as transient and Inngest retries (retries:2 + backoff).
+  // for 90+ min). Migrated 2026-07-07 to the shared fetchWithTimeout helper (one
+  // implementation across all providers); it throws FetchTimeoutError on timeout,
+  // re-thrown as a transient GeminiTextError so the runner + Inngest retry it.
   let res: Response;
   try {
-    res = await fetch(`${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`, {
+    res = await fetchWithTimeout(`${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -98,10 +101,9 @@ export async function generateGeminiTextRaw(
         contents: [{ parts: [{ text: input.userMessage }] }],
         generationConfig,
       }),
-      signal: AbortSignal.timeout(120_000),
-    });
+    }, FETCH_TIMEOUTS.LLM_TEXT_MS);
   } catch (err: unknown) {
-    if (err instanceof DOMException && err.name === 'TimeoutError') {
+    if (err instanceof FetchTimeoutError) {
       throw new GeminiTextError('Gemini text: request timed out after 120s (transient)', err);
     }
     throw new GeminiTextError('Gemini text: network error (transient)', err);

@@ -33,6 +33,7 @@ import type {
   MultiImageGenResult,
 } from './image-gen-multi';
 import { MultiImageGenError } from './image-gen-multi';
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
 
 const PROVIDER_ID = 'flux-pro-1.1-ultra';
 const MODEL = 'flux-pro/v1.1-ultra/redux';
@@ -94,13 +95,13 @@ interface FalResultResponse {
 }
 
 async function falFetch<T>(url: string, init: RequestInit, apiKey: string): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     ...init,
     headers: {
       ...(init.headers ?? {}),
       Authorization: `Key ${apiKey}`,
     },
-  });
+  }, FETCH_TIMEOUTS.POLL_MS);
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new MultiImageGenError(
@@ -141,7 +142,7 @@ async function pollUntilComplete(
 }
 
 async function downloadAsBase64(imageUrl: string): Promise<string> {
-  const res = await fetch(imageUrl);
+  const res = await fetchWithTimeout(imageUrl, {}, FETCH_TIMEOUTS.BINARY_DOWNLOAD_MS);
   if (!res.ok) {
     throw new MultiImageGenError(
       `Failed to download fal.ai result image (${res.status})`,
