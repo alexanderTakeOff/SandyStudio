@@ -26,7 +26,7 @@ Mode:   ===5=== EDIT (Director-authorized).
 2026-07-08 (E17 root-cause fix ЗАВЕРШЁН → master `71cafd3`). Системный fetch-timeout: все 27 голых `fetch(`
   в 13 провайдерах переведены на `fetchWithTimeout` (PR #31, 3 коммита: критпуть артист+видео+критик /
   картинки+auth+drive-чокпоинт / fal+veo-чокпоинты). Закрыл класс «зависший fetch держит слот concurrency →
-  стадия встаёт» (двухдневный E15/E17-firefight). Poll-fetch получили POLL_MS<MAX_WAIT — чинит Idiom-A defeat.
+  стадия встаёт» (двухдневный E15/E17-firefight; poll-fetch → POLL_MS<MAX_WAIT чинит Idiom-A defeat).
   Побочно (PR #32, `52eb72b`): починен красный master — коммит `5cfc64d` вшил `import {listThemes}` без
   реализации → tsc TS2305 + 6 красных тестов; дописан read-only `listThemes` (GET themes-роута). Verify:
   tsc·0 / vitest 1149/1149. NEXT: свежий эпизод на укреплённом коде — отдельный worktree + стабильный сервер
