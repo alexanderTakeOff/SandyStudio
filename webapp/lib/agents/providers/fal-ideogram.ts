@@ -16,6 +16,8 @@
 // Auth: `Authorization: Key ${FAL_KEY}`. Image inputs accept inline data: URLs.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
+
 const QUEUE_BASE = 'https://queue.fal.run';
 const V3_SLUG = 'fal-ai/ideogram/v3';
 const CHARACTER_SLUG = 'fal-ai/ideogram/character';
@@ -93,7 +95,7 @@ interface IdeogramOutput {
 async function pollUntilDone(apiKey: string, statusUrl: string): Promise<void> {
   const deadline = Date.now() + MAX_WAIT_MS;
   while (Date.now() < deadline) {
-    const res = await fetch(statusUrl, { headers: { Authorization: `Key ${apiKey}` } });
+    const res = await fetchWithTimeout(statusUrl, { headers: { Authorization: `Key ${apiKey}` } }, FETCH_TIMEOUTS.POLL_MS);
     if (!res.ok) {
       throw new FalIdeogramError(`fal status poll failed (${res.status})`, res.status, (await res.text()).slice(0, 600));
     }
@@ -133,11 +135,11 @@ export async function generateIdeogram(input: FalIdeogramInput): Promise<FalIdeo
     payload.seed = Math.trunc(input.seed);
   }
 
-  const submitRes = await fetch(`${QUEUE_BASE}/${slug}`, {
+  const submitRes = await fetchWithTimeout(`${QUEUE_BASE}/${slug}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', Authorization: `Key ${apiKey}` },
     body: JSON.stringify(payload),
-  });
+  }, FETCH_TIMEOUTS.QUEUE_SUBMIT_MS);
   if (!submitRes.ok) {
     const body = (await submitRes.text()).slice(0, 800);
     throw new FalIdeogramError(`fal submit failed (${submitRes.status}) — ${body || '<empty>'}`, submitRes.status, body);
@@ -151,7 +153,7 @@ export async function generateIdeogram(input: FalIdeogramInput): Promise<FalIdeo
 
   await pollUntilDone(apiKey, statusUrl);
 
-  const resultRes = await fetch(responseUrl, { headers: { Authorization: `Key ${apiKey}` } });
+  const resultRes = await fetchWithTimeout(responseUrl, { headers: { Authorization: `Key ${apiKey}` } }, FETCH_TIMEOUTS.QUEUE_SUBMIT_MS);
   if (!resultRes.ok) {
     throw new FalIdeogramError(`fal result fetch failed (${resultRes.status})`, resultRes.status, (await resultRes.text()).slice(0, 600));
   }
@@ -162,7 +164,7 @@ export async function generateIdeogram(input: FalIdeogramInput): Promise<FalIdeo
   }
 
   // Download the rendered image → base64 for persistBinary.
-  const imgRes = await fetch(imageUrl);
+  const imgRes = await fetchWithTimeout(imageUrl, {}, FETCH_TIMEOUTS.BINARY_DOWNLOAD_MS);
   if (!imgRes.ok) throw new FalIdeogramError(`image download failed (${imgRes.status})`, imgRes.status);
   const buf = Buffer.from(await imgRes.arrayBuffer());
   const isJpeg = (out.images?.[0]?.content_type ?? '').includes('jpeg') || imageUrl.toLowerCase().includes('.jpg');
