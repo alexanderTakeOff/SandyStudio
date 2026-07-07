@@ -143,6 +143,15 @@ export interface AgentFunctionSpec<EventName extends string = string> {
   /** Inngest retry count. Default 2. */
   retries?: number;
   /**
+   * Optional per-function total wall-clock cap (Inngest `timeouts.finish`,
+   * e.g. "10m"). Belt against a run whose SDK roundtrip hangs and never
+   * returns — Inngest cancels the run and RELEASES its concurrency slot, so a
+   * single wedged run can't starve the whole episode-keyed partition (E17
+   * critic stall 2026-07-07). Set ONLY on short pure-LLM functions (critics);
+   * do NOT set on long paid gens (EREF/VGEN) that legitimately run minutes.
+   */
+  finishTimeout?: string;
+  /**
    * Optional next-event emitter. Receives the saved asset id, original
    * event data, AND the runAgent result (so callbacks can read metadata
    * like shot counts). Returns one event, an array of events for fan-out,
@@ -211,6 +220,9 @@ export function createAgentInngestFunction<E extends string>(
       // Inngest types retries as a literal union 0..20; default to 2.
       retries: (spec.retries ?? 2) as 2,
       concurrency: concurrencyFor(spec.concurrencyId),
+      ...(spec.finishTimeout
+        ? { timeouts: { finish: spec.finishTimeout as `${number}m` } }
+        : {}),
     },
     // The cast is safe: caller passes a string literal that matches a known
     // Events key. Validation is enforced at the wiring site, not here.

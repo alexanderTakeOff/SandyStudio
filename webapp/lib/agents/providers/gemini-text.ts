@@ -82,15 +82,30 @@ export async function generateGeminiTextRaw(
     generationConfig.thinkingConfig = { thinkingBudget: 0 };
   }
 
-  const res = await fetch(`${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: input.systemPrompt }] },
-      contents: [{ parts: [{ text: input.userMessage }] }],
-      generationConfig,
-    }),
-  });
+  // 2026-07-07 (Director q8) — HARD timeout on the fetch. The free tier throttles
+  // concurrent calls and can leave the socket open indefinitely; a hung fetch here
+  // never resolves, the Inngest run never returns, and its concurrency slot is held
+  // forever (E17: 5 hung eprev runs saturated limit-5 → whole critic stage stalled
+  // for 90+ min). AbortError is re-thrown as a GeminiTextError so the runner treats
+  // it as transient and Inngest retries (retries:2 + backoff).
+  let res: Response;
+  try {
+    res = await fetch(`${GEMINI_BASE}/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: input.systemPrompt }] },
+        contents: [{ parts: [{ text: input.userMessage }] }],
+        generationConfig,
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      throw new GeminiTextError('Gemini text: request timed out after 120s (transient)', err);
+    }
+    throw new GeminiTextError('Gemini text: network error (transient)', err);
+  }
 
   let json: GeminiGenerateResponse;
   try {

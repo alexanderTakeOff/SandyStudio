@@ -21,6 +21,9 @@ export const execVprevReviewPlan = createAgentInngestFunction({
   concurrencyId: 'exec-vprev',
   eventName: 'sandystudio/exec-vprev/review-plan',
   operation: 'shot_plan_critic_review',
+  // Belt against a wedged SDK roundtrip holding the episode concurrency slot
+  // forever (E17 2026-07-07, Director q8). Pure Sonnet/Haiku call → 10m is ample.
+  finishTimeout: '10m',
   resolveRunArgs: (eventData) => {
     const shotId =
       typeof eventData.shotId === 'string' ? (eventData.shotId as string) : undefined;

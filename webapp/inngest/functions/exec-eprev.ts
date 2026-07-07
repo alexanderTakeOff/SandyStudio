@@ -28,6 +28,9 @@ export const execEprevReviewPlan = createAgentInngestFunction({
   concurrencyId: 'exec-eprev',
   eventName: 'sandystudio/exec-eprev/review-plan',
   operation: 'eref_plan_critic_review',
+  // Belt against a wedged SDK roundtrip holding the episode concurrency slot
+  // forever (E17 2026-07-07, Director q8). Pure Sonnet/Haiku call → 10m is ample.
+  finishTimeout: '10m',
   resolveRunArgs: (eventData) => {
     const shotId =
       typeof eventData.shotId === 'string' ? (eventData.shotId as string) : undefined;
