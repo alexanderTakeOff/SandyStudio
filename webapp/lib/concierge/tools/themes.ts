@@ -2,6 +2,7 @@
 // lib/concierge/tools/themes.ts
 // PA tool for the Episode-Themes surface (q9a, 2026-06-30).
 //
+//   - listThemes   (read-only — list the existing theme bank)
 //   - proposeTheme (mutating — verbal approval gated)
 //
 // Closes the smoke gap where Polina judged themes but had no hand to write the
@@ -132,6 +133,79 @@ export const proposeTheme: Tool<ProposeThemeArgs> = {
       );
     } catch (err) {
       return fail(`proposeTheme failed: ${err instanceof Error ? err.message : 'unknown'}`, 'create_failed');
+    }
+  },
+};
+
+interface ListThemesArgs {
+  seriesId?: string | null;
+  episodeId?: string | null;
+}
+
+export const listThemes: Tool<ListThemesArgs> = {
+  name: 'listThemes',
+  description:
+    "Read-only. List the episode themes (reusable visual gag engines) already in the series Themes bank — each with slug, one-liner description, and status (approved / draft / invalidated). Call freely to answer «какие темы есть?» and BEFORE proposing a new theme, to avoid duplicating an existing gag engine. Resolves the series from the open episode when seriesId is omitted.",
+  mutating: false,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'listThemes',
+      description: 'List existing episode themes for the series. Read-only, no approval needed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          seriesId: { type: 'string', description: 'Series UUID. Omit to use the open episode\'s series.' },
+          episodeId: { type: 'string', description: 'Episode UUID — only used to derive the series when seriesId is omitted.' },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const seriesId = typeof obj.seriesId === 'string' ? obj.seriesId : undefined;
+    const episodeId = typeof obj.episodeId === 'string' ? obj.episodeId : undefined;
+    return { seriesId, episodeId };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const seriesId = await resolveSeriesId(args, ctx);
+    if (!seriesId) {
+      return fail(
+        'Could not resolve which series to list themes for. Open an episode (so the thread binds its series) or pass seriesId.',
+        'series_unresolved',
+      );
+    }
+
+    try {
+      const res = await fetch(`${ctx.appOrigin}/api/series/${seriesId}/themes`, {
+        method: 'GET',
+        headers: { ...authHeaders(ctx) },
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { data?: { themes?: Array<{ slug?: string; description?: string; theme_status?: string }> }; error?: string }
+        | null;
+      if (!res.ok) {
+        return fail(json?.error ?? `theme list failed (HTTP ${res.status})`, 'list_failed');
+      }
+      const themes = json?.data?.themes ?? [];
+      return ok(
+        {
+          seriesId,
+          count: themes.length,
+          themes: themes.map((t) => ({
+            slug: t.slug,
+            description: t.description,
+            theme_status: t.theme_status,
+          })),
+        },
+        themes.length
+          ? `${themes.length} theme(s) in the bank.`
+          : 'No themes in the bank yet — propose one with proposeTheme after Director approval.',
+      );
+    } catch (err) {
+      return fail(`listThemes failed: ${err instanceof Error ? err.message : 'unknown'}`, 'list_failed');
     }
   },
 };
