@@ -24,6 +24,7 @@ import type {
   MultiImageGenResult,
 } from './image-gen-multi';
 import { MultiImageGenError } from './image-gen-multi';
+import { fetchWithTimeout, FETCH_TIMEOUTS } from './fetch-with-timeout';
 
 const PROVIDER_ID = 'openai-edits-multi';
 // Sprint φ post-merge 2026-05-18 — upgraded to gpt-image-2 (multi-ref edits
@@ -121,11 +122,11 @@ export const openAIEditsMultiProvider: MultiImageGenProvider = {
 
     let res: Response;
     try {
-      res = await fetch('https://api.openai.com/v1/images/edits', {
+      res = await fetchWithTimeout('https://api.openai.com/v1/images/edits', {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}` },
         body: formData,
-      });
+      }, FETCH_TIMEOUTS.IMAGE_API_MS);
     } catch (err) {
       throw new MultiImageGenError(
         `OpenAI Edits network error: ${(err as Error).message}`,
