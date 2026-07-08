@@ -361,7 +361,7 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
         <div className="space-y-4">
           <p className="text-sm text-text-secondary leading-relaxed">
             This bulk-flips every VID-shot row in REVIEW status to APPROVED for
-            this episode. Use it after fan-out completes when you're satisfied
+            this episode. Use it after fan-out completes when you&apos;re satisfied
             the direction holds across all shots. Mode 1 governance still
             applies — the audit log records each approval.
           </p>

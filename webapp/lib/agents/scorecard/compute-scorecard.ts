@@ -78,6 +78,7 @@ const PAGE = 1000;
  * episode). `make()` must return a FRESH builder each call; we add a stable
  * order so concurrent inserts can't shift rows across a page boundary.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function pagedSelect<Row>(make: () => any): Promise<Row[]> {
   const out: Row[] = [];
   for (let from = 0; ; from += PAGE) {

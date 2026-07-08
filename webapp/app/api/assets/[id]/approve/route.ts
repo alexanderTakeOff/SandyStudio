@@ -393,8 +393,8 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (decision === 'REQUEST_REVISION' && asset.episode_id) {
     const reviseEvent = revisionEventForAsset(asset.file_type);
     if (reviseEvent) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { ids } = await inngest.send({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         name: reviseEvent as any,
         data: { episodeId: asset.episode_id, revisionNote: body.note ?? null } as never,
       });
