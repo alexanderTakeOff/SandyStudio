@@ -11,8 +11,8 @@
 ## 🧭 NORTH-STAR (re-anchor here every turn — see rules/common/partnership.md "Compass")
 
 - **Goal (Star):** AI movie factory — first product *Silent Sandy*, a multi-episode AI-animated comedy series, Director-gated at every step.
-- **Phase:** E12 done + shot-identity (S-E-SH) merged; next = first LIVE **E13 прогон** (validates the HALT-gate on a real model) → then version-editor (slice 0) → shot-centric refactor.
-- **Active intents (drift-check against these):** (1) E13 live run = real gate test; (2) hold PLAN.md + Compass partnership discipline; (3) keep cost sane (Polина harness); (4) finish E12 distribution (copy/thumbnail).
+- **Phase:** **E18 first HONEST autonomy smoke DONE** (14 shots, 2.5h, published) — pipeline works end-to-end; the problem is **АВТОНОМИЯ + СТОИМОСТЬ**, not reliability. Next = fix batch (Approval/State **MATRIX** + feed-curation) → clean re-smoke.
+- **Active intents (drift-check against these):** (1) **Approval/State MATRIX** = terminal-triggered advance + brain-by-exception (closes half the D-list); (2) cut Polina cost ~14× (D17 feed-curation) + close cost blind-spot (D18); (3) hold PLAN.md + Compass discipline; (4) verify via jobs/counts/scorecard, NEVER fragile shell parsing.
 > Stable block — change only when goal/phase/intents genuinely shift, not per session.
 
 ---
@@ -20,8 +20,17 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-08 (системный fetch-timeout + listThemes-фикс влиты в master `71cafd3`; пред. якорь 2026-07-03 `aa52384`)
-Mode:   ===5=== EDIT (Director-authorized).
+Date:   2026-07-08 PM (E18 smoke прогнан + post-mortem; пред. якорь 2026-07-08 fetch-timeout `71cafd3`)
+Mode:   ===1=== ANALYTICS (E18 post-mortem; прод-сервера подняты и ОТКЛЮЧЕНЫ; MECHANICS_AUTO_ADVANCE OFF).
+
+2026-07-08 PM (E18 «Sandy in the Airport-2» — ПЕРВЫЙ ЧЕСТНЫЙ смоук автономии, 14 шотов, 2.5ч, опубликован).
+  ВЫВОД: пайплайн работает end-to-end (14/14 картинки+видео APPROVED, final cut, PUB) — проблема НЕ надёжность,
+  а АВТОНОМИЯ+СТОИМОСТЬ. Аппрувы вёл Директор (68 vs 6 Полина). Стоимость = МОЗГ: Полина $18.82/378 auto-react
+  вызовов ($1.34/кадр, 23 wake/кадр) — не масштабируется (32 шота пробьют $30-cap). D17 firehose: клики Директора
+  вернулись ~114 платными (director-own suppression сломана). D18: интерактив Полины НЕ логируется/не капится.
+  18 дефектов (D8/D10/D11 оказались ЛОЖНЫМИ — кривые shell-выборки Тео). NEXT: PR-A дискретное (D14 music-path
+  первым) → PR-B деньги (D17 curation готова + D18) → PR-C АППРУВ/СТЕЙТ-МАТРИЦА (спека сперва) → чистый ре-смоук.
+  Артефакты: docs/analysis/E18-fix-plan.md + E18-run-defects.md (ветка teo/e18-smoke `d8618bc`).
 
 2026-07-08 (E17 root-cause fix ЗАВЕРШЁН → master `71cafd3`). Системный fetch-timeout: все 27 голых `fetch(`
   в 13 провайдерах переведены на `fetchWithTimeout` (PR #31, 3 коммита: критпуть артист+видео+критик /
@@ -52,26 +61,9 @@ Mode:   ===5=== EDIT (Director-authorized).
   (Director q2 — НЕ откатывать на gemini). NEXT: **следующий эпизод = The Vending Machine** (Director q4) — draft-тема
   `the_vending_machine` в Themes; · E13 live-прогон остаётся открытым.
 
-2026-06-28 (themes shipped via PR #30 + Polina-on-Opus смоук-подготовка). Theme-скиллы (generation+selection,
-  `status:ACTIVE`), studio_version 0.10, Themes-UI влиты в origin/master (`b21a6e9`+`5ba3cec`). Реконсилил с
-  локальным master (мой избыточный merge `51d0022` + S2/S3) → merge `e8dadab`, без конфликтов, tsc·0/vitest 1040.
-  Носитель-тест: `selectSkills` отдаёт оба theme-скилла ACTIVE (2/2). Polina переведена на Opus 4.8
-  (`CONCIERGE_PROVIDER=anthropic`, cap 40 + $20/day breaker + SPIN + S2(b) escalate) для смоука судейства тем.
-  ⚠️ Наблюдение: в ACTIVE-селекторе ТОЛЬКО 2 скилла — прочие проектные скиллы без `status:ACTIVE` (грузятся
-  раннерами, не селектором). NEXT: чат-смоук в Полине (getSkill+follow?), вернуть на gemini после.
-
-2026-06-28 (S3-measurement SHIPPED → master `c8d412c`, Director q2a). decideGate choke-point + gate_decision_log.
-  `gate-decision.ts`: build-exhaustive GATE_CLASS Record<AgentId> (mechanical/creative/hard_limit — новый агент
-  не пройдёт нерасклассифицированным) + pure decideGate (behaviour-preserving: autonomous=Mode4) + writer.
-  migration 0040 gate_decision_log (только writer-колонки, без мёртвой схемы; human-ground-truth остаётся в
-  activity_events, E13-анализ джойнит). factory: 2 чтения governance_mode===4 (autoApprove/autoChain) теперь
-  через decideGate + 1 строка лога на ран. tsc·0/vitest 1040/replay·30 (Mode-4 не изменился, Mode 1-3 next-events
-  тесты целы). 6 форков next-events НЕ коллапсил — отложено в S6/S7 (anti-additive: шов не несущий пока).
-  NEXT (решает Директор): watchdog-residual full-close · S-reorder (pilot-first ref/video) · или E13 live-прогон.
-
-2026-06-28 (S2(a)+(b) leak-closing SHIPPED → master `862acc8`,`df53433`): атомарный dispatch_intent claim
-  (migration 0039, чинит double-render TOCTOU) + billing→escalate-not-loop. Детали → memory
-  `session_2026-06-28_s2-leak-closing.md`.
+2026-06-28 (themes PR #30 · Polina-on-Opus · S3-measurement decideGate+gate_decision_log `c8d412c` · S2(a)+(b)
+  leak-closing `862acc8`/`df53433` — атомарный dispatch_intent + billing-escalate) → сжато в memory
+  (`session_2026-06-28_s2-leak-closing.md`, gate-decision.ts). Полина на Opus (`CONCIERGE_PROVIDER=anthropic`).
 
 2026-06-27 PM-2 (S1 cost-visibility SHIPPED). AI-factory autonomy+cost refactor planned (adversarial-hardened
   by 3 lenses; plan `~/.claude/plans/calm-percolating-sifakis.md`; direction in NORTH_STAR §4 + PLANET.md).
