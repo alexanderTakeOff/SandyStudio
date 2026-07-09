@@ -349,6 +349,30 @@ export async function computeNextEvents(
     });
   }
 
+  // ── Brief APPROVED (Director modes) → nudge «cast this episode» (D1/D2, 2026-07-09).
+  //    Casting is TOOL-ONLY (no Inngest executor), so a fresh brief otherwise leaves
+  //    the DAG silent — nothing tells the Director/Polina the next move is casting,
+  //    and the Writer gate deadlocks waiting for an approved cast nobody knew to make.
+  //    Reuse the already-wired `decision_requested` type (a MUST-WAKE, first-class in
+  //    both event whitelists + the inbox) instead of adding a new node/edge. Fire once
+  //    per episode: only while no cast asset exists yet.
+  if (
+    ft === 'SPC-brief' &&
+    !isAutotest &&
+    !(await episodeHasAnyAsset(supabase, ep, 'SPC-episode_cast'))
+  ) {
+    await logEvent(supabase, {
+      event_type: 'decision_requested',
+      severity: 'info',
+      title: 'Бриф одобрен — кастуй эпизод',
+      description:
+        'Следующий шаг — кастинг: собери каст эпизода (castEpisode → SPC-episode_cast) ' +
+        'и утверди его. Writer стартует только после одобрения каста.',
+      episode_id: ep,
+      asset_id: asset.id,
+    });
+  }
+
   // ── Casting APPROVED → EXEC-SW. The gate the Brief no longer skips in
   //    Director modes. Resolve the approved brief id so the Writer's event
   //    payload stays honest. Harmless in AUTOTEST (no SPC-episode_cast there).
@@ -1042,8 +1066,12 @@ export async function computeNextEvents(
       isShotReferenceV2((asset as { metadata?: unknown }).metadata);
     if (!isV2EREF) {
       const erefOk = (await countApproved(supabase, ep, 'IMG-episode_ref')) >= 1;
-      const musicOk = (await countApproved(supabase, ep, 'AUD-music')) >= 1;
-      if (erefOk && musicOk) {
+      // D3b (2026-07-09): music is NO LONGER a precondition for the animatic — it
+      // is required only at the stitch gate (final cut). Dropped the old
+      // `musicOk` block (already bypassed under the DESIGNER_CHAIN v2 default,
+      // so this branch is the legacy v1 path). The optional musicAssetId enrich
+      // below still attaches a track when one happens to be approved already.
+      if (erefOk) {
         // Find the most recent APPROVED music asset to attach as
         // musicAssetId. Lets EXEC-EDIT bake the track into the animatic.
         const { data: musicRow } = await supabase
@@ -1381,15 +1409,22 @@ export async function computeNextEvents(
           // Director loads/approves music (re-fires this gate) or triggers
           // EXEC-STITCH manually for a deliberate music-less cut. AUTOTEST
           // (replay-pilot) and sequential keep their prior behaviour untouched.
-          if (pipelineMode === 'parallel' && !isAutotest && !contractHasMusic(v1)) {
+          // D3b (2026-07-09): music precondition is now UNIFORM for both pipeline
+          // modes (was parallel-only) — the stitch gate (gate.ts) enforces it for
+          // manual/direct triggers; this pre-dispatch check keeps the auto-fire
+          // from spawning a job that would just fail the gate, and instead surfaces
+          // an actionable decision_requested (a MUST-WAKE) so Polina/Director load
+          // music (UPLOAD MUSIC re-fires this gate) or run skip-music / manual
+          // EXEC-STITCH for a deliberate silent cut. AUTOTEST keeps assembling.
+          if (!isAutotest && !contractHasMusic(v1)) {
             await logEvent(supabase, {
-              event_type: 'pipeline/stitch-blocked-no-music',
+              event_type: 'decision_requested',
               severity: 'warning',
               title: 'Финалка ждёт музыку — стич не запущен',
               description:
                 'Все живые шоты одобрены, но у эпизода нет APPROVED AUD-music. ' +
-                'Залей и одобри музыку — финальный стич соберётся автоматически. ' +
-                'Нужен немой cut — запусти EXEC-STITCH вручную.',
+                'Залей музыку (UPLOAD MUSIC) — финальный стич соберётся автоматически. ' +
+                'Нужен немой cut — запусти skip-music или EXEC-STITCH вручную.',
               actor: 'exec-dir-ai',
               episode_id: ep,
               metadata: { reason: 'STITCH_NO_APPROVED_MUSIC' },

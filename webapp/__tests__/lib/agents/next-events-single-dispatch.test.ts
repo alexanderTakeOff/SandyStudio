@@ -99,6 +99,36 @@ describe('Brief → Casting → Writer gate (2026-06-23, q22a/q30a)', () => {
     expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-sw/write-script');
   });
 
+  it('Director mode: Brief APPROVED emits a decision_requested nudge to cast (D1/D2)', async () => {
+    const { client, inserts } = mockSupabase({ assets: [], jobs: [] });
+    await computeNextEvents(client, brief(), 'director-1');
+    const nudges = inserts.filter(
+      (i) => i.table === 'activity_events' && i.row.event_type === 'decision_requested',
+    );
+    expect(nudges).toHaveLength(1);
+  });
+
+  it('Director mode: no cast nudge once a cast already exists (fire-once)', async () => {
+    const { client, inserts } = mockSupabase({
+      assets: [{ id: 'cast-1', episode_id: EP, file_type: 'SPC-episode_cast', status: 'REVIEW' }],
+      jobs: [],
+    });
+    await computeNextEvents(client, brief(), 'director-1');
+    const nudges = inserts.filter(
+      (i) => i.table === 'activity_events' && i.row.event_type === 'decision_requested',
+    );
+    expect(nudges).toHaveLength(0);
+  });
+
+  it('AUTOTEST: Brief APPROVED does NOT emit the cast nudge (headless)', async () => {
+    const { client, inserts } = mockSupabase({ assets: [], jobs: [] });
+    await computeNextEvents(client, brief(), 'AUTOTEST');
+    const nudges = inserts.filter(
+      (i) => i.table === 'activity_events' && i.row.event_type === 'decision_requested',
+    );
+    expect(nudges).toHaveLength(0);
+  });
+
   it('Director mode: Casting APPROVED fires the Writer with the approved brief id', async () => {
     const { client } = mockSupabase({
       assets: [{ id: 'brief-1', episode_id: EP, file_type: 'SPC-brief', status: 'APPROVED' }],

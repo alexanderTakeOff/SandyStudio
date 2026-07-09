@@ -816,7 +816,7 @@ function MGENActionsBlock({
       </div>
       <p className="text-[11px] text-text-muted">
         Upload your own .mp3 / .wav to replace the track, or re-fire generation.
-        Status stays REVIEW after upload — Approve below when ready.
+        A manual upload is auto-approved and advances the pipeline.
       </p>
       {error && (
         <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>

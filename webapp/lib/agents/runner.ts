@@ -2724,7 +2724,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           audMusic?.staging_path ??
           (typeof audMeta.staging_path === 'string' ? audMeta.staging_path : null);
         const bytes = await loadBytes(audStagingPath, musicTrack.url);
-        const fname = musicTrack.filename ?? musicTrack.url;
+        // D14 (2026-07-09): derive the ffmpeg extension from the ACTUAL bytes
+        // source (the media URL / staging path), NOT from `filename`. A
+        // Director upload persists the real cache filename (`…-<hash>.mp3`) in
+        // the URL, while `filename` could carry a stale mock extension (mock MGEN
+        // wrote `…-DRAFT.wav`) — muxing mp3 bytes as wav corrupted the final cut.
+        const fname = musicTrack.url ?? audStagingPath ?? musicTrack.filename ?? '';
         const lower = fname.toLowerCase();
         const ext: 'mp3' | 'wav' | 'm4a' | 'aac' =
           lower.endsWith('.wav')

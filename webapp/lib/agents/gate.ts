@@ -210,9 +210,18 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
     // Gate requires animatic (for shot order + audio_tracks) and at least one
     // VID-shot — the actual "all 13 approved" check happens in the runner
     // and in approve/route.ts where the event fires.
+    //
+    // D3b (2026-07-09): music is now a FORMAL, uniform precondition here — the one
+    // place it belongs (final cut). This replaces the old ad-hoc, inconsistent
+    // guards (a dead music-before-animatic block + a parallel-only soft warn) with
+    // a single declarative gate that fires the same fail-loud NonRetriableError
+    // for auto AND manual triggers, sequential AND parallel. Satisfied by APPROVED
+    // MGEN music, a manual UPLOAD MUSIC (ingest-music), or the skip-music escape
+    // hatch (synthetic APPROVED AUD-music).
     required: [
       { fileTypePrefix: 'VID-animatic', minCount: 1, label: 'Approved animatic' },
       { fileTypePrefix: 'VID-shot', minCount: 1, label: 'Approved shots' },
+      { fileTypePrefix: 'AUD-music', minCount: 1, label: 'Approved music' },
     ],
     governance: 'AGENT_RUN',
   },
@@ -539,6 +548,33 @@ export async function validateAgentInputs(
     if (isAutotest) {
       effectiveRequired = spec.required.filter(
         (d) => d.fileTypePrefix !== 'SPC-episode_cast',
+      );
+    }
+  }
+
+  // ── Step 0b': AUTOTEST music exemption (D3b, 2026-07-09) ───────────────────
+  // EXEC-STITCH now formally requires APPROVED AUD-music (final cut must not be
+  // silently assembled behind the Director's back). That guard is Director-facing;
+  // AUTOTEST (Mode 4 / replay-pilot) is headless and never runs the music approval
+  // path, so drop the music dep there so the DAG smoke still assembles a final cut.
+  // Director modes (1-3) keep the requirement — satisfied by MGEN music, a manual
+  // UPLOAD MUSIC, or the skip-music escape hatch.
+  if (agentId === 'EXEC-STITCH') {
+    let isAutotest = false;
+    try {
+      const { data: epRow } = await supabase
+        .from('episodes')
+        .select('governance_mode')
+        .eq('id', episodeId)
+        .maybeSingle();
+      isAutotest =
+        (epRow as { governance_mode?: number } | null)?.governance_mode === 4;
+    } catch {
+      isAutotest = false;
+    }
+    if (isAutotest) {
+      effectiveRequired = effectiveRequired.filter(
+        (d) => d.fileTypePrefix !== 'AUD-music',
       );
     }
   }

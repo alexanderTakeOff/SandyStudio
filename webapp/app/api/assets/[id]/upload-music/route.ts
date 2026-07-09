@@ -30,6 +30,7 @@ import {
 } from '@/lib/api/animatic-shotlist';
 import { localCacheAbsPath } from '@/lib/media-cache';
 import { uploadCacheFilename } from '@/lib/api/upload-cache';
+import { ingestUploadedMusic } from '@/lib/api/ingest-music';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -164,6 +165,24 @@ export const POST = withApiHandler(async (req, ctx) => {
     .eq('id', assetId);
   if (updateErr) {
     throw new Error(`metadata update failed: ${updateErr.message}`);
+  }
+
+  // D3b/D14/D15 (2026-07-09): the contract now carries the track, but the stitch
+  // music gate keys off an APPROVED AUD-music ROW. Upsert one via the shared
+  // ingest path (skipBake — we already patched the contract above, preserving
+  // non-music layers) so the manual timeline upload advances the pipeline instead
+  // of stalling on "no APPROVED music".
+  if (asset.episode_id) {
+    await ingestUploadedMusic(sb, {
+      episodeId: asset.episode_id,
+      browserUrl,
+      ext,
+      originalFilename,
+      bytes: blob.size,
+      mime,
+      uploaderId: user.id,
+      skipBake: true,
+    });
   }
 
   await sb.from('activity_events').insert({
