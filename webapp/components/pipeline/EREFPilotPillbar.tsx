@@ -157,8 +157,8 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
     [assetsData?.data, meta],
   );
 
-  const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel' | 'advance'>(null);
-  const [success, setSuccess] = useState<null | 'approve_pilots' | 'cancel' | 'advance'>(null);
+  const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel'>(null);
+  const [success, setSuccess] = useState<null | 'approve_pilots' | 'cancel'>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
@@ -221,29 +221,6 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
       setSuccess('cancel');
       setTimeout(() => setSuccess(null), 600);
       setConfirmCancel(false);
-      await refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function advance() {
-    setBusy('advance');
-    setError(null);
-    try {
-      const res = await fetch(`/api/episodes/${episodeId}/eref/advance`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ directorConfirm: true }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string; missing?: string[] }).error ?? 'Advance failed');
-      }
-      setSuccess('advance');
-      setTimeout(() => setSuccess(null), 600);
       await refresh();
     } catch (e) {
       setError((e as Error).message);

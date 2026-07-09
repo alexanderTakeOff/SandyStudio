@@ -8,6 +8,7 @@ import {
   buildPipelineSnapshot,
   workPhaseForAgent,
   activeWorkPhaseByShot,
+  completedWorkByShot,
   liveStagePalette,
 } from '@/lib/api/pipeline-stages';
 
@@ -363,6 +364,73 @@ describe('activeWorkPhaseByShot', () => {
     expect(m.get('SH01')).toBe('design');
     expect(m.get('SH02')).toBe('animate');
     expect(m.size).toBe(2);
+  });
+});
+
+describe('completedWorkByShot — D7 persistent trail (settled, live excluded)', () => {
+  const job = (agent_id: string, status: string, shotId?: string) => ({
+    agent_id,
+    status,
+    input_snapshot: shotId ? { shotId } : {},
+  });
+
+  it('maps a COMPLETED designer job to its shot with the designer role', () => {
+    const m = completedWorkByShot([job('EXEC-EREF-DESIGNER', 'COMPLETED', 'SH01')]);
+    expect(m.get('SH01')?.roles).toEqual(['designer']);
+  });
+
+  it('ignores shots with no COMPLETED job (nothing to trail)', () => {
+    expect(completedWorkByShot([job('EXEC-VGEN', 'RUNNING', 'SH01')]).size).toBe(0);
+  });
+
+  it('excludes a shot that ALSO has a live job — live wins, no double glow', () => {
+    const m = completedWorkByShot([
+      job('EXEC-EREF-DESIGNER', 'COMPLETED', 'SH01'),
+      job('EXEC-VGEN', 'RUNNING', 'SH01'), // same shot still working
+    ]);
+    expect(m.has('SH01')).toBe(false);
+  });
+
+  it('a QUEUED job on the shot also excludes it from the trail', () => {
+    const m = completedWorkByShot([
+      job('EXEC-VANIM', 'COMPLETED', 'SH01'),
+      job('EXEC-VGEN', 'QUEUED', 'SH01'),
+    ]);
+    expect(m.has('SH01')).toBe(false);
+  });
+
+  it('accumulates multiple completed roles on one shot (designer + critic)', () => {
+    const m = completedWorkByShot([
+      job('EXEC-EREF-DESIGNER', 'COMPLETED', 'SH01'),
+      job('EXEC-EPREV', 'COMPLETED', 'SH01'),
+    ]);
+    expect(m.get('SH01')?.roles.sort()).toEqual(['critic', 'designer']);
+  });
+
+  it('animate wins over design as the dominant object on a settled shot', () => {
+    const m = completedWorkByShot([
+      job('EXEC-EREF-DESIGNER', 'COMPLETED', 'SH01'),
+      job('EXEC-VGEN', 'COMPLETED', 'SH01'),
+    ]);
+    expect(m.get('SH01')?.object).toBe('animate');
+  });
+
+  it('skips jobs without a shotId and non-per-shot agents', () => {
+    const m = completedWorkByShot([
+      job('EXEC-VGEN', 'COMPLETED', undefined),
+      job('EXEC-MGEN', 'COMPLETED', 'SH01'), // music has no per-shot role
+    ]);
+    expect(m.size).toBe(0);
+  });
+
+  it('keeps shots independent — one settled, one still live', () => {
+    const m = completedWorkByShot([
+      job('EXEC-VGEN', 'COMPLETED', 'SH01'),
+      job('EXEC-EREF-DESIGNER', 'RUNNING', 'SH02'),
+    ]);
+    expect(m.get('SH01')?.roles).toEqual(['artist']);
+    expect(m.has('SH02')).toBe(false);
+    expect(m.size).toBe(1);
   });
 });
 

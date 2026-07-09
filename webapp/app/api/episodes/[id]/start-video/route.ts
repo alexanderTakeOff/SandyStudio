@@ -34,9 +34,8 @@ import {
   assertEpisodeTransition,
   type EpisodeStatus,
 } from '@/lib/api/status-transitions';
-import { isShotReferenceV2 } from '@/lib/api/shot-reference';
 import { excludedShotIdsFromEpisodeMeta } from '@/lib/api/animatic-shotlist';
-import { resolveShotId } from '@/lib/api/shot-identity';
+import { selectRetroFanoutShots } from '@/lib/api/start-video-latch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -106,22 +105,12 @@ export const POST = withApiHandler(async (req, ctx) => {
     .select('metadata,content')
     .eq('episode_id', episodeId)
     .like('file_type', 'SPC-shot_plan%');
-  const shotsWithPlan = new Set<string>();
-  for (const r of (planRows ?? []) as Array<{ metadata?: unknown; content?: string | null }>) {
-    const sid = resolveShotId({ metadata: r.metadata, content: r.content });
-    if (sid) shotsWithPlan.add(sid);
-  }
 
-  const firedShotIds: string[] = [];
-  for (const r of (refRows ?? []) as Array<{ metadata?: unknown }>) {
-    if (!isShotReferenceV2(r.metadata)) continue;
-    const shotId = (r.metadata as { shot_reference?: { shot_id?: unknown } }).shot_reference
-      ?.shot_id;
-    if (typeof shotId !== 'string' || shotId.length === 0) continue;
-    if (excluded.has(shotId) || shotsWithPlan.has(shotId)) continue;
-    if (firedShotIds.includes(shotId)) continue;
-    firedShotIds.push(shotId);
-  }
+  const firedShotIds = selectRetroFanoutShots(
+    (refRows ?? []) as Array<{ metadata?: unknown }>,
+    (planRows ?? []) as Array<{ metadata?: unknown; content?: string | null }>,
+    excluded,
+  );
 
   const eventIds: string[] = [];
   for (const shotId of firedShotIds) {

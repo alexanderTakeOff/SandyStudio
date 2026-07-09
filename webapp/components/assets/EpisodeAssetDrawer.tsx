@@ -48,8 +48,6 @@ import {
 import { InboxNotePromptModal } from '@/components/inbox/InboxNotePromptModal';
 import { fetcher } from '@/lib/swr';
 import { isShotReferenceV2, type GenerationAttempt } from '@/lib/api/shot-reference';
-import { isAnimaticV1 } from '@/lib/api/animatic-shotlist';
-import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import type {
   AssetMetadataDoc,
@@ -214,11 +212,8 @@ export function EpisodeAssetDrawer({
 
   // ── EREF v2 detection ──────────────────────────────────────────────────
   const isV2 = isShotReferenceV2(asset.metadata);
-  // ── Animatic v1 detection ──────────────────────────────────────────────
+  // ── Animatic v1 detection (stub pointer only — player lives on the timeline) ─
   const isAnimaticAsset = asset.file_type.startsWith('VID-animatic');
-  const animaticV1 = isAnimaticV1(asset.metadata)
-    ? (asset.metadata as { animatic_v1: import('@/lib/api/animatic-shotlist').AnimaticContract }).animatic_v1
-    : null;
   const shotRef = isV2
     ? (asset.metadata as { shot_reference: import('@/lib/api/shot-reference').ShotReferenceContract }).shot_reference
     : null;

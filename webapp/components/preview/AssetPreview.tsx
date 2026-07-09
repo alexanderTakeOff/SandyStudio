@@ -24,8 +24,6 @@ import { fetcher } from '@/lib/swr';
 import { CanonExtensionsPanel } from '@/components/canon/CanonExtensionsPanel';
 import { agentDisplayName } from '@/lib/api/agent-names';
 import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
-import { isAnimaticV1, type AnimaticContract } from '@/lib/api/animatic-shotlist';
-import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import { ShotPlanContract } from '@/components/preview/ShotPlanContract';
 import { CandidatesStrip } from '@/components/assets/EREFv2Sections';
