@@ -277,18 +277,18 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
 
       <CanonExtensionsForAsset asset={asset} />
 
-      {/* Animatic v1: interactive browser-native player. Takes precedence over
-          the VideoBody fallback so Director gets the player from the activity
-          feed Preview drawer (not just from the EpisodeAssetDrawer in Inbox). */}
-      {asset.file_type.startsWith('VID-animatic') && isAnimaticV1(asset.metadata) ? (
-        <AnimaticPlayer
-          assetId={asset.id}
-          contract={
-            (asset.metadata as { animatic_v1: AnimaticContract }).animatic_v1
-          }
-          onChanged={() => void mutate()}
-          animaticStatus={asset.status}
-        />
+      {/* Animatic-stage demotion (2026-07-09): the standalone slideshow player is
+          gone. The animatic (EDL) lives ON the Episode Timeline — the single
+          surface for pacing review, the duration editor, and the "Start Video"
+          latch. Point there instead of duplicating the player in this drawer. */}
+      {asset.file_type.startsWith('VID-animatic') ? (
+        <div
+          className="rounded-lg p-3 border border-dashed border-glass text-xs text-text-muted"
+          style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
+        >
+          Аниматик (EDL) живёт на таймлайне эпизода — там пейсинг-обзор, редактор
+          длительности кадров и кнопка «Старт видео».
+        </div>
       ) : (
         <>
           {cat === 'text' &&

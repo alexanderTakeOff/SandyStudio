@@ -645,21 +645,17 @@ export function EpisodeAssetDrawer({
             </div>
           )}
 
-          {/* ── Animatic v1 player — VID-animatic with animatic_v1 metadata ── */}
-          {isAnimaticAsset && animaticV1 && (
-            <AnimaticPlayer
-              assetId={asset.id}
-              contract={animaticV1}
-              onChanged={onChange}
-              animaticStatus={asset.status}
-            />
-          )}
-          {isAnimaticAsset && !animaticV1 && (
+          {/* Animatic-stage demotion (2026-07-09): the Inbox no longer hosts the
+              animatic player or its approval. The animatic (EDL) lives on the
+              Episode Timeline — pacing review, the duration editor, and the
+              "Start Video" latch are all there. */}
+          {isAnimaticAsset && (
             <div
               className="rounded-lg p-3 border border-dashed border-glass text-xs text-text-muted"
-              style={{ background: 'color-mix(in oklab, var(--accent-warning) 6%, transparent)' }}
+              style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
             >
-              Legacy animatic — interactive player not available. Re-trigger the Animatic stage to upgrade to animatic@v1.
+              Аниматик (EDL) живёт на таймлайне эпизода — там пейсинг-обзор,
+              редактор длительности кадров и кнопка «Старт видео».
             </div>
           )}
 

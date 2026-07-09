@@ -598,6 +598,48 @@ export function activeWorkByShot(
 }
 
 /**
+ * Pure: build `shot_id → { object, roles }` for shots whose designer / critic /
+ * artist job has COMPLETED and which have NO active (RUNNING/QUEUED) job right
+ * now. Powers the D7 "persistent trail" — a settled, non-pulsing glow that keeps
+ * a finished shot visibly marked instead of snapping back to neutral the instant
+ * its job leaves the RUNNING set (Director: «glow гаснет мгновенно, хочу след»).
+ * Live work always wins (checked first at the call-site), and a shot claimed by
+ * `activeWorkByShot` is excluded here so the two maps never both own one shot.
+ */
+export function completedWorkByShot(
+  jobs: ReadonlyArray<JobForShotPhase>,
+): Map<string, ShotWork> {
+  // Shots with any live job belong to activeWorkByShot — exclude them so the
+  // completed trail never fights the live pulse.
+  const liveShots = new Set<string>();
+  for (const j of jobs) {
+    if (j.status !== 'RUNNING' && j.status !== 'QUEUED') continue;
+    if (!workRoleForAgent(j.agent_id)) continue;
+    const shotId = snapshotShotId(j.input_snapshot);
+    if (shotId) liveShots.add(shotId);
+  }
+  const acc = new Map<string, { object: WorkPhase; roles: Set<WorkRole> }>();
+  for (const j of jobs) {
+    if (j.status !== 'COMPLETED') continue;
+    const object = workPhaseForAgent(j.agent_id);
+    const role = workRoleForAgent(j.agent_id);
+    if (!object || !role) continue;
+    const shotId = snapshotShotId(j.input_snapshot);
+    if (!shotId || liveShots.has(shotId)) continue;
+    const cur = acc.get(shotId);
+    if (cur) {
+      if (object === 'animate') cur.object = 'animate'; // animate dominant
+      cur.roles.add(role);
+    } else {
+      acc.set(shotId, { object, roles: new Set([role]) });
+    }
+  }
+  const out = new Map<string, ShotWork>();
+  for (const [k, v] of acc) out.set(k, { object: v.object, roles: [...v.roles] });
+  return out;
+}
+
+/**
  * The unified role palette — colour + glow + label for a set of live roles.
  * Colour keys off role, identically for references and video (single language):
  *   designer → indigo · critic → amber · both → teal (distinct combined) ·

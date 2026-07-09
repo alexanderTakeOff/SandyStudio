@@ -328,22 +328,14 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
             </Button>
           )}
 
-          {!isPilotMode && !cancelled && (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={advance}
-              disabled={busy !== null || !allApproved}
-              title={
-                allApproved
-                  ? 'Advance the pipeline to Animatic'
-                  : `Approve all ${progress.totalShots} shots first (${progress.approvedCount} done)`
-              }
-            >
-              {busy === 'advance' && <Loader2 size={13} className="animate-spin" />}
-              {success === 'advance' && <CheckCircle2 size={13} />}
-              Advance to Animatic
-            </Button>
+          {/* Animatic-stage demotion (2026-07-09): the "Advance to Animatic"
+              ceremony is gone. Once all references are approved the Director
+              opens the stream with the "Старт видео" latch on the Episode
+              Timeline — no separate animatic build/approval step. */}
+          {!isPilotMode && !cancelled && allApproved && (
+            <div className="text-[11px] text-text-muted px-2 py-1">
+              Все рефы одобрены → откройте видео кнопкой «Старт видео» на таймлайне эпизода.
+            </div>
           )}
 
           {!cancelled && (

@@ -1021,6 +1021,19 @@ export async function computeNextEvents(
     }
   }
 
+  // ── Early silent EDL materialization (D6, 2026-07-09): the moment an episode
+  //    reference is APPROVED, materialize the silent EDL animatic so the Episode
+  //    Timeline flips from a read-only storyboard skeleton to a real editable EDL
+  //    — in BOTH pipeline modes, for the whole run. `ensureEpisodeAnimaticEDL` is
+  //    a raw service-role insert (status APPROVED) that does NOT pass through
+  //    computeNextEvents, so it NEVER triggers a premature video fanout; the
+  //    "Start Video" latch stays the sole gate that opens the stream. Idempotent
+  //    and self-guarding — returns null (no-op) until an APPROVED storyboard and
+  //    ≥1 APPROVED reference exist.
+  if (ft.startsWith('IMG-episode_ref')) {
+    await ensureEpisodeAnimaticEDL(supabase, ep);
+  }
+
   // ── Parallel mode (S-reorder 2026-07-01): an APPROVED episode reference fires
   //    the shot's Video Designer directly — ref → shot plan → critic → video —
   //    WITHOUT waiting for a whole-episode animatic. The pilot-2 count is bounded
@@ -1045,56 +1058,12 @@ export async function computeNextEvents(
     }
   }
 
-  // ── Episode references OR music APPROVED → EXEC-EDIT (animatic)
-  // Phase A.2 PR γ: animatic creation now waits for BOTH approved EREF v1
-  // (or via /eref/advance for v2) AND approved music. This unblocks
-  // animatic playback with music for pacing review BEFORE expensive VGEN.
-  //
-  // EREF v2 (Pilot+Fanout, technology.md §4): per-shot approvals must NOT
-  // auto-fire the animatic — Director uses the explicit "Advance to Animatic"
-  // button (POST /api/episodes/[id]/eref/advance) once all shots have an
-  // approved variant. That route also waits for music to be approved
-  // before firing create-animatic.
-  if (
-    (ft.startsWith('IMG-episode_ref') || ft === 'AUD-music') &&
-    !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))
-  ) {
-    // For EREF v2 path, the per-shot approvals don't auto-fire — only the
-    // explicit advance route does. Skip auto-fire when this asset is v2.
-    const isV2EREF =
-      ft.startsWith('IMG-episode_ref') &&
-      isShotReferenceV2((asset as { metadata?: unknown }).metadata);
-    if (!isV2EREF) {
-      const erefOk = (await countApproved(supabase, ep, 'IMG-episode_ref')) >= 1;
-      // D3b (2026-07-09): music is NO LONGER a precondition for the animatic — it
-      // is required only at the stitch gate (final cut). Dropped the old
-      // `musicOk` block (already bypassed under the DESIGNER_CHAIN v2 default,
-      // so this branch is the legacy v1 path). The optional musicAssetId enrich
-      // below still attaches a track when one happens to be approved already.
-      if (erefOk) {
-        // Find the most recent APPROVED music asset to attach as
-        // musicAssetId. Lets EXEC-EDIT bake the track into the animatic.
-        const { data: musicRow } = await supabase
-          .from('assets')
-          .select('id')
-          .eq('episode_id', ep)
-          .eq('file_type', 'AUD-music')
-          .eq('status', 'APPROVED')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const musicAssetId = (musicRow as { id?: string } | null)?.id ?? null;
-        events.push({
-          name: 'sandystudio/exec-edit/create-animatic',
-          data: {
-            episodeId: ep,
-            storyboardAssetIds: [],
-            ...(musicAssetId ? { musicAssetId } : {}),
-          },
-        });
-      }
-    }
-  }
+  // ── Sequential auto-fire create-animatic — REMOVED (2026-07-09, animatic-stage
+  //    demotion). The whole-episode animatic-approval ceremony is gone: the EDL
+  //    is now materialized silently and early (see the IMG-episode_ref block
+  //    above, both modes), and video is released by the "Start Video" latch, not
+  //    by approving an animatic. Anchor-mode still fires its OWN create-animatic
+  //    (anchor pacing gate) in the anchor block above — that path is untouched.
 
   // ── Animatic APPROVED → VGEN Pilot Pass + EXEC-MGEN×1
   // Per purrfect-stirring-hollerith plan: replace the legacy [1,2,3] hardcode
