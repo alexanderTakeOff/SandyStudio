@@ -42,8 +42,7 @@ import {
   Music2,
   Save,
   Loader2,
-  CheckCircle2,
-  XCircle,
+  Clapperboard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import {
@@ -128,6 +127,9 @@ export interface AnimaticPlayerProps {
    *
    * When `'REVIEW'` (or undefined for back-compat) — show Approve/Reject.
    * When `'APPROVED'` / `'LOCKED'` / anything else — hide the footer row.
+   *
+   * UNUSED since 2026-07-09 (animatic-approval ceremony removed). Kept optional
+   * so existing call-sites still type-check; safe to drop when they are cleaned.
    */
   animaticStatus?: string;
   /**
@@ -138,6 +140,14 @@ export interface AnimaticPlayerProps {
    * empty = no live work; cells rest at their asset colour.
    */
   liveWorkByShot?: ReadonlyMap<string, ShotWork>;
+  /**
+   * D7 persistent trail (2026-07-09): shot_id → completed work { object, roles }
+   * for shots whose designer / critic / artist job FINISHED and which have no
+   * live job now. Renders a settled, muted, non-pulsing role glow so a finished
+   * shot stays visibly marked instead of snapping to neutral. Live wins — a shot
+   * in liveWorkByShot is excluded from this map upstream (completedWorkByShot).
+   */
+  completedWorkByShot?: ReadonlyMap<string, ShotWork>;
   /**
    * Image-version parity (2026-06-24) — live IMG-episode_ref rows for the
    * episode (all statuses). The cell kebab lists each shot's reference versions
@@ -198,6 +208,17 @@ export interface AnimaticPlayerProps {
   onGenerateReference?: (shotId: string) => void;
   /** Shot currently kicking off a reference flow (button spinner / disabled). */
   generatingRefShotId?: string | null;
+  /**
+   * "Start Video" latch (2026-07-09, animatic-stage demotion). When provided,
+   * the transport shows a ▶ Старт видео button next to Play/Stop/Reset that
+   * opens the video stream for the whole episode (POST /start-video via the
+   * parent, which owns episodeId). The parent passes this ONLY while the
+   * episode is still waiting (pipeline_mode !== 'parallel'); once the stream is
+   * open it stops passing it and the button disappears. Absent in drawer mode.
+   */
+  onStartVideo?: () => void;
+  /** True while the Start-Video POST is in flight (button spinner / disabled). */
+  startingVideo?: boolean;
 }
 
 /**
@@ -298,6 +319,7 @@ function cellPalette(
   status: string | undefined,
   kind: string | undefined,
   liveWork?: ShotWork,
+  completedWork?: ShotWork,
 ): { color: string; weight: number; glow?: string; pulse?: boolean } {
   // Unified work language (2026-07-02) — live work ALWAYS wins: a job RUNNING on
   // this shot recolours the cell (even an APPROVED/green one) BY ROLE and pulses
@@ -307,6 +329,20 @@ function cellPalette(
   if (liveWork && liveWork.roles.length > 0) {
     const rp = workRolePalette(liveWork.roles);
     return { color: rp.color, weight: 700, glow: rp.glow, pulse: true };
+  }
+  // D7 persistent trail (2026-07-09) — no live job, but this shot's designer/
+  // critic/artist work has finished: keep a SETTLED, muted, NON-pulsing role
+  // glow so the completed shot stays visibly marked instead of snapping back to
+  // neutral the instant its job leaves RUNNING. Reuses workRolePalette's colour
+  // at a dimmer mix (35% vs live 60%); sits above asset-status, below live.
+  if (completedWork && completedWork.roles.length > 0) {
+    const rp = workRolePalette(completedWork.roles);
+    return {
+      color: rp.color,
+      weight: 700,
+      glow: `0 0 5px color-mix(in oklab, ${rp.color} 35%, transparent)`,
+      pulse: false,
+    };
   }
   switch (status) {
     case 'APPROVED':
@@ -352,8 +388,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     shotPlansByShotId,
     refPlansByShotId,
     onOpenAsset,
-    animaticStatus,
     liveWorkByShot,
+    completedWorkByShot,
     imgRefAssets,
     synthetic = false,
     onGenerateVideo,
@@ -364,6 +400,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     shotCriticsByShotId,
     onGenerateReference,
     generatingRefShotId,
+    onStartVideo,
+    startingVideo,
   },
   ref,
 ) {
@@ -951,37 +989,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     [],
   );
 
-  // ── Approve / Reject — fires the same /approve route the drawer footer uses,
-  // which in turn triggers `computeNextEvents` to emit VGEN×3 + MGEN events
-  // (see approve/route.ts line ~212). In Mode 4 the factory auto-approves
-  // animatic on creation so this UI path is exercised only in Mode 1-3.
-  const [approving, setApproving] = useState<null | 'APPROVE' | 'REJECT'>(null);
-  const postDecision = useCallback(
-    async (decision: 'APPROVE' | 'REJECT', note?: string) => {
-      setApproving(decision);
-      setError(null);
-      try {
-        const body: Record<string, unknown> = { decision, directorConfirm: true };
-        if (decision === 'APPROVE') body.preview_acknowledged = true;
-        if (note) body.note = note;
-        const res = await fetch(`/api/assets/${assetId}/approve`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error((j as { error?: string }).error ?? `${decision} failed`);
-        }
-        onChanged();
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setApproving(null);
-      }
-    },
-    [assetId, onChanged],
-  );
+  // Animatic Approve/Reject ceremony REMOVED (2026-07-09, animatic-stage
+  // demotion). Pacing review lives on the timeline; the video stream opens via
+  // the "Start Video" latch (transport button → parent's /start-video), not by
+  // approving a whole-episode animatic.
 
   // ── Music upload ─────────────────────────────────────────────────────────
 
@@ -1426,7 +1437,9 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             // q4a — per-shot live overlay: if a designer/video-artist job is
             // RUNNING for THIS shot, it recolours + pulses (live wins).
             const liveWork = liveWorkByShot?.get(t.shot.shot_id);
-            const palette = cellPalette(cell?.status, cell?.kind, liveWork);
+            // D7 — settled trail for shots done but not currently running.
+            const completedWork = completedWorkByShot?.get(t.shot.shot_id);
+            const palette = cellPalette(cell?.status, cell?.kind, liveWork, completedWork);
             // TD-43.C: versions of THIS shot — popover lists each.
             const versions = vidShotsByShotId.get(t.shot.shot_id) ?? [];
             const showPopover = openCellIdx === i;
@@ -1824,6 +1837,26 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
         <Button variant="ghost" size="sm" onClick={handleReset}>
           <RotateCcw size={13} /> Reset
         </Button>
+        {/* "Start Video" latch (2026-07-09): opens the video stream for the whole
+            episode — every APPROVED reference (already-approved AND future) flows
+            to video from here. Shown only while waiting; parent stops passing
+            onStartVideo once the stream is open. */}
+        {onStartVideo && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onStartVideo}
+            disabled={startingVideo}
+            title="Разрешить генерацию видео по одобренным рефам — текущим и будущим"
+          >
+            {startingVideo ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Clapperboard size={13} />
+            )}{' '}
+            Старт видео
+          </Button>
+        )}
         <div className="flex-1" />
         {/* Synthetic (storyboard-derived) timeline has no backing VID-animatic
             asset to PATCH — pacing is read-only until the animatic materializes
@@ -1963,54 +1996,6 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
         </div>
         );
       })()}
-
-      {/* Approve / Reject — fires /approve route which emits VGEN×3 + MGEN
-          events, advancing pipeline to Visual Generator + Music. In Mode 4
-          factory auto-approves on creation; this row is exercised in Modes 1-3.
-          Phase A.2 Bug C fix (Director report 2026-05-08): hide entirely
-          once the animatic is past REVIEW. Clicking Approve on an already-
-          APPROVED asset throws "idempotent no-op"; clicking Reject without
-          a note throws "REJECT requires a note". Once VGEN starts, neither
-          action is meaningful. The pipeline DAG (VGEN pillbar / "Approve all
-          REVIEW") owns advancement from here on. */}
-      {!synthetic &&
-        (animaticStatus === undefined || animaticStatus === 'REVIEW' || animaticStatus === 'DRAFT') && (
-        <div
-          className="flex items-center gap-2 pt-2 border-t border-glass"
-        >
-          <div className="text-[11px] text-text-muted">
-            When happy with pacing → Approve advances to Visual Generator + Music
-          </div>
-          <div className="flex-1" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void postDecision('REJECT')}
-            disabled={approving !== null}
-            style={{ color: 'var(--accent-danger)' }}
-          >
-            {approving === 'REJECT' ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <XCircle size={13} />
-            )}{' '}
-            Reject
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => void postDecision('APPROVE')}
-            disabled={approving !== null}
-          >
-            {approving === 'APPROVE' ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <CheckCircle2 size={13} />
-            )}{' '}
-            Approve & advance
-          </Button>
-        </div>
-      )}
 
       {/* Error banner */}
       {error && (

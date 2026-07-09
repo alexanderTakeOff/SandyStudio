@@ -29,10 +29,12 @@ export interface RecordedUpdate {
 export function mockSupabase(seed: { jobs?: MockRow[]; assets?: MockRow[] }): {
   client: never;
   updates: RecordedUpdate[];
+  inserts: Array<{ table: string; row: Record<string, unknown> }>;
 } {
   const jobs = seed.jobs ?? [];
   const assets = seed.assets ?? [];
   const updates: RecordedUpdate[] = [];
+  const inserts: Array<{ table: string; row: Record<string, unknown> }> = [];
 
   function table(name: string) {
     const rows = name === 'jobs' ? jobs : assets;
@@ -57,6 +59,13 @@ export function mockSupabase(seed: { jobs?: MockRow[]; assets?: MockRow[] }): {
       },
       update: (patch: Record<string, unknown>) => {
         pendingUpdate = patch;
+        return builder;
+      },
+      // Records inserts (used by logEvent → activity_events) so tests can assert
+      // side-effects. Chainable so `.insert(...).select('id').maybeSingle()`
+      // resolves to a null row — enough for the fire-and-forget audit calls.
+      insert: (row: unknown) => {
+        inserts.push({ table: name, row: (row ?? {}) as Record<string, unknown> });
         return builder;
       },
       eq: (col: string, val: unknown) => {
@@ -115,5 +124,5 @@ export function mockSupabase(seed: { jobs?: MockRow[]; assets?: MockRow[] }): {
     };
     return builder;
   }
-  return { client: { from: (n: string) => table(n) } as never, updates };
+  return { client: { from: (n: string) => table(n) } as never, updates, inserts };
 }

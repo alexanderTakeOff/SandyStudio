@@ -349,6 +349,30 @@ export async function computeNextEvents(
     });
   }
 
+  // ── Brief APPROVED (Director modes) → nudge «cast this episode» (D1/D2, 2026-07-09).
+  //    Casting is TOOL-ONLY (no Inngest executor), so a fresh brief otherwise leaves
+  //    the DAG silent — nothing tells the Director/Polina the next move is casting,
+  //    and the Writer gate deadlocks waiting for an approved cast nobody knew to make.
+  //    Reuse the already-wired `decision_requested` type (a MUST-WAKE, first-class in
+  //    both event whitelists + the inbox) instead of adding a new node/edge. Fire once
+  //    per episode: only while no cast asset exists yet.
+  if (
+    ft === 'SPC-brief' &&
+    !isAutotest &&
+    !(await episodeHasAnyAsset(supabase, ep, 'SPC-episode_cast'))
+  ) {
+    await logEvent(supabase, {
+      event_type: 'decision_requested',
+      severity: 'info',
+      title: 'Бриф одобрен — кастуй эпизод',
+      description:
+        'Следующий шаг — кастинг: собери каст эпизода (castEpisode → SPC-episode_cast) ' +
+        'и утверди его. Writer стартует только после одобрения каста.',
+      episode_id: ep,
+      asset_id: asset.id,
+    });
+  }
+
   // ── Casting APPROVED → EXEC-SW. The gate the Brief no longer skips in
   //    Director modes. Resolve the approved brief id so the Writer's event
   //    payload stays honest. Harmless in AUTOTEST (no SPC-episode_cast there).
@@ -997,6 +1021,19 @@ export async function computeNextEvents(
     }
   }
 
+  // ── Early silent EDL materialization (D6, 2026-07-09): the moment an episode
+  //    reference is APPROVED, materialize the silent EDL animatic so the Episode
+  //    Timeline flips from a read-only storyboard skeleton to a real editable EDL
+  //    — in BOTH pipeline modes, for the whole run. `ensureEpisodeAnimaticEDL` is
+  //    a raw service-role insert (status APPROVED) that does NOT pass through
+  //    computeNextEvents, so it NEVER triggers a premature video fanout; the
+  //    "Start Video" latch stays the sole gate that opens the stream. Idempotent
+  //    and self-guarding — returns null (no-op) until an APPROVED storyboard and
+  //    ≥1 APPROVED reference exist.
+  if (ft.startsWith('IMG-episode_ref')) {
+    await ensureEpisodeAnimaticEDL(supabase, ep);
+  }
+
   // ── Parallel mode (S-reorder 2026-07-01): an APPROVED episode reference fires
   //    the shot's Video Designer directly — ref → shot plan → critic → video —
   //    WITHOUT waiting for a whole-episode animatic. The pilot-2 count is bounded
@@ -1021,52 +1058,12 @@ export async function computeNextEvents(
     }
   }
 
-  // ── Episode references OR music APPROVED → EXEC-EDIT (animatic)
-  // Phase A.2 PR γ: animatic creation now waits for BOTH approved EREF v1
-  // (or via /eref/advance for v2) AND approved music. This unblocks
-  // animatic playback with music for pacing review BEFORE expensive VGEN.
-  //
-  // EREF v2 (Pilot+Fanout, technology.md §4): per-shot approvals must NOT
-  // auto-fire the animatic — Director uses the explicit "Advance to Animatic"
-  // button (POST /api/episodes/[id]/eref/advance) once all shots have an
-  // approved variant. That route also waits for music to be approved
-  // before firing create-animatic.
-  if (
-    (ft.startsWith('IMG-episode_ref') || ft === 'AUD-music') &&
-    !(await hasJob(supabase, ep, 'EXEC-EDIT', { since }))
-  ) {
-    // For EREF v2 path, the per-shot approvals don't auto-fire — only the
-    // explicit advance route does. Skip auto-fire when this asset is v2.
-    const isV2EREF =
-      ft.startsWith('IMG-episode_ref') &&
-      isShotReferenceV2((asset as { metadata?: unknown }).metadata);
-    if (!isV2EREF) {
-      const erefOk = (await countApproved(supabase, ep, 'IMG-episode_ref')) >= 1;
-      const musicOk = (await countApproved(supabase, ep, 'AUD-music')) >= 1;
-      if (erefOk && musicOk) {
-        // Find the most recent APPROVED music asset to attach as
-        // musicAssetId. Lets EXEC-EDIT bake the track into the animatic.
-        const { data: musicRow } = await supabase
-          .from('assets')
-          .select('id')
-          .eq('episode_id', ep)
-          .eq('file_type', 'AUD-music')
-          .eq('status', 'APPROVED')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const musicAssetId = (musicRow as { id?: string } | null)?.id ?? null;
-        events.push({
-          name: 'sandystudio/exec-edit/create-animatic',
-          data: {
-            episodeId: ep,
-            storyboardAssetIds: [],
-            ...(musicAssetId ? { musicAssetId } : {}),
-          },
-        });
-      }
-    }
-  }
+  // ── Sequential auto-fire create-animatic — REMOVED (2026-07-09, animatic-stage
+  //    demotion). The whole-episode animatic-approval ceremony is gone: the EDL
+  //    is now materialized silently and early (see the IMG-episode_ref block
+  //    above, both modes), and video is released by the "Start Video" latch, not
+  //    by approving an animatic. Anchor-mode still fires its OWN create-animatic
+  //    (anchor pacing gate) in the anchor block above — that path is untouched.
 
   // ── Animatic APPROVED → VGEN Pilot Pass + EXEC-MGEN×1
   // Per purrfect-stirring-hollerith plan: replace the legacy [1,2,3] hardcode
@@ -1381,15 +1378,22 @@ export async function computeNextEvents(
           // Director loads/approves music (re-fires this gate) or triggers
           // EXEC-STITCH manually for a deliberate music-less cut. AUTOTEST
           // (replay-pilot) and sequential keep their prior behaviour untouched.
-          if (pipelineMode === 'parallel' && !isAutotest && !contractHasMusic(v1)) {
+          // D3b (2026-07-09): music precondition is now UNIFORM for both pipeline
+          // modes (was parallel-only) — the stitch gate (gate.ts) enforces it for
+          // manual/direct triggers; this pre-dispatch check keeps the auto-fire
+          // from spawning a job that would just fail the gate, and instead surfaces
+          // an actionable decision_requested (a MUST-WAKE) so Polina/Director load
+          // music (UPLOAD MUSIC re-fires this gate) or run skip-music / manual
+          // EXEC-STITCH for a deliberate silent cut. AUTOTEST keeps assembling.
+          if (!isAutotest && !contractHasMusic(v1)) {
             await logEvent(supabase, {
-              event_type: 'pipeline/stitch-blocked-no-music',
+              event_type: 'decision_requested',
               severity: 'warning',
               title: 'Финалка ждёт музыку — стич не запущен',
               description:
                 'Все живые шоты одобрены, но у эпизода нет APPROVED AUD-music. ' +
-                'Залей и одобри музыку — финальный стич соберётся автоматически. ' +
-                'Нужен немой cut — запусти EXEC-STITCH вручную.',
+                'Залей музыку (UPLOAD MUSIC) — финальный стич соберётся автоматически. ' +
+                'Нужен немой cut — запусти skip-music или EXEC-STITCH вручную.',
               actor: 'exec-dir-ai',
               episode_id: ep,
               metadata: { reason: 'STITCH_NO_APPROVED_MUSIC' },

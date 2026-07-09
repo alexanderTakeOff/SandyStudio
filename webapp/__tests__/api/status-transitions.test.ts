@@ -43,8 +43,11 @@ describe('asset transitions', () => {
 });
 
 describe('episode transitions', () => {
-  it('forbids skipping the animatic gate', () => {
-    expect(() => assertEpisodeTransition('STORYBOARD_APPROVED', 'GENERATION_IN_PROGRESS')).toThrow();
+  it('allows STORYBOARD_APPROVED → GENERATION_IN_PROGRESS (Start Video latch, E18)', () => {
+    // E18 (2026-07-09): the «Start Video» latch flips an approved storyboard
+    // straight into generation — the animatic-approval gate is no longer a
+    // required stop. The legacy animatic edges stay valid for backward compat.
+    expect(() => assertEpisodeTransition('STORYBOARD_APPROVED', 'GENERATION_IN_PROGRESS')).not.toThrow();
     expect(() => assertEpisodeTransition('STORYBOARD_APPROVED', 'ANIMATIC_IN_PROGRESS')).not.toThrow();
     expect(() => assertEpisodeTransition('ANIMATIC_APPROVED', 'GENERATION_IN_PROGRESS')).not.toThrow();
   });

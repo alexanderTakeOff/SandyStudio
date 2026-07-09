@@ -39,18 +39,31 @@ describe('decideAmbientEvent', () => {
     expect(d.reason).toMatch(/not actionable/);
   });
 
+  // D17 curation (2026-07-08): agent_started / approval_granted / manual_trigger
+  // were dropped from the injection whitelist (E18 firehose — 284 of 438 noise
+  // injections). They are now pure "not actionable" for the ambient gate.
+  test.each(['agent_started', 'approval_granted', 'manual_trigger'])(
+    'suppresses de-curated event type %s',
+    (eventType) => {
+      const d = decideAmbientEvent(baseRow({ event_type: eventType }));
+      expect(d.inject).toBe(false);
+      expect(d.reason).toMatch(/not actionable/);
+    },
+  );
+
   test("skips Director's own approval echoes", () => {
+    // approval_revision is still actionable AND director-own — exercises the skip.
     const d = decideAmbientEvent(
-      baseRow({ event_type: 'approval_granted', actor: 'director-uuid' }),
+      baseRow({ event_type: 'approval_revision', actor: 'director-uuid' }),
       { directorUserId: 'director-uuid' },
     );
     expect(d.inject).toBe(false);
     expect(d.reason).toMatch(/already seen/);
   });
 
-  test('still injects approval_granted from another actor (e.g. EXEC-DIR-AI)', () => {
+  test('still injects approval_revision from another actor (e.g. EXEC-DIR-AI)', () => {
     const d = decideAmbientEvent(
-      baseRow({ event_type: 'approval_granted', actor: 'EXEC-DIR-AI' }),
+      baseRow({ event_type: 'approval_revision', actor: 'EXEC-DIR-AI' }),
       { directorUserId: 'director-uuid' },
     );
     expect(d.inject).toBe(true);

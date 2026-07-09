@@ -3,10 +3,13 @@ import { describe, it, expect } from 'vitest';
 import { validateAgentInputs } from '@/lib/agents/gate';
 import { makeMockSupabase } from '../helpers/mock-supabase';
 
-// S-reorder (2026-07-01): EXEC-VGEN's `VID-animatic` requirement is mode-conditional.
-// Parallel mode drops it (video flows straight from an approved shot plan); sequential
-// / absent-flag keeps it (⇒ replay-pilot and every existing episode unchanged).
-describe('validateAgentInputs — EXEC-VGEN pipeline-mode override', () => {
+// E18 (2026-07-09) animatic-stage demotion: the whole-episode `VID-animatic`
+// requirement on EXEC-VGEN was removed in ALL modes — the «Start Video» latch
+// (pipeline_mode), not a gate asset, decides when video opens; per-shot readiness
+// is enforced downstream. This guards against re-introducing the episode-level
+// animatic gate: EXEC-VGEN must pass without an approved animatic regardless of
+// pipeline_mode.
+describe('validateAgentInputs — EXEC-VGEN needs no episode animatic (any mode)', () => {
   const withMode = (metadata: Record<string, unknown>) =>
     makeMockSupabase({
       // governance_mode 4 ⇒ exempt from the F13 budget gate (Step 0c) so the test
@@ -33,14 +36,13 @@ describe('validateAgentInputs — EXEC-VGEN pipeline-mode override', () => {
     expect(r.passed).toBe(true);
   });
 
-  it('sequential (default, absent flag): EXEC-VGEN BLOCKS without an approved animatic', async () => {
+  it('sequential (default, absent flag): EXEC-VGEN ALSO passes without an animatic', async () => {
     const sup = withMode({}); // no pipeline_mode ⇒ sequential
     const r = await validateAgentInputs({
       supabase: sup.client,
       agentId: 'EXEC-VGEN',
       episodeId: 'ep-1',
     });
-    expect(r.passed).toBe(false);
-    expect(r.reason ?? '').toMatch(/animatic/i);
+    expect(r.passed).toBe(true);
   });
 });

@@ -33,6 +33,7 @@ import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import { localCacheAbsPath } from '@/lib/media-cache';
 import { uploadCacheFilename } from '@/lib/api/upload-cache';
+import { ingestUploadedMusic } from '@/lib/api/ingest-music';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -142,45 +143,32 @@ export const POST = withApiHandler(async (req, ctx) => {
   const browserUrl = `/api/media/${encodeURIComponent(cacheFilename)}`;
   const originalFilename = blob.name ?? `music.${ext}`;
 
-  // Update the asset row's binary columns + flag the metadata so downstream
-  // consumers (animatic-slideshow runner, activity feed) can tell this came
-  // from a Director upload, not from EXEC-MGEN.
-  //
-  // We KEEP status as-is (typically REVIEW from the mock MGEN output) so
-  // Director still has to APPROVE explicitly — uploading the file is not
-  // implicit approval. The "uploaded_by_director" flag is informational only.
-  const metaRaw = (asset.metadata ?? {}) as Record<string, unknown>;
-  const newMeta = {
-    ...metaRaw,
-    uploaded_by_director: true,
-    uploaded_at: new Date().toISOString(),
-    original_filename: originalFilename,
+  if (!asset.episode_id) {
+    throw new ValidationError('AUD-music asset has no episode — cannot ingest music');
+  }
+
+  // D3b/D14/D15 (2026-07-09): a manual upload IS the Director's decision. Promote
+  // this AUD-music row to APPROVED, fix the extension (D14), and bake it into the
+  // animatic (D15) via the shared ingest path — so the stitch music gate is
+  // satisfied and the pipeline advances. (Was: kept REVIEW → gate blocked → the
+  // "composer not approved" deadlock the Director hit.)
+  await ingestUploadedMusic(sb, {
+    episodeId: asset.episode_id,
+    browserUrl,
+    ext,
+    originalFilename,
     bytes: blob.size,
     mime,
-  };
-
-  const { error: updateErr } = await sb
-    .from('assets')
-    .update({
-      drive_path: browserUrl,
-      // Served media route, not a worktree filesystem path (no media in
-      // branches — 2026-06-02). The cache abs path is server-only.
-      staging_path: browserUrl,
-      drive_file_id: null, // local-only — no Drive id
-      drive_web_view_url: null,
-      metadata: newMeta as unknown as Record<string, unknown>,
-    } as never)
-    .eq('id', assetId);
-  if (updateErr) {
-    throw new Error(`asset update failed: ${updateErr.message}`);
-  }
+    uploaderId: user.id,
+    targetAudMusicId: assetId,
+  });
 
   // TD-29.5 (2026-05-21): route through logEvent so the row consistently
   // emits pa/notify-needed when the event_type is actionable.
   await logEvent(sb, {
     event_type: 'asset_updated',
     severity: 'info',
-    title: `Director uploaded music for ${asset.filename}`,
+    title: `Director uploaded + approved music for ${asset.filename}`,
     description: `${originalFilename} (${Math.round(blob.size / 1024)}KB ${ext}) — direct AUD-music upload`,
     actor: user.id,
     asset_id: assetId,

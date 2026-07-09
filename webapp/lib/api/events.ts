@@ -89,6 +89,11 @@ export async function logEvent(
         source: 'ambient',
         triggerId,
         eventType: input.event_type,
+        // D17 fail-dedup (2026-07-08): carried so exec-pa-react's `:fail` debounce
+        // bucket can key on (actor, asset_id) — distinct failing shots each wake,
+        // repeated failures of the SAME stuck asset collapse within the window.
+        actor: input.actor ?? null,
+        assetId: input.asset_id ?? null,
       },
     })
     .catch((sendErr) => {

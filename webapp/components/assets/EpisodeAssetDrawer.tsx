@@ -48,8 +48,6 @@ import {
 import { InboxNotePromptModal } from '@/components/inbox/InboxNotePromptModal';
 import { fetcher } from '@/lib/swr';
 import { isShotReferenceV2, type GenerationAttempt } from '@/lib/api/shot-reference';
-import { isAnimaticV1 } from '@/lib/api/animatic-shotlist';
-import { AnimaticPlayer } from '@/components/animatic/AnimaticPlayer';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import type {
   AssetMetadataDoc,
@@ -214,11 +212,8 @@ export function EpisodeAssetDrawer({
 
   // ── EREF v2 detection ──────────────────────────────────────────────────
   const isV2 = isShotReferenceV2(asset.metadata);
-  // ── Animatic v1 detection ──────────────────────────────────────────────
+  // ── Animatic v1 detection (stub pointer only — player lives on the timeline) ─
   const isAnimaticAsset = asset.file_type.startsWith('VID-animatic');
-  const animaticV1 = isAnimaticV1(asset.metadata)
-    ? (asset.metadata as { animatic_v1: import('@/lib/api/animatic-shotlist').AnimaticContract }).animatic_v1
-    : null;
   const shotRef = isV2
     ? (asset.metadata as { shot_reference: import('@/lib/api/shot-reference').ShotReferenceContract }).shot_reference
     : null;
@@ -645,21 +640,17 @@ export function EpisodeAssetDrawer({
             </div>
           )}
 
-          {/* ── Animatic v1 player — VID-animatic with animatic_v1 metadata ── */}
-          {isAnimaticAsset && animaticV1 && (
-            <AnimaticPlayer
-              assetId={asset.id}
-              contract={animaticV1}
-              onChanged={onChange}
-              animaticStatus={asset.status}
-            />
-          )}
-          {isAnimaticAsset && !animaticV1 && (
+          {/* Animatic-stage demotion (2026-07-09): the Inbox no longer hosts the
+              animatic player or its approval. The animatic (EDL) lives on the
+              Episode Timeline — pacing review, the duration editor, and the
+              "Start Video" latch are all there. */}
+          {isAnimaticAsset && (
             <div
               className="rounded-lg p-3 border border-dashed border-glass text-xs text-text-muted"
-              style={{ background: 'color-mix(in oklab, var(--accent-warning) 6%, transparent)' }}
+              style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
             >
-              Legacy animatic — interactive player not available. Re-trigger the Animatic stage to upgrade to animatic@v1.
+              Аниматик (EDL) живёт на таймлайне эпизода — там пейсинг-обзор,
+              редактор длительности кадров и кнопка «Старт видео».
             </div>
           )}
 

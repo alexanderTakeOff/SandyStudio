@@ -6,10 +6,21 @@ import {
 } from '@/lib/api/event-actionable';
 
 describe('isActionableEventType', () => {
-  it('recognises pipeline + decision events', () => {
-    expect(isActionableEventType('agent_completed')).toBe(true);
-    expect(isActionableEventType('approval_granted')).toBe(true);
-    expect(isActionableEventType('manual_trigger')).toBe(true);
+  // D17 curation (2026-07-08): the paid-wake gate is the 8 MUST-WAKE types only —
+  // events that carry a decision / block / failure. See lib/api/event-actionable.ts.
+  it('wakes on the 8 MUST-WAKE decision/failure events', () => {
+    for (const t of [
+      'agent_failed',
+      'approval_revision',
+      'approval_rejected',
+      'blocker_raised',
+      'decision_requested',
+      'input_requested',
+      'budget_threshold_reached',
+      'canon_extension_proposed',
+    ]) {
+      expect(isActionableEventType(t)).toBe(true);
+    }
   });
 
   it('rejects non-actionable types', () => {
@@ -17,12 +28,21 @@ describe('isActionableEventType', () => {
     expect(isActionableEventType('whatever')).toBe(false);
   });
 
-  it('does NOT wake on agent_started (cost harness 2026-06-25 — ambient context only)', () => {
-    // An agent merely starting must not spend a model call; the chain advances
-    // mechanically and agent_completed/agent_failed carry the actionable signal.
-    expect(isActionableEventType('agent_started')).toBe(false);
-    expect(isActionableEventType('agent_completed')).toBe(true);
-    expect(isActionableEventType('agent_failed')).toBe(true);
+  it('does NOT spend a paid wake on already-happened telemetry / self-echoes', () => {
+    // D17: agent_completed / episode_archived / asset_created are mechanical
+    // telemetry (still injected as ambient CONTEXT); approval_granted +
+    // manual_trigger were the Director's OWN clicks echoing back (the largest
+    // paid category on E18). agent_started was already dropped 2026-06-25.
+    for (const t of [
+      'agent_started',
+      'agent_completed',
+      'approval_granted',
+      'manual_trigger',
+      'episode_archived',
+      'asset_created',
+    ]) {
+      expect(isActionableEventType(t)).toBe(false);
+    }
   });
 });
 

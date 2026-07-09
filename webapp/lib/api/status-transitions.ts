@@ -82,7 +82,10 @@ export const EPISODE_TRANSITIONS: Record<EpisodeStatus, ReadonlyArray<EpisodeSta
   STORYBOARD_IN_PROGRESS:  ['STORYBOARD_REVIEW'],
   STORYBOARD_REVIEW:       ['STORYBOARD_REVISION', 'STORYBOARD_APPROVED'],
   STORYBOARD_REVISION:     ['STORYBOARD_IN_PROGRESS'],
-  STORYBOARD_APPROVED:     ['ANIMATIC_IN_PROGRESS'],
+  // Animatic-stage demotion (2026-07-09): video may start WITHOUT an animatic
+  // approval — the "Start Video" latch flips straight to GENERATION. ANIMATIC_*
+  // path kept for in-flight episodes and anchor-mode (pacing gate).
+  STORYBOARD_APPROVED:     ['ANIMATIC_IN_PROGRESS', 'GENERATION_IN_PROGRESS'],
   ANIMATIC_IN_PROGRESS:    ['ANIMATIC_REVIEW'],
   ANIMATIC_REVIEW:         ['ANIMATIC_REVISION', 'ANIMATIC_APPROVED'],
   ANIMATIC_REVISION:       ['ANIMATIC_IN_PROGRESS'],

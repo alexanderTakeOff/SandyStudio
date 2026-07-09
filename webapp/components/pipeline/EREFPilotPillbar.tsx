@@ -157,8 +157,8 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
     [assetsData?.data, meta],
   );
 
-  const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel' | 'advance'>(null);
-  const [success, setSuccess] = useState<null | 'approve_pilots' | 'cancel' | 'advance'>(null);
+  const [busy, setBusy] = useState<null | 'approve_pilots' | 'cancel'>(null);
+  const [success, setSuccess] = useState<null | 'approve_pilots' | 'cancel'>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
@@ -221,29 +221,6 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
       setSuccess('cancel');
       setTimeout(() => setSuccess(null), 600);
       setConfirmCancel(false);
-      await refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function advance() {
-    setBusy('advance');
-    setError(null);
-    try {
-      const res = await fetch(`/api/episodes/${episodeId}/eref/advance`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ directorConfirm: true }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string; missing?: string[] }).error ?? 'Advance failed');
-      }
-      setSuccess('advance');
-      setTimeout(() => setSuccess(null), 600);
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -328,22 +305,14 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
             </Button>
           )}
 
-          {!isPilotMode && !cancelled && (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={advance}
-              disabled={busy !== null || !allApproved}
-              title={
-                allApproved
-                  ? 'Advance the pipeline to Animatic'
-                  : `Approve all ${progress.totalShots} shots first (${progress.approvedCount} done)`
-              }
-            >
-              {busy === 'advance' && <Loader2 size={13} className="animate-spin" />}
-              {success === 'advance' && <CheckCircle2 size={13} />}
-              Advance to Animatic
-            </Button>
+          {/* Animatic-stage demotion (2026-07-09): the "Advance to Animatic"
+              ceremony is gone. Once all references are approved the Director
+              opens the stream with the "Старт видео" latch on the Episode
+              Timeline — no separate animatic build/approval step. */}
+          {!isPilotMode && !cancelled && allApproved && (
+            <div className="text-[11px] text-text-muted px-2 py-1">
+              Все рефы одобрены → откройте видео кнопкой «Старт видео» на таймлайне эпизода.
+            </div>
           )}
 
           {!cancelled && (

@@ -36,6 +36,7 @@ import {
   type AnimaticContract,
   type AnimaticShot,
 } from '@/lib/api/animatic-shotlist';
+import { readPipelineMode } from '@/lib/api/pipeline-mode';
 import {
   resolveTimelineCells,
   countCellsByStatus,
@@ -52,6 +53,7 @@ import {
 import { StitchStatusPill } from '@/components/timeline/StitchStatusPill';
 import {
   activeWorkByShot,
+  completedWorkByShot,
   workPhaseForAgent,
   type ShotWork,
 } from '@/lib/api/pipeline-stages';
@@ -175,6 +177,7 @@ export function EpisodeTimelineSection({
   // Phase 2b (2026-07-02): shot whose manual "generate video" flow is starting.
   const [generatingVideoShotId, setGeneratingVideoShotId] = useState<string | null>(null);
   const [generatingRefShotId, setGeneratingRefShotId] = useState<string | null>(null);
+  const [startingVideo, setStartingVideo] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -467,6 +470,15 @@ export function EpisodeTimelineSection({
     [data],
   );
 
+  // D7 persistent trail — shot_id → completed work for shots that finished but
+  // have no live job now, so their role glow lingers (settled, non-pulsing)
+  // instead of vanishing the instant the job leaves RUNNING. Live wins: shots in
+  // liveWorkByShot are excluded upstream by completedWorkByShot.
+  const completedWork = useMemo<ReadonlyMap<string, ShotWork>>(
+    () => completedWorkByShot(data?.data.jobs ?? []),
+    [data],
+  );
+
   const navigableAssetIds = useMemo(() => {
     return cells
       .filter((c) => c.asset_id !== null)
@@ -707,6 +719,30 @@ export function EpisodeTimelineSection({
     }
   }
 
+  // "Start Video" latch (2026-07-09, animatic-stage demotion): open the video
+  // stream for the whole episode. Flips pipeline_mode → parallel + retro-fans-out
+  // already-approved references; every new approval flows to video from here.
+  async function handleStartVideo(): Promise<void> {
+    setStartingVideo(true);
+    setBulkError(null);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/start-video`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ directorConfirm: true }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Start video failed');
+      }
+      void mutate();
+    } catch (e) {
+      setBulkError((e as Error).message);
+    } finally {
+      setStartingVideo(false);
+    }
+  }
+
   async function bulkApproveReview(): Promise<void> {
     setBulkBusy(true);
     setBulkError(null);
@@ -789,10 +825,20 @@ export function EpisodeTimelineSection({
               filter={filter}
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
-              animaticStatus={animaticAsset?.status}
+              // "Start Video" latch — shown only while the episode is still
+              // waiting (pipeline_mode !== 'parallel'). Opening the stream flips
+              // the mode, so the button disappears on the next refetch.
+              onStartVideo={
+                readPipelineMode(data?.data.episode?.metadata) !== 'parallel'
+                  ? () => void handleStartVideo()
+                  : undefined
+              }
+              startingVideo={startingVideo}
               // Unified language — per-shot live work { object, roles } so the
               // cell number recolours by role (designer/critic/both/artist).
               liveWorkByShot={liveWorkByShot}
+              // D7 — settled trail for finished-but-idle shots (persistent glow).
+              completedWorkByShot={completedWork}
               // TD-80 (2026-05-27): Plan-row click on popover opens the
               // existing PreviewDrawer via setPreviewAssetId — bypasses the
               // image-fallback path that handleCellClick uses (which would

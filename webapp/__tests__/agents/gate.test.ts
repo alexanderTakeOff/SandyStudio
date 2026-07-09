@@ -119,3 +119,54 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
     expect(result.passed).toBe(true);
   });
 });
+
+describe('validateAgentInputs — EXEC-STITCH music precondition (D3b, 2026-07-09)', () => {
+  // Mode 1 needs budget approved (EXEC-STITCH is an AGENT_RUN agent).
+  const stitchAssets = (extra: Array<Record<string, unknown>>) => [
+    { id: 'an', episode_id: 'ep-1', file_type: 'VID-animatic', status: 'APPROVED' },
+    { id: 'sh', episode_id: 'ep-1', file_type: 'VID-shot', status: 'APPROVED' },
+    ...extra,
+  ];
+
+  it('Mode 1: passes with APPROVED animatic + shot + music', async () => {
+    const sup = makeMockSupabase({
+      episodes: [{ id: 'ep-1', governance_mode: 1, metadata: { budget_approved: true } }],
+      assets: stitchAssets([
+        { id: 'mus', episode_id: 'ep-1', file_type: 'AUD-music', status: 'APPROVED' },
+      ]),
+    });
+    const result = await validateAgentInputs({
+      supabase: sup.client,
+      agentId: 'EXEC-STITCH',
+      episodeId: 'ep-1',
+    });
+    expect(result.passed).toBe(true);
+  });
+
+  it('Mode 1: fails without APPROVED music (final cut must not be silently assembled)', async () => {
+    const sup = makeMockSupabase({
+      episodes: [{ id: 'ep-1', governance_mode: 1, metadata: { budget_approved: true } }],
+      assets: stitchAssets([]),
+    });
+    const result = await validateAgentInputs({
+      supabase: sup.client,
+      agentId: 'EXEC-STITCH',
+      episodeId: 'ep-1',
+    });
+    expect(result.passed).toBe(false);
+    expect(result.reason).toMatch(/music/i);
+  });
+
+  it('Mode 4 (AUTOTEST): assembles WITHOUT music (headless exemption)', async () => {
+    const sup = makeMockSupabase({
+      episodes: [{ id: 'ep-1', governance_mode: 4 }],
+      assets: stitchAssets([]),
+    });
+    const result = await validateAgentInputs({
+      supabase: sup.client,
+      agentId: 'EXEC-STITCH',
+      episodeId: 'ep-1',
+    });
+    expect(result.passed).toBe(true);
+  });
+});

@@ -117,10 +117,15 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (insErr) throw new Error(`cast gallery insert failed: ${insErr.message}`);
   const assetId = (inserted as { id?: string } | null)?.id ?? '';
 
+  // D2 (2026-07-09): cast is born in REVIEW but its only signal used to be
+  // `asset_updated` — absent from both event whitelists — so in Mode 1 (Director
+  // works through Polina, not the dashboard) nobody was woken to approve it and
+  // the pipeline deadlocked after the brief. Emit the already-wired MUST-WAKE
+  // `decision_requested` so the ratification gate surfaces to Director/Polina.
   await logEvent(supabase, {
-    event_type: 'asset_updated',
+    event_type: 'decision_requested',
     severity: 'info',
-    title: `Cast proposed for ${episodeCode} (${body.cast.length} members) — awaiting ratification`,
+    title: `Каст предложен для ${episodeCode} (${body.cast.length}) — утверди`,
     description: body.note ?? `ART-AD cast: ${slugs.join(', ')}`,
     actor: user.id,
     asset_id: assetId,
