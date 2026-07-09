@@ -20,8 +20,16 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-08 PM (E18 smoke прогнан + post-mortem; пред. якорь 2026-07-08 fetch-timeout `71cafd3`)
-Mode:   ===1=== ANALYTICS (E18 post-mortem; прод-сервера подняты и ОТКЛЮЧЕНЫ; MECHANICS_AUTO_ADVANCE OFF).
+Date:   2026-07-09 (E18 PR-B shipped: D17/D18 + миграция 0042 в проде; пред. якорь 2026-07-08 PM E18-smoke `d8a77d0`)
+Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-09 (E18 PR-B SHIPPED → ветка teo/e18-smoke `ad93d6a`, ЗАПУШЕНА, PR pending). D17 firehose закрыт чистым
+  вычитанием: Gate B `event-actionable.ts` → 8 MUST-WAKE; Gate A whitelist синхронизирован в 3 местах (SQL-триггер
+  МИГРАЦИЯ 0042 ПРИМЕНЕНА в прод + ambient-events + backfill) — drop agent_started/approval_granted/manual_trigger;
+  fail-dedup (actor,asset_id); фенс 500→40. D18: интерактив Полины → recordConciergeCost(source:'chat'). Эффект:
+  438→~30 инъекций, 378→~20 платных, $18.82→~$1.30 (14×). Реф-аниматик (D6/D7) ПРИПАРКОВАН → blueprint
+  docs/analysis/E18-ref-animatic-removal-analysis.md (режем церемонию sequential, не класс; развилка масштаба открыта).
+  Verify: tsc·0/vitest·1152/replay·30. NEXT: PR-A дискретные (D1/D2 casting · D3b MGEN · D14/D15 music) свежей сессией.
 
 2026-07-08 PM (E18 «Sandy in the Airport-2» — ПЕРВЫЙ ЧЕСТНЫЙ смоук автономии, 14 шотов, 2.5ч, опубликован).
   ВЫВОД: пайплайн работает end-to-end (14/14 картинки+видео APPROVED, final cut, PUB) — проблема НЕ надёжность,
@@ -60,10 +68,6 @@ Mode:   ===1=== ANALYTICS (E18 post-mortem; прод-сервера поднят
   1040/replay·30; живой GET/POST/PATCH/DELETE + UI + Bible-strip проверены в браузере. Polina ОСТАЁТСЯ на Opus
   (Director q2 — НЕ откатывать на gemini). NEXT: **следующий эпизод = The Vending Machine** (Director q4) — draft-тема
   `the_vending_machine` в Themes; · E13 live-прогон остаётся открытым.
-
-2026-06-28 (themes PR #30 · Polina-on-Opus · S3-measurement decideGate+gate_decision_log `c8d412c` · S2(a)+(b)
-  leak-closing `862acc8`/`df53433` — атомарный dispatch_intent + billing-escalate) → сжато в memory
-  (`session_2026-06-28_s2-leak-closing.md`, gate-decision.ts). Полина на Opus (`CONCIERGE_PROVIDER=anthropic`).
 
 2026-06-27 PM-2 (S1 cost-visibility SHIPPED). AI-factory autonomy+cost refactor planned (adversarial-hardened
   by 3 lenses; plan `~/.claude/plans/calm-percolating-sifakis.md`; direction in NORTH_STAR §4 + PLANET.md).
