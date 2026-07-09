@@ -23,14 +23,14 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPAB
 const THREAD = 'bdbdafcf-2a38-4c58-b706-362fd7ff0f16';
 const SINCE = '2026-05-13T08:30:00Z';
 
-// Mirror of decideAmbientEvent's actionable list.
+// Mirror of decideAmbientEvent's actionable list. Kept in sync 2026-07-08 (D17
+// curation): dropped 'approval_granted' + 'manual_trigger' (this one-off backfill
+// never listed 'agent_started').
 const ACTIONABLE = new Set([
   'agent_completed',
   'agent_failed',
-  'approval_granted',
   'approval_revision',
   'approval_rejected',
-  'manual_trigger',
   'blocker_raised',
   'decision_requested',
   'canon_extension_proposed',

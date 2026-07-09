@@ -17,26 +17,30 @@
 // that follows. Waking the expensive model on every start was ~40% of the
 // auto-react burn for zero benefit. It is still injected as ambient context, so
 // Polina stays aware of it without a paid wake.
+//
+// 2026-07-08 (D17 curation — E18 firehose): collapsed to the 8 MUST-WAKE types.
+// REMOVED `agent_completed`, `approval_granted`, `manual_trigger`,
+// `episode_archived`, `asset_created`. Rationale (pure subtraction):
+//   - `agent_completed` / `episode_archived` / `asset_created` are *already-
+//     happened* telemetry — the chain advances mechanically; no decision to make.
+//     Still injected as ambient CONTEXT (see ambient-events.ts) so Polina reads
+//     them on her next real wake via getRecentActivityEvents.
+//   - `approval_granted` + `manual_trigger` were the LARGEST paid category on E18
+//     (~114 paid wakes = the Director's OWN clicks echoing back; the director-own
+//     suppression was broken by a director_id≠actor mismatch). Dropping them here
+//     kills that echo at the source and moots the mismatch.
+// Everything carrying a decision/block/failure still wakes her per-event.
 // ──────────────────────────────────────────────────────────────────────────────
 
 export const ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'agent_completed',
   'agent_failed',
-  'approval_granted',
   'approval_revision',
   'approval_rejected',
-  'manual_trigger',
-  'budget_threshold_reached',
   'blocker_raised',
   'decision_requested',
   'input_requested',
+  'budget_threshold_reached',
   'canon_extension_proposed',
-  'episode_archived',
-  // TD-20.B 2026-05-20 — symmetric safety net with migration 0033's
-  // Postgres trigger whitelist. Library generation routes now write
-  // 'agent_completed' (not 'asset_created') via logEvent, but keep
-  // this entry so a future drift doesn't silently de-route the events.
-  'asset_created',
 ]);
 
 export function isActionableEventType(eventType: string): boolean {

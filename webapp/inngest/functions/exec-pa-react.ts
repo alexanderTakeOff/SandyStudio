@@ -64,16 +64,26 @@ export const execPaReact = inngest.createFunction(
     // failure became invisible to Polina (SH03 Designer died silently for
     // 20 min). The `:fail` suffix keeps the failure reaction alive without
     // re-introducing reaction storms for routine traffic.
+    //
+    // D17 fail-dedup (2026-07-08): the `:fail` bucket is now keyed on
+    // (actor, asset_id) too. A SHARED per-thread fail bucket could still mask a
+    // DISTINCT failure that arrived inside another failure's window (E18: 9 VANIM
+    // fetch-timeouts). Per-(actor,asset) buckets mean each distinct failing shot
+    // wakes her once, while repeated failures of the SAME stuck asset collapse
+    // within the window. actor/assetId are carried on the notify payload
+    // (lib/api/events.ts); null-asset failures share one bucket, acceptable.
     debounce: {
       // 2026-06-25 — widened 5s→20s (env PA_REACT_DEBOUNCE_SEC) so an EREF
       // fan-out's staggered per-shot completions collapse into ONE auto-react
       // instead of one-per-shot. The `:fail` segment below keeps failures in
-      // their own bucket (F4), so widening can't swallow a failure reaction.
+      // their own per-(actor,asset) bucket, so widening can't swallow a failure.
       period: `${Math.max(1, Number(process.env.PA_REACT_DEBOUNCE_SEC) || 20)}s`,
       key:
         '(has(event.data.threadId) && event.data.threadId != null ? event.data.threadId : ' +
         '(has(event.data.episodeId) && event.data.episodeId != null ? event.data.episodeId : "global")) + ' +
-        '(has(event.data.eventType) && event.data.eventType == "agent_failed" ? ":fail" : "")',
+        '(has(event.data.eventType) && event.data.eventType == "agent_failed" ? ' +
+        '":fail:" + (has(event.data.actor) && event.data.actor != null ? event.data.actor : "") + ' +
+        '":" + (has(event.data.assetId) && event.data.assetId != null ? event.data.assetId : "") : "")',
     },
     // Cap parallelism so a flood of cross-episode events can't blow up the
     // OpenAI rate limit. Key is per-thread when known, else per-episode.

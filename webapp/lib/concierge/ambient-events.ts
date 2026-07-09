@@ -36,15 +36,22 @@ export interface ActivityEventRow {
   created_at: string;
 }
 
-/** Event types PA should react to. Anything outside this set is filtered out. */
+/**
+ * Event types injected into PA's thread as ambient CONTEXT turns (cheap, no LLM).
+ * This is the injection gate (Gate A), NOT the paid-wake gate (see
+ * lib/api/event-actionable.ts). Keep in sync with the Postgres trigger
+ * tg_inject_activity_event_into_concierge and scripts/backfill-pa-ambient.ts.
+ *
+ * 2026-07-08 (D17 curation — E18 firehose): dropped `agent_started`,
+ * `approval_granted`, `manual_trigger` (150+74+60 = 284 of 438 injections on E18).
+ * They are pure already-happened telemetry / echoes of the Director's own clicks.
+ * `agent_completed` stays as context (pipeline visibility without a paid wake).
+ */
 const ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'agent_started',
   'agent_completed',
   'agent_failed',
-  'approval_granted',
   'approval_revision',
   'approval_rejected',
-  'manual_trigger',
   'budget_threshold_reached',
   'blocker_raised',
   'decision_requested',

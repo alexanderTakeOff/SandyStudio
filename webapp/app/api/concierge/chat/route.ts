@@ -27,7 +27,7 @@ import {
   conciergeSupportsTemperature,
   conciergeReasoningParam,
 } from '@/lib/concierge/llm';
-import { conciergeAutoReactEnabled } from '@/lib/concierge/cost';
+import { conciergeAutoReactEnabled, recordConciergeCost } from '@/lib/concierge/cost';
 import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionMessageParam,
@@ -84,6 +84,15 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
+
+// D18 (2026-07-08): OpenAI/compat usage shape we bill from. Cache fields are
+// present only on the native-Anthropic compat path (0 otherwise).
+type ChatUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+};
 
 interface ChatRequest {
   messages: ChatMessage[];
@@ -423,6 +432,31 @@ async function handleChatPOST(req: Request) {
   // event and closes the stream.
   const reqSignal: AbortSignal | undefined = (req as Request & { signal?: AbortSignal }).signal;
 
+  // D18 (2026-07-08): meter the interactive chat's LLM spend into budget_log.
+  // Was UNTRACKED — only the auto-react loop wrote concierge cost rows, so the
+  // circuit-breaker (lib/concierge/cost.ts) saw ~half the real Polina spend and
+  // the fence couldn't trip honestly (E18: interactive chat invisible to the cap).
+  // We RECORD but deliberately DO NOT gate the Director's own interactive turn:
+  // he is the human escape hatch who raises the limit, and blocking his chat when
+  // the AUTONOMOUS fence trips would wedge him out exactly when he needs it. His
+  // spend still counts toward the rolling/per-episode total, so it correctly
+  // brings the autonomous auto-react fence closer to tripping. Best-effort — the
+  // recorder never throws into the reply.
+  const billUsage = (usage: ChatUsage | null | undefined): void => {
+    if (!usage) return;
+    void recordConciergeCost(supabase, {
+      model,
+      usage: {
+        promptTokens: usage.prompt_tokens ?? 0,
+        completionTokens: usage.completion_tokens ?? 0,
+        cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+        cacheWriteTokens: usage.cache_creation_input_tokens ?? 0,
+      },
+      source: 'chat',
+      episodeId,
+    });
+  };
+
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
@@ -538,18 +572,29 @@ async function handleChatPOST(req: Request) {
             // Final-answer streaming round. OpenAI returns AsyncIterable; we
             // emit each delta.content as a token event. No tool_calls expected
             // because tools=undefined.
-            const streamedParams = { ...params, stream: true } as Parameters<typeof client.chat.completions.create>[0];
+            const streamedParams = {
+              ...params,
+              stream: true,
+              // D18: request a final usage chunk so the interactive turn's cost is
+              // recorded. OpenAI honours stream_options.include_usage; providers
+              // that ignore it just omit usage and billUsage no-ops (best-effort).
+              stream_options: { include_usage: true },
+            } as Parameters<typeof client.chat.completions.create>[0];
             const iter = (await client.chat.completions.create(streamedParams)) as AsyncIterable<{
               choices?: Array<{ delta?: { content?: string | null } }>;
+              usage?: ChatUsage | null;
             }>;
+            let streamUsage: ChatUsage | null | undefined;
             for await (const chunk of iter) {
               if (reqSignal?.aborted) { cancelled = true; break; }
+              if (chunk.usage) streamUsage = chunk.usage;
               const tokenText = chunk.choices?.[0]?.delta?.content ?? '';
               if (tokenText) {
                 assistantBuffer += tokenText;
                 writeEvent({ t: 'token', v: tokenText });
               }
             }
+            billUsage(streamUsage);
             // Streaming round always concludes the conversation.
             break;
           }
@@ -561,6 +606,8 @@ async function handleChatPOST(req: Request) {
           if (Symbol.asyncIterator in (completion as object)) {
             throw new Error('expected non-streaming completion on tool-capable round');
           }
+          // D18: meter this tool-capable round's spend (best-effort).
+          billUsage((completion as { usage?: ChatUsage }).usage);
           const msg = (completion as { choices: Array<{ message: ChatCompletionAssistantMessageParam }> })
             .choices[0]?.message;
           if (!msg) {
