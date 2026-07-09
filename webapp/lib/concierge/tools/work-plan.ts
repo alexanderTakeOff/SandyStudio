@@ -317,8 +317,11 @@ export const updateWorkPlan: Tool<UpdateWorkPlanArgs> = {
     const episodeId = typeof obj.episodeId === 'string' && obj.episodeId.trim() !== ''
       ? obj.episodeId.trim()
       : undefined;
+    // Empty content is NOT a parse error — a wake with nothing new to record must
+    // no-op gracefully in execute(), never throw. Throwing turned "nothing to
+    // write" into a tool-error the model retried until the 6-round backstop
+    // escalated to the Director (E25 2026-07-09). See the no-op guard in execute().
     const content = typeof obj.content === 'string' ? obj.content : '';
-    if (content.trim().length < 1) throw new Error('content is required');
     return { episodeId, content };
   },
   async execute(args, ctx): Promise<ToolResult> {
@@ -327,6 +330,15 @@ export const updateWorkPlan: Tool<UpdateWorkPlanArgs> = {
       return fail(
         'No episode in focus — pass episodeId explicitly or open an episode first.',
         'no_episode_id',
+      );
+    }
+    // Graceful no-op: called on a wake with nothing new to record. Return ok so
+    // the model sees "nothing to do" and stops — never an error it would retry
+    // (which used to spin to the 6-round backstop and escalate to the Director).
+    if (args.content.trim().length < 1) {
+      return ok(
+        { episodeId, noop: true },
+        'No change to record — work plan left unchanged. Do not call updateWorkPlan again unless something actually changed.',
       );
     }
     try {

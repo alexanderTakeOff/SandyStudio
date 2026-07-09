@@ -170,9 +170,11 @@ Mutating (need verbal approval per BEHAVIOR_CONTRACT rule 2):
 
 updateWorkPlan is NOT a creative gate — it is your own durable memory (the
 [WORK_PLAN] ledger above). Call it WITHOUT verbal approval whenever the Director
-makes/changes a standing decision, approval, or todo so it survives the session.
-Server-side, any Director approval is ALSO auto-appended to that ledger — but
-keep the todo list + plan structure current yourself.
+makes/changes a standing decision, approval, or todo so it survives the session —
+but ONLY when something actually changed. If nothing changed this turn, do NOT
+call it (an empty call is a graceful no-op, not a task). Server-side, any Director
+approval is ALSO auto-appended to that ledger, so you never call it just to record
+an approval.
 
 If Director refers to an episode by code (e.g. SS-S14-E01), call findEpisode first to resolve UUID.
 
@@ -288,12 +290,14 @@ const activeIntent: Block = (ctx) => {
 const workPlan: Block = (ctx) => {
   const header = [
     '[WORK_PLAN] — Your durable plan & decision ledger for THIS episode (persisted, survives the session).',
-    "It holds the Director's standing approvals + the current todo list. Read it every turn before acting;",
-    'update it via updateWorkPlan (no approval needed) when he makes/changes a decision. Do NOT re-ask about',
-    'things already recorded here. Each turn: reconcile open steps against REAL artifact status (a step is DONE',
-    'only when its asset is APPROVED — a REVISION/REVISE verdict means blocked-pending-rework, not "in progress";',
-    'absence of a completion event is not progress, read the status), mark finished steps done, derive the SINGLE',
-    'next concrete step, and act or state it crisply. If the same step keeps failing, STOP looping — call',
+    "It holds the Director's standing approvals + the current todo list. Read it every turn before acting.",
+    'Call updateWorkPlan ONLY when something actually changed — he made/changed a decision, or you took a real',
+    'action (triggered an agent, approved, a step finished). If nothing changed this turn, do NOT call it. Do',
+    'NOT re-ask about things already recorded here. Every turn, reconcile open steps against REAL artifact status',
+    'IN YOUR HEAD (a step is DONE only when its asset is APPROVED — a REVISION/REVISE verdict means',
+    'blocked-pending-rework, not "in progress"; absence of a completion event is not progress, read the status),',
+    'derive the SINGLE next concrete step, and act or state it crisply. This per-turn status check is how you',
+    'catch a stalled conveyor — never skip it. If the same step keeps failing, STOP looping — call',
     'markAwaitingDirector with one line on what was tried. Do not re-ping vaguely, do not go silent.',
   ].join('\n');
   const body = ctx.workPlanDoc && ctx.workPlanDoc.trim() !== ''
