@@ -599,7 +599,26 @@ export async function computeNextEvents(
     //
     // C1_STOP_BEFORE_EREF (verification): halt the chain here, before any paid
     // image generation. MGEN (below) still fires so the run is otherwise whole.
-    if (stopBeforeErefEnabled()) {
+    // D7 order fix (2026-07-09, E19): EREF + MGEN are paid downstream — gate them
+    // on an APPROVED storyboard, not just an approved continuity verdict. If the
+    // Director approves REV-world_check BEFORE the storyboard (bulk-approve out of
+    // order), WAIT instead of firing EREF/MGEN against a not-yet-approved board
+    // (which crashed with "0 approved storyboard"). Same invariant as D5/D6.
+    const stbApprovedForRefs =
+      isAutotest ||
+      Boolean(await findLatestApprovedAssetId(supabase, ep, 'STB-storyboard'));
+    if (!stbApprovedForRefs) {
+      await logEvent(supabase, {
+        event_type: 'pipeline/references-waiting-storyboard',
+        severity: 'warning',
+        title: 'Референсы и музыка ждут одобренную раскадровку',
+        description:
+          'Continuity-ревью одобрено, но сама раскадровка (STB-storyboard) ещё не ' +
+          'одобрена. Одобри раскадровку — референсы (EREF) и музыка (MGEN) запустятся.',
+        episode_id: ep,
+        asset_id: asset.id,
+      });
+    } else if (stopBeforeErefEnabled()) {
       // intentionally fire no EREF events — chain stops before images.
     } else if (designerChainEnabled()) {
       if (!(await hasJob(supabase, ep, 'EXEC-EREF-DESIGNER', { since }))) {
@@ -701,7 +720,7 @@ export async function computeNextEvents(
         data: { episodeId: ep, storyboardAssetId: stbId ?? asset.id },
       });
     }
-    if (!(await hasJob(supabase, ep, 'EXEC-MGEN', { since }))) {
+    if (stbApprovedForRefs && !(await hasJob(supabase, ep, 'EXEC-MGEN', { since }))) {
       events.push({
         name: 'sandystudio/exec-mgen/generate-music',
         // animaticAssetId is empty here — MGEN now generates BEFORE
