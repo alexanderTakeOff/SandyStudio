@@ -92,21 +92,53 @@ export const POST = withApiHandler(async (req, ctx) => {
     await supabase.from('assets').update({ status: 'APPROVED' }).eq('id', brief.id);
     await supabase.from('episodes').update({ status: 'BRIEF_APPROVED' }).eq('id', id);
 
-    const { ids } = await inngest.send({
-      name: 'sandystudio/exec-sw/write-script',
-      data: { episodeId: id, briefAssetId: brief.id },
-    });
-    firedEvent = { name: 'sandystudio/exec-sw/write-script', ids };
+    // D5 fix (2026-07-09): casting is a stage AFTER the brief, BEFORE the Writer
+    // (Director 2026-07-04). EXEC-SW's own gate requires an APPROVED cast, so
+    // firing the Writer unconditionally here raced the casting stage → transient
+    // "0 approved cast" agent_failed on every episode. Fire the Writer NOW only
+    // when the cast is already approved (or AUTOTEST, which has no casting stage
+    // — keeps replay-pilot intact). Otherwise the Writer waits and is launched
+    // by the cast-approval branch in next-events.ts once the cast lands.
+    const isAutotest = decision.code === 'mode_4_autotest';
+    let castApproved = isAutotest;
+    if (!isAutotest) {
+      const { count } = await supabase
+        .from('assets')
+        .select('id', { count: 'exact', head: true })
+        .eq('episode_id', id)
+        .eq('file_type', 'SPC-episode_cast')
+        .eq('status', 'APPROVED');
+      castApproved = (count ?? 0) >= 1;
+    }
 
-    await supabase.from('activity_events').insert({
-      event_type: 'pipeline_started',
-      severity: 'info',
-      title: `Pipeline started for ${ep.episode_code}`,
-      description: 'Brief approved — EXEC-SW dispatched',
-      actor: user.id,
-      episode_id: id,
-      metadata: { brief_asset_id: brief.id, inngest_event_ids: ids },
-    } as never);
+    if (castApproved) {
+      const { ids } = await inngest.send({
+        name: 'sandystudio/exec-sw/write-script',
+        data: { episodeId: id, briefAssetId: brief.id },
+      });
+      firedEvent = { name: 'sandystudio/exec-sw/write-script', ids };
+
+      await supabase.from('activity_events').insert({
+        event_type: 'pipeline_started',
+        severity: 'info',
+        title: `Pipeline started for ${ep.episode_code}`,
+        description: 'Brief approved (cast ready) — EXEC-SW dispatched',
+        actor: user.id,
+        episode_id: id,
+        metadata: { brief_asset_id: brief.id, inngest_event_ids: ids },
+      } as never);
+    } else {
+      await supabase.from('activity_events').insert({
+        event_type: 'pipeline/brief-approved-awaiting-cast',
+        severity: 'info',
+        title: `Brief approved for ${ep.episode_code} — awaiting cast`,
+        description:
+          'Бриф одобрен. Writer запустится после аппрува каста (castEpisode → approve).',
+        actor: user.id,
+        episode_id: id,
+        metadata: { brief_asset_id: brief.id },
+      } as never);
+    }
   }
 
   return apiOk({

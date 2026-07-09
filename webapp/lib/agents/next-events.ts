@@ -444,6 +444,26 @@ export async function computeNextEvents(
         data: { episodeId: ep, scriptAssetId: asset.id },
       });
     }
+    // ── Script APPROVED → EXEC-SB, when the review + cast are ALREADY approved.
+    //    Third leg of the storyboard symmetry (mirrors the cast→SB and
+    //    review→SB branches): whichever of {script, review, cast} is approved
+    //    LAST unblocks the Storyboard, regardless of the Director's approval
+    //    order. Without this leg, "review approved BEFORE script" left the
+    //    storyboard needing a manual trigger (E19 D6, 2026-07-09).
+    const reviewApprovedForSb =
+      isAutotest || Boolean(await findLatestApprovedAssetId(supabase, ep, 'REV-script_qa'));
+    const castReadyForSb =
+      isAutotest || (await countApproved(supabase, ep, 'SPC-episode_cast')) >= 1;
+    if (
+      reviewApprovedForSb &&
+      castReadyForSb &&
+      !(await hasJob(supabase, ep, 'EXEC-SB', { since }))
+    ) {
+      events.push({
+        name: 'sandystudio/exec-sb/create-storyboard',
+        data: { episodeId: ep, scriptAssetId: asset.id },
+      });
+    }
   }
 
   // ── Script review APPROVED → EXEC-SB
@@ -457,13 +477,31 @@ export async function computeNextEvents(
     // Director modes (writer→cast→storyboard, Director 2026-07-04): if the cast
     // isn't approved yet, DON'T fire storyboard — the cast-approval branch above
     // fires it once the cast lands. Whichever of {script, cast} is last unblocks SB.
+    // D6 fix (2026-07-09): require the SCRIPT itself to be approved, not just
+    // the review. If the Director approves the critic's review BEFORE the
+    // script (bulk-approve out of order), the old code fired EXEC-SB with a
+    // `scrId ?? asset.id` fallback → Storyboard crashed on "0 approved script".
+    // Now: fire ONLY when BOTH script and cast are approved; otherwise surface
+    // WHICH precondition is missing and wait — the script→SB / cast→SB branches
+    // fire the storyboard once the last one lands.
+    const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
     const castReady =
       isAutotest || (await countApproved(supabase, ep, 'SPC-episode_cast')) >= 1;
-    if (castReady) {
-      const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
+    if (scrId && castReady) {
       events.push({
         name: 'sandystudio/exec-sb/create-storyboard',
-        data: { episodeId: ep, scriptAssetId: scrId ?? asset.id },
+        data: { episodeId: ep, scriptAssetId: scrId },
+      });
+    } else if (!scrId) {
+      await logEvent(supabase, {
+        event_type: 'pipeline/storyboard-waiting-script',
+        severity: 'warning',
+        title: 'Раскадровка ждёт одобренный сценарий',
+        description:
+          'Ревью критика одобрено, но сам сценарий (SCR-script) ещё не одобрен. ' +
+          'Одобри сценарий — раскадровка запустится сразу после этого.',
+        episode_id: ep,
+        asset_id: asset.id,
       });
     } else {
       await logEvent(supabase, {
