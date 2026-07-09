@@ -20,8 +20,17 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-09 (E18 PR-B shipped: D17/D18 + миграция 0042 в проде; пред. якорь 2026-07-08 PM E18-smoke `d8a77d0`)
+Date:   2026-07-09 (Polina updateWorkPlan no-op fix on master `c66b1a8`; пред. E18 PR-B D17/D18 + миграция 0042 в проде)
 Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-09 EVE (E25 smoke — Тео автономно). Polina updateWorkPlan(empty) → parse-throw → 6-раунд-бэкстоп →
+  эскалация Директору. FIX на master `c66b1a8`: parse не бросает, execute no-op; промпт «пиши план ТОЛЬКО при
+  реальном изменении, mental-сверка статусов каждый ход остаётся»; +work-plan.test (tsc·0/vitest·266). ⚠️ E25 смок
+  шёл на ОТСТАВШЕЙ ветке claude/e19-test-run-7000f9 (−8 от master) — БЕЗ D17-фикса фаершоза (fence 500 не 40, старый
+  actionable-набор) → Полина переваживала: $10/175 auto-react на anthropic/sonnet-5, но фенснута $30-cap (в видео-
+  бюджет не течёт). Надёжный прод-сервер поднят (next build+start :3000, inngest synced; eslint-gate на ветке снят —
+  на master НЕ нужен, там `eef6662` починил лит). ОТКРЫТО Директору: E25-работу ребейзить на master (принять D17 +
+  E18 «Start Video» латч) vs добить на ветке; D5/D6/D7 world_check-гейт (branch-only) ждёт осознанного мержа.
 
 2026-07-09 (E18 PR-B SHIPPED → ветка teo/e18-smoke `ad93d6a`, ЗАПУШЕНА, PR pending). D17 firehose закрыт чистым
   вычитанием: Gate B `event-actionable.ts` → 8 MUST-WAKE; Gate A whitelist синхронизирован в 3 местах (SQL-триггер
