@@ -20,7 +20,7 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-10 (master `dceed66` ЗАДЕПЛОЕН; RECONCILER ARMED — MECHANICS_AUTO_ADVANCE=true для след. смока)
+Date:   2026-07-10 (master `ef57b79` ЗАДЕПЛОЕН на :3000 — rebuild+restart в чистое окно, 0 рендеров: EXEC-PUB real + отложенные start-video латч + Key Art уехали одним рестартом; RECONCILER ARMED — MECHANICS_AUTO_ADVANCE=true для след. смока)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-10 (Distribution — Тео). Стадия **EXEC-PUB была МОК → сделана НАСТОЯЩЕЙ** (master `fb50d4a`). Плумбинг
