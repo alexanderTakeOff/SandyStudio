@@ -34,8 +34,9 @@ if (!CLIENT_ID || !CLIENT_SECRET) {
 const PORT = 53682;
 const REDIRECT_URI = `http://localhost:${PORT}`;
 const SCOPES = [
-  'https://www.googleapis.com/auth/youtube.upload',    // upload videos
-  'https://www.googleapis.com/auth/youtube.readonly',  // list channel (for the diff)
+  'https://www.googleapis.com/auth/youtube.upload',     // upload videos
+  'https://www.googleapis.com/auth/youtube.readonly',   // list channel (for the diff)
+  'https://www.googleapis.com/auth/youtube.force-ssl',  // edit existing videos (videos.update) + thumbnails.set
 ].join(' ');
 
 const authUrl =
