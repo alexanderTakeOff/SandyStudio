@@ -219,6 +219,15 @@ export interface AnimaticPlayerProps {
   onStartVideo?: () => void;
   /** True while the Start-Video POST is in flight (button spinner / disabled). */
   startingVideo?: boolean;
+  /**
+   * Materialize-on-first-edit (E25 2026-07-10): in synthetic mode there is no
+   * backing VID-animatic asset to PATCH timing into. When the Director edits a
+   * duration and saves, the parent creates the animatic vessel (POST
+   * /animatic/materialize) and returns its id, which Save then PATCHes. Provided
+   * only in synthetic mode; absent for a real animatic (assetId already set).
+   * Removes the old "approve an empty animatic to unlock duration editing" step.
+   */
+  onMaterialize?: () => Promise<string | null>;
 }
 
 /**
@@ -402,6 +411,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     generatingRefShotId,
     onStartVideo,
     startingVideo,
+    onMaterialize,
   },
   ref,
 ) {
@@ -935,6 +945,21 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     setSavingTiming(true);
     setError(null);
     try {
+      // Materialize-on-first-edit: in synthetic mode there is no backing asset.
+      // Create the animatic vessel from the storyboard skeleton (parent owns the
+      // POST) and PATCH the returned id — so the Director never has to approve an
+      // empty animatic to unlock timing editing.
+      let targetId = assetId;
+      if (!targetId && onMaterialize) {
+        const created = await onMaterialize();
+        if (!created) {
+          throw new Error('Could not materialize the animatic — is the storyboard approved?');
+        }
+        targetId = created;
+      }
+      if (!targetId) {
+        throw new Error('No animatic asset to save timing into.');
+      }
       const overridesPayload: Record<
         string,
         { duration_seconds: number; trim_start_seconds?: number }
@@ -949,7 +974,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             : {}),
         };
       }
-      const res = await fetch(`/api/assets/${assetId}/animatic-timing`, {
+      const res = await fetch(`/api/assets/${targetId}/animatic-timing`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         // 2026-06-06 — also persist Director's audio shaping (fade/trim) when
@@ -972,7 +997,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     } finally {
       setSavingTiming(false);
     }
-  }, [assetId, onChanged, overrides, audioTracksLocal]);
+  }, [assetId, onChanged, overrides, audioTracksLocal, onMaterialize]);
 
   // 2026-06-06 — mutate a single audio track in-place and mark dirty so the
   // existing "Save timing" button picks it up (anti-additive — one save
@@ -1858,10 +1883,12 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           </Button>
         )}
         <div className="flex-1" />
-        {/* Synthetic (storyboard-derived) timeline has no backing VID-animatic
-            asset to PATCH — pacing is read-only until the animatic materializes
-            on the first real edit (Phase 3). Hide Save-timing in that state. */}
-        {!synthetic && (
+        {/* Save-timing is shown even in synthetic mode now (E25 2026-07-10): the
+            first save materializes the VID-animatic vessel via onMaterialize, so
+            editing durations no longer requires approving an empty animatic. In
+            synthetic mode with no onMaterialize wired the button is hidden (there
+            would be nowhere to persist). */}
+        {(!synthetic || onMaterialize) && (
           <Button
             variant={dirty ? 'primary' : 'ghost'}
             size="sm"
@@ -1878,8 +1905,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       {/* Inline trim editor (current shot). 2026-06-08 — relabelled per Director:
           "cut start" / "cut end" are just labels for the existing decrement
           buttons (head / tail). One numeric field "duration" shows the net
-          final-cut length, updating as either edge is trimmed. */}
-      {!synthetic && currentShot && (() => {
+          final-cut length, updating as either edge is trimmed.
+          E25 2026-07-10 — shown in synthetic mode too when onMaterialize is
+          wired: edits accumulate locally and the first Save materializes the
+          animatic vessel, so no empty-animatic approval is needed to edit. */}
+      {(!synthetic || onMaterialize) && currentShot && (() => {
         const currentTrimStart = overrides[currentShot.shot_id]?.trim_start_seconds ?? 0;
         const excluded = currentNetDuration <= MIN_SHOT_S;
         return (

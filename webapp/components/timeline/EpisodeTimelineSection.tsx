@@ -719,6 +719,33 @@ export function EpisodeTimelineSection({
     }
   }
 
+  // Materialize-on-first-edit (E25 2026-07-10): the synthetic (storyboard-derived)
+  // timeline has no backing VID-animatic to persist duration edits into. When the
+  // Director saves timing for the first time, create the animatic vessel from the
+  // approved storyboard skeleton and return its id so Save-timing PATCHes it — no
+  // more "approve an empty animatic to unlock the duration panel". Idempotent
+  // server-side (returns the existing approved animatic if any).
+  async function handleMaterializeAnimatic(): Promise<string | null> {
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/animatic/materialize`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? 'Materialize animatic failed');
+      }
+      const j = (await res.json()) as { data?: { asset_id?: string } };
+      const newId = j.data?.asset_id ?? null;
+      void mutate();
+      return newId;
+    } catch (e) {
+      setBulkError((e as Error).message);
+      return null;
+    }
+  }
+
   // "Start Video" latch (2026-07-09, animatic-stage demotion): open the video
   // stream for the whole episode. Flips pipeline_mode → parallel + retro-fans-out
   // already-approved references; every new approval flows to video from here.
@@ -856,6 +883,10 @@ export function EpisodeTimelineSection({
               onToggleExclusion={(shotId, excluded) =>
                 void handleToggleExclusion(shotId, excluded)
               }
+              // Synthetic mode only: first duration Save materializes the
+              // animatic vessel (removes the empty-animatic-approval step). A
+              // real animatic already has an assetId, so it doesn't need this.
+              onMaterialize={isSynthetic ? handleMaterializeAnimatic : undefined}
             />
           </div>
         )}
