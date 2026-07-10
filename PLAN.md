@@ -20,7 +20,7 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-10 (master `a14b7d8` — timeline duration-edit fix задеплоен на прод; зелёный)
+Date:   2026-07-10 (master `31a8459` — timeline duration+music-upload fix на проде; зелёный)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-10 (E25 continue — Тео). Директор: панель редактирования длительности шотов появляется только ПОСЛЕ
@@ -30,8 +30,10 @@ Mode:   ===5=== EDIT (Director-authorized).
   чтобы разблокировать. FIX (master `a14b7d8`) = обещанная «Phase 3»: редактор показан в синтетике, ПЕРВЫЙ Save
   материализует аниматик-сосуд из skeleton одобренного storyboard (POST /animatic/materialize, APPROVED —
   vessel не гейт; идемпотентно), затем PATCH тайминга. Длительности остаются где STITCH/VGEN уже читают (без
-  перепроводки). Реюз extractShotsFromStoryboard+newAnimaticContract+bakeApprovedMusic. tsc·0/vitest·1182/build·0,
-  задеплоено на прод :3000. TD-остаток: аппрув обгоняет критика той же версии (EREF/world_check v02 REVISE) — не чинил.
+  перепроводки). Реюз extractShotsFromStoryboard+newAnimaticContract+bakeApprovedMusic. tsc·0/vitest·1182/build·0.
+  + music upload (master `31a8459`): ТОТ ЖЕ корень — «Upload music» в таймлайне постил в /upload-music с пустым
+  assetId в синтетике → «Music upload failed». Та же materialize-first проводка (handleMusicUpload). Оба на проде :3000.
+  TD-остаток: аппрув обгоняет критика той же версии (EREF/world_check v02 REVISE) — не чинил.
 
 2026-07-09 NIGHT (Тео автономно, Директор на тренировке — «фабрика важнее прогона E25, приведи в порядок под
   новый смок»). E25 как эпизод НЕ добиваем. master сведён воедино и зелёный (`6bacf8b`): (1) Polina updateWorkPlan(empty)
