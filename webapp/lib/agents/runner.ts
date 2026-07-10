@@ -27,6 +27,8 @@ import {
 import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
+import { uploadVideo, setThumbnail, videoExists, type PrivacyStatus } from './providers/youtube';
+import { downloadFile } from './providers/drive';
 import { persistBinary, type PersistedBinary } from './persist-binary';
 import { computeInputVersions } from './input-versions';
 import { canonicalShotId } from '../api/shot-id';
@@ -155,6 +157,76 @@ function coerceVideoProviderId(raw: string | null | undefined): VideoProviderId 
   if (raw === 'veo-3' || raw === 'veo-3-img2vid') return 'veo-3-img2vid';
   if (raw === 'seedance-fal' || raw === 'seedance-fal-img2vid') return 'seedance-fal-img2vid';
   return null;
+}
+
+// ── EXEC-PUB (YouTube publish) helpers ────────────────────────────────────────
+
+/** Body of a `## <name>` section in the EXEC-COPY SPC-metadata markdown, up to
+ *  the next `##` header. */
+function sectionBody(md: string, name: string): string {
+  const lines = md.split(/\r?\n/);
+  const out: string[] = [];
+  let capturing = false;
+  for (const line of lines) {
+    const h = line.match(/^##\s*(.+?)\s*$/);
+    if (h) {
+      if (capturing) break; // next header ends the section
+      if (h[1].toLowerCase() === name.toLowerCase()) capturing = true;
+      continue;
+    }
+    if (capturing) out.push(line);
+  }
+  return out.join('\n').trim();
+}
+
+/** Parse EXEC-COPY's SPC-metadata (## Title / ## Description / ## Tags) into
+ *  YouTube fields. */
+function parsePublishMetadata(md: string): { title: string; description: string; tags: string[] } {
+  const title = (sectionBody(md, 'Title').split(/\r?\n/)[0] ?? '').trim();
+  const description = sectionBody(md, 'Description').trim();
+  const tagsRaw = sectionBody(md, 'Tags');
+  const tags = tagsRaw
+    ? tagsRaw.split(/[,\n]/).map((t) => t.replace(/^[-*•#\s]+/, '').trim()).filter(Boolean).slice(0, 30)
+    : [];
+  return { title, description, tags };
+}
+
+function readEpisodeMetaString(episode: unknown, key: string): string | null {
+  if (!episode || typeof episode !== 'object') return null;
+  const meta = (episode as { metadata?: unknown }).metadata;
+  if (!meta || typeof meta !== 'object') return null;
+  const v = (meta as Record<string, unknown>)[key];
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+function coercePrivacy(v: string | null): PrivacyStatus | null {
+  return v === 'private' || v === 'unlisted' || v === 'public' ? v : null;
+}
+
+/** Merge the published video id into episodes.metadata (the thin distribution
+ *  ledger — no new table). */
+async function persistYouTubeVideoId(
+  supabase: SupabaseClient<Database>,
+  episodeId: string,
+  videoId: string,
+  privacy: PrivacyStatus,
+): Promise<void> {
+  const { data } = await supabase.from('episodes').select('metadata').eq('id', episodeId).single();
+  const meta =
+    data?.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
+      ? (data.metadata as Record<string, unknown>)
+      : {};
+  await supabase
+    .from('episodes')
+    .update({
+      metadata: {
+        ...meta,
+        youtube_video_id: videoId,
+        youtube_privacy: privacy,
+        youtube_published_at: new Date().toISOString(),
+      } as Json,
+    })
+    .eq('id', episodeId);
 }
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
@@ -2938,6 +3010,121 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-PUB': {
+      const hasYtToken = !!process.env.YOUTUBE_REFRESH_TOKEN?.trim();
+
+      // Real publish path needs a supabase client (to load the APPROVED inputs)
+      // and a YouTube refresh token. Absent either (replay-pilot, tests,
+      // unconfigured env) → deterministic mock, exactly as before.
+      if (supabase && hasYtToken) {
+        const loadApproved = async (ft: string) => {
+          const { data } = await supabase
+            .from('assets')
+            .select('id, file_type, filename, drive_file_id, content')
+            .eq('episode_id', episodeId)
+            .eq('file_type', ft)
+            .eq('status', 'APPROVED')
+            .order('version', { ascending: false })
+            .limit(1);
+          return data?.[0] ?? null;
+        };
+        const [metaAsset, videoAsset, thumbAsset] = await Promise.all([
+          loadApproved('SPC-metadata'),
+          loadApproved('VID-final_cut'),
+          loadApproved('IMG-thumbnail'),
+        ]);
+        if (!metaAsset?.content) {
+          throw new Error('EXEC-PUB: no APPROVED SPC-metadata content to publish');
+        }
+        if (!videoAsset?.drive_file_id) {
+          throw new Error('EXEC-PUB: no APPROVED VID-final_cut with a Drive file id to upload');
+        }
+
+        const parsed = parsePublishMetadata(metaAsset.content);
+        const epTitle = (inputs.episode as { title_working?: string | null } | undefined)?.title_working;
+        const title = (parsed.title || epTitle || 'Sandy the Hourglass').slice(0, 100);
+        const privacy: PrivacyStatus =
+          coercePrivacy(readEpisodeMetaString(inputs.episode, 'youtube_privacy')) ?? 'unlisted';
+
+        // Idempotent republish: if we already recorded a video id and it is
+        // still live on the channel, this is a no-op (retrigger without a prior
+        // delete). If the video was deleted, videoExists → false → re-upload.
+        const priorId = readEpisodeMetaString(inputs.episode, 'youtube_video_id');
+        if (priorId && (await videoExists(priorId))) {
+          return {
+            outputKind: 'publish-log',
+            result: {
+              asset_paths: [],
+              cost_usd: 0,
+              metadata: {
+                agent_id: agentId,
+                provider_id: 'youtube-data-api',
+                youtube_video_id: priorId,
+                video_url: `https://youtu.be/${priorId}`,
+                privacy_status: privacy,
+                skipped: true,
+                note: 'Already published and live on channel — no re-upload.',
+                publish_timestamp: Date.now(),
+              },
+              next_event: {
+                name: 'sandystudio/exec-pub/published',
+                data: { episodeId, youtubeVideoId: priorId, publishTimestamp: Date.now() },
+              },
+            },
+          };
+        }
+
+        // Upload the final cut.
+        const videoBytes = new Uint8Array(await downloadFile(videoAsset.drive_file_id));
+        const uploaded = await uploadVideo({
+          bytes: videoBytes,
+          title,
+          description: parsed.description,
+          tags: parsed.tags,
+          privacyStatus: privacy,
+        });
+
+        // Best-effort custom thumbnail — a failure here must not fail the publish.
+        let thumbnailSet = false;
+        if (thumbAsset?.drive_file_id) {
+          try {
+            const thumbBytes = new Uint8Array(await downloadFile(thumbAsset.drive_file_id));
+            await setThumbnail(uploaded.id, thumbBytes);
+            thumbnailSet = true;
+          } catch (err) {
+            console.error(
+              `EXEC-PUB: thumbnail set failed for ${uploaded.id}:`,
+              err instanceof Error ? err.message : err,
+            );
+          }
+        }
+
+        await persistYouTubeVideoId(supabase, episodeId, uploaded.id, privacy);
+
+        return {
+          outputKind: 'publish-log',
+          result: {
+            asset_paths: [],
+            cost_usd: 0,
+            metadata: {
+              agent_id: agentId,
+              provider_id: 'youtube-data-api',
+              youtube_video_id: uploaded.id,
+              video_url: uploaded.url,
+              privacy_status: uploaded.privacyStatus,
+              title,
+              tags_count: parsed.tags.length,
+              thumbnail_set: thumbnailSet,
+              publish_timestamp: Date.now(),
+            },
+            next_event: {
+              name: 'sandystudio/exec-pub/published',
+              data: { episodeId, youtubeVideoId: uploaded.id, publishTimestamp: Date.now() },
+            },
+          },
+        };
+      }
+
+      // ── Mock fallback (replay-pilot / no creds) ──
       const upload = await mockYouTubeUpload({
         episodeId,
         title: 'Mock Episode',

@@ -100,6 +100,31 @@ export async function listAllUploads(): Promise<UploadedVideoRef[]> {
   return out;
 }
 
+/** True if the video id still exists / is visible on the channel. Used for
+ *  idempotent republish: a deleted video → false → EXEC-PUB re-uploads. */
+export async function videoExists(videoId: string): Promise<boolean> {
+  const res = await authedFetch(`${YT_API}/videos?part=id&id=${encodeURIComponent(videoId)}`);
+  if (!res.ok) {
+    throw new YouTubeError(`videoExists failed (${res.status})`, res.status, (await res.text()).slice(0, 300));
+  }
+  const json = (await res.json()) as any;
+  return Array.isArray(json.items) && json.items.length > 0;
+}
+
+/** Set a custom thumbnail on an uploaded video (thumbnails.set). youtube.upload
+ *  scope suffices — no force-ssl needed for one's own freshly-uploaded video. */
+export async function setThumbnail(videoId: string, bytes: Uint8Array, contentType = 'image/png'): Promise<void> {
+  const url = `https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(videoId)}&uploadType=media`;
+  const res = await authedFetch(
+    url,
+    { method: 'POST', headers: { 'content-type': contentType }, body: bytes as unknown as BodyInit },
+    UPLOAD_TIMEOUT_MS,
+  );
+  if (!res.ok) {
+    throw new YouTubeError(`setThumbnail failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
+  }
+}
+
 export type PrivacyStatus = 'private' | 'unlisted' | 'public';
 
 export interface UploadVideoInput {

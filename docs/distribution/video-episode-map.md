@@ -18,10 +18,12 @@
 | 7 | `Sandy and Car Wash 1.17.mp4` | 1280×720 · 74s | normal | **SS-S15-E15** | Автомойка | — | [2efpY_JPYUo](https://youtu.be/2efpY_JPYUo) |
 | 8 | `Sandy in the Gym.mp4` | 1280×720 · 85s | normal | **SS-S15-E16** | Sandy in The Gym | беговая дорожка → конвейер через все тренажёры; ранний концепт S14-E21 | [rzBgn07Ucsg](https://youtu.be/rzBgn07Ucsg) 🆕 |
 | 9 | `Sandy in elevator.mp4` | 1280×720 · 60s | normal | **SS-S15-E09** | Sandy and Elevator | застрял в лобби с упрямой кнопкой лифта; регресс-двойник E10 | [gU8BBvnoHu0](https://youtu.be/gU8BBvnoHu0) |
-| 10 | `Sandy in the Airport 4.mp4` | 496×864 · 49s | **SHORT** | **SS-S15-E25** | Sandy in the Airport-4 | вертикальный шорт | [bNo3gNhDyMU](https://youtu.be/bNo3gNhDyMU) |
+| 10 | `Sandy in the Airport 4.mp4` | 496×864 · 49s | **SHORT** | **SS-S15-E25** | Sandy in the Airport-4 | вертикальный шорт | [mIew_0BCc5Y](https://youtu.be/mIew_0BCc5Y) 🎬 |
 | — | `LEGACY_Sandy and Madam Parfume.mp4` | 1280×720 · 96s | legacy | SS-S14-E01 | Perfume Vial | устаревшая версия #6 — **НЕ грузим** (заменена v03) | ✖️ skip |
 
-Колонка **YouTube** = video ID (ссылка). 🆕 = залито нами через API 2026-07-10 (unlisted). Остальные 9 уже были на канале.
+Колонка **YouTube** = video ID (ссылка). 🆕 = залито скриптом через API 2026-07-10. 🎬 = залито **стадией EXEC-PUB** (канонический финал из БД + метаданные EXEC-COPY + тумбнейл EXEC-THUMB). Остальные были на канале ранее.
+
+> E25 (Airport): ручной Finals-заливкой был `bNo3gNhDyMU`, стадия EXEC-PUB залила канонический `mIew_0BCc5Y` (с настоящими метаданными+тумбнейлом). `bNo3gNhDyMU` теперь дубль — удалить вручную (API-скоуп `youtube.upload` не даёт delete). Оба unlisted.
 
 **Статус 2026-07-10:** все 10 на канале «Sandy the Hourglass» (`UCc2YJlHFclO9BWLEgPlglIg`). Дальше — оформление (заголовки/описания/теги/тумбнейлы/карточки) + стратегия. Управление каналом идёт через `YOUTUBE_REFRESH_TOKEN` (бренд-аккаунт, только YouTube-скоупы; Drive — отдельный `GOOGLE_REFRESH_TOKEN`).
 
