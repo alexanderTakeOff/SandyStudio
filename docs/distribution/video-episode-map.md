@@ -9,19 +9,21 @@
 
 | # | Файл (Finals) | Разрешение / длит. | Тип | Эпизод | `title_working` | Логлайн (кратко) | YouTube |
 |---|---|---|---|---|---|---|---|
-| 1 | `Sandy and Heavy Friend.mp4` | 1920×1080 · 61s | normal | **SS-S15-E01** | Heavy Friend | — | ⬜ |
-| 2 | `Sandy Cleaning Up.mp4` | 1920×1080 · 72s | normal | **SS-S15-E07** | The Tidy Tornado (YouTube 16:9) | уборка на невозможной скорости, каждый шорткат = хуже; концепт-исток E02/E06 | ⬜ |
-| 3 | `Sandy and Power Fan.mp4` | 1280×720 · 143s | normal | **SS-S15-E11** | Мощный вентилятор | — | ⬜ |
-| 4 | `sandy and smartphone .mp4` | 1280×720 · 60s | normal | **SS-S15-E12** | Бесконечная лента | Сэнди заворожён смартфоном, песок утекает в цифровую пустоту | ⬜ |
-| 5 | `Sandy and Vending Machine.mp4` | 1280×720 · 93s | normal | **SS-S15-E13** | Sandy and Vending Machine | — | ⬜ |
-| 6 | `Sandy and Madam Parfume v03.mp4` | 1280×720 · 77s | normal | **SS-S15-E14** | Мадам Парфюм | v03; ранний концепт-исток S14-E01 "Perfume Vial" | ⬜ |
-| 7 | `Sandy and Car Wash 1.17.mp4` | 1280×720 · 74s | normal | **SS-S15-E15** | Автомойка | — | ⬜ |
-| 8 | `Sandy in the Gym.mp4` | 1280×720 · 85s | normal | **SS-S15-E16** | Sandy in The Gym | беговая дорожка → конвейер через все тренажёры; ранний концепт S14-E21 | ⬜ |
-| 9 | `Sandy in elevator.mp4` | 1280×720 · 60s | normal | **SS-S15-E09** | Sandy and Elevator | застрял в лобби с упрямой кнопкой лифта; регресс-двойник E10 | ⬜ |
-| 10 | `Sandy in the Airport 4.mp4` | 496×864 · 49s | **SHORT** | **SS-S15-E25** | Sandy in the Airport-4 | вертикальный шорт | ⬜ |
+| 1 | `Sandy and Heavy Friend.mp4` | 1920×1080 · 61s | normal | **SS-S15-E01** | Heavy Friend | — | [mCGE4FBcSrQ](https://youtu.be/mCGE4FBcSrQ) |
+| 2 | `Sandy Cleaning Up.mp4` | 1920×1080 · 72s | normal | **SS-S15-E07** | The Tidy Tornado (YouTube 16:9) | уборка на невозможной скорости, каждый шорткат = хуже; концепт-исток E02/E06 | [BvIHVozwdKQ](https://youtu.be/BvIHVozwdKQ) |
+| 3 | `Sandy and Power Fan.mp4` | 1280×720 · 143s | normal | **SS-S15-E11** | Мощный вентилятор | — | [LgGPVYUEzf8](https://youtu.be/LgGPVYUEzf8) |
+| 4 | `sandy and smartphone .mp4` | 1280×720 · 60s | normal | **SS-S15-E12** | Бесконечная лента | Сэнди заворожён смартфоном, песок утекает в цифровую пустоту | [iT8nwWABBqE](https://youtu.be/iT8nwWABBqE) |
+| 5 | `Sandy and Vending Machine.mp4` | 1280×720 · 93s | normal | **SS-S15-E13** | Sandy and Vending Machine | — | [ywNKJYsbnrE](https://youtu.be/ywNKJYsbnrE) |
+| 6 | `Sandy and Madam Parfume v03.mp4` | 1280×720 · 77s | normal | **SS-S15-E14** | Мадам Парфюм | v03; ранний концепт-исток S14-E01 "Perfume Vial" | [S2vIiuUCUGg](https://youtu.be/S2vIiuUCUGg) |
+| 7 | `Sandy and Car Wash 1.17.mp4` | 1280×720 · 74s | normal | **SS-S15-E15** | Автомойка | — | [2efpY_JPYUo](https://youtu.be/2efpY_JPYUo) |
+| 8 | `Sandy in the Gym.mp4` | 1280×720 · 85s | normal | **SS-S15-E16** | Sandy in The Gym | беговая дорожка → конвейер через все тренажёры; ранний концепт S14-E21 | [rzBgn07Ucsg](https://youtu.be/rzBgn07Ucsg) 🆕 |
+| 9 | `Sandy in elevator.mp4` | 1280×720 · 60s | normal | **SS-S15-E09** | Sandy and Elevator | застрял в лобби с упрямой кнопкой лифта; регресс-двойник E10 | [gU8BBvnoHu0](https://youtu.be/gU8BBvnoHu0) |
+| 10 | `Sandy in the Airport 4.mp4` | 496×864 · 49s | **SHORT** | **SS-S15-E25** | Sandy in the Airport-4 | вертикальный шорт | [bNo3gNhDyMU](https://youtu.be/bNo3gNhDyMU) |
 | — | `LEGACY_Sandy and Madam Parfume.mp4` | 1280×720 · 96s | legacy | SS-S14-E01 | Perfume Vial | устаревшая версия #6 — **НЕ грузим** (заменена v03) | ✖️ skip |
 
-Колонка **YouTube**: ⬜ ещё не залито · ✅ залито (unlisted) · ✖️ пропуск. Обновляется после диффа канала.
+Колонка **YouTube** = video ID (ссылка). 🆕 = залито нами через API 2026-07-10 (unlisted). Остальные 9 уже были на канале.
+
+**Статус 2026-07-10:** все 10 на канале «Sandy the Hourglass» (`UCc2YJlHFclO9BWLEgPlglIg`). Дальше — оформление (заголовки/описания/теги/тумбнейлы/карточки) + стратегия. Управление каналом идёт через `YOUTUBE_REFRESH_TOKEN` (бренд-аккаунт, только YouTube-скоупы; Drive — отдельный `GOOGLE_REFRESH_TOKEN`).
 
 ## Примечания к неоднозначным
 
