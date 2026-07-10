@@ -163,6 +163,28 @@ export async function updateVideoMetadata(
   }
 }
 
+/** True if the video is already an item of the playlist (idempotency guard). */
+export async function isVideoInPlaylist(playlistId: string, videoId: string): Promise<boolean> {
+  const res = await authedFetch(`${YT_API}/playlistItems?part=id&playlistId=${encodeURIComponent(playlistId)}&videoId=${encodeURIComponent(videoId)}&maxResults=1`);
+  if (!res.ok) {
+    throw new YouTubeError(`isVideoInPlaylist failed (${res.status})`, res.status, (await res.text()).slice(0, 300));
+  }
+  const json = (await res.json()) as { items?: unknown[] };
+  return Array.isArray(json.items) && json.items.length > 0;
+}
+
+/** Append a video to a playlist (playlistItems.insert). Requires force-ssl scope. */
+export async function addVideoToPlaylist(playlistId: string, videoId: string): Promise<void> {
+  const res = await authedFetch(`${YT_API}/playlistItems?part=snippet`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ snippet: { playlistId, resourceId: { kind: 'youtube#video', videoId } } }),
+  });
+  if (!res.ok) {
+    throw new YouTubeError(`addVideoToPlaylist failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
+  }
+}
+
 export type PrivacyStatus = 'private' | 'unlisted' | 'public';
 
 export interface UploadVideoInput {

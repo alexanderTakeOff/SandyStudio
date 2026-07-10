@@ -27,7 +27,7 @@ import {
 import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
-import { uploadVideo, setThumbnail, videoExists, type PrivacyStatus } from './providers/youtube';
+import { uploadVideo, setThumbnail, videoExists, isVideoInPlaylist, addVideoToPlaylist, type PrivacyStatus } from './providers/youtube';
 import { downloadFile } from './providers/drive';
 import { parseVideoMetadata } from './publish-metadata';
 import { persistBinary, type PersistedBinary } from './persist-binary';
@@ -198,6 +198,28 @@ async function persistYouTubeVideoId(
       } as Json,
     })
     .eq('id', episodeId);
+}
+
+/** The YouTube playlist this episode's series belongs to: episode-metadata
+ *  override → series.metadata.youtube_playlist_id → YOUTUBE_PLAYLIST_ID env.
+ *  Null → EXEC-PUB skips the playlist step. */
+async function resolveSeriesPlaylistId(
+  supabase: SupabaseClient<Database>,
+  episode: unknown,
+): Promise<string | null> {
+  const epOverride = readEpisodeMetaString(episode, 'youtube_playlist_id');
+  if (epOverride) return epOverride;
+  const seriesId = (episode as { series_id?: string | null } | null)?.series_id;
+  if (seriesId) {
+    const { data } = await supabase.from('series').select('metadata').eq('id', seriesId).maybeSingle();
+    const meta = (data as { metadata?: unknown } | null)?.metadata;
+    if (meta && typeof meta === 'object') {
+      const pl = (meta as Record<string, unknown>).youtube_playlist_id;
+      if (typeof pl === 'string' && pl.length > 0) return pl;
+    }
+  }
+  const envPl = process.env.YOUTUBE_PLAYLIST_ID?.trim();
+  return envPl || null;
 }
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
@@ -3071,6 +3093,18 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
         await persistYouTubeVideoId(supabase, episodeId, uploaded.id, privacy);
 
+        // Add to the series playlist (best-effort, idempotent, non-fatal).
+        let addedToPlaylist = false;
+        try {
+          const playlistId = await resolveSeriesPlaylistId(supabase, inputs.episode);
+          if (playlistId && !(await isVideoInPlaylist(playlistId, uploaded.id))) {
+            await addVideoToPlaylist(playlistId, uploaded.id);
+            addedToPlaylist = true;
+          }
+        } catch (err) {
+          console.error(`EXEC-PUB: playlist add failed for ${uploaded.id}:`, err instanceof Error ? err.message : err);
+        }
+
         return {
           outputKind: 'publish-log',
           result: {
@@ -3085,6 +3119,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
               title,
               tags_count: parsed.tags.length,
               thumbnail_set: thumbnailSet,
+              playlist_added: addedToPlaylist,
               publish_timestamp: Date.now(),
             },
             next_event: {
