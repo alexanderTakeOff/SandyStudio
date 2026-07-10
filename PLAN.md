@@ -29,8 +29,13 @@ Mode:   ===5=== EDIT (Director-authorized).
   IMG-thumbnail → заливает финал с метаданными EXEC-COPY + кастомный тумбнейл → пишет `youtube_video_id` в
   episodes.metadata; идемпотентен (живой id→skip, удалён→перезалив на ретригере). Проверено на E25: канон-финал
   unlisted `mIew_0BCc5Y` (title/15-тегов/тумбнейл); 2-й прогон skip. Реестр `docs/distribution/video-episode-map.md`.
-  tsc·0/replay·30/vitest·1189. ОТКРЫТО: 9 «сырых» видео на канале ждут правки метаданных (нужен `force-ssl` скоуп);
-  дубль Airport `bNo3gNhDyMU` удалить вручную.
+  tsc·0/replay·30/vitest·1189. ДОБИТО (EVE): все 10 видео → `unlisted` + метаданные + кастом-тумбнейлы + в плейлисте
+  серии; устойчивый общий парсер SPC-metadata (`359adef`, `publish-metadata.ts`); EXEC-PUB авто-добавляет в плейлист
+  (`7d20b84`, `series.metadata.youtube_playlist_id`); `force-ssl` скоуп для правки залитых (`98f2323`); E09 без ассетов
+  дожат вручную (метаданные+AI-тумбнейл gemini). madeForKids=false (семейный). origin=`7d20b84` (запушено). ⚠️ ДЕПЛОЙ
+  ОТЛОЖЕН: прод на `ef57b79` — парсер+плейлист заработают в фабрике после rebuild+restart (свернуть в реконсайлер-деплой).
+  ОТКРЫТО: E07 заголовок блокирует A/B-тест Studio; рерайт EXEC-COPY-текстов короче/яснее под семейный формат. Handoff+
+  [[reconciler_audit_2026-07-10]] — следующая сессия = развилка по реконсайлеру (смок только MECHANICS_AUTO_ADVANCE=OFF).
 
 2026-07-10 (E25 continue — Тео). Директор: панель редактирования длительности шотов появляется только ПОСЛЕ
   апрува пустого аниматика. Причина: E18 сделал timeline-first (skeleton виден сразу после storyboard), но
