@@ -20,7 +20,7 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-10 (master `dceed66` — start-video + Key Art фиксы ЗАКОММИЧЕНЫ, НЕ задеплоены; прод на `31a8459`)
+Date:   2026-07-10 (master `dceed66` ЗАДЕПЛОЕН; RECONCILER ARMED — MECHANICS_AUTO_ADVANCE=true для след. смока)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-10 (E25 continue — Тео). Директор: панель редактирования длительности шотов появляется только ПОСЛЕ
@@ -43,6 +43,15 @@ Mode:   ===5=== EDIT (Director-authorized).
   но в buildEditPrompt не было identity-lock фразы → текст перевешивал рефы; добавлен EREF-подобный lock. (2) toggle «Key Art
   concepts» не работал на странице эпизода — PreviewDrawer не передавал onPickAsset (в таймлайне передан); провязан. Все 3
   фикса (start-video + 2 Key Art) деплоятся ОДНИМ рестартом после финиша рендеров E25 (осталось ~3 видео).
+  DEPLOYED: E25 финалка готова → пересборка master `dceed66` + рестарт, все 3 фикса на проде :3000.
+  RECONCILER ARMED (Директор q: «включай ON, прогоним next смок при реконсайлере»): MECHANICS_AUTO_ADVANCE=true в .env.local
+  (:138) + рестарт. Безопасность подтверждена кодом: реконсайлер шлётся ТОЛЬКО из factory.ts на завершении агента активного
+  эпизода (мёртвые E12-E18 инертны); пилоты авто-резервируются `resolveReservedShots(eref_pilot_shot_ids)` — НИКОГДА не
+  авто-аппрув; publish/LOCKED — hard-limits во всех режимах. Idle чист (0 открытых тредов). ⚠️ Открытая критика Директора
+  (не чинил, backlog): реконсайлер на ГЛОБАЛЬНОМ ENV-флаге вместо governance mode — Mode 3 (DELEGATED) семантически = то,
+  что делает реконсайлер; правильный дизайн — гейтить на `governance_mode∈{3,4}`+arm-at-creation, убрать ENV-флаг. NEXT: чистый
+  эпизод, убедиться что 'pilots' в reserved gates перед прогоном. Caps проверены реально работают (SH02 video-critic HALT);
+  превышения = ручные ре-триггеры (32 Директор + 32 Полина, байпас by design). Полина капается ТОЛЬКО деньгами ($30/эп).
 
 2026-07-09 NIGHT (Тео автономно, Директор на тренировке — «фабрика важнее прогона E25, приведи в порядок под
   новый смок»). E25 как эпизод НЕ добиваем. master сведён воедино и зелёный (`6bacf8b`): (1) Polina updateWorkPlan(empty)
