@@ -29,6 +29,7 @@ import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { uploadVideo, setThumbnail, videoExists, type PrivacyStatus } from './providers/youtube';
 import { downloadFile } from './providers/drive';
+import { parseVideoMetadata } from './publish-metadata';
 import { persistBinary, type PersistedBinary } from './persist-binary';
 import { computeInputVersions } from './input-versions';
 import { canonicalShotId } from '../api/shot-id';
@@ -160,36 +161,6 @@ function coerceVideoProviderId(raw: string | null | undefined): VideoProviderId 
 }
 
 // ── EXEC-PUB (YouTube publish) helpers ────────────────────────────────────────
-
-/** Body of a `## <name>` section in the EXEC-COPY SPC-metadata markdown, up to
- *  the next `##` header. */
-function sectionBody(md: string, name: string): string {
-  const lines = md.split(/\r?\n/);
-  const out: string[] = [];
-  let capturing = false;
-  for (const line of lines) {
-    const h = line.match(/^##\s*(.+?)\s*$/);
-    if (h) {
-      if (capturing) break; // next header ends the section
-      if (h[1].toLowerCase() === name.toLowerCase()) capturing = true;
-      continue;
-    }
-    if (capturing) out.push(line);
-  }
-  return out.join('\n').trim();
-}
-
-/** Parse EXEC-COPY's SPC-metadata (## Title / ## Description / ## Tags) into
- *  YouTube fields. */
-function parsePublishMetadata(md: string): { title: string; description: string; tags: string[] } {
-  const title = (sectionBody(md, 'Title').split(/\r?\n/)[0] ?? '').trim();
-  const description = sectionBody(md, 'Description').trim();
-  const tagsRaw = sectionBody(md, 'Tags');
-  const tags = tagsRaw
-    ? tagsRaw.split(/[,\n]/).map((t) => t.replace(/^[-*•#\s]+/, '').trim()).filter(Boolean).slice(0, 30)
-    : [];
-  return { title, description, tags };
-}
 
 function readEpisodeMetaString(episode: unknown, key: string): string | null {
   if (!episode || typeof episode !== 'object') return null;
@@ -3039,9 +3010,9 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           throw new Error('EXEC-PUB: no APPROVED VID-final_cut with a Drive file id to upload');
         }
 
-        const parsed = parsePublishMetadata(metaAsset.content);
         const epTitle = (inputs.episode as { title_working?: string | null } | undefined)?.title_working;
-        const title = (parsed.title || epTitle || 'Sandy the Hourglass').slice(0, 100);
+        const parsed = parseVideoMetadata(metaAsset.content, epTitle || 'Sandy the Hourglass');
+        const title = parsed.title;
         const privacy: PrivacyStatus =
           coercePrivacy(readEpisodeMetaString(inputs.episode, 'youtube_privacy')) ?? 'unlisted';
 

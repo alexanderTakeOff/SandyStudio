@@ -137,6 +137,32 @@ export async function setThumbnail(videoId: string, bytes: Uint8Array, contentTy
   }
 }
 
+/** Update title/description/tags on an EXISTING video (videos.update). Requires
+ *  the youtube.force-ssl scope. videos.update replaces the snippet, so title +
+ *  categoryId are mandatory; we always send description + tags too. */
+export async function updateVideoMetadata(
+  videoId: string,
+  meta: { title: string; description?: string; tags?: string[]; categoryId?: string },
+): Promise<void> {
+  const body = {
+    id: videoId,
+    snippet: {
+      title: meta.title,
+      description: meta.description ?? '',
+      tags: meta.tags ?? [],
+      categoryId: meta.categoryId ?? '23', // Comedy
+    },
+  };
+  const res = await authedFetch(`${YT_API}/videos?part=snippet`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new YouTubeError(`updateVideoMetadata failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
+  }
+}
+
 export type PrivacyStatus = 'private' | 'unlisted' | 'public';
 
 export interface UploadVideoInput {
