@@ -58,12 +58,18 @@ export async function getMyChannel(): Promise<ChannelInfo> {
   if (!res.ok) {
     throw new YouTubeError(`getMyChannel failed (${res.status})`, res.status, (await res.text()).slice(0, 600));
   }
-  const json = (await res.json()) as any;
+  const json = (await res.json()) as {
+    items?: Array<{
+      id?: string;
+      snippet?: { title?: string };
+      contentDetails?: { relatedPlaylists?: { uploads?: string } };
+    }>;
+  };
   const ch = json.items?.[0];
   if (!ch) throw new YouTubeError('getMyChannel: no channel on this account');
   const uploads = ch.contentDetails?.relatedPlaylists?.uploads;
   if (!uploads) throw new YouTubeError('getMyChannel: no uploads playlist');
-  return { id: ch.id, title: ch.snippet?.title ?? '', uploadsPlaylistId: uploads };
+  return { id: ch.id ?? '', title: ch.snippet?.title ?? '', uploadsPlaylistId: uploads };
 }
 
 export interface UploadedVideoRef {
@@ -87,7 +93,13 @@ export async function listAllUploads(): Promise<UploadedVideoRef[]> {
     if (!res.ok) {
       throw new YouTubeError(`listAllUploads failed (${res.status})`, res.status, (await res.text()).slice(0, 600));
     }
-    const json = (await res.json()) as any;
+    const json = (await res.json()) as {
+      items?: Array<{
+        contentDetails?: { videoId?: string; videoPublishedAt?: string };
+        snippet?: { title?: string; publishedAt?: string; resourceId?: { videoId?: string } };
+      }>;
+      nextPageToken?: string;
+    };
     for (const it of json.items ?? []) {
       out.push({
         videoId: it.contentDetails?.videoId ?? it.snippet?.resourceId?.videoId ?? '',
@@ -107,7 +119,7 @@ export async function videoExists(videoId: string): Promise<boolean> {
   if (!res.ok) {
     throw new YouTubeError(`videoExists failed (${res.status})`, res.status, (await res.text()).slice(0, 300));
   }
-  const json = (await res.json()) as any;
+  const json = (await res.json()) as { items?: unknown[] };
   return Array.isArray(json.items) && json.items.length > 0;
 }
 
@@ -189,7 +201,11 @@ export async function uploadVideo(input: UploadVideoInput): Promise<UploadVideoR
   if (!putRes.ok) {
     throw new YouTubeError(`upload PUT failed (${putRes.status})`, putRes.status, (await putRes.text()).slice(0, 800));
   }
-  const video = (await putRes.json()) as any;
+  const video = (await putRes.json()) as {
+    id?: string;
+    snippet?: { title?: string };
+    status?: { privacyStatus?: string };
+  };
   if (!video.id) throw new YouTubeError('upload PUT: response missing video id');
   return {
     id: video.id,
