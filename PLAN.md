@@ -20,8 +20,18 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-09 (master `6bacf8b` СВЕДЁН ВОЕДИНО, зелёный, прод-сервер поднят — ГОТОВ К НОВОМУ СМОКУ)
+Date:   2026-07-10 (master `a14b7d8` — timeline duration-edit fix задеплоен на прод; зелёный)
 Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-10 (E25 continue — Тео). Директор: панель редактирования длительности шотов появляется только ПОСЛЕ
+  апрува пустого аниматика. Причина: E18 сделал timeline-first (skeleton виден сразу после storyboard), но
+  редактор длительности + Save-timing остались за гейтом реального VID-animatic ассета (длительности пишутся в
+  metadata.animatic_v1.director_overrides, и STITCH/VGEN читают их оттуда же) → Директор апрувил пустой аниматик
+  чтобы разблокировать. FIX (master `a14b7d8`) = обещанная «Phase 3»: редактор показан в синтетике, ПЕРВЫЙ Save
+  материализует аниматик-сосуд из skeleton одобренного storyboard (POST /animatic/materialize, APPROVED —
+  vessel не гейт; идемпотентно), затем PATCH тайминга. Длительности остаются где STITCH/VGEN уже читают (без
+  перепроводки). Реюз extractShotsFromStoryboard+newAnimaticContract+bakeApprovedMusic. tsc·0/vitest·1182/build·0,
+  задеплоено на прод :3000. TD-остаток: аппрув обгоняет критика той же версии (EREF/world_check v02 REVISE) — не чинил.
 
 2026-07-09 NIGHT (Тео автономно, Директор на тренировке — «фабрика важнее прогона E25, приведи в порядок под
   новый смок»). E25 как эпизод НЕ добиваем. master сведён воедино и зелёный (`6bacf8b`): (1) Polina updateWorkPlan(empty)
