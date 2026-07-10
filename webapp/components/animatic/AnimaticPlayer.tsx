@@ -1029,9 +1029,24 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       setUploadingMusic(true);
       setError(null);
       try {
+        // Materialize-on-first-edit (E25 2026-07-10): in synthetic mode there is
+        // no backing VID-animatic to attach music to, so /upload-music got an
+        // empty asset id → "Music upload failed". Mirror handleSaveTiming: create
+        // the vessel first, then upload into it. No empty-animatic approval needed.
+        let targetId = assetId;
+        if (!targetId && onMaterialize) {
+          const created = await onMaterialize();
+          if (!created) {
+            throw new Error('Could not materialize the animatic — is the storyboard approved?');
+          }
+          targetId = created;
+        }
+        if (!targetId) {
+          throw new Error('No animatic asset to attach music to.');
+        }
         const fd = new FormData();
         fd.append('file', file);
-        const res = await fetch(`/api/assets/${assetId}/upload-music`, {
+        const res = await fetch(`/api/assets/${targetId}/upload-music`, {
           method: 'POST',
           body: fd,
         });
@@ -1046,7 +1061,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
         setUploadingMusic(false);
       }
     },
-    [assetId, onChanged],
+    [assetId, onChanged, onMaterialize],
   );
 
   // ── Render ───────────────────────────────────────────────────────────────
