@@ -20,7 +20,7 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-10 (master `31a8459` — timeline duration+music-upload fix на проде; зелёный)
+Date:   2026-07-10 (master `107870a` — start-video plan→video fix ЗАКОММИЧЕН, НЕ задеплоен; прод на `31a8459`)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-10 (E25 continue — Тео). Директор: панель редактирования длительности шотов появляется только ПОСЛЕ
@@ -34,6 +34,11 @@ Mode:   ===5=== EDIT (Director-authorized).
   + music upload (master `31a8459`): ТОТ ЖЕ корень — «Upload music» в таймлайне постил в /upload-music с пустым
   assetId в синтетике → «Music upload failed». Та же materialize-first проводка (handleMusicUpload). Оба на проде :3000.
   TD-остаток: аппрув обгоняет критика той же версии (EREF/world_check v02 REVISE) — не чинил.
+  + start-video латч (master `107870a`, ЗАКОММИЧЕН но НЕ задеплоен — ждём догенерации Полининых видео): «Старт видео»
+  фанаутил только ребро ref→plan (беспланные шоты), пропуская шоты с готовым планом → в sequential-прогоне (планы
+  строятся заранее) кнопка немая, видео шло только через Полину (E25: 10/20 шотов пропущены). Fix = selectRenderFanoutShots
+  (ребро plan→video): шоты с APPROVED-планом без видео рендерятся напрямую (exec-vgen/single-shot, atomic dedup). tsc·0/
+  vitest·1189. ⚠️ ДЕПЛОЙ ОТЛОЖЕН: прод-сервер на `31a8459` (старый билд), пересобрать+рестарт ПОСЛЕ финиша E25-рендеров.
 
 2026-07-09 NIGHT (Тео автономно, Директор на тренировке — «фабрика важнее прогона E25, приведи в порядок под
   новый смок»). E25 как эпизод НЕ добиваем. master сведён воедино и зелёный (`6bacf8b`): (1) Polina updateWorkPlan(empty)
