@@ -207,8 +207,23 @@ async function resolveCanonRefs(
  * the lower third for the caption — this stops the model burning garbled words
  * into the art and keeps the overlay legible.
  */
-export function buildEditPrompt(v: ThumbnailVariant): string {
-  const parts = [v.prompt.trim()];
+export function buildEditPrompt(v: ThumbnailVariant, identitySlugs: readonly string[] = []): string {
+  const parts: string[] = [];
+  // Identity lock (E25 2026-07-10, Director): the multi-ref edit already FEEDS
+  // the LOCKED character canon, but without an explicit clause the text prompt
+  // overpowers the references and the protagonist drifts off-model (generic
+  // "Sandy"). Mirror EREF's reference-as-canon instruction: name the characters
+  // and demand they match the model sheets exactly. Goes FIRST so it anchors.
+  if (identitySlugs.length > 0) {
+    const named = identitySlugs.join(', ');
+    parts.push(
+      `The provided reference images are the CANONICAL model sheets for the recurring characters (${named}). ` +
+        `Any of these characters that appears in this key art MUST be rendered EXACTLY on-model as in its reference — ` +
+        `identical proportions, materials, colours, and silhouette. Do NOT restyle, redesign, simplify, or substitute ` +
+        `a generic figure; the reference identity is non-negotiable. (Do not force in a character the concept does not call for.)`,
+    );
+  }
+  parts.push(v.prompt.trim());
   if (v.composition_notes && v.composition_notes.trim()) {
     parts.push(`Composition: ${v.composition_notes.trim()}`);
   }
@@ -345,7 +360,7 @@ export async function runThumbnailRenderer(
 
   for (let i = 0; i < variants.length; i++) {
     const v = variants[i];
-    const editPrompt = buildEditPrompt(v);
+    const editPrompt = buildEditPrompt(v, identitySlugs);
     let real;
     try {
       real = await openAIEditsMultiProvider.generate({

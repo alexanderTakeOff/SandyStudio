@@ -506,6 +506,11 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         onClose={() => setPreviewAssetId(null)}
         assetId={previewAssetId}
         title={previewTitle}
+        // Key Art concepts (and any candidate strip) switch the drawer to a
+        // sibling by id — without this the "Key Art concepts" toggle was a no-op
+        // on the episode page (the timeline wired it; this surface didn't).
+        onPickAsset={(id) => setPreviewAssetId(id)}
+        onAssetChanged={() => void mutate()}
       />
     </StudioContentFrame>
   );
