@@ -23,6 +23,15 @@
 Date:   2026-07-10 (master `dceed66` ЗАДЕПЛОЕН; RECONCILER ARMED — MECHANICS_AUTO_ADVANCE=true для след. смока)
 Mode:   ===5=== EDIT (Director-authorized).
 
+2026-07-10 (Distribution — Тео). Стадия **EXEC-PUB была МОК → сделана НАСТОЯЩЕЙ** (master `fb50d4a`). Плумбинг
+  (`c4eac71`): `youtube.ts` + два токена (Drive `ao@` / Sandy-бренд `YOUTUBE_REFRESH_TOKEN`; бренд-аккаунт без Drive
+  → раздельно; `youtube.upload` хватает для publish+thumbnail). EXEC-PUB грузит APPROVED VID-final_cut+SPC-metadata+
+  IMG-thumbnail → заливает финал с метаданными EXEC-COPY + кастомный тумбнейл → пишет `youtube_video_id` в
+  episodes.metadata; идемпотентен (живой id→skip, удалён→перезалив на ретригере). Проверено на E25: канон-финал
+  unlisted `mIew_0BCc5Y` (title/15-тегов/тумбнейл); 2-й прогон skip. Реестр `docs/distribution/video-episode-map.md`.
+  tsc·0/replay·30/vitest·1189. ОТКРЫТО: 9 «сырых» видео на канале ждут правки метаданных (нужен `force-ssl` скоуп);
+  дубль Airport `bNo3gNhDyMU` удалить вручную.
+
 2026-07-10 (E25 continue — Тео). Директор: панель редактирования длительности шотов появляется только ПОСЛЕ
   апрува пустого аниматика. Причина: E18 сделал timeline-first (skeleton виден сразу после storyboard), но
   редактор длительности + Save-timing остались за гейтом реального VID-animatic ассета (длительности пишутся в
