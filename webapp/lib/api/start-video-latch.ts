@@ -50,3 +50,67 @@ export function selectRetroFanoutShots(
   }
   return fired;
 }
+
+/** A shot-plan row with the id + status the render selection needs. */
+export interface ApprovedPlanRow {
+  id?: string | null;
+  metadata?: unknown;
+  content?: string | null;
+  status?: string | null;
+}
+
+/** A VID-shot row — only used to know which shots already have a video. */
+export interface VidRowForFanout {
+  metadata?: unknown;
+  content?: string | null;
+}
+
+/** One shot ready to render straight from its approved plan. */
+export interface RenderFanoutShot {
+  shotId: string;
+  planAssetId: string;
+}
+
+/**
+ * Pure: the plan→video edge the ref→plan sweep above does NOT cover. Returns the
+ * shots that already have an APPROVED/LOCKED plan but no video yet, each paired
+ * with its plan asset id, so the latch can fire a plan-driven render
+ * (exec-vgen/single-shot) directly.
+ *
+ * Why this exists (E25 2026-07-10, Director): in a SEQUENTIAL run plans are
+ * built progressively BEFORE the video stream is opened, so by the time the
+ * Director presses "Start Video" most shots already have an approved plan.
+ * selectRetroFanoutShots skips any shot that has a plan, so the latch fired
+ * ~nothing and video only started when the Director pushed it through Polina.
+ * This closes that gap — pressing Start Video now renders every approved-plan
+ * shot that lacks a video, matching the latch's stated intent (ref → plan →
+ * critic → video for every approved reference).
+ *
+ * `plans` MUST be ordered newest-version-first so the first APPROVED plan seen
+ * per shot is the canonical one.
+ */
+export function selectRenderFanoutShots(
+  plans: ReadonlyArray<ApprovedPlanRow>,
+  videos: ReadonlyArray<VidRowForFanout>,
+  excluded: ReadonlySet<string>,
+): RenderFanoutShot[] {
+  const shotsWithVideo = new Set<string>();
+  for (const v of videos) {
+    const sid = resolveShotId({ metadata: v.metadata, content: v.content });
+    if (sid) shotsWithVideo.add(sid);
+  }
+
+  const out: RenderFanoutShot[] = [];
+  const seen = new Set<string>();
+  for (const p of plans) {
+    const status = String(p.status ?? '').toUpperCase();
+    if (status !== 'APPROVED' && status !== 'LOCKED') continue;
+    if (typeof p.id !== 'string' || p.id.length === 0) continue;
+    const sid = resolveShotId({ metadata: p.metadata, content: p.content });
+    if (!sid) continue;
+    if (excluded.has(sid) || shotsWithVideo.has(sid) || seen.has(sid)) continue;
+    seen.add(sid);
+    out.push({ shotId: sid, planAssetId: p.id });
+  }
+  return out;
+}

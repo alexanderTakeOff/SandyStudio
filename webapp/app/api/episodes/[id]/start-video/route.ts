@@ -35,7 +35,10 @@ import {
   type EpisodeStatus,
 } from '@/lib/api/status-transitions';
 import { excludedShotIdsFromEpisodeMeta } from '@/lib/api/animatic-shotlist';
-import { selectRetroFanoutShots } from '@/lib/api/start-video-latch';
+import {
+  selectRetroFanoutShots,
+  selectRenderFanoutShots,
+} from '@/lib/api/start-video-latch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -100,15 +103,35 @@ export const POST = withApiHandler(async (req, ctx) => {
     .eq('status', 'APPROVED')
     .like('file_type', 'IMG-episode_ref%');
 
+  // Newest-version-first so the first APPROVED plan seen per shot is canonical
+  // (selectRenderFanoutShots takes the first). id + status drive the render sweep.
   const { data: planRows } = await supabase
+    .from('assets')
+    .select('id,metadata,content,status')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'SPC-shot_plan%')
+    .order('version', { ascending: false });
+
+  const { data: vidRows } = await supabase
     .from('assets')
     .select('metadata,content')
     .eq('episode_id', episodeId)
-    .like('file_type', 'SPC-shot_plan%');
+    .like('file_type', 'VID-shot%');
 
+  // Edge 1 (ref → plan): approved reference, no plan yet → fire the Video Designer.
   const firedShotIds = selectRetroFanoutShots(
     (refRows ?? []) as Array<{ metadata?: unknown }>,
     (planRows ?? []) as Array<{ metadata?: unknown; content?: string | null }>,
+    excluded,
+  );
+
+  // Edge 2 (plan → video): approved plan, no video yet → render straight from the
+  // plan. This is the edge the sequential run needs — without it the latch does
+  // nothing when plans already exist (E25 2026-07-10). EXEC-VGEN single-shot has
+  // atomic dispatch-intent dedup, so a shot already rendering is a safe no-op.
+  const renderShots = selectRenderFanoutShots(
+    (planRows ?? []) as Array<{ id?: string | null; metadata?: unknown; content?: string | null; status?: string | null }>,
+    (vidRows ?? []) as Array<{ metadata?: unknown; content?: string | null }>,
     excluded,
   );
 
@@ -120,17 +143,25 @@ export const POST = withApiHandler(async (req, ctx) => {
     });
     eventIds.push(...ids);
   }
+  for (const { shotId, planAssetId } of renderShots) {
+    const { ids } = await inngest.send({
+      name: 'sandystudio/exec-vgen/single-shot',
+      data: { episodeId, shotId, planAssetId } as never,
+    });
+    eventIds.push(...ids);
+  }
 
   await supabase.from('activity_events').insert({
     event_type: 'manual_trigger',
     severity: 'info',
     title: 'Video stream opened',
-    description: `Director ${user.email ?? user.id} started video — ${firedShotIds.length} approved reference(s) fanned out; new approvals now flow automatically`,
+    description: `Director ${user.email ?? user.id} started video — ${firedShotIds.length} reference(s) fanned to Designer, ${renderShots.length} approved plan(s) rendered; new approvals now flow automatically`,
     actor: user.id,
     episode_id: episodeId,
     metadata: {
       kind: 'start_video_latch',
       fanned_out_shots: firedShotIds.length,
+      rendered_shots: renderShots.length,
       inngest_event_ids: eventIds,
     },
   } as never);
@@ -139,6 +170,8 @@ export const POST = withApiHandler(async (req, ctx) => {
     started: true,
     pipeline_mode: 'parallel',
     fanned_out_shots: firedShotIds.length,
+    rendered_shots: renderShots.length,
     shot_ids: firedShotIds,
+    render_shot_ids: renderShots.map((r) => r.shotId),
   });
 });
