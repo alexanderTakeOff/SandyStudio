@@ -26,10 +26,15 @@ export const CONCURRENCY_LIMITS = {
   'exec-eref':  1,
   // Sprint «Дизайнер и Аниматор» 2026-05-18 — Designer is a pure-cost Sonnet
   // LLM call per shot. Multiple shots can fan out in parallel since each Plan
-  // is independent. 3 is a moderate cap — Anthropic side is fine, but going
-  // higher won't help wall-clock much (Sonnet ~6-12s per Plan) and could
-  // surface rate-limit edge cases for very large episodes.
-  'exec-eref-designer': 3,
+  // is independent.
+  // 2026-07-11 (E27, Director OK): raised 3 → 5. The old comment claimed "going
+  // higher won't help wall-clock" — the E27 throughput trace disproved that: the
+  // designer cap (not the critic cap 5) is the actual fanout ceiling (critics are
+  // fed one-per-designer, so Plans arrive in cohorts of 3), and per-unit time is
+  // orchestration-overhead-dominated (~100s), NOT Sonnet-bound (~10-20s). So more
+  // parallel designers cuts wall-clock ~linearly. Anthropic tolerates 5 easily;
+  // the factory retries with backoff if a rare 429 appears.
+  'exec-eref-designer': 5,
   // Designer's Critic (Day 4 2026-05-19) — Sonnet 4.6 validator, very cheap.
   // Higher cap than Designer because Critic runs in parallel per Plan when
   // multiple Plans land at once (e.g. fanned out from a single REV-world_check
