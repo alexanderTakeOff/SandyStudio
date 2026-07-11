@@ -71,7 +71,17 @@ export const dynamic = 'force-dynamic';
 // so the header honestly shows (a) the provider/model ACTUALLY answering right now
 // (gpt-5.5, claude-opus-4-8, …) and (b) whether the autonomous auto-react loop is
 // armed. Both replace the old stale agent/mode label.
-export function GET() {
+export async function GET() {
+  // D2 (2026-07-11): apply the live Settings → Providers override BEFORE reading
+  // the label, so the header badge is authoritative. Without this the GET
+  // returned the process-cache/env default (e.g. gpt-5.5) until the next POST
+  // happened to refresh the cache — so a model switch showed a stale badge.
+  // Fail-open: on any error keep the process-cache/env label.
+  try {
+    await applyConciergeProviderOverride(createSupabaseServiceRoleClient());
+  } catch {
+    // ignore — fall back to the current process-cache/env label
+  }
   return NextResponse.json({
     provider: conciergeProvider(),
     model: conciergeModel(),

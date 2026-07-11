@@ -106,6 +106,36 @@ export async function hasJob(
 }
 
 /**
+ * Is an agent's job IN FLIGHT (QUEUED or RUNNING) for this episode — regardless
+ * of any `since` window? Unlike {@link hasJob}, this ignores `started_at`
+ * (QUEUED jobs have none) and the approval-time window, so it always sees an
+ * already-dispatched job that has not finished yet.
+ *
+ * D3 (2026-07-11, E27): the storyboard fired TWICE. Root cause — the three
+ * SB-fire branches guard with `hasJob(EXEC-SB, { since })`, and `since` is the
+ * CURRENT approval's `updated_at`. A prior approval's EXEC-SB job was invisible
+ * to `started_at >= since-5s` (a QUEUED job has no `started_at`; a RUNNING one
+ * started before the window), so a LATER approval in the normal
+ * script→review→cast flow re-dispatched it. Guarding single-instance stages
+ * with this in-flight check implements the Director's rule: «no re-fire if the
+ * agent is already running». NOT for per-shot fan-out agents (EXEC-VGEN/VANIM/
+ * EREF), where concurrent jobs across shots are legitimate.
+ */
+export async function hasActiveJob(
+  supabase: SupabaseClientLike,
+  episodeId: string,
+  agentId: string,
+): Promise<boolean> {
+  const { count } = await supabase
+    .from('jobs')
+    .select('*', { count: 'exact', head: true })
+    .eq('episode_id', episodeId)
+    .eq('agent_id', agentId)
+    .in('status', ['QUEUED', 'RUNNING']);
+  return (count ?? 0) > 0;
+}
+
+/**
  * Parse the LAST fenced ```json block from an asset's markdown content.
  * Local copy (kept tiny + dependency-free) so next-events.ts does not import
  * the heavy episode-references runner just for this. Returns null on
@@ -415,7 +445,8 @@ export async function computeNextEvents(
   if (
     ft === 'SPC-episode_cast' &&
     (await findLatestApprovedAssetId(supabase, ep, 'REV-script_qa')) &&
-    !(await hasJob(supabase, ep, 'EXEC-SB', { since }))
+    !(await hasJob(supabase, ep, 'EXEC-SB', { since })) &&
+    !(await hasActiveJob(supabase, ep, 'EXEC-SB'))
   ) {
     const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
     if (scrId) {
@@ -457,7 +488,8 @@ export async function computeNextEvents(
     if (
       reviewApprovedForSb &&
       castReadyForSb &&
-      !(await hasJob(supabase, ep, 'EXEC-SB', { since }))
+      !(await hasJob(supabase, ep, 'EXEC-SB', { since })) &&
+      !(await hasActiveJob(supabase, ep, 'EXEC-SB'))
     ) {
       events.push({
         name: 'sandystudio/exec-sb/create-storyboard',
@@ -471,7 +503,11 @@ export async function computeNextEvents(
   // review, not the script. EXEC-SB's runner currently looks up upstream
   // assets itself (so it survives without this), but passing the correct id
   // keeps event payloads honest and consistent with the EREF fix below.
-  if (ft === 'REV-script_qa' && !(await hasJob(supabase, ep, 'EXEC-SB', { since }))) {
+  if (
+    ft === 'REV-script_qa' &&
+    !(await hasJob(supabase, ep, 'EXEC-SB', { since })) &&
+    !(await hasActiveJob(supabase, ep, 'EXEC-SB'))
+  ) {
     // EXEC-SB's gate requires ≥1 APPROVED cast ("found 0 cast" crash otherwise).
     // AUTOTEST has no casting stage → keep the direct fire (replay-pilot intact).
     // Director modes (writer→cast→storyboard, Director 2026-07-04): if the cast

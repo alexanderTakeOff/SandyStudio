@@ -15,6 +15,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -370,20 +371,24 @@ export function ConciergePanel() {
   // auto-react loop is armed (honest, no stale agent/mode label). Null until loaded.
   const [modelLabel, setModelLabel] = useState<string | null>(null);
   const [autoReact, setAutoReact] = useState<boolean | null>(null);
-  useEffect(() => {
-    let alive = true;
-    fetch('/api/concierge/chat')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!alive || !d) return;
-        if (d.label) setModelLabel(d.label as string);
-        if (typeof d.autoReact === 'boolean') setAutoReact(d.autoReact);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
+  // D2 (2026-07-11): fetch the live header status (model label + auto-react).
+  // Re-callable so the badge SELF-CORRECTS after an on-the-fly provider switch —
+  // the mount-only fetch left the label stale (e.g. "OpenAI · gpt-5.5") after the
+  // Director switched Polina to Sonnet 5. Called on mount AND after each turn.
+  const refreshStatus = useCallback(async () => {
+    try {
+      const r = await fetch('/api/concierge/chat');
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d?.label) setModelLabel(d.label as string);
+      if (typeof d?.autoReact === 'boolean') setAutoReact(d.autoReact);
+    } catch {
+      // non-fatal — keep the last known label
+    }
   }, []);
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus]);
 
   // TD-20.A 2026-05-20 — AbortController for the in-flight chat request so
   // the Director can cancel a hanging turn. abortControllerRef holds the
@@ -1036,6 +1041,9 @@ export function ConciergePanel() {
       setStreaming(false);
       setToolPlashka(null);
       abortControllerRef.current = null;
+      // Self-correct the header badge (model label / auto-react) — a provider
+      // switch mid-session is reflected right after the next turn (D2).
+      void refreshStatus();
     }
   }
 

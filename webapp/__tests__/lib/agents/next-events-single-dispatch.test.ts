@@ -18,6 +18,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   computeNextEvents,
+  hasActiveJob,
   planIdFromAssetMeta,
   type AssetForChain,
 } from '@/lib/agents/next-events';
@@ -340,6 +341,81 @@ describe('SPC-shot_plan — Modes 1-3 only', () => {
     });
     const events = await computeNextEvents(client, shotPlan(), 'director-1');
     expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
+  });
+});
+
+// D3 (2026-07-11, E27): storyboard fired TWICE. Root cause — the three SB-fire
+// branches guarded only with hasJob(EXEC-SB, { since }), and in production the
+// `started_at >= since-5s` filter is blind to a prior approval's QUEUED job (no
+// started_at) or a RUNNING job that started before the window → a later approval
+// re-dispatched. Fix: a `since`-free in-flight guard (hasActiveJob) on every
+// SB-fire site — «no re-fire if the agent is already running». (The mock's `gte`
+// is a no-op, so it can't reproduce the real started_at miss; hence the direct
+// unit test of hasActiveJob below plus the behavioural single-fire lock.)
+describe('hasActiveJob — in-flight guard (D3)', () => {
+  const job = (status: string, agent = 'EXEC-SB') => ({
+    episode_id: EP,
+    agent_id: agent,
+    status,
+  });
+  it('true when a QUEUED job exists', async () => {
+    const { client } = mockSupabase({ jobs: [job('QUEUED')] });
+    expect(await hasActiveJob(client, EP, 'EXEC-SB')).toBe(true);
+  });
+  it('true when a RUNNING job exists', async () => {
+    const { client } = mockSupabase({ jobs: [job('RUNNING')] });
+    expect(await hasActiveJob(client, EP, 'EXEC-SB')).toBe(true);
+  });
+  it('false when only a COMPLETED job exists (terminal, not in flight)', async () => {
+    const { client } = mockSupabase({ jobs: [job('COMPLETED')] });
+    expect(await hasActiveJob(client, EP, 'EXEC-SB')).toBe(false);
+  });
+  it('false when no job exists', async () => {
+    const { client } = mockSupabase({ jobs: [] });
+    expect(await hasActiveJob(client, EP, 'EXEC-SB')).toBe(false);
+  });
+  it('scoped to the agent (a running EXEC-SW does not count for EXEC-SB)', async () => {
+    const { client } = mockSupabase({ jobs: [job('RUNNING', 'EXEC-SW')] });
+    expect(await hasActiveJob(client, EP, 'EXEC-SB')).toBe(false);
+  });
+});
+
+describe('Storyboard single-fire — no re-fire while EXEC-SB is in flight (D3)', () => {
+  const review = (): AssetForChain => ({
+    id: 'rev-1',
+    filename: 'rev',
+    file_type: 'REV-script_qa',
+    episode_id: EP,
+    updated_at: '2026-07-11T00:00:00Z',
+  });
+  const approved = () => [
+    { id: 'scr-1', episode_id: EP, file_type: 'SCR-script', status: 'APPROVED' },
+    { id: 'cast-1', episode_id: EP, file_type: 'SPC-episode_cast', status: 'APPROVED' },
+  ];
+  const SB_EVENT = 'sandystudio/exec-sb/create-storyboard';
+
+  it('fires storyboard once when script+cast approved and no SB job', async () => {
+    const { client } = mockSupabase({ assets: approved(), jobs: [] });
+    const events = await computeNextEvents(client, review(), 'director-1');
+    expect(events.filter((e) => e.name === SB_EVENT)).toHaveLength(1);
+  });
+
+  it('does NOT re-fire when an EXEC-SB job is already QUEUED', async () => {
+    const { client } = mockSupabase({
+      assets: approved(),
+      jobs: [{ episode_id: EP, agent_id: 'EXEC-SB', status: 'QUEUED' }],
+    });
+    const events = await computeNextEvents(client, review(), 'director-1');
+    expect(events.map((e) => e.name)).not.toContain(SB_EVENT);
+  });
+
+  it('does NOT re-fire when an EXEC-SB job is RUNNING', async () => {
+    const { client } = mockSupabase({
+      assets: approved(),
+      jobs: [{ episode_id: EP, agent_id: 'EXEC-SB', status: 'RUNNING' }],
+    });
+    const events = await computeNextEvents(client, review(), 'director-1');
+    expect(events.map((e) => e.name)).not.toContain(SB_EVENT);
   });
 });
 
