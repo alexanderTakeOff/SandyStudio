@@ -372,5 +372,25 @@ Hard cap: **2 active parallel worktrees + main**. Dead worktrees (`claude/<name>
 
 ---
 
+## 13. LOCAL STACK STARTUP (durable)
+
+Bring the local app + Inngest up with **`start-stack.ps1`** (repo root) — or
+double-click **`start-stack.cmd`**. After code changes: `start-stack.ps1 -Build`.
+It stops any running instances, starts both, syncs functions, and prints health:
+
+- **App** — `npm run start` on `:3000` (`prod.log`).
+- **Inngest SELF-HOSTED** — `inngest start` (durable; SQLite snapshots in
+  `FILMS/_inngest/main.db` survive a crash) on `:8288` (`inngest.log`). **NOT
+  `inngest dev`** — the dev server was ephemeral and zombied jobs on a silent
+  crash (Tier-0 stability fix, 2026-07-11).
+
+Keys live in `webapp/.env.local` (`INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY`,
+`INNGEST_DEV=0`, `INNGEST_BASE_URL=http://localhost:8288`) — the script reads them,
+never hardcodes. After any inngest OR app restart, functions are (re)synced via
+`PUT /api/inngest` → `{"message":"Successfully registered"}`. Full detail +
+rollback-to-dev: memory `inngest_selfhost_setup.md`. Do NOT restart mid-run (§7/§12).
+
+---
+
 *SandyStudio CLAUDE.md | v0.11 | Status: DRAFT*
 *Slimmed 2026-05-12 — archive in `docs/CLAUDE-history.md`*
