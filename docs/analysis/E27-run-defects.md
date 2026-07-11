@@ -55,6 +55,46 @@
 
 ---
 
+## D5 — Mode 3 critic-PASS did NOT auto-generate images (NESTING_STEPS drops the executor event) — FIXED
+
+- **Symptom (Director):** Mode 3, ref Plans have critic PASS, but no image generation starts
+  automatically (expected: PASS → image auto; problems → Polina). 26/28 Plans APPROVED, only
+  **2 images** (the 2 manually-fired pilots).
+- **Runtime evidence (decisive):** prod log has **72× `NESTING_STEPS`** warnings on
+  `plan-critic-autofire-events`. DB: SH05 Plan APPROVED with **no `approvals` row** (in-code
+  promotion) + critic verdict `PASS`. Inngest log: `exec-eref/execute-from-plan` (Artist)
+  published only **6×, last for SH01/SH02** — zero Artist events for the 24 auto-promoted Plans.
+- **Root cause (`factory.ts` `isPlanCritic`):** the Mode-2/3 auto-advance called
+  `step.sendEvent` **inside** a `step.run('plan-critic-autofire')` callback. Inngest forbids
+  nesting step.* tooling (`NESTING_STEPS`) and drops it → the Plan flipped APPROVED (a plain
+  supabase update runs fine inside step.run) but the follow-on Artist/VGEN event was **silently
+  lost**. So Mode 3 "auto-advance" promoted Plans but never generated images.
+- **Process note:** a code-review subagent read this same block and concluded it "already does
+  Mode 2/3" — true that the CODE exists, but it was broken at RUNTIME. The prod log settled it
+  in one grep. Lesson banked: always overlay agent reports on the server logs (now a global rule).
+- **Fix (SHIPPED to master `87caecf`, deploy DEFERRED — live run):** the step.run now only does
+  the DB work and RETURNS the events; `step.sendEvent` runs at the function top level.
+- **⚠️ E27 recovery caveat:** the 24 already-PASSED Plans will NOT auto-re-fire after deploy
+  (`isPlanCritic` fires on critic completion, which already happened). They need a MANUAL Artist
+  re-fire (Generate button / re-trigger) once deployed in a quiet window.
+- **Status:** FIXED in code (2026-07-11); deploy pending Director's quiet-window OK.
+
+## D6 — Critic tail hangs ~10 min (finishTimeout), + fanout throughput capped by designer cap 3
+
+- **Symptom (Director):** critics crawl (one/small batches); SH25/SH27 RUNNING 10+ min without
+  completing (SH27 job started 07:35, still RUNNING).
+- **Findings (agent + logs):** (1) **throughput ceiling = `exec-eref-designer: 3`** (not the
+  critic cap 5) — critics are fed one-per-designer so arrive in cohorts of 3; ~100 s/shot is
+  orchestration overhead (~18 inngest→app round-trips/shot + `loadAgentInputs` loaded TWICE per
+  run), not the Sonnet call. (2) The tail-hang is a provider-fetch-no-timeout stall that rides
+  to the `finishTimeout: '10m'` on exec-eprev, then cancels — the classic
+  [[provider_fetch_no_timeout_root_cause]] not-yet-swapped-everywhere issue.
+- **Recommended (deferred, Director OK'd raising the cap):** `exec-eref-designer` 3→5/6;
+  de-duplicate the double `loadAgentInputs`; collapse cheap adjacent steps; finish the
+  `fetchWithTimeout` swap on the critic provider call. Bundle into a throughput PR, deploy in a
+  quiet window.
+- **Status:** OPEN — diagnosed, fixes deferred (no deploy during live run).
+
 ## D3 — Storyboard fired TWICE (in-flight job not detected)
 
 - **Symptom (Director):** «сториборд запущен дважды. возможно потому что я апрувнул writer before
