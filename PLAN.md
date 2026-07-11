@@ -20,8 +20,15 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-11 (master `e2142ea` ЗАДЕПЛОЕН на :3000 — свежий rebuild+restart. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false, Director q1b): первый смок с настоящей дистрибуцией идёт на РУЧНЫХ гейтах (аудит [[reconciler_audit_2026-07-10]]). Смок нового эпизода НЕ запущен — ждём выбора темы Директором (банк-маркеры протухли: E13=Vending, E15=Car Wash сняты; E17-E25=Airport-арка).)
+Date:   2026-07-11 (master `9547fd4` ЗАДЕПЛОЕН на :3000 — свежий rebuild+restart, health OK / inngest 200. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false, Director q1b): первый смок с настоящей дистрибуцией идёт на РУЧНЫХ гейтах (аудит [[reconciler_audit_2026-07-10]]). Смок нового эпизода НЕ запущен — ждём выбора темы Директором (банк-маркеры протухли: E13=Vending, E15=Car Wash сняты; E17-E25=Airport-арка).)
 Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-11 (D6 throughput+tail-hang — Тео, master `9547fd4` ЗАДЕПЛОЕН). Дифаб E27: (1) `factory.ts` preflight грузил
+  episode-wide ассеты+Bible+genre и ВЫБРАСЫВАЛ (validateAgentInputs делает свои точечные запросы) → убран, тяжёлая БД-
+  работа теперь ОДИН раз/прогон (~половина оркестрации на шот в фанауте). (2) `anthropic-text.ts` = `new Anthropic()` без
+  timeout → наследовал SDK-дефолт 10m = хвост-хэнг критика до finishTimeout. Добавлен per-call timeout+maxRetries,
+  масштабированный от maxTokens (`anthropicTimeoutMs`: 4k критик рвётся ~3m, 16k Writer НЕ подрезается, всё <10m belt).
+  Кэп 3→5 уже был (`4a36498`). Отложено: «схлопнуть дешёвые шаги» (аддитивно ради малого). tsc·0/vitest·1210/replay·30.
 
 2026-07-11 (Episode Start Notice — Тео). Директор q1b: большой гэг-банк (100-гэг Car-Wash) некуда класть, кроме брифа,
   а бриф читается в ~20 местах. FIX (master `e2142ea`): новый универсальный сосуд **`SPC-start_notice`** («Стартовая записка
