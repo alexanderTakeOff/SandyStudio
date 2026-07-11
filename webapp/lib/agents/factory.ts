@@ -788,7 +788,15 @@ export function createAgentInngestFunction<E extends string>(
       const isPlanCritic =
         spec.agentId === 'EXEC-EPREV' || spec.agentId === 'EXEC-VPREV';
       if (isPlanCritic) {
-        await step.run('plan-critic-autofire', async () => {
+        // BUGFIX (2026-07-11, E27): `step.sendEvent` was nested INSIDE this
+        // `step.run` — Inngest rejects that (NESTING_STEPS; 72 warnings in the
+        // E27 prod log). Effect: the Plan flipped APPROVED (a plain supabase
+        // update runs fine inside step.run) but the Artist/VGEN event was
+        // SILENTLY DROPPED → 26 Mode-3 Plans APPROVED, 0 images generated. Fix:
+        // the step.run only does the DB work and RETURNS the events; the
+        // `step.sendEvent` now runs at the function top level (the only place
+        // step.* tooling is allowed).
+        const autofireEvents = await step.run('plan-critic-autofire', async () => {
           const supabase = createSupabaseServiceRoleClient();
           const { data: epRow } = await supabase
             .from('episodes')
@@ -796,18 +804,18 @@ export function createAgentInngestFunction<E extends string>(
             .eq('id', episodeId)
             .single();
           const mode = epRow?.governance_mode;
-          if (mode !== 2 && mode !== 3) return; // Mode 1 manual + Mode 4 branch-1 excluded
+          if (mode !== 2 && mode !== 3) return []; // Mode 1 manual + Mode 4 branch-1 excluded
           const verdict = (exec.result.metadata as { verdict?: unknown })?.verdict;
-          if (verdict !== 'PASS' && verdict !== 'PASS_WITH_UNCERTAINTY') return;
+          if (verdict !== 'PASS' && verdict !== 'PASS_WITH_UNCERTAINTY') return [];
           const planAssetId =
             typeof eventData.planAssetId === 'string' ? eventData.planAssetId : null;
-          if (!planAssetId) return;
+          if (!planAssetId) return [];
           const { data: planRow } = await supabase
             .from('assets')
             .select('id,filename,file_type,episode_id,status,updated_at,metadata,content')
             .eq('id', planAssetId)
             .maybeSingle();
-          if (!planRow) return;
+          if (!planRow) return [];
           // Flip the Plan APPROVED (demote sibling first — per-slot unique index
           // 0036), mirroring the Mode-4 flip above.
           const slot = resolveSlotDescriptor(planRow as AssetForSlot);
@@ -825,13 +833,15 @@ export function createAgentInngestFunction<E extends string>(
             { ...(planRow as AssetForChain), status: 'APPROVED' } as AssetForChain,
             'exec-dir-ai',
           );
-          if (events.length > 0) {
-            await step.sendEvent(
-              'plan-critic-autofire-events',
-              events.map((ev) => ({ name: ev.name, data: ev.data })) as unknown as SendEventPayload,
-            );
-          }
+          return events.map((ev) => ({ name: ev.name, data: ev.data }));
         });
+        // Top-level send — NOT nested in the step.run above.
+        if (autofireEvents && autofireEvents.length > 0) {
+          await step.sendEvent(
+            'plan-critic-autofire-events',
+            autofireEvents as unknown as SendEventPayload,
+          );
+        }
       }
 
       // Auto-chain only in Mode 4 (AUTOTEST) for downstream EXECUTOR agents.
