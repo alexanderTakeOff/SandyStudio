@@ -38,7 +38,6 @@ import {
   Pause,
   Square,
   RotateCcw,
-  Upload,
   Music2,
   Save,
   Loader2,
@@ -1019,50 +1018,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // the "Start Video" latch (transport button → parent's /start-video), not by
   // approving a whole-episode animatic.
 
-  // ── Music upload ─────────────────────────────────────────────────────────
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [uploadingMusic, setUploadingMusic] = useState(false);
-
-  const handleMusicUpload = useCallback(
-    async (file: File) => {
-      setUploadingMusic(true);
-      setError(null);
-      try {
-        // Materialize-on-first-edit (E25 2026-07-10): in synthetic mode there is
-        // no backing VID-animatic to attach music to, so /upload-music got an
-        // empty asset id → "Music upload failed". Mirror handleSaveTiming: create
-        // the vessel first, then upload into it. No empty-animatic approval needed.
-        let targetId = assetId;
-        if (!targetId && onMaterialize) {
-          const created = await onMaterialize();
-          if (!created) {
-            throw new Error('Could not materialize the animatic — is the storyboard approved?');
-          }
-          targetId = created;
-        }
-        if (!targetId) {
-          throw new Error('No animatic asset to attach music to.');
-        }
-        const fd = new FormData();
-        fd.append('file', file);
-        const res = await fetch(`/api/assets/${targetId}/upload-music`, {
-          method: 'POST',
-          body: fd,
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error((j as { error?: string }).error ?? 'Music upload failed');
-        }
-        onChanged();
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setUploadingMusic(false);
-      }
-    },
-    [assetId, onChanged, onMaterialize],
-  );
+  // Music upload lives ONLY in the Composer now (2026-07-11, Director): the
+  // timeline's "Replace"/"Upload music" buttons + their handler were removed so
+  // there is one place to add a track. Approving it in the Composer bakes it
+  // onto this timeline automatically (computeNextEvents AUD-music branch).
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -1297,16 +1256,6 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                   <span className="truncate flex-1 font-mono text-text-primary">
                     {track.filename}
                   </span>
-                  {track.layer === 'music' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadingMusic}
-                    >
-                      <Upload size={12} /> Replace
-                    </Button>
-                  )}
                 </div>
                 <audio
                   ref={isMaster ? audioRef : undefined}
@@ -1411,29 +1360,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
         ) : (
           <div className="flex items-center gap-2 text-xs">
             <Music2 size={13} className="text-text-muted" />
-            <span className="text-text-muted flex-1">No audio yet — playback runs silent</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingMusic}
-            >
-              {uploadingMusic ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}{' '}
-              Upload music
-            </Button>
+            <span className="text-text-muted flex-1">
+              No audio yet — add a track in the Composer and approve it; it appears here automatically.
+            </span>
           </div>
         )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void handleMusicUpload(f);
-            e.target.value = '';
-          }}
-        />
       </div>
 
       {/* Timeline strip — Phase A.1: numbers ~2× bigger, expanded color palette,

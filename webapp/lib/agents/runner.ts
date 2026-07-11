@@ -2706,6 +2706,22 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       const fsPromises = await import('node:fs/promises');
       const pathMod = await import('node:path');
       async function loadBytes(stagingPath: string | null, url: string | null): Promise<Buffer> {
+        // A staging_path that is actually a browser URL (/api/media/… or
+        // /staging/…, or an http(s) Drive link) must NOT be read as a filesystem
+        // path — Node resolves "/api/media/x.mp3" against cwd and throws ENOENT on
+        // "C:\api\media\x.mp3" (the Online Editor music failure Director hit on
+        // E27: an AUD-music row whose staging_path column held the URL, not the
+        // disk path). Demote such a value into the url slot so the branches below
+        // resolve it through the media cache instead of blindly fs.readFile'ing it.
+        if (
+          stagingPath &&
+          (stagingPath.startsWith('/api/media/') ||
+            stagingPath.startsWith('/staging/') ||
+            stagingPath.startsWith('http'))
+        ) {
+          url = url ?? stagingPath;
+          stagingPath = null;
+        }
         if (stagingPath) {
           // eslint-disable-next-line no-console
           console.log('[stitch] reading FS:', stagingPath);

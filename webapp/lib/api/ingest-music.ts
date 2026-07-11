@@ -118,7 +118,12 @@ export async function ingestUploadedMusic(
         status: 'APPROVED',
         filename: approvedFilename(row.filename, ext),
         drive_path: browserUrl,
-        staging_path: browserUrl,
+        // staging_path is a filesystem path or null — NEVER a URL. Persisting the
+        // browser URL here made EXEC-STITCH's fs.readFile('/api/media/…') resolve
+        // against cwd → ENOENT on C:\api\media\… (the Online Editor music crash).
+        // Media lives in the cache addressed by drive_path/URL; leave the FS
+        // column null like every persistBinary-created binary row.
+        staging_path: null,
         drive_file_id: null,
         drive_web_view_url: null,
         metadata: mergedMeta as never,
@@ -145,7 +150,8 @@ export async function ingestUploadedMusic(
         version: 1,
         description: 'Director-uploaded music track.',
         drive_path: browserUrl,
-        staging_path: browserUrl,
+        // See note above — staging_path is FS-native or null, never a URL.
+        staging_path: null,
         metadata: { agent_id: 'EXEC-MGEN', section: 'main', ...uploadMeta } as never,
       } as never)
       .select('id')
@@ -161,7 +167,23 @@ export async function ingestUploadedMusic(
   //    exists yet, materialize one (it bakes our APPROVED music in the process).
   //    Skipped when the caller already patched the contract (timeline route).
   if (input.skipBake) return { audMusicId };
+  await bakeMusicIntoEpisodeAnimatic(supabase, episodeId);
+  return { audMusicId };
+}
 
+/**
+ * Bake the newest APPROVED AUD-music into the episode's current VID-animatic
+ * contract and persist it, so the track flows to the timeline. Override (not
+ * fill-if-empty): a freshly-approved track replaces a previously-baked one. When
+ * no animatic exists yet, materialize one (ensureEpisodeAnimaticEDL bakes music
+ * in the process). Shared by ingestUploadedMusic (upload routes) AND the
+ * AUD-music APPROVE branch in computeNextEvents (2026-07-11, Director: approve in
+ * the Composer → the track appears on the timeline automatically, no Replace).
+ */
+export async function bakeMusicIntoEpisodeAnimatic(
+  supabase: SupabaseClient,
+  episodeId: string,
+): Promise<void> {
   const { data: animaticRow } = await supabase
     .from('assets')
     .select('id,metadata')
@@ -185,6 +207,4 @@ export async function ingestUploadedMusic(
   } else {
     await ensureEpisodeAnimaticEDL(supabase, episodeId);
   }
-
-  return { audMusicId };
 }

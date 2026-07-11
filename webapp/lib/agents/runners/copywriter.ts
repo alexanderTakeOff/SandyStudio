@@ -16,7 +16,14 @@ import type { AgentInputs } from '../types';
 import { findApprovedAsset } from '../upstream';
 
 export const COPY_CONTRACT = 'copywriter@v1';
-export const COPY_MODEL = 'claude-haiku-4-5';
+// 2026-07-11 (Director): bumped Haiku → Sonnet. Haiku echoed the prompt's own
+// principles into the `title` field — the published title read "Principle: Lead
+// with the universal situation… Avoid <name>" (the guidance, not a headline).
+// The publicist copy is distribution-facing and instruction-heavy; Sonnet follows
+// the "apply, don't restate" contract reliably. One call per episode → cost
+// negligible. TODO: surface this as an app_config override in Provider Settings
+// (reuse the ConciergePolinaRow pattern) so it's not hardcoded.
+export const COPY_MODEL = 'claude-sonnet-4-6';
 // 2026-07-05: raised 1500 → 4000. The publicist's SEO-first copy JSON grew past
 // ~1500 output tokens and was truncated mid-block (stop_reason=max_tokens, no
 // closing ```json fence) → hard parse failure on every run. 4000 gives ~2.6×
@@ -146,6 +153,7 @@ function buildUserMessage(args: {
     '```',
     '',
     'Hard rules:',
+    '- The `title` value is the FINAL published headline ONLY — the exact text a viewer sees on YouTube. NEVER restate a principle, rule, instruction, or your own reasoning in it (e.g. never output "Principle: …", "Lead with the situation…", or "Avoid <name>" as the title). Apply the principles silently; print only the headline.',
     '- Title ≤ 70 chars and includes the hero name when natural.',
     '- Description grounded in the brief premise, no invented spoilers.',
     '- Tags: lowercase, no spaces inside multi-word (use dashes).',

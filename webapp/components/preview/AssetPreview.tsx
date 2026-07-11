@@ -191,6 +191,32 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
       });
   }, [isThumbnailCurrent, meta?.data, thumbnailAssets?.data]);
 
+  // 2026-07-11 (Director): VID-final_cut version picker + approve in the drawer.
+  // The Online Editor drawer had no version list and no approve control, so the
+  // Director had to approve via the kebab "all". Mirror the VID-shot / thumbnail
+  // pattern — episode-scoped siblings (each re-stitch bumps the version).
+  const isFinalCutCurrent = meta?.data?.file_type.startsWith('VID-final_cut') ?? false;
+  const { data: finalCutAssets } = useSWR<{ data: AssetRow[] }>(
+    isFinalCutCurrent && episodeIdForSiblings
+      ? `/api/assets?episode_id=${episodeIdForSiblings}&file_type_prefix=VID-final_cut&limit=200`
+      : null,
+    fetcher,
+  );
+  const finalCutSiblings = useMemo(() => {
+    if (!isFinalCutCurrent || !meta?.data || !finalCutAssets?.data) {
+      return [] as AssetRow[];
+    }
+    return finalCutAssets.data
+      .filter((a) => a.file_type.startsWith('VID-final_cut'))
+      .sort((a, b) => {
+        if (a.id === meta.data.id) return -1;
+        if (b.id === meta.data.id) return 1;
+        const va = a.version ?? 0;
+        const vb = b.version ?? 0;
+        return vb - va;
+      });
+  }, [isFinalCutCurrent, meta?.data, finalCutAssets?.data]);
+
   // Fix 3 (Key Art, 2026-07-05): the "Edit plan" affordance opens the linked
   // SPC-thumb_plan (the JSON of 3 concepts) in the shared EditorModal. Declared
   // here (before the early returns) so the hook order stays stable.
@@ -335,6 +361,40 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
           }}
         />
       )}
+      {/* Composer Approve (2026-07-11, Director): AUD-music was structurally
+          excluded from the approve control (isApprovableText gates on the text
+          category), so a generated/uploaded track had no Approve affordance in
+          the Composer — the Director had to upload-to-force-approve or use the
+          timeline Replace button. Reuse PilotApproveButtons here; approving fires
+          computeNextEvents' new AUD-music branch which bakes the track into the
+          animatic audio_tracks[], so it flows to the timeline automatically. */}
+      {asset.file_type.startsWith('AUD-music') && (
+        <>
+          {(asset.status === 'DRAFT' ||
+            asset.status === 'REVIEW' ||
+            asset.status === 'REVISION' ||
+            asset.status === 'INVALIDATED') && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="review"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
+          )}
+          {asset.status === 'APPROVED' && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="approved"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
+          )}
+        </>
+      )}
 
       {/* Image asset (SBL-* / IMG-*): Director affordance — manual upload.
           Closes Director's 2026-05-20 gap: "почему в превью нет опции
@@ -418,6 +478,53 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
                 Edit the concept JSON, then re-approve the plan to re-render the variants.
               </span>
             </div>
+          )}
+        </>
+      )}
+
+      {/* Online Editor VID-final_cut (2026-07-11, Director): version picker +
+          approve in the drawer, so the final cut is reviewed/approved here
+          instead of via the kebab "all". The video plays via VideoBody above
+          (video category, not VID-shot). Reuses CandidatesStrip +
+          PilotApproveButtons — same shape as the VID-shot branch below. */}
+      {isFinalCutCurrent && (
+        <>
+          <CandidatesStrip
+            currentAssetId={asset.id}
+            label={`Final cut versions (${finalCutSiblings.length})`}
+            candidates={finalCutSiblings.map((a) => ({
+              id: a.id,
+              filename: a.filename,
+              status: a.status,
+              staging_path: a.staging_path,
+              drive_path: a.drive_path,
+              drive_web_view_url: a.drive_web_view_url,
+              metadata: a.metadata as never,
+            }))}
+            onPick={(id) => onPickAsset?.(id)}
+          />
+          {(asset.status === 'REVIEW' ||
+            asset.status === 'REVISION' ||
+            asset.status === 'DRAFT' ||
+            asset.status === 'INVALIDATED') && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="review"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
+          )}
+          {asset.status === 'APPROVED' && (
+            <PilotApproveButtons
+              assetId={asset.id}
+              variant="approved"
+              onChanged={() => {
+                void mutate();
+                onAssetChanged?.();
+              }}
+            />
           )}
         </>
       )}

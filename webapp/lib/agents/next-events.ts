@@ -38,6 +38,7 @@ import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { resolveShotId } from '@/lib/api/shot-identity';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { ensureEpisodeAnimaticEDL } from '@/lib/api/ensure-animatic';
+import { bakeMusicIntoEpisodeAnimatic } from '@/lib/api/ingest-music';
 import { contractHasMusic } from '@/lib/agents/music';
 import {
   designerChainEnabled,
@@ -358,6 +359,16 @@ export async function computeNextEvents(
     );
     return _excludedShotIds;
   };
+
+  // ── AUD-music APPROVED → bake the track into the episode's animatic so it
+  //    flows to the timeline automatically (2026-07-11, Director: Composer
+  //    Approve → timeline, no manual Replace). Reuses the same bake+persist the
+  //    upload routes use; side-effect only — the timeline reads the refreshed
+  //    animatic metadata on its next poll, so no event needs to fire.
+  if (ft === 'AUD-music' || ft.startsWith('AUD-music')) {
+    await bakeMusicIntoEpisodeAnimatic(supabase, ep);
+    return events;
+  }
 
   // ── Brief APPROVED → Casting gate → Writer (2026-06-23, Director q22a/q30a:
   //    «кастинг ПОСЛЕ брифа, ПЕРЕД writer» — after the brief it's clear which
