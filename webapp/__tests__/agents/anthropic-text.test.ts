@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  anthropicTimeoutMs,
   computeCostUsd,
   extractLastJsonBlock,
 } from '@/lib/agents/providers/anthropic-text';
@@ -87,6 +88,29 @@ describe('anthropic-text — pure helpers', () => {
         'claude-sonnet-4-6',
       );
       expect(cost).toBe(0);
+    });
+  });
+
+  describe('anthropicTimeoutMs (D6 — maxTokens-scaled SDK timeout)', () => {
+    it('gives the 4k critic ~3 min — enough for a healthy critic call', () => {
+      // floor 60s + 4000 * 30ms = 180_000ms
+      expect(anthropicTimeoutMs(4000)).toBe(180_000);
+    });
+
+    it('does NOT clip the 16k Screenwriter (clamps to the 8-min cap, still > ~5 min)', () => {
+      // 60s + 16000*30ms = 540_000 would exceed the belt → clamped to 480_000
+      expect(anthropicTimeoutMs(16000)).toBe(8 * 60_000);
+    });
+
+    it('stays strictly below the 10-minute exec-* finishTimeout belt for any input', () => {
+      for (const tokens of [0, 4000, 12000, 16000, 100000]) {
+        expect(anthropicTimeoutMs(tokens)).toBeLessThan(10 * 60_000);
+      }
+    });
+
+    it('never returns below the fixed floor (short/zero-token calls)', () => {
+      expect(anthropicTimeoutMs(0)).toBe(60_000);
+      expect(anthropicTimeoutMs(-5)).toBe(60_000);
     });
   });
 

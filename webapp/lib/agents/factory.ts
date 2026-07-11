@@ -381,14 +381,16 @@ export function createAgentInngestFunction<E extends string>(
       // (no throw → the outer catch's failure path is not taken). When the
       // precondition is met (e.g. Director approves the budget) a re-trigger
       // re-claims and runs cleanly.
+      // D6 (2026-07-11): the preflight loads NOTHING it uses — validateAgentInputs
+      // runs its own targeted count/canon/governance queries and does not read the
+      // loaded inputs. The old `await loadAgentInputs(...)` here re-ran the full
+      // episode-wide asset + Series-Bible + genre load purely to discard it, i.e.
+      // it doubled the heaviest DB work per run (~half the per-shot orchestration
+      // cost of the eref-designer/critic fanout). The real load happens once, in
+      // the execute-agent step below. Removed — pure throughput win, no behaviour
+      // change (an unloadable episode still fails the gate via its own queries).
       const gate = await step.run('preflight-validate', async () => {
         const supabase = createSupabaseServiceRoleClient();
-        await loadAgentInputs({
-          supabase,
-          agentId: spec.agentId,
-          episodeId,
-          allowedStatuses: spec.inputAllowedStatuses,
-        });
         return validateAgentInputs({
           supabase,
           agentId: spec.agentId,

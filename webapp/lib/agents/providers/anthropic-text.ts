@@ -50,6 +50,34 @@ export function wantsGeminiFreeTier(agentClass?: 'creator' | 'checker'): boolean
   );
 }
 
+// ── D6 (2026-07-11): bound the Anthropic SDK call ────────────────────────────
+// A bare `client.messages.create(...)` inherits the SDK's 10-minute DEFAULT
+// timeout. That is exactly the exec-eprev critic tail-hang the Director hit on
+// E27: a wedged provider socket rode to `finishTimeout: '10m'`, leasing the
+// episode concurrency slot the whole time and starving the fanout. The SDK's own
+// `timeout` option uses an AbortController — the SDK-native equivalent of the
+// shared `fetchWithTimeout` wrapper (which the SDK bypasses).
+//
+// The budget is SCALED to maxTokens because a healthy non-streaming generation
+// grows with output length: the Screenwriter (16k tokens) legitimately runs
+// ~4-5 min while the critic (4k) finishes in ~1-2 min. A flat 120s (gemini-text's
+// LLM_TEXT_MS) would false-abort the Writer and waste the paid generation. We
+// budget a conservative ~33 tok/s floor + fixed overhead, clamped BELOW the 10m
+// finishTimeout belt so the abort — plus one retry — settles the run and frees
+// the slot instead of hanging.
+const ANTHROPIC_TIMEOUT_FLOOR_MS = 60_000; // fixed overhead + short calls
+const ANTHROPIC_TIMEOUT_MS_PER_TOKEN = 30; // ~33 tok/s conservative healthy rate
+const ANTHROPIC_TIMEOUT_CAP_MS = 8 * 60_000; // < exec-* finishTimeout belt (10m)
+const ANTHROPIC_MAX_RETRIES = 1; // timeout*(1+retries) stays < the 10m belt
+
+/** Per-call SDK timeout (ms), scaled to output length. Exported as a test seam. */
+export function anthropicTimeoutMs(maxTokens: number): number {
+  return Math.min(
+    ANTHROPIC_TIMEOUT_CAP_MS,
+    ANTHROPIC_TIMEOUT_FLOOR_MS + Math.max(0, maxTokens) * ANTHROPIC_TIMEOUT_MS_PER_TOKEN,
+  );
+}
+
 export interface AnthropicTextInput {
   /** System prompt — usually loaded from agents/exec/<role>.md by the caller. */
   systemPrompt: string;
@@ -272,12 +300,20 @@ export async function generateAnthropicText(
 
     let response: Awaited<ReturnType<typeof client.messages.create>> | null = null;
     try {
-      response = await client.messages.create({
-        model: input.model,
-        max_tokens: maxTokens,
-        system: input.systemPrompt,
-        messages: [{ role: 'user', content: input.userMessage }],
-      });
+      response = await client.messages.create(
+        {
+          model: input.model,
+          max_tokens: maxTokens,
+          system: input.systemPrompt,
+          messages: [{ role: 'user', content: input.userMessage }],
+        },
+        {
+          // D6: hard per-call abort well under the exec-* 10m finishTimeout belt,
+          // scaled to maxTokens so long legit generations (Writer 16k) don't clip.
+          timeout: anthropicTimeoutMs(maxTokens),
+          maxRetries: ANTHROPIC_MAX_RETRIES,
+        },
+      );
     } catch (err: unknown) {
       // Overload fallback (2026-06-23, Director): a 529 `overloaded_error` is a
       // TRANSIENT Anthropic-capacity signal, not a content/contract failure.

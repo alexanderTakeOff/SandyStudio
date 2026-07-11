@@ -93,7 +93,27 @@
   de-duplicate the double `loadAgentInputs`; collapse cheap adjacent steps; finish the
   `fetchWithTimeout` swap on the critic provider call. Bundle into a throughput PR, deploy in a
   quiet window.
-- **Status:** OPEN — diagnosed, fixes deferred (no deploy during live run).
+- **Fixed (2026-07-11, branch `teo/d6-throughput`):**
+  1. **Throughput — de-duplicated the double `loadAgentInputs`.** `factory.ts`
+     preflight ran the full episode-wide asset + Series-Bible + genre load only to
+     DISCARD it (`validateAgentInputs` runs its own targeted count/canon/governance
+     queries and never reads the loaded inputs). Removed → the heaviest per-run DB
+     work now happens ONCE (execute-agent step), roughly halving the per-shot
+     orchestration cost across the eref-designer/critic fanout. No behaviour change.
+  2. **Tail-hang — bounded the Anthropic SDK call.** `anthropic-text.ts` did
+     `new Anthropic({ apiKey })` with NO `timeout`, inheriting the SDK's 10-minute
+     default — exactly the wedged-socket ride to `finishTimeout: '10m'`. Added a
+     per-call `timeout` (+`maxRetries: 1`) SCALED to maxTokens via `anthropicTimeoutMs`
+     (floor 60s + 30ms/token, capped 8m < the belt): the 4k critic aborts a wedged
+     call at ~3m (retry → ~6m, fails clean) while the 16k Screenwriter never clips.
+     The SDK `timeout` uses an AbortController — the SDK-native equivalent of the
+     shared `fetchWithTimeout` the SDK bypasses. New seam unit-tested (4 cases).
+  - Cap 3→5 already shipped separately (`4a36498`).
+  - **Deferred:** "collapse cheap adjacent steps" — vague, risk-additive for modest
+    gain now that the double-load (the real waste) is gone; revisit only if the
+    per-shot round-trip count is still a bottleneck after this ships.
+- **Status:** FIXED on branch — tsc·0 / vitest 1210 / replay 30. Deploy (rebuild +
+  restart) in a quiet window with Director OK; NOT during a live E27 run.
 
 ## D3 — Storyboard fired TWICE (in-flight job not detected)
 
