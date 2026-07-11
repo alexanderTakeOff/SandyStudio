@@ -20,8 +20,14 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-10 (master `ef57b79` ЗАДЕПЛОЕН на :3000 — rebuild+restart в чистое окно, 0 рендеров: EXEC-PUB real + отложенные start-video латч + Key Art уехали одним рестартом; RECONCILER ARMED — MECHANICS_AUTO_ADVANCE=true для след. смока)
+Date:   2026-07-11 (master `e2142ea` ЗАДЕПЛОЕН на :3000 — свежий rebuild+restart. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false, Director q1b): первый смок с настоящей дистрибуцией идёт на РУЧНЫХ гейтах (аудит [[reconciler_audit_2026-07-10]]). Смок нового эпизода НЕ запущен — ждём выбора темы Директором (банк-маркеры протухли: E13=Vending, E15=Car Wash сняты; E17-E25=Airport-арка).)
 Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-11 (Episode Start Notice — Тео). Директор q1b: большой гэг-банк (100-гэг Car-Wash) некуда класть, кроме брифа,
+  а бриф читается в ~20 местах. FIX (master `e2142ea`): новый универсальный сосуд **`SPC-start_notice`** («Стартовая записка
+  эпизода») — Полина пишет туда любой пред-авторский материал (гэг-резервуар/заметки/референсы) тулом `writeStartNotice`
+  (APPROVED, вербально-гейтед); Писатель читает как **ADVISORY**-резервуар (НЕ beat-контракт; Key beats брифа = единственный
+  MUST-hit). Едет на существующем `upstream_assets` (0 миграций, 0 изменений loader) — бриф ХУДЕЕТ. tsc·0/vitest·1198/replay·30.
 
 2026-07-10 (Distribution — Тео). Стадия **EXEC-PUB была МОК → сделана НАСТОЯЩЕЙ** (master `fb50d4a`). Плумбинг
   (`c4eac71`): `youtube.ts` + два токена (Drive `ao@` / Sandy-бренд `YOUTUBE_REFRESH_TOKEN`; бренд-аккаунт без Drive
