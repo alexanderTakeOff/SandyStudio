@@ -143,6 +143,9 @@ The 9 stages every episode passes through, in order. Director may approve, reque
 ### Brief / Бриф
 **Stage 1.** Director's structured request for the episode: logline, premise, key beats, characters in this episode, tone & style notes, runtime. Asset: `SPC-brief`. Schema: [`specs/schemas/brief.md`](schemas/brief.md). Created by Director via webapp + Anthropic Haiku enrichment.
 
+### Episode Start Notice / Стартовая записка эпизода
+Optional episode-scoped vessel that hands the Writer (`EXEC-SW`) any large or incidental pre-authoring material that must NOT bloat the often-read Brief — a big **gag reservoir** (e.g. a 100-gag Car-Wash-style bank), extra directorial notes, references, constraints. Asset: `SPC-start_notice`. Written by the Producer (`EXEC-CONC` / Polina) via the `writeStartNotice` tool at APPROVED. The Writer reads it as an **advisory reservoir** to draw from — it is NOT a beat-contract and does NOT override the Brief; the Brief's Key beats remain the only MUST-hit surface. Rationale: the Brief carries the directorial SPINE (read ~20 places); the Start Notice carries the bulk (read only by the Writer). Established 2026-07-11 (Director q1b).
+
 ### Beat sheet / Бит-лист
 **Stage 2.** 15–20 numbered story beats — set-ups and punchlines of comedy, structural skeleton. Cheap to revise. Catches structural problems before prose. Asset: `SCR-beats` (planned).
 

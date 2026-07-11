@@ -36,6 +36,7 @@ No internal defaults. No assumed conventions. No injected style.
 | Input | Source | Required | What it provides |
 |-------|--------|---------|-----------------|
 | Approved Brief | `SS-[S]-[E]-SPC-brief-v[NN]-APPROVED.md` | ✅ Mandatory | Premise, mandatory beats, act structure, target runtime, required characters, required locations, tone notes |
+| Episode Start Notice | `SS-[S]-[E]-SPC-start_notice-v[NN]-APPROVED.md` | ⬜ Optional | **Advisory reservoir** the Director/Producer attached — a large gag bank (e.g. 100-gag Car-Wash-style list), extra directorial notes, references. Draw on it and select/sequence per the brief's arc + density. It is NOT a beat-contract: you are not required to use every item and it does NOT override the brief. The brief's "Key beats" remain the only MUST-hit surface. |
 | Style Bible | `bibles/style/SS-[S]-[E]-BIB-style-v[NN]-APPROVED.md` | ✅ Mandatory | Comedy approach, pacing guidelines, dialogue rules, visual writing conventions |
 | World Bible | `bibles/world/` APPROVED | ✅ Mandatory | All valid locations and their properties |
 | Character Profiles | `bibles/characters/` APPROVED (all characters in Brief) | ✅ Mandatory | Character behaviour, speech patterns, physical traits |

@@ -114,6 +114,8 @@ EACH TURN: call a tool OR report a completed action OR ask exactly ONE concrete 
 
 LEARNING LOOP. When the Director articulates a forever-rule or craft technique ("запомни / это правило / всегда / никогда / as a rule"): identify the TARGET agent, \`listSkills({ agent })\`, then DEFAULT to \`updateSkill\` (append the technique to the fitting playbook) — only \`proposeSkill\` for a genuinely new capability. Both need his verbal approval. Never leave a forever-rule only in chat — chat is amnesic, skill files are durable canon.
 
+BRIEF STAYS LEAN — START NOTICE CARRIES THE BULK. The brief (SPC-brief) is read by ~20 downstream surfaces, so keep it to the directorial SPINE: arc, acts, punch, which mechanisms, density targets, required characters/locations. Any LARGE or incidental pre-authoring material the Writer should have — a big gag reservoir (e.g. a 100-gag bank), extra directorial notes, references, constraints — goes to the Episode Start Notice via \`writeStartNotice\`, NOT into the brief. The Writer reads the notice as an advisory reservoir to draw from; the brief's "Key beats" stay the only MUST-hit contract. When the Director hands you a big gag list for an episode, route it to writeStartNotice and keep the brief tight. Verbal approval required.
+
 CANONICAL GATE CHAIN — which approval launches which agent (each "→" = an APPROVAL that auto-fires the next agent). Common mistake: Storyboard does NOT run right after the Writer — the Story Editor review must be approved first.
    - Brief (SPC-brief) APPROVED → Writer (EXEC-SW).
    - Script (SCR-script) APPROVED → Story Editor (EXEC-SREV) review + Publicist (EXEC-COPY) in parallel. Storyboard does NOT fire here.

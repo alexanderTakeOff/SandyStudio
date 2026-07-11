@@ -6,6 +6,9 @@
 // Inputs (from runner.ts loadAgentInputs):
 //   - episode: { episode_code, title_working, ... }
 //   - upstream_assets: includes the APPROVED brief (file_type === 'SPC-brief')
+//     and, when the Director/Producer attached one, an OPTIONAL Episode Start
+//     Notice (file_type === 'SPC-start_notice') — an advisory reservoir (gag
+//     bank / notes) the Writer draws from, kept out of the often-read brief.
 //
 // Outputs (consumed by runner.ts case 'EXEC-SW'):
 //   - markdown: full Claude response (script body + fenced JSON block)
@@ -29,7 +32,7 @@ import {
   composeActivePlaybooksBlock,
 } from '../load-skills';
 import { parseSkillSelection } from '../../skills/parse-skill-selection';
-import { findApprovedAsset } from '../upstream';
+import { findApprovedAsset, START_NOTICE_FILE_TYPE } from '../upstream';
 
 export const SCREENWRITER_CONTRACT = 'screenwriter@v1';
 export const SCREENWRITER_MODEL = 'claude-sonnet-4-6';
@@ -103,15 +106,21 @@ async function loadSystemPrompt(): Promise<string> {
 // F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
 // (lib/agents/upstream.ts; the local copy was an unsorted `.find()`).
 
-function buildUserMessage(args: {
+export function buildUserMessage(args: {
   episodeCode: string;
   episodeTitle: string;
   briefContent: string;
   bible: SeriesBibleCanon;
   revisionNote?: string;
   activeSkillsBlock?: string;
+  /**
+   * Optional Episode Start Notice content — a reservoir / advisory context from
+   * the Director/Producer (gag bank, extra notes, references). NOT a beat
+   * contract: the brief's Key beats stay the only MUST-hit surface.
+   */
+  startNoticeContent?: string | null;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, bible, revisionNote, activeSkillsBlock } = args;
+  const { episodeCode, episodeTitle, briefContent, bible, revisionNote, activeSkillsBlock, startNoticeContent } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -128,6 +137,23 @@ function buildUserMessage(args: {
     briefContent,
     '</brief>',
     '',
+    startNoticeContent && startNoticeContent.trim().length > 0
+      ? [
+          '## Episode Start Notice (advisory reservoir — NOT a beat-contract)',
+          '',
+          'The Director/Producer attached extra pre-authoring material for this',
+          'episode below — e.g. a large gag reservoir, references, or notes. Draw',
+          'on it as relevant and select/sequence per the brief\'s arc and density.',
+          'It is NOT a checklist: you are NOT required to use every item, and it',
+          'does NOT override the brief. The brief\'s "Key beats" remain the only',
+          'MUST-hit contract.',
+          '',
+          '<episode_start_notice>',
+          startNoticeContent,
+          '</episode_start_notice>',
+          '',
+        ].join('\n')
+      : '',
     hasCanon
       ? biblePromptBlock
       : [
@@ -241,6 +267,15 @@ export async function runScreenwriter(
     );
   }
 
+  // Optional Episode Start Notice — a reservoir / advisory context (gag bank,
+  // extra notes) the Director/Producer attached for this episode. Absent for
+  // most episodes; when present it rides the same APPROVED upstream bag.
+  const startNoticeAsset = findApprovedAsset(upstream, START_NOTICE_FILE_TYPE);
+  const startNoticeContent =
+    startNoticeAsset?.content && startNoticeAsset.content.trim().length > 0
+      ? startNoticeAsset.content
+      : null;
+
   const bible = (inputs.bible as SeriesBibleCanon | undefined) ?? {
     series_id: null,
     general_idea: null,
@@ -343,7 +378,13 @@ export async function runScreenwriter(
     bible,
     revisionNote,
     activeSkillsBlock,
+    startNoticeContent,
   });
+  if (startNoticeContent) {
+    notes.push(
+      `Episode Start Notice loaded (${startNoticeContent.length} chars) — advisory reservoir injected`,
+    );
+  }
 
   let result: AnthropicTextResult;
   try {

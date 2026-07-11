@@ -45,7 +45,7 @@ interface EpisodeCodeParts {
  * back to safe placeholders when the code is malformed so filename building
  * never throws — the asset is still uniquely keyed by episode_id + file_type.
  */
-function parseEpisodeCode(episodeCode: string | null | undefined): EpisodeCodeParts {
+export function parseEpisodeCode(episodeCode: string | null | undefined): EpisodeCodeParts {
   const code = (episodeCode ?? '').trim().toUpperCase();
   const seasonMatch = code.match(/SS-(S\d{2}|PILOT)/);
   const episodeMatch = code.match(/-(E\d{1,3})\b/);

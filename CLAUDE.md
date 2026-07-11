@@ -41,7 +41,7 @@ Webapp + CLI agents both use one resolver. Folders are created on first write.
 | `SS-{S}-BIB-character_*` | `<project_root>/bibles/characters/` |
 | `SS-{S}-BIB-style*` | `<project_root>/bibles/style/` |
 | `SS-{S}-STA-*` | `<project_root>/state/` |
-| `SS-{S}-{E}-SPC-{brief\|story_brief\|music_brief}-*` | `<project_root>/{e}/briefs/` |
+| `SS-{S}-{E}-SPC-{brief\|story_brief\|music_brief\|start_notice}-*` | `<project_root>/{e}/briefs/` |
 | `SS-{S}-{E}-SPC-copy-*` | `<project_root>/{e}/distribution/` |
 | `SS-{S}-{E}-SCR-*` | `<project_root>/{e}/scripts/` |
 | `SS-{S}-{E}-STB-*` | `<project_root>/{e}/storyboards/` |

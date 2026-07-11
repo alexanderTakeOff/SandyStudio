@@ -19,7 +19,7 @@ import {
   createSeries,
   copyAssetImage,
 } from './series';
-import { createEpisode, findEpisode, editBrief } from './episode-create';
+import { createEpisode, findEpisode, editBrief, writeStartNotice } from './episode-create';
 import { listSkills, getSkill, proposeSkill, updateSkill, approveSkill } from './skills';
 import { getRefPlan, listRefPlans, getCriticVerdict, regenerateRefPlan } from './eref';
 import { regenerateImageFromPlan } from './eref-execute';
@@ -107,6 +107,7 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   createSeries as unknown as AnyTool,
   createEpisode as unknown as AnyTool,
   editBrief as unknown as AnyTool,
+  writeStartNotice as unknown as AnyTool,
   proposeSkill as unknown as AnyTool,
   updateSkill as unknown as AnyTool,
   approveSkill as unknown as AnyTool,

@@ -6,6 +6,8 @@
 
 import { gateMutation } from '../approval-check';
 import { authHeaders, fail, ok, type Tool, type ToolContext, type ToolResult } from './types';
+import { parseEpisodeCode } from './work-plan';
+import { START_NOTICE_FILE_TYPE } from '@/lib/agents/upstream';
 
 type AnyArgs = Record<string, unknown>;
 
@@ -305,6 +307,148 @@ export const editBrief: Tool<EditBriefArgs> = {
     return ok(
       payload,
       `Brief overwritten in place (v${brief.version} ${brief.status}, ${args.content.length} chars). Status preserved — Director still approves via the existing gate.`,
+    );
+  },
+};
+
+interface WriteStartNoticeArgs {
+  episodeId?: string;
+  content: string;
+}
+
+/**
+ * writeStartNotice (2026-07-11, Director q1b) — create-or-overwrite the episode's
+ * Episode Start Notice (`SPC-start_notice`): a single general-purpose vessel that
+ * hands the Writer any pre-authoring material that does NOT belong in the
+ * often-read brief — a large gag reservoir (e.g. the 100-gag Car-Wash bank),
+ * extra directorial notes, references, constraints.
+ *
+ * The Writer (EXEC-SW) reads it as ADVISORY context (see lib/agents/upstream.ts
+ * START_NOTICE_FILE_TYPE): the brief stays the MUST-hit spine, the notice is the
+ * reservoir. Written directly at APPROVED (mirrors the work-plan direct-upsert
+ * path): it is Director/Producer-authored input, not an agent deliverable that
+ * needs a QA gate, and this tool is already verbal-approval-gated — the
+ * Director's spoken "yes" IS the approval. No pipeline gate keys on this
+ * file_type, so it is inert except where the Writer explicitly reads it.
+ */
+export const writeStartNotice: Tool<WriteStartNoticeArgs> = {
+  name: 'writeStartNotice',
+  description:
+    "Create or overwrite the episode's Episode Start Notice — a freeform markdown vessel that hands the Writer any pre-authoring material too large or too incidental for the brief: a big gag reservoir (e.g. a 100-gag bank), extra directorial notes, references, constraints. The Writer reads it as ADVISORY context (it does NOT override the brief; the brief's Key beats stay the only MUST-hit contract). Use this INSTEAD of stuffing a large gag list into the brief — the brief is read in ~20 places and must stay lean. Written at APPROVED so the Writer sees it immediately. Verbal approval required. If episodeId omitted, defaults to the episode in focus.",
+  mutating: true,
+  schema: {
+    type: 'function',
+    function: {
+      name: 'writeStartNotice',
+      description:
+        "Create-or-overwrite the SPC-start_notice asset (advisory reservoir the Writer draws from). Keeps the large gag bank / extra notes OUT of the often-read brief.",
+      parameters: {
+        type: 'object',
+        properties: {
+          episodeId: {
+            type: 'string',
+            description: 'Episode UUID. Optional — defaults to the episode in focus.',
+          },
+          content: {
+            type: 'string',
+            description:
+              'The full Start Notice markdown (gag reservoir, notes, references) saved verbatim.',
+            minLength: 20,
+            maxLength: 200000,
+          },
+        },
+        required: ['content'],
+        additionalProperties: false,
+      },
+    },
+  },
+  parse(raw) {
+    const obj = safeParse(raw);
+    const episodeId =
+      typeof obj.episodeId === 'string' && obj.episodeId.trim() !== ''
+        ? obj.episodeId.trim()
+        : undefined;
+    const content = typeof obj.content === 'string' ? obj.content : '';
+    if (content.length < 20) throw new Error('content too short (min 20 chars)');
+    return { episodeId, content };
+  },
+  async execute(args, ctx): Promise<ToolResult> {
+    const approval = gateMutation('writeStartNotice', {
+      mode: ctx.mode,
+      turns: ctx.recentTurns ?? [],
+    });
+    if (!approval.approved) {
+      return fail(approval.reason, 'verbal_approval_required');
+    }
+    const episodeId = args.episodeId ?? ctx.episodeId ?? null;
+    if (!episodeId) {
+      return fail(
+        'No episode in focus — pass episodeId explicitly or open an episode first.',
+        'no_episode_id',
+      );
+    }
+
+    // Find the newest existing Start Notice for this episode (any status).
+    const { data: existing, error: findErr } = await ctx.supabase
+      .from('assets')
+      .select('id,version,status')
+      .eq('episode_id', episodeId)
+      .eq('file_type', START_NOTICE_FILE_TYPE)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (findErr) {
+      return fail(`start-notice lookup failed: ${findErr.message}`, 'db_error');
+    }
+
+    if (existing) {
+      // Overwrite in place, keep it APPROVED so the Writer keeps seeing it.
+      const { error: updErr } = await ctx.supabase
+        .from('assets')
+        .update({ content: args.content, status: 'APPROVED' } as never)
+        .eq('id', existing.id);
+      if (updErr) {
+        return fail(`start-notice overwrite failed: ${updErr.message}`, 'db_error');
+      }
+      return ok(
+        { assetId: existing.id, created: false },
+        `Episode Start Notice overwritten in place (v${existing.version}, ${args.content.length} chars, APPROVED). The Writer will draw on it as advisory context.`,
+      );
+    }
+
+    // No notice yet — insert a fresh APPROVED row with the canonical filename.
+    const { data: episode, error: epErr } = await ctx.supabase
+      .from('episodes')
+      .select('id,episode_code')
+      .eq('id', episodeId)
+      .maybeSingle();
+    if (epErr) return fail(`episode lookup failed: ${epErr.message}`, 'db_error');
+    if (!episode) return fail(`episode ${episodeId} not found`, 'episode_missing');
+
+    const parts = parseEpisodeCode(episode.episode_code as string | null);
+    const filename = `SS-${parts.season}-${parts.episode}-SPC-start_notice-v01-APPROVED.md`;
+
+    const { data: inserted, error: insErr } = await ctx.supabase
+      .from('assets')
+      .insert({
+        episode_id: episodeId,
+        series_id: null,
+        file_type: START_NOTICE_FILE_TYPE,
+        filename,
+        status: 'APPROVED',
+        version: 1,
+        agent_id: 'EXEC-CONC',
+        content: args.content,
+        description:
+          'Episode Start Notice — advisory reservoir (gag bank / notes) the Writer draws from; keeps the brief lean.',
+      } as never)
+      .select('id')
+      .maybeSingle();
+    if (insErr) return fail(`start-notice insert failed: ${insErr.message}`, 'db_error');
+    const assetId = (inserted as { id?: string } | null)?.id ?? '';
+    return ok(
+      { assetId, created: true },
+      `Episode Start Notice created (${args.content.length} chars, APPROVED) as ${filename}. The Writer will draw on it as advisory context — the brief stays the MUST-hit spine.`,
     );
   },
 };
