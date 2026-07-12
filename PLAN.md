@@ -20,8 +20,18 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-11 (master `9547fd4` ЗАДЕПЛОЕН на :3000 — свежий rebuild+restart, health OK / inngest 200. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false, Director q1b): первый смок с настоящей дистрибуцией идёт на РУЧНЫХ гейтах (аудит [[reconciler_audit_2026-07-10]]). Смок нового эпизода НЕ запущен — ждём выбора темы Директором (банк-маркеры протухли: E13=Vending, E15=Car Wash сняты; E17-E25=Airport-арка).)
+Date:   2026-07-12 (Shorts: 9 залиты UNLISTED на канал + `.claude/safe_and_sustainable.md`; deploy master `9547fd4` ЗАДЕПЛОЕН на :3000 — свежий rebuild+restart, health OK / inngest 200. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false, Director q1b): первый смок с настоящей дистрибуцией идёт на РУЧНЫХ гейтах (аудит [[reconciler_audit_2026-07-10]]). Смок нового эпизода НЕ запущен — ждём выбора темы Директором (банк-маркеры протухли: E13=Vending, E15=Car Wash сняты; E17-E25=Airport-арка).)
 Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-12 (Shorts-фабрика + Safe&Sustainable — Тео). (1) **9 YouTube Shorts** из landscape-финалов:
+  новый `webapp/lib/agents/providers/ffmpeg-shorts.ts` (`makeShort`: center-crop 9:16 → 1080×1920 +
+  overlay «SANDY the HOURGLASS» 4с; pure-builders юнит-тестятся) + `webapp/scripts/dist-shorts.ts`
+  (батч, sample-first, idempotent по `#Shorts`-маркеру, skip уже-вертикальных) → залиты **UNLISTED** на
+  канал (Director ревьюит → флипает в public; scope `youtube.upload` без delete). E25 skip (уже short).
+  (2) `.claude/safe_and_sustainable.md` — доктрина стабильности (Tier-0 durable Inngest DONE; Tier-1
+  self-healing jobs TODO: onFailure-хэндлер, out-of-band reaper, провайдер-таймауты, critic HALT→logEvent).
+  Runtime-гигиена: убрал залипший `inngest dev` (мина рядом с durable :8288). UI-слайсер отложен в бэклог
+  ([[backlog_shorts_ui_slicer]]). tsc·0 / +10 тестов. Коммит master.
 
 2026-07-11 (D6 throughput+tail-hang — Тео, master `9547fd4` ЗАДЕПЛОЕН). Дифаб E27: (1) `factory.ts` preflight грузил
   episode-wide ассеты+Bible+genre и ВЫБРАСЫВАЛ (validateAgentInputs делает свои точечные запросы) → убран, тяжёлая БД-
