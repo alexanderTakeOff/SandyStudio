@@ -23,6 +23,16 @@
 Date:   2026-07-12 (Shorts: 9 залиты UNLISTED на канал + `.claude/safe_and_sustainable.md`; deploy master `9547fd4` ЗАДЕПЛОЕН на :3000 — свежий rebuild+restart, health OK / inngest 200. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false, Director q1b): первый смок с настоящей дистрибуцией идёт на РУЧНЫХ гейтах (аудит [[reconciler_audit_2026-07-10]]). Смок нового эпизода НЕ запущен — ждём выбора темы Директором (банк-маркеры протухли: E13=Vending, E15=Car Wash сняты; E17-E25=Airport-арка).)
 Mode:   ===5=== EDIT (Director-authorized).
 
+2026-07-12 (Shorts P1 — воронка/мост — Тео). Директор: short-creator ≠ отдельный агент, а сквозная
+  забота по всем стадиям (доктрина `.claude/skills/shorts-longform-distribution/SKILL.md`, owner
+  EXEC-PUB+ANAL). Роадмап **P1 мост → P2 гэг-нарезка → P3 аналитика**. **P1 СДЕЛАН**: единственная
+  программируемая привязка Shorts→эпизод = URL родителя в описании (у YouTube нет «related video»).
+  Общий хелпер `webapp/lib/agents/providers/short-linkage.ts` (`appendParentBacklink`/`readParentVideoId`/
+  `persistShortId`) вплетён в route-слайсер + батч; **9 сирот забэкфиллены** (`dist-shorts-backfill-parents.ts`,
+  `updateVideoMetadata`, force-ssl OK) — описания + `episodes.metadata.youtube_short_id` (проверено API+БД).
+  tsc·0 / vitest 1220. P2 (гэг-окна 15-40с через `short_windows` + cumsum-таймкоды, реюз резака) и
+  P3 (размок EXEC-ANAL + петля в идеацию, идеация-в-дашборде с audience-analysis) — [[backlog_shorts_ui_slicer]] отложены.
+
 2026-07-12 (Shorts-фабрика + Safe&Sustainable — Тео). (1) **9 YouTube Shorts** из landscape-финалов:
   новый `webapp/lib/agents/providers/ffmpeg-shorts.ts` (`makeShort`: center-crop 9:16 → 1080×1920 +
   overlay «SANDY the HOURGLASS» 4с; pure-builders юнит-тестятся) + `webapp/scripts/dist-shorts.ts`

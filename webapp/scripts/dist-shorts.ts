@@ -27,6 +27,15 @@ for (const line of env.split('\n')) {
 
 import { listAllUploads, uploadVideo } from '../lib/agents/providers/youtube';
 import { makeShort, probeDimensions, isVertical } from '../lib/agents/providers/ffmpeg-shorts';
+import { appendParentBacklink } from '../lib/agents/providers/short-linkage';
+
+// Parent landscape video id per episode (funnel bridge — the ONE programmable
+// Shorts→long-form link goes in the description). Same ids as dist-youtube-polish.ts.
+const PARENT_VID: Record<string, string> = {
+  'S15-E01': 'mCGE4FBcSrQ', 'S15-E07': 'BvIHVozwdKQ', 'S15-E09': 'gU8BBvnoHu0',
+  'S15-E11': 'LgGPVYUEzf8', 'S15-E12': 'iT8nwWABBqE', 'S15-E13': 'ywNKJYsbnrE',
+  'S15-E14': 'S2vIiuUCUGg', 'S15-E15': '2efpY_JPYUo', 'S15-E16': 'rzBgn07Ucsg',
+};
 
 const FINALS = 'H:/Мой диск/SandyStudio_Media/Finals';
 const OUT_DIR = 'C:/SandyStudio/FILMS/_media_cache/_shorts';
@@ -97,7 +106,7 @@ async function runAll(doUpload: boolean) {
       const r = await uploadVideo({
         bytes,
         title: shortTitle(p.title),
-        description: DESCRIPTION,
+        description: appendParentBacklink(DESCRIPTION, PARENT_VID[p.ep] ?? null),
         tags: ['Shorts', 'Sandy the Hourglass', 'animation', 'comedy'],
         privacyStatus: 'unlisted',
       });

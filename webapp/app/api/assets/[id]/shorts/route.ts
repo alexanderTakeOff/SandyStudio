@@ -25,6 +25,7 @@ import { ensureCachedMedia, cachedFileIfPresent, mediaCacheRoot } from '@/lib/me
 import { makeShort } from '@/lib/agents/providers/ffmpeg-shorts';
 import { uploadVideo } from '@/lib/agents/providers/youtube';
 import { parseVideoMetadata } from '@/lib/agents/publish-metadata';
+import { appendParentBacklink, readParentVideoId, persistShortId } from '@/lib/agents/providers/short-linkage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -104,6 +105,12 @@ export const POST = withApiHandler(async (req, ctx) => {
       if (parsed.title) baseTitle = parsed.title;
       if (parsed.description) description = parsed.description;
     }
+
+    // The funnel bridge: link this Short back to the parent episode's landscape
+    // video. YouTube has no "related video" API field — the parent watch-URL in
+    // the description is the only programmable bridge. No-op if not yet published.
+    const parentVideoId = await readParentVideoId(supabase, asset.episode_id);
+    description = appendParentBacklink(description, parentVideoId);
   }
   const title = `${baseTitle} #Shorts`.slice(0, 100);
 
@@ -126,6 +133,11 @@ export const POST = withApiHandler(async (req, ctx) => {
     tags: ['Shorts', 'Sandy the Hourglass', 'animation', 'comedy'],
     privacyStatus: body.privacyStatus,
   });
+
+  // Record the reverse Short→episode link (thin ledger in episodes.metadata).
+  if (asset.episode_id) {
+    await persistShortId(supabase, asset.episode_id, r.id, r.url);
+  }
 
   return apiOk({
     videoId: r.id,
