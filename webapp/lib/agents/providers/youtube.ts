@@ -185,6 +185,40 @@ export async function addVideoToPlaylist(playlistId: string, videoId: string): P
   }
 }
 
+/** Find one of the channel's own playlists by exact (case-insensitive) title. */
+export async function findPlaylistByTitle(title: string): Promise<{ id: string; title: string } | null> {
+  const want = title.trim().toLowerCase();
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({ part: 'snippet', mine: 'true', maxResults: '50' });
+    if (pageToken) params.set('pageToken', pageToken);
+    const res = await authedFetch(`${YT_API}/playlists?${params.toString()}`);
+    if (!res.ok) throw new YouTubeError(`findPlaylistByTitle failed (${res.status})`, res.status, (await res.text()).slice(0, 300));
+    const json = (await res.json()) as { items?: Array<{ id?: string; snippet?: { title?: string } }>; nextPageToken?: string };
+    for (const it of json.items ?? []) {
+      if ((it.snippet?.title ?? '').trim().toLowerCase() === want) return { id: it.id ?? '', title: it.snippet?.title ?? title };
+    }
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+  return null;
+}
+
+/** Create a new playlist (playlists.insert). Requires force-ssl scope. */
+export async function createPlaylist(
+  title: string,
+  description = '',
+  privacyStatus: 'private' | 'unlisted' | 'public' = 'unlisted',
+): Promise<{ id: string; title: string }> {
+  const res = await authedFetch(`${YT_API}/playlists?part=snippet,status`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ snippet: { title, description }, status: { privacyStatus } }),
+  });
+  if (!res.ok) throw new YouTubeError(`createPlaylist failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
+  const json = (await res.json()) as { id?: string; snippet?: { title?: string } };
+  return { id: json.id ?? '', title: json.snippet?.title ?? title };
+}
+
 export type PrivacyStatus = 'private' | 'unlisted' | 'public';
 
 export interface UploadVideoInput {

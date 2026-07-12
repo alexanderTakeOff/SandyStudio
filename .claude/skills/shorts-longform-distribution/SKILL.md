@@ -71,10 +71,15 @@ Two consequences follow, and they drive every other rule below:
    amplify it in the next long-form. This is a *feedback signal into the writers'
    room*, not just a distribution channel.
 
-5. **Rhythm + playlists.** Group episodes into season playlist(s) — chains lift
-   session watch-time, which the algorithm rewards. Ship Shorts more often and
-   regularly; they keep the channel "warm" between episodes and feed the algorithm
-   daily signals.
+5. **Rhythm + playlists — keep the two formats in SEPARATE playlists.** Group
+   episodes into season playlist(s) — chains lift session watch-time, which the
+   algorithm rewards. But **Shorts and long-form belong in different playlists on the
+   same channel**, never mixed in one: a viewer bingeing full episodes does not want a
+   15-second Short interrupting the chain, and a Shorts swiper does not want a 3-minute
+   video — mixing formats in one playlist hurts the viewer experience and breaks the
+   session flow the playlist exists to build. Same channel (same topic), separate
+   playlists. Ship Shorts more often and regularly; they keep the channel "warm"
+   between episodes and feed the algorithm daily signals.
 
 ## The bridge — the invariant requirement
 
