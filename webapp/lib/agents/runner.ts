@@ -28,6 +28,7 @@ import { generateImageOpenAI } from './providers/openai-image';
 import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { uploadVideo, setThumbnail, videoExists, isVideoInPlaylist, addVideoToPlaylist, type PrivacyStatus } from './providers/youtube';
+import { collectAudienceSnapshot } from './providers/youtube-stats';
 import { downloadFile } from './providers/drive';
 import { parseVideoMetadata } from './publish-metadata';
 import { persistBinary, type PersistedBinary } from './persist-binary';
@@ -3184,11 +3185,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           `EXEC-ANAL requires collectionPoint and youtubeVideoId in event payload`
         );
       }
-      const analytics = await mockAnalytics({
-        episodeId,
-        youtubeVideoId,
-        collectionPoint,
-      });
+      // Real audience metrics when the YouTube token is present (it now carries
+      // the yt-analytics.readonly scope); mock stays the fallback for
+      // replay-pilot / tests / no-creds so the DAG smoke is unchanged.
+      const analytics = process.env.YOUTUBE_REFRESH_TOKEN
+        ? await collectAudienceSnapshot({ youtubeVideoId, collectionPoint })
+        : await mockAnalytics({ episodeId, youtubeVideoId, collectionPoint });
       return {
         outputKind: 'analytics-json',
         result: {

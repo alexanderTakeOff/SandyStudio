@@ -115,8 +115,16 @@ config layer / Brief.
 
 ## Project-local status (outside the invariant)
 
-- **As of 2026-07-12:** doctrine authored; NOT yet built. EXEC-ANAL is still a mock
-  (`mockAnalytics`, all-zero); `youtube.ts` has no statistics read; there is no
-  analytics→ideation loop. Build is gated on (1) re-consent for the
-  `yt-analytics.readonly` scope and (2) the Director's go for the audience-analysis
-  phase. Per-gag attribution deepens after the gag-cut work (P2); episode-level first.
+- **As of 2026-07-12 — BUILT (P3 v1).** re-consent done (token carries
+  `yt-analytics.readonly`); real provider `webapp/lib/agents/providers/youtube-stats.ts`
+  (Data API statistics + Analytics API avg-view-%/retention, degrades to 0/null on new
+  videos); scout engine `webapp/lib/agents/analytics-advisor.ts` (silence threshold,
+  exposure gate, metric roles, holes map — unit-tested); EXEC-ANAL un-mocked
+  (`runner.ts` case, real when a YT token is present, mock fallback for replay-pilot);
+  dashboard `app/(studio)/audience/page.tsx` + `app/api/audience/route.ts` (honesty
+  banner, ranked advice cards, shorts→episode funnel, per-video metrics). Smoke: real
+  views read live (E01 landscape = 2 views); analytics rows still empty (videos too new)
+  → advisor correctly in scout mode. **Open:** per-gag attribution + shipped-category
+  tagging wait for the gag-cut work (P2) — until then `shippedCategories = []` so the
+  whole taxonomy shows as untested holes. Impressions/CTR/traffic-source + auto loop into
+  ideation are follow-ups.

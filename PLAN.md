@@ -23,6 +23,17 @@
 Date:   2026-07-12 (Shorts: 9 залиты UNLISTED на канал + `.claude/safe_and_sustainable.md`; deploy master `9547fd4` ЗАДЕПЛОЕН на :3000 — свежий rebuild+restart, health OK / inngest 200. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false, Director q1b): первый смок с настоящей дистрибуцией идёт на РУЧНЫХ гейтах (аудит [[reconciler_audit_2026-07-10]]). Смок нового эпизода НЕ запущен — ждём выбора темы Директором (банк-маркеры протухли: E13=Vending, E15=Car Wash сняты; E17-E25=Airport-арка).)
 Mode:   ===5=== EDIT (Director-authorized).
 
+2026-07-12 (Shorts P3 — Audience Quality Sensor v1 — Тео). Advisor = сенсор №2 (КАЧЕСТВО) в паре к
+  budget_log (цена), **режим РАЗВЕДЧИКА** (explore>exploit, доктрина `.claude/skills/audience-quality-sensor`).
+  Построено: re-consent (`yt-analytics.readonly`), провайдер `youtube-stats.ts` (Data API stats + Analytics
+  avg%/retention, деградирует в 0/null на новых видео), scout-движок `analytics-advisor.ts` (порог молчания +
+  гейт экспозиции + роли метрик completion/views/loops+shares + карта дыр; юнит-тест), EXEC-ANAL размокан
+  (`runner.ts`, реальный при токене, мок-фолбэк для replay-pilot), дашборд `app/(studio)/audience` +
+  `/api/audience` (баннер честности, ранж. карточки-гипотезы, воронка shorts→эпизод, метрики) + nav-пункт.
+  Смок: E01 landscape=2 views живьём; analytics-рядов пока нет (видео новые) → advisor корректно в scout.
+  tsc·0 / vitest 1230. ⚠️ НЕ задеплоен (дашборд оживёт после rebuild+restart; приложение подхватит новый токен).
+  Открыто: per-гэг атрибуция + тегирование категорий ждут P2; impressions/CTR/traffic + автопетля в идеацию — потом.
+
 2026-07-12 (Shorts P1 — воронка/мост — Тео). Директор: short-creator ≠ отдельный агент, а сквозная
   забота по всем стадиям (доктрина `.claude/skills/shorts-longform-distribution/SKILL.md`, owner
   EXEC-PUB+ANAL). Роадмап **P1 мост → P2 гэг-нарезка → P3 аналитика**. **P1 СДЕЛАН**: единственная
