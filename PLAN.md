@@ -30,8 +30,11 @@ Mode:   ===5=== EDIT (Director-authorized).
   канал (Director ревьюит → флипает в public; scope `youtube.upload` без delete). E25 skip (уже short).
   (2) `.claude/safe_and_sustainable.md` — доктрина стабильности (Tier-0 durable Inngest DONE; Tier-1
   self-healing jobs TODO: onFailure-хэндлер, out-of-band reaper, провайдер-таймауты, critic HALT→logEvent).
-  Runtime-гигиена: убрал залипший `inngest dev` (мина рядом с durable :8288). UI-слайсер отложен в бэклог
-  ([[backlog_shorts_ui_slicer]]). tsc·0 / +10 тестов. Коммит master.
+  Runtime-гигиена: убрал залипший `inngest dev` (мина рядом с durable :8288).
+  (3) **UI-слайсер ПОСТРОЕН** (Director «do slicer»): панель «Video → Short» в final-cut превью
+  (`AssetPreview.tsx` `ShortsPanel`: start/end trim, overlay toggle, privacy dropdown) + `POST
+  /api/assets/[id]/shorts` — реюз `makeShort`+`uploadVideo`, синхронный Node-роут. tsc·0 / vitest 1220.
+  ⚠️ НЕ задеплоен — прод на старом билде, нужен rebuild+restart чтобы панель ожила.
 
 2026-07-11 (D6 throughput+tail-hang — Тео, master `9547fd4` ЗАДЕПЛОЕН). Дифаб E27: (1) `factory.ts` preflight грузил
   episode-wide ассеты+Bible+genre и ВЫБРАСЫВАЛ (validateAgentInputs делает свои точечные запросы) → убран, тяжёлая БД-
@@ -237,6 +240,7 @@ Sprints S0–S8 (foundation + spec) COMPLETE 2026-04-23..28 — `docs/PLAN-histo
 | 22 | DELETE asset `asset_updated` event not in PA auto-react whitelist (~30 min) | UX |
 | 23 | Designer post-pilot auto-fanout: remaining shot ids stashed but not auto-fired on pilot approve | Reliability |
 | 39 | PA delivery ack — L1 DONE (trigger+approve paths). L1.5 per-event corr (inngest_event_id col) deferred | ~~Mode 3/4 blocker~~ |
+| 24 | Scene-prop canon-drift (кнопка слева→справа): деталь родилась в шоте, канона нет → промоут первого APPROVED-шота в референс сцены; ffmpeg-харвест ЧИСТОГО кадра как аварийный ref-only источник. ДИСКУССИЯ q2, разведка кода q3 OPEN — memory `backlog_scene_prop_canon_anchor` | Continuity |
 
 Fixed in Phase 5c (don't re-add): #1 friendly names · #3 phantom stage · #9 multi-asset chain · #10 stage filter · #11 agent_completed · #12 prefix match.
 

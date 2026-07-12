@@ -526,6 +526,8 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
               }}
             />
           )}
+          {/* Video → Shorts slicer — make a 9:16 short from this final cut. */}
+          <ShortsPanel assetId={asset.id} />
         </>
       )}
 
@@ -779,6 +781,129 @@ function PilotApproveButtons({
       </Button>
       {error && (
         <span className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * ShortsPanel — "Video → Shorts" slicer under a VID-final_cut drawer. Center-crops
+ * the final cut to 9:16, burns an optional "SANDY the HOURGLASS" overlay for the
+ * first 4s, optionally trims to a start/end window, then uploads to YouTube at the
+ * chosen privacy via POST /api/assets/[id]/shorts — which reuses the SAME server
+ * `makeShort` + `uploadVideo` as the batch script (no parallel machinery).
+ *
+ * Backlog `backlog_shorts_ui_slicer` realised (2026-07-12, Director "do slicer").
+ * Unlisted is the default privacy: the youtube.upload scope can't delete, so
+ * public is a deliberate choice.
+ */
+function ShortsPanel({ assetId }: { assetId: string }) {
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [overlay, setOverlay] = useState(true);
+  const [overlayText, setOverlayText] = useState('SANDY the HOURGLASS');
+  const [privacy, setPrivacy] = useState<'private' | 'unlisted' | 'public'>('unlisted');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ url: string; privacyStatus: string } | null>(null);
+
+  async function generate() {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const startSec = start.trim() ? Number(start) : undefined;
+      const endSec = end.trim() ? Number(end) : undefined;
+      if (startSec != null && Number.isNaN(startSec)) throw new Error('Start must be a number');
+      if (endSec != null && Number.isNaN(endSec)) throw new Error('End must be a number');
+      const res = await fetch(`/api/assets/${assetId}/shorts`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ startSec, endSec, overlay, overlayText, privacyStatus: privacy }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !(j as { success?: boolean }).success) {
+        throw new Error((j as { error?: string }).error ?? 'Short generation failed');
+      }
+      setResult((j as { data: { url: string; privacyStatus: string } }).data);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="px-3 py-3 rounded-lg border border-glass space-y-2 mt-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-text-primary">🩳 Video → Short (9:16)</span>
+        <span className="text-[10px] text-text-muted">center-crop · uploads to channel</span>
+      </div>
+      <div className="flex items-center gap-2 text-[11px] text-text-muted">
+        <label className="flex items-center gap-1">
+          Start
+          <input
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+            placeholder="0"
+            inputMode="decimal"
+            className="w-14 px-2 py-1 rounded border border-glass bg-transparent"
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          End
+          <input
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+            placeholder="end"
+            inputMode="decimal"
+            className="w-14 px-2 py-1 rounded border border-glass bg-transparent"
+          />
+        </label>
+        <span>sec — blank = whole clip</span>
+      </div>
+      <label className="flex items-center gap-2 text-[11px] text-text-muted">
+        <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
+        Overlay
+        <input
+          value={overlayText}
+          onChange={(e) => setOverlayText(e.target.value)}
+          disabled={!overlay}
+          className="flex-1 px-2 py-1 rounded border border-glass bg-transparent disabled:opacity-40"
+        />
+      </label>
+      <div className="flex items-center gap-2 text-[11px] text-text-muted">
+        <label className="flex items-center gap-1">
+          Privacy
+          <select
+            value={privacy}
+            onChange={(e) => setPrivacy(e.target.value as 'private' | 'unlisted' | 'public')}
+            className="px-2 py-1 rounded border border-glass bg-transparent"
+          >
+            <option value="private">private</option>
+            <option value="unlisted">unlisted</option>
+            <option value="public">public</option>
+          </select>
+        </label>
+        <Button size="sm" variant="primary" onClick={generate} disabled={busy}>
+          {busy ? 'Rendering + uploading…' : 'Generate & upload short'}
+        </Button>
+      </div>
+      {result && (
+        <a
+          href={result.url}
+          target="_blank"
+          rel="noreferrer"
+          className="block text-[11px] underline"
+          style={{ color: 'var(--accent-success)' }}
+        >
+          ✅ {result.privacyStatus} → {result.url}
+        </a>
+      )}
+      {error && (
+        <span className="block text-[11px]" style={{ color: 'var(--accent-danger)' }}>
           {error}
         </span>
       )}
