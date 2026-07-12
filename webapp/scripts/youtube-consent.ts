@@ -37,6 +37,7 @@ const SCOPES = [
   'https://www.googleapis.com/auth/youtube.upload',     // upload videos
   'https://www.googleapis.com/auth/youtube.readonly',   // list channel (for the diff)
   'https://www.googleapis.com/auth/youtube.force-ssl',  // edit existing videos (videos.update) + thumbnails.set
+  'https://www.googleapis.com/auth/yt-analytics.readonly', // read audience metrics (Quality Sensor — EXEC-ANAL)
 ].join(' ');
 
 const authUrl =
