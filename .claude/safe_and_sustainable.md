@@ -19,6 +19,12 @@
   It stops running instances, starts app :3000 + Inngest :8288, re-syncs functions
   (`PUT /api/inngest` → `Successfully registered`), prints health. Details: CLAUDE.md §13.
 
+### Deploy reliability — self-hosted fonts (added 2026-07-12)
+- Fonts are **self-hosted** via `next/font/local` (`webapp/app/fonts/*.woff2`), NOT
+  `next/font/google`. The build-time fetch of Inter / JetBrains Mono from Google Fonts
+  repeatedly timed out (`ETIMEDOUT`), making every `-Build` deploy flaky (1–3 retries).
+  The build no longer touches the network for fonts. Do not reintroduce `next/font/google`.
+
 ### Runtime invariant (added 2026-07-12)
 - There must be **exactly ONE** durable `inngest start` process owning `:8288`, and **no
   `inngest dev` anywhere**. A stray `inngest dev` is a landmine: it can grab `:8288` the moment
