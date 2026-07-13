@@ -57,10 +57,11 @@ import {
   computeEffectivePlayback,
   isDeletedShot,
   excludedShotIdsFromEpisodeMeta,
+  resolveStitchSettings,
   clipLengthsFromVidShotRows,
   type AnimaticContract,
 } from '../api/animatic-shotlist';
-import { ffmpegStitchEpisode } from './providers/ffmpeg-stitch';
+import { ffmpegStitchEpisode, buildBrandedInputs } from './providers/ffmpeg-stitch';
 import type { ResolvedProvider } from './provider-resolver';
 import { getAgent } from './registry';
 import { runScreenwriter, ScreenwriterError } from './runners/screenwriter';
@@ -2852,7 +2853,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         ...(musicWithShaping ? { music: musicWithShaping } : {}),
       });
 
-      // 6. Persist.
+      // 6. Persist the CLEAN master (body only — Shorts slicing + archive +
+      // long-form publish fallback all read this).
       const persisted = await persistBinary({
         base64: stitched.mp4Base64,
         ext: 'mp4',
@@ -2864,31 +2866,155 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
       // Cost stays $0 (local ffmpeg, no API call). Time-on-CPU is the cost
       // signal; we record it in metadata for future telemetry.
+      const cleanMetadata = metadataFromPersisted(persisted, {
+        agent_id: agentId,
+        shot_ids: orderedShots.map((s) => s.shotId),
+        // 2026-06-06 — surface excluded shots in metadata so audit can
+        // tell why the final cut length differs from the shot_list
+        // length without digging into individual director_overrides.
+        excluded_shot_ids: excludedShots,
+        music_asset_id: musicAssetId,
+        ffmpeg_command: stitched.ffmpegCommand,
+        size_bytes: stitched.sizeBytes,
+        // 2026-06-06 — probed output duration so VID-final_cut row no
+        // longer ships with metadata.duration_seconds = undefined.
+        // 2026-06-08 — fall back to the summed playback length when ffprobe
+        // is unavailable, so the field is NEVER null (it was null on every
+        // E02 render because ffprobe couldn't be resolved).
+        duration_seconds:
+          stitched.durationSeconds ??
+          Math.round(orderedShots.reduce((a, s) => a + s.durationSeconds, 0) * 100) / 100,
+        assembled_at: new Date().toISOString(),
+      });
+
+      // 2026-07-13 — TWO masters from one run. Save the CLEAN master via the
+      // canonical saveAgentOutput path (versioning + cache-rename + metadata
+      // allowlist reused verbatim), then optionally build the BRANDED master
+      // (intro→body→outro) from LOCKED SBL-video bookends. We return skip_save
+      // + inserted_asset_ids so BOTH rows get identical governance treatment in
+      // factory.ts (REVIEW → Mode-4 auto-approve + slot demotion each). See the
+      // stitch-settings + buildBrandedInputs helpers for the toggle/order rules.
+      const cleanSaved = await saveAgentOutput({
+        supabase,
+        agentId,
+        episodeId,
+        episodeCode: episodeCode ?? 'SS-unknown',
+        outputKind: 'video-mp4',
+        initialStatus: 'REVIEW',
+        result: { asset_paths: [persisted.browserUrl], cost_usd: 0, metadata: cleanMetadata },
+      });
+      const insertedAssetIds: string[] = [cleanSaved.assetId];
+
+      const stitchSettings = resolveStitchSettings(
+        (inputs.episode as { metadata?: unknown } | undefined)?.metadata,
+      );
+      if (stitchSettings.intro || stitchSettings.outro) {
+        try {
+          const brandSeriesId = await seriesIdForEpisode(supabase, episodeId);
+          if (!brandSeriesId) {
+            console.warn(
+              '[stitch] branded master skipped — episode has no parent series for SBL-video bookend lookup',
+            );
+          } else {
+            const { data: bookendRows } = await supabase
+              .from('assets')
+              .select('id,file_type,staging_path,drive_path,drive_web_view_url')
+              .eq('series_id', brandSeriesId)
+              .eq('status', 'LOCKED')
+              .in('file_type', ['SBL-video_intro', 'SBL-video_outro']);
+            const introRow =
+              (bookendRows ?? []).find((r) => r.file_type === 'SBL-video_intro') ?? null;
+            const outroRow =
+              (bookendRows ?? []).find((r) => r.file_type === 'SBL-video_outro') ?? null;
+            const introBytes =
+              stitchSettings.intro && introRow
+                ? await loadBytes(
+                    introRow.staging_path,
+                    introRow.drive_path ?? introRow.drive_web_view_url,
+                  )
+                : null;
+            const outroBytes =
+              stitchSettings.outro && outroRow
+                ? await loadBytes(
+                    outroRow.staging_path,
+                    outroRow.drive_path ?? outroRow.drive_web_view_url,
+                  )
+                : null;
+            if (introBytes || outroBytes) {
+              const brandedInputs = buildBrandedInputs({
+                intro: stitchSettings.intro,
+                outro: stitchSettings.outro,
+                introBytes,
+                outroBytes,
+                bodyBytes: Buffer.from(stitched.mp4Base64, 'base64'),
+              });
+              // NO `music` field → `-map 0:a?` keeps each segment's own baked
+              // audio (intro sting + body mix + outro music). A music field here
+              // would clobber all three (see buildBrandedInputs doc).
+              const brandedStitched = await ffmpegStitchEpisode({ shotMp4Bytes: brandedInputs });
+              const brandedPersisted = await persistBinary({
+                base64: brandedStitched.mp4Base64,
+                ext: 'mp4',
+                driveFilename: `${episodeCode ?? 'SS-unknown'}-VID-final_cut-branded-v01-DRAFT.mp4`,
+                localHint: `final-cut-branded-${episodeId}`,
+                episodeCode,
+                supabase,
+              });
+              const brandedSaved = await saveAgentOutput({
+                supabase,
+                agentId,
+                episodeId,
+                episodeCode: episodeCode ?? 'SS-unknown',
+                outputKind: 'video-mp4',
+                variant: 'branded',
+                initialStatus: 'REVIEW',
+                result: {
+                  asset_paths: [brandedPersisted.browserUrl],
+                  cost_usd: 0,
+                  metadata: metadataFromPersisted(brandedPersisted, {
+                    agent_id: agentId,
+                    branded: true,
+                    source_clean_asset_id: cleanSaved.assetId,
+                    intro_included: Boolean(introBytes),
+                    outro_included: Boolean(outroBytes),
+                    shot_ids: orderedShots.map((s) => s.shotId),
+                    ffmpeg_command: brandedStitched.ffmpegCommand,
+                    size_bytes: brandedStitched.sizeBytes,
+                    duration_seconds: brandedStitched.durationSeconds ?? null,
+                    assembled_at: new Date().toISOString(),
+                  }),
+                },
+              });
+              insertedAssetIds.push(brandedSaved.assetId);
+            } else {
+              console.log(
+                '[stitch] branded master skipped — toggles on but no LOCKED SBL-video bookend present for this series',
+              );
+            }
+          }
+        } catch (brandErr) {
+          // Branding readiness must NEVER block the clean master (Shorts +
+          // archive + publish fallback depend on it). Log and ship clean-only.
+          console.warn(
+            `[stitch] branded master skipped due to error (clean master unaffected): ${
+              (brandErr as Error).message
+            }`,
+          );
+        }
+      }
+
       return {
         outputKind: 'video-mp4',
         result: {
           asset_paths: [persisted.browserUrl],
           cost_usd: 0,
-          metadata: metadataFromPersisted(persisted, {
-            agent_id: agentId,
-            shot_ids: orderedShots.map((s) => s.shotId),
-            // 2026-06-06 — surface excluded shots in metadata so audit can
-            // tell why the final cut length differs from the shot_list
-            // length without digging into individual director_overrides.
-            excluded_shot_ids: excludedShots,
-            music_asset_id: musicAssetId,
-            ffmpeg_command: stitched.ffmpegCommand,
-            size_bytes: stitched.sizeBytes,
-            // 2026-06-06 — probed output duration so VID-final_cut row no
-            // longer ships with metadata.duration_seconds = undefined.
-            // 2026-06-08 — fall back to the summed playback length when ffprobe
-            // is unavailable, so the field is NEVER null (it was null on every
-            // E02 render because ffprobe couldn't be resolved).
-            duration_seconds:
-              stitched.durationSeconds ??
-              Math.round(orderedShots.reduce((a, s) => a + s.durationSeconds, 0) * 100) / 100,
-            assembled_at: new Date().toISOString(),
-          }),
+          metadata: {
+            ...cleanMetadata,
+            // Both masters already inserted above — factory.ts steps aside and
+            // applies its Mode-4 auto-approve loop to every inserted id.
+            skip_save: true,
+            inserted_asset_ids: insertedAssetIds,
+          },
         },
       };
     }
@@ -3037,16 +3163,23 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             .limit(1);
           return data?.[0] ?? null;
         };
-        const [metaAsset, videoAsset, thumbAsset] = await Promise.all([
+        const [metaAsset, brandedVideo, cleanVideo, thumbAsset] = await Promise.all([
           loadApproved('SPC-metadata'),
+          loadApproved('VID-final_cut-branded'),
           loadApproved('VID-final_cut'),
           loadApproved('IMG-thumbnail'),
         ]);
+        // 2026-07-13 — long-form prefers the BRANDED master (intro→body→outro)
+        // when an APPROVED one exists; else the CLEAN master. Shorts read the
+        // clean master via their own slicer — this preference is long-form only.
+        const videoAsset = brandedVideo ?? cleanVideo;
         if (!metaAsset?.content) {
           throw new Error('EXEC-PUB: no APPROVED SPC-metadata content to publish');
         }
         if (!videoAsset?.drive_file_id) {
-          throw new Error('EXEC-PUB: no APPROVED VID-final_cut with a Drive file id to upload');
+          throw new Error(
+            'EXEC-PUB: no APPROVED VID-final_cut (branded or clean) with a Drive file id to upload',
+          );
         }
 
         const epTitle = (inputs.episode as { title_working?: string | null } | undefined)?.title_working;
@@ -3417,6 +3550,11 @@ export async function saveAgentOutput(args: SaveOutputArgs): Promise<{ assetId: 
     'ffmpeg_command',
     'size_bytes',
     'assembled_at',
+    // 2026-07-13 — branded-master provenance (VID-final_cut-branded rows).
+    'branded',
+    'source_clean_asset_id',
+    'intro_included',
+    'outro_included',
   ] as const;
   let metadataPayload: Record<string, unknown> | null = null;
   for (const key of PERSIST_METADATA_KEYS) {

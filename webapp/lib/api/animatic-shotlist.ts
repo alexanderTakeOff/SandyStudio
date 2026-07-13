@@ -263,6 +263,47 @@ export function excludedShotIdsFromEpisodeMeta(metadata: unknown): Set<string> {
 }
 
 /**
+ * EXEC-STITCH brand-bookend toggles, read from `episode.metadata.stitch_settings`.
+ * 2026-07-13 — the branded master (intro→body→outro) is produced from one run
+ * alongside the CLEAN master. These toggles decide whether the intro/outro
+ * bookends are prepended/appended. Decoupled from `delivery_targets` (which is
+ * empty/fallback by default) — explicit operator control in the stitch workspace.
+ *
+ * Default long-form: both ON. Only an explicit `false` turns a bookend off, so a
+ * missing/partial metadata blob still gets branding (absent = default ON). A
+ * bookend whose LOCKED SBL-video asset is absent is skipped downstream, so
+ * "ON with no asset" is a graceful no-op, never a failure.
+ */
+export interface StitchSettings {
+  intro: boolean;
+  outro: boolean;
+  /**
+   * STUB — reserved for a future cold-open-first placement (a few seconds of
+   * gag BEFORE the intro sting). Declared + defaulted 0 so the field exists
+   * without a metadata migration; NOT yet implemented by the stitch runner.
+   */
+  cold_open_seconds: number;
+}
+
+export function resolveStitchSettings(metadata: unknown): StitchSettings {
+  const raw =
+    metadata && typeof metadata === 'object'
+      ? (metadata as { stitch_settings?: unknown }).stitch_settings
+      : null;
+  const obj =
+    raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const coldRaw = obj.cold_open_seconds;
+  return {
+    intro: obj.intro === false ? false : true,
+    outro: obj.outro === false ? false : true,
+    cold_open_seconds:
+      typeof coldRaw === 'number' && Number.isFinite(coldRaw) && coldRaw > 0
+        ? coldRaw
+        : 0,
+  };
+}
+
+/**
  * 2026-06-06 — single source of truth for "how many seconds of THIS shot
  * actually play in the final cut". Combines:
  *   - Director duration override (or storyboard duration as fallback)

@@ -21,6 +21,7 @@ const ADD_LABELS: Record<Exclude<SbSection, 'general_idea'>, string> = {
   object: 'Add object',
   style: 'Add style entry',
   audio: 'Add audio (planned — Step 8)',
+  video: 'Studio-produced (upload + lock)',
 };
 
 const EMOJIS: Record<Exclude<SbSection, 'general_idea'>, string> = {
@@ -29,6 +30,7 @@ const EMOJIS: Record<Exclude<SbSection, 'general_idea'>, string> = {
   object: '🎯',
   style: '🎨',
   audio: '🎵',
+  video: '🎬',
 };
 
 export interface LibraryFeedsProps {
@@ -54,6 +56,16 @@ export function LibraryFeeds({
         if (section.section === 'general_idea') return null;
         const sec = section.section as Exclude<SbSection, 'general_idea'>;
         const isAudioMvp = sec === 'audio';
+        // Brand video (intro/outro) is a studio-produced, upload+lock asset —
+        // registered via the compose script + bible route, not the image-gen
+        // modal. Show the section (Director sees LOCKED bookends) but disable Add.
+        const isStudioProduced = sec === 'video';
+        const addDisabled = isAudioMvp || isStudioProduced;
+        const addTitle = isAudioMvp
+          ? 'Audio media generation lands in Step 8'
+          : isStudioProduced
+            ? 'Brand intro/outro are studio-produced — upload + lock, not authored here'
+            : ADD_LABELS[sec];
         return (
           <section key={sec} className="space-y-2">
             <header className="flex items-center justify-between gap-3">
@@ -69,8 +81,8 @@ export function LibraryFeeds({
               <Button
                 variant="ghost"
                 onClick={() => setAddOpen(sec)}
-                disabled={isAudioMvp}
-                title={isAudioMvp ? 'Audio media generation lands in Step 8' : ADD_LABELS[sec]}
+                disabled={addDisabled}
+                title={addTitle}
               >
                 <Plus size={13} /> {ADD_LABELS[sec]}
               </Button>

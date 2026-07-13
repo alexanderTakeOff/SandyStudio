@@ -96,6 +96,7 @@ const BIBLE_SECTION_LABEL: Record<SbSection, string> = {
   object: 'prop',
   style: 'style sample frame',
   audio: 'audio sample',
+  video: 'brand video',
   general_idea: 'general idea',
 };
 

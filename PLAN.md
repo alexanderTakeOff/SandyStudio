@@ -20,8 +20,22 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-13 (СТРАТЕГ-сессия «Гуру» — знания, не код. Цель заострена: **Фабрика=актив, Сэнди=доказательство**, стоимость=дёшево×хорошо×быстро. Диагноз: голова построена, **ПЕТЛЯ РАЗОМКНУТА** — 0 публичных данных (всё unlisted). NEXT = **Первый Доказательный Эпизод**. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false); прод на master `de12089` (deployed, health 200×3, vertical-safe+P3+слайсер живьём). q9 OPEN: тема эпизода — банк-маркеры протухли (E13/E15 сняты, E17-E25=Airport-арка).)
+Date:   2026-07-13 (INTRO/OUTRO брендинг-буки — КОД, $0-фундамент. Стич делает ДВЕ версии: чистый мастер + брендовый (intro→body→outro) по тумблерам; медиа=produce-once LOCKED SBL-video/audio. NEXT = произвести визуалы (fal.ai) + Suno-музыка Директора → залить+LOCK → двух-мастер смоук. RECONCILER **OFF**; прод на master `de12089`.)
 Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-13 (INTRO/OUTRO брендинг-буки — Тео, КОД, $0-фундамент). Директор: intro/outro НЕ на таймлайне; стич
+  делает ДВЕ версии по тумблерам intro/outro ON/OFF. **SHIPPED (не задеплоено):** (0) SBL-таксономия +`video`/mp4
+  (`series-bible.ts` + 3 UI-мапы + prompt-builder + bible-роут zod/ext); (1) `scripts/compose-brand-clip.ts` —
+  $0 запекает Suno-музыку Директора на наш IMG→VID визуал (reuse `ffmpegStitchEpisode`, 1-эл. массив); (2) ядро —
+  `resolveStitchSettings` (`animatic-shotlist.ts`, default ON/ON, cold_open STUB) + `buildBrandedInputs`
+  (`ffmpeg-stitch.ts`, [intro?,body,outro?], БЕЗ music→`-map 0:a?` держит звук каждого сегмента) + EXEC-STITCH
+  выдаёт ДВА мастера через переиспользованный `saveAgentOutput` (чистый `VID-final_cut` + `VID-final_cut-branded`,
+  skip_save→оба получают Mode-4 auto-approve; брендовый в try/catch — НИКОГДА не роняет чистый); (3) EXEC-PUB
+  long-form предпочитает брендовый, Shorts читают чистый. Reuse-first: 0 новых таблиц/компоновщиков/роутов/
+  музыки-провайдеров; новые файлы = compose-скрипт + тест. tsc·0 / **vitest 1261** (+9 юнитов) / **replay-pilot 30/30**
+  (букэндов у теста нет → брендовый не строится → DAG неизменен = регресс-гейт). Гоча: native YouTube end-screens
+  через API НЕ ставятся → ручной шаг Studio. NEXT = произвести визуалы intro(≤2с)/outro(5-20с) через fal.ai +
+  Suno-музыка → залить+LOCK как SBL-video → двух-мастер смоук на реальном эпизоде. Тема-на-кастинге = отдельный follow-up.
 
 2026-07-13 (Vertical-safe правило + P2-мышцы — Тео, КОД). Директор: 9 текущих шортсов слабы не из-за
   нарезки, а из-за тупого center-кропа всего landscape-эпизода. Фикс UPSTREAM на сториборде. **SHIPPED +

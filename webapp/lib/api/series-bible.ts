@@ -20,7 +20,8 @@ export type SbSection =
   | 'location'
   | 'object'
   | 'style'
-  | 'audio';
+  | 'audio'
+  | 'video';
 
 export const BIBLE_SECTIONS: ReadonlyArray<SbSection> = [
   'general_idea',
@@ -29,6 +30,7 @@ export const BIBLE_SECTIONS: ReadonlyArray<SbSection> = [
   'object',
   'style',
   'audio',
+  'video',
 ];
 
 export const BIBLE_FILE_TYPE_PREFIX = 'SBL-';
@@ -66,6 +68,7 @@ const SECTION_LABELS: Record<SbSection, string> = {
   object: 'Objects',
   style: 'Style',
   audio: 'Audio',
+  video: 'Brand video',
 };
 
 export function sectionLabel(s: SbSection): string {
@@ -246,7 +249,7 @@ export function bibleFilename(args: {
   section: SbSection;
   slug: string;                // e.g. "sandy" → SBL-character_sandy
   version: number;
-  ext: 'md' | 'png' | 'mp3' | 'wav';
+  ext: 'md' | 'png' | 'mp3' | 'wav' | 'mp4';
   status: 'DRAFT' | 'REVIEW' | 'APPROVED' | 'LOCKED' | 'REVISION';
 }): string {
   const { seriesCode, section, slug, version, ext, status } = args;
@@ -302,7 +305,7 @@ export async function countLockedBibleSections(
     throw new Error(`countLockedBibleSections: ${error.message}`);
   }
   const counts: Record<SbSection, number> = {
-    general_idea: 0, character: 0, location: 0, object: 0, style: 0, audio: 0,
+    general_idea: 0, character: 0, location: 0, object: 0, style: 0, audio: 0, video: 0,
   };
   for (const row of data ?? []) {
     const sec = sectionFromFileType(row.file_type);

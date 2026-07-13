@@ -461,6 +461,38 @@ export async function ffmpegStitchEpisode(
   }
 }
 
+/**
+ * Order the BRANDED-master concat inputs: [intro?, body, outro?]. Pure — tested.
+ *
+ * 2026-07-13 — the branded master is a SECOND, music-FREE `ffmpegStitchEpisode`
+ * pass over these three segments, each carrying its own baked audio (the intro
+ * sting, the clean body's mix, the outro music). Passing NO `music` field keeps
+ * `-map 0:a?` so each segment's own audio survives (a `music` field would map
+ * `1:a` and clobber all three — see the audio-map note in `buildFfmpegArgs`).
+ *
+ * A bookend is included only when its toggle is ON **and** its LOCKED bytes are
+ * present. A missing/absent LOCKED bookend is silently skipped — the body still
+ * ships branded on the side that IS present (or, if neither, the caller skips the
+ * branded master entirely). No per-segment trim: brand clips play native length.
+ */
+export function buildBrandedInputs(args: {
+  intro: boolean;
+  outro: boolean;
+  introBytes: Buffer | null;
+  outroBytes: Buffer | null;
+  bodyBytes: Buffer;
+}): Array<{ shotId: string; bytes: Buffer }> {
+  const inputs: Array<{ shotId: string; bytes: Buffer }> = [];
+  if (args.intro && args.introBytes) {
+    inputs.push({ shotId: 'brand-intro', bytes: args.introBytes });
+  }
+  inputs.push({ shotId: 'body', bytes: args.bodyBytes });
+  if (args.outro && args.outroBytes) {
+    inputs.push({ shotId: 'brand-outro', bytes: args.outroBytes });
+  }
+  return inputs;
+}
+
 /** One concat-list entry: a shot file with optional trim window. */
 export interface ConcatShotEntry {
   /** Absolute path to the shot mp4 on disk. */

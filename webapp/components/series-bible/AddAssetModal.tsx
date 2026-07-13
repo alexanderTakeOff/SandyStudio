@@ -29,6 +29,7 @@ const SECTION_TITLES: Record<Exclude<SbSection, 'general_idea'>, string> = {
   object: 'Add object',
   style: 'Add style entry',
   audio: 'Add audio',
+  video: 'Add brand video',
 };
 
 type Section = Exclude<SbSection, 'general_idea'>;

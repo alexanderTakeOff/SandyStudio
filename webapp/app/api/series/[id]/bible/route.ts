@@ -31,6 +31,7 @@ const SectionSchema = z.enum([
   'object',
   'style',
   'audio',
+  'video',
 ]);
 
 const PostBody = z.object({
@@ -100,12 +101,14 @@ export const POST = withApiHandler(async (req, ctx) => {
   const nextVersion =
     (existing ?? []).reduce((max, row) => Math.max(max, row.version ?? 0), 0) + 1;
 
-  const ext: 'md' | 'png' | 'mp3' =
+  const ext: 'md' | 'png' | 'mp3' | 'mp4' =
     body.section === 'general_idea'
       ? 'md'
       : body.section === 'audio'
         ? 'mp3'
-        : 'png';
+        : body.section === 'video'
+          ? 'mp4'
+          : 'png';
 
   const filename = bibleFilename({
     seriesCode: series.code,
