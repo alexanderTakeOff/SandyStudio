@@ -20,7 +20,7 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-13 (Оркестратор-консолидация + brand-бумперы ПРОИЗВЕДЕНЫ. Прод master `bea6665`. INTRO+OUTRO визуалы ГОТОВЫ и ПРИНЯТЫ Директором (немые, 1080p, 7с, S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy») в `FILMS/_media_cache/_brand/sandy-{intro,outro}-v2-final-1080p.mp4`; произведены `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф → Seedance fast 720p→апскейл 1080p, ~$1.85/шт). NEXT = Директор даёт сакс/Suno на каждый → `compose-brand-clip` запекает → залить+LOCK `SBL-video_{intro,outro}` на S15 (upload-first flow в Library достроен) → двух-мастер смоук. RECONCILER **OFF**.)
+Date:   2026-07-13 (Brand-бумперы SHIPPED+LOCKED. Прод master `aef0c137` (пересобран, health 200×3). INTRO+OUTRO (S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy», музыка Flacon Pop Loop запечена) **LOCKED** как `SBL-video_intro/outro` на S15 → EXEC-STITCH теперь собирает брендовый мастер по тумблерам. Инструмент `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф→Seedance fast 720p→апскейл 1080p, ~$1.85/шт) переиспользуем. UI-фикс: video-превью постеры в Library card/drawer. NEXT (опц.) = двух-мастер смоук на реальном эпизоде (закрывает Stage 4). RECONCILER **OFF**.)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-13 (INTRO/OUTRO брендинг-буки — Тео, КОД, $0-фундамент). Директор: intro/outro НЕ на таймлайне; стич
