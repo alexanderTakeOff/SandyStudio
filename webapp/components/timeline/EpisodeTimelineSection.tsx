@@ -271,26 +271,35 @@ export function EpisodeTimelineSection({
       shot_role: s.shot_role,
       caption: (s.key_beat ?? s.action)?.slice(0, 200) || undefined,
     }));
-    const skeleton = newAnimaticContract(shotList);
-    // Timeline-as-home music (2026-07-13): inject the newest APPROVED AUD-music so
-    // it plays on the skeleton even before a real VID-animatic exists (the
-    // Director's "uploaded + approved but no music" gap). Display-only, SYNTHETIC
-    // path only (runs only when animaticAsset === null); the real-animatic branch of
-    // activeContract is untouched (it carries baked music). getAudioTracks falls back
-    // to music_url when audio_tracks[] is empty (skeleton has none) → no shadowing.
-    const music = newestApprovedMusic(assets);
-    return music
-      ? { ...skeleton, music_url: music.url, music_filename: music.filename }
-      : skeleton;
+    // Music injection is applied once, in activeContract below, so it covers BOTH
+    // this synthetic skeleton AND a real (often silent auto-EDL) animatic.
+    return newAnimaticContract(shotList);
   }, [animaticAsset, data]);
 
   // The contract that drives the timeline: the real animatic (with overrides/
   // audio) when it exists, else the storyboard-derived skeleton. `isSynthetic`
   // gates the editing surfaces that need a backing asset (Save-timing, trim,
   // approve/reject) — they materialize in Phase 3 on the first real edit.
-  const activeContract: AnimaticContract | null = animaticAsset
-    ? (animaticAsset.metadata as { animatic_v1: AnimaticContract }).animatic_v1
-    : storyboardContract;
+  // Music fallback (2026-07-13, runtime-confirmed): apply the newest APPROVED
+  // AUD-music to WHICHEVER contract drives the timeline whenever it carries no
+  // music of its own — never override already-baked audio. Root cause was an
+  // episode's auto-materialized SILENT APPROVED animatic (baked_music_url null,
+  // audio_tracks []): the timeline took the real-animatic branch and never
+  // consulted approved music. (The exact-match file_type drop that also hid
+  // 'AUD-music-main' is fixed in newestApprovedMusic.)
+  const activeContract: AnimaticContract | null = useMemo(() => {
+    const base = animaticAsset
+      ? (animaticAsset.metadata as { animatic_v1: AnimaticContract }).animatic_v1
+      : storyboardContract;
+    if (!base) return null;
+    const hasMusic =
+      (Array.isArray(base.audio_tracks) && base.audio_tracks.length > 0) || !!base.music_url;
+    if (hasMusic) return base;
+    const music = newestApprovedMusic(data?.data.assets ?? []);
+    return music
+      ? { ...base, music_url: music.url, music_filename: music.filename }
+      : base;
+  }, [animaticAsset, storyboardContract, data]);
   const isSynthetic = !animaticAsset && storyboardContract !== null;
 
   // Pick the freshest VID-final_cut asset (any status — REVIEW/APPROVED/LOCKED

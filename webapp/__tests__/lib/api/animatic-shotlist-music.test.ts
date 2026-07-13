@@ -46,4 +46,20 @@ describe('newestApprovedMusic — timeline skeleton music injection', () => {
     ).toBe('https://drive/x');
     expect(newestApprovedMusic([row({ drive_path: null, drive_web_view_url: null })])).toBeNull();
   });
+
+  // Runtime-confirmed regression (2026-07-13): the composer (EXEC-MGEN) writes
+  // 'AUD-music-main', which an exact `=== 'AUD-music'` match silently dropped.
+  it('matches suffixed file_type variants via startsWith (AUD-music-main)', () => {
+    expect(newestApprovedMusic([row({ file_type: 'AUD-music-main' })])?.url).toBe('/api/media/track.mp3');
+    // still excludes unrelated AUD types
+    expect(newestApprovedMusic([row({ file_type: 'AUD-sfx' })])).toBeNull();
+  });
+
+  it('uses staging_path when drive_path is absent (agent-generated rows), before drive_web_view_url', () => {
+    expect(
+      newestApprovedMusic([
+        row({ drive_path: null, staging_path: '/staging/track.mp3', drive_web_view_url: 'https://drive/x' }),
+      ])?.url,
+    ).toBe('/staging/track.mp3');
+  });
 });

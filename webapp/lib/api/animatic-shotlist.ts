@@ -127,6 +127,7 @@ export interface MusicAssetRow {
   version: number | null;
   created_at: string;
   drive_path: string | null;
+  staging_path?: string | null;
   drive_web_view_url: string | null;
   filename: string;
 }
@@ -144,8 +145,13 @@ export interface MusicAssetRow {
 export function newestApprovedMusic(
   assets: MusicAssetRow[],
 ): { url: string; filename: string } | null {
+  // startsWith, not exact === : the composer (EXEC-MGEN) writes 'AUD-music-main'
+  // (and other suffixed variants), which an exact match silently dropped. Matches
+  // the gate/upload guards (gate.ts, next-events.ts, upload-music-direct) that all
+  // use startsWith('AUD-music'). staging_path fallback mirrors bakeApprovedMusic
+  // (music.ts) so agent-generated rows whose URL is only in staging_path still play.
   const best = assets
-    .filter((a) => a.file_type === 'AUD-music' && a.status === 'APPROVED')
+    .filter((a) => a.file_type.startsWith('AUD-music') && a.status === 'APPROVED')
     .reduce<MusicAssetRow | null>((b, a) => {
       if (!b) return a;
       const bv = b.version ?? 0;
@@ -155,7 +161,7 @@ export function newestApprovedMusic(
       return a.created_at > b.created_at ? a : b;
     }, null);
   if (!best) return null;
-  const url = best.drive_path ?? best.drive_web_view_url;
+  const url = best.drive_path ?? best.staging_path ?? best.drive_web_view_url;
   return url ? { url, filename: best.filename || 'music' } : null;
 }
 
