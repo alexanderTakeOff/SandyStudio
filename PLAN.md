@@ -20,7 +20,7 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-13 (Оркестратор-консолидация: сегодняшняя работа собрана в master + ЗАДЕПЛОЕНА. Прод на master `bea6665` (health app+inngest 200, BUILD_ID 12:21). В деплое: (a) brand-bookends двух-мастер стич; (b) concierge-фикс gpt-5.6 tools+reasoning 400 + полные tier-id sol/terra/luna; reasoning Полины=`low` живой. NEXT = произвести визуалы intro/outro (fal.ai) + Suno-музыка → залить+LOCK → двух-мастер смоук. RECONCILER **OFF**.)
+Date:   2026-07-13 (Оркестратор-консолидация + brand-бумперы ПРОИЗВЕДЕНЫ. Прод master `bea6665`. INTRO+OUTRO визуалы ГОТОВЫ и ПРИНЯТЫ Директором (немые, 1080p, 7с, S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy») в `FILMS/_media_cache/_brand/sandy-{intro,outro}-v2-final-1080p.mp4`; произведены `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф → Seedance fast 720p→апскейл 1080p, ~$1.85/шт). NEXT = Директор даёт сакс/Suno на каждый → `compose-brand-clip` запекает → залить+LOCK `SBL-video_{intro,outro}` на S15 (upload-first flow в Library достроен) → двух-мастер смоук. RECONCILER **OFF**.)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-13 (INTRO/OUTRO брендинг-буки — Тео, КОД, $0-фундамент). Директор: intro/outro НЕ на таймлайне; стич

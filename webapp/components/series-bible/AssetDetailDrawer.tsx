@@ -287,7 +287,16 @@ export function AssetDetailDrawer({
               label="Brand video"
             >
               <div className="rounded-lg overflow-hidden border border-glass">
-                <video src={previewSrc} controls className="w-full h-auto block" />
+                <video
+                  src={`${previewSrc}#t=0.1`}
+                  controls
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                  className="w-full h-auto block"
+                />
               </div>
             </AssetCollapsibleSection>
           )}

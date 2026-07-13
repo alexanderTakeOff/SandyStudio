@@ -1290,3 +1290,62 @@ making intro/ make research using correspond SKILL. find the viral cartoon video
 "stream of golden shinig sand grains pours down from above" looks better then  a "stream of golden sand pours down from above".
 add very low camera zoom in , not too much .
 go make video
+
+## 2026-07-13 16:36 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a6ba4fde6ab95bde7</task-id>
+<tool-use-id>toolu_01DDXRYNLX69CsMS9jaNEdvp</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio\80441284-da45-4c79-bbe9-328744f6caa0\tasks\a6ba4fde6ab95bde7.output</output-file>
+<status>completed</status>
+<summary>Agent "Trace timeline music rendering" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have the complete trace. Here is the conclusion.
+
+## How music reaches (or fails to reach) the Timeline
+
+### (a) Timeline component
+`C:\SandyStudio\webapp\components\timeline\EpisodeTimelineSection.tsx` — the episode timeline. Mounted from `C:\SandyStudio\webapp\app\(studio)\episodes\[id]\page.tsx`. It builds an `AnimaticContract` and hands it to `AnimaticPlayer` (`C:\SandyStudio\webapp\components\animatic\AnimaticPlayer.tsx`), which is the only thing that actually renders an audio lane.
+
+### (b) Data-loading path
+`EpisodeTimelineSection.tsx:147-166` — SWR `GET /api/episodes/${episodeId}`.
+Route: `C:\SandyStudio\webapp\app\api\episodes\[id]\route.ts:37-41` — returns **all** assets where `episode_id === id` via `select('*')`. So `AUD-music` rows *are* delivered to the client (provided they carry `episode_id`).
+
+### (c) Music/audio rendering branch
+Music is NEVER read directly from the `AUD-music` asset row in the player. It only reaches the audio lane through the **contract**:
+- Player audio lane: `AnimaticPlayer.tsx:1236-1368`. Tracks come from `getAudioTracks(contract)` (seeded at `:708-711`, re-seeded on contract change at `:714-718`).
+- `getAudioTracks` — `C:\SandyStudio\webapp\lib\api\animatic-shotlist.ts:107-121`: prefers a non-empty `contract.audio_tracks[]`, else fabricates one track from `contract.music_url`, else returns `[]`.
+- Empty → the lane shows the "No audio yet — add a track in the Composer and approve it" placeholder (`AnimaticPlayer.tsx:1360-1367`). The lane is NOT gated by `synthetic`.
+
+So music appears **iff** the contract that `EpisodeTimelineSection` builds carries `music_url`/`audio_tracks`.
+
+### (d) The gating predicates (this is where it breaks)
+`EpisodeTimelineSection.tsx` builds the contract on two mutually-exclusive branches:
+
+1. **Real-animatic branch** (`:219-235`, `:291-293`): `animaticAsset` = newest `VID-animatic` with `status ∈ {APPROVED, LOCKED}` AND `isAnimaticV1`. Contract = `animaticAsset.metadata.animatic_v1`. Music shows **only if already baked** into that specific animatic. **The music injection does NOT run here.**
+
+2. **Synthetic-skeleton branch** (`:246-285`): runs only when `animaticAsset === null` (hard early-return at `:247 if (animaticAsset) return null;`) AND an APPROVED/LOCKED storyboard with content exists. This is where the new music injection lives (`:274-284`).
+
+The music-selection predicate — `newestApprovedMusic`, `animatic-shotlist.ts:144-160`:
+```
+.filter(a =&gt; a.file_type === 'AUD-music' &amp;&amp; a.status === 'APPROVED')   // :148  EXACT match
+...
+const url = best.drive_path ?? best.drive_web_view_url;                // :158  ignores staging_path
+```
+
+### (e) The stub / recent skeleton (commit 256903e9)
+The "approved-music on timeline skeleton" = `EpisodeTimelineSection.tsx:274-284` + helper `newestApprovedMusic` (`animatic-shotlist.ts:144-160`). It **is wired** (import `:35`, call `:281`, and `getAudioTracks` fabricates the track from the injected `music_url`). But it is wired for the **synthetic path only**.
+
+## Where the music-display path actually breaks
+
+The failure depends on whether an APPROVED/LOCKED `VID-animatic` exists:
+
+- **If an approved animatic exists** (the common case once the episode has advanced): the skeleton + its music injection are **skipped entirely** (`:247`). Music shows only if baked into the *displayed* animatic. But the bake targets a **different animatic than the one displayed**:
+  - Bake picks newest-by-**version, any status**: `bakeMusicIntoEpisodeAnimatic` — `C:\SandyStudio\webapp\lib\api\ingest-music.ts:187-194` (`.like('file_type','VID-animatic%').order('version', desc).limit(1)`), invoked from the upload path (`ingest-music.ts:170`) and the approve path (`C:\SandyStudio\webapp\lib\agents\next-events.ts:363-369`).
+  - Display picks newest-by-version **among APPROVED/LOCKED only**: `EpisodeTimelineSection.tsx:219-235`.
+  - So a newer DRAFT/REVIEW animatic (e.g. a re-trigger) swallows the baked music while the timeline still renders the older APPROVED version → **music baked but invisible.** This is the prime suspect.
+
+- **If no approved animatic exists** (pure timeline-as-home/synthetic): the new skeleton should surface it, EXCEPT the helper drops it when the row's URL lives only in `staging_path` — `newestApprovedMusic` reads `drive_path ?? drive_web_view_url` and **ignores `staging_path`** (`animatic-shotlist.ts:158`), whereas the real-animatic bake `bakeApprovedMusic` deliberately falls back to `staging_path` (`C:\SandyStudio\webapp\lib\agents\music.ts:46`). Agent/composer-generated `AUD-music` rows can carry the URL in `staging_path` (see `C:\SandyStudio\webapp\lib\agents\runner.ts:2715`), so those return `null` → skeleton stays silent. A UI upload via `ingestUploadedMusic` sets `drive_path` (`ingest-music.ts:118,126,152`), so uploaded music *should* pass — meaning if the Director's uploaded+approved track still isn't showing, an approved animatic almost certainly exists and you're in the version/status-mismatch case above.
+
+Two secondary inconsistencies in the same predicate that can also exclude music: `newestApprovedMusic` uses exact `=== 'AUD-music'` (`:148`) while the rest of the codebase gate/upload guards use `.startsWith('AUD-music')` (`upload-music-direct/route.ts:96`, `next-events.ts:368`, `gate.ts:226`); and it never consults `staging_path`. Aligning `newestApprovedMusic` with `bakeApprovedMusic` (add `staging_path` fallback + `startsWith`) and making the skeleton injection also run/override on the real-animatic branch (or fixing the bake to target the *displayed* animatic version) is where a fix would go — but I've made no changes (read-only + plan mode).</result>
+<usage><subagent_tokens>83380</subagent_tokens><tool_uses>19</tool_uses><duration_ms>197832</duration_ms></usage>
+</task-notification>

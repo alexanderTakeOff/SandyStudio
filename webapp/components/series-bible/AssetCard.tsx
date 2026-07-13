@@ -95,12 +95,21 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
             className="aspect-square w-full flex items-center justify-center text-text-muted text-xs"
           >
             {isVideoAsset && previewSrc ? (
+              // `#t=0.1` makes the browser seek to the first frame so the card
+              // shows a still poster instead of a black box (preload=metadata
+              // alone renders nothing). Hover plays a muted loop preview.
               <video
-                src={previewSrc}
+                src={`${previewSrc}#t=0.1`}
                 className="w-full h-full object-cover"
                 muted
+                loop
                 playsInline
                 preload="metadata"
+                onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})}
+                onMouseLeave={(e) => {
+                  e.currentTarget.pause();
+                  e.currentTarget.currentTime = 0.1;
+                }}
               />
             ) : isImage ? (
               // eslint-disable-next-line @next/next/no-img-element
