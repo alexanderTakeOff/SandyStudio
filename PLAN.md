@@ -10,9 +10,9 @@
 
 ## 🧭 NORTH-STAR (re-anchor here every turn — see rules/common/partnership.md "Compass")
 
-- **Goal (Star):** AI movie factory — first product *Silent Sandy*, a multi-episode AI-animated comedy series, Director-gated at every step.
-- **Phase:** **E18 first HONEST autonomy smoke DONE** (14 shots, 2.5h, published) — pipeline works end-to-end; the problem is **АВТОНОМИЯ + СТОИМОСТЬ**, not reliability. Next = fix batch (Approval/State **MATRIX** + feed-curation) → clean re-smoke.
-- **Active intents (drift-check against these):** (1) **Approval/State MATRIX** = terminal-triggered advance + brain-by-exception (closes half the D-list); (2) cut Polina cost ~14× (D17 feed-curation) + close cost blind-spot (D18); (3) hold PLAN.md + Compass discipline; (4) verify via jobs/counts/scorecard, NEVER fragile shell parsing.
+- **Goal (Star):** AI movie factory — **фабрика = АКТИВ, Сэнди (*Silent Sandy*) = ДОКАЗАТЕЛЬСТВО.** Стоимость фабрики = `дёшево × хорошо × быстро`, доказуемо ЦИФРАМИ. Director-gated at every step.
+- **Phase:** **Голова построена, ПЕТЛЯ РАЗОМКНУТА.** Машина производит автономно (E18 end-to-end). Сенсор ЦЕНЫ замерен (E15 **$90/мин**, ~50% срезаемого жира). Сенсор КАЧЕСТВА построен, но ТЁМНЫЙ (всё unlisted, **0 публичных данных**). Next = **Первый Доказательный Эпизод** (намеренно-хороший · vertical-safe · публичный · цена vs $90-базы) → зажигает ОБА сенсора + замыкает петлю.
+- **Active intents (drift-check against these):** (1) **Первый Доказательный Эпизод** = первый под vertical-safe правилом + первый публичный → retention/CTR (качество) + цена vs $90 (дёшево); (2) срезать **$90→~$45** (Полина $27/30% + ~20 лишних рендеров, D17); (3) vertical-safe сториборд-правило **SHIPPED** (доктрина + активация + P2-мышцы нарезки; batch-драйвер ждёт эпизод); (4) hold PLAN.md + Compass; verify via jobs/counts, НЕ shell.
 > Stable block — change only when goal/phase/intents genuinely shift, not per session.
 
 ---
@@ -20,8 +20,34 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-12 (Shorts: 9 залиты UNLISTED на канал + `.claude/safe_and_sustainable.md`; deploy master `9547fd4` ЗАДЕПЛОЕН на :3000 — свежий rebuild+restart, health OK / inngest 200. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false, Director q1b): первый смок с настоящей дистрибуцией идёт на РУЧНЫХ гейтах (аудит [[reconciler_audit_2026-07-10]]). Смок нового эпизода НЕ запущен — ждём выбора темы Директором (банк-маркеры протухли: E13=Vending, E15=Car Wash сняты; E17-E25=Airport-арка).)
+Date:   2026-07-13 (СТРАТЕГ-сессия «Гуру» — знания, не код. Цель заострена: **Фабрика=актив, Сэнди=доказательство**, стоимость=дёшево×хорошо×быстро. Диагноз: голова построена, **ПЕТЛЯ РАЗОМКНУТА** — 0 публичных данных (всё unlisted). NEXT = **Первый Доказательный Эпизод**. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false); прод на master `9547fd4` (:3000, health OK); advisor P3/слайсер НЕ задеплоены. q9 OPEN: тема эпизода — банк-маркеры протухли (E13/E15 сняты, E17-E25=Airport-арка).)
 Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-13 (Vertical-safe правило + P2-мышцы — Тео, КОД). Директор: 9 текущих шортсов слабы не из-за
+  нарезки, а из-за тупого center-кропа всего landscape-эпизода. Фикс UPSTREAM на сториборде. **SHIPPED
+  (master, ждёт коммита):** доктрина — секция «Vertical-safe framing» в `storyboarder-situational-comedy`
+  + self-check; флаги `vertical_safe`/`landscape_only` в `agents/exec/storyboarder.md` + `specs/schemas/
+  shot.md`; self-gated delivery-условный чек в `readability-comedy-slapstick` (CREAD). Код — активация в
+  `storyboarder.ts` (читает `episode.metadata.delivery_targets` → `hasVerticalDeliveryTarget`, новый хелпер
+  в `provider-capabilities.ts`; условный JSON-шаблон + hard-rule; правило спит на landscape-эпизодах); флаг
+  проведён через оба вайтлиста (`vgen-shot-helpers` + `animatic-shotlist`). **P2-мышцы:** `shotRangeToSeconds`
+  (cumsum, та же ≤0.5s skip-логика) + новый `short-windows.ts` `deriveShortWindows` (группировка
+  setup→punchline, drop landscape_only, гейт 15-40с, зеркало `excluded_shot_ids`). tsc·0 / **vitest 1245**
+  (+15 юнитов). Резак `ffmpeg-shorts` НЕ тронут (guard избыточен — исключение живёт раз, в derive). Анти-
+  аддитивность: 1 новый модуль + 1 хелпер; batch-драйвер (DB→derive→cut) ОТЛОЖЕН до выбора эпизода (собрать
+  на реальных данных + смоук, не гадать — runtime>static). NEXT = выбрать Первый Доказательный Эпизод (q9),
+  выставить его `delivery_targets ⊇ youtube_shorts`, засторибордить под правилом, derive → 3-5 сэмплов → показать.
+
+2026-07-13 (Guru страт-сессия — Тео, docs-only). Заострили Цель под **Игру B (фабрика=актив, Сэнди=доказательство)**;
+  стоимость разложена на 3 оси (цена/качество/скорость). **Cross-check счётчика** (переиспользован `scripts/e15-economics.ts`,
+  read-only): `budget_log` реален и полон по видео/картинкам/LLM — ЕДИНСТВЕННАЯ денежная дыра = музыка МОК ($0); `episodes.
+  budget_spent` молча прячет Полину (истинный тотал = сумма budget_log). Живая цифра: **E15 = $90/мин**, из них Полина $27 (30%!)
+  + ~20 лишних рендеров = **~50% срезаемого жира → $90→~$45 без потери качества**. **Vertical-safe сториборд-правило
+  спроектировано** (условное по Brief.delivery_targets · только key-beat/пик · 3-ветки триаж [i center-safe / ii restage-vertical
+  свап-оси бесплатно / iii landscape-only] · категория-подсказка из `sandy-gag-library` · CREAD-проверка; резолвит orbit-конфликт
+  через «пик, не траектория») — бриф передан кодеру, ждёт импл в `storyboarder-situational-comedy`+`agents/exec/storyboarder.md`.
+  Advisor `audience-quality-sensor` (сенсор №2, scout-режим explore>exploit) + P1-мост + P3-дашборд построены. NEXT = Первый
+  Доказательный Эпизод (он же ПЕРВЫЙ под vertical-safe правилом) зажигает оба сенсора; пре-рекизиты: влить правило + срез жира.
 
 2026-07-12 (Shorts P3 — Audience Quality Sensor v1 — Тео). Advisor = сенсор №2 (КАЧЕСТВО) в паре к
   budget_log (цена), **режим РАЗВЕДЧИКА** (explore>exploit, доктрина `.claude/skills/audience-quality-sensor`).
@@ -158,17 +184,7 @@ Mode:   ===5=== EDIT (Director-authorized).
   skip + Polina listShots videoSummary (aa52384). Verify: tsc·0/vitest·1092/replay·30. NEXT: E13 live-прогон
   идёт; открыто — ≤0.5 reading в listShots excluded, drawer-approve «ерунда», чистка stale ref_plan DRAFT.
 
-2026-06-30 (q9a ЗАВЕРШЁН → master `3269e4a`, ЗАПУШЕН `b21a6e9..3269e4a`). Part B (chat-гигиена): guard в
-  chat/route.ts не аппендит в ENDED-тред + endpoint/кнопка «Новый разговор» (архив+свежий, non-destructive) →
-  `0d7e1cc`. Part A (темы как per-theme ассеты) → `67cf207`: `lib/api/series-themes.ts` (SPC-theme_{slug}, curation
-  в metadata.theme_status — без rename, без миграции) · route GET/POST/PATCH · SeriesThemesView сегментирован
-  Approved/Draft/Invalidated + карточки/inline-edit/Add · `proposeTheme` PA-tool (verbal-gated, закрыл «добавь в
-  themes»). Seed: §34 Seed Bank (13 → approved) + 3 E09-кандидата (кнопка лифта/авто-дверь/автомат → draft) ЖИВЫ в
-  SS-S15. Bible-strip (Director q1a «просто засени короткий, без лок-анлока, разрешил»): §34 вырезан ИЗ
-  general_idea IN PLACE (17188→15365, статус остался LOCKED, добавлен указатель на Themes). Verify: tsc·0/vitest
-  1040/replay·30; живой GET/POST/PATCH/DELETE + UI + Bible-strip проверены в браузере. Polina ОСТАЁТСЯ на Opus
-  (Director q2 — НЕ откатывать на gemini). NEXT: **следующий эпизод = The Vending Machine** (Director q4) — draft-тема
-  `the_vending_machine` в Themes; · E13 live-прогон остаётся открытым.
+2026-06-30 → themes-as-assets (SPC-theme_{slug}) + chat-гигиена SHIPPED `3269e4a`; §34 Seed Bank → Themes; Polina на Opus (q2). → git/history.
 
 2026-06-27 PM-2 (S1 cost-visibility SHIPPED). AI-factory autonomy+cost refactor planned (adversarial-hardened
   by 3 lenses; plan `~/.claude/plans/calm-percolating-sifakis.md`; direction in NORTH_STAR §4 + PLANET.md).

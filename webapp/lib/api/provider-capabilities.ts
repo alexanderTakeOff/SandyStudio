@@ -185,6 +185,19 @@ export function deliveryAspectFor(
   return null;
 }
 
+/** True when ANY of the episode's delivery_targets is a vertical (9:16) surface
+ *  — youtube_shorts / instagram_reels / tiktok. Used by EXEC-SB to activate the
+ *  vertical-safe framing rule (peaks staged to survive a 16:9→9:16 crop). Reuses
+ *  ASPECT_BY_DELIVERY_TARGET so the 9:16 slug set has ONE source of truth. */
+export function hasVerticalDeliveryTarget(
+  deliveryTargets: ReadonlyArray<string> | null | undefined,
+): boolean {
+  for (const t of deliveryTargets ?? []) {
+    if (ASPECT_BY_DELIVERY_TARGET[t] === '9:16') return true;
+  }
+  return false;
+}
+
 /** Clamp a desired render duration into a provider's [min,max] range, rounded to
  *  an integer (Veo rejects fractional durations with HTTP 400). Single source of
  *  truth for the render-duration floor/ceiling — reused by the runner dispatch

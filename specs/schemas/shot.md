@@ -87,6 +87,15 @@ comic_beat: string          # OPTIONAL — if this shot is a gag or punchline, d
                             # e.g. "Soufflé collapses in perfect sync with Clouseau's sneeze"
 is_punchline: boolean       # OPTIONAL — true if this is the payoff of a comedy sequence
 
+# --- DELIVERY / FRAMING ---
+vertical_safe: boolean      # OPTIONAL — set only on gag/punchline peaks in episodes whose
+                            # delivery_targets include a 9:16 Shorts surface. true = the peak
+                            # frame reads inside the central vertical-safe column (the 9:16
+                            # center-crop, ~31.6% of width). See skill
+                            # storyboarder-situational-comedy §"Vertical-safe framing".
+landscape_only: boolean     # OPTIONAL — true on a peak whose gag is inherently lateral and
+                            # cannot be restaged vertically. Declares "won't yield a Short".
+
 # --- GENERATION HINTS ---
 props_in_frame:             # OPTIONAL — specific props visible, from World Bible inventory
   - string
@@ -114,6 +123,7 @@ generation_file: string     # OPTIONAL — path to generated video/image once cr
 6. If `script_version` of any shot differs from the current approved script version, shot status becomes INVALIDATED automatically (see `specs/protocols/version_cascade.md`).
 7. EXEC-VGEN may not generate a shot with status INVALIDATED or DRAFT.
 8. A shot with `is_punchline: true` should be generated last for its scene, after surrounding shots are QA-approved, to confirm the build-up is correct.
+9. `vertical_safe` / `landscape_only` are set ONLY on gag/punchline peaks and ONLY when the episode's `delivery_targets` include a 9:16 Shorts surface. On landscape-only episodes both stay unset. A gag/punchline peak in a short-target episode must carry exactly one of the two (authored by EXEC-SB, verified by EXEC-CREAD). See skill `storyboarder-situational-comedy` §"Vertical-safe framing for Shorts delivery".
 
 ---
 
@@ -161,6 +171,8 @@ mood: "smug confidence meets cold authority"
 
 comic_beat: ""
 is_punchline: false
+
+# vertical_safe / landscape_only omitted — this is a landscape-only (non-Shorts) episode
 
 props_in_frame:
   - "velvet rope"

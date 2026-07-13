@@ -127,6 +127,56 @@ rather than defaulting to static repetition.
 Cost of ignoring this: flat-plate fan-out → Reference Critic REVISE loops →
 wasted regeneration. Variation is cheaper authored here than patched downstream.
 
+## Vertical-safe framing for Shorts delivery (conditional)
+
+> Added 2026-07-13. Origin: the first batch of Shorts read weak because they were a
+> blind center-crop of a landscape episode — the sides, and the action living in them,
+> were thrown away. The fix is HERE (staging), not in the cutter: if the gag's peak is
+> composed to survive a vertical crop, the SAME landscape shot yields a native-quality
+> Short at ≈ zero extra render cost. This governs *framing for a vertical crop*; the
+> two camera sections above still govern movement and angle-variety — all three hold.
+
+**When this rule is awake.** Only when the current episode's delivery targets include a
+vertical/Shorts surface (the 9:16 delivery family named in the glossary —
+`youtube_shorts` / `instagram_reels` / `tiktok`). The runner tells you whether the episode
+is a short-target; do not assume. For a landscape-only episode this rule **sleeps entirely**
+— storyboard for full 16:9 as usual and emit none of the flags below.
+
+**What it constrains — peaks only, never whole shots.** The constraint rides ONLY the
+gag/punchline PEAK beats (`shot_role ∈ {gag, punchline}`) — the 3-5 moments a Short is built
+around. Every other shot breathes the full 16:9 frame. And within a marked shot it is only
+the **peak FRAME** that must read inside the central vertical-safe column — NOT the whole
+trajectory. The central column is the 9:16 center-crop of the frame: the middle **~31.6 % of
+the width** (a 16:9→9:16 center-crop keeps full height and 9/16 ÷ 16/9 = 81/256 of the width;
+≈ 608 px of 1920 at 1080p). This is exactly what dissolves the tension with the camera-orbit
+signature above: the camera still orbits and sweeps the subject across frame — you only
+guarantee that at the gag's punctuation the payoff lands inside that central keyhole, staged
+**vertically** rather than by a lateral spread.
+
+**Three-branch triage per marked peak** — do NOT collapse to a center-safe / landscape-only
+binary:
+1. **already center-safe** — the peak naturally lands in the central column → `vertical_safe: true`.
+2. **restage-vertical** — change the staging AXIS, not the gag: a left→right move becomes
+   top→down; a spread two-shot becomes a stacked one; the object drops INTO frame instead of
+   sliding ACROSS it. Free on the page, the laugh is preserved. **Always attempt this before
+   surrendering a beat to branch 3** — it is what turns a landscape episode into native Shorts.
+   Peak now reads in the column → `vertical_safe: true`.
+3. **inherently lateral** — a conveyor travelling across, a chase, a wide-establishing reveal
+   whose whole joke IS the horizontal space. Do NOT deform the composition to force it vertical
+   → `landscape_only: true`. That beat simply won't yield a Short, and that is an acceptable,
+   *declared* outcome — not a failure.
+
+**Predict fitness from the gag's kind (don't guess frame-by-frame).** Read the beat's gag
+category against the project gag library *before* you stage it, and let it set your expectation:
+gravity / vertical-native gags (sand falling, stacking, dropping) are already column-friendly;
+body- and status-centred gags are axis-agnostic and restage to vertical trivially (branch 2);
+gags whose engine is horizontal travel (chases, conveyors, "walks the length of…") are the usual
+branch-3 laterals. Category sets the expectation; the peak frame confirms it.
+
+**Emit the flags.** On every gag/punchline peak in a short-target episode, set `vertical_safe:
+true` (branches 1/2) or `landscape_only: true` (branch 3). Leaving a peak with neither flag in a
+short-target episode is an omission the readability critic will bounce back.
+
 ## Worked examples — Director's canon
 
 These examples are dictated by the Director on 2026-05-15. Treat them as
@@ -209,6 +259,12 @@ Run this pass over the storyboard as a whole, not just per-shot:
 4. **Confirm continuity carries.** The plate is still on the floor in
    the next shot. The rope is still on his head. Cascade is funny only
    if it persists.
+5. **Vertical-safe peaks (short-target episodes only).** For every shot
+   with `shot_role ∈ {gag, punchline}`: is the peak frame staged inside
+   the central vertical-safe column (→ `vertical_safe: true`) or
+   explicitly declared `landscape_only: true`? No unflagged peak may
+   ship in a short-target episode. (Skip this check entirely when the
+   episode is landscape-only — the rule sleeps.)
 
 ## E02 formula at shot level
 

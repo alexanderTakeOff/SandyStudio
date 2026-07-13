@@ -86,6 +86,14 @@ export interface StoryboardShotV2 {
    * extraction (Motor 1, 2026-06-11).
    */
   continuity_notes?: string;
+  /**
+   * Vertical-safe framing flags (2026-07-13) — set by EXEC-SB on gag/punchline
+   * peaks in short-target episodes. `vertical_safe`: the peak reads inside the
+   * 9:16 center-crop column. `landscape_only`: gag is inherently lateral, won't
+   * yield a Short. Consumed by P2 short-window derivation + the cutter.
+   */
+  vertical_safe?: boolean;
+  landscape_only?: boolean;
 }
 
 interface StoryboardJson {
@@ -139,6 +147,10 @@ function shotToV2(s: unknown): StoryboardShotV2 | null {
       typeof sh.expected_emotion === 'string' ? sh.expected_emotion : undefined,
     continuity_notes:
       typeof sh.continuity_notes === 'string' ? sh.continuity_notes : undefined,
+    vertical_safe:
+      typeof sh.vertical_safe === 'boolean' ? sh.vertical_safe : undefined,
+    landscape_only:
+      typeof sh.landscape_only === 'boolean' ? sh.landscape_only : undefined,
     characters,
     characters_present: Array.isArray(sh.characters_present)
       ? sh.characters_present.filter((x): x is string => typeof x === 'string')

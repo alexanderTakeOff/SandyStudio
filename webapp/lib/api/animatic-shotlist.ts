@@ -324,6 +324,44 @@ export function computeTotalDuration(
 }
 
 /**
+ * 2026-07-13 (P2 Shorts) — map a storyboard shot RANGE to absolute [start, end]
+ * seconds on the final-cut timeline. Cumulative sum over `computeEffectivePlayback`
+ * in shot order, using the SAME ≤0.5s skip rule as `computeTotalDuration` so the
+ * window's timecodes line up with what EXEC-STITCH actually emits and with the
+ * AnimaticPlayer total. `startSec` is the timeline offset where `startShotId`
+ * begins; `endSec` is where `endShotId` ends (inclusive). A single-shot window
+ * (start === end) returns that one shot's playable span.
+ *
+ * Returns null when either id is absent, when `endShotId` precedes `startShotId`,
+ * or when the span collapses to ≤ 0 (e.g. an all-excluded range). Pure — no DB.
+ */
+export function shotRangeToSeconds(
+  shots: readonly AnimaticShot[],
+  startShotId: string,
+  endShotId: string,
+  overrides?: Record<string, AnimaticDirectorOverride>,
+  clipLengths?: ReadonlyMap<string, number>,
+): { startSec: number; endSec: number } | null {
+  let t = 0;
+  let startSec: number | null = null;
+  for (const shot of shots) {
+    if (shot.shot_id === startShotId && startSec === null) startSec = t;
+    const playable = computeEffectivePlayback(shot, overrides, clipLengths);
+    if (playable > 0.5) t += playable; // same exclusion as computeTotalDuration
+    if (shot.shot_id === endShotId) {
+      if (startSec === null) return null; // end precedes start in shot order
+      const endSec = t;
+      if (endSec <= startSec) return null; // collapsed / all-excluded range
+      return {
+        startSec: Math.round(startSec * 100) / 100,
+        endSec: Math.round(endSec * 100) / 100,
+      };
+    }
+  }
+  return null; // startShotId and/or endShotId not found
+}
+
+/**
  * 2026-06-08 — single source of truth for the `shot_id → real clip duration`
  * map used to clamp per-shot playback to actual VID-shot lengths. Previously
  * built ad-hoc in three places (AnimaticPlayer, /animatic-timing route,
@@ -356,6 +394,10 @@ interface StoryboardShotV2 {
   duration_seconds?: number;
   action?: string;
   key_beat?: string;
+  /** Vertical-safe framing flags (2026-07-13) — read by P2 short-window
+   *  derivation to keep column-safe gag peaks and drop inherently-lateral ones. */
+  vertical_safe?: boolean;
+  landscape_only?: boolean;
 }
 
 /**
@@ -393,6 +435,10 @@ export function extractShotsFromStoryboard(content: string): StoryboardShotV2[] 
             : undefined,
         action: typeof sh.action === 'string' ? sh.action : undefined,
         key_beat: typeof sh.key_beat === 'string' ? sh.key_beat : undefined,
+        vertical_safe:
+          typeof sh.vertical_safe === 'boolean' ? sh.vertical_safe : undefined,
+        landscape_only:
+          typeof sh.landscape_only === 'boolean' ? sh.landscape_only : undefined,
       });
     }
   }

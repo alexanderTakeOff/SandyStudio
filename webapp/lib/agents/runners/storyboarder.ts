@@ -32,6 +32,7 @@ import {
 import { parseSkillSelection } from '../../skills/parse-skill-selection';
 import { findApprovedAsset } from '../upstream';
 import { SHOT_ID_RE, canonicalShotId, episodeShort } from '../../api/shot-id';
+import { hasVerticalDeliveryTarget } from '../../api/provider-capabilities';
 
 export const SB_CONTRACT = 'storyboarder@v2';
 // 2026-05-20 — upgraded sonnet-4-6 → opus-4-7 per Director directive.
@@ -201,6 +202,18 @@ export function collectShotIdViolations(
   return violations;
 }
 
+/** Read `episode.metadata.delivery_targets[]` defensively. Local copy (runner.ts
+ *  has a private one, but importing from runner.ts would be circular — runner.ts
+ *  dispatches INTO this module). Pairs with hasVerticalDeliveryTarget. */
+function readEpisodeDeliveryTargets(episode: unknown): string[] {
+  if (!episode || typeof episode !== 'object') return [];
+  const meta = (episode as { metadata?: unknown }).metadata;
+  if (!meta || typeof meta !== 'object') return [];
+  const raw = (meta as { delivery_targets?: unknown }).delivery_targets;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((t): t is string => typeof t === 'string' && t.length > 0);
+}
+
 function buildUserMessage(args: {
   episodeCode: string;
   episodeTitle: string;
@@ -227,8 +240,12 @@ function buildUserMessage(args: {
    * 'revision не выполнен как надо'.
    */
   revisionNote?: string;
+  /** 2026-07-13 — vertical-safe framing activation. True when the episode's
+   *  delivery_targets include a 9:16 Shorts surface. Gates the vertical-safe
+   *  JSON keys + hard-rule block below; when false the rule sleeps entirely. */
+  shortsIsTarget?: boolean;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes, activeSkillsBlock, revisionNote } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes, activeSkillsBlock, revisionNote, shortsIsTarget } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -377,6 +394,12 @@ function buildUserMessage(args: {
     '          "action_prose": "<one paragraph of visual action — what is on screen, written for the storyboard reader. Can include all characters and props in motion. This is your prose narration of the shot.>",',
     '          "duration_seconds": <integer>,',
     '          "key_beat": "<which brief beat this shot delivers, OR \\"transition\\" / \\"setup\\">",',
+    shortsIsTarget
+      ? '          "vertical_safe": <boolean — gag/punchline peaks ONLY: true if the PEAK frame reads inside the central 9:16 vertical-safe column (see rule below). Omit on non-peak shots.>,'
+      : '',
+    shortsIsTarget
+      ? '          "landscape_only": <boolean — gag/punchline peaks ONLY: true if the gag is inherently lateral (conveyor/chase/wide-establishing) and cannot be restaged vertically. Omit otherwise.>,'
+      : '',
     '          "continuity_notes": "<what must match the prior shot — pose, prop state, lighting>"',
     '        }',
     '      ]',
@@ -404,6 +427,9 @@ function buildUserMessage(args: {
     '- For each character: `expected_emotion` and `expected_action` are the two values the downstream AI image reviewer will use to score the generated image. Be specific and physical (not abstract). "happy" is too vague; "wide-eyed admiration" is good. "moving" is too vague; "leaning forward toward vial, hands flat on table" is good.',
     '- `role_in_shot`: "subject" = main focus, "co-star" = also active in this shot, "background" = visible but passive.',
     '- `expected_gag` is null only for transitions/setups. Every shot tagged `shot_role: "gag" | "punchline"` MUST have a non-null `expected_gag`.',
+    shortsIsTarget
+      ? '- SHORTS DELIVERY IS ACTIVE for this episode (delivery_targets include a 9:16 surface). For every shot tagged `shot_role: "gag" | "punchline"`, stage the PEAK frame inside the central vertical-safe column — the 9:16 center-crop, the middle ~31.6% of frame width — so the gag survives a vertical crop. Prefer restaging the gag on a VERTICAL axis (object drops top→down, two-shots stacked not spread) over a lateral left↔right spread. Then set EXACTLY ONE flag on that peak: `"vertical_safe": true` when the peak reads in the central column, or `"landscape_only": true` when the gag is inherently lateral (conveyor/chase/wide-establishing) and cannot be restaged. Non-peak shots: omit both flags. Full rule: the "Vertical-safe framing for Shorts delivery" section of your active skills.'
+      : '',
     hasCanon && objectSlugs.length > 0
       ? `- \`props_in_frame\` MUST list every canon prop physically visible in the shot, by exact slug from: ${objectSlugs.join(', ')}. This is what attaches the prop's canonical reference image at generation time — a prop omitted here will be hallucinated (wrong button count, wrong shape). A prop named only in \`action_prose\` but absent from \`props_in_frame\` will NOT be locked. Use [] when no canon prop is on screen.`
       : '- `props_in_frame` lists prop slugs visible in the shot, or [] if none.',
@@ -499,6 +525,14 @@ export async function runStoryboarder(
     | undefined;
   const episodeCode = ep?.episode_code ?? 'UNKNOWN';
   const episodeTitle = ep?.title_working ?? 'Untitled';
+  // Vertical-safe framing activation: read the episode's delivery_targets and
+  // decide whether a 9:16 Shorts surface is in play. When true, the storyboarder
+  // stages gag/punchline peaks to survive a vertical crop and emits the
+  // vertical_safe / landscape_only flags. Landscape-only episodes leave the rule
+  // asleep (no flags, full 16:9). See skill storyboarder-situational-comedy
+  // §"Vertical-safe framing for Shorts delivery".
+  const deliveryTargets = readEpisodeDeliveryTargets(inputs.episode);
+  const shortsIsTarget = hasVerticalDeliveryTarget(deliveryTargets);
 
   const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
   const briefAsset = findApprovedAsset(upstream, 'SPC-brief');
@@ -640,7 +674,13 @@ export async function runStoryboarder(
     upstreamNotes,
     activeSkillsBlock,
     revisionNote,
+    shortsIsTarget,
   });
+  if (shortsIsTarget) {
+    notes.push(
+      `Vertical-safe framing ACTIVE — delivery_targets [${deliveryTargets.join(', ')}] include a 9:16 surface; gag/punchline peaks will carry vertical_safe / landscape_only`,
+    );
+  }
 
   let result: AnthropicTextResult;
   try {

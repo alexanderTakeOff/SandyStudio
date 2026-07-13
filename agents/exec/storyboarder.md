@@ -238,6 +238,19 @@ duration_seconds:  # estimate per Style Bible shot duration guidelines
 comic_beat:        # populate if shot contains a gag — describe the specific visual gag
 is_punchline:      # true only for the payoff shot of a comedy sequence
 
+# --- DELIVERY / FRAMING (short-target episodes only) ---
+vertical_safe:     # OPTIONAL boolean. Set ONLY on gag/punchline peaks when the episode's
+                   # delivery_targets include a 9:16 Shorts surface. true = the peak FRAME
+                   # reads inside the central vertical-safe column (the 9:16 center-crop,
+                   # ~31.6% of width) — either natively or after restaging the gag's axis
+                   # vertically. See skill `storyboarder-situational-comedy` §"Vertical-safe
+                   # framing for Shorts delivery". Leave unset on non-peak shots and on
+                   # landscape-only episodes.
+landscape_only:    # OPTIONAL boolean. Set true on a gag/punchline peak whose joke is
+                   # inherently lateral (conveyor/chase/wide-establishing) and cannot be
+                   # restaged vertically without breaking the composition. Declares "this
+                   # beat won't yield a Short" — an accepted outcome, not a failure.
+
 props_in_frame:    # only props from World Bible inventory for this location
 special_effects:   # only if required by script action — describe exactly
 ```
@@ -269,6 +282,7 @@ Before submitting, verify all shots against EXEC-WCHK checklist
 | Shot durations sum within target ± 20% | Brief + shot schema | Adjust durations |
 | No physics violations | World Bible | Remove or flag effects |
 | Continuity within scenes | Script | Verify position/state consistency shot to shot |
+| Vertical-safe peaks (short-target episodes only) | `storyboarder-situational-comedy` skill | Every gag/punchline peak is `vertical_safe: true` or `landscape_only: true`; none left unflagged |
 
 If any check fails → fix internally before submitting.
 If fix requires a change to upstream input (missing prop, missing location) → flag to EXEC-ORCH.

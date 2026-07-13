@@ -107,6 +107,42 @@ Apply each universal R-check through this engine:
   filler. If cutting the beat leaves the gag chain intact, it is empty motion —
   flag it and require a goal-verb or a consequence.
 
+## Delivery-conditional check — vertical-safe (self-gated)
+
+> Added 2026-07-13. This is a **composition** check, orthogonal to the causality
+> checks R01-R06 above — do not fold it into them. It exists so a gag's peak
+> survives a 16:9→9:16 center-crop when the episode ships Shorts (companion to
+> `storyboarder-situational-comedy` §"Vertical-safe framing for Shorts delivery").
+
+**Self-activation (no delivery-target plumbing needed).** Run this check ONLY when
+the storyboard's shot list carries `vertical_safe` / `landscape_only` fields on any
+shot — their *presence* is the signal that the Storyboarder treated this as a
+short-target episode. If no shot carries either field, skip this check entirely (the
+episode is landscape-only; the rule sleeps) and do not mention it.
+
+**The check (text-consistency — you judge prose, not pixels).** For every shot with
+`shot_role ∈ {gag, punchline}` in a self-activated storyboard:
+- If the shot carries `vertical_safe: true` or `landscape_only: true` → it is
+  accounted for; pass it.
+- If it carries **neither** flag AND its `action_prose` stages the peak **laterally**
+  (the payoff moves or spreads left↔right / across-frame / "along the counter" — i.e.
+  it would fall outside the central ~31.6%-width vertical column under a center-crop)
+  → **REVISE**. The peak either must be restaged on a vertical axis (top→down, stacked
+  two-shot, object dropping into frame) and marked `vertical_safe`, or, if the gag is
+  inherently lateral (conveyor/chase/wide-establishing), declared `landscape_only`.
+- A peak with neither flag whose prose is already vertically/centrally staged is a
+  missing-annotation nit, not a composition failure: note it as
+  `PASS_WITH_UNCERTAINTY` (ask the Storyboarder to stamp the flag) rather than REVISE.
+
+You cannot see the rendered frame; judge only from the action_prose's staging axis.
+Do NOT import this check for episodes with no vertical_safe/landscape_only fields.
+
+**Abstraction debt (skill-authoring honesty).** This check is *delivery-conditional*,
+not *genre-specific* — it would apply to any genre delivered as Shorts. It lives in
+this comedy playbook only because comedy is the sole genre today. When a second genre
+ships (or a non-CREAD consumer needs it), extract it into a genre-neutral delivery
+playbook that loads by delivery-target rather than by genre.
+
 ## How to write the acceptance criteria (REVISE)
 
 When you REVISE, each criterion must name the shot and the concrete fix in this
@@ -116,3 +152,9 @@ the door tips onto him'", or "Insert a false-success beat between SH06 and SH07:
 Sandy admires the stacked cans for one beat before SH07's backfire". Vague notes
 ("make it funnier") are not acceptable — the Storyboarder treats your criteria
 as a hard contract.
+
+For a vertical-safe REVISE, name the restage axis or the escape: e.g. "SH09
+(punchline): restage vertically — the sand avalanche currently spills left→right
+across the counter; stage it dropping top→down into the central column so the peak
+survives the 9:16 crop, then set `vertical_safe: true`", or "SH12: the conveyor gag
+is inherently lateral — mark `landscape_only: true` (it will not yield a Short)".
