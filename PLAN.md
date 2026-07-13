@@ -20,12 +20,12 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-13 (СТРАТЕГ-сессия «Гуру» — знания, не код. Цель заострена: **Фабрика=актив, Сэнди=доказательство**, стоимость=дёшево×хорошо×быстро. Диагноз: голова построена, **ПЕТЛЯ РАЗОМКНУТА** — 0 публичных данных (всё unlisted). NEXT = **Первый Доказательный Эпизод**. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false); прод на master `9547fd4` (:3000, health OK); advisor P3/слайсер НЕ задеплоены. q9 OPEN: тема эпизода — банк-маркеры протухли (E13/E15 сняты, E17-E25=Airport-арка).)
+Date:   2026-07-13 (СТРАТЕГ-сессия «Гуру» — знания, не код. Цель заострена: **Фабрика=актив, Сэнди=доказательство**, стоимость=дёшево×хорошо×быстро. Диагноз: голова построена, **ПЕТЛЯ РАЗОМКНУТА** — 0 публичных данных (всё unlisted). NEXT = **Первый Доказательный Эпизод**. RECONCILER **OFF** (MECHANICS_AUTO_ADVANCE=false); прод на master `de12089` (deployed, health 200×3, vertical-safe+P3+слайсер живьём). q9 OPEN: тема эпизода — банк-маркеры протухли (E13/E15 сняты, E17-E25=Airport-арка).)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-13 (Vertical-safe правило + P2-мышцы — Тео, КОД). Директор: 9 текущих шортсов слабы не из-за
-  нарезки, а из-за тупого center-кропа всего landscape-эпизода. Фикс UPSTREAM на сториборде. **SHIPPED
-  (master, ждёт коммита):** доктрина — секция «Vertical-safe framing» в `storyboarder-situational-comedy`
+  нарезки, а из-за тупого center-кропа всего landscape-эпизода. Фикс UPSTREAM на сториборде. **SHIPPED +
+  DEPLOYED (master `de12089`, health 200×3):** доктрина — секция «Vertical-safe framing» в `storyboarder-situational-comedy`
   + self-check; флаги `vertical_safe`/`landscape_only` в `agents/exec/storyboarder.md` + `specs/schemas/
   shot.md`; self-gated delivery-условный чек в `readability-comedy-slapstick` (CREAD). Код — активация в
   `storyboarder.ts` (читает `episode.metadata.delivery_targets` → `hasVerticalDeliveryTarget`, новый хелпер
