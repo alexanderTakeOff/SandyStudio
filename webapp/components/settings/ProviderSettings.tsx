@@ -118,11 +118,11 @@ interface ConciergeData {
   options: ConciergeOption[];
 }
 
-function ConciergePolinaRow() {
-  const { data, mutate, isLoading } = useSWR<{ data: ConciergeData }>(
-    '/api/providers/concierge',
-    fetcher,
-  );
+// Generic app_config model-picker row (one component, reused for Полина and the
+// Visual Critic). Both endpoints return the same {active_id, source, options[]}
+// shape and take a {provider, model} PUT — so one row serves both.
+function ModelPickerRow({ endpoint, title, hint }: { endpoint: string; title: string; hint: string }) {
+  const { data, mutate, isLoading } = useSWR<{ data: ConciergeData }>(endpoint, fetcher);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cfg = data?.data;
@@ -134,7 +134,7 @@ function ConciergePolinaRow() {
     setPending(true);
     setError(null);
     try {
-      const res = await fetch('/api/providers/concierge', {
+      const res = await fetch(endpoint, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ provider: opt.provider, model: opt.model }),
@@ -157,10 +157,9 @@ function ConciergePolinaRow() {
       style={{ background: 'var(--bg-elevated)' }}
     >
       <div className="col-span-3 flex items-center gap-1.5">
-        <div className="text-sm font-medium text-text-primary">Полина (ассистент)</div>
+        <div className="text-sm font-medium text-text-primary">{title}</div>
         <PeekHint side="right" autoPeekMs={0}>
-          Prod Assistant LLM. Switch takes effect on the fly (next request) — no restart. Env is the
-          fallback default.
+          {hint}
         </PeekHint>
       </div>
       <div className="col-span-5">
@@ -373,7 +372,20 @@ export function ProviderSettings() {
 
         <div className="mt-3 pt-3 border-t border-glass space-y-2">
           <div className="text-[11px] uppercase tracking-wider text-text-muted">Assistant</div>
-          <ConciergePolinaRow />
+          <ModelPickerRow
+            endpoint="/api/providers/concierge"
+            title="Полина (ассистент)"
+            hint="Prod Assistant LLM. Switch takes effect on the fly (next request) — no restart. Env is the fallback default."
+          />
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-glass space-y-2">
+          <div className="text-[11px] uppercase tracking-wider text-text-muted">Critics</div>
+          <ModelPickerRow
+            endpoint="/api/providers/visual-critic"
+            title="Visual Critic (глаза)"
+            hint="Vision model that inspects rendered refs/shots against the storyboard. Vision-capable models only. Takes effect on the next critic run — no restart. Env is the fallback default."
+          />
         </div>
 
         <div className="mt-4 flex items-center gap-2 text-[11px] text-text-muted">
