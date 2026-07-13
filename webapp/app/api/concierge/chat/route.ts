@@ -26,6 +26,8 @@ import {
   conciergeMaxTokensParam,
   conciergeSupportsTemperature,
   conciergeReasoningParam,
+  conciergeOpenAiReasoningParam,
+  isOpenAiGpt5Model,
 } from '@/lib/concierge/llm';
 import { conciergeAutoReactEnabled, recordConciergeCost } from '@/lib/concierge/cost';
 import type {
@@ -407,7 +409,7 @@ async function handleChatPOST(req: Request) {
     | 'medium'
     | 'high'
     | undefined;
-  const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
+  const isGpt5 = isOpenAiGpt5Model(model);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -564,13 +566,15 @@ async function handleChatPOST(req: Request) {
           if (!isGpt5 && conciergeSupportsTemperature() && Number.isFinite(temperature)) {
             params.temperature = temperature;
           }
-          // OpenAI 400: gpt-5* in /v1/chat/completions rejects the combination
-          // of `tools` + `reasoning_effort`. Only pass reasoning_effort on the
-          // final (tools-disabled) round so the model still reasons over the
-          // collected tool results without breaking the tool-call rounds.
-          if (reasoningEffort && isGpt5 && !toolsThisRound) {
-            (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
-          }
+          // OpenAI 400: gpt-5* in /v1/chat/completions rejects function tools
+          // combined with any reasoning_effort other than 'none'. On tool rounds
+          // we send an explicit 'none' (newer models like gpt-5.6-luna default to
+          // reasoning, so OMITTING it still trips the 400); on the final
+          // tools-disabled round we honor the configured effort. Shared helper.
+          Object.assign(
+            params,
+            conciergeOpenAiReasoningParam(isGpt5, Boolean(toolsThisRound), reasoningEffort),
+          );
           // 2026-06-25 $-fix: cap Opus extended thinking on EVERY round (returns
           // {} for non-anthropic). Without this Opus runs uncapped thinking
           // (billed at output rate) on the interactive path too.

@@ -22,6 +22,9 @@ import {
   conciergeModel,
   conciergeMaxTokensParam,
   conciergeSupportsTemperature,
+  conciergeReasoningParam,
+  conciergeOpenAiReasoningParam,
+  isOpenAiGpt5Model,
 } from '@/lib/concierge/llm';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { getServerEnv } from '@/lib/env';
@@ -156,7 +159,7 @@ export async function POST(req: Request) {
     : 800;
   const reasoningEffort = env.OPENAI_REASONING_EFFORT as
     | 'minimal' | 'low' | 'medium' | 'high' | undefined;
-  const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
+  const isGpt5 = isOpenAiGpt5Model(model);
 
   const today = new Date().toISOString().slice(0, 10);
   const systemPrompt = buildSystemPrompt({
@@ -184,9 +187,14 @@ export async function POST(req: Request) {
   if (!isGpt5 && conciergeSupportsTemperature() && Number.isFinite(temperature)) {
     params.temperature = temperature;
   }
-  if (reasoningEffort && isGpt5) {
-    (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
-  }
+  // No tools on this path → honor the configured gpt-5 effort (helper returns {}
+  // for non-gpt-5). Kept in the shared helper so the tools/'none' rule is one place.
+  Object.assign(params, conciergeOpenAiReasoningParam(isGpt5, false, reasoningEffort));
+  // 2026-06-25 $-fix parity with /chat + /chat-internal: cap Opus/anthropic
+  // extended thinking (returns {} for non-anthropic). auto-react was the one
+  // concierge path missing this, so on the anthropic provider it ran UNCAPPED
+  // thinking billed at output rate on every ambient reaction.
+  Object.assign(params, conciergeReasoningParam());
 
   let assistantText = '';
   try {

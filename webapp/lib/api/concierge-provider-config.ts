@@ -44,8 +44,13 @@ export interface ConciergeProviderOption extends ConciergeProviderChoice {
 export const CONCIERGE_PROVIDER_CATALOG: ConciergeProviderOption[] = [
   { id: 'openai:gpt-5.5', provider: 'openai', model: 'gpt-5.5', display_name: 'OpenAI · gpt-5.5', envKey: 'OPENAI_API_KEY' },
   { id: 'openai:gpt-5.4-mini', provider: 'openai', model: 'gpt-5.4-mini', display_name: 'OpenAI · gpt-5.4-mini', envKey: 'OPENAI_API_KEY' },
-  { id: 'openai:gpt-5.6-luna', provider: 'openai', model: 'gpt-5.6-luna', display_name: 'OpenAI · gpt-5.6-luna', envKey: 'OPENAI_API_KEY' },
-  { id: 'openai:sol', provider: 'openai', model: 'sol', display_name: 'OpenAI · sol', envKey: 'OPENAI_API_KEY' },
+  // GPT-5.6 frontier tiers (developers.openai.com/api/docs/models): sol =
+  // frontier (alias gpt-5.6), terra = balanced intelligence/cost, luna =
+  // cost-optimized. Full `gpt-5.6-<tier>` ids are REQUIRED — the bare codename
+  // (`sol`) breaks isOpenAiGpt5Model() and the tools+reasoning_effort=none fix.
+  { id: 'openai:gpt-5.6-sol', provider: 'openai', model: 'gpt-5.6-sol', display_name: 'OpenAI · gpt-5.6-sol (frontier)', envKey: 'OPENAI_API_KEY' },
+  { id: 'openai:gpt-5.6-terra', provider: 'openai', model: 'gpt-5.6-terra', display_name: 'OpenAI · gpt-5.6-terra (balanced)', envKey: 'OPENAI_API_KEY' },
+  { id: 'openai:gpt-5.6-luna', provider: 'openai', model: 'gpt-5.6-luna', display_name: 'OpenAI · gpt-5.6-luna (cost)', envKey: 'OPENAI_API_KEY' },
   { id: 'anthropic:claude-sonnet-5', provider: 'anthropic', model: 'claude-sonnet-5', display_name: 'Anthropic · claude-sonnet-5', envKey: 'ANTHROPIC_API_KEY' },
   { id: 'anthropic:claude-opus-4-8', provider: 'anthropic', model: 'claude-opus-4-8', display_name: 'Anthropic · claude-opus-4-8', envKey: 'ANTHROPIC_API_KEY' },
   { id: 'gemini:gemini-2.5-flash', provider: 'gemini', model: 'gemini-2.5-flash', display_name: 'Gemini · 2.5-flash (free)', envKey: 'GEMINI_API_KEY' },

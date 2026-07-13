@@ -144,6 +144,47 @@ export function conciergeReasoningParam(): Record<string, string> {
 }
 
 /**
+ * Is `model` an OpenAI GPT-5-family model? Single source of truth for the three
+ * concierge routes (was a copy-pasted regex in each).
+ *
+ * The GPT-5 family names by tier suffix, not just version — per OpenAI's model
+ * catalogue (developers.openai.com/api/docs/models): `gpt-5.6-sol` (frontier,
+ * alias `gpt-5.6`), `gpt-5.6-terra` (balanced), `gpt-5.6-luna` (cost). Earlier
+ * points ship too (`gpt-5.5`, `gpt-5.4-mini`). All are reasoning models, so all
+ * hit the tools-vs-reasoning_effort rule below — the match must therefore accept
+ * `gpt-5` followed by a dot (`gpt-5.6…`), a dash (`gpt-5-…`), or end of string.
+ * Bare tier codenames (`sol`/`terra`/`luna` without the `gpt-5.6-` prefix) are
+ * NOT valid API ids and are intentionally NOT matched — keep catalogue ids full.
+ */
+export function isOpenAiGpt5Model(model: string): boolean {
+  return /^gpt-5(\.|-|$)/.test(model);
+}
+
+/**
+ * OpenAI gpt-5* `reasoning_effort` for one chat.completions round.
+ *
+ * gpt-5* on /v1/chat/completions REJECTS function tools combined with any
+ * reasoning_effort other than 'none' (400: "Function tools with reasoning_effort
+ * are not supported for <model> … set reasoning_effort to 'none'"). Older gpt-5
+ * models tolerated OMITTING the param on a tool round; newer ones (gpt-5.6-luna)
+ * default to a reasoning mode, so omission STILL trips the 400 — the only safe
+ * value alongside tools is an explicit 'none'. On tool-disabled rounds we honor
+ * the configured effort (OPENAI_REASONING_EFFORT), defaulting to omit.
+ *
+ * Returns {} for non-gpt-5 models (gemini/anthropic handle reasoning elsewhere,
+ * via conciergeReasoningParam / native path).
+ */
+export function conciergeOpenAiReasoningParam(
+  isGpt5: boolean,
+  hasTools: boolean,
+  configuredEffort?: string,
+): Record<string, string> {
+  if (!isGpt5) return {};
+  if (hasTools) return { reasoning_effort: 'none' };
+  return configuredEffort ? { reasoning_effort: configuredEffort } : {};
+}
+
+/**
  * Native @anthropic-ai/sdk path for the concierge (prompt caching +
  * thinking-disable), gated behind CONCIERGE_ANTHROPIC_NATIVE. Only meaningful
  * when the provider is 'anthropic' — the OpenAI-compat surface Polina uses today

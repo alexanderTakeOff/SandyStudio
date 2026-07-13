@@ -31,6 +31,8 @@ import {
   conciergeMaxTokensParam,
   conciergeSupportsTemperature,
   conciergeReasoningParam,
+  conciergeOpenAiReasoningParam,
+  isOpenAiGpt5Model,
 } from '@/lib/concierge/llm';
 import {
   recordConciergeCost,
@@ -354,7 +356,7 @@ export async function POST(req: Request) {
     | 'medium'
     | 'high'
     | undefined;
-  const isGpt5 = /^gpt-5(\.|-|$)/.test(model);
+  const isGpt5 = isOpenAiGpt5Model(model);
 
   const promptCtx = {
     today,
@@ -524,11 +526,13 @@ export async function POST(req: Request) {
       if (!isGpt5 && conciergeSupportsTemperature() && Number.isFinite(temperature)) {
         params.temperature = temperature;
       }
-      // gpt-5* rejects tools + reasoning_effort combination — only pass
-      // reasoning_effort on tool-disabled rounds (mirror main /chat).
-      if (reasoningEffort && isGpt5 && !toolsThisRound) {
-        (params as { reasoning_effort?: string }).reasoning_effort = reasoningEffort;
-      }
+      // gpt-5* rejects function tools combined with any reasoning_effort other
+      // than 'none' — send explicit 'none' on tool rounds, configured effort on
+      // tool-disabled rounds (mirror main /chat). Shared helper.
+      Object.assign(
+        params,
+        conciergeOpenAiReasoningParam(isGpt5, Boolean(toolsThisRound), reasoningEffort),
+      );
       // 2026-06-25 $-fix: cap Opus extended thinking on EVERY round (returns {}
       // for non-anthropic). This is the single biggest per-call cost lever — the
       // root cause was Opus running UNCAPPED thinking because the isGpt5 gate
