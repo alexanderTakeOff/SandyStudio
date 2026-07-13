@@ -32,7 +32,10 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const Body = z.object({
-  state: z.enum(['PARTIAL', 'COMPLETE']),
+  // Optional (2026-07-13): the UI "Move to Trash" flow sends only a reason and
+  // lets the server auto-derive PARTIAL vs COMPLETE from the shot counts below.
+  // Explicit callers (scripts) may still pin the state.
+  state: z.enum(['PARTIAL', 'COMPLETE']).optional(),
   reason: z.string().trim().min(1).max(2000),
 });
 
@@ -97,7 +100,13 @@ export const POST = withApiHandler(async (req, ctx) => {
   const shotList = (animatic?.[0]?.metadata as { shot_list?: unknown[] } | null)?.shot_list;
   if (Array.isArray(shotList)) totalShots = shotList.length;
 
-  if (body.state === 'PARTIAL' && totalShots !== null && completedShots >= totalShots) {
+  // Auto-derive PARTIAL vs COMPLETE when the caller didn't pin it: all shots
+  // APPROVED → COMPLETE (finished, retired), otherwise PARTIAL (closed early).
+  const allShotsApproved = totalShots !== null && completedShots >= totalShots;
+  const effectiveState: 'PARTIAL' | 'COMPLETE' =
+    body.state ?? (allShotsApproved ? 'COMPLETE' : 'PARTIAL');
+
+  if (body.state === 'PARTIAL' && allShotsApproved) {
     throw new ValidationError(
       `State PARTIAL but all ${totalShots} shots are APPROVED. Use COMPLETE instead.`,
     );
@@ -116,7 +125,7 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   // 4. Build archival payload.
   const archival: ArchivalPayload = {
-    state: body.state,
+    state: effectiveState,
     completed_shots: completedShots,
     total_shots: totalShots,
     reason: body.reason,
@@ -166,7 +175,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   await logEvent(supabase, {
     event_type: 'episode_archived',
     severity: 'info',
-    title: `Episode ${ep.episode_code} archived (${body.state} · ${completedShots}/${totalShots ?? '?'} shots)`,
+    title: `Episode ${ep.episode_code} archived (${effectiveState} · ${completedShots}/${totalShots ?? '?'} shots)`,
     description: body.reason,
     actor: user.email ?? user.id,
     episode_id: episodeId,

@@ -69,7 +69,14 @@ export type EpisodeStatus =
   | 'PUBLISH_PENDING'
   | 'PUBLISHED'
   | 'ANALYTICS_COLLECTING'
-  | 'COMPLETE';
+  | 'COMPLETE'
+  | 'ARCHIVED';
+
+// Manual terminal states a Director may set from ANY non-terminal state, out of
+// the forward-only pipeline graph. COMPLETE = done/in-catalog; ARCHIVED = Trash
+// (retired/abandoned). The /archive route sets ARCHIVED directly; the episode
+// PATCH route uses this override so "Mark Complete" works from any stage.
+export const MANUAL_TERMINAL_STATUSES: ReadonlyArray<EpisodeStatus> = ['COMPLETE', 'ARCHIVED'];
 
 // Forward-only transitions (with allowed loops back to *_REVISION).
 export const EPISODE_TRANSITIONS: Record<EpisodeStatus, ReadonlyArray<EpisodeStatus>> = {
@@ -98,10 +105,20 @@ export const EPISODE_TRANSITIONS: Record<EpisodeStatus, ReadonlyArray<EpisodeSta
   PUBLISHED:               ['ANALYTICS_COLLECTING'],
   ANALYTICS_COLLECTING:    ['COMPLETE'],
   COMPLETE:                [],                             // terminal
+  ARCHIVED:                [],                             // terminal (Trash)
 };
 
 export function assertEpisodeTransition(from: EpisodeStatus, to: EpisodeStatus): void {
   if (from === to) return;
+  // Director manual override: any non-terminal episode may be retired to a
+  // terminal status (COMPLETE = done/catalog, ARCHIVED = Trash) regardless of
+  // where it sits in the forward-only pipeline graph.
+  if (
+    MANUAL_TERMINAL_STATUSES.includes(to) &&
+    !MANUAL_TERMINAL_STATUSES.includes(from)
+  ) {
+    return;
+  }
   const allowed = EPISODE_TRANSITIONS[from];
   if (!allowed.includes(to)) {
     throw new ValidationError(

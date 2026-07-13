@@ -9,7 +9,7 @@ import { use, useState, useEffect, type KeyboardEvent, type MouseEvent as ReactM
 import useSWR from 'swr';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Archive, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Archive, Trash2, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -128,6 +128,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   const [expandedPrimaries, setExpandedPrimaries] = useState<Set<string>>(new Set());
   const [triggerOpen, setTriggerOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [markCompleteOpen, setMarkCompleteOpen] = useState(false);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string | undefined>();
 
@@ -289,9 +290,14 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             <Button variant="secondary" size="sm" onClick={() => setTriggerOpen(true)}>
               <RotateCcw size={14} /> Re-trigger…
             </Button>
+            {episode.status !== 'COMPLETE' && episode.status !== 'ARCHIVED' && (
+              <Button variant="ghost" size="sm" onClick={() => setMarkCompleteOpen(true)} title="Mark episode complete">
+                <CheckCircle2 size={14} /> Mark Complete
+              </Button>
+            )}
             {episode.status !== 'ARCHIVED' && (
-              <Button variant="ghost" size="sm" onClick={() => setArchiveOpen(true)} title="Archive episode…">
-                <Archive size={14} /> Archive…
+              <Button variant="ghost" size="sm" onClick={() => setArchiveOpen(true)} title="Move episode to Trash…">
+                <Trash2 size={14} /> Move to Trash…
               </Button>
             )}
             <Button variant="ghost" size="sm">
@@ -499,6 +505,14 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
         episodeId={id}
         episodeCode={episode.episode_code}
         onArchived={() => mutate()}
+      />
+
+      <MarkCompleteModal
+        open={markCompleteOpen}
+        onClose={() => setMarkCompleteOpen(false)}
+        episodeId={id}
+        episodeCode={episode.episode_code}
+        onDone={() => mutate()}
       />
 
       <PreviewDrawer
@@ -972,7 +986,6 @@ function ArchiveModal({
   episodeCode: string;
   onArchived: () => void;
 }) {
-  const [state, setState] = useState<'PARTIAL' | 'COMPLETE'>('PARTIAL');
   const [reason, setReason] = useState('');
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -981,47 +994,32 @@ function ArchiveModal({
     if (reason.trim().length < 3) return;
     setPending(true);
     setErr(null);
+    // No manual PARTIAL/COMPLETE — the server derives it from shot counts.
     const res = await fetch(`/api/episodes/${episodeId}/archive`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ state, reason: reason.trim() }),
+      body: JSON.stringify({ reason: reason.trim() }),
     });
     setPending(false);
     if (!res.ok) {
       const j = (await res.json().catch(() => ({}))) as { error?: string };
-      setErr(j.error ?? `Archive failed (${res.status})`);
+      setErr(j.error ?? `Move to Trash failed (${res.status})`);
       return;
     }
     onArchived();
     onClose();
     setReason('');
-    setState('PARTIAL');
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={`Archive ${episodeCode}`}>
+    <Modal open={open} onClose={onClose} title={`Move ${episodeCode} to Trash`}>
       <div className="space-y-4">
-        <div>
-          <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
-            Archive state
-          </label>
-          <div className="flex gap-2">
-            {(['PARTIAL', 'COMPLETE'] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setState(s)}
-                className={`flex-1 h-10 px-3 rounded-lg border text-sm font-medium transition ${
-                  state === s
-                    ? 'border-[var(--accent-warning)] text-[var(--accent-warning)] bg-[color-mix(in_oklab,var(--accent-warning)_12%,transparent)]'
-                    : 'border-glass text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                {s === 'PARTIAL' ? 'Partial — closed early' : 'Complete — explicitly retired'}
-              </button>
-            ))}
-          </div>
-        </div>
+        <p className="text-sm text-text-secondary">
+          Moves the episode to Trash (status <code className="font-mono">ARCHIVED</code>).
+          It leaves the ACTIVE list and can be purged later from the TRASH tab.
+          Whether it was finished or closed early is recorded automatically from
+          the shot counts.
+        </p>
         <div>
           <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
             Reason (required, audit log)
@@ -1029,20 +1027,15 @@ function ArchiveModal({
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder={
-              state === 'PARTIAL'
-                ? 'e.g. Veo quota exhausted on SC11, pipeline closed at 17/19'
-                : 'e.g. shipped, analytics window closed, no further work'
-            }
+            placeholder="e.g. Veo quota exhausted, closed at 17/19 — or: shipped, no further work"
             rows={3}
             className="w-full p-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm resize-none"
           />
         </div>
         <p className="text-[11px] text-text-muted">
-          Flips status to <code className="font-mono">ARCHIVED</code>, cancels any
-          QUEUED/RUNNING/RETRYING jobs on this episode, and logs an
+          Cancels any QUEUED/RUNNING/RETRYING jobs on this episode and logs an
           <code className="font-mono"> episode_archived</code> audit event.
-          Idempotent — re-archiving an ARCHIVED episode is rejected.
+          Idempotent — trashing an already-trashed episode is rejected.
         </p>
         {err && (
           <p className="text-xs text-[var(--accent-danger)]">{err}</p>
@@ -1050,7 +1043,66 @@ function ArchiveModal({
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={fire} disabled={pending || reason.trim().length < 3} variant="warning">
-            {pending ? 'Archiving…' : 'Archive episode'}
+            {pending ? 'Moving…' : 'Move to Trash'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// MarkCompleteModal — Director override that flips the episode to COMPLETE (done
+// / in catalog) from any stage. Reuses PATCH /api/episodes/[id]; the transition
+// guard allows this manual terminal move (see status-transitions.ts).
+// ──────────────────────────────────────────────────────────────────────────────
+function MarkCompleteModal({
+  open,
+  onClose,
+  episodeId,
+  episodeCode,
+  onDone,
+}: {
+  open: boolean;
+  onClose: () => void;
+  episodeId: string;
+  episodeCode: string;
+  onDone: () => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function fire() {
+    setPending(true);
+    setErr(null);
+    const res = await fetch(`/api/episodes/${episodeId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'COMPLETE' }),
+    });
+    setPending(false);
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      setErr(j.error ?? `Mark Complete failed (${res.status})`);
+      return;
+    }
+    onDone();
+    onClose();
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Mark ${episodeCode} complete`}>
+      <div className="space-y-4">
+        <p className="text-sm text-text-secondary">
+          Flips status to <code className="font-mono">COMPLETE</code> — the episode
+          is done and moves to the COMPLETE tab. This is a terminal status; to pull
+          it back out later, move it to Trash.
+        </p>
+        {err && <p className="text-xs text-[var(--accent-danger)]">{err}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={fire} disabled={pending}>
+            <CheckCircle2 size={14} /> {pending ? 'Marking…' : 'Mark Complete'}
           </Button>
         </div>
       </div>
