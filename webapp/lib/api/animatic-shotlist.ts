@@ -120,6 +120,45 @@ export function getAudioTracks(contract: AnimaticContract): AudioTrack[] {
   return [];
 }
 
+/** Minimal asset shape the timeline needs to locate approved music. */
+export interface MusicAssetRow {
+  file_type: string;
+  status: string;
+  version: number | null;
+  created_at: string;
+  drive_path: string | null;
+  drive_web_view_url: string | null;
+  filename: string;
+}
+
+/**
+ * Newest APPROVED `AUD-music` playable URL + filename, or null.
+ *
+ * Approved music is a standalone `AUD-music` row, but reaches the timeline ONLY as
+ * `audio_tracks[]` inside a `VID-animatic`. When music is approved EARLY (parallel /
+ * timeline-as-home, before a real animatic exists), the timeline renders a synthetic
+ * skeleton with no audio → the "uploaded + approved but silent" gap. The skeleton
+ * builder injects THIS url so the track plays anyway. "Newest" = max version, then
+ * newest `created_at` — the same tiebreak used to pick the canonical animatic/storyboard.
+ */
+export function newestApprovedMusic(
+  assets: MusicAssetRow[],
+): { url: string; filename: string } | null {
+  const best = assets
+    .filter((a) => a.file_type === 'AUD-music' && a.status === 'APPROVED')
+    .reduce<MusicAssetRow | null>((b, a) => {
+      if (!b) return a;
+      const bv = b.version ?? 0;
+      const av = a.version ?? 0;
+      if (av > bv) return a;
+      if (av < bv) return b;
+      return a.created_at > b.created_at ? a : b;
+    }, null);
+  if (!best) return null;
+  const url = best.drive_path ?? best.drive_web_view_url;
+  return url ? { url, filename: best.filename || 'music' } : null;
+}
+
 /**
  * Canonical WRITER for the music layer — the mirror of `getAudioTracks` (the
  * canonical reader). Returns a NEW contract whose music-layer track points at

@@ -83,6 +83,9 @@ export function AddAssetModal({
     height: number;
     cost_usd: number;
   } | null>(null);
+  // Brand video (intro/outro): studio-produced, upload-first — NOT image-gen.
+  const isVideo = section === 'video';
+  const [videoFile, setVideoFile] = useState<File | null>(null);
 
   // Cross-series Bible suggestions (autocomplete dropdown source)
   const { data: suggestData } = useSWR<SuggestionsResponse>(
@@ -94,13 +97,14 @@ export function AddAssetModal({
   // Reset on open/close
   useEffect(() => {
     if (open) {
-      setSlug('');
+      setSlug(section === 'video' ? 'intro' : '');
       setDescription('');
       setStagingUrl(null);
       setStagingMeta(null);
+      setVideoFile(null);
       setError(null);
     }
-  }, [open]);
+  }, [open, section]);
 
   const slugSafe = slug.toLowerCase().replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_');
   const slugValid = slugSafe.length >= 1;
@@ -171,6 +175,46 @@ export function AddAssetModal({
     onCreated();
   }
 
+  const canSaveVideo = isVideo && (slug === 'intro' || slug === 'outro') && !!videoFile && !saving;
+
+  // Brand-video path: create the DRAFT SBL-video_{intro|outro} row via the bible
+  // POST, then attach the mp4 via the SHARED /assets/[id]/upload endpoint. No new
+  // endpoint. Director LOCKs the card afterward; EXEC-STITCH reads the LOCKED row.
+  async function uploadSaveVideo() {
+    if (!videoFile) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const createRes = await fetch(`/api/series/${seriesId}/bible`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ section, slug }),
+      });
+      if (!createRes.ok) {
+        const j = await createRes.json().catch(() => ({}));
+        setError((j as { error?: string }).error ?? 'Create row failed');
+        return;
+      }
+      const created = (await createRes.json()) as { data?: { id?: string } };
+      const assetId = created.data?.id;
+      if (!assetId) {
+        setError('Create row returned no asset id');
+        return;
+      }
+      const fd = new FormData();
+      fd.append('file', videoFile);
+      const upRes = await fetch(`/api/assets/${assetId}/upload`, { method: 'POST', body: fd });
+      if (!upRes.ok) {
+        const j = await upRes.json().catch(() => ({}));
+        setError((j as { error?: string }).error ?? 'Upload failed (row created — attach the file from the card)');
+        return;
+      }
+      onCreated();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function pickSuggestion(s: CrossSeriesSuggestion) {
     setDescription(s.description ?? '');
     // Extract slug hint from filename like SS-S01-BIB-character_sandy-v01-LOCKED.png
@@ -183,6 +227,52 @@ export function AddAssetModal({
   return (
     <Modal open={open} onClose={onClose} title={SECTION_TITLES[section]} size="lg">
       <div className="space-y-4">
+        {isVideo && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
+                Bookend
+              </label>
+              <select
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono focus:outline-none focus:border-[var(--accent-primary)]"
+              >
+                <option value="intro">intro (SBL-video_intro)</option>
+                <option value="outro">outro (SBL-video_outro)</option>
+              </select>
+              <p className="mt-1.5 text-[11px] text-text-muted">
+                Studio-produced bookend. Upload the finished mp4, then LOCK the card —
+                EXEC-STITCH folds it into the branded final cut.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
+                Video file (mp4)
+              </label>
+              <input
+                type="file"
+                accept="video/mp4,video/quicktime"
+                onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-xs text-text-muted file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-glass file:bg-[var(--bg-elevated)] file:text-text-primary"
+              />
+              {videoFile && (
+                <div className="mt-2 rounded-lg overflow-hidden border border-glass">
+                  <video
+                    src={URL.createObjectURL(videoFile)}
+                    controls
+                    className="w-full h-auto block max-h-64"
+                  />
+                  <div className="px-2 py-1 text-[10px] text-text-muted font-mono">
+                    {videoFile.name} · {(videoFile.size / 1024 / 1024).toFixed(1)} MB
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {!isVideo && (
+        <>
         {/* Name combobox */}
         <div>
           <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
@@ -282,6 +372,8 @@ export function AddAssetModal({
             </div>
           )}
         </div>
+        </>
+        )}
 
         {error && (
           <div
@@ -299,14 +391,17 @@ export function AddAssetModal({
           <Button variant="ghost" onClick={onClose} disabled={saving || generating}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={!canSave}>
+          <Button
+            onClick={isVideo ? uploadSaveVideo : save}
+            disabled={isVideo ? !canSaveVideo : !canSave}
+          >
             {saving ? (
               <>
                 <Loader2 size={13} className="animate-spin" /> Saving…
               </>
             ) : (
               <>
-                <Save size={13} /> Save as DRAFT
+                <Save size={13} /> {isVideo ? 'Upload as DRAFT' : 'Save as DRAFT'}
               </>
             )}
           </Button>

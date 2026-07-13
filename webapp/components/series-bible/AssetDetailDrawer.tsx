@@ -146,7 +146,8 @@ export function AssetDetailDrawer({
   // Pick first browser-loadable URL via the shared resolver (legacy assets may
   // store OS-specific abs paths in staging_path; fall through to drive_path/history).
   const previewSrc = resolvePreviewSrc(asset, currentPromptEntry);
-  const isImage = !!previewSrc;
+  const isVideoAsset = asset.file_type.startsWith('SBL-video');
+  const isImage = !!previewSrc && !isVideoAsset;
 
   async function saveTextEdits() {
     setBusy(true);
@@ -279,8 +280,20 @@ export function AssetDetailDrawer({
             </AssetCollapsibleSection>
           )}
 
-          {/* Enrich CTA — when no image AND no prompt history yet */}
-          {!isImage && !promptDoc && editable && (
+          {isVideoAsset && previewSrc && (
+            <AssetCollapsibleSection
+              open={imageOpen}
+              onToggle={() => setImageOpen((v) => !v)}
+              label="Brand video"
+            >
+              <div className="rounded-lg overflow-hidden border border-glass">
+                <video src={previewSrc} controls className="w-full h-auto block" />
+              </div>
+            </AssetCollapsibleSection>
+          )}
+
+          {/* Enrich CTA — when no image AND no prompt history yet (not for video) */}
+          {!isImage && !isVideoAsset && !promptDoc && editable && (
             <div
               className="rounded-lg border border-dashed border-glass p-4 flex flex-col items-center gap-2.5"
               style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
@@ -302,7 +315,7 @@ export function AssetDetailDrawer({
               image_prompt history yet (legacy assets created before the
               metadata column or the seed script). Director can replace the
               image via Upload, which initialises the history v01. */}
-          {isImage && !promptDoc && editable && <LegacyUploadCard assetId={asset.id} onChanged={onChange} />}
+          {(isImage || isVideoAsset) && !promptDoc && editable && <LegacyUploadCard assetId={asset.id} onChanged={onChange} />}
 
           <AssetCollapsibleSection
             open={summaryOpen}

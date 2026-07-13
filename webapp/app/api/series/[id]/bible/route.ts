@@ -78,6 +78,16 @@ export const POST = withApiHandler(async (req, ctx) => {
   const { user, supabase } = await requireDirector();
   const body = await parseJson(req, PostBody);
 
+  // Brand video is consumed by EXEC-STITCH via the EXACT file_types
+  // SBL-video_intro / SBL-video_outro (runner.ts branded-master lookup). Any
+  // other slug would create a row that is silently invisible to the stitch, so
+  // constrain it here at the single creation chokepoint.
+  if (body.section === 'video' && body.slug !== 'intro' && body.slug !== 'outro') {
+    throw new ValidationError(
+      "Brand video slug must be exactly 'intro' or 'outro' — EXEC-STITCH reads only SBL-video_intro / SBL-video_outro.",
+    );
+  }
+
   const { data: series, error: serr } = await supabase
     .from('series')
     .select('id,code')

@@ -47,7 +47,8 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
       (asset.metadata.image_prompt.current_version ?? 1) - 1
     ];
   const previewSrc = resolvePreviewSrc(asset, promptEntry);
-  const isImage = !!previewSrc;
+  const isVideoAsset = asset.file_type.startsWith('SBL-video');
+  const isImage = !!previewSrc && !isVideoAsset;
   const statusColor = STATUS_COLORS[asset.status] ?? 'var(--text-muted)';
   const isLocked = asset.status === 'LOCKED';
   const name = readableName(asset);
@@ -93,7 +94,15 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
           <div
             className="aspect-square w-full flex items-center justify-center text-text-muted text-xs"
           >
-            {isImage ? (
+            {isVideoAsset && previewSrc ? (
+              <video
+                src={previewSrc}
+                className="w-full h-full object-cover"
+                muted
+                playsInline
+                preload="metadata"
+              />
+            ) : isImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={previewSrc!}
@@ -101,7 +110,7 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="px-2 text-center">no preview</span>
+              <span className="px-2 text-center">{isVideoAsset ? 'no video yet' : 'no preview'}</span>
             )}
           </div>
 

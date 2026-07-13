@@ -56,15 +56,15 @@ export function LibraryFeeds({
         if (section.section === 'general_idea') return null;
         const sec = section.section as Exclude<SbSection, 'general_idea'>;
         const isAudioMvp = sec === 'audio';
-        // Brand video (intro/outro) is a studio-produced, upload+lock asset —
-        // registered via the compose script + bible route, not the image-gen
-        // modal. Show the section (Director sees LOCKED bookends) but disable Add.
-        const isStudioProduced = sec === 'video';
-        const addDisabled = isAudioMvp || isStudioProduced;
+        // Brand video (intro/outro) is a studio-produced, upload+lock asset — the
+        // Add modal opens an UPLOAD-first variant (pick intro/outro + mp4 → DRAFT),
+        // then the Director LOCKs the card and EXEC-STITCH folds it into the branded
+        // master. Not the image-gen path (generate-image rejects video).
+        const addDisabled = isAudioMvp;
         const addTitle = isAudioMvp
           ? 'Audio media generation lands in Step 8'
-          : isStudioProduced
-            ? 'Brand intro/outro are studio-produced — upload + lock, not authored here'
+          : sec === 'video'
+            ? 'Upload a produced intro/outro mp4, then lock it'
             : ADD_LABELS[sec];
         return (
           <section key={sec} className="space-y-2">

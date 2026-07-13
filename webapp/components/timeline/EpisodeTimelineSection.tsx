@@ -32,6 +32,7 @@ import {
   isAnimaticV1,
   extractShotsFromStoryboard,
   newAnimaticContract,
+  newestApprovedMusic,
   excludedShotIdsFromEpisodeMeta,
   type AnimaticContract,
   type AnimaticShot,
@@ -270,7 +271,17 @@ export function EpisodeTimelineSection({
       shot_role: s.shot_role,
       caption: (s.key_beat ?? s.action)?.slice(0, 200) || undefined,
     }));
-    return newAnimaticContract(shotList);
+    const skeleton = newAnimaticContract(shotList);
+    // Timeline-as-home music (2026-07-13): inject the newest APPROVED AUD-music so
+    // it plays on the skeleton even before a real VID-animatic exists (the
+    // Director's "uploaded + approved but no music" gap). Display-only, SYNTHETIC
+    // path only (runs only when animaticAsset === null); the real-animatic branch of
+    // activeContract is untouched (it carries baked music). getAudioTracks falls back
+    // to music_url when audio_tracks[] is empty (skeleton has none) → no shadowing.
+    const music = newestApprovedMusic(assets);
+    return music
+      ? { ...skeleton, music_url: music.url, music_filename: music.filename }
+      : skeleton;
   }, [animaticAsset, data]);
 
   // The contract that drives the timeline: the real animatic (with overrides/
