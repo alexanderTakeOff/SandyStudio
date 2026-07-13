@@ -1,0 +1,100 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\mode-validator.cjs'"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\naming-validator.cjs'"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\locked-status-guard.cjs'"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\plan-md-update-guard.cjs'"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\verify-trio-on-push.cjs'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\change-journal.cjs'"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\plan-md-staleness-check.cjs'"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\parallel-session-warn.cjs'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\training-capture.cjs'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\session-end-memo-check.cjs'"
+          }
+        ]
+      }
+    ]
+  }
+}

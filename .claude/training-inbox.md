@@ -1053,3 +1053,240 @@ q2 a .  и обычный аплоад медиа в таймлайне чере
 
 ## 2026-07-09 10:55 · director-msg (hook) · NEW · (triage at distill)
 Давай запусти отдельного агента, пусть он поразмышляет, покрутит наше размышление и поищет, где у нас в размышлениях дырки, во-первых, а во-вторых, что мы ещё не додумали, если уж мы приходим к такому серьёзному изменению.
+
+## 2026-07-11 20:22 · director-msg (hook) · NEW · (triage at distill)
+а есть возможноть запустить стич с
+  указанием собирать сразу с обрезкой до формата 9:16 ?
+─────────────────────────────────────────────────────────
+
+## 2026-07-12 09:56 · director-msg (hook) · NEW · (triage at distill)
+very usefull analisis/ let put it in the separate skill / i will read it sometimes
+
+## 2026-07-12 11:12 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>ac2c297d07bcf379b</task-id>
+<tool-use-id>toolu_011md2RNw445HoiRvPqEHMLj</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio\a5636c3f-7dae-422e-8bb5-c34146fe0ecf\tasks\ac2c297d07bcf379b.output</output-file>
+<status>completed</status>
+<summary>Agent "Map existing cost/spend tracking" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I now have a complete, evidence-grounded picture. Here is my report.
+
+---
+
+# Cost/Spend Tracking Infrastructure — SandyStudio webapp
+
+## TL;DR
+There are **TWO completely separate systems** that never touch each other:
+- **The "Autonomy Scorecard"** (`episode_scorecard` table) — tracks autonomy/effort/latency. It has **NO dollar field at all**. It does track wall-clock time (latency to first cut) but **zero $**.
+- **The money ledger** (`budget_log` table + `episodes.budget_spent`) — the actual per-call $ tracker. This is where all spend lives, and it is reasonably complete.
+
+If anyone believes the Scorecard "captures cost", that is false — verified below.
+
+---
+
+## 1. The Autonomy Scorecard — shipped, but it is NOT a cost tracker
+
+It is real and shipped:
+- Deriver: `webapp/lib/agents/scorecard/compute-scorecard.ts`
+- Persist/render: `webapp/lib/agents/scorecard/persist-scorecard.ts`
+- Table: `webapp/supabase/migrations/0041_episode_scorecard.sql`
+- Trigger: `webapp/inngest/functions/episode-scorecard.ts`; backfill `webapp/tools/scorecard-backfill.ts`; dry-run `webapp/scripts/scorecard-dryrun.ts`
+
+What it measures per episode (`ScorecardRecord`, compute-scorecard.ts:34-68 and the SQL columns 0041:26-56): shot_count, total_agent_runs, runs/shot, "code-able intelligent touches" (human vs AI-EP), autonomy %, creative-gate approvals, agent_failures, churn_refires, stuck_shots_final, and `latency_first_final_cut_s`.
+
+- **Wall-clock time: YES** — `latency_first_final_cut_s` (compute-scorecard.ts:296-301; column 0041:49).
+- **$ cost: NO.** There is no cost column in the migration, no `costUsd` in `ScorecardRecord`, and `computeScorecard` never queries `budget_log` or `episodes.budget_spent`. Its "cost" language (compute-scorecard.ts:7-8) is a metaphor — cost = Director-time / Opus-tokens as *effort*, priced in touches, not dollars. `persist-scorecard.ts` inserts no money field either.
+
+**Verdict: the Scorecard does not capture money at all.** The memory that "a scorecard shipped" is true; the implication that it tracks $ is false.
+
+---
+
+## 2. Per-provider cost logging — where the money actually is
+
+The real ledger is `budget_log` (migration 0002) + running aggregate `episodes.budget_spent`, written by `recordCost()` in `webapp/lib/budget.ts:305`. Each provider computes its own `cost_usd`, and the pipeline stamps it into the ledger at two call sites:
+- Generic agents → `webapp/lib/agents/factory.ts:542` (`recordCost` with `costUsd: exec.result.cost_usd`).
+- Video specifically → `webapp/inngest/functions/exec-vgen.ts:511`.
+
+Per source:
+
+| Source | Provider file:line (price) | Recorded? |
+|---|---|---|
+| **Video** fal Seedance | `fal-seedance.ts:351,365` (`COST_USD_PER_SECOND × resolutionMult`) | **YES** via exec-vgen.ts:511 |
+| **Video** Veo | `veo-gemini.ts:100,257,271` (per-second tier map) | **YES** |
+| **Video** WAN | `fal-wan.ts:26,166` ($0.05/s) | **YES** |
+| **Image** OpenAI gpt-image-2 | `openai-image.ts:46-47,138` (price ladder) + `openai-image-edit.ts:136`, `openai-edits-multi.ts:163` | **YES** via factory.ts:542 |
+| **Image** fal (ideogram/flux/upscale) | `fal-ideogram.ts:176`, `flux-pro-ultra-fal.ts:226`, `upscale-fal.ts:161` | **YES** |
+| **Image** Gemini flash | `gemini-flash-image.ts:157` (`cost_usd: 0` — free tier) | **YES but $0** |
+| **LLM Anthropic** (studio agents) | `anthropic-text.ts:183 computeCostUsd`, rates 154-163 | **YES** via factory.ts:542 |
+| **LLM OpenAI** (Polina/concierge) | priced in same table `anthropic-text.ts:159-161` (gpt-5.4/5.5), recorded by `lib/concierge/cost.ts:40 recordConciergeCost` | **YES** (separate path, see below) |
+| **Music/Audio** EXEC-MGEN | `runner.ts:2493-2500` → `mockMusic` (`mock-providers.ts:147,162` → `cost_usd: 0`) | **MOCK ONLY — always $0** |
+
+Notes:
+- **Concierge/Polina** default provider is **OpenAI gpt-5.4-mini** (`lib/concierge/llm.ts:48-65`), and it IS priced correctly (rates present in `anthropic-text.ts:159-161`; the 2026-06-27 mis-pricing-to-Sonnet bug is explicitly guarded there). Its rows go to `budget_log` under `agent_id='EXEC-CONC'` but **deliberately do NOT touch `episodes.budget_spent`** (cost.ts:11-15) — studio-global, doesn't consume the per-episode ceiling.
+- The ledger even records `cost=0` rows for a complete audit trail (budget.ts:301-303).
+
+---
+
+## 3. Aggregation point — where "total $ for episode E" is summed
+
+Two authoritative summers, both read `budget_log`:
+- **`webapp/lib/budget.ts:208 getBudgetSummary()`** — sums `budget_log.cost_usd` by `api_provider`+`operation` for one episode, plus returns `episodes.budget_spent`/`budget_ceiling`. This is the "where did the money go" SSOT.
+- **`webapp/app/api/budget/route.ts:38-93`** — studio-wide roll-up; per-episode `total` (route.ts:79) and a `breakdown` that folds concierge into a distinct `concierge` bucket (route.ts:73) so Polina's spend is visible in the episode total but doesn't consume the ceiling.
+
+Ceiling/reservation logic: `assertBudgetAvailable` (budget.ts:158), atomic RPC `increment_budget_spent` (budget.ts:116; migration `0037_budget_atomic_increment_rpc.sql`), `BudgetExceededError` (budget.ts:44), default ceiling $150 (budget.ts:39-42). Diagnostic scripts: `webapp/scripts/e17-spend.ts`, `webapp/scripts/e15-economics.ts`.
+
+---
+
+## 4. Completeness verdict (the money ledger, not the Scorecard)
+
+Captured accurately:
+- **Video (most expensive line): CAPTURED.** All three providers price per-second and record via exec-vgen.ts:511. This is *not* dropped — the failure mode you feared does not exist here.
+- **Image: CAPTURED** (OpenAI + fal priced; Gemini legitimately $0 free-tier).
+- **Anthropic LLM: CAPTURED.**
+- **OpenAI LLM (Polina): CAPTURED** in `budget_log`, correctly priced.
+
+Gaps / caveats:
+1. **Music/Audio is MOCK — always `cost_usd: 0`** (`mock-providers.ts:147-163`). There is no real Suno/paid music provider wired. So if real music generation is happening outside this pipeline, it is invisible; inside the pipeline it simply costs $0. `music-processor.ts` contains no cost logic (local ffmpeg-style processing, not a paid API).
+2. **`episodes.budget_spent` (the number the ceiling gate enforces) EXCLUDES concierge/Polina spend by design** (cost.ts:11-15). Polina's $ only appears when you separately sum `budget_log WHERE agent_id='EXEC-CONC'` (as `api/budget/route.ts` and `e15-economics.ts` do). So "budget_spent" ≠ "true total episode cost"; the true total requires the `budget_log` aggregation, not the episode column.
+3. **The Autonomy Scorecard and the money ledger are never joined.** No file reads both. A cost analysis must go through `budget_log`, not `episode_scorecard`.
+
+Net: the $ ledger is materially complete for video/image/LLM. The only real money hole is that **music is mock ($0)**; the only *presentation* trap is that `episodes.budget_spent` silently omits Polina.
+
+---
+
+## 5. How to cross-check against a real run
+
+`budget_log` **is** the per-provider invocation ledger — it is the right table to reconcile against reality. Columns (migration 0002): `episode_id, job_id, agent_id, api_provider, model_or_tier, operation, cost_usd, tokens_used, duration_ms, created_at`.
+
+For one real episode E:
+- **Ground-truth spend, per call:** query `budget_log WHERE episode_id = E` (one row per successful paid call, job-id-keyed idempotent — budget.ts:12-16). `scripts/e15-economics.ts:10` already does exactly this (by agent, by operation, plus a Polina deep-dive and a "redundant paid render attempts" check at line 49-53). `scripts/e17-spend.ts` is the concierge-focused variant.
+- **Runs / attempts (to catch paid retries not in the ledger):** `jobs WHERE episode_id = E` (compute-scorecard.ts:172; e15-economics.ts:43,49 compares COMPLETED VGEN jobs vs VID-shot assets to spot redundant paid renders).
+- **Gate/autonomy events:** `gate_decision_log` and `activity_events` (compute-scorecard.ts:206,261).
+- **Reconcile:** compare `getBudgetSummary(E).byProviderOperation` (budget.ts:208) against the raw provider `cost_usd` you'd expect from the per-second/per-image formulas in the provider files above (e.g. Seedance = duration × `COST_USD_PER_SECOND[tier]` × resolutionMult, fal-seedance.ts:351). Any video render present in `jobs`/assets but absent from `budget_log` is un-billed; any `budget_log` row with `api_provider` mock is a mock run.
+
+There is no `prod.log`/`inngest.log` cost source to consult — the DB `budget_log` table is the invocation log of record.</result>
+<usage><subagent_tokens>74774</subagent_tokens><tool_uses>23</tool_uses><duration_ms>163097</duration_ms></usage>
+</task-notification>
+
+## 2026-07-12 11:18 · director-msg (hook) · NEW · (triage at distill)
+давай здесь будем "про знания и стратегии" а не "про код" здесь советуемся и советуем.  вот пледложения от "кодера", что скажешь? : 
+A. Что вообще есть «успех» по форматам (на чём судим)
+
+- Shorts (охват/тест гэга): главное — completion / avg % досмотра (гэг зашёл = не свайпнули; свайп-эвэй это враг), второе — views (охват), третье — лайки+шеры/просмотр. По твоей доктрине: первые 1-2 сек + досматриваемость.
+- Long-form (глубина): главное — удержание (averageViewPercentage / средняя длит.), второе — CTR тумбнейла, плюс точка просадки удержания → в какой шот теряем зрителя (мостим на storyboard-шоты).
+
+B. Что есть «взорвался / зашло» — ОТНОСИТЕЛЬНО, не абсолютно
+
+Канал новый и маленький — абсолютные пороги («10k просмотров») бессмысленны и обманут. Поэтому:
+- Ранжируем каждый short против СВОИХ же шортсов; «пере-индексировал» = верхняя треть по композиту (с весом на completion).
+- Честный дисклеймер: на 9 кроп-всего-эпизода шортсах это направленный сигнал, не статистика. Настоящая per-гэг правда — после P2 (гэг-нарезки). Не будем городить точные пороги на тонких данных: строим ранжированный лидерборд + направленный совет, уточняем по мере роста N.
+
+C. Анатомия карточки-совета (визуально)
+
+Каждая карточка: иконка оси (🎭/📉/📅) · заголовок «сделай» · доказательство (метрика-триггер) · сила сигнала (уверенность, привязана к N) · цель (следующий бриф / эпизод / тип гэга). Ранжированы по импакту. Человек решает.
+
+D. Слой честности (важно)
+
+Советник обязан маркировать уверенность: малый N → «направленно, низкая уверенность». Никогда не подаёт флук как мандат. Это прямое продолжение твоего «рантайм важнее предположений» — не переобещать на шумных данных.
+
+Два решения
+
+q15 — «взорвался» = относительно-своего-канала ранжирование (рекомендую, маленький канал) / абсолютные пороги / гибрид?
+
+q16 — У шортсов вес на completion-rate выше, чем на сырые views? (рекомендую да — удержание это то, что награждают и алгоритм, и твоя доктрина). q16y/q16n
+
+И открытым текстом: насколько прескриптивным должен быть совет — конкретно «усилить гэги с автоматами-антагонистами» (паттерн) или до уровня «сними ещё про vending-machine» (буквально)? Я бы шёл на паттерн (обобщение переносится на новые эпизоды, буквальный повтор приедается — как в твоём sandy-gag-library).
+
+## 2026-07-12 15:39 · director-msg (hook) · NEW · (triage at distill)
+"coder"'s recap: Building the AI animation factory's shorts pipeline: P1 funnel bridge, P3 audience quality-sensor dashboard, and a separate Shorts playlist are all shipped and deployed live. Next: open /audience in your browser to review the scout-mode advisor, or start P2 gag-cutting on a new episode.
+Технический долг этой сессии (по убыванию)
+
+1. HIGH — хрупкость деплоя из-за Google Fonts. next/font/google тянет Inter + JetBrains Mono на этапе сборки → ETIMEDOUT, каждый деплой требовал 1-3 попытки. Это реальная дыра надёжности. Фикс дешёвый: self-host двух шрифтов (next/font/local), сборка перестаёт зависеть от сети. Кандидат №1 в safe_and_sustainable.
+
+2. MEDIUM — /audience тянет аналитику вживую на каждый заход. ~19 API-вызовов на загрузку, без кэша → квота + медленно по мере роста канала. Правильная архитектура: читать persisted REV-analytics (их уже пишет цепочка schedule-analytics), а не дёргать YouTube каждый раз. Я срезал это ради v1.
+
+3. MEDIUM — advisor v1 частичный (осознанные срезы):
+- shippedCategories = [] захардкожен → карта дыр показывает все 10 категорий как непройденные, пока нет тегирования гэгов (ждёт P2).
+- loops + shares (сигнал вирусности) и impressions/CTR/traffic — не тянутся (провайдер берёт только ядро).
+- retention→шот: движок умеет biggestDrop, но маппинг % → конкретный шот (cumsum-таймкоды) в роут не вплетён.
+- Пороги N*/X — константы в коде, а доктрина требует config-слой.
+
+4. LOW — MAP «эпизод→parent-id» дублируется в 3 скриптах (polish/backfill/batch). Legacy S15, одноразовое — терпимо, но DRY-долг. Настоящий источник — episodes.metadata.youtube_video_id.
+
+5. LOW — ShortsPanel-роут гоняет ffmpeg синхронно (1-2 мин на запрос). Локально ок, но хрупко (браузер висит, нет прогресса/ретрая).
+
+Плюс напоминание: 9 шортсов — это кроп-всего-эпизода (тест), настоящие гэг-нарезки — это P2. ===что думаешь
+
+## 2026-07-12 16:22 · director-msg (hook) · NEW · (triage at distill)
+"coder" : Нынешние 9 слабые не потому что они нарезка, а потому что это тупой центр-кроп
+  всего эпизода — по краям всё теряется. Фикс — вертикаль-безопасная композиция на
+  этапе сториборда: ключевое действие гэга держится в центральной 9:16-колонке, чтобы
+  кадр пережил вертикальный кроп. Марджинальная стоимость этого ≈ ноль (это
+  ограничение кадрирования, не лишние рендеры). Это стоит сделать storyboard-правилом
+  — тогда P2-нарезка даёт нативного качества шортсы из landscape-эпизода, без потери
+  сторон. === any ideas?
+
+## 2026-07-12 16:26 · director-msg (hook) · NEW · (triage at distill)
+sorry copy-past mistake - it was your phrase. real phrase of coder : Значит правила, которое ты описываешь — «ключевое действие гэга держится в центральной 9:16-колонке, чтобы кадр пережил вертикальный кроп» — на этапе сториборда НЕТ. Идея верная, но добавить надо.
+
+Риски (честно, как партнёр — они реальные, хоть рендеры и правда не растут):
+
+1. «Всё в центр» убьёт landscape-гэги. Половина твоей комедии — латеральная: объект едет слева→направо, two-shot на разнесении, wide-establishing. Жёсткое «держи всё в центральной колонке» расплющит 16:9 и зарежет именно боковые гэги. Поэтому правило должно быть условным (для эпизодов с shorts в delivery_targets) и про key beat / punchline, а не «весь шот всегда по центру».
+2. Конфликт с orbit-подписью. У нас 80%+ шотов — орбита камеры (camera_orbit_signature_policy). Орбита таскает субъекта по кадру → он выезжает из центральной колонки к середине шота. Тот же класс натяжения, что уже описан в anchor_mode_orbit_ref_only. Ответ тот же: safe-column применяем к пиковому кадру гэга, а не ко всей траектории.
+3. «≈0 стоимости» — только для БУДУЩИХ эпизодов. Ретроактивно оно не помогает: 9 текущих (ты их и так списал в тесты) + любой уже отснятый эпизод останутся center-crop-слабыми. Выгода приходит только к эпизодам, засториборженным ПОСЛЕ правила.
+
+Пункт 3 напрямую бьёт по «погнали P2 на свежем эпизоде»: если целевой эпизод для P2-смоука уже засториборжен/отрендерен — P2-нарезка на нём даст ровно ту же боль потери сторон, что ты описываешь. Vertical-safe правило upstream нарезки, а не внутри неё.
+
+Что предлагаю
+
+Сделать это условным сториборд-правилом (skill storyboarder-situational-comedy + agents/exec/storyboarder.md): «когда Brief.delivery_targets включает shorts/vertical — key beat гэга читается в центральной 9:16-safe колонке; если гэг по природе латеральный → флаг landscape-only / needs reframe, не ломаем композицию». Значение (нужны ли shorts) берём из Brief, не хардкодим — по skill-abstraction.
+
+## 2026-07-13 06:28 · director-msg (hook) · NEW · (triage at distill)
+Lets make assets - intro video, outro video,  intro music, outro music, main theme music. CONTEXT :Что нашёл (прошлое обсуждение в SStudio): docs/distribution/strategy.md §7 (end screens/cards, «next episode» card, subscribe), media_formats.md (outro=closing music, sting), api_integrations.md (музыкальные intro_bars/outro_bars, fade). И жёсткая доктрина оттуда: «NO slow intro» — хук front-load, у Shorts интро нет.
+
+ТЕХ-ТРЕБОВАНИЯ — INTRO / OUTRO (брендовые буки эпизода)
+
+INTRO (стинг серии):
+1. Длительность ≤2.0с HARD (long-form), 0с для Shorts — интро НЕ должен стоять между зрителем и хуком (ретеншн-закон).
+2. Плейсмент: cold-open первым (3–5с гэга) → интро-стинг → эпизод. Никогда pre-roll «в лоб».
+3. Контент: лого Сэнди (песочные часы) + один звуковой sting, без слоу-фейда; несёт свой аудио, не зависит от эпизод-музыки.
+4. Формат: produce-once, 2 мастера — 1920×1080 (16:9) и 1080×1920 (9:16); амортизируется на все эпизоды (Game B ≈ $0/эпизод).
+5. Ассет SS-{S}-BIB-intro_sting (студийный, LOCKED, версионируемый) → ститчится EXEC-STITCH.
+
+OUTRO (end-card + воронка подписки):
+6. Длительность 5–20с (окно end-screen), long-form ONLY; Shorts = не outro, а loop-back на первый кадр.
+7. Последний гэг чистый: overlay не перекрывает финальный кадр — продлить hold, если надо.
+8. Safe-зоны под YouTube-элементы: Subscribe + Next/best video (§7); музыка outro + fade_out запекаются здесь.
+9. Брендинг: лого + «SANDY the HOURGLASS» + CTA «подпишись / следующий эпизод».
+10. Формат: тоже 2 мастера (16:9/9:16), produce-once, ассет SS-{S}-BIB-outro_card LOCKED.
+11. Made-for-Kids = NO — иначе YouTube отключает end screens/cards и убивает воронку (§7).
+
+Guru-нота: intro/outro — амортизируемые студийные ассеты (сделал раз → ~$0/эпизод, идеально для фабрики), но delivery_targets управляет: shorts → интро OFF + loop; long-form → стинг + outro-card. И до первых публичных данных держи интро ≤2с cold-open-first — иначе Первый Доказательный Эпизод провалит хук ещё до гэга.БРИФ: intro/outro — greenfield, минимум, reuse-first
+
+Контекст: кода нет. Это два produce-once брендовых бука, амортизируемых на ВСЕ эпизоды (Game B: сделал раз → ~$0/эпизод). Связаны ретеншн-доктриной (strategy.md §7 + «NO slow intro»).
+
+Анти-аддитивность (СНАЧАЛА, раз greenfield):
+1. НЕ строить новый компоновщик. Переиспользовать EXEC-STITCH — он уже конкатенирует финал; intro/outro = два лишних клипа в начало/конец.
+2. НЕ строить пер-эпизодный генератор. Intro/outro = BIB-ассеты, LOCKED, версионируемые, отрендеренные ОДИН раз (можно даже собрать ручками/существующими IMG+VID+music стадиями и залить).
+
+Ассеты (2 мастера каждый — 16:9 1920×1080 + 9:16 1080×1920):
+3. SS-{S}-BIB-intro_sting — ≤2.0с HARD, свой звуковой sting (media_formats), без слоу-фейда.
+4. SS-{S}-BIB-outro_card — 5–20с, музыка outro + fade_out (media_formats/api_integrations), safe-зоны под end-screen элементы.
+
+Провязка в стиче (единственная реально новая логика):
+5. EXEC-STITCH читает episode.metadata.delivery_targets. Long-form → [intro_sting → body → outro_card], мастер по аспекту эпизода. Shorts-only → НИ intro, НИ outro (front-load hook + loop-back, §2 доктрины). Пусто по умолчанию — правило спит, если таргета нет.
+6. Плейсмент интро — флагом, не хардкодом: v1 = intro первым; поле cold_open_seconds (default 0) под будущий cold-open-first, чтобы не переписывать позже.
+7. Аутро: последний гэг чистый — overlay не перекрывает финальный кадр; при налёте продлить hold. Музыка outro запечена В ассет, не ремикс на эпизод.
+
+Гоча — проверить ДО постройки (не обещать API-end-screens вслепую):
+8. Запечённый outro-СЕГМЕНТ кодируется (стич). Но нативные YouTube end-screen элементы (Subscribe / Next-video) через Data API скорее всего НЕ ставятся (известное ограничение) → верифицировать; если нет — это ручной шаг Studio для EXEC-PUB/Директора, НЕ код. madeForKids=NO держать (иначе end screens/cards отключаются). 
+on timeline -no in/outro . stich makes TWO vertions with or without (depends on intro ON/off , outro ON/OFF in stich workspace settings) ===1===
+
+## 2026-07-13 08:51 · director-msg (hook) · NEW · (triage at distill)
+making intro/ make research using correspond SKILL. find the viral cartoon video 1...5 minutes - give 5 ideas for intro video
+
+## 2026-07-13 10:10 · director-msg (hook) · NEW · (triage at distill)
+"stream of golden shinig sand grains pours down from above" looks better then  a "stream of golden sand pours down from above".
+add very low camera zoom in , not too much .
+go make video

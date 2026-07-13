@@ -65,3 +65,11 @@ webapp/scripts/update-e*-metadata.ts
 webapp/scripts/e1*-economics.ts
 webapp/scripts/test-one-critic.ts
 webapp/scripts/wait-router.ts
+# E17/E19 live-run throwaways (same policy — session diagnostics, kept local)
+webapp/scripts/e17-*
+webapp/scripts/e19-*
+# In-repo session handover/scout notes from live runs (breadcrumbs, not tooling)
+.claude/e17-*.md
+
+# Runtime logs (app / inngest / build / dist) — never commit
+webapp/*.log
