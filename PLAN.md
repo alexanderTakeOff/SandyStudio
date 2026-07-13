@@ -23,6 +23,13 @@
 Date:   2026-07-13 (Brand-бумперы SHIPPED+LOCKED. Прод master `aef0c137` (пересобран, health 200×3). INTRO+OUTRO (S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy», музыка Flacon Pop Loop запечена) **LOCKED** как `SBL-video_intro/outro` на S15 → EXEC-STITCH теперь собирает брендовый мастер по тумблерам. Инструмент `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф→Seedance fast 720p→апскейл 1080p, ~$1.85/шт) переиспользуем. UI-фикс: video-превью постеры в Library card/drawer. NEXT (опц.) = двух-мастер смоук на реальном эпизоде (закрывает Stage 4). RECONCILER **OFF**.)
 Mode:   ===5=== EDIT (Director-authorized).
 
+2026-07-13 (Timeline music-fix — Тео, КОД). «Залил+заапрувил музыку — нет в таймлайне.» Runtime-корень (эп `c06c721f`,
+  read-only DB): ДВА бага, оба нужны — (1) `newestApprovedMusic` матчил точным `=== 'AUD-music'`, дропая реальный
+  композиторский `AUD-music-main` → `startsWith`+`staging_path`-fallback; (2) инъекция музыки жила лишь в synthetic-ветке,
+  а немой авто-APPROVED-аниматик уводил таймлайн в реальную ветку → перенёс fallback в общий `activeContract` (обе ветки,
+  не перетирает запечённое). SHIPPED master `b536aa91` + rebuild (health 200×3). tsc·0 / music 7/7 (+2 регресс) / кластер
+  92/92. OPEN=глубокий bake-баг (bake newest-ANY-status vs display APPROVED) → memo `backlog_td_music_bake_animatic_selection`.
+
 2026-07-13 (INTRO/OUTRO брендинг-буки — Тео, КОД, $0-фундамент). Директор: intro/outro НЕ на таймлайне; стич
   делает ДВЕ версии по тумблерам intro/outro ON/OFF. **SHIPPED + DEPLOYED (master `bea6665`):** (0) SBL-таксономия +`video`/mp4
   (`series-bible.ts` + 3 UI-мапы + prompt-builder + bible-роут zod/ext); (1) `scripts/compose-brand-clip.ts` —
