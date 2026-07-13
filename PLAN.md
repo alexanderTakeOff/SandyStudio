@@ -20,11 +20,11 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-13 (INTRO/OUTRO брендинг-буки — КОД, $0-фундамент. Стич делает ДВЕ версии: чистый мастер + брендовый (intro→body→outro) по тумблерам; медиа=produce-once LOCKED SBL-video/audio. NEXT = произвести визуалы (fal.ai) + Suno-музыка Директора → залить+LOCK → двух-мастер смоук. RECONCILER **OFF**; прод на master `de12089`.)
+Date:   2026-07-13 (Оркестратор-консолидация: сегодняшняя работа собрана в master + ЗАДЕПЛОЕНА. Прод на master `bea6665` (health app+inngest 200, BUILD_ID 12:21). В деплое: (a) brand-bookends двух-мастер стич; (b) concierge-фикс gpt-5.6 tools+reasoning 400 + полные tier-id sol/terra/luna; reasoning Полины=`low` живой. NEXT = произвести визуалы intro/outro (fal.ai) + Suno-музыка → залить+LOCK → двух-мастер смоук. RECONCILER **OFF**.)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-13 (INTRO/OUTRO брендинг-буки — Тео, КОД, $0-фундамент). Директор: intro/outro НЕ на таймлайне; стич
-  делает ДВЕ версии по тумблерам intro/outro ON/OFF. **SHIPPED (не задеплоено):** (0) SBL-таксономия +`video`/mp4
+  делает ДВЕ версии по тумблерам intro/outro ON/OFF. **SHIPPED + DEPLOYED (master `bea6665`):** (0) SBL-таксономия +`video`/mp4
   (`series-bible.ts` + 3 UI-мапы + prompt-builder + bible-роут zod/ext); (1) `scripts/compose-brand-clip.ts` —
   $0 запекает Suno-музыку Директора на наш IMG→VID визуал (reuse `ffmpegStitchEpisode`, 1-эл. массив); (2) ядро —
   `resolveStitchSettings` (`animatic-shotlist.ts`, default ON/ON, cold_open STUB) + `buildBrandedInputs`
