@@ -182,6 +182,8 @@ export function EpisodeTimelineSection({
   const [filter, setFilter] = useState<FilterKey>('all');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  // 👁 Visual Critic advisory result banner (per-shot kebab or whole-episode header).
+  const [visualCheck, setVisualCheck] = useState<{ busy?: boolean; msg?: string } | null>(null);
   // TD-84 (2026-06-16): the legacy "Generate VGEN" drawer footer (provider
   // dropdown + Fast/Standard) was removed. It fired the plan-less
   // generate-single-shot path, which the C1 gate silently rejected, and it
@@ -739,6 +741,33 @@ export function EpisodeTimelineSection({
     }
   }
 
+  // 👁 Visual Critic (2026-07-13, advisory): run the vision check on this shot's
+  // rendered ref. Logs a verdict to the activity feed AND surfaces a compact banner
+  // here. Never changes status. shotId omitted → whole-episode sweep (header button).
+  async function handleVisualCheck(shotId?: string): Promise<void> {
+    setVisualCheck({ busy: true, msg: shotId ? `Проверяю ${shotId}…` : 'Проверяю эпизод…' });
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/visual-critic`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(shotId ? { shotId } : {}),
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        data?: { checked?: number; flagged?: number; results?: Array<{ shotId: string | null; verdict: string | null; summary: string | null }> };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(j.error ?? 'Visual check failed');
+      const d = j.data;
+      const first = d?.results?.[0];
+      const msg = shotId && first
+        ? `👁 ${first.shotId ?? shotId} → ${first.verdict ?? '?'}: ${first.summary ?? ''}`
+        : `👁 Проверено ${d?.checked ?? 0}, помечено ${d?.flagged ?? 0}. Детали — в Activity.`;
+      setVisualCheck({ msg });
+    } catch (e) {
+      setVisualCheck({ msg: `👁 Ошибка: ${(e as Error).message}` });
+    }
+  }
+
   // Materialize-on-first-edit (E25 2026-07-10): the synthetic (storyboard-derived)
   // timeline has no backing VID-animatic to persist duration edits into. When the
   // Director saves timing for the first time, create the animatic vessel from the
@@ -845,6 +874,16 @@ export function EpisodeTimelineSection({
               onOpen={(assetId) => openAssetSmart(assetId)}
             />
           </div>
+          <div onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => void handleVisualCheck()}
+              disabled={visualCheck?.busy}
+              title="Advisory Visual Critic — check every rendered ref in this episode against the storyboard + style. Logs verdicts to Activity; never changes status."
+              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border border-glass text-text-secondary hover:text-text-primary disabled:opacity-40"
+            >
+              👁 {visualCheck?.busy ? 'Checking…' : 'Visual check'}
+            </button>
+          </div>
           <div className="flex-1" />
           <span className="text-[11px] text-text-muted">
             {collapsed ? 'Expand' : 'Collapse'}
@@ -853,6 +892,15 @@ export function EpisodeTimelineSection({
         </div>
         {!collapsed && (
           <div className="px-3 pb-3 pt-0 border-t border-glass space-y-2">
+            {visualCheck?.msg && (
+              <div
+                className="flex items-start gap-2 text-[11px] px-2.5 py-1.5 rounded-lg"
+                style={{ background: 'color-mix(in oklab, var(--accent-info) 10%, transparent)', color: 'var(--text-primary)' }}
+              >
+                <span className="flex-1 whitespace-pre-wrap">{visualCheck.msg}</span>
+                <button onClick={() => setVisualCheck(null)} className="text-text-muted hover:text-text-primary">✕</button>
+              </div>
+            )}
             <TimelineToolbar
               counts={counts}
               filter={filter}
@@ -899,6 +947,7 @@ export function EpisodeTimelineSection({
               generatingVideoShotId={generatingVideoShotId}
               onGenerateReference={(shotId) => void handleGenerateReference(shotId)}
               generatingRefShotId={generatingRefShotId}
+              onVisualCheck={(shotId) => void handleVisualCheck(shotId)}
               excludedShotIds={excludedShotIds}
               onToggleExclusion={(shotId, excluded) =>
                 void handleToggleExclusion(shotId, excluded)

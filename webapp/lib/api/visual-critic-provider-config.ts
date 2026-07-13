@@ -33,16 +33,16 @@ const KEY = 'model';
 // Vision-capable models the critic can run on. Kept in sync with what
 // lib/agents/visual-verdict.ts `visionClient` supports (openai/anthropic/gemini by
 // model prefix). All entries below accept image input.
-// Order = dropdown order. claude-opus-4-8 first: on the E28 sh16 calibration it was
-// the only model that RELIABLY caught the racket/net/geometry defects; gpt-5.6-terra
-// flip-flopped on the same image. Reliability > cost for a QA critic — the Director
-// can dial down via this list.
+// Order = dropdown order. gpt-5.6-terra is the Director-chosen default (q9, cost).
+// NOTE from calibration (runtime): on E28 sh16, claude-opus-4-8 RELIABLY caught the
+// racket/net/geometry defects while gpt-5.6-terra flip-flopped on the SAME image —
+// switch to Opus here when a run must be trusted.
 export const VISUAL_CRITIC_CATALOG: VisualCriticOption[] = [
+  { id: 'openai:gpt-5.6-terra', provider: 'openai', model: 'gpt-5.6-terra', display_name: 'OpenAI · gpt-5.6-terra (default — cheap, flaky on hard checks)', envKey: 'OPENAI_API_KEY' },
+  { id: 'openai:gpt-5.6-sol', provider: 'openai', model: 'gpt-5.6-sol', display_name: 'OpenAI · gpt-5.6-sol (frontier)', envKey: 'OPENAI_API_KEY' },
+  { id: 'openai:gpt-5.6-luna', provider: 'openai', model: 'gpt-5.6-luna', display_name: 'OpenAI · gpt-5.6-luna (cost)', envKey: 'OPENAI_API_KEY' },
   { id: 'anthropic:claude-opus-4-8', provider: 'anthropic', model: 'claude-opus-4-8', display_name: 'Anthropic · claude-opus-4-8 (sharpest — reliable)', envKey: 'ANTHROPIC_API_KEY' },
   { id: 'anthropic:claude-sonnet-5', provider: 'anthropic', model: 'claude-sonnet-5', display_name: 'Anthropic · claude-sonnet-5', envKey: 'ANTHROPIC_API_KEY' },
-  { id: 'openai:gpt-5.6-sol', provider: 'openai', model: 'gpt-5.6-sol', display_name: 'OpenAI · gpt-5.6-sol (frontier)', envKey: 'OPENAI_API_KEY' },
-  { id: 'openai:gpt-5.6-terra', provider: 'openai', model: 'gpt-5.6-terra', display_name: 'OpenAI · gpt-5.6-terra (balanced — flaky on hard checks)', envKey: 'OPENAI_API_KEY' },
-  { id: 'openai:gpt-5.6-luna', provider: 'openai', model: 'gpt-5.6-luna', display_name: 'OpenAI · gpt-5.6-luna (cost)', envKey: 'OPENAI_API_KEY' },
   { id: 'gemini:gemini-2.5-pro', provider: 'gemini', model: 'gemini-2.5-pro', display_name: 'Gemini · 2.5-pro (verify image support)', envKey: 'GEMINI_API_KEY' },
   { id: 'gemini:gemini-2.5-flash', provider: 'gemini', model: 'gemini-2.5-flash', display_name: 'Gemini · 2.5-flash (cheap — verify)', envKey: 'GEMINI_API_KEY' },
 ];
@@ -53,7 +53,7 @@ export function visualCriticOptionId(choice: VisualCriticChoice): string {
 
 /** Env-derived default when no override is set. Calibrated on gpt-5.6-terra. */
 export function visualCriticDefault(): VisualCriticChoice {
-  const model = process.env.VISUAL_CRITIC_MODEL?.trim() || 'claude-opus-4-8';
+  const model = process.env.VISUAL_CRITIC_MODEL?.trim() || 'gpt-5.6-terra';
   const match = VISUAL_CRITIC_CATALOG.find((o) => o.model === model);
   return match ? { provider: match.provider, model: match.model } : { provider: 'openai', model };
 }

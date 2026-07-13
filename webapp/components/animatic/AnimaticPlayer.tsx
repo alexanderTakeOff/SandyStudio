@@ -207,6 +207,8 @@ export interface AnimaticPlayerProps {
   onGenerateReference?: (shotId: string) => void;
   /** Shot currently kicking off a reference flow (button spinner / disabled). */
   generatingRefShotId?: string | null;
+  /** 👁 Advisory Visual Critic on this shot's rendered ref (logs verdict, no gate). */
+  onVisualCheck?: (shotId: string) => void;
   /**
    * "Start Video" latch (2026-07-09, animatic-stage demotion). When provided,
    * the transport shows a ▶ Старт видео button next to Play/Stop/Reset that
@@ -408,6 +410,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     shotCriticsByShotId,
     onGenerateReference,
     generatingRefShotId,
+    onVisualCheck,
     onStartVideo,
     startingVideo,
     onMaterialize,
@@ -1656,6 +1659,19 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                             : cellRefs.length > 0
                               ? '🎨 Regenerate reference'
                               : '🎨 Generate reference'}
+                        </button>
+                      )}
+                      {onVisualCheck && cellRefs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onVisualCheck(t.shot.shot_id);
+                          }}
+                          className="mt-1 ml-1 px-2 py-0.5 rounded text-[10px] font-medium border border-glass text-text-secondary hover:text-text-primary transition-colors"
+                          title="Advisory Visual Critic — check this rendered ref against the storyboard + style. Logs a verdict; never changes status."
+                        >
+                          👁 Visual check
                         </button>
                       )}
                     </div>

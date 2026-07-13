@@ -38,6 +38,7 @@ import { listThemes, proposeTheme } from './themes';
 import { markAwaitingDirector } from './mark-awaiting';
 import { getWorkPlan, updateWorkPlan } from './work-plan';
 import { getStateMatrix, reconcileEpisode } from './conductor';
+import { runVisualCritic } from './visual-critic';
 import { fanoutShots } from './fanout';
 import type { OpenAIToolSchema, Tool } from './types';
 
@@ -92,6 +93,10 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   // Фаза 4 (2026-07-04) — the conductor's eyes: the canonical State Matrix
   // projection. Read-only; read it before deciding the next move.
   getStateMatrix as unknown as AnyTool,
+  // 2026-07-13 — post-render Visual Critic (advisory). Polina can run the vision
+  // check on a rendered ref (a shot or the whole episode) and read the verdict. It
+  // only logs verdicts (no status change), so it is not a gated mutation.
+  runVisualCritic as unknown as AnyTool,
   // Mutating — verbal approval gated
   triggerAgent as unknown as AnyTool,
   // fanoutShots — the reliable per-shot Designer fan-out (reference/video). The
