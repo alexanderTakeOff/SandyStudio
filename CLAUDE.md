@@ -390,6 +390,19 @@ never hardcodes. After any inngest OR app restart, functions are (re)synced via
 `PUT /api/inngest` → `{"message":"Successfully registered"}`. Full detail +
 rollback-to-dev: memory `inngest_selfhost_setup.md`. Do NOT restart mid-run (§7/§12).
 
+**Agent (headless) vs human (desktop) — how to bring the stack up:**
+- **Human, session-independent (all day, survives restarts):** double-click the
+  **`SandyStudio Stack` shortcut on the Desktop** → `start-stack.cmd` (add `-Build`
+  after code changes). Runs in its own windows, independent of any Claude session.
+- **Agent in a headless tool call:** do **NOT** rely on `start-stack.ps1` foreground —
+  its `Start-Process` windows are in the tool's process tree and get **reaped when the
+  tool call returns** (servers die). Instead launch the **same start-mode commands**
+  (`npm run start` + `inngest start` durable — never dev) as **persistent
+  `run_in_background` jobs**, then poll health + `PUT /api/inngest`. These survive across
+  turns for the session's lifetime. (`start-stack.ps1 -Build` is still the way to
+  *rebuild* after code changes — just re-launch the servers as background jobs, not via
+  the desktop launcher's foreground path.)
+
 ---
 
 *SandyStudio CLAUDE.md | v0.11 | Status: DRAFT*
