@@ -23,6 +23,17 @@
 Date:   2026-07-13 (Brand-бумперы SHIPPED+LOCKED. Прод master `aef0c137` (пересобран, health 200×3). INTRO+OUTRO (S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy», музыка Flacon Pop Loop запечена) **LOCKED** как `SBL-video_intro/outro` на S15 → EXEC-STITCH теперь собирает брендовый мастер по тумблерам. Инструмент `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф→Seedance fast 720p→апскейл 1080p, ~$1.85/шт) переиспользуем. UI-фикс: video-превью постеры в Library card/drawer. NEXT (опц.) = двух-мастер смоук на реальном эпизоде (закрывает Stage 4). RECONCILER **OFF**.)
 Mode:   ===5=== EDIT (Director-authorized).
 
+2026-07-14 (Phase 1 «Дирижёр и Спинной Мозг» — Тео, КОД). Старт вычитания поверхностей пайплайна к ОДНОМУ
+  дирижёру (не аддитивные починки — вычитание, директива Директора). **SHIPPED master `d60efd9c` (+346/−850,
+  чистые −504):** удалён Mode 4/AUTOTEST целиком — суб-водители factory.ts, AUTOTEST-форки next-events (branch-2 =
+  единственный путь для всех), Mode-4 gate-исключения (cast/music/budget), раннеры/concierge/UI-селекторы; типы
+  `GovernanceModeNum`/`ConciergeMode` сужены 1..4→1..3. Режим больше НЕ ветка роутера. replay-pilot на фикстуры
+  (budget_approved+APPROVED cast+directorConfirm). Сайдкары спины: `revision_requested` (critic-cap HALT) →
+  actionable-whitelists (+миграция 0043, раньше не доходил ни до кого); D6-таймаут портирован в anthropic-brief.
+  tsc·0 / vitest **1245/1245** / replay **30/30**. NEXT = Фаза 2 (gate-decision=mode-aware мозг, вживить в
+  reconciler, убрать `MECHANICS_AUTO_ADVANCE`, гейт на governance_mode∈{2,3}+arm-at-creation). Полный план:
+  `~/.claude/plans/so-one-more-time-delightful-curry.md`.
+
 2026-07-13 (Timeline music-fix — Тео, КОД). «Залил+заапрувил музыку — нет в таймлайне.» Runtime-корень (эп `c06c721f`,
   read-only DB): ДВА бага, оба нужны — (1) `newestApprovedMusic` матчил точным `=== 'AUD-music'`, дропая реальный
   композиторский `AUD-music-main` → `startsWith`+`staging_path`-fallback; (2) инъекция музыки жила лишь в synthetic-ветке,
