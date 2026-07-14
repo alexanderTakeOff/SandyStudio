@@ -51,17 +51,15 @@ import { isPersistentBillingFailure } from './provider-failure';
 import { decideGate, recordGateDecision } from './gate-decision';
 import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
-// TD-87 (2026-06-09): the Mode-4 autonomous chain now routes forward through
-// the SAME rich fan-out router the Director-driven approve route uses, instead
-// of the thin per-agent `spec.nextEvent`. Closes the Mode-4 divergence where
-// WCHK → straight to EXEC-EDIT skipped the EREF + MGEN fan-out and per-shot
-// designer/animator advancement, leaving EXEC-EDIT to fail with no episode refs.
+// The shared rich fan-out router — the SAME one the Director-driven approve
+// route uses. In the factory it's called by the plan-critic autofire (Modes 2/3,
+// PASS → execute-from-plan); the approve route owns the rest of the forward
+// routing. Phase 4+: the reconciler becomes its sole caller.
 import { computeNextEvents, type AssetForChain } from './next-events';
-// 2026-06-15 supersede fix: the Mode-4 auto-approve now demotes the prior
-// APPROVED sibling of the same slot before occupying it, sharing the exact
-// helper the Director approve route uses. Without it, regenerating an
-// already-approved anchor/plan in Mode 4 collided with the per-slot unique
-// index (assets_one_approved_per_anchor / _ref_plan).
+// Single-approved-per-slot helper, shared with the Director approve route: demote
+// the prior APPROVED sibling of a slot before occupying it, so regenerating an
+// already-approved anchor/plan doesn't collide with the per-slot unique index
+// (assets_one_approved_per_anchor / _ref_plan).
 import {
   resolveSlotDescriptor,
   demoteSiblingApproved,
@@ -568,31 +566,14 @@ export function createAgentInngestFunction<E extends string>(
           (eventData.section as string | undefined) ??
           (eventData.collectionPoint as string | undefined);
 
-        // Mode 4 (AUTOTEST) auto-approves so downstream gates pass without a
-        // Director click (mirrors replay-pilot's autoApproveOutput); Modes 1-3
-        // land REVIEW for the Director Inbox.
-        //
-        // 2026-06-15 supersede fix: in Mode 4 we must NOT insert/flip straight
-        // to APPROVED — the per-slot unique index (assets_one_approved_per_anchor
-        // / _ref_plan, migration 0036) rejects a 2nd APPROVED per slot, so
-        // regenerating an already-approved anchor/plan exploded (E10: SH12
-        // anchor, SH07 ref_plan). So we always INSERT as REVIEW, then in Mode 4
-        // demote the prior APPROVED sibling of each produced asset's slot (shared
-        // single-approved helper — same as the approve route) and flip it
-        // APPROVED. This also approves the WHOLE anchor pair (start+end), where
-        // before only `out.assetId` (one side) flipped — leaving the end anchor
-        // REVIEW so the anchor-chain gate never reached the animatic.
-        //
-        // F3 / TD-76 (2026-06-12): Modes 1-3 still get status atomically in the
-        // insert (no flip window). The Mode-4 flip below is ERROR-CHECKED.
-        // S3/P1 (2026-06-28): the autonomy decision now flows through the single
-        // `decideGate` choke-point (behaviour-preserving: autonomous = Mode 4) and
-        // is recorded to gate_decision_log for the E13 gate-taxonomy measurement.
+        // PHASE 1 (Mode-4 removed): every agent output lands REVIEW for the
+        // Director/Polina gate — no auto-approve flip. The gate decision still
+        // flows through the single `decideGate` choke-point and is recorded to
+        // gate_decision_log (the taxonomy the Phase-2 mode-aware brain keys on).
         const gateDecision = decideGate({
           agentId: spec.agentId,
           governanceMode: ep.governance_mode,
         });
-        const autoApprove = gateDecision.autonomous;
         await recordGateDecision(supabase, {
           episodeId,
           shotId: (eventData.shotId as string | undefined) ?? null,
@@ -608,42 +589,8 @@ export function createAgentInngestFunction<E extends string>(
           result: exec.result,
           outputKind: exec.outputKind,
           variant,
-          // Never insert APPROVED directly — see supersede note above.
           initialStatus: 'REVIEW',
         });
-
-        if (autoApprove) {
-          // Every asset this run produced. skip_save agents (EREF anchors,
-          // THUMB) insert a pair/list themselves and report inserted_asset_ids;
-          // normal agents produce the single out.assetId.
-          const producedIds: string[] =
-            exec.result.metadata.skip_save === true
-              ? ((exec.result.metadata.inserted_asset_ids as unknown[] | undefined) ?? [])
-                  .filter((v): v is string => typeof v === 'string')
-              : [out.assetId];
-          for (const assetId of producedIds) {
-            const { data: row } = await supabase
-              .from('assets')
-              .select('file_type,episode_id,series_id,metadata,content')
-              .eq('id', assetId)
-              .maybeSingle();
-            if (row) {
-              const slot = resolveSlotDescriptor(row as AssetForSlot);
-              if (slot) {
-                await demoteSiblingApproved(supabase, { slot, currentId: assetId });
-              }
-            }
-            const { error: flipErr } = await supabase
-              .from('assets')
-              .update({ status: 'APPROVED' })
-              .eq('id', assetId);
-            if (flipErr) {
-              throw new Error(
-                `save-and-complete: Mode-4 approve flip failed for ${assetId}: ${flipErr.message}`,
-              );
-            }
-          }
-        }
         await markJobCompleted(supabase, job.id, out.assetId);
         // S2/P2 — release the dispatch claim so a later sequential regen of this
         // shot can re-claim. No-op when this run held no claim.
@@ -757,7 +704,7 @@ export function createAgentInngestFunction<E extends string>(
           job_id: job.id,
           metadata: {
             agent: spec.agentId,
-            status: autoApprove ? 'APPROVED' : 'REVIEW',
+            status: 'REVIEW',
             ...(completedVerdict ? { verdict: completedVerdict } : {}),
             ...(completedVersion ? { version: completedVersion } : {}),
             ...(completedAsset?.file_type ? { file_type: completedAsset.file_type } : {}),
@@ -806,7 +753,7 @@ export function createAgentInngestFunction<E extends string>(
             .eq('id', episodeId)
             .single();
           const mode = epRow?.governance_mode;
-          if (mode !== 2 && mode !== 3) return []; // Mode 1 manual + Mode 4 branch-1 excluded
+          if (mode !== 2 && mode !== 3) return []; // Mode 1 = manual (Director clears the gate)
           const verdict = (exec.result.metadata as { verdict?: unknown })?.verdict;
           if (verdict !== 'PASS' && verdict !== 'PASS_WITH_UNCERTAINTY') return [];
           const planAssetId =
@@ -846,33 +793,13 @@ export function createAgentInngestFunction<E extends string>(
         }
       }
 
-      // Auto-chain only in Mode 4 (AUTOTEST) for downstream EXECUTOR agents.
-      // In Modes 1-3 the next executor (e.g. Artist after Plan APPROVED) is
-      // fired by Director's asset approval (POST /api/assets/[id]/approve);
-      // chaining here would cause the next agent to FAIL its gate because
-      // the just-saved asset is REVIEW, not APPROVED.
-      //
-      // TD-58 (2026-05-26): CRITICs are special-case — they validate Plan-in-
-      // REVIEW and don't gate on APPROVED status. Critic chain MUST fire in
-      // all modes, otherwise Director approves Plans blindly without any
-      // structural validation. This was broken since Sprint Day 4 wiring
-      // 2026-05-19; live diagnosis 2026-05-26 surfaced it after SH09 EREF
-      // Plan v03 + SH08 VANIM Plan v05 both landed with hasVerdict=false.
-      // Critic events recognized by their event name prefix.
-      const autoChain = await step.run('check-mode', async () => {
-        const supabase = createSupabaseServiceRoleClient();
-        const { data } = await supabase
-          .from('episodes')
-          .select('governance_mode')
-          .eq('id', episodeId)
-          .single();
-        // S3/P1 — same single autonomy choke-point (behaviour-preserving).
-        return decideGate({
-          agentId: spec.agentId,
-          governanceMode: data?.governance_mode,
-        }).autonomous;
-      });
-
+      // Critic chain (all modes): critics validate a Plan-in-REVIEW and don't
+      // gate on APPROVED status, so they MUST fire in every mode — otherwise the
+      // Director approves Plans blindly without structural validation (TD-58).
+      // Forward EXECUTOR routing (Artist after Plan APPROVED, etc.) is NOT fired
+      // here — it fires from the Director/Polina approve route (Modes 1-3) or,
+      // for plan critics, the plan-critic autofire above (Modes 2/3). Critic
+      // events recognized by their event name prefix.
       const nextEventCandidate = spec.nextEvent
         ? spec.nextEvent(saved, eventData, exec.result)
         : null;
@@ -910,76 +837,13 @@ export function createAgentInngestFunction<E extends string>(
           // approval, now WITH the continuity verdict attached.
           nextEventCandidate.name.startsWith('sandystudio/exec-wchk/'));
 
-      // TD-87 (2026-06-09): Mode-4 forward routing now goes through
-      // computeNextEvents — the SAME rich router the Director-driven approve
-      // route uses — instead of the thin per-agent `spec.nextEvent`. The
-      // factory's step.5 already auto-promoted the output asset to APPROVED in
-      // Mode 4, so we feed that APPROVED asset to computeNextEvents and dispatch
-      // EVERY returned event. This restores the full fan-out (e.g. WCHK
-      // APPROVED → EREF + MGEN in parallel, per-shot designer/animator
-      // advancement) that the linear `spec.nextEvent` was silently skipping,
-      // which left EXEC-EDIT firing with zero episode reference frames.
-      //
-      // hasJob idempotency inside computeNextEvents makes re-dispatch safe, so
-      // there is no double-fire risk vs. the approve route running the same
-      // milestone later.
-      //
-      // The Critic-chain path is ORTHOGONAL and still fires the thin
-      // `nextEventCandidate` in ALL modes — critics validate Plans-in-REVIEW
-      // and must auto-advance whether or not Mode-4 auto-chaining is on.
-      if (autoChain) {
-        const richEvents = await step.run('compute-next-events', async () => {
-          const supabase = createSupabaseServiceRoleClient();
-          // Fetch the just-saved + auto-approved asset row so computeNextEvents
-          // sees the same shape the approve route passes it (id, file_type,
-          // episode_id, updated_at, metadata, content). updated_at is the
-          // idempotency "since" floor.
-          const { data: row } = await supabase
-            .from('assets')
-            .select('id,filename,file_type,episode_id,updated_at,metadata,content')
-            .eq('id', saved.assetId)
-            .maybeSingle();
-          const assetForChain: AssetForChain = {
-            id: saved.assetId,
-            filename:
-              (row as { filename?: string } | null)?.filename ?? saved.assetId,
-            file_type:
-              (row as { file_type?: string } | null)?.file_type ??
-              (FILE_TYPE_HINT_BY_AGENT[spec.agentId] ?? ''),
-            episode_id:
-              (row as { episode_id?: string | null } | null)?.episode_id ??
-              episodeId,
-            updated_at: (row as { updated_at?: string | null } | null)?.updated_at ?? null,
-            metadata: (row as { metadata?: unknown } | null)?.metadata,
-            content: (row as { content?: string | null } | null)?.content ?? null,
-          };
-          // 'AUTOTEST' sentinel for confirmedBy — only consumed by the EXEC-PUB
-          // branch, and Mode 4 auto-passes the publish gate anyway.
-          return computeNextEvents(supabase, assetForChain, 'AUTOTEST');
-        });
-        // Dispatch as ONE batched sendEvent (matches the runner-fan-out path
-        // below). computeNextEvents can return multiple events — including
-        // several with the SAME name (e.g. one `exec-eref-designer/plan` per
-        // pilot shot) — so a per-event loop would need indexed step ids;
-        // batching sidesteps that and keeps a single idempotent step.
-        if (richEvents.length > 0) {
-          await step.sendEvent(
-            'fan-out-next-events',
-            richEvents.map((ev) => ({ name: ev.name, data: ev.data })) as unknown as SendEventPayload,
-          );
-        }
-      }
-
-      // Critic chain (all modes) + runner-emitted events. In Mode 4 the rich
-      // router above already covered the forward EXECUTOR routing, so here we
-      // only fire the thin candidate when it is a Critic chain (it would
-      // otherwise duplicate a milestone computeNextEvents handles). In Modes
-      // 1-3 autoChain is false, so the forward executor fires from the approve
-      // route, never here — only the Critic candidate dispatches.
+      // Critic chain (all modes) + runner-emitted events. The forward executor
+      // fires from the approve route (Modes 1-3) / plan-critic autofire (2/3),
+      // never here — only the Critic candidate dispatches.
       if (isCriticChain && nextEventCandidate) {
         await step.sendEvent('fan-out', nextEventCandidate as SendEventPayload);
       }
-      if (autoChain || isCriticChain) {
+      if (isCriticChain) {
         // runAgent may also return its own next_event (e.g. EXEC-PUB → published).
         if (exec.result.next_event) {
           await step.sendEvent('runner-next', exec.result.next_event as SendEventPayload);

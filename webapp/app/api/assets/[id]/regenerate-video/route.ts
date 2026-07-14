@@ -87,7 +87,7 @@ interface AssetRow {
   content: string | null;
 }
 
-type GovernanceModeNum = 1 | 2 | 3 | 4;
+type GovernanceModeNum = 1 | 2 | 3;
 
 async function resolveMode(
   sb: ReturnType<typeof createSupabaseServiceRoleClient>,
@@ -100,7 +100,7 @@ async function resolveMode(
       .eq('id', asset.episode_id)
       .maybeSingle();
     const mode = (data as { governance_mode?: number } | null)?.governance_mode;
-    if (mode === 1 || mode === 2 || mode === 3 || mode === 4) return mode;
+    if (mode === 1 || mode === 2 || mode === 3) return mode;
   }
   return 1;
 }

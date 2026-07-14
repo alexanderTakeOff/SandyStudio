@@ -23,7 +23,7 @@ interface CreateEpisodeArgs {
 export const createEpisode: Tool<CreateEpisodeArgs> = {
   name: 'createEpisode',
   description:
-    "Create a new episode in a series. Required: seriesId (UUID — call listSeries first to find it), episodeCode (E01..E999 format), titleWorking (working title, 1-80 chars), premise (20-500 chars logline). Optional: targetRuntimeSeconds (5-300, default 60), governanceMode (1=manual default, 2 hybrid, 3 delegated, 4 autotest). Verbal approval required.",
+    "Create a new episode in a series. Required: seriesId (UUID — call listSeries first to find it), episodeCode (E01..E999 format), titleWorking (working title, 1-80 chars), premise (20-500 chars logline). Optional: targetRuntimeSeconds (5-300, default 60), governanceMode (1=manual default, 2 hybrid, 3 delegated). Verbal approval required.",
   mutating: true,
   schema: {
     type: 'function',
@@ -58,7 +58,7 @@ export const createEpisode: Tool<CreateEpisodeArgs> = {
     const target = typeof obj.targetRuntimeSeconds === 'number' ? Math.floor(obj.targetRuntimeSeconds) : undefined;
     if (target !== undefined && (target < 5 || target > 300)) throw new Error('targetRuntimeSeconds must be 5-300');
     const mode = obj.governanceMode;
-    const governanceMode = mode === 1 || mode === 2 || mode === 3 || mode === 4 ? mode : undefined;
+    const governanceMode = mode === 1 || mode === 2 || mode === 3 ? mode : undefined;
     return { seriesId, episodeCode, titleWorking, premise, targetRuntimeSeconds: target, governanceMode };
   },
   async execute(args, ctx): Promise<ToolResult> {

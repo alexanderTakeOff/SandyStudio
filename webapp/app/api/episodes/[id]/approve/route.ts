@@ -96,20 +96,15 @@ export const POST = withApiHandler(async (req, ctx) => {
     // (Director 2026-07-04). EXEC-SW's own gate requires an APPROVED cast, so
     // firing the Writer unconditionally here raced the casting stage → transient
     // "0 approved cast" agent_failed on every episode. Fire the Writer NOW only
-    // when the cast is already approved (or AUTOTEST, which has no casting stage
-    // — keeps replay-pilot intact). Otherwise the Writer waits and is launched
-    // by the cast-approval branch in next-events.ts once the cast lands.
-    const isAutotest = decision.code === 'mode_4_autotest';
-    let castApproved = isAutotest;
-    if (!isAutotest) {
-      const { count } = await supabase
-        .from('assets')
-        .select('id', { count: 'exact', head: true })
-        .eq('episode_id', id)
-        .eq('file_type', 'SPC-episode_cast')
-        .eq('status', 'APPROVED');
-      castApproved = (count ?? 0) >= 1;
-    }
+    // when the cast is already approved; otherwise the Writer waits and is
+    // launched by the cast-approval branch in next-events.ts once the cast lands.
+    const { count } = await supabase
+      .from('assets')
+      .select('id', { count: 'exact', head: true })
+      .eq('episode_id', id)
+      .eq('file_type', 'SPC-episode_cast')
+      .eq('status', 'APPROVED');
+    const castApproved = (count ?? 0) >= 1;
 
     if (castApproved) {
       const { ids } = await inngest.send({

@@ -24,7 +24,7 @@ import { NotificationDotStyles } from '@/components/notifications/NotificationDo
 
 interface StudioShellProps {
   children: ReactNode;
-  governanceMode?: 1 | 2 | 3 | 4;
+  governanceMode?: 1 | 2 | 3;
   systemMode?: '===1===' | '===5===';
 }
 

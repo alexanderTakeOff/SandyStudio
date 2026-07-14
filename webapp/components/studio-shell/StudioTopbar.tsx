@@ -11,7 +11,7 @@ import { SystemModeChip } from './SystemModeChip';
 import { GovernanceChip } from './GovernanceChip';
 
 interface StudioTopbarProps {
-  governanceMode?: 1 | 2 | 3 | 4;
+  governanceMode?: 1 | 2 | 3;
   systemMode?: '===1===' | '===5===';
 }
 

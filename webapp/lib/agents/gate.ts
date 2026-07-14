@@ -63,8 +63,7 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
       // next-events.ts only soft-skips the AUTO-CHAIN trigger pending cast
       // approval; a manual/retry trigger bypassed it entirely, letting E13
       // run brief→writer with no cast (the same class of bug FIX 3 closed one
-      // stage later, at EXEC-SB). AUTOTEST (mode 4) is exempt via the Step-0b
-      // override below, same as EXEC-SB.
+      // stage later, at EXEC-SB).
       { fileTypePrefix: 'SPC-episode_cast', minCount: 1, label: 'Approved episode cast' },
     ],
     governance: 'AGENT_RUN',
@@ -89,8 +88,7 @@ const AGENT_GATES: Readonly<Record<AgentId, AgentGateSpec>> = {
       { fileTypePrefix: 'SCR', minCount: 1, label: 'Approved Script' },
       // FIX 3 (2026-07-01): storyboard must not run without an APPROVED cast —
       // casting grounds character presence, and the E13 cascade proved a
-      // brief→writer→storyboard path with no cast is possible. AUTOTEST (mode 4)
-      // is exempt (it never casts) via the Step-0 override in validateAgentInputs.
+      // brief→writer→storyboard path with no cast is possible.
       { fileTypePrefix: 'SPC-episode_cast', minCount: 1, label: 'Approved episode cast' },
     ],
     governance: 'AGENT_RUN',
@@ -505,84 +503,28 @@ export async function validateAgentInputs(
   // mode. Video no longer gates on an animatic in ANY mode (see EXEC-VGEN spec
   // above — required is now empty), so this override became a no-op.
 
-  // ── Step 0b: AUTOTEST cast exemption (FIX 3, extended 2026-07-05) ──────────
-  // Writer and Storyboard now require an APPROVED SPC-episode_cast in Director
-  // modes, but AUTOTEST (Mode 4 / replay-pilot, directorUserId 'AUTOTEST')
-  // never casts — the headless DAG goes brief→writer directly (next-events.ts).
-  // Drop the cast dep there so replay-pilot still completes; Director modes
-  // keep the requirement.
-  if (agentId === 'EXEC-SB' || agentId === 'EXEC-SW') {
-    let isAutotest = false;
-    try {
-      const { data: epRow } = await supabase
-        .from('episodes')
-        .select('governance_mode')
-        .eq('id', episodeId)
-        .maybeSingle();
-      isAutotest =
-        (epRow as { governance_mode?: number } | null)?.governance_mode === 4;
-    } catch {
-      isAutotest = false;
-    }
-    if (isAutotest) {
-      effectiveRequired = spec.required.filter(
-        (d) => d.fileTypePrefix !== 'SPC-episode_cast',
-      );
-    }
-  }
-
-  // ── Step 0b': AUTOTEST music exemption (D3b, 2026-07-09) ───────────────────
-  // EXEC-STITCH now formally requires APPROVED AUD-music (final cut must not be
-  // silently assembled behind the Director's back). That guard is Director-facing;
-  // AUTOTEST (Mode 4 / replay-pilot) is headless and never runs the music approval
-  // path, so drop the music dep there so the DAG smoke still assembles a final cut.
-  // Director modes (1-3) keep the requirement — satisfied by MGEN music, a manual
-  // UPLOAD MUSIC, or the skip-music escape hatch.
-  if (agentId === 'EXEC-STITCH') {
-    let isAutotest = false;
-    try {
-      const { data: epRow } = await supabase
-        .from('episodes')
-        .select('governance_mode')
-        .eq('id', episodeId)
-        .maybeSingle();
-      isAutotest =
-        (epRow as { governance_mode?: number } | null)?.governance_mode === 4;
-    } catch {
-      isAutotest = false;
-    }
-    if (isAutotest) {
-      effectiveRequired = effectiveRequired.filter(
-        (d) => d.fileTypePrefix !== 'AUD-music',
-      );
-    }
-  }
-
   // ── Step 0c: budget-approval gate (F13) ────────────────────────────────────
   // Director rule (2026-07-01): after the brief, NO further creative/generation
   // work runs until the Director has approved the episode budget. Scoped to
   // AGENT_RUN agents (the work that spends) — the terminal PUBLISH hard limit is
   // its own gate and runs post-generation (budget already approved by then), so
-  // it is not budget-gated here. AUTOTEST (Mode 4 / replay-pilot) is exempt so
-  // the headless DAG completes. The brief is synchronous at episode creation, not
-  // through this gate, so it is unaffected.
+  // it is not budget-gated here. The brief is synchronous at episode creation,
+  // not through this gate, so it is unaffected.
   if (spec?.governance === 'AGENT_RUN') {
     let budgetApproved = false;
-    let budgetMode: number | undefined;
     try {
       const { data: bRow } = await supabase
         .from('episodes')
-        .select('metadata, governance_mode')
+        .select('metadata')
         .eq('id', episodeId)
         .maybeSingle();
       budgetApproved =
         (bRow as { metadata?: { budget_approved?: unknown } | null } | null)
           ?.metadata?.budget_approved === true;
-      budgetMode = (bRow as { governance_mode?: number } | null)?.governance_mode;
     } catch {
       budgetApproved = false;
     }
-    if (!budgetApproved && budgetMode !== 4) {
+    if (!budgetApproved) {
       return {
         passed: false,
         missing: ['approved episode budget'],

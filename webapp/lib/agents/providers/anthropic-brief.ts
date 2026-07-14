@@ -15,6 +15,8 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
+import { anthropicTimeoutMs } from './anthropic-text';
+
 export interface BriefInput {
   episodeCode: string; // e.g. "SS-S01-E05"
   episodeTitle?: string | null;
@@ -141,11 +143,20 @@ export async function generateBriefMarkdown(input: BriefInput): Promise<string> 
   const client = new Anthropic({ apiKey });
   let response: Awaited<ReturnType<typeof client.messages.create>>;
   try {
-    response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      messages: [{ role: 'user', content: buildPrompt(input) }],
-    });
+    response = await client.messages.create(
+      {
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        messages: [{ role: 'user', content: buildPrompt(input) }],
+      },
+      {
+        // D6 (ported 2026-07-14): bound the SDK's 10-minute default timeout so a
+        // wedged provider socket can't hang the brief call. Scaled to MAX_TOKENS,
+        // same helper the text provider uses.
+        timeout: anthropicTimeoutMs(MAX_TOKENS),
+        maxRetries: 1,
+      },
+    );
   } catch (err) {
     throw new AnthropicBriefError(
       `Anthropic call failed: ${(err as Error).message}`,

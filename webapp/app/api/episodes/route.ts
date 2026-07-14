@@ -41,7 +41,7 @@ const CreateBody = z.object({
   title_working: z.string().min(1).max(80),
   target_runtime_seconds: z.number().int().min(5).max(300).optional(),
   premise: z.string().min(20).max(500),
-  governance_mode: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).default(1),
+  governance_mode: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
 });
 
 export const GET = withApiHandler(async (req) => {

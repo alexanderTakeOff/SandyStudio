@@ -2,7 +2,7 @@
 // app/api/system/governance-mode/route.ts
 // Governance mode lever per uiux.md §8.4. Director-only hard limit.
 //
-// POST body: { targetMode: 1|2|3|4, scope: 'global' | { episodeId }, confirm: true }
+// POST body: { targetMode: 1|2|3, scope: 'global' | { episodeId }, confirm: true }
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';
@@ -49,7 +49,7 @@ export const GET = withApiHandler(async (req) => {
 });
 
 const GovernanceBody = z.object({
-  targetMode: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  targetMode: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   scope: z.union([
     z.literal('global'),
     z.object({ episodeId: z.string().uuid() }),
@@ -93,7 +93,7 @@ export const POST = withApiHandler(async (req) => {
     if (updErr) throw new Error(`episode mode update failed: ${updErr.message}`);
   }
 
-  const severity = body.targetMode === 4 ? 'warning' : 'info';
+  const severity = 'info';
   await supabase.from('activity_events').insert({
     event_type: 'governance_mode_change',
     severity,

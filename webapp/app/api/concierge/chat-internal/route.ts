@@ -118,7 +118,7 @@ const READ_ONLY_TOOL_SCHEMAS = openaiSchemas.filter((s) =>
  *
  * Cached at module load — the registry is frozen and module-lived.
  */
-const BOLD_MODES: ReadonlySet<ConciergeMode> = new Set(['3', '4']);
+const BOLD_MODES: ReadonlySet<ConciergeMode> = new Set(['3']);
 const BOLD_TOOL_SCHEMAS = openaiSchemas.filter(
   (s) => !isHardLimitTool(s.function.name),
 );

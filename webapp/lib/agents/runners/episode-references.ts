@@ -37,7 +37,7 @@
 //   └─→ next iteration │         │         │
 //                      ▼         ▼         ▼
 //                       insert/update IMG-episode_ref row
-//                       status = REVIEW (Mode 1-3) / APPROVED (Mode 4)
+//                       status = REVIEW (Director gate)
 //
 // Backward-compat: legacy fields (provenance, image_prompt.history,
 // source_bible_refs, anchor_image_asset_id, provider_used) are still
@@ -1739,7 +1739,7 @@ async function runAnchorPairGeneration(
         if (skipped) {
           await logEvent(supabase, {
             event_type: 'checker_fallback',
-            severity: governanceMode === 4 ? 'info' : 'warning',
+            severity: 'warning',
             title: `Anchor checker fallback (mode ${governanceMode}) — ${planOverrides.shotId}/${name}`,
             description: (rv as { skipped_reason?: string }).skipped_reason ?? 'checker bypassed',
             actor: 'EXEC-EREF-CHECK',
@@ -1771,7 +1771,7 @@ async function runAnchorPairGeneration(
       } catch (err) {
         await logEvent(supabase, {
           event_type: 'checker_fallback',
-          severity: governanceMode === 4 ? 'info' : 'warning',
+          severity: 'warning',
           title: `Anchor checker threw (mode ${governanceMode}) — ${planOverrides.shotId}/${name}`,
           description: (err as Error).message.slice(0, 200),
           actor: 'EXEC-EREF-CHECK',
@@ -2454,16 +2454,15 @@ export async function runEpisodeReferences(
 
       // 2026-06-14 mode-aware checker fallback + statistics (Director q):
       // when the AI checker was bypassed/failed (skipped), DON'T silently
-      // auto-APPROVE. Always record a stat (dashboard visibility) and route by
-      // governance mode: Mode 4 keeps auto-pass (autotest resilience); Modes 1-3
-      // land HUMAN_REVIEW so the Director (1/2) or EXEC-DIR-AI deputy (3) judges.
+      // auto-APPROVE. Always record a stat (dashboard visibility) and land
+      // HUMAN_REVIEW so the Director (1/2) or EXEC-DIR-AI deputy (3) judges.
       const checkerSkipped = (reviewResult as { skipped?: boolean }).skipped === true;
       if (checkerSkipped) {
         const reason =
           (reviewResult as { skipped_reason?: string }).skipped_reason ?? 'checker bypassed';
         await logEvent(supabase, {
           event_type: 'checker_fallback',
-          severity: governanceMode === 4 ? 'info' : 'warning',
+          severity: 'warning',
           title: `EREF checker fallback (mode ${governanceMode}) — shot ${job.shot.shot_id}`,
           description: reason,
           actor: 'EXEC-EREF-CHECK',
@@ -2477,7 +2476,7 @@ export async function runEpisodeReferences(
             dashboard_flag: governanceMode === 3,
           },
         });
-        finalVerdict = governanceMode === 4 ? 'APPROVE' : 'HUMAN_REVIEW';
+        finalVerdict = 'HUMAN_REVIEW';
         approvedAttempt = attempt;
         approvedB64 = genB64;
         break;

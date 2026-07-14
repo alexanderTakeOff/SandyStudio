@@ -13,7 +13,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 
 export default async function StudioLayout({ children }: { children: React.ReactNode }) {
-  let governanceMode: 1 | 2 | 3 | 4 = 1;
+  let governanceMode: 1 | 2 | 3 = 1;
   let systemMode: '===1===' | '===5===' = '===1===';
   try {
     const supabase = await createSupabaseServerClient();
@@ -23,8 +23,8 @@ export default async function StudioLayout({ children }: { children: React.React
       .eq('scope', 'system');
     for (const row of data ?? []) {
       const r = row as { key: string; value: unknown };
-      if (r.key === 'governance_mode_default' && typeof r.value === 'number' && r.value >= 1 && r.value <= 4) {
-        governanceMode = r.value as 1 | 2 | 3 | 4;
+      if (r.key === 'governance_mode_default' && typeof r.value === 'number' && r.value >= 1 && r.value <= 3) {
+        governanceMode = r.value as 1 | 2 | 3;
       }
       if (r.key === 'system_mode' && (r.value === '===1===' || r.value === '===5===')) {
         systemMode = r.value;

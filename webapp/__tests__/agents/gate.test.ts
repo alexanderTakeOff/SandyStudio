@@ -4,16 +4,12 @@ import { validateAgentInputs } from '@/lib/agents/gate';
 import { makeMockSupabase } from '../helpers/mock-supabase';
 
 describe('validateAgentInputs — upstream asset gate + governance', () => {
-  it('EXEC-SW passes when an APPROVED brief exists', async () => {
+  it('EXEC-SW passes when an APPROVED brief + cast exist', async () => {
     const sup = makeMockSupabase({
-      episodes: [{ id: 'ep-1', governance_mode: 4 }],
+      episodes: [{ id: 'ep-1', governance_mode: 1, metadata: { budget_approved: true } }],
       assets: [
-        {
-          id: 'a1',
-          episode_id: 'ep-1',
-          file_type: 'SPC-brief',
-          status: 'APPROVED',
-        },
+        { id: 'a1', episode_id: 'ep-1', file_type: 'SPC-brief', status: 'APPROVED' },
+        { id: 'cast', episode_id: 'ep-1', file_type: 'SPC-episode_cast', status: 'APPROVED' },
       ],
     });
     const result = await validateAgentInputs({
@@ -26,14 +22,10 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
 
   it('EXEC-SW fails when no APPROVED brief exists', async () => {
     const sup = makeMockSupabase({
-      episodes: [{ id: 'ep-1', governance_mode: 4 }],
+      episodes: [{ id: 'ep-1', governance_mode: 1, metadata: { budget_approved: true } }],
       assets: [
-        {
-          id: 'a1',
-          episode_id: 'ep-1',
-          file_type: 'SPC-brief',
-          status: 'DRAFT',
-        },
+        { id: 'a1', episode_id: 'ep-1', file_type: 'SPC-brief', status: 'DRAFT' },
+        { id: 'cast', episode_id: 'ep-1', file_type: 'SPC-episode_cast', status: 'APPROVED' },
       ],
     });
     const result = await validateAgentInputs({
@@ -51,7 +43,7 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
     // so the gate threshold dropped from 3 to 1. With ZERO approved storyboards
     // the gate must still fail.
     const sup = makeMockSupabase({
-      episodes: [{ id: 'ep-1', governance_mode: 4 }],
+      episodes: [{ id: 'ep-1', governance_mode: 1, metadata: { budget_approved: true } }],
       assets: [
         // No APPROVED STB asset — gate must fail.
         { id: 'a1', episode_id: 'ep-1', file_type: 'STB-storyboard', status: 'DRAFT' },
@@ -102,22 +94,6 @@ describe('validateAgentInputs — upstream asset gate + governance', () => {
     expect(result.passed).toBe(true);
   });
 
-  it('EXEC-PUB passes in Mode 4 without director_confirm (AUTOTEST)', async () => {
-    const sup = makeMockSupabase({
-      episodes: [{ id: 'ep-1', governance_mode: 4 }],
-      assets: [
-        { id: 'a1', episode_id: 'ep-1', file_type: 'VID-final_cut', status: 'APPROVED' },
-        { id: 'a2', episode_id: 'ep-1', file_type: 'SPC-metadata', status: 'APPROVED' },
-        { id: 'a3', episode_id: 'ep-1', file_type: 'IMG-thumbnail', status: 'APPROVED' },
-      ],
-    });
-    const result = await validateAgentInputs({
-      supabase: sup.client,
-      agentId: 'EXEC-PUB',
-      episodeId: 'ep-1',
-    });
-    expect(result.passed).toBe(true);
-  });
 });
 
 describe('validateAgentInputs — EXEC-STITCH music precondition (D3b, 2026-07-09)', () => {
@@ -157,16 +133,4 @@ describe('validateAgentInputs — EXEC-STITCH music precondition (D3b, 2026-07-0
     expect(result.reason).toMatch(/music/i);
   });
 
-  it('Mode 4 (AUTOTEST): assembles WITHOUT music (headless exemption)', async () => {
-    const sup = makeMockSupabase({
-      episodes: [{ id: 'ep-1', governance_mode: 4 }],
-      assets: stitchAssets([]),
-    });
-    const result = await validateAgentInputs({
-      supabase: sup.client,
-      agentId: 'EXEC-STITCH',
-      episodeId: 'ep-1',
-    });
-    expect(result.passed).toBe(true);
-  });
 });

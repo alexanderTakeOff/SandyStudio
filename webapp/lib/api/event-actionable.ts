@@ -41,6 +41,10 @@ export const ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
   'input_requested',
   'budget_threshold_reached',
   'canon_extension_proposed',
+  // Critic revision-cap HALT (critic-loop.ts): a shot bounced past its cap needs
+  // a human/Polina decision. Without this it reached NOBODY — a warning row in the
+  // feed only. It is the escalation rung the reconciler's HALT will lean on.
+  'revision_requested',
 ]);
 
 export function isActionableEventType(eventType: string): boolean {

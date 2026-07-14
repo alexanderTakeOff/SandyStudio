@@ -3,26 +3,12 @@ import { describe, it, expect } from 'vitest';
 import { GATE_CLASS, decideGate, recordGateDecision } from '@/lib/agents/gate-decision';
 import { makeMockSupabase } from '../helpers/mock-supabase';
 
-describe('gate-decision — decideGate (behaviour-preserving)', () => {
-  it('Mode 4 → autonomous advance (decided_by=factory)', () => {
-    const d = decideGate({ agentId: 'EXEC-SB', governanceMode: 4 });
-    expect(d).toMatchObject({ autonomous: true, decision: 'advance', decidedBy: 'factory' });
-  });
-
-  it('Mode 1 → require_human (decided_by=human)', () => {
-    const d = decideGate({ agentId: 'EXEC-SB', governanceMode: 1 });
-    expect(d).toMatchObject({ autonomous: false, decision: 'require_human', decidedBy: 'human' });
-  });
-
-  it('Modes 2 / 2.5 / 3 are all NOT autonomous (only Mode 4 is)', () => {
-    for (const mode of [2, 3]) {
-      expect(decideGate({ agentId: 'EXEC-EREF', governanceMode: mode }).autonomous).toBe(false);
+describe('gate-decision — decideGate (Phase 1: autonomy off, Mode-4 removed)', () => {
+  it('every governance mode → require_human (decided_by=human)', () => {
+    for (const mode of [1, 2, 3]) {
+      const d = decideGate({ agentId: 'EXEC-SB', governanceMode: mode });
+      expect(d).toMatchObject({ autonomous: false, decision: 'require_human', decidedBy: 'human' });
     }
-  });
-
-  it('AUTOTEST sentinel (next-events path) is the Mode-4 proxy', () => {
-    expect(decideGate({ agentId: 'EXEC-SB', directorUserId: 'AUTOTEST' }).autonomous).toBe(true);
-    expect(decideGate({ agentId: 'EXEC-SB', directorUserId: 'some-uuid' }).autonomous).toBe(false);
   });
 
   it('null / missing mode → not autonomous', () => {
@@ -77,7 +63,7 @@ describe('gate-decision — recordGateDecision (writer)', () => {
       recordGateDecision(client, {
         episodeId: 'ep-1',
         agentId: 'EXEC-SB',
-        decision: decideGate({ agentId: 'EXEC-SB', governanceMode: 4 }),
+        decision: decideGate({ agentId: 'EXEC-SB', governanceMode: 3 }),
       }),
     ).resolves.toBeUndefined();
   });

@@ -31,7 +31,6 @@ function modeBadge(mode: number | undefined): string {
   if (mode === 1) return ' · Mode 1';
   if (mode === 2) return ' · Mode 2';
   if (mode === 3) return ' · Mode 3';
-  if (mode === 4) return ' · Mode 4';
   return '';
 }
 

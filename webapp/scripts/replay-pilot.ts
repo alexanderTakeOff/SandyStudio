@@ -183,7 +183,7 @@ async function runPipelineStep(
 // ── Test scenarios ────────────────────────────────────────────────────────────
 
 async function happyPathReplay(): Promise<void> {
-  header('Scenario 1: Happy-path PILOT replay (Mode 4 AUTOTEST)');
+  header('Scenario 1: Happy-path PILOT replay (Mode 1 — fixture-driven gates)');
 
   const supabase = makeMockSupabase({
     episodes: [
@@ -192,7 +192,10 @@ async function happyPathReplay(): Promise<void> {
         episode_code: 'SS-S01-E01',
         budget_ceiling: 50,
         budget_spent: 0,
-        governance_mode: 4, // AUTOTEST — bypass PUBLISH director_confirm
+        governance_mode: 1, // MANUAL — fixtures below satisfy the gates (Mode 4 removed)
+        // budget_approved fixture: satisfies the Step-0c budget gate without the
+        // (removed) Mode-4 exemption.
+        metadata: { budget_approved: true },
         status: 'BRIEF_APPROVED',
         title_working: 'The Red Carpet',
         series_id: 'series-1',
@@ -204,6 +207,16 @@ async function happyPathReplay(): Promise<void> {
         episode_id: 'ep-pilot',
         file_type: 'SPC-brief-pilot',
         filename: 'SS-S01-E01-SPC-brief-pilot-v01-APPROVED.md',
+        status: 'APPROVED',
+        version: 1,
+      },
+      // Cast fixture: an APPROVED SPC-episode_cast satisfies the EXEC-SW / EXEC-SB
+      // cast gate without the (removed) Mode-4 cast exemption.
+      {
+        id: 'cast-1',
+        episode_id: 'ep-pilot',
+        file_type: 'SPC-episode_cast',
+        filename: 'SS-S01-E01-SPC-episode_cast-v01-APPROVED.md',
         status: 'APPROVED',
         version: 1,
       },
@@ -326,7 +339,7 @@ async function happyPathReplay(): Promise<void> {
 
   // Phase E — publish (Mode 4 AUTOTEST: no director_confirm needed)
   info('Phase E: publish');
-  const pub = await runPipelineStep(h, 'EXEC-PUB');
+  const pub = await runPipelineStep(h, 'EXEC-PUB', { eventContext: { directorConfirm: true } });
   assert(pub.success, `EXEC-PUB published to YouTube (mock)`);
 
   // Phase F — analytics x 4 collection points
@@ -429,7 +442,7 @@ async function idempotencyCheck(): Promise<void> {
         episode_code: 'SS-S01-E03',
         budget_ceiling: 50,
         budget_spent: 0,
-        governance_mode: 4,
+        governance_mode: 1,
       },
     ],
   });
@@ -472,7 +485,7 @@ async function budgetCeilingCheck(): Promise<void> {
         episode_code: 'SS-S01-E04',
         budget_ceiling: 1.0, // very tight
         budget_spent: 0,
-        governance_mode: 4,
+        governance_mode: 1,
       },
     ],
   });

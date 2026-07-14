@@ -6,7 +6,6 @@
 //   1 — MANUAL    Director approves every gate (default at session start)
 //   2 — HYBRID    Director keeps Category-A scope; EXEC-DIR-AI handles rest
 //   3 — DELEGATED EXEC-DIR-AI handles everything except hard limits
-//   4 — AUTOTEST  All gates auto-pass (pipeline testing only)
 //
 // Hard limits (Category A) — Director always, in ALL modes:
 //   PUBLISH · LOCK · BUDGET · MODE_CHANGE
@@ -14,7 +13,6 @@
 // Category B — creative gates (REGENERATE_IMAGE, ENRICH_ASSET, AGENT_RUN, …)
 //   Mode 1: blocked without directorConfirm
 //   Mode 2-3: auto-allowed (EXEC-DIR-AI / pipeline can fire)
-//   Mode 4: auto-allowed
 //
 // Category C — autonomous / direct Director input (UPLOAD_ASSET, EDIT_DESCRIPTION)
 //   Always allowed regardless of mode
@@ -29,7 +27,7 @@ import type { GovernanceModeNum } from './api/series-bible';
 /** Episode shape needed by governance — matches Supabase row partial. */
 export interface GovernanceEpisode {
   id: string;
-  governance_mode: number; // 1..4
+  governance_mode: number; // 1..3
 }
 
 /** Event payload context inspected for `directorConfirm` etc. */
@@ -68,7 +66,6 @@ export interface GovernanceDecision {
   reason?: string;
   /** Machine-readable code for activity_events metadata. */
   code?:
-    | 'mode_4_autotest'
     | 'director_confirmed'
     | 'no_director_confirm'
     | 'category_c_autonomous'
@@ -125,19 +122,6 @@ export function enforceMode(
   const mode = (episode.governance_mode as GovernanceModeNum) ?? 1;
   const category = categoryFor(action);
 
-  // Mode 4 AUTOTEST short-circuits everything (CI smoke tests).
-  if (mode === 4) {
-    return {
-      allowed: true,
-      passed: true,
-      requiresDirector: false,
-      autoFireAllowed: true,
-      modeAtTime: 4,
-      category,
-      code: 'mode_4_autotest',
-    };
-  }
-
   // Category C — always allowed (uploads, free-text edits). Director's direct input.
   if (category === 'C') {
     return {
@@ -151,7 +135,7 @@ export function enforceMode(
     };
   }
 
-  // Category A — hard limit. Always requires explicit director confirm. Auto-fire never allowed (except Mode 4 above).
+  // Category A — hard limit. Always requires explicit director confirm. Auto-fire never allowed.
   if (category === 'A') {
     if (context.directorConfirm === true) {
       return {

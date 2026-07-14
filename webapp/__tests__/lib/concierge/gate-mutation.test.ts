@@ -43,7 +43,7 @@ describe('gateMutation — strict modes require verbal approval', () => {
 });
 
 describe('gateMutation — bold modes auto-pass non-hard-limit mutations', () => {
-  const boldModes: ConciergeMode[] = ['3', '4'];
+  const boldModes: ConciergeMode[] = ['3'];
   for (const mode of boldModes) {
     test(`Mode ${mode} AUTO-ALLOWS a non-hard-limit mutation with NO approval`, () => {
       const out = gateMutation('approveAsset', { mode, turns: NO_APPROVAL });
@@ -63,7 +63,7 @@ describe('gateMutation — bold modes auto-pass non-hard-limit mutations', () =>
 });
 
 describe('gateMutation — hard limits stay Director-only in EVERY mode', () => {
-  const allModes: ConciergeMode[] = ['1', '2', '2.5', '3', '4'];
+  const allModes: ConciergeMode[] = ['1', '2', '2.5', '3'];
 
   for (const mode of allModes) {
     test(`Mode ${mode} BLOCKS skill-canon write (proposeSkill) without approval`, () => {

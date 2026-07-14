@@ -30,7 +30,7 @@ export type ConciergeEventType =
 export type ConciergeTurnRole = 'director' | 'assistant' | 'tool' | 'system';
 
 /** Governance modes mirrored from CLAUDE.md §6 / governance.md §4. */
-export type ConciergeMode = '1' | '2' | '2.5' | '3' | '4';
+export type ConciergeMode = '1' | '2' | '2.5' | '3';
 
 export interface ConciergeThreadRow {
   id: string;

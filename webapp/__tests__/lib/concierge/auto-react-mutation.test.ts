@@ -19,7 +19,7 @@ import {
 import type { ConciergeMode } from '@/lib/concierge/types';
 
 const STRICT_MODES: ConciergeMode[] = ['1', '2', '2.5'];
-const BOLD_MODES: ConciergeMode[] = ['3', '4'];
+const BOLD_MODES: ConciergeMode[] = ['3'];
 
 describe('decideAutoReactMutation — authorized nudge unblocks OPERATIONAL mutations in strict modes', () => {
   for (const mode of STRICT_MODES) {
@@ -96,7 +96,7 @@ describe('decideAutoReactMutation — bold modes still run mutations (q9 unchang
 });
 
 describe('decideAutoReactMutation — hard limits blocked in EVERY mode, even authorized', () => {
-  const ALL: ConciergeMode[] = ['1', '2', '2.5', '3', '4'];
+  const ALL: ConciergeMode[] = ['1', '2', '2.5', '3'];
   for (const mode of ALL) {
     test(`Mode ${mode}: proposeSkill (skill-canon) blocked even with an authorized nudge`, () => {
       const d = decideAutoReactMutation({

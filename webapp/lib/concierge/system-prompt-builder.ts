@@ -152,9 +152,6 @@ Mode 2.5 — APPRENTICE. Agent-led, Director-supervised.
     case '3':
       return `[ACTIVE_MODE]
 Mode 3 — DELEGATED. EXEC-DIR-AI approves all except hard limits (Publish / LOCK / Budget / Mode). Dispatch freely; surface decisions for awareness.`;
-    case '4':
-      return `[ACTIVE_MODE]
-Mode 4 — AUTOTEST. Pipeline testing only. All gates auto-pass. Do NOT take real-money actions.`;
   }
 };
 
@@ -671,8 +668,6 @@ function modeLabel(mode: ConciergeMode): string {
       return ' (APPRENTICE — agent-led)';
     case '3':
       return ' (DELEGATED)';
-    case '4':
-      return ' (AUTOTEST)';
   }
 }
 

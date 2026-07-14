@@ -57,6 +57,8 @@ const ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
   'decision_requested',
   'input_requested',
   'canon_extension_proposed',
+  // Critic revision-cap HALT — the shot needs a human/Polina decision.
+  'revision_requested',
 ]);
 
 /** Director-typed approvals don't need to be echoed back to PA. */

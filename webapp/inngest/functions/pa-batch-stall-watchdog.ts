@@ -34,8 +34,8 @@ import { isActionableEventType, isSelfCausedNotify } from '@/lib/api/event-actio
 const IDLE_MIN = 6; // no job activity for this long while FANOUT_RUNNING = stalled
 const COOLDOWN_MIN = 12; // don't re-nudge the same episode within this window
 const SCAN_LIMIT = 20; // bound the per-tick read cost
-// F4 (2026-06-12): Mode-4 idle sweep — only episodes that ran something within
-// this window count as "active session"; older idleness is a parked episode.
+// Idle-sweep active-session window: only episodes that ran something within
+// this window count as active; older idleness is a parked episode.
 const ACTIVE_WINDOW_H = 2;
 // 2026-06-25 (loop-fix W1.b): close OPEN concierge threads idle longer than this
 // so the watchdog/ambient can't keep nudging dead threads. Env-overridable.
@@ -43,7 +43,7 @@ const THREAD_TTL_MIN = Math.max(30, Number(process.env.CONCIERGE_THREAD_TTL_MIN)
 
 /**
  * The "parked for hours" pre-filter (ACTIVE_WINDOW_H) applies only to plain
- * Mode-4 idle-sweep candidates. FANOUT_RUNNING and autonomous-run episodes are
+ * idle-sweep candidates. FANOUT_RUNNING and autonomous-run episodes are
  * explicitly-active sessions, so they skip it and rely purely on the
  * thread-aware new-actionable-state guard to decide whether to nudge.
  */
@@ -85,30 +85,14 @@ export const paBatchStallWatchdog = inngest.createFunction(
         return { skipped: 'query_failed' as const, error: error.message };
       }
 
-      // F4 (2026-06-12, E07 smoke): the FANOUT_RUNNING flag covers only the
-      // EREF fan-out phase — both real stalls of the smoke (SH03 Designer
-      // deadlock, 20 min; "announced but never executed", 60 min) happened
-      // OUTSIDE it and the watchdog stayed silent. Second sweep scope:
-      // Mode-4 (AUTOTEST) episodes are autonomous by definition — the chain
-      // must keep moving until the episode is done. One that ran something
-      // within the last ACTIVE_WINDOW_H hours but has been idle ≥ IDLE_MIN
-      // is stalled, whatever the phase. Polina re-evaluates state before
-      // acting, so a nudge after legitimate completion is harmless (and the
-      // cooldown caps spam).
-      const { data: mode4Eps, error: m4Err } = await sb
-        .from('episodes')
-        .select('id,metadata')
-        .eq('governance_mode', 4)
-        .limit(SCAN_LIMIT);
-      if (m4Err) {
-        logger.warn(`batch-watchdog: mode-4 query failed: ${m4Err.message}`);
-      }
+      // The FANOUT_RUNNING flag covers only the EREF fan-out phase — real stalls
+      // (SH03 Designer deadlock; "announced but never executed") happen OUTSIDE
+      // it. The Mode-3 autonomous-run sweep below (opt-in) is the second scope
+      // that catches those; ordinary Director-driven modes stall visibly in the
+      // Inbox and don't need a watchdog nudge.
       const byId = new Map<string, { id: string; metadata: Record<string, unknown> | null }>();
       for (const e of (eps ?? []) as Array<{ id: string; metadata: Record<string, unknown> | null }>) {
         byId.set(e.id, e);
-      }
-      for (const e of (mode4Eps ?? []) as Array<{ id: string; metadata: Record<string, unknown> | null }>) {
-        if (!byId.has(e.id)) byId.set(e.id, e);
       }
 
       // Thin-agent autonomous run (2026-07-03): a Mode-3 episode explicitly
@@ -172,7 +156,7 @@ export const paBatchStallWatchdog = inngest.createFunction(
           : 0;
         // If something ran within IDLE_MIN, the batch is still moving — leave it.
         if (lastTs > 0 && now - lastTs < IDLE_MIN * 60_000) continue;
-        // Mode-4-only candidates (no FANOUT_RUNNING flag): require recent
+        // Autonomous-run candidates (no FANOUT_RUNNING flag): require recent
         // activity inside ACTIVE_WINDOW_H — an episode idle for days is
         // parked, not stalled; nudging it would be noise.
         if (appliesParkedFilter({ isFanoutRunning, isAutonomousRun })) {

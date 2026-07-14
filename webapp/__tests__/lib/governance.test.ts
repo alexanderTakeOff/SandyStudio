@@ -2,16 +2,8 @@ import { describe, it, expect } from 'vitest';
 
 import { enforceMode } from '@/lib/governance';
 
-describe('enforceMode — full Mode 1-4 contract with category map', () => {
+describe('enforceMode — Mode 1-3 contract with category map', () => {
   const episode = (mode: number) => ({ id: 'ep-test', governance_mode: mode });
-
-  it('Mode 4 AUTOTEST passes any action without confirmation', () => {
-    expect(enforceMode('PUBLISH', episode(4)).passed).toBe(true);
-    expect(enforceMode('LOCK', episode(4)).passed).toBe(true);
-    expect(enforceMode('AGENT_RUN', episode(4)).passed).toBe(true);
-    expect(enforceMode('REGENERATE_IMAGE', episode(4)).passed).toBe(true);
-    expect(enforceMode('UPLOAD_ASSET', episode(4)).passed).toBe(true);
-  });
 
   it('Mode 1 PUBLISH blocks without directorConfirm', () => {
     const decision = enforceMode('PUBLISH', episode(1), {});
@@ -47,7 +39,7 @@ describe('enforceMode — full Mode 1-4 contract with category map', () => {
   });
 
   it('AGENT_RUN passes through in all modes (Category C — downstream of approval)', () => {
-    for (const mode of [1, 2, 3, 4]) {
+    for (const mode of [1, 2, 3]) {
       const d = enforceMode('AGENT_RUN', episode(mode));
       expect(d.passed).toBe(true);
       expect(d.category).toBe('C');
@@ -68,7 +60,7 @@ describe('enforceMode — full Mode 1-4 contract with category map', () => {
   });
 
   it('Category C (UPLOAD_ASSET, EDIT_DESCRIPTION) always passes', () => {
-    for (const mode of [1, 2, 3, 4]) {
+    for (const mode of [1, 2, 3]) {
       expect(enforceMode('UPLOAD_ASSET', episode(mode)).passed).toBe(true);
       expect(enforceMode('EDIT_DESCRIPTION', episode(mode)).passed).toBe(true);
     }
@@ -81,6 +73,6 @@ describe('enforceMode — full Mode 1-4 contract with category map', () => {
 
   it('decision.modeAtTime echoes the episode mode for audit', () => {
     expect(enforceMode('PUBLISH', episode(1)).modeAtTime).toBe(1);
-    expect(enforceMode('AGENT_RUN', episode(4)).modeAtTime).toBe(4);
+    expect(enforceMode('AGENT_RUN', episode(3)).modeAtTime).toBe(3);
   });
 });

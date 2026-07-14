@@ -133,9 +133,6 @@ export function EpisodeStep({ seriesId, onSkip }: EpisodeStepProps) {
             </button>
           ))}
         </div>
-        <div className="text-[11px] text-text-muted mt-1">
-          Mode 4 (AUTOTEST) is for pipeline testing — not from here.
-        </div>
       </Field>
 
       {error && (

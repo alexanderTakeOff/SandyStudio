@@ -143,7 +143,7 @@ async function resolveMode(
       .eq('id', asset.episode_id)
       .maybeSingle();
     const mode = (data as { governance_mode?: number } | null)?.governance_mode;
-    if (mode === 1 || mode === 2 || mode === 3 || mode === 4) return mode;
+    if (mode === 1 || mode === 2 || mode === 3) return mode;
   }
   // Bible asset (series-level) — default to Mode 1 (Director's manual canon work).
   return 1;

@@ -105,7 +105,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
 
     // Resolve current Mode for audit. Episode-level uses governance_mode column;
     // series-level (Bible) defaults to 1 (Director's manual canon work).
-    let modeAtTime: 1 | 2 | 3 | 4 = 1;
+    let modeAtTime: 1 | 2 | 3 = 1;
     if (asset.episode_id) {
       const { data: ep } = await supabase
         .from('episodes')
@@ -113,7 +113,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
         .eq('id', asset.episode_id)
         .maybeSingle();
       const m = (ep as { governance_mode?: number } | null)?.governance_mode;
-      if (m === 1 || m === 2 || m === 3 || m === 4) modeAtTime = m;
+      if (m === 1 || m === 2 || m === 3) modeAtTime = m;
     }
 
     // Append a new description_history entry only when the markdown body

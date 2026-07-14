@@ -18,11 +18,10 @@ import type { ConciergeMode, ConciergeTurnRow } from './types';
 // ──────────────────────────────────────────────────────────────────────────────
 // q9 (2026-06-09): mode-aware "bold" gate for the Prod Assistant.
 //
-// Two governance modes are treated as BOLD: '3' (DELEGATED) and '4' (AUTOTEST).
-// In those modes EXEC-DIR-AI / the pipeline may fire NON-hard-limit mutating
-// tools WITHOUT a fresh per-action Director token (CLAUDE.md §6 + governance.ts
-// Category-B Mode-2/3 auto-fire). Modes '1' (MANUAL) and '2'/'2.5' stay strict —
-// they continue to require verbal approval, unchanged.
+// Mode '3' (DELEGATED) is the BOLD mode: EXEC-DIR-AI / the pipeline may fire
+// NON-hard-limit mutating tools WITHOUT a fresh per-action Director token
+// (CLAUDE.md §6 + governance.ts Category-B auto-fire). Modes '1' (MANUAL) and
+// '2'/'2.5' stay strict — they continue to require verbal approval, unchanged.
 //
 // HARD LIMITS are Director-only in EVERY mode (CLAUDE.md §6: Publish · LOCKED ·
 // Budget · Mode change). They are NEVER auto-allowed by mode. We classify them
@@ -35,7 +34,7 @@ import type { ConciergeMode, ConciergeTurnRow } from './types';
 // ──────────────────────────────────────────────────────────────────────────────
 
 /** Modes in which non-hard-limit mutations may auto-fire without a fresh token. */
-const BOLD_MODES: ReadonlySet<ConciergeMode> = new Set(['3', '4']);
+const BOLD_MODES: ReadonlySet<ConciergeMode> = new Set(['3']);
 
 /**
  * Concierge mutating tools that are ALWAYS Director-only (hard limits), even in
@@ -76,7 +75,7 @@ export function isHardLimitTool(
  * ~20 tool execute() bodies, making it mode-aware in one place.
  *
  *   - Hard-limit tools → ALWAYS require verbal approval (every mode).
- *   - Bold modes ('3' DELEGATED / '4' AUTOTEST), non-hard-limit → auto-pass.
+ *   - Bold mode ('3' DELEGATED), non-hard-limit → auto-pass.
  *   - Strict modes ('1' / '2' / '2.5') → require verbal approval (unchanged).
  *
  * The cost backstop (assertBudgetAvailable, migration 0037) still applies
@@ -136,7 +135,7 @@ export type AutoReactMutationDecision =
  * E13: the mutating-tool gate for the auto-react / nudge path (chat-internal).
  * Pure + mode-aware, mirroring {@link gateMutation} so it is unit-testable:
  *   - hard limits → never auto-runnable, any mode;
- *   - bold modes ('3'/'4') → mutations run (the tool's own gateMutation auto-passes);
+ *   - bold mode ('3') → mutations run (the tool's own gateMutation auto-passes);
  *   - authorized-principal nudge in a STRICT mode → OPERATIONAL mutations run,
  *     but creative gate approvals ({@link CREATIVE_APPROVAL_TOOL_NAMES}) stay
  *     Director-only;

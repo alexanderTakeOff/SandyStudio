@@ -7,8 +7,8 @@
 //   - STB-* APPROVED → WCHK when the flag is off (byte-identical legacy)
 //   - REV-readability PASS → NOTHING (CREAD's spec.nextEvent critic chain
 //     owns the PASS→WCHK fire)
-//   - REV-readability REVISE under AUTOTEST → exec-sb with revisionNote
-//   - per-shot eref/vanim REV-readability rows are ignored (phase guard)
+//   - REV-readability REVISE → NOTHING (auto re-author removed with Mode-4;
+//     Phase 2+ the reconciler owns the readability REVISE → re-author edge)
 //
 // Mock supabase shared with the single-dispatch suite — see
 // helpers/mock-supabase-next-events.ts (extracted 2026-06-12).
@@ -109,25 +109,7 @@ describe('computeNextEvents — REV-readability routing', () => {
     expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-sb/create-storyboard');
   });
 
-  it('AUTOTEST REVISE → exec-sb with joined revisionNote', async () => {
-    const sb = mockSupabase({
-      assets: [
-        { id: 'scr-1', episode_id: EP, file_type: 'SCR-script', status: 'APPROVED', version: 1 },
-      ],
-      jobs: [],
-    });
-    const events = await computeNextEvents(
-      sb,
-      revAsset('REVISE', { acceptance_criteria: ['Fix SH02 intent', 'Add false-success beat'] }),
-      'AUTOTEST',
-    );
-    const sbEvt = events.find((e) => e.name === 'sandystudio/exec-sb/create-storyboard');
-    expect(sbEvt).toBeDefined();
-    expect(sbEvt?.data.scriptAssetId).toBe('scr-1');
-    expect(sbEvt?.data.revisionNote).toBe('Fix SH02 intent; Add false-success beat');
-  });
-
-  it('REVISE in non-AUTOTEST (Director mode) fires no auto re-author', async () => {
+  it('REVISE fires no auto re-author here (Phase 2+: the reconciler owns it)', async () => {
     const sb = mockSupabase({ assets: [], jobs: [] });
     const events = await computeNextEvents(sb, revAsset('REVISE'), 'director-1');
     expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-sb/create-storyboard');

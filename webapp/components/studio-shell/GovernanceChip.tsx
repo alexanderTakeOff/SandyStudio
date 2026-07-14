@@ -12,20 +12,18 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 
-export type GovernanceMode = 1 | 2 | 3 | 4;
+export type GovernanceMode = 1 | 2 | 3;
 
 const MODE_LABEL: Record<GovernanceMode, string> = {
   1: 'MANUAL',
   2: 'HYBRID',
   3: 'DELEGATED',
-  4: 'AUTOTEST',
 };
 
 const MODE_DESCRIPTION: Record<GovernanceMode, string> = {
   1: 'You approve every gate. Default; safest.',
   2: 'You + EXEC-DIR-AI share approvals per Authority Matrix.',
   3: 'EXEC-DIR-AI handles all approvals except hard limits.',
-  4: 'AUTOTEST — every gate auto-passes. Pipeline testing only.',
 };
 
 interface GovernanceChipProps {
@@ -118,9 +116,8 @@ export function GovernanceChip({ current }: GovernanceChipProps) {
 
       <Modal open={open} onClose={() => setOpen(false)} title="Governance mode">
         <div className="space-y-1.5">
-          {([1, 2, 3, 4] as const).map((mode) => {
+          {([1, 2, 3] as const).map((mode) => {
             const checked = target === mode;
-            const isAutotest = mode === 4;
             return (
               <button
                 key={mode}
@@ -145,11 +142,6 @@ export function GovernanceChip({ current }: GovernanceChipProps) {
                 <div className="flex-1">
                   <div className="text-sm font-medium text-text-primary">
                     Mode {mode} — {MODE_LABEL[mode]}
-                    {isAutotest && (
-                      <span className="ml-2 text-[10px] uppercase tracking-wider text-[var(--accent-warning)]">
-                        testing only
-                      </span>
-                    )}
                   </div>
                   <div className="text-xs text-text-secondary mt-0.5">{MODE_DESCRIPTION[mode]}</div>
                 </div>
@@ -172,7 +164,7 @@ export function GovernanceChip({ current }: GovernanceChipProps) {
             Cancel
           </Button>
           <Button
-            variant={target === 4 ? 'warning' : 'primary'}
+            variant="primary"
             onClick={apply}
             disabled={pending || target === effective}
           >

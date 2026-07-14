@@ -2,18 +2,16 @@
 // lib/agents/next-events.ts
 // computeNextEvents — the single "what fires next" router for the studio DAG.
 //
-// TD-87 (2026-06-09): extracted verbatim from
-// app/api/assets/[id]/approve/route.ts so BOTH callers share one router:
-//   - Modes 1-3 (Director-driven): approve/route.ts calls it on APPROVE.
-//   - Mode 4 (AUTOTEST, autonomous): factory.ts calls it after auto-approving
-//     an agent's output, replacing the thin per-agent `spec.nextEvent` for
-//     forward routing so the Mode-4 chain gets the full rich fan-out (EREF +
-//     MGEN, per-shot designer/animator advancement) instead of skipping
-//     straight to EXEC-EDIT with no episode references.
+// Callers today:
+//   - approve/route.ts — the Director/Polina APPROVE (Modes 1-3).
+//   - factory.ts plan-critic autofire — on a plan-critic PASS (Modes 2/3), the
+//     factory flips the Plan APPROVED then re-enters here with the 'exec-dir-ai'
+//     principal to fire the executor (Artist / VGEN).
+// PHASE 1: Mode-4/AUTOTEST removed. PHASE 4+: the reconciler becomes the sole
+// caller (this router is demoted to a dumb dispatch executor).
 //
-// Behaviour is byte-for-byte identical to the prior in-route implementation;
-// only the file location changed. The route re-imports computeNextEvents +
-// SupabaseClientLike from here.
+// `directorUserId` is the principal that carries into the EXEC-PUB
+// `confirmedBy`; it no longer branches routing.
 //
 // Idempotency: each branch checks whether the target agent already has a
 // COMPLETED or RUNNING job for this episode (hasJob). If yes, no new event
@@ -134,29 +132,6 @@ export async function hasActiveJob(
     .eq('agent_id', agentId)
     .in('status', ['QUEUED', 'RUNNING']);
   return (count ?? 0) > 0;
-}
-
-/**
- * Parse the LAST fenced ```json block from an asset's markdown content.
- * Local copy (kept tiny + dependency-free) so next-events.ts does not import
- * the heavy episode-references runner just for this. Returns null on
- * absent/malformed content. Used by the REV-ref_plan critic-PASS promotion.
- */
-function parseLastJsonBlock(
-  content: string | null | undefined,
-): Record<string, unknown> | null {
-  if (typeof content !== 'string') return null;
-  const matches = [...content.matchAll(/```json\s*([\s\S]+?)```/g)];
-  const last = matches[matches.length - 1]?.[1];
-  if (!last) return null;
-  try {
-    const parsed = JSON.parse(last.trim());
-    return parsed && typeof parsed === 'object'
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 async function countApproved(
@@ -377,18 +352,9 @@ export async function computeNextEvents(
   //    Casting is TOOL-ONLY: the Director/Polina draft it via castEpisode →
   //    SPC-episode_cast → approve. It has NO Inngest executor, so a fully
   //    autonomous run can't perform it. Therefore:
-  //      • AUTOTEST (Mode 4 / replay-pilot — signalled by directorUserId ===
-  //        'AUTOTEST', the factory's auto-chain marker): keep the direct
-  //        Brief→Writer edge so the headless DAG still completes.
-  //      • Director-driven modes (1/2/2.5/3): Brief does NOT fire the Writer;
-  //        the Writer fires only once the cast is approved (branch below).
-  const isAutotest = directorUserId === 'AUTOTEST';
-  if (ft === 'SPC-brief' && isAutotest && !(await hasJob(supabase, ep, 'EXEC-SW', { since }))) {
-    events.push({
-      name: 'sandystudio/exec-sw/write-script',
-      data: { episodeId: ep, briefAssetId: asset.id },
-    });
-  }
+  //    Brief does NOT fire the Writer in any mode; the Writer fires only once the
+  //    cast is approved (branch below). The brief-approval nudge below points the
+  //    Director/Polina at the casting step.
 
   // ── Brief APPROVED (Director modes) → nudge «cast this episode» (D1/D2, 2026-07-09).
   //    Casting is TOOL-ONLY (no Inngest executor), so a fresh brief otherwise leaves
@@ -399,7 +365,6 @@ export async function computeNextEvents(
   //    per episode: only while no cast asset exists yet.
   if (
     ft === 'SPC-brief' &&
-    !isAutotest &&
     !(await episodeHasAnyAsset(supabase, ep, 'SPC-episode_cast'))
   ) {
     await logEvent(supabase, {
@@ -416,7 +381,7 @@ export async function computeNextEvents(
 
   // ── Casting APPROVED → EXEC-SW. The gate the Brief no longer skips in
   //    Director modes. Resolve the approved brief id so the Writer's event
-  //    payload stays honest. Harmless in AUTOTEST (no SPC-episode_cast there).
+  //    payload stays honest.
   if (ft === 'SPC-episode_cast' && !(await hasJob(supabase, ep, 'EXEC-SW', { since }))) {
     // Guard (2026-06-25, Director): the Writer auto-start fires ONLY for a fresh
     // episode (no script yet). A cast RE-approval on an episode that already has
@@ -492,10 +457,10 @@ export async function computeNextEvents(
     //    LAST unblocks the Storyboard, regardless of the Director's approval
     //    order. Without this leg, "review approved BEFORE script" left the
     //    storyboard needing a manual trigger (E19 D6, 2026-07-09).
-    const reviewApprovedForSb =
-      isAutotest || Boolean(await findLatestApprovedAssetId(supabase, ep, 'REV-script_qa'));
-    const castReadyForSb =
-      isAutotest || (await countApproved(supabase, ep, 'SPC-episode_cast')) >= 1;
+    const reviewApprovedForSb = Boolean(
+      await findLatestApprovedAssetId(supabase, ep, 'REV-script_qa'),
+    );
+    const castReadyForSb = (await countApproved(supabase, ep, 'SPC-episode_cast')) >= 1;
     if (
       reviewApprovedForSb &&
       castReadyForSb &&
@@ -520,7 +485,6 @@ export async function computeNextEvents(
     !(await hasActiveJob(supabase, ep, 'EXEC-SB'))
   ) {
     // EXEC-SB's gate requires ≥1 APPROVED cast ("found 0 cast" crash otherwise).
-    // AUTOTEST has no casting stage → keep the direct fire (replay-pilot intact).
     // Director modes (writer→cast→storyboard, Director 2026-07-04): if the cast
     // isn't approved yet, DON'T fire storyboard — the cast-approval branch above
     // fires it once the cast lands. Whichever of {script, cast} is last unblocks SB.
@@ -532,8 +496,7 @@ export async function computeNextEvents(
     // WHICH precondition is missing and wait — the script→SB / cast→SB branches
     // fire the storyboard once the last one lands.
     const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
-    const castReady =
-      isAutotest || (await countApproved(supabase, ep, 'SPC-episode_cast')) >= 1;
+    const castReady = (await countApproved(supabase, ep, 'SPC-episode_cast')) >= 1;
     if (scrId && castReady) {
       events.push({
         name: 'sandystudio/exec-sb/create-storyboard',
@@ -588,47 +551,10 @@ export async function computeNextEvents(
     }
   }
 
-  // ── Readability review APPROVED → EXEC-SB re-author (AUTOTEST REVISE only).
-  //    Dedup 2026-06-11: the PASS→WCHK push moved out of this router — CREAD's
-  //    own spec.nextEvent (PASS → exec-wchk/check-world) is a critic chain
-  //    firing in ALL modes at CREAD completion, so the push here was the same
-  //    Mode-4 deterministic double-fire the STB→CREAD branch had
-  //    (computeNextEvents runs before the critic-chain event lands; hasJob
-  //    misses). The AUTOTEST REVISE branch stays — it is the ONLY Mode-4
-  //    re-author path (exec-sb is not a critic chain, so the thin candidate
-  //    never dispatches it).
-  //    Phase guard: per-shot eref/vanim REV-readability rows (T1 consolidation)
-  //    are closed by applyCriticVerdict inside the runner — routing them here
-  //    would re-author the whole storyboard off a single shot-plan verdict.
-  if (ft === 'REV-readability' || ft.startsWith('REV-readability')) {
-    const metaPhase =
-      asset.metadata && typeof asset.metadata === 'object'
-        ? (asset.metadata as { phase?: unknown }).phase
-        : null;
-    const isShotPhase = metaPhase === 'eref' || metaPhase === 'vanim';
-    const body = isShotPhase ? null : parseLastJsonBlock(asset.content);
-    const verdict = typeof body?.verdict === 'string' ? body.verdict : null;
-    if (verdict === 'REVISE' && directorUserId === 'AUTOTEST') {
-      const scrId = await findLatestApprovedAssetId(supabase, ep, 'SCR-script');
-      const criteria = Array.isArray(body?.acceptance_criteria)
-        ? (body.acceptance_criteria as unknown[]).filter(
-            (v): v is string => typeof v === 'string' && v.trim().length > 0,
-          )
-        : [];
-      const revisionNote =
-        criteria.length > 0
-          ? criteria.join('; ')
-          : 'Readability Critic verdict REVISE — re-author the storyboard for readability.';
-      events.push({
-        name: 'sandystudio/exec-sb/create-storyboard',
-        data: {
-          episodeId: ep,
-          scriptAssetId: scrId ?? '',
-          revisionNote,
-        },
-      });
-    }
-  }
+  // ── Readability review (REV-readability): no forward routing here. CREAD's
+  //    PASS → exec-wchk fires via its own critic-chain spec.nextEvent (all modes);
+  //    a REVISE re-author is a Director-manual re-trigger today (Phase 2+: the
+  //    reconciler owns the readability REVISE → re-author edge).
 
   // ── Continuity Check APPROVED → EXEC-EREF (episode references) +
   //    EXEC-MGEN (music) in parallel.
@@ -651,9 +577,9 @@ export async function computeNextEvents(
     // Director approves REV-world_check BEFORE the storyboard (bulk-approve out of
     // order), WAIT instead of firing EREF/MGEN against a not-yet-approved board
     // (which crashed with "0 approved storyboard"). Same invariant as D5/D6.
-    const stbApprovedForRefs =
-      isAutotest ||
-      Boolean(await findLatestApprovedAssetId(supabase, ep, 'STB-storyboard'));
+    const stbApprovedForRefs = Boolean(
+      await findLatestApprovedAssetId(supabase, ep, 'STB-storyboard'),
+    );
     if (!stbApprovedForRefs) {
       await logEvent(supabase, {
         event_type: 'pipeline/references-waiting-storyboard',
@@ -779,39 +705,6 @@ export async function computeNextEvents(
   }
 
   // ── Ref Plan Critic PASS (Mode 4 only) → flip Plan APPROVED + fire Artist.
-  // TD (2026-06-09): the "downstream code flips Plan to REVIEW" the EPREV
-  // comment promised never existed — the Designer's SPC-ref_plan stays DRAFT
-  // forever in the Mode-4 designer→critic chain (factory auto-approve does not
-  // stick for re-authored plans), so the Artist (execute-from-plan) hard-fails
-  // `status="DRAFT", expected APPROVED` and zero frames generate. This is the
-  // missing promotion: when the EPREV critic PASSes (Mode 4 = AUTOTEST), flip
-  // the reviewed Plan to APPROVED and fire the Artist. Modes 1-3 are untouched
-  // — there computeNextEvents only runs on the Director's manual Plan approval
-  // (autoChain is off for critic outputs), so the SPC-ref_plan branch below is
-  // what fires the Artist. confirmedBy === 'AUTOTEST' is the Mode-4 sentinel.
-  if (
-    (ft === 'REV-ref_plan' || ft.startsWith('REV-ref_plan-')) &&
-    directorUserId === 'AUTOTEST' &&
-    designerChainEnabled()
-  ) {
-    const body = parseLastJsonBlock(asset.content);
-    const verdict = typeof body?.verdict === 'string' ? body.verdict : null;
-    const planAssetId =
-      typeof body?.plan_asset_id === 'string' ? body.plan_asset_id : null;
-    const shotId = typeof body?.shot_id === 'string' ? body.shot_id : null;
-    if (verdict === 'PASS' && planAssetId && shotId) {
-      // Promote the Plan so the Artist's APPROVED gate passes.
-      await supabase.from('assets').update({ status: 'APPROVED' }).eq('id', planAssetId);
-      // Per-Plan idempotency: skip if an IMG already references this Plan.
-      if (!(await planAlreadyExecuted(supabase, ep, 'IMG-episode_ref', planAssetId))) {
-        events.push({
-          name: 'sandystudio/exec-eref/execute-from-plan',
-          data: { episodeId: ep, shotId, planAssetId },
-        });
-      }
-    }
-  }
-
   // ── Ref Plan APPROVED → EXEC-EREF execute-from-plan (Day 3.2)
   // Sprint «Дизайнер и Аниматор» 2026-05-18 (q2c flag-gated). Director (or
   // future Day 4 Critic) approved the per-shot Plan; runner now generates
@@ -825,25 +718,12 @@ export async function computeNextEvents(
   // for SS-S15-E01. Hot-fix accepts both shapes. Helper refactor for the
   // other 4 prod sites in follow-up (TD-24.B).
   //
-  // Status guard (2026-06-09): only fire when the Plan is actually APPROVED.
-  // In Mode 4 the factory feeds the Designer's freshly-saved (DRAFT) plan to
-  // computeNextEvents, which previously fired the Artist prematurely against a
-  // DRAFT plan (→ hard-fail). The REV-ref_plan branch above now drives the
-  // Mode-4 Artist fire post-critic; this branch handles the Director-approved
-  // (APPROVED) path in Modes 1-3.
+  // Status guard: only fire when the Plan is actually APPROVED. This is the
+  // canonical Plan-APPROVED → Artist edge — for Director approvals (Modes 1-3)
+  // and the plan-critic autofire (Modes 2/3, which flips the Plan APPROVED then
+  // re-enters here with the 'exec-dir-ai' principal). A not-yet-approved plan
+  // waits (returns below) for the critic/Director to promote it.
   if ((ft === 'SPC-ref_plan' || ft.startsWith('SPC-ref_plan-')) && designerChainEnabled()) {
-    // Mode-4 dedup (2026-06-12, E07 Artist double-fire 25s apart): in
-    // AUTOTEST the factory auto-approves the Designer's fresh plan and runs
-    // computeNextEvents on it → this branch fired the Artist BEFORE the
-    // EPREV critic ever saw the plan (gate bypass), then the REV-ref_plan
-    // PASS branch above fired it AGAIN post-critic (the IMG-provenance
-    // idempotency is blind while the first image is still generating,
-    // ~6 min). The comment below always declared this branch the
-    // Director-approval (Modes 1-3) path — now it actually is. Mode-4
-    // canonical source: REV-ref_plan PASS branch, post-critic, only.
-    if (directorUserId === 'AUTOTEST') {
-      return events;
-    }
     const { data: planRow } = await supabase
       .from('assets')
       .select('status')
@@ -887,63 +767,6 @@ export async function computeNextEvents(
     }
   }
 
-  // ── Shot Plan Critic PASS (Mode 4 only) → flip Plan APPROVED + fire VGEN.
-  // Mirror of the REV-ref_plan branch above, added 2026-06-12 (E07 smoke):
-  // this branch DID NOT EXIST — the eref side got its post-critic promotion
-  // on 2026-06-09 but the vanim side never got the mirror. Consequences in
-  // the smoke: (a) re-authored SPC-shot_plan versions sat DRAFT forever at
-  // clean VPREV verdicts (TD-76 — Полина's unstickPlanForApproval + manual
-  // DRAFT→REVIEW→approve were the workaround), and (b) the SPC-shot_plan
-  // branch below fired VGEN off the factory auto-approve BEFORE the critic
-  // ran (paid render on an unvalidated plan). Mode-4 canonical source for
-  // plan-driven video: THIS branch, post-VPREV, only.
-  //
-  // PASS_WITH_UNCERTAINTY also advances: AUTOTEST auto-passes Director
-  // gates by definition, and the smoke's clean-but-uncertain verdicts are
-  // exactly the rows that stuck. CREAD's vanim phase still reviews after
-  // (advisory in Mode 4, same ordering as the eref side).
-  if (
-    (ft === 'REV-shot_plan' || ft.startsWith('REV-shot_plan-')) &&
-    directorUserId === 'AUTOTEST' &&
-    animatorChainEnabled()
-  ) {
-    const body = parseLastJsonBlock(asset.content);
-    const verdict = typeof body?.verdict === 'string' ? body.verdict : null;
-    const planAssetId =
-      typeof body?.plan_asset_id === 'string' ? body.plan_asset_id : null;
-    const shotId = typeof body?.shot_id === 'string' ? body.shot_id : null;
-    const cleanVerdict = verdict === 'PASS' || verdict === 'PASS_WITH_UNCERTAINTY';
-    if (cleanVerdict && planAssetId && shotId) {
-      await supabase.from('assets').update({ status: 'APPROVED' }).eq('id', planAssetId);
-      if (!(await planAlreadyExecuted(supabase, ep, 'VID-shot', planAssetId))) {
-        // duration_seconds rides from the Plan body (runner clamps anyway,
-        // but passing it keeps event payloads honest).
-        const { data: planRow } = await supabase
-          .from('assets')
-          .select('content')
-          .eq('id', planAssetId)
-          .maybeSingle();
-        const planBody = parseLastJsonBlock(
-          (planRow as { content?: string | null } | null)?.content,
-        );
-        const duration =
-          typeof planBody?.duration_seconds === 'number' &&
-          planBody.duration_seconds > 0
-            ? planBody.duration_seconds
-            : null;
-        events.push({
-          name: 'sandystudio/exec-vgen/single-shot',
-          data: {
-            episodeId: ep,
-            shotId,
-            planAssetId,
-            ...(duration !== null ? { duration_seconds: duration } : {}),
-          },
-        });
-      }
-    }
-  }
-
   // ── SPC-shot_plan.APPROVED → exec-vgen/start with planAssetId
   //    (q7a Step 6 wired runner.ts to extract end_image, seed, quality_tier
   //    from Plan body; this branch is what triggers that flow). Mirrors the
@@ -952,15 +775,12 @@ export async function computeNextEvents(
   //    fire VGEN twice. Per-Plan idempotency via metadata plan_asset_id on
   //    the resulting VID-shot (both provenance and top-level shapes).
   //
-  //    Mode-4 dedup (2026-06-12): AUTOTEST skips this branch — the factory
-  //    feeds the freshly auto-approved plan here BEFORE the VPREV critic has
-  //    reviewed it (gate bypass + double fire vs the REV-shot_plan branch
-  //    above). Modes 1-3 only: Director's manual Plan approval is the
-  //    canonical trigger.
+  //    Canonical Plan-APPROVED → VGEN edge — for Director approvals (Modes 1-3)
+  //    and the plan-critic autofire (Modes 2/3, which flips the Plan APPROVED
+  //    then re-enters here with the 'exec-dir-ai' principal).
   if (
     (ft === 'SPC-shot_plan' || ft.startsWith('SPC-shot_plan-')) &&
-    animatorChainEnabled() &&
-    directorUserId !== 'AUTOTEST'
+    animatorChainEnabled()
   ) {
     let shotId: string | null = null;
     let durationSecondsFromPlan: number | null = null;
@@ -1480,16 +1300,15 @@ export async function computeNextEvents(
           // does not exist — do NOT assemble a silent cut behind the Director's
           // back (E14 complaint #1). Surface a readable, actionable notice; the
           // Director loads/approves music (re-fires this gate) or triggers
-          // EXEC-STITCH manually for a deliberate music-less cut. AUTOTEST
-          // (replay-pilot) and sequential keep their prior behaviour untouched.
+          // EXEC-STITCH manually for a deliberate music-less cut.
           // D3b (2026-07-09): music precondition is now UNIFORM for both pipeline
           // modes (was parallel-only) — the stitch gate (gate.ts) enforces it for
           // manual/direct triggers; this pre-dispatch check keeps the auto-fire
           // from spawning a job that would just fail the gate, and instead surfaces
           // an actionable decision_requested (a MUST-WAKE) so Polina/Director load
           // music (UPLOAD MUSIC re-fires this gate) or run skip-music / manual
-          // EXEC-STITCH for a deliberate silent cut. AUTOTEST keeps assembling.
-          if (!isAutotest && !contractHasMusic(v1)) {
+          // EXEC-STITCH for a deliberate silent cut.
+          if (!contractHasMusic(v1)) {
             await logEvent(supabase, {
               event_type: 'decision_requested',
               severity: 'warning',

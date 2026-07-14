@@ -49,7 +49,7 @@ function makeSb(h: SbHandlers): ToolContext['supabase'] {
 function ctx(overrides: Partial<ToolContext> & { supabase: ToolContext['supabase'] }): ToolContext {
   return {
     threadId: 't1',
-    mode: '4', // bold → gateMutation auto-passes for this non-hard-limit tool
+    mode: '3', // bold → gateMutation auto-passes for this non-hard-limit tool
     episodeId: EP,
     appOrigin: 'http://test',
     recentTurns: [],

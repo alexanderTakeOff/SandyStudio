@@ -8,11 +8,11 @@
 // build-exhaustive per-agent gate CLASSIFICATION that future autonomy flips
 // (S6/S7 — "auto-pass the safest MECHANICAL gates") will key on.
 //
-// BEHAVIOUR-PRESERVING (measurement-first, q2a 2026-06-28): `decideGate` returns
-// EXACTLY today's outcome — `autonomous` is purely Mode-4. `gateClass` is RECORDED
-// (gate_decision_log) for the E13 gate-taxonomy measurement; it does NOT yet
-// change the advance decision. The factory choke-point is wired now; the
-// next-events forks are collapsed later (S6/S7) when the seam is load-bearing.
+// PHASE 1 (Mode-4/AUTOTEST removed): `decideGate.autonomous` is always false —
+// every gate requires a human. `gateClass` is the build-exhaustive taxonomy,
+// RECORDED to gate_decision_log. PHASE 2 rebuilds `decideGate` as the mode-aware
+// brain (gateClass × governance_mode → advance | require_human) and wires it
+// INTO the reconciler (the single conductor).
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -64,34 +64,28 @@ export type GateClass = (typeof GATE_CLASS)[AgentId];
 export type GateDecidedBy = 'factory' | 'human';
 
 export interface GateDecision {
-  /** Did the pipeline advance autonomously (Mode 4) vs require a human (Mode 1-3)? */
+  /** Did the pipeline advance autonomously vs require a human?
+   *  Phase 1: always human, until Phase 2 wires the mode-aware brain. */
   autonomous: boolean;
   decision: 'advance' | 'require_human';
   decidedBy: GateDecidedBy;
   gateClass: GateClass;
 }
 
-/** The Mode-4 (AUTOTEST) sentinel passed into computeNextEvents in lieu of a
- *  governance_mode read — kept here so the next-events collapse (later) shares it. */
-export const AUTOTEST_PRINCIPAL = 'AUTOTEST';
-
 /**
- * The single autonomy decision. Behaviour-preserving: `autonomous` is Mode-4 only
- * (or the AUTOTEST sentinel, the same signal as seen inside next-events). gateClass
- * is recorded, not yet enforced.
+ * The single autonomy decision.
+ * Phase 1 (Mode-4/AUTOTEST removed): autonomy is OFF — every gate requires a human.
+ * `governanceMode` is accepted but unused until Phase 2 rebuilds this as the
+ * mode-aware brain (gateClass × governance_mode) wired into the reconciler.
  */
 export function decideGate(args: {
   agentId: AgentId;
   governanceMode?: number | null;
-  /** next-events path: the AUTOTEST sentinel is the Mode-4 proxy. */
-  directorUserId?: string | null;
 }): GateDecision {
-  const autonomous =
-    args.governanceMode === 4 || args.directorUserId === AUTOTEST_PRINCIPAL;
   return {
-    autonomous,
-    decision: autonomous ? 'advance' : 'require_human',
-    decidedBy: autonomous ? 'factory' : 'human',
+    autonomous: false,
+    decision: 'require_human',
+    decidedBy: 'human',
     gateClass: GATE_CLASS[args.agentId] ?? 'creative',
   };
 }

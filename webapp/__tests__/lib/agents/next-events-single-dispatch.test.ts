@@ -4,13 +4,10 @@
 //
 //   1. SCR-script APPROVED → NO exec-srev (critic chain at Writer completion
 //      owns SREV; the push here was the SREV×2 → STB×2 → SH03-deadlock root).
-//   2. SPC-ref_plan in AUTOTEST → NOTHING (REV-ref_plan PASS branch owns the
-//      Mode-4 Artist fire; this branch fired pre-critic + duplicated 25s later).
-//   3. NEW REV-shot_plan PASS (AUTOTEST) → promote plan + exec-vgen/single-shot
-//      exactly once (mirror of REV-ref_plan; absence was the TD-76 DRAFT-stick
-//      for re-authored Animator plans).
-//   4. SPC-shot_plan in AUTOTEST → NOTHING (same pre-critic bypass class).
-//   5. Per-Plan idempotency reads BOTH metadata shapes — top-level
+//   2. SPC-ref_plan / SPC-shot_plan APPROVED → execute-from-plan / single-shot
+//      once, for every principal (Mode-4/AUTOTEST branches removed Phase 1; the
+//      plan-critic autofire flips the plan APPROVED then re-enters this router).
+//   3. Per-Plan idempotency reads BOTH metadata shapes — top-level
 //      `plan_asset_id` (what exec-vgen writes) and `provenance.plan_asset_id`
 //      (what EREF writes). The provenance-only readers were blind to VID-shots
 //      (SH03 rendered twice, +$1.21).
@@ -88,13 +85,7 @@ describe('Brief → Casting → Writer gate (2026-06-23, q22a/q30a)', () => {
     };
   }
 
-  it('AUTOTEST: Brief APPROVED fires the Writer directly (no casting executor headless)', async () => {
-    const { client } = mockSupabase({ assets: [], jobs: [] });
-    const events = await computeNextEvents(client, brief(), 'AUTOTEST');
-    expect(events.map((e) => e.name)).toContain('sandystudio/exec-sw/write-script');
-  });
-
-  it('Director mode: Brief APPROVED does NOT fire the Writer — Casting is the next gate', async () => {
+  it('Brief APPROVED does NOT fire the Writer — Casting is the next gate', async () => {
     const { client } = mockSupabase({ assets: [], jobs: [] });
     const events = await computeNextEvents(client, brief(), 'director-1');
     expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-sw/write-script');
@@ -121,15 +112,6 @@ describe('Brief → Casting → Writer gate (2026-06-23, q22a/q30a)', () => {
     expect(nudges).toHaveLength(0);
   });
 
-  it('AUTOTEST: Brief APPROVED does NOT emit the cast nudge (headless)', async () => {
-    const { client, inserts } = mockSupabase({ assets: [], jobs: [] });
-    await computeNextEvents(client, brief(), 'AUTOTEST');
-    const nudges = inserts.filter(
-      (i) => i.table === 'activity_events' && i.row.event_type === 'decision_requested',
-    );
-    expect(nudges).toHaveLength(0);
-  });
-
   it('Director mode: Casting APPROVED fires the Writer with the approved brief id', async () => {
     const { client } = mockSupabase({
       assets: [{ id: 'brief-1', episode_id: EP, file_type: 'SPC-brief', status: 'APPROVED' }],
@@ -149,7 +131,7 @@ describe('Brief → Casting → Writer gate (2026-06-23, q22a/q30a)', () => {
   });
 });
 
-describe('SPC-ref_plan — Modes 1-3 only; AUTOTEST is owned by REV-ref_plan PASS', () => {
+describe('SPC-ref_plan APPROVED → execute-from-plan', () => {
   function refPlan(): AssetForChain {
     return {
       id: 'plan-img-1',
@@ -161,26 +143,7 @@ describe('SPC-ref_plan — Modes 1-3 only; AUTOTEST is owned by REV-ref_plan PAS
     };
   }
 
-  it('AUTOTEST: approved plan fires NOTHING (pre-critic bypass closed)', async () => {
-    process.env.DESIGNER_CHAIN_ENABLED = 'true';
-    const { client } = mockSupabase({
-      assets: [
-        {
-          id: 'plan-img-1',
-          episode_id: EP,
-          file_type: 'SPC-ref_plan-SS-S15-E07-A1-SC01-SH01',
-          status: 'APPROVED',
-        },
-      ],
-      jobs: [],
-    });
-    const events = await computeNextEvents(client, refPlan(), 'AUTOTEST');
-    expect(events.map((e) => e.name)).not.toContain(
-      'sandystudio/exec-eref/execute-from-plan',
-    );
-  });
-
-  it('Director mode: approved plan fires execute-from-plan once', async () => {
+  it('approved plan fires execute-from-plan once', async () => {
     process.env.DESIGNER_CHAIN_ENABLED = 'true';
     const { client } = mockSupabase({
       assets: [
@@ -202,100 +165,7 @@ describe('SPC-ref_plan — Modes 1-3 only; AUTOTEST is owned by REV-ref_plan PAS
   });
 });
 
-describe('REV-shot_plan PASS (AUTOTEST) — promote plan + fire VGEN once', () => {
-  function vprevVerdict(verdict: string): AssetForChain {
-    return {
-      id: 'rev-vp-1',
-      filename: 'rev',
-      file_type: 'REV-shot_plan-SS-S15-E07-A1-SC01-SH03',
-      episode_id: EP,
-      updated_at: '2026-06-12T00:00:00Z',
-      content: jsonContent({
-        verdict,
-        plan_asset_id: 'plan-vid-1',
-        shot_id: 'SS-S15-E07-A1-SC01-SH03',
-      }),
-    };
-  }
-  const planRow = () => ({
-    id: 'plan-vid-1',
-    episode_id: EP,
-    file_type: 'SPC-shot_plan-SS-S15-E07-A1-SC01-SH03',
-    status: 'REVIEW',
-    content: jsonContent({
-      shot_id: 'SS-S15-E07-A1-SC01-SH03',
-      duration_seconds: 4,
-      prompt: 'orbit 90',
-    }),
-  });
-
-  it('PASS: plan flips APPROVED and single-shot fires with duration', async () => {
-    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
-    const { client, updates } = mockSupabase({
-      assets: [planRow()],
-      jobs: [],
-    });
-    const events = await computeNextEvents(client, vprevVerdict('PASS'), 'AUTOTEST');
-    const fires = events.filter((e) => e.name === 'sandystudio/exec-vgen/single-shot');
-    expect(fires).toHaveLength(1);
-    expect(fires[0].data.planAssetId).toBe('plan-vid-1');
-    expect(fires[0].data.duration_seconds).toBe(4);
-    const promo = updates.find(
-      (u) =>
-        u.table === 'assets' &&
-        u.patch.status === 'APPROVED' &&
-        u.filters.some((f) => f.col === 'id' && f.val === 'plan-vid-1'),
-    );
-    expect(promo).toBeDefined();
-  });
-
-  it('PASS_WITH_UNCERTAINTY also advances in AUTOTEST', async () => {
-    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
-    const { client } = mockSupabase({ assets: [planRow()], jobs: [] });
-    const events = await computeNextEvents(
-      client,
-      vprevVerdict('PASS_WITH_UNCERTAINTY'),
-      'AUTOTEST',
-    );
-    expect(events.map((e) => e.name)).toContain('sandystudio/exec-vgen/single-shot');
-  });
-
-  it('REVISE does not fire video', async () => {
-    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
-    const { client } = mockSupabase({ assets: [planRow()], jobs: [] });
-    const events = await computeNextEvents(client, vprevVerdict('REVISE'), 'AUTOTEST');
-    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
-  });
-
-  it('Director mode ignores the branch (Mode-4 only)', async () => {
-    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
-    const { client } = mockSupabase({ assets: [planRow()], jobs: [] });
-    const events = await computeNextEvents(client, vprevVerdict('PASS'), 'director-1');
-    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
-  });
-
-  it('existing VID-shot with top-level plan_asset_id suppresses the fire (dual-shape)', async () => {
-    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
-    const { client } = mockSupabase({
-      assets: [
-        planRow(),
-        {
-          id: 'vid-1',
-          episode_id: EP,
-          file_type: 'VID-shot-ss-s15-e07-a1-sc01-sh03',
-          status: 'REVIEW',
-          // exec-vgen.ts metaPatch shape: TOP-LEVEL plan_asset_id (no provenance).
-          metadata: { shot_id: 'SS-S15-E07-A1-SC01-SH03', plan_asset_id: 'plan-vid-1' },
-        },
-      ],
-      jobs: [],
-    });
-    const events = await computeNextEvents(client, vprevVerdict('PASS'), 'AUTOTEST');
-    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
-  });
-});
-
-describe('SPC-shot_plan — Modes 1-3 only', () => {
+describe('SPC-shot_plan APPROVED → exec-vgen/single-shot', () => {
   function shotPlan(): AssetForChain {
     return {
       id: 'plan-vid-1',
@@ -309,13 +179,6 @@ describe('SPC-shot_plan — Modes 1-3 only', () => {
       }),
     };
   }
-
-  it('AUTOTEST: approved plan fires NOTHING (REV-shot_plan branch owns Mode 4)', async () => {
-    process.env.ANIMATOR_CHAIN_ENABLED = 'true';
-    const { client } = mockSupabase({ assets: [], jobs: [] });
-    const events = await computeNextEvents(client, shotPlan(), 'AUTOTEST');
-    expect(events.map((e) => e.name)).not.toContain('sandystudio/exec-vgen/single-shot');
-  });
 
   it('Director mode: approval fires single-shot once', async () => {
     process.env.ANIMATOR_CHAIN_ENABLED = 'true';

@@ -12,9 +12,9 @@ import { makeMockSupabase } from '../helpers/mock-supabase';
 describe('validateAgentInputs — EXEC-VGEN needs no episode animatic (any mode)', () => {
   const withMode = (metadata: Record<string, unknown>) =>
     makeMockSupabase({
-      // governance_mode 4 ⇒ exempt from the F13 budget gate (Step 0c) so the test
+      // budget_approved ⇒ passes the F13 budget gate (Step 0c) so the test
       // isolates the animatic requirement.
-      episodes: [{ id: 'ep-1', governance_mode: 4, metadata }],
+      episodes: [{ id: 'ep-1', governance_mode: 1, metadata: { ...metadata, budget_approved: true } }],
       // No VID-animatic present anywhere in the episode.
       assets: [
         {

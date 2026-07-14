@@ -74,7 +74,7 @@ async function resolveMode(
       .eq('id', asset.episode_id)
       .maybeSingle();
     const m = (data as { governance_mode?: number } | null)?.governance_mode;
-    if (m === 1 || m === 2 || m === 3 || m === 4) return m;
+    if (m === 1 || m === 2 || m === 3) return m;
   }
   return 1;
 }

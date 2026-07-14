@@ -120,9 +120,6 @@ interface VgenEventData {
   regenerate?: boolean;
 }
 
-const TARGET_STATUS_BY_MODE = (mode: number | null | undefined): 'APPROVED' | 'REVIEW' =>
-  mode === 4 ? 'APPROVED' : 'REVIEW';
-
 // Helper: emit a single-shot event for one remaining shot during fan-out.
 // 2026-05-26 (TD-50 follow-up): when an APPROVED SPC-shot_plan exists for
 // the shot, forward its planAssetId so the single-shot handler routes to
@@ -549,7 +546,7 @@ export const execVgenRun = inngest.createFunction(
           variant: shotId.toLowerCase(),
         });
         await markJobCompleted(supabase, job.id, out.assetId);
-        const targetStatus = TARGET_STATUS_BY_MODE(ep?.governance_mode);
+        const targetStatus = 'REVIEW' as const;
         // Persist the pilot marker + production trace into asset metadata.
         // saveAgentOutput strips most metadata keys; rewrite explicitly here.
         const existingMeta = exec.result.metadata as Record<string, unknown>;

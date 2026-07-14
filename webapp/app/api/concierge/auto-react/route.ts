@@ -41,7 +41,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const RECENT_TURN_WINDOW = 80;
-const VALID_MODES: ReadonlyArray<ConciergeMode> = ['1', '2', '2.5', '3', '4'];
+const VALID_MODES: ReadonlyArray<ConciergeMode> = ['1', '2', '2.5', '3'];
 
 interface AutoReactBody {
   threadId: string;

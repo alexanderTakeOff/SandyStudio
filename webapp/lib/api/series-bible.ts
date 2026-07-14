@@ -130,7 +130,7 @@ export function bibleSlug(fileType: string): string | null {
 // so we don't add new columns for every editorial concern.
 
 /** Governance mode at the moment of action. Future EXEC-ORCH reads this for audit. */
-export type GovernanceModeNum = 1 | 2 | 3 | 4;
+export type GovernanceModeNum = 1 | 2 | 3;
 
 /** Who/when an asset was created or last touched. Surfaced in AssetDetailDrawer. */
 export interface AssetProvenance {
