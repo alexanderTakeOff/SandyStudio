@@ -32,8 +32,12 @@ Date:   2026-07-15 (Critic Churn Discriminator + Factory page — Тео, КОД
   leak · черн true/naive · reject% · $/шот · autonomy% · per-critic вердикты) + `/api/factory`. Правка R02 (анти-
   аддит.): hard-rule УЖЕ был — дыра в pre-submit self-check → добавил пункт в `storyboarder-situational-comedy` +
   QA-строку в `agents/exec/storyboarder.md` (ловит R02 до критика). tsc·0 / vitest **1251** (+6) / replay **30/30**.
-  E28 скоркард популирован (row `d44aed6a`). ⚠️ НЕ задеплоено (Factory оживёт после rebuild+restart). OPEN=VPREV
-  V04/V11/V12 отдельная форензика (продюсер vs критик); safe-auto-applier отложен (нечего применять — критики точны).)
+  E28 скоркард популирован. ЗАДЕПЛОЕНО (master `44dffb11` rebuild+стек up, health 200×3). Медленный цикл доказан
+  end-to-end: published-фаза E28 → **2 реальных предложения в Inbox** (CREAD R02/R06 + VPREV V04/V11/V12, escalate,
+  идемпот. без дублей). Побочно найдена+закрыта дыра: Director-Inbox фильтр не включал `rule_proposal` → эскалация
+  писалась в activity_events но не всплывала → добавлен в `.in()` (inbox/route.ts). OPEN=VPREV V04/V11/V12 отдельная
+  форензика (продюсер vs критик); safe-auto-applier отложен (нечего применять — критики точны). Стек session-bound —
+  durable = десктоп-ярлык.)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-13 (Brand-бумперы SHIPPED+LOCKED. Прод master `aef0c137` (пересобран, health 200×3). INTRO+OUTRO (S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy», музыка Flacon Pop Loop запечена) **LOCKED** как `SBL-video_intro/outro` на S15 → EXEC-STITCH теперь собирает брендовый мастер по тумблерам. Инструмент `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф→Seedance fast 720p→апскейл 1080p, ~$1.85/шт) переиспользуем. UI-фикс: video-превью постеры в Library card/drawer. NEXT (опц.) = двух-мастер смоук на реальном эпизоде (закрывает Stage 4). RECONCILER **OFF**.)
