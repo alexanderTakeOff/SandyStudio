@@ -32,6 +32,7 @@ import { collectAudienceSnapshot } from './providers/youtube-stats';
 import { downloadFile } from './providers/drive';
 import { parseVideoMetadata } from './publish-metadata';
 import { persistBinary, type PersistedBinary } from './persist-binary';
+import { readEpisodeDeliveryTargets } from './delivery-targets';
 import { computeInputVersions } from './input-versions';
 import { canonicalShotId } from '../api/shot-id';
 import { parseShotPlanContract } from '../api/shot-plan-contract';
@@ -141,15 +142,6 @@ export function readEpisodeImageConfig(episode: unknown): EpisodeImageConfig | n
   const image = (gen as { image?: unknown }).image;
   if (!image || typeof image !== 'object') return null;
   return image as EpisodeImageConfig;
-}
-
-function readEpisodeDeliveryTargets(episode: unknown): string[] {
-  if (!episode || typeof episode !== 'object') return [];
-  const meta = (episode as { metadata?: unknown }).metadata;
-  if (!meta || typeof meta !== 'object') return [];
-  const raw = (meta as { delivery_targets?: unknown }).delivery_targets;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((t): t is string => typeof t === 'string' && t.length > 0);
 }
 
 /** Coerce a raw resolved-provider id (which may be a legacy alias like

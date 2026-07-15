@@ -40,6 +40,7 @@ import {
 import type { AgentInputs } from '../types';
 import { loadAnchorChainContext, readEpisodeVideoConfig, type AnchorChainContext } from '../runner';
 import { findApprovedAsset } from '../upstream';
+import { resolveDeliveryTargets } from '../delivery-targets';
 import {
   VIDEO_PROVIDER_CAPS,
   ASPECT_BY_DELIVERY_TARGET,
@@ -602,29 +603,10 @@ function findApprovedEREFForShot(
   return null;
 }
 
-export function resolveAnimatorDeliveryTargets(args: {
-  episodeMetadata: unknown;
-  seriesDeliveryTargets?: readonly string[] | null;
-}): readonly string[] {
-  const fromEp = readDeliveryTargetsFromMetadata(args.episodeMetadata);
-  if (fromEp && fromEp.length > 0) return fromEp;
-  if (args.seriesDeliveryTargets && args.seriesDeliveryTargets.length > 0) {
-    return args.seriesDeliveryTargets;
-  }
-  return ['youtube_landscape'];
-}
-
-function readDeliveryTargetsFromMetadata(meta: unknown): readonly string[] | null {
-  if (!meta || typeof meta !== 'object') return null;
-  const m = meta as Record<string, unknown>;
-  const raw = m.delivery_targets;
-  if (!Array.isArray(raw)) return null;
-  const out: string[] = [];
-  for (const v of raw) {
-    if (typeof v === 'string' && v.length > 0) out.push(v);
-  }
-  return out;
-}
+// Delivery-target resolution now lives in the shared leaf module
+// lib/agents/delivery-targets.ts. Kept as a named alias for back-compat with the
+// internal call site + animator.test.ts.
+export const resolveAnimatorDeliveryTargets = resolveDeliveryTargets;
 
 /**
  * TD-52 (2026-05-25): read the episode-level opt-in flag

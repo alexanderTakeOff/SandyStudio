@@ -21,7 +21,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
-import { VIDEO_PROVIDER_CAPS } from '@/lib/api/provider-capabilities';
+import { VIDEO_PROVIDER_CAPS, DELIVERY_TARGETS } from '@/lib/api/provider-capabilities';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -80,6 +80,12 @@ const Body = z
     reference_regen_cap: z.number().int().positive().max(20).nullable().optional(),
     video_regen_cap: z.number().int().positive().max(20).nullable().optional(),
     generation_config: GenerationConfig.optional(),
+    // Canonical shorts/format delivery surfaces (2026-07-15). The signal EREF
+    // (ref image SIZE) + Storyboarder (vertical-safe framing) + sizing read.
+    // Written alongside generation_config.video.aspect_ratio by the format
+    // control so the vertical choice reaches ALL agents, not just the video gen.
+    // Metadata (no migration). Not a hard limit → any Director may set it.
+    delivery_targets: z.array(z.enum(DELIVERY_TARGETS)).min(1).optional(),
   })
   .strict();
 
@@ -188,6 +194,11 @@ export const PATCH = withApiHandler(async (req, ctx) => {
       mergedGen.image = { ...(curGen.image ?? {}), ...body.generation_config.image };
     }
     patch.generation_config = mergedGen;
+  }
+  // Canonical delivery_targets — the shorts/format signal every visual agent reads.
+  // Zod already whitelists the slugs; store as-is (array replaces prior value).
+  if (body.delivery_targets !== undefined) {
+    patch.delivery_targets = body.delivery_targets;
   }
   const newMeta = { ...currentMeta, ...patch };
   const nextCeiling = body.budget_ceiling !== undefined ? body.budget_ceiling : currentCeiling;

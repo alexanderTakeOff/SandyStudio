@@ -33,6 +33,7 @@ import { parseSkillSelection } from '../../skills/parse-skill-selection';
 import { findApprovedAsset } from '../upstream';
 import { SHOT_ID_RE, canonicalShotId, episodeShort } from '../../api/shot-id';
 import { hasVerticalDeliveryTarget } from '../../api/provider-capabilities';
+import { readEpisodeDeliveryTargets } from '../delivery-targets';
 
 export const SB_CONTRACT = 'storyboarder@v2';
 // 2026-05-20 — upgraded sonnet-4-6 → opus-4-7 per Director directive.
@@ -200,18 +201,6 @@ export function collectShotIdViolations(
     }
   }
   return violations;
-}
-
-/** Read `episode.metadata.delivery_targets[]` defensively. Local copy (runner.ts
- *  has a private one, but importing from runner.ts would be circular — runner.ts
- *  dispatches INTO this module). Pairs with hasVerticalDeliveryTarget. */
-function readEpisodeDeliveryTargets(episode: unknown): string[] {
-  if (!episode || typeof episode !== 'object') return [];
-  const meta = (episode as { metadata?: unknown }).metadata;
-  if (!meta || typeof meta !== 'object') return [];
-  const raw = (meta as { delivery_targets?: unknown }).delivery_targets;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((t): t is string => typeof t === 'string' && t.length > 0);
 }
 
 function buildUserMessage(args: {

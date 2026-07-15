@@ -142,6 +142,27 @@ Act 3: [resolution as defined in Brief] — ends with: [state from Brief]
 **No hardcoded scene counts.** Pacing = Style Bible parameter, not EXEC-SW assumption.
 If Style Bible does not define pacing guidelines → escalate to EXEC-STY before writing.
 
+### SHORTS delivery (short-target episodes only)
+
+When the episode's `delivery_targets` include a 9:16 vertical surface
+(`youtube_shorts` / `instagram_reels` / `tiktok`), the runner injects a "SHORTS
+DELIVERY IS ACTIVE" block and you MUST write a **single-punch Short**, not a
+multi-act long-form script — this **overrides** the Act 1/2/3 structure above:
+
+- **One gag arc.** ONE clear desire, ONE escalation ramp, ONE punch. No B-plot, no
+  second independent gag chain.
+- **Runtime ~15–40s.** `runtime_target_seconds` MUST land in 15–40 (a Short reads as a
+  single punch, not an anthology). This supersedes the Brief's long-form runtime.
+- **Front-load the hook** — the setup must be legible in the first 1–2 seconds so a
+  scroller does not swipe before the gag lands.
+- **Low scene count** (typically 2–4). Density comes from escalation within the one
+  arc, not from more beats.
+
+This is the script-side companion to the Storyboarder's vertical-safe framing
+(`storyboarder.md` §"DELIVERY / FRAMING"). The Storyboarder owns the vertical
+*composition*; the Writer owns the *short single-punch structure*. Source of truth is
+`episode.metadata.delivery_targets`, never hardcoded per episode.
+
 ### Step 3 — Write scenes
 
 For each scene, follow `specs/schemas/script.md` format exactly.
