@@ -126,7 +126,7 @@ export const openAIEditsMultiProvider: MultiImageGenProvider = {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}` },
         body: formData,
-      }, FETCH_TIMEOUTS.IMAGE_API_MS);
+      }, FETCH_TIMEOUTS.GPT_IMAGE_MS);
     } catch (err) {
       throw new MultiImageGenError(
         `OpenAI Edits network error: ${(err as Error).message}`,

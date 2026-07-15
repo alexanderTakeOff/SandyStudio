@@ -31,8 +31,15 @@
 export const FETCH_TIMEOUTS = {
   /** gemini-text generateContent (matches the original inline value). */
   LLM_TEXT_MS: 120_000,
-  /** openai images/edits, gemini-flash-image — single blocking POST (~10-40s). */
+  /** gemini-flash-image — a genuinely fast single blocking POST (~10-40s). */
   IMAGE_API_MS: 90_000,
+  /** gpt-image-2 (openai images generations/edits, incl. multi-ref) — a SLOW
+   *  synchronous POST: observed up to ~10 min for a multi-reference edit
+   *  (Director, E29 2026-07-15). A 12-min ceiling covers the worst case with
+   *  margin while still aborting a truly hung socket. The pre-E17 (no-timeout)
+   *  behaviour that let these slow gens complete is restored — the 90s cap was
+   *  false-aborting legitimate work (E29 pilots timed out 7× each at 90s). */
+  GPT_IMAGE_MS: 720_000,
   /** fal/veo queue enqueue POST — returns a request_id in ~1s. */
   QUEUE_SUBMIT_MS: 60_000,
   /** one status GET inside a poll loop — > poll intervals (3-5s), << MAX_WAIT (4-12 min). */

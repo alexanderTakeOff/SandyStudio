@@ -99,7 +99,7 @@ export async function editImageOpenAI(input: OpenAIImageEditInput): Promise<Open
       Authorization: `Bearer ${apiKey}`,
     },
     body: formData,
-  }, FETCH_TIMEOUTS.IMAGE_API_MS);
+  }, FETCH_TIMEOUTS.GPT_IMAGE_MS);
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
