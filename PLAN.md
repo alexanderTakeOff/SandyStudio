@@ -36,6 +36,18 @@ Date:   2026-07-15 (Critic Churn Discriminator + Factory page — Тео, КОД
   V04/V11/V12 отдельная форензика (продюсер vs критик); safe-auto-applier отложен (нечего применять — критики точны).)
 Mode:   ===5=== EDIT (Director-authorized).
 
+2026-07-15 (Phase 2b «Дирижёр» — Тео, КОД, ===5===). ВЗВОД дирижёра. Phase 2a вживила mode-aware мозг
+  (`resolveGateDecision`) + заменила ENV-флаг `MECHANICS_AUTO_ADVANCE` на per-episode `isReconcilerArmed`
+  (armed ⇔ `metadata.reconciler_armed` + `governance_mode∈{2,3}`), но флаг НИКТО не писал → reconciler инертен.
+  **SHIPPED master (merge `teo/conductor-phase2`):** `armForMode(mode)` (единое опр. «автономный режим») пишется
+  arm-at-creation (единственный INSERT `episodes/route.ts`) + arm-on-mode-switch (`governance-mode` роут: →2/3
+  взводит, →1 разоружает=пауза, метаданные сохранены, Директор q). Deploy-safe: строгое `===true`, старые эпизоды
+  без ключа инертны; двойной гейт (флаг+скаляр-колонка) делает metadata-RMW-гонку fail-safe. Чистка 12 устаревших
+  `MECHANICS_AUTO_ADVANCE` (вкл. модель-facing строки concierge-тула). Code-review APPROVE (0 CRIT/HIGH; 1 MEDIUM
+  RMW→backlog). tsc·0 / vitest **1266** / replay **30/30**. NEXT = staging smoke (throwaway Mode-3 эпизод →
+  arm→force-reconcile→наблюдать `gate_decision_log`+`reconcile/auto-approved`) перед первым живым автономным прогоном.
+Mode:   ===5=== EDIT (Director-authorized).
+
 2026-07-13 (Brand-бумперы SHIPPED+LOCKED. Прод master `aef0c137` (пересобран, health 200×3). INTRO+OUTRO (S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy», музыка Flacon Pop Loop запечена) **LOCKED** как `SBL-video_intro/outro` на S15 → EXEC-STITCH теперь собирает брендовый мастер по тумблерам. Инструмент `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф→Seedance fast 720p→апскейл 1080p, ~$1.85/шт) переиспользуем. UI-фикс: video-превью постеры в Library card/drawer. NEXT (опц.) = двух-мастер смоук на реальном эпизоде (закрывает Stage 4). RECONCILER **OFF**.)
 Mode:   ===5=== EDIT (Director-authorized).
 
