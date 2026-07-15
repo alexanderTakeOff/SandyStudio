@@ -52,6 +52,14 @@ Mode:   ===5=== EDIT (Director-authorized).
   arm→force-reconcile→наблюдать `gate_decision_log`+`reconcile/auto-approved`) перед первым живым автономным прогоном.
 Mode:   ===5=== EDIT (Director-authorized).
 
+2026-07-15 (E29 EREF-фикс — Тео, КОД). Живой E29-смоук встал: пилоты SH01/SH02 упали «No assets inserted» —
+  рантайм (prod.log): `openai-edits-multi` (gpt-image-2 синхронный POST) пробил 90с-таймаут ВСЕ 7 попыток/шот.
+  E17-защита от зависаний ввела ЛОЖНЫЙ потолок: gpt-image-2 мульти-реф реально до ~10 мин (Директор; память
+  `eref_generation_needs_stable_server` ~6мин/кадр). FIX: отдельная `FETCH_TIMEOUTS.GPT_IMAGE_MS=720_000` (12 мин)
+  для 3 gpt-image-2 эндпоинтов; быстрый gemini-flash остался на 90с (без регресса hang-guard). tsc·0/vitest 1266/
+  replay 30/30. NEXT = deploy после соседа → ре-триггер пилотов E29.
+Mode:   ===5=== EDIT (Director-authorized).
+
 2026-07-13 (Brand-бумперы SHIPPED+LOCKED. Прод master `aef0c137` (пересобран, health 200×3). INTRO+OUTRO (S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy», музыка Flacon Pop Loop запечена) **LOCKED** как `SBL-video_intro/outro` на S15 → EXEC-STITCH теперь собирает брендовый мастер по тумблерам. Инструмент `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф→Seedance fast 720p→апскейл 1080p, ~$1.85/шт) переиспользуем. UI-фикс: video-превью постеры в Library card/drawer. NEXT (опц.) = двух-мастер смоук на реальном эпизоде (закрывает Stage 4). RECONCILER **OFF**.)
 Mode:   ===5=== EDIT (Director-authorized).
 
