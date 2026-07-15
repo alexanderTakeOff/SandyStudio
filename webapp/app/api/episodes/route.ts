@@ -22,6 +22,7 @@ import {
   referenceRegenCap,
   videoRegenCap,
 } from '@/lib/agents/chain-flags';
+import { armForMode } from '@/lib/agents/production-plan';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -103,6 +104,9 @@ export const POST = withApiHandler(async (req) => {
     prompt_revision_cap: promptRevisionCap(),
     reference_regen_cap: referenceRegenCap(),
     video_regen_cap: videoRegenCap(),
+    // Phase 2b arm-at-creation: born autonomous (mode 2/3) ⇒ the conductor is
+    // armed from the first agent completion; mode 1 (default) stays fully manual.
+    reconciler_armed: armForMode(body.governance_mode),
   };
   // Insert episode
   const epPayload = {

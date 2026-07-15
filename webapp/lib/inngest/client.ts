@@ -50,7 +50,7 @@ type Events = {
   };
 
   // ── Фаза 2b — reconciler self-advance trigger ─────────────────────────────
-  // Emitted (behind MECHANICS_AUTO_ADVANCE) after any agent completes / on a
+  // Emitted (gated by the per-episode arm inside the executor) after any agent completes / on a
   // Director approve / on a shot exclude. The reconcile-episode function reads
   // the state matrix and converges the episode (auto-approve mechanical PASS
   // stages, fire stitch). Idempotent — a burst collapses safely.

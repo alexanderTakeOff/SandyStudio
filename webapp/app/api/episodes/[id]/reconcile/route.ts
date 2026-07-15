@@ -3,7 +3,7 @@
 // POST → run the Фаза 2b reconciler executor for an episode: auto-advance the
 // mechanical stages the plan allows, fire the stitch, surface HALTs. Dispatches
 // the returned cascade events to Inngest. The manual engage point for the live
-// smoke — guarded by MECHANICS_AUTO_ADVANCE unless `?force=1`.
+// smoke — guarded by the per-episode arm (reconciler_armed + mode 2/3) unless `?force=1`.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { requireDirector } from '@/lib/api/auth';

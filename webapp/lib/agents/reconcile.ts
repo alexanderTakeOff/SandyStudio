@@ -11,7 +11,7 @@
 //
 // This module performs NO IO and NO mutation. The executor (Фаза 2b) applies
 // these actions by reusing the existing approve path + computeNextEvents cascade
-// (never a second DAG), guarded by MECHANICS_AUTO_ADVANCE. Keeping the decision
+// (never a second DAG), guarded by the per-episode arm. Keeping the decision
 // pure makes the hard part — WHAT to advance, WHEN to stitch, WHEN to halt —
 // exhaustively unit-testable in isolation.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -22,6 +22,7 @@ import {
   type EpisodeStateMatrix,
 } from './state-matrix';
 import { isShotInPlan, type ProductionPlan } from './production-plan';
+import { resolveGateDecision } from './gate-decision';
 
 /** Stages fronted by a critic whose PASS is required before auto-approve. The
  *  plans are critic-gated (EPREV / VPREV); the generated artifacts (ref image,
@@ -57,6 +58,9 @@ export interface ReconcileContext {
   reservedShots: Set<string>;
   /** Max REVISE cycles for one plan before HALT + escalate (critic_revision_cap). */
   criticCap: number;
+  /** Episode governance mode (1 MANUAL / 2 HYBRID / 3 DELEGATED). Drives the
+   *  mode-aware gate decision per cell — see resolveGateDecision. */
+  governanceMode: number | null;
 }
 
 export function signalKey(shotId: string, stage: StageName): string {
@@ -103,7 +107,7 @@ export function collectCriticSignals(
  * an already-APPROVED stage produces no action, so it is safe to call on any event.
  */
 export function planReconcileActions(ctx: ReconcileContext): ReconcileAction[] {
-  const { matrix, plan, verdicts, reviseCounts, reservedShots, criticCap } = ctx;
+  const { matrix, plan, verdicts, reviseCounts, reservedShots, criticCap, governanceMode } = ctx;
   const actions: ReconcileAction[] = [];
 
   for (const shot of matrix.shots) {
@@ -130,13 +134,24 @@ export function planReconcileActions(ctx: ReconcileContext): ReconcileAction[] {
       if (STAGE_HAS_CRITIC[stage]) {
         const verdict = verdicts.get(key) ?? null;
         if (verdict && PASS_VERDICTS.has(verdict)) {
-          actions.push({
-            kind: 'approve',
-            assetId: cell.asset_id as string,
-            shotId: shot.shot_id,
-            stage,
-            reason: `critic ${verdict} — mechanical auto-approve`,
-          });
+          // Critic PASS = quality already judged → a MECHANICAL gate. Auto-advances
+          // in Mode 2/3; Mode 1 (MANUAL) still requires the Director's approval.
+          if (resolveGateDecision('mechanical', governanceMode) === 'advance') {
+            actions.push({
+              kind: 'approve',
+              assetId: cell.asset_id as string,
+              shotId: shot.shot_id,
+              stage,
+              reason: `critic ${verdict} — mechanical, mode ${governanceMode ?? 1} auto-approve`,
+            });
+          } else {
+            actions.push({
+              kind: 'wait',
+              shotId: shot.shot_id,
+              stage,
+              reason: `critic ${verdict} — Mode 1 (MANUAL) requires Director approval`,
+            });
+          }
         } else if (verdict === 'REVISE' || verdict === 'FAIL') {
           const count = reviseCounts.get(key) ?? 0;
           if (count >= criticCap) {
@@ -163,14 +178,27 @@ export function planReconcileActions(ctx: ReconcileContext): ReconcileAction[] {
           });
         }
       } else {
-        // No gating critic — a mechanical artifact for a non-reserved shot.
-        actions.push({
-          kind: 'approve',
-          assetId: cell.asset_id as string,
-          shotId: shot.shot_id,
-          stage,
-          reason: 'mechanical artifact — auto-approve (no gating critic)',
-        });
+        // No enforcing critic → a CREATIVE artifact (rendered ref image / video).
+        // Auto-advance ONLY in Mode 3 (DELEGATED — Polina is the delegate). Mode 1
+        // (MANUAL) and Mode 2 (HYBRID — pause & eyeball) keep the Director's hand on
+        // every un-critiqued render. (When VISUAL_CRITIC_ENFORCE lands, this stage
+        // gains a critic and moves to the mechanical branch above automatically.)
+        if (resolveGateDecision('creative', governanceMode) === 'advance') {
+          actions.push({
+            kind: 'approve',
+            assetId: cell.asset_id as string,
+            shotId: shot.shot_id,
+            stage,
+            reason: 'creative render — Mode 3 delegated auto-approve',
+          });
+        } else {
+          actions.push({
+            kind: 'wait',
+            shotId: shot.shot_id,
+            stage,
+            reason: `creative render — Mode ${governanceMode ?? 1} requires a human (Director/Polina)`,
+          });
+        }
       }
     }
   }

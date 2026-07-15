@@ -12,6 +12,7 @@ import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { ValidationError, NotFoundError } from '@/lib/api/errors';
 import { resolveEffectiveConciergeMode } from '@/lib/concierge/resolve-mode';
+import { armForMode } from '@/lib/agents/production-plan';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -82,13 +83,18 @@ export const POST = withApiHandler(async (req) => {
     const { episodeId } = body.scope;
     const { data: ep, error: epErr } = await supabase
       .from('episodes')
-      .select('id')
+      .select('id, metadata')
       .eq('id', episodeId)
       .single();
     if (epErr || !ep) throw new NotFoundError(`Episode ${episodeId}`);
+    // Phase 2b: the mode switch is the Director's deliberate arm/disarm lever —
+    // →2/3 arms the conductor, →1 disarms it (pause). Mirror it into
+    // metadata.reconciler_armed alongside the column, preserving other keys.
+    const prevMeta = (ep as { metadata?: Record<string, unknown> | null }).metadata ?? {};
+    const nextMeta = { ...prevMeta, reconciler_armed: armForMode(body.targetMode) };
     const { error: updErr } = await supabase
       .from('episodes')
-      .update({ governance_mode: body.targetMode })
+      .update({ governance_mode: body.targetMode, metadata: nextMeta })
       .eq('id', episodeId);
     if (updErr) throw new Error(`episode mode update failed: ${updErr.message}`);
   }

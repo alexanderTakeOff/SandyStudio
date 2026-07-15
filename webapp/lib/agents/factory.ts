@@ -36,7 +36,6 @@ import { resolveModelId } from './registry';
 import { createSupabaseServiceRoleClient } from '../supabase/server';
 import { logEvent } from '../api/events';
 import { shotRegenCap } from './chain-flags';
-import { mechanicsAutoAdvanceEnabled } from './production-plan';
 import {
   countShotAutonomousAttempts,
   SHOT_REGEN_AGENT_IDS,
@@ -856,13 +855,12 @@ export function createAgentInngestFunction<E extends string>(
         }
       }
 
-      // Фаза 2b — self-advance: after ANY agent completes, ask the reconciler to
-      // converge the episode (auto-approve mechanical PASS stages, fire stitch).
-      // Inert unless MECHANICS_AUTO_ADVANCE is on; the reconcile function is
-      // idempotent + debounced, so firing on every completion is safe. This is
-      // what turns the approved plan into a self-driving run without manual
-      // approves — the code muscle advances; the conductor handles exceptions.
-      if (mechanicsAutoAdvanceEnabled() && episodeId) {
+      // Phase 2b — self-advance: after ANY agent completes, tick the reconciler to
+      // converge the episode. Fired unconditionally (debounced + concurrency-1);
+      // reconcileEpisode itself no-ops unless the episode is ARMED (metadata
+      // reconciler_armed + mode 2/3), so this is safe on every completion. The
+      // code muscle advances; the conductor handles exceptions.
+      if (episodeId) {
         await step.sendEvent('reconcile-trigger', {
           name: 'sandystudio/reconcile/episode',
           data: { episodeId },

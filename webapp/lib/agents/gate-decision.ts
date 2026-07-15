@@ -8,11 +8,10 @@
 // build-exhaustive per-agent gate CLASSIFICATION that future autonomy flips
 // (S6/S7 — "auto-pass the safest MECHANICAL gates") will key on.
 //
-// PHASE 1 (Mode-4/AUTOTEST removed): `decideGate.autonomous` is always false —
-// every gate requires a human. `gateClass` is the build-exhaustive taxonomy,
-// RECORDED to gate_decision_log. PHASE 2 rebuilds `decideGate` as the mode-aware
-// brain (gateClass × governance_mode → advance | require_human) and wires it
-// INTO the reconciler (the single conductor).
+// PHASE 2: `resolveGateDecision(gateClass, mode)` is the single mode-aware brain
+// (gateClass × governance_mode → advance | require_human) the reconciler keys on.
+// `decideGate(agentId)` is the factory measurement wrapper (records gate_decision_log
+// off the producing agent's static GATE_CLASS). Mode 4/AUTOTEST removed in Phase 1.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -64,8 +63,7 @@ export type GateClass = (typeof GATE_CLASS)[AgentId];
 export type GateDecidedBy = 'factory' | 'human';
 
 export interface GateDecision {
-  /** Did the pipeline advance autonomously vs require a human?
-   *  Phase 1: always human, until Phase 2 wires the mode-aware brain. */
+  /** Did the pipeline advance autonomously (mode-aware) vs require a human? */
   autonomous: boolean;
   decision: 'advance' | 'require_human';
   decidedBy: GateDecidedBy;
@@ -73,20 +71,53 @@ export interface GateDecision {
 }
 
 /**
- * The single autonomy decision.
- * Phase 1 (Mode-4/AUTOTEST removed): autonomy is OFF — every gate requires a human.
- * `governanceMode` is accepted but unused until Phase 2 rebuilds this as the
- * mode-aware brain (gateClass × governance_mode) wired into the reconciler.
+ * The mode-aware decision core (Phase 2) — the single brain the reconciler keys on.
+ * gateClass × governance_mode → advance | require_human:
+ *
+ *   hard_limit  → require_human ALWAYS (publish / lock / budget / mode; CLAUDE.md §6).
+ *   mechanical  → advance in Mode 2 & 3, require_human in Mode 1. A mechanical gate
+ *                 is one whose quality was already judged (a critic PASS), so the
+ *                 Director-supervised (2) and delegated (3) modes let it self-advance.
+ *   creative    → advance ONLY in Mode 3 (DELEGATED — Polina is the delegate).
+ *                 Mode 1 (MANUAL) and Mode 2 (HYBRID — "pause and eyeball") keep the
+ *                 Director's hand on every creative artifact that has no enforcing critic.
+ *
+ * NOTE for the reconciler: gateClass is computed PER CELL, not from the producing
+ * agent — a critic-gated stage with a PASS is `mechanical` (the critic judged it),
+ * a rendered artifact with no enforcing critic is `creative`. When a stage GAINS an
+ * enforcing critic (e.g. VISUAL_CRITIC_ENFORCE on ref_image), it becomes mechanical
+ * automatically and starts auto-advancing in Mode 2 too — no change needed here.
+ */
+export function resolveGateDecision(
+  gateClass: GateClass,
+  governanceMode: number | null | undefined,
+): 'advance' | 'require_human' {
+  if (gateClass === 'hard_limit') return 'require_human';
+  const mode = governanceMode ?? 1;
+  if (gateClass === 'mechanical') {
+    return mode === 2 || mode === 3 ? 'advance' : 'require_human';
+  }
+  // creative
+  return mode === 3 ? 'advance' : 'require_human';
+}
+
+/**
+ * The single autonomy decision, keyed on the producing agent's static GATE_CLASS.
+ * Used at the factory measurement choke-point (gate_decision_log). The reconciler
+ * uses `resolveGateDecision` directly with a per-cell gateClass instead.
  */
 export function decideGate(args: {
   agentId: AgentId;
   governanceMode?: number | null;
 }): GateDecision {
+  const gateClass = GATE_CLASS[args.agentId] ?? 'creative';
+  const decision = resolveGateDecision(gateClass, args.governanceMode);
+  const advance = decision === 'advance';
   return {
-    autonomous: false,
-    decision: 'require_human',
-    decidedBy: 'human',
-    gateClass: GATE_CLASS[args.agentId] ?? 'creative',
+    autonomous: advance,
+    decision,
+    decidedBy: advance ? 'factory' : 'human',
+    gateClass,
   };
 }
 

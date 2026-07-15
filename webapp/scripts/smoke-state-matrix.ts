@@ -65,6 +65,7 @@ async function main() {
     reviseCounts,
     reservedShots: new Set<string>(),
     criticCap: planRegenCap(),
+    governanceMode: matrix.governance_mode == null ? null : Number(matrix.governance_mode),
   });
 
   console.log(`\n=== RECONCILER DECISIONS (${actions.length}) ===\n`);
@@ -85,6 +86,7 @@ async function main() {
     reviseCounts,
     reservedShots: new Set<string>(),
     criticCap: planRegenCap(),
+    governanceMode: matrix.governance_mode == null ? null : Number(matrix.governance_mode),
   });
   const stable = JSON.stringify(again) === JSON.stringify(actions);
   console.log(`\nidempotent (re-run identical): ${stable ? 'YES' : 'NO — INVESTIGATE'}`);

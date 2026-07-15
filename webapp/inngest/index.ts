@@ -83,7 +83,7 @@ export const functions = [
   // (FANOUT_RUNNING + idle → nudge Polina to continue). Complements the
   // awaiting-only safety nets above.
   paBatchStallWatchdog,
-  // Фаза 2b — reconciler self-advance (inert unless MECHANICS_AUTO_ADVANCE).
+  // Фаза 2b — reconciler self-advance (inert unless the episode is armed).
   reconcileEpisodeFn,
   // Episode Autonomy Scorecard — snapshot (EXEC-STITCH done) + published.
   episodeScorecard,

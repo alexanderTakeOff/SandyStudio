@@ -15,9 +15,9 @@
 // a future conductor/watchdog) to send. That keeps this unit-testable without an
 // Inngest runtime, and keeps event dispatch at the IO boundary.
 //
-// Guarded by MECHANICS_AUTO_ADVANCE (default OFF): a no-op mutator until an
-// episode opts in, so the manual path is fully preserved. `opts.force` bypasses
-// the flag for explicit calls + tests.
+// Guarded by the per-episode arm (isReconcilerArmed: metadata.reconciler_armed +
+// governance mode 2/3): a no-op mutator until an episode opts in, so the manual
+// path is fully preserved. `opts.force` bypasses the arm for explicit calls + tests.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -38,12 +38,12 @@ import {
 import {
   readProductionPlan,
   resolveReservedShots,
-  mechanicsAutoAdvanceEnabled,
+  isReconcilerArmed,
 } from './production-plan';
 import { planRegenCap } from './chain-flags';
 
 export interface ReconcileOptions {
-  /** Bypass the MECHANICS_AUTO_ADVANCE flag (explicit calls / tests). */
+  /** Bypass the per-episode arm gate (explicit calls / tests). */
   force?: boolean;
   /** Shots the Director still gates (e.g. pilots). MUST be supplied before a
    *  live run enables auto-advance, else pilots would auto-approve. */
@@ -75,7 +75,19 @@ export async function reconcileEpisode(
   episodeId: string,
   opts: ReconcileOptions = {},
 ): Promise<ReconcileResult> {
-  if (!opts.force && !mechanicsAutoAdvanceEnabled()) return EMPTY;
+  // Read the episode first — the arm gate needs its metadata + governance mode.
+  // Coerce mode to a number: the column is an int, but a JSON/string value ('3')
+  // can slip in from mocks — resolveGateDecision needs a number.
+  const { data: epRow } = await supabase
+    .from('episodes')
+    .select('metadata, governance_mode')
+    .eq('id', episodeId)
+    .maybeSingle();
+  const episodeMeta = (epRow as { metadata?: unknown } | null)?.metadata;
+  const rawMode = (epRow as { governance_mode?: unknown } | null)?.governance_mode;
+  const governanceMode = rawMode == null ? null : Number(rawMode);
+
+  if (!opts.force && !isReconcilerArmed(episodeMeta, governanceMode)) return EMPTY;
 
   const matrix = await getEpisodeStateMatrix(supabase, episodeId);
 
@@ -87,13 +99,6 @@ export async function reconcileEpisode(
   const { verdicts, reviseCounts } = collectCriticSignals(
     (revData ?? []) as Array<{ file_type?: string | null; version?: number | null; metadata?: unknown }>,
   );
-
-  const { data: epRow } = await supabase
-    .from('episodes')
-    .select('metadata')
-    .eq('id', episodeId)
-    .maybeSingle();
-  const episodeMeta = (epRow as { metadata?: unknown } | null)?.metadata;
   const plan = readProductionPlan(episodeMeta);
   // SAFETY: default reservedShots to the pilot set (when 'pilots' is reserved) so
   // pilots are never auto-approved past the Director's visual gate. An explicit
@@ -107,6 +112,7 @@ export async function reconcileEpisode(
     reviseCounts,
     reservedShots,
     criticCap: opts.criticCap ?? planRegenCap(),
+    governanceMode,
   });
 
   const actorUserId = opts.actorUserId ?? 'exec-dir-ai';

@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { makeMockSupabase } from '../../helpers/mock-supabase';
 import { reconcileEpisode } from '@/lib/agents/reconcile-execute';
+import { armForMode } from '@/lib/agents/production-plan';
 
 const EP = 'ep-1';
 const SHOT = 'SH01';
@@ -25,9 +26,18 @@ function storyboard(shotIds: string[]) {
   };
 }
 
-function seedWithReviewShotPlan() {
+function seedWithReviewShotPlan(
+  ep: { governance_mode?: number | string; metadata?: Record<string, unknown> } = {},
+) {
   return makeMockSupabase({
-    episodes: [{ id: EP, episode_code: 'SS-S1-E1', governance_mode: '3', metadata: {} }],
+    episodes: [
+      {
+        id: EP,
+        episode_code: 'SS-S1-E1',
+        governance_mode: ep.governance_mode ?? '3',
+        metadata: ep.metadata ?? {},
+      },
+    ],
     assets: [
       storyboard([SHOT]),
       { id: 'sp1', episode_id: EP, file_type: 'SPC-shot_plan', status: 'REVIEW', version: 1, metadata: { shot_id: SHOT } },
@@ -37,11 +47,36 @@ function seedWithReviewShotPlan() {
 }
 
 describe('reconcileEpisode', () => {
-  it('is a no-op when MECHANICS_AUTO_ADVANCE is off and not forced', async () => {
+  it('is a no-op when the episode is not armed and not forced', async () => {
+    // mode 3 but no reconciler_armed key → isReconcilerArmed === false.
     const { client } = seedWithReviewShotPlan();
-    const res = await reconcileEpisode(client, EP); // no force, flag unset
+    const res = await reconcileEpisode(client, EP); // no force, unarmed
     expect(res.ran).toBe(false);
     expect(res.approvedAssetIds).toHaveLength(0);
+  });
+
+  it('auto-advances an ARMED episode WITHOUT force (arm-at-creation path)', async () => {
+    for (const mode of [2, 3]) {
+      const { client, tables } = seedWithReviewShotPlan({
+        governance_mode: mode,
+        metadata: { reconciler_armed: true },
+      });
+      const res = await reconcileEpisode(client, EP); // no force — the arm gate lets it through
+      expect(res.ran, `mode ${mode} should run`).toBe(true);
+      expect(res.approvedAssetIds).toContain('sp1');
+      expect(tables.assets.find((a) => a.id === 'sp1')?.status).toBe('APPROVED');
+    }
+  });
+
+  it('stays a no-op when armed but mode is 1 (MANUAL disarms)', async () => {
+    const { client, tables } = seedWithReviewShotPlan({
+      governance_mode: 1,
+      metadata: { reconciler_armed: true },
+    });
+    const res = await reconcileEpisode(client, EP); // armed flag but mode 1 → gate blocks
+    expect(res.ran).toBe(false);
+    expect(res.approvedAssetIds).toHaveLength(0);
+    expect(tables.assets.find((a) => a.id === 'sp1')?.status).toBe('REVIEW');
   });
 
   it('force-approves a critic-PASS mechanical stage and flips its status', async () => {
@@ -101,5 +136,18 @@ describe('reconcileEpisode', () => {
     expect(res.halted).toHaveLength(1);
     expect(res.approvedAssetIds).toHaveLength(0);
     expect(tables.activity_events.some((e) => e.event_type === 'reconcile/halt')).toBe(true);
+  });
+});
+
+describe('armForMode (arm-at-creation / mode-switch predicate)', () => {
+  it('arms only the autonomous modes 2 and 3', () => {
+    expect(armForMode(2)).toBe(true);
+    expect(armForMode(3)).toBe(true);
+  });
+  it('never arms MANUAL (mode 1) or an unknown/null mode', () => {
+    expect(armForMode(1)).toBe(false);
+    expect(armForMode(null)).toBe(false);
+    expect(armForMode(undefined)).toBe(false);
+    expect(armForMode(4)).toBe(false);
   });
 });
