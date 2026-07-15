@@ -282,6 +282,7 @@ Before submitting, verify all shots against EXEC-WCHK checklist
 | Shot durations sum within target ± 20% | Brief + shot schema | Adjust durations |
 | No physics violations | World Bible | Remove or flag effects |
 | Continuity within scenes | Script | Verify position/state consistency shot to shot |
+| False-success beat separate (comedy stage 3) | `storyboarder-situational-comedy` skill | Every try→backfire gag has its false-success `reaction`/`pose` shot BEFORE the backfire, never merged; split if folded (top R02 failure) |
 | Vertical-safe peaks (short-target episodes only) | `storyboarder-situational-comedy` skill | Every gag/punchline peak is `vertical_safe: true` or `landscape_only: true`; none left unflagged |
 
 If any check fails → fix internally before submitting.

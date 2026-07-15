@@ -20,7 +20,23 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-13 (Brand-бумперы SHIPPED+LOCKED. Прод master `aef0c137` (пересобран, health 200×3). INTRO+OUTRO (S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy», музыка Flacon Pop Loop запечена) **LOCKED** как `SBL-video_intro/outro` на S15 → EXEC-STITCH теперь собирает брендовый мастер по тумблерам. Инструмент `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф→Seedance fast 720p→апскейл 1080p, ~$1.85/шт) переиспользуем. UI-фикс: video-превью постеры в Library card/drawer. NEXT (опц.) = двух-мастер смоук на реальном эпизоде (закрывает Stage 4). RECONCILER **OFF**.)
+Date:   2026-07-15 (Critic Churn Discriminator + Factory page — Тео, КОД, ===5===. Первый живой фаер СЛОЯ АДАПТАЦИИ.
+  Форензика E28 (read-only) опровергла посылку: «CREAD 2.45×/шот» = АРТЕФАКТ метрики — 54 прогона, 3 REVISE (94.5%
+  first-pass PASS); «черн» = идемпотентные пере-чеки планов, что Директор регенерил РУКАМИ (approval_revision→
+  Designer ре-авторит, доказано activity_events), НЕ баг и НЕ строгий критик. Рантайм-прогон сенсора нашёл БОЛЬШЕ
+  ручного: **EXEC-VPREV 13 REVISE (V04/V11/V12) = продюсерский gap на аниматоре**, крупнее storyboard-R02. Построено
+  (subtract-first, 0 миграций): деривер `critic-discriminator.ts` (3 оси — черн критика REVISE/версию · producer
+  first-pass reject rate · paid regens) в существующий `metrics` JSONB скоркарда; триггер ПЕРЕИСПОЛЬЗОВАН (`exec-pub/
+  published`); escalate-зона→Inbox `rule_proposal` (идемпот., только published), auto_safe→metrics без касания
+  Директора («не 7-е касание»). PART C: страница `/factory` в сайдбаре (тренды North-Star: касания vs 6 · post-cast
+  leak · черн true/naive · reject% · $/шот · autonomy% · per-critic вердикты) + `/api/factory`. Правка R02 (анти-
+  аддит.): hard-rule УЖЕ был — дыра в pre-submit self-check → добавил пункт в `storyboarder-situational-comedy` +
+  QA-строку в `agents/exec/storyboarder.md` (ловит R02 до критика). tsc·0 / vitest **1251** (+6) / replay **30/30**.
+  E28 скоркард популирован (row `d44aed6a`). ⚠️ НЕ задеплоено (Factory оживёт после rebuild+restart). OPEN=VPREV
+  V04/V11/V12 отдельная форензика (продюсер vs критик); safe-auto-applier отложен (нечего применять — критики точны).)
+Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-13 (Brand-бумперы SHIPPED+LOCKED. Прод master `aef0c137` (пересобран, health 200×3). INTRO+OUTRO (S15-канон Sandy+Anvil+Parfum, hills, iris-in/out, вордмарк «Sandy», музыка Flacon Pop Loop запечена) **LOCKED** как `SBL-video_intro/outro` на S15 → EXEC-STITCH теперь собирает брендовый мастер по тумблерам. Инструмент `scripts/gen-intro-action.ts` (kind-aware, gpt-image-2 мульти-реф→Seedance fast 720p→апскейл 1080p, ~$1.85/шт) переиспользуем. UI-фикс: video-превью постеры в Library card/drawer. NEXT (опц.) = двух-мастер смоук на реальном эпизоде (закрывает Stage 4). RECONCILER **OFF**.)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-14 (Phase 1 «Дирижёр и Спинной Мозг» — Тео, КОД). Старт вычитания поверхностей пайплайна к ОДНОМУ

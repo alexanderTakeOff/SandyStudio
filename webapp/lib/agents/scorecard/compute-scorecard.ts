@@ -23,6 +23,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '@/lib/supabase/types.gen';
 import { actorKind } from '@/lib/api/agent-names';
+import { computeCriticDiscriminator } from './critic-discriminator';
 import { listStoryboardShots } from '@/lib/api/vgen-shot-helpers';
 import {
   excludedShotIdsFromEpisodeMeta,
@@ -316,6 +317,15 @@ export async function computeScorecard(
     (s) => !approvedVidTokens.has(shotToken(s.shotId) ?? ''),
   ).length;
 
+  // 8. Critic churn discriminator — the slow-loop (adaptation) sensor. Reuses the
+  //    already-loaded `acts` + shotCount so it adds one small REV-asset read, not
+  //    a second big paged scan. Rides in metrics (no schema change). See
+  //    critic-discriminator.ts for why naive runs/shot mis-diagnoses (E28).
+  const criticDiscriminator = await computeCriticDiscriminator(supabase, episodeId, {
+    acts,
+    shotCount,
+  });
+
   // Per-stage runs/shot — the churn-sink localiser
   const runsPerShotByStage: Record<string, number> = {};
   if (shotCount > 0) {
@@ -359,6 +369,10 @@ export async function computeScorecard(
       gate_autonomy_by_class: gateByClass,
       churn_coverage: +(churnCoverage * 100).toFixed(1),
       runs_per_shot_by_stage: runsPerShotByStage,
+      // Slow-loop adaptation sensor — per-critic verdict + calibration proposals.
+      // The honest churn (REVISE/version) + producer first-pass reject rate, so
+      // the Factory page never mistakes re-trigger noise for critic churn.
+      critic_discriminator: criticDiscriminator as unknown as Record<string, unknown>,
     },
   };
 }
