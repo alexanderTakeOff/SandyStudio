@@ -88,17 +88,27 @@ export function isShotInPlan(plan: ProductionPlan | null, shotId: string): boole
 }
 
 /**
+ * Is a governance mode "autonomous" (HYBRID/DELEGATED)? The single definition of
+ * the mode∈{2,3} half of the arm, reused by the two WRITE sites — episode CREATION
+ * and the episode-scoped mode switch — so "arm the conductor" is defined once.
+ */
+export function armForMode(mode: number | null | undefined): boolean {
+  return mode === 2 || mode === 3;
+}
+
+/**
  * Is the reconciler armed for this episode? Phase 2b — replaces the global
  * MECHANICS_AUTO_ADVANCE env flag with a per-episode arm gated on governance mode:
  *   armed  ⇔  metadata.reconciler_armed === true  AND  mode ∈ {2, 3}.
  *
- * `reconciler_armed` is set at episode CREATION (so a deploy never retroactively
- * activates a pre-existing episode) and the Director can clear it to pause the
- * conductor on one episode. Mode 1 (MANUAL) is never armed — it is the fully
- * manual path. `opts.force` still bypasses this for explicit calls / tests.
+ * `reconciler_armed` mirrors the Director's last deliberate mode decision: it is
+ * written at episode CREATION and re-written on an episode-scoped mode switch
+ * (→2/3 arms, →1 disarms = pause). A deploy never sets it, so a pre-existing
+ * episode (no key) stays inert until the Director re-affirms the mode. Mode 1
+ * (MANUAL) is never armed — the fully manual path. `opts.force` still bypasses
+ * this for explicit calls / tests.
  */
 export function isReconcilerArmed(episodeMeta: unknown, governanceMode: number | null): boolean {
   const armed = (episodeMeta as { reconciler_armed?: unknown } | null)?.reconciler_armed === true;
-  const mode = governanceMode ?? 1;
-  return armed && (mode === 2 || mode === 3);
+  return armed && armForMode(governanceMode);
 }

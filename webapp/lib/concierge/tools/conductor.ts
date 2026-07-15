@@ -97,7 +97,7 @@ export const getStateMatrix: Tool<EpisodeArg> = {
 export const reconcileEpisode: Tool<EpisodeArg> = {
   name: 'reconcileEpisode',
   description:
-    "Run ONE convergence pass on the episode: auto-approve the mechanical stages whose critic already PASSed (for shots in the approved plan, never the reserved gates), and fire the final stitch once every live shot is approved and music is present. Use this to un-stick a self-advancing run, or after resolving a surfaced exception. Idempotent — calling it when nothing is actionable is a safe no-op. Requires the episode to be in autonomous mode (MECHANICS_AUTO_ADVANCE); reserved gates (brief/script/canon/pilots/publish) still wait for the Director.",
+    "Run ONE convergence pass on the episode: auto-approve the mechanical stages whose critic already PASSed (for shots in the approved plan, never the reserved gates), and fire the final stitch once every live shot is approved and music is present. Use this to un-stick a self-advancing run, or after resolving a surfaced exception. Idempotent — calling it when nothing is actionable is a safe no-op. Requires the episode to be ARMED (metadata.reconciler_armed set + governance mode 2/3); reserved gates (brief/script/canon/pilots/publish) still wait for the Director.",
   mutating: true,
   schema: {
     type: 'function',
@@ -149,7 +149,7 @@ export const reconcileEpisode: Tool<EpisodeArg> = {
     const halted = Array.isArray(data?.halted) ? data.halted.length : 0;
     const summary = data?.ran
       ? `Reconcile ran: ${approved} auto-approved, ${halted} halted.`
-      : 'Reconcile is inactive for this episode (MECHANICS_AUTO_ADVANCE off) — nothing changed.';
+      : 'Reconcile is inactive for this episode — it is not armed (governance mode 1, or reconciler_armed off) — nothing changed.';
     return ok(body, summary);
   },
 };

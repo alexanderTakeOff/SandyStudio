@@ -15,9 +15,9 @@
 // a future conductor/watchdog) to send. That keeps this unit-testable without an
 // Inngest runtime, and keeps event dispatch at the IO boundary.
 //
-// Guarded by MECHANICS_AUTO_ADVANCE (default OFF): a no-op mutator until an
-// episode opts in, so the manual path is fully preserved. `opts.force` bypasses
-// the flag for explicit calls + tests.
+// Guarded by the per-episode arm (isReconcilerArmed: metadata.reconciler_armed +
+// governance mode 2/3): a no-op mutator until an episode opts in, so the manual
+// path is fully preserved. `opts.force` bypasses the arm for explicit calls + tests.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -43,7 +43,7 @@ import {
 import { planRegenCap } from './chain-flags';
 
 export interface ReconcileOptions {
-  /** Bypass the MECHANICS_AUTO_ADVANCE flag (explicit calls / tests). */
+  /** Bypass the per-episode arm gate (explicit calls / tests). */
   force?: boolean;
   /** Shots the Director still gates (e.g. pilots). MUST be supplied before a
    *  live run enables auto-advance, else pilots would auto-approve. */

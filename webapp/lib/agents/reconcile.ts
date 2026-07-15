@@ -11,7 +11,7 @@
 //
 // This module performs NO IO and NO mutation. The executor (Фаза 2b) applies
 // these actions by reusing the existing approve path + computeNextEvents cascade
-// (never a second DAG), guarded by MECHANICS_AUTO_ADVANCE. Keeping the decision
+// (never a second DAG), guarded by the per-episode arm. Keeping the decision
 // pure makes the hard part — WHAT to advance, WHEN to stitch, WHEN to halt —
 // exhaustively unit-testable in isolation.
 // ──────────────────────────────────────────────────────────────────────────────

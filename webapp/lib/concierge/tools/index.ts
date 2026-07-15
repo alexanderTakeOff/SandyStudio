@@ -149,7 +149,7 @@ export const TOOLS: ReadonlyArray<AnyTool> = Object.freeze([
   proposeTheme as unknown as AnyTool,
   // Фаза 4 (2026-07-04) — the conductor's hands: run one reconciler convergence
   // pass (auto-advance mechanical PASS stages + stitch). Mutating; the /reconcile
-  // route + MECHANICS_AUTO_ADVANCE flag + reserved gates are the guards.
+  // route + the per-episode arm (reconciler_armed + mode 2/3) + reserved gates are the guards.
   reconcileEpisode as unknown as AnyTool,
 ]);
 

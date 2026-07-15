@@ -7,8 +7,9 @@
 // surface HALTs) and dispatches the returned cascade events, which in turn make
 // the next agents run — closing the "factory drives itself" loop.
 //
-// Inert unless MECHANICS_AUTO_ADVANCE is on: reconcileEpisode checks the flag
-// and returns EMPTY when off, so even a stray trigger is a no-op. Idempotent —
+// Inert unless the episode is ARMED: reconcileEpisode checks the per-episode arm
+// (metadata.reconciler_armed + mode 2/3) and returns EMPTY when off, so even a
+// stray trigger is a no-op. Idempotent —
 // an already-APPROVED cell yields no action, so overlapping triggers are safe.
 // ──────────────────────────────────────────────────────────────────────────────
 
