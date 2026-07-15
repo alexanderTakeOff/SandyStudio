@@ -1,13 +1,62 @@
 import { describe, it, expect } from 'vitest';
 
-import { GATE_CLASS, decideGate, recordGateDecision } from '@/lib/agents/gate-decision';
+import {
+  GATE_CLASS,
+  decideGate,
+  resolveGateDecision,
+  recordGateDecision,
+} from '@/lib/agents/gate-decision';
 import { makeMockSupabase } from '../helpers/mock-supabase';
 
-describe('gate-decision — decideGate (Phase 1: autonomy off, Mode-4 removed)', () => {
-  it('every governance mode → require_human (decided_by=human)', () => {
+describe('gate-decision — resolveGateDecision (mode-aware brain)', () => {
+  it('hard_limit → require_human in every mode', () => {
     for (const mode of [1, 2, 3]) {
-      const d = decideGate({ agentId: 'EXEC-SB', governanceMode: mode });
-      expect(d).toMatchObject({ autonomous: false, decision: 'require_human', decidedBy: 'human' });
+      expect(resolveGateDecision('hard_limit', mode)).toBe('require_human');
+    }
+  });
+
+  it('mechanical → advance in Mode 2/3, require_human in Mode 1', () => {
+    expect(resolveGateDecision('mechanical', 1)).toBe('require_human');
+    expect(resolveGateDecision('mechanical', 2)).toBe('advance');
+    expect(resolveGateDecision('mechanical', 3)).toBe('advance');
+  });
+
+  it('creative → advance ONLY in Mode 3 (delegated), else require_human', () => {
+    expect(resolveGateDecision('creative', 1)).toBe('require_human');
+    expect(resolveGateDecision('creative', 2)).toBe('require_human');
+    expect(resolveGateDecision('creative', 3)).toBe('advance');
+  });
+
+  it('null / missing mode defaults to Mode 1 (require_human)', () => {
+    expect(resolveGateDecision('mechanical', null)).toBe('require_human');
+    expect(resolveGateDecision('creative', undefined)).toBe('require_human');
+  });
+});
+
+describe('gate-decision — decideGate (agent GATE_CLASS × mode)', () => {
+  it('creative agent (EXEC-SB) advances only in Mode 3', () => {
+    expect(decideGate({ agentId: 'EXEC-SB', governanceMode: 1 })).toMatchObject({
+      autonomous: false,
+      decision: 'require_human',
+      decidedBy: 'human',
+    });
+    expect(decideGate({ agentId: 'EXEC-SB', governanceMode: 2 }).decision).toBe('require_human');
+    expect(decideGate({ agentId: 'EXEC-SB', governanceMode: 3 })).toMatchObject({
+      autonomous: true,
+      decision: 'advance',
+      decidedBy: 'factory',
+    });
+  });
+
+  it('mechanical agent (EXEC-STITCH) advances in Mode 2 and 3', () => {
+    expect(decideGate({ agentId: 'EXEC-STITCH', governanceMode: 1 }).decision).toBe('require_human');
+    expect(decideGate({ agentId: 'EXEC-STITCH', governanceMode: 2 }).decision).toBe('advance');
+    expect(decideGate({ agentId: 'EXEC-STITCH', governanceMode: 3 }).decision).toBe('advance');
+  });
+
+  it('hard_limit agent (EXEC-PUB) never auto-advances', () => {
+    for (const mode of [1, 2, 3]) {
+      expect(decideGate({ agentId: 'EXEC-PUB', governanceMode: mode }).autonomous).toBe(false);
     }
   });
 

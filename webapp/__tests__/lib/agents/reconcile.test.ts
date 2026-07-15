@@ -57,6 +57,7 @@ function ctx(over: Partial<ReconcileContext> & { matrix: EpisodeStateMatrix }): 
     reviseCounts: new Map(),
     reservedShots: new Set(),
     criticCap: 3,
+    governanceMode: 3, // DELEGATED by default — most permissive; mode-specific tests override
     ...over,
   };
 }
@@ -72,9 +73,9 @@ describe('planReconcileActions', () => {
     );
   });
 
-  it('auto-approves a no-critic mechanical artifact (video) in REVIEW', () => {
+  it('auto-approves a no-critic creative render (video) in Mode 3 (delegated)', () => {
     const m = matrix([shot('SH01', { video: st({ status: 'REVIEW', asset_id: 'v1' }) })]);
-    const acts = planReconcileActions(ctx({ matrix: m }));
+    const acts = planReconcileActions(ctx({ matrix: m })); // default Mode 3
     expect(acts).toContainEqual(
       expect.objectContaining({ kind: 'approve', assetId: 'v1', stage: 'video' }),
     );
@@ -165,6 +166,49 @@ describe('planReconcileActions', () => {
     );
     const acts = planReconcileActions(ctx({ matrix: m }));
     expect(acts.filter((a) => a.kind === 'stitch')).toHaveLength(0);
+  });
+});
+
+describe('planReconcileActions — mode-aware gate (Phase 2)', () => {
+  const criticPassShot = () =>
+    matrix([shot('SH01', { shot_plan: st({ status: 'REVIEW', asset_id: 'sp1', version: 1 }) })]);
+  const passVerdict = () => new Map([[signalKey('SH01', 'shot_plan'), 'PASS']]);
+  const creativeVideoShot = () =>
+    matrix([shot('SH01', { video: st({ status: 'REVIEW', asset_id: 'v1' }) })]);
+
+  it('Mode 1 (MANUAL): critic-PASS mechanical stage WAITS (Director approves)', () => {
+    const acts = planReconcileActions(
+      ctx({ matrix: criticPassShot(), verdicts: passVerdict(), governanceMode: 1 }),
+    );
+    expect(acts.filter((a) => a.kind === 'approve')).toHaveLength(0);
+    expect(acts).toContainEqual(expect.objectContaining({ kind: 'wait', stage: 'shot_plan' }));
+  });
+
+  it('Mode 2 (HYBRID): critic-PASS mechanical stage AUTO-APPROVES', () => {
+    const acts = planReconcileActions(
+      ctx({ matrix: criticPassShot(), verdicts: passVerdict(), governanceMode: 2 }),
+    );
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'approve', assetId: 'sp1', stage: 'shot_plan' }),
+    );
+  });
+
+  it('Mode 2 (HYBRID): creative render (video) WAITS — Director keeps the eye', () => {
+    const acts = planReconcileActions(ctx({ matrix: creativeVideoShot(), governanceMode: 2 }));
+    expect(acts.filter((a) => a.kind === 'approve')).toHaveLength(0);
+    expect(acts).toContainEqual(expect.objectContaining({ kind: 'wait', stage: 'video' }));
+  });
+
+  it('Mode 1 (MANUAL): creative render (video) WAITS', () => {
+    const acts = planReconcileActions(ctx({ matrix: creativeVideoShot(), governanceMode: 1 }));
+    expect(acts.filter((a) => a.kind === 'approve')).toHaveLength(0);
+  });
+
+  it('Mode 3 (DELEGATED): creative render (video) AUTO-APPROVES', () => {
+    const acts = planReconcileActions(ctx({ matrix: creativeVideoShot(), governanceMode: 3 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'approve', assetId: 'v1', stage: 'video' }),
+    );
   });
 });
 

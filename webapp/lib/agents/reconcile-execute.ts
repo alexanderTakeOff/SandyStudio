@@ -90,10 +90,14 @@ export async function reconcileEpisode(
 
   const { data: epRow } = await supabase
     .from('episodes')
-    .select('metadata')
+    .select('metadata, governance_mode')
     .eq('id', episodeId)
     .maybeSingle();
   const episodeMeta = (epRow as { metadata?: unknown } | null)?.metadata;
+  // Coerce to a number: the column is an int, but a JSON/string value ('3') can
+  // slip in from mocks or a loosely-typed writer — resolveGateDecision needs a number.
+  const rawMode = (epRow as { governance_mode?: unknown } | null)?.governance_mode;
+  const governanceMode = rawMode == null ? null : Number(rawMode);
   const plan = readProductionPlan(episodeMeta);
   // SAFETY: default reservedShots to the pilot set (when 'pilots' is reserved) so
   // pilots are never auto-approved past the Director's visual gate. An explicit
@@ -107,6 +111,7 @@ export async function reconcileEpisode(
     reviseCounts,
     reservedShots,
     criticCap: opts.criticCap ?? planRegenCap(),
+    governanceMode,
   });
 
   const actorUserId = opts.actorUserId ?? 'exec-dir-ai';
