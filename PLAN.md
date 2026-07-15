@@ -32,8 +32,12 @@ Date:   2026-07-15 (Critic Churn Discriminator + Factory page — Тео, КОД
   leak · черн true/naive · reject% · $/шот · autonomy% · per-critic вердикты) + `/api/factory`. Правка R02 (анти-
   аддит.): hard-rule УЖЕ был — дыра в pre-submit self-check → добавил пункт в `storyboarder-situational-comedy` +
   QA-строку в `agents/exec/storyboarder.md` (ловит R02 до критика). tsc·0 / vitest **1251** (+6) / replay **30/30**.
-  E28 скоркард популирован (row `d44aed6a`). ⚠️ НЕ задеплоено (Factory оживёт после rebuild+restart). OPEN=VPREV
-  V04/V11/V12 отдельная форензика (продюсер vs критик); safe-auto-applier отложен (нечего применять — критики точны).)
+  E28 скоркард популирован. ЗАДЕПЛОЕНО (master `44dffb11` rebuild+стек up, health 200×3). Медленный цикл доказан
+  end-to-end: published-фаза E28 → **2 реальных предложения в Inbox** (CREAD R02/R06 + VPREV V04/V11/V12, escalate,
+  идемпот. без дублей). Побочно найдена+закрыта дыра: Director-Inbox фильтр не включал `rule_proposal` → эскалация
+  писалась в activity_events но не всплывала → добавлен в `.in()` (inbox/route.ts). OPEN=VPREV V04/V11/V12 отдельная
+  форензика (продюсер vs критик); safe-auto-applier отложен (нечего применять — критики точны). Стек session-bound —
+  durable = десктоп-ярлык.)
 Mode:   ===5=== EDIT (Director-authorized).
 
 2026-07-15 (Phase 2b «Дирижёр» — Тео, КОД, ===5===). ВЗВОД дирижёра. Phase 2a вживила mode-aware мозг

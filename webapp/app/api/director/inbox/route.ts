@@ -75,6 +75,10 @@ export const GET = withApiHandler(async (req) => {
       'budget_threshold_reached',
       'blocker_raised',
       'canon_extension_proposed',
+      // Slow-loop calibration proposals (critic discriminator) + Skill-Editor
+      // rule changes — both are Director-actionable and must surface, not bury
+      // in the raw feed. Render generically (awaiting_input · OPEN).
+      'rule_proposal',
     ])
     .is('resolved_at', null)
     .order('created_at', { ascending: true })
