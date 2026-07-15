@@ -744,13 +744,14 @@ export function EpisodeTimelineSection({
   // 👁 Visual Critic (2026-07-13, advisory): run the vision check on this shot's
   // rendered ref. Logs a verdict to the activity feed AND surfaces a compact banner
   // here. Never changes status. shotId omitted → whole-episode sweep (header button).
-  async function handleVisualCheck(shotId?: string): Promise<void> {
-    setVisualCheck({ busy: true, msg: shotId ? `Проверяю ${shotId}…` : 'Проверяю эпизод…' });
+  async function handleVisualCheck(shotId?: string, kind?: 'ref' | 'video' | 'both'): Promise<void> {
+    const what = kind === 'video' ? ' (видео)' : kind === 'ref' ? ' (реф)' : '';
+    setVisualCheck({ busy: true, msg: shotId ? `Проверяю ${shotId}${what}…` : 'Проверяю эпизод…' });
     try {
       const res = await fetch(`/api/episodes/${episodeId}/visual-critic`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(shotId ? { shotId } : {}),
+        body: JSON.stringify({ ...(shotId ? { shotId } : {}), ...(kind ? { kind } : {}) }),
       });
       const j = (await res.json().catch(() => ({}))) as {
         data?: { checked?: number; flagged?: number; results?: Array<{ shotId: string | null; verdict: string | null; summary: string | null }> };
@@ -947,7 +948,7 @@ export function EpisodeTimelineSection({
               generatingVideoShotId={generatingVideoShotId}
               onGenerateReference={(shotId) => void handleGenerateReference(shotId)}
               generatingRefShotId={generatingRefShotId}
-              onVisualCheck={(shotId) => void handleVisualCheck(shotId)}
+              onVisualCheck={(shotId, kind) => void handleVisualCheck(shotId, kind)}
               excludedShotIds={excludedShotIds}
               onToggleExclusion={(shotId, excluded) =>
                 void handleToggleExclusion(shotId, excluded)

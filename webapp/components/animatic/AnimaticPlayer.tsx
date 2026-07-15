@@ -207,8 +207,8 @@ export interface AnimaticPlayerProps {
   onGenerateReference?: (shotId: string) => void;
   /** Shot currently kicking off a reference flow (button spinner / disabled). */
   generatingRefShotId?: string | null;
-  /** 👁 Advisory Visual Critic on this shot's rendered ref (logs verdict, no gate). */
-  onVisualCheck?: (shotId: string) => void;
+  /** 👁 Advisory Visual Critic on this shot's rendered ref or video (logs verdict, no gate). */
+  onVisualCheck?: (shotId: string, kind: 'ref' | 'video') => void;
   /**
    * "Start Video" latch (2026-07-09, animatic-stage demotion). When provided,
    * the transport shows a ▶ Старт видео button next to Play/Stop/Reset that
@@ -1666,12 +1666,12 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onVisualCheck(t.shot.shot_id);
+                            onVisualCheck(t.shot.shot_id, 'ref');
                           }}
                           className="mt-1 ml-1 px-2 py-0.5 rounded text-[10px] font-medium border border-glass text-text-secondary hover:text-text-primary transition-colors"
-                          title="Advisory Visual Critic — check this rendered ref against the storyboard + style. Logs a verdict; never changes status."
+                          title="Advisory Visual Critic — check this rendered REF against the storyboard + style. Logs a verdict; never changes status."
                         >
-                          👁 Visual check
+                          👁 Check ref
                         </button>
                       )}
                     </div>
@@ -1776,6 +1776,19 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                               : '🎬 Generate video'}
                           </button>
                         )}
+                      {onVisualCheck && versions.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onVisualCheck(t.shot.shot_id, 'video');
+                          }}
+                          className="mt-1 ml-1 px-2 py-0.5 rounded text-[10px] font-medium border border-glass text-text-secondary hover:text-text-primary transition-colors"
+                          title="Advisory Visual Critic — check this rendered VIDEO (limbs, readability, matches storyboard). Logs a verdict; never changes status."
+                        >
+                          👁 Check video
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

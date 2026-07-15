@@ -20,7 +20,12 @@ import { runVisualCriticForEpisode } from '@/lib/agents/runners/visual-shot-crit
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const Body = z.object({ shotId: z.string().min(1).max(120).optional() }).strict();
+const Body = z
+  .object({
+    shotId: z.string().min(1).max(120).optional(),
+    kind: z.enum(['ref', 'video', 'both']).optional(),
+  })
+  .strict();
 
 export const POST = withApiHandler(async (req, ctx) => {
   const params = (await ctx?.params) as { id: string } | undefined;
@@ -30,11 +35,10 @@ export const POST = withApiHandler(async (req, ctx) => {
   const { supabase } = await requireDirector();
   const body = await parseJson(req, Body);
 
-  const results = await runVisualCriticForEpisode(
-    supabase,
-    episodeId,
-    body.shotId ? { shotIds: [body.shotId] } : {},
-  );
+  const results = await runVisualCriticForEpisode(supabase, episodeId, {
+    ...(body.shotId ? { shotIds: [body.shotId] } : {}),
+    ...(body.kind ? { kind: body.kind } : {}),
+  });
 
   const flagged = results.filter((r) => r.verdict && r.verdict.verdict !== 'PASS').length;
   return apiOk({

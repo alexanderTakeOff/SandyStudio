@@ -34,7 +34,11 @@ async function main(): Promise<void> {
   if (!ep) { console.error(`episode ${args.episode} not found`); process.exit(1); return; }
 
   console.log(`[sweep] ${ep.episode_code} · model=${process.env.VISUAL_CRITIC_MODEL || 'default'}`);
-  const results = await runVisualCriticForEpisode(sb, ep.id, args.shot ? { shotIds: [args.shot] } : {});
+  const kind = args.kind === 'ref' || args.kind === 'video' || args.kind === 'both' ? args.kind : undefined;
+  const results = await runVisualCriticForEpisode(sb, ep.id, {
+    ...(args.shot ? { shotIds: [args.shot] } : {}),
+    ...(kind ? { kind } : {}),
+  });
   for (const r of results) {
     const v = r.verdict;
     console.log(`\n— ${r.shotId ?? r.assetId} → ${v ? v.verdict : 'SKIP(' + r.error + ')'}`);
