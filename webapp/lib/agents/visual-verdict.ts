@@ -81,15 +81,20 @@ export async function runVisualVerdict(opts: {
   frames: string[];
   contract: unknown;
   styleCanon: string;
+  /** Location Bible for the shot's location — the spatial ground-truth (where the
+   *  set-dressing sits, left/right) so the physics_geometry check can catch a
+   *  mirrored/flipped layout. '(no location canon)' when the location has no Bible. */
+  locationCanon?: string;
   model: string;
 }): Promise<VisualVerdict> {
-  const { frames, contract, styleCanon, model } = opts;
+  const { frames, contract, styleCanon, locationCanon, model } = opts;
   if (frames.length === 0) throw new Error('runVisualVerdict: no frames');
   const { client, tokenParam } = visionClient(model);
 
   const promptText =
     `SHOT CONTRACT (storyboard — the intent to verify against):\n${JSON.stringify(contract, null, 2)}\n\n` +
     `STYLE CANON (Bible — style/genre/on-model reference):\n${styleCanon.slice(0, 6000)}\n\n` +
+    `LOCATION CANON (Bible — spatial layout / set-dressing positions for the shot's location; use it to verify left/right placement and to catch a horizontally-mirrored render):\n${(locationCanon ?? '(no location canon)').slice(0, 4000)}\n\n` +
     `Judge the attached ${frames.length > 1 ? 'video frames (in order)' : 'reference image'} against the contract and canon using the rubric. ` +
     `Run every check IN ORDER. Output ONLY the JSON verdict object, no prose around it.`;
 
@@ -161,4 +166,33 @@ export async function loadStyleCanon(supabase: Client, seriesId: string): Promis
     .limit(3);
   const rows = (data ?? []) as Array<{ content: string | null; file_type: string }>;
   return rows.map((r) => `## ${r.file_type}\n${r.content ?? ''}`).join('\n\n') || '(no style doc)';
+}
+
+/**
+ * Location Bible for a shot's location — the spatial ground-truth (set-dressing
+ * positions, left/right arrangement) the critic checks the render against, so a
+ * horizontally-mirrored layout (canonical table on the right rendered on the left)
+ * is caught. Fuzzy-matches `SBL-location%<slug>%`. Returns a clear "(no location
+ * canon…)" note when the location has no Bible (a phantom location) so the critic
+ * does not invent a layout to judge against.
+ */
+export async function loadLocationCanon(
+  supabase: Client,
+  seriesId: string,
+  locationSlug: string | null,
+): Promise<string> {
+  if (!locationSlug) return '(no location specified in the shot contract)';
+  const slug = locationSlug.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const { data } = await supabase
+    .from('assets')
+    .select('content,file_type')
+    .eq('series_id', seriesId)
+    .ilike('file_type', `SBL-location%${slug}%`)
+    .in('status', ['APPROVED', 'LOCKED'])
+    .limit(2);
+  const rows = (data ?? []) as Array<{ content: string | null; file_type: string }>;
+  if (rows.length === 0) {
+    return `(no location canon for "${slug}" — phantom location, no spatial ground-truth; do NOT flag left/right placement against an assumed layout)`;
+  }
+  return rows.map((r) => `## ${r.file_type}\n${r.content ?? ''}`).join('\n\n');
 }

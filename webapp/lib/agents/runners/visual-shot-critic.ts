@@ -20,7 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
 import { logEvent } from '../../api/events';
 import { resolveVisualCriticModel } from '../../api/visual-critic-provider-config';
-import { runVisualVerdict, loadShotContract, loadStyleCanon, type VisualVerdict } from '../visual-verdict';
+import { runVisualVerdict, loadShotContract, loadStyleCanon, loadLocationCanon, type VisualVerdict } from '../visual-verdict';
 import { sampleVideoFrames } from '../sample-frames';
 import { cachedFileIfPresent } from '../../media-cache';
 import { downloadFile } from '../providers/drive';
@@ -79,6 +79,18 @@ async function localVideoPath(row: AssetRow): Promise<{ path: string; cleanup: (
   const tmp = path.join(os.tmpdir(), `vcrit-vid-${row.id}.mp4`);
   await writeFile(tmp, bytes);
   return { path: tmp, cleanup: async () => { await rm(tmp, { force: true }).catch(() => {}); } };
+}
+
+/** Extract the location SLUG from a shot contract, dropping any sub_area suffix
+ *  ("gala_hall — entrance" → "gala_hall") so the location Bible can be matched. */
+function locationSlugOf(contract: unknown): string | null {
+  const loc = (contract as { location?: unknown } | null)?.location;
+  if (typeof loc === 'string') return loc.split(/\s*[—|]\s*| - /)[0]?.trim() || null;
+  if (loc && typeof loc === 'object') {
+    const o = loc as { slug?: string; name?: string };
+    return o.slug ?? o.name ?? null;
+  }
+  return null;
 }
 
 /** shot_id: IMG uses shot_reference.shot_id; VID uses shot_id / storyboard_shot.shot_id. */
@@ -169,7 +181,15 @@ export async function runVisualCriticForEpisode(
       const contract = shotNum ? await loadShotContract(supabase, episodeId, shotNum) : null;
       if (!contract) throw new Error(`no storyboard contract for shot ${shotId ?? '?'}`);
 
-      const verdict = await runVisualVerdict({ frames, contract, styleCanon, model });
+      // Load the location Bible so the critic has spatial ground-truth (set-dressing
+      // left/right) and can catch a horizontally-mirrored render. Phantom locations
+      // (no Bible) yield a "(no location canon…)" note that tells the critic NOT to
+      // invent a layout to judge against.
+      const locationCanon = seriesId
+        ? await loadLocationCanon(supabase, seriesId, locationSlugOf(contract))
+        : '(no series)';
+
+      const verdict = await runVisualVerdict({ frames, contract, styleCanon, locationCanon, model });
       results.push({ assetId: row.id, shotId, kind: assetKind, verdict });
 
       const critical = verdict.findings.filter((f) => f.severity === 'critical').length;

@@ -249,9 +249,34 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
   // glance which version of a shot he was reviewing — relevant whenever a
   // VID-shot has multiple renders (CandidatesStrip lists them; this badge
   // labels the active one in the header itself).
-  const versionLabel = asset.version
-    ? `v${String(asset.version).padStart(2, '0')}`
+  // 2026-07-15 (Director): an IMG-episode_ref asset carries MULTIPLE attempt images
+  // in metadata.shot_reference.generation_history; the ACTIVE one is
+  // `selected_version ?? last(generation_history)`. Show "v01.<attempt>" so Director
+  // sees at a glance WHICH attempt is on screen / approved (and thus which one the
+  // visual critic judged), plus how many attempts exist. Attempt index comes from
+  // metadata, NOT the filename (unreliable: a fresh ref's file is "-v01-DRAFT", a
+  // hand-picked one is "-attemptN"). Non-EREF assets keep the plain "v01" badge.
+  const shotRef = asset.file_type.startsWith('IMG-episode_ref')
+    ? (asset.metadata as {
+        shot_reference?: {
+          selected_version?: number | null;
+          generation_history?: Array<{ version?: number | null }>;
+        };
+      } | null)?.shot_reference ?? null
     : null;
+  const attemptCount = shotRef?.generation_history?.length ?? 0;
+  const activeAttempt =
+    shotRef?.selected_version ??
+    (attemptCount > 0 ? shotRef!.generation_history![attemptCount - 1]!.version ?? null : null);
+  const versionLabel = asset.version
+    ? `v${String(asset.version).padStart(2, '0')}${activeAttempt != null ? `.${activeAttempt}` : ''}`
+    : null;
+  const versionTitle =
+    versionLabel && activeAttempt != null && attemptCount > 0
+      ? `Asset version v${String(asset.version ?? 0).padStart(2, '0')} · attempt ${activeAttempt} of ${attemptCount}`
+      : versionLabel
+        ? `Asset version ${versionLabel}`
+        : '';
 
   return (
     <div className="space-y-3">
@@ -270,7 +295,7 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
               color: 'var(--accent-primary)',
               borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, transparent)',
             }}
-            title={`Asset version ${versionLabel}`}
+            title={versionTitle}
           >
             {versionLabel}
           </span>
