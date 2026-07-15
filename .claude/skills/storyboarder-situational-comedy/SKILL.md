@@ -259,7 +259,17 @@ Run this pass over the storyboard as a whole, not just per-shot:
 4. **Confirm continuity carries.** The plate is still on the floor in
    the next shot. The rope is still on his head. Cascade is funny only
    if it persists.
-5. **Vertical-safe peaks (short-target episodes only).** For every shot
+5. **False-success beat is its OWN shot (formula stage 3).** For every
+   try→backfire gag, point at the dedicated `reaction`/`pose` shot where
+   Sandy believes he succeeded — it must sit BEFORE the backfire shot,
+   never share a shot with it. If stage 3 and stage 4 live in one shot,
+   SPLIT them (extend the shot count; see «False success is its own
+   shot — hard rule»). This is the single most-bounced readability
+   failure (R02) — catch it here, before the critic does. A gag with no
+   separable false-success beat (pure reaction, no prior belief) is
+   exempt; say so in the shot's `key_beat` so the omission reads as
+   deliberate.
+6. **Vertical-safe peaks (short-target episodes only).** For every shot
    with `shot_role ∈ {gag, punchline}`: is the peak frame staged inside
    the central vertical-safe column (→ `vertical_safe: true`) or
    explicitly declared `landscape_only: true`? No unflagged peak may

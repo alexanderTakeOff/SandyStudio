@@ -15,13 +15,74 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '@/lib/supabase/types.gen';
+import { logEvent } from '@/lib/api/events';
+import type { ServerSupabaseClient } from '@/lib/api/auth';
 import {
   computeScorecard,
   type ScorecardRecord,
   type ScorecardPhase,
 } from './compute-scorecard';
+import type {
+  CriticDiscriminatorResult,
+  CriticProposal,
+} from './critic-discriminator';
 
 type Sb = SupabaseClient<Database>;
+
+/**
+ * Escalate the discriminator's IRREVERSIBLE calibration proposals (producer
+ * training / creative change) to the Director Inbox as `rule_proposal` events —
+ * ONE per (episode, critic, signature), idempotent across re-runs.
+ *
+ * The Director's trap (2026-07-14): self-improvement must not become a 7th human
+ * touch. So `auto_safe` proposals (reversible rubric wording / prompt / tier)
+ * are NOT escalated — they live in scorecard.metrics for the Factory page and a
+ * future safe auto-applier; only `escalate`-zone items ping the Director. Gated
+ * to the post-distribution `published` phase so backfills / snapshots stay quiet.
+ */
+async function escalateCalibrationProposals(
+  supabase: Sb,
+  episodeId: string,
+  proposals: CriticProposal[],
+): Promise<void> {
+  const escalate = proposals.filter((p) => p.zone === 'escalate');
+  if (escalate.length === 0) return;
+
+  // Idempotency — skip signatures already open for this episode.
+  const { data: existing } = await supabase
+    .from('activity_events')
+    .select('metadata')
+    .eq('episode_id', episodeId)
+    .eq('event_type', 'rule_proposal');
+  const seen = new Set(
+    (existing ?? [])
+      .map((e) => (e.metadata as { discriminator_signature?: unknown } | null)?.discriminator_signature)
+      .filter((s): s is string => typeof s === 'string'),
+  );
+
+  for (const p of escalate) {
+    const signature = `${episodeId}:${p.critic}:${p.action}`;
+    if (seen.has(signature)) continue;
+    await logEvent(supabase as unknown as ServerSupabaseClient, {
+      event_type: 'rule_proposal',
+      severity: 'warning',
+      title: `Calibration proposal — ${p.critic}: ${p.target}`,
+      description: `${p.action}. Rationale: ${p.rationale}`,
+      episode_id: episodeId,
+      // actor null = system-proposed; auto_react=false so it escalates to the
+      // Director (a training change is his call) without spending a Polina wake.
+      actor: null,
+      metadata: {
+        source: 'critic_discriminator',
+        discriminator_signature: signature,
+        critic: p.critic,
+        zone: p.zone,
+        target: p.target,
+        auto_react: false,
+      },
+    });
+  }
+}
 
 /** Append one scorecard row (SSOT). Returns the new row id. */
 export async function persistScorecard(
@@ -205,5 +266,21 @@ export async function refreshScorecard(
     rec,
     markdown,
   });
+
+  // Slow-loop escalation — only at post-distribution (published) so snapshots /
+  // backfills don't flood the Inbox. Best-effort: a failed escalation must never
+  // corrupt the already-persisted scorecard.
+  if (phase === 'published') {
+    const disc = (rec.metrics as { critic_discriminator?: CriticDiscriminatorResult })
+      .critic_discriminator;
+    if (disc?.proposals?.length) {
+      try {
+        await escalateCalibrationProposals(supabase, episodeId, disc.proposals);
+      } catch {
+        /* escalation is advisory — never fail the scorecard on it */
+      }
+    }
+  }
+
   return { scorecardRowId, rec };
 }
