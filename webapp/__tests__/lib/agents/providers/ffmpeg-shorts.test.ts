@@ -11,6 +11,8 @@ import {
   isVertical,
   SHORT_WIDTH,
   SHORT_HEIGHT,
+  CTA_Y_EXPR,
+  DEFAULT_CTA_SECONDS,
 } from '@/lib/agents/providers/ffmpeg-shorts';
 
 describe('buildShortFilter', () => {
@@ -32,6 +34,52 @@ describe('buildShortFilter', () => {
 
   it('treats empty/whitespace overlay text as no overlay', () => {
     expect(buildShortFilter({ overlayText: '   ' })).not.toContain('drawtext');
+  });
+});
+
+describe('buildShortFilter — tail CTA', () => {
+  it('places the CTA in the last N seconds (timing), derived from the trim window', () => {
+    // window 10→40 = 30s long; CTA 3s → shows from t>27.
+    const f = buildShortFilter({ endCta: { text: 'Full episode below', durationSeconds: 3 }, startSec: 10, endSec: 40 });
+    expect(f).toContain('drawtext=');
+    expect(f).toContain("text='Full episode below'");
+    expect(f).toContain("enable='gt(t\\,27)'"); // last 3s of a 30s clip
+  });
+
+  it('derives the CTA window from clipDurationSec when the clip is not trimmed', () => {
+    const f = buildShortFilter({ endCta: { text: 'Watch more' }, clipDurationSec: 20 });
+    // default CTA seconds when unspecified → shows from t>(20-DEFAULT).
+    expect(f).toContain(`enable='gt(t\\,${20 - DEFAULT_CTA_SECONDS})'`);
+  });
+
+  it('anchors the CTA in the top-centre safe zone (clears right rail + bottom UI)', () => {
+    const f = buildShortFilter({ endCta: { text: 'Full episode below' }, clipDurationSec: 20 });
+    expect(f).toContain('x=(w-text_w)/2'); // centred → not over the right action rail
+    expect(f).toContain(`y=${CTA_Y_EXPR}`); // top band → not over the bottom title/description
+    expect(CTA_Y_EXPR).toBe('h/7');
+  });
+
+  it('does not collide with the brand caption — different geometry AND different time window', () => {
+    const f = buildShortFilter({
+      overlayText: 'SANDY the HOURGLASS', overlaySeconds: 4,
+      endCta: { text: 'Full episode below', durationSeconds: 3 }, startSec: 0, endSec: 30,
+    });
+    // brand: head of clip, bottom sixth
+    expect(f).toContain("enable='lt(t\\,4)'");
+    expect(f).toContain('y=h-h/6');
+    // CTA: tail of clip, top seventh
+    expect(f).toContain("enable='gt(t\\,27)'");
+    expect(f).toContain('y=h/7');
+    // two distinct drawtext nodes present
+    expect(f.match(/drawtext=/g)?.length).toBe(2);
+  });
+
+  it('throws when a CTA is requested but the duration is unknown (no trim end, no clipDurationSec)', () => {
+    expect(() => buildShortFilter({ endCta: { text: 'Watch more' }, startSec: 5 })).toThrow(/duration/i);
+  });
+
+  it('treats empty/whitespace CTA text as no CTA', () => {
+    expect(buildShortFilter({ endCta: { text: '   ' }, clipDurationSec: 20 })).not.toContain('drawtext');
   });
 });
 
@@ -76,6 +124,18 @@ describe('buildShortArgs', () => {
     const args = buildShortArgs('/in.mp4', '/out.mp4', { startSec: 0, endSec: 8 });
     expect(args).not.toContain('-ss');
     expect(args[args.indexOf('-t') + 1]).toBe('8');
+  });
+
+  it('re-cut: output duration equals the window AND the CTA lands in the tail', () => {
+    const args = buildShortArgs('/in.mp4', '/out.mp4', {
+      overlayText: 'SANDY the HOURGLASS',
+      startSec: 12, endSec: 38, // 26s window
+      endCta: { text: 'Full episode below', durationSeconds: 3 },
+    });
+    expect(args[args.indexOf('-ss') + 1]).toBe('12');
+    expect(args[args.indexOf('-t') + 1]).toBe('26'); // duration == window
+    const vf = args[args.indexOf('-vf') + 1];
+    expect(vf).toContain("enable='gt(t\\,23)'"); // last 3s of the 26s window
   });
 });
 
