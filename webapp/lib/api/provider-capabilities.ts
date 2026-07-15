@@ -198,6 +198,41 @@ export function hasVerticalDeliveryTarget(
   return false;
 }
 
+/** Canonical delivery-target slugs — the keyset shared by SIZE_BY_DELIVERY_TARGET
+ *  and ASPECT_BY_DELIVERY_TARGET. The app's single source of truth for the set of
+ *  valid `delivery_targets` values (feeds the settings-route zod enum). */
+export const DELIVERY_TARGETS = [
+  'youtube_landscape',
+  'youtube_shorts',
+  'instagram_reels',
+  'instagram_post',
+  'tiktok',
+  'print_poster',
+] as const;
+export type DeliveryTarget = (typeof DELIVERY_TARGETS)[number];
+
+/** Reverse of ASPECT_BY_DELIVERY_TARGET: the canonical delivery_target for a
+ *  chosen aspect ratio, so the Episode Settings format choice can also write the
+ *  canonical `delivery_targets` key (the signal EREF / Storyboarder / sizing read).
+ *  ASPECT_BY_DELIVERY_TARGET is many-to-one (three slugs map to 9:16) so the reverse
+ *  returns a single representative surface. Aspects with no canonical target
+ *  (`auto`, `21:9`, `4:3`, `3:4`) → `[]`, so the caller leaves delivery_targets
+ *  untouched rather than guessing. */
+export function deliveryTargetsForAspect(
+  aspect: VideoAspectRatio | null | undefined,
+): DeliveryTarget[] {
+  switch (aspect) {
+    case '9:16':
+      return ['youtube_shorts'];
+    case '16:9':
+      return ['youtube_landscape'];
+    case '1:1':
+      return ['instagram_post'];
+    default:
+      return [];
+  }
+}
+
 /** Clamp a desired render duration into a provider's [min,max] range, rounded to
  *  an integer (Veo rejects fractional durations with HTTP 400). Single source of
  *  truth for the render-duration floor/ceiling — reused by the runner dispatch

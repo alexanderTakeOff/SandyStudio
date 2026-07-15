@@ -27,6 +27,7 @@ import {
   IMAGE_PROVIDER_CAPS,
   VIDEO_PROVIDER_CAPS,
   normalizeControls,
+  deliveryTargetsForAspect,
   type ImageProviderId,
   type ImageQuality,
   type VideoControlsValue,
@@ -122,6 +123,11 @@ export function EpisodeGenerationConfig({
     setPending(true);
     setError(null);
     try {
+      // Derive the canonical delivery_targets from the chosen aspect so the
+      // vertical/shorts choice reaches EREF / Storyboarder / sizing (which read
+      // delivery_targets), not just the video generator (which reads aspect).
+      // Empty for unmapped aspects (auto/21:9/…) → omit so zod .min(1) is happy.
+      const deliveryTargets = deliveryTargetsForAspect(video.aspect_ratio);
       const res = await fetch(`/api/episodes/${episodeId}/settings`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -139,6 +145,7 @@ export function EpisodeGenerationConfig({
               quality: image.quality,
             },
           },
+          ...(deliveryTargets.length > 0 ? { delivery_targets: deliveryTargets } : {}),
         }),
       });
       if (!res.ok) {

@@ -24,6 +24,8 @@ import {
   type AnthropicTextResult,
 } from '../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
+import { hasVerticalDeliveryTarget } from '../../api/provider-capabilities';
+import { readEpisodeDeliveryTargets } from '../delivery-targets';
 import type { AgentInputs } from '../types';
 import {
   getAgentSkillManifest,
@@ -119,8 +121,14 @@ export function buildUserMessage(args: {
    * contract: the brief's Key beats stay the only MUST-hit surface.
    */
   startNoticeContent?: string | null;
+  /**
+   * True when the episode's delivery_targets include a 9:16 vertical surface
+   * (youtube_shorts / instagram_reels / tiktok). Switches the Writer to a
+   * single-punch short structure instead of a multi-act long-form script.
+   */
+  shortsIsTarget?: boolean;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, bible, revisionNote, activeSkillsBlock, startNoticeContent } = args;
+  const { episodeCode, episodeTitle, briefContent, bible, revisionNote, activeSkillsBlock, startNoticeContent, shortsIsTarget } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -151,6 +159,25 @@ export function buildUserMessage(args: {
           '<episode_start_notice>',
           startNoticeContent,
           '</episode_start_notice>',
+          '',
+        ].join('\n')
+      : '',
+    shortsIsTarget
+      ? [
+          '## SHORTS DELIVERY IS ACTIVE (short-target episode)',
+          '',
+          'This episode ships as a vertical (9:16) YouTube Short. Write it as ONE',
+          'self-contained gag arc, NOT a multi-act long-form script:',
+          '- Target runtime ~15–40 seconds total — a Short reads as a single punch,',
+          '  not an anthology of gags.',
+          '- Single-punch structure: ONE clear desire, ONE escalation ramp, ONE punch.',
+          '  No B-plot, no second independent gag chain.',
+          '- Front-load the hook: the setup must be legible in the first 1–2 seconds so',
+          '  a scroller does not swipe away before the gag lands.',
+          '- Keep the scene count low (typically 2–4 short scenes). Density comes from',
+          '  escalation within the single arc, not from adding more beats.',
+          '- `runtime_target_seconds` MUST fall in the 15–40s range; make the scene',
+          '  `duration_seconds` sum to it.',
           '',
         ].join('\n')
       : '',
@@ -235,6 +262,9 @@ export function buildUserMessage(args: {
     '- For visual comedy MVP: action lines, no dialogue (unless the brief explicitly asks for dialogue).',
     '- Every mandatory beat from the brief\'s "Key beats" section MUST appear in at least one scene\'s `beats[]`.',
     '- Total of `duration_seconds` across all scenes ≈ runtime_target_seconds (within 10%).',
+    shortsIsTarget
+      ? '- SHORTS: `runtime_target_seconds` MUST be between 15 and 40 (a single-punch vertical Short) — do NOT author a long-form runtime.'
+      : '',
     '- The fenced JSON must be valid JSON. No trailing commas. No comments.',
     '- KEEP PROSE TIGHT. The JSON block at the end is MANDATORY and must not be truncated. Aim for ~3-4 paragraphs of action prose per scene maximum, then the final JSON block. If you find yourself running long, shorten prose — never skip the JSON.',
   ]
@@ -258,6 +288,9 @@ export async function runScreenwriter(
     | undefined;
   const episodeCode = ep?.episode_code ?? 'UNKNOWN';
   const episodeTitle = ep?.title_working ?? 'Untitled';
+  // Shorts-awareness: a 9:16 delivery surface switches the Writer to a
+  // single-punch short structure (mirrors the Storyboarder's vertical-safe gate).
+  const shortsIsTarget = hasVerticalDeliveryTarget(readEpisodeDeliveryTargets(inputs.episode));
 
   const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
   const briefAsset = findApprovedAsset(upstream, 'SPC-brief');
@@ -379,11 +412,15 @@ export async function runScreenwriter(
     revisionNote,
     activeSkillsBlock,
     startNoticeContent,
+    shortsIsTarget,
   });
   if (startNoticeContent) {
     notes.push(
       `Episode Start Notice loaded (${startNoticeContent.length} chars) — advisory reservoir injected`,
     );
+  }
+  if (shortsIsTarget) {
+    notes.push('SHORTS delivery active — single-punch short structure (~15–40s) enforced in prompt');
   }
 
   let result: AnthropicTextResult;
