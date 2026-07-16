@@ -13,6 +13,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { hasVerticalDeliveryTarget } from '@/lib/api/provider-capabilities';
+import { readDeliveryTargetsFromMetadata } from '@/lib/agents/delivery-targets';
 
 export const ANIMATIC_CONTRACT = 'animatic@v1';
 export type AnimaticContractId = typeof ANIMATIC_CONTRACT;
@@ -311,13 +313,23 @@ export function excludedShotIdsFromEpisodeMeta(metadata: unknown): Set<string> {
  * EXEC-STITCH brand-bookend toggles, read from `episode.metadata.stitch_settings`.
  * 2026-07-13 — the branded master (intro→body→outro) is produced from one run
  * alongside the CLEAN master. These toggles decide whether the intro/outro
- * bookends are prepended/appended. Decoupled from `delivery_targets` (which is
- * empty/fallback by default) — explicit operator control in the stitch workspace.
+ * bookends are prepended/appended.
  *
  * Default long-form: both ON. Only an explicit `false` turns a bookend off, so a
  * missing/partial metadata blob still gets branding (absent = default ON). A
  * bookend whose LOCKED SBL-video asset is absent is skipped downstream, so
  * "ON with no asset" is a graceful no-op, never a failure.
+ *
+ * 2026-07-16 — a VERTICAL episode gets NO bookends, whatever the toggles say.
+ * The only LOCKED SBL-video_intro/outro assets that exist are authored 16:9
+ * (scripts/gen-intro-action.ts pins aspectRatio '16:9'), and concatenating them
+ * onto a 9:16 body makes the branded master inherit the bookend's landscape
+ * geometry — E29 shipped a 1920×1080 "branded" master wrapping a 720×1280 body,
+ * useless as a Short. Until vertical bookends exist there is nothing valid to
+ * prepend, so the honest answer is to skip branding rather than emit a broken
+ * master. This intentionally REPLACES the earlier "decoupled from
+ * delivery_targets" stance: that was written when delivery_targets was empty by
+ * default; since PR #36 it is the single explicit shorts signal.
  */
 export interface StitchSettings {
   intro: boolean;
@@ -338,9 +350,13 @@ export function resolveStitchSettings(metadata: unknown): StitchSettings {
   const obj =
     raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const coldRaw = obj.cold_open_seconds;
+  // Vertical delivery ⇒ no bookends exist in the right aspect (see doc above).
+  const vertical = hasVerticalDeliveryTarget(
+    readDeliveryTargetsFromMetadata(metadata) ?? [],
+  );
   return {
-    intro: obj.intro === false ? false : true,
-    outro: obj.outro === false ? false : true,
+    intro: vertical ? false : obj.intro === false ? false : true,
+    outro: vertical ? false : obj.outro === false ? false : true,
     cold_open_seconds:
       typeof coldRaw === 'number' && Number.isFinite(coldRaw) && coldRaw > 0
         ? coldRaw

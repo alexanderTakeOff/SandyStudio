@@ -97,6 +97,18 @@ export class FfmpegStitchError extends Error {
 }
 
 /**
+ * The ONE message for "we could not launch ffmpeg". It must not assert a cause
+ * it has not established: a failed spawn means "could not start the process",
+ * which is a missing binary OR a saturated machine. The old text asserted "not
+ * installed → install it" and sent the Director to install a binary that had
+ * been sitting on disk for two months (E29, 2026-07-16).
+ */
+const FFMPEG_UNREACHABLE_MESSAGE =
+  'ffmpeg could not be launched — every candidate (FFMPEG_PATH, PATH, winget/unix fallbacks) failed to spawn. ' +
+  'This is often TRANSIENT (the machine could not spawn a process — e.g. another job saturating it), not a missing binary: retry first. ' +
+  'If it persists, check that ffmpeg is installed (winget install ffmpeg / brew install ffmpeg / apt install ffmpeg) or set FFMPEG_PATH.';
+
+/**
  * Resolve the ffmpeg binary path. Strategy:
  *   1. `FFMPEG_PATH` env var — explicit override.
  *   2. Plain `ffmpeg` — works when binary is on PATH (Linux/macOS, Windows
@@ -165,10 +177,21 @@ async function probeMp4Duration(mp4Path: string): Promise<number | null> {
   return null;
 }
 
-let cachedFfmpegPath: string | null | undefined = undefined;
+/**
+ * Resolved ffmpeg path. ONLY successful resolutions are cached — a failed probe
+ * is never memoised.
+ *
+ * 2026-07-16 — this used to cache `null` too. A probe can fail transiently (the
+ * box was saturated with ffmpeg processes cutting shorts, so `spawn` itself
+ * failed), and the cached `null` then blinded the whole server process for the
+ * rest of its life: every later stitch/animatic/music call reported "ffmpeg not
+ * installed" while ffmpeg sat on disk, working. E29 lost ~40 minutes to it.
+ * Re-probing costs a few ms; a permanently blind process costs a production day.
+ */
+let cachedFfmpegPath: string | null = null;
 
 export async function resolveFfmpegPath(): Promise<string | null> {
-  if (cachedFfmpegPath !== undefined) return cachedFfmpegPath;
+  if (cachedFfmpegPath) return cachedFfmpegPath;
 
   const envPath = process.env.FFMPEG_PATH?.trim();
   const candidates: string[] = [];
@@ -196,7 +219,6 @@ export async function resolveFfmpegPath(): Promise<string | null> {
       return cand;
     }
   }
-  cachedFfmpegPath = null;
   return null;
 }
 
@@ -215,10 +237,7 @@ export async function ffmpegInstalled(): Promise<boolean> {
 export async function runFfmpeg(args: ReadonlyArray<string>): Promise<string> {
   const ffmpegBin = await resolveFfmpegPath();
   if (!ffmpegBin) {
-    throw new FfmpegStitchError(
-      'ffmpeg binary not found on PATH or via FFMPEG_PATH/winget fallbacks. Install ffmpeg (winget install ffmpeg / brew install ffmpeg / apt install ffmpeg) and restart the Inngest dev server.',
-      'ffmpeg_not_installed',
-    );
+    throw new FfmpegStitchError(FFMPEG_UNREACHABLE_MESSAGE, 'ffmpeg_not_installed');
   }
   return new Promise((resolve, reject) => {
     const proc = spawn(ffmpegBin, [...args], { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -228,9 +247,12 @@ export async function runFfmpeg(args: ReadonlyArray<string>): Promise<string> {
     });
     proc.on('error', (err) => {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        // The path probed OK moments ago, so ENOENT here is not "never
+        // installed" — report the resolved path so the next reader can see
+        // WHICH binary vanished rather than being told to install ffmpeg.
         reject(
           new FfmpegStitchError(
-            'ffmpeg binary not found on PATH. Install ffmpeg (winget install ffmpeg / brew install ffmpeg / apt install ffmpeg) and restart the Inngest dev server.',
+            `ffmpeg vanished between probe and run (ENOENT on "${ffmpegBin}"). ${FFMPEG_UNREACHABLE_MESSAGE}`,
             'ffmpeg_not_installed',
           ),
         );
@@ -280,10 +302,7 @@ export async function ffmpegStitchEpisode(
 
   const installed = await ffmpegInstalled();
   if (!installed) {
-    throw new FfmpegStitchError(
-      'ffmpeg binary not found on PATH. Install ffmpeg (winget install ffmpeg / brew install ffmpeg / apt install ffmpeg) and restart the Inngest dev server.',
-      'ffmpeg_not_installed',
-    );
+    throw new FfmpegStitchError(FFMPEG_UNREACHABLE_MESSAGE, 'ffmpeg_not_installed');
   }
 
   // Resolve `os.tmpdir()` through `fs.realpath` to expand any 8.3 short
