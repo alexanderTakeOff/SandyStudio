@@ -33,6 +33,19 @@ Date:   2026-07-16 (Channel LAUNCH prep — Тео, Head of Growth, ===1===). П
   PRIVATE, стереть. PLAN.md над капом (299>200) — компакция owed.
 Mode:   ===5=== EDIT (Director-authorized).
 
+2026-07-16 (СЛОЙ АДАПТАЦИИ — Critic Discriminator + Factory-страница — Тео, КОД, ===5===). Первый живой фаер
+  медленной петли (тюнит фабрику с каждого отклонения). **SHIPPED master `1bf39d88`:** (1) деривер
+  `critic-discriminator.ts` — 3 оси (черн критика REVISE/версию · producer first-pass reject · regens) в metrics
+  JSONB, на существующем `exec-pub/published`; escalate→Inbox `rule_proposal`, auto_safe без касания. Форензика E28:
+  «2.45×/шот»=артефакт (3 REVISE/54); сенсор нашёл VPREV-gap V04/V11/V12. RLS-фикс 0044 (episode_scorecard читался
+  authenticated=0 строк). (2) Страница `/factory` + v2 под модель Директора: 3-way touches (Дир/Полина/AI-EP),
+  **leadership-метрика→0** (агенты=база, L1 Полина, L2 Директор), граница **design→production = старт реф-артиста**
+  (не casting), бюджет total=itemized (design+production сходятся, reserved=budget_spent отдельно), SVG-графики.
+  (3) R02 self-check в сториборде. (4) `/nav-orch*` глобальные команды. (5) Мульти-машинный лаунчер (path-agnostic +
+  ASCII) — прод поднят на ЛЭПТОПЕ. tsc·0 / vitest **1345** / replay **30/30**. OPEN: VPREV-форензика · budget_spent
+  недосчитывает Полину (itemized-backfill) · scorecard actor-count fix. Хендофф: session-data/2026-07-16-factory-adaptation-layer.md
+Mode:   ===5=== EDIT (Director-authorized).
+
 2026-07-15 (Critic Churn Discriminator + Factory page — Тео, КОД, ===5===. Первый живой фаер СЛОЯ АДАПТАЦИИ.
   Форензика E28 (read-only) опровергла посылку: «CREAD 2.45×/шот» = АРТЕФАКТ метрики — 54 прогона, 3 REVISE (94.5%
   first-pass PASS); «черн» = идемпотентные пере-чеки планов, что Директор регенерил РУКАМИ (approval_revision→
