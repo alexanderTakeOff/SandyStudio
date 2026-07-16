@@ -20,7 +20,20 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-15 (Critic Churn Discriminator + Factory page — Тео, КОД, ===5===. Первый живой фаер СЛОЯ АДАПТАЦИИ.
+Date:   2026-07-16 (Channel LAUNCH prep — Тео, Head of Growth, ===1===). ПЕТЛЯ НАЧАЛА размыкаться.
+  Канал «Sandy the Hourglass» упакован под запуск: баннер (наш gpt-image-2 S15-канон + ffmpeg 2048×1152, залит
+  вручную через Studio — API `channelBanners.insert` мёртв 404), About переписан (промис + ссылки Full/Shorts/
+  подписка, убран ложный `#3danimation`), плейлист Full Episodes переименован (API `playlists.update`). Из ОДНОГО
+  финала Vending нарезаны **4 Short'а ~20с full-bleed 9:16 с follow-crop** (per-beat crop-x, метод подтверждён
+  QA-кадрами; letterbox отвергнут — режет ретеншен): D Монетка · A Раунд1 · B Раунд2 · C Победа-лавина. Залиты
+  PRIVATE через наш `uploadVideo` API (youtu.be R5YYEoP7nrA / J6rp-gmUKe4 / cZmqxhQIPeo / AHARBzM2CWw). Каденция
+  ДОКАЗАНА ресёрчем (не 2-3дня из strategy.md): **1/день D→A→B→C** — ежедневно=рост, но НЕ залп (каннибализация
+  traffic-test + мутит retention-сигнал=North Star). NEXT (Директор-gate): schedule Public 1/день; воронка =
+  Vending эпизод→Public + ссылки в описания; след. батч Gym/Smartphone. Старые 5с-версии (x3doFsAtwIA/IpS/d8r)
+  PRIVATE, стереть. PLAN.md над капом (299>200) — компакция owed.
+Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-15 (Critic Churn Discriminator + Factory page — Тео, КОД, ===5===. Первый живой фаер СЛОЯ АДАПТАЦИИ.
   Форензика E28 (read-only) опровергла посылку: «CREAD 2.45×/шот» = АРТЕФАКТ метрики — 54 прогона, 3 REVISE (94.5%
   first-pass PASS); «черн» = идемпотентные пере-чеки планов, что Директор регенерил РУКАМИ (approval_revision→
   Designer ре-авторит, доказано activity_events), НЕ баг и НЕ строгий критик. Рантайм-прогон сенсора нашёл БОЛЬШЕ

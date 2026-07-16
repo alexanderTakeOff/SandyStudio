@@ -109,6 +109,73 @@ Episode (core)
 
 ---
 
+## Cadence — daily beats sparse, but never burst
+
+On a new channel, **daily beats every-few-days**: there is no frequency penalty; the
+limiter is retention, not a cooldown. But do NOT dump several Shorts in a few hours:
+
+- Two Shorts posted close together **split their own traffic-test** — the platform's
+  fresh-audience test for the second pulls reach from the first; both can stall. (This is
+  Short-vs-Short in the SAME feed — distinct from §"one fact": a Short never cannibalizes a
+  *long-form* video, which lives in a different feed.)
+- On a channel whose purpose is a clean **retention read** per gag, a burst also **muddies
+  the signal** — you cannot tell which beat worked if they compete.
+- **Default: one Short per day, fixed slot, in a deliberate order.** A multi-part arc from
+  one episode (setup → escalation → payoff) posted one-per-day doubles as a serialized hook
+  that pulls the return-viewer. Ceiling: 2/day only if ≥6–8h apart.
+
+## Posting time — barely a lever below ~1K subs
+
+Under ~1,000 subscribers the initial test pool is too small for post-time to move the
+needle — **content and consistency dominate; do not over-optimize time.** Still, pick a sane
+slot and hold it:
+
+- For a **globally-scoped** product (no language gate), target the slot where the two
+  largest watch-time regions' peaks OVERLAP (typically the primary market's afternoon = the
+  secondary market's evening), so one post catches both. Express the slot by audience-region
+  role, never a hardcoded local clock — the operator's own timezone is irrelevant when
+  scheduling.
+- Keep the SAME time every day so the algorithm and audience learn the rhythm.
+- The real answer arrives from data: once ~2–4 weeks of history exist, read the platform's
+  "when your viewers are online" panel and retune. Until then the global-overlap default is
+  a placeholder, not a decision.
+
+## Vertical reframe craft (repackaging horizontal → 9:16)
+
+Extends practice #3. Cutting a horizontal scene into a vertical Short has hard rules:
+
+1. **Long enough to READ.** A few seconds of flashing is not a gag — the self-contained beat
+   needs its natural setup→punch length (≈15–40s). A sub-5s blip reads as noise.
+2. **Full-bleed, not letterbox.** Fill the 9:16 frame. Letterboxing (blurred bars, the scene
+   shrunk to a center band) makes the action tiny → depresses retention, the exact metric
+   that decides whether the feed keeps showing it. Letterbox is a last resort for a genuinely
+   wide gag, never the default.
+3. **Follow the subject.** When the subject moves across the horizontal frame (common in
+   two-shot interactions), a STATIC centre-crop clips it. Reposition the crop per beat
+   (follow-crop / subject-tracking) so the subject stays full-frame throughout.
+4. **QA before publish.** LOOK at sampled frames of the reframed cut and confirm the subject
+   is held in every beat. Never ship a reframe unverified — a crop that drops the character
+   mid-gag is worse than not posting.
+
+## Completeness + schedule audit (the publish "definition of done")
+
+A published/scheduled asset is DONE only when every field is filled. The invariant checklist
+(run as a routine — see the Head-of-Growth "lead-by-hand" stance in [[head-of-growth]]):
+
+- **Per asset:** real title (never a raw filename or "DRAFT"); description present; **Short →
+  parent-episode backlink** (§"The bridge"); subscribe link; tags; thumbnail (long-form;
+  Shorts use the first frame); correct category; not-made-for-kids; visibility not stuck in
+  Draft/Unlisted when it should be scheduled; correct playlist membership.
+- **Across the schedule:** one asset per intended slot with no gaps; the deliberate order
+  held; nothing sitting Unlisted that was meant to ship.
+- **Publish-gate:** never upload a source that is not APPROVED, and title from the metadata
+  record, never from the raw filename (an "…branded-v02-DRAFT" title on the channel is the
+  fingerprint of an unapproved file leaking through the gate).
+
+Any failing field = surface to the operator (do not silently ship a half-filled asset).
+
+---
+
 ## Project-local status (not part of the invariant)
 
 > This appendix is the ONE place concrete/project state is allowed, and it is
