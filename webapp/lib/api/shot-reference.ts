@@ -127,6 +127,18 @@ export interface GenerationAttempt {
   triggered_by: GenerationTriggeredBy;
   /** Governance mode at the moment of this attempt — audit trail. */
   mode_at_time: GovernanceModeNum;
+  /**
+   * Reviewer verdict for THIS attempt (2026-07-16, Director keep-best). Previously
+   * only the LAST attempt's review was retained on the shot; storing it per attempt
+   * lets the loop keep the BEST-scoring attempt on retry-exhaustion (not blindly the
+   * last, which prompt-drift often makes the worst) and lets the UI show each
+   * attempt's score so the Director can see which one is canon.
+   */
+  review?: EREFReview;
+  /** Mean of the reviewer's non-null 0-100 scores for this attempt. */
+  composite_score?: number;
+  /** Count of CRITICAL-severity issues in this attempt's review. */
+  critical_count?: number;
 }
 
 // ── AI reviewer verdict (post-generation, mirrors StyleCheckResult) ──────────
@@ -174,6 +186,49 @@ export interface EREFReview {
   reviewer_model: string;
   reviewer_cost_usd: number;
   at: string;
+}
+
+/** Keep-first threshold (Director 2026-07-16): an attempt is "clean enough to keep"
+ *  when it has no CRITICAL issue AND its composite score ≥ this. */
+export const KEEP_ATTEMPT_SCORE_THRESHOLD = 85;
+
+/**
+ * Score an attempt's review: `composite` = mean of the reviewer's non-null 0-100
+ * scores (gag_readability is null on gag-less shots and is excluded, not counted as
+ * 0); `criticalCount` = CRITICAL-severity issues. The basis of the keep-first /
+ * keep-best gate. Pure.
+ */
+export function reviewComposite(review: EREFReview): { composite: number; criticalCount: number } {
+  const scores = [
+    review.consistency_score,
+    review.emotion_alignment_score,
+    review.action_clarity_score,
+    review.gag_readability_score,
+    review.style_match_score,
+  ].filter((s): s is number => typeof s === 'number');
+  const composite = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  const criticalCount = review.issues.filter((i) => i.severity === 'CRITICAL').length;
+  return { composite, criticalCount };
+}
+
+/** True when an attempt clears the keep-first bar (no CRITICAL, composite ≥ threshold). */
+export function attemptClearsKeepBar(composite: number, criticalCount: number): boolean {
+  return criticalCount === 0 && composite >= KEEP_ATTEMPT_SCORE_THRESHOLD;
+}
+
+/**
+ * Keep-best on retry-exhaustion: the attempt with the highest `composite_score`.
+ * Ties resolve to the EARLIER attempt (prompt-drift makes later attempts riskier,
+ * so an equal-scoring earlier one is preferred). Null for an empty list.
+ */
+export function pickBestAttempt(
+  attempts: readonly GenerationAttempt[],
+): GenerationAttempt | null {
+  let best: GenerationAttempt | null = null;
+  for (const a of attempts) {
+    if (best === null || (a.composite_score ?? -1) > (best.composite_score ?? -1)) best = a;
+  }
+  return best;
 }
 
 // ── Retry book-keeping ──────────────────────────────────────────────────────

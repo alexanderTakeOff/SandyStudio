@@ -256,27 +256,39 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
   // visual critic judged), plus how many attempts exist. Attempt index comes from
   // metadata, NOT the filename (unreliable: a fresh ref's file is "-v01-DRAFT", a
   // hand-picked one is "-attemptN"). Non-EREF assets keep the plain "v01" badge.
-  const shotRef = asset.file_type.startsWith('IMG-episode_ref')
+  const erefMeta = asset.file_type.startsWith('IMG-episode_ref')
     ? (asset.metadata as {
         shot_reference?: {
           selected_version?: number | null;
           generation_history?: Array<{ version?: number | null }>;
         };
-      } | null)?.shot_reference ?? null
+        image_prompt?: { current_version?: number | null };
+      } | null)
     : null;
+  const shotRef = erefMeta?.shot_reference ?? null;
   const attemptCount = shotRef?.generation_history?.length ?? 0;
+  // Active attempt precedence: a manual pick (selected_version) wins; else the
+  // attempt the loop shipped (image_prompt.current_version — with keep-best this is
+  // the BEST attempt, NOT necessarily the last); else fall back to the last.
   const activeAttempt =
     shotRef?.selected_version ??
+    erefMeta?.image_prompt?.current_version ??
     (attemptCount > 0 ? shotRef!.generation_history![attemptCount - 1]!.version ?? null : null);
-  const versionLabel = asset.version
-    ? `v${String(asset.version).padStart(2, '0')}${activeAttempt != null ? `.${activeAttempt}` : ''}`
+  // Compact "v01-N/M" badge (Director 2026-07-16): version-attempt/total, so the
+  // active attempt AND how many exist are visible at a glance. Collapses to plain
+  // "v01" when there is a single attempt (or a non-EREF asset).
+  const versionBase = asset.version ? `v${String(asset.version).padStart(2, '0')}` : null;
+  const hasAttempts = attemptCount > 1 && activeAttempt != null;
+  const versionLabel = versionBase
+    ? hasAttempts
+      ? `${versionBase}-${activeAttempt}/${attemptCount}`
+      : versionBase
     : null;
-  const versionTitle =
-    versionLabel && activeAttempt != null && attemptCount > 0
-      ? `Asset version v${String(asset.version ?? 0).padStart(2, '0')} · attempt ${activeAttempt} of ${attemptCount}`
-      : versionLabel
-        ? `Asset version ${versionLabel}`
-        : '';
+  const versionTitle = versionLabel
+    ? hasAttempts
+      ? `Asset ${versionBase} · attempt ${activeAttempt} of ${attemptCount}`
+      : `Asset version ${versionLabel}`
+    : '';
 
   return (
     <div className="space-y-3">
