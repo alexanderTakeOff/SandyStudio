@@ -18,6 +18,7 @@
 
 import {
   STAGE_ORDER,
+  UPSTREAM_OF,
   type StageName,
   type EpisodeStateMatrix,
 } from './state-matrix';
@@ -45,7 +46,11 @@ export type ReconcileAction =
   | { kind: 'approve'; assetId: string; shotId: string; stage: StageName; reason: string }
   | { kind: 'stitch'; reason: string }
   | { kind: 'halt'; shotId: string; stage: StageName; reason: string }
-  | { kind: 'wait'; shotId: string | null; stage: StageName | null; reason: string };
+  | { kind: 'wait'; shotId: string | null; stage: StageName | null; reason: string }
+  // Failure-spine Slice 3: re-drive a FAILED (never-produced) cell. `assetId` is
+  // the UPSTREAM plan's id for money stages (ref_image/video), absent for the
+  // authoring stages (ref_plan/shot_plan) which re-run from scratch.
+  | { kind: 'refire'; shotId: string; stage: StageName; assetId?: string; reason: string };
 
 export interface ReconcileContext {
   matrix: EpisodeStateMatrix;
@@ -54,10 +59,15 @@ export interface ReconcileContext {
   verdicts: Map<string, string>;
   /** key `${shotId}::${stage}` → number of REVISE verdicts recorded so far. */
   reviseCounts: Map<string, number>;
+  /** key `${shotId}::${stage}` → number of mechanical refires already fired
+   *  (from `reconcile/refire` events). Drives the recovery cap in the refire pass. */
+  refireCounts: Map<string, number>;
   /** Shots still gated by the Director (e.g. pilots when 'pilots' is reserved). */
   reservedShots: Set<string>;
   /** Max REVISE cycles for one plan before HALT + escalate (critic_revision_cap). */
   criticCap: number;
+  /** Max mechanical refires of a FAILED cell before HALT (reconcile_recovery_cap). */
+  recoveryCap: number;
   /** Episode governance mode (1 MANUAL / 2 HYBRID / 3 DELEGATED). Drives the
    *  mode-aware gate decision per cell — see resolveGateDecision. */
   governanceMode: number | null;
@@ -107,7 +117,17 @@ export function collectCriticSignals(
  * an already-APPROVED stage produces no action, so it is safe to call on any event.
  */
 export function planReconcileActions(ctx: ReconcileContext): ReconcileAction[] {
-  const { matrix, plan, verdicts, reviseCounts, reservedShots, criticCap, governanceMode } = ctx;
+  const {
+    matrix,
+    plan,
+    verdicts,
+    reviseCounts,
+    refireCounts,
+    reservedShots,
+    criticCap,
+    recoveryCap,
+    governanceMode,
+  } = ctx;
   const actions: ReconcileAction[] = [];
 
   for (const shot of matrix.shots) {
@@ -199,6 +219,52 @@ export function planReconcileActions(ctx: ReconcileContext): ReconcileAction[] {
             reason: `creative render — Mode ${governanceMode ?? 1} requires a human (Director/Polina)`,
           });
         }
+      }
+    }
+
+    // ── Failure-spine Slice 3: mechanical refire of FAILED cells ─────────────
+    // A stage whose generation FAILED left an EMPTY cell (status:null) carrying a
+    // failure_count (state-matrix stamps it from agent_failed events). This is a
+    // SEPARATE pass from the REVIEW loop above — a failed cell never reached
+    // REVIEW. Re-drive it up to recoveryCap times (recovers a transient provider
+    // outage that cleared later); past the cap, HALT + escalate — a logical block
+    // (e.g. a plan stuck in REVISION) re-fails and lands here, so the cap converges
+    // it to the Director instead of looping forever. Reuses the same
+    // excluded/reserved/in-plan guards at the top of this shot loop.
+    for (const stage of STAGE_ORDER) {
+      const cell = shot.stages[stage];
+      if (cell.status !== null) continue; // only never-produced cells
+      if ((cell.failure_count ?? 0) === 0) continue; // only ones that actually failed
+      const key = signalKey(shot.shot_id, stage);
+      const refireCount = refireCounts.get(key) ?? 0;
+
+      // Money (executor) stages re-execute an APPROVED upstream plan → need its
+      // asset_id. Authoring stages (ref_plan/shot_plan) re-run from scratch. If a
+      // money stage has no APPROVED upstream, the real gap is upstream, not here.
+      const isExecutorStage = stage === 'ref_image' || stage === 'video';
+      let planAssetId: string | undefined;
+      if (isExecutorStage) {
+        const upstream = UPSTREAM_OF[stage];
+        const up = upstream ? shot.stages[upstream] : null;
+        if (!up || up.status !== 'APPROVED' || !up.asset_id) continue;
+        planAssetId = up.asset_id;
+      }
+
+      if (refireCount < recoveryCap) {
+        actions.push({
+          kind: 'refire',
+          shotId: shot.shot_id,
+          stage,
+          assetId: planAssetId,
+          reason: `generation failed ×${cell.failure_count} — mechanical refire ${refireCount + 1}/${recoveryCap}`,
+        });
+      } else {
+        actions.push({
+          kind: 'halt',
+          shotId: shot.shot_id,
+          stage,
+          reason: `generation failed, recovery ×${refireCount} ≥ cap ${recoveryCap} — HALT + escalate Director`,
+        });
       }
     }
   }

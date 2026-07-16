@@ -21,7 +21,7 @@ import {
   type ReconcileAction,
 } from '../lib/agents/reconcile';
 import { readProductionPlan } from '../lib/agents/production-plan';
-import { planRegenCap } from '../lib/agents/chain-flags';
+import { planRegenCap, reconcileRecoveryCap } from '../lib/agents/chain-flags';
 
 // E14 «Мадам Парфюм» — the almost-finished episode from the last run.
 const DEFAULT_EPISODE = 'd2c0f1f6-fc2a-483e-a482-459bb8de13fd';
@@ -63,8 +63,10 @@ async function main() {
     plan,
     verdicts,
     reviseCounts,
+    refireCounts: new Map<string, number>(), // shadow run: no historical refire counts
     reservedShots: new Set<string>(),
     criticCap: planRegenCap(),
+    recoveryCap: reconcileRecoveryCap(),
     governanceMode: matrix.governance_mode == null ? null : Number(matrix.governance_mode),
   });
 
@@ -84,8 +86,10 @@ async function main() {
     plan,
     verdicts,
     reviseCounts,
+    refireCounts: new Map<string, number>(), // shadow run: no historical refire counts
     reservedShots: new Set<string>(),
     criticCap: planRegenCap(),
+    recoveryCap: reconcileRecoveryCap(),
     governanceMode: matrix.governance_mode == null ? null : Number(matrix.governance_mode),
   });
   const stable = JSON.stringify(again) === JSON.stringify(actions);
@@ -101,6 +105,8 @@ function renderAction(a: ReconcileAction): string {
       return `stitch — ${a.reason}`;
     case 'halt':
       return `HALT ${a.shotId}/${a.stage} — ${a.reason}`;
+    case 'refire':
+      return `refire ${a.shotId}/${a.stage}${a.assetId ? ` (${a.assetId})` : ''} — ${a.reason}`;
     case 'wait':
       return `wait ${a.shotId ?? '·'}/${a.stage ?? '·'} — ${a.reason}`;
   }

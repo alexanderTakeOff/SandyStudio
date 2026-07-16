@@ -124,6 +124,22 @@ export function shotRegenCap(): number {
 }
 
 /**
+ * RECONCILE_RECOVERY_CAP — how many times the reconciler mechanically REFIRES a
+ * FAILED (never-produced) cell before it HALTs + escalates to the Director
+ * (Failure-spine Slice 3). Distinct from the regen caps above: those bound the
+ * critic-revision / auto-regen loops on a produced artifact; this bounds the
+ * reconciler's re-drive of a stage whose generation DIED with no output. Small
+ * by design — Inngest already retries the job 3×, so this only recovers a
+ * transient outage that cleared LATER; a logical block re-fails and the cap
+ * converges it to the Director instead of looping. Default 1.
+ */
+export function reconcileRecoveryCap(): number {
+  const v = process.env.RECONCILE_RECOVERY_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/**
  * Per-episode retry caps (Director 2026-07-06 — Episode Settings). Three
  * attempt limits the Director can tune per episode before the pipeline HALTs
  * and escalates to her:

@@ -21,6 +21,7 @@
 
 import type { requireDirector } from '@/lib/api/auth';
 import type { StudioEventName } from '@/lib/inngest/client';
+import type { StageName } from './state-matrix';
 import {
   isShotReferenceV2,
   type ShotReferenceContract,
@@ -277,6 +278,39 @@ export function planIdFromAssetMeta(meta: unknown): string | null {
   }
   if (typeof m.plan_asset_id === 'string') return m.plan_asset_id;
   return null;
+}
+
+/**
+ * The Inngest event that (re)generates a per-shot STAGE from its current inputs —
+ * the SINGLE source the reconciler's mechanical refire (Failure-spine Slice 3)
+ * uses to re-drive a stage whose generation FAILED and produced no asset. Mirrors
+ * the canonical stage→event edges computeNextEvents fires on approval:
+ *   ref_plan  → Designer authors the plan          (from scratch — no upstream id)
+ *   ref_image → EREF executes the APPROVED ref_plan (needs the ref_plan asset id)
+ *   shot_plan → Animator authors the plan           (from scratch — no upstream id)
+ *   video     → VGEN renders the APPROVED shot_plan (needs the shot_plan asset id)
+ * Returns null for a money stage missing its upstream plan id (can't execute) —
+ * the planner already guards this, so null is defence-in-depth.
+ */
+export function stageRefireEvent(
+  stage: StageName,
+  args: { episodeId: string; shotId: string; planAssetId?: string | null },
+): { name: StudioEventName; data: Record<string, unknown> } | null {
+  const { episodeId, shotId, planAssetId } = args;
+  switch (stage) {
+    case 'ref_plan':
+      return { name: 'sandystudio/exec-eref-designer/plan', data: { episodeId, shotId } };
+    case 'shot_plan':
+      return { name: 'sandystudio/exec-vanim/plan', data: { episodeId, shotId } };
+    case 'ref_image':
+      return planAssetId
+        ? { name: 'sandystudio/exec-eref/execute-from-plan', data: { episodeId, shotId, planAssetId } }
+        : null;
+    case 'video':
+      return planAssetId
+        ? { name: 'sandystudio/exec-vgen/single-shot', data: { episodeId, shotId, planAssetId } }
+        : null;
+  }
 }
 
 /**

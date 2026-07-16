@@ -55,8 +55,10 @@ function ctx(over: Partial<ReconcileContext> & { matrix: EpisodeStateMatrix }): 
     plan: null,
     verdicts: new Map(),
     reviseCounts: new Map(),
+    refireCounts: new Map(),
     reservedShots: new Set(),
     criticCap: 3,
+    recoveryCap: 1,
     governanceMode: 3, // DELEGATED by default — most permissive; mode-specific tests override
     ...over,
   };
@@ -209,6 +211,72 @@ describe('planReconcileActions — mode-aware gate (Phase 2)', () => {
     expect(acts).toContainEqual(
       expect.objectContaining({ kind: 'approve', assetId: 'v1', stage: 'video' }),
     );
+  });
+});
+
+describe('planReconcileActions — Failure-spine Slice 3 refire', () => {
+  it('refires a FAILED authoring cell (ref_plan) below the recovery cap', () => {
+    const m = matrix([shot('SH01', { ref_plan: st({ status: null, failure_count: 2 }) })]);
+    const acts = planReconcileActions(ctx({ matrix: m, recoveryCap: 1 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'refire', shotId: 'SH01', stage: 'ref_plan' }),
+    );
+    // authoring stage carries no upstream plan id
+    const refire = acts.find((a) => a.kind === 'refire');
+    expect((refire as { assetId?: string }).assetId).toBeUndefined();
+  });
+
+  it('refires a FAILED money cell (video) with the UPSTREAM shot_plan asset id', () => {
+    const m = matrix([
+      shot('SH01', {
+        shot_plan: st({ status: 'APPROVED', asset_id: 'sp1', version: 1 }),
+        video: st({ status: null, failure_count: 1 }),
+      }),
+    ]);
+    const acts = planReconcileActions(ctx({ matrix: m, recoveryCap: 1 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'refire', shotId: 'SH01', stage: 'video', assetId: 'sp1' }),
+    );
+  });
+
+  it('does NOT refire a money cell whose upstream plan is not APPROVED', () => {
+    const m = matrix([
+      shot('SH01', {
+        shot_plan: st({ status: 'REVIEW', asset_id: 'sp1' }),
+        video: st({ status: null, failure_count: 1 }),
+      }),
+    ]);
+    const acts = planReconcileActions(ctx({ matrix: m, recoveryCap: 1 }));
+    expect(acts.filter((a) => a.kind === 'refire')).toHaveLength(0);
+  });
+
+  it('HALTs (escalates) once refires reach the recovery cap', () => {
+    const m = matrix([shot('SH01', { ref_plan: st({ status: null, failure_count: 3 }) })]);
+    const acts = planReconcileActions(
+      ctx({
+        matrix: m,
+        recoveryCap: 1,
+        refireCounts: new Map([[signalKey('SH01', 'ref_plan'), 1]]),
+      }),
+    );
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'halt', shotId: 'SH01', stage: 'ref_plan' }),
+    );
+    expect(acts.filter((a) => a.kind === 'refire')).toHaveLength(0);
+  });
+
+  it('never refires a reserved (pilot) shot — the visual gate stays intact', () => {
+    const m = matrix([shot('SH01', { ref_image: st({ status: null, failure_count: 5 }) })]);
+    const acts = planReconcileActions(
+      ctx({ matrix: m, reservedShots: new Set(['SH01']), recoveryCap: 1 }),
+    );
+    expect(acts).toHaveLength(0);
+  });
+
+  it('does not touch a cell that produced an asset (no failure trigger)', () => {
+    const m = matrix([shot('SH01', { ref_plan: st({ status: 'REVIEW', asset_id: 'rp1' }) })]);
+    const acts = planReconcileActions(ctx({ matrix: m, recoveryCap: 1 }));
+    expect(acts.filter((a) => a.kind === 'refire')).toHaveLength(0);
   });
 });
 
