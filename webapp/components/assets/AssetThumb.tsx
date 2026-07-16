@@ -99,8 +99,33 @@ export function AssetThumb({ asset, size = 32, hoverName, onClick }: AssetThumbP
   // `v01` / `v02` badge in the bottom-left of each tile.
   // 2026-05-25 follow-up: Director asked to halve the chip size — original
   // divisor was /5.5, now /11 (font), with tighter padding to match.
-  const versionLabel =
+  // Attempt visibility on the tile face (Director 2026-07-16): an EREF ref holds N
+  // attempt images and the ACTIVE one (keep-best winner) is not obvious. Show
+  // "v01-N/M" (version-attempt/total) right on the chip so the Director sees which
+  // attempt is live without opening a drawer. Collapses to plain "v01" for a single
+  // attempt or a non-EREF asset. Active attempt precedence mirrors AssetPreview:
+  // selected_version (manual pick) → image_prompt.current_version (keep-best winner)
+  // → last.
+  const erefSr = asset.file_type.startsWith('IMG-episode_ref')
+    ? (asset.metadata as {
+        shot_reference?: {
+          selected_version?: number | null;
+          generation_history?: Array<{ version?: number | null }>;
+        };
+      } | null)?.shot_reference ?? null
+    : null;
+  const attemptCount = erefSr?.generation_history?.length ?? 0;
+  const activeAttempt =
+    erefSr?.selected_version ??
+    asset.metadata?.image_prompt?.current_version ??
+    (attemptCount > 0 ? erefSr!.generation_history![attemptCount - 1]!.version ?? null : null);
+  const versionBase =
     asset.version != null ? `v${String(asset.version).padStart(2, '0')}` : null;
+  const versionLabel = versionBase
+    ? attemptCount > 1 && activeAttempt != null
+      ? `${versionBase}-${activeAttempt}/${attemptCount}`
+      : versionBase
+    : null;
   // Anchor/ref role mark (Director 2026-06-20) — sits in the same bottom-left
   // chip ahead of the version so a shot's start/end pair vs a single ref reads
   // without hovering.
