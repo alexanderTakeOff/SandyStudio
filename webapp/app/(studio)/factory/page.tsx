@@ -45,7 +45,8 @@ interface FactoryEpisode {
   autonomyPct: number | null;
   agentFailures: number;
   budget: {
-    total: number; perShot: number | null; reservationOnly: boolean; itemizedTotal: number;
+    total: number; perShot: number | null; reservationOnly: boolean;
+    reservedTotal: number; itemizedTotal: number;
     preCast: number | null; postCast: number | null; byAgent: CostFold[]; byOp: CostFold[];
   };
   criticVerdicts: CriticVerdict[];
@@ -289,7 +290,12 @@ export default function FactoryPage() {
                       {e.budget.reservationOnly ? (
                         <span className="text-[10px] px-1.5 h-5 rounded-full border inline-flex items-center" style={{ color: 'var(--accent-orange)', borderColor: 'var(--accent-orange)' }}>reservation-only · no itemized</span>
                       ) : (
-                        <span className="text-[11px] text-text-muted">pre {e.budget.preCast === null ? '—' : usd(e.budget.preCast)} · post {e.budget.postCast === null ? '—' : usd(e.budget.postCast)}</span>
+                        <span className="text-[11px] text-text-muted">
+                          pre {e.budget.preCast === null ? '—' : usd(e.budget.preCast)} + post {e.budget.postCast === null ? '—' : usd(e.budget.postCast)}
+                          {Math.abs(e.budget.reservedTotal - e.budget.total) >= 0.01 && (
+                            <span className="ml-1" title="episodes.budget_spent — tracks reservations, misses concierge/Polina spend">· reserved {usd(e.budget.reservedTotal)}</span>
+                          )}
+                        </span>
                       )}
                       {!e.budget.reservationOnly && <ChevronDown size={13} className={`ml-auto text-text-muted transition-transform ${expandBudget === e.episodeId ? 'rotate-180' : ''}`} />}
                     </button>

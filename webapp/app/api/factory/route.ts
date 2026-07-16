@@ -150,17 +150,24 @@ export const GET = withApiHandler(async () => {
       jobs.filter((j) => !castLockAt || j.created_at <= castLockAt).map((j) => j.agent_id),
     ).size || 1;
 
-    // budget — total from budget_spent (complete); itemized from budget_log (may be empty).
+    // Budget — two sources that disagree: episodes.budget_spent tracks reservations
+    // (misses Polina/concierge spend), budget_log is the itemized per-agent ledger
+    // (includes it). To keep the display CONSISTENT (total = pre + post), the total
+    // IS the itemized sum whenever budget_log has rows; budget_spent is shown apart
+    // as "reserved" for reference. Only when budget_log is empty do we fall back to
+    // budget_spent (reservation-only, no itemized split possible).
     const bl = budgetByEpisode.get(episodeId) ?? [];
-    const total = Number(ep?.budget_spent ?? 0);
+    const reservedTotal = Number(ep?.budget_spent ?? 0);
     const itemizedTotal = bl.reduce((s, r) => s + Number(r.cost_usd ?? 0), 0);
     const reservationOnly = bl.length === 0;
+    const total = reservationOnly ? reservedTotal : itemizedTotal;
     const preCastRows = bl.filter((r) => !isPostCast(r.created_at, castLockAt));
     const postCastRows = bl.filter((r) => isPostCast(r.created_at, castLockAt));
     const budget = {
       total: round(total),
       perShot: shotCount > 0 && total > 0 ? round(total / shotCount) : null,
       reservationOnly,
+      reservedTotal: round(reservedTotal),
       itemizedTotal: round(itemizedTotal),
       preCast: reservationOnly ? null : round(preCastRows.reduce((s, r) => s + Number(r.cost_usd ?? 0), 0)),
       postCast: reservationOnly ? null : round(postCastRows.reduce((s, r) => s + Number(r.cost_usd ?? 0), 0)),
