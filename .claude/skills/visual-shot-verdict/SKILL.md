@@ -25,6 +25,10 @@ You are given, by ROLE (never hardcode a specific series/character/prop/genre):
   `location` (slug + sub_area + any geometry the location implies), `key_beat`, `camera_angle`.
 - **Style canon** (from the Bible + Brief): declared style/medium, genre, per-character model sheet
   (materials, silhouette, limb design), and any negative/forbidden list.
+- **Location canon** (the location Bible for the shot's location, when one exists): the spatial
+  layout — where the standing set-dressing sits and its left/right arrangement. Use it as the
+  ground-truth for object positions. If it reads "(no location canon…)" the location has no Bible:
+  do NOT invent a layout, and do NOT flag left/right placement against an assumed one.
 
 Compare the pixels to intent. Report what you SEE versus what was EXPECTED.
 
@@ -46,12 +50,18 @@ while never checking what is REQUIRED but ABSENT on the other participants.
    just for the hero? A match with one unequipped player, a serve with no server motion, a chase with
    no pursuer — these are incoherent even if the hero looks fine. Judge the situation, not one figure.
 
-3. **Physics & spatial geometry.**
+3. **Physics, spatial geometry & handedness (mirroring).**
    Does the space obey the logic the location implies? Dividers/boundaries in the right place and
    doing their job (a net SEPARATES the two sides — opponents must be on OPPOSITE sides, not sharing
    one); gravity, support, and contact plausible; trajectories consistent with the described path;
-   scale/eyelines coherent. Spatial contradictions with the location contract are REVISE (or FAIL if
-   they make the beat impossible to read).
+   scale/eyelines coherent. **Left/right layout & mirroring:** when a Location canon is supplied,
+   verify the canonical standing set-dressing sits on the SAME side it does in canon. A whole scene
+   rendered as a horizontal MIRROR of the canon layout — a table / door / window / prominent feature
+   the canon places on the right appearing on the left (or vice-versa) — is a REVISE even when
+   everything else is on-model and even across sibling shots of the same location. This left-right
+   flip is a frequent generator failure and is invisible to a text critic. (Do NOT flag left/right
+   when no Location canon is supplied — there is nothing to mirror against.) Spatial contradictions
+   with the location contract are REVISE (or FAIL if they make the beat impossible to read).
 
 4. **Anatomy & on-model integrity.**
    Are all limbs/appendages present, correctly attached, correct count — no missing, duplicated,

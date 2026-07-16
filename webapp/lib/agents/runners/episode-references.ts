@@ -97,7 +97,12 @@ import type {
   ShotReferenceContract,
   ShotTestPlan,
 } from '../../api/shot-reference';
-import { SHOT_REFERENCE_CONTRACT } from '../../api/shot-reference';
+import {
+  SHOT_REFERENCE_CONTRACT,
+  reviewComposite,
+  attemptClearsKeepBar,
+  pickBestAttempt,
+} from '../../api/shot-reference';
 import { selectSkills } from '../../skills/select-skills';
 import { findApprovedAsset } from '../upstream';
 import { loadEpisodeCastSlugs } from '../episode-cast';
@@ -2309,9 +2314,18 @@ export async function runEpisodeReferences(
     const refsForGen = buildMultiImageRefs(job, continuityRefsLoaded);
     const reviewerRefs = reviewerBibleRefs(job);
 
+    // Keep-first / keep-best gate (Director 2026-07-16): a fresh attempt is often
+    // the best — retries drift the (rewritten) prompt and frequently degrade Sandy's
+    // identity. Stop on the first attempt clean enough to keep (attemptClearsKeepBar);
+    // on cap keep the BEST-scoring attempt (pickBestAttempt), never blindly the last.
+    // Scoring + threshold live in api/shot-reference.ts (shared, unit-tested).
+
     // History accumulators for this shot.
     const generationHistory: GenerationAttempt[] = [];
     const retryHistory: RetryEntry[] = [];
+    // Per-attempt raw bytes, so keep-best can ship the winning attempt's pixels
+    // (the loop otherwise only holds the CURRENT iteration's genB64).
+    const attemptB64ByVersion: Record<number, string> = {};
     let latestReview: EREFReview | null = null;
     let finalVerdict: 'APPROVE' | 'HUMAN_REVIEW' | 'REGENERATE_EXHAUSTED' = 'HUMAN_REVIEW';
     let approvedAttempt: GenerationAttempt | null = null;
@@ -2402,6 +2416,7 @@ export async function runEpisodeReferences(
         // Reuse the prompt field on the next attempt only; never overwrite the captured prompt.
       }
       generationHistory.push(attempt);
+      attemptB64ByVersion[attemptVersion] = genB64;
 
       // ── Review ────────────────────────────────────────────────────────────
       let reviewResult;
@@ -2483,34 +2498,48 @@ export async function runEpisodeReferences(
       }
 
       const verdict = latestReview.verdict;
-      if (verdict === 'APPROVE') {
+
+      // Score this attempt (mean of non-null scores + CRITICAL count) and attach to
+      // the attempt object (same ref already in generationHistory) so it persists
+      // per attempt and keep-best can rank them.
+      const { composite, criticalCount } = reviewComposite(latestReview);
+      attempt.review = latestReview;
+      attempt.composite_score = composite;
+      attempt.critical_count = criticalCount;
+
+      // KEEP-FIRST gate (Director 2026-07-16): keep THIS attempt the moment it is
+      // clean enough — no CRITICAL issue AND composite ≥ threshold — rather than
+      // chasing the reviewer's every REGENERATE (retries drift the prompt and often
+      // make Sandy WORSE than the first attempt). This overrides the reviewer's
+      // lenient APPROVE (score < threshold still regenerates) and its eager
+      // REGENERATE (a clean high-scoring attempt is kept even if the reviewer wanted
+      // another pass).
+      if (attemptClearsKeepBar(composite, criticalCount)) {
         finalVerdict = 'APPROVE';
         approvedAttempt = attempt;
         approvedB64 = genB64;
         break;
       }
-      if (verdict === 'HUMAN_REVIEW') {
-        finalVerdict = 'HUMAN_REVIEW';
-        approvedAttempt = attempt;
-        approvedB64 = genB64;
-        break;
-      }
-      // REGENERATE
       if (retry < maxRetries && latestReview.suggested_prompt_v2) {
         retryHistory.push({
           at: new Date().toISOString(),
-          reason: latestReview.issues.map((i) => i.description).join('; ').slice(0, 400) || 'AI verdict REGENERATE',
+          reason:
+            latestReview.issues.map((i) => i.description).join('; ').slice(0, 400) ||
+            `below keep bar (composite ${composite.toFixed(0)}, critical ${criticalCount})`,
           verdict_before_retry: verdict,
         });
         // Reviewer's rewrite replaces the prompt body. No skill block
         // re-prepend — image-gen consumes a clean visual description.
         prompt = latestReview.suggested_prompt_v2;
       } else {
-        // No more retries OR reviewer didn't supply a rewrite — let the
-        // current image stand and surface to Director.
+        // Cap reached (or reviewer supplied no rewrite): KEEP THE BEST-scoring
+        // attempt so far, NOT the last — after prompt drift the last is frequently
+        // the worst. finalVerdict stays REGENERATE_EXHAUSTED so the shot still
+        // surfaces as "did not clear the bar" for the Director.
         finalVerdict = 'REGENERATE_EXHAUSTED';
-        approvedAttempt = attempt;
-        approvedB64 = genB64;
+        const best = pickBestAttempt(generationHistory) ?? attempt;
+        approvedAttempt = best;
+        approvedB64 = attemptB64ByVersion[best.version] ?? genB64;
         break;
       }
     }
