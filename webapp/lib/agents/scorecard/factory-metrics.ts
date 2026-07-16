@@ -112,7 +112,10 @@ export function splitTouches(
 
 /** Casting-lock timestamp = earliest approval_granted of the SPC-episode_cast
  *  asset. Pass the episode's touch/approval events; returns null if casting
- *  was never approved (not locked yet). */
+ *  was never approved (not locked yet). Kept for reference; the pre/post split
+ *  now anchors on production-start (below), not casting — casting locks EARLY in
+ *  the SandyStudio pipeline (before script/storyboard), so it is not the
+ *  design→production boundary. */
 export function castLockFromEvents(
   events: Array<{ event_type: string; created_at: string; metadata: unknown }>,
 ): string | null {
@@ -124,6 +127,27 @@ export function castLockFromEvents(
     if (earliest === null || e.created_at < earliest) earliest = e.created_at;
   }
   return earliest;
+}
+
+/** Production-start boundary (Director 2026-07-16: "pre-cast = [0 → start ref
+ *  artist]"). = the earliest job of the reference ARTIST (EXEC-EREF, the render
+ *  step). Everything before is DESIGN (brief / script / storyboard / critics /
+ *  casting / ref-planning); everything at-or-after is PRODUCTION (refs / video /
+ *  stitch). Falls back to the animator (EXEC-VGEN) if refs never ran, then null
+ *  (production never started → all work is design). */
+export function productionStartFromJobs(
+  jobs: Array<{ agent_id: string; created_at: string }>,
+  anchors: string[] = ['EXEC-EREF', 'EXEC-VGEN'],
+): string | null {
+  for (const anchor of anchors) {
+    let earliest: string | null = null;
+    for (const j of jobs) {
+      if (j.agent_id !== anchor) continue;
+      if (earliest === null || j.created_at < earliest) earliest = j.created_at;
+    }
+    if (earliest !== null) return earliest;
+  }
+  return null;
 }
 
 export interface CostFold {

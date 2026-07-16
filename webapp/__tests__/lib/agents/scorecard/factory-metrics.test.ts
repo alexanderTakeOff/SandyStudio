@@ -9,6 +9,7 @@ import {
   isPostCast,
   splitTouches,
   castLockFromEvents,
+  productionStartFromJobs,
   foldCost,
   type TouchEvent,
 } from '@/lib/agents/scorecard/factory-metrics';
@@ -80,6 +81,28 @@ describe('splitTouches — buckets + pre/post', () => {
     expect(s.all).toEqual({ director: 1, polina: 1, aiEp: 1, total: 3 });
     expect(s.pre).toEqual({ director: 1, polina: 0, aiEp: 0, total: 1 });
     expect(s.post).toEqual({ director: 0, polina: 1, aiEp: 1, total: 2 });
+  });
+});
+
+describe('productionStartFromJobs — ref-artist boundary', () => {
+  it('earliest EXEC-EREF job (design agents before it are pre-cast)', () => {
+    const jobs = [
+      { agent_id: 'EXEC-SW', created_at: '2026-07-15T11:27:00Z' },
+      { agent_id: 'EXEC-SB', created_at: '2026-07-15T11:40:00Z' },
+      { agent_id: 'EXEC-EREF', created_at: '2026-07-15T14:40:00Z' },
+      { agent_id: 'EXEC-EREF', created_at: '2026-07-15T15:00:00Z' },
+    ];
+    expect(productionStartFromJobs(jobs)).toBe('2026-07-15T14:40:00Z');
+  });
+  it('falls back to EXEC-VGEN when refs never ran', () => {
+    const jobs = [
+      { agent_id: 'EXEC-SB', created_at: '2026-07-15T11:40:00Z' },
+      { agent_id: 'EXEC-VGEN', created_at: '2026-07-15T16:00:00Z' },
+    ];
+    expect(productionStartFromJobs(jobs)).toBe('2026-07-15T16:00:00Z');
+  });
+  it('null when production never started (design only)', () => {
+    expect(productionStartFromJobs([{ agent_id: 'EXEC-SB', created_at: 'x' }])).toBeNull();
   });
 });
 

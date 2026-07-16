@@ -17,7 +17,7 @@ import type { CriticDiscriminatorResult } from '@/lib/agents/scorecard/critic-di
 import {
   TOUCH_EVENT_TYPES,
   splitTouches,
-  castLockFromEvents,
+  productionStartFromJobs,
   foldCost,
   isPostCast,
   type TouchEvent,
@@ -130,24 +130,26 @@ export const GET = withApiHandler(async () => {
     const archived = status === 'ARCHIVED';
 
     const events = touchByEpisode.get(episodeId) ?? [];
-    const castLockAt = castLockFromEvents(events);
-    const touches = splitTouches(events as TouchEvent[], castLockAt);
+    const jobs = jobsByEpisode.get(episodeId) ?? [];
+    // Pre/post boundary = production-start = the ref ARTIST's first render
+    // (Director: "pre-cast = [0 → start ref artist]"). DESIGN (brief / script /
+    // storyboard / critics / casting / ref-planning) before it; PRODUCTION
+    // (refs / video / stitch) at-or-after. NOT casting-lock (that fires early).
+    const productionStart = productionStartFromJobs(jobs);
+    const touches = splitTouches(events as TouchEvent[], productionStart);
 
-    // Sharp "leak" signal: post-cast REWORK — a revision/reject after casting is
-    // settled work being re-opened. Distinct from the bulk of post-cast approvals
-    // (approving refs/videos is normal production, not a leak). Rework/shot → 0 is
-    // the real North-Star target, unlike raw post-cast approvals which are high by
-    // nature (all downstream production happens after casting).
+    // Sharp leak: leadership rework DURING PRODUCTION — a revision/reject after the
+    // factory should be autonomously rendering. Design-phase revisions are legit
+    // creative iteration; production-phase rework/shot → 0 is the real target.
     const postCastRework = events.filter(
       (e) =>
         (e.event_type === 'approval_revision' || e.event_type === 'approval_rejected') &&
-        isPostCast(e.created_at, castLockAt),
+        isPostCast(e.created_at, productionStart),
     ).length;
 
-    // pre-cast stage denominator: distinct agents that ran up to the lock.
-    const jobs = jobsByEpisode.get(episodeId) ?? [];
+    // pre-cast (design) stage denominator: distinct agents that ran before production.
     const preStages = new Set(
-      jobs.filter((j) => !castLockAt || j.created_at <= castLockAt).map((j) => j.agent_id),
+      jobs.filter((j) => !productionStart || j.created_at < productionStart).map((j) => j.agent_id),
     ).size || 1;
 
     // Budget — two sources that disagree: episodes.budget_spent tracks reservations
@@ -161,8 +163,8 @@ export const GET = withApiHandler(async () => {
     const itemizedTotal = bl.reduce((s, r) => s + Number(r.cost_usd ?? 0), 0);
     const reservationOnly = bl.length === 0;
     const total = reservationOnly ? reservedTotal : itemizedTotal;
-    const preCastRows = bl.filter((r) => !isPostCast(r.created_at, castLockAt));
-    const postCastRows = bl.filter((r) => isPostCast(r.created_at, castLockAt));
+    const preCastRows = bl.filter((r) => !isPostCast(r.created_at, productionStart));
+    const postCastRows = bl.filter((r) => isPostCast(r.created_at, productionStart));
     const budget = {
       total: round(total),
       perShot: shotCount > 0 && total > 0 ? round(total / shotCount) : null,
@@ -191,7 +193,7 @@ export const GET = withApiHandler(async () => {
       archived,
       reachedFinalCut: metrics.reached_final_cut === true,
       shotCount,
-      castLocked: castLockAt !== null,
+      productionStarted: productionStart !== null,
       // #2 + #5 + #6 — touches, 3-way, pre/post, normalized.
       // The factory model (Director 2026-07-16): agents/code = the free base
       // (~10 touches/shot, NOT counted here — touchClass excludes them). The
