@@ -14,8 +14,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 param([switch]$Build)
 
-$Web       = 'C:\SandyStudio\webapp'
-$SqliteDir = 'C:\SandyStudio\FILMS\_inngest'
+# Path-agnostic: resolve everything relative to THIS script's folder (the repo
+# root), so the same launcher works on any machine / clone path (desktop
+# C:\SandyStudio and laptop C:\Users\Alexander\sandystudio alike).
+$RepoRoot  = $PSScriptRoot
+$Web       = Join-Path $RepoRoot 'webapp'
+$SqliteDir = Join-Path $RepoRoot 'FILMS\_inngest'
 $InngestCli = 'inngest-cli@1.33.0'
 Set-Location $Web
 
