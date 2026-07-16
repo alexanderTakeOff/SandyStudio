@@ -29,7 +29,7 @@ import {
   demoteSiblingApproved,
   type AssetForSlot,
 } from '../api/single-approved';
-import { computeNextEvents, type AssetForChain } from './next-events';
+import { computeNextEvents, stageRefireEvent, type AssetForChain } from './next-events';
 import { getEpisodeStateMatrix } from './state-matrix';
 import {
   planReconcileActions,
@@ -41,7 +41,7 @@ import {
   resolveReservedShots,
   isReconcilerArmed,
 } from './production-plan';
-import { planRegenCap } from './chain-flags';
+import { planRegenCap, reconcileRecoveryCap } from './chain-flags';
 
 export interface ReconcileOptions {
   /** Bypass the per-episode arm gate (explicit calls / tests). */
@@ -51,6 +51,8 @@ export interface ReconcileOptions {
   reservedShots?: Set<string>;
   /** REVISE cap before HALT. Defaults to planRegenCap(). */
   criticCap?: number;
+  /** Mechanical-refire cap before HALT. Defaults to reconcileRecoveryCap(). */
+  recoveryCap?: number;
   /** Principal recorded in the cascade (passed to computeNextEvents). */
   actorUserId?: string;
 }
@@ -100,6 +102,26 @@ export async function reconcileEpisode(
   const { verdicts, reviseCounts } = collectCriticSignals(
     (revData ?? []) as Array<{ file_type?: string | null; version?: number | null; metadata?: unknown }>,
   );
+
+  // Failure-spine Slice 3: count our OWN refires (reconcile/refire events) per
+  // shot×stage — the precise cap counter, kept separate from the noisy per-attempt
+  // agent_failed events (Slice 2 writes 3 of those per invocation). Best-effort: a
+  // read error yields an empty map, so the pass simply treats nothing as refired.
+  const refireCounts = new Map<string, number>();
+  const { data: refireData } = await supabase
+    .from('activity_events')
+    .select('metadata')
+    .eq('episode_id', episodeId)
+    .eq('event_type', 'reconcile/refire');
+  for (const row of (refireData ?? []) as Array<{ metadata?: unknown }>) {
+    const meta = (row.metadata ?? null) as { shot_id?: unknown; stage?: unknown } | null;
+    const shotId = meta && typeof meta.shot_id === 'string' ? meta.shot_id : null;
+    const stage = meta && typeof meta.stage === 'string' ? meta.stage : null;
+    if (!shotId || !stage) continue;
+    const key = `${shotId}::${stage}`;
+    refireCounts.set(key, (refireCounts.get(key) ?? 0) + 1);
+  }
+
   const plan = readProductionPlan(episodeMeta);
   // SAFETY: default reservedShots to the pilot set (when 'pilots' is reserved) so
   // pilots are never auto-approved past the Director's visual gate. An explicit
@@ -111,8 +133,10 @@ export async function reconcileEpisode(
     plan,
     verdicts,
     reviseCounts,
+    refireCounts,
     reservedShots,
     criticCap: opts.criticCap ?? planRegenCap(),
+    recoveryCap: opts.recoveryCap ?? reconcileRecoveryCap(),
     governanceMode,
   });
 
@@ -137,6 +161,28 @@ export async function reconcileEpisode(
       });
     } else if (action.kind === 'stitch') {
       events.push({ name: 'sandystudio/exec-stitch/assemble-episode', data: { episodeId } });
+    } else if (action.kind === 'refire') {
+      // Failure-spine Slice 3: mechanically re-drive a FAILED stage. Reuse the
+      // canonical stage→event map (single source, shared with computeNextEvents);
+      // the emitted event flows out with the rest for the caller to dispatch. Log
+      // reconcile/refire so the NEXT pass counts it against the recovery cap.
+      const evt = stageRefireEvent(action.stage, {
+        episodeId,
+        shotId: action.shotId,
+        planAssetId: action.assetId ?? null,
+      });
+      if (evt) {
+        events.push(evt);
+        await logEvent(supabase, {
+          event_type: 'reconcile/refire',
+          severity: 'info',
+          title: `Refire ${action.shotId} · ${action.stage}`,
+          description: action.reason,
+          actor: 'exec-dir-ai',
+          episode_id: episodeId,
+          metadata: { shot_id: action.shotId, stage: action.stage, reason: 'RECONCILE_REFIRE' },
+        });
+      }
     } else if (action.kind === 'halt') {
       halted.push({ shotId: action.shotId, stage: action.stage, reason: action.reason });
       // Internal reconcile audit row (kept for the reconcile/* feed) …

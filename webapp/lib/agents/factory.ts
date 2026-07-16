@@ -36,6 +36,7 @@ import { resolveModelId } from './registry';
 import { createSupabaseServiceRoleClient } from '../supabase/server';
 import { logEvent } from '../api/events';
 import { raiseBlockerOnce } from '../api/blocker-escalation';
+import { isReconcilerArmed } from './production-plan';
 import { shotRegenCap } from './chain-flags';
 import {
   countShotAutonomousAttempts,
@@ -234,6 +235,26 @@ export function createAgentInngestFunction<E extends string>(
           if (!episodeId) return;
           const shotId = typeof original?.shotId === 'string' ? original.shotId : null;
           const supabase = createSupabaseServiceRoleClient();
+
+          // Failure-spine Slice 3.5: arm-aware escalation — "one brain per mode".
+          // On an ARMED episode the reconciler owns recovery: tick it (it decides
+          // refire-or-halt by the recovery cap) instead of escalating here, so
+          // onFailure and the reconciler never double-escalate the same failure.
+          // On an UNARMED episode the reconciler is asleep, so this terminal
+          // failure IS the escalation → Director Inbox (Slice 2, unchanged).
+          const { data: epRow } = await supabase
+            .from('episodes')
+            .select('metadata, governance_mode')
+            .eq('id', episodeId)
+            .maybeSingle();
+          const epMeta = (epRow as { metadata?: unknown } | null)?.metadata;
+          const rawMode = (epRow as { governance_mode?: unknown } | null)?.governance_mode;
+          const mode = rawMode == null ? null : Number(rawMode);
+          if (isReconcilerArmed(epMeta, mode)) {
+            await inngest.send({ name: 'sandystudio/reconcile/episode', data: { episodeId } });
+            return;
+          }
+
           const ctx = spec.resolveActivityContext
             ? spec.resolveActivityContext(original as Record<string, unknown>)
             : null;

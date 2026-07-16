@@ -41,7 +41,7 @@ const FILE_TYPE_BY_STAGE: Record<StageName, string> = {
 /** The immediate upstream stage each stage is built from (null = root). Used by
  *  the generic freshness comparison — `fresh` means the chosen asset was built
  *  against the CURRENT upstream version. */
-const UPSTREAM_OF: Record<StageName, StageName | null> = {
+export const UPSTREAM_OF: Record<StageName, StageName | null> = {
   ref_plan: null,
   ref_image: 'ref_plan',
   shot_plan: 'ref_image',
@@ -57,6 +57,10 @@ export interface StageState {
   fresh: boolean;
   /** Human-readable reason this stage is blocked / stale, when applicable. */
   blocked_reason?: string;
+  /** How many times generation FAILED at this stage (from `agent_failed` events),
+   *  when the cell never produced an asset. Typed trigger for reconciler refire —
+   *  the prose lives in `blocked_reason`, the number here. Absent = 0 failures. */
+  failure_count?: number;
 }
 
 export interface ShotState {
@@ -278,6 +282,7 @@ export async function getEpisodeStateMatrix(
         const fail = failures.get(`${shot.shot_id}::${stage}`);
         if (fail) {
           cell.blocked_reason = `генерация упала ×${fail.count}${fail.lastMsg ? ` (${fail.lastMsg})` : ''} — нужен retry или park`;
+          cell.failure_count = fail.count; // typed trigger for reconciler refire (Slice 3)
         }
       }
     }
