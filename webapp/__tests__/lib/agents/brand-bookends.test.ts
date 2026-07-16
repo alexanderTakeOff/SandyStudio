@@ -14,6 +14,54 @@ import { resolveStitchSettings } from '@/lib/api/animatic-shotlist';
 import { buildBrandedInputs } from '@/lib/agents/providers/ffmpeg-stitch';
 import { bibleFilename, sectionFromFileType } from '@/lib/api/series-bible';
 
+describe('resolveStitchSettings — vertical delivery has no bookends', () => {
+  // The only LOCKED SBL-video_intro/outro assets are authored 16:9. Prepending
+  // them to a 9:16 body made E29's "branded" master 1920×1080 around a 720×1280
+  // body — unusable as a Short. Vertical ⇒ skip branding until vertical
+  // bookends exist.
+  it('forces intro+outro OFF for a youtube_shorts episode', () => {
+    expect(resolveStitchSettings({ delivery_targets: ['youtube_shorts'] })).toEqual({
+      intro: false,
+      outro: false,
+      cold_open_seconds: 0,
+    });
+  });
+
+  it('overrides explicit ON toggles — a 16:9 bookend is wrong for 9:16 whatever the operator asked', () => {
+    expect(
+      resolveStitchSettings({
+        delivery_targets: ['youtube_shorts'],
+        stitch_settings: { intro: true, outro: true },
+      }),
+    ).toEqual({ intro: false, outro: false, cold_open_seconds: 0 });
+  });
+
+  it.each([['instagram_reels'], ['tiktok']])(
+    'treats %s as vertical too (shares the 9:16 slug set)',
+    (target) => {
+      const s = resolveStitchSettings({ delivery_targets: [target] });
+      expect([s.intro, s.outro]).toEqual([false, false]);
+    },
+  );
+
+  it('leaves landscape delivery branded — the fix must not disarm long-form', () => {
+    expect(resolveStitchSettings({ delivery_targets: ['youtube_landscape'] })).toEqual({
+      intro: true,
+      outro: true,
+      cold_open_seconds: 0,
+    });
+  });
+
+  it('keeps cold_open_seconds passthrough while stripping bookends', () => {
+    expect(
+      resolveStitchSettings({
+        delivery_targets: ['youtube_shorts'],
+        stitch_settings: { cold_open_seconds: 3 },
+      }),
+    ).toEqual({ intro: false, outro: false, cold_open_seconds: 3 });
+  });
+});
+
 describe('resolveStitchSettings', () => {
   it('defaults long-form to intro+outro ON, cold_open 0 when metadata absent', () => {
     expect(resolveStitchSettings(undefined)).toEqual({

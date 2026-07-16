@@ -26,18 +26,27 @@ export interface RecordedUpdate {
   filters: Array<{ col: string; val: unknown }>;
 }
 
-export function mockSupabase(seed: { jobs?: MockRow[]; assets?: MockRow[] }): {
+export function mockSupabase(seed: {
+  jobs?: MockRow[];
+  assets?: MockRow[];
+  /** `episodes` rows — read via `.select('metadata').eq('id',ep).maybeSingle()`
+   *  for excluded_shot_ids and (2026-07-16) delivery_targets. Seed this when the
+   *  branch under test reads episode metadata; without it the table used to fall
+   *  through to `assets` and silently answer with an unrelated asset's metadata. */
+  episodes?: MockRow[];
+}): {
   client: never;
   updates: RecordedUpdate[];
   inserts: Array<{ table: string; row: Record<string, unknown> }>;
 } {
   const jobs = seed.jobs ?? [];
   const assets = seed.assets ?? [];
+  const episodes = seed.episodes ?? [];
   const updates: RecordedUpdate[] = [];
   const inserts: Array<{ table: string; row: Record<string, unknown> }> = [];
 
   function table(name: string) {
-    const rows = name === 'jobs' ? jobs : assets;
+    const rows = name === 'jobs' ? jobs : name === 'episodes' ? episodes : assets;
     let isCount = false;
     let ordered: MockRow[] | null = null;
     let pendingUpdate: Record<string, unknown> | null = null;
