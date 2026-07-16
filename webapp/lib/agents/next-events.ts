@@ -35,6 +35,8 @@ import {
 } from '@/lib/api/animatic-shotlist';
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { resolveShotId } from '@/lib/api/shot-identity';
+import { hasVerticalDeliveryTarget } from '@/lib/api/provider-capabilities';
+import { readDeliveryTargetsFromMetadata } from '@/lib/agents/delivery-targets';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { ensureEpisodeAnimaticEDL } from '@/lib/api/ensure-animatic';
 import { bakeMusicIntoEpisodeAnimatic } from '@/lib/api/ingest-music';
@@ -47,6 +49,18 @@ import {
 } from '@/lib/agents/chain-flags';
 import { logEvent } from '@/lib/api/events';
 import { readPipelineMode, type PipelineMode } from '@/lib/api/pipeline-mode';
+
+/**
+ * File types whose APPROVE re-checks the publish-ready set. Whichever lands
+ * LAST fires EXEC-PUB, so approval order doesn't matter. `SPC-metadata` is in
+ * the list for vertical episodes: they never produce an IMG-thumbnail, so
+ * metadata can legitimately be the last approval standing.
+ */
+const PUBLISH_READY_TRIGGERS: ReadonlyArray<string> = Object.freeze([
+  'IMG-thumbnail',
+  'VID-final_cut',
+  'SPC-metadata',
+]);
 
 export type AssetForChain = {
   id: string;
@@ -355,6 +369,23 @@ export async function computeNextEvents(
   // most once, lazily, only when a generation edge or the stitch gate needs it.
   // Slice 3 (2026-07-03): an excluded shot must NOT be generated (skip the
   // per-shot dispatch) and must not gate the final cut.
+  // Vertical (9:16) delivery — decides whether the tail runs the thumbnail
+  // chain and whether publish waits on a thumbnail. Fetched at most once,
+  // lazily, mirroring getExcludedShotIds below: only the tail file types ask.
+  let _isVertical: boolean | null = null;
+  const isVerticalEpisode = async (): Promise<boolean> => {
+    if (_isVertical !== null) return _isVertical;
+    const { data } = await supabase
+      .from('episodes')
+      .select('metadata')
+      .eq('id', ep)
+      .maybeSingle();
+    _isVertical = hasVerticalDeliveryTarget(
+      readDeliveryTargetsFromMetadata((data as { metadata?: unknown } | null)?.metadata) ?? [],
+    );
+    return _isVertical;
+  };
+
   let _excludedShotIds: Set<string> | null = null;
   const getExcludedShotIds = async (): Promise<Set<string>> => {
     if (_excludedShotIds) return _excludedShotIds;
@@ -1369,7 +1400,17 @@ export async function computeNextEvents(
   // ── Metadata APPROVED → EXEC-THUMB (covered also by EXEC-COPY's auto-chain
   //    from factory.nextEvent in Mode 4; in Mode 1-3 chain is suppressed and
   //    Director's metadata approval is what fires THUMB).
-  if (ft === 'SPC-metadata' && !(await hasJob(supabase, ep, 'EXEC-THUMB-DESIGNER', { since }))) {
+  //    2026-07-16 — a vertical episode skips the whole thumbnail chain: the
+  //    Shorts feed never renders a custom thumbnail, so the chain burns
+  //    gpt-image-2 on an image nobody sees and then fails to attach it
+  //    (E29: setThumbnail 400 — the PNG was 2.08 MB against YouTube's 2 MB cap).
+  //    Because the chain is skipped, `publishReady` below must NOT wait on a
+  //    thumbnail for these episodes, or the episode dead-ends before publish.
+  if (
+    ft === 'SPC-metadata' &&
+    !(await isVerticalEpisode()) &&
+    !(await hasJob(supabase, ep, 'EXEC-THUMB-DESIGNER', { since }))
+  ) {
     events.push({
       name: 'sandystudio/exec-thumb-designer/plan',
       data: {
@@ -1392,30 +1433,22 @@ export async function computeNextEvents(
     });
   }
 
-  // ── Thumbnail APPROVED → check publish-ready set (animatic + metadata +
-  //    thumbnail all APPROVED) → EXEC-PUB. Director's APPROVE click on the
-  //    thumbnail is the implicit publish-confirm in Mode 1-3.
-  if (ft === 'IMG-thumbnail') {
-    // 2026-06-01: publish-ready now requires the real final cut, not the animatic.
+  // ── Publish-ready check. Fires on whichever of the required assets is
+  //    approved LAST, so approval order doesn't matter. The Director's APPROVE
+  //    click on that last asset IS the publish-confirm in Mode 1-3.
+  //    2026-07-16 — this used to be two byte-identical copies (on IMG-thumbnail
+  //    and on VID-final_cut). A vertical episode needs a THIRD trigger
+  //    (SPC-metadata, since it never produces a thumbnail), so the gate is now
+  //    one helper called from one list instead of three copies to keep in sync.
+  if (PUBLISH_READY_TRIGGERS.includes(ft) && !(await hasJob(supabase, ep, 'EXEC-PUB', { since }))) {
+    // 2026-06-01: publish-ready requires the real final cut, not the animatic.
     const finalCutOk = (await countApproved(supabase, ep, 'VID-final_cut')) >= 1;
     const metadataOk = (await countApproved(supabase, ep, 'SPC-metadata')) >= 1;
-    const thumbOk = (await countApproved(supabase, ep, 'IMG-thumbnail')) >= 1;
-    if (finalCutOk && metadataOk && thumbOk && !(await hasJob(supabase, ep, 'EXEC-PUB', { since }))) {
-      events.push({
-        name: 'sandystudio/exec-pub/publish',
-        data: { episodeId: ep, directorConfirm: true, confirmedBy: directorUserId },
-      });
-    }
-  }
-
-  // ── Final cut APPROVED → if metadata + thumbnail are also approved, the
-  //    episode is publish-ready (final_cut may be the last of the three to
-  //    be approved). Mirrors the thumbnail branch so order doesn't matter.
-  if (ft === 'VID-final_cut') {
-    const finalCutOk = (await countApproved(supabase, ep, 'VID-final_cut')) >= 1;
-    const metadataOk = (await countApproved(supabase, ep, 'SPC-metadata')) >= 1;
-    const thumbOk = (await countApproved(supabase, ep, 'IMG-thumbnail')) >= 1;
-    if (finalCutOk && metadataOk && thumbOk && !(await hasJob(supabase, ep, 'EXEC-PUB', { since }))) {
+    // Vertical episodes have no thumbnail chain (see the SPC-metadata branch
+    // above), so requiring one here would strand them forever.
+    const thumbOk =
+      (await isVerticalEpisode()) || (await countApproved(supabase, ep, 'IMG-thumbnail')) >= 1;
+    if (finalCutOk && metadataOk && thumbOk) {
       events.push({
         name: 'sandystudio/exec-pub/publish',
         data: { episodeId: ep, directorConfirm: true, confirmedBy: directorUserId },

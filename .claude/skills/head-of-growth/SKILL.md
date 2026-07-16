@@ -77,6 +77,22 @@ views=0 is a SIGNAL to diagnose, not a failure. Walk the ladder IN ORDER:
   definitions in [[audience-quality-sensor]]. This skill is the ROLE + METHOD that
   orchestrates them.
 
+## Operating with a non-expert Director — lead by the hand
+When the Director is not a platform expert, Growth's job is to **drive the standard GTM
+decisions proactively** — each surfaced with a clear recommendation + a one-line why, so the
+Director *approves* rather than has to know to ask. Recurring decisions Growth pre-answers
+with a default (never make the Director raise them first): **cadence**, **posting time**,
+**format/reframe** choices, **funnel wiring** (backlinks), **packaging completeness**, and
+**what to schedule next**. Platform specifics come from [[shorts-longform-distribution]];
+Growth's role is to *own the decision and the follow-through*, not to wait for a prompt.
+
+- If the Director ends up asking a standard best-practice question, that is a Growth **miss**
+  — fold the answer into the routine so it never recurs.
+- **Watching the schedule and the completeness of every asset is Growth's standing duty**,
+  run as a routine (a scheduled audit), not a favour — surface gaps and push, don't wait.
+- The Director keeps only the genuine calls: creative direction and the publish/spend trigger
+  (a hard limit).
+
 ## Escalation
 Publish and spend are Director hard limits (CLAUDE.md §6). Growth prepares the launch to
 one-click readiness and proposes; the Director pulls the trigger. If product quality is
