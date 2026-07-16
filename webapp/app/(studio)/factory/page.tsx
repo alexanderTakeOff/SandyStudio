@@ -32,7 +32,9 @@ interface FactoryEpisode {
   castLocked: boolean;
   touches: {
     all: Buckets; pre: Buckets; post: Buckets;
-    postPerShotPct: number | null;
+    leadershipTotal: number;
+    leadershipPerShot: number | null;
+    postLeadershipPerShot: number | null;
     preStages: number; prePerStage: number;
     postCastRework: number; reworkPerShot: number | null;
   };
@@ -70,17 +72,19 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 const num = (n: number) => `${n}`;
 const pct = (n: number) => `${n}%`;
 const SERIES: Series[] = [
+  // The headline cost: LEADERSHIP intervention per shot (Director + Polina) → 0.
+  { key: 'postLeadPerShot', label: '⚑ leadership / shot (post-cast)', color: 'var(--accent-danger)', value: (e) => e.touches.postLeadershipPerShot, fmt: num },
+  { key: 'director', label: 'L2 · Director / shot', color: 'var(--accent-primary)', value: (e) => e.shotCount ? +((e.touches.post.director) / e.shotCount).toFixed(2) : null, fmt: num },
+  { key: 'polina', label: 'L1 · Polina / shot', color: 'var(--accent-purple)', value: (e) => e.shotCount ? +((e.touches.post.polina) / e.shotCount).toFixed(2) : null, fmt: num },
   { key: 'costPerShot', label: '$ / shot', color: 'var(--accent-success)', value: (e) => e.budget.perShot, fmt: usd },
   { key: 'costTotal', label: 'total $', color: 'var(--accent-tertiary)', value: (e) => e.budget.total || null, fmt: (n) => `$${n.toFixed(0)}` },
-  { key: 'director', label: 'Director touches', color: 'var(--accent-primary)', value: (e) => e.touches.all.director, fmt: num },
-  { key: 'polina', label: 'Polina touches', color: 'var(--accent-purple)', value: (e) => e.touches.all.polina, fmt: num },
-  { key: 'aiEp', label: 'AI-EP touches', color: 'var(--accent-info)', value: (e) => e.touches.all.aiEp, fmt: num },
-  { key: 'preCastPerStage', label: 'pre-cast / stage', color: 'var(--accent-orange)', value: (e) => e.touches.prePerStage, fmt: num },
-  { key: 'reworkPerShot', label: 'post-cast rework / shot', color: 'var(--accent-danger)', value: (e) => e.touches.reworkPerShot, fmt: num },
+  { key: 'aiEp', label: 'AI-EP (autonomy)', color: 'var(--accent-info)', value: (e) => e.touches.all.aiEp, fmt: num },
+  { key: 'preCastPerStage', label: 'pre-cast lead / stage', color: 'var(--accent-orange)', value: (e) => e.touches.prePerStage, fmt: num },
+  { key: 'reworkPerShot', label: 'post-cast rework / shot', color: 'var(--accent-warning)', value: (e) => e.touches.reworkPerShot, fmt: num },
   { key: 'churnPerShot', label: 'critic churn / shot', color: 'var(--accent-warning)', value: (e) => e.churn.truePerShot, fmt: num },
   { key: 'autonomy', label: 'autonomy %', color: 'var(--accent-secondary)', value: (e) => e.autonomyPct, fmt: pct },
 ];
-const DEFAULT_SERIES = new Set(['costPerShot', 'director', 'polina', 'reworkPerShot']);
+const DEFAULT_SERIES = new Set(['postLeadPerShot', 'director', 'polina', 'costPerShot']);
 
 // ── Small-multiples bar strip: one series across the visible episodes ─────────
 function SeriesStrip({ s, episodes }: { s: Series; episodes: FactoryEpisode[] }) {
@@ -336,9 +340,10 @@ export default function FactoryPage() {
                     <tr className="text-text-muted text-left border-b border-glass">
                       <th className="py-1.5 pr-3 font-medium">Episode</th>
                       <th className="py-1.5 px-2 font-medium text-right">Shots</th>
-                      <th className="py-1.5 px-2 font-medium">Touches (Dir·Pol·AI)</th>
-                      <th className="py-1.5 px-2 font-medium text-right" title="pre-cast touches per stage">Pre/stage</th>
-                      <th className="py-1.5 px-2 font-medium text-right" title="post-cast rework (revise/reject) per shot — target 0">Rework/shot</th>
+                      <th className="py-1.5 px-2 font-medium text-right" title="post-cast LEADERSHIP touches (Director L2 + Polina L1) per shot — the factory-autonomy leak, target 0">⚑ Lead/shot</th>
+                      <th className="py-1.5 px-2 font-medium" title="leadership touches, tiered: Director (L2, human) · Polina (L1, AI assistant) · AI-EP (autonomy). Agents = free base, not shown.">Tiers (Dir·Pol·AI-EP)</th>
+                      <th className="py-1.5 px-2 font-medium text-right" title="pre-cast leadership touches per stage">Pre/stage</th>
+                      <th className="py-1.5 px-2 font-medium text-right" title="post-cast rework (revise/reject) per shot — secondary quality signal">Rework/shot</th>
                       <th className="py-1.5 px-2 font-medium text-right" title="true REVISE churn / shot">Churn/sh</th>
                       <th className="py-1.5 px-2 font-medium text-right">$/shot</th>
                       <th className="py-1.5 px-2 font-medium text-right">Auto%</th>
@@ -353,6 +358,9 @@ export default function FactoryPage() {
                           {!e.castLocked && <span className="ml-1 text-text-muted" title="casting not locked">◦</span>}
                         </td>
                         <td className="py-1.5 px-2 text-right text-text-secondary">{e.shotCount}</td>
+                        <td className="py-1.5 px-2 text-right tabular-nums font-medium" style={{ color: (e.touches.postLeadershipPerShot ?? 0) <= 0.2 ? 'var(--accent-success)' : (e.touches.postLeadershipPerShot ?? 0) <= 1 ? 'var(--accent-warning)' : 'var(--accent-danger)' }}>
+                          {e.touches.postLeadershipPerShot ?? '—'}
+                        </td>
                         <td className="py-1.5 px-2">
                           <div className="flex items-center gap-2">
                             <span className="tabular-nums text-text-secondary w-20 shrink-0">{e.touches.all.director}·{e.touches.all.polina}·{e.touches.all.aiEp}</span>
@@ -388,9 +396,11 @@ export default function FactoryPage() {
           </Card>
 
           <p className="text-[11px] text-text-muted">
-            Generated {new Date(d.generatedAt).toLocaleString()} · Touches split Director / Polina (Prod Assistant) / AI-EP ·
-            pre-cast normalized /stage, post-cast rework /shot (target 0) · churn = REVISE/shot (naive = agent runs/shot) ·
-            $ total from budget_spent, itemized where budget_log is populated.
+            Generated {new Date(d.generatedAt).toLocaleString()} · <b>Escalation model:</b> agents + code = the free
+            base (~10 touches/shot, not counted); every <span style={{ color: 'var(--accent-purple)' }}>Polina (L1)</span> and{' '}
+            <span style={{ color: 'var(--accent-primary)' }}>Director (L2)</span> touch is a LEADERSHIP intervention the
+            factory should make unnecessary → <b>leadership/shot → 0</b>, especially post-cast. AI-EP = autonomous delegation
+            (not a human cost). Churn = REVISE/shot; $ total from budget_spent, itemized where budget_log is populated.
           </p>
         </div>
       )}

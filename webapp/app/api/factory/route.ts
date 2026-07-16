@@ -185,17 +185,25 @@ export const GET = withApiHandler(async () => {
       reachedFinalCut: metrics.reached_final_cut === true,
       shotCount,
       castLocked: castLockAt !== null,
-      // #2 + #5 + #6 — touches, 3-way, pre/post, normalized
+      // #2 + #5 + #6 — touches, 3-way, pre/post, normalized.
+      // The factory model (Director 2026-07-16): agents/code = the free base
+      // (~10 touches/shot, NOT counted here — touchClass excludes them). The
+      // COST is LEADERSHIP intervention, tiered: Polina (L1, AI assistant) then
+      // Director (L2, human). Both → 0 as the factory self-runs, especially
+      // post-cast. AI-EP = autonomous delegation, tracked apart (not a human cost).
       touches: {
         all: touches.all,
         pre: touches.pre,
         post: touches.post,
-        // post-cast leak as % per shot (target 0)
-        postPerShotPct: shotCount > 0 ? round((touches.post.total / shotCount) * 100, 1) : null,
-        // pre-cast normalized per stage traversed
+        // leadership = Director + Polina (the intervention cost to drive → 0)
+        leadershipTotal: touches.all.director + touches.all.polina,
+        leadershipPerShot: shotCount > 0 ? round((touches.all.director + touches.all.polina) / shotCount, 2) : null,
+        // post-cast leadership /shot — the sharp "factory not autonomous yet" leak (→ 0)
+        postLeadershipPerShot: shotCount > 0 ? round((touches.post.director + touches.post.polina) / shotCount, 2) : null,
+        // pre-cast leadership normalized per stage traversed
         preStages,
         prePerStage: round(touches.pre.total / preStages, 2),
-        // sharp leak: post-cast rework (revision/reject) per shot → target 0
+        // secondary quality signal: post-cast rework (revision/reject) per shot
         postCastRework,
         reworkPerShot: shotCount > 0 ? round(postCastRework / shotCount, 2) : null,
       },
