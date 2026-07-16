@@ -96,6 +96,7 @@ import {
 import { loadSeriesBibleCanon } from './bible-loader';
 import {
   deliveryAspectFor,
+  hasVerticalDeliveryTarget,
   clampRenderDuration,
   VIDEO_PROVIDER_CAPS,
   type VideoAspectRatio,
@@ -710,6 +711,30 @@ interface RunResult {
  * In Sprint 10 the same switch routes to real provider calls; the API surface
  * does not change.
  */
+/**
+ * Which master does EXEC-PUB upload — the BRANDED one (intro→body→outro) or the
+ * CLEAN one?
+ *
+ * Long-form prefers branded when an APPROVED one exists (2026-07-13). A VERTICAL
+ * episode always takes the clean master: the only bookends that exist are 16:9,
+ * so a branded master for a Short is landscape-wrapped and wrong.
+ *
+ * 2026-07-16 — extracted from an inline ternary that read `branded ?? clean` for
+ * EVERY episode while the comment above it already claimed the preference was
+ * "long-form only". Code and comment disagreed for three days and E29 published
+ * the wrong aspect. Vertical episodes no longer PRODUCE a branded master, but
+ * stale rows predate the fix — so decide from delivery_targets, never from the
+ * mere absence of a branded row.
+ */
+export function pickPublishMaster<T>(input: {
+  branded: T | null;
+  clean: T | null;
+  deliveryTargets: ReadonlyArray<string>;
+}): T | null {
+  if (hasVerticalDeliveryTarget(input.deliveryTargets)) return input.clean;
+  return input.branded ?? input.clean;
+}
+
 export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
   const {
     agentId,
@@ -3161,10 +3186,11 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           loadApproved('VID-final_cut'),
           loadApproved('IMG-thumbnail'),
         ]);
-        // 2026-07-13 — long-form prefers the BRANDED master (intro→body→outro)
-        // when an APPROVED one exists; else the CLEAN master. Shorts read the
-        // clean master via their own slicer — this preference is long-form only.
-        const videoAsset = brandedVideo ?? cleanVideo;
+        const videoAsset = pickPublishMaster({
+          branded: brandedVideo,
+          clean: cleanVideo,
+          deliveryTargets: readEpisodeDeliveryTargets(inputs.episode),
+        });
         if (!metaAsset?.content) {
           throw new Error('EXEC-PUB: no APPROVED SPC-metadata content to publish');
         }
