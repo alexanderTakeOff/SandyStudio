@@ -39,6 +39,7 @@ import { paEscalationTimer } from './functions/pa-escalation-timer';
 import { paOrphanedAwaitingSweep } from './functions/pa-orphaned-awaiting-sweep';
 import { paBatchStallWatchdog } from './functions/pa-batch-stall-watchdog';
 import { reconcileEpisodeFn } from './functions/reconcile-episode';
+import { reconcileCron } from './functions/reconcile-cron';
 import { episodeScorecard } from './functions/episode-scorecard';
 
 export const functions = [
@@ -85,6 +86,9 @@ export const functions = [
   paBatchStallWatchdog,
   // Фаза 2b — reconciler self-advance (inert unless the episode is armed).
   reconcileEpisodeFn,
+  // Failure-spine Slice 4b — 5-min reconciler heartbeat over armed episodes
+  // (catches a silently dropped event: a stall has no event of its own).
+  reconcileCron,
   // Episode Autonomy Scorecard — snapshot (EXEC-STITCH done) + published.
   episodeScorecard,
 ];
