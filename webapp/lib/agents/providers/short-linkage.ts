@@ -24,6 +24,17 @@ export function appendParentBacklink(description: string, parentVideoId: string 
   return `${description.trimEnd()}\n\n▶ Full episode: https://youtu.be/${parentVideoId}`;
 }
 
+/**
+ * A window-specific idempotency token for a re-cut Short, e.g. `W12-38` for the
+ * 12s→38s window. A re-cut is a NEW unlisted upload (YouTube never replaces a
+ * video's content), so the plain `#Shorts` marker is not enough — two cuts of
+ * the same episode would collide and the batch would skip the valid re-cut.
+ * Embedding the window makes each cut uniquely identifiable by title alone.
+ */
+export function recutWindowMarker(startSec: number, endSec: number): string {
+  return `W${Math.round(startSec)}-${Math.round(endSec)}`;
+}
+
 function metaObject(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 }

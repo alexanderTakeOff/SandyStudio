@@ -26,8 +26,8 @@ for (const line of env.split('\n')) {
 }
 
 import { listAllUploads, uploadVideo } from '../lib/agents/providers/youtube';
-import { makeShort, probeDimensions, isVertical } from '../lib/agents/providers/ffmpeg-shorts';
-import { appendParentBacklink } from '../lib/agents/providers/short-linkage';
+import { makeShort, probeDimensions, isVertical, type EndCtaOptions } from '../lib/agents/providers/ffmpeg-shorts';
+import { appendParentBacklink, recutWindowMarker } from '../lib/agents/providers/short-linkage';
 
 // Parent landscape video id per episode (funnel bridge — the ONE programmable
 // Shorts→long-form link goes in the description). Same ids as dist-youtube-polish.ts.
@@ -118,6 +118,105 @@ async function runAll(doUpload: boolean) {
   }
 }
 
+// ── Re-cut path: build Shorts from clean time windows in short-windows.json ──────
+
+/** One clean-window re-cut entry from the sidecar config. */
+interface RecutWindow {
+  ep: string;
+  start: number;
+  end: number;
+  endCta?: EndCtaOptions;
+  /** Overrides for episodes not present in PLAN (else resolved from PLAN[ep]). */
+  file?: string;
+  title?: string;
+  parentVideoId?: string;
+}
+
+const WINDOWS_CONFIG = path.join(process.cwd(), 'scripts', 'short-windows.json');
+
+/** Load + validate the sidecar re-cut config. Missing file → empty (no-op). */
+function loadRecutWindows(): RecutWindow[] {
+  if (!fs.existsSync(WINDOWS_CONFIG)) { console.log(`  no ${path.basename(WINDOWS_CONFIG)} — nothing to re-cut`); return []; }
+  const raw = JSON.parse(fs.readFileSync(WINDOWS_CONFIG, 'utf8')) as { windows?: unknown };
+  if (!Array.isArray(raw.windows)) return [];
+  const out: RecutWindow[] = [];
+  for (const w of raw.windows) {
+    if (!w || typeof w !== 'object') continue;
+    const o = w as Record<string, unknown>;
+    if (typeof o.ep !== 'string' || typeof o.start !== 'number' || typeof o.end !== 'number') {
+      console.log(`  SKIP malformed window entry: ${JSON.stringify(o)}`); continue;
+    }
+    if (o.end <= o.start) { console.log(`  SKIP ${o.ep} — end (${o.end}) must be > start (${o.start})`); continue; }
+    const cta = o.endCta && typeof o.endCta === 'object' && typeof (o.endCta as any).text === 'string'
+      ? { text: (o.endCta as any).text, durationSeconds: (o.endCta as any).durationSeconds }
+      : undefined;
+    out.push({
+      ep: o.ep, start: o.start, end: o.end, endCta: cta,
+      file: typeof o.file === 'string' ? o.file : undefined,
+      title: typeof o.title === 'string' ? o.title : undefined,
+      parentVideoId: typeof o.parentVideoId === 'string' ? o.parentVideoId : undefined,
+    });
+  }
+  return out;
+}
+
+async function runRecut(doUpload: boolean) {
+  console.log(`RE-CUT from short-windows.json${doUpload ? ' + UPLOAD (unlisted)' : ' (local only)'}\n`);
+  const windows = loadRecutWindows();
+  if (!windows.length) { console.log('No re-cut windows configured.'); return; }
+  const planByEp = new Map(PLAN.map((p) => [p.ep, p]));
+  const existing = doUpload ? (await listAllUploads()).map((v) => ({ ...v, n: norm(v.title) })) : [];
+
+  for (const w of windows) {
+    const base = planByEp.get(w.ep);
+    const file = w.file ?? base?.file;
+    const title = w.title ?? base?.title;
+    if (!file || !title) { console.log(`  SKIP ${w.ep} — no PLAN entry and no file/title override`); continue; }
+    if (base?.short && !w.file) { console.log(`  SKIP ${w.ep} — flagged already-vertical`); continue; }
+    const parent = w.parentVideoId ?? (base ? PARENT_VID[base.ep] : null) ?? null;
+
+    // Idempotency: the window marker makes each re-cut distinct, so a valid new
+    // window is never mistaken for the old rough crop already on the channel.
+    const marker = recutWindowMarker(w.start, w.end);
+    const recutTitle = `${title} #Shorts ${marker}`;
+    if (doUpload && existing.some((v) => v.n.includes(norm(title)) && v.n.includes(norm(marker)))) {
+      console.log(`  SKIP ${w.ep} ${marker} — re-cut already on channel`); continue;
+    }
+
+    const full = path.join(FINALS, file);
+    if (!fs.existsSync(full)) { console.log(`  SKIP ${w.ep} — file not found: ${full}`); continue; }
+    const out = outPath(`${file.replace(/\.mp4$/i, '').trim()} ${marker}`);
+    ensureOutDir();
+    const window = `${w.start}s→${w.end}s (${(w.end - w.start).toFixed(0)}s)`;
+    console.log(`  ffmpeg ${w.ep} "${title}" ${window}${w.endCta ? ` +CTA "${w.endCta.text}"` : ''} → ${path.basename(out)}`);
+    await makeShort(full, out, {
+      overlayText: OVERLAY,
+      startSec: w.start,
+      endSec: w.end,
+      endCta: w.endCta ?? null,
+    });
+    const outDims = await probeDimensions(out);
+    console.log(`    ✅ ${(fs.statSync(out).size / 1024 / 1024).toFixed(1)}MB  ${outDims?.width}x${outDims?.height}`);
+    if (!doUpload) continue;
+
+    const bytes = new Uint8Array(fs.readFileSync(out));
+    console.log(`  ⬆ uploading ${w.ep} "${recutTitle}" (${(bytes.length / 1024 / 1024).toFixed(1)}MB, unlisted)...`);
+    try {
+      const r = await uploadVideo({
+        bytes,
+        title: recutTitle,
+        description: appendParentBacklink(DESCRIPTION, parent),
+        tags: ['Shorts', 'Sandy the Hourglass', 'animation', 'comedy'],
+        privacyStatus: 'unlisted',
+      });
+      console.log(`    ✅ ${r.url}  [${r.id}]  privacy=${r.privacyStatus}`);
+    } catch (e: any) {
+      console.log(`    ❌ FAILED: ${e?.message || e}`);
+      if (e?.body) console.log('       body:', String(e.body).slice(0, 400));
+    }
+  }
+}
+
 (async () => {
   const args = process.argv.slice(2);
   const sampleIdx = args.indexOf('--sample');
@@ -127,9 +226,13 @@ async function runAll(doUpload: boolean) {
     await runSample(file);
     return;
   }
+  if (args.includes('--recut')) {
+    await runRecut(args.includes('--upload'));
+    return;
+  }
   if (args.includes('--all')) {
     await runAll(args.includes('--upload'));
     return;
   }
-  console.log('Usage:\n  --sample "<file>"   one local short, no upload\n  --all               build all locally\n  --all --upload      build all + upload unlisted');
+  console.log('Usage:\n  --sample "<file>"   one local short, no upload\n  --all               build all locally (full center-crop)\n  --all --upload      build all + upload unlisted\n  --recut             re-cut clean windows from short-windows.json (local)\n  --recut --upload    re-cut + upload unlisted');
 })().catch((e) => { console.error('ERROR:', e?.message || e); process.exit(1); });

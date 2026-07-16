@@ -59,6 +59,7 @@ import {
   type EpisodeImageConfig,
 } from '@/lib/api/resolve-generation-params';
 import { findApprovedAsset } from '../upstream';
+import { resolveDeliveryTargets } from '../delivery-targets';
 
 export const EREF_DESIGNER_CONTRACT = 'episode_reference_designer@v1';
 export const EREF_DESIGNER_MODEL = 'claude-sonnet-4-6';
@@ -301,39 +302,11 @@ export function _resetSystemPromptCacheForTests(): void {
 // with two APPROVED storyboards (E07 SREV double-fire) the Designer read
 // STB v1 while the Artist's sorted copy read v2 → SH03 mirror deadlock.
 
-/**
- * Resolve `delivery_targets[]` for an episode. Precedence:
- *   1. episode.metadata.delivery_targets[] (per-episode override in brief)
- *   2. series.metadata.delivery_targets[] (series-level default, loaded
- *      separately by the caller and passed via inputs.series_delivery_targets)
- *   3. Fallback: ['youtube_landscape'] — S14 sprint default
- *
- * Exported so the Inngest function wiring (Day 3) and unit tests share the
- * same precedence logic. Pure function — no DB calls.
- */
-export function resolveDeliveryTargets(args: {
-  episodeMetadata: unknown;
-  seriesDeliveryTargets?: readonly string[] | null;
-}): readonly string[] {
-  const fromEpisode = readDeliveryTargetsFromMetadata(args.episodeMetadata);
-  if (fromEpisode && fromEpisode.length > 0) return fromEpisode;
-  if (args.seriesDeliveryTargets && args.seriesDeliveryTargets.length > 0) {
-    return args.seriesDeliveryTargets;
-  }
-  return ['youtube_landscape'];
-}
-
-function readDeliveryTargetsFromMetadata(meta: unknown): readonly string[] | null {
-  if (!meta || typeof meta !== 'object') return null;
-  const m = meta as Record<string, unknown>;
-  const raw = m.delivery_targets;
-  if (!Array.isArray(raw)) return null;
-  const out: string[] = [];
-  for (const v of raw) {
-    if (typeof v === 'string' && v.length > 0) out.push(v);
-  }
-  return out;
-}
+// resolveDeliveryTargets + readDeliveryTargetsFromMetadata now live in the shared
+// leaf module lib/agents/delivery-targets.ts (one copy for every agent, no circular
+// import). Re-exported here so existing importers (tests, Inngest wiring) keep the
+// same import path.
+export { resolveDeliveryTargets };
 
 /**
  * TD-49 Phase 2 P2.3 (2026-05-25): read the episode-level opt-in flag

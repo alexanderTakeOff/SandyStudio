@@ -1,0 +1,11 @@
+{
+  "_README": "Manual clean-window re-cut config for the lead-10 legacy catalog (wave-1). Head of Growth / Director fills real timecodes here — NO code edits needed to run. Each entry re-cuts ONE Short from a clean time window (drop empty/off-centre segments) and optionally burns a tail CTA. `start`/`end` are SECONDS into the LANDSCAPE final. Resolve `ep` against docs/distribution/video-episode-map.md; entries whose ep is not in dist-shorts PLAN are skipped-with-log unless you supply `file`+`title` overrides here. Madam Parfume (S15-E14) is intentionally NOT re-cut. Run: `tsx scripts/dist-shorts.ts --recut` (local) or `--recut --upload` (unlisted). The single entry below is a PLACEHOLDER shape — replace start/end/text with the real clean window before running.",
+  "windows": [
+    {
+      "ep": "S15-E13",
+      "start": 8,
+      "end": 34,
+      "endCta": { "text": "Full episode below", "durationSeconds": 3 }
+    }
+  ]
+}

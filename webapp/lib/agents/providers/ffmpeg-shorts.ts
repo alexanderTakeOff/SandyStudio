@@ -23,6 +23,22 @@ export const SHORT_HEIGHT = 1920;
 /** Default overlay window, seconds from the (trimmed) start. */
 export const DEFAULT_OVERLAY_SECONDS = 4;
 
+/** Default tail-CTA window, seconds before the (trimmed) end. */
+export const DEFAULT_CTA_SECONDS = 3;
+
+/** Tail-CTA type size (slightly larger than the brand caption for punch). */
+export const CTA_FONT_SIZE = 60;
+
+/**
+ * Tail-CTA vertical anchor. `h/7` (~14% from the top) is a deliberate Shorts
+ * safe-zone: it clears the right-rail action buttons (like/comment/share) because
+ * it is centred, and it sits well above the bottom title/description UI. The
+ * brand caption lives at the bottom (`y=h-h/6`), so the two never overlap in
+ * geometry — and they never overlap in time either (brand plays at the head,
+ * CTA at the tail).
+ */
+export const CTA_Y_EXPR = 'h/7';
+
 /**
  * Default font for the drawtext overlay. Arial Black ships with Windows and was
  * verified present at C:\Windows\Fonts\ariblk.ttf. Override with SHORTS_FONT
@@ -30,6 +46,14 @@ export const DEFAULT_OVERLAY_SECONDS = 4;
  */
 export const DEFAULT_FONT_PATH =
   process.env.SHORTS_FONT?.trim() || 'C:/Windows/Fonts/ariblk.ttf';
+
+/** Tail call-to-action burned into the LAST `durationSeconds` of the clip. */
+export interface EndCtaOptions {
+  /** CTA copy (short, 3-4 words). Comes from config — never hardcoded (CLAUDE.md §11). */
+  text: string;
+  /** How many seconds before the end the CTA shows. Defaults to DEFAULT_CTA_SECONDS. */
+  durationSeconds?: number;
+}
 
 export interface MakeShortOptions {
   /** Overlay caption; null/undefined/empty → no overlay. */
@@ -40,8 +64,29 @@ export interface MakeShortOptions {
   startSec?: number | null;
   /** Trim end (seconds, exclusive). Omit for "to the end". */
   endSec?: number | null;
+  /** Tail CTA overlay; null/undefined/empty text → no CTA. */
+  endCta?: EndCtaOptions | null;
+  /**
+   * Total output duration (seconds) — needed to place a tail CTA when the clip
+   * is NOT trimmed to an explicit end. When a trim `endSec` is present the
+   * builder derives duration itself; `makeShort` probes it otherwise.
+   */
+  clipDurationSec?: number | null;
   /** Font file for drawtext (forward-slash path). Defaults to DEFAULT_FONT_PATH. */
   fontFile?: string;
+}
+
+/**
+ * Duration (seconds) of the produced clip, for tail-CTA placement. Prefers an
+ * explicit `clipDurationSec`, else derives it from the trim window. Returns null
+ * when the length is unknown (whole clip, no probe yet).
+ */
+function ctaClipDuration(opts: MakeShortOptions): number | null {
+  if (opts.clipDurationSec != null && opts.clipDurationSec > 0) return opts.clipDurationSec;
+  const start = opts.startSec ?? 0;
+  const end = opts.endSec ?? null;
+  if (end != null && end > start) return end - start;
+  return null;
 }
 
 /**
@@ -99,6 +144,34 @@ export function buildShortFilter(opts: MakeShortOptions = {}): string {
     chain.push(drawtext);
   }
 
+  const cta = opts.endCta;
+  const ctaText = cta?.text?.trim();
+  if (ctaText) {
+    const total = ctaClipDuration(opts);
+    if (total == null) {
+      throw new Error(
+        'endCta needs a known clip duration: pass clipDurationSec or a trim endSec (makeShort probes when neither is set).',
+      );
+    }
+    const ctaSeconds = cta?.durationSeconds ?? DEFAULT_CTA_SECONDS;
+    // Show only the LAST ctaSeconds — after the punch, at the tail, top-centre.
+    const from = Math.max(0, total - ctaSeconds);
+    const fontFile = escapeFilterPath(opts.fontFile || DEFAULT_FONT_PATH);
+    const drawtext = [
+      `drawtext=fontfile='${fontFile}'`,
+      `text='${escapeDrawtext(ctaText)}'`,
+      'fontcolor=white',
+      `fontsize=${CTA_FONT_SIZE}`,
+      'box=1',
+      'boxcolor=black@0.55',
+      'boxborderw=18',
+      'x=(w-text_w)/2',
+      `y=${CTA_Y_EXPR}`,
+      `enable='gt(t\\,${from})'`,
+    ].join(':');
+    chain.push(drawtext);
+  }
+
   return chain.join(',');
 }
 
@@ -141,7 +214,20 @@ export async function makeShort(
   outputPath: string,
   opts: MakeShortOptions = {},
 ): Promise<void> {
-  await runFfmpeg(buildShortArgs(inputPath, outputPath, opts));
+  let effective = opts;
+  // A tail CTA needs the total duration. When the clip is trimmed to an explicit
+  // end the builder derives it; otherwise probe the source once here so the pure
+  // builder never has to do I/O.
+  if (opts.endCta?.text?.trim() && ctaClipDuration(opts) == null) {
+    const dur = await probeDurationSeconds(inputPath);
+    if (dur == null) {
+      throw new Error(
+        'endCta needs a clip duration: pass clipDurationSec or a trim endSec, or ensure ffprobe is available.',
+      );
+    }
+    effective = { ...opts, clipDurationSec: dur };
+  }
+  await runFfmpeg(buildShortArgs(inputPath, outputPath, effective));
 }
 
 export interface VideoDimensions {
@@ -150,11 +236,11 @@ export interface VideoDimensions {
 }
 
 /**
- * Probe a video's pixel dimensions via ffprobe (ffprobe ships beside the
- * resolved ffmpeg). Used to skip clips that are already vertical. Returns null
- * if ffprobe is unreachable or the stream can't be read.
+ * Run ffprobe with the given args, trying FFPROBE_PATH, the ffprobe next to the
+ * resolved ffmpeg, then a bare `ffprobe` on PATH. Returns stdout, or null if
+ * every candidate failed. One place for ffprobe binary resolution + spawn.
  */
-export async function probeDimensions(videoPath: string): Promise<VideoDimensions | null> {
+async function runFfprobe(args: string[]): Promise<string | null> {
   const candidates: string[] = [];
   if (process.env.FFPROBE_PATH?.trim()) candidates.push(process.env.FFPROBE_PATH.trim());
   const ffmpeg = await resolveFfmpegPath();
@@ -165,27 +251,51 @@ export async function probeDimensions(videoPath: string): Promise<VideoDimension
 
   for (const bin of candidates) {
     try {
-      const out = await new Promise<string>((resolve, reject) => {
+      return await new Promise<string>((resolve, reject) => {
         let stdout = '';
-        const proc = spawn(bin, [
-          '-v', 'error',
-          '-select_streams', 'v:0',
-          '-show_entries', 'stream=width,height',
-          '-of', 'csv=s=x:p=0',
-          videoPath,
-        ]);
+        const proc = spawn(bin, args);
         proc.stdout.on('data', (c) => { stdout += String(c); });
         proc.on('error', reject);
         proc.on('exit', (code) => (code === 0 ? resolve(stdout) : reject(new Error(`ffprobe exit ${code}`))));
       });
-      const m = out.trim().match(/^(\d+)x(\d+)/);
-      if (m) return { width: Number(m[1]), height: Number(m[2]) };
-      return null;
     } catch {
       // try next candidate
     }
   }
   return null;
+}
+
+/**
+ * Probe a video's pixel dimensions via ffprobe. Used to skip clips that are
+ * already vertical. Returns null if ffprobe is unreachable or unparseable.
+ */
+export async function probeDimensions(videoPath: string): Promise<VideoDimensions | null> {
+  const out = await runFfprobe([
+    '-v', 'error',
+    '-select_streams', 'v:0',
+    '-show_entries', 'stream=width,height',
+    '-of', 'csv=s=x:p=0',
+    videoPath,
+  ]);
+  if (out == null) return null;
+  const m = out.trim().match(/^(\d+)x(\d+)/);
+  return m ? { width: Number(m[1]), height: Number(m[2]) } : null;
+}
+
+/**
+ * Probe a video's total duration in seconds via ffprobe. Used to place a tail
+ * CTA on an un-trimmed clip. Returns null if ffprobe is unreachable/unparseable.
+ */
+export async function probeDurationSeconds(videoPath: string): Promise<number | null> {
+  const out = await runFfprobe([
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'csv=p=0',
+    videoPath,
+  ]);
+  if (out == null) return null;
+  const s = parseFloat(out.trim());
+  return Number.isFinite(s) && s > 0 ? s : null;
 }
 
 /** True when the clip is already portrait/vertical (height ≥ width) → skip conversion. */

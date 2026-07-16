@@ -249,9 +249,46 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
   // glance which version of a shot he was reviewing — relevant whenever a
   // VID-shot has multiple renders (CandidatesStrip lists them; this badge
   // labels the active one in the header itself).
-  const versionLabel = asset.version
-    ? `v${String(asset.version).padStart(2, '0')}`
+  // 2026-07-15 (Director): an IMG-episode_ref asset carries MULTIPLE attempt images
+  // in metadata.shot_reference.generation_history; the ACTIVE one is
+  // `selected_version ?? last(generation_history)`. Show "v01.<attempt>" so Director
+  // sees at a glance WHICH attempt is on screen / approved (and thus which one the
+  // visual critic judged), plus how many attempts exist. Attempt index comes from
+  // metadata, NOT the filename (unreliable: a fresh ref's file is "-v01-DRAFT", a
+  // hand-picked one is "-attemptN"). Non-EREF assets keep the plain "v01" badge.
+  const erefMeta = asset.file_type.startsWith('IMG-episode_ref')
+    ? (asset.metadata as {
+        shot_reference?: {
+          selected_version?: number | null;
+          generation_history?: Array<{ version?: number | null }>;
+        };
+        image_prompt?: { current_version?: number | null };
+      } | null)
     : null;
+  const shotRef = erefMeta?.shot_reference ?? null;
+  const attemptCount = shotRef?.generation_history?.length ?? 0;
+  // Active attempt precedence: a manual pick (selected_version) wins; else the
+  // attempt the loop shipped (image_prompt.current_version — with keep-best this is
+  // the BEST attempt, NOT necessarily the last); else fall back to the last.
+  const activeAttempt =
+    shotRef?.selected_version ??
+    erefMeta?.image_prompt?.current_version ??
+    (attemptCount > 0 ? shotRef!.generation_history![attemptCount - 1]!.version ?? null : null);
+  // Compact "v01-N/M" badge (Director 2026-07-16): version-attempt/total, so the
+  // active attempt AND how many exist are visible at a glance. Collapses to plain
+  // "v01" when there is a single attempt (or a non-EREF asset).
+  const versionBase = asset.version ? `v${String(asset.version).padStart(2, '0')}` : null;
+  const hasAttempts = attemptCount > 1 && activeAttempt != null;
+  const versionLabel = versionBase
+    ? hasAttempts
+      ? `${versionBase}-${activeAttempt}/${attemptCount}`
+      : versionBase
+    : null;
+  const versionTitle = versionLabel
+    ? hasAttempts
+      ? `Asset ${versionBase} · attempt ${activeAttempt} of ${attemptCount}`
+      : `Asset version ${versionLabel}`
+    : '';
 
   return (
     <div className="space-y-3">
@@ -270,7 +307,7 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
               color: 'var(--accent-primary)',
               borderColor: 'color-mix(in oklab, var(--accent-primary) 30%, transparent)',
             }}
-            title={`Asset version ${versionLabel}`}
+            title={versionTitle}
           >
             {versionLabel}
           </span>
