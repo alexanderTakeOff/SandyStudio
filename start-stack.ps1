@@ -1,17 +1,17 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# start-stack.ps1 — bring up the SandyStudio local stack (durable, self-hosted).
+# -----------------------------------------------------------------------------
+# start-stack.ps1 - bring up the SandyStudio local stack (durable, self-hosted).
 #
-#   Double-click  start-stack.cmd   — or —   right-click this file → Run with PowerShell
+#   Double-click  start-stack.cmd   - or -   right-click this file -> Run with PowerShell
 #   Rebuild the app first (after code changes):  pwsh -File start-stack.ps1 -Build
 #
 # Starts, both in their own minimized windows with logs to file:
-#   • App        → npm run start        on :3000   (prod.log)
-#   • Inngest    → inngest start        on :8288   (inngest.log)  ← SELF-HOSTED,
-#     durable (SQLite snapshots survive a crash). NOT `inngest dev` — that was
+#   * App        -> npm run start        on :3000   (prod.log)
+#   * Inngest    -> inngest start        on :8288   (inngest.log)  <- SELF-HOSTED,
+#     durable (SQLite snapshots survive a crash). NOT `inngest dev` - that was
 #     ephemeral and zombied jobs on a silent crash (E27 Tier-0 fix, 2026-07-11).
 # Then syncs functions (PUT /api/inngest) and prints health.
-# Keys are read from webapp/.env.local — never hardcoded here (this file is in git).
-# ─────────────────────────────────────────────────────────────────────────────
+# Keys are read from webapp/.env.local - never hardcoded here (this file is in git).
+# -----------------------------------------------------------------------------
 param([switch]$Build)
 
 # Path-agnostic: resolve everything relative to THIS script's folder (the repo
@@ -34,7 +34,7 @@ if ($Build) {
   Write-Host '== rebuilding app (clean) ==' -ForegroundColor Cyan
   if (Test-Path .next) { Remove-Item -Recurse -Force .next }
   npm run build
-  if ($LASTEXITCODE -ne 0) { Write-Host 'BUILD FAILED — aborting.' -ForegroundColor Red; Read-Host 'Enter to exit'; exit 1 }
+  if ($LASTEXITCODE -ne 0) { Write-Host 'BUILD FAILED - aborting.' -ForegroundColor Red; Read-Host 'Enter to exit'; exit 1 }
 }
 
 # Read the inngest keys from .env.local (secrets stay out of this committed script).
@@ -44,7 +44,7 @@ foreach ($line in Get-Content "$Web\.env.local") {
 }
 $ek = $envMap['INNGEST_EVENT_KEY']; $sk = $envMap['INNGEST_SIGNING_KEY']
 if ([string]::IsNullOrWhiteSpace($ek) -or [string]::IsNullOrWhiteSpace($sk)) {
-  Write-Host 'INNGEST_EVENT_KEY / INNGEST_SIGNING_KEY missing in webapp\.env.local — cannot start self-host.' -ForegroundColor Red
+  Write-Host 'INNGEST_EVENT_KEY / INNGEST_SIGNING_KEY missing in webapp\.env.local - cannot start self-host.' -ForegroundColor Red
   Read-Host 'Enter to exit'; exit 1
 }
 New-Item -ItemType Directory -Force -Path $SqliteDir | Out-Null
@@ -65,7 +65,7 @@ Start-Sleep -Seconds 18
 Write-Host '== syncing functions (PUT /api/inngest) ==' -ForegroundColor Cyan
 try { (Invoke-RestMethod -Method Put -Uri 'http://localhost:3000/api/inngest' -TimeoutSec 10) | Out-Host }
 catch { Write-Host "  sync failed (retry once): $($_.Exception.Message)" -ForegroundColor Yellow; Start-Sleep 4;
-        try { (Invoke-RestMethod -Method Put -Uri 'http://localhost:3000/api/inngest' -TimeoutSec 10) | Out-Host } catch { Write-Host "  sync still failing — check prod.log" -ForegroundColor Red } }
+        try { (Invoke-RestMethod -Method Put -Uri 'http://localhost:3000/api/inngest' -TimeoutSec 10) | Out-Host } catch { Write-Host "  sync still failing - check prod.log" -ForegroundColor Red } }
 
 Write-Host '== health ==' -ForegroundColor Cyan
 foreach ($u in @('http://localhost:3000/api/health','http://localhost:3000/api/inngest','http://localhost:8288/')) {
@@ -73,5 +73,5 @@ foreach ($u in @('http://localhost:3000/api/health','http://localhost:3000/api/i
   catch { Write-Host "  $u  ->  DOWN" -ForegroundColor Red }
 }
 Write-Host ''
-Write-Host 'Stack up. App :3000 · Inngest :8288 (durable). Logs: webapp\prod.log · webapp\inngest.log' -ForegroundColor Cyan
+Write-Host 'Stack up. App :3000 | Inngest :8288 (durable). Logs: webapp\prod.log | webapp\inngest.log' -ForegroundColor Cyan
 Read-Host 'Enter to close this launcher window (the app/inngest keep running)'
