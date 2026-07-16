@@ -22,6 +22,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '../supabase/types.gen';
 import type { AgentId } from './types';
+import { raiseBlockerOnce } from '../api/blocker-escalation';
 
 /** Verdicts a plan critic can return. UNKNOWN = no parseable verdict → treat as REVISE. */
 export type CriticVerdict =
@@ -148,28 +149,29 @@ export async function applyCriticVerdict(
   }
 
   if (effectiveVerdict === 'HALT') {
-    try {
-      await supabase.from('activity_events').insert({
-        event_type: 'revision_requested',
-        severity: 'warning',
-        title: `${actor} HALT — manual review needed (${reviewKind})`,
-        description: `Critic reached revision cap (revisions=${revisionsSoFar}, cap=${cap}) on shot ${shotId}. Director attention required.`,
-        actor,
-        episode_id: episodeId,
-        asset_id: planAssetId,
-        metadata: {
-          critic_escalation: true,
-          reason: 'cap_reached',
-          review_kind: reviewKind,
-          target_asset_id: planAssetId,
-          shot_id: shotId,
-          revisions_so_far: revisionsSoFar,
-          cap,
-        },
-      } as never);
-    } catch {
-      // Non-fatal: the Plan still sits in REVIEW for the Director; log only.
-    }
+    // Critic and producer disagree past the cap — a HUMAN must break the tie
+    // (approve the plan as-is, or raise the cap and re-author). Route to the ONE
+    // Director-actionable surface (blocker_raised → Inbox) instead of the old
+    // `revision_requested` feed row, which reached nobody actionable (E29 root:
+    // 3 VPREV-stuck plans sat in REVISION for a day). raiseBlockerOnce dedups so a
+    // shot that keeps hitting the cap raises one Inbox item, not a storm.
+    await raiseBlockerOnce(supabase, {
+      episodeId,
+      stage: `${reviewKind}_cap_halt`,
+      shotId,
+      assetId: planAssetId,
+      actor,
+      title: `${actor} HALT — needs Director (${reviewKind} · shot ${shotId})`,
+      description: `Critic reached the revision cap (revisions=${revisionsSoFar}, cap=${cap}) on shot ${shotId}. The plan is stuck in REVISION — approve it as-is or raise the cap and re-author.`,
+      metadata: {
+        critic_escalation: true,
+        reason: 'cap_reached',
+        review_kind: reviewKind,
+        target_asset_id: planAssetId,
+        revisions_so_far: revisionsSoFar,
+        cap,
+      },
+    });
   }
 
   return { effectiveVerdict, planStatusAfter, revisionsSoFar };

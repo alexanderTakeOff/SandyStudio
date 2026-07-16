@@ -40,6 +40,18 @@ Date:   2026-07-15 (Critic Churn Discriminator + Factory page — Тео, КОД
   durable = десктоп-ярлык.)
 Mode:   ===5=== EDIT (Director-authorized).
 
+2026-07-16 (Failure-spine эскалация — Тео, КОД, ===5===). E29 видео-фанаут МОЛЧА простоял сутки:
+  3 видео-плана застряли в REVISION (VPREV cap-HALT), VGEN отказался, 6× agent_failed будили read-only Полину,
+  Директору — НИКОГДА (`revision_requested`/`agent_failed` не в Inbox-whitelist). **SHIPPED master `0bf780f2`
+  (Slices 1/2/4a):** единый сосуд `raiseBlockerOnce`→`blocker_raised`→Director Inbox (дедуп per shot+stage);
+  (1) critic cap-HALT (VPREV+EPREV) → Inbox; (2) Inngest `onFailure` (терминал после ретраев) → один blocker +
+  per-attempt `auto_react=false` гасит фаершоз 6→1; (4a) reconciler HALT → Inbox. Оба вопроса Директора закрыты.
+  tsc·0 / vitest **1302** / replay 30/30. ОСТАЛОСЬ (armed-only, свежей сессией): Slice 3 (reconciler re-fire
+  FAILED под recovery-cap) + 4b (reconcile-cron ловит молча зависший шот). Также: E29-фикс gpt-image-2 таймаут
+  90с→12мин (`GPT_IMAGE_MS`) на master. Step-0 руками: 3 плана E29 на кэпе ждут Директора (approve-as-is/bump cap).
+  План: `~/.claude/plans/wiggly-twirling-bee.md`.
+Mode:   ===5=== EDIT (Director-authorized).
+
 2026-07-15 (Phase 2b «Дирижёр» — Тео, КОД, ===5===). ВЗВОД дирижёра. Phase 2a вживила mode-aware мозг
   (`resolveGateDecision`) + заменила ENV-флаг `MECHANICS_AUTO_ADVANCE` на per-episode `isReconcilerArmed`
   (armed ⇔ `metadata.reconciler_armed` + `governance_mode∈{2,3}`), но флаг НИКТО не писал → reconciler инертен.

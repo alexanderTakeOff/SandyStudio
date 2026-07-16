@@ -23,6 +23,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
 import { logEvent } from '../api/events';
+import { raiseBlockerOnce } from '../api/blocker-escalation';
 import {
   resolveSlotDescriptor,
   demoteSiblingApproved,
@@ -138,6 +139,7 @@ export async function reconcileEpisode(
       events.push({ name: 'sandystudio/exec-stitch/assemble-episode', data: { episodeId } });
     } else if (action.kind === 'halt') {
       halted.push({ shotId: action.shotId, stage: action.stage, reason: action.reason });
+      // Internal reconcile audit row (kept for the reconcile/* feed) …
       await logEvent(supabase, {
         event_type: 'reconcile/halt',
         severity: 'warning',
@@ -145,6 +147,19 @@ export async function reconcileEpisode(
         description: action.reason,
         actor: 'exec-dir-ai',
         episode_id: episodeId,
+        metadata: { shot_id: action.shotId, stage: action.stage, reason: 'RECONCILE_HALT' },
+      });
+      // … + Failure-spine Slice 4a: reconcile/halt is NOT actionable and NOT in
+      // the Director Inbox — it reached nobody. Route the HALT to the Director via
+      // the shared blocker vessel (deduped per shot+stage), so an armed episode
+      // that hits a wall surfaces to the Director instead of silently parking.
+      await raiseBlockerOnce(supabase, {
+        episodeId,
+        stage: `reconcile_halt:${action.stage}`,
+        shotId: action.shotId,
+        actor: 'exec-dir-ai',
+        title: `Reconciler HALT — needs Director (${action.stage} · shot ${action.shotId})`,
+        description: action.reason,
         metadata: { shot_id: action.shotId, stage: action.stage, reason: 'RECONCILE_HALT' },
       });
     }

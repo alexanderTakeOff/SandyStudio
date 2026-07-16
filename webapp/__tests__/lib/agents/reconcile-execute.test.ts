@@ -136,6 +136,8 @@ describe('reconcileEpisode', () => {
     expect(res.halted).toHaveLength(1);
     expect(res.approvedAssetIds).toHaveLength(0);
     expect(tables.activity_events.some((e) => e.event_type === 'reconcile/halt')).toBe(true);
+    // Slice 4a: the HALT also escalates to the Director Inbox via blocker_raised.
+    expect(tables.activity_events.some((e) => e.event_type === 'blocker_raised')).toBe(true);
   });
 });
 

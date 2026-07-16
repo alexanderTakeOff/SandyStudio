@@ -71,7 +71,7 @@ describe('applyCriticVerdict — cap enforcement', () => {
     // Exactly one escalation event in the Director Inbox.
     expect(tables.activity_events).toHaveLength(1);
     const ev = tables.activity_events[0]!;
-    expect(ev.event_type).toBe('revision_requested');
+    expect(ev.event_type).toBe('blocker_raised'); // Director-actionable → Inbox
     expect((ev.metadata as { reason?: string }).reason).toBe('cap_reached');
   });
 
