@@ -117,8 +117,12 @@ function VerdictChip({ v }: { v: CriticVerdict }) {
 }
 
 export default function FactoryPage() {
+  // Self-heal a stale/empty first paint (e.g. a fetch during a flaky deploy):
+  // trends move slowly, so a 30s revalidate + refetch-on-focus corrects an empty
+  // cache without a manual hard-refresh. Mirrors the sidebar inbox pattern.
   const { data, isLoading, error } = useSWR<{ data: FactoryData }>('/api/factory', fetcher, {
-    revalidateOnFocus: false,
+    refreshInterval: 30_000,
+    revalidateOnFocus: true,
   });
   const d = data?.data;
   const latest = d?.episodes.filter((e) => e.reachedFinalCut).slice(-1)[0] ?? d?.episodes.slice(-1)[0];
