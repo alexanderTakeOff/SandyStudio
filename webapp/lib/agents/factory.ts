@@ -35,6 +35,7 @@ import type { AgentResult } from './types';
 import { resolveModelId } from './registry';
 import { createSupabaseServiceRoleClient } from '../supabase/server';
 import { logEvent } from '../api/events';
+import { raiseBlockerOnce } from '../api/blocker-escalation';
 import { shotRegenCap } from './chain-flags';
 import {
   countShotAutonomousAttempts,
@@ -220,6 +221,36 @@ export function createAgentInngestFunction<E extends string>(
       ...(spec.finishTimeout
         ? { timeouts: { finish: spec.finishTimeout as `${number}m` } }
         : {}),
+      // Failure-spine Slice 2 (2026-07-16): Inngest calls onFailure ONCE, only
+      // after all `retries` are exhausted — the natural "terminal failure" hook.
+      // The per-attempt catch below suppresses the Polina wake (auto_react=false),
+      // so the ONLY escalation on a genuinely-dead agent is this single deduped
+      // blocker_raised → Director Inbox. Closes the E29 gap: 6× per-attempt
+      // notify-needed woke read-only Polina, the Director was never told.
+      onFailure: async ({ event, error }: { event: { data?: { event?: { data?: Record<string, unknown> } } }; error: Error }) => {
+        try {
+          const original = event?.data?.event?.data;
+          const episodeId = typeof original?.episodeId === 'string' ? original.episodeId : null;
+          if (!episodeId) return;
+          const shotId = typeof original?.shotId === 'string' ? original.shotId : null;
+          const supabase = createSupabaseServiceRoleClient();
+          const ctx = spec.resolveActivityContext
+            ? spec.resolveActivityContext(original as Record<string, unknown>)
+            : null;
+          const suffix = ctx?.shortLabel ? ` — ${ctx.shortLabel}` : '';
+          await raiseBlockerOnce(supabase, {
+            episodeId,
+            stage: `agent_failed:${spec.agentId}`,
+            shotId,
+            actor: spec.agentId,
+            title: `${agentDisplayName(spec.agentId)} failed after retries${suffix} — needs Director`,
+            description: (error?.message ?? '').slice(0, 500),
+            metadata: { agent: spec.agentId, reason: 'retries_exhausted', ...(ctx?.metadata ?? {}) },
+          });
+        } catch {
+          // Best-effort — a failed escalation must never mask the original failure.
+        }
+      },
     },
     // The cast is safe: caller passes a string literal that matches a known
     // Events key. Validation is enforced at the wiring site, not here.
@@ -895,9 +926,12 @@ export function createAgentInngestFunction<E extends string>(
         await step.run('log-agent-failure', async () => {
           try {
             const supabase = createSupabaseServiceRoleClient();
-            // TD-20.B 2026-05-20 — via logEvent so pa/notify-needed fires
-            // on failure too. Polina should react to a stalled / errored
-            // agent without waiting on Director to notice.
+            // Failure-spine Slice 2 (2026-07-16): the per-attempt failure row is
+            // written for the feed/audit, but does NOT wake Polina
+            // (auto_react=false below). A transient failure that succeeds on retry
+            // should never cry wolf; a genuinely-dead agent escalates ONCE via the
+            // function's onFailure → blocker_raised (Director Inbox). This replaces
+            // the old per-attempt wake that produced the E29 6× notify firehose.
             const failedCtx = spec.resolveActivityContext
               ? spec.resolveActivityContext(eventData)
               : null;
@@ -925,9 +959,10 @@ export function createAgentInngestFunction<E extends string>(
                 agent: spec.agentId,
                 inngest_run_id: runId,
                 error: errMsg.slice(0, 500),
-                ...(billingLocked
-                  ? { auto_react: false, reason: 'PROVIDER_BILLING_LOCK' }
-                  : {}),
+                // Suppress the per-attempt Polina wake for EVERY failure (not just
+                // billing). Terminal escalation is the onFailure blocker_raised.
+                auto_react: false,
+                ...(billingLocked ? { reason: 'PROVIDER_BILLING_LOCK' } : {}),
                 ...(failedCtx?.metadata ?? {}),
               },
             });
