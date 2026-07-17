@@ -59,9 +59,22 @@ import type { AgentInputs } from '../types';
 
 export const CONT_CONTRACT = 'continuity_check@v2';
 export const CONT_MODEL = 'claude-sonnet-4-6';
-// Continuity emits per-shot rows + violations + descriptions in Russian; 3000
-// is too tight for 13-17-shot storyboards. 6000 leaves room for prose + JSON.
-export const CONT_MAX_TOKENS = 6000;
+/** Output budget for the Continuity Sonnet call.
+ *
+ *  History:
+ *  - 3000 was too tight for 13-17-shot storyboards. 6000 replaced it, sized
+ *    for membership-only reports (location + characters per shot).
+ *  - 2026-07-17: 6000 → 12000 after E30 died with `stop_reason=max_tokens` at
+ *    15385 chars, truncated before the mandatory closing JSON fence. The 6000
+ *    predates Motor 1 (4ff52624), which added per-shot lighting_canon +
+ *    appearance_canon and the prop-canon block. WCHK also emits every shot
+ *    TWICE — markdown prose AND the JSON per_shot array — and its Russian
+ *    issue prose runs ~2-3 chars/token against English's ~4, so the char
+ *    count understates the spend. 12000 matches SREV, the closest sibling
+ *    (critic over a large artifact, structured findings). Checkers ride the
+ *    free tier (F7, agentClass 'checker') — the extra budget costs nothing.
+ */
+export const CONT_MAX_TOKENS = 12000;
 // CHK-W05 — per-shot duration limits from specs/schemas/shot.md.
 export const SHOT_MIN_SECONDS = 1.5;
 export const SHOT_MAX_SECONDS = 8.0;
@@ -339,7 +352,25 @@ function buildUserMessage(args: {
     '}',
     '```',
     '',
-    'KEEP PROSE TIGHT — JSON block at end is mandatory and must not be truncated. If running long, shorten markdown — never skip JSON.',
+    `## Output budget — ${CONT_MAX_TOKENS} tokens, hard cap`,
+    '',
+    `You have ${CONT_MAX_TOKENS} output tokens for this entire reply and no way to`,
+    'exceed them: the response is cut off mid-word at the cap, so anything you have',
+    'not written yet is simply lost. Russian prose costs ~2-3 tokens per word (vs ~4',
+    'characters per token in English), so a per-shot report in Russian spends the',
+    'budget roughly twice as fast as it looks.',
+    '',
+    'The fenced JSON block is the ONLY part that is machine-read, and it comes last —',
+    'so overspending on markdown does not merely bloat the report, it destroys the',
+    'output entirely. Spend the budget in this order:',
+    '  1. The fenced JSON block — always, in full.',
+    '  2. Markdown rows for shots that HAVE issues.',
+    '  3. Everything else.',
+    '',
+    'If you are running long, compress the markdown, never the JSON: one line per',
+    'clean shot, or collapse consecutive clean shots into a single',
+    '"SH03-SH09: canon clean" line. A terse markdown report with valid JSON is a',
+    'success; a beautiful report without the JSON block is a total failure.',
     '',
     'Verdict rubric:',
     '- PASS: every shot uses only canonical characters; locations are canonical OR clearly episode-only and acceptable.',

@@ -697,7 +697,16 @@ export function EpisodeTimelineSection({
         ? await fetch(`/api/episodes/${episodeId}/regenerate-image-from-plan`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ shotId, planAssetId: approvedPlan.id }),
+            // `reason` is REQUIRED by the route (z.string().min(3)) — omitting it
+            // 400s the whole click. This branch shipped without it (S2, 2026-07-05),
+            // so Generate never once rendered an image from an approved plan; only
+            // the sibling author-a-plan branch below (which does send a reason)
+            // ever worked. Found 2026-07-17 while checking the button live.
+            body: JSON.stringify({
+              shotId,
+              planAssetId: approvedPlan.id,
+              reason: 'Director — render reference image from approved plan (timeline)',
+            }),
           })
         : await fetch(`/api/episodes/${episodeId}/trigger`, {
             method: 'POST',
