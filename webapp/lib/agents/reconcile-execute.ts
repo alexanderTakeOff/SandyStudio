@@ -34,6 +34,7 @@ import { getEpisodeStateMatrix } from './state-matrix';
 import {
   planReconcileActions,
   collectCriticSignals,
+  collectOnModelSignals,
   type ReconcileAction,
 } from './reconcile';
 import {
@@ -63,6 +64,8 @@ export interface ReconcileResult {
   approvedAssetIds: string[];
   events: Array<{ name: string; data: Record<string, unknown> }>;
   halted: Array<{ shotId: string; stage: string; reason: string }>;
+  /** On-model FAILs bounced this pass (kept in REVIEW + escalated to the Director). */
+  bounced: Array<{ shotId: string; stage: string; reason: string }>;
 }
 
 const EMPTY: ReconcileResult = {
@@ -71,6 +74,7 @@ const EMPTY: ReconcileResult = {
   approvedAssetIds: [],
   events: [],
   halted: [],
+  bounced: [],
 };
 
 export async function reconcileEpisode(
@@ -102,6 +106,21 @@ export async function reconcileEpisode(
   const { verdicts, reviseCounts } = collectCriticSignals(
     (revData ?? []) as Array<{ file_type?: string | null; version?: number | null; metadata?: unknown }>,
   );
+
+  // On-model gate: rendered ref images carry a FROZEN on_model.verdict in their own
+  // metadata (there is no REV-ref_image row). Fold those into the SAME verdicts map
+  // under `${shot}::ref_image` — the planner's on-model branch reads them like any
+  // critic signal. Keys never collide (ref_image has no critic REV row).
+  const { data: imgData } = await supabase
+    .from('assets')
+    .select('version,metadata')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'IMG-episode_ref%');
+  for (const [k, v] of collectOnModelSignals(
+    (imgData ?? []) as Array<{ version?: number | null; metadata?: unknown }>,
+  )) {
+    verdicts.set(k, v);
+  }
 
   // Failure-spine Slice 3: count our OWN refires (reconcile/refire events) per
   // shot×stage — the precise cap counter, kept separate from the noisy per-attempt
@@ -144,6 +163,7 @@ export async function reconcileEpisode(
   const events: Array<{ name: string; data: Record<string, unknown> }> = [];
   const approvedAssetIds: string[] = [];
   const halted: Array<{ shotId: string; stage: string; reason: string }> = [];
+  const bounced: Array<{ shotId: string; stage: string; reason: string }> = [];
 
   for (const action of actions) {
     if (action.kind === 'approve') {
@@ -208,11 +228,34 @@ export async function reconcileEpisode(
         description: action.reason,
         metadata: { shot_id: action.shotId, stage: action.stage, reason: 'RECONCILE_HALT' },
       });
+    } else if (action.kind === 'bounce') {
+      // On-model FAIL: leave the cell in REVIEW (NO executeApprove) and escalate to
+      // the Director, mirroring the halt path. `raiseBlockerOnce` dedups per
+      // shot+stage, so re-emitting each pass over the same FAIL never spams the Inbox.
+      bounced.push({ shotId: action.shotId, stage: action.stage, reason: action.reason });
+      await logEvent(supabase, {
+        event_type: 'reconcile/bounce',
+        severity: 'warning',
+        title: `Bounce ${action.shotId} · ${action.stage} — on-model FAIL, needs Director`,
+        description: action.reason,
+        actor: 'exec-dir-ai',
+        episode_id: episodeId,
+        metadata: { shot_id: action.shotId, stage: action.stage, asset_id: action.assetId, reason: 'RECONCILE_BOUNCE' },
+      });
+      await raiseBlockerOnce(supabase, {
+        episodeId,
+        stage: `on_model_fail:${action.stage}`,
+        shotId: action.shotId,
+        actor: 'exec-dir-ai',
+        title: `On-model FAIL — needs Director (${action.stage} · shot ${action.shotId})`,
+        description: action.reason,
+        metadata: { shot_id: action.shotId, stage: action.stage, asset_id: action.assetId, reason: 'RECONCILE_BOUNCE' },
+      });
     }
     // 'wait' → nothing to do this pass.
   }
 
-  return { ran: true, actions, approvedAssetIds, events, halted };
+  return { ran: true, actions, approvedAssetIds, events, halted, bounced };
 }
 
 /**

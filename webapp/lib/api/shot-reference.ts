@@ -17,6 +17,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { GovernanceModeNum } from './series-bible';
+import type { OnModelResult } from './on-model';
 
 export const SHOT_REFERENCE_CONTRACT = 'episode_references@v2';
 export type ShotReferenceContractId = typeof SHOT_REFERENCE_CONTRACT;
@@ -312,6 +313,17 @@ export interface ShotReferenceContract {
    * legacy rows ⇒ treated as 'start' everywhere.
    */
   frame_role?: 'start' | 'end';
+
+  /**
+   * On-model gate verdict (2026-07-17), FROZEN at generation time. The focused
+   * identity detector judges silhouette + body material/transparency against the
+   * Bible character canon, and `decideOnModel` turns those axes into PASS/FAIL
+   * under the episode's `on_model_strictness`. The reconciler reads ONLY
+   * `on_model.verdict`: FAIL → bounce to the Director (keep REVIEW + escalate);
+   * PASS or absent → today's creative approve path (fail-open). Absent on legacy
+   * rows and on `loose` episodes where the gate is off.
+   */
+  on_model?: OnModelResult;
 }
 
 // ── Type guards ─────────────────────────────────────────────────────────────

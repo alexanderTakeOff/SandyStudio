@@ -86,6 +86,13 @@ duration_seconds: number    # DERIVED — calculated from timing (end - start). 
 comic_beat: string          # OPTIONAL — if this shot is a gag or punchline, describe it
                             # e.g. "Soufflé collapses in perfect sync with Clouseau's sneeze"
 is_punchline: boolean       # OPTIONAL — true if this is the payoff of a comedy sequence
+transformation: boolean     # OPTIONAL — true when a character DELIBERATELY loses its normal
+                            # form in this shot (body morph / gloop / TRANSPARENT_BODY gag).
+                            # Signals the on-model gate that a silhouette-loss is EXPECTED
+                            # here, so the detector's silhouette FAIL is suppressed for this
+                            # shot (see decideOnModel / lib/api/on-model.ts). Default false —
+                            # normal identity enforcement. Body-material (transparency) drift
+                            # is still enforced under strict; only shape loss is excused.
 
 # --- DELIVERY / FRAMING ---
 vertical_safe: boolean      # OPTIONAL — set only on gag/punchline peaks in episodes whose

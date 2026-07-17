@@ -377,6 +377,7 @@ function buildUserMessage(args: {
     '            }',
     '          ],',
     '          "expected_gag": "<one short sentence describing the visual joke this shot delivers, OR null if shot is a setup/transition/reaction-without-gag>",',
+    '          "transformation": <boolean — OPTIONAL, default false. Set true ONLY when a character DELIBERATELY loses its normal body form in this shot (morph / gloop / a transparent-body-melts-to-a-puddle gag). This tells the on-model gate a silhouette change is INTENDED here, so the identity detector will not flag it. Omit or false on every normal shot.>,',
     hasCanon && objectSlugs.length > 0
       ? `          "props_in_frame": [<zero or more canon prop slugs visible in this shot, each one of: ${objectSlugs.join(', ')}. These attach the canonical prop reference image so the prop is not hallucinated. Use [] if no canon prop is on screen.>],`
       : '          "props_in_frame": [<zero or more prop slugs visible in this shot, lowercase_with_underscores, or [] if none>],',

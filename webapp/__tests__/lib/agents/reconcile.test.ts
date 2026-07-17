@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   planReconcileActions,
   collectCriticSignals,
+  collectOnModelSignals,
   signalKey,
   type ReconcileContext,
 } from '@/lib/agents/reconcile';
@@ -290,5 +291,78 @@ describe('collectCriticSignals', () => {
     expect(verdicts.get(signalKey('SH01', 'shot_plan'))).toBe('PASS');
     expect(reviseCounts.get(signalKey('SH01', 'shot_plan'))).toBe(1);
     expect(verdicts.get(signalKey('SH01', 'ref_plan'))).toBe('PASS');
+  });
+});
+
+describe('on-model gate (ref_image bounce)', () => {
+  const imgKey = signalKey('SH01', 'ref_image');
+  const refImageReview = () =>
+    matrix([shot('SH01', { ref_image: st({ status: 'REVIEW', asset_id: 'img1', version: 1 }) })]);
+
+  it('bounces a ref_image whose on_model verdict is FAIL (no approve)', () => {
+    const acts = planReconcileActions(
+      ctx({ matrix: refImageReview(), verdicts: new Map([[imgKey, 'FAIL']]) }),
+    );
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'bounce', assetId: 'img1', stage: 'ref_image' }),
+    );
+    expect(acts.filter((a) => a.kind === 'approve')).toHaveLength(0);
+  });
+
+  it('bounces a FAIL even in Mode 1 (escalate regardless of governance mode)', () => {
+    const acts = planReconcileActions(
+      ctx({ matrix: refImageReview(), governanceMode: 1, verdicts: new Map([[imgKey, 'FAIL']]) }),
+    );
+    expect(acts.filter((a) => a.kind === 'bounce')).toHaveLength(1);
+  });
+
+  it('PASS + Mode 3 → auto-approves via the creative gate (no bounce)', () => {
+    const acts = planReconcileActions(
+      ctx({ matrix: refImageReview(), governanceMode: 3, verdicts: new Map([[imgKey, 'PASS']]) }),
+    );
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'approve', assetId: 'img1', stage: 'ref_image' }),
+    );
+    expect(acts.filter((a) => a.kind === 'bounce')).toHaveLength(0);
+  });
+
+  it('PASS + Mode 2 → waits for a human (no approve, no bounce)', () => {
+    const acts = planReconcileActions(
+      ctx({ matrix: refImageReview(), governanceMode: 2, verdicts: new Map([[imgKey, 'PASS']]) }),
+    );
+    expect(acts.filter((a) => a.kind === 'approve')).toHaveLength(0);
+    expect(acts.filter((a) => a.kind === 'bounce')).toHaveLength(0);
+    expect(acts).toContainEqual(expect.objectContaining({ kind: 'wait', stage: 'ref_image' }));
+  });
+
+  it('MISSING verdict → fail-open → Mode 3 auto-approves (byte-identical to pre-gate)', () => {
+    const acts = planReconcileActions(
+      ctx({ matrix: refImageReview(), governanceMode: 3, verdicts: new Map() }),
+    );
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'approve', assetId: 'img1', stage: 'ref_image' }),
+    );
+    expect(acts.filter((a) => a.kind === 'bounce')).toHaveLength(0);
+  });
+});
+
+describe('collectOnModelSignals', () => {
+  it('folds on_model.verdict into a ref_image-keyed map, latest version wins', () => {
+    const verdicts = collectOnModelSignals([
+      { version: 1, metadata: { shot_reference: { shot_id: 'SH01', on_model: { verdict: 'PASS' } } } },
+      { version: 2, metadata: { shot_reference: { shot_id: 'SH01', on_model: { verdict: 'FAIL' } } } },
+      { version: 1, metadata: { shot_reference: { shot_id: 'SH02', on_model: { verdict: 'PASS' } } } },
+    ]);
+    expect(verdicts.get(signalKey('SH01', 'ref_image'))).toBe('FAIL');
+    expect(verdicts.get(signalKey('SH02', 'ref_image'))).toBe('PASS');
+  });
+
+  it('ignores rows with no on_model verdict (legacy / loose-skipped images)', () => {
+    const verdicts = collectOnModelSignals([
+      { version: 1, metadata: { shot_reference: { shot_id: 'SH01' } } },
+      { version: 1, metadata: { shot_reference: null } },
+      { version: 1, metadata: null },
+    ]);
+    expect(verdicts.size).toBe(0);
   });
 });

@@ -50,7 +50,12 @@ export type ReconcileAction =
   // Failure-spine Slice 3: re-drive a FAILED (never-produced) cell. `assetId` is
   // the UPSTREAM plan's id for money stages (ref_image/video), absent for the
   // authoring stages (ref_plan/shot_plan) which re-run from scratch.
-  | { kind: 'refire'; shotId: string; stage: StageName; assetId?: string; reason: string };
+  | { kind: 'refire'; shotId: string; stage: StageName; assetId?: string; reason: string }
+  // On-model gate: a rendered ref image whose FROZEN on_model verdict is FAIL.
+  // Keeps the cell in REVIEW (no status flip) and escalates to the Director — a
+  // rendered image is not auto-revisable, so it must NOT enter the critic
+  // REVISE-loop. See the on-model branch in the creative else below.
+  | { kind: 'bounce'; shotId: string; stage: StageName; assetId: string; reason: string };
 
 export interface ReconcileContext {
   matrix: EpisodeStateMatrix;
@@ -109,6 +114,38 @@ export function collectCriticSignals(
     }
   }
   return { verdicts, reviseCounts };
+}
+
+/**
+ * Fold the on-model gate verdict of each IMG-episode_ref row into a verdicts map
+ * keyed `${shot}::ref_image` (latest version wins). There is NO REV-ref_image row —
+ * the detector's PASS/FAIL is frozen in the IMG's own metadata
+ * (`shot_reference.on_model.verdict`) at generation time. The executor merges this
+ * into the same map `planReconcileActions` consumes, so the on-model branch reads it
+ * exactly like a critic signal. Pure — the executor passes the rows it already loaded.
+ */
+export function collectOnModelSignals(
+  imgRows: ReadonlyArray<{ version?: number | null; metadata?: unknown }>,
+): Map<string, string> {
+  const verdicts = new Map<string, string>();
+  const latestVersion = new Map<string, number>();
+  for (const row of imgRows) {
+    const meta = (row.metadata ?? null) as { shot_reference?: unknown } | null;
+    const sr = (meta?.shot_reference ?? null) as
+      | { shot_id?: unknown; on_model?: { verdict?: unknown } | null }
+      | null;
+    const shotId = sr && typeof sr.shot_id === 'string' ? sr.shot_id : null;
+    const verdict =
+      sr && sr.on_model && typeof sr.on_model.verdict === 'string' ? sr.on_model.verdict : null;
+    if (!shotId || !verdict) continue;
+    const key = signalKey(shotId, 'ref_image');
+    const v = row.version ?? 0;
+    if (!latestVersion.has(key) || v >= (latestVersion.get(key) ?? 0)) {
+      latestVersion.set(key, v);
+      verdicts.set(key, verdict);
+    }
+  }
+  return verdicts;
 }
 
 /**
@@ -198,11 +235,26 @@ export function planReconcileActions(ctx: ReconcileContext): ReconcileAction[] {
           });
         }
       } else {
+        // On-model gate (ref_image only): a rendered ref image carries a FROZEN
+        // on_model verdict in its metadata (folded into `verdicts` by the executor).
+        // A FAIL bounces — keep the cell in REVIEW and escalate to the Director —
+        // regardless of governance mode. PASS or a MISSING verdict (loose episode,
+        // legacy/in-flight image) falls through to the creative gate below, so those
+        // paths are byte-identical to before the gate existed (fail-open).
+        if (stage === 'ref_image' && verdicts.get(key) === 'FAIL') {
+          actions.push({
+            kind: 'bounce',
+            shotId: shot.shot_id,
+            stage,
+            assetId: cell.asset_id as string,
+            reason: 'on-model detector FAIL — keep REVIEW, escalate Director',
+          });
+          continue;
+        }
         // No enforcing critic → a CREATIVE artifact (rendered ref image / video).
         // Auto-advance ONLY in Mode 3 (DELEGATED — Polina is the delegate). Mode 1
         // (MANUAL) and Mode 2 (HYBRID — pause & eyeball) keep the Director's hand on
-        // every un-critiqued render. (When VISUAL_CRITIC_ENFORCE lands, this stage
-        // gains a critic and moves to the mechanical branch above automatically.)
+        // every un-critiqued render.
         if (resolveGateDecision('creative', governanceMode) === 'advance') {
           actions.push({
             kind: 'approve',

@@ -139,6 +139,53 @@ describe('reconcileEpisode', () => {
     // Slice 4a: the HALT also escalates to the Director Inbox via blocker_raised.
     expect(tables.activity_events.some((e) => e.event_type === 'blocker_raised')).toBe(true);
   });
+
+  it('bounces an off-model ref image (on_model FAIL): keeps REVIEW, escalates to the Director', async () => {
+    const { client, tables } = makeMockSupabase({
+      episodes: [{ id: EP, episode_code: 'SS-S1-E1', metadata: {} }],
+      assets: [
+        storyboard([SHOT]),
+        {
+          id: 'img1',
+          episode_id: EP,
+          file_type: 'IMG-episode_ref_sh01',
+          status: 'REVIEW',
+          version: 1,
+          metadata: { shot_reference: { shot_id: SHOT, on_model: { verdict: 'FAIL' } } },
+        },
+      ],
+    });
+    const res = await reconcileEpisode(client, EP, { force: true });
+    expect(res.bounced).toHaveLength(1);
+    expect(res.bounced[0]).toMatchObject({ shotId: SHOT, stage: 'ref_image' });
+    // Not approved — the cell stays in REVIEW.
+    expect(res.approvedAssetIds).not.toContain('img1');
+    expect(tables.assets.find((a) => a.id === 'img1')?.status).toBe('REVIEW');
+    // A bounce event + a Director escalation both fired.
+    expect(tables.activity_events.some((e) => e.event_type === 'reconcile/bounce')).toBe(true);
+    expect(tables.activity_events.some((e) => e.event_type === 'blocker_raised')).toBe(true);
+  });
+
+  it('auto-approves an on-model ref image (on_model PASS) in Mode 3 — gate lets good ones through', async () => {
+    const { client, tables } = makeMockSupabase({
+      episodes: [{ id: EP, episode_code: 'SS-S1-E1', governance_mode: '3', metadata: {} }],
+      assets: [
+        storyboard([SHOT]),
+        {
+          id: 'img1',
+          episode_id: EP,
+          file_type: 'IMG-episode_ref_sh01',
+          status: 'REVIEW',
+          version: 1,
+          metadata: { shot_reference: { shot_id: SHOT, on_model: { verdict: 'PASS' } } },
+        },
+      ],
+    });
+    const res = await reconcileEpisode(client, EP, { force: true });
+    expect(res.bounced).toHaveLength(0);
+    expect(res.approvedAssetIds).toContain('img1');
+    expect(tables.assets.find((a) => a.id === 'img1')?.status).toBe('APPROVED');
+  });
 });
 
 describe('armForMode (arm-at-creation / mode-switch predicate)', () => {

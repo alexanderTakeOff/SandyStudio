@@ -20,6 +20,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { PeekHint } from '@/components/ui/PeekHint';
 import { EpisodeGenerationConfig } from './EpisodeGenerationConfig';
 import { readPipelineMode, type PipelineMode } from '@/lib/api/pipeline-mode';
+import { readOnModelStrictness, type OnModelStrictness } from '@/lib/api/on-model';
 
 interface EpisodeSettingsCardProps {
   episodeId: string;
@@ -34,6 +35,7 @@ interface EpisodeSettingsCardProps {
 interface SettingsState {
   anchor_chain_enabled: boolean;
   pipeline_mode: PipelineMode;
+  on_model_strictness: OnModelStrictness;
   budget_ceiling: number | null;
   budget_approved: boolean;
 }
@@ -80,6 +82,7 @@ export function EpisodeSettingsCard({
   const [state, setState] = useState<SettingsState>({
     anchor_chain_enabled: readAnchorChainEnabled(initialMetadata ?? null),
     pipeline_mode: readPipelineMode(initialMetadata ?? null),
+    on_model_strictness: readOnModelStrictness(initialMetadata ?? null),
     budget_ceiling: initialBudgetCeiling,
     budget_approved: readBudgetApproved(initialMetadata ?? null),
   });
@@ -124,6 +127,7 @@ export function EpisodeSettingsCard({
           setState({
             anchor_chain_enabled: readAnchorChainEnabled(j.data.metadata ?? null),
             pipeline_mode: readPipelineMode(j.data.metadata ?? null),
+            on_model_strictness: readOnModelStrictness(j.data.metadata ?? null),
             budget_ceiling: cap,
             budget_approved: readBudgetApproved(j.data.metadata ?? null),
           });
@@ -280,6 +284,30 @@ export function EpisodeSettingsCard({
     }
   }
 
+  async function setOnModelStrictness(next: OnModelStrictness) {
+    const previous = state.on_model_strictness;
+    if (next === previous) return;
+    setState((s) => ({ ...s, on_model_strictness: next }));
+    setPending(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}/settings`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ on_model_strictness: next }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      setState((s) => ({ ...s, on_model_strictness: previous }));
+      setError(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function toggleAnchorChain(next: boolean) {
     const previous = state.anchor_chain_enabled;
     setState((s) => ({ ...s, anchor_chain_enabled: next }));
@@ -360,6 +388,41 @@ export function EpisodeSettingsCard({
                   }
                 >
                   {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-glass pt-3" />
+
+          {/* On-model gate (2026-07-17): a focused identity detector bounces off-model
+              renders to the Director instead of auto-approving. Loose = gate off. */}
+          <div>
+            <div className="text-sm font-medium text-text-primary">On-model gate</div>
+            <div className="text-xs text-text-muted mt-0.5 leading-relaxed">
+              <strong>Loose</strong> — gate off; rendered references auto-approve as before (default).{' '}
+              <strong>Medium</strong> — bounce a shot whose character loses its silhouette (blob /
+              wrong creature); milky or opaque bodies are tolerated.{' '}
+              <strong>Strict</strong> — also bounce body-material drift (e.g. a glass body rendered
+              opaque). A bounced shot stays in REVIEW and is escalated to you. Transformation shots
+              (gloop / morph) are exempt from the silhouette check.
+            </div>
+            <div className="mt-2 inline-flex rounded-md border border-glass overflow-hidden">
+              {(['loose', 'medium', 'strict'] as const).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => void setOnModelStrictness(level)}
+                  disabled={pending}
+                  aria-pressed={state.on_model_strictness === level}
+                  className={
+                    'px-3 py-1 text-xs font-medium capitalize disabled:opacity-50 ' +
+                    (state.on_model_strictness === level
+                      ? 'bg-[var(--accent-primary)] text-white'
+                      : 'bg-[var(--bg-elevated)] text-text-muted hover:text-text-primary')
+                  }
+                >
+                  {level}
                 </button>
               ))}
             </div>

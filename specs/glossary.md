@@ -237,6 +237,15 @@ Operational helper that returns an episode to a known intermediate state (e.g. "
 
 Editable rule (text assets): only `DRAFT`, `REVIEW`, `REVISION`. See [`webapp/app/api/assets/[id]/content/route.ts`](../webapp/app/api/assets/[id]/content/route.ts).
 
+### On-model gate / Гейт «на модели» (2026-07-17)
+A focused identity check on a rendered reference image (`IMG-episode_ref`), SEPARATE from the general Reference Critic (whose `consistency_score` proved unreliable — E30: the same off-model blob scored 22 and 100). The **on-model detector** (`lib/agents/runners/on-model-detector.ts`) asks two binary questions against the Bible character canon — **silhouette** (recognisable shape?) and **transparency** (body material matches, e.g. glass vs opaque?) — and `decideOnModel` (`lib/api/on-model.ts`) turns them into PASS/FAIL under the episode's **strictness** dial. The verdict is FROZEN into the image's `shot_reference.on_model` at generation time; the reconciler reads only that verdict and **bounces** a FAIL (keeps REVIEW + escalates to the Director) instead of auto-approving. Series-agnostic — the rubric is built from the character refs, never hardcoded.
+
+### On-model strictness / Строгость гейта (`on_model_strictness`)
+Per-episode dial in `episodes.metadata`: **`loose`** (default — gate OFF, no vision call, byte-identical to pre-gate behavior), **`medium`** (bounce on silhouette-loss only; tolerate milky/opaque bodies), **`strict`** (bounce on silhouette-loss OR transparency drift). Mirrors the `pipeline_mode` pattern; set in Episode Settings.
+
+### Transformation shot / Кадр-трансформация (`transformation: true`)
+Storyboard shot flag marking a DELIBERATE loss of a character's normal body form (morph / gloop / a transparent-body-melts-to-a-puddle gag, cf. `sandy-gag-library` TRANSPARENT_BODY). Tells the on-model gate a silhouette change is EXPECTED here, so the detector's **silhouette** FAIL is suppressed for that shot (transparency drift is still enforced under `strict`). Emitted by the Storyboarder; consumed by `decideOnModel`.
+
 ---
 
 ## 8. Operating modes / Режимы работы

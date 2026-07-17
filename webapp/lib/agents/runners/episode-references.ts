@@ -103,6 +103,8 @@ import {
   attemptClearsKeepBar,
   pickBestAttempt,
 } from '../../api/shot-reference';
+import { readOnModelStrictness, decideOnModel, type OnModelResult } from '../../api/on-model';
+import { runOnModelDetector, resolveOnModelDetectorModel } from './on-model-detector';
 import { selectSkills } from '../../skills/select-skills';
 import { findApprovedAsset } from '../upstream';
 import { loadEpisodeCastSlugs } from '../episode-cast';
@@ -187,6 +189,14 @@ interface ParsedShot {
   key_beat?: string;
   shot_role?: string;
   expected_gag?: string | null;
+  /**
+   * On-model gate exception (2026-07-17): true when the storyboard declares this
+   * shot as a deliberate character transformation (body morph / gloop /
+   * TRANSPARENT_BODY gag). The on-model detector's silhouette-loss FAIL is
+   * suppressed for such shots (a legitimate morph is not an identity failure) —
+   * see decideOnModel. Absent/false ⇒ normal identity enforcement.
+   */
+  transformation?: boolean;
   /** Storyboard camera vocabulary (added 2026-05-12 — was lost in v1 prompt builder). */
   camera_angle?: string;
   camera_movement?: string;
@@ -353,6 +363,7 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         action_prose?: string;
         shot_role?: string;
         expected_gag?: string | null;
+        transformation?: boolean;
         duration_seconds?: number;
         key_beat?: string;
         camera_angle?: string;
@@ -409,6 +420,7 @@ function extractScenesFromStoryboard(content: string): ParsedShot[] {
         key_beat: sh.key_beat ? String(sh.key_beat) : undefined,
         shot_role: sh.shot_role ? String(sh.shot_role) : undefined,
         expected_gag: sh.expected_gag === undefined ? undefined : sh.expected_gag,
+        transformation: sh.transformation === true,
         camera_angle: sh.camera_angle ? String(sh.camera_angle) : undefined,
         camera_movement: sh.camera_movement ? String(sh.camera_movement) : undefined,
         camera_motivation: sh.camera_motivation ? String(sh.camera_motivation) : undefined,
@@ -2593,6 +2605,73 @@ export async function runEpisodeReferences(
       supabase,
     });
 
+    // ── On-model gate (2026-07-17): a focused identity detector, SEPARATE from the
+    // EREF critic (which can't reliably see off-model). Runs only when the episode's
+    // strictness dial is medium/strict; `loose` skips the vision call (gate off). The
+    // PASS/FAIL verdict is FROZEN here, next to the pixels it judged — the reconciler
+    // reads only `on_model.verdict` (FAIL → bounce to the Director). Fail-open throughout.
+    const onModelStrictness = readOnModelStrictness(ep?.metadata);
+    const isTransformationShot = job.shot.transformation === true;
+    const onModelAt = new Date().toISOString();
+    let onModelResult: OnModelResult;
+    if (onModelStrictness === 'loose') {
+      onModelResult = {
+        silhouette_ok: true,
+        transparency_ok: true,
+        reason: 'gate off (loose)',
+        verdict: 'PASS',
+        strictness: 'loose',
+        is_transformation: isTransformationShot,
+        model: 'skipped',
+        skipped: true,
+        at: onModelAt,
+      };
+    } else {
+      const detectorModel = await resolveOnModelDetectorModel(supabase);
+      const raw = await runOnModelDetector({
+        candidateImageB64: approvedB64,
+        characterRefs: job.bibleRefs
+          .filter((r) => r.kind === 'character')
+          .map((r) => ({ slug: r.slug, image_b64: r.image_b64, description: r.description })),
+        episodeCode: epCode,
+        shotId: job.shot.shot_id,
+        model: detectorModel,
+      });
+      totalCost += raw.cost_usd;
+      const verdict = decideOnModel(raw, onModelStrictness, isTransformationShot);
+      onModelResult = {
+        silhouette_ok: raw.silhouette_ok,
+        transparency_ok: raw.transparency_ok,
+        reason: raw.reason,
+        verdict,
+        strictness: onModelStrictness,
+        is_transformation: isTransformationShot,
+        model: raw.model,
+        skipped: raw.skipped,
+        at: onModelAt,
+      };
+      if (verdict === 'FAIL') {
+        // Generation-time record (like checker_fallback): a FAIL is visible on the
+        // dashboard even in a non-armed episode the reconciler never bounces.
+        await logEvent(supabase, {
+          event_type: 'on_model_fail',
+          severity: 'warning',
+          title: `On-model FAIL (${onModelStrictness}) — shot ${job.shot.shot_id}`,
+          description: raw.reason,
+          actor: 'ON-MODEL-DETECTOR',
+          episode_id: episodeId,
+          metadata: {
+            shot_id: job.shot.shot_id,
+            strictness: onModelStrictness,
+            silhouette_ok: raw.silhouette_ok,
+            transparency_ok: raw.transparency_ok,
+            is_transformation: isTransformationShot,
+            model: raw.model,
+          },
+        });
+      }
+    }
+
     const shotReference: ShotReferenceContract = {
       contract: SHOT_REFERENCE_CONTRACT,
       shot_id: job.shot.shot_id,
@@ -2615,6 +2694,7 @@ export async function runEpisodeReferences(
         planOverrides && planOverrides.shotId === job.shot.shot_id
           ? planOverrides.frameRole
           : 'start',
+      on_model: onModelResult,
     };
 
     // Legacy fields kept populated for the current AssetDetailDrawer.

@@ -60,6 +60,10 @@ const Body = z
     // fanout, per-ref canon-gate, video not gated on an animatic. Metadata (no
     // migration). Not a hard limit → any Director may set it.
     pipeline_mode: z.enum(['sequential', 'parallel']).optional(),
+    // On-model gate strictness (2026-07-17). 'loose' = gate OFF (default, today's
+    // behavior); 'medium' = bounce off-model silhouette-loss only; 'strict' =
+    // silhouette OR transparency drift. Metadata (no migration). Not a hard limit.
+    on_model_strictness: z.enum(['loose', 'medium', 'strict']).optional(),
     // F13 (2026-07-01): Director's approval of the episode budget. Lives in
     // metadata (no migration). Category-A hard limit → HUMAN Director only
     // (guarded below). Gate.ts blocks all AGENT_RUN work until this is true.
@@ -150,6 +154,9 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   }
   if (body.pipeline_mode !== undefined) {
     patch.pipeline_mode = body.pipeline_mode;
+  }
+  if (body.on_model_strictness !== undefined) {
+    patch.on_model_strictness = body.on_model_strictness;
   }
   // Per-episode retry caps (metadata; no cross-field validation needed).
   if (body.prompt_revision_cap !== undefined) patch.prompt_revision_cap = body.prompt_revision_cap;

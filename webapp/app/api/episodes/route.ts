@@ -23,6 +23,7 @@ import {
   videoRegenCap,
 } from '@/lib/agents/chain-flags';
 import { armForMode } from '@/lib/agents/production-plan';
+import { DEFAULT_ON_MODEL_STRICTNESS } from '@/lib/api/on-model';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -104,6 +105,9 @@ export const POST = withApiHandler(async (req) => {
     prompt_revision_cap: promptRevisionCap(),
     reference_regen_cap: referenceRegenCap(),
     video_regen_cap: videoRegenCap(),
+    // On-model gate defaults OFF (loose) — a new episode behaves exactly as before
+    // the gate existed until the Director dials up strictness in Episode Settings.
+    on_model_strictness: DEFAULT_ON_MODEL_STRICTNESS,
     // Phase 2b arm-at-creation: born autonomous (mode 2/3) ⇒ the conductor is
     // armed from the first agent completion; mode 1 (default) stays fully manual.
     reconciler_armed: armForMode(body.governance_mode),

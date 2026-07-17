@@ -20,6 +20,26 @@
 ## CURRENT STATE
 
 ```
+Date:   2026-07-17 (on-model гейт ПОСТРОЕН — Тео, КОД, ===5===). Реализован валидированный план целиком.
+  (1) Детектор-раннер `lib/agents/runners/on-model-detector.ts` — отдельный focused vision-вызов (НЕ общий
+  EREF-критик, который off-model не видит): две бинарные оси силуэт/прозрачность против Bible-канона персонажа,
+  series-agnostic, модель через app_config scope `on_model` (дефолт claude-opus-4-8 — ловит там, где terra
+  плавает), skip-fallback → PASS (аутэйдж НИКОГДА не бракует). (2) Чистое решение `lib/api/on-model.ts`
+  `decideOnModel(raw, strictness, isTransformation)`: loose=всегда PASS, medium=FAIL по силуэту (молочное тело
+  терпим), strict=силуэт ИЛИ прозрачность; исключение трансформации гасит ТОЛЬКО силуэт (прозрачность под strict
+  всё равно FAIL). Вердикт ВМОРАЖИВАЕТСЯ в `shot_reference.on_model` на этапе генерации. (3) Гейт в реконсайлере:
+  НЕ флипаем STAGE_HAS_CRITIC (FAIL не должен идти в REVISE-луп), а новый экшен `bounce` в creative-ветке —
+  FAIL держит REVIEW + `reconcile/bounce` + raiseBlockerOnce к Директору; PASS/missing → fail-open в старый
+  creative-гейт (loose и legacy байт-в-байт как раньше). `collectOnModelSignals` вливает вердикт IMG-метаданных
+  в тот же verdicts-map. (4) Структурное поле `transformation: boolean` в схеме шота + сториборд эмитит +
+  ParsedShot несёт; глоссарий обновлён. (5) pickBestAttempt CRIT-first — уже был (a87d4a83). (6) Ползунок
+  `on_model_strictness` (loose дефолт) в настройках эпизода как pipeline_mode. Rollout — «включить сразу»:
+  энфорсит сам ползунок, глобального kill-switch нет; E30 остаётся loose пока Директор не поднимет.
+  Verify: tsc clean, 1381/1381 tests (+26), replay-pilot 30/30. НЕ закоммичено (жду решения Директора).
+  ОСТАЁТСЯ (п.6 живая валидация, предложить перед тратой): поднять E30 до strict/medium, прогнать детектор по
+  30 кадрам, подтвердить что баунсит ровно off-model набор (SH15/16/25 + прозрачность SH01/04/06/08/12).
+Mode:   ===5=== EDIT (Director-authorized).
+
 Date:   2026-07-17 (E30 калибровка ref-image + ПЛАН on-model гейта — Тео, КОД, ===5===). Прогнали 30 рефов
   E30 (SH01-29) для настройки авто-апрува. Шипнуто 5 фиксов: кнопка Generate (не слала required `reason` →
   400; это и есть DEF-02), WCHK бюджет 6k→12k, превью-рефреш при выборе варианта, перенос AttemptsStrip к
