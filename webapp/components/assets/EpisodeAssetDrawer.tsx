@@ -620,6 +620,28 @@ export function EpisodeAssetDrawer({
             </AssetCollapsibleSection>
           )}
 
+          {/* Attempts sit directly under the picture (Director 2026-07-17). They are a
+              property OF this image — comparing them used to mean scrolling past Test
+              Plan / Verdict / Scores / Issues to reach them, so the variant you are
+              judging was never on screen next to the one you have. Self-hides at ≤1
+              attempt, so a single-shot render shows nothing extra. */}
+          {isV2 && shotRef && (
+            <AttemptsStrip
+              attempts={shotRef.generation_history ?? []}
+              finalVersion={
+                // The primary reference = the Director's manual pick when set, else
+                // the latest attempt. select-in-place points at a variant WITHOUT
+                // appending, so the badge follows selected_version.
+                shotRef.selected_version ??
+                (shotRef.generation_history && shotRef.generation_history.length > 0
+                  ? shotRef.generation_history[shotRef.generation_history.length - 1]!.version
+                  : null)
+              }
+              onPromote={promoteAttempt}
+              busyVersion={promotingVersion}
+            />
+          )}
+
           {/* When asset has an image but no prompt history (legacy), offer Upload-only. */}
           {isImage && !promptDoc && editable && !isVidShot && (
             <LegacyUploadCard assetId={asset.id} onChanged={onChange} />
@@ -692,27 +714,8 @@ export function EpisodeAssetDrawer({
               <VerdictPill review={shotRef.review} />
               <ScoreBars review={shotRef.review} />
               {shotRef.review && <IssuesList issues={shotRef.review.issues} />}
-              {/* TD-56 (2026-05-26): Artist auto-regen loop runs up to 3
-                  attempts; previously only the final landed in UI. Strip
-                  exposes all attempts (with image_url + provider + cost)
-                  so Director can visually compare and pick. Timeline-as-home
-                  (2026-07-02): clicking an attempt promotes it to the asset's
-                  primary image (select_attempt route) — the "pick a different
-                  one of the 3 variants" motion, no paid call, status unchanged. */}
-              <AttemptsStrip
-                attempts={shotRef.generation_history ?? []}
-                finalVersion={
-                  // The primary reference = the Director's manual pick when set,
-                  // else the latest attempt. select-in-place points at a variant
-                  // WITHOUT appending, so the badge follows selected_version.
-                  shotRef.selected_version ??
-                  (shotRef.generation_history && shotRef.generation_history.length > 0
-                    ? shotRef.generation_history[shotRef.generation_history.length - 1]!.version
-                    : null)
-                }
-                onPromote={promoteAttempt}
-                busyVersion={promotingVersion}
-              />
+              {/* TD-56's AttemptsStrip moved up next to the image (2026-07-17) —
+                  see the render site under "Reference image" above. */}
               <CandidatesStrip
                 currentAssetId={asset.id}
                 candidates={siblingCandidates.map((a) => ({
