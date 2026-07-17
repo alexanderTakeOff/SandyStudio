@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isHttpishUrl, resolvePreviewSrc } from '@/lib/asset-preview-resolver';
+import { isHttpishUrl, resolvePreviewSrc, previewFreshness } from '@/lib/asset-preview-resolver';
 
 describe('isHttpishUrl', () => {
   it('accepts root-relative and http(s) URLs', () => {
@@ -57,5 +57,36 @@ describe('resolvePreviewSrc', () => {
     expect(
       resolvePreviewSrc({ id: 'asset-123', drive_file_id: null, staging_path: '/staging/b.png' }),
     ).toBe('/staging/b.png');
+  });
+});
+
+describe('previewFreshness — variant-pick cache-bust (regression 2026-07-17)', () => {
+  it('prefers image_prompt.current_version, falls back to row version', () => {
+    expect(previewFreshness({ metadata: { image_prompt: { current_version: 4 } }, version: 1 })).toBe(4);
+    expect(previewFreshness({ version: 2 })).toBe(2);
+    expect(previewFreshness(null)).toBeNull();
+  });
+
+  it('changes when selected_version changes even though version/current_version do not', () => {
+    // select_attempt touches neither version nor current_version; before the fix
+    // the freshness key was byte-identical across picks, so /api/media/{id}?t=
+    // never changed and the drawer served the cached prior variant.
+    const base = { metadata: { image_prompt: { current_version: 4 } } };
+    const pickA = previewFreshness({ ...base, metadata: { image_prompt: { current_version: 4 }, shot_reference: { selected_version: 2 } } });
+    const pickB = previewFreshness({ ...base, metadata: { image_prompt: { current_version: 4 }, shot_reference: { selected_version: 3 } } });
+    expect(pickA).not.toBe(pickB);
+    expect(pickA).toBe('4-sel2');
+    expect(pickB).toBe('4-sel3');
+  });
+
+  it('flows a distinct ?t= into the drawer media URL per picked variant', () => {
+    const url = (sel: number) =>
+      resolvePreviewSrc({
+        id: 'a1',
+        drive_file_id: 'drive-1', // stays set on select_attempt → route branch is taken
+        metadata: { image_prompt: { current_version: 4 }, shot_reference: { selected_version: sel } },
+      });
+    expect(url(2)).not.toBe(url(3));
+    expect(url(2)).toBe('/api/media/a1?t=4-sel2');
   });
 });

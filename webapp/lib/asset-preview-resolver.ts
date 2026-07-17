@@ -29,13 +29,38 @@ export interface PreviewSource {
   metadata?: unknown;
 }
 
-/** Best available "image changed" signal for cache-busting the media URL. */
-export function previewFreshness(s?: PreviewSource | null): number | null {
+/**
+ * Best available "image changed" signal for cache-busting the media URL.
+ *
+ * Two things change the pixels under a fixed asset id + filename:
+ *   1. (re)generation — bumps `image_prompt.current_version` (row `version` fallback).
+ *   2. picking a different attempt variant (`select_attempt`) — copies that
+ *      attempt's bytes onto the canonical filename and sets
+ *      `shot_reference.selected_version`, but touches NEITHER version field.
+ * Folding `selected_version` into the key is what makes the in-drawer preview
+ * (and the CandidatesStrip) actually refresh on a variant pick — without it the
+ * `/api/media/{id}?t=` URL was byte-identical before/after the click, so the
+ * browser (DRAFT media carries max-age=3600) re-served the stale image. The
+ * timeline updated only because ITS resolver falls through to the attempt's
+ * distinct URL when the route nulls `drive_web_view_url`; the drawer's resolver
+ * still returns `/api/media/{id}` because `drive_file_id` stays set. (2026-07-17)
+ */
+export function previewFreshness(s?: PreviewSource | null): string | number | null {
   if (!s) return null;
-  const ip = (s.metadata as { image_prompt?: { current_version?: number | null } | null } | null)
-    ?.image_prompt;
-  if (typeof ip?.current_version === 'number') return ip.current_version;
-  return typeof s.version === 'number' ? s.version : null;
+  const meta = s.metadata as {
+    image_prompt?: { current_version?: number | null } | null;
+    shot_reference?: { selected_version?: number | null } | null;
+  } | null;
+  const ip = meta?.image_prompt;
+  const base =
+    typeof ip?.current_version === 'number'
+      ? ip.current_version
+      : typeof s.version === 'number'
+        ? s.version
+        : null;
+  const sel = meta?.shot_reference?.selected_version;
+  if (typeof sel === 'number') return base != null ? `${base}-sel${sel}` : `sel${sel}`;
+  return base;
 }
 
 /** True when the path is something the browser can load directly (absolute root path or http(s) URL). */
