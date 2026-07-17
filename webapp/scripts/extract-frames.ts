@@ -12,41 +12,18 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname, basename, extname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
+import { resolveFfmpegPath, probeDurationSeconds } from '../lib/agents/providers/ffmpeg-stitch';
 
 async function probeFfmpegBin(): Promise<string> {
-  const envPath = process.env.FFMPEG_PATH?.trim();
-  const candidates = [
-    envPath,
-    'ffmpeg',
-    `${process.env.USERPROFILE ?? ''}\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffmpeg.exe`,
-    '/usr/bin/ffmpeg',
-    '/usr/local/bin/ffmpeg',
-  ].filter(Boolean) as string[];
-  for (const c of candidates) {
-    const ok = await new Promise<boolean>((res) => {
-      const p = spawn(c, ['-version'], { stdio: 'ignore' });
-      p.on('error', () => res(false));
-      p.on('exit', (code) => res(code === 0));
-    });
-    if (ok) return c;
-  }
-  throw new Error('ffmpeg not found on PATH or via winget fallback');
+  const bin = await resolveFfmpegPath();
+  if (!bin) throw new Error('ffmpeg not found on PATH or via winget fallback');
+  return bin;
 }
 
-async function ffprobeDuration(ffmpegBin: string, file: string): Promise<number> {
-  const ffprobeBin = ffmpegBin.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1');
-  return new Promise((res, rej) => {
-    const p = spawn(ffprobeBin, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', file]);
-    let out = '';
-    p.stdout.on('data', (c) => (out += c.toString()));
-    p.on('error', rej);
-    p.on('exit', (code) => {
-      if (code !== 0) return rej(new Error(`ffprobe failed: ${code}`));
-      const n = Number(out.trim());
-      if (!Number.isFinite(n) || n <= 0) return rej(new Error(`ffprobe parsed bad duration: ${out}`));
-      res(n);
-    });
-  });
+async function ffprobeDuration(file: string): Promise<number> {
+  const n = await probeDurationSeconds(file);
+  if (n == null) throw new Error(`ffprobe could not determine duration of ${file}`);
+  return n;
 }
 
 async function extractFrame(ffmpegBin: string, input: string, timeSec: number, outPath: string): Promise<void> {
@@ -73,7 +50,7 @@ async function main() {
   mkdirSync(outDir, { recursive: true });
 
   const ffmpegBin = await probeFfmpegBin();
-  const duration = await ffprobeDuration(ffmpegBin, input);
+  const duration = await ffprobeDuration(input);
   console.log(`[extract-frames] ${basename(input)} duration=${duration.toFixed(2)}s → ${n} frames`);
 
   const inputStem = basename(input, extname(input));

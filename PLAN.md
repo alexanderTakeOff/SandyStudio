@@ -20,7 +20,21 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-16 (Channel LAUNCH prep — Тео, Head of Growth, ===1===). ПЕТЛЯ НАЧАЛА размыкаться.
+Date:   2026-07-17 (ffmpeg-резолвер: хардкод версии → glob — Тео, КОД, ===5===). EXEC-VCRIT (видео-критик) упал
+  «ffmpeg could not be launched» на E29/SH01. Диагноз: ffmpeg ИСПРАВЕН (winget 8.1.2), но (1) в коде winget-фоллбэк
+  был прибит к `ffmpeg-8.1.1-full_build` / ffprobe к `7.1` — таких папок на диске нет, фоллбэк не фаерил молча;
+  (2) `FFMPEG_PATH` Директор дописал в `.env.local` в 22:25, а сервер стартовал 22:24 → живой процесс env не перечитал
+  (Next читает .env только на старте) → падал на PATH-кандидат, унаследованный до установки. **Фикс:** `resolveFfmpegPath`
+  + новый `resolveFfprobePath` ГЛОБЯТ winget-дерево (user %LOCALAPPDATA% + machine %ProgramFiles% + Links-шим), версия
+  берётся новейшая (`sortFfmpegBuildDirsDesc`, numeric-aware: 8.1.10>8.1.2). Версии в коде больше НЕ пиннятся — winget
+  апгрейдится молча. Схлопнуты 5 дублей резолва в один (`runFfprobe`/`probeDurationSeconds` в ffmpeg-stitch; siblings
+  sample-frames · ffmpeg-shorts · scripts/extract-frames переведены). Доказано: с вырезанным PATH и без FFMPEG_PATH
+  glob сам находит ffmpeg+ffprobe 8.1.2 → офисный десктоп (другой USERPROFILE, .env.local НЕ в git) заработает без
+  ручной настройки. tsc·0 / vitest **1350** (+5 на сортировку версий). NEXT: на лэптопе рестарт стека, чтобы критик
+  подхватил фикс (правка кода = нужен -Build).
+Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-16 (Channel LAUNCH prep — Тео, Head of Growth, ===1===). ПЕТЛЯ НАЧАЛА размыкаться.
   Канал «Sandy the Hourglass» упакован под запуск: баннер (наш gpt-image-2 S15-канон + ffmpeg 2048×1152, залит
   вручную через Studio — API `channelBanners.insert` мёртв 404), About переписан (промис + ссылки Full/Shorts/
   подписка, убран ложный `#3danimation`), плейлист Full Episodes переименован (API `playlists.update`). Из ОДНОГО

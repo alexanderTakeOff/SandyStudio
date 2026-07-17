@@ -108,19 +108,8 @@ const FFMPEG_UNREACHABLE_MESSAGE =
   'This is often TRANSIENT (the machine could not spawn a process — e.g. another job saturating it), not a missing binary: retry first. ' +
   'If it persists, check that ffmpeg is installed (winget install ffmpeg / brew install ffmpeg / apt install ffmpeg) or set FFMPEG_PATH.';
 
-/**
- * Resolve the ffmpeg binary path. Strategy:
- *   1. `FFMPEG_PATH` env var — explicit override.
- *   2. Plain `ffmpeg` — works when binary is on PATH (Linux/macOS, Windows
- *      with shell that inherited the right PATH).
- *   3. Windows winget canonical install path — covers Director's setup
- *      where the user's persistent PATH includes winget but the spawning
- *      Node process's stripped-down env didn't inherit it.
- *   4. Common Linux/macOS install locations.
- *
- * Returns the FIRST path whose `-version` probe succeeds, or null if none.
- */
-async function probeFfmpegBinary(candidate: string): Promise<boolean> {
+/** True when `<candidate> -version` exits 0 — i.e. the binary is launchable. */
+async function probeBinary(candidate: string): Promise<boolean> {
   return new Promise((resolve) => {
     const proc = spawn(candidate, ['-version'], { stdio: 'ignore' });
     proc.on('error', () => resolve(false));
@@ -129,52 +118,82 @@ async function probeFfmpegBinary(candidate: string): Promise<boolean> {
 }
 
 /**
- * 2026-06-06 — probe an mp4 file's duration via ffprobe. Used to stamp
- * VID-final_cut metadata with the real assembled length (previously null in
- * DB for the first E02 cut). Resolves the ffprobe binary the same way
- * `resolveFfmpegPath` resolves ffmpeg: env override → PATH → winget canonical
- * path. Throws if no ffprobe is reachable.
+ * WinGet package roots that can hold a Gyan.FFmpeg install. BOTH are real:
+ * winget writes per-user installs under %LOCALAPPDATA% and machine-scope ones
+ * under %ProgramFiles%, and we can't know which scope was used.
  */
-async function probeMp4Duration(mp4Path: string): Promise<number | null> {
-  const candidates: string[] = [];
-  if (process.env.FFPROBE_PATH?.trim()) candidates.push(process.env.FFPROBE_PATH.trim());
-  // 2026-06-08 — derive ffprobe from the RESOLVED ffmpeg path: ffprobe ships in
-  // the same bin/ dir. The hardcoded winget candidate below was pinned to
-  // ffmpeg-7.1 while resolveFfmpegPath finds ffmpeg-8.1.1 under a different
-  // root, so ffprobe was never found → final_cut metadata.duration_seconds was
-  // null on every render (Director's missing-duration audit gap).
-  const resolvedFfmpeg = await resolveFfmpegPath();
-  if (resolvedFfmpeg && /ffmpeg(\.exe)?$/i.test(resolvedFfmpeg)) {
-    candidates.push(resolvedFfmpeg.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1'));
+function wingetPackageRoots(): string[] {
+  const roots: string[] = [];
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  const userProfile = process.env.USERPROFILE?.trim();
+  if (localAppData) {
+    roots.push(path.join(localAppData, 'Microsoft', 'WinGet', 'Packages'));
+  } else if (userProfile) {
+    roots.push(path.join(userProfile, 'AppData', 'Local', 'Microsoft', 'WinGet', 'Packages'));
   }
-  candidates.push('ffprobe');
-  if (process.platform === 'win32') {
-    candidates.push(
-      'C:\\Program Files\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-7.1-full_build\\bin\\ffprobe.exe',
-    );
+  const programFiles = process.env.ProgramFiles?.trim() ?? 'C:\\Program Files';
+  roots.push(path.join(programFiles, 'WinGet', 'Packages'));
+  return roots;
+}
+
+/**
+ * Order ffmpeg build directories newest-version-first, so a winget upgrade is
+ * picked up on its own. Pure — exported for tests.
+ *
+ * 2026-07-17 — this replaces a hardcoded `ffmpeg-8.1.1-full_build` candidate.
+ * The box had been upgraded to 8.1.2, so that candidate pointed at a directory
+ * that no longer existed and the winget fallback silently never fired. Version
+ * strings must never be pinned in code: winget bumps them without warning.
+ */
+export function sortFfmpegBuildDirsDesc(names: ReadonlyArray<string>): string[] {
+  const version = (n: string): number[] =>
+    (n.match(/(\d+(?:\.\d+)*)/)?.[1] ?? '0').split('.').map(Number);
+  return [...names].sort((a, b) => {
+    const va = version(a);
+    const vb = version(b);
+    for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+      const diff = (vb[i] ?? 0) - (va[i] ?? 0);
+      if (diff !== 0) return diff;
+    }
+    return a.localeCompare(b);
+  });
+}
+
+/**
+ * Discover winget-installed ffmpeg/ffprobe binaries by GLOBBING the package
+ * tree — never by pinning a version. Newest build wins. Returns [] off Windows
+ * or when nothing is installed; unreadable dirs are skipped, not fatal.
+ */
+async function wingetBinCandidates(bin: 'ffmpeg' | 'ffprobe'): Promise<string[]> {
+  if (process.platform !== 'win32') return [];
+  const found: string[] = [];
+  // The winget shim dir — present when winget registered its Links on PATH.
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  if (localAppData) {
+    found.push(path.join(localAppData, 'Microsoft', 'WinGet', 'Links', `${bin}.exe`));
   }
-  for (const bin of candidates) {
+  for (const root of wingetPackageRoots()) {
+    let packages: string[];
     try {
-      const out = await new Promise<string>((resolve, reject) => {
-        let stdout = '';
-        const proc = spawn(bin, [
-          '-v', 'error',
-          '-show_entries', 'format=duration',
-          '-of', 'default=noprint_wrappers=1:nokey=1',
-          mp4Path,
-        ]);
-        proc.stdout.on('data', (chunk) => { stdout += String(chunk); });
-        proc.on('error', reject);
-        proc.on('exit', (code) => code === 0 ? resolve(stdout) : reject(new Error(`ffprobe exit ${code}`)));
-      });
-      const dur = parseFloat(out.trim());
-      if (Number.isFinite(dur) && dur > 0) return Math.round(dur * 1000) / 1000;
-      return null;
+      packages = await fs.readdir(root);
     } catch {
-      // try next candidate
+      continue; // root absent on this machine — normal
+    }
+    for (const pkg of packages.filter((p) => /ffmpeg/i.test(p))) {
+      const pkgDir = path.join(root, pkg);
+      let builds: string[];
+      try {
+        builds = await fs.readdir(pkgDir);
+      } catch {
+        continue;
+      }
+      const buildDirs = sortFfmpegBuildDirsDesc(builds.filter((b) => /^ffmpeg-/i.test(b)));
+      for (const build of buildDirs) {
+        found.push(path.join(pkgDir, build, 'bin', `${bin}.exe`));
+      }
     }
   }
-  return null;
+  return found;
 }
 
 /**
@@ -193,29 +212,49 @@ let cachedFfmpegPath: string | null = null;
 export async function resolveFfmpegPath(): Promise<string | null> {
   if (cachedFfmpegPath) return cachedFfmpegPath;
 
-  const envPath = process.env.FFMPEG_PATH?.trim();
   const candidates: string[] = [];
+  const envPath = process.env.FFMPEG_PATH?.trim();
   if (envPath) candidates.push(envPath);
   candidates.push('ffmpeg');
-  // Windows winget canonical install — Gyan.FFmpeg full build.
-  if (process.platform === 'win32') {
-    const userProfile =
-      process.env.USERPROFILE ?? process.env.HOMEPATH ?? null;
-    if (userProfile) {
-      // Glob-ish: any version directory under WinGet/Packages.
-      // We try the well-known 8.1.1 layout first; fall through is fine since
-      // the env override path covers other versions.
-      candidates.push(
-        `${userProfile}\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffmpeg.exe`,
-      );
-    }
-  }
+  candidates.push(...(await wingetBinCandidates('ffmpeg')));
   // Common Unix install locations.
   candidates.push('/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg');
 
   for (const cand of candidates) {
-    if (await probeFfmpegBinary(cand)) {
+    if (await probeBinary(cand)) {
       cachedFfmpegPath = cand;
+      return cand;
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolved ffprobe path. Same success-only caching rule as ffmpeg above, and
+ * the same resolution order: env override → the ffprobe sitting next to the
+ * resolved ffmpeg → PATH → winget glob → unix locations.
+ */
+let cachedFfprobePath: string | null = null;
+
+export async function resolveFfprobePath(): Promise<string | null> {
+  if (cachedFfprobePath) return cachedFfprobePath;
+
+  const candidates: string[] = [];
+  const envPath = process.env.FFPROBE_PATH?.trim();
+  if (envPath) candidates.push(envPath);
+  // ffprobe ships in the same bin/ dir as ffmpeg — derive it from whatever
+  // ffmpeg we just resolved before falling back to a bare PATH lookup.
+  const resolvedFfmpeg = await resolveFfmpegPath();
+  if (resolvedFfmpeg && /ffmpeg(\.exe)?$/i.test(resolvedFfmpeg)) {
+    candidates.push(resolvedFfmpeg.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1'));
+  }
+  candidates.push('ffprobe');
+  candidates.push(...(await wingetBinCandidates('ffprobe')));
+  candidates.push('/usr/bin/ffprobe', '/usr/local/bin/ffprobe', '/opt/homebrew/bin/ffprobe');
+
+  for (const cand of candidates) {
+    if (await probeBinary(cand)) {
+      cachedFfprobePath = cand;
       return cand;
     }
   }
@@ -225,6 +264,44 @@ export async function resolveFfmpegPath(): Promise<string | null> {
 /** Probe `ffmpeg -version` to confirm the binary is on PATH. */
 export async function ffmpegInstalled(): Promise<boolean> {
   return (await resolveFfmpegPath()) !== null;
+}
+
+/**
+ * Run ffprobe and return stdout, or null when ffprobe is unreachable or exits
+ * non-zero. THE one ffprobe spawn path — `sample-frames`, `ffmpeg-shorts` and
+ * `extract-frames` each used to carry their own copy of this dance.
+ */
+export async function runFfprobe(args: ReadonlyArray<string>): Promise<string | null> {
+  const bin = await resolveFfprobePath();
+  if (!bin) return null;
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      let stdout = '';
+      const proc = spawn(bin, [...args]);
+      proc.stdout.on('data', (chunk) => { stdout += String(chunk); });
+      proc.on('error', reject);
+      proc.on('exit', (code) => (code === 0 ? resolve(stdout) : reject(new Error(`ffprobe exit ${code}`))));
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Probe a media file's duration in seconds via ffprobe, or null when it can't
+ * be determined. Used to stamp VID-final_cut metadata with the real assembled
+ * length and to space out the Visual Critic's frame sampling.
+ */
+export async function probeDurationSeconds(file: string): Promise<number | null> {
+  const out = await runFfprobe([
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    file,
+  ]);
+  if (out == null) return null;
+  const dur = parseFloat(out.trim());
+  return Number.isFinite(dur) && dur > 0 ? Math.round(dur * 1000) / 1000 : null;
 }
 
 /**
@@ -459,7 +536,7 @@ export async function ffmpegStitchEpisode(
     // simply omit duration from the result.
     let durationSeconds: number | null = null;
     try {
-      durationSeconds = await probeMp4Duration(outPath);
+      durationSeconds = await probeDurationSeconds(outPath);
     } catch {
       // ffprobe missing or output unparseable — leave null.
     }

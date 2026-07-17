@@ -3,7 +3,7 @@
  * (9:16, 1080×1920) YouTube Short via a center-crop, with an optional burned-in
  * text overlay for the first few seconds.
  *
- * Created 2026-07-12 (Shorts-factory). Reuses `resolveFfmpegPath` / `runFfmpeg`
+ * Created 2026-07-12 (Shorts-factory). Reuses `runFfmpeg` / `runFfprobe`
  * from ffmpeg-stitch.ts — no second binary-resolution or spawn path. The pure
  * builders (`buildShortFilter` / `buildShortArgs`) are exported for unit tests
  * and are the ONE place the ffmpeg geometry lives, so the deferred Distribution
@@ -13,8 +13,7 @@
  * "SANDY the HOURGLASS" ~4s, upload unlisted-first.
  */
 
-import { spawn } from 'node:child_process';
-import { resolveFfmpegPath, runFfmpeg } from './ffmpeg-stitch';
+import { runFfmpeg, runFfprobe } from './ffmpeg-stitch';
 
 /** Vertical Shorts master resolution. */
 export const SHORT_WIDTH = 1080;
@@ -233,36 +232,6 @@ export async function makeShort(
 export interface VideoDimensions {
   width: number;
   height: number;
-}
-
-/**
- * Run ffprobe with the given args, trying FFPROBE_PATH, the ffprobe next to the
- * resolved ffmpeg, then a bare `ffprobe` on PATH. Returns stdout, or null if
- * every candidate failed. One place for ffprobe binary resolution + spawn.
- */
-async function runFfprobe(args: string[]): Promise<string | null> {
-  const candidates: string[] = [];
-  if (process.env.FFPROBE_PATH?.trim()) candidates.push(process.env.FFPROBE_PATH.trim());
-  const ffmpeg = await resolveFfmpegPath();
-  if (ffmpeg && /ffmpeg(\.exe)?$/i.test(ffmpeg)) {
-    candidates.push(ffmpeg.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1'));
-  }
-  candidates.push('ffprobe');
-
-  for (const bin of candidates) {
-    try {
-      return await new Promise<string>((resolve, reject) => {
-        let stdout = '';
-        const proc = spawn(bin, args);
-        proc.stdout.on('data', (c) => { stdout += String(c); });
-        proc.on('error', reject);
-        proc.on('exit', (code) => (code === 0 ? resolve(stdout) : reject(new Error(`ffprobe exit ${code}`))));
-      });
-    } catch {
-      // try next candidate
-    }
-  }
-  return null;
 }
 
 /**

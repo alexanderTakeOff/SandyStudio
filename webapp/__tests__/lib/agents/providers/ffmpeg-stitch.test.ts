@@ -7,7 +7,42 @@ import {
   buildConcatList,
   buildFfmpegArgs,
   buildMusicAudioFilter,
+  sortFfmpegBuildDirsDesc,
 } from '@/lib/agents/providers/ffmpeg-stitch';
+
+describe('sortFfmpegBuildDirsDesc — winget version discovery (2026-07-17)', () => {
+  it('puts the newest build first so a winget upgrade is picked up automatically', () => {
+    expect(
+      sortFfmpegBuildDirsDesc(['ffmpeg-7.1-full_build', 'ffmpeg-8.1.2-full_build']),
+    ).toEqual(['ffmpeg-8.1.2-full_build', 'ffmpeg-7.1-full_build']);
+  });
+
+  it('compares version parts numerically, not as strings (8.1.10 > 8.1.2)', () => {
+    expect(
+      sortFfmpegBuildDirsDesc(['ffmpeg-8.1.2-full_build', 'ffmpeg-8.1.10-full_build']),
+    ).toEqual(['ffmpeg-8.1.10-full_build', 'ffmpeg-8.1.2-full_build']);
+  });
+
+  it('orders shorter version numbers correctly against longer ones (8.2 > 8.1.9)', () => {
+    expect(
+      sortFfmpegBuildDirsDesc(['ffmpeg-8.1.9-full_build', 'ffmpeg-8.2-full_build']),
+    ).toEqual(['ffmpeg-8.2-full_build', 'ffmpeg-8.1.9-full_build']);
+  });
+
+  it('is pure — does not mutate the caller array', () => {
+    const input = ['ffmpeg-7.1-full_build', 'ffmpeg-8.1.2-full_build'];
+    sortFfmpegBuildDirsDesc(input);
+    expect(input).toEqual(['ffmpeg-7.1-full_build', 'ffmpeg-8.1.2-full_build']);
+  });
+
+  it('tolerates unversioned / odd names without throwing', () => {
+    expect(sortFfmpegBuildDirsDesc(['ffmpeg-full_build', 'ffmpeg-8.1.2-full_build'])).toEqual([
+      'ffmpeg-8.1.2-full_build',
+      'ffmpeg-full_build',
+    ]);
+    expect(sortFfmpegBuildDirsDesc([])).toEqual([]);
+  });
+});
 
 describe('buildConcatList', () => {
   it('emits one file directive per input path', () => {

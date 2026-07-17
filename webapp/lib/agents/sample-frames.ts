@@ -9,30 +9,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { spawn } from 'node:child_process';
-import { resolveFfmpegPath, runFfmpeg } from './providers/ffmpeg-stitch';
-
-/** ffprobe duration in seconds, deriving ffprobe from the resolved ffmpeg. */
-async function probeDurationSeconds(mp4: string): Promise<number | null> {
-  const ffmpeg = await resolveFfmpegPath();
-  const candidates: string[] = [];
-  if (ffmpeg && /ffmpeg(\.exe)?$/i.test(ffmpeg)) candidates.push(ffmpeg.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1'));
-  candidates.push('ffprobe');
-  for (const bin of candidates) {
-    try {
-      const out = await new Promise<string>((resolve, reject) => {
-        let stdout = '';
-        const proc = spawn(bin, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', mp4]);
-        proc.stdout.on('data', (c) => { stdout += String(c); });
-        proc.on('error', reject);
-        proc.on('exit', (code) => (code === 0 ? resolve(stdout) : reject(new Error(`ffprobe exit ${code}`))));
-      });
-      const dur = parseFloat(out.trim());
-      if (Number.isFinite(dur) && dur > 0) return dur;
-    } catch { /* try next */ }
-  }
-  return null;
-}
+import { probeDurationSeconds, runFfmpeg } from './providers/ffmpeg-stitch';
 
 /**
  * Sample ~`frames` evenly-spaced frames from `mp4Path`, scaled to `width`, and
