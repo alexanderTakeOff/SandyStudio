@@ -217,16 +217,29 @@ export function attemptClearsKeepBar(composite: number, criticalCount: number): 
 }
 
 /**
- * Keep-best on retry-exhaustion: the attempt with the highest `composite_score`.
- * Ties resolve to the EARLIER attempt (prompt-drift makes later attempts riskier,
- * so an equal-scoring earlier one is preferred). Null for an empty list.
+ * Keep-best on retry-exhaustion. Ranks CLEAN over high-scoring: fewer CRITICAL
+ * issues wins first, and only among equal critical-counts does the higher
+ * `composite_score` win. Ties resolve to the EARLIER attempt (prompt-drift makes
+ * later attempts riskier). Null for an empty list.
+ *
+ * Why critical-count first (E30 SH13, 2026-07-17): the old score-only rank shipped
+ * v1 (75.8, CRIT1) over the clean v2 (73.4, CRIT0) — a higher score carried a
+ * CRITICAL to screen when a clean attempt existed. A CRITICAL is a hard defect;
+ * a couple of composite points are not worth shipping one.
  */
 export function pickBestAttempt(
   attempts: readonly GenerationAttempt[],
 ): GenerationAttempt | null {
   let best: GenerationAttempt | null = null;
   for (const a of attempts) {
-    if (best === null || (a.composite_score ?? -1) > (best.composite_score ?? -1)) best = a;
+    if (best === null) {
+      best = a;
+      continue;
+    }
+    const aCrit = a.critical_count ?? 0;
+    const bCrit = best.critical_count ?? 0;
+    if (aCrit < bCrit) best = a;
+    else if (aCrit === bCrit && (a.composite_score ?? -1) > (best.composite_score ?? -1)) best = a;
   }
   return best;
 }

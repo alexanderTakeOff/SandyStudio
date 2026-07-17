@@ -45,8 +45,12 @@ function review(
   };
 }
 
-const attempt = (version: number, composite_score: number): GenerationAttempt =>
-  ({ version, composite_score } as unknown as GenerationAttempt);
+const attempt = (
+  version: number,
+  composite_score: number,
+  critical_count = 0,
+): GenerationAttempt =>
+  ({ version, composite_score, critical_count } as unknown as GenerationAttempt);
 
 describe('reviewComposite', () => {
   it('averages the non-null 0-100 scores', () => {
@@ -93,5 +97,22 @@ describe('pickBestAttempt', () => {
     // last attempt (v3) is the worst — keep-best must not ship it.
     const best = pickBestAttempt([attempt(1, 90), attempt(2, 75), attempt(3, 60)]);
     expect(best?.version).toBe(1);
+  });
+
+  it('prefers a CLEAN lower-scoring attempt over a higher-scoring one with a CRITICAL (E30 SH13)', () => {
+    // v1 outscores v2 but carries a CRITICAL; the clean v2 must win — a hard
+    // defect is not worth a couple of composite points.
+    const best = pickBestAttempt([attempt(1, 75.8, 1), attempt(2, 73.4, 0)]);
+    expect(best?.version).toBe(2);
+  });
+
+  it('among equal critical-counts, the higher score wins', () => {
+    const best = pickBestAttempt([attempt(1, 70, 2), attempt(2, 80, 2), attempt(3, 60, 2)]);
+    expect(best?.version).toBe(2);
+  });
+
+  it('picks the fewest-CRITICAL attempt even when every attempt has one', () => {
+    const best = pickBestAttempt([attempt(1, 90, 3), attempt(2, 60, 1), attempt(3, 70, 2)]);
+    expect(best?.version).toBe(2);
   });
 });
