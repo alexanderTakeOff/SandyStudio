@@ -182,6 +182,22 @@ For each scene, follow `specs/schemas/script.md` format exactly.
 - If story requires a location not in World Bible → flag it, do not invent it
 - Use closest valid World Bible location or escalate to ART-WB
 
+**Naming discipline — no slang, no double-meaning words (Director 2026-07-17):**
+Everything you write flows downstream to a storyboarder and then to an image
+generator that has never read the Bible and resolves every noun with its own
+priors. A word that carries two meanings is a defect the moment you type it —
+when the render comes back wrong, the ambiguity is the author's fault, not the
+generator's.
+- Ban slang, jargon, memes, and idioms in visual-action lines. Write the plain
+  physical thing the camera sees.
+- Any noun that ALSO names a common object (plate, bar, ring, board, cell,
+  spring, crown, mount, chip…) must carry a disambiguating descriptor every
+  time it appears — never bare. "Plate" on a hex-slab planet is the floor; to a
+  generator it is tableware. Write "the hexagonal floor slab", not "the plate".
+- Prefer the canonical glossary term. If a needed thing has no term, describe
+  it (material + shape), do not coin slang for it.
+This discipline STARTS in the brief (ART-HW) and must survive the script intact.
+
 ### Step 4 — Internal QA pass (eval-first)
 
 Before submitting, verify output against all input contracts:

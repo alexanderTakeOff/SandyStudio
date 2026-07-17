@@ -99,6 +99,29 @@ When you write each shot's `action_prose`, run through this checklist:
    hexagonal floor slab under his foot" and the trap is gone. (Rules 4 and 6
    above used to say "plate" — they are rewritten, because this skill was
    itself laying the trap it now warns about.)
+8. **No canon image behind it → describe it fully, in-shot.** The Reference
+   Designer locks a thing one of two ways: either the shot's `props_in_frame`
+   names a Bible object that HAS a LOCKED reference image (its pixels get
+   attached at generation, so it can't be hallucinated), or — for everything
+   else — the ONLY definition the generator receives is your prose. A prop
+   that is not a canon object with an image (a transient item the action
+   introduces, a new substance, a one-shot gizmo) falls entirely on the
+   prose: it MUST carry material + colour + geometry inline, because nothing
+   downstream will supply them. "A jelly" is under-specified; "a wobbling
+   translucent violet jelly the size of a manhole cover" is a contract.
+   Do NOT list a non-canon item in `props_in_frame` expecting it to lock —
+   there is no image to attach; the field is for Bible objects only.
+9. **A canon thing that TRANSFORMS must name its source.** When a shot melts,
+   inflates, shatters or recolours something that IS canon (a location floor,
+   a Bible prop), the generator only ties the new state to the locked colour/
+   shape if your prose names the source object. "The violet floor slab
+   liquefies into violet jelly" keeps the tie; "jelly plate" severs it and
+   the generator repaints the substance from its own priors. Name the source,
+   carry its canonical colour into the new state, THEN describe the change.
+   (E30 SH05: "jelly plate" cut the tie to the locked violet floor, so the
+   jelly rendered in the character's OWN gold — the one colour it must never
+   be. The location anchor already held the right colour; the prose threw it
+   away.)
 
 A good `action_prose` reads like a stage direction for an animator
 working in 2D limited animation: concrete, sequential, ending on a pose.

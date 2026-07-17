@@ -102,6 +102,13 @@ dialogue_guidance:   [from Style Bible → dialogue_ratio_max and tone descripto
 3. Apply act structure from config (not hardcoded)
 4. Populate story brief schema — every field from approved inputs
 5. Include any running gag callbacks that fit this episode's position
+6. Naming discipline (Director 2026-07-17): no slang, no double-meaning words.
+   The brief is the SOURCE of the vocabulary the script, storyboard and image
+   prompt all inherit — ambiguity introduced here propagates to the pixels and
+   surfaces as a wrong render nobody can trace back. Use the canonical glossary
+   term for every named thing; give any noun that also names a common object
+   (plate/bar/ring/board/…) a disambiguating descriptor; never coin slang for a
+   thing that lacks a term — describe it (material + shape) instead.
 ```
 
 ### Step 3 — Script review (after EXEC-SW delivers)
