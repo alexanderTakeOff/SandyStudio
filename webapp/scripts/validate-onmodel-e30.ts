@@ -85,10 +85,13 @@ async function loadLatestFrames() {
     const prev = byType.get(ft);
     if (!prev || (a.version ?? 0) >= (prev.version ?? 0)) byType.set(ft, a);
   }
-  const frames = [...byType.values()].map((a) => {
+  let frames = [...byType.values()].map((a) => {
     const sr = (a.metadata?.shot_reference ?? {}) as { shot_id?: string };
     return { asset: a, shotId: sr.shot_id ?? a.file_type ?? '?' };
   });
+  // Optional SHOTS=03,07,14 filter to re-check a cheap subset after a rubric tweak.
+  const only = (process.env.SHOTS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (only.length) frames = frames.filter((f) => only.includes(shotNum(f.shotId)));
   frames.sort((x, y) => shotNum(x.shotId).localeCompare(shotNum(y.shotId)));
   return frames;
 }

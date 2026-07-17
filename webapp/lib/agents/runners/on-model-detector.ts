@@ -106,12 +106,19 @@ function buildSystemPrompt(): string {
     '  silhouette_ok   — TRUE only if the rendered character is RECOGNISABLE as the canon',
     '                    character by its overall shape/silhouette. FALSE if the shape is',
     '                    lost — a blob, a different creature, an unrecognisable mass.',
-    '  transparency_ok — TRUE only if the body MATERIAL matches canon (e.g. if the canon',
-    '                    body is transparent glass, the candidate must read as transparent',
-    '                    glass — not milky, opaque, or a solid recolour). TRUE by default',
-    '                    when the canon body has no special material property.',
+    '  transparency_ok — Judge the body MATERIAL, not its brightness. If the canon body is a',
+    '                    transmissive material (e.g. transparent glass), the candidate PASSES as',
+    '                    long as it still reads as that material — light passes through, there is',
+    '                    internal depth / refraction / visible contents. Scene lighting legitimately',
+    '                    changes how it reads: under night or strong coloured ambient the glass will',
+    '                    look DARKER, more saturated, or tinted toward the ambient — that is CORRECT,',
+    '                    NOT a defect (the canon may be a daytime reference). FAIL only when the body',
+    '                    is a FLAT OPAQUE painted mass — a solid recolour with no transmission and no',
+    '                    internal depth, a genuine material swap. TRUE by default when the canon body',
+    '                    has no special material property.',
     '',
-    'Be strict and literal. When in genuine doubt, prefer FALSE — a human will confirm.',
+    'Silhouette: be strict. Transparency: judge material identity, be tolerant of lighting.',
+    'When in genuine doubt on silhouette, prefer FALSE — a human will confirm.',
     '',
     'Output ONLY one fenced ```json block. No preamble, no prose outside it. Schema:',
     '```json',
@@ -177,23 +184,35 @@ export async function runOnModelDetector(
     return skipped('No LOCKED character reference image — nothing to anchor identity (fail-open PASS)', args.model);
   }
 
-  let response;
-  try {
-    response = await generateAnthropicVision({
-      systemPrompt: buildSystemPrompt(),
-      leadText:
-        'Compare the CANDIDATE image (last) against the Bible reference image(s) above. Judge the two identity axes only.',
-      images: buildVisionImages(args),
-      trailText: buildCanonText(args),
-      model: args.model,
-      maxOutputTokens: ON_MODEL_DETECTOR_MAX_TOKENS,
-      expectsJson: true,
-    });
-  } catch (err) {
-    if (err instanceof AnthropicTextError) {
-      return skipped(`on-model detector vision error: ${err.message.slice(0, 200)}`, args.model);
+  // Retry once on a parse/transient error before falling open. The model occasionally
+  // emits prose without the fenced JSON block (~2-3/29 observed on E30); a fail-open
+  // skip on a flake lets a genuinely off-model frame slip through, so one clean retry
+  // meaningfully tightens the gate at trivial cost.
+  let response: Awaited<ReturnType<typeof generateAnthropicVision>> | null = null;
+  let lastErr = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      response = await generateAnthropicVision({
+        systemPrompt: buildSystemPrompt(),
+        leadText:
+          'Compare the CANDIDATE image (last) against the Bible reference image(s) above. Judge the two identity axes only.',
+        images: buildVisionImages(args),
+        trailText: buildCanonText(args),
+        model: args.model,
+        maxOutputTokens: ON_MODEL_DETECTOR_MAX_TOKENS,
+        expectsJson: true,
+      });
+      break;
+    } catch (err) {
+      if (err instanceof AnthropicTextError) {
+        lastErr = err.message.slice(0, 200);
+        continue; // retry once, then fall open
+      }
+      throw err;
     }
-    throw err;
+  }
+  if (!response) {
+    return skipped(`on-model detector vision error (after retry): ${lastErr}`, args.model);
   }
 
   const body = response.body ?? {};
