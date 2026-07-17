@@ -64,12 +64,41 @@ When you write each shot's `action_prose`, run through this checklist:
    with the physical consequence: the rack is so tall the dumbbells are
    out of reach, he tiptoes, the shelf tips.
 4. **Concrete props.** Name the prop and what it does. Not "weight" —
-   "the 30-pound plate". Not "rope" — "the jump rope on the hook".
+   "the 30-pound cast-iron weight disc". Not "rope" — "the jump rope on
+   the hook". Concrete means *unmistakable to someone who has never read
+   your Bible* (see rule 7) — not merely specific.
 5. **Punctuation at the end.** Close on a beat the audience can hang a
    laugh on: a pose, a freeze, a final ricochet, a blink.
 6. **Continuity baked in.** The prose tells the next shot what to
-   inherit (the plate is still on the floor, the rope is still around
-   his head).
+   inherit (the weight disc is still on the floor, the rope is still
+   around his head).
+7. **Never write a word the world already owns.** Your prose is read by an
+   image generator that has never seen your Bible. It resolves every noun
+   with its OWN priors, and when a canon term also names a common everyday
+   object, the everyday object wins — every time. So bind the word on first
+   use **in that shot**: give it material, colour, or geometry. If you can't
+   bind it, don't use it — pick a word the world doesn't already own.
+   **Shots render INDEPENDENTLY.** A binding you wrote in SH04 does not
+   travel to SH05. Re-bind in every shot that names the thing.
+
+   Director's rule (2026-07-17): a term with two meanings is banned from
+   `action_prose`. When the render comes back wrong, the ambiguity is the
+   author's bug — never the generator's. It drew exactly what you wrote.
+
+   Worked failure — E30, the same word, two shots, two fates:
+   - SH04 wrote "Sandy's foot descends onto the **Dusty Violet** plate".
+     Bound by colour → rendered correctly: a violet floor slab liquefying.
+   - SH05 wrote "**the plate itself** bulges upward like a trampoline".
+     Bare → the generator drew a literal **dinner plate** holding yellow
+     goo, and dropped the trampoline launch entirely. The gag died.
+
+   Count the meanings that one word carries: in a gym "plate" is a weight
+   disc; on a hex-slab planet it is the floor; in a camera note a "flat
+   plate" is a composition; to a generator with no context it is tableware.
+   Four meanings, one word, and no glossary in the room. Write "the
+   hexagonal floor slab under his foot" and the trap is gone. (Rules 4 and 6
+   above used to say "plate" — they are rewritten, because this skill was
+   itself laying the trap it now warns about.)
 
 A good `action_prose` reads like a stage direction for an animator
 working in 2D limited animation: concrete, sequential, ending on a pose.
@@ -256,9 +285,16 @@ Run this pass over the storyboard as a whole, not just per-shot:
 3. **Locate setups and payoffs.** Each setup should have a payoff later
    in the sequence; each payoff should have a setup earlier. Orphans
    are a sign of broken cycles.
-4. **Confirm continuity carries.** The plate is still on the floor in
-   the next shot. The rope is still on his head. Cascade is funny only
+4. **Confirm continuity carries.** The weight disc is still on the floor
+   in the next shot. The rope is still on his head. Cascade is funny only
    if it persists.
+4b. **Hunt your own ambiguous nouns (craft rule 7).** Go noun by noun and
+   ask: *would a stranger who has never read the Bible draw this the way I
+   mean?* Any noun that also names a common object — plate, bar, ring,
+   spring, board, cell, crown, mount, chip — must carry a disambiguating
+   descriptor **in every shot that names it**, not just the first one that
+   introduced it. Grep the storyboard for each such noun and check the hits
+   one by one; the shot that renders wrong is always the bare one.
 5. **False-success beat is its OWN shot (formula stage 3).** For every
    try→backfire gag, point at the dedicated `reaction`/`pose` shot where
    Sandy believes he succeeded — it must sit BEFORE the backfire shot,
