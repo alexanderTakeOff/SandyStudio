@@ -12,7 +12,9 @@
 //   1. $PROJECT_ROOT/PLAN.md (if env set)
 //   2. Walk up from cwd looking for PLAN.md — picks up the current worktree's
 //      branch state, which is what an in-session sanity check should anchor on.
-//   3. C:/SandyStudio/PLAN.md (canonical fallback, master branch checkout)
+//   3. <repo>/PLAN.md derived from this script's own location (last resort).
+//      2026-07-17: this fallback used to be the literal 'C:/SandyStudio/PLAN.md'
+//      — the desktop's checkout — which resolved to nothing on any other machine.
 
 const fs = require('fs');
 const path = require('path');
@@ -36,7 +38,7 @@ function findFromCwd() {
 const candidates = [
   process.env.PROJECT_ROOT ? path.join(process.env.PROJECT_ROOT, 'PLAN.md') : null,
   findFromCwd(),
-  'C:/SandyStudio/PLAN.md',
+  path.join(__dirname, '..', '..', 'PLAN.md'),
 ].filter(Boolean);
 
 let planPath = null;

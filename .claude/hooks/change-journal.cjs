@@ -13,8 +13,14 @@
 // The journal is git-ignored (local, per-machine breadcrumb; would otherwise churn).
 // ──────────────────────────────────────────────────────────────────────────────
 const fs = require('fs');
+const path = require('path');
 
-const JOURNAL = 'C:/SandyStudio/.claude/CHANGES.md';
+// Repo root derived from THIS script's location (<repo>/.claude/hooks/) — never a
+// hardcoded machine path. 2026-07-17: was pinned to the desktop's 'C:/SandyStudio'
+// checkout, so on any other machine the journal wrote nowhere (the error is
+// swallowed by this hook's never-block contract) and paths never relativised.
+const REPO_ROOT = path.join(__dirname, '..', '..');
+const JOURNAL = path.join(__dirname, '..', 'CHANGES.md');
 const MAX_LINES = 500;
 
 function main() {
@@ -34,7 +40,7 @@ function main() {
 
   // Relativise to repo root when possible.
   let rel = norm;
-  const root = 'C:/SandyStudio/';
+  const root = REPO_ROOT.replace(/\\/g, '/').replace(/\/?$/, '/');
   if (norm.toLowerCase().startsWith(root.toLowerCase())) rel = norm.slice(root.length);
 
   const sid = String(data.session_id || '').slice(0, 8) || '--------';

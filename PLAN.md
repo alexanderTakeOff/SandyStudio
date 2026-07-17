@@ -20,7 +20,25 @@
 ## CURRENT STATE
 
 ```
-Date:   2026-07-17 (ffmpeg-резолвер: хардкод версии → glob — Тео, КОД, ===5===). EXEC-VCRIT (видео-критик) упал
+Date:   2026-07-17 (ХУКИ: хардкод пути машины → path-agnostic — Тео, КОД, ===5===). Директор увидел
+  «UserPromptSubmit hook error / loader:1368». Диагноз: `Cannot find module C:\SandyStudio\.claude\hooks\
+  training-capture.cjs`. Репо изначально жил в `C:\SandyStudio` (и живёт ТАМ на десктопе), лаптоп — вторая
+  машина (`C:\Users\Alexander\sandystudio`); `settings.json` В GIT и общий на две машины, поэтому абсолютный
+  путь физически работает только на одной. Коммит 90f2133c сделал path-agnostic ЛАУНЧЕР, до хуков не дошли.
+  На лаптопе молча мертвы ВСЕ 10 хуков 5 событий → governance (mode-validator `===1===`, naming, locked-guard,
+  plan-guard) НЕ enforced. **Фикс:** (1) `settings.json` → exec-форма `command:"node" + args:["${CLAUDE_PROJECT_DIR}/
+  .claude/hooks/x.cjs"]` — плейсхолдер подставляет сам Claude Code ДО шелла (подтв. схемой + докой hooks.md),
+  не зависит от bash/PowerShell; относительный путь отвергнут (cwd хука не гарантирован докой). (2) Хардкод
+  сидел и ВНУТРИ скриптов — `mode-validator` (`PLAN='C:/SandyStudio/PLAN.md'`), `change-journal`,
+  `parallel-session-warn` (cwd), `plan-md-staleness-check`: репо-корень теперь от `__dirname`. КРИТИЧНО: без (2)
+  фикс (1) стал бы регрессией — ожив, mode-validator не нашёл бы PLAN.md, откатился на fail-safe `===1===` и
+  заблокировал ЛЮБУЮ правку кода вопреки `===5===` (доказано негативным тестом: exit 2 BLOCKED; позитивный на
+  реальном репо: exit 0 allow). 10/10 хуков валидны, скрипты на месте, 4/4 стартуют. OPEN: `.codex/hooks*` —
+  та же гниль (6 хардкодов), но это конфиг Codex CLI, плейсхолдеры чужого инструмента не гадал → q Директору.
+  Хуки этой сессии подхватятся после `/hooks` или рестарта.
+Mode:   ===5=== EDIT (Director-authorized).
+
+2026-07-17 (ffmpeg-резолвер: хардкод версии → glob — Тео, КОД, ===5===). EXEC-VCRIT (видео-критик) упал
   «ffmpeg could not be launched» на E29/SH01. Диагноз: ffmpeg ИСПРАВЕН (winget 8.1.2), но (1) в коде winget-фоллбэк
   был прибит к `ffmpeg-8.1.1-full_build` / ffprobe к `7.1` — таких папок на диске нет, фоллбэк не фаерил молча;
   (2) `FFMPEG_PATH` Директор дописал в `.env.local` в 22:25, а сервер стартовал 22:24 → живой процесс env не перечитал

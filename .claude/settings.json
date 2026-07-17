@@ -11,7 +11,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/plan-md-staleness-check.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/plan-md-staleness-check.cjs"]
           }
         ]
       },
@@ -19,7 +20,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/parallel-session-warn.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/parallel-session-warn.cjs"]
           }
         ]
       }
@@ -30,7 +32,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/mode-validator.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/mode-validator.cjs"]
           }
         ]
       },
@@ -39,7 +42,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/naming-validator.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/naming-validator.cjs"]
           }
         ]
       },
@@ -48,7 +52,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/locked-status-guard.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/locked-status-guard.cjs"]
           }
         ]
       },
@@ -57,7 +62,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/plan-md-update-guard.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/plan-md-update-guard.cjs"]
           }
         ]
       },
@@ -66,7 +72,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/verify-trio-on-push.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/verify-trio-on-push.cjs"]
           }
         ]
       }
@@ -77,7 +84,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/change-journal.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/change-journal.cjs"]
           }
         ]
       }
@@ -87,7 +95,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/training-capture.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/training-capture.cjs"]
           }
         ]
       }
@@ -97,7 +106,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"C:/SandyStudio/.claude/hooks/session-end-memo-check.cjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/session-end-memo-check.cjs"]
           }
         ]
       }
