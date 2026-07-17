@@ -442,6 +442,16 @@ function buildUserMessage(args: {
   episodeTitle: string;
   shotId: string;
   shot: StoryboardShotV2;
+  /**
+   * Narrative context (Director 2026-07-17): the immediately prior and next
+   * shots in narrative order, full prose. The Designer authors ONE shot but
+   * must know the beat around it — SH05's "launch" is the payoff of SH04's
+   * "foot sinks", and without the neighbours the Designer plans blind and can
+   * drift (a move that started left continuing right). These are REASONING
+   * context to get THIS shot's plan right — never rendered into the image.
+   */
+  prevShot?: StoryboardShotV2 | null;
+  nextShot?: StoryboardShotV2 | null;
   bible: SeriesBibleCanon;
   deliveryTargets: readonly string[];
   priorPlanVersion: number | null;
@@ -484,6 +494,8 @@ function buildUserMessage(args: {
     episodeTitle,
     shotId,
     shot,
+    prevShot,
+    nextShot,
     bible,
     deliveryTargets,
     priorPlanVersion,
@@ -541,6 +553,30 @@ function buildUserMessage(args: {
     `expected_emotion: ${shot.expected_emotion ?? '(none)'}`,
     `characters_present: ${presentList}`,
     '</shot>',
+    '',
+    '## Narrative context — neighbouring shots (reasoning only, DO NOT render)',
+    '',
+    'These are the shots immediately before and after THIS one, in narrative',
+    'order. Use them ONLY to understand the beat you are drawing — what state the',
+    'scene arrives in, and where it goes next — so THIS reference stays continuous',
+    '(a pose, direction, or prop that the prior shot set up must not contradict).',
+    'Do NOT draw the neighbours\' content into this image; render ONLY the shot',
+    'above. If a neighbour is "(none)", this shot is at that end of the episode.',
+    '',
+    prevShot
+      ? [
+          `PREVIOUS (${prevShot.shot_id}, role ${prevShot.shot_role ?? 'unspecified'}):`,
+          `  action_prose: ${prevShot.action_prose ?? prevShot.action ?? prevShot.key_beat ?? '(unspecified)'}`,
+          `  expected_gag: ${prevShot.expected_gag ?? '(none)'}`,
+        ].join('\n')
+      : 'PREVIOUS: (none — this is the first shot of the episode)',
+    nextShot
+      ? [
+          `NEXT (${nextShot.shot_id}, role ${nextShot.shot_role ?? 'unspecified'}):`,
+          `  action_prose: ${nextShot.action_prose ?? nextShot.action ?? nextShot.key_beat ?? '(unspecified)'}`,
+          `  expected_gag: ${nextShot.expected_gag ?? '(none)'}`,
+        ].join('\n')
+      : 'NEXT: (none — this is the last shot of the episode)',
     '',
     '## Series Bible canon',
     '',
@@ -920,12 +956,29 @@ export async function runEpisodeReferenceDesigner(
     );
   }
 
+  // Narrative neighbours (Director 2026-07-17): full prose of the prior + next
+  // shot in narrative order, from the SAME storyboard already in hand. Gives the
+  // Designer the beat around the shot it authors so continuity doesn't drift.
+  // Independent of anchor_chain (a different, pixel-stitch mode we don't use).
+  const orderedShotIds = listStoryboardShots(stbAsset.content).map((s) => s.shotId);
+  const currentIdx = orderedShotIds.indexOf(shotId);
+  const prevShot =
+    currentIdx > 0
+      ? getStoryboardShotById(stbAsset.content, orderedShotIds[currentIdx - 1]!)
+      : null;
+  const nextShot =
+    currentIdx >= 0 && currentIdx < orderedShotIds.length - 1
+      ? getStoryboardShotById(stbAsset.content, orderedShotIds[currentIdx + 1]!)
+      : null;
+
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
     episodeCode,
     episodeTitle,
     shotId,
     shot,
+    prevShot,
+    nextShot,
     bible,
     deliveryTargets,
     priorPlanVersion,

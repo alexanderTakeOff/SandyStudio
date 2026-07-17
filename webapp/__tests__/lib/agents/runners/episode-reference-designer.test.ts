@@ -344,6 +344,30 @@ describe('runEpisodeReferenceDesigner — happy path', () => {
     expect(call.userMessage).toContain('SS-S99-E99-A1-SC01-SH01');
   });
 
+  it('injects the next shot prose as narrative context when planning SH01', async () => {
+    await runEpisodeReferenceDesigner({
+      inputs: happyInputs(),
+      shotId: 'SS-S99-E99-A1-SC01-SH01',
+    });
+    const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
+    expect(call.userMessage).toContain('Narrative context');
+    expect(call.userMessage).toContain('DO NOT render');
+    // SH01 is first → previous is (none), next is SH02 with its full prose.
+    expect(call.userMessage).toContain('PREVIOUS: (none');
+    expect(call.userMessage).toContain('Sandy leans over the counter to inspect a bottle.');
+  });
+
+  it('injects the previous shot prose as narrative context when planning SH02', async () => {
+    await runEpisodeReferenceDesigner({
+      inputs: happyInputs(),
+      shotId: 'SS-S99-E99-A1-SC01-SH02',
+    });
+    const call = mockedAnthropic.mock.calls[0]?.[0] as { userMessage?: string };
+    // SH02 is last → next is (none), previous is SH01 with its full prose + gag.
+    expect(call.userMessage).toContain('Sandy enters the perfume shop, scanning the counters.');
+    expect(call.userMessage).toContain('NEXT: (none');
+  });
+
   it('injects revisionNote into user message when supplied', async () => {
     await runEpisodeReferenceDesigner({
       inputs: happyInputs(),
