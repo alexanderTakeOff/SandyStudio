@@ -13,7 +13,14 @@
 // usable until PLAN.md is created in Sprint 1.
 
 const fs = require('fs');
-const PLAN = 'C:/SandyStudio/PLAN.md';
+const path = require('path');
+
+// Repo root derived from THIS script's location (<repo>/.codex/hooks/) — never a
+// hardcoded machine path. 2026-07-17: this was pinned to 'C:/SandyStudio/PLAN.md',
+// the desktop's checkout. On any other machine the file did not exist, so the
+// fail-safe below silently pinned the mode to ===1=== and blocked every Write/Edit
+// outside the bypass list, ignoring a Director-granted ===5===.
+const PLAN = path.join(__dirname, '..', '..', 'PLAN.md');
 
 const BYPASS_RE = [
   /(^|[\\/])PLAN\.md$/i,

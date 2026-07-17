@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\mode-validator.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/mode-validator.cjs\""
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\naming-validator.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/naming-validator.cjs\""
           }
         ]
       },
@@ -24,7 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\locked-status-guard.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/locked-status-guard.cjs\""
           }
         ]
       },
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\plan-md-update-guard.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/plan-md-update-guard.cjs\""
           }
         ]
       },
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\verify-trio-on-push.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/verify-trio-on-push.cjs\""
           }
         ]
       }
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\change-journal.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/change-journal.cjs\""
           }
         ]
       }
@@ -63,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\plan-md-staleness-check.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/plan-md-staleness-check.cjs\""
           }
         ]
       },
@@ -71,7 +71,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\parallel-session-warn.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/parallel-session-warn.cjs\""
           }
         ]
       }
@@ -81,7 +81,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\training-capture.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/training-capture.cjs\""
           }
         ]
       }
@@ -91,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node 'C:\\SandyStudio\\.codex\\hooks\\session-end-memo-check.cjs'"
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/session-end-memo-check.cjs\""
           }
         ]
       }

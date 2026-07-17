@@ -12,6 +12,15 @@ FILMS/
 # survives /clear; churns on every edit, so keep it out of git.
 .claude/CHANGES.md
 
+# Per-machine permission overrides. Untracked 2026-07-17: this was committed, so the
+# laptop and the desktop fought over ONE file whose entries are machine-specific by
+# nature (absolute paths, worktree names, per-box tool locations) — it had silently
+# accumulated cruft from three different machine identities, and the recurring
+# "local-claude-settings" stash was that fight. Claude Code's own convention is that
+# settings.local.json is local; settings.json stays tracked for shared config.
+# Last tracked content: commit 2f94b16e (restore a machine's copy from there if lost).
+.claude/settings.local.json
+
 # Environment variables
 .env
 .env.local

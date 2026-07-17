@@ -8,17 +8,24 @@
 // Override: SANDY_HOOKS_OFF=1 disables this hook entirely.
 
 const { execSync } = require('child_process');
+const path = require('path');
 
 if (process.env.SANDY_HOOKS_OFF === '1') process.exit(0);
 
 const HARD_CAP = 3; // main + 2 parallel
+
+// Repo root derived from THIS script's location (<repo>/.codex/hooks/) — never a
+// hardcoded machine path. 2026-07-17: was pinned to the desktop's 'C:/SandyStudio',
+// so on any other machine every git call ran in the wrong (or a nonexistent) cwd
+// and safeExec swallowed the failure — the worktree cap silently stopped counting.
+const REPO_ROOT = path.join(__dirname, '..', '..');
 
 function safeExec(cmd, opts = {}) {
   try {
     return execSync(cmd, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-      cwd: 'C:/SandyStudio',
+      cwd: REPO_ROOT,
       ...opts,
     }).trim();
   } catch (_) {
