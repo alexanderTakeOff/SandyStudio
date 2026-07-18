@@ -55,7 +55,14 @@ export type ReconcileAction =
   // Keeps the cell in REVIEW (no status flip) and escalates to the Director — a
   // rendered image is not auto-revisable, so it must NOT enter the critic
   // REVISE-loop. See the on-model branch in the creative else below.
-  | { kind: 'bounce'; shotId: string; stage: StageName; assetId: string; reason: string };
+  | { kind: 'bounce'; shotId: string; stage: StageName; assetId: string; reason: string }
+  // Critic REVISE → re-author edge (Phase 2+, 2026-07-18). A plan (ref_plan /
+  // shot_plan) a critic flipped to REVISION is re-authored by the producing agent
+  // (Designer / Animator) with the critic's notes as hard criteria. next-events.ts
+  // left this to "a Director-manual re-trigger today"; the reconciler now owns it,
+  // below the critic-revision cap (at cap the critic-loop already HALTed to Director).
+  // `assetId` = the REVISION plan's id. Executor collects notes + guards in-flight.
+  | { kind: 'reauthor'; shotId: string; stage: StageName; assetId: string; reason: string };
 
 export interface ReconcileContext {
   matrix: EpisodeStateMatrix;
@@ -272,6 +279,33 @@ export function planReconcileActions(ctx: ReconcileContext): ReconcileAction[] {
           });
         }
       }
+    }
+
+    // ── Critic REVISE → re-author (Phase 2+, 2026-07-18) ─────────────────────
+    // A plan a critic flipped to REVISION sits with NOBODY re-authoring it:
+    // next-events.ts explicitly leaves the REVISE→re-author edge to "a Director-
+    // manual re-trigger today (Phase 2+: the reconciler owns it)". This IS that —
+    // re-fire the producing agent (Designer / Animator) with the critic's notes,
+    // below the critic-revision cap. At/over the cap the critic-loop already
+    // coerced the verdict to HALT + escalated to the Director, so do nothing here.
+    // Idempotency: a re-author lifts the plan to a NEW version (no longer REVISION)
+    // so the next pass won't re-emit; the executor additionally guards an in-flight
+    // author job. Authoring stages only (ref_plan / shot_plan) — the money stages
+    // (ref_image / video) are handled by the bounce / creative branches above.
+    for (const stage of STAGE_ORDER) {
+      if (!STAGE_HAS_CRITIC[stage]) continue; // ref_plan / shot_plan only
+      const cell = shot.stages[stage];
+      if (cell.status !== 'REVISION') continue;
+      if (!cell.asset_id) continue;
+      const revisionsSoFar = Math.max(0, (cell.version ?? 1) - 1);
+      if (revisionsSoFar >= criticCap) continue; // critic-loop already HALTed at cap
+      actions.push({
+        kind: 'reauthor',
+        shotId: shot.shot_id,
+        stage,
+        assetId: cell.asset_id,
+        reason: `critic REVISE — re-author ${stage} (revision ${revisionsSoFar + 1}/${criticCap})`,
+      });
     }
 
     // ── Failure-spine Slice 3: mechanical refire of FAILED cells ─────────────

@@ -111,6 +111,8 @@ function renderAction(a: ReconcileAction): string {
       return `wait ${a.shotId ?? '·'}/${a.stage ?? '·'} — ${a.reason}`;
     case 'bounce':
       return `BOUNCE ${a.shotId}/${a.stage} (${a.assetId}) — ${a.reason}`;
+    case 'reauthor':
+      return `REAUTHOR ${a.shotId}/${a.stage} (${a.assetId}) — ${a.reason}`;
   }
 }
 

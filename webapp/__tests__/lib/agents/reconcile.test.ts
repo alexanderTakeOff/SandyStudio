@@ -346,6 +346,37 @@ describe('on-model gate (ref_image bounce)', () => {
   });
 });
 
+describe('critic REVISE → re-author (reconcile owns the Phase 2+ edge)', () => {
+  it('re-authors a shot_plan stuck in REVISION below the cap', () => {
+    const m = matrix([shot('SH01', { shot_plan: st({ status: 'REVISION', asset_id: 'sp1', version: 1 }) })]);
+    const acts = planReconcileActions(ctx({ matrix: m, criticCap: 2 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'reauthor', assetId: 'sp1', stage: 'shot_plan' }),
+    );
+  });
+
+  it('re-authors a ref_plan in REVISION too (same shared edge)', () => {
+    const m = matrix([shot('SH01', { ref_plan: st({ status: 'REVISION', asset_id: 'rp1', version: 2 }) })]);
+    const acts = planReconcileActions(ctx({ matrix: m, criticCap: 3 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'reauthor', assetId: 'rp1', stage: 'ref_plan' }),
+    );
+  });
+
+  it('does NOT re-author at/over the cap — the critic-loop already HALTed there', () => {
+    // version 3 → revisionsSoFar 2 >= cap 2
+    const m = matrix([shot('SH01', { shot_plan: st({ status: 'REVISION', asset_id: 'sp1', version: 3 }) })]);
+    const acts = planReconcileActions(ctx({ matrix: m, criticCap: 2 }));
+    expect(acts.filter((a) => a.kind === 'reauthor')).toHaveLength(0);
+  });
+
+  it('does NOT re-author a money stage in REVISION — authoring stages only', () => {
+    const m = matrix([shot('SH01', { video: st({ status: 'REVISION', asset_id: 'v1', version: 1 }) })]);
+    const acts = planReconcileActions(ctx({ matrix: m }));
+    expect(acts.filter((a) => a.kind === 'reauthor')).toHaveLength(0);
+  });
+});
+
 describe('collectOnModelSignals', () => {
   it('folds on_model.verdict into a ref_image-keyed map, latest version wins', () => {
     const verdicts = collectOnModelSignals([

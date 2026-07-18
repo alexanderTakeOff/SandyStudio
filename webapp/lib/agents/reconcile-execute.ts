@@ -24,6 +24,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
 import { logEvent } from '../api/events';
 import { raiseBlockerOnce } from '../api/blocker-escalation';
+import { collectRefCriticNotes, collectShotCriticNotes, mergeRevisionNote } from '../api/critic-notes';
 import {
   resolveSlotDescriptor,
   demoteSiblingApproved,
@@ -66,6 +67,8 @@ export interface ReconcileResult {
   halted: Array<{ shotId: string; stage: string; reason: string }>;
   /** On-model FAILs bounced this pass (kept in REVIEW + escalated to the Director). */
   bounced: Array<{ shotId: string; stage: string; reason: string }>;
+  /** Plans re-authored this pass (critic REVISE → producing agent re-fired). */
+  reauthored: Array<{ shotId: string; stage: string; reason: string }>;
 }
 
 const EMPTY: ReconcileResult = {
@@ -75,6 +78,7 @@ const EMPTY: ReconcileResult = {
   events: [],
   halted: [],
   bounced: [],
+  reauthored: [],
 };
 
 export async function reconcileEpisode(
@@ -141,6 +145,22 @@ export async function reconcileEpisode(
     refireCounts.set(key, (refireCounts.get(key) ?? 0) + 1);
   }
 
+  // REVISE→re-author idempotency (Phase 2+): the set of plan asset_ids we've
+  // ALREADY re-authored (one `reconcile/reauthor` per plan version). Keying on the
+  // REVISION plan's own asset_id means re-running reconcile on the same still-in-
+  // REVISION plan does NOT re-fire the author; a fresh REVISE produces a new plan
+  // version (new asset_id) that is re-authored exactly once in turn.
+  const reauthoredAssetIds = new Set<string>();
+  const { data: reauthorData } = await supabase
+    .from('activity_events')
+    .select('metadata')
+    .eq('episode_id', episodeId)
+    .eq('event_type', 'reconcile/reauthor');
+  for (const row of (reauthorData ?? []) as Array<{ metadata?: unknown }>) {
+    const aid = (row.metadata as { asset_id?: unknown } | null)?.asset_id;
+    if (typeof aid === 'string') reauthoredAssetIds.add(aid);
+  }
+
   const plan = readProductionPlan(episodeMeta);
   // SAFETY: default reservedShots to the pilot set (when 'pilots' is reserved) so
   // pilots are never auto-approved past the Director's visual gate. An explicit
@@ -164,6 +184,7 @@ export async function reconcileEpisode(
   const approvedAssetIds: string[] = [];
   const halted: Array<{ shotId: string; stage: string; reason: string }> = [];
   const bounced: Array<{ shotId: string; stage: string; reason: string }> = [];
+  const reauthored: Array<{ shotId: string; stage: string; reason: string }> = [];
 
   for (const action of actions) {
     if (action.kind === 'approve') {
@@ -251,11 +272,47 @@ export async function reconcileEpisode(
         description: action.reason,
         metadata: { shot_id: action.shotId, stage: action.stage, asset_id: action.assetId, reason: 'RECONCILE_BOUNCE' },
       });
+    } else if (action.kind === 'reauthor') {
+      // Critic REVISE → re-author the plan via its producing agent, with the
+      // critic's notes as hard acceptance criteria. Idempotent per plan version:
+      // skip if this exact REVISION plan was already re-authored. The event is
+      // pushed to `events` for the caller to dispatch (same contract as the cascade).
+      if (!reauthoredAssetIds.has(action.assetId)) {
+        reauthoredAssetIds.add(action.assetId); // guard within this pass too
+        const isRef = action.stage === 'ref_plan';
+        // Critic notes are best-effort: a collection hiccup must not block the
+        // re-author (the Animator/Designer injects revisionNote as hard criteria
+        // when present; without it, it re-authors fresh and the critic re-judges,
+        // still bounded by the revision cap).
+        let bullets: string[] = [];
+        try {
+          bullets = isRef
+            ? await collectRefCriticNotes(supabase, episodeId, action.shotId)
+            : await collectShotCriticNotes(supabase, episodeId, action.shotId);
+        } catch {
+          /* leave notes empty — re-author still fires */
+        }
+        const revisionNote = mergeRevisionNote(null, bullets);
+        events.push({
+          name: isRef ? 'sandystudio/exec-eref-designer/plan' : 'sandystudio/exec-vanim/plan',
+          data: { episodeId, shotId: action.shotId, revisionNote },
+        });
+        reauthored.push({ shotId: action.shotId, stage: action.stage, reason: action.reason });
+        await logEvent(supabase, {
+          event_type: 'reconcile/reauthor',
+          severity: 'info',
+          title: `Re-author ${action.shotId} · ${action.stage} — critic REVISE`,
+          description: action.reason,
+          actor: 'exec-dir-ai',
+          episode_id: episodeId,
+          metadata: { shot_id: action.shotId, stage: action.stage, asset_id: action.assetId, reason: 'RECONCILE_REAUTHOR' },
+        });
+      }
     }
     // 'wait' → nothing to do this pass.
   }
 
-  return { ran: true, actions, approvedAssetIds, events, halted, bounced };
+  return { ran: true, actions, approvedAssetIds, events, halted, bounced, reauthored };
 }
 
 /**

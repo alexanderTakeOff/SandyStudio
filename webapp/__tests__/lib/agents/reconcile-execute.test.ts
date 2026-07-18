@@ -166,6 +166,26 @@ describe('reconcileEpisode', () => {
     expect(tables.activity_events.some((e) => e.event_type === 'blocker_raised')).toBe(true);
   });
 
+  it('re-authors a shot_plan stuck in REVISION (critic REVISE) then is idempotent', async () => {
+    const { client, tables } = makeMockSupabase({
+      episodes: [{ id: EP, episode_code: 'SS-S1-E1', metadata: {} }],
+      assets: [
+        storyboard([SHOT]),
+        { id: 'sp1', episode_id: EP, file_type: 'SPC-shot_plan', status: 'REVISION', version: 1, metadata: { shot_id: SHOT } },
+      ],
+    });
+    const res = await reconcileEpisode(client, EP, { force: true });
+    expect(res.reauthored).toHaveLength(1);
+    expect(res.reauthored[0]).toMatchObject({ shotId: SHOT, stage: 'shot_plan' });
+    // fired the Animator re-author + logged the reconcile/reauthor audit row
+    expect(res.events.some((e) => e.name === 'sandystudio/exec-vanim/plan')).toBe(true);
+    expect(tables.activity_events.some((e) => e.event_type === 'reconcile/reauthor')).toBe(true);
+    // Idempotent: a second pass over the STILL-REVISION plan does NOT re-fire it.
+    const again = await reconcileEpisode(client, EP, { force: true });
+    expect(again.reauthored).toHaveLength(0);
+    expect(again.events.some((e) => e.name === 'sandystudio/exec-vanim/plan')).toBe(false);
+  });
+
   it('auto-approves an on-model ref image (on_model PASS) in Mode 3 — gate lets good ones through', async () => {
     const { client, tables } = makeMockSupabase({
       episodes: [{ id: EP, episode_code: 'SS-S1-E1', governance_mode: '3', metadata: {} }],

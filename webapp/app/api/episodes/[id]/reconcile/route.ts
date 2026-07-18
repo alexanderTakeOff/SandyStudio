@@ -44,6 +44,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     approved: result.approvedAssetIds,
     halted: result.halted,
     bounced: result.bounced,
+    reauthored: result.reauthored,
     actions: result.actions,
     fired_events: fired,
   });
