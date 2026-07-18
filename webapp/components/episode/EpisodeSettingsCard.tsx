@@ -400,12 +400,14 @@ export function EpisodeSettingsCard({
           <div>
             <div className="text-sm font-medium text-text-primary">On-model gate</div>
             <div className="text-xs text-text-muted mt-0.5 leading-relaxed">
-              <strong>Loose</strong> — gate off; rendered references auto-approve as before (default).{' '}
-              <strong>Medium</strong> — bounce a shot whose character loses its silhouette (blob /
-              wrong creature); milky or opaque bodies are tolerated.{' '}
-              <strong>Strict</strong> — also bounce body-material drift (e.g. a glass body rendered
-              opaque). A bounced shot stays in REVIEW and is escalated to you. Transformation shots
-              (gloop / morph) are exempt from the silhouette check.
+              A rendered reference is checked against the shot&apos;s Bible canon (character, location,
+              style, props).{' '}
+              <strong>Loose</strong> — gate off; references auto-approve as before (default).{' '}
+              <strong>Medium</strong> — bounce a wrong character silhouette or a wrong
+              location/background.{' '}
+              <strong>Strict</strong> — bounce any canon mismatch (also body material, style, props).
+              A bounced shot stays in REVIEW and is escalated to you. Transformation shots (morph)
+              are exempt from the silhouette check only.
             </div>
             <div className="mt-2 inline-flex rounded-md border border-glass overflow-hidden">
               {(['loose', 'medium', 'strict'] as const).map((level) => (

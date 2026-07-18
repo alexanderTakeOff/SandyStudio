@@ -145,7 +145,7 @@ async function loadLatestFrames() {
     const usedRefs = shotRefs.length > 0 ? shotRefs : refs.filter((r) => r.image_b64);
     const raw = await runOnModelDetector({
       candidateImageB64: candidate,
-      characterRefs: usedRefs,
+      canonRefs: usedRefs.map((r) => ({ slug: r.slug, kind: 'character' as const, image_b64: r.image_b64, description: r.description })),
       episodeCode: 'SS-S15-E30',
       shotId: f.shotId,
       model,

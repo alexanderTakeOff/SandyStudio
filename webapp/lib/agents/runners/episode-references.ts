@@ -2605,10 +2605,12 @@ export async function runEpisodeReferences(
       supabase,
     });
 
-    // ── On-model gate (2026-07-17): a focused identity detector, SEPARATE from the
-    // EREF critic (which can't reliably see off-model). Runs only when the episode's
-    // strictness dial is medium/strict; `loose` skips the vision call (gate off). The
-    // PASS/FAIL verdict is FROZEN here, next to the pixels it judged — the reconciler
+    // ── On-model gate (2026-07-17): a focused canon-compliance detector, SEPARATE
+    // from the EREF critic (which can't reliably see off-model). One binary axis per
+    // canon the shot cites — character silhouette/transparency, location, style, props.
+    // Runs only when the episode's strictness dial is medium/strict; `loose` skips the
+    // vision call (gate off). medium enforces silhouette+location, strict enforces all.
+    // The PASS/FAIL verdict is FROZEN here, next to the pixels it judged — the reconciler
     // reads only `on_model.verdict` (FAIL → bounce to the Director). Fail-open throughout.
     const onModelStrictness = readOnModelStrictness(ep?.metadata);
     const isTransformationShot = job.shot.transformation === true;
@@ -2616,8 +2618,11 @@ export async function runEpisodeReferences(
     let onModelResult: OnModelResult;
     if (onModelStrictness === 'loose') {
       onModelResult = {
-        silhouette_ok: true,
-        transparency_ok: true,
+        silhouette_ok: null,
+        transparency_ok: null,
+        location_ok: null,
+        style_ok: null,
+        objects_ok: null,
         reason: 'gate off (loose)',
         verdict: 'PASS',
         strictness: 'loose',
@@ -2630,9 +2635,12 @@ export async function runEpisodeReferences(
       const detectorModel = await resolveOnModelDetectorModel(supabase);
       const raw = await runOnModelDetector({
         candidateImageB64: approvedB64,
-        characterRefs: job.bibleRefs
-          .filter((r) => r.kind === 'character')
-          .map((r) => ({ slug: r.slug, image_b64: r.image_b64, description: r.description })),
+        canonRefs: job.bibleRefs.map((r) => ({
+          slug: r.slug,
+          kind: r.kind,
+          image_b64: r.image_b64,
+          description: r.description,
+        })),
         episodeCode: epCode,
         shotId: job.shot.shot_id,
         model: detectorModel,
@@ -2642,6 +2650,9 @@ export async function runEpisodeReferences(
       onModelResult = {
         silhouette_ok: raw.silhouette_ok,
         transparency_ok: raw.transparency_ok,
+        location_ok: raw.location_ok,
+        style_ok: raw.style_ok,
+        objects_ok: raw.objects_ok,
         reason: raw.reason,
         verdict,
         strictness: onModelStrictness,
@@ -2665,6 +2676,9 @@ export async function runEpisodeReferences(
             strictness: onModelStrictness,
             silhouette_ok: raw.silhouette_ok,
             transparency_ok: raw.transparency_ok,
+            location_ok: raw.location_ok,
+            style_ok: raw.style_ok,
+            objects_ok: raw.objects_ok,
             is_transformation: isTransformationShot,
             model: raw.model,
           },

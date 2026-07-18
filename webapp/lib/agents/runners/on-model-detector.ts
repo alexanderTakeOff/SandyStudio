@@ -31,20 +31,23 @@ export const ON_MODEL_DETECTOR_MAX_TOKENS = 700;
 const APP_CONFIG_SCOPE = 'on_model';
 const APP_CONFIG_KEY = 'model';
 
-/** One Bible character reference — canon identity ground truth for the detector. */
-export interface OnModelCharacterRef {
+export type OnModelCanonKind = 'character' | 'location' | 'style' | 'object';
+
+/** One LOCKED Bible reference of any kind — canon ground truth for the detector. */
+export interface OnModelCanonRef {
   slug: string;
-  /** Base64 PNG (no data: prefix). Refs without an image are skipped. */
+  kind: OnModelCanonKind;
+  /** Base64 PNG (no data: prefix). Refs without an image are skipped as anchors. */
   image_b64: string | null;
-  /** Long-form Bible description — grounds the silhouette/material rubric in text. */
+  /** Long-form Bible description — grounds the rubric in text. */
   description: string;
 }
 
 export interface RunOnModelDetectorArgs {
   /** Candidate image fresh from the provider — base64 PNG. */
   candidateImageB64: string;
-  /** LOCKED Bible character refs for the character(s) expected in this shot. */
-  characterRefs: OnModelCharacterRef[];
+  /** LOCKED Bible refs for every canon this shot cites (character/location/style/object). */
+  canonRefs: OnModelCanonRef[];
   /** Episode code + shot id for prompt context. */
   episodeCode: string;
   shotId: string;
@@ -52,13 +55,17 @@ export interface RunOnModelDetectorArgs {
   model: string;
 }
 
+/** Per-axis result: `boolean | null` (null = no canon of that kind → not judged). */
 export interface OnModelDetectorResult {
-  silhouette_ok: boolean;
-  transparency_ok: boolean;
+  silhouette_ok: boolean | null;
+  transparency_ok: boolean | null;
+  location_ok: boolean | null;
+  style_ok: boolean | null;
+  objects_ok: boolean | null;
   reason: string;
   model: string;
   cost_usd: number;
-  /** True when the vision call was bypassed (fail-open PASS). */
+  /** True when the vision call was bypassed (fail-open — every axis null). */
   skipped: boolean;
 }
 
@@ -91,40 +98,77 @@ export async function resolveOnModelDetectorModel(
 
 // ── Prompt ────────────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(): string {
+const KIND_LABEL: Record<OnModelCanonKind, string> = {
+  character: 'character',
+  location: 'location / background',
+  style: 'rendering style',
+  object: 'prop / object',
+};
+
+/** Build the schema + axis rubric for ONLY the axes this shot has a canon for. */
+function buildSystemPrompt(present: Set<OnModelCanonKind>): string {
+  const axes: string[] = [];
+  const schema: string[] = [];
+  if (present.has('character')) {
+    axes.push(
+      '  silhouette_ok   — TRUE only if the rendered character is RECOGNISABLE as THIS canon',
+      '                    character by its overall shape/silhouette (whatever that shape is in the',
+      '                    reference). FALSE if the shape is lost — a blob, a different creature, an',
+      '                    unrecognisable mass.',
+      '  transparency_ok — Judge the body MATERIAL, not its brightness. Read the material from the',
+      '                    canon reference itself. If the canon body is a transmissive/translucent',
+      '                    material, the candidate PASSES only while it still reads as that material —',
+      '                    light passes through, internal depth / visible contents. If the canon body',
+      '                    is opaque, judge that the surface finish still matches. Scene lighting',
+      '                    legitimately darkens/tints a body (night, coloured ambient) — that is',
+      '                    CORRECT, not a defect. FAIL only a genuine MATERIAL SWAP vs the canon (e.g.',
+      '                    a transmissive canon rendered as a flat opaque painted mass). TRUE when the',
+      '                    canon material is unremarkable and the candidate keeps it.',
+    );
+    schema.push('  "silhouette_ok": true | false,', '  "transparency_ok": true | false,');
+  }
+  if (present.has('location')) {
+    axes.push(
+      '  location_ok      — Does the BACKGROUND / setting match the location canon reference? Compare',
+      '                    PLACE, not lighting: the same setting at night is still on-model. FALSE when',
+      '                    the setting is a DIFFERENT place than the canon (a different room / an',
+      '                    exterior where the canon is an interior / a different environment entirely).',
+      '                    If the canon location is a flat colour FIELD, TRUE as long as the background',
+      '                    is that canonical flat colour (no wrong room/scenery built in).',
+    );
+    schema.push('  "location_ok": true | false,');
+  }
+  if (present.has('style')) {
+    axes.push(
+      '  style_ok         — Does the rendering (medium, line, shading, palette discipline) match the',
+      '                    style canon? FALSE on a clear medium break (photoreal / 3D / wrong art style).',
+    );
+    schema.push('  "style_ok": true | false,');
+  }
+  if (present.has('object')) {
+    axes.push(
+      '  objects_ok       — Do the canon props shown match their object canon (shape/colour/count)?',
+      '                    FALSE when a cited canon prop is clearly wrong or replaced. Ignore props not in canon.',
+    );
+    schema.push('  "objects_ok": true | false,');
+  }
   return [
-    'You are the ON-MODEL DETECTOR, a strict identity inspector for an animated series.',
+    'You are the ON-MODEL DETECTOR, a strict canon-compliance inspector for an animated series.',
     '',
-    'You receive:',
-    '  1. ONE OR MORE BIBLE REFERENCE images — the LOCKED canonical look of a character.',
-    '     These are identity ground truth.',
-    '  2. The CANDIDATE image (LAST) — a freshly generated frame to judge.',
+    'You receive LOCKED Bible reference images (labelled by kind: character / location / style /',
+    'prop) that are canon ground truth, then the CANDIDATE image (LAST) — a freshly generated',
+    'frame to judge. Judge ONLY the axes below (one per canon kind you were given). Ignore',
+    'framing, emotion, and action — not your job.',
     '',
-    'Judge the candidate on EXACTLY TWO binary axes, comparing ONLY the character(s)',
-    'against the Bible canon (ignore background, framing, emotion, action — not your job):',
+    ...axes,
     '',
-    '  silhouette_ok   — TRUE only if the rendered character is RECOGNISABLE as the canon',
-    '                    character by its overall shape/silhouette. FALSE if the shape is',
-    '                    lost — a blob, a different creature, an unrecognisable mass.',
-    '  transparency_ok — Judge the body MATERIAL, not its brightness. If the canon body is a',
-    '                    transmissive material (e.g. transparent glass), the candidate PASSES as',
-    '                    long as it still reads as that material — light passes through, there is',
-    '                    internal depth / refraction / visible contents. Scene lighting legitimately',
-    '                    changes how it reads: under night or strong coloured ambient the glass will',
-    '                    look DARKER, more saturated, or tinted toward the ambient — that is CORRECT,',
-    '                    NOT a defect (the canon may be a daytime reference). FAIL only when the body',
-    '                    is a FLAT OPAQUE painted mass — a solid recolour with no transmission and no',
-    '                    internal depth, a genuine material swap. TRUE by default when the canon body',
-    '                    has no special material property.',
-    '',
-    'Silhouette: be strict. Transparency: judge material identity, be tolerant of lighting.',
-    'When in genuine doubt on silhouette, prefer FALSE — a human will confirm.',
+    'Be strict on silhouette and location (different character / different place = FALSE). Be',
+    'tolerant of scene lighting. When in genuine doubt, prefer FALSE — a human will confirm.',
     '',
     'Output ONLY one fenced ```json block. No preamble, no prose outside it. Schema:',
     '```json',
     '{',
-    '  "silhouette_ok": true | false,',
-    '  "transparency_ok": true | false,',
+    ...schema,
     '  "reason": "<= 200 chars — the single clearest reason for any FALSE, else \'on-model\'"',
     '}',
     '```',
@@ -135,21 +179,22 @@ function buildCanonText(args: RunOnModelDetectorArgs): string {
   const lines: string[] = [];
   lines.push(`# Shot ${args.shotId} (episode ${args.episodeCode})`);
   lines.push('');
-  lines.push('## Canon character identity (from the Bible)');
-  for (const c of args.characterRefs) {
-    lines.push(`### ${c.slug}`);
-    if (c.description) lines.push(c.description.slice(0, 800));
+  lines.push('## Canon references (from the Bible)');
+  for (const c of args.canonRefs) {
+    if (!c.description) continue;
+    lines.push(`### ${KIND_LABEL[c.kind]}: ${c.slug}`);
+    lines.push(c.description.slice(0, 600));
   }
   return lines.join('\n');
 }
 
 function buildVisionImages(args: RunOnModelDetectorArgs): VisionImage[] {
   const out: VisionImage[] = [];
-  for (const ref of args.characterRefs) {
+  for (const ref of args.canonRefs) {
     if (!ref.image_b64) continue;
     out.push({
       base64: ref.image_b64,
-      caption: `# Bible reference: character "${ref.slug}" (LOCKED canon — identity ground truth)`,
+      caption: `# Bible reference: ${KIND_LABEL[ref.kind]} "${ref.slug}" (LOCKED canon)`,
     });
   }
   out.push({
@@ -161,14 +206,21 @@ function buildVisionImages(args: RunOnModelDetectorArgs): VisionImage[] {
 
 // ── Coercion ────────────────────────────────────────────────────────────────
 
-/** Missing/garbage → false (strict: an unparseable axis reads as a failure). */
-function coerceBool(v: unknown): boolean {
+/** An axis is judged (true/false) only when its canon kind is present; else null
+ *  (not applicable — decideOnModel never fails a null axis). Within a judged axis,
+ *  missing/garbage from the model → false (strict: an unparseable axis is a failure). */
+function coerceAxis(present: boolean, v: unknown): boolean | null {
+  if (!present) return null;
   return v === true;
 }
 
 function skipped(reason: string, model: string): OnModelDetectorResult {
-  // Fail-open: an offline / anchorless detector must never bounce a shot.
-  return { silhouette_ok: true, transparency_ok: true, reason, model, cost_usd: 0, skipped: true };
+  // Fail-open: an offline / anchorless detector must never bounce a shot. Every axis
+  // null ⇒ decideOnModel returns PASS regardless of strictness.
+  return {
+    silhouette_ok: null, transparency_ok: null, location_ok: null, style_ok: null, objects_ok: null,
+    reason, model, cost_usd: 0, skipped: true,
+  };
 }
 
 // ── Main entry ────────────────────────────────────────────────────────────────
@@ -179,9 +231,13 @@ export async function runOnModelDetector(
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
     return skipped('ANTHROPIC_API_KEY not set — detector bypassed (fail-open PASS)', args.model);
   }
-  const withImage = args.characterRefs.filter((r) => r.image_b64);
-  if (withImage.length === 0) {
-    return skipped('No LOCKED character reference image — nothing to anchor identity (fail-open PASS)', args.model);
+  // Which canon kinds actually have a LOCKED image to anchor against — only those
+  // axes are judged; the rest stay null (not applicable).
+  const present = new Set<OnModelCanonKind>(
+    args.canonRefs.filter((r) => r.image_b64).map((r) => r.kind),
+  );
+  if (present.size === 0) {
+    return skipped('No LOCKED canon reference image — nothing to anchor (fail-open PASS)', args.model);
   }
 
   // Retry once on a parse/transient error before falling open. The model occasionally
@@ -193,9 +249,9 @@ export async function runOnModelDetector(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       response = await generateAnthropicVision({
-        systemPrompt: buildSystemPrompt(),
+        systemPrompt: buildSystemPrompt(present),
         leadText:
-          'Compare the CANDIDATE image (last) against the Bible reference image(s) above. Judge the two identity axes only.',
+          'Compare the CANDIDATE image (last) against the LOCKED Bible reference image(s) above. Judge only the axes in the schema.',
         images: buildVisionImages(args),
         trailText: buildCanonText(args),
         model: args.model,
@@ -221,8 +277,11 @@ export async function runOnModelDetector(
       ? body.reason.slice(0, 200)
       : 'on-model';
   return {
-    silhouette_ok: coerceBool(body.silhouette_ok),
-    transparency_ok: coerceBool(body.transparency_ok),
+    silhouette_ok: coerceAxis(present.has('character'), body.silhouette_ok),
+    transparency_ok: coerceAxis(present.has('character'), body.transparency_ok),
+    location_ok: coerceAxis(present.has('location'), body.location_ok),
+    style_ok: coerceAxis(present.has('style'), body.style_ok),
+    objects_ok: coerceAxis(present.has('object'), body.objects_ok),
     reason,
     model: response.model,
     cost_usd: response.costUsd,
