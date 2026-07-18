@@ -51,6 +51,10 @@ export const regenerateImageFromPlan: Tool<RegenerateImageFromPlanArgs> = {
     "Do NOT use this to start a fresh Designer round (use regenerateRefPlan for that) " +
     "or to re-fire the whole episode pilot pass (use triggerAgent with agentCode=EXEC-EREF " +
     "for that — rare). " +
+    "NEVER call this in response to a Director REJECT / REQUEST_REVISION of a reference: the " +
+    "factory already auto-re-authors the Plan with the Director's note as hard criteria and " +
+    "re-renders on its own. Firing this in that window races the re-author and executes the " +
+    "STALE pre-revision plan (E30 SH05). On a reject, do NOTHING — let the factory finish. " +
     "ANCHOR MODE: if the shot's Plan has a start+end anchor_pair and only ONE side rendered " +
     "badly, pass anchorTarget='start' or 'end' to regen ONLY that side — the opposite APPROVED " +
     "anchor is left untouched (saves time + cost). Omit anchorTarget (or 'both') for the whole pair. " +

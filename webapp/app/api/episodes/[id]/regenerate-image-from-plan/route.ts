@@ -34,7 +34,7 @@ import { logEvent } from '@/lib/api/events';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
-import { NotFoundError, ValidationError } from '@/lib/api/errors';
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/api/errors';
 import { resolveShotId } from '@/lib/api/shot-id';
 import { inngest } from '@/lib/inngest/client';
 import {
@@ -127,6 +127,46 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (planShotId && planShotId !== shotId) {
     throw new ValidationError(
       `Plan ${body.planAssetId} is for shot ${planShotId}, not ${shotId}`,
+    );
+  }
+
+  // ── Revision-race guard (2026-07-18, E30 SH05) ──────────────────────────────
+  // When the Director REJECTs / REQUEST_REVISIONs a reference, the approve route
+  // auto-chains the Designer to re-author the plan with the note as HARD acceptance
+  // criteria, then re-renders. If something ALSO fires this route in that window
+  // (Polina auto-allowed it in Mode-3 "bold" 34s after the reject), the re-authored
+  // plan does not exist yet, so it executes the STALE pre-revision plan — and Mode-3
+  // auto-approves the same rejected image. Refuse two ways:
+  //   (1) shot's latest reference is in REVISION → a re-author is in flight (the
+  //       factory owns reject→re-render; do not race it).
+  //   (2) the passed plan is superseded — a newer non-INVALIDATED plan exists.
+  const { data: shotImgRows } = await supabase
+    .from('assets')
+    .select('status,version,metadata')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'IMG-episode_ref%');
+  const latestShotImg = ((shotImgRows ?? []) as Array<{ status?: string; version?: number; metadata?: unknown }>)
+    .filter((r) => (r.metadata as { shot_reference?: { shot_id?: string } } | null)?.shot_reference?.shot_id === shotId)
+    .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
+  if (latestShotImg?.status === 'REVISION') {
+    throw new ConflictError(
+      `Shot ${shotId} is in REVISION — the factory is re-authoring its plan from the Director's note and will re-render automatically. Executing a plan now races that and can render the stale pre-revision plan. Wait for the re-author to land, or use regenerateRefPlan.`,
+    );
+  }
+  const { data: shotPlanRows } = await supabase
+    .from('assets')
+    .select('id,version,status,file_type,metadata')
+    .eq('episode_id', episodeId)
+    .like('file_type', 'SPC-ref_plan%');
+  const latestShotPlan = ((shotPlanRows ?? []) as Array<{ id: string; version?: number; status?: string; file_type?: string; metadata?: unknown }>)
+    .filter((r) => r.status !== 'INVALIDATED')
+    .filter((r) =>
+      (r.metadata as { shot_id?: string } | null)?.shot_id === shotId ||
+      (r.file_type ?? '') === `SPC-ref_plan-${shotId}`)
+    .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
+  if (latestShotPlan && latestShotPlan.id !== body.planAssetId) {
+    throw new ConflictError(
+      `Plan ${body.planAssetId} is superseded for shot ${shotId} — a newer plan exists (${latestShotPlan.id}, v${latestShotPlan.version ?? '?'}, ${latestShotPlan.status}). Execute the latest plan instead.`,
     );
   }
 
