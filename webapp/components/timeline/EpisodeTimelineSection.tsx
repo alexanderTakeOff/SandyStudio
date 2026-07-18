@@ -20,8 +20,9 @@
 
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
+import { useEpisodeRealtime } from '@/hooks/useEpisodeRealtime';
 import { ChevronDown, ChevronUp, Film, CheckCircle2, Loader2 } from 'lucide-react';
 import { fetcher } from '@/lib/swr';
 import {
@@ -148,11 +149,12 @@ export function EpisodeTimelineSection({
     `/api/episodes/${episodeId}`,
     fetcher,
     {
-      // q4a — poll faster while a per-shot designer / video-artist job is live
-      // so the cell pulse stays responsive; fall back to a short idle cadence.
-      // 2026-06-26 (Director): idle 30s → 8s so a freshly-started job is noticed
-      // (and the cell starts pulsing) within ~8s instead of up to 30s — the gap
-      // that made "Polina started X but the timeline shows nothing" unnerving.
+      // 2026-07-18 (Director "5s polling жутко бесит"): Realtime push is now the
+      // PRIMARY freshness path (useEpisodeRealtime below invalidates this key the
+      // instant an activity_event lands for the episode → sub-second updates). The
+      // poll here is only a FALLBACK for when the Realtime socket drops, so it can
+      // relax hard: a still-live job gets a 10s safety re-check, idle 30s. This
+      // cuts idle egress ~4× vs the old 4s/8s while feeling instant via Realtime.
       refreshInterval: (latest) => {
         const jobs = latest?.data.jobs ?? [];
         const live = jobs.some(
@@ -160,10 +162,15 @@ export function EpisodeTimelineSection({
             (j.status === 'RUNNING' || j.status === 'QUEUED') &&
             workPhaseForAgent(j.agent_id) !== null,
         );
-        return live ? 4_000 : 8_000;
+        return live ? 10_000 : 30_000;
       },
     },
   );
+
+  // Realtime primary: push a refetch of the computed matrix the moment anything
+  // changes for this episode (job start/finish, approve, bounce, reconcile all
+  // write an activity_event). Debounced inside the hook so bursts coalesce.
+  useEpisodeRealtime(episodeId, useCallback(() => void mutate(), [mutate]));
 
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
