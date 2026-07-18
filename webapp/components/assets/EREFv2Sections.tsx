@@ -452,6 +452,13 @@ export interface AttemptsStripProps {
   /** Final attempt version that landed as the asset's primary staging_path. */
   finalVersion?: number | null;
   /**
+   * Heading above the strip. Defaults to "Generation attempts (N)". The EREF
+   * drawer passes "Candidates for this shot (N)" so this single under-image
+   * strip IS the per-shot candidates list (the sibling-row CandidatesStrip was
+   * retired for EREF — one row now carries all attempts in generation_history).
+   */
+  label?: string;
+  /**
    * Timeline-as-home (2026-07-02): when provided, each attempt becomes a
    * PROMOTE button — clicking it makes that attempt the asset's primary image
    * (the "pick a different one of the 3 variants" motion) instead of opening the
@@ -462,7 +469,7 @@ export interface AttemptsStripProps {
   busyVersion?: number | null;
 }
 
-export function AttemptsStrip({ attempts, finalVersion, onPromote, busyVersion }: AttemptsStripProps) {
+export function AttemptsStrip({ attempts, finalVersion, onPromote, busyVersion, label }: AttemptsStripProps) {
   if (!attempts || attempts.length <= 1) return null;
   return (
     <div
@@ -471,7 +478,7 @@ export function AttemptsStrip({ attempts, finalVersion, onPromote, busyVersion }
     >
       <div className="flex items-center justify-between">
         <div className="text-xs uppercase tracking-wider text-text-muted">
-          Generation attempts ({attempts.length})
+          {label ?? `Generation attempts (${attempts.length})`}
         </div>
         <div className="text-[10px] text-text-muted">
           {onPromote ? 'Click a variant to make it the approved reference' : 'Hover for details · click opens full size'}

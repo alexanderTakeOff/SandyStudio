@@ -245,6 +245,40 @@ export function pickBestAttempt(
   return best;
 }
 
+/**
+ * The single canonical "which attempt is the primary reference" derivation — the
+ * attempt whose pixels the asset's main preview shows and the AI critic judged.
+ * Every surface (drawer candidates strip, preview header badge, cache-bust key)
+ * MUST agree on this, or the UI's "current" indicator points at a different tile
+ * than the image on screen.
+ *
+ * Precedence:
+ *   1. `selected_version` — the Director's manual variant pick (select_attempt).
+ *   2. `image_prompt.current_version` — the attempt the keep-best loop SHIPPED.
+ *      Under keep-best (2026-07-16/17) this is the BEST-scoring attempt, which is
+ *      frequently NOT the last (prompt-drift degrades later retries). Passing it
+ *      is what stops the badge from chasing the last attempt.
+ *   3. the last attempt in `generation_history` — legacy rows with no current_version.
+ *
+ * `imagePromptCurrentVersion` is threaded in (not read off `shot_reference`) because
+ * it lives in the sibling `metadata.image_prompt` sub-doc, not in this contract.
+ */
+export function primaryAttemptVersion(
+  // Structural minimum so both the strictly-typed drawer and the loosely-typed
+  // preview header (inline metadata shape) can call it without a cast.
+  sr: {
+    selected_version?: number | null;
+    generation_history?: ReadonlyArray<{ version?: number | null }> | null;
+  },
+  imagePromptCurrentVersion?: number | null,
+): number | null {
+  if (typeof sr.selected_version === 'number') return sr.selected_version;
+  if (typeof imagePromptCurrentVersion === 'number') return imagePromptCurrentVersion;
+  const h = sr.generation_history ?? [];
+  const last = h.length > 0 ? h[h.length - 1]?.version : null;
+  return typeof last === 'number' ? last : null;
+}
+
 // ── Retry book-keeping ──────────────────────────────────────────────────────
 
 export interface RetryEntry {
@@ -272,10 +306,12 @@ export interface ShotReferenceContract {
    * Timeline-as-home (2026-07-02): when the Director manually picks one of the
    * generation_history attempts as the primary reference, this points at that
    * attempt's `version` — an in-place pointer, NOT a duplicated history entry.
-   * Null / undefined = the primary is the latest attempt (default). Cleared
-   * back to null on any fresh generation (reroll/regen) so the pointer can
-   * never dangle past a new attempt. Consumers derive the primary version as
-   * `selected_version ?? generation_history.at(-1).version`.
+   * Null / undefined = the primary is the attempt the keep-best loop shipped
+   * (`image_prompt.current_version`), NOT necessarily the latest. Cleared back to
+   * null on any fresh generation (reroll/regen) so the pointer can never dangle
+   * past a new attempt. Consumers MUST derive the primary version via
+   * `primaryAttemptVersion(shot_reference, image_prompt.current_version)` — a bare
+   * `selected_version ?? generation_history.at(-1)` is WRONG under keep-best (best ≠ last).
    */
   selected_version?: number | null;
 

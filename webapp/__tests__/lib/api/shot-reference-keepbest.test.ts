@@ -7,6 +7,7 @@ import {
   reviewComposite,
   attemptClearsKeepBar,
   pickBestAttempt,
+  primaryAttemptVersion,
   KEEP_ATTEMPT_SCORE_THRESHOLD,
   type EREFReview,
   type EREFReviewIssue,
@@ -114,5 +115,29 @@ describe('pickBestAttempt', () => {
   it('picks the fewest-CRITICAL attempt even when every attempt has one', () => {
     const best = pickBestAttempt([attempt(1, 90, 3), attempt(2, 60, 1), attempt(3, 70, 2)]);
     expect(best?.version).toBe(2);
+  });
+});
+
+describe('primaryAttemptVersion — single source for the drawer badge + preview (2026-07-18)', () => {
+  const history = [attempt(1, 90), attempt(2, 92), attempt(3, 60)]; // best = v2, last = v3
+
+  it('a manual pick (selected_version) wins over everything', () => {
+    expect(primaryAttemptVersion({ selected_version: 3, generation_history: history }, 2)).toBe(3);
+  });
+
+  it('with no manual pick, follows the shipped attempt (image_prompt.current_version), NOT the last', () => {
+    // The keep-best regression: badge used to read `?? last` (v3) while the main
+    // preview showed the shipped best (v2). They must agree on v2.
+    expect(primaryAttemptVersion({ selected_version: null, generation_history: history }, 2)).toBe(2);
+    expect(primaryAttemptVersion({ generation_history: history }, 2)).toBe(2);
+  });
+
+  it('falls back to the last attempt only when current_version is absent (legacy rows)', () => {
+    expect(primaryAttemptVersion({ generation_history: history })).toBe(3);
+  });
+
+  it('returns null for an empty / absent history with no pointers', () => {
+    expect(primaryAttemptVersion({ generation_history: [] })).toBeNull();
+    expect(primaryAttemptVersion({})).toBeNull();
   });
 });

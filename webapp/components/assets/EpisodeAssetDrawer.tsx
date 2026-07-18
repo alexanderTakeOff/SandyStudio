@@ -47,7 +47,7 @@ import {
 } from './EREFv2Sections';
 import { InboxNotePromptModal } from '@/components/inbox/InboxNotePromptModal';
 import { fetcher } from '@/lib/swr';
-import { isShotReferenceV2, type GenerationAttempt } from '@/lib/api/shot-reference';
+import { isShotReferenceV2, primaryAttemptVersion, type GenerationAttempt } from '@/lib/api/shot-reference';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import type {
   AssetMetadataDoc,
@@ -346,6 +346,22 @@ export function EpisodeAssetDrawer({
   const previewSrc = resolvePreviewSrc(asset, currentPromptEntry);
   const isImage = !!previewSrc;
 
+  // Single source of truth for "which attempt is the primary reference" — the
+  // one whose pixels the main preview above actually shows. It MUST match the
+  // preview's own resolution (resolvePreviewSrc → the canonical bytes the loop
+  // wrote for `image_prompt.current_version`) or the strip's "current" badge
+  // lies. Precedence: a manual variant pick (selected_version) wins; else the
+  // attempt the keep-best loop shipped (image_prompt.current_version — which is
+  // the BEST attempt, NOT necessarily the last); else the last attempt.
+  // Previously the strip derived this as `selected_version ?? last`, so under
+  // keep-best (best ≠ last) the badge highlighted a different tile than the one
+  // on screen — the root of the "selection is muddled / click didn't switch"
+  // confusion (Director E30, 2026-07-17).
+  const erefHistory = shotRef?.generation_history ?? [];
+  const erefPrimaryVersion: number | null = shotRef
+    ? primaryAttemptVersion(shotRef, promptDoc?.current_version)
+    : null;
+
   async function saveTextEdits() {
     setBusy(true);
     setError(null);
@@ -620,23 +636,23 @@ export function EpisodeAssetDrawer({
             </AssetCollapsibleSection>
           )}
 
-          {/* Attempts sit directly under the picture (Director 2026-07-17). They are a
-              property OF this image — comparing them used to mean scrolling past Test
-              Plan / Verdict / Scores / Issues to reach them, so the variant you are
-              judging was never on screen next to the one you have. Self-hides at ≤1
-              attempt, so a single-shot render shows nothing extra. */}
+          {/* The per-shot candidates sit directly under the picture (Director
+              2026-07-17). They are a property OF this image — comparing them used to
+              mean scrolling past Test Plan / Verdict / Scores / Issues to reach them,
+              so the variant you are judging was never on screen next to the one you
+              have. This IS the "Candidates for this shot" strip: with keep-best one
+              asset row carries every attempt in generation_history, so the sibling-row
+              CandidatesStrip below was retired for EREF. Clicking a candidate promotes
+              it (select_attempt) → the main preview above refreshes to it. Self-hides
+              at ≤1 attempt, so a single-shot render shows nothing extra. */}
           {isV2 && shotRef && (
             <AttemptsStrip
-              attempts={shotRef.generation_history ?? []}
-              finalVersion={
-                // The primary reference = the Director's manual pick when set, else
-                // the latest attempt. select-in-place points at a variant WITHOUT
-                // appending, so the badge follows selected_version.
-                shotRef.selected_version ??
-                (shotRef.generation_history && shotRef.generation_history.length > 0
-                  ? shotRef.generation_history[shotRef.generation_history.length - 1]!.version
-                  : null)
-              }
+              attempts={erefHistory}
+              label={`Candidates for this shot (${erefHistory.length})`}
+              // Single-sourced with the main preview (erefPrimaryVersion): the "current"
+              // badge lands on the tile whose pixels are actually on screen — including
+              // the keep-best case where the shipped attempt is NOT the last one.
+              finalVersion={erefPrimaryVersion}
               onPromote={promoteAttempt}
               busyVersion={promotingVersion}
             />
@@ -707,28 +723,21 @@ export function EpisodeAssetDrawer({
             </>
           )}
 
-          {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues / Attempts / Candidates ── */}
+          {/* ── EREF v2 sections — Test Plan / Verdict / Scores / Issues ──
+              The per-shot candidates strip is NOT here: it renders under the
+              "Reference image" above (the "Candidates for this shot" AttemptsStrip),
+              so the variant being judged stays next to the one on screen. The old
+              sibling-row CandidatesStrip that used to sit at the bottom of this block
+              was retired for EREF (2026-07-18): with keep-best a single asset row
+              carries all attempts in generation_history, so it duplicated the
+              under-image strip AND read a different "current", muddling the selection.
+              VID-shot keeps its own CandidatesStrip (distinct rows per render). */}
           {isV2 && shotRef && (
             <>
               <TestPlanCard shotRef={shotRef} />
               <VerdictPill review={shotRef.review} />
               <ScoreBars review={shotRef.review} />
               {shotRef.review && <IssuesList issues={shotRef.review.issues} />}
-              {/* TD-56's AttemptsStrip moved up next to the image (2026-07-17) —
-                  see the render site under "Reference image" above. */}
-              <CandidatesStrip
-                currentAssetId={asset.id}
-                candidates={siblingCandidates.map((a) => ({
-                  id: a.id,
-                  filename: a.filename,
-                  status: a.status,
-                  staging_path: a.staging_path,
-                  drive_path: a.drive_path,
-                  drive_web_view_url: a.drive_web_view_url,
-                  metadata: a.metadata as never,
-                }))}
-                onPick={(id) => onPickAsset?.(id)}
-              />
             </>
           )}
 

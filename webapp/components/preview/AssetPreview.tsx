@@ -27,6 +27,7 @@ import type { CanonExtensionProposal } from '@/lib/api/canon-extensions';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import { ShotPlanContract } from '@/components/preview/ShotPlanContract';
 import { CandidatesStrip } from '@/components/assets/EREFv2Sections';
+import { primaryAttemptVersion } from '@/lib/api/shot-reference';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { Button } from '@/components/ui/Button';
 import { useMemo, useRef, useState } from 'react';
@@ -269,11 +270,11 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
   const attemptCount = shotRef?.generation_history?.length ?? 0;
   // Active attempt precedence: a manual pick (selected_version) wins; else the
   // attempt the loop shipped (image_prompt.current_version — with keep-best this is
-  // the BEST attempt, NOT necessarily the last); else fall back to the last.
-  const activeAttempt =
-    shotRef?.selected_version ??
-    erefMeta?.image_prompt?.current_version ??
-    (attemptCount > 0 ? shotRef!.generation_history![attemptCount - 1]!.version ?? null : null);
+  // the BEST attempt, NOT necessarily the last); else fall back to the last. Shared
+  // with the drawer's candidates strip via primaryAttemptVersion so both agree.
+  const activeAttempt = shotRef
+    ? primaryAttemptVersion(shotRef, erefMeta?.image_prompt?.current_version)
+    : null;
   // Compact "v01-N/M" badge (Director 2026-07-16): version-attempt/total, so the
   // active attempt AND how many exist are visible at a glance. Collapses to plain
   // "v01" when there is a single attempt (or a non-EREF asset).
