@@ -60,6 +60,7 @@ import {
   excludedShotIdsFromEpisodeMeta,
   resolveStitchSettings,
   clipLengthsFromVidShotRows,
+  resolveMusicSourceUrl,
   type AnimaticContract,
 } from '../api/animatic-shotlist';
 import { ffmpegStitchEpisode, buildBrandedInputs } from './providers/ffmpeg-stitch';
@@ -2809,12 +2810,20 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       let musicInput: { bytes: Buffer; ext: 'mp3' | 'wav' | 'm4a' | 'aac' } | undefined;
       let musicAssetId: string | null = null;
       if (musicTrack?.url) {
+        // 2026-07-18 — always mux from the RAW source. Assets written by the
+        // old animatic-timing route rewrote `url` to an ffmpeg-shaped
+        // derivative and stashed the raw file in `original_url`; muxing that
+        // derivative applied Director's fade/trim a SECOND time below
+        // (`atrim=start=N` on an already-trimmed file cut another N seconds).
+        // `preview_url` is deliberately never consulted here — it exists only
+        // for the AnimaticPlayer's <audio> element.
+        const musicSourceUrl = resolveMusicSourceUrl(musicTrack);
         // Locate the AUD-music asset row to get its staging_path for direct
         // FS read (same middleware-bypass rationale as the shot loader).
         const audMusic = upstream.find(
           (a) =>
             a.file_type === 'AUD-music' &&
-            (a.drive_path === musicTrack.url || a.staging_path === musicTrack.url),
+            (a.drive_path === musicSourceUrl || a.staging_path === musicSourceUrl),
         ) as { id?: string; staging_path?: string | null } | undefined;
         const audMeta = (
           (audMusic as unknown as { metadata?: { staging_path?: unknown } } | undefined)
@@ -2823,13 +2832,13 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         const audStagingPath =
           audMusic?.staging_path ??
           (typeof audMeta.staging_path === 'string' ? audMeta.staging_path : null);
-        const bytes = await loadBytes(audStagingPath, musicTrack.url);
+        const bytes = await loadBytes(audStagingPath, musicSourceUrl);
         // D14 (2026-07-09): derive the ffmpeg extension from the ACTUAL bytes
         // source (the media URL / staging path), NOT from `filename`. A
         // Director upload persists the real cache filename (`…-<hash>.mp3`) in
         // the URL, while `filename` could carry a stale mock extension (mock MGEN
         // wrote `…-DRAFT.wav`) — muxing mp3 bytes as wav corrupted the final cut.
-        const fname = musicTrack.url ?? audStagingPath ?? musicTrack.filename ?? '';
+        const fname = musicSourceUrl ?? audStagingPath ?? musicTrack.filename ?? '';
         const lower = fname.toLowerCase();
         const ext: 'mp3' | 'wav' | 'm4a' | 'aac' =
           lower.endsWith('.wav')

@@ -49,11 +49,13 @@ import {
   computeEffectivePlayback,
   effectiveDurationSeconds,
   getAudioTracks,
+  resolveMusicPreviewUrl,
   type AnimaticContract,
   type AnimaticDirectorOverride,
   type AnimaticShot,
   type AudioTrack,
 } from '@/lib/api/animatic-shotlist';
+import { compareAssetVersionsNewestFirst } from '@/lib/api/asset-ordering';
 import {
   resolveTimelineCells,
   type TimelineCell,
@@ -64,6 +66,13 @@ import { workRolePalette, type ShotWork, type WorkRole } from '@/lib/api/pipelin
 
 const MIN_SHOT_S = 0.5;
 const MAX_SHOT_S = 60;
+/**
+ * Idle time before per-shot timing edits are persisted (Director, 2026-07-18:
+ * "3 сек"). Short on purpose — the save is metadata-only and takes ~200ms, so
+ * a long window would only widen the loss gap without buying anything.
+ * Playback is unaffected either way: it reads local state, not the DB.
+ */
+const TIMING_AUTOSAVE_MS = 3_000;
 // Per Director (2026-06-08): tail trim steps ±0.5s, matching head trim — fine
 // pacing control. Previously ±1s, which over-shot on short comedy beats.
 const SHOT_STEP = 0.5;
@@ -438,9 +447,13 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       if (existing) existing.push(row);
       else map.set(sid, [row]);
     }
-    // Sort each shot's versions by version desc (newest first).
+    // Newest version first — shared comparator so this popover, the drawer and
+    // the preview strips agree even on equal-version rows (they are fed by
+    // queries with opposite created_at order, so a stable sort alone left them
+    // rendering the same two rows in opposite order). Status is deliberately
+    // NOT part of the order: never reposition, mark. See lib/api/asset-ordering.
     for (const rows of map.values()) {
-      rows.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+      rows.sort(compareAssetVersionsNewestFirst);
     }
     return map;
   }, [vidShotAssets]);
@@ -460,7 +473,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       else map.set(sid, [row]);
     }
     for (const rows of map.values()) {
-      rows.sort((a, b) => (b.version ?? 0) - (a.version ?? 0));
+      rows.sort(compareAssetVersionsNewestFirst);
     }
     return map;
   }, [imgRefAssets]);
@@ -697,11 +710,19 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     );
   }
   // Local copy of overrides so Director can edit live without round-tripping
-  // to DB on every click. Saved via Save Timing button.
+  // to DB on every click. Persisted by the 3s-debounced autosave below —
+  // playback always reads THIS state (buildTimeline), so an edit is audible
+  // immediately regardless of when it reaches the DB.
   const [overrides, setOverrides] = useState<Record<string, AnimaticDirectorOverride>>(
     () => ({ ...(contract.director_overrides ?? {}) }),
   );
-  const [dirty, setDirty] = useState(false);
+  // 2026-07-18 — timing and audio dirt are tracked SEPARATELY. The timing
+  // autosave sends only `overrides`; audio goes through its own explicit
+  // button. Two guarantees fall out of the split: a frequent timing save can
+  // never clobber an audio edit made elsewhere, and it can never trigger the
+  // (slow) server-side ffmpeg music re-encode.
+  const [timingDirty, setTimingDirty] = useState(false);
+  const [audioDirty, setAudioDirty] = useState(false);
 
   // 2026-06-06 — local copy of audio tracks. Director can tweak fade-in/out
   // + trim on the music row; the same /animatic-timing PATCH persists both
@@ -713,11 +734,45 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   );
   const audioTracks: AudioTrack[] = audioTracksLocal;
 
+  // Shot ids the Director has edited but which are not confirmed saved yet, and
+  // the same flag for the audio row. Refs (not state) so the re-seed effect
+  // below can consult them without taking them as dependencies.
+  const touchedShotIdsRef = useRef<Set<string>>(new Set());
+  const audioTouchedRef = useRef(false);
+  // Bumped on every timing edit. Serves two purposes: it re-arms the autosave
+  // debounce (as STATE, so the effect actually re-runs) and it lets an
+  // in-flight save detect that the Director edited again while it was away.
+  //
+  // Deliberately NOT keyed off the `overrides` object: the re-seed effect above
+  // hands back a fresh object on every Realtime push, which would reset the
+  // debounce timer continuously while jobs run and starve the autosave.
+  const [editSeq, setEditSeq] = useState(0);
+  const editSeqRef = useRef(0);
+  editSeqRef.current = editSeq;
+
   // Re-seed overrides whenever the asset row changes (e.g. parent SWR refetch).
+  //
+  // 2026-07-18 — this used to blow away local state wholesale and reset
+  // `dirty` to false. Since c4d35d4b made Realtime push the primary freshness
+  // path, `mutate()` fires on EVERY activity_event for the episode — so with a
+  // job running, a Director's fresh edit was wiped ~a second later and the Save
+  // button fell back to "Saved" having saved nothing. That is the "кнопка не
+  // срабатывает" report. Unsaved edits now win over the server copy; everything
+  // untouched still refreshes normally.
   useEffect(() => {
-    setOverrides({ ...(contract.director_overrides ?? {}) });
-    setAudioTracksLocal(getAudioTracks(contract));
-    setDirty(false);
+    const serverOverrides = { ...(contract.director_overrides ?? {}) };
+    setOverrides((prev) => {
+      const touched = touchedShotIdsRef.current;
+      if (touched.size === 0) return serverOverrides;
+      const merged = { ...serverOverrides };
+      for (const shotId of touched) {
+        // Absent locally = Director cleared the override; keep it cleared.
+        if (prev[shotId]) merged[shotId] = prev[shotId];
+        else delete merged[shotId];
+      }
+      return merged;
+    });
+    setAudioTracksLocal((prev) => (audioTouchedRef.current ? prev : getAudioTracks(contract)));
   }, [contract]);
 
   // 2026-06-06 — build a shot_id → real VID-shot duration map from the
@@ -902,7 +957,9 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           edited_at: new Date().toISOString(),
         },
       }));
-      setDirty(true);
+      touchedShotIdsRef.current.add(shotId);
+      setEditSeq((n) => n + 1);
+      setTimingDirty(true);
     },
     [],
   );
@@ -933,77 +990,174 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           },
         };
       });
-      setDirty(true);
+      touchedShotIdsRef.current.add(shotId);
+      setEditSeq((n) => n + 1);
+      setTimingDirty(true);
     },
     [contract.shot_list],
   );
 
-  // ── Save timing ──────────────────────────────────────────────────────────
+  // ── Saving ───────────────────────────────────────────────────────────────
 
   const [savingTiming, setSavingTiming] = useState(false);
+  const [savingAudio, setSavingAudio] = useState(false);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSaveTiming = useCallback(async () => {
-    setSavingTiming(true);
+  // Freshest values for the flush handlers (unmount / tab hide), which fire
+  // outside React's render cycle and would otherwise close over stale state.
+  const latestRef = useRef({ overrides, audioTracksLocal, timingDirty });
+  latestRef.current = { overrides, audioTracksLocal, timingDirty };
+
+  // Serialises saves — a second PATCH never overlaps the first (except the
+  // forced flush on unload, where losing the edit is the worse outcome).
+  const savingRef = useRef(false);
+
+  // Materialize-on-first-edit: in synthetic mode there is no backing asset.
+  // Create the animatic vessel from the storyboard skeleton (parent owns the
+  // POST) and PATCH the returned id — so the Director never has to approve an
+  // empty animatic to unlock timing editing.
+  const resolveTargetId = useCallback(async (): Promise<string> => {
+    if (assetId) return assetId;
+    if (onMaterialize) {
+      const created = await onMaterialize();
+      if (!created) {
+        throw new Error('Could not materialize the animatic — is the storyboard approved?');
+      }
+      return created;
+    }
+    throw new Error('No animatic asset to save timing into.');
+  }, [assetId, onMaterialize]);
+
+  // `saveTimingNow` must be referentially STABLE — it is the dependency of both
+  // the debounce effect and the flush effect (whose cleanup fires a save). The
+  // parent re-creates `onMaterialize` on every render, so depending on it
+  // directly would re-arm the debounce forever and fire a keepalive PATCH on
+  // every render. Reach the current implementation through a ref instead.
+  const resolveTargetIdRef = useRef(resolveTargetId);
+  resolveTargetIdRef.current = resolveTargetId;
+
+  /**
+   * Persist per-shot durations. Deliberately does NOT send `audio_tracks`:
+   * that keeps the request metadata-only on the server (no ffmpeg music
+   * re-encode — the reason this save used to take tens of seconds) and makes
+   * it impossible for a timing autosave to clobber an audio edit.
+   */
+  const saveTimingNow = useCallback(
+    async (opts?: { force?: boolean; keepalive?: boolean }) => {
+      if (savingRef.current && !opts?.force) return;
+      savingRef.current = true;
+      setSavingTiming(true);
+      setError(null);
+      // Edits landing while this request is in flight must not be marked clean
+      // when it resolves; the sequence number detects that.
+      const seqAtStart = editSeqRef.current;
+      try {
+        const targetId = await resolveTargetIdRef.current();
+        const overridesPayload: Record<
+          string,
+          { duration_seconds: number; trim_start_seconds?: number }
+        > = {};
+        for (const [k, v] of Object.entries(latestRef.current.overrides)) {
+          overridesPayload[k] = {
+            duration_seconds: v.duration_seconds,
+            // 2026-06-06 — forward head trim when set; the route accepts it
+            // as an optional field in the per-shot override schema.
+            ...(typeof v.trim_start_seconds === 'number' && v.trim_start_seconds > 0
+              ? { trim_start_seconds: v.trim_start_seconds }
+              : {}),
+          };
+        }
+        const res = await fetch(`/api/assets/${targetId}/animatic-timing`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          ...(opts?.keepalive ? { keepalive: true } : {}),
+          body: JSON.stringify({ overrides: overridesPayload, directorConfirm: true }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error((j as { error?: string }).error ?? 'Save timing failed');
+        }
+        if (editSeqRef.current === seqAtStart) {
+          touchedShotIdsRef.current.clear();
+          setTimingDirty(false);
+        }
+        setSavedAt(new Date());
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        savingRef.current = false;
+        setSavingTiming(false);
+      }
+    },
+    [],
+  );
+
+  // Autosave: 3s after the last edit. `editSeq` bumps on each edit and re-arms
+  // the timer — that is what makes this a debounce rather than an interval.
+  // Playback never waits on this — buildTimeline reads local state.
+  useEffect(() => {
+    if (!timingDirty) return;
+    const timer = setTimeout(() => void saveTimingNow(), TIMING_AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [timingDirty, editSeq, saveTimingNow]);
+
+  // Never lose an edit to a closing tab, a background tab, or navigation away
+  // mid-debounce. `force` bypasses the serialisation guard and `keepalive`
+  // lets the request outlive the document.
+  useEffect(() => {
+    const flush = () => {
+      if (!latestRef.current.timingDirty) return;
+      void saveTimingNow({ force: true, keepalive: true });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('beforeunload', flush);
+      flush();
+    };
+  }, [saveTimingNow]);
+
+  /**
+   * Persist Director's audio shaping. Explicit button, not autosaved: this is
+   * the request that runs ffmpeg server-side (`process_audio`), so it is slow
+   * by nature — and music is edited rarely, unlike shot durations.
+   */
+  const handleSaveAudio = useCallback(async () => {
+    setSavingAudio(true);
     setError(null);
     try {
-      // Materialize-on-first-edit: in synthetic mode there is no backing asset.
-      // Create the animatic vessel from the storyboard skeleton (parent owns the
-      // POST) and PATCH the returned id — so the Director never has to approve an
-      // empty animatic to unlock timing editing.
-      let targetId = assetId;
-      if (!targetId && onMaterialize) {
-        const created = await onMaterialize();
-        if (!created) {
-          throw new Error('Could not materialize the animatic — is the storyboard approved?');
-        }
-        targetId = created;
-      }
-      if (!targetId) {
-        throw new Error('No animatic asset to save timing into.');
-      }
-      const overridesPayload: Record<
-        string,
-        { duration_seconds: number; trim_start_seconds?: number }
-      > = {};
-      for (const [k, v] of Object.entries(overrides)) {
-        overridesPayload[k] = {
-          duration_seconds: v.duration_seconds,
-          // 2026-06-06 — forward head trim when set; the route accepts it
-          // as an optional field in the per-shot override schema.
-          ...(typeof v.trim_start_seconds === 'number' && v.trim_start_seconds > 0
-            ? { trim_start_seconds: v.trim_start_seconds }
-            : {}),
-        };
-      }
+      const targetId = await resolveTargetId();
       const res = await fetch(`/api/assets/${targetId}/animatic-timing`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        // 2026-06-06 — also persist Director's audio shaping (fade/trim) when
-        // the local copy has been edited. Server merges in place onto
-        // metadata.animatic_v1.audio_tracks (route extended same day).
         body: JSON.stringify({
-          overrides: overridesPayload,
-          audio_tracks: audioTracksLocal,
+          audio_tracks: latestRef.current.audioTracksLocal,
+          process_audio: true,
           directorConfirm: true,
         }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? 'Save timing failed');
+        throw new Error((j as { error?: string }).error ?? 'Save music failed');
       }
-      setDirty(false);
+      audioTouchedRef.current = false;
+      setAudioDirty(false);
       onChanged();
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setSavingTiming(false);
+      setSavingAudio(false);
     }
-  }, [assetId, onChanged, overrides, audioTracksLocal, onMaterialize]);
+  }, [onChanged, resolveTargetId]);
 
-  // 2026-06-06 — mutate a single audio track in-place and mark dirty so the
-  // existing "Save timing" button picks it up (anti-additive — one save
-  // path for both shot timing and audio shaping).
+  // 2026-06-06 — mutate a single audio track in-place. 2026-07-18: marks the
+  // AUDIO dirty flag only, so it is picked up by the music button and never by
+  // the timing autosave.
   const updateAudioTrack = useCallback(
     (index: number, patch: Partial<AudioTrack>) => {
       setAudioTracksLocal((prev) => {
@@ -1011,7 +1165,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
         if (next[index]) next[index] = { ...next[index], ...patch };
         return next;
       });
-      setDirty(true);
+      audioTouchedRef.current = true;
+      setAudioDirty(true);
     },
     [],
   );
@@ -1029,6 +1184,22 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // ── Render ───────────────────────────────────────────────────────────────
 
   const currentShot = times[currentIndex]?.shot;
+  // 2026-07-18 — the duration editor acts on the SELECTED cell (the one whose
+  // kebab is open), falling back to the playhead when nothing is selected.
+  //
+  // It used to read `currentIndex` directly, which made excluded shots
+  // impossible to edit — and editing them is exactly how you un-exclude one.
+  // `computeIndex` skips excluded entries by design, and an excluded cell
+  // shares its playStart with the next playable shot, so clicking cell 28 put
+  // the playhead (and the editor) on 29: the Director raised 29's duration
+  // while 28 stayed collapsed and dimmed. That is the "increase the timing but
+  // the opacity never comes back" report.
+  const editIdx = openCellIdx ?? currentIndex;
+  const editShot = times[editIdx]?.shot;
+  const editTailDuration = editShot ? effectiveDurationSeconds(editShot, overrides) : 0;
+  const editNetDuration = editShot
+    ? computeEffectivePlayback(editShot, overrides, clipLengths)
+    : 0;
   // 2026-06-08 — the editor must read the TRUE override value, NOT the visual
   // cell duration. buildTimeline inflates excluded shots (≤0.5s) to
   // EXCLUDED_VISUAL_SECONDS (1.5) for clickability, which made the −/+ buttons
@@ -1185,14 +1356,22 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
           >
             <span className="font-mono">{currentShot.shot_id}</span>
-            {/* 2026-06-06 — surface "which version is on screen right now". The
-                cell resolver already drops INVALIDATED and picks the highest
-                non-invalidated version, so the first entry of vidShotsByShotId
-                is exactly the playing version. Director Issue B: caption used to
-                say only shot_id, so "is this v01 or v03?" required opening the
-                popover. */}
+            {/* 2026-06-06 — surface "which version is on screen right now".
+                Director Issue B: caption used to say only shot_id, so "is this
+                v01 or v03?" required opening the popover.
+
+                2026-07-18 — this read `vidShotsByShotId[0]` on the assumption
+                that "first by version desc" is what plays. It is not: the cell
+                resolver picks by STATUS TIER first (canonical APPROVED/LOCKED,
+                else REVIEW) and only then by version, so with v01 APPROVED +
+                v03 DRAFT the badge announced "v03 DRAFT" while the APPROVED v01
+                was on screen. Read the resolved cell instead — one source of
+                truth for what is playing. */}
             {(() => {
-              const winner = vidShotsByShotId.get(currentShot.shot_id)?.[0];
+              const rows = vidShotsByShotId.get(currentShot.shot_id);
+              const winner = currentCell?.asset_id
+                ? rows?.find((r) => r.id === currentCell.asset_id)
+                : undefined;
               if (!winner) return null;
               return (
                 <span
@@ -1203,7 +1382,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                         ? 'color-mix(in oklab, var(--accent-success, #22c55e) 30%, transparent)'
                         : 'color-mix(in oklab, var(--accent-warning, #f59e0b) 30%, transparent)',
                   }}
-                  title="Playing this version (newest non-invalidated)"
+                  title="Playing this version (as picked by the timeline cell resolver)"
                 >
                   v{String(winner.version ?? 1).padStart(2, '0')} {winner.status}
                 </span>
@@ -1262,7 +1441,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                 </div>
                 <audio
                   ref={isMaster ? audioRef : undefined}
-                  src={track.url}
+                  src={resolveMusicPreviewUrl(track)}
                   preload="auto"
                   controls
                   className="w-full"
@@ -1357,6 +1536,37 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                     </label>
                   </div>
                 )}
+                {/* 2026-07-18 — music shaping keeps an EXPLICIT save. It is the
+                    only request that runs ffmpeg server-side, so it is slow by
+                    nature; music is edited rarely, unlike shot durations (which
+                    autosave). Applying re-bakes the preview derivative. */}
+                {track.layer === 'music' && (
+                  <div className="flex items-center gap-2 px-1 pt-1">
+                    <Button
+                      variant={audioDirty ? 'primary' : 'ghost'}
+                      size="sm"
+                      onClick={handleSaveAudio}
+                      disabled={savingAudio || !audioDirty}
+                      title={
+                        audioDirty
+                          ? 'Сохранить обрезку и фейды — пересоберёт превью (займёт время)'
+                          : 'Правок музыки нет'
+                      }
+                    >
+                      {savingAudio ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Save size={13} />
+                      )}{' '}
+                      {savingAudio ? 'Применяю…' : 'Применить музыку'}
+                    </Button>
+                    {audioDirty && !savingAudio && (
+                      <span className="text-[11px]" style={{ color: 'var(--accent-warning)' }}>
+                        не сохранено
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })
@@ -1379,7 +1589,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           <span className="text-[10px] uppercase tracking-wider text-text-muted">Timeline</span>
           <span className="text-xs text-text-secondary font-mono">
             {contract.shot_list.length} shots · {fmt(currentT)} / {fmt(newTotal)}
-            {dirty && (
+            {timingDirty && (
               <span className="ml-1" style={{ color: 'var(--accent-warning)' }}>· unsaved</span>
             )}
           </span>
@@ -1394,6 +1604,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             const widthPct = visualSpan > 0 ? (t.duration / visualSpan) * 100 : 0;
             const leftPct = visualSpan > 0 ? (t.cumStart / visualSpan) * 100 : 0;
             const isCurrent = i === currentIndex;
+            // 2026-07-18 — "selected" (what the editor below acts on) is a
+            // DIFFERENT thing from "playing". They diverge on excluded shots:
+            // the playhead can never land on one, so clicking cell 28 used to
+            // highlight 29. Mark the selection explicitly.
+            const isSelected = openCellIdx === i;
             const cell = timelineCells[i];
             const cellMatchesFilter =
               filter === 'all'
@@ -1470,19 +1685,27 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                 title={t.excluded ? `${t.shot.shot_id} — excluded from final cut (≤0.5s)` : undefined}
               >
                 <button
-                  // 2026-06-06 — seek in PLAYBACK coords; excluded cells share
-                  // their playStart with the next non-excluded shot, so a
-                  // click on an excluded cell lands on the next playable one.
+                  // 2026-06-06 — seek in PLAYBACK coords.
                   // 2026-07-02 — also toggles this cell's kebab (click, not hover).
+                  // 2026-07-18 — do NOT seek for an excluded cell. It shares its
+                  // playStart with the next playable shot, so seeking moved the
+                  // playhead (and with it the whole "current shot" context) onto
+                  // the NEXT shot: clicking 28 lit up 29 and the −/+ buttons
+                  // edited 29's duration. Selection is enough here; there is
+                  // nothing to play in an excluded cell anyway.
                   onClick={() => {
-                    seekTo(t.playStart);
+                    if (!t.excluded) seekTo(t.playStart);
                     setOpenCellIdx((v) => (v === i ? null : i));
                   }}
                   className="w-full h-full transition-opacity"
                   style={{
-                    background: isCurrent
-                      ? 'color-mix(in oklab, var(--accent-primary) 35%, transparent)'
-                      : refTint,
+                    background: isSelected
+                      ? 'color-mix(in oklab, var(--accent-primary) 45%, transparent)'
+                      : isCurrent
+                        ? 'color-mix(in oklab, var(--accent-primary) 35%, transparent)'
+                        : refTint,
+                    outline: isSelected ? '1px solid var(--accent-primary)' : undefined,
+                    outlineOffset: '-1px',
                     borderRight: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
                   }}
                 >
@@ -1858,22 +2081,43 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           </Button>
         )}
         <div className="flex-1" />
-        {/* Save-timing is shown even in synthetic mode now (E25 2026-07-10): the
-            first save materializes the VID-animatic vessel via onMaterialize, so
-            editing durations no longer requires approving an empty animatic. In
-            synthetic mode with no onMaterialize wired the button is hidden (there
-            would be nowhere to persist). */}
+        {/* 2026-07-18 — the "Save timing" button is gone; timing autosaves 3s
+            after the last edit. What remains is a passive status chip, plus a
+            Retry button that appears ONLY when a save actually failed (the one
+            case where the Director has something to act on).
+            Still gated on (!synthetic || onMaterialize): with no onMaterialize
+            wired there is nowhere to persist, so we show nothing. */}
         {(!synthetic || onMaterialize) && (
-          <Button
-            variant={dirty ? 'primary' : 'ghost'}
-            size="sm"
-            onClick={handleSaveTiming}
-            disabled={savingTiming || !dirty}
-            title={dirty ? 'Save updated per-shot durations' : 'No timing changes to save yet'}
-          >
-            {savingTiming ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{' '}
-            {dirty ? 'Save timing' : 'Saved'}
-          </Button>
+          error ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void saveTimingNow({ force: true })}
+              disabled={savingTiming}
+              title={error}
+            >
+              {savingTiming ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{' '}
+              Повторить
+            </Button>
+          ) : (
+            <span
+              className="text-[11px] text-text-muted inline-flex items-center gap-1.5"
+              title="Тайминги сохраняются автоматически через 3 секунды после правки"
+            >
+              {savingTiming ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" /> Сохранение…
+                </>
+              ) : timingDirty ? (
+                'Черновик'
+              ) : savedAt ? (
+                `Сохранено ${savedAt.toLocaleTimeString('ru-RU', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}`
+              ) : null}
+            </span>
+          )
         )}
       </div>
 
@@ -1884,24 +2128,24 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           E25 2026-07-10 — shown in synthetic mode too when onMaterialize is
           wired: edits accumulate locally and the first Save materializes the
           animatic vessel, so no empty-animatic approval is needed to edit. */}
-      {(!synthetic || onMaterialize) && currentShot && (() => {
-        const currentTrimStart = overrides[currentShot.shot_id]?.trim_start_seconds ?? 0;
-        const excluded = currentNetDuration <= MIN_SHOT_S;
+      {(!synthetic || onMaterialize) && editShot && (() => {
+        const currentTrimStart = overrides[editShot.shot_id]?.trim_start_seconds ?? 0;
+        const excluded = editNetDuration <= MIN_SHOT_S;
         return (
         <div
           className="rounded-lg p-2.5 border border-glass space-y-1.5"
           style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
         >
           <div className="text-[10px] uppercase tracking-wider text-text-muted">
-            Editing current shot
+            {openCellIdx !== null ? 'Editing selected shot' : 'Editing current shot'}
           </div>
           {/* Header — shot id + role. */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="font-mono text-sm text-text-primary">
-              {currentShot.shot_id}
+              {editShot.shot_id}
             </div>
-            {currentShot.shot_role && (
-              <div className="text-xs text-text-secondary">{currentShot.shot_role}</div>
+            {editShot.shot_role && (
+              <div className="text-xs text-text-secondary">{editShot.shot_role}</div>
             )}
           </div>
           {/* cut start — trims the HEAD (ffmpeg inpoint). Buttons only. */}
@@ -1921,7 +2165,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setTrimStart(currentShot.shot_id, currentTrimStart - SHOT_STEP)}
+              onClick={() => setTrimStart(editShot.shot_id, currentTrimStart - SHOT_STEP)}
               disabled={currentTrimStart <= 0}
             >
               −0.5s
@@ -1929,7 +2173,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setTrimStart(currentShot.shot_id, currentTrimStart + SHOT_STEP)}
+              onClick={() => setTrimStart(editShot.shot_id, currentTrimStart + SHOT_STEP)}
             >
               +0.5s
             </Button>
@@ -1946,16 +2190,16 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setDuration(currentShot.shot_id, currentTailDuration - SHOT_STEP)}
-              disabled={currentTailDuration <= MIN_SHOT_S}
+              onClick={() => setDuration(editShot.shot_id, editTailDuration - SHOT_STEP)}
+              disabled={editTailDuration <= MIN_SHOT_S}
             >
               −0.5s
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setDuration(currentShot.shot_id, currentTailDuration + SHOT_STEP)}
-              disabled={currentTailDuration >= MAX_SHOT_S}
+              onClick={() => setDuration(editShot.shot_id, editTailDuration + SHOT_STEP)}
+              disabled={editTailDuration >= MAX_SHOT_S}
             >
               +0.5s
             </Button>
@@ -1976,16 +2220,16 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             )}
             <div className="flex-1" />
             <input
-              key={`${currentShot.shot_id}-dur-${currentNetDuration}`}
+              key={`${editShot.shot_id}-dur-${editNetDuration}`}
               type="number"
               min={MIN_SHOT_S}
               max={MAX_SHOT_S}
               step={0.1}
-              defaultValue={currentNetDuration.toFixed(1)}
+              defaultValue={editNetDuration.toFixed(1)}
               onBlur={(e) => {
                 const v = parseFloat(e.target.value);
-                if (Number.isFinite(v) && v > 0 && Math.abs(v - currentNetDuration) > 0.01) {
-                  setDuration(currentShot.shot_id, v);
+                if (Number.isFinite(v) && v > 0 && Math.abs(v - editNetDuration) > 0.01) {
+                  setDuration(editShot.shot_id, v);
                 }
               }}
               onKeyDown={(e) => {
@@ -1995,8 +2239,8 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             />
             <span className="text-xs text-text-muted">s</span>
           </div>
-          {currentShot.caption && (
-            <div className="text-xs text-text-secondary italic">{currentShot.caption}</div>
+          {editShot.caption && (
+            <div className="text-xs text-text-secondary italic">{editShot.caption}</div>
           )}
         </div>
         );

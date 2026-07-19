@@ -260,6 +260,17 @@ export const POST = withApiHandler(async (req, ctx) => {
     if (ref) {
       referenceErefAssetId = ref.asset.id;
       referenceImageBase64 = ref.image_b64;
+      // 2026-07-19 — the SAME rule the explicit-override branch above states:
+      // silently dropping the reference turns img2vid into t2v. This branch used
+      // to assign a possibly-null `image_b64` and render anyway, so a shot with
+      // an APPROVED reference whose bytes could not be resolved burned a full
+      // paid render ($1.21 at seedance standard) on a clip that ignored its own
+      // start frame — with a 200 OK and no warning anywhere.
+      if (!referenceImageBase64) {
+        throw new ValidationError(
+          `Approved reference ${ref.asset.id} (${ref.asset.filename}) for ${shotId} has no resolvable media — refusing to render text-to-video against an anchored shot. Re-sync the media cache or regenerate the reference.`,
+        );
+      }
     }
   }
 

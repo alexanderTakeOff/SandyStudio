@@ -209,7 +209,19 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   const meta: AssetMetadataDoc = (asset.metadata ?? {}) as AssetMetadataDoc;
   const existingHistory = meta.image_prompt?.history ?? [];
-  const nextVersion = (meta.image_prompt?.current_version ?? 0) + 1;
+  // 2026-07-18 — number from the HIGHEST version ever recorded, not from
+  // `current_version`. The two diverge whenever the Director points `current`
+  // at an older entry (a restore, or picking an earlier attempt): E30 SH44 sat
+  // at current_version=1 with a v2 already in history, so a regen minted a
+  // SECOND entry numbered v2. Nothing errored — but every reader resolves an
+  // attempt by `history.find(h => h.version === current_version)`, which
+  // returns the FIRST match, so the UI kept showing the OLD image while the
+  // freshly generated one hid behind the duplicate number.
+  const nextVersion =
+    Math.max(
+      meta.image_prompt?.current_version ?? 0,
+      ...existingHistory.map((h) => h.version ?? 0),
+    ) + 1;
   const nowIso = new Date().toISOString();
 
   // ── Branch A: restore previous version ────────────────────────────────────
@@ -385,12 +397,21 @@ export const POST = withApiHandler(async (req, ctx) => {
       .eq('id', assetId);
     if (upd.error) throw new Error(`asset select-attempt failed: ${upd.error.message}`);
 
+    // Passive audit only. 2026-07-18 — this used to emit `agent_completed`,
+    // which is in the Postgres trigger's injection whitelist
+    // (0043_pa_inject_revision_requested.sql) — so EVERY variant click wrote a
+    // system turn into Polina's live thread. The Director clicked nine times on
+    // one shot and got nine "AGENT — completed" lines. A pointer toggle by the
+    // Director is not a pipeline event: same class as the shot-exclusion
+    // toggle, which uses `asset_updated` precisely because that type is in
+    // NEITHER whitelist (no chat injection, no LLM wake). Actor is the
+    // Director's id, not an agent id — a human did this.
     await logEvent(sb, {
-      event_type: 'agent_completed',
+      event_type: 'asset_updated',
       severity: 'info',
       title: `Reference variant selected: ${asset.filename} → attempt #${target.version}`,
       description: `Director promoted generation attempt #${target.version} to the primary image`,
-      actor: 'EXEC-EREF-DESIGNER',
+      actor: user.id,
       asset_id: assetId,
       episode_id: asset.episode_id,
       metadata: {
@@ -678,12 +699,31 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
+  // 2026-07-19 — a v2 EREF attempt MUST get its own file, exactly like the ones
+  // EXEC-EREF writes (`…-attempt1.png`, `…-attempt2.png`).
+  //
+  // This used to persist under the CANONICAL filename, so the generated attempt
+  // had no independent copy: the canonical file was simultaneously "the current
+  // image" and "this attempt's archive". `select_attempt` then copies the picked
+  // attempt's bytes onto the canonical name — so picking any OTHER attempt
+  // overwrote these pixels irrecoverably, and picking this one back was a no-op
+  // (`src === dst`, copy skipped) that could not restore them. E30 SH44: the
+  // Director picked attempt 2, which destroyed the freshly generated bedroom
+  // image, then picked attempt 3 again — metadata said v3 while the file still
+  // held attempt 2, and the video anchored on the wrong picture.
+  const v2AttemptVersion =
+    isV2 && v2Sr
+      ? (v2Sr.generation_history[v2Sr.generation_history.length - 1]?.version ?? 0) + 1
+      : null;
   const persisted = await persistBinary({
     base64: realB64,
     ext: 'png',
-    driveFilename: asset.filename
-      .replace(/-(v\d+)-([A-Z]+)\.[a-z]+$/, `-$1-$2.png`)
-      .replace(/\.md$/, '.png'),
+    driveFilename: (v2AttemptVersion !== null
+      ? asset.filename.replace(/-v\d+-[A-Z]+\.[a-z]+$/, `-attempt${v2AttemptVersion}`)
+      : asset.filename.replace(/-(v\d+)-([A-Z]+)\.[a-z]+$/, `-$1-$2`)
+    )
+      .replace(/\.md$/, '')
+      .concat('.png'),
     localHint: `regen-${assetId.slice(-8)}`,
     seriesCode: layoutSeriesCode,
     bucket: layoutBucket,
@@ -714,9 +754,8 @@ export const POST = withApiHandler(async (req, ctx) => {
   let updatedShotReference: ShotReferenceContract | null = null;
   if (isV2 && v2Sr) {
     const v2Attempt: GenerationAttempt = {
-      version:
-        (v2Sr.generation_history[v2Sr.generation_history.length - 1]?.version ??
-          0) + 1,
+      // Computed before persistBinary so the file could be named after it.
+      version: v2AttemptVersion ?? 1,
       provider_id: realProviderId,
       model: realModel,
       prompt: promptToSend,

@@ -85,13 +85,51 @@ export interface AudioTrack {
   /** Seconds at which to stop reading the source (atrim=end=N). Default: full length. */
   trim_out_seconds?: number;
   /**
-   * 2026-06-06 — preserved original (unshaped) source URL. Set on the first
-   * Save that introduces fade/trim — at that point `url` may be rewritten to
-   * point at a derived processed file. When Director later clears all
-   * shaping controls, the route restores `url` from `original_url` and unsets
-   * this field so the asset returns to its raw playback state.
+   * LEGACY (2026-06-06 … 2026-07-18) — preserved original (unshaped) source
+   * URL, written back when `url` was rewritten to point at a derived processed
+   * file. That rewrite is gone (see `preview_url`); the field is still READ so
+   * pre-existing assets resolve to their raw source, but it is no longer
+   * written. Readers must treat `original_url ?? url` as the true source.
    */
   original_url?: string;
+  /**
+   * 2026-07-18 — ffmpeg-shaped derivative for PREVIEW ONLY (the AnimaticPlayer
+   * `<audio>` element). Written by the "Apply music" button; `url` always stays
+   * the raw source.
+   *
+   * Why the split: the old code baked the shaping into a file AND rewrote
+   * `url`, but EXEC-STITCH loads bytes from `url` and applies the SAME
+   * fade/trim again via `buildMusicAudioFilter` — so shaping landed twice
+   * (`atrim=start=N` on an already-trimmed file cut another N seconds). Keeping
+   * the derivative in a separate field means STITCH reads raw bytes and stays
+   * the single owner of shaping.
+   *
+   * Never read this in the stitch path.
+   */
+  preview_url?: string;
+}
+
+/**
+ * The RAW audio source — what EXEC-STITCH must mux from.
+ *
+ * Never returns `preview_url`: that derivative already has Director's fade/trim
+ * baked in, and the stitch path applies the same shaping itself via
+ * `buildMusicAudioFilter`. Muxing the derivative therefore shaped the music
+ * twice (`atrim=start=N` on an already-trimmed file cut another N seconds).
+ * `original_url` is consulted for assets written before 2026-07-18, when the
+ * route rewrote `url` to point at the derivative.
+ */
+export function resolveMusicSourceUrl(track: Pick<AudioTrack, 'url' | 'original_url'>): string {
+  return track.original_url ?? track.url;
+}
+
+/**
+ * The URL to PLAY in the AnimaticPlayer — the shaped derivative when one has
+ * been baked, otherwise the raw source. Preview-only; see
+ * `resolveMusicSourceUrl` for the stitch side.
+ */
+export function resolveMusicPreviewUrl(track: Pick<AudioTrack, 'url' | 'preview_url'>): string {
+  return track.preview_url ?? track.url;
 }
 
 /**

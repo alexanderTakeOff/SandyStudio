@@ -48,6 +48,7 @@ import {
 import { InboxNotePromptModal } from '@/components/inbox/InboxNotePromptModal';
 import { fetcher } from '@/lib/swr';
 import { isShotReferenceV2, primaryAttemptVersion, type GenerationAttempt } from '@/lib/api/shot-reference';
+import { compareAssetVersionsNewestFirst } from '@/lib/api/asset-ordering';
 import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import type {
   AssetMetadataDoc,
@@ -86,7 +87,12 @@ export interface EpisodeAssetDrawerProps {
   open: boolean;
   onClose: () => void;
   asset: EpisodeAsset;
-  onChange: () => void;
+  /**
+   * Refresh the row this drawer renders. May return a promise — `promoteAttempt`
+   * awaits it so its busy state covers the actual refetch (2026-07-18); callers
+   * that refresh via SWR should return the `mutate()` promise.
+   */
+  onChange: () => void | Promise<unknown>;
   /** When set, shows a "← back" button in the header (e.g. back to gallery). */
   onBack?: () => void;
   /** Header label override — defaults to "EPISODE ASSET". */
@@ -183,6 +189,7 @@ export function EpisodeAssetDrawer({
   const [anchorRegenBusy, setAnchorRegenBusy] = useState(false);
   // Timeline-as-home (2026-07-02): version being promoted via AttemptsStrip.
   const [promotingVersion, setPromotingVersion] = useState<number | null>(null);
+  const [optimisticSelectedVersion, setOptimisticSelectedVersion] = useState<number | null>(null);
 
   const [imageOpen, setImageOpen] = useState(true);
   const [summaryOpen, setSummaryOpen] = useState(true);
@@ -273,7 +280,12 @@ export function EpisodeAssetDrawer({
     fetcher,
   );
 
-  const siblingCandidates = useMemo(() => {
+  // EREF rows for this shot. 2026-07-18 — the status-rank sort ("current first,
+  // then APPROVED, REVIEW, DRAFT…") is GONE. It was orphaned when e4b77342
+  // retired the EREF CandidatesStrip, and its only surviving consumer is the
+  // `.find()` below, which is order-independent. Reinstating it would also
+  // violate the never-reposition rule (see lib/api/asset-ordering.ts).
+  const siblingRefRows = useMemo(() => {
     if (!isV2 || !shotId || !assetsData?.data) return [] as EpisodeAsset[];
     return assetsData.data
       .filter((a) => a.file_type.startsWith('IMG-episode_ref'))
@@ -282,15 +294,8 @@ export function EpisodeAssetDrawer({
           ? (a.metadata as { shot_reference: { shot_id: string } }).shot_reference
           : null;
         return sr?.shot_id === shotId;
-      })
-      .sort((a, b) => {
-        // current asset first, then APPROVED, REVIEW, DRAFT, REJECTED
-        if (a.id === asset.id) return -1;
-        if (b.id === asset.id) return 1;
-        const order: Record<string, number> = { APPROVED: 0, LOCKED: 0, REVIEW: 1, DRAFT: 2, REVISION: 3, REJECTED: 4 };
-        return (order[a.status] ?? 9) - (order[b.status] ?? 9);
       });
-  }, [isV2, shotId, assetsData?.data, asset.id]);
+  }, [isV2, shotId, assetsData?.data]);
 
   // TD-43 (2026-05-24): VID-shot version-picker — same Candidates-strip UI
   // the EREF v2 panel uses, applied to VID-shot rows so Director can
@@ -310,23 +315,17 @@ export function EpisodeAssetDrawer({
         const sid = (a.metadata as { shot_id?: unknown } | null)?.shot_id;
         return typeof sid === 'string' && sid === vidShotId;
       })
-      .sort((a, b) => {
-        // Current first, then by version desc (newest variant on the left).
-        if (a.id === asset.id) return -1;
-        if (b.id === asset.id) return 1;
-        const va = a.version ?? 0;
-        const vb = b.version ?? 0;
-        return vb - va;
-      });
-  }, [isVidShot, vidShotId, assetsData?.data, asset.id]);
+      .slice()
+      .sort(compareAssetVersionsNewestFirst);
+  }, [isVidShot, vidShotId, assetsData?.data]);
 
   // Existing APPROVED for this shot (replace-confirm gate). May be the current asset.
   const existingApprovedForShot = useMemo(() => {
     if (!isV2 || !shotId) return null;
-    return siblingCandidates.find(
+    return siblingRefRows.find(
       (a) => (a.status === 'APPROVED' || a.status === 'LOCKED') && a.id !== asset.id,
     ) ?? null;
-  }, [isV2, shotId, siblingCandidates, asset.id]);
+  }, [isV2, shotId, siblingRefRows, asset.id]);
 
   if (!open || typeof document === 'undefined') return null;
 
@@ -358,9 +357,13 @@ export function EpisodeAssetDrawer({
   // on screen — the root of the "selection is muddled / click didn't switch"
   // confusion (Director E30, 2026-07-17).
   const erefHistory = shotRef?.generation_history ?? [];
-  const erefPrimaryVersion: number | null = shotRef
+  const serverPrimaryVersion: number | null = shotRef
     ? primaryAttemptVersion(shotRef, promptDoc?.current_version)
     : null;
+  // The Director's just-clicked pick, held only until the refetch lands
+  // (promoteAttempt clears it after awaiting onChange()).
+  const erefPrimaryVersion: number | null =
+    optimisticSelectedVersion ?? serverPrimaryVersion;
 
   async function saveTextEdits() {
     setBusy(true);
@@ -542,6 +545,14 @@ export function EpisodeAssetDrawer({
   async function promoteAttempt(att: GenerationAttempt) {
     setPromotingVersion(att.version);
     setError(null);
+    // 2026-07-18 — move the ring IMMEDIATELY. The green frame is derived from
+    // the `asset` prop, which only changes once the parent's SWR refetch of
+    // /api/episodes/{id} lands — a `select('*')` over every asset in the
+    // episode, seconds against the remote DB. Until then the strip re-rendered
+    // with the OLD selected_version, so the click looked like a no-op and the
+    // Director clicked again (nine times on one shot, nine chat lines). The
+    // optimistic value wins until fresh metadata arrives.
+    setOptimisticSelectedVersion(att.version);
     try {
       const res = await fetch(`/api/assets/${asset.id}/regenerate-image`, {
         method: 'POST',
@@ -552,10 +563,17 @@ export function EpisodeAssetDrawer({
         const j = await res.json().catch(() => ({}));
         throw new Error((j as { error?: string }).error ?? 'Select variant failed');
       }
-      onChange();
+      // Await the refresh so the busy state covers the whole round trip. Once
+      // it resolves the parent has re-rendered us with metadata that carries
+      // the pick, so the local override has done its job.
+      await onChange();
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      // Hand the ring back to server truth either way: on success the fresh
+      // metadata already says the same thing, on failure we must not keep
+      // showing a pick that did not persist.
+      setOptimisticSelectedVersion(null);
       setPromotingVersion(null);
     }
   }
