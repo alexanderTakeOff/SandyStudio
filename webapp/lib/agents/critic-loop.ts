@@ -123,8 +123,15 @@ export async function applyCriticVerdict(
 
   // Cap: a REVISE that would exceed the cap is escalated to a HALT instead. The
   // Director becomes the router only after `cap` automated revisions, not first.
+  //
+  // 2026-07-19 — UNKNOWN is capped too. `mapVerdictToPlanStatus` routes it to
+  // the same REVISION status as REVISE, so an unparseable critic reply bounced
+  // the plan back for re-authoring on every pass with nothing to stop it. Only
+  // the literal 'REVISE' was coerced, so the one verdict that means "the critic
+  // did not answer" was the one that could loop forever.
+  const bouncesPlan = rawVerdict === 'REVISE' || rawVerdict === 'UNKNOWN';
   const effectiveVerdict: CriticVerdict =
-    rawVerdict === 'REVISE' && revisionsSoFar >= cap ? 'HALT' : rawVerdict;
+    bouncesPlan && revisionsSoFar >= cap ? 'HALT' : rawVerdict;
 
   let planStatusAfter = mapVerdictToPlanStatus(effectiveVerdict);
   // F3 / TD-76 recovery (2026-06-12): "leave as-is" on PASS/HALT assumed the

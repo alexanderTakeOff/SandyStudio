@@ -40,6 +40,43 @@ import { planRegenCap } from '@/lib/agents/chain-flags';
  */
 export const SHOT_REGEN_AGENT_IDS = ['EXEC-EREF', 'EXEC-EREF-DESIGNER', 'EXEC-VGEN'] as const;
 
+/**
+ * Agents that AUTHOR a shot plan. Counted separately from SHOT_REGEN_AGENT_IDS
+ * against PLAN_VERSION_CAP — see the note there. These burn wall-clock and LLM
+ * spend rather than render spend, and an authoring loop is what produced E30's
+ * 17 plan versions on one shot.
+ */
+export const PLAN_AUTHOR_AGENT_IDS = ['EXEC-VANIM'] as const;
+
+/**
+ * How many `SPC-shot_plan` versions already exist for this shot. Counts asset
+ * rows (the version series is per-shot because file_type carries the shot id),
+ * so the number spans every authoring path — reconciler, Director REVISE,
+ * Polina's regenerateShotPlan, VGEN fan-out — and survives a queue reset.
+ *
+ * INVALIDATED versions still count: they are evidence of the loop, and
+ * excluding them would let a re-authoring cycle that invalidates its own
+ * predecessor run forever.
+ */
+export async function countShotPlanVersions(
+  supabase: ServerSupabaseClient,
+  episodeId: string,
+  shotId: string,
+): Promise<{ count: number; readError: boolean }> {
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,metadata')
+    .eq('episode_id', episodeId)
+    .or('file_type.eq.SPC-shot_plan,file_type.like.SPC-shot_plan-%');
+  if (error) return { count: 0, readError: true };
+  const rows = (data ?? []) as Array<{ metadata?: unknown }>;
+  const count = rows.filter((r) => {
+    const sid = (r.metadata as { shot_id?: unknown } | null)?.shot_id;
+    return typeof sid === 'string' && sid === shotId;
+  }).length;
+  return { count, readError: false };
+}
+
 export interface PlanRegenGuardArgs {
   supabase: ServerSupabaseClient;
   episodeId: string;

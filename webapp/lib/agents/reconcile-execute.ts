@@ -43,7 +43,7 @@ import {
   resolveReservedShots,
   isReconcilerArmed,
 } from './production-plan';
-import { planRegenCap, reconcileRecoveryCap } from './chain-flags';
+import { promptRevisionCap, reconcileRecoveryCap } from './chain-flags';
 
 export interface ReconcileOptions {
   /** Bypass the per-episode arm gate (explicit calls / tests). */
@@ -51,7 +51,8 @@ export interface ReconcileOptions {
   /** Shots the Director still gates (e.g. pilots). MUST be supplied before a
    *  live run enables auto-advance, else pilots would auto-approve. */
   reservedShots?: Set<string>;
-  /** REVISE cap before HALT. Defaults to planRegenCap(). */
+  /** REVISE cap before HALT. Defaults to promptRevisionCap() — the same
+   *  number critic-loop uses to coerce REVISE→HALT. */
   criticCap?: number;
   /** Mechanical-refire cap before HALT. Defaults to reconcileRecoveryCap(). */
   recoveryCap?: number;
@@ -174,7 +175,12 @@ export async function reconcileEpisode(
     reviseCounts,
     refireCounts,
     reservedShots,
-    criticCap: opts.criticCap ?? planRegenCap(),
+    // 2026-07-19 — the re-author gate must use the SAME number the critic loop
+    // uses to coerce REVISE→HALT (promptRevisionCap, default 2). It read
+    // planRegenCap (3) — a different concept (per-plan re-fires) — so the
+    // reconciler kept re-authoring for one more round after the critic had
+    // already given up on the plan.
+    criticCap: opts.criticCap ?? promptRevisionCap(),
     recoveryCap: opts.recoveryCap ?? reconcileRecoveryCap(),
     governanceMode,
   });

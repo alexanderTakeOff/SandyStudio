@@ -75,6 +75,43 @@ describe('applyCriticVerdict — cap enforcement', () => {
     expect((ev.metadata as { reason?: string }).reason).toBe('cap_reached');
   });
 
+  // 2026-07-19 — UNKNOWN bounces the plan to REVISION exactly like REVISE
+  // (see mapVerdictToPlanStatus above), but only the literal 'REVISE' was
+  // cap-coerced. So the one verdict that means "the critic did not answer"
+  // could re-author forever.
+  it('UNKNOWN under the cap bounces the Plan to REVISION (unchanged)', async () => {
+    const { client, tables } = seedPlan(1);
+    const res = await applyCriticVerdict({
+      supabase: client,
+      rawVerdict: 'UNKNOWN',
+      planAssetId: PLAN_ID,
+      episodeId: EPISODE_ID,
+      shotId: SHOT_ID,
+      actor: 'EXEC-VPREV',
+      reviewKind: 'shot_plan',
+    });
+    expect(res.effectiveVerdict).toBe('UNKNOWN');
+    expect(tables.assets[0]!.status).toBe('REVISION');
+  });
+
+  it('UNKNOWN at the cap is coerced to HALT — no infinite bounce', async () => {
+    const { client, tables } = seedPlan(3); // 2 revisions so far = cap
+    const res = await applyCriticVerdict({
+      supabase: client,
+      rawVerdict: 'UNKNOWN',
+      planAssetId: PLAN_ID,
+      episodeId: EPISODE_ID,
+      shotId: SHOT_ID,
+      actor: 'EXEC-VPREV',
+      reviewKind: 'shot_plan',
+    });
+    expect(res.effectiveVerdict).toBe('HALT');
+    expect(res.planStatusAfter).toBeNull();
+    expect(tables.assets[0]!.status).toBe('REVIEW');
+    expect(tables.activity_events).toHaveLength(1);
+    expect(tables.activity_events[0]!.event_type).toBe('blocker_raised');
+  });
+
   it('PASS leaves the Plan in REVIEW and does not escalate', async () => {
     const { client, tables } = seedPlan(2);
     const res = await applyCriticVerdict({
