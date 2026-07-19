@@ -190,6 +190,36 @@ export function EpisodeAssetDrawer({
   // Timeline-as-home (2026-07-02): version being promoted via AttemptsStrip.
   const [promotingVersion, setPromotingVersion] = useState<number | null>(null);
   const [optimisticSelectedVersion, setOptimisticSelectedVersion] = useState<number | null>(null);
+  // Which attempt the Director is LOOKING at. Local only — a click never writes
+  // to the server (Director's viewer rule, 2026-07-19).
+  const [viewingVersion, setViewingVersion] = useState<number | null>(null);
+
+  // Warm the browser cache for EVERY variant the moment the viewer opens, so
+  // clicking a tile swaps the picture instantly instead of fetching it then
+  // (Director 2026-07-19: "долго ждать пока переключится картинка").
+  //
+  // Reads straight off the `asset` prop rather than the derived erefHistory
+  // below — hooks must run before this component's early return.
+  useEffect(() => {
+    if (!open) return;
+    const sr = (asset.metadata as { shot_reference?: { generation_history?: unknown } } | null)
+      ?.shot_reference;
+    const history = Array.isArray(sr?.generation_history) ? sr.generation_history : [];
+    const urls = history
+      .map((h) => (h as { image_url?: unknown }).image_url)
+      .filter((u): u is string => typeof u === 'string' && u.length > 0)
+      // Videos are not worth a full prefetch (tens of MB); their tiles already
+      // carry preload="metadata". Images are cheap and are what the Director
+      // flips between.
+      .filter((u) => !/\.(mp4|mov|webm)(\?|$)/i.test(u));
+    // Plain Image() requests — they land in the HTTP cache, so the <img> swap
+    // afterwards is a cache hit. Nothing is retained; GC collects them.
+    for (const url of urls) {
+      const img = new window.Image();
+      img.decoding = 'async';
+      img.src = url;
+    }
+  }, [open, asset.metadata]);
 
   const [imageOpen, setImageOpen] = useState(true);
   const [summaryOpen, setSummaryOpen] = useState(true);
@@ -342,8 +372,8 @@ export function EpisodeAssetDrawer({
     ? promptDoc.history.find((h) => h.version === promptDoc.current_version)
     : undefined;
 
-  const previewSrc = resolvePreviewSrc(asset, currentPromptEntry);
-  const isImage = !!previewSrc;
+  const canonicalPreviewSrc = resolvePreviewSrc(asset, currentPromptEntry);
+  const isImage = !!canonicalPreviewSrc;
 
   // Single source of truth for "which attempt is the primary reference" — the
   // one whose pixels the main preview above actually shows. It MUST match the
@@ -364,6 +394,19 @@ export function EpisodeAssetDrawer({
   // (promoteAttempt clears it after awaiting onChange()).
   const erefPrimaryVersion: number | null =
     optimisticSelectedVersion ?? serverPrimaryVersion;
+
+  // The attempt actually on screen. Clicking a tile points the BIG preview at
+  // that attempt's own file — that is what makes this a viewer. Falls back to
+  // the canonical bytes when nothing is explicitly selected, and self-heals if
+  // the selected version disappears (asset refetched with a different history).
+  const viewedAttempt =
+    viewingVersion != null
+      ? (erefHistory.find((a) => a.version === viewingVersion) ?? null)
+      : null;
+  const previewSrc =
+    viewedAttempt?.image_url && viewedAttempt.version !== erefPrimaryVersion
+      ? viewedAttempt.image_url
+      : canonicalPreviewSrc;
 
   async function saveTextEdits() {
     setBusy(true);
@@ -660,9 +703,10 @@ export function EpisodeAssetDrawer({
               so the variant you are judging was never on screen next to the one you
               have. This IS the "Candidates for this shot" strip: with keep-best one
               asset row carries every attempt in generation_history, so the sibling-row
-              CandidatesStrip below was retired for EREF. Clicking a candidate promotes
-              it (select_attempt) → the main preview above refreshes to it. Self-hides
-              at ≤1 attempt, so a single-shot render shows nothing extra. */}
+              CandidatesStrip below was retired for EREF. 2026-07-19 — clicking a
+              candidate now only SHOWS it (the big preview points at that attempt's
+              file); making it current is an explicit button inside the strip.
+              Self-hides at ≤1 attempt, so a single-shot render shows nothing extra. */}
           {isV2 && shotRef && (
             <AttemptsStrip
               attempts={erefHistory}
@@ -671,7 +715,13 @@ export function EpisodeAssetDrawer({
               // badge lands on the tile whose pixels are actually on screen — including
               // the keep-best case where the shipped attempt is NOT the last one.
               finalVersion={erefPrimaryVersion}
-              onPromote={promoteAttempt}
+              viewingVersion={viewingVersion}
+              onView={(att) => setViewingVersion(att.version)}
+              onPromote={(att) => {
+                // Promote what you are looking at, then hand the view back to
+                // "current" so the two markers coincide again.
+                void promoteAttempt(att).then(() => setViewingVersion(null));
+              }}
               busyVersion={promotingVersion}
             />
           )}

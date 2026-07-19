@@ -31,7 +31,7 @@ import { primaryAttemptVersion } from '@/lib/api/shot-reference';
 import { compareAssetVersionsNewestFirst } from '@/lib/api/asset-ordering';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { Button } from '@/components/ui/Button';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const TEXT_PREFIXES = ['SCR', 'STB', 'BIB', 'PRO', 'REV', 'SPC', 'STA', 'SBL'];
 
@@ -203,6 +203,22 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
       .slice()
       .sort(compareAssetVersionsNewestFirst);
   }, [isFinalCutCurrent, meta?.data, finalCutAssets?.data]);
+
+  // Warm the cache for every candidate as soon as the viewer has them, so
+  // picking one swaps instantly (Director 2026-07-19). Images only — video
+  // siblings would mean tens of MB, and their tiles already preload metadata.
+  // Declared before the early returns so hook order stays stable.
+  useEffect(() => {
+    const candidates = [...vidShotSiblings, ...thumbnailSiblings, ...finalCutSiblings];
+    for (const c of candidates) {
+      const src = resolvePreviewSrc(c);
+      if (!src) continue;
+      if (/\.(mp4|mov|webm)(\?|$)/i.test(src) || /-VID-/i.test(c.filename ?? '')) continue;
+      const img = new window.Image();
+      img.decoding = 'async';
+      img.src = src;
+    }
+  }, [vidShotSiblings, thumbnailSiblings, finalCutSiblings]);
 
   // Fix 3 (Key Art, 2026-07-05): the "Edit plan" affordance opens the linked
   // SPC-thumb_plan (the JSON of 3 concepts) in the shared EditorModal. Declared

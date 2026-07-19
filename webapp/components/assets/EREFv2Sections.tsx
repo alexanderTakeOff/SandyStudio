@@ -368,8 +368,16 @@ export function CandidatesStrip({ currentAssetId, candidates, onPick, label }: C
   if (candidates.length <= 1) return null;
   return (
     <div className="rounded-lg border border-glass p-3 space-y-2" style={{ background: 'var(--bg-elevated)' }}>
-      <div className="text-xs uppercase tracking-wider text-text-muted">
-        {label ?? `Candidates for this shot (${candidates.length})`}
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs uppercase tracking-wider text-text-muted">
+          {label ?? `Candidates for this shot (${candidates.length})`}
+        </div>
+        {/* 2026-07-19 — spell the rule out. The green ring is a STATUS, so it
+            legitimately stays on another tile after you click; without this
+            line that reads as "the picker is broken" (Director, stitch view). */}
+        <div className="text-[10px] text-text-muted">
+          Клик — посмотреть · зелёный = утверждённая
+        </div>
       </div>
       <div className="flex flex-wrap gap-2">
         {candidates.map((c) => {
@@ -459,18 +467,37 @@ export interface AttemptsStripProps {
    */
   label?: string;
   /**
-   * Timeline-as-home (2026-07-02): when provided, each attempt becomes a
-   * PROMOTE button — clicking it makes that attempt the asset's primary image
-   * (the "pick a different one of the 3 variants" motion) instead of opening the
-   * image in a new tab. Without it the strip stays read-only (open-in-tab).
+   * Make the viewed attempt the asset's primary image. 2026-07-19 — this is
+   * now bound to an explicit BUTTON, never to the tile click. Director's rule:
+   * "клик — это выбор кадра для просмотра (ободок), в этом и суть вьюера;
+   * утверждение — это кнопка и подпись состояния-статуса". A click must never
+   * write to the server.
    */
   onPromote?: (att: GenerationAttempt) => void;
   /** Attempt version currently being promoted (spinner / disabled state). */
   busyVersion?: number | null;
+  /** Attempt the Director is LOOKING at. Purely local view state. */
+  viewingVersion?: number | null;
+  /** Tile click — select this attempt for viewing. No server write. */
+  onView?: (att: GenerationAttempt) => void;
 }
 
-export function AttemptsStrip({ attempts, finalVersion, onPromote, busyVersion, label }: AttemptsStripProps) {
+export function AttemptsStrip({
+  attempts,
+  finalVersion,
+  onPromote,
+  busyVersion,
+  label,
+  viewingVersion,
+  onView,
+}: AttemptsStripProps) {
   if (!attempts || attempts.length <= 1) return null;
+  // What the Director is looking at — defaults to the current one.
+  const viewed = viewingVersion ?? finalVersion ?? null;
+  const viewedAttempt = attempts.find((a) => a.version === viewed) ?? null;
+  const viewingNonCurrent =
+    viewedAttempt != null && finalVersion != null && viewedAttempt.version !== finalVersion;
+  const busy = busyVersion != null;
   return (
     <div
       className="rounded-lg border border-glass p-3 space-y-2"
@@ -481,12 +508,42 @@ export function AttemptsStrip({ attempts, finalVersion, onPromote, busyVersion, 
           {label ?? `Generation attempts (${attempts.length})`}
         </div>
         <div className="text-[10px] text-text-muted">
-          {onPromote ? 'Click a variant to make it the approved reference' : 'Hover for details · click opens full size'}
+          {onView ? 'Клик — посмотреть вариант · утверждение отдельной кнопкой' : 'Hover for details · click opens full size'}
         </div>
       </div>
+      {/* Status line + the ONLY affordance that changes what is current. */}
+      {onPromote && viewedAttempt && (
+        <div className="flex items-center gap-2 flex-wrap text-[11px]">
+          <span className="text-text-secondary">
+            Смотрите: <span className="font-mono">#{viewedAttempt.version}</span>
+          </span>
+          {viewingNonCurrent ? (
+            <>
+              <span style={{ color: 'var(--accent-warning)' }}>· не текущий</span>
+              <button
+                type="button"
+                onClick={() => { if (!busy) onPromote(viewedAttempt); }}
+                disabled={busy}
+                className="px-2 py-0.5 rounded text-[11px] font-medium border transition-colors disabled:opacity-50"
+                style={{
+                  background: 'color-mix(in oklab, var(--accent-success) 14%, transparent)',
+                  color: 'var(--accent-success)',
+                  borderColor: 'color-mix(in oklab, var(--accent-success) 45%, transparent)',
+                }}
+                title={`Сделать вариант #${viewedAttempt.version} текущим референсом`}
+              >
+                {busy ? 'Применяю…' : 'Сделать текущим'}
+              </button>
+            </>
+          ) : (
+            <span style={{ color: 'var(--accent-success)' }}>· текущий референс</span>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         {attempts.map((att) => {
           const isFinal = finalVersion != null && att.version === finalVersion;
+          const isViewed = viewed != null && att.version === viewed;
           const promoting = busyVersion != null && att.version === busyVersion;
           const triggerLabel =
             att.triggered_by === 'pipeline'
@@ -515,27 +572,29 @@ export function AttemptsStrip({ attempts, finalVersion, onPromote, busyVersion, 
           return (
             <a
               key={`${att.version}-${att.at}`}
-              href={onPromote ? undefined : att.image_url}
-              target={onPromote ? undefined : '_blank'}
-              rel={onPromote ? undefined : 'noopener noreferrer'}
+              href={onView ? undefined : att.image_url}
+              target={onView ? undefined : '_blank'}
+              rel={onView ? undefined : 'noopener noreferrer'}
               onClick={
-                onPromote
+                onView
                   ? (e) => {
                       e.preventDefault();
-                      if (!promoting) onPromote(att);
+                      onView(att);
                     }
                   : undefined
               }
-              title={
-                onPromote
-                  ? `${title} · click to make this the approved reference`
-                  : title
-              }
-              aria-label={title}
+              title={onView ? `${title} · клик — посмотреть` : title}
+              aria-label={`${title}${isFinal ? ' — текущий' : ''}${isViewed ? ' — смотрите' : ''}`}
+              aria-current={isViewed ? 'true' : undefined}
               className="relative w-20 h-14 rounded-md overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] transition-all hover:scale-[1.04]"
               style={{
+                // GREEN = status (this is the current reference).
+                // BLUE OUTLINE = what you are looking at. Two different facts,
+                // two different channels — a click moves only the blue one.
                 border: `2px solid ${isFinal ? 'var(--accent-success)' : 'var(--panel-glass-border)'}`,
-                cursor: onPromote ? 'pointer' : undefined,
+                outline: isViewed ? '2px solid var(--accent-primary)' : 'none',
+                outlineOffset: '-2px',
+                cursor: onView ? 'pointer' : undefined,
                 opacity: promoting ? 0.5 : 1,
               }}
             >
@@ -578,9 +637,16 @@ export function AttemptsStrip({ attempts, finalVersion, onPromote, busyVersion, 
                     color: '#0d1f17',
                   }}
                 >
-                  {/* Marks the primary reference — the latest attempt by default,
-                      or the Director's manual pick (select-in-place). */}
+                  {/* STATUS, not selection. Stays put when you click elsewhere. */}
                   current
+                </span>
+              )}
+              {isViewed && !isFinal && (
+                <span
+                  className="absolute top-0 right-0 px-1 py-0.5 text-[8px] uppercase tracking-wider font-semibold"
+                  style={{ background: 'var(--accent-primary)', color: '#0b1220' }}
+                >
+                  смотрите
                 </span>
               )}
               <span
