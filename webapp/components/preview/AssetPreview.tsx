@@ -28,6 +28,7 @@ import { VGENShotSection } from '@/components/vgen/VGENShotSection';
 import { ShotPlanContract } from '@/components/preview/ShotPlanContract';
 import { CandidatesStrip } from '@/components/assets/EREFv2Sections';
 import { primaryAttemptVersion } from '@/lib/api/shot-reference';
+import { compareAssetVersionsNewestFirst } from '@/lib/api/asset-ordering';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { Button } from '@/components/ui/Button';
 import { useMemo, useRef, useState } from 'react';
@@ -153,13 +154,8 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
         const sid = (a.metadata as { shot_id?: unknown } | null)?.shot_id;
         return typeof sid === 'string' && sid === currentShotId;
       })
-      .sort((a, b) => {
-        if (a.id === meta.data.id) return -1;
-        if (b.id === meta.data.id) return 1;
-        const va = a.version ?? 0;
-        const vb = b.version ?? 0;
-        return vb - va;
-      });
+      .slice()
+      .sort(compareAssetVersionsNewestFirst);
   }, [isVidShotCurrent, meta?.data, episodeAssets?.data]);
 
   // Fix 1b (Key Art, 2026-07-05): IMG-thumbnail concept variants. EXEC-THUMB
@@ -183,13 +179,8 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
     }
     return thumbnailAssets.data
       .filter((a) => a.file_type.startsWith('IMG-thumbnail'))
-      .sort((a, b) => {
-        if (a.id === meta.data.id) return -1;
-        if (b.id === meta.data.id) return 1;
-        const va = a.version ?? 0;
-        const vb = b.version ?? 0;
-        return vb - va;
-      });
+      .slice()
+      .sort(compareAssetVersionsNewestFirst);
   }, [isThumbnailCurrent, meta?.data, thumbnailAssets?.data]);
 
   // 2026-07-11 (Director): VID-final_cut version picker + approve in the drawer.
@@ -209,13 +200,8 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
     }
     return finalCutAssets.data
       .filter((a) => a.file_type.startsWith('VID-final_cut'))
-      .sort((a, b) => {
-        if (a.id === meta.data.id) return -1;
-        if (b.id === meta.data.id) return 1;
-        const va = a.version ?? 0;
-        const vb = b.version ?? 0;
-        return vb - va;
-      });
+      .slice()
+      .sort(compareAssetVersionsNewestFirst);
   }, [isFinalCutCurrent, meta?.data, finalCutAssets?.data]);
 
   // Fix 3 (Key Art, 2026-07-05): the "Edit plan" affordance opens the linked

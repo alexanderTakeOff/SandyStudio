@@ -687,18 +687,39 @@ export const execVgenRun = inngest.createFunction(
 
 /**
  * Pure per-shot fanout decision. Exported as a test seam.
- * When animatorChainOn is true AND no approved plan exists for the shot:
- *   → route to exec-vanim/plan so Animator authors a Plan first.
- * Otherwise: emit single-shot (with planAssetId when available).
+ *
+ * Three outcomes:
+ *   - author a Plan  → `exec-vanim/plan`   (chain on, shot has NO plan at all)
+ *   - generate video → `exec-vgen/single-shot` (with the APPROVED planAssetId)
+ *   - wait           → `null`              (a plan exists but isn't approved yet)
+ *
+ * 2026-07-19 — the "wait" outcome is new and it is the fix for the runaway
+ * authoring loop. This used to key BOTH decisions off one value: the approved
+ * plan id. A plan that had PASSed the critic sits in REVIEW by contract
+ * (critic-loop.ts — "PASS → leave in REVIEW for the Director"), so it was
+ * absent from the approved map and read as "this shot has no plan" — every
+ * fan-out re-authored it, minting yet another version, which PASSed again, and
+ * so on. E30 reached 17 versions on SH27 with 108 PASS verdicts and only 9
+ * REVISEs; no cap caught it because none of them counts plan authoring.
+ *
+ * The two signals are now separate: `hasLivePlan` decides whether to AUTHOR,
+ * `approvedPlanAssetId` decides whether to GENERATE. When a plan exists but is
+ * not approved the shot is simply waiting on the Director — we must not author
+ * a duplicate, and we must not generate either (VGEN hard-fails on a plan whose
+ * status isn't APPROVED, which is what spammed SH05/SH06 with agent_failed).
+ *
  * Flag off → byte-identical legacy behavior.
  */
 export function decideFanoutEmit(
   episodeId: string,
   shot: { shot_id: string; duration_seconds: number },
-  planAssetId: string | undefined,
+  approvedPlanAssetId: string | undefined,
   animatorChainOn: boolean,
-): { event: string; data: Record<string, unknown> } {
-  if (animatorChainOn && planAssetId === undefined) {
+  hasLivePlan = false,
+): { event: string; data: Record<string, unknown> } | null {
+  if (animatorChainOn && approvedPlanAssetId === undefined) {
+    // A live-but-unapproved plan means "authored, awaiting the Director".
+    if (hasLivePlan) return null;
     return {
       event: 'sandystudio/exec-vanim/plan',
       data: { episodeId, shotId: shot.shot_id },
@@ -710,7 +731,7 @@ export function decideFanoutEmit(
       episodeId,
       shotId: shot.shot_id,
       duration_seconds: shot.duration_seconds,
-      ...(planAssetId !== undefined ? { planAssetId } : {}),
+      ...(approvedPlanAssetId !== undefined ? { planAssetId: approvedPlanAssetId } : {}),
     },
   };
 }
@@ -787,32 +808,55 @@ export const execVgenFanoutTrigger = inngest.createFunction(
       // `SPC-shot_plan-<shot_id>` (TD-66 widening). Strict equality matched
       // none of the modern Plans and every fan-out shot lost its Plan,
       // silently falling back to storyboard template same way as SH19 v02.
+      // 2026-07-19 — fetch ALL non-invalidated plans, not just APPROVED ones,
+      // and keep the two facts apart: which shots already HAVE a plan (any live
+      // status) versus which have an APPROVED one to generate from. Selecting
+      // only APPROVED made a PASSed plan sitting in REVIEW look like "no plan"
+      // and the fan-out re-authored it forever. See decideFanoutEmit.
       const { data: planRows } = await supabase
         .from('assets')
-        .select('id,metadata')
+        .select('id,status,metadata')
         .eq('episode_id', episodeId)
         .or('file_type.eq.SPC-shot_plan,file_type.like.SPC-shot_plan-%')
-        .eq('status', 'APPROVED');
+        .in('status', ['DRAFT', 'REVIEW', 'REVISION', 'APPROVED', 'LOCKED']);
       const planByShotId = new Map<string, string>();
+      const shotsWithLivePlan = new Set<string>();
       for (const row of (planRows ?? []) as Array<{
         id: string;
+        status?: string | null;
         metadata?: unknown;
       }>) {
         const meta = row.metadata as { shot_id?: unknown } | null;
         const sid = typeof meta?.shot_id === 'string' ? meta.shot_id : null;
-        if (sid) planByShotId.set(sid, row.id);
+        if (!sid) continue;
+        shotsWithLivePlan.add(sid);
+        if (row.status === 'APPROVED' || row.status === 'LOCKED') {
+          planByShotId.set(sid, row.id);
+        }
       }
 
       let emitted = 0;
       let skipped = 0;
       let withPlan = 0;
       let planned = 0;
+      let awaitingApproval = 0;
       const chainOn = animatorChainEnabled();
       for (const s of shotList) {
         if (skipShotIds.has(s.shot_id)) { skipped += 1; continue; }
         const planAssetId = planByShotId.get(s.shot_id);
         if (planAssetId) withPlan += 1;
-        const decision = decideFanoutEmit(episodeId, s, planAssetId, chainOn);
+        const decision = decideFanoutEmit(
+          episodeId,
+          s,
+          planAssetId,
+          chainOn,
+          shotsWithLivePlan.has(s.shot_id),
+        );
+        if (decision === null) {
+          // Plan authored, not approved — the Director owns the next move.
+          awaitingApproval += 1;
+          continue;
+        }
         if (decision.event === 'sandystudio/exec-vanim/plan') {
           await inngest.send({ name: decision.event as never, data: decision.data as never });
           planned += 1;
@@ -828,6 +872,7 @@ export const execVgenFanoutTrigger = inngest.createFunction(
         pilots: pilotShotIds.size,
         with_plan: withPlan,
         planned,
+        awaiting_approval: awaitingApproval,
       };
     });
 

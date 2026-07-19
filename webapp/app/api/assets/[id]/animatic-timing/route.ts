@@ -62,6 +62,7 @@ const AudioTrackSchema = z.object({
   // 2026-06-06 — Director-set fields above; the original_url is bookkeeping
   // the route writes back so the client doesn't need to remember it.
   original_url: z.string().optional(),
+  preview_url: z.string().optional(),
 });
 
 const Body = z.object({
@@ -77,6 +78,13 @@ const Body = z.object({
     .optional()
     .default({}),
   audio_tracks: z.array(AudioTrackSchema).optional(),
+  /**
+   * 2026-07-18 — opt IN to the ffmpeg music pre-process. OFF by default so the
+   * timing autosave (which fires every 3s of idle and never sends
+   * `audio_tracks` at all) can never trigger a re-encode. Only the explicit
+   * "Apply music" button sets this.
+   */
+  process_audio: z.boolean().optional().default(false),
   directorConfirm: z.boolean().optional(),
 });
 
@@ -230,6 +238,13 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   // SAME way the AnimaticPlayer timeline does, so Save no longer stores an
   // unclamped 76.5s while the timeline shows ~60s (Director's number mismatch).
   // Newest version first so clipLengthsFromVidShotRows keeps the latest per shot.
+  //
+  // 2026-07-18 — measured on the autosave path: the whole PATCH costs ~2.0-2.4s
+  // against the remote Supabase, of which this read is ~0.9s (44 rows, 133 KB).
+  // Running it concurrently with resolveMode was tried and moved the total by
+  // nothing measurable, so the sequential form stays for readability. The cost
+  // here is round-trip latency (a trivial select is already ~740ms), not this
+  // query — do not micro-optimise it without re-measuring first.
   let clipLengths: Map<string, number> | undefined;
   if (asset.episode_id) {
     const { data: vidShotRows } = await sb
@@ -254,10 +269,16 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   // into the final cut. Without this, the preview ignored Director's fade /
   // trim entirely until the (much later) STITCH pass.
   //
+  // 2026-07-18 — this block is now gated behind `process_audio` (the explicit
+  // "Apply music" button). It used to run on EVERY save because the client
+  // always sent `audio_tracks`, so nudging one shot's duration by 0.5s
+  // re-encoded the whole music track — the "Save timing takes tens of seconds"
+  // report. Timing autosaves omit `audio_tracks` entirely and never reach here.
+  //
   // ffmpeg failure is non-fatal — we log + keep the raw URL so preview still
   // plays. This is the same graceful-degradation pattern the stitch path
   // uses when ffmpeg is missing on PATH.
-  if (newAudioTracks && newAudioTracks.length > 0) {
+  if (body.process_audio && newAudioTracks && newAudioTracks.length > 0) {
     newAudioTracks = await Promise.all(
       newAudioTracks.map(async (track): Promise<AudioTrack> => {
         if (track.layer !== 'music') return track;
@@ -267,15 +288,19 @@ export const PATCH = withApiHandler(async (req, ctx) => {
             track.trim_in_seconds ||
             track.trim_out_seconds,
         );
-        // Stamp / restore the original URL bookkeeping field.
+        // `url` may still point at a processed derivative on assets written by
+        // the pre-2026-07-18 code, which stashed the raw source in
+        // `original_url`. Resolve the true source and normalise both fields so
+        // `url` is once again the raw file — this migrates old assets in place
+        // on the first "Apply music" press.
         const originalUrl = track.original_url ?? track.url;
         if (!hasShaping) {
-          // All shaping cleared → revert to the raw source and drop the
-          // bookkeeping field (cleaner metadata for old assets).
+          // All shaping cleared → raw source only, no derivative.
           return {
             ...track,
             url: originalUrl,
             original_url: undefined,
+            preview_url: undefined,
           };
         }
         try {
@@ -292,10 +317,15 @@ export const PATCH = withApiHandler(async (req, ctx) => {
           const absPath = localCacheAbsPath(processedFilename);
           await fs.mkdir(path.dirname(absPath), { recursive: true });
           await fs.writeFile(absPath, processedBytes);
+          // The derivative is PREVIEW-ONLY. `url` keeps pointing at the raw
+          // source because EXEC-STITCH loads bytes from it and applies the same
+          // fade/trim itself (runner.ts → buildMusicAudioFilter). Rewriting
+          // `url` here is what used to shape the music twice in the final cut.
           return {
             ...track,
-            original_url: originalUrl,
-            url: `/api/media/${encodeURIComponent(processedFilename)}`,
+            original_url: undefined,
+            url: originalUrl,
+            preview_url: `/api/media/${encodeURIComponent(processedFilename)}`,
           };
         } catch (err) {
           // ffmpeg missing or processing failed — keep the previous URL so

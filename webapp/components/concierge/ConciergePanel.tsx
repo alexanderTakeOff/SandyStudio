@@ -122,7 +122,15 @@ function formatPipelineContent(raw: string): string {
     const friendlyMatch = body.match(
       new RegExp(`^(.+?)\\s+${verb}\\b`, 'i'),
     );
-    const friendly = (friendlyMatch?.[1] ?? 'agent').trim().toUpperCase();
+    // 2026-07-18 — when the body does NOT follow "<agent> <verb> …" this used
+    // to fall back to the literal word "agent", producing the content-free
+    // line "AGENT — completed" and DISCARDING the real title. That is what the
+    // Director saw spammed down the thread. If the shape doesn't match, the
+    // body is not an agent-lifecycle sentence: show it verbatim rather than
+    // inventing a label and throwing the information away.
+    if (!friendlyMatch) return body || trimmed;
+    const friendly = (friendlyMatch[1] ?? '').trim().toUpperCase();
+    if (!friendly) return body || trimmed;
     const shotMatch = body.match(/\bSH\d+\b/);
     const shot = shotMatch?.[0];
     // 2026-05-26 (follow-up): Director preferred the plain

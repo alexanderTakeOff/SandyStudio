@@ -37,10 +37,12 @@ import { createSupabaseServiceRoleClient } from '../supabase/server';
 import { logEvent } from '../api/events';
 import { raiseBlockerOnce } from '../api/blocker-escalation';
 import { isReconcilerArmed } from './production-plan';
-import { shotRegenCap } from './chain-flags';
+import { shotRegenCap, planVersionCap } from './chain-flags';
 import {
   countShotAutonomousAttempts,
+  countShotPlanVersions,
   SHOT_REGEN_AGENT_IDS,
+  PLAN_AUTHOR_AGENT_IDS,
 } from '../api/plan-regen-guard';
 import {
   claimDispatchIntent,
@@ -350,6 +352,74 @@ export function createAgentInngestFunction<E extends string>(
               read_error: readError,
               reason: 'SHOT_REGEN_CAP_REACHED',
             },
+          });
+          // 2026-07-19 — an audit row is not an escalation. This used to write
+          // the event and return, so a capped runaway went silent: the Director
+          // never saw it in the Inbox and the shot just stopped moving. Raise a
+          // real blocker, the same way reconcile-execute does on its halt.
+          await raiseBlockerOnce(supabase, {
+            episodeId,
+            stage: 'shot_regen_cap',
+            shotId: shotIdForCap,
+            title: `Shot regen cap reached — needs Director (${shotIdForCap})`,
+            description:
+              `${spec.agentId} stopped after ${count} autonomous attempts on this shot ` +
+              `(cap ${cap}). Auto-recovery HALTED.`,
+          });
+          return true;
+        });
+        if (halted) return;
+      }
+
+      // ── Step 0a2: per-shot PLAN AUTHORING cap ──────────────────────────────
+      // The regen cap above counts the money executors only. The plan author is
+      // in no counted set, which is how E30 accumulated 17 plan versions on one
+      // shot while the critic PASSed 108 times — neither the regen cap nor the
+      // critic revision cap can see an authoring loop. Counted from asset
+      // versions so it spans every authoring path and survives a queue reset.
+      if (
+        shotIdForCap &&
+        !isDirectorPrincipal &&
+        (PLAN_AUTHOR_AGENT_IDS as readonly string[]).includes(spec.agentId)
+      ) {
+        const halted = await step.run('plan-version-cap-check', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          const cap = planVersionCap();
+          const { count, readError } = await countShotPlanVersions(
+            supabase,
+            episodeId,
+            shotIdForCap,
+          );
+          // Fail CLOSED, same rationale as the regen cap: an unbounded author
+          // loop is worse than one refused autonomous authoring pass.
+          if (!readError && count < cap) return false;
+          await logEvent(supabase, {
+            event_type: 'regen_cap_halt',
+            severity: 'warning',
+            title: `Plan version cap reached — ${spec.agentId} (${shotIdForCap})`,
+            description: readError
+              ? `Could not verify plan version history (failing closed). Authoring HALTED; needs the human Director.`
+              : `${count} shot_plan versions already exist for this shot (cap ${cap}). ` +
+                `Authoring HALTED; needs the human Director.`,
+            actor: 'exec-dir-ai',
+            episode_id: episodeId,
+            metadata: {
+              agent: spec.agentId,
+              shot_id: shotIdForCap,
+              plan_versions: count,
+              cap,
+              read_error: readError,
+              reason: 'PLAN_VERSION_CAP_REACHED',
+            },
+          });
+          await raiseBlockerOnce(supabase, {
+            episodeId,
+            stage: 'plan_version_cap',
+            shotId: shotIdForCap,
+            title: `Plan version cap reached — needs Director (${shotIdForCap})`,
+            description:
+              `${count} shot_plan versions exist for this shot (cap ${cap}). ` +
+              `Plan authoring HALTED — approve or reject a version to move on.`,
           });
           return true;
         });

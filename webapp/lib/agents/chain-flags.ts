@@ -140,6 +140,31 @@ export function reconcileRecoveryCap(): number {
 }
 
 /**
+ * PLAN_VERSION_CAP — how many `SPC-shot_plan` versions a shot may accumulate
+ * before plan AUTHORING halts and escalates to the Director. Default 5.
+ *
+ * `shotRegenCap` above was built for exactly this failure class (see its note on
+ * E10 SH23), but it only counts EXEC-EREF / EXEC-EREF-DESIGNER / EXEC-VGEN — the
+ * money executors. The plan AUTHOR (EXEC-VANIM) is in no counted set at all, so
+ * an authoring loop is invisible to it: E30 reached 17 plan versions on SH27
+ * while the critic returned PASS 108 times and REVISE only 9, so neither the
+ * regen cap nor the critic revision cap ever engaged.
+ *
+ * Deliberately a SEPARATE budget rather than adding EXEC-VANIM to
+ * SHOT_REGEN_AGENT_IDS: that pool is 6 shared with image+video generation, and
+ * authoring would eat the quota that real renders need.
+ *
+ * Counted from ASSET VERSIONS (not job rows) so the number survives an Inngest
+ * queue reset — the same reasoning that makes the critic cap read `version`
+ * instead of a metadata counter.
+ */
+export function planVersionCap(): number {
+  const v = process.env.PLAN_VERSION_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 5;
+}
+
+/**
  * Per-episode retry caps (Director 2026-07-06 — Episode Settings). Three
  * attempt limits the Director can tune per episode before the pipeline HALTs
  * and escalates to her:

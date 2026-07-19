@@ -39,6 +39,7 @@ import {
   type AnimaticShot,
 } from '@/lib/api/animatic-shotlist';
 import { readPipelineMode } from '@/lib/api/pipeline-mode';
+import { compareAssetVersionsNewestFirst } from '@/lib/api/asset-ordering';
 import {
   resolveTimelineCells,
   countCellsByStatus,
@@ -395,7 +396,7 @@ export function EpisodeTimelineSection({
       });
     }
     for (const arr of map.values()) {
-      arr.sort((x, y) => (y.version ?? 0) - (x.version ?? 0));
+      arr.sort(compareAssetVersionsNewestFirst);
     }
     return map;
   }, [data]);
@@ -420,7 +421,7 @@ export function EpisodeTimelineSection({
       map.get(key)!.push({ id: a.id, version: a.version, status: a.status });
     }
     for (const arr of map.values()) {
-      arr.sort((x, y) => (y.version ?? 0) - (x.version ?? 0));
+      arr.sort(compareAssetVersionsNewestFirst);
     }
     return map;
   }, [data]);
@@ -451,7 +452,7 @@ export function EpisodeTimelineSection({
         verdict: typeof meta?.verdict === 'string' ? meta.verdict : null,
       });
     }
-    for (const arr of map.values()) arr.sort((x, y) => (y.version ?? 0) - (x.version ?? 0));
+    for (const arr of map.values()) arr.sort(compareAssetVersionsNewestFirst);
     return map;
   }, [data]);
 
@@ -477,7 +478,7 @@ export function EpisodeTimelineSection({
         verdict: typeof meta?.verdict === 'string' ? meta.verdict : null,
       });
     }
-    for (const arr of map.values()) arr.sort((x, y) => (y.version ?? 0) - (x.version ?? 0));
+    for (const arr of map.values()) arr.sort(compareAssetVersionsNewestFirst);
     return map;
   }, [data]);
 
@@ -636,7 +637,7 @@ export function EpisodeTimelineSection({
       if (!approvedPlan && plansForShot.length > 0) {
         const pendingPlan = plansForShot
           .slice()
-          .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0]!;
+          .sort(compareAssetVersionsNewestFirst)[0]!;
         setBulkError(
           `Shot ${token ?? shotId} has a video plan in ${pendingPlan.status} — approve it first, then Generate renders the video (re-planning would discard it).`,
         );
@@ -693,7 +694,7 @@ export function EpisodeTimelineSection({
       if (!approvedPlan && plansForShot.length > 0) {
         const pendingPlan = plansForShot
           .slice()
-          .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0]!;
+          .sort(compareAssetVersionsNewestFirst)[0]!;
         setBulkError(
           `Shot ${token ?? shotId} has a reference plan in ${pendingPlan.status} — approve it first, then Generate renders the image (re-planning would discard it).`,
         );
@@ -1001,7 +1002,9 @@ export function EpisodeTimelineSection({
           asset={toEpisodeAsset(refAsset)}
           onClose={() => setRefAssetId(null)}
           onBack={() => setRefAssetId(null)}
-          onChange={() => void mutate()}
+          // Return the promise so the drawer's variant-pick can await the
+          // refetch instead of clearing its busy state before data lands.
+          onChange={() => mutate()}
           onPickAsset={(id) => openAssetSmart(id)}
           kindLabel="Episode reference"
           seriesId={seriesId}
