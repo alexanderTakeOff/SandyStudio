@@ -4,6 +4,10 @@
 
 import { describe, expect, test } from 'vitest';
 import { markAwaitingDirector } from '@/lib/concierge/tools/mark-awaiting';
+// Static, not `await import()` inside a test body: loading the 22-module tool
+// barrel costs ~1.2s, which blows the 5s testTimeout under full-suite worker
+// contention. Collection-time imports aren't subject to testTimeout.
+import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import type { ToolContext } from '@/lib/concierge/tools/types';
 
 const STUB_CTX = {
@@ -197,8 +201,7 @@ describe('markAwaitingDirector.execute', () => {
 });
 
 describe('markAwaitingDirector — registry integration', () => {
-  test('is exposed through the central tools registry by name', async () => {
-    const { findTool, openaiSchemas } = await import('@/lib/concierge/tools');
+  test('is exposed through the central tools registry by name', () => {
     expect(findTool('markAwaitingDirector')).toBeDefined();
     const schemaNames = openaiSchemas.map((s) => s.function.name);
     expect(schemaNames).toContain('markAwaitingDirector');

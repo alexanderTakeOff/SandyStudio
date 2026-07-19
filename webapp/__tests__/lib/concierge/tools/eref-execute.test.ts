@@ -6,6 +6,10 @@
 
 import { describe, expect, test } from 'vitest';
 import { regenerateImageFromPlan } from '@/lib/concierge/tools/eref-execute';
+// Static, not `await import()` inside a test body: loading the 22-module tool
+// barrel costs ~1.2s, which blows the 5s testTimeout under full-suite worker
+// contention. Collection-time imports aren't subject to testTimeout.
+import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 
 describe('regenerateImageFromPlan — schema', () => {
   test('declares correct name and required args', () => {
@@ -87,15 +91,13 @@ describe('regenerateImageFromPlan.parse', () => {
 });
 
 describe('regenerateImageFromPlan — registry integration', () => {
-  test('is exposed through the central tools registry by name', async () => {
-    const { findTool, openaiSchemas } = await import('@/lib/concierge/tools');
+  test('is exposed through the central tools registry by name', () => {
     expect(findTool('regenerateImageFromPlan')).toBeDefined();
     const names = openaiSchemas.map((s) => s.function.name);
     expect(names).toContain('regenerateImageFromPlan');
   });
 
-  test('is distinct from triggerAgent and regenerateRefPlan in the registry', async () => {
-    const { findTool } = await import('@/lib/concierge/tools');
+  test('is distinct from triggerAgent and regenerateRefPlan in the registry', () => {
     const exec = findTool('regenerateImageFromPlan');
     const trigger = findTool('triggerAgent');
     const regenPlan = findTool('regenerateRefPlan');

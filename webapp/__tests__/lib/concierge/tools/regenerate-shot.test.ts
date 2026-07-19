@@ -6,6 +6,10 @@
 
 import { describe, expect, test } from 'vitest';
 import { regenerateShot } from '@/lib/concierge/tools/vgen-execute';
+// Static, not `await import()` inside a test body: loading the 22-module tool
+// barrel costs ~1.2s, which blows the 5s testTimeout under full-suite worker
+// contention. Collection-time imports aren't subject to testTimeout.
+import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import type { ToolContext } from '@/lib/concierge/tools/types';
 
 describe('regenerateShot — schema', () => {
@@ -107,15 +111,13 @@ describe('regenerateShot.execute — fail-loud guards', () => {
 });
 
 describe('regenerateShot — registry integration', () => {
-  test('is exposed through the central tools registry by name', async () => {
-    const { findTool, openaiSchemas } = await import('@/lib/concierge/tools');
+  test('is exposed through the central tools registry by name', () => {
     expect(findTool('regenerateShot')).toBeDefined();
     const names = openaiSchemas.map((s) => s.function.name);
     expect(names).toContain('regenerateShot');
   });
 
-  test('is distinct from regenerateVideoFromPlan in the registry', async () => {
-    const { findTool } = await import('@/lib/concierge/tools');
+  test('is distinct from regenerateVideoFromPlan in the registry', () => {
     const shot = findTool('regenerateShot');
     const fromPlan = findTool('regenerateVideoFromPlan');
     expect(shot).toBeDefined();

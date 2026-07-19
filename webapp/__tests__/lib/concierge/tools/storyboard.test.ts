@@ -3,6 +3,10 @@
 
 import { describe, expect, test } from 'vitest';
 import { listShots } from '@/lib/concierge/tools/storyboard';
+// Static, not `await import()` inside a test body: loading the 22-module tool
+// barrel costs ~1.2s, which blows the 5s testTimeout under full-suite worker
+// contention. Collection-time imports aren't subject to testTimeout.
+import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import type { ToolContext } from '@/lib/concierge/tools/types';
 
 const STB_CONTENT_VALID = [
@@ -90,8 +94,7 @@ describe('listShots — schema and registration', () => {
     expect(listShots.description.toLowerCase()).toContain('shotid');
   });
 
-  test('is exposed through central tools registry', async () => {
-    const { findTool, openaiSchemas } = await import('@/lib/concierge/tools');
+  test('is exposed through central tools registry', () => {
     expect(findTool('listShots')).toBeDefined();
     const names = openaiSchemas.map((s) => s.function.name);
     expect(names).toContain('listShots');
