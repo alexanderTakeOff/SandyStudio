@@ -249,14 +249,16 @@ If §8 and PLAN.md disagree, PLAN.md wins. If both are stale, follow §12 Ritual
 When starting a new Claude Code session in this project:
 
 1. Read this `CLAUDE.md` file
-2. **Read `PLAN.md`** — this is the live state.
-3. **Read `specs/glossary.md`** — canonical RU+EN vocabulary. Never invent a term — look it up or add it.
-4. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
-5. **Apply §12 Ritual 2** — PLAN.md `Date:` sanity check (flag Director if > 3 days stale)
-6. Report current sprint and next step to Director (from PLAN.md `## CURRENT STATE`)
-7. Ask the Director: "What are we working on today?"
-8. Identify which agent role is needed and read that agent's file in `agents/`
-9. Proceed with task — write files only if the Director activates `===5===`
+2. **Read `NORTH_STAR.md`** — the Star (one goal + the map of planets). Ratified, master-only. Re-anchor here.
+3. **Read `PLANET.md`** — the current planet (the one destination we steer to now + its terrain).
+4. **Read `PLAN.md`** — day-to-day operations/backlog. NOT the strategy — the Star/Planet above are.
+5. **Read `specs/glossary.md`** — canonical RU+EN vocabulary. Never invent a term — look it up or add it.
+6. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
+7. **Apply §12 Ritual 2** — `Date:` sanity check on PLAN.md AND `PLANET.md` (flag Director if > 3 days stale)
+8. Report current planet + next step to Director (planet from `PLANET.md`, live state from PLAN.md `## CURRENT STATE`)
+9. Ask the Director: "What are we working on today?" — and check the ask against the current planet before executing.
+10. Identify which agent role is needed and read that agent's file in `agents/`
+11. Proceed with task — write files only if the Director activates `===5===`
 
 **Glossary discipline:** every new spec, agent, contract, or asset type MUST add its terms to `specs/glossary.md` in the same commit.
 
@@ -325,12 +327,15 @@ Date:    <today's ISO date>
 
 If the change is purely under one Sprint phase row, also tick its status in the Phase table.
 
-### Ritual 2 — Session start = PLAN.md sanity check
+### Ritual 2 — Session start = anchor sanity check
 
-After §9 (Read CLAUDE.md → PLAN.md → glossary), compare `Date:` in PLAN.md `## CURRENT STATE` to today.
+After §9 (Read CLAUDE.md → NORTH_STAR.md → PLANET.md → PLAN.md → glossary), compare `Date:` in
+PLAN.md `## CURRENT STATE` **and** the planet date in `PLANET.md` to today.
 
 - Diff ≤ 3 days → proceed normally.
-- Diff > 3 days → **flag the Director**: "PLAN.md last updated N days ago, reality may have moved on — update before starting?"
+- Diff > 3 days → **flag the Director**: "PLAN.md / PLANET.md last updated N days ago, reality may
+  have moved on — update before starting?" (This is the exact failure that killed the last
+  NORTH_STAR/PLANET pair: written 2026-06-27, never re-read, planet drifted 17 episodes behind.)
 
 Do not silently work with a stale anchor.
 
