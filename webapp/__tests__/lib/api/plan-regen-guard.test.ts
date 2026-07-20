@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   assertPlanRegenWithinCap,
   countShotAutonomousAttempts,
+  hasUnclearedBillingLock,
 } from '@/lib/api/plan-regen-guard';
 import { shotRegenCap } from '@/lib/agents/chain-flags';
 import { ConflictError } from '@/lib/api/errors';
@@ -189,5 +190,89 @@ describe('countShotAutonomousAttempts', () => {
     const client = mockCountClient({ count: null, error: { message: 'boom' } });
     const r = await countShotAutonomousAttempts(client, 'ep-1', 'SH23');
     expect(r.readError).toBe(true);
+  });
+});
+
+// ── Provider billing breaker ─────────────────────────────────────────────────
+// E30 (2026-07-18): one exhausted fal balance produced 120 identical 403s across
+// ~10 shots in 37 minutes, because both existing billing guards are per-run and
+// nothing refused the NEXT dispatch. This helper is the breaker at the door.
+
+/** Two-table double: the newest billing-lock event and the newest COMPLETED job. */
+function mockBillingClient(opts: {
+  lock?: { created_at: string; description?: string } | null;
+  lastOk?: { created_at: string } | null;
+  lockError?: { message: string } | null;
+  jobsError?: { message: string } | null;
+}) {
+  const make = (data: unknown, error: unknown) => {
+    const b: Record<string, unknown> = {};
+    for (const m of ['select', 'eq', 'order', 'limit']) b[m] = () => b;
+    (b as { then: unknown }).then = (resolve: (v: unknown) => unknown) =>
+      resolve({ data, error });
+    return b;
+  };
+  return {
+    from: (name: string) =>
+      name === 'jobs'
+        ? make(opts.lastOk ? [opts.lastOk] : [], opts.jobsError ?? null)
+        : make(opts.lock ? [opts.lock] : [], opts.lockError ?? null),
+  } as never;
+}
+
+describe('hasUnclearedBillingLock', () => {
+  it('is clear when the provider never reported a billing wall', async () => {
+    const r = await hasUnclearedBillingLock(mockBillingClient({ lock: null }), 'ep-1');
+    expect(r.locked).toBe(false);
+    expect(r.readError).toBe(false);
+  });
+
+  it('locks while the wall is the most recent thing that happened', async () => {
+    const r = await hasUnclearedBillingLock(
+      mockBillingClient({
+        lock: { created_at: '2026-07-18T08:13:00Z', description: 'Exhausted balance' },
+        lastOk: { created_at: '2026-07-18T07:00:00Z' },
+      }),
+      'ep-1',
+    );
+    expect(r.locked).toBe(true);
+    expect(r.message).toMatch(/Exhausted balance/);
+    expect(r.since).toBe('2026-07-18T08:13:00Z');
+  });
+
+  it('self-clears once any job completes after the wall (no reset flag)', async () => {
+    const r = await hasUnclearedBillingLock(
+      mockBillingClient({
+        lock: { created_at: '2026-07-18T08:13:00Z' },
+        lastOk: { created_at: '2026-07-18T08:41:00Z' }, // Director topped up + re-triggered
+      }),
+      'ep-1',
+    );
+    expect(r.locked).toBe(false);
+  });
+
+  it('locks when a wall exists and NO job has ever completed', async () => {
+    const r = await hasUnclearedBillingLock(
+      mockBillingClient({ lock: { created_at: '2026-07-18T08:13:00Z' }, lastOk: null }),
+      'ep-1',
+    );
+    expect(r.locked).toBe(true);
+  });
+
+  it('fails CLOSED on a read error — an unverifiable state must not open the money door', async () => {
+    const a = await hasUnclearedBillingLock(
+      mockBillingClient({ lockError: { message: 'boom' } }),
+      'ep-1',
+    );
+    expect(a.readError).toBe(true);
+
+    const b = await hasUnclearedBillingLock(
+      mockBillingClient({
+        lock: { created_at: '2026-07-18T08:13:00Z' },
+        jobsError: { message: 'boom' },
+      }),
+      'ep-1',
+    );
+    expect(b.readError).toBe(true);
   });
 });

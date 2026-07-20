@@ -41,6 +41,7 @@ import { shotRegenCap, planVersionCap } from './chain-flags';
 import {
   countShotAutonomousAttempts,
   countShotPlanVersions,
+  hasUnclearedBillingLock,
   SHOT_REGEN_AGENT_IDS,
   PLAN_AUTHOR_AGENT_IDS,
 } from '../api/plan-regen-guard';
@@ -365,6 +366,61 @@ export function createAgentInngestFunction<E extends string>(
             description:
               `${spec.agentId} stopped after ${count} autonomous attempts on this shot ` +
               `(cap ${cap}). Auto-recovery HALTED.`,
+          });
+          return true;
+        });
+        if (halted) return;
+      }
+
+      // ── Step 0a1: episode-level PROVIDER BILLING breaker ───────────────────
+      // The two billing guards that predate this one are both PER-RUN: exec-vgen
+      // wraps the fal 403 as NonRetriableError (stops Inngest's retries) and the
+      // catch below flags the event so Polina is not woken. Neither refuses a NEW
+      // dispatch — so on E30 the video fan-out kept re-firing shots into an
+      // exhausted fal balance: 120 identical "User is locked. Reason: Exhausted
+      // balance" failures across ~10 shots in 37 minutes, every one of them a run
+      // that could not possibly succeed. Detection was never the gap; the door was.
+      //
+      // Money executors only (SHOT_REGEN_AGENT_IDS) — the same set the regen cap
+      // guards. The Director is exempt, exactly as she is from the caps: she is the
+      // escalation target, and her post-top-up re-trigger is what clears the wall
+      // (any COMPLETED job newer than the lock counts as cleared — no reset flag).
+      if (
+        !isDirectorPrincipal &&
+        (SHOT_REGEN_AGENT_IDS as readonly string[]).includes(spec.agentId)
+      ) {
+        const halted = await step.run('billing-lock-check', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          const lock = await hasUnclearedBillingLock(supabase, episodeId);
+          if (!lock.locked && !lock.readError) return false;
+          const detail = lock.readError
+            ? `Could not verify the provider billing state (failing closed).`
+            : `The provider reported it is out of funds at ${lock.since}` +
+              `${lock.message ? ` — «${lock.message}»` : ''}.`;
+          await logEvent(supabase, {
+            event_type: 'regen_cap_halt',
+            severity: 'warning',
+            title: `Provider out of funds — ${spec.agentId} not dispatched`,
+            description:
+              `${detail} Refusing to dispatch a paid run that cannot succeed. ` +
+              `Top up the provider, then re-trigger — the first completed job clears this.`,
+            actor: 'exec-dir-ai',
+            episode_id: episodeId,
+            metadata: {
+              agent: spec.agentId,
+              ...(shotIdForCap ? { shot_id: shotIdForCap } : {}),
+              read_error: lock.readError,
+              locked_since: lock.since,
+              reason: 'PROVIDER_BILLING_LOCK_BREAKER',
+            },
+          });
+          await raiseBlockerOnce(supabase, {
+            episodeId,
+            stage: 'provider_billing_lock',
+            title: `Provider out of funds — needs Director (top up)`,
+            description:
+              `${detail} Paid dispatches for this episode are HALTED until a run ` +
+              `completes. Top up the provider balance, then re-trigger the shot.`,
           });
           return true;
         });

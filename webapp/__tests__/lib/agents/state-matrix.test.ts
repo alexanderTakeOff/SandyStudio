@@ -43,6 +43,17 @@ function asset(over: Record<string, unknown>) {
   };
 }
 
+/** A FAILED EXEC-VGEN job row — the shape the factory writes (shotId rides in
+ *  `input_snapshot`, the stage is derived from `agent_id`). */
+function vgenFailure(shotId: string, agentId = 'EXEC-VGEN') {
+  return {
+    episode_id: EP,
+    agent_id: agentId,
+    status: 'FAILED',
+    input_snapshot: { shotId, episodeId: EP },
+  };
+}
+
 describe('getEpisodeStateMatrix', () => {
   it('projects the storyboard spine with latest-version-wins per shot×stage', async () => {
     const { client } = makeMockSupabase({
@@ -138,6 +149,10 @@ describe('getEpisodeStateMatrix', () => {
     const { client } = makeMockSupabase({
       episodes: [{ id: EP, metadata: {} }],
       assets: [storyboard(['SH16'])], // shot exists in board, but no video ever produced
+      jobs: [
+        vgenFailure('SH16'),
+        vgenFailure('SH16'),
+      ],
       activity_events: [
         { episode_id: EP, event_type: 'agent_failed', description: 'fal request polling timed out', created_at: '2026-07-04T03:00:00Z', metadata: { shot_id: 'SH16', agent: 'EXEC-VGEN' } },
         { episode_id: EP, event_type: 'agent_failed', description: 'fal request polling timed out', created_at: '2026-07-04T02:00:00Z', metadata: { shot_id: 'SH16', agent: 'EXEC-VGEN' } },
@@ -148,6 +163,53 @@ describe('getEpisodeStateMatrix', () => {
     expect(video.status).toBeNull(); // never produced
     expect(video.blocked_reason).toMatch(/упала ×2/);
     expect(video.blocked_reason).toMatch(/timed out/);
+  });
+
+  // Regression (E30, 2026-07-20): failures were counted from the activity feed,
+  // which is best-effort — SH18 logged 50 of its 84 real EXEC-VGEN failures. The
+  // reconciler compares `failure_count` against recovery_cap, so counting the feed
+  // made a doom-loop look half as deep as it was. The ledger is `jobs`.
+  it('counts failures the activity feed never logged (jobs is the ledger)', async () => {
+    const { client } = makeMockSupabase({
+      episodes: [{ id: EP, metadata: {} }],
+      assets: [storyboard(['SH18'])],
+      jobs: [vgenFailure('SH18'), vgenFailure('SH18'), vgenFailure('SH18')],
+      activity_events: [
+        // only ONE of the three runs managed to write its terminal row
+        { episode_id: EP, event_type: 'agent_failed', description: 'fal submit failed (403)', created_at: '2026-07-04T03:00:00Z', metadata: { shot_id: 'SH18', agent: 'EXEC-VGEN' } },
+      ],
+    });
+    const m = await getEpisodeStateMatrix(client, EP);
+    const video = m.shots[0].stages.video;
+    expect(video.failure_count).toBe(3);
+    expect(video.blocked_reason).toMatch(/упала ×3/);
+    expect(video.blocked_reason).toMatch(/403/); // message still comes from the feed
+  });
+
+  it('adds gate-blocked dispatches, which never reach the jobs ledger', async () => {
+    const { client } = makeMockSupabase({
+      episodes: [{ id: EP, metadata: {} }],
+      assets: [storyboard(['SH20'])],
+      jobs: [vgenFailure('SH20')],
+      activity_events: [
+        { episode_id: EP, event_type: 'agent_failed', description: 'blocked: no APPROVED plan', created_at: '2026-07-04T04:00:00Z', metadata: { shot_id: 'SH20', agent: 'EXEC-VGEN', blocked_before_start: true } },
+      ],
+    });
+    const m = await getEpisodeStateMatrix(client, EP);
+    expect(m.shots[0].stages.video.failure_count).toBe(2); // 1 job + 1 gate-block
+  });
+
+  it('does not double-count a failure present in BOTH jobs and the feed', async () => {
+    const { client } = makeMockSupabase({
+      episodes: [{ id: EP, metadata: {} }],
+      assets: [storyboard(['SH21'])],
+      jobs: [vgenFailure('SH21')],
+      activity_events: [
+        { episode_id: EP, event_type: 'agent_failed', description: 'provider exploded', created_at: '2026-07-04T05:00:00Z', metadata: { shot_id: 'SH21', agent: 'EXEC-VGEN' } },
+      ],
+    });
+    const m = await getEpisodeStateMatrix(client, EP);
+    expect(m.shots[0].stages.video.failure_count).toBe(1);
   });
 
   it('falls back to asset-derived spine when no approved storyboard exists', async () => {

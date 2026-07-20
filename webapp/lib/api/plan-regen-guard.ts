@@ -166,6 +166,82 @@ export async function assertPlanRegenWithinCap(
   }
 }
 
+export interface BillingLockState {
+  /** True when a provider billing wall is standing and uncleared. */
+  locked: boolean;
+  /** True when the read failed — caller MUST fail closed (treat as locked). */
+  readError: boolean;
+  /** When the wall was last hit (ISO), for the escalation message. */
+  since: string | null;
+  /** The provider's own words, truncated, for the escalation message. */
+  message: string | null;
+}
+
+/**
+ * Is a PERSISTENT provider billing wall (out of funds / over quota) currently
+ * standing for this episode?
+ *
+ * Why this exists (E30, 2026-07-18): the two billing guards we already had are
+ * both PER-RUN — `exec-vgen` wraps the fal 403 as NonRetriableError so Inngest
+ * stops retrying, and `factory` flags the event so Polina is not woken. Neither
+ * stops a NEW dispatch. The video fan-out re-fired each shot anyway, so one
+ * exhausted fal balance produced 120 identical 403 failures across ~10 shots in
+ * a 37-minute window, each one a fresh run against a wall that could not move.
+ * The missing piece was never detection — it was a breaker at the dispatch door.
+ *
+ * Self-clearing by construction, so there is no reset flag to forget: the wall
+ * counts as cleared as soon as ANY job for the episode completes after it. The
+ * human Director is never blocked (same exemption as the regen caps), so her
+ * re-trigger after a top-up is what produces that completion.
+ */
+export async function hasUnclearedBillingLock(
+  supabase: ServerSupabaseClient,
+  episodeId: string,
+): Promise<BillingLockState> {
+  const clear: BillingLockState = {
+    locked: false,
+    readError: false,
+    since: null,
+    message: null,
+  };
+
+  const { data: lockRows, error: lockErr } = await supabase
+    .from('activity_events')
+    .select('created_at,description')
+    .eq('episode_id', episodeId)
+    .eq('event_type', 'agent_failed')
+    .eq('metadata->>reason' as never, 'PROVIDER_BILLING_LOCK')
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  // Fail CLOSED: an unverifiable billing state must not open the money door.
+  if (lockErr) return { ...clear, readError: true };
+
+  const lock = (lockRows ?? [])[0] as
+    | { created_at?: string | null; description?: string | null }
+    | undefined;
+  if (!lock?.created_at) return clear;
+
+  const { data: okRows, error: okErr } = await supabase
+    .from('jobs')
+    .select('created_at')
+    .eq('episode_id', episodeId)
+    .eq('status', 'COMPLETED')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (okErr) return { ...clear, readError: true };
+
+  const lastOk = (okRows ?? [])[0] as { created_at?: string | null } | undefined;
+  const cleared = Boolean(lastOk?.created_at && lastOk.created_at > lock.created_at);
+
+  return {
+    locked: !cleared,
+    readError: false,
+    since: lock.created_at,
+    message: (lock.description ?? '').slice(0, 200) || null,
+  };
+}
+
 export interface ShotAttemptCount {
   /** image-gen + plan-regen jobs already produced for this shot, all plan versions. */
   count: number;

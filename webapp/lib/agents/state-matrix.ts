@@ -320,35 +320,98 @@ const AGENT_STAGE: Record<string, StageName> = {
   'EXEC-VGEN': 'video',
 };
 
-/** Count agent_failed events per (shot, stage) so the matrix can surface stuck
- *  shots in plain language. Best-effort + read-only: any error yields an empty
- *  map (no annotations), never blocking the projection. */
+/**
+ * Count generation FAILURES per (shot, stage) so the matrix can surface stuck
+ * shots in plain language — and so the reconciler's refire/HALT spine, which
+ * keys off `failure_count`, counts what actually happened.
+ *
+ * The ledger is `jobs`, NOT the activity feed. Measured on E30 (2026-07-20): the
+ * feed carried 235 of the 292 EXEC-VGEN failures — SH18 showed 50 of 84, SH27 48
+ * of 69 — because the terminal activity row is best-effort (logEvent swallows its
+ * own errors) while the job row is written by the factory on every run that gets
+ * past the gate. Counting the feed hid every fifth failure and under-reported the
+ * worst doom-loops by half, so `recovery_cap` was being compared against a number
+ * that was systematically too small.
+ *
+ * Two DISJOINT populations, summed:
+ *   - `jobs.status = 'FAILED'` — a run that started and died. `agent_id` gives the
+ *     stage, `input_snapshot.shotId` the shot.
+ *   - activity rows flagged `blocked_before_start` — the pre-flight gate refused
+ *     BEFORE the job row was inserted (factory Step 0.5), so these exist ONLY in
+ *     the feed. Disjoint by construction: no job row was ever created for them.
+ *
+ * The human-readable message still comes from the feed (`jobs.error_message` is
+ * not populated on this path) — best-effort, absence just omits the detail.
+ *
+ * Read-only; any error yields an empty map (no annotations), never blocking the
+ * projection.
+ */
 async function loadGenerationFailures(
   supabase: SupabaseClient<Database>,
   episodeId: string,
 ): Promise<Map<string, { count: number; lastMsg: string | null }>> {
   const out = new Map<string, { count: number; lastMsg: string | null }>();
+  const bump = (key: string, msg: string | null) => {
+    const prev = out.get(key);
+    out.set(key, {
+      count: (prev?.count ?? 0) + 1,
+      lastMsg: prev?.lastMsg ?? msg,
+    });
+  };
+
   try {
-    const { data } = await supabase
+    // ── Population 1: the job ledger (complete) ──────────────────────────────
+    const { data: jobRows } = await supabase
+      .from('jobs')
+      .select('agent_id,input_snapshot')
+      .eq('episode_id', episodeId)
+      .eq('status', 'FAILED');
+    for (const row of (jobRows ?? []) as Array<{
+      agent_id?: string | null;
+      input_snapshot?: unknown;
+    }>) {
+      const stage = AGENT_STAGE[row.agent_id ?? ''];
+      if (!stage) continue;
+      const snap = (row.input_snapshot ?? null) as { shotId?: unknown } | null;
+      const shotId = snap && typeof snap.shotId === 'string' ? snap.shotId : null;
+      if (!shotId) continue;
+      bump(`${shotId}::${stage}`, null);
+    }
+
+    // ── Population 2: gate-blocked dispatches (never reached `jobs`) ─────────
+    // Plus the newest message per cell for the human-readable reason. Ordered
+    // newest-first so the FIRST description seen for a cell is the latest one.
+    const { data: evRows } = await supabase
       .from('activity_events')
       .select('metadata,description,created_at')
       .eq('episode_id', episodeId)
       .eq('event_type', 'agent_failed')
       .order('created_at', { ascending: false });
-    for (const row of (data ?? []) as Array<{ metadata?: unknown; description?: string | null }>) {
-      const meta = (row.metadata ?? null) as { shot_id?: unknown; agent?: unknown } | null;
+    for (const row of (evRows ?? []) as Array<{
+      metadata?: unknown;
+      description?: string | null;
+    }>) {
+      const meta = (row.metadata ?? null) as
+        | { shot_id?: unknown; agent?: unknown; blocked_before_start?: unknown }
+        | null;
       const shotId = meta && typeof meta.shot_id === 'string' ? meta.shot_id : null;
       const agent = meta && typeof meta.agent === 'string' ? meta.agent : null;
       if (!shotId || !agent) continue;
       const stage = AGENT_STAGE[agent];
       if (!stage) continue;
       const key = `${shotId}::${stage}`;
+      const msg = typeof row.description === 'string' ? row.description.slice(0, 80) : null;
+
       const prev = out.get(key);
-      out.set(key, {
-        count: (prev?.count ?? 0) + 1,
-        // rows are ordered newest-first, so the first seen description is latest.
-        lastMsg: prev?.lastMsg ?? (typeof row.description === 'string' ? row.description.slice(0, 80) : null),
-      });
+      if (meta?.blocked_before_start === true || !prev) {
+        // Disjoint from `jobs`: either the gate refused before a job row existed,
+        // or the ledger has no FAILED row for this cell at all (never observed on
+        // E30, but a failure the ledger missed must still be counted, not lost).
+        bump(key, msg);
+        continue;
+      }
+      // Already counted in `jobs`; only contribute the message.
+      if (prev.lastMsg === null && msg) out.set(key, { ...prev, lastMsg: msg });
     }
   } catch {
     /* best-effort surfacing — never block the matrix */
