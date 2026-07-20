@@ -158,13 +158,24 @@ Full mapping (each agent → assigned ECC skills/agents/commands) → `docs/CLAU
 - If asked to write a PROJECT / FILM file (anything NOT in the always-editable set above) while in `===1===`, respond: *"Mode is ===1===. To apply changes, append ===5=== to your command."*
 
 ### Governance Modes (Approval Authority)
+
+> **Director ruling 2026-07-20 — canonical anchor: `NORTH_STAR.md`.** Live modes are **1 · 2 · 3**.
+> **Mode 2.5 (APPRENTICE)** and **Mode 4 (AUTOTEST)** are **DEPRECATED** — Mode 4's runtime is already
+> retired (Phase 1); full removal of both from code + DB (`ConciergeMode` union, `system-prompt-builder`
+> switch arms, the `governance_mode`/`active_mode` CHECK constraints) is a **parked migration** (PLAN.md
+> backlog), to be done together with the governance redesign below. **Mode 9** (absolute autonomy —
+> Director approves only **themes · publication · finance**; built critics handle brief/casting/script;
+> requires the **Responsibility Distribution Matrix**) is the **horizon — NOT yet in code/DB.** Until the
+> migration lands, the table rows for 2.5/4 remain for reference only; do not treat them as live.
+
 | Mode | Code | Who approves |
 |------|------|-------------|
 | **MANUAL** | `Mode 1` | Director/CEO approves every gate. Default at session start. |
 | **HYBRID** | `Mode 2` | Director/CEO keeps defined scope · EXEC-DIR-AI handles the rest. |
-| **APPRENTICE** | `Mode 2.5` | Agent leads pipeline, Director supervises + approves key creative gates. Bridge before Mode 3. Phase 1-A + 1-B + Phase A SHIPPED 2026-05-12 (PR #23). Full design + Skill Editor / Learning Loop in `specs/company/governance.md §4`. |
+| **APPRENTICE** _(DEPRECATED)_ | `Mode 2.5` | Agent leads pipeline, Director supervises + approves key creative gates. Bridge before Mode 3. Phase 1-A + 1-B + Phase A SHIPPED 2026-05-12 (PR #23). Full design + Skill Editor / Learning Loop in `specs/company/governance.md §4`. |
 | **DELEGATED** | `Mode 3` | EXEC-DIR-AI approves all gates except hard limits. |
-| **AUTOTEST** | `Mode 4` | All gates auto-pass. Pipeline testing only. Reverts to Mode 1 on session end. |
+| **AUTOTEST** _(DEPRECATED)_ | `Mode 4` | All gates auto-pass. Pipeline testing only. Reverts to Mode 1 on session end. |
+| **ABSOLUTE** _(HORIZON — not in code/DB)_ | `Mode 9` | Director approves only hard limits (themes · publication · finance); built critics handle brief/casting/script. Requires the Responsibility Distribution Matrix. See NORTH_STAR.md. |
 
 **Hard limits — Director/CEO always, all modes:** Publish · LOCKED · Budget · Mode changes
 

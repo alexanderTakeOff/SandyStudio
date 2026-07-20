@@ -2,29 +2,32 @@
 // SandyStudio — SessionStart hook — plan-md-staleness-check
 // Implements CLAUDE.md §12 Ritual 2 (session-start sanity check).
 //
-// Reads PLAN.md `## CURRENT STATE` `Date:` field, compares to today.
-// - ≤ 3 days diff → silent pass
-// - > 3 days diff → emit warning (exit 1, soft)
+// Checks the freshness of BOTH live anchors:
+//   - PLAN.md   `## CURRENT STATE` `Date: YYYY-MM-DD`
+//   - PLANET.md `## Текущая планета: … | выбрана YYYY-MM-DD`
+// For each: ≤ 3 days diff → silent pass; > 3 days → warn (soft). Exit 1 if EITHER
+// is stale, else 0. A missing/undated file passes silently (bootstrap-safe) and
+// never breaks the other check.
+//
+// 2026-07-20: PLANET.md added. It drifted 17 episodes behind precisely because the
+// old single-file hook only read PLAN.md — the mechanism the ratified anchors need.
 //
 // Override: SANDY_HOOKS_OFF=1 disables this hook entirely.
 //
-// PLAN.md is searched in this order so the hook works from any worktree:
-//   1. $PROJECT_ROOT/PLAN.md (if env set)
-//   2. Walk up from cwd looking for PLAN.md — picks up the current worktree's
-//      branch state, which is what an in-session sanity check should anchor on.
-//   3. <repo>/PLAN.md derived from this script's own location (last resort).
-//      2026-07-17: this fallback used to be the literal 'C:/SandyStudio/PLAN.md'
-//      — the desktop's checkout — which resolved to nothing on any other machine.
+// Files are searched in this order so the hook works from any worktree:
+//   1. $PROJECT_ROOT/<file> (if env set)
+//   2. Walk up from cwd — picks up the current worktree's branch state.
+//   3. <repo>/<file> derived from this script's own location (last resort).
 
 const fs = require('fs');
 const path = require('path');
 
 if (process.env.SANDY_HOOKS_OFF === '1') process.exit(0);
 
-function findFromCwd() {
+function findFromCwd(fileName) {
   let dir = process.cwd();
   for (let i = 0; i < 10; i++) {
-    const p = path.join(dir, 'PLAN.md');
+    const p = path.join(dir, fileName);
     try {
       if (fs.existsSync(p)) return p;
     } catch (_) {}
@@ -35,43 +38,68 @@ function findFromCwd() {
   return null;
 }
 
-const candidates = [
-  process.env.PROJECT_ROOT ? path.join(process.env.PROJECT_ROOT, 'PLAN.md') : null,
-  findFromCwd(),
-  path.join(__dirname, '..', '..', 'PLAN.md'),
-].filter(Boolean);
+function locate(fileName) {
+  const candidates = [
+    process.env.PROJECT_ROOT ? path.join(process.env.PROJECT_ROOT, fileName) : null,
+    findFromCwd(fileName),
+    path.join(__dirname, '..', '..', fileName),
+  ].filter(Boolean);
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch (_) {}
+  }
+  return null;
+}
 
-let planPath = null;
-for (const p of candidates) {
+// Returns true if the file exists, has a parsable date, and is stale (> maxDays).
+// Emits its own warning lines. Any no-op path (missing file / unreadable / no
+// date / fresh) returns false so one anchor never breaks the other's check.
+function checkFile({ fileName, dateRegex, label, maxDays, guidance }) {
+  const p = locate(fileName);
+  if (!p) return false; // no file → silent pass (bootstrap-safe)
+
+  let txt = '';
   try {
-    if (fs.existsSync(p)) {
-      planPath = p;
-      break;
-    }
-  } catch (_) {}
+    txt = fs.readFileSync(p, 'utf8');
+  } catch (_) {
+    return false;
+  }
+  txt = txt.replace(/^﻿/, ''); // strip a leading BOM — on Windows editors add it
+  // silently, and a BOM before `##`/`Date:` would defeat the `^` anchor (the exact
+  // way a "fresh" file could still read as stale-blind).
+
+  const m = txt.match(dateRegex);
+  if (!m) return false; // no parsable date → silent pass
+
+  const date = new Date(m[1] + 'T00:00:00Z');
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const diffDays = Math.floor((today - date) / 86400000);
+
+  if (diffDays <= maxDays) return false; // fresh enough
+
+  console.error(`[Hook] WARN: ${label} last updated ${diffDays} days ago (${m[1]}).`);
+  console.error(`[Hook] CLAUDE.md §12 Ritual 2 — live anchor may be stale.`);
+  console.error(`[Hook] ${guidance}`);
+  return true;
 }
 
-if (!planPath) process.exit(0); // no PLAN.md → silent pass (bootstrap-safe)
+const planStale = checkFile({
+  fileName: 'PLAN.md',
+  dateRegex: /^\s*Date\s*:\s*(\d{4}-\d{2}-\d{2})/im,
+  label: 'PLAN.md',
+  maxDays: 3,
+  guidance: "Verify '## CURRENT STATE' before starting work; flag Director if reality has moved on.",
+});
 
-let txt = '';
-try {
-  txt = fs.readFileSync(planPath, 'utf8');
-} catch (_) {
-  process.exit(0);
-}
+const planetStale = checkFile({
+  fileName: 'PLANET.md',
+  // Anchor to the header date (`выбрана`), NOT the footer where it is duplicated.
+  dateRegex: /^##\s*Текущая планета:.*?выбрана\s+(\d{4}-\d{2}-\d{2})/im,
+  label: 'PLANET.md',
+  maxDays: 3,
+  guidance: "Verify '## Текущая планета' — the current planet may have drifted; flag Director.",
+});
 
-// CURRENT STATE block uses fenced code: look for `Date:    YYYY-MM-DD`.
-const m = txt.match(/^\s*Date\s*:\s*(\d{4}-\d{2}-\d{2})/im);
-if (!m) process.exit(0); // no parsable date → silent pass
-
-const planDate = new Date(m[1] + 'T00:00:00Z');
-const today = new Date();
-today.setUTCHours(0, 0, 0, 0);
-const diffDays = Math.floor((today - planDate) / 86400000);
-
-if (diffDays <= 3) process.exit(0); // fresh enough
-
-console.error(`[Hook] WARN: PLAN.md last updated ${diffDays} days ago (${m[1]}).`);
-console.error(`[Hook] CLAUDE.md §12 Ritual 2 — live anchor may be stale.`);
-console.error(`[Hook] Verify '## CURRENT STATE' before starting work; flag Director if reality has moved on.`);
-process.exit(1);
+process.exit(planStale || planetStale ? 1 : 0);
