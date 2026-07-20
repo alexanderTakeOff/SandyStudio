@@ -70,48 +70,54 @@ export const GET = withApiHandler(async () => {
     .in('id', episodeIds);
   const epById = new Map((eps ?? []).map((e) => [e.id, e]));
 
-  // 3. Touch events (small — filtered to the 4 touch types) → 3-way split + cast-lock.
-  const touchRows = await pagedSelect<{
-    episode_id: string;
-    event_type: string;
-    actor: string | null;
-    description: string | null;
-    metadata: unknown;
-    created_at: string;
-  }>(() =>
-    supabase
-      .from('activity_events')
-      .select('episode_id, event_type, actor, description, metadata, created_at')
-      .in('episode_id', episodeIds)
-      .in('event_type', [...TOUCH_EVENT_TYPES]),
-  );
+  // 3-5. The three paged reads are INDEPENDENT — run them concurrently. Measured
+  // 2026-07-20: sequentially they cost ~12s wall (5.0 + 4.1 + 2.1 over 22 round
+  // trips), which is long enough for the 30s SWR refresh to overlap itself and for
+  // the page to sit on "Failed to load factory data" with no reason given.
+  const [touchRows, budgetRows, jobRows] = await Promise.all([
+    pagedSelect<{
+      episode_id: string;
+      event_type: string;
+      actor: string | null;
+      description: string | null;
+      metadata: unknown;
+      created_at: string;
+    }>(() =>
+      supabase
+        .from('activity_events')
+        .select('episode_id, event_type, actor, description, metadata, created_at')
+        .in('episode_id', episodeIds)
+        .in('event_type', [...TOUCH_EVENT_TYPES]),
+    ),
+    pagedSelect<{
+      episode_id: string;
+      agent_id: string | null;
+      operation: string | null;
+      cost_usd: number | null;
+      created_at: string;
+    }>(() =>
+      supabase
+        .from('budget_log')
+        .select('episode_id, agent_id, operation, cost_usd, created_at')
+        .in('episode_id', episodeIds),
+    ),
+    pagedSelect<{ episode_id: string; agent_id: string; created_at: string }>(() =>
+      supabase.from('jobs').select('episode_id, agent_id, created_at').in('episode_id', episodeIds),
+    ),
+  ]);
+
   const touchByEpisode = new Map<string, typeof touchRows>();
   for (const r of touchRows) {
     (touchByEpisode.get(r.episode_id) ?? touchByEpisode.set(r.episode_id, []).get(r.episode_id)!).push(r);
   }
 
-  // 4. budget_log — itemized ledger (per-agent / per-operation, timestamped).
-  const budgetRows = await pagedSelect<{
-    episode_id: string;
-    agent_id: string | null;
-    operation: string | null;
-    cost_usd: number | null;
-    created_at: string;
-  }>(() =>
-    supabase
-      .from('budget_log')
-      .select('episode_id, agent_id, operation, cost_usd, created_at')
-      .in('episode_id', episodeIds),
-  );
+  // budget_log — itemized ledger (per-agent / per-operation, timestamped).
   const budgetByEpisode = new Map<string, typeof budgetRows>();
   for (const r of budgetRows) {
     (budgetByEpisode.get(r.episode_id) ?? budgetByEpisode.set(r.episode_id, []).get(r.episode_id)!).push(r);
   }
 
-  // 5. jobs — for the pre-cast stage denominator (distinct agents run before lock).
-  const jobRows = await pagedSelect<{ episode_id: string; agent_id: string; created_at: string }>(() =>
-    supabase.from('jobs').select('episode_id, agent_id, created_at').in('episode_id', episodeIds),
-  );
+  // jobs — for the pre-cast stage denominator (distinct agents run before lock).
   const jobsByEpisode = new Map<string, typeof jobRows>();
   for (const r of jobRows) {
     (jobsByEpisode.get(r.episode_id) ?? jobsByEpisode.set(r.episode_id, []).get(r.episode_id)!).push(r);

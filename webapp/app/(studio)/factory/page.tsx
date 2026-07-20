@@ -90,18 +90,27 @@ const DEFAULT_SERIES = new Set(['postLeadPerShot', 'director', 'polina', 'costPe
 // ── Small-multiples bar strip: one series across the visible episodes ─────────
 function SeriesStrip({ s, episodes }: { s: Series; episodes: FactoryEpisode[] }) {
   const vals = episodes.map((e) => s.value(e));
-  const max = Math.max(1, ...vals.map((v) => (v ?? 0)));
+  // A strip with nothing to plot used to read as a REAL measurement of zero: the
+  // `Math.max(1, …)` floor printed "max 1" in the legend while every bar fell to
+  // its 2% stub, so "no episodes passed the filter" and "the factory scored zero"
+  // looked identical (the 2026-07-19 "trends are flat" report). Say which it is.
+  const measured = vals.filter((v): v is number => v !== null);
+  const hasData = measured.length > 0;
+  const max = hasData ? Math.max(...measured) : 0;
+  const scale = max > 0 ? max : 1; // divisor only — never shown as a reading
   return (
     <div className="py-1.5">
       <div className="flex items-center gap-1.5 mb-1">
         <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
         <span className="text-[11px] font-medium text-text-secondary">{s.label}</span>
-        <span className="text-[10px] text-text-muted">· max {s.fmt(max)}</span>
+        <span className="text-[10px] text-text-muted">
+          {hasData ? `· max ${s.fmt(max)}` : '· no data for the selected episodes'}
+        </span>
       </div>
       <div className="flex items-end gap-1 h-14">
         {episodes.map((e, i) => {
           const v = vals[i];
-          const h = v === null ? 0 : Math.max(2, (v / max) * 100);
+          const h = v === null ? 0 : Math.max(2, (v / scale) * 100);
           return (
             <div key={e.episodeId} className="flex-1 flex flex-col items-center justify-end group relative" title={`${e.episodeCode}: ${v === null ? '—' : s.fmt(v)}`}>
               <div
@@ -199,7 +208,15 @@ export default function FactoryPage() {
       </header>
 
       {isLoading && <p className="text-sm text-text-muted">Reading the scorecard ledger…</p>}
-      {error && <p className="text-sm" style={{ color: 'var(--accent-danger)' }}>Failed to load factory data.</p>}
+      {/* The bare "Failed to load factory data." was a dead end: it cost a session
+          to even learn WHICH request failed. Carry the reason, and say plainly when
+          what is on screen is the previous (stale) reading rather than a fresh one. */}
+      {error && (
+        <p className="text-sm" style={{ color: 'var(--accent-danger)' }}>
+          Failed to load factory data — {(error as Error).message || 'unknown error'}.
+          {d ? ' Showing the last successful reading.' : ''}
+        </p>
+      )}
 
       {d && d.episodes.length === 0 && (
         <p className="text-sm text-text-muted">No scorecards yet. The discriminator fills in as episodes ship.</p>
@@ -261,7 +278,15 @@ export default function FactoryPage() {
                   );
                 })}
               </div>
-              {activeSeries.length === 0 ? (
+              {visible.length === 0 ? (
+                // The default filter keeps only episodes that reached a final cut,
+                // so a factory mid-run can legitimately have nothing to plot. Name
+                // that, instead of drawing empty strips that read as "scored zero".
+                <p className="text-xs text-text-muted">
+                  No episodes match the current filter — the default keeps only episodes that
+                  reached a final cut. Tick “show all” above to include in-flight ones.
+                </p>
+              ) : activeSeries.length === 0 ? (
                 <p className="text-xs text-text-muted">Pick one or more series above.</p>
               ) : (
                 <div className="divide-y divide-[var(--panel-glass-border)]">
