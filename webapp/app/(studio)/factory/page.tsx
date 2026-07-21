@@ -17,6 +17,7 @@ import { Factory, TriangleAlert, RefreshCw, DollarSign, ChevronDown } from 'luci
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
+import { usePersistentState, usePersistentSet } from '@/lib/use-persistent-state';
 
 interface Buckets { director: number; polina: number; aiEp: number; total: number }
 interface CostFold { key: string; costUsd: number; calls: number }
@@ -174,10 +175,13 @@ export default function FactoryPage() {
   const d = data?.data;
 
   // ── Filters (#1): exclude archived (default), show all, exact episodes ──
-  const [excludeArchived, setExcludeArchived] = useState(true);
-  const [showAll, setShowAll] = useState(false);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [enabledSeries, setEnabledSeries] = useState<Set<string>>(new Set(DEFAULT_SERIES));
+  // Persisted (Director 2026-07-21: "иначе устану тыкать кнопочки каждый раз").
+  // `expandBudget` deliberately stays ephemeral — it is a per-visit disclosure,
+  // not a preference, and restoring an open drawer on load is noise.
+  const [excludeArchived, setExcludeArchived] = usePersistentState('factory.excludeArchived', true);
+  const [showAll, setShowAll] = usePersistentState('factory.showAll', false);
+  const [picked, setPicked] = usePersistentSet('factory.picked', []);
+  const [enabledSeries, setEnabledSeries] = usePersistentSet('factory.series', DEFAULT_SERIES);
   const [expandBudget, setExpandBudget] = useState<string | null>(null);
 
   const visible = useMemo(() => {
