@@ -30,7 +30,11 @@ interface VideoMetric {
   kind: 'short' | 'longform';
   title: string;
   episodeCode?: string | null;
+  publicationState?: 'public' | 'unlisted' | 'scheduled' | 'private-draft';
+  liveAt?: string | null;
+  /** Live public counter. */
   views: number;
+  /** 0 = unreadable / still processing, never "watched nothing". */
   avgViewPercentage: number;
   likes: number;
   comments: number;
@@ -190,9 +194,12 @@ export default function AudiencePage() {
               <CardHeader><CardTitle>Videos · completion &amp; reach</CardTitle></CardHeader>
               <CardBody>
                 <ul className="space-y-1.5">
+                  {/* Ranked by REACH, not completion. Completion is the quality signal but it is
+                      unreadable at our sample sizes, so ranking on it put an unpublished video
+                      showing 2153% (one browser tab left running) at the top of the board. */}
                   {d.metrics
                     .slice()
-                    .sort((a, b) => b.avgViewPercentage - a.avgViewPercentage)
+                    .sort((a, b) => b.views - a.views)
                     .map((m) => (
                       <li key={m.videoId} className="flex items-center justify-between gap-2 text-xs">
                         <span className="truncate text-text-primary">
@@ -200,8 +207,21 @@ export default function AudiencePage() {
                           {m.title}
                         </span>
                         <span className="flex items-center gap-3 text-text-secondary shrink-0">
-                          <span title="completion">{m.avgViewPercentage.toFixed(0)}%</span>
-                          <span title="views" className="text-text-muted">{m.views} v</span>
+                          {m.publicationState && m.publicationState !== 'public' && (
+                            <span
+                              className="text-[10px] px-1 rounded"
+                              style={{ color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+                              title={m.liveAt ? `goes live ${new Date(m.liveAt).toLocaleDateString()}` : 'never released'}
+                            >
+                              {m.publicationState === 'scheduled' && m.liveAt
+                                ? `scheduled ${m.liveAt.slice(0, 10)}`
+                                : m.publicationState}
+                            </span>
+                          )}
+                          <span title={m.avgViewPercentage > 0 ? 'completion' : 'not readable yet — analytics lags ~3 days'}>
+                            {m.avgViewPercentage > 0 ? `${m.avgViewPercentage.toFixed(0)}%` : '—'}
+                          </span>
+                          <span title="views (live public counter)" className="text-text-muted">{m.views} v</span>
                         </span>
                       </li>
                     ))}

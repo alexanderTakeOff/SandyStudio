@@ -8,18 +8,59 @@
 
 ---
 
-## 🧭 NORTH-STAR (re-anchor here every turn — see rules/common/partnership.md "Compass")
+## 🧭 ANCHORS — not here
 
-- **Goal (Star):** AI movie factory — **фабрика = АКТИВ, Сэнди (*Silent Sandy*) = ДОКАЗАТЕЛЬСТВО.** Стоимость фабрики = `дёшево × хорошо × быстро`, доказуемо ЦИФРАМИ. Director-gated at every step.
-- **Phase:** **Голова построена, ПЕТЛЯ РАЗОМКНУТА.** Машина производит автономно (E18 end-to-end). Сенсор ЦЕНЫ замерен (E15 **$90/мин**, ~50% срезаемого жира). Сенсор КАЧЕСТВА построен, но ТЁМНЫЙ (всё unlisted, **0 публичных данных**). Next = **Первый Доказательный Эпизод** (намеренно-хороший · vertical-safe · публичный · цена vs $90-базы) → зажигает ОБА сенсора + замыкает петлю.
-- **Active intents (drift-check against these):** (1) **Первый Доказательный Эпизод** = первый под vertical-safe правилом + первый публичный → retention/CTR (качество) + цена vs $90 (дёшево); (2) срезать **$90→~$45** (Полина $27/30% + ~20 лишних рендеров, D17); (3) vertical-safe сториборд-правило **SHIPPED** (доктрина + активация + P2-мышцы нарезки; batch-драйвер ждёт эпизод); (4) hold PLAN.md + Compass; verify via jobs/counts, НЕ shell.
-> Stable block — change only when goal/phase/intents genuinely shift, not per session.
+Star → `NORTH_STAR.md`. Current planet → `PLANET.md`. Both master-only, read first.
+PLAN.md is operations and backlog ONLY. No strategy block here — a second copy goes
+stale and causes drift (2026-07-21: it still called a parked planet "current").
 
 ---
 
 ## CURRENT STATE
 
 ```
+Date:   2026-07-21 late (Head of Growth — «ответственный агент?» — Тео, ДОКИ only).
+  Директор q1a/q2y/q3. ДВА плана на сегодня, читать оба:
+  - `docs/plans/2026-07-21-feedback-loop-close.md` (параллельная сессия, 35744888) —
+    рука сбора (EXEC-ANAL не запускался НИ РАЗУ: 0 REV-analytics), честная доска,
+    дуга коррекции. Существо q1a закрыто ТАМ. Не перепланировать.
+  - `docs/plans/2026-07-21-growth-knob-autonomy.md` (эта сессия) — дельта: q2y
+    (ручки крутит машина + журнал «что покрутил») и роль без 27-го агента.
+  РАЗВИЛКА, снять одной строкой в начале след. сессии: параллельный план говорит
+  «машина ПРЕДЛАГАЕТ, Директор решает», q2y говорит «крутит сама». Предложение —
+  делить по обратимости: упаковка (title/desc/tags/thumb живого видео) и время
+  публикации = машина сама + журнал; тема/формат следующего эпизода = предложение;
+  публикация/деньги = Директор (§6). Журнал — та же series-scoped asset, не вторая.
+  Роль: НЕ новый агент. Мандат Head of Growth вешаем на EXEC-ANAL (читает/решает)
+  + EXEC-PUB (действует), скилл `head-of-growth` = playbook.
+  q3 → бэклог: Studio-only ручки через браузер (баннер `channelBanners.insert` 404
+  живьём 16.07, Community-посты, A/B превью, end screens, звуки Shorts) — API нет,
+  Claude in Chrome может, но ТОЛЬКО при Директоре в живом окне, не в кроне. Паркуем:
+  это косметика, не рычаг (тот же класс, что плейлисты и время публикации), плюс
+  серая зона ToS на живом канале.
+Verify: доки-онли — трио (tsc/тесты/replay) НЕ гонялось, кода не касались (§12 Ритуал 3).
+Next:   Снять развилку выше → затем Part 1/2 дельта-плана поверх параллельного.
+
+Date:   2026-07-21 (NEW PLANET ratified — Тео, Head of Growth + КОД, ===5===).
+  PLANET = distribution autonomy + self-correction (`PLANET.md`, commit 2147f299).
+  Taken when machine turns its OWN knobs within the ceiling. VIDEO region parked.
+  Live channel audit (read-only, `webapp/scripts/yt-audit.mjs`, creds from .env.local):
+  - Format gate PROVEN: vertical 1196 views vs same-gag landscape 5. x240.
+  - PLAYLIST traffic (37/95) + >100% completion = OUR own desktop watching, not audience.
+    DESKTOP 47 / MOBILE 48, WATCH 46 mirrors it. Real organic = SHORTS_FEED 49.
+  - Analytics lags ~3 days. Both hits (1243, 1196) in NO report yet. Land ~24 July.
+  - Publish time = NOT a lever. Playlists = NOT a lever for Shorts (absent from the
+    official Shorts discovery list). Two research agents; sources in commit 36884393.
+  - Audience tab sensor is BUILT, just starving. Do NOT build a second one.
+  Sync: local clone sat 32 commits behind for 4 days -> anchors missing -> anti-drift
+  silently off for a whole session. Rule flipped: push on master is now DEFAULT
+  (`rules/common/git-workflow.md`).
+Verify: tsc clean · 1423/1423 unit · stack rebuilt · Inngest "Successfully registered".
+Next:   Audience sensor: (1) filter — drop private/unlisted, view floor, "data still
+        coming" <3d; (2) snapshot table + daily Inngest cron 08:00 Dubai; (3) delta
+        block ON the existing Audience tab. Start after analytics lands ~24 July.
+Open:   q12 freed landscape slots · q13 hashtags+sounds lever · q14 re-read analytics.
+
 Date:   2026-07-20 (ПЛАНЕТА: измеримость видео-стадии — Тео, КОД, ===5===).
   Первый заход на планету «Автономность», регион ВИДЕО. Разведка по рантайму E30 (не по коду):
   видео-РЕНДЕР чист (1.23 версии/шот), пухла стадия ПЕРЕД ним. EXEC-VGEN: 485 запусков,

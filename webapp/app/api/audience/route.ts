@@ -9,7 +9,12 @@ import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { listAllUploads } from '@/lib/agents/providers/youtube';
-import { getVideoStatistics, getVideoAnalytics, getRetentionCurve } from '@/lib/agents/providers/youtube-stats';
+import {
+  getVideoStatistics,
+  getVideoAnalytics,
+  getRetentionCurve,
+  isCompletionReadable,
+} from '@/lib/agents/providers/youtube-stats';
 import { buildAdvice, type VideoMetric } from '@/lib/agents/analytics-advisor';
 
 export const runtime = 'nodejs';
@@ -75,14 +80,22 @@ export const GET = withApiHandler(async () => {
     if (kind === 'longform' && a && a.views > 0) {
       retentionCurve = await getRetentionCurve(u.videoId, ymd(start), ymd(now)).catch(() => null);
     }
+    const publicationState = s?.publicationState ?? 'private-draft';
+    const completionReadable = isCompletionReadable(a?.averageViewPercentage);
+
     metrics.push({
       videoId: u.videoId,
       kind,
       title: u.title,
       episodeCode: (kind === 'short' ? shortToEpisode.get(u.videoId) : parentToEpisode.get(u.videoId)) ?? null,
-      views: a?.views ?? s?.viewCount ?? 0,
-      avgViewPercentage: a?.averageViewPercentage ?? 0,
-      avgViewDurationSeconds: a?.averageViewDuration ?? 0,
+      publicationState,
+      liveAt: s?.liveAt ?? null,
+      // Views ALWAYS from the live public counter, never from Analytics — the latter lags
+      // ~3 days and for a fresh video holds only pre-publication owner plays.
+      views: s?.viewCount ?? 0,
+      // Zeroed rather than shown when unreadable (>100% = one tab left running, not an audience).
+      avgViewPercentage: completionReadable ? a!.averageViewPercentage : 0,
+      avgViewDurationSeconds: completionReadable ? (a?.averageViewDuration ?? 0) : 0,
       likes: s?.likeCount ?? 0,
       comments: s?.commentCount ?? 0,
       loops: null,
@@ -91,8 +104,11 @@ export const GET = withApiHandler(async () => {
     });
   }
 
-  // 5. Scout advice. shippedCategories empty until per-gag tagging (P2) → whole space is a hole.
-  const report = buildAdvice({ metrics, taxonomy: SANDY_TAXONOMY, shippedCategories: [] });
+  // 5. Scout advice — PUBLIC videos only. Scheduled/unlisted/draft have no audience by
+  //    construction; feeding them in as equal samples drags every ratio the advisor reasons
+  //    on toward zero (18 of our 29 uploads are scheduled).
+  const publicMetrics = metrics.filter((m) => m.publicationState === 'public');
+  const report = buildAdvice({ metrics: publicMetrics, taxonomy: SANDY_TAXONOMY, shippedCategories: [] });
 
   return apiOk({
     generatedAt: now.toISOString(),

@@ -25,7 +25,12 @@ import { ensureCachedMedia, cachedFileIfPresent, mediaCacheRoot } from '@/lib/me
 import { makeShort } from '@/lib/agents/providers/ffmpeg-shorts';
 import { uploadVideo } from '@/lib/agents/providers/youtube';
 import { parseVideoMetadata } from '@/lib/agents/publish-metadata';
-import { appendParentBacklink, readParentVideoId, persistShortId } from '@/lib/agents/providers/short-linkage';
+import {
+  appendParentBacklink,
+  readParentVideoId,
+  persistShortId,
+  resolveSeriesPlaylistId,
+} from '@/lib/agents/providers/short-linkage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -109,8 +114,11 @@ export const POST = withApiHandler(async (req, ctx) => {
     // The funnel bridge: link this Short back to the parent episode's landscape
     // video. YouTube has no "related video" API field — the parent watch-URL in
     // the description is the only programmable bridge. No-op if not yet published.
+    // The playlist rides along so the viewer lands on the promised episode with
+    // the rest of the catalogue queued behind it, instead of a dead end.
     const parentVideoId = await readParentVideoId(supabase, asset.episode_id);
-    description = appendParentBacklink(description, parentVideoId);
+    const playlistId = await resolveSeriesPlaylistId(supabase, asset.episode_id);
+    description = appendParentBacklink(description, parentVideoId, playlistId);
   }
   const title = `${baseTitle} #Shorts`.slice(0, 100);
 

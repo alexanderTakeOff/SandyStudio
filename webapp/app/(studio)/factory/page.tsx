@@ -112,7 +112,7 @@ function SeriesStrip({ s, episodes }: { s: Series; episodes: FactoryEpisode[] })
           const v = vals[i];
           const h = v === null ? 0 : Math.max(2, (v / scale) * 100);
           return (
-            <div key={e.episodeId} className="flex-1 flex flex-col items-center justify-end group relative" title={`${e.episodeCode}: ${v === null ? '—' : s.fmt(v)}`}>
+            <div key={e.episodeId} className="flex-1 h-full flex flex-col items-center justify-end group relative" title={`${e.episodeCode}: ${v === null ? '—' : s.fmt(v)}`}>
               <div
                 className="w-full rounded-t"
                 style={{
