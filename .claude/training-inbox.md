@@ -5643,3 +5643,8 @@ E29 is the 2026-07-16 launch episode. Your memory note records **four** Vending 
 - Whether any of this was already captured by the sibling agents — `.claude/training-inbox.md` (modified, uncommitted) contains prior findings around lines 3660-3900 covering D1/D2/D3 and a `publicationState` recommendation. I read enough of it to avoid duplicating those; I did not audit the rest of the file.</result>
 <usage><subagent_tokens>186315</subagent_tokens><tool_uses>59</tool_uses><duration_ms>451696</duration_ms></usage>
 </task-notification>
+
+## 2026-07-21 14:49 · director-msg (hook) · NEW · (triage at distill)
+URL not found
+We couldn't find what you were looking for. Try one of the links below.
+===запомни если тебе нужны действия от меня - помечай строку сообщения яркой эмоджи
