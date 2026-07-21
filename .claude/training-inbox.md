@@ -1349,3 +1349,11 @@ The failure depends on whether an APPROVED/LOCKED `VID-animatic` exists:
 Two secondary inconsistencies in the same predicate that can also exclude music: `newestApprovedMusic` uses exact `=== 'AUD-music'` (`:148`) while the rest of the codebase gate/upload guards use `.startsWith('AUD-music')` (`upload-music-direct/route.ts:96`, `next-events.ts:368`, `gate.ts:226`); and it never consults `staging_path`. Aligning `newestApprovedMusic` with `bakeApprovedMusic` (add `staging_path` fallback + `startsWith`) and making the skeleton injection also run/override on the real-animatic branch (or fixing the bake to target the *displayed* animatic version) is where a fix would go — but I've made no changes (read-only + plan mode).</result>
 <usage><subagent_tokens>83380</subagent_tokens><tool_uses>19</tool_uses><duration_ms>197832</duration_ms></usage>
 </task-notification>
+
+## 2026-07-21 06:15 · director-msg (hook) · NEW · (triage at distill)
+q1y\Mне кажется, что этот скилл нам нужно развить дальше. How can I assist you today? Посмотри на мой канал. Увидишь, что там есть что-то опубликовано, а что-то нет. Из тех вещей, которые опубликованы, я вижу, что у каких-то пять рассмотров, у каких-то тысяч рассмотров. Для начала проведи просто анализ, с чем может быть связана такая разница, E пойми. Как мы эту ситуацию можем исправить? Это первое. И второе, о чём её причину?
+
+## 2026-07-21 06:16 · director-msg (hook) · NEW · (triage at distill)
+q1y
+q2 - Разберись сама, мне даёт только резюме. 
+Mне кажется, что этот скилл нам нужно развить дальше. How can I assist you today? Посмотри на мой канал. Увидишь, что там есть что-то опубликовано, а что-то нет. Из тех вещей, которые опубликованы, я вижу, что у каких-то пять рассмотров, у каких-то тысяч рассмотров. Для начала проведи просто анализ, с чем может быть связана такая разница, E пойми. Как мы эту ситуацию можем исправить? Это первое. И второе, о чём её причину?
