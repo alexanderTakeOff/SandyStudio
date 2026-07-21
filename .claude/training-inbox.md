@@ -1349,3 +1349,2271 @@ The failure depends on whether an APPROVED/LOCKED `VID-animatic` exists:
 Two secondary inconsistencies in the same predicate that can also exclude music: `newestApprovedMusic` uses exact `=== 'AUD-music'` (`:148`) while the rest of the codebase gate/upload guards use `.startsWith('AUD-music')` (`upload-music-direct/route.ts:96`, `next-events.ts:368`, `gate.ts:226`); and it never consults `staging_path`. Aligning `newestApprovedMusic` with `bakeApprovedMusic` (add `staging_path` fallback + `startsWith`) and making the skeleton injection also run/override on the real-animatic branch (or fixing the bake to target the *displayed* animatic version) is where a fix would go — but I've made no changes (read-only + plan mode).</result>
 <usage><subagent_tokens>83380</subagent_tokens><tool_uses>19</tool_uses><duration_ms>197832</duration_ms></usage>
 </task-notification>
+
+## 2026-07-15 08:18 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a8148cbc5989a9b24</task-id>
+<tool-use-id>toolu_017nhFVbZ8frRQJrCKQLpkfU</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\a8148cbc5989a9b24.output</output-file>
+<status>completed</status>
+<summary>Agent "Map the arm/gate mechanism" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have the complete picture. Here is the precise map of the current reality.
+
+## Headline finding: the env flag is already gone from the code path
+
+The task framing says reconcileEpisode is "gated by an env flag `MECHANICS_AUTO_ADVANCE` (default OFF)" and Phase 2b "will replace" it. In reality, **the per-episode arm (Phase 2b) is already implemented and committed** (commit `b0ec7060` "Phase 2a tail"). There is **no `process.env.MECHANICS_AUTO_ADVANCE` read anywhere** in the codebase — the name survives only in stale comments, test titles, and one tool description string. The actual short-circuit is `isReconcilerArmed(...)`.
+
+---
+
+## 1. The short-circuit in reconcile-execute.ts / reconcile.ts
+
+`webapp/lib/agents/reconcile-execute.ts` — the guard is at **line 90**, not an env read:
+
+```ts
+// line 81-90
+const { data: epRow } = await supabase
+  .from('episodes')
+  .select('metadata, governance_mode')
+  .eq('id', episodeId)
+  .maybeSingle();
+const episodeMeta = (epRow as { metadata?: unknown } | null)?.metadata;
+const rawMode = (epRow as { governance_mode?: unknown } | null)?.governance_mode;
+const governanceMode = rawMode == null ? null : Number(rawMode);
+
+if (!opts.force &amp;&amp; !isReconcilerArmed(episodeMeta, governanceMode)) return EMPTY;
+```
+
+- `EMPTY` (the no-op result) is defined at **lines 65-71** (`ran: false`, empty arrays).
+- The `force` bypass param is declared in `ReconcileOptions` at **lines 45-46**: `/** Bypass the MECHANICS_AUTO_ADVANCE flag (explicit calls / tests). */ force?: boolean;`
+- The header comment (**lines 18-20**) still says "Guarded by MECHANICS_AUTO_ADVANCE (default OFF)... `opts.force` bypasses the flag" — this comment is now **stale**; the code uses the arm.
+- `reconcile.ts` performs **no IO and no gating** — it is the pure decision core. Its header comment (**line 14**) says "guarded by MECHANICS_AUTO_ADVANCE" but that is also stale documentation; the actual mode gating inside `planReconcileActions` is done per-cell via `resolveGateDecision('mechanical'|'creative', governanceMode)` at **reconcile.ts:139 and :186**.
+
+The `force` path is exercised only by the manual route (`app/api/episodes/[id]/reconcile/route.ts:25-30`, `force = ?force=1`). The Inngest self-advance consumer calls `reconcileEpisode(supabase, episodeId)` with **no force** (`inngest/functions/reconcile-episode.ts:38`), so it always passes through the arm gate.
+
+---
+
+## 2. The per-episode arm in production-plan.ts (~line 92)
+
+The arm concept is **already fully scaffolded AND wired** — not just a comment. `webapp/lib/agents/production-plan.ts`:
+
+```ts
+// lines 90-104
+/**
+ * Is the reconciler armed for this episode? Phase 2b — replaces the global
+ * MECHANICS_AUTO_ADVANCE env flag with a per-episode arm gated on governance mode:
+ *   armed  ⇔  metadata.reconciler_armed === true  AND  mode ∈ {2, 3}.
+ *
+ * `reconciler_armed` is set at episode CREATION (so a deploy never retroactively
+ * activates a pre-existing episode) and the Director can clear it to pause the
+ * conductor on one episode. Mode 1 (MANUAL) is never armed — it is the fully
+ * manual path. `opts.force` still bypasses this for explicit calls / tests.
+ */
+export function isReconcilerArmed(episodeMeta: unknown, governanceMode: number | null): boolean {
+  const armed = (episodeMeta as { reconciler_armed?: unknown } | null)?.reconciler_armed === true;
+  const mode = governanceMode ?? 1;
+  return armed &amp;&amp; (mode === 2 || mode === 3);
+}
+```
+
+- The `armed`/`arm` field is a boolean **`metadata.reconciler_armed`** on the episode row's JSON metadata.
+- **Important gap:** `reconciler_armed` is **only ever READ** (here, and referenced in a `factory.ts:860` comment). A full-repo search shows it is **never WRITTEN anywhere** — not at episode creation, not in any route, not in the mode-change route. So the "arm at creation" half of Phase 2b is **not yet wired**: `isReconcilerArmed` will always return `false` today because nothing sets the flag, meaning the reconciler is currently inert for every episode except via `?force=1`.
+- The doc comment's claim ("set at episode CREATION") describes the **intended** behavior, not current reality.
+
+---
+
+## 3. How governance mode is stored &amp; read
+
+- **Storage:** column `episodes.governance_mode`, an integer. Confirmed in `webapp/lib/supabase/types.gen.ts:710` (`governance_mode: number`) and the nullable variant at `:763` (`governance_mode: number | null`). Semantics (1 MANUAL / 2 HYBRID / 3 DELEGATED) documented in `webapp/lib/governance.ts:5-8` and `:30`.
+- **Read path in the reconciler:** `reconcile-execute.ts:82-88` selects `governance_mode` directly off the `episodes` row, then coerces: `const governanceMode = rawMode == null ? null : Number(rawMode);` (line 88). The comment at lines 79-80 explains the coercion ("column is an int, but a JSON/string value ('3') can slip in from mocks").
+- **Threading:** passed into `planReconcileActions({ ..., governanceMode })` at `reconcile-execute.ts:116`, received on `ReconcileContext.governanceMode` (`reconcile.ts:60-63`, typed `number | null`), and consumed by `resolveGateDecision(gateClass, governanceMode)` at `reconcile.ts:139` (mechanical) and `:186` (creative).
+- **The mode → advance/require_human brain:** `webapp/lib/agents/gate-decision.ts:91-102` — `hard_limit → require_human` always; `mechanical → advance` in mode 2/3; `creative → advance` only in mode 3.
+- It is read from the **episode row itself**, not a separate config table. Many other callers read it the same way and feed `lib/governance.ts:enforceMode` (e.g. `app/api/assets/[id]/*` routes; `app/api/system/governance-mode/route.ts:91` is where the mode is **written/changed**).
+
+---
+
+## 4. Episode creation — where governance_mode is set and where "arm at creation" would go
+
+**Route:** `webapp/app/api/episodes/route.ts`, the `POST` handler (starts line 74).
+
+- Request schema validates the mode: **line 44** `governance_mode: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1)`.
+- Episode metadata object built at **lines 101-106** (`epMetadata` — currently only budget/retry caps; **no `reconciler_armed` key**).
+- Insert payload at **lines 108-121**, with `governance_mode: body.governance_mode` at **line 115** and `metadata: epMetadata` at **line 120**; inserted at **lines 122-126** (`.from('episodes').insert(epPayload)`).
+
+An "arm at creation" hook would go into the `epMetadata` object (lines 101-106) — e.g. setting `reconciler_armed` based on whether `body.governance_mode ∈ {2,3}` — so it lands in `metadata` at the single insert on line 124. This is the **only** episode-creation INSERT path in the app.
+
+---
+
+## 5. Env-flag read helper / all read sites
+
+There is **no** `process.env.MECHANICS_AUTO_ADVANCE` read and **no** helper that reads it — the flag was superseded by `isReconcilerArmed`. Every surviving mention is a stale comment, a test title, or a user-facing string (none gate behavior):
+
+| File:line | Kind | Note |
+|---|---|---|
+| `lib/agents/reconcile-execute.ts:18` | comment | "Guarded by MECHANICS_AUTO_ADVANCE (default OFF)" — stale |
+| `lib/agents/reconcile-execute.ts:46` | comment | doc on `force?` param — stale |
+| `lib/agents/reconcile.ts:14` | comment | "guarded by MECHANICS_AUTO_ADVANCE" — stale |
+| `lib/agents/production-plan.ts:92` | comment | the "replaces the global MECHANICS_AUTO_ADVANCE env flag" note |
+| `inngest/index.ts:86` | comment | "inert unless MECHANICS_AUTO_ADVANCE" — stale |
+| `inngest/functions/reconcile-episode.ts:10` | comment | "Inert unless MECHANICS_AUTO_ADVANCE is on: reconcileEpisode checks the flag" — stale |
+| `lib/inngest/client.ts:53` | comment | "behind MECHANICS_AUTO_ADVANCE" — stale |
+| `lib/concierge/tools/index.ts:152` | comment | "MECHANICS_AUTO_ADVANCE flag + reserved gates are the guards" — stale |
+| `lib/concierge/tools/conductor.ts:100` | tool description string | Concierge tool desc: "Requires the episode to be in autonomous mode (MECHANICS_AUTO_ADVANCE)" |
+| `lib/concierge/tools/conductor.ts:152` | user-facing string | "Reconcile is inactive for this episode (MECHANICS_AUTO_ADVANCE off) — nothing changed." |
+| `app/api/episodes/[id]/reconcile/route.ts:6` | comment | "guarded by MECHANICS_AUTO_ADVANCE unless `?force=1`" — stale |
+| `__tests__/lib/agents/reconcile-execute.test.ts:40` | test title | "is a no-op when MECHANICS_AUTO_ADVANCE is off and not forced" |
+
+---
+
+## Summary of current reality vs. the task's stated premise
+
+- The single gate is `isReconcilerArmed(episodeMeta, governanceMode)` at `reconcile-execute.ts:90`, requiring `metadata.reconciler_armed === true` **and** `governance_mode ∈ {2,3}`. The env flag is **not** read anywhere.
+- Phase 2b part A (per-episode arm gated on governance mode) is **done and wired**.
+- Phase 2b part B (**arm at creation**) is **not done**: `reconciler_armed` is never written, so `epMetadata` at `app/api/episodes/route.ts:101-106` is the exact spot to add it. Until then the reconciler is inert for all episodes except explicit `?force=1` manual runs.
+- Governance mode lives on `episodes.governance_mode` (int column) and is read directly off the episode row, coerced with `Number(...)`, and threaded through `ReconcileContext` into `resolveGateDecision`.
+- The doc comments across the reconciler/inngest/conductor files still reference `MECHANICS_AUTO_ADVANCE` and are now inaccurate.
+
+Note: I did not create a plan file, per the exploration task's instruction to return findings directly.</result>
+<usage><subagent_tokens>70989</subagent_tokens><tool_uses>17</tool_uses><duration_ms>142396</duration_ms></usage>
+</task-notification>
+
+## 2026-07-15 08:18 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a80a372cce9a6488d</task-id>
+<tool-use-id>toolu_01QgxyjA8ixuXsQ6bGPT6vmJ</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\a80a372cce9a6488d.output</output-file>
+<status>completed</status>
+<summary>Agent "Map tests + smoke harness for reconciler" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Note a key finding: in this worktree the migration is **already largely implemented** — `isReconcilerArmed` exists and is wired in, and `process.env.MECHANICS_AUTO_ADVANCE` is no longer read anywhere in code (only stale comments remain). Here is the structured report.
+
+---
+
+# Reconciler activation — test &amp; smoke-verification surface
+
+## Headline finding
+The per-episode "arm" is **already coded** in this worktree. `process.env.MECHANICS_AUTO_ADVANCE` is **not read anywhere in `lib/`, `inngest/`, `app/`, or `scripts/`** — only comments still name it. The live gate is now `isReconcilerArmed(...)`.
+
+- `webapp/lib/agents/production-plan.ts:100-104` — the new gate:
+  ```ts
+  export function isReconcilerArmed(episodeMeta: unknown, governanceMode: number | null): boolean {
+    const armed = (episodeMeta as { reconciler_armed?: unknown } | null)?.reconciler_armed === true;
+    const mode = governanceMode ?? 1;
+    return armed &amp;&amp; (mode === 2 || mode === 3);
+  }
+  ```
+- `webapp/lib/agents/reconcile-execute.ts:90` — the wire-in (replaces the old env check):
+  ```ts
+  if (!opts.force &amp;&amp; !isReconcilerArmed(episodeMeta, governanceMode)) return EMPTY;
+  ```
+  Mode/metadata are read at `reconcile-execute.ts:81-88` (`governance_mode` coerced via `Number(rawMode)`).
+
+Remaining stale references to the old flag (comments/strings only, no behavior): `inngest/index.ts:86`, `inngest/functions/reconcile-episode.ts:10`, `lib/agents/reconcile.ts:14`, `lib/agents/reconcile-execute.ts:18,46` (the `opts.force` JSDoc), `lib/concierge/tools/index.ts:152`, `lib/concierge/tools/conductor.ts:152` (user-facing message: `'Reconcile is inactive for this episode (MECHANICS_AUTO_ADVANCE off) — nothing changed.'`), `lib/inngest/client.ts:53`, `app/api/episodes/[id]/reconcile/route.ts:6`. `factory.ts:858-862` already describes the arm correctly ("no-ops unless the episode is ARMED (metadata reconciler_armed + mode 2/3)").
+
+---
+
+## 1. reconcile-execute / reconcile / gate-decision tests
+
+### `webapp/__tests__/lib/agents/reconcile-execute.test.ts`
+- **No env stubbing at all.** Setup is pure `makeMockSupabase` fixtures (`reconcile-execute.test.ts:7,29`). There is no `process.env`, no `vi.stubEnv`, no `beforeEach`/`afterEach`.
+- The `force` bypass is exercised via the options object: `reconcileEpisode(client, EP, { force: true })` at lines `49, 61, 67, 83, 100`.
+- The one assertion that depended on the flag being off is `reconcile-execute.test.ts:40-45`:
+  ```ts
+  it('is a no-op when MECHANICS_AUTO_ADVANCE is off and not forced', async () =&gt; {
+    const { client } = seedWithReviewShotPlan();
+    const res = await reconcileEpisode(client, EP); // no force, flag unset
+    expect(res.ran).toBe(false);
+    expect(res.approvedAssetIds).toHaveLength(0);
+  });
+  ```
+  **Migration note:** this test already passes under the arm model *by accident of the fixture*. `seedWithReviewShotPlan()` (`reconcile-execute.test.ts:29-36`) seeds `governance_mode: '3'` but `metadata: {}` — no `reconciler_armed`, so `isReconcilerArmed({}, 3)` returns `false` → `EMPTY`. The test name/comment ("flag unset") is now stale wording. To make the intent explicit under the arm model you'd add a symmetric positive test: same fixture but `metadata: { reconciler_armed: true }` and `governance_mode: 2|3`, asserting `res.ran === true` **without** `force`. Also worth a negative: `reconciler_armed: true` + `governance_mode: 1` must stay a no-op.
+- The `force:true` tests (approve/idempotent/reserved/pilot/HALT, lines 47-104) are independent of both the old flag and the new arm — they bypass the gate — so they stay green unchanged.
+
+### `webapp/__tests__/lib/agents/reconcile.test.ts`
+- Tests the **pure** decision core `planReconcileActions` / `collectCriticSignals` — no Supabase, no env, no arm/flag concept. Governance is passed as a plain arg `governanceMode` in the `ctx()` helper (`reconcile.test.ts:53-63`, default `3`).
+- Mode-aware assertions live at `reconcile.test.ts:172-213`: Mode 1 mechanical PASS → `wait` (179-185); Mode 2 mechanical PASS → `approve` (187-194); Mode 2 creative video → `wait` (196-200); Mode 3 creative video → `approve` (207-212). These encode exactly the `{2,3}` semantics the arm gates on, but they do **not** touch the arm itself, so they need **no migration**.
+
+### `webapp/__tests__/agents/gate-decision.test.ts`
+- Pure functions `resolveGateDecision` / `decideGate` / `recordGateDecision`. No env, no arm. Uses `makeMockSupabase` only for the writer test (`gate-decision.test.ts:89`).
+- The governance-mode contract it locks: `mechanical → advance` in modes 2/3, `require_human` in mode 1 (`gate-decision.test.ts:18-22`); `creative → advance` only mode 3 (24-28); null mode → mode 1 (30-33). No changes needed; this is the invariant the arm's `mode ∈ {2,3}` relies on.
+
+---
+
+## 2. `webapp/scripts/replay-pilot.ts` — self-approves in JS, never touches the reconciler
+
+- **Does NOT exercise the reconciler.** `runPipelineStep` (`replay-pilot.ts:96-181`) calls `insertJobRow → validateAgentInputs → loadAgentInputs → runAgent → recordCost → saveAgentOutput → markJobCompleted`. It never imports or calls `reconcileEpisode`/`planReconcileActions`.
+- **Self-approves in JS** at `replay-pilot.ts:172-178`:
+  ```ts
+  if (options.autoApproveOutput !== false) {
+    const asset = supabase.tables.assets.find((a) =&gt; a.id === saved.assetId);
+    if (asset) { asset.status = 'APPROVED'; }
+  }
+  ```
+  It drives the pipeline stage-by-stage by hand and manually rewrites `file_type`s to satisfy the next gate (e.g. lines 286-298, 307, 328-338).
+- **Does NOT set `MECHANICS_AUTO_ADVANCE`** (or `reconciler_armed`). Episodes are seeded `governance_mode: 1` (`replay-pilot.ts:195, 400, 447, 488`); the only governance test is the Mode-1 PUBLISH hard-limit block/allow (`replay-pilot.ts:390-433`).
+- **Arming-per-episode would NOT affect replay-pilot.** Since it bypasses the reconciler entirely and never arms an episode, its assertion count (the happy path asserts `18` COMPLETED jobs at `replay-pilot.ts:365-369`, plus the governance/idempotency/budget scenarios) is unaffected. It remains a runner-layer harness, orthogonal to the arm.
+
+---
+
+## 3. `webapp/scripts/smoke-state-matrix.ts` — read-only shadow projection
+
+- Header (`smoke-state-matrix.ts:3-4`): "Тир-A shadow dry-run (Фаза 1 + 2a). READ-ONLY, $0, zero mutation." It projects a real episode's state matrix against live Supabase and prints both the human render (`renderStateMatrixMarkdown`, line 48) and the actions the **pure** `planReconcileActions` *would* take (lines 61-79) — plus an idempotency re-run probe (82-92).
+- It calls the **pure core**, not the executor, so it **never checks the arm/flag** and performs no mutation. Governance is read from live data and passed through: `smoke-state-matrix.ts:68`
+  ```ts
+  governanceMode: matrix.governance_mode == null ? null : Number(matrix.governance_mode),
+  ```
+  It does **not** set the governance mode or arm anything — it observes whatever the real episode has.
+- The Phase-2a "+2 lines" almost certainly correspond to threading `governanceMode` into both `planReconcileActions` calls (lines 68 and 89) — the only mode-aware additions in this file. Because it uses the pure core with no arm gate, it stays green regardless of the arm migration.
+
+---
+
+## 4. General env-stub pattern in the suite
+
+There is **no shared vitest setup file and no `vi.stubEnv`** anywhere. `vitest.config.ts` provides only a static `env:` block (`vitest.config.ts:22-27`) for import-time env validation, `environment: 'node'`, `globals: false` (explicit `vitest` imports), `include: ['__tests__/**/*.test.ts']`.
+
+The established per-test pattern is **manual save/restore of `process.env` in `beforeEach`/`afterEach`**. Canonical example the arm tests should follow — `webapp/__tests__/lib/agents/next-events-readability.test.ts:29-35`:
+```ts
+const ORIGINAL_FLAG = process.env.READABILITY_GATE_ENABLED;
+beforeEach(() =&gt; { delete process.env.READABILITY_GATE_ENABLED; });
+afterEach(() =&gt; {
+  if (ORIGINAL_FLAG === undefined) delete process.env.READABILITY_GATE_ENABLED;
+  else process.env.READABILITY_GATE_ENABLED = ORIGINAL_FLAG;
+});
+// ...then in a test: process.env.READABILITY_GATE_ENABLED = 'true';
+```
+Same idiom in `__tests__/lib/agents/next-events-single-dispatch.test.ts:30-37`, `providers/fal-seedance.test.ts:49-64`, `providers/flux-pro-ultra-fal.test.ts:41-71`, `lib/concierge/cost.test.ts:174-182`, `lib/concierge/llm-reasoning.test.ts:11-22`.
+
+**However**, because the arm is now episode **metadata** (`reconciler_armed`) + **governance_mode column**, not an env var, the arm tests should NOT use this env pattern at all — they should set `metadata.reconciler_armed` / `governance_mode` in the `makeMockSupabase` fixture (as `reconcile-execute.test.ts` already does for mode), which is cleaner and needs no save/restore.
+
+---
+
+## 5. Count of test files touching reconcile / gate-decision / next-events / state-matrix
+
+**6 files** directly on those four surfaces:
+
+1. `webapp/__tests__/lib/agents/reconcile.test.ts` — pure decision core (mode-aware).
+2. `webapp/__tests__/lib/agents/reconcile-execute.test.ts` — executor + arm/`force` gate (the file that needs arm-migration test additions).
+3. `webapp/__tests__/agents/gate-decision.test.ts` — `resolveGateDecision`/`decideGate` mode contract.
+4. `webapp/__tests__/lib/agents/next-events-readability.test.ts` — `computeNextEvents` (readability flag).
+5. `webapp/__tests__/lib/agents/next-events-single-dispatch.test.ts` — `computeNextEvents` dispatch/chain flags.
+6. `webapp/__tests__/lib/agents/state-matrix.test.ts` — state-matrix projection.
+
+Closely adjacent (same subsystem, may be worth a glance but not on the four named surfaces): `webapp/__tests__/lib/agents/state-ledger.test.ts`.
+
+Executor call-site coverage beyond tests: `webapp/inngest/functions/reconcile-episode.ts` (subscriber, calls `reconcileEpisode` with **no** `force` → relies entirely on the arm), and `webapp/app/api/episodes/[id]/reconcile/route.ts` (manual/smoke route, `?force=1`).</result>
+<usage><subagent_tokens>66771</subagent_tokens><tool_uses>21</tool_uses><duration_ms>130380</duration_ms></usage>
+</task-notification>
+
+## 2026-07-15 08:18 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a50c83e97b6b483de</task-id>
+<tool-use-id>toolu_012bgFCpcgmB2sNJiW9BT277</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\a50c83e97b6b483de.output</output-file>
+<status>completed</status>
+<summary>Agent "Map episode governance + reconcile triggers" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Exploration complete. Here is the structured report.
+
+---
+
+# Reconciler triggers &amp; governance mode — findings
+
+## 1. Every call site of `reconcileEpisode`
+
+The reconciler executor is `reconcileEpisode(supabase, episodeId, opts)` in `webapp/lib/agents/reconcile-execute.ts:73`. It has **three real triggers** plus the concierge tool. There is **no watchdog call** — the batch-stall watchdog uses a different nudge mechanism (see below).
+
+**a) Factory, after ANY agent completes** — `webapp/lib/agents/factory.ts:863-868`
+This is the primary self-advance driver. It does not call `reconcileEpisode` directly; it emits the Inngest trigger event:
+```ts
+// Phase 2b — self-advance: after ANY agent completes, tick the reconciler to
+// converge the episode. Fired unconditionally (debounced + concurrency-1);
+// reconcileEpisode itself no-ops unless the episode is ARMED (metadata
+// reconciler_armed + mode 2/3), so this is safe on every completion.
+if (episodeId) {
+  await step.sendEvent('reconcile-trigger', {
+    name: 'sandystudio/reconcile/episode',
+    data: { episodeId },
+  } as never);
+}
+```
+(Note: the comment header at factory.ts:858-862 already describes the intended Phase 2b arm gate — `metadata reconciler_armed + mode 2/3` — even though the trigger fires unconditionally and the gate lives inside `reconcileEpisode`.)
+
+**b) Inngest function** — `webapp/inngest/functions/reconcile-episode.ts:38` (registered in `webapp/inngest/index.ts:87`)
+Sole subscriber to `sandystudio/reconcile/episode`. Calls `reconcileEpisode(supabase, episodeId)` (no `force`, no `actorUserId`), then dispatches the returned cascade events. Debounced 5s / concurrency-1 per `event.data.episodeId` (reconcile-episode.ts:26-29).
+
+**c) API route** — `webapp/app/api/episodes/[id]/reconcile/route.ts:27`
+```ts
+const force = new URL(req.url).searchParams.get('force') === '1';
+const result = await reconcileEpisode(supabase, id, { force, actorUserId: user.id });
+```
+Director-only (`requireDirector()`), then sends each returned event to Inngest. "The manual engage point for the live smoke."
+
+**d) Concierge conductor tool** — `webapp/lib/concierge/tools/conductor.ts:97` (registered in `webapp/lib/concierge/tools/index.ts:40,153`)
+This is a `Tool`, not a direct call. Its `execute` does an HTTP `POST` to `/api/episodes/{id}/reconcile` **without** `?force` (conductor.ts:119-126), so it goes through the same arm gate as the route. See §4.
+
+**Event definition:** `webapp/lib/inngest/client.ts:52-61` (`sandystudio/reconcile/episode`, data `{ episodeId }`).
+
+**Not a trigger:** `webapp/inngest/functions/pa-batch-stall-watchdog.ts` scans stalled episodes (`governance_mode = 3` + `metadata-&gt;&gt;autonomous_run = 'true'`, line 109-110) and "nudges" them, but it does **not** call `reconcileEpisode` — it uses Polina/thin-agent nudges, a separate autonomy path.
+
+---
+
+## 2. `reconcile-episode.ts` and `reconcile/route.ts` — reconcile-vs-no-op logic
+
+Both delegate the decision to `reconcileEpisode` in `webapp/lib/agents/reconcile-execute.ts`. The gate is at **reconcile-execute.ts:81-90**:
+```ts
+const { data: epRow } = await supabase
+  .from('episodes')
+  .select('metadata, governance_mode')
+  .eq('id', episodeId)
+  .maybeSingle();
+const episodeMeta = (epRow ...).metadata;
+const rawMode = (epRow ...).governance_mode;
+const governanceMode = rawMode == null ? null : Number(rawMode);
+
+if (!opts.force &amp;&amp; !isReconcilerArmed(episodeMeta, governanceMode)) return EMPTY;
+```
+- **Inngest fn** (reconcile-episode.ts:38): no `force` → returns `EMPTY` (`ran:false`) unless the episode is **armed**. Result maps to `{ran, events, approved, halted}`; cascade events only sent when `events.length &gt; 0` (line 48).
+- **Route** (route.ts:25-27): `?force=1` sets `opts.force=true`, which **bypasses the arm gate entirely** (`!opts.force &amp;&amp; …` short-circuits). Without `?force`, the route also no-ops on unarmed episodes. On a run it dispatches every returned event and returns `{ran, approved, halted, actions, fired_events}`.
+
+Note the header comments in both files still describe the gate as `MECHANICS_AUTO_ADVANCE` (reconcile-episode.ts:10-12, route.ts:6, reconcile-execute.ts:18-20, ReconcileOptions.force doc at reconcile-execute.ts:46), but the **actual runtime gate is already `isReconcilerArmed`** (metadata `reconciler_armed` + mode ∈ {2,3}) — the env flag is no longer read here. The comments are stale relative to the code.
+
+The pure decision core `planReconcileActions` (`webapp/lib/agents/reconcile.ts:109`) then decides per cell: only `REVIEW` + `fresh` cells are actionable; mechanical (critic-PASS) cells auto-approve via `resolveGateDecision('mechanical', mode)`, creative renders via `resolveGateDecision('creative', mode)`; REVISE/FAIL ≥ cap → `halt`; stitch when all live shots' video APPROVED + music present.
+
+---
+
+## 3. Governance mode — source of truth
+
+`governance_mode` is a **per-episode `smallint` column** on `episodes` (`webapp/supabase/migrations/0002_core_tables.sql:31-32`, `CHECK BETWEEN 1 AND 4`; 1=MANUAL 2=HYBRID 3=DELEGATED 4=AUTOTEST). There is **also** a global default in `app_config` (scope=`system`, key=`governance_mode_default`), seeded to `1` in `webapp/supabase/migrations/0010_phase5b_series_authority_storage.sql:94`.
+
+**Precedence / single source of truth:** `webapp/lib/concierge/resolve-mode.ts:37-57` (`resolveEffectiveConciergeMode`):
+1. `episode.governance_mode` — the per-episode override, **the authority** when working on an episode (resolve-mode.ts:41-49).
+2. `app_config.governance_mode_default` — global default fallback (resolve-mode.ts:50-56).
+3. `'1'` MANUAL — safe fallback.
+The header (resolve-mode.ts:3-21) documents the 2026-06-15 "three stores, no shared precedence" incident this collapses.
+
+**(a) WRITE paths:**
+- `webapp/app/api/system/governance-mode/route.ts` POST (route.ts:60-94): Director-only, `assertHumanDirector` (hard limit MODE_CHANGE). Scope `'global'` → upserts `app_config` `governance_mode_default` (route.ts:68-79); scope `{episodeId}` → `episodes.update({ governance_mode })` (route.ts:89-92). Logs `governance_mode_change` activity event.
+- At **episode creation** — `webapp/app/api/episodes/route.ts:44,115`: create body accepts `governance_mode: 1|2|3` (default 1), written into the insert payload (route.ts:115). Also settable via concierge `createEpisode` tool (`webapp/lib/concierge/tools/episode-create.ts:60-62,79`) and UI modals (`components/episodes/NewEpisodeModal.tsx:60`, `components/onboarding/EpisodeStep.tsx:39`).
+
+**(b) READ for gating decisions:**
+- `webapp/lib/governance.ts:122` `enforceMode()` — the mode→category permission brain (`episode.governance_mode`, Category A/B/C).
+- `webapp/lib/agents/gate-decision.ts:91-102` `resolveGateDecision(gateClass, mode)` — the reconciler's mode-aware brain: hard_limit→require_human always; mechanical→advance in mode 2/3; creative→advance only mode 3.
+- Reconciler: `reconcile-execute.ts:87-88` reads `governance_mode`, coerces to number, feeds `isReconcilerArmed` and `planReconcileActions`.
+- Factory reads it for gate measurement: `factory.ts:555,574,580,751-754`.
+- State matrix carries it: `webapp/lib/agents/state-matrix.ts:194,295,421` (as a string field).
+- Effective-mode GET badge: `governance-mode/route.ts:26-49`; Studio layout default: `app/(studio)/layout.tsx:6,26`; system route `app/api/system/mode/route.ts:35`.
+- Many asset routes read the owning episode's `governance_mode` to call `enforceMode` (e.g. `app/api/assets/[id]/upload/route.ts:82-116`, `regenerate-image`, `enrich`, etc.).
+
+There is **no** PLAN.md "Current Mode" source in code — mode lives entirely in the DB (`episodes.governance_mode` column + `app_config.governance_mode_default`).
+
+---
+
+## 4. Concierge conductor tool — how it checks "autonomous mode" today
+
+`webapp/lib/concierge/tools/conductor.ts:97-155` (`reconcileEpisode` Tool, `mutating: true`).
+
+It does **not** itself check the mode or the flag. It resolves the episode id (conductor.ts:115) and POSTs to `/api/episodes/{id}/reconcile` **without `?force`** (conductor.ts:119-126). The actual gate is enforced server-side by `isReconcilerArmed` inside `reconcile-execute.ts:90`.
+
+The tool infers the outcome purely from the response `ran` flag (conductor.ts:150-153):
+```ts
+const summary = data?.ran
+  ? `Reconcile ran: ${approved} auto-approved, ${halted} halted.`
+  : 'Reconcile is inactive for this episode (MECHANICS_AUTO_ADVANCE off) — nothing changed.';
+```
+The tool **description** still tells the model (conductor.ts:100): *"Requires the episode to be in autonomous mode (MECHANICS_AUTO_ADVANCE); reserved gates … still wait for the Director."* Both the no-op summary string (conductor.ts:152) and the description reference the retired `MECHANICS_AUTO_ADVANCE` framing — these are the **consumer-facing strings that must change in Phase 2b** to reflect the per-episode arm (metadata `reconciler_armed` + mode 2/3). Same stale wording is in `webapp/lib/concierge/tools/index.ts:152`.
+
+---
+
+## 5. Existing per-episode "arm" / "autonomous" concept
+
+**Yes — the arm concept already exists in code, but only as a read-side metadata key with no writer and no schema column.**
+
+- `webapp/lib/agents/production-plan.ts:90-104` — `isReconcilerArmed(episodeMeta, governanceMode)`:
+```ts
+// armed  ⇔  metadata.reconciler_armed === true  AND  mode ∈ {2, 3}.
+// `reconciler_armed` is set at episode CREATION (so a deploy never retroactively
+// activates a pre-existing episode) and the Director can clear it to pause …
+export function isReconcilerArmed(episodeMeta, governanceMode): boolean {
+  const armed = (episodeMeta ...).reconciler_armed === true;
+  const mode = governanceMode ?? 1;
+  return armed &amp;&amp; (mode === 2 || mode === 3);
+}
+```
+- It is **read** only in two places: `reconcile-execute.ts:90` (the gate) and referenced in the factory comment (`factory.ts:861`).
+- **`reconciler_armed` is never written anywhere.** A full-repo search for `reconciler_armed` returns only `production-plan.ts:93,95,101` and the `factory.ts:861` comment. In particular, the episode-create route `webapp/app/api/episodes/route.ts:101-121` builds `epMetadata` with only `concierge_cap_usd`, `prompt_revision_cap`, `reference_regen_cap`, `video_regen_cap` — it does **not** set `reconciler_armed`, despite the doc comment claiming it "is set at episode CREATION." So today every episode is effectively unarmed and reconcile only runs via `?force=1` / the route.
+
+**Schema:** `reconciler_armed` is a JSON key inside the `episodes.metadata` **jsonb** column (added in `webapp/supabase/migrations/0029_episodes_archive.sql:47`, `NOT NULL DEFAULT '{}'`). There is **no dedicated column** and **no migration** for it (or for `armed`/`autonomous`).
+
+**Related but distinct per-episode metadata flag:** `metadata.autonomous_run` (`inngest/functions/pa-batch-stall-watchdog.ts:99-131`, `meta.autonomous_run === true`, queried at line 110) — this drives the thin-agent/Polina watchdog sweep for Mode-3 episodes, a **separate** autonomy mechanism from the reconciler arm. Do not conflate the two.
+
+---
+
+### Summary of the Phase-2b gap
+The arm machinery (`isReconcilerArmed`, mode 2/3 gate, `resolveGateDecision`) is fully built and already wired as the runtime gate in `reconcile-execute.ts:90`. What's missing / stale: (1) nothing **writes** `metadata.reconciler_armed` at episode creation (`app/api/episodes/route.ts:101`); (2) the factory trigger fires unconditionally and relies on the executor gate; (3) consumer-facing strings and header comments in `conductor.ts:100,152`, `tools/index.ts:152`, `reconcile-episode.ts:10`, `route.ts:6`, and `reconcile-execute.ts:18-20,46` still say `MECHANICS_AUTO_ADVANCE`.</result>
+<usage><subagent_tokens>78865</subagent_tokens><tool_uses>27</tool_uses><duration_ms>144016</duration_ms></usage>
+</task-notification>
+
+## 2026-07-15 08:35 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a0b1fd33a268b0657</task-id>
+<tool-use-id>toolu_01EU7niKTUcem4eGb3okCmbt</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\a0b1fd33a268b0657.output</output-file>
+<status>completed</status>
+<summary>Agent "Review Phase 2b arm diff" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Review Summary — Phase 2b arm-at-creation wiring
+
+Scope confirmed: only the diff shown was reviewed. Traced both write sites, the single read site (`isReconcilerArmed`), the unconditional trigger dispatch in `factory.ts`, and the gate-class split in `gate-decision.ts` (pre-existing, Phase 2a) to make sure nothing bypasses the new arm.
+
+**[MEDIUM] Read-modify-write race on `episodes.metadata` in the mode-switch route**
+File: `webapp/app/api/system/governance-mode/route.ts:84-98`
+The episode-scoped switch does `SELECT metadata` → spread → `UPDATE`. Any concurrent writer to the same episode's `metadata` (e.g. `eref/approve-pilots`, `shot-exclusion`, `animatic-timing`, `upload-music` — all of which do the same read-then-spread-write pattern per grep) between the SELECT and the UPDATE will have its write silently clobbered, or will clobber this one — including `reconciler_armed` itself. Since this route is what arms/disarms paid auto-advance, a lost update here is higher-blast-radius than the other metadata writers (could leave the reconciler armed when the Director just disarmed it, or vice versa). This is a pre-existing codebase pattern (7 other routes do the same thing), not a regression introduced by this diff, so I'm not blocking on it — but it's worth a follow-up (Postgres `jsonb_set`/RPC merge, or an `UPDATE ... SET metadata = metadata || jsonb_build_object(...)` single-statement patch) given the safety-critical nature of this particular key.
+
+**[LOW] No test exercises the actual write sites (route-level)**
+Files: `webapp/app/api/episodes/route.ts`, `webapp/app/api/system/governance-mode/route.ts`
+New tests cover `armForMode` (pure) and `reconcileEpisode` (pre-seeded armed/unarmed metadata) — good, and they do exercise the un-forced armed path and the mode-1 disarm negative as requested. But nothing exercises the route handlers that actually *write* `reconciler_armed` — i.e. no test verifies episode-creation writes the correct value for mode 1/2/3, and no test verifies the mode-switch route's metadata merge (`{...prevMeta, reconciler_armed}`) actually preserves other keys and flips correctly on 2/3→1. This matches existing convention (no API route handler tests exist anywhere in `__tests__/`), so it's not a new gap relative to the codebase's testing philosophy — just noting it as the one meaningfully undertested seam in this diff, since it's the "arm" being written, not just read.
+
+**Everything else checked out correct:**
+- `armForMode(mode)` — simple, correct predicate (`mode === 2 || mode === 3`), single definition reused at both write sites and inside `isReconcilerArmed`. No drift risk.
+- Arm-at-creation: `CreateBody.governance_mode` is `z.union([literal(1,2,3)]).default(1)` — strictly typed, no coercion gap, no way a non-numeric or out-of-range value reaches `armForMode`. Default episode (mode 1, the common case) is born disarmed. Correct.
+- Mode-switch route: `GovernanceBody.targetMode` is the same strict literal union; `assertHumanDirector` gate confirms this is Director-only (hard limit), matching CLAUDE.md §6. Global-scope switches intentionally do NOT retroactively arm existing episodes (only the episode-scoped switch touches `metadata.reconciler_armed`) — correct per the documented "deploy never sets it" invariant.
+- Deploy-safety: `isReconcilerArmed` requires `metadata.reconciler_armed === true` (strict equality, not truthy) — a pre-existing episode with no such key, or any other value, is `undefined === true` → `false`. Confirmed inert. `reconcile-execute.ts:88` also correctly coerces `governance_mode` to `Number(rawMode)` before the gate, guarding against a stringified column value from mocks/JSON.
+- Trigger path: `factory.ts:858-868` fires `sandystudio/reconcile/episode` unconditionally after every agent completion; the executor (`reconcileEpisode`) is the sole gate (`reconcile-execute.ts:90`). No second/alternate trigger path bypasses `isReconcilerArmed`.
+- Creative vs mechanical distinction (`gate-decision.ts:95-101`, pre-existing Phase 2a code, unchanged by this diff) still holds: `hard_limit` gates never advance; mechanical advances at mode 2/3; creative advances only at mode 3. The arm from this diff only widens *which episodes* can reach that gate check — it does not change the gate check itself.
+- No stale `MECHANICS_AUTO_ADVANCE` references remain (grep clean); comment-only cleanup is accurate everywhere it touches behavior description.
+
+| Severity | Count | Status |
+|----------|-------|--------|
+| CRITICAL | 0     | pass   |
+| HIGH     | 0     | pass   |
+| MEDIUM   | 1     | info   |
+| LOW      | 1     | note   |
+
+Verdict: APPROVE. The arm-at-creation / arm-on-mode-switch logic is correct and safe — no path found where an episode auto-advances (mechanical or creative) without the Director having explicitly set governance mode to 2/3 at creation or via the mode-switch route. The one MEDIUM (metadata race) is a pre-existing codebase-wide pattern, not introduced by this diff, but worth flagging given this key's safety-critical role — recommend a follow-up ticket rather than blocking this PR.
+
+Files touched (all reviewed): `webapp/app/api/episodes/route.ts`, `webapp/app/api/system/governance-mode/route.ts`, `webapp/app/api/episodes/[id]/reconcile/route.ts`, `webapp/lib/agents/production-plan.ts`, `webapp/lib/agents/reconcile-execute.ts`, `webapp/lib/agents/reconcile.ts`, `webapp/lib/concierge/tools/conductor.ts`, `webapp/lib/concierge/tools/index.ts`, `webapp/lib/inngest/client.ts`, `webapp/inngest/functions/reconcile-episode.ts`, `webapp/inngest/index.ts`, `webapp/__tests__/lib/agents/reconcile-execute.test.ts`.</result>
+<usage><subagent_tokens>101652</subagent_tokens><tool_uses>24</tool_uses><duration_ms>166393</duration_ms></usage>
+</task-notification>
+
+## 2026-07-15 13:52 · director-msg (hook) · NEW · (triage at distill)
+упаковка канала - твоя забота . остальное ( производные ) отдаем кодерам . ок? смотри статус канала и толкай меня к ПРАВИЛЬНЫМ действиям до достижения цели. напомни ее
+
+## 2026-07-16 08:27 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>ad424559bf6321378</task-id>
+<tool-use-id>toolu_01QxXvHYEwgqRWNktwN53ZC6</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\ad424559bf6321378.output</output-file>
+<status>completed</status>
+<summary>Agent "Map failure-spine + escalation surfaces" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have all the surfaces mapped. Here is the structured report.
+
+---
+
+# Failure-Spine Surface Map (read-only findings)
+
+## 1. Polina's auto-react is genuinely tool-capable — but NOT in strict modes
+
+**`inngest/functions/exec-pa-react.ts`** POSTs to `/api/concierge/chat-internal` with `PA_INTERNAL_TOKEN` (lines 126, 130-153). The header comment "no-tools OpenAI call" (lines 16-19) is **stale** — it predates the tool loop.
+
+**`app/api/concierge/chat-internal/route.ts`** is NOT no-tools anymore. It runs a full multi-round tool loop (lines 505-666) with a mode-gated tool surface:
+
+- **Strict modes (1 / 2 / 2.5):** read-only surface only — `READ_ONLY_TOOL_SCHEMAS` (lines 105-110, 515). Mutating tools are hard-blocked at the per-tool guard (`runAutoReactTool` → `decideAutoReactMutation`, lines 770-785). Instruction is explicitly *propose-don't-act* (lines 439-447: "You MUST NOT call MUTATING tools… propose it in your text response").
+- **`watchdog` source:** `allowTools = parsed.source !== 'watchdog'` (line 399) → **zero tools**, re-prompt only.
+- **Bold modes (3 DELEGATED / 4):** `BOLD_TOOL_SCHEMAS` = everything except hard limits (lines 121-124, 511) — Polina **can** fire `triggerAgent`, `approveAsset`, `requestRevision`, `regenerate*` autonomously.
+- **Authorized-principal nudge in strict mode (E13):** `AUTHORIZED_OP_TOOL_SCHEMAS` (lines 133-135) — operational mutations but no creative approvals.
+
+**So the gap is precise:** in a normal Director-driven episode (strict mode), an `agent_failed` wakes Polina but she is on the **read-only surface** — she can inspect and *propose* but cannot re-fire the agent or take corrective mutation. That is exactly why "auto-react ran 3× but nothing got fixed." The path to *let recovery act* already exists mechanically (the bold/authorized branches), it is just gated off in strict mode.
+
+**vs interactive `/api/concierge/chat`:** referenced at chat-internal lines 487-492 as the full path with streaming, metadata patches, per-tool timeout, and the deeper turn window. Same tool registry (`@/lib/concierge/tools`), Director cookie auth instead of the EXEC-DIR-AI bearer.
+
+**One existing escalation exit from chat-internal (reusable):** when the loop hits the round backstop or spin guard (`stalledReason || cutoff`, lines 678-714) it persists an assistant turn with `metadata.awaiting_director_input` (deadline 90s), which arms the `pa-escalation-timer` via `threads.ts → sandystudio/pa/awaiting-set`. This is a real "wake something after N seconds" rung — but it targets Polina again, not the Director directly.
+
+---
+
+## 2. Director-facing alarm surfaces that EXIST
+
+### a) `activity_events.severity` — three levels, no 'critical'
+`lib/api/events.ts:11` — `EventSeverity = 'info' | 'warning' | 'error'`. There is **no 'critical'** level. `agent_failed` is logged `severity: 'error'` (`factory.ts:918`). Severity is carried into the Inbox item metadata (`inbox/route.ts:153`) but the Inbox **does not filter or surface by severity** — it filters by `event_type`. So a high severity alone reaches no Director surface.
+
+### b) Director Inbox — `app/api/director/inbox/route.ts`
+Surfaces exactly (lines 72-82):
+`decision_requested`, `input_requested`, `budget_threshold_reached`, `blocker_raised`, `canon_extension_proposed`, `rule_proposal` — all with `.is('resolved_at', null)` (line 84). Plus assets in `REVIEW` status (Source 1, lines 54-62).
+
+**Critical finding: `agent_failed` is NOT in this whitelist.** Neither is `reconcile/halt` nor `regen_cap_halt`. So a persistent agent failure **never lands in the Director Inbox today.** The two Director-actionable "blocker" event types that DO surface (group `blocked`, CTAs RESOLVE/HOLD) are `budget_threshold_reached` and `blocker_raised` (lines 117-118, 126-130).
+
+**How something gets INTO the Inbox:** write an `activity_events` row (via `logEvent`) whose `event_type` is one of the whitelisted values with `resolved_at = null`. `blocker_raised` is the natural, already-wired rung — it renders as a `blocked` item with a RESOLVE primary CTA. A failure-spine escalation that emits `blocker_raised` (or `decision_requested`) would surface to the Director with zero Inbox changes.
+
+### c) Push/notification
+The only "wake" primitives found are the `pa/notify-needed` Inngest event (wakes Polina, not the Director) and the `awaiting_director_input` → `pa/awaiting-set` escalation timer. No Director push/email surface appeared in these routes.
+
+---
+
+## 3. Retry-cap-gated notify / RECOVERY-class / reconcile-cron — **planned, not yet present**
+
+The plan cites `factory.ts:1026-1085`. **That range does not exist** — `lib/agents/factory.ts` is **951 lines**. There is no retry-cap-gated notify, no RECOVERY class, and no periodic reconcile-cron in the current tree. Those are the fix to be built. What exists today:
+
+- **Retries:** `spec.retries ?? 2` (factory.ts:140-141, 217-218) — Inngest-level, default 2 (3 attempts). No application-level failure counter, no cap gate on notify.
+- **When notify fires:** on **every** `agent_failed` emission, unconditionally. The failure catch (lines 888-947) calls `logEvent(... event_type:'agent_failed', severity:'error' ...)` (lines 916-933) → `logEvent` fires `pa/notify-needed` because `agent_failed` is actionable (`event-actionable.ts:36`). **There is no "wake only after retries exhausted" gate** — every failed attempt/re-fire wakes Polina. This is the mechanism behind the incident's "notify-needed fired 6×."
+- **Suppression that DOES exist:** `isPersistentBillingFailure(errMsg)` (line 912) tags the event `metadata.auto_react=false`, and `logEvent` honors that flag to skip the wake (`events.ts:71-79`) — the one existing "terminal failure → escalate to Director, don't re-wake Polina" pattern. It is billing-specific; it does **not** re-fire and does **not** push to the Inbox (just suppresses the wake; the row sits in the raw feed).
+- **Shot-level runaway caps that HALT (not re-fire):** `shot-regen-cap-check` (lines 262-305) emits `regen_cap_halt` and early-`return`s; `plan-regen-guard.ts` per-plan cap (referenced line 250). These **stop** loops, they don't recover them, and `regen_cap_halt` is not actionable/Inbox-surfaced.
+- **No re-fire-FAILED logic anywhere.** `markJobFailed` marks the row FAILED (see §4); nothing reads FAILED jobs to re-dispatch. The only "self-advance" trigger is on **success** (`reconcile-trigger`, factory.ts:858-868), not on failure.
+
+---
+
+## 4. `markJobFailed` and downstream reaction
+
+**`lib/agents/runner.ts:3670-3686`** — pure DB write: sets `status:'FAILED'`, `completed_at`, `error_message`. Nothing downstream reads it.
+
+Called only from the factory failure catch (`factory.ts:934-936`) alongside two siblings:
+- `logEvent(agent_failed)` — fires the Polina wake (lines 916-933).
+- `markDispatchIntent(...,'failed')` — releases the per-shot atomic claim "so recovery can re-claim" (lines 937-940). This is the **hook a RECOVERY re-fire would use**: the claim is already released to FAILED/re-claimable state; a re-dispatch for the same (episode, shot, agent) is unblocked by construction.
+- Then `throw err` (line 946) → Inngest marks the function FAILED and retries per `spec.retries`.
+
+**No re-fire, no HALT, no Director notify** is triggered by `markJobFailed` itself. The only reaction to `agent_failed` is the Polina wake — which in strict mode is read-only (§1).
+
+**`agent_failed` emission** = `lib/api/events.ts` `logEvent`, gated by `ACTIONABLE_EVENT_TYPES` (`event-actionable.ts:35-48`, includes `agent_failed`) and the `isSelfCausedNotify` / `auto_react=false` breakers (events.ts:70-79).
+
+---
+
+## 5. Watchdog — natural home for an escalation rung
+
+**`inngest/functions/pa-batch-stall-watchdog.ts`** — cron `*/5 * * * *` (line 63).
+
+**Detects:** episodes with `metadata.eref_pilot_state = 'FANOUT_RUNNING'` (lines 78-82) and, opt-in behind `THIN_AGENT_ENABLED`, Mode-3 `metadata.autonomous_run` episodes (lines 105-118). For each candidate it checks: cooldown (`batch_watchdog_nudged_at`, 12 min, lines 133-138); idle ≥ `IDLE_MIN`=6 min of no `jobs` activity (lines 140-158); a "parked for hours" pre-filter for non-fanout (lines 162-164); then two anti-echo guards — Polina spoke within 6 min → skip (lines 181-188), and **require a NEW actionable, non-self-caused `activity_event` since her last turn/nudge** (lines 189-206, reusing `isActionableEventType`/`isSelfCausedNotify`).
+
+**Does:** fires `sandystudio/pa/notify-needed` with `source:'watchdog'`, `eventType:'batch_stall'` (lines 209-217), stamps cooldown (lines 219-225). Note: `source:'watchdog'` → chat-internal runs with **zero tools** (line 399) — it only re-prompts Polina.
+
+**Suitability for a "repeated-failure / stuck-in-REVISION → escalate Director" rung:** It is a natural home — it already scans episodes on a timer, has cooldown/dedup plumbing, and already queries `jobs` and `activity_events` per episode. Its "new actionable state" query (lines 193-199) already pulls recent events and could count `agent_failed` (or FAILED jobs, or REVISION-stuck stages) and, past a threshold, emit a Director-facing `blocker_raised` (→ Inbox §2b) instead of only re-nudging Polina. But note its current scope gate is narrow (only FANOUT_RUNNING + opt-in autonomous_run) — a failure-escalation rung would need a broader candidate scan than the current `metadata-&gt;&gt;eref_pilot_state` filter.
+
+---
+
+## 6. Reconciler HALTs — computed and logged, but reach NOBODY actionable
+
+**`ReconcileResult.halted`** is defined `Array&lt;{ shotId; stage; reason }&gt;` (`reconcile-execute.ts:57-63`). Populated in the action loop (lines 139-150):
+
+```ts
+} else if (action.kind === 'halt') {
+  halted.push({ shotId: action.shotId, stage: action.stage, reason: action.reason });
+  await logEvent(supabase, {
+    event_type: 'reconcile/halt',
+    severity: 'warning',
+    title: `HALT ${action.shotId} · ${action.stage} — needs Director`,
+    description: action.reason,
+    actor: 'exec-dir-ai',
+    episode_id: episodeId,
+    metadata: { shot_id: action.shotId, stage: action.stage, reason: 'RECONCILE_HALT' },
+  });
+}
+```
+
+The halt kind originates in the pure planner (`reconcile.ts:47`, `:159` — `{ kind: 'halt', shotId, stage, reason }`).
+
+**Where the halts GO — the dead end:**
+1. `logEvent` writes an `activity_events` row, but `reconcile/halt` is **NOT in `ACTIONABLE_EVENT_TYPES`** (`event-actionable.ts:35-48`) → **no `pa/notify-needed`, Polina is never woken.**
+2. `reconcile/halt` is **NOT in the Director Inbox whitelist** (`inbox/route.ts:72-82`) → **never surfaces to the Director.**
+3. The consumer `reconcile-episode.ts` only returns `halted: r.halted.length` (a **count**, lines 45, 56) and dispatches `result.events` (the approve/stitch cascade, lines 49-54) — it does **not** dispatch or escalate anything from `halted`.
+
+Net: a reconcile HALT is a `severity:'warning'` row in the raw activity feed and nothing else — exactly the "reached NOBODY" gap the actionable-events comment warns about (`event-actionable.ts:44-47`, which notes the critic HALT was fixed by adding `revision_requested`, but `reconcile/halt` was never given the same treatment).
+
+---
+
+## Summary — surfaces to reuse
+
+**(a) Give recovery a way to act:**
+- The tool-capable branches already exist in `chat-internal` — `BOLD_TOOL_SCHEMAS` (bold modes) and `AUTHORIZED_OP_TOOL_SCHEMAS` (authorized nudge). Strict-mode auto-react is deliberately read-only; the failure path currently lands there.
+- `markDispatchIntent(...,'failed')` (factory.ts:937-940) already releases the shot claim → a RECOVERY re-fire for the same (episode, shot, agent) is unblocked. `markJobFailed` (runner.ts:3670) marks FAILED but nothing reads it — a re-fire reader would hook here.
+- The `reconcile-trigger` self-advance (factory.ts:858-868) fires only on success; a failure-side counterpart is absent.
+
+**(b) Alert the Director on persistent failure:**
+- Director Inbox surfaces `blocker_raised` / `decision_requested` as actionable items with RESOLVE/OPEN CTAs (`inbox/route.ts:72-137`). Emitting one of these `event_type`s with `resolved_at=null` is the zero-change path to the Director.
+- The `auto_react=false` billing pattern (events.ts:71-79) is the existing template for "terminal failure → escalate to human, suppress the Polina re-wake."
+- The `awaiting_director_input` → `pa/awaiting-set` escalation timer (chat-internal:686-704) is the existing timed re-wake primitive (currently re-wakes Polina, not the Director).
+- The watchdog (`pa-batch-stall-watchdog.ts`) is the existing timer-scan with cooldown/dedup that could count `agent_failed`/FAILED jobs and emit `blocker_raised`.
+
+**Dead-end surfaces that a fix must newly route:** `agent_failed` (severity 'error', wakes only read-only Polina), `reconcile/halt`, and `regen_cap_halt` are all logged but reach neither the actionable-wake set nor the Director Inbox.</result>
+<usage><subagent_tokens>75780</subagent_tokens><tool_uses>30</tool_uses><duration_ms>155668</duration_ms></usage>
+</task-notification>
+
+## 2026-07-16 08:28 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a8b10b717c9ce34d1</task-id>
+<tool-use-id>toolu_01BdojjxdV2ka7yjRYpKXVAV</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\a8b10b717c9ce34d1.output</output-file>
+<status>completed</status>
+<summary>Agent "Map REVISE→re-author loop" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I now have the complete mechanism mapped. Here is my structured report.
+
+---
+
+# REVISE → Re-author Mechanism: Structured Report
+
+## Executive summary
+
+The video-plan path (EXEC-VANIM → EXEC-VPREV) **does self-heal on REVISE, but only for a bounded number of rounds**. Once the critic's revision cap is hit, the raw `REVISE` is coerced to `HALT`; on `HALT` the plan is *left in its current status* (which is already `REVISION` from the prior REVISE round) and the only thing that fires is a passive `revision_requested` activity event. **No agent is re-dispatched to author an APPROVED v2.** The reconciler cannot rescue it either, because it only acts on cells in `REVIEW` status — a `REVISION`-stuck plan is invisible to it. The single automated re-author edge (`VPREV.nextEvent → exec-vanim/plan`) fires *only* while `verdict === 'REVISE'`, never on `HALT`. That is the exact dead-end.
+
+---
+
+## 1. When a critic returns REVISE — what SHOULD happen
+
+Two coordinated pieces run inside the **runner**, then the **critic's `nextEvent`** in the factory decides re-dispatch.
+
+**(a) Status flip + cap enforcement** — `webapp/lib/agents/critic-loop.ts`. `applyCriticVerdict` is the single source of truth. Verdict→status mapping (lines 47-53):
+
+```ts
+export function mapVerdictToPlanStatus(verdict: CriticVerdict): string | null {
+  if (verdict === 'PASS' || verdict === 'PASS_WITH_UNCERTAINTY' || verdict === 'HALT') {
+    return null;               // leave in REVIEW
+  }
+  if (verdict === 'FAIL') return 'REJECTED';
+  return 'REVISION';           // REVISE / UNKNOWN
+}
+```
+
+Cap coercion (lines 121-126) — a REVISE past the cap becomes HALT:
+
+```ts
+const revisionsSoFar = Math.max(0, version - 1);
+const effectiveVerdict: CriticVerdict =
+  rawVerdict === 'REVISE' &amp;&amp; revisionsSoFar &gt;= cap ? 'HALT' : rawVerdict;
+```
+
+The counter is derived from the plan's `version` column (each REVISE re-authors a *new* version), not a stored counter (see the module header, lines 12-18).
+
+**(b) Re-dispatch of the producer** does NOT happen inside `applyCriticVerdict`. It happens in the critic function's `nextEvent`, gated on `effectiveVerdict` which the runner writes into `result.metadata.verdict`. The factory fires that `nextEvent` as a "critic chain" in **all modes** — `webapp/lib/agents/factory.ts:802-844` (the `isCriticChain` detection matches `sandystudio/exec-vprev/`, `exec-eprev/`, `exec-srev/`, `exec-cread/`, `exec-wchk/`). The factory's forward-executor autofire (`plan-critic-autofire`, factory.ts:736-793) fires **only on PASS/PASS_WITH_UNCERTAINTY** (line 757: `if (verdict !== 'PASS' &amp;&amp; verdict !== 'PASS_WITH_UNCERTAINTY') return [];`) — it never handles REVISE.
+
+**`computeNextEvents` (`next-events.ts`) plays no role in REVISE re-authoring.** It routes APPROVED assets forward. Its `SPC-shot_plan` branch (next-events.ts:781-834) fires `exec-vgen/single-shot` only for an APPROVED plan; the REV-readability comment (lines 554-557) explicitly states "a REVISE re-author is a Director-manual re-trigger today."
+
+**The approve route (`app/api/assets/[id]/approve/route.ts`) only re-authors on a Director's *manual* Revise click** (`decision === 'REQUEST_REVISION'`, line 393), not on a critic verdict. That path DOES re-author shot plans now (lines 481-510, added 2026-07-06) — see §5.
+
+---
+
+## 2. The VIDEO plan path (VANIM → VPREV) — traced
+
+Chain: `exec-vanim/plan` → EXEC-VANIM authors `SPC-shot_plan` (saved at REVIEW by factory.ts:591) → VANIM's `nextEvent` fires `exec-vprev/review-plan` → EXEC-VPREV validates.
+
+**VPREV runner** (`webapp/lib/agents/runner.ts:1420-1498`, case `EXEC-VPREV`) calls `runAnimatorCritic`, then `applyCriticVerdict` (runner.ts:1458-1467) with `cap: resolvePromptRevisionCap(episode.metadata)`, and writes `verdict: cv.effectiveVerdict` into metadata (runner.ts:1482).
+
+**VPREV `nextEvent`** — `webapp/inngest/functions/exec-vprev.ts:64-125`. This is the re-author edge:
+
+```ts
+if (verdict === 'REVISE') {
+  ...
+  return {
+    name: 'sandystudio/exec-vanim/plan',
+    data: { episodeId, shotId, revisionNote, ...(directorOverrides…) },
+  };
+}
+if (verdict === 'PASS') { /* maybe CREAD */ }
+return null;                    // ← HALT / FAIL / PASS_WITH_UNCERTAINTY → NO re-dispatch
+```
+
+So EXEC-VANIM **is** re-dispatched — but **only while `verdict === 'REVISE'`**. Once `applyCriticVerdict` coerces to `HALT` at the cap, `metadata.verdict === 'HALT'`, this returns `null`, and the plan is left in `REVISION`. The runner's own `runAnimatorCritic` (`webapp/lib/agents/runners/animator-critic.ts`) does **not** apply the cap or flip status — its local `effectiveVerdict` (line 631) only handles V14/V15 deterministic checks; the cap coercion is entirely in `applyCriticVerdict`.
+
+### Comparison across stages — which re-author on REVISE, which dead-end
+
+| Stage | Critic | REVISE → producer re-fire? | Cap → HALT dead-end? | Evidence |
+|---|---|---|---|---|
+| **Script** | EXEC-SREV → EXEC-SW (Writer) | **Yes, unconditional, UNCAPPED** | No — never coerced to HALT | `exec-srev.ts:32-43` re-fires `exec-sw/write-script` on `REVISE`/`FAIL`; SREV does **not** call `applyCriticVerdict` (no runner case in the grep), so it always self-heals. |
+| **Ref plan** | EXEC-EPREV → EXEC-EREF-DESIGNER | Yes, while `REVISE` | **Yes — same dead-end as video** | `exec-eprev.ts:83-101` re-fires `exec-eref-designer/plan`; runner `applyCriticVerdict` at `runner.ts:1567` (actor `EXEC-EPREV`, same cap). Structurally identical to VPREV. |
+| **Shot plan (video)** | EXEC-VPREV → EXEC-VANIM | Yes, while `REVISE` | **Yes — the reported gap** | `exec-vprev.ts:78-105` + `runner.ts:1458`. |
+| **Readability** | EXEC-CREAD | **No re-author at all** — advisory | HALT escalates only | `exec-cread.ts:112-115` "Auto-chain by verdict: NONE… every verdict is advisory"; uses `applyCriticVerdict` for status/escalation only. |
+
+So **script self-heals unconditionally**; **ref-plan and shot-plan self-heal up to the cap then dead-end identically**; **readability never auto-re-authors**. The video path is not uniquely broken in code — EPREV shares the same cap dead-end — but it is where the E29 stall surfaced (ref plans got approved; the 3 shot plans hit the cap and stranded in REVISION).
+
+---
+
+## 3. Critic revision cap / HALT
+
+- **Cap value**: `DEFAULT_CRITIC_REVISION_CAP = 2` (`critic-loop.ts:36`), but VPREV/EPREV pass `resolvePromptRevisionCap(episode.metadata)` (runner.ts:1466, 1575) so it is episode-configurable.
+- **Counting**: `revisionsSoFar = version − 1` (critic-loop.ts:121). version N = attempt N. So at attempt 3 (2 revisions done), the next REVISE coerces to HALT.
+- **What HALT emits** (`critic-loop.ts:150-173`): one row into `activity_events`:
+
+```ts
+if (effectiveVerdict === 'HALT') {
+  await supabase.from('activity_events').insert({
+    event_type: 'revision_requested',
+    severity: 'warning',
+    title: `${actor} HALT — manual review needed (${reviewKind})`,
+    ...
+    metadata: { critic_escalation: true, reason: 'cap_reached', target_asset_id: planAssetId, shot_id, revisions_so_far, cap },
+  });
+}
+```
+
+- **Critically**: on HALT, `mapVerdictToPlanStatus` returns `null` → the plan is **not flipped**; it retains the `REVISION` status left by the previous REVISE round (critic-loop.ts:128-137 only lifts a `DRAFT` plan to `REVIEW`, never touches `REVISION`).
+- **Who does it wake?** Only the inbox/feed via `revision_requested` (the type migration 0043 added to actionable whitelists). It is a passive escalation to the Director/Polina. **It dispatches no producer event** — `applyCriticVerdict` sends no Inngest event, and VPREV's `nextEvent` returns `null` for HALT. There is no automated re-author on cap-exceeded HALT.
+
+---
+
+## 4. Reconciler treatment of a REVISION-stuck plan / REVISE verdict
+
+**Decision core** `webapp/lib/agents/reconcile.ts`:
+
+- Only `REVIEW` cells are actionable — `planReconcileActions` line 120: `if (cell.status !== 'REVIEW') continue;`. **A plan in `REVISION` is skipped entirely** — the reconciler never sees the E29-stuck plans.
+- For a `REVIEW` cell carrying a REVISE/FAIL verdict, it emits `wait` below cap or `halt` at/above cap (lines 155-171):
+
+```ts
+} else if (verdict === 'REVISE' || verdict === 'FAIL') {
+  const count = reviseCounts.get(key) ?? 0;
+  if (count &gt;= criticCap) {
+    actions.push({ kind: 'halt', ... reason: `critic ${verdict} ×${count} ≥ cap ${criticCap} — HALT + escalate Director` });
+  } else {
+    actions.push({ kind: 'wait', ... reason: `critic ${verdict} (${count}/${criticCap}) — revise loop in progress` });
+  }
+}
+```
+
+- The action union is `approve | stitch | halt | wait` (reconcile.ts:44-48). **There is no `reauthor`/`re-fire` action kind.** The `wait` branch explicitly assumes the critic-chain is doing the re-author ("revise loop in progress"). On HALT it does not re-author.
+
+**Executor** `webapp/lib/agents/reconcile-execute.ts:123-152`: `approve` → `executeApprove` (demote sibling + flip APPROVED + `computeNextEvents`); `stitch` → stitch event; `halt` → logs a `reconcile/halt` warning event; `wait` → nothing. So the reconciler **re-authors nothing** on REVISE and **ignores** REVISION-stuck plans. It is also armed only for mode 2/3 with `reconciler_armed` metadata (reconcile-execute.ts:90).
+
+**Net**: for a plan stuck in REVISION, the reconciler is a no-op — the `cell.status !== 'REVIEW'` guard filters it out before any verdict logic runs.
+
+---
+
+## 5. Existing helpers that re-dispatch a producer for a shot (reusable by a fix)
+
+All of these fire `sandystudio/exec-vanim/plan` (the re-author trigger). None fires automatically on a critic-cap HALT.
+
+1. **Director manual Revise → approve route** — `app/api/assets/[id]/approve/route.ts:481-510`. On `REQUEST_REVISION` for `SPC-shot_plan*`/`REV-shot_plan*`, resolves the shotId, merges critic notes (`collectShotCriticNotes` + `mergeRevisionNote`), and sends `exec-vanim/plan` with the note. The comment (lines 472-480) documents this closed a prior dead-end (2026-07-06, SH08 E16). The symmetric ref-plan branch is lines 427-470. **This only runs on a human Revise click, not on the critic HALT.**
+
+2. **PA tool `regenerateShotPlan(shotId)`** — `lib/concierge/tools/animator.ts` (header line 10: "MUTATING. Re-fire Animator. Verbal approval."). Content-regenerating (~LLM cost); registered in `lib/concierge/tools/index.ts`. Ref-plan analog: `regenerateRefPlan`.
+
+3. **PA tool `unstickPlanForApproval(planAssetId)`** — `lib/concierge/tools/animator.ts:373-467`. State-machine-only recovery: flips a plan `REVISION → REVIEW` **gated on the latest critic verdict being PASS/PASS_WITH_UNCERTAINTY** (no regen, no LLM). It explicitly **refuses** a plan whose latest verdict is REVISE/HALT — so it cannot rescue the E29 shots (their verdict is REVISE-coerced-HALT, not PASS). Documented for the TD-74/TD-75 PASS_WITH_UNCERTAINTY case only.
+
+4. **`start-video` retro-fanout** — `app/api/episodes/[id]/start-video/route.ts:141` emits `exec-vanim/plan` per already-APPROVED reference.
+
+5. **`computeNextEvents` parallel edge** — `next-events.ts:977` and the animatic branch `next-events.ts:1100-1103, 1136-1144` emit `exec-vanim/plan` for shots with no plan yet (guarded by `shotHasPlan`, so it will NOT re-author a shot that already has a REVISION plan).
+
+6. **`triggerAgent` / trigger route** — `app/api/episodes/[id]/trigger/route.ts:45` maps `EXEC-VANIM → sandystudio/exec-vanim/plan` for a manual/PA-driven fire.
+
+---
+
+## 6. The specific gap (VANIM → VPREV)
+
+**Definition of the gap.** When `EXEC-VPREV` returns REVISE and `revisionsSoFar &gt;= cap`, `applyCriticVerdict` (`critic-loop.ts:125-126`) coerces the effective verdict to `HALT`. Three consequences combine into a permanent dead-end:
+
+1. `mapVerdictToPlanStatus('HALT') === null` (critic-loop.ts:48) → the plan is **not** flipped; it keeps the `REVISION` status set by the prior REVISE round (and `REVISION` is never lifted — only `DRAFT` is, critic-loop.ts:135-137).
+2. VPREV's `nextEvent` (`exec-vprev.ts:78,124`) re-fires `exec-vanim/plan` **only** when `verdict === 'REVISE'`; on `HALT` it returns `null` → **EXEC-VANIM is never re-dispatched to author v2**.
+3. The only HALT side-effect is a passive `revision_requested` activity row (critic-loop.ts:151-169) — an inbox nudge that wakes nobody to re-author.
+
+**Why nothing downstream recovers it:**
+- `computeNextEvents` acts only on APPROVED plans (never on REVISION) and its plan-authoring edges are guarded by `shotHasPlan`, which is true for a REVISION plan — so it won't re-fire.
+- `EXEC-VGEN` correctly refuses a non-APPROVED plan (the "Refusing silent storyboard fallback" guard; the same invariant is enforced in the animatic branch at `next-events.ts:1092-1097`, which `continue`s past a non-APPROVED plan without re-authoring).
+- The reconciler filters out non-`REVIEW` cells (`reconcile.ts:120`) → the REVISION plan is invisible; and it has no `reauthor` action kind anyway.
+- `unstickPlanForApproval` refuses because the latest verdict is not PASS.
+
+**Result**: the plan is stranded in `REVISION` with the only exits being a **human**: (a) Director manual Revise click → `approve/route.ts:481-510` re-fires EXEC-VANIM, or (b) PA `regenerateShotPlan`. There is **no automated edge from a critic-cap HALT back to the producer**, and no armed automation (reconciler) that watches for REVISION-stuck plans. This is the "producer gap on the animator": critic REVISE-at-cap → HALT → passive escalation → nobody re-dispatches EXEC-VANIM to produce an APPROVED v2.
+
+**Note on symmetry**: EXEC-EPREV (ref plans, `runner.ts:1567`, `exec-eprev.ts:83-101`) has the **identical** cap→HALT dead-end. Any fix should treat the two plan critics uniformly.
+
+### Key files
+- `webapp/lib/agents/critic-loop.ts:47-53, 121-173` — verdict→status map, cap coercion, HALT `revision_requested` emission.
+- `webapp/inngest/functions/exec-vprev.ts:64-125` — the re-author edge, gated on `verdict === 'REVISE'` (null on HALT).
+- `webapp/inngest/functions/exec-eprev.ts:69-121` — identical ref-plan edge.
+- `webapp/inngest/functions/exec-srev.ts:26-53` — uncapped, always-re-authors script edge (the self-healing contrast).
+- `webapp/lib/agents/runner.ts:1420-1498` (VPREV) / `1529-1600` (EPREV) — where `applyCriticVerdict` runs and `effectiveVerdict` is written to metadata.
+- `webapp/lib/agents/runners/animator-critic.ts:534-688` — VPREV critic body (no cap/status side-effect itself).
+- `webapp/lib/agents/factory.ts:736-757` (PASS-only autofire), `802-844` (critic-chain `nextEvent` dispatch).
+- `webapp/lib/agents/next-events.ts:781-834` (APPROVED shot_plan → VGEN), `1092-1097` (non-APPROVED plan skip, no re-author).
+- `webapp/lib/agents/reconcile.ts:118-171` (REVIEW-only, wait/halt, no reauthor kind).
+- `webapp/lib/agents/reconcile-execute.ts:123-152` (halt logs only).
+- `webapp/app/api/assets/[id]/approve/route.ts:481-510` — Director-manual shot-plan re-author (reusable pattern).
+- `webapp/lib/concierge/tools/animator.ts:297-467` — `unstickPlanForApproval` (PASS-only) + `regenerateShotPlan`.</result>
+<usage><subagent_tokens>141547</subagent_tokens><tool_uses>25</tool_uses><duration_ms>227030</duration_ms></usage>
+</task-notification>
+
+## 2026-07-16 10:52 · director-msg (hook) · NEW · (triage at distill)
+я в дубае.  но мульт глобальный . как выбрать правильно время для shedule?
+
+## 2026-07-16 11:02 · director-msg (hook) · NEW · (triage at distill)
+video and shorts published scheduled / 
+https://youtu.be/ywNKJYsbnrE - video  
+check
+
+ну вот не я должен задавать  такие вопросы ( я - нуб)  - а ты вести за руку должен. давай-ка сделай скилл по результатам наших с тобой  бесед в этой и прошлых сессиях .
+
+## 2026-07-16 11:19 · director-msg (hook) · NEW · (triage at distill)
+q17 да, q18 промпт для кодера, q19 да
+e28 вылез странным образом . видимо косяк дистрибуции. у нас же сгенерил два файла - шорт 29 и full ИЗ ШОРТ ФОРМАТА. Я ЕГО ВИЖУ . ОН ДОЛЖЕН БЫТЬ НЕ УТВЕРЖДЕН. И ВОЗМОЖНО ДИСТРИБУТОР ВЫТАЩИЛ ЧТОТО СТАРОЕ. И ПРИЛЕПИЛ КСТАТИ САМ ИНТРО И АУТРО ) НАДО РАЗООБРАТЬСЯ.
+
+## 2026-07-16 11:42 · director-msg (hook) · NEW · (triage at distill)
+Factory — Adaptation Overview
+The slow loop: is the factory getting cheaper and more autonomous episode over episode — and what did the churn teach us? Honest churn = REVISE per artifact version, never runs/shot.
+
+No scorecards yet. The discriminator fills in as episodes ship (post-distribution).
+
+## 2026-07-16 12:15 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a128e22510cb30478</task-id>
+<tool-use-id>toolu_01CYQ181Dxv9yodBg1bSgQmT</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\a128e22510cb30478.output</output-file>
+<status>completed</status>
+<summary>Agent "Map reconciler FAILED-cell visibility" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything needed. Here is the structured reality-map.
+
+---
+
+# Reconciler internals — reality map for Slice 3 (refire) + Slice 4b (reconcile-cron)
+
+## 1. State-matrix FAILED visibility (CRITICAL)
+
+`webapp/lib/agents/state-matrix.ts` — `getEpisodeStateMatrix` (lines 187–308).
+
+**Tables it reads:**
+- `episodes` (header: `episode_code, governance_mode, metadata`) — line 192.
+- `assets` — ONE read of every asset for the episode (`id,file_type,status,version,metadata,created_at`) — line 204. This is the primary projection source.
+- `assets` again inside `resolveShotSpine` for the STB storyboard (line 146).
+- `activity_events` — inside `loadGenerationFailures` (line 327), filtered `event_type = 'agent_failed'`.
+
+**It does NOT read the `jobs` table at all.** A cell's status is purely a projection over `assets` rows.
+
+**Cell shape** (`StageState`, lines 51–60):
+```ts
+export interface StageState {
+  status: string | null;   // DRAFT|REVIEW|APPROVED|LOCKED|REVISION|INVALIDATED|null(absent)
+  version: number | null;
+  asset_id: string | null;
+  fresh: boolean;
+  blocked_reason?: string;
+}
+```
+
+**Answer to "does the matrix represent a JOB failure":** No — not structurally. A FAILED agent job produces no asset, so the cell is `status: null` (the `EMPTY_STAGE` constant, line 133) — identical to "never-started". **There is NO FAILED status value and NO FAILED/missing distinction in the cell's `status`.** The status enum is asset-status only.
+
+The ONLY trace of a failure is a **soft, human-language annotation**: after building shots, lines 272–284 call `loadGenerationFailures` (counts `activity_events` of type `agent_failed`, keyed `${shot_id}::${stage}` via the reverse `AGENT_STAGE` map at lines 311–316) and stamp `cell.blocked_reason` — but ONLY on cells where `status === null` (line 277):
+```ts
+cell.blocked_reason = `генерация упала ×${fail.count}${fail.lastMsg ? ` (${fail.lastMsg})` : ''} — нужен retry или park`;
+```
+So the failure signal exists as `blocked_reason` text on an otherwise-empty cell, and its count comes from `activity_events`, not `jobs`. The `AGENT_STAGE` map (state-matrix.ts:311) already maps `EXEC-EREF-DESIGNER→ref_plan`, `EXEC-EREF→ref_image`, `EXEC-VANIM→shot_plan`, `EXEC-VGEN→video` — reusable for a refire.
+
+**Implication for Slice 3:** The reconciler cannot currently SEE "video render FAILED vs never-started" from the matrix cell alone — both are `status: null`. To distinguish, a refire planner must either (a) read the `blocked_reason` text the matrix already stamps (brittle — it's Russian prose), or (b) query `activity_events`/`jobs` for `agent_failed` directly. The structured count already exists in `loadGenerationFailures` but is NOT surfaced as a typed field on the cell — only folded into `blocked_reason`.
+
+---
+
+## 2. `reconcile.ts` — `planReconcileActions`
+
+`webapp/lib/agents/reconcile.ts` (full file, 227 lines).
+
+**`ReconcileAction` union (lines 44–48):**
+```ts
+export type ReconcileAction =
+  | { kind: 'approve'; assetId: string; shotId: string; stage: StageName; reason: string }
+  | { kind: 'stitch'; reason: string }
+  | { kind: 'halt'; shotId: string; stage: StageName; reason: string }
+  | { kind: 'wait'; shotId: string | null; stage: StageName | null; reason: string };
+```
+
+**`ReconcileContext` input (lines 50–64):**
+```ts
+export interface ReconcileContext {
+  matrix: EpisodeStateMatrix;
+  plan: ProductionPlan | null;
+  verdicts: Map&lt;string, string&gt;;      // `${shotId}::${stage}` → latest critic verdict
+  reviseCounts: Map&lt;string, number&gt;;  // `${shotId}::${stage}` → REVISE/FAIL count
+  reservedShots: Set&lt;string&gt;;
+  criticCap: number;
+  governanceMode: number | null;
+}
+```
+
+**Per-cell decision loop (lines 113–204):** For each non-excluded, non-reserved, in-plan shot × each stage in `STAGE_ORDER`:
+- **Line 120: `if (cell.status !== 'REVIEW') continue;`** — this is the pivotal gate. **Only cells in `REVIEW` are actionable.** A `status: null` FAILED/absent cell is skipped entirely — it never enters the decision body. So a FAILED shot is invisible to the current loop by construction.
+- Fresh check (124): stale REVIEW → `wait`.
+- Critic-gated stages (134): PASS → `approve` (mode-gated via `resolveGateDecision('mechanical', …)`); REVISE/FAIL ≥ cap → `halt`; else `wait`.
+- Non-critic stages (180): Mode 3 → `approve`; else `wait`.
+- Then episode-level stitch gate (lines 206–224).
+
+**Where a `refire` action slots in:** A new arm must be added to the `ReconcileAction` union, and — critically — a new branch that runs on **`status === null` cells with a recorded failure**, NOT the `status === 'REVIEW'` path (which returns early at line 120). The most natural place is a separate pass over `matrix.shots × STAGE_ORDER` that inspects empty cells whose failure count is known. It needs:
+- `episodeId` (from `matrix.episode_id`),
+- `shotId`, `stage` (loop vars),
+- the **agent to re-fire** (derivable from `stage` via a stage→agent map — the inverse of state-matrix's `AGENT_STAGE`),
+- the **event name + payload** to emit (see §3),
+- a prior-attempt count for the recovery cap (see §4) — and note `reviseCounts` already counts `FAIL` verdicts (line 97: `if (verdict === 'REVISE' || verdict === 'FAIL')`), but that counts CRITIC failures, not JOB failures.
+
+The context currently carries no failure-count map; a `refire` planner would need a new `ReconcileContext` field (e.g. `failureCounts: Map&lt;string,{count,...}&gt;`) populated from `activity_events` (`agent_failed`) or from a new counter, since the matrix cell doesn't expose the structured count.
+
+---
+
+## 3. Agent→event re-dispatch mapping (reuse for refire)
+
+**The canonical map is INLINE in the route** — `webapp/app/api/episodes/[id]/trigger/route.ts` lines 33–62, `AGENT_TO_EVENT: Record&lt;string, StudioEventName&gt;`. Relevant per-shot generator entries:
+
+| Agent | Base event (`AGENT_TO_EVENT`) | Plan-driven reroute (per-shot) |
+|---|---|---|
+| `EXEC-EREF-DESIGNER` (ref_plan) | `sandystudio/exec-eref-designer/plan` | — |
+| `EXEC-EREF` (ref_image) | `sandystudio/exec-eref/start` | `sandystudio/exec-eref/execute-from-plan` when `{shotId, planAssetId}` present (route lines 235–243) |
+| `EXEC-VANIM` (shot_plan) | `sandystudio/exec-vanim/plan` | — |
+| `EXEC-VGEN` (video) | `sandystudio/exec-vgen/generate-shot` | `sandystudio/exec-vgen/single-shot` when `{shotId, planAssetId}` present + `regenerate:true` (route lines 210–227) |
+
+**There is NO reusable shared helper** — the map is a private const in the route, and `next-events.ts` has its OWN inline event-name literals scattered across branches (e.g. `sandystudio/exec-eref/execute-from-plan` at next-events.ts:764, `sandystudio/exec-vgen/single-shot` at next-events.ts:829, `sandystudio/exec-vanim/plan` at next-events.ts:978/1101). No central `STAGE→event` or `AGENT→event` table exists that a refire action could import.
+
+**For a refire action**, the cleanest per-shot mapping (matching what next-events already emits for the plan-driven forward edges) is:
+- ref_plan → `sandystudio/exec-eref-designer/plan` `{episodeId, shotId}`
+- ref_image → `sandystudio/exec-eref/execute-from-plan` `{episodeId, shotId, planAssetId}`
+- shot_plan → `sandystudio/exec-vanim/plan` `{episodeId, shotId}`
+- video → `sandystudio/exec-vgen/single-shot` `{episodeId, shotId, planAssetId, duration_seconds?}`
+
+Note the two money stages (ref_image, video) need a `planAssetId` — the refire planner must resolve the shot's current SPC-ref_plan / SPC-shot_plan asset id (the matrix carries `asset_id` per stage, so `shot.stages.ref_plan.asset_id` / `shot.stages.shot_plan.asset_id` are available).
+
+**Reuse point:** the executor (`reconcile-execute.ts`) already imports and calls `computeNextEvents` for the `approve` path. A refire would instead emit the generator event directly (like the trigger route does via `inngest.send`) — the subscriber for each of these events already exists (the factory-built agent functions).
+
+---
+
+## 4. Recovery-cap counting — `countShotAutonomousAttempts`
+
+Source: `webapp/lib/api/plan-regen-guard.ts` lines 153–170 (imported at factory.ts:40).
+
+**Signature:**
+```ts
+export async function countShotAutonomousAttempts(
+  supabase: ServerSupabaseClient,
+  episodeId: string,
+  shotId: string,
+): Promise&lt;ShotAttemptCount&gt;   // { count: number; readError: boolean }
+```
+
+**What it counts (lines 158–164):** `jobs` rows for the episode where `agent_id IN SHOT_REGEN_AGENT_IDS` AND `status IN ('QUEUED','RUNNING','COMPLETED')` AND `input_snapshot-&gt;&gt;shotId === shotId`. It counts per **shot, across all plan versions** (not per plan).
+
+`SHOT_REGEN_AGENT_IDS` (line 41): `['EXEC-EREF', 'EXEC-EREF-DESIGNER', 'EXEC-VGEN']` — **note EXEC-VANIM is NOT in this set**, so shot_plan-stage attempts are not currently counted by this helper.
+
+**Critically: FAILED jobs are EXCLUDED** (line 163, only QUEUED/RUNNING/COMPLETED) — the docstring (lines 146–148) explains this is deliberate so a transient provider failure "does not permanently lock the shot out of recovery."
+
+**Could it serve as the recovery-cap counter for Slice 3?** Partially, with a caveat: for a "re-fire a FAILED shot at most N times" cap you want to count **prior FAILED attempts** — but this helper counts *successful/in-flight* attempts and *excludes* FAILED. So it measures "how many real renders happened" (money spent), not "how many times it failed." It IS the right instrument for a spend-based cap (don't burn more than N renders on one shot), and it already fails-closed via `readError` (returns `{count:0, readError:true}` on query error, lines 166–168, so the caller must treat readError as over-cap). But a failure-count cap ("stop re-firing after N *failures*") would need a different query (count `status='FAILED'` jobs, or `activity_events` `agent_failed`).
+
+Related reusable cap: `assertPlanRegenWithinCap` (lines 59–130) is the per-plan in-flight + runaway-cap chokepoint the trigger route already calls (route lines 259–266). It throws `ConflictError` on cap; the human `director` principal bypasses (line 99), `exec_dir_ai` is capped. The cap value is `planRegenCap()` from `chain-flags`. A refire is an autonomous (`exec-dir-ai`) re-fire, so it would be subject to this guard if it dispatched through the same path.
+
+---
+
+## 5. Slice 4b — armed-episode iteration
+
+Template: `webapp/inngest/functions/pa-batch-stall-watchdog.ts` (cron `*/5 * * * *`, lines 57–233).
+
+**How its cron queries candidate episodes:** two `episodes` selects, results merged into a `Map&lt;id, {id, metadata}&gt;`:
+1. FANOUT_RUNNING batches (lines 78–82):
+```ts
+const { data: eps } = await sb
+  .from('episodes')
+  .select('id,metadata')
+  .eq('metadata-&gt;&gt;eref_pilot_state', 'FANOUT_RUNNING')
+  .limit(SCAN_LIMIT);
+```
+2. (opt-in, behind `THIN_AGENT_ENABLED`) autonomous-run episodes (lines 106–111):
+```ts
+const { data: autoEps } = await sb
+  .from('episodes')
+  .select('id,metadata')
+  .eq('governance_mode', 3)
+  .eq('metadata-&gt;&gt;autonomous_run', 'true')
+  .limit(SCAN_LIMIT);
+```
+
+This is the exact pattern to mirror: `sb.from('episodes').select('id,metadata').eq('metadata-&gt;&gt;KEY','VALUE')`. Note the JSON accessor is `metadata-&gt;&gt;reconciler_armed` and the value comparison is against the **string** `'true'` (PostgREST `-&gt;&gt;` yields text). For governance mode, `.eq('governance_mode', 2/3)` is a real int column — you cannot express `IN (2,3)` on a boolean+int compound in a single `.eq`; the watchdog handles the multi-condition by running two queries and merging, OR you filter mode client-side after fetching armed episodes. A single-query option: `.eq('metadata-&gt;&gt;reconciler_armed','true').in('governance_mode',[2,3])`.
+
+**How it fires per-episode events (lines 209–217):**
+```ts
+await inngest.send({
+  name: 'sandystudio/pa/notify-needed',
+  data: { episodeId: ep.id, source: 'watchdog', triggerId: ep.id, eventType: 'batch_stall' },
+});
+```
+A reconcile-cron would mirror this exactly, emitting `sandystudio/reconcile/episode` `{ episodeId: ep.id }` per candidate.
+
+**Guards worth copying from the watchdog:** `SCAN_LIMIT` bound (line 36), per-episode cooldown via a `metadata.*_nudged_at` stamp (lines 133–138, 219–225), and fail-safe "don't fabricate a stall on query error → skip, retry next tick" (lines 150, 200). The idle-window logic (lines 141–164) is watchdog-specific and not needed if the reconcile-cron just fires unconditionally (the reconciler is idempotent + arm-gated).
+
+**Note:** the arm predicate itself is centralized — `isReconcilerArmed(episodeMeta, governanceMode)` in `production-plan.ts:111–114` = `metadata.reconciler_armed === true &amp;&amp; (mode===2||mode===3)`. The cron's DB filter should mirror this so it doesn't fetch episodes the executor will just no-op on.
+
+---
+
+## 6. How `reconcileEpisode` is triggered today — cron via event vs direct call
+
+**Event:** `sandystudio/reconcile/episode`, declared in `webapp/lib/inngest/client.ts:57–61` (`data: { episodeId: string }`).
+
+**Sole subscriber:** `webapp/inngest/functions/reconcile-episode.ts` (lines 20–58). It:
+- debounces 5s per `episodeId` (line 27) and runs concurrency-1 per episode (line 30) — a burst collapses safely,
+- calls `reconcileEpisode(supabase, episodeId)` (line 39),
+- dispatches the returned cascade events via `step.sendEvent` (lines 49–54).
+
+**Who emits it today:** only `factory.ts:894–898` — after ANY agent completes, unconditionally (`reconcile-trigger`). No cron, no route emits it currently.
+
+**The arm gate lives inside the executor**, not the subscriber: `reconcileEpisode` (reconcile-execute.ts:91) returns `EMPTY` unless `opts.force || isReconcilerArmed(...)`. So the event is safe to emit for any episode — a non-armed episode is a guaranteed no-op.
+
+**Cleaner path for the reconcile-cron: emit `sandystudio/reconcile/episode` per armed episode** rather than calling `reconcileEpisode` directly. Reasons:
+- **Reuses the existing subscriber's debounce + concurrency-1** (reconcile-episode.ts:27–30) — a cron tick coinciding with a factory-driven completion collapses into one pass instead of racing on the same REVIEW cells.
+- **Reuses the arm gate** automatically (the executor no-ops if not armed) — the cron's DB filter is just an optimization to avoid emitting for non-armed episodes.
+- **Keeps event dispatch at the IO boundary** — `reconcileEpisode` deliberately does NOT dispatch its own cascade events (reconcile-execute.ts:14–16); it returns them for the caller to send. Calling it directly from a cron would force the cron to also replicate the `step.sendEvent(result.events)` dispatch loop that the subscriber already implements (reconcile-episode.ts:49–54). Emitting the trigger event delegates all of that to the existing subscriber.
+
+Direct-call is only preferable if the cron needs `opts.force` / custom `reservedShots` / a synchronous result — none of which a "catch silently-stalled shots" sweep requires.
+
+---
+
+## Reuse-point summary
+
+| Need | Existing primitive | Location |
+|---|---|---|
+| Stage↔agent mapping | `AGENT_STAGE` (reverse) | `state-matrix.ts:311` |
+| Failure count per shot×stage | `loadGenerationFailures` (from `activity_events` `agent_failed`) — but folded into `blocked_reason` text, not a typed cell field | `state-matrix.ts:321` |
+| Per-shot render-attempt (spend) cap | `countShotAutonomousAttempts` (excludes FAILED) | `plan-regen-guard.ts:153` |
+| Per-plan in-flight + runaway HALT guard | `assertPlanRegenWithinCap` (director bypasses, exec_dir_ai capped) | `plan-regen-guard.ts:59` |
+| Refire event names (plan-driven) | inline literals — NO shared map | `trigger/route.ts:33`, `next-events.ts:764/829/978` |
+| Cron episode-iteration pattern | `paBatchStallWatchdog` (two `.eq('metadata-&gt;&gt;…')` selects merged, cooldown stamp, SCAN_LIMIT, fail-safe skip) | `pa-batch-stall-watchdog.ts:78/106/209` |
+| Arm predicate | `isReconcilerArmed` | `production-plan.ts:111` |
+| Reserved-pilot set | `resolveReservedShots` | `production-plan.ts:74` |
+| Reconcile trigger event + subscriber (debounce, concurrency-1, cascade dispatch) | `sandystudio/reconcile/episode` → `reconcileEpisodeFn` | `client.ts:57`, `reconcile-episode.ts:20` |
+
+**Two structural gaps to note for planning (reality, not proposal):** (a) the decision loop hard-gates on `cell.status === 'REVIEW'` (reconcile.ts:120), so FAILED/empty cells never reach any action branch today; (b) there is no typed, structured job-failure signal on the matrix cell — only `blocked_reason` prose derived from `activity_events`, and `countShotAutonomousAttempts` deliberately excludes FAILED jobs, so neither surface directly answers "how many times did this shot's render FAIL."</result>
+<usage><subagent_tokens>93750</subagent_tokens><tool_uses>13</tool_uses><duration_ms>130280</duration_ms></usage>
+</task-notification>
+
+## 2026-07-16 12:23 · director-msg (hook) · NEW · (triage at distill)
+even after deploy Factory — Adaptation Overview
+The slow loop: is the factory getting cheaper and more autonomous episode over episode — and what did the churn teach us? Honest churn = REVISE per artifact version, never runs/shot.
+
+No scorecards yet. The discriminator fills in as episodes ship (post-distribution).
+
+## 2026-07-16 14:20 · director-msg (hook) · NEW · (triage at distill)
+q12a q13 look for it. because  i can see in UI - budget is calculated (make in factory page: total,precast,postcast/shot, and (folded - every agents/endpoints). checkboxes for visualis in grafics - episode,  total,precast,postcast/shot, agents/endpoints )
+ #1 фильтр: checkboxes (exact episode, all , exclude archived (default)
+
+## 2026-07-16 14:21 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a697092916c61d21f</task-id>
+<tool-use-id>toolu_01RiZQsi1DRVdtx9Dut9EgwG</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\a697092916c61d21f.output</output-file>
+<status>completed</status>
+<summary>Agent "Verify Slice 3 core files" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All three files are fully read. Here is the verification against the plan's reconnaissance claims.
+
+## 1. `webapp/lib/agents/state-matrix.ts`
+
+**`getEpisodeStateMatrix` (lines 187-308) — does NOT read the `jobs` table.** CONFIRMED. It reads only `episodes` (line 192-196), `assets` (line 204-207), `assets` again via `resolveShotSpine` for the storyboard (line 146-154), and `activity_events` via `loadGenerationFailures` (line 327-332). No `jobs` table reference anywhere in the file.
+
+**`StageState` type (lines 51-60) — current fields:**
+```ts
+export interface StageState {
+  status: string | null;      // DRAFT|REVIEW|APPROVED|LOCKED|REVISION|INVALIDATED|null
+  version: number | null;
+  asset_id: string | null;
+  fresh: boolean;
+  blocked_reason?: string;    // optional
+}
+```
+- `status`: present, `string | null`.
+- `blocked_reason`: present, optional `string`.
+- `failure_count`: NOT present. There is no `failure_count` field. Failure count is instead surfaced textually inside `blocked_reason` (see line 280) and lives only in the internal `loadGenerationFailures` map value (`{ count, lastMsg }`). Flag for the plan: if it assumes a structured `failure_count` field on the cell, that does not exist — only prose in `blocked_reason`.
+
+**`loadGenerationFailures` (lines 321-352, NOT ~321 declaration but body starts here).** CONFIRMED near line 321. Returns `Map&lt;string, { count: number; lastMsg: string | null }&gt;`. Keyed by `` `${shotId}::${stage}` `` (line 340). It queries `activity_events` filtered `event_type = 'agent_failed'` (line 331), maps each event's `metadata.agent` through `AGENT_STAGE` to a stage (line 338), and counts per key, keeping the newest description (rows ordered `created_at` desc) truncated to 80 chars as `lastMsg`. Claim CONFIRMED, with the precision that the key uses the resolved `stage` (via `AGENT_STAGE`), not the raw agent name.
+
+**`blocked_reason` written into the cell — TWO places, not one:**
+- First-pass freshness reason (lines 255-262):
+```ts
+const { fresh, reason } = computeFreshness(stage, shotId, row, chosen);
+stages[stage] = {
+  status: row.status ?? null,
+  version: row.version ?? null,
+  asset_id: row.id,
+  fresh,
+  ...(reason ? { blocked_reason: reason } : {}),
+};
+```
+- The failure-surfacing pass the plan cites (~272-284) is lines 272-284:
+```ts
+const failures = await loadGenerationFailures(supabase, episodeId);
+if (failures.size &gt; 0) {
+  for (const shot of shots) {
+    for (const stage of STAGE_ORDER) {
+      const cell = shot.stages[stage];
+      if (cell.status !== null) continue; // only truly-stuck (never produced) cells
+      const fail = failures.get(`${shot.shot_id}::${stage}`);
+      if (fail) {
+        cell.blocked_reason = `генерация упала ×${fail.count}${fail.lastMsg ? ` (${fail.lastMsg})` : ''} — нужен retry или park`;
+      }
+    }
+  }
+}
+```
+Claim CONFIRMED at lines 272-284. Note the guard `if (cell.status !== null) continue;` — the failure reason is stamped only onto EMPTY (never-produced) cells.
+
+**`AGENT_STAGE` map (lines 311-316).** CONFIRMED, matches claim exactly:
+```ts
+const AGENT_STAGE: Record&lt;string, StageName&gt; = {
+  'EXEC-EREF-DESIGNER': 'ref_plan',
+  'EXEC-EREF': 'ref_image',
+  'EXEC-VANIM': 'shot_plan',
+  'EXEC-VGEN': 'video',
+};
+```
+
+**STAGE_ORDER / stage list.** CONFIRMED — exported at line 30:
+```ts
+export const STAGE_ORDER = ['ref_plan', 'ref_image', 'shot_plan', 'video'] as const;
+export type StageName = (typeof STAGE_ORDER)[number];
+```
+Related maps (not requested but relevant): `FILE_TYPE_BY_STAGE` (lines 34-39) and `UPSTREAM_OF` (lines 44-49).
+
+## 2. `webapp/lib/agents/reconcile.ts`
+
+**`if (cell.status !== 'REVIEW') continue;` guard.** CONFIRMED at line 120 (exactly as claimed). Surrounding loop (lines 113-121):
+```ts
+for (const shot of matrix.shots) {
+  if (shot.excluded) continue;
+  if (reservedShots.has(shot.shot_id)) continue; // Director gates this shot
+  if (!isShotInPlan(plan, shot.shot_id)) continue; // out-of-plan → never auto-advance
+
+  for (const stage of STAGE_ORDER) {
+    const cell = shot.stages[stage];
+    if (cell.status !== 'REVIEW') continue; // only REVIEW stages are actionable
+    const key = signalKey(shot.shot_id, stage);
+```
+
+**Action union type `ReconcileAction` (lines 44-48) — `kind` values:** `approve`, `stitch`, `halt`, `wait`. Full definition:
+```ts
+export type ReconcileAction =
+  | { kind: 'approve'; assetId: string; shotId: string; stage: StageName; reason: string }
+  | { kind: 'stitch'; reason: string }
+  | { kind: 'halt'; shotId: string; stage: StageName; reason: string }
+  | { kind: 'wait'; shotId: string | null; stage: StageName | null; reason: string };
+```
+
+**Guards for reserved / excluded / in-plan shots** — all three at lines 114-116 (quoted above): `shot.excluded` → skip; `reservedShots.has(shot.shot_id)` → skip (Director gate); `!isShotInPlan(plan, shot.shot_id)` → skip (out-of-plan never auto-advances). There is an additional freshness guard at lines 124-132 emitting a `wait` action for stale REVIEW cells.
+
+## 3. `webapp/lib/agents/reconcile-execute.ts`
+
+**How `reviseCounts` is collected.** NOT collected inline in this file — it is destructured from `collectCriticSignals(...)` (imported from `./reconcile`) at lines 100-102:
+```ts
+const { verdicts, reviseCounts } = collectCriticSignals(
+  (revData ?? []) as Array&lt;{ file_type?: string | null; version?: number | null; metadata?: unknown }&gt;,
+);
+```
+`revData` comes from a query over `assets` filtered `file_type LIKE 'REV-%'` (lines 95-99). The actual counting lives in `collectCriticSignals` in reconcile.ts (lines 76-102): it maps REV file types via `STAGE_BY_REV_FILE_TYPE` (only `REV-ref_plan`→`ref_plan` and `REV-shot_plan`→`shot_plan` — lines 39-42) and increments `reviseCounts` when `verdict === 'REVISE' || verdict === 'FAIL'` (lines 97-99). Flag for the plan: the claim says "from REV-assets" — accurate, but note only ref_plan and shot_plan REV types are mapped (ref_image and video have no critic REV type), and both `REVISE` and `FAIL` verdicts increment the count.
+
+**How events are pushed / dispatched.** This module does NOT dispatch Inngest events — it collects them into a local `events` array and RETURNS them (lines 120, 169) for the caller to send (documented lines 13-16). DB mutations (status flips via `executeApprove`) happen here; event dispatch stays at the IO boundary.
+
+**Action-loop switch shape (lines 124-167)** — an `if / else if` chain on `action.kind`, not a `switch`:
+```ts
+for (const action of actions) {
+  if (action.kind === 'approve') {
+    const cascade = await executeApprove(supabase, action.assetId, actorUserId);
+    approvedAssetIds.push(action.assetId);
+    events.push(...cascade);
+    await logEvent(supabase, { event_type: 'reconcile/auto-approved', ... });
+  } else if (action.kind === 'stitch') {
+    events.push({ name: 'sandystudio/exec-stitch/assemble-episode', data: { episodeId } });
+  } else if (action.kind === 'halt') {
+    halted.push({ shotId: action.shotId, stage: action.stage, reason: action.reason });
+    await logEvent(supabase, { event_type: 'reconcile/halt', ... });
+    await raiseBlockerOnce(supabase, { ... });
+  }
+  // 'wait' → nothing to do this pass.
+}
+```
+- `approve`: calls `executeApprove` (lines 177-217) which demotes the sibling APPROVED (`demoteSiblingApproved`), flips status to APPROVED (line 205), then `computeNextEvents` returns the cascade; also logs `reconcile/auto-approved`.
+- `stitch`: pushes an Inngest event descriptor `sandystudio/exec-stitch/assemble-episode`.
+- `halt`: records into `halted`, logs `reconcile/halt`, AND routes to the Director via `raiseBlockerOnce` (lines 156-164).
+- `wait`: no-op.
+
+## Summary of discrepancies to flag
+- No structured `failure_count` field exists on `StageState`; failure counts are only embedded as prose in `blocked_reason` (state-matrix.ts:280) and held in the internal `loadGenerationFailures` map (`{count, lastMsg}`).
+- `blocked_reason` is written in TWO locations (freshness pass lines 255-262 and failure pass lines 272-284), not just the failure pass.
+- `reviseCounts` is not computed in reconcile-execute.ts; it comes from `collectCriticSignals` in reconcile.ts, and increments on both `REVISE` and `FAIL`, only for `REV-ref_plan`/`REV-shot_plan`.
+- The action loop is an `if/else-if` chain, not a `switch`; and events are returned, not dispatched, from this module.
+
+All other claims (no `jobs` read, `loadGenerationFailures` keying/behavior, `AGENT_STAGE`, `STAGE_ORDER`, the line-120 REVIEW guard, the reserved/excluded/in-plan guards, the action union) match the current code exactly.</result>
+<usage><subagent_tokens>45839</subagent_tokens><tool_uses>3</tool_uses><duration_ms>50435</duration_ms></usage>
+</task-notification>
+
+## 2026-07-16 14:22 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a96a8a703dff27716</task-id>
+<tool-use-id>toolu_01XM4TRCryLzo1b5VSsSHC5v</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\a96a8a703dff27716.output</output-file>
+<status>completed</status>
+<summary>Agent "Verify Slice 4b cron template" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything needed. Here is the reconnaissance report.
+
+## 1. `webapp\inngest\functions\pa-batch-stall-watchdog.ts` (FULL FILE, 234 lines)
+
+Verified in full above. Key landmarks for mirroring into `reconcile-cron.ts`:
+
+- **Cron expression** — line 63: `{ cron: '*/5 * * * *' }` (every 5 minutes). Function config lines 57-64: `id: 'pa-batch-stall-watchdog'`, `name: 'PA batch-stall watchdog (5-min)'`, `retries: 0`.
+- **`SCAN_LIMIT` constant** — line 36: `const SCAN_LIMIT = 20; // bound the per-tick read cost`. Other tunables alongside it: `IDLE_MIN = 6` (34), `COOLDOWN_MIN = 12` (35), `ACTIVE_WINDOW_H = 2` (39), `THREAD_TTL_MIN` env-overridable (42).
+- **The DB query it runs** — the primary scan, lines 78-82:
+  ```ts
+  const { data: eps, error } = await sb
+    .from('episodes')
+    .select('id,metadata')
+    .eq('metadata-&gt;&gt;eref_pilot_state', 'FANOUT_RUNNING')
+    .limit(SCAN_LIMIT);
+  ```
+  Note this uses the PostgREST `-&gt;&gt;` **text** accessor and compares to a string. A second, opt-in scan (lines 106-111, behind `THIN_AGENT_ENABLED`) queries `.eq('governance_mode', 3).eq('metadata-&gt;&gt;autonomous_run', 'true')`. It also reads `jobs` (141-147) and `activity_events` (193-199) per candidate.
+- **Fail-safe on query error** — three independent guards, all "skip / no-fabricate / retry-next-tick":
+  - Main episode query (83-86): `if (error) { logger.warn(...); return { skipped: 'query_failed', error: error.message }; }`
+  - Jobs idle query (148-150): `if (jobErr) continue;` with the explicit comment "A failed query must NOT be read as 'no activity → stalled'... Skip this episode on error; next tick retries."
+  - Fresh-events query (200): `if (feErr) continue; // query failed — don't fabricate a stall, retry next tick`
+- **The "re-drive" logic** (the part the plan says could move off the watchdog) — lines 209-227: it re-fires the notify event and stamps a cooldown marker:
+  ```ts
+  await inngest.send({
+    name: 'sandystudio/pa/notify-needed',
+    data: { episodeId: ep.id, source: 'watchdog', triggerId: ep.id, eventType: 'batch_stall' },
+  });
+  // ...stamp metadata.batch_watchdog_nudged_at (222-225)
+  ```
+  This is a **Polina nudge** (re-fire `pa/notify-needed`), gated by cooldown (133-138), an idle check (140-164), and a thread-aware "new actionable state" guard (166-206). It is NOT a reconciler call — it does not touch `reconcileEpisode`.
+
+## 2. Function registration — `webapp\inngest\index.ts`
+
+Two-step pattern: import (lines 7-42), then push into the exported `functions` array (44-90).
+- Watchdog registered: import line 40 `import { paBatchStallWatchdog } from './functions/pa-batch-stall-watchdog';`, array entry line 85.
+- **A reconciler function already exists and is registered**: import line 41 `import { reconcileEpisodeFn } from './functions/reconcile-episode';`, array entry line 87 (comment line 86: "Фаза 2b — reconciler self-advance (inert unless the episode is armed)").
+- To add `reconcile-cron`: add an import near line 41 and an array entry near line 87.
+
+## 3. Episode arm state — column names and read/write sites
+
+Confirmed columns via `reconcileEpisode` select (`reconcile-execute.ts:82-84`): `.select('metadata, governance_mode')`. So `metadata` (jsonb) and `governance_mode` (int) are the exact column names.
+
+**The canonical arm predicate** — `webapp\lib\agents\production-plan.ts:111-114`:
+```ts
+export function isReconcilerArmed(episodeMeta: unknown, governanceMode: number | null): boolean {
+  const armed = (episodeMeta as { reconciler_armed?: unknown } | null)?.reconciler_armed === true;
+  return armed &amp;&amp; armForMode(governanceMode);
+}
+```
+with `armForMode` (95-97): `return mode === 2 || mode === 3;`
+
+**MISMATCH TO FLAG (important for a SQL-filtered cron):** The armed check is `metadata.reconciler_armed === true` — a **strict JSON boolean**, read into JS and compared, NOT the PostgREST text filter `metadata-&gt;&gt;reconciler_armed = 'true'`. No code anywhere filters episodes on `reconciler_armed` at the query layer; every consumer reads the full `metadata` object and checks `=== true` in JS. The watchdog's `metadata-&gt;&gt;autonomous_run = 'true'` pattern exists for a *different* key. If `reconcile-cron.ts` wants to pre-filter armed episodes in the DB query, `.eq('metadata-&gt;&gt;reconciler_armed', 'true')` would work at the text level (jsonb `-&gt;&gt;` renders boolean `true` as the string `'true'`), but it must also filter `governance_mode` in `(2,3)` and should ideally still call `isReconcilerArmed` per-row to match existing strict semantics.
+
+Read/write sites for `reconciler_armed`:
+- **READ**: `production-plan.ts:112` (predicate above); consumed by `reconcile-execute.ts:91` (`if (!opts.force &amp;&amp; !isReconcilerArmed(...)) return EMPTY;`).
+- **WRITE at creation**: `webapp\app\api\episodes\route.ts:109` — `reconciler_armed: armForMode(body.governance_mode),`
+- **WRITE on mode switch**: `webapp\app\api\system\governance-mode\route.ts:94` — `const nextMeta = { ...prevMeta, reconciler_armed: armForMode(body.targetMode) };` then `.update({ governance_mode: body.targetMode, metadata: nextMeta })` (97).
+- Comment references (not writes): `factory.ts:892`, `inngest/functions/reconcile-episode.ts:11`, `lib/concierge/tools/conductor.ts:152`, `lib/concierge/tools/index.ts:152`, tests `reconcile-execute.test.ts:62,74`.
+
+So the plan's claim is **conceptually correct** (arm ⇔ `reconciler_armed` truthy AND `governance_mode ∈ {2,3}`) but the exact stored/read form is a **JSON boolean checked with `=== true` in JS**, not a `-&gt;&gt;… = 'true'` SQL comparison. Confirmed by `PLAN.md:57`: "armed ⇔ `metadata.reconciler_armed` + `governance_mode∈{2,3}`".
+
+## 4. Existing cron functions (besides the watchdog)
+
+Only ONE other cron exists. Full inventory (all `cron:` occurrences under `webapp\inngest\functions`):
+- `pa-batch-stall-watchdog.ts:63` — `*/5 * * * *` (every 5 min) — the subject file.
+- `pa-orphaned-awaiting-sweep.ts:50` — `0 * * * *` (hourly).
+
+Note: `schedule-analytics.ts` is **event-driven**, not cron (trigger `{ event: 'sandystudio/exec-pub/published' }`, line 33) despite the "cron fan-out" label in index.ts comment line 72 — flag this if the plan counts it as a cron. `reconcile-episode.ts` is also **event-driven** (`{ event: 'sandystudio/reconcile/episode' }`, line 32), fired by `factory.ts` after every agent completion (`factory.ts:895` `step.sendEvent('reconcile-trigger', ...)`).
+
+## Bottom-line flags for the plan
+
+1. A reconciler Inngest function **already exists** (`reconcile-episode.ts`, event-driven, debounced 5s + concurrency-1 per episode). The new `reconcile-cron.ts` would be a **cron-based complement/safety-net**, not a replacement — mirror the watchdog's cron+scan+fail-safe shape but call `reconcileEpisode(supabase, episodeId)` (from `lib/agents/reconcile-execute.ts`) instead of re-firing `pa/notify-needed`.
+2. The watchdog's "re-drive" is a Polina nudge, not a reconciler tick — if the plan wants to "move re-drive off the watchdog into the cron," be aware these are two different mechanisms (notify-needed vs. reconcile convergence).
+3. Arm-state SQL form: existing code checks `reconciler_armed === true` in JS on a jsonb boolean, not `metadata-&gt;&gt;reconciler_armed = 'true'`. Match `isReconcilerArmed` semantics (`reconcileEpisode` already enforces the arm internally and returns `EMPTY` when unarmed, so a cron can call it unconditionally and rely on the built-in gate — same pattern as `factory.ts` firing on every completion).</result>
+<usage><subagent_tokens>48909</subagent_tokens><tool_uses>10</tool_uses><duration_ms>80479</duration_ms></usage>
+</task-notification>
+
+## 2026-07-16 14:22 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>aea8b5daff53c7e74</task-id>
+<tool-use-id>toolu_01H4r1Cp1puJ2gcgxwd2mT44</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio--claude-worktrees-conductor-phase2\25a4dc36-f68e-4054-b71f-c3a380c7cb48\tasks\aea8b5daff53c7e74.output</output-file>
+<status>completed</status>
+<summary>Agent "Verify Slice 3.5 arm-aware onFailure" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All claims verified against current code. Here is the report.
+
+## 1. `webapp/lib/agents/factory.ts` — `onFailure` handler
+
+**Location: lines 230-253** (inside the `createFunction` config object; the wiring comment is at lines 224-229).
+
+```ts
+onFailure: async ({ event, error }: { event: { data?: { event?: { data?: Record&lt;string, unknown&gt; } } }; error: Error }) =&gt; {
+  try {
+    const original = event?.data?.event?.data;
+    const episodeId = typeof original?.episodeId === 'string' ? original.episodeId : null;
+    if (!episodeId) return;
+    const shotId = typeof original?.shotId === 'string' ? original.shotId : null;
+    const supabase = createSupabaseServiceRoleClient();
+    const ctx = spec.resolveActivityContext
+      ? spec.resolveActivityContext(original as Record&lt;string, unknown&gt;)
+      : null;
+    const suffix = ctx?.shortLabel ? ` — ${ctx.shortLabel}` : '';
+    await raiseBlockerOnce(supabase, {
+      episodeId,
+      stage: `agent_failed:${spec.agentId}`,
+      shotId,
+      actor: spec.agentId,
+      title: `${agentDisplayName(spec.agentId)} failed after retries${suffix} — needs Director`,
+      description: (error?.message ?? '').slice(0, 500),
+      metadata: { agent: spec.agentId, reason: 'retries_exhausted', ...(ctx?.metadata ?? {}) },
+    });
+  } catch {
+    // Best-effort — a failed escalation must never mask the original failure.
+  }
+},
+```
+
+Answers to your specific questions:
+- **Calls `blocker_raised`/`raiseBlockerOnce` directly?** Yes — it calls `raiseBlockerOnce` directly (line 241). It does NOT call `logEvent`/`blocker_raised` itself; it delegates entirely to `raiseBlockerOnce`. Import at line 38: `import { raiseBlockerOnce } from '../api/blocker-escalation';`
+- **Reads `episodes.metadata` / `governance_mode` near there?** NO. The `onFailure` handler does no episode-row lookup at all — no `.from('episodes')`, no `metadata`, no `governance_mode`. (Those reads happen elsewhere in the factory body: `governance_mode` is read in `save-and-complete` at lines 584-588 and in `plan-critic-autofire` at lines 780-784 — but not in `onFailure`.)
+- **How does it get episodeId/stage/shotId?** From the wrapped original event payload `event.data.event.data` (Inngest nests the original event under `event.data.event` in the failure envelope): `episodeId` and `shotId` are read off `original` (lines 233, 235). `stage` is NOT from the event — it is a hardcoded template `` `agent_failed:${spec.agentId}` `` (line 244). The short label/extra metadata come from `spec.resolveActivityContext(original)`.
+
+## 2. `webapp/lib/api/blocker-escalation.ts` — `raiseBlockerOnce`
+
+**Signature: lines 46-49.**
+```ts
+export async function raiseBlockerOnce(
+  supabase: ServerSupabaseClient,
+  input: BlockerInput,
+): Promise&lt;BlockerOutcome&gt;
+```
+
+- **Dedup key** (line 50): `` const blockerKey = `${input.stage}:${input.shotId ?? ''}`; `` — note the actual key is `stage:shotId-or-empty-string`, not literally `${stage}:${shotId}`. When `shotId` is null/undefined the key ends in a trailing colon (e.g. `agent_failed:EXEC-SW:`). Minor deviation from the claim's `${stage}:${shotId}` wording, but functionally the dedup is by `(stage, shotId)`.
+- **Behavior:** episode-scoped fetch of `blocker_raised` rows (lines 56-60), then dedup in JS — returns `'deduped'` if any row has `resolved_at == null &amp;&amp; metadata.blocker_key === blockerKey` (lines 61-65). Dedup read failures **fail open** (catch, lines 66-69). On no dup it calls `logEvent` with `event_type: 'blocker_raised'`, `severity: 'error'`, merging `blocker_key`, `stage`, `shot_id` into metadata (lines 72-86), returns `'raised'`; returns `'error'` if `logEvent` throws.
+- **Over `logEvent`?** Yes — confirmed, it is built on `logEvent` (import line 19, call line 72), not a direct insert. Return type `BlockerOutcome = 'raised' | 'deduped' | 'error'` (line 38).
+
+## 3. `webapp/lib/agents/production-plan.ts`
+
+**`isReconcilerArmed` — lines 111-114:**
+```ts
+export function isReconcilerArmed(episodeMeta: unknown, governanceMode: number | null): boolean {
+  const armed = (episodeMeta as { reconciler_armed?: unknown } | null)?.reconciler_armed === true;
+  return armed &amp;&amp; armForMode(governanceMode);
+}
+```
+- **Args:** `(episodeMeta: unknown, governanceMode: number | null)`. Matches your `(meta, mode)` claim. `armForMode` (lines 95-97) is `mode === 2 || mode === 3`.
+- **MISMATCH to flag:** the JSDoc above it (line 113) says *"`opts.force` still bypasses this"* — but `isReconcilerArmed` itself takes **no `opts` param**. The `opts.force` bypass actually lives in the *caller* `reconcileEpisode` (see item 5). So the doc comment is slightly misleading about this function's own signature.
+
+**`resolveReservedShots` — lines 74-81:**
+```ts
+export function resolveReservedShots(episodeMeta: unknown): Set&lt;string&gt; {
+  const reserved = resolveReservedGates(episodeMeta);
+  if (!reserved.includes('pilots')) return new Set&lt;string&gt;();
+  const meta = (episodeMeta ?? null) as { eref_pilot_shot_ids?: unknown } | null;
+  const ids = meta?.eref_pilot_shot_ids;
+  if (!Array.isArray(ids)) return new Set&lt;string&gt;();
+  return new Set(ids.filter((v): v is string =&gt; typeof v === 'string'));
+}
+```
+- **Args:** single arg `(episodeMeta: unknown)` → `Set&lt;string&gt;`. Returns empty set unless `'pilots'` is a reserved gate; otherwise the set of `episodeMeta.eref_pilot_shot_ids`.
+
+## 4. `webapp/lib/agents/chain-flags.ts` — flag helpers
+
+Existing exported helpers (with line numbers):
+- `designerChainEnabled()` — L13 (env `DESIGNER_CHAIN_ENABLED`, default false)
+- `animatorChainEnabled()` — L25 (env `ANIMATOR_CHAIN_ENABLED`, default false)
+- `readabilityGateEnabled()` — L35 (env `READABILITY_GATE_ENABLED`, default false)
+- `continuityLedgerEnabled()` — L50 (env `CONTINUITY_LEDGER_ENABLED`, default false)
+- `checkersFreeTierEnabled()` — L66 (env `CHECKERS_FREE_TIER`, default **true**)
+- `stopBeforeErefEnabled()` — L79 (env `C1_STOP_BEFORE_EREF`, default false)
+- `planRegenCap()` — L97 (env `PLAN_REGEN_CAP`, default 3)
+- `shotRegenCap()` — L120 (env `SHOT_REGEN_CAP`, default 6)
+- `capFromMetadata()` — L140 (private helper: metadata override → env default)
+- `promptRevisionCap()` / `resolvePromptRevisionCap(metadata)` — L147 / L152 (default 2)
+- `referenceRegenCap()` / `resolveReferenceRegenCap(metadata)` — L156 / L161 (default 2)
+- `videoRegenCap()` / `resolveVideoRegenCap(metadata)` — L165 / L170 (default 1)
+- `anchorVisualGateEnabled()` — L182 (env `ANCHOR_VISUAL_GATE`, default **true**)
+
+**`reconcileRecoveryCap`? — CONFIRMED ABSENT.** No `reconcileRecoveryCap`/`recoveryCap`/`recovery_cap` anywhere in `webapp` (grep returned no matches). Your claim that it does not exist yet holds.
+
+**Two patterns to mirror.** For a boolean flag, the numeric-cap pattern is the right analog for a "cap". Representative numeric-cap helper (verbatim, lines 120-124):
+```ts
+export function shotRegenCap(): number {
+  const v = process.env.SHOT_REGEN_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) &amp;&amp; n &gt; 0 ? n : 6;
+}
+```
+If you want per-episode metadata override (like the retry caps), mirror this pair (lines 156-163):
+```ts
+export function referenceRegenCap(): number {
+  const v = process.env.REFERENCE_REGEN_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) &amp;&amp; n &gt; 0 ? n : 2;
+}
+export function resolveReferenceRegenCap(metadata: unknown): number {
+  return capFromMetadata(metadata, 'reference_regen_cap', referenceRegenCap);
+}
+```
+
+## 5. Inngest event `sandystudio/reconcile/episode`
+
+**Defined (type):** `webapp/lib/inngest/client.ts` lines 57-61:
+```ts
+'sandystudio/reconcile/episode': {
+  data: {
+    episodeId: string;
+  };
+},
+```
+(Comment block lines 52-56.)
+
+**Sent from:**
+- `webapp/lib/agents/factory.ts` lines 894-899 — fired unconditionally after any agent completes (`reconcile-trigger`):
+```ts
+if (episodeId) {
+  await step.sendEvent('reconcile-trigger', {
+    name: 'sandystudio/reconcile/episode',
+    data: { episodeId },
+  } as never);
+}
+```
+(There are additional emit sites beyond the factory — on Director approve / shot-exclude per the client.ts comment, line 53 — not enumerated here since you asked specifically about client.ts/factory.)
+
+**Subscribed:** `webapp/inngest/functions/reconcile-episode.ts` line 32 (`reconcileEpisodeFn`, defined lines 20-58). Config (lines 21-31):
+```ts
+{
+  id: 'reconcile-episode',
+  name: 'Reconcile Episode (Фаза 2b self-advance)',
+  retries: 1,
+  debounce: { period: '5s', key: 'event.data.episodeId' },
+  concurrency: { limit: 1, key: 'event.data.episodeId' },
+},
+```
+- **Debounce:** `5s`, keyed on `event.data.episodeId`.
+- **Concurrency:** `limit: 1`, keyed on `event.data.episodeId`.
+- **Arm-gate — MISMATCH to flag:** the arm-gate is **NOT in the subscriber**. `reconcile-episode.ts` does no arm check itself — it just calls `reconcileEpisode(supabase, episodeId)` (line 39) and dispatches the returned cascade. The arm-gate lives one level down in `webapp/lib/agents/reconcile-execute.ts` line 91:
+```ts
+if (!opts.force &amp;&amp; !isReconcilerArmed(episodeMeta, governanceMode)) return EMPTY;
+```
+So if your recon claim attributed the arm-gate to the subscriber, correct it: the subscriber owns debounce + concurrency-1 only; the `isReconcilerArmed` gate (and the `opts.force` bypass) is inside `reconcileEpisode` in `reconcile-execute.ts`.
+
+---
+
+### Summary of mismatches vs. the recon claims
+1. **`onFailure` does NOT read `episodes.metadata`/`governance_mode`** — it does zero episode-row lookup; `stage` is the hardcoded `agent_failed:${agentId}`, and episodeId/shotId come from the nested `event.data.event.data`. (Consistent with your framing, just confirming.)
+2. **`raiseBlockerOnce` dedup key** is `` `${stage}:${shotId ?? ''}` `` (trailing colon when shotId is null), not literally `${stage}:${shotId}`.
+3. **`isReconcilerArmed(episodeMeta, governanceMode)` has no `opts` param** despite its JSDoc mentioning `opts.force`; the `force` bypass is in the caller `reconcileEpisode`.
+4. **`reconcileRecoveryCap` confirmed absent** — safe to add, mirror `shotRegenCap()` (pure env) or the `referenceRegenCap`/`resolveReferenceRegenCap` pair (env + per-episode metadata override).
+5. **Arm-gate is in `reconcile-execute.ts:91`, not in the `reconcile-episode.ts` subscriber.** The subscriber only carries `debounce 5s` + `concurrency limit 1` (both keyed on `event.data.episodeId`) and `retries: 1`.</result>
+<usage><subagent_tokens>62235</subagent_tokens><tool_uses>10</tool_uses><duration_ms>97073</duration_ms></usage>
+</task-notification>
+
+## 2026-07-16 14:23 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>acab4898ea1bdf0cc</task-id>
+<tool-use-id>toolu_01DUnzrKFku4f3mwyXn6J89K</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio\80441284-da45-4c79-bbe9-328744f6caa0\tasks\acab4898ea1bdf0cc.output</output-file>
+<status>completed</status>
+<summary>Agent "Chart/viz patterns in webapp" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Investigation complete. Here are my findings.
+
+## 1. Charting dependencies — NONE installed
+
+`C:\SandyStudio\webapp\package.json` (lines 36–74) contains **no charting library**. No recharts, chart.js, visx, d3, victory, nivo, or similar.
+
+The only graphics-capable deps are 3D/ambient, not 2D charting:
+- `three` `^0.171.0`, `@react-three/fiber` `^9.0.0-rc.0`, `@react-three/drei` `^9.122.0` — used by the ambient background canvas only.
+- `lucide-react` `^0.468.0` — provides icons like `BarChart3`, `Gauge`, `TrendingDown` (already imported on these pages), but these are decorative glyphs, not data-driven charts.
+
+**Conclusion: to add trend charts you either add a new dependency or hand-roll inline SVG. The codebase precedent is hand-rolled (see below).**
+
+## 2. Existing chart/graph/sparkline/progress components — none dedicated, but reusable inline patterns exist
+
+There is **no** `components/**` chart/sparkline/gauge/meter component. The only file with inline SVG primitives is `C:\SandyStudio\webapp\components\studio-shell\AmbientAssetField.tsx` (decorative ambient field, not data-viz).
+
+Reusable hand-rolled data-viz patterns already in the code:
+- **CSS progress/meter bar** — `C:\SandyStudio\webapp\app\(studio)\budget\page.tsx` lines 110–124: a `div` track (`h-1.5 rounded-full bg-[var(--bg-elevated)]`) with an inner `div` whose `width: ${ratio*100}%` and token-driven `background` (danger/warning/primary). This is the established bar idiom.
+- **KPI stat tile** — `Tile` in `factory/page.tsx` (lines 72–103) and `Stat` in `budget/page.tsx` (lines 146–173).
+- **Per-shot colored cell strip + playback progress bar** — `C:\SandyStudio\webapp\components\animatic\AnimaticPlayer.tsx`: `cellPalette()` (line 328) maps state→token color, and it uses `color-mix(in oklab, var(--accent-success) N%, transparent)` for glows/fills (lines 365–382, 1116–1203). This is the closest existing "mini visualization" and the best reference for a theme-token-driven inline SVG/CSS trend strip.
+
+## 3. Theme-token palette for data-viz colors
+
+There are **no dedicated `--chart-*` or `--series-*` tokens**. Charts must reuse the semantic accent palette. From `C:\SandyStudio\webapp\app\globals.css` (defined per-theme for all three themes: slate_blue_cinematic default lines 37–58, sand_gold_studio 119–131, deep_purple_night 179–191):
+
+Accent/series-usable tokens:
+- `--accent-primary`, `--accent-secondary`, `--accent-tertiary`
+- `--accent-success`, `--accent-warning`, `--accent-danger`, `--accent-info`
+- `--accent-orange`, `--accent-purple`
+- Work-state hues: `--accent-role-designer`, `--accent-role-critic`, `--accent-role-both`, `--accent-role-artist`, `--accent-stage-design`, `--accent-stage-animate`
+- Status ramp: `--status-draft/review/revision/approved/locked/blocked/running/completed/warning/danger/muted`
+- Text/surface for axes/gridlines/labels: `--text-primary/secondary/muted`, `--bg-elevated`, `--bg-soft`, `--panel-glass-border` (good for gridlines), `--panel-glass-border-active`.
+
+For semi-transparent fills/glows the codebase uses `color-mix(in oklab, var(--accent-*) N%, transparent)` (AnimaticPlayer) — the idiomatic way to derive series tints without new tokens.
+
+**No-hardcode rule** — the spec is `C:\SandyStudio\specs\system\uiux.md`. Note the task referenced "§7.5" but **that section does not exist**; §7 is "Settings Integration" (7.1–7.3 only). The relevant rules are:
+- §6.4 (lines 295–305): "Components must use semantic tokens. Raw hex values are allowed **only inside theme definitions**. Do not scatter raw colors inside React components. Do not create page-specific colors unless they are mapped to tokens."
+- Line 193, and §26 (lines 1229–1230): "Do not hardcode colors directly inside components. Use semantic theme tokens."
+- §24 anti-pattern list line 1183: do not "hardcode visual colors directly into random components."
+
+## 4. How other dashboards render data
+
+All three dashboards share one structure: `StudioContentFrame` wrapper → `header` → `Card`/`CardHeader`/`CardTitle`/`CardBody` from `C:\SandyStudio\webapp\components\ui\Card.tsx`, SWR data fetch via `@/lib/swr` `fetcher`.
+
+- **Card primitive** (`components/ui/Card.tsx`): glass panel, `variant` = `glass | glass-strong | solid`, plus `CardHeader`, `CardTitle` (uppercase tracked), `CardBody`, `CardFooter`. Everything is token-driven (`border-glass`, `bg-panel-glass`, `shadow-[var(--panel-shadow)]`).
+- **Budget** (`budget/page.tsx`): 4 KPI `Stat` cards + per-episode list where **each row already renders a horizontal ratio bar** (spend/ceiling) with token colors — the existing bar idiom to copy for per-episode trends.
+- **Audience** (`audience/page.tsx`): axis→color map object (`AXIS`, lines 51–56) and `CONF_COLOR` map (58–64) pointing at accent tokens; ranked advice cards, a funnel list, and a per-video list sorted by completion %. **No bars/charts yet** — purely text/list, so a good candidate for the same treatment.
+- **Factory** (`factory/page.tsx`, the target): currently a KPI `Tile` grid (lines 72–103, target-aware good/bad/neutral coloring), an open-proposals list, and a **plain HTML `&lt;table&gt;` "Per-episode trend"** (lines 251–312) with per-cell token coloring. It already has a `VERDICT_COLOR` map (lines 59–65) using `--accent-success/info/warning/orange`. This table is exactly where per-episode bars/sparklines/stacked bars would augment or replace the numeric columns.
+
+## Recommendation for the decision
+
+**Hand-roll inline SVG (or CSS bars), token-driven — do not add a chart library.** Rationale grounded in the repo:
+- Zero charting deps today; every existing visualization (budget ratio bars, AnimaticPlayer shot strip + progress) is hand-rolled with `var(--accent-*)` and `color-mix(...)`. Adding recharts/d3 would be the first heavy 2D dep and would fight the strict "semantic tokens only, no page-specific colors" rule (recharts wants explicit color props/hex).
+- The trend data is small and per-episode (bars, sparklines, stacked bars over ~episode count) — trivially expressible as inline `&lt;svg&gt;` with `&lt;rect&gt;`/`&lt;polyline&gt;` using `fill="var(--accent-primary)"` etc., matching the budget bar and AnimaticPlayer precedents.
+- Series palette to standardize on: `--accent-primary`, `--accent-secondary`, `--accent-tertiary`, `--accent-info`, `--accent-purple`, `--accent-orange` for categorical series; `--accent-success/warning/danger` for good/watch/bad thresholds; `--panel-glass-border` for gridlines; `--text-muted` for axis labels. Derive fills via `color-mix(in oklab, var(--accent-*) N%, transparent)`.
+
+One caveat to flag to the parent: the task cited `uiux.md §7.5`, which does not exist in the current spec — the governing color rule is §6.4 (and §26).</result>
+<usage><subagent_tokens>57957</subagent_tokens><tool_uses>16</tool_uses><duration_ms>91163</duration_ms></usage>
+</task-notification>
+
+## 2026-07-16 14:23 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a9c6f13d9d8ca0d80</task-id>
+<tool-use-id>toolu_01G3mB4jTAQCDsyyPX1QvKPC</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio\80441284-da45-4c79-bbe9-328744f6caa0\tasks\a9c6f13d9d8ca0d80.output</output-file>
+<status>completed</status>
+<summary>Agent "Casting-lock boundary + actor split" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Investigation complete. Here are the findings.
+
+---
+
+## A) CASTING-LOCK BOUNDARY
+
+### The casting asset
+- **file_type: `SPC-episode_cast`** — defined as `EPISODE_CAST_FILE_TYPE` in `C:\SandyStudio\webapp\lib\agents\episode-cast.ts:24`. (There is no `SPC-casting`; the glossary/auto-folder table uses `SPC-episode_cast`.) It is the per-episode "cast gallery" that scopes series canon into one episode.
+- This is distinct from series-Bible `BIB-*` assets, which are the ones that go to `LOCKED` (glossary `specs/glossary.md:234` — `LOCKED` is series-level, Director-only).
+
+### Status lifecycle for the cast gallery
+Born in **REVIEW**, ratified to **APPROVED** (never episode-`LOCKED` in practice):
+- Created by `POST /api/episodes/[id]/cast` → inserts the `SPC-episode_cast` row with `status: 'REVIEW'`, `agent_id: 'ART-AD'` (`C:\SandyStudio\webapp\app\api\episodes\[id]\cast\route.ts:110`). It also emits a `decision_requested` event (line 125-134) — that is the cast *proposed* moment, NOT the lock.
+- Ratified via the standard `POST /api/assets/[id]/approve` with `{decision:'APPROVE'}`. On approve, `asset.status` → `APPROVED` and it runs `syncAppearsIn(...)` (`C:\SandyStudio\webapp\app\api\assets\[id]\approve\route.ts:267-281`).
+- Loaders accept `status IN ('APPROVED','LOCKED')` (`episode-cast.ts:105` in `loadEpisodeCastSlugs`). So **APPROVED is the effective "locked" state** for episode casting.
+
+### The row/event/timestamp that marks casting locked
+The approve route emits an `approval_granted` activity event carrying the asset's file_type in metadata (`approve\route.ts:293-310`):
+```
+event_type: 'approval_granted',
+actor: user.id,               // Director UUID
+episode_id: asset.episode_id,
+metadata: { decision: 'APPROVE', file_type: 'SPC-episode_cast' }
+```
+
+**Exact query — casting-lock timestamp per episode (cleanest, via activity_events):**
+```sql
+select episode_id, min(created_at) as casting_locked_at
+from activity_events
+where event_type = 'approval_granted'
+  and metadata-&gt;&gt;'file_type' = 'SPC-episode_cast'
+  and episode_id = $1
+group by episode_id;
+```
+Use `min(created_at)` because a cast can be re-proposed/re-approved; the first approval is the lock boundary.
+
+**Alternative (via the asset row itself):** the `assets` table has an `updated_at` column (`types.gen.ts:340,359`), stamped on the status flip to APPROVED:
+```sql
+select episode_id, min(updated_at) as casting_locked_at
+from assets
+where file_type = 'SPC-episode_cast'
+  and status in ('APPROVED','LOCKED')
+  and episode_id = $1
+group by episode_id;
+```
+The activity_events query is more robust (immutable audit row; `updated_at` can be re-touched by later edits).
+
+### Existing stage/casting handling in the two files you named
+- `compute-scorecard.ts`: **no casting handling** — it reads STB-storyboard, VID-shot, VID-final_cut, jobs, activity_events, gate_decision_log only. There is no pre-cast/post-cast split today.
+- `vgen-shot-helpers.ts`: no casting/stage logic (`cast` only appears in prompt-context comments at lines 685, 716). Casting scoping lives in `episode-cast.ts`, not here.
+
+---
+
+## B) ACTOR CLASSIFICATION (Director vs Polina vs AI-EP)
+
+### `actorKind()` — `C:\SandyStudio\webapp\lib\api\agent-names.ts:83-88`
+Returns `ActorKind = 'director' | 'ai-director' | 'agent' | 'system'`:
+- `null`/empty → `'system'`
+- matches UUID regex (`/^[0-9a-f]{8}-...$/i`) → `'director'`
+- `'exec-dir-ai'` or `'EXEC-DIR-AI'` → `'ai-director'`
+- anything else (e.g. `EXEC-SW`) → `'agent'`
+
+**The stated problem is confirmed.** Both a human Director and Polina dispatch through `requireDirector()`, forwarding the Director's session cookies, so both write `actor: user.id` = the same human Director UUID → `actorKind` → `'director'` for both. AI-EP is the only one separable by actor alone (`exec-dir-ai`).
+
+### Where the `[Prod Assistant]` marker is written
+Polina's mutating tools prefix the reason/note string in `C:\SandyStudio\webapp\lib\concierge\tools\dispatch.ts`:
+- **Dispatch/trigger** (line 110): `reason: `[Prod Assistant] ${args.reason} — ${approval.reason}``
+- **Approve asset** (lines 190-191): `note: `[Prod Assistant] ${args.note} — ${approval.reason}`` (or `[Prod Assistant] ${approval.reason}`)
+- **Request revision** (line 271): `note: `[Prod Assistant] ${args.note} — ${approval.reason}``
+
+Those strings flow into the API routes and land in activity_events as follows:
+
+**For `manual_trigger`** (`C:\SandyStudio\webapp\app\api\episodes\[id]\trigger\route.ts:321-338`, and the VGEN pilot branch at 155-170):
+```
+description: body.reason,          // "[Prod Assistant] ..."
+metadata: { agent, event, reason: body.reason, payload, inngest_event_ids, ... }
+```
+→ The marker is in **both** `description` AND **`metadata.reason`**.
+
+**For approvals** (`approve\route.ts:301-310`):
+```
+description: body.note,             // "[Prod Assistant] ..." when Polina
+metadata: { decision, file_type }   // NOTE: does NOT include the note/reason
+```
+→ For approval events the marker is **only in `description`**, not in metadata.
+
+### The field to key on (three-class split)
+Use `actorKind(actor)` first, then the reason-prefix as the human/Polina tiebreaker:
+- **AI-EP** → `actorKind(actor) === 'ai-director'` (actor = `exec-dir-ai`).
+- **Polina (Prod Assistant)** → `actorKind(actor) === 'director'` AND the event's reason string starts with `[Prod Assistant]`.
+- **Director (human)** → `actorKind(actor) === 'director'` AND reason does NOT start with `[Prod Assistant]`.
+
+The single field that carries the marker on **both** event types is **`description`** (startsWith `'[Prod Assistant]'`). For `manual_trigger` you can equivalently use `metadata.reason`; for `approval_*` events you MUST use `description` because metadata has no reason/note field. Recommendation: key on `description.startsWith('[Prod Assistant]')` uniformly, since it works for manual_trigger and all three approval types.
+
+### How compute-scorecard.ts currently counts (all in `C:\SandyStudio\webapp\lib\agents\scorecard\compute-scorecard.ts:226-251`)
+The loop over `acts` uses only `actorKind(a.actor)` — it never inspects the reason/description, so **Polina touches are currently miscounted as human Director**:
+- `manual_trigger`: `kind==='director'` → `manualHuman++`; `kind==='ai-director'` → `manualAiEp++` (lines 229-232).
+- Approvals (`approval_granted|approval_revision|approval_rejected`), gate class from `metadata.file_type` via `approvalGateClass` (mechanical = `REV-` prefix, else creative):
+  - mechanical: `director`→`mechApprovalHuman++`, `ai-director`→`mechApprovalAiEp++` (236-238)
+  - creative: `director`→`approvalsCreativeHuman++`, `ai-director`→`approvalsCreativeAi++` (240-241)
+- Derived (249-251): `codeableTouchesHuman = manualHuman + mechApprovalHuman`; `codeableTouchesAiEp = manualAiEp + mechApprovalAiEp`; total = sum.
+- `approvalsCreativeHuman` is the "floor" judgement metric (line 349 in the return).
+
+So today `codeableTouchesHuman` and `approvalsCreativeHuman` both silently fold in Polina's `[Prod Assistant]` touches. To split into three classes you'd branch inside these same conditionals on `description.startsWith('[Prod Assistant]')` (note: the `acts` select at lines 207-216 currently pulls `event_type, actor, metadata` only — you'd need to add `description` to that select, or add `reason` extraction from `metadata` for the manual_trigger case).</result>
+<usage><subagent_tokens>63052</subagent_tokens><tool_uses>19</tool_uses><duration_ms>126090</duration_ms></usage>
+</task-notification>
+
+## 2026-07-16 14:24 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a0893af196818b6b0</task-id>
+<tool-use-id>toolu_01Aj2AtMZUdhmrqB7E4kEYvP</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio\80441284-da45-4c79-bbe9-328744f6caa0\tasks\a0893af196818b6b0.output</output-file>
+<status>completed</status>
+<summary>Agent "Find real budget source + breakdown" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything needed. Here is my report.
+
+---
+
+# Budget/Cost Data-Flow Investigation
+
+## 1. Where the Budget page gets episode cost
+
+**Page:** `C:\SandyStudio\webapp\app\(studio)\budget\page.tsx` — pure client component, fetches `/api/budget` via SWR (60s refresh). It renders whatever the API returns; no query logic of its own.
+
+**API:** `C:\SandyStudio\webapp\app\api\budget\route.ts`. It reads **TWO tables** and mixes them — this is the crux of your bug:
+
+```ts
+const [episodesRes, logsRes] = await Promise.all([
+  supabase.from('episodes').select('id,episode_code,budget_ceiling,budget_spent,status'),
+  supabase.from('budget_log').select('episode_id,agent_id,api_provider,cost_usd'),
+]);
+```
+
+The returned fields come from **different sources**:
+
+| UI field | Source | Query |
+|---|---|---|
+| `totalSpent` (top stat) | **`budget_log`** sum | `logs.reduce((s,l)=&gt;s+Number(l.cost_usd),0)` (line 52) |
+| `totalAllocated` | `episodes.budget_ceiling` sum | line 51 |
+| `burnRate` / "Burn / episode" | **`episodes.budget_spent`** avg of last 5 published | lines 56–61 |
+| per-episode `total` (the $X.XX / ceiling bar) | **`budget_log`** filtered by `episode_id` | `epLogs = logs.filter(l =&gt; l.episode_id === e.id)` → `epLogs.reduce(...cost_usd)` (lines 66, 79) |
+| per-episode `breakdown` chips | **`budget_log`** grouped by `api_provider` (or `'concierge'` when `agent_id==='EXEC-CONC'`) | lines 67–75 |
+
+**Key finding:** the per-episode line total and breakdown are computed **exclusively from `budget_log`**, NOT from `episodes.budget_spent`. `episode_scorecard` is **not** a cost source (it holds autonomy KPIs only — confirmed below). There is no rollup/materialized table.
+
+So on the Budget page: an episode with 0 `budget_log` rows renders **`$0.00 / $150.00`** with an empty breakdown — but the top "Burn / episode" stat still shows a non-zero number because it reads `episodes.budget_spent`. That split is exactly what makes it *look* like "the UI shows calculated costs" while per-episode is empty.
+
+## 2. `budget_log` schema + how to derive per-agent / per-endpoint breakdown
+
+Defined in `C:\SandyStudio\webapp\supabase\migrations\0002_core_tables.sql` (lines 101–114):
+
+```sql
+CREATE TABLE public.budget_log (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  episode_id    uuid REFERENCES public.episodes(id) ON DELETE CASCADE,
+  job_id        uuid REFERENCES public.jobs(id) ON DELETE SET NULL,
+  agent_id      text NOT NULL,          -- e.g. EXEC-VGEN, EXEC-EREF, EXEC-CONC
+  api_provider  text NOT NULL,          -- "anthropic" | "fal_ai" | "kling" | "mock" | "backfill"
+  model_or_tier text,                   -- "claude-sonnet-4-6" | "flux-pro" | ...
+  operation     text NOT NULL,          -- "video_generation" | "script_generation" | "concierge_chat" | ...
+  cost_usd      numeric(10,6) NOT NULL CHECK (cost_usd &gt;= 0),
+  tokens_used   integer,                -- LLM calls
+  duration_ms   integer,                -- generation calls
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+```
+Note: your candidate column list was right except the field is **`operation`** (not "endpoint"), and there is **no** `updated_at` — rows are append-only.
+
+- **Per-AGENT breakdown:** group by `agent_id`, sum `cost_usd`.
+- **Per-ENDPOINT/operation breakdown:** group by `operation` (and/or `api_provider` + `model_or_tier`).
+- The canonical reusable aggregator already exists: `getBudgetSummary()` in `C:\SandyStudio\webapp\lib\budget.ts` (lines 208–243) groups a single episode's rows by `api_provider::operation` with `costUsd` + `calls` count:
+```ts
+supabase.from('budget_log')
+  .select('api_provider, operation, cost_usd')
+  .eq('episode_id', episodeId);
+// → agg by `${api_provider}::${operation}` → { apiProvider, operation, costUsd, calls }
+```
+  Swap the key to `agent_id` for a per-agent fold, or nest both. Add `tokens_used`/`duration_ms` to the select for a richer fold. Rows per episode are bounded (a few hundred), so JS aggregation is fine.
+
+`idx` note: partial unique index `budget_log_job_unique ON (job_id) WHERE job_id IS NOT NULL` (migration 0009) — idempotency only, not for querying.
+
+## 3. Why recent episodes have budget in the UI but 0 `budget_log` rows by `episode_id`
+
+Cost is recorded through **two independent write paths**, and only one writes a `budget_log` row keyed to the episode:
+
+**Path A — `recordCost()`** (`C:\SandyStudio\webapp\lib\budget.ts`, lines 305–429). This is the "correct" path: it does an idempotent `budget_log` INSERT (Step 3) **and** bumps `episodes.budget_spent` via the atomic RPC (Step 4). Callers: `inngest/functions/exec-vgen.ts:508`, the three `app/api/assets/[id]/{regenerate-image,regenerate-video,enrich}` routes, and the two `series/[id]/bible` routes. When this path runs, `budget_log` and `budget_spent` stay in sync.
+
+**Path B — `assertBudgetAvailable()` / `increment_budget_spent` RPC** (lib/budget.ts:158–164; migration `0037_budget_atomic_increment_rpc.sql`). This is a **pre-spend reservation** that increments `episodes.budget_spent` **directly, WITHOUT writing any `budget_log` row**. `recordCost(..., reservedUsd)` is supposed to reconcile the delta afterward. **If the reconciliation never runs** — generation failed/aborted, job never reached the `record-cost` step, and `releaseBudgetReservation()` (lib/budget.ts:175–186) wasn't called — then `budget_spent` carries the reserved amount while `budget_log` has **zero rows** for that episode. This is the most likely explanation for E12–E29.
+
+**Other `budget_spent`-only mutators (no `budget_log` row):**
+- Ad-hoc episode scripts write/inspect `budget_spent` directly: `scripts\e17-spend.ts`, `e17-*.ts`, `e19-*.ts`, `archive-e20-partial.ts` — anything from that era that set `budget_spent` manually won't have matching log rows.
+- **Concierge (Polina) cost** — `C:\SandyStudio\webapp\lib\concierge\cost.ts` `recordConciergeCost()` (lines 40–80) DOES write a `budget_log` row (agent_id `EXEC-CONC`, `episode_id` set) but **deliberately does NOT touch `budget_spent`** (see its header comment lines 11–15). This is the inverse case.
+
+**Also relevant — archival / cascade:** `budget_log.episode_id` has `ON DELETE CASCADE`. If any E12–E29 episode row was ever deleted/recreated its log rows vanish while a snapshot of spend can live in `episodes.metadata.archival` (migration `0029_episodes_archive.sql`). Recent episodes may be `ARCHIVED` (status), which the Budget API's `PUBLISHED_STATES` set does **not** include, so archived episodes are also excluded from `burnRate`.
+
+**Backfill precedent:** `C:\SandyStudio\webapp\tools\backfill-direct-costs.ts` already exists precisely because pre-2026-06-03 direct spends landed in **asset metadata** (`metadata.image_prompt.history[].cost_usd`, `metadata.shot_reference.generation_history[].cost_usd`) and never in `budget_log`. That per-asset history is a secondary cost source you can sweep if `budget_log` is empty for an episode (`sumHistoryCost()`, lines 27–42).
+
+**Net:** `episodes.budget_spent` is the more complete number for recent episodes; `budget_log` is the itemized (per-agent/per-operation) ledger but is under-populated for E12–E29. They will not agree.
+
+## 4. Pre-cast vs post-cast split — feasible
+
+Yes. Every `budget_log` row is timestamped (`created_at timestamptz NOT NULL DEFAULT now()`), so rows can be bucketed against a casting-lock timestamp.
+
+**There is no dedicated `cast_locked_at` column.** The casting-lock event is the **APPROVAL of the episode-cast asset**:
+- Cast asset is created in `REVIEW` by `C:\SandyStudio\webapp\app\api\episodes\[id]\cast\route.ts` with `file_type = 'SPC-episode_cast'` (constant `EPISODE_CAST_FILE_TYPE` in `lib\agents\episode-cast.ts:24`).
+- Director ratifies via `POST /api/assets/{cast_asset_id}/approve` (route comment, cast/route.ts:141). "Approve to lock scoping."
+
+So the casting-lock timestamp for an episode = the moment its `SPC-episode_cast` asset went APPROVED. Derive it from any of:
+1. **`approvals`** table (`created_at`) joined to the `SPC-episode_cast` asset for that episode (approvals schema in 0002_core_tables.sql:72–81), or
+2. **`activity_events`** row `event_type='approval_granted'` with `episode_id` set and `metadata.file_type='SPC-episode_cast'`, or
+3. the cast asset's `updated_at` when `status='APPROVED'` (assets has an `updated_at` trigger).
+
+Then: `pre_cast = Σ cost_usd WHERE created_at &lt; castLockedAt`, `post_cast = Σ cost_usd WHERE created_at &gt;= castLockedAt`. Note the caveat from §3: this split is only accurate for episodes whose spend is actually itemized in `budget_log`. For reservation-only episodes there are no timestamped rows to bucket.
+
+## What to reuse for the Factory page
+
+**Good news — most of it already exists.** `C:\SandyStudio\webapp\app\api\factory\route.ts` is the sibling of `/api/budget` and already computes total $ and $/shot:
+
+- Header comment (line 5): *"Reads episode_scorecard (SSOT) + budget_log ($/shot)"*.
+- Lines 76–85: sums `budget_log.cost_usd` per episode (`costByEpisode`), single scan `.in('episode_id', episodeIds)`.
+- Line 93–115: `shotCount = episode_scorecard.shot_count`; `costTotal = costByEpisode.get(episodeId)`; **`costPerShot = costTotal / shotCount`**.
+
+So **total $ and $/shot are already served by `/api/factory`** — reuse `costTotal` and `costPerShot` directly. Note it inherits the §3 limitation: `costTotal` is `budget_log`-based, so it is `null`/low for E12–E29. If you want the *complete* number, read `episodes.budget_spent` alongside it (as the Budget page's burnRate does).
+
+**What you need to ADD** (not yet present anywhere): pre-cast / post-cast split and the folded per-agent/per-endpoint breakdown. Exact reusable queries:
+
+- **shot count (`$/shot` denominator):** `episode_scorecard.shot_count` (latest row per episode; `episode_scorecard_episode_idx` orders by `created_at DESC`). Source-of-truth derivation is `listStoryboardShots()` on the APPROVED `STB-storyboard`, in `lib\agents\scorecard\compute-scorecard.ts:141–169`.
+- **total / per-agent / per-endpoint fold:** extend the `getBudgetSummary` pattern (`lib\budget.ts:208–243`) — select `agent_id, api_provider, operation, cost_usd, created_at, tokens_used` `.eq('episode_id', id)`, aggregate in JS by `agent_id` and by `operation`.
+- **pre/post-cast buckets:** add `created_at` to that select and compare against the cast-approval timestamp (§4).
+
+**Important:** `episode_scorecard` holds **no cost columns** (schema `0041_episode_scorecard.sql` lines 18–59 — KPIs, autonomy, churn, latency only). Do not expect cost there; join it to `budget_log` / `episodes.budget_spent` exactly as `/api/factory` already does.
+
+### Source-of-truth summary
+- **Itemized cost ledger (per-agent, per-operation, timestamped):** `budget_log` — under-populated for E12–E29.
+- **Authoritative episode total (most complete for recent episodes):** `episodes.budget_spent`.
+- **$/shot denominator:** `episode_scorecard.shot_count`.
+- **Cast-lock timestamp:** approval of the `SPC-episode_cast` asset (`approvals` / `activity_events.approval_granted` / asset `updated_at`).
+- **Existing code to copy:** `app/api/factory/route.ts` (total + $/shot), `lib/budget.ts::getBudgetSummary` (breakdown fold), `app/api/budget/route.ts` (the concierge-bucket + ceiling-ratio rendering pattern).</result>
+<usage><subagent_tokens>83099</subagent_tokens><tool_uses>30</tool_uses><duration_ms>177458</duration_ms></usage>
+</task-notification>
+
+## 2026-07-16 16:12 · director-msg (hook) · NEW · (triage at distill)
+pre-cast cant be  $2.06 (asset, brif,storyboard,writer,critics?????
+
+## 2026-07-16 16:48 · director-msg (hook) · NEW · (triage at distill)
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\Alexander> cd C:\Users\Alexander\sandystudio
+PS C:\Users\Alexander\sandystudio> git status          # если "not a git repository" → папку переименуй/очисти и клонируй:
+On branch claude/enhance-video-quality-AcRTn
+Your branch is up to date with 'origin/claude/enhance-video-quality-AcRTn'.
+
+nothing to commit, working tree clean
+PS C:\Users\Alexander\sandystudio> # git clone https://github.com/alexanderTakeOff/SandyStudio.git C:\Users\Alexander\sandystudio
+PS C:\Users\Alexander\sandystudio> git pull            # если уже клон — просто подтянуть свежий master
+remote: Enumerating objects: 1248, done.
+remote: Counting objects: 100% (398/398), done.
+remote: Compressing objects: 100% (141/141), done.
+remote: Total 1248 (delta 298), reused 315 (delta 245), pack-reused 850 (from 2)
+Receiving objects: 100% (1248/1248), 1.47 MiB | 6.31 MiB/s, done.
+Resolving deltas: 100% (721/721), completed with 55 local objects.
+From https://github.com/alexanderTakeOff/SandyStudio
+ * [new branch]        claude/llm-gpt5-6-luna-option-el8tid -> origin/claude/llm-gpt5-6-luna-option-el8tid
+   ab94907e..90f2133c  master                -> origin/master
+ * [new branch]        teo/conductor-phase2  -> origin/teo/conductor-phase2
+ * [new branch]        teo/d6-throughput     -> origin/teo/d6-throughput
+ * [new branch]        teo/e27-d2-d3-fixes   -> origin/teo/e27-d2-d3-fixes
+ * [new branch]        teo/e27-plancritic-nesting-fix -> origin/teo/e27-plancritic-nesting-fix
+ * [new branch]        teo/episode-start-notice -> origin/teo/episode-start-notice
+ * [new branch]        teo/factory-conductor -> origin/teo/factory-conductor
+ * [new branch]        worktree-shorts-recut -> origin/worktree-shorts-recut
+ * [new branch]        worktree-teo+shorts-tail-wiring -> origin/worktree-teo+shorts-tail-wiring
+Already up to date.
+PS C:\Users\Alexander\sandystudio> cd C:\Users\Alexander\sandystudio\webapp
+PS C:\Users\Alexander\sandystudio\webapp> npm install
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @react-spring/animated@9.7.5
+npm warn Found: react@19.2.5
+npm warn node_modules/react
+npm warn   react@"^19.0.0" from the root project
+npm warn   15 more (@react-three/fiber, @uiw/react-codemirror, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/animated@9.7.5
+npm warn node_modules/@react-spring/animated
+npm warn   @react-spring/animated@"~9.7.5" from @react-spring/core@9.7.5
+npm warn   node_modules/@react-spring/core
+npm warn   1 more (@react-spring/three)
+npm warn
+npm warn Conflicting peer dependency: react@18.3.1
+npm warn node_modules/react
+npm warn   peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/animated@9.7.5
+npm warn   node_modules/@react-spring/animated
+npm warn     @react-spring/animated@"~9.7.5" from @react-spring/core@9.7.5
+npm warn     node_modules/@react-spring/core
+npm warn     1 more (@react-spring/three)
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @react-spring/core@9.7.5
+npm warn Found: react@19.2.5
+npm warn node_modules/react
+npm warn   react@"^19.0.0" from the root project
+npm warn   15 more (@react-three/fiber, @uiw/react-codemirror, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/core@9.7.5
+npm warn node_modules/@react-spring/core
+npm warn   @react-spring/core@"~9.7.5" from @react-spring/three@9.7.5
+npm warn   node_modules/@react-spring/three
+npm warn
+npm warn Conflicting peer dependency: react@18.3.1
+npm warn node_modules/react
+npm warn   peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/core@9.7.5
+npm warn   node_modules/@react-spring/core
+npm warn     @react-spring/core@"~9.7.5" from @react-spring/three@9.7.5
+npm warn     node_modules/@react-spring/three
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @react-spring/shared@9.7.5
+npm warn Found: react@19.2.5
+npm warn node_modules/react
+npm warn   react@"^19.0.0" from the root project
+npm warn   15 more (@react-three/fiber, @uiw/react-codemirror, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/shared@9.7.5
+npm warn node_modules/@react-spring/shared
+npm warn   @react-spring/shared@"~9.7.5" from @react-spring/animated@9.7.5
+npm warn   node_modules/@react-spring/animated
+npm warn   2 more (@react-spring/core, @react-spring/three)
+npm warn
+npm warn Conflicting peer dependency: react@18.3.1
+npm warn node_modules/react
+npm warn   peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/shared@9.7.5
+npm warn   node_modules/@react-spring/shared
+npm warn     @react-spring/shared@"~9.7.5" from @react-spring/animated@9.7.5
+npm warn     node_modules/@react-spring/animated
+npm warn     2 more (@react-spring/core, @react-spring/three)
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @react-spring/three@9.7.5
+npm warn Found: react@19.2.5
+npm warn node_modules/react
+npm warn   react@"^19.0.0" from the root project
+npm warn   15 more (@react-three/fiber, @uiw/react-codemirror, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/three@9.7.5
+npm warn node_modules/@react-spring/three
+npm warn   @react-spring/three@"~9.7.5" from @react-three/drei@9.122.0
+npm warn   node_modules/@react-three/drei
+npm warn
+npm warn Conflicting peer dependency: react@18.3.1
+npm warn node_modules/react
+npm warn   peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/three@9.7.5
+npm warn   node_modules/@react-spring/three
+npm warn     @react-spring/three@"~9.7.5" from @react-three/drei@9.122.0
+npm warn     node_modules/@react-three/drei
+npm error code ERESOLVE
+npm error ERESOLVE could not resolve
+npm error
+npm error While resolving: @react-three/drei@9.122.0
+npm error Found: @react-three/fiber@9.6.0
+npm error node_modules/@react-three/fiber
+npm error   @react-three/fiber@"^9.0.0-rc.0" from the root project
+npm error   peer @react-three/fiber@">=6.0" from @react-spring/three@9.7.5
+npm error   node_modules/@react-spring/three
+npm error     @react-spring/three@"~9.7.5" from @react-three/drei@9.122.0
+npm error     node_modules/@react-three/drei
+npm error       @react-three/drei@"^9.122.0" from the root project
+npm error
+npm error Could not resolve dependency:
+npm error peer @react-three/fiber@"^8" from @react-three/drei@9.122.0
+npm error node_modules/@react-three/drei
+npm error   @react-three/drei@"^9.122.0" from the root project
+npm error
+npm error Conflicting peer dependency: @react-three/fiber@8.18.0
+npm error node_modules/@react-three/fiber
+npm error   peer @react-three/fiber@"^8" from @react-three/drei@9.122.0
+npm error   node_modules/@react-three/drei
+npm error     @react-three/drei@"^9.122.0" from the root project
+npm error
+npm error Fix the upstream dependency conflict, or retry
+npm error this command with --force or --legacy-peer-deps
+npm error to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error C:\Users\Alexander\AppData\Local\npm-cache\_logs\2026-07-16T16_42_18_600Z-eresolve-report.txt
+npm notice
+npm notice New minor version of npm available! 11.6.2 -> 11.18.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.18.0
+npm notice To update run: npm install -g npm@11.18.0
+npm notice
+npm error A complete log of this run can be found in: C:\Users\Alexander\AppData\Local\npm-cache\_logs\2026-07-16T16_42_18_600Z-debug-0.log
+PS C:\Users\Alexander\sandystudio\webapp> cd C:\Users\Alexander\sandystudio
+PS C:\Users\Alexander\sandystudio> git rev-parse --is-inside-work-tree     # True = это git-репо
+true
+PS C:\Users\Alexander\sandystudio> git log -1 --oneline                    # хочу увидеть 90f2133c или новее
+de7ed3ce (HEAD -> claude/enhance-video-quality-AcRTn, origin/claude/enhance-video-quality-AcRTn) auto-sync 2026-05-07 14:15
+PS C:\Users\Alexander\sandystudio> git branch --show-current               # должно быть master
+claude/enhance-video-quality-AcRTn
+PS C:\Users\Alexander\sandystudio> Get-ChildItem C:\Users\Alexander\sandystudio\start-stack*.*
+
+## 2026-07-16 16:56 · director-msg (hook) · NEW · (triage at distill)
+PS C:\Users\Alexander\sandystudio\webapp> npm ci
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @react-spring/animated@9.7.5
+npm warn Found: react@19.2.5
+npm warn node_modules/react
+npm warn   react@"^19.0.0" from the root project
+npm warn   15 more (@react-three/fiber, @uiw/react-codemirror, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/animated@9.7.5
+npm warn node_modules/@react-spring/animated
+npm warn   @react-spring/animated@"~9.7.5" from @react-spring/core@9.7.5
+npm warn   node_modules/@react-spring/core
+npm warn   1 more (@react-spring/three)
+npm warn
+npm warn Conflicting peer dependency: react@18.3.1
+npm warn node_modules/react
+npm warn   peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/animated@9.7.5
+npm warn   node_modules/@react-spring/animated
+npm warn     @react-spring/animated@"~9.7.5" from @react-spring/core@9.7.5
+npm warn     node_modules/@react-spring/core
+npm warn     1 more (@react-spring/three)
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @react-spring/core@9.7.5
+npm warn Found: react@19.2.5
+npm warn node_modules/react
+npm warn   react@"^19.0.0" from the root project
+npm warn   15 more (@react-three/fiber, @uiw/react-codemirror, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/core@9.7.5
+npm warn node_modules/@react-spring/core
+npm warn   @react-spring/core@"~9.7.5" from @react-spring/three@9.7.5
+npm warn   node_modules/@react-spring/three
+npm warn
+npm warn Conflicting peer dependency: react@18.3.1
+npm warn node_modules/react
+npm warn   peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/core@9.7.5
+npm warn   node_modules/@react-spring/core
+npm warn     @react-spring/core@"~9.7.5" from @react-spring/three@9.7.5
+npm warn     node_modules/@react-spring/three
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @react-spring/shared@9.7.5
+npm warn Found: react@19.2.5
+npm warn node_modules/react
+npm warn   react@"^19.0.0" from the root project
+npm warn   15 more (@react-three/fiber, @uiw/react-codemirror, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/shared@9.7.5
+npm warn node_modules/@react-spring/shared
+npm warn   @react-spring/shared@"~9.7.5" from @react-spring/animated@9.7.5
+npm warn   node_modules/@react-spring/animated
+npm warn   2 more (@react-spring/core, @react-spring/three)
+npm warn
+npm warn Conflicting peer dependency: react@18.3.1
+npm warn node_modules/react
+npm warn   peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/shared@9.7.5
+npm warn   node_modules/@react-spring/shared
+npm warn     @react-spring/shared@"~9.7.5" from @react-spring/animated@9.7.5
+npm warn     node_modules/@react-spring/animated
+npm warn     2 more (@react-spring/core, @react-spring/three)
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @react-spring/three@9.7.5
+npm warn Found: react@19.2.5
+npm warn node_modules/react
+npm warn   react@"^19.0.0" from the root project
+npm warn   15 more (@react-three/fiber, @uiw/react-codemirror, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/three@9.7.5
+npm warn node_modules/@react-spring/three
+npm warn   @react-spring/three@"~9.7.5" from @react-three/drei@9.122.0
+npm warn   node_modules/@react-three/drei
+npm warn
+npm warn Conflicting peer dependency: react@18.3.1
+npm warn node_modules/react
+npm warn   peer react@"^16.8.0 || ^17.0.0 || ^18.0.0" from @react-spring/three@9.7.5
+npm warn   node_modules/@react-spring/three
+npm warn     @react-spring/three@"~9.7.5" from @react-three/drei@9.122.0
+npm warn     node_modules/@react-three/drei
+npm error code ERESOLVE
+npm error ERESOLVE could not resolve
+npm error
+npm error While resolving: @react-three/drei@9.122.0
+npm error Found: @react-three/fiber@9.6.0
+npm error node_modules/@react-three/fiber
+npm error   @react-three/fiber@"^9.0.0-rc.0" from the root project
+npm error   peer @react-three/fiber@">=6.0" from @react-spring/three@9.7.5
+npm error   node_modules/@react-spring/three
+npm error     @react-spring/three@"~9.7.5" from @react-three/drei@9.122.0
+npm error     node_modules/@react-three/drei
+npm error       @react-three/drei@"^9.122.0" from the root project
+npm error
+npm error Could not resolve dependency:
+npm error peer @react-three/fiber@"^8" from @react-three/drei@9.122.0
+npm error node_modules/@react-three/drei
+npm error   @react-three/drei@"^9.122.0" from the root project
+npm error
+npm error Conflicting peer dependency: @react-three/fiber@8.18.0
+npm error node_modules/@react-three/fiber
+npm error   peer @react-three/fiber@"^8" from @react-three/drei@9.122.0
+npm error   node_modules/@react-three/drei
+npm error     @react-three/drei@"^9.122.0" from the root project
+npm error
+npm error Fix the upstream dependency conflict, or retry
+npm error this command with --force or --legacy-peer-deps
+npm error to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error C:\Users\Alexander\AppData\Local\npm-cache\_logs\2026-07-16T16_56_22_515Z-eresolve-report.txt
+npm error A complete log of this run can be found in: C:\Users\Alexander\AppData\Local\npm-cache\_logs\2026-07-16T16_56_22_515Z-debug-0.log
+PS C:\Users\Alexander\sandystudio\webapp>
+
+## 2026-07-16 17:27 · director-msg (hook) · NEW · (triage at distill)
+спасибо что напомнил  про два untracked . я везде убрал хвосты а на исходном остались. зачистил!
+
+## 2026-07-16 18:17 · director-msg (hook) · NEW · (triage at distill)
+попробовал прочекать видео на лэптопе : advisory critic could not judge this asset: ffmpeg could not be launched — every candidate (FFMPEG_PATH, PATH, winget/unix fallbacks) failed to spawn. This is often TRANSIENT (the machine could not spawn a process — e.g. another job saturating it), not a missing binary: retry first. If it persists, check that ffmpeg is installed (winget install ffmpeg / brew install ffmpeg / apt install ffmpeg) or set FFMPEG_PATH.
+manual_trigger · 👁 Visual Critic (video): SS-S15-E29-VID-shot-s15-e29-sh04-v01-APPROVED.mp4 → skipped
+
+## 2026-07-21 06:41 · director-msg (hook) · NEW · (triage at distill)
+зддесь не все верно ниже  в частности секреты лежат в локальном .env . ты не в облаке остальное плюс минус норм но не догма . по факту - начинаем сначала
+# SESSION HANDOFF — Head of Growth · Channel View-Spread Audit
+
+> **Date:** 2026-07-21 · **Role:** Head of Growth (Тео) · **Mode at handoff:** `===1===` ANALYTICS
+> **Branch:** `claude/head-of-growth-discussion-dt8fr7`
+> Read this first in the new session, then `CLAUDE.md → NORTH_STAR.md → PLANET.md → PLAN.md (origin/master) → glossary`.
+
+---
+
+## 1. The task the Director set
+
+Two things, on the **Sandy the Hourglass** YouTube channel (`@sandy_the_hourglass`, `UCc2YJlHFclO9BWLEgPlglIg`):
+
+1. **Analyse the view spread.** Some uploads are published, some are not. Of the published
+   ones, some have ~**5 views**, some have **thousands**. First deliverable = *an analysis of
+   what causes that gap*, and how to fix it.
+2. **Develop the `head-of-growth` skill further** off the back of what we learn.
+
+The Director explicitly wants **DIRECT access to live channel data** for this — not a
+reconstruction from memory. "нам надо иметь ПРЯМОЙ доступ для анализа."
+
+## 2. The blocker (why a new session is needed)
+
+This cloud container is a **fresh clone** — it has **no Google/YouTube credentials** and no
+`webapp/.env.local` (it's gitignored, never pushed — correct). The live-metrics path
+(`webapp/lib/agents/providers/youtube-stats.ts`) needs a token. Public scraping is dead:
+YouTube returns **403 to WebFetch** (anti-scraping), and the SandyStudio Supabase project is
+**not** in the MCP-connected project list, so no stored snapshots either.
+
+**To get direct access, exactly THREE env vars are required** (confirmed against the real
+code path `google-auth.ts` + `youtube-consent.ts` — the `YOUTUBE_CLIENT_ID/SECRET` names in
+`.env.example` are STALE/unused; the OAuth client is shared with Drive):
+
+```
+GOOGLE_CLIENT_ID=…
+GOOGLE_CLIENT_SECRET=…
+YOUTUBE_REFRESH_TOKEN=…        # the Sandy Brand Account refresh token
+```
+
+The Director is providing these via **CCR environment variables** (env settings → new session
+picks them up from `process.env`). Source of the values on the Director's machine:
+`C:\SandyStudio\webapp\.env.local`.
+
+## 3. FIRST ACTION in the new session
+
+Once the three vars are set, run the ready-made **read-only** audit (already committed):
+
+```bash
+cd /home/user/SandyStudio/webapp && node scripts/yt-audit.mjs
+```
+
+It enumerates **every** upload via the owner's uploads-playlist (so unlisted/private show
+too) and prints, sorted by views: `views · avgViewPercentage% · publishDate · privacyStatus ·
+short|long · title`, plus channel subs/total. No writes anywhere.
+
+If it prints `MISSING ENV` → the vars didn't land; fall back to asking the Director to paste
+the three values into chat (they go into a gitignored `.env.local`, never committed).
+
+## 4. Working hypothesis to CONFIRM or KILL with the numbers
+
+Almost certainly this is **not** a quality problem — it's the two-algorithm split baked into
+`shorts-longform-distribution`:
+
+- **Thousands of views → the Shorts** (vertical swipe feed pushes to everyone; 0 subs is no
+  barrier). Likely the 4 Vending shorts (`R5YYEoP7nrA` / `J6rp-gmUKe4` / `cZmqxhQIPeo` /
+  `AHARBzM2CWw`) + Airport short (`mIew_0BCc5Y`).
+- **~5 views → the long-form 16:9 episodes** (live in Home/Suggested/Search; an unknown
+  0-sub channel gets ~zero impressions there → only direct-link views).
+- **Some "5s" = still Unlisted** — the rollout plan was "upload unlisted → schedule Public";
+  part of the catalogue likely never flipped to Public.
+
+**What the audit must decide:** (a) which videos are `public` vs `unlisted`/`private`;
+(b) for the high-view Shorts, is `avgViewPercentage` healthy (real interest) or low (empty
+impressions)? completion% is the quality signal, views are only the exposure gate
+(`audience-quality-sensor`). Only after that do we prescribe.
+
+If confirmed, the fix is **funnel, not re-shoot**: flip the good episodes to Public on a
+cadence, wire the Shorts→episode backlink bridge (already built:
+`webapp/lib/agents/providers/short-linkage.ts`), and keep Shorts as the discovery engine.
+
+## 5. Reference map (all known video IDs)
+
+Full ledger: `docs/distribution/video-episode-map.md`. Long-form episodes:
+`mCGE4FBcSrQ BvIHVozwdKQ LgGPVYUEzf8 iT8nwWABBqE ywNKJYsbnrE S2vIiuUCUGg 2efpY_JPYUo
+rzBgn07Ucsg gU8BBvnoHu0`. Shorts: `mIew_0BCc5Y` (Airport, canonical) + Vending 4 above.
+(The `yt-audit.mjs` enumeration supersedes this list — it reads whatever is actually on the
+channel now.)
+
+## 6. Key files touched / relevant
+
+- `webapp/scripts/yt-audit.mjs` — **NEW**, the audit tool (this session).
+- `.claude/skills/head-of-growth/SKILL.md` — the role skill to extend (deliverable #2).
+- `.claude/skills/shorts-longform-distribution/SKILL.md` — the two-algorithm doctrine.
+- `.claude/skills/audience-quality-sensor/SKILL.md` — metric roles (completion vs exposure gate).
+- `docs/distribution/strategy.md` + `video-episode-map.md` — GTM plan + video↔episode ledger.
+
+## 7. Housekeeping noted (not yet done)
+
+- `.env.example` lines 68–69 (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`) are dead — code
+  reads `GOOGLE_CLIENT_ID/SECRET`. Fix the example to avoid the next person setting the wrong
+  vars.
+- PLAN.md is **master-only** — do NOT edit it from this feature branch. If a PLAN update is
+  owed, do it as a tiny commit on master.
+
+---
+*Handoff written by Head of Growth (Тео), 2026-07-21. Resume at §3.*
+
+## 2026-07-21 07:21 · director-msg (hook) · NEW · (triage at distill)
+а запусти агента на анализ - влияние времени запуска как-то коррелируется? унас? вообще? 
+
+1. "У главного победителя ссылки НЕТ. PHRbzx1qAHg — 1243 просмотра, самый большой охват на канале — единственный публичный Short без бэклинка. Весь трафик утёк в никуда. У dLB3EcLHQ8g (запланирован на 23-е) тоже пусто." === не может этого быть я делал related видео для каждого шортса. если не было родного - то пускал на опубликованный лонг (как в аэропорте)
+2. (75 сек, вертикаль) ведёт на 2efpY_JPYUo (75 сек, лендскейп) === вот это косяк! я не додумал. предложение?
+3. давай так поставь хук на анализ каждого сообщения и если оно касается того что можно сделать скиллом для анализатора и выпускающего (growth) - cозраняем на гите в "прото-скилл". когда мыслей наберется - обработаем и преввратим в скилл. полезно? 
+q7y ===5===
+q8 перевести в sceduled на будущие (какие-то) даты? 
+q9 - it is not a "my idea" just a question for disscussion
+
+## 2026-07-21 07:37 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>ad72ea9c78531d2db</task-id>
+<tool-use-id>toolu_01STmUfCAomGpw8mgHp6APyW</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio\c774dc69-2cb1-412c-b631-a5fa851f2184\tasks\ad72ea9c78531d2db.output</output-file>
+<status>completed</status>
+<summary>Agent "Playlists as a YouTube traffic lever" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 1. DIRECT ANSWER
+
+**No — don't invest in "more links to playlists." It is a rounding error against your actual constraint.** The `PLAYLIST` traffic source, per YouTube's own definition, does not mean "people discovered us via a playlist"; it means *"the video views occurred while the video was being played as part of a playlist. It includes traffic coming from the playlist page"* — i.e. it counts the second, third, fourth video of a play-through, plus any hit on the playlist page itself. On a channel with **1 subscriber and ~95 total views in that table**, the overwhelmingly likely generator of 37 playlist-context views is **your own review-watching of the playlist you built during launch prep**, not audience behaviour. Worse, playlists are structurally a *long-form* mechanic: YouTube's official Shorts discovery documentation lists the surfaces where Shorts get found — Shorts tab, Home, Subscriptions, Search, and sounds/hashtag pages — and **playlists appear nowhere on that list**. Since your two real hits (1,243 and 1,196 views) are Shorts and are not even in this table, optimizing the routing of 95 views is optimizing the wrong number by roughly a factor of 25.
+
+## 2. Is the 37 `PLAYLIST` views a real signal or your own clicking?
+
+**Best read: almost certainly an artifact — yours and/or a handful of the same sessions.** Reasoning:
+
+- The mechanic requires no discovery at all. Anyone who opens the playlist and lets it roll through 5 videos generates 1 playlist-page view + 4 `PLAYLIST` views. **Eight or nine such play-throughs produce 37.**
+- YouTube has **no published policy excluding the channel owner's views** from Analytics. The only official statement is that YouTube "may temporarily slow down, freeze, or change your metric count, and discard low-quality playbacks," with multi-device/multi-tab given as the examples of low quality. Owner views are not named. The widely-repeated "YouTube stops counting after 3–4 self-views per day" figure is **folklore — no official source found**.
+- The channel has 1 subscriber. `SUBSCRIBER` = 3 views. For 37 organic playlist views to be real, strangers would have had to find a playlist on a 1-sub channel and binge it — while `YT_SEARCH` returned exactly 1 view and `YT_CHANNEL` exactly 1. That combination is internally implausible.
+
+**The exact check that settles it** (YouTube Studio → Analytics → Advanced mode, filter `Traffic source = Playlists`, then break down by, in priority order):
+
+1. **City** (dimension `city`, available since 2022-01-01) — if ~all 37 are Dubai/your city, it's you. This is the single decisive cut.
+2. **Device type + operating system** (`deviceType`, `operatingSystem`) — one desktop/Windows bucket = one person.
+3. **Subscription status** (`subscribedStatus`: `SUBSCRIBED`/`UNSUBSCRIBED`) — your own account is likely subscribed or not, either way it partitions cleanly against the 3 `SUBSCRIBER` views.
+4. **Traffic source detail** (`insightTrafficSourceDetail`) — identifies *which* playlist. If it's the single playlist you created during launch prep, that closes it.
+5. **Unique viewers** (Studio Audience tab; note: there is **no unique-viewers metric in the public Analytics API** — you must read it in Studio). If unique viewers for the playlist cohort is ~1–3, it's you.
+6. **New vs returning viewers** (Studio Audience tab) — heavy "returning" on a channel with no audience = the operator.
+
+Caveat to expect: YouTube anonymizes/withholds dimension data below traffic thresholds, so `city` may return nothing at n=37. If so, fall back to device+OS and unique viewers.
+
+## 3. Evidence table
+
+| Claim | Source | Date | Type | Weight |
+|---|---|---|---|---|
+| `PLAYLIST` = "views occurred while the video was being played as part of a playlist. It includes traffic coming from the playlist page." | [YouTube Analytics API — Dimensions](https://developers.google.com/youtube/analytics/dimensions) | current | **Official** | Highest — this is the definitional ground truth |
+| `YT_PLAYLIST_PAGE` was once a separate value ("views originated from a page that lists all of the videos in a playlist"); later merged into `PLAYLIST` | [Analytics API Revision History](https://developers.google.com/youtube/analytics/revision_history) (via search summary) | historical | Official, **but I read this via search summary, not verbatim on the page** | Medium — treat the merge as likely, the current single definition is what matters |
+| Studio-level: "Playlists: Traffic from any playlist that included one of your videos. These playlists can be your own playlist or another creator's playlist." | [Understand your YouTube video reach](https://support.google.com/youtube/answer/9314355?hl=en) | current | **Official** | High |
+| `SUBSCRIBER` = homepage feeds / subscription features (NOT "my subscribers watched") | [Analytics API — Dimensions](https://developers.google.com/youtube/analytics/dimensions) | current | **Official** | High — worth knowing, your "3 SUBSCRIBER" ≠ 3 subscribers |
+| `NO_LINK_OTHER` = "YouTube did not identify a referrer… direct traffic as well as traffic on mobile apps" | same | current | **Official** | High — your biggest bucket (48) is literally *unknown*, not a lever |
+| `SHORTS` traffic source = "referred by swiping vertically from the previous video in the Shorts viewing experience" | same | current | **Official** | High — this is the source that matters for you, and it's **absent from your table** |
+| Metrics filtered for quality; "low-quality playbacks" discarded; multi-device/multi-tab cited as examples | [How views are counted / metrics](https://support.google.com/youtube/answer/2991785?hl=en) | current | **Official** | High for the principle, **silent on owner views** |
+| "YouTube stops counting self-views after ~3–4/day" | Quora, remote.tools, ytshark, subsub.io | various | **Folklore / SEO listicle** | Zero. No official corroboration found |
+| Shorts discovery surfaces = Shorts tab, Home, Subs, Search, sounds &amp; hashtags. **Playlists not mentioned** | [Search &amp; discovery tips — Shorts](https://support.google.com/youtube/answer/11914225?hl=en&amp;co=YOUTUBE._YTVideoType%3Dshorts) | current | **Official** | High (argument from official silence, but the list is presented as exhaustive) |
+| Shorts ranked on: whether viewers choose to watch when recommended, average view duration / % viewed, likes, post-watch surveys | [How YouTube recommendations work](https://support.google.com/youtube/answer/16089387?hl=en) + Shorts page above | current | **Official** | High — this is your real lever list |
+| Shorts *can* be added to playlists; viewable via "Shorts" chip (**desktop only**); reordering unavailable in Shorts-only playlists | [Create &amp; manage playlists](https://support.google.com/youtube/answer/57792?hl=en&amp;co=GENIE.Platform%3DDesktop) | current | **Official** | High — confirms the mechanic exists but is second-class |
+| Series playlists: "allows other videos in the playlist to be featured and recommended when someone is viewing a video in the series"; "YouTube **may** use this info to modify how the videos are presented or discovered" | [Series playlists](https://support.google.com/youtube/answer/6084043?hl=en) | current | **Official — but deliberately hedged ("may")** | Medium-low. It is a *declaration*, not a promised boost. Requires verified account; a video can be in only one series playlist |
+| "Playlists boost session contribution, the leading ranking signal in 2026" | dataslayer.ai, socialpilot, outlierkit, metricool | 2025-26 | **Vendor blog / SEO listicle** | Low. Confidently asserted, zero data, mutually copy-pasted |
+| Impressions/CTR **exclude** end screens, cards, and external embeds | multiple CTR-benchmark blogs restating YouTube Help | 2026 | **Vendor blog restating official** | Medium — the point stands: end-screen/card clicks are *not* in your CTR and are separately, weakly measured |
+| Average YouTube CTR 4–5%, most channels 2–10% | Creator Academy figure restated across CTR blogs | 2026 | Official figure, **vendor-relayed** | Medium — and it's about thumbnails, not playlist links |
+| Actual click-through rate of **playlist links in descriptions / pinned comments** | — | — | **NO EVIDENCE FOUND** | — |
+| Any **controlled or large-N** experiment showing adding a video to a playlist causes more views | — | — | **NO EVIDENCE FOUND.** YouTube's own A/B tooling (Test &amp; compare) covers titles and thumbnails only — there is no playlist experiment surface | — |
+| Whether the Shorts **swipe feed** interacts with playlists in any way | — | — | **NO EVIDENCE FOUND** in either direction | — |
+
+## 4. What playlists reliably DO vs what is merely claimed
+
+**Reliably do (mechanically true, definitionally, not causally impressive):**
+- Auto-advance to the next video once someone is *already watching*, which mechanically produces `PLAYLIST`-attributed views and longer sessions. This is a **conversion/retention mechanic applied to traffic you already have.**
+- Give you a shareable single URL and a channel-homepage shelf.
+- Series playlists let you *declare* an intended viewing order (official, hedged benefit).
+- Produce their own analytics surface (views from playlist, playlist watch time, playlist average duration — which, note, **include videos from other channels** and only reflect activity in your playlist's context).
+
+**Claimed without evidence:**
+- "Playlists get you discovered / recommended more." No study, no official promise beyond "may."
+- "Playlists boost the algorithm via session contribution." Vendor folklore; YouTube's official recommendation docs describe *viewer-level* satisfaction signals, not playlist membership.
+- "Playlists help Shorts." Nothing found; official Shorts discovery list omits playlists entirely.
+- **The causality is unestablished and probably backwards.** Videos that get views end up watched-through-in-playlists; there is no evidence the playlist created the view. Your own data is the textbook case: the playlist did not create 37 viewers, ~1–3 viewers created 37 playlist views.
+
+**On the link-placement surfaces you asked about — honest status:**
+| Surface | Evidence |
+|---|---|
+| Video description link | No CTR evidence found. Below-fold on mobile. Assume near-zero. |
+| Pinned comment | No CTR evidence found. |
+| Channel homepage sections/shelves | Official feature; **no CTR data found**. Only reaches people already on your channel — you had **1** `YT_CHANNEL` view. |
+| Channel trailer | Official feature; no data found. Same audience problem. |
+| End screens | Official; explicitly **excluded from impressions/CTR**, measured separately. Long-form only — **end screens are not available on Shorts**. |
+| Cards | Official; no credible CTR benchmark found. Long-form only. |
+| "Related video" link on a Short | Official feature, real, and the one *Shorts-native* routing lever — but **no CTR evidence found**. |
+
+Every one of these routes traffic you already have. None of them create impressions.
+
+## 5. The counter-position, steelmanned — and what the lever actually is
+
+The binding constraint on a 1-subscriber channel is **not routing, it is seeding.** Views = impressions × view rate. Playlists, descriptions, end screens, shelves, cards — all of them operate on the *right-hand* side, after an impression has already been won, and only on the sliver of people already in your funnel. Your entire 95-view table represents your total addressable routing surface for the month. Even a miraculous 100% improvement in routing yields +95 views. **One Short, seeded into the swipe feed, did 1,243 — thirteen times the entire table, from a mechanism that appears nowhere in it.** That asymmetry is the whole argument.
+
+What the *official* evidence says the lever is, for a Shorts-driven channel:
+1. **The Shorts feed decides your fate, and it decides on two things YouTube names explicitly:** whether viewers *choose to watch when recommended* (your hook / first frame / thumbnail-equivalent) and whether they *stick around* (average view duration and average percentage viewed), plus likes and post-watch survey satisfaction. That is the entire published ranking surface. Everything you can control lives in the first 1–2 seconds and the retention curve.
+2. **Recency is favoured.** YouTube states the Shorts feed "may tune up on the recency of content, making it great for the discovery of new content" — which supports your existing 1/day cadence decision, not a playlist project.
+3. **Sounds and hashtags are an officially-named discovery surface for Shorts.** Playlists are not. If you want a metadata lever, that's the one with an official citation behind it.
+4. **Stop duplicating gags as landscape uploads.** They compete for nothing you're winning, they can't enter the Shorts feed, and they inflate the very playlist/browse noise you're now trying to read signal from.
+
+**Blunt bottom line:** Your table describes a channel with no audience yet, plus an operator watching his own uploads. Do not build strategy on it. Re-pull the analytics after the processing lag clears so the 1,243/1,196-view Shorts are included — that table will be the first one worth reading, and I'd expect `SHORTS` (swipe feed) to dominate it and `PLAYLIST` to fall to a fraction of a percent. Keeping the one existing playlist tidy costs nothing; building "more links to playlists" is a project with no evidence behind it aimed at a traffic source that is probably you.
+
+**Sources:**
+- [YouTube Analytics API — Dimensions (traffic source definitions)](https://developers.google.com/youtube/analytics/dimensions)
+- [YouTube Analytics API — Revision History](https://developers.google.com/youtube/analytics/revision_history)
+- [Understand your YouTube video reach (traffic source types)](https://support.google.com/youtube/answer/9314355?hl=en)
+- [How views/metrics are counted and validated](https://support.google.com/youtube/answer/2991785?hl=en)
+- [Search &amp; discovery tips — Shorts](https://support.google.com/youtube/answer/11914225?hl=en&amp;co=YOUTUBE._YTVideoType%3Dshorts)
+- [How YouTube recommendations work](https://support.google.com/youtube/answer/16089387?hl=en)
+- [Series playlists](https://support.google.com/youtube/answer/6084043?hl=en)
+- [Create &amp; manage playlists (Shorts in playlists)](https://support.google.com/youtube/answer/57792?hl=en&amp;co=GENIE.Platform%3DDesktop)
+- [Get analytics for your playlists and groups of videos](https://support.google.com/youtube/answer/3529123?hl=en)
+- [Learn how to use Advanced mode for analytics reports](https://support.google.com/youtube/answer/9717005?hl=en)
+- [A/B test titles and thumbnails (scope of YouTube's own experiment tooling)](https://support.google.com/youtube/answer/16391400?hl=en-GB)</result>
+<usage><subagent_tokens>105876</subagent_tokens><tool_uses>22</tool_uses><duration_ms>249715</duration_ms></usage>
+</task-notification>
