@@ -3617,3 +3617,445 @@ What the *official* evidence says the lever is, for a Shorts-driven channel:
 - [A/B test titles and thumbnails (scope of YouTube's own experiment tooling)](https://support.google.com/youtube/answer/16391400?hl=en-GB)</result>
 <usage><subagent_tokens>105876</subagent_tokens><tool_uses>22</tool_uses><duration_ms>249715</duration_ms></usage>
 </task-notification>
+
+## 2026-07-21 09:42 · director-msg (hook) · NEW · (triage at distill)
+все в порядке на самом деле . автономность производства доделана (мы  так думаем,но не тестед это факт). но мы уже перешли на "дальше" потому что с HoG решили опубликовать и сейчас время - создать следующий слой  автономности - анализ дистрибуции, докрутка параметров дистрибуции и параметров создания ( от выбора темы и формата до качества и проч). я долго не вытерплю ковыряться в дистрибуции.я  только на этапе разработки ( пока горю - потом станет скучно) поэтому как ленивый человек - лучше два дня потерять - а потом за два часа долететь!  ))
+
+## 2026-07-21 09:45 · director-msg (hook) · NEW · (triage at distill)
+все в порядке на самом деле . автономность производства доделана (мы  так думаем,но не тестед это факт). но мы уже перешли на планету "дальше" потому что с HoG решили опубликовать и сейчас время - создать следующий слой  автономности - анализ дистрибуции, докрутка параметров дистрибуции и параметров создания ( от выбора темы и формата до качества и проч). я долго не вытерплю ковыряться в дистрибуции. я эффективен только на этапе разработки и отладки всех процессов ( пока горю - потом станет скучно) поэтому как ленивый человек - лучше два дня потерять - а потом за два часа долететь!  ))
+q26y
+
+## 2026-07-21 09:56 · director-msg (hook) · NEW · (triage at distill)
+q27y with notices :пиши docs кратко плиз. очень кратко. caveman style (find skill caveman and use it pls). espetially work docs. I read very rare so you can write in english if it takes less tokens and clearly for you.  ===5=== планка выше - применяла сама в пределах потолка.
+Регион ВИДЕО и гипотеза «видео-ген = копия реф-гена минус кэп» перепиши как Регион ВИДЕО и гипотеза «видео-ген по логике должная быть копией реф-гена и проблем тогда тоже не будет? »
+
+## 2026-07-21 10:14 · director-msg (hook) · NEW · (triage at distill)
+1. надо сначала разобраться со статусами у нас в отчетах ( и у тебя в работе) вижу расхождение в privat , unlisted, published. где-то ощущаю сбой . отправь на поиски агента. 
+2.канал.аналитика: When Impatience Meets Red Tape | Sandy in the Airport | ! views 1248!  . у нас v5 ? what sould I think? not clear.  сначала надо привести в порядок данные - потом привестти в порядок их анализ . - второму агенту - привести данные с канала и у нас  и у утреннего скрипта к единообразию . без этого не идем к анализу
+3. возможно где-то МЫ еще проморгали ошибки (неточности?) в подходе к ОБРАТНОЙ СВЯЗИ
+
+## 2026-07-21 10:19 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a7afeb9f5b1c02975</task-id>
+<tool-use-id>toolu_01C9krmr1UUkPckzb4GxNEeK</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio\c774dc69-2cb1-412c-b631-a5fa851f2184\tasks\a7afeb9f5b1c02975.output</output-file>
+<status>completed</status>
+<summary>Agent "Audit video status taxonomy end-to-end" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Verdict: the defect is real, systematic, and 100% hit-rate today
+
+**Runtime evidence (read-only re-run against the live channel, just now):**
+```
+COUNTS { public: 9, unlisted: 2, 'private+publishAt': 18 }
+```
+**Every single video we call `private` is actually scheduled.** There is not one genuinely-private video on the channel. (Correction to the ground truth given: there are **2** unlisted, not 1 — `ZOUnEEtNseA` + `RlcMjNhjxlQ`, the long/short pair "Every Step Makes It Worse".)
+
+---
+
+## 1. The defects, ranked
+
+### D1 — CRITICAL · `webapp/scripts/yt-audit.mjs:69,93` — the morning snapshot mislabels scheduled as private
+`:67` requests `part=snippet,statistics,status,contentDetails` — so `status.publishAt` **is in the response** — but `:69` reads only `privacy: v.status?.privacyStatus` and `:93` prints it raw into the `priv` column. This is the file the daily 08:00 scheduled task (`daily-yt-snapshot.ps1:21`) writes to `docs/distribution/snapshots/&lt;date&gt;.md`. Confirmed in the artefact: `C:\SandyStudio\docs\distribution\snapshots\2026-07-21.md` shows 18 rows as `private`. **Should:** derive state from `publishAt` (rule in §2).
+
+### D2 — HIGH · same file `:70` — `pub` column is the *upload* date, not the release date
+`published: v.snippet?.publishedAt` — for a scheduled video that is when the bytes landed, not when the audience sees it. E.g. `Sandy vs. The Elevator` prints `2026-07-10` but goes live `2026-07-30`. Two of the Director's "old, dead" videos are actually **future** videos. **Should:** effective date = `status.publishAt ?? snippet.publishedAt`, with the state label distinguishing them.
+
+### D3 — HIGH · `webapp/lib/agents/providers/youtube.ts:81-113` — `listAllUploads()` never fetches status at all
+It reads only `playlistItems?part=snippet,contentDetails` → returns `{videoId,title,publishedAt}`. There is **no** privacy/publish concept in the ingest type (`UploadedVideoRef:75-79`). Consequence: **the webapp is status-blind**, which produces D4.
+
+### D4 — HIGH · `webapp/app/api/audience/route.ts:32,70-92` + `app/(studio)/audience/page.tsx` — the dashboard mixes unpublished videos into audience metrics with no marker
+The route enumerates all 29 uploads and feeds every one into `buildAdvice()` (`:95`) as an equal sample. 18 of those 29 have not been released yet, so they contribute near-zero views and depress every ratio the advisor reasons on — and the Director sees no field telling him which is which (`VideoMetric` has no privacy/state field anywhere in route or page). **Should:** carry a `publicationState`, exclude non-`public` from the advisor sample (or at least segment it), and render the state per row.
+
+### D5 — HIGH · `webapp/lib/agents/runner.ts:3216` vs `:192` — one key `youtube_privacy`, two opposite meanings
+`:3216` reads `episodes.metadata.youtube_privacy` as **intent** ("what privacy should I upload at?"); `persistYouTubeVideoId` (`:175-197`, writes at `:192`) writes the same key as **observed outcome** after upload. So the recorded outcome silently becomes the next upload's intent, and neither meaning is trustworthy. **Verified stale in the DB right now** (service-role read):
+
+| episode | `youtube_privacy` in DB | actual on YouTube |
+|---|---|---|
+| SS-S15-E25 `PHRbzx1qAHg` | `unlisted` | **public** |
+| SS-S15-E27 `U9YSCsmhcEw` | `unlisted` | **scheduled 2026-07-26** |
+| SS-S15-E28 `Rb6XK094TiY` | `unlisted` | **scheduled 2026-07-21** |
+| SS-S15-E29 `dLB3EcLHQ8g` | `unlisted` | **scheduled 2026-07-23** |
+| SS-S15-E30 `ZOUnEEtNseA` | `unlisted` | unlisted ✓ |
+
+4 of 5 stale. It is written once at upload and **never reconciled** — YouTube-side state changes (the Director scheduling in YT Studio) never come back.
+
+### D6 — MEDIUM · `runner.ts:193` — `youtube_published_at` is the upload timestamp, misnamed
+`new Date().toISOString()` at upload time. For a scheduled video the real publication is days later. Anything reading this key as "when it went live" is wrong by up to 20 days.
+
+### D7 — MEDIUM · The uploader **cannot schedule at all** — spec/code drift
+`UploadVideoInput` (`youtube.ts:224-233`) has no `publishAt`; the request body (`:250-253`) sends only `privacyStatus` + `selfDeclaredMadeForKids`. Yet `specs/distribution/youtube.md:48-49,71` and `agents/exec/publisher.md:78,97` *mandate* upload-as-private + set `publishAt` + record `scheduled_publish_time`. Only the **mock** implements it (`mock-providers.ts:175,184,203`). So today all 18 schedules were set by hand in YouTube Studio — which is precisely why the DB ledger is stale (D5). This is where the two meanings of `private` collapse: our uploader's `private` means "not ready", YouTube's `private` on the channel means "scheduled". **Defect confirmed as stated in the brief.**
+
+### D8 — LOW · two different definitions of "short"
+`yt-audit.mjs:91` classifies by duration ≤ 60s; `audience/route.ts:25,71` classifies by `#shorts` in the title. They disagree on live rows (e.g. "Sandy and the Car Wash #Shorts" = `long` in the snapshot, `short` in the dashboard). Same class of bug — one concept, two implementations.
+
+### D9 — LOW · snapshot header contradicts its own body
+`yt-audit.mjs:52` prints `videos=9` (channel `statistics.videoCount` counts public only) directly above a 29-row table. Reads like data loss.
+
+**Not a defect:** `mock-providers.ts:204 privacy_status:'private'` and `shorts/route.ts:43 default('unlisted')` are intents on write, correctly scoped.
+
+---
+
+## 2. The canonical status model I recommend
+
+One derivation, one vocabulary, four states:
+
+```ts
+export type PublicationState =
+  | { state: 'public';        liveAt: string }   // snippet.publishedAt
+  | { state: 'unlisted';      liveAt: string }
+  | { state: 'scheduled';     liveAt: string }   // status.publishAt (future)
+  | { state: 'private-draft'; liveAt: null  };   // never released
+
+// from videos.list?part=snippet,status
+function derivePublicationState(v): PublicationState {
+  const p = v.status.privacyStatus, at = v.status.publishAt ?? null;
+  if (p === 'public')   return { state: 'public',   liveAt: v.snippet.publishedAt };
+  if (p === 'unlisted') return { state: 'unlisted', liveAt: v.snippet.publishedAt };
+  if (at) return { state: 'scheduled', liveAt: at };   // private + publishAt ⇒ scheduled
+  return { state: 'private-draft', liveAt: null };
+}
+```
+Display rule: `scheduled` renders as `scheduled(2026-07-23)`, never as `private`. `liveAt` — not `snippet.publishedAt` — is the date shown in any dated column. Only `state === 'public'` is eligible for audience/advisor statistics; `unlisted` and `scheduled` are shown but excluded from ratios.
+
+Keep this **strictly separate from asset status**: `DRAFT/REVIEW/APPROVED/LOCKED` describes *our* artefact's approval, `PublicationState` describes *YouTube's* distribution. They must never share a column, a key name, or a color. (Good news: I found **no** place where the two are currently merged — the conflation risk is latent, not realised.)
+
+---
+
+## 3. Collapse, don't guard (anti-additivity)
+
+The mislabel exists in **2** live places (D1 snapshot, D4 dashboard-by-omission) fed by **2 duplicated ingest paths**:
+
+- `webapp/lib/agents/providers/youtube.ts` — the TS provider (no status).
+- `webapp/scripts/yt-audit.mjs` — a standalone .mjs that **re-implements** OAuth token exchange (`:25-35`), channel lookup (`:49`), uploads pagination (`:56-62`), and batched `videos.list` (`:66-74`) — ~50 lines duplicating `youtube.ts:37-113`.
+
+**Single source:** extend `youtube.ts` — add `part=status` batching into `listAllUploads()` (or a `listAllUploadsWithState()`), put `derivePublicationState()` there as the only implementation, and widen `UploadedVideoRef` with `state` + `liveAt`. Then:
+- `audience/route.ts` gets state for free (it already imports `listAllUploads`).
+- `yt-audit.mjs` should be **deleted as an independent implementation** and re-expressed as a thin `tsx` script that imports the provider — deleting its token/channel/pagination block. `daily-yt-snapshot.ps1:21` changes only its command line.
+- D8: pick one `isShort` (duration-based is the truthful one) and export it from the same module; delete the title-regex copy in `audience/route.ts:25`.
+- D5: stop overloading `youtube_privacy`. Either (a) rename the write to `youtube_privacy_observed` + `youtube_privacy_observed_at`, or better (b) **delete the persisted status entirely** and derive from the API on read — it is stale by construction, and nothing but the uploader reads it today. (b) is the subtractive fix: remove a field rather than add a reconciler.
+- D7: add `publishAt?: string` to `UploadVideoInput` and pass it through — this is the one place addition is justified, because it is what makes the spec executable and removes the manual YT-Studio step that causes D5 in the first place.
+
+---
+
+## 4. Could not verify
+
+- **Logs give no evidence either way.** `webapp/prod.log` is 261 bytes, `webapp/inngest.log` has zero `EXEC-PUB`/`privacy` hits — the stack was restarted today and no publish ran. Everything about the publish path (D7) is from code reading plus the DB end-state, not from a live trace.
+- **Supabase MCP `execute_sql` was denied** (permission error); the DB table above was read with the local service-role client via `webapp/.env.local` instead. Secrets were loaded into process env only, never printed.
+- I did **not** check whether YouTube Studio's own UI shows something different again — only the Data API and our artefacts.
+- Whether `categoryId` drift (`youtube.ts:248` = `23` Comedy vs `specs/distribution/youtube.md:44` = `1` Film &amp; Animation) matters is outside this audit; flagging it only as adjacent doc/code drift.</result>
+<usage><subagent_tokens>125618</subagent_tokens><tool_uses>25</tool_uses><duration_ms>207786</duration_ms></usage>
+</task-notification>
+
+## 2026-07-21 10:23 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a7ca6d9daf84c4c35</task-id>
+<tool-use-id>toolu_01TbRSmd1igdTDCWHygWHBjv</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio\c774dc69-2cb1-412c-b631-a5fa851f2184\tasks\a7ca6d9daf84c4c35.output</output-file>
+<status>completed</status>
+<summary>Agent "Reconcile view metrics across surfaces" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Verdict
+
+The hypothesis is **confirmed exactly**. All numbers below are from live read-only calls made just now (2026-07-21), token scopes `youtube.readonly + youtube.upload + youtube.force-ssl + yt-analytics.readonly`. No writes, no secrets printed.
+
+---
+
+## 1. The reconciliation table
+
+`stat` = Data API `videos.list?part=statistics` → `statistics.viewCount`.
+`an` = Analytics API `reports?metrics=views&amp;filters=video==&lt;id&gt;` (30d/90d/lifetime — **all three return identical values**, proving the window is not the variable; the processing frontier is).
+
+| Video | id | YouTube public (`statistics.viewCount`) | Webapp `/audience` (`analytics.views`) | Snapshot `2026-07-21.md` (`statistics.viewCount`) | Agree? |
+|---|---|---|---|---|---|
+| Airport | `PHRbzx1qAHg` | **1248** | **10** | 1243 (stale by hours) | ❌ 125× off |
+| Car Wash #Shorts | `8afgQAWP9ac` | **1197** | **3** | 1196 | ❌ 400× off |
+| Tennis/Wall (private) | `GULsE8hEYbw` | 15 | 15 | 15 | ✅ |
+| Vending WAR | `cZmqxhQIPeo` | 10 | **0** | 10 | ❌ |
+| One snack | `J6rp-gmUKe4` | 7 | **5** | 7 | ❌ |
+
+**Sum of all 29 videos: `statistics.viewCount` = 2555 · Analytics lifetime views = 89.**
+
+The webapp and the snapshot only agree where a video has had *no* traffic since the Analytics processing frontier — i.e. only on the dead videos.
+
+### Why the two numbers legitimately differ (proven, not assumed)
+
+**a) Analytics has a ~3-day processing lag.** Channel-wide day report requested with `endDate=2026-07-21` returned rows ending **2026-07-18**, with `2026-07-18 = 1 view` and nothing after. This is the documented behavior: "the API response actually contains data up until the last day specified for which all metrics *in the query* are available" ([Data Model](https://developers.google.com/youtube/analytics/data_model)); YouTube Help documents a comparable multi-day lag on processed analytics ([Check your YouTube Analytics data](https://support.google.com/youtube/answer/6362358?hl=en)). Airport was published **2026-07-19** — its entire real audience lives inside the unprocessed window.
+
+**b) The 10 views Analytics *does* report for Airport are pre-publication owner views.** Day-level breakdown for `PHRbzx1qAHg`:
+
+```
+2026-07-10  6 views  46.95%
+2026-07-12  2 views  96.06%
+2026-07-14  2 views  63.65%
+(2026-07-19, 07-20, 07-21: no rows — beyond the frontier)
+```
+
+Publish date is 2026-07-19. Every single Analytics view predates publication — these are owner/review plays while the video sat private. **The webapp is ranking the channel on the Director's own preview watches.**
+
+So: the two numbers are *not* reconcilable into one, and they are *not* interchangeable. `statistics.viewCount` is the near-real-time public counter; Analytics `views` is a processed, date-scoped, lagging series. Both are correct for their own question.
+
+---
+
+## 2. Defect list (file:line)
+
+**D1 — CRITICAL. The webapp prefers the lagging metric over the live one.**
+`webapp/app/api/audience/route.ts:83`
+```ts
+views: a?.views ?? s?.viewCount ?? 0,
+```
+Analytics wins whenever it returns *any* row — including a row made purely of pre-publication owner views. This single `??` is the whole Director-visible defect. It also directly contradicts the project's own spec: `specs/distribution/analytics.md:46` states **Views = `statistics.viewCount`**.
+
+**D2 — CRITICAL. Same inversion in the agent-facing snapshot.**
+`webapp/lib/agents/providers/youtube-stats.ts:180` — identical `analytics?.views ?? stats?.viewCount`. This is what `EXEC-ANAL` persists (`webapp/lib/agents/runner.ts:3352`), so every `REV-analytics_*` report ever written carries the wrong `views`, and `note:` at line 192 says "real analytics" — labelling the wrong number as the authoritative one.
+
+**D3 — CRITICAL. The exposure gate is fed the wrong number, which silences the whole sensor.**
+`webapp/lib/agents/analytics-advisor.ts:101,110` — `exposureGateViews: 100`. With D1 feeding it Analytics views, Airport (1248 real views) scores 10 → below gate → `confidence: 'none'`, `sampleSize` counts it as 0. The page reports "0 videos past the exposure gate / scout mode" while the channel has two videos over a thousand views. The sensor is structurally blind by construction.
+
+**D4 — HIGH. The video list is ranked on an uncapped, owner-contaminated metric.**
+`webapp/app/(studio)/audience/page.tsx:195` — `.sort((a, b) =&gt; b.avgViewPercentage - a.avgViewPercentage)`. This puts `He Got Hit by the Wall` (**2153%**, 15 owner views, *private*) and `He just wanted ONE snack` (**4228%**, 5 views) at the top of the board. Private videos are ranked as if they were audience evidence.
+
+**D5 — HIGH. `avgViewPercentage` is displayed with no validity guard.**
+`page.tsx:203` renders `{m.avgViewPercentage.toFixed(0)}%` raw. `analytics-advisor.ts:91` `qualitySignal()` clamps to 0–100, but the page does not use it — the display path bypasses the only clamp in the codebase.
+
+**D6 — MEDIUM. Short/long-form classification disagrees between surfaces.**
+`route.ts:25` `isShortTitle = /#?shorts?\b/i.test(title)` (title regex) vs `yt-audit.mjs:91` `dur &gt; 0 &amp;&amp; dur &lt;= 60` (duration). `8afgQAWP9ac` (75s, "#Shorts" in title) = **short** in webapp, **long** in the snapshot. `RlcMjNhjxlQ` (24s) = short by duration but its 117s sibling shares the title. Neither matches YouTube's actual rule (vertical + ≤3min). Consequence: `route.ts:75` also gates retention-curve fetching on this, so curves are pulled for the wrong set.
+
+**D7 — MEDIUM. Retention gate uses the lagging views too.**
+`route.ts:75` — `if (kind === 'longform' &amp;&amp; a &amp;&amp; a.views &gt; 0)`. Newly published videos never get a retention curve pulled, precisely when it would matter.
+
+**D8 — LOW / latent. Unit mismatch in config.**
+`config/defaults.yaml:303,307` — `avg_view_percentage_warn_below: 0.30 / 0.35` expressed as a **fraction**, while the API returns a **percentage** (0–100+). Nothing reads these keys today (verified by grep), so it is dormant — but it will fire wrong the moment anything does.
+
+**D9 — LOW. The snapshot mixes both metrics in one row without labelling.**
+`webapp/scripts/yt-audit.mjs:93` prints `views` (Data API, live) beside `pct%` (Analytics, lagging, uncapped) in adjacent columns with no indication they belong to different clocks. That table is what produced `2153` and `4228` next to `15` and `7` in `docs/distribution/snapshots/2026-07-21.md:8,12`.
+
+---
+
+## 3. The `averageViewPercentage` 4228% question
+
+Definition per Google: "The average percentage of a video watched during a video playback"; effectively `averageViewDuration ÷ video length`. Both `averageViewPercentage` and `averageViewDuration` are documented to **exclude looping-clips traffic since 2021-12-13** ([Metrics](https://developers.google.com/youtube/analytics/metrics)). **No cap is documented, and none is enforced** — our measured values:
+
+| Video | len | `averageViewDuration` | `averageViewPercentage` | views | privacy |
+|---|---|---|---|---|---|
+| `J6rp-gmUKe4` | 23s | 972s | **4228%** | 5 | public |
+| `GULsE8hEYbw` | 75s | 1615s | **2153%** | 15 | **private** |
+| `Sandy in the Elevator` | 82s | 103s | 127% | 2 | private |
+
+4228% = 972/23 = 42.3 replays' worth of watch time averaged over **5 playbacks**. Since documented loop-exclusion should have removed Shorts looping, the residual cause is single playbacks left running/rewound in a tab (the sibling metric `audienceWatchRatio` is explicitly documented as able to exceed 1.0 for exactly this reason). **The 2153% video is `private`** — nobody but the owner can watch it. So yes: at these sample sizes the number is **structurally meaningless**, it measures the Director's own browser, and D4 ranks the board on it.
+
+---
+
+## 4. `channels.statistics.viewCount` = 1279 vs 2555 summed — explained
+
+Live: `{"viewCount":"1279","subscriberCount":"1","videoCount":"9"}`.
+
+- `videoCount: 9` = exactly the 9 **public** videos (I counted them: 1248+1197+10+9+7+7+5+2+0). Channel statistics exclude private/unlisted. So the correct comparison is 1279 vs **2485** (public sum), not 2555 (all 29).
+- 2485 − 1279 = **1206**, and `8afgQAWP9ac` (Car Wash, published 2026-07-20, 1197 views) accounts for 1197 of it. Excluding that one video gives 1288 vs 1279 — a 9-view residual.
+
+**Conclusion: `channels.statistics.viewCount` is an aggregate that lags per-video `statistics.viewCount` by roughly a day, and counts public videos only.** Not unexplained, not a bug — but it must never be compared against a sum of per-video counts. `yt-audit.mjs:52` prints it as `totalViews=` right above a table of per-video views, inviting exactly that false comparison.
+
+---
+
+## 5. Enumeration / pagination — clean
+
+- `playlistItems` on the uploads playlist: **1 page, 29 items, `totalResults=29`, `nextPageToken` absent.**
+- Independent cross-check `search.list?forMine=true&amp;type=video`: **29 ids.**
+- Set difference in both directions: **empty**. `listAllUploads()` (`youtube.ts:81-113`) paginates correctly and truncates nothing.
+
+The apparent count mismatch people will hit is `channels.statistics.videoCount = 9` (public only) vs 29 actual uploads — a *different field*, not truncation. I could not verify YouTube Studio's own content-list count directly (would need a browser session); given two independent API enumerations agree at 29 including private/unlisted, I'd expect Studio to show 29 — **stated as expectation, not verified.**
+
+---
+
+## 6. The metric contract
+
+| Displayed number | Exact source field | Lag | Valid range | MUST NOT be shown when |
+|---|---|---|---|---|
+| **Views** (all surfaces, all rankings, exposure gate) | Data API `videos.list?part=statistics` → `statistics.viewCount` | minutes | ≥0, integer | never suppress — this is the canonical view number everywhere |
+| **Analytics views** | Analytics `metrics=views` | **~3 days**; verify by reading the last non-null day in a `dimensions=day` probe | ≥0 | Never shown as "views". Only as **"views (processed, through YYYY-MM-DD)"** with the frontier date printed. Never used for gating, ranking, or funnel math. |
+| **Completion %** | Analytics `averageViewPercentage` | ~3 days | 0–100 sane; **&gt;100 = invalid** | Hide when: video is `private`/`unlisted`; Analytics views &lt; 30; value &gt;100; video published &lt; 3 days ago. Never rank on it — the current sort is the 4228% bug. |
+| **Avg view duration** | Analytics `averageViewDuration` (seconds) | ~3 days | 0 … video length | Hide when &gt; video length (same invalidity condition as above) |
+| **Retention curve** | Analytics `audienceWatchRatio` × `elapsedVideoTimeRatio` | ~3 days | ratio may exceed 1.0 legitimately | Hide when &lt; 30 Analytics views, or video not public |
+| **Channel total views** | `channels.statistics.viewCount` | ~1 day, **public videos only** | ≥0 | Never compared against a sum of per-video `viewCount` |
+| **Kind (short/long)** | `contentDetails.duration` ≤ 180s **and** vertical aspect | none | — | Never derived from the title string |
+
+Two hard rules that follow, worth stating in the doctrine:
+
+1. **No quality verdict on a video younger than the Analytics frontier + 1 day.** Show "processing" instead of a number.
+2. **Never rank, gate, or advise on any metric whose denominator includes owner-only / pre-publication views.** Practically: exclude non-`public` videos from the advisor input entirely, and exclude Analytics rows dated before `publishedAt`.
+
+---
+
+## 7. The single canonical fetch path (anti-additivity)
+
+Today the same logic exists twice: `webapp/lib/agents/providers/youtube-stats.ts` + `webapp/app/api/audience/route.ts:32-92` (TS), and `webapp/scripts/yt-audit.mjs:25-96` (a hand-rolled duplicate of auth, pagination, batching and the analytics loop, ~70 lines). They already disagree on the two things that matter — which view number wins, and how short/long is decided. Patching both guarantees they drift again.
+
+**Recommendation — collapse to one, net-negative diff:**
+
+Add one function to the module that already owns 80% of this, `webapp/lib/agents/providers/youtube-stats.ts`:
+
+```ts
+export interface ChannelVideoMetric {
+  videoId; title; publishedAt; privacyStatus; durationSeconds;
+  views: number;          // statistics.viewCount — THE view number, always
+  likes; comments;
+  analytics: null | {     // explicitly nested → impossible to confuse with `views`
+    views: number;
+    averageViewPercentage: number;
+    averageViewDuration: number;
+    throughDate: string;  // the measured processing frontier
+  };
+}
+export async function getChannelVideoMetrics(): Promise&lt;ChannelVideoMetric[]&gt;
+```
+
+Then:
+- `route.ts` loses lines 32-92 (enumeration + stats + analytics assembly) and becomes a mapper into `VideoMetric`.
+- `yt-audit.mjs` becomes `yt-audit.ts` — a ~30-line printer over `getChannelVideoMetrics()`, run with `tsx --env-file=.env.local` like the other 15 scripts in `package.json:18-33`. One line changes in `daily-yt-snapshot.ps1:21`.
+- `collectAudienceSnapshot()` reads the same struct.
+
+Estimated net: **−70 to −90 lines**, one auth path, one pagination path, one definition of "views", and the nesting makes D1/D2 unrepresentable rather than merely fixed.
+
+The one risk to flag: converting the `.mjs` script to `tsx` makes the 08:00 scheduled snapshot depend on `tsx`, and the project memory records that `npm install --legacy-peer-deps` prunes optional deps and breaks `tsx`. If that fragility is unacceptable, the alternative is to keep the canonical module authored as plain ESM `.js` under `lib/` and have the TS side import it — still one copy, no `tsx` dependency for the cron.
+
+---
+
+## 8. Unverifiable / not checked
+
+- **The Director's reported "5".** I could not reproduce it. Airport's Analytics value today is **10**, so `/api/audience` computes **10** for that row right now. `5` is what Analytics returns for `J6rp-gmUKe4` and what `statistics` returns for the Car Wash long-form — he may have read an adjacent row, or Analytics reported 5 at an earlier probe. The defect class is identical either way; I did not want to assert a number I did not observe. (`/api/audience` returns 307 → auth redirect; I did not authenticate a browser session to render the page itself.)
+- **YouTube Studio's own content-list count** — not opened; inferred as 29 from two agreeing API enumerations.
+- **Whether the 1248/1197 spike is organic reach or something else** — outside scope; both are what YouTube's public counter reports.
+
+Sources: [YouTube Analytics Metrics](https://developers.google.com/youtube/analytics/metrics) · [YouTube Analytics Data Model](https://developers.google.com/youtube/analytics/data_model) · [Check your YouTube Analytics data](https://support.google.com/youtube/answer/6362358?hl=en) · [Data and performance measurement tools on YouTube](https://support.google.com/youtube/answer/14645915?hl=en)</result>
+<usage><subagent_tokens>144097</subagent_tokens><tool_uses>27</tool_uses><duration_ms>413027</duration_ms></usage>
+</task-notification>
+
+## 2026-07-21 10:24 · director-msg (hook) · NEW · (triage at distill)
+Background agent "Hunt blind spots in the feedback loop" was stopped by the user.
+
+## 2026-07-21 10:30 · director-msg (hook) · NEW · (triage at distill)
+Сегодня в 21:00 по Дубаю выходят bxTHKjMWcBo и LgGPVYUEzf8 — вертикаль и лендскейп одного гэга = ну можно горизонт пока убрать с публикации но тогда под шотрами наверное нужно класть ссылки на ЛИСТИНГ (непонятно какой )
+если я остановил агента - то это случайноо . путаю кнопки. пусть доработает. q30y  ===5===
+
+## 2026-07-21 10:34 · director-msg (hook) · NEW · (triage at distill)
+можно ли нам сделать ответственного агента который закроет все или часть задач. если напрямую нельзя то как это сделать через трюки? (интерфейс браузера и т.п. ) 
+/head-of-growth
+
+## 2026-07-21 10:38 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a78ef9ac3e1dcc309</task-id>
+<tool-use-id>toolu_012XvFUrJDw8EByTpBvY58dq</tool-use-id>
+<output-file>C:\Users\NAVIAV~1\AppData\Local\Temp\claude\C--SandyStudio\c774dc69-2cb1-412c-b631-a5fa851f2184\tasks\a78ef9ac3e1dcc309.output</output-file>
+<status>completed</status>
+<summary>Agent "Hunt blind spots in the feedback loop" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have enough. Report follows.
+
+---
+
+# Feedback loop — adversarial review
+
+Scope note: `b4c7b9d7` ("stop the sensor measuring the operator") landed **during** this review and fixed the two items you gave me as established (view-source inversion, unreleased videos in the sample). Everything below is checked against that commit as HEAD and is net-new.
+
+---
+
+## The three that matter
+
+### 1. The collection arm has never run successfully. Not once. Zero reports exist.
+
+Runtime evidence, Supabase:
+
+```
+assets WHERE file_type LIKE 'REV-analytics%'   →  count: 0
+jobs   WHERE agent_id = 'EXEC-ANAL'            →  2 rows, BOTH status=FAILED
+   error_message: "EXEC-ANAL requires collectionPoint and youtubeVideoId in event payload"
+   input_snapshot: {"episodeId":"…"}            ← both fields missing
+```
+
+Meanwhile `EXEC-PUB` has 15 COMPLETED jobs going back to 2026-06-18, five of them since 2026-07-10.
+
+Two separate causes, both live:
+
+- **Manual re-trigger is guaranteed to fail.** `webapp/app/api/episodes/[id]/trigger/route.ts:61` maps `EXEC-ANAL → sandystudio/exec-anal/collect` through the generic path, which injects only `episodeId`. `runner.ts:3342-3345` then hard-throws. Every click of the "Audience Analyst 📊" kebab, and every Polina pipeline dispatch of that stage, fails deterministically. Both recorded jobs have exactly this shape. The route has special-case payload construction for VGEN, EREF, THUMB — EXEC-ANAL was never given one, and unlike the others it cannot derive its inputs (`youtube_video_id` sits in `episodes.metadata`, three lines of lookup away).
+- **The scheduled path has never produced a run at all.** `schedule-analytics.ts` defers four events via `ts: publishTimestamp + delayMs`. `main.db` contains the event names, but zero EXEC-ANAL runs of that shape exist. The file's own comment reasons about "Cloud Inngest" and "the dev server" — we run neither; we run self-hosted `inngest start` since 2026-07-11. **No evidence found** that self-hosted durable honours a 30-day-future `ts`; that is unverified, not disproven.
+
+Failure it produces: `PLANET.md` says the sensor "starves: no snapshot history". It is worse than starving — the persistence arm has produced literally nothing in the project's lifetime, and it fails silently (a FAILED job row, no alert, no surface). The Audience tab works only because it queries YouTube live on every page load; close the tab and the factory retains nothing. There is no history to correct a course against, and none will accumulate.
+
+### 2. The correction arc does not exist. It is fully specified, and fully unbuilt.
+
+`buildAdvice()` has exactly **one** caller in the repo: `app/api/audience/route.ts:111`. Its output is rendered into React and discarded. Nothing downstream reads it.
+
+The arc it should feed is written down in detail and marked APPROVED:
+
+- `specs/distribution/analytics.md` §"FEEDBACK → PRODUCTION LOOP" — BOARD-MKT reads T+7d, writes `REV-analytics_interpretation`, and a five-row table maps each signal to a concrete Brief adjustment.
+- `agents/exec/analytics_collector.md` — "routes insights to BOARD-MKT… Data without interpretation is noise."
+
+Reality:
+- `BOARD-MKT` appears in the webapp as **two display strings** (`lib/api/agent-names.ts:45`, `lib/concierge/system-prompt-builder.ts:471`). `grep -c "BOARD-" webapp/lib/agents/registry.ts` → **0**. No runner, no prompt path, no Inngest function. The interpretation tier is unrunnable markdown.
+- `analytics_interpretation` — **zero occurrences** anywhere in `webapp/`.
+- `.claude/skills/series-episode-theme-generation/SKILL.md` and `series-episode-theme-selection/SKILL.md` — the two places where "what do we make next" is actually decided — contain **zero** occurrences of `audience`, `views`, `retention`, `analytic`, `metric`. Theme-selection's input table (`theme_bank`, Bible, `capability_profile`, cost model) has no performance channel at all. Gate 8 "Novelty vs bank" compares a candidate against *our own past ideas*, never against what landed with anyone.
+- `loadAgentInputs` (`runner.ts:242`) is episode-scoped: episode row + that episode's assets. Cross-episode audience data is not loadable by any agent, by construction.
+- `ScorecardPhase = 'analytics'` (`scorecard/compute-scorecard.ts:33`) is a declared phase with no trigger — `episode-scorecard.ts` subscribes only to `exec-pub/published`.
+
+**Plain statement of the missing arc:** between "we measured the audience" and "the next episode is made differently" there is *nothing*. Not a stub, not a TODO, not a disabled flag. The only carrier is the Director reading a web page and typing something into a brief by hand — which is precisely the "unplanned touch" `PLANET.md` targets at ZERO.
+
+### 3. The Director's advice board is a constant. It cannot respond to data.
+
+`route.ts:111` passes `shippedCategories: []` — hardcoded, no writer anywhere in the repo. `holeCards()` (`analytics-advisor.ts:118-130`) therefore emits **all ten** `SANDY_TAXONOMY` categories as "Untested territory" on every single request, forever, at `rank: 0..9`. Everything data-derived ranks below: leaderboard `rank: 50`, retention `rank: 100+`. `cards.sort((a,b) =&gt; a.rank - b.rank)` (`:189`).
+
+So the top ten cards on the board are a static list, identical today and after a million views, and they push the one or two genuinely data-derived cards below the fold. This is the doctrine's own named failure mode inverted: the skill worries about presenting a fluke as a mandate; the implementation presents *no data at all* as ten ranked recommendations, each with an authoritative-looking `evidence:` line ("Not present in shipped/tracked episodes — no signal either way yet") and a `testNext:` experiment. It reads as analysis. It is a `const`.
+
+---
+
+## Further findings, ranked
+
+**4. `getVideoStatistics` failing is indistinguishable from "the channel has nothing public."** After `b4c7b9d7`, that one call is now the sole source of *both* views and `publicationState`. `route.ts:41` swallows it: `.catch(() =&gt; [])`. On a 403 / quota / token failure, `statById` is empty → line 83 `s?.publicationState ?? 'private-draft'` assigns every video a **definite wrong state** → line 110 `publicMetrics` = `[]` → the advisor reports scout mode, sample 0, and every row shows 0 views. The page renders normally with no error. `'private-draft'` as the default for *missing data* is the bug: absence of a datum is being encoded as a specific fact. Same class as the `delivery_targets`→landscape fallback.
+
+**5. The retention→shot bridge — called "the structural advantage" — cannot fire on anything recent.** `route.ts:80`: `if (kind === 'longform' &amp;&amp; a &amp;&amp; a.views &gt; 0)`. `a` is the ~3-day-lagging Analytics object. The commit fixed the view *source* everywhere else but left this **gate** on the lagging clock. A video published this week has `a === null` → no curve fetched → the `fix_longform` axis is silent exactly when you most want to read it. Additionally `confidenceFor(m, config)` on that card (`:156`) reads `m.views`, which is now the live counter — so the fields inside one card are sourced from two different clocks.
+
+**6. `biggestDrop` reports a universal platform artifact as a per-episode production defect.** `analytics-advisor.ts:211-221` returns the largest single sample-to-sample fall, unsmoothed, unweighted, with no exclusion of the first bucket. On essentially every YouTube retention curve the largest single fall is the opening-seconds bounce. The card that results (`"Retention drop in {episode}"`, `"Largest viewer loss around 2% of the video"`) will point at the same place for every episode, and instructs "tighten that production decision" — sending the Storyboarder to fix a shot that is not the problem. It also never fires on a curve of length &lt; 2 and treats a flat curve identically to a cliff.
+
+**7. `loops` and `shares` are hardcoded `null`; virality is structurally always zero.** `route.ts:101-102`. `viralitySignal()` (`:95-97`) therefore always returns 0, and the evidence string's `, N loops+shares` clause is dead code. The `audience-quality-sensor` skill states as an implemented metric role: "Virality of short-form = loops (rewatches) + shares… which the algorithm amplifies most". Neither is fetched. Worse — see False premise (c).
+
+**8. The ledger holds ONE Short per episode. The doctrine mandates 3–5.** `short-linkage.ts:57-76` `persistShortId` writes the scalar key `youtube_short_id`, overwriting on every call. `shorts-longform-distribution` practice #3: "One episode yields 3–5 *different* Shorts." Live data:
+
+```
+SS-S15-E28  short GULsE8hEYbw   (one)
+SS-S15-E30  short RlcMjNhjxlQ   (one)
+SS-S15-E29  vid dLB3EcLHQ8g     NO short_id at all
+```
+
+E29 is the 2026-07-16 launch episode. Your memory note records **four** Vending Shorts uploaded that day — the format-proven ones. **None** of them is in the ledger. `route.ts:71` `shortToEpisode` therefore attributes at most one Short per episode; every other Short arrives at the advisor with `episodeCode: null` and can never be tied to the production decisions that made it. Per-gag attribution — the axis P2 is supposed to unlock — is blocked by the data model, not by the missing tagging. `persistShortId` is also an unguarded read-modify-write on `episodes.metadata` (your known RMW-race backlog item).
+
+**9. Nine Shorts have a parent that our data cannot name.** E01/07/09/11/12/13/14/15/16 each carry `youtube_short_id` and **no** `youtube_video_id` — their long-forms were uploaded by hand and never recorded. `readParentVideoId` (`short-linkage.ts:43-50`) returns `null` for all nine, so `appendParentBacklink` is a documented no-op and those nine Shorts shipped without the backlink. Re-running `dist-shorts-backfill-parents.ts` today would still find no parent — the backfill cannot succeed until someone writes the nine parent ids. The funnel that `shorts-longform-distribution` calls "the load-bearing bridge" is absent on 9 of 11 tracked Shorts, and `/api/audience`'s `funnel` array reports them as parentless without flagging it as a defect.
+
+**10. `T+1h/24h/7d/30d` are measured from upload, not from go-live.** `runner.ts:3239/3303/3331` all set `publishTimestamp: Date.now()` at upload time. With 18 videos uploaded private and scheduled public days later, T+1h, T+24h and often T+7d would all sample a video no one could see. Only T+30d would carry signal. Combined with finding 1 this is currently moot — but it is the bug that will bite the moment the collector is repaired, and it is invisible until then.
+
+**11. `isShortTitle` decides format by title regex.** `route.ts:30`: `/#?shorts?\b/i`. A Short whose title omits `#Shorts` is classified `longform`; an episode whose title contains the word "short" is classified `short`. `getVideoStatistics` now fetches `contentDetails.duration` and derives `durationSeconds` — the reliable signal (≤60s + vertical) is already in hand and unused. Every kind-conditional branch downstream (retention fetch, the `shorts` leaderboard, funnel mapping) inherits the misclassification.
+
+---
+
+## False premises
+
+**(a) "Scheduling is our default publish flow."** `docs/distribution/strategy.md §0.5`: "default upload = Unlisted → schedule Public." `UploadVideoInput` has no `publishAt`. The playbook that EXEC-PUB *owns* prescribes an operation the machine cannot perform — so it silently becomes a manual Director task, and the ledger's `youtube_privacy` goes stale (as you established). A doc marked as the operational playbook mandating a capability the code lacks is the purest form of this class.
+
+**(b) Two governing documents give contradictory cadence, and nothing halts.** `shorts-longform-distribution` SKILL: *"Default: one Short per day, fixed slot"* — the version your 2026-07-16 research ratified. `docs/distribution/strategy.md §2`: *"1 Short every 2–3 days"* and *"Vertical Short (15–30s) — every 2–3 days"*. Same conflict on Shorts-per-episode (skill: 3–5; strategy: 1–3) and on reframing (skill: follow-crop, "a STATIC centre-crop clips it"; strategy §2: *"Sandy stays centered; crop to keep the glass body + key object in frame"* — the exact practice the skill later proved wrong). `skill-creation.md` requires HALT-and-escalate on source-of-truth conflict; there is no mechanism, and an agent reading strategy.md gets the retracted answer with full confidence.
+
+**(c) "Loops are a metric we read."** `audience-quality-sensor` SKILL lists loops (rewatches) as a metric role and calls it the strongest virality driver. The YouTube Analytics API does not expose a per-Short rewatch/loop metric to channel owners. `shares` is available and simply not requested; `loops` is likely **not obtainable at all**. The doctrine builds its primary short-form quality axis on a number that may not exist. This is the same structural class as the "related video" field you flagged: doctrine assuming a field the platform does not provide.
+
+**(d) The `head-of-growth` diagnostic ladder's top rung is unreadable.** Its step 1 branches entirely on *impressions* ("no impressions → packaging problem; impressions but no clicks → CTR problem"). `collectAudienceSnapshot` hardcodes `impressions: 0, impression_ctr: 0, subscribers_gained: 0, traffic_sources: {}` (`youtube-stats.ts` return block), and `/api/audience` never requests them. `specs/distribution/analytics.md` sets a Warning threshold of `Impression CTR &lt; 2%`. If the flagging in `analytics_collector.md` Step 2 ever ran, a hardcoded 0 would trip WARNING on every episode forever. The entire diagnosis→recovery method is unexecutable, and the `views=0` recovery ladder — the doctrine's answer to a weak launch — cannot be walked past step 1.
+
+**(e) The doctrine that forbids learning from what shipped.** `CLAUDE.md §6` (`studio_version &lt; 1.0`): legacy episodes "are training experiments, NOT a production catalog… **not ground truth for calibration**, not a novelty baseline". `series-episode-theme-selection` gate 8 obeys this and switches novelty off. But the videos now on the channel — including the vertical at ~1196 views that proved the format gate — **are** those legacy episodes. The governance rule and the Star's "read feedback → correct course" point in opposite directions on the only data we possess. Nobody is wrong here; nobody has reconciled it either, and until it is, a correctly-behaving theme-selector is *required* to ignore your only real audience signal.
+
+**(f) "Audience tab sensor ALREADY BUILT."** `PLANET.md` "Terrain now". True of the read-and-display path; false of the sensor as a sensor. Nothing persists (finding 1), nothing is remembered between page loads, and nothing consumes the output (finding 2). "Finish THAT one. No second panel." is the right instinct, but "finish" here means building the persistence and correction arms, not topping up a mostly-built thing.
+
+---
+
+## What I could not verify — no evidence found
+
+- Whether self-hosted `inngest start` honours a future `ts` at 1h/24h/7d/30d horizons. The events exist in `main.db`; no run was ever produced. Cannot distinguish "held, pending" from "dropped". A 60-second test (emit with `ts: now+90s`, watch for the run) settles it and is worth doing before any repair of finding 1.
+- Whether `dist-shorts-backfill-parents.ts` was ever executed. The nine episodes still have no `youtube_video_id`, so the outcome would have been a no-op either way.
+- The current live YouTube state of the 4 Vending Shorts (titles, `#Shorts` presence, backlinks). They are absent from the ledger, so I have no id to check; I did not make live YouTube calls.
+- Whether `prod.log` / `inngest.log` ever contained analytics activity. Both are current-session only (`inngest.log` starts 2026-07-21T09:24, `prod.log` is 261 bytes); nothing older survives. The DB job ledger was my substitute and is conclusive on its own.
+- Whether any of this was already captured by the sibling agents — `.claude/training-inbox.md` (modified, uncommitted) contains prior findings around lines 3660-3900 covering D1/D2/D3 and a `publicationState` recommendation. I read enough of it to avoid duplicating those; I did not audit the rest of the file.</result>
+<usage><subagent_tokens>186315</subagent_tokens><tool_uses>59</tool_uses><duration_ms>451696</duration_ms></usage>
+</task-notification>
