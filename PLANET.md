@@ -1,61 +1,63 @@
 # SandyStudio — PLANET.md
-## Текущая планета: АВТОНОМНОСТЬ | Директор надзирает креативные гейты | выбрана 2026-07-20
+## Planet: DISTRIBUTION AUTONOMY + SELF-CORRECTION | picked 2026-07-21
 
-> Одна планета, на которую держим курс сейчас, + местность на ней.
-> Меняется, когда планету взяли и выбрали следующую. Читается после NORTH_STAR.md.
-> Звезда/архитектура → NORTH_STAR.md. Операционка/бэклог → PLAN.md. Только master.
+> One planet. Read after NORTH_STAR.md. Star → NORTH_STAR.md. Backlog → PLAN.md. master only.
 
 ---
 
-## Планета — Автономность
-Машина ведёт эпизод бриф→финалка сама, Директор касается только плановых креативных
-гейтов. ПОЧЕМУ первая: без автономности надёжность, качество, себестоимость
-НЕИЗМЕРИМЫ — ручная правка маскирует истинное поведение машины. Автономность —
-подложка, которая делает остальные планеты вообще измеримыми. (Директор 2026-07-20.)
+## Planet
+Machine reads how product landed. Machine turns own knobs — theme, format, quality.
+Director approves. Director does NOT tune by hand.
 
-Сцепка: часть надёжности нужна, чтобы автономность случилась. Поэтому баги-блокеры
-автономности — местность ЭТОЙ планеты, не отдельная планета.
+WHY NOW: production autonomy believed done (Director 2026-07-21). HoG says publish.
+This closes second arc of Star: distribute → read feedback → correct course.
+Circle open without it. Factory makes, but cannot see itself.
 
----
-
-## Мерило автономности — ПРИРОДА касания, не число
-Автономность мерится не количеством касаний, а тем, ПЛАНОВОЕ оно или нет.
-- **Плановое** = креативный гейт / утверждение. Их ~10–12, и это норма.
-- **Внеплановое** = Директор лезет руками ловить баг / чинить кашу. Их цель — НОЛЬ.
-
-## Плановые касания (креативные гейты — ~10–12, дополняем по мере прохождения)
-1. Бриф — утвердить идею.
-2. Чтение сценария — Директор читает, не только «довести словами».
-3. Кастинг — утвердить новых героев, которых формирует эпизод.
-4. 2 видео-пилота — утвердить первые два РЕАЛЬНЫХ видео-шота.
-5. Финалка → Публикация — просмотр эпизода, клик Публикация (hard-limit).
-(+ прочие плановые гейты конвейера — вносим сюда, когда упираемся в них живьём.)
-Авто-предохранитель: потолок бюджета HALT-ит и зовёт Директора.
+WHY BUILD MACHINE, NOT DO BY HAND: Director burns hot on building. Goes cold on
+daily fiddling. «Лучше два дня потерять — а потом за два часа долететь.»
+Hand-run growth dies of boredom. Machine does not.
 
 ---
 
-## Местность сейчас — регион ВИДЕО
-- E30: рефы (картинки) прошли АВТОНОМНО, почти без рук. Доказанная суша.
-- Видео — каша. Гипотеза Директора: видео-ген должен быть КОПИЕЙ реф-гена
-  минус кэп (лимит перегенераций) — откуда каша, неясно. Первый кратер.
-- Держим как гипотезу, НЕ чиним сейчас (достраиваем Слой 0). Точка входа при возврате.
+## Debt taken with eyes open
+Production autonomy NOT tested. «Мы так думаем, но не тестед» (Director 2026-07-21).
+New layer stands on unproven one. Risk: sensor says «landed worse» — cannot tell bad
+distribution knob from bad production. Known debt, not blocker.
+Closes on first clean episode brief→final with zero unplanned touches.
 
 ---
 
-## Планета взята, когда
-Следующий чистый эпизод идёт бриф→финалка, и КАЖДОЕ касание Директора — плановое
-(креативный гейт), а внеплановых (починка багов, ручная правка каши) — НОЛЬ.
-Число плановых ~10–12 — это бюджет, не мерило; мерило — отсутствие внеплановых.
-Тогда автономность доказана → включаются сенсоры (следующая планета).
+## Measure — NATURE of touch
+- **Planned** = approve theme, publication, money. Normal.
+- **Unplanned** = Director turns a knob the machine should have turned. Target ZERO.
 
 ---
 
-## НЕ эта планета (парк — не дрейфовать)
-- Измеримость / публичные данные, «Первый Доказательный Эпизод» как публичный —
-  СЛЕДУЮЩАЯ планета. Старый PLAN.md звал её текущей — это был дрейф.
-- Дистрибуция, воронка Shorts, самообучение, масштабируемость — дальше.
-- Надёжность как самоцель — здесь только её автономность-блокирующая часть.
+## Terrain now — channel sensor
+- Format gate PROVEN. Vertical 1196 views. Same gag landscape 5. ×240.
+- Audience tab sensor ALREADY BUILT (`/api/audience` + `analytics-advisor`). It starves:
+  no snapshot history, no daily fire. Finish THAT one. No second panel.
+- Metrics lie in our favour. PLAYLIST traffic and >100% completion = our own watching.
+  Fix first: drop private/unlisted, view floor, «data still coming» flag under 3 days.
+- YouTube analytics lags ~3 days. Both hits land in reports ~24 July.
+  Nothing to calibrate before that.
 
 ---
 
-*SandyStudio PLANET.md | Планета «Автономность» — выбрана Директором 2026-07-20. Одна планета за раз.*
+## Planet taken when
+Machine applies corrections ITSELF within the ceiling — theme, format, cadence, hook.
+Director approves outcomes, does not set knobs. Unplanned manual tuning: ZERO.
+
+---
+
+## NOT this planet (parked — do not drift)
+- VIDEO region. Hypothesis: video-gen should logically be a copy of ref-gen — and then
+  there would be no problems either? Terrain of PREVIOUS planet. Entry point on return.
+  Not fixing now.
+- Hand growth ops. Playlist projects (proven not a lever). Publish-time tuning
+  (proven not a lever). Daily manual poking.
+- Agent self-learning. Second genre. Later.
+
+---
+
+*PLANET.md | «Distribution autonomy + self-correction» — Director 2026-07-21. One planet at a time.*
