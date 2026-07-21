@@ -30,8 +30,16 @@ export interface VideoMetric {
   title: string;
   episodeCode?: string | null;
   durationSeconds?: number | null;
+  /** YouTube-side state. Only `public` videos have an audience — the rest must never
+   *  enter the advisor sample or a ranking. Derived in youtube-stats.ts, never read raw. */
+  publicationState?: 'public' | 'unlisted' | 'scheduled' | 'private-draft';
+  /** When the audience sees/saw it (`publishAt` for scheduled). Null for a draft. */
+  liveAt?: string | null;
+  /** LIVE public counter (`statistics.viewCount`) — never the lagging Analytics `views`. */
   views: number;
-  /** % of the video watched (0..100). Already length-normalized → the quality signal. */
+  /** % of the video watched (0..100). Already length-normalized → the quality signal.
+   *  0 means "unreadable / not measured", never "watched nothing" — values >100 are
+   *  zeroed upstream because they measure a tab left running, not an audience. */
   avgViewPercentage: number;
   avgViewDurationSeconds: number;
   /** Rewatch signal — the strongest virality driver. Null when the API can't supply it. */

@@ -36,34 +36,94 @@ async function authedGet(url: string): Promise<Response> {
   return fetchWithTimeout(url, { headers: { Authorization: `Bearer ${token}` } }, TIMEOUT_MS);
 }
 
+/**
+ * Where a video actually stands on YouTube. The Data API has NO `scheduled`
+ * privacy value — a scheduled video reports `privacyStatus: 'private'` WITH a
+ * `status.publishAt`. Reading `privacyStatus` alone mislabels every scheduled
+ * video as private (2026-07-21: all 18 of ours). Derive, never read raw.
+ */
+export type PublicationState = 'public' | 'unlisted' | 'scheduled' | 'private-draft';
+
 export interface VideoStatistics {
   videoId: string;
   viewCount: number;
   likeCount: number;
   commentCount: number;
+  /** Derived — the only sanctioned way to talk about a video's YouTube state. */
+  publicationState: PublicationState;
+  /** When the audience sees/saw it: `publishAt` for scheduled, else `publishedAt`. Null for a draft. */
+  liveAt: string | null;
+  durationSeconds: number;
 }
 
-/** Public counters for up to 50 videos per call (Data API caps id list at 50). */
+function isoDurationToSeconds(iso: string | undefined): number {
+  const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(iso ?? '');
+  if (!m) return 0;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+}
+
+/** Public counters + publication state for up to 50 videos per call (Data API caps id list at 50). */
 export async function getVideoStatistics(videoIds: string[]): Promise<VideoStatistics[]> {
   const out: VideoStatistics[] = [];
   for (let i = 0; i < videoIds.length; i += 50) {
     const batch = videoIds.slice(i, i + 50);
-    const url = `${DATA_API}/videos?part=statistics&id=${batch.map(encodeURIComponent).join(',')}`;
+    const url = `${DATA_API}/videos?part=statistics,status,snippet,contentDetails&id=${batch.map(encodeURIComponent).join(',')}`;
     const res = await authedGet(url);
     if (!res.ok) throw new YouTubeStatsError(`getVideoStatistics failed (${res.status})`, res.status);
     const json = (await res.json()) as {
-      items?: Array<{ id?: string; statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }>;
+      items?: Array<{
+        id?: string;
+        statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
+        status?: { privacyStatus?: string; publishAt?: string };
+        snippet?: { publishedAt?: string };
+        contentDetails?: { duration?: string };
+      }>;
     };
     for (const it of json.items ?? []) {
+      const privacy = it.status?.privacyStatus;
+      const publishAt = it.status?.publishAt ?? null;
+      const publishedAt = it.snippet?.publishedAt ?? null;
+
+      let publicationState: PublicationState;
+      let liveAt: string | null;
+      if (privacy === 'public') {
+        publicationState = 'public';
+        liveAt = publishedAt;
+      } else if (privacy === 'unlisted') {
+        publicationState = 'unlisted';
+        liveAt = publishedAt;
+      } else if (publishAt) {
+        publicationState = 'scheduled';
+        liveAt = publishAt;
+      } else {
+        publicationState = 'private-draft';
+        liveAt = null;
+      }
+
       out.push({
         videoId: it.id ?? '',
         viewCount: Number(it.statistics?.viewCount ?? 0),
         likeCount: Number(it.statistics?.likeCount ?? 0),
         commentCount: Number(it.statistics?.commentCount ?? 0),
+        publicationState,
+        liveAt,
+        durationSeconds: isoDurationToSeconds(it.contentDetails?.duration),
       });
     }
   }
   return out;
+}
+
+/**
+ * Is this Analytics completion figure usable as a QUALITY signal?
+ *
+ * `averageViewPercentage` = avg view duration ÷ length. A single playback left
+ * running or rewound in a tab pushes it far past 100% (measured: 4228% off five
+ * playbacks). At our sample sizes that number measures the operator's own
+ * browser, not an audience — so it must never be displayed or ranked on.
+ */
+export function isCompletionReadable(pct: number | null | undefined): boolean {
+  return typeof pct === 'number' && pct > 0 && pct <= 100;
 }
 
 export interface VideoAnalytics {
@@ -177,10 +237,13 @@ export async function collectAudienceSnapshot(args: {
     provider: 'youtube',
     collected_at: now.toISOString(),
     collection_point: args.collectionPoint,
-    views: analytics?.views ?? stats?.viewCount ?? 0,
+    // Views ALWAYS come from the live public counter (spec: specs/distribution/analytics.md).
+    // Analytics `views` lags ~3 days and, for a freshly published video, contains only
+    // pre-publication owner plays — preferring it reported 10 for a video with 1248 views.
+    views: stats?.viewCount ?? 0,
     watch_time_minutes: analytics?.estimatedMinutesWatched ?? 0,
     avg_view_duration_seconds: analytics?.averageViewDuration ?? 0,
-    avg_view_percentage: analytics?.averageViewPercentage ?? 0,
+    avg_view_percentage: isCompletionReadable(analytics?.averageViewPercentage) ? analytics!.averageViewPercentage : 0,
     impressions: 0,
     impression_ctr: 0,
     subscribers_gained: 0,
@@ -189,6 +252,10 @@ export async function collectAudienceSnapshot(args: {
     traffic_sources: {},
     retention_curve: retention,
     cost_usd: 0,
-    note: analytics ? 'real analytics' : 'real statistics only (no analytics rows yet)',
+    note: analytics
+      ? `views=live counter; completion/watch-time from Analytics (lags ~3d)${
+          isCompletionReadable(analytics.averageViewPercentage) ? '' : '; completion unreadable, zeroed'
+        }`
+      : 'views=live counter; no Analytics rows yet (processing lag)',
   };
 }
