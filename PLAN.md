@@ -19,6 +19,28 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-21 late (Head of Growth — «ответственный агент?» — Тео, ДОКИ only).
+  Директор q1a/q2y/q3. ДВА плана на сегодня, читать оба:
+  - `docs/plans/2026-07-21-feedback-loop-close.md` (параллельная сессия, 35744888) —
+    рука сбора (EXEC-ANAL не запускался НИ РАЗУ: 0 REV-analytics), честная доска,
+    дуга коррекции. Существо q1a закрыто ТАМ. Не перепланировать.
+  - `docs/plans/2026-07-21-growth-knob-autonomy.md` (эта сессия) — дельта: q2y
+    (ручки крутит машина + журнал «что покрутил») и роль без 27-го агента.
+  РАЗВИЛКА, снять одной строкой в начале след. сессии: параллельный план говорит
+  «машина ПРЕДЛАГАЕТ, Директор решает», q2y говорит «крутит сама». Предложение —
+  делить по обратимости: упаковка (title/desc/tags/thumb живого видео) и время
+  публикации = машина сама + журнал; тема/формат следующего эпизода = предложение;
+  публикация/деньги = Директор (§6). Журнал — та же series-scoped asset, не вторая.
+  Роль: НЕ новый агент. Мандат Head of Growth вешаем на EXEC-ANAL (читает/решает)
+  + EXEC-PUB (действует), скилл `head-of-growth` = playbook.
+  q3 → бэклог: Studio-only ручки через браузер (баннер `channelBanners.insert` 404
+  живьём 16.07, Community-посты, A/B превью, end screens, звуки Shorts) — API нет,
+  Claude in Chrome может, но ТОЛЬКО при Директоре в живом окне, не в кроне. Паркуем:
+  это косметика, не рычаг (тот же класс, что плейлисты и время публикации), плюс
+  серая зона ToS на живом канале.
+Verify: доки-онли — трио (tsc/тесты/replay) НЕ гонялось, кода не касались (§12 Ритуал 3).
+Next:   Снять развилку выше → затем Part 1/2 дельта-плана поверх параллельного.
+
 Date:   2026-07-21 (NEW PLANET ratified — Тео, Head of Growth + КОД, ===5===).
   PLANET = distribution autonomy + self-correction (`PLANET.md`, commit 2147f299).
   Taken when machine turns its OWN knobs within the ceiling. VIDEO region parked.
