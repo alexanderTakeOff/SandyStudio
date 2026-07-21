@@ -18,6 +18,23 @@ describe('appendParentBacklink', () => {
   it('is a no-op when the parent id is unknown', () => {
     expect(appendParentBacklink('desc', null)).toBe('desc');
   });
+
+  it('queues the catalogue behind the episode when a playlist is known', () => {
+    // Arrange / Act
+    const out = appendParentBacklink('desc', 'abc123', 'PL_XYZ');
+
+    // Assert — lands on the promised episode, with the rest queued after it.
+    expect(out).toContain('▶ Full episode: https://www.youtube.com/watch?v=abc123&list=PL_XYZ');
+  });
+
+  it('falls back to the bare watch URL when no playlist is configured', () => {
+    expect(appendParentBacklink('desc', 'abc123', null)).toContain('https://youtu.be/abc123');
+  });
+
+  it('stays idempotent with a playlist', () => {
+    const once = appendParentBacklink('desc', 'abc123', 'PL_XYZ');
+    expect(appendParentBacklink(once, 'abc123', 'PL_XYZ')).toBe(once);
+  });
 });
 
 describe('recutWindowMarker', () => {
