@@ -5660,3 +5660,6 @@ Issue, один злободневный... issue, один злободневн
 Дать Storyboarder доступ к тому же Start Notice === да
 Добавить non-blocking проверку утилизации резервуара в EXEC-SREV === кто увидит?  да 
 ===5===
+
+## 2026-07-21 16:32 · director-msg (hook) · NEW · (triage at distill)
+Self check-in for PR #41 (airport pt.2 training-inbox chore). Re-check PR #41 state, CI status, and mergeability. If nothing changed and no review comments, re-arm the next check-in silently without messaging the Director. Stop check-ins once merged/closed.
