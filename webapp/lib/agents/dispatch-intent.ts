@@ -18,6 +18,17 @@
 
 import { createHash } from 'node:crypto';
 
+/**
+ * Marker written into `jobs.error_message` when `jobs-stale-reaper` closes a row
+ * whose execution died (queue reset / worker loss) and releases the claim it was
+ * holding. Lives here, with the claim lifecycle, so both the reaper and the state
+ * matrix can read it without `lib/` taking a dependency on `inngest/`.
+ *
+ * Load-bearing: the state matrix excludes marked rows from the generation-failure
+ * count. A run that never executed is not evidence that the shot fails to render.
+ */
+export const REAPED_MARKER = '[QUEUE_RESET_ORPHAN]';
+
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '@/lib/supabase/types.gen';

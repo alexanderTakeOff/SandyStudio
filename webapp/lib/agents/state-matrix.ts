@@ -25,6 +25,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
 import { extractShotsFromStoryboard, excludedShotIdsFromEpisodeMeta } from '../api/animatic-shotlist';
 import { resolveReservedGates } from './production-plan';
+import { REAPED_MARKER } from './dispatch-intent';
 
 /** Per-shot production stages, in dependency order (upstream → downstream). */
 export const STAGE_ORDER = ['ref_plan', 'ref_image', 'shot_plan', 'video'] as const;
@@ -325,13 +326,21 @@ const AGENT_STAGE: Record<string, StageName> = {
  * shots in plain language — and so the reconciler's refire/HALT spine, which
  * keys off `failure_count`, counts what actually happened.
  *
- * The ledger is `jobs`, NOT the activity feed. Measured on E30 (2026-07-20): the
- * feed carried 235 of the 292 EXEC-VGEN failures — SH18 showed 50 of 84, SH27 48
- * of 69 — because the terminal activity row is best-effort (logEvent swallows its
- * own errors) while the job row is written by the factory on every run that gets
- * past the gate. Counting the feed hid every fifth failure and under-reported the
- * worst doom-loops by half, so `recovery_cap` was being compared against a number
- * that was systematically too small.
+ * The ledger is `jobs`, NOT the activity feed — but NOT for the reason the first
+ * version of this comment gave, and the correction is worth keeping.
+ *
+ * The claim was: "the feed carried only 235 of 292 EXEC-VGEN failures on E30, so it
+ * loses every fifth one." That was WRONG. The 57-row difference was not lost events —
+ * it was 57 GHOST job rows whose executions died with an Inngest queue reset and were
+ * flipped FAILED by a hand-run script. Every run that actually executed did write its
+ * terminal event: SH18's real count is 50, not 84. The feed was right; `jobs` was the
+ * one over-reporting.
+ *
+ * `jobs` is still the better source, for two narrower reasons: it is authoritative
+ * when `logEvent` fails (it swallows its own errors), and it lets the disjoint
+ * gate-blocked population below be added exactly once. But it must be read with the
+ * ghost filter, or it inflates `failure_count` — the number the reconciler compares
+ * against `recovery_cap` — on shots that never failed to render at all.
  *
  * Two DISJOINT populations, summed:
  *   - `jobs.status = 'FAILED'` — a run that started and died. `agent_id` gives the
@@ -363,13 +372,24 @@ async function loadGenerationFailures(
     // ── Population 1: the job ledger (complete) ──────────────────────────────
     const { data: jobRows } = await supabase
       .from('jobs')
-      .select('agent_id,input_snapshot')
+      .select('agent_id,input_snapshot,error_message,completed_at')
       .eq('episode_id', episodeId)
       .eq('status', 'FAILED');
     for (const row of (jobRows ?? []) as Array<{
       agent_id?: string | null;
       input_snapshot?: unknown;
+      error_message?: string | null;
+      completed_at?: string | null;
     }>) {
+      // A GHOST is not a generation failure. Two shapes, both meaning "this run
+      // never executed": reaped by jobs-stale-reaper (carries the marker), or
+      // killed by the old hand-run clear-zombie-jobs script (status flipped with
+      // neither completed_at nor error_message — a state markJobFailed cannot
+      // produce). Counting them would inflate `failure_count` toward the
+      // reconciler's recovery cap on shots that never actually failed to render:
+      // on E30 that was 57 phantoms, concentrated on SH18 and SH27.
+      if (row.error_message?.startsWith(REAPED_MARKER)) continue;
+      if (!row.completed_at && !row.error_message) continue;
       const stage = AGENT_STAGE[row.agent_id ?? ''];
       if (!stage) continue;
       const snap = (row.input_snapshot ?? null) as { shotId?: unknown } | null;

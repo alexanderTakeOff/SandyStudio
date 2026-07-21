@@ -38,6 +38,7 @@ import { execPaReact } from './functions/exec-pa-react';
 import { paEscalationTimer } from './functions/pa-escalation-timer';
 import { paOrphanedAwaitingSweep } from './functions/pa-orphaned-awaiting-sweep';
 import { paBatchStallWatchdog } from './functions/pa-batch-stall-watchdog';
+import { jobsStaleReaper } from './functions/jobs-stale-reaper';
 import { reconcileEpisodeFn } from './functions/reconcile-episode';
 import { reconcileCron } from './functions/reconcile-cron';
 import { episodeScorecard } from './functions/episode-scorecard';
@@ -84,6 +85,10 @@ export const functions = [
   // (FANOUT_RUNNING + idle → nudge Polina to continue). Complements the
   // awaiting-only safety nets above.
   paBatchStallWatchdog,
+  // 2026-07-21 — closes job rows whose execution died with an Inngest queue
+  // reset. They used to sit RUNNING forever holding the atomic dispatch claim,
+  // and only a hand-run script freed them (E30: 57 ghosts, swept by the Director).
+  jobsStaleReaper,
   // Фаза 2b — reconciler self-advance (inert unless the episode is armed).
   reconcileEpisodeFn,
   // Failure-spine Slice 4b — 5-min reconciler heartbeat over armed episodes

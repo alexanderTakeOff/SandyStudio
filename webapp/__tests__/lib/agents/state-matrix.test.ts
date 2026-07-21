@@ -11,6 +11,7 @@ import {
   renderStateMatrixMarkdown,
   STAGE_ORDER,
 } from '@/lib/agents/state-matrix';
+import { REAPED_MARKER } from '@/lib/agents/dispatch-intent';
 
 const EP = 'ep-1';
 
@@ -50,6 +51,33 @@ function vgenFailure(shotId: string, agentId = 'EXEC-VGEN') {
     episode_id: EP,
     agent_id: agentId,
     status: 'FAILED',
+    completed_at: '2026-07-04T03:00:00Z',
+    error_message: 'fal submit failed (500)',
+    input_snapshot: { shotId, episodeId: EP },
+  };
+}
+
+/** A job the reaper closed: its execution died with the queue, it never ran. */
+function reapedGhost(shotId: string) {
+  return {
+    episode_id: EP,
+    agent_id: 'EXEC-VGEN',
+    status: 'FAILED',
+    completed_at: '2026-07-04T04:00:00Z',
+    error_message: `${REAPED_MARKER} execution did not close within 90 min — presumed dead`,
+    input_snapshot: { shotId, episodeId: EP },
+  };
+}
+
+/** A job the OLD hand-run clear-zombie-jobs script killed: status flipped with
+ *  neither completed_at nor error_message — a shape markJobFailed cannot make. */
+function handSweptGhost(shotId: string) {
+  return {
+    episode_id: EP,
+    agent_id: 'EXEC-VGEN',
+    status: 'FAILED',
+    completed_at: null,
+    error_message: null,
     input_snapshot: { shotId, episodeId: EP },
   };
 }
@@ -197,6 +225,42 @@ describe('getEpisodeStateMatrix', () => {
     });
     const m = await getEpisodeStateMatrix(client, EP);
     expect(m.shots[0].stages.video.failure_count).toBe(2); // 1 job + 1 gate-block
+  });
+
+  // E30, 2026-07-21: 57 of 485 EXEC-VGEN rows were ghosts — their executions died
+  // with an Inngest queue reset and a hand-run script flipped them FAILED. Counting
+  // them as generation failures pushes `failure_count` toward the reconciler's
+  // recovery cap on shots that never actually failed to render.
+  it('does not count a reaped ghost as a generation failure', async () => {
+    const { client } = makeMockSupabase({
+      episodes: [{ id: EP, metadata: {} }],
+      assets: [storyboard(['SH18'])],
+      jobs: [vgenFailure('SH18'), reapedGhost('SH18'), reapedGhost('SH18')],
+    });
+    const m = await getEpisodeStateMatrix(client, EP);
+    expect(m.shots[0].stages.video.failure_count).toBe(1);
+  });
+
+  it('does not count a hand-swept zombie (no completed_at, no error) either', async () => {
+    const { client } = makeMockSupabase({
+      episodes: [{ id: EP, metadata: {} }],
+      assets: [storyboard(['SH27'])],
+      jobs: [vgenFailure('SH27'), handSweptGhost('SH27'), handSweptGhost('SH27')],
+    });
+    const m = await getEpisodeStateMatrix(client, EP);
+    expect(m.shots[0].stages.video.failure_count).toBe(1);
+  });
+
+  it('counts an episode of pure ghosts as ZERO failures, not as a doom-loop', async () => {
+    const { client } = makeMockSupabase({
+      episodes: [{ id: EP, metadata: {} }],
+      assets: [storyboard(['SH33'])],
+      jobs: [reapedGhost('SH33'), handSweptGhost('SH33'), reapedGhost('SH33')],
+    });
+    const m = await getEpisodeStateMatrix(client, EP);
+    const video = m.shots[0].stages.video;
+    expect(video.failure_count).toBeUndefined();
+    expect(video.blocked_reason).toBeUndefined();
   });
 
   it('does not double-count a failure present in BOTH jobs and the feed', async () => {
