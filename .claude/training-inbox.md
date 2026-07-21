@@ -1349,3 +1349,1598 @@ The failure depends on whether an APPROVED/LOCKED `VID-animatic` exists:
 Two secondary inconsistencies in the same predicate that can also exclude music: `newestApprovedMusic` uses exact `=== 'AUD-music'` (`:148`) while the rest of the codebase gate/upload guards use `.startsWith('AUD-music')` (`upload-music-direct/route.ts:96`, `next-events.ts:368`, `gate.ts:226`); and it never consults `staging_path`. Aligning `newestApprovedMusic` with `bakeApprovedMusic` (add `staging_path` fallback + `startsWith`) and making the skeleton injection also run/override on the real-animatic branch (or fixing the bake to target the *displayed* animatic version) is where a fix would go — but I've made no changes (read-only + plan mode).</result>
 <usage><subagent_tokens>83380</subagent_tokens><tool_uses>19</tool_uses><duration_ms>197832</duration_ms></usage>
 </task-notification>
+
+## 2026-07-17 08:55 · director-msg (hook) · NEW · (triage at distill)
+starting smoke new E30 .
+12:52 [agent_failed] Continuity Critic failed — EXEC-WCHK: Anthropic call failed: Expected fenced ```json block at end of response but none parsed (stop_reason=max_tokens, output 15385 chars) seems ilke critic has no knoleges about limits
+
+## 2026-07-17 09:16 · director-msg (hook) · NEW · (triage at distill)
+проверь - запусщены ли 01 и 01 через полину . тамтоже вышли две ошибки. но агенты не свалились. полина запустила потом рефф артиста на весь эпизод. но я остановиил. почитай чат и логи сервера
+
+## 2026-07-17 11:06 · director-msg (hook) · NEW · (triage at distill)
+q1y q2y q3y 
+Generation attempts (4)
+Click a variant to make it the approved reference
+attempt #1 · first · openai-edits-multi · 1536×1024 · $0.080#1first
+attempt #2 · auto-regen · openai-edits-multi · 1536×1024 · $0.080#2auto-regen
+attempt #3 · auto-regen · openai-edits-multi · 1536×1024 · $0.080#3currentauto-regen
+attempt #4 · auto-regen · openai-edits-multi · 1536×1024 · $0.080 этот слайс подтяни вверх к картинке во-первых, или даже лучше - выбеди на кебаб под строчкой где статус картинки - будет сразу видно и статус и три версии. 
+почему 4  появилось. самый большой вопрос. - в episode settings cup ref =3. проверь русло визуал критика - он как я помню должен читать первую и второй раз генерить если плохо совсем
+
+## 2026-07-17 11:26 · director-msg (hook) · NEW · (triage at distill)
+перегенерация не улучшает или делает это не всегда. поэтму я уточнял про визуала - он в работе сейчас? или пока на advice. " тело отрисовано непрозрачным тёмно-фиолетовым (канон требует прозрачное стекло)" - это фиолетовый бэкграунд виден сквозь стекло- сложно понять критику который сейчас. а какой вердикт бы вынес наш новый визуал-про? 
+отвечай всегда коротко- 5 строк на ответ
+
+## 2026-07-17 13:45 · director-msg (hook) · NEW · (triage at distill)
+это не ошибка генератора .  это ошибка того кто писал сценарий или дальше где-то. нельзя использовать термины с двойным смыслом. мы часто на этом спотыкаемся. adjust skill.
+
+## 2026-07-17 16:01 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>ad9f52d3b1e12bdac</task-id>
+<tool-use-id>toolu_01M63H89eN9ens3VTdxxPvaC</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\ad9f52d3b1e12bdac.output</output-file>
+<status>completed</status>
+<summary>Agent "Investigate preview thumbnail bug" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have traced the complete flow and confirmed the root cause. Here is my report.
+
+## Root cause: the drawer preview and the timeline use two different URL resolvers, and only the timeline's resolver falls through to the picked variant's distinct URL
+
+### The data flow when a thumbnail is clicked
+
+1. `AttemptsStrip` (EREFv2Sections.tsx:465–594) calls `onPromote(att)` → `promoteAttempt` in EpisodeAssetDrawer.tsx:526–545, which `POST /api/assets/{id}/regenerate-image` with `{ select_attempt: att.version }`, then calls `onChange()`.
+2. `onChange` in the timeline is `() =&gt; void mutate()` (EpisodeTimelineSection.tsx:997), which refetches `/api/episodes/{id}`. The drawer's `asset` prop **does** update — `refAsset = assetById.get(refAssetId)` (line 601) rebuilds from the fresh SWR data and re-passes `toEpisodeAsset(refAsset)` (line 994). So the asset prop is not stale.
+
+### 1. What the server changes on `select_attempt`
+
+In the `select_attempt` branch (regenerate-image/route.ts:308–411) — **no new asset row, and `image_prompt.current_version` is NOT touched**. It:
+- sets `metadata.shot_reference.selected_version = target.version` (route.ts:333–336)
+- repoints `staging_path = target.image_url`, `drive_path = target.image_url` (route.ts:372–373)
+- sets `drive_web_view_url: null` (route.ts:378) — done deliberately, see the comment at 374–377
+- sets `drive_file_id: target.drive_file_id ?? null` (route.ts:382) — **kept non-null** to preserve a Drive fallback (comment 379–381)
+- copies the chosen attempt's bytes onto the canonical `filename` on disk (route.ts:353–367)
+- status is untouched (stays APPROVED)
+
+### 2. What `resolvePreviewSrc` keys the drawer `&lt;img&gt;` off of
+
+Drawer renders `&lt;img src={previewSrc!}&gt;` (EpisodeAssetDrawer.tsx:618) where `previewSrc = resolvePreviewSrc(asset, currentPromptEntry)` (line 346).
+
+`resolvePreviewSrc` (asset-preview-resolver.ts:81–101) first tries `driveBackedMediaUrl(asset, freshness)`. `driveBackedMediaUrl` (lines 58–73) returns `/api/media/{assetId}?t={freshness}` whenever **`asset.id &amp;&amp; (asset.drive_file_id || asset.drive_web_view_url)`**. After a promote, `drive_web_view_url` is null but `drive_file_id` is still set, so this branch is taken and it returns the stable route.
+
+`freshness = previewFreshness(asset)` (lines 33–39) reads **`metadata.image_prompt.current_version`** (falling back to row `version`). **`select_attempt` changes neither** — so the query string is unchanged and the whole URL is byte-identical before and after the pick. DRAFT/`/api/media` responses carry `max-age=3600` (noted at resolver.ts:22–24), so the browser serves the cached OLD image. This field does **not** change on promote — that is the bug.
+
+### 3. Why the drawer doesn't refresh but the timeline does
+
+It's a **client-cached src URL that needs a cache-bust**, caused by the drawer and timeline reading via **two divergent resolvers**:
+
+- **Timeline** uses `bestRefImageUrl` (timeline-cell-resolver.ts:123–126):
+  ```js
+  if (ref.id &amp;&amp; ref.drive_web_view_url) return `/api/media/${ref.id}`;
+  return ref.drive_path || ref.staging_path || ref.drive_web_view_url || null;
+  ```
+  It gates the stable route **only on `drive_web_view_url`**. The server nulled that field, so the timeline **falls through to `drive_path` = `target.image_url`** — a distinct per-attempt URL — and updates correctly.
+
+- **Drawer** uses `driveBackedMediaUrl` (asset-preview-resolver.ts:66), which gates on **`drive_file_id || drive_web_view_url`**. The server keeps `drive_file_id` set, so the drawer never falls through — it returns `/api/media/{id}?t={current_version}`, an unchanged URL.
+
+The server author's fix at route.ts:374–381 reasoned only about `drive_web_view_url` (the timeline's key) and missed that the drawer's resolver also triggers on `drive_file_id`. So the fix landed for the timeline path and silently missed the drawer path.
+
+### 4. Precise minimal fix
+
+Make the drawer's cache-bust key change when a variant is picked. Since the server already copies the selected attempt's bytes onto the canonical filename, `/api/media/{id}` will serve the correct pixels the moment the URL's `?t=` differs. The cleanest single-point change is in **`webapp/lib/asset-preview-resolver.ts` → `previewFreshness`** (lines 33–39): fold `metadata.shot_reference.selected_version` into the returned freshness, e.g.
+
+```js
+export function previewFreshness(s) {
+  if (!s) return null;
+  const meta = s.metadata as { image_prompt?: {...}; shot_reference?: { selected_version?: number | null } } | null;
+  const base = typeof meta?.image_prompt?.current_version === 'number'
+    ? meta.image_prompt.current_version
+    : (typeof s.version === 'number' ? s.version : null);
+  const sel = meta?.shot_reference?.selected_version;
+  if (typeof sel === 'number') return base != null ? `${base}-sel${sel}` : `sel${sel}`;
+  return base;
+}
+```
+
+(`selected_version` exists on the contract — shot-reference.ts:266. The return type widens `number | null` → `string | number | null`; both consumers already stringify it via `driveBackedMediaUrl`'s `?t=${encodeURIComponent(String(freshness))}`.) This also fixes `pickPreview` in the CandidatesStrip (EREFv2Sections.tsx:331), which uses the same `previewFreshness`, and it preserves the intentional Drive fallback (`drive_file_id` stays set).
+
+Alternatives (inferior): in the server `select_attempt` branch, either bump `image_prompt.current_version`, or set `drive_file_id: null` so the drawer's `driveBackedMediaUrl` falls through to `drive_path` exactly like the timeline — but that discards the Drive fallback the route deliberately keeps (route.ts:379–381). The client `previewFreshness` change is the minimal fix that keeps both resolvers' intent intact.</result>
+<usage><subagent_tokens>109791</subagent_tokens><tool_uses>21</tool_uses><duration_ms>269115</duration_ms></usage>
+</task-notification>
+
+## 2026-07-17 16:16 · director-msg (hook) · NEW · (triage at distill)
+anchor_chain - это совсем другой режим . попиксельно сшивать - в целом опыт не обрадовал. сшивает. но иногда с потерей смысла. поэтому - ref
+2. а промпт писать соседей как раз не нужно (может ты оговорился) а вот дать соседей чтобы промпт вышел правильнее - может и есть смысл. 
+3.  actionPreview (120 симв.) - расскажи поподробнее. (если это вся длина того что входит в дизайнера как исходник для промпта (ну плюс каноны конечно) то имхо не на том экономим.
+
+## 2026-07-17 17:32 · director-msg (hook) · NEW · (triage at distill)
+SH15 получил CRIT3 - но я бы пропустил. форма потеряна не совсем - много слизи капает. в целом - мне  очень ОК.
+
+"SH17 — Сэнди отлично на модели, но кристалл в руке красный, а откалывался-то голубой шпиль (SH11-12). Мелкая ошибка непрерывности, критик её не поймал"--- а кто поймал? причина почему не дошёл цвет кристалла?
+
+кстати большие кристаллы на картинк sh18 тоже  красные а на других синие, может быть так по сценарию положено?
+эти все можешь утвердить от моего имени (кроме 17, в нем изучи сценарий -не красные ли. кто знает? сон всё-таки))
+
+Пока я за то чтобы ставить нижнюю планку 70 и Крит1  если я правильно понял таблицу 
+
+но давай прогоним ещё 10 и с большей статисиикой решим.
+
+## 2026-07-17 18:45 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a77cd1fabd562c78a</task-id>
+<tool-use-id>toolu_018R9NQpyrnz8MgyNMprbz2E</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\a77cd1fabd562c78a.output</output-file>
+<status>completed</status>
+<summary>Agent "Identity check batch A" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>SH01 | FAIL | hourglass double-bulb present but upper bulb reads as opaque milky white/grey glass — purple background not visible through the body
+SH02 | PASS | pinched-waist hourglass with clearly transparent upper bulb (purple background visible through the glass)
+SH03 | PASS | double-bulb hourglass silhouette intact, transparent glass upper bulb showing purple background through it
+SH04 | FAIL | hourglass shape holds but body is milky white/grey and non-transparent — background not visible through the glass
+SH05 | PASS | double-bulb hourglass with transparent upper bulb (dark purple seen through glass), gold sand in lower bulb
+SH06 | FAIL | hourglass silhouette present but body is dark/opaque — no background visible through it (transparency lost)</result>
+<usage><subagent_tokens>50333</subagent_tokens><tool_uses>6</tool_uses><duration_ms>41698</duration_ms></usage>
+</task-notification>
+
+## 2026-07-17 18:45 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>aefe33d381b4c2a2f</task-id>
+<tool-use-id>toolu_01TMY3hLZHHeNvNvkGyxF23y</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\aefe33d381b4c2a2f.output</output-file>
+<status>completed</status>
+<summary>Agent "Identity check batch B" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>SH07 | PASS | hourglass double-bulb intact, upper bulb transparent (purple background shows through), gold sand below
+SH08 | FAIL | hourglass silhouette present but upper bulb is opaque milky-grey glass — background not visible through the body
+SH09 | FAIL | extreme face close-up: hourglass double-bulb silhouette lost and body reads as opaque grey, not transparent
+SH10 | PASS | clear hourglass double-bulb, transparent upper bulb (background visible through), gold sand pooled below
+SH11 | PASS | hourglass double-bulb intact, upper bulb transparent with purple background showing through, gold sand below
+SH12 | FAIL | double-bulb present but body is opaque grey/silver — cannot see background through the glass</result>
+<usage><subagent_tokens>50343</subagent_tokens><tool_uses>6</tool_uses><duration_ms>42222</duration_ms></usage>
+</task-notification>
+
+## 2026-07-17 18:46 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>ad91893f3a2e136be</task-id>
+<tool-use-id>toolu_01PAQNSErgtWsuZSzyh5hvNR</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\ad91893f3a2e136be.output</output-file>
+<status>completed</status>
+<summary>Agent "Identity check batch C" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>SH13 | PASS | clear hourglass double-bulb with black cap; glass body shows eyes and gold sand inside the transparent bulbs
+SH14 | FAIL | body submerged so only a single bowl shows — double-bulb hourglass silhouette lost (reads as a lidded jar)
+SH15 | FAIL | opaque purple humanoid blob erupting from splash; no hourglass silhouette and no transparent glass body
+SH16 | FAIL | opaque purple pear/humanoid with a toothy face; hourglass double-bulb gone and body is solid, not transparent
+SH17 | PASS | full hourglass double-bulb, black rim cap, transparent glass with eyes and gold sand visible inside
+SH18 | PASS | intact hourglass double-bulb with black cap and rubber-hose limbs; transparent glass bulbs holding eyes and gold sand</result>
+<usage><subagent_tokens>50338</subagent_tokens><tool_uses>6</tool_uses><duration_ms>41657</duration_ms></usage>
+</task-notification>
+
+## 2026-07-17 18:46 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>ac80cacd2fc599327</task-id>
+<tool-use-id>toolu_01SwH5F14CGcVvvCHxidXw5C</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\ac80cacd2fc599327.output</output-file>
+<status>completed</status>
+<summary>Agent "Identity check batch D" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>SH19 | PASS | hourglass double-bulb intact, transparent glass upper bulb (purple visible through rim, eyes floating inside)
+SH20 | PASS | clear pinched double-bulb hourglass, glass body with eyes inside upper bulb and gold sand below
+SH21 | PASS | full hourglass silhouette, transparent glass bulbs with eyes floating inside, gold pooled low
+SH22 | PASS | double-bulb hourglass reads, transparent glass body with interior eyes and gold sand
+SH23 | PASS | hourglass bulbs with pinched waist, glassy transparent body (highlight streak, eyes inside)
+SH24 | PASS | clear two-bulb hourglass, transparent glass with eyes inside upper bulb and gold lower fill</result>
+<usage><subagent_tokens>50330</subagent_tokens><tool_uses>6</tool_uses><duration_ms>40725</duration_ms></usage>
+</task-notification>
+
+## 2026-07-17 18:47 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a20ab44b98aaa036a</task-id>
+<tool-use-id>toolu_011BHJ1hN9TmsnCAV4BeYgau</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\a20ab44b98aaa036a.output</output-file>
+<status>completed</status>
+<summary>Agent "Identity check batch E" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Judging identity only (double-bulb hourglass silhouette + transparent glass body), from the pixels:
+
+SH25 | FAIL | reads as a single opaque cream flask/beaker with a beak-like face — no double-bulb hourglass and body is solid, not transparent glass
+SH26 | PASS | stretched dive pose but two bulbs joined at a pinched waist read clearly; glassy body with gold sand visible inside and floating eyes
+SH27 | PASS | clean double-bulb hourglass silhouette; glass body with highlight streak, sand pooled inside, eyes inside upper bulb
+SH28 | PASS | strong hourglass double-bulb close-up; translucent glass body with visible internal sand and floating eyes
+SH29 | PASS | clear hourglass double-bulb silhouette; glass body with highlight and gold sand visible inside</result>
+<usage><subagent_tokens>48063</subagent_tokens><tool_uses>5</tool_uses><duration_ms>95167</duration_ms></usage>
+</task-notification>
+
+## 2026-07-17 19:13 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a9f57aaa9d03d61ec</task-id>
+<tool-use-id>toolu_0157z25V3knmaEzZXSoQ6id6</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\a9f57aaa9d03d61ec.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore reconciler + approve path" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete map. Here are my findings.
+
+## 1. The reconciler: `ref_image` REVIEW→APPROVED
+
+**`webapp/lib/agents/reconcile.ts`**
+
+`STAGE_HAS_CRITIC` — lines **32-37**:
+```ts
+const STAGE_HAS_CRITIC: Record&lt;StageName, boolean&gt; = {
+  ref_plan: true,
+  ref_image: false,   // ← rendered ref image is NOT critic-gated
+  shot_plan: true,
+  video: false,
+};
+```
+
+The decision core is `planReconcileActions(ctx)` (pure, no IO) at **lines 119-223**. The per-cell logic:
+- **Line 140**: only cells at `status === 'REVIEW'` are actionable.
+- **Lines 144-152**: STALE cells (`!cell.fresh`) → `wait`, never auto-approved.
+- **Line 154** `if (STAGE_HAS_CRITIC[stage])`: the critic-gated branch (ref_plan/shot_plan). Requires a PASS verdict (`PASS_VERDICTS` = `PASS`/`PASS_WITH_UNCERTAINTY`, line 80). On PASS it calls `resolveGateDecision('mechanical', governanceMode)` — advances in Mode 2/3, waits in Mode 1 (lines 156-174). REVISE/FAIL → `wait` or, past `criticCap`, `halt` (lines 175-191).
+- **Lines 200-222** — the `else` branch that governs **`ref_image`** (and `video`): "No enforcing critic → a CREATIVE artifact." It emits an `approve` action **only** when `resolveGateDecision('creative', governanceMode) === 'advance'`, i.e. **Mode 3 (DELEGATED) only**; Modes 1/2 → `wait`. The comment at lines 204-205 explicitly notes: "When VISUAL_CRITIC_ENFORCE lands, this stage gains a critic and moves to the mechanical branch above automatically" — this is the seam your new detector would flip (`ref_image: true`).
+
+`ReconcileAction` union is at **lines 45-53** (`approve | stitch | halt | wait | refire`). Note: `planReconcileActions` **does NOT emit events** — it returns actions. Event emission happens in the executor (section 4 below).
+
+Critic-signal collection: `collectCriticSignals()` at **lines 86-112** reads `REV-*` rows via `STAGE_BY_REV_FILE_TYPE` (lines 40-43, only `REV-ref_plan`/`REV-shot_plan` — there is no `REV-ref_image`).
+
+## 2. Artist insert path: `IMG-episode_ref` at REVIEW
+
+**`webapp/lib/agents/runners/episode-references.ts`**
+
+`finalVerdict` is decided in the retry loop, **lines 2330-2540**:
+- Declared at **2330**: `'APPROVE' | 'HUMAN_REVIEW' | 'REGENERATE_EXHAUSTED'`, default `HUMAN_REVIEW`.
+- **2517-2522**: KEEP-FIRST gate — `attemptClearsKeepBar(composite, criticalCount)` → `finalVerdict = 'APPROVE'`.
+- **2494**: checker skipped/failed → `HUMAN_REVIEW`.
+- **2539**: cap reached → `REGENERATE_EXHAUSTED` (keeps best attempt).
+
+The `shot_reference` object is built at **lines 2596-2618** (`ShotReferenceContract`): `contract`, `shot_id`, `shot_role`, `test_plan`, `generation_history`, `review: latestReview`, `retry_count`, `retry_history`, `final_4k_url`, `location_slug`, `frame_role`. Note **`selected_version` is NOT set here** — it's an optional field written later by the Director's manual pick (see type def §3).
+
+`legacyMeta` (the metadata written to the row) is **lines 2645-2679**: `provenance`, `image_prompt`, `source_bible_refs`, `anchor_image_asset_id`, `provider_used`, and `shot_reference: shotReference` (line 2678).
+
+The insert itself, **lines 2686-2705**: `file_type = IMG-episode_ref_${job.slug}` (built line 2582), `status: 'REVIEW'` (**line 2699**), `metadata: legacyMeta`.
+
+**`consistency_score`**: present only inside `shot_reference.review` (EREFReview). Hardcoded to `100` in the reviewer-failure fallback at **lines 2453** and in `approvePassReview` (eref-check.ts:111).
+
+**`on_model`**: does NOT exist anywhere in this reference/reconcile metadata flow. The only related token is `anatomy_on_model`, a check-area enum in a *separate* module `webapp/lib/agents/visual-verdict.ts:29` (the visual-shot-critic). So there is no on-model field on `IMG-episode_ref` today — this is greenfield for your detector.
+
+## 3. The `EREFReview` type
+
+Defined in **`webapp/lib/api/shot-reference.ts`** (not in eref-check.ts, which imports it):
+- `EREFReviewVerdict` — line **146**: `'APPROVE' | 'REGENERATE' | 'HUMAN_REVIEW'`.
+- `EREFReviewIssueArea` — lines **148-155**: `character_identity | emotion | action | composition | style | extraneous | gag`.
+- `EREFReviewSeverity` — line **157**: `'CRITICAL' | 'MAJOR' | 'MINOR'`.
+- `EREFReviewIssue` — lines **159-166**: `{ area, character_slug, severity, description, fix_hint }`.
+- **`EREFReview`** interface — lines **169-189**: `verdict`, `consistency_score` (0-100 identity vs Bible, line 172), `emotion_alignment_score`, `action_clarity_score`, `gag_readability_score` (nullable), `style_match_score`, `extraneous_objects[]`, `issues[]`, `suggested_prompt_v2`, `reviewer_model`, `reviewer_cost_usd`, `at`.
+
+**Composite score / CRIT count** are NOT fields on EREFReview — they're computed by `reviewComposite(review)` at **lines 201-212** (mean of non-null 0-100 scores; `criticalCount` = count of CRITICAL issues), with threshold `KEEP_ATTEMPT_SCORE_THRESHOLD = 85` (line 193) and gate `attemptClearsKeepBar()` (lines 215-217). They persist per-attempt as `composite_score` / `critical_count` on `GenerationAttempt` (lines 137-141) and are attached at episode-references.ts:2506-2508. `area: 'character_identity'` is the identity-drift issue area (line 149).
+
+## 4. Activity event emission (reuse target for a "bounce" event)
+
+The emitter is **`logEvent()`** in **`webapp/lib/api/events.ts`**, lines **37-63** (plus actionable/notify fan-out 65-79):
+```ts
+export async function logEvent(
+  supabase: ServerSupabaseClient,
+  input: ActivityEventInput,
+): Promise&lt;void&gt;
+```
+`ActivityEventInput` — lines **13-23**: `{ event_type, severity?, title, description?, actor?, episode_id?, asset_id?, job_id?, metadata? }`. It inserts into the `activity_events` table (line 53).
+
+The reconcile executor that *applies* actions and emits events is **`webapp/lib/agents/reconcile-execute.ts`** (imports `logEvent` at line 25). The action→event loop is **lines 148-213**:
+- **`approve`** (149-161): `executeApprove(...)` flips the asset APPROVED (function at lines 223+), then `logEvent({ event_type: 'reconcile/auto-approved', actor: 'exec-dir-ai', metadata: { shot_id, stage, asset_id, reason: 'RECONCILE_AUTO_APPROVE' } })`.
+- **`refire`** (164-185): `logEvent({ event_type: 'reconcile/refire', ... })`.
+- **`halt`** (186-210): `logEvent({ event_type: 'reconcile/halt', ... })` plus `raiseBlockerOnce(...)` routing to the Director inbox.
+
+A new "bounce" event would follow the exact `approve`/`halt` pattern here: add a `bounce` variant to the `ReconcileAction` union (reconcile.ts:45-53), emit it from `planReconcileActions` where the `ref_image` else-branch currently produces `approve`/`wait` (reconcile.ts:200-222), and handle it in this loop with a `logEvent({ event_type: 'reconcile/bounce', ... })` call.
+
+### Related files (not central but relevant)
+- `webapp/lib/agents/runners/eref-check.ts` — the AI reviewer producing `EREFReview` (`approvePassReview` 108-123, schema prompt 157-178, `character_identity` in `VALID_AREAS` 296-305, review assembly 382+).
+- `webapp/lib/agents/state-matrix.ts` — `EpisodeStateMatrix`, `StageName`, `cell.fresh`/`cell.status`/`failure_count` consumed by the reconciler.
+- `webapp/lib/agents/gate-decision.ts` — `resolveGateDecision('mechanical'|'creative', mode)` that gates each auto-approve.
+- `webapp/lib/agents/next-events.ts` — `computeNextEvents` / `stageRefireEvent` forward cascade.</result>
+<usage><subagent_tokens>52003</subagent_tokens><tool_uses>23</tool_uses><duration_ms>109724</duration_ms></usage>
+</task-notification>
+
+## 2026-07-17 19:14 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>acd90775914da2565</task-id>
+<tool-use-id>toolu_013auao2RkiXYqh5Z6xgs8eC</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\acd90775914da2565.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore vision-call + Bible canon" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete map. Here is my report.
+
+---
+
+# On-Model Detector — Existing Infrastructure Map
+
+There are **two independent vision-call paths** already in this codebase. Both are reusable; they differ in SDK, model-resolution, and output schema. Pick the one that matches your needs.
+
+## 1. Anthropic vision call infrastructure
+
+### Path A (native Anthropic SDK) — `webapp\lib\agents\providers\anthropic-vision.ts`
+The primary reusable adapter. Sends text + base64-image content blocks to Claude and parses a fenced JSON block.
+
+- **Signature** (lines 46–48): `export async function generateAnthropicVision(input: AnthropicVisionInput): Promise&lt;AnthropicTextResult&gt;`
+- **Input interface** (lines 33–44): `{ systemPrompt, leadText?, images: VisionImage[], trailText?, model, maxOutputTokens?, expectsJson? }`
+- **Image type** (lines 22–31): `VisionImage = { base64: string (NO data: prefix), caption?: string, mediaType?: 'image/png'|'image/jpeg'|... }`
+- **How image is passed** (lines 64–76): iterates `input.images`, pushes an optional `{type:'text'}` caption then `{type:'image', source:{type:'base64', media_type, data: img.base64}}`. Base64, not URL. Order = leadText → images(+captions) → trailText.
+- **Model id** (line 88, `model: input.model`): NOT hardcoded here — the caller passes it. (But see the caveat below about the caller hardcoding.)
+- **API key** (line 49): `process.env.ANTHROPIC_API_KEY`.
+- **Structured JSON parse** (lines 112–120): when `expectsJson`, calls `extractLastJsonBlock(markdown)` (imported from `anthropic-text.ts`), throws `AnthropicTextError` if none parsed.
+- Reuses `computeCostUsd`, `extractLastJsonBlock`, `AnthropicTextError`, `AnthropicTextResult` from `anthropic-text.ts` (line 15–20).
+
+Supporting helpers live in `webapp\lib\agents\providers\anthropic-text.ts`:
+- `extractLastJsonBlock(markdown)` (lines 215–230): regex `/```json\s*([\s\S]+?)```/g`, takes the **last** block, `JSON.parse`, returns `Record&lt;string,unknown&gt; | null`.
+- `computeCostUsd(usage, model)` (lines 183–205) with prefix-matched `MODEL_RATES` (lines 154–163).
+- `AnthropicTextResult` shape (lines 106–127): `{ markdown, body, costUsd, model, stopReason, usage, provider }`.
+
+### Path B (OpenAI-SDK-shaped, multi-provider) — `webapp\lib\agents\visual-verdict.ts`
+The post-render "Visual Critic — the factory's EYES". Uses the OpenAI SDK pointed at OpenAI / Gemini / Anthropic base URLs by model prefix.
+
+- **Core fn** (lines 80–123): `runVisualVerdict({ frames: string[] (base64 PNGs), contract: unknown, styleCanon: string, locationCanon?: string, model: string }): Promise&lt;VisualVerdict&gt;`
+- **Provider inference** (lines 63–72, `visionClient(model)`): `claude*` → OpenAI client with `baseURL='https://api.anthropic.com/v1/'` + `ANTHROPIC_API_KEY`; `gemini*` → Gemini base; else OpenAI. (`GEMINI_BASE`/`ANTHROPIC_BASE` at lines 21–22.)
+- **Image passing** (lines 108–111): `content: [{type:'text'}, ...frames.map(b64 =&gt; ({type:'image_url', image_url:{url: 'data:image/png;base64,'+b64}}))]` — data-URL, not native block.
+- **Output parse** (lines 116–122): regex `/\{[\s\S]*\}/` then `JSON.parse`, validates a `verdict` field.
+- **System prompt = a skill file**: `loadRubric()` (lines 56–61) reads `.claude/skills/visual-shot-verdict/SKILL.md` (path resolver lines 46–54).
+- **Verdict schema** (lines 24–43): `VisualVerdict = { verdict:'PASS'|'REVISE'|'FAIL', findings: VisualFinding[], summary }`; `VisualFinding = { check, severity, character?, what_seen, what_expected }`.
+
+### Model-id resolution from config/env (Path B) — `webapp\lib\api\visual-critic-provider-config.ts`
+This is the series-agnostic, config-driven resolver you should mirror (Path A does NOT do this — see caveat):
+- `resolveVisualCriticModel(supabase)` (lines 99–106): persisted override → env default, fail-open.
+- `getVisualCriticOverride` (lines 69–78): reads `app_config` where `scope='visual_critic'`, `key='model'`.
+- `visualCriticDefault()` (lines 55–59): `process.env.VISUAL_CRITIC_MODEL` || `'gpt-5.6-terra'`.
+- `VISUAL_CRITIC_CATALOG` (lines 40–48): vision-capable models incl. `anthropic:claude-opus-4-8`, `anthropic:claude-sonnet-5`. Note the runtime comment (lines 37–39): on hard geometry/on-model checks **claude-opus-4-8 reliably caught defects where gpt-5.6-terra flip-flopped**.
+
+**CAVEAT — the EREF critic hardcodes its model.** In `eref-check.ts` line 34: `export const EREF_CHECK_MODEL = 'claude-sonnet-4-6';` passed directly to `generateAnthropicVision`. So Path A (native adapter) is currently invoked with a **hardcoded** model, while Path B resolves from `app_config`. If you want config-driven model selection, mirror `visual-critic-provider-config.ts`, not the eref-check constant.
+
+## 2. The EREF critic that produces `consistency_score` — `webapp\lib\agents\runners\eref-check.ts`
+
+This is the EREF/episode-reference designer critic you described (EXEC-EREF-CHECK).
+- **Entry** (lines 335–410): `runEREFCheck(args: RunEREFCheckArgs): Promise&lt;EREFCheckResult&gt;`.
+- **Args** (lines 54–85): `candidateImageB64`, `testPlan: ShotTestPlan`, `bibleRefs: ReviewBibleRef[]`, `episodeCode`, `shotId`, optional `planIntent{prompt, negativeList}`.
+- **`ReviewBibleRef`** (lines 45–52): `{ slug, kind:'character'|'location'|'style'|'object', image_b64: string|null, description }` — **keyed by kind, series-agnostic**, no hardcoded character.
+- **Vision call** (lines 362–370): `generateAnthropicVision({ systemPrompt, leadText, images, trailText, model: EREF_CHECK_MODEL, maxOutputTokens: 2000, expectsJson: true })`.
+- **Image ordering** (`buildVisionImages`, lines 259–275): Bible refs FIRST (each captioned `# Bible reference: &lt;kind&gt; "&lt;slug&gt;" (LOCKED canon)`), candidate LAST (`# CANDIDATE image — ... Score this.`).
+- **System prompt with JSON schema** (`buildSystemPrompt`, lines 131–180): five 0-100 axes incl. `consistency_score` ("identity match vs Bible refs"), verdict enum `APPROVE|REGENERATE|HUMAN_REVIEW`, structured `issues[]`.
+- **Parse &amp; coerce** (lines 380–407): `clampScore` (lines 291–294), `coerceVerdict` (306–309), `coerceIssues` (316–331) → builds `EREFReview`.
+- **Skip-fallback pattern** (lines 108–127, 335–347): no `ANTHROPIC_API_KEY` or no refs → returns `buildSkipped()` with an all-100 APPROVE `EREFReview` so an outage never blocks production. Worth mirroring.
+
+The `EREFReview` verdict type (with `consistency_score`) is defined in `webapp\lib\api\shot-reference.ts` lines 169–189; verdict/area/severity enums lines 146–166; `ShotTestPlan` lines 53–69.
+
+## 2b. The designer runner — `webapp\lib\agents\runners\episode-reference-designer.ts`
+Note: this file is the **DESIGNER (planning) phase only** — a pure Sonnet *text* call (`generateAnthropicText`, lines 1001–1007), it does **not** make a vision call and does not invoke the critic. Contract/model constants lines 64–86. It reads the Bible via `formatBibleForPrompt(bible)` (line 514) and stores a Plan JSON (`body`, lines 1101–1113). The **critic invocation** and image-loading happen in the executor `episode-references.ts` (below), which calls `runEREFCheck`. The design→critic wiring you asked about is: `episode-references.ts` builds `ReviewBibleRef[]` + candidate b64 → `runEREFCheck` → stores `EREFReview` per generation attempt (`GenerationAttempt.review`, shot-reference.ts lines 137–141).
+
+## 3. Reading series/character Bible canon at runtime (series-agnostic, by ROLE)
+
+### Text canon loader — `webapp\lib\agents\bible-loader.ts`
+- `loadSeriesBibleCanon(supabase, episodeId): Promise&lt;SeriesBibleCanon&gt;` (lines 92–162): resolves series via `seriesIdForEpisode`, queries `assets` where `series_id=…`, `status='LOCKED'`, `file_type like 'SBL-%'`. Splits by prefix into `characters` (`SBL-character_`), `locations` (`SBL-location_`), `styles` (`SBL-style_`), `objects` (`SBL-object_`) — lines 129–146. **Scoped to episode cast** via `loadEpisodeCastSlugs`/`scopeToCast` (lines 126–146) so canon is per-episode, never hardcoded.
+- `SeriesBibleCanon` / `BibleEntry` types: lines 40–59 / 28–38. Each entry has `slug` (from `bibleSlug(file_type)`), `description`, `content`, `drive_web_view_url`.
+- `formatBibleForPrompt(canon)` (lines 171–265): renders per-role markdown (Characters / Locations / Objects / Style) using `slug` as the heading. This is the text-side identity rubric source; build your identity canon from `canon.characters[]` by slug/role.
+
+### Bible reference IMAGE loader (base64, by slug) — `webapp\lib\agents\runners\episode-references.ts`
+- `loadBibleCanon(supabase, seriesId, castSlugs)` (lines 286–320): same `SBL-%` + `LOCKED` query but selects `staging_path, drive_web_view_url` too, returns image-bearing `BibleAssetLike[]` per role, cast-scoped (`inCast`, lines 309–313).
+- Character resolution **by slug (role-agnostic)**: `charBySlug` map keyed by `nameFromBibleFilename` = `bibleSlug(file_type)` (lines 444–448, 283–284). Shot characters matched by `bible_slug` with fuzzy fallback (lines 508–514). No "Sandy" literal anywhere — everything flows through `SBL-character_&lt;slug&gt;`.
+- **Loading a canonical reference image to base64**: `loadBibleImage(asset)` (lines 427–433) → `readAssetMediaAsBase64({ filename, driveFileId, stagingPath })` in `webapp\lib\media-cache.ts` line 137. Cached per-asset via `getCachedImage` (lines 466–473).
+- These become the `ReviewBibleRef.image_b64` fed to the critic (`reviewerBibleRefs`, lines 806–812; `bibleRefs.push(... image_b64 ...)`, lines 583–620).
+
+### Location/style canon for the vision critic (Path B) — `webapp\lib\agents\visual-verdict.ts`
+Series-agnostic DB helpers you can reuse directly:
+- `loadStyleCanon(supabase, seriesId)` (lines 159–169): `SBL-style%` APPROVED/LOCKED content.
+- `loadLocationCanon(supabase, seriesId, locationSlug)` (lines 179–198): fuzzy `SBL-location%&lt;slug&gt;%`, returns an explicit "(no location canon…)" sentinel when absent (lines 194–196) so the model doesn't hallucinate a spec.
+- `loadShotContract(supabase, episodeId, shotId)` (lines 126–156): pulls the shot's JSON from the APPROVED storyboard.
+
+## 4. Structured-output schema patterns to mirror for `{silhouette_ok, transparency_ok, verdict, reason}`
+
+Two established patterns — **no zod is used for LLM verdicts** anywhere in `lib/agents` (zod appears only in API route request validation, e.g. `webapp\lib\api\zod-helpers.ts`; the LLM verdict path is plain TS interfaces + manual coercion):
+
+**Pattern 1 — fenced-JSON-in-system-prompt + manual coercion (recommended, matches EREF):**
+- Schema declared as a literal `json` block inside the system prompt: `eref-check.ts` `buildSystemPrompt` lines 157–178.
+- Output parsed by `generateAnthropicVision(..., expectsJson:true)` → `extractLastJsonBlock`.
+- Each field defensively coerced: `clampScore` (eref-check.ts 291–294), `coerceVerdict` (306–309, defaults to a safe value), `coerceSeverity` (311–314), array guards (394–398). Mirror this: coerce `silhouette_ok`/`transparency_ok` to booleans, `verdict` to an enum whitelist, `reason` to a string slice.
+- TS interface as the return contract: `EREFReview` in `shot-reference.ts` lines 169–189.
+
+**Pattern 2 — regex-extract + minimal validation (matches visual-verdict):**
+- `VisualVerdict` interface: `visual-verdict.ts` lines 39–43.
+- Parse: lines 116–122 (`/\{[\s\S]*\}/` → `JSON.parse` → assert `verdict` present → default `findings` to `[]`).
+- The rubric/schema lives externally in the `visual-shot-verdict` SKILL.md (loaded as system prompt), so the schema is editable without a code change.
+
+For a `{silhouette_ok, transparency_ok, verdict, reason}` output, Pattern 1 (native `generateAnthropicVision` + `expectsJson` + a small coercion block returning a typed interface) is the closest existing template and gives you Bible-image attachment for free via `VisionImage[]`.
+
+## Quick reference — file paths
+- `webapp\lib\agents\providers\anthropic-vision.ts` — native Anthropic vision adapter (base64 blocks, JSON parse).
+- `webapp\lib\agents\providers\anthropic-text.ts` — `extractLastJsonBlock`, `computeCostUsd`, `AnthropicTextResult`, error type.
+- `webapp\lib\agents\runners\eref-check.ts` — the `consistency_score` critic; skip-fallback; JSON schema in prompt; coercion.
+- `webapp\lib\agents\runners\episode-reference-designer.ts` — designer/planner (text-only; no vision).
+- `webapp\lib\agents\runners\episode-references.ts` — executor: builds `ReviewBibleRef[]` (base64) + invokes `runEREFCheck`; `loadBibleCanon`, `loadBibleImage`.
+- `webapp\lib\agents\bible-loader.ts` — `loadSeriesBibleCanon` / `formatBibleForPrompt` (role-keyed, cast-scoped, series-agnostic).
+- `webapp\lib\agents\visual-verdict.ts` — multi-provider vision critic; `loadStyleCanon`/`loadLocationCanon`/`loadShotContract`; `VisualVerdict` schema.
+- `webapp\lib\api\visual-critic-provider-config.ts` — **config/env model resolution** (`resolveVisualCriticModel`, `app_config` scope `visual_critic`).
+- `webapp\lib\api\shot-reference.ts` — `EREFReview`/`ShotTestPlan`/verdict enums.
+- `webapp\lib\media-cache.ts` line 137 — `readAssetMediaAsBase64` (asset → base64).
+- `.claude\skills\visual-shot-verdict\SKILL.md` — externalized vision rubric (loaded as system prompt by Path B).</result>
+<usage><subagent_tokens>96251</subagent_tokens><tool_uses>23</tool_uses><duration_ms>144002</duration_ms></usage>
+</task-notification>
+
+## 2026-07-17 19:15 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a1b6964017dd4d34c</task-id>
+<tool-use-id>toolu_013xLvhCNGsecTo5QDJhuNbL</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\a1b6964017dd4d34c.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore settings slider + pickBest" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything mapped. Here is the complete end-to-end report.
+
+---
+
+# Search Report: strictness slider + transformation-aware exception
+
+## 1. `reference_regen_cap` — full end-to-end trace (the pattern to mirror for `on_model_strictness`)
+
+This setting flows UI → API → metadata → runner. Five touch-points:
+
+**(a) Default reader / env fallback + metadata resolver** — `webapp\lib\agents\chain-flags.ts`
+- Lines **142-161**: doc-block for the three per-episode caps + the generic `capFromMetadata(metadata, key, envDefault)` helper (reads `metadata[key]`, coerces number/string, falls back to `envDefault()`).
+- Lines **172-179**: the pair to copy verbatim:
+```ts
+export function referenceRegenCap(): number {
+  const v = process.env.REFERENCE_REGEN_CAP;
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  return Number.isFinite(n) &amp;&amp; n &gt; 0 ? n : 2;
+}
+export function resolveReferenceRegenCap(metadata: unknown): number {
+  return capFromMetadata(metadata, 'reference_regen_cap', referenceRegenCap);
+}
+```
+Note: `capFromMetadata` is numeric-only. `on_model_strictness` is an **enum** (`loose|medium|strict`), so you'd need a string analogue (a `resolveOnModelStrictness(metadata)` returning the enum with a default), not `capFromMetadata` directly.
+
+**(b) Written at episode creation as a real default** — `webapp\app\api\episodes\route.ts`
+- Lines **95-110**, the `epMetadata` object seeded on every new episode:
+```ts
+const epMetadata = {
+  concierge_cap_usd: conciergeBudgetCapConfig().capUsd,
+  prompt_revision_cap: promptRevisionCap(),
+  reference_regen_cap: referenceRegenCap(),   // line 105
+  video_regen_cap: videoRegenCap(),
+  reconciler_armed: armForMode(body.governance_mode),
+};
+```
+This metadata object is then written into the `episodes` insert payload (`epPayload`, line 112+).
+
+**(c) API PATCH/GET validation + persistence** — `webapp\app\api\episodes\[id]\settings\route.ts`
+- Zod whitelist `Body` (`.strict()`, unknown keys → 400), line **80**: `reference_regen_cap: z.number().int().positive().max(20).nullable().optional(),` (siblings at 79/81).
+- Patch application, line **156**: `if (body.reference_regen_cap !== undefined) patch.reference_regen_cap = body.reference_regen_cap;` (siblings 155/157).
+- Merge into `episodes.metadata` JSON column: lines **203-218** (`newMeta = {...currentMeta, ...patch}`, idempotent update, audit `logEvent` at 224-234).
+- GET hydrate endpoint returns `metadata` as-is, lines **248-267**.
+- For an enum field you'd add `on_model_strictness: z.enum(['loose','medium','strict']).nullable().optional()` to `Body` and one `patch.on_model_strictness = ...` line. No cross-field validation needed (like the caps, comment at 154).
+
+**(d) Episode Settings UI** — `webapp\components\episode\EpisodeSettingsCard.tsx`
+- Default consts, lines **66-68**: `DEFAULT_PROMPT_REVISION_CAP = 2` etc.
+- Generic metadata reader `readCap(meta, key)`, lines **69-73**.
+- State init from `initialMetadata`, lines **95-103** (`refCapInput` at 98-100).
+- Refetch/hydrate in `useEffect`, lines **114-150** (ref cap at 136-138).
+- Save handler `saveCaps()`, lines **199-237** — validates 1–20, PATCHes `{prompt_revision_cap, reference_regen_cap, video_regen_cap}` (body at 222-226).
+- Rendered control: the "Retry caps" block, lines **453-509**; the "Рефы" number input bound to `refCapInput` at **474-486**, "Save caps" button at 500-507.
+- The existing **pipeline_mode** control (lines **339-366**) is the closest UI precedent for an *enum segmented-button* setting (loose/medium/strict), rather than a number input. It uses `readPipelineMode` from `webapp\lib\api\pipeline-mode.ts` and a 2-value button group — mirror that for a 3-value strictness slider.
+
+**(e) Consumed in the runner** — `webapp\lib\agents\runners\episode-references.ts`
+- Line **1959**: `const maxRetries = resolveReferenceRegenCap(ep?.metadata);` (episode metadata read off `inputs.episode`, shape typed inline at 1945-1953 including `metadata?: unknown`).
+- Import at line **104** area (`resolveReferenceRegenCap` pulled from chain-flags).
+
+**Label-bug note (from PLAN.md 68-75):** `reference_regen_cap` = "regens OVER the first", so the loop `for (retry=0; retry&lt;=maxRetries; retry++)` gives `cap+1` passes (default 2 → 3 attempts). Semantics are self-consistent; only the UI label historically lied. Relevant if you copy the doc text.
+
+---
+
+## 2. `pickBestAttempt` + `KEEP_ATTEMPT_SCORE_THRESHOLD` — already in CRIT-first state
+
+**Definition** — `webapp\lib\api\shot-reference.ts`:
+- Line **193**: `export const KEEP_ATTEMPT_SCORE_THRESHOLD = 85;`
+- Lines **201-212**: `reviewComposite()` — mean of non-null 0-100 sub-scores + `criticalCount`.
+- Lines **214-217**: `attemptClearsKeepBar(composite, criticalCount)` = `criticalCount === 0 &amp;&amp; composite &gt;= 85`.
+- Lines **219-245**: `pickBestAttempt(attempts)` — **CRIT-first ranking is already implemented**:
+```ts
+const aCrit = a.critical_count ?? 0;
+const bCrit = best.critical_count ?? 0;
+if (aCrit &lt; bCrit) best = a;                                              // fewer CRITICAL wins first
+else if (aCrit === bCrit &amp;&amp; (a.composite_score ?? -1) &gt; (best.composite_score ?? -1)) best = a;  // then higher composite
+```
+Ties resolve to the **earlier** attempt (loop keeps `best` unless strictly better). Doc-block at 219-229 cites the E30 SH13 bug (2026-07-17) that motivated CRIT-first.
+
+**The scored fields** live on `GenerationAttempt` — `shot-reference.ts` lines **106-142** (`review?`, `composite_score?`, `critical_count?` at 137-141).
+
+**Consumers** — `webapp\lib\agents\runners\episode-references.ts`:
+- Import line **104**.
+- Keep-first/keep-best doc-block lines **2317-2321**.
+- Cap-reached branch, lines **2534-2543**: `const best = pickBestAttempt(generationHistory) ?? attempt;` (line 2540) → `finalVerdict = 'REGENERATE_EXHAUSTED'`.
+
+**Commit confirmed:** `a87d4a83 fix(eref): keep-best ranks clean over high-scoring (CRIT-first)` is the HEAD-most change to `shot-reference.ts` (prior: `5b8f9f69` added keep-first/keep-best). So #2 is done — no action needed beyond awareness.
+
+**Tests** — `webapp\__tests__\lib\api\shot-reference-keepbest.test.ts` (imports `pickBestAttempt`, `KEEP_ATTEMPT_SCORE_THRESHOLD`, `attemptClearsKeepBar`; CRIT-first cases at lines 105, 110, 115).
+
+---
+
+## 3. Transformation marker on a storyboard shot — **DOES NOT EXIST**
+
+I searched `specs/**`, `webapp/**/*.ts`, storyboard schema, and the runtime shot-parsing paths. There is **no** `transformation`, `gloop`/`Gloop`, `morph`, `shapeshift`, or off-model-expected flag anywhere in the shot schema or shot metadata.
+
+Evidence:
+- **Shot schema spec** — `specs\schemas\shot.md` (single-shot YAML schema, lines **34-112**). Fields present: `shot_id, scene_id, camera_angle/movement, location, characters_present, action, mood, comic_beat, is_punchline, vertical_safe, landscape_only, props_in_frame, special_effects, style_notes, status`. **No transformation field.** The closest expressive escape hatches are `special_effects` (line 102) and `style_notes` (line 104, *"any deviation from standard style bible for this shot… e.g. 'silhouette only, backlit'"*) — both free-text, not a structured/queryable flag.
+- **Runtime shot fields actually consumed** — `webapp\lib\agents\runners\episode-reference-designer.ts` lines **547-554**: `shot_role, camera_angle, duration_seconds, action_prose (?? action ?? key_beat), expected_gag, expected_emotion, characters_present`. No transformation field read.
+- **Storyboard shot parsing is untyped/loose** — `webapp\lib\agents\runners\storyboarder.ts` emits shots as a JSON block; parsers only pull `shot_id`. E.g. `webapp\lib\api\eref-shot-invariant.ts` lines **33-62** (`interface StoryboardShot { shot_id: string }`), and `webapp\lib\agents\visual-verdict.ts` `loadShotContract()` lines **126-156** returns the raw shot object as `unknown`. There is **no zod schema** for storyboard shots — they are free-form JSON in the STB asset `content`.
+- The only `transform`/`off-model` hits in `webapp` are unrelated: CSS transforms and the vision-critic's `anatomy_on_model` check (see below).
+
+**Implication for your feature:** a transformation-aware exception has **no existing marker to key off**. You would need to introduce one — either a new structured shot field (e.g. `transformation: string | boolean` in the STB JSON + storyboarder prompt), or a naming convention detector (e.g. `Gloop-&lt;char&gt;`) parsed from `characters_present`/`action_prose`. Neither exists today. The naming-convention route matches the `"Gloop-Sandy"` hint in PLAN.md line 37 and needs zero schema change, but relies on prose parsing.
+
+---
+
+## 4. Where the on-model gate / detector plugs in (context for the strictness slider consumer)
+
+The strictness slider is meant to feed the new on-model detector gate. Current state of that surface:
+
+- **Vision critic core** — `webapp\lib\agents\visual-verdict.ts`:
+  - `VisualFinding.check` enum includes `'anatomy_on_model'` (line **29**) and `severity: 'critical'|'major'|'minor'` (line 33).
+  - `VisualVerdict` = `{ verdict: 'PASS'|'REVISE'|'FAIL', findings, summary }` (lines **39-43**).
+  - `runVisualVerdict()` (lines 80-123) runs the `visual-shot-verdict` rubric skill against rendered frames. `loadStyleCanon` (158-169) / `loadLocationCanon` (179-198) supply Bible canon. This is the "5 blind agents / strict rubric" detector referenced in PLAN.md 32-35.
+- **In-pipeline runner** — `webapp\lib\agents\runners\visual-shot-critic.ts` (exists; wraps `visual-verdict.ts`).
+- **The gap the PLAN describes (lines 28-31):** the reconciler auto-approves REVIEW→APPROVED unconditionally; `reconcile.ts:32 STAGE_HAS_CRITIC.ref_image = FALSE` means the visual verdict is **not wired to approval**. A strictness slider would be read (via a new `resolveOnModelStrictness(ep.metadata)`) at that gate to pick the PASS/FAIL threshold, and the transformation exception (#3) would suppress the silhouette-based FAIL for declared-transformation shots.
+
+---
+
+## 5. Episode-metadata typing/validation — where a new field is declared correctly
+
+There is **no single central zod type** for `episodes.metadata` — it is the Supabase `Json` column. Validation is **whitelist-at-the-write-boundary**:
+
+- **Authoritative validator:** the `Body` zod schema in `webapp\app\api\episodes\[id]\settings\route.ts` lines **55-90** (`.strict()`). This is the *only* place a Director-settable metadata key is typed. **A new `on_model_strictness` field must be added here** (plus the one `patch.` line at ~157) or PATCH will 400.
+- **Creation defaults:** `webapp\app\api\episodes\route.ts` lines **102-110** (`epMetadata`) — add the default here so episodes are born with a value (mirrors `reference_regen_cap` at 105).
+- **Read/resolve helpers:** `webapp\lib\agents\chain-flags.ts` — add a `resolveOnModelStrictness(metadata)` next to `resolveReferenceRegenCap` (172-179); note `capFromMetadata` (156-161) is numeric-only, so an enum needs its own coercion.
+- **UI reader:** `EpisodeSettingsCard.tsx` `readCap` (69-73) is numeric; for the enum mirror the `readPipelineMode` pattern (imported line 22 from `webapp\lib\api\pipeline-mode.ts`) which is the existing enum-metadata reader.
+
+Other episode-metadata keys already living in this same untyped-column/whitelist pattern (useful precedents): `anchor_chain_enabled`, `pipeline_mode`, `budget_approved`, `concierge_cap_usd`, `prompt_revision_cap`, `reference_regen_cap`, `video_regen_cap`, `generation_config`, `delivery_targets`, `reconciler_armed`.
+
+---
+
+### Summary of what to create vs. reuse
+- **Reuse/extend (enum, not number):** `chain-flags.ts` resolver pair, `settings/route.ts` Body + patch, `episodes/route.ts` default, `EpisodeSettingsCard.tsx` control (model it on `pipeline_mode`, not the numeric caps).
+- **Already done:** `pickBestAttempt` CRIT-first + `KEEP_ATTEMPT_SCORE_THRESHOLD=85` (commit a87d4a83) — no work.
+- **Missing entirely — must be invented:** any storyboard transformation marker. No `transformation`/`gloop`/`transform` field or flag exists in the shot schema or runtime shot object; the shot JSON has no zod schema at all. Choose between a new structured STB field vs. a `Gloop-&lt;char&gt;` naming-convention detector.</result>
+<usage><subagent_tokens>80324</subagent_tokens><tool_uses>34</tool_uses><duration_ms>186678</duration_ms></usage>
+</task-notification>
+
+## 2026-07-18 03:34 · director-msg (hook) · NEW · (triage at distill)
+запустила полина fanoutShots . вопрос она запускает по 4 кадра за раз. боимся что провайдер откажет если сразу много. но это долго получается. а ты быстро как то делал (по моим ощущеням) . как ускорять такие процессы? нам ведь с массовой обработке по-моему только генератор картинки и видео отказывал. но могу заблуждаться. расскажи как ты гнал 10. по одному? параллельно?
+
+## 2026-07-18 04:19 · director-msg (hook) · NEW · (triage at distill)
+спальня есть в канонах - это полина не дотянула в каст (поправь аккуратно ручками в базе подумать только как правильно ставить локации если их несколько). но проблема в другом!."on-model судит личность Сэнди" а надо чтобы все каноны проверял.
+ параллельно запусти агента - у меня на лэптопе не запускается composer - скорее всего то-то что было с ffmpeg - не установлен. проверь пофикси.
+
+## 2026-07-18 04:26 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a8b9b0d195122eaf9</task-id>
+<tool-use-id>toolu_01M5XLmUFTDHJcQiwSRyuTTh</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\a8b9b0d195122eaf9.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix composer/ffmpeg on laptop" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Let me summarize my findings.
+
+## Report
+
+### What "composer" is
+"Composer" is the studio's UI/display name for **EXEC-MGEN**, the music-generation agent — not a standalone binary. Confirmed in:
+- `webapp/lib/api/agent-names.ts:34` → `'EXEC-MGEN': 'Composer'`
+- `webapp/lib/api/pipeline-stages.ts:215` → stage `music_generator`, label `Composer`, emoji 🎵
+- Inngest function: `webapp/inngest/functions/exec-mgen.ts` (`EXEC-MGEN: Generate Music`)
+
+It runs inside the webapp via Inngest. Real generation uses the `suno` provider (`SUNO_API_KEY`), auto-downgrading to `mock` when the key is absent (`webapp/lib/agents/provider-resolver.ts:54,120`). ffmpeg is only touched *downstream* of generation — for optional fade/trim shaping (`webapp/lib/agents/providers/music-processor.ts`) and final-cut stitching (`webapp/lib/agents/providers/ffmpeg-stitch.ts`). The Composer's core generation step does not require ffmpeg at all.
+
+### Root cause: the ffmpeg hypothesis is disproven on this laptop
+ffmpeg **is installed and fully resolvable** here. The Director's "ffmpeg not installed on the laptop" theory does not hold:
+
+- `where ffmpeg` → `C:\Users\Alexander\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_..._8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe`
+- Direct run → `ffmpeg version 8.1.2-full_build` (works)
+- In-process Node `spawn('ffmpeg', ['-version'])` → exit 0 (the exact probe `resolveFfmpegPath()` uses)
+- `.env.local` has `FFMPEG_PATH` set to the 8.1.2 binary and **that file EXISTS**
+- The winget-glob resolver (`ffmpeg-stitch.ts`, commit `d33d9dab` already present) matches: package dir matches `/ffmpeg/i`, build dir `ffmpeg-8.1.2-full_build` matches `/^ffmpeg-/i`
+
+So ffmpeg resolves three independent ways (env → PATH → winget glob). No glob mismatch, no missing binary.
+
+Everything else the Composer needs is also healthy:
+- Stack is **up**: app `/api/health` → `{"status":"ok", openai_configured:true, ...}` on :3000; Inngest self-hosted responding on :8288
+- `EXEC-MGEN: Generate Music` **is registered** with Inngest (54 functions synced)
+- `prod.log` / `inngest.log` are clean — **no** MGEN/music/ffmpeg errors, no panics, and no prior MGEN run/failure event at all
+
+### What I changed / installed
+**Nothing.** ffmpeg is already installed and the resolver is correct — there was no missing binary to install and no path/glob bug to fix. Installing or editing code would have been wrong. No files staged; working tree unchanged (aside from the pre-existing `.claude/training-inbox.md` and untracked skill dir from before this session).
+
+### Verification result
+- ffmpeg resolves in the app runtime (bare-`ffmpeg` probe exits 0; `FFMPEG_PATH` valid; winget glob matches)
+- Composer's Inngest function registered and the stack healthy
+- No error surface anywhere in the logs
+
+I did **not** fire the Composer, because firing it would create a (mock) asset — outside the "startup/health only, no media" boundary you set. With `SUNO_API_KEY` absent it would run as `mock` anyway, which wouldn't reproduce a real failure.
+
+### Remaining risk / next step
+1. **I could not reproduce a "does not start" failure** — the machine is currently in a fully working state for the Composer. If the Director reported this *before* the stack came up (prod.log shows it started today 07:44) or before ffmpeg was installed yesterday (per memory `office-pickup-2026-07-17-ffmpeg-glob.md`), the issue may already be resolved. To capture a real error, the Director should fire the Composer from the episode UI once and I can read the resulting Inngest failure event / server log — the true cause (if any remains) is almost certainly **not** ffmpeg. Likely candidates: an upstream gate not satisfied so MGEN is never dispatched (`webapp/lib/agents/gate.ts:197` — Composer fires only after REV-world_check approval), or `SUNO_API_KEY` absent so it silently produces a mock track the Director reads as "didn't really run."
+2. **Minor hygiene (not fixed, flagging only):** `FFMPEG_PATH` in `.env.local` pins the version-specific path `...ffmpeg-8.1.2-full_build\...`. This is the same failure shape as the code hardcode that broke yesterday (8.1.1→8.1.2) — the next winget upgrade will make this env value point at a vanished directory. It self-heals (resolver falls through to the glob + PATH), so it's low severity, but consider **removing `FFMPEG_PATH` from `.env.local`** and letting the winget-glob/PATH resolver own discovery, to avoid a future stale-path red herring. I left it untouched since it currently points at the real binary and changing env wasn't requested.</result>
+<usage><subagent_tokens>82647</subagent_tokens><tool_uses>23</tool_uses><duration_ms>310347</duration_ms></usage>
+</task-notification>
+
+## 2026-07-18 05:04 · director-msg (hook) · NEW · (triage at distill)
+заработал composer -  был пропущен один критик раньше - полина (и фабрика) отловили. хотя полина на фри гемини )) 
+проблема номер два. SH05 помнишьь про тарелку с кашей? я rejected и написал изменения в модалке режекта. но видимо чтото пошло не так.на перегенерированном кадре та же желтая тарелка. и пояснения полины. хотя по моему мнению она не должна ничего запускать. это должна делать фабрика по факту режекта...
+
+## 2026-07-18 05:24 · director-msg (hook) · NEW · (triage at distill)
+в Episode reference  просмотровщике куда попадаю через кебаб - Candidates for this shot  не под основной картинкой , переключение просмотра тоже не работает и кажется какая-то путаница с выбором. запусти агента внимательно изучи и пофикси .
+
+## 2026-07-18 05:38 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a79455353c3f12d04</task-id>
+<tool-use-id>toolu_01NnUyk5yNa2SxoygYtiRGSU</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\a79455353c3f12d04.output</output-file>
+<status>completed</status>
+<summary>Agent "Fix EREF candidates viewer UI" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All changes are coherent, tsc is clean, and the targeted tests pass. Here is my report.
+
+## Summary
+
+The "reference detail viewer" opened from a timeline/kebab reference cell is `EpisodeAssetDrawer` (rich drawer). It renders **two** variant strips, and that duplication plus a stale "primary" derivation is the root of all three symptoms.
+
+### Root causes (file:line)
+
+1. **Placement (symptom 1).** There are two strips. The one literally titled **"Candidates for this shot"** was the sibling-row `CandidatesStrip` at `EpisodeAssetDrawer.tsx:719-731` — rendered *after* Test Plan / Verdict / Scores / Issues, i.e. **not** under the image. The strip that *was* under the image (`AttemptsStrip`, line 628) was titled "Generation attempts", so the strip the Director calls "candidates" was split and misplaced.
+
+2. **Selection confusion (symptom 3).** `AttemptsStrip.finalVersion` (the "current" badge) was derived as `selected_version ?? last(generation_history)` (old `EpisodeAssetDrawer.tsx:631-639`). But the main preview and the preview-header badge derive the primary as `selected_version ?? image_prompt.current_version ?? last` (`AssetPreview.tsx:273`; the shipped bytes come from `image_prompt.current_version`, set at `episode-references.ts:2761`). Under **keep-best** (2026-07-16/17) the shipped attempt is the *best*, frequently **not the last** — so the badge highlighted a different tile than the image actually on screen.
+
+3. **Click "doesn't switch" (symptom 2).** Shares cause with #2. The promote path itself works (`select_attempt` sets `selected_version`; `previewFreshness` folds it into the `?t=…-sel&lt;N&gt;` cache-bust). But because the badge sat on the last attempt while the main image already showed the *best*, clicking the on-screen tile looked like a no-op and the whole selection read as inconsistent. It was a perception artifact of the mismatched "current".
+
+### Changes (not committed — left in the working tree)
+
+- **`lib/api/shot-reference.ts`** — Added pure helper `primaryAttemptVersion(shot_reference, image_prompt.current_version)` as the single canonical primary-attempt derivation (`selected_version` → `current_version` → last). Corrected the now-wrong doc comment on `selected_version` that told consumers to use `?? generation_history.at(-1)`.
+- **`components/assets/EREFv2Sections.tsx`** — `AttemptsStrip` gained an optional `label` prop (defaults to "Generation attempts (N)").
+- **`components/assets/EpisodeAssetDrawer.tsx`** — The under-image strip is now the canonical **"Candidates for this shot (N)"**, its `finalVersion` uses `primaryAttemptVersion` (so the "current" badge matches the on-screen pixels, incl. keep-best), and the redundant lower sibling-row `CandidatesStrip` was removed from the EREF block. VID-shot's `CandidatesStrip` is untouched.
+- **`components/preview/AssetPreview.tsx`** — Header-badge `activeAttempt` now calls the same `primaryAttemptVersion`, so drawer and preview can't drift.
+- **`__tests__/lib/api/shot-reference-keepbest.test.ts`** — Added a `primaryAttemptVersion` block (manual-pick wins; follows shipped `current_version` not last; legacy fallback to last; null cases).
+
+### Verification
+
+- `npx tsc --noEmit` → **exit 0 (clean)**.
+- `vitest run` on `shot-reference-keepbest.test.ts` + `asset-preview-resolver.test.ts` → **27/27 passed** (includes the new helper cases and the existing `selected_version` cache-bust regression).
+- Did not start/rebuild the app or spend money (stack running separately, untouched).
+
+**Manual path to confirm in the running app:** open an IMG-episode_ref whose keep-best shipped a non-last attempt (e.g. best=v2 of 3). The single "Candidates for this shot (3)" strip appears directly under the image; the green "current" badge sits on v2 (the tile shown in the big preview). Click v3 → main preview switches to v3 and the badge moves to v3; click v2 → switches back. No second "Candidates" heading further down.
+
+Note on scope: symptoms 2 and 3 genuinely shared one code cause (the badge derivation); the promote→preview refresh wiring itself was already correct — the fix makes the indicator honest so the click reads as working.</result>
+<usage><subagent_tokens>179734</subagent_tokens><tool_uses>49</tool_uses><duration_ms>816765</duration_ms></usage>
+</task-notification>
+
+## 2026-07-18 07:31 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a63ecad8434bd8d84</task-id>
+<tool-use-id>toolu_01VhVkTVtTwA44wws4vuFT3H</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\232dea5b-e8b1-40d2-a5f8-09866af50225\tasks\a63ecad8434bd8d84.output</output-file>
+<status>completed</status>
+<summary>Agent "Recover lost timeline color-coding" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Investigation complete. The headline finding overturns the premise, so let me be precise and thorough in the report.
+
+---
+
+# Timeline color-coding ("work-state language") — archaeology report
+
+## TL;DR — the system is NOT lost. It is fully present and wired on `master`.
+
+Contrary to the briefing, the color=role timeline language from `ef490f4b` is **alive and rendering on current HEAD** (`a87d4a83`, master, origin/master, and this worktree — all three identical). Nothing was reverted. Every piece the commit message promised for **Slice 1** still exists, is imported, is called, and paints the timeline cells. The 6 unit tests pass **6/6**. There is **nothing to restore.**
+
+The one thing that never existed is **Slice 2** (the References/Video pillbar buttons adopting the same state language) — it was written as "next" in `ef490f4b` and was never built. If the Director feels something is "missing," that gap is the only real candidate.
+
+I made **no code changes** — the worktree is clean, because restoration is a no-op.
+
+---
+
+## Correcting the briefing's "verified" claims
+
+The briefing stated: *"grep finds NO `workRolePalette` and NO `--accent-role-` tokens anywhere, and the timeline cell rendering uses `workPhaseForAgent`, not the role palette."*
+
+That is false against `master`. Bulletproof counts from repo root:
+- `workRolePalette`: **16 references** across `webapp/`
+- `--accent-role-`: **7 references**
+- `git show origin/master:` confirms both `workRolePalette` (pipeline-stages.ts:649) and the four `--accent-role-*` tokens (globals.css:55–58) are on the pushed master, not just locally.
+
+The likely source of the false negative: the grep was run against a different/stale checkout (there are multiple worktrees, e.g. `origin/worktree-agent-ad3d941d6b34f6d5b`), or `workPhaseForAgent`'s legitimate presence at `EpisodeTimelineSection.tsx:161` was mistaken for "the cell rendering uses the old phase language." That line is **not** a color renderer — it is only a **poll-cadence heuristic** ("is any pipeline job live → poll every 4s instead of 8s").
+
+---
+
+## Step 1 — Full inventory of the color language, and its status at HEAD
+
+Prime commit: **`ef490f4b`** "feat(timeline): unified work-state language — colour=role, kebab on click (slice 1)" (Alexander Ostrovoy, Thu Jul 2 2026). Extended by **`7842afa6`** "feat(E18)…" (Thu Jul 9 2026), which *added* the D7 persistent-trail glow (a net addition, never a removal).
+
+| Piece | Location at HEAD | Status |
+|---|---|---|
+| `WorkRole` type (`designer\|critic\|artist`) | `webapp/lib/api/pipeline-stages.ts:545` | ✅ present |
+| `ROLE_OF_STAGE` (stage→role, both pipelines) | `pipeline-stages.ts:548-555` | ✅ present |
+| `workRoleForAgent(agentId)` | `pipeline-stages.ts:558-562` | ✅ present |
+| `ShotWork` interface `{object, roles}` | `pipeline-stages.ts:565-568` | ✅ present |
+| `activeWorkByShot(jobs)` → live roles per shot, animate-dominant | `pipeline-stages.ts:576-598` | ✅ present |
+| `completedWorkByShot(jobs)` → D7 settled trail | `pipeline-stages.ts:609-640` | ✅ present (added by `7842afa6`) |
+| **`workRolePalette(roles)`** → `{color, glow, label, token}`, token precedence both&gt;critic&gt;designer&gt;artist, `var(--accent-role-${token})`, no hex | `pipeline-stages.ts:649-676` | ✅ present |
+| **`--accent-role-{designer,critic,both,artist}`** tokens | `webapp/app/globals.css:55-58` (indigo/amber/teal/violet) | ✅ present |
+| Cell-number recolour BY ROLE, live-wins + D7 trail fallback | `AnimaticPlayer.tsx` `cellPalette()` lines 328-388 (role branch 339-356) | ✅ present &amp; applied |
+| Palette actually painted onto the cell (color / textShadow=glow / pulse class / `--stage-glow`) | `AnimaticPlayer.tsx:1416` (compute) → `1490-1506` (apply) | ✅ wired end-to-end |
+| Per-line "writing…/reviewing…/generating…" role badge | `AnimaticPlayer.tsx:623-647` (`partitionBadge`, object-aware) | ✅ present |
+| Kebab opens on **click** (toggle), not hover | `AnimaticPlayer.tsx:471, 1479` (`setOpenCellIdx(v =&gt; v===i?null:i)`) | ✅ present |
+| Timeline feeds roles (`liveWorkByShot`/`completedWorkByShot`) | `EpisodeTimelineSection.tsx:490-491, 944` → `AnimaticPlayer` | ✅ present |
+| 6 unit tests (role detection, per-shot roles, palette precedence) | `webapp/__tests__/lib/api/work-role-language.test.ts` | ✅ present, **6/6 green** |
+
+**Object-family + role split the Director remembered:** it is real and intact. `activeWorkByShot` computes both `object` (image=`design` / video=`animate`, via `workPhaseForAgent`) *and* `roles` (hue, via `workRoleForAgent`) per shot (pipeline-stages.ts:582-583). Object = which pipeline family, role = who is working (hue). Both axes coexist exactly as designed. The related lineage commits (`dcd6d0b8`, `e65816d7`, `3c14849a`) are the **earlier Phase-A.1 status-color layer** that still forms the fallback branch of `cellPalette` (lines 357-387) beneath the role layer — also intact.
+
+## Step 2 — Where was it lost?
+
+**It was never lost.** `git log --all -S 'workRolePalette' -- webapp/lib/api/pipeline-stages.ts` returns exactly one commit: `ef490f4b` (the add). No commit on any ref (local or remote) ever removed it. Same for `--accent-role-` in globals.css: only `ef490f4b` ever touched those lines. The only other commit touching `workRolePalette` in `AnimaticPlayer.tsx` is `7842afa6`, which **added** the D7 trail usage. There is no removal, revert, bad merge, or collateral drop anywhere in history. Intent question is moot — nothing was removed.
+
+## Step 3 — Restoration
+
+**No restoration needed. No cherry-pick, no re-apply, no conflicts** — the code the briefing wanted back is already on master, identical, and rendering. Applying `ef490f4b` again would be a no-op (or a spurious re-add of code already present). I deliberately made zero edits; the worktree is clean.
+
+Verification run (main-repo deps, worktree had no `node_modules`; unit-test only, stack untouched):
+- `vitest run __tests__/lib/api/work-role-language.test.ts` → **Test Files 1 passed, Tests 6 passed (6)**.
+- `tsc` was not needed — no code changed. `ef490f4b` recorded "tsc·0 / vitest 1088 / replay-pilot 30/30"; `7842afa6` recorded "tsc clean". Master is unmodified relative to those.
+
+## The real gap: Slice 2 (never shipped)
+
+`ef490f4b`'s message promised: *"Slice 2 (next): the References/Video pillbar buttons reflect the same state language (idle/designer/critic/both/processing/frames-ready/video-ready/error)."*
+
+Confirmed **not built**: `EREFPilotPillbar.tsx` and `VGENPilotPillbar.tsx` color only with generic `--accent-primary / --accent-warning / --accent-success / --accent-danger` (e.g. EREF lines 258, 272, 415, 458; VGEN lines 258, 469, 551-557). Neither pillbar imports `workRolePalette` or references any `--accent-role-*` token. So the pillbars do **not** speak the designer/critic/both/artist language that the timeline cells do — the two surfaces are inconsistent, which is exactly the kind of thing that would make the Director feel the language "isn't there" on the pillbars.
+
+**If the Director's memory is of a fully-unified language (timeline + pillbars), the work to do is to BUILD Slice 2, not restore Slice 1.** That is net-new: wire the pillbars' per-stage buttons to `workRolePalette(...)`/`--accent-role-*` keyed off the same live-job role detection (`activeWorkByShot`), so a running designer/critic/artist job tints the corresponding pillbar segment with the matching hue + pulse. This is a clean feature addition with no conflicts (the palette fn and tokens are already exported and ready to consume).
+
+## Recommendation (two cases, as requested)
+
+- **"It's already here" (most likely reality):** No action. Point the Director at a live episode timeline with a running job — the cell numbers recolour by role (indigo/amber/teal/violet) and pulse today. If it's not *visually* appearing at runtime, that's a data/polling issue (are RUNNING/QUEUED jobs present with resolvable `shot_id`?), not lost code — worth a quick live check, but it is not an archaeology problem.
+- **"I want the pillbars to speak it too" (the genuine gap):** Build Slice 2 as above. I can prepare that patch on request — it's additive and low-risk.
+
+**Key citations:** `ef490f4b` (Jul 2, add), `7842afa6` (Jul 9, D7 trail add), HEAD `a87d4a83`. Palette: `pipeline-stages.ts:649-676`; tokens: `globals.css:55-58`; render: `AnimaticPlayer.tsx:328-388` + `1416`/`1490-1506`; feed: `EpisodeTimelineSection.tsx:490-491,944`; tests: `work-role-language.test.ts` (6/6). Pillbar gap: `EREFPilotPillbar.tsx` / `VGENPilotPillbar.tsx` (no `accent-role`).</result>
+<usage><subagent_tokens>82240</subagent_tokens><tool_uses>24</tool_uses><duration_ms>391074</duration_ms></usage>
+</task-notification>
+
+## 2026-07-18 16:14 · director-msg (hook) · NEW · (triage at distill)
+даже интересно что это была за борьба на 18 шоте plan
+
+v16
+APPROVED
+✓
+
+v15
+INVALIDATED
+✓
+
+v14
+INVALIDATED
+✓
+
+v13
+INVALIDATED
+✓
+
+v12
+INVALIDATED
+✓
+
+v11
+INVALIDATED
+✓
+
+v10
+INVALIDATED
+✓
+
+v09
+INVALIDATED
+✓
+
+v08
+INVALIDATED
+✓
+
+v07
+INVALIDATED
+✓
+
+v06
+INVALIDATED
+✓
+
+v05
+INVALIDATED
+✓
+
+v04
+INVALIDATED
+✓
+
+v03
+INVALIDATED
+✓
+
+v02
+REVISION
+
+v01
+REVISION
+critic
+
+v16
+REVIEW
+✓
+
+v15
+REVIEW
+✓
+
+v14
+REVIEW
+✓
+
+v13
+REVIEW
+✓
+
+v12
+REVIEW
+✓
+
+v11
+REVIEW
+✓
+
+v10
+REVIEW
+✓
+
+v09
+REVIEW
+✓
+
+v08
+REVIEW
+✓
+
+v07
+REVIEW
+✓
+
+v06
+REVIEW
+✓
+
+v05
+REVIEW
+✓
+
+v04
+REVIEW
+✓
+
+v03
+REVIEW
+✓
+
+v02
+REVIEW
+✓
+
+v01
+REVIEW
+✓
+video
+generating…
+
+## 2026-07-18 17:35 · director-msg (hook) · NEW · (triage at distill)
+я запустил перегенерацию последнего кадра - поправил проспт. убидись что генерация идет и проверь что в прозе я добавил рот и попытался поменять бэкграунд
+
+## 2026-07-18 18:17 · director-msg (hook) · NEW · (triage at distill)
+it seems also we have same issues in online editor oreview like we had in preview of ref or ans shors. попытка изменить порядок размещения и сделать approved always in left place (first) makes mess only  . I believed we fixed it ((
+also if we reduce shot timing 0.5 sec we excude shot from final cut and make batton and kebab opasity less 100% . but when we increase timing up we forgon up opacity
+
+## 2026-07-18 20:10 · director-msg (hook) · NEW · (triage at distill)
+нашел картинки. я до этого смотрел в видео . сорри. 
+но кроме картинок нашел очередной баг 
+в ref preview  I cant pick small picture to meke it APPROVED. green frame dont move. AND every pick to small tumbnail on prewiew I CAN CEE new REcord in Polina chat: 00:06 AGENT — completed
+00:06 AGENT — completed
+00:06 AGENT — completed
+00:06 AGENT — completed
+00:06 AGENT — completed
+00:06 AGENT — completed
+00:07 AGENT — completed
+00:07 AGENT — completed
+00:07 AGENT — completed
+00:07 AGENT — completed
+
+## 2026-07-19 05:03 · director-msg (hook) · NEW · (triage at distill)
+Video
+plan
+
+v16
+APPROVED
+✓
+
+v15
+INVALIDATED
+✓
+
+v14
+INVALIDATED
+✓
+
+v13
+INVALIDATED
+✓
+
+v12
+INVALIDATED
+✓
+
+v11
+INVALIDATED
+✓
+
+v10
+INVALIDATED
+✓
+
+v09
+INVALIDATED
+✓
+
+v08
+INVALIDATED
+✓
+
+v07
+INVALIDATED
+✓
+
+v06
+INVALIDATED
+✓
+
+v05
+INVALIDATED
+✓
+
+v04
+INVALIDATED
+✓
+
+v03
+INVALIDATED
+✓
+
+v02
+REVISION
+
+v01
+REVISION
+critic
+
+v16
+REVIEW
+✓
+
+v15
+REVIEW
+✓
+
+v14
+REVIEW
+✓
+
+v13
+REVIEW
+✓
+
+v12
+REVIEW
+✓
+
+v11
+REVIEW
+✓
+
+v10
+REVIEW
+✓
+
+v09
+REVIEW
+✓
+
+v08
+REVIEW
+✓
+
+v07
+REVIEW
+✓
+
+v06
+REVIEW
+✓
+
+v05
+REVIEW
+✓
+
+v04
+REVIEW
+✓
+
+v03
+REVIEW
+✓
+
+v02
+REVIEW
+✓
+
+v01
+REVIEW
+✓
+video
+▶
+v01
+APPROVED
+on screen
+✓
+
+## 2026-07-19 13:37 · director-msg (hook) · NEW · (triage at distill)
+clear
+PS C:\Windows\System32> $c = "$env:USERPROFILE\.claude"
+PS C:\Windows\System32> "--- skills ---";   (Get-ChildItem "$c\skills" -Directory -EA SilentlyContinue).Name
+--- skills ---
+agent-harness-construction
+agent-introspection-debugging
+agent-sort
+agentic-engineering
+ai-first-engineering
+ai-regression-testing
+api-connector-builder
+api-design
+article-writing
+autonomous-loops
+backend-patterns
+blueprint
+brand-voice
+claude-api
+claude-devfleet
+code-tour
+coding-standards
+configure-ecc
+content-engine
+content-hash-cache-pattern
+continuous-agent-loop
+continuous-learning
+continuous-learning-v2
+cost-aware-llm-pipeline
+council
+cpp-coding-standards
+cpp-testing
+dashboard-builder
+data-scraper-agent
+database-migrations
+deep-research
+deployment-patterns
+dmux-workflows
+docker-patterns
+e2e-testing
+enterprise-agent-ops
+eval-harness
+exa-search
+fal-ai-media
+frontend-design
+frontend-patterns
+frontend-slides
+github-ops
+grill-me
+hookify-rules
+iterative-retrieval
+knowledge-ops
+manim-video
+market-research
+mcp-server-patterns
+nanoclaw-repl
+plankton-code-quality
+postgres-patterns
+product-capability
+prompt-optimizer
+ralphinho-rfc-pipeline
+regex-vs-llm-structured-text
+remotion-video-creation
+research-ops
+search-first
+security-bounty-hunter
+security-review
+security-scan
+skill-stocktake
+strategic-compact
+tdd-workflow
+team-builder
+terminal-ops
+token-budget-advisor
+ui-demo
+verification-loop
+video-editing
+videodb
+workspace-surface-audit
+x-api
+PS C:\Windows\System32> "--- commands ---"; (Get-ChildItem "$c\commands" -Recurse -File -EA SilentlyContinue).Name
+--- commands ---
+agent-sort.md
+analisis2x.md
+aside.md
+build-fix.md
+checkpoint.md
+claw.md
+code-review.md
+context-budget.md
+devfleet.md
+docs.md
+e2e.md
+eval.md
+evolve.md
+feature-dev.md
+gan-build.md
+gan-design.md
+harness-audit.md
+hookify-configure.md
+hookify-help.md
+hookify-list.md
+hookify.md
+instinct-export.md
+instinct-import.md
+instinct-status.md
+learn-eval.md
+learn.md
+loop-start.md
+loop-status.md
+model-route.md
+multi-backend.md
+multi-execute.md
+multi-frontend.md
+multi-plan.md
+multi-workflow.md
+nav-orch-commit.md
+nav-orch-deploy.md
+nav-orch-merge.md
+nav-orch.md
+orchestrate.md
+pa-recent.md
+pa-resume.md
+pa-summary.md
+plan.md
+pm2.md
+projects.md
+promote.md
+prompt-optimize.md
+prp-commit.md
+prp-implement.md
+prp-plan.md
+prp-pr.md
+prp-prd.md
+prune.md
+quality-gate.md
+refactor-clean.md
+resume-session.md
+review-pr.md
+rules-distill.md
+santa-loop.md
+save-session.md
+sessions.md
+setup-pm.md
+skill-create.md
+skill-health.md
+tdd.md
+test-coverage.md
+update-codemaps.md
+update-docs.md
+verify.md
+PS C:\Windows\System32> "--- agents ---";   (Get-ChildItem "$c\agents" -File -EA SilentlyContinue).Name
+--- agents ---
+a11y-architect.md
+architect.md
+build-error-resolver.md
+chief-of-staff.md
+code-architect.md
+code-explorer.md
+code-reviewer.md
+code-simplifier.md
+comment-analyzer.md
+conversation-analyzer.md
+database-reviewer.md
+doc-updater.md
+docs-lookup.md
+e2e-runner.md
+gan-evaluator.md
+gan-generator.md
+gan-planner.md
+harness-optimizer.md
+loop-operator.md
+performance-optimizer.md
+planner.md
+pr-test-analyzer.md
+refactor-cleaner.md
+security-reviewer.md
+seo-specialist.md
+silent-failure-hunter.md
+tdd-guide.md
+type-design-analyzer.md
+typescript-reviewer.md
+PS C:\Windows\System32> "--- plugins ---";  Get-Content "$c\plugins\config.json" -EA SilentlyContinue
+--- plugins ---
+PS C:\Windows\System32> "--- memory dirs ---"; (Get-ChildItem "$c\projects" -Directory -EA SilentlyContinue).Name
+--- memory dirs ---
+C--PROJECTS-PERSONA-COM
+C--SandyStudio
+C--SandyStudio--claude-worktrees-angry-tesla-fed2ed
+C--SandyStudio--claude-worktrees-beautiful-ramanujan-1ffc4d
+C--SandyStudio--claude-worktrees-beautiful-williamson-26aba4
+C--SandyStudio--claude-worktrees-conductor-phase2
+C--SandyStudio--claude-worktrees-distracted-euler-d48516
+C--SandyStudio--claude-worktrees-e23
+C--SandyStudio--claude-worktrees-e25
+C--SandyStudio--claude-worktrees-ecstatic-noyce-12c9a8
+C--SandyStudio--claude-worktrees-eloquent-greider-bd6a88
+C--SandyStudio--claude-worktrees-exciting-easley-23cb75
+C--SandyStudio--claude-worktrees-exciting-khorana-1e513e
+C--SandyStudio--claude-worktrees-festive-spence-a7ff79
+C--SandyStudio--claude-worktrees-fetch-timeout-swaps
+C--SandyStudio--claude-worktrees-focused-sinoussi-597697
+C--SandyStudio--claude-worktrees-friendly-mcnulty-c304a6
+C--SandyStudio--claude-worktrees-goofy-sutherland-b5dcb7
+C--SandyStudio--claude-worktrees-keen-chebyshev-5f65ab
+C--SandyStudio--claude-worktrees-laughing-noether-f069e9
+C--SandyStudio--claude-worktrees-nice-liskov-b8f12c
+C--SandyStudio--claude-worktrees-pedantic-gould-307846
+C--SandyStudio--claude-worktrees-quizzical-brown-462555
+C--SandyStudio--claude-worktrees-relaxed-hofstadter-0164c6
+C--SandyStudio--claude-worktrees-responsibility-matrix-impl-2e1f98
+C--SandyStudio--claude-worktrees-shorts-recut
+C--SandyStudio--claude-worktrees-sweet-meninsky-5dd7b6
+C--SandyStudio--claude-worktrees-teo-shorts-tail-wiring
+C--SandyStudio--claude-worktrees-trusting-vaughan-f6191d
+C--SandyStudio--claude-worktrees-zealous-solomon-0e7f82
+H-----------usefullTranslator
+H-----------usefullTranslator--claude-worktrees-silly-benz-3b68a4
+PS C:\Windows\System32> "--- memory files ---"; (Get-ChildItem "$c\projects\C--SandyStudio\memory" -File -EA SilentlyContinue).Name
+
+## 2026-07-19 13:39 · director-msg (hook) · NEW · (triage at distill)
+--- memory files ---
+agent_chain_mode_4_vs_1_3.md
+ai_ep_conception_gaps.md
+anchor_mode_orbit_ref_only.md
+anti_additivity_principle.md
+architectural_rethink_over_patches.md
+autonomous_factory_architecture_doctrine.md
+backlog_2026-07-05_live-run-queue.md
+backlog_animatic_dedup_ref_vs_video.md
+backlog_audience_quality_sensor.md
+backlog_enable_mechanics_auto_advance_smoke.md
+backlog_episode_metadata_rmw_race.md
+backlog_eref_pipeline_node_spec.md
+backlog_exec_copy_publicist_angle.md
+backlog_kebab_video_reference_zones.md
+backlog_next_run_polina_gemini_free.md
+backlog_observability_failures_not_surfaced.md
+backlog_per_shot_video_eligibility.md
+backlog_polina_false_completion_phrasing.md
+backlog_scene_prop_canon_anchor.md
+backlog_scorecard_polina_mislabel.md
+backlog_shorts_delivery_targets_not_propagated.md
+backlog_shorts_ui_slicer.md
+backlog_shot_centric_paradigm.md
+backlog_skill_abstraction_audit.md
+backlog_td_05s_delete_flag.md
+backlog_td_artdir_breakdown_role.md
+backlog_td_brief_authoring_training.md
+backlog_td_canon_existence_preflight.md
+backlog_td_canon_unlock_button.md
+backlog_td_casting_draft_deadend.md
+backlog_td_e11_board_act_grouping.md
+backlog_td_eref_noassets_catchall.md
+backlog_td_fanout_trigger_shape.md
+backlog_td_kebab_plan_critic_lines.md
+backlog_td_music_bake_animatic_selection.md
+backlog_td_partial_animatic_and_provider_caps.md
+backlog_td_pipeline_full_process_surface.md
+backlog_td_polina_nudge_readonly_execution_gap.md
+backlog_td_polina_workplan_tracker.md
+backlog_td_script_uneditable_ui_plus_indicator.md
+backlog_td_stitch_gate_music_and_exclude_retrigger.md
+backlog_td_storyboarder_orbit_not_wired.md
+backlog_td_surgical_revision_after_critique.md
+backlog_td_vgen_endimage_metadata_gap.md
+backlog_td_wchk_two_bugs.md
+backlog_td32_td33_continuity_and_attempts.md
+backlog_td36_studio_shell_ergonomics.md
+backlog_td61_td62_pipeline_blockers.md
+backlog_video_direct_from_canon.md
+brand_bumper_production_recipe.md
+camera_orbit_signature_policy.md
+concierge_uses_openai.md
+critic_churn_discriminator.md
+critic_revision_cap_doctrine.md
+desktop_app_terminal_pane_is_new_session.md
+dev_workflow_no_build_during_dev.md
+director_communication_style.md
+director_decide_small_things_yourself.md
+director_message_stream_read_all_first.md
+director_message_timestamp_dubai.md
+director_minimal_changes_no_new_entities.md
+director_name_alexander.md
+director_process_and_people_first.md
+director_question_numbering.md
+director_questions_human_style.md
+director_signal_when_input_needed.md
+director_systemic_not_patchwork.md
+director_timezone_dubai_utc_plus_4.md
+episode_ideas_location.md
+eref_generation_needs_stable_server.md
+feedback_ambient_event_format_structured.md
+gag_bank_proof_by_groups_not_count.md
+grill_me_skill.md
+handoff_td54_studioshell_scroll_layout.md
+harness_trim_skills_library.md
+inngest_dev_router_unreliable_no_selfheal.md
+inngest_selfhost_setup.md
+kebab_color_grammar_doctrine.md
+match_cut_doctrine.md
+MEMORY.md
+migration_apply_cli_first.md
+my_name_is_teo.md
+no_deploy_during_live_run.md
+node_env_file_does_not_override.md
+npm_install_legacy_peer_prunes_optionals.md
+nudge_polina_dont_act_for_her.md
+openai_model_ids_live_source.md
+operational_ritual_hooks_live.md
+orchestrator_master_session_paradigm.md
+overlay_agent_reports_on_server_logs.md
+plan_md_living_anchor.md
+plan_md_size_budget.md
+plan_preview_drawer_doctrine.md
+polina_cost_audit_CORRECTED_2026-06-26.md
+polina_resistance_log_e07_smoke.md
+preamble_attention_pollution_gpt_image_2.md
+proactive_cost_risk_on_model_switch.md
+provider_fetch_no_timeout_root_cause.md
+reconciler_audit_2026-07-10.md
+remote_access_setup_parked.md
+replay_pilot_harness.md
+sandy_canon_physics_corrections.md
+sandy_canon_visual_identity.md
+session_2026-05-25_td49-phase2-p2.3.md
+session_2026-05-26_pa-ui-batch-and-td39.md
+session_2026-05-26_td51-58-shipped.md
+session_2026-06-01_td85-resolution-discipline.md
+session_2026-06-08_e02-finalcut-wysiwyg-fix.md
+session_2026-06-10_t1-gagad-cread-consolidation.md
+session_2026-06-11_wchk-state-ledger-sprint.md
+session_2026-06-12_f1-f8-fix-sprint.md
+session_2026-06-14_arch-sprint-identity-casting.md
+session_2026-06-15_e10-gemini-cap-fixes.md
+session_2026-06-17_anchor-mode-B-smoke.md
+session_2026-06-17_format-authority-slice1.md
+session_2026-06-22_e11-done-numbering-fixes.md
+session_2026-06-26_e12-polish-numbering-harness.md
+session_2026-06-28_s2-leak-closing.md
+session_2026-07-02_polina-slim-shotid-oneattempt.md
+session_2026-07-04_autonomy-phase-0-1-2a.md
+session_2026-07-09_e25-polina-noop-prod-server.md
+session_2026-07-13_e28-gold-autonomy-diagnosis.md
+session_2026-07-15_shorts-delivery-targets-wiring.md
+session_2026-07-16_channel-launch-prep-vending-shorts.md
+shot_identity_refactor_decision.md
+supabase_data_api_grant_rule.md
+supabase_project_ref.md
+technology_md_protocol.md
+train_personnel_doctrine.md
+verify_real_results_not_logs.md
+webapp_local_dev_two_terminals.md
+PS C:\Windows\System32>
+
+## 2026-07-19 19:50 · director-msg (hook) · NEW · (triage at distill)
+Ну, смотрите еще раз. Цель бывает только одна. И цель фотосоздания автономной AI-фабрики, в которой роль человека сводится к постановке задач. и обучении сотрудников для работы в разных жанрах. Задача это путь к цели. Путей может быть много. Задач может быть много, цель одна. Но задача это не мелкий шажок. Это целая планета. В планете есть Континенты, моря, кратеры, еще что-то, какие-то дороги и пути. Это все вот эти мелочи :замкнуть петлю или починить какой-нибудь slice. Цель автономная ии- фабрика. роль человека - креатив на старте в разработке концепта сериала и эпизода. фабрика базируется на автономности производства, дистрибуции анализа обратной связи - коррекции маршрута - обучения всех участников процесса от директора до аналитика - снова креатив и так по кругу. самоообучение должно быть неотъемлемой частью. однаконе самоцелью  .
+ На пути фабрики стоят задачи. Какие задачи? Автономность, надежность, качество, творчество, ценообразование совершеннолетние. Ну еще что я упустил? подумай. Ты хорошо умеешь думать, когда я тебя навожу на правильный путь))
+ Вот это все те планеты, которые мы должны пройти. Где мы сейчас находимся? Сейчас мы в принципе практически автоматизировали создание и весь процесс. Спотыкаясь о какие-то регулярные баги, иногда чиним один баг - делаем новый, но в принципе на тридцатом эпизоде у нас хорошо прошли рефы -практически без вмешательства абсолютно .Картинки, референсы. но мы споткнулись на видео, хотя в моём понимании процесс создания референсов и процесс создания видео до уже быть абсолютной копией практически. С разницей только в Кэпе, в ограничениях количества перегенераций. А у нас получилась какая-то каша. Я даже сложно могу представить почему. 
+но вернёмся к цели. дрейф от цели вот что мешает к ней идти. задача партнёра - удерживать от дрейфа (как? - думай)
+то есть прежде чем создать механизм разработки и производства нам нужно не потерять или создать и доработать механизм создания того механизма. 
+ где в самом вредоносном могу оказаться как раз я, постоянно меняююя  курс и занимаююясь тем что кажется важным сию секунду ,когда на самом деле это может приводить только к отклонению в сторону от маршрута.  и потом потребует последующего времени усилий и ошибок на возвращение на линию заданного пути (ЛЗП). 
+поэтому твоя задача  не бежать исполнять мои указания хорошенько осмыслить то что я сказал и  попытаться понять что вообще нужно сделать для того чтобы прийти именно к этой цели к этой нашей полярной звезде,  как ограничить и оградить нас самих от нас самих. 
+сложно сказано?
+
+## 2026-07-19 20:56 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a02d743973cb60737</task-id>
+<tool-use-id>toolu_01ViG8F5hrHXqxThiUKfb6xR</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\db82fb2e-10e2-40ba-abd3-828b2871c745\tasks\a02d743973cb60737.output</output-file>
+<status>completed</status>
+<summary>Agent "Fresh-eyes audit of Layer 0" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Audit complete. I verified every claim against the actual files, commits, hooks, and settings.
+
+---
+
+## VERDICT: FLAWED
+
+The two anchor documents are individually reasonable prose, and the flaky-test fix is clean and complete. But Layer 0's central selling point — that it is "mechanism not discipline" and therefore "can't die again" — is **false**. No enforcing mechanism was added. The one hook that could enforce it wasn't touched, and the "COMPASS hook" the commit relies on does not exist. This is the same discipline-based approach that already decayed once, re-shipped with a claim that it isn't.
+
+---
+
+## FINDINGS (most severe first)
+
+### CONFIRMED
+
+**F1 — The "COMPASS hook" is fabricated; the "can't die again" claim is untrue. [HIGHEST]**
+Commit `99ea6d11` message: *"The COMPASS hook already points at NORTH_STAR.md; this closes the loop so the anchors can't die again."* There is no hook named COMPASS — not in `.claude/hooks/`, not in `settings.json` (10 registered hooks, none COMPASS), and never in git history (`git log -S "COMPASS" --all` and `*compass*` both empty). The **only** NORTH_STAR reference in any hook is a passive comment at `.claude/hooks/change-journal.cjs:9` naming it as an example "durable file" — that hook appends a log line per Write/Edit; it never reads or points at the Star. So the entire enforcement of Layer 0 is §9 prose read by a human/agent — the exact mechanism that decayed in 22 days. Failure scenario: identical to the original — a few sessions skip the read, the copies diverge, PLANET drifts N episodes behind, nothing fires. *Fix: either build a real SessionStart hook that surfaces NORTH_STAR/PLANET (and dates), or delete the false claim from the doctrine so no one trusts a guard that isn't there.*
+
+**F2 — The actual staleness hook was NOT extended to PLANET.md. [HIGH]**
+§12 Ritual 2 prose now says check PLAN.md **and** PLANET.md (`CLAUDE.md:257`, `:330`). But `plan-md-staleness-check.cjs` — the SessionStart hook that mechanically implements Ritual 2 — parses a date from a single `PLAN.md` only (`:38-42` candidates, `:64` regex). PLANET.md staleness has **zero** mechanical check. The cited root-cause failure ("planet drifted 17 episodes behind") is precisely PLANET drift — and it remains unguarded. *Fix: teach the hook to also read PLANET.md's `## Текущая планета … выбрана YYYY-MM-DD` date and warn on &gt;3 days.*
+
+**F3 — NORTH_STAR.md is 65 lines, not ≤50. [MEDIUM]**
+`wc -l NORTH_STAR.md` = 65. The header (`:1-2`) and commit both claim "≤50 lines." It's 30% over, and the file literally closes with *"Держи короткой"* (`:65`). A scope-discipline document that violates its own stated scope on day one. *Fix: cut to ≤50 or change the claim.*
+
+**F4 — Dangling reference in the ratified Star. [MEDIUM]**
+`NORTH_STAR.md:55` sources its doctrine at `rules/common/partnership.md`. That file is not tracked anywhere and `rules/common/` does not exist. The ratified anchor points its doctrine section at a missing file. *Fix: create the file or drop the citation.*
+
+**F5 — PLANET.md target-mode contradicts its own gate list. [MEDIUM]**
+`PLANET.md:2` declares target "Mode 3" (DELEGATED). Per `CLAUDE.md §6`, Mode 3 = EXEC-DIR-AI approves **all** gates except hard limits (Publish/LOCKED/Budget/Mode). But `PLANET.md:26-32` lists the **Director personally** approving brief, script, casting, and video pilots — that is Mode 2.5 APPRENTICE behavior. Under true Mode 3 only touch #5 (Publish) stays with the Director. The autonomy criterion mixes two governance modes. *Fix: name Mode 2.5 as the target, or reconcile the gate list to Mode 3.*
+
+**F6 — "Zero unplanned touches" is gameable and uninstrumented. [MEDIUM]**
+The criterion (`PLANET.md:21-25, 45-48`) is defined by an *open, expandable* list: `:26` and `:32` say planned gates are added "when we hit them live." So any unplanned bug-fix touch can be retroactively reclassified as a newly-discovered planned gate — trivially satisfying "zero unplanned." Nothing counts or logs touches (no state field, no artifact); measurement is the Director's memory — ironic, since the whole project's root cause was memory-reliance. *Fix: freeze the planned-gate list per episode before the run starts, and log every Director touch to a state file so "unplanned = 0" is observable rather than remembered.*
+
+**F7 — No precedence rule across the 4 anchors; new anchors have no master-only guard. [LOW-MEDIUM]**
+New §9 (`CLAUDE.md:255`) says PLAN.md is "NOT the strategy," but `CLAUDE.md:243` (§8) still says "If §8 and PLAN.md disagree, PLAN.md wins" and treats PLAN.md as authority. No rule states what wins if PLANET.md and PLAN.md disagree on state — two more docs added without a conflict-resolution rule, which is the very drift Layer 0 exists to kill. Separately, NORTH_STAR/PLANET both declare "Только master" but no hook enforces it (`plan-md-update-guard.cjs` is PLAN.md-only, `:74`), and editable worktree copies already exist at `.claude/worktrees/e30smoke/{NORTH_STAR,PLANET}.md` — the "which copy is truth" problem is live and unguarded for the new files.
+
+**F8 — NORTH_STAR mode list contradicts CLAUDE.md §6. [LOW]**
+`NORTH_STAR.md:47` says "4 режима (Manual→Hybrid→Delegated→Autotest)" — omits Mode 2.5 APPRENTICE, the mode the studio is actually running per §6 and memory, and presents AUTOTEST (a throwaway mode that reverts to Mode 1) as the ladder's endpoint. Exactly the doc-vs-doc divergence Layer 0 is meant to prevent.
+
+### The flaky-test fix (`2a55c1b7`) — SOUND
+- (a) **All** occurrences fixed: `grep "await import('@/lib/concierge/tools')"` under `webapp/__tests__` returns zero real hits (the 4 remaining matches are the new explanatory *comments*). 6 dynamic imports across 4 files removed, as claimed.
+- (b) **Semantics unchanged:** none of the 4 files use `vi.mock` (verified), so the lazy import guarded nothing; hoisting to a top-level static import is safe. The `async`→sync test-fn change is correct.
+- (c) **Root cause left as tech debt** (287KB barrel, ~1.2s cold import) — acceptable for a test fix, but a latent landmine: nothing prevents a future test from dynamically importing the barrel in a test body and re-flaking. *Suggest a lint rule banning `await import('@/lib/concierge/tools')` in test bodies, or splitting the barrel.* Reported verify (tsc clean, 1415/1415, replay 30/30) is consistent with the diff.
+
+### Not a problem
+§9 renumbering is clean and continuous (1–11, verified in the diff); no other doc references §9 step numbers.
+
+---
+
+## THE ONE THING most likely to make this decay again
+The fix is branded "mechanism not discipline," but **no mechanism was added** — the only new enforcement is more prose in §9, the one hook that could enforce it (`plan-md-staleness-check.cjs`) still ignores PLANET.md, and the "COMPASS hook" it leans on doesn't exist. Nothing forces any session to open NORTH_STAR.md or PLANET.md. It will rot on exactly the same schedule as the last pair, and the false "can't die again" line in the ratified commit makes that rot *less* likely to be caught, because the team believes a guard is watching.</result>
+<usage><subagent_tokens>68662</subagent_tokens><tool_uses>15</tool_uses><duration_ms>233298</duration_ms></usage>
+</task-notification>
+
+## 2026-07-20 04:03 · director-msg (hook) · NEW · (triage at distill)
+Что ж, неплохой анализ и самокритика, но не доведен до конца. Во-первых, я чувствую, что вот эта разбросанность файлов по разным местам и отсутствие собранного механизма в Евэдина это потенциально следующая дырка. при переносе чего-нибудь куда-нибудь. Поэтому логично, наверное. Всё это собрать в одном месте и явно не на лаптопе и ни на десктопе. Очевидно, это должно быть. Ссыласен? И была ещё какая-то вторая мысль, которую я не докрутил, но она, похоже, на, о том, что, в принципе, этот механизм, создание механизмов Он должен быть даже выше, чем проект. Ну, я имею в виду, что у каждого проекта должен быть свой настроенный под конкретный проект этот механизм, но хотелось бы, чтобы эта система могла храниться где-то как отдельная сущность, как отдельный механизм, который можно клонировать при создании любых проектов. я вот об этом. 
+и третья но очень важная мы уже говорили о том что инсинуацию по поводу режима 2,5 надо вообще-то отсюда убрать нет такого режима записанный функционируют режимы 1, 2 ,3.  и всё даже режим четвёртый мы убирали потому что фактически я им не пользуюсь в силу его без особой полезности. технический ты прав идеальный вариант ну точнее говоря доведённые до абсолюта вариант - это Когда директор утверждает список тем план издания и финансы то есть те самые хард лимиты о которых ты говорил а утверждение чтения брифов а также кастинг и чтение сценариев да по большому счёту это могут делать также выстроенные критики как они это делают в нижестоящих подразделениях. поэтому можно ввести режим доведённого до абсолюта работы предприятия только назовём его тогда чтобы нигде хвосты не пересекались - режим 9.
+но в целом если говорить о режимах как плоскости где описана точка касания директора и других человеческих представителей то в принципе опять же в идеале там где режим девять У нас должна существовать Матрица распределения ответственности и это то к чему мы периодически возвращаемся Но что мы ни разу не доделали точка вы всё равно к этому придём
+
+## 2026-07-20 04:58 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a88c3020b05b42101</task-id>
+<tool-use-id>toolu_015i7Y5nYE8kdd278CoAvQHY</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\db82fb2e-10e2-40ba-abd3-828b2871c745\tasks\a88c3020b05b42101.output</output-file>
+<status>completed</status>
+<summary>Agent "Map governance mode references" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I now have the full blast radius. Here is the reconnaissance report.
+
+---
+
+# Governance Mode Blast Radius — Mode 2.5 / Mode 4 Removal
+
+## Q1 — Is Mode 2.5 / Mode 4 present in CODE or DB schema? (the decisive answer)
+
+**YES — both are present in live CODE and in DB CHECK constraints. This is NOT a doc-only cleanup; it requires a code + schema migration.**
+
+The strongest evidence, ranked by how hard it breaks:
+
+**Mode 2.5 — LIVE CODE (breaks compile/runtime if the string is simply deleted):**
+- `webapp\lib\concierge\types.ts:33` — `export type ConciergeMode = '1' | '2' | '2.5' | '3';` — **`'2.5'` is a live union member.** This is the single most load-bearing hit. Removing it turns the two switch arms below into TS errors.
+- `webapp\lib\concierge\system-prompt-builder.ts:146` — `case '2.5':` emits the runtime APPRENTICE prompt block ("Mode 2.5 — APPRENTICE. Agent-led, Director-supervised…") injected into Polina's system prompt.
+- `webapp\lib\concierge\system-prompt-builder.ts:667` — `case '2.5':` returns the label `' (APPRENTICE — agent-led)'`.
+- `webapp\lib\concierge\types.ts:39` — `active_mode: ConciergeMode | null;` (thread field typed on the union).
+
+**Mode 2.5 + Mode 4 — DB CHECK constraint (stored, live on the table):**
+- `webapp\supabase\migrations\0025_concierge_threads.sql:31` — `active_mode IS NULL OR active_mode IN ('1','2','2.5','3','4')` — the `concierge_threads.active_mode` column **actively permits both `'2.5'` and `'4'`**. This is a migration (immutable history) BUT the constraint is live on the running table; correcting it needs a NEW migration.
+- `webapp\supabase\migrations\0002_core_tables.sql:32` — `CHECK (governance_mode BETWEEN 1 AND 4)` — `episodes.governance_mode` **permits `4`**. Live constraint; needs a new migration to narrow to `BETWEEN 1 AND 3`.
+
+**Mode 4 — the runtime logic was ALREADY removed (Phase 1); only comments/labels remain:**
+- The autonomy brain `webapp\lib\agents\gate-decision.ts` is mode-aware for 1/2/3 only; header comment (`:14`) states "Mode 4/AUTOTEST removed in Phase 1." No `=== 4` branch.
+- `webapp\lib\agents\next-events.ts:10` — "PHASE 1: Mode-4/AUTOTEST removed."
+- Grep for live comparisons `=== 4` / `'AUTOTEST'` in non-test webapp code returned **only comments** (factory.ts:849/897, gate-decision.ts:6/14, chat-internal route.ts:114/400/429) — no live `governance_mode === 4` or `directorUserId === 'AUTOTEST'` branch survives. The `'AUTOTEST'` strings passed in `webapp\__tests__\lib\agents\next-events-*.test.ts` are just arbitrary `directorUserId` args proving the branch no longer special-cases.
+
+**Latent Mode-4 acceptance still in code (would silently accept a stale `4`):**
+- `webapp\lib\concierge\resolve-mode.ts:34` — `n &gt;= 1 &amp;&amp; n &lt;= 4` accepts `'4'` and returns `String(n)`. (Note: it can never produce `'2.5'` — `parseInt('2.5')=2` and the numeric sources are integers.)
+- `webapp\lib\api\series-bible.ts:141` — doc-comment `(1=MANUAL, 4=AUTOTEST)` while the actual type on the next lines is `GovernanceModeNum = 1 | 2 | 3` (`:133`) — stale comment only.
+
+## Q2 — Grouped reference list
+
+### (b) CODE — enums/types/logic/DB-value that a removal must touch
+| File:line | What |
+|---|---|
+| `webapp\lib\concierge\types.ts:33` | `ConciergeMode = '1' \| '2' \| '2.5' \| '3'` — **live union w/ 2.5** |
+| `webapp\lib\concierge\system-prompt-builder.ts:146,148-151` | live `case '2.5':` APPRENTICE prompt block |
+| `webapp\lib\concierge\system-prompt-builder.ts:667-668` | live `case '2.5':` label |
+| `webapp\lib\concierge\resolve-mode.ts:34` | `n &lt;= 4` accepts legacy Mode 4 |
+| `webapp\components\studio-shell\GovernanceChip.tsx:15-27` | `GovernanceMode = 1\|2\|3` (already clean; UI dropdown only offers 1/2/3) |
+| `webapp\components\studio-shell\StudioTopbar.tsx:14`, `StudioShell.tsx:27` | `governanceMode?: 1 \| 2 \| 3` (clean) |
+| `webapp\lib\api\series-bible.ts:133` | `GovernanceModeNum = 1 \| 2 \| 3` (clean; source-of-truth type) |
+| `webapp\app\api\assets\[id]\regenerate-video\route.ts:90` | local `GovernanceModeNum = 1 \| 2 \| 3` (clean) |
+| `webapp\lib\api\series-bible.ts:141` | stale comment `4=AUTOTEST` |
+| `webapp\lib\agents\gate-decision.ts:6,14`; `next-events.ts:10,506,601,772,1401`; `factory.ts:849,852,897`; `chat-internal\route.ts:113-114,400,422,429,460`; `plan-regen-guard.ts:17`; `chain-flags.ts:91`; `series-bible.ts:141`; `status-transitions.ts:36`; `eref-check.ts:12`; `animator-critic.ts:56`; `replay-pilot.ts:16,195,340`; `exec-thumb-designer.ts:9,28`; `regenerate-image\route.ts:438`; `regenerate-image-from-plan\route.ts:222` | **comments only** mentioning Mode 4/AUTOTEST — safe to reword, no logic impact |
+| `webapp\components\concierge\ConciergePanel.tsx:6`; `series-bible\SeriesBibleView.tsx:38`; `concierge\types.ts:12`; `chat\route.ts:5`; `dispatch.ts:4`; `approval-check.ts:6`; `wait-for-pickup.ts:7` | **comments only** mentioning Mode 2.5 |
+
+Tests referencing the removed modes (will need updating if you tighten types): `webapp\__tests__\api\status-transitions.test.ts:34`, `webapp\__tests__\lib\concierge\gate-mutation.test.ts:6`, `webapp\__tests__\lib\agents\next-events-readability.test.ts:6,97,108`, `webapp\__tests__\lib\agents\next-events-single-dispatch.test.ts:8,61,70`, `webapp\__tests__\lib\api\plan-regen-guard.test.ts:2`.
+
+### (c) Migrations — immutable history (do NOT edit; supersede with a NEW migration)
+- `webapp\supabase\migrations\0002_core_tables.sql:32` — `governance_mode BETWEEN 1 AND 4`
+- `webapp\supabase\migrations\0025_concierge_threads.sql:31` — `active_mode IN ('1','2','2.5','3','4')` and header refs (`:5,65`)
+- `webapp\supabase\migrations\0010_phase5b_series_authority_storage.sql:94` — seeds `governance_mode_default = '1'`
+- `webapp\supabase\migrations\0040_gate_decision_log.sql:26-27` — `governance_mode` column + Mode 4 comment
+- `webapp\supabase\migrations\0035_activity_events_type_catchup.sql` — `governance_mode_change` event type (unaffected)
+- `webapp\lib\supabase\types.gen.ts:481,491,501,964,976,988` — generated `active_mode: string` (regenerate after the new migration)
+
+### (a) Prose / docs (safe to edit)
+- **Governance spec (source-of-truth doc):** `specs\company\governance.md` — Mode 2.5 section `:169-333` (large block), Mode 4 section `:350-384`.
+- **Top-level docs:** `CLAUDE.md:165,167,227`; `AGENTS.md:165,167,227`; `NORTH_STAR.md:47`; `RESUME-AFTER-CLEAR.md:3,5,6`; `PLAN.md:422,649,679,696,711`.
+- **Agent files:** `agents\exec\concierge.md` (2.5 throughout: `:6,15,20,21,24,49-53,86,89,91,137,147,171`), `agents\exec\orchestrator.md:60,67,142-162`, `agents\exec\exec_dir_ai.md:28,59`, `agents\exec\editor.md:326`, `agents\exec\archivist.md:66`, `agents\artistic\art_director.md:233-237`.
+- **Specs:** `specs\system\webapp.md:106,618,685`, `specs\system\uiux.md:494-511,672-679,1180`, `specs\system\director_inbox.md:341-344`, `specs\system\onboarding.md:260-277`, `specs\system\project_state.md:47`, `specs\system\pipeline_view.md:370`, `specs\glossary.md:257-260`, `specs\production\pipeline_overview.md:31-34`, `specs\protocols\inter_agent_handoff.md:81-190`, `specs\protocols\batch_approval.md:164`.
+- **Config:** `config\uiux.yaml:203` — `autotest_severity: "warning"` (the one config key naming AUTOTEST).
+- **History/analysis (record — can leave as-is):** `docs\CLAUDE-history.md`, `docs\PLAN-history.md`, `docs\e09-supervision-log.md:391`, `docs\analysis\E27-run-defects.md:17`, `docs\AUTONOMY-IMPLEMENTATION-PLAN.md:41`, `.claude\training-inbox.md:2807`, `.env.example:134`.
+
+## Q3 — Where governance mode is DEFINED vs STORED
+
+**DEFINED (source of truth):**
+- **Type (webapp authority):** `webapp\lib\api\series-bible.ts:133` — `GovernanceModeNum = 1 | 2 | 3`. Re-used across all asset routes and `governance.ts`.
+- **Enforcement logic:** `webapp\lib\governance.ts` (`enforceMode`, category map) and `webapp\lib\agents\gate-decision.ts` (`resolveGateDecision` — the mode×gateClass autonomy brain, 1/2/3 only).
+- **Concierge type (separate, string-based):** `webapp\lib\concierge\types.ts:33` — `ConciergeMode = '1'|'2'|'2.5'|'3'` (the ONE place 2.5 still lives as a value).
+- **UI enum:** `webapp\components\studio-shell\GovernanceChip.tsx:15` — `GovernanceMode = 1|2|3`.
+- **Doctrine doc:** `specs\company\governance.md`; mirrored in `CLAUDE.md §6` / `AGENTS.md`.
+
+**STORED:**
+- **Per-episode:** Supabase `episodes.governance_mode` (smallint, `0002_core_tables.sql:31-32`, CHECK 1-4). This is the authority the pipeline runs under.
+- **Global default:** Supabase `app_config` row `scope='system', key='governance_mode_default'` (seeded `'1'` in `0010`). Read by `resolve-mode.ts` and `GovernanceChip`.
+- **Per-thread snapshot:** Supabase `concierge_threads.active_mode` (text, `0025:23,31`, CHECK includes `'2.5'`/`'4'`). Written via `webapp\lib\concierge\threads.ts:51`. Precedence chain lives in `webapp\lib\concierge\resolve-mode.ts` (episode → app_config → `'1'`); note it deliberately does NOT trust `active_mode` as authority.
+- **Config seed (repo):** `config\uiux.yaml:198-203` (the `governance_mode` UI control) and `.env.example:133`.
+
+## Q4 — Could a new "Mode 9" collide with any existing literal 9?
+
+**No naming collision in the governance namespace — but the schema and types actively FORBID 9, so Mode 9 needs explicit widening, not just addition.** Blockers/considerations:
+
+1. **DB constraints reject 9:**
+   - `episodes.governance_mode` CHECK is `BETWEEN 1 AND 4` (`0002_core_tables.sql:32`) → inserting `9` throws. Needs a new migration.
+   - `concierge_threads.active_mode` CHECK is `IN ('1','2','2.5','3','4')` (`0025:31`) → `'9'` rejected. Needs a new migration.
+2. **Type unions reject 9:** `GovernanceModeNum`/`GovernanceMode` = `1|2|3`, `ConciergeMode` = `'1'|'2'|'2.5'|'3'`. All must gain `9`/`'9'`.
+3. **`resolve-mode.ts:34`** caps `n &lt;= 4` → would silently drop a stored 9 back to fallback `'1'`. Must widen.
+4. **UI:** `GovernanceChip.tsx:119` hard-codes `[1, 2, 3]` for the picker; `MODE_LABEL`/`MODE_DESCRIPTION` maps need a `9` entry.
+
+**Unrelated existing literal-9 uses (different numeric namespaces — no governance collision, listed so you don't mistake them):**
+- `webapp\components\dashboard\ActiveEpisodesZone.tsx:38` — `PUBLISHED: 9, ANALYTICS_COLLECTING: 9, COMPLETE: 9` — these are **episode-status sort ordinals**, not governance modes.
+- `webapp\app\onboarding\page.tsx:77` — `state.current_step === 4` — onboarding step counter, unrelated.
+- Various `res.status === 403/404/402` and `version === 4` in scripts/providers — HTTP/version numbers, unrelated.
+
+Net: "Mode 9" is free as a label, but the two CHECK constraints and three type unions treat the mode domain as closed (currently 1-4), so introducing 9 is a deliberate widening across DB + types + UI, exactly parallel in scope to the 2.5/4 removal.
+
+---
+
+**One-line bottom line for the Director:** Removing 2.5/4 is **not** doc-only — it touches one live TS union (`ConciergeMode`, `types.ts:33`) with two switch arms (`system-prompt-builder.ts:146,667`) and two live DB CHECK constraints (`0002:32` governance_mode 1-4, `0025:31` active_mode set), requiring a new migration; Mode 4's *runtime logic* is already gone (Phase 1), leaving only comments. Everything else is prose.</result>
+<usage><subagent_tokens>77519</subagent_tokens><tool_uses>19</tool_uses><duration_ms>178004</duration_ms></usage>
+</task-notification>
+
+## 2026-07-20 07:50 · director-msg (hook) · NEW · (triage at distill)
+напомни что это
+
+## 2026-07-20 20:39 · director-msg (hook) · NEW · (triage at distill)
+===1=== пошли первые просмотры опубликованных видео (там основная масса - scheduled) читай скилл head of growth но помни что это не только не догма но это не обкатанный материал. так что делай анализ, ищи лучшие практики . оттталкивайся не от гипотез а от анализа и сравнения . задача не свалиться в клише "сам не бомбил , но научить могу!"  а выстроить "автономную экосистему анализа информации из гугл студио,других аналитических платформ и синтеза процессов коррекций и обучения"

@@ -1,3 +1,8 @@
 # Live status anchor — master-only (CLAUDE.md §12). Auto-union the rare
 # concurrent master edit instead of a hard merge conflict; history preserved.
 PLAN.md merge=union
+
+# Append-only training log — the hook appends on BOTH machines, so a laptop/desktop
+# round-trip is a guaranteed conflict on an append. Union keeps both sides (same
+# rationale as PLAN.md above; order within the file is not load-bearing).
+.claude/training-inbox.md merge=union
