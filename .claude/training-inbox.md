@@ -5663,3 +5663,60 @@ Issue, один злободневный... issue, один злободневн
 
 ## 2026-07-21 16:32 · director-msg (hook) · NEW · (triage at distill)
 Self check-in for PR #41 (airport pt.2 training-inbox chore). Re-check PR #41 state, CI status, and mergeability. If nothing changed and no review comments, re-arm the next check-in silently without messaging the Director. Stop check-ins once merged/closed.
+
+## 2026-07-22 11:11 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a6c01b3f2abe0f6a5</task-id>
+<tool-use-id>toolu_01VFwmgGQA4kbeUHqdt9BjTC</tool-use-id>
+<output-file>/tmp/claude-0/-home-user-SandyStudio/84345889-f841-5f3f-a1aa-edaba97513bc/tasks/a6c01b3f2abe0f6a5.output</output-file>
+<status>completed</status>
+<summary>Agent "Find anthropomorphic object-character roster (retry, synchronous)" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Summary
+
+**Found: yes.** A complete, already-invented list of anthropomorphic OBJECT characters exists — it is not lost from the codebase, just buried in a long chat log the Director apparently forgot about: **`.claude/pa-feedback.log`** (git-tracked, dated 2026-05-12, thread `bdbdafcf`). It is a 16-entry "Cast Bible" that already includes a coffee cup character, an eraser character, and more — exactly what the Director described.
+
+### 1. The list itself (found in full, 3 separate renderings of the same roster)
+
+**Primary listing — `.claude/pa-feedback.log:1015-1062`** ("ПЕРСОНАЖИ (THE CAST BIBLE) — УТВЕРЖДЕННЫЙ СПИСОК", 2026-05-12T05:26Z):
+
+| ID | Name (EN / RU) | One-line description |
+|---|---|---|
+| CH_01 | Sandy / Сэнди | Soft silicone hourglass hero, gold sand = life resource (the hero, not an antagonist) |
+| CH_02 | Antagonist Shadow / Тень-Антагонист | Ominous tall figure with glowing red eyes, abstract threat of the neon city |
+| CH_03 | Inspector-Stopwatch / Инспектор-Секундомер | Metal rhythm controller, obsessed with deadlines/efficiency |
+| CH_04 | Perfume Vial / Флакон Духов | Elegant glass lady with purple mist, attractive but allergenic |
+| CH_05 | **Coffee Cup Colleague / Коллега-Стакан Кофе** | Jittery office worker living on stimulants, constantly spilling nervous energy |
+| CH_06 | Old Calendar Neighbor / Сосед-Календарь | Grumpy pensioner shedding pages of the past |
+| CH_07 | Baby-Timer / Малыш-Таймер | Unpredictable round infant that loudly flips sleeping adults into "work mode" |
+| CH_08 | Skateboard Courier / Курьер-Скейтборд | Fast, faceless disruption force |
+| CH_09 | Mirror-Filter / Зеркало-Фильтр | Social-approval/narcissism tool that distorts reality for status |
+| CH_10 | Balloon / Воздушный Шарик | Bright "optimist on the edge of collapse," chaotically deflates |
+| CH_11 | Yarn Ball / Клубок Ниток | Anxious type that tangles itself and others |
+| CH_12 | Stapler / Степлер | Blunt bureaucrat that joins incompatible things |
+| CH_13 | **Eraser / Ластик** | Avoids responsibility, physically erases its own traces and others' achievements |
+| CH_14 | Marginal / Маргинал (Клубок Ветоши, "Rag Ball") | Chaotic street outsider whose dirt strips off characters' fake masks |
+| CH_15 | Golden Chronometer / Золотой Хронометр | Shining elite figure, sand always falls perfectly on schedule |
+| CH_16 | Heavy Friend / Тяжелый друг (Наковальня, "Anvil") | Massive depressed character whose weight nearly tears Sandy's waist |
+
+**Expanded per-character section — `.claude/pa-feedback.log:1410-1509`** (same 16, each with an added English framing sentence, e.g. Eraser: "A comic avoidance character. He removes evidence, consequences, and sometimes progress itself." / Coffee Cup Colleague: "A nervous energy amplifier. He brings workplace anxiety, speed, spills, and unstable rhythm into scenes.")
+
+**Material/texture assignment for the same roster — `.claude/pa-feedback.log:2008-2067`** (e.g. "soft eraser rubber — avoidance, deletion, denial... Used for Eraser"; "steam, caffeine liquid, and paper cup texture... Used for Coffee Cup Colleague").
+
+**Later refinement pass — `.claude/pa-feedback.log:15250-15324`** (2026-05-19T09:58Z) shortens most of these into a condensed "gag-object" restatement and adds explicit **conflict mechanics** per character (what desire of Sandy's each one breaks) — e.g. "Eraser конфликтует через исчезновение: Сэнди хочет опереться на окружение, но ластик стирает саму реальность вокруг него." Confirms it's the same set: Inspector Stopwatch, Perfume Vial, Coffee Cup, Old Calendar, Baby Timer, Skateboard Courier, Mirror Filter, Balloon, Yarn Ball, Stapler, Eraser, Heavy Friend/Наковальня.
+
+**Explicit self-correction note — `.claude/pa-feedback.log:2099`**: "[ASSISTANT] Да, ты прав: в прошлом списке я смешал object props и character-objects... `Perfume Vial`, `Coffee Cup Colleague`, `Baby-Timer`, `Balloon`, `Yarn Ball`, `Stapler`, `Eraser`, `Golden Chronometer`, `Heavy Friend` у нас уже типизированы как персонажи." — this is the log's own acknowledgment that this set is the canonical character roster (distinct from a plain-prop list that follows it at `:2123-2139`, e.g. smartphone, red carpet, spotlight, clipboard, gym dumbbells — those are *inanimate props*, not anthropomorphic characters).
+
+There's also an earlier brainstorm draft at `.claude/pa-feedback.log:2071-2095` (2026-05-12T06:13Z) listing raw candidate object *types* before they were split into characters vs. props: stopwatch, perfume vial, coffee cup, calendar, baby timer, skateboard, mirror/filter, balloon, yarn ball, stapler, eraser, chronometer, anvil, smartphone, shopping bags, gym equipment, paperwork, tape, patch, pipe, door, table, chair — with a Director note (in Russian, same message) saying half of that list are actually characters with separate typing already, and asking for ~20-30 more object examples grounded in planned episodes.
+
+### 2. Status — canonized or not?
+
+Only **CH_01 (Sandy)** and **CH_02 (Inspector-Stopwatch, listed there as "Antagonist Shadow"/generically)** ever made it into an actual production spec (`specs/production/character_visual_development.md:33-38`, `docs/CLAUDE-history.md:260`, `webapp/scripts/clone-sandy-v02-with-text.ts:68`). **CH_03 through CH_16 — including Coffee Cup Colleague and Eraser — never appear anywhere else in the repo** (no `bibles/characters/` dir exists on disk, no DB/spec reference, no mention in `specs/company/series_bible.md`, `specs/glossary.md`, or the current `sandy-gag-library` SKILL.md). The `sandy-gag-library` skill's current 5 antagonists (Inspector Stopwatch, Perfume Vial, Pigeon Flock, Auto-Door, Wet Floor Sign) overlap with this older list only on **Inspector Stopwatch** and **Perfume Vial** — Pigeon Flock, Auto-Door, and Wet Floor Sign are not in the pa-feedback.log list at all, meaning the studio's canon evolved on a separate track and this 16-cast brainstorm (with its coffee cup, eraser, stapler, yarn ball, balloon, etc.) was set aside/forgotten rather than promoted or discarded.
+
+### 3. Nothing else found
+No other file in the repo (`.claude/training-inbox.md`, `docs/CLAUDE-history.md`, `docs/PLAN-history.md`, `PLAN.md`, `archive/`, `specs/`, `webapp/scripts/*.md`, memory-note filename listing) contains any additional or alternate anthropomorphic-object-character list. The training-inbox.md director note at line 5651-5654 (2026-07-21) is the Director's own request that presumably triggered this search — it references "наш список героев" (our list of heroes) without giving its location, matching what was found above.
+
+### Bottom line for the report back to the Director
+The list exists, is not lost from git, and is fully readable at `.claude/pa-feedback.log:1015-1062` (compact form), `:1410-1509` (with rationale), and `:15250-15324` (conflict-mechanic form). It was never promoted into the current Bible/canon — CH_03 (Inspector-Stopwatch, partially) and CH_02 survived into other lists under different names, but CH_04–CH_16 (Perfume Vial, Coffee Cup Colleague, Old Calendar Neighbor, Baby-Timer, Skateboard Courier, Mirror-Filter, Balloon, Yarn Ball, Stapler, Eraser, Marginal, Golden Chronometer, Heavy Friend) were never canonized as `CHR-*`/`OBJ-*` entities and never appear in the currently-active `sandy-gag-library` 5-antagonist roster.</result>
+<usage><subagent_tokens>77878</subagent_tokens><tool_uses>25</tool_uses><duration_ms>135516</duration_ms></usage>
+</task-notification>
