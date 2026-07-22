@@ -129,6 +129,11 @@ Hand the selection skill a clean, judgeable candidate — the contract it consum
 ## First-Frame Hook — the single clearest opening image
 ## Ending Payoff — accident / reversal / surrender resolution
 ## Gag-Bank Potential — distinct mechanism-GROUPS (not a flat count), each extensible
+## Named Vis-à-Vis (up to 4) — counterpart characters/objects this theme's
+gag engine plays against. Reference an existing `CHR-*`/`OBJ-*` id where one
+exists (e.g. `CHR-InspectorStopwatch`); otherwise name a candidate anthropomorphic
+OBJECT character (Sandy-style — an everyday object given a face/limbs, never a
+human) with a one-line description, flagged NOT YET CANONIZED for Director review.
 ## Production Shape — one location? one main prop? reusable assets?
 ```
 

@@ -45,6 +45,7 @@ EXEC-WCHK and EXEC-VGEN are triggered.
 | Style Bible | `bibles/style/` APPROVED | ✅ Mandatory | Camera angle vocabulary, shot duration guidelines, mood vocabulary, visual conventions |
 | Brief | `SS-[S]-[E]-SPC-brief-v[NN]-APPROVED.md` | ✅ Mandatory | Target runtime (duration budget), punchline shot rules |
 | Shot Schema | `specs/schemas/shot.md` | ✅ Mandatory | Output format and field contracts |
+| Episode Start Notice | `SS-[S]-[E]-SPC-start_notice-v[NN]-APPROVED.md` | ⬜ Optional | **Advisory reservoir** — the same gag bank the Director/Producer attached at brief stage (e.g. 100-gag Car-Wash-style list). Use it only to fill density headroom per act under `sandy-gag-library` §10 when the Script's own action/comic beats leave an act below budget. It is NOT a beat-contract and does NOT override the Script: never invent, add, or alter action beyond what the Script's `action` field describes. A reservoir gag may only be staged as an elaboration of an existing Script action beat (added visual business inside a shot) — never as a new scene, plot beat, or character action absent from the Script. |
 
 **If any mandatory input is missing or not APPROVED → STOP, notify EXEC-ORCH.**
 
@@ -180,6 +181,14 @@ For each scene in the script, in order:
 4. Minimum shots per scene: 1 (establishing + action can share if brief)
 5. Maximum shots per scene: derive from Style Bible conventions + scene duration budget
 ```
+
+**Episode Start Notice, if present:** consult it during shot-break identification
+only for acts where the Script's own comic beats leave the act below its
+`sandy-gag-library` §10 density budget (setup/build/climax/resolution, scaled
+proportionally to `target_runtime`). Draw on reservoir items only to add visual
+business inside a shot that already exists per the Script's action — never to
+add a scene, action, or beat the Script does not stage. If Start Notice is
+absent, density is filled from Script beats alone, as today.
 
 **For each shot block, populate all fields:**
 

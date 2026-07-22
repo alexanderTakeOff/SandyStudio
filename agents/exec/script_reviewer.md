@@ -39,6 +39,7 @@ with no CRITICAL issues.
 |-------|--------|---------|-----------------|
 | Script under review | Path from EXEC-ORCH handoff | ✅ Mandatory | The asset being QA'd |
 | Approved Brief | `SS-[S]-[E]-SPC-brief-v[NN]-APPROVED.md` | ✅ Mandatory | Mandatory beats, act structure, required characters/locations, runtime target |
+| Episode Start Notice | `SS-[S]-[E]-SPC-start_notice-v[NN]-APPROVED.md` | ⬜ Optional | Same advisory gag reservoir attached at brief stage, so utilization can be checked when present (CHK-S09). Not a beat-contract — its absence does not affect any other check and does not block review. |
 | Style Bible | `bibles/style/` APPROVED | ✅ Mandatory | Dialogue ratio rule, visual writing convention, comedy approach parameters |
 | World Bible | `bibles/world/` APPROVED | ✅ Mandatory | Valid locations, physics rules, object inventory |
 | Character Profiles | `bibles/characters/` APPROVED (all characters in script) | ✅ Mandatory | Behaviour, never_does list, speech patterns |
@@ -86,7 +87,7 @@ Report delivered to EXEC-ORCH. EXEC-ORCH routes based on `next_action` field.
 
 ### Step 1 — Run checklist
 
-Execute all 8 checks from `specs/schemas/qa_report.md` SCRIPT checklist.
+Execute all 9 checks from `specs/schemas/qa_report.md` SCRIPT checklist.
 Each check maps to a specific input — derive the criterion from that input, not from assumption.
 
 ---
@@ -225,6 +226,43 @@ Source of truth: Character Profiles → `never_does` field per character
    → Issue: severity CRITICAL — never_does is a hard constraint
      location: scene_id, character_id,
      description: what they do vs what never_does prohibits
+```
+
+---
+
+**CHK-S09 — Gag reservoir utilization (advisory, non-blocking)**
+
+Source of truth: Episode Start Notice (optional) → gag list; `sandy-gag-library`
+skill §10 Density Rules, scaled to Brief → `target_runtime`
+
+Severity for this check is fixed at MINOR — never CRITICAL, never MAJOR,
+regardless of finding. This check cannot produce a FAIL, cannot trigger
+REVISE or ESCALATE, and must never be edited to escalate its severity: it is
+a transparency signal only, not a gate.
+
+```
+1. If no Episode Start Notice was provided for this episode:
+   → result: N/A, notes: "No Episode Start Notice attached. Check not applicable."
+   → skip remaining steps
+2. Count the distinct gag items in the Start Notice reservoir
+3. Read target_runtime from Brief; scale sandy-gag-library §10's per-act density
+   budget (55s calibration: setup ~1, build ~3-4, climax ~5-7 chained,
+   resolution ~1 final beat) proportionally to target_runtime
+4. Roughly count gag-bearing beats present in the script per act
+   (approximate — not a full §2 taxonomy audit)
+5. Compare actual per-act gag count against the scaled density budget
+6. PASS: gag count is at or reasonably near the scaled budget in every act
+   (do not penalize for not drawing on the reservoir specifically — only for
+   under-filling the density budget itself)
+7. MINOR: any act is clearly under the scaled density budget
+   → Issue: severity MINOR, location: "Act [N] — gag density",
+     description: reservoir size, scaled per-act budget, and actual count,
+     ending with: "This finding surfaces to the Director via this QA report
+     (reviews/, PASS-WITH-NOTES) as a cross-episode transparency signal; it
+     does not automatically reach EXEC-SB, which has its own direct Start
+     Notice access.",
+     recommendation: which act(s) have the most headroom and are candidates
+     for drawing on the reservoir in a future revision
 ```
 
 ---

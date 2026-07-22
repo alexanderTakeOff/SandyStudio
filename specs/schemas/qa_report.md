@@ -111,6 +111,7 @@ approval_notes: string        # OPTIONAL — any conditions or caveats on the ap
 | CHK-S06 | Scene count consistent with target runtime |
 | CHK-S07 | All actions are storyboardable (no internal states described) |
 | CHK-S08 | No character does anything in their never_does list |
+| CHK-S09 | Gag reservoir utilization (advisory — MINOR only, non-blocking) |
 
 ### STORYBOARD / WORLD CHECK (EXEC-WCHK)
 
