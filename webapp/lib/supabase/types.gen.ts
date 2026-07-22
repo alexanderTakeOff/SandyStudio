@@ -14,6 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
+      channel_reports: {
+        Row: {
+          columns: string[] | null
+          end_date: string | null
+          fetched_at: string
+          has_impressions: boolean
+          id: number
+          raw: string | null
+          report_id: string
+          report_type: string
+          row_count: number | null
+          start_date: string | null
+        }
+        Insert: {
+          columns?: string[] | null
+          end_date?: string | null
+          fetched_at?: string
+          has_impressions?: boolean
+          id?: never
+          raw?: string | null
+          report_id: string
+          report_type: string
+          row_count?: number | null
+          start_date?: string | null
+        }
+        Update: {
+          columns?: string[] | null
+          end_date?: string | null
+          fetched_at?: string
+          has_impressions?: boolean
+          id?: never
+          raw?: string | null
+          report_id?: string
+          report_type?: string
+          row_count?: number | null
+          start_date?: string | null
+        }
+        Relationships: []
+      }
+      channel_snapshots: {
+        Row: {
+          captured_at: string
+          comments: number
+          id: number
+          likes: number
+          privacy: string | null
+          scope: string
+          source: string
+          subscribers: number | null
+          video_id: string | null
+          videos_count: number | null
+          views: number
+        }
+        Insert: {
+          captured_at?: string
+          comments?: number
+          id?: never
+          likes?: number
+          privacy?: string | null
+          scope: string
+          source?: string
+          subscribers?: number | null
+          video_id?: string | null
+          videos_count?: number | null
+          views?: number
+        }
+        Update: {
+          captured_at?: string
+          comments?: number
+          id?: never
+          likes?: number
+          privacy?: string | null
+          scope?: string
+          source?: string
+          subscribers?: number | null
+          video_id?: string | null
+          videos_count?: number | null
+          views?: number
+        }
+        Relationships: []
+      }
       activity_events: {
         Row: {
           actor: string | null

@@ -44,6 +44,27 @@ async function authedGet(url: string): Promise<Response> {
  */
 export type PublicationState = 'public' | 'unlisted' | 'scheduled' | 'private-draft';
 
+export interface ChannelStatistics {
+  viewCount: number;
+  subscriberCount: number;
+  videoCount: number;
+}
+
+/** Channel-level live counters (Data API) — the channel-scope row of the HoG time series. */
+export async function getChannelStatistics(): Promise<ChannelStatistics> {
+  const res = await authedGet(`${DATA_API}/channels?part=statistics&mine=true`);
+  if (!res.ok) throw new YouTubeStatsError(`getChannelStatistics failed (${res.status})`, res.status);
+  const json = (await res.json()) as {
+    items?: Array<{ statistics?: { viewCount?: string; subscriberCount?: string; videoCount?: string } }>;
+  };
+  const s = json.items?.[0]?.statistics;
+  return {
+    viewCount: Number(s?.viewCount ?? 0),
+    subscriberCount: Number(s?.subscriberCount ?? 0),
+    videoCount: Number(s?.videoCount ?? 0),
+  };
+}
+
 export interface VideoStatistics {
   videoId: string;
   viewCount: number;

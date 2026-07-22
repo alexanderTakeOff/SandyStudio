@@ -42,6 +42,8 @@ import { jobsStaleReaper } from './functions/jobs-stale-reaper';
 import { reconcileEpisodeFn } from './functions/reconcile-episode';
 import { reconcileCron } from './functions/reconcile-cron';
 import { episodeScorecard } from './functions/episode-scorecard';
+import { hogChannelSnapshot } from './functions/hog-channel-snapshot';
+import { hogReportPoll } from './functions/hog-report-poll';
 
 export const functions = [
   // Phase 3 smoke
@@ -96,4 +98,11 @@ export const functions = [
   reconcileCron,
   // Episode Autonomy Scorecard — snapshot (EXEC-STITCH done) + published.
   episodeScorecard,
+  // 2026-07-22 — Head-of-Growth channel observers. The MEASUREMENT layer:
+  // #1 a 15-min channel-wide Data-API time series (velocity / plateaus / wave
+  // shape); #2 a daily poll of the Reporting API bulk CSVs (the only automated
+  // route to impressions/CTR). Both persist to 0045 tables; a failed poll leaves
+  // a gap, never a fake zero.
+  hogChannelSnapshot,
+  hogReportPoll,
 ];
