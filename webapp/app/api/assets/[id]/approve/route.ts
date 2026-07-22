@@ -14,6 +14,7 @@ import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError, ConflictError, GovernanceBlockError } from '@/lib/api/errors';
 import { assertAssetTransition, type AssetStatus } from '@/lib/api/status-transitions';
+import { assertFinalizedMediaHasDriveBackup } from '@/lib/api/media-backup-guard';
 import { filenameForStatus } from '@/lib/api/filename-status';
 import { enforceMode, type GovernanceEpisode } from '@/lib/governance';
 import { inngest } from '@/lib/inngest/client';
@@ -134,6 +135,11 @@ export const POST = withApiHandler(async (req, ctx) => {
   }
 
   const targetStatus = STATUS_AFTER_DECISION[decision];
+  // Root-cause guard (2026-07-22 incident): never finalize a media asset to
+  // APPROVED/LOCKED without a Drive backup — a Drive-less finalize is lost on
+  // the next cache clear (empty_background vanished exactly this way). No-op for
+  // non-media, non-final statuses, already-backed assets, and mock storage.
+  await assertFinalizedMediaHasDriveBackup(supabase, asset, targetStatus);
   // Backlog #7 (2026-06-16): the human Director is BOTH reworker and approver.
   // The FSM forbids REVISION / NEEDS_HUMAN_TWEAK → APPROVED (the autonomous
   // pipeline routes a reworked asset through a second REVIEW), but for a human

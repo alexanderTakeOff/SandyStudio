@@ -111,6 +111,10 @@ export const POST = withApiHandler(async (req) => {
     // Phase 2b arm-at-creation: born autonomous (mode 2/3) ⇒ the conductor is
     // armed from the first agent completion; mode 1 (default) stays fully manual.
     reconciler_armed: armForMode(body.governance_mode),
+    // 2026-07-22 — target total runtime is now stored on the episode (was
+    // homeless: only leaked into the brief text). The Writer/Storyboarder read
+    // it via resolveRuntimeTarget; null ⇒ shorts/long default applies.
+    target_runtime_seconds: body.target_runtime_seconds ?? null,
   };
   // Insert episode
   const epPayload = {

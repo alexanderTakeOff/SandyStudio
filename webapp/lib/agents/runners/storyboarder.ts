@@ -30,10 +30,10 @@ import {
   composeActivePlaybooksBlock,
 } from '../load-skills';
 import { parseSkillSelection } from '../../skills/parse-skill-selection';
-import { findApprovedAsset } from '../upstream';
+import { findApprovedAsset, START_NOTICE_FILE_TYPE } from '../upstream';
 import { SHOT_ID_RE, canonicalShotId, episodeShort } from '../../api/shot-id';
 import { hasVerticalDeliveryTarget } from '../../api/provider-capabilities';
-import { readEpisodeDeliveryTargets } from '../delivery-targets';
+import { readEpisodeDeliveryTargets, resolveRuntimeTarget } from '../delivery-targets';
 
 export const SB_CONTRACT = 'storyboarder@v2';
 // 2026-05-20 — upgraded sonnet-4-6 → opus-4-7 per Director directive.
@@ -233,8 +233,14 @@ function buildUserMessage(args: {
    *  delivery_targets include a 9:16 Shorts surface. Gates the vertical-safe
    *  JSON keys + hard-rule block below; when false the rule sleeps entirely. */
   shortsIsTarget?: boolean;
+  /** Episode Start Notice content — advisory reservoir (gag bank / notes). The
+   *  Storyboarder reads it for staging material the brief/script omit. */
+  startNoticeContent?: string | null;
+  /** Authoritative target total runtime (seconds) from
+   *  episode.target_runtime_seconds (Director) or a shorts/long default. */
+  runtimeTargetSeconds: number;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes, activeSkillsBlock, revisionNote, shortsIsTarget } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes, activeSkillsBlock, revisionNote, shortsIsTarget, startNoticeContent, runtimeTargetSeconds } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -325,6 +331,21 @@ function buildUserMessage(args: {
     scriptContent,
     '</script>',
     '',
+    startNoticeContent && startNoticeContent.trim().length > 0
+      ? [
+          '## Episode Start Notice (advisory reservoir — NOT a beat-contract)',
+          '',
+          'The Director/Producer attached extra pre-authoring material for this',
+          'episode below — a gag reservoir, references, or staging notes. Draw on it',
+          'for shot-level staging where the script leaves room. It does NOT override',
+          'the script structure or the brief\'s Key beats.',
+          '',
+          '<episode_start_notice>',
+          startNoticeContent,
+          '</episode_start_notice>',
+          '',
+        ].join('\n')
+      : '',
     hasCanon
       ? biblePromptBlock
       : [
@@ -353,7 +374,7 @@ function buildUserMessage(args: {
     `  "episode_id": "${episodeCode}",`,
     `  "script_version": ${scriptVersion},`,
     '  "contract": "storyboarder@v2",',
-    '  "runtime_target_seconds": <integer from brief>,',
+    `  "runtime_target_seconds": ${runtimeTargetSeconds},`,
     '  "acts": [',
     '    {',
     '      "act": 1,',
@@ -426,7 +447,7 @@ function buildUserMessage(args: {
     hasCanon
       ? '- Every visual description in `action_prose` MUST be consistent with the Bible canon above. Do not contradict canonical character appearance, location layout, or style direction.'
       : '',
-    '- Sum of all shot `duration_seconds` should be within ±10% of `runtime_target_seconds`.',
+    `- Set \`runtime_target_seconds\` to ${runtimeTargetSeconds}. Sum of all shot \`duration_seconds\` MUST be within ±10% of ${runtimeTargetSeconds} — distribute/extend shots to reach it; do NOT inherit a shorter runtime from the script.`,
     '- For visual comedy MVP: every shot is action, no dialogue.',
     '- Each shot\'s `action_prose` must describe what the camera SEES — concrete physical action, not internal feelings.',
     '- The fenced JSON must be valid JSON. No trailing commas. No comments. Properly escape any quotes inside strings.',
@@ -537,6 +558,21 @@ export async function runStoryboarder(
       `Precondition failed: APPROVED SCR-script not found`,
     );
   }
+
+  // Episode Start Notice — advisory reservoir (gag bank / notes) the
+  // Director/Producer attached. The Storyboarder was previously BLIND to it
+  // (only the Writer read it), so notice-only material never reached the board.
+  const startNoticeAsset = findApprovedAsset(upstream, START_NOTICE_FILE_TYPE);
+  const startNoticeContent =
+    startNoticeAsset?.content && startNoticeAsset.content.trim().length > 0
+      ? startNoticeAsset.content
+      : null;
+
+  // Authoritative episode runtime (Director's setting wins over shorts default).
+  const runtimeTargetSeconds = resolveRuntimeTarget({
+    episodeMetadata: (inputs.episode as { metadata?: unknown } | undefined)?.metadata,
+    shortsIsTarget,
+  });
 
   const bible = (inputs.bible as SeriesBibleCanon | undefined) ?? {
     series_id: null,
@@ -665,7 +701,13 @@ export async function runStoryboarder(
     activeSkillsBlock,
     revisionNote,
     shortsIsTarget,
+    startNoticeContent,
+    runtimeTargetSeconds,
   });
+  if (startNoticeContent) {
+    notes.push(`Episode Start Notice loaded (${startNoticeContent.length} chars) — advisory reservoir injected into storyboard prompt`);
+  }
+  notes.push(`Target runtime ${runtimeTargetSeconds}s injected (episode.target_runtime_seconds or shorts/long default)`);
   if (shortsIsTarget) {
     notes.push(
       `Vertical-safe framing ACTIVE — delivery_targets [${deliveryTargets.join(', ')}] include a 9:16 surface; gag/punchline peaks will carry vertical_safe / landscape_only`,

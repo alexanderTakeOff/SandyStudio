@@ -40,6 +40,7 @@ import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import { logEvent } from '@/lib/api/events';
+import { bumpPreviewFreshness } from '@/lib/asset-preview-resolver';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -178,7 +179,10 @@ export const POST = withApiHandler(async (req, ctx) => {
       drive_path: source.drive_path,
       drive_file_id: source.drive_file_id,
       drive_web_view_url: source.drive_web_view_url,
-      metadata: newMeta as never,
+      // Bump the cache-bust key: this path inherits the SOURCE's image_prompt
+      // wholesale, so without this the target's `?t=` URL can stay unchanged and
+      // the drawer keeps the stale preview (2026-07-22 in-place-replace class).
+      metadata: bumpPreviewFreshness(newMeta) as never,
     } as never)
     .eq('id', toAssetId);
   if (updErr) throw new Error(`target update failed: ${updErr.message}`);

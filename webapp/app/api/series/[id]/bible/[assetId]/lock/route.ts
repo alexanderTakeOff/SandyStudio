@@ -12,6 +12,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
+import { assertFinalizedMediaHasDriveBackup } from '@/lib/api/media-backup-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,12 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (asset.status === 'REJECTED') {
     throw new ValidationError(`Cannot lock a REJECTED asset; revise first`);
   }
+
+  // Root-cause guard (2026-07-22 incident): a Bible canon image/video must have
+  // a Drive backup before LOCK, else it is lost on the next cache clear (exactly
+  // how empty_background became a placeholder). No-op for text canon (.md) and
+  // mock storage.
+  await assertFinalizedMediaHasDriveBackup(supabase, asset, 'LOCKED');
 
   // Filename rename: status segment goes from -DRAFT/REVIEW/REVISION/APPROVED to -LOCKED.
   // Pattern: <prefix>-v<NN>-<STATUS>.<ext>

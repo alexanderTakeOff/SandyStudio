@@ -25,7 +25,7 @@ import {
 } from '../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import { hasVerticalDeliveryTarget } from '../../api/provider-capabilities';
-import { readEpisodeDeliveryTargets } from '../delivery-targets';
+import { readEpisodeDeliveryTargets, resolveRuntimeTarget, DEFAULT_RUNTIME_SECONDS } from '../delivery-targets';
 import type { AgentInputs } from '../types';
 import {
   getAgentSkillManifest,
@@ -127,8 +127,18 @@ export function buildUserMessage(args: {
    * single-punch short structure instead of a multi-act long-form script.
    */
   shortsIsTarget?: boolean;
+  /**
+   * Authoritative target total runtime in seconds, resolved from
+   * `episode.metadata.target_runtime_seconds` (Director's setting) with a
+   * shorts/long-form default fallback. Injected as an explicit number so the
+   * Writer stops guessing — and so a Director-set 60 wins even on a shorts
+   * episode (was hard-coded to the 15–40s single-punch band, ignoring intent).
+   * Optional in the type only for back-compat with older callers/tests; the
+   * runner always resolves and passes it.
+   */
+  runtimeTargetSeconds?: number;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, bible, revisionNote, activeSkillsBlock, startNoticeContent, shortsIsTarget } = args;
+  const { episodeCode, episodeTitle, briefContent, bible, revisionNote, activeSkillsBlock, startNoticeContent, shortsIsTarget, runtimeTargetSeconds = DEFAULT_RUNTIME_SECONDS } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -164,23 +174,24 @@ export function buildUserMessage(args: {
       : '',
     shortsIsTarget
       ? [
-          '## SHORTS DELIVERY IS ACTIVE (short-target episode)',
+          '## SHORTS DELIVERY IS ACTIVE (vertical 9:16)',
           '',
-          'This episode ships as a vertical (9:16) YouTube Short. Write it as ONE',
-          'self-contained gag arc, NOT a multi-act long-form script:',
-          '- Target runtime ~15–40 seconds total — a Short reads as a single punch,',
-          '  not an anthology of gags.',
-          '- Single-punch structure: ONE clear desire, ONE escalation ramp, ONE punch.',
-          '  No B-plot, no second independent gag chain.',
+          'This episode ships as a vertical (9:16) YouTube Short:',
+          `- **Target total runtime ~${runtimeTargetSeconds} seconds** — authoritative for THIS episode.`,
           '- Front-load the hook: the setup must be legible in the first 1–2 seconds so',
           '  a scroller does not swipe away before the gag lands.',
-          '- Keep the scene count low (typically 2–4 short scenes). Density comes from',
-          '  escalation within the single arc, not from adding more beats.',
-          '- `runtime_target_seconds` MUST fall in the 15–40s range; make the scene',
-          '  `duration_seconds` sum to it.',
+          '- Vertical-safe staging: keep the key action on a central vertical axis.',
+          runtimeTargetSeconds <= 40
+            ? '- At this runtime, write ONE self-contained gag arc: one desire, one escalation ramp, one punch. No B-plot, no second independent gag chain.'
+            : '- At this runtime you may chain several escalating gags, but keep a single through-line — no independent second plot.',
           '',
         ].join('\n')
-      : '',
+      : [
+          '## Target runtime',
+          '',
+          `- **Target total runtime ~${runtimeTargetSeconds} seconds** — authoritative for THIS episode. Structure the acts/scenes to sum to it.`,
+          '',
+        ].join('\n'),
     hasCanon
       ? biblePromptBlock
       : [
@@ -230,7 +241,7 @@ export function buildUserMessage(args: {
     '{',
     '  "episode_id": "<uuid or episode_code>",',
     '  "title": "<episode title>",',
-    '  "runtime_target_seconds": <integer>,',
+    `  "runtime_target_seconds": ${runtimeTargetSeconds},`,
     hasCanon
       ? '  "assumptions": ["<minor episode-local choices not covered by Series Bible canon>"],'
       : '  "assumptions": ["<each MVP assumption you made because Series Bible is empty>"],',
@@ -261,10 +272,7 @@ export function buildUserMessage(args: {
       : '',
     '- For visual comedy MVP: action lines, no dialogue (unless the brief explicitly asks for dialogue).',
     '- Every mandatory beat from the brief\'s "Key beats" section MUST appear in at least one scene\'s `beats[]`.',
-    '- Total of `duration_seconds` across all scenes ≈ runtime_target_seconds (within 10%).',
-    shortsIsTarget
-      ? '- SHORTS: `runtime_target_seconds` MUST be between 15 and 40 (a single-punch vertical Short) — do NOT author a long-form runtime.'
-      : '',
+    `- Set \`runtime_target_seconds\` to exactly ${runtimeTargetSeconds}. Total of scene \`duration_seconds\` MUST sum to ≈ ${runtimeTargetSeconds} (within 10%). Do NOT author a different runtime — this value is set for the episode.`,
     '- The fenced JSON must be valid JSON. No trailing commas. No comments.',
     '- KEEP PROSE TIGHT. The JSON block at the end is MANDATORY and must not be truncated. Aim for ~3-4 paragraphs of action prose per scene maximum, then the final JSON block. If you find yourself running long, shorten prose — never skip the JSON.',
   ]
@@ -291,6 +299,11 @@ export async function runScreenwriter(
   // Shorts-awareness: a 9:16 delivery surface switches the Writer to a
   // single-punch short structure (mirrors the Storyboarder's vertical-safe gate).
   const shortsIsTarget = hasVerticalDeliveryTarget(readEpisodeDeliveryTargets(inputs.episode));
+  // Authoritative episode runtime (Director's setting wins over the shorts default).
+  const runtimeTargetSeconds = resolveRuntimeTarget({
+    episodeMetadata: (inputs.episode as { metadata?: unknown } | undefined)?.metadata,
+    shortsIsTarget,
+  });
 
   const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
   const briefAsset = findApprovedAsset(upstream, 'SPC-brief');
@@ -413,14 +426,16 @@ export async function runScreenwriter(
     activeSkillsBlock,
     startNoticeContent,
     shortsIsTarget,
+    runtimeTargetSeconds,
   });
   if (startNoticeContent) {
     notes.push(
       `Episode Start Notice loaded (${startNoticeContent.length} chars) — advisory reservoir injected`,
     );
   }
+  notes.push(`Target runtime ${runtimeTargetSeconds}s injected (episode.target_runtime_seconds or shorts/long default)`);
   if (shortsIsTarget) {
-    notes.push('SHORTS delivery active — single-punch short structure (~15–40s) enforced in prompt');
+    notes.push(`SHORTS delivery active — vertical 9:16, target ~${runtimeTargetSeconds}s`);
   }
 
   let result: AnthropicTextResult;

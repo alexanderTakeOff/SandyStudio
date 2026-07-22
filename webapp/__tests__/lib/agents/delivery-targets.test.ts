@@ -5,6 +5,10 @@ import {
   readDeliveryTargetsFromMetadata,
   readEpisodeDeliveryTargets,
   resolveDeliveryTargets,
+  readEpisodeRuntimeTarget,
+  resolveRuntimeTarget,
+  DEFAULT_RUNTIME_SECONDS,
+  DEFAULT_SHORTS_RUNTIME_SECONDS,
 } from '@/lib/agents/delivery-targets';
 import { deliveryTargetsForAspect } from '@/lib/api/provider-capabilities';
 
@@ -58,5 +62,38 @@ describe('deliveryTargetsForAspect — reverse map (Settings writes the canonica
     expect(deliveryTargetsForAspect('auto')).toEqual([]);
     expect(deliveryTargetsForAspect('21:9')).toEqual([]);
     expect(deliveryTargetsForAspect(null)).toEqual([]);
+  });
+});
+
+describe('readEpisodeRuntimeTarget', () => {
+  it('reads a valid integer in [5,300]', () => {
+    expect(readEpisodeRuntimeTarget({ metadata: { target_runtime_seconds: 60 } })).toBe(60);
+    expect(readEpisodeRuntimeTarget({ metadata: { target_runtime_seconds: 5 } })).toBe(5);
+    expect(readEpisodeRuntimeTarget({ metadata: { target_runtime_seconds: 300 } })).toBe(300);
+  });
+  it('rounds fractional values', () => {
+    expect(readEpisodeRuntimeTarget({ metadata: { target_runtime_seconds: 59.6 } })).toBe(60);
+  });
+  it('returns null for absent / out-of-range / garbage', () => {
+    expect(readEpisodeRuntimeTarget({ metadata: {} })).toBeNull();
+    expect(readEpisodeRuntimeTarget({ metadata: { target_runtime_seconds: 0 } })).toBeNull();
+    expect(readEpisodeRuntimeTarget({ metadata: { target_runtime_seconds: 999 } })).toBeNull();
+    expect(readEpisodeRuntimeTarget({ metadata: { target_runtime_seconds: 'x' } })).toBeNull();
+    expect(readEpisodeRuntimeTarget(null)).toBeNull();
+  });
+});
+
+describe('resolveRuntimeTarget', () => {
+  it('Director-set value is authoritative — wins even for a shorts episode', () => {
+    expect(resolveRuntimeTarget({ episodeMetadata: { target_runtime_seconds: 60 }, shortsIsTarget: true })).toBe(60);
+  });
+  it('falls back to shorts default when unset + shorts', () => {
+    expect(resolveRuntimeTarget({ episodeMetadata: {}, shortsIsTarget: true })).toBe(DEFAULT_SHORTS_RUNTIME_SECONDS);
+  });
+  it('falls back to long-form default when unset + not shorts', () => {
+    expect(resolveRuntimeTarget({ episodeMetadata: {}, shortsIsTarget: false })).toBe(DEFAULT_RUNTIME_SECONDS);
+  });
+  it('DEFAULT_RUNTIME_SECONDS is 60 (Director: "60 by default")', () => {
+    expect(DEFAULT_RUNTIME_SECONDS).toBe(60);
   });
 });

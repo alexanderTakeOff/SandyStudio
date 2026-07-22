@@ -63,6 +63,45 @@ export function previewFreshness(s?: PreviewSource | null): string | number | nu
   return base;
 }
 
+/**
+ * Bump the cache-bust key so an in-place image replacement (same asset id +
+ * filename) forces the browser to refetch. `previewFreshness` reads
+ * `image_prompt.current_version`; incrementing it changes the `/api/media/<id>?t=`
+ * URL. Without this, replacing an image (especially a LOCKED canon, served
+ * `immutable` for a year) leaves the drawer showing the stale cached picture —
+ * the 2026-07-22 metelka symptom that had to be bumped by hand.
+ *
+ * Returns a NEW metadata object (immutable — coding-style.md); creates the
+ * `image_prompt` node if absent, seeding `current_version` from the row
+ * `version` fallback or 0.
+ *
+ * NOTE: `regenerate-image` and `upload` already compute a fresh `current_version`
+ * inline. This helper is for in-place overwrite paths that DON'T bump on their
+ * own — `copy-image-from` inherits the SOURCE's `image_prompt` wholesale, so the
+ * target's cache-bust key can stay unchanged and the drawer keeps the stale
+ * picture. Apply it wherever bytes are replaced under a fixed asset id/filename
+ * without a self-managed version bump.
+ */
+export function bumpPreviewFreshness(
+  metadata: unknown,
+  rowVersion?: number | null,
+): Record<string, unknown> {
+  const meta = (metadata && typeof metadata === 'object' ? metadata : {}) as Record<string, unknown>;
+  const ip = (meta.image_prompt && typeof meta.image_prompt === 'object'
+    ? meta.image_prompt
+    : {}) as Record<string, unknown>;
+  const curr =
+    typeof ip.current_version === 'number'
+      ? ip.current_version
+      : typeof rowVersion === 'number'
+        ? rowVersion
+        : 0;
+  return {
+    ...meta,
+    image_prompt: { ...ip, current_version: curr + 1 },
+  };
+}
+
 /** True when the path is something the browser can load directly (absolute root path or http(s) URL). */
 export function isHttpishUrl(path: string | null | undefined): boolean {
   if (!path) return false;
