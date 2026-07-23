@@ -229,6 +229,34 @@ branch-3 laterals. Category sets the expectation; the peak frame confirms it.
 true` (branches 1/2) or `landscape_only: true` (branch 3). Leaving a peak with neither flag in a
 short-target episode is an omission the readability critic will bounce back.
 
+## Shorts retention shape — the first second and the length (conditional)
+
+> Added 2026-07-23. Origin: Head-of-Growth pulled REAL retention on the two aged Shorts
+> with enough processed data (Red Tape 52s, Car Wash 75s). Both bled 30-60% of viewers
+> inside the first 10-20% of the clip, and `relativeRetentionPerformance` sat at/below the
+> platform median (Car Wash bottom-15% at 75s; the shorter 52s Red Tape held ~2× better).
+> Below-median retention is WHY the algorithm caps a Short at its ~1k test-push and it
+> converts ~0 subscribers. This rule governs the Short's TIME axis; the vertical-safe rule
+> above governs its SPACE axis — both hold on a short-target episode.
+
+**When awake.** Same trigger as vertical-safe: only when delivery targets include a 9:16/Shorts
+surface. Sleeps entirely for a landscape-only episode.
+
+**Three constraints on a short-target storyboard:**
+1. **Hook in the first beat.** The most intriguing / "what goes wrong" frame lands in shot 1,
+   second 0-1 — no establishing runway, no slow build. The opening shot IS the hook; the first
+   ~10% of the clip is where the most viewers leave.
+2. **Tease the payoff up front.** The laugh that lands late (aged data: retention *rises* near the
+   end for those who stay — the ending works, too few reach it) must be foreshadowed in the
+   opening beat, so the viewer has a reason to stay for it.
+3. **Cut to the gag — target ≤ ~35s of peak beats.** Length is the silent killer: the 75s cut bled
+   to bottom-tier retention; the 52s held ~2× better. Drop dead air and setup shots that don't carry
+   the hook — one tight try → fail → escalation → punch, not the full landscape runtime.
+
+Provisional (2 aged data points + a strong length correlation) — firm up when the recent Shorts
+clear the ~2-3 day Analytics lag. Feeds the growth loop: retention above the median is what unlocks
+algorithmic escalation and therefore subscriber conversion.
+
 ## Worked examples — Director's canon
 
 These examples are dictated by the Director on 2026-05-15. Treat them as
