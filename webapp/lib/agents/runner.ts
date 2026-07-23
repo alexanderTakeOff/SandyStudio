@@ -2049,11 +2049,12 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         // (TD-66 widening). Accept both bare and suffixed forms here, same
         // pattern as TD-75 fix for PA tools.
 
-        let { data: planRow, error: loadErr } = await supabase
+        const { data: planRowLoaded, error: loadErr } = await supabase
           .from('assets')
           .select('content,status,file_type')
           .eq('id', planAssetId)
           .maybeSingle();
+        let planRow = planRowLoaded;
 
         if (loadErr) {
           throw new Error(
