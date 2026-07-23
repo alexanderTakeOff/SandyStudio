@@ -6,24 +6,24 @@ status: STUB
 
 # SandyStudio Archivist
 
-> Status: **STUB** — full implementation in Sprint 5 (per AGENTS.md §8).
+> Status: **STUB** — full implementation in Sprint 5 (per CLAUDE.md §8).
 > Canonical owner agent: `EXEC-ARCH` (`agents/exec/archivist.md`).
 
 ## Scope
 
-This skill is the **project-local enforcement layer** for the rules in AGENTS.md §3 (naming convention) and §7 (workflow rules). It is invoked by `EXEC-ARCH` and any agent that creates, renames, or transitions a tracked artifact (script, storyboard, bible, prompt, review, spec, state).
+This skill is the **project-local enforcement layer** for the rules in CLAUDE.md §3 (naming convention) and §7 (workflow rules). It is invoked by `EXEC-ARCH` and any agent that creates, renames, or transitions a tracked artifact (script, storyboard, bible, prompt, review, spec, state).
 
 The runtime governance is delegated to two project-level hooks (`naming-validator.cjs`, `locked-status-guard.cjs`) — this skill encodes the policy and the higher-level workflows that the hooks alone cannot express.
 
 ## Responsibilities
 
-1. **Naming convention enforcement** (AGENTS.md §3)
+1. **Naming convention enforcement** (CLAUDE.md §3)
    `SS-{S0X|PILOT}-{E0X?}-{TYPE}-{description_snake_case}-v{NN}-{STATUS}.{ext}`
    - Allowed `TYPE`: `SCR`, `STB`, `IMG`, `VID`, `AUD`, `BIB`, `PRO`, `REV`, `SPC`, `STA`
    - Allowed `STATUS`: `DRAFT`, `REVIEW`, `APPROVED`, `LOCKED`
    - Validation also runs at write-time via `naming-validator.cjs`.
 
-2. **Status transition policy** (AGENTS.md §7)
+2. **Status transition policy** (CLAUDE.md §7)
    - Allowed transitions: `DRAFT → REVIEW → APPROVED → LOCKED`.
    - `APPROVED → LOCKED` requires explicit Director sign-off (or `EXEC-DIR-AI` within delegated scope).
    - `LOCKED` is terminal: never modified, only superseded by a new version (`v{NN+1}`) starting at `DRAFT`.
@@ -31,11 +31,11 @@ The runtime governance is delegated to two project-level hooks (`naming-validato
 3. **Asset registry**
    - Canonical state in `specs/system/project_state.md`.
    - Each transition appends an audit row: `timestamp | file | from_status | to_status | actor | rationale`.
-   - Storage paths follow AGENTS.md §2: project files in `C:\SandyStudio\`, media in `H:\My Drive\SandyStudio_Media\`.
+   - Storage paths follow CLAUDE.md §2: project files in `C:\SandyStudio\`, media in `H:\My Drive\SandyStudio_Media\`.
 
 4. **Cross-referencing**
    - Detect orphaned references (file renamed/deleted but referenced elsewhere).
-   - Re-link versions on cascade (`character_profile-v01-LOCKED` → `v02-DRAFT` is born; references should pin or float per AGENTS.md §11.8 «Parameter completeness at gate»).
+   - Re-link versions on cascade (`character_profile-v01-LOCKED` → `v02-DRAFT` is born; references should pin or float per CLAUDE.md §11.8 «Parameter completeness at gate»).
 
 ## Heavy lifting delegated to
 

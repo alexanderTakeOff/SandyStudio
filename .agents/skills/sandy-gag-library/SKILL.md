@@ -501,9 +501,9 @@ EXEC-GAGAD (planned Day 11+ sprint) будет читать APPROVED script + э
 - `agents/exec/head_writer.md` (Council) — owner of theme + antagonist
 - `agents/exec/screenwriter.md` — applies §2 taxonomy + §5 escalation
 - `agents/exec/storyboarder.md` — applies §6 directorial primitives
-- `.Codex/skills/storyboarder-prose-gag-per-shot/SKILL.md` — adjacent skill (per-shot rule)
-- `.Codex/skills/comedy-shot-must-carry-gag/SKILL.md` — adjacent skill (universal carry rule)
-- `.Codex/skills/animator/SKILL.md` — VGEN Plan author, consumes breakdown when GAGAD ships
+- `.claude/skills/storyboarder-prose-gag-per-shot/SKILL.md` — adjacent skill (per-shot rule)
+- `.claude/skills/comedy-shot-must-carry-gag/SKILL.md` — adjacent skill (universal carry rule)
+- `.claude/skills/animator/SKILL.md` — VGEN Plan author, consumes breakdown when GAGAD ships
 - Future: `agents/exec/gag_assistant_director.md` (EXEC-GAGAD spec, planned)
 - Future: `specs/contracts/gag_plan@v1.yaml` (formal SPC-gag_plan contract)
 

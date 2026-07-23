@@ -90,17 +90,6 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/training-capture.cjs"]
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [

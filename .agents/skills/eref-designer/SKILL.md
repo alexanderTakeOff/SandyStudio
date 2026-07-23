@@ -6,8 +6,10 @@ owner: EXEC-EREF (Episode Reference Designer)
 applies_when:
   agent: [EXEC-EREF]
 hard: false
+maturity: v0.1
 created: 2026-05-18
 ---
+
 # Episode Reference Designer — Decision Playbook (SandyStudio)
 
 > v0.1 — Sprint «Дизайнер и Аниматор», Day 2-3.
@@ -258,55 +260,6 @@ Root cause E03 (2026-06-09): episode created for vertical Shorts but
 landscape plans. Durable prevention: delivery_target as a first-class field in
 the Episode Settings card (TD-86), set before the pipeline runs.
 
-### 2026-06-24 — EVERY canon participant in the shot must be canon-locked, not just the hero (E12 Metelka)
-
-**Root cause (E12 «Бесконечная лента»):** the Plan/prompt and the Critic
-were both effectively tuned to ONE hero character (Sandy). A second
-in-frame character — Metelka (hand-brush companion) — was present in 10
-shots but carried no hard canon contract. Result: SH10/12/13/14/16
-rendered a broken/inconsistent Metelka, the Critic scored it as cosmetic
-(consistency/style on Sandy stayed high), exhausted best-of-3, and the
-shots passed as REGENERATE_EXHAUSTED. SH11/SH18 happened to look fine only
-because Metelka was in a simple static pose there. Pattern was NOT random:
-the failures clustered where the secondary character was actively posed.
-
-**Rule for the Designer (Plan + prompt):**
-- Enumerate **every participant** the shot actually contains — each
-  character AND each meaningful object — not just the hero. Cross-check
-  against the episode cast, not just `shot.characters[]`.
-- For each participant WITH a Bible/canon entry → bind it strictly to that
-  canon (cast-anchor + structured `physical_anchors` in [Subject]), exactly
-  as the hero is bound.
-- For each participant WITHOUT a canon entry (one-off / not yet in Bible) →
-  write an **extended, fully-specified description** (colour, shape,
-  material, scale, position, role/purpose in the shot) detailed enough that
-  the participant renders **identically from shot to shot**. The failure to
-  avoid: E-prev poster that was one colour in one shot and a different
-  colour in the next purely because it was un-canon and under-specified.
-- A participant that recurs in ≥2 shots is a consistency liability if left
-  un-specified. Treat its description as a fixed contract reused verbatim
-  across all its shots (PA owns carrying that fixed description shot-to-shot
-  until/unless it is promoted into Bible — Designer/Critic cannot edit Bible).
-
-**Rule for the Critic (the canon check):**
-- Validate **all canon participants in the frame**, not only the hero. Any
-  character or object that has a Bible/canon entry is checked against that
-  canon.
-- A broken/mismatched canon participant is a **CANON FAIL** — a real
-  blocking defect, NOT cosmetics, and NOT eligible for an
-  REGENERATE_EXHAUSTED approve. (Clarifies the standing rule below: see
-  REGENERATE_EXHAUSTED note.)
-- For an un-canon participant, check **consistency against its fixed
-  specified description** as carried in the Plan/prompt. A drift from that
-  fixed description = FAIL.
-
-**REGENERATE_EXHAUSTED clarification (Director 2026-06-24):**
-`REGENERATE_EXHAUSTED` is approvable ONLY when the exhaustion was over
-**cosmetic** issues. If ANY of the retry reasons involved a missing or
-broken canon (hero OR secondary participant), it is an unambiguous
-canon-break — must NOT be auto-approved; route back to the Designer with the
-canon contract made explicit.
-
 ## Revision loop (Critic REVISE → Designer v02)
 
 When Critic returns REVISE with a `revisionNote`, treat each numbered
@@ -320,9 +273,6 @@ item in the note as a **HARD CONTRACT**:
 - `V06 camera intent misaligned with STB` → recompute camera section
 - `V07 variants count anomaly` → reconsider Step 3 (pilot/fanout state)
 - `V08 cost overrun ≥ 2× expected` → reconsider provider / variants
-- `V09 secondary canon participant unbound / broken` → enumerate ALL
-  in-frame participants; bind each canon one to its Bible canon, each
-  un-canon one to a fixed extended description (2026-06-24 E12 rule above)
 
 New Plan version (v01 → v02) must visibly differ in at least the flagged
 dimensions. Cosmetic edits are a contract violation in revision mode.
@@ -341,9 +291,6 @@ Director via `decision_requested` activity_event.
 - Whether single-aspect output (only `youtube_landscape`) holds for S14
   long-term or if YouTube Shorts joins MVP soon — affects multi-target
   decision rule.
-- Whether un-canon recurring participants should be auto-promoted into an
-  in-episode canon doc (Director 2026-06-24 — Theodor to consider an
-  intra-episode canon document for non-Bible participants).
 
 ## Cross-references
 
@@ -354,4 +301,4 @@ Director via `decision_requested` activity_event.
 - Providers: [`openai-image.ts`](../../../webapp/lib/agents/providers/openai-image.ts), [`openai-edits-multi.ts`](../../../webapp/lib/agents/providers/openai-edits-multi.ts)
 - Bible style canon: S14 STYLE CANON v1.1 (outline-only pencil edge, flat vector fills, no hatching)
 - Shot rhythm: [`technology.md`](../../../technology.md) §3.5
-- Naming: [`AGENTS.md`](../../../AGENTS.md) §3
+- Naming: [`CLAUDE.md`](../../../CLAUDE.md) §3

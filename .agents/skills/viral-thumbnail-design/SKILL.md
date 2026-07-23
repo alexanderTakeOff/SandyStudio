@@ -102,4 +102,4 @@ tone), **HALT and escalate** citing both sources — do not silently reconcile.
 
 - System prompt: `agents/exec/thumbnail-designer.md` (authority, JSON schema, provider/size/font specifics).
 - Render + crop + text-overlay contract lives in code/config, not here.
-- Abstraction discipline: `~/.Codex/rules/common/skill-creation.md`.
+- Abstraction discipline: `~/.claude/rules/common/skill-creation.md`.

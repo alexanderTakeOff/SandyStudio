@@ -6,7 +6,7 @@ status: STUB
 
 # Episode Serialization
 
-> Status: **STUB** — full implementation in Sprint 5 (per AGENTS.md §8).
+> Status: **STUB** — full implementation in Sprint 5 (per CLAUDE.md §8).
 > Canonical owner agent: `ART-CONT` (`agents/artistic/continuity_supervisor.md`).
 
 ## Scope

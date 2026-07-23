@@ -168,4 +168,4 @@ If you find yourself needing a value this skill does not provide, the answer is 
 
 ## Reference
 
-This skill is the reference example of a `flavor: process` skill written under [`~/.Codex/rules/common/skill-creation.md`](../../../../../Users/NAVIA%20VISION%20ONE/.Codex/rules/common/skill-creation.md). When authoring new skills, mirror the pattern: own the process, defer the content.
+This skill is the reference example of a `flavor: process` skill written under [`~/.claude/rules/common/skill-creation.md`](../../../../../Users/NAVIA%20VISION%20ONE/.claude/rules/common/skill-creation.md). When authoring new skills, mirror the pattern: own the process, defer the content.

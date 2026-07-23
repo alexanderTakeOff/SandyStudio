@@ -5981,3 +5981,207 @@ q14 формулировки надо не такие абстрактные - �
 
 ## 2026-07-23 16:11 · director-msg (hook) · NEW · (triage at distill)
 у нас вроде есть цикл и даже хуки заточенные на обучение .... lerning cicle
+
+## 2026-07-23 20:14 · director-msg (hook) · NEW · (triage at distill)
+q1 a) но обучение нужно в любой сессии где сэнди и на десктопе и на лэптопе (подумай как) 
+q2 в
+q3 чини баги хог и главное - ниже отчет твоего коллеги codex at sole.  ознакомся с его гипотезами - вдруг что то полезное найдешь: Вердикт
+Идея learning loop нужна: студия должна превращать повторяющуюся обратную связь в устойчивые улучшения. Но я бы не реализовывал Distiller в форме, описанной в handoff.
+Сейчас проблема не в отсутствии ещё одного агента или команды /distill. В проекте уже существуют почти все части цикла, но они образуют несколько несвязанных контуров. Новый Distiller поверх них увеличит фрагментацию и получит право редактировать навыки на основании очень грязного сырья.
+Оптимальный путь: единый компилятор предложений, который ничего не меняет сам, а сводит имеющиеся сигналы в проверяемый diff для существующего Skill Editor и Director Inbox.
+Что handoff понял правильно
+Сырьё собирается, но не перерабатывается систематически.
+Автоматическую запись в навыки нельзя включать до ручной отладки.
+Повторяемые эмпирические выводы должны проходить накопление доказательств и контрпроверку.
+HoG действительно содержит технический долг вокруг retention и audience metrics.
+Файл [training-inbox.md (line 1)](C:/Users/Alexander/sandystudio/.claude/training-inbox.md:1) уже непригоден как рабочая очередь.
+Но несколько центральных фактов в [handoff (line 12)](C:/Users/Alexander/.claude/session-data/2026-07-23-distiller-learning-loop-handoff.md:12) неверны или устарели.
+Критические результаты аудита
+1. Skill Editor не «отсутствует» — отсутствует мост к нему
+Уже реализованы:
+UI /skills;
+API чтения и изменения навыков;
+atomic writer;
+proposeSkillUpdate, updateSkill, approveSkill;
+события rule_proposal, rule_approved, rule_rejected;
+показ rule_proposal в Director Inbox;
+автоматическая генерация некоторых предложений из scorecard calibration.
+Ключевые места: [skills.ts (line 229)](C:/Users/Alexander/sandystudio/webapp/lib/concierge/tools/skills.ts:229), [write-skill-file.ts (line 103)](C:/Users/Alexander/sandystudio/webapp/lib/skills/write-skill-file.ts:103), [persist-scorecard.ts (line 32)](C:/Users/Alexander/sandystudio/webapp/lib/agents/scorecard/persist-scorecard.ts:32), [Director Inbox (line 64)](C:/Users/Alexander/sandystudio/webapp/app/api/director/inbox/route.ts:64).
+В живой БД уже есть 11 rule_proposal и 2 rule_approved.
+Следовательно, недостающий элемент — не новый редактор, а:
+evidence → классификация → дедупликация → candidate diff → точное approval → существующий writer.
+
+2. Сейчас нет единого источника истины для навыков
+В репозитории одновременно существуют:
+.claude/skills;
+.agents/skills.
+По 25 навыков в каждом каталоге, но идентичны только 10; 15 расходятся.
+Особенно показателен пример из handoff: правило Shorts retention добавлено в .claude/skills/storyboarder-situational-comedy, но отсутствует в копии .agents, которую использует текущий Codex. То есть «правильно дистиллированное» знание не дошло до всех потребителей.
+Это блокер P0. Автоматизировать обучение до устранения split-brain нельзя.
+3. Skill loader молча теряет навыки
+Из 25 .claude-навыков веб-приложение видит только 21.
+Не загружаются:
+head-of-growth — отсутствует status;
+episode-serialization — статус STUB не разрешён loader’ом;
+sandystudio-archivist — та же проблема;
+sandy-gag-library — frontmatter не разбирается самописным parser’ом.
+Ошибки по умолчанию скрыты в [select-skills.ts (line 42)](C:/Users/Alexander/sandystudio/webapp/lib/skills/select-skills.ts:42). Получается опасная комбинация: файл существует, Director считает capability доступной, а runtime её тихо игнорирует.
+Дополнительно два skill body уже превышают API-лимит 20 000 символов. UI может прочитать их, но не сможет сохранить полную версию через [API (line 64)](C:/Users/Alexander/sandystudio/webapp/app/api/skills/route.ts:64).
+4. Training inbox — не evidence store, а загрязнённый prompt log
+Фактическая статистика:
+535 170 байт;
+161 запись, а не 171;
+все 161 имеют статус NEW, обработанных нет;
+154 помечены как triage at distill;
+53 записи, то есть 33%, — очевидные <task-notification> или <scheduled-task>;
+37 записей длиннее 5 000 символов;
+19 длиннее 10 000;
+есть точные дубликаты.
+Причина — слишком широкий regex в [training-capture.cjs (line 21)](C:/Users/Alexander/sandystudio/.claude/hooks/training-capture.cjs:21): обычные слова вроде agent, format, camera, pipeline превращают системные сообщения и результаты инструментов в «обучающий сигнал».
+Также отсутствуют:
+стабильный ID события;
+hash и дедупликация;
+schema version;
+связь с результатом;
+file locking;
+rotation/retention;
+ограничение размера.
+Ошибки записи полностью проглатываются, поэтому capture может молча перестать работать.
+Параллельно существуют ещё .claude/pa-feedback.log примерно на 885 KB и структурированные concierge_turns в БД. Это уже три хранилища одного класса сигналов.
+5. Помечать огромный Markdown как [PROCESSED] — плохая модель очереди
+Предложение переписывать headings внутри 535 KB файла:
+O(n) на каждую обработку;
+конфликтует с параллельными сессиями;
+не имеет устойчивых ID;
+плохо восстанавливается после частичной ошибки;
+заставляет хранить в Git бесконечный сырой шум.
+Лучше:
+raw spool с hash/ID и ограниченным retention;
+отдельный cursor/resolution ledger;
+принятые evidence references — в metadata предложения;
+before/after — в Git;
+сырой чат не хранить «навсегда».
+Файлы <skill>-history.md тоже не нужны: это будет ещё одна псевдобаза без запросов, схемы и транзакций.
+6. Одна maturity ladder не подходит всем сигналам
+HYPOTHESIS → PROVISIONAL → CANON разумна только для эмпирических закономерностей.
+Нужно сначала определить тип сигнала:
+Сигнал    Правильный адрес
+Явное правило Director    Skill/directive после одного точного approval
+Audience/production hypothesis    Evidence ledger → counter-test
+Runtime defect    Код + regression test
+Character/world/style canon    Bible
+Процедурный инцидент    Root cause + invariant/runbook
+Указание для одного эпизода    Brief или текущая задача
+
+Баг не должен «дозревать» до CANON в навыке. А явное распоряжение Director не должно ждать трёх повторений.
+7. Approval недостаточно привязан к конкретному изменению
+Skill mutation проверяет последние реплики Director на общие слова вроде go или да, но approval не связан криптографически с:
+candidate ID;
+конкретным skill;
+base revision;
+точным diff hash.
+Для self-modifying контура этого недостаточно. Старое «go» теоретически может разрешить более поздний full-body update.
+Нужен approval вида:
+candidate_id + target_revision + diff_hash + approver + timestamp.
+Аудит HoG-части
+Hardcoded zeros — реальная проблема, но handoff предлагает не тот слой исправления
+В [youtube-stats.ts (line 227)](C:/Users/Alexander/sandystudio/webapp/lib/agents/providers/youtube-stats.ts:227) действительно выставляются нули для impressions, CTR, subscribers и traffic sources.
+Однако SandyStudio уже:
+создала YouTube Reporting jobs;
+опрашивает reports;
+сохраняет CSV;
+имеет 3 609 channel snapshots;
+имеет 93 reports, включая 31 reach, 31 basic и 31 traffic-source.
+channel_reach_basic_a1 действительно содержит thumbnail impressions и CTR по официальной документации Google.
+Настоящий разрыв находится здесь:
+raw Reporting CSV → typed metrics → evidence/advisor/dashboard.
+
+Сейчас CSV архивируется, но практически не парсится и не соединяется с analytics loop. Добавлять ещё один сборщик не нужно.
+Кроме того, проверка has_impressions ищет любое слово impression и ошибочно считает annotation_impressions thumbnail impressions. В Reporting API также не реализована пагинация.
+biggestDrop — подтверждённый дефект модели
+[analytics-advisor.ts (line 218)](C:/Users/Alexander/sandystudio/webapp/lib/agents/analytics-advisor.ts:218) выбирает максимальное единичное падение между соседними retention points.
+Это нестабильно из-за:
+шума;
+разной плотности точек;
+стартового bounce;
+отсутствия минимальной величины эффекта;
+отсутствия связи с реальными shot boundaries.
+Но утверждение handoff «это всегда opening bounce» не доказано. Более корректная модель:
+smoothing;
+local baseline;
+configurable opening window;
+minimum effect threshold;
+confidence/availability state;
+привязка к shot timeline;
+при наличии — relative retention performance.
+Retention gate действительно использует неправильные часы
+В [audience route (line 73)](C:/Users/Alexander/sandystudio/webapp/app/api/audience/route.ts:73) retention вызывается только при views > 0.
+Лучше разделить:
+public/live state;
+age since publish;
+metric processing state;
+pending, unavailable, ready, а не ноль.
+YouTube отдельно предупреждает, что analytics-данные могут обрабатываться с задержкой в несколько дней: YouTube Help.
+Более элегантная архитектура
+Не новый autonomous Distiller, а тонкий proposal compiler:
+concierge_turns
+activity_events
+YouTube typed measurements
+Claude local spool
+        ↓
+candidate extractor + classifier
+        ↓
+dedupe by semantic key + evidence hash
+        ↓
+existing activity_events.rule_proposal
+        ↓
+existing Director Inbox
+        ↓
+approval bound to exact diff hash
+        ↓
+existing Skill Editor / code / Bible / Brief writer
+        ↓
+eval + Git audit + resolved event
+Это неаддитивно:
+без нового агента;
+без нового UI;
+без второй approval queue;
+без отдельного HoG journal;
+пока без новой таблицы skill_rules;
+без автоматической записи в skill-файлы.
+activity_events.metadata достаточно для MVP. Отдельная таблица понадобится только тогда, когда реальные запросы и объём докажут её необходимость.
+Кстати, ссылка handoff на 0026_skill_rules.sql ошибочна: [0026 (line 1)](C:/Users/Alexander/sandystudio/webapp/supabase/migrations/0026_realtime_publish_activity_events.sql:1) всего лишь добавляет activity_events в Realtime publication. Таблицы skill_rules в репозитории нет.
+Рекомендуемый порядок
+P0 — починить фундамент
+Выбрать один канонический skill root.
+Устранить ручное редактирование двух копий.
+Ввести CI parity/schema check.
+Сделать parse failures громкими.
+Согласовать поддерживаемые statuses/frontmatter/body limits.
+Добавить version/base-hash и точный diff в Skill Editor approval.
+P1 — ручной /distill, но только proposal-only
+Команда должна:
+читать события после cursor;
+исключать synthetic payloads;
+присваивать ID/hash;
+классифицировать signal kind;
+находить дубликаты и контрдоказательства;
+создавать кандидат в существующем Director Inbox;
+ничего не применять самостоятельно.
+P2 — eval до автоматизации
+Нужен фиксированный корпус старых сигналов с ожидаемыми решениями:
+правильный тип;
+правильная цель;
+ignore для шума;
+правильный diff;
+отсутствие дубликатов.
+Минимальные критерии:
+ноль неутверждённых изменений;
+ноль skill-root divergence;
+ноль молча потерянных навыков;
+низкая доля ложных предложений;
+rollback каждого утверждённого изменения;
+одинаковый результат во всех runtimes.
+P3 — только затем расписание
+Scheduled job может создавать предложения, но не применять их. Ежедневное фиксированное 15:00 сейчас неоправданно: после удаления системного шума полезных событий немного. Лучше threshold, конец рабочей сессии или еженедельный batch.
+Итоговое решение

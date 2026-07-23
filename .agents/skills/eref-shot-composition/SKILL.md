@@ -314,7 +314,7 @@ register the joke landing.
 - `[[hero-prop-canon-classification]]` — what makes an object a
   hero-grade subject vs background prop. The Emotional Read field
   applies to hero-grade objects, not to lifeless background props.
-- `~/.Codex/rules/common/skill-creation.md` §"Two skill flavors" —
+- `~/.claude/rules/common/skill-creation.md` §"Two skill flavors" —
   this skill is `flavor: process` and stays generalizable across
   series. Project-specific characters / emotions / gag thresholds
   belong to Bible + Brief, not here.

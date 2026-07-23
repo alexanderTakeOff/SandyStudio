@@ -6,11 +6,8 @@ owner: EXEC-VANIM (Animator)
 applies_when:
   agent: [EXEC-VANIM]
 hard: false
-maturity: v0.1-day-6-7
 created: 2026-05-18
-updated: 2026-05-19
 ---
-
 # Animator — Decision Playbook (SandyStudio)
 
 > **v0.1 Day 6-7 of Sprint «Дизайнер и Аниматор».** Animator (EXEC-VANIM) is
@@ -55,6 +52,18 @@ Lookup from `episode.metadata.delivery_targets[0]`:
 | tiktok | 9:16 |
 | instagram_post | 1:1 |
 | print_poster | 16:9 (static, but reuse 16:9 for video) |
+
+**Hard validation — cross-check before submitting (added 2026-07-10, TD-incident SS-S15-E25):**
+Before finalizing the Plan, cross-check `delivery_targets` against `aspect_ratio` using
+THIS SAME table — the mapping must be consistent in BOTH directions, not just when first
+picking `aspect_ratio`. If the episode's FORMAT authority mandates a given `aspect_ratio`
+(e.g. `9:16`), `delivery_targets` MUST contain ONLY targets whose row maps to that aspect
+(aspect=9:16 → delivery_targets ∈ {youtube_shorts, instagram_reels, tiktok}; NEVER
+youtube_landscape or print_poster, which are 16:9). Do this check EVERY time you author or
+re-author a Plan — including on revision passes — never assume a carried-over
+`delivery_targets` value from a prior draft is still valid once `aspect_ratio` changes.
+Critic V06 checks this and will REVISE the Plan, but do not rely on the Critic catching it —
+self-validate before submitting so the Plan passes on the first pass, not the second or third.
 
 ### Render duration vs creative cut
 

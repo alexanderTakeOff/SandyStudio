@@ -113,7 +113,7 @@ rather than letting it be stretched.
 
 **Compatibility gate — read the `studio_version` flag first** (`config/defaults.yaml
 → studio.version`, mirrored to `app_config` system scope; governance summary in
-AGENTS.md §6). Below 1.0 the
+CLAUDE.md §6). Below 1.0 the
 studio is in research phase: legacy episodes E01–E12 are training experiments, *not*
 a catalog — do **not** enforce novelty against them, do not treat them as the bank,
 and do not calibrate the gates on them. The novelty check applies only to themes

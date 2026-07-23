@@ -16,7 +16,7 @@ superseded_by: storyboarder-situational-comedy
 > atomic single-rule files. This file's content — the try-fail-escalation
 > microcycle, Director's worked examples (dumbbell foot-drop, jump-rope
 > snap-back) — moved into the broader storyboarder capability skill
-> `.Codex/skills/storyboarder-situational-comedy/SKILL.md` as one
+> `.claude/skills/storyboarder-situational-comedy/SKILL.md` as one
 > technique inside a fuller playbook. Selector filters by `status:ACTIVE`
 > so this file is no longer matched; kept on disk for audit / rollback.
 

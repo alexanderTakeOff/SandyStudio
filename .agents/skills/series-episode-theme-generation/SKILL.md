@@ -48,7 +48,7 @@ restate:
 |---|---|
 | `series` + Bible | the active project's Bible (`bibles/world`, `bibles/characters`, `bibles/style`). Laws, hero physics, production prefs come from here — by reference. |
 | `runtime_target` | episode length — drives how much gag capacity each candidate must show. |
-| `theme_bank` | already-made / already-proposed themes (default: the series idea bank file, `episode_ideas.md`). **Avoid re-proposing these engines** — *but only once the studio is mainstream.* Compatibility gate (read the `studio_version` flag — `config/defaults.yaml → studio.version`, summary AGENTS.md §6): below 1.0 the studio is in research phase, legacy episodes E01–E12 are experiments, **not** a catalog to dodge — generate freely. Novelty enforcement starts at `studio_version >= 1.0`. |
+| `theme_bank` | already-made / already-proposed themes (default: the series idea bank file, `episode_ideas.md`). **Avoid re-proposing these engines** — *but only once the studio is mainstream.* Compatibility gate (read the `studio_version` flag — `config/defaults.yaml → studio.version`, summary CLAUDE.md §6): below 1.0 the studio is in research phase, legacy episodes E01–E12 are experiments, **not** a catalog to dodge — generate freely. Novelty enforcement starts at `studio_version >= 1.0`. |
 | recent feedback | the `Feedback To Creator` notes from recent selection reports, if any — steer away from over-used patterns, toward under-used ones. |
 
 ## Aim every candidate at the judge's gates

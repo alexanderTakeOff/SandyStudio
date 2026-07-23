@@ -19,6 +19,24 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-24 (Learning-loop аудит + HoG-баги — Тео).
+Status: Дистиллер-хендофф отвергнут (аддитивен): capture-хук убит (96% шума, ловил
+  <task-notification>), инбокс 535KB → архив (золото извлечено: 3 правила в HoG-скилл,
+  caveman-docs в память; остальное давно дистиллировано in-session). Цикл обучения =
+  in-session distill → repo-скиллы → git (обе машины); Stop-хук чинён (память-путь) +
+  DISTILL-напоминание. HoG-баги пофикшены ПО ФАКТУ кода: (1) impressions/CTR/subs/traffic
+  теперь из архивных Reporting-CSV (мост readReachMetricsFromArchive; Analytics API их
+  НЕ отдаёт), live-проверка: 30 видео, реальные цифры; (2) biggestDrop: smoothing +
+  opening-skip + порог (не тычет в опенинг-баунс); (3) retention-гейт по public, не по
+  лагающим Analytics-views. Split-brain скиллов (.claude vs .agents, 15 расходились,
+  1 коммит за историю зеркала) — пересинкан .claude→.agents; head-of-growth получил
+  status:ACTIVE (лоадер тихо дропал).
+Verify: tsc clean · 1473/1473 тестов · replay-pilot 30/30 · мост проверен на живой БД.
+Next:   Директор: push? Открыто: loader-фейлы сделать громкими + parity-check зеркала
+  (P0 Codex, предложение в чате); STUB-скиллы (serialization/archivist) не грузятся.
+```
+
+```
 Date:   2026-07-23 late (Канон: 2D→cartoon + Сэнди + Инспектор + СТЕПЛЕР + скилл-замены — Тео, ===5===).
 Status: Правки КАНОНА в БД (Supabase, LOCKED-ассеты, Директор q8a; не в git — фиксирую тут):
   (1) STYLE canon `303959c1`: 2D-мандаты де-абсолютизированы — «flat 2D/no gradients/

@@ -10,6 +10,8 @@ created: 2026-07-05
 ---
 Rule: if during episode prep a NEW canon asset (location/object/character) is authored specifically for this episode's needs — e.g. flagged by Production Designer as "new-to-series", or added ad-hoc mid-pipeline to unblock a stage — it MUST be added to that episode's SPC-episode_cast before or together with Director ratification.
 
+Brief-to-canon intake: whenever the Director adds or materially changes named characters, locations, or objects in an editable/approved episode brief, read the brief against the Series Bible before Writer, Storyboard Artist, or Reference Artist proceeds. For every named production-critical item absent from the Bible, author it proactively as a distinct Bible canon entry in the correct domain (character / location / object), then run the Bible Editor to create its canonical image. Never substitute a similarly themed existing canon asset (for example `gym_interior` for a dedicated padel court). Add all newly authored canon slugs to the episode cast and replace any provisional/incorrect cast entries before downstream work resumes.
+
 Do not leave the cast stale after such assets are locked. Concretely:
 1. When reading/updating the episode's work-plan ledger, check for deferred notes like "to be authored later" or "flagged new-to-series, needed to unblock X".
 2. When those flagged assets reach LOCKED/APPROVED status, immediately re-check the current SPC-episode_cast version — if it's missing those slugs, call castEpisode to add them (new REVIEW version), even if an earlier cast version was already ratified or is pending ratification.
