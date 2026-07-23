@@ -114,3 +114,72 @@ export function selectRenderFanoutShots(
   }
   return out;
 }
+
+// ── Video Pilot Pass (2026-07-23, E31 72-job storm fix) ──────────────────────
+// Mirror of the EREF Designer Pilot Pass (next-events.ts REV-world_check
+// branch): "Start Video" fires only the first PILOT_COUNT_VIDEO shots and
+// stashes the rest into episodes.metadata.video_fanout_pending. The Director
+// reviews the pilots end-to-end, then "Fan Out" (POST /video/fanout) releases
+// the stash. Depth was already capped (critic revision cap, plan-version cap);
+// this bounds the WIDTH — the axis that produced the E31 storm (27 shots × ~2.3
+// authoring passes = 63 VANIM jobs, every shot individually under cap).
+
+export const PILOT_COUNT_VIDEO = 2;
+
+/** One stashed/fired fan-out candidate. `render` carries the plan to render. */
+export type VideoFanoutCandidate =
+  | { shotId: string; kind: 'plan' }
+  | { shotId: string; kind: 'render'; planAssetId: string };
+
+/** Numeric shot ordinal from a canonical S{s}-E{e}-SH{n} id (Infinity if odd). */
+function shotOrdinal(shotId: string): number {
+  const m = /SH(\d+)\s*$/i.exec(shotId);
+  return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Pure: merge both latch edges (ref→plan and plan→render) into one candidate
+ * list ordered by shot number, then split into the pilots to fire now and the
+ * pending remainder to stash. Render candidates are further along the chain,
+ * so on an ordinal tie the render edge wins the pilot slot.
+ */
+export function splitVideoPilots(
+  planShotIds: ReadonlyArray<string>,
+  renderShots: ReadonlyArray<RenderFanoutShot>,
+  pilotCount: number = PILOT_COUNT_VIDEO,
+): { pilots: VideoFanoutCandidate[]; pending: VideoFanoutCandidate[] } {
+  const candidates: VideoFanoutCandidate[] = [
+    ...renderShots.map((r) => ({ shotId: r.shotId, kind: 'render' as const, planAssetId: r.planAssetId })),
+    ...planShotIds.map((s) => ({ shotId: s, kind: 'plan' as const })),
+  ].sort((a, b) => {
+    const d = shotOrdinal(a.shotId) - shotOrdinal(b.shotId);
+    if (d !== 0) return d;
+    return a.kind === b.kind ? 0 : a.kind === 'render' ? -1 : 1;
+  });
+  return {
+    pilots: candidates.slice(0, Math.max(0, pilotCount)),
+    pending: candidates.slice(Math.max(0, pilotCount)),
+  };
+}
+
+/** Lenient reader for the stash written by start-video (unknown → []). */
+export function readVideoFanoutPending(meta: unknown): VideoFanoutCandidate[] {
+  const raw = (meta as { video_fanout_pending?: unknown } | null | undefined)
+    ?.video_fanout_pending;
+  if (!Array.isArray(raw)) return [];
+  const out: VideoFanoutCandidate[] = [];
+  for (const c of raw) {
+    const shotId = (c as { shotId?: unknown })?.shotId;
+    const kind = (c as { kind?: unknown })?.kind;
+    if (typeof shotId !== 'string' || shotId.length === 0) continue;
+    if (kind === 'render') {
+      const planAssetId = (c as { planAssetId?: unknown })?.planAssetId;
+      if (typeof planAssetId === 'string' && planAssetId.length > 0) {
+        out.push({ shotId, kind: 'render', planAssetId });
+      }
+      continue;
+    }
+    if (kind === 'plan') out.push({ shotId, kind: 'plan' });
+  }
+  return out;
+}

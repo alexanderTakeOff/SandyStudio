@@ -38,6 +38,8 @@ import { excludedShotIdsFromEpisodeMeta } from '@/lib/api/animatic-shotlist';
 import {
   selectRetroFanoutShots,
   selectRenderFanoutShots,
+  splitVideoPilots,
+  PILOT_COUNT_VIDEO,
 } from '@/lib/api/start-video-latch';
 
 export const runtime = 'nodejs';
@@ -135,33 +137,62 @@ export const POST = withApiHandler(async (req, ctx) => {
     excluded,
   );
 
+  // Video Pilot Pass (2026-07-23, E31 72-job storm): mirror of the EREF
+  // Designer Pilot Pass. Fire only the first PILOT_COUNT_VIDEO shots (both
+  // edges merged, shot order); stash the rest into metadata so the Director
+  // reviews the pilots end-to-end before "Fan Out" releases the width.
+  const { pilots, pending } = splitVideoPilots(firedShotIds, renderShots);
+
   const eventIds: string[] = [];
-  for (const shotId of firedShotIds) {
-    const { ids } = await inngest.send({
-      name: 'sandystudio/exec-vanim/plan',
-      data: { episodeId, shotId } as never,
-    });
+  for (const c of pilots) {
+    const { ids } = await inngest.send(
+      c.kind === 'render'
+        ? {
+            name: 'sandystudio/exec-vgen/single-shot',
+            data: { episodeId, shotId: c.shotId, planAssetId: c.planAssetId } as never,
+          }
+        : {
+            name: 'sandystudio/exec-vanim/plan',
+            data: { episodeId, shotId: c.shotId } as never,
+          },
+    );
     eventIds.push(...ids);
   }
-  for (const { shotId, planAssetId } of renderShots) {
-    const { ids } = await inngest.send({
-      name: 'sandystudio/exec-vgen/single-shot',
-      data: { episodeId, shotId, planAssetId } as never,
-    });
-    eventIds.push(...ids);
+
+  // Persist the stash (re-read meta AFTER the latch flip above so we extend the
+  // just-written pipeline_mode rather than resurrecting the stale snapshot).
+  {
+    const { data: epRow } = await supabase
+      .from('episodes')
+      .select('metadata')
+      .eq('id', episodeId)
+      .maybeSingle();
+    const freshMeta =
+      ((epRow as { metadata?: unknown } | null)?.metadata as Record<string, unknown> | null) ?? {};
+    const nextMeta: Record<string, unknown> = {
+      ...freshMeta,
+      video_pilot_count: PILOT_COUNT_VIDEO,
+      video_fanout_total: pilots.length + pending.length,
+    };
+    if (pending.length > 0) nextMeta.video_fanout_pending = pending;
+    else delete nextMeta.video_fanout_pending;
+    await supabase
+      .from('episodes')
+      .update({ metadata: nextMeta as never } as never)
+      .eq('id', episodeId);
   }
 
   await supabase.from('activity_events').insert({
     event_type: 'manual_trigger',
     severity: 'info',
-    title: 'Video stream opened',
-    description: `Director ${user.email ?? user.id} started video — ${firedShotIds.length} reference(s) fanned to Designer, ${renderShots.length} approved plan(s) rendered; new approvals now flow automatically`,
+    title: 'Video stream opened — pilot pass',
+    description: `Director ${user.email ?? user.id} started video — pilot pass fired ${pilots.length} shot(s) (${pilots.map((c) => `${c.shotId}:${c.kind}`).join(', ') || 'none'}), ${pending.length} stashed for Fan Out`,
     actor: user.id,
     episode_id: episodeId,
     metadata: {
       kind: 'start_video_latch',
-      fanned_out_shots: firedShotIds.length,
-      rendered_shots: renderShots.length,
+      pilot_shots: pilots.map((c) => c.shotId),
+      pending_shots: pending.length,
       inngest_event_ids: eventIds,
     },
   } as never);
@@ -169,9 +200,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   return apiOk({
     started: true,
     pipeline_mode: 'parallel',
-    fanned_out_shots: firedShotIds.length,
-    rendered_shots: renderShots.length,
-    shot_ids: firedShotIds,
-    render_shot_ids: renderShots.map((r) => r.shotId),
+    pilot_shots: pilots.map((c) => ({ shotId: c.shotId, kind: c.kind })),
+    pending_shots: pending.length,
   });
 });

@@ -8,6 +8,8 @@ import { describe, it, expect } from 'vitest';
 import {
   selectRetroFanoutShots,
   selectRenderFanoutShots,
+  splitVideoPilots,
+  readVideoFanoutPending,
 } from '@/lib/api/start-video-latch';
 import { SHOT_REFERENCE_CONTRACT } from '@/lib/api/shot-reference';
 
@@ -118,5 +120,78 @@ describe('selectRenderFanoutShots — plan→video edge (E25 sequential fix)', (
       new Set(['SH03']), // SH03 excluded
     );
     expect(out).toEqual([{ shotId: 'SH01', planAssetId: 'p1' }]);
+  });
+});
+
+describe('splitVideoPilots — Video Pilot Pass (E31 storm fix, 2026-07-23)', () => {
+  it('fires only the first PILOT_COUNT_VIDEO shots, stashes the rest', () => {
+    const { pilots, pending } = splitVideoPilots(
+      ['S1-E31-SH03', 'S1-E31-SH01', 'S1-E31-SH04'],
+      [{ shotId: 'S1-E31-SH02', planAssetId: 'p2' }],
+    );
+    expect(pilots).toEqual([
+      { shotId: 'S1-E31-SH01', kind: 'plan' },
+      { shotId: 'S1-E31-SH02', kind: 'render', planAssetId: 'p2' },
+    ]);
+    expect(pending).toEqual([
+      { shotId: 'S1-E31-SH03', kind: 'plan' },
+      { shotId: 'S1-E31-SH04', kind: 'plan' },
+    ]);
+  });
+
+  it('render edge wins the pilot slot on an ordinal tie', () => {
+    const { pilots } = splitVideoPilots(
+      ['SH01'],
+      [{ shotId: 'SH01', planAssetId: 'p1' }],
+      1,
+    );
+    expect(pilots).toEqual([{ shotId: 'SH01', kind: 'render', planAssetId: 'p1' }]);
+  });
+
+  it('fewer candidates than pilot count → all fire, nothing pending', () => {
+    const { pilots, pending } = splitVideoPilots(['SH07'], []);
+    expect(pilots).toEqual([{ shotId: 'SH07', kind: 'plan' }]);
+    expect(pending).toEqual([]);
+  });
+
+  it('empty candidates → nothing fires, nothing pending', () => {
+    const { pilots, pending } = splitVideoPilots([], []);
+    expect(pilots).toEqual([]);
+    expect(pending).toEqual([]);
+  });
+});
+
+describe('readVideoFanoutPending — lenient stash reader', () => {
+  it('round-trips the stash written by splitVideoPilots', () => {
+    const { pending } = splitVideoPilots(
+      ['SH03', 'SH04'],
+      [{ shotId: 'SH05', planAssetId: 'p5' }],
+    );
+    expect(readVideoFanoutPending({ video_fanout_pending: pending })).toEqual(pending);
+  });
+
+  it('returns [] for absent / null / garbage metadata', () => {
+    expect(readVideoFanoutPending(undefined)).toEqual([]);
+    expect(readVideoFanoutPending(null)).toEqual([]);
+    expect(readVideoFanoutPending({})).toEqual([]);
+    expect(readVideoFanoutPending({ video_fanout_pending: 'nope' })).toEqual([]);
+  });
+
+  it('drops malformed candidates, keeps valid ones', () => {
+    expect(
+      readVideoFanoutPending({
+        video_fanout_pending: [
+          { shotId: 'SH01', kind: 'plan' },
+          { shotId: '', kind: 'plan' },              // empty shotId
+          { shotId: 'SH02', kind: 'render' },        // render without planAssetId
+          { shotId: 'SH03', kind: 'render', planAssetId: 'p3' },
+          { kind: 'plan' },                          // no shotId
+          { shotId: 'SH04', kind: 'unknown' },       // unknown kind
+        ],
+      }),
+    ).toEqual([
+      { shotId: 'SH01', kind: 'plan' },
+      { shotId: 'SH03', kind: 'render', planAssetId: 'p3' },
+    ]);
   });
 });

@@ -230,6 +230,18 @@ export interface AnimaticPlayerProps {
   /** True while the Start-Video POST is in flight (button spinner / disabled). */
   startingVideo?: boolean;
   /**
+   * Video Pilot Pass fan-out (2026-07-23, E31 storm fix). When provided, the
+   * transport shows a "Fan Out (N)" button next to Старт видео that releases
+   * the shots stashed in episodes.metadata.video_fanout_pending (POST
+   * /video/fanout via the parent). Parent passes this ONLY while the stash is
+   * non-empty; the button disappears once the fan-out clears it.
+   */
+  onVideoFanout?: () => void;
+  /** Size of the pending stash (button label) — 0/undefined hides the button. */
+  videoFanoutCount?: number;
+  /** True while the fan-out POST is in flight. */
+  fanningOutVideo?: boolean;
+  /**
    * Materialize-on-first-edit (E25 2026-07-10): in synthetic mode there is no
    * backing VID-animatic asset to PATCH timing into. When the Director edits a
    * duration and saves, the parent creates the animatic vessel (POST
@@ -422,6 +434,9 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     onVisualCheck,
     onStartVideo,
     startingVideo,
+    onVideoFanout,
+    videoFanoutCount,
+    fanningOutVideo,
     onMaterialize,
   },
   ref,
@@ -2078,6 +2093,25 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
               <Clapperboard size={13} />
             )}{' '}
             Старт видео
+          </Button>
+        )}
+        {/* Video Pilot Pass fan-out (2026-07-23): Старт видео fires only the
+            2 pilot shots; the rest wait in video_fanout_pending until the
+            Director approves the direction and presses this. */}
+        {onVideoFanout && (videoFanoutCount ?? 0) > 0 && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onVideoFanout}
+            disabled={fanningOutVideo}
+            title="Пилоты отсмотрены — запустить остальные шоты в видео-поток"
+          >
+            {fanningOutVideo ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Clapperboard size={13} />
+            )}{' '}
+            Fan Out ({videoFanoutCount})
           </Button>
         )}
         <div className="flex-1" />

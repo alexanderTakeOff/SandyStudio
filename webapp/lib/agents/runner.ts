@@ -36,6 +36,7 @@ import { persistBinary, type PersistedBinary } from './persist-binary';
 import { readEpisodeDeliveryTargets } from './delivery-targets';
 import { computeInputVersions } from './input-versions';
 import { canonicalShotId } from '../api/shot-id';
+import { resolveShotId } from '../api/shot-identity';
 import { parseShotPlanContract } from '../api/shot-plan-contract';
 import { assertBudgetAvailable, releaseBudgetReservation, BudgetExceededError } from '../budget';
 import { applyCriticVerdict, type CriticVerdict } from './critic-loop';
@@ -2048,7 +2049,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         // (TD-66 widening). Accept both bare and suffixed forms here, same
         // pattern as TD-75 fix for PA tools.
 
-        const { data: planRow, error: loadErr } = await supabase
+        let { data: planRow, error: loadErr } = await supabase
           .from('assets')
           .select('content,status,file_type')
           .eq('id', planAssetId)
@@ -2065,7 +2066,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           );
         }
         const planFileType = (planRow as { file_type?: string }).file_type ?? '';
-        const planStatus = (planRow as { status?: string }).status ?? '';
+        let planStatus = (planRow as { status?: string }).status ?? '';
         const isShotPlanType =
           planFileType === 'SPC-shot_plan' || planFileType.startsWith('SPC-shot_plan-');
         if (!isShotPlanType) {
@@ -2074,9 +2075,51 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           );
         }
         if (planStatus !== 'APPROVED') {
-          throw new Error(
-            `EXEC-VGEN: planAssetId=${planAssetId} has status=${planStatus}, expected APPROVED. Refusing silent storyboard fallback.`,
+          // Stale-id self-heal (2026-07-23, E31 storm defect #3): the dispatched
+          // id was captured at scan time; if the plan was re-authored between
+          // dispatch and execution it is now INVALIDATED and this run would
+          // hard-fail on a live shot. Director invariant: per shot, exactly ONE
+          // plan may be APPROVED at a time — so resolve THE approved plan of
+          // this shot and render that. No approved plan → the original throw
+          // stands (fail-loud, still no silent storyboard fallback).
+          const { data: planCandidates, error: healErr } = await supabase
+            .from('assets')
+            .select('id,content,status,file_type,version,metadata')
+            .eq('episode_id', episodeId)
+            .like('file_type', 'SPC-shot_plan%')
+            .eq('status', 'APPROVED')
+            .order('version', { ascending: false });
+          // Filter by shot via the canonical resolver (legacy plans carry
+          // shot_id only in the content JSON, not in metadata).
+          const approvedRows = (planCandidates ?? []).filter(
+            (r) =>
+              resolveShotId({
+                metadata: (r as { metadata?: unknown }).metadata,
+                content: (r as { content?: string | null }).content,
+              }) === shotId,
           );
+          if (healErr || approvedRows.length === 0) {
+            throw new Error(
+              `EXEC-VGEN: planAssetId=${planAssetId} has status=${planStatus}, expected APPROVED, and shot ${shotId} has no APPROVED plan to heal to${healErr ? ` (heal lookup failed: ${healErr.message})` : ''}. Refusing silent storyboard fallback.`,
+            );
+          }
+          if (approvedRows.length > 1) {
+            // Invariant broken upstream — surface loudly, proceed with newest.
+            console.warn(
+              `[EXEC-VGEN] INVARIANT VIOLATION: shot ${shotId} has ${approvedRows.length} APPROVED plans (must be exactly 1). Using newest v${(approvedRows[0] as { version?: number }).version}.`,
+            );
+          }
+          const healed = approvedRows[0] as {
+            id: string;
+            content?: string | null;
+            status?: string;
+            version?: number;
+          };
+          console.warn(
+            `[EXEC-VGEN] stale plan id healed: dispatched ${planAssetId} (${planStatus}) → resolved the APPROVED plan ${healed.id} (v${healed.version}) for shot ${shotId}.`,
+          );
+          planRow = healed as never;
+          planStatus = 'APPROVED';
         }
 
         const content = (planRow as { content?: string | null }).content ?? '';

@@ -19,6 +19,24 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-23 (E31 видео-шторм: стоп-кран + Video Pilot Pass — Тео, КОД).
+Phase:  Смок E31 «Airport» — видео-поток чинится ПЕРЕД любым новым видео-запуском.
+Status: Шторм (72→11 resumed) добит: stop-stack.ps1/-Wipe (аварийный стоп, Inngest
+  первым + парковка durable SQLite — commit e8716d2f), 10 zombie-строк → FAILED.
+  Диагноз финальный: капы ГЛУБИНЫ уже работали (534ddbf4); шторм = ШИРИНА (27
+  шотов веером, VANIM:63 ≈ 2.3 прохода/шот — каждый под капом). Фикс = зеркало
+  реф-потока: (1) Video Pilot Pass — Start Video фаерит 2 пилота, остальное в
+  metadata.video_fanout_pending, кнопка «Fan Out (N)» рядом со Старт видео;
+  (2) VGEN stale plan-id самолечится → ЕДИНСТВЕННЫЙ APPROVED план шота
+  (инвариант Директора), 0 APPROVED → прежний fail-loud; (3) UI STOP/Restart
+  servers → /api/system/servers → stop-stack/-Wipe / start-stack detached.
+Verify: tsc clean · 1469/1469 tests (+7 pilot-split) · replay-pilot 30/30.
+Next:   rebuild+restart стека → Директор жмёт Start Video на E31 → ожидание:
+  ровно 2 пилота идут plan→critic→video; после отсмотра — Fan Out. Бэклог:
+  cap-counters не сбрасываются после HALT-резолва (гипотеза Директора, ядро
+  подтверждено) — «считать с последнего вмешательства Директора», stateless.
+Mode:   Mode 1 MANUAL, ===5=== (Директор: «go and use auto mode»).
+
 Date:   2026-07-21 late (Head of Growth — «ответственный агент?» — Тео, ДОКИ only).
   Директор q1a/q2y/q3. ДВА плана на сегодня, читать оба:
   - `docs/plans/2026-07-21-feedback-loop-close.md` (параллельная сессия, 35744888) —
