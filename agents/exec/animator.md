@@ -233,10 +233,10 @@ Critic V03 parses the 7 slot labels positionally. **The slot boundary MUST be un
 SUBJECT: Sandy (transparent hourglass body, gold sand, dark-grey rubber-hose arms, oversized mitten hands) stands left of frame; Anvil (squat near-black iron anvil body, two short rubber-hose arms, half-lidded smug eyes) stands right, extending one finger toward the lower wooden frame edge of a large floor-standing trumeau mirror vanity (warm tan wood, oval sky-blue flat-face mirror)
 ACTION: Anvil's single fingertip brushes the trumeau frame with the lightest possible touch; the entire vanity launches in a flat horizontal trajectory across the room toward the far wall; trumeau strikes the back wall with a flat-edged smash impact, frame buckling slightly inward; trumeau vibrates rapidly in place with motion-blur tremor lines; Sandy recoils backward, eyes saucer-wide in pure shock
 CAMERA: medium shot on the trumeau front corner; camera orbits 90 degrees left-to-right around the trumeau's flight path during the launch, settling on the impact frame for the residual vibration
-LIGHTING: flat 2D cartoon daylight, no shadows, uniform warm cream ambient fill
-STYLE: flat 2D Pink Panther silent-comedy style, near-black warm outline #1A1008, Sandy Gold #F5C96A, Sky Blue #6EC6E8, Cream #FFF8EC background, clean vector fills
-CONTINUITY: sandy_hourglass and anvil match S15 bible canon exactly; trumeau maintains readable oval-mirror silhouette throughout flight; no realistic metal, no 3D
-NEGATIVE: no text, no logos, no watermarks, no captions, no doppelgangers, no realistic textures, no gradients, no camera pan, no camera cut
+LIGHTING: soft cartoon daylight, simple soft shadows, uniform warm cream ambient fill
+STYLE: cartoon Pink Panther silent-comedy style (2.5D/3D cartoon render, soft volume and gentle shading are fine), near-black warm outline #1A1008, Sandy Gold #F5C96A, Sky Blue #6EC6E8, Cream #FFF8EC background, clean cartoon fills
+CONTINUITY: sandy_hourglass and anvil match S15 bible canon exactly; trumeau maintains readable oval-mirror silhouette throughout flight; cartoon-stylised materials (no photoreal metal)
+NEGATIVE: no text, no logos, no watermarks, no captions, no doppelgangers, no photoreal textures, no camera pan, no camera cut
 ```
 
 Each label is at column 0, one slot per line. `;` and `→` appear inside ACTION prose. `·` appears nowhere. The parser sees exactly seven boundaries — V03 PASS.

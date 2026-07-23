@@ -19,6 +19,26 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-23 late (Канон-коррекция: 2D→cartoon + Сэнди рот + Инспектор — Тео, ===5===).
+Status: Правки КАНОНА в БД (Supabase, LOCKED-ассеты, Директор q8a; не в git — фиксирую тут):
+  (1) STYLE canon `303959c1`: 2D-мандаты де-абсолютизированы — «flat 2D/no gradients/
+      zero shadow» → cartoon 2.5D/3D, simple soft shadows, gentle shading allowed (q9a,
+      стиль не ломали). Это чинит массовый REVISE визуального критика (EXEC-VCRIT на
+      gpt-image-2 terra звонил «violates flat 2D» на ~18/20 шотов E31 — канон был неверен).
+  (2) SANDY canon `bc2d6f74`: рот теперь ВСЕГДА (был «only extreme expr»→часто без рта).
+  (3) Виды со спины разрешены (style+sandy) — Сэнди не обязан лицом к камере.
+  (4) INSPECTOR `6dce86ff`: переписан — стрелки=УСЫ (down/horiz/up по настроению), ДОБАВлены
+      глаза+движимые брови, руки СОЕДИНЕНЫ с телом (были «отдельные»→Seedance дорисовывал).
+      Картинка перерисована gpt-image-2 edit (глаза+брови+руки, остальное 1:1), одобрена
+      Директором, залита на Drive + ассет обновлён на месте (v01 LOCKED, new drive_file_id
+      1Qzf-2gZ…), медиа-эндпоинт отдаёт байт-в-байт. $0.211.
+  (5) Утечка «flat 2D/no 3D/no gradients» в видео-промпт `animator.md` вычищена (git).
+  Всё вступает БЕЗ рестарта (критик+агенты читают канон из БД вживую).
+Verify: канон-правки — скрипты с exact-1-match guard (8/8 Инспектор, 6+2 style/sandy);
+  картинка served==candidate байт-в-байт. Код не трогали (кроме animator.md — доки/промпт).
+Next:   (опц., платно) перегнать EXEC-VCRIT на E31 с новым каноном — убедиться что
+  2D-ложняки ушли. Инспектор HARD-CANON §3/§7 обновлён — свериться при след. появлении.
+
 Date:   2026-07-23 (E31 видео-шторм: стоп-кран + Video Pilot Pass + resume-фикс — Тео, КОД).
 Phase:  Смок E31 «Airport» — видео-поток чинится ПЕРЕД любым новым видео-запуском.
 Status: Шторм (72→11 resumed) добит: stop-stack.ps1/-Wipe (аварийный стоп, Inngest
