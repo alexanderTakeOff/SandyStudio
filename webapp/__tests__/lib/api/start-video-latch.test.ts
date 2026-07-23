@@ -159,6 +159,21 @@ describe('splitVideoPilots — Video Pilot Pass (E31 storm fix, 2026-07-23)', ()
     expect(pilots).toEqual([]);
     expect(pending).toEqual([]);
   });
+
+  it('pilotCount=Infinity (resume-after-open call, 2026-07-23 fix) fires everything, nothing pending', () => {
+    const { pilots, pending } = splitVideoPilots(
+      ['SH03', 'SH01', 'SH04'],
+      [{ shotId: 'SH02', planAssetId: 'p2' }],
+      Number.POSITIVE_INFINITY,
+    );
+    expect(pilots).toEqual([
+      { shotId: 'SH01', kind: 'plan' },
+      { shotId: 'SH02', kind: 'render', planAssetId: 'p2' },
+      { shotId: 'SH03', kind: 'plan' },
+      { shotId: 'SH04', kind: 'plan' },
+    ]);
+    expect(pending).toEqual([]);
+  });
 });
 
 describe('readVideoFanoutPending — lenient stash reader', () => {

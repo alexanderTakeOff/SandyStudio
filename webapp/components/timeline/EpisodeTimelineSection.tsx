@@ -38,7 +38,6 @@ import {
   type AnimaticContract,
   type AnimaticShot,
 } from '@/lib/api/animatic-shotlist';
-import { readPipelineMode } from '@/lib/api/pipeline-mode';
 import { readVideoFanoutPending } from '@/lib/api/start-video-latch';
 import { compareAssetVersionsNewestFirst } from '@/lib/api/asset-ordering';
 import {
@@ -1015,11 +1014,19 @@ export function EpisodeTimelineSection({
               filter={filter}
               onCellClick={handleCellClick}
               onChanged={() => void mutate()}
-              // "Start Video" latch — shown only while the episode is still
-              // waiting (pipeline_mode !== 'parallel'). Opening the stream flips
-              // the mode, so the button disappears on the next refetch.
+              // "Start Video" latch (2026-07-23 fix): visible whenever there is
+              // still a shot without a video, NOT gated on pipeline_mode.
+              // pipeline_mode='parallel' is a one-way "stream opened at least
+              // once" flag that is never reset — gating visibility on it made
+              // the button (and "Fan Out") disappear FOREVER after the first
+              // press, including after a server restart, with no way back in
+              // through the UI (Director had to route around it through
+              // Polina's per-shot tool). The route itself is idempotent/dedupes
+              // by existing plan/video rows either way — see start-video/route.ts
+              // `alreadyOpen` branch (pilots only on first activation; a resume
+              // call fires everything still missing in one pass).
               onStartVideo={
-                readPipelineMode(data?.data.episode?.metadata) !== 'parallel'
+                vidShotAssets.length < contract.shot_list.length
                   ? () => void handleStartVideo()
                   : undefined
               }

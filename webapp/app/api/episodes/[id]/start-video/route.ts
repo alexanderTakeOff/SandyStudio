@@ -35,6 +35,7 @@ import {
   type EpisodeStatus,
 } from '@/lib/api/status-transitions';
 import { excludedShotIdsFromEpisodeMeta } from '@/lib/api/animatic-shotlist';
+import { readPipelineMode } from '@/lib/api/pipeline-mode';
 import {
   selectRetroFanoutShots,
   selectRenderFanoutShots,
@@ -75,6 +76,18 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   const meta = ((ep as { metadata?: Record<string, unknown> | null }).metadata ??
     {}) as Record<string, unknown>;
+
+  // Captured BEFORE the flip below: was the video stream already open? The
+  // pilot gate below only applies on the FIRST activation (the only moment a
+  // cold 27-shot fan-out is possible). A repeat call — e.g. the Director
+  // pressing "Старт видео" again after a server restart to resume, once the
+  // button visibility no longer depends on pipeline_mode — means the
+  // direction was already approved; re-piloting would just re-throttle
+  // legitimate resume work to 2 shots at a time for no reason. Both edges
+  // still dedupe by existing plan/video rows regardless of this branch, so a
+  // resume call cannot double-dispatch what a prior call (or a manual
+  // per-shot trigger) already started.
+  const alreadyOpen = readPipelineMode(meta) === 'parallel';
 
   // 1. Flip the latch → parallel (idempotent).
   await supabase
@@ -138,10 +151,17 @@ export const POST = withApiHandler(async (req, ctx) => {
   );
 
   // Video Pilot Pass (2026-07-23, E31 72-job storm): mirror of the EREF
-  // Designer Pilot Pass. Fire only the first PILOT_COUNT_VIDEO shots (both
-  // edges merged, shot order); stash the rest into metadata so the Director
-  // reviews the pilots end-to-end before "Fan Out" releases the width.
-  const { pilots, pending } = splitVideoPilots(firedShotIds, renderShots);
+  // Designer Pilot Pass. On the FIRST activation, fire only the first
+  // PILOT_COUNT_VIDEO shots (both edges merged, shot order) and stash the
+  // rest so the Director reviews the pilots end-to-end before "Fan Out"
+  // releases the width. On a resume call (alreadyOpen), direction was
+  // already approved — fire everything found in one pass (same function,
+  // pilotCount=Infinity just takes every candidate; dedup is unchanged).
+  const { pilots, pending } = splitVideoPilots(
+    firedShotIds,
+    renderShots,
+    alreadyOpen ? Number.POSITIVE_INFINITY : PILOT_COUNT_VIDEO,
+  );
 
   const eventIds: string[] = [];
   for (const c of pilots) {
@@ -169,11 +189,14 @@ export const POST = withApiHandler(async (req, ctx) => {
       .maybeSingle();
     const freshMeta =
       ((epRow as { metadata?: unknown } | null)?.metadata as Record<string, unknown> | null) ?? {};
-    const nextMeta: Record<string, unknown> = {
-      ...freshMeta,
-      video_pilot_count: PILOT_COUNT_VIDEO,
-      video_fanout_total: pilots.length + pending.length,
-    };
+    const nextMeta: Record<string, unknown> = { ...freshMeta };
+    // Only the first activation is a "pilot batch" — a resume call fires
+    // everything it finds, so leave the original pilot-count/total (set on
+    // first activation) untouched rather than overwriting with Infinity.
+    if (!alreadyOpen) {
+      nextMeta.video_pilot_count = PILOT_COUNT_VIDEO;
+      nextMeta.video_fanout_total = pilots.length + pending.length;
+    }
     if (pending.length > 0) nextMeta.video_fanout_pending = pending;
     else delete nextMeta.video_fanout_pending;
     await supabase
@@ -185,12 +208,15 @@ export const POST = withApiHandler(async (req, ctx) => {
   await supabase.from('activity_events').insert({
     event_type: 'manual_trigger',
     severity: 'info',
-    title: 'Video stream opened — pilot pass',
-    description: `Director ${user.email ?? user.id} started video — pilot pass fired ${pilots.length} shot(s) (${pilots.map((c) => `${c.shotId}:${c.kind}`).join(', ') || 'none'}), ${pending.length} stashed for Fan Out`,
+    title: alreadyOpen ? 'Video stream resumed' : 'Video stream opened — pilot pass',
+    description: alreadyOpen
+      ? `Director ${user.email ?? user.id} resumed video — fired ${pilots.length} remaining shot(s) (${pilots.map((c) => `${c.shotId}:${c.kind}`).join(', ') || 'none'})`
+      : `Director ${user.email ?? user.id} started video — pilot pass fired ${pilots.length} shot(s) (${pilots.map((c) => `${c.shotId}:${c.kind}`).join(', ') || 'none'}), ${pending.length} stashed for Fan Out`,
     actor: user.id,
     episode_id: episodeId,
     metadata: {
       kind: 'start_video_latch',
+      already_open: alreadyOpen,
       pilot_shots: pilots.map((c) => c.shotId),
       pending_shots: pending.length,
       inngest_event_ids: eventIds,
@@ -200,6 +226,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   return apiOk({
     started: true,
     pipeline_mode: 'parallel',
+    resumed: alreadyOpen,
     pilot_shots: pilots.map((c) => ({ shotId: c.shotId, kind: c.kind })),
     pending_shots: pending.length,
   });
