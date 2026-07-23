@@ -5,7 +5,7 @@
 
 'use client';
 
-import { use, useState, useEffect, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type CSSProperties } from 'react';
+import { use, useState, useEffect, useRef, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type CSSProperties } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
@@ -124,8 +124,13 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   const { id } = use(params);
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   // Topic 3 — which PRIMARY rows have their MUTED Designer/Critic children
-  // expanded. Collapsed by default (q9b).
+  // expanded. EXPANDED by default (Director 2026-07-23): collapsed-by-default hid
+  // the Reference Designer + Reference Critic under "Reference Artist", which read
+  // as "the stage never started" during the E31 smoke. The one-time init effect
+  // below opens every primary that has children on first load; the user can still
+  // collapse any of them afterward.
   const [expandedPrimaries, setExpandedPrimaries] = useState<Set<string>>(new Set());
+  const didInitExpandRef = useRef(false);
   const [triggerOpen, setTriggerOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [markCompleteOpen, setMarkCompleteOpen] = useState(false);
@@ -175,6 +180,22 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
     // reflecting it — unnerving when Polina reports a trigger and nothing moves.
     { refreshInterval: 8_000 },
   );
+
+  // One-time default-expand: once stages load, open EVERY primary that has muted
+  // Designer/Critic children so hidden sub-stages are visible immediately (the
+  // ref-designer/critic-hidden-under-Reference-Artist confusion). Runs once; the
+  // user's later collapse/expand choices are preserved (guarded by the ref).
+  useEffect(() => {
+    if (didInitExpandRef.current) return;
+    const loadedStages = data?.data?.stages;
+    if (!loadedStages || loadedStages.length === 0) return;
+    const primariesWithChildren = new Set<string>();
+    for (const s of loadedStages) {
+      if (s.serves) primariesWithChildren.add(s.serves);
+    }
+    setExpandedPrimaries(primariesWithChildren);
+    didInitExpandRef.current = true;
+  }, [data]);
 
   if (!data?.data) {
     return (
