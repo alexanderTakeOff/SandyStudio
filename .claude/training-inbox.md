@@ -5648,3 +5648,336 @@ E29 is the 2026-07-16 launch episode. Your memory note records **four** Vending 
 URL not found
 We couldn't find what you were looking for. Try one of the links below.
 ===запомни если тебе нужны действия от меня - помечай строку сообщения яркой эмоджи
+
+## 2026-07-22 14:34 · director-msg (hook) · NEW · (triage at distill)
+https://drive.google.com/file/d/1nW1Atq18kseecbJppWST84Topp52gfxb/view?usp=drive_link  canon of Metelka 
+[Image #5] а это на диске тут если не дотянешься
+а вот пустого бэка правда нет . генери и чини правильно
+
+## 2026-07-22 19:59 · director-msg (hook) · NEW · (triage at distill)
+уже сториборд в работе . а ты прочти мою переписку с полиной. я в бешенстве. да она на беспланой гемини на похоже у нее нет нужных инструментов все еще , не поправлен промпт с учетом последних изменений пайплайна и возможностей. но может я неправ и дело в другом. почитай наши диалоги. отвечай кототко . 10 строк на ответ
+
+## 2026-07-23 05:05 · director-msg (hook) · NEW · (triage at distill)
+поясни плиз . сториборд переписан с учетом нотис? и сколько в нем гэгов сейчас?. и он лежит уже в базе данных и осталось только толкнуть критика чтобы фабрика поехала далльше?
+
+## 2026-07-23 05:27 · director-msg (hook) · NEW · (triage at distill)
+пусть прогонит с изменениями (смоук но пойдет на публику) . но мне как директору не понятен порядок дейсвий . я вижу критикc verdict revise. what shoud I pick in the critic's kebab? approve all? reject? missing logic omg
+
+## 2026-07-23 05:43 · director-msg (hook) · NEW · (triage at distill)
+sorry  я запутал чуть чуть . под ref artist СПРЯТАНЫ дизайнеи и критик - открой по дефолту всех спрятанных в пайплайне. их не видно сразу и это сбивает
+
+## 2026-07-23 06:14 · director-msg (hook) · NEW · (triage at distill)
+не ребилди сейчас ref generation is in progress. пока только код. кстати в пайплане stage reference artist - hide both Reference Designer and  Reference Critic lines - они пошотовые и в пайплайне не работают - живут в кебабе шота
+
+## 2026-07-23 06:40 · director-msg (hook) · NEW · (triage at distill)
+процесс идет. по замечаниям : SH09 вот такой странный кебаб имеем: 
+Image
+plan
+
+v01
+APPROVED
+✓
+critic
+
+v01
+REVIEW
+✓
+image
+▶
+v01
+APPROVED
+on screen
+✓
+🎨 Regenerate reference👁 Check ref
+Video
+plan
+writing…
+
+v07
+REVIEW
+✓
+
+v06
+APPROVED
+✓
+
+v05
+REVIEW
+✓
+
+v04
+REVIEW
+✓
+
+v03
+REVIEW
+✓
+
+v02
+REVISION
+
+v01
+REVISION
+critic
+reviewing…
+
+v06
+REVIEW
+✓
+
+v05
+REVIEW
+✓
+
+v04
+REVIEW
+✓
+
+v03
+REVIEW
+✓
+
+v02
+REVIEW
+✓
+
+v01
+REVIEW
+✓
+video
+—
+🎬 Generate video
+
+## 2026-07-23 06:53 · director-msg (hook) · NEW · (triage at distill)
+10:50 [agent_failed] Video Artist failed — SH04 — EXEC-VGEN: planAssetId=39e3d8c0-c627-4e36-860a-a43f838375c9 has status=INVALIDATED, expected APPROVED. Refusing silent storyboard fallback. ==== ложная инфо -  видео уже есть и генерится новое !!! стоп , оснанавливай , разбирайся с видео потоком . мы его так и не починили!
+
+## 2026-07-23 07:31 · director-msg (hook) · NEW · (triage at distill)
+check churn not running ?  provider topped up. go video flow! last days you fixed but ((((((
+я не понимаю проблемы . есть поток рефов - там все идет идеально ( пока) можно отзеркалить процесс в видео? на первый взгляд разницы нет. ты уже неделю не можешь починить 
+/model
+
+## 2026-07-23 07:33 · director-msg (hook) · NEW · (triage at distill)
+check churn not running ?  provider topped up. go video flow! last days you fixed but ((((((
+  я не понимаю проблемы . есть поток рефов - там все идет идеально ( пока) можно отзеркалить процесс в видео? на первый взгляд разницы нет. ты уже неделю не можешь починить . моднимаю модель до fable
+
+## 2026-07-23 07:37 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a8881e8d36de45036</task-id>
+<tool-use-id>toolu_01JRM5CKPKgWCVyt13QiMTBg</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\58aa897f-ac47-444d-8d38-4404a9487916\tasks\a8881e8d36de45036.output</output-file>
+<status>completed</status>
+<summary>Agent "Trace REF flow architecture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result># EPISODE REFERENCES flow — end-to-end trace
+
+Two coexisting tracks. The **well-working one is Track B (Designer chain)**, gated by `DESIGNER_CHAIN_ENABLED` (`lib/agents/chain-flags.ts`). Track A (v2 pilot runner `exec-eref/start`) is the legacy fallback. Everything below is Track B unless noted.
+
+## Text flow diagram
+
+```
+STB-storyboard APPROVED → REV-world_check APPROVED
+   └─ next-events.ts:661-748  (designerChainEnabled)
+        PILOT PASS: fire ONLY first 2 shots  (PILOT_COUNT_DESIGNER=2, next-events.ts:693-700)
+        remaining shot ids stashed → episodes.metadata.designer_fanout_pending (next-events.ts:730-736)
+
+per-shot chain (repeats per shot):
+   sandystudio/exec-eref-designer/plan   (exec-eref-designer.ts:24, concurrency exec-eref-designer=5)
+      → runner writes SPC-ref_plan-&lt;shotId&gt; (DRAFT)
+      → nextEvent (exec-eref-designer.ts:50-62): sandystudio/exec-eprev/review-plan
+   sandystudio/exec-eprev/review-plan    (exec-eprev.ts:29, concurrency exec-eprev=5, finishTimeout 10m)
+      → runEpisodeReferenceCritic → applyCriticVerdict (runner.ts:1564)
+         REVISE → nextEvent re-fires exec-eref-designer/plan + revisionNote (exec-eprev.ts:83-101)
+         PASS + comedy + READABILITY_GATE → exec-cread/review-ref-plan (exec-eprev.ts:103-117)
+         PASS → Plan left REVIEW for Director
+   Director APPROVES SPC-ref_plan
+      → next-events.ts:791-831 fires sandystudio/exec-eref/execute-from-plan {shotId, planAssetId}
+   sandystudio/exec-eref/execute-from-plan (exec-eref-execute-from-plan.ts:24, concurrency exec-eref-execute=4)
+      → runEpisodeReferences plan-driven branch → writes IMG-episode_ref (one shot / anchor pair)
+
+Director "Approve Direction &amp; Fan Out" (after 2 pilots approved):
+   POST /api/episodes/[id]/eref/approve-pilots  (approve-pilots/route.ts:44)
+      → reads designer_fanout_pending, fans out ALL remaining shots at once
+        as exec-eref-designer/plan events (approve-pilots/route.ts:182-186)
+```
+
+## 1. Start references — route, events, fan-out, cap
+
+- **Auto path:** no explicit "start references" click; `REV-world_check` APPROVED auto-fires the pilot batch in `lib/agents/next-events.ts:661-748`. **Manual path:** `POST /api/episodes/[id]/trigger` with `agentCode:"EXEC-EREF-DESIGNER"` → `sandystudio/exec-eref-designer/plan` (`app/api/episodes/[id]/trigger/route.ts:42`). (Legacy Track A: `agentCode:"EXEC-EREF"` → `sandystudio/exec-eref/start`, route.ts:38.)
+- **Does NOT fan out all shots at once.** Pilot Pass fires **only the first 2 shots** (`PILOT_COUNT_DESIGNER = 2`, `next-events.ts:693-700`); the rest are stashed in `episodes.metadata.designer_fanout_pending` (`next-events.ts:730-736`).
+- **Remaining shots** fan out **all at once** only after the Director approves both pilots and hits "Approve Direction &amp; Fan Out" → `app/api/episodes/[id]/eref/approve-pilots/route.ts:182-186` (`inngest.send` of one `exec-eref-designer/plan` per pending shot).
+- **Concurrency cap** (not batching/chaining) throttles the burst — all episode-keyed (`lib/inngest/concurrency.ts`): designer `exec-eref-designer=5` (line 37), critic `exec-eprev=5` (line 42), executor `exec-eref-execute=4` (line 61). Legacy Track A runner `exec-eref=1` (line 26). Key = `event.data.episodeId` (`concurrency.ts:105-110`).
+
+## 2. Per-shot critic loop &amp; revision cap
+
+- Designer writes `SPC-ref_plan-&lt;shot&gt;` → EXEC-EPREV critic runs `runEpisodeReferenceCritic` (`lib/agents/runners/episode-reference-critic.ts:443`), verdict PASS/REVISE/FAIL/UNKNOWN.
+- **REVISE loops back** via `exec-eprev.ts:83-101` `nextEvent` → re-fires `sandystudio/exec-eref-designer/plan` with `revisionNote` (critic's `acceptance_criteria` as a hard contract). Designer loads its own REVIEW/REVISION/DRAFT plans to honor it (`exec-eref-designer.ts:29`).
+- **Revision cap = 2** (`DEFAULT_CRITIC_REVISION_CAP`, `lib/agents/critic-loop.ts:37`; overridable via `PROMPT_REVISION_CAP`, `chain-flags.ts:188-194`).
+- **Enforced** in `applyCriticVerdict` (`lib/agents/critic-loop.ts:132-134`): a REVISE/UNKNOWN past cap is coerced to **HALT** → `raiseBlockerOnce` → Director Inbox (`critic-loop.ts:158-181`). Called for EPREV at `lib/agents/runner.ts:1564-1573`. Counter = plan asset `version − 1` (survives re-author, `critic-loop.ts:107-122`). Because `effectiveVerdict` (not raw) is written to `metadata.verdict`, the critic's `nextEvent` stops re-firing at cap.
+- **Backstops** (factory.ts, autonomous only, Director exempt): shot-regen cap **6** (`SHOT_REGEN_AGENT_IDS = [EXEC-EREF, EXEC-EREF-DESIGNER, EXEC-VGEN]`, `plan-regen-guard.ts:41`; `shotRegenCap()`=6 `chain-flags.ts:123`; enforced early-return `factory.ts:320-373`). Plan-version cap 5 does NOT apply here (`PLAN_AUTHOR_AGENT_IDS = [EXEC-VANIM]` only, `plan-regen-guard.ts:49`). Also a cosmetic-REVISE neutralizer + PASS-downgrade to kill doom-loops (`episode-reference-critic.ts:408-554`).
+
+## 3. Input plan/asset resolution at execution time
+
+- **Uses the dispatched `planAssetId` from the event payload — NOT a re-scan for "latest APPROVED."** `exec-eref/execute-from-plan.resolveRunArgs` pulls `planAssetId`+`shotId` straight from the event (`exec-eref-execute-from-plan.ts:29-50`). The runner calls `loadPlanOverrides(supabase, planAssetId, shotId)` fetching that exact row by id (`episode-references.ts:1954`, def `:1065`, `.eq('id', planAssetId)` `:1073`).
+- It **requires that specific plan be APPROVED** (`episode-references.ts:1090`); if only a PASSing critic verdict exists (Mode-4) it self-promotes to APPROVED (`:1096-1109`), else throws.
+- The dispatching edge itself (`next-events.ts:828-831`) sets `planAssetId: asset.id` = the just-approved plan, and `shotId` parsed from that plan's JSON body (`:808-819`). So the payload carries the concrete approved plan id end-to-end.
+
+## 4. Inngest function config for the ref functions
+
+| Function | file | concurrency (episode-keyed) | retries | other |
+|---|---|---|---|---|
+| EXEC-EREF-DESIGNER `.../plan` | `exec-eref-designer.ts:19-24` | `exec-eref-designer` = **5** | factory default **2** (`factory.ts:223`) | — |
+| EXEC-EPREV `.../review-plan` | `exec-eprev.ts:24-33` | `exec-eprev` = **5** | 2 | `finishTimeout: '10m'` (line 32) |
+| EXEC-EREF execute-from-plan | `exec-eref-execute-from-plan.ts:19-24` | `exec-eref-execute` = **4** | 2 | — |
+| EXEC-EREF v2 (start/fanout/upscale) | `exec-eref.ts:47-62` | `exec-eref` = **1** | **2** (explicit, line 51) | multi-event subscribe |
+
+- **No `throttle` and no `rateLimit` blocks are declared on any ref function.** The only rate governor is `concurrency` (`{ limit, key: 'event.data.episodeId' }`, `concurrency.ts:105-110`). Backpressure to paid providers (gpt-image-2 429s) is handled purely via these per-agent limits + retries-with-backoff (rationale documented `concurrency.ts:22-61`).
+
+### Key file:line refs
+- `lib/inngest/concurrency.ts:26,37,42,61,105-110` — caps
+- `lib/agents/next-events.ts:661-748` (pilot fan-out), `791-831` (approved-plan → execute)
+- `app/api/episodes/[id]/eref/approve-pilots/route.ts:182-186` — remaining-shots fan-out
+- `app/api/episodes/[id]/trigger/route.ts:38,42,235-243` — manual trigger + EREF plan-reroute
+- `inngest/functions/exec-eref-designer.ts:50-62`, `exec-eprev.ts:83-121`, `exec-eref-execute-from-plan.ts:29-71`, `exec-eref.ts:47-62`
+- `lib/agents/critic-loop.ts:37,132-134,158-181` — revision cap + HALT
+- `lib/agents/runner.ts:1564-1573` — EPREV cap application
+- `lib/agents/runners/episode-references.ts:1065-1109,1953-1954` — plan-by-id load, APPROVED gate
+- `lib/agents/factory.ts:223,320-373` — default retries, shot-regen backstop
+- `lib/agents/chain-flags.ts:120-124,161-165,188-195` — cap defaults (regen 6, plan-version 5, revision 2)</result>
+<usage><subagent_tokens>101022</subagent_tokens><tool_uses>32</tool_uses><duration_ms>178416</duration_ms></usage>
+</task-notification>
+
+## 2026-07-23 07:38 · director-msg (hook) · NEW · (triage at distill)
+<task-notification>
+<task-id>a3bcc5d939753d14d</task-id>
+<tool-use-id>toolu_01HdDycRS8MEBF9hphw17aM2</tool-use-id>
+<output-file>C:\Users\ALEXAN~1\AppData\Local\Temp\claude\C--Users-Alexander-sandystudio\58aa897f-ac47-444d-8d38-4404a9487916\tasks\a3bcc5d939753d14d.output</output-file>
+<status>completed</status>
+<summary>Agent "Trace VIDEO flow architecture" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have everything needed. Here is the trace.
+
+---
+
+# VIDEO GENERATION FLOW — END-TO-END TRACE
+
+## Text flow diagram
+
+```
+Director "Start Video"
+   └─ POST app/api/episodes/[id]/start-video/route.ts
+        ├─ flip episodes.metadata.pipeline_mode → 'parallel'
+        ├─ status STORYBOARD_APPROVED → GENERATION_IN_PROGRESS
+        └─ RETRO-FANOUT (loops, one inngest.send per shot):
+             edge1 approved-ref &amp; no-plan   → sandystudio/exec-vanim/plan      (start-video/route.ts:139-145)
+             edge2 approved-plan &amp; no-video → sandystudio/exec-vgen/single-shot (start-video/route.ts:146-152)
+
+Per shot:
+  exec-vanim/plan ──► EXEC-VANIM (factory) authors SPC-shot_plan
+       │ nextEvent (exec-vanim.ts:38-60)
+       ▼
+  exec-vprev/review-plan ──► EXEC-VPREV validates V01-V09
+       │ nextEvent (exec-vprev.ts:64-125):
+       │   REVISE → sandystudio/exec-vanim/plan  (re-author, NO planAssetId)  ← LOOP (exec-vprev.ts:94-104)
+       │   PASS(+comedy) → exec-cread/review-shot-plan
+       │   PASS → null  (plan sits in REVIEW awaiting Director; critic-loop.ts)
+       ▼ (Director approves OR Mode-2/3 plan-critic-autofire in factory.ts:914-971)
+  exec-vgen/single-shot ──► EXEC-VGEN renders VID-shot (runner re-validates plan)
+
+Post-animatic (legacy/alt) path:
+  exec-vgen/fanout-trigger ──► reads APPROVED animatic shot_list, emits per-shot
+       via decideFanoutEmit (exec-vgen.ts:713-737): author-plan | single-shot | wait
+```
+
+---
+
+## 1. "Start Video" — route, events, fan-out, concurrency, config reads
+
+- **Route:** `app/api/episodes/[id]/start-video/route.ts` (POST, `requireDirector`).
+- **Events emitted:** `sandystudio/exec-vanim/plan` (edge1, ref→plan) at `start-video/route.ts:139-145`, and `sandystudio/exec-vgen/single-shot` (edge2, approved-plan→render) at `start-video/route.ts:146-152`. Selection helpers `selectRetroFanoutShots` / `selectRenderFanoutShots` from `lib/api/start-video-latch.ts`.
+- **Fan-out ALL shots at once?** Yes — the route loops over every qualifying shot and fires one Inngest event each in a tight `for` loop (no batching, no sequential await-gating between shots). There is **no sequential mode in the route itself**; `pipeline_mode` only gates whether new approvals auto-flow, not batch size.
+- **Concurrency cap (downstream, Inngest, episode-keyed via `event.data.episodeId`)** — `lib/inngest/concurrency.ts`:
+  - `exec-vanim: 3` (concurrency.ts:45)
+  - `exec-vprev: 5` (concurrency.ts:47)
+  - `exec-vgen-shot: 2` ← the real per-shot video render cap (concurrency.ts:83)
+  - `exec-vgen-fanout: 1` (concurrency.ts:69); legacy `exec-vgen: 3` (concurrency.ts:67)
+- **`generation_config.video` reads:** shape `EpisodeVideoConfig` at `lib/api/resolve-generation-params.ts:43-51` — fields actually consumed: `provider_id`, `aspect_ratio`, `quality_tier`, `resolution`, `allow_shot_overrides`. Consumed via `resolveVideoParams()` (resolve-generation-params.ts:134) called in the runner at `lib/agents/runner.ts:2195` (and in `app/api/assets/[id]/regenerate-video/route.ts:326`). Precedence: episode-authority-wins unless `allow_shot_overrides`, else shot→episode→assignment(provider)→series→delivery(aspect)→hardcoded fallback.
+
+## 2. VANIM → VPREV → REVISE → VANIM re-fire; revision cap
+
+- **Re-fire location:** `inngest/functions/exec-vprev.ts:94-104` — on `verdict === 'REVISE'` it returns `{ name: 'sandystudio/exec-vanim/plan', data: { episodeId, shotId, revisionNote, ... } }`. Note it does **NOT** pass `planAssetId`, so VANIM authors a brand-new SPC-shot_plan asset each cycle. This event is dispatched by the factory's critic-chain branch (`factory.ts:986-1022`, matches `sandystudio/exec-vprev/`).
+- **Is there a revision cap?** Yes, two independent ones now exist:
+  1. **Critic revision cap** — `lib/agents/critic-loop.ts` `applyCriticVerdict`, wired for VPREV at `runner.ts:1455-1464` with `cap: resolvePromptRevisionCap(episode.metadata)` (default 2, `chain-flags.ts:188-195`). Reads the plan's `version` column; a `REVISE`/`UNKNOWN` past cap is coerced to `HALT` → `raiseBlockerOnce` to Director Inbox. `DEFAULT_CRITIC_REVISION_CAP = 2` (critic-loop.ts:37).
+  2. **Plan-authoring version cap** — `factory.ts:430-483` (Step 0a2), `PLAN_AUTHOR_AGENT_IDS = ['EXEC-VANIM']` (plan-regen-guard.ts:49), counter `countShotPlanVersions` (plan-regen-guard.ts:61-78), cap `planVersionCap()` default 5 (chain-flags.ts:161-165). Counts asset versions across ALL authoring paths, HALTs + `raiseBlockerOnce`.
+- **Why SH04/SH09 hit 11–12 with "no cap":** The critic cap (#1) only counts **REVISE** cycles. The runaway was **not** REVISE churn — per the code's own post-mortem comment (`exec-vgen.ts:698-711`): the fan-out saw a plan that **PASSed and sits in REVIEW** as "no plan at all" and re-authored it every fan-out pass ("E30 reached 17 versions on SH27 with 108 PASS / 9 REVISE"). PASS never bounces through `applyCriticVerdict`, so the critic cap never engaged, and pre-fix nothing counted raw authoring. Both fixes (the `hasLivePlan` split in `decideFanoutEmit` and the plan-version cap) landed AFTER the symptom, in commit `534ddbf4` "fix(pipeline): bound plan authoring and make every cap visible to the Director."
+
+## 3. VGEN dispatch — planAssetId source &amp; re-resolution
+
+- **Where planAssetId comes from:** the event payload. `execVgenRun` reads `data.planAssetId` (`exec-vgen.ts:113`, `:498`) and forwards it verbatim into `runAgent({ ..., planAssetId })`.
+- **Does it re-resolve latest APPROVED?** **No.** The runner fetches the exact row **by the passed id** (`runner.ts:2051-2055` `.eq('id', planAssetId)`), it does **not** query for the newest APPROVED plan for the shot. It then **validates** that id and hard-fails (throws) if the row isn't a clean APPROVED shot-plan — no silent storyboard fallback.
+- **Exact throw for status mismatch:** `lib/agents/runner.ts:2076-2080`:
+  ```
+  if (planStatus !== 'APPROVED') throw new Error(
+    `EXEC-VGEN: planAssetId=${planAssetId} has status=${planStatus}, expected APPROVED. Refusing silent storyboard fallback.`);
+  ```
+  Sibling hard-fails in the same block: fetch-fail `runner.ts:2058-2060`, not-found `:2062-2065`, wrong file_type `:2071-2075`, parse-fail `:2089-2093`, empty-prompt `:2094-2098`. So a stale/INVALIDATED id in the payload → this throws, NOT a re-resolve. (The related EREF variant with a critic-verdict fallback lives at `runners/episode-references.ts:1106`.)
+
+## 4. Inngest function config for VANIM / VPREV / VGEN
+
+- **EXEC-VANIM** (`exec-vanim.ts:15-27`, factory-built): `concurrencyId: 'exec-vanim'` → limit **3**, key `event.data.episodeId`; retries default **2**; no throttle; no finishTimeout.
+- **EXEC-VPREV** (`exec-vprev.ts:17-26`): `concurrencyId: 'exec-vprev'` → limit **5**; retries default 2; **`finishTimeout: '10m'`** (exec-vprev.ts:26); no throttle.
+- **EXEC-VGEN** — three functions:
+  - `execVgenRun` (unified pilot + single-shot, `exec-vgen.ts:177-187`): `retries: 2`, `concurrency: concurrencyFor('exec-vgen-shot')` → limit **2**. Subscribes to BOTH `exec-vgen/start` and `exec-vgen/single-shot`.
+  - `execVgenFanoutTrigger` (`exec-vgen.ts:740-747`): `retries: 1`, `concurrency: exec-vgen-fanout` → limit **1**.
+  - `execVgenLegacyGenerateShot` (`exec-vgen.ts:65-92`, factory): `concurrencyId: 'exec-vgen'` → limit **3**.
+- **No `throttle` block anywhere** — all pacing is via episode-keyed `concurrency` only.
+
+## 5. Existing churn/cap mechanisms — does the VANIM/VPREV path use them?
+
+Mechanisms that EXIST in the codebase:
+- **Shot-regen cap** — `factory.ts:299-373` (Step 0), `SHOT_REGEN_AGENT_IDS = ['EXEC-EREF','EXEC-EREF-DESIGNER','EXEC-VGEN']` (plan-regen-guard.ts:41), `shotRegenCap()` default 6. **Excludes EXEC-VANIM/VPREV** (critics/authors deliberately out — plan-regen-guard.ts:38-39).
+- **Plan-regen cap** — `assertPlanRegenWithinCap` (plan-regen-guard.ts:96), `planRegenCap()` default 3. Per-planAssetId, for the money executors.
+- **Critic revision cap** — `critic-loop.ts` `applyCriticVerdict`, default 2. **VPREV DOES use it** (runner.ts:1455-1464) — but only counts REVISE/UNKNOWN, so PASS-driven fan-out churn bypasses it (see Q2).
+- **Reconcile recovery cap** — `reconcileRecoveryCap()` default 1 (chain-flags.ts:136).
+- **Per-episode retry caps** — `prompt_revision_cap` / `reference_regen_cap` / `video_regen_cap` (chain-flags.ts:167-213; commit `3c37e96d`). `video_regen_cap` default 1 enforced in the VGEN dedup gate (exec-vgen.ts:374-432). VANIM authoring is **not** bounded by these.
+- **Critic-churn discriminator (commit 44dffb11)** — `lib/agents/scorecard/critic-discriminator.ts` + `app/api/factory/route.ts` + Factory page. This is an **observability/scorecard** layer (measures REVISE churn, rework regens = INVALIDATED versions, escalations) — it does **NOT prevent** churn at runtime. So it did not and could not stop the VANIM loop.
+- **Authoring cap + visible HALT (the 2026-07-18/19 session item "cap на авторинг плана + видимый HALT")** — this is the **plan-version cap** (`factory.ts:430-483`, `PLAN_AUTHOR_AGENT_IDS=['EXEC-VANIM']`, `planVersionCap()` default 5), landed in commit **`534ddbf4`**, together with the `decideFanoutEmit` `hasLivePlan` fix (exec-vgen.ts:713-737) and the billing-lock breaker. 
+
+**Bottom line for the VANIM/VPREV path:** Before `534ddbf4` the authoring loop bypassed every existing cap (regen caps exclude VANIM; the critic cap only counts REVISE, and the churn was PASS-driven fan-out re-authoring). The gap is now closed by the plan-version cap (Step 0a2) + the fan-out "wait if a live-but-unapproved plan exists" split. Both are recent and post-date the SH04/SH09 symptom.
+
+---
+
+### Key file:line refs
+- `app/api/episodes/[id]/start-video/route.ts:139-152` — fan-out emits
+- `lib/inngest/concurrency.ts:45,47,67,69,83` — caps
+- `lib/api/resolve-generation-params.ts:43-51,134,178-202` — `generation_config.video`; `lib/agents/runner.ts:2195` — consumed
+- `inngest/functions/exec-vprev.ts:94-104` — REVISE→VANIM re-fire (no planAssetId)
+- `lib/agents/critic-loop.ts:37,91-134` + `runner.ts:1455-1464` — critic revision cap (VPREV)
+- `lib/agents/factory.ts:430-483` + `lib/api/plan-regen-guard.ts:49,61-78` + `chain-flags.ts:161-165` — plan-version authoring cap
+- `lib/agents/runner.ts:2051-2098` — VGEN plan re-validation; **throw at 2076-2080**
+- `inngest/functions/exec-vgen.ts:113,177-187,498,713-737,740-747` — VGEN dispatch/config/fan-out
+- `lib/agents/scorecard/critic-discriminator.ts` (commit `44dffb11`) — churn *measurement* only
+- commit `534ddbf4` — authoring cap + visible HALT; commit `3c37e96d` — per-episode retry caps</result>
+<usage><subagent_tokens>120526</subagent_tokens><tool_uses>29</tool_uses><duration_ms>223213</duration_ms></usage>
+</task-notification>
+
+## 2026-07-23 11:18 · director-msg (hook) · NEW · (triage at distill)
+q5a, но поправь title у Cracked интересные наблюдения у нас когда я экспериментировал в начале вместе с тобой мы залили один большой шорт про вендинговую машину и несколько нарезок по 20 секунд а сейчас я в списке этих 20секундных нарезок не вижу причём Я их сам не удалял точно а вендинговый аппарат который минута 20 он стоит в списке так вот я что думаю два вопроса во-первых Может ли YouTube сам удалять видео которые получены нарезками из предыдущих видео Вполне возможно что у них есть такая какая-то политика И второй вопрос может как-то его штуку потому что в принципе она интересная правда в шортах Смотрится не очень но какие у тебя мысли анализируй экспертов
+
+## 2026-07-23 14:12 · director-msg (hook) · NEW · (triage at distill)
+q7 - у нас на самом деле все ассеты не 2д а 2.5d и даже 3Д просто в картун стиле. даже сам сэнди. так что правильнее убрать требование к 2Д отовюду
+
+## 2026-07-23 14:27 · director-msg (hook) · NEW · (triage at distill)
+q8 - make correcton in database. aproved. 
+q9 - убрать категоричнось. типа " no shadows" заменить на "simple shadows" or more precisly. no need change visual style too much. 
+что нужно Дописать обязательно Дописать что у Сэнди обязательно должен быть рот в зависимости от ситуации либо просто смайлик либо ещё как-то но минималистичный рот. очень часто он у нас вообще без рта точка
+ Второй важный момент тоже где-то У нас торчит такое что "всегда должно быть показано лицо Сэнди" А это неправильно в некоторых кадрах нужно показывать его Со спины. иначе получаются некрасивые референсы например когда он стоит перед воротами то логично показывает его со спины чтобы были видны и ворота и он точк. 
+почему-то Обрати внимание не знаю почему инспектор стоп вотч который периодически у нас без глаз надо как-то это усилить точка
+
+## 2026-07-23 15:59 · director-msg (hook) · NEW · (triage at distill)
+а + б   пометь в бэклог про сериальность. и подумай по результатам сего дня какие бы ты три строчки добавил (изменил) в скилле HoD ?
+
+## 2026-07-23 16:10 · director-msg (hook) · NEW · (triage at distill)
+q14 формулировки надо не такие абстрактные - что-то и про действие нужно добавить , в таких формулировках нет вывода. если ты считаешь что категорично писать еще рано , то сфонулируй подход к обучению/самообучению  HoG - как лучше организовать чтобы опыт набирать ?
+
+## 2026-07-23 16:11 · director-msg (hook) · NEW · (triage at distill)
+у нас вроде есть цикл и даже хуки заточенные на обучение .... lerning cicle
