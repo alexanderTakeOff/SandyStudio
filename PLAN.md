@@ -19,7 +19,7 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
-Date:   2026-07-23 late (Канон-коррекция: 2D→cartoon + Сэнди рот + Инспектор — Тео, ===5===).
+Date:   2026-07-23 late (Канон: 2D→cartoon + Сэнди + Инспектор + СТЕПЛЕР + скилл-замены — Тео, ===5===).
 Status: Правки КАНОНА в БД (Supabase, LOCKED-ассеты, Директор q8a; не в git — фиксирую тут):
   (1) STYLE canon `303959c1`: 2D-мандаты де-абсолютизированы — «flat 2D/no gradients/
       zero shadow» → cartoon 2.5D/3D, simple soft shadows, gentle shading allowed (q9a,
@@ -33,6 +33,14 @@ Status: Правки КАНОНА в БД (Supabase, LOCKED-ассеты, Дир
       Директором, залита на Drive + ассет обновлён на месте (v01 LOCKED, new drive_file_id
       1Qzf-2gZ…), медиа-эндпоинт отдаёт байт-в-байт. $0.211.
   (5) Утечка «flat 2D/no 3D/no gradients» в видео-промпт `animator.md` вычищена (git).
+  (6) STAPLER `b638d40c`: редизайн из 3D-фото → простой cartoon стиля Сэнди — тело-бюрократ
+      в светло-синем костюме+галстук, голова-степлер (½), кисти-степлеры без лиц. Текст канона
+      (§2/3/4/5/8) + картинка перерисованы, Drive `1tN5bKQ…`, v01 LOCKED на месте, served
+      байт-в-байт. Директор q2ok. $0.422 (2 ген). Всплыл баг: in-place замена не бампала
+      freshness → браузер держал stale (immutable); фикс = bump `image_prompt.current_version`.
+  (7) НОВЫЙ скилл `locked-canon-asset-replace` (process) + скрипт-мышца
+      `scripts/replace-locked-canon-image.ts` (Drive-fail abort + freshness-bump + md5-verify
+      зашиты) — чтобы грабли (2× забыли bump) больше не повторялись. 7 one-off'ов удалены (git).
   Всё вступает БЕЗ рестарта (критик+агенты читают канон из БД вживую).
 Verify: канон-правки — скрипты с exact-1-match guard (8/8 Инспектор, 6+2 style/sandy);
   картинка served==candidate байт-в-байт. Код не трогали (кроме animator.md — доки/промпт).
