@@ -15,6 +15,7 @@ import {
   getRetentionCurve,
   isCompletionReadable,
 } from '@/lib/agents/providers/youtube-stats';
+import { readReachMetricsFromArchive } from '@/lib/agents/providers/youtube-reporting';
 import { buildAdvice, type VideoMetric } from '@/lib/agents/analytics-advisor';
 
 export const runtime = 'nodejs';
@@ -70,14 +71,24 @@ export const GET = withApiHandler(async () => {
   const parentToEpisode = new Map(funnel.filter((f) => f.parentVideoId).map((f) => [f.parentVideoId!, f.episodeCode]));
   const shortToEpisode = new Map(funnel.filter((f) => f.shortVideoId).map((f) => [f.shortVideoId!, f.episodeCode]));
 
-  // 4. Assemble metrics. Retention curve only for the few long-forms with analytics (heavier call).
+  // 3.5. Reach metrics from the archived Reporting CSVs — one bulk parse serves
+  // every video. Best-effort: an empty/failed archive degrades to nulls
+  // ("unmeasured"), never to fake zeros.
+  const reachById = await readReachMetricsFromArchive(supabase).catch(
+    () => new Map<string, never>(),
+  );
+
+  // 4. Assemble metrics. Retention curve only for public long-forms (heavier call).
   const metrics: VideoMetric[] = [];
   for (const u of uploads) {
     const kind = isShortTitle(u.title) ? 'short' : 'longform';
     const s = statById.get(u.videoId);
     const a = analyticsById.get(u.videoId) ?? null;
     let retentionCurve: number[] | null = null;
-    if (kind === 'longform' && a && a.views > 0) {
+    // Gate on the video being PUBLIC — not on lagging Analytics views (~3d behind),
+    // which skipped exactly the fresh videos whose curve matters most. A too-new
+    // curve simply comes back null from the API and stays null here.
+    if (kind === 'longform' && s?.publicationState === 'public') {
       retentionCurve = await getRetentionCurve(u.videoId, ymd(start), ymd(now)).catch(() => null);
     }
     const publicationState = s?.publicationState ?? 'private-draft';
@@ -101,6 +112,10 @@ export const GET = withApiHandler(async () => {
       loops: null,
       shares: null,
       retentionCurve,
+      impressions: reachById.get(u.videoId)?.impressions ?? null,
+      impressionCtr: reachById.get(u.videoId)?.impressionCtr ?? null,
+      subscribersGained: reachById.get(u.videoId)?.subscribersGained ?? null,
+      trafficSources: reachById.get(u.videoId)?.trafficSources ?? null,
     });
   }
 

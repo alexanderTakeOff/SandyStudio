@@ -3372,7 +3372,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
       // the yt-analytics.readonly scope); mock stays the fallback for
       // replay-pilot / tests / no-creds so the DAG smoke is unchanged.
       const analytics = process.env.YOUTUBE_REFRESH_TOKEN
-        ? await collectAudienceSnapshot({ youtubeVideoId, collectionPoint })
+        ? await collectAudienceSnapshot({ youtubeVideoId, collectionPoint, supabase })
         : await mockAnalytics({ episodeId, youtubeVideoId, collectionPoint });
       return {
         outputKind: 'analytics-json',

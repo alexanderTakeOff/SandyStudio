@@ -71,7 +71,10 @@ export const hogReportPoll = inngest.createFunction(
         const csv = await downloadReport(ref);
         const [header = '', ...bodyLines] = csv.split(/\r?\n/);
         const columns = header.split(',').map((c) => c.trim()).filter(Boolean);
-        const hasImpressions = /impression/i.test(header);
+        // Exact column check — the loose /impression/i regex used to false-flag
+        // channel_basic_a3 (its `annotation_impressions` columns are NOT thumbnail
+        // impressions; only reach_basic carries the real reach signal).
+        const hasImpressions = columns.includes('video_thumbnail_impressions');
         const { error } = await sb.from('channel_reports').insert({
           report_type: ref.reportTypeId,
           report_id: ref.id,

@@ -126,3 +126,161 @@ export async function downloadReport(ref: ReportRef): Promise<string> {
   if (!res.ok) throw new YouTubeReportingError(`downloadReport(${ref.id}) failed (${res.status})`, res.status);
   return res.text();
 }
+
+// ── archive → typed metrics bridge ───────────────────────────────────────────
+// The poller archives raw CSVs into `channel_reports`; until 2026-07-24 nothing
+// read them back, so impressions/CTR/subs/traffic stayed hardcoded to 0 in the
+// audience snapshot and the HoG diagnostic ladder (which branches on impressions
+// first) was unexecutable. This bridge parses the archived CSVs into per-video
+// aggregates. It is the ONLY source for these metrics — see the header note on
+// why the Analytics API cannot serve them.
+
+/** Per-video aggregates parsed from the archived Reporting CSVs. */
+export interface ArchivedVideoReach {
+  impressions: number;
+  /** Impression-weighted average CTR, in the CSV's native unit (fraction). */
+  impressionCtr: number;
+  subscribersGained: number;
+  subscribersLost: number;
+  /** Views per traffic source over the archive window. Keys are labelled where the
+   *  Reporting enum is unambiguous, otherwise `source_<code>` (raw code preserved). */
+  trafficSources: Record<string, number>;
+}
+
+// Best-effort labels for the Reporting API `traffic_source_type` enum. Only codes
+// we are confident about are named; anything else surfaces as `source_<code>` so
+// a wrong guess can never mislead the HoG advisor.
+const TRAFFIC_SOURCE_LABELS: Record<string, string> = {
+  '3': 'browse_features',
+  '5': 'yt_search',
+  '7': 'suggested_video',
+  '24': 'shorts_feed',
+};
+
+/** Minimal structural client — keeps this provider decoupled from a concrete
+ *  supabase-js generic; both the service-role and the route clients satisfy it. */
+interface ChannelReportsReader {
+  from(table: 'channel_reports'): {
+    select(cols: string): {
+      order(col: string, opts: { ascending: boolean }): PromiseLike<{
+        data: Array<{ report_type: string; start_date: string | null; raw: string }> | null;
+        error: { message: string } | null;
+      }>;
+    };
+  };
+}
+
+function csvCells(line: string): string[] {
+  return line.split(',').map((c) => c.trim());
+}
+
+/**
+ * Parse every archived report into per-video reach aggregates.
+ *
+ * Dedup rule: YouTube may re-issue a report for the same day; rows are keyed by
+ * (video, date[, source]) and reports are applied in start_date order so the
+ * LATEST report for a given day wins instead of double-counting.
+ */
+export async function readReachMetricsFromArchive(
+  sb: ChannelReportsReader,
+): Promise<Map<string, ArchivedVideoReach>> {
+  const { data, error } = await sb
+    .from('channel_reports')
+    .select('report_type,start_date,raw')
+    .order('start_date', { ascending: true });
+  if (error) throw new YouTubeReportingError(`channel_reports read failed: ${error.message}`);
+
+  // (video|date) → value maps; last write wins per key (re-issued report days).
+  const impressionsByKey = new Map<string, { impressions: number; ctr: number }>();
+  const subsByKey = new Map<string, { gained: number; lost: number }>();
+  const trafficByKey = new Map<string, { video: string; source: string; views: number }>();
+
+  for (const report of data ?? []) {
+    const lines = (report.raw ?? '').split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) continue;
+    const header = csvCells(lines[0]);
+    const col = (name: string) => header.indexOf(name);
+
+    if (report.report_type === 'channel_reach_basic_a1') {
+      const [vid, impr, ctr] = [col('video_id'), col('video_thumbnail_impressions'), col('video_thumbnail_impressions_ctr')];
+      if (vid < 0 || impr < 0) continue;
+      for (const line of lines.slice(1)) {
+        const cells = csvCells(line);
+        const date = cells[col('date')] ?? report.start_date ?? '';
+        impressionsByKey.set(`${cells[vid]}|${date}`, {
+          impressions: Number(cells[impr]) || 0,
+          ctr: ctr >= 0 ? Number(cells[ctr]) || 0 : 0,
+        });
+      }
+    } else if (report.report_type === 'channel_basic_a3') {
+      const [vid, gained, lost] = [col('video_id'), col('subscribers_gained'), col('subscribers_lost')];
+      if (vid < 0 || gained < 0) continue;
+      // basic_a3 splits a video's day across subscribed_status/country rows —
+      // sum within THIS report, then overwrite the (video|date) key so a
+      // re-issued report replaces the day instead of double-counting it.
+      const perDay = new Map<string, { gained: number; lost: number }>();
+      for (const line of lines.slice(1)) {
+        const cells = csvCells(line);
+        const date = cells[col('date')] ?? report.start_date ?? '';
+        const key = `${cells[vid]}|${date}`;
+        const prev = perDay.get(key);
+        perDay.set(key, {
+          gained: (prev?.gained ?? 0) + (Number(cells[gained]) || 0),
+          lost: (prev?.lost ?? 0) + (lost >= 0 ? Number(cells[lost]) || 0 : 0),
+        });
+      }
+      for (const [key, v] of perDay) subsByKey.set(key, v);
+    } else if (report.report_type === 'channel_traffic_source_a3') {
+      const [vid, srcType, views] = [col('video_id'), col('traffic_source_type'), col('views')];
+      if (vid < 0 || srcType < 0 || views < 0) continue;
+      // Same shape: sum a (video|date|source) within this report across country
+      // rows, then overwrite the day-key so re-issues replace, not double.
+      const perDay = new Map<string, { video: string; source: string; views: number }>();
+      for (const line of lines.slice(1)) {
+        const cells = csvCells(line);
+        const date = cells[col('date')] ?? report.start_date ?? '';
+        const source = TRAFFIC_SOURCE_LABELS[cells[srcType]] ?? `source_${cells[srcType]}`;
+        const key = `${cells[vid]}|${date}|${source}`;
+        const prev = perDay.get(key);
+        perDay.set(key, { video: cells[vid], source, views: (prev?.views ?? 0) + (Number(cells[views]) || 0) });
+      }
+      for (const [key, v] of perDay) trafficByKey.set(key, v);
+    }
+  }
+
+  const out = new Map<string, ArchivedVideoReach>();
+  const ensure = (videoId: string): ArchivedVideoReach => {
+    let v = out.get(videoId);
+    if (!v) {
+      v = { impressions: 0, impressionCtr: 0, subscribersGained: 0, subscribersLost: 0, trafficSources: {} };
+      out.set(videoId, v);
+    }
+    return v;
+  };
+
+  // Impressions + impression-weighted CTR.
+  const ctrWeight = new Map<string, number>();
+  for (const [key, { impressions, ctr }] of impressionsByKey) {
+    const videoId = key.split('|')[0];
+    const v = ensure(videoId);
+    v.impressions += impressions;
+    ctrWeight.set(videoId, (ctrWeight.get(videoId) ?? 0) + ctr * impressions);
+  }
+  for (const [videoId, weighted] of ctrWeight) {
+    const v = ensure(videoId);
+    v.impressionCtr = v.impressions > 0 ? weighted / v.impressions : 0;
+  }
+
+  for (const [key, { gained, lost }] of subsByKey) {
+    const v = ensure(key.split('|')[0]);
+    v.subscribersGained += gained;
+    v.subscribersLost += lost;
+  }
+
+  for (const { video, source, views } of trafficByKey.values()) {
+    const v = ensure(video);
+    v.trafficSources[source] = (v.trafficSources[source] ?? 0) + views;
+  }
+
+  return out;
+}

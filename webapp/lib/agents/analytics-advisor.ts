@@ -49,6 +49,13 @@ export interface VideoMetric {
   comments: number;
   /** audienceWatchRatio samples across the video (long-form retention curve). */
   retentionCurve?: number[] | null;
+  /** Reach metrics from the archived Reporting CSVs (the only source — Analytics
+   *  API has no impression metric). Null = archive has no rows for this video yet;
+   *  never coerce that to 0, it means "unmeasured", not "nobody saw it". */
+  impressions?: number | null;
+  impressionCtr?: number | null;
+  subscribersGained?: number | null;
+  trafficSources?: Record<string, number> | null;
 }
 
 export interface AdvisorConfig {
@@ -215,14 +222,55 @@ interface Drop {
   magnitude: number; // size of the retention fall
 }
 
-/** Biggest single fall in the retention curve → the position where viewers bail. */
-export function biggestDrop(curve: number[]): Drop | null {
+export interface DropOptions {
+  /** Ignore falls positioned before this ratio — every YouTube curve opens with a
+   *  universal sampling bounce that is NOT a per-episode production defect. */
+  openingSkipRatio: number;
+  /** Falls smaller than this (after smoothing) are noise, not a story problem. */
+  minMagnitude: number;
+  /** Centered moving-average window. Applied only to curves long enough to
+   *  survive it (>= 3× the window) — short/test curves stay raw. */
+  smoothWindow: number;
+}
+
+/** Directional seeds, injectable like AdvisorConfig — not tuned on thin data. */
+export const DEFAULT_DROP_OPTIONS: DropOptions = {
+  openingSkipRatio: 0.05,
+  minMagnitude: 0.05,
+  smoothWindow: 3,
+};
+
+function smooth(curve: number[], window: number): number[] {
+  if (window <= 1 || curve.length < window * 3) return curve;
+  const half = Math.floor(window / 2);
+  return curve.map((_, i) => {
+    const lo = Math.max(0, i - half);
+    const hi = Math.min(curve.length - 1, i + half);
+    let sum = 0;
+    for (let j = lo; j <= hi; j++) sum += curve[j];
+    return sum / (hi - lo + 1);
+  });
+}
+
+/**
+ * Biggest MEANINGFUL fall in the retention curve → where viewers bail.
+ *
+ * The naive max-single-fall version false-flagged every video: unsmoothed, it
+ * always picked the universal opening-seconds bounce and sent the Storyboarder
+ * to "fix" a shot at ~3% that isn't the problem. Now: smooth (long curves only),
+ * skip the opening window, and require a minimum effect size — no drop clearing
+ * all three gates → null (an honest "no localized story problem detected").
+ */
+export function biggestDrop(curve: number[], opts: DropOptions = DEFAULT_DROP_OPTIONS): Drop | null {
   if (curve.length < 2) return null;
+  const smoothed = smooth(curve, opts.smoothWindow);
   let worst: Drop | null = null;
-  for (let i = 1; i < curve.length; i++) {
-    const fall = curve[i - 1] - curve[i];
-    if (fall > 0 && (!worst || fall > worst.magnitude)) {
-      worst = { atRatio: i / (curve.length - 1), magnitude: fall };
+  for (let i = 1; i < smoothed.length; i++) {
+    const atRatio = i / (smoothed.length - 1);
+    if (atRatio < opts.openingSkipRatio) continue;
+    const fall = smoothed[i - 1] - smoothed[i];
+    if (fall >= opts.minMagnitude && (!worst || fall > worst.magnitude)) {
+      worst = { atRatio, magnitude: fall };
     }
   }
   return worst;

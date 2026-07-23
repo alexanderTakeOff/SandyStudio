@@ -96,4 +96,28 @@ describe('long-form retention drop', () => {
     expect(biggestDrop([0.5])).toBeNull();
     expect(biggestDrop([0.5, 0.6, 0.7])).toBeNull();
   });
+  it('skips the universal opening-seconds bounce', () => {
+    // 100 samples: steep universal bounce in the first 3% (1 → 0.6), then a real
+    // story problem at ~50% (0.55 → 0.35). The naive version blamed the opening.
+    const curve = Array.from({ length: 101 }, (_, i) => {
+      if (i === 0) return 1;
+      if (i <= 3) return 0.6; // opening bounce: fall of 0.4 at atRatio 0.01
+      if (i < 50) return 0.55;
+      return 0.35; // the real drop at atRatio ~0.5
+    });
+    const d = biggestDrop(curve);
+    expect(d).not.toBeNull();
+    expect(d!.atRatio).toBeGreaterThan(0.4); // NOT the opening bounce
+  });
+  it('null when every fall is below the noise threshold', () => {
+    // Gentle monotone decay — no localized story problem to flag.
+    const curve = Array.from({ length: 60 }, (_, i) => 1 - i * 0.004);
+    expect(biggestDrop(curve)).toBeNull();
+  });
+  it('smoothing keeps a sharp real drop detectable on a long curve', () => {
+    const curve = Array.from({ length: 90 }, (_, i) => (i < 60 ? 0.8 : 0.5));
+    const d = biggestDrop(curve);
+    expect(d).not.toBeNull();
+    expect(d!.atRatio).toBeCloseTo(60 / 89, 1);
+  });
 });

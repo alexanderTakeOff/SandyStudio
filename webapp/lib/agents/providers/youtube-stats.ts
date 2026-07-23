@@ -13,6 +13,7 @@
 
 import { getYouTubeAccessToken, GoogleAuthError } from './google-auth';
 import { fetchWithTimeout } from './fetch-with-timeout';
+import { readReachMetricsFromArchive, type ArchivedVideoReach } from './youtube-reporting';
 
 const DATA_API = 'https://www.googleapis.com/youtube/v3';
 const ANALYTICS_API = 'https://youtubeanalytics.googleapis.com/v2/reports';
@@ -228,6 +229,10 @@ export async function collectAudienceSnapshot(args: {
   youtubeVideoId: string;
   collectionPoint: string;
   lookbackDays?: number;
+  /** When provided, impressions/CTR/subs/traffic are read from the archived
+   *  Reporting CSVs (`channel_reports`) — the ONLY source for these metrics.
+   *  Without it they stay 0 with an explanatory note (mock/test paths). */
+  supabase?: Parameters<typeof readReachMetricsFromArchive>[0];
 }): Promise<{
   status: 'success';
   provider: 'youtube';
@@ -253,6 +258,22 @@ export async function collectAudienceSnapshot(args: {
   const analytics = await getVideoAnalytics(args.youtubeVideoId, ymd(start), ymd(now)).catch(() => null);
   const retention = (await getRetentionCurve(args.youtubeVideoId, ymd(start), ymd(now)).catch(() => null)) ?? [];
 
+  // Reach metrics come ONLY from the archived Reporting CSVs (the Analytics API
+  // serves no impression metric — see youtube-reporting.ts header). Best-effort:
+  // an archive read failure degrades to zeros with a note, never throws.
+  let reach: ArchivedVideoReach | null = null;
+  let reachNote = '; reach metrics unavailable (no supabase client — zeros are placeholders)';
+  if (args.supabase) {
+    try {
+      reach = (await readReachMetricsFromArchive(args.supabase)).get(args.youtubeVideoId) ?? null;
+      reachNote = reach
+        ? '; impressions/CTR/subs/traffic from archived Reporting CSVs (daily, lags ~1-2d)'
+        : '; no archived Reporting rows for this video yet (jobs backfill ~daily)';
+    } catch {
+      reachNote = '; reach archive read FAILED — zeros are placeholders, not measurements';
+    }
+  }
+
   return {
     status: 'success',
     provider: 'youtube',
@@ -265,18 +286,19 @@ export async function collectAudienceSnapshot(args: {
     watch_time_minutes: analytics?.estimatedMinutesWatched ?? 0,
     avg_view_duration_seconds: analytics?.averageViewDuration ?? 0,
     avg_view_percentage: isCompletionReadable(analytics?.averageViewPercentage) ? analytics!.averageViewPercentage : 0,
-    impressions: 0,
-    impression_ctr: 0,
-    subscribers_gained: 0,
+    impressions: reach?.impressions ?? 0,
+    impression_ctr: reach?.impressionCtr ?? 0,
+    subscribers_gained: reach?.subscribersGained ?? 0,
     likes: stats?.likeCount ?? 0,
     comments: stats?.commentCount ?? 0,
-    traffic_sources: {},
+    traffic_sources: reach?.trafficSources ?? {},
     retention_curve: retention,
     cost_usd: 0,
-    note: analytics
-      ? `views=live counter; completion/watch-time from Analytics (lags ~3d)${
-          isCompletionReadable(analytics.averageViewPercentage) ? '' : '; completion unreadable, zeroed'
-        }`
-      : 'views=live counter; no Analytics rows yet (processing lag)',
+    note:
+      (analytics
+        ? `views=live counter; completion/watch-time from Analytics (lags ~3d)${
+            isCompletionReadable(analytics.averageViewPercentage) ? '' : '; completion unreadable, zeroed'
+          }`
+        : 'views=live counter; no Analytics rows yet (processing lag)') + reachNote,
   };
 }
