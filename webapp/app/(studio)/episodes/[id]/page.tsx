@@ -586,10 +586,19 @@ function PipelineDag({
   onOpenPreview,
   onChanged,
 }: PipelineDagProps) {
-  // Group MUTED rows under the PRIMARY id they serve.
+  // Per-shot artists (Director 2026-07-23): the Reference Designer + Reference
+  // Critic (serve `episode_references`) and the Video Designer + Video Critic
+  // (serve `visual_generator`) FAN OUT per shot — there is no single episode-level
+  // Designer/Critic for them, so a single pipeline line is meaningless. They live
+  // in each shot's kebab, not the rail. Hide these muted children entirely; the
+  // parent Artist row stays. (Episode-level critics — Script / Readability /
+  // Continuity — remain, one per episode, and stay expanded by default.)
+  const PER_SHOT_ARTIST_PRIMARIES = new Set(['episode_references', 'visual_generator']);
+
+  // Group MUTED rows under the PRIMARY id they serve (skipping the per-shot ones).
   const childrenByPrimary = new Map<string, Stage[]>();
   for (const s of stages) {
-    if (s.tier === 'muted' && s.serves) {
+    if (s.tier === 'muted' && s.serves && !PER_SHOT_ARTIST_PRIMARIES.has(s.serves)) {
       if (!childrenByPrimary.has(s.serves)) childrenByPrimary.set(s.serves, []);
       childrenByPrimary.get(s.serves)!.push(s);
     }
