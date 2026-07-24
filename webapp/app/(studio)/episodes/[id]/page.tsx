@@ -6,6 +6,7 @@
 'use client';
 
 import { use, useState, useEffect, useRef, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import { RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronRight, Power } from 'lucide-react';
@@ -141,6 +142,15 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   const [visualChecking, setVisualChecking] = useState(false);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string | undefined>();
+
+  // Chunk 2c (2026-07-24): the episode header (code · title · budget · ⋯) is
+  // portaled UP into the sticky StudioTopbar's `#studio-topbar-slot`, turning the
+  // top bar into this page's contextual header. Grab the slot node after mount;
+  // it lives in the shell rendered above this page, so it exists by first effect.
+  const [topbarSlot, setTopbarSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setTopbarSlot(document.getElementById('studio-topbar-slot'));
+  }, []);
 
   // Resizable left-rail width (px), persisted. Mirrors ConciergePanel's resize
   // handle (no new dependency). Hydrated from localStorage in an effect so SSR
@@ -345,24 +355,28 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
 
   return (
     <StudioContentFrame>
-      {/* Header */}
-      <div className="mb-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1
-              className="text-2xl font-semibold"
-              style={{
-                color:
-                  episode.status === 'ARCHIVED'
-                    ? 'var(--accent-warning)'
-                    : 'var(--text-primary)',
-              }}
-              title={episode.status === 'ARCHIVED' ? 'Archived (in Trash)' : undefined}
-            >
-              {episode.episode_code}
+      {/* Header — portaled UP into the sticky StudioTopbar (Chunk 2c): the top bar
+          IS this episode's contextual header. Compact single row: code · title
+          (no quotes) · budget on the left, the actions kebab pinned right. */}
+      {topbarSlot &&
+        createPortal(
+          <>
+            <div className="flex items-baseline gap-3 min-w-0 flex-1">
+              <span
+                className="text-sm font-semibold shrink-0"
+                style={{
+                  color:
+                    episode.status === 'ARCHIVED'
+                      ? 'var(--accent-warning)'
+                      : 'var(--text-primary)',
+                }}
+                title={episode.status === 'ARCHIVED' ? 'Archived (in Trash)' : undefined}
+              >
+                {episode.episode_code}
+              </span>
               {episode.title_working && (
                 <span
-                  className="font-normal text-lg ml-3"
+                  className="text-sm font-normal truncate"
                   style={{
                     color:
                       episode.status === 'ARCHIVED'
@@ -370,28 +384,26 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
                         : 'var(--text-secondary)',
                   }}
                 >
-                  &ldquo;{episode.title_working}&rdquo;
+                  {episode.title_working}
                 </span>
               )}
-            </h1>
-            <div className="flex items-center gap-3 mt-1.5 text-xs">
-              <span className="text-text-muted">
+              <span className="text-xs text-text-muted whitespace-nowrap shrink-0">
                 ${(episode.budget_spent ?? 0).toFixed(2)} / ${(episode.budget_ceiling ?? 0).toFixed(2)}
               </span>
             </div>
-          </div>
-          <DropdownMenu
-            ariaLabel="Episode actions"
-            width={220}
-            trigger={
-              <span className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-glass text-text-secondary hover:bg-[var(--panel-hover-bg)] transition-colors">
-                <MoreHorizontal size={16} />
-              </span>
-            }
-            items={actionItems}
-          />
-        </div>
-      </div>
+            <DropdownMenu
+              ariaLabel="Episode actions"
+              width={220}
+              trigger={
+                <span className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-glass text-text-secondary hover:bg-[var(--panel-hover-bg)] transition-colors">
+                  <MoreHorizontal size={16} />
+                </span>
+              }
+              items={actionItems}
+            />
+          </>,
+          topbarSlot,
+        )}
 
       {visualCheckMsg && (
         <div
@@ -505,6 +517,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             episodeId={id}
             initialMetadata={episode.metadata ?? null}
             initialBudgetCeiling={episode.budget_ceiling ?? null}
+            initialGovernanceMode={episode.governance_mode}
           />
 
           {/* Workstation (selected stage) OR activity feed (default surface). */}

@@ -1,23 +1,19 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // components/studio-shell/StudioTopbar.tsx
-// Top status bar per uiux.md §8.1.
-// Phase 5c: chips are interactive levers per uiux.md §8.4.
-// UI-cleanup (2026-07-24): search mockup + system-mode (ANALYTICS/EDIT) chip
-// removed; only the governance-mode lever remains, pinned top-right.
+// The non-scrolling top bar. Per the 2026-07-24 UI cleanup it is no longer global
+// chrome: it is a CONTEXTUAL PAGE HEADER host. Each page portals its own identity
+// + actions into `#studio-topbar-slot` (see the episode page for the pattern).
+// When a page portals nothing, the bar is simply empty.
+// History: search mockup + system-mode (ANALYTICS/EDIT) chip removed 2026-07-24;
+// governance-mode lever moved into Episode Settings in the same cleanup (Chunk 2c).
 // ──────────────────────────────────────────────────────────────────────────────
 
-'use client';
-
-import { GovernanceChip } from './GovernanceChip';
-
-interface StudioTopbarProps {
-  governanceMode?: 1 | 2 | 3;
-}
-
-export function StudioTopbar({ governanceMode = 1 }: StudioTopbarProps) {
+export function StudioTopbar() {
   return (
-    <header className="relative z-20 flex items-center justify-end gap-3 h-14 px-4 border-b border-glass bg-panel-glass backdrop-blur-md">
-      <GovernanceChip current={governanceMode} />
+    <header className="relative z-20 flex items-center gap-3 h-14 px-4 border-b border-glass bg-panel-glass backdrop-blur-md">
+      {/* Contextual page-header slot — pages portal `code · title · budget · ⋯`
+          (or their own identity) into this by id. Empty on pages that don't. */}
+      <div id="studio-topbar-slot" className="flex-1 min-w-0 flex items-center gap-3" />
     </header>
   );
 }
