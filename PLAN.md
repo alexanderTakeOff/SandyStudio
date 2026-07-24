@@ -19,21 +19,21 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
-Date:   2026-07-24 (Learning-loop аудит + HoG-баги — Тео).
-Status: Дистиллер-хендофф отвергнут (аддитивен): capture-хук убит (96% шума, ловил
-  <task-notification>), инбокс 535KB → архив (золото извлечено: 3 правила в HoG-скилл,
-  caveman-docs в память; остальное давно дистиллировано in-session). Цикл обучения =
-  in-session distill → repo-скиллы → git (обе машины); Stop-хук чинён (память-путь) +
-  DISTILL-напоминание. HoG-баги пофикшены ПО ФАКТУ кода: (1) impressions/CTR/subs/traffic
-  теперь из архивных Reporting-CSV (мост readReachMetricsFromArchive; Analytics API их
-  НЕ отдаёт), live-проверка: 30 видео, реальные цифры; (2) biggestDrop: smoothing +
-  opening-skip + порог (не тычет в опенинг-баунс); (3) retention-гейт по public, не по
-  лагающим Analytics-views. Split-brain скиллов (.claude vs .agents, 15 расходились,
-  1 коммит за историю зеркала) — пересинкан .claude→.agents; head-of-growth получил
-  status:ACTIVE (лоадер тихо дропал).
-Verify: tsc clean · 1473/1473 тестов · replay-pilot 30/30 · мост проверен на живой БД.
-Next:   Директор: push? Открыто: loader-фейлы сделать громкими + parity-check зеркала
-  (P0 Codex, предложение в чате); STUB-скиллы (serialization/archivist) не грузятся.
+Date:   2026-07-24 (Learning-loop аудит + HoG-баги + loader hardening — Тео).
+Status: (1) Дистиллер-хендофф отвергнут (аддитивен): capture-хук убит (96% шума);
+  инбокс 535KB → архив (золото → 3 правила HoG-скилл + caveman-память); цикл обучения =
+  in-session distill → repo-скиллы → git; Stop-хук чинён + DISTILL-напоминание; время
+  инжектится хуком inject-time.cjs (перестал выдумывать). (2) HoG-баги по коду: reach-мост
+  readReachMetricsFromArchive (impressions/CTR/subs/traffic из архивных Reporting-CSV,
+  live 30 видео); biggestDrop честный (smoothing+opening-skip+порог); retention-гейт по
+  public. (3) Loader hardening: громкий фейл ловит битые скиллы — поймал sandy-gag-library
+  (вся грамматика гэгов молча не грузилась, top-level authors: ломал парсер) → ACTIVE;
+  2×STUB→DRAFT; /api/skills отдаёт meta.failures. Зеркала .agents/.codex РАНТАЙМ приложения
+  НЕ трогают (webapp читает только .claude/skills) → не гвардим (Директор). Codex-capture
+  дострелен.
+Verify: tsc clean · 1476/1476 тестов · reach-мост на живой БД.
+Next:   loader P1 закрыт. Открыто (низкий приоритет): 2 skill-body >20k символов не
+  сохранятся через /api/skills; Reporting API без пагинации. Иначе — что скажет Директор.
 ```
 
 ```
