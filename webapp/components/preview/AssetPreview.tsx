@@ -566,13 +566,8 @@ export function AssetPreview({ assetId, onRegenerated, onAssetChanged, onPickAss
               }}
             />
           )}
-          {/* Video → Shorts slicer — make a 9:16 short from this final cut. */}
+          {/* Video → Shorts slicer — cut a 9:16 short from this final cut. */}
           <ShortsPanel assetId={asset.id} />
-          {/* Manual publish — the long-form is no longer auto-published on approval
-              (2026-07-24). Director presses this to upload to the channel. */}
-          {asset.status === 'APPROVED' && asset.episode_id && (
-            <PublishToChannelButton episodeId={asset.episode_id} />
-          )}
         </>
       )}
 
@@ -834,74 +829,19 @@ function PilotApproveButtons({
 }
 
 /**
- * PublishToChannelButton — manual long-form publish. The DAG no longer auto-fires
- * EXEC-PUB when the final cut is approved (2026-07-24, hard-limit conflation
- * removed — CLAUDE.md §6). The Director presses this to upload the episode to the
- * channel. Reuses the existing human-gated trigger route (assertHumanDirector) —
- * no new backend. The route/runner validate publish preconditions (APPROVED final
- * cut + metadata) and return a readable error if they're not met.
- */
-function PublishToChannelButton({ episodeId }: { episodeId: string }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-
-  async function publish() {
-    if (
-      typeof window !== 'undefined' &&
-      !window.confirm('Опубликовать эпизод на канал? Это зальёт финальный монтаж на YouTube.')
-    ) {
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/episodes/${episodeId}/trigger`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agentCode: 'EXEC-PUB', reason: 'Director manual publish' }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok || !(j as { success?: boolean }).success) {
-        throw new Error((j as { error?: string }).error ?? 'Publish failed');
-      }
-      setDone(true);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="px-3 py-3 rounded-lg border border-glass space-y-2 mt-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-text-primary">📤 Публикация лонгформа</span>
-        <span className="text-[10px] text-text-muted">ручная — не авто</span>
-      </div>
-      <Button size="sm" variant="primary" onClick={publish} disabled={busy || done}>
-        {busy ? 'Publishing…' : done ? '✅ Отправлено на публикацию' : 'Опубликовать на канал'}
-      </Button>
-      {error && (
-        <span className="block text-[11px]" style={{ color: 'var(--accent-danger)' }}>
-          {error}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/**
- * ShortsPanel — "Video → Shorts" slicer under a VID-final_cut drawer. TWO explicit
- * steps (2026-07-24, E15 «Автомойка» incident): (1) "Сгенерировать шорт" center-crops
- * the final cut to 9:16 (+ optional overlay / trim) and MATERIALIZES it as a VID-short
- * asset with a preview player — nothing is uploaded; (2) after the Director reviews the
- * preview and APPROVES it (reusing PilotApproveButtons), "Залить на канал" uploads it.
- * Both hit POST /api/assets/[id]/shorts with an `action` discriminator, reusing the SAME
- * server `makeShort` + `persistBinary` + `uploadVideo` as the batch (no parallel machinery).
+ * ShortsPanel — the "Cut a short" tool under a VID-final_cut drawer. TWO explicit
+ * steps (2026-07-24, E15 «Автомойка» incident): (1) "Cut a short" center-crops the
+ * widescreen final cut to 9:16 (+ optional overlay / trim) and MATERIALIZES it as a
+ * VID-short asset with a preview player — nothing is uploaded; (2) "Upload short" sends
+ * the previewed cut to the Shorts channel. Both hit POST /api/assets/[id]/shorts with an
+ * `action` discriminator, reusing the SAME server `makeShort` + `persistBinary` +
+ * `uploadVideo` as the batch (no parallel machinery). The preview between the two clicks
+ * is the check that a broken cut can't fly to the channel unseen.
  *
- * Backlog `backlog_shorts_ui_slicer` realised (2026-07-12, Director "do slicer");
- * split into generate/upload 2026-07-24. Unlisted is the default privacy: the
+ * This is the MANUAL repurposing tool (cut a short from an existing episode). Auto
+ * distribution of shorts-configured episodes is untouched — those publish their final cut
+ * via the normal EXEC-PUB path on approval. Backlog `backlog_shorts_ui_slicer` realised
+ * (2026-07-12); split into cut/upload 2026-07-24. Unlisted is the default privacy: the
  * youtube.upload scope can't delete, so public is a deliberate choice.
  */
 function ShortsPanel({ assetId }: { assetId: string }) {
@@ -910,24 +850,15 @@ function ShortsPanel({ assetId }: { assetId: string }) {
   const [overlay, setOverlay] = useState(true);
   const [overlayText, setOverlayText] = useState('SANDY the HOURGLASS');
   const [privacy, setPrivacy] = useState<'private' | 'unlisted' | 'public'>('unlisted');
-  const [busy, setBusy] = useState<null | 'generate' | 'upload'>(null);
+  const [busy, setBusy] = useState<null | 'cut' | 'upload'>(null);
   const [error, setError] = useState<string | null>(null);
-  // The generated (not yet uploaded) short.
+  // The cut (not yet uploaded) short.
   const [shortAssetId, setShortAssetId] = useState<string | null>(null);
   const [shortUrl, setShortUrl] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState<{ url: string; privacyStatus: string } | null>(null);
 
-  // Live status of the generated short — the Upload button is gated on APPROVED
-  // (Director's rule: only an explicitly approved short reaches the channel).
-  const { data: shortMeta, mutate: mutateShort } = useSWR<{ data: { status?: string } }>(
-    shortAssetId ? `/api/assets/${shortAssetId}` : null,
-    (u: string) => fetch(u).then((r) => r.json()),
-  );
-  const shortStatus = shortMeta?.data?.status ?? 'REVIEW';
-  const isApproved = shortStatus === 'APPROVED';
-
-  async function generate() {
-    setBusy('generate');
+  async function cut() {
+    setBusy('cut');
     setError(null);
     setUploaded(null);
     setShortAssetId(null);
@@ -951,7 +882,7 @@ function ShortsPanel({ assetId }: { assetId: string }) {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !(j as { success?: boolean }).success) {
-        throw new Error((j as { error?: string }).error ?? 'Short generation failed');
+        throw new Error((j as { error?: string }).error ?? 'Cut failed');
       }
       const data = (j as { data: { shortAssetId: string; browserUrl: string } }).data;
       setShortAssetId(data.shortAssetId);
@@ -988,8 +919,8 @@ function ShortsPanel({ assetId }: { assetId: string }) {
   return (
     <div className="px-3 py-3 rounded-lg border border-glass space-y-2 mt-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-text-primary">🩳 Video → Short (9:16)</span>
-        <span className="text-[10px] text-text-muted">center-crop · превью → APPROVE → заливка</span>
+        <span className="text-xs font-semibold text-text-primary">🩳 Cut a short (9:16)</span>
+        <span className="text-[10px] text-text-muted">center-crop · preview → upload</span>
       </div>
       <div className="flex items-center gap-2 text-[11px] text-text-muted">
         <label className="flex items-center gap-1">
@@ -1037,13 +968,13 @@ function ShortsPanel({ assetId }: { assetId: string }) {
             <option value="public">public</option>
           </select>
         </label>
-        {/* Step 1 — generate the short as a VID-short asset (no upload). */}
-        <Button size="sm" variant="primary" onClick={generate} disabled={busy !== null}>
-          {busy === 'generate' ? 'Rendering…' : shortAssetId ? 'Re-generate short' : 'Сгенерировать шорт'}
+        {/* Step 1 — cut the short into a VID-short asset (no upload). */}
+        <Button size="sm" variant="primary" onClick={cut} disabled={busy !== null}>
+          {busy === 'cut' ? 'Cutting…' : shortAssetId ? 'Re-cut short' : 'Cut a short'}
         </Button>
       </div>
 
-      {/* Step 2 — preview + APPROVE + upload, once a short exists. */}
+      {/* Step 2 — preview + upload, once a short is cut. */}
       {shortAssetId && shortUrl && (
         <div className="space-y-2 pt-1">
           <video
@@ -1052,28 +983,17 @@ function ShortsPanel({ assetId }: { assetId: string }) {
             className="w-full max-h-96 rounded border border-glass bg-black"
           />
           <div className="text-[11px] text-text-muted">
-            Шорт создан как ассет · статус <b>{shortStatus}</b> — проверь превью и одобри, потом залей.
+            Short saved as an asset — preview it, then upload to the Shorts channel.
           </div>
-          <PilotApproveButtons
-            assetId={shortAssetId}
-            variant="review"
-            onChanged={() => void mutateShort()}
-          />
-          {/* Step 3 — upload, gated on APPROVED. */}
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={upload}
-              disabled={busy !== null || !isApproved}
-              title={isApproved ? 'Upload this approved short to the channel' : 'Approve the short first'}
-            >
-              {busy === 'upload' ? 'Uploading…' : '📤 Залить на канал'}
-            </Button>
-            {!isApproved && (
-              <span className="text-[11px] text-text-muted">одобри шорт, чтобы залить</span>
-            )}
-          </div>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={upload}
+            disabled={busy !== null}
+            title="Upload this short to the Shorts channel"
+          >
+            {busy === 'upload' ? 'Uploading…' : '📤 Upload short'}
+          </Button>
         </div>
       )}
 

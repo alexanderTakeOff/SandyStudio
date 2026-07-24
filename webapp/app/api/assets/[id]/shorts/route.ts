@@ -2,20 +2,23 @@
 // app/api/assets/[id]/shorts/route.ts
 // "Video → Shorts" slicer — TWO explicit steps, never one auto-upload.
 //
-//   action: 'generate' ([id] = source VID-final_cut)
-//     Center-crop the final cut to 9:16 (+ optional overlay / trim), then
-//     MATERIALIZE it as a `VID-short` asset (status REVIEW) via persistBinary —
-//     it appears in the episode with a player. NOTHING is uploaded.
+//   action: 'generate' ([id] = source VID-final_cut) — the "Cut a short" step
+//     Center-crop the widescreen final cut to 9:16 (+ optional overlay / trim),
+//     then MATERIALIZE it as a `VID-short` asset (status REVIEW) via persistBinary
+//     — it appears in the episode with a player. NOTHING is uploaded.
 //
-//   action: 'upload'   ([id] = the VID-short asset, must be APPROVED)
-//     Take the reviewed+approved short and upload it to YouTube at the chosen
+//   action: 'upload'   ([id] = the VID-short asset) — the "Upload short" step
+//     Take the previewed short and upload it to the Shorts channel at the chosen
 //     privacy. Records the id on the short asset AND appends to the episode's
 //     durable short-ledger list.
 //
 // Why the split (2026-07-24, E15 «Автомойка» incident): the old single POST did
 // makeShort + uploadVideo in one shot, so a 2s broken re-cut flew straight to the
-// channel unlisted with no preview and was never saved anywhere. Now there is a
-// preview + an explicit APPROVE gate before any bytes reach YouTube.
+// channel unlisted with no preview and was never saved anywhere. Now the cut is a
+// visible VID-short asset and the upload is a separate click — the preview between
+// them is the check that a broken cut can't reach the channel unseen. This is the
+// MANUAL repurposing tool; auto-distribution of shorts-configured episodes is a
+// different path (EXEC-PUB publishes their final cut on approval) and is untouched.
 //
 // Reuses the SAME server helpers as the batch — `makeShort` (ffmpeg-shorts),
 // `persistBinary` (cache + Drive backup), `uploadVideo` (EXEC-PUB path) — no
@@ -30,7 +33,7 @@ import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
-import { ConflictError, NotFoundError, ValidationError } from '@/lib/api/errors';
+import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { ensureCachedMedia, cachedFileIfPresent, mediaCacheRoot } from '@/lib/media-cache';
 import { makeShort } from '@/lib/agents/providers/ffmpeg-shorts';
 import { uploadVideo } from '@/lib/agents/providers/youtube';
@@ -249,13 +252,7 @@ async function handleUpload(
 ) {
   if (asset.file_type !== 'VID-short') {
     throw new ValidationError(
-      `Upload targets a VID-short asset (got ${asset.file_type}). Generate the short first.`,
-    );
-  }
-  // Director's gate: only an explicitly APPROVED short reaches the channel.
-  if (asset.status !== 'APPROVED') {
-    throw new ConflictError(
-      `Short is "${asset.status}", not APPROVED. Review the preview and approve it before uploading.`,
+      `Upload targets a VID-short asset (got ${asset.file_type}). Cut the short first.`,
     );
   }
 

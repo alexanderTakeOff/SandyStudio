@@ -10,10 +10,8 @@
 // PHASE 1: Mode-4/AUTOTEST removed. PHASE 4+: the reconciler becomes the sole
 // caller (this router is demoted to a dumb dispatch executor).
 //
-// `_directorUserId` was the principal carried into the EXEC-PUB `confirmedBy`.
-// Since 2026-07-24 this router no longer auto-fires publish (it's a hard limit —
-// Director presses the explicit Publish button), so the param is retained only
-// for signature stability with existing callers and is intentionally unused.
+// `directorUserId` is the principal that carries into the EXEC-PUB
+// `confirmedBy`; it no longer branches routing.
 //
 // Idempotency: each branch checks whether the target agent already has a
 // COMPLETED or RUNNING job for this episode (hasJob). If yes, no new event
@@ -359,7 +357,7 @@ async function planAlreadyExecuted(
 export async function computeNextEvents(
   supabase: SupabaseClientLike,
   asset: AssetForChain,
-  _directorUserId: string,
+  directorUserId: string,
 ): Promise<Array<{ name: StudioEventName; data: Record<string, unknown> }>> {
   if (!asset.episode_id) return [];
   const ep = asset.episode_id;
@@ -1451,26 +1449,9 @@ export async function computeNextEvents(
     const thumbOk =
       (await isVerticalEpisode()) || (await countApproved(supabase, ep, 'IMG-thumbnail')) >= 1;
     if (finalCutOk && metadataOk && thumbOk) {
-      // 2026-07-24 (E15 «Автомойка» incident): publishing to the channel is a
-      // HARD LIMIT (CLAUDE.md §6 — Director always, all modes). This router used
-      // to AUTO-FIRE exec-pub/publish here, so approving the last asset silently
-      // doubled as "upload to YouTube". That conflation is gone: we now only
-      // surface a passive "ready to publish" notice and let the Director press
-      // the explicit Publish button (which reuses POST /api/episodes/[id]/trigger
-      // → EXEC-PUB, itself human-Director-gated by assertHumanDirector). Passive /
-      // non-actionable by design (mirrors the writer-autostart-skipped notice) so
-      // it does not wake Polina.
-      await logEvent(supabase, {
-        event_type: 'pipeline/publish-ready',
-        severity: 'info',
-        title: 'Финалка готова к публикации — нажми Publish',
-        description:
-          'Все условия публикации выполнены (финальный монтаж + метаданные' +
-          (thumbOk ? ' + обложка' : '') +
-          '). Публикация на канал больше не автоматическая — нажми кнопку ' +
-          '«Опубликовать на канал» в карточке финалки, когда будешь готов.',
-        episode_id: ep,
-        asset_id: asset.id,
+      events.push({
+        name: 'sandystudio/exec-pub/publish',
+        data: { episodeId: ep, directorConfirm: true, confirmedBy: directorUserId },
       });
     }
   }

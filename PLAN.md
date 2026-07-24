@@ -28,16 +28,13 @@ Status: Инцидент E15 «Автомойка»: шорт генерился
       persistBinary→ассет VID-short (REVIEW, плеер); upload: гейт VID-short+APPROVED→uploadVideo.
   (A3) persistShortId: список youtube_short_ids[] (append+dedup) вместо клоббера; id и на
       самом шорт-ассете.
-  (A4) ShortsPanel: 2 кнопки «Сгенерировать»→превью+PilotApproveButtons→«Залить» (disabled до
-      APPROVED).
-  (B1) next-events PUBLISH_READY: убран авто-фаер exec-pub/publish → пассивный нотис
-      pipeline/publish-ready (паблиш = hard limit §6).
-  (B2) кнопка «Опубликовать на канал» в дровере финалки → существующий /trigger EXEC-PUB
-      (assertHumanDirector). Новый бэкенд=0.
-Verify: tsc clean · 1479/1479 тестов (обновил next-events-shorts-tail + 3 новых persistShortId) ·
-  replay-pilot 30/30 (Mode-1 publish-блок цел).
-Next:   разово удалить 2-сек брак `qQx1IgopGd0` вручную в YouTube Studio (scope upload не удаляет).
-  Смоук на живом стеке (E15): generate→preview→approve→upload. Не закоммичено.
+  (A4) ShortsPanel: 2 англ. кнопки «Cut a short»→превью→«Upload short» (без approve —
+      Директор q4: превью=проверка, к North Star ведёт авто-критик, не хардкод человеч. клика).
+  Часть B ОТКАЧЕНА (Директор 16:50): лонгформ И шортс-эпизоды авто-паблишатся при аппруве
+      финалки как раньше (exec-pub/publish восстановлен; кнопка ручного паблиша убрана;
+      тест возвращён). Трогали ТОЛЬКО ручную нарезку шорта.
+Verify: tsc clean · 1479/1479 тестов · replay-pilot 30/30.
+Next:   2-сек брак `qQx1IgopGd0` удалён вручную (готово). Смоук E15: Cut→preview→Upload.
 ```
 
 ```
