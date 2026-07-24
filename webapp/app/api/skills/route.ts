@@ -38,13 +38,16 @@ interface SkillSummary {
 export const GET = withApiHandler(async (req) => {
   await requireDirector();
   const q = parseSearchParams(req.url, ListQuery);
-  const skills = await listAllSkills();
+  const { skills, failures } = await listAllSkills();
   const summaries: SkillSummary[] = skills
     .filter((s) => !q.status || s.frontmatter.status === q.status)
     .filter((s) => !q.agent || s.frontmatter.applies_when?.agent?.includes(q.agent))
     .filter((s) => !q.genre || s.frontmatter.applies_when?.genre?.includes(q.genre))
     .map((s) => ({ slug: s.slug, frontmatter: s.frontmatter, bodyChars: s.body.length }));
-  return apiOk(summaries, { total: summaries.length });
+  // Surface load failures alongside the list — a file that exists but won't
+  // load LOOKS handled to the Director while the runtime ignores it. The UI can
+  // badge `meta.failures`; even unrendered, it stops the silent trap at the API.
+  return apiOk(summaries, { total: summaries.length, failures });
 });
 
 // ── Create ───────────────────────────────────────────────────────────────────

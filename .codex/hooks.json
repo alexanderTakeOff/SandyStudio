@@ -76,16 +76,6 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/training-capture.cjs\""
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [

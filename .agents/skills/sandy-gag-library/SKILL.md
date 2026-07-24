@@ -7,15 +7,16 @@ applies_when:
   agent: [EXEC-HW, EXEC-SW, EXEC-SREV, EXEC-SB, EXEC-GAGAD]
   series_id: [SS-S14, SS-S15]
 hard: false
-maturity: v0.1-2026-05-19
 created: 2026-05-19
-authors:
-  - Director (Kirill) — original «gag ≠ deformation of character» insight
-  - OpenAI ChatGPT — 10-category taxonomy + gag atoms scaffolding
-  - Тео — Sandy-specific reorganization + theme-first override + GAGAD architecture
 ---
 
 # Sandy Gag Library — Grammar of the Universe
+
+> **Maturity:** v0.1 (2026-05-19). **Authors:** Director — original «gag ≠
+> deformation of character» insight · OpenAI ChatGPT — 10-category taxonomy + gag
+> atoms scaffolding · Тео — Sandy-specific reorganization + theme-first override +
+> GAGAD architecture. _(moved out of frontmatter 2026-07-24 — a top-level list
+> broke the loader's parser and the whole skill was silently dropped.)_
 
 > **Это центральный документ юмора SandyStudio.** Сценаристы не пишут сюжет — они пишут sequence of escalating gags. Storyboarder не раскадровывает диалог — он размечает physical escalation. Animator не «рисует красиво» — он ставит payoff. Без gag library каждый агент интерпретирует comedy по-своему → результат механический и плоский.
 

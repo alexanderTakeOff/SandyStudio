@@ -13,6 +13,9 @@ export interface ApiMeta {
   cursor?: string | null;
   visual_count?: number;
   visual_categories?: string[];
+  /** Skill files present on disk that failed to load (bad frontmatter / status).
+   *  Surfaced by /api/skills so a present-but-ignored capability isn't silent. */
+  failures?: ReadonlyArray<{ slug: string; filePath: string; reason: string }>;
 }
 
 export interface ApiOkResponse<T> {

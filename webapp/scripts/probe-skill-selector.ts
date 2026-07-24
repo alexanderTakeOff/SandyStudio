@@ -22,10 +22,14 @@ import {
 
 async function main() {
   // 1) Full disk scan — confirm σ seeds DEPRECATED, new broad skills ACTIVE.
-  const all = await listAllSkills();
+  const { skills: all, failures } = await listAllSkills();
   console.log(`Total skill files on disk: ${all.length}`);
   for (const s of all) {
     console.log(`  - ${s.slug.padEnd(48)} status=${s.frontmatter.status} hard=${s.frontmatter.hard}`);
+  }
+  if (failures.length) {
+    console.log(`\n⚠ ${failures.length} skill file(s) FAILED to load (present but ignored at runtime):`);
+    for (const f of failures) console.log(`  - ${f.slug.padEnd(48)} ${f.reason}`);
   }
 
   // 2) Selector — manifest path (the lazy-load API).

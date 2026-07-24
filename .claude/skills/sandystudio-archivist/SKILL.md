@@ -1,12 +1,12 @@
 ---
 name: sandystudio-archivist
 description: SandyStudio project-local skill for the EXEC-ARCH agent. Enforces the SS-S0X-... naming convention, manages status transitions DRAFT→REVIEW→APPROVED→LOCKED, and keeps the canonical asset registry from specs/system/project_state.md in sync. Use when creating new project files, promoting status, or auditing the file tree against the convention.
-status: STUB
+status: DRAFT
 ---
 
 # SandyStudio Archivist
 
-> Status: **STUB** — full implementation in Sprint 5 (per CLAUDE.md §8).
+> Status: **DRAFT** (placeholder — not loaded at runtime) — full implementation in Sprint 5 (per CLAUDE.md §8).
 > Canonical owner agent: `EXEC-ARCH` (`agents/exec/archivist.md`).
 
 ## Scope

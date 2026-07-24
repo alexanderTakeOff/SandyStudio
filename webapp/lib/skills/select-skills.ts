@@ -24,22 +24,38 @@ export interface SelectorContext {
 const CACHE_TTL_MS = 30_000;
 const MAX_SKILLS_PER_CALL = 5;
 
+/**
+ * A SKILL.md file that exists on disk but could NOT be loaded (bad frontmatter,
+ * invalid status like the old `STUB`, missing required field). This is the
+ * dangerous case: the file is present, so the Director believes the capability
+ * is live, but the runtime silently ignores it. These must be surfaced LOUDLY —
+ * to the server log AND to the /api/skills list — never swallowed.
+ */
+export interface SkillLoadFailure {
+  slug: string;
+  filePath: string;
+  reason: string;
+}
+
 interface CacheEntry {
   loadedAt: number;
   skills: readonly LoadedSkill[];
+  failures: readonly SkillLoadFailure[];
 }
 
 let cache: CacheEntry | null = null;
 
-function skillsRoot(): string {
-  // webapp lives at <repo>/webapp; .claude/skills at <repo>/.claude/skills.
-  // process.cwd() in Next dev/prod is webapp/. In replay-pilot it's the repo root.
-  // Probe both.
-  const fromWebapp = path.resolve(process.cwd(), '..', '.claude', 'skills');
-  return fromWebapp;
+// Warn-once-per-(slug,reason) so a persistent failure doesn't spam prod.log on
+// every 30s cache miss, while a NEW failure is always announced. Cleared with
+// the cache so a fixed-then-rebroken skill re-warns.
+let warnedFailures = new Set<string>();
+
+interface ScanResult {
+  skills: readonly LoadedSkill[];
+  failures: readonly SkillLoadFailure[];
 }
 
-async function scanSkillsDir(): Promise<readonly LoadedSkill[]> {
+async function scanSkillsDir(): Promise<ScanResult> {
   const roots = [
     path.resolve(process.cwd(), '..', '.claude', 'skills'),
     path.resolve(process.cwd(), '.claude', 'skills'),
@@ -48,6 +64,7 @@ async function scanSkillsDir(): Promise<readonly LoadedSkill[]> {
     try {
       const entries = await fs.readdir(root, { withFileTypes: true });
       const skills: LoadedSkill[] = [];
+      const failures: SkillLoadFailure[] = [];
       for (const ent of entries) {
         if (!ent.isDirectory()) continue;
         const filePath = path.join(root, ent.name, 'SKILL.md');
@@ -59,18 +76,25 @@ async function scanSkillsDir(): Promise<readonly LoadedSkill[]> {
         try {
           skills.push(await loadSkillFile(filePath));
         } catch (err) {
-          if (process.env.SKILLS_LOG_PARSE_ERRORS === '1') {
+          const reason = err instanceof Error ? err.message : String(err);
+          failures.push({ slug: ent.name, filePath, reason });
+          // LOUD by default (was gated behind a near-never-set env flag): a file
+          // that exists but won't load is exactly the "Director thinks it's live,
+          // runtime ignores it" trap. One line per unique failure.
+          const key = `${ent.name}::${reason}`;
+          if (!warnedFailures.has(key)) {
+            warnedFailures.add(key);
             // eslint-disable-next-line no-console
-            console.warn('[skills] parse error', err);
+            console.warn(`[skills] DROPPED "${ent.name}" — file exists but did NOT load: ${reason}`);
           }
         }
       }
-      return skills;
+      return { skills, failures };
     } catch {
       // try next root
     }
   }
-  return [];
+  return { skills: [], failures: [] };
 }
 
 function fieldMatches(
@@ -106,13 +130,29 @@ function specificityScore(applies: AppliesWhen | undefined): number {
   return score;
 }
 
-async function selectSkillsRanked(ctx: SelectorContext): Promise<readonly LoadedSkill[]> {
-  const now = Date.now();
-  if (!cache || now - cache.loadedAt > CACHE_TTL_MS) {
-    cache = { loadedAt: now, skills: await scanSkillsDir() };
-  }
+async function refreshCache(now: number): Promise<CacheEntry> {
+  const scan = await scanSkillsDir();
+  warnedFailures = pruneWarned(warnedFailures, scan.failures);
+  cache = { loadedAt: now, skills: scan.skills, failures: scan.failures };
+  return cache;
+}
 
-  const matches = cache.skills.filter(
+/** Drop warn-keys for failures that no longer exist, so a re-broken skill re-warns. */
+function pruneWarned(warned: Set<string>, failures: readonly SkillLoadFailure[]): Set<string> {
+  const live = new Set(failures.map((f) => `${f.slug}::${f.reason}`));
+  return new Set([...warned].filter((k) => live.has(k)));
+}
+
+async function getCache(): Promise<CacheEntry> {
+  const now = Date.now();
+  if (!cache || now - cache.loadedAt > CACHE_TTL_MS) return refreshCache(now);
+  return cache;
+}
+
+async function selectSkillsRanked(ctx: SelectorContext): Promise<readonly LoadedSkill[]> {
+  const entry = await getCache();
+
+  const matches = entry.skills.filter(
     (s) => s.frontmatter.status === 'ACTIVE' && predicateMatches(s.frontmatter.applies_when, ctx),
   );
 
@@ -159,11 +199,8 @@ export async function listSkillManifests(ctx: SelectorContext): Promise<readonly
  */
 export async function loadSkillBodies(slugs: readonly string[]): Promise<readonly LoadedSkill[]> {
   if (slugs.length === 0) return [];
-  const now = Date.now();
-  if (!cache || now - cache.loadedAt > CACHE_TTL_MS) {
-    cache = { loadedAt: now, skills: await scanSkillsDir() };
-  }
-  const indexed = new Map(cache.skills.map((s) => [s.slug, s]));
+  const entry = await getCache();
+  const indexed = new Map(entry.skills.map((s) => [s.slug, s]));
   const out: LoadedSkill[] = [];
   for (const slug of slugs) {
     const hit = indexed.get(slug);
@@ -174,17 +211,26 @@ export async function loadSkillBodies(slugs: readonly string[]): Promise<readonl
 
 export function clearSkillsCache(): void {
   cache = null;
+  warnedFailures = new Set();
 }
 
 /**
- * List ALL skills on disk regardless of status. Used by `/api/skills` list
- * and PA `listSkills` tool. Does not consult the selector cache — always
+ * List ALL skills on disk regardless of status, PLUS the files that exist but
+ * failed to load. Used by `/api/skills` list and PA `listSkills` tool. Always
  * re-scans so newly-written files are visible immediately.
+ *
+ * `failures` is the anti-silent-drop surface: a SKILL.md that won't parse (bad
+ * frontmatter, invalid status) is present on disk — so it LOOKS handled — but
+ * the runtime ignores it. Callers MUST surface failures, not swallow them.
  */
-export async function listAllSkills(): Promise<readonly LoadedSkill[]> {
-  const skills = await scanSkillsDir();
+export async function listAllSkills(): Promise<{
+  skills: readonly LoadedSkill[];
+  failures: readonly SkillLoadFailure[];
+}> {
+  const scan = await scanSkillsDir();
   // Refresh cache while we're here so the next selectSkills() call sees the
   // same disk view.
-  cache = { loadedAt: Date.now(), skills };
-  return skills;
+  warnedFailures = pruneWarned(warnedFailures, scan.failures);
+  cache = { loadedAt: Date.now(), skills: scan.skills, failures: scan.failures };
+  return { skills: scan.skills, failures: scan.failures };
 }
