@@ -156,9 +156,27 @@ export default function EpisodesPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-mono text-text-primary">{ep.episode_code}</span>
+                  <span
+                    className="text-sm font-mono"
+                    style={{
+                      color:
+                        ep.status === 'ARCHIVED'
+                          ? 'var(--accent-warning)'
+                          : 'var(--text-primary)',
+                    }}
+                  >
+                    {ep.episode_code}
+                  </span>
                   {ep.title_working && (
-                    <span className="text-xs text-text-secondary truncate">
+                    <span
+                      className="text-xs truncate"
+                      style={{
+                        color:
+                          ep.status === 'ARCHIVED'
+                            ? 'color-mix(in oklab, var(--accent-warning) 70%, var(--text-muted))'
+                            : 'var(--text-secondary)',
+                      }}
+                    >
                       &ldquo;{ep.title_working}&rdquo;
                     </span>
                   )}
