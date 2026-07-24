@@ -92,8 +92,20 @@ The funnel Shorts → long-form is only real if the link is physically present.
 > the parent is not yet on the channel, upload the Short *without* the backlink
 > rather than blocking — the bridge appears automatically once the parent is live.
 
-Everything else (playlist membership, a DB row tying Short→parent for analytics) is
-secondary and additive; the description backlink is the load-bearing bridge.
+## Playlist attribution — the second invariant upload step
+
+> **Every upload MUST be attached, at publish time, to its format's canonical playlist:
+> a Short → the channel's Shorts playlist; a long-form video → the channel's Full-Episodes
+> playlist. Never leave an upload playlist-less, and never mix the two formats in one
+> playlist.** Resolve the two playlist ids from channel config (they already exist on the
+> channel) — do NOT hardcode ids here: a skill names the playlist by ROLE, the id lives in
+> channel/brief config. Separate playlists lift session watch-time (Practice 5 above);
+> attaching *on upload* is what makes that real instead of aspirational — a manual
+> after-the-fact add gets skipped and the funnel silently rots.
+
+The description backlink AND the playlist attachment are the two load-bearing, non-optional
+steps of every publish. A DB row tying Short→parent for analytics is secondary and additive;
+the backlink and the playlist are not.
 
 ## The single-channel verdict
 
