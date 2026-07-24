@@ -90,6 +90,17 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/inject-time.cjs"]
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
