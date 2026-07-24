@@ -104,6 +104,14 @@ export async function readParentVideoId(
  * Merge the Short's YouTube id back into episodes.metadata (mirror of
  * persistYouTubeVideoId in runner.ts — the thin distribution ledger, no new
  * table). Records the reverse Short→episode link for analytics/backfill.
+ *
+ * Clobber fix (2026-07-24, E15 «Автомойка» incident): the ledger USED to keep a
+ * single scalar `youtube_short_id`, so every new Short overwrote the pointer to
+ * the previous one. A 2s broken re-cut silently replaced the link to a good 75s,
+ * 1196-view public Short — the good video stayed live on YouTube but the studio
+ * lost track of it. We now APPEND every Short into `youtube_short_ids[]` (dedup
+ * by id, newest last) so no prior Short is ever forgotten. `youtube_short_id`
+ * (+ url/at) are kept as "latest" for back-compat readers.
  */
 export async function persistShortId(
   supabase: SupabaseClient<Database>,
@@ -111,16 +119,29 @@ export async function persistShortId(
   shortId: string,
   shortUrl: string,
 ): Promise<void> {
+  const uploadedAt = new Date().toISOString();
   const { data } = await supabase.from('episodes').select('metadata').eq('id', episodeId).single();
   const meta = metaObject(data?.metadata);
+
+  // Append to the durable list, deduping by id (id becomes newest-last).
+  const priorRaw = Array.isArray(meta.youtube_short_ids) ? meta.youtube_short_ids : [];
+  const prior = priorRaw.filter(
+    (e): e is { id: string; url?: string; uploaded_at?: string } =>
+      !!e && typeof e === 'object' && typeof (e as { id?: unknown }).id === 'string',
+  );
+  const deduped = prior.filter((e) => e.id !== shortId);
+  const youtube_short_ids = [...deduped, { id: shortId, url: shortUrl, uploaded_at: uploadedAt }];
+
   await supabase
     .from('episodes')
     .update({
       metadata: {
         ...meta,
+        youtube_short_ids,
+        // Latest — kept for back-compat readers of the scalar keys.
         youtube_short_id: shortId,
         youtube_short_url: shortUrl,
-        youtube_short_uploaded_at: new Date().toISOString(),
+        youtube_short_uploaded_at: uploadedAt,
       } as Json,
     })
     .eq('id', episodeId);

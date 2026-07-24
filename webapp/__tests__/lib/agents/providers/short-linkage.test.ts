@@ -2,7 +2,40 @@
 // backlink and the re-cut window marker that keeps batch idempotency correct.
 
 import { describe, it, expect } from 'vitest';
-import { appendParentBacklink, recutWindowMarker } from '@/lib/agents/providers/short-linkage';
+import {
+  appendParentBacklink,
+  recutWindowMarker,
+  persistShortId,
+} from '@/lib/agents/providers/short-linkage';
+
+/**
+ * Minimal supabase double for persistShortId: one SELECT (returns the current
+ * metadata) and one UPDATE (captured for assertion). Both chains funnel through
+ * `from('episodes')`.
+ */
+function makeSb(initialMeta: Record<string, unknown>) {
+  const captured: { metadata?: Record<string, unknown> } = {};
+  const sb = {
+    from() {
+      return {
+        select() {
+          return this;
+        },
+        eq() {
+          return this;
+        },
+        single() {
+          return Promise.resolve({ data: { metadata: initialMeta } });
+        },
+        update(payload: { metadata: Record<string, unknown> }) {
+          captured.metadata = payload.metadata;
+          return { eq: () => Promise.resolve({ error: null }) };
+        },
+      };
+    },
+  };
+  return { sb, captured };
+}
 
 describe('appendParentBacklink', () => {
   it('appends the parent watch URL once', () => {
@@ -49,5 +82,40 @@ describe('recutWindowMarker', () => {
 
   it('produces different markers for different windows (idempotency key)', () => {
     expect(recutWindowMarker(0, 20)).not.toBe(recutWindowMarker(20, 40));
+  });
+});
+
+describe('persistShortId (clobber fix — E15 «Автомойка»)', () => {
+  it('appends to the durable list instead of overwriting the previous short', async () => {
+    // Arrange — a prior good short is already recorded.
+    const { sb, captured } = makeSb({
+      youtube_short_ids: [{ id: 'GOOD', url: 'https://youtu.be/GOOD' }],
+      youtube_short_id: 'GOOD',
+    });
+
+    // Act — a new (e.g. broken re-cut) short lands.
+    await persistShortId(sb as never, 'ep-1', 'NEW', 'https://youtu.be/NEW');
+
+    // Assert — the good short is STILL in the list (not lost), new one appended.
+    const ids = (captured.metadata?.youtube_short_ids as Array<{ id: string }>).map((e) => e.id);
+    expect(ids).toEqual(['GOOD', 'NEW']);
+    // Scalar "latest" tracks the newest for back-compat readers.
+    expect(captured.metadata?.youtube_short_id).toBe('NEW');
+  });
+
+  it('seeds the list from empty metadata', async () => {
+    const { sb, captured } = makeSb({});
+    await persistShortId(sb as never, 'ep-1', 'FIRST', 'https://youtu.be/FIRST');
+    const ids = (captured.metadata?.youtube_short_ids as Array<{ id: string }>).map((e) => e.id);
+    expect(ids).toEqual(['FIRST']);
+  });
+
+  it('dedupes by id, moving a re-uploaded short to newest-last', async () => {
+    const { sb, captured } = makeSb({
+      youtube_short_ids: [{ id: 'A' }, { id: 'B' }],
+    });
+    await persistShortId(sb as never, 'ep-1', 'A', 'https://youtu.be/A');
+    const ids = (captured.metadata?.youtube_short_ids as Array<{ id: string }>).map((e) => e.id);
+    expect(ids).toEqual(['B', 'A']);
   });
 });

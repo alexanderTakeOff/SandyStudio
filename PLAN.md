@@ -19,6 +19,28 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-24 (Дистрибуция: ручной контроль — расщепление шортов + гейт паблиша — Тео, ===5===).
+Status: Инцидент E15 «Автомойка»: шорт генерился+заливался ОДНОЙ кнопкой, битый 2-сек улетел
+  на канал unlisted без превью; нигде не сохранялся (не ассет); скалярный youtube_short_id
+  затёр ссылку на хороший 75с/1196просм (`8afgQAWP9ac` жив на YouTube — uploadVideo только
+  insert, ничего не удалял). Фикс (реюз-первый):
+  (A) /api/assets/[id]/shorts расщеплён по action=generate|upload — generate: makeShort→
+      persistBinary→ассет VID-short (REVIEW, плеер); upload: гейт VID-short+APPROVED→uploadVideo.
+  (A3) persistShortId: список youtube_short_ids[] (append+dedup) вместо клоббера; id и на
+      самом шорт-ассете.
+  (A4) ShortsPanel: 2 кнопки «Сгенерировать»→превью+PilotApproveButtons→«Залить» (disabled до
+      APPROVED).
+  (B1) next-events PUBLISH_READY: убран авто-фаер exec-pub/publish → пассивный нотис
+      pipeline/publish-ready (паблиш = hard limit §6).
+  (B2) кнопка «Опубликовать на канал» в дровере финалки → существующий /trigger EXEC-PUB
+      (assertHumanDirector). Новый бэкенд=0.
+Verify: tsc clean · 1479/1479 тестов (обновил next-events-shorts-tail + 3 новых persistShortId) ·
+  replay-pilot 30/30 (Mode-1 publish-блок цел).
+Next:   разово удалить 2-сек брак `qQx1IgopGd0` вручную в YouTube Studio (scope upload не удаляет).
+  Смоук на живом стеке (E15): generate→preview→approve→upload. Не закоммичено.
+```
+
+```
 Date:   2026-07-24 (Learning-loop аудит + HoG-баги + loader hardening — Тео).
 Status: (1) Дистиллер-хендофф отвергнут (аддитивен): capture-хук убит (96% шума);
   инбокс 535KB → архив (золото → 3 правила HoG-скилл + caveman-память); цикл обучения =
