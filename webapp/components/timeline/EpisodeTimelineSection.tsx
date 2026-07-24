@@ -53,7 +53,6 @@ import {
   EpisodeAssetDrawer,
   type EpisodeAsset,
 } from '@/components/assets/EpisodeAssetDrawer';
-import { StitchStatusPill } from '@/components/timeline/StitchStatusPill';
 import {
   activeWorkByShot,
   completedWorkByShot,
@@ -189,8 +188,6 @@ export function EpisodeTimelineSection({
   const [startingVideo, setStartingVideo] = useState(false);
   // Video Pilot Pass (2026-07-23): fan-out of the stashed non-pilot shots.
   const [fanningOutVideo, setFanningOutVideo] = useState(false);
-  // Emergency server controls (2026-07-23, churn storm): STOP / Restart.
-  const [serverAction, setServerAction] = useState<'stop' | 'restart' | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -315,22 +312,6 @@ export function EpisodeTimelineSection({
       : base;
   }, [animaticAsset, storyboardContract, data]);
   const isSynthetic = !animaticAsset && storyboardContract !== null;
-
-  // Pick the freshest VID-final_cut asset (any status — REVIEW/APPROVED/LOCKED
-   // all warrant the "ready" pill). Used by StitchStatusPill so the green
-   // chip survives a session reload after STITCH already completed.
-  const finalCutAsset = useMemo(() => {
-    const assets = data?.data.assets ?? [];
-    const finals = assets.filter((a) => a.file_type === 'VID-final_cut');
-    if (finals.length === 0) return null;
-    return finals.reduce((best, a) => {
-      const bv = best.version ?? 0;
-      const av = a.version ?? 0;
-      if (av > bv) return a;
-      if (av < bv) return best;
-      return a.created_at > best.created_at ? a : best;
-    });
-  }, [data]);
 
   const vidShotAssets: VidShotAssetRow[] = useMemo(() => {
     const assets = data?.data.assets ?? [];
@@ -865,35 +846,6 @@ export function EpisodeTimelineSection({
     }
   }
 
-  // Emergency server controls (2026-07-23, E31 churn storm). STOP kills
-  // Inngest first + parks the durable queue (-Wipe) so a churn cannot resume;
-  // it also kills THIS app — a dead fetch is expected and treated as success.
-  // Restart runs start-stack.ps1 (stop + start + function sync).
-  async function handleServerAction(action: 'stop' | 'restart'): Promise<void> {
-    const label =
-      action === 'stop'
-        ? 'STOP servers: убить Inngest + app и запарковать очередь (шторм не возобновится). Продолжить?'
-        : 'Restart servers: перезапустить app + Inngest (start-stack). Продолжить?';
-    if (!window.confirm(label)) return;
-    setServerAction(action);
-    setBulkError(null);
-    try {
-      await fetch('/api/system/servers', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-    } catch {
-      // The script kills the app mid-request — a network error IS the success path.
-    }
-    if (action === 'restart') {
-      // Give start-stack its boot window, then reload onto the fresh server.
-      window.setTimeout(() => window.location.reload(), 30_000);
-    } else {
-      setServerAction(null);
-    }
-  }
-
   async function bulkApproveReview(): Promise<void> {
     setBulkBusy(true);
     setBulkError(null);
@@ -934,50 +886,6 @@ export function EpisodeTimelineSection({
           onClick={() => setCollapsed((v) => !v)}
         >
           <Film size={14} className="text-[var(--accent-primary)]" />
-          <span className="text-sm font-semibold text-text-primary">Episode timeline</span>
-          <span className="text-[11px] text-text-muted">
-            · {contract.shot_list.length} shots · {vidShotAssets.length} VID-shot rows
-          </span>
-          <div
-            // Stop the click from toggling collapse when Director clicks the
-            // "Final cut ready" pill button.
-            onClick={(e) => e.stopPropagation()}
-          >
-            <StitchStatusPill
-              episodeId={episodeId}
-              finalCutAssetId={finalCutAsset?.id ?? null}
-              onOpen={(assetId) => openAssetSmart(assetId)}
-            />
-          </div>
-          <div onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => void handleVisualCheck()}
-              disabled={visualCheck?.busy}
-              title="Advisory Visual Critic — check every rendered ref in this episode against the storyboard + style. Logs verdicts to Activity; never changes status."
-              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border border-glass text-text-secondary hover:text-text-primary disabled:opacity-40"
-            >
-              👁 {visualCheck?.busy ? 'Checking…' : 'Visual check'}
-            </button>
-          </div>
-          {/* Emergency server controls (2026-07-23, E31 churn storm). */}
-          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => void handleServerAction('stop')}
-              disabled={serverAction !== null}
-              title="Аварийный стоп: убить Inngest + app и запарковать durable-очередь (-Wipe) — шторм не возобновится при следующем старте"
-              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border text-[var(--accent-danger,#e5484d)] border-[color:color-mix(in_oklab,var(--accent-danger,#e5484d)_45%,transparent)] hover:bg-[color:color-mix(in_oklab,var(--accent-danger,#e5484d)_12%,transparent)] disabled:opacity-40"
-            >
-              ⏻ STOP servers
-            </button>
-            <button
-              onClick={() => void handleServerAction('restart')}
-              disabled={serverAction !== null}
-              title="Перезапустить app + Inngest (start-stack: stop → start → sync функций); страница перезагрузится через ~30 сек"
-              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border border-glass text-text-secondary hover:text-text-primary disabled:opacity-40"
-            >
-              {serverAction === 'restart' ? '⟳ Restarting…' : '⟳ Restart servers'}
-            </button>
-          </div>
           <div className="flex-1" />
           <span className="text-[11px] text-text-muted">
             {collapsed ? 'Expand' : 'Collapse'}
@@ -1130,6 +1038,7 @@ function TimelineToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 pt-2">
+      <span className="text-sm font-semibold text-text-primary mr-1.5">Timeline</span>
       <FilterChip
         label="All"
         count={total}

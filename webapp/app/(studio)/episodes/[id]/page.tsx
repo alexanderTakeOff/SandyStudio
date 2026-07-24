@@ -8,7 +8,7 @@
 import { use, useState, useEffect, useRef, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type CSSProperties } from 'react';
 import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
-import { RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
+import { RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronRight, Power } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -134,6 +134,11 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   const [triggerOpen, setTriggerOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [markCompleteOpen, setMarkCompleteOpen] = useState(false);
+  // Emergency server controls (moved into the header kebab, 2026-07-24).
+  const [serverAction, setServerAction] = useState<'stop' | 'restart' | null>(null);
+  // Whole-episode Visual Critic (moved from the timeline header into the kebab).
+  const [visualCheckMsg, setVisualCheckMsg] = useState<string | null>(null);
+  const [visualChecking, setVisualChecking] = useState(false);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string | undefined>();
 
@@ -249,9 +254,61 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
       })
     : feed;
 
+  async function handleServerAction(action: 'stop' | 'restart'): Promise<void> {
+    const label =
+      action === 'stop'
+        ? 'STOP servers: убить Inngest + app и запарковать очередь (шторм не возобновится). Продолжить?'
+        : 'Restart servers: перезапустить app + Inngest (start-stack). Продолжить?';
+    if (!window.confirm(label)) return;
+    setServerAction(action);
+    try {
+      await fetch('/api/system/servers', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+    } catch {
+      // start-stack kills the app mid-request — a network error IS the success path.
+    }
+    if (action === 'restart') {
+      window.setTimeout(() => window.location.reload(), 30_000);
+    } else {
+      setServerAction(null);
+    }
+  }
+
+  async function handleVisualCheckEpisode(): Promise<void> {
+    setVisualChecking(true);
+    setVisualCheckMsg('👁 Проверяю эпизод…');
+    try {
+      const res = await fetch(`/api/episodes/${id}/visual-critic`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        data?: { checked?: number; flagged?: number };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(j.error ?? 'Visual check failed');
+      setVisualCheckMsg(
+        `👁 Проверено ${j.data?.checked ?? 0}, помечено ${j.data?.flagged ?? 0}. Детали — в Activity.`,
+      );
+    } catch (e) {
+      setVisualCheckMsg(`👁 Ошибка: ${(e as Error).message}`);
+    } finally {
+      setVisualChecking(false);
+    }
+  }
+
   const actionItems: DropdownEntry[] = [
     { label: 'Refresh', icon: <RefreshCw size={14} />, onSelect: () => mutate() },
     { label: 'Re-trigger…', icon: <RotateCcw size={14} />, onSelect: () => setTriggerOpen(true) },
+    {
+      label: visualChecking ? 'Visual check…' : 'Visual check',
+      icon: <Eye size={14} />,
+      onSelect: () => void handleVisualCheckEpisode(),
+    },
   ];
   if (episode.status !== 'COMPLETE' && episode.status !== 'ARCHIVED') {
     actionItems.push({
@@ -271,6 +328,20 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
       },
     );
   }
+  actionItems.push(
+    { separator: true },
+    {
+      label: 'STOP servers',
+      icon: <Power size={14} />,
+      destructive: true,
+      onSelect: () => void handleServerAction('stop'),
+    },
+    {
+      label: serverAction === 'restart' ? 'Restarting…' : 'Restart servers',
+      icon: <RotateCcw size={14} />,
+      onSelect: () => void handleServerAction('restart'),
+    },
+  );
 
   return (
     <StudioContentFrame>
@@ -321,6 +392,24 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
           />
         </div>
       </div>
+
+      {visualCheckMsg && (
+        <div
+          className="mb-4 flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
+          style={{
+            background: 'color-mix(in oklab, var(--accent-info) 10%, transparent)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <span className="flex-1 whitespace-pre-wrap">{visualCheckMsg}</span>
+          <button
+            onClick={() => setVisualCheckMsg(null)}
+            className="text-text-muted hover:text-text-primary"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* BRIEF_PENDING action banner */}
       {episode.status === 'BRIEF_PENDING' && (
