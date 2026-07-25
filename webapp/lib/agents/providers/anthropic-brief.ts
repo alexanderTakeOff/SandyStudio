@@ -15,7 +15,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-import { anthropicTimeoutMs } from './anthropic-text';
+import { anthropicTimeoutMs, computeCostUsd } from './anthropic-text';
 
 export interface BriefInput {
   episodeCode: string; // e.g. "SS-S01-E05"
@@ -134,7 +134,23 @@ export function buildBriefTemplate(input: BriefInput): string {
   ].join('\n');
 }
 
-export async function generateBriefMarkdown(input: BriefInput): Promise<string> {
+/**
+ * Priced result of the brief call (2026-07-25). `usage` used to be read off the
+ * response and dropped, so the Anthropic call fired on EVERY episode creation
+ * never reached budget_log. Small per call (Haiku), but a per-episode spend that
+ * the money page cannot see is exactly the leak the Director asked us to close.
+ */
+export interface BriefMarkdownResult {
+  markdown: string;
+  costUsd: number;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export async function generateBriefMarkdown(
+  input: BriefInput,
+): Promise<BriefMarkdownResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) {
     throw new AnthropicBriefError('ANTHROPIC_API_KEY is not set');
@@ -176,5 +192,13 @@ export async function generateBriefMarkdown(input: BriefInput): Promise<string> 
     );
   }
 
-  return text;
+  const inputTokens = response.usage?.input_tokens ?? 0;
+  const outputTokens = response.usage?.output_tokens ?? 0;
+  return {
+    markdown: text,
+    costUsd: computeCostUsd({ inputTokens, outputTokens }, MODEL),
+    model: MODEL,
+    inputTokens,
+    outputTokens,
+  };
 }

@@ -41,15 +41,21 @@ export const POST = withApiHandler(async (req, ctx) => {
   });
 
   const flagged = results.filter((r) => r.verdict && r.verdict.verdict !== 'PASS').length;
+  // The runner already wrote a budget_log row per vision call (2026-07-25 — this
+  // sweep used to spend real money invisibly). Surface the total so the Director
+  // sees the price of the button he just pressed, in the same response.
+  const costUsd = +results.reduce((s, r) => s + r.costUsd, 0).toFixed(4);
   return apiOk({
     checked: results.length,
     flagged,
+    costUsd,
     results: results.map((r) => ({
       assetId: r.assetId,
       shotId: r.shotId,
       verdict: r.verdict?.verdict ?? null,
       summary: r.verdict?.summary ?? r.error ?? null,
       findings: r.verdict?.findings ?? [],
+      costUsd: r.costUsd,
     })),
   });
 });

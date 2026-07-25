@@ -15,7 +15,7 @@ import {
   generateBriefMarkdown,
   type BriefInput,
 } from '@/lib/agents/providers/anthropic-brief';
-import { episodeBudgetDefaultUsd } from '@/lib/budget';
+import { episodeBudgetDefaultUsd, recordCost } from '@/lib/budget';
 import { conciergeBudgetCapConfig } from '@/lib/concierge/cost';
 import {
   promptRevisionCap,
@@ -197,9 +197,34 @@ export const POST = withApiHandler(async (req) => {
       const aiBrief = await generateBriefMarkdown(briefInput);
       const { error: updErr } = await supabase
         .from('assets')
-        .update({ content: aiBrief } as never)
+        .update({ content: aiBrief.markdown } as never)
         .eq('id', briefAssetId);
       if (!updErr) briefSource = 'ai';
+      // 2026-07-25 — bill the brief enrichment to the episode it just created.
+      // The call is paid on every episode creation and used to be invisible to
+      // the Budget tab. Best-effort + enforceCeiling:false: the tokens are
+      // already spent, and a fresh episode has no meaningful ceiling headroom
+      // problem to protect against here.
+      if (aiBrief.costUsd > 0) {
+        try {
+          await recordCost(supabase, {
+            jobId: null,
+            episodeId: ep.id,
+            // EXEC-ORCH, not EXEC-CONC: this is a system enrichment fired by
+            // episode creation, and billing it to Polina would inflate her slice
+            // of the ledger with spend that is not hers.
+            agentId: 'EXEC-ORCH',
+            costUsd: aiBrief.costUsd,
+            apiProvider: 'anthropic',
+            modelOrTier: aiBrief.model,
+            operation: 'brief_enrichment',
+            tokensUsed: aiBrief.inputTokens + aiBrief.outputTokens,
+            enforceCeiling: false,
+          });
+        } catch {
+          /* accounting is best-effort — never fail episode creation over it */
+        }
+      }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn(
