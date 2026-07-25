@@ -35,7 +35,7 @@ Verify: tsc clean · 1537/1537 vitest · 30/30 replay-pilot · миграции 
 Next:   Фаза 3 — переключатель канал/сериал в #studio-topbar-slot + скоуп
   Episodes/Budget/Audience/Inbox/Jobs/Activity. Проверить HoG-daily 26 июл 09:00.
   Новый канал: Settings→Channels → consent --key → рестарт стека → привязать серию.
-Mode:   ===1=== (после этой сессии).
+Mode:   ===5=== (Директор, 2026-07-25 20:58 — Фаза 3 + consent-фиксы).
 ```
 
 ```

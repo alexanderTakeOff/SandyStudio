@@ -20,7 +20,11 @@ import * as path from 'path';
 import * as http from 'http';
 import { exec } from 'child_process';
 
-const env = fs.readFileSync(path.join(process.cwd(), '.env.local'), 'utf8');
+// Anchor .env.local at webapp/ (this script's parent dir) — NOT process.cwd(),
+// so the command works from the repo root too (2026-07-25: running it from the
+// root crashed with ENOENT and cost the Director a stack trace).
+const ENV_PATH = path.resolve(__dirname, '..', '.env.local');
+const env = fs.readFileSync(ENV_PATH, 'utf8');
 for (const line of env.split('\n')) {
   const m = line.match(/^([A-Z_]+)=(.*)$/);
   if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
@@ -99,7 +103,7 @@ const server = http.createServer(async (req, res) => {
     }
     // Auto-write the channel token into .env.local under ITS OWN key —
     // replace-or-append, never touching other channels' keys or Drive's token.
-    const envPath = path.join(process.cwd(), '.env.local');
+    const envPath = ENV_PATH;
     let raw = fs.readFileSync(envPath, 'utf8');
     const linePattern = new RegExp(`^${ENV_VAR}=.*$`, 'm');
     if (linePattern.test(raw)) {
