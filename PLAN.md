@@ -19,21 +19,22 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
-Date:   2026-07-25 (Мульти-канальность: спека + Фазы 0-1 СМЕРДЖЕНЫ в master + ЗАДЕПЛОЕНЫ — Тео, ===5===).
-Status: канал = сущность БД. Спека specs/system/multi-channel.md; иерархия channels 1:N series
-  (channel_id nullable — сериал живёт без канала; на гейте publish/analytics без канала HALT,
-  тихого фолбэка на глобальный токен НЕТ). Миграции 0046-0048 в проде: channels (сид Sandy
-  UCc2…, key SANDY) + series.channel_id (3 серии привязаны) + channel_id NOT NULL в
-  channel_snapshots/channel_reports (бэкфилл 7284+93, 0 NULL) + дроп мёртвых series_state/
-  approval_authority. Токены: YOUTUBE_REFRESH_TOKEN_<KEY> (SANDY читает легаси-имя);
-  youtube-consent.ts --key <KEY>. HoG-кроны идут по ACTIVE-каналам, падение одного не гасит
-  остальные. Naming НЕ тронут: SS = префикс СТУДИИ, каждый SS-SNN = отдельный СЕРИАЛ
-  (glossary: Season DEPRECATED). Stack пересобран и поднят, функции registered.
-Verify: tsc clean · 1531/1531 vitest · 30/30 replay-pilot · SQL-верификация живой БД.
-Next:   Фаза 2 — рождение проекта №2 в UI (создание канала+серии), activity_events.series_id +
-  фикс PA-фолбэка «событие серии B в тред серии A», брендовые литералы SANDY → metadata.
-  Фазы 2-4 расписаны в multi-channel.md §8. Новый канал = бренд-аккаунт + consent --key +
-  INSERT в channels.
+Date:   2026-07-25 (Мульти-канальность Фаза 2 СМЕРДЖЕНА в master + деплой — Тео, ===5===).
+Status: Фазы 0-2 сделаны (spec multi-channel.md §6.5/§8). Фаза 2: чат=сериал (тред Полины
+  не пересекает границу серии; concierge_threads.series_id, 0049) + activity_events.series_id
+  (бэкфилл 20230 событий/36 тредов, 0 рассинхронов; авто-заполнение BEFORE-триггером) +
+  инъекция v6: тред эпизода → тред серии → skip (событие живёт в Activity/Inbox; глобальный
+  фолбэк только для бессерийных событий). UI: Settings→Channels (паспорта; секрет только через
+  consent --key), series+channel при создании (общий SeriesForm — дубль формы схлопнут),
+  PATCH attach на Overview. Брендинг из данных: series/channels.metadata.branding каскад,
+  тексты Сэнди засеяны (0050) байт-в-байт; ручной shorts-upload через decideYouTubePathway +
+  identity-guard (закрыта утечка легаси-токена). Storage-модуль остаётся студийным (корни);
+  папки сериалов выводятся из кода серии (persist-binary layout).
+Verify: tsc clean · 1537/1537 vitest · 30/30 replay-pilot · миграции 0049-0050 в проде,
+  SQL-верификация · types.gen регенерирован.
+Next:   Фаза 3 — переключатель канал/сериал в #studio-topbar-slot + скоуп
+  Episodes/Budget/Audience/Inbox/Jobs/Activity. Проверить HoG-daily 26 июл 09:00.
+  Новый канал: Settings→Channels → consent --key → рестарт стека → привязать серию.
 Mode:   ===1=== (после этой сессии).
 ```
 
