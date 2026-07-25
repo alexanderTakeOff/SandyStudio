@@ -15,6 +15,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
+import { hasAnyYouTubeCredential } from './providers/google-auth';
 
 export type ContractName =
   | 'image'
@@ -56,6 +57,18 @@ const ENV_KEY_BY_PROVIDER: Record<string, string | null> = {
   drive_native: 'GOOGLE_REFRESH_TOKEN',
   youtube_data_api: 'YOUTUBE_REFRESH_TOKEN',
 };
+
+/**
+ * Is a provider's env requirement satisfied? Multi-channel special case:
+ * YOUTUBE_REFRESH_TOKEN counts as satisfied when the bare legacy token OR any
+ * per-channel YOUTUBE_REFRESH_TOKEN_<KEY> exists (multi-channel.md §3) — the
+ * concrete token is resolved per channel at the gate, not here.
+ */
+export function isEnvKeySatisfied(envKey: string | null): boolean {
+  if (envKey === null) return true;
+  if (envKey === 'YOUTUBE_REFRESH_TOKEN') return hasAnyYouTubeCredential();
+  return Boolean(process.env[envKey]?.trim());
+}
 
 interface CacheEntry {
   value: ResolvedProvider;
@@ -111,7 +124,7 @@ export async function resolveProvider(
 
   const providerId = data.active_provider_id;
   const envKey = ENV_KEY_BY_PROVIDER[providerId] ?? null;
-  const envOk = envKey === null ? true : Boolean(process.env[envKey]?.trim());
+  const envOk = isEnvKeySatisfied(envKey);
 
   // Auto-downgrade to 'mock' if the chosen provider's env key is missing.
   // Better than failing the whole pipeline silently when a key wasn't

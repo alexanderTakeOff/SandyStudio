@@ -122,6 +122,29 @@ export function resolveEpisodeCode(
   return args.episodeCode ?? miscodedId ?? ctx.episodeCode ?? null;
 }
 
+/**
+ * Resolve the target series UUID for series-scoped tools: an explicit valid
+ * `args.seriesId` wins, otherwise the bound episode's parent series (via the
+ * canonical `seriesIdForEpisode`). Single resolver for all tools — do not
+ * re-implement per tool.
+ */
+export async function resolveSeriesId(
+  args: { seriesId?: string | null; episodeId?: string | null },
+  ctx: ToolContext,
+): Promise<string | null> {
+  if (isUuid(args.seriesId)) return args.seriesId;
+  const episodeId = resolveEpisodeId(args, ctx);
+  if (episodeId) {
+    try {
+      const { seriesIdForEpisode } = await import('@/lib/api/series-bible');
+      return await seriesIdForEpisode(ctx.supabase, episodeId);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 /** Standard tool result envelope. Always JSON-serialisable. */
 export type ToolResult =
   | {

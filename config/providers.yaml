@@ -551,7 +551,9 @@ upscale:
 distribution:
   youtube_data_api:
     display_name: "YouTube Data API v3"
-    env_keys: [YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN]
+    # OAuth client is the shared GOOGLE_CLIENT_ID/SECRET; refresh tokens are
+    # per-channel: YOUTUBE_REFRESH_TOKEN_<CREDENTIAL_KEY> (specs/system/multi-channel.md)
+    env_keys: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN]
     adapter: youtube_data_adapter
     quota_units_per_day: 10000
     units_per_upload: 1600
@@ -559,7 +561,7 @@ distribution:
 
   youtube_analytics_api:
     display_name: "YouTube Analytics API v2"
-    env_keys: [YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN]
+    env_keys: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN]
     adapter: youtube_analytics_adapter
     spec: "specs/distribution/analytics.md"
 

@@ -10,7 +10,8 @@
 // listNewReports() (every report across jobs) → downloadReport() (the CSV body).
 // The caller dedupes by report.id and persists to channel_reports.
 //
-// Reuses the same YOUTUBE_REFRESH_TOKEN / yt-analytics.readonly scope as
+// Multi-channel: every exported op takes an optional `auth` (channel refresh
+// token); omitted = legacy bare env token. Same yt-analytics.readonly scope as
 // youtube-stats.ts. Every path throws YouTubeReportingError on a hard failure so
 // the observer can log SENSOR_DOWN rather than silently persist nothing.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -38,10 +39,14 @@ export class YouTubeReportingError extends Error {
   }
 }
 
-async function authed(url: string, init: RequestInit = {}): Promise<Response> {
+export interface YouTubeAuth {
+  refreshToken: string;
+}
+
+async function authed(url: string, init: RequestInit = {}, auth?: YouTubeAuth): Promise<Response> {
   let token: string;
   try {
-    token = await getYouTubeAccessToken();
+    token = await getYouTubeAccessToken(auth?.refreshToken);
   } catch (err) {
     if (err instanceof GoogleAuthError) throw new YouTubeReportingError(err.message);
     throw err;
@@ -58,8 +63,8 @@ export interface ReportingJob {
   createTime?: string;
 }
 
-export async function listReportingJobs(): Promise<ReportingJob[]> {
-  const res = await authed(`${REPORTING_API}/jobs`);
+export async function listReportingJobs(auth?: YouTubeAuth): Promise<ReportingJob[]> {
+  const res = await authed(`${REPORTING_API}/jobs`, {}, auth);
   if (!res.ok) throw new YouTubeReportingError(`listReportingJobs failed (${res.status})`, res.status);
   const json = (await res.json()) as { jobs?: ReportingJob[] };
   return json.jobs ?? [];
@@ -70,8 +75,8 @@ export async function listReportingJobs(): Promise<ReportingJob[]> {
  * the full job set (existing + newly created). A job already present is left
  * untouched — YouTube keeps generating its daily reports regardless.
  */
-export async function ensureReportingJobs(): Promise<ReportingJob[]> {
-  const existing = await listReportingJobs();
+export async function ensureReportingJobs(auth?: YouTubeAuth): Promise<ReportingJob[]> {
+  const existing = await listReportingJobs(auth);
   const haveTypes = new Set(existing.map((j) => j.reportTypeId));
   const created: ReportingJob[] = [];
   for (const type of HOG_REPORT_TYPES) {
@@ -80,7 +85,7 @@ export async function ensureReportingJobs(): Promise<ReportingJob[]> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reportTypeId: type, name: `hog-${type}` }),
-    });
+    }, auth);
     if (!res.ok) throw new YouTubeReportingError(`createJob(${type}) failed (${res.status})`, res.status);
     created.push((await res.json()) as ReportingJob);
   }
@@ -97,10 +102,10 @@ export interface ReportRef {
 }
 
 /** Every report currently available across all HoG jobs. Caller dedupes by id. */
-export async function listNewReports(jobs: ReportingJob[]): Promise<ReportRef[]> {
+export async function listNewReports(jobs: ReportingJob[], auth?: YouTubeAuth): Promise<ReportRef[]> {
   const out: ReportRef[] = [];
   for (const job of jobs) {
-    const res = await authed(`${REPORTING_API}/jobs/${job.id}/reports`);
+    const res = await authed(`${REPORTING_API}/jobs/${job.id}/reports`, {}, auth);
     if (!res.ok) throw new YouTubeReportingError(`listReports(${job.id}) failed (${res.status})`, res.status);
     const json = (await res.json()) as {
       reports?: Array<{ id?: string; startTime?: string; endTime?: string; downloadUrl?: string }>;
@@ -121,8 +126,8 @@ export async function listNewReports(jobs: ReportingJob[]): Promise<ReportRef[]>
 }
 
 /** The raw CSV body of one report. */
-export async function downloadReport(ref: ReportRef): Promise<string> {
-  const res = await authed(ref.downloadUrl);
+export async function downloadReport(ref: ReportRef, auth?: YouTubeAuth): Promise<string> {
+  const res = await authed(ref.downloadUrl, {}, auth);
   if (!res.ok) throw new YouTubeReportingError(`downloadReport(${ref.id}) failed (${res.status})`, res.status);
   return res.text();
 }

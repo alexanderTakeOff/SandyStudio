@@ -12,9 +12,8 @@
 // activity event) instead of touching the DB directly — anti-additivity.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { seriesIdForEpisode } from '@/lib/api/series-bible';
 import { gateMutation } from '../approval-check';
-import { authHeaders, fail, ok, resolveEpisodeId, isUuid, type Tool, type ToolContext, type ToolResult } from './types';
+import { authHeaders, fail, ok, resolveSeriesId, type Tool, type ToolContext, type ToolResult } from './types';
 
 type AnyArgs = Record<string, unknown>;
 
@@ -27,23 +26,6 @@ function safeParse(raw: string): AnyArgs {
   } catch {
     return {};
   }
-}
-
-/** Resolve the target series UUID: explicit arg wins, else the bound episode's series. */
-async function resolveSeriesId(
-  args: { seriesId?: string | null; episodeId?: string | null },
-  ctx: ToolContext,
-): Promise<string | null> {
-  if (isUuid(args.seriesId)) return args.seriesId;
-  const episodeId = resolveEpisodeId(args, ctx);
-  if (episodeId) {
-    try {
-      return await seriesIdForEpisode(ctx.supabase, episodeId);
-    } catch {
-      return null;
-    }
-  }
-  return null;
 }
 
 interface ProposeThemeArgs {

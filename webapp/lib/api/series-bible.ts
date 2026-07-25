@@ -318,9 +318,8 @@ export async function countLockedBibleSections(
  * Look up the parent series_id (UUID) for an episode. Used by gate.ts to bridge
  * episode-scoped runs to series-scoped Bible canon.
  *
- * NewEpisodeModal historical bug: some episode rows have `series_id` populated
- * with the series CODE (e.g. "SS-S09") instead of the UUID. We tolerate that
- * here by detecting non-UUID values and resolving via the series.code lookup.
+ * Since migration 0038 `episodes.series_id` is a uuid FK — the historical
+ * code-string fallback ("SS-S09" stored instead of the UUID) is gone.
  *
  * Avoids `.maybeSingle()` to stay compatible with the in-memory test
  * supabase mock used by replay-pilot.
@@ -333,44 +332,14 @@ export async function seriesIdForEpisode(
 ): Promise<string | null> {
   const { data, error } = await supabase
     .from('episodes')
-    .select('series_id, episode_code')
+    .select('series_id')
     .eq('id', episodeId);
   if (error) {
     throw new Error(`seriesIdForEpisode: ${error.message}`);
   }
-  const row = (data ?? [])[0] as
-    | { series_id?: string | null; episode_code?: string | null }
-    | undefined;
-  if (!row) return null;
-
-  const raw = row.series_id;
-
-  // Happy path: real UUID FK
-  if (typeof raw === 'string' && UUID_RE.test(raw)) return raw;
-
-  // Legacy fallback 1: series_id stores series code like "SS-S09".
-  // 2: derive from episode_code prefix (SS-S09-E01 → SS-S09).
-  // Both wrapped: replay-pilot's mock supabase has no `series` table and
-  // would throw on .from('series'); we keep happy-path running.
-  const candidates: string[] = [];
-  if (typeof raw === 'string' && /^SS-/.test(raw)) candidates.push(raw);
-  if (row.episode_code) {
-    const m = row.episode_code.match(/^(SS-[A-Z0-9]+)/);
-    if (m && m[1] && !candidates.includes(m[1])) candidates.push(m[1]);
-  }
-  for (const code of candidates) {
-    try {
-      const lookup = await supabase.from('series').select('id').eq('code', code);
-      if (!lookup.error) {
-        const seriesRow = (lookup.data ?? [])[0] as { id?: string } | undefined;
-        if (seriesRow?.id) return seriesRow.id;
-      }
-    } catch {
-      // mock supabase or transient error — try next
-    }
-  }
-
-  return raw ?? null;
+  const row = (data ?? [])[0] as { series_id?: string | null } | undefined;
+  const raw = row?.series_id;
+  return typeof raw === 'string' && UUID_RE.test(raw) ? raw : null;
 }
 
 /**

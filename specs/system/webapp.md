@@ -227,16 +227,8 @@ flags           jsonb                            -- array of {metric, flag_type,
 report_path     text                             -- path to generated .md report
 ```
 
-#### `series_state`
-```sql
-id              uuid PRIMARY KEY DEFAULT gen_random_uuid()
-series_id       text UNIQUE NOT NULL
-world_bible_path text
-style_bible_path text
-series_arc_path  text
-creative_direction_path text
-updated_at      timestamptz DEFAULT now()
-```
+> `series_state` (legacy 0002 mirror of PROJECT.md paths) was never read by code
+> and is dropped in migration 0047 (multi-channel Phase 0 subtraction).
 
 ---
 
@@ -807,9 +799,8 @@ INNGEST_SIGNING_KEY=
 # Anthropic
 ANTHROPIC_API_KEY=
 
-# YouTube OAuth (from auth.md)
-YOUTUBE_CLIENT_ID=
-YOUTUBE_CLIENT_SECRET=
+# YouTube OAuth (client = shared GOOGLE_CLIENT_ID/SECRET; per-channel tokens
+# YOUTUBE_REFRESH_TOKEN_<CREDENTIAL_KEY> — specs/system/multi-channel.md §3)
 YOUTUBE_REFRESH_TOKEN=
 
 # Media generation APIs (resolved via providers.yaml)

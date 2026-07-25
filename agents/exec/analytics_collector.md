@@ -21,7 +21,7 @@ output = f(publish_log, analytics_spec, youtube_api_credentials, collection_sche
 |-------|--------|---------|---------|
 | Publish log | `reviews/SS-[S]-[E]-REV-publish_log-v[NN].md` | ✅ | YouTube video ID, publish timestamp |
 | Analytics spec | `specs/distribution/analytics.md` | ✅ | Metrics to collect, collection schedule, report format, benchmarks |
-| YouTube API credentials | `$YOUTUBE_CLIENT_ID`, `$YOUTUBE_CLIENT_SECRET`, `$YOUTUBE_REFRESH_TOKEN` (env) | ✅ | API access |
+| YouTube API credentials | `$GOOGLE_CLIENT_ID`, `$GOOGLE_CLIENT_SECRET`, `$YOUTUBE_REFRESH_TOKEN_<KEY>` per channel passport (env) | ✅ | API access — series without a channel HALTs (multi-channel.md §4) |
 | Config defaults | `config/defaults.yaml → analytics` | Fallback | Flag thresholds, collection tolerances |
 
 **Fallback:** If analytics spec benchmark thresholds absent in config → use `analytics.md` default benchmarks. Flag that benchmarks are provisional until BOARD-MKT updates after first 3 episodes.

@@ -5,7 +5,8 @@
 //   - YouTube Analytics API v2 /reports    → averageViewPercentage, avg view
 //     duration, estimated minutes, and the retention curve (audienceWatchRatio)
 //
-// Uses the same YOUTUBE_REFRESH_TOKEN as youtube.ts, which now carries the
+// Multi-channel: every exported op takes an optional `auth` (channel refresh
+// token); omitted = legacy bare env token. Token carries the
 // `yt-analytics.readonly` scope (consent 2026-07-12). Defensive: brand-new /
 // unlisted videos return near-zero or empty — every path degrades to 0/null
 // rather than throwing, so the advisor's silence layer does its job.
@@ -26,10 +27,14 @@ export class YouTubeStatsError extends Error {
   }
 }
 
-async function authedGet(url: string): Promise<Response> {
+export interface YouTubeAuth {
+  refreshToken: string;
+}
+
+async function authedGet(url: string, auth?: YouTubeAuth): Promise<Response> {
   let token: string;
   try {
-    token = await getYouTubeAccessToken();
+    token = await getYouTubeAccessToken(auth?.refreshToken);
   } catch (err) {
     if (err instanceof GoogleAuthError) throw new YouTubeStatsError(err.message);
     throw err;
@@ -52,8 +57,8 @@ export interface ChannelStatistics {
 }
 
 /** Channel-level live counters (Data API) — the channel-scope row of the HoG time series. */
-export async function getChannelStatistics(): Promise<ChannelStatistics> {
-  const res = await authedGet(`${DATA_API}/channels?part=statistics&mine=true`);
+export async function getChannelStatistics(auth?: YouTubeAuth): Promise<ChannelStatistics> {
+  const res = await authedGet(`${DATA_API}/channels?part=statistics&mine=true`, auth);
   if (!res.ok) throw new YouTubeStatsError(`getChannelStatistics failed (${res.status})`, res.status);
   const json = (await res.json()) as {
     items?: Array<{ statistics?: { viewCount?: string; subscriberCount?: string; videoCount?: string } }>;
@@ -85,12 +90,12 @@ function isoDurationToSeconds(iso: string | undefined): number {
 }
 
 /** Public counters + publication state for up to 50 videos per call (Data API caps id list at 50). */
-export async function getVideoStatistics(videoIds: string[]): Promise<VideoStatistics[]> {
+export async function getVideoStatistics(videoIds: string[], auth?: YouTubeAuth): Promise<VideoStatistics[]> {
   const out: VideoStatistics[] = [];
   for (let i = 0; i < videoIds.length; i += 50) {
     const batch = videoIds.slice(i, i + 50);
     const url = `${DATA_API}/videos?part=statistics,status,snippet,contentDetails&id=${batch.map(encodeURIComponent).join(',')}`;
-    const res = await authedGet(url);
+    const res = await authedGet(url, auth);
     if (!res.ok) throw new YouTubeStatsError(`getVideoStatistics failed (${res.status})`, res.status);
     const json = (await res.json()) as {
       items?: Array<{
@@ -165,6 +170,7 @@ export async function getVideoAnalytics(
   videoId: string,
   startDate: string,
   endDate: string,
+  auth?: YouTubeAuth,
 ): Promise<VideoAnalytics | null> {
   const params = new URLSearchParams({
     ids: 'channel==MINE',
@@ -173,7 +179,7 @@ export async function getVideoAnalytics(
     metrics: 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage',
     filters: `video==${videoId}`,
   });
-  const res = await authedGet(`${ANALYTICS_API}?${params.toString()}`);
+  const res = await authedGet(`${ANALYTICS_API}?${params.toString()}`, auth);
   if (res.status === 403) return null; // scope/permission — degrade quietly
   if (!res.ok) throw new YouTubeStatsError(`getVideoAnalytics failed (${res.status})`, res.status);
   const json = (await res.json()) as { rows?: number[][] };
@@ -197,6 +203,7 @@ export async function getRetentionCurve(
   videoId: string,
   startDate: string,
   endDate: string,
+  auth?: YouTubeAuth,
 ): Promise<number[] | null> {
   const params = new URLSearchParams({
     ids: 'channel==MINE',
@@ -207,7 +214,7 @@ export async function getRetentionCurve(
     filters: `video==${videoId}`,
     sort: 'elapsedVideoTimeRatio',
   });
-  const res = await authedGet(`${ANALYTICS_API}?${params.toString()}`);
+  const res = await authedGet(`${ANALYTICS_API}?${params.toString()}`, auth);
   if (res.status === 403) return null;
   if (!res.ok) throw new YouTubeStatsError(`getRetentionCurve failed (${res.status})`, res.status);
   const json = (await res.json()) as { rows?: number[][] };
@@ -233,6 +240,8 @@ export async function collectAudienceSnapshot(args: {
    *  Reporting CSVs (`channel_reports`) — the ONLY source for these metrics.
    *  Without it they stay 0 with an explanatory note (mock/test paths). */
   supabase?: Parameters<typeof readReachMetricsFromArchive>[0];
+  /** Channel refresh token; omitted = legacy bare env token (SANDY). */
+  auth?: YouTubeAuth;
 }): Promise<{
   status: 'success';
   provider: 'youtube';
@@ -254,9 +263,9 @@ export async function collectAudienceSnapshot(args: {
 }> {
   const now = new Date();
   const start = new Date(now.getTime() - (args.lookbackDays ?? 90) * 86_400_000);
-  const [stats] = await getVideoStatistics([args.youtubeVideoId]).catch(() => []);
-  const analytics = await getVideoAnalytics(args.youtubeVideoId, ymd(start), ymd(now)).catch(() => null);
-  const retention = (await getRetentionCurve(args.youtubeVideoId, ymd(start), ymd(now)).catch(() => null)) ?? [];
+  const [stats] = await getVideoStatistics([args.youtubeVideoId], args.auth).catch(() => []);
+  const analytics = await getVideoAnalytics(args.youtubeVideoId, ymd(start), ymd(now), args.auth).catch(() => null);
+  const retention = (await getRetentionCurve(args.youtubeVideoId, ymd(start), ymd(now), args.auth).catch(() => null)) ?? [];
 
   // Reach metrics come ONLY from the archived Reporting CSVs (the Analytics API
   // serves no impression metric — see youtube-reporting.ts header). Best-effort:

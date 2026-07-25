@@ -8,7 +8,9 @@ import { describe, expect, test } from 'vitest';
 import { loadAnchorChainContext } from '@/lib/agents/runner';
 
 const EPISODE_ID = 'episode-uuid';
-const SERIES_ID = 'series-uuid';
+// Must be a REAL uuid: since 0038 seriesIdForEpisode accepts only uuid FKs
+// (the code-string fallback is deleted — multi-channel Phase 0).
+const SERIES_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
 const STB_CONTENT = [
   '# Storyboard SS-S15-E01',

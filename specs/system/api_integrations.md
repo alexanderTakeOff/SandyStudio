@@ -566,9 +566,8 @@ credential_map:
   SUNO_API_KEY:               Suno (unofficial fallback only)
   UDIO_API_KEY:               Udio (unofficial fallback only)
 
-  # Distribution
-  YOUTUBE_CLIENT_ID:          YouTube OAuth 2.0
-  YOUTUBE_CLIENT_SECRET:      YouTube OAuth 2.0
+  # Distribution (OAuth client = shared GOOGLE_CLIENT_ID/SECRET;
+  # per-channel tokens YOUTUBE_REFRESH_TOKEN_<KEY> — multi-channel.md §3)
   YOUTUBE_REFRESH_TOKEN:      YouTube OAuth 2.0 (refreshed automatically)
 
   # Future
