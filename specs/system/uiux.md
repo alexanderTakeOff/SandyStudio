@@ -548,6 +548,13 @@ returns to multiple times per day. Sub-spec: `specs/system/dashboard_cockpit.md`
 > bulk actions for non-visual items, dedicated `/inbox` route plus a
 > Dashboard Zone 1 preview. The full spec is `specs/system/director_inbox.md`.
 > The decision flow `Preview → Context → Decision` is preserved.
+>
+> **2026-07-25:** the `/inbox` header carries a `Clear inbox` action
+> (`secondary` button, `Trash2` icon, live counter) beside `Help`. It dismisses
+> only notification rows in the active filter's scope; approval gates and Bible
+> extension proposals are never cleared, and a confirmation modal states that
+> before the sweep. Disabled when nothing on screen is clearable. Rules in
+> `director_inbox.md §8.3`.
 
 Approval Queue is the first major working UI.
 
