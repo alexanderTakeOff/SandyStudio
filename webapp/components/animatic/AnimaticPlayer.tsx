@@ -64,7 +64,16 @@ import {
   type VidShotAssetRow,
   type ImgRefAssetRow,
 } from '@/lib/api/timeline-cell-resolver';
-import { workRolePalette, type ShotWork, type WorkRole } from '@/lib/api/pipeline-stages';
+import {
+  workRolePalette,
+  stageRamp,
+  rampStop,
+  stageIdentity,
+  type ShotWork,
+  type WorkRole,
+  type StageFamily,
+  type StageRole,
+} from '@/lib/api/pipeline-stages';
 
 const MIN_SHOT_S = 0.5;
 const MAX_SHOT_S = 60;
@@ -343,71 +352,48 @@ function fmt(t: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ── Cell colour palette (Phase A.1, "improve non-approved colorization") ────
-// Each non-final status gets its own colour so Director can scan the strip and
-// see the spread of states at a glance. `--accent-orange/--accent-purple/
-// --accent-info` may not be defined in every theme — fall back to literal
-// hex/oklch in the CSS var default.
+// ── Kebab colour grammar (2026-07-25) — three orthogonal axes, never mixed ──
+// HUE   = stage identity (family × role). STABLE for a sub-step's whole
+//         lifecycle; status NEVER writes hue. Two temperatures: ❄️ Reference =
+//         cold ramp (sky→indigo→violet), 🔥 Video = warm ramp (yellow→orange→burnt).
+// GLOW  = activity. Pulse = running · steady glow = settled/alive · none = not started.
+// WEIGHT= approval. Thin = awaiting · Bold = approved.
+// This replaces the old status→hue switch (green/amber jump on approve) — status
+// now drives only glow + weight, so the hue never jumps. The grammar helpers
+// (stageRamp / rampStop / stageIdentity) are node-safe in pipeline-stages.ts.
+
 function cellPalette(
   status: string | undefined,
   kind: string | undefined,
   liveWork?: ShotWork,
   completedWork?: ShotWork,
 ): { color: string; weight: number; glow?: string; pulse?: boolean } {
-  // Unified work language (2026-07-02) — live work ALWAYS wins: a job RUNNING on
-  // this shot recolours the cell (even an APPROVED/green one) BY ROLE and pulses
-  // until the job finishes, then it settles back to the asset-derived colour
-  // below. Colour = who is working (designer/critic/both/artist); node-safe
-  // workRolePalette owns the token mapping (no inline hex).
+  const approved = status === 'APPROVED' || status === 'LOCKED';
+  const weight = approved ? 700 : 400; // WEIGHT axis = approval, nothing else.
+
+  // ── идёт: a live job wins. Hue walks its family ramp by role (yellow→orange→
+  // burnt for video), pulses. Weight still keys off approval (re-gen of an
+  // approved asset stays bold). Family from the object, correct even on placeholders.
   if (liveWork && liveWork.roles.length > 0) {
-    const rp = workRolePalette(liveWork.roles);
-    return { color: rp.color, weight: 700, glow: rp.glow, pulse: true };
+    const family: StageFamily = liveWork.object === 'animate' ? 'vid' : 'ref';
+    const color = stageRamp(family, rampStop(workRolePalette(liveWork.roles).token));
+    return { color, weight, glow: `0 0 6px color-mix(in oklab, ${color} 65%, transparent)`, pulse: true };
   }
-  // D7 persistent trail (2026-07-09) — no live job, but this shot's designer/
-  // critic/artist work has finished: keep a SETTLED, muted, NON-pulsing role
-  // glow so the completed shot stays visibly marked instead of snapping back to
-  // neutral the instant its job leaves RUNNING. Reuses workRolePalette's colour
-  // at a dimmer mix (35% vs live 60%); sits above asset-status, below live.
+  // ── завершено-хвост (D7 persistent trail): no live job, but this shot's work
+  // just finished — keep a SETTLED, non-pulsing, dimmer in-family glow so it
+  // stays marked instead of snapping to neutral.
   if (completedWork && completedWork.roles.length > 0) {
-    const rp = workRolePalette(completedWork.roles);
-    return {
-      color: rp.color,
-      weight: 700,
-      glow: `0 0 5px color-mix(in oklab, ${rp.color} 35%, transparent)`,
-      pulse: false,
-    };
+    const family: StageFamily = completedWork.object === 'animate' ? 'vid' : 'ref';
+    const color = stageRamp(family, rampStop(workRolePalette(completedWork.roles).token));
+    return { color, weight, glow: `0 0 5px color-mix(in oklab, ${color} 35%, transparent)`, pulse: false };
   }
-  switch (status) {
-    case 'APPROVED':
-    case 'LOCKED':
-      // 2026-05-13 — Director: "approved циферки тускло горят, верните как
-      // было". Bump weight to 700 and add a green text-shadow glow so the
-      // canonical state reads at a glance again across all theme variants
-      // (the underlying --accent-success var can be muted by some themes).
-      return {
-        color: 'var(--accent-success, #22c55e)',
-        weight: 700,
-        glow: '0 0 6px color-mix(in oklab, var(--accent-success, #22c55e) 65%, transparent)',
-      };
-    case 'REVIEW':
-      return {
-        color: 'var(--accent-warning, #f59e0b)',
-        weight: 700,
-        glow: '0 0 6px color-mix(in oklab, var(--accent-warning, #f59e0b) 55%, transparent)',
-      };
-    case 'REVISION':
-      return { color: 'var(--accent-orange, #f97316)', weight: 600 };
-    case 'REJECTED':
-      return { color: 'var(--accent-danger, #ef4444)', weight: 600 };
-    case 'NEEDS_HUMAN_TWEAK':
-      return { color: 'var(--accent-purple, #a855f7)', weight: 600 };
-    case 'DRAFT':
-      return { color: 'var(--accent-info, #38bdf8)', weight: 500 };
-    default:
-      // NONE / unknown — animatic image fallback or placeholder.
-      void kind; // reserved for future kind-specific tweaks
-      return { color: 'var(--text-muted)', weight: 400 };
-  }
+  // ── settled: HUE = stable stage identity (family × role from kind), NEVER status.
+  const id = stageIdentity(kind);
+  if (!id) return { color: 'var(--text-muted)', weight: 400 }; // не начато — grey, thin, no glow.
+  const color = stageRamp(id.family, id.role);
+  // Steady glow = "готов/жив"; a touch brighter once approved. Hue is unchanged
+  // either way — approve only thickens (weight) and lifts the glow, never re-hues.
+  return { color, weight, glow: `0 0 6px color-mix(in oklab, ${color} ${approved ? 65 : 55}%, transparent)` };
 }
 
 export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerProps>(function AnimaticPlayer(
@@ -659,16 +645,20 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     const objectMatches =
       field === 'video' ? liveWork.object === 'animate' : liveWork.object !== 'animate';
     if (!objectMatches || !liveWork.roles.includes(role)) return null;
-    const rp = workRolePalette(liveWork.roles);
+    // Kebab grammar: this badge lights in its OWN family × role hue (cold for the
+    // image field, warm for video; plan/critic/artist stop per this line's role).
+    const family: StageFamily = field === 'video' ? 'vid' : 'ref';
+    const roleStop: StageRole = role === 'designer' ? 'plan' : role === 'critic' ? 'critic' : 'artist';
+    const rpColor = stageRamp(family, roleStop);
     const label = role === 'designer' ? 'writing…' : role === 'critic' ? 'reviewing…' : 'generating…';
     return (
       <span
         className="text-[9px] px-1 py-0.5 rounded font-semibold inline-flex items-center gap-1 cell-stage-pulse"
         style={{
-          color: rp.color,
-          background: `color-mix(in oklab, ${rp.color} 14%, transparent)`,
-          border: `1px solid color-mix(in oklab, ${rp.color} 40%, transparent)`,
-          ['--stage-glow' as string]: rp.color,
+          color: rpColor,
+          background: `color-mix(in oklab, ${rpColor} 14%, transparent)`,
+          border: `1px solid color-mix(in oklab, ${rpColor} 40%, transparent)`,
+          ['--stage-glow' as string]: rpColor,
         }}
       >
         {label}
@@ -687,7 +677,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
     tag?: string;
     onScreen?: boolean;
     verdict?: string | null;
-    paletteKind: 'plan' | 'image' | 'video-review';
+    paletteKind: 'ref-plan' | 'ref-critic' | 'ref-artist' | 'vid-plan' | 'vid-critic' | 'vid-artist';
     onOpen: () => void;
   }) {
     return (
@@ -1758,13 +1748,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                     className={`truncate px-0.5 leading-[44px] tabular-nums text-center${palette.pulse ? ' cell-stage-pulse' : ''}`}
                     style={{
                       color: palette.color,
-                      // Object dimension (Director 2026-07-02): References = thin,
-                      // Video = bold — same colours, so weight tells you WHICH
-                      // object at a glance. Colour still carries role/status.
-                      fontWeight:
-                        cell?.kind === 'video-canonical' || cell?.kind === 'video-review'
-                          ? 700
-                          : 400,
+                      // WEIGHT axis (kebab grammar 2026-07-25): thin = awaiting,
+                      // bold = approved. Object now rides HUE (cold=ref/warm=video),
+                      // so weight is freed for approval — sourced from cellPalette.
+                      fontWeight: palette.weight,
                       // Scale the number DOWN as the shot count grows — at ~38
                       // shots the old fixed 18px was unreadable (cells too narrow).
                       fontSize: `${Math.max(7, Math.min(16, Math.round(400 / Math.max(1, times.length))))}px`,
@@ -1856,7 +1843,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                               id: p.id,
                               version: p.version,
                               status: p.status,
-                              paletteKind: 'plan',
+                              paletteKind: 'ref-plan',
                               onOpen: () => onOpenAsset?.(p.id),
                             }),
                           )}
@@ -1876,7 +1863,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                               version: c.version,
                               status: c.status,
                               verdict: c.verdict ?? null,
-                              paletteKind: 'plan',
+                              paletteKind: 'ref-critic',
                               onOpen: () => onOpenAsset?.(c.id),
                             }),
                           )}
@@ -1896,7 +1883,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                               version: r.version,
                               status: r.status,
                               onScreen: cell?.kind === 'image' && r.id === cell?.asset_id,
-                              paletteKind: 'image',
+                              paletteKind: 'ref-artist',
                               onOpen: () => onOpenAsset?.(r.id),
                             }),
                           )}
@@ -1965,7 +1952,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                               id: p.id,
                               version: p.version,
                               status: p.status,
-                              paletteKind: 'plan',
+                              paletteKind: 'vid-plan',
                               onOpen: () => onOpenAsset?.(p.id),
                             }),
                           )}
@@ -1985,7 +1972,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                               version: c.version,
                               status: c.status,
                               verdict: c.verdict ?? null,
-                              paletteKind: 'plan',
+                              paletteKind: 'vid-critic',
                               onOpen: () => onOpenAsset?.(c.id),
                             }),
                           )}
@@ -2005,7 +1992,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
                               version: v.version,
                               status: v.status,
                               onScreen: v.id === cell?.asset_id,
-                              paletteKind: 'video-review',
+                              paletteKind: 'vid-artist',
                               onOpen: () => {
                                 if (onCellClick) {
                                   onCellClick({ ...(cell as TimelineCell), asset_id: v.id });

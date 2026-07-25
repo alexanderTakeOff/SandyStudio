@@ -46,16 +46,16 @@
      in EpisodeTimeline shot strip. Used by AnimaticPlayer cellPalette. */
   --accent-orange:    #F97316;
   --accent-purple:    #A855F7;
-  /* q4a — per-shot live work stages on the timeline strip (AnimaticPlayer). */
-  --accent-stage-design:  #818CF8;
-  --accent-stage-animate: #A855F7;
-  /* Unified work-state language (2026-07-02) — COLOUR = who is working, shared
-     identically by the References and Video pipelines. Designer/Critic/Both/
-     Generating. Object (refs vs video) is shown by position, never colour. */
-  --accent-role-designer: #818CF8; /* indigo — Designer (plan) */
-  --accent-role-critic:   #F59E0B; /* amber  — Critic (verdict) */
-  --accent-role-both:     #14B8A6; /* teal   — Designer + Critic together */
-  --accent-role-artist:   #A855F7; /* violet — Artist generating ($) */
+  /* Kebab stage-identity ramp (2026-07-25) — HUE = family(temperature) × role,
+     STABLE for a sub-step's whole lifecycle; status never writes hue (glow=activity,
+     weight=approval). Defined ONCE here, deliberately NOT overridden per-theme, so a
+     stage's identity colour is theme-invariant. Cold = Image/Reference, Warm = Video. */
+  --stage-ref-plan:   #38BDF8; /* cold · sky    — Reference · План   */
+  --stage-ref-critic: #6366F1; /* cold · indigo — Reference · Критик */
+  --stage-ref-artist: #8B5CF6; /* cold · violet — Reference · Картинка ($) */
+  --stage-vid-plan:   #FDE047; /* warm · yellow — Video · План   */
+  --stage-vid-critic: #F97316; /* warm · orange — Video · Критик */
+  --stage-vid-artist: #C2410C; /* warm · burnt  — Video · Видео ($) */
 
   /* Status chips */
   --status-draft:    #64748B;
@@ -73,7 +73,7 @@
   /* Asset taxonomy (tokens map to theme accents) */
   --asset-script:     var(--accent-info);
   --asset-storyboard: var(--accent-secondary);
-  --asset-image:      #EC4899;
+  --asset-image:      var(--stage-ref-artist); /* cold violet — single source (was #EC4899 magenta) */
   --asset-video:      var(--accent-primary);
   --asset-audio:      var(--accent-warning);
   --asset-review:     var(--accent-tertiary);
@@ -126,9 +126,6 @@
   /* Phase A.1 — palette parity for REVISION + NEEDS_HUMAN_TWEAK on Sand Gold theme. */
   --accent-orange:    #E0834C;
   --accent-purple:    #B89968;
-  /* q4a — per-shot live work stages on the timeline strip (AnimaticPlayer). */
-  --accent-stage-design:  #7FA8C9;
-  --accent-stage-animate: #B98BB0;
 
   --status-draft:    #8C7A60;
   --status-review:   #FBBF24;
@@ -144,7 +141,7 @@
 
   --asset-script:     var(--accent-info);
   --asset-storyboard: var(--accent-secondary);
-  --asset-image:      #F472B6;
+  --asset-image:      var(--stage-ref-artist); /* cold violet — single source (was #F472B6) */
   --asset-video:      var(--accent-primary);
   --asset-audio:      var(--accent-warning);
   --asset-review:     var(--accent-tertiary);
@@ -186,9 +183,6 @@
   --accent-orange:    #FB923C;
   --accent-purple:    #C084FC;
   --accent-info:      #818CF8;
-  /* q4a — per-shot live work stages on the timeline strip (AnimaticPlayer). */
-  --accent-stage-design:  #5EC8E8;
-  --accent-stage-animate: #F472D0;
 
   --status-draft:    #6E6390;
   --status-review:   #818CF8;
@@ -204,7 +198,7 @@
 
   --asset-script:     var(--accent-info);
   --asset-storyboard: var(--accent-primary);
-  --asset-image:      var(--accent-tertiary);
+  --asset-image:      var(--stage-ref-artist); /* cold violet — single source (was var(--accent-tertiary)) */
   --asset-video:      var(--accent-secondary);
   --asset-audio:      var(--accent-warning);
   --asset-review:     #67E8F9;

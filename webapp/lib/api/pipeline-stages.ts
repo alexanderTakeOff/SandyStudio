@@ -516,20 +516,6 @@ export function activeWorkPhaseByShot(
   return map;
 }
 
-/**
- * CSS token + glow for a live work phase — the timeline cell recolours to this
- * while a designer / video-artist job runs on the shot (q4a). Theme tokens only
- * (Director: «не хардкод»); kept here (node-safe) so it is unit-testable without
- * importing the client AnimaticPlayer component.
- */
-export function liveStagePalette(phase: WorkPhase): { color: string; glow: string } {
-  const slot = phase === 'animate' ? 'animate' : 'design';
-  return {
-    color: `var(--accent-stage-${slot})`,
-    glow: `0 0 6px color-mix(in oklab, var(--accent-stage-${slot}) 60%, transparent)`,
-  };
-}
-
 // ──────────────────────────────────────────────────────────────────────────────
 // Unified work-state language (2026-07-02) — one visual vocabulary shared by the
 // References and Video pipelines (they are the SAME shape: Designer → Critic →
@@ -640,37 +626,64 @@ export function completedWorkByShot(
 }
 
 /**
- * The unified role palette — colour + glow + label for a set of live roles.
- * Colour keys off role, identically for references and video (single language):
- *   designer → indigo · critic → amber · both → teal (distinct combined) ·
- *   artist (generating, $) → violet.
- * Theme tokens only (Director: «не хардкод»). Node-safe (unit-testable).
+ * Role detection for a set of live roles → a stable `token` + human `label`.
+ * The COLOUR is no longer emitted here — under the kebab colour grammar
+ * (2026-07-25) hue = family × role (see `stageRamp`/`rampStop` below), composed
+ * at the call-site from this token. Node-safe (unit-testable).
  */
 export function workRolePalette(
   roles: readonly WorkRole[],
-): { color: string; glow: string; label: string; token: 'designer' | 'critic' | 'both' | 'artist' } {
+): { label: string; token: 'designer' | 'critic' | 'both' | 'artist' } {
   const hasDesigner = roles.includes('designer');
   const hasCritic = roles.includes('critic');
-  let token: 'designer' | 'critic' | 'both' | 'artist';
-  let label: string;
-  if (hasDesigner && hasCritic) {
-    token = 'both';
-    label = 'Designer + Critic';
-  } else if (hasCritic) {
-    token = 'critic';
-    label = 'Critic';
-  } else if (hasDesigner) {
-    token = 'designer';
-    label = 'Designer';
-  } else {
-    token = 'artist';
-    label = 'Generating';
+  if (hasDesigner && hasCritic) return { token: 'both', label: 'Designer + Critic' };
+  if (hasCritic) return { token: 'critic', label: 'Critic' };
+  if (hasDesigner) return { token: 'designer', label: 'Designer' };
+  return { token: 'artist', label: 'Generating' };
+}
+
+// ── Kebab colour grammar (2026-07-25) — hue = family(temperature) × role, STABLE
+// per sub-step; status never writes hue. ❄️ Reference = cold ramp, 🔥 Video = warm.
+// Node-safe + pure so both the animatic kebab and the episode stage-rail compose
+// identically and it is unit-testable without importing a client component.
+export type StageFamily = 'ref' | 'vid';
+export type StageRole = 'plan' | 'critic' | 'artist';
+
+/** Family × role → the stable stage-identity ramp token. Never depends on status. */
+export function stageRamp(family: StageFamily, role: StageRole): string {
+  return `var(--stage-${family}-${role})`;
+}
+
+/** WorkRole token (designer/critic/both/artist) → ramp stop. `both` rides critic. */
+export function rampStop(token: 'designer' | 'critic' | 'both' | 'artist'): StageRole {
+  return token === 'designer' ? 'plan' : token === 'artist' ? 'artist' : 'critic';
+}
+
+/**
+ * Map a cell `kind` (image / video-canonical / video-review) OR an enriched
+ * popover `paletteKind` (ref-/vid-plan|critic|artist) to its stable stage
+ * identity (family × role). Returns null for placeholders / unknown → "not started".
+ */
+export function stageIdentity(
+  kind: string | undefined,
+): { family: StageFamily; role: StageRole } | null {
+  switch (kind) {
+    case 'ref-plan':
+      return { family: 'ref', role: 'plan' };
+    case 'ref-critic':
+      return { family: 'ref', role: 'critic' };
+    case 'ref-artist':
+    case 'image':
+      return { family: 'ref', role: 'artist' };
+    case 'vid-plan':
+      return { family: 'vid', role: 'plan' };
+    case 'vid-critic':
+      return { family: 'vid', role: 'critic' };
+    case 'vid-artist':
+    case 'video-review':
+    case 'video-canonical':
+      return { family: 'vid', role: 'artist' };
+    default:
+      return null;
   }
-  const color = `var(--accent-role-${token})`;
-  return {
-    color,
-    glow: `0 0 6px color-mix(in oklab, ${color} 60%, transparent)`,
-    label,
-    token,
-  };
 }

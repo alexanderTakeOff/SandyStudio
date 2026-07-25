@@ -9,7 +9,6 @@ import {
   workPhaseForAgent,
   activeWorkPhaseByShot,
   completedWorkByShot,
-  liveStagePalette,
 } from '@/lib/api/pipeline-stages';
 
 const baseAsset = {
@@ -431,20 +430,5 @@ describe('completedWorkByShot — D7 persistent trail (settled, live excluded)',
     expect(m.get('SH01')?.roles).toEqual(['artist']);
     expect(m.has('SH02')).toBe(false);
     expect(m.size).toBe(1);
-  });
-});
-
-describe('liveStagePalette — theme tokens only, no hardcoded hex (q2)', () => {
-  it('animate → stage-animate token + matching glow', () => {
-    const p = liveStagePalette('animate');
-    expect(p.color).toBe('var(--accent-stage-animate)');
-    expect(p.glow).toContain('var(--accent-stage-animate)');
-    expect(p.color).not.toMatch(/#[0-9a-f]/i); // never inline hex
-  });
-  it('design → stage-design token + matching glow', () => {
-    const p = liveStagePalette('design');
-    expect(p.color).toBe('var(--accent-stage-design)');
-    expect(p.glow).toContain('var(--accent-stage-design)');
-    expect(p.color).not.toMatch(/#[0-9a-f]/i);
   });
 });

@@ -8,6 +8,9 @@ import {
   workRoleForAgent,
   activeWorkByShot,
   workRolePalette,
+  stageRamp,
+  rampStop,
+  stageIdentity,
 } from '@/lib/api/pipeline-stages';
 
 describe('workRoleForAgent', () => {
@@ -67,10 +70,41 @@ describe('workRolePalette', () => {
     expect(workRolePalette([]).token).toBe('artist'); // empty → generating default
   });
 
-  it('emits theme-token colours (no inline hex) + a human label', () => {
-    const both = workRolePalette(['designer', 'critic']);
-    expect(both.color).toBe('var(--accent-role-both)');
-    expect(both.label).toBe('Designer + Critic');
-    expect(workRolePalette(['designer']).color).toBe('var(--accent-role-designer)');
+  it('emits a human label (colour now composed from the ramp, not here)', () => {
+    expect(workRolePalette(['designer', 'critic']).label).toBe('Designer + Critic');
+    expect(workRolePalette(['critic']).label).toBe('Critic');
+    expect(workRolePalette(['designer']).label).toBe('Designer');
+    expect(workRolePalette([]).label).toBe('Generating');
+  });
+});
+
+// ── Kebab colour grammar (2026-07-25) — hue = family × role, status never writes it.
+describe('kebab colour grammar (stageRamp / rampStop / stageIdentity)', () => {
+  it('rampStop maps a work token to its ramp stop (both rides critic)', () => {
+    expect(rampStop('designer')).toBe('plan');
+    expect(rampStop('critic')).toBe('critic');
+    expect(rampStop('both')).toBe('critic');
+    expect(rampStop('artist')).toBe('artist');
+  });
+
+  it('stageRamp emits the family×role token (theme-invariant, no inline hex)', () => {
+    expect(stageRamp('ref', 'plan')).toBe('var(--stage-ref-plan)');
+    expect(stageRamp('ref', 'critic')).toBe('var(--stage-ref-critic)');
+    expect(stageRamp('vid', 'artist')).toBe('var(--stage-vid-artist)');
+    // composition: video designer work → warm plan stop.
+    expect(stageRamp('vid', rampStop('designer'))).toBe('var(--stage-vid-plan)');
+    expect(stageRamp('ref', rampStop('designer'))).toBe('var(--stage-ref-plan)');
+  });
+
+  it('stageIdentity maps cell kinds + enriched paletteKinds to family×role', () => {
+    expect(stageIdentity('image')).toEqual({ family: 'ref', role: 'artist' });
+    expect(stageIdentity('video-canonical')).toEqual({ family: 'vid', role: 'artist' });
+    expect(stageIdentity('ref-plan')).toEqual({ family: 'ref', role: 'plan' });
+    expect(stageIdentity('vid-critic')).toEqual({ family: 'vid', role: 'critic' });
+  });
+
+  it('stageIdentity returns null for placeholders / unknown (→ not started)', () => {
+    expect(stageIdentity('placeholder')).toBeNull();
+    expect(stageIdentity(undefined)).toBeNull();
   });
 });
