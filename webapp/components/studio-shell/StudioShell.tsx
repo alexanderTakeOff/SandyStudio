@@ -24,11 +24,9 @@ import { NotificationDotStyles } from '@/components/notifications/NotificationDo
 
 interface StudioShellProps {
   children: ReactNode;
-  governanceMode?: 1 | 2 | 3;
-  systemMode?: '===1===' | '===5===';
 }
 
-export function StudioShell({ children, governanceMode, systemMode }: StudioShellProps) {
+export function StudioShell({ children }: StudioShellProps) {
   return (
     <div
       className="relative min-h-screen grid"
@@ -57,7 +55,7 @@ export function StudioShell({ children, governanceMode, systemMode }: StudioShel
           each child page can adopt its own subsection-scoped scroll. */}
       <div className="relative z-20 flex flex-col min-w-0 h-screen overflow-y-auto">
         <div className="sticky top-0 z-10 bg-[var(--bg)]">
-          <StudioTopbar governanceMode={governanceMode} systemMode={systemMode} />
+          <StudioTopbar />
         </div>
         {children}
       </div>

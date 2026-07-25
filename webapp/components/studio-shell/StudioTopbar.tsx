@@ -1,46 +1,19 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // components/studio-shell/StudioTopbar.tsx
-// Top status/search bar per uiux.md §8.1.
-// Phase 5c: chips become interactive levers per uiux.md §8.4.
+// The non-scrolling top bar. Per the 2026-07-24 UI cleanup it is no longer global
+// chrome: it is a CONTEXTUAL PAGE HEADER host. Each page portals its own identity
+// + actions into `#studio-topbar-slot` (see the episode page for the pattern).
+// When a page portals nothing, the bar is simply empty.
+// History: search mockup + system-mode (ANALYTICS/EDIT) chip removed 2026-07-24;
+// governance-mode lever moved into Episode Settings in the same cleanup (Chunk 2c).
 // ──────────────────────────────────────────────────────────────────────────────
 
-'use client';
-
-import { Search } from 'lucide-react';
-import { SystemModeChip } from './SystemModeChip';
-import { GovernanceChip } from './GovernanceChip';
-
-interface StudioTopbarProps {
-  governanceMode?: 1 | 2 | 3;
-  systemMode?: '===1===' | '===5===';
-}
-
-export function StudioTopbar({
-  governanceMode = 1,
-  systemMode = '===1===',
-}: StudioTopbarProps) {
+export function StudioTopbar() {
   return (
     <header className="relative z-20 flex items-center gap-3 h-14 px-4 border-b border-glass bg-panel-glass backdrop-blur-md">
-      {/* Search */}
-      <div className="flex-1 max-w-xl">
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-          />
-          <input
-            type="text"
-            placeholder="Search episodes, assets, agents…"
-            className="w-full h-9 pl-9 pr-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--accent-primary)]"
-          />
-        </div>
-      </div>
-
-      {/* Mode chips — now interactive */}
-      <div className="flex items-center gap-2">
-        <SystemModeChip current={systemMode} />
-        <GovernanceChip current={governanceMode} />
-      </div>
+      {/* Contextual page-header slot — pages portal `code · title · budget · ⋯`
+          (or their own identity) into this by id. Empty on pages that don't. */}
+      <div id="studio-topbar-slot" className="flex-1 min-w-0 flex items-center gap-3" />
     </header>
   );
 }

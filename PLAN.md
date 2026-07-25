@@ -19,8 +19,8 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
-Date:   2026-07-25 (ВКЛАДКА ДЕНЕГ восстановлена — Тео, КОД, ===5===). PR #43 (draft),
-  ветка `claude/restore-budget-tab-1kqkr4`.
+Date:   2026-07-25 (ВКЛАДКА ДЕНЕГ восстановлена — Тео, КОД, ===5===). PR #43 СМЕРДЖЕН
+  в master (`1c4266d`), ветка `claude/restore-budget-tab-1kqkr4`.
 Status: Директор: «вкладка бюджет работала на первых эпизодах, потом перестала».
   КОРНЕВАЯ ПРИЧИНА найдена: `/api/budget` читал `budget_log` голым `.select()`.
   PostgREST режет незаранженный запрос на 1000 строк и НЕ отдаёт ошибку — как только
@@ -61,6 +61,28 @@ Next:   Смоук на живой БД: открыть /budget → сверит
   новые эпизоды больше не $0. Затем — реальные тарифы для 4 моделей выше. БЭКЛОГ: PLAN.md
   916 строк против капа ≤200 — компакция сильно owed, нужен вердикт Директора что резать.
 Mode:   ===5=== EDIT (Director-authorized).
+```
+
+```
+Date:   2026-07-25 (Inbox: кнопка Clear inbox — PR #42 смерджен в master, Тео, ===5===).
+Status: Директор: «too much information» в Inbox. Причина найдена: фид склеен из двух
+  источников с разным старением. Ассеты самоочищаются (видны только пока status=REVIEW).
+  События — нет: видны пока resolved_at IS NULL, а единственным писателем resolved_at во
+  всём репо был разбор Bible-расширений. Значит decision_requested / input_requested /
+  blocker_raised / budget_threshold_reached лежали вечно (ни TTL, ни cleanup-джобы) и, при
+  обрезке фида на 50 строках с сортировкой «сначала старые», выдавливали свежую работу.
+  Фикс: POST /api/director/inbox/clear ставит resolved_at уведомлениям в области активного
+  фильтра (q2 filter-aware: blockers — только блокеры/бюджет, visual — ничего). НЕ чистит
+  ассеты на утверждении (это = решение → смена статуса → запуск DAG), canon_extension_
+  proposed (предложения внутри metadata) и rule_proposal (Skill Editor — Директор: не чисти).
+  Правила вынесены в lib/api/inbox-clear.ts — сервер и счётчик на кнопке не могут разойтись.
+  Аудит: config_updated с metadata.action='inbox_clear'; скрытое остаётся в Activity.
+  Миграции нет. Специфика: director_inbox.md §8.3 + §15, uiux.md §10.
+Verify: tsc clean · 1488/1489 тестов · replay-pilot 30/30. Единственный упавший —
+  storage-probe «traversal even when normalised»: он про Windows-путь `C:\foo\..\bar`,
+  падает так же на master в Linux-контейнере, к правке отношения не имеет.
+Next:   Смоук на живом стеке: накопить события → Clear inbox → бейдж в левом рейле падает
+  сразу, ассеты на утверждении остались. Иначе — что скажет Директор.
 ```
 
 ```

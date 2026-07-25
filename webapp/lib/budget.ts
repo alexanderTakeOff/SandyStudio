@@ -30,6 +30,26 @@ import type { AgentId } from './agents/types';
 const PG_UNIQUE_VIOLATION = '23505';
 
 /**
+ * Actors that spend money but are NOT pipeline agents (2026-07-25).
+ *
+ * `budget_log.agent_id` is a plain text column — the `AgentId` union is a TS-side
+ * constraint on this module, and it exists to describe agents that have a gate
+ * spec, a registry entry and an output file type. An advisory critic fired from a
+ * Director button has none of those, so adding it to `AgentId` would force four
+ * exhaustive maps to invent entries for a stage that does not exist.
+ *
+ * The ledger's question is narrower — "who spent this?" — so it accepts these
+ * cost-only actors alongside real agents. Keep the list short: anything that
+ * genuinely belongs in the pipeline belongs in `AgentId` instead.
+ */
+export type LedgerActorId =
+  /** Post-render Visual Critic (lib/agents/runners/visual-shot-critic.ts). */
+  | 'EXEC-VCRIT';
+
+/** Anything that may appear in `budget_log.agent_id`. */
+export type BudgetActorId = AgentId | LedgerActorId;
+
+/**
  * Default per-episode budget ceiling in USD (Director 2026-07-06 — applied at
  * episode CREATION as a real hard limit, not just a UI prefill that needs a
  * manual Save). A series-level `episode_budget_ceiling` overrides it; otherwise
@@ -251,7 +271,8 @@ export interface RecordCostInput {
    */
   jobId: string | null;
   episodeId: string | null;
-  agentId: AgentId;
+  /** Pipeline agent, or a cost-only actor (see `LedgerActorId`). */
+  agentId: BudgetActorId;
   costUsd: number;
   /** "anthropic" | "fal_ai" | "youtube" | "mock" — for budget_log analysis. */
   apiProvider: string;

@@ -215,6 +215,21 @@ One execution of a contract — the runtime job that consumes the input, calls t
 ### Cost ceiling / Потолок стоимости
 Hard upper bound in USD specified in a contract (`cost_ceiling_usd`). If a single contract instance exceeds this, the runtime aborts the job, marks it FAILED, and logs the violation. Per-episode budget ceilings are separate (see [`webapp/lib/budget.ts`](../webapp/lib/budget.ts)).
 
+### Itemized ledger / Постатейный журнал (`budget_log`)
+The **authoritative** record of money spent: one row per paid call, carrying agent, provider, model, operation and `cost_usd`. Includes everything — pipeline agents, Polina (`EXEC-CONC`), Director rerolls, critics, Bible spend. This is the number the Budget tab quotes. Added 2026-07-25 as the canonical term for "where the money actually went".
+
+### Reservation ledger / Журнал резерваций (`episodes.budget_spent`)
+The **ceiling-enforcement** counter, maintained by the atomic `increment_budget_spent` RPC (migration 0037) so concurrent shots cannot overspend. Deliberately **excludes** Polina's spend (her orchestration must not consume the production ceiling) and carries estimate-vs-actual reconciliation noise. It is therefore NOT the episode total — it is shown apart from it.
+
+### Drift / Расхождение (itemized − reserved)
+The gap between the two ledgers for one episode. Non-zero is **expected** (Polina by design). A large gap means one of the two is wrong and warrants a look. Surfaced per-episode and studio-wide on the Budget tab rather than silently resolved by picking a favourite ledger.
+
+### Studio-level spend / Общестудийный расход (unattributed)
+Itemized rows with `episode_id IS NULL` — series/Bible work (Bible images, Bible enrich) and global Polina turns. Real money that no episode ceiling governs. Counted in the studio total and reported as its own block, never dropped just because it has no episode to sit under.
+
+### Unpriced model / Немодель без цены
+A token-billed model with no entry in the rate table (`MODEL_RATES` in [`webapp/lib/agents/providers/anthropic-text.ts`](../webapp/lib/agents/providers/anthropic-text.ts)). Its recorded cost is the conservative Sonnet fallback, i.e. a **guess presented as a number**. The Budget tab names such models and the dollars resting on them; adding the real rate clears the warning. Verify rates against the vendor's live pricing page — training data lags.
+
 ### JSON block / JSON-блок
 Structured machine-readable output appended at the end of a text agent's markdown response, wrapped in a fenced ` ```json ` code block. The runtime parses the LAST such block in the response (so models that include schema examples earlier still emit canonical output at the end). Used by Screenwriter, Script Reviewer, Storyboarder, World Checker, Copywriter to deliver typed structured payloads alongside human-readable prose.
 

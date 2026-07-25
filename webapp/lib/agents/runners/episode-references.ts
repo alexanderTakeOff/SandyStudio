@@ -2284,6 +2284,9 @@ export async function runEpisodeReferences(
         prompt,
         assetType: `IMG-episode_ref_${job.slug}`,
         seriesId,
+        // Bill the guardian's own Sonnet call to this episode (2026-07-25) —
+        // one pre-flight per generated reference is real money.
+        episodeId: typeof episodeId === 'string' ? episodeId : null,
       });
       if (!guardResult.skipped) {
         styleVerdictPre = guardResult.verdict;

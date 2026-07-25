@@ -19,6 +19,7 @@ import { Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { PeekHint } from '@/components/ui/PeekHint';
 import { EpisodeGenerationConfig } from './EpisodeGenerationConfig';
+import { GovernanceChip, type GovernanceMode } from '@/components/studio-shell/GovernanceChip';
 import { readPipelineMode, type PipelineMode } from '@/lib/api/pipeline-mode';
 import { readOnModelStrictness, type OnModelStrictness } from '@/lib/api/on-model';
 
@@ -30,6 +31,9 @@ interface EpisodeSettingsCardProps {
   initialMetadata?: Record<string, unknown> | null;
   /** Initial per-episode budget cap (USD) from the page payload. null = no cap. */
   initialBudgetCeiling?: number | null;
+  /** Effective governance mode from the page payload — the GovernanceChip's
+   *  fallback before it self-refetches the episode's effective mode. */
+  initialGovernanceMode?: number | null;
 }
 
 interface SettingsState {
@@ -74,10 +78,16 @@ function readCap(meta: Record<string, unknown> | null | undefined, key: string):
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
+// Narrow the page's numeric governance_mode to the 1..3 union GovernanceChip wants.
+function asGovernanceMode(v: number | null | undefined): GovernanceMode {
+  return v === 2 || v === 3 ? v : 1;
+}
+
 export function EpisodeSettingsCard({
   episodeId,
   initialMetadata,
   initialBudgetCeiling = null,
+  initialGovernanceMode = null,
 }: EpisodeSettingsCardProps) {
   const [state, setState] = useState<SettingsState>({
     anchor_chain_enabled: readAnchorChainEnabled(initialMetadata ?? null),
@@ -361,6 +371,25 @@ export function EpisodeSettingsCard({
       {!collapsed && (
       <CardBody>
         <div className="space-y-3">
+          {/* Governance mode (moved here from the global topbar, 2026-07-24 Chunk
+              2c): it is a per-episode approval setting, not global chrome. The chip
+              self-reads the episode UUID from the URL, so it reads AND writes THIS
+              episode's effective mode; `current` is only the pre-fetch fallback. */}
+          <div>
+            <div className="text-sm font-medium text-text-primary">Governance mode</div>
+            <div className="text-xs text-text-muted mt-0.5 leading-relaxed">
+              Who approves each gate for this episode. <strong>MANUAL</strong> — you approve
+              everything (safest). <strong>HYBRID</strong> — shared with EXEC-DIR-AI per the
+              Authority Matrix. <strong>DELEGATED</strong> — EXEC-DIR-AI handles all but hard
+              limits. Hard limits (Publish · LOCKED · Budget · Mode) always require you.
+            </div>
+            <div className="mt-2">
+              <GovernanceChip current={asGovernanceMode(initialGovernanceMode)} />
+            </div>
+          </div>
+
+          <div className="border-t border-glass pt-3" />
+
           {/* S-reorder (2026-07-01): pipeline mode. Sequential = today's
               refs→animatic→video. Parallel = 2 refs→2 video pilots→fanout, per-ref
               canon-gate, video not gated on an animatic. Switchable mid-run. */}

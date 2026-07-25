@@ -6,14 +6,15 @@
 'use client';
 
 import { use, useState, useEffect, useRef, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import useSWR from 'swr';
-import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-import { ArrowLeft, RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Archive, Trash2, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
+import { RefreshCw, RotateCcw, MoreHorizontal, Play, Eye, Pencil, Trash2, CheckCircle2, ChevronDown, ChevronRight, Power } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { StageKebabMenu } from '@/components/pipeline/StageKebabMenu';
 import { StageWorkspacePanel, type WorkstationStage } from '@/components/pipeline/StageWorkspacePanel';
 import { PreviewDrawer } from '@/components/preview/PreviewDrawer';
@@ -134,8 +135,22 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
   const [triggerOpen, setTriggerOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [markCompleteOpen, setMarkCompleteOpen] = useState(false);
+  // Emergency server controls (moved into the header kebab, 2026-07-24).
+  const [serverAction, setServerAction] = useState<'stop' | 'restart' | null>(null);
+  // Whole-episode Visual Critic (moved from the timeline header into the kebab).
+  const [visualCheckMsg, setVisualCheckMsg] = useState<string | null>(null);
+  const [visualChecking, setVisualChecking] = useState(false);
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState<string | undefined>();
+
+  // Chunk 2c (2026-07-24): the episode header (code · title · budget · ⋯) is
+  // portaled UP into the sticky StudioTopbar's `#studio-topbar-slot`, turning the
+  // top bar into this page's contextual header. Grab the slot node after mount;
+  // it lives in the shell rendered above this page, so it exists by first effect.
+  const [topbarSlot, setTopbarSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setTopbarSlot(document.getElementById('studio-topbar-slot'));
+  }, []);
 
   // Resizable left-rail width (px), persisted. Mirrors ConciergePanel's resize
   // handle (no new dependency). Hydrated from localStorage in an effect so SSR
@@ -249,84 +264,164 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
       })
     : feed;
 
+  async function handleServerAction(action: 'stop' | 'restart'): Promise<void> {
+    const label =
+      action === 'stop'
+        ? 'STOP servers: убить Inngest + app и запарковать очередь (шторм не возобновится). Продолжить?'
+        : 'Restart servers: перезапустить app + Inngest (start-stack). Продолжить?';
+    if (!window.confirm(label)) return;
+    setServerAction(action);
+    try {
+      await fetch('/api/system/servers', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+    } catch {
+      // start-stack kills the app mid-request — a network error IS the success path.
+    }
+    if (action === 'restart') {
+      window.setTimeout(() => window.location.reload(), 30_000);
+    } else {
+      setServerAction(null);
+    }
+  }
+
+  async function handleVisualCheckEpisode(): Promise<void> {
+    setVisualChecking(true);
+    setVisualCheckMsg('👁 Проверяю эпизод…');
+    try {
+      const res = await fetch(`/api/episodes/${id}/visual-critic`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        data?: { checked?: number; flagged?: number };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(j.error ?? 'Visual check failed');
+      setVisualCheckMsg(
+        `👁 Проверено ${j.data?.checked ?? 0}, помечено ${j.data?.flagged ?? 0}. Детали — в Activity.`,
+      );
+    } catch (e) {
+      setVisualCheckMsg(`👁 Ошибка: ${(e as Error).message}`);
+    } finally {
+      setVisualChecking(false);
+    }
+  }
+
+  const actionItems: DropdownEntry[] = [
+    { label: 'Refresh', icon: <RefreshCw size={14} />, onSelect: () => mutate() },
+    { label: 'Re-trigger…', icon: <RotateCcw size={14} />, onSelect: () => setTriggerOpen(true) },
+    {
+      label: visualChecking ? 'Visual check…' : 'Visual check',
+      icon: <Eye size={14} />,
+      onSelect: () => void handleVisualCheckEpisode(),
+    },
+  ];
+  if (episode.status !== 'COMPLETE' && episode.status !== 'ARCHIVED') {
+    actionItems.push({
+      label: 'Mark Complete',
+      icon: <CheckCircle2 size={14} />,
+      onSelect: () => setMarkCompleteOpen(true),
+    });
+  }
+  if (episode.status !== 'ARCHIVED') {
+    actionItems.push(
+      { separator: true },
+      {
+        label: 'Move to Trash…',
+        icon: <Trash2 size={14} />,
+        destructive: true,
+        onSelect: () => setArchiveOpen(true),
+      },
+    );
+  }
+  actionItems.push(
+    { separator: true },
+    {
+      label: 'STOP servers',
+      icon: <Power size={14} />,
+      destructive: true,
+      onSelect: () => void handleServerAction('stop'),
+    },
+    {
+      label: serverAction === 'restart' ? 'Restarting…' : 'Restart servers',
+      icon: <RotateCcw size={14} />,
+      onSelect: () => void handleServerAction('restart'),
+    },
+  );
+
   return (
     <StudioContentFrame>
-      {/* Header */}
-      <div className="mb-5">
-        <Link href="/episodes" className="text-xs text-text-muted hover:text-text-primary inline-flex items-center gap-1">
-          <ArrowLeft size={12} /> Episodes
-        </Link>
-        <div className="flex items-center justify-between mt-2">
-          <div>
-            <h1 className="text-2xl font-semibold text-text-primary">
-              {episode.episode_code}
+      {/* Header — portaled UP into the sticky StudioTopbar (Chunk 2c): the top bar
+          IS this episode's contextual header. Compact single row: code · title
+          (no quotes) · budget on the left, the actions kebab pinned right. */}
+      {topbarSlot &&
+        createPortal(
+          <>
+            <div className="flex items-baseline gap-3 min-w-0 flex-1">
+              <span
+                className="text-sm font-semibold shrink-0"
+                style={{
+                  color:
+                    episode.status === 'ARCHIVED'
+                      ? 'var(--accent-warning)'
+                      : 'var(--text-primary)',
+                }}
+                title={episode.status === 'ARCHIVED' ? 'Archived (in Trash)' : undefined}
+              >
+                {episode.episode_code}
+              </span>
               {episode.title_working && (
-                <span className="text-text-secondary font-normal text-lg ml-3">
-                  &ldquo;{episode.title_working}&rdquo;
+                <span
+                  className="text-sm font-normal truncate"
+                  style={{
+                    color:
+                      episode.status === 'ARCHIVED'
+                        ? 'color-mix(in oklab, var(--accent-warning) 70%, var(--text-muted))'
+                        : 'var(--text-secondary)',
+                  }}
+                >
+                  {episode.title_working}
                 </span>
               )}
-            </h1>
-            <div className="flex items-center gap-3 mt-1.5 text-xs">
-              <span
-                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded uppercase tracking-wider font-semibold"
-                style={
-                  episode.status === 'ARCHIVED'
-                    ? {
-                        background: 'color-mix(in oklab, var(--accent-warning) 16%, transparent)',
-                        color: 'var(--accent-warning)',
-                      }
-                    : {
-                        background: 'color-mix(in oklab, var(--accent-info) 14%, transparent)',
-                        color: 'var(--accent-info)',
-                      }
-                }
-              >
-                {episode.status === 'ARCHIVED' && <Archive size={11} />}
-                {episode.status.replace(/_/g, ' ').toLowerCase()}
-                {episode.status === 'ARCHIVED' && episode.metadata?.archival && (
-                  <>
-                    {' · '}
-                    {episode.metadata.archival.state.toLowerCase()}
-                    {episode.metadata.archival.total_shots != null && (
-                      <>
-                        {' '}
-                        {episode.metadata.archival.completed_shots}/
-                        {episode.metadata.archival.total_shots}
-                      </>
-                    )}
-                  </>
-                )}
-              </span>
-              <span className="text-text-muted">Mode {episode.governance_mode}</span>
-              <span className="text-text-muted">·</span>
-              <span className="text-text-muted">
+              <span className="text-xs text-text-muted whitespace-nowrap shrink-0">
                 ${(episode.budget_spent ?? 0).toFixed(2)} / ${(episode.budget_ceiling ?? 0).toFixed(2)}
               </span>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={() => mutate()}>
-              <RefreshCw size={14} /> Refresh
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setTriggerOpen(true)}>
-              <RotateCcw size={14} /> Re-trigger…
-            </Button>
-            {episode.status !== 'COMPLETE' && episode.status !== 'ARCHIVED' && (
-              <Button variant="ghost" size="sm" onClick={() => setMarkCompleteOpen(true)} title="Mark episode complete">
-                <CheckCircle2 size={14} /> Mark Complete
-              </Button>
-            )}
-            {episode.status !== 'ARCHIVED' && (
-              <Button variant="ghost" size="sm" onClick={() => setArchiveOpen(true)} title="Move episode to Trash…">
-                <Trash2 size={14} /> Move to Trash…
-              </Button>
-            )}
-            <Button variant="ghost" size="sm">
-              <MoreHorizontal size={14} />
-            </Button>
-          </div>
+            <DropdownMenu
+              ariaLabel="Episode actions"
+              width={220}
+              trigger={
+                <span className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-glass text-text-secondary hover:bg-[var(--panel-hover-bg)] transition-colors">
+                  <MoreHorizontal size={16} />
+                </span>
+              }
+              items={actionItems}
+            />
+          </>,
+          topbarSlot,
+        )}
+
+      {visualCheckMsg && (
+        <div
+          className="mb-4 flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
+          style={{
+            background: 'color-mix(in oklab, var(--accent-info) 10%, transparent)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <span className="flex-1 whitespace-pre-wrap">{visualCheckMsg}</span>
+          <button
+            onClick={() => setVisualCheckMsg(null)}
+            className="text-text-muted hover:text-text-primary"
+          >
+            ✕
+          </button>
         </div>
-      </div>
+      )}
 
       {/* BRIEF_PENDING action banner */}
       {episode.status === 'BRIEF_PENDING' && (
@@ -422,6 +517,7 @@ export default function PipelinePage({ params }: { params: Promise<{ id: string 
             episodeId={id}
             initialMetadata={episode.metadata ?? null}
             initialBudgetCeiling={episode.budget_ceiling ?? null}
+            initialGovernanceMode={episode.governance_mode}
           />
 
           {/* Workstation (selected stage) OR activity feed (default surface). */}

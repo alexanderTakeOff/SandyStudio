@@ -15,6 +15,7 @@ import * as path from 'node:path';
 import OpenAI from 'openai';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
+import { computeCostUsd } from './providers/anthropic-text';
 
 type Client = SupabaseClient<Database>;
 
@@ -40,6 +41,27 @@ export interface VisualVerdict {
   verdict: 'PASS' | 'REVISE' | 'FAIL';
   findings: VisualFinding[];
   summary: string;
+}
+
+/**
+ * Token usage + priced cost of ONE vision call (2026-07-25).
+ *
+ * The visual critic is a genuinely expensive agent — a whole-episode sweep sends
+ * ~50 reference images plus 10 frames per video shot to a vision model — and its
+ * `usage` was previously read off the response and dropped on the floor, so none
+ * of it reached budget_log. Every Director press of "check whole episode" spent
+ * real money the Budget tab could not see. Callers record this.
+ */
+export interface VisualVerdictUsage {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  model: string;
+}
+
+export interface MeteredVisualVerdict {
+  verdict: VisualVerdict;
+  usage: VisualVerdictUsage;
 }
 
 /** Resolve the rubric skill file across worktree layouts (webapp cwd → repo root). */
@@ -87,6 +109,22 @@ export async function runVisualVerdict(opts: {
   locationCanon?: string;
   model: string;
 }): Promise<VisualVerdict> {
+  return (await runVisualVerdictMetered(opts)).verdict;
+}
+
+/**
+ * Same call as `runVisualVerdict`, but returns the priced token usage alongside
+ * the verdict so the caller can write a budget_log row. Prefer this anywhere the
+ * critic runs against the live studio; the plain wrapper above exists for the
+ * calibration script, which spends the Director's own key outside the ledger.
+ */
+export async function runVisualVerdictMetered(opts: {
+  frames: string[];
+  contract: unknown;
+  styleCanon: string;
+  locationCanon?: string;
+  model: string;
+}): Promise<MeteredVisualVerdict> {
   const { frames, contract, styleCanon, locationCanon, model } = opts;
   if (frames.length === 0) throw new Error('runVisualVerdict: no frames');
   const { client, tokenParam } = visionClient(model);
@@ -113,13 +151,46 @@ export async function runVisualVerdict(opts: {
     ],
   });
 
+  // Price the call BEFORE parsing: the tokens are billed whether or not the model
+  // returned parseable JSON, so a parse failure must not swallow the cost. The
+  // caller records what it gets from the thrown-path too (see visual-shot-critic).
+  const inputTokens = res.usage?.prompt_tokens ?? 0;
+  const outputTokens = res.usage?.completion_tokens ?? 0;
+  const usage: VisualVerdictUsage = {
+    inputTokens,
+    outputTokens,
+    costUsd: computeCostUsd({ inputTokens, outputTokens }, model),
+    model,
+  };
+
   const raw = res.choices[0]?.message?.content ?? '';
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`visual verdict: model returned no JSON: ${raw.slice(0, 200)}`);
+  if (!jsonMatch) {
+    throw new VisualVerdictParseError(
+      `visual verdict: model returned no JSON: ${raw.slice(0, 200)}`,
+      usage,
+    );
+  }
   const parsed = JSON.parse(jsonMatch[0]) as VisualVerdict;
-  if (!parsed.verdict) throw new Error('visual verdict: missing "verdict" field');
+  if (!parsed.verdict) {
+    throw new VisualVerdictParseError('visual verdict: missing "verdict" field', usage);
+  }
   parsed.findings = Array.isArray(parsed.findings) ? parsed.findings : [];
-  return parsed;
+  return { verdict: parsed, usage };
+}
+
+/**
+ * Thrown when the vision call succeeded (and was BILLED) but its output could not
+ * be parsed into a verdict. Carries the usage so the caller still records the
+ * spend — a wasted call is exactly the spend the Director most wants to see.
+ */
+export class VisualVerdictParseError extends Error {
+  readonly usage: VisualVerdictUsage;
+  constructor(message: string, usage: VisualVerdictUsage) {
+    super(message);
+    this.name = 'VisualVerdictParseError';
+    this.usage = usage;
+  }
 }
 
 /** The shot's authoring contract, pulled from the episode's APPROVED storyboard JSON block. */

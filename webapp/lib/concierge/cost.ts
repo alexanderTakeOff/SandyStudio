@@ -18,6 +18,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/supabase/types.gen';
 import { computeCostUsd } from '@/lib/agents/providers/anthropic-text';
+import { pagedSelect } from '@/lib/api/paged-select';
 import { conciergeProvider } from './llm';
 
 type Client = SupabaseClient<Database>;
@@ -122,21 +123,31 @@ export async function isConciergeBudgetTripped(
   // Per-episode mode (Director 2026-07-05): when an episodeId is supplied, the cap
   // is the episode's Polina slice and spend is LIFETIME for that episode (a budget,
   // not a rolling window). Global mode (no episodeId) keeps the 24h runaway breaker.
-  let query = client
-    .from('budget_log')
-    .select('cost_usd, api_provider')
-    .eq('agent_id', CONCIERGE_AGENT_ID);
-  if (episodeId) {
-    query = query.eq('episode_id', episodeId);
-  } else {
-    const sinceIso = new Date(Date.now() - opts.windowHours * 3_600_000).toISOString();
-    query = query.gte('created_at', sinceIso);
-  }
-  const { data, error } = await query;
-  if (error) {
+  // Paged (2026-07-25): a bare select stops at PostgREST's 1000-row cap with no
+  // error, which for a cost breaker fails in the WRONG direction — spend past row
+  // 1000 is invisible, so the cap under-counts and never trips. The per-episode
+  // limb is lifetime-scoped and is the one that can realistically pass 1000 rows.
+  const sinceIso = episodeId
+    ? null
+    : new Date(Date.now() - opts.windowHours * 3_600_000).toISOString();
+  let rows: Array<{ cost_usd: number | null; api_provider: string | null }>;
+  try {
+    rows = await pagedSelect<{ cost_usd: number | null; api_provider: string | null }>(
+      () => {
+        const q = client
+          .from('budget_log')
+          .select('cost_usd, api_provider')
+          .eq('agent_id', CONCIERGE_AGENT_ID);
+        return episodeId
+          ? q.eq('episode_id', episodeId)
+          : q.gte('created_at', sinceIso as string);
+      },
+    );
+  } catch {
+    // FAIL OPEN, as before — the cap is a cost backstop, not a security control,
+    // and must not wedge Polina over a transient query failure.
     return { tripped: false, spent: 0, cap: opts.capUsd, calls: 0, maxCalls: opts.maxCalls, reason: null };
   }
-  const rows = (data ?? []) as Array<{ cost_usd: number | null; api_provider: string | null }>;
   const spent = rows.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
   // Count-fence counts only PAID/unknown-provider calls; free providers are exempt.
   const calls = rows.filter((r) => !isFreeConciergeProvider(r.api_provider)).length;

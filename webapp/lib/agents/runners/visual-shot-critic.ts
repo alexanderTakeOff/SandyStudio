@@ -20,7 +20,15 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
 import { logEvent } from '../../api/events';
 import { resolveVisualCriticModel } from '../../api/visual-critic-provider-config';
-import { runVisualVerdict, loadShotContract, loadStyleCanon, loadLocationCanon, type VisualVerdict } from '../visual-verdict';
+import {
+  runVisualVerdictMetered,
+  VisualVerdictParseError,
+  loadShotContract,
+  loadStyleCanon,
+  loadLocationCanon,
+  type VisualVerdict,
+} from '../visual-verdict';
+import { recordCost } from '../../budget';
 import { sampleVideoFrames } from '../sample-frames';
 import { cachedFileIfPresent } from '../../media-cache';
 import { downloadFile } from '../providers/drive';
@@ -109,6 +117,54 @@ export interface VisualCriticResult {
   kind: 'ref' | 'video';
   verdict: VisualVerdict | null;
   error?: string;
+  /**
+   * Priced cost of this asset's vision call (2026-07-25). Non-zero even when
+   * `verdict` is null and `error` is set, if the model was reached and billed —
+   * a wasted paid call must still show up on the Budget tab.
+   */
+  costUsd: number;
+}
+
+/**
+ * Write one budget_log row for a vision call (2026-07-25).
+ *
+ * Per-call rather than one row per sweep, so the ledger shows how many judgements
+ * a whole-episode check actually paid for. `jobId: null` — the critic is advisory
+ * and Director-triggered, with no Inngest job row (same convention as the manual
+ * rerolls in /api/assets/[id]/regenerate-image). `enforceCeiling: false` because
+ * the tokens are already billed by the time we get here; refusing the row would
+ * lose the audit trail rather than save the money.
+ *
+ * Best-effort: an accounting hiccup must never break an advisory critic run.
+ */
+async function billVisionCall(
+  supabase: Client,
+  episodeId: string,
+  costUsd: number,
+  model: string,
+): Promise<void> {
+  if (costUsd <= 0) return;
+  try {
+    await recordCost(supabase, {
+      jobId: null,
+      episodeId,
+      agentId: 'EXEC-VCRIT',
+      costUsd,
+      apiProvider: providerOfModel(model),
+      modelOrTier: model,
+      operation: 'visual_critic',
+      enforceCeiling: false,
+    });
+  } catch {
+    /* advisory path — never fail a critic run over a ledger write */
+  }
+}
+
+/** Vendor bucket from the model id — mirrors visionClient()'s prefix routing. */
+function providerOfModel(model: string): string {
+  if (model.startsWith('gemini')) return 'gemini';
+  if (model.startsWith('claude')) return 'anthropic';
+  return 'openai';
 }
 
 /**
@@ -189,8 +245,10 @@ export async function runVisualCriticForEpisode(
         ? await loadLocationCanon(supabase, seriesId, locationSlugOf(contract))
         : '(no series)';
 
-      const verdict = await runVisualVerdict({ frames, contract, styleCanon, locationCanon, model });
-      results.push({ assetId: row.id, shotId, kind: assetKind, verdict });
+      const metered = await runVisualVerdictMetered({ frames, contract, styleCanon, locationCanon, model });
+      const verdict = metered.verdict;
+      await billVisionCall(supabase, episodeId, metered.usage.costUsd, model);
+      results.push({ assetId: row.id, shotId, kind: assetKind, verdict, costUsd: metered.usage.costUsd });
 
       const critical = verdict.findings.filter((f) => f.severity === 'critical').length;
       const major = verdict.findings.filter((f) => f.severity === 'major').length;
@@ -216,7 +274,16 @@ export async function runVisualCriticForEpisode(
       });
     } catch (err) {
       const error = err instanceof Error ? err.message : 'unknown';
-      results.push({ assetId: row.id, shotId, kind: assetKind, verdict: null, error });
+      // A parse failure means the vision call DID happen and was billed. Record it
+      // — a paid call that produced nothing usable is precisely the waste the
+      // Director needs visible. Other failures (no frames, no contract) never
+      // reached the model and cost nothing.
+      const wastedUsd =
+        err instanceof VisualVerdictParseError ? err.usage.costUsd : 0;
+      if (wastedUsd > 0) {
+        await billVisionCall(supabase, episodeId, wastedUsd, model);
+      }
+      results.push({ assetId: row.id, shotId, kind: assetKind, verdict: null, error, costUsd: wastedUsd });
       await logEvent(supabase, {
         event_type: 'manual_trigger',
         severity: 'info',

@@ -27,6 +27,7 @@ import {
   EpisodeReferencesError,
 } from '@/lib/agents/runners/episode-references';
 import { runUpscaleOnly } from '@/lib/agents/runners/eref-upscale-only';
+import { recordCost } from '@/lib/budget';
 import { clearErefCancel } from '@/lib/api/eref-cancel';
 import { loadAgentInputs, insertJobRow, markJobCompleted, markJobFailed } from '@/lib/agents/runner';
 import { validateAgentInputs } from '@/lib/agents/gate';
@@ -73,6 +74,33 @@ export const execErefStart = inngest.createFunction(
         const supabase = createSupabaseServiceRoleClient();
         return runUpscaleOnly({ assetId: data.assetId as string, supabase });
       });
+
+      // 2026-07-25 — the 4K upscale is a PAID fal call fired on every Director
+      // APPROVE of a reference asset, and its cost was previously returned in the
+      // Inngest run output and thrown away. Nothing reached budget_log, so the
+      // money page under-reported every episode by one upscale per approved ref.
+      // jobId=null (this branch has no job row, same convention as the direct
+      // Director rerolls in /api/assets/[id]/regenerate-image); enforceCeiling
+      // false because the money is already spent — blocking here would only lose
+      // the audit row.
+      if (result.cost_usd > 0) {
+        await step.run('record-upscale-cost', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          await recordCost(supabase, {
+            jobId: null,
+            // Prefer the asset's own episode over the event payload — the ledger
+            // must bill the episode that actually owns the reference.
+            episodeId: result.episode_id ?? episodeId ?? null,
+            agentId: 'EXEC-EREF',
+            costUsd: result.cost_usd,
+            apiProvider: result.provider_id ?? 'fal_ai',
+            modelOrTier: result.model ?? 'upscale-4k',
+            operation: 'image_upscale',
+            enforceCeiling: false,
+          });
+        });
+      }
+
       return {
         ok: result.ok,
         kind: 'upscale',
@@ -153,6 +181,33 @@ export const execErefStart = inngest.createFunction(
           start_index: data.start_index ?? DEFAULT_PILOT_COUNT,
         });
       });
+
+      // 2026-07-25 — this function deliberately bypasses `createAgentInngestFunction`
+      // (see the header note), and in doing so it also skipped the factory's
+      // `record-cost` step. So the ENTIRE reference image spend of the legacy
+      // pilot + fan-out path — the biggest image bill in the pipeline, fired by the
+      // Director's own EXEC-EREF trigger button — went to activity_events metadata
+      // only and never to budget_log. Recorded here as its own step so an Inngest
+      // retry of `run-episode-references` cannot double-bill: the step is memoised,
+      // and the job-id unique index in recordCost is the second line of defence.
+      if (result.costUsd > 0) {
+        await step.run('record-cost', async () => {
+          const supabase = createSupabaseServiceRoleClient();
+          await recordCost(supabase, {
+            jobId: job.id,
+            episodeId,
+            agentId: 'EXEC-EREF',
+            costUsd: result.costUsd,
+            apiProvider: 'fal_ai',
+            modelOrTier: 'image_gen_multi',
+            operation: isStart ? 'eref_pilot_generation' : 'eref_fanout_generation',
+            // The images are already generated and billed by the time we get here;
+            // refusing the audit row on a ceiling breach would only hide the spend.
+            // The ceiling still guards the NEXT run through the readiness gate.
+            enforceCeiling: false,
+          });
+        });
+      }
 
       await step.run('mark-completed', async () => {
         const supabase = createSupabaseServiceRoleClient();
