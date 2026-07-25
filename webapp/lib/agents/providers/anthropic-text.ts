@@ -162,6 +162,22 @@ const MODEL_RATES: ReadonlyArray<{ prefix: string; rate: ModelRate }> = [
   { prefix: 'gemini-2.5-flash', rate: { inputUsdPerMillion: 0.30, outputUsdPerMillion: 2.50 } },
 ];
 
+/**
+ * True when `model` has a real entry in MODEL_RATES — i.e. its recorded cost is
+ * priced, not the Sonnet fallback below.
+ *
+ * Exported (2026-07-25) because the fallback is SILENT: an unlisted model still
+ * produces a plausible-looking dollar figure, so a mispriced model is invisible in
+ * the ledger. The Budget tab reads this to name the unpriced models it found
+ * instead of quietly presenting guesses as facts. Add the model's real rate here
+ * (verify against the vendor's live pricing page — training data lags) and the
+ * warning disappears on its own.
+ */
+export function isModelPriced(model: string | null | undefined): boolean {
+  if (!model) return false;
+  return MODEL_RATES.some((r) => model.startsWith(r.prefix));
+}
+
 function rateFor(model: string): ModelRate {
   const found = MODEL_RATES.find((r) => model.startsWith(r.prefix));
   if (!found) {

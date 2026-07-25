@@ -652,6 +652,34 @@ The current gate should always be visually dominant.
 
 ---
 
+## 11.5 Budget Page (restored 2026-07-25)
+
+The Budget page (`/budget`, sidebar money icon) is the studio's **price sensor**,
+paired with `/audience` (quality) and `/factory` (adaptation). Data: `/api/budget`.
+
+Governing rule: **an unknown number must look unknown.** A money board that only
+renders confident figures is how a mocked provider ends up reading as free, and
+how a silently truncated query reads as "that episode cost nothing". So the page
+is required to show, not hide, the limits of what it knows:
+
+- **Error state is mandatory.** If `/api/budget` fails, the page states that it
+  failed and shows the reason. It must never render a bare header, and must not
+  present stale figures as current. (The pre-restore version did exactly that.)
+- **The parts add up to the headline.** Per-episode spend, Polina's slice, and
+  studio-level (episode-less) spend are all shown, and their sum is the headline
+  total. No bucket is allowed to exist only inside an aggregate.
+- **"What this page cannot see"** panel, rendered only when there is something to
+  admit: `$0` calls (mock / free-tier providers), episodes with no itemized rows,
+  ledger drift, and models with no entry in the price table.
+- **Overruns read as negative**, never clamped to `$0`.
+- Ceiling bars use `--accent-warning` past 80% and `--accent-danger` past 100%.
+- Breakdown axis toggle (provider / agent / operation) and an archived-episode
+  filter are client-side only — one fetch, no refetch on toggle.
+
+Semantic theme tokens throughout; no hardcoded colors.
+
+---
+
 ## 12. Approval Authority Matrix
 
 The matrix is functionally correct, but the UI should not feel like a spreadsheet.

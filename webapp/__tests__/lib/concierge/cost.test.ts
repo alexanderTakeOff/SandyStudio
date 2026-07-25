@@ -23,6 +23,14 @@ function mockInsertCapture() {
 }
 
 // Minimal supabase mock for the select→eq→gte read path.
+//
+// 2026-07-25: the breaker now reads through `pagedSelect`, because a bare select
+// stops at PostgREST's 1000-row cap and would make the cap UNDER-count spend (and
+// so never trip). The mock therefore has to model the real terminal surface —
+// `.order(col, opts).range(from, to)` — and honour the range, or the paging loop
+// would spin. `rows` is treated as the full result set and sliced per page.
+const MOCK_PAGE = 1000;
+
 function mockSelect(
   rows: Array<{ cost_usd: number | null; api_provider?: string | null }> | null,
   error: unknown = null,
@@ -30,7 +38,14 @@ function mockSelect(
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
-    gte: () => Promise.resolve({ data: rows, error }),
+    gte: () => builder,
+    order: () => builder,
+    range: (from: number, to: number) =>
+      Promise.resolve(
+        error || rows === null
+          ? { data: null, error: error ?? { message: 'no rows' } }
+          : { data: rows.slice(from, Math.min(to + 1, from + MOCK_PAGE)), error: null },
+      ),
   };
   return { from: () => builder } as never;
 }
@@ -109,6 +124,25 @@ describe('isConciergeBudgetTripped — rolling-window circuit-breaker', () => {
     const client = mockSelect([{ cost_usd: null }, { cost_usd: 3 }]);
     const r = await isConciergeBudgetTripped(client, COST);
     expect(r.spent).toBeCloseTo(3, 4);
+  });
+
+  it('counts spend past the 1000-row page cap (2026-07-25)', async () => {
+    // A long-running episode accumulates more than one page of concierge rows.
+    // Before paging, the breaker saw only the first 1000 and under-counted spend
+    // — the direction that lets a cap silently fail to trip. 1500 × $0.02 = $30.
+    const rows = Array.from({ length: 1500 }, () => ({
+      cost_usd: 0.02,
+      api_provider: 'openai',
+    }));
+    const r = await isConciergeBudgetTripped(
+      mockSelect(rows),
+      { capUsd: 25, windowHours: 24, maxCalls: 100_000 },
+      'ep-long',
+    );
+    expect(r.calls).toBe(1500);
+    expect(r.spent).toBeCloseTo(30, 4);
+    expect(r.tripped).toBe(true);
+    expect(r.reason).toBe('cost');
   });
 });
 

@@ -23,6 +23,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
 import { generateAnthropicText, AnthropicTextError } from '../providers/anthropic-text';
+import { recordCost } from '../../budget';
 
 export const STYLE_CHECK_CONTRACT = 'style_check@v1';
 export const STYLE_CHECK_MODEL = 'claude-sonnet-4-6';
@@ -65,6 +66,13 @@ export interface RunStyleCheckArgs {
   assetType: string;
   /** Series UUID — used to load the LOCKED Style Bible. */
   seriesId: string;
+  /**
+   * Episode to bill this check to (2026-07-25). Optional: the standalone
+   * /api/style-check endpoint and Bible-scoped checks have no episode, in which
+   * case the cost row is written with `episode_id = NULL` and shows up in the
+   * Budget tab's studio-level bucket. Never dropped either way.
+   */
+  episodeId?: string | null;
 }
 
 interface StyleAnchor {
@@ -216,6 +224,28 @@ export async function runStyleCheck(args: RunStyleCheckArgs): Promise<StyleCheck
       }))
     : [];
   const suggested = typeof body.suggested_prompt === 'string' ? body.suggested_prompt : null;
+
+  // The Style Guardian is a real paid Sonnet call on EVERY image generation and on
+  // every Director pre-flight from the drawer, and its `cost_usd` used to be
+  // computed here and then discarded by all three callers. Recorded centrally so
+  // no caller can forget it. Best-effort — a ledger hiccup must not turn a
+  // pre-flight advisory into a hard failure.
+  if (response.costUsd > 0) {
+    try {
+      await recordCost(args.supabase, {
+        jobId: null,
+        episodeId: args.episodeId ?? null,
+        agentId: 'EXEC-STYLE-CHECK',
+        costUsd: response.costUsd,
+        apiProvider: 'anthropic',
+        modelOrTier: response.model,
+        operation: 'style_check',
+        enforceCeiling: false,
+      });
+    } catch {
+      /* accounting is best-effort here — the check itself already succeeded */
+    }
+  }
 
   return {
     verdict,

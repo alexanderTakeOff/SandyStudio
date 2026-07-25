@@ -1,93 +1,58 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // app/api/budget/route.ts
-// Budget summary aggregator per webapp.md §5.2.
+// Budget summary aggregator — the studio's PRICE sensor (sibling of /api/audience
+// = quality and /api/factory = adaptation). Read-only.
 //
-// Output:
-//   {
-//     totalAllocated, totalSpent, remaining,
-//     burnRate,           // per episode trailing avg (last 5 published episodes)
-//     projectedRunway,    // episodes remaining at current burn
-//     byEpisode: [{ episodeId, code, total, breakdown }]
-//   }
+// ── 2026-07-25 restore ───────────────────────────────────────────────────────
+// This route used to scan `budget_log` with a bare `.select(...)`. PostgREST caps
+// an unranged select at `db-max-rows` (1000) and returns NO error, so once the
+// ledger passed 1000 rows the tab silently froze: the earliest episodes still
+// showed spend (their rows come first by insertion order) and every newer episode
+// read $0. That is the "it worked on the first episodes and then stopped" the
+// Director reported. Both scans now go through `pagedSelect`, which reads the FULL
+// table, and the response carries row counts so a future truncation is visible.
+//
+// The money math itself lives in `lib/budget-summary.ts` (pure, unit-tested) —
+// see that file for the two-ledger accounting model and the rules on what must
+// never be silently dropped (Polina's spend, episode-less Bible spend, $0 mock
+// rows, overruns).
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
+import { pagedSelect } from '@/lib/api/paged-select';
 import { apiOk } from '@/lib/api/response';
+import {
+  aggregateBudget,
+  type BudgetEpisodeInput,
+  type BudgetLogInput,
+} from '@/lib/budget-summary';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-interface EpisodeRow {
-  id: string;
-  episode_code: string;
-  budget_ceiling: number | null;
-  budget_spent: number | null;
-  status: string;
-}
-
-interface BudgetLogRow {
-  episode_id: string | null;
-  agent_id: string;
-  api_provider: string;
-  cost_usd: number;
-}
-
-const PUBLISHED_STATES = new Set(['PUBLISHED', 'ANALYTICS_COLLECTING', 'COMPLETE']);
-
 export const GET = withApiHandler(async () => {
   const { supabase } = await requireDirector();
 
-  const [episodesRes, logsRes] = await Promise.all([
-    supabase.from('episodes').select('id,episode_code,budget_ceiling,budget_spent,status'),
-    supabase.from('budget_log').select('episode_id,agent_id,api_provider,cost_usd'),
+  // Both scans are independent → run them concurrently. Each is paged, so
+  // neither can be silently truncated at 1000 rows.
+  const [episodes, logs] = await Promise.all([
+    pagedSelect<BudgetEpisodeInput>(() =>
+      supabase
+        .from('episodes')
+        .select('id,episode_code,status,budget_ceiling,budget_spent,created_at'),
+    ),
+    pagedSelect<BudgetLogInput>(() =>
+      supabase
+        .from('budget_log')
+        .select(
+          'episode_id,agent_id,api_provider,model_or_tier,operation,cost_usd,tokens_used,created_at',
+        ),
+    ),
   ]);
-  if (episodesRes.error) throw new Error(`episodes scan failed: ${episodesRes.error.message}`);
-  if (logsRes.error) throw new Error(`budget_log scan failed: ${logsRes.error.message}`);
-
-  const episodes = (episodesRes.data ?? []) as EpisodeRow[];
-  const logs = (logsRes.data ?? []) as BudgetLogRow[];
-
-  const totalAllocated = episodes.reduce((sum, e) => sum + (e.budget_ceiling ?? 0), 0);
-  const totalSpent = logs.reduce((sum, l) => sum + Number(l.cost_usd), 0);
-  const remaining = Math.max(0, totalAllocated - totalSpent);
-
-  // burnRate: trailing average over last 5 published episodes
-  const publishedEps = episodes.filter((e) => PUBLISHED_STATES.has(e.status));
-  const lastFive = publishedEps.slice(-5);
-  const burnRate =
-    lastFive.length > 0
-      ? lastFive.reduce((sum, e) => sum + Number(e.budget_spent ?? 0), 0) / lastFive.length
-      : 0;
-  const projectedRunway = burnRate > 0 ? Math.floor(remaining / burnRate) : Infinity;
-
-  // byEpisode breakdown
-  const byEpisode = episodes.map((e) => {
-    const epLogs = logs.filter((l) => l.episode_id === e.id);
-    const breakdown: Record<string, number> = {};
-    for (const l of epLogs) {
-      // Concierge (Polина) spend is folded into the episode TOTAL (Director
-      // 2026-06-27) but surfaced as its own distinct "concierge" line — not
-      // lumped into the raw provider bucket — so her orchestration cost is
-      // visible without consuming the production ceiling (D1: visible, no ceiling).
-      const bucket = l.agent_id === 'EXEC-CONC' ? 'concierge' : l.api_provider;
-      breakdown[bucket] = (breakdown[bucket] ?? 0) + Number(l.cost_usd);
-    }
-    return {
-      episode_id: e.id,
-      episode_code: e.episode_code,
-      total: epLogs.reduce((s, l) => s + Number(l.cost_usd), 0),
-      ceiling: e.budget_ceiling,
-      breakdown,
-    };
-  });
 
   return apiOk({
-    totalAllocated,
-    totalSpent,
-    remaining,
-    burnRate,
-    projectedRunway: projectedRunway === Infinity ? null : projectedRunway,
-    byEpisode,
+    generatedAt: new Date().toISOString(),
+    ...aggregateBudget(episodes, logs),
   });
 });

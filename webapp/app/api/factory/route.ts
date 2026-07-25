@@ -12,6 +12,7 @@
 
 import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
+import { pagedSelect } from '@/lib/api/paged-select';
 import { apiOk } from '@/lib/api/response';
 import type { CriticDiscriminatorResult } from '@/lib/agents/scorecard/critic-discriminator';
 import {
@@ -27,22 +28,10 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const DIRECTOR_TOUCH_TARGET = 6;
-const PAGE = 1000;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function pagedSelect<Row>(make: () => any): Promise<Row[]> {
-  const out: Row[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await make()
-      .order('created_at', { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as Row[];
-    out.push(...rows);
-    if (rows.length < PAGE) break;
-  }
-  return out;
-}
+// `pagedSelect` was hand-rolled here first; extracted to lib/api/paged-select.ts
+// (2026-07-25) once /api/budget turned out to be silently truncated by the same
+// 1000-row PostgREST cap. Same behaviour, one implementation.
 
 const round = (n: number, d = 2): number => +n.toFixed(d);
 

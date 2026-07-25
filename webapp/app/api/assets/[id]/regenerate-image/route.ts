@@ -483,6 +483,9 @@ export const POST = withApiHandler(async (req, ctx) => {
       prompt: body.prompt,
       assetType: asset.file_type,
       seriesId: asset.series_id,
+      // 2026-07-25 — the guardian's Sonnet call is billed to the same episode as
+      // the reroll it gates. NULL for Bible (SBL-*) assets → studio-level bucket.
+      episodeId: asset.episode_id ?? null,
     });
     styleVerdict = result.verdict;
     styleSkipped = result.skipped;

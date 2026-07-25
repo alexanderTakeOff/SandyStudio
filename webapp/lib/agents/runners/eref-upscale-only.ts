@@ -44,6 +44,15 @@ export interface RunUpscaleOnlyResult {
   cost_usd: number;
   /** Set when ok=false. */
   reason?: string;
+  /**
+   * Cost-attribution fields (2026-07-25). The upscale is a PAID fal call and its
+   * cost must reach budget_log; the caller records it, so it needs to know which
+   * episode to bill and which provider/model to name. Populated only on the paths
+   * that actually spent money — a $0 return needs no attribution.
+   */
+  episode_id?: string | null;
+  provider_id?: string;
+  model?: string;
 }
 
 export async function runUpscaleOnly(
@@ -187,6 +196,11 @@ export async function runUpscaleOnly(
       final_4k_url: null,
       cost_usd: upscaled.cost_usd,
       reason: `asset update: ${upErr.message}`,
+      // The fal call already billed us even though the asset row did not update —
+      // the cost row must still be written, or the money vanishes from the ledger.
+      episode_id: asset.episode_id,
+      provider_id: upscaled.provider_id,
+      model: upscaled.model,
     };
   }
 
@@ -194,5 +208,8 @@ export async function runUpscaleOnly(
     ok: true,
     final_4k_url: persisted.browserUrl,
     cost_usd: upscaled.cost_usd,
+    episode_id: asset.episode_id,
+    provider_id: upscaled.provider_id,
+    model: upscaled.model,
   };
 }
