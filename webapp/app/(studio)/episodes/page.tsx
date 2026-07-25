@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { fetcher } from '@/lib/swr';
 import { NewEpisodeModal } from '@/components/episodes/NewEpisodeModal';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
@@ -62,8 +63,11 @@ export default function EpisodesPage() {
   const [filter, setFilter] = useState<Filter>('active');
   const [newOpen, setNewOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<EpisodeRow | null>(null);
+  // Workspace scope (Phase 3): also makes the /episodes?series_id=… link from
+  // the series page actually filter (the API supported it; the page ignored it).
+  const { seriesId } = useWorkspaceScope();
   const { data, isLoading, mutate } = useSWR<{ data: EpisodeRow[] }>(
-    '/api/episodes?limit=100',
+    seriesId ? `/api/episodes?limit=100&series_id=${seriesId}` : '/api/episodes?limit=100',
     fetcher,
     { refreshInterval: 30_000 },
   );
@@ -100,7 +104,9 @@ export default function EpisodesPage() {
             <h1 className="text-2xl font-semibold text-text-primary">Episodes</h1>
           </div>
           <p className="text-sm text-text-secondary mt-1">
-            Every episode across all series. Click one to open its pipeline view.
+            {seriesId
+              ? 'Episodes of the selected series (scope in the topbar).'
+              : 'Every episode across all series. Click one to open its pipeline view.'}
           </p>
         </div>
         <Button onClick={() => setNewOpen(true)}>

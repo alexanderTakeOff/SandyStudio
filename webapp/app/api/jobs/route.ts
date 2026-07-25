@@ -14,6 +14,9 @@ export const dynamic = 'force-dynamic';
 
 const ListQuery = z.object({
   episode_id: z.string().uuid().optional(),
+  // Workspace scope (Phase 3): jobs carry only episode_id, so the series filter
+  // resolves to the series' episode-id set (bounded by series size).
+  series_id:  z.string().uuid().optional(),
   agent_id:   z.string().optional(),
   status:     z.enum(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED', 'RETRYING']).optional(),
   cursor:     z.string().optional(),
@@ -30,6 +33,16 @@ export const GET = withApiHandler(async (req) => {
     .order('created_at', { ascending: false })
     .limit(q.limit);
   if (q.episode_id) query = query.eq('episode_id', q.episode_id);
+  if (q.series_id && !q.episode_id) {
+    const { data: seriesEps, error: sepErr } = await supabase
+      .from('episodes')
+      .select('id')
+      .eq('series_id', q.series_id);
+    if (sepErr) throw new Error(`jobs series episodes failed: ${sepErr.message}`);
+    const ids = (seriesEps ?? []).map((e) => (e as { id: string }).id);
+    if (ids.length === 0) return apiOk([], { cursor: null, limit: q.limit });
+    query = query.in('episode_id', ids);
+  }
   if (q.agent_id)   query = query.eq('agent_id', q.agent_id);
   if (q.status)     query = query.eq('status', q.status);
   if (q.cursor)     query = query.lt('created_at', q.cursor);

@@ -115,7 +115,7 @@ channels  1:N  series  1:N  episodes
 | 0 | Вычитание: легаси-таблицы, мёртвые env, `/^SS-/` фолбэки, лексика Season→Series | эта ветка |
 | 1 | `channels` + резолвер + гейты + HoG пер-канально + consent `--key` | эта ветка |
 | 2 | Рождение проекта №2 в UI (Settings→Channels, series+channel, PATCH attach); `activity_events.series_id` + чат=сериал + series-скоуп инъекции (§6.5); брендовые литералы → `channels/series.metadata.branding`; канальный гейт на ручном shorts-upload | эта ветка (0049+0050) |
-| 3 | Workspace: глобальный переключатель канал/сериал в `#studio-topbar-slot`; скоуп Episodes/Budget/Audience/Inbox/Jobs/Activity | backlog |
+| 3 | Workspace-скоуп: переключатель сериала в топбаре (первый ребёнок бара, НЕ портал в слот; канал выводится из серии); источник истины = URL `?series_id=` + localStorage-память (`WorkspaceScopeProvider`); скоуп Episodes/Budget/Inbox/Jobs/Activity + зоны дашборда + бейдж Inbox; Audience = пер-канально (`?channel_id=`, все YT-вызовы с auth канала, reach-архив `.eq(channel_id)` — закрыт merge двух каналов); Jobs переведён на клиент+`/api/jobs`. Бонус: consent-кнопка Authorize в Settings→Channels (identity-сверка ДО записи токена, подхват в env без рестарта) | эта ветка |
 | 4 | Per-series провайдеры/промпты через `app_config` суффикс-конвенцию — по реальной нужде (YAGNI) | backlog |
 
 ## Кросс-ссылки

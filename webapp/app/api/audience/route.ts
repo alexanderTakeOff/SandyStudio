@@ -5,10 +5,14 @@
 // shorts→episode funnel. Read-only.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { z } from 'zod';
 import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
+import { parseSearchParams } from '@/lib/api/zod-helpers';
+import { ValidationError } from '@/lib/api/errors';
 import { listAllUploads } from '@/lib/agents/providers/youtube';
+import { resolveChannelRefreshToken } from '@/lib/agents/providers/google-auth';
 import {
   getVideoStatistics,
   getVideoAnalytics,
@@ -31,15 +35,47 @@ const SANDY_TAXONOMY = [
 const isShortTitle = (t: string) => /#?shorts?\b/i.test(t);
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
-export const GET = withApiHandler(async () => {
+const ListQuery = z.object({
+  // Multi-channel (Phase 3): which channel's audience to read. When absent, the
+  // single/first ACTIVE channel is used (pre-Phase-3 behaviour = the Sandy
+  // token). NO cross-channel merge is possible any more: every YouTube call
+  // below is authed with THIS channel's token and the reach archive is
+  // filtered to THIS channel's rows.
+  channel_id: z.string().uuid().optional(),
+});
+
+export const GET = withApiHandler(async (req) => {
   const { supabase } = await requireDirector();
+  const q = parseSearchParams(req.url, ListQuery);
+
+  // 0. Resolve the target channel passport.
+  const { data: chRows, error: chErr } = await supabase
+    .from('channels')
+    .select('id, name, credential_key, status')
+    .order('created_at', { ascending: true });
+  if (chErr) throw new Error(`channels read failed: ${chErr.message}`);
+  const channels = (chRows ?? []) as Array<{
+    id: string; name: string; credential_key: string; status: string;
+  }>;
+  const active = channels.filter((c) => c.status === 'ACTIVE');
+  const target = q.channel_id
+    ? channels.find((c) => c.id === q.channel_id) ?? null
+    : active[0] ?? channels[0] ?? null;
+  if (!target) {
+    throw new ValidationError(
+      q.channel_id ? `Channel ${q.channel_id} not found` : 'No channels configured',
+    );
+  }
+  // Rule 8 / multi-channel §3: no silent fallback to another channel's token —
+  // a missing env token for THIS channel is a loud GoogleAuthError (HALT).
+  const auth = { refreshToken: resolveChannelRefreshToken(target.credential_key) };
 
   // 1. Every video on the channel.
-  const uploads = await listAllUploads();
+  const uploads = await listAllUploads(auth);
   const ids = uploads.map((u) => u.videoId).filter(Boolean);
 
   // 2. Public counters (one batched call) + analytics per video (parallel, best-effort).
-  const stats = await getVideoStatistics(ids).catch(() => []);
+  const stats = await getVideoStatistics(ids, auth).catch(() => []);
   const statById = new Map(stats.map((s) => [s.videoId, s]));
 
   const now = new Date();
@@ -47,17 +83,28 @@ export const GET = withApiHandler(async () => {
   const analyticsById = new Map(
     await Promise.all(
       uploads.map(async (u) => {
-        const a = await getVideoAnalytics(u.videoId, ymd(start), ymd(now)).catch(() => null);
+        const a = await getVideoAnalytics(u.videoId, ymd(start), ymd(now), auth).catch(() => null);
         return [u.videoId, a] as const;
       }),
     ),
   );
 
-  // 3. Shorts→episode funnel from the ledger (episodes.metadata written by P1 + EXEC-PUB).
-  const { data: eps } = await supabase
-    .from('episodes')
-    .select('episode_code, metadata')
-    .not('metadata', 'is', null);
+  // 3. Shorts→episode funnel from the ledger (episodes.metadata written by P1 +
+  //    EXEC-PUB) — episodes of THIS channel's series only.
+  const { data: chSeries } = await supabase
+    .from('series')
+    .select('id')
+    .eq('channel_id', target.id);
+  const seriesIds = ((chSeries ?? []) as Array<{ id: string }>).map((s) => s.id);
+  let eps: Array<{ episode_code: string; metadata: unknown }> = [];
+  if (seriesIds.length > 0) {
+    const { data: epRows } = await supabase
+      .from('episodes')
+      .select('episode_code, metadata')
+      .not('metadata', 'is', null)
+      .in('series_id', seriesIds);
+    eps = (epRows ?? []) as Array<{ episode_code: string; metadata: unknown }>;
+  }
   const funnel = (eps ?? [])
     .map((e) => {
       const m = (e.metadata && typeof e.metadata === 'object' ? e.metadata : {}) as Record<string, unknown>;
@@ -74,7 +121,7 @@ export const GET = withApiHandler(async () => {
   // 3.5. Reach metrics from the archived Reporting CSVs — one bulk parse serves
   // every video. Best-effort: an empty/failed archive degrades to nulls
   // ("unmeasured"), never to fake zeros.
-  const reachById = await readReachMetricsFromArchive(supabase).catch(
+  const reachById = await readReachMetricsFromArchive(supabase, target.id).catch(
     () => new Map<string, never>(),
   );
 
@@ -89,7 +136,7 @@ export const GET = withApiHandler(async () => {
     // which skipped exactly the fresh videos whose curve matters most. A too-new
     // curve simply comes back null from the API and stays null here.
     if (kind === 'longform' && s?.publicationState === 'public') {
-      retentionCurve = await getRetentionCurve(u.videoId, ymd(start), ymd(now)).catch(() => null);
+      retentionCurve = await getRetentionCurve(u.videoId, ymd(start), ymd(now), auth).catch(() => null);
     }
     const publicationState = s?.publicationState ?? 'private-draft';
     const completionReadable = isCompletionReadable(a?.averageViewPercentage);
@@ -127,6 +174,7 @@ export const GET = withApiHandler(async () => {
 
   return apiOk({
     generatedAt: now.toISOString(),
+    channel: { id: target.id, name: target.name },
     videoCount: metrics.length,
     metrics,
     funnel,
