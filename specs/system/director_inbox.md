@@ -267,6 +267,41 @@ single modal listing the selected items; the Director clicks once.
   per-item review.
 - Bulk size cap: 20 items per action to prevent runaway acceptances.
 
+### 8.3 Clear inbox (added 2026-07-25, Director directive)
+
+`Clear inbox` sits in the page header next to `Help` and drains the
+**notification half** of the feed. It exists because the two item sources age
+very differently (§2):
+
+- **Asset rows self-clear.** They render only while `status='REVIEW'`, so any
+  decision (approve / revise / reject / tweak) drops them from the feed.
+- **Event rows did not clear at all.** They render while `resolved_at IS NULL`,
+  and before this button the only writer of `resolved_at` was the
+  canon-extension sweep. `decision_requested`, `input_requested`,
+  `blocker_raised`, `budget_threshold_reached` and `rule_proposal` accumulated
+  with no TTL and no cleanup job. Since the list caps at 50 rows and sorts
+  oldest-first inside each group, that backlog pushed fresh work off the page.
+
+Rules:
+
+- **Cleared:** the five notification event types above → `resolved_at = now()`.
+- **Never cleared:** assets awaiting approval (clearing one would mean deciding
+  it, which flips status and fires the DAG) and `canon_extension_proposed` (the
+  proposals live in `metadata.proposals`; `resolved_at` is what marks them
+  dispositioned).
+- **Filter-aware.** Only the active pill's scope is drained — `blockers` clears
+  blocker/budget events only; `visual` clears nothing (event rows are never
+  visual).
+- Button is disabled when nothing on screen is clearable. Its counter is a
+  **floor** — the sweep also drains matching events past the 50-row page cap.
+- A confirmation modal states what will and will not be cleared before the
+  sweep runs.
+- **Audit:** one `config_updated` event with `metadata.action='inbox_clear'`,
+  the filter, the count and the cleared event ids. Dismissed rows remain in the
+  Activity feed — clearing hides them from triage, it does not delete history.
+- Shared scope rules live in `lib/api/inbox-clear.ts` so the server sweep and
+  the on-screen counter cannot disagree.
+
 ---
 
 ## 9. Inline Note
@@ -393,6 +428,7 @@ mid-decision.
 |--------|------|---------|
 | GET | `/api/director/inbox` | List items, sorted, grouped. Query: `?limit=`, `?filter=`, `?episode_id=`. |
 | POST | `/api/director/inbox/bulk-approve` | Body: `{ asset_ids: string[], note?: string }`. Validates non-visual only. |
+| POST | `/api/director/inbox/clear` | Body: `{ filter?: 'all'\|'visual'\|'non_visual'\|'blockers', episode_id?: uuid }`. Sets `resolved_at` on unresolved notification events in scope (§8.3). Returns `{ cleared, cleared_ids }`. Never touches assets or canon-extension proposals. |
 | POST | `/api/director/inbox/claim` | Body: `{ item_id, claim: true \| false }`. Mode 2/3 only. |
 
 Per-item action endpoints come from `webapp.md §5`:
