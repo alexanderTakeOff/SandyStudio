@@ -17,6 +17,12 @@ export interface ActivityEventInput {
   description?: string | null;
   actor?: string | null;
   episode_id?: string | null;
+  /**
+   * Series scope (0049). For episode events the DB BEFORE-INSERT trigger fills
+   * it from episodes.series_id — pass explicitly only for series-scoped events
+   * that have no episode (Bible, themes, series lifecycle).
+   */
+  series_id?: string | null;
   asset_id?: string | null;
   job_id?: string | null;
   metadata?: unknown;
@@ -45,6 +51,7 @@ export async function logEvent(
     description: input.description ?? null,
     actor: input.actor ?? null,
     episode_id: input.episode_id ?? null,
+    series_id: input.series_id ?? null,
     asset_id: input.asset_id ?? null,
     job_id: input.job_id ?? null,
     metadata: (input.metadata ?? null) as never,
@@ -86,6 +93,9 @@ export async function logEvent(
       name: 'sandystudio/pa/notify-needed',
       data: {
         episodeId: input.episode_id ?? null,
+        // 0049: lets exec-pa-react resolve the series thread for episode-less
+        // series-scoped events (Bible / themes) instead of skipping them.
+        seriesId: input.series_id ?? null,
         source: 'ambient',
         triggerId,
         eventType: input.event_type,

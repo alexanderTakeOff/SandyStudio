@@ -3239,7 +3239,9 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         }
 
         const epTitle = (inputs.episode as { title_working?: string | null } | undefined)?.title_working;
-        const parsed = parseVideoMetadata(metaAsset.content, epTitle || 'Sandy the Hourglass');
+        // Fallback title = the CHANNEL's name from its passport (already
+        // resolved above) — not a hardcoded brand literal (multi-channel Phase 2).
+        const parsed = parseVideoMetadata(metaAsset.content, epTitle || pathway.passport.name);
         const title = parsed.title;
         const privacy: PrivacyStatus =
           coercePrivacy(readEpisodeMetaString(inputs.episode, 'youtube_privacy')) ?? 'unlisted';

@@ -151,6 +151,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     actor: 'EXEC-BIBLE-AUTHOR',
     asset_id: null,
     episode_id: null,
+    series_id: seriesId,
     metadata: {
       kind: 'bible_image_staging',
       section: body.section,

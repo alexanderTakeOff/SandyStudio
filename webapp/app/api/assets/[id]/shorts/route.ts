@@ -39,6 +39,11 @@ import { makeShort } from '@/lib/agents/providers/ffmpeg-shorts';
 import { uploadVideo } from '@/lib/agents/providers/youtube';
 import { persistBinary } from '@/lib/agents/persist-binary';
 import { parseVideoMetadata } from '@/lib/agents/publish-metadata';
+import { loadShortBrandingForEpisode } from '@/lib/agents/branding';
+import {
+  assertChannelIdentity,
+  decideYouTubePathway,
+} from '@/lib/agents/providers/channel-resolver';
 import {
   appendParentBacklink,
   readParentVideoId,
@@ -50,9 +55,9 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_OVERLAY = 'SANDY the HOURGLASS';
-const DEFAULT_DESCRIPTION =
-  '⏳ Sandy the Hourglass — silent physical comedy. Life is short. Flip yourself. #Shorts';
+// Overlay/description/tags defaults now come from data, not code:
+// series/channels.metadata.branding via lib/agents/branding.ts (multi-channel
+// Phase 2; Sandy's former literals are seeded there by migration 0050).
 
 const ShortsBody = z
   .object({
@@ -129,10 +134,14 @@ async function handleGenerate(
 
   const srcPath = await resolveSrcPath(asset);
 
+  // Channel/series branding defaults (overlay, description, tags) — data, not code.
+  const branding = await loadShortBrandingForEpisode(supabase, asset.episode_id);
+
   // Derive a YouTube title/description now (stored on the short) so the upload
   // step re-derives nothing. Reuse the Publicist's SPC-metadata like EXEC-PUB.
   let baseTitle = asset.filename.replace(/\.[^.]+$/, '');
-  let description = DEFAULT_DESCRIPTION;
+  let description = branding.description;
+  let tags = branding.tags;
   let episodeCode: string | null = null;
   if (asset.episode_id) {
     const { data: ep } = await supabase
@@ -158,6 +167,7 @@ async function handleGenerate(
       const parsed = parseVideoMetadata(meta.content, baseTitle);
       if (parsed.title) baseTitle = parsed.title;
       if (parsed.description) description = parsed.description;
+      if (parsed.tags.length > 0) tags = parsed.tags;
     }
 
     // Funnel bridge: link back to the parent episode's landscape video (no-op
@@ -176,7 +186,7 @@ async function handleGenerate(
     `${path.basename(asset.filename).replace(/\.[^.]+$/, '')}-SHORT.mp4`,
   );
   await makeShort(srcPath, scratch, {
-    overlayText: body.overlay ? (body.overlayText?.trim() || DEFAULT_OVERLAY) : null,
+    overlayText: body.overlay ? (body.overlayText?.trim() || branding.overlayText) : null,
     startSec: body.startSec ?? null,
     endSec: body.endSec ?? null,
   });
@@ -224,11 +234,12 @@ async function handleGenerate(
         start_sec: body.startSec ?? null,
         end_sec: body.endSec ?? null,
         overlay: body.overlay,
-        overlay_text: body.overlay ? (body.overlayText?.trim() || DEFAULT_OVERLAY) : null,
+        overlay_text: body.overlay ? (body.overlayText?.trim() || branding.overlayText) : null,
         privacy_intent: body.privacyStatus,
         // Frozen at generate time so upload re-derives nothing.
         youtube_title: title,
         youtube_description: description,
+        youtube_tags: tags,
         drive_upload_failed: persisted.driveUploadFailed,
       },
     } as never)
@@ -257,6 +268,9 @@ async function handleUpload(
   }
 
   const meta = asset.metadata ?? {};
+  // Branding fallback covers legacy shorts cut before youtube_* was frozen at
+  // generate time (and the tags bug: parsed SPC tags used to be ignored here).
+  const branding = await loadShortBrandingForEpisode(supabase, asset.episode_id);
   const title =
     typeof meta.youtube_title === 'string' && meta.youtube_title.trim()
       ? meta.youtube_title
@@ -264,7 +278,11 @@ async function handleUpload(
   const description =
     typeof meta.youtube_description === 'string' && meta.youtube_description.trim()
       ? meta.youtube_description
-      : DEFAULT_DESCRIPTION;
+      : branding.description;
+  const storedTags = Array.isArray(meta.youtube_tags)
+    ? (meta.youtube_tags as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    : [];
+  const tags = Array.from(new Set(['Shorts', ...(storedTags.length > 0 ? storedTags : branding.tags)]));
   // Body privacy overrides the stored intent if the Director changed it at upload.
   const privacyStatus =
     body.privacyStatus ??
@@ -272,15 +290,34 @@ async function handleUpload(
       ? (meta.privacy_intent as 'private' | 'unlisted' | 'public')
       : 'unlisted');
 
+  // Multi-channel gate (multi-channel.md §4/§5): the manual shorts upload used
+  // to call uploadVideo with NO auth — i.e. the legacy global token — which
+  // would silently drop a series-B short onto the Sandy channel. Resolve the
+  // channel via the episode cascade and verify token identity, same as EXEC-PUB.
+  if (!asset.episode_id) {
+    throw new ValidationError('Short has no episode — cannot resolve its channel for upload.');
+  }
+  const pathway = await decideYouTubePathway(supabase, asset.episode_id);
+  if (pathway.mode === 'mock') {
+    throw new ValidationError(
+      'No YouTube credentials configured — cannot upload. Provision the channel token first.',
+    );
+  }
+  await assertChannelIdentity(pathway.passport, pathway.refreshToken);
+  const ytAuth = { refreshToken: pathway.refreshToken };
+
   const srcPath = await resolveSrcPath(asset);
   const bytes = new Uint8Array(await fs.readFile(srcPath));
-  const r = await uploadVideo({
-    bytes,
-    title,
-    description,
-    tags: ['Shorts', 'Sandy the Hourglass', 'animation', 'comedy'],
-    privacyStatus,
-  });
+  const r = await uploadVideo(
+    {
+      bytes,
+      title,
+      description,
+      tags,
+      privacyStatus,
+    },
+    ytAuth,
+  );
 
   // Durable record: stamp the id on the short asset itself (never clobbered),
   // AND append to the episode's short-ledger list (A3 fix).

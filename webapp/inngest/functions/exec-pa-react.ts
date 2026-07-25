@@ -34,16 +34,21 @@ interface ResolvedTarget {
 async function resolveThreadId(args: {
   threadId?: string | null;
   episodeId?: string | null;
+  seriesId?: string | null;
 }): Promise<ResolvedTarget | null> {
   if (args.threadId) {
     // Caller already resolved it (team-chat post path).
     return { threadId: args.threadId };
   }
-  // Shared resolver (lib/concierge/threads): latest open thread for the
-  // episode, else latest open globally. Same logic the watchdog uses so both
-  // agree on "which thread".
+  // Shared resolver (lib/concierge/threads, 0049 series-scoped): episode
+  // thread → series thread → none. Same logic as the DB injection trigger and
+  // the watchdog, so all three agree on "which thread". A series event with no
+  // open series thread is skipped (Director q1) — it stays in Activity/Inbox.
   const sb = createSupabaseServiceRoleClient();
-  const threadId = await resolveOpenThreadId(sb, args.episodeId ?? null);
+  const threadId = await resolveOpenThreadId(sb, {
+    episodeId: args.episodeId ?? null,
+    seriesId: args.seriesId ?? null,
+  });
   return threadId ? { threadId } : null;
 }
 
@@ -105,6 +110,7 @@ export const execPaReact = inngest.createFunction(
       return resolveThreadId({
         threadId: data.threadId ?? null,
         episodeId: data.episodeId ?? null,
+        seriesId: (data as { seriesId?: string | null }).seriesId ?? null,
       });
     });
 

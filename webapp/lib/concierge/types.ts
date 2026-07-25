@@ -36,6 +36,8 @@ export interface ConciergeThreadRow {
   id: string;
   director_id: string | null;
   episode_id: string | null;
+  /** Home series of the thread (chat-per-series, migration 0049). */
+  series_id: string | null;
   active_mode: ConciergeMode | null;
   active_gate: string | null;
   title: string | null;

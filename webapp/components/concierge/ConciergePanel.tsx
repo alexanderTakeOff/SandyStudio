@@ -853,6 +853,15 @@ export function ConciergePanel() {
       // Capture the persistent thread id from the response header.
       const newThreadId = res.headers.get('X-Concierge-Thread-Id');
       if (newThreadId && newThreadId !== threadId) {
+        if (threadId) {
+          // Chat-per-series (0049): the server switched to another series'
+          // thread. The local transcript belongs to the previous thread —
+          // keep only the just-sent exchange (user msg + assistant
+          // placeholder); the [threadId] DB-load effect restores the new
+          // thread's own history.
+          setMessages((prev) => prev.slice(-2));
+          try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+        }
         setThreadId(newThreadId);
         try { localStorage.setItem(THREAD_KEY, newThreadId); } catch { /* ignore */ }
       }

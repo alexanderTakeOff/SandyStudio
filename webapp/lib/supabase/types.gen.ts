@@ -26,6 +26,7 @@ export type Database = {
           job_id: string | null
           metadata: Json | null
           resolved_at: string | null
+          series_id: string | null
           severity: string
           title: string
         }
@@ -40,6 +41,7 @@ export type Database = {
           job_id?: string | null
           metadata?: Json | null
           resolved_at?: string | null
+          series_id?: string | null
           severity?: string
           title: string
         }
@@ -54,6 +56,7 @@ export type Database = {
           job_id?: string | null
           metadata?: Json | null
           resolved_at?: string | null
+          series_id?: string | null
           severity?: string
           title?: string
         }
@@ -77,6 +80,13 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_events_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
             referencedColumns: ["id"]
           },
         ]
@@ -586,6 +596,7 @@ export type Database = {
           ended_at: string | null
           episode_id: string | null
           id: string
+          series_id: string | null
           started_at: string
           title: string | null
         }
@@ -596,6 +607,7 @@ export type Database = {
           ended_at?: string | null
           episode_id?: string | null
           id?: string
+          series_id?: string | null
           started_at?: string
           title?: string | null
         }
@@ -606,6 +618,7 @@ export type Database = {
           ended_at?: string | null
           episode_id?: string | null
           id?: string
+          series_id?: string | null
           started_at?: string
           title?: string | null
         }
@@ -615,6 +628,13 @@ export type Database = {
             columns: ["episode_id"]
             isOneToOne: false
             referencedRelation: "episodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "concierge_threads_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
             referencedColumns: ["id"]
           },
         ]

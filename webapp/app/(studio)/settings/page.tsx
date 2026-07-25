@@ -10,6 +10,7 @@ import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame
 import { AppearanceSettings } from '@/components/settings/AppearanceSettings';
 import { StorageSettings } from '@/components/settings/StorageSettings';
 import { ProviderSettings } from '@/components/settings/ProviderSettings';
+import { ChannelSettings } from '@/components/settings/ChannelSettings';
 import { HintsToggle } from '@/components/settings/HintsToggle';
 import { PeekHint } from '@/components/ui/PeekHint';
 
@@ -29,6 +30,7 @@ export default function SettingsPage() {
       <div className="space-y-5">
         <AppearanceSettings />
         <ProviderSettings />
+        <ChannelSettings />
         <StorageSettings />
       </div>
     </StudioContentFrame>

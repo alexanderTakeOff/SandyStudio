@@ -2,7 +2,9 @@
 
 > Source of truth для мульти-канальности / мульти-сериальности студии.
 > Ратифицировано Директором 2026-07-25 (q1a, q2y, q3=SS-как-студия, q4y, q5a).
-> Статус: Фаза 1 (канал как сущность). Фазы 2–4 — backlog (см. §8).
+> Фаза 2 ратифицирована той же датой, вторая сессия: чат=сериал, событие без
+> треда серии — skip (не в чат), UI каналов = секция Settings.
+> Статус: Фазы 1–2 сделаны. Фазы 3–4 — backlog (см. §8).
 
 ---
 
@@ -76,6 +78,27 @@ channels  1:N  series  1:N  episodes
 - TODO (вне критического пути): `scripts/hog-daily.ps1` читает ntfy-топик из
   паспорта канала, а не из хардкода; дневной луп — один прогон на канал.
 
+## 6.5. Series-скоуп PA и событий (Фаза 2)
+
+- **Чат = сериал.** Тред Полины принадлежит серии (`concierge_threads.series_id`,
+  0049); внутри серии он следует за открытым эпизодом (директива 2026-06-23),
+  но НИКОГДА не пересекает границу серии — при смене серии chat-роут
+  переключается на тред той серии (создаёт при первом визите). Клиентский
+  транскрипт при переключении сбрасывается до текущего обмена.
+- **`activity_events.series_id`** (0049): для эпизодных событий заполняется
+  BEFORE-INSERT-триггером из `episodes.series_id` (call-sites не трогаем);
+  series-scoped роуты проставляют явно.
+- **Выбор треда для инъекции** (SQL-триггер v6 + TS-двойник
+  `resolveOpenThreadId`): тред эпизода → тред серии → **skip** (событие остаётся
+  в Activity-ленте и Inbox). Глобальный фолбэк «последний открытый тред» жив
+  только для событий вообще без серии (mode change и т.п.).
+- **Брендинг из данных:** `series.metadata.branding.<key>` →
+  `channels.metadata.branding.<key>` → нейтральный фолбэк
+  (`lib/agents/branding.ts`); ключи `short_overlay_text / short_description /
+  short_tags`. Тексты Сэнди засеяны в паспорт канала (0050).
+- **Ручной shorts-upload** идёт через `decideYouTubePathway` + identity-guard —
+  как EXEC-PUB, без легаси-токена.
+
 ## 7. Что НЕ меняется
 
 - **Naming:** `SS` — рудиментарный префикс студии, НЕ сериала и НЕ канала.
@@ -91,7 +114,7 @@ channels  1:N  series  1:N  episodes
 |---|---|---|
 | 0 | Вычитание: легаси-таблицы, мёртвые env, `/^SS-/` фолбэки, лексика Season→Series | эта ветка |
 | 1 | `channels` + резолвер + гейты + HoG пер-канально + consent `--key` | эта ветка |
-| 2 | Рождение проекта №2 в UI; `activity_events.series_id` + фикс PA-фолбэка; брендовые литералы («SANDY the HOURGLASS» в shorts-роуте, runner, AssetPreview) → `series/channels.metadata` | backlog |
+| 2 | Рождение проекта №2 в UI (Settings→Channels, series+channel, PATCH attach); `activity_events.series_id` + чат=сериал + series-скоуп инъекции (§6.5); брендовые литералы → `channels/series.metadata.branding`; канальный гейт на ручном shorts-upload | эта ветка (0049+0050) |
 | 3 | Workspace: глобальный переключатель канал/сериал в `#studio-topbar-slot`; скоуп Episodes/Budget/Audience/Inbox/Jobs/Activity | backlog |
 | 4 | Per-series провайдеры/промпты через `app_config` суффикс-конвенцию — по реальной нужде (YAGNI) | backlog |
 

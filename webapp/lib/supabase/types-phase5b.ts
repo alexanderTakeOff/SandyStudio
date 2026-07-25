@@ -15,6 +15,9 @@ export interface SeriesRow {
   logline: string | null;
   episode_budget_ceiling: number | null;
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  /** Owning channel passport (0046) — nullable by design, series live channel-less until publish. */
+  channel_id: string | null;
+  metadata: Record<string, unknown> | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -28,6 +31,7 @@ export interface SeriesInsert {
   logline?: string | null;
   episode_budget_ceiling?: number | null;
   status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  channel_id?: string | null;
   created_by?: string | null;
 }
 

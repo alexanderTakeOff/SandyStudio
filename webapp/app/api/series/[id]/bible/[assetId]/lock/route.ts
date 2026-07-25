@@ -97,6 +97,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     actor: user.id,
     asset_id: assetId,
     episode_id: null,
+    series_id: seriesId,
     metadata: { kind: 'bible_lock', file_type: updated.file_type },
   } as never);
 
