@@ -441,7 +441,7 @@ export type Database = {
       }
       channel_reports: {
         Row: {
-          channel_id: string | null
+          channel_id: string
           columns: string[] | null
           end_date: string | null
           fetched_at: string
@@ -454,7 +454,7 @@ export type Database = {
           start_date: string | null
         }
         Insert: {
-          channel_id?: string | null
+          channel_id: string
           columns?: string[] | null
           end_date?: string | null
           fetched_at?: string
@@ -467,7 +467,7 @@ export type Database = {
           start_date?: string | null
         }
         Update: {
-          channel_id?: string | null
+          channel_id?: string
           columns?: string[] | null
           end_date?: string | null
           fetched_at?: string
@@ -492,7 +492,7 @@ export type Database = {
       channel_snapshots: {
         Row: {
           captured_at: string
-          channel_id: string | null
+          channel_id: string
           comments: number
           id: number
           likes: number
@@ -506,7 +506,7 @@ export type Database = {
         }
         Insert: {
           captured_at?: string
-          channel_id?: string | null
+          channel_id: string
           comments?: number
           id?: never
           likes?: number
@@ -520,7 +520,7 @@ export type Database = {
         }
         Update: {
           captured_at?: string
-          channel_id?: string | null
+          channel_id?: string
           comments?: number
           id?: never
           likes?: number

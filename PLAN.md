@@ -19,6 +19,25 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-25 (Мульти-канальность: спека + Фазы 0-1 СМЕРДЖЕНЫ в master + ЗАДЕПЛОЕНЫ — Тео, ===5===).
+Status: канал = сущность БД. Спека specs/system/multi-channel.md; иерархия channels 1:N series
+  (channel_id nullable — сериал живёт без канала; на гейте publish/analytics без канала HALT,
+  тихого фолбэка на глобальный токен НЕТ). Миграции 0046-0048 в проде: channels (сид Sandy
+  UCc2…, key SANDY) + series.channel_id (3 серии привязаны) + channel_id NOT NULL в
+  channel_snapshots/channel_reports (бэкфилл 7284+93, 0 NULL) + дроп мёртвых series_state/
+  approval_authority. Токены: YOUTUBE_REFRESH_TOKEN_<KEY> (SANDY читает легаси-имя);
+  youtube-consent.ts --key <KEY>. HoG-кроны идут по ACTIVE-каналам, падение одного не гасит
+  остальные. Naming НЕ тронут: SS = префикс СТУДИИ, каждый SS-SNN = отдельный СЕРИАЛ
+  (glossary: Season DEPRECATED). Stack пересобран и поднят, функции registered.
+Verify: tsc clean · 1531/1531 vitest · 30/30 replay-pilot · SQL-верификация живой БД.
+Next:   Фаза 2 — рождение проекта №2 в UI (создание канала+серии), activity_events.series_id +
+  фикс PA-фолбэка «событие серии B в тред серии A», брендовые литералы SANDY → metadata.
+  Фазы 2-4 расписаны в multi-channel.md §8. Новый канал = бренд-аккаунт + consent --key +
+  INSERT в channels.
+Mode:   ===1=== (после этой сессии).
+```
+
+```
 Date:   2026-07-25 (HoG дневной отчёт: лаунчер + Task Scheduler + 4 фикса — Тео, ===5===).
 Status: `webapp/scripts/hog-daily.ps1` в git; задача `\SandyStudio\SandyStudio_HoG_Daily`
   Ready, Daily 09:00 (Дубай), next 26 июл. Корень планировщика и триггер -AtLogOn требуют
