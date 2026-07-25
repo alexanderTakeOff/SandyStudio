@@ -14,13 +14,16 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url)); // webapp/scripts
 const outDir = join(here, '..', '..', 'docs', 'distribution', 'snapshots');
+// Lifetime window for the Analytics reads — earlier than the channel's first upload.
+const ANALYTICS_SINCE = '2026-01-01';
 
 // Dynamic imports: tsx's ESM interop mis-links static named imports from sibling
 // .ts modules ("does not provide an export named …"); dynamic import resolves fine.
 async function main() {
   const { createClient } = await import('@supabase/supabase-js');
   const { readReachMetricsFromArchive } = await import('../lib/agents/providers/youtube-reporting.ts');
-  const { getChannelStatistics, getVideoStatistics } = await import('../lib/agents/providers/youtube-stats.ts');
+  const { getChannelStatistics, getVideoStatistics, getVideoAnalytics, isCompletionReadable } =
+    await import('../lib/agents/providers/youtube-stats.ts');
   const { listAllUploads } = await import('../lib/agents/providers/youtube.ts');
 
   const sb = createClient(
@@ -36,9 +39,19 @@ async function main() {
   // Reach layer is best-effort: an empty/failed archive must NOT sink the snapshot.
   const reach = await readReachMetricsFromArchive(sb as any).catch(() => new Map());
 
+  // Retention is the gate metric of the growth ladder (completion > channel median =
+  // the feed escalates). Best-effort per video: a null here must not sink the snapshot.
+  const today = new Date().toISOString().slice(0, 10);
+  const analyticsById = new Map<string, any>();
+  for (const id of ids) {
+    const a = await getVideoAnalytics(id, ANALYTICS_SINCE, today).catch(() => null);
+    if (a) analyticsById.set(id, a);
+  }
+
   const rows = uploads.map((u: any) => {
     const s: any = statById.get(u.videoId);
     const r: any = reach.get(u.videoId);
+    const a: any = analyticsById.get(u.videoId);
     return {
       id: u.videoId,
       title: u.title,
@@ -53,6 +66,13 @@ async function main() {
       subscribersGained: r?.subscribersGained ?? null,
       subscribersLost: r?.subscribersLost ?? null,
       trafficSources: r?.trafficSources ?? null,
+      // Readable completion only (0..100]; loop-inflated figures measure the operator's
+      // own browser, not an audience — kept raw alongside so the brain can say WHY it is null.
+      avgViewPercentage: isCompletionReadable(a?.averageViewPercentage)
+        ? a.averageViewPercentage
+        : null,
+      avgViewPercentageRaw: a?.averageViewPercentage ?? null,
+      avgViewDurationSeconds: a?.averageViewDuration ?? null,
     };
   });
   rows.sort((a: any, b: any) => b.views - a.views);
