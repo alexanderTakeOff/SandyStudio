@@ -550,11 +550,15 @@ returns to multiple times per day. Sub-spec: `specs/system/dashboard_cockpit.md`
 > The decision flow `Preview → Context → Decision` is preserved.
 >
 > **2026-07-25:** the `/inbox` header carries a `Clear inbox` action
-> (`secondary` button, `Trash2` icon, live counter) beside `Help`. It dismisses
-> only notification rows in the active filter's scope; approval gates and Bible
-> extension proposals are never cleared, and a confirmation modal states that
-> before the sweep. Disabled when nothing on screen is clearable. Rules in
-> `director_inbox.md §8.3`.
+> (`secondary` button, `Trash2` icon, live counter) beside `Help`, opening a
+> confirmation modal that states exactly what will and will not be swept. The
+> modal offers an opt-in checkbox to **hide** assets awaiting approval — hiding
+> is not deciding, so status stays `REVIEW`. Recovery lives on a fifth filter
+> pill, `hidden`, with a `Restore all` action (`RotateCcw`). The filter row also
+> carries a page-level `Select all · N` checkbox, and each group header its own;
+> both skip visual rows per the visual gate. Rows from `ARCHIVED` / `COMPLETE`
+> episodes no longer render at all. Rules in `director_inbox.md §2.1 + §8.2 +
+> §8.3`.
 
 Approval Queue is the first major working UI.
 

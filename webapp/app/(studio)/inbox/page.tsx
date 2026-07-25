@@ -14,6 +14,7 @@ import {
   Keyboard,
   ExternalLink,
   Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
@@ -47,7 +48,10 @@ const GROUP_LABEL: Record<InboxItem['group'], string> = {
   blocked: 'Blocked — awaiting unblock',
 };
 
-type FilterId = 'all' | 'visual' | 'non_visual' | 'blockers';
+type FilterId = 'all' | 'visual' | 'non_visual' | 'blockers' | 'hidden';
+
+/** Pills in render order. `hidden` is the recovery view for swept asset gates. */
+const FILTERS: FilterId[] = ['all', 'visual', 'non_visual', 'blockers', 'hidden'];
 
 export default function InboxPage() {
   const [filter, setFilter] = useState<FilterId>('all');
@@ -62,6 +66,7 @@ export default function InboxPage() {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearResult, setClearResult] = useState<string | null>(null);
+  const [includeAssets, setIncludeAssets] = useState(false);
 
   const { mutate: globalMutate } = useSWRConfig();
 
@@ -108,6 +113,30 @@ export default function InboxPage() {
     () => flat.filter(isClearableInboxItem).length,
     [flat],
   );
+
+  // Asset approval gates on screen. Counted separately because clearing them
+  // only HIDES them (status stays REVIEW) and is therefore opt-in.
+  const assetGateCount = useMemo(
+    () => flat.filter((i) => i.id.startsWith('asset:')).length,
+    [flat],
+  );
+
+  // Rows the checkboxes can reach. Visual rows are excluded by the visual gate
+  // (character_consistency.md §3.3) — they must be reviewed in the drawer.
+  const selectable = useMemo(() => flat.filter((i) => !i.is_visual), [flat]);
+  const allSelected = selectable.length > 0 && selected.size === selectable.length;
+
+  function setSelection(rows: InboxItem[], on: boolean) {
+    setSelected((s) => {
+      const c = new Set(s);
+      for (const r of rows) {
+        if (r.is_visual) continue;
+        if (on) c.add(r.id);
+        else c.delete(r.id);
+      }
+      return c;
+    });
+  }
 
   // Auto-dismiss the clear confirmation line.
   useEffect(() => {
@@ -206,15 +235,49 @@ export default function InboxPage() {
   // events) for the ACTIVE filter only. Asset approval gates are untouched:
   // clearing one would mean deciding it, which flips status and fires the DAG.
   async function clearInbox() {
+    await postClear({ filter, include_assets: includeAssets }, (d) => {
+      const bits: string[] = [];
+      if (d.cleared) bits.push(`${d.cleared} notification${d.cleared === 1 ? '' : 's'}`);
+      if (d.assets_hidden) {
+        bits.push(`${d.assets_hidden} approval gate${d.assets_hidden === 1 ? '' : 's'} hidden`);
+      }
+      return bits.length === 0
+        ? 'Nothing to clear in this view.'
+        : `Cleared ${bits.join(' · ')}.`;
+    });
+    setClearOpen(false);
+  }
+
+  // Recovery for the `hidden` pill — un-stamps the swept assets so they return
+  // to triage. Nothing about their status ever changed, so there is no decision
+  // to undo, only visibility.
+  async function restoreHidden() {
+    await postClear({ filter: 'all', restore: true }, (d) =>
+      d.assets_restored === 0
+        ? 'Nothing hidden to restore.'
+        : `Restored ${d.assets_restored} approval gate${d.assets_restored === 1 ? '' : 's'} to triage.`,
+    );
+  }
+
+  interface ClearResponse {
+    cleared: number;
+    assets_hidden: number;
+    assets_restored: number;
+  }
+
+  async function postClear(
+    body: Record<string, unknown>,
+    describe: (d: ClearResponse) => string,
+  ) {
     setClearing(true);
     try {
       const res = await fetch('/api/director/inbox/clear', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ filter }),
+        body: JSON.stringify(body),
       });
       const json = (await res.json()) as
-        | { success: true; data: { cleared: number } }
+        | { success: true; data: ClearResponse }
         | { success: false; error: string };
       if (!res.ok || !json.success) {
         setClearResult(
@@ -222,13 +285,7 @@ export default function InboxPage() {
         );
         return;
       }
-      const n = json.data.cleared;
-      setClearResult(
-        n === 0
-          ? 'Nothing to clear — no dismissible notifications in this view.'
-          : `Cleared ${n} notification${n === 1 ? '' : 's'}.`,
-      );
-      setClearOpen(false);
+      setClearResult(describe(json.data));
       setSelected(new Set());
       setFocusIdx(0);
       await mutate();
@@ -271,16 +328,16 @@ export default function InboxPage() {
             variant="secondary"
             size="sm"
             onClick={() => setClearOpen(true)}
-            disabled={clearableCount === 0 || clearing}
+            disabled={(clearableCount === 0 && assetGateCount === 0) || clearing}
             title={
-              clearableCount === 0
-                ? 'Nothing dismissible in this view — asset approvals are not cleared'
-                : `Dismiss ${clearableCount} notification item${clearableCount === 1 ? '' : 's'}`
+              clearableCount === 0 && assetGateCount === 0
+                ? 'Nothing to clear in this view'
+                : `${clearableCount} notification${clearableCount === 1 ? '' : 's'} · ${assetGateCount} approval gate${assetGateCount === 1 ? '' : 's'}`
             }
           >
             <Trash2 size={14} /> Clear inbox
-            {clearableCount > 0 && (
-              <span className="text-text-muted">· {clearableCount}</span>
+            {clearableCount + assetGateCount > 0 && (
+              <span className="text-text-muted">· {clearableCount + assetGateCount}</span>
             )}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setHelpOpen(true)}>
@@ -306,7 +363,7 @@ export default function InboxPage() {
       {/* Filter pills */}
       <div className="flex items-center gap-2 mb-5">
         <Filter size={14} className="text-text-muted" />
-        {(['all', 'visual', 'non_visual', 'blockers'] as FilterId[]).map((f) => (
+        {FILTERS.map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -327,7 +384,49 @@ export default function InboxPage() {
             {f.replace('_', '-')}
           </button>
         ))}
+
+        {selectable.length > 0 && (
+          <label className="ml-auto flex items-center gap-2 text-xs text-text-secondary cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(el) => {
+                // Indeterminate is not expressible as a prop.
+                if (el) el.indeterminate = selected.size > 0 && !allSelected;
+              }}
+              onChange={(e) => setSelection(selectable, e.target.checked)}
+              aria-label="Select all non-visual items in this view"
+            />
+            Select all · {selectable.length}
+          </label>
+        )}
       </div>
+
+      {filter === 'hidden' && (
+        <Card className="mb-4">
+          <CardBody>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm text-text-primary">
+                  Hidden approval gates — {flat.length} shown
+                </div>
+                <p className="text-xs text-text-secondary mt-1">
+                  Swept out of triage by a previous clear. Still <strong>REVIEW</strong> —
+                  nothing was approved or rejected, and they remain reachable from their
+                  episode.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={restoreHidden}
+                disabled={clearing || flat.length === 0}
+              >
+                <RotateCcw size={14} /> {clearing ? 'Restoring…' : 'Restore all'}
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Bulk bar */}
       {selected.size > 0 && (
@@ -368,8 +467,28 @@ export default function InboxPage() {
         if (rows.length === 0) return null;
         return (
           <section key={g} className="mb-6">
-            <div className="text-xs uppercase tracking-wider text-text-muted mb-2">
-              {GROUP_LABEL[g]} · {rows.length}
+            <div className="flex items-center gap-2 mb-2">
+              {(() => {
+                const pick = rows.filter((r) => !r.is_visual);
+                if (pick.length === 0) return <span className="w-4" />;
+                const on = pick.every((r) => selected.has(r.id));
+                return (
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    ref={(el) => {
+                      if (el) {
+                        el.indeterminate = !on && pick.some((r) => selected.has(r.id));
+                      }
+                    }}
+                    onChange={(e) => setSelection(pick, e.target.checked)}
+                    aria-label={`Select all in ${GROUP_LABEL[g]}`}
+                  />
+                );
+              })()}
+              <span className="text-xs uppercase tracking-wider text-text-muted">
+                {GROUP_LABEL[g]} · {rows.length}
+              </span>
             </div>
             <div className="space-y-2">
               {rows.map((item) => {
@@ -495,37 +614,59 @@ export default function InboxPage() {
           <p className="text-text-secondary">
             Dismisses the <strong className="text-text-primary">notification</strong>{' '}
             rows in the current view — decision / input requests, blockers and budget
-            alerts. These never expire on their own, which is why the feed grows.
+            alerts ({clearableCount} shown). These never expire on their own, which is why
+            the feed grows.
           </p>
+
+          <label
+            className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5 cursor-pointer"
+            style={{ borderColor: 'var(--panel-glass-border)' }}
+          >
+            <input
+              type="checkbox"
+              checked={includeAssets}
+              onChange={(e) => setIncludeAssets(e.target.checked)}
+              className="mt-0.5"
+              disabled={assetGateCount === 0}
+            />
+            <span>
+              <span className="text-text-primary">
+                Also hide {assetGateCount} asset{assetGateCount === 1 ? '' : 's'} awaiting
+                approval
+              </span>
+              <span className="block text-xs text-text-muted mt-0.5">
+                Takes them out of triage <strong>without deciding them</strong> — status
+                stays REVIEW, no pipeline event fires, and they stay reachable from their
+                episode. Recover them any time via the <code>hidden</code> filter.
+              </span>
+            </span>
+          </label>
+
           <ul className="space-y-1.5 text-xs text-text-muted">
             <li>
-              <strong className="text-text-primary">Not touched:</strong> assets awaiting
-              approval. Clearing one would mean approving or rejecting it, which fires the
-              agent pipeline.
-            </li>
-            <li>
-              <strong className="text-text-primary">Not touched:</strong> Bible extension
+              <strong className="text-text-primary">Never cleared:</strong> Bible extension
               proposals — the proposals live inside those items, so they stay until you
               decide them.
             </li>
             <li>
-              <strong className="text-text-primary">Not touched:</strong> Skill Editor rule
+              <strong className="text-text-primary">Never cleared:</strong> Skill Editor rule
               proposals — a change to how agents behave is a standing decision, not a
               notification.
             </li>
             <li>
               Scope: the <strong className="text-text-primary">{filter.replace('_', '-')}</strong>{' '}
-              filter. At least {clearableCount} item{clearableCount === 1 ? '' : 's'} shown;
-              anything past the 50-row page is cleared too.
+              filter. Counts above are what is on screen; anything past the 50-row page is
+              swept too.
             </li>
-            <li>Dismissed items stay in the Activity feed as an audit record.</li>
+            <li>Both actions are logged to the Activity feed as an audit record.</li>
           </ul>
+
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={() => setClearOpen(false)} disabled={clearing}>
               Cancel
             </Button>
             <Button variant="danger" onClick={clearInbox} disabled={clearing}>
-              {clearing ? 'Clearing…' : 'Clear notifications'}
+              {clearing ? 'Clearing…' : includeAssets ? 'Clear all' : 'Clear notifications'}
             </Button>
           </div>
         </div>

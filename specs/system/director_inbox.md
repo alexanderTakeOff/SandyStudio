@@ -53,6 +53,23 @@ A unified Phase 5b view (`director_inbox_view`) joins these into a single list
 ordered by priority + age. Items are removed from the view as soon as the
 Director acts (status flips, decision recorded, blocker resolved).
 
+### 2.1 Episode-status gate (added 2026-07-25)
+
+**Every source above is additionally scoped to a live episode.** Rows whose
+`episode_id` points at an episode in a terminal status — `ARCHIVED` or
+`COMPLETE` — are excluded. Rows with a NULL `episode_id` (Bible assets, global
+events) are always kept.
+
+This closes the root cause of the Inbox filling with work nobody would ever act
+on: the feed ignored episode status entirely, so a REVIEW asset or unresolved
+event from an episode closed months ago kept demanding triage forever — and
+because the feed is capped and sorted oldest-first, that dead weight sat
+permanently at the top, pushing live work off the page.
+
+Consequence worth knowing: **archiving an episode is now the canonical way to
+get its pipeline out of the Inbox** (migration 0029). It is a status change, not
+a deletion — nothing is decided, nothing is lost.
+
 ---
 
 ## 3. Visual Layout
@@ -259,6 +276,17 @@ do not render checkboxes.
 Appears when at least one checkbox is ticked. Bulk approve confirms with a
 single modal listing the selected items; the Director clicks once.
 
+**Select All (added 2026-07-25).** Ticking rows one by one was the only way to
+reach the bulk bar, which made a large backlog unreachable in practice. Two
+levels now exist, both skipping visual rows per the gate above:
+
+- a **page-level** `Select all · N` checkbox on the filter row, N = selectable
+  rows in the active filter;
+- a **group-level** checkbox in each group header (Needs approval / Needs
+  decision / …).
+
+Both render an indeterminate state on partial selection.
+
 ### 8.2 Bulk constraints
 
 - Only same-type items selectable in one bulk action (e.g. all scripts, or
@@ -286,13 +314,24 @@ Rules:
 
 - **Cleared:** `decision_requested`, `input_requested`, `blocker_raised`,
   `budget_threshold_reached` → `resolved_at = now()`.
+- **Cleared, opt-in (`include_assets`):** assets awaiting approval are **hidden,
+  not decided**. Status stays `REVIEW`, no pipeline event fires, and the asset
+  stays reachable from its episode; a `metadata.inbox_dismissed_at` stamp takes
+  it out of triage. Added 2026-07-25 — an Inbox made almost entirely of stale
+  approval gates left the notification-only button disabled, so there was no way
+  to clear it short of ticking every row by hand.
+  - Recovery is first-class: the **`hidden`** filter pill lists the swept rows
+    and offers `Restore all` (`restore: true` un-stamps them). A dismissal is
+    never a one-way door.
+  - Capped at 500 assets per call so one click cannot stamp an unbounded set.
 - **Never cleared:**
-  - assets awaiting approval — clearing one would mean deciding it, which flips
-    status and fires the DAG;
   - `canon_extension_proposed` — the proposals live in `metadata.proposals`, and
     `resolved_at` is what marks them dispositioned;
   - `rule_proposal` — Skill Editor rule changes (Director ruling 2026-07-25). A
     change to how agents behave is a standing decision, not a notification.
+- **Never bulk-decided.** No path in this feature approves, rejects or revises an
+  asset. Mass-approving creative gates unseen, or mass-revising them (agents go
+  regenerate — real money) are both out of scope by design.
 - **Filter-aware.** Only the active pill's scope is drained — `blockers` clears
   blocker/budget events only; `visual` clears nothing (event rows are never
   visual).
@@ -430,9 +469,9 @@ mid-decision.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/director/inbox` | List items, sorted, grouped. Query: `?limit=`, `?filter=`, `?episode_id=`. |
+| GET | `/api/director/inbox` | List items, sorted, grouped. Query: `?limit=`, `?filter=` (`all\|visual\|non_visual\|blockers\|mine\|hidden`), `?episode_id=`. Excludes terminal-episode rows (§2.1) and, except under `filter=hidden`, dismissed assets. |
 | POST | `/api/director/inbox/bulk-approve` | Body: `{ asset_ids: string[], note?: string }`. Validates non-visual only. |
-| POST | `/api/director/inbox/clear` | Body: `{ filter?: 'all'\|'visual'\|'non_visual'\|'blockers', episode_id?: uuid }`. Sets `resolved_at` on unresolved notification events in scope (§8.3). Returns `{ cleared, cleared_ids }`. Never touches assets or canon-extension proposals. |
+| POST | `/api/director/inbox/clear` | Body: `{ filter?: 'all'\|'visual'\|'non_visual'\|'blockers', episode_id?: uuid, include_assets?: bool, restore?: bool }`. Sets `resolved_at` on unresolved notification events in scope; with `include_assets` also stamps `metadata.inbox_dismissed_at` on REVIEW assets (hides, never decides); with `restore` un-stamps them instead. Returns `{ cleared, cleared_ids, assets_hidden, assets_restored }` (§8.3). |
 | POST | `/api/director/inbox/claim` | Body: `{ item_id, claim: true \| false }`. Mode 2/3 only. |
 
 Per-item action endpoints come from `webapp.md §5`:
