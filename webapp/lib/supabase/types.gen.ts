@@ -14,145 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      channel_reports: {
-        Row: {
-          channel_id: string | null
-          columns: string[] | null
-          end_date: string | null
-          fetched_at: string
-          has_impressions: boolean
-          id: number
-          raw: string | null
-          report_id: string
-          report_type: string
-          row_count: number | null
-          start_date: string | null
-        }
-        Insert: {
-          channel_id?: string | null
-          columns?: string[] | null
-          end_date?: string | null
-          fetched_at?: string
-          has_impressions?: boolean
-          id?: never
-          raw?: string | null
-          report_id: string
-          report_type: string
-          row_count?: number | null
-          start_date?: string | null
-        }
-        Update: {
-          channel_id?: string | null
-          columns?: string[] | null
-          end_date?: string | null
-          fetched_at?: string
-          has_impressions?: boolean
-          id?: never
-          raw?: string | null
-          report_id?: string
-          report_type?: string
-          row_count?: number | null
-          start_date?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "channel_reports_channel_id_fkey"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "channels"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      channel_snapshots: {
-        Row: {
-          captured_at: string
-          channel_id: string | null
-          comments: number
-          id: number
-          likes: number
-          privacy: string | null
-          scope: string
-          source: string
-          subscribers: number | null
-          video_id: string | null
-          videos_count: number | null
-          views: number
-        }
-        Insert: {
-          captured_at?: string
-          channel_id?: string | null
-          comments?: number
-          id?: never
-          likes?: number
-          privacy?: string | null
-          scope: string
-          source?: string
-          subscribers?: number | null
-          video_id?: string | null
-          videos_count?: number | null
-          views?: number
-        }
-        Update: {
-          captured_at?: string
-          channel_id?: string | null
-          comments?: number
-          id?: never
-          likes?: number
-          privacy?: string | null
-          scope?: string
-          source?: string
-          subscribers?: number | null
-          video_id?: string | null
-          videos_count?: number | null
-          views?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "channel_snapshots_channel_id_fkey"
-            columns: ["channel_id"]
-            isOneToOne: false
-            referencedRelation: "channels"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      channels: {
-        Row: {
-          created_at: string
-          credential_key: string
-          id: string
-          metadata: Json
-          name: string
-          ntfy_topic: string | null
-          status: string
-          updated_at: string
-          youtube_channel_id: string
-        }
-        Insert: {
-          created_at?: string
-          credential_key: string
-          id?: string
-          metadata?: Json
-          name: string
-          ntfy_topic?: string | null
-          status?: string
-          updated_at?: string
-          youtube_channel_id: string
-        }
-        Update: {
-          created_at?: string
-          credential_key?: string
-          id?: string
-          metadata?: Json
-          name?: string
-          ntfy_topic?: string | null
-          status?: string
-          updated_at?: string
-          youtube_channel_id?: string
-        }
-        Relationships: []
-      }
       activity_events: {
         Row: {
           actor: string | null
@@ -577,6 +438,145 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      channel_reports: {
+        Row: {
+          channel_id: string | null
+          columns: string[] | null
+          end_date: string | null
+          fetched_at: string
+          has_impressions: boolean
+          id: number
+          raw: string | null
+          report_id: string
+          report_type: string
+          row_count: number | null
+          start_date: string | null
+        }
+        Insert: {
+          channel_id?: string | null
+          columns?: string[] | null
+          end_date?: string | null
+          fetched_at?: string
+          has_impressions?: boolean
+          id?: never
+          raw?: string | null
+          report_id: string
+          report_type: string
+          row_count?: number | null
+          start_date?: string | null
+        }
+        Update: {
+          channel_id?: string | null
+          columns?: string[] | null
+          end_date?: string | null
+          fetched_at?: string
+          has_impressions?: boolean
+          id?: never
+          raw?: string | null
+          report_id?: string
+          report_type?: string
+          row_count?: number | null
+          start_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_reports_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channel_snapshots: {
+        Row: {
+          captured_at: string
+          channel_id: string | null
+          comments: number
+          id: number
+          likes: number
+          privacy: string | null
+          scope: string
+          source: string
+          subscribers: number | null
+          video_id: string | null
+          videos_count: number | null
+          views: number
+        }
+        Insert: {
+          captured_at?: string
+          channel_id?: string | null
+          comments?: number
+          id?: never
+          likes?: number
+          privacy?: string | null
+          scope: string
+          source?: string
+          subscribers?: number | null
+          video_id?: string | null
+          videos_count?: number | null
+          views?: number
+        }
+        Update: {
+          captured_at?: string
+          channel_id?: string | null
+          comments?: number
+          id?: never
+          likes?: number
+          privacy?: string | null
+          scope?: string
+          source?: string
+          subscribers?: number | null
+          video_id?: string | null
+          videos_count?: number | null
+          views?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_snapshots_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channels: {
+        Row: {
+          created_at: string
+          credential_key: string
+          id: string
+          metadata: Json
+          name: string
+          ntfy_topic: string | null
+          status: string
+          updated_at: string
+          youtube_channel_id: string
+        }
+        Insert: {
+          created_at?: string
+          credential_key: string
+          id?: string
+          metadata?: Json
+          name: string
+          ntfy_topic?: string | null
+          status?: string
+          updated_at?: string
+          youtube_channel_id: string
+        }
+        Update: {
+          created_at?: string
+          credential_key?: string
+          id?: string
+          metadata?: Json
+          name?: string
+          ntfy_topic?: string | null
+          status?: string
+          updated_at?: string
+          youtube_channel_id?: string
+        }
+        Relationships: []
       }
       concierge_threads: {
         Row: {
