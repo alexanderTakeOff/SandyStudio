@@ -15,7 +15,7 @@ try { node --env-file=.env.local --import tsx scripts/hog-snapshot.mts *>&1 | L 
 Pop-Location
 $p=[IO.File]::ReadAllText((Join-Path $repo 'webapp\scripts\hog\daily-prompt.md'),[Text.Encoding]::UTF8)
 Push-Location $repo
-try { $p | claude -p --permission-mode acceptEdits --allowedTools "Read Write Edit Glob Grep WebFetch" --add-dir $repo *>&1 | L } catch { "BRAIN FAIL: $_" | L }
+try { $p | claude -p --model opus --permission-mode acceptEdits --allowedTools "Read Write Edit Glob Grep WebFetch" --add-dir $repo *>&1 | L } catch { "BRAIN FAIL: $_" | L }
 Pop-Location
 $s=Join-Path $out 'summary.md'
 $h=Join-Path $out 'report.html'
@@ -38,3 +38,4 @@ if (Test-Path $s) {
   try { Invoke-RestMethod "https://ntfy.sh/$ntfy" -Method Post -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'text/plain; charset=utf-8' -Headers $hd|Out-Null } catch { "PUSH FAIL: $_" | L }
 } else { "PUSH SKIP: no summary.md - brain did not reach step 5" | L }
 "[hog] $(Get-Date -Format o) DONE" | L
+
