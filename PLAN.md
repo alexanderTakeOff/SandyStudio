@@ -19,6 +19,27 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-25 (HoG дневной отчёт: лаунчер + Task Scheduler + 4 фикса — Тео, ===5===).
+Status: `webapp/scripts/hog-daily.ps1` в git; задача `\SandyStudio\SandyStudio_HoG_Daily`
+  Ready, Daily 09:00 (Дубай), next 26 июл. Корень планировщика и триггер -AtLogOn требуют
+  админа → задача в подпапке, вместо logon-триггера StartWhenAvailable (догоняет пропуск).
+  Живой прогон 13:31–13:42 прошёл целиком: снапшот + report.html + summary.md + коммит
+  c2f3befd (мозг сам доучил hog-snapshot.mts снимать удержание). Найдено рантаймом, не
+  чтением: (1) ntfy получал байты без Content-Type → приходило «You received a file:
+  attachment.txt», текста НЕ было при HTTP 200 и чистом логе; (2) `run.log` single-writer —
+  второй прогон умирал целиком; (3) лог писался UTF-16; (4) `Write(webapp/**)` в
+  settings.local.json не матчится файловыми проверками — `Edit(webapp/**)` уже был, лишнее
+  правило удалено. (5) `Artifact` в headless `claude -p` ОТСУТСТВУЕТ (проверено списком
+  инструментов) → шаг 4 daily-prompt.md невыполним, ссылки на артефакт в пуше нет.
+  PushNotification в headless есть, но требует спаренного мобильного («Remote Control
+  inactive»). Лаунчер держим чистым ASCII: планировщик зовёт PS 5.1, а тот читает UTF-8
+  без BOM как ANSI.
+Verify: tsc clean (webapp, exit 0). Лог-хелпер и `*>&1` проверены живым прогоном.
+Next:   решить, как давать ссылку на отчёт: ntfy-вложение report.html либо GitHub+Click
+  (Artifact закрыт). Затем переписать шаги 4–5 daily-prompt.md под выбранный путь.
+```
+
+```
 Date:   2026-07-25 (Inbox: терминальные эпизоды + Select All + скрытие гейтов — PR #45
   смерджен в master, Тео, ===5===).
 Status: Директор: «нет Clear All, и нет Select All — не могу очистить». Разбор показал, что
