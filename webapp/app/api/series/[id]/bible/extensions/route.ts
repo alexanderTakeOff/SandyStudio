@@ -210,6 +210,7 @@ export const POST = withApiHandler(async (req, ctx) => {
           actor: 'EXEC-BIBLE-AUTHOR',
           asset_id: newAssetId,
           episode_id: evRow.episode_id ?? null,
+          series_id: seriesId,
           metadata: {
             kind: 'bible_enrichment_failure',
             section: d.kind,
@@ -237,6 +238,7 @@ export const POST = withApiHandler(async (req, ctx) => {
         description: `Director ${user.email ?? user.id} approved canon extension; DRAFT created in Bible Library${enriched ? ' (enriched by EXEC-BIBLE-AUTHOR)' : ' (enrichment pending)'}`,
         actor: user.id,
         episode_id: evRow.episode_id ?? null,
+        series_id: seriesId,
         metadata: {
           source_event_id: body.event_id,
           asset_id: newAssetId,
@@ -258,6 +260,7 @@ export const POST = withApiHandler(async (req, ctx) => {
           : `Director rejected.`,
         actor: user.id,
         episode_id: evRow.episode_id ?? null,
+        series_id: seriesId,
         metadata: {
           source_event_id: body.event_id,
           decision: 'REJECT',

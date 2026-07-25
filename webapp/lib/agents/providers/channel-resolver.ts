@@ -25,6 +25,8 @@ export interface ChannelPassport {
   credentialKey: string;
   ntfyTopic: string | null;
   status: string;
+  /** jsonb extension — branding defaults etc. (multi-channel.md §2, Phase 2). */
+  metadata: Record<string, unknown>;
 }
 
 export class ChannelResolutionError extends Error {
@@ -43,6 +45,7 @@ interface ChannelRow {
   credential_key: string;
   ntfy_topic: string | null;
   status: string;
+  metadata: Record<string, unknown> | null;
 }
 
 function toPassport(row: ChannelRow): ChannelPassport {
@@ -53,10 +56,11 @@ function toPassport(row: ChannelRow): ChannelPassport {
     credentialKey: row.credential_key,
     ntfyTopic: row.ntfy_topic,
     status: row.status,
+    metadata: row.metadata ?? {},
   };
 }
 
-const CHANNEL_COLS = 'id, name, youtube_channel_id, credential_key, ntfy_topic, status';
+const CHANNEL_COLS = 'id, name, youtube_channel_id, credential_key, ntfy_topic, status, metadata';
 
 /** Soft read: the channel passport of a series, or null when unattached. */
 export async function getChannelForSeries(

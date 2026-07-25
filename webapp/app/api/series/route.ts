@@ -33,6 +33,9 @@ const CreateBody = z.object({
   genre: z.enum(['comedy', 'drama', 'doc', 'sci_fi', 'other']).optional(),
   logline: z.string().max(200).optional(),
   episode_budget_ceiling: z.number().positive().optional(),
+  // Owning channel at birth (multi-channel Phase 2). Optional by design —
+  // a series lives channel-less until publish/analytics need one.
+  channel_id: z.string().uuid().optional(),
 });
 
 export const GET = withApiHandler(async (req) => {
@@ -64,6 +67,7 @@ export const POST = withApiHandler(async (req) => {
     genre: body.genre ?? null,
     logline: body.logline ?? null,
     episode_budget_ceiling: body.episode_budget_ceiling ?? null,
+    channel_id: body.channel_id ?? null,
     status: 'DRAFT' as const,
     created_by: user.id,
   };
@@ -115,6 +119,7 @@ export const POST = withApiHandler(async (req) => {
       title: `Series ${body.code} created with partial authority matrix`,
       description: `Authority seed failed: ${aamErr.message}`,
       actor: user.id,
+      series_id: seriesRow.id,
       metadata: { series_id: seriesRow.id },
     } as never);
   }
@@ -125,6 +130,7 @@ export const POST = withApiHandler(async (req) => {
     title: `Series ${body.code} "${body.title}" created`,
     description: `Created by ${user.email ?? user.id}`,
     actor: user.id,
+    series_id: seriesRow.id,
     metadata: { series_id: seriesRow.id },
   } as never);
 

@@ -29,7 +29,15 @@ interface SeriesRow {
   logline: string | null;
   episode_budget_ceiling: number | null;
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  channel_id: string | null;
   created_at: string;
+}
+
+interface ChannelRow {
+  id: string;
+  name: string;
+  credential_key: string;
+  status: string;
 }
 
 type Tab = 'overview' | 'bible' | 'themes';
@@ -45,7 +53,7 @@ export default function SeriesDetailPage({
   const pathname = usePathname();
   const tab: Tab = (search?.get('tab') as Tab) ?? 'overview';
 
-  const { data, isLoading, error } = useSWR<{
+  const { data, isLoading, error, mutate } = useSWR<{
     data: { series: SeriesRow; episode_count: number };
   }>(`/api/series/${id}`, fetcher);
   const series = data?.data?.series;
@@ -102,7 +110,7 @@ export default function SeriesDetailPage({
             </TabButton>
           </nav>
 
-          {tab === 'overview' && <OverviewTab series={series} />}
+          {tab === 'overview' && <OverviewTab series={series} onChanged={() => void mutate()} />}
           {tab === 'bible' && <SeriesBibleView seriesId={series.id} seriesCode={series.code} seriesTitle={series.title} />}
           {tab === 'themes' && <SeriesThemesView seriesId={series.id} />}
         </>
@@ -138,7 +146,7 @@ function TabButton({
   );
 }
 
-function OverviewTab({ series }: { series: SeriesRow }) {
+function OverviewTab({ series, onChanged }: { series: SeriesRow; onChanged: () => void }) {
   return (
     <div className="grid gap-3">
       <Card>
@@ -164,6 +172,10 @@ function OverviewTab({ series }: { series: SeriesRow }) {
             )}
             <dt className="text-text-muted text-xs uppercase tracking-wider">Status</dt>
             <dd className="text-text-primary">{series.status}</dd>
+            <dt className="text-text-muted text-xs uppercase tracking-wider">Channel</dt>
+            <dd>
+              <ChannelAttach seriesId={series.id} channelId={series.channel_id} onChanged={onChanged} />
+            </dd>
             <dt className="text-text-muted text-xs uppercase tracking-wider">Created</dt>
             <dd className="text-text-primary">{new Date(series.created_at).toLocaleDateString()}</dd>
           </dl>
@@ -176,6 +188,67 @@ function OverviewTab({ series }: { series: SeriesRow }) {
       >
         View episodes →
       </Link>
+    </div>
+  );
+}
+
+/**
+ * Channel attach/detach selector (multi-channel Phase 2). A series without a
+ * channel HALTs at publish/analytics gates — this is the UI that satisfies
+ * that gate. PATCH /api/series/[id] is channel_id-only by design.
+ */
+function ChannelAttach({
+  seriesId,
+  channelId,
+  onChanged,
+}: {
+  seriesId: string;
+  channelId: string | null;
+  onChanged: () => void;
+}) {
+  const { data } = useSWR<{ data: ChannelRow[] }>('/api/channels', fetcher);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const channels = data?.data ?? [];
+
+  async function attach(next: string) {
+    setPending(true);
+    setError(null);
+    const res = await fetch(`/api/series/${seriesId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ channel_id: next || null }),
+    });
+    setPending(false);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setError((j as { error?: string }).error ?? 'Attach failed');
+      return;
+    }
+    onChanged();
+  }
+
+  return (
+    <div className="space-y-1">
+      <select
+        value={channelId ?? ''}
+        disabled={pending}
+        onChange={(e) => void attach(e.target.value)}
+        className="h-8 px-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-xs text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+      >
+        <option value="">— no channel (publish blocked)</option>
+        {channels.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name} · {c.credential_key}
+            {c.status !== 'ACTIVE' ? ` (${c.status})` : ''}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <p className="text-[11px]" style={{ color: 'var(--accent-danger)' }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }

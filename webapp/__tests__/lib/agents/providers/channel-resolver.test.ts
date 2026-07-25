@@ -32,6 +32,7 @@ const SANDY: ChannelPassport = {
   credentialKey: 'SANDY',
   ntfyTopic: 'topic-sandy',
   status: 'ACTIVE',
+  metadata: {},
 };
 
 /**

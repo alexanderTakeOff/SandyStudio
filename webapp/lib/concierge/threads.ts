@@ -34,6 +34,12 @@ const TURNS_TABLE = 'concierge_turns' as const;
 export interface CreateThreadInput {
   directorId?: string | null;
   episodeId?: string | null;
+  /**
+   * Home series of the thread (chat-per-series, 0049). When episodeId is set
+   * the DB trigger derives this from the episode — passing it matters only for
+   * threads born without an episode binding.
+   */
+  seriesId?: string | null;
   activeMode: ConciergeMode;
   activeGate?: string | null;
   title?: string | null;
@@ -48,6 +54,7 @@ export async function createThread(
     .insert({
       director_id: input.directorId ?? null,
       episode_id: input.episodeId ?? null,
+      series_id: input.seriesId ?? null,
       active_mode: input.activeMode,
       active_gate: input.activeGate ?? null,
       title: input.title ?? null,
@@ -229,17 +236,29 @@ async function fireAwaitingSetEventIfApplicable(
   });
 }
 
+export interface ResolveOpenThreadArgs {
+  episodeId?: string | null;
+  /** Known series scope; derived from the episode when omitted. */
+  seriesId?: string | null;
+}
+
 /**
- * Resolve the target OPEN concierge thread for an episode the same way the
- * Postgres trigger (migration 0030) and exec-pa-react's resolver do: latest
- * open thread for the episode, else the latest open thread globally. Shared so
- * the watchdog and the auto-react consumer agree on "which thread" (2026-06-25,
- * loop-fix W1.b — the watchdog needs thread awareness to stop re-nudging).
+ * Resolve the target OPEN concierge thread the same way the Postgres trigger
+ * does (migration 0049, series-scoped): latest open thread for the episode,
+ * else for its series, else NONE. The old «latest open thread globally»
+ * fallback survives ONLY for studio-global lookups (no episode AND no series) —
+ * it was the cross-series leak (multi-channel.md §8 Phase 2, Director q1:
+ * a series event with no open series thread is NOT injected into chat; it
+ * stays visible in the Activity feed + Inbox). Shared so the watchdog and the
+ * auto-react consumer agree on "which thread" with the DB trigger.
  */
 export async function resolveOpenThreadId(
   client: Client,
-  episodeId: string | null | undefined,
+  args: ResolveOpenThreadArgs,
 ): Promise<string | null> {
+  const episodeId = args.episodeId ?? null;
+  let seriesId = args.seriesId ?? null;
+
   if (episodeId) {
     const { data } = await client
       .from(THREADS_TABLE)
@@ -250,7 +269,32 @@ export async function resolveOpenThreadId(
       .limit(1)
       .maybeSingle();
     if (data?.id) return (data as { id: string }).id;
+    if (!seriesId) {
+      const { data: ep } = await client
+        .from('episodes')
+        .select('series_id')
+        .eq('id', episodeId)
+        .maybeSingle();
+      seriesId = (ep as { series_id?: string | null } | null)?.series_id ?? null;
+    }
   }
+
+  if (seriesId) {
+    const { data } = await client
+      .from(THREADS_TABLE)
+      .select('id')
+      .is('ended_at', null)
+      .eq('series_id', seriesId)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return (data as { id: string } | null)?.id ?? null;
+  }
+
+  // Episode known but its series unresolvable (row gone) — never leak globally.
+  if (episodeId) return null;
+
+  // Studio-global lookup: no episode, no series — any open thread is a valid home.
   const { data: anyOpen } = await client
     .from(THREADS_TABLE)
     .select('id')

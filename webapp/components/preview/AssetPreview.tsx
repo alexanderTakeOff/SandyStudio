@@ -848,7 +848,9 @@ function ShortsPanel({ assetId }: { assetId: string }) {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [overlay, setOverlay] = useState(true);
-  const [overlayText, setOverlayText] = useState('SANDY the HOURGLASS');
+  // Empty = server resolves the channel/series branding default (multi-channel
+  // Phase 2) — the client no longer hardcodes a channel name.
+  const [overlayText, setOverlayText] = useState('');
   const [privacy, setPrivacy] = useState<'private' | 'unlisted' | 'public'>('unlisted');
   const [busy, setBusy] = useState<null | 'cut' | 'upload'>(null);
   const [error, setError] = useState<string | null>(null);
@@ -952,6 +954,7 @@ function ShortsPanel({ assetId }: { assetId: string }) {
           value={overlayText}
           onChange={(e) => setOverlayText(e.target.value)}
           disabled={!overlay}
+          placeholder="channel default"
           className="flex-1 px-2 py-1 rounded border border-glass bg-transparent disabled:opacity-40"
         />
       </label>

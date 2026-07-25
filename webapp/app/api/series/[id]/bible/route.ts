@@ -177,6 +177,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     actor: user.id,
     asset_id: inserted.id,
     episode_id: null,
+    series_id: seriesId,
     metadata: { kind: 'bible_create', section: body.section, slug: body.slug },
   } as never);
 

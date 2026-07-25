@@ -42,7 +42,8 @@ import { logEvent } from '@/lib/api/events';
 import path from 'node:path';
 import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
 import { detectAwaitingDirectorInput } from '@/lib/concierge/await-detector';
-import { createThread, getThread, loadRecentTurns, persistTurn, updateThreadEpisode } from '@/lib/concierge/threads';
+import { createThread, getThread, loadRecentTurns, persistTurn, resolveOpenThreadId, updateThreadEpisode } from '@/lib/concierge/threads';
+import { seriesIdForEpisode } from '@/lib/api/series-bible';
 import { findTool, openaiSchemas } from '@/lib/concierge/tools';
 import {
   AUTO_REACT_ROUND_BACKSTOP,
@@ -226,16 +227,44 @@ async function handleChatPOST(req: Request) {
   // эпизодом»). body.episodeId comes from the OPEN episode page — ConciergePanel
   // reads it from the route — a TRUSTED HUMAN signal (NOT a model-supplied tool
   // arg; q13's distrust was about Gemini jamming codes into tool args, not about
-  // the UI). So the open page WINS and RE-BINDS the thread, making one global
-  // chat follow whatever episode the Director is looking at. When the UI sends
-  // no episode (non-episode page), fall back to the thread's own binding — which
+  // the UI). So the open page WINS and RE-BINDS the thread, making one chat
+  // follow whatever episode the Director is looking at. When the UI sends no
+  // episode (non-episode page), fall back to the thread's own binding — which
   // still beats Polina GUESSING the id (the q13 fix this preserves).
+  //
+  // Chat-per-series (0049, Director q3 2026-07-25): the re-bind is bounded by
+  // the SERIES. A thread never crosses series — when the open episode belongs
+  // to a different series than the bound thread, we SWITCH to that series'
+  // latest open thread (creating it on first visit) instead of re-binding, so
+  // Polina's history and context never mix two universes.
+  let threadSwitched = false;
   if (threadId) {
     const boundThread = await getThread(supabase, threadId);
     const boundEpisodeId = boundThread?.episode_id ?? null;
     if (isUuid(episodeId)) {
-      // Open page is authoritative — re-bind the thread if it drifted.
-      if (boundEpisodeId !== episodeId) {
+      const boundSeriesId = boundThread?.series_id ?? null;
+      const openSeriesId = await seriesIdForEpisode(supabase, episodeId!);
+      if (boundSeriesId && openSeriesId && boundSeriesId !== openSeriesId) {
+        try {
+          const existing = await resolveOpenThreadId(supabase, { seriesId: openSeriesId });
+          if (existing) {
+            threadId = existing;
+            if (episodeId) await updateThreadEpisode(supabase, threadId, episodeId);
+          } else {
+            const fresh = await createThread(supabase, {
+              episodeId,
+              seriesId: openSeriesId,
+              activeMode: await resolveEffectiveConciergeMode(supabase, episodeId),
+              activeGate: nextGate,
+            });
+            threadId = fresh.id;
+          }
+          threadSwitched = true;
+        } catch {
+          /* non-fatal: keep the bound thread for this turn */
+        }
+      } else if (boundEpisodeId !== episodeId) {
+        // Same series (or an unbound thread) — the open page re-binds as before.
         try {
           await updateThreadEpisode(supabase, threadId, episodeId!);
         } catch {
@@ -500,9 +529,14 @@ async function handleChatPOST(req: Request) {
       const PER_TOOL_TIMEOUT_MS = 120_000;
       let cancelled = false;
       try {
+        // On a series switch the client's local transcript belongs to the
+        // PREVIOUS series' thread — send only the fresh user message; the new
+        // thread's own history reaches the model via the system-prompt blocks
+        // built from recentTurns below.
+        const wireHistory = threadSwitched ? [lastUserMessage] : body.messages;
         const conversation: ChatCompletionMessageParam[] = [
           { role: 'system', content: buildPrompt([]) },
-          ...body.messages.map<ChatCompletionMessageParam>((m) => ({
+          ...wireHistory.map<ChatCompletionMessageParam>((m) => ({
             role: m.role,
             content: m.content,
           })),

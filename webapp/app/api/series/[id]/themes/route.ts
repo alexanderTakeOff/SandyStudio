@@ -148,6 +148,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     actor: user.id,
     asset_id: inserted.id,
     episode_id: null,
+    series_id: seriesId,
     metadata: { kind: 'theme_create', slug, theme_status: themeStatus },
   } as never);
 
@@ -211,6 +212,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     actor: user.id,
     asset_id: body.themeId,
     episode_id: null,
+    series_id: seriesId,
     metadata: { kind: 'theme_status_change', theme_status: body.theme_status },
   } as never);
 

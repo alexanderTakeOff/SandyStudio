@@ -172,7 +172,7 @@ export const paBatchStallWatchdog = inngest.createFunction(
         //   (2) only nudge when there is genuinely NEW actionable state (an
         //       actionable, non-self-caused activity_event newer than her last
         //       turn / last nudge). No new state → nothing to react to → skip.
-        const threadId = await resolveOpenThreadId(sb, ep.id);
+        const threadId = await resolveOpenThreadId(sb, { episodeId: ep.id });
         if (!threadId) continue; // no live thread to nudge
         const lastTurn = (await loadRecentTurns(sb, threadId, 1))[0];
         const lastTurnTs = lastTurn?.created_at

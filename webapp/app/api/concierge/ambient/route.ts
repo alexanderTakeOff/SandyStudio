@@ -45,7 +45,7 @@ export const POST = withApiHandler(async (req) => {
   //    a thread id from a previous session).
   const { data: thread, error: threadErr } = await supabase
     .from('concierge_threads')
-    .select('id, director_id')
+    .select('id, director_id, series_id')
     .eq('id', body.thread_id)
     .maybeSingle();
   if (threadErr) {
@@ -76,7 +76,7 @@ export const POST = withApiHandler(async (req) => {
   const { data: row, error: evErr } = await supabase
     .from('activity_events')
     .select(
-      'id,event_type,severity,title,description,actor,episode_id,asset_id,job_id,metadata,created_at',
+      'id,event_type,severity,title,description,actor,episode_id,series_id,asset_id,job_id,metadata,created_at',
     )
     .eq('id', body.activity_event_id)
     .maybeSingle();
@@ -85,6 +85,16 @@ export const POST = withApiHandler(async (req) => {
   }
   if (!row) {
     return apiOk({ persisted: false, reason: 'event_not_found' });
+  }
+
+  // Chat-per-series (0049): the browser forwards EVERY realtime event to the
+  // viewer's thread — refuse events that belong to a different series than the
+  // thread's home. Mirrors the DB trigger's selection; without this the client
+  // path re-creates the exact cross-series leak the trigger fix removed.
+  const eventSeriesId = (row as { series_id?: string | null }).series_id ?? null;
+  const threadSeriesId = (thread as { series_id?: string | null }).series_id ?? null;
+  if (eventSeriesId && eventSeriesId !== threadSeriesId) {
+    return apiOk({ persisted: false, reason: 'series_mismatch' });
   }
 
   const decision = decideAmbientEvent(row as ActivityEventRow, {
