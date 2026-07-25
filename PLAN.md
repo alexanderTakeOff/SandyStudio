@@ -19,6 +19,28 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-25 (Inbox: кнопка Clear inbox — PR #42 смерджен в master, Тео, ===5===).
+Status: Директор: «too much information» в Inbox. Причина найдена: фид склеен из двух
+  источников с разным старением. Ассеты самоочищаются (видны только пока status=REVIEW).
+  События — нет: видны пока resolved_at IS NULL, а единственным писателем resolved_at во
+  всём репо был разбор Bible-расширений. Значит decision_requested / input_requested /
+  blocker_raised / budget_threshold_reached лежали вечно (ни TTL, ни cleanup-джобы) и, при
+  обрезке фида на 50 строках с сортировкой «сначала старые», выдавливали свежую работу.
+  Фикс: POST /api/director/inbox/clear ставит resolved_at уведомлениям в области активного
+  фильтра (q2 filter-aware: blockers — только блокеры/бюджет, visual — ничего). НЕ чистит
+  ассеты на утверждении (это = решение → смена статуса → запуск DAG), canon_extension_
+  proposed (предложения внутри metadata) и rule_proposal (Skill Editor — Директор: не чисти).
+  Правила вынесены в lib/api/inbox-clear.ts — сервер и счётчик на кнопке не могут разойтись.
+  Аудит: config_updated с metadata.action='inbox_clear'; скрытое остаётся в Activity.
+  Миграции нет. Специфика: director_inbox.md §8.3 + §15, uiux.md §10.
+Verify: tsc clean · 1488/1489 тестов · replay-pilot 30/30. Единственный упавший —
+  storage-probe «traversal even when normalised»: он про Windows-путь `C:\foo\..\bar`,
+  падает так же на master в Linux-контейнере, к правке отношения не имеет.
+Next:   Смоук на живом стеке: накопить события → Clear inbox → бейдж в левом рейле падает
+  сразу, ассеты на утверждении остались. Иначе — что скажет Директор.
+```
+
+```
 Date:   2026-07-24 (Дистрибуция: ручной контроль — расщепление шортов + гейт паблиша — Тео, ===5===).
 Status: Инцидент E15 «Автомойка»: шорт генерился+заливался ОДНОЙ кнопкой, битый 2-сек улетел
   на канал unlisted без превью; нигде не сохранялся (не ассет); скалярный youtube_short_id
