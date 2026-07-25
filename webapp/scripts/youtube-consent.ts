@@ -1,17 +1,19 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // scripts/youtube-consent.ts
-// One-time OAuth consent for the Sandy YouTube channel. Reuses the existing
-// GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.
+// One-time OAuth consent for a YouTube channel (multi-channel.md §3). Reuses
+// the existing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET.
 //
-// YOUTUBE-ONLY scopes: the Sandy channel is a Brand Account, which has no Google
-// Drive — requesting drive.file alongside YouTube makes Google reject the brand
-// channel with "service isn't available for your account". So Drive (ao@ user)
-// and YouTube (Sandy brand) live in SEPARATE refresh tokens.
+// YOUTUBE-ONLY scopes: brand-account channels have no Google Drive — requesting
+// drive.file alongside YouTube makes Google reject the brand channel with
+// "service isn't available for your account". So Drive (ao@ user) and YouTube
+// channel identities live in SEPARATE refresh tokens.
 //
-// Run:  npx tsx scripts/youtube-consent.ts   (from webapp/)
-// Pick the "Sandy the Hourglass / The Pragmatist Manifesto" channel at the
-// consent screen. It writes YOUTUBE_REFRESH_TOKEN into .env.local (Drive's
-// GOOGLE_REFRESH_TOKEN is left untouched).
+// Run:  npx tsx scripts/youtube-consent.ts --key <CREDENTIAL_KEY>   (from webapp/)
+// e.g.  npx tsx scripts/youtube-consent.ts --key SANDY
+// At the consent screen pick the brand account of THAT channel. The token is
+// written to .env.local as YOUTUBE_REFRESH_TOKEN_<KEY>; other keys (and Drive's
+// GOOGLE_REFRESH_TOKEN) are left untouched. Without --key it writes the legacy
+// bare YOUTUBE_REFRESH_TOKEN (= SANDY channel, transition period) with a warning.
 // ──────────────────────────────────────────────────────────────────────────────
 import * as fs from 'fs';
 import * as path from 'path';
@@ -22,6 +24,19 @@ const env = fs.readFileSync(path.join(process.cwd(), '.env.local'), 'utf8');
 for (const line of env.split('\n')) {
   const m = line.match(/^([A-Z_]+)=(.*)$/);
   if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+}
+
+// --key <CREDENTIAL_KEY> → env var name YOUTUBE_REFRESH_TOKEN_<KEY>.
+const keyArgIdx = process.argv.indexOf('--key');
+const credentialKey = keyArgIdx >= 0 ? (process.argv[keyArgIdx + 1] ?? '').trim().toUpperCase() : null;
+if (keyArgIdx >= 0 && !/^[A-Z][A-Z0-9_]*$/.test(credentialKey ?? '')) {
+  console.error('Invalid --key: expected [A-Z][A-Z0-9_]* (e.g. SANDY, PT01)');
+  process.exit(1);
+}
+const ENV_VAR = credentialKey ? `YOUTUBE_REFRESH_TOKEN_${credentialKey}` : 'YOUTUBE_REFRESH_TOKEN';
+if (!credentialKey) {
+  console.warn('\n⚠️  No --key given: writing the LEGACY bare YOUTUBE_REFRESH_TOKEN.');
+  console.warn('   Legacy = the SANDY channel. For any other channel run with --key <KEY>.\n');
 }
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID?.trim();
@@ -82,18 +97,20 @@ const server = http.createServer(async (req, res) => {
       server.close();
       process.exit(1);
     }
-    // Auto-write the YouTube token into .env.local (leaves GOOGLE_REFRESH_TOKEN alone).
+    // Auto-write the channel token into .env.local under ITS OWN key —
+    // replace-or-append, never touching other channels' keys or Drive's token.
     const envPath = path.join(process.cwd(), '.env.local');
     let raw = fs.readFileSync(envPath, 'utf8');
-    if (/^YOUTUBE_REFRESH_TOKEN=/m.test(raw)) {
-      raw = raw.replace(/^YOUTUBE_REFRESH_TOKEN=.*$/m, `YOUTUBE_REFRESH_TOKEN=${j.refresh_token}`);
+    const linePattern = new RegExp(`^${ENV_VAR}=.*$`, 'm');
+    if (linePattern.test(raw)) {
+      raw = raw.replace(linePattern, `${ENV_VAR}=${j.refresh_token}`);
     } else {
-      raw = raw.replace(/\s*$/, '') + `\nYOUTUBE_REFRESH_TOKEN=${j.refresh_token}\n`;
+      raw = raw.replace(/\s*$/, '') + `\n${ENV_VAR}=${j.refresh_token}\n`;
     }
     fs.writeFileSync(envPath, raw);
     res.end('<h2>Success ✅</h2><p>Token saved. You can close this tab and return to the terminal.</p>');
     console.log('\n============================================================');
-    console.log('✅ .env.local updated — YOUTUBE_REFRESH_TOKEN written (Drive token untouched).');
+    console.log(`✅ .env.local updated — ${ENV_VAR} written (other tokens untouched).`);
     console.log('Granted scopes:', j.scope);
     console.log('============================================================\n');
     server.close();

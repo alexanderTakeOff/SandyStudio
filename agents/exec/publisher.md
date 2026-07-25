@@ -24,7 +24,7 @@ output = f(episode_file, metadata, thumbnail, youtube_spec, auth_config,
 | Approved metadata | `SS-[S]-[E]-SPC-metadata-v[NN]-APPROVED.md` | ✅ | Title, description, tags, playlist, category |
 | Approved thumbnail | `H:\My Drive\SandyStudio_Media\approved\images\SS-[S]-[E]-IMG-thumbnail-v[NN]-APPROVED.png` | ✅ | Thumbnail image |
 | YouTube distribution spec | `specs/distribution/youtube.md` | ✅ | Upload parameters, scheduling rules |
-| YouTube credentials | `$YOUTUBE_CLIENT_ID`, `$YOUTUBE_CLIENT_SECRET`, `$YOUTUBE_REFRESH_TOKEN` (env) | ✅ | OAuth access |
+| YouTube credentials | `$GOOGLE_CLIENT_ID`, `$GOOGLE_CLIENT_SECRET`, `$YOUTUBE_REFRESH_TOKEN_<KEY>` per channel passport (env) | ✅ | OAuth access — series without a channel HALTs (multi-channel.md §4) |
 | Crosspost config | `config/defaults.yaml → distribution.platforms` | Fallback | Secondary platform targets |
 | Director publish approval | Explicit Director/CEO confirmation in session | ✅ Hard limit — cannot proceed without |
 

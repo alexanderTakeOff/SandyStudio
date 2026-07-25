@@ -9,7 +9,9 @@
 //   - listAllUploads()               → every video already on the channel
 //   - uploadVideo({ bytes, title, description, privacyStatus, ... }) → { id, url }
 //
-// Scopes required on GOOGLE_REFRESH_TOKEN: youtube.upload + youtube.readonly.
+// Scopes required on the channel refresh token: youtube.upload + youtube.readonly.
+// Multi-channel (multi-channel.md §3): every exported op takes an optional
+// `auth` — the channel's refresh token. Omitted = legacy bare env token (SANDY).
 // Upload uses YouTube's resumable protocol (init POST → single PUT of bytes).
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -34,10 +36,15 @@ export class YouTubeError extends Error {
   }
 }
 
-async function authedFetch(url: string, init: RequestInit = {}, timeoutMs = CALL_TIMEOUT_MS): Promise<Response> {
+export interface YouTubeAuth {
+  /** The channel's OAuth refresh token (resolveChannelRefreshToken). */
+  refreshToken: string;
+}
+
+async function authedFetch(url: string, init: RequestInit = {}, timeoutMs = CALL_TIMEOUT_MS, auth?: YouTubeAuth): Promise<Response> {
   let token: string;
   try {
-    token = await getYouTubeAccessToken();
+    token = await getYouTubeAccessToken(auth?.refreshToken);
   } catch (err) {
     if (err instanceof GoogleAuthError) throw new YouTubeError(err.message);
     throw err;
@@ -53,8 +60,8 @@ export interface ChannelInfo {
   uploadsPlaylistId: string;
 }
 
-export async function getMyChannel(): Promise<ChannelInfo> {
-  const res = await authedFetch(`${YT_API}/channels?part=snippet,contentDetails&mine=true`);
+export async function getMyChannel(auth?: YouTubeAuth): Promise<ChannelInfo> {
+  const res = await authedFetch(`${YT_API}/channels?part=snippet,contentDetails&mine=true`, {}, CALL_TIMEOUT_MS, auth);
   if (!res.ok) {
     throw new YouTubeError(`getMyChannel failed (${res.status})`, res.status, (await res.text()).slice(0, 600));
   }
@@ -78,8 +85,8 @@ export interface UploadedVideoRef {
   publishedAt: string;
 }
 
-export async function listAllUploads(): Promise<UploadedVideoRef[]> {
-  const { uploadsPlaylistId } = await getMyChannel();
+export async function listAllUploads(auth?: YouTubeAuth): Promise<UploadedVideoRef[]> {
+  const { uploadsPlaylistId } = await getMyChannel(auth);
   const out: UploadedVideoRef[] = [];
   let pageToken: string | undefined;
   do {
@@ -89,7 +96,7 @@ export async function listAllUploads(): Promise<UploadedVideoRef[]> {
       maxResults: '50',
     });
     if (pageToken) params.set('pageToken', pageToken);
-    const res = await authedFetch(`${YT_API}/playlistItems?${params.toString()}`);
+    const res = await authedFetch(`${YT_API}/playlistItems?${params.toString()}`, {}, CALL_TIMEOUT_MS, auth);
     if (!res.ok) {
       throw new YouTubeError(`listAllUploads failed (${res.status})`, res.status, (await res.text()).slice(0, 600));
     }
@@ -114,8 +121,8 @@ export async function listAllUploads(): Promise<UploadedVideoRef[]> {
 
 /** True if the video id still exists / is visible on the channel. Used for
  *  idempotent republish: a deleted video → false → EXEC-PUB re-uploads. */
-export async function videoExists(videoId: string): Promise<boolean> {
-  const res = await authedFetch(`${YT_API}/videos?part=id&id=${encodeURIComponent(videoId)}`);
+export async function videoExists(videoId: string, auth?: YouTubeAuth): Promise<boolean> {
+  const res = await authedFetch(`${YT_API}/videos?part=id&id=${encodeURIComponent(videoId)}`, {}, CALL_TIMEOUT_MS, auth);
   if (!res.ok) {
     throw new YouTubeError(`videoExists failed (${res.status})`, res.status, (await res.text()).slice(0, 300));
   }
@@ -125,12 +132,13 @@ export async function videoExists(videoId: string): Promise<boolean> {
 
 /** Set a custom thumbnail on an uploaded video (thumbnails.set). youtube.upload
  *  scope suffices — no force-ssl needed for one's own freshly-uploaded video. */
-export async function setThumbnail(videoId: string, bytes: Uint8Array, contentType = 'image/png'): Promise<void> {
+export async function setThumbnail(videoId: string, bytes: Uint8Array, contentType = 'image/png', auth?: YouTubeAuth): Promise<void> {
   const url = `https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(videoId)}&uploadType=media`;
   const res = await authedFetch(
     url,
     { method: 'POST', headers: { 'content-type': contentType }, body: bytes as unknown as BodyInit },
     UPLOAD_TIMEOUT_MS,
+    auth,
   );
   if (!res.ok) {
     throw new YouTubeError(`setThumbnail failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
@@ -143,6 +151,7 @@ export async function setThumbnail(videoId: string, bytes: Uint8Array, contentTy
 export async function updateVideoMetadata(
   videoId: string,
   meta: { title: string; description?: string; tags?: string[]; categoryId?: string },
+  auth?: YouTubeAuth,
 ): Promise<void> {
   const body = {
     id: videoId,
@@ -157,15 +166,15 @@ export async function updateVideoMetadata(
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }, CALL_TIMEOUT_MS, auth);
   if (!res.ok) {
     throw new YouTubeError(`updateVideoMetadata failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
   }
 }
 
 /** True if the video is already an item of the playlist (idempotency guard). */
-export async function isVideoInPlaylist(playlistId: string, videoId: string): Promise<boolean> {
-  const res = await authedFetch(`${YT_API}/playlistItems?part=id&playlistId=${encodeURIComponent(playlistId)}&videoId=${encodeURIComponent(videoId)}&maxResults=1`);
+export async function isVideoInPlaylist(playlistId: string, videoId: string, auth?: YouTubeAuth): Promise<boolean> {
+  const res = await authedFetch(`${YT_API}/playlistItems?part=id&playlistId=${encodeURIComponent(playlistId)}&videoId=${encodeURIComponent(videoId)}&maxResults=1`, {}, CALL_TIMEOUT_MS, auth);
   if (!res.ok) {
     throw new YouTubeError(`isVideoInPlaylist failed (${res.status})`, res.status, (await res.text()).slice(0, 300));
   }
@@ -174,25 +183,25 @@ export async function isVideoInPlaylist(playlistId: string, videoId: string): Pr
 }
 
 /** Append a video to a playlist (playlistItems.insert). Requires force-ssl scope. */
-export async function addVideoToPlaylist(playlistId: string, videoId: string): Promise<void> {
+export async function addVideoToPlaylist(playlistId: string, videoId: string, auth?: YouTubeAuth): Promise<void> {
   const res = await authedFetch(`${YT_API}/playlistItems?part=snippet`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ snippet: { playlistId, resourceId: { kind: 'youtube#video', videoId } } }),
-  });
+  }, CALL_TIMEOUT_MS, auth);
   if (!res.ok) {
     throw new YouTubeError(`addVideoToPlaylist failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
   }
 }
 
 /** Find one of the channel's own playlists by exact (case-insensitive) title. */
-export async function findPlaylistByTitle(title: string): Promise<{ id: string; title: string } | null> {
+export async function findPlaylistByTitle(title: string, auth?: YouTubeAuth): Promise<{ id: string; title: string } | null> {
   const want = title.trim().toLowerCase();
   let pageToken: string | undefined;
   do {
     const params = new URLSearchParams({ part: 'snippet', mine: 'true', maxResults: '50' });
     if (pageToken) params.set('pageToken', pageToken);
-    const res = await authedFetch(`${YT_API}/playlists?${params.toString()}`);
+    const res = await authedFetch(`${YT_API}/playlists?${params.toString()}`, {}, CALL_TIMEOUT_MS, auth);
     if (!res.ok) throw new YouTubeError(`findPlaylistByTitle failed (${res.status})`, res.status, (await res.text()).slice(0, 300));
     const json = (await res.json()) as { items?: Array<{ id?: string; snippet?: { title?: string } }>; nextPageToken?: string };
     for (const it of json.items ?? []) {
@@ -208,12 +217,13 @@ export async function createPlaylist(
   title: string,
   description = '',
   privacyStatus: 'private' | 'unlisted' | 'public' = 'unlisted',
+  auth?: YouTubeAuth,
 ): Promise<{ id: string; title: string }> {
   const res = await authedFetch(`${YT_API}/playlists?part=snippet,status`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ snippet: { title, description }, status: { privacyStatus } }),
-  });
+  }, CALL_TIMEOUT_MS, auth);
   if (!res.ok) throw new YouTubeError(`createPlaylist failed (${res.status})`, res.status, (await res.text()).slice(0, 400));
   const json = (await res.json()) as { id?: string; snippet?: { title?: string } };
   return { id: json.id ?? '', title: json.snippet?.title ?? title };
@@ -239,7 +249,7 @@ export interface UploadVideoResult {
   privacyStatus: string;
 }
 
-export async function uploadVideo(input: UploadVideoInput): Promise<UploadVideoResult> {
+export async function uploadVideo(input: UploadVideoInput, auth?: YouTubeAuth): Promise<UploadVideoResult> {
   const meta = {
     snippet: {
       title: input.title,
@@ -263,7 +273,7 @@ export async function uploadVideo(input: UploadVideoInput): Promise<UploadVideoR
       'X-Upload-Content-Length': String(input.bytes.length),
     },
     body: JSON.stringify(meta),
-  });
+  }, CALL_TIMEOUT_MS, auth);
   if (!initRes.ok) {
     throw new YouTubeError(`upload init failed (${initRes.status})`, initRes.status, (await initRes.text()).slice(0, 800));
   }
@@ -279,6 +289,7 @@ export async function uploadVideo(input: UploadVideoInput): Promise<UploadVideoR
       body: input.bytes as unknown as BodyInit,
     },
     UPLOAD_TIMEOUT_MS,
+    auth,
   );
   if (!putRes.ok) {
     throw new YouTubeError(`upload PUT failed (${putRes.status})`, putRes.status, (await putRes.text()).slice(0, 800));

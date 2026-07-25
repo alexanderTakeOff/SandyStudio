@@ -15,6 +15,7 @@ import {
   getProviderCatalog,
   type ContractName,
 } from '@/lib/api/provider-catalog';
+import { isEnvKeySatisfied } from '@/lib/agents/provider-resolver';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,12 +45,7 @@ export const GET = withApiHandler(async () => {
     const contract = row.contract as ContractName;
     const candidates = catalog[contract] ?? [];
     const active = candidates.find((c) => c.id === row.active_provider_id);
-    const envOk =
-      active === undefined
-        ? false
-        : active.envKey === null
-          ? true
-          : Boolean(process.env[active.envKey]?.trim());
+    const envOk = active === undefined ? false : isEnvKeySatisfied(active.envKey);
     return {
       ...row,
       candidates,

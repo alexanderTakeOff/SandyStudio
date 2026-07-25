@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // scripts/replay-pilot.ts
 // End-to-end pipeline replay using an in-memory Supabase mock.
+// NOTE: fixture series_id must be a REAL uuid — since migration 0038 the FK is// uuid-typed and multi-channel Phase 0 deleted the code-string fallback.
 //
 // This is the "Director runs one command, sees one result" harness from
 // phase-4-jiggly-wave.md §7.2. It does NOT spawn Inngest or Next.js servers;
@@ -198,7 +199,7 @@ async function happyPathReplay(): Promise<void> {
         metadata: { budget_approved: true },
         status: 'BRIEF_APPROVED',
         title_working: 'The Red Carpet',
-        series_id: 'series-1',
+        series_id: '00000000-0000-4000-8000-000000000001',
       },
     ],
     assets: [
@@ -224,7 +225,7 @@ async function happyPathReplay(): Promise<void> {
       // Series-scoped (no episode_id), pre-LOCKED so EXEC-EREF gate passes.
       {
         id: 'sbl-character-pilot',
-        series_id: 'series-1',
+        series_id: '00000000-0000-4000-8000-000000000001',
         episode_id: null,
         file_type: 'SBL-character_sandy',
         filename: 'SS-S01-SBL-character_sandy-v01-LOCKED.png',
@@ -233,7 +234,7 @@ async function happyPathReplay(): Promise<void> {
       },
       {
         id: 'sbl-style-pilot',
-        series_id: 'series-1',
+        series_id: '00000000-0000-4000-8000-000000000001',
         episode_id: null,
         file_type: 'SBL-style_visual',
         filename: 'SS-S01-SBL-style_visual-v01-LOCKED.md',

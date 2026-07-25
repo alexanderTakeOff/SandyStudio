@@ -412,7 +412,7 @@ Phase 8 is **complete** when:
 | Beatoven | `BEATOVEN_API_KEY` | inactive | Not required in Phase 8 MVP. |
 | ElevenLabs | `ELEVENLABS_API_KEY` | inactive | Not required in Phase 8 MVP. |
 | Kling | `KLING_API_KEY` | inactive (Phase 8.5 candidate) | Not required in Phase 8 MVP. |
-| YouTube | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` | wired in Step 17 | Same Google client recommended (one project, multiple scopes). |
+| YouTube | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN_<KEY>` | wired in Step 17 | Shared Google client; per-channel refresh tokens (multi-channel.md §3). |
 
 Total **new** secrets to provision before Step 16:
 `OPENAI_API_KEY` (already set) + 4 Google vars. That's the entire Phase 8 secret surface.

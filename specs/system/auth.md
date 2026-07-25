@@ -40,10 +40,10 @@ REPLICATE_API_KEY         ← Flux / Replicate
 SUNO_API_KEY              ← Suno
 UDIO_API_KEY              ← Udio
 
-# Distribution
-YOUTUBE_CLIENT_ID         ← YouTube OAuth
-YOUTUBE_CLIENT_SECRET     ← YouTube OAuth
-YOUTUBE_REFRESH_TOKEN     ← YouTube OAuth (generated after first auth)
+# Distribution — OAuth client is the shared GOOGLE_CLIENT_ID/SECRET.
+# Per-channel refresh tokens: YOUTUBE_REFRESH_TOKEN_<CREDENTIAL_KEY>
+# (see specs/system/multi-channel.md §3; bare name = legacy SANDY token)
+YOUTUBE_REFRESH_TOKEN     ← YouTube OAuth (generated via youtube-consent.ts)
 
 # Future
 SANDYSTUDIO_AUTH_SECRET   ← Reserved for future multi-user auth

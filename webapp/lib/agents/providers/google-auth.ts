@@ -87,12 +87,44 @@ export async function getGoogleAccessToken(refreshToken?: string): Promise<strin
   return json.access_token;
 }
 
-/** Access token for the Sandy YouTube Brand Account (separate identity from Drive). */
-export async function getYouTubeAccessToken(): Promise<string> {
-  const rt = process.env.YOUTUBE_REFRESH_TOKEN?.trim();
+/**
+ * Resolve the refresh token for a channel's credential_key (multi-channel.md §3):
+ * env `YOUTUBE_REFRESH_TOKEN_<KEY>`. Transition rule: for 'SANDY' the bare legacy
+ * `YOUTUBE_REFRESH_TOKEN` is accepted as fallback. Missing token → throw (HALT) —
+ * never fall back to another channel's token.
+ */
+export function resolveChannelRefreshToken(credentialKey: string): string {
+  const key = credentialKey.trim().toUpperCase();
+  const suffixed = process.env[`YOUTUBE_REFRESH_TOKEN_${key}`]?.trim();
+  if (suffixed) return suffixed;
+  if (key === 'SANDY') {
+    const legacy = process.env.YOUTUBE_REFRESH_TOKEN?.trim();
+    if (legacy) return legacy;
+  }
+  throw new GoogleAuthError(
+    `No refresh token for channel credential_key=${key}. ` +
+      `Set YOUTUBE_REFRESH_TOKEN_${key} (run \`npx tsx scripts/youtube-consent.ts --key ${key}\` and pick that channel).`,
+  );
+}
+
+/** True when ANY YouTube credential exists in env (bare legacy or any suffixed key). */
+export function hasAnyYouTubeCredential(): boolean {
+  if (process.env.YOUTUBE_REFRESH_TOKEN?.trim()) return true;
+  return Object.keys(process.env).some(
+    (k) => k.startsWith('YOUTUBE_REFRESH_TOKEN_') && process.env[k]?.trim(),
+  );
+}
+
+/**
+ * Access token for a YouTube channel identity.
+ * @param refreshToken the channel's refresh token (from resolveChannelRefreshToken).
+ *   Without an argument — legacy path: the bare YOUTUBE_REFRESH_TOKEN (= SANDY).
+ */
+export async function getYouTubeAccessToken(refreshToken?: string): Promise<string> {
+  const rt = (refreshToken ?? process.env.YOUTUBE_REFRESH_TOKEN)?.trim();
   if (!rt) {
     throw new GoogleAuthError(
-      'YOUTUBE_REFRESH_TOKEN not set. Run `npx tsx scripts/youtube-consent.ts` and pick the Sandy channel.',
+      'No YouTube refresh token. Run `npx tsx scripts/youtube-consent.ts --key <KEY>` and pick the channel.',
     );
   }
   return getGoogleAccessToken(rt);

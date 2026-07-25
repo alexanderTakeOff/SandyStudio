@@ -90,16 +90,17 @@ function makeSupabase(config: {
 }
 
 describe('genreForEpisode', () => {
-  it('resolves code→UUID then returns genre (SS-S15 bug fix)', async () => {
-    // episodes.series_id stores the series CODE, not the UUID — the original bug
-    // that caused GAGAD to never fire.
+  it('a legacy code-string series_id yields null (fallback deleted post-0038)', async () => {
+    // Historically episodes.series_id could store the series CODE; migration
+    // 0038 normalised the FK to uuid and multi-channel Phase 0 deleted the
+    // code→UUID fallback. A non-uuid value now resolves to no series → null.
     const sb = makeSupabase({
       episodesRow: { series_id: 'SS-S15', episode_code: 'SS-S15-E03' },
       seriesIdForCode: 'uuid-series-1',
       genreForId: 'comedy',
     });
     const result = await genreForEpisode(sb, 'ep-uuid-1');
-    expect(result).toBe('comedy');
+    expect(result).toBeNull();
   });
 
   it('happy path: series_id is already a valid UUID', async () => {

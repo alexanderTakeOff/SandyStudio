@@ -65,14 +65,14 @@ Every file in this project must be uniquely identifiable by its name alone.
 
 ### Format
 ```
-[PROJECT]-[SEASON]-[EPISODE]-[TYPE]-[DESCRIPTION]-[VERSION]-[STATUS].[ext]
+[STUDIO]-[SERIES]-[EPISODE]-[TYPE]-[DESCRIPTION]-[VERSION]-[STATUS].[ext]
 ```
 
 ### Codes
 | Field | Values | Example |
 |-------|--------|---------|
-| PROJECT | `SS` (SandyStudio) | `SS` |
-| SEASON | `S01`, `S02`... | `S01` |
+| STUDIO | `SS` (SandyStudio — vestigial app prefix, NOT a franchise/channel marker) | `SS` |
+| SERIES | `S01`, `S02`... — each `S{NN}` is a SEPARATE series; no "season" level exists (glossary, 2026-07-25) | `S01` |
 | EPISODE | `E01`, `E02`... or `PILOT` | `E03` |
 | TYPE | `SCR` script, `STB` storyboard, `IMG` image, `VID` video, `AUD` audio, `BIB` bible, `PRO` prompt, `REV` review, `SPC` spec, `STA` state | `SCR` |
 | DESCRIPTION | Short snake_case | `opening_scene` |

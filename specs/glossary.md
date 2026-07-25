@@ -83,16 +83,19 @@ PA-proxy tool that lets Director ask a specific agent (Designer / Animator / etc
 
 ## 2. Production scope / Уровни производства
 
+### Channel / Канал
+Distribution identity — a YouTube channel with its own audience, credentials, and telemetry. Passport row in the `channels` table (name, `youtube_channel_id`, `credential_key`, `ntfy_topic`, status, metadata). One channel hosts N series (`series.channel_id`, **nullable** — a series may live and produce without a channel; the channel is required only at publish/analytics gates, where its absence is a fail-fast HALT, never a silent fallback). The channel's identity is defined by its OAuth refresh token (`YOUTUBE_REFRESH_TOKEN_<CREDENTIAL_KEY>` in env); `youtube_channel_id` is a verification guard. Spec: [`specs/system/multi-channel.md`](system/multi-channel.md).
+
 ### Series / Сериал
-Top-level production unit (e.g. "Sandy & Friends"). Owns its own bible, libraries, audio palette, visual style. Spans multiple seasons. Series-level assets are LOCKED once approved and reused across all child episodes.
+Top-level production unit under a Channel (e.g. "Sandy Chronicles", code `SS-S15`). Owns its own bible, libraries, audio palette, visual style. Series-level assets are LOCKED once approved and reused across all child episodes. Each `SS-S{NN}` code is a **separate series** — `SS` is a vestigial studio prefix (SandyStudio the application), NOT a franchise or channel marker (Director ruling 2026-07-25); a new series with a new protagonist is simply the next `SS-S{NN}`.
 
 **Series status (DRAFT · ACTIVE · ARCHIVED).** `ACTIVE` is **derived, not stored** (Director directive 2026-06-02): a series counts as ACTIVE once its `general_idea` Bible doc (`SBL-general_idea`) is **LOCKED** — the moment its concept is canonized and it enters production. New series are stored `DRAFT` and stay DRAFT until the Director locks the general idea (a Director-only act, CLAUDE.md §6). `ARCHIVED` is an explicit stored override. No stored ACTIVE flag ⇒ no drift, no backfill; a series reverts to DRAFT if its general idea is unlocked for a new version. Computed by `webapp/lib/api/series-status.ts`.
 
-### Season / Сезон
-Numbered grouping of episodes within a Series (e.g. `S01`, `S02`). May introduce new characters or refine style, but inherits Series Bible. Code: `S{NN}`.
+### Season / Сезон — **DEPRECATED (2026-07-25)**
+There is no organisational "season" level: no DB entity, no code behaviour. The `S{NN}` segment in file/episode codes is a naming artefact that identifies the **Series** itself (each `SS-S{NN}` = a distinct series, see above). Code variables still named `season` are renamed to series on touch, never in bulk.
 
 ### Episode / Эпизод
-Atomic production unit — one short film. Produced by running the full episode pipeline (sections 4 below). Code: `E{NN}` within season; full code: `SS-{S}-{E}` (e.g. `SS-S01-E01`).
+Atomic production unit — one short film. Produced by running the full episode pipeline (sections 4 below). Code: `E{NN}` within its series; full code: `SS-{S}-{E}` (e.g. `SS-S01-E01`).
 
 ### Shot / Шот (план)
 Smallest video unit — a single continuous camera take, typically 3–8 seconds. Each shot has one prompt, one Veo (or other video provider) generation, one approval. Shot id: `{episode_code}-A{N}-SC{NN}-SH{NN}` (Act-Scene-Shot).

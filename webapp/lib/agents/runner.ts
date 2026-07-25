@@ -29,6 +29,7 @@ import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { uploadVideo, setThumbnail, videoExists, isVideoInPlaylist, addVideoToPlaylist, type PrivacyStatus } from './providers/youtube';
 import { collectAudienceSnapshot } from './providers/youtube-stats';
+import { decideYouTubePathway, assertChannelIdentity } from './providers/channel-resolver';
 import { resolveSeriesPlaylistId } from './providers/short-linkage';
 import { downloadFile } from './providers/drive';
 import { parseVideoMetadata } from './publish-metadata';
@@ -3195,12 +3196,17 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-PUB': {
-      const hasYtToken = !!process.env.YOUTUBE_REFRESH_TOKEN?.trim();
+      // Multi-channel gate (multi-channel.md §4): no creds at all → mock
+      // (replay-pilot/tests/dev unchanged); creds present → strict cascade —
+      // series without a channel / missing per-key token / non-ACTIVE channel
+      // all THROW (HALT) inside decideYouTubePathway instead of silently
+      // uploading to whatever the global token points at.
+      const pathway = await decideYouTubePathway(supabase, episodeId);
 
-      // Real publish path needs a supabase client (to load the APPROVED inputs)
-      // and a YouTube refresh token. Absent either (replay-pilot, tests,
-      // unconfigured env) → deterministic mock, exactly as before.
-      if (supabase && hasYtToken) {
+      if (supabase && pathway.mode === 'real') {
+        const ytAuth = { refreshToken: pathway.refreshToken };
+        // Identity guard: the token must belong to the passport's channel.
+        await assertChannelIdentity(pathway.passport, pathway.refreshToken);
         const loadApproved = async (ft: string) => {
           const { data } = await supabase
             .from('assets')
@@ -3242,7 +3248,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         // still live on the channel, this is a no-op (retrigger without a prior
         // delete). If the video was deleted, videoExists → false → re-upload.
         const priorId = readEpisodeMetaString(inputs.episode, 'youtube_video_id');
-        if (priorId && (await videoExists(priorId))) {
+        if (priorId && (await videoExists(priorId, ytAuth))) {
           return {
             outputKind: 'publish-log',
             result: {
@@ -3268,20 +3274,23 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
 
         // Upload the final cut.
         const videoBytes = new Uint8Array(await downloadFile(videoAsset.drive_file_id));
-        const uploaded = await uploadVideo({
-          bytes: videoBytes,
-          title,
-          description: parsed.description,
-          tags: parsed.tags,
-          privacyStatus: privacy,
-        });
+        const uploaded = await uploadVideo(
+          {
+            bytes: videoBytes,
+            title,
+            description: parsed.description,
+            tags: parsed.tags,
+            privacyStatus: privacy,
+          },
+          ytAuth,
+        );
 
         // Best-effort custom thumbnail — a failure here must not fail the publish.
         let thumbnailSet = false;
         if (thumbAsset?.drive_file_id) {
           try {
             const thumbBytes = new Uint8Array(await downloadFile(thumbAsset.drive_file_id));
-            await setThumbnail(uploaded.id, thumbBytes);
+            await setThumbnail(uploaded.id, thumbBytes, 'image/png', ytAuth);
             thumbnailSet = true;
           } catch (err) {
             console.error(
@@ -3297,8 +3306,8 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
         let addedToPlaylist = false;
         try {
           const playlistId = await resolveSeriesPlaylistId(supabase, episodeId);
-          if (playlistId && !(await isVideoInPlaylist(playlistId, uploaded.id))) {
-            await addVideoToPlaylist(playlistId, uploaded.id);
+          if (playlistId && !(await isVideoInPlaylist(playlistId, uploaded.id, ytAuth))) {
+            await addVideoToPlaylist(playlistId, uploaded.id, ytAuth);
             addedToPlaylist = true;
           }
         } catch (err) {
@@ -3368,12 +3377,19 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           `EXEC-ANAL requires collectionPoint and youtubeVideoId in event payload`
         );
       }
-      // Real audience metrics when the YouTube token is present (it now carries
-      // the yt-analytics.readonly scope); mock stays the fallback for
-      // replay-pilot / tests / no-creds so the DAG smoke is unchanged.
-      const analytics = process.env.YOUTUBE_REFRESH_TOKEN
-        ? await collectAudienceSnapshot({ youtubeVideoId, collectionPoint, supabase })
-        : await mockAnalytics({ episodeId, youtubeVideoId, collectionPoint });
+      // Real audience metrics via the channel cascade (multi-channel.md §4);
+      // mock stays the fallback for replay-pilot / tests / no-creds so the DAG
+      // smoke is unchanged. A series without a channel HALTs here.
+      const analPathway = await decideYouTubePathway(supabase, episodeId);
+      const analytics =
+        analPathway.mode === 'real'
+          ? await collectAudienceSnapshot({
+              youtubeVideoId,
+              collectionPoint,
+              supabase,
+              auth: { refreshToken: analPathway.refreshToken },
+            })
+          : await mockAnalytics({ episodeId, youtubeVideoId, collectionPoint });
       return {
         outputKind: 'analytics-json',
         result: {
