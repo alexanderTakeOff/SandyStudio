@@ -44,32 +44,99 @@ const ClearBody = z.object({
   /** Mirrors the Inbox filter pills so "Clear" only drains what is on screen. */
   filter: z.enum(['all', 'visual', 'non_visual', 'blockers']).default('all'),
   episode_id: z.string().uuid().optional(),
+  /**
+   * Also sweep assets awaiting approval out of the Inbox — WITHOUT deciding
+   * them. Status stays REVIEW (so the DAG is untouched and the asset is still
+   * reachable from Episodes / the drawer); a `metadata.inbox_dismissed_at`
+   * stamp takes it out of triage. Reversible: `?filter=hidden` lists them and
+   * `restore: true` un-stamps them.
+   *
+   * Added 2026-07-25 — Director could not clear an Inbox made almost entirely
+   * of stale approval gates, because notification-only clearing left the
+   * button disabled.
+   */
+  include_assets: z.boolean().optional(),
+  /** Un-stamp previously hidden assets instead of hiding more. */
+  restore: z.boolean().optional(),
 });
+
+/** Cap per call — keeps one accidental click from stamping an unbounded set. */
+const ASSET_SWEEP_CAP = 500;
 
 export const POST = withApiHandler(async (req) => {
   const { supabase, principal } = await requireDirector();
   const body = await parseJson(req, ClearBody);
 
-  const types = eventTypesForFilter(body.filter);
+  const now = new Date().toISOString();
 
-  // The `visual` pill shows only IMG/VID assets — no event rows behind it. Bail
-  // out instead of letting an empty `.in()` drain (or error on) the whole feed.
-  if (types.length === 0) {
-    return apiOk({ cleared: 0, cleared_ids: [] as string[] }, { total: 0 });
+  // ── Restore path: un-hide previously dismissed assets and stop.
+  if (body.restore) {
+    const restored = await sweepAssets(supabase, body, { restore: true });
+    if (restored.length > 0) {
+      await logEvent(supabase, {
+        event_type: 'config_updated',
+        severity: 'info',
+        title: `Inbox restore — ${restored.length} asset${restored.length === 1 ? '' : 's'} back in triage`,
+        description: `Director un-hid ${restored.length} asset(s) previously swept out of the Inbox. No status changed.`,
+        actor: principal,
+        episode_id: body.episode_id ?? null,
+        metadata: {
+          action: 'inbox_restore',
+          filter: body.filter,
+          restored_count: restored.length,
+          restored_asset_ids: restored,
+        },
+      });
+    }
+    return apiOk(
+      { cleared: 0, cleared_ids: [], assets_hidden: 0, assets_restored: restored.length },
+      { total: restored.length },
+    );
   }
 
-  const resolvedAt = new Date().toISOString();
-  let update = supabase
-    .from('activity_events')
-    .update({ resolved_at: resolvedAt } as never)
-    .is('resolved_at', null)
-    .in('event_type', types as string[]);
-  if (body.episode_id) update = update.eq('episode_id', body.episode_id);
+  const types = eventTypesForFilter(body.filter);
 
-  const { data, error } = await update.select('id');
-  if (error) throw new Error(`inbox clear failed: ${error.message}`);
+  // ── Half 1: notification events. The `visual` pill shows only IMG/VID assets,
+  // so there are no event rows behind it — an empty `.in()` must not be issued.
+  let clearedIds: string[] = [];
+  if (types.length > 0) {
+    let update = supabase
+      .from('activity_events')
+      .update({ resolved_at: now } as never)
+      .is('resolved_at', null)
+      .in('event_type', types as string[]);
+    if (body.episode_id) update = update.eq('episode_id', body.episode_id);
 
-  const clearedIds = (data ?? []).map((r) => (r as { id: string }).id);
+    const { data, error } = await update.select('id');
+    if (error) throw new Error(`inbox clear failed: ${error.message}`);
+    clearedIds = (data ?? []).map((r) => (r as { id: string }).id);
+  }
+
+  // ── Half 2 (opt-in): hide asset approval gates without deciding them.
+  const hiddenIds = body.include_assets
+    ? await sweepAssets(supabase, body, { restore: false, at: now })
+    : [];
+
+  if (hiddenIds.length > 0) {
+    await logEvent(supabase, {
+      event_type: 'config_updated',
+      severity: 'info',
+      title: `Inbox cleared — ${hiddenIds.length} approval gate${hiddenIds.length === 1 ? '' : 's'} hidden`,
+      description:
+        `Director swept ${hiddenIds.length} asset(s) out of Inbox triage. Status stays ` +
+        `REVIEW — nothing was approved or rejected, and no pipeline event fired. ` +
+        `Recover them with the "hidden" filter.`,
+      actor: principal,
+      episode_id: body.episode_id ?? null,
+      metadata: {
+        action: 'inbox_hide_assets',
+        filter: body.filter,
+        hidden_count: hiddenIds.length,
+        hidden_asset_ids: hiddenIds,
+        inbox_dismissed_at: now,
+      },
+    });
+  }
 
   // Audit trail. `config_updated` is used rather than a dedicated
   // `inbox_cleared` type because the latter is not yet in the
@@ -92,13 +159,73 @@ export const POST = withApiHandler(async (req) => {
         event_types: types,
         cleared_count: clearedIds.length,
         cleared_event_ids: clearedIds,
-        resolved_at: resolvedAt,
+        resolved_at: now,
       },
     });
   }
 
   return apiOk(
-    { cleared: clearedIds.length, cleared_ids: clearedIds },
-    { total: clearedIds.length },
+    {
+      cleared: clearedIds.length,
+      cleared_ids: clearedIds,
+      assets_hidden: hiddenIds.length,
+      assets_restored: 0,
+    },
+    { total: clearedIds.length + hiddenIds.length },
   );
 });
+
+/**
+ * Stamp (or clear) `metadata.inbox_dismissed_at` on REVIEW assets in scope.
+ *
+ * `metadata` is free-form JSONB shared with image-prompt and description
+ * history (migration 0020), so each row is merged rather than overwritten —
+ * hence read-then-write instead of one bulk UPDATE. Rows are fetched id+metadata
+ * only, so the multi-KB `content` column never crosses the wire.
+ */
+async function sweepAssets(
+  supabase: Awaited<ReturnType<typeof requireDirector>>['supabase'],
+  body: z.infer<typeof ClearBody>,
+  opts: { restore: boolean; at?: string },
+): Promise<string[]> {
+  let query = supabase
+    .from('assets')
+    .select('id,metadata')
+    .eq('status', 'REVIEW')
+    .order('created_at', { ascending: true })
+    .limit(ASSET_SWEEP_CAP);
+  if (body.episode_id) query = query.eq('episode_id', body.episode_id);
+  // Only touch rows that need it: hide the still-visible ones, restore the
+  // already-hidden ones. Keeps the write count honest in the audit row.
+  query = opts.restore
+    ? query.not('metadata->>inbox_dismissed_at', 'is', null)
+    : query.is('metadata->>inbox_dismissed_at', null);
+  // The visual gate is about DECIDING, not about triage housekeeping — hiding
+  // an IMG/VID row approves nothing — so `visual`/`non_visual` narrow the sweep
+  // rather than block it.
+  if (body.filter === 'visual') query = query.in('file_type', ['IMG', 'VID']);
+  if (body.filter === 'non_visual') query = query.not('file_type', 'in', '("IMG","VID")');
+  // `blockers` is an event-only view; it has no asset rows behind it.
+  if (body.filter === 'blockers') return [];
+
+  const { data, error } = await query;
+  if (error) throw new Error(`inbox asset sweep failed: ${error.message}`);
+
+  const rows = (data ?? []) as Array<{ id: string; metadata: unknown }>;
+  const touched: string[] = [];
+  for (const row of rows) {
+    const base =
+      row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        ? { ...(row.metadata as Record<string, unknown>) }
+        : {};
+    if (opts.restore) delete base.inbox_dismissed_at;
+    else base.inbox_dismissed_at = opts.at;
+    const { error: uerr } = await supabase
+      .from('assets')
+      .update({ metadata: base } as never)
+      .eq('id', row.id);
+    if (uerr) throw new Error(`inbox asset sweep failed on ${row.id}: ${uerr.message}`);
+    touched.push(row.id);
+  }
+  return touched;
+}

@@ -21,9 +21,24 @@ export const dynamic = 'force-dynamic';
 
 const ListQuery = z.object({
   limit: z.coerce.number().int().positive().max(50).default(25),
-  filter: z.enum(['all', 'visual', 'non_visual', 'blockers', 'mine']).default('all'),
+  filter: z
+    .enum(['all', 'visual', 'non_visual', 'blockers', 'mine', 'hidden'])
+    .default('all'),
   episode_id: z.string().uuid().optional(),
 });
+
+/**
+ * Episode statuses whose work is finished. 2026-07-25: the Inbox used to ignore
+ * episode status entirely, so a REVIEW asset or an unresolved event belonging to
+ * an ARCHIVED or COMPLETE episode kept demanding triage forever — and since the
+ * feed is capped and sorted oldest-first, that dead weight sat permanently at
+ * the top. Archiving an episode is the canonical "stop asking me about this"
+ * signal (migration 0029); the Inbox now honours it.
+ */
+const TERMINAL_EPISODE_STATUSES = ['ARCHIVED', 'COMPLETE'] as const;
+
+/** JSON path on `assets.metadata` marking a row hidden from the Inbox. */
+const ASSET_DISMISSED_PATH = 'metadata->>inbox_dismissed_at';
 
 const VISUAL_FILE_TYPES: ReadonlySet<string> = new Set(['IMG', 'VID']);
 
@@ -45,6 +60,22 @@ export const GET = withApiHandler(async (req) => {
   const { supabase } = await requireDirector();
   const q = parseSearchParams(req.url, ListQuery);
 
+  // ── Terminal episodes: anything belonging to them is not triage work.
+  // Fetched as an id list rather than an embedded join because `!inner` would
+  // drop rows with a NULL episode_id (Bible assets), which DO belong in the
+  // Inbox. The list is bounded by the season size, so the `in.(…)` stays small.
+  const { data: doneEpisodes, error: depErr } = await supabase
+    .from('episodes')
+    .select('id')
+    .in('status', TERMINAL_EPISODE_STATUSES as unknown as never[]);
+  if (depErr) throw new Error(`inbox terminal episodes failed: ${depErr.message}`);
+  const doneEpisodeIds = (doneEpisodes ?? []).map((e) => (e as { id: string }).id);
+  // PostgREST renders `NOT IN` as SQL NOT IN, which is NULL — hence false — for a
+  // NULL episode_id. The explicit `is.null` arm keeps episode-less rows visible.
+  const notTerminal = doneEpisodeIds.length
+    ? `episode_id.is.null,episode_id.not.in.(${doneEpisodeIds.join(',')})`
+    : null;
+
   // ── Source 1: assets in REVIEW
   // Select only the columns the inbox renders — avoid hauling `content`
   // (multi-KB TEXT) and `metadata` (JSON) on every 10s poll. The dropped
@@ -58,6 +89,15 @@ export const GET = withApiHandler(async (req) => {
     .order('created_at', { ascending: true })
     .limit(q.limit);
   if (q.episode_id) assetQuery = assetQuery.eq('episode_id', q.episode_id);
+  if (notTerminal) assetQuery = assetQuery.or(notTerminal);
+  // `hidden` is the recovery view: it shows ONLY the rows a previous "Clear
+  // inbox" swept out of triage, so a dismissal is never a one-way door. Every
+  // other filter hides them. Filtered in SQL on the JSON path so the multi-KB
+  // `metadata` payload still never crosses the wire.
+  assetQuery =
+    q.filter === 'hidden'
+      ? assetQuery.not(ASSET_DISMISSED_PATH, 'is', null)
+      : assetQuery.is(ASSET_DISMISSED_PATH, null);
   const { data: assets, error: aerr } = await assetQuery;
   if (aerr) throw new Error(`inbox assets failed: ${aerr.message}`);
 
@@ -84,8 +124,12 @@ export const GET = withApiHandler(async (req) => {
     .order('created_at', { ascending: true })
     .limit(q.limit);
   if (q.episode_id) evtQuery = evtQuery.eq('episode_id', q.episode_id);
-  const { data: events, error: eerr } = await evtQuery;
-  if (eerr) throw new Error(`inbox events failed: ${eerr.message}`);
+  if (notTerminal) evtQuery = evtQuery.or(notTerminal);
+  // The recovery view is about dismissed ASSETS; events are cleared outright
+  // (resolved_at) and have no hidden state to recover, so skip them entirely.
+  const evtResult = q.filter === 'hidden' ? null : await evtQuery;
+  if (evtResult?.error) throw new Error(`inbox events failed: ${evtResult.error.message}`);
+  const events = evtResult?.data ?? [];
 
   // ── Build items
   const items: InboxItem[] = [];
