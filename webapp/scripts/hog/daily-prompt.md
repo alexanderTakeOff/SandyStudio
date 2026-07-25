@@ -12,12 +12,16 @@
 - **Только реальные числа из снапшот-JSON. Ничего не выдумывай.** Если данных нет — так и пиши.
 
 ШАГИ:
-1. Данные уже собраны лаунчером в `docs/distribution/snapshots/<сегодня>.json`
-   (структура: {date, channel:{viewCount,subscriberCount,videoCount}, rows:[{id,title,
-   state,liveAt,durationSeconds,views,likes,comments,impressions,impressionCtr,
-   subscribersGained,trafficSources}]}). Прочитай сегодняшний файл. Если его нет —
-   сам запусти сбор: `cd webapp && node --env-file=.env.local --import tsx scripts/hog-snapshot.mts`.
+1. Данные уже собраны лаунчером в `docs/distribution/snapshots/<дата>T<HHMM>Z.json`
+   (структура: {date, collectedAt, channel:{viewCount,subscriberCount,videoCount},
+   rows:[{id,title,state,liveAt,durationSeconds,views,likes,comments,impressions,
+   impressionCtr,subscribersGained,trafficSources}]}). Файлов за один день может быть
+   несколько — читай САМЫЙ ПОЗДНИЙ за сегодня по `collectedAt`. Если за сегодня нет ни
+   одного — запусти сбор сам:
+   `cd webapp && node --env-file=.env.local --import tsx scripts/hog-snapshot.mts`.
 2. Прочитай ПРЕДЫДУЩИЙ по дате снапшот из той же папки (последний до сегодня) для дельт.
+   Если между ним и сегодня есть пропущенные дни — скажи это прямо и НЕ подавай дельту
+   за несколько суток как суточную.
    Если предыдущего нет — отчёт без дельт, отметь «первый замер».
 3. ДИАГНОСТИКА по лестнице роста:
    - Дельты канала: подписчики, всего просмотров, число видео с 4-значным охватом.

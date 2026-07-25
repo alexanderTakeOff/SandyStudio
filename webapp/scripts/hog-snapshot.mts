@@ -1,12 +1,12 @@
 // hog-snapshot.mts — READ-ONLY daily channel snapshot for the Head of Growth loop.
 // Reuses the existing YouTube providers (no duplicated API logic) + the archived
-// Reporting CSV bridge, and persists ONE structured JSON per day so the daily
-// brain can diff today against yesterday. No writes to YouTube, ever.
+// Reporting CSV bridge, and persists one structured JSON per RUN so the daily brain
+// can diff today against yesterday. No writes to YouTube, ever.
 //
 // Run:  node --env-file=.env.local --import tsx scripts/hog-snapshot.mts
 //       (cwd = webapp; needs GOOGLE_* + YOUTUBE_REFRESH_TOKEN + SUPABASE_* in env)
 //
-// Output: ../docs/distribution/snapshots/<YYYY-MM-DD>.json  (relative to repo root)
+// Output: ../docs/distribution/snapshots/<YYYY-MM-DD>T<HHMM>Z.json  (repo-root relative)
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -82,7 +82,9 @@ async function main() {
   const snapshot = { date, collectedAt: now.toISOString(), channel, videoCount: rows.length, rows };
 
   mkdirSync(outDir, { recursive: true });
-  const outPath = join(outDir, `${date}.json`);
+  // Filename carries the UTC time, so a second run the same day can never overwrite
+  // the first one. The daily series is the only thing this loop can measure with.
+  const outPath = join(outDir, `${date}T${now.toISOString().slice(11, 16).replace(':', '')}Z.json`);
   writeFileSync(outPath, JSON.stringify(snapshot, null, 2), 'utf8');
   // Stdout stays machine-parseable: the path + a one-line human summary on stderr.
   console.error(
