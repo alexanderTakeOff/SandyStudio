@@ -1,4 +1,7 @@
-<title>Sandy the Hourglass — отчёт Head of Growth · 25 июля 2026</title>
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<title>Sandy the Hourglass — отчёт Head of Growth · 25 июля (замер 11:50Z)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root{
@@ -58,10 +61,11 @@
   .tile .lab{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
   .tile .now{font-family:var(--serif);font-size:clamp(30px,5vw,42px);line-height:1;margin:12px 0 6px;
     font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-  .tile .delta{font-family:var(--mono);font-size:12.5px;display:flex;align-items:baseline;gap:7px}
-  .up{color:var(--grow)} .flat{color:var(--muted)} .down{color:var(--crit)}
+  .tile .delta{font-family:var(--mono);font-size:12.5px;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+  .up{color:var(--grow)} .flat{color:var(--muted)} .down{color:var(--crit)} .mid{color:var(--warn)}
   .tile .from{color:var(--faint)}
   .tile.crit .now{color:var(--crit)}
+  .tile.warn .now{color:var(--warn)}
 
   /* diagnosis: hourglass + ladder */
   .diag{display:grid;grid-template-columns:minmax(0,240px) minmax(0,1fr);gap:clamp(18px,3vw,40px);align-items:center}
@@ -84,7 +88,7 @@
 
   /* movers table */
   .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:14px;background:var(--panel)}
-  table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+  table{border-collapse:collapse;width:100%;min-width:700px;font-size:14px}
   thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
     color:var(--faint);text-align:right;padding:13px 14px;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap}
   thead th:first-child{text-align:left}
@@ -100,6 +104,8 @@
   .retbar .fill{height:100%;border-radius:99px}
   .subs-pos{color:var(--grow);font-weight:650}
   .subs-zero{color:var(--faint)}
+  .frozen{color:var(--faint);font-family:var(--mono)}
+  .moving{color:var(--grow);font-family:var(--mono);font-weight:650}
   .tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:2px 7px;border-radius:6px;
     border:1px solid var(--border);color:var(--muted)}
   .tag.pend{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
@@ -108,8 +114,19 @@
   /* callout */
   .callout{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--warn);
     border-radius:12px;padding:18px 20px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+  .callout.crit{border-left-color:var(--crit)}
   .callout .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--warn)}
+  .callout.crit .k{color:var(--crit)}
   .callout p{margin:6px 0 0;color:var(--muted);font-size:14px;max-width:72ch}
+  .stack{display:grid;gap:12px}
+
+  /* queue strip */
+  .queue{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:9px;margin-top:14px}
+  .q{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:11px 12px}
+  .q .d{font-family:var(--mono);font-size:11px;color:var(--sand);letter-spacing:.08em}
+  .q .t{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.35}
+  .q.empty{border-style:dashed;background:transparent}
+  .q.empty .d{color:var(--crit)}
 
   /* moves */
   .moves{display:grid;gap:12px}
@@ -134,13 +151,12 @@
 
 <div class="wrap">
   <p class="eyebrow">Head of Growth · отчёт по каналу</p>
-  <h1>Охват есть. Объяснения — нет.</h1>
-  <p class="sub">За 4 дня подписчики ×7, просмотры ×5.4 — лента Shorts реально раздаёт шесть видео. Сегодня я починил инструмент и впервые вижу удержание по всем 30 загрузкам. Оно <b>не совпадает</b> с охватом: самое высокое удержание — у видео с 13 просмотрами.</p>
+  <h1>Канал живёт только свежим аплоадом.</h1>
+  <p class="sub">Впервые есть три замера внутри одних суток — и они показали то, чего суточный ряд не видел. За 2 часа 14 минут канал прибавил <b>15 просмотров</b>, из них 14 — у вчерашнего «Спортзала». Остальные пять раздаваемых видео стоят ровно на нуле. Охват решён, но он импульсный: 2–3 дня — и тишина.</p>
   <div class="metaline">
     <span><b>Канал</b> Sandy the Hourglass</span>
-    <span><b>Снято</b> 25 июля 2026, 14:16 Dubai, live read‑only</span>
-    <span><b>Замер</b> №2 за сутки — за 40 минут сдвинулось одно число</span>
-    <span><b>Окно</b> Δ канальных тоталов к 21 июля</span>
+    <span><b>Снято</b> 25 июля 2026, 11:50Z · live read‑only</span>
+    <span><b>Окна</b> Δ к 21 июля (4 суток) · Δ к 09:36Z (2 ч 14 м)</span>
     <span><b>Публичных</b> 9 из 30 загрузок</span>
   </div>
 
@@ -151,34 +167,34 @@
     <div class="tile">
       <div class="lab">Подписчики</div>
       <div class="now">7</div>
-      <div class="delta"><span class="up">▲ +6</span><span class="from">было 1</span></div>
+      <div class="delta"><span class="up">▲ +6</span><span class="from">было 1 · 21 июл</span></div>
     </div>
     <div class="tile">
       <div class="lab">Всего просмотров</div>
       <div class="now">6 874</div>
-      <div class="delta"><span class="up">▲ +5 595</span><span class="from">было 1 279</span></div>
+      <div class="delta"><span class="up">▲ +5 595</span><span class="from">было 1 279 · 21 июл</span></div>
     </div>
     <div class="tile">
-      <div class="lab">Видео, которые раздаёт лента</div>
+      <div class="lab">Видео с охватом ≥ 500</div>
       <div class="now">6</div>
-      <div class="delta"><span class="flat">◆ ≥ 500 просмотров</span></div>
+      <div class="delta"><span class="up">▲ +4</span><span class="from">было 2 · 21 июл</span></div>
     </div>
-    <div class="tile">
-      <div class="lab">Медиана удержания</div>
-      <div class="now">40%</div>
-      <div class="delta"><span class="flat">◆ разброс 33–68%</span></div>
+    <div class="tile warn">
+      <div class="lab">Прирост за 2 ч 14 м</div>
+      <div class="now">+15</div>
+      <div class="delta"><span class="mid">◆ 14 из 15 — один ролик</span></div>
     </div>
     <div class="tile crit">
       <div class="lab">Конверсия просмотр → подписка</div>
       <div class="now">0.10%</div>
-      <div class="delta"><span class="down">◆ узкое горлышко</span></div>
+      <div class="delta"><span class="down">◆ узкое горлышко</span><span class="from">1 : 982</span></div>
     </div>
   </div>
 
   <!-- DIAGNOSIS -->
   <section>
     <h2>Диагностика воронки</h2>
-    <p class="lede">Разбираем по лестнице роста, звено за звеном. Верхняя колба полна — охват решён. Горлышко теперь измеряется, но ведёт себя не так, как обещает учебник. Нижняя колба почти пуста.</p>
+    <p class="lede">Разбираем по лестнице роста, звено за звеном. Верхняя колба наполняется — но только пока сыплется свежее. Нижняя почти пуста.</p>
     <div class="diag">
       <svg class="glass" viewBox="0 0 200 300" role="img" aria-label="Песочные часы: верхняя колба заполнена охватом, горлышко — удержание, нижняя колба почти пуста — подписки">
         <defs>
@@ -203,22 +219,22 @@
         <div class="rung">
           <div class="ic ok">✓</div>
           <div>
-            <h3>Охват <span class="pill ok">решено</span></h3>
-            <p>Шесть видео взяли 730–1441 просмотр. На тех трёх, где есть атрибуция трафика, <b>96–97% приходит из самой ленты Shorts</b> (Теннис 1390 из 1441, Аэропорт 1220 из 1256, Вентилятор 774 из 803). Алгоритм нас видит и толкает.</p>
+            <h3>Охват <span class="pill ok">решено</span> <span class="pill mid">но импульсный</span></h3>
+            <p>Лента Shorts раздаёт: 730–1 441 просмотр на видео, ~97–99% трафика идёт из самой ленты (поиск даёт 3–9 просмотров — он не рычаг). Но импульс короткий: «Аэропорт» набрал 1 243 к 21 июля и с тех пор прибавил <b>13</b> за четверо суток. Мы не растим базу — мы каждый раз покупаем новый импульс новым роликом.</p>
           </div>
         </div>
         <div class="rung">
           <div class="ic mid">≈</div>
           <div>
-            <h3>Удержание <span class="pill mid">измеряется, но не работает рычагом</span></h3>
-            <p>Медиана по раздаваемым — <b>40%</b> (33 / 37 / 40 / 50 / 68). По всем публичным читаемым — 54%. Но связи с охватом в наших данных <b>нет</b>: три самых высоких удержания среди публичных (98%, 59%, 58%) сидят на видео с 8, 12 и 13 просмотрами. Правило «удержание выше медианы = ворота эскалации» на нашей выборке пока не подтверждается — см. контроль 19 июля ниже.</p>
+            <h3>Удержание <span class="pill mid">рычаг</span></h3>
+            <p>Медиана по шести раздаваемым — <b>40.1%</b> (по всем девяти публичным с читаемой метрикой — 53.9%). Потолок: «Спортзал» 68% (ещё PENDING), выдержанный максимум — «Аэропорт» 50%. Дно: «Смартфон» 33%, «Вентилятор» 37%.</p>
           </div>
         </div>
         <div class="rung">
           <div class="ic bad">✕</div>
           <div>
             <h3>Подписка <span class="pill bad">точка обрыва</span></h3>
-            <p>6 874 просмотра → 7 подписчиков = <b>0.10%</b>, один подписчик на ~982 просмотра. Атрибутировано 6 из 7: Теннис +3 (0.21%), Вентилятор +2 (0.25%), «Every Step» +1 (с 5 просмотров). Аэропорт при 1 256 просмотрах дал <b>ноль</b>. Это первое рвущееся звено.</p>
+            <p>6 874 просмотра → 7 подписчиков = <b>0.10%</b>, один подписчик на 982 просмотра. Атрибуция: «Теннис» +3, «Вентилятор» +2, «Каждый шаг хуже» +1. «Аэропорт» при 1 256 просмотрах и досмотре 50% — <b>ноль</b>. Досматривают, но не понимают, зачем возвращаться.</p>
           </div>
         </div>
       </div>
@@ -227,210 +243,153 @@
 
   <!-- MOVERS -->
   <section>
-    <h2>Кто поехал</h2>
-    <p class="lede">Шесть публичных видео, которые лента подхватила. Удержание — впервые из снапшота (avgViewPercentage, только читаемые значения 0–100%); подписки атрибутированы по архиву Reporting.</p>
+    <h2>Кто поехал — и кто уже встал</h2>
+    <p class="lede">Шесть публичных видео, которые лента подхватила. Новая колонка — движение внутри дня, между замерами 09:36Z и 11:50Z. Она отделяет «раздаётся сейчас» от «раздавалось когда‑то».</p>
     <div class="tbl-wrap">
       <table>
         <thead>
-          <tr><th>Видео</th><th>Просмотры</th><th>Удержание</th><th>Подписки</th><th>Статус</th></tr>
+          <tr><th>Видео</th><th>Просмотры</th><th>Δ 2 ч 14 м</th><th>Удержание</th><th>Подписки</th><th>Статус</th></tr>
         </thead>
         <tbody>
           <tr>
-            <td><span class="vtitle">🎾 Стена / Теннис</span><span class="vmeta">75 c · 21 июл · лента 96%</span></td>
+            <td><span class="vtitle">🎾 Стена / Теннис</span><span class="vmeta">75 с · 21 июл · лента 98%</span></td>
             <td class="num">1 441</td>
+            <td class="frozen">0</td>
             <td><span class="retbar"><span class="track"><span class="fill" style="width:40%;background:var(--warn)"></span></span>40%</span></td>
             <td class="subs-pos">+3</td>
             <td><span class="tag win">топ‑конвертер</span></td>
           </tr>
           <tr>
-            <td><span class="vtitle">🎂 Пафосный приём</span><span class="vmeta">23 c · 23 июл · аналитики нет</span></td>
-            <td class="num">1 418</td>
-            <td><span class="retbar"><span style="color:var(--faint)">нет данных</span></span></td>
+            <td><span class="vtitle">🎂 Пафосный приём</span><span class="vmeta">23 с · 23 июл · аналитики нет</span></td>
+            <td class="num">1 419</td>
+            <td class="frozen">+1</td>
+            <td><span class="retbar"><span class="track"></span><span style="color:var(--faint)">—</span></span></td>
             <td class="subs-zero">—</td>
             <td><span class="tag pend">PENDING 26 июл</span></td>
           </tr>
           <tr>
-            <td><span class="vtitle">✈️ Аэропорт</span><span class="vmeta">52 c · 19 июл · лента 97%</span></td>
+            <td><span class="vtitle">✈️ Аэропорт</span><span class="vmeta">52 с · 19 июл · лента 97%</span></td>
             <td class="num">1 256</td>
+            <td class="frozen">0</td>
             <td><span class="retbar"><span class="track"><span class="fill" style="width:50%;background:var(--grow)"></span></span>50%</span></td>
             <td class="subs-zero">0</td>
-            <td><span class="tag">выдержан · 0 подписок</span></td>
+            <td><span class="tag">импульс исчерпан</span></td>
           </tr>
           <tr>
-            <td><span class="vtitle">🏋️ Спортзал</span><span class="vmeta">86 c · 24 июл · сутки в эфире</span></td>
-            <td class="num">922</td>
+            <td><span class="vtitle">🏋️ Спортзал</span><span class="vmeta">86 с · 24 июл · свежак</span></td>
+            <td class="num">933</td>
+            <td class="moving">+14</td>
             <td><span class="retbar"><span class="track"><span class="fill" style="width:68%;background:var(--grow)"></span></span>68%</span></td>
             <td class="subs-zero">0</td>
             <td><span class="tag pend">PENDING 27 июл</span></td>
           </tr>
           <tr>
-            <td><span class="vtitle">💨 Вентилятор</span><span class="vmeta">144 c · 21 июл · лента 96%</span></td>
+            <td><span class="vtitle">💨 Вентилятор</span><span class="vmeta">144 с · 21 июл · лента 99%</span></td>
             <td class="num">803</td>
+            <td class="frozen">0</td>
             <td><span class="retbar"><span class="track"><span class="fill" style="width:37%;background:var(--warn)"></span></span>37%</span></td>
             <td class="subs-pos">+2</td>
-            <td><span class="tag win">лучшая конверсия 0.25%</span></td>
+            <td><span class="tag">ниже медианы</span></td>
           </tr>
           <tr>
-            <td><span class="vtitle">📱 Смартфон</span><span class="vmeta">61 c · 22 июл</span></td>
+            <td><span class="vtitle">📱 Смартфон</span><span class="vmeta">61 с · 22 июл</span></td>
             <td class="num">730</td>
+            <td class="frozen">0</td>
             <td><span class="retbar"><span class="track"><span class="fill" style="width:33%;background:var(--crit)"></span></span>33%</span></td>
             <td class="subs-zero">0</td>
-            <td><span class="tag pend">PENDING 25 июл, 20:00</span></td>
+            <td><span class="tag pend">PENDING сегодня 20:00Z</span></td>
           </tr>
         </tbody>
       </table>
     </div>
   </section>
 
-  <!-- CONTROL PAIR -->
+  <!-- CALLOUTS -->
   <section>
-    <h2>Контроль 19 июля — самое неудобное число дня</h2>
-    <p class="lede">Два шортса ушли в эфир <b>в одну минуту</b>, 19 июля 20:00 UTC, с одного канала. Единственная чистая контрольная пара, которая у нас есть.</p>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr><th>Видео</th><th>Просмотры</th><th>Из ленты</th><th>Удержание</th><th>Длина</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="vtitle">✈️ Аэропорт</span><span class="vmeta">19 июл 20:00 UTC</span></td>
-            <td class="num">1 256</td>
-            <td class="num">1 220</td>
-            <td class="num">50%</td>
-            <td class="num">52 c</td>
-          </tr>
-          <tr>
-            <td><span class="vtitle">🥤 Война с торговым автоматом</span><span class="vmeta">19 июл 20:00 UTC</span></td>
-            <td class="num">13</td>
-            <td class="num">1</td>
-            <td class="num">58%</td>
-            <td class="num">94 c</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="callout" style="margin-top:16px">
-      <div>
-        <div class="k">⚠️ Вывод, который ломает рабочую гипотезу</div>
-        <p>Лента раздала то видео, у которого удержание <b>ниже</b> (50% против 58%), и не дала второму ни одного показа в ленте — 1 просмотр из feed против 1 220. Значит на нашем масштабе удержание пока не объясняет, кого лента берёт, а кого нет. Разделитель — что‑то другое (тема, первый кадр, конкуренция двух своих же видео за один слот). Я это <b>не знаю</b> и не буду выдумывать: нужен эксперимент, где различается ровно один фактор.</p>
+    <h2>Что нельзя выдавать за вывод</h2>
+    <p class="lede">Три оговорки, без которых сегодняшние числа читаются неправильно.</p>
+    <div class="stack">
+      <div class="callout">
+        <div>
+          <div class="k">⏳ Лаг метрик — не спеши с выводами</div>
+          <p>«Пафосный приём» (1 419 просмотров, аналитики <b>ноль</b> — ни трафика, ни удержания), «Спортзал» (933, 68%) и «Смартфон» (730, 33%) моложе трёх суток и сидят внутри окна обработки YouTube. Их метрики — <b>PENDING‑VALIDATION 26 · 27 июля и сегодня 20:00Z</b>. Урок из них не дистиллируем. Сам лаг тоже видно глазами: у «Спортзала» 933 просмотра, а сумма источников трафика — 2. Это не сбой сбора, это незрелые данные.</p>
+        </div>
       </div>
+      <div class="callout">
+        <div>
+          <div class="k">◆ Соблазнительная, но недоказанная связь</div>
+          <p>«Смартфон» (33% досмотра) встал на 730 за 2.7 суток; «Спортзал» (68%) на третий день ещё капает ~9 просмотров в час. Выглядит как «удержание = длительность раздачи» — но <b>оба внутри PENDING‑окна</b>, а контрпример уже лежит рядом: «Автомойка‑лонг» с 98% досмотра собрала 8 просмотров. Записываем как гипотезу к проверке, не как урок.</p>
+        </div>
+      </div>
+      <div class="callout crit">
+        <div>
+          <div class="k">🔴 Конвейер идей упирается в 1 августа</div>
+          <p>Расписание забито ровно по 31 июля — семь роликов, по одному в день. Дальше пусто. В unlisted лежит 14 файлов, но это почти сплошь дубли уже вышедшего (лонг‑версии Лифта, Спортзала, Уборки, Тяжёлого друга, Вентилятора, «Каждый шаг хуже») и мёртвая тема «торговый автомат» — шесть роликов, <b>56 просмотров на всех</b>. Реально нового материала — по сути один «Эскалатор». Канал, который живёт свежим аплоадом, через неделю остаётся без топлива.</p>
+        </div>
+      </div>
+    </div>
+    <div class="queue">
+      <div class="q"><div class="d">25 июл</div><div class="t">Уборка</div></div>
+      <div class="q"><div class="d">26 июл</div><div class="t">Лифт</div></div>
+      <div class="q"><div class="d">27 июл</div><div class="t">Тяжёлый друг</div></div>
+      <div class="q"><div class="d">28 июл</div><div class="t">Мадам Парфюм</div></div>
+      <div class="q"><div class="d">29 июл</div><div class="t">Каждый шаг хуже</div></div>
+      <div class="q"><div class="d">30 июл</div><div class="t">Аэропорт 4</div></div>
+      <div class="q"><div class="d">31 июл</div><div class="t">Автомойка</div></div>
+      <div class="q empty"><div class="d">1 авг →</div><div class="t">пусто</div></div>
     </div>
   </section>
 
-  <!-- PENDING -->
-  <section>
-    <div class="callout">
-      <div>
-        <div class="k">⏳ Лаг метрик — эти числа ещё не доказательства</div>
-        <p><b>PENDING‑VALIDATION 26 июля</b> — «Пафосный приём» (1 418 просмотров, 23 июля): по нему вообще нет ни строки аналитики, ни архива Reporting. Второе по охвату видео канала — и полностью слепое.<br>
-        <b>PENDING‑VALIDATION 27 июля</b> — «Спортзал» (922, 68%, сутки в эфире). 68% выглядит как потолок качества, но это внутри окна обработки YouTube: урок из него не выводим.<br>
-        <b>PENDING‑VALIDATION 25 июля, 20:00 UTC</b> — «Смартфон» (730, 33%): окно закрывается сегодня вечером, завтра число станет годным.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ANOMALIES -->
-  <section>
-    <h2>Аномалии и мусор в данных</h2>
-    <div class="moves">
-      <div class="move">
-        <div class="n">!</div>
-        <div>
-          <h3>«Автомойка» не в эфире — эксперимент заморожен</h3>
-          <p>Шорт «Sandy and the Car Wash» сейчас — <b>scheduled на 31 июля, 0 просмотров, ни одной строки аналитики</b>, то есть это новая загрузка. Оригинала, который 21 июля числился с 1 196 просмотрами, в списке загрузок больше нет. Эксперимент с обрезкой первых 6 секунд даст вердикт не раньше <b>3 августа</b> — на неделю позже, чем мы считали.</p>
-          <div class="why">памятка в базе говорила «перезалит 24 июля, PENDING 27 июля» — снапшот это не подтверждает</div>
-        </div>
-      </div>
-      <div class="move">
-        <div class="n">!</div>
-        <div>
-          <h3>Тема «торговый автомат» мертва</h3>
-          <p>Шесть видео на этот сюжет: 13 + 12 + 10 + 9 + 9 + 3 = <b>56 просмотров суммарно</b>. Из ленты — 6 просмотров на всю группу. Удержание при этом нормальное (57–66%), но лента их просто не берёт.</p>
-          <div class="why">почему важно: продолжения этой темы — потраченный бюджет генерации в ноль</div>
-        </div>
-      </div>
-      <div class="move">
-        <div class="n">!</div>
-        <div>
-          <h3>Мусорные значения удержания — фильтр сработал</h3>
-          <p>У «He just wanted ONE snack» сырое удержание <b>1 423%</b> при средней длительности просмотра 327 секунд на 23‑секундном видео — это чей‑то браузер, крутивший ролик 14 раз, а не аудитория. Такие значения снапшот теперь обнуляет (гвард <span class="num">isCompletionReadable</span>), но сырое хранит рядом. Ещё три: 104%, 108%, 127%.</p>
-        </div>
-      </div>
-      <div class="move">
-        <div class="n">!</div>
-        <div>
-          <h3>Дневных дельт не существует — луп снимает не каждый день</h3>
-          <p>В папке снапшотов лежат ровно два файла: <b>21 июля</b> (старый .md‑формат, другая метрика) и сегодняшний. За <b>22, 23 и 24 июля замеров нет вообще</b>. Отчёт, который задуман как ежедневный, сравнивает не «вчера→сегодня», а четырёхдневное окно с разнородным замером. Хуже: снапшот пишется в <span class="num">&lt;дата&gt;.json</span> и перезаписывается при повторном прогоне — сегодня луп отработал дважды (13:59 и 14:15), утренний замер стёрт вторым.</p>
-          <div class="why">следствие: «динамика» в этом отчёте — оценка за 4 дня, а не суточная; сдвиг за 40 минут между двумя сегодняшними прогонами — 1 число (Спортзал 919→922)</div>
-        </div>
-      </div>
-      <div class="move">
-        <div class="n">!</div>
-        <div>
-          <h3>Мелочи, которые стоит держать в голове</h3>
-          <p>Сумма просмотров по видео — 6 682, канальный счётчик — 6 874, расхождение <b>192</b> (лаг счётчика, ~3%). У пяти запланированных видео ненулевые просмотры (1–8) — либо владельческие превью, либо след прежней публикации. Очередь публикаций забита по одному видео в день до <b>31 июля включительно</b>, дальше пусто. Сравнение по отдельным видео с 21 июля невозможно: тот замер снят другим инструментом с другой метрикой — сопоставимы только канальные тоталы.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- MOVES -->
+  <!-- GROWTH MOVES -->
   <section>
     <h2>Что предлагаю дальше</h2>
-    <p class="lede">Порядок по рычагу. Публикацию и деньги не триггерю — это твой лимит; я довожу до «одного клика».</p>
+    <p class="lede">Порядок по рычагу. Публикация и деньги — твой триггер (жёсткий лимит); я готовлю до «одного клика» и веду.</p>
     <div class="moves">
       <div class="move">
         <div class="n">1</div>
         <div>
           <span class="prio now">приоритет</span>
-          <h3>Дать причину подписаться</h3>
-          <p>0.10% — это не «мало подписчиков», это отсутствие триггера. Зритель досмотрел до 50% и не понял, зачем возвращаться. Ход: обещание повторяющегося героя в конце ролика и в первом кадре — единый бренд, «новый Сэнди каждый день», привязка к серии. Проверяемо: конверсия следующих трёх роликов против сегодняшних 0.21% / 0.25% / 0.00%.</p>
-          <div class="why">почему первым: охват уже есть, и он утекает в ноль — каждый день без триггера мы теряем ~1 000 просмотров</div>
+          <h3>Запускать производство новых тем — сейчас, а не 31 июля</h3>
+          <p>Очередь кончается через неделю, а цикл «тема → бриф → сториборд → видео» длиннее одного дня. Начнём 1 августа — канал встанет ровно тогда, когда лента к нему привыкла. Нужны 7–10 новых тем в работу на этой неделе. Готов прогнать генерацию и холодный отбор тем — это $0 и без публикации.</p>
+          <div class="why">почему: 15 просмотров прироста за 2 ч без свежего ролика = вся динамика канала = аплоад</div>
         </div>
       </div>
       <div class="move">
         <div class="n">2</div>
         <div>
           <span class="prio now">приоритет</span>
-          <h3>Забить очередь после 31 июля</h3>
-          <p>Расписание кончается 31 июля. В unlisted лежат 14 готовых роликов — Лифт, Эскалатор, Телефон, Уборка, Тяжёлый друг, Вентилятор‑лонг. Каденция — топливо ленты, а мы сейчас в семи днях от пустого бака.</p>
-          <div class="why">почему: 9 публичных из 30 — две трети готового каталога не раздаётся вообще</div>
+          <h3>Дать причину подписаться = сериальность</h3>
+          <p>0.10% — здесь ничего не сдвинулось и само не сдвинется. Обещание повторяющегося героя: end‑card «новый Сэнди каждый день», единый бренд, привязка к серии. «Аэропорт» — прямое доказательство: 1 256 просмотров, 50% досмотра, ноль подписок.</p>
+          <div class="why">почему: цепочка удержание → лента → подписка рвётся на последнем звене</div>
         </div>
       </div>
       <div class="move">
         <div class="n">3</div>
         <div>
           <span class="prio">на неделю</span>
-          <h3>Один эксперимент с одной переменной</h3>
-          <p>Контроль 19 июля показал, что удержание не объясняет охват. Пока мы не знаем разделителя — любые правки «формы первых секунд» это гадание. Предлагаю ближайшие два ролика различать ровно одним фактором (например, первый кадр: статичная поза против начатого действия) и держать всё остальное одинаковым.</p>
-          <div class="why">почему: без контролируемой переменной каждый следующий отчёт будет пересказывать шум</div>
+          <h3>Тянуть дно удержания к 68%</h3>
+          <p>«Смартфон» 33% и «Вентилятор» 37% — ниже медианы 40%. Работаем форму: хук в первом кадре, герой в центре, жёсткий кап длины. У «Вентилятора» 144 секунды — для Shorts это вдвое дольше почти всего остального в топе.</p>
+          <div class="why">почему: удержание > медианы = ворота эскалации ленты; ниже — потолок ~1.2k</div>
         </div>
       </div>
       <div class="move">
         <div class="n">4</div>
         <div>
-          <span class="prio">решение твоё</span>
-          <h3>Сдвинуть «Автомойку» ближе</h3>
-          <p>Перезалив стоит на 31 июля — значит вердикт по обрезке первых 6 секунд придёт 3 августа. Если этот эксперимент важен сейчас, его слот стоит подвинуть на ближайший свободный день. Публикацию не трогаю — жду твоего слова.</p>
-          <div class="why">почему: неделя простоя эксперимента = неделя, которую мы снимаем вслепую</div>
-        </div>
-      </div>
-      <div class="move">
-        <div class="n">5</div>
-        <div>
-          <span class="prio now">приоритет</span>
-          <h3>Починить сам луп: снимать каждый день и не затирать замер</h3>
-          <p>Ежедневный отчёт без ежедневного снапшота меряет наугад — за 22–24 июля данных нет, а сегодняшний утренний замер стёрт вечерним. Два маленьких фикса закрывают это: (1) снапшот не перезаписывает существующий файл того же дня, а дописывает время в имя либо пропускает повтор; (2) задача в планировщике реально отрабатывает раз в сутки. После этого блок «динамика» станет суточным, а не «к 21 июля».</p>
-          <div class="why">почему: это фундамент под все остальные ходы — без чистого ряда замеров любой эксперимент не с чем сравнить</div>
+          <span class="prio">проверить</span>
+          <h3>«Автомойка»: эксперимент подвешен, baseline потерян</h3>
+          <p>21 июля этот шорт был публичным с <b>1 196 просмотрами</b>. Сегодня одноимённая запись стоит <b>scheduled на 31 июля с 0 просмотров</b> — накопленный охват обнулён, а перезалив ждёт ещё шесть дней. Вердикт по обрезке первых 6 секунд — не раньше <b>3 августа</b>. Правило на будущее: правим на месте, не перезаливаем.</p>
+          <div class="why">почему: перезалив выбрасывает и просмотры, и накопленный сигнал ленты</div>
         </div>
       </div>
     </div>
   </section>
 
   <footer>
-    <div>Источник: live read‑only снапшот канала (YouTube Data API + Analytics API + архив Reporting), $0, никаких записей. 30 загрузок, 9 публичных. Снято 25 июля 2026, 14:16 Dubai (замер №2 за сутки).</div>
-    <div>Сегодня инструмент починен: <span class="num">hog-snapshot.mts</span> теперь снимает <span class="num">avgViewPercentage</span> и среднюю длительность просмотра — до этого ключевая метрика доктрины в снапшот не попадала.</div>
+    <div>Источник: live read‑only аудит канала (Data API + архив Reporting), $0, никаких записей. 30 загрузок · 9 публичных · 7 в расписании · 14 unlisted.</div>
+    <div>Снапшот: docs/distribution/snapshots/2026-07-25T1150Z.json · collectedAt 2026‑07‑25T11:50:30Z. База сравнения — 2026‑07‑21: снапшотов за 22–24 июля нет, поэтому дельта канала взята за четверо суток и суточной не является.</div>
+    <div>Замер №3 за сутки. Утренняя проблема перезаписи снапшотов закрыта: файлы пишутся с меткой времени (09:36Z · 10:16Z · 10:33Z · 11:50Z).</div>
     <div>Метод по скиллу Head of Growth: launch = эксперимент · успех = ДАННЫЕ · views ≠ growth · уважать лаг метрик.</div>
     <div class="sign">— Тео, Head of Growth · SandyStudio</div>
   </footer>
 </div>
+</html>
