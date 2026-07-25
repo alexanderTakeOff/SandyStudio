@@ -20,6 +20,7 @@ interface ChannelRow {
   credential_key: string;
   ntfy_topic: string | null;
   status: string;
+  has_token: boolean;
 }
 
 interface CreatedInfo {
@@ -110,8 +111,21 @@ export function ChannelSettings() {
                   <Tv size={14} />
                   {c.name}
                   <StatusChip status={c.status} />
+                  <TokenChip hasToken={c.has_token} />
                 </div>
-                <span className="text-[11px] font-mono text-text-muted">{c.credential_key}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-text-muted">{c.credential_key}</span>
+                  {/* Full-page navigation (not fetch): the route 302s to Google's
+                      consent screen; the callback verifies the picked account
+                      against the passport BEFORE saving the token. */}
+                  <Button
+                    variant={c.has_token ? 'ghost' : 'primary'}
+                    size="sm"
+                    onClick={() => { window.location.href = `/api/channels/${c.id}/consent`; }}
+                  >
+                    {c.has_token ? 'Re-authorize' : 'Authorize'}
+                  </Button>
+                </div>
               </div>
               <div className="mt-1.5 text-xs font-mono text-text-secondary">{c.youtube_channel_id}</div>
               <div className="mt-1 text-[11px] text-text-muted flex flex-wrap gap-3">
@@ -132,14 +146,13 @@ export function ChannelSettings() {
                 color: 'var(--text-secondary)',
               }}
             >
-              <div className="font-medium text-text-primary">Channel created. Two steps remain:</div>
+              <div className="font-medium text-text-primary">Channel created. One step remains:</div>
               <div>
-                1. Provision the token: <span className="font-mono">{created.consent_command}</span>
-                {' '}(pick this channel&apos;s brand account)
+                Нажми <b>Authorize</b> у нового канала и выбери его бренд-аккаунт на консент-экране.
+                Токен сам ляжет в <span className="font-mono">{created.env_var}</span> — рестарт не нужен.
               </div>
-              <div>
-                2. It lands in <span className="font-mono">webapp/.env.local</span> as{' '}
-                <span className="font-mono">{created.env_var}</span> — restart the stack after.
+              <div className="text-text-muted">
+                CLI-запасной путь: <span className="font-mono">{created.consent_command}</span>
               </div>
             </div>
           )}
@@ -210,6 +223,22 @@ export function ChannelSettings() {
         </div>
       </CardBody>
     </Card>
+  );
+}
+
+function TokenChip({ hasToken }: { hasToken: boolean }) {
+  const color = hasToken ? 'var(--accent-success)' : 'var(--accent-warning)';
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded uppercase tracking-wider text-[10px] font-semibold"
+      style={{
+        background: `color-mix(in oklab, ${color} 14%, transparent)`,
+        color,
+      }}
+      title={hasToken ? 'Env token present for this credential key' : 'No env token — publish/analytics will HALT'}
+    >
+      {hasToken ? 'token ✓' : 'no token'}
+    </span>
   );
 }
 

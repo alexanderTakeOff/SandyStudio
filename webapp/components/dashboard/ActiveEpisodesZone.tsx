@@ -11,6 +11,7 @@ import useSWR from 'swr';
 import { Plus, Film } from 'lucide-react';
 import { Card, CardBody } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 
 interface EpisodeRow {
   id: string;
@@ -43,10 +44,11 @@ const STAGE_FROM_STATUS = (status: string): number => {
 const NODE_GLYPH = ['●', '●', '●', '●', '●', '●', '●', '●', '●', '●'];
 
 export function ActiveEpisodesZone() {
+  const { seriesId } = useWorkspaceScope();
   const { data, error, isLoading } = useSWR<{
     success: boolean;
     data: EpisodeRow[];
-  }>('/api/episodes?active=true', fetcher, { refreshInterval: 60_000 });
+  }>(`/api/episodes?active=true${seriesId ? `&series_id=${seriesId}` : ''}`, fetcher, { refreshInterval: 60_000 });
 
   const episodes = data?.data ?? [];
 

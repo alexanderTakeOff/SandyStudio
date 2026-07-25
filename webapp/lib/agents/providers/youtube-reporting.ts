@@ -164,15 +164,22 @@ const TRAFFIC_SOURCE_LABELS: Record<string, string> = {
 
 /** Minimal structural client — keeps this provider decoupled from a concrete
  *  supabase-js generic; both the service-role and the route clients satisfy it. */
+interface ChannelReportsResult {
+  data: Array<{ report_type: string; start_date: string | null; raw: string }> | null;
+  error: { message: string } | null;
+}
+interface ChannelReportsOrdered {
+  order(col: string, opts: { ascending: boolean }): PromiseLike<ChannelReportsResult>;
+}
+interface ChannelReportsSelect extends ChannelReportsOrdered {
+  eq(col: 'channel_id', value: string): ChannelReportsOrdered;
+}
 interface ChannelReportsReader {
-  from(table: 'channel_reports'): {
-    select(cols: string): {
-      order(col: string, opts: { ascending: boolean }): PromiseLike<{
-        data: Array<{ report_type: string; start_date: string | null; raw: string }> | null;
-        error: { message: string } | null;
-      }>;
-    };
-  };
+  // `select → unknown` keeps the structural match against the full supabase-js
+  // builder SHALLOW — typing the builder members here made every typed-client
+  // call site explode with TS2589 (deep instantiation). The real shape is
+  // narrowed once, internally, via the ChannelReportsSelect cast below.
+  from(table: 'channel_reports'): { select(cols: string): unknown };
 }
 
 function csvCells(line: string): string[] {
@@ -188,11 +195,18 @@ function csvCells(line: string): string[] {
  */
 export async function readReachMetricsFromArchive(
   sb: ChannelReportsReader,
+  // Multi-channel (Phase 3): scope the archive to ONE channel. Optional for
+  // back-compat; with two channels an unscoped read would merge both channels'
+  // CSVs into one per-video map (safe only while video ids never collide).
+  channelId?: string | null,
 ): Promise<Map<string, ArchivedVideoReach>> {
-  const { data, error } = await sb
+  const selected = sb
     .from('channel_reports')
-    .select('report_type,start_date,raw')
-    .order('start_date', { ascending: true });
+    .select('report_type,start_date,raw') as ChannelReportsSelect;
+  const scoped: ChannelReportsOrdered = channelId
+    ? selected.eq('channel_id', channelId)
+    : selected;
+  const { data, error } = await scoped.order('start_date', { ascending: true });
   if (error) throw new YouTubeReportingError(`channel_reports read failed: ${error.message}`);
 
   // (video|date) → value maps; last write wins per key (re-issued report days).

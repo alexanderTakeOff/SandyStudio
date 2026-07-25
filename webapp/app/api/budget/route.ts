@@ -18,10 +18,12 @@
 // rows, overruns).
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { z } from 'zod';
 import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { pagedSelect } from '@/lib/api/paged-select';
 import { apiOk } from '@/lib/api/response';
+import { parseSearchParams } from '@/lib/api/zod-helpers';
 import {
   aggregateBudget,
   type BudgetEpisodeInput,
@@ -31,16 +33,25 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export const GET = withApiHandler(async () => {
+const ListQuery = z.object({
+  // Workspace scope (Phase 3). Scoped view = the series' episodes + their
+  // ledger rows; episode-less spend (global Polina, Bible enrich) has no series
+  // column in budget_log and is deliberately OUT of a scoped view — the
+  // unscoped («вся студия») view remains the full-honesty money board.
+  series_id: z.string().uuid().optional(),
+});
+
+export const GET = withApiHandler(async (req) => {
   const { supabase } = await requireDirector();
+  const q = parseSearchParams(req.url, ListQuery);
 
   // Both scans are independent → run them concurrently. Each is paged, so
   // neither can be silently truncated at 1000 rows.
-  const [episodes, logs] = await Promise.all([
-    pagedSelect<BudgetEpisodeInput>(() =>
+  const [episodesAll, logsAll] = await Promise.all([
+    pagedSelect<BudgetEpisodeInput & { series_id?: string | null }>(() =>
       supabase
         .from('episodes')
-        .select('id,episode_code,status,budget_ceiling,budget_spent,created_at'),
+        .select('id,episode_code,status,budget_ceiling,budget_spent,created_at,series_id'),
     ),
     pagedSelect<BudgetLogInput>(() =>
       supabase
@@ -51,8 +62,17 @@ export const GET = withApiHandler(async () => {
     ),
   ]);
 
+  let episodes = episodesAll;
+  let logs = logsAll;
+  if (q.series_id) {
+    episodes = episodesAll.filter((e) => e.series_id === q.series_id);
+    const epIds = new Set(episodes.map((e) => e.id));
+    logs = logsAll.filter((l) => l.episode_id != null && epIds.has(l.episode_id));
+  }
+
   return apiOk({
     generatedAt: new Date().toISOString(),
+    scopedSeriesId: q.series_id ?? null,
     ...aggregateBudget(episodes, logs),
   });
 });

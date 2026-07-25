@@ -12,6 +12,7 @@ import { BarChart3, Sparkles, TrendingDown, CalendarClock, Compass, Link2 } from
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 
 type AdviceAxis = 'amplify_gag' | 'fix_longform' | 'cadence' | 'holes';
 type Confidence = 'none' | 'flag' | 'low' | 'medium' | 'high';
@@ -46,6 +47,7 @@ interface FunnelRow {
 }
 interface AudienceData {
   generatedAt: string;
+  channel?: { id: string; name: string };
   videoCount: number;
   metrics: VideoMetric[];
   funnel: FunnelRow[];
@@ -103,9 +105,22 @@ function AdviceCardView({ card }: { card: AdviceCard }) {
 }
 
 export default function AudiencePage() {
-  const { data, isLoading, error } = useSWR<{ data: AudienceData }>('/api/audience', fetcher, {
-    revalidateOnFocus: false,
-  });
+  // Workspace scope (Phase 3): the audience view is per-CHANNEL — derive the
+  // channel from the scoped series. Unscoped = the first ACTIVE channel
+  // (the API default, i.e. the pre-Phase-3 behaviour).
+  const { seriesId } = useWorkspaceScope();
+  const { data: seriesResp } = useSWR<{ data: Array<{ id: string; channel_id: string | null }> }>(
+    seriesId ? '/api/series' : null,
+    fetcher,
+  );
+  const scopedChannelId = seriesId
+    ? seriesResp?.data?.find((s) => s.id === seriesId)?.channel_id ?? null
+    : null;
+  const { data, isLoading, error } = useSWR<{ data: AudienceData }>(
+    scopedChannelId ? `/api/audience?channel_id=${scopedChannelId}` : '/api/audience',
+    fetcher,
+    { revalidateOnFocus: false },
+  );
   const d = data?.data;
 
   return (
@@ -140,6 +155,7 @@ export default function AudiencePage() {
                   {d.report.mode === 'scout' ? 'Scout mode' : 'Optimize mode'}
                 </span>
                 <span className="text-xs text-text-muted">
+                  {d.channel ? `📺 ${d.channel.name} · ` : ''}
                   {d.videoCount} videos · {d.report.sampleSize} past the exposure gate
                 </span>
               </div>

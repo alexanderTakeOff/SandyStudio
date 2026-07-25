@@ -11,6 +11,7 @@ import useSWR from 'swr';
 import { ArrowRight, AlertTriangle, Inbox } from 'lucide-react';
 import { Card, CardBody } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 import {
   InboxNotePromptModal,
   type InboxNoteDecision,
@@ -34,11 +35,12 @@ const INTENT_CLASS: Record<string, string> = {
 };
 
 export function InboxPreviewZone() {
+  const { seriesId } = useWorkspaceScope();
   const { data, error, isLoading, mutate } = useSWR<{
     success: boolean;
     data: InboxItem[];
     meta: { total: number };
-  }>('/api/director/inbox?limit=5', fetcher, { refreshInterval: 30_000 });
+  }>(`/api/director/inbox?limit=5${seriesId ? `&series_id=${seriesId}` : ''}`, fetcher, { refreshInterval: 30_000 });
 
   const items = data?.data ?? [];
   const total = data?.meta?.total ?? 0;

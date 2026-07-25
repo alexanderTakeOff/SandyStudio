@@ -25,6 +25,10 @@ const ListQuery = z.object({
     .enum(['all', 'visual', 'non_visual', 'blockers', 'mine', 'hidden'])
     .default('all'),
   episode_id: z.string().uuid().optional(),
+  // Workspace scope (Phase 3). Events filter on their own series_id (0049);
+  // assets mostly carry series only via their episode, so the asset arm is
+  // «series-scoped Bible assets OR assets of the series' episodes».
+  series_id: z.string().uuid().optional(),
 });
 
 /**
@@ -76,6 +80,22 @@ export const GET = withApiHandler(async (req) => {
     ? `episode_id.is.null,episode_id.not.in.(${doneEpisodeIds.join(',')})`
     : null;
 
+  // Workspace scope: the asset arm needs the series' episode-id list (episode
+  // assets don't carry series_id). Bounded by the series size. Multiple .or()
+  // calls AND together in PostgREST, so this composes with notTerminal.
+  let assetScopeOr: string | null = null;
+  if (q.series_id) {
+    const { data: seriesEps, error: sepErr } = await supabase
+      .from('episodes')
+      .select('id')
+      .eq('series_id', q.series_id);
+    if (sepErr) throw new Error(`inbox series episodes failed: ${sepErr.message}`);
+    const ids = (seriesEps ?? []).map((e) => (e as { id: string }).id);
+    assetScopeOr = ids.length
+      ? `series_id.eq.${q.series_id},episode_id.in.(${ids.join(',')})`
+      : `series_id.eq.${q.series_id}`;
+  }
+
   // ── Source 1: assets in REVIEW
   // Select only the columns the inbox renders — avoid hauling `content`
   // (multi-KB TEXT) and `metadata` (JSON) on every 10s poll. The dropped
@@ -89,6 +109,7 @@ export const GET = withApiHandler(async (req) => {
     .order('created_at', { ascending: true })
     .limit(q.limit);
   if (q.episode_id) assetQuery = assetQuery.eq('episode_id', q.episode_id);
+  if (assetScopeOr) assetQuery = assetQuery.or(assetScopeOr);
   if (notTerminal) assetQuery = assetQuery.or(notTerminal);
   // `hidden` is the recovery view: it shows ONLY the rows a previous "Clear
   // inbox" swept out of triage, so a dismissal is never a one-way door. Every
@@ -124,6 +145,7 @@ export const GET = withApiHandler(async (req) => {
     .order('created_at', { ascending: true })
     .limit(q.limit);
   if (q.episode_id) evtQuery = evtQuery.eq('episode_id', q.episode_id);
+  if (q.series_id) evtQuery = evtQuery.eq('series_id', q.series_id);
   if (notTerminal) evtQuery = evtQuery.or(notTerminal);
   // The recovery view is about dismissed ASSETS; events are cleared outright
   // (resolved_at) and have no hidden state to recover, so skip them entirely.

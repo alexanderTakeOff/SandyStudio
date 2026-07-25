@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fetcher } from '@/lib/swr';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 
 interface NavItem {
   href: string;
@@ -90,8 +91,10 @@ export function StudioSidebar() {
   // Inbox count badge — surfaces unresolved approval/decision/extension events
   // and REVIEW assets so Director sees pending work in the left rail without
   // navigating. Refreshes every 8s so it picks up new pipeline events.
+  // Scoped to the workspace series (Phase 3) so the badge matches the Inbox page.
+  const { seriesId } = useWorkspaceScope();
   const { data: inboxRes } = useSWR<{ data: unknown[] }>(
-    '/api/director/inbox?limit=50',
+    `/api/director/inbox?limit=50${seriesId ? `&series_id=${seriesId}` : ''}`,
     fetcher,
     { refreshInterval: 8_000, revalidateOnFocus: true },
   );

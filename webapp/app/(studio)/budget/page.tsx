@@ -24,6 +24,7 @@ import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
 import type { BudgetSummaryPayload } from '@/lib/budget-summary';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 
 type BudgetSummary = BudgetSummaryPayload & { generatedAt: string };
 type BreakdownAxis = 'provider' | 'agent' | 'operation';
@@ -32,8 +33,11 @@ const usd = (n: number, d = 2): string =>
   `${n < 0 ? '−' : ''}$${Math.abs(n).toFixed(d)}`;
 
 export default function BudgetPage() {
+  // Scoped view = the series' episodes + their ledger rows. Episode-less spend
+  // (global Polina, Bible) shows only in the unscoped «вся студия» view.
+  const { seriesId } = useWorkspaceScope();
   const { data, error, isLoading, mutate, isValidating } = useSWR<{ data: BudgetSummary }>(
-    '/api/budget',
+    seriesId ? `/api/budget?series_id=${seriesId}` : '/api/budget',
     fetcher,
     { refreshInterval: 60_000 },
   );

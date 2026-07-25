@@ -16,6 +16,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk, apiCreated } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { ConflictError } from '@/lib/api/errors';
+import { resolveChannelRefreshToken } from '@/lib/agents/providers/google-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,7 +43,18 @@ export const GET = withApiHandler(async () => {
     .select('id, name, youtube_channel_id, credential_key, ntfy_topic, status, metadata, created_at')
     .order('created_at', { ascending: true });
   if (error) throw new Error(`channels list failed: ${error.message}`);
-  return apiOk(data ?? [], { total: (data ?? []).length });
+  // has_token = the named env credential exists for this passport (never the
+  // token itself). Lets the UI show "authorize me" state honestly.
+  const rows = (data ?? []).map((c) => {
+    let hasToken = true;
+    try {
+      resolveChannelRefreshToken((c as { credential_key: string }).credential_key);
+    } catch {
+      hasToken = false;
+    }
+    return { ...(c as Record<string, unknown>), has_token: hasToken };
+  });
+  return apiOk(rows, { total: rows.length });
 });
 
 export const POST = withApiHandler(async (req) => {

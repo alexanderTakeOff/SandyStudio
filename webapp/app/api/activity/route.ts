@@ -15,6 +15,8 @@ export const dynamic = 'force-dynamic';
 
 const ListQuery = z.object({
   episode_id: z.string().uuid().optional(),
+  // Workspace scope (Phase 3) — column + index from 0049.
+  series_id: z.string().uuid().optional(),
   severity: z.enum(['info', 'warning', 'error']).optional(),
   event_type: z.string().optional(),
   // Backbone v2: caller can scope feed to a single asset (CanonExtensionsPanel)
@@ -35,6 +37,7 @@ export const GET = withApiHandler(async (req) => {
     .order('created_at', { ascending: false })
     .limit(q.limit);
   if (q.episode_id) query = query.eq('episode_id', q.episode_id);
+  if (q.series_id)  query = query.eq('series_id', q.series_id);
   if (q.severity)   query = query.eq('severity', q.severity);
   if (q.asset_id)   query = query.eq('asset_id', q.asset_id);
   const evType = q.event_type ?? q.type;

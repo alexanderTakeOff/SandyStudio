@@ -21,6 +21,7 @@ import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { fetcher } from '@/lib/swr';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 import {
   InboxNotePromptModal,
   type InboxNoteDecision,
@@ -70,8 +71,9 @@ export default function InboxPage() {
 
   const { mutate: globalMutate } = useSWRConfig();
 
+  const { seriesId } = useWorkspaceScope();
   const { data, mutate } = useSWR<{ data: InboxItem[]; meta?: { total: number } }>(
-    `/api/director/inbox?filter=${filter}&limit=50`,
+    `/api/director/inbox?filter=${filter}&limit=50${seriesId ? `&series_id=${seriesId}` : ''}`,
     fetcher,
     { refreshInterval: 30_000 },
   );

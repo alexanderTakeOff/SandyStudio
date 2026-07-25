@@ -1,17 +1,24 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // app/(studio)/jobs/page.tsx
-// Phase 3 — live read of `jobs` table + manual "Send ping" smoke-test button.
-// Realtime updates and Inngest run-state polling land in Phase 5.
+// Live read of `jobs` + manual "Send ping" smoke-test button.
+//
+// Phase 3 (multi-channel): converted from a server component with a direct
+// Supabase read to a client page on /api/jobs — the workspace scope (topbar
+// series switcher) is client state, and /api/jobs already owns the filter
+// logic (episode/series/status). Realtime push still lands in Phase 5;
+// SWR polls every 10s meanwhile.
 // ──────────────────────────────────────────────────────────────────────────────
 
+'use client';
+
+import useSWR from 'swr';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { JobsActionsBar } from '@/components/jobs/JobsActionsBar';
 import { StatusChip } from '@/components/ui/StatusChip';
 import type { AssetStatusCode } from '@/lib/uiux/types';
-
-export const dynamic = 'force-dynamic';
+import { fetcher } from '@/lib/swr';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 
 interface JobRow {
   id: string;
@@ -26,17 +33,14 @@ interface JobRow {
   created_at: string;
 }
 
-export default async function JobsPage() {
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('jobs')
-    .select(
-      'id, agent_id, episode_id, inngest_event, inngest_run_id, status, started_at, completed_at, error_message, created_at',
-    )
-    .order('created_at', { ascending: false })
-    .limit(50);
-
-  const jobs = ((data ?? []) as unknown) as JobRow[];
+export default function JobsPage() {
+  const { seriesId } = useWorkspaceScope();
+  const { data, error } = useSWR<{ data: JobRow[] }>(
+    `/api/jobs?limit=50${seriesId ? `&series_id=${seriesId}` : ''}`,
+    fetcher,
+    { refreshInterval: 10_000 },
+  );
+  const jobs = data?.data ?? [];
 
   return (
     <StudioContentFrame>
@@ -57,7 +61,7 @@ export default async function JobsPage() {
         <CardBody>
           {error && (
             <p className="text-sm text-[var(--accent-danger)]">
-              Failed to load jobs: {error.message}
+              Failed to load jobs: {error instanceof Error ? error.message : 'request failed'}
             </p>
           )}
 

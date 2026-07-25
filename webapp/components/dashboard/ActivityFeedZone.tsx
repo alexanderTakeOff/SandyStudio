@@ -12,13 +12,15 @@ import useSWR from 'swr';
 import { Activity, ArrowRight } from 'lucide-react';
 import { Card, CardBody } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 import { ActivityEventRow, type ActivityEventLike } from '@/components/activity/ActivityEventRow';
 
 export function ActivityFeedZone() {
+  const { seriesId } = useWorkspaceScope();
   const { data, error, isLoading } = useSWR<{
     success: boolean;
     data: ActivityEventLike[];
-  }>('/api/activity?limit=10', fetcher, { refreshInterval: 30_000 });
+  }>(`/api/activity?limit=10${seriesId ? `&series_id=${seriesId}` : ''}`, fetcher, { refreshInterval: 30_000 });
 
   const events = data?.data ?? [];
 

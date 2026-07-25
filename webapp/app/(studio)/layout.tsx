@@ -9,9 +9,14 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { StudioShell } from '@/components/studio-shell/StudioShell';
+import { WorkspaceScopeProvider } from '@/components/providers/WorkspaceScopeProvider';
 
 export const dynamic = 'force-dynamic';
 
 export default function StudioLayout({ children }: { children: React.ReactNode }) {
-  return <StudioShell>{children}</StudioShell>;
+  return (
+    <WorkspaceScopeProvider>
+      <StudioShell>{children}</StudioShell>
+    </WorkspaceScopeProvider>
+  );
 }

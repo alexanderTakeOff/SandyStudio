@@ -14,11 +14,15 @@ import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame
 import { Card, CardBody } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
 import { ActivityEventRow, type ActivityEventLike } from '@/components/activity/ActivityEventRow';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 
 export default function ActivityPage() {
   const [severity, setSeverity] = useState<'all' | 'info' | 'warning' | 'error'>('all');
-  const url =
-    severity === 'all' ? '/api/activity?limit=100' : `/api/activity?severity=${severity}&limit=100`;
+  const { seriesId } = useWorkspaceScope();
+  const params = new URLSearchParams({ limit: '100' });
+  if (severity !== 'all') params.set('severity', severity);
+  if (seriesId) params.set('series_id', seriesId);
+  const url = `/api/activity?${params.toString()}`;
   const { data, isLoading } = useSWR<{ data: ActivityEventLike[] }>(url, fetcher, {
     refreshInterval: 30_000,
   });
