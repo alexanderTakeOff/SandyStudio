@@ -42,6 +42,8 @@ import {
   Save,
   Loader2,
   Clapperboard,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import {
@@ -738,6 +740,11 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // (slow) server-side ffmpeg music re-encode.
   const [timingDirty, setTimingDirty] = useState(false);
   const [audioDirty, setAudioDirty] = useState(false);
+  // Music block collapsed by default (Director 2026-07-25): it now lives at the
+  // BOTTOM of the player (order-last) and starts folded to declutter. The master
+  // <audio> stays MOUNTED while collapsed (content hidden, not unmounted) so it
+  // remains the playback clock and still plays sound.
+  const [musicCollapsed, setMusicCollapsed] = useState(true);
 
   // 2026-06-06 — local copy of audio tracks. Director can tweak fade-in/out
   // + trim on the music row; the same /animatic-timing PATCH persists both
@@ -1221,9 +1228,6 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // jump 1 → 1.5 instead of 1 → 0.5. Two honest values:
   //   tail = Director's declared length (override or storyboard), drives −/+
   //   net  = what actually plays in the final cut (after head trim + clip clamp)
-  const currentTailDuration = currentShot
-    ? effectiveDurationSeconds(currentShot, overrides)
-    : 0;
   const currentNetDuration = currentShot
     ? computeEffectivePlayback(currentShot, overrides, clipLengths)
     : 0;
@@ -1285,7 +1289,10 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   }, [isPlaying, currentCell?.url, currentTrimStart]);
 
   return (
-    <div className="space-y-3">
+    // flex-col + gap so `order-last` on the music block relocates it to the bottom
+    // (Director 2026-07-25) without physically moving 160 lines of JSX. gap-3
+    // matches the old space-y-3 rhythm; order works in flex, not in space-y.
+    <div className="flex flex-col gap-3">
       {/* 2026-06-08 — episode duration INFO moved down into the Timeline header
           row (Director: reading it above the preview was inconvenient). */}
 
@@ -1424,13 +1431,35 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
       </div>
 
       {/* Audio bar — supports multi-track (music / voice / sfx / ambience).
-          For animatic v1 with only `music_url`, getAudioTracks fabricates a
-          single 'music' track. EXEC-MGEN voice / sfx tracks (Phase 1.5+) will
-          land here without UI rewrite — schema is forward-compat per directive #4.
-          The first 'music' track is the master clock (audioRef); additional
-          tracks are slaved with periodic re-sync. Only music exposes Replace
-          (Upload music) to keep the v1 surface familiar. */}
-      <div className="rounded-lg border border-glass p-2.5 space-y-1.5">
+          Collapsible + moved to the BOTTOM via order-last (Director 2026-07-25):
+          the master <audio> stays MOUNTED even when collapsed (content hidden via
+          `hidden`, not unmounted) so it remains the playback clock and still plays
+          sound. Default collapsed to declutter — expand for the shaping controls.
+          For animatic v1 with only `music_url`, getAudioTracks fabricates a single
+          'music' track; EXEC-MGEN voice / sfx tracks land here without UI rewrite. */}
+      <div className="rounded-lg border border-glass order-last">
+        <button
+          type="button"
+          onClick={() => setMusicCollapsed((v) => !v)}
+          className="w-full flex items-center gap-2 px-2.5 py-2 text-left select-none"
+          aria-expanded={!musicCollapsed}
+        >
+          <Music2 size={13} className="text-[var(--accent-primary)]" />
+          <span className="text-xs font-medium text-text-primary">Music</span>
+          {musicCollapsed && audioTracks[0]?.filename && (
+            <span className="text-[11px] text-text-muted truncate font-mono">
+              {audioTracks[0].filename}
+            </span>
+          )}
+          <span className="flex-1" />
+          {audioDirty && (
+            <span className="text-[10px]" style={{ color: 'var(--accent-warning)' }}>
+              не сохранено
+            </span>
+          )}
+          {musicCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+        </button>
+        <div className={musicCollapsed ? 'hidden' : 'px-2.5 pb-2.5 pt-0 space-y-1.5'}>
         {audioTracks.length > 0 ? (
           audioTracks.map((track, i) => {
             const isMaster = i === 0;
@@ -1593,6 +1622,7 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             </span>
           </div>
         )}
+        </div>
       </div>
 
       {/* Timeline strip — Phase A.1: numbers ~2× bigger, expanded color palette,
@@ -2111,8 +2141,106 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
             ) : (
               <Clapperboard size={13} />
             )}{' '}
-            Fan Out ({videoFanoutCount})
+            Video fan out ({videoFanoutCount})
           </Button>
+        )}
+        {/* Inline shot-edit cluster (Director 2026-07-25): the old standalone
+            "Editing selected shot" block folded onto the transport row — shot id
+            + cut start (head/inpoint) ∓ + cut end (tail/outpoint) ∓ + the net
+            duration field, all compact. Acts on the SELECTED cell, else the
+            playhead shot (editShot = openCellIdx ?? currentIndex). */}
+        {(!synthetic || onMaterialize) && editShot && (
+          <div className="flex items-center gap-1 flex-wrap pl-2 ml-1 border-l border-glass">
+            <span
+              className="font-mono text-[11px] text-text-secondary"
+              title={editShot.shot_role ? `${editShot.shot_id} · ${editShot.shot_role}` : editShot.shot_id}
+            >
+              {editShot.shot_id.match(/sh\d+/i)?.[0]?.toUpperCase() ?? editShot.shot_id}
+            </span>
+            <span
+              className="text-[9px] uppercase tracking-wider text-text-muted ml-1"
+              title="Trim seconds off the START of the shot (ffmpeg inpoint)"
+            >
+              cut start
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setTrimStart(
+                  editShot.shot_id,
+                  (overrides[editShot.shot_id]?.trim_start_seconds ?? 0) - SHOT_STEP,
+                )
+              }
+              disabled={(overrides[editShot.shot_id]?.trim_start_seconds ?? 0) <= 0}
+            >
+              −0.5s
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setTrimStart(
+                  editShot.shot_id,
+                  (overrides[editShot.shot_id]?.trim_start_seconds ?? 0) + SHOT_STEP,
+                )
+              }
+            >
+              +0.5s
+            </Button>
+            <span
+              className="text-[9px] uppercase tracking-wider text-text-muted ml-1"
+              title="Trim seconds off the END of the shot (ffmpeg outpoint)"
+            >
+              cut end
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDuration(editShot.shot_id, editTailDuration - SHOT_STEP)}
+              disabled={editTailDuration <= MIN_SHOT_S}
+            >
+              −0.5s
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDuration(editShot.shot_id, editTailDuration + SHOT_STEP)}
+              disabled={editTailDuration >= MAX_SHOT_S}
+            >
+              +0.5s
+            </Button>
+            <span
+              className="text-[9px] uppercase tracking-wider text-text-muted ml-1"
+              title="Net length that plays in the final cut (after cut start + cut end)"
+            >
+              duration
+            </span>
+            <input
+              key={`${editShot.shot_id}-dur-${editNetDuration}`}
+              type="number"
+              min={MIN_SHOT_S}
+              max={MAX_SHOT_S}
+              step={0.1}
+              defaultValue={editNetDuration.toFixed(1)}
+              onBlur={(e) => {
+                const v = parseFloat(e.target.value);
+                if (Number.isFinite(v) && v > 0 && Math.abs(v - editNetDuration) > 0.01) {
+                  setDuration(editShot.shot_id, v);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+              className="w-14 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-glass text-xs text-text-primary text-right font-mono focus:outline-none focus:border-[var(--accent-primary)]"
+            />
+            <span className="text-[10px] text-text-muted">s</span>
+            {editNetDuration <= MIN_SHOT_S && (
+              <span className="text-[10px] font-medium" style={{ color: 'var(--accent-warning)' }}>
+                excluded
+              </span>
+            )}
+          </div>
         )}
         <div className="flex-1" />
         {/* 2026-07-18 — the "Save timing" button is gone; timing autosaves 3s
@@ -2155,130 +2283,9 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
         )}
       </div>
 
-      {/* Inline trim editor (current shot). 2026-06-08 — relabelled per Director:
-          "cut start" / "cut end" are just labels for the existing decrement
-          buttons (head / tail). One numeric field "duration" shows the net
-          final-cut length, updating as either edge is trimmed.
-          E25 2026-07-10 — shown in synthetic mode too when onMaterialize is
-          wired: edits accumulate locally and the first Save materializes the
-          animatic vessel, so no empty-animatic approval is needed to edit. */}
-      {(!synthetic || onMaterialize) && editShot && (() => {
-        const currentTrimStart = overrides[editShot.shot_id]?.trim_start_seconds ?? 0;
-        const excluded = editNetDuration <= MIN_SHOT_S;
-        return (
-        <div
-          className="rounded-lg p-2.5 border border-glass space-y-1.5"
-          style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
-        >
-          <div className="text-[10px] uppercase tracking-wider text-text-muted">
-            {openCellIdx !== null ? 'Editing selected shot' : 'Editing current shot'}
-          </div>
-          {/* Header — shot id + role. */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="font-mono text-sm text-text-primary">
-              {editShot.shot_id}
-            </div>
-            {editShot.shot_role && (
-              <div className="text-xs text-text-secondary">{editShot.shot_role}</div>
-            )}
-          </div>
-          {/* cut start — trims the HEAD (ffmpeg inpoint). Buttons only. */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className="text-[10px] text-text-muted uppercase tracking-wider"
-              title="Trim seconds off the START of the shot (ffmpeg inpoint)"
-            >
-              cut start
-            </span>
-            {currentTrimStart > 0 && (
-              <span className="text-[11px] text-text-secondary opacity-70 font-mono">
-                {currentTrimStart.toFixed(1)}s
-              </span>
-            )}
-            <div className="flex-1" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setTrimStart(editShot.shot_id, currentTrimStart - SHOT_STEP)}
-              disabled={currentTrimStart <= 0}
-            >
-              −0.5s
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setTrimStart(editShot.shot_id, currentTrimStart + SHOT_STEP)}
-            >
-              +0.5s
-            </Button>
-          </div>
-          {/* cut end — trims the TAIL (drives duration_seconds / outpoint). */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className="text-[10px] text-text-muted uppercase tracking-wider"
-              title="Trim seconds off the END of the shot (ffmpeg outpoint)"
-            >
-              cut end
-            </span>
-            <div className="flex-1" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDuration(editShot.shot_id, editTailDuration - SHOT_STEP)}
-              disabled={editTailDuration <= MIN_SHOT_S}
-            >
-              −0.5s
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDuration(editShot.shot_id, editTailDuration + SHOT_STEP)}
-              disabled={editTailDuration >= MAX_SHOT_S}
-            >
-              +0.5s
-            </Button>
-          </div>
-          {/* duration — net final-cut length (after both trims + clip clamp).
-              Editable: typing sets the shot length (tail / outpoint). */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className="text-[10px] text-text-muted uppercase tracking-wider"
-              title="Net length that plays in the final cut (after cut start + cut end)"
-            >
-              duration
-            </span>
-            {excluded && (
-              <span className="text-[11px] font-medium" style={{ color: 'var(--accent-warning)' }}>
-                excluded (≤0.5s)
-              </span>
-            )}
-            <div className="flex-1" />
-            <input
-              key={`${editShot.shot_id}-dur-${editNetDuration}`}
-              type="number"
-              min={MIN_SHOT_S}
-              max={MAX_SHOT_S}
-              step={0.1}
-              defaultValue={editNetDuration.toFixed(1)}
-              onBlur={(e) => {
-                const v = parseFloat(e.target.value);
-                if (Number.isFinite(v) && v > 0 && Math.abs(v - editNetDuration) > 0.01) {
-                  setDuration(editShot.shot_id, v);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              }}
-              className="w-16 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-glass text-xs text-text-primary text-right font-mono focus:outline-none focus:border-[var(--accent-primary)]"
-            />
-            <span className="text-xs text-text-muted">s</span>
-          </div>
-          {editShot.caption && (
-            <div className="text-xs text-text-secondary italic">{editShot.caption}</div>
-          )}
-        </div>
-        );
-      })()}
+      {/* Inline trim editor folded onto the transport row above (Director
+          2026-07-25) — shot id + cut start / cut end / duration now sit on the
+          same line as Play / Stop / Reset. The old standalone block was removed. */}
 
       {/* Error banner */}
       {error && (
