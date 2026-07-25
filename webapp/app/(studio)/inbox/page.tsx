@@ -6,8 +6,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import useSWR from 'swr';
-import { AlertTriangle, Inbox as InboxIcon, Filter, Keyboard, ExternalLink } from 'lucide-react';
+import useSWR, { useSWRConfig } from 'swr';
+import {
+  AlertTriangle,
+  Inbox as InboxIcon,
+  Filter,
+  Keyboard,
+  ExternalLink,
+  Trash2,
+} from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -18,6 +25,7 @@ import {
   type InboxNoteDecision,
 } from '@/components/inbox/InboxNotePromptModal';
 import { EpisodeAssetDrawer, type EpisodeAsset } from '@/components/assets/EpisodeAssetDrawer';
+import { isClearableInboxItem } from '@/lib/api/inbox-clear';
 
 interface InboxItem {
   id: string;
@@ -29,6 +37,7 @@ interface InboxItem {
   episode_id?: string;
   cta: Array<{ label: string; intent: 'primary' | 'secondary' | 'destructive'; action: string }>;
   created_at: string;
+  metadata?: { event_type?: string; [k: string]: unknown };
 }
 
 const GROUP_LABEL: Record<InboxItem['group'], string> = {
@@ -50,6 +59,11 @@ export default function InboxPage() {
     decision: InboxNoteDecision;
   } | null>(null);
   const [openAssetId, setOpenAssetId] = useState<string | null>(null);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearResult, setClearResult] = useState<string | null>(null);
+
+  const { mutate: globalMutate } = useSWRConfig();
 
   const { data, mutate } = useSWR<{ data: InboxItem[]; meta?: { total: number } }>(
     `/api/director/inbox?filter=${filter}&limit=50`,
@@ -87,10 +101,27 @@ export default function InboxPage() {
     ];
   }, [grouped]);
 
+  // Shown on the Clear button. Counts only what is currently on screen, so it
+  // is a floor — the endpoint drains every matching event, including any beyond
+  // the 50-row page cap.
+  const clearableCount = useMemo(
+    () => flat.filter(isClearableInboxItem).length,
+    [flat],
+  );
+
+  // Auto-dismiss the clear confirmation line.
+  useEffect(() => {
+    if (!clearResult) return;
+    const t = setTimeout(() => setClearResult(null), 6_000);
+    return () => clearTimeout(t);
+  }, [clearResult]);
+
   // Hotkeys
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (helpOpen && e.key !== 'Escape') return;
+      // A modal owns the keyboard while open — otherwise A/R/X would silently
+      // decide the focused row behind the dialog.
+      if ((helpOpen || clearOpen) && e.key !== 'Escape') return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       const item = flat[focusIdx];
@@ -117,13 +148,14 @@ export default function InboxPage() {
           break;
         case 'escape':
           setHelpOpen(false);
+          setClearOpen(false);
           break;
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flat, focusIdx, helpOpen]);
+  }, [flat, focusIdx, helpOpen, clearOpen]);
 
   async function act(item: InboxItem, decision: string, note?: string) {
     if (!item.asset_id) return;
@@ -170,6 +202,46 @@ export default function InboxPage() {
     mutate();
   }
 
+  // "Clear inbox" — dismisses the notification half of the feed (unresolved
+  // events) for the ACTIVE filter only. Asset approval gates are untouched:
+  // clearing one would mean deciding it, which flips status and fires the DAG.
+  async function clearInbox() {
+    setClearing(true);
+    try {
+      const res = await fetch('/api/director/inbox/clear', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ filter }),
+      });
+      const json = (await res.json()) as
+        | { success: true; data: { cleared: number } }
+        | { success: false; error: string };
+      if (!res.ok || !json.success) {
+        setClearResult(
+          `Clear failed: ${json.success === false ? json.error : res.statusText}`,
+        );
+        return;
+      }
+      const n = json.data.cleared;
+      setClearResult(
+        n === 0
+          ? 'Nothing to clear — no dismissible notifications in this view.'
+          : `Cleared ${n} notification${n === 1 ? '' : 's'}.`,
+      );
+      setClearOpen(false);
+      setSelected(new Set());
+      setFocusIdx(0);
+      await mutate();
+      // Left-rail badge reads its own SWR key — revalidate it too so the count
+      // drops immediately instead of after its 8s poll.
+      await globalMutate('/api/director/inbox?limit=50');
+    } catch (err) {
+      setClearResult(`Clear failed: ${err instanceof Error ? err.message : 'network error'}`);
+    } finally {
+      setClearing(false);
+    }
+  }
+
   function toggleSelect(item: InboxItem) {
     if (item.is_visual) return;
     setSelected((s) => {
@@ -195,11 +267,41 @@ export default function InboxPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setClearOpen(true)}
+            disabled={clearableCount === 0 || clearing}
+            title={
+              clearableCount === 0
+                ? 'Nothing dismissible in this view — asset approvals are not cleared'
+                : `Dismiss ${clearableCount} notification item${clearableCount === 1 ? '' : 's'}`
+            }
+          >
+            <Trash2 size={14} /> Clear inbox
+            {clearableCount > 0 && (
+              <span className="text-text-muted">· {clearableCount}</span>
+            )}
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setHelpOpen(true)}>
             <Keyboard size={14} /> Help
           </Button>
         </div>
       </header>
+
+      {clearResult && (
+        <div
+          className="mb-4 rounded-lg border px-3 py-2 text-xs"
+          role="status"
+          style={{
+            borderColor: 'var(--panel-glass-border)',
+            background: 'color-mix(in oklab, var(--accent-primary) 8%, transparent)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          {clearResult}
+        </div>
+      )}
 
       {/* Filter pills */}
       <div className="flex items-center gap-2 mb-5">
@@ -382,6 +484,52 @@ export default function InboxPage() {
           kindLabel="Inbox asset"
         />
       )}
+
+      <Modal
+        open={clearOpen}
+        onClose={() => setClearOpen(false)}
+        title="Clear inbox"
+        size="md"
+      >
+        <div className="space-y-4 text-sm">
+          <p className="text-text-secondary">
+            Dismisses the <strong className="text-text-primary">notification</strong>{' '}
+            rows in the current view — decision / input requests, blockers and budget
+            alerts. These never expire on their own, which is why the feed grows.
+          </p>
+          <ul className="space-y-1.5 text-xs text-text-muted">
+            <li>
+              <strong className="text-text-primary">Not touched:</strong> assets awaiting
+              approval. Clearing one would mean approving or rejecting it, which fires the
+              agent pipeline.
+            </li>
+            <li>
+              <strong className="text-text-primary">Not touched:</strong> Bible extension
+              proposals — the proposals live inside those items, so they stay until you
+              decide them.
+            </li>
+            <li>
+              <strong className="text-text-primary">Not touched:</strong> Skill Editor rule
+              proposals — a change to how agents behave is a standing decision, not a
+              notification.
+            </li>
+            <li>
+              Scope: the <strong className="text-text-primary">{filter.replace('_', '-')}</strong>{' '}
+              filter. At least {clearableCount} item{clearableCount === 1 ? '' : 's'} shown;
+              anything past the 50-row page is cleared too.
+            </li>
+            <li>Dismissed items stay in the Activity feed as an audit record.</li>
+          </ul>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={() => setClearOpen(false)} disabled={clearing}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={clearInbox} disabled={clearing}>
+              {clearing ? 'Clearing…' : 'Clear notifications'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title="Inbox shortcuts">
         <ul className="text-sm space-y-2">
