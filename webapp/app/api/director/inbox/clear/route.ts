@@ -9,11 +9,11 @@
 // ONLY code path in the repo that ever set `resolved_at` was the canon-extension
 // sweep (lib/api/canon-extensions.ts). Everything else — decision_requested,
 // input_requested, blocker_raised, budget_threshold_reached, rule_proposal —
-// accumulated forever with no TTL and no cleanup job. Since the GET caps at
+// accumulate forever with no TTL and no cleanup job. Since the GET caps at
 // `limit=50` and sorts oldest-first inside each group, that dead backlog
 // crowded fresh work out of the feed. This route is the drain.
 //
-// Deliberately NOT cleared:
+// Deliberately NOT cleared (scope lives in lib/api/inbox-clear.ts):
 //   - assets in REVIEW      — those are the Director's creative gates. Clearing
 //                             them would mean approving or rejecting, which
 //                             flips status and fires the agent DAG.
@@ -22,6 +22,9 @@
 //                             marks them dispositioned (and makes the extensions
 //                             endpoint reject further work on them). Not noise —
 //                             a pending canon decision with data attached.
+//   - rule_proposal         — Skill Editor rule changes. Director ruling
+//                             2026-07-25: leave them. A change to how agents
+//                             behave is a standing decision, not a notification.
 //
 // Per CLAUDE.md §11 rule 8 + specs/system/director_inbox.md.
 // ──────────────────────────────────────────────────────────────────────────────

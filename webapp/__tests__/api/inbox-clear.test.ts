@@ -27,6 +27,12 @@ describe('eventTypesForFilter (Clear inbox scope)', () => {
       expect(eventTypesForFilter(filter)).not.toContain('canon_extension_proposed');
     }
   });
+
+  it('never includes Skill Editor rule proposals (Director ruling 2026-07-25)', () => {
+    for (const filter of ['all', 'non_visual', 'blockers', 'visual'] as const) {
+      expect(eventTypesForFilter(filter)).not.toContain('rule_proposal');
+    }
+  });
 });
 
 describe('isClearableInboxItem', () => {
@@ -59,6 +65,15 @@ describe('isClearableInboxItem', () => {
       isClearableInboxItem({
         id: 'event:44444444-4444-4444-4444-444444444444',
         metadata: { event_type: 'canon_extension_proposed' },
+      }),
+    ).toBe(false);
+  });
+
+  it('never clears a Skill Editor rule proposal', () => {
+    expect(
+      isClearableInboxItem({
+        id: 'event:55555555-5555-5555-5555-555555555555',
+        metadata: { event_type: 'rule_proposal' },
       }),
     ).toBe(false);
   });

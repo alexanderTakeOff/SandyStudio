@@ -24,7 +24,6 @@ export const CLEARABLE_EVENT_TYPES = [
   'input_requested',
   'budget_threshold_reached',
   'blocker_raised',
-  'rule_proposal',
 ] as const;
 
 /** The subset that lands in the Inbox's `blocked` group. */
@@ -34,11 +33,19 @@ export const BLOCKER_EVENT_TYPES = [
 ] as const;
 
 /**
- * Event types the Inbox surfaces that are NOT clearable: the proposals live
- * inside `metadata.proposals`, and `resolved_at` is what marks them
- * dispositioned — dismissing the event would strand a pending canon decision.
+ * Event types the Inbox surfaces that are NOT clearable:
+ *
+ * - `canon_extension_proposed` — the proposals live inside
+ *   `metadata.proposals`, and `resolved_at` is what marks them dispositioned,
+ *   so dismissing the event would strand a pending canon decision.
+ * - `rule_proposal` — Skill Editor rule changes. Director ruling 2026-07-25:
+ *   do not clear. A skill rule change is a standing decision about how agents
+ *   behave, not a notification to be swept.
  */
-export const NON_CLEARABLE_EVENT_TYPES = ['canon_extension_proposed'] as const;
+export const NON_CLEARABLE_EVENT_TYPES = [
+  'canon_extension_proposed',
+  'rule_proposal',
+] as const;
 
 /**
  * Event types to sweep for a given filter pill. Returns an empty list for

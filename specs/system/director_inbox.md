@@ -284,11 +284,15 @@ very differently (§2):
 
 Rules:
 
-- **Cleared:** the five notification event types above → `resolved_at = now()`.
-- **Never cleared:** assets awaiting approval (clearing one would mean deciding
-  it, which flips status and fires the DAG) and `canon_extension_proposed` (the
-  proposals live in `metadata.proposals`; `resolved_at` is what marks them
-  dispositioned).
+- **Cleared:** `decision_requested`, `input_requested`, `blocker_raised`,
+  `budget_threshold_reached` → `resolved_at = now()`.
+- **Never cleared:**
+  - assets awaiting approval — clearing one would mean deciding it, which flips
+    status and fires the DAG;
+  - `canon_extension_proposed` — the proposals live in `metadata.proposals`, and
+    `resolved_at` is what marks them dispositioned;
+  - `rule_proposal` — Skill Editor rule changes (Director ruling 2026-07-25). A
+    change to how agents behave is a standing decision, not a notification.
 - **Filter-aware.** Only the active pill's scope is drained — `blockers` clears
   blocker/budget events only; `visual` clears nothing (event rows are never
   visual).

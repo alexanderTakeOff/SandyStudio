@@ -509,6 +509,11 @@ export default function InboxPage() {
               decide them.
             </li>
             <li>
+              <strong className="text-text-primary">Not touched:</strong> Skill Editor rule
+              proposals — a change to how agents behave is a standing decision, not a
+              notification.
+            </li>
+            <li>
               Scope: the <strong className="text-text-primary">{filter.replace('_', '-')}</strong>{' '}
               filter. At least {clearableCount} item{clearableCount === 1 ? '' : 's'} shown;
               anything past the 50-row page is cleared too.
