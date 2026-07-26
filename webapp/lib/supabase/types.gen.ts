@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       activity_events: {
@@ -921,6 +946,50 @@ export type Database = {
           },
         ]
       }
+      hog_memory: {
+        Row: {
+          channel_id: string
+          created_at: string
+          id: string
+          kind: string
+          payload: Json
+          period_end: string | null
+          period_start: string | null
+          status: string | null
+          unlock_date: string | null
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          payload?: Json
+          period_end?: string | null
+          period_start?: string | null
+          status?: string | null
+          unlock_date?: string | null
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          period_end?: string | null
+          period_start?: string | null
+          status?: string | null
+          unlock_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hog_memory_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jobs: {
         Row: {
           agent_id: string
@@ -1301,6 +1370,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       asset_status: [
