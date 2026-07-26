@@ -19,6 +19,24 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-26 (Фаза 4e multi-channel ЦЕЛИКОМ в master — Тео, ===5===; вечер).
+Status: 4e part 1: кеш-раскладка SBL → <S>/bible/media/ (+legacy-шим), eref-upscale
+  episodeCode из имени файла; budget_log.series_id (0055: триггер+бэкфилл 9875,
+  Полина recordConciergeCost(seriesId), /api/budget скоуп в БД). 4e part 2:
+  publish-дефолты per-channel (channels.metadata.publish_defaults → publishDefaultsOf
+  → uploadVideo в EXEC-PUB + shorts; UI+PATCH; спека youtube.md выровнена);
+  Storage-панель = 2 реальных поля (MEDIA_CACHE_DIR через общий persistEnvValue без
+  рестарта + drive_root_name в app_config, driveRootName() TTL в persist-binary вместо
+  хардкода 'SandyStudio'; валидация реальным ensureFolder); project_root/media_storage_root
+  + проба H:\ удалены, гейты онбординга → media_cache_writable; storage_configuration.md
+  SUPERSEDED. Мультиканальная спека §8: все фазы 0-4e «эта ветка».
+Verify: tsc clean · 1564/1564 vitest (+9) · 30/30 replay-pilot · 0051-0055 в проде.
+Next:   Деплой master скриптом (Директор сам, после переезда на десктоп —
+  docs/MACHINE-MIGRATION.md); q10 судьба мёртвого config/defaults.yaml.
+Mode:   ===5=== (Директор, 2026-07-26, q9a).
+```
+
+```
 Date:   2026-07-26 (Фазы 4a-4d multi-channel СМЕРДЖЕНЫ в master + деплой — Тео, ===5===).
 Status: Аудит мульти-канальности → инвариант «канал=дистрибуция, сериал=производство»
   в коде. 4a: EREF identity-lock → series.metadata (Сэнди-хардкод вынут из чужих
