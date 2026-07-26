@@ -1,9 +1,9 @@
 ---
 name: episode-serialization
-description: SandyStudio project-local skill for the ART-CONT (Continuity Supervisor) agent. Tracks long-arc narrative consistency across the 26-episode season — character arcs, plot threads, world-state changes, callbacks, foreshadowing. Use when reviewing scripts/storyboards for continuity, planning episode order, or detecting canon contradictions.
+description: SandyStudio project-local skill for the ART-CONT (Continuity Supervisor) agent. Tracks long-arc narrative consistency across the episode — character arcs, plot threads, world-state changes, callbacks, foreshadowing. Use when reviewing scripts/storyboards for continuity, planning episode order, or detecting canon contradictions.
 status: DRAFT
+hard: false
 ---
-
 # Episode Serialization
 
 > Status: **DRAFT** (placeholder — not loaded at runtime) — full implementation in Sprint 5 (per CLAUDE.md §8).

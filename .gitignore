@@ -82,3 +82,6 @@ webapp/scripts/e19-*
 
 # Runtime logs (app / inngest / build / dist) — never commit
 webapp/*.log
+
+inngest.log
+prod.log
