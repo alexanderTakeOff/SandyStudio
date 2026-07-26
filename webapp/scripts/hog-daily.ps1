@@ -12,7 +12,9 @@ $OutputEncoding=New-Object Text.UTF8Encoding $false
 # itself and thereby duplicates what inngest hog-channel-snapshot already writes
 # to channel_snapshots. It works; the proper end-state is to fold the muscle
 # into the app and keep only delivery outside. Tracked in PLAN backlog.
-$repo='C:\Users\Alexander\sandystudio'
+# Repo root derived from script location (webapp\scripts\ -> repo) so the same
+# launcher works on any machine/path (desktop C:\SandyStudio, laptop, ...).
+$repo=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $date=Get-Date -Format 'yyyy-MM-dd'
 $dayRoot=Join-Path $repo "docs\distribution\reports\$date"; New-Item -ItemType Directory -Force $dayRoot|Out-Null
 $log=Join-Path $dayRoot "run-$(Get-Date -Format 'HHmm').log"

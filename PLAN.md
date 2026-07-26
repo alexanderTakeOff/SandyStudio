@@ -31,9 +31,11 @@ Status: 4e part 1: кеш-раскладка SBL → <S>/bible/media/ (+legacy-�
   + проба H:\ удалены, гейты онбординга → media_cache_writable; storage_configuration.md
   SUPERSEDED. Мультиканальная спека §8: все фазы 0-4e «эта ветка».
 Verify: tsc clean · 1564/1564 vitest (+9) · 30/30 replay-pilot · 0051-0055 в проде.
-Next:   Деплой master скриптом (Директор сам, после переезда на десктоп —
-  docs/MACHINE-MIGRATION.md); q10 судьба мёртвого config/defaults.yaml.
-Mode:   ===5=== (Директор, 2026-07-26, q9a).
+Next:   Переезд на десктоп (C:\SandyStudio): migrate-pack.ps1 на лэптопе →
+  git pull + .env.local руками + migrate-unpack.ps1 на десктопе → npm install →
+  start-stack -Build (q10a; hog-daily.ps1 $repo теперь path-agnostic).
+  Открыто: судьба мёртвого config/defaults.yaml (следующий q).
+Mode:   ===5=== (Директор, 2026-07-26, q10a).
 ```
 
 ```
