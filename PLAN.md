@@ -19,6 +19,26 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-26 (Фазы 4a-4d multi-channel СМЕРДЖЕНЫ в master + деплой — Тео, ===5===).
+Status: Аудит мульти-канальности → инвариант «канал=дистрибуция, сериал=производство»
+  в коде. 4a: EREF identity-lock → series.metadata (Сэнди-хардкод вынут из чужих
+  промптов); hog-snapshot/hog-daily пер-канальные (auth+guard, файлы/отчёты с <KEY>,
+  ntfy из паспорта); env-фолбэк плейлиста удалён; 9 dist-* за LEGACY_SINGLE_CHANNEL=1;
+  CHECK app_config +visual_critic/on_model (сохранение Visual Critic из UI падало).
+  4b: hog_memory (0052) — buildAdvice сохраняется (daily_advice+медианы), кроны
+  weekly/monthly-rollup (период читает ТОЛЬКО пред. свёртку; CONFIRMED→rule_proposal→
+  Inbox→Skill Editor), перо hog-memory-append.mts. 4c: PATCH каналов/серий — брендинг
+  из UI; EXEC-COPY знает канал (CTA+boilerplate, сид 0054); gag_taxonomy → данные
+  (0053). 4d: resolveProvider(seriesId) overlay assignment:<contract>:<seriesId>;
+  Settings→Providers в топбар-скоупе (override/inherited+Reset). Мастер-фиксы hog
+  (byte-clamp, accumulate-wording) перенесены в пер-канальный луп.
+Verify: tsc clean · 1558/1558 vitest (+21) · 30/30 replay-pilot · 0051-0054 в проде.
+Next:   Фаза 4e фоном: Storage-панель (2 реальных поля), кеш-дыры (SBL-*, upscale),
+  budget_log.series_id, publish-дефолты per-channel, судьба defaults.yaml.
+Mode:   ===5=== (Директор, 2026-07-26, q8y).
+```
+
+```
 Date:   2026-07-25 (Фаза 3 workspace-скоуп + consent-кнопка СМЕРДЖЕНЫ + деплой — Тео, ===5===).
 Status: Фазы 0-3 multi-channel сделаны. Ф3: переключатель сериала в топбаре
   (WorkspaceScopeProvider: URL ?series_id → localStorage; скрыт при ≤1 серии); скоуп
