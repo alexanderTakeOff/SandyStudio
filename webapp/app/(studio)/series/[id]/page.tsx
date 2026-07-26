@@ -19,6 +19,7 @@ import { Card, CardBody } from '@/components/ui/Card';
 import { fetcher } from '@/lib/swr';
 import { SeriesBibleView } from '@/components/series-bible/SeriesBibleView';
 import { SeriesThemesView } from '@/components/series-themes/SeriesThemesView';
+import { SeriesDistributionCard } from '@/components/series/SeriesDistributionCard';
 
 interface SeriesRow {
   id: string;
@@ -30,6 +31,7 @@ interface SeriesRow {
   episode_budget_ceiling: number | null;
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
   channel_id: string | null;
+  metadata: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -181,6 +183,9 @@ function OverviewTab({ series, onChanged }: { series: SeriesRow; onChanged: () =
           </dl>
         </CardBody>
       </Card>
+
+      {/* Phase 4c — series-level distribution/branding overrides (agents read these). */}
+      <SeriesDistributionCard seriesId={series.id} metadata={series.metadata} onChanged={onChanged} />
 
       <Link
         href={`/episodes?series_id=${series.id}`}

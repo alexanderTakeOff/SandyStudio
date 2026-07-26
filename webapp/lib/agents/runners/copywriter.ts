@@ -13,6 +13,7 @@ import {
 } from '../providers/anthropic-text';
 import type { SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
+import type { CopyBranding } from '../branding';
 import { findApprovedAsset } from '../upstream';
 
 export const COPY_CONTRACT = 'copywriter@v1';
@@ -90,8 +91,28 @@ function buildUserMessage(args: {
   briefContent: string;
   scriptContent: string;
   bible: SeriesBibleCanon;
+  branding?: CopyBranding | null;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, bible } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, bible, branding } = args;
+  // Multi-channel Phase 4c: the publicist finally knows WHICH channel it writes
+  // for. Data-driven (series → channel cascade) — absent facts are simply not
+  // mentioned, never invented.
+  const channelBlock = branding && (branding.channelName || branding.subscribeCta || branding.boilerplate)
+    ? [
+        '## Channel (distribution facts — use, do not invent)',
+        '',
+        branding.channelName ? `- Channel name: ${branding.channelName}` : '',
+        branding.boilerplate
+          ? `- Standing boilerplate — include it near the END of the description, verbatim: "${branding.boilerplate}"`
+          : '',
+        branding.subscribeCta
+          ? `- Subscribe CTA — the description's LAST line, verbatim: "${branding.subscribeCta}"`
+          : '',
+        '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : '';
   const styleToneBlock =
     bible.styles.length > 0
       ? [
@@ -124,6 +145,7 @@ function buildUserMessage(args: {
     scriptContent,
     '</script>',
     '',
+    channelBlock,
     styleToneBlock,
     '',
     '## Output format',
@@ -163,6 +185,9 @@ function buildUserMessage(args: {
 
 export interface CopywriterRunArgs {
   inputs: AgentInputs;
+  /** Channel/series copy branding (Phase 4c) — loaded by the caller from the
+   * episode cascade; optional so tests/mocks stay unchanged. */
+  branding?: CopyBranding | null;
 }
 
 export async function runCopywriter(
@@ -202,6 +227,7 @@ export async function runCopywriter(
     briefContent: briefAsset.content,
     scriptContent: scriptAsset.content,
     bible,
+    branding: args.branding ?? null,
   });
 
   let result: AnthropicTextResult;
