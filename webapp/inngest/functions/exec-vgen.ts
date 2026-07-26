@@ -475,7 +475,10 @@ export const execVgenRun = inngest.createFunction(
           provider = syntheticResolvedProvider(data.provider);
         } else {
           try {
-            provider = await resolveProvider(supabase, 'character_video');
+            // Phase 4d: honour the series' provider overlay (episode → series).
+            const seriesId =
+              (inputs.episode as { series_id?: string | null } | undefined)?.series_id ?? null;
+            provider = await resolveProvider(supabase, 'character_video', seriesId);
           } catch {
             provider = undefined;
           }
