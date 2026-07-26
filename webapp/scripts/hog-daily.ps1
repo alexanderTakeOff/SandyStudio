@@ -59,14 +59,34 @@ foreach ($ch in $channels) {
       else { "GIST FAIL ${key}: no id parsed from '$g'" | L }
     } catch { "GIST FAIL ${key}: $_" | L }
   }
+  $topic=$ch.ntfy_topic
   if (Test-Path $s) {
     $body=[IO.File]::ReadAllText($s,[Text.Encoding]::UTF8)
-    if ($link) { $body="$body`n`n$link" }
+    # ntfy turns any body over 4096 bytes into attachment.txt, silently losing the
+    # text AND the link (hit 2026-07-26: a 4298-byte summary). Link goes FIRST so
+    # it always survives; body clamped well under the limit (fix 4a350aca).
+    if ($link) { $body="$link`n`n$body" }
+    # Clamp on UTF-8 BYTES, not chars: Cyrillic costs 2 bytes each, so a char-based
+    # clamp lets a 2691-char summary weigh 4298 bytes and still trip the limit.
+    $cap=3300
+    if ([Text.Encoding]::UTF8.GetByteCount($body) -gt $cap) {
+      $n=$body.Length
+      while ($n -gt 0 -and [Text.Encoding]::UTF8.GetByteCount($body.Substring(0,$n)) -gt $cap) { $n=[int]($n*0.95)-1 }
+      $body=$body.Substring(0,$n)+"`n...[truncated - full report at the link above]"
+    }
     $hd=@{Title=$ch.name;Tags='chart_with_upwards_trend'}
     if ($link) { $hd['Click']=$link }
-    $topic=$ch.ntfy_topic
     if ($topic) {
       try { Invoke-RestMethod "https://ntfy.sh/$topic" -Method Post -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'text/plain; charset=utf-8' -Headers $hd|Out-Null } catch { "PUSH FAIL ${key}: $_" | L }
+      # Self-verify the delivery (fix 4a350aca). HTTP 200 does NOT mean the Director
+      # got readable text: an oversize body silently arrives as attachment.txt.
+      Start-Sleep -Seconds 3
+      try {
+        $raw=[Text.Encoding]::UTF8.GetString((Invoke-WebRequest "https://ntfy.sh/$topic/json?poll=1&since=10m" -UseBasicParsing).Content)
+        if ($raw -match 'attachment\.txt') { "DELIVERY BAD ${key}: arrived as attachment.txt, not readable text" | L }
+        elseif ($raw -match 'gist\.githack\.com') { "DELIVERY OK ${key}: text with report link" | L }
+        else { "DELIVERY UNKNOWN ${key}: no matching message found in topic" | L }
+      } catch { "DELIVERY CHECK FAIL ${key}: $_" | L }
     } else { "PUSH SKIP ${key}: channel has no ntfy_topic" | L }
   } else { "PUSH SKIP ${key}: no summary.md - brain did not reach step 5" | L }
 }

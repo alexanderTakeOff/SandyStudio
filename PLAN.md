@@ -19,6 +19,22 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-25 (Фаза 3 workspace-скоуп + consent-кнопка СМЕРДЖЕНЫ + деплой — Тео, ===5===).
+Status: Фазы 0-3 multi-channel сделаны. Ф3: переключатель сериала в топбаре
+  (WorkspaceScopeProvider: URL ?series_id → localStorage; скрыт при ≤1 серии); скоуп
+  Episodes/Activity/Inbox(+бейдж)/Jobs(→клиент)/Budget/дашборд; Audience пер-канально
+  (все YT-вызовы с токеном канала, reach-архив .eq(channel_id) — закрыт merge 2 каналов).
+  Consent-кнопка Authorize в Settings→Channels: OAuth через webapp, identity-сверка ДО
+  записи токена, подхват в process.env без рестарта; has_token чип. Канал №2 создан:
+  «Pragmatico Manifesto» (key PRAGMATIC, имя в БД поправлено — было имя старого канала).
+  youtube-consent.ts якорит .env.local на webapp/ (падал из корня).
+Verify: tsc clean · 1537/1537 vitest · 30/30 replay-pilot.
+Next:   Директор жмёт Authorize у PRAGMATIC → привязать серию №2 к каналу → первый
+  э2э-прогон второго сериала. Фаза 4 (per-series провайдеры) — YAGNI, по нужде.
+Mode:   ===5=== (Директор, 2026-07-25 20:58).
+```
+
+```
 Date:   2026-07-25 (Мульти-канальность Фаза 2 СМЕРДЖЕНА в master + деплой — Тео, ===5===).
 Status: Фазы 0-2 сделаны (spec multi-channel.md §6.5/§8). Фаза 2: чат=сериал (тред Полины
   не пересекает границу серии; concierge_threads.series_id, 0049) + activity_events.series_id
