@@ -2,7 +2,7 @@
 // series.metadata.branding → channels.metadata.branding → neutral fallbacks.
 
 import { describe, it, expect } from 'vitest';
-import { resolveShortBranding } from '@/lib/agents/branding';
+import { resolveCopyBranding, resolveShortBranding } from '@/lib/agents/branding';
 
 const SANDY_CHANNEL_BRANDING = {
   branding: {
@@ -62,5 +62,26 @@ describe('resolveShortBranding', () => {
     });
     expect(b.overlayText).toBe('Fallback Name');
     expect(b.tags).toEqual(['Shorts']);
+  });
+});
+
+// Phase 4c — long-form copy branding (EXEC-COPY finally knows its channel).
+describe('resolveCopyBranding', () => {
+  it('series override wins over channel; channel name passes through', () => {
+    const b = resolveCopyBranding({
+      seriesMetadata: { branding: { subscribe_cta: 'Series CTA' } },
+      channelMetadata: {
+        branding: { subscribe_cta: 'Channel CTA', long_description_boilerplate: 'Channel line.' },
+      },
+      channelName: 'Pragmatico Manifesto',
+    });
+    expect(b.channelName).toBe('Pragmatico Manifesto');
+    expect(b.subscribeCta).toBe('Series CTA');
+    expect(b.boilerplate).toBe('Channel line.');
+  });
+
+  it('channel-less series degrades to all-null (prompt stays channel-blind, no invention)', () => {
+    const b = resolveCopyBranding({});
+    expect(b).toEqual({ channelName: null, subscribeCta: null, boilerplate: null });
   });
 });

@@ -74,6 +74,7 @@ import { runScriptReviewer, ScriptReviewerError } from './runners/script-reviewe
 import { runStoryboarder, StoryboarderError } from './runners/storyboarder';
 import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-check';
 import { runCopywriter, CopywriterError } from './runners/copywriter';
+import { loadCopyBrandingForEpisode } from './branding';
 import { runThumbnailDesigner, ThumbnailDesignerError } from './runners/thumbnail-designer';
 import { runThumbnailRenderer, ThumbnailRendererError } from './runners/thumbnail-renderer';
 import { runEpisodeReferences, EpisodeReferencesError, type AnchorTarget } from './runners/episode-references';
@@ -1221,12 +1222,17 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
     }
 
     case 'EXEC-COPY': {
-      // Real copywriter — Haiku 4.5 (cheap + fast). Contract:
-      // specs/contracts/copywriter@v1.yaml.
+      // Real copywriter — contract: specs/contracts/copywriter@v1.yaml.
       const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
       if (hasAnthropicKey) {
         try {
-          const r = await runCopywriter({ inputs });
+          // Phase 4c: the publicist writes FOR a channel — CTA/boilerplate/name
+          // from the series → channel branding cascade (soft: null degrades to
+          // the old channel-blind prompt; no client in replay/tests ⇒ null too).
+          const copyBranding = supabase
+            ? await loadCopyBrandingForEpisode(supabase, episodeId).catch(() => null)
+            : null;
+          const r = await runCopywriter({ inputs, branding: copyBranding });
           return {
             outputKind: 'text-md',
             result: {

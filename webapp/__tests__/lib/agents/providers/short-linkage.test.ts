@@ -6,6 +6,7 @@ import {
   appendParentBacklink,
   recutWindowMarker,
   persistShortId,
+  resolveSeriesPlaylistId,
 } from '@/lib/agents/providers/short-linkage';
 
 /**
@@ -117,5 +118,55 @@ describe('persistShortId (clobber fix — E15 «Автомойка»)', () => {
     await persistShortId(sb as never, 'ep-1', 'A', 'https://youtu.be/A');
     const ids = (captured.metadata?.youtube_short_ids as Array<{ id: string }>).map((e) => e.id);
     expect(ids).toEqual(['B', 'A']);
+  });
+});
+
+// Multi-channel Phase 4a: the process-wide YOUTUBE_PLAYLIST_ID env fallback is
+// removed — a series without its own playlist_id must resolve to null (skip),
+// never to another channel's playlist.
+describe('resolveSeriesPlaylistId — no env fallback', () => {
+  function makeResolveSb(opts: { episodeMeta?: Record<string, unknown>; seriesMeta?: Record<string, unknown> | null }) {
+    return {
+      from(table: string) {
+        return {
+          select() {
+            return this;
+          },
+          eq() {
+            return this;
+          },
+          maybeSingle() {
+            if (table === 'episodes') {
+              return Promise.resolve({
+                data: { metadata: opts.episodeMeta ?? {}, series_id: opts.seriesMeta === null ? null : 'series-1' },
+              });
+            }
+            return Promise.resolve({ data: opts.seriesMeta ? { metadata: opts.seriesMeta } : null });
+          },
+        };
+      },
+    };
+  }
+
+  it('episode override wins', async () => {
+    const sb = makeResolveSb({ episodeMeta: { youtube_playlist_id: 'PL_EP' }, seriesMeta: { youtube_playlist_id: 'PL_SER' } });
+    expect(await resolveSeriesPlaylistId(sb as never, 'ep-1')).toBe('PL_EP');
+  });
+
+  it('falls back to the series playlist', async () => {
+    const sb = makeResolveSb({ seriesMeta: { youtube_playlist_id: 'PL_SER' } });
+    expect(await resolveSeriesPlaylistId(sb as never, 'ep-1')).toBe('PL_SER');
+  });
+
+  it('returns null (skip) when neither level declares a playlist — even with env set', async () => {
+    const prev = process.env.YOUTUBE_PLAYLIST_ID;
+    process.env.YOUTUBE_PLAYLIST_ID = 'PL_LEAKY_GLOBAL';
+    try {
+      const sb = makeResolveSb({ seriesMeta: {} });
+      expect(await resolveSeriesPlaylistId(sb as never, 'ep-1')).toBeNull();
+    } finally {
+      if (prev === undefined) delete process.env.YOUTUBE_PLAYLIST_ID;
+      else process.env.YOUTUBE_PLAYLIST_ID = prev;
+    }
   });
 });

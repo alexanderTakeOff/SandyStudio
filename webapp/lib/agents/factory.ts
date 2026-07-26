@@ -666,7 +666,10 @@ export function createAgentInngestFunction<E extends string>(
         let provider: ResolvedProvider | undefined;
         if (contract) {
           try {
-            provider = await resolveProvider(supabase, contract);
+            // Phase 4d: honour the series' provider overlay (episode → series).
+            const seriesId =
+              (inputs.episode as { series_id?: string | null } | undefined)?.series_id ?? null;
+            provider = await resolveProvider(supabase, contract, seriesId);
           } catch {
             // Disabled contract or no row — fall through to mock everywhere.
             provider = undefined;

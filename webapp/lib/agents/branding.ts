@@ -74,24 +74,50 @@ export function resolveShortBranding(src: BrandingSource): ShortBranding {
   };
 }
 
+// ── Long-form copy branding (Phase 4c) ───────────────────────────────────────
+// EXEC-COPY used to know nothing about the channel: no name, no CTA, no
+// boilerplate in long-form descriptions. Same cascade, two more keys.
+
+export interface CopyBranding {
+  /** The channel's public name — null when the series has no channel yet. */
+  channelName: string | null;
+  /** Subscribe call-to-action for description endings. */
+  subscribeCta: string | null;
+  /** Standing series/channel boilerplate line for descriptions. */
+  boilerplate: string | null;
+}
+
+/** Pure cascade — no DB. Exported for unit tests. */
+export function resolveCopyBranding(src: BrandingSource): CopyBranding {
+  const s = brandingBlock(src.seriesMetadata);
+  const c = brandingBlock(src.channelMetadata);
+  return {
+    channelName: src.channelName?.trim() || null,
+    subscribeCta: readString(s, 'subscribe_cta') ?? readString(c, 'subscribe_cta'),
+    boilerplate:
+      readString(s, 'long_description_boilerplate') ??
+      readString(c, 'long_description_boilerplate'),
+  };
+}
+
 /**
- * DB loader via the episode cascade (episode → series → channel). Soft on every
- * step — branding is presentation, not a publish gate, so a channel-less series
- * gets neutral fallbacks instead of a HALT (the HALT belongs to
- * decideYouTubePathway at the actual upload).
+ * Load the raw branding source via the episode cascade (episode → series →
+ * channel). Soft on every step — branding is presentation, not a publish gate,
+ * so a channel-less series gets neutral fallbacks instead of a HALT (the HALT
+ * belongs to decideYouTubePathway at the actual upload).
  */
-export async function loadShortBrandingForEpisode(
+async function loadBrandingSource(
   supabase: Client,
   episodeId: string | null | undefined,
-): Promise<ShortBranding> {
-  if (!episodeId) return resolveShortBranding({});
+): Promise<BrandingSource> {
+  if (!episodeId) return {};
   const { data: ep } = await supabase
     .from('episodes')
     .select('series_id')
     .eq('id', episodeId)
     .maybeSingle();
   const seriesId = (ep as { series_id?: string | null } | null)?.series_id ?? null;
-  if (!seriesId) return resolveShortBranding({});
+  if (!seriesId) return {};
 
   const { data: series } = await supabase
     .from('series')
@@ -113,10 +139,26 @@ export async function loadShortBrandingForEpisode(
     // strict gate still fires at upload time.
   }
 
-  return resolveShortBranding({
+  return {
     seriesMetadata: seriesRow?.metadata ?? null,
     seriesLogline: seriesRow?.logline ?? null,
     channelMetadata,
     channelName,
-  });
+  };
+}
+
+/** DB loader for shorts branding (episode → series → channel cascade). */
+export async function loadShortBrandingForEpisode(
+  supabase: Client,
+  episodeId: string | null | undefined,
+): Promise<ShortBranding> {
+  return resolveShortBranding(await loadBrandingSource(supabase, episodeId));
+}
+
+/** DB loader for long-form copy branding (same cascade, EXEC-COPY consumer). */
+export async function loadCopyBrandingForEpisode(
+  supabase: Client,
+  episodeId: string | null | undefined,
+): Promise<CopyBranding> {
+  return resolveCopyBranding(await loadBrandingSource(supabase, episodeId));
 }

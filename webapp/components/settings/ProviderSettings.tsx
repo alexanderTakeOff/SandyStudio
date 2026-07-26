@@ -22,11 +22,16 @@ import { CheckCircle2, AlertTriangle, Wrench, ToggleLeft, ToggleRight } from 'lu
 import { Card, CardBody } from '@/components/ui/Card';
 import { PeekHint } from '@/components/ui/PeekHint';
 import { fetcher } from '@/lib/swr';
+import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 import type { ProviderCandidate } from '@/lib/api/provider-catalog';
 
 interface AssignmentRow {
   contract: string;
   active_provider_id: string;
+  // Phase 4d series-overlay view (present when ?series_id= was passed):
+  inherited_provider_id: string;
+  override_provider_id: string | null;
+  series_overridable: boolean;
   is_active: boolean;
   updated_at: string;
   notes: string | null;
@@ -220,8 +225,12 @@ function ModelPickerRow({ endpoint, title, hint }: { endpoint: string; title: st
 }
 
 export function ProviderSettings() {
+  // Phase 4d: the topbar workspace scope doubles as the provider-editing scope.
+  // Studio scope edits the global tier; a series scope edits that series'
+  // overlay (storage/publish stay global — series_overridable=false).
+  const { seriesId } = useWorkspaceScope();
   const { data, mutate, isLoading } = useSWR<{ data: AssignmentRow[] }>(
-    '/api/providers/assignments',
+    seriesId ? `/api/providers/assignments?series_id=${seriesId}` : '/api/providers/assignments',
     fetcher,
   );
   const [pending, setPending] = useState<string | null>(null);
@@ -229,15 +238,20 @@ export function ProviderSettings() {
 
   async function update(
     contract: string,
-    patch: { active_provider_id?: string; is_active?: boolean },
+    patch: { active_provider_id?: string | null; is_active?: boolean },
   ): Promise<void> {
     setPending(contract);
     setError(null);
     try {
       const current = data?.data.find((r) => r.contract === contract);
       const body = {
-        active_provider_id: patch.active_provider_id ?? current?.active_provider_id,
-        is_active: patch.is_active ?? current?.is_active,
+        active_provider_id:
+          patch.active_provider_id !== undefined
+            ? patch.active_provider_id
+            : current?.active_provider_id,
+        // In series scope is_active is a global switch — never sent.
+        is_active: seriesId ? undefined : patch.is_active ?? current?.is_active,
+        series_id: seriesId ?? undefined,
       };
       const res = await fetch(`/api/providers/assignments/${contract}`, {
         method: 'PUT',
@@ -265,10 +279,23 @@ export function ProviderSettings() {
               Providers
             </h2>
             <PeekHint autoPeekMs={3500}>
-              Global tier — applies to every episode unless overridden per-stage. Resolver cache
-              invalidates on save.
+              {seriesId
+                ? 'Series scope (topbar switcher): edits THIS series’ provider overrides. «override» = this series diverges from the studio default; Reset returns it. Storage/publish stay studio-level.'
+                : 'Global tier — applies to every episode unless a series override or per-stage override says otherwise. Resolver cache invalidates on save.'}
             </PeekHint>
           </div>
+          {seriesId && (
+            <span
+              className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded"
+              style={{
+                background: 'color-mix(in oklab, var(--accent-info) 14%, transparent)',
+                color: 'var(--accent-info)',
+              }}
+              title="Editing the workspace-scoped series' provider overrides"
+            >
+              series scope
+            </span>
+          )}
         </div>
 
         {isLoading && <p className="text-sm text-text-secondary">Loading…</p>}
@@ -289,7 +316,8 @@ export function ProviderSettings() {
           <div className="space-y-2">
             {data.data.map((row) => {
               const isUpdating = pending === row.contract;
-              const dim = !row.is_active ? 'opacity-50' : '';
+              const scopedLocked = Boolean(seriesId) && !row.series_overridable;
+              const dim = !row.is_active || scopedLocked ? 'opacity-50' : '';
               return (
                 <div
                   key={row.contract}
@@ -310,7 +338,8 @@ export function ProviderSettings() {
                   <div className="col-span-5">
                     <select
                       value={row.active_provider_id}
-                      disabled={isUpdating || !row.is_active}
+                      disabled={isUpdating || !row.is_active || scopedLocked}
+                      title={scopedLocked ? 'Studio/channel-level contract — no per-series override' : undefined}
                       onChange={(e) =>
                         update(row.contract, { active_provider_id: e.target.value })
                       }
@@ -328,6 +357,24 @@ export function ProviderSettings() {
 
                   <div className="col-span-2 flex items-center gap-2">
                     <HealthBadge row={row} />
+                    {seriesId && row.series_overridable && (
+                      <span
+                        className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{
+                          background: row.override_provider_id
+                            ? 'color-mix(in oklab, var(--accent-warning) 14%, transparent)'
+                            : 'color-mix(in oklab, var(--text-muted) 14%, transparent)',
+                          color: row.override_provider_id ? 'var(--accent-warning)' : 'var(--text-muted)',
+                        }}
+                        title={
+                          row.override_provider_id
+                            ? `This series diverges from the studio default (${row.inherited_provider_id})`
+                            : 'Inherits the studio default'
+                        }
+                      >
+                        {row.override_provider_id ? 'override' : 'inherited'}
+                      </span>
+                    )}
                     {row.effective_provider_id !== row.active_provider_id && (
                       <span
                         className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded"
@@ -343,26 +390,39 @@ export function ProviderSettings() {
                   </div>
 
                   <div className="col-span-2 flex justify-end">
-                    <button
-                      onClick={() =>
-                        update(row.contract, { is_active: !row.is_active })
-                      }
-                      disabled={isUpdating}
-                      className="inline-flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
-                      title={row.is_active ? 'Deactivate contract' : 'Activate contract'}
-                    >
-                      {row.is_active ? (
-                        <>
-                          <ToggleRight size={18} style={{ color: 'var(--accent-success)' }} />
-                          on
-                        </>
-                      ) : (
-                        <>
-                          <ToggleLeft size={18} />
-                          off
-                        </>
-                      )}
-                    </button>
+                    {seriesId ? (
+                      row.override_provider_id && (
+                        <button
+                          onClick={() => update(row.contract, { active_provider_id: null })}
+                          disabled={isUpdating}
+                          className="text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+                          title={`Remove the override — back to the studio default (${row.inherited_provider_id})`}
+                        >
+                          Reset
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        onClick={() =>
+                          update(row.contract, { is_active: !row.is_active })
+                        }
+                        disabled={isUpdating}
+                        className="inline-flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40"
+                        title={row.is_active ? 'Deactivate contract' : 'Activate contract'}
+                      >
+                        {row.is_active ? (
+                          <>
+                            <ToggleRight size={18} style={{ color: 'var(--accent-success)' }} />
+                            on
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft size={18} />
+                            off
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               );

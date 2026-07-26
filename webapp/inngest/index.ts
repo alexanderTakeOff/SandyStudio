@@ -44,6 +44,8 @@ import { reconcileCron } from './functions/reconcile-cron';
 import { episodeScorecard } from './functions/episode-scorecard';
 import { hogChannelSnapshot } from './functions/hog-channel-snapshot';
 import { hogReportPoll } from './functions/hog-report-poll';
+import { hogWeeklyRollup } from './functions/hog-weekly-rollup';
+import { hogMonthlyRollup } from './functions/hog-monthly-rollup';
 
 export const functions = [
   // Phase 3 smoke
@@ -105,4 +107,9 @@ export const functions = [
   // a gap, never a fake zero.
   hogChannelSnapshot,
   hogReportPoll,
+  // 2026-07-26 — Phase 4b HoG analytical memory: weekly/monthly rollups over
+  // hog_memory (each period reads ONLY the previous rollup + rows since it);
+  // confirmed lessons surface as rule_proposal in the Director Inbox.
+  hogWeeklyRollup,
+  hogMonthlyRollup,
 ];

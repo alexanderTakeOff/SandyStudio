@@ -10,6 +10,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
+import { applyPatch, mergeBrandingPatch, metaObject } from '@/lib/api/metadata-merge';
 import type { SeriesRow, AuthorityMatrixRow } from '@/lib/supabase/types-phase5b';
 
 export const runtime = 'nodejs';
@@ -50,11 +51,26 @@ export const GET = withApiHandler(async (_req, ctx) => {
   });
 });
 
-// Attach / detach the channel. Deliberately the ONLY editable field here —
-// full series editing stays deferred to Phase 7. Detaching (channel_id: null)
-// puts the series back behind the publish/analytics HALT gate (multi-channel.md §4).
+// PATCH surface (multi-channel Phase 4c widened it from channel_id-only):
+// channel attach/detach + the distribution/production metadata the agents read
+// (branding cascade, playlist, delivery targets, gag taxonomy). Full series
+// editing (title/logline/…) stays deferred to Phase 7. Detaching
+// (channel_id: null) puts the series back behind the publish/analytics HALT
+// gate (multi-channel.md §4).
+const BrandingPatch = z.object({
+  short_overlay_text: z.string().min(1).max(80).nullable().optional(),
+  short_description: z.string().min(1).max(5000).nullable().optional(),
+  short_tags: z.array(z.string().min(1).max(30)).max(30).nullable().optional(),
+  subscribe_cta: z.string().min(1).max(200).nullable().optional(),
+  long_description_boilerplate: z.string().min(1).max(1000).nullable().optional(),
+});
+
 const PatchBody = z.object({
-  channel_id: z.string().uuid().nullable(),
+  channel_id: z.string().uuid().nullable().optional(),
+  youtube_playlist_id: z.string().min(1).max(60).nullable().optional(),
+  delivery_targets: z.array(z.string().min(1).max(40)).max(8).nullable().optional(),
+  gag_taxonomy: z.array(z.string().min(1).max(40)).max(30).nullable().optional(),
+  branding: BrandingPatch.optional(),
 });
 
 export const PATCH = withApiHandler(async (req, ctx) => {
@@ -74,9 +90,35 @@ export const PATCH = withApiHandler(async (req, ctx) => {
     if (!ch) throw new ValidationError(`Channel ${body.channel_id} does not exist`);
   }
 
+  const update: Record<string, unknown> = {};
+  if (body.channel_id !== undefined) update.channel_id = body.channel_id;
+
+  const wantsMetadata =
+    body.youtube_playlist_id !== undefined ||
+    body.delivery_targets !== undefined ||
+    body.gag_taxonomy !== undefined ||
+    body.branding !== undefined;
+  if (wantsMetadata) {
+    const { data: current, error: readErr } = await supabase
+      .from('series' as never)
+      .select('metadata')
+      .eq('id', id)
+      .maybeSingle();
+    if (readErr) throw new Error(`series read failed: ${readErr.message}`);
+    if (!current) throw new NotFoundError(`Series ${id}`);
+    let meta = metaObject((current as { metadata?: unknown }).metadata);
+    meta = applyPatch(meta, {
+      youtube_playlist_id: body.youtube_playlist_id,
+      delivery_targets: body.delivery_targets,
+      gag_taxonomy: body.gag_taxonomy,
+    });
+    if (body.branding !== undefined) meta = mergeBrandingPatch(meta, body.branding);
+    update.metadata = meta;
+  }
+
   const { data: updated, error } = await supabase
     .from('series' as never)
-    .update({ channel_id: body.channel_id } as never)
+    .update(update as never)
     .eq('id', id)
     .select('*')
     .maybeSingle();
