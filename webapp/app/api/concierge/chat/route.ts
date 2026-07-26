@@ -238,12 +238,18 @@ async function handleChatPOST(req: Request) {
   // latest open thread (creating it on first visit) instead of re-binding, so
   // Polina's history and context never mix two universes.
   let threadSwitched = false;
+  // Series attribution for EPISODE-LESS spend (Phase 4e): with an episode the
+  // budget_log trigger derives series_id; without one, the thread's series is
+  // the only honest link — captured here, passed to recordConciergeCost.
+  let costSeriesId: string | null = null;
   if (threadId) {
     const boundThread = await getThread(supabase, threadId);
     const boundEpisodeId = boundThread?.episode_id ?? null;
+    costSeriesId = boundThread?.series_id ?? null;
     if (isUuid(episodeId)) {
       const boundSeriesId = boundThread?.series_id ?? null;
       const openSeriesId = await seriesIdForEpisode(supabase, episodeId!);
+      if (openSeriesId) costSeriesId = openSeriesId;
       if (boundSeriesId && openSeriesId && boundSeriesId !== openSeriesId) {
         try {
           const existing = await resolveOpenThreadId(supabase, { seriesId: openSeriesId });
@@ -495,6 +501,7 @@ async function handleChatPOST(req: Request) {
       },
       source: 'chat',
       episodeId,
+      seriesId: costSeriesId,
     });
   };
 

@@ -19,11 +19,15 @@ import { downloadFile } from './agents/providers/drive';
  * Cache root. Env-overridable per CLAUDE.md §11; defaults to the gitignored
  * `FILMS/_media_cache` tree so it survives worktree deletion and stays out of
  * the studio repo. Set `MEDIA_CACHE_DIR` in `.env.local` to relocate.
+ *
+ * Read LAZILY (Phase 4e): the Storage panel updates `process.env` in the
+ * running process (persistEnvValue), so a module-load-time constant would pin
+ * the old path until restart.
  */
-const CACHE_ROOT = process.env.MEDIA_CACHE_DIR?.trim() || 'C:\\SandyStudio\\FILMS\\_media_cache';
+const DEFAULT_CACHE_ROOT = 'C:\\SandyStudio\\FILMS\\_media_cache';
 
 export function mediaCacheRoot(): string {
-  return CACHE_ROOT;
+  return process.env.MEDIA_CACHE_DIR?.trim() || DEFAULT_CACHE_ROOT;
 }
 
 /** Sanitize a filename to a safe single path segment (no traversal). */
@@ -49,15 +53,25 @@ function safeName(filename: string): string {
 export function mirroredCachePath(filename: string): string | null {
   const base = path.basename(filename);
   const m = /^SS-(S\d+|PILOT)-(E\d+|PILOT)-(IMG|VID|AUD)-.+\.[A-Za-z0-9]+$/i.exec(base);
-  if (!m) return null;
-  const season = m[1].toUpperCase();
-  const episode = m[2].toUpperCase();
-  return path.join(season, episode, 'media', safeName(base));
+  if (m) {
+    const season = m[1].toUpperCase();
+    const episode = m[2].toUpperCase();
+    return path.join(season, episode, 'media', safeName(base));
+  }
+  // Series-scoped Bible Library media (Phase 4e): `SS-S15-SBL-location_*.png`
+  // has no episode segment and used to fall through to the FLAT root — with
+  // several series, every series' canon art piled into one directory. Mirror
+  // the Drive layout instead: <S>/bible/media/<file>.
+  const sbl = /^SS-(S\d+|PILOT)-SBL-.+\.[A-Za-z0-9]+$/i.exec(base);
+  if (sbl) {
+    return path.join(sbl[1].toUpperCase(), 'bible', 'media', safeName(base));
+  }
+  return null;
 }
 
 /** Absolute cache path for a filename — where persist writes and the media route reads. */
 export function localCacheAbsPath(filename: string): string {
-  return path.join(CACHE_ROOT, mirroredCachePath(filename) ?? safeName(filename));
+  return path.join(mediaCacheRoot(), mirroredCachePath(filename) ?? safeName(filename));
 }
 
 /**
@@ -89,8 +103,21 @@ export async function cachedFileIfPresent(filename: string): Promise<string | nu
     await fs.access(abs);
     return abs;
   } catch {
-    return null;
+    /* fall through */
   }
+  // Compat shim (Phase 4e): SBL files cached BEFORE the bible/-layout fix sit
+  // flat in the root. Drive-backed files re-download into the new spot on the
+  // next miss, but a local-only file would go unreachable without this check.
+  const legacyFlat = path.join(mediaCacheRoot(), safeName(path.basename(filename)));
+  if (legacyFlat !== abs) {
+    try {
+      await fs.access(legacyFlat);
+      return legacyFlat;
+    } catch {
+      /* miss */
+    }
+  }
+  return null;
 }
 
 /**

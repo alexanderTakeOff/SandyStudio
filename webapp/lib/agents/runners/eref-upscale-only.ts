@@ -141,6 +141,10 @@ export async function runUpscaleOnly(
     throw err;
   }
 
+  // Phase 4e: derive the episode code from the canonical filename so the 4k
+  // derivative lands in /SandyStudio/<series>/<E>/images/ next to its source —
+  // `episodeCode: undefined` used to drop these homeless into the flat root.
+  const epCodeMatch = /^(SS-[A-Z0-9]+-E\d+)/i.exec(asset.filename ?? '');
   const persisted = await persistBinary({
     base64: upscaled.b64_data,
     ext: 'png',
@@ -149,7 +153,7 @@ export async function runUpscaleOnly(
       '-4k.png',
     ),
     localHint: `eref-upscale-${assetId.slice(-8)}`,
-    episodeCode: undefined,
+    episodeCode: epCodeMatch ? epCodeMatch[1].toUpperCase() : undefined,
     supabase,
   });
 
