@@ -23,14 +23,12 @@ export default async function DashboardPage() {
       supabase.from('app_config').select('key,value').eq('scope', 'storage'),
     ]);
     const seriesCount = (seriesRes as unknown as { count: number | null }).count ?? 0;
-    let projectWritable = false;
-    let mediaWritable = false;
+    let cacheWritable = false;
     for (const row of storageRes.data ?? []) {
       const r = row as { key: string; value: unknown };
-      if (r.key === 'project_root_writable' && r.value === true) projectWritable = true;
-      if (r.key === 'media_root_writable' && r.value === true) mediaWritable = true;
+      if (r.key === 'media_cache_writable' && r.value === true) cacheWritable = true;
     }
-    if (seriesCount === 0 && (!projectWritable || !mediaWritable)) {
+    if (seriesCount === 0 && !cacheWritable) {
       redirect('/onboarding');
     }
   } catch {

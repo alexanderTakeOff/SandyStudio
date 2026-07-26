@@ -239,6 +239,10 @@ export interface UploadVideoInput {
   tags?: string[];
   /** YouTube category id. 23 = Comedy. */
   categoryId?: string;
+  /** status.selfDeclaredMadeForKids — from the channel passport's publish defaults. */
+  madeForKids?: boolean;
+  /** BCP-47 — sets snippet.defaultLanguage AND defaultAudioLanguage when present. */
+  defaultLanguage?: string;
   contentType?: string;
 }
 
@@ -256,10 +260,13 @@ export async function uploadVideo(input: UploadVideoInput, auth?: YouTubeAuth): 
       description: input.description ?? '',
       tags: input.tags ?? [],
       categoryId: input.categoryId ?? '23', // Comedy
+      ...(input.defaultLanguage
+        ? { defaultLanguage: input.defaultLanguage, defaultAudioLanguage: input.defaultLanguage }
+        : {}),
     },
     status: {
       privacyStatus: input.privacyStatus,
-      selfDeclaredMadeForKids: false,
+      selfDeclaredMadeForKids: input.madeForKids ?? false,
     },
   };
   const contentType = input.contentType ?? 'video/mp4';

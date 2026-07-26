@@ -9,8 +9,7 @@
 // without a restart (resolveChannelRefreshToken reads process.env per call).
 // ──────────────────────────────────────────────────────────────────────────────
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { persistEnvValue } from '@/lib/persist-env';
 
 /** Same scope set as the CLI consent script — upload + read + edit + analytics. */
 export const YOUTUBE_CONSENT_SCOPES = [
@@ -77,20 +76,13 @@ export async function exchangeConsentCode(args: {
 }
 
 /**
- * Replace-or-append the named token in webapp/.env.local, never touching other
- * keys (other channels, Drive's GOOGLE_REFRESH_TOKEN). Also stamps process.env
- * so the RUNNING app sees the new token immediately — no stack restart.
+ * Persist the named token via the shared .env.local writer (lib/persist-env),
+ * gated to YouTube token names only (other channels + Drive's
+ * GOOGLE_REFRESH_TOKEN stay untouched by construction).
  */
 export function persistChannelToken(envVar: string, refreshToken: string): void {
   if (!/^YOUTUBE_REFRESH_TOKEN(_[A-Z][A-Z0-9_]*)?$/.test(envVar)) {
     throw new Error(`refusing to write unexpected env var name: ${envVar}`);
   }
-  const envPath = path.resolve(process.cwd(), '.env.local');
-  let raw = fs.readFileSync(envPath, 'utf8');
-  const linePattern = new RegExp(`^${envVar}=.*$`, 'm');
-  raw = linePattern.test(raw)
-    ? raw.replace(linePattern, `${envVar}=${refreshToken}`)
-    : raw.replace(/\s*$/, '') + `\n${envVar}=${refreshToken}\n`;
-  fs.writeFileSync(envPath, raw);
-  process.env[envVar] = refreshToken;
+  persistEnvValue(envVar, refreshToken);
 }

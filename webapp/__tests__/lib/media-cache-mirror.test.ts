@@ -72,3 +72,20 @@ describe('readAssetMediaAsBase64', () => {
     expect(out).toBeNull();
   });
 });
+
+// Phase 4e — series-scoped Bible Library media stopped falling flat into the root.
+describe('mirroredCachePath — SBL (series bible) layout', () => {
+  it('maps SBL media into <S>/bible/media/', () => {
+    expect(mirroredCachePath('SS-S15-SBL-location_carwash-v01-LOCKED.png')).toBe(
+      path.join('S15', 'bible', 'media', 'SS-S15-SBL-location_carwash-v01-LOCKED.png'),
+    );
+  });
+
+  it('two series never share a bible cache directory', () => {
+    const a = mirroredCachePath('SS-S15-SBL-style_main-v01-LOCKED.png');
+    const b = mirroredCachePath('SS-S17-SBL-style_main-v01-LOCKED.png');
+    expect(a).not.toBe(b);
+    expect(a).toContain('S15');
+    expect(b).toContain('S17');
+  });
+});

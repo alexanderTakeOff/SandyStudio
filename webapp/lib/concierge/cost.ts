@@ -45,6 +45,9 @@ export async function recordConciergeCost(
     usage: ConciergeUsage;
     source: string; // 'auto_react' | 'chat' | …
     episodeId?: string | null;
+    /** Series attribution for EPISODE-LESS spend (Phase 4e). With an episode
+     * the DB trigger derives it — только безэпизодной Полине нужен явный. */
+    seriesId?: string | null;
   },
 ): Promise<void> {
   try {
@@ -67,6 +70,7 @@ export async function recordConciergeCost(
     await client.from('budget_log').insert({
       job_id: null,
       episode_id: args.episodeId ?? null,
+      series_id: args.seriesId ?? null,
       agent_id: CONCIERGE_AGENT_ID,
       api_provider: conciergeProvider(),
       model_or_tier: args.model,

@@ -34,10 +34,10 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const ListQuery = z.object({
-  // Workspace scope (Phase 3). Scoped view = the series' episodes + their
-  // ledger rows; episode-less spend (global Polina, Bible enrich) has no series
-  // column in budget_log and is deliberately OUT of a scoped view — the
-  // unscoped («вся студия») view remains the full-honesty money board.
+  // Workspace scope (Phase 3; ledger column since Phase 4e). Scoped view =
+  // rows with budget_log.series_id (trigger-filled from episodes; Polina's
+  // episode-less spend carries the thread's series). Truly global spend
+  // (series_id NULL) stays only in the unscoped «вся студия» money board.
   series_id: z.string().uuid().optional(),
 });
 
@@ -46,29 +46,28 @@ export const GET = withApiHandler(async (req) => {
   const q = parseSearchParams(req.url, ListQuery);
 
   // Both scans are independent → run them concurrently. Each is paged, so
-  // neither can be silently truncated at 1000 rows.
-  const [episodesAll, logsAll] = await Promise.all([
+  // neither can be silently truncated at 1000 rows. Phase 4e: a scoped view
+  // filters in the DB via budget_log.series_id instead of fetching the whole
+  // ledger and joining in JS.
+  const [episodesAll, logs] = await Promise.all([
     pagedSelect<BudgetEpisodeInput & { series_id?: string | null }>(() =>
       supabase
         .from('episodes')
         .select('id,episode_code,status,budget_ceiling,budget_spent,created_at,series_id'),
     ),
-    pagedSelect<BudgetLogInput>(() =>
-      supabase
+    pagedSelect<BudgetLogInput>(() => {
+      const sel = supabase
         .from('budget_log')
         .select(
           'episode_id,agent_id,api_provider,model_or_tier,operation,cost_usd,tokens_used,created_at',
-        ),
-    ),
+        );
+      return q.series_id ? sel.eq('series_id', q.series_id) : sel;
+    }),
   ]);
 
-  let episodes = episodesAll;
-  let logs = logsAll;
-  if (q.series_id) {
-    episodes = episodesAll.filter((e) => e.series_id === q.series_id);
-    const epIds = new Set(episodes.map((e) => e.id));
-    logs = logsAll.filter((l) => l.episode_id != null && epIds.has(l.episode_id));
-  }
+  const episodes = q.series_id
+    ? episodesAll.filter((e) => e.series_id === q.series_id)
+    : episodesAll;
 
   return apiOk({
     generatedAt: new Date().toISOString(),

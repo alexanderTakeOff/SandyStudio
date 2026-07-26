@@ -40,19 +40,22 @@ If any item is missing: EXEC-PUB enters BLOCKED state and notifies Director.
     "title": "[from metadata.title — max 100 characters]",
     "description": "[from metadata.description]",
     "tags": "[from metadata.tags — array]",
-    "categoryId": "1",
-    "defaultLanguage": "en",
-    "defaultAudioLanguage": "en"
+    "categoryId": "[from channel passport publish_defaults.category_id — fallback '23' Comedy]",
+    "defaultLanguage": "[from publish_defaults.default_language — omitted when unset]",
+    "defaultAudioLanguage": "[same as defaultLanguage]"
   },
   "status": {
     "privacyStatus": "private",
     "publishAt": "[ISO 8601 scheduled publish time]",
-    "selfDeclaredMadeForKids": false
+    "selfDeclaredMadeForKids": "[from publish_defaults.made_for_kids — fallback false]"
   }
 }
 ```
 
-**Category ID 1** = Film & Animation (correct for animated series).
+**Category / language / kids-flag come from the channel passport** —
+`channels.metadata.publish_defaults` (multi-channel Phase 4e), editable in
+Settings → Channels. Code fallback when unset: categoryId `'23'` (Comedy),
+madeForKids `false`, language omitted.
 
 ---
 

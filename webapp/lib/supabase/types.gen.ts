@@ -429,6 +429,7 @@ export type Database = {
           job_id: string | null
           model_or_tier: string | null
           operation: string
+          series_id: string | null
           tokens_used: number | null
         }
         Insert: {
@@ -442,6 +443,7 @@ export type Database = {
           job_id?: string | null
           model_or_tier?: string | null
           operation: string
+          series_id?: string | null
           tokens_used?: number | null
         }
         Update: {
@@ -455,6 +457,7 @@ export type Database = {
           job_id?: string | null
           model_or_tier?: string | null
           operation?: string
+          series_id?: string | null
           tokens_used?: number | null
         }
         Relationships: [
@@ -470,6 +473,13 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budget_log_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "series"
             referencedColumns: ["id"]
           },
         ]

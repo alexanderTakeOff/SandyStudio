@@ -33,8 +33,8 @@ const BRANDING_FIELDS = [
   { key: 'long_description_boilerplate', label: 'Description boilerplate', hint: 'Standing line near the end of long-form descriptions (EXEC-COPY)' },
 ] as const;
 
-function brandingOf(meta: Record<string, unknown> | null): Record<string, unknown> {
-  const b = (meta ?? {})['branding'];
+function sectionOf(meta: Record<string, unknown> | null, key: string): Record<string, unknown> {
+  const b = (meta ?? {})[key];
   return b && typeof b === 'object' && !Array.isArray(b) ? (b as Record<string, unknown>) : {};
 }
 
@@ -258,8 +258,9 @@ export function ChannelSettings() {
 }
 
 // Phase 4c — the passport finally has a product writer: PATCH /api/channels/[id]
-// (name / ntfy / status / metadata.branding). Empty branding field = key removed
-// (falls back down the cascade), never an empty-string override.
+// (name / ntfy / status / metadata.branding / metadata.publish_defaults). Empty
+// field = key removed (falls back down the cascade / provider default), never an
+// empty-string override.
 function ChannelEditPanel({
   channel,
   onDone,
@@ -269,10 +270,14 @@ function ChannelEditPanel({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const b = brandingOf(channel.metadata);
+  const b = sectionOf(channel.metadata, 'branding');
+  const pd = sectionOf(channel.metadata, 'publish_defaults');
   const [name, setName] = useState(channel.name);
   const [ntfy, setNtfy] = useState(channel.ntfy_topic ?? '');
   const [status, setStatus] = useState(channel.status);
+  const [pdCategory, setPdCategory] = useState(typeof pd.category_id === 'string' ? pd.category_id : '');
+  const [pdKids, setPdKids] = useState(typeof pd.made_for_kids === 'boolean' ? String(pd.made_for_kids) : '');
+  const [pdLang, setPdLang] = useState(typeof pd.default_language === 'string' ? pd.default_language : '');
   const [branding, setBranding] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const f of BRANDING_FIELDS) {
@@ -310,6 +315,11 @@ function ChannelEditPanel({
         ntfy_topic: ntfy.trim() || null,
         status,
         branding: brandingPatch,
+        publish_defaults: {
+          category_id: pdCategory.trim() || null,
+          made_for_kids: pdKids === '' ? null : pdKids === 'true',
+          default_language: pdLang.trim() || null,
+        },
       }),
     });
     setPending(false);
@@ -365,6 +375,38 @@ function ChannelEditPanel({
             />
           </FormField>
         ))}
+      </div>
+      <div className="text-[11px] uppercase tracking-wider text-text-muted pt-1">
+        Publish defaults (YouTube upload metadata for this channel)
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <FormField label="Category id" hint="YouTube numeric category — empty = 23 (Comedy)">
+          <input
+            value={pdCategory}
+            onChange={(e) => setPdCategory(e.target.value.replace(/\D/g, ''))}
+            placeholder="e.g. 1 = Film & Animation"
+            className="w-full h-9 px-3 rounded-lg bg-[var(--panel-glass-strong-bg)] border border-glass text-sm font-mono text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+          />
+        </FormField>
+        <FormField label="Made for kids" hint="selfDeclaredMadeForKids on every upload">
+          <select
+            value={pdKids}
+            onChange={(e) => setPdKids(e.target.value)}
+            className="w-full h-9 px-2.5 rounded-lg bg-[var(--panel-glass-strong-bg)] border border-glass text-sm text-text-primary"
+          >
+            <option value="">default (no)</option>
+            <option value="false">no</option>
+            <option value="true">yes</option>
+          </select>
+        </FormField>
+        <FormField label="Default language" hint="BCP-47, e.g. en / ru — empty = unset">
+          <input
+            value={pdLang}
+            onChange={(e) => setPdLang(e.target.value)}
+            placeholder="en"
+            className="w-full h-9 px-3 rounded-lg bg-[var(--panel-glass-strong-bg)] border border-glass text-sm font-mono text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+          />
+        </FormField>
       </div>
       {error && (
         <div

@@ -1,7 +1,17 @@
 # SandyStudio — Storage Configuration
-## specs/system/storage_configuration.md | v0.1 | DRAFT
+## specs/system/storage_configuration.md | v0.1 | SUPERSEDED
 
-> **Status:** Phase 5a UX architecture spec — defines UX and contract.
+> **⚠ SUPERSEDED (multi-channel Phase 4e, 2026-07-26).** Панель Storage больше
+> НЕ управляет `project_root` / `media_storage_root` — этих полей не читал ни
+> один рантайм-писатель. Реальные ручки теперь две: **media cache dir**
+> (env `MEDIA_CACHE_DIR`, применяется без рестарта через `persistEnvValue`) и
+> **Drive root folder** (`app_config scope='storage', key='drive_root_name'`,
+> читается `driveRootName()` в `lib/agents/persist-binary.ts`). Онбординг-гейт →
+> `media_cache_writable`. Актуальный контракт: `specs/system/multi-channel.md §8`
+> (строка 4e) + код `app/api/storage/*`. Разделы ниже сохранены как история
+> дизайна §8.1 (path-валидация всё ещё живёт в `lib/api/storage-probe.ts`).
+
+> **Status (историческое):** Phase 5a UX architecture spec — defines UX and contract.
 > Implementation: API contract lands in Phase 5b, UI lands in Phase 5c.
 
 ---

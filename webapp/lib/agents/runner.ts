@@ -29,7 +29,7 @@ import { generateVideoVeoGemini } from './providers/veo-gemini';
 import { getMultiVideoProvider } from './providers/video-gen-multi';
 import { uploadVideo, setThumbnail, videoExists, isVideoInPlaylist, addVideoToPlaylist, type PrivacyStatus } from './providers/youtube';
 import { collectAudienceSnapshot } from './providers/youtube-stats';
-import { decideYouTubePathway, assertChannelIdentity } from './providers/channel-resolver';
+import { decideYouTubePathway, assertChannelIdentity, publishDefaultsOf } from './providers/channel-resolver';
 import { resolveSeriesPlaylistId } from './providers/short-linkage';
 import { downloadFile } from './providers/drive';
 import { parseVideoMetadata } from './publish-metadata';
@@ -3289,6 +3289,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
             description: parsed.description,
             tags: parsed.tags,
             privacyStatus: privacy,
+            ...publishDefaultsOf(pathway.passport),
           },
           ytAuth,
         );

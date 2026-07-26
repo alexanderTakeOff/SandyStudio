@@ -16,6 +16,7 @@ import {
   getChannelForSeries,
   assertChannelIdentity,
   decideYouTubePathway,
+  publishDefaultsOf,
   ChannelResolutionError,
   type ChannelPassport,
 } from '@/lib/agents/providers/channel-resolver';
@@ -218,5 +219,32 @@ describe('decideYouTubePathway (gate matrix)', () => {
     const row = { ...SANDY_ROW, status: 'PAUSED' };
     const sb = makeSb({ seriesId: 's-1', channelId: 'ch-1', channelRow: row });
     await expect(decideYouTubePathway(sb, 'ep-1')).rejects.toThrow(/PAUSED/);
+  });
+});
+
+describe('publishDefaultsOf (multi-channel Phase 4e)', () => {
+  const withPd = (pd: unknown): ChannelPassport => ({ ...SANDY, metadata: { publish_defaults: pd } });
+
+  it('empty object when the passport has no publish_defaults', () => {
+    expect(publishDefaultsOf(SANDY)).toEqual({});
+  });
+
+  it('empty object when publish_defaults is malformed (array / string)', () => {
+    expect(publishDefaultsOf(withPd(['x']))).toEqual({});
+    expect(publishDefaultsOf(withPd('23'))).toEqual({});
+  });
+
+  it('maps snake_case keys to camelCase upload input', () => {
+    const passport = withPd({ category_id: '1', made_for_kids: true, default_language: 'en' });
+    expect(publishDefaultsOf(passport)).toEqual({ categoryId: '1', madeForKids: true, defaultLanguage: 'en' });
+  });
+
+  it('drops blank strings and wrong-typed values (fallback to provider defaults)', () => {
+    const passport = withPd({ category_id: '  ', made_for_kids: 'yes', default_language: 42 });
+    expect(publishDefaultsOf(passport)).toEqual({});
+  });
+
+  it('made_for_kids=false survives (explicit, not dropped as falsy)', () => {
+    expect(publishDefaultsOf(withPd({ made_for_kids: false }))).toEqual({ madeForKids: false });
   });
 });

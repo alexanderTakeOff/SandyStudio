@@ -11,7 +11,6 @@ import path from 'node:path';
 import {
   validateStoragePath,
   runWriteTest,
-  isProbablyDriveFolder,
 } from '@/lib/api/storage-probe';
 
 describe('validateStoragePath', () => {
@@ -62,15 +61,11 @@ describe('runWriteTest', () => {
     expect(result.writable).toBe(false);
     expect(result.errorCode).toBeDefined();
   });
-});
 
-describe('isProbablyDriveFolder', () => {
-  it('detects Drive paths', () => {
-    expect(isProbablyDriveFolder('H:\\My Drive\\foo\\')).toBe(true);
-    expect(isProbablyDriveFolder('C:\\My Drive\\bar\\')).toBe(true);
-  });
-  it('does not flag non-Drive paths', () => {
-    expect(isProbablyDriveFolder('C:\\Users\\me\\Documents\\')).toBe(false);
-    expect(isProbablyDriveFolder('D:\\Studio\\')).toBe(false);
+  it('createIfMissing: nonexistent path is created and probed writable (Phase 4e cache dir)', async () => {
+    const target = path.join(tmpDir, 'auto-created', 'cache');
+    const result = await runWriteTest(target, { createIfMissing: true });
+    expect(result.writable).toBe(true);
+    await expect(fs.stat(target)).resolves.toBeDefined();
   });
 });
