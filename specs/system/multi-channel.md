@@ -4,7 +4,10 @@
 > Ратифицировано Директором 2026-07-25 (q1a, q2y, q3=SS-как-студия, q4y, q5a).
 > Фаза 2 ратифицирована той же датой, вторая сессия: чат=сериал, событие без
 > треда серии — skip (не в чат), UI каналов = секция Settings.
-> Статус: Фазы 1–2 сделаны. Фазы 3–4 — backlog (см. §8).
+> Статус: Фазы 1–3 и 4a сделаны. Фазы 4b–4e — план (см. §8).
+> Инвариант (ратифицирован 2026-07-26): **канал = дистрибуция** (токены, плейлисты,
+> категория, made-for-kids, ntfy, отчёты HoG) · **сериал = производство** (провайдеры,
+> промпты, стиль, таксономия) · глобальное = только машинное (API-ключи, ffmpeg, кеш).
 
 ---
 
@@ -116,7 +119,11 @@ channels  1:N  series  1:N  episodes
 | 1 | `channels` + резолвер + гейты + HoG пер-канально + consent `--key` | эта ветка |
 | 2 | Рождение проекта №2 в UI (Settings→Channels, series+channel, PATCH attach); `activity_events.series_id` + чат=сериал + series-скоуп инъекции (§6.5); брендовые литералы → `channels/series.metadata.branding`; канальный гейт на ручном shorts-upload | эта ветка (0049+0050) |
 | 3 | Workspace-скоуп: переключатель сериала в топбаре (первый ребёнок бара, НЕ портал в слот; канал выводится из серии); источник истины = URL `?series_id=` + localStorage-память (`WorkspaceScopeProvider`); скоуп Episodes/Budget/Inbox/Jobs/Activity + зоны дашборда + бейдж Inbox; Audience = пер-канально (`?channel_id=`, все YT-вызовы с auth канала, reach-архив `.eq(channel_id)` — закрыт merge двух каналов); Jobs переведён на клиент+`/api/jobs`. Бонус: consent-кнопка Authorize в Settings→Channels (identity-сверка ДО записи токена, подхват в env без рестарта) | эта ветка |
-| 4 | Per-series провайдеры/промпты через `app_config` суффикс-конвенцию — по реальной нужде (YAGNI) | backlog |
+| 4a | Утечки/хардкоды (аудит 2026-07-26, инвариант «канал=дистрибуция, сериал=производство»): EREF identity-блок Сэнди → `series.metadata.anchor_identity_lock` (сид S15, generic-фолбэк); `hog-snapshot.mts` per-channel (auth+identity-guard, reach `.eq(channel_id)`, файлы `…-<KEY>.json`); `hog-daily.ps1` — луп по ACTIVE-каналам (`hog-channels.mts`), ntfy/Title из паспорта, отчёты `reports/<date>/<KEY>/`, плейсхолдеры в `daily-prompt.md`; плейлист БЕЗ env-фолбэка (`short-linkage.ts` — episode→series→skip); legacy-guard `LEGACY_SINGLE_CHANNEL=1` на 9 `dist-*.ts`; CHECK `app_config` + скоупы `visual_critic`/`on_model` (0051) | эта ветка (0051) |
+| 4b | Аналитическая память HoG в БД (НЕ Drive — provider_strategy.md: markdown живёт в базе): таблица `hog_memory` (append-only, channel_id, kind: daily_advice/hypothesis/experiment/weekly_rollup/monthly_rollup/median_recalc/decision); сохранять выход `buildAdvice()` в `hog-report-poll`; Inngest-кроны `hog-weekly-rollup`/`hog-monthly-rollup` — каждый период читает ТОЛЬКО предыдущую свёртку; подтверждённый урок → `rule_proposal` → Inbox → Skill Editor (цепочка уже есть) | план |
+| 4c | Брендинг из UI: PATCH `/api/channels/[id]` (name/ntfy/status/branding) + series metadata (branding/playlist/delivery_targets); EXEC-COPY читает канал (CTA, boilerplate — расширение `branding.ts`); `SANDY_TAXONOMY` → `series.metadata.gag_taxonomy` | план |
+| 4d | Провайдеры per-series: overlay `app_config` `assignment:<contract>:<seriesId>` над глобальным `provider_assignments`; резолвер с seriesId; UI-селектор скоупа в Settings→Providers. `storage`-контракт остаётся глобальным (q5a: один студийный Drive) | план |
+| 4e | Фоном: Storage-панель = 2 реальных поля (media cache dir → .env.local; Drive root → `app_config storage.drive_root_name`), удалить `project_root`+пробу; фикс `mirroredCachePath` (SBL-*) и `eref-upscale-only` (бездомный путь); `budget_log.series_id`; publish-дефолты per-channel (`channels.metadata.publish_defaults`); судьба мёртвого `config/defaults.yaml` | план |
 
 ## Кросс-ссылки
 

@@ -5,7 +5,7 @@
 // over-reject or silently drop data.
 
 import { describe, expect, test } from 'vitest';
-import { parseAnchorPair } from '@/lib/agents/runners/episode-references';
+import { buildAnchorPreamble, parseAnchorPair } from '@/lib/agents/runners/episode-references';
 
 const SHOT_A = 'SS-S15-E02-A1-SC01-SH01';
 const SHOT_B = 'SS-S15-E02-A1-SC01-SH02';
@@ -185,5 +185,29 @@ describe('parseAnchorPair — Plan body → Artist input', () => {
       },
     });
     expect(result?.start?.handoff_link_to_shot_id).toBe(SHOT_B);
+  });
+});
+
+// Multi-channel Phase 4a (2026-07-26): the character-specific CRITICAL block is
+// per-series data (series.metadata.anchor_identity_lock), no longer a hardcode.
+describe('buildAnchorPreamble — generic + per-series identity lock', () => {
+  test('no identity lock → generic preamble only, no Sandy text', () => {
+    const p = buildAnchorPreamble(null);
+    expect(p).toContain('[ANCHOR DIRECTIVE');
+    expect(p).not.toContain('Sandy');
+    expect(p.endsWith('\n')).toBe(true);
+  });
+
+  test('undefined / blank lock behave like null', () => {
+    expect(buildAnchorPreamble(undefined)).toBe(buildAnchorPreamble(null));
+    expect(buildAnchorPreamble('   ')).toBe(buildAnchorPreamble(null));
+  });
+
+  test('identity lock is appended after the generic block with a blank line', () => {
+    const lock = 'CRITICAL — Hero shape: never substitute.';
+    const p = buildAnchorPreamble(lock);
+    expect(p.startsWith(buildAnchorPreamble(null))).toBe(true);
+    expect(p).toContain(lock);
+    expect(p.endsWith(`${lock}\n\n`)).toBe(true);
   });
 });

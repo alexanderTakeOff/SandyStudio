@@ -42,8 +42,14 @@ export function appendParentBacklink(
 
 /**
  * The YouTube playlist this episode's series belongs to:
- * episode-metadata override → `series.metadata.youtube_playlist_id` →
- * `YOUTUBE_PLAYLIST_ID` env. Null → callers skip the playlist step.
+ * episode-metadata override → `series.metadata.youtube_playlist_id`.
+ * Null → callers skip the playlist step (doctrine above: ship without the
+ * backlink rather than block).
+ *
+ * Multi-channel Phase 4a (2026-07-26): the `YOUTUBE_PLAYLIST_ID` env fallback
+ * is REMOVED — one process-wide playlist meant a series on channel B silently
+ * landed in channel A's playlist (same bug class the token HALT closed).
+ * A playlist now exists only as explicit per-episode/per-series data.
  *
  * Lives here rather than in runner.ts because both the publisher (playlist
  * insertion) and the Short backlink need the same answer, and two resolvers
@@ -72,7 +78,7 @@ export async function resolveSeriesPlaylistId(
     if (typeof pl === 'string' && pl.length > 0) return pl;
   }
 
-  return process.env.YOUTUBE_PLAYLIST_ID?.trim() || null;
+  return null;
 }
 
 /**

@@ -1,3 +1,18 @@
+// ─── LEGACY SINGLE-CHANNEL (Sandy) — multi-channel Phase 4a guard ────────────
+// This script predates the channels passport: it calls YouTube with the legacy
+// global token (no per-channel auth, no identity guard) and carries hardcoded
+// Sandy-era paths/ids. Running it against a multi-channel studio can silently
+// touch the WRONG channel. Use the in-app flows (EXEC-PUB / shorts route) —
+// they resolve the channel and verify identity. To run anyway, acknowledge:
+//   LEGACY_SINGLE_CHANNEL=1
+if (process.env.LEGACY_SINGLE_CHANNEL !== '1') {
+  console.error(
+    '[legacy-guard] This is a LEGACY single-channel (Sandy) script with no per-channel auth. ' +
+      'Set LEGACY_SINGLE_CHANNEL=1 to run it anyway.',
+  );
+  process.exit(1);
+}
+
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs'; import * as path from 'path';
 const env = fs.readFileSync(path.join(process.cwd(), '.env.local'), 'utf8');
