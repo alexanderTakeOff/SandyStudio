@@ -29,6 +29,28 @@ export interface ChannelPassport {
   metadata: Record<string, unknown>;
 }
 
+/**
+ * Per-channel YouTube publish defaults (multi-channel Phase 4e). Stored in
+ * channels.metadata.publish_defaults; absent keys fall back to the provider's
+ * own defaults (categoryId '23', madeForKids false, no language).
+ */
+export interface PublishDefaults {
+  categoryId?: string;
+  madeForKids?: boolean;
+  defaultLanguage?: string;
+}
+
+export function publishDefaultsOf(passport: ChannelPassport): PublishDefaults {
+  const raw = passport.metadata['publish_defaults'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const pd = raw as Record<string, unknown>;
+  const out: PublishDefaults = {};
+  if (typeof pd.category_id === 'string' && pd.category_id.trim()) out.categoryId = pd.category_id.trim();
+  if (typeof pd.made_for_kids === 'boolean') out.madeForKids = pd.made_for_kids;
+  if (typeof pd.default_language === 'string' && pd.default_language.trim()) out.defaultLanguage = pd.default_language.trim();
+  return out;
+}
+
 export class ChannelResolutionError extends Error {
   constructor(message: string) {
     super(message);

@@ -1,6 +1,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // components/settings/StorageSettings.tsx
-// Settings → Storage tab per storage_configuration.md §5.
+// Settings → Storage tab (multi-channel Phase 4e rework).
+// Two REAL knobs: local media-cache dir (env MEDIA_CACHE_DIR, applies live)
+// and the Drive layout root folder name (app_config → persist-binary).
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
@@ -12,10 +14,10 @@ import { Button } from '@/components/ui/Button';
 import { PeekHint } from '@/components/ui/PeekHint';
 
 interface StorageState {
-  project_root: string;
-  media_storage_root: string;
-  project_root_writable: boolean;
-  media_root_writable: boolean;
+  media_cache_dir: string;
+  media_cache_writable: boolean;
+  drive_root_name: string;
+  drive_validated: boolean;
   last_validated_at: string | null;
 }
 
@@ -26,66 +28,58 @@ interface ProbeResult {
 
 export function StorageSettings() {
   const [state, setState] = useState<StorageState | null>(null);
-  const [pr, setPr] = useState<ProbeResult | null>(null);
-  const [mr, setMr] = useState<ProbeResult | null>(null);
-  const [editing, setEditing] = useState<'project' | 'media' | null>(null);
-  const [draft, setDraft] = useState('');
+  const [cacheDraft, setCacheDraft] = useState('');
+  const [driveDraft, setDriveDraft] = useState('');
+  const [probe, setProbe] = useState<ProbeResult | null>(null);
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function reload() {
     fetch('/api/storage/config')
       .then((r) => r.json())
       .then((j: { data?: StorageState }) => {
-        if (j.data) setState(j.data);
+        if (j.data) {
+          setState(j.data);
+          setCacheDraft(j.data.media_cache_dir);
+          setDriveDraft(j.data.drive_root_name);
+        }
       });
   }
   useEffect(reload, []);
 
   if (!state) return <p className="text-sm text-text-muted">Loading…</p>;
 
+  const dirty = cacheDraft !== state.media_cache_dir || driveDraft !== state.drive_root_name;
+
   async function retest() {
-    if (!state) return;
     setPending(true);
-    const [a, b] = await Promise.all([
-      fetch('/api/storage/test-write', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: state.project_root, kind: 'project_root' }),
-      }).then((r) => r.json()),
-      fetch('/api/storage/test-write', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: state.media_storage_root, kind: 'media_storage_root' }),
-      }).then((r) => r.json()),
-    ]);
-    setPr(a.data ?? null);
-    setMr(b.data ?? null);
+    const j = await fetch('/api/storage/test-write', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: cacheDraft }),
+    }).then((r) => r.json());
+    setProbe((j as { data?: ProbeResult }).data ?? null);
     setPending(false);
   }
 
   async function save() {
-    if (!state) return;
-    if (editing === 'project') state.project_root = draft;
-    if (editing === 'media') state.media_storage_root = draft;
     setPending(true);
+    setError(null);
     const res = await fetch('/api/storage/config', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        project_root: state.project_root,
-        media_storage_root: state.media_storage_root,
+        media_cache_dir: cacheDraft.trim(),
+        drive_root_name: driveDraft.trim(),
       }),
     });
     setPending(false);
     if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      alert((j as { error?: string }).error ?? 'Save failed');
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      setError(j.error ?? `Save failed (${res.status})`);
       return;
     }
-    setEditing(null);
-    setDraft('');
-    setPr(null);
-    setMr(null);
+    setProbe(null);
     reload();
   }
 
@@ -95,156 +89,104 @@ export function StorageSettings() {
         <div className="flex items-center gap-2">
           <CardTitle>Storage</CardTitle>
           <PeekHint autoPeekMs={3500}>
-            Project root holds bibles and scripts; media storage holds heavy binaries. Both are
-            tested for write access on save.
+            The media cache is the local mirror the UI serves previews from (applies live,
+            no restart). The Drive root is the folder name all binaries are filed under on
+            Google Drive — the canonical store.
           </PeekHint>
         </div>
       </CardHeader>
       <CardBody>
         <div className="space-y-4">
-          <PathRow
-            icon={<Folder size={14} />}
-            label="Project root"
-            value={state.project_root}
-            writable={pr?.writable ?? state.project_root_writable}
-            error={pr?.error}
-            onEdit={() => {
-              setEditing('project');
-              setDraft(state.project_root);
-            }}
-            editing={editing === 'project'}
-            draft={draft}
-            onDraft={setDraft}
-            onSave={save}
-            onCancel={() => {
-              setEditing(null);
-              setDraft('');
-            }}
-            pending={pending}
-          />
-          <PathRow
-            icon={<Cloud size={14} />}
-            label="Media storage"
-            value={state.media_storage_root}
-            writable={mr?.writable ?? state.media_root_writable}
-            error={mr?.error}
-            onEdit={() => {
-              setEditing('media');
-              setDraft(state.media_storage_root);
-            }}
-            editing={editing === 'media'}
-            draft={draft}
-            onDraft={setDraft}
-            onSave={save}
-            onCancel={() => {
-              setEditing(null);
-              setDraft('');
-            }}
-            pending={pending}
-          />
+          <div className="rounded-lg border border-glass bg-panel-glass-strong px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-text-primary mb-1.5">
+              <Folder size={14} />
+              Media cache dir
+            </div>
+            <input
+              value={cacheDraft}
+              onChange={(e) => setCacheDraft(e.target.value)}
+              className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+              spellCheck={false}
+            />
+            <div className="flex items-center gap-1.5 mt-2 text-xs">
+              {(probe?.writable ?? state.media_cache_writable) ? (
+                <>
+                  <CheckCircle2 size={12} className="text-[var(--accent-success)]" />
+                  <span className="text-[var(--accent-success)]">writable</span>
+                </>
+              ) : (
+                <>
+                  <XCircle size={12} className="text-[var(--accent-danger)]" />
+                  <span className="text-[var(--accent-danger)]">{probe?.error ?? 'not tested yet'}</span>
+                </>
+              )}
+              <span className="text-text-muted ml-1">
+                created automatically if missing · env MEDIA_CACHE_DIR
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-glass bg-panel-glass-strong px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-text-primary mb-1.5">
+              <Cloud size={14} />
+              Drive root folder
+            </div>
+            <input
+              value={driveDraft}
+              onChange={(e) => setDriveDraft(e.target.value)}
+              className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+              spellCheck={false}
+            />
+            <div className="flex items-center gap-1.5 mt-2 text-xs">
+              {state.drive_validated ? (
+                <>
+                  <CheckCircle2 size={12} className="text-[var(--accent-success)]" />
+                  <span className="text-[var(--accent-success)]">verified on Drive</span>
+                </>
+              ) : (
+                <span className="text-text-muted">not verified yet (checked on save when Drive is authorized)</span>
+              )}
+            </div>
+          </div>
+
+          {error && (
+            <div
+              className="rounded-lg p-2.5 text-xs"
+              style={{
+                background: 'color-mix(in oklab, var(--accent-danger) 14%, transparent)',
+                color: 'var(--accent-danger)',
+              }}
+            >
+              {error}
+            </div>
+          )}
 
           <div className="pt-2 flex items-center justify-between">
             <Button variant="ghost" size="sm" onClick={retest} disabled={pending}>
-              <RefreshCw size={14} /> Re-test all paths
+              <RefreshCw size={14} /> Test cache dir
             </Button>
-            {state.last_validated_at && (
-              <span className="text-[11px] text-text-muted">
-                last tested {new Date(state.last_validated_at).toLocaleString()}
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {state.last_validated_at && (
+                <span className="text-[11px] text-text-muted">
+                  last saved {new Date(state.last_validated_at).toLocaleString()}
+                </span>
+              )}
+              <Button size="sm" onClick={save} disabled={pending || !dirty}>
+                {pending ? 'Saving…' : 'Save & validate'}
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-text-muted">
             <span aria-hidden>⚠</span>
             <span>Changing paths does not move existing content.</span>
             <PeekHint side="top" autoPeekMs={0}>
-              New writes go to the new path. Existing series stay where they are — their
-              PROJECT.md remains the authoritative anchor.
+              New writes go to the new location. Existing cached media re-downloads from
+              Drive on demand; existing Drive files stay under the old root.
             </PeekHint>
           </div>
         </div>
       </CardBody>
     </Card>
-  );
-}
-
-interface PathRowProps {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  writable: boolean;
-  error?: string;
-  onEdit: () => void;
-  editing: boolean;
-  draft: string;
-  onDraft: (v: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  pending: boolean;
-}
-
-function PathRow({
-  icon,
-  label,
-  value,
-  writable,
-  error,
-  onEdit,
-  editing,
-  draft,
-  onDraft,
-  onSave,
-  onCancel,
-  pending,
-}: PathRowProps) {
-  return (
-    <div className="rounded-lg border border-glass bg-panel-glass-strong px-4 py-3">
-      <div className="flex items-center justify-between mb-1.5">
-        <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
-          {icon}
-          {label}
-        </div>
-        {!editing && (
-          <Button variant="ghost" size="sm" onClick={onEdit}>
-            Edit
-          </Button>
-        )}
-      </div>
-      {editing ? (
-        <>
-          <input
-            value={draft}
-            onChange={(e) => onDraft(e.target.value)}
-            className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono"
-            spellCheck={false}
-          />
-          <div className="flex justify-end gap-2 mt-2">
-            <Button variant="ghost" size="sm" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={onSave} disabled={pending}>
-              {pending ? 'Saving…' : 'Save & test'}
-            </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="text-sm font-mono text-text-secondary">{value}</div>
-          <div className="flex items-center gap-1.5 mt-2 text-xs">
-            {writable ? (
-              <>
-                <CheckCircle2 size={12} className="text-[var(--accent-success)]" />
-                <span className="text-[var(--accent-success)]">writable</span>
-              </>
-            ) : (
-              <>
-                <XCircle size={12} className="text-[var(--accent-danger)]" />
-                <span className="text-[var(--accent-danger)]">{error ?? 'not writable — re-test'}</span>
-              </>
-            )}
-          </div>
-        </>
-      )}
-    </div>
   );
 }

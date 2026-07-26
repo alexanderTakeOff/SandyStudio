@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // components/onboarding/StorageStep.tsx
-// Step 1 — storage path configuration with write-test probe.
-// Per onboarding.md §4 + storage_configuration.md §3.
+// Step 1 — storage configuration (multi-channel Phase 4e rework).
+// Two REAL knobs: local media-cache dir + Drive root folder name.
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
@@ -11,16 +11,14 @@ import { CheckCircle2, XCircle, Cloud, Folder, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 interface StorageState {
-  project_root: string;
-  media_storage_root: string;
-  project_root_writable: boolean;
-  media_root_writable: boolean;
+  media_cache_dir: string;
+  media_cache_writable: boolean;
+  drive_root_name: string;
 }
 
 interface ProbeResult {
   writable: boolean;
   error?: string;
-  drive_detected?: boolean;
 }
 
 interface StorageStepProps {
@@ -28,57 +26,56 @@ interface StorageStepProps {
 }
 
 export function StorageStep({ onAdvance }: StorageStepProps) {
-  const [state, setState] = useState<StorageState | null>(null);
-  const [pr, setPr] = useState<ProbeResult | null>(null);
-  const [mr, setMr] = useState<ProbeResult | null>(null);
+  const [cacheDir, setCacheDir] = useState('');
+  const [driveRoot, setDriveRoot] = useState('');
+  const [cacheWritable, setCacheWritable] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [probe, setProbe] = useState<ProbeResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/storage/config')
       .then((r) => r.json())
       .then((j: { data?: StorageState }) => {
-        if (j.data) setState(j.data);
+        if (j.data) {
+          setCacheDir(j.data.media_cache_dir);
+          setDriveRoot(j.data.drive_root_name);
+          setCacheWritable(j.data.media_cache_writable);
+        }
+        setLoaded(true);
       });
   }, []);
 
-  if (!state) return <p className="text-sm text-text-muted">Loading…</p>;
+  if (!loaded) return <p className="text-sm text-text-muted">Loading…</p>;
 
   async function runProbe() {
-    if (!state) return;
     setLoading(true);
-    const [a, b] = await Promise.all([
-      fetch('/api/storage/test-write', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: state.project_root, kind: 'project_root' }),
-      }).then((r) => r.json()),
-      fetch('/api/storage/test-write', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: state.media_storage_root, kind: 'media_storage_root' }),
-      }).then((r) => r.json()),
-    ]);
-    setPr(a.data ?? null);
-    setMr(b.data ?? null);
+    const j = await fetch('/api/storage/test-write', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: cacheDir }),
+    }).then((r) => r.json());
+    setProbe((j as { data?: ProbeResult }).data ?? null);
     setLoading(false);
   }
 
   async function persist() {
-    if (!state) return;
     setPending(true);
+    setError(null);
     const res = await fetch('/api/storage/config', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        project_root: state.project_root,
-        media_storage_root: state.media_storage_root,
+        media_cache_dir: cacheDir.trim(),
+        drive_root_name: driveRoot.trim(),
       }),
     });
     setPending(false);
     if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      alert((j as { error?: string }).error ?? 'Save failed');
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      setError(j.error ?? 'Save failed');
       return;
     }
     await fetch('/api/onboarding/advance', {
@@ -89,102 +86,90 @@ export function StorageStep({ onAdvance }: StorageStepProps) {
     onAdvance();
   }
 
-  const bothWritable = (pr?.writable ?? state.project_root_writable) && (mr?.writable ?? state.media_root_writable);
+  const writable = probe?.writable ?? cacheWritable;
 
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-semibold text-text-primary">Storage locations</h2>
+        <h2 className="text-xl font-semibold text-text-primary">Storage</h2>
         <p className="text-sm text-text-secondary mt-1">
-          Where should SandyStudio write your films?
+          Where should SandyStudio keep its local media cache — and under which
+          Google Drive folder should originals be filed?
         </p>
       </div>
 
-      <PathField
-        label="Project root"
-        sublabel="scripts, briefs, bibles, reviews"
-        icon={<Folder size={14} />}
-        value={state.project_root}
-        onChange={(v) => setState({ ...state, project_root: v })}
-        result={pr ?? (state.project_root_writable ? { writable: true } : null)}
-      />
-      <PathField
-        label="Media storage"
-        sublabel="images, video, audio (heavy binaries)"
-        icon={<Cloud size={14} />}
-        value={state.media_storage_root}
-        onChange={(v) => setState({ ...state, media_storage_root: v })}
-        result={mr ?? (state.media_root_writable ? { writable: true } : null)}
-      />
+      <div>
+        <div className="flex items-baseline justify-between mb-1.5">
+          <div className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
+            <Folder size={14} />
+            Media cache dir
+          </div>
+          <span className="text-[11px] text-text-muted">local previews · created if missing</span>
+        </div>
+        <input
+          value={cacheDir}
+          onChange={(e) => setCacheDir(e.target.value)}
+          className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+          spellCheck={false}
+        />
+        {probe && (
+          <div className="flex items-center gap-1.5 mt-2 text-xs">
+            {probe.writable ? (
+              <>
+                <CheckCircle2 size={12} className="text-[var(--accent-success)]" />
+                <span className="text-[var(--accent-success)]">writable</span>
+              </>
+            ) : (
+              <>
+                <XCircle size={12} className="text-[var(--accent-danger)]" />
+                <span className="text-[var(--accent-danger)]">{probe.error}</span>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-baseline justify-between mb-1.5">
+          <div className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
+            <Cloud size={14} />
+            Drive root folder
+          </div>
+          <span className="text-[11px] text-text-muted">canonical store on Google Drive</span>
+        </div>
+        <input
+          value={driveRoot}
+          onChange={(e) => setDriveRoot(e.target.value)}
+          className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
+          spellCheck={false}
+        />
+      </div>
+
+      {error && (
+        <div
+          className="rounded-lg p-2.5 text-xs"
+          style={{
+            background: 'color-mix(in oklab, var(--accent-danger) 14%, transparent)',
+            color: 'var(--accent-danger)',
+          }}
+        >
+          {error}
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-3 pt-3">
         <Button variant="ghost" onClick={runProbe} disabled={loading}>
           {loading ? <><Loader2 size={14} className="animate-spin" /> Testing</> : 'Run write-test'}
         </Button>
-        <div className="flex gap-2">
-          <Button onClick={persist} disabled={!bothWritable || pending}>
-            {pending ? 'Saving…' : 'Continue →'}
-          </Button>
-        </div>
+        <Button onClick={persist} disabled={!writable || pending}>
+          {pending ? 'Saving…' : 'Continue →'}
+        </Button>
       </div>
 
       <p className="text-[11px] text-text-muted">
-        These paths are remembered per workstation. New writes go to the new
-        path; existing project folders stay where they are (their PROJECT.md
-        is the authoritative anchor).
+        The cache dir is remembered per workstation (env, applies live). The Drive
+        folder is found-or-created on save when Drive is authorized.
       </p>
-    </div>
-  );
-}
-
-function PathField({
-  label,
-  sublabel,
-  icon,
-  value,
-  onChange,
-  result,
-}: {
-  label: string;
-  sublabel: string;
-  icon: React.ReactNode;
-  value: string;
-  onChange: (v: string) => void;
-  result: ProbeResult | null;
-}) {
-  return (
-    <div>
-      <div className="flex items-baseline justify-between mb-1.5">
-        <div className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
-          {icon}
-          {label}
-        </div>
-        <span className="text-[11px] text-text-muted">{sublabel}</span>
-      </div>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono text-text-primary focus:outline-none focus:border-[var(--accent-primary)]"
-        spellCheck={false}
-      />
-      {result && (
-        <div className="flex items-center gap-1.5 mt-2 text-xs">
-          {result.writable ? (
-            <>
-              <CheckCircle2 size={12} className="text-[var(--accent-success)]" />
-              <span className="text-[var(--accent-success)]">writable</span>
-              {result.drive_detected && (
-                <span className="text-text-muted">· Google Drive folder detected</span>
-              )}
-            </>
-          ) : (
-            <>
-              <XCircle size={12} className="text-[var(--accent-danger)]" />
-              <span className="text-[var(--accent-danger)]">{result.error}</span>
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 }

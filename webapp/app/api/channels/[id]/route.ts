@@ -14,7 +14,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError } from '@/lib/api/errors';
-import { mergeBrandingPatch } from '@/lib/api/metadata-merge';
+import { mergeSectionPatch } from '@/lib/api/metadata-merge';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,11 +28,20 @@ const BrandingPatch = z.object({
   long_description_boilerplate: z.string().min(1).max(1000).nullable().optional(),
 });
 
+// Publish defaults consumed by publishDefaultsOf() in channel-resolver.ts
+// (multi-channel Phase 4e) — per-channel YouTube upload metadata.
+const PublishDefaultsPatch = z.object({
+  category_id: z.string().regex(/^\d{1,3}$/).nullable().optional(),
+  made_for_kids: z.boolean().nullable().optional(),
+  default_language: z.string().regex(/^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/).nullable().optional(),
+});
+
 const PatchBody = z.object({
   name: z.string().min(1).max(80).optional(),
   ntfy_topic: z.string().min(1).max(120).nullable().optional(),
   status: z.enum(['ACTIVE', 'PAUSED', 'ARCHIVED']).optional(),
   branding: BrandingPatch.optional(),
+  publish_defaults: PublishDefaultsPatch.optional(),
 });
 
 export const PATCH = withApiHandler(async (req, ctx) => {
@@ -55,8 +64,11 @@ export const PATCH = withApiHandler(async (req, ctx) => {
   if (body.name !== undefined) update.name = body.name;
   if (body.ntfy_topic !== undefined) update.ntfy_topic = body.ntfy_topic;
   if (body.status !== undefined) update.status = body.status;
-  if (body.branding !== undefined) {
-    update.metadata = mergeBrandingPatch((current as { metadata: unknown }).metadata, body.branding);
+  if (body.branding !== undefined || body.publish_defaults !== undefined) {
+    let meta = (current as { metadata: unknown }).metadata as unknown;
+    if (body.branding !== undefined) meta = mergeSectionPatch(meta, 'branding', body.branding);
+    if (body.publish_defaults !== undefined) meta = mergeSectionPatch(meta, 'publish_defaults', body.publish_defaults);
+    update.metadata = meta;
   }
 
   const { data: updated, error } = await supabase

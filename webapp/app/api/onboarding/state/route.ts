@@ -53,10 +53,9 @@ export const GET = withApiHandler(async () => {
   const epCount = seriesCount.count ?? 0;
   const storageMap = new Map<string, unknown>();
   for (const r of storageRes.data ?? []) storageMap.set(r.key, r.value);
-  const projectWritable = (storageMap.get('project_root_writable') as boolean | undefined) ?? false;
-  const mediaWritable = (storageMap.get('media_root_writable') as boolean | undefined) ?? false;
+  const cacheWritable = (storageMap.get('media_cache_writable') as boolean | undefined) ?? false;
 
-  if (epCount === 0 && (!projectWritable || !mediaWritable)) needs_run = true;
+  if (epCount === 0 && !cacheWritable) needs_run = true;
   if (state.completed_steps.length < 4 && epCount === 0) needs_run = true;
 
   return apiOk({ ...state, needs_run });

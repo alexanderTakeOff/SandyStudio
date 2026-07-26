@@ -15,8 +15,6 @@ export interface ProbeResult {
   errorCode?: string;
 }
 
-export type StoragePathKind = 'project_root' | 'media_storage_root';
-
 const STUDIO_REPO_ROOT = 'C:\\SandyStudio\\';
 const STUDIO_FILMS_SUBDIR = 'C:\\SandyStudio\\FILMS\\';
 const FORBIDDEN_PREFIXES = [
@@ -66,8 +64,14 @@ export function validateStoragePath(rawPath: string): void {
 /**
  * Run the probe. Creates and deletes a 0-byte file at the target.
  * Errors are mapped to friendly messages per storage_configuration.md §4.1.
+ * `createIfMissing` (Phase 4e, media-cache dir): mkdir -p the folder first —
+ * the cache root is created on demand by writers anyway, so demanding a
+ * pre-existing folder from the Director was pure friction.
  */
-export async function runWriteTest(rawPath: string): Promise<ProbeResult> {
+export async function runWriteTest(
+  rawPath: string,
+  opts?: { createIfMissing?: boolean },
+): Promise<ProbeResult> {
   try {
     validateStoragePath(rawPath);
   } catch (e) {
@@ -82,6 +86,9 @@ export async function runWriteTest(rawPath: string): Promise<ProbeResult> {
   const probePath = path.join(dir, probeName);
 
   try {
+    if (opts?.createIfMissing) {
+      await fs.mkdir(dir, { recursive: true });
+    }
     // Verify the directory exists and is a directory.
     const stat = await fs.stat(dir).catch(() => null);
     if (!stat) {
@@ -138,8 +145,4 @@ function friendlyError(code: string): string {
     default:
       return `Probe failed: ${code}`;
   }
-}
-
-export function isProbablyDriveFolder(rawPath: string): boolean {
-  return /^[A-Z]:\\My Drive\\/i.test(rawPath);
 }

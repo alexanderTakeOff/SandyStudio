@@ -72,6 +72,41 @@ function deriveAssetTypeFromExt(ext: BinaryExt): 'images' | 'video' | 'audio' {
   return 'audio';
 }
 
+// ── Drive root folder name (Phase 4e) ────────────────────────────────────────
+// The Drive layout root used to be the hardcoded literal 'SandyStudio'. It now
+// lives in app_config (scope='storage', key='drive_root_name') so the Storage
+// panel can point a fresh studio at any Drive folder. TTL-cached like
+// concierge-provider-config (30s cross-process; instant in-proc after a write
+// via bustDriveRootNameCache). Fail-open: on read error keep the current name.
+
+const DEFAULT_DRIVE_ROOT_NAME = 'SandyStudio';
+const DRIVE_ROOT_TTL_MS = 30_000;
+let _driveRootName = DEFAULT_DRIVE_ROOT_NAME;
+let _driveRootReadAt = 0;
+
+export function bustDriveRootNameCache(): void {
+  _driveRootReadAt = 0;
+}
+
+export async function driveRootName(supabase: SupabaseClient<Database>): Promise<string> {
+  const now = Date.now();
+  if (now - _driveRootReadAt < DRIVE_ROOT_TTL_MS) return _driveRootName;
+  _driveRootReadAt = now;
+  try {
+    const { data } = await supabase
+      .from('app_config')
+      .select('value')
+      .eq('scope', 'storage')
+      .eq('key', 'drive_root_name')
+      .maybeSingle();
+    const v = (data as { value?: unknown } | null)?.value;
+    _driveRootName = typeof v === 'string' && v.trim() ? v.trim() : DEFAULT_DRIVE_ROOT_NAME;
+  } catch {
+    // fail-open — keep the current (or default) root name
+  }
+  return _driveRootName;
+}
+
 export interface PersistedBinary {
   /** Public URL the browser can fetch — always set. e.g. "/api/media/<file>". */
   browserUrl: string;
@@ -117,6 +152,7 @@ async function uploadToDrive(args: {
   seriesCode?: string;
   bucket?: string;
   assetType?: 'images' | 'video' | 'audio';
+  supabase: SupabaseClient<Database>;
 }): Promise<{ id: string; webViewLink: string }> {
   // Two layouts coexist (Director directive 2026-05-20):
   //
@@ -129,10 +165,10 @@ async function uploadToDrive(args: {
   //         used when only episodeCode is supplied. Director said leave S14
   //         files where they are — this branch keeps that contract.
   //
-  // If neither is supplied, falls back to root /SandyStudio/<file> (the old
+  // If neither is supplied, falls back to root /<drive_root>/<file> (the old
   // Bible behaviour that left files homeless — should not happen after the
   // route refactor in the same commit).
-  const sandyFolder = await ensureFolder('SandyStudio');
+  const sandyFolder = await ensureFolder(await driveRootName(args.supabase));
 
   if (args.seriesCode && args.bucket) {
     const seriesFolder = await ensureFolder(args.seriesCode, sandyFolder.id);
@@ -221,6 +257,7 @@ export async function persistBinary(args: PersistBinaryArgs): Promise<PersistedB
       seriesCode: resolvedSeriesCode,
       bucket: resolvedBucket,
       assetType: resolvedAssetType,
+      supabase: args.supabase,
     });
     return {
       ...local,

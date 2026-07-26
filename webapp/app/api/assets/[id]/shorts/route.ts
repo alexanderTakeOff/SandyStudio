@@ -43,6 +43,7 @@ import { loadShortBrandingForEpisode } from '@/lib/agents/branding';
 import {
   assertChannelIdentity,
   decideYouTubePathway,
+  publishDefaultsOf,
 } from '@/lib/agents/providers/channel-resolver';
 import {
   appendParentBacklink,
@@ -315,6 +316,7 @@ async function handleUpload(
       description,
       tags,
       privacyStatus,
+      ...publishDefaultsOf(pathway.passport),
     },
     ytAuth,
   );

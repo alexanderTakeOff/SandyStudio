@@ -32,12 +32,12 @@ export function applyPatch(
   return out;
 }
 
-/** Merge a branding patch into metadata.branding (null deletes a key). */
-export function mergeBrandingPatch(
+/** Merge a flat patch into metadata.<section> (null deletes a key). */
+export function mergeSectionPatch(
   metadata: unknown,
-  brandingPatch: Record<string, unknown | null | undefined>,
+  section: string,
+  patch: Record<string, unknown | null | undefined>,
 ): Record<string, unknown> {
   const meta = metaObject(metadata);
-  const branding = applyPatch(metaObject(meta.branding), brandingPatch);
-  return { ...meta, branding };
+  return { ...meta, [section]: applyPatch(metaObject(meta[section]), patch) };
 }

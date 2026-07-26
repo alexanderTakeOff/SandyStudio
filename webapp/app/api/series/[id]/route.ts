@@ -10,7 +10,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
-import { applyPatch, mergeBrandingPatch, metaObject } from '@/lib/api/metadata-merge';
+import { applyPatch, mergeSectionPatch, metaObject } from '@/lib/api/metadata-merge';
 import type { SeriesRow, AuthorityMatrixRow } from '@/lib/supabase/types-phase5b';
 
 export const runtime = 'nodejs';
@@ -112,7 +112,7 @@ export const PATCH = withApiHandler(async (req, ctx) => {
       delivery_targets: body.delivery_targets,
       gag_taxonomy: body.gag_taxonomy,
     });
-    if (body.branding !== undefined) meta = mergeBrandingPatch(meta, body.branding);
+    if (body.branding !== undefined) meta = mergeSectionPatch(meta, 'branding', body.branding);
     update.metadata = meta;
   }
 
