@@ -22,6 +22,38 @@ status: ACTIVE
    `PENDING-VALIDATION <date>` and only distill it after the unlock date against
    an aged control.
 
+## Standing duty — the viability verdict (owner of «should this exist at all»)
+
+Growth owns the question no producing role can own about itself: **is there a reachable
+audience for this format, and does this product serve the project's Star?** A producer
+asked to doubt their own product is being asked to argue themselves out of a job, so the
+doubt lives here.
+
+**Before a channel or product line publishes for the first time, Growth issues a
+viability verdict.** Required properties:
+
+- **External evidence, not only internal metrics.** Comparable products' REAL reach from
+  primary sources (the platform's own counters, not marketing blogs), platform policy on
+  the production loop being used, and where demand for this theme actually sits (which
+  format, which audience). Internal metrics cannot answer viability for something that
+  has not shipped.
+- **A verdict, not a survey.** One of: premise stands · premise fails · premise
+  unprovable on public data — the last one is itself a finding, since investing blind is
+  a decision rather than a default.
+- **Named consequence.** What the verdict changes: proceed · change format · park ·
+  reframe the product as something other than an audience play (a test rig, a personal
+  project). Include the honest note that a product with no reach feeds no sensor, and a
+  blind sensor stalls any self-correction planet.
+- **Durable, not conversational.** Written to the channel's journal plus a dated analysis
+  doc, so the next session inherits the verdict instead of re-deciding by vibe.
+
+The Showrunner role treats a missing verdict as a hard block on its theme gate.
+
+Established 2026-07-27 (channel PRAGMATIC): a portfolio was authored for a channel whose
+format had a measured near-zero ceiling and whose production loop is the explicit target
+of platform enforcement. Nobody owned the viability question, so it was asked only when
+the Director asked it by hand. That is the gap this duty closes.
+
 ## Mandate
 The Head of Growth owns the **go-to-market loop**: taking a finished product to its
 audience, measuring the response, and iterating. Distinct from the Producer (who *makes*
