@@ -1,0 +1,64 @@
+# Session: 2026-07-26
+
+**Started:** ~09:12 Dubai
+**Last Updated:** 19:45 Dubai (обновлён ПОСЛЕ мерджа+деплоя+4e-part1; безопасно для /clear)
+**Project:** SandyStudio — worktree `multi-channel-architecture-b48f19` (ветка `claude/multi-channel-architecture-b48f19`)
+**Topic:** Мульти-канальность: Фазы 4a–4d СМЕРЖЕНЫ в master и ЗАДЕПЛОЕНЫ; Фаза 4e начата (E1+E2 закоммичены). Осталось: E3 (publish-дефолты) + E4 (Storage-панель).
+
+---
+
+## What We Are Building
+
+Аудит показал: Фазы 0–3 сделали канал-осознанным только слой публикации. Ратифицирован инвариант: **канал = дистрибуция; сериал = производство; глобальное = только машинное.** Фазы 4a–4d реализованы, смержены (master `c4a32326`+`5a4cbed3`, запушено), задеплоены (health 200/200, PUT /api/inngest OK, новые кроны `HoG: weekly/monthly memory rollup` видны в Inngest). План: `~/.claude/plans/just-to-remind-you-whimsical-narwhal.md`. Счётчик вопросов: q1–q8 (q8y исполнен). Следующий = q9.
+
+## What WORKED (with evidence)
+
+- **4a–4d** (`42c40257`, `b76605bb`, `74beee92`, `4a02a6e4`) — детали в спеке `specs/system/multi-channel.md §8` (строки 4a–4d) и в PLAN.md CURRENT STATE на master. Миграции 0051–0054 в проде.
+- **Мердж**: конфликт с master-фиксами hog (`4a350aca` byte-clamp/link-first, `6ff275a7` accumulate-wording) разрешён переносом обоих фиксов в пер-канальный луп (`546705dd`); merge в master `c4a32326`; PLAN.md CURRENT STATE обновлён (`5a4cbed3`); master + ветка запушены.
+- **Деплой**: stop-stack.ps1 → npm run build (master webapp) → background jobs: `npm run start` (:3000) + `npx inngest-cli@1.33.0 start --event-key <ek> --signing-key <sk> --sdk-url http://localhost:3000/api/inngest --sqlite-dir C:\Users\Alexander\sandystudio\FILMS\_inngest` (:8288) → PUT /api/inngest «Successfully registered» → GQL показывает 4 HoG-функции вкл. 2 новые. Процессы — background jobs ЭТОЙ сессии, умрут при закрытии Claude Code (ярлык SandyStudio Stack на десктопе — постоянный путь).
+- **4e part 1** (`a44e8b76`, tsc clean · 1560/1560 · 30/30):
+  - E1: media-cache.ts — SBL-медиа в `<S>/bible/media/` (+legacy-flat шим в cachedFileIfPresent; CACHE_ROOT теперь lazy env-чтение — задел под E4); eref-upscale-only.ts — episodeCode из имени файла (4k больше не бездомные).
+  - E2: 0055 budget_log.series_id (применена; бэкфилл 9875/9875 episode-строк проверен, 175 безэпизодных = честно глобальные) + BEFORE-INSERT триггер (паттерн 0049, писатели не тронуты); Полина: recordConciergeCost(seriesId) + chat route captures costSeriesId (тред→серия); /api/budget скоуп фильтрует в БД `.eq('series_id')`.
+
+## What Did NOT Work (and why)
+
+- Голый `inngest start` из bash — exit 127; правильный запуск см. выше (npx inngest-cli@1.33.0 + ключи из webapp/.env.local, поля INNGEST_EVENT_KEY/INNGEST_SIGNING_KEY).
+- Supabase MCP — permission denied; обход: одноразовый .mjs в webapp/, `.env.local` по абсолютному пути `C:/Users/Alexander/sandystudio/webapp/.env.local` (в воркtree его НЕТ).
+- `grep -rn` по `.` из webapp/ сканирует node_modules (таймаут) — использовать Grep-tool с path.
+- Bash-cwd и PowerShell-cwd в сессии разные и периодически сбрасываются («Shell cwd was reset») — проверять pwd.
+
+## What Has NOT Been Tried Yet — ТОЧНЫЙ NEXT STEP (Фаза 4e, part 2)
+
+**E3 — publish-дефолты per-channel** (разведка сделана, код не начат):
+1. `channels.metadata.publish_defaults` = {category_id?: string, made_for_kids?: boolean, default_language?: string}. Хелпер `publishDefaultsOf(passport)` в `lib/agents/providers/channel-resolver.ts` (ChannelPassport.metadata уже есть).
+2. `lib/agents/providers/youtube.ts`: `UploadVideoInput` + `madeForKids?: boolean`, `defaultLanguage?: string`; uploadVideo (строки ~252-264): snippet.defaultLanguage/defaultAudioLanguage если заданы; status.selfDeclaredMadeForKids = input.madeForKids ?? false (сейчас хардкод false:262; categoryId '23' хардкод:258 и :162).
+3. Callers uploadVideo: `lib/agents/runner.ts:3285` (EXEC-PUB — pathway уже даёт passport) и `app/api/assets/[id]/shorts/route.ts:311` — передать значения из publishDefaultsOf(passport). dist-скрипты (за LEGACY-guard) НЕ трогать.
+4. UI: 3 поля publish_defaults в ChannelEditPanel (`components/settings/ChannelSettings.tsx`) + PATCH whitelist в `app/api/channels/[id]/route.ts` (отдельный объект publish_defaults, мердж через metadata-merge helper).
+5. Дрейф спеки: `specs/distribution/youtube.md:43` говорит categoryId "1", код '23' — привести спеку к «из паспорта канала, фолбэк '23'».
+6. Тест: unit на publishDefaultsOf + сборку meta в uploadVideo (если тестируемо чисто).
+
+**E4 — Storage-панель (q7)** (не начат; CACHE_ROOT уже lazy):
+1. `persistEnvValue`-механизм: переиспользовать запись .env.local+process.env из `lib/agents/providers/google-consent.ts` (persistChannelToken) — выделить общий helper для MEDIA_CACHE_DIR.
+2. Drive root: `app_config scope='storage', key='drive_root_name'` (дефолт 'SandyStudio'); `lib/agents/persist-binary.ts:135` `ensureFolder('SandyStudio')` → читает ключ с TTL-кэшем (образец TTL — concierge-provider-config.ts). Также хардкоды корня в scripts/migrate-s15-bible-to-new-layout.ts и test-drive-provider.ts — оставить (скрипты одноразовые).
+3. API `app/api/storage/config/route.ts` + `test-write/route.ts` переделать: поля media_cache_dir (+probe записи в НЕГО) и drive_root_name (+валидация реальным ensureFolder через Drive API); удалить project_root/media_storage_root/пробу H:\.
+4. UI `components/settings/StorageSettings.tsx` + `components/onboarding/StorageStep.tsx`: два реальных поля.
+5. Гейт онбординга `app/(studio)/page.tsx:27-33` читает project_root_writable/media_root_writable — перевести на новые поля (или на «кеш-директория writable»).
+6. `lib/api/storage-probe.ts` — упростить под новые поля.
+7. `config/defaults.yaml` мёртв — НЕ трогать, отдельный разговор с Директором (q9+).
+
+**После E3+E4:** ritual (tsc/vitest/replay-pilot) → обновить multi-channel.md §8 (4e → «эта ветка») → commit → предложить Директору мердж+деплой part 2 (нумерованный вопрос q9).
+
+## Current State of Files
+
+Ветка `claude/multi-channel-architecture-b48f19`: чистая, HEAD `a44e8b76` (4e part 1). Master: `5a4cbed3`, запушен, стек на нём работает. На master есть некоммитнутые НЕ МОИ файлы (.claude/skills/bible-asset-image-auto-gen, episode-serialization — были до сессии) + untracked docs/distribution отчёты HoG.
+
+## Blockers & Open Questions
+
+- Стек поднят background-jobs этой сессии — при закрытии Claude Code умрёт (десктоп-ярлык = постоянный путь).
+- 4e part 2 (E3+E4) не задеплоен по определению — после его коммита нужен второй мердж+деплой (спросить q9).
+- defaults.yaml (мёртвый) — судьба не решена, отдельный вопрос Директору.
+
+## Environment & Setup Notes
+
+- Миграции: `npx supabase db push --yes` из webapp/ (0051–0055 применены). Типы: `npx supabase gen types typescript --linked > lib/supabase/types.gen.ts`.
+- Каналы: SANDY (S15) + PRAGMATIC (S17), оба ACTIVE с токенами. Завтрашний HoG 09:00 пойдёт уже пер-канальным скриптом (master обновлён).

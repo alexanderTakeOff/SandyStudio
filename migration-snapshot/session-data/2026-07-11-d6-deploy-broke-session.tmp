@@ -1,0 +1,102 @@
+# Session: 2026-07-11 (afternoon)
+
+**Started:** ~12:57
+**Last Updated:** ~13:25
+**Project:** SandyStudio (C:\SandyStudio) — AI animation factory
+**Topic:** Shipped D6 (critic throughput + tail-hang) → pushed → merged → DEPLOYED. **The deploy left the prod app NOT loading at http://localhost:3000/ — «сервер плохо работает, такого никогда не было» (Director). Diagnosis was interrupted.** ⬅️ START HERE next session.
+
+---
+
+## ⭐ EXACT NEXT STEP (resume here) — FIX THE BROKEN PROD SERVER FIRST
+
+The D6 CODE is fine and shipped. The problem is the RESTART I did: after rebuild I
+launched `next start` via a **minimized PowerShell window** (`Start-Process powershell -NoExit -Command 'cd webapp; npm run start' -WindowStyle Minimized`). The server binds :3000 and `/api/health`→200 and `/`→307, but **the actual APP does not load in the browser** (Director). Diagnostics (latency probe on `/`, `/api/episodes`) were STOPPED by Director before I could see the failure.
+
+**Recovery plan (do this, in order):**
+1. **See the real error — the minimized window has the server stdout/stderr we never read.** Kill the current prod chain and restart `next start` WITH LOGS REDIRECTED TO A FILE so the runtime error is visible:
+   - Current prod: PID **339808** (`node … next start`), parent chain powershell→npm(336012)→node(339808). Also two STALE 8:03am node procs **301760** (parent 275764) and **313020** (parent 315080) — one is the inngest CLI (8288 is UP), the other may be a leftover; identify before killing.
+   - Clean restart (Director runs via `!` if the auto-classifier blocks the kill — it blocked `Stop-Process` on the old prod earlier this session):
+     ```
+     ! powershell -NoProfile -Command "Get-Process node | Where-Object { (Get-CimInstance Win32_Process -Filter \"ProcessId=$($_.Id)\").CommandLine -like '*next*start*' } | Stop-Process -Force; Start-Sleep 2; Set-Location C:\SandyStudio\webapp; Start-Process powershell -ArgumentList '-NoProfile','-NoExit','-Command','cd C:\SandyStudio\webapp; npm run start *> C:\SandyStudio\webapp\prod.log 2>&1'"
+     ```
+   - Then `Read C:\SandyStudio\webapp\prod.log` — the runtime error (or clean boot) is there.
+2. **If the log shows a genuine app error:** it is almost certainly NOT the D6 code (D6 touched only `factory.ts` preflight + `anthropic-text.ts` — server-side AGENT code, not any page/route render). Suspect instead: a corrupted/partial `.next` from building over a live server, an env issue, or the powershell→npm→node host layer. **Cheapest first move: a clean rebuild from a fully-stopped server** — stop next start, `rm -rf .next`, `npm run build`, then `npm run start > prod.log 2>&1`.
+3. **Sanity after restart:** `curl :3000/` should 307→/login and the login page must actually render in browser; `/api/health`→200; inngest `:8288`→200; `/api/inngest`→200.
+4. **Only after prod is healthy** → the still-open standing item: **E27 recovery batch** (re-fire ~24 stuck ref Artists; MONEY, budget_ceiling $150, ~$11 spent; Тео-batch NOT Polina).
+
+---
+
+## What We Are Building
+
+Autonomous AI animation factory. This session's task = **D6** from `docs/analysis/E27-run-defects.md`: the critic stage crawled and tail-hung ~10 min on E27. Two fixes shipped (below). Then Director said «push merge deploy» → I did all three, and the deploy broke the local prod app.
+
+---
+
+## What WORKED (with evidence) — D6 CODE, shipped to master
+
+- **D6 fix #1 — de-duplicated the double `loadAgentInputs`** (`factory.ts` preflight). The `preflight-validate` step called `loadAgentInputs` (full episode-wide assets + Series-Bible + genre load) and **discarded the result** — `validateAgentInputs` runs its own targeted count/canon/governance queries and never reads the loaded inputs (verified by reading gate.ts:466-680). Removed → heaviest DB work happens once (execute-agent step). Confirmed: tsc·0.
+- **D6 fix #2 — bounded the Anthropic SDK call** (`anthropic-text.ts`). Was `new Anthropic({ apiKey })` with NO timeout → inherits SDK **10-minute default** = the wedged-socket ride to `finishTimeout:'10m'`. Added per-call `timeout` + `maxRetries:1` scaled to maxTokens via new exported seam `anthropicTimeoutMs(maxTokens)` = `min(8min, 60s + maxTokens*30ms)`. Data-grounded: critic/CREAD=4k→3m, Animator=12k, **Screenwriter=16k** (a flat 120s would clip the Writer — that's why it scales). Confirmed: 4 new unit tests pass.
+- **Verify trio GREEN:** `tsc·0` / `vitest 1210 passed (+4)` / `replay-pilot 30/30`.
+- **Git:** committed `9547fd4` on branch `teo/d6-throughput`, pushed, merged **fast-forward into master**, master pushed. PLAN.md updated on master `360b10e` (D6 entry + Date→9547fd4), pushed. Cap 3→5 was already `4a36498` from the prior session.
+- **Analysis doc** `docs/analysis/E27-run-defects.md` D6 section updated to FIXED (shipped in `9547fd4`).
+
+---
+
+## What Did NOT Work (and why) — do NOT retry blindly
+
+- **The RESTART METHOD broke prod.** Sequence that led here:
+  1. Killed old prod (PID 327908, clean `node next start`) — the auto-classifier BLOCKED my `Stop-Process` tool call (flagged «production deploy, idleness not visible»), so Director ran the kill+build via `!`.
+  2. Build ran but the `!` one-liner used `$LASTEXITCODE` which **bash ate before PowerShell saw it** (`if ( -eq 0)` error) → restart step never fired → :3000 left DOWN with a fresh build.
+  3. First relaunch attempt `Start-Process npm -WindowStyle Hidden` → npm shim ran and EXITED, server did not persist (:3000 empty).
+  4. Second relaunch (mine, Director said «сам запусти как надо») `Start-Process powershell -NoExit -Command 'npm run start' -WindowStyle Minimized` → :3000 came UP (307, health 200) BUT the app does not load in browser.
+- **Lesson:** the minimized-window host may be fine, but we NEVER SAW THE SERVER LOGS (hidden window). Next time restart with `*> prod.log 2>&1` so the runtime output is readable. Runtime beats static (Director's own rule) — we flew blind on the restart.
+- **`$`-variables through `!` (bash→powershell):** bash expands `$LASTEXITCODE`/`$?` first. Use commands with NO `$` vars, or wrap the whole thing so PowerShell owns the `$`.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Reading the actual server stdout/stderr** — the #1 missing evidence. Restart with log redirection (see EXACT NEXT STEP).
+- **`rm -rf .next` + clean rebuild from a fully-stopped server** — rules out a `.next` corrupted by building over the live old server (memory `dev_workflow_no_build_during_dev` warns building while a server is up can corrupt `.next`→500; I built while old prod was… actually old prod WAS killed first, but verify).
+- **Confirming which 8:03am node proc is stale** (301760 vs 313020) and whether it contends.
+- **E27 recovery batch** (deferred until prod healthy).
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| webapp/lib/agents/factory.ts | ✅ Complete, shipped `9547fd4` | preflight no longer double-loads inputs |
+| webapp/lib/agents/providers/anthropic-text.ts | ✅ Complete, shipped `9547fd4` | `anthropicTimeoutMs` seam + per-call SDK timeout/maxRetries |
+| webapp/__tests__/agents/anthropic-text.test.ts | ✅ Complete, shipped | +4 tests for the timeout seam |
+| docs/analysis/E27-run-defects.md | ✅ Complete, shipped | D6 → FIXED |
+| PLAN.md | ✅ master `360b10e` | D6 entry; ⚠️ file is 263 lines (>200 cap — chronic debt, flagged, not trimmed) |
+| **Local prod server (:3000)** | 🔴 **BROKEN** | binds+health OK but app doesn't load; restart method suspect; logs never read |
+| webapp/scripts/d6-jobcheck.ts | Deleted | temp job-idleness probe (found 0 active jobs pre-deploy); removed |
+
+---
+
+## Decisions Made
+
+- **D6 timeout SCALES with maxTokens, not a flat value** — reason: a flat 120s (gemini's LLM_TEXT_MS) would false-abort the 16k-token Screenwriter and waste the paid generation. Scaled: floor 60s + 30ms/token, capped 8m (< the 10m finishTimeout belt so abort+1 retry settles the run and frees the concurrency slot).
+- **Deferred «collapse cheap adjacent steps»** (the 3rd D6 idea) — reason: vague + risk-additive for modest gain now that the double-load (the real waste) is gone. Revisit only if per-shot round-trips are still the bottleneck.
+- **Deploy was authorized** (Director «push merge deploy») and **pre-deploy idleness verified** (0 RUNNING/QUEUED jobs) — the deploy decision was sound; the RESTART EXECUTION is what went wrong.
+
+---
+
+## Blockers & Open Questions
+
+- 🔴 **Prod app not loading at :3000 after restart — root cause UNKNOWN (diagnosis interrupted).** Need the server logs. Almost certainly not the D6 code (agent-side only). Suspect: `.next` state, restart host layer, or env.
+- Auto-classifier blocks `Stop-Process` on the prod server from the tool layer → kills must go through Director's `!` or a fresh clean start.
+- PLAN.md over the 200-line cap (263) — offered to trim old CURRENT STATE blocks to PLAN-history.md; Director hasn't answered.
+
+---
+
+## Environment & Setup Notes
+
+- Prod: `next start` on :3000 (should serve build from master `9547fd4`; PLAN commit `360b10e` doesn't affect build). inngest dev on :8288 (`npx inngest-cli@1.33.0 dev -u http://localhost:3000/api/inngest`) — UP.
+- `MECHANICS_AUTO_ADVANCE=false` (reconciler OFF) in `webapp/.env.local:138`.
+- E27 id `738a7801-c3b0-4867-b049-f04a59c80626`, series SS-S15. E27 aspect already fixed to 16:9 (data, prior session).
+- DB probes: local tsx under `webapp/scripts/` + `@supabase/supabase-js`, env loaded by hand-parsing `.env.local` (NO `dotenv` module installed; MCP execute_sql denied). jobs status filter uses `RUNNING`/`QUEUED`; error column is `error_message`.
+- git: master HEAD `360b10e`, pushed. Branch `teo/d6-throughput` pushed (merged). Mode `===5===` active.

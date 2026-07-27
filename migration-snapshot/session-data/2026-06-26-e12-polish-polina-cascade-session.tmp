@@ -1,0 +1,50 @@
+# Session: 2026-06-26 — E12 polish + numbering + Polina audit
+
+**Project:** SandyStudio — E12 production polish + concierge (Polina) harness. Тео = AI EP.
+**Topic:** Cleaned E12 shot-numbering episode-wide, drove 8 videos + ref fixes to FINAL CUT,
+corrected the Polina cost audit. NEXT: continue Polina cascade (Phase 2) with corrected knowledge.
+
+> Work landed in MAIN checkout `C:\SandyStudio` (master). All commits pushed to origin/master.
+> Servers: 3000 dev + 8288 inngest up. Provider = gemini-free.
+
+---
+
+## What We're Building / Did
+E12 ("Бесконечная лента", S15) reached FINAL CUT ("super"). This session: fixed the shot-numbering
+chaos that made Polina's dispatches silently no-op, then drove the remaining refs+videos by hand
+(Тео via EXEC_DIR_AI token), and corrected my own wrong Polina cost audit.
+
+## WORKED (committed/pushed)
+- E12 numbering cleaned: invalidated 34 stale ref_plan stragglers (bare + wrong-scene SC06-SH13
+  phantoms) + 4 SH10 wrong-scene shot_plans, against the clean APPROVED `STB-storyboard v1` (26 unique
+  shots). This was the ROOT of "Polina не стартует" — duplicates, not the worker.
+- 8 videos: SH4,16,20,21,22,23,24,26 (approve ref-plan→artist→approve shot-plan→VGEN). Refs 13/14
+  (were regen-CAPPED), 24/25 phone+pose re-designs. SH14 metelka restored after my error.
+- Code on master: harness `0095c54` (yesterday) + timeline poll 30s→8s `8722b04` (today).
+- Memory: [[polina_cost_audit_CORRECTED_2026-06-26]] + [[session_2026-06-26_e12-polish-numbering-harness]].
+
+## WHAT NOT TO RETRY
+- DON'T blind-approve "newest" ref version. "X ок" = the EXISTING canonical (metelka) frame. I
+  approved newest for SH14 → invalidated the correct metelka + pushed wrong v03 to video. Identify
+  the metelka frame by marker+date; let Director approve manually.
+- DON'T trust the "465 wakes → $135-225/episode" Opus estimate — WRONG scope. Real auto-react ≈ 0/ep.
+- DON'T launch dev+inngest in ONE combined `nohup &` command on Windows — inngest dies → 500 "fetch
+  failed". Launch inngest separately.
+- DON'T over-direct one element in gpt-image-2 prompts (phone) — starves anatomy. Advisory + anatomy
+  counter-directive.
+
+## OPEN / NEXT
+- **BIG TASK (post-/clear, Director-assigned): continue Polina — ALL unfinished phases — WITH the
+  corrected knowledge.** Build the cascade: factory-auto-advance (default, not just Mode 4) +
+  junior-reader model (reads each agent result+verdict, decides advance/queue/escalate) + AI-EP(Opus)
+  only on emergency. Plan: `~/.claude/plans/snazzy-tickling-quail.md`. Audit:
+  [[polina_cost_audit_CORRECTED_2026-06-26]].
+- Neighbor session (parallel): shot-numbering big refactor → simple `SS-S15-E12-SH##` (drop scene/act
+  at storyboard). [[shot_identity_refactor_decision]].
+- Loose ends: SH24 video (REVIEW) awaiting Director approval; SH05/18/19 shot_plan re-tag; **REVERT
+  env: SHOT_REGEN_CAP→6, CONCIERGE_AUTO_REACT_MAX_CALLS→40.**
+
+## Env / setup
+gemini-free · SHOT_REGEN_CAP=12 (temp) · MAX_CALLS=200 (temp) · EXEC_DIR_AI_TOKEN for Тео-driven
+dispatches. DB queries: inline `node --input-type=module` from `C:\SandyStudio\webapp` loading
+.env.local. E12 uuid `725efe84-be85-4a1d-9dfb-1d8aa4afe509`.

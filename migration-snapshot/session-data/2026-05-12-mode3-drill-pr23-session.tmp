@@ -1,0 +1,198 @@
+# Session: 2026-05-12
+
+**Started:** ~10:50 UTC (resumed from 2026-05-12 morning save) — Director returned active around 15:52 UTC
+**Last Updated:** 2026-05-12 ~17:27 UTC
+**Project:** SandyStudio webapp — Mode 2.5 Prod Assistant + Mode 3 readiness
+**Topic:** Mode 3 readiness drill — Director ran full E20 episode pipeline through Writer→Story Editor; surfaced and fixed 14 chained bugs; merged PR #23 to master; closed Writer↔Story Editor internal loop.
+
+---
+
+## What We Are Building
+
+**SandyStudio** is an AI-first animation production studio. Today's session focused on **Mode 2.5 Prod Assistant** (conversational agent in webapp right-panel that drives the pipeline by voice/text) and **Mode 3 readiness drill** — the multi-agent pipeline should self-iterate (Writer → Story Editor → if REVISE, back to Writer → if PASS, advance to Storyboard) without Director seeing intermediate bad drafts.
+
+Director's role is flight instructor drawing the route; PA + studio agents are the flight crew flying the plane. Today validated that the loop can converge: Writer v01 had issues → revision → Writer v02 (still issues — found bugs) → multiple fixes → Writer v03 passed all 8 acceptance criteria (11 units, 60s runtime, durations ≤7s, etc).
+
+PR #23 packaged everything — Mode 2.5 Phase 1-A + 1-B + Phase A (gpt-5.5 + BEHAVIOR_CONTRACT) + Mode 3 readiness drill — and merged to master at 17:22 UTC.
+
+---
+
+## What WORKED (with evidence)
+
+- **PR #23 merged to master** — confirmed by: `gh pr view 23` returns `state: MERGED`, `mergeCommit.oid: 8fa5c0001c839cdf45460feaac32cc89eed7aa06`, `mergedAt: 2026-05-12T17:22:57Z`. 227 commits preserved via --merge style.
+- **`regenerateBibleImage` PA tool** — confirmed by: 5+ production calls during smoke (Perfume Madame, Sandy variant, 3 E20 locations, S14 canon application). Asset IDs visible in DB, images in `webapp/public/staging/`.
+- **`getAsset` + `getRecentActivityEvents` PA tools** — confirmed by: PA used both in same conversation to surface Story Editor review v01 with full breakdown (16:27).
+- **Approval gate position-aware** — confirmed by: Director's long Russian message with mid-sentence "нет" no longer triggers rejection; later "одобряю" wins.
+- **HARD ACCEPTANCE CRITERIA Writer prompt** — confirmed by: Writer v03 produced exactly 11 units, 60s runtime, max 7s per scene, no `perfume_vial`, Sandy `he/him/his`, café fan removed (all 8 criteria from revisionNote satisfied — pre-fix v02 had ignored all of them).
+- **revisionNote propagation through factory** — confirmed by: v03 result vs v02 (v02 had `revisionNote` silently dropped → cosmetic edit; v03 with proper propagation → full restructure).
+- **Story Editor gate accepts REVIEW status** — confirmed by: previous SREV crashed on `Upstream gate failed for EXEC-SREV: Script (need 1, found 0 APPROVED)`; after fix gate passes (next test pending real run on v03).
+- **Story Editor `findApprovedAsset` runner-level fix** — confirmed by: second-layer same bug found in server logs (`EXEC-SREV: Precondition failed: APPROVED SCR-script with non-empty content not found`); fix applied to accept REVIEW.
+- **SREV_MAX_TOKENS 3000 → 12000** — confirmed by: previous Story Editor crashes with `stop_reason=max_tokens, output 12246 chars`; after bump, no longer hits ceiling.
+- **5 Operational-Ritual hooks + helper** — confirmed by: smoke-tested each hook with mock JSON (A staleness, B commit-guard, C verify-on-push, D session-memo, E parallel-worktree all PASS); Hook D smoke after writing memo → `exit=0` silent pass.
+- **CLAUDE.md slim 604→347 lines** — confirmed by: `wc -l` shows 347; all 9 critical-string categories grep-verified per plan §63-73.
+- **Verify trio (Ritual 3)** — confirmed by: tsc clean · 166/166 vitest tests · 29/29 replay-pilot assertions.
+- **Library 10s polling + revalidate on focus** — confirmed by: HMR picked up SWR config change in `SeriesBibleView.tsx`, no compile errors.
+- **Agent role names everywhere (Long-debt #1 closed)** — confirmed by: `lib/api/agent-names.ts` centralized + Pipeline DAG labels updated + factory `activity_event` titles use `agentDisplayName()`.
+- **Kebab DELETE for non-LOCKED non-APPROVED assets** — confirmed by: `DELETE /api/assets/[id]` endpoint added, AssetCard kebab activated with confirm dialog.
+- **S14 data cleanup scripts** — confirmed by: `cleanup-s14-style-canon.ts` (3 → REJECTED, 47 dependents cleared), `close-e01-legacy-pending.ts` (49 → REJECTED), `clone-sandy-v02-with-text.ts` (Sandy v02 DRAFT created, Director locked via UI). All idempotent + dry-run defaults.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Initial Story Editor run on script v01 (early morning)** — failed because: `SREV_MAX_TOKENS=3000` — Sonnet hit max_tokens before closing JSON block (output 11237-12246 chars). Fixed: bumped to 12000.
+- **`requestRevision` re-triggering producing agent** — failed because: route only flipped asset status, no Inngest event dispatched. Pipeline stalled until manual `triggerAgent`. Fixed: `revisionEventForAsset(file_type)` map in approve route auto-fires.
+- **Writer v02 — revisionNote was silently dropped** — failed because: 3 chained bugs. (1) factory.ts didn't forward `revisionNote` from event data. (2) runner.ts EXEC-SW case only passed `inputs`. (3) screenwriter.ts prompt said "Apply the **minimum change** needed, do not rewrite scenes that were not flagged" — opposite of restructure intent. Result: v02 had 80s/9 scenes/10s blocks, worse than v01. Fixed all 3 layers.
+- **Story Editor gate (post-Writer v02)** — failed because: `Upstream gate failed for EXEC-SREV: Script (need 1, found 0 APPROVED)` — gate required APPROVED, but script v02 was REVIEW. Chicken-and-egg deadlock: Story Editor IS the gate FROM REVIEW to APPROVED. Fixed: `AgentDependency.allowedStatuses` field, SREV accepts REVIEW/REVISION/APPROVED.
+- **Story Editor runner internal precondition (second layer)** — failed because: after gate fix, runner's `findApprovedAsset` still required `status === 'APPROVED'`. Fixed: accept REVIEW/REVISION/APPROVED in same function.
+- **Approval gate misfires on long Director messages** — failed because: mid-sentence "нет" triggered rejection BEFORE later "одобряю" was scanned. Fixed: position-aware verdict (later token wins) via `approvalPosition()` + `rejectionPosition()` + `verdictForTurn()`.
+- **`reasoning_effort=low` on gpt-5.5** — failed because: model spent all 2000 max_completion_tokens on invisible reasoning_tokens (2500 burned, 0 chars output, finish_reason=length). Fixed: `OPENAI_REASONING_EFFORT=none` (env already set yesterday, validated today still works).
+- **Mock supabase `.in()` missing** — failed because: replay-pilot crashed `baseQuery.in is not a function`. Fixed: added `.in()` method to mock-supabase.
+- **PA self-QA hallucinated tolerance** — failed because: Writer v02 self-QA wrote "80 seconds ≈60 target; within tolerance at 33% over". Fixed: screenwriter prompt now explicitly forbids this — "80s ≈ 60s within tolerance is a failure, not tolerance".
+- **`enrichBible` already-enriched lock** — failed because: route returns "Asset already enriched — use /regenerate-image to reroll the image" but PA had no `regenerate-image` tool. Fixed: new `regenerateBibleImage` PA tool.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Live SREV pass on script v03** — Writer v03 finished 17:22, awaiting Director to say "Одобряю Story Editor review E20 v03" (PA holding for approval). This will be first real test of the closed loop with ALL fixes in place.
+- **Phase D — Character Identity Model** — schema articulated by PA + Director (16:03 ambient + 10:03 ambient). Migration 0026 + `characters` table + `bible_assets.character_id` + `reference_type` (front/side/3-4/expression_sheet/outfit/age_variant/episode_variant) + `variant_scope` + `is_primary_reference` + `is_current` + `is_archived` + UI redesign (Library as character cards with tabs) + data backfill. 3-7 days work. Awaiting Director green-light.
+- **4 Bible-asset lifecycle features** in backlog: (a) Bible canon resolution `current`/`archived` per category · (b) LOCKED fork-to-edit ("Duplicate as new draft") · (c) Image-prompt vs content sync indicator · (d) ARCHIVED asset status (different from REJECTED semantically).
+- **Phase B — Skill Editor / Learning Loop** — design ready in `~/.claude/plans/valiant-soaring-karp.md`. Deferred awaiting Director go.
+- **Stale worktree cleanup** — Hook E will warn 6 active worktrees (cap 3 = main + 2). Director approval needed before `git worktree remove` of stale `claude/*`.
+- **Push-based realtime events** — Supabase Realtime subscription instead of SWR polling. PA would also subscribe (push notifications to chat). ~2-4 hours. Layer B per today's discussion.
+- **Library `cloneAssetAsDraft` tool** — for "LOCKED fork-to-edit" pattern. Used as one-off script today for Sandy v02. Tool version pending.
+- **Verify hooks fire on next session start** — Hook A (PLAN.md fresh = silent), Hook E (warns 6 worktrees), Hook D (silent — today's memo exists). Hook B + C activate on git commit/push.
+- **Test Style Guardian fix** — observation #14 (Style Guardian returns FAIL on canon-compliant images). Not investigated today.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+| --- | --- | --- |
+| `CLAUDE.md` | ✅ MERGED to master | 604 → 347 lines (-42.5%), slim recipe applied |
+| `docs/CLAUDE-history.md` | ✅ MERGED to master | New archive, 279 lines, lossless |
+| `PLAN.md` | ✅ MERGED to master | CURRENT STATE refreshed post-merge; 20+ CHANGE LOG entries for 2026-05-12 |
+| `technology.md` | ✅ MERGED to master | New §3.5 (shot rhythm/gag density) + §7 (handoff protocol) |
+| `.claude/hooks/*.cjs` (6 files) | ✅ MERGED to master | 5 Operational-Ritual hooks + helper |
+| `.claude/settings.json` | ✅ MERGED to master | SessionStart + Stop + 2 Bash PreToolUse wired |
+| `webapp/lib/api/agent-names.ts` | ✅ MERGED to master | NEW — 30+ canonical role mapping |
+| `webapp/lib/api/pipeline-stages.ts` | ✅ MERGED to master | 14 labels → industry roles |
+| `webapp/lib/agents/gate.ts` | ✅ MERGED to master | `AgentDependency.allowedStatuses` field, SREV uses REVIEW+ |
+| `webapp/lib/agents/runner.ts` | ✅ MERGED to master | `RunAgentArgs.revisionNote` field, EXEC-SW case forwards it |
+| `webapp/lib/agents/factory.ts` | ✅ MERGED to master | Forwards revisionNote from event data; activity titles → role names |
+| `webapp/lib/agents/runners/screenwriter.ts` | ✅ MERGED to master | HARD ACCEPTANCE CRITERIA prompt |
+| `webapp/lib/agents/runners/script-reviewer.ts` | ✅ MERGED to master | MAX_TOKENS 12000; findApprovedAsset accepts REVIEW |
+| `webapp/lib/concierge/approval-check.ts` | ✅ MERGED to master | Position-aware verdict, director-turn-window scan |
+| `webapp/lib/concierge/system-prompt-builder.ts` | ✅ MERGED to master | AGENT_NAMES block + rules 1a/1b |
+| `webapp/lib/concierge/tools/studio.ts` | ✅ MERGED to master | `getAsset` + `getRecentActivityEvents` |
+| `webapp/lib/concierge/tools/series.ts` | ✅ MERGED to master | `regenerateBibleImage` with optional styleAnchorAssetId |
+| `webapp/lib/concierge/tools/index.ts` | ✅ MERGED to master | 16 PA tools total |
+| `webapp/inngest/functions/exec-srev.ts` | ✅ MERGED to master | Verdict-based routing (REVISE/FAIL → Writer; PASS → SB+COPY) |
+| `webapp/app/api/assets/[id]/approve/route.ts` | ✅ MERGED to master | requestRevision auto-chain + DELETE handler |
+| `webapp/app/api/assets/[id]/route.ts` | ✅ MERGED to master | DELETE handler for non-LOCKED non-APPROVED |
+| `webapp/components/series-bible/AssetCard.tsx` | ✅ MERGED to master | Kebab Delete activated |
+| `webapp/components/series-bible/AssetDetailDrawer.tsx` | ✅ MERGED to master | "Bible Editor" replaces "EXEC-BIBLE-AUTHOR" |
+| `webapp/components/series-bible/SeriesBibleView.tsx` | ✅ MERGED to master | SWR 10s polling + revalidate on focus |
+| `webapp/components/preview/AssetPreview.tsx` | ✅ MERGED to master | agent_id shows role name + tooltip |
+| `webapp/components/episode/EpisodeReferencesGallery.tsx` | ✅ MERGED to master | "Reference Artist" replaces EXEC-EREF |
+| `webapp/app/(studio)/episodes/[id]/page.tsx` | ✅ MERGED to master | TriggerModal dropdown + brief approval text |
+| `webapp/__tests__/helpers/mock-supabase.ts` | ✅ MERGED to master | `.in()` method added |
+| `webapp/scripts/cleanup-s14-style-canon.ts` | ✅ MERGED to master | One-off Director-q2 soft-archive (executed) |
+| `webapp/scripts/close-e01-legacy-pending.ts` | ✅ MERGED to master | One-off E01 cleanup (executed) |
+| `webapp/scripts/clone-sandy-v02-with-text.ts` | ✅ MERGED to master | One-off Sandy v02 clone (executed; Director locked) |
+| `webapp/scripts/style-canon-draft.md` | ✅ MERGED to master | Working draft of S14 STYLE CANON v1.1 |
+| `webapp/scripts/read-style-prompts.ts` | ✅ MERGED to master | Diagnostic script used during canon synthesis |
+| `agents/exec/script_reviewer.md` | ✅ MERGED to master | 4 new hard checks S09-S12 |
+| `.claude/pa-feedback.log` | 🟡 Live | Continuously written by Monitor task; auto-sync'd |
+
+Live/in-progress (not blocking merge):
+| File | Status | Notes |
+| --- | --- | --- |
+| E20 script v03 (`a50c1af3-...`) | 🟡 REVIEW awaiting SREV | All 8 acceptance criteria visibly met; PA holding for Director "Одобряю Story Editor review E20 v03" |
+| E20 metadata (`SS-S14-E20-SPC-metadata-v01-DRAFT`) | 🟡 REVIEW | Publicist draft, pending Director approval |
+| `s14_canon_v1` Bible asset | 🟡 DRAFT awaiting lock | Director can lock via UI |
+
+---
+
+## Decisions Made
+
+- **Merge style `--merge`** — reason: preserves 227 auto-sync commits as audit trail of iterative Mode 2.5 / Mode 3 development; valuable evidence base for future Director directives. Squash would have lost this diary.
+- **Skill correction over orchestration hardcoding** (Director directive 17:01) — when bugs appear, fix the agent's prompt first; touch routing only when prompt fix is insufficient. Codified in `technology.md §7.4`.
+- **Internal loop closure before Director** (Director directive 16:59) — Writer↔Story Editor must converge before Director sees draft. Implemented as SREV verdict-based routing. Codified in `technology.md §7.3`.
+- **"Fly the plane"** (Director directive 17:05) — PA is flight crew driving pipeline; Director is instructor drawing route. PA must push next concrete action, not wait. Codified in BEHAVIOR_CONTRACT rule 1b.
+- **No silent handoff / no silent failure** (Director directive 16:48) — every task has objective + acceptance criteria + recipient ACK; on completion recipient reports back. Codified in `technology.md §7.2`.
+- **English short industry role names** for all agents (Director directive 16:03) — Writer/Story Editor/Production Designer/Animator/Composer/Online Editor/Publicist/etc. Centralized in `lib/api/agent-names.ts` + PA AGENT_NAMES block.
+- **Shot length 3-5s + gag floor 6-7s + Veo 8s hard cap** (Director directive 16:37) — codified in `technology.md §3.5`. Story Editor enforces via S09-S11 checks.
+- **Sandy v02 = same slug + bump version** (Director directive 10:00) — rather than creating new character "Sandy 2", clone image from v01 LOCKED into v02 DRAFT, add full text canon, Director locks v02. Phase D Character Identity Model deferred.
+- **q2 soft-archive over hard DELETE for S14 style cleanup** (Director directive 10:03) — REJECTED status with activity_event audit trail; preserves history; reversible. 13 APPROVED E01 final-cut shots preserved.
+- **PA `q1n` reporting format** — short ≤5 word entries: "PLAN.md: brief description" + "CLAUDE.md: no change/brief description". Director-approved style.
+
+---
+
+## Blockers & Open Questions
+
+- **Live SREV pass on v03 untested** — Writer v03 looks compliant on all 8 criteria but SREV hasn't run on it yet (PA waiting for Director approval to trigger).
+- **Hook activation requires session restart** — settings.json doesn't reload mid-session. Hooks activate on next `/clear` or new session.
+- **6 worktrees vs cap 3** — Hook E will warn, but Director approval needed before `git worktree remove`.
+- **PA's BEHAVIOR_CONTRACT rule 1b still imperfectly internalized** — Director still had to remind PA at 17:26 that Writer v03 finished 2 minutes ago. Rule is in prompt but PA model occasionally doesn't proactively poll. May need stronger phrasing or in-prompt examples.
+- **Style Guardian false-FAIL** — observation #14: returns FAIL on canon-compliant generated images. Not investigated today.
+- **Phase D scope and start date** — schema is articulated, Director acknowledged the need but didn't say "go".
+
+---
+
+## Exact Next Step
+
+**First action after session resume:**
+1. Read PLAN.md `## CURRENT STATE` (just refreshed)
+2. Read this session file + `~/.claude/projects/C--SandyStudio/memory/session_2026-05-12_mode3_drill_pr23_merged.md`
+3. Check Hook E warning — confirm worktree count
+4. Director will say `"Одобряю Story Editor review E20 v03"` → PA fires SREV
+5. **Validate closed loop:** Story Editor reviews v03 with S09-S12 hard checks
+   - If PASS → SB+COPY auto-fire (Storyboarder begins)
+   - If REVISE → Writer auto-fires v04 with SREV notes (via verdict-based routing)
+   - Either way, Director sees only converged PASS draft
+
+If pipeline goes through cleanly → Mode 3 readiness milestone achieved.
+
+If new bugs surface → expected. Continue same drill pattern: fix in skill (prompt) or workflow (routing), verify trio, push, document.
+
+**Pending Director-approved decisions:**
+- Phase D Character Identity Model implementation (await go)
+- Stale worktree cleanup (await go on which to remove)
+- 4 Bible-asset lifecycle features (Bible canon resolution, LOCKED fork-to-edit, prompt-vs-content sync, ARCHIVED status)
+
+---
+
+## Environment & Setup Notes
+
+**Two terminals required for local dev** (per CLAUDE.md / memory):
+```bash
+# Terminal 1
+cd webapp && npm run dev          # http://localhost:3000
+
+# Terminal 2
+cd webapp && npm run inngest:dev  # http://localhost:8288
+```
+
+⚠ Do NOT run `npm run build` while dev is up — corrupts `.next/` webpack cache.
+
+**Current servers in this session** (preview tool):
+- `next-dev` server ID: `dd7d7bfc-e1b4-4ff3-9fc9-69cb6ca6e990` (port 3000) — running since 05:51 UTC
+- `inngest-dev` server ID: `64a25d6f-aef6-4721-b838-d5151e8ad80b` (port 8288) — running since 2026-05-11
+- Monitor task `btjay0kyt` — persistent tail on `.claude/pa-feedback.log` (ambient capture)
+
+**Env vars** (`webapp/.env.local`):
+```
+OPENAI_MODEL=gpt-5.5
+OPENAI_REASONING_EFFORT=none
+OPENAI_MAX_OUTPUT_TOKENS=8000
+OPENAI_TEMPERATURE=0.2
+```
+
+**Active PA thread:** `bdbdafcf-2a38-4c58-b706-362fd7ff0f16`. PAON capture active.
+
+**Branch:** `claude/quizzical-brown-462555` — **PR #23 MERGED 17:22 UTC** (commit `8fa5c00`). Branch can be deleted on remote when Director ready.
+
+**Active PR:** none — PR #23 is the last one and it's merged.

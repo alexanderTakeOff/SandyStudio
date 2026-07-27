@@ -1,0 +1,178 @@
+# Session: 2026-05-27 (extended) — TD-72 → TD-80 shipped + SH19 manually ingested + TD-83/84 doctrines captured
+
+**Resumed from:** 2026-05-27-anchor-td68-sprint-session
+**Worktree:** C:\SandyStudio\.claude\worktrees\quizzical-brown-462555 (branch `claude/quizzical-brown-462555`)
+**PR:** https://github.com/alexanderTakeOff/SandyStudio/pull/24
+**Final master HEAD before /clear:** master still at `27072a8` (TD-68). PR #24 has 14 commits stacked on top (TD-72 → TD-86 + fixes + Dubai timestamps).
+
+---
+
+## ⏭️ FIRST ACTION ON RESUME — HARNESS AUDIT (Director directive 2026-05-27)
+
+Director observed context filling too fast. Diagnosed causes:
+1. Huge system prompt re-injected each turn (full CLAUDE.md + all rules/* + MEMORY.md + hundreds of skill descriptions + giant MCP tool list)
+2. Marathon session — TD-72→86 with no /clear
+3. Big tool outputs (probe dumps, full file reads, git logs)
+
+**Resume task: run `agent-sort` + `harness-audit` in THIS fresh cleared session.**
+Goals:
+- Trim ECC skills to what SandyStudio actually uses (hundreds load every turn)
+- Identify unused/disconnected MCP servers to drop
+- Recommend session-discipline: 1 TD-batch per session, fan-out to subagents (return conclusions not dumps), worktree-parallel for independent TDs (cap 2 + main)
+- Opus 4.8 1M context available — bigger window but not free; still /clear between batches
+
+Director communication: SHORT, thesis-based, expand on request (he flagged my verbosity 2026-05-27). Keep it terse.
+
+---
+
+## TD-86 (shipped after the TD-84 doctrines were captured)
+
+- **TD-86 `reorderShots` PA tool** — atomic shot swap across BOTH storyboard shots[] AND animatic shot_list. Closes the bug where TD-72 storyboard-only swap left animatic stale → EXEC-STITCH would play wrong order. Verbal-approval gated, idempotent, suffix-match shot_id. Tests 3/3. Commit `9d597c4`.
+- **staging_path / drive_path fix** — my ingest script swapped the columns; EXEC-STITCH ENOENT'd on SH19 v03 (`/staging/X` → Windows `C:\staging\X`). Convention: staging_path = absolute Windows disk path, drive_path = URL-relative. Patched v03 row + ingest script. Commit `af20ade`.
+
+## SH19 — Polина is handling stitch (Director: «с полиной там всё в порядке»)
+
+SH19 v03 APPROVED, file on disk 3.06MB, paths corrected. Polина to: reorderShots(SH21,SH22) via PA tool → re-trigger EXEC-STITCH. Episode S15-E01 then assembles. NOT my concern on resume — Director owns it with Polина.
+
+## Backlog (after audit)
+
+- **TD-83** — Critic revision cap + HALT escalation (process control, FIRST priority after audit)
+- **TD-84** — Plan preview as pre-video contract page
+- **TD-82** — Animator sees all IMG-episode_ref + match-cut skill teaching
+- **TD-81** — surface invisible critics (EPREV/VPREV/GAGAD/Designer) in pipeline UI
+- **TD-85** — artifact-sync principle: storyboard change auto-propagates / marks downstream STALE
+- **TD-87** — EREF reference-animatic reorder (same as TD-86 but for ref animatic)
+- TD-73 / TD-70 / TD-71 — old low-pri backlog
+
+---
+
+## What We Built (this session)
+
+A whole sprint of TDs landed in one long extended session, driven by the SH19 video chain that exposed FIVE consecutive system gaps. Each gap led to a TD; each TD closed in PR #24 without leaving the feature branch.
+
+**TDs shipped to PR #24 (top of branch at session end):**
+
+1. **TD-72** — V04 softened to causal-chain semantics + SH21↔SH22 storyboard swap
+2. **TD-74** — Director check-waiver mechanism (directorOverrides in event payload, PA tool param, Critic semantics: REVISE → PASS_WITH_UNCERTAINTY with diagnosis in `warnings[]`)
+3. **TD-75** — Three bugs: PASS_WITH_UNCERTAINTY status flip mapping in runner.ts (was sweeping into REVISION), PA tool file_type widening (listShotPlans / getAnimatorCriticVerdict / getShotPlan strict equality missed suffixed file_types), unblock-sh19-v07.ts script
+4. **TD-76** — `unstickPlanForApproval` PA tool (state-machine recovery without regen)
+5. **TD-77** — saveAgentOutput PERSIST_METADATA_KEYS expanded — Critic verdict + GAGAD fields now reach assets.metadata (was dropped silently — only `animatic_v1` was whitelisted)
+6. **TD-78** — Comprehensive sweep: 4 strict file_type sites widened (runner.ts:1847 VGEN plan-load, exec-vgen.ts:452 fan-out, eref.ts:181 listRefPlans criticRows, eref.ts:280 getCriticVerdict) + HARD-FAIL when planAssetId provided but Plan can't load (no more silent storyboard fallback)
+7. **TD-79** — unstickPlanForApproval content-fallback for pre-TD-77 REV rows (metadata=null but plan_asset_id parseable from content fenced JSON)
+8. **Dubai timestamps cherry-pick** (from sibling feat/pa-chat-noise-reduction branch)
+9. **TD-80** — Shot Plan row in timeline shot-cell hover popover (one new section, ~98 LoC). Click opens existing PreviewDrawer with Plan body.
+
+**SH19 video status — FINAL:**
+- v01 REVISION (legacy storyboard fallback, pre-TD-78)
+- v02 REVISION (Polина's regen, pre-TD-78)
+- **v03 APPROVED** (id `ab6cc7e5-f2e8-4630-982f-8524dd107f9c`) — **manually ingested from direct fal.ai test**
+  - Director ran two empirical Seedance tests via `scripts/manual-sh19-direct-vgen.ts`:
+    - Test 1: SH19 ref start + SH20 ref end (wall close-up) — Anvil flew through wall, lost canon. **Wrong end-anchor**.
+    - Test 2: SH19 ref start + SH22 ref v04 end (Anvil pat squashes Sandy + dyra visible in background) — characters preserved, canon intact. **Director: «супер»**.
+  - The Test 2 MP4 ingested as canonical v03 APPROVED via `scripts/ingest-sh19-manual-vgen.ts`. Asset row + approvals row + activity_event all set. Episode unblocked for next stage (stitch).
+
+---
+
+## Director Directives Captured as Doctrines (memory entries)
+
+Four NEW doctrines saved to `~/.claude/projects/C--SandyStudio/memory/` and indexed in MEMORY.md:
+
+1. **`critic_revision_cap_doctrine.md`** — Critics MUST cap at N=2 (configurable) and emit HALT verdict on attempt N+1. Director sees in approvals queue, decides. Director's verdict = law, no further auto-REVISE loop. Currently only GAGAD has this (runner.ts:1163). EXEC-VPREV + EXEC-EPREV need it = TD-83.
+
+2. **`plan_preview_drawer_doctrine.md`** — Plan asset opens as «pre-video contract page»: video placeholder reserving height (so post-Regenerate doesn't reflow) + prompt text area + settings grid + Approve/Reject/Regenerate footer. SAME shape as VID-shot drawer, just without rendered video. NOT raw markdown. Implementation = TD-84.
+
+3. **`train_personnel_doctrine.md`** — Expanding agent data access without skill update = silent regression. Every TD touching loadAgentInputs/event payload MUST touch `agents/exec/*.md` skill file. Pattern: Director treats agents as employees, system prompt = training manual.
+
+4. **`match_cut_doctrine.md`** — Empirical: `seedance-with-end-image` valid ONLY when next shot continues current at SAME angle. Different-angle cuts MUST use `seedance-standard` with `end_image: null`. Validated SH19 2026-05-27 by comparing two direct VGEN tests (SH20 end = wrong / SH22 end = right). Critic V09 should validate.
+
+---
+
+## Backlog (next sprint after /clear)
+
+### High priority — Director-flagged process control
+
+- **TD-83 — Critic revision cap + HALT escalation**
+  - Replicate GAGAD pattern in EXEC-VPREV + EXEC-EPREV
+  - `metadata.{critic}_revision_count` increment on REVISE
+  - Cap at 2 (configurable), 3rd attempt emits HALT
+  - HALT keeps Plan in REVIEW + activity_event with severity=warning
+  - ~100 LoC code + ~40 LoC tests
+  - **Order: q26a — TD-83 BEFORE TD-84 (process control before UX)**
+
+### High priority — Director-flagged UX
+
+- **TD-84 — Plan preview drawer as pre-video contract page**
+  - `AssetPreview.tsx` new branch for `SPC-shot_plan` (and symmetrically SPC-ref_plan)
+  - Video placeholder area reserving height (for post-Regenerate)
+  - Prompt in readable text area (parsed from JSON body)
+  - Settings grid: provider · quality_tier · duration · aspect · end_image · seed
+  - Footer: Approve / Reject / Regenerate
+  - ~200 LoC frontend
+  - Reuse VGENShotPanel layout patterns
+
+### Medium priority — architectural improvements
+
+- **TD-82 — Animator sees all available IMG-episode_ref + match-cut doctrine training**
+  - `loadAgentInputs` for EXEC-VANIM returns ALL approved IMG-episode_ref of episode (not only current shot)
+  - `agents/exec/animator.md` gets match-cut decision criteria + worked examples
+  - `agents/exec/animator_critic.md` V09 enforces match-cut justification
+  - ~110 LoC code + ~80 LoC skill teaching
+  - PAIRED with [[train-personnel-doctrine]]
+
+- **TD-81 — Surface invisible critics in pipeline UI**
+  - EXEC-EREF-DESIGNER, EXEC-EPREV, EXEC-VPREV, EXEC-GAGAD invisible on episode pipeline
+  - Director can't re-trigger without Polина
+  - `lib/api/pipeline-stages.ts` + StageKebabMenu.tsx + agent-names.ts
+  - Backend trigger route already supports these events
+  - ~50-80 LoC pure UI
+
+### Low priority — old backlog
+
+- **TD-73** — regenerate VID-shot for SH22 slot (after TD-72 swap, SH22 content now plays at storyboard position 0 of act 3, may need fresh video render)
+- **TD-70** — Polина proactive-not-reactive system prompt edit (~30-50 LoC in `webapp/lib/concierge/system-prompt-builder.ts`)
+- **TD-71** — VID-shot preview form pre-fill from Plan body (deferred)
+
+---
+
+## State Summary at Session End
+
+| Surface | State |
+|---|---|
+| Master branch HEAD | `27072a8` (TD-68) — NOT updated this session |
+| Feature branch HEAD | `efdf415` after TD-80, then `???` after SH19 ingest (no commit for ingest — ad-hoc DB write) |
+| PR #24 | 11 commits stacked, awaiting Director squash-merge |
+| SH19 video | **APPROVED** (v03 manually ingested) |
+| Other shots (SH01-18, 20-22) | Status unknown — needs probe in next session to see what's left for stitch |
+| Dev servers | Both running (next-dev `01efd346`, inngest-dev `79d57232`) — likely need restart on /clear |
+| Polина (PA) | Last action: regenerated SH19 video (not used, manual ingest superseded) |
+
+---
+
+## Where to Resume
+
+1. **Probe all 22 shots' VID-shot status** — what's still missing/REVISION/REVIEW before stitch can fire
+2. **Director's call:** ship TD-83 first (process control), then TD-84 (Plan UX), then TD-82 (train Animator), then TD-81 (visible critics)
+3. **Stitch readiness** — once all 22 shots APPROVED, EXEC-STITCH assembles final episode video. Director hinted «перейдём к монтажу фильма» — meaning he's ready to see end-to-end output
+
+## Lessons learned (consolidated)
+
+1. **Strict file_type equality is a class of bug.** Five occurrences found across the codebase, all silently breaking pipelines. Going forward: ANY code that filters by file_type SHOULD use `.startsWith('X-')` OR `.or('file_type.eq.X,file_type.like.X-%')` pattern. TD-66 widening was incomplete; TD-75 + TD-78 finished the sweep. Future grep regression test recommended.
+
+2. **Silent fallback is worse than loud failure.** TD-78 hard-fail on plan-load is the right pattern. Whenever a runner branch on optional data falls through to legacy template — if the optional data WAS provided but couldn't be used, THROW with explicit reason. Director sees the error; system doesn't waste $0.50+ on silent wrong output.
+
+3. **Match-cut detection is a Critic-level concern.** Animator can write any UUID into end_image; only Critic can validate the match-cut criterion holds. This is part of train-personnel-doctrine: when Critic gets a new rule, it must come with detection criteria + worked examples.
+
+4. **Director's verdict is final.** Critic loops, fallback chains, retry caps — all must terminate at Director, not at silent system give-up. HALT verdict is the right shape for Director-arbitration escalation.
+
+5. **«Director treats agents as employees».** This frame is operative. Memory writes, system prompts, doctrines — all are training materials for the agents-as-employees. Capability without training = bug.
+
+---
+
+## Files modified this session (uncommitted state at /clear time)
+
+- `.claude/settings.local.json` (M — local)
+- `.claude/skills/animator/SKILL.md` (M — possibly local edit from earlier)
+- `webapp/tsconfig.tsbuildinfo` (M — build artifact)
+- All probe scripts + manual-* + ingest scripts in webapp/scripts/ (?? untracked, kept for audit trail)
+
+These are non-blocking. Resume can ignore.

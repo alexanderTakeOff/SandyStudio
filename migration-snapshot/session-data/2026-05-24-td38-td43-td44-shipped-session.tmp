@@ -1,0 +1,210 @@
+# Session: 2026-05-24
+
+**Started:** ~11:00 Dubai (UTC+4) — morning «доброе утро» resume from 2026-05-23 night save
+**Last Updated:** ~18:00 Dubai
+**Project:** SandyStudio (C:\SandyStudio\)
+**Worktree:** C:\SandyStudio\.claude\worktrees\quizzical-brown-462555 (branch `claude/quizzical-brown-462555`)
+**Topic:** TD-38 reviewer Plan-blindness + TD-43 (A/B/C) version picker surfaces + TD-44 provider.id single source of truth, plus PA-routed SS-S15-E01 video smoke
+
+---
+
+## What We Are Building
+
+End-to-end Sprint q7a follow-ups landed in master. Production pipeline now Plan-driven from Storyboard → Designer Plan → EREF reference image → Animator Plan → VGEN video, with Reviewer reading the same source of truth as Generator (TD-38), unified `provider.id` semantics (TD-44), and version-picker UI in all 3 drawer/timeline surfaces Director uses (TD-43.A/B/C). Live SS-S15-E01 smoke ran through Animator chain for SH01 + SH02, identifying both Animator-level UX issues (Polина-as-mediator) and runtime gaps (seedance-standard silently degraded to fast — closed by TD-44).
+
+Single-session deliverables: 7 commits to feature branch + 4 squash-merges to master + 1 hot-fix commit. Vitest 451 → **500** (+49 tests). PLAN.md split (509 lines archived to docs/PLAN-history.md). ~/.claude housekeeping (rules/zh removed, 18 old plans + 18 old memory entries archived).
+
+---
+
+## What WORKED (with evidence)
+
+### Sprint shipping
+
+- **q7a sprint squash-merge to master** — `ec15493` pushed 2026-05-24 AM — confirmed by `git push origin master` clean output + `git log master --oneline -3` showing the squash on top.
+- **TD-38 — Reviewer Plan-blindness fix** — confirmed by: live SH22 regen with TD-38 active produced attempt-1 APPROVE without retry-cascade-to-puddle (Director: «кадр получился так как мы задумывали практически»). Previously `REGENERATE_EXHAUSTED` in 3 attempts.
+- **Audio fallback fix** — confirmed by Director seeing music waveform in animatic view after restart. Bug was `Array.isArray([]) === true` short-circuiting `music_url` fallback.
+- **ANIMATOR_CHAIN wiring** — confirmed by Polина firing `exec-vanim/plan` for SH01+SH02 via `triggerAgent`, getting back `SPC-shot_plan` assets in REVIEW status (asset ids `da44f460-...` SH01 v01, `56655d3b-...` SH02 v01, then `cc3aa1c7-...` SH01 v03 after revision cycle).
+- **TD-43.A drawer picker (EpisodeAssetDrawer)** — confirmed by file edit verified on disk: `vidShotSiblings` useMemo + `<CandidatesStrip>` render under `isVidShot` block.
+- **TD-43.B AssetPreview picker** — confirmed by tsc clean + 500/500 vitest after edit; targets Director's actual PREVIEW surface (he saw «2/22» pagination in screenshot, that was AssetPreview not EpisodeAssetDrawer).
+- **TD-43.C timeline cell hover popover** — confirmed by Director seeing popover appear on hover; initial hover-gap UX bug then fixed (commit `5aa8e5c`).
+- **TD-44 provider.id resolver** — confirmed by 6 new unit tests in animator.test.ts passing all mappings + 2 error cases. Runtime check pending: next SH01 regen should produce `bytedance/seedance-2.0/image-to-video` (standard) not fast.
+- **seedance-standard added to VANIM_PROVIDER_ALLOWLIST** — confirmed by allowlist test updated; Animator can now write `provider.id="seedance-standard"` in Plan body.
+
+### House-keeping
+
+- **PLAN.md split** — 509 lines of «Previous phase (archived)» moved to docs/PLAN-history.md; PLAN.md now ~263 lines (was 620). TD-37 + open q15-q17 surfaced cleanly in CURRENT STATE.
+- **memory archive** — 18 stale session memos moved to `~/.claude/projects/C--SandyStudio/memory/archive/`. MEMORY.md rewritten as structured index, ~50 lines (was 37 dense single-line entries).
+- **rules/zh/ removed** — 48KB dupe of common/ deleted (`rm -rf`). Director confirmed «удали то что не нужно».
+- **plans archived** — 18 old plan files moved to `~/.claude/plans/archive/`. Only `q7a-structured-zephyr.md` (active) in main dir.
+
+### Master commits today
+
+| Commit | Subject |
+|---|---|
+| `ec15493` | q7a sprint squash (from 2026-05-23) |
+| `f7f6d28` | TD-38 + audio + ANIMATOR_CHAIN gap close |
+| `95814be` | seedance-standard allowlist + TD-43.A drawer picker (squash incl 90265df + 0b00bfe) |
+| `3288cf5` | TD-43.B AssetPreview picker + TD-44 provider.id resolver (squash incl 3e0f5d1 + 0ff3b17) |
+| `93cad34` | TD-43.C timeline cell hover popover |
+| `c625830` | Hover-gap UX fix for TD-43.C |
+
+Feature branch `claude/quizzical-brown-462555` mirrors all of these as individual commits (last tip: `5aa8e5c`).
+
+---
+
+## What Did NOT Work (and why)
+
+- **Initial TD-43 v1 scope (EpisodeAssetDrawer only)** — failed because: Director's actual workflow opens VID-shot in the AssetPreview drawer (visible as «PREVIEW 2/22» header), NOT EpisodeAssetDrawer. Picker rendered but invisible on the surface Director used. Fixed in TD-43.B by mirroring to AssetPreview.tsx + threading `onPickAsset` through PreviewDrawer.
+- **Initial SH01 video v02 (legacy direct VGEN path)** — failed because: ANIMATOR_CHAIN_ENABLED wasn't set when animatic was first approved. Approve-route fired `exec-vgen/start` directly (legacy buildShotPromptV2 template) → produced bedroom-default-layout video with weak prompt. Loss of $1.21 acceptable as baseline for legacy vs plan-driven comparison.
+- **Polина initial Animator trigger** — failed because: she fired episode-level `exec-vanim/plan` without `shotId` → EXEC-VANIM correctly rejected with «requires shotId in event payload». Fix was on Polина's side: per-shot triggerAgent calls (she self-corrected after Director's «одобряю» on q1).
+- **TD-43.C initial hover popover** — failed because: 8px gap between cell wrapper and popover (`-top-2 -translate-y-full`) → cursor crossing the gap fired mouseLeave on wrapper → popover hid. Fix: change to `top-0 -translate-y-full` so popover bottom edge sits exactly at cell top — no gap (commit `5aa8e5c`).
+- **SH01 plan v02 quality_tier extraction** — failed because: Animator wrote `provider.id="seedance-standard"` AND `quality_tier="standard"` in Plan body, but runner.ts q7a Step 6 extracted them INDEPENDENTLY. provider was resolved from event-arg / DB-config (Seedance fast default), `body.quality_tier` was ignored because the plan-driven path didn't reach actual override before VGEN call. Result: SH01 video came out `bytedance/seedance-2.0/fast/image-to-video` despite Plan saying standard. Closed by TD-44 (`resolveVanimProviderId()` makes provider.id authoritative for both providerImpl AND qualityTier).
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Live verify of TD-44 fix on SH01** — next regen for SH01 plan v03 (asset `cc3aa1c7-...`) should produce `bytedance/seedance-2.0/image-to-video` (standard, $0.3024/s × 5s = $1.51) instead of fast (`bytedance/seedance-2.0/fast/image-to-video`). Director can approve SH01 plan v03 in webapp → exec-vgen/start fires with planAssetId → runner extracts provider.id → resolves to standard tier.
+- **Director visual review of SH02 video v02 (plan-driven Seedance)** — pending. SH02 already has 2 versions: legacy v01 (`ddeaaed5-...`) and plan-driven v02. Direct comparison should reveal whether plan-driven prompt structure beats legacy template.
+- **TD-43.C inline-approve action live test** — Director hover → ✓ button → POST /api/assets/[id]/approve. No live confirmation yet that the approve action works end-to-end with state refresh.
+- **TD-40 (Polина prompt caching audit)** — q37c deferred. Polина's OpenAI calls likely don't enable prompt caching → repeated full system prompt sent → spend over time. Out of scope for SS-S15-E01 smoke.
+- **TD-42 (seed reproducibility gap)** — when seed=random, fal Seedance picks its own seed but doesn't surface it back to metadata.seed → reproduce-impossible. q47b: backlog item, not blocking smoke.
+- **TD-37 finishing (Polина-as-mediator verbatim mode)** — empirical observation: explicit `==BEGIN_VERBATIM_REVISION_NOTE==` markers in PA messages work — Polина preserves verbatim. Codified pattern but not yet added as PA-tool parameter / system-prompt directive.
+- **Director's pending UX request for explicit «kebab» icon** — TD-43.C delivered popover on hover, but original request was «hover на цифру → kebab». Current implementation is hover→popover (no explicit kebab dot icon). May or may not match Director's mental model.
+
+---
+
+## Current State of Files
+
+### TD-38 (Reviewer Plan-blindness) — shipped to master
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/agents/runners/eref-check.ts` | ✅ Complete | New `formatPlanIntentText` + `planIntent` arg. 8 regression tests. |
+| `webapp/lib/agents/runners/episode-references.ts` | ✅ Complete | runEREFCheck call site passes `planIntent` when planOverrides set. |
+| `webapp/__tests__/lib/agents/runners/eref-check-plan-intent.test.ts` | ✅ NEW | 8 tests. |
+
+### Audio fallback
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/api/animatic-shotlist.ts` | ✅ Complete | `Array.isArray && length > 0` fix in getAudioTracks. |
+| `webapp/__tests__/lib/api/animatic-shotlist-audio.test.ts` | ✅ NEW | 5 regression tests incl. SS-S15-E01 shape. |
+
+### ANIMATOR_CHAIN gap close
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/app/api/assets/[id]/approve/route.ts` | ✅ Complete | `animatorChainEnabled()` helper + VID-animatic.APPROVED → exec-vanim/plan branch + SPC-shot_plan.APPROVED → exec-vgen/start branch. |
+| `webapp/inngest/functions/exec-vgen.ts` | ✅ Complete | VgenEventData.planAssetId added + threaded to runAgent. |
+
+### TD-44 (provider.id resolver)
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/agents/runners/animator.ts` | ✅ Complete | `seedance-standard` added to allowlist + new `resolveVanimProviderId()` helper. |
+| `webapp/lib/agents/runner.ts` | ✅ Complete | Plan-driven VGEN reads body.provider.id, calls resolver, applies override before getMultiVideoProvider call. |
+| `webapp/__tests__/lib/agents/runners/animator.test.ts` | ✅ Updated | +6 tests for resolver (4 happy paths + 2 error cases). |
+
+### TD-43 (version picker — 3 surfaces)
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/components/assets/EpisodeAssetDrawer.tsx` | ✅ Complete | TD-43.A: vidShotSiblings + CandidatesStrip in isVidShot block. |
+| `webapp/components/assets/EREFv2Sections.tsx` | ✅ Complete | CandidatesStrip now renders `<video>` for .mp4 src (was only `<img>`). |
+| `webapp/components/preview/AssetPreview.tsx` | ✅ Complete | TD-43.B: SWR fetch + vidShotSiblings + CandidatesStrip + onPickAsset prop. |
+| `webapp/components/preview/PreviewDrawer.tsx` | ✅ Complete | onPickAsset prop threaded through. |
+| `webapp/components/timeline/EpisodeTimelineSection.tsx` | ✅ Complete | Wires onPickAsset = setPreviewAssetId. |
+| `webapp/components/animatic/AnimaticPlayer.tsx` | ✅ Complete | TD-43.C: vidShotsByShotId map + hover state + popover render with version rows + inline approve (✓ button). Hover-gap fix applied. |
+
+### Housekeeping
+
+| File | Status | Notes |
+|---|---|---|
+| `PLAN.md` | ✅ Trimmed | 620 → 263 lines. TD-37 entry in CURRENT STATE. |
+| `docs/PLAN-history.md` | ✅ Updated | 509 lines of archived phases prepended. |
+| `~/.claude/projects/C--SandyStudio/memory/MEMORY.md` | ✅ Rewritten | Structured index, 22 active entries. 18 archived. |
+| `~/.claude/projects/C--SandyStudio/memory/archive/` | ✅ NEW dir | 18 stale memos. |
+| `~/.claude/plans/archive/` | ✅ NEW dir | 18 old plans. |
+| `~/.claude/rules/zh/` | ✅ DELETED | 48KB Chinese dup. |
+
+### Diagnostic scripts (audit trail)
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/scripts/post-q19-test-to-polina.ts` | ✅ NEW | q19a SH19 absolute-slotting test directive. |
+| `webapp/scripts/post-td38-smoke-to-polina.ts` | ✅ NEW | TD-38 fix smoke command. |
+| `webapp/scripts/post-animator-chain-trigger-to-polina.ts` | ✅ NEW | Per-shot exec-vanim trigger directive. |
+| `webapp/scripts/post-sh01-revision-sh02-approve-to-polina.ts` | ✅ NEW | Combined SH01 revision + SH02 approve. |
+| `webapp/scripts/post-sh01-v03-revision-seedance-standard.ts` | ✅ NEW | Post-allowlist-fix revision directive. |
+
+---
+
+## Decisions Made
+
+- **Single source of truth = `provider.id` in Plan body** (TD-44 α). Animator's vocab («seedance-standard») maps to both providerImpl AND qualityTier via `resolveVanimProviderId()`. Closes the silent drift between Animator intent and VGEN runtime.
+- **planIntent as opt-in arg, legacy testPlan as fallback** (TD-38 β). Non-plan-driven path (replay-pilot, legacy fixtures) unchanged — `planIntent: undefined` → `formatTestPlanText` runs as before.
+- **`audio_tracks.length > 0` before fallback short-circuit** (audio fix). Empty array no longer counts as «I have tracks» — falls back to `music_url`.
+- **One-provider-per-episode for SS-S15-E01** (q49 directive). Director chose Seedance lock; Veo deferred. Animator picks fast vs standard per shot from extended allowlist.
+- **Director's 10/10/10 brief format** (cause / hypothesis / fix in 10-word increments). Codified as preference in MEMORY.md. Director: «давай попробуем в таком формате».
+- **TD-43 delivered as 3 surfaces** (A drawer / B preview / C timeline kebab). Director's original intent was «hover on cell number» — TD-43.C is closest. A+B are bonuses for drawer-based navigation.
+- **Hover-gap = `top-0` (no offset)** for TD-43.C popover. Touching edges = no mouseLeave glitch.
+
+---
+
+## Blockers & Open Questions
+
+- **Live verify of TD-44 on SH01 plan v03** — needs Director to approve plan asset `cc3aa1c7-...` in webapp UI. Auto-fire path: SPC-shot_plan.APPROVED → exec-vgen/start (with planAssetId) → runner extracts provider.id="seedance-standard" → effectiveProviderId+qualityTier set to standard → Seedance Standard endpoint. Expected metadata on resulting VID-shot: `model_id: bytedance/seedance-2.0/image-to-video` (NO `/fast/`).
+- **Director's pending UX check on TD-43.C** — popover should now stay visible when cursor moves up to it (hover-gap fix). Confirm or surface remaining bug.
+- **TD-37 not fully closed** — verbatim mode works empirically through marker convention, but no PA-tool parameter / system-prompt directive codifies it. Future revisions risk regression.
+- **No live confirmation that TD-43.C ✓ inline approve works** — code is there but not yet clicked.
+- **Polина «прячется» / autonomy gap** persists — she still occasionally asks Director for approval on read-only actions (analyze asset). Not blocking, irritating.
+
+---
+
+## Exact Next Step
+
+When resuming:
+
+1. **Read identity + memory** (standard SandyStudio start):
+   - `~/.claude/rules/common/identity.md` — Тео
+   - `~/.claude/projects/C--SandyStudio/memory/director_name_alexander.md` — Александр
+   - SandyStudio CLAUDE.md → PLAN.md → glossary
+   - This session note
+
+2. **Verify state**:
+   - `cd /c/SandyStudio/.claude/worktrees/quizzical-brown-462555/webapp && npx tsc --noEmit` clean
+   - `npx vitest run` → 500/500
+   - `git log master --oneline -5` top should show `c625830` (hover-gap fix)
+   - Check webapp dev + inngest dev running: `curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:3000/` → 307; `curl -sS -X POST -H "Content-Type: application/json" -d '{"query":"{ functions { name } }"}' http://localhost:8288/v0/gql | grep -c name` → 29
+
+3. **Pick up where smoke paused:**
+   - SH01 plan v03 (`cc3aa1c7-...`) is APPROVED. Next action: **does Director see new VID-shot for SH01 after his approval?** If yes — verify metadata.model_id ends with `image-to-video` (NOT `/fast/image-to-video`). That confirms TD-44 fix works live.
+   - SH02 plan-driven video v02 in REVIEW — Director compares with legacy v01 in drawer's version-picker.
+   - Animator chain rolls out to remaining 20 shots (SH03-SH22) once SH01+SH02 pilots validated.
+
+4. **Then unblockers:**
+   - If hover-gap STILL broken on TD-43.C → instrument with delayed-hide (200ms setTimeout) instead of pure top-0 fix.
+   - If TD-43.C ✓ approve doesn't work → check `/api/assets/[id]/approve` body shape; Polина's tool sends `{decision: 'APPROVE', directorConfirm: true}`, the inline-approve in popover sends same.
+
+---
+
+## Environment & Setup Notes
+
+- **Worktree:** `C:\SandyStudio\.claude\worktrees\quizzical-brown-462555` (branch `claude/quizzical-brown-462555`, tip `5aa8e5c`)
+- **Master tip:** `c625830` (pushed to origin)
+- **Dev servers running:** webapp `:3000` (305 redirect to login normal); inngest `:8288` with 29 functions registered
+- **`.env.local` flags:** `DESIGNER_CHAIN_ENABLED=true`, `ANIMATOR_CHAIN_ENABLED=true` (added today), `PA_INTERNAL_TOKEN`, `TEAM_CHAT_TOKEN`, OpenAI + Anthropic keys, Supabase URL+anon+service_role, Google Drive OAuth
+- **Smoke episode:** `f019c29f-5e1e-4964-b62b-6c59fc3aa966` (SS-S15-E01 «Heavy Friend»)
+- **Smoke thread:** `bdbdafcf-2a38-4c58-b706-362fd7ff0f16` (concierge with Polина)
+- **Latest SH01 plan:** `cc3aa1c7-ba90-4685-a667-aba960e37c0b` (v03 APPROVED, provider.id="seedance-standard")
+- **Latest SH02 plan:** `56655d3b-89a2-4d54-b525-8e51177f1192` (v01 APPROVED, provider.id="seedance-fast")
+- **Latest SH01 video:** `f414799c-2f49-4526-9d9f-dd90d25d7719` (v02 REVIEW, came out fast tier — TD-44 regression)
+- **Latest SH02 video:** plan-driven exists from earlier event `01KS9YSH5MGEFERKEGC6TYTB51`; legacy v01 is `ddeaaed5-fe5b-4fae-bffd-68e705d0757d`
+- **Director:** Александр (NEVER «Кирилл»). Dubai (UTC+4). Mode 1 (Analytics) default, switches to ===5=== for edits.
+- **My name (Тео):** persistent global identity. Sign commits as «Theo».
+- **10/10/10 brief format** preferred — 10 words cause, 10 words hypothesis, 10 words fix. Deep dive only when asked. Codified in MEMORY.md director_communication_style.md.
+- **MCP `execute_sql` is BLOCKED** — use curl with SUPABASE_SERVICE_ROLE_KEY or `webapp/scripts/read-*.ts` diagnostics.
+- **Team-chat post pattern:** `npx tsx scripts/post-<topic>-to-polina.ts` uses TEAM_CHAT_TOKEN, fires `claude_message` turn + `pa/notify-needed` Inngest event → Polина auto-react via exec-pa-react.
+- **Verbatim-instruction pattern:** wrap revisionNote in `==BEGIN_VERBATIM_REVISION_NOTE==` markers + explicit «ДОСЛОВНО» — Polина preserves verbatim instead of paraphrasing (empirical, not yet codified in PA-tool schema).
+- **Verify trio:** `npx tsc --noEmit` clean · `npx vitest run` 500/500 · `npm run replay-pilot` 29/29.

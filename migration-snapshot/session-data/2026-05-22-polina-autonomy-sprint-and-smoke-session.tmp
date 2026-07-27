@@ -1,0 +1,179 @@
+# Session: 2026-05-22
+
+**Started:** ~07:00 Dubai (UTC+4) morning — resumed from 2026-05-21 session
+**Last Updated:** ~18:30 Dubai (UTC+4)
+**Project:** SandyStudio (C:\SandyStudio\)
+**Worktree:** C:\SandyStudio\.claude\worktrees\quizzical-brown-462555 (branch `claude/quizzical-brown-462555`)
+**Topic:** Supabase recovery sprint v2 (4 commits) + 4 follow-up commits — closes TD-25 P4, TD-29.5 path, TD-30 paths, TD-34. Live smoke of SS-S15-E01 reached SH22 (~~21~~ pending). 8 commits today total, vitest 451/451, tsc clean.
+
+---
+
+## What We Are Building
+
+Two intertwined work streams across the same session:
+
+1. **Supabase recovery sprint v2 (Plan v2)** — after Supabase organization `navia` hit `exceed_egress_quota` (19.69 GB / 5.5 GB) in the morning, Director upgraded to Pro and we landed a 4-step sprint to prevent recurrence: chat-route error envelope (HTML never reaches Polин`s bubble again), TD-25 P4 markAwaitingDirector PA tool (replaces regex `await-detector`), event-driven watchdog (deletes every-minute cron, replaces with cancelOn-based pa-escalation-timer), NotificationDot Realtime (50-100 polls/min → 1 socket).
+
+2. **TD-30/TD-34 follow-ups + live smoke** — landed `regenerateImageFromPlan` PA tool (closes manual plan→image gap), `listShots` PA tool with ID_RESOLUTION_DISCIPLINE prompt block (Polин`а stops asking Director for shotIds), per-shot activity titles ("Reference Designer started — SH08" vs generic), and **TD-34 STANDING_APPROVAL_SCOPE + BANNED PHRASES** prompt fix (Polин`а was dropping out of autonomy after first batch, claiming «инструменты в этом триггере запрещены»). Then ran SS-S15-E01 smoke through SH22 with Director's режиссёрский language as input, validating the whole stack on live data.
+
+The session ends mid-flight on a Polина-proposed `eref-shot-composition` skill update with cross-shot spatial continuity rule (q6y given by Director with 3 wording amendments).
+
+---
+
+## What WORKED (with evidence)
+
+- **TD-34 fix landed and effective** — confirmed by: zero «инструменты в этом триггере запрещены» / «без свежего одобрения мутаций не запускаю» across all auto-reacts after commit `83b5a7d` (regression-locked verbatim in test). 5/5 regression rate before → 0/N after for banned phrases. Standing approval recognition still occasionally drops on individual auto-reacts (~1/3) but doesn't block workflow.
+- **regenerateImageFromPlan PA tool + listRefPlans TD-24 fix (`20f5e21`)** — confirmed by: Polин`а successfully called `regenerateImageFromPlan({shotId: SH08, planAssetId: dd7f01d0-...})` on the morning's blocked SH08, Reference Artist actually executed (previous attempt via triggerAgent(EXEC-EREF) silently ignored planAssetId and ran pilot pass instead). listRefPlans now returns 13 plans for SS-S15-E01 (was 0 due to TD-24 file_type shape mismatch).
+- **listShots PA tool + ID_RESOLUTION_DISCIPLINE (`f5b8447`)** — confirmed by: when Director asked Polин`у «delaй следующие два шота», she called `listShots({episodeId})` and resolved canonical shotIds herself, no longer asks Director for IDs. Previously she'd typed «дай мне точные полные shotId».
+- **Per-shot activity titles (`0f84203`)** — confirmed by: activity_events titles now read "Reference Designer started — SH20 — Working on SH20 (EXEC-EREF-DESIGNER)…" instead of generic "Reference Designer started — Working on episode". Metadata.shot_id present in all per-shot agent events. Visible in feed UI for Director.
+- **Sprint v2 — 4 commits clean** — confirmed by: `git log --oneline` shows `19b68dd`, `9a117ca`, `8953574`, `5a3afd8`; vitest went 348 → 411 across the 4 commits (+63 tests); tsc clean after each.
+- **Event-driven watchdog (`8953574`)** — confirmed by: Inngest dashboard shows `pa-escalation-timer` + `pa-orphaned-awaiting-sweep` registered, `exec-pa-watchdog` deleted (29 functions confirmed via `curl http://localhost:8288/v0/gql`). No more cron `* * * * *` egress baseline.
+- **Live smoke SH11-SH19 IMG batch approve** — confirmed by: activity_events shows 9× approval_granted at 14:45 within ~30 seconds, all 9 shots' images flipped to APPROVED. Polина's batch flow worked atomically.
+- **SH20 v02 plan-level regen flow** — confirmed by: SH20 v01 IMG had trumeau-mid-room issue, Polина requestRevision + regenerateRefPlan with «vanity flush against wall, vanity→wall→hole causality» revisionNote, Designer produced v02 Plan, Polина approved, Reference Artist generated SH20 v02 IMG, Director approved.
+- **Polина autonomous continuity-conflict detection on SH22** — confirmed by: Polина read SH22 Plan, noticed «coral cushion on bed» contradicted SH21's «cushion hidden behind vanity», flagged as blocking and refused to push to Reference Artist without Director input. Exactly the architectural use case TD-33 (backlog) is meant to close at the prompt level.
+- **Music approved** — confirmed by: `AUD-music-main v02` asset `4322cfaa-0701-41a4-976b-e5388e6e3c36`, file `/staging/music/0fac50cb1b1b6971.mp3` (~2:09 length). Polина identified the duplicated v01/v02 issue and pointed at v02 as canonical.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Watchdog cron `* * * * *` (TD-25 P2 from prev session)** — failed because: combined with TD-29.5 `logEvent` sweep that restored `pa/notify-needed` chain, formed recursive loop (watchdog → escalate → exec-pa-react → new awaiting turn → next minute watchdog escalates again). Burned 14 GB egress in ~24h. Resolved by Step 2 of sprint v2 — deleted cron entirely, replaced with event-driven `pa-escalation-timer` (cancelOn).
+- **Original `triggerAgent(EXEC-EREF)` to regenerate SH08 image** — failed because: `/api/episodes/[id]/trigger` route maps EXEC-EREF → `sandystudio/exec-eref/start` event, and `execErefStart` ignores `planAssetId` + `shotId` from event data, runs pilot pass for whole episode instead of single-shot from plan. Closed by Step A of `20f5e21` — new `regenerateImageFromPlan` PA tool that POSTs to `/api/episodes/[id]/regenerate-image-from-plan` (new REST endpoint), fires `sandystudio/exec-eref/execute-from-plan` event directly.
+- **listRefPlans before TD-24 fix** — failed because: filter `.eq('file_type', 'SPC-ref_plan')` but Designer writes `SPC-ref_plan-<shot_id>` since Sprint Designer Day 3 (~2 weeks ago). Polина saw 0 plans when 13 existed. Closed by Step C of `20f5e21` — replaced with `.or('file_type.eq.SPC-ref_plan,file_type.like.SPC-ref_plan-%')`.
+- **Polина "инструменты в этом триггере запрещены" on auto-react** — failed because: 3-way prompt signal collision between AUTO_REACT_GUIDANCE («mutating tools require approval»), OPEN_LOOP_AWARENESS atomic-scope rule (framed as Director-turn-only), and ACTIVE_INTENT block (says "Consent ACTIVE for current operation scope" without defining "scope" for auto-react). LLM-Polина resolved the ambiguity conservatively → assumed all tools forbidden. Closed by TD-34 fix in commit `83b5a7d` — added explicit STANDING APPROVAL SCOPE paragraph + BANNED PHRASES list with verbatim regression-locks, plus OPEN_LOOP_AWARENESS atomic-scope extended to cover auto-react sub-operations.
+- **HTML rendering in Polина bubble (morning incident)** — failed because: Supabase 402 quota error threw uncaught out of `/api/concierge/chat`, Next.js dev returned its HTML error page, ConciergePanel stream-reader fell through to "append unknown line as plain text". Director saw raw `<!DOCTYPE html><html data-theme="slate_blue_cinematic">…` in Polина's bubble. Closed by Step 1 of sprint v2 (`19b68dd`) — outer try-catch + `mapChatError()` returns structured `{ok:false, error, detail}` JSON envelope. Frontend also detects HTML prefix and shows fallback.
+- **SH14/SH15/SH16 images REGENERATE_EXHAUSTED** — failed because: AI auto-reviewer kept flagging issues across 3 retries (SH14 trolley gag readability, SH15 wheels not separated, SH16 room tilt invisible). Director ultimately approved them all anyway based on overall readability ("они вполне себе читаемые") — accepted AI was too strict on subjective creative calls.
+- **SH21 v02 image-only regen path** — partially failed because: image-only path reuses existing Plan's `scene_continuity_anchor_asset_id` from the original generation. SH21 v01 Plan was authored BEFORE SH20 v02 was APPROVED, so anchor pointed at older bedroom IMG, not SH20 v02. Image-only regen → same old anchor → same wrong continuity. Discovered live during smoke — Polина correctly identified this and is now proposing plan-level regen + skill update. **This is now TD-35** (image-only regen path doesn't refresh anchors).
+- **MCP `execute_sql` blocked** — confirmed multiple times today: `mcp__30e3b4b7-df3c-4386-9bf7-421c3c073335__execute_sql` returns "You do not have permission to perform this action". Per session memo `migration_apply_cli_first.md`, MCP path is denied by design — use CLI / scripts / curl with anon+service_role keys.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Polина's q6 — `eref-shot-composition` skill update with cross-shot spatial continuity rule** — Director gave q6y with 3 wording amendments (see "Exact Next Step" below). Polина hasn't done the skill update yet (waiting for next round).
+- **SH21 plan-level regenerateRefPlan** — Polина needs to run this AFTER skill update lands. Plan formula: «use approved SH20 v02 as exact spatial anchor; same wall hole size/side/shape; Sandy visibly plugs that exact hole with bed pillow/coral cushion». She has the Plan asset ids ready.
+- **SH22 plan-level regenerateRefPlan** — held by Polина for cushion continuity conflict with SH21. After SH21 closes, push SH22 with note «coral cushion должна оставаться за vanity (за трюмо), не возвращаться на bed».
+- **TD-32 — render AI-rejected IMG attempts as sibling asset rows** — backlog. ~3-4h. Reuses existing AssetDetailDrawer + restore_version flow. Trigger after smoke completes.
+- **TD-33 — temporal continuity anchors (video end-frame + reference temporal anchor)** — backlog. ~5-6h combined. Director validated production need today via SH20→SH21 trumeau-direction issue. Should pair Designer Plan schema extension `continuity_anchors[]` (multi-anchor list incl. spatial + temporal) with Vanim Plan `end_frame_strategy` for video.
+- **TD-35 — image-only regen path doesn't refresh anchors** — NEW backlog item from today. When user makes `requestRevision` on IMG (not Plan), Reference Artist regen reuses the same Plan with its stale scene_continuity_anchor_asset_id. Should either auto-detect stale anchors and prompt plan-level regen, OR add explicit guard rejecting image-only regen when newer anchors available.
+- **Live validation of TD-34 STANDING_APPROVAL_SCOPE on full batch** — TD-34 fix landed `83b5a7d` mid-session, Polина tested it on real Director batch directive successfully (SH17-21 plans approved + Reference Artist auto-fired). But 1 partial regression on auto-react SH21 («нет blanket-approval в ACTIVE_INTENT»). If frequency stays ≤1/10 across remaining smoke, acceptable. If higher, iterate by moving STANDING APPROVAL SCOPE bullet to TOP of AUTO_REACT_GUIDANCE block before mutating-tools mention.
+- **After SS-S15-E01 reference stage done — Animatic / VGEN / STITCH stages.** Not started yet.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/concierge/system-prompt-builder.ts` | ✅ Complete (edited 4-5× today) | AUTO_REACT_GUIDANCE has STANDING_APPROVAL_SCOPE + BANNED PHRASES (TD-34, `83b5a7d`). OPEN_LOOP_AWARENESS atomic-scope extended for auto-react. TOOLS_AVAILABLE lists listShots + regenerateImageFromPlan + markAwaitingDirector. EREF_TOOL_PICKER block teaches tool selection. ID_RESOLUTION_DISCIPLINE block teaches non-asking. |
+| `webapp/app/api/concierge/chat/route.ts` | ✅ Complete | Outer try-catch wraps handleChatPOST. mapChatError returns structured envelope. accumulatedMetadataPatch merges tool metadata patches. (`19b68dd`, `9a117ca`) |
+| `webapp/components/concierge/ConciergePanel.tsx` | ✅ Complete | HTML-prefix detection in stream reader; envelope detection before stream parse; yellow chip renders `metadata.awaiting_director_input`. (`19b68dd`, prior) |
+| `webapp/lib/concierge/chat-error-envelope.ts` | ✅ NEW today | `mapChatError(err)` → `{ok:false, error, detail, status}`. 12 unit tests cover branches. (`19b68dd`) |
+| `webapp/lib/concierge/tools/mark-awaiting.ts` | ✅ NEW today | `markAwaitingDirector({question, choices?, deadline_sec?})` PA tool. Verbal-approval gated. Emits metadataPatch with `awaiting_director_input`. (`9a117ca`) |
+| `webapp/lib/concierge/tools/eref-execute.ts` | ✅ NEW today | `regenerateImageFromPlan({shotId, planAssetId, episodeId?, reason?})` PA tool. POSTs to `/api/episodes/[id]/regenerate-image-from-plan`. (`20f5e21`) |
+| `webapp/app/api/episodes/[id]/regenerate-image-from-plan/route.ts` | ✅ NEW today | Validates Plan (APPROVED, file_type SPC-ref_plan or TD-24 shape, episode match, shot_id consistency), fires `sandystudio/exec-eref/execute-from-plan`. (`20f5e21`) |
+| `webapp/lib/concierge/tools/storyboard.ts` | ✅ NEW today | `listShots({episodeId?, act?, limit?})` reads APPROVED STB and returns shotId list with metadata. (`f5b8447`) |
+| `webapp/lib/concierge/tools/eref.ts` | ✅ Edited | `listRefPlans` + `getRefPlan` accept TD-24 `SPC-ref_plan-<shot_id>` shape via `.or('file_type.eq.X,file_type.like.X-%')`. (`20f5e21`) |
+| `webapp/lib/concierge/tools/index.ts` | ✅ Edited | Registers: markAwaitingDirector, regenerateImageFromPlan, listShots. (`9a117ca`, `20f5e21`, `f5b8447`) |
+| `webapp/lib/api/vgen-shot-helpers.ts` | ✅ Edited | `listStoryboardShots(content)` + `shortShotLabel(shotId)` + `StoryboardShotV2.location` field. (`f5b8447`, `0f84203`) |
+| `webapp/lib/agents/factory.ts` | ✅ Edited | `AgentFunctionSpec.resolveActivityContext` hook merges shortLabel + metadata into agent_started/completed/failed events. (`0f84203`) |
+| `webapp/inngest/functions/exec-eref-execute-from-plan.ts` | ✅ Edited | `resolveActivityContext` extracts shot_id, plan_asset_id, operation. (`0f84203`) |
+| `webapp/inngest/functions/exec-eref-designer.ts` | ✅ Edited | `resolveActivityContext` extracts shot_id. (`0f84203`) |
+| `webapp/inngest/functions/exec-eprev.ts` | ✅ Edited | resolveActivityContext + shot_id + plan_asset_id. (`0f84203`) |
+| `webapp/inngest/functions/exec-vanim.ts` | ✅ Edited | resolveActivityContext + shot_id. (`0f84203`) |
+| `webapp/inngest/functions/exec-vprev.ts` | ✅ Edited | resolveActivityContext + shot_id + plan_asset_id. (`0f84203`) |
+| `webapp/inngest/functions/exec-gagad.ts` | ✅ Edited | resolveActivityContext + shot_id + plan_asset_id + gag_phase. (`0f84203`) |
+| `webapp/inngest/functions/exec-vgen.ts` | ✅ Edited | resolveActivityContext on legacy. (`0f84203`) |
+| `webapp/inngest/functions/exec-pa-watchdog.ts` | ✅ DELETED | Replaced by event-driven design. Recoverable via `git checkout c51848a -- webapp/inngest/functions/exec-pa-watchdog.ts` if ever needed. (`8953574`) |
+| `webapp/inngest/functions/pa-escalation-timer.ts` + `-core.ts` | ✅ NEW today | Triggered by `sandystudio/pa/awaiting-set`, sleepUntil + cancelOn pattern. Core file holds pure logic (clampDeadlineSec + decideEscalation) for tests. (`8953574`) |
+| `webapp/inngest/functions/pa-orphaned-awaiting-sweep.ts` | ✅ NEW today | Hourly bounded-cost safety net (24 reads/day max). (`8953574`) |
+| `webapp/lib/concierge/threads.ts` | ✅ Edited | persistTurn fires `pa/awaiting-set` + `concierge/turn-inserted` Inngest events. (`8953574`) |
+| `webapp/lib/inngest/client.ts` | ✅ Edited | Event union: +`pa/awaiting-set`, +`concierge/turn-inserted`. `pa/notify-needed` source enum +`timer`. (`8953574`) |
+| `webapp/inngest/index.ts` | ✅ Edited | Drops execPaWatchdog, adds paEscalationTimer + paOrphanedAwaitingSweep. (`8953574`) |
+| `webapp/hooks/useAssetNotificationRealtime.ts` + `-core.ts` | ✅ NEW today | Per-asset Realtime subscription replaces 12s SWR polling. (`5a3afd8`) |
+| `webapp/components/notifications/NotificationDot.tsx` | ✅ Edited | Uses new realtime hook, dropped `refreshIntervalMs` prop. (`5a3afd8`) |
+| `webapp/lib/concierge/await-detector.ts` | ✅ @deprecated | Still in tree as fallback. Emits console.warn when regex fires. Slated for deletion after one clean week of markAwaitingDirector adoption. (`9a117ca`) |
+| `webapp/lib/concierge/tools/types.ts` | ✅ Edited | ToolResult union extended with optional `metadataPatch`. New `okWithPatch` helper. (`9a117ca`) |
+| **Tests added today** | ✅ 451/451 | mark-awaiting (19), chat-error-envelope (12), pa-escalation-timer-core (10), useAssetNotificationRealtime-core (9), eref-execute (9), list-storyboard-shots + tool (20), system-prompt-builder TD-34 (+4). Net +83 tests. |
+| `~/.claude/projects/C--SandyStudio/memory/backlog_td32_td33_continuity_and_attempts.md` | ✅ NEW today | Full TD-32 + TD-33 backlog spec. Linked at top of MEMORY.md. |
+| `~/.claude/plans/synchronous-petting-waffle.md` | ✅ Updated | Plan v3 (TD-34 STANDING_APPROVAL_SCOPE) prepended. Plans v1 + v2 below as history. |
+| Polина's q6 update for `eref-shot-composition` skill | ⏳ Pending Polина action | Director gave q6y with 3 amendments — not yet applied by Polина |
+
+---
+
+## Decisions Made
+
+- **Standing approval scope persists across auto-react triggers** — reason: Director gave «autopilot» blanket approval, system should treat it as durable for the whole batch. Otherwise Mode 2.5 autonomy breaks the moment any auto-react triggers. Codified in AUTO_REACT_GUIDANCE STANDING_APPROVAL_SCOPE paragraph (TD-34).
+- **Banned phrases verbatim regression-locks in tests** — reason: Polина-LLM emits specific phrases when regressing. Lock them in unit tests so any future prompt edit that drops the protective text breaks CI loudly. Better failure than silent regression.
+- **Image-only regen path is a foot-gun for continuity** — reason: it reuses existing Plan's anchor without refresh. Captured as TD-35 backlog. Skill addition (Polина's q6) explicitly mandates plan-level regen for continuity-affected shots.
+- **Skill update path vs code change** — reason: `eref-shot-composition` skill body is a prompt addendum loaded by Designer at planning time. Faster iteration than code (no commit, no test). Used today for cross-shot continuity rule. Architectural change (TD-33 explicit temporal anchor in Plan schema) deferred to after smoke.
+- **TD-30 spatial anchor is fine for linear approval order** — reason: when Director approves shots in narrative order, `findLatestApprovedImgByLocation` naturally picks the immediately preceding shot. TD-33 (explicit temporal) only needed for non-linear approval timing or hard-cut scene boundaries.
+- **Per-shot activity titles via generic `resolveActivityContext` factory hook** — reason: every per-shot Inngest function gets to declare its own context resolver without hardcoding per-agent logic in factory. Future per-shot agents inherit the pattern.
+- **Director's режиссёрский language → Polина's technical interpretation as a workflow contract** — reason: Director said «утверждаю 11-19 кроме 20-го, 20-й перегенерировать с проломом-у-стены», Polина correctly translated to 9× approveAsset + 1× requestRevision + 1× regenerateRefPlan. This is the Mode 2.5 endpoint behaviour we built toward.
+- **HOURLY cron for orphan sweep, not minutely** — reason: bounded-cost insurance. 24 reads/day max instead of 1440 from the old watchdog. Pure event-driven for happy path, polling only at the cluster boundary.
+
+---
+
+## Blockers & Open Questions
+
+- **Polина's q6 skill update not yet applied.** Director gave q6y with 3 amendments (see Exact Next Step). Polина will apply on next turn.
+- **SH22 plan still held.** Cushion continuity conflict with SH21. After SH21 closes, push SH22 with note.
+- **SH21 v02 still pending plan-level regen.** Once skill update lands, Polина should `regenerateRefPlan({shotId: 'SS-S15-E01-A3-SC10-SH21', revisionNote: ...})`.
+- **STANDING_APPROVAL_SCOPE recognition occasional regression** (~1/3 auto-reacts) — Polина sometimes writes «нет blanket-approval в ACTIVE_INTENT» on isolated auto-reacts. Doesn't break workflow but watch frequency. If >1/10 across remaining smoke, iterate.
+- **TD-35 (image-only regen path) confirmed as a real bug** — needs explicit backlog entry. Was discovered when SH21 v02 inherited stale anchor from old Plan.
+- **No live Supabase usage monitoring yet** — Pro upgrade gives 50GB egress / month, but no alerting at 80% threshold. Could be a next-week thing.
+
+---
+
+## Exact Next Step
+
+When resuming:
+
+1. **Read identity + memory** (per standard SandyStudio session start):
+   - `~/.claude/rules/common/identity.md` — Тео
+   - `~/.claude/projects/C--SandyStudio/memory/director_name_alexander.md` — Александр
+   - SandyStudio CLAUDE.md → PLAN.md → glossary
+   - Today's backlog item: `~/.claude/projects/C--SandyStudio/memory/backlog_td32_td33_continuity_and_attempts.md`
+   - This session note (auto-loaded by `/resume-session`)
+
+2. **Verify state:**
+   - `cd /c/SandyStudio/.claude/worktrees/quizzical-brown-462555/webapp && npx tsc --noEmit` — should be clean
+   - `npx vitest run` — should report 451 passed
+   - `git log --oneline -10` — top 8 should be today's commits: `83b5a7d` `0f84203` `f5b8447` `20f5e21` `5a3afd8` `8953574` `9a117ca` `19b68dd`. Also `c51848a` (morning emergency watchdog kill-switch) just before.
+   - Check Inngest dev still running: `curl http://localhost:8288/v0/gql -X POST -H "Content-Type: application/json" -d '{"query":"{ functions { name } }"}' | grep -c name` — should be 29
+   - Check webapp dev still running: `curl -sS -o /dev/null -w "%{http_code}" http://localhost:3000/` — should be 307
+
+3. **Pick up where smoke paused:**
+
+   Polина's q6 reply is open and waiting. My approved direction (q6y) with 3 wording amendments:
+
+   - **a.** First paragraph of proposed skill addition: replace «EREF must validate» with «**EXEC-EREF-DESIGNER**, when composing a Reference Plan for a sequential shot, must…». Skill targets Designer specifically (composition flavour).
+   - **b.** Replace «immediately preceding relevant shot» (ambiguous «relevant») with: «previous shot in production order **within the same location and scene**. If the preceding shot is a hard cut to a different location/scene, fall back to spatial anchor (latest APPROVED reference image in same location). If neither exists (first shot in this location for the episode), continuity rule is inactive — anchor null.»
+   - **c.** Add final paragraph mandating plan-level regen: «Continuity comparison is enforced at Plan composition time. If a downstream shot's image needs re-generation due to continuity drift, regen MUST go through plan-level (`regenerateRefPlan`), not image-only. Image-only path reuses the existing Plan's anchor, which may predate the latest approved reference and therefore cannot pick up the corrected continuity.»
+
+   Polина will apply skill update + then `regenerateRefPlan({shotId: 'SS-S15-E01-A3-SC10-SH21', revisionNote: ...})` with continuity formula. Watch activity feed: expect «Reference Designer started — SH21», then completion, then Director approve, then «Reference Artist started — SH21».
+
+4. **Then SH22:**
+   Push Polина with: «regenerateRefPlan для SH22 с note: coral cushion должна оставаться за vanity / трюмо, не возвращаться на bed — continuity carry-over from SH21».
+
+5. **After all reference shots closed:** push pipeline to Animatic / VGEN / STITCH. Not started yet for this episode.
+
+---
+
+## Environment & Setup Notes
+
+- **Worktree:** C:\SandyStudio\.claude\worktrees\quizzical-brown-462555 (branch `claude/quizzical-brown-462555`)
+- **Branch commits ahead of master `12d708f`:** ~30 (yesterday's session + 8 today)
+- **Dev servers:**
+  - webapp `npm run dev` :3000 (was restarted today ~16:30 by me via taskkill+npm run dev; bg task `bj14zdaba`; PID 20432)
+  - inngest dev :8288 — running, periodically registering 29 functions via PUT /api/inngest
+- **Supabase project:** `akstennzrnkvexjgzhxv` (org `navia` `dkxgjfunrkbtzhntpnxy`, **Pro plan upgraded today** after egress quota exceeded morning incident)
+- **Smoke episode:** `f019c29f-5e1e-4964-b62b-6c59fc3aa966` (SS-S15-E01 «Heavy Friend»)
+- **Smoke thread:** `bdbdafcf-2a38-4c58-b706-362fd7ff0f16`
+- **Env vars active in webapp/.env.local:** `DESIGNER_CHAIN_ENABLED=true`, `PA_INTERNAL_TOKEN`, `TEAM_CHAT_TOKEN`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, Supabase URL+anon+service_role, Google Drive OAuth, `INNGEST_DEV=1`. `WATCHDOG_ENABLED` NOT set — even if old watchdog code existed it would be gated off (now deleted entirely).
+- **Director:** Александр (NEVER «Кирилл»). Dubai (UTC+4). Mode 1 (Analytics) default, switches to ===5=== for edits.
+- **My name (Тео):** persistent global identity. Sign commits as «Theo».
+- **Diagnostic scripts:** `webapp/scripts/read-polina-turns.ts <N>` reads last N director+assistant turns; `webapp/scripts/read-pa-tail-full.ts` shows last 8 turns with full content. Both standalone, require .env.local.
+- **MCP `execute_sql` is BLOCKED** — use curl with `apikey` + `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` headers, or the diagnostic scripts above.
+- **Verify trio:** `cd webapp && npx tsc --noEmit` clean · `npx vitest run` 451/451 · `npm run replay-pilot` not re-run today (was 29/29 yesterday, agent layer unchanged except prompt + factory hook).
+- **Context-cleanup trigger:** Director asked for session clear at ~18:30 Dubai after 11+h session. TD-34 fix was the last big landing, then live smoke through SH22. Polина q6 still hanging — fresh session must pick it up.

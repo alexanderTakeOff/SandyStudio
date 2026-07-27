@@ -1,0 +1,106 @@
+# Session: 2026-06-09
+
+**Started:** resumed from 2026-06-09-e03-td87-polina-learning-session.tmp (morning)
+**Last Updated:** ~20:05 (Dubai)
+**Project:** SandyStudio (C:\SandyStudio) — Тео = master orchestrator + Director's proxy
+**Topic:** Dojim E03 (vertical Shorts autotest) brief→pilot-videos end-to-end. Fixed a day-long cascade (size-table drift, self-heal, stable-server, anchor-freshness). Then Director surfaced provider-params-lost regression → APPROVED architecture: episode-authoritative generation config. Committed verified work `2f94b16`.
+
+---
+
+## What We Are Building
+
+(1) **E03 end-to-end pilot run** (SS-S15-E03 "Tidy Tornado — Shorts Test", 9:16, $50 cap, Mode 4). Goal: prove brief→24 IMG frames→animatic→pilot videos. ACHIEVED: 24/24 frames APPROVED, animatic v3 (24 shots), SH01(4s)+SH02(7s) pilot videos APPROVED, then full video fan-out (all 24).
+
+(2) **Approved architecture (NEXT BIG BUILD, plan file persists):** Episode Settings = single AUTHORITATIVE source of generation params (provider/aspect/quality/resolution) for both VIDEO+IMAGE. Shot-level override = opt-in toggle (default episode>shot). Collapsible panel, capability-driven (reuse ProviderControlPanel). Root fix for "Director's provider directives get lost". Full plan: `~/.claude/plans/eager-launching-anchor.md`.
+
+---
+
+## What WORKED (with evidence)
+
+- **24/24 IMG frames APPROVED** — confirmed by DB query (all SH01-24 IMG-episode_ref APPROVED).
+- **Size fix** — critic SH03 re-review verdict PASS, "Failed checks: None", no 1792 (was HALT on 1024×1536 vs 1024×1792).
+- **Stable-server lesson** — SH03 video Inngest run Completed (output.assetId 044ffc5f) in ~6 min on `next start`; dev churn was killing the 6-min generations. Memory: `eref_generation_needs_stable_server.md`.
+- **Anchor-freshness relax** — batch went 12→24 frames in ~15 min with zero new PLAN_ANCHOR_STALE.
+- **Animatic v3** `0935251a` — 24 shots, 24 unique frame asset_ids, 63s, APPROVED.
+- **Pilot videos** SH01 `6bea9fbd` (4s) + SH02 `631fc631` (7s) APPROVED, real .mp4 + Drive ids.
+- **Polina autonomy** — after thread set to Mode 4, her auto-react executed pipeline tools WITHOUT per-action approval (boldness + mode 4 working). She owned the video fan-out without double-firing.
+- **Commit `2f94b16`** — tsc clean, 740/740 vitest, 45 files.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Generating in `next dev` (turbopack) + inngest-cli** — failed because: dev re-sync churn INTERRUPTS in-flight Inngest functions; 6-min EREF generations never complete → "no frames" for the whole day. FIX = `next build --no-lint && npm start` (stable). DO NOT debug generations on dev.
+- **Short DB monitors (150s) to judge generation** — failed because: EREF gen takes ~6 min; monitors timed out and lied "no frame". Check Inngest run status: `curl localhost:8288/v1/events/<eventId>/runs` → status Completed + output.assetId.
+- **My first diagnosis (anchor-freshness guard was the blocker)** — WRONG; Director said "почитай Полину"; real blocker was Critic V02 size-table drift. Anchor was already fixed by re-authoring.
+- **Anchor-thrash on parallel batch** — first 16-shot fanout: only 4 completed, 12 failed PLAN_ANCHOR_STALE (siblings approved → bedroom anchor advanced). Fixed by relaxing spatial staleness.
+- **`next start` (prod build) for Director's interactive UI** — the music "Replace" button does nothing in the prod bundle (works in `next dev`). Root: dev-vs-prod runtime, NOT a code regression. Director must use `next dev` for interactive music/timeline work.
+- **VGEN provider/format params (standard/480p/9:16) ignored** — videos came out fast/720p/16:9. Root: settings never persisted (no save endpoint; localStorage stopgap) AND exec-vgen never calls getVgenDefaults (dead code) → runner hardcodes `?? '16:9'/'fast'`, seedance `?? '720p'`. This is the architecture the approved plan fixes.
+- **SH24 reference frame** `3637aa16` is a BLACK render (failed gpt-image-2, Mode-4 auto-approved without content check; was also the spatial anchor). Re-author fired; its video generated from the black frame (needs re-gen).
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Implement the approved generation-config architecture** (TODO #3-#8; plan file). Needs ===5===.
+- **Clean 9:16 re-gen of E03 videos** after the VGEN-aspect fix (current videos are 16:9).
+- **SH24 video re-gen** from the new (non-black) frame, once it lands.
+- **TODO #1 (canon)**: Sandy visual canon (sandy_hourglass) not attached as image anchor to the Artist — diagnosis only, Director said defer.
+
+---
+
+## Current State of Files
+
+ALL committed in `2f94b16` (master). tsc clean / 740 vitest. Key:
+| File | Status | Notes |
+|------|--------|-------|
+| webapp/lib/api/provider-capabilities.ts | ✅ | SIZE_BY_DELIVERY_TARGET moved here (single source) |
+| webapp/lib/agents/runners/episode-reference-{designer,critic,freshness,references}.ts | ✅ | size import + critic inject + freshness relax + self-heal |
+| agents/exec/episode_reference_{critic,designer}.md | ✅ | size table → 1024×1536, ref injected input |
+| webapp/lib/agents/next-events.ts (NEW) + factory.ts + approve/route.ts | ✅ | TD-87 |
+| webapp/lib/api/auth.ts + concierge/* + chat-internal + tools/* | ✅ | Polina-boldness |
+| webapp/__tests__/.../episode-reference-freshness.test.ts | ✅ | updated for relaxed spatial behavior |
+| ~/.claude/plans/eager-launching-anchor.md | PLAN (persists) | approved generation-config architecture |
+
+**NOT committed / local-only:** `webapp/.env.local` `EXEC_DIR_AI_TOKEN` (gitignored — stays). Polina thread bdbdafcf active_mode=4 (DB state).
+
+---
+
+## Decisions Made
+
+- **Episode params AUTHORITATIVE; shot override opt-in** (default episode>shot). q26b: override requires explicit confirm. q27: duration always per-shot (creative). q28: video+image both in panel. q29: keep series defaults as fallback. q30b: Director+EXEC-DIR-AI/Polina can set config.
+- **Mega-panel, not swap-panels** (reuse ProviderControlPanel capability-gating).
+- **Single resolver** all entry points call (linchpin vs today's missed-path bug).
+- **Format vs creative split**: episode owns provider/aspect/quality/resolution; prompt/anchors/seed/gag stay per-shot.
+- **Commit on master** (project convention; all work on master working tree).
+
+---
+
+## Blockers & Open Questions
+
+- **===5=== needed** to implement the approved architecture (project in ===1=== now).
+- **Background servers running** (NOT preview-tracked): `npm start` prod build on :3000 (serverId bn5t.../b7sb...), inngest-cli on :8288. A fresh session won't know. For Director's interactive music/timeline work he needs `next dev` instead of the prod build.
+- **E03 videos are 16:9** — wrong for Shorts; clean 9:16 re-gen pending the VGEN-aspect fix.
+- **SH24 black frame** re-gen pending.
+
+---
+
+## Exact Next Step
+
+Director chose: fresh session via /resume-session for the big build. On resume:
+1. Read `~/.claude/plans/eager-launching-anchor.md` (approved architecture, q26-q30 decisions, 6 impl tasks, pitfalls).
+2. Get ===5=== from Director.
+3. Build order: #3 resolver (lib/api/resolve-generation-params.ts, revive getVgenDefaults) → #5 settings-route generation_config + caps validation → #6 IMAGE_PROVIDER_CAPS → #4 wire ALL ~6 VGEN entry points → #7 collapsible EpisodeSettingsCard (video+image, override toggle, confirm-gate) → #8 tests + e2e.
+4. Pitfall #1: EVERY entry point must call the resolver or the bug recurs in the missed path.
+
+---
+
+## Environment & Setup Notes
+
+- **Generation runs need a STABLE server**: stop dev, kill node on 3000/8288/50052/50053, `cd webapp; npx next build --no-lint` (2 pre-existing ESLint errors fail strict build: any@approve/route:615, unescaped '@VGENPilotPillbar:315 — `--no-lint` skips; tsc is green), `npm start` + `npm run inngest:dev`, warm `curl -X PUT localhost:3000/api/inngest`.
+- **For Director's interactive UI** (music Replace, timeline): use `next dev` (prod build breaks the Replace button).
+- **Inngest event inject:** `POST http://localhost:8288/e/dev` body `{name,data}`; key "dev"; run status `GET /v1/events/<id>/runs`.
+- **DB queries:** inline `node --input-type=module` from `C:\SandyStudio\webapp` (NOT repo root — @supabase not found), load .env.local.
+- **Polina nudge:** `POST /api/team-chat/post` (Bearer TEAM_CHAT_TOKEN, author='Тео'); she acts when her thread active_mode is bold (3/4). Thread bdbdafcf.
+- **Key IDs:** E03 `bf175902-8af7-45fc-a1d1-1699732e112f`; animatic v3 `0935251a`; pilots SH01 `6bea9fbd` / SH02 `631fc631`; commit `2f94b16`.
+- **Verify trio:** `cd webapp; npx tsc --noEmit` · `npx vitest run` (740) · replay-pilot (doesn't cover Mode-4 fanout/VGEN params).

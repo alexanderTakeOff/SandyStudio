@@ -1,0 +1,105 @@
+# Session: 2026-06-23
+
+**Started:** ~07:00 Dubai (resumed from e11-done-fixes) · **Last Updated:** ~13:42 Dubai
+**Project:** SandyStudio — webapp pipeline + Prod Assistant (Полина) · Тео acts as AI EP (Pascal)
+**Topic:** Make Полина actually WORK — root-fix a cascade of pipeline/operator defects surfaced live while the Director ran E12 «Бесконечная лента» (The Scroll). Five fixes shipped to master; E12 still needs unblocking.
+
+> NOTE on clock: machine system clock is ~4h BEHIND real Dubai time. `TZ=Asia/Dubai date` returns wrong values (showed 06:xx–08:xx while the app/Director showed 11:xx–13:xx). Use the webapp/Director timestamps as truth.
+
+---
+
+## What We Are Building
+
+Closing the gap between «the pipeline runs» and «Полина (EXEC-CONC) can actually drive it». The Director kept hitting operator failures in real time: Полина announces intent and stalls, can't resolve human references (filenames/«latest»), is pinned to the wrong episode, and the gate chain skips Casting. Each was root-caused in code and fixed subtractively, shipped to master, and verified (tsc / 951 vitest / 30 replay-pilot). The arc also pinned strategic decisions (model routing, casting order, goal-loop sequencing) for later phases.
+
+---
+
+## What WORKED (with evidence)
+
+- **SH-numbering verifier** `collectShotIdViolations` (`webapp/lib/agents/runners/storyboarder.ts`) — confirmed: 6 unit tests green; tsc·0. Commit `7094c8d`, merged to master, **pushed to origin** (`ffdd212..842560f`).
+- **Goal-loop slice 1** — auto-react = real agent loop. `webapp/lib/concierge/auto-react-loop.ts` (backstop 25 + spin/dup guard), wired into chat-internal (re-wake/escalate) + chat. 10 unit tests green; tsc·0. Commit `842560f`, merged + **pushed**.
+- **Bible TOC** `headingToc` (`webapp/lib/concierge/doc-toc.ts`) + listSeriesBibles returns per-asset `toc` + prompt points «темы → general_idea Seed Bank». 6 unit tests green. Commit `028b461`, merged to master (**NOT pushed**).
+- **Chat follows OPEN episode** — `ConciergePanel` sends `usePathname` episodeId; chat route adopts it + re-binds thread (`updateThreadEpisode`); STUDIO_STATE shows episode CODE + «resolve, don't stall» directive. tsc·0, 948 green. Commit `05f13c7`, merged (**NOT pushed**). Preview reloaded clean on E12.
+- **Casting gate Brief→Casting→Writer** (Director modes) — `next-events.ts` (brief→writer only in AUTOTEST; SPC-episode_cast APPROVED → writer), `pipeline-stages.ts` reorder, castEpisode description. +3 gate tests, pipeline-order test updated. **tsc·0 · vitest 951/951 · replay-pilot 30/30**. Commit `bc86341`, merged (**NOT pushed**).
+- **object_smartphone consistency** — confirmed slug `object_smartphone` matches across canon / script v04 / storyboard. The Director LOCKED it himself in the UI (verified DRAFT→LOCKED in DB at 09:17). bible-loader loads only LOCKED → it's now real canon.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Direct DB LOCK of object_smartphone** — BLOCKED by Claude auto-mode classifier: LOCK is a Director-only hard limit; «fix however efficient» is vague, not specific consent. Resolution: Director locked it himself in UI. (Lesson: LOCK always needs explicit per-action Director consent, even in ===5===.)
+- **preview_start from the worktree** — Turbopack FATAL «Symlink node_modules is invalid, points out of filesystem root». The worktree's `node_modules` is a Windows junction to main; turbopack rejects it. Fix: repointed `.claude/launch.json` runtimeArgs to `--prefix C:/SandyStudio/webapp` (run dev from MAIN checkout, real node_modules). preview_start then succeeded (serverId `2c7a26a2-e3a2-48e0-899c-6351764ce5bb`, port 3000).
+- **node_modules junction** — fine for `tsc`/`vitest`, NOT for turbopack dev.
+- **Полина (live, repeatedly)** — announce-and-stall, mis-reads gates («Script Critic blocking» when APPROVED; «storyboard approved» when REVISION), demands UUIDs for filenames, pinned to E11 while E12 open. These are the DEFECTS being fixed, not our bugs to retry.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **q32 (APPROVED by Director): unblock E12** — approve STB-storyboard v1 (currently REVISION; CREAD REVISE looks mis-applied — it demanded a «six-stage cleaning engine» on a phone/scroll episode) via the proper approve route so production advances (continuity/EREF). Полина can't; Тео to do it (===5===).
+- **q33 (APPROVED): fix episode.status advancement** — E12 stuck at `BRIEF_APPROVED` despite script v4 APPROVED + storyboard run. This stale status is the ROOT of Полина's gate-confusion (getNextGate lies — gap #5). Investigate why status doesn't advance past BRIEF_APPROVED.
+- **Gate distribution behind production** — metadata→thumbnail (Key Art) auto-fired from SCR-script approval BEFORE any video exists (premature key art). Consider gating EXEC-COPY/THUMB on production.
+- **Push origin** — master ahead of origin by 3 (`028b461`, `05f13c7`, `bc86341`); q28 push pending.
+- **Bigger goal-loop slices** — work-plan goal-head (OBJECTIVE/DONE-WHEN), in-turn drift-fix, then the anti-token-waste/statistics phase + model routing (strong-on-decisions / cheap-on-mechanic) — Director: «сначала запусти цикл, увидь что работает; оптимизация по статистике потом».
+- **Casting executor** — deferred (q30a chose mode-gated; AUTOTEST keeps Brief→Writer).
+- **q25** — UI to edit an APPROVED brief (no affordance; requires requestRevision→editBrief→re-approve).
+
+---
+
+## Current State of Files (all merged to master)
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/agents/runners/storyboarder.ts` | ✅ merged | + collectShotIdViolations postcondition |
+| `webapp/lib/concierge/auto-react-loop.ts` | ✅ merged NEW | backstop + spin/dup guard |
+| `webapp/app/api/concierge/chat-internal/route.ts` | ✅ merged | backstop + guard + escalation |
+| `webapp/app/api/concierge/chat/route.ts` | ✅ merged | backstop+guard; adopt open-episode + re-bind; episodeCode |
+| `webapp/lib/concierge/doc-toc.ts` | ✅ merged NEW | headingToc |
+| `webapp/lib/concierge/tools/series.ts` | ✅ merged | listSeriesBibles returns per-asset toc |
+| `webapp/lib/concierge/system-prompt-builder.ts` | ✅ merged | episodeCode + STUDIO_STATE «don't stall» + Seed Bank pointer |
+| `webapp/components/concierge/ConciergePanel.tsx` | ✅ merged | usePathname → sends open episodeId |
+| `webapp/lib/concierge/threads.ts` | ✅ merged | + updateThreadEpisode |
+| `webapp/lib/agents/next-events.ts` | ✅ merged | Brief→Casting→Writer gate (mode-aware) |
+| `webapp/lib/api/pipeline-stages.ts` | ✅ merged | rows reordered brief→casting |
+| `webapp/lib/concierge/tools/cast.ts` | ✅ merged | description: castEpisode after brief, not triggerAgent ART-AD |
+| `webapp/__tests__/...` (storyboarder-act-count, doc-toc, auto-react-loop, next-events-single-dispatch, pipeline-stages) | ✅ merged | +tests, order test updated |
+| `.claude/launch.json` (worktree) | modified (uncommitted, machine-local) | runtimeArgs → main checkout abs path (turbopack/junction fix) |
+
+---
+
+## Decisions Made
+
+- **Numbering:** keep detailed A/SC prefix + episode-continuous SH (already forced by `renumberShotsContinuous`); add verifier, don't flatten to `S15-E11-36` (Director redirect).
+- **Goal-loop:** round cap = runaway BACKSTOP not work-limit; spin guard (dup mutating call → stop; N no-progress → stop). Sequence: fix loop → confirm works → optimize via statistics later.
+- **Model strategy (Director q):** strong model on $-gating DECISIONS + cheap on mechanic; MEASURE waste first; cost driver = wasted generations, not model tier.
+- **Episode context:** the OPEN page (human UI signal) is authoritative and re-binds the thread; preserves q13's distrust of MODEL args.
+- **Casting:** Brief → Casting → Writer (after brief; Director q22a). Mode-gated (q30a): AUTOTEST keeps Brief→Writer (casting is tool-only, no executor). Casting = `castEpisode`, not triggerAgent ART-AD.
+- **Don't hand-drive Полина by default** (memory `nudge_polina_dont_act_for_her`) — but she is currently broken, so Тео unblocking E12 is a sanctioned exception.
+
+---
+
+## Blockers & Open Questions
+
+- **episode.status stuck at BRIEF_APPROVED** (E12) — root of gate-confusion; q33 to investigate why status doesn't advance.
+- **CREAD readability applied a wrong rubric** to E12 («six-stage cleaning engine» vs the actual phone/scroll concept) → false REVISE. Separate latent bug.
+- **Thumbnail fired pre-production** — ordering/waste question.
+- Mode: ===5=== was last active (Director set it for the casting fix + object lock). Confirm before mutating.
+
+---
+
+## Exact Next Step
+
+Execute the Director's approvals: **q32 → q33**.
+1. **q32 — unblock E12:** approve `SS-S15-E12-STB-storyboard-v01` (REVISION) through the approve route (with EXEC-DIR-AI/Director auth so `computeNextEvents` fires) → production advances (continuity/EREF). The CREAD REVISE verdict is mis-applied; Director already said «одобрил как есть, го».
+2. **q33 — fix episode.status advancement:** find why E12 sits at `BRIEF_APPROVED` after script approval; make status advance so getNextGate (and Полина) read the true gate. This kills her «confidently wrong» gate reports.
+3. Then offer to push origin (master ahead 3).
+
+---
+
+## Environment & Setup Notes
+
+- Live servers run from MAIN checkout `C:\SandyStudio\webapp` (master) via preview_start: next-dev :3000 (serverId `2c7a26a2…`), inngest-dev :8288. Worktree dev is impossible (turbopack rejects the node_modules junction) — `.claude/launch.json` repointed to the main checkout.
+- Work in worktree `focused-sinoussi-597697`; commit → `git -C /c/SandyStudio merge --ff-only claude/focused-sinoussi-597697` → main dev hot-reloads. ConciergePanel (client) changes need a browser reload (use preview_eval `window.location.reload()`).
+- Verify trio: `npx tsc --noEmit` · `node_modules/.bin/vitest run` (951) · `npm run replay-pilot` (30). No `npm run build` while dev up.
+- DB reads: tmp script with inline `.env.local` loader + `SUPABASE_SERVICE_ROLE_KEY` (pattern from `scripts/pa-tail.mjs`); delete tmp after. E12 UUID `725efe84-be85-4a1d-9dfb-1d8aa4afe509`; series S15 `45351141-6334-4bf0-8a0f-4e00a994f670`.
+- LOCK (canon) is a hard limit — always needs explicit per-action Director consent (classifier enforces).

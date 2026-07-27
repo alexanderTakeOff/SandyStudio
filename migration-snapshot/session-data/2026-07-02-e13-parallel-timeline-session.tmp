@@ -1,0 +1,102 @@
+# Session: 2026-07-02
+
+**Started:** ~resumed from compaction
+**Last Updated:** ~15:3x Dubai (11:3x UTC)
+**Project:** C:\SandyStudio (webapp — Next.js AI animation studio)
+**Topic:** E13 first LIVE parallel run + "timeline-as-home" refactor + variant-select + unified state language + Polina cost root-cause. Branch `claude/e13-nudge-badge-casting-fixes` (PUSHED).
+
+---
+
+## What We Are Building
+
+Two big threads:
+1. **Timeline-as-home** (4 phases, DONE) — the Episode Timeline is now the single review surface: always-on (built from the storyboard skeleton when no animatic), reference cells open the RICH EpisodeAssetDrawer (Reject / regen / AI verdict / variant compare), the silent EDL animatic materializes automatically in parallel mode, and the separate reference GALLERY was retired. Plus smoke fixes: variant-select, a plan-aware "🎬 Generate video" button, and a unified work-state visual language (colour=role, kebab on click).
+2. **E13 live parallel smoke** — E13 (`77d5e09a-7ad8-417f-bdde-620de4339cbd`) is the FIRST episode running the new `pipeline_mode='parallel'` path end-to-end in Mode 3. Director approved a new shot list with Polina and is driving 38 shots to final cut.
+
+Director's TWO active goals at save time:
+- **Goal 1 (DIAGNOSED + fix applied, uncommitted):** why Polina ate money so fast.
+- **Goal 2 (IN PROGRESS):** get Polina to finish generation of all 38 shots, then final cut.
+Then: /save-session (this) + /clear.
+
+---
+
+## What WORKED (with evidence)
+
+- **Timeline-as-home Phases 1–4** — tsc·0 / vitest 1088 / replay-pilot 30/30 on every commit (9a5cd93, 89ddf2b, 2f2c235, 6cc4e58).
+- **Variant-select (promote generation_history attempt)** — commit 537c013 + root-cause fix 637f6c3; Director confirmed SH15 switches after the byte-reachability fix.
+- **Media-unreachable ROOT CAUSE found + fixed** — verified: all 4 byte-dead refs (SH08/15/22/28) were EXACTLY the shots with a `director_edit` in generation_history (= the ones the Director variant-selected); no un-selected ref was dead. Fix 637f6c3 + out-of-band data patch (copied attempt bytes → canonical `-v01-APPROVED.png`; confirmed files on disk).
+- **Plan-aware Generate-video button** — 3d29b73, tsc·0/vitest 1088. Renders (EXEC-VGEN) if an APPROVED plan exists, else runs Video Designer.
+- **Goal 1 root cause CONFIRMED** — `/auto-react` route (Polina's Mode-3 autonomous path) NEVER applied `conciergeReasoningParam()` (the anthropic reasoning cap that /chat + /chat-internal have). On claude-opus-4-8 → uncapped extended thinking billed at output rate. budget_log (agent EXEC-CONC): 155 calls, $35 total, spike **$14.41 in one hour** (2026-07-01T17:00) — consistent with uncapped-Opus auto-react.
+- **E13 is `pipeline_mode='parallel'`** — flipped via DB, verified.
+- **Polina switched to Gemini free** — `.env.local` CONCIERGE_PROVIDER anthropic→gemini. IMPORTANT: only the Next dev server runs the concierge (routes concierge/auto-react + chat); the Inngest worker does NOT — so video jobs are safe; Next auto-reloads on .env change.
+
+---
+
+## What Did NOT Work (and why)
+
+- **First variant-select approach (Bug A "fix")** — nulled `drive_web_view_url` to fix browser cache, but that (plus leaving canonical `filename` = `-v01-APPROVED.png` with no such file on disk + null Drive) made the ref BYTE-UNREACHABLE for the server reader. VGEN preflights the WHOLE episode's refs, so 3 dead refs blocked ALL 23 Video Artists ("Media unreachable"). Root cause: `readAssetMediaAsBase64` resolves ONLY by canonical `filename` (cache→Drive→/staging/), never a `/api/media/…` staging URL. Fixed in 637f6c3 (copy attempt bytes → canonical filename; keep attempt's drive_file_id).
+- **MCP `execute_sql` (Supabase)** — denied ("no permission"). Use node-inline from `webapp/` with service role instead.
+- **node-inline DB scripts from repo root** — fail (`@supabase/supabase-js` not resolvable). MUST `cd /c/SandyStudio/webapp` first. Also: backslash Windows paths get mangled in bash heredocs — use forward slashes.
+- **budget_log `.select('metadata')`** — column doesn't exist; select only cost_usd/created_at/agent_id.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Goal 2 completion** — monitor the 38-shot run to final cut; unblock as issues arise.
+- **#3 Polina model picker** (Director wants it) — a "Prod Assistant (Polina)" card in `webapp/app/(studio)/settings/page.tsx` (next to `ProviderSettings`), dropdown: Gemini-free(default)/Opus4.8/Sonnet4.6/Sonnet5/OpenAI5.5/OpenAI5.4-mini, stored in runtime config (Supabase `app_config` system scope), read LIVE by the 3 concierge routes → instant switch, no restart. Recommended: dedicated card, NOT retrofitting the media provider-contract system.
+- **Unified language slice 2** — References/Video buttons (EREFPilotPillbar/VGENPilotPillbar) reflect the same state language.
+- **Kebab clarity** — surface generation attempts in the kebab (Director confused they're only in the drawer); friendly-name raw `EXEC-CREAD` in the activity feed; mark Director-initiated actions.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+| --- | --- | --- |
+| `webapp/app/api/concierge/auto-react/route.ts` | ⚠️ EDITED, UNCOMMITTED | Goal-1 fix: added `conciergeReasoningParam` import + `Object.assign(params, conciergeReasoningParam())`. **NEEDS tsc + commit.** |
+| `webapp/components/timeline/EpisodeTimelineSection.tsx` | ✅ committed | always-on timeline, rich drawer routing, generate-video button (plan-aware), liveWorkByShot |
+| `webapp/components/animatic/AnimaticPlayer.tsx` | ✅ committed | synthetic prop, role-colour cells, kebab-on-click, weight=object, dynamic number size |
+| `webapp/lib/api/pipeline-stages.ts` | ✅ committed | WorkRole + activeWorkByShot + workRolePalette |
+| `webapp/lib/api/ensure-animatic.ts` | ✅ committed | silent EDL materialization (Phase 3) |
+| `webapp/app/api/assets/[id]/regenerate-image/route.ts` | ✅ committed | `select_attempt` branch (variant promote + byte-copy) |
+| `webapp/app/globals.css` | ✅ committed | `--accent-role-*` tokens |
+| `webapp/.env.local` | ⚠️ EDITED (gitignored) | CONCIERGE_PROVIDER=gemini. Backup: `.env.local.bak-concierge-flip` |
+
+---
+
+## Decisions Made
+
+- **Timeline = the animatic** (view + EDL state) — don't delete VID-animatic; demote it to a silent auto-materialized EDL. Gallery + ref-animatic ceremony are the removable rudiments.
+- **Colour=role, position/weight=object** for the unified state language (Director's explicit direction: designer/critic/both colours; ref=thin, video=bold font weight).
+- **Variant-select keeps ref byte-reachable** by copying the chosen attempt's bytes onto the canonical filename (server reader resolves by filename).
+- **Generate-video button is plan-aware** (render if approved plan, else designer).
+- **Polina cost fix = apply reasoning cap in /auto-react** (not just /chat) — future-proofs the Opus option.
+
+---
+
+## Blockers & Open Questions
+
+- **Goal 2 not finished** — 38-shot parallel run still in flight; must reach final cut (Online Editor / EXEC-STITCH). Phase 3 silent-EDL materialization is its FIRST live test.
+- **Mystery (b):** SH06's APPROVED shot-plan got INVALIDATED 37s after approval (fanout supersede?) — un-investigated.
+- **SH17:** one EXEC-EREF-DESIGNER failure "shotId SS-S15-E13-SH17 not found in STB asset" — shot-id/storyboard mismatch, separate minor.
+- **Polina auto-re-generated existing videos** (SH06/07/09/17/22/32/36/38 each now have a REVIEW video; SH09 twice) — bounded (~7 VGEN jobs/20min, not a 38 flood), but WHY she re-fired existing shots = her Mode-3 logic, needs review. Video renders cost $ at the provider regardless of Gemini.
+- **.env flip is inert until the Next process reloads** — Director should confirm Polina's live model is Gemini (Next auto-reloads on .env; the picker #3 removes this friction).
+
+---
+
+## Exact Next Step
+
+1. `cd /c/SandyStudio/webapp && npx tsc --noEmit` then commit the uncommitted `auto-react/route.ts` reasoning-cap fix (Goal 1). Suggested message: "fix(concierge): apply anthropic reasoning cap in /auto-react (Polina Opus cost drain root cause)". Then `node_modules/.bin/vitest run` + `npm run replay-pilot` to stay green.
+2. **Goal 2:** monitor the E13 38-shot run to completion (query `activity_events` agent_failed + `assets` VID-shot APPROVED count per shot from webapp node-inline; unblock any media/gate failures), then confirm EXEC-STITCH fires the final cut (Phase 3 silent EDL materializes at the stitch trigger).
+3. Then build **#3 Polina model picker** if Director confirms.
+
+---
+
+## Environment & Setup Notes
+
+- Two dev terminals: `npm run dev` (Next — runs Polina/concierge) + `npm run inngest:dev` (worker — runs video gen). Flipping CONCIERGE_PROVIDER needs only the Next reload; do NOT restart inngest (loses in-flight video).
+- DB reads: node-inline ESM from `C:/SandyStudio/webapp` with service role from `.env.local` (MCP execute_sql denied). Forward slashes only in bash heredocs.
+- E13 episode id: `77d5e09a-7ad8-417f-bdde-620de4339cbd`. Media cache root: `C:/SandyStudio/FILMS/_media_cache/S15/E13/media/`.
+- Verify trio: `npx tsc --noEmit` · `node_modules/.bin/vitest run` (currently 1088) · `npm run replay-pilot` (30). No `npm run build` while dev up.
+- PLAN.md is master-only — don't touch on this branch. Plan file: `~/.claude/plans/q8-ref-abstract-pearl.md`.

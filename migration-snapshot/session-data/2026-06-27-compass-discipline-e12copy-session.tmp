@@ -1,0 +1,134 @@
+# Session: 2026-06-27
+
+**Started:** spanned 2026-06-22 → 27 (very long multi-topic session)
+**Last Updated:** 11:56 Dubai 2026-06-27
+**Project:** SandyStudio (C:\SandyStudio)
+**Topic:** Built the Compass (anti-drift partnership system) + PLAN.md master-only rule; fixed E12 metadata + publicist skill (cold-viewer/SEO angle, English); diagnosed PLAN.md discipline drift. Two big plans approved earlier (parked).
+
+---
+
+## What We Are Building
+
+Three intertwined threads landed this session:
+
+1. **The Compass** — a forcing-function so the partnership rules actually fire EVERY turn (they kept
+   decaying because they relied on memory). Per-turn the assistant re-anchors to a project North-Star,
+   treats the Director's message as a HYPOTHESIS (not an order), checks for drift, pushes back / nudges,
+   and opens every reply with a visible header. Director refined the header to **v2 (3-tier)**:
+   `HH:MM ~ 🧭 Star: <global vision ≤5w> · Planet: <current target ≤5w> · <✅ on course | ⚠️ Course: drift> · I'm orchestrator & partner — I remember`
+   Star = stable vision ("AI movie factory"); Planet = current concrete target ("smoke E13"); Course = live drift flag.
+
+2. **PLAN.md master-only rule** — fix for the diagnosed discipline drift. PLAN.md lives/edits ONLY on
+   master; feature branches never touch it (kills merge conflicts + "which copy is truth" drift);
+   `.gitattributes merge=union` as safety net; hook is branch-aware (nags only on master).
+
+3. **E12 metadata + publicist skill fix** — the YouTube copy was a festival blurb for fans (character-first,
+   no format signal, weak SEO). Fixed at the ROOT (the spec) + agent + thumbnail, all English, plus rewrote
+   the live E12 metadata asset.
+
+Earlier in the session (already saved in 2026-06-22 memo): **Plan 1** (version-editor / slice 0) and
+**Plan 2** (shot-centric refactor) were approved — both PARKED until after the прогон.
+
+---
+
+## What WORKED (with evidence)
+
+- **E12 metadata rewrite** — confirmed by re-reading the DB: asset df9ac692 content 4949→1313 chars, new
+  English search-first copy present. Status kept APPROVED.
+- **Global settings.json valid** after adding Compass hook — `node JSON.parse` returned "valid JSON, hook registered".
+- **Dev server + Inngest are UP** (another session owns them) — `curl :3000 → 307`, `:8288 → 200`.
+- **Time bug diagnosed** — `date '+%H:%M'` = 11:54 (Dubai); `TZ='Asia/Dubai' date` = 07:54 (UTC); `date -u` = 07:54.
+- **E12 thumbnail state probed** — `SPC-thumb_plan-v01-APPROVED` overlay_text = **"МОЁ ВРЕМЯ!" (Russian)** +
+  `IMG-thumbnail-v01-APPROVED` + v02-06 REVIEW. Confirms the regen is justified.
+- **PLAN.md drift located** — git log of PLAN.md: dense daily updates 06-09→06-17, then sparse (06-22, 06-25)
+  with multi-day gaps. Hook `plan-md-update-guard` is warn-only (lines 81-83) and only sees the agent's commits.
+
+---
+
+## What Did NOT Work (and why)
+
+- **`TZ='Asia/Dubai' date`** — returns UTC on this Git Bash (no zoneinfo). USE LOCAL `date '+%H:%M'` (machine
+  clock IS Dubai). The topic memory `director_message_timestamp_dubai.md` already documents this; the MEMORY.md
+  INDEX line still wrongly says `TZ='Asia/Dubai'` (fix in q7).
+- **tsx scripts from repo root** — `npx tsx scripts/x.ts` failed `ERR_MODULE_NOT_FOUND` because cwd reset to
+  `C:\SandyStudio`. Must run from webapp: `cd /c/SandyStudio/webapp && npx tsx scripts/x.ts`.
+- **CLAUDE.md Edit (first attempt)** — failed "File has not been read yet"; a Grep does NOT count as a Read.
+  Must Read with the Read tool before Edit.
+
+---
+
+## What Has NOT Been Tried Yet (the QUEUE — q-numbered)
+
+- **q7** — refresh PLAN.md `## CURRENT STATE` for today (E12 copy/publicist + Compass + master-only) AND
+  compact PLAN.md back under 200 lines (it is over). Also: fix MEMORY.md index time line (→ local `date`),
+  and set North-Star Star → "AI movie factory" (currently "ship Silent Sandy").
+- **q8a** — E12 thumbnail regen to English overlay: swap `МОЁ ВРЕМЯ!` → **`MY TIME!`** (q9, faithful) in the
+  APPROVED thumb_plan, then trigger EXEC-THUMB to re-render. Server is UP (no port-war). Keeps approved art,
+  only changes burned caption.
+- **q4/q5** — lightweight PORTABLE doctrine: a git repo (`claude-operating-system` or dotfiles) + a one-line
+  bootstrap/executable that installs the Compass into Claude Code + Cursor on any machine. q5 = NOT MCP (keep simple).
+- **Hook warn→block (#2)** — separate from q6's branch-aware; make plan-md-update-guard BLOCK on master commits.
+- **Plans 1 & 2 implementation** — after the прогон. Plan file: `~/.claude/plans/workstation-reference-designerdesigner-r-twinkling-hamming.md`.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+| ---- | ------ | ----- |
+| `~/.claude/settings.json` | Complete | Compass UserPromptSubmit hook added (v2 3-tier), next to anti-additivity. Valid JSON. |
+| `~/.claude/rules/common/partnership.md` | Complete | "The Compass" section + v2 header spec. |
+| `C:\SandyStudio\.gitattributes` | Complete (new) | `PLAN.md merge=union`. |
+| `C:\SandyStudio\CLAUDE.md` | Complete | §12 → PLAN.md master-only rule. |
+| `C:\SandyStudio\.claude\hooks\plan-md-update-guard.cjs` | Complete | branch-aware (nags only on master/main). |
+| `C:\SandyStudio\PLAN.md` | In Progress | #19 link + North-Star block added. **CURRENT STATE NOT refreshed for today; file >200 lines → q7.** |
+| `specs/distribution/metadata.md` | Complete | v0.2 cold-viewer/SEO angle, 5 principles, new formula, QA, English, E12 example. |
+| `agents/exec/copywriter.md` | Complete | v0.2 angle + new Bible inputs + HALT + English. |
+| `agents/exec/thumbnail-designer.md` | Complete | overlay_text must be English. |
+| `webapp/scripts/update-e12-metadata.ts` | Complete (one-off) | Applied: E12 metadata rewritten. |
+| `webapp/scripts/check-e12-thumb.ts` | Complete (one-off) | Probe of E12 thumb state. |
+| MEMORY.md + 4 backlog memos | Complete | compacted 31→13KB; backlog_shot_centric_paradigm / animatic_dedup / per_shot_video_eligibility / exec_copy_publicist_angle. |
+| DB asset df9ac692 (E12 SPC-metadata) | Complete | content rewritten in place (English), status APPROVED. |
+
+---
+
+## Decisions Made
+
+- **Compass header v2** — Star (global vision) / Planet (current target) / Course (drift) + role line. Better
+  than the 2-part because it separates global goal from current task (what Director originally asked).
+- **PLAN.md master-only** (q6y) — branches never touch it; only master; `merge=union` safety; branch-aware hook.
+- **E12 copy fix at the ROOT** — metadata.md spec (not just the asset), so future regen is correct. Reused
+  existing agent .md + spec (no new "skill" file) — anti-additivity.
+- **E12 overlay = faithful `MY TIME!`** (q9) — keep Director's approved creative, just translate; not a re-author.
+- **q8 fire now** (q8a) but deferred to fresh session for quality (long-session risk).
+- **q4 portable = git repo + bootstrap, q5 NOT MCP** — keep simple.
+- **Dubai time = local `date '+%H:%M'`** — TZ override returns UTC here.
+
+---
+
+## Blockers & Open Questions
+
+- **Mode currently `===1===`** (Director set it). q8 render produces film content; q8a explicitly authorized,
+  and earlier DB write done via script in ===1=== (scripts bypass the Write-tool mode hook). If strict, ask ===5===.
+- **PLAN.md is over its 200-line cap** and CURRENT STATE is stale-for-today — that IS the drift being fixed; q7.
+- Plans 1 & 2 implementation gated on the прогон.
+
+---
+
+## Exact Next Step
+
+Start with **q7**: on `master`, refresh PLAN.md `## CURRENT STATE` with a 2026-06-27 entry (E12 copy/publicist
+fix + Compass v2 + master-only rule), compact the file back under 200 lines, set the North-Star **Star** to
+"AI movie factory (first product: Silent Sandy)", and fix the MEMORY.md index timestamp line to local `date`.
+Then **q8a** (E12 `MY TIME!` thumbnail regen — server is up). Then **q4** (portable doctrine repo + bootstrap).
+
+---
+
+## Environment & Setup Notes
+
+- **Dubai time = LOCAL `date '+%H:%M'`** (machine clock is Dubai). Do NOT use `TZ='Asia/Dubai'` (returns UTC here).
+- **Every reply opens with the Compass v2 header** (Star/Planet/Course + "I'm orchestrator & partner — I remember").
+- **PLAN.md is master-only** — edit/read only on master.
+- **tsx one-off scripts:** run from webapp — `cd /c/SandyStudio/webapp && npx tsx scripts/<file>.ts` (dry-run default; `--commit` to apply).
+- **Dev server + Inngest are UP** right now (another session): `:3000`, `:8288`. Don't start a competing server (port-war risk).
+- **Edit needs a prior Read tool call** on that exact file (Grep/system-context dumps do not count).

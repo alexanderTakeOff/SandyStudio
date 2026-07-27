@@ -1,0 +1,188 @@
+# Session: 2026-05-14
+
+**Started:** ~17:40 UTC (2026-05-13 in Dubai-local, continued past midnight UTC into 2026-05-14)
+**Last Updated:** ~21:00 UTC (Dubai local ~01:00)
+**Project:** SandyStudio webapp — `claude/quizzical-brown-462555` worktree
+**Topic:** q1 STITCH per-shot trim → fal.ai Seedance 2.0 probes → Phase 2 production integration (multi-provider router + UI dropdown + migration + tests + real probe) → Sprint α→ε plan locked → pre-clear checkpoint.
+
+---
+
+## What We Are Building
+
+SandyStudio is an AI-first animation production studio. This session spanned three distinct chapters:
+
+1. **q1 STITCH per-shot trim** — ffmpeg concat demuxer `outpoint` directive so each per-shot mp4 is trimmed to the animatic-intended duration. Closes the E20 final-cut bug where the cut played 96s (sum of Veo clip native lengths 4s/8s) instead of 54s (sum of `animatic_v1.shot_list[i].duration_seconds`).
+
+2. **Phase 1 fal.ai Seedance 2.0 probe** — standalone CLI exploration of fal.ai Seedance 2.0 image-to-video as an alternative to Veo 3.1. Director tested two motion intents: (a) slow orbit-left revealing more of the perfume counter bar location, (b) Madame + Sandy dancing partner-grip with 360° camera orbit. Both produced fantastic results. Director approved full production integration.
+
+3. **Phase 2 production integration** — wired Seedance 2.0 as a real `MultiVideoGenProvider` end-to-end: provider impl, router registration, type widening, runner refactor, regenerate-video route + single-shot route + Inngest event thread-through, VGENShotPanel + EpisodeTimelineSection UI dropdowns, provider-catalog entries, migration 0028 (default flipped to Seedance for `character_video` contract), 11 unit tests. tsc clean · vitest 198/198 · replay-pilot 29/29. Real probe verified.
+
+4. **Sprint α→ε plan locked** — Director approved next sprint: P0 (Flux 422 fix + E20 archive) → α (Postgres trigger Realtime + team-chat) → β (seedance prompting skill) → γ (E21 production via chat only, zero webapp clicks, live PA-gap audit) → δ (Character Identity Model) → ε (Skill Editor / Learning Loop). Checkpoint memo + PLAN.md rotated.
+
+---
+
+## What WORKED (with evidence)
+
+- **q1 STITCH per-shot trim** — confirmed by: `ffprobe -show_entries format=duration` on re-fired STITCH event mp4 → `54.231000s` (vs prior 96s). File `public/staging/final-cut-763c5c1e-...-613bd1ae73f1.mp4`, 9.97 MB, h264/aac 1280×720. New v03-DRAFT asset row landed in Supabase.
+- **Seedance 1.0 Pro Fast img2vid probe (`bytedance/seedance-2.0/fast/image-to-video`, 5s, 16:9, 720p)** — confirmed by: 4 frames extracted via ffmpeg showed clear orbit-left camera move with location reveal (cream walls, additional shelves, floor tiles). $1.19 billed, 103s wall clock, 2.86 MB mp4.
+- **Seedance 2.0 Standard img2vid 8s dance + 360° probe** — confirmed by: 6 extracted frames (t=0, 1.57, 3.15, 4.72, 6.29, 7.87s) show characters holding partner-grip hands while camera completes ~340° orbit; location revealed from all angles. $2.42 billed, 7 min wall clock, 6.4 MB mp4. Director called it "фантастика — надо интегрировать".
+- **`lib/agents/providers/fal-seedance.ts`** — confirmed by: 11 unit tests with mocked global.fetch all pass (slug resolution, env override, fal parent-truncated URL quirk, cost math, 429/FAILED surfacing, inline data-URL composition, [4,15] duration clamp).
+- **Multi-provider router refactor** — confirmed by: `vitest run` all 198 tests green (was 187 → +11 fal-seedance), `replay-pilot` 29/29 green (mock pipeline unaffected by real provider wiring).
+- **Provider dropdown UI** (`VGENShotPanel.tsx` + `EpisodeTimelineSection.tsx`) — confirmed by: tsc --noEmit clean after the changes, cost preview is provider-aware (Seedance Fast $0.2419/s vs Veo Fast $0.075/s shown in label).
+- **Migration 0028 applied** — confirmed by: `npx supabase db push` output "Finished supabase db push" + verification SQL `provider_assignments.character_video.active_provider_id = 'seedance-fal-img2vid'`.
+- **Real Seedance Fast probe post-refactor** — confirmed by: `npx tsx scripts/test-orbit-fal.ts 'bytedance/seedance-2.0/fast/image-to-video' 5` → 103s wall clock, 2.5 MB mp4, $1.21, video.url retrieved correctly. Slug + env + URL quirks all unchanged after the refactor.
+- **Plan file written + checkpoint memo + PLAN.md rotated** — confirmed by: all three files exist on disk; MEMORY.md top entry 🚀 pointing to checkpoint memo.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Veo 3.1 Fast & Standard probes for orbit-left img2vid** — failed because: 429 RESOURCE_EXHAUSTED daily quota on both Fast and Standard model buckets. The 25-30 requests fired during E20 SC11 retries earlier that day burned Tier-1 daily quota. $0 spent (429 not billed). Director chose to pivot to fal.ai instead of waiting for ~13h quota reset.
+- **Initial fal.ai probe with `fal-ai/bytedance/seedance-2.0/fast/image-to-video` slug (with `fal-ai/` prefix)** — failed because: fal's gateway accepted submit but routed under `fal-ai/bytedance/` parent and returned a stub completion in 0.03s with `"logs": null`, `inference_time: 0.03`. The model didn't actually run. Slug must be without `fal-ai/` prefix: `bytedance/seedance-2.0/fast/image-to-video`.
+- **Attempt to use full-slug consistency in status/result URLs (matching Python `fal_client` SDK example)** — failed because: fal's REST gateway truncates `/image-to-video` from status_url/response_url for Seedance 2.0; constructing `https://queue.fal.run/<full-slug>/requests/<id>/status` returns 405 Method Not Allowed. The Python SDK hides this internally. Raw REST must use fal-returned URLs verbatim.
+- **First Seedance 2.0 result fetch via fal-returned response_url** — failed because: fal's response_url was parent-truncated to `https://queue.fal.run/fal-ai/bytedance/requests/...` (because we'd submitted with the wrong `fal-ai/` prefix); GET returned 404 `"Path /seedance-2.0/fast/image-to-video not found"`. Fixed by dropping the prefix at submit time so fal's internal routing constructed correct truncated URLs.
+- **fal.ai balance exhausted on first real submit** — failed because: 403 `"User is locked. Reason: Exhausted balance"`. Director's fal.ai signup default credit (if any) was zero. Resolved by Director top-up.
+- **3 unit tests in fal-seedance.test.ts initial run** — failed because: mock fetch branch matched on `!u.includes('/requests/')` covered BOTH the queue submit URL AND the final video CDN download URL (`https://x/v.mp4`). The CDN GET (no body) overwrote captured submit body to `{}`. Fixed by tightening branch to `u.startsWith('https://queue.fal.run/') && !u.includes('/requests/')`.
+- **tsc rejected `Promise<ArrayBufferLike>` in test helper** — failed because: lib.dom union of `ArrayBuffer | SharedArrayBuffer` when `bytes.buffer` accessed. Fixed by copying into plain `new ArrayBuffer(len)` before returning.
+- **tsc reference to old `QUALITY_RATE_USD_PER_SECOND` const after rename** — failed because: cost preview JSX still referenced the old name. Replaced with `COST_RATE_USD_PER_SECOND[provider][quality]` matching the new provider-aware shape.
+- **bash `cd webapp && ...` after Director switched cwd** — failed because: working dir already inside webapp. Used absolute path `/c/SandyStudio/.claude/worktrees/quizzical-brown-462555/webapp` going forward.
+
+---
+
+## What Has NOT Been Tried Yet
+
+Sprint α→ε per locked plan (`~/.claude/plans/cached-tickling-willow.md`):
+
+- **P0 (a):** Fix Flux Pro 1.1 Ultra `image_size: "1024×1024"` → enum (`'square_hd'/'square'/'portrait_4_3'/'portrait_16_9'/'landscape_*'`). 422 surfaced in screenshot — EREF regenerate UI flow blocked. ~15 min in the image-side provider file.
+- **P0 (b):** Mark E20 → `status = 'ARCHIVED-PARTIAL'` + activity_event log. ~10 min.
+- **α (a):** Postgres trigger `trg_inject_ambient_turn` ON INSERT activity_events → concierge_turns INSERT. Migration 0029. Thread resolver via `app_config.active_thread:<director_id>` or latest non-ended thread per director.
+- **α (b):** Team-chat unified channel: POST `/api/team-chat/post` for Claude curl; PA system-prompt block lifting `kind='claude_message'` turns; ConciergePanel renders Claude bubbles distinctly.
+- **α (c):** Retire `hooks/useActivityRealtime.ts` (browser-side WebSocket subscribe) — replaced by server-side trigger.
+- **β:** Seedance prompting skill `.claude/skills/seedance-prompting/` — 7-slot template + timeline + camera vocabulary + 6 YouMind exemplars + 2 SandyStudio originals + LICENSE-NOTICES. Per `nervous-bose-8196fc` session research, 2026-05-13.
+- **γ:** E21 production through chat only — Director instructs, Claude executes CLI/DB; zero webapp clicks; live `docs/pa-gap-audit-e21.md` with `pa_feasibility=OK/GAP/N/A` tags. Real generation budget cap ~$80.
+- **δ:** Character Identity Model — migration 0030, EREF builder reads identity fields, AssetDetailDrawer surfaces edit panel.
+- **ε:** Skill Editor / Learning Loop per `~/.claude/plans/valiant-soaring-karp.md`.
+
+Out of scope (deferred):
+- StageKebabMenu per-stage provider section (Phase 8 task per existing TODO comment in code).
+- Sprint 10A reviewer unification (Director deferred to UI sprint).
+- Seedance 1080p / 10-15s durations / webhook (Phase 2.1).
+- "Claude-as-primary architectural pivot" (worldview discussion, Director parked it 2026-05-14 evening — kept lane separation: Webapp+PA = production surface, Claude Code = operator surface, team-chat bridges).
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+| --- | --- | --- |
+| `webapp/lib/agents/providers/fal-seedance.ts` | ✅ Complete (NEW) | REST queue adapter, env: FAL_KEY (+ optional model-id overrides). Cost $0.3024/s standard, $0.2419/s fast. |
+| `webapp/lib/agents/providers/video-gen-multi.ts` | ✅ Complete | `seedanceFalProvider` registered; `getMultiVideoProvider()` dispatches both ids. `KNOWN_VIDEO_PROVIDER_IDS` export. |
+| `webapp/lib/agents/provider-resolver.ts` | ✅ Complete | `'seedance-fal'` + `'seedance-fal-img2vid'` → `FAL_KEY` env mapping. |
+| `webapp/lib/api/vgen-defaults.ts` | ✅ Complete | `VgenProviderId` widened; `FALLBACK_DEFAULTS.provider_id = 'seedance-fal-img2vid'`. |
+| `webapp/lib/agents/runner.ts` | ✅ Complete | EXEC-VGEN dispatches via `getMultiVideoProvider(provider!.providerId).generate(...)`. Veo-only Standard img2vid force-8 quirk preserved as `isVeoProvider` branch. |
+| `webapp/lib/agents/providers/ffmpeg-stitch.ts` | ✅ Complete (q1) | `ConcatShotEntry` shape; `outpoint <seconds>` directive when `durationSeconds` set. |
+| `webapp/app/api/assets/[id]/regenerate-video/route.ts` | ✅ Complete | Body `provider` field; capability-based duration clamp; router dispatch. |
+| `webapp/app/api/episodes/[id]/vgen/generate-single-shot/route.ts` | ✅ Complete | Body `provider` field forwarded into Inngest event. |
+| `webapp/inngest/functions/exec-vgen.ts` | ✅ Complete | `VgenEventData.provider` + `syntheticResolvedProvider()` helper; both pilot + single-shot handlers thread-through. |
+| `webapp/components/vgen/VGENShotPanel.tsx` | ✅ Complete | New Provider `<select>` (Seedance / Veo). `COST_RATE_USD_PER_SECOND` two-level lookup. Cost preview provider-aware. POST body includes `provider`. |
+| `webapp/components/vgen/VGENShotSection.tsx` | ✅ Complete | `pickProvider()` normalizes legacy variants when seeding panel state. |
+| `webapp/components/timeline/EpisodeTimelineSection.tsx` | ✅ Complete | Provider `<select>` left of Generate Fast/Standard buttons. State default `seedance-fal-img2vid`. POST body includes `provider`. |
+| `webapp/lib/api/provider-catalog.ts` | ✅ Complete | Seedance entries added to `video` + `character_video` candidates. |
+| `webapp/supabase/migrations/0028_widen_vgen_provider.sql` | ✅ Complete + APPLIED | Flips `provider_assignments.character_video` → `seedance-fal-img2vid`. |
+| `webapp/__tests__/lib/agents/providers/fal-seedance.test.ts` | ✅ Complete (NEW) | 11 tests with mocked fetch — all green. |
+| `webapp/__tests__/lib/agents/providers/ffmpeg-stitch.test.ts` | ✅ Complete | +2 tests for `outpoint` directive. Now 12 passing. |
+| `webapp/scripts/test-orbit-fal.ts` | ✅ Complete (NEW, smoke) | Standalone fal.ai REST probe with `PROBE_PROMPT` / `PROBE_PROMPT_FILE` env override. Used multiple times during probes. |
+| `webapp/scripts/extract-frames.ts` | ✅ Complete (NEW, smoke) | ffmpeg-based N-frame extractor for displaying probe results inline via Read tool. |
+| `webapp/scripts/find-eref-sc04.ts` | ✅ Complete (NEW, helper) | DB lookup helper for E20 EREF row. |
+| `PLAN.md` | ✅ Complete | `## CURRENT STATE` rotated — Sprint α→ε kickoff now top, Phase 2 Seedance entry archived below. |
+| `~/.claude/plans/cached-tickling-willow.md` | ✅ Complete | Sprint α→ε plan, one-page tezisniy. |
+| `~/.claude/projects/C--SandyStudio/memory/session_2026-05-14_sprint_alpha_kickoff.md` | ✅ Complete (NEW) | Pre-clear checkpoint memo, read-first on resume. |
+| `~/.claude/projects/C--SandyStudio/memory/session_2026-05-13_seedance_provider_integration.md` | ✅ Complete (NEW) | Phase 2 Seedance session memo. |
+| `~/.claude/projects/C--SandyStudio/memory/MEMORY.md` | ✅ Updated | Top entry 🚀 pointing to kickoff checkpoint; Phase 2 Seedance entry second. |
+
+---
+
+## Decisions Made
+
+- **Seedance 2.0 as new default for `character_video` contract** — reason: probe quality jump over Veo 3.1 (orbit + dance + 360° preserved character + camera control). Director directive 2026-05-14.
+- **Keep VGENShotPanel two-select layout (Provider + Quality)** — reason: cleaner UX, matches Director's "as the existing select" reference. Folding provider+quality into one 4-option dropdown would have been DOM-economical but UX-jarring.
+- **Phase 2 caps Seedance at 4-8s for animatic parity** — reason: Seedance natively supports 4-15s but our animatic shot_list logic clamps to [4,8]. Widening duration is Phase 2.1.
+- **`generate_audio: false` always for Seedance** — reason: embedded audio would clash with EXEC-MGEN (SUNO) + EXEC-STITCH (ffmpeg mux) pipeline.
+- **Use fal-returned URLs verbatim, not constructed-from-slug** — reason: fal REST gateway truncates to parent path for Seedance 2.0; Python SDK hides this. Match observed behavior in raw fetch.
+- **E20 partial close → ARCHIVED-PARTIAL marker** — reason: zombie pending approval ghost in inbox. P0 (b) closes it.
+- **E21 audit lane separation: Claude in CLI, Director in chat, no webapp clicks** — reason: produces real PA-gap backlog as side product; tests integration of α + β; avoids race conditions.
+- **Phase order β before ε** (seedance skill first, full Skill Editor later) — reason: skill is just `.md` files that work today; full editor needs 2+ weeks of real Phase A operation feedback before designing rule update flow.
+- **"Claude-as-primary" architectural pivot parked** — reason: worldview discussion; hybrid surfaces (Webapp+PA + Claude Code with team-chat bridge) is the right answer. Strategic note dropped per Director's "забудем".
+- **Sprint 10A reviewer unification deferred** — reason: per-stage reviewers work; consolidation is QoL not blocker.
+
+---
+
+## Blockers & Open Questions
+
+- **Flux Pro 1.1 Ultra `image_size` 422 surfaced via screenshot 2026-05-14** — blocker for EREF regenerate-image flow through UI. Quick fix in image-side provider; covered by P0 (a) in next session.
+- **fal.ai balance** — Director topped up earlier today (~$5-10 confirmed by 403 → 200 transition). Should last several E21 production probes. Monitor at https://fal.ai/dashboard/billing.
+- **PA Realtime push silent in browser** — `useActivityRealtime.ts` fires 0 POSTs despite migration 0027. q2 / Phase α addresses via Postgres trigger; browser hook retires.
+- **Open question for next session:** which fresh worktree for the sprint? Current `quizzical-brown-462555` accumulated 60+ commits ahead of master; might cleanly stage Phase α as `sprint-alpha-realtime-teamchat` worktree to keep PR scope contained. Director call.
+
+---
+
+## Exact Next Step
+
+1. Director `/clear`s the session.
+2. On fresh session start, Claude reads (per CLAUDE.md §9 + Ritual 2):
+   - CLAUDE.md
+   - PLAN.md `## CURRENT STATE` → sees "Sprint α→ε kickoff" pointer
+   - `specs/glossary.md`
+   - `~/.claude/projects/C--SandyStudio/memory/MEMORY.md` → top entry 🚀 forces read of `session_2026-05-14_sprint_alpha_kickoff.md`
+3. Director sends short confirmation ("погнали" / "P0 starts" / similar).
+4. Claude starts **P0 (a)** — investigate Flux Pro 1.1 Ultra `image_size` enum:
+   - Find the image-side provider that calls Flux Pro 1.1 Ultra (likely `webapp/lib/agents/providers/openai-image-edit.ts` or similar — grep for `flux-pro-1.1-ultra` / `image_size`).
+   - Replace `"1024×1024"` with `'square_hd'` (or the appropriate enum based on requested dimensions).
+   - Add unit test asserting the enum is sent.
+   - Verify with EREF regenerate flow.
+5. Then **P0 (b)** — Mark E20 → ARCHIVED-PARTIAL via `webapp/scripts/archive-e20-partial.ts` (new), write activity_event, verify episodes UI no longer surfaces E20 as pending.
+6. Verify trio + commit + memo.
+7. Then move to Phase α.
+
+---
+
+## Environment & Setup Notes
+
+**Two-terminal local dev (canonical):**
+- Terminal 1: `cd webapp && npm run dev` → http://localhost:3000 (Turbopack)
+- Terminal 2: `cd webapp && npm run inngest:dev` → http://localhost:8288
+
+Both were running at session end (via preview MCP IDs from previous session, may need restart on fresh).
+
+**Required env in `webapp/.env.local`:**
+```
+OPENAI_MODEL=gpt-5.5
+OPENAI_REASONING_EFFORT=none
+OPENAI_MAX_OUTPUT_TOKENS=8000
+OPENAI_TEMPERATURE=0.2
+GEMINI_API_KEY=<set>
+FAL_KEY=<set, 69 chars, prefix 0e2c6ee6...>
+SUPABASE_SERVICE_ROLE_KEY=<set>
+NEXT_PUBLIC_SUPABASE_URL=https://akstennzrnkvexjgzhxv.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<set>
+```
+
+**Director timezone:** Dubai UTC+4. Auto-sync commits use Dubai local time; DB/Inngest use UTC. Always `date -u` before declaring a job stale.
+
+**Branch:** `claude/quizzical-brown-462555`. Last auto-sync commit before this session was `6099464` (2026-05-13 17:36 Dubai). Phase 2 Seedance work + Sprint plan commits land via auto-sync hook PostToolUse on Write/Edit.
+
+**Migrations applied to remote Supabase as of session end:** 0028 (widen_vgen_provider). Migrations 0026, 0027 from prior session.
+
+**Test commands for verify trio:**
+```bash
+cd webapp
+npx tsc --noEmit             # type safety
+npx vitest run               # 198/198 expected
+npm run replay-pilot         # 29/29 expected
+```
+
+**Real fal.ai probe (smoke):**
+```bash
+cd webapp && npx tsx scripts/test-orbit-fal.ts 'bytedance/seedance-2.0/fast/image-to-video' 5
+# ~$1.21, ~103s wall clock
+```

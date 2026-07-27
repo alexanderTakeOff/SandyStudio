@@ -1,0 +1,157 @@
+# Session: 2026-07-22 → 07-23 (продолжим утром)
+
+**Started:** ~2026-07-22 18:00 (Dubai)
+**Last Updated:** 2026-07-23 ~01:3x
+**Project:** SandyStudio (`C:\Users\Alexander\sandystudio`)
+**Topic:** Smoke E31 «Sandy at the Airport» → всплыли 3 корня: сломанный канон (метёлка/фон), «бездомная» длительность эпизода, дыры инструментов Полины.
+
+---
+
+## What We Are Building
+
+Прогон smoke E31 (аэропорт, продолжение приключений Сэнди). По ходу вскрылись и починены
+три системных корня, а не только симптомы:
+
+1. **Канон:** метёлка (character_metelka) показывала съехавший визуал, а пустой фон
+   (SBL-location_empty_background) — заглушку. Причина: `empty_background` — единственный
+   Bible-ассет S15 БЕЗ Drive-бэкапа (`drive_file_id=NULL`), жил только в локальном кэше;
+   при пересборке стека под E31 кэш очистился → картинка пропала. Метёлка была цела на
+   Drive, но превью залипло (LOCKED = immutable-кэш, freshness-ключ не сменился).
+
+2. **Длительность:** storyboard вышел 35с вместо 60. Корень — `target_runtime_seconds`
+   был «бездомным»: собирался при создании эпизода, утекал только в текст брифа, нигде
+   не хранился структурно, а screenwriter ИГНОРИЛ его и хардкодил «15–40s» (для SHORTS).
+   E31 помечен `delivery_targets:["youtube_shorts"]` → 15–40 → 35.
+
+3. **Полина (concierge, gemini-2.5-flash):** не смогла прочитать готовый скрипт/нотисы —
+   у неё есть `writeStartNotice` (пишет), но НЕТ read-инструмента; `getStateMatrix` не
+   показывает pre-production (writer/script/storyboard), `getRecentActivityEvents` окно 30м.
+   Вывод Директора: «дело в инструментах, не в модели».
+
+---
+
+## What WORKED (with evidence)
+
+- **Канон восстановлен на Drive** — метёлка (файл Директора, Пиппи-лист 1024²) + пустой
+  фон (#FFF8EC плита 1536×1024) залиты через `persistBinary(bucket:'bible')`, получили
+  `drive_file_id`. Подтверждено: `curl /api/media/<name>` → 200 реальные байты; Директор
+  визуально подтвердил оба в Library.
+- **Bible-canon Drive-backup guard** (`lib/api/media-backup-guard.ts`) — нельзя финализировать
+  SBL image/video без `drive_file_id`; вставлен в `approve` + `bible/[assetId]/lock`.
+  Подтверждено: 11/11 unit-тестов, tsc 0.
+- **`bumpPreviewFreshness`** в `copy-image-from` — превью не залипает. Тесты зелёные.
+- **`episode.target_runtime_seconds` заведён** (`resolveRuntimeTarget` в delivery-targets.ts):
+  Director-значение авторитетно (побеждает shorts), дефолт 60 long / 30 shorts. Screenwriter
+  + Storyboarder читают и инжектят явно; storage пишет в metadata. Тесты зелёные, tsc 0.
+- **Storyboarder теперь читает Start Notice** (раньше только writer).
+- **E31 storyboard переписан 35с→60с** — reject v01→REVISION + Inngest-событие с revisionNote
+  (60с + gag-reservoir из нотисов). Storyboarder на НОВОМ коде выдал v02: `runtime_target_seconds:60`,
+  **20 шотов, сумма duration ~67с**. Подтверждено скриптом-инспектором + activity events.
+- **Деплой:** kill :3000 → `npm run build` (exit 0) → `npm run start` (bg) → resync Inngest
+  («Successfully registered») → событие проведено. Стек жив: app :3000=307, inngest :8288=200.
+- **Коммит** `76183dfd` на master (unpushed).
+
+---
+
+## What Did NOT Work (and why)
+
+- **Первый диагноз «картинки empty_bg никогда не было»** — НЕВЕРНО. Директор поправил:
+  «была и работала, сломалось сегодня». Реальность: была в локальном кэше без Drive-бэкапа,
+  очистилась при пересборке. Урок: наложить на runtime, не гадать.
+- **MCP Supabase `execute_sql`** — нет прав (`-32600 permission`). Работаем через tsx-скрипты
+  с service-role из `.env.local`.
+- **Google Drive MCP `download_file_content`** — «insufficient authentication scopes» на
+  ассеты (не тот токен). Картинки тянем через media-route сервера.
+- **Inline `npx tsx -e` с многострочным/`import`** — молча падает (ESM/hoisting). Использовать
+  .ts-файлы. Также: `import` хойстится ДО загрузки .env → клиент без ключа (reject-скрипт
+  так упал на `inngest.send`; обошли POST-ом напрямую в Inngest `/e/<key>`).
+- **Grep tool** пару раз падал «Executable not found claude.exe» — обходили bash-grep по webapp.
+
+---
+
+## What Has NOT Been Tried Yet / осталось
+
+- **UI-поле длительности в настройках эпизода** (EpisodeSettings) — НЕ сделано. Сейчас
+  `target_runtime_seconds` задаётся только при создании + я выставил E31=60 напрямую в metadata.
+- **Readability-правка storyboard v02** — EXEC-CREAD вернул REVISE (штатно), Continuity PASS.
+  v02 в REVISION ждёт правки читаемости (Mode 1, ручной ре-триггер или reconciler).
+- **Episode-media Drive backup** (music/stitch/final/intro) — отложено Директором «после E31».
+  См. `backlog_episode_media_drive_backup.md`.
+- **Полина read-инструменты** (readAssetDraft + getStateMatrix показывает весь эпизод +
+  промпт «читай матрицу перед ответом»). См. `backlog_polina_read_tools_gap.md`.
+- **28 потерянных финализированных медиа** (NULL drive_file_id, нет байт) — регенерация по
+  требованию; в осн. старая music E01-E17 + video_intro (потерян, регенерить brand-bumper).
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/agents/delivery-targets.ts` | Complete | +readEpisodeRuntimeTarget/resolveRuntimeTarget |
+| `webapp/lib/agents/runners/screenwriter.ts` | Complete | читает runtime, инжект явно, убран хардкод 15-40 |
+| `webapp/lib/agents/runners/storyboarder.ts` | Complete | читает start_notice + runtime, hard-rule «reach N» |
+| `webapp/app/api/episodes/route.ts` | Complete | пишет target_runtime_seconds в metadata |
+| `webapp/lib/api/media-backup-guard.ts` | Complete | SBL guard (approve + bible/lock) |
+| `webapp/lib/asset-preview-resolver.ts` | Complete | +bumpPreviewFreshness |
+| `webapp/app/api/assets/[id]/copy-image-from/route.ts` | Complete | bump freshness |
+| `webapp/app/api/assets/[id]/approve/route.ts` | Complete | guard-вызов |
+| `webapp/app/api/series/[id]/bible/[assetId]/lock/route.ts` | Complete | guard-вызов |
+| `webapp/scripts/audit-media-backup.ts` | Complete | постоянный инструмент (найти NULL-Drive) |
+| `webapp/__tests__/...` (guard/freshness/delivery/screenwriter) | Complete | 22+ тестов зелёные |
+| EpisodeSettings UI (длительность) | Not Started | дельта |
+
+Все выше — в коммите `76183dfd`. Незакоммиченного из моей работы нет.
+
+---
+
+## Decisions Made
+
+- **runtime_target авторитетен, побеждает shorts-диапазон** (Директор: «60 по дефолту»).
+  Дефолт 60 long / 30 shorts. Иначе 60 на shorts-эпизоде никогда не сработает.
+- **Guard сужен до SBL-канонов** (не episode IMG/VID/AUD): аудит показал 28 финализированных
+  episode-медиа с NULL Drive (в осн. music), гейт на них ложно заблокировал бы pipeline/smoke.
+  Episode-backup — отдельный слой после E31.
+- **Anti-additivity:** переиспользован существующий `target_runtime_seconds` (без новой колонки),
+  freshness-bump только в copy-image-from (regenerate/upload уже бампают сами).
+- **Метёлка = Metelka** (не «Пиппи» — выдумка EXEC-DIR-AI); имя чиним только в системе,
+  пиксельный текст на канон-листе оставляем (q13). «Пиппи» вычищен из БД.
+
+---
+
+## Blockers & Open Questions
+
+- **git:** коммит `76183dfd` на `master`, **НЕ запушен**. Ветка сейчас master (старт был
+  claude/hog-observers). Директор НЕ подтвердил push/merge — спросить утром.
+- **Стек:** фоновый job app-сервера был reaped, но процесс `next start` (PID был 41752)
+  пережил и держит :3000. Проверить утром что жив; при падении — поднять по §13 (durable inngest,
+  npm run start bg, resync `curl -X PUT /api/inngest`).
+- **MEMORY.md ~20KB** — хук просит компактнуть (<17KB). Отложено.
+- **PLAN.md** не обновлён (master-only; был на master — можно обновить). Отложено.
+
+---
+
+## Exact Next Step
+
+**E31 storyboard дошёл до v3/REVIEW, readability PASS_WITH_UNCERTAINTY (был REVISE→починен).**
+Директор решил: смоук идёт на публику, прогнали с правкой критика. v3 = 27 шотов ~66с,
++5 бит `false_success` (вставлены по критериям CREAD), 7 gag + 9 punchline.
+
+Утром: (1) стек жив? (`curl :3000` / `:8288`); (2) push/merge коммита `76183dfd` (на master, unpushed);
+(3) **ЕДИНСТВЕННОЕ действие по E31: аппрувнуть storyboard v3 → фабрика едет на EREF** (каноны
+метёлка+фон готовы). Continuity по v3 мог ещё доезжать — глянуть.
+
+Backlog из этой сессии: [[backlog_critic_revise_action_ux_gap]] (кебаб критика путает — действие
+должно быть на сториборде), [[backlog_polina_read_tools_gap]], [[backlog_episode_media_drive_backup]],
+UI-поле длительности эпизода (EpisodeSettings).
+
+---
+
+## Environment & Setup Notes
+
+- Стек по CLAUDE.md §13: app `npm run start` :3000 (prod.log), Inngest SELF-HOSTED durable
+  `inngest start` :8288 (НЕ dev). Rebuild: kill :3000 → `npm run build` → `npm run start` bg →
+  `curl -X PUT http://localhost:3000/api/inngest` (ждать «Successfully registered»).
+- Скрипты: tsx с ручным парсингом `.env.local` (service-role). Inline `tsx -e` НЕ надёжен.
+- Fire Inngest-события напрямую: `POST http://localhost:8288/e/<INNGEST_EVENT_KEY>` JSON `{name,data}`.
+- E31 id: `c3934ee2-c135-43e9-9a56-58b6bdc1f98b`. Метёлка id: `0ce71831-...`. Фон id: `4749660d-...`.

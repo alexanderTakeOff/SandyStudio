@@ -1,0 +1,88 @@
+# Session: 2026-06-01
+
+**Started:** ~11:18 (resume from 2026-05-27 extended session)
+**Last Updated:** ~12:00
+**Project:** SandyStudio (worktree `quizzical-brown-462555`, branch `claude/quizzical-brown-462555`)
+**Topic:** ECC harness trim — agent-sort + harness-audit to cut per-turn context bloat
+
+---
+
+## What We Are Building
+
+Not a code task — an **operational harness cleanup**. Director flagged (2026-05-27) that session context fills too fast. Root cause diagnosed: the global ECC install at `~/.claude/` injects 149 skill descriptions + 48 agent descriptions + 82 command descriptions into the system reminder EVERY turn. (MCP tool schemas are already deferred by the harness, so they are NOT the bloat.)
+
+Goal: run `agent-sort` (evidence-based DAILY vs LIBRARY classification against the real SandyStudio stack) + `harness-audit` (MCP servers + session discipline), then trim the autoloaded surface to what SandyStudio actually uses, keeping everything restorable.
+
+SandyStudio stack (the only project this global install serves): Next.js 15 / TypeScript / React 19 / Tailwind / Three.js + Supabase (Postgres) + Inngest + OpenAI/Anthropic SDK + Zod + vitest + markdown agent specs + AI media (fal.ai/Seedance/gpt-image/Veo). NO Python/Go/Rust/Java/Kotlin/Swift/PHP/Flutter/C++/Django/Laravel/Spring.
+
+---
+
+## What WORKED (with evidence)
+
+- **agent-sort classification** — confirmed by: 3 parallel subagents returned DAILY/LIBRARY tables with repo evidence. Counts: skills ~45 DAILY / ~100 LIBRARY; agents 25/23; commands 34/45; rules 21/55.
+- **Trim execution (PowerShell move)** — confirmed by: script reported `skills-library: 75 moved, 0 missing`, `agents-library: 19 moved, 0 missing`, `commands-library: 18 moved, 0 missing`. Remaining counts verified: skills 149→**74**, agents 48→**29**, commands 82→**64**.
+- **Effect is already live** — confirmed by: the in-session skill list re-scanned and off-stack skills (python/go/rust/kotlin/swift/laravel/django/springboot/etc.) disappeared from the available-skills reminder. No restart needed.
+- **SandyStudio DAILY skills intact** — confirmed by: animator, storyboarder-*, seedance-prompting, sandystudio-archivist, episode-serialization, eref-*, library-style-first, sandy-gag-library still present in the refreshed list. None were in the move arrays.
+- **MCP/hook audit** — confirmed by: subagent read `mcp-needs-auth-cache.json` + configs. Finding: connectors (Gmail/Figma/Vercel/Gamma/Calendar/Drive/Canva) are account-global plugin connectors, `mcpServers` is `{}` in `.claude.json`. 8 SandyStudio governance hooks all healthy, backing scripts exist.
+- **Memory written** — `harness_trim_skills_library.md` + MEMORY.md index line.
+
+---
+
+## What Did NOT Work (and why)
+
+- **`claude mcp list` in PowerShell** — failed because: `claude` CLI not on PATH in this shell (`CommandNotFoundException`). Not pursued — MCP disconnect is interactive anyway. Use in-session `/mcp` → Disconnect instead.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **MCP connector disconnect** — the one remaining manual step. Director to open `/mcp` → Disconnect for: Gmail, Google Calendar, Google Drive, Vercel, Gamma, Canva. KEEP: Supabase, Claude_Preview, ccd_session/directory, Claude_in_Chrome, Figma. (Account-global → affects all projects; if Gmail/Drive needed elsewhere, use project-scoped `disabledMcpServers` in SandyStudio config instead.)
+- **rules trim** — deliberately skipped (off-lang rules in `~/.claude/rules/<lang>/` are not injected anyway — only common/* + web/* load; zero benefit).
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `~/.claude/skills-library/` (NEW) | ✅ Complete | 75 off-stack/off-domain skills moved here, out of autoload |
+| `~/.claude/agents-library/` (NEW) | ✅ Complete | 19 off-lang reviewers/build-resolvers + healthcare + opensource-* |
+| `~/.claude/commands-library/` (NEW) | ✅ Complete | 18 off-lang review/build/test commands + jira |
+| `~/.claude/skills|agents|commands/` | ✅ Trimmed | 74 / 29 / 64 remaining (DAILY set) |
+| `~/.claude/projects/C--SandyStudio/memory/harness_trim_skills_library.md` | ✅ Complete | restore instructions + MCP decision |
+| `~/.claude/projects/C--SandyStudio/memory/MEMORY.md` | ✅ Updated | index line under Operational |
+| SandyStudio repo (webapp/*, agents/*) | Untouched | no code change this session |
+
+---
+
+## Decisions Made
+
+- **q1b — Tier 1+2 trim** (off-stack languages + off-domain ops), not full LIBRARY. Reason: max unload without losing situationally-useful skills (deep-research, manim, videodb, blueprint, content-engine, database-migrations kept loaded).
+- **q2b — produce + execute the move script** (Director then said "сам выполни"). Moved to sibling `*-library/` dirs (not scanned) rather than deleting — trivially restorable via `Move-Item` back.
+- **q3y — drop 6 dead MCP connectors**, but Director kept **Figma** (real UI/dev tool for future "красивый интерфейс"); Theo's call: drop Gamma + Canva (slides/social don't build app UI). Near-zero context cost since connectors are deferred.
+- **Session discipline doctrine** confirmed: 1 TD-batch per session → /clear; fan-out inventory/probe to subagents (return conclusions not dumps); worktree-parallel cap 2 + main.
+
+---
+
+## Blockers & Open Questions
+
+- MCP disconnect is Director's manual step (can't be done by Theo — interactive `/mcp`, no CLI on PATH).
+- ECC re-install could repopulate the original dirs — if so, re-run the trim (script is inline in this session's transcript, not saved to a file).
+
+---
+
+## Exact Next Step
+
+1. Director: `/mcp` → Disconnect the 6 connectors (Gmail, Calendar, Drive, Vercel, Gamma, Canva).
+2. Then `/clear` and start TD-83 (Critic revision cap + HALT escalation) as a fresh batch — first item in the post-audit backlog. Plan: replicate GAGAD revision-cap pattern in EXEC-VPREV + EXEC-EPREV (~100 LoC + ~40 LoC tests). See doctrine `critic_revision_cap_doctrine.md`.
+
+Open backlog after TD-83: TD-84 (Plan preview contract page) → TD-82 (Animator match-cut training) → TD-81 (visible critics).
+
+Note: PR #24 (TD-72→TD-86) still stacked on branch, awaiting Director squash-merge. Master at `27072a8` (TD-68). SH19 v03 APPROVED, stitch owned by Polина — not Theo's concern.
+
+---
+
+## Environment & Setup Notes
+
+- Restore any trimmed surface: `Move-Item $env:USERPROFILE\.claude\skills-library\<name> $env:USERPROFILE\.claude\skills\` (agents/commands use `-library` + `.md`).
+- Dev servers likely need restart after /clear: `npm run dev` + `npm run inngest:dev` (two terminals).

@@ -1,0 +1,42 @@
+# Session: 2026-07-05 (very long) — E15 finish + concierge budget/provider + worktree sweep + Key Art backend
+
+**Project:** C:\SandyStudio\webapp · branch `claude/e13-thin-agent-run` (== master, fast-forwarded all session)
+**Mode at stop:** UI work for Key Art deferred to NEXT session. Backend/urgent all shipped to master.
+
+---
+
+## WHAT LANDED ON MASTER (fast-forward chain da1d178 → 2e0c79f)
+
+1. **E15 «Автомойка» → 26/26 видео** (SH26 добит вручную). Финальный катет.
+2. **Три корня сегодняшнего провала автономии разобраны:**
+   - 🔴 `@anthropic-ai/sdk` НЕ был установлен в node_modules (коммит adcb72e добавил в package.json, но `npm install` не прогнали) → `/api/inngest` не компилился (500) → ВЕСЬ Inngest-диспетч мёртв. **Это была главная причина «weird со вчера».** Лечится `npm install` (не коммит — репо не сломан, было чисто локально).
+   - vprev-полоса локального Inngest **dev**-роутера виснет ровно на 5 (лизы не отпускаются при синхронном финише пачки). Лечится рестартом роутера; настоящее лекарство — **Inngest Cloud**.
+   - Полина ($27.46/502 auto-react вызова на claude-sonnet-5 = 30% бюджета эпизода!) — объём вызовов × Sonnet-5 + loop-guard ложные эскалации во время мёртвого Inngest.
+3. **Фича: cap Полины per-episode в бюджете + live-провайдер** (`363af3f`): второе окошко «из них Полина ($)» (дефолты 150/30) в EpisodeSettingsCard; `metadata.concierge_cap_usd`; per-episode enforcement в cost.ts+chat-internal. Live-switch провайдера Полины через `app_config` + дропдаун в ProviderSettings (`lib/api/concierge-provider-config.ts` NEW, `applyConciergeProviderOverride` в 3 concierge-роутах).
+4. **Copywriter fix (`da1d178`):** `COPY_MAX_TOKENS 1500→4000` — Публицист обрывался на max_tokens, не закрыв ```json → падал КАЖДЫЙ раз. Теперь пройдёт.
+5. **Dropdown readability (`06a59f9`):** глобальное CSS-правило `select/option` (bg-elevated/text-primary) — белый-на-белом баг во всех дропах студии, все 3 темы.
+6. **Worktree sweep — 3 приземлено:** `keen-chebyshev` (Writer гейтится на approved cast, `682a4e9`), `goofy-sutherland` (kebab Approve берёт REVISION/NEEDS_HUMAN_TWEAK, `e1f1813`), `friendly-mcnulty` (общий activity-format + версия в completion-события, `b76c864`). SKIP: angry-tesla (q4a вытеснен role-based ef490f4), focused-sinoussi (popover уже на master). Воркти снесены (git worktree list = только main; 3 папки залочены Windows, уйдут при ребуте).
+7. **Key Art BACKEND fix (`2e0c79f`):** (a) `IMG-thumbnail` → single-approved слот (прецедент VID-animatic) — аппрув 1 концепта инвалидирует остальные; (b) EXEC-PUB получил episode-scoped atomic dispatch-claim в factory → из N параллельных publish выполняется ОДИН → **тройная дистрибуция убита**.
+
+Все ships: tsc·1145 тестов·(где DAG — 30/30 replay-pilot).
+
+---
+
+## OPEN / NEXT SESSION (в приоритете)
+
+1. **Key Art UI (план в `~/.claude/plans/snappy-discovering-wren.md`):**
+   - Fix 1b — галерея 3 вариантов: расширить `CandidatesStrip` в `AssetPreview.tsx` на `IMG-thumbnail` (сейчас только VID-shot, `:132-163,321-354`) — Директор ВИДИТ 3 концепта и выбирает. Сейчас pipeline-stages показывает только латест V03.
+   - Fix 3 — Edit в drawer (q10=и план, и upload): кнопка Edit → `EditorModal` на связанном `SPC-thumb_plan` (резолвить planAssetId из метаданных thumbnail) + upload-replace картинки (`AssetPreview.tsx:303-313`).
+2. **⚠️ `npm install` (===5===):** мой ранний `npm install @anthropic-ai/sdk --legacy-peer-deps` подрезал ОПЦИОНАЛЬНЫЕ platform-бинарники (`@esbuild/win32-x64`, sharp-оптионалы). → `tsx` (standalone dev-скрипты) НЕ работает; sharp (image proc) под вопросом. tsc/vitest/next работают. Прогнать `npm install` (без --legacy? проверить peer-конфликт react-three) чтобы восстановить.
+3. **Полина → gemini-free дефолтом** (мгновенно, через новый дропдаун `/api/providers/concierge` PUT или app_config) — режет ~$27/эпизод. Sonnet-5 точечно.
+4. **Дёрнуть Публициста** (фикс max_tokens live) — разблокирует Key Art Designer.
+5. **loop-guard q8 (вариант «а»):** cutoff при поллинге async → тихий стоп (чип только от `markAwaitingDirector`) + авто-сброс устаревшего чипа. Источник: `chat-internal/route.ts:661-684` + `auto-react-loop.ts:23` (AUTO_REACT_ROUND_BACKSTOP=6). Критик запускает КОД (`exec-vanim.ts:38 nextEvent`), НЕ Полина — cap ≠ причина не-старта критика.
+6. **Inngest Cloud** — перед серьёзными автономными прогонами (убирает класс dev-wedge).
+
+---
+
+## ENV / КАК ПРОДОЛЖИТЬ
+- Серверы: next :3000 + inngest :8288 подняты в фоне мной (свежие, здоровые). Роутер connected, 31 функция.
+- `.env.local`: `CONCIERGE_DAILY_CAP_USD=30` (временно; фича заменяет UI-настройкой), Полина `CONCIERGE_PROVIDER=anthropic claude-sonnet-5`.
+- Supabase project ref `akstennzrnkvexjgzhxv`. MCP execute_sql = permission denied (нет прав); диагностика через tsx-скрипты СЛОМАНА (см. #2) — восстановить npm install или писать диаг через рабочий рантайм.
+- Throwaway диаг-скрипты в `webapp/scripts/` (untracked): e15-economics, diag-keyart, diag-e15-* — можно снести.

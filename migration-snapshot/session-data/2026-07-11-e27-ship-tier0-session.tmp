@@ -1,0 +1,150 @@
+# Session: 2026-07-11
+
+**Started:** ~12:57 (resumed from D6-deploy-broke)
+**Last Updated:** ~19:10
+**Project:** SandyStudio (C:\SandyStudio) — AI animation factory
+**Topic:** Ship E27's tail (stitch→distribution), stability audit, and Tier-0 durability (self-host Inngest). Plus kebab colour grammar design.
+
+---
+
+## What We Are Building
+
+Autonomous AI animation factory (Next.js + Inngest + Supabase, local Windows). This
+session: (1) recovered/finished **episode E27** through final cut + distribution;
+(2) ran a **stability audit** (why any server/task glitch leaves statuses stuck) and
+executed its #1 fix — **self-host durable Inngest**; (3) fixed a batch of E27-tail bugs
+(stitch ENOENT, composer-centric music, final-cut drawer, copywriter model); (4) designed
+a unified **kebab colour grammar** (approved, not yet implemented).
+
+---
+
+## What WORKED (with evidence)
+
+- **Self-host durable Inngest (Tier-0 fix)** — `inngest start` (durable SQLite, no
+  Docker/Postgres/Redis) replaces `inngest dev`. Confirmed: killed inngest → restarted on
+  same `--sqlite-dir` → reloaded from `main.db` (156KB on disk, :8288→200); app re-synced
+  `{"message":"Successfully registered"}`. Prod signing mode: `[inngest] Using native Web
+  Crypto for request signing`. Memory `inngest_selfhost_setup.md` + CLAUDE.md §13.
+- **E27 shipped** — VID-final_cut **v02 APPROVED**; stitch COMPLETED twice (13:56, 13:59)
+  after the ENOENT deploy (3 prior FAILED with ENOENT before the fix). Distribution ran
+  auto → uploaded UNLISTED to YouTube.
+- **Stitch ENOENT fix** — `runner.ts` loadBytes demotes a `/api/media|/staging` URL sitting
+  in `staging_path` instead of `fs.readFile`-ing it (was `C:\api\media\…mp3` ENOENT). Root
+  data fix: `ingest-music.ts` writes `staging_path: null` (not the URL). Verified: tsc·0,
+  vitest 1210, replay-pilot 30/30, and E27 stitch actually succeeded post-deploy.
+- **Composer-centric music** — AUD-music got Approve in the drawer; approving bakes into the
+  animatic (`bakeMusicIntoEpisodeAnimatic` helper + `computeNextEvents` AUD-music branch);
+  timeline Replace/Upload removed. Verified tsc·0 / vitest 1210 / replay 30.
+- **Final-cut drawer** — VID-final_cut now shows version picker + Approve (reuse
+  CandidatesStrip + PilotApproveButtons). Live in prod.
+- **Copywriter fix** — Haiku→Sonnet 4.6 + hard rule "title = final headline only" (Haiku had
+  echoed the prompt's principle into the published title). Live. tsc·0.
+- **4 deploys** all clean (build exit 0, app 200) via stop→rm .next→build→start.
+- **Git**: master `37eb7b7` (E27-tail fixes) + `b99a59f` (start-stack + CLAUDE.md §13), both
+  pushed to origin.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Cleaning the 3 zombie jobs / re-firing paid VGEN via script** — the auto-mode classifier
+  BLOCKED every prod-mutation script (marking jobs FAILED, sending inngest events) 3×,
+  demanding direct Director approval. Read-only probes were fine. Workaround: Director drove
+  the remaining video via UI clicks; the videos completed that way.
+- **`inngest dev` (the old setup)** — root cause of the whole day's pain: it's ephemeral
+  in-memory; it DIED silently at 10:58:45Z and stayed dead ~2h, so `inngest.send` failed
+  ("fetch failed", swallowed) and 3 mid-flight jobs stayed RUNNING forever (zombies). Fixed
+  by self-host. This is why the Director's "generate video" clicks did nothing until revival.
+- **Inngest Cloud (considered, set aside)** — needs the app publicly reachable (it pushes to
+  /api/inngest); app is localhost + local ffmpeg → self-host fits better. Cloud free tier
+  likely fits (~190 runs/episode from E27) but concurrency/retention are the real caps.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Audit Tier-1 quick wins** (the natural next session): (a) `onFailure` handler at factory
+  level → mark job FAILED (crushes zombies from any cause; reuse `markJobFailed` runner.ts:3514
+  + `markDispatchIntent(...,'failed')`); (b) **out-of-band** reaper for stale RUNNING (Vercel
+  Cron/pg_cron/Supabase Edge — NOT another inngest fn, they die with inngest); (c) finish
+  provider timeouts in `anthropic-brief.ts:141` + `anthropic-vision.ts:54` (reuse
+  `anthropic-text.ts` pattern); (d) critic-loop HALT: raw insert → `logEvent()` (1 line, so
+  Polina wakes). Full detail in the audit (below).
+- **Kebab colour grammar implementation** — designed + approved, artifact preview built, NOT
+  coded. Memory `kebab_color_grammar_doctrine.md`. Fix = delete status→hue in `cellPalette`;
+  OPEN: scope (animatic kebab vs also stage-rail).
+- **Full mid-run-resume durability proof** — restart-survival proven; crash-mid-batch resume
+  validates on the next real batch.
+- **3 zombie jobs cleanup** — cosmetic glow (SH04 VGEN, SH23 EREF-designer, SH26 VPREV, all
+  10:56-58Z). Will be closed systemically by the reaper.
+- **Copywriter model in Provider Settings** — reuse the ConciergePolinaRow pattern (app_config
+  override) instead of the hardcoded COPY_MODEL. Optional.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| webapp/lib/agents/runner.ts | ✅ shipped `37eb7b7` | stitch loadBytes URL-in-staging_path guard |
+| webapp/lib/api/ingest-music.ts | ✅ shipped | staging_path:null + shared bakeMusicIntoEpisodeAnimatic |
+| webapp/lib/agents/next-events.ts | ✅ shipped | AUD-music APPROVE → bake branch |
+| webapp/components/animatic/AnimaticPlayer.tsx | ✅ shipped | removed timeline Replace/Upload |
+| webapp/components/preview/AssetPreview.tsx | ✅ shipped | AUD-music approve + final-cut version-picker/approve |
+| webapp/lib/agents/runners/copywriter.ts | ✅ shipped | Sonnet 4.6 + title-only guard |
+| webapp/.env.local | ✅ MODIFIED (not git) | INNGEST self-host: keys + DEV=0 + BASE_URL |
+| start-stack.ps1 / start-stack.cmd | ✅ shipped `b99a59f` | one-click durable stack launcher |
+| CLAUDE.md | ✅ shipped `b99a59f` | §13 LOCAL STACK STARTUP |
+| kebab colour grammar | 📋 designed, NOT coded | memory doctrine + artifact |
+
+---
+
+## Decisions Made
+
+- **Tier-0 = self-host Inngest, minimal (SQLite, no Docker/Postgres/Redis)** — Director:
+  "минимальная конфигурация подойдёт, падает редко только на батчах." Cloud needs public
+  app reachability; self-host fits the local ffmpeg/localhost setup and is $0.
+- **Copywriter → Sonnet 4.6** (from Haiku) — Haiku echoed prompt principles into the title.
+- **Music is composer-centric** — refs-landscape ≠ video-output-landscape; ONE upload place
+  (composer), approve→timeline auto, no Replace button.
+- **E27 stays 16:9** — refs landscape (gpt-image-2 can't do true 9:16); shorts by crop later.
+  Backlog: shorts-derivation (auto-reframe/crop-safe master) + delivery-target aspect fix.
+- **Discussion vs code split** — Director uses a separate terminal at `C:\SandyStudio` for
+  read-only discussion/research; THIS session owns code+deploy+running servers.
+
+---
+
+## Blockers & Open Questions
+
+- **Auto-classifier blocks all prod mutations** (job cleanup, paid re-fire) → need Director
+  `go`/UI. This is friction; the reaper (Tier-1) removes the need for manual zombie cleanup.
+- **Distribution copy already published** with the bad title (Director editing on YouTube);
+  the Sonnet fix prevents recurrence next episode.
+- **Inngest Cloud free-tier exact numbers** — Director verifying in the discussion terminal
+  (moot for now since we chose self-host).
+
+---
+
+## Exact Next Step
+
+**Audit Tier-1 quick wins** (fresh session, pipeline idle): start with the two highest-leverage,
+lowest-risk: (1) add a factory-level `onFailure` handler that flips the job row to FAILED +
+releases the dispatch claim (reuse `markJobFailed` / `markDispatchIntent`); (2) an out-of-band
+stale-RUNNING reaper (NOT an inngest function). Then the 2-file provider-timeout finish
+(anthropic-brief/vision) + the 1-line critic-loop `logEvent` HALT. These make the jobs table
+self-healing even with the durable executor and retire the 3 zombies + the classifier friction.
+
+---
+
+## Environment & Setup Notes
+
+- **Start the stack:** double-click `C:\SandyStudio\start-stack.cmd` (or `start-stack.ps1`;
+  `-Build` to rebuild first). It starts app :3000 + **Inngest self-host :8288 (durable)**,
+  syncs functions (PUT /api/inngest → "Successfully registered"), prints health.
+- **DO NOT use `inngest dev`** anymore — durability is lost. Details: memory
+  `inngest_selfhost_setup.md`, CLAUDE.md §13.
+- Inngest keys in `webapp/.env.local` (`INNGEST_EVENT_KEY/SIGNING_KEY`, `INNGEST_DEV=0`,
+  `INNGEST_BASE_URL=http://localhost:8288`). Durable SQLite: `C:\SandyStudio\FILMS\_inngest\main.db`.
+- git: master `b99a59f`, pushed. Mode `===5===` active this session. E27 id
+  `738a7801-c3b0-4867-b049-f04a59c80626`, 16:9. Stack currently UP + healthy.
+- Rollback to dev: `.env.local` INNGEST_DEV=1 + blank keys + drop BASE_URL + `inngest dev`.

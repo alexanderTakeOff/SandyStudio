@@ -1,0 +1,126 @@
+# Session: 2026-07-03 (PM→evening)
+
+**Started:** resume from `2026-07-03-e14-parallel-run-polina` session
+**Last Updated:** ~evening (session close)
+**Project:** C:\SandyStudio (webapp — Next.js AI animation studio)
+**Topic:** Довести E14 «Мадам Парфюм» до финального стича через Полину + вывести из прогона согласованную АРХИТЕКТУРУ автономной фабрики + план её реализации.
+
+**Branch:** `claude/e13-thin-agent-run` · Mode 3 · ===5=== · goal-mode был активен, теперь **ЗАКРЫТ** (3/3 цели).
+
+---
+
+## What We Are Building
+
+Две вещи, обе достигнуты:
+1. **E14 финальный cut** — автономный прогон эпизода (тема→канон→сценарий→раскадровка→рефы→видео→стич)
+   через Полину (gemini, руки), Тео в кресле Директора. Результат: **VID-final_cut 96с, 19/20 шотов**
+   (SH16 запаркован по таймауту fal), в Drive, статус REVIEW.
+2. **Архитектура автономной фабрики** — из прогона (не ролик ради ролика, а осмысление системы).
+   За сессию Director + Тео сошлись через серию критик-раундов на архитектуре ОС создания контента.
+
+---
+
+## What WORKED (with evidence)
+
+- **E14 фанаут через Полину до 19/20 видео** — подтверждено: `budget_spent`~$65, VID-final_cut
+  96с существует, Drive-ссылка отдаёт файл. Полина исполняла УЗКИЕ батч-команды надёжно (5-8 approveAsset/тик).
+- **Механика прогона вскрыта эмпирически** — approve ref-IMG → авто-создаёт shot-план → approve
+  shot-план → фаерит exec-vgen → видео. approve ref-плана авто-триггерит EXEC-EREF (генерацию картинки).
+- **autosweep-скрипт** (`/tmp/autosweep.cjs`) — сам берёт REVIEW-id из БД и постит явный approval-нудж
+  Полине; надёжнее, чем listPendingApprovals (капризничает). Явные полные UUID = самый надёжный драйвер.
+- **Стич собран** — `excluded_shot_ids=["S15-E14-SH16"]` (флаг) + `triggerAgent EXEC-STITCH` через
+  Полину → VID-final_cut. Подтверждено: fcwatch поймал final_cut REVIEW, 96.083с.
+- **Отчёт + план закоммичены** — `188ecfd` (RUN-REPORT-E14.md), `c143c30` (docs/AUTONOMY-IMPLEMENTATION-PLAN.md).
+- **Архитектурная конвергенция** — Director подтвердил идентичное понимание (последний вопрос про
+  Полину-на-Opus за ~$10/серия — подтверждено).
+
+---
+
+## What Did NOT Work (and why)
+
+- **Полина авто-реакция как драйвер (gemini)** — 1 поверхностный тик → стоп («начинаю с SH03» без
+  генерации); на 2-й нудж gemini вернул 0 ходов (no-op). Harness-пассивность. НЕ повторять: широкие
+  многошаговые команды → no-op; узкие батчи → исполняет.
+- **SH16 видео** — 3× таймаут fal/seedance 720с (`fal request polling timed out`). fal завис в СВОЕЙ
+  очереди на этом клипе; SH18/19 на том же провайдере прошли. Inngest ретраил тем же путём — тоже таймаут.
+  → запаркован (q2a Директора: стич 19/20). НЕ повторять: дублировать генерацию SH16 руками (конфликт-запрос).
+- **regenerateImageFromPlan на 15 шотов** — `PLAN_ANCHOR_STALE` (планы авторились до одобрения якорей).
+  Обход: regenerateRefPlan (пере-автор) — но мои перекрытые нуджи F+H дважды триггернули → лишние v3.
+  НЕ повторять: дублировать списки шотов между нуджами.
+- **Полина обрезает длинные UUID** — `invalid input syntax for type uuid`. Давать id через listShotPlans
+  (берёт из тула), не заставлять перепечатывать.
+- **Первый вариант архитектуры (мой)** — Director отверг: «сумбур и заплатничество, латание заплаток».
+  Смешал «отдать логике агента» + «жёсткий стич». НЕ повторять: не давать fix-list, искать ОДИН инвариант.
+- **Музыка в финалке** — AUD-music APPROVED, но `animatic_v1.music_url=null` → стич без звука.
+  Причина: `bakeApprovedMusic` только в sequential-пути; parallel-`ensureEpisodeAnimaticEDL` его не зовёт.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Реализация архитектуры** — весь `docs/AUTONOMY-IMPLEMENTATION-PLAN.md` (5 фаз-PR) ещё НЕ начат.
+  Фаза 0 (музыка, F8) — первый шаг, чинит жалобу Директора #1.
+- **SH16 догон** — отдельный ретрай когда fal отпустит → пере-собрать 20/20 (или оставить 19/20).
+- **Пере-сборка E14 стича С музыкой** — можно уже сейчас после Фазы 0 (или руками патчнуть music_url + re-stitch).
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|------|--------|-------|
+| `RUN-REPORT-E14.md` | ✅ Complete, committed `188ecfd` | Части 2+3 цели: матрица (27+F1-F8) + архитектура + дорожная карта + стоимость |
+| `docs/AUTONOMY-IMPLEMENTATION-PLAN.md` | ✅ Complete, committed `c143c30` | 5 фаз-PR build-блюпринт |
+| `~/.claude/plans/generic-floating-dragon.md` | ✅ Approved plan (не в репо) | план выдачи отчёта + согласованная архитектура |
+| `~/.claude/plans/giggly-sprouting-gadget.md` | ✅ Матрица 27 находок setup-фазы | источник Таблицы 1 |
+| memory `autonomous_factory_architecture_doctrine.md` | ✅ Saved + indexed | North-Star Mode-3 |
+| memory `director_systemic_not_patchwork.md` | ✅ Saved + indexed | feedback |
+| memory `backlog_td_stitch_gate_music_and_exclude_retrigger.md` | ✅ Saved + indexed | F7/F8 backlog |
+| **Код фабрики** | ⬜ Not started | Реализация фаз 0-4 — следующая сессия |
+
+---
+
+## Decisions Made
+
+- **Архитектура (согласована):** матрица состояния (инвариант) → сильный-дирижёр (Opus, мало решений,
+  делегирует) → код-мышцы (механика детерминированно) → тонкий-агент (чувства) → гейты (человек, страховки).
+  Вмешательство инвалидирует ТОЛЬКО downstream-конус.
+- **Проблема автономии = чёткое понимание СОСТОЯНИЯ, а не «кто жмёт кнопку».** Состояние=инвариант, драйвер=выбор.
+- **ВЕСТИ ≠ ЧИНИТЬ.** Полина-оператор ведёт эпизоды; Тео-инженер только на правку кода. По мере вычистки багов инженер реже.
+- **Стоимость:** генерация ~90% (fal+openai, ~$65, архитектурно-независима); мозг ~10% (~$10/серия) →
+  сажать сильнейший мозг в дирижёры (не экономить на мозге).
+- **Полина-дирижёр справится при 3 условиях:** сильная модель + дана матрица + ошибки сурфейсятся человечески.
+- **stale-anchor = freshness-примитив в зачатке → ОБОБЩИТЬ на весь граф, не патчить.**
+- **E14 финиш:** q2a — стич 19/20 (SH16 excluded), не ждать fal.
+
+---
+
+## Blockers & Open Questions
+
+- **Финальный cut в статусе REVIEW** — ждёт формального вердикта Директора (он сказал «неплохо, даже
+  интересно» устно; approveAsset на VID-final_cut не делали — reserved-ish, но goal закрыт).
+- **SH16** — открыт (догон когда fal отпустит).
+- **Музыка** — фикс в Фазе 0.
+
+---
+
+## Exact Next Step
+
+**Свежая сессия → реализация с Фазы 0** (`docs/AUTONOMY-IMPLEMENTATION-PLAN.md`):
+вынести `bakeApprovedMusic` (`lib/agents/runners/animatic-slideshow.ts:258`) в общий модуль и
+подключить в `ensureEpisodeAnimaticEDL` (`lib/api/ensure-animatic.ts`), чтобы parallel-EDL печёт
+музыку; + прекондиция стича «музыка есть». Тест vitest. Затем пере-собрать E14 стич с музыкой.
+Перед кодом перечитать `next-events.ts` (каскад + стич-гейт ~1288), approve-путь, критик-раннеры.
+
+---
+
+## Environment & Setup Notes
+
+- DB read: `node -e "$(cat /tmp/script.cjs)"` из `C:/SandyStudio/webapp` (парсить `.env.local` вручную —
+  dotenv не резолвится через `node -e`; `@supabase/supabase-js` резолвится только при eval из webapp).
+- Команда Полине: POST `http://localhost:3000/api/team-chat/post`, Bearer `EXEC_DIR_AI_TOKEN`, author "Тео",
+  thread_id `7a035ebe-be41-433d-b0e3-b10b3f2ba50f`. Соберать payload через node fetch (jq нет; Windows curl не читает /tmp).
+- dev :3000 + inngest :8288 — поднимать `npm run dev` + `npm run inngest:dev` из webapp (background).
+- EP d2c0f1f6-fc2a-483e-a482-459bb8de13fd · thread 7a035ebe-… · series SS-S15 45351141-…
+- PLAN.md — master-only, не трогать на ветке.
+- Полезные /tmp-скрипты этой сессии: autosweep.cjs, latest.cjs, vidcheck.cjs, reviewids.cjs (паттерны БД-запросов).

@@ -1,0 +1,102 @@
+# Session: 2026-06-23
+
+**Started:** ~resumed from 2026-06-23-polina-pipeline · **Last Updated:** Dubai evening (machine clock ~4h behind — trust the webapp feed)
+**Project:** SandyStudio — webapp pipeline + Prod Assistant (Полина). Тео acts as AI EP.
+**Topic:** Live E12 «Бесконечная лента» recovery — root-fix a cascade of pipeline gate + operator defects the Director hit in real time while generating references. 7 commits to master, E12 driven onto the PROPER Designer chain.
+
+> Clock: machine system clock is ~4h BEHIND real Dubai. Use webapp/feed timestamps as truth.
+
+---
+
+## What We Are Building
+
+Closing the gap between "the pipeline exists" and "it actually flows + the operator (Полина) can drive it." E12 had been generated **planless** (storyboard → reference images directly, bypassing the per-shot Designer→Critic→revision chain) because two automated gates produced **false-REVISE** and stalled the chain, and casting had been skipped. The Director's instinct ("разве у нас должно быть так?") was correct — that planless state is the disease, not the norm. This session: root-caused the stall, converted the over-strict gates to advisory (block→warning), got E12 onto the real chain (Casting → Designer → Critic → Reference Artist), and hardened the operator-facing failure modes (shotId guessing, Anthropic 529, inert Revise notes, Полина batching/over-caution).
+
+---
+
+## What WORKED (with evidence)
+
+- **q5/q6 (`d5fd9a5`)** — pilot = first N shots (`pickPilotShots` → `shots.slice(0,n)`, fixes SH02-skip + fan-out desync) + restored per-shot `agent_started` in the v2 EREF handler. tsc·0, 951 vitest, 30 replay-pilot. Live feed later showed `Reference Designer started — A1-SC02-SH04` ✓.
+- **block→warning (`0099443`)** — continuity state-ledger soft drift (`reviseImpactForMajorPool(canonConflicts)` instead of full majorPool) + CREAD readability REVISE → advances to WCHK instead of bouncing storyboard. tsc·0, 951 vitest, 30 replay-pilot.
+- **Casting unblocked E12 (Director drove Полина)** — `SPC-episode_cast-v01` created with `smartphone` in cast ✓; chain then ran Designer → EPREV PASS → CREAD PASS → Reference Artist. Confirmed in feed + DB.
+- **Smartphone canon FIXED** — SH03 plan text = "Sky Blue #6EC6E8" (correct); image v03 (post-cast) = BLUE phone (viewed it); v02 (planless) was black. Casting + object-reference-contract (`70f8da2`, on master) attach the blue canon image once the object is `inCast`. The black phone was a **symptom of skipped casting**, not a code bug.
+- **shotId SH-resolver (`e4cd902`)** — `getStoryboardShotById` now falls back to the unique SH token when exact id misses (designers were failing on a misremembered scene, e.g. `A1-SC01-SH03` vs canon `A1-SC02-SH03`). Guarded on unique match. tsc·0, 955 vitest (+4 new), 30 replay-pilot. Live: SH04 then started cleanly with the right id.
+- **Gemini fallback on Anthropic 529 (`38cac52`)** — `generateAnthropicText` catches `overloaded_error` (529) and falls back to Gemini free tier; result tagged `provider:'gemini-fallback'`; Designer plan description shows "⚠ Gemini fallback (Anthropic 529)". `GEMINI_API_KEY` present, `TEXT_LLM_DEBUG_TIER=false` (Anthropic stays primary). tsc·0, 955 vitest, 30 replay-pilot. SH03 went through after the fallback shipped.
+- **EREF Revise-with-note auto-fires Designer (`78e18bb`)** — approve route on REQUEST_REVISION of `IMG-episode_ref`/`IMG-anchor` now fires `sandystudio/exec-eref-designer/plan` with `{episodeId, shotId, revisionNote}` (reuses the regenerateRefPlan path; Designer threads note as HARD ACCEPTANCE CRITERIA). Plan-mode approved. tsc·0, 955 vitest, 30 replay-pilot.
+- **Полина training rules 11 + 12 (`26f7f23`, `9544790`)** — rule 11: Designer is per-shot (`regenerateRefPlan(shotId)`), never `triggerAgent('EXEC-EREF-DESIGNER')` batch. rule 12: Designer ≠ Reference-Artist queue (don't gate one on the other); read status before proposing an approval (she kept offering to approve already-APPROVED plans).
+- **Servers restarted clean** — killed :3000/:8288, relaunched from main checkout; `/api/inngest` 200, inngest listening. Pushed `842560f..e4cd902` to origin.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Direct DB approve of REV-world_check to advance E12** — NOT done; instead fired `exec-wchk/check-world` Inngest event (q11) after verifying via `gate.ts` that downstream (WCHK/EREF/DESIGNER) gate on APPROVED storyboard, NOT on readability=PASS. Safe.
+- **normalizeShotId for the wrong-scene bug** — does NOT help: it only prefixes the episode code, deliberately strict on a wrong scene (`vgen-shot-helpers.ts:283`). Fix had to go into `getStoryboardShotById` (SH-token fallback).
+- **`regenerateImageFromPlan` / `execute-from-plan` for revision notes** — does NOT thread a revisionNote (reads only the plan). So a Revise note must go to the **Designer** (Route B), which DOES inject revisionNote. Director chose Route B explicitly.
+- **Полина (live, repeatedly)** — (1) silence after Anthropic 529 instead of spaced retry; (2) refused «сделай план SH04» claiming 6 pending images blocked it (they don't — separate lanes); (3) offered to approve already-APPROVED SH03 plan; (4) batched the Designer. These are the operator defects rules 11/12 + the code fixes address. Tео fired SH04 plan + WCHK directly as sanctioned exceptions.
+- **Preview MCP (Claude_Preview) disconnected mid-session** — can't use preview_start/stop. Restarted dev via PowerShell kill + Bash `run_in_background` launch instead.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **q17 — remove `EXEC-EREF-DESIGNER` from the `triggerAgent` enum** (structural «make batch impossible»). Deferred; the SH-resolver lowered urgency. Director didn't decide.
+- **Feed-row badge for Gemini fallback** — currently only on the Plan description. A factory-level title suffix would need threading provider through the inngest wrapper. Offered as follow-up.
+- **Route unit test for the EREF-revision auto-fire** — skipped (no approve-route POST harness; heavy mocking). Covered by live E2E. Follow-up.
+- **State-ledger noise calibration** — block→warning stops the stall but the ledger still emits 61 spurious flags (body-parts-as-props, micro-state). Could calibrate (don't count character parts as props; micro-state → MINOR) so warnings are signal not spam.
+- **CREAD `readability-comedy-slapstick` de-concretization** — the «six-stage cleaning gag» formula is `## 17 (E02 canon)` leaked into a generic comedy engine. q13a (de-concretize) was SUPERSEDED by block→warning; left as backlog polish.
+- **Push last 3 commits** — `38cac52`, `9544790`, `78e18bb` are unpushed (Director working local in preview).
+
+---
+
+## Current State of Files (all committed to master)
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/agents/runners/episode-references.ts` | ✅ | pilot=first-N + per-shot agent_started |
+| `webapp/lib/agents/runners/continuity-check.ts` | ✅ | state-ledger soft drift advisory (hardPool=canon+duration) |
+| `webapp/inngest/functions/exec-cread.ts` | ✅ | readability REVISE → WCHK (advisory) |
+| `webapp/lib/api/vgen-shot-helpers.ts` | ✅ | getStoryboardShotById SH-token fallback |
+| `webapp/lib/agents/providers/anthropic-text.ts` | ✅ | 529 → Gemini fallback + provider field |
+| `webapp/lib/agents/providers/anthropic-vision.ts` | ✅ | provider:'anthropic' on result |
+| `webapp/lib/agents/runners/episode-reference-designer.ts` | ✅ | provider passthrough + "⚠ Gemini fallback" in plan desc |
+| `webapp/app/api/assets/[id]/approve/route.ts` | ✅ | EREF Revise-note → exec-eref-designer/plan |
+| `agents/exec/concierge.md` | ✅ | Полина rules 11 + 12 |
+| `webapp/__tests__/lib/api/list-storyboard-shots.test.ts` | ✅ | +4 SH-fallback tests |
+
+---
+
+## Decisions Made
+
+- **block→warning over hard gates (q15)** — soft critics (readability, state-ledger) become advisory; genuine canon (lighting/appearance CONFLICT + per-shot canon) stays hard. Restores the code's own stated intent ("the Critic informs the Director's approval"). The unpassable gates were WHY operators bypassed to planless.
+- **Revise-note → Designer (Route B), not image-only (Route A)** — Director: «надо заметку отправлять дизайнеру, пусть правит план и по новому кругу». Reuses the Designer's existing revisionNote→prompt path.
+- **Black phone root = skipped casting, not a code bug** — the object-reference contract attaches the blue image only when the object is `inCast`; E12 skipped casting. Casting fixed it (v03 blue).
+- **Тео does corrective/unblock actions directly when Полина lacks the tool/understanding** (Director's framework); nudge her for routine ops. Fired WCHK + SH04 plan directly.
+
+---
+
+## Blockers & Open Questions
+
+- **Director's live E2E pending:** re-Revise an `IMG-episode_ref` with a note → expect `Reference Designer started`, new `SPC-ref_plan-…-v02` with the note in HARD ACCEPTANCE CRITERIA, then re-render. He said «я еще раз пущу на ревизию».
+- **6 pending IMG-episode_ref (REVIEW) + 2 REVISION** await the Director's approval — separate lane, not a blocker for Plans.
+- **episode.status still BRIEF_APPROVED** for E12 despite the chain advancing (cosmetic vs the event chain; getNextGate may still mislead Полина). Not fixed this session.
+- **Polina echo dup** — she fired a duplicate REQUEST_REVISION ~21s after the Director's; with the new route auto-fire there could be 2 Designer runs (concurrency handles it). Dedup is a follow-up.
+
+---
+
+## Exact Next Step
+
+1. **Director re-Revises an EREF image with a note** → confirm the new auto-fire works end-to-end (Designer starts, new plan v02 carries the note, re-render lands). If it fires → `78e18bb` is proven.
+2. Offer to **push the 3 unpushed commits** (`38cac52`, `9544790`, `78e18bb`) to origin.
+3. Finish E12 references shot-by-shot (SH04 plan was authoring; continue per-shot via `regenerateRefPlan`, NOT batch).
+
+---
+
+## Environment & Setup Notes
+
+- Live dev runs from MAIN checkout `C:\SandyStudio\webapp` via `npm --prefix webapp run dev` (:3000) + `… run inngest:dev` (:8288), launched from `C:\SandyStudio`. **Preview MCP is disconnected** — these are now Bash background processes; if they die, relaunch with those two commands. `.claude/launch.json` points at the main checkout (worktree node_modules junction breaks turbopack).
+- Worktree `focused-sinoussi-597697`, but ALL session edits + commits landed on **master in the main checkout** (that's what live-dev serves). No worktree-merge needed this session.
+- Verify trio: `npx tsc --noEmit` · `node_modules/.bin/vitest run` (955) · `npm run replay-pilot` (30). No `npm run build` while dev up.
+- DB reads: inline `.env.local` loader + `SUPABASE_SERVICE_ROLE_KEY`; run scripts FROM `webapp/` (node_modules resolution); delete tmp after. E12 UUID `725efe84-be85-4a1d-9dfb-1d8aa4afe509`; series S15 `45351141-6334-4bf0-8a0f-4e00a994f670`.
+- Inngest manual event fire: `POST http://localhost:8288/e/${INNGEST_EVENT_KEY||'dev'}` with `{name, data}`. Run-status truth: `GET /v1/runs/<id>` (the `/v1/events/<id>/runs` LIST endpoint sometimes shows stale "Completed").
+- Gemini fallback needs `GEMINI_API_KEY` (present). `TEXT_LLM_DEBUG_TIER=false` keeps Anthropic primary.

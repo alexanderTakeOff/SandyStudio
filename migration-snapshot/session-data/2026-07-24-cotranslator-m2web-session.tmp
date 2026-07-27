@@ -1,0 +1,161 @@
+# Session: 2026-07-24
+
+**Started:** ~ранее (многодневная сессия, кульминация 23–24 июля)
+**Last Updated:** 18:58 (Дубай)
+**Project:** coTranslator (C:\Users\Alexander\projects\coTranslator) · repo alexanderTakeOff/context-phone-translator
+**Topic:** Доворот тактики под аудит (ADR-017) → доказали тезис → Supabase → M2 веб-клиент со стримингом и фон-анимацией
+
+---
+
+## What We Are Building
+
+**Контекстный переводчик живых продаж для Дубая** (парфюм/косметика). Переводит НЕ слова, а
+смысл — с учётом каталога товаров тенанта. Голос → перевод → голос. 10 языков. По меморандуму
+(docs/PARTNERSHIP.md): 3 мес разработка MVP + 1–2 мес прогон с 10–20 пользователями Владимира,
+приёмка §6 = 50 фраз, «лучше или так же» ≥80% против обычного переводчика.
+
+Стек: TypeScript/tsx, пайплайн-контракты, провайдеры Groq (STT) + OpenAI (перевод GPT-5, TTS,
+эмбеддинги), хранилище Supabase pgvector, дальше PWA (Next.js+Vercel — ещё не начато).
+
+Эта сессия: провели независимый аудит → перевернули план (сначала доказать, что база знаний
+помогает, потом строить), доказали тезис, перенесли на Supabase, собрали веб-клиент M2 с
+голосом, стримингом перевода/озвучки и фоновой анимацией обработки.
+
+---
+
+## What WORKED (with evidence)
+
+- **Гейт V4/V7 — тезис доказан** — `npm run ab-check -- --assist 2`: факты каталога в подсказку
+  **3/11 → 8/11 (73%)** после починки гибридного поиска. Подстрочник держит 2/23 фактов реплики
+  против наших 22/23. Записано в docs/OPEN_QUESTIONS.md.
+- **Развязка pipeline от InMemory** — `npm run typecheck` чисто, `npm run smoke` зелёный.
+  PipelineDeps.kb: KnowledgeBase (контракт), не конкретный класс. Pipeline stateless (счётчик
+  и «недавнее» из хранилища, не из Map).
+- **Гибридный поиск** — `src/kb/memory.ts` searchContext: косинус эмбеддингов + лексика.
+  Отладкой подтверждено: нужный фрагмент на 1-м месте.
+- **Supabase-срез (Фаза B)** — проект `omnzcqdvmqbsxijhocdr` поднят, канон-схема (10 таблиц,
+  RLS, pgvector+pg_trgm) + RPC match_context. `npm run ingest` грузит каталог. Гейт против
+  живого Supabase = **7/11** (паритет с памятью 8/11, разница = вариативность LLM).
+  Подтверждено SQL: 25 товаров, 33 фрагмента с векторами.
+- **Веб-клиент M2** (`npm run web`, http://localhost:8787) — тракт браузер → Groq/GPT-5/OpenAI
+  → Supabase → аудио назад. Подтверждено: реплика ru→ar записана в utterance (index 1, ok).
+- **Стриминг перевода** — текст бежит по мере генерации: первый ТЕКСТ 2.8с (был ~5с и разом).
+- **Озвучка по предложениям** — первый ЗВУК на длинной фразе 4.4с (был 6.4–7.6с). Готовое
+  предложение сразу в TTS, пока переводится хвост. Подтверждено кадровым тестом сервера.
+- **Само-восстановление сессии в веб** — read-методы Supabase больше не глотают error;
+  ensureSession переустанавливает пропавшую сессию.
+- **Фоновая анимация обработки** — холст с тёплыми «дышащими» пятнами, 3 состояния (покой/
+  слушаю/обрабатываю). Синтаксис проверен node --check. Директор: «анимация ок».
+- **MCP Supabase работает** — «не работает» было ложной тревогой (проверено list_organizations).
+
+---
+
+## What Did NOT Work (and why)
+
+- **Первый гейт после «улучшения» дал 1/11 (хуже 3/11)** — причина: CRLF-баг. git превратил
+  eval/catalog/*.md в CRLF, разбивка `\n{2,}` не ловила `\r\n\r\n`, фрагментов грузилось 0.
+  Прошлые 3/11 мерились на свежих LF до коммита. Фикс: `.replace(/\r\n/g,"\n")` перед split.
+- **Стриминг ТОЛЬКО озвучки (первый заход в веб)** — сэкономил лишь ~1.3с, т.к. доминирует
+  перевод (GPT-5 ~4с). Пришлось стримить и сам перевод (текст), потом озвучку по предложениям.
+- **Real-time STT (Groq)** — Groq Whisper ПАКЕТНЫЙ, стримить не умеет. Настоящий real-time =
+  Deepgram (новый ключ/провайдер). Директор свернул: вместо стрима — фон-анимация «идёт работа».
+- **`npm run web` через ассистента / префикс `!`** — процесс убивается по завершении хода →
+  сервер «молчит». И фоновый (run_in_background) харнесс тоже прибил. РЕШЕНИЕ: запускать в
+  ОТДЕЛЬНОМ окне терминала, которое остаётся открытым.
+- **EADDRINUSE на Windows при перезапуске** — pkill -f не всегда добивает node на порту.
+  РЕШЕНИЕ: перед стартом глушить держателя порта через PowerShell Get-NetTCPConnection→Stop-Process.
+- **Два дефекта перевода (наблюдены на тесте, смягчены, не гарантированы)**: китайский иероглиф
+  в арабском (правило в промпте против чужих письменностей); язык коротких фраз («Assalamualaikum»
+  → icelandic) — STT получает пару языков сессии как prompt-подсказку Whisper.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Деплой на Vercel + Next.js + PWA-манифест** — чтобы Владимир открыл с телефона по ссылке.
+  Это следующий крупный шаг M2 (сейчас только localhost, без фреймворка).
+- **Real-time STT через Deepgram** — если решат добивать задержку в конце (нужен ключ).
+- **Настоящий baseline DeepL/Google** для приёмки §6 (сейчас подстрочник — прокси; issue #23).
+- **Авто-детектор смены контекста** (ADR-013, оставлен в M1 по q15) — не подключён (в логах 0мс).
+- **Реальный каталог Владимира** — Директор сказал НЕ ждать; черновик (docs/FOR-PARTNER.md) готов.
+- **Explicit-tenant проверки / RLS-политики** (долг ADR-017, M3-фаза).
+- **Уровни помощи 2/3 в вебе через стриминг** — сейчас поток только для уровня 1; уровень 2
+  идёт обычным translate (hint), но кадр F его доставляет.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `contracts/knowledge-base.ts` | Complete | +getSession/updateSession/getUtterance/listUtterances/updateUtterance/addDocument/addChunk/addSource |
+| `contracts/providers.ts` | Complete | +translateStream (поток), +synthesizeStream, AssistLevel, hint |
+| `contracts/pipeline.ts` | Complete | +consentGiven, +hint в TurnResult |
+| `src/pipeline/translation-pipeline.ts` | Complete | stateless, ошибки со status, privacy, #translate (поток), #streamSentences (по предложениям), хуки onTurnStart/onTextDelta/onAudioChunk/onTurnText |
+| `src/kb/memory.ts` | Complete | гибридный searchContext (косинус+лексика), конструктор с EmbeddingsProvider |
+| `src/kb/supabase.ts` | Complete | SupabaseKnowledgeBase, RPC match_context, маппинг snake↔camel, read-методы не глотают error, clearTenant |
+| `src/kb/index.ts` | Complete | фабрика buildKnowledgeBase (память↔Supabase по ключу) |
+| `src/providers/openai/index.ts` | Complete | translateStream (SSE), streamSystemPrompt, правило против чужих письменностей, stock в контекст |
+| `src/providers/groq/index.ts` | Complete | языковая prompt-подсказка при паре языков, нормализация языка |
+| `src/cli/seed.ts` | Complete | addSource+addDocument+addChunk через контракт, CRLF-фикс |
+| `src/cli/ingest.ts` | Complete | npm run ingest — файл в Supabase |
+| `src/cli/ab-check.ts` | Complete | фабрика KB, expectHint, вердикт по подсказкам |
+| `src/web/server.ts` | Complete | node:http, кадровый протокол M/T/F/A, ensureSession |
+| `src/web/app.html` | Complete | MediaRecorder, разбор кадров, Web Audio PCM, пробел, фон-анимация, метрика текст/звук |
+| `db/schema.sql` | Complete | +функция match_context |
+| `docs/DECISIONS.md` | Complete | ADR-017 (доворот+Фаза B) |
+| `docs/OPEN_QUESTIONS.md` | Complete | V4 🟢 8/11, V7 🟡 паритет Supabase |
+| `PLAN.md` | Complete | M1 закрыт, M2 в работе |
+| Next.js/PWA/Vercel | Not Started | следующий шаг M2 |
+
+---
+
+## Decisions Made
+
+- **ADR-017: доворот под аудит** — сначала доказать тезис (база помогает), потом строить.
+  Вычтено из MVP: Vision по фото, универсальный парсинг, Google Drive (→загрузка файла q14),
+  CRM, всё-аудио. Оставлен авто-детектор (q15). Все 5 находок аудита проверены по коду и закрыты.
+- **Загрузка файла вместо Google Drive (q14)** — Drive только если тенант регулярно самообновляет.
+- **Стриминг: текст + озвучка по предложениям** — перевод стримится (уровень 1, без hint),
+  предложения озвучиваются по мере готовности. Задержка ощущается как отзывчивость.
+- **Вместо real-time STT — фон-анимация** — Groq не стримит, Deepgram = новый провайдер;
+  анимация даёт перцепцию «идёт работа» бесплатно и без риска для качества.
+- **Веб без фреймворка (пока)** — доказать браузер↔пайплайн↔Supabase, Next.js потом.
+
+---
+
+## Blockers & Open Questions
+
+- **Сервер надо запускать в отдельном терминале** — через ассистента/`!`/фон он умирает.
+- **Деплой (Vercel) не начат** — открывается только localhost, Владимиру ссылку не дать.
+- **Задержка первого ТЕКСТА ~3.7с на длинных фразах** — упирается в STT (батч, после конца речи);
+  лечится только real-time STT (Deepgram).
+- **Приёмка §6 — на фразах Владимира**, не на наших (наш набор — черновик, чтобы начать).
+
+---
+
+## Exact Next Step
+
+Директор склонялся к **деплою на Vercel** (q21а), чтобы Владимир открыл с телефона по ссылке.
+Следующий заход M2: перенести тонкий веб-срез (src/web/server.ts + app.html) на Next.js,
+задеплоить на Vercel. Внимание к граблям: пайплайн использует ffmpeg только в терминале
+(talk/live-check) — в веб-пути ffmpeg НЕ нужен (браузер пишет/играет), но Next.js на Vercel
+serverless должен избегать ffmpeg-путей; веб уже так устроен (speak/onAudioChunk отдают PCM в
+браузер, не в ffplay). Также решить: держать Supabase-проект «пробуждённым» (free-tier засыпает).
+Подтвердить направление у Директора перед стартом.
+
+---
+
+## Environment & Setup Notes
+
+- Запуск веб-клиента: ОТДЕЛЬНОЕ окно PowerShell → `cd C:\Users\Alexander\projects\coTranslator`
+  → `npm run web` → http://localhost:8787 (оставить окно открытым). Ctrl+C для остановки.
+- Если EADDRINUSE: `Get-NetTCPConnection -LocalPort 8787 -State Listen | %{ Stop-Process -Id $_.OwningProcess -Force }`.
+- `.env` (под gitignore): GROQ_API_KEY (gsk_), OPENAI_API_KEY (sk-), SUPABASE_URL
+  (omnzcqdvmqbsxijhocdr), SUPABASE_SERVICE_ROLE_KEY, ASSIST_LEVEL=1, TTS_VOICE=coral.
+- Команды: `npm run smoke` (фейки), `npm run live-check` (реальные), `npm run ab-check -- --assist 2`
+  (гейт V4), `npm run ingest` (каталог в Supabase), `npm run web` (клиент).
+- Supabase проект `omnzcqdvmqbsxijhocdr` через MCP claude.ai Supabase (работает). Free-tier засыпает
+  — restore_project будит.
+- Git: main = origin/main (0 0), всё запушено. HEAD 954ce1d.
+- Доска GitHub: users/alexanderTakeOff/projects/4 (сгруппировать по Milestone).

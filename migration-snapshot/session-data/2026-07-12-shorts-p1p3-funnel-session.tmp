@@ -1,0 +1,151 @@
+# Session: 2026-07-12
+
+**Started:** ~12:40
+**Last Updated:** ~19:50
+**Project:** SandyStudio (C:\SandyStudio) — AI animation factory
+**Topic:** YouTube Shorts как сквозная забота фабрики — P1 воронка/мост → P3 Audience Quality Sensor → отдельный плейлист → self-host шрифтов. P2 (гэг-нарезка) отложен на «shorts smoke» следующей сессии.
+
+---
+
+## What We Are Building
+
+Фабрика делает и long-form эпизоды, и Shorts на ОДНОМ канале «Sandy the Hourglass»
+(`UCc2YJlHFclO9BWLEgPlglIg`, бренд-аккаунт). Задача сессии эволюционировала: сначала «сделать shorts
+из финалов + залить», потом Директор переопределил — **short-creator НЕ отдельный агент, а сквозная
+забота по стадиям**; ключевой первый фикс — **воронка** (short без ссылки на родительский эпизод =
+сирота). Дальше построили **сенсор качества** (audience analysis) как разведчика.
+
+Доктрина: `.claude/skills/shorts-longform-distribution/SKILL.md` (Директор) +
+`.claude/skills/audience-quality-sensor/SKILL.md` (Тео). Роадмап **P1→P2→P3**.
+
+---
+
+## What WORKED (with evidence)
+
+- **P1 воронка/мост (master `8ca0d99`)** — каждый short несёт `▶ Full episode: youtu.be/<parent>` в
+  описании (у YouTube API НЕТ поля related-video — только описание). Хелпер `short-linkage.ts`
+  (`appendParentBacklink`/`readParentVideoId`/`persistShortId`) в route+батч. **9 сирот забэкфиллены**
+  (`dist-shorts-backfill-parents.ts`) — подтверждено: YouTube API принял 9 PUT (`updateVideoMetadata`,
+  scope force-ssl OK), БД спот-чек `episodes.metadata.youtube_short_id` 3/3 (E01=tywgUPNqOpk и т.д.).
+- **9 Shorts на канале UNLISTED (master `4b4f2f2`)** — center-crop 9:16→1080×1920 + overlay
+  «SANDY the HOURGLASS» 4с; батч `dist-shorts.ts` + резак `ffmpeg-shorts.ts` (`makeShort`). Смок-кадры
+  проверены глазами (Director q4a: center-crop ок). ⚠️ Это КРОП-ВСЕГО-ЭПИЗОДА (тест), НЕ гэг-нарезки.
+- **UI-слайсер (master `f3831d2`)** — панель «Video→Short» в final-cut превью + `/api/assets/[id]/shorts`.
+- **P3 Audience Quality Sensor v1 (master `82a5dd6`)** — реальный провайдер `youtube-stats.ts`
+  (Data API stats + Analytics API), проверено ЖИВЬЁМ: E01 landscape отдал **2 views**, scope
+  `yt-analytics.readonly` принят (нет 403), на новых видео деградирует в 0/null. Scout-движок
+  `analytics-advisor.ts` (юнит-тест 10/10). EXEC-ANAL размокан (`runner.ts`). Дашборд `/audience` +
+  `/api/audience` — проверено: оба роута 307 (в билде). tsc·0 / vitest 1230.
+- **Отдельный Shorts-плейлист (master `36514d4`)** — «Sandy the Hourglass · Shorts» (`PLSxChBijpEdM`,
+  unlisted), все 10 шортсов внутри (`dist-shorts-playlist.ts`, `createPlaylist`/`findPlaylistByTitle`).
+- **Self-host шрифтов (master `e1ed29e`)** — Inter+JetBrains Mono → `next/font/local` (variable woff2
+  в `app/fonts/`); билд больше не ходит в Google Fonts. Build·0, `next/font/google` импорт исчез.
+- **Re-consent `yt-analytics.readonly`** — Директор прошёл `youtube-consent.ts`, токен с 4 scopes
+  записан в `.env.local` (подтверждено строкой «Granted scopes» от Google).
+- **Деплой** — стек durable поднят, health 200/200/200, один inngest без dev. Прод на `36514d4`
+  (шрифты-фикс `e1ed29e` подхватится на СЛЕДУЮЩЕМ деплое).
+- **Runtime-гигиена** — убрал залипший `inngest dev` (мина рядом с durable :8288).
+
+---
+
+## What Did NOT Work (and why)
+
+- **`start-stack.ps1 -Build` дважды падал** — Google Fonts (`ETIMEDOUT` на Inter/JetBrains Mono на
+  этапе сборки). Обходили ретраем `npm run build` (2-3 раза) → потом `start-stack` без `-Build`.
+  **Теперь ИСПРАВЛЕНО** self-host шрифтов (`e1ed29e`) — класс ошибки устранён по построению.
+- **`isVideoInPlaylist` 404 на СВЕЖЕМ плейлисте** — сразу после `createPlaylist` 2 из 10 add'ов
+  упали на idempotency-проверке (eventual consistency). Обошли ретраем скрипта + захарденили:
+  404 на проверке = «не в плейлисте» → добавляем.
+- **tsx-скрипт вне webapp/** — `MODULE_NOT_FOUND` (node_modules не резолвится). Класть temp-скрипты
+  в `webapp/scripts/` и удалять после.
+- **push отклонён (non-fast-forward)** — другая сессия влила `llm-gpt5-6-luna-option` в master.
+  Обошли `git stash training-inbox.md` (чужое) → `git rebase origin/master` → pop → push.
+
+---
+
+## What Has NOT Been Tried Yet (← СЛЕДУЮЩАЯ СЕССИЯ: «shorts smoke»)
+
+- **P2 — гэг-нарезка (ГЛАВНОЕ следующее).** 3-5 самодостаточных гэг-шортсов 15-40с на эпизод ВМЕСТО
+  кроп-всего-эпизода. Мышцы ГОТОВЫ: резак принимает `{startSec,endSec,overlayText}`; таймкод любого
+  shot-range = cumsum `computeEffectivePlayback` (`webapp/lib/api/animatic-shotlist.ts:281-349`);
+  границы гэга = `shot_role`(setup→punchline)/`key_beat`. Разметка окон → `episodes.metadata.short_windows`
+  (зеркало `excluded_shot_ids`), авто-дериват из shot_role-прогонов. Директор: «check on new episode» —
+  обкатать на СВЕЖЕМ эпизоде, показать сэмпл 3-5 гэгов ПЕРЕД заливкой.
+- **Долг №2** — `/audience` кэш через persisted `REV-analytics` (сейчас тянет ~19 API-вызовов на
+  каждый заход; цепочка `schedule-analytics` уже пишет REV-analytics — читать их).
+- **Advisor follow-ups** — loops+shares (вирусность), impressions/CTR/traffic, retention→шот маппинг
+  (движок умеет `biggestDrop`, но % → шот через cumsum не вплетён), пороги N*/X в config-слой.
+- **Tier-1 self-healing** (safe_and_sustainable) — onFailure-хэндлер + out-of-band reaper (pg_cron
+  vs Supabase Edge — решить с Директором).
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| webapp/lib/agents/providers/short-linkage.ts | ✅ NEW `8ca0d99` | funnel bridge helper |
+| webapp/scripts/dist-shorts-backfill-parents.ts | ✅ NEW `8ca0d99` | 9 orphans backfilled (applied) |
+| webapp/lib/agents/providers/ffmpeg-shorts.ts | ✅ `4b4f2f2` | makeShort (crop/overlay/trim) |
+| webapp/scripts/dist-shorts.ts | ✅ `4b4f2f2`+`8ca0d99` | batch + backlink |
+| webapp/app/api/assets/[id]/shorts/route.ts | ✅ `f3831d2`+`8ca0d99` | UI slicer + backlink |
+| webapp/lib/agents/analytics-advisor.ts | ✅ NEW `82a5dd6` | scout engine + tests |
+| webapp/lib/agents/providers/youtube-stats.ts | ✅ NEW `82a5dd6` | real stats/analytics |
+| webapp/lib/agents/runner.ts | ✅ `82a5dd6` | EXEC-ANAL un-mocked |
+| webapp/app/(studio)/audience/page.tsx + /api/audience/route.ts | ✅ NEW `82a5dd6` | dashboard |
+| webapp/lib/agents/providers/youtube.ts | ✅ `36514d4` | createPlaylist/findPlaylistByTitle |
+| webapp/scripts/dist-shorts-playlist.ts | ✅ NEW `36514d4` | Shorts playlist (applied) |
+| webapp/app/layout.tsx + app/fonts/*.woff2 | ✅ `e1ed29e` | self-hosted fonts |
+| .claude/skills/audience-quality-sensor/SKILL.md | ✅ NEW | scout doctrine |
+| .claude/skills/shorts-longform-distribution/SKILL.md | ✅ | +separate-playlist practice |
+| .claude/safe_and_sustainable.md | ✅ | Tier-0 + font-reliability note |
+| PLAN.md | ✅ | P1/P3 entries |
+
+---
+
+## Decisions Made
+
+- **Short-creator ≠ отдельный агент** — сквозная забота (owner EXEC-PUB+ANAL); резак = мышца.
+  Anti-additivity: НЕ плодим EXEC-SHORTS (был спланирован на ~18 файлов — отменён).
+- **Advisor = РАЗВЕДЧИК (explore>exploit)** — на малом N «топ-треть»=шум; порог молчания → флаги,
+  не мандаты; карта дыр > ранжирование пройденного; метрики в разных ролях (completion=качество,
+  views=гейт, loops+shares=вирусность не лайки); retention→ШОТ в центре; относительное+крючок гибрид.
+- **Воронка = URL в описании** (единственная программная привязка у YouTube).
+- **9 шортсов = тесты** (кроп), НЕ переделываем; правильные гэг-нарезки = P2 на новом эпизоде.
+- **Shorts и long-form — РАЗНЫЕ плейлисты** (микс форматов ломает session-flow).
+- **Идеация в дашборде** — отложено на audience-analysis фазу (часть P3 follow-up).
+
+---
+
+## Blockers & Open Questions
+
+- **Аналитика тонкая** — видео новые/unlisted → 0 прошли гейт экспозиции → advisor в scout-режиме
+  (корректно). Реальные данные пойдут ПОСЛЕ листинга (Директор: «will see how to use after listing»).
+- Долг №2 (кэш /audience) станет актуален когда данные наполнятся.
+- P2 требует свежего эпизода для обкатки.
+
+---
+
+## Exact Next Step
+
+**«Shorts smoke» со свежей головой = P2 гэг-нарезка на новом/следующем эпизоде.**
+1. Взять эпизод с APPROVED animatic + VID-shot'ами.
+2. Авто-дериват гэг-окон из `shot_role`(setup→punchline)/`key_beat` прогонов, фильтр 15-40с →
+   `episodes.metadata.short_windows` (зеркало `excluded_shot_ids`).
+3. Хелпер `shotRangeToSeconds(animatic, startShotId, endShotId)` в `animatic-shotlist.ts` (cumsum
+   `computeEffectivePlayback`) → `[start,end]`.
+4. Цикл: per окно → существующий shorts-route `{startSec,endSec,overlayText}` + P1-бэклинк (уже есть).
+5. **Сэмпл 3-5 гэгов ЛОКАЛЬНО → показать Директору → только потом заливка** (propose-don't-auto-fire).
+Юнит на `shotRangeToSeconds` по образцу `ffmpeg-shorts.test.ts`.
+
+---
+
+## Environment & Setup Notes
+
+- Стек: `C:\SandyStudio\start-stack.ps1` (`-Build` для пересборки). App :3000 + durable Inngest :8288.
+  Прод на `36514d4`; шрифты-фикс `e1ed29e` подхватится на следующем `-Build`. Google Fonts флейк теперь
+  устранён (self-host) — деплой должен быть надёжен.
+- YT токен в `.env.local` теперь с 4 scopes (upload/readonly/force-ssl/**yt-analytics.readonly**).
+- Shorts-плейлист: `PLSxChBijpEdM`. Parent-vid MAP (9 эпизодов) дублируется в polish/backfill/batch
+  (легаси-долг №4, терпимо).
+- git: master `e1ed29e`, origin синхронизирован. Mode ===5=== был активен. Пайплайн idle.

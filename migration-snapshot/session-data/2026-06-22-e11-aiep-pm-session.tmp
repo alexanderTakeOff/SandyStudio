@@ -1,0 +1,93 @@
+# Session: 2026-06-22 (PM)
+
+**Started:** ~12:19 Dubai (resumed from morning e11-refs-canonfix) · **Last Updated:** ~18:05 Dubai
+**Project:** SandyStudio — E11 «Мощный вентилятор» (S15). Тео acts as **AI EP = "Pascal"** (EXEC-DIR-AI), branch master.
+**Topic:** E11 per-shot VIDEO generation run, piloted by Тео-as-Pascal as the AI Executive Producer — to (a) finish the episode's videos and (b) empirically discover what's needed to build the AUTOMATED AI EP agent. Plus 5 code fixes surfaced live by the run.
+
+---
+
+## What We Are Building
+
+The run's REAL goal (Director clarified mid-session): probe how ready the pipeline is to turn on an **automatic AI Executive Producer**. Тео plays that role BY HAND (as "Pascal", the established AI-EP author identity in team-chat) — directing Polина (EXEC-CONC, the operator) to create all remaining E11 shot videos: compose, control, evaluate, approve, decide. Every gap/defect hit while doing it = the deliverable → logged to `memory/ai_ep_conception_gaps.md` (the "AI EP зачатие" file). Polина = hands; AI EP = head. Final episode target: all shots rendered → assemble to **2:23** (143s, music length) with a **6s fade-out** at end → final cut → Drive link to Director.
+
+---
+
+## What WORKED (with evidence)
+
+- **5 fixes merged to master** (tsc 0 / 912 tests green before push): `37a6cca` scene-qualified shot label A#-SC##-SH## (shortShotLabel+ActivityEventRow+EpisodeReferencesGallery); `7ab24b8` shot-level re-gen guard in exec-vgen (blocks automatic video re-gen at $0 — confirmed live: SC13 re-render attempt blocked); `5247cae` Polина obeys+replies to direct AI-EP team-chat orders (chat-internal); `431af2a` render length = episode-timeline animatic-override (cost: renders 4s not 8s); `70b6d07` PLAN.md refresh. origin==master @ `70b6d07`.
+- **Polина direct-message fix CONFIRMED LIVE** — after the chat-internal fix she replied «Паскаль, сделала 4/4» and executed 4 real approveAsset calls. The «through Polина doesn't work» wall was broken.
+- **Numbering audit** — canonical scheme = APPROVED storyboard v02 = 36 shots, SH resets per scene; consistent across animatic/refs/plans/videos. The drift source (STB v03 global-SH, 59 shots) is INVALIDATED. Verified Polина's remaining-list matches canon exactly after work-plan rewrite.
+- **Render-duration source CONFIRMED** by code: VGEN render now prefers animatic `director_overrides` (episode-timeline) → `effectiveDurationSeconds` (runner.ts:1857 + flipped precedence at ~1876). Stitch trims to same value (runner.ts:2572). 0.5s = deleted-shot, stitch EXCLUDES it (excludedShots).
+- **E11 progress:** 30/36 shots have video (23 APPROVED + 7 REVIEW). SC13 = deleted (override 0.5).
+
+---
+
+## What Did NOT Work (and why)
+
+- **Ambient self-sustain of Polина** — auto-react on `agent_completed` (render finished) fires unreliably; when the render queue drains she goes idle (no wake event). → must "heartbeat" her with explicit Pascal nudges each wave.
+- **Big multi-action ticks to Polина** — she partial-executes (auto-react bold caps at 5 rounds/turn), does part then stops; needs another tick to continue. Single/small focused orders execute cleanly.
+- **Short shot keys to EXEC-VANIM** — `A2-SC14-SH01` → hard-fail "not found in STB". The Animator needs the FULL canonical id `SS-S15-E11-A2-SC14-SH01`. Fixed in tmp-drive + tick scripts (auto-prefix).
+- **My deterministic auto-driver loop** — blocked TWICE by the auto-mode classifier ("self-driving loop auto-approving gates / bypassing operator") UNTIL Director explicitly authorized (q5б). After authorization it runs fine.
+- **Polина ignoring approvals via Pascal nudge** (BEFORE the chat-internal fix) — 4-5 nudges, she only read (getWorkPlan loops), never approveAsset. Root-caused + fixed (chat-internal: inject message content + obey directive + bypass anti-cascade).
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Final assembly (STITCH):** build the final cut to 2:23 (143s) + 6s fade-out, then send Director the Drive link. NOT started. Needs all shots (minus SC13) approved first.
+- **TD: 0.5s-flag in generation** (`backlog_td_05s_delete_flag.md`) — skip 0.5-flagged shots from generation + from stitch missing-check. NOT implemented (only runtime-honored by Тео + stitch-exclusion).
+- **(A) Animator authors plan duration from the timeline override** — currently only the RENDER honors the override (fix 431af2a); the plan NUMBER can still be stale. Cosmetic/critic-alignment follow-up. NOT done.
+- **PLAN.md archive-trim** — 240+ lines, over the ≤200 cap. NOT done.
+- **Build the actual automated AI EP agent** — the next big step; blueprint is the conception log.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/api/vgen-shot-helpers.ts` | ✅ merged | shortShotLabel → full A#-SC##-SH## |
+| `webapp/components/activity/ActivityEventRow.tsx` | ✅ merged | feed shows full key |
+| `webapp/components/episode/EpisodeReferencesGallery.tsx` | ✅ merged | gallery full key |
+| `webapp/inngest/functions/exec-vgen.ts` | ✅ merged | shot-level re-gen guard ($0) |
+| `webapp/app/api/concierge/chat-internal/route.ts` | ✅ merged | Polина obeys+replies to direct AI-EP msgs |
+| `webapp/lib/agents/runner.ts` | ✅ merged | render length ← animatic override (cost) |
+| `webapp/__tests__/lib/api/list-storyboard-shots.test.ts` | ✅ merged | updated for full-key label |
+| `PLAN.md` | ✅ merged | CURRENT STATE refreshed (still >200 lines) |
+| `webapp/tmp-*.mjs/.ts` | ⚠️ untracked | session diagnostic + driver/tick scripts (NOT committed; clutter) |
+| `~/.claude/.../memory/ai_ep_conception_gaps.md` | ✅ written | AI-EP gaps log (gaps #1-11) |
+| `~/.claude/.../memory/backlog_td_05s_delete_flag.md` | ✅ written | the 0.5-flag TD |
+
+---
+
+## Decisions Made
+
+- **0.5s = "deleted shot" flag** — excluded from preview/final cut, must NOT be generated. (stitch already excludes; generation-skip = TD.)
+- **Render length = episode-timeline (animatic overrides), not the plan** — render cost (8s≈2× of 4s); animatic timing is authoritative for render length (431af2a).
+- **AI EP = "Pascal"** — Тео posts to team-chat as author "Pascal" (the AI-EP identity), not "Тео". Thread `bdbdafcf`.
+- **Through-Polина + driver hybrid** — Polина executes (now that chat-internal is fixed); Тео drives the tail with the deterministic driver under q5б authorization where speed/cleanliness needed.
+- **Animatic terminology (proposal, not yet built):** REF-animatic (ref images, AnimaticPlayer) vs Episode-Timeline (video, EpisodeTimelineSection) duplicate one `VID-animatic` contract → unify into one timeline surface POST-run ([[backlog_animatic_dedup_ref_vs_video]]).
+
+---
+
+## Blockers & Open Questions
+
+- **6 shots still need video:** A2-SC18-SH01, A2-SC21-SH01, A2-SC24-SH01, A2-SC25-SH01, A3-SC01-SH01, A4-SC02-SH02. **7 rendered videos in REVIEW need approval.** (SC13 deleted — skip.)
+- After all approved → STITCH to 2:23 + 6s fade → Drive link.
+- OpenAI billing is a hard cap (was hit earlier in the broader run; topped up) — watch on more generation.
+
+---
+
+## Exact Next Step
+
+Finish the tail: (1) approve the 7 REVIEW videos; (2) drive the 6 missing shots (Animator full-id → critic → approve plan → render at timeline length → approve video) via Polина/driver; (3) when all 35 (36 − SC13) have approved video → trigger EXEC-STITCH for the final cut at **2:23 + 6s fade-out**; (4) send Director the Drive link. Then: build the automated AI EP (conception log = blueprint).
+
+---
+
+## Environment & Setup Notes
+
+- Two servers in `webapp/`: `npm run dev` (:3000) + `npm run inngest:dev` (:8288). Both up this session.
+- E11 episode `7dd562a5-3af4-480e-8971-27141a2b9aa1`; active PA thread `bdbdafcf-2a38-4c58-b706-362fd7ff0f16` (mode 3); storyboard `b5497563` (36 full-id shots); animatic asset carries `animatic_v1.director_overrides` (Director's per-shot durations).
+- Drive/act via `EXEC_DIR_AI_TOKEN` (authorized_principal): team-chat POST `/api/team-chat/post` author=Pascal; approve `/api/assets/{id}/approve {decision:APPROVE}`; trigger `/api/episodes/{ep}/trigger {agentCode, payload:{shotId}}` (shotId MUST be full `SS-S15-E11-...`).
+- DB reads: `webapp/`, `node tmp-*.mjs` with inline `.env.local` loader (service role). Helper scripts left: `tmp-count.mjs` (shot tally), `tmp-drive.mjs` (EP driver, skips 0.5-deleted), `tmp-pascal-tick.mjs` (heartbeat nudge, auto full-id), `tmp-missing-status.mjs`, `tmp-dur-check.mjs`.
+- Mode: session in ===1=== ANALYTICS; Director directed each code fix explicitly (studio-tool edits allowed; film-content writes still gated).

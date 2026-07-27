@@ -1,0 +1,90 @@
+# Session: 2026-06-02
+
+**Started:** ~morning
+**Last Updated:** ~18:30 (Dubai)
+**Project:** SandyStudio (C:\SandyStudio) — master-session / orchestrator
+**Topic:** Orchestrate the production pipeline as Director's proxy — ship infra fixes, establish the "nudge Polina, don't act for her" doctrine, drive episode SS-S15-E02 through reference-prep. Cleared here.
+
+---
+
+## What We Are Building
+
+SandyStudio = AI animation studio (Next.js + Supabase + Inngest, local-first). This session I acted as **master-session/dirigent**: merged/shipped several PRs, fixed real workflow bugs surfaced while driving episode **SS-S15-E02 "The Tidy Tornado"** toward "all reference plans + generation prompts ready" (Director reviews prompts before any image gen). Core operating model crystallized: **Тео proxies the Director to Polina (EXEC-CONC) to TRAIN her toward Mode 3**, never running production procedures himself.
+
+---
+
+## What WORKED (with evidence)
+
+- **PR #27 Key Art thumbnail pipeline** — live paid smoke SS-S15-E01 ($0.34): 3 on-model thumbnails, Director picked v12. Merged → master.
+- **PR #28 Topic-3 systematic pipeline** (15→19 stages, Designer→Critic→Artist, StageWorkspacePanel) — tsc·642·30 replay; merged.
+- **Media-no-branches (d1a58cf)** — display + persist + upload routes all serve via `/api/media` from worktree-independent `FILMS/_media_cache/<S>/<E>/media/`. Director confirmed media returned in UI. tsc·642·30.
+- **Series ACTIVE derived (430918c)** — `webapp/lib/api/series-status.ts`; verified inline: S15+S14 resolve ACTIVE (general_idea LOCKED), S09 DRAFT. Fixed `listSeries(ACTIVE)=0` that stranded Polina.
+- **Screenwriter max_tokens 8000→16000 (5b7fc1d)** — confirmed: Writer Script v02 (Russian, 61s) completed with valid JSON after the bump (was FAILING on truncation). tsc·642.
+- **SREV Script-Critic auto-read (dffe5b3)** — added `exec-srev` to factory `isCriticChain`; tsc·642·30. Forward read works; PASS still stops at Director gate (verified by code trace).
+- **Nudge-Polina channel** — `POST /api/team-chat/post` (author=Тео, Bearer TEAM_CHAT_TOKEN) → her `exec-pa-react` auto-reacts. Two nudges posted successfully (HTTP 200, turns persisted).
+
+---
+
+## What Did NOT Work (and why)
+
+- **Manual `npm run inngest:dev` background worker alongside preview** — caused port-8288 war (two supervisors); killing the worker's child → it respawned. ROOT of the "both stopped at lunch" stall: I killed the Inngest worker during the port fight → Polina's dispatches went nowhere (no engine) → silent stall. FIX: only `preview_start` manages inngest; never manual bash; never kill the worker.
+- **Polina reports «запустила» but job doesn't run** — recurring TD-39: her dispatch gets HTTP 200 (DB write + event emit) but executor never picks up (worker down / fan-out lost) → false success. NOT fixed, only worked around. This is the #1 resume priority.
+- **Тео nudge ≠ Polina mutation in Mode 2.5** — Polina correctly refused to execute a mutation from a team-chat auto-trigger; needs Director's verbal «да». So Director nudges+approves; Тео is on-call for bugs.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **TD-39 Layer 1 (RESUME PRIORITY #1):** after a PA dispatch, poll `jobs.status IN (RUNNING,COMPLETED)` OR `activity agent_started` ≤10s; else return `pickup_timeout` so Polina says «не подхватилось» instead of false success. Files: `webapp/lib/concierge/tools/dispatch.ts` + a wait-for-pickup helper.
+- Hardening audit fixes: #1 episode.status stuck BRIEF_APPROVED (approve/route.ts), #3 fan-out `step.sendEvent` not idempotent (factory.ts), #4 schedule-analytics silent-fail, #5 trigger route episode.status validation.
+- Critic REVISE→producer auto-bounce + revision cap (2-3 → HALT→Director) — currently the Writer↔Story-Editor loop READS forward but doesn't auto-close on REVISE in Mode 1 (same for EPREV/VPREV).
+- WCHK (Continuity Critic) auto-read — same gap as SREV had.
+- Output-Critic agents (Mode-3 key) — design done but needs_revision (sync-vs-async + per-episode regen budget cap).
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|------|--------|-------|
+| master @ `15be610` | PASS | all above merged + PLAN resume checkpoint |
+| `webapp/lib/agents/runners/screenwriter.ts` | PASS | max_tokens 16000 |
+| `webapp/lib/agents/factory.ts` | PASS | SREV in isCriticChain |
+| `webapp/lib/api/series-status.ts` | PASS | new, derived ACTIVE |
+| `webapp/lib/media-cache.ts` + persist-binary + `/api/media` route | PASS | flat cache, no branch media |
+| branch `worktree-agent-a998b0b832df50dce` | HELD | naming-validator code-dir whitelist fix; needs Director OK (gov-hook self-mod) — NOT merged |
+| `docs/output-critic-architecture-design.md` | DESIGN | needs_revision |
+| E02 `SS-S15-E02-SCR-script-v02` (asset 23f40bf9) | REVIEW | awaiting Director approval; Story Editor not yet run on it |
+
+---
+
+## Decisions Made
+
+- **Series ACTIVE = derived from LOCKED general_idea** (not stored flag). Glossary + PA prompt updated.
+- **Media never in branches** — cache at `FILMS/_media_cache/<S>/<E>/media/` (flat, Director-navigable); supersedes 2026-06-01 3-tier mirror.
+- **Operating doctrine (memory `nudge_polina_dont_act_for_her`):** Тео nudges Polina in Director's voice; discriminator (her tool-misuse→teach; system-broke→fix code); Mode 2.5 = Director approves; keep worker alive via preview.
+- **Decide small tech-shape choices autonomously** (memory `director_decide_small_things_yourself`).
+
+---
+
+## Blockers & Open Questions
+
+- **TD-39** — false-success dispatches (the recurring Polina «запустила» that didn't). #1 to fix.
+- E02 Script v02 awaiting Director approval; whether to trigger Story Editor on v02 first (it was made before the auto-read fix) or approve as-is — Director's call.
+- naming-hook fix needs explicit Director OK to merge.
+- Open Q for metrics: count approval-wait time as production-time or not (for per-episode real-time report).
+
+---
+
+## Exact Next Step
+
+On resume: read PLAN.md `## CURRENT STATE` (it has the same resume block). **Fix TD-39 Layer 1** (sync pickup-ack in `dispatch.ts`) so Polina stops reporting phantom launches — this is the root Mode-2.5/3 reliability blocker the Director is frustrated by. Then continue driving E02 via Polina (Director nudges+approves; Тео on-call). Do NOT generate images until Director eyeballs the reference prompts.
+
+---
+
+## Environment & Setup Notes
+
+- Servers MUST run via `preview_start` (launch.json: `next-dev` :3000, `inngest-dev` :8288). NEVER `npm run inngest:dev` in bash (port-8288 war). Both were UP at session end.
+- `webapp/.env.local` has all keys (incl. TEAM_CHAT_TOKEN, supabase service role). Main repo `C:\SandyStudio\webapp\.env.local` must exist (copied from worktree).
+- Nudge Polina: `npx tsx --env-file=.env.local -e` POST to `http://localhost:3000/api/team-chat/post` {content, author:"Тео", tag}. Read her: `/pa-recent` (scripts/pa-tail.mjs in worktree quizzical-brown-462555).
+- Supabase MCP execute_sql is DENIED; use CLI / app / inline tsx with service-role for DB reads.

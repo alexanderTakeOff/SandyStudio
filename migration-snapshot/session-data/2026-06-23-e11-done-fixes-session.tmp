@@ -1,0 +1,98 @@
+# Session: 2026-06-23 (resumed 2026-06-22 PM → past-midnight 06-23)
+
+**Started:** 2026-06-22 ~12:19 Dubai (resumed from e11-aiep-pm-session) · **Last Updated:** 2026-06-23 ~04:45 Dubai
+**Project:** SandyStudio — E11 «Мощный вентилятор» (S15). Тео acts as AI EP («Pascal»), branch master.
+**Topic:** Diagnose Polина's pipeline failures during the E11 video tail → root-cause + fix three defects (shotId addressing, hardcoded act count, deleted-shot stitch gate) → E11 PRODUCTION DONE → working-tree cleanup + migrate to a worktree for next session.
+
+---
+
+## What We Are Building
+
+The E11 run's meta-goal was to pilot the AI Executive Producer role by hand (Тео as «Pascal») to harvest the gaps that block building an AUTOMATED AI EP (logged in `memory/ai_ep_conception_gaps.md`). This session: Director reported «у полины падают все дизайнеры» — diagnosed and root-fixed three distinct defects surfaced by the live run, then E11 finished (stitch ran, final cut assembled — first 4-act episode in studio history). Closed with repo hygiene and a decision to stop hand-editing master: next session works in a git worktree, master stays the stable branch the live servers/Polина run against.
+
+---
+
+## What WORKED (with evidence)
+
+- **shotId normalization fix** (`9b936e5`) — confirmed live: agent_failed events at 14:23 carried the bare key `A2-SC32-SH01`; after the fix hot-reloaded, 15:08 events carried the full `SS-S15-E11-A2-SC32-SH01`. Plus 4 unit tests green.
+- **Storyboarder act-count fix** (`9e14c12`) — confirmed by all-episode scan: E01–E10 (+S14) every board has actObjs==maxA==scriptActs==3; only E11 was actObjs=3 / maxA=4 / scriptActs=4. 7 new unit tests green.
+- **Deleted-shot stitch/auto-start fix** (`fddaed7`) — confirmed by code trace (next-events denominator counted the ≤0.5s shot; runner missing-check ran before exclusion) + 3 new unit tests. E11 stitch then completed (Director: «уже давно стич отработал»).
+- **Full verify after all three** — `npx tsc --noEmit` exit 0; `npx vitest run` = **926/926**; `npm run replay-pilot` = **30/30 assertions**.
+- **All 4 commits pushed to master** — `git push` reported `70b6d07..ffdd212  master -> master`; `git log` confirms 9b936e5 / 9e14c12 / fddaed7 / ffdd212; `git status -sb` = `master...origin/master` (in sync).
+- **POST-SESSION (parallel work on master, 06-23 ~04:45):** two more commits landed after mine — `7094c8d fix(storyboarder): verify episode-continuous unique SH numbering` (adds `collectShotIdViolations` postcondition + tests + contract update; fully closes conception gap #1 SH-continuity) and `842560f feat(concierge): auto-react as a real agent loop` (addresses gap #11 flaky ambient self-sustain). NOT done by this session — a parallel actor on master. master still in sync with origin. NOTE: this is exactly the parallel-on-master collision the worktree migration is meant to end — a background Inngest dev-server start also failed (exit 1, :8288 already held).
+- **Working tree cleaned** — removed 119 `tmp-*` files (before=119, after=0).
+- **Worktree created** — `git worktree list` shows `C:/SandyStudio/.claude/worktrees/aiep  ffdd212 [claude/aiep]`; env.local copied (main 6034b/32 keys == worktree 6034b/32 keys).
+
+---
+
+## What Did NOT Work (and why)
+
+- **Initial tolerant-lookup proposal for shotId** — rejected after Director asked «почему не длинный везде?»: tolerant `getStoryboardShotById` only fixes the read side, leaves the short key flowing through events/filenames/metadata, AND silences genuine typos. Replaced with front-door normalization at the trigger route + strict lookup retained.
+- **First worktree location `C:/SandyStudio-wt-aiep`** — Director flagged «намудрил»: his convention is `C:\SandyStudio\.claude\worktrees\`. Fixed via `git worktree move` → `.claude/worktrees/aiep` (env.local rode along, verified 6034b).
+- **Polина firing phantom shots** (SC28/31/32/36) — these don't exist in the 36-shot board (A2 ends at SC25). NOT a code bug — operator-selection error (gap #1/#4). The now-normalized full id still correctly hard-fails «not found in STB». Left as an operator/auto-EP concern, out of code scope.
+- **fal.ai render 403** — «User is locked. Exhausted balance» blocked all video renders mid-run. Director topped up; not a code issue.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **AI EP blueprint (q13a — recommended next):** synthesize the 12 conception gaps into a concrete autonomous-EP design (single canonical shot-list + deterministic missing-calc [done in code], sanctioned EP→operator channel, validatable duration math, blocker escalation, heartbeat vs flaky ambient). Do it in `claude/aiep`.
+- **q8b — E11 board act-grouping fix (now DUE, finale passed):** split the JSON `act:3` object into `act:3` (A3 shots) + `act:4` (A4 shots). shot_ids are CORRECT (4-act script) — do NOT renumber. `backlog_td_e11_board_act_grouping.md`.
+- **0.5-flag second half:** SKIP generation of deleted (≤0.5s) shots (only the stitch/missing side was done). `backlog_td_05s_delete_flag.md`.
+- **PLAN.md archive-trim** — >200 lines, over cap.
+- **3 dead harness worktrees** (`angry-tesla-fed2ed`, `exciting-easley-23cb75`, `exciting-khorana-1e513e`) — violate the «2+main» cap; await Director approval to `git worktree remove`.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/api/vgen-shot-helpers.ts` | ✅ merged | + `normalizeShotId` (+2 regex), reverse of shortShotLabel |
+| `webapp/app/api/episodes/[id]/trigger/route.ts` | ✅ merged | normalizes payload.shotId once after ep load |
+| `webapp/lib/agents/runners/storyboarder.ts` | ✅ merged | act count from `countScriptActs` + triple-invariant postcondition + `maxActInShotIds` |
+| `webapp/lib/api/animatic-shotlist.ts` | ✅ merged | + `isDeletedShot` + `DELETED_SHOT_MAX_SECONDS` |
+| `webapp/lib/agents/next-events.ts` | ✅ merged | auto-start gate excludes deleted shots (require every LIVE shot approved) |
+| `webapp/lib/agents/runner.ts` | ✅ merged | STITCH skips deleted shots BEFORE missing-check |
+| `specs/contracts/storyboarder@v1.yaml` | ✅ merged | postcondition wording: act count owned by script |
+| `webapp/__tests__/lib/api/list-storyboard-shots.test.ts` | ✅ merged | + normalizeShotId tests |
+| `webapp/__tests__/lib/agents/runners/storyboarder-act-count.test.ts` | ✅ merged | NEW — countScriptActs + maxActInShotIds |
+| `webapp/__tests__/lib/api/animatic-shotlist-clamp.test.ts` | ✅ merged | + isDeletedShot tests |
+| `PLAN.md` | ✅ merged | CURRENT STATE refreshed; Mode left at ===5=== |
+| `memory/ai_ep_conception_gaps.md` | ✅ written | gaps #10 + #12 root-caused + closed |
+| `memory/backlog_td_e11_board_act_grouping.md` | ✅ written | q8b — fix after finale (now due) |
+| `memory/session_2026-06-22_e11-done-numbering-fixes.md` | ✅ written | session memo + index updated |
+
+---
+
+## Decisions Made
+
+- **shotId: normalize at the single door, not tolerant lookup** — short = display only (shortShotLabel), long = identity; convert once at `/api/episodes/[id]/trigger`. Keeps lookup strict so typos fail loud.
+- **Act count is script-owned, never hardcoded** — `countScriptActs` + triple invariant (act-objects == max A# in shot_ids == script acts) HALTs drift at generation. E11 was the first 4-act episode, which is why numbering «never broke before».
+- **0.5s deleted shot excluded from BOTH gates via one shared `isDeletedShot`** — kills the Director «approve the deleted shot» cheat; magic 0.5 centralized in `DELETED_SHOT_MAX_SECONDS`.
+- **Stop hand-editing master; work in worktrees** — master = stable integration branch the live servers/Polина run against; orchestrator ON master is correct (it's the merge-owner), the anti-pattern was direct code edits on master in a rush. Worktrees live in `.claude/worktrees/`.
+- **E11 board act-grouping fix deferred to after finale (q8b)** — shot_ids correct, render unaffected; cosmetic act-object split done later.
+
+---
+
+## Blockers & Open Questions
+
+- **Next direction unconfirmed** — q13a (AI EP blueprint, Тео's recommendation) vs q13b (small due TDs: q8b board, 0.5 generation-skip) vs q13c (done: hygiene). Director to pick.
+- **3 dead harness worktrees** — await approval to remove (one may hold uncommitted work).
+- **PLAN.md still ===5===** — return to ===1=== next session if not editing immediately.
+
+---
+
+## Exact Next Step
+
+Open Claude Code IN the worktree `C:\SandyStudio\.claude\worktrees\aiep` (branch `claude/aiep`), NOT in `C:\SandyStudio`. Then start q13a — synthesize `memory/ai_ep_conception_gaps.md` (12 battle-tested gaps) into a sliced AI EP build blueprint. When green, merge `claude/aiep` → master and restart the main servers. If a dev server is needed in the worktree, use ports other than :3000/:8288 (main holds those). Also tee up q8b (board act:3→act:4 split) and the 0.5-flag generation-skip as small follow-ups.
+
+---
+
+## Environment & Setup Notes
+
+- master HEAD `ffdd212`, origin in sync. Live servers (dev :3000 + inngest :8288) + Polина run against the MAIN checkout `C:\SandyStudio\webapp` on master — keep it green.
+- Worktree: `C:\SandyStudio\.claude\worktrees\aiep` (branch `claude/aiep`), env.local present (gitignored — copied, not tracked). Each worktree needs its own webapp/.env.local.
+- Verify trio: `npx tsc --noEmit` · `npx vitest run` (926) · `npm run replay-pilot` (30). No `npm run build` while dev is up (corrupts .next).
+- DB reads: service-role via webapp/.env.local inline loader (tmp scripts were the pattern; all deleted now — recreate ad-hoc if needed). E11 episode `7dd562a5-3af4-480e-8971-27141a2b9aa1`; storyboard `b5497563`; PA thread `bdbdafcf` (mode 3).
+- Acting as AI EP: team-chat author «Pascal» via `EXEC_DIR_AI_TOKEN`; trigger payload shotId now auto-normalizes, so short keys are OK going forward.

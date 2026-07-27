@@ -1,0 +1,101 @@
+# Session: 2026-07-06 (spanning 07-05 night → 07-06)
+
+**Started:** ~2026-07-05 evening (resume from E15 session)
+**Last Updated:** 2026-07-06 ~20:00 local (Dubai)
+**Project:** C:\SandyStudio\webapp · branch `claude/e13-thin-agent-run`
+**Topic:** E16 «Sandy in The Gym» live run support — Key Art UI, per-shot kebab rework, retry-caps, episode-create defaults, canon-staleness diagnosis, MERGE to master.
+
+---
+
+## What We Are Building
+
+SandyStudio = AI animation studio. This session was a long live-run support session for **E16 «Sandy in The Gym»** (which SHIPPED — final cut DONE). Work split into UI features (Key Art drawer, per-shot kebab process view, Episode Settings retry-caps + budget defaults) and architecture diagnosis (pipeline gate-inconsistency, canon-staleness). All shipped code landed on `claude/e13-thin-agent-run` and was MERGED to master at end (`996e31d`).
+
+North-Star context: Mode-3 autonomous factory. The recurring theme of E16's friction = the pipeline treats APPROVED as an independent latch, decoupled from whether its gate was truly met and whether its inputs still hold → needs human nudges. The freshness/reconciler layer that would close this EXISTS but is inert (`MECHANICS_AUTO_ADVANCE` off) and incomplete.
+
+---
+
+## What WORKED (with evidence)
+
+- **Key Art drawer (Fix 1b + Fix 3)** — commit `64ba90b`. IMG-thumbnail 3-concept gallery via CandidatesStrip + per-variant approve/revoke + Edit-plan button (EditorModal on linked SPC-thumb_plan). Confirmed: tsc·0, 1145/1145 tests.
+- **Per-shot kebab → two-field process view** — commit `1b3a0a6`. AnimaticPlayer popover = two fields (Image / Video), each with own designer-plan → critic → artifact sub-chain; two-directional approve/снять tick on every line; critic verdict chips; reference generate/regen button; video-version click → wide drawer; NONE removed; object-aware "generating…" badges. Confirmed live on :3000 (Director saw it after hard-refresh) + tsc·0/1145. NOTE: first attempt was a 4-partition layout (Design/Critic/Image/Video) — Director rejected it live («порядок не очень»), reworked to two-field.
+- **Retry-caps in Episode Settings** — commit `3c37e96`. Three per-episode caps via episodes.metadata (mirrors concierge_cap_usd): prompt_revision_cap (2, → applyCriticVerdict cap at 4 runner sites), reference_regen_cap (2, → EREF loop maxRetries), video_regen_cap (1, → exec-vgen dedup now count-based). Byte-identical at defaults. tsc·0/1145.
+- **Episode-create budget/cap defaults as real hard limits** — commit `d82df7d`. POST /api/episodes now writes budget_ceiling (series ?? 150) + metadata {concierge 30, retry 2/2/1} at INSERT. Closed the gap where $150/$30 were UI-prefill only (null budget = unlimited until manual Save). tsc·0/1145.
+- **MERGE to master** — `git branch -f master … && git push origin master`. master fast-forwarded `2e0c79f → 996e31d`, pushed to origin. Working tree untouched (WIP preserved). Confirmed by push output `2e0c79f..996e31d master -> master`.
+- **E16 FINAL CUT DONE** — Director confirmed. The EXEC-EREF stall was pure canon-staleness; unblocked by ONE manual command to Polina «approve the new plans».
+
+---
+
+## What Did NOT Work (and why)
+
+- **4-partition kebab layout (Design·Critic·Image·Video by type)** — Director rejected on live review: «такой порядок не очень». The type-grouping merged both tracks' plans/critics, read worse than per-track. Reworked into two fields (Image/Video), each with its own designer+critic. (Committed only the two-field version.)
+- **Polina's proposed canon-staleness fix (skill-rule + slug-reference scan)** — REJECTED (told Director). Two reasons: (1) wrong layer — a skill is authoring-time advisory, can't enforce reverse-invalidation of already-APPROVED plans (that's runtime/reconciler). (2) her slug-reference scan MISSES her own SH16 example — SH16 has objects:[], never references gym_equipment; the problem is «canon APPEARED in the location», not «referenced canon changed».
+- **replay-pilot NOT run** — deliberately deferred (agent-layer changes) to avoid disrupting live E16 Inngest/DB. Must run when episode idle. Changes are byte-identical at defaults so expected to pass.
+
+---
+
+## What Has NOT Been Tried Yet (queued TD)
+
+- **Canon-as-tracked-input invariant (q15, the big one):** the freshness engine (`input-versions.ts` UPSTREAM_BY_AGENT = only VANIM/VGEN artifact edges) has NO ref_plan←Bible-canon edge — canon is never a versioned input, so staleness is structurally blind to canon changes. Fix: stamp `input_versions.canon` = shot's LOCATION canon ROSTER (not just referenced slugs — roster is what catches SH16) at EXEC-EREF-DESIGNER write; state-matrix drift → REVISION «canon updated». Rides on the reconciler (inert behind MECHANICS_AUTO_ADVANCE) → do at clean-episode start.
+- **gate-verified promotion:** approving the last critic review (REV-world_check) should promote the reviewed artifact (STB→APPROVED). Closes the «storyboard approval skipped → EREF gate fail (found 0 APPROVED)» bug.
+- **casting-interview SKILL for Polina + Brief→Casting auto-nudge:** approved plan in `~/.claude/plans/glistening-drifting-biscuit.md` (BUT that file now holds the kebab plan — casting plan is in an earlier ExitPlanMode block + [[backlog_2026-07-05_live-run-queue]]). Casting has no executor (ART-AD spec-only) → stalls after brief. Skill = flavor:process, applies_when.agent:[EXEC-CONC], reuse setBibleContent/enrichBible/markAwaitingDirector/castEpisode.
+- **cell-pulse bug:** timeline cell goes DIM after designer FINISHES (should be BRIGHT — dim was pre-start; finishing = plan exists). Same AnimaticPlayer cellPalette/liveWork fallback. Small fix.
+- **Mode-3 fanout-critics not auto-starting** — UNVERIFIED («проверь потом»). May be false alarm; ref critic SHOULD chain via exec-eref-designer.ts:50-62.
+- **canon UNLOCK button** (LOCKED SBL canons have no Unlock in Library) + **MECHANICS_AUTO_ADVANCE smoke** (reconciler built, never smoked; start from clean episode w/ reserved pilots) — Director-added backlog.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `components/preview/AssetPreview.tsx` | ✅ Complete (merged) | Key Art gallery+approve+Edit-plan |
+| `components/assets/EREFv2Sections.tsx` | ✅ Complete (merged) | CandidatesStrip label prop |
+| `components/animatic/AnimaticPlayer.tsx` | ✅ Complete (merged) | two-field kebab + approve tick + critic chips + versionRow helper |
+| `components/timeline/EpisodeTimelineSection.tsx` | ✅ Complete (merged) | refCritics/shotCritics memos + handleGenerateReference + drawerWide |
+| `components/preview/PreviewDrawer.tsx` | ✅ Complete (merged) | initialSize (VID-shot → wide) |
+| `lib/agents/chain-flags.ts` | ✅ Complete (merged) | resolve{Prompt,Reference,Video}RegenCap + env readers |
+| `app/api/episodes/[id]/settings/route.ts` | ✅ Complete (merged) | 3 retry-cap keys in schema+patch |
+| `lib/agents/runner.ts` | ✅ Complete (merged) | cap passed at 4 applyCriticVerdict sites |
+| `lib/agents/runners/episode-references.ts` | ✅ Complete (merged) | maxRetries per-run from metadata |
+| `inngest/functions/exec-vgen.ts` | ✅ Complete (merged) | dedup gate count-based vs video_regen_cap |
+| `components/episode/EpisodeSettingsCard.tsx` | ✅ Complete (merged) | «Retry caps» row (3 inputs + saveCaps) |
+| `lib/budget.ts` | ✅ Complete (merged) | episodeBudgetDefaultUsd() |
+| `app/api/episodes/route.ts` | ✅ Complete (merged) | writes budget+caps defaults at insert |
+| **Uncommitted WIP (NOT mine, NOT merged)** | ⚠️ On branch working tree | system-prompt-builder.ts, tools/themes.ts, api/assets/[id]/upload/route.ts, lib/api/upload-cache.ts + untracked episode-cast-completeness-check skill, docs/analysis/, backfill-uploaded-canon.ts. Parallel-session WIP — intent unknown; flagged to Director. |
+
+---
+
+## Decisions Made
+
+- **Kebab = two fields (Image/Video) each with own designer+critic** — not 4 type-partitions (Director live-review rejected type-grouping).
+- **Compact two-directional tick (✓/снять) per line** — not full PilotApproveButtons cluster (popover density). Critic line gets its own approve too (q11).
+- **video_regen_cap = new dedicated cap in exec-vgen dedup gate** — NOT overloading SHOT_REGEN_CAP (shared w/ EREF, runaway semantics, default 6). Count-based; identical to old boolean at default 1.
+- **Episode defaults written at CREATION** (not UI-prefill) — budget_ceiling ?? 150, metadata caps — sourced from env/config readers, no magic numbers.
+- **Canon-staleness = systemic (canon-as-input), NOT a skill-rule patch** — reuse existing input_versions/reconciler; reject Polina's slug-scan (misses SH16).
+- **Merge via `git branch -f master` (no checkout)** — to avoid disturbing the uncommitted WIP working tree; ff-only (verified master is ancestor).
+
+---
+
+## Blockers & Open Questions
+
+- **q15 pending:** formalize canon-as-tracked-input as the reconciler-turn-on plan? (Director hadn't answered when he said «merge».)
+- **q16 pending:** package canon-input + gate-promotion + self-advance as one reconciler-turn-on sprint, next big push?
+- **Uncommitted WIP on branch** (system-prompt-builder, themes, upload route/cache, episode-cast-completeness-check, docs/analysis) — needs Director to say whether to commit; NOT on master.
+- **replay-pilot** owed once E16/episodes idle.
+- **Polina** was on gemini-free / auto-react harness; servers currently STOPPED.
+
+---
+
+## Exact Next Step
+
+Servers are STOPPED (Director said «гаси сервера»). On resume: (1) decide q15/q16 (canon-as-input reconciler plan) — likely the next big architecture push, do from a CLEAN episode not mid-run; OR (2) knock out the small queued items (cell-pulse bug, casting-interview skill). (3) Resolve the uncommitted branch WIP (commit or discard — ask Director). (4) Run replay-pilot when an episode isn't live.
+
+---
+
+## Environment & Setup Notes
+
+- Two servers (killed at session end): `npm run dev` (next :3000, turbopack) + `npm run inngest:dev` (:8288). Restart both to resume; hard-refresh browser after big component edits (turbopack HMR doesn't push hook-adding changes to a stale tab).
+- Never `npm run build` while dev up (corrupts .next). Never restart server mid-generation (kills Inngest jobs) — hot-reload is safe.
+- master = `996e31d`, pushed to origin/alexanderTakeOff/SandyStudio. Branch `claude/e13-thin-agent-run` == master + uncommitted WIP.
+- Full running backlog: `~/.claude/projects/C--SandyStudio/memory/backlog_2026-07-05_live-run-queue.md`.

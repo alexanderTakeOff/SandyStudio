@@ -1,0 +1,101 @@
+# Session: 2026-07-23 (E31 — video-flow fixes + канон-коррекция)
+
+**Started:** 2026-07-23 ~11:00 → ~19:55 (Dubai)
+**Project:** SandyStudio (`C:\Users\Alexander\sandystudio`)
+**Topic:** Починка сломанного видео-потока E31 (шторм 72 джобы) + большая канон-коррекция
+(убрать ложное требование flat 2D; Инспектор переписан + перерисован).
+
+---
+
+## What We Are Building
+
+Две связанные линии за сессию:
+1. **Видео-поток E31** штормил (72 zombie-джобы) — диагностирован (ШИРИНА веера, не глубина)
+   и починен зеркалированием рабочего реф-потока (Pilot Pass).
+2. **Канон** оказался неверным: стиль объявлен «flat 2D», а на деле это 2.5D/3D cartoon —
+   визуальный критик из-за этого массово REVISE'ил корректные рендеры. Канон исправлен в БД.
+
+---
+
+## What WORKED (with evidence, all committed on master, UNPUSHED)
+
+- **Аварийный стоп churn** `e8716d2f` — `stop-stack.ps1`/`.cmd` (+`-Wipe`): убивает Inngest
+  ПЕРВЫМ (шторм event-driven через него, не через job-строки) + паркует durable SQLite
+  (иначе рестарт воскрешает шторм — проверено живьём).
+- **Video Pilot Pass + stale-plan heal + UI server-controls** `28d497fd` — Start Video
+  фаерит 2 пилота + стэш `video_fanout_pending` + кнопка «Fan Out (N)»; VGEN самолечит
+  протухший plan-id → ЕДИНСТВЕННЫЙ APPROVED план шота; UI STOP/Restart → `/api/system/servers`.
+- **Кнопка Start Video не исчезает навсегда** `86b959aa` — была завязана на
+  `pipeline_mode==='parallel'` (метка ставится 1 раз, не сбрасывается) → кнопка+FanOut
+  пропадали после первого нажатия, Pilot Pass не мог сработать. Фикс: видна пока
+  `vidShotAssets.length < shot_list.length`; роут получил ветку `alreadyOpen` (повтор
+  фаерит всё недостающее одним проходом, дедуп по строкам).
+- **Канон исправлен в БД (Supabase LOCKED-ассеты, Директор q8a/q9a, ===5===):**
+  - style `303959c1`: «flat 2D/no gradients/zero shadow/clean vector» → cartoon 2.5D/3D +
+    simple soft shadows + gentle shading (де-абсолютизация, стиль не ломали).
+  - sandy `bc2d6f74`: рот ВСЕГДА минималистичный (был «only extreme expr»).
+  - виды со спины разрешены (style+sandy).
+  - inspector `6dce86ff` переписан: стрелки=УСЫ (down/horiz/up), +глаза+движимые брови,
+    руки СОЕДИНЕНЫ с телом. Картинка перерисована gpt-image-2 edit ($0.211, только +глаза/
+    брови/руки, остальное 1:1), Директор одобрил → залита на Drive (new id `1Qzf-2gZ…`),
+    v01 LOCKED обновлён на месте, медиа отдаёт байт-в-байт.
+  - `animator.md` вычищен от «flat 2D/no 3D/no gradients» (git `b712a61e`).
+  - Аудит-скрипты мутаций `5611f9ee`.
+- **Критик подтверждён на живых примерах:** SH01/SH04 перегнаны с новым каноном —
+  жалоба «violates flat 2D» ИСЧЕЗЛА, SH04 теперь «on-style»; оставшиеся REVISE = реальные
+  контент-претензии (нет e-gate дверей / scan-grid), не 2D-ложняки. Модель та же terra.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Killing job-строк** не останавливает шторм — он event-driven через Inngest (нужен
+  kill Inngest-процесса + `-Wipe` durable DB).
+- **Session-background серверы умирают при `/model`** — переключение модели встряхивает
+  сессию, фоновые джобы reaped (exit 255/killed). Для стабильного стека = ДЕСКТОП-ЯРЛЫК
+  «SandyStudio Stack» (`start-stack.cmd`), он session-независим. Директор им и поднял.
+- **prefer-const lint** уронил первый билд (`let loadErr` не переназначается) → `25ff0683`.
+
+---
+
+## Current State of Files / DB
+
+| Что | Статус |
+|---|---|
+| master commits e8716d2f→5611f9ee (7 шт) | **UNPUSHED** — Директор решает push/merge |
+| Канон в Supabase (style/sandy/inspector) | ✅ live, БЕЗ рестарта (читается вживую) |
+| Картинка Инспектора | ✅ Drive `1Qzf-2gZ…`, v01 LOCKED, served байт-в-байт |
+| Стек (app :3000 / inngest :8288) | был up на десктоп-ярлыке; **Директор делает РЕБИЛД** |
+| E31 видео | 2 шота без APPROVED реф (SH21 REVISION, SH24 REVIEW); эпизод уже на канале |
+
+---
+
+## Blockers & Open Questions
+
+- **git:** 7 коммитов на master UNPUSHED. Push/merge — за Директором (не решено).
+- **Директор делает ребилд сам** — чтобы `animator.md` (промпт) подхватился; канон-БД уже live.
+- Видео-флоу глубже НЕ трогали в этой сессии (капы глубины уже работали); осталось из
+  бэклога: cap-reset после HALT (гипотеза Директора подтверждена, отдельная сессия).
+
+---
+
+## Exact Next Step
+
+1. Директор: ребилд стека (`start-stack.ps1 -Build` / десктоп `-Build`) — подхватить `animator.md`.
+2. Решить push/merge 7 master-коммитов.
+3. (Опц.) прогнать больше шотов критиком с новым каноном если нужна доп. уверенность.
+4. Бэклог видео: [[backlog_cap_reset_after_halt]], [[backlog_start_video_button_disappears_after_restart]] (закрыт),
+   [[backlog_video_flow_broken_parallel_churn]] (закрыт).
+
+---
+
+## Environment & Setup Notes
+
+- E31 id: `c3934ee2-c135-43e9-9a56-58b6bdc1f98b`. series_id `45351141-…`.
+- Канон-ассеты: style `303959c1`, sandy `bc2d6f74`, inspector `6dce86ff` (все LOCKED, БД).
+- Визуальный критик: `visual-shot-critic.ts`, модель из Settings (дефолт `gpt-5.6-terra`
+  cheap/flaky; Opus «sharpest» в каталоге `visual-critic-provider-config.ts`).
+- Стоп churn: `stop-stack.cmd -Wipe`. Стек session-незав.: десктоп-ярлык `start-stack.cmd`.
+- Новая память: `canon_style_is_25d_3d_cartoon_not_flat_2d` (НЕ навязывать 2D заново).
+- Аудит-скрипты канона: webapp/scripts/{fix-canon-2d-mouth-backview,rewrite-inspector-canon,
+  edit-inspector-image,upload-inspector-image}.ts (exact-1-match guard, повтор = no-op).

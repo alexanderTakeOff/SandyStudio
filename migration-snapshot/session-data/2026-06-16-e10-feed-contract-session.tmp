@@ -1,0 +1,97 @@
+# Session: 2026-06-16
+
+**Started:** ~08:30 UTC (12:30 Dubai) via /resume-session (from 2026-06-15 E10 memo)
+**Last Updated:** ~14:00 UTC (18:00 Dubai)
+**Project:** SandyStudio — Тео на Opus 4.8 · master @ `5672057` (pushed, in sync)
+**Topic:** E10 to video — built the Shot Plan contract page (TD-84), q21 readiness gate, q10 cancel-switch redesign, and a full activity-feed overhaul (highlight + consolidate + critic verdict + scannable rows + concierge chat header). Plus worktree cleanup and live SH03-SH15 debugging.
+
+---
+
+## What We Are Building
+
+Driving E10 ("Сэнди и лифт") to final cut on a plan-driven pipeline while hardening the Director-facing surfaces. Two arcs this session:
+1. **Pipeline control surfaces** — make the Shot Plan an editable contract page (TD-84), add a fail-loud readiness gate before paid generation (q21), and turn the legacy VGEN cancel kill-switch into an honest, clearable gate (q10).
+2. **Observability / activity feed** — the feed was unreadable ("War and Peace"): repeated governance boilerplate, a misleading "DIRECTOR" chip (couldn't tell the human Director from Polina acting under his token), no critic verdicts. Rebuilt into one shared scannable row, plus fixed the Polina chat-panel header.
+
+---
+
+## What WORKED (with evidence)
+
+- **TD-84 Shot Plan contract page** (`3fc2473`) — confirmed: opens prompt+provider+quality+resolution+seed+anchors as fields, editable while DRAFT/REVIEW/REVISION, "Generate from plan" fires canonical `/trigger`. tsc 0 / 859 tests / replay-pilot 30/30.
+- **Status-priority timeline resolver** (`f31e28b`) — confirmed by 18 unit tests: APPROVED beats newer DRAFT (fixed SH02 hidden-video).
+- **q21 readiness gate** (`58000a4` part) — `validateShotReadyForGeneration` orchestrates plan-parse + provider-caps + media-preflight; +11 tests; NOT stricter than runner (provider/duration→warnings) so it can't false-block Polina.
+- **q10 cancel redesign** (`58000a4`) — cancel checked at q21 gate (honest block) not silent runner abort; DELETE /vgen/cancel + "Clear block" banner button. Root cause confirmed live: a stale `app_config vgen_cancel:<ep>` token (Director clicked Cancel at 06:07) silently aborted every manual render (`kind:cancelled`). Cleared it; renders unblocked.
+- **Activity feed overhaul** — confirmed LIVE via preview screenshot + DOM read: shared `ActivityEventRow` (3 feeds→1), Director-command highlight, critic verdict (`· PASS`/`· REVISE` + warning severity, `a465213`), scannable one-liner `WHO · action · verdict · 4 mins ago · 13:31` (`8166ce6`). DOM showed `Video Artist · completed SH10`, `Polina · trigger Video Artist`.
+- **Concierge chat header** (`5672057`) — tsc 0: Polina timestamp no longer drops (streaming preserves createdAt), muted author/time header on its own line.
+- **Worktree cleanup** — removed 18 dead worktrees + pruned merged branches; salvaged the naming-validator studio-dir whitelist (`36f0445`) from a998b0b.
+- **Verify trio all green at each step**: tsc 0 · 873 tests · replay-pilot 30/30.
+
+---
+
+## What Did NOT Work (and why)
+
+- **My `saveAgentOutput` verdict plumbing** — REVERTED: a parallel session had already added critic-verdict to `factory.ts` (reads `exec.result.metadata.verdict` directly), so my return-value plumbing was dead duplication. Committed THEIR factory change (`a465213`) instead.
+- **Polina's "executor не подхватил за 10 секунд" diagnosis** (recurring) — FALSE every time. SH14/SH15 had actually COMPLETED ~1 min after her 10s poll (jobs table: EXEC-VANIM COMPLETED 09:50). Her 10-second pickup heuristic is fundamentally wrong for async multi-minute agent work → phantom "not started" + makes her appear to need nudges.
+- **Browser auto-verify of feed/chat** — preview session login state: worked once Director logged in, but chat history resets to welcome on reload, so live chat-header couldn't be screenshotted.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Polina pickup heuristic fix** — replace 10s-poll with reconcile-by-real-status (jobs/assets), the living-work-plan-loop's intent. This is the root of "needs nudges in Mode 3". Concierge layer = NEIGHBOR session territory — coordinate.
+- **Honest `metadata.actor_kind`** field at concierge log time (instead of detecting Polina-proxy via the `[Prod Assistant]` text marker in the feed row).
+- **q21 slice-2** — wire the readiness gate into the factory/autonomous path + `generate-single-shot` + EREF-from-plan (currently only `/trigger` deliberate path).
+- **SH11-SH15 next move** — all 5 Shot Plans are in REVISION (Video Critic returned REVISE). Either re-author per critique or human-Director approve (now possible via the REVISION→APPROVED fix).
+
+---
+
+## Current State of Files (all COMMITTED + PUSHED, master @ 5672057)
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/api/shot-plan-contract.ts` | ✅ new | parser+serializer, shared runner+UI |
+| `webapp/components/preview/ShotPlanContract.tsx` | ✅ new | TD-84 contract page |
+| `webapp/lib/api/shot-readiness.ts` | ✅ new | q21 gate |
+| `webapp/components/activity/ActivityEventRow.tsx` | ✅ new | one shared feed row |
+| `webapp/lib/api/timeline-cell-resolver.ts` | ✅ | status-priority |
+| `webapp/app/api/assets/[id]/approve/route.ts` | ✅ | human-Director REVISION→APPROVED |
+| `webapp/app/api/episodes/[id]/vgen/cancel/route.ts` | ✅ | +DELETE clear |
+| `webapp/components/pipeline/VGENPilotPillbar.tsx` | ✅ | Clear-block button |
+| `webapp/lib/agents/factory.ts` | ✅ | critic verdict (neighbour's, committed by Тео) |
+| `webapp/components/concierge/ConciergePanel.tsx` | ✅ | muted header + createdAt fix |
+| `webapp/lib/api/agent-names.ts` | ✅ | actorKind/isDirectorAction |
+| `PLAN.md` | ✅ | PM-4 entry; Mode ===5=== |
+
+---
+
+## Decisions Made
+
+- **q21 not stricter than the runner** — provider-unknown + duration-out-of-range are WARNINGS not blockers (runner soft-falls-back / clamps), so the gate can't false-block a render the runner would complete.
+- **q10 cancel = honest gate block, run-scoped, with a visible OFF** — not a silent sticky episode lock. Deliberate regenerate bypass reverted in favour of the gate owning the deliberate path.
+- **One shared `ActivityEventRow`** — killed 3× duplicated row markup (anti-additivity). Feed row = `WHO · action · verdict · reltime · abstime`, governance boilerplate in a chevron drawer.
+- **Polina-proxy detected via `[Prod Assistant]` text marker** (brittle) — honest metadata field deferred to concierge layer.
+- **Committed the neighbour's `factory.ts`** carefully (Director said "сосед стоит") — only that file staged.
+
+---
+
+## Blockers & Open Questions
+
+- ⚠️ **Parallel session shares `C:\SandyStudio`** (same `.git` + working tree). Collision risk on every commit — should be split into its own worktree. Twice this session the neighbour's uncommitted changes appeared (factory.ts verdict). Mitigated by explicit per-file `git add`.
+- **Polina Mode-3 autonomy** — still needs Director pushes because of the 10s pickup false-negatives; fix is in her concierge skill (neighbour territory).
+- **SH11-SH15 in REVISION** — Director must decide: re-author per critique vs approve.
+
+---
+
+## Exact Next Step
+
+Decide SH11-SH15: either tell Polina to re-author the 5 REVISION Shot Plans per the Video Critic critique (same contract: seedance-standard, ≥3s, full physical beat), OR human-Director approve them (REVISION→APPROVED now works) to push to video. Separately, the highest-leverage process fix is Polina's 10s-pickup heuristic → reconcile-by-real-status (coordinate with the neighbour session first).
+
+---
+
+## Environment & Setup Notes
+
+- Servers under preview MCP: `next-dev` :3000 (serverId ad52df73), `inngest-dev` :8288 (18c83010). Both auto-managed now — do NOT `npm run dev` manually (port conflict; harness owns them).
+- env (`webapp/.env.local`): `OPENAI_MODEL=gpt-5.5` (Polina reverted off Gemini), `TEXT_LLM_DEBUG_TIER=true` (studio text → gemini free), `CONCIERGE_PROVIDER=gemini` commented OUT.
+- E10 episode `e34126fb-2a65-4aad-97cf-677858155e42`, governance Mode 2, system mode ===5=== EDIT.
+- DB poke pattern for read-only checks: tiny `tmp-*.mjs` node script that hand-parses `.env.local` + `@supabase/supabase-js` service role (node `--env-file` does NOT override existing env on Windows).
+- Inngest run status: `GET http://localhost:8288/v1/events?limit=N` then `/v1/events/<id>/runs` (concierge events flood the feed — query the `jobs` table for agent status instead).

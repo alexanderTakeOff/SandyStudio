@@ -1,0 +1,135 @@
+# Session: 2026-07-07
+
+**Started:** ~20:09 Dubai (continued from 2026-07-06 scorecard session via /resume-session)
+**Last Updated:** ~20:40 Dubai
+**Project:** SandyStudio (C:\SandyStudio)
+**Topic:** Responsibility Matrix — deep edge-case + risk analysis (design phase, step B, NOT built). Grounded on actual governance code via 3 Explore passes. Plus a Director style-correction saved to memory.
+
+---
+
+## What We Are Building
+
+**Nothing was BUILT this session — it was pure analysis/design.** Deliverable = a
+deep edge-case + risk analysis of the "Responsibility Matrix" (step B from the
+2026-07-06 session), written to the plan file `C:\Users\NAVIA VISION ONE\.claude\plans\sunny-dreaming-sutton.md`.
+
+The Responsibility Matrix is the intended replacement for the governance-mode enum:
+per-gate `{owner: auto|ai-ep|director, retry_N, on_limit: halt|pass|stop}`, filled
+series-default → per-episode override → on-the-fly; governance modes become saved
+preset matrices (subtraction of the 5-mode enum). Its PURPOSE is to fix the EREF
+defect: make gates enforced-by-construction, not by convention. North-Star: «фабрика
+самодвижется, вести ≠ чинить».
+
+The Director asked: «проработай граничные случаи по матрице. глубокий анализ. риски.»
+— so this session produced the risk map that must be settled BEFORE any build, because
+the memo's concept diverges from the actual code in three material places.
+
+---
+
+## What WORKED (with evidence)
+
+- **3 parallel Explore passes over governance code** — confirmed by: concrete file:line
+  citations returned for every claim (governance.ts, gate-decision.ts, gate.ts,
+  factory.ts, next-events.ts, chain-flags.ts, critic-loop.ts, migrations 0002/0004/0040/0041).
+- **10 edge-cases/risks documented with mitigations** — written to plan file, sorted by
+  severity (2 CRITICAL, 2 HIGH, 4 MEDIUM, 2 LOW).
+- **Three key findings that overturn the memo's concept** (all evidence-backed):
+  1. **It's 4 modes in code, not 5.** enum `governance_mode` 1..4 (`migrations/0002_core_tables.sql:31`).
+     "APPRENTICE/2.5" is PA-layer prose only (PLAN.md + `concierge/approval-check.ts`), never stored.
+  2. **A responsibility matrix ALREADY exists but is dead** — `approval_authority_matrix`
+     table (`migrations/0004_hybrid_sync_tables.sql:43-57`): per-series, per-category,
+     approver∈{director,exec_dir_ai,human_delegate}, is_locked, delegate_user_id.
+     Onboarding-CRUD only; NOT read by the runtime approve/gate path. → reuse target.
+  3. **Hard-limits and autonomy are separate functions.** `decideGate`
+     (`gate-decision.ts:83`) autonomy = `mode===4`, binary, records gateClass but does
+     NOT enforce it. Hard-limits live in `enforceMode` (`governance.ts:120`, Category A).
+     Mode 4 short-circuits enforceMode ENTIRELY (`:129-139`) — even PUBLISH/LOCK pass.
+- **Critic-bypass mapped exactly** — confirmed: ~9-10 dispatch paths per executor; critic
+  is a precondition on only 2 (`plan-critic-autofire` Modes 2/3 + REV-*_plan PASS Mode 4).
+  `regenerateShot`→`regenerate-video/route.ts:364-468` generates mp4 INLINE, bypassing the
+  Inngest executor + C1 gate + validateAgentInputs entirely. Executor gate (AGENT_GATES)
+  never requires critic PASS.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Presenting 3 technical forks as q1/q2/q3 for the Director to pick** — REJECTED by
+  Director: «это были все твои, не мои, темы вопросов. не переваливай». They were MY
+  engineering forks (choke-point scope / data-model reuse / gate-key granularity), and I
+  had already recommended option (a) on all three → that recommendation IS my decision;
+  bundling it as a Director question is offloading. Saved as memory reinforcement.
+  **Do not re-ask these — they are decided (below).**
+- **`/context-budget` skill** — the full SKILL.md is not installed in this harness (only
+  the legacy command shim at `~/.claude/commands/context-budget.md`; skill trimmed to
+  skills-library). Applied its workflow manually instead.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Build step B (the matrix itself)** — designed, not built. Recommended design is in the
+  plan file (single choke-point + 2 independent layers + hard-limits pinned outside both;
+  reuse approval_authority_matrix + 3 cap-resolvers + applyCriticVerdict; milestone keys;
+  legacy smallint as bridge). Needs Director go on VECTOR, not on the technical forks.
+- **E17 smoke from scratch** — still queued from prior session (q18a). Alternative direction:
+  run E17 first to collect "where does the conductor still intervene" data that feeds matrix rows.
+- **Wiring q15/q16 (governance-core)** — open from 2026-07-06: on-limit default HALT→owner;
+  modes-become-preset-matrices + delete 5-mode logic + decideGate reads matrix. Matrix build
+  is entangled with these.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `~/.claude/plans/sunny-dreaming-sutton.md` | Complete (analysis) | 10 risks + recommended design + 3 owned decisions + "what's really Director's" + verification section |
+| `~/.claude/projects/C--SandyStudio/memory/director_decide_small_things_yourself.md` | Updated | +2026-07-07 reinforcement: don't offload my own technical forks as Director questions |
+| SandyStudio webapp code | UNTOUCHED | analysis only — zero code written; git working tree unchanged by this session |
+
+---
+
+## Decisions Made (technical forks — owned by Тео, NOT for Director)
+
+- **Scope = converge all executor-dispatch to ONE matrix-consulting choke-point.** Reason:
+  only this closes R2 (critic-bypass) — the defect the matrix exists to fix; also subtraction
+  (N doors→1), anti-additivity. Matrix-on-decideGate-only leaves 9 bypasses → rejected.
+- **Model = extend the dead `approval_authority_matrix`** (owner-enum += `auto`, add
+  per-episode overlay, category↔gate-key map). Reason: reuse ~80%-built owner-matrix;
+  a new metadata model duplicates it = the additivity the rule forbids → rejected.
+- **Keys = milestone-keyed (~7):** brief/cast/ref-plan/shot-plan/animatic/video/publish.
+  Reason: match real Director decision points, stable; one EXEC-EREF with 3 entries = one
+  gate. Per-AgentId conflates producer/critic/executor + breaks on fanout (fires designer,
+  not executor) → rejected. GATE_CLASS(AgentId) stays for measurement only.
+
+---
+
+## Blockers & Open Questions
+
+- **Only ONE thing is genuinely the Director's** (not a tech fork): whether `owner:auto` is
+  allowed on CREATIVE gates (shot-plan/video) at all — a money/quality risk (auto paid video
+  gen without review). Leaning yes WITH pinned hard-limits (prior q15/q16). Does not block design.
+- **Direction not yet chosen by Director** — three options offered, awaiting his pick:
+  (1) finish design → impl-plan → build step B; (2) tie to governance-core q15/q16;
+  (3) defer, run E17 smoke first to gather matrix-planning data.
+
+---
+
+## Exact Next Step
+
+Wait for Director to choose the VECTOR (build matrix now / entangle with q15-q16 governance-core /
+run E17 smoke first). Do NOT re-open the 3 technical forks — they are decided. When building:
+start from the recommended design in the plan file; the single hardest piece is R2 (converging
+~9 executor doors — incl. the inline `regenerate-video` path — through one validateAgentInputs
+choke-point that consults `resolveGatePolicy`). Verification trio: tsc / vitest (baseline
+1145/1145) / replay-pilot (30/30) + the unit/integration/regression tests named in the plan file.
+
+---
+
+## Environment & Setup Notes
+
+- master HEAD (from prior session) = `996e31d`. This session added NO commits (analysis only).
+- Plan file: `C:\Users\NAVIA VISION ONE\.claude\plans\sunny-dreaming-sutton.md` — the real deliverable.
+- Two servers for any E17 run: stable `cd webapp && npm run build && npm start` (NOT `npm run dev`
+  — churn breaks EREF ~6-9min gens) + `npm run inngest:dev`. Supabase prod ref `akstennzrnkvexjgzhxv`.

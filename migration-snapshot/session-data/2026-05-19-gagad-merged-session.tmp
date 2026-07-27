@@ -1,0 +1,174 @@
+# Session: 2026-05-19
+
+**Started:** continuation from 2026-05-18 (multi-day Sprint «Дизайнер и Аниматор»)
+**Last Updated:** 2026-05-19 PM (Dubai time, UTC+4)
+**Project:** SandyStudio (C:\SandyStudio\)
+**Worktree:** C:\SandyStudio\.claude\worktrees\quizzical-brown-462555 (branch `claude/quizzical-brown-462555`)
+**Topic:** Sprint «Дизайнер и Аниматор» Day 4-11 + EXEC-GAGAD full v1 + SS-S15 «SANDY» smoke kickoff + master merge `12d708f`
+
+---
+
+## What We Are Building
+
+Multi-day sprint to add **cross-layer gag continuity** to the SandyStudio AI animation pipeline. Before this sprint, EREF (reference image generation) and VGEN (video generation) were template-functions with no Plan-author + no Reviewer; they shipped whatever buildShotPromptV2 produced. After this sprint:
+
+- **EXEC-EREF-DESIGNER** (Sonnet 4.6) writes a `SPC-ref_plan-<shot_id>` per shot — provider, size, prompt, negative, continuity strategy
+- **EXEC-EPREV** (Designer's Critic) validates each Plan against V01-V10
+- **EXEC-VANIM** (Animator, Sonnet 4.6) writes a `SPC-shot_plan-<shot_id>` per shot — provider, aspect, duration, prompt, end_image
+- **EXEC-VPREV** (Animator's Critic) validates each Plan against V01-V10
+- **EXEC-GAGAD** (Gag Assistant Director, Sonnet 4.6) is a cross-layer continuity supervisor with 3 phases:
+  - Phase `plan` — after script approved, writes `SPC-gag_plan-<episode>` with theme + antagonist + per-shot gag intent
+  - Phase `eref_review` — per-shot, validates that ref Plan delivers the gag intent
+  - Phase `vanim_review` — per-shot, validates that shot Plan delivers the gag intent
+  - Revision cap=2 with HALT escalation activity event when cap reached
+  - Genre-gated via `isComedyLikeGenre(series.genre)` helper (extensible const list)
+
+All Plan-driven branches are **additive** (q1a) — legacy template-fan-out paths intact when feature flag `DESIGNER_CHAIN_ENABLED=false` (default). Feature flag (q2c) makes the new chain reversible by env var.
+
+12 new PA tools wired (getX/listX/getVerdict/regenerateX × 3 chains + createSeries). Sandy Gag Library skill v0.1 ACTIVE (grammar of universe with 10 categories, atoms, escalation patterns, sand+transparent-body physics).
+
+Also: Director (Kirill) named me **Тео** — codified globally at `~/.claude/rules/common/identity.md` so any future session in any project recognizes my name.
+
+---
+
+## What WORKED (with evidence)
+
+- **Sprint Day 1-11+ MERGED to origin/master** — confirmed by: squash commit `12d708f` pushed (`git push origin master` returned `0635a25..12d708f master -> master`), `git log origin/master --oneline -3` shows it at tip
+- **EXEC-GAGAD runner (3 phases)** — confirmed by: 13 unit tests pass in `webapp/__tests__/lib/agents/runners/gag-assistant-director.test.ts`, including plan phase happy path, both review phases verdict extraction, cap=2 server-side enforcement
+- **Genre helper `isComedyLikeGenre`** — confirmed by: 6 unit tests pass in `webapp/__tests__/lib/api/genre.test.ts` (truthy/falsy/null/case/non-string/extensibility)
+- **Designer's Critic (EXEC-EPREV)** — confirmed by: 10 unit tests pass in `episode-reference-critic.test.ts`, REVISE auto-chain wired in `inngest/functions/exec-eprev.ts`
+- **Animator (EXEC-VANIM) + Animator's Critic (EXEC-VPREV)** — confirmed by: 16+10 unit tests pass in `animator.test.ts` + `animator-critic.test.ts`
+- **PA tools all 12 register** — confirmed by: vitest 327/327 includes registry test that counts 18 inngestable agents (was 17 before GAGAD)
+- **Master worktree verify trio** — confirmed by: tsc clean (exit 0), `npx vitest run` reports 327 tests passing, `npm run replay-pilot` reports ALL 29 ASSERTIONS PASSED — all run from `C:/SandyStudio/.claude/worktrees/agitated-lederberg-a292d3/webapp` after merge
+- **createSeries PA tool works on Polina side** — confirmed by: dev log shows `POST /api/series 201` for SS-S15 creation (`series_id 45351141-6334-4bf0-8a0f-4e00a994f670`)
+- **`listSeriesBibles` content-strip fix** — confirmed by: after fix in `webapp/lib/concierge/tools/series.ts`, Polina no longer chokes on 450KB Bible content; her chat turns now return in normal time (~10-30s) instead of 110s+ hangs
+- **My name Тео persists** — confirmed by: `~/.claude/rules/common/identity.md` exists and will be auto-loaded by every Claude Code session per the user's private global instructions
+
+---
+
+## What Did NOT Work (and why)
+
+- **Polina silent-hang on 450KB context** — failed because: `listSeriesBibles` returned the FULL content of each Bible asset in the tool_result (S14 LOCKED bible = 452 637 chars). OpenAI gpt-5.5 received that as input on the next round, exceeded a soft limit, returned HTTP 200 with empty assistant message. Chat handler persisted nothing → UI stuck in `isLoading=true` indefinitely. **Resolved** by changing `listSeriesBibles` to return metadata only (id, filename, status, version, content_chars); Polina now uses `getAsset(id)` per asset for actual content.
+- **Polina's edit of brief and Director's edit collided silently** — failed because: `editBrief` PA tool + UI «Edit brief» button both hit `PUT /api/assets/[id]/content` which mutates the SAME asset row in place. No version increment, no audit trail, «approve» targets ambiguous last-writer-wins state. **NOT YET FIXED** — logged as TD-19 in PLAN.md, Director-deferred until after smoke.
+- **PA chat alive-indicator + cancel** — failed because: chat is sync POST that can hang 50-110+ sec per turn; client shows static dots; no cancel; on error UI stuck. **NOT YET FIXED** — logged as TD-20. Three-layer plan: cosmetic / SSE streaming / activity feed integration.
+- **SIMPLE-1 plan proposal** for GAGAD — Director rejected. Said: «делай по full версии плана». So FULL 3-phase shipped, not Phase 1 only.
+- **Initial assumption that EPREV/VPREV `nextEvent` supported only single event** — turned out factory already supported event arrays. Just needed to use it.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **SS-S15 «Heavy Friend» smoke through full new chain** — Director was mid-smoke at session end; chain hasn't been exercised end-to-end yet on a real comedy episode with `DESIGNER_CHAIN_ENABLED=true` + GAGAD chain firing automatically
+- **TD-19 fix** — change `PUT /api/assets/[id]/content` to INSERT row v+1 instead of UPDATE in place (~45 min total)
+- **TD-20 fix** — Level 1 (cosmetic: dot animation fix + 90s client timeout + fake cancel button, ~30-40 min) OR Level 2 (SSE streaming + per-tool plashka + real AbortController-based cancel, ~4-6h)
+- **ANIMATOR_CHAIN_ENABLED auto-fan-out** in `approve/route.ts` — flag defined in code but VID-animatic.APPROVED → N×Animator events branch not wired (~30 LoC). For now Animator triggers manually via PA `regenerateShotPlan` or trigger route
+- **Bible v2.0 5 critical gaps filled** by Director — damage persistence rule, recurring location anchors, signature gag list, antagonist relationship vectors, Sandy's emotional read protocol. Тео did critique in chat; Director's creative decisions pending
+- **Phase «stb_review»** for GAGAD — deliberately deferred to v2 (WCHK covers for now)
+- **Branch cleanup** — `claude/quizzical-brown-462555` worktree + remote ref still exist after merge. Director left q2/q3 open at session end
+- **Sync sibling worktrees** with new master — `nervous-bose`, `ecstatic-noyce`, `eloquent-montalcini`, `condescending-pare` still at older base. Could pre-merge to avoid future conflicts
+- **Activity_event enum extension** for proper `'gagad_escalation'` event_type via migration 0033 — currently using existing `'revision_requested'` with metadata flag (works but less clean)
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/api/genre.ts` | ✅ Complete | NEW — `isComedyLikeGenre` helper + `COMEDY_LIKE_GENRES` const, extensible |
+| `webapp/lib/agents/types.ts` | ✅ Complete | `AgentId` += 4 new (EREF-DESIGNER / EPREV / VANIM / VPREV / GAGAD) |
+| `webapp/lib/agents/registry.ts` | ✅ Complete | 5 new entries; Animator's `next_agent` → VPREV |
+| `webapp/lib/agents/gate.ts` | ✅ Complete | 5 new gate specs |
+| `webapp/lib/api/agent-names.ts` | ✅ Complete | 5 new RU/EN display labels |
+| `webapp/lib/inngest/client.ts` | ✅ Complete | 9 new event registrations (3 GAGAD + 2 designer + 2 critic + 2 executor) |
+| `webapp/lib/inngest/concurrency.ts` | ✅ Complete | 5 new caps (exec-eref-designer:3, exec-eprev:5, exec-vanim:3, exec-vprev:5, exec-gagad:3) |
+| `webapp/lib/agents/factory.ts` | ✅ Complete | EXPECTED_RUNTIME + FILE_TYPE_HINT × 5; resolveRunArgs widened |
+| `webapp/lib/agents/runner.ts` | ✅ Complete | 5 new switch cases (EREF-DESIGNER / EPREV / VANIM / VPREV / GAGAD); revision counter + HALT escalation logic in GAGAD case |
+| `webapp/lib/agents/runners/episode-reference-designer.ts` | ✅ Complete | NEW Sonnet 4.6 runner |
+| `webapp/lib/agents/runners/episode-reference-critic.ts` | ✅ Complete | NEW Sonnet 4.6 runner |
+| `webapp/lib/agents/runners/animator.ts` | ✅ Complete | NEW Sonnet 4.6 runner |
+| `webapp/lib/agents/runners/animator-critic.ts` | ✅ Complete | NEW Sonnet 4.6 runner |
+| `webapp/lib/agents/runners/gag-assistant-director.ts` | ✅ Complete | NEW Sonnet 4.6 runner, 3 phases |
+| `webapp/lib/agents/runners/episode-references.ts` | ✅ Complete | Plan-driven branch added (q1a additive) |
+| `webapp/inngest/functions/exec-eref-designer.ts` + `exec-eprev.ts` + `exec-vanim.ts` + `exec-vprev.ts` + `exec-gagad.ts` + `exec-eref-execute-from-plan.ts` | ✅ Complete | NEW factory invocations; nextEvent chains |
+| `webapp/inngest/index.ts` | ✅ Complete | Registers 9 new functions |
+| `webapp/app/api/assets/[id]/approve/route.ts` | ✅ Complete | Genre-conditional GAGAD fan-out; SPC-gag_plan revisionEventForAsset map |
+| `webapp/app/api/episodes/[id]/trigger/route.ts` | ✅ Complete | EXEC-GAGAD whitelisted for manual re-fire |
+| `webapp/lib/concierge/tools/series.ts` | ✅ Complete | createSeries tool + listSeriesBibles content-strip fix |
+| `webapp/lib/concierge/tools/eref.ts` + `animator.ts` + `gagad.ts` | ✅ Complete | 12 new PA tools |
+| `webapp/lib/concierge/tools/index.ts` + `dispatch.ts` | ✅ Complete | Register all + enum widened |
+| `agents/exec/episode_reference_designer.md` + `episode_reference_critic.md` + `animator.md` + `animator_critic.md` + `gag_assistant_director.md` | ✅ Complete | NEW system prompts (5 files); existing ones got §«If SPC-gag_plan exists» + V10 check additions |
+| `.claude/skills/sandy-gag-library/SKILL.md` | ✅ Complete | NEW v0.1 ACTIVE (~500 LoC) |
+| `.claude/skills/animator/SKILL.md` | ✅ Complete | Promoted from stub to v0.1 ACTIVE |
+| `.claude/skills/episode-local-antagonist-engine/SKILL.md` | ✅ Complete | Added (from parallel session, Writer hard contract) |
+| `~/.claude/rules/common/identity.md` | ✅ Complete | NEW — global cross-project identity: name «Тео» |
+| `~/.claude/projects/C--SandyStudio/memory/my_name_is_teo.md` | ✅ Complete | Per-project identity quick-reference |
+| `PLAN.md` | ✅ Complete | `## CURRENT STATE` reflects MERGED to master; TD-19 + TD-20 added to ACTIVE BACKLOG |
+| `tests/` × 4 new files | ✅ Complete | 86 new tests pass; 240 → 327/327 total |
+
+---
+
+## Decisions Made
+
+- **q1a additive Plan-driven branches** — reason: legacy paths must stay intact so replay-pilot (29/29) and in-flight episodes don't regress
+- **q2c feature-flag soft switch** (`DESIGNER_CHAIN_ENABLED`) — reason: rollback by env var without code revert; safer than hard switch
+- **q3a replay-pilot untouched** — reason: it's the daily self-test, regression there would mask real issues
+- **q4c smoke deferred until Critic chain complete** — reason: don't burn money on incomplete cycle; only smoke when full pipeline works
+- **q-genre-a extensible `isComedyLikeGenre` helper** — reason: avoid migration when new comedy subtypes added (`'comedy_situational'`, `'slapstick'`); single-line const extension
+- **FULL plan over SIMPLE-1 for GAGAD** — reason: Director's explicit «делай по full версии плана»; 3-phase + cap from day one
+- **Squash merge over regular merge** — reason: Sprint φ (`cc43944`) precedent; clean master history; 11 «Day X» commits are noise after merge
+- **My name = Тео** — reason: Director-chosen, indeclinable in Russian, TTS-safe (two syllables, no double consonants, no soft signs)
+- **Continuous q-numbering codified globally** — reason: prevent ambiguity «which q1 did you mean» across messages in long sessions
+- **TD-19 / TD-20 deferred until after SS-S15 smoke** — reason: current workarounds (UI button works, Polina chat completes most turns OK after content-strip fix) sufficient through first end-to-end; real production data will inform priority
+
+---
+
+## Blockers & Open Questions
+
+- **Director's creative decisions on Bible v2.0** — 5 critical gaps identified (damage persistence, recurring locations, signature gags, antagonist vectors, emotional protocol). Without these the Designer/Animator will produce technically-correct but creatively-shallow Plans for SS-S15. Not a code blocker — a creative blocker.
+- **SS-S15-E01 «Heavy Friend» smoke state at clear** — Polina was working on Library items mid-session. Status when paused unclear; resume should ask Polina «покажи статус эпизода E01 и какие Library items уже созданы для S15»
+- **Whether to delete branch `claude/quizzical-brown-462555` + worktree** — Director left q2/q3 cleanup decisions open
+- **Whether to sync sibling worktrees with new master** — `nervous-bose`, `ecstatic-noyce`, `eloquent-montalcini`, `condescending-pare` will hit conflicts at next session if they don't pull origin/master first
+
+---
+
+## Exact Next Step
+
+When Director resumes (any future session, any worktree):
+
+1. **Load identity + memory** — Claude Code will auto-load `~/.claude/rules/common/identity.md` (recognize «Тео»), then read project CLAUDE.md → PLAN.md → glossary → MEMORY.md → top session memo `session_2026-05-19_gagad_shipped_and_s15_smoke_started.md`.
+
+2. **Verify state** — confirm `git log origin/master --oneline -3` shows `12d708f` at tip. Confirm worktree (whichever) is clean.
+
+3. **Continue SS-S15-E01 «Heavy Friend» smoke** via Polina chat:
+   - Open webapp at `localhost:3000` (may need `npm run dev` + `npm run inngest:dev` restart)
+   - Confirm `.env.local` has `DESIGNER_CHAIN_ENABLED=true`
+   - Tell Polina explicitly: «`setBibleContent` работает для ВСЕХ секций (character/location/object/style/audio). Каждый вызов создаёт новую DRAFT версию. Используй явный slug. Делай Library items для SS-S15: Sandy / Heavy Friend (антропоморфная наковальня) / Sandy's room / mirror_vanity / etc.»
+   - Resume from wherever Polina left off (ask her «покажи статус эпизода E01 и Library S15»)
+
+4. **If smoke surfaces new architectural issues** — log to PLAN.md ACTIVE BACKLOG as TD-N, do NOT auto-fix mid-smoke unless blocking.
+
+5. **After smoke completes** — Director decides priority on TD-19 (~45 min) vs TD-20 (~30-40 min L1, or ~6-8h L2+L3) vs Bible v2.0 gaps vs next series.
+
+---
+
+## Environment & Setup Notes
+
+- **Branch:** `master` is now the canonical sprint branch (`12d708f` tip). Worktree `claude/quizzical-brown-462555` still exists locally + remote.
+- **Master worktree path:** `C:\SandyStudio\.claude\worktrees\agitated-lederberg-a292d3`
+- **Dev servers** (for SS-S15 smoke continuation):
+  - `cd webapp && npm run dev` (port 3000)
+  - `cd webapp && npm run inngest:dev` (port 8288)
+- **Required env vars** in `webapp/.env.local`:
+  - `DESIGNER_CHAIN_ENABLED=true` (added 2026-05-19)
+  - `ANTHROPIC_API_KEY` (for Sonnet 4.6 GAGAD/Designer/Animator/Critics)
+  - `OPENAI_API_KEY` (gpt-image-2 + gpt-5.5 Polina)
+  - `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
+- **Director location:** Dubai (UTC+4). Auto-sync commits use local Dubai time; DB/Inngest use UTC. Always `date -u` before declaring a job stale.
+- **Communication style:**
+  - Russian, terse, ships fast
+  - ===5=== gates writes (currently active)
+  - Mode 1 governance (Director approves all gates)
+  - Continuous q-numbering q1..qN per session (no resets per message)
+  - Smoke tests with $ spend = propose, don't auto-fire (CLAUDE.md §10)
+  - Partnership rule: engage with intent, push back when needed
+- **My name:** Тео (cyrillic) / Theo (latin). Indeclinable. TTS-safe. Codified globally.

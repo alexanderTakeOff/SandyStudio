@@ -1,0 +1,161 @@
+# Session: 2026-07-09
+
+**Started:** ~13:20 (Dubai)
+**Last Updated:** ~16:10
+**Project:** SandyStudio · воркдерев `C:/SandyStudio/.claude/worktrees/fetch-timeout-swaps` (ветка `teo/e18-smoke`)
+**Topic:** E18 — удаление аниматик-этапа из пайплайна → единый поток с латчем «Старт видео» (+ D6/D7)
+
+---
+
+## What We Are Building
+
+Демонтаж легаси-этапа «аниматик-аппрув» (Директор смотрит слайдшоу из still-кадров
+`IMG-episode_ref` и жмёт Approve, прежде чем запустится дорогое видео). Директор
+переопределил модель: **timeline — первичная рабочая поверхность, а EDL-контракт
+(`animatic_v1` в asset `VID-animatic`) — её РЕЗУЛЬТАТ, а не входной гейт.**
+
+Вместо аниматик-аппрува — **латч «Старт видео»**: Директор/уполномоченный, глядя на
+появившиеся одобренные картинки, жмёт одну кнопку, и с этого момента каждый одобренный
+реф (уже имеющийся И будущий) автоматически течёт в видео. Латч переиспользует
+существующий `episodes.metadata.pipeline_mode` (`sequential`=ждём, `parallel`=поток открыт)
+— НЕ вводит новое поле. Кнопка живёт в транспорте таймлайна рядом с Play/Stop/Reset.
+
+Заодно закрываются два дефекта: **D6** (пропавший редактор длительности кадров —
+растворяется сам, т.к. EDL теперь материализуется рано → timeline не synthetic) и
+**D7** (glow процессов гаснет мгновенно — нужен стойкий след; ЕЩЁ НЕ СДЕЛАН).
+
+Источник-анализ: `fetch-timeout-swaps/docs/analysis/E18-ref-animatic-removal-analysis.md`.
+Утверждённый план: `C:\Users\NAVIA VISION ONE\.claude\plans\sequential-vivid-spring.md`.
+
+---
+
+## What WORKED (with evidence)
+
+- **Backend демонтажа церемонии (Шаги 1/2/3/5)** — confirmed by: `npx tsc --noEmit` exit 0
+  после каждой пачки правок (прогонялся ~5 раз в webapp).
+- **Ранняя silent-материализация EDL (D6-фундамент)** — confirmed by: код-трассировка —
+  `ensureEpisodeAnimaticEDL` делает raw service-role `insert` (ensure-animatic.ts:130-150),
+  БЕЗ `inngest.send`/`computeNextEvents`, и самозащищён от throw (try/catch :98-108, null-гарды
+  :95/:151) → ранний вызов не триггерит преждевременный video-fanout (главный денежный риск).
+- **Латч route `start-video`** — confirmed by: tsc 0. Флип pipeline_mode→parallel + переход
+  STORYBOARD_APPROVED→GENERATION_IN_PROGRESS (закрывает риск №3: финальный флип
+  GENERATION_APPROVED в approve/route.ts:365-375 требует from∈ANIMATIC_APPROVED|GENERATION_*)
+  + ретрофанаут exec-vanim/plan по approved рефам без плана.
+- **Кнопка «▶ Старт видео» в транспорте + подключение** — confirmed by: tsc 0. Показывается
+  только когда `readPipelineMode(...)!=='parallel'`; POST /start-video + SWR mutate.
+- **Net-delta субтрактивный** — confirmed by: `git diff --stat` = +153 / −316 = **−163 строки**
+  (+ один новый файл-латч ~180 строк как единственная новая capability).
+
+⚠️ vitest и replay-pilot ЕЩЁ НЕ ГОНЯЛИСЬ — только tsc. Реальный E2E не проверялся.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Удалить весь VGEN-fanout-блок `if(ft==='VID-animatic')` (next-events.ts:1121-1293)** —
+  НЕ стал: внутри живёт anchor-mode ветка (TD-49 anchor_chain), которую Директор просил не
+  трогать. Осознанное отклонение от плана: удалил только sequential auto-fire create-animatic;
+  non-anchor часть fanout стала недостижимой (silent EDL не проходит computeNextEvents), но
+  оставлена ради безопасности anchor.
+- **Полное удаление drawer-плеера аниматика** — НЕ стал ронять в VideoBody (у аниматика нет
+  mp4 → битый preview). Вместо удаления заменил на стаб-указатель «аниматик на таймлайне».
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Шаг 7 (D7 стойкий glow):** `pipeline-stages.ts` — добавить чистую `completedWorkByShot(jobs)`
+  (shot_id с job `status==='COMPLETED'` роли designer/critic/artist БЕЗ активного RUNNING/QUEUED).
+  `EpisodeTimelineSection.tsx:~470` — мемо из `data.data.jobs` + новый prop. `AnimaticPlayer.tsx`
+  `cellPalette` (:~297-342) — ветка статичного приглушённого glow (`pulse:false`) если НЕ liveWork
+  но shot в completedWork; live-pulse (проверяется первым) не ломать. `globals.css:46-58` — при
+  нужде токен «completed-trail». Директор q: glow гаснет когда шот догенерился (by-design
+  транзиентность RUNNING/QUEUED), хочет стойкий след.
+- **Шаг 8 (тесты + replay-pilot + verify):**
+  - ⚠️ `__tests__/api/status-transitions.test.ts:47` — сейчас `expect(...STORYBOARD_APPROVED→
+    GENERATION_IN_PROGRESS).toThrow()`. Моё FSM-ребро ЛОМАЕТ это → поправить на `not.toThrow()`.
+  - `scripts/replay-pilot.ts:260-299` — зашит на ceremony-путь (Phase B animatic → VID-animatic
+    APPROVED → legacy [1,2,3] fanout). Переписать: ставить `pipeline_mode='parallel'` (или дёргать
+    start-video) и ждать video через parallel ref→video edge. Иначе replay зависнет в «ждущем».
+  - Переписать `__tests__/agents/gate-pipeline-mode.test.ts` (VGEN больше не требует VID-animatic;
+    Step-0a удалён).
+  - Расширить `ensure-animatic.test.ts` (ранний вызов на первом approved ref).
+  - Добавить `pipeline-stages.test.ts` кейсы `completedWorkByShot` (D7).
+  - Новый тест: start-video route (флип + ретрофанаут).
+  - Финальный verify: `npx tsc --noEmit` · `npm test -- --run` · `npm run replay-pilot` · ручной E2E.
+- **Мелкая чистка (Шаг 8):** unused import `AnimaticPlayer`/`isAnimaticV1`/`AnimaticContract` в
+  AssetPreview; `AnimaticPlayer`/`animaticV1` в EpisodeAssetDrawer; мёртвый `advance()` handler +
+  'advance' в busy/success unions в EREFPilotPillbar. tsc не падает (noUnusedLocals off), но ESLint
+  может — почистить.
+- **НЕ тронуто намеренно (минимальный радиус):** StageKebabMenu (canApprove сам false для silent
+  APPROVED); page.tsx PreviewDrawer targeting (клик по animatic-событию откроет стаб, безвредно).
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/agents/next-events.ts` | ✅ Complete | Ш1: ранний ensureEpisodeAnimaticEDL на approved ref (оба режима). Ш3: sequential create-animatic→надгробие. VGEN-fanout не тронут (anchor). |
+| `webapp/lib/agents/gate.ts` | ✅ Complete | Ш2: EXEC-VGEN.required=[]; Step-0a удалён; unused import readPipelineMode убран. STITCH не тронут. |
+| `webapp/lib/api/status-transitions.ts` | ✅ Complete | Ш5: +ребро STORYBOARD_APPROVED→GENERATION_IN_PROGRESS. ANIMATIC_* сохранены. |
+| `webapp/app/api/episodes/[id]/start-video/route.ts` | ✅ Complete (NEW) | Ш4: латч — flip mode + status + ретрофанаут. |
+| `webapp/components/animatic/AnimaticPlayer.tsx` | ✅ Complete | Ш6: footer/postDecision/approving удалены; +onStartVideo/startingVideo + кнопка «Старт видео»; animaticStatus убран из destructure. |
+| `webapp/components/timeline/EpisodeTimelineSection.tsx` | ✅ Complete | Ш6: +readPipelineMode, startingVideo state, handleStartVideo, передача onStartVideo (waiting-only). |
+| `webapp/components/preview/AssetPreview.tsx` | ✅ Complete | Ш6: VID-animatic плеер→стаб. ⚠️ unused imports (чистка Ш8). |
+| `webapp/components/assets/EpisodeAssetDrawer.tsx` | ✅ Complete | Ш6: Inbox плеер→стаб. ⚠️ unused imports. |
+| `webapp/components/pipeline/EREFPilotPillbar.tsx` | ✅ Complete | Ш6: «Advance to Animatic»→подсказка. ⚠️ мёртвый advance() handler. |
+| `webapp/app/api/episodes/[id]/eref/advance/route.ts` | ✅ Complete | Ш6: переписан в no-op gone-stub. |
+| `webapp/lib/api/pipeline-stages.ts` | ⬜ Not Started | Ш7 D7 — completedWorkByShot. |
+| `webapp/scripts/replay-pilot.ts` | ⬜ Not Started | Ш8 — переписать на латч/parallel. |
+| `webapp/__tests__/api/status-transitions.test.ts` | ⬜ Not Started | Ш8 — :47 toThrow→not.toThrow. |
+
+---
+
+## Decisions Made
+
+- **Латч = переиспользованный `pipeline_mode`, НЕ новое поле** — reason: anti-additivity; семантика
+  sequential/parallel уже ровно «ждать/поток открыт».
+- **Латч глобален на эпизод, покрывает имеющиеся + будущие рефы (q8)** — reason: модель Директора
+  «разрешение с этого момента», а не разовый снимок.
+- **Кнопка в транспорте таймлайна рядом с Play/Stop/Reset (q9)** — reason: выбор Директора.
+- **pilot-checkpoint СОХРАНЁН, anchor-chain НЕ тронут** — reason: защита бюджета от runaway +
+  ортогональная ось; минимальный радиус.
+- **EDL материализуется silently (raw insert), НЕ через event-конвейер** — reason: не триггерить
+  преждевременный video-fanout до нажатия латча (главный денежный инвариант).
+- **Код обеих веток режимов НЕ схлопнут** — reason: минимальный радиус; вырезан только аниматик-этап.
+- **q1a→разворот:** Директор сначала выбрал «дедуп drawer», потом переопределил в «убрать этап
+  целиком в обоих режимах, timeline-first». Финальная модель — эта.
+
+---
+
+## Blockers & Open Questions
+
+- Нет активных блокеров. Осталась чистая работа (D7 + тесты + verify).
+- Открытый вопрос из плана-агента (низкий приоритет, отложен): нужно ли позже схлопнуть
+  sequential/parallel в один режим (мёртвый тумблер) — сейчас оставлен как есть.
+- Проверить на E2E: не создаёт ли что-то ВТОРОЙ VID-animatic (silent + случайный ceremony-путь);
+  ожидается что нет (advance obезврежен, sequential create-animatic удалён).
+
+---
+
+## Exact Next Step
+
+**Шаг 7 (D7).** В `webapp/lib/api/pipeline-stages.ts` добавить чистую `completedWorkByShot(jobs)`
+рядом с `activeWorkByShot` (~:576): собрать shot_id, у которых есть job `status==='COMPLETED'`
+(роль designer/critic/artist через `workRoleForAgent`) и НЕТ активного RUNNING/QUEUED job по этому
+шоту; вернуть `Map<shotId, ShotWork>`. Затем `EpisodeTimelineSection.tsx` (~:465-470) — мемо из
+`data.data.jobs` + прокинуть новым prop в AnimaticPlayer; и в `AnimaticPlayer.tsx` `cellPalette`
+(~:297-342) добавить ветку: если НЕ liveWork (live-pulse выигрывает первым) но shot в completedWork
+→ статичный приглушённый glow роли (`pulse:false`). Потом Шаг 8 (тесты + replay-pilot + verify).
+
+---
+
+## Environment & Setup Notes
+
+- Воркдерев `fetch-timeout-swaps` уже имеет master+deps junction (node_modules). Если tsx/vitest
+  падают на отсутствие esbuild/sharp — прогнать полный `npm install` (не `--legacy-peer`).
+- Verify-команды из webapp: `npx tsc --noEmit` · `npm test -- --run` · `npm run replay-pilot`.
+- Режим для правок кода: `===5===` (mode-validator hook). Сейчас активен.
+- Коммитов НЕТ (feature-ветка, незапушено). PLAN.md — master-only, НЕ трогать в воркдереве.
+- Директор дал q1a/q8/q9; нумерация вопросов дошла до q10. Свежая сессия начинает q1 заново.

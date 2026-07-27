@@ -1,0 +1,109 @@
+# Session: 2026-06-27
+
+**Started:** ~12:00 (continued from a /resume of the Compass/E12 session)
+**Last Updated:** 16:18 Dubai
+**Project:** SandyStudio (C:\SandyStudio)
+**Topic:** AI-movie-factory **autonomy + cost** phase — planned (adversarial-hardened), **S1 cost-visibility SHIPPED**, the **Mode-3 target + gate map** locked, the ref/video **reorder** captured. Plus: E12 English thumbnail re-rendered + approved; Compass anchors (NORTH_STAR/PLANET) + change-journal hook built & committed. Next: drive the implementation phase to the end (S2 → S3 → E13).
+
+---
+
+## What We Are Building
+
+**The Star:** an AI movie factory (NORTH_STAR.md). **The Planet (now):** a **working Mode 3** (PLANET.md) — Polина (smart "head", paid tier) + the deterministic factory-chain + her cheap "employee" agents drive an episode brief→final-cut WITHIN cost limits, and the Director touches only **4 gates**: **Brief · Script · 2 video-pilots · Final-cut+Publish** (+ an auto budget-ceiling halt). Landing this on one episode (E13) unlocks the 10–20 episode season.
+
+**The refactor** (plan: `~/.claude/plans/calm-percolating-sifakis.md`, adversarial-hardened by 3 lenses): a **tiered cascade** so each event is handled by the cheapest sufficient tier and expensive intelligence fires rarely — factory-code (Tier0,$0) → cheap junior/nudger (Tier1) → Opus-Polина (Tier2, emergency) → human (Tier3, hard-limits + few creative gates). Two axes, coupled at the gates: **autonomy** (per-gate policy) and **cost** (dominated by Polина's variance + generation, NOT studio text).
+
+**Director optimization (the reorder):** instead of generating ALL refs → review → video pilots, do **2 refs → 2 video pilots → approve the 2 VIDEO shots → THEN remaining refs → videos**. Saves money (no blind full-ref spend) + collapses two visual gates into one. Ref-animatic batch review → replaced by **per-reference canon-checking** (canon violation → Director STOP).
+
+---
+
+## What WORKED (with evidence)
+
+- **S1 — cross-provider LLM pricing fix** — confirmed: `MODEL_RATES` in `lib/agents/providers/anthropic-text.ts` += gpt-5.5 ($5/$30), gpt-5.4-mini ($0.75/$4.50), gpt-5.4 ($2.50/$15), gemini-2.5-flash ($0.30/$2.50), prices web-verified. **16/16 tests pass** (incl. 4 new). Fixes the bug where non-Anthropic was priced as Sonnet → **re-arms the concierge cost-breaker's cost-limb for all providers** (was decorative). Committed `4722466`.
+- **S1 — Polина cost visible in per-episode budget** — `app/api/budget/route.ts` now buckets `agent_id='EXEC-CONC'` as a distinct `concierge` line; the episode total already summed it. Director D1 = visible, NO ceiling coupling. Committed `4722466`.
+- **S1 — cap reverted** — `CONCIERGE_AUTO_REACT_MAX_CALLS` 200→40 in `webapp/.env.local` (git-ignored). Confirmed by grep.
+- **Verify trio green** — `tsc --noEmit` clean · **vitest 1014/1014** · **replay-pilot 30/30** (replay explicitly tests "retry must not double-charge" + "budget ceiling throws").
+- **Compass anchors committed `594d72f`** — NORTH_STAR.md, PLANET.md, change-journal hook (PostToolUse Write|Edit → durable `.claude/CHANGES.md`, survives /clear; tested live — it caught a real .gitignore edit), CLAUDE.md §12 master-only, .gitattributes merge=union, branch-aware plan-md-update-guard.
+- **E12 distribution copy committed `89d86d8`** — metadata.md v0.2 + copywriter.md + thumbnail-designer.md (cold-viewer/SEO English).
+- **E12 English thumbnail** — re-rendered 3 variants (v07 "MY TIME!", v08 image-only, v09 "ONE MORE VIDEO") at ~$0.08 each via EXEC-THUMB; **Polина approved v07** (confirmed in DB: `v07-APPROVED`).
+- **Found the "lost" analyses** — `memory/ai_ep_conception_gaps.md` (12 EP gaps + the "don't build a 2nd LLM; head=orchestrator; Polина=hands" decision) + the corrected Polина cost audit. Anchored in NORTH_STAR §4 + MEMORY.md index so they stop getting lost.
+
+---
+
+## What Did NOT Work (and why)
+
+- **"Kill the binary `governance_mode`"** (my flagship synthesis idea) — REJECTED by the architecture adversarial: it's read in **174 places / 54 files**, a `NOT NULL CHECK(1..4)` column, replay-pilot depends on Mode 4. The subtractive move is the OPPOSITE: **add ONE `decideGate()` choke-point** and collapse the 6 hard-coded `AUTOTEST` autonomy forks through it. KEEP the mode column.
+- **Treating cost as "$1.20 text = pennies"** — WRONG twice (Director caught both). `cost.ts` records Polина's spend studio-GLOBAL, OUTSIDE `episodes.budget_spent` BY DESIGN → she structurally drops out of "$/episode". She is the UNBOUNDED tail ($0 gemini-free → ~$20–104/day on Opus with the loop). Don't drop her from cost scope.
+- **Inline `npx tsx -e '...'`** — silent no-output / quote-escaping hell in Git Bash. Use a heredoc `node -e "$(cat <<'EOF' … EOF)"` (require from webapp cwd) OR a small script file run from `webapp/`.
+- **tsx top-level await** — "Top-level await is currently not supported with the cjs output format". Wrap in `async function main(){…}; main().catch(...)`.
+- **Jargon-dense summaries** — Director replied "не понял". Lead every explanation with the plain real-world stake, keep code identifiers out of the headline (memory `director_communication_style` reinforced).
+
+---
+
+## What Has NOT Been Tried Yet (the QUEUE — drive to end of phase)
+
+- **S2 — leak-closing** (next): `dispatch_intent` table UNIQUE(episode,shot,agent,input_hash) claimed AT dispatch (closes double-fire/+$1.21 leaks); FAILED-jobs handling = **distinguish transient vs PERSISTENT (billing) — don't blanket-count**; **billing→escalate not loop** (the loop is in watchdog/auto-react — the $100 subsystem, NOT covered by replay-pilot → implement with care + new concierge tests; reuse `isFalBalanceLock` in `fal-seedance.ts`, extend to OpenAI `billing_hard_limit_reached`).
+- **S3 — `decideGate()` choke-point** + the `gate_decision_log` measurement table (lands WITH its writer here, decided "б" — no empty/dead prod schema).
+- **S-reorder** — the pilot-first ref/video flow (Director optimization) + per-ref canon-gate. Touches EREF/VGEN pilot-pass wiring (`pickPilotVgenShots`).
+- **E13 live run** — the calibration/measurement pass. Tripwires to assert: **casting NOT skipped** (last time → broken statuses → canon loss → "dancing"); **numbering holds on a real model** (S-E-SH first live test); **canon preflight fires before generation**; the **4-touch gate map** holds (record where Director actually intervened).
+- Cost-rollup (C) anchor/ref split → S2 (needs `budget_log` column + runner wiring).
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/agents/providers/anthropic-text.ts` | ✅ committed 4722466 | cross-provider MODEL_RATES |
+| `webapp/__tests__/agents/anthropic-text.test.ts` | ✅ committed 4722466 | +4 pricing tests |
+| `webapp/app/api/budget/route.ts` | ✅ committed 4722466 | concierge distinct line |
+| `webapp/.env.local` | ✅ applied (git-ignored) | MAX_CALLS 200→40 |
+| `NORTH_STAR.md` / `PLANET.md` | ✅ committed 594d72f | the Star / the Planet (Mode 3, 4 gates, reorder) |
+| `.claude/hooks/change-journal.cjs` + settings.json + .gitignore + .gitattributes + CLAUDE.md | ✅ committed 594d72f | durable-changes hook + master-only governance |
+| `specs/distribution/metadata.md` + copywriter.md + thumbnail-designer.md | ✅ committed 89d86d8 | E12 copy English |
+| `~/.claude/plans/calm-percolating-sifakis.md` | ✅ the implementation plan (APPROVED) | S1 shipped; S2/S3/S-reorder/E13 next |
+| memory: ai_ep_conception_gaps, polina_cost_audit_CORRECTED, director_decide_small_things_yourself, director_communication_style, MEMORY.md | ✅ updated | anchored analyses + feedback |
+| DB asset E12 IMG-thumbnail v07 | ✅ APPROVED | "MY TIME!" |
+| `webapp/scripts/{check,dump,poll,rerender-e12-thumb,update-e12-metadata}.ts` | one-off throwaways (uncommitted) | E12 thumbnail/metadata helpers |
+
+---
+
+## Decisions Made
+
+- **The spine (adversarial-corrected):** add `decideGate()` (NOT kill governance_mode); `dispatch_intent` unique-key at dispatch; output-gate = the VGEN **Pilot Pass auto-stop** (no `video_output_critic` now — Director D3).
+- **Cost: Polина IS the story.** Plus the Director's call: **fold Polина into the per-episode budget, tokens×price** → D1 = **visible distinct `concierge` line, NO production ceiling**. D2 pricing = **minimal (extend MODEL_RATES)**. D4 first slice = **S1 cost-visibility**.
+- **Mode-3 gate map (4 touches):** Brief · Script · 2 video-pilots · Final+Publish; budget-ceiling auto-halt. **Timing is NOT a 5th touch** — folds into the pilot checkpoint + final cut.
+- **The reorder** (2 refs → 2 video pilots → approve → rest) — substantially cheaper + one fewer click.
+- **a/b = б:** measurement table lands in S3 with its writer (no dead schema).
+- **Director working style:** only TRULY critical questions; decide-and-execute the rest. Plain-stakes explanations, no jargon.
+
+---
+
+## Blockers & Open Questions
+
+- **No urgent blocker. Polина's $100 bomb is de-armed** (cap 40 + the now-working $20 cost-limb + she's on gemini-free $0). Promoting her to Opus is SAFE now *because the cascade will keep her volume ≈0* — but until the cascade, watch the tier.
+- S2's billing-escalate touches the auto-react loop (the $100 subsystem) NOT covered by replay-pilot → needs new concierge tests + care.
+- E13 is the first LIVE test of the S-E-SH numbering gate + canon preflight + casting-not-skipped — unproven until run.
+
+---
+
+## Exact Next Step
+
+**===5=== is active. Drive the implementation phase to the end** (Director: "иди до конца фазы после resume").
+1. **Implement S2** — start with the SAFEST isolated piece, TDD + verify trio. Recommended order: (a) `dispatch_intent` table + claim-at-dispatch (closes double-fire; replay-pilot guards double-charge); (b) billing-classifier (`isFalBalanceLock` + OpenAI `billing_hard_limit_reached`) → emit a Director-escalation that does NOT re-feed Polина's auto-react loop (add concierge tests); (c) FAILED transient-vs-persistent in the caps.
+2. **Then S3** — `decideGate()` behaviour-preserving (collapse the 6 `AUTOTEST` forks) + create `gate_decision_log`.
+3. **Then E13** as the calibration run against the gate map + tripwires.
+Verify each slice: `cd webapp && npx tsc --noEmit && node_modules/.bin/vitest run && npm run replay-pilot`. Commit per slice; update PLAN.md CURRENT STATE (master-only).
+
+---
+
+## Environment & Setup Notes
+
+- **Mode ===5=== EDIT** active. **Dubai time = LOCAL `date '+%H:%M'`** (machine clock IS Dubai; do NOT use `TZ='Asia/Dubai'`).
+- **Plain-language, lead with stakes, no jargon dumps** (Director directive). **Only truly critical questions** — decide-and-execute the rest.
+- **Polина live env (webapp/.env.local):** `CONCIERGE_PROVIDER=gemini` ($0 now), `CONCIERGE_ANTHROPIC_MODEL=claude-opus-4-8` (ready), loop ON, `CONCIERGE_AUTO_REACT_MAX_CALLS=40` (just reverted). Opus auto-react ≈ **$0.52/call**.
+- **Run tsx/node scripts from `webapp/`** (not repo root — `@/` aliases + node_modules resolve there). Manual dotenv parse (`--env-file` doesn't override on Windows).
+- **change-journal hook** writes every Write/Edit to `.claude/CHANGES.md` (git-ignored, survives /clear) — read it after a /clear to see what changed.
+- Migrations live at `webapp/supabase/migrations/` (latest 0038; next 0039). Apply via `supabase db push` (CLI; never ask). New public tables need explicit GRANT (post-2026-05-30 rule).
+- Dev server + Inngest may be up via another session (:3000 / :8288). Don't `npm run build` while dev is up.
+- HEAD on master: `89d86d8` (E12 copy) → `594d72f` (anchors) → `4722466` (S1). Commits are LOCAL (not pushed).

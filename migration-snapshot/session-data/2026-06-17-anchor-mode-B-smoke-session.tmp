@@ -1,0 +1,55 @@
+# Session: 2026-06-17 (PM, late) — Anchor-mode B shipped + smoke PASSED
+
+**Topic:** Built B (regenerate-mode surfaces) for the orbit⇒ref-only doctrine, then
+ran a LIVE smoke on E10 SH25/SH26 (virgin shots) end-to-end via Polина — Director
+accepted. Everything pushed. Wrapping for the day; **continue tomorrow morning.**
+
+---
+
+## DONE this session (all pushed, origin/master HEAD = `1ba3f58`)
+
+- **B1** — `webapp/components/vgen/VGENShotPanel.tsx` anchor toggle «🎯 только реф / 🔗 два якоря».
+  ref-only nulls end_image + drops `endImage` from ProviderControlPanel `fields`; two-anchor reveals it
+  + fail-loud in `regenerate()` if no end frame. ProviderControlPanel UNTOUCHED. Commit `cde49fd`.
+- **B2** — `regenerateShot(shotId, anchorMode)` PA tool in `webapp/lib/concierge/tools/vgen-execute.ts`
+  (registered in `index.ts`); thin wrapper over `/api/assets/:id/regenerate-video`; resolves
+  shotId→newest VID-shot via `ilike`; fail-loud two-anchor-without-end-frame. +13 tests
+  (`__tests__/lib/concierge/tools/regenerate-shot.test.ts`). concierge.md rule 10. Commit `48fe57f`.
+- **Smoke PASSED** — E10 SH25+SH26. Animator discriminates: SH26 orbit→ref-only (cited doctrine),
+  SH25 static→two-anchor; V15 critic PASS both; rendered 720p (~$2.42). Director: «нет дёрганий как
+  с двумя якорями». Polина drove it ALL autonomously.
+- PLAN.md updated (`9563bb2` + `1ba3f58`). Verify: tsc·0 / 912 tests / replay 30.
+
+## KEY MECHANISM LEARNED (reuse tomorrow)
+- To make Polина ACT on a nudge (not stall read-only): POST `/api/team-chat/post` with
+  **`EXEC_DIR_AI_TOKEN`** as Bearer (→ `authorized_principal`), author='Тео'. This lifted the
+  read-only auto-react gap — she authored plans, approved, fired VGEN on her own.
+- She PAUSES at the turn boundary after authoring (auto-react ends before critic finishes) → send a
+  second nudge «планы готовы (PASS), аппрувни + рендер» to continue.
+
+## ENVIRONMENT (left running overnight)
+- Servers RESTARTED fresh on HEAD this session (the old 18:41 ones predated all anchor commits).
+  **Prod build impossible offline** (`next/font/google` JetBrains Mono fetch fails) → running
+  `npm run dev` (turbopack) + `npm run inngest:dev`, ONE listener each :3000/:8288, 30 fns registered.
+  Background bash IDs: dev `bp7o42kxc`, inngest `bk2vfsyuc`. Don't edit files during a live render
+  (turbopack churn). cwd gotcha: always `cd /c/SandyStudio/webapp &&` before inline tsx (git resets cwd to root).
+- Mode at wrap: ===1=== ANALYTICS (Director set it). E10 governance Mode 2.
+  env: TEXT_LLM_DEBUG_TIER=true + CONCIERGE_PROVIDER=gemini. E10 id = `e34126fb-2a65-4aad-97cf-677858155e42`.
+- Inline DB access: `cd /c/SandyStudio/webapp && cat <<'EOF' | npx tsx --input-type=module - 2>&1 | grep -v "uv_\|Assertion failed"` …
+  manual `.env.local` load, `createClient(NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)`.
+  episodes table cols: `episode_code`, `title_working` (NOT code/title). VID-shot file_type matched via `ilike 'VID-shot%'`.
+
+## NEXT (Director surveyed the plan; will choose in the morning)
+1. **Finish E10 to final cut** — 26/28 shots rendered; **SH27 + SH28 still ungenerated** (SH28 EREF
+   in REVISION). gen them → re-stitch animatic → final cut. (Тео's recommended next.)
+2. **C** — regen 8 infected E10 shots ref-only (SH03/07/10/12/14/17/18/23, REVIEW, ~$10-15).
+   PARKED till Director go on spend. Tools ready (B toggle by hand / regenerateShot via Polина).
+3. **canon-existence preflight** — blocks E09; Director's flagged ВАЖНО.
+4. Architecture: casting-before-brief / full traversable pipeline; ART-AD/Production Designer stage.
+5. Backlog opened: VGEN render never stamps `end_image` metadata → can't verify two-anchor honored
+   (possible plan→render silent-degrade OR metadata-only gap). memory: `backlog_td_vgen_endimage_metadata_gap`.
+
+## Doctrine note (the WHY)
+orbit + end_image = camera hitches/morphs vs arcing. 80%+ shots orbit (TD-68) → ref-only default;
+two-anchor only for STATIC non-orbit match-cut. A (V15 critic + skills) + B (surfaces) both shipped &
+validated. memory: `anchor_mode_orbit_ref_only` (smoke-confirmed).

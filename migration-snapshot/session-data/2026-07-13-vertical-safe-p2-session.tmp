@@ -1,0 +1,167 @@
+# Session: 2026-07-13
+
+**Started:** ~09:50
+**Last Updated:** ~10:30
+**Project:** SandyStudio (C:\SandyStudio) — AI animation factory
+**Topic:** Vertical-safe сториборд-правило (upstream) + P2 гэг-нарезка (мышцы) → влито в master, задеплоено. Стек поднят в start-режиме (background-джобы). Десктоп-ярлык для session-независимого стека. Далее: Директор тестит Полину на модели Luna.
+
+---
+
+## What We Are Building
+
+**Проблема:** 9 текущих YouTube Shorts читаются слабо — НЕ из-за нарезки, а из-за
+тупого center-кропа ВСЕГО landscape-эпизода (стороны и действие в них теряются).
+
+**Фикс (upstream, на сториборде):** для эпизодов с Shorts-доставкой **пиковый кадр
+гэга/панча** стейджится так, чтобы пережить 16:9→9:16 center-кроп. Маргинальная
+стоимость рендеров ≈ 0 (это ограничение кадрирования, не лишние рендеры).
+
+**Правило (принято от Директора целиком):** условное (только когда `delivery_targets`
+эпизода включают 9:16-слуг), key-beat-only (несут 3-5 гэг/панч-пиков, остальное дышит
+16:9), резолвит orbit-конфликт проверкой ТОЛЬКО пикового кадра (не траектории), 3-ветки
+триаж (i center-safe / ii restage-vertical / iii landscape-only), переиспользует
+существующих агентов — Сторибордер пишет, CREAD ловит. Единственная новая сущность —
+бит-флаг-пара `vertical_safe`/`landscape_only`.
+
+**P2 (в том же плане, по выбору Директора «правило + мышцы»):** `shotRangeToSeconds`
+(cumsum-таймкоды) + `deriveShortWindows` (гэг-окна 15-40с из setup→punchline, drop
+landscape_only). Резак `ffmpeg-shorts` уже принимает `{startSec,endSec,overlayText}`.
+
+---
+
+## What WORKED (with evidence)
+
+- **Доктрина (4 файла)** — vertical-safe секция + self-check в `storyboarder-situational-comedy`;
+  флаги в `agents/exec/storyboarder.md` + `specs/schemas/shot.md`; self-gated delivery-условный
+  чек в `readability-comedy-slapstick` (CREAD ловит из прозы, до платного рендера). Confirmed: файлы
+  отредактированы, tsc чистый, diff по скоупу.
+- **Активация (Brief-driven, как просил Директор)** — `storyboarder.ts` читает
+  `episode.metadata.delivery_targets` → новый хелпер `hasVerticalDeliveryTarget` (в
+  `provider-capabilities.ts`, переиспользует `ASPECT_BY_DELIVERY_TARGET`) → условный JSON-шаблон +
+  hard-rule; на landscape-эпизоде правило спит. Confirmed: tsc·0.
+- **Проброс флага через оба вайтлиста** — `vgen-shot-helpers.ts` (`StoryboardShotV2` + `shotToV2`) и
+  `animatic-shotlist.ts` (внутренний интерфейс + `extractShotsFromStoryboard`), иначе тихо роняется.
+- **P2-мышцы** — `shotRangeToSeconds` (cumsum, та же ≤0.5s skip-логика что `computeTotalDuration`) в
+  `animatic-shotlist.ts`; новый модуль `webapp/lib/api/short-windows.ts` `deriveShortWindows` +
+  `shortWindowsFromEpisodeMeta` (зеркало `excluded_shot_ids`). Confirmed: **15 юнит-тестов
+  проходят** (`short-windows.test.ts`).
+- **Верификация** — `npx tsc --noEmit` = 0; `npx vitest run` = **1245/1245** (было 1230 + мои 15).
+- **Влито в master** — коммиты `de12089` (код+доктрина), `37e0464` (PLAN deploy-апдейт),
+  `831c2cc` (CLAUDE.md §13 заметка). **origin/master синхронён (git rev-list 0/0).** Только мои
+  11 файлов, чужой untracked (training-inbox.md и пр.) не тронут.
+- **Деплой** — `start-stack.ps1 -Build`: билд чистый (self-host шрифтов держит, Google Fonts флейка
+  нет), функции синканы («Successfully registered»), health **200/200/200**.
+- **Стек поднят в start-режиме** — `npm run start` (:3000) + `inngest start` durable (:8288), НЕ dev,
+  как **персистентные background-джобы** (`b9si7bvuv` inngest · `bo7ujxmnq` app) — переживают возврат
+  тула. Confirmed: health 200×3 после поллинга, функции registered.
+- **Десктоп-ярлык создан** — `C:\Users\NAVIA VISION ONE\Desktop\SandyStudio Stack.lnk` →
+  `C:\SandyStudio\start-stack.cmd` (workdir C:\SandyStudio). Confirmed: Test-Path = true.
+
+---
+
+## What Did NOT Work (and why)
+
+- **`start-stack.ps1 -Build` foreground серверы умерли** — после успешного health 200×3 процессы
+  сдохли. Причина: лаунчер поднимает app/inngest через `Start-Process`-окна в дереве процессов тула;
+  **при возврате headless-тула харнесс сносит всё дерево**. Fix: поднимать те же start-режим команды
+  как персистентные `run_in_background` джобы (задокументировано в CLAUDE.md §13).
+- **2 юнит-теста упали с первого раза (баги в ОЖИДАНИЯХ теста, не в коде)** — (1) clamp-тест ждал
+  `startSec:3` для SH01, а он первый → `startSec:0`; (2) «prefers punchline» сценарий давал span 13с <
+  порога 15с. Оба исправлены → 15/15.
+- **`start-stack.cmd` нельзя просто скопировать на десктоп** — использует `%~dp0` (ищет .ps1 рядом).
+  Поэтому сделан **ярлык (.lnk)** на репозиторный cmd, а не копия.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **P2 batch-драйвер (ОСОЗНАННО отложен до выбора эпизода)** — DB→derive→cut→3-5 локальных сэмплов.
+  Завязан на данные КОНКРЕТНОГО эпизода (storyboard+animatic+final из БД); обязан пройти смоук, а не
+  гадать формы БД (доктрина «runtime>static»). Мышцы под ним готовы+тесты. Паттерн Supabase-в-скрипте:
+  `dist-shorts-backfill-parents.ts` (createClient + .env.local). Резак не тронут (исключение
+  landscape_only живёт раз, в derive).
+- **Luna-модель для Полины** — Директор сам тестит. Код-опция `llm-gpt5-6-luna-option` уже в master
+  (`9d5e4a9`). На какой модели Полина реально говорит — конфиг (`OPENAI_MODEL` в `.env.local` /
+  провайдер-ассайнмент concierge, дефолт был gpt-5.5). Не проверял — Тео предложил глянуть/переключить
+  за минуту если попросит.
+- **Первый Доказательный Эпизод (q3, открыт)** — первый под vertical-safe правилом + первый публичный
+  тест + цель P2. Тему Директор назовёт сам ИЛИ Тео предложит из `FILMS/Sandy/episode_ideas.md` с
+  уклоном в вертикаль-дружелюбную механику (SAND/гравитация, BODY-гэги). Затем: выставить его
+  `delivery_targets ⊇ youtube_shorts`, засторибордить под правилом, derive → сэмплы → показать.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| .claude/skills/storyboarder-situational-comedy/SKILL.md | ✅ `de12089` | +vertical-safe секция +self-check bullet |
+| .claude/skills/readability-comedy-slapstick/SKILL.md | ✅ `de12089` | +self-gated delivery-условный CREAD-чек |
+| agents/exec/storyboarder.md | ✅ `de12089` | +флаги в Step-3, QA-строка Step-5 |
+| specs/schemas/shot.md | ✅ `de12089` | +DELIVERY/FRAMING блок, правило 9, пример |
+| webapp/lib/agents/runners/storyboarder.ts | ✅ `de12089` | активация delivery_targets + условный шаблон/rule |
+| webapp/lib/api/provider-capabilities.ts | ✅ `de12089` | +hasVerticalDeliveryTarget (реюз ASPECT_BY_DELIVERY_TARGET) |
+| webapp/lib/api/vgen-shot-helpers.ts | ✅ `de12089` | флаги в StoryboardShotV2 + shotToV2 вайтлист |
+| webapp/lib/api/animatic-shotlist.ts | ✅ `de12089` | +shotRangeToSeconds; флаги в extractShotsFromStoryboard |
+| webapp/lib/api/short-windows.ts | ✅ NEW `de12089` | deriveShortWindows + shortWindowsFromEpisodeMeta |
+| webapp/__tests__/lib/api/short-windows.test.ts | ✅ NEW `de12089` | 15 юнитов, зелёные |
+| PLAN.md | ✅ `de12089`+`37e0464` | SHIPPED+DEPLOYED, intent (3) обновлён |
+| CLAUDE.md | ✅ `831c2cc` | §13 заметка headless vs desktop |
+| Desktop\SandyStudio Stack.lnk | ✅ создан (вне git) | двойной клик = session-независимый стек |
+
+---
+
+## Decisions Made
+
+- **Правило = условное сториборд-правило, не новый агент** — Сторибордер пишет флаг, CREAD ловит; обе
+  стороны из существующих агентов. Анти-аддитивно.
+- **Активация нужна код (не чистая доктрина)** — раннер сториборда НЕ читал delivery_targets; провёл
+  через `hasVerticalDeliveryTarget` (реюз существующего маппинга). Это ровно Brief-driven активация,
+  которую просил Директор — только провод отсутствовал.
+- **CREAD-чек self-gated на присутствии флага** — не тянем delivery_targets в CREAD-раннер; наличие
+  vertical_safe/landscape_only в JSON = сигнал. Ноль нового кода на стороне критика. Живёт в
+  readability-comedy-slapstick с пометкой abstraction-debt (вынести в genre-neutral при 2-м жанре).
+- **gag_category = LLM-инференс из прозы** — нет структурного поля; Opus читает категории gag-library
+  как эвристику. Без нового поля схемы.
+- **ffmpeg-shorts НЕ трогаем** — guard landscape_only избыточен (у резака нет контекста шотов);
+  исключение живёт в ОДНОМ месте — deriveShortWindows.
+- **Batch-драйвер отложен до эпизода** — собрать на реальных данных + смоук, не гадать (runtime>static).
+- **Серверы в headless = background-джобы** — десктопный лаунчер сносится процесс-деревом тула;
+  задокументировано в CLAUDE.md §13.
+
+---
+
+## Blockers & Open Questions
+
+- **q3 (открыт, не срочно):** тема Первого Доказательного Эпизода — Директор назовёт или Тео предложит
+  из банка. Банк-маркеры в PLAN протухли (E17-E25 = Airport-арка).
+- **P2 batch-драйвер ждёт выбора эпизода** — не блокер, осознанная последовательность.
+- **Luna-модель Полины** — Директор тестит сам; Тео на подхвате если нужен конфиг-флип.
+- **PLAN.md = 314 строк** (мягкий кап 200, перегружен ещё Guru-сессией) — флажено, не резал чужое.
+
+---
+
+## Exact Next Step
+
+Директор идёт тестить **Полину на модели Luna** (сам). Стек живой на `localhost:3000`.
+Когда вернётся к производству — **q3: выбрать Первый Доказательный Эпизод**, затем:
+1. Выставить `episodes.metadata.delivery_targets ⊇ youtube_shorts` для него.
+2. Засторибордить под vertical-safe правилом (Сторибордер эмитит vertical_safe/landscape_only на пиках).
+3. Прогнать CREAD (ловит латеральные пики без флага).
+4. `deriveShortWindows` → 3-5 гэг-окон → собрать локальные сэмплы (batch-драйвер собрать ТУТ, на реальных
+   данных) → **показать Директору ПЕРЕД любой заливкой** (propose-don't-auto-fire).
+
+---
+
+## Environment & Setup Notes
+
+- **Стек сейчас:** поднят в start-режиме как background-джобы (`b9si7bvuv` inngest durable :8288 ·
+  `bo7ujxmnq` app :3000), живёт пока жива ЭТА сессия. Health 200×3, функции registered.
+- **Session-независимый стек (весь день):** двойной клик **`Desktop\SandyStudio Stack.lnk`** →
+  `start-stack.cmd` (start-режим). После правок кода: `start-stack.cmd -Build` или из промпта
+  `! C:\SandyStudio\start-stack.cmd -Build`.
+- **git:** master `831c2cc`, origin синхронён (0/0). Mode ===5=== EDIT (Director-authorized). Прод на
+  `de12089`+ (с vertical-safe). Реконсайлер OFF (MECHANICS_AUTO_ADVANCE=false).
+- **Верификация P2-мышц:** `cd webapp && npx vitest run __tests__/lib/api/short-windows.test.ts`.
+- **Anti-additivity net-delta:** 1 новый модуль (short-windows.ts) + 1 хелпер + флаг-пара; резак не
+  тронут; net в основном additive но минимально и оправданно (реальная новая P2-возможность).

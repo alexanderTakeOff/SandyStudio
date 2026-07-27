@@ -1,0 +1,99 @@
+# Session: 2026-06-30
+
+**Started:** ~ (resumed from `2026-06-30-themes-q9a-session.tmp` — mid-implementation of plan q9a)
+**Last Updated:** evening Dubai (~19:15)
+**Project:** SandyStudio (C:\SandyStudio)
+**Topic:** Shipped plan q9a end-to-end — Part B (Polina chat-thread hygiene) + Part A (episode themes as per-theme DB assets: storage/API/UI/PA-tool + §34 seed + Bible strip). Pushed master. Next episode chosen = The Vending Machine.
+
+---
+
+## What We Are Building
+
+**Star:** AI movie factory. **Planet (this session):** give episode "gag-engine" themes a real home and fix Polina's chat hygiene — plan `q9a-greedy-barto.md` (APPROVED prior session).
+
+Two workstreams, both now COMPLETE and pushed:
+1. **Part B — chat hygiene.** Polina's chat was appending to a months-old ENDED thread (`bdbdafcf`, E12). Fixed the server guard + added a "New conversation" control.
+2. **Part A — themes surface.** Replaced the monolithic `SPC-theme_bank` markdown asset with **per-theme DB assets** (`SPC-theme_{slug}`): a light status-segmented index (one-liner per theme) + per-theme detail on demand, a `proposeTheme` PA tool (Polina's hand), a seed of Bible §34 (13 themes) + 3 idea candidates, and an in-place strip of §34 out of the Bible `general_idea`.
+
+---
+
+## What WORKED (with evidence)
+
+- **Part B — chat guard `0d7e1cc`** — confirmed: tsc·0 / vitest 1040 / replay 30; live `POST /api/concierge/new-thread` returned `{threadId}` 200 in the preview (Director cookies); "Новый разговор" button present in panel DOM with correct title (preview_eval); no console errors.
+- **Part A — spine `67cf207`** — confirmed: full live `GET/POST/PATCH/DELETE` cycle on SS-S15 in the browser preview (created a smoke theme, moved draft→approved via PATCH, deleted it, count back to 0); tsc·0 / vitest 1040 / replay 30; Themes tab renders the new segmented view ("Add theme" + "движки гэгов" hint present, old "Start the theme bank" monolith GONE), console clean.
+- **Seed `_seed-themes.mjs` (ran + deleted)** — confirmed: 16 inserted, 0 failed; live API shows `approved: 13, draft: 3, invalidated: 0` for SS-S15. §34 Seed Bank (13) → approved; E09 candidates (elevator_button / automatic_door / vending_machine) → draft.
+- **Bible §34 strip `_strip-bible-s34.mjs` (ran + deleted)** — confirmed: `general_idea` 17188 → 15365 chars (−1823); live asset fetch shows `## 34.` heading gone, Seed Bank items gone, pointer line ("перенесён во вкладку Themes") present. Done IN PLACE, status stayed LOCKED (Director q1a: «просто засени короткий, без лок-анлока, разрешил»).
+- **Pushed to origin/master** — `b21a6e9..3269e4a` then `3269e4a..29d92c1` (PLAN.md). Working tree ahead 0.
+
+---
+
+## What Did NOT Work (and why)
+
+- **`preview_screenshot` timed out (30s)** — the preview renderer hangs on screenshot (modal/renderer issue, NOT my change). Worked around it entirely with `preview_eval` DOM queries + API fetches, which proved the UI mounts and the routes work. Do not rely on preview_screenshot in this preview server.
+- **First `DELETE /api/assets/{id}` returned 500 once** — transient; the immediate retry returned 200 and deleted the smoke theme cleanly. Not reproducible. (Asset was DRAFT → deletable; theme_status PATCH does NOT change the asset status enum, so delete stayed allowed.)
+- **(carryover, still true)** push hook `verify-trio-on-push` — this push actually SUCCEEDED without override, so the earlier "environmental tsc-PATH failure" did not bite this time. If a future push blocks environmentally, override with a trailing `# no-verify` AFTER verifying the trio manually from `webapp/`.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Next episode = The Vending Machine** (Director q4). Start it from the draft theme `the_vending_machine` in the Themes tab (SS-S15). Full episode pipeline run — not started.
+- **Chat smoke of `proposeTheme`** on a CLEAN thread (now possible with Part B shipped) — Polina proposes a theme → lands in Draft group. Not yet exercised end-to-end via the LLM (tool is registered + tsc-clean; the REST path it calls is verified).
+- **E13 live calibration run** — the older phase goal (gate-measurement data). Still pending; spends money, Director-gated.
+- **watchdog-residual full-close** (S2(b) tail) — flagged, deferred.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/app/api/concierge/chat/route.ts` | ✅ shipped `0d7e1cc` | B1 guard: `!existing || existing.ended_at !== null` |
+| `webapp/app/api/concierge/new-thread/route.ts` | ✅ shipped `0d7e1cc` (new) | archive current + open fresh thread |
+| `webapp/components/concierge/ConciergePanel.tsx` | ✅ shipped `0d7e1cc` | "Новый разговор" button + handleNewConversation |
+| `webapp/lib/api/series-themes.ts` | ✅ shipped `67cf207` (new) | storage helpers; `metadata.theme_status` curation |
+| `webapp/app/api/series/[id]/themes/route.ts` | ✅ shipped `67cf207` | GET list / POST one / PATCH theme_status |
+| `webapp/components/series-themes/SeriesThemesView.tsx` | ✅ shipped `67cf207` | segmented index + cards + Add form |
+| `webapp/lib/concierge/tools/themes.ts` | ✅ shipped `67cf207` (new) | `proposeTheme` (verbal-gated) |
+| `webapp/lib/concierge/tools/index.ts` | ✅ shipped `67cf207` | registered proposeTheme |
+| DB: SS-S15 assets `SPC-theme_*` | ✅ seeded (live) | 13 approved + 3 draft |
+| DB: SS-S15 `general_idea` (LOCKED) | ✅ stripped (live) | §34 removed in place + pointer |
+| `PLAN.md` | ✅ updated + pushed `29d92c1` | master-only |
+| `FILMS/Sandy/episode_ideas.md` | ✅ marked (untracked) | №5 Vending Machine → ✅ chosen next |
+| seed/strip scripts under `webapp/scripts/_*.mjs` | 🗑️ deleted | one-off, removed after run |
+
+---
+
+## Decisions Made
+
+- **Bible §34 strip = direct in-place content overwrite, status stays LOCKED** — reason: Director q1a explicitly «не надо лок-анлок, я разрешил». No v02/DRAFT/review/LOCK ceremony; just shortened the DB content + left a one-line pointer to Themes.
+- **Polina STAYS on Opus** (`CONCIERGE_PROVIDER=anthropic`) — reason: Director q2. Do NOT revert to gemini. (Cost fences remain: cap 40 + $20/day breaker + SPIN + S2(b) escalate-not-loop.)
+- **Themes = per-theme DB assets `SPC-theme_{slug}`**, curation status in `metadata.theme_status` (approved|draft|invalidated), free any→any via PATCH — NOT the asset status enum (which renames the file). No DB migration (allowed SPC- prefix).
+- **Next episode = The Vending Machine** (Director q4) — start from draft theme `the_vending_machine`.
+- **proposeTheme reuses the POST route** via internal fetch (anti-additivity) rather than touching the DB directly.
+
+---
+
+## Blockers & Open Questions
+
+- No active blockers. master is clean (ahead 0, pushed).
+- `preview_screenshot` unreliable on this preview server (renderer hang) — use `preview_eval` for verification.
+- E13 live run still the real phase validation — not started (money, Director-gated).
+
+---
+
+## Exact Next Step
+
+**Start the next episode — The Vending Machine — in SS-S15**, sourced from the draft theme `the_vending_machine` (Themes tab). Follow the normal episode pipeline (Brief → Casting → Storyboard → EREF → Animator → …). Polina is on Opus and armed. Confirm with Director whether to promote the theme to `approved` first and which governance mode to run.
+
+---
+
+## Environment & Setup Notes
+
+- **===5=== EDIT** active. Dubai time = LOCAL `date '+%H:%M'`.
+- Preview/dev server: registered as `next-dev` (serverId `ebc68854-…`, port 62425, cwd C:\SandyStudio) — used via preview_eval for live API/UI checks. A separate `:3000` dev server (from session start, PID 861484, Opus) may also be up.
+- SS-S15 series UUID: `45351141-6334-4bf0-8a0f-4e00a994f670`. general_idea asset id: `812aa5e9-b967-484a-ae0f-e0c66d7d6992`.
+- One-off DB scripts: write under `webapp/scripts/_*.mjs`, manual dotenv parse of `.env.local` (`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`), run from `webapp/`, delete after.
+- Verify trio: `cd webapp && npx tsc --noEmit && node_modules/.bin/vitest run && npm run replay-pilot` (tsc·0 / 1040 / 30 as of this session).
+- Push hook accepts `# no-verify` trailer if it environmentally fails (didn't this session).
+- `episode_ideas.md` at `C:\SandyStudio\FILMS\Sandy\episode_ideas.md` (untracked; №5 marked chosen).

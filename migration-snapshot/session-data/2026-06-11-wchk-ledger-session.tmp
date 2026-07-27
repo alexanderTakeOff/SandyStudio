@@ -1,0 +1,107 @@
+# Session: 2026-06-11
+
+**Started:** ~12:30 (Dubai, resumed from c1gate-e06-run session)
+**Last Updated:** ~14:15
+**Project:** SandyStudio (C:\SandyStudio) — Тео на Fable 5 (переключение mid-session с Opus)
+**Topic:** WCHK strengthening sprint — обучающий разбор 12 несостыковок gag-beat bank → диагноз «WCHK = membership-only, 2/8 проверок» → двухмоторная архитектура (state-ledger + inventory-cascade) спроектирована, согласована (q1-q4) и ОТГРУЖЕНА в один заход + CREAD double-fire убит в корне. Commit `4ff5262` (master, local-unpushed).
+
+---
+
+## What We Are Building
+
+Системное усиление слоя EXEC-WCHK (continuity), чтобы он ловил prop/state-continuity дефекты ВНУТРИ эпизода до платной генерации. Триггер: обучающий разбор брифа «Sandy убирает комнату» нашёл 12 несостыковок (шнур лампы «впервые» дважды, воскресшая стопка книг, свет включается без причины, перья из ниоткуда, 4 безымянных «стола», сажа на прозрачном теле Sandy…), из которых старый WCHK ловил 0 — его runner реализовал только canon-membership (CHK-W01+W03 из 8 заявленных в спеке).
+
+Архитектура (консенсус с Director): два ортогональных «мотора» внутри СУЩЕСТВУЮЩЕГО слота WCHK (анти-аддитивность, без нового агента):
+- **Motor 1 «Симуляция»** — stateful world-ledger: Haiku-extraction превращает прозу кадров в `ShotStateDelta[]`, чистый детерминированный код судит переходы состояний (Approach B: LLM извлекает, код судит).
+- **Motor 2 «Карта»** — каскадный инвентарь: union(Bible `SBL-object_*` канон рекуррентных локаций ∪ эпизодная `prop_delta` из брифа), промоушен локации в Bible после 2-3 эпизодов (ручной).
+
+Решения Director: q2 = comedy-soft (мультяшная логика легальна; детерминированный слой НИКОГДА не FAIL, REVISE только при MAJOR-пуле ≥3); q3a = prop_delta живёт в брифе; q4n = оживить и мёртвые W02/W05/W07 заодно (все 8 проверок).
+
+---
+
+## What WORKED (with evidence)
+
+- **CREAD double-fire убит в корне** — confirmed by: код-анализ показал ДЕТЕРМИНИРОВАННЫЙ дубль (не race): в Mode 4 factory.ts:564 гонит computeNextEvents по auto-APPROVED ассету ДО отправки critic-chain события (:613) → hasJob физически не может увидеть job. Удалены STB→CREAD и REV-readability PASS→WCHK пуши из next-events.ts. Тесты переписаны под новую доктрину, 6/6 passed.
+- **Мина per-shot вердиктов обезврежена** — confirmed by: новый тест «per-shot eref/vanim phase rows are ignored even on AUTOTEST REVISE» passed. (T1-консолидация дала per-shot REV-readability строкам тот же file_type → Mode-4 REVISE по shot-плану перезапустил бы ВСЮ раскадровку.)
+- **state-ledger.ts (Motor 1, CHK-W08)** — confirmed by: 11/11 unit-тестов, включая все 4 канонических дефекта как фикстуры (double-yank → REPEAT_FIRST_DISCOVERY; воскресшая стопка → STATE_REVERT_NO_CAUSE; свет → STATE_CHANGE_NO_CAUSE MAJOR; перья → ENTITY_FROM_NOWHERE MINOR) + негативные кейсы (валидная эскалация → 0 нарушений).
+- **continuity-extract.ts + checkShotDurations (W05)** — confirmed by: 4/4 + парсер-тесты (malformed entries дропаются со счётчиком, не молча).
+- **inventory-cascade.ts (Motor 2, CHK-W04)** — confirmed by: 7/7 (union, aliases, дедуп нарушений per-entity, NO_INVENTORY при пустых данных, parseBriefPropDelta из fenced JSON брифа).
+- **Полный verify trio** — confirmed by: tsc·0 / vitest **787/787** (+23 новых) / replay-pilot **30/30** с флагами OFF (байт-идентичность legacy подтверждена).
+- **Коммит на master** — `4ff5262` поверх `c6fc100`, git log подтверждён.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Первоначальный пункт №11 разбора («снять все книги с полки — over-reaction»)** — отозван: Director поправил, что over-reaction — основа гэг-мультиков. Дефект переформулирован: не само действие, а отсутствие записанного goal-verb в бите.
+- **Моя идея «наполнять Bible инвентарём» была мной же ошибочно отброшена** после реплики Director про «общие правила» — затем восстановлена через /btw-форк: правильный ответ — КАСКАД (Bible = рекуррентные локации, бриф = эпизодная дельта), не «или-или».
+- **ledgerVerdictImpact(violations[])** — заменён на reviseImpactForMajorPool(count) в процессе: пул вердикта общий (ledger+durations+canon-conflicts), функция от массива только-ledger-нарушений не покрывала политику. Не баг, но первая сигнатура была неправильной абстракцией.
+- Прочих провалов нет — спринт прошёл без откатов.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Чистый E06 re-run с леджером (q6, предложен, ждёт go)**: rebuild prod-сервера с новым кодом, `CONTINUITY_LEDGER_ENABLED=true` в webapp/.env.local, E06 unfreeze → mode 4, ceiling поднять (~$3-4), C1_STOP_BEFORE_EREF остаётся on. Ожидание: CREAD стреляет ОДИН раз → сходимость (PASS или HALT-at-cap=2) → первый живой ledger-отчёт WCHK.
+- **Data-work Motor 2** (~час): завести Bible `SBL-object_*` для спальни Sandy (bed/vanity/bookshelf/drawer/rug/lamp + aliases/geometry в metadata) — без этого inventory-проверка честно скажет NO_INVENTORY.
+- **Live-проверка качества Haiku-extraction** — слабое звено Motor 1 = нормализация имён (lamp_cord vs cord рвёт per-entity timeline). Промпт пиннит canonical naming, но живых данных ещё не было.
+- Из старого бэклога: q45 wan aspect (квадрат вместо 9:16), q40 cap → Episode Settings, TD-61.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|------|--------|-------|
+| `webapp/lib/agents/state-ledger.ts` | PASS: Complete | НОВЫЙ — чистый судья, 4 правила + reviseImpactForMajorPool, порог=3 |
+| `webapp/lib/agents/runners/continuity-extract.ts` | PASS: Complete | НОВЫЙ — Haiku extraction (claude-haiku-4-5, 8k tokens), parseShotStateDeltas |
+| `webapp/lib/agents/inventory-cascade.ts` | PASS: Complete | НОВЫЙ — CHK-W04 union-валидатор + parseBriefPropDelta; MINOR-only |
+| `webapp/lib/agents/runners/continuity-check.ts` | PASS: Complete | оркестрация обоих моторов за флагом; W02/W07 в Sonnet-промпте; W05 код; q2-политика; contract → @v2 |
+| `webapp/lib/agents/next-events.ts` | PASS: Complete | дедуп: критики только через critic chain + phase guard |
+| `webapp/lib/agents/chain-flags.ts` | PASS: Complete | +continuityLedgerEnabled() |
+| `webapp/lib/api/vgen-shot-helpers.ts` | PASS: Complete | +continuity_notes в V2-парсер, +listStoryboardShotsV2 |
+| `webapp/__tests__/lib/agents/{state-ledger,inventory-cascade,continuity-check-ledger,next-events-readability}.test.ts` | PASS: Complete | 3 новых файла + 1 переписан; +23 теста |
+| `specs/contracts/continuity_check@v2.yaml` | PASS: Complete | НОВЫЙ — v2 shape (state_violations/inventory/ledger), чинит max_tokens 3000/6000 рассинхрон |
+| `agents/exec/world_checker.md` | PASS: Complete | v0.2 — runtime-карта 8 проверок (кто исполняет), q2-политика, cascade-доктрина |
+| `PLAN.md` | PASS: Complete | CURRENT STATE обновлён, ровно 200 строк (бюджет соблюдён) |
+| `webapp/lib/agents/runner.ts` | PASS: Complete | только комментарий (body уже проходил насквозь — правка не понадобилась) |
+
+Всё в коммите `4ff5262` (master, LOCAL — push не сделан, нужна авторизация Director).
+
+---
+
+## Decisions Made
+
+- **Критиков запускает ТОЛЬКО critic chain** (spec.nextEvent продьюсера, все режимы); computeNextEvents продвигает только EXECUTOR-вехи. Side-effect: re-approve старой раскадровки больше не перезапускает CREAD (приемлемо: requestRevision → SB → critic chain).
+- **Один флаг CONTINUITY_LEDGER_ENABLED на оба мотора** — Motor 2 самоактивируется данными (NO_INVENTORY при пустом union); второй флаг не нужен by construction.
+- **q2 comedy-soft**: детерминированный слой никогда не FAIL; PASS→REVISE только при MAJOR-пуле ≥3; UNRESOLVED_PROP всегда MINOR (extraction-имена шумные).
+- **Motor 2 переиспользует extraction-дельты Motor 1** — без второго LLM-вызова (анти-аддитивность).
+- **q3a**: prop_delta — fenced-JSON поле брифа (не новый asset type, не episodes.metadata).
+- **q4n**: W02/W07 = advisory-метки в том же Sonnet-вызове; W06 = advisory через geometry-заметки инвентаря в промпте; W05 = детерминированный код.
+- **Промоушен локации episode→Bible — ручной** (PA предлагает, Director подтверждает; YAGNI на авто).
+- Решено мной без вопросов (директива «decide small things yourself»): per-entity state machine (не event log), extraction отдельным Haiku-вызовом, контракт bump @v2, извлечение из прозы без нового поля у Storyboarder.
+
+---
+
+## Blockers & Open Questions
+
+- **q5 pending: push master?** (`4ff5262` поверх `c6fc100`; push требует явной авторизации Director).
+- **q6 pending: чистый E06 re-run** (~$3-4) — go/no-go за Director (смоук-доктрина: предлагать, не запускать).
+- Bible `SBL-object_*` пуст → CHK-W04/W06 пока инертны (честно surfaced в отчёте как NO_INVENTORY).
+- Латентный (вне скоупа, отмечен в коде): flag-off legacy STB→WCHK fire в computeNextEvents — тот же класс дубля с exec-sb critic chain, замаскирован; не тронут ради байт-идентичности replay-pilot.
+
+---
+
+## Exact Next Step
+
+Ждать ответов Director: **q5** (push master) и **q6** (E06 re-run). При q6y: (1) добавить `CONTINUITY_LEDGER_ENABLED=true` в webapp/.env.local; (2) rebuild: `next build --no-lint && npm start` + `npm run inngest:dev` (НЕ turbopack-dev — см. память eref_generation_needs_stable_server); (3) E06 (`ab0f3469-c845-4f19-896f-f192be4ac84f`) unfreeze: mode 4, ceiling поднять до ~$8; (4) следить: CREAD должен выстрелить РОВНО один раз на v-новой раскадровке, сходимость ≤2 ревизий, затем WCHK с «## State Ledger» секцией в отчёте. После смоука — предложить data-work по Bible-объектам спальни.
+
+---
+
+## Environment & Setup Notes
+
+- Сервера с прошлой сессии (`npm start` :3000 + inngest :8288) собраны из `c6fc100` — НЕ содержат нового кода, перед смоуком обязателен rebuild.
+- Флаги в webapp/.env.local сейчас: READABILITY_GATE, DESIGNER_CHAIN, ANIMATOR_CHAIN, C1_STOP_BEFORE_EREF = on; CONTINUITY_LEDGER_ENABLED ещё НЕ добавлен.
+- Verify trio: `cd webapp; npx tsc --noEmit · npx vitest run (787) · npm run replay-pilot (30)`.
+- Inngest fire: POST http://localhost:8288/e/dev {name,data}; статус: GET /v1/events/<id>/runs.
+- Сессионная q-нумерация дошла до **q6** (q1 вектор → снят планом; q2 строгость → soft; q3a бриф; q4n все проверки; q5 push?; q6 смоук?).

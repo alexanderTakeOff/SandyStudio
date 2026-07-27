@@ -1,0 +1,130 @@
+# Session: 2026-06-24
+
+**Started:** resumed from 2026-06-23-e12-gates-recovery · **Last Updated:** Dubai ~12:35 (machine clock ~4h behind — trust webapp/DB UTC feed)
+**Project:** SandyStudio — webapp animatic timeline + Prod Assistant (Полина). Тео = AI EP.
+**Topic:** Finish the unified animatic timeline («аниматор») — live cells, correct ref frames, kebab parity; switch Polина to Opus 4.8; surface EREF failures; edit Metelka canon text.
+
+> Clock: machine clock ~4h BEHIND real Dubai. All commits PUSHED to origin/master. Live dev serves from
+> MAIN checkout `C:\SandyStudio\webapp` (turbopack hot-reloads on file save). DB edits ≠ repo commits.
+
+---
+
+## What We Are Building
+The episode timeline («аниматор») is one unified module for video + reference per shot. This session
+closed a long string of Director-driven refinements so each shot cell is alive (pulses while an agent
+works), shows the RIGHT frame live (no stale frozen contract), and the hover-kebab gives full per-shot
+control (ref plan, ref versions, video versions, approve). Plus: trial Opus 4.8 for Полина, make EREF
+«tonns of fails» legible, and replace the Metelka canon text body.
+
+---
+
+## What WORKED (with evidence) — all tsc·0 / vitest green / 30 replay-pilot, all pushed to origin/master
+- **Casting REVIEW fix `63890fc`** — cast gallery now born REVIEW (was DRAFT dead-end: DRAFT→APPROVED
+  illegal + no DRAFT→REVIEW flip → Approve button never showed). E12 cast flipped DRAFT→REVIEW in DB.
+- **Live work pulse `0999f94`** (ported from worktree `angry-tesla-fed2ed`, uncommitted WIP) — cell
+  recolours+breathes while a per-shot job runs (design=blue / animate=violet; animate wins). Pure funcs
+  `activeWorkPhaseByShot`/`workPhaseForAgent`/`liveStagePalette` in pipeline-stages.ts + 12 tests.
+- **Round-robin→placeholder `2277cd1`** — `buildShotListFromApprovedEREF` no longer fabricates
+  `refs[i % len]` for unmatched shots in v2 (was: all 26 cells showed SH01/SH02). isV1 gate + placeholder.
+- **Image-version parity kebab `63f6dc6`** — «ref» section in kebab: ref versions + on-screen + ✓ approve.
+- **Edge-aware kebab popover `a63bc45`** (sibling-session z-order fix, committed by me) — first/last cell
+  popovers no longer clipped (left-0/right-0/center by leftPct, z-50).
+- **Opus 4.8 for Полина `dfc3737`+`cc3c01b`** — new `anthropic` concierge provider via Anthropic
+  OpenAI-compat (`https://api.anthropic.com/v1/`), reuses whole tool-loop. LIVE-SMOKED OK (tool_call works).
+  GOTCHA fixed: Opus rejects `temperature` (400) → `conciergeSupportsTemperature()` gates it off in all 3
+  routes. Env SET: `CONCIERGE_PROVIDER=anthropic`, `CONCIERGE_ANTHROPIC_MODEL=claude-opus-4-8`.
+- **EREF A+B `3c7b5c0`** — A: surface the real provider error (was console-only swallow at 2331) into the
+  thrown message; B: zero-insert because all-already-approved = INFO no-op, not a throw (killed false «tonns»).
+- **Ref-presence tint `51f0606`** — cells with a ref get an `--asset-image` bg tint (9% any / 22% approved).
+- **Live cell FRAME `3f639ee`** — `resolveTimelineCells` resolves the frame LIVE from newest viewable
+  IMG-episode_ref per shot (was frozen contract image_url → blank for refs approved after rebuild; SH18). +7 tests.
+- **Two-state ✓ + any-generated-frame `00f50bc`** — frame shows for ANY viewable ref (approved/locked
+  canon, else review/revision/draft with URL; never INVALIDATED/REJECTED). `approveTick()`: muted outline ✓
+  on REVIEW (action), bright solid ✓ on APPROVED/LOCKED (state).
+- **Preview renders RESOLVED url `e31d87c`** — the on-screen `<img>` read `currentShot.image_url` (frozen)
+  not `currentCell.url` (live) → most refs blank. Now `currentCell.url` + key. (Director: «only some refs visible».)
+- **Ref-plan in every kebab `a31dda6`** — kebab «ref plan» row (SPC-ref_plan) keyed by unique SHxx token,
+  click opens plan in PreviewDrawer. (SH09 had a ref plan but empty kebab; Director must open plan when gen jams.)
+- **Metelka canon text `0ce71831` (DB-only, NO commit)** — replaced `content` markdown body verbatim with
+  Director's final canon (болонка-brush + cute minimal face). status LOCKED / v1 / filename / drive_file_id
+  (болонка v6 image) UNCHANGED. Verified read-back: no «лица нет/не видно глаз», метла only in canon prohibitions.
+
+---
+
+## What Did NOT Work (and why)
+- **`empty_only` payload field** — red herring; not read anywhere in code. EREF fail cause was the swallowed
+  provider error + no-op-as-failure, not this flag.
+- **Editing Metelka WITHOUT confirming the field** — `content`=short RU paragraph, `description`=«# Metelka»
+  stub, the structured Силуэт/Лицо/Visual-Canon-Notes card with «inverted teardrop / no facial features»
+  lives only in `metadata.description_history` (English EXEC-BIBLE-AUTHOR card). Data didn't match the
+  Director's first task wording → asked q1, he returned the exact verbatim text to write into `content`.
+- **tsx top-level await** — esbuild «cjs» format rejects it; wrap rebuild scripts in `(async()=>{})()`.
+- **supabase JS `.ilike('id', ...)` on uuid column** — uuid type doesn't ilike; query by file_type/filename instead.
+
+---
+
+## What Has NOT Been Tried Yet
+- **EREF Slice C (per-shot real fix)** — now that A surfaces the provider error, read the next SH04/SH26
+  fail message in the feed to see WHY gpt-image throws (likely content moderation / bad ref) and fix that shot.
+- **Critic verdicts in kebab** — Director's ideal order is plan→critic→ref→video; critics (EPREV/CREAD
+  per-shot verdicts) not yet written to the kebab. Add a «critic» row between ref-plan and ref, same pattern.
+- **Opus-4.8-for-Полина evaluation** — running live; judge cost vs time/nerves vs gpt-5.* (Director funded
+  credits). Revert = unset `CONCIERGE_PROVIDER`.
+- **State-ledger noise / CREAD de-concretization** — older backlog, untouched.
+
+---
+
+## Current State of Files (ALL committed + pushed to origin/master unless noted)
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/api/timeline-cell-resolver.ts` | ✅ | live frame resolution + ImgRefAssetRow + refStatusRank (any viewable) |
+| `webapp/components/animatic/AnimaticPlayer.tsx` | ✅ | live pulse, ref/ref-plan kebab sections, approveTick, preview currentCell.url, tint |
+| `webapp/components/timeline/EpisodeTimelineSection.tsx` | ✅ | liveStageByShot, imgRefAssets, refPlansByShotId, faster poll |
+| `webapp/lib/api/pipeline-stages.ts` | ✅ | activeWorkPhaseByShot / workPhaseForAgent / liveStagePalette |
+| `webapp/lib/api/animatic-shotlist.ts` | ✅ | round-robin gated to v1; image_url/asset_id string\|null |
+| `webapp/lib/agents/runners/animatic-slideshow.ts` | ✅ | Frame nullable + placeholder markdown |
+| `webapp/lib/agents/runners/episode-references.ts` | ✅ | EREF A (surface error) + B (no-op≠throw) |
+| `webapp/lib/concierge/llm.ts` + 3 concierge routes | ✅ | anthropic provider + conciergeSupportsTemperature |
+| `webapp/app/api/episodes/[id]/route.ts` · `app/globals.css` | ✅ | jobs limit 200 · stage tokens + pulse keyframe |
+| `webapp/__tests__/...` (pipeline-stages, timeline-cell-resolver, animatic-shotlist-eref-placeholder) | ✅ | +tests, 978 total |
+| asset `0ce71831` (Metelka canon) | ✅ DB-only | content replaced verbatim; image/version/status untouched |
+| `webapp/.env.local` | ✅ local (gitignored) | CONCIERGE_PROVIDER=anthropic + CONCIERGE_ANTHROPIC_MODEL |
+
+---
+
+## Decisions Made
+- **Live frame resolution > re-rebuilding the animatic** — the frozen contract goes stale on every new
+  approval (whack-a-mole). Resolve the frame live; frozen contract is now last-resort fallback only.
+- **Tint (bg) for ref-presence, NOT number colour** — number = video status/live-pulse; ref presence is an
+  orthogonal axis → `--asset-image` bg tint (distinct from green/orange/blue/violet).
+- **Two-state ✓** — muted outline = action (REVIEW→approve), bright solid = state (APPROVED). Respects
+  legal status transitions (only REVIEW→APPROVED direct).
+- **Opus via Anthropic OpenAI-compat, not native SDK** — reuses the whole concierge tool-loop (subtractive).
+- **Metelka: edit `content` (live card body) verbatim** — Director confirmed the field + gave exact text.
+
+---
+
+## Blockers & Open Questions
+- **Opus-4.8-for-Полина**: live trial — Director watching cost/nerves. No code blocker.
+- **EREF gen still failing on specific shots (SH04/SH26)** — root cause now SURFACES in feed (commit
+  3c7b5c0); needs a human/PA to read the next real error and fix the shot (Slice C, not done).
+- **Director's kebab order** — critics row not yet added (deferred until he asks).
+
+---
+
+## Exact Next Step
+No open task — session wrapped. If resuming the animator: add the **«critic» kebab row** (EPREV/CREAD
+per-shot verdicts) between ref-plan and ref, mirroring the ref-plan section pattern in AnimaticPlayer.tsx.
+Else: watch the next EREF fail in the E12 feed (now legible) to do EREF Slice C on the genuinely-failing shot.
+
+---
+
+## Environment & Setup Notes
+- Verify trio (run from `C:\SandyStudio\webapp`): `npx tsc --noEmit` · `node_modules/.bin/vitest run` (978) ·
+  `npm run replay-pilot` (30). NO `npm run build` while dev is up.
+- DB scripts: write `.mjs`/`.ts` INSIDE `webapp/` (node_modules resolution), inline `.env.local` loader +
+  `SUPABASE_SERVICE_ROLE_KEY`; wrap tsx scripts in `(async()=>{})()` (no top-level await); delete temp after.
+- E12 UUID `725efe84-be85-4a1d-9dfb-1d8aa4afe509`. Metelka canon asset `0ce71831-b422-46cc-9702-83ad1dc1555d`.
+- Commits land on **master in the main checkout** `C:\SandyStudio` (live-dev serves it); pushed to origin.
+- Live dev = turbopack `next dev` (hot-reloads on file save AND .env.local) — no manual restart needed for
+  code/env changes; do NOT hard-reset (kills in-flight Inngest generations).

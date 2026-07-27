@@ -1,0 +1,174 @@
+# Session: 2026-05-27 — anchor pair shipped + TD-61/65a/66/67a/68/69 sprint
+
+**Started:** ~09:00 Dubai (resumed from 2026-05-26-td51-58-shipped-session)
+**Last Updated:** ~13:05 Dubai
+**Project:** SandyStudio (C:\SandyStudio\)
+**Worktree:** C:\SandyStudio\.claude\worktrees\quizzical-brown-462555 (branch `claude/quizzical-brown-462555`)
+**Topic:** First production P2.3 anchor pair shipped (TD-65a + TD-65) → cascade of 7 follow-up TDs that closed the entire plan-driven VGEN pipeline (TD-61, TD-66, TD-67a, TD-68, TD-69) + neighbour PA chat polish.
+
+---
+
+## What We Are Building
+
+Plan-driven anchor-pair video generation pipeline for SandyStudio S15-E01. The flow:
+Storyboarder → Designer (SPC-ref_plan) → EREF Critic → Reference Artist (anchor pair start/end IMG) → Director approve → Animator (SPC-shot_plan) → Video Designer's Critic → Director approve → VGEN single-shot (Seedance img2vid with start+end conditioning).
+
+This was the first session where the full anchor-mode chain ran in production. The morning landed v08 anchor pair SH09 with all three canon characters (Sandy hourglass, Anvil character, Mirror_vanity hero prop) locking correctly — first time ever in anchor mode. Afternoon was a cascade: every downstream stage exposed a different system gap, fixed in commit-by-commit sequence.
+
+The bigger system goal: every Director Plan decision (provider/quality/orbit/end-image) must propagate end-to-end to Seedance via the runner reading Plan body — not lost to legacy fallback. Plus visibility of every auto-chain stage in Activity Feed so Director can see real-time progress.
+
+---
+
+## What WORKED (with evidence)
+
+- **SH09 v08 anchor pair start + end** — confirmed by: Director visual review «1-4 OK», all three canon (Sandy = hourglass not bear, Anvil = character with face/arms, Mirror_vanity = centred oval trumeau) preserved. First P2.3 production success.
+- **TD-65a preamble soften = root cause for Sandy → squirrel regression** — confirmed by: my direct OpenAI /v1/images/edits test (`scripts/manual-sh09-direct-api.ts`) with softened preamble + identical refs produced perfect Sandy hourglass on first try. Then runner v08 matched empirically after TD-65a landed on master.
+- **TD-66 file_type widen** — confirmed by: 11/11 animator-critic tests pass, including new regression test for `SPC-shot_plan-<shot_id>` form.
+- **TD-67a four-alias allowlist restored** — confirmed by: 22/22 animator tests pass after revert; `seedance-standard` re-added per Director directive q49b 2026-05-24 («почему до сих пор нет seedance-standard»).
+- **TD-69 agent_started telemetry for VGEN** — confirmed by: factory.ts:232 pattern replicated in `execVgenStart` + `execVgenSingleShot` insert-job-row steps; tsc clean; emits include shot_id + plan_asset_id metadata.
+- **TD-61 schema declares planAssetId** — confirmed by: tsc clean; approve-route at line 548 already passes `planAssetId: asset.id`, runner at lines 1807-1906 already has plan-driven branch — schema declaration was the only missing link to let the field through Inngest EventSchemas.
+- **TD-68 orbit + ACTION beat policy** — confirmed by: tsc clean, 11/11 critic tests pass, new V11+V12 checks added to `agents/exec/animator_critic.md`, Worked Example comparison added to `agents/exec/animator.md`.
+- **9 commits on master since session start** — confirmed by: `git log origin/master --oneline -10` shows `3ed7f03 → 7fadd2e → e5e1a78 → 1bf8e4f → 11a1d27 → 676a6c5 → 824357c → c9cccbb → 27072a8`.
+
+---
+
+## What Did NOT Work (and why)
+
+- **TD-65 ref order revert (Sandy slot 1 → slot N)** — failed because: SH09 v07 still rendered Sandy as squirrel after revert. Diagnostic outcome matrix showed «Sandy squirrel + mirror centred → root cause deeper than ref order». Slot position was not the variable.
+- **TD-67 (remove seedance-standard from allowlist)** — failed because: Director explicitly wanted it kept. Reverted via TD-67a commit `676a6c5`. Lesson: I misinterpreted Polина's «Current allowed choices are X, Y, Z» as permission to retire the alias; Director's earlier q49b 2026-05-24 directive specifically added it.
+- **Prompt reinforcement for Sandy (v06 with stronger SUBJECT 1 wording)** — failed because: Director observed «опять белка». Provider was hard-attending slot 1 LAYOUT LOCK preamble regardless of prompt body strength. Could not be fixed by prompt body alone — required preamble soften.
+- **Manual UI form workaround (paste anchor v08 asset IDs into END FRAME + REFERENCE IMAGE)** — Director explicitly rejected this approach: «не давать советы исправить вручную я могу это сделать это не сложно но это не улучшит качество нашей системы». Lesson recorded.
+- **TD-61 fix landed BUT SH<N> v01-v06 retroactively** — VID-shot v01 06:44 UTC was generated BEFORE TD-61 landed on master. Director's «всё висит в воздухе» observation traced to legacy fallback prompt + no start/end conditioning. Post-TD-61 the schema lets planAssetId through; legacy assets stay as-is, future ones get plan-driven path.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Verify TD-61 + TD-68 actually engage in live smoke** — after the trio (TD-61 schema + TD-68 prompt policy + TD-69 telemetry), Polина should fire fresh `regenerateShotPlan(SH19)` with revisionNote citing Director's intended gag («Anvil finger touch → trumeau launches to far wall → smash → vibrate → Sandy eyes saucer-wide»). Expected: Plan v02 with orbit 90° + 3-5-line ACTION beat + gag fidelity. Critic V11+V12 PASS. Then VGEN single-shot runs plan-driven (visible agent_started in feed) and produces video with real motion arc, not ambient wobble.
+- **SH12 / SH13 / SH15 video completion** — Polина запустила recovery cycle для них в дне (REVISE → Animator regen → approve). Не verified Director side ещё. Should auto-chain after TD-68 lands (Animator now writes orbit + beat by default).
+- **Stage 2 anchor pair smoke** — SH01 + SH02 adjacent pair (match-cut shared handoff). Not started — SH09 was Stage 1 standalone. Stage 2 validates the role-taxonomy reciprocal handoffs.
+- **TD-70 — Polина proactive-not-reactive behavior** — Director flagged 2026-05-27 («полина является реактивной а не проактивной... выполнила шаг например поправила скилл и остановилась»). Polина should auto-continue scope previously verbally approved, or end every reply with explicit numbered q-question. Edit in `webapp/lib/concierge/system-prompt-builder.ts`, ~30-50 LoC.
+- **VID-shot preview UI form pre-fill from Plan body** — even with TD-61 wiring Plan body through to runner metadata, the form (`webapp/components/preview/AssetPreview.tsx` or VID-shot drawer) still pre-fills from VID-shot metadata.prompt. After TD-61 the metadata has the full Plan-derived prompt, so form should naturally improve — but a deeper fix would have the form read directly from linked Plan body. TD-71 candidate.
+- **TD-65b pre-composite refs architecture** — discarded as no longer needed (TD-65a softer preamble fixed identity drift cheaply). Kept in plan file as escape hatch if a future hero shape proves provider-resistant.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+| --- | --- | --- |
+| `webapp/lib/agents/runners/episode-references.ts` | ✅ Complete | TD-65 ref order rollback for anchor mode + TD-65a softened preamble — anchor pair production-ready |
+| `webapp/lib/agents/runners/animator.ts` | ✅ Complete | TD-67a four-alias VANIM_PROVIDER_ALLOWLIST + resolver restored |
+| `webapp/lib/agents/runners/animator-critic.ts` | ✅ Complete | TD-66 file_type widened to accept `SPC-shot_plan` OR `SPC-shot_plan-<shot_id>` |
+| `webapp/lib/inngest/client.ts` | ✅ Complete | TD-61 — planAssetId added to single-shot + generate-shot event schemas |
+| `webapp/inngest/functions/exec-vgen.ts` | ✅ Complete | TD-69 — agent_started emit in both execVgenStart + execVgenSingleShot hand-rolled handlers |
+| `agents/exec/animator.md` | ✅ Complete | TD-68 — three new hard rules (CAMERA orbit-first, ACTION beat 3-5 lines, GAG FIDELITY) + Worked Example contrast |
+| `agents/exec/animator_critic.md` | ✅ Complete | TD-66 file_type widen + TD-67a allowlist restore + TD-68 V11 (orbit policy) + V12 (ACTION beat + gag fidelity) |
+| `webapp/__tests__/lib/agents/runners/animator.test.ts` | ✅ Complete | 22/22 pass, includes TD-67a four-alias regression test |
+| `webapp/__tests__/lib/agents/runners/animator-critic.test.ts` | ✅ Complete | 11/11 pass, includes TD-66 suffixed file_type test |
+| `webapp/lib/concierge/system-prompt-builder.ts` | ✅ Complete | TD-67a — PA tool examples updated, four-alias policy mentioned |
+| `webapp/lib/agents/runner.ts` | ✅ Complete | Stale doc comments refreshed to current alias |
+| `webapp/app/api/episodes/[id]/trigger/route.ts` | ✅ Complete | Stale doc comment refreshed |
+| `~/.claude/projects/C--SandyStudio/memory/MEMORY.md` | ✅ Updated | TD-62 closed, TD-65a learning + camera orbit signature + Sandy canon + preamble pollution all indexed |
+| `~/.claude/projects/C--SandyStudio/memory/sandy_canon_visual_identity.md` | ✅ Created today | What Sandy + Anvil look like canonically |
+| `~/.claude/projects/C--SandyStudio/memory/preamble_attention_pollution_gpt_image_2.md` | ✅ Created today | Why hard «MUST» directives starve identity refs in gpt-image-2 |
+| `~/.claude/projects/C--SandyStudio/memory/camera_orbit_signature_policy.md` | ✅ Created today | SandyStudio cinematography signature, 80%+ orbit |
+| `~/.claude/projects/C--SandyStudio/memory/backlog_td61_td62_pipeline_blockers.md` | ✅ Updated | TD-62 marked CLOSED 2026-05-27 v08; TD-61 still open at time of writing but now SHIPPED commit 11a1d27 |
+| `~/.claude/plans/enumerated-sprouting-panda.md` | ✅ Done | Plan file evolved through three iterations during session, final version contains TD-67/61/68 sequencing |
+| Diagnostic scripts in `webapp/scripts/` | Untracked | probe-sh09-*.ts, probe-mirror-in-bible.ts, manual-sh09-direct-api.ts, probe-today-prompt-audit.ts, probe-critic-status.ts, probe-recent-vgen.ts, probe-sh09-vid-refs.ts, probe-all-canon-paths.ts, probe-sh08-prompt.ts. Kept for next-session debugging. |
+| `webapp/public/staging/manual-sh09-direct-2026-05-26T10-12-53.png` | ✅ Created | Direct-API test image proving provider holds Sandy when preamble softened. Empirical reference for the TD-65a fix. |
+
+---
+
+## Decisions Made
+
+- **TD-65a softer preamble over rollback of TD-53** — reason: empirical direct-API test proved preamble strength (not ref order) was the variable. Layout still holds because LAYOUT REFERENCE phrasing is advisory + scene_master is now slot 1 still anchors composition.
+- **TD-67a restore four-alias policy** — reason: Director directive q49b explicitly added `seedance-standard` for action-heavy shots without end anchor. TD-67 retirement was over-eager misinterpretation. Lesson: read Polина's reports as observations of CURRENT state, not as policy directives.
+- **TD-61 minimal schema-only fix** — reason: approve-route already correctly emits `planAssetId`, runner already has plan-driven branch — Inngest EventSchemas were the only stripping layer. One change closed the entire chain.
+- **TD-69 emit agent_started inline in hand-rolled handlers** — reason: refactoring exec-vgen.ts to use factory.ts pattern is a larger change; inline replication keeps the fix scoped and tested.
+- **TD-68 wire orbit + ACTION beat policy into Animator markdown + Critic V-checks** — reason: Polина's local skill update and memory note do not reach Animator at runtime. The system prompt + Critic file_paths are the actual enforcement surfaces.
+- **Defer pre-composite refs (TD-65b)** — reason: TD-65a fixed the symptom for Sandy + future hero shapes can be handled by extending the identity-preservation directive language; pre-composite is heavier engineering kept as escape hatch.
+- **Cherry-pick to master via temp worktree pattern** — reason: established workflow today, every commit went `feature push → /tmp/temp worktree + cherry-pick → push to master → cleanup`. Director approved this as the standard pattern in plan file allowedPrompts.
+
+---
+
+## Blockers & Open Questions
+
+- **TD-70 — Polина proactive vs reactive** — observed 2026-05-27. Polина stops after each tool dispatch instead of continuing the previously approved batch scope OR ending with explicit numbered q-question. Fix is a system prompt edit in `webapp/lib/concierge/system-prompt-builder.ts`.
+- **TD-71 — VID-shot preview UI form should pre-fill from Plan body** — observed during SH09 v01 re-fire (form showed legacy fallback prompt + empty END FRAME despite Plan v02 specifying both). After TD-61 metadata flow is correct, form display reads from updated metadata, so the form may «improve for free» on the next regenerate — but a proper fix is the form reading directly from Plan body via `plan_asset_id`.
+- **Stage 2 anchor pair (SH01+SH02 adjacent)** — not started. Requires testing reciprocal `start_anchor.role=shared` + `end_anchor.role=shared` handoff_link_to pointers, plus opening_camera_motion landing on the paired anchor. Different code path from SH09 standalone.
+- **SH12 / SH13 / SH15 still in Polина's recovery cycle** — last seen by Director with «массовка» mode (single-frame, no anchor pair, fast tier batch). Director explicitly waived Critic action-density concerns for this batch. Outcomes not yet verified by Director.
+- **PLAN.md update — Ritual 1 NOT done this session** — known violation, recorded here so next session catches it. Should update `## CURRENT STATE` block before next push.
+
+---
+
+## Exact Next Step
+
+When resuming via `/resume-session`:
+
+1. **Standard SandyStudio session start** (CLAUDE.md §9): read CLAUDE.md → PLAN.md → glossary → this session note.
+
+2. **Check state:**
+   - `git log master --oneline -3` top should show `27072a8` (TD-68)
+   - `git -C webapp/ status` — only untracked diagnostic probe scripts + tsbuildinfo
+   - Dev servers: `mcp__Claude_Preview__preview_list` — `01efd346` next-dev + `79d57232` inngest-dev (both fresh from afternoon restart)
+
+3. **Director's pending action:** he flagged Plan 19/22 with static camera + one-liner action + gag inversion. The TD-68 fix is now on master — next regenerateShotPlan for ANY shot should produce orbit + 3-5-line ACTION beat. The Critic V11+V12 will REVISE any Plan that violates.
+
+   Recommended Director command to Polина:
+   > Полина, перегенерируй Shot Plan SH19 с revisionNote: «storyboard gag — Anvil's finger touch launches trumeau across room into far wall, smashes, vibrates with all might; Sandy's eyes saucer-wide in shock + horror. Camera: 90° orbit left-to-right around trumeau's flight path. ACTION: full physical beat 3-5 lines.»
+
+   Expected outcome: Plan v02 with orbit + faithful gag rendering. Critic PASS V11+V12. Approve → VGEN single-shot with new Plan body → real motion arc visible in video.
+
+4. **PLAN.md ritual update** (CLAUDE.md §12 Ritual 1) — overdue from this session. Update `## CURRENT STATE` block with: phase = «P2.3 anchor pair shipped + plan-driven VGEN policy enforced»; status = «9 commits since 2026-05-27 09:00 Dubai: TD-65/65a/66/67a/61/69/68 + neighbour PA chat polish»; next = «verify SH19 Plan v02 honours orbit + ACTION beat policy; continue Stage 2 SH01+SH02 anchor pair; close TD-70 Polина proactive»; date = 2026-05-27.
+
+5. **If Director resumes batch SH12/13/15 video completion**, those should now auto-chain visible via TD-69 telemetry (Video Artist started — SH<N> events in Activity Feed) and respect orbit policy where the Plans have been regenerated post-TD-68.
+
+---
+
+## Environment & Setup Notes
+
+- **Master HEAD:** `27072a8` (2026-05-27 13:01 Dubai) — TD-68 orbit + ACTION beat policy
+- **Feature branch HEAD:** `1037351` (same content, atomic commits preserved)
+- **Dev servers (both fresh from afternoon restart):**
+  - next-dev: port 3000, serverId `01efd346-c7d2-4d26-8f9a-524e8ab2eb9b`
+  - inngest-dev: port 8288, serverId `79d57232-bdfc-443b-a6a0-14e9955a8f92`
+  - Both started after TD-65 cycle; all subsequent TDs (65a/66/61/67/67a/69/PA/68) picked up via HMR.
+
+- **Smoke targets:**
+  - SS-S15-E01 «Heavy Friend» — `f019c29f-5e1e-4964-b62b-6c59fc3aa966`
+  - SH09 anchor pair v08 APPROVED — start `5b0d28a6-7b2f-4f01-8cde-64e5055ce363` / end `590dfaa6-168e-4803-8956-2239e0ffb9db`
+  - SH09 Shot Plan v02 APPROVED — `b6bbfd5c-1c5b-4b0c-a728-52b36e8c08e9`
+  - Polина thread — `bdbdafcf-2a38-4c58-b706-362fd7ff0f16`
+
+- **Director's voice/identity reminders:**
+  - My name (assistant): Тео
+  - Director: Александр (Dubai UTC+4)
+  - Mode 1 ANALYTICS default. ===5=== явный для writes. Auto Mode active часто (work without stopping).
+  - Conversational question style (no tables), per ~/.claude/rules/common/director-communication.md.
+  - Numbered q-questions throughout session (cleared at /resume).
+
+- **Diagnostic scripts to keep untracked in `webapp/scripts/`:**
+  - probe-sh09-activity.ts, probe-sh09-anchor-paths.ts, probe-sh09-anchor-refs.ts, probe-sh09-plan-v05.ts, probe-sh09-all-anchors.ts, probe-sh09-vid-refs.ts
+  - probe-sh08-prompt.ts, probe-mirror-in-bible.ts, probe-all-canon-paths.ts
+  - probe-today-prompt-audit.ts, probe-critic-status.ts, probe-recent-vgen.ts
+  - manual-sh09-direct-api.ts (the empirical fix-validator)
+  - read-polina-tail.ts (Polина latest turns reader)
+
+- **Today's master commits (9):**
+  1. `3ed7f03` TD-65 ref order revert (experiment, not the fix)
+  2. `7fadd2e` TD-65a preamble soften — Sandy hourglass lock
+  3. `e5e1a78` TD-66 Animator's Critic file_type widen
+  4. `1bf8e4f` TD-67 (mistake, reverted)
+  5. `11a1d27` TD-61 planAssetId Inngest schema declaration
+  6. `676a6c5` TD-67a RESTORE seedance-standard + Critic V01 sync
+  7. `824357c` TD-69 VGEN agent_started telemetry
+  8. `c9cccbb` сосед PA chat noise drop tool chips
+  9. `27072a8` TD-68 orbit + ACTION beat + GAG fidelity policy
+
+- **Memory notes touched this session:**
+  - sandy_canon_visual_identity.md (NEW)
+  - preamble_attention_pollution_gpt_image_2.md (NEW)
+  - camera_orbit_signature_policy.md (NEW)
+  - backlog_td61_td62_pipeline_blockers.md (UPDATED — TD-62 closed)
+  - MEMORY.md index (UPDATED with all four)

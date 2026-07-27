@@ -1,0 +1,127 @@
+# Session: 2026-06-06
+
+**Started:** ~10:00 (Dubai), resumed from `2026-06-05-e02-budget-version-fixes-session.tmp`
+**Last Updated:** ~13:00 (Dubai)
+**Project:** SandyStudio (C:\SandyStudio) — Тео = master orchestrator + Director's proxy
+**Topic:** Long polish day on E02 «The Tidy Tornado» — 9 commits shipped that close every loose end between animatic preview and final cut: silent-drop guard, Bible-as-Director-Orders pipe, UI version visibility, stitch URL fix, atomic animatic=final-cut consolidation (sub-0.5s shot exclusion + music fade/trim + final-cut metadata), per-shot head trim, music server-side pre-process on Save. Plus hourly /context cloud cron set up.
+
+---
+
+## What We Are Building
+
+SandyStudio = AI animation studio (Next.js + Supabase + Inngest, local-first; `webapp/`). Today was 100% about closing the gap between «what Director sees in the animatic preview» and «what EXEC-STITCH actually ships as final cut». Director's overarching frustration entering today: timeline button 12 showed SH13 contents, his music fade/trim weren't audible in preview, sub-0.5s shots were still consuming time in the final cut, and his standing orders (1080p mandatory) kept getting lost between agent runs. Every commit today closes one of those leaks.
+
+Pipeline status: 22/30 shots of E02 rendered. SH12 was the trigger that exposed the rest — its `IMG-anchor_start` had been stuck in REVIEW since 2026-06-03, so the animatic builder silently dropped it (Phase 1 audit), which then propagated as a `btn12 → SH13` misalignment everywhere. We fixed SH12 (anchor approved + plan content patched + VID v01 REVIEW rendered ≈ $2), regen-ed animatic to v07 with all 30 shots, then built systemic fixes so the same class of bug self-surfaces in the future.
+
+---
+
+## What WORKED (with evidence)
+
+Verify trio at end of session: **tsc clean / 712 vitest (started 680, +32) / replay-pilot 30/30**. Every commit below ran the trio green before push.
+
+- **SH12 rendered as v01 REVIEW** — confirmed by Supabase query + ffprobe; budget went 147.05 → 157 (~$9.40 incl. one failed 422 attempt). Anchor `bab5874f` approved, plan content patched (asset_id + quality_tier fast→standard for 1080p), fire with explicit `planAssetId`.
+- **Animatic v07 regen** — confirmed by `metadata.animatic_v1.shot_list.length === 30`, btn01..btn30 ↔ SH01..SH30 1-в-1.
+- **`065fb89` fail-loud guard** — `assertCompleteShotList` in `animatic-shotlist.ts`; +5 unit tests; replaces 2 legacy `shotList.length === 0` checks; future silent drop throws with missing shot_ids list.
+- **`92f05df` Critic reads Series Bible** — Critic now loads `loadSeriesBibleCanon` + injects `formatBibleForPrompt` block into user message; Director's LOCKED `SBL-general_idea` standing orders propagate to Critic (Animator already did). +2 tests assert canon string appears in user message.
+- **`85359ef` UI version label** — caption shows `v0X STATUS` pill (green APPROVED, amber REVIEW); popover marks current playing version with ▶ + «on screen» label. No new state — pulled from existing `vidShotsByShotId` map.
+- **`ed89795` stitch /api/media/ URL fix** — `loadBytes` in `runner.ts:2519` now resolves `/api/media/{filename}` via `cachedFileIfPresent` (parallel to existing `/staging/` branch). Closes «Online Editor failed — Failed to parse URL» that crashed on stale animatic music URL.
+- **`3290cc2` atomic 4-in-1** — `computeTotalDuration` accepts `clipLengths` Map; AnimaticPlayer shows honest duration; EXEC-STITCH skips shots with `effective ≤ 0.5s` + reports `excluded_shot_ids` in metadata; AudioTrack gains `fade_in/out/trim_in/trim_out`; `buildMusicAudioFilter` extracted as pure export (+7 tests); `-shortest` replaced with explicit `-t totalVideoSeconds` (closes «конец как обрыв»); ffprobe sets `durationSeconds` on VID-final_cut metadata.
+- **`c4f2f2a` + `afdbe1f` head trim + playback skip** — `AnimaticDirectorOverride.trim_start_seconds`; ffmpeg `inpoint <s>` directive (with `outpoint = inpoint + duration` math + +4 tests); `<video>` element sync now seeks to `trim_start + inCellOffset` so preview matches final cut; `playStart` coord-space added so excluded shots are skipped in playback (not just final cut); `computeEffectivePlayback` consolidates duration/trim/clip-length math (+3 tests).
+- **`9d29309` music server-side pre-process on Save** — `music-processor.ts` (new helper, ~80 LoC) wraps `buildMusicAudioFilter` + `runFfmpeg`; `/animatic-timing` PATCH writes processed mp3 to media-cache and rewrites `track.url` to `*-processed.mp3` so `<audio>` plays the same shaped audio EXEC-STITCH will mux; `AudioTrack.original_url` bookkeeping lets shaping be cleared cleanly. +5 tests.
+- **Cloud schedule `hourly-context`** — created via `mcp__scheduled-tasks__create_scheduled_task`; cron `7 * * * *`; survives session close.
+
+---
+
+## What Did NOT Work (and why)
+
+- **SH12 first render attempt (without `planAssetId`)** — failed because runner.ts:1899 only loads the plan when `planAssetId` is in event data; without it `planStartAnchorAssetId` stays null and provider validation throws. Always pass explicit `planAssetId` when firing `sandystudio/exec-vgen/single-shot` directly.
+- **SH12 second attempt (with patched plan but `quality_tier: fast`)** — failed with `422 — Input should be '480p' or '720p', input='1080p'`. Root: `seedance-with-end-image` alias forces standard tier in `resolveVanimProviderId`, but the body's `quality_tier: fast` later overwrote it; fast-tier model `bytedance/seedance-2.0/fast/image-to-video` caps at 720p. Animator's plan was internally inconsistent — fixed by patching `quality_tier: fast → standard` + cost note.
+- **«30 кнопок но 29 в animatic»** — initial wrong guess. Director clarified «I see 29», not 30. Forced re-investigation that revealed SH12 was missing from `animatic_v1.shot_list` because its IMG-anchor START was stuck in REVIEW (status filter in `buildShotListFromAnchorChain`).
+- **«Failed to load asset metadata» on every drawer click** — could not reproduce on server (all `/api/assets/{id}` returned 200; all 30 asset IDs from animatic v07 verified to exist in DB). Hard refresh (Ctrl+Shift+R) cleared it — was SWR cache poisoning from a prior session, no code fix needed.
+- **Polина's batch regen of SH23 / SH25 / SH27 / SH29 plans (parallel work, no Director money-go)** — SH25 + SH29 came back 1080p OK; SH23 came back 480p, SH27 came back 720p. Director caught SH27 first; we found SH23 has same issue. Root: revision_note didn't reiterate «1080p mandatory»; Critic V13 only validates `resolution ∈ provider.supports_resolutions`, not a Director floor. The Bible-as-Standing-Orders plumbing landed today (commit `92f05df`) — Critic now sees Bible canon, so once Director writes the 1080p directive into `SS-S15-BIB-general_idea` and LOCKs it, the next regen pass should catch the violation.
+- **Web Audio API for music preview shaping (Path A)** — rejected at plan stage in favour of server pre-process. Reason: Path A would have required a custom scrubber, AudioBufferSourceNode decode in RAM, and a new inline-video sync path; ~300 LoC for marginally faster preview update. Path B (ffmpeg on save) reuses existing `buildMusicAudioFilter` and is one new helper module + route extension.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Re-fire EXEC-STITCH for E02 to see all 9 commits in a fresh final cut** — $0 (local ffmpeg). Event: `sandystudio/exec-stitch/start` `{episodeId: 8b32b3e0-d012-4545-a834-85bc140a2707}` to `:8288/e/devkey`. Expected outcome: honest duration (~1:32 with current overrides), SH17 (0.5s) excluded, fade-out lands cleanly on music, VID-final_cut row carries non-null `metadata.duration_seconds` + `ffmpeg_command`.
+- **Render SH14** — plan v2 APPROVED (`c67abfd3-fb0b-4900-9265-13ec6e0ca1cc`), anchor `37092cb1` APPROVED, just needs explicit `planAssetId` in event payload. ~$2.72.
+- **SH23 + SH27 correction pass** — Polина's regens shipped at 480p / 720p. Director gave money-go to invalidate + regen at 1080p. Pre-condition: write «1080p mandatory» into `SS-S15-BIB-general_idea` LOCKED so the new commit `92f05df` actually catches it. ~$4.
+- **Manual browser smoke for `9d29309`** — set fade_in=2 + fade_out=1.5 on music in AnimaticPlayer, Save Timing, wait ~1-2s, press Play, expect audible fade. Also set `skip from start = 10` → audio begins at 10s of source.
+- **`$47 phantom budget reconciliation`** — historical leak from before commit `21bbe43` (q12 refund fix); `episodes.budget_spent` ($169.23) − sum of `budget_log` ($127.62) = $41.61. One-time `UPDATE episodes SET budget_spent = …` in ===5=== to reconcile.
+
+---
+
+## Current State of Files
+
+All commits below are on `origin/master`. 9 commits shipped today on top of yesterday's `0f53284` (which was on master at session start).
+
+| File | Status | Notes |
+|------|--------|-------|
+| `lib/api/animatic-shotlist.ts` | DONE | `assertCompleteShotList` (065fb89); `AudioTrack` +4 fade/trim fields + `original_url` (3290cc2 + 9d29309); `computeTotalDuration(clipLengths)` + `computeEffectivePlayback` (3290cc2 + afdbe1f); `AnimaticDirectorOverride.trim_start_seconds` (c4f2f2a). |
+| `lib/agents/runners/animator-critic.ts` | DONE | Loads `loadSeriesBibleCanon` and injects `formatBibleForPrompt` block in user message (92f05df). |
+| `lib/agents/providers/ffmpeg-stitch.ts` | DONE | `buildMusicAudioFilter` extracted + exported (3290cc2); `ConcatShotEntry.inpointSeconds` + outpoint math (c4f2f2a); `FfmpegStitchResult.durationSeconds` via ffprobe (3290cc2); `runFfmpeg` exported (9d29309); `-shortest` → `-t totalVideoSeconds` when music loops (3290cc2). |
+| `lib/agents/providers/music-processor.ts` | DONE | NEW (9d29309) — server-side `processMusicTrack` wraps existing ffmpeg infrastructure. |
+| `lib/agents/runner.ts` | DONE | EXEC-STITCH exclusion guard ≤0.5s + `inpointSeconds` wiring + music shaping fields + `duration_seconds`/`excluded_shot_ids` in metadata (3290cc2 + c4f2f2a); `loadBytes` `/api/media/` branch (ed89795). |
+| `app/api/assets/[id]/animatic-timing/route.ts` | DONE | Zod accepts `audio_tracks` + `trim_start_seconds` + `original_url`; PATCH pre-processes music via `processMusicTrack`, writes processed mp3 to media-cache, rewrites `track.url`; reverts on cleared shaping (9d29309). |
+| `components/animatic/AnimaticPlayer.tsx` | DONE | Caption version pill + popover «on screen» mark (85359ef); clipLengths/honest duration + dim+strikethrough excluded cells + music fade/trim UI (3290cc2); head-trim row + skip-excluded-in-playback (`playStart` coord-space) + clearer music trim labels (c4f2f2a + afdbe1f); `<video>` sync seeks to `trim_start + inCellOffset` (afdbe1f); audio_tracks local state + Save propagation (9d29309). |
+| `__tests__/lib/api/animatic-shotlist-completeness.test.ts` | DONE | NEW (065fb89) — +5 tests for `assertCompleteShotList`. |
+| `__tests__/lib/api/animatic-shotlist-clamp.test.ts` | DONE | NEW (3290cc2 + afdbe1f) — +10 tests for clipLengths clamp + head-trim subtraction. |
+| `__tests__/lib/agents/runners/animator-critic.test.ts` | DONE | +2 tests for Bible canon in Critic user message (92f05df). |
+| `__tests__/lib/agents/providers/ffmpeg-stitch.test.ts` | DONE | +11 tests across the day: buildMusicAudioFilter, inpoint emission, inpoint+outpoint math. |
+| `__tests__/lib/agents/providers/music-processor.test.ts` | DONE | NEW (9d29309) — +5 tests covering no-op, filter chain, fail mode, mp3 output. |
+| `~/.claude/scheduled-tasks/hourly-context/SKILL.md` | DONE | Cloud cron schedule `7 * * * *` for `/context`, survives session close. |
+| **E02 episode state** | PARTIAL | 22/30 shots rendered; SH12 done as v01 REVIEW today; SH14/17 still need renders; SH23/27 have wrong-resolution VIDs needing invalidate + regen. |
+
+---
+
+## Decisions Made
+
+- **Bible (`SBL-*`) as the document of record for Director's standing orders**, not new `episodes.metadata.standing_directives` schema, not new tools. Reason: every text-producing agent already loads `loadSeriesBibleCanon`; LOCKED-only filter built into `bible-loader.ts:100` IS the «relock» protocol Director described. Anti-additive — closing existing chain instead of adding a parallel one.
+- **Shot exclusion via ≤0.5s threshold (Path A)**, not explicit `excluded: boolean` flag. Reason: zero new data fields, zero new UI controls, Director already uses the −1s button; sub-0.5s overrides are vanishingly rare for legitimate playback. Director's option B remains available as fallback if pattern fails.
+- **Server-side ffmpeg pre-process for music shaping on Save (Path B)**, not Web Audio API. Reason: ~80 LoC helper vs ~300 LoC for custom scrubber + decode; reuses `buildMusicAudioFilter` + `runFfmpeg`; preview matches final cut frame-for-frame. Sync blocking ~1-2s acceptable.
+- **One atomic commit per logical unit, not one mega-commit**. Reason: each fix can be reverted independently if it breaks something Director hits next session. 9 commits today, each verify-trio green before push.
+- **`buildTimeline` returns BOTH `cumStart` (visual, used by strip layout) AND `playStart` (skips excluded shots, used by playback engine)**. Reason: cell count must stay numbered 1..30 even when shots are excluded (Director's stable-layout requirement), but playback must skip excluded cells (his «preview should match final cut» requirement).
+- **Removed `-shortest` from ffmpeg-stitch when music loops infinitely**; replaced with explicit `-t totalVideoSeconds`. Reason: `-shortest` was cutting the end abruptly (Director's «как обрыв»); explicit `-t` lets us anchor `afade=t=out` cleanly.
+- **`AudioTrack.original_url` field**, not lookup via asset row. Reason: 1 optional field on AudioTrack vs DB query in the PATCH route; cleaner and self-contained in metadata.
+
+---
+
+## Blockers & Open Questions
+
+- **Re-fire EXEC-STITCH not yet exercised** — all the fixes are shipped but no fresh final cut has been generated to confirm the end-to-end behavior (honest 1:32 duration, fade-out, SH17 excluded, metadata persisted). Free to do, requires one event fire.
+- **Director's «1080p mandatory» order not yet written into Bible** — commit `92f05df` is plumbing only; effectiveness depends on Director adding the directive to `SS-S15-BIB-general_idea` and LOCKing it. Until then SH23/27 correction pass would just hit the same Critic miss.
+- **«Тео передал 5s on SH03/SH04» mystery dispatcher source** — still unresolved from prior session, low priority since the affected shots are APPROVED.
+
+---
+
+## Exact Next Step
+
+When resuming, the most leverage-per-minute move is to **fire EXEC-STITCH for E02 with explicit Director go** and watch the resulting `VID-final_cut` row:
+
+```
+POST http://localhost:8288/e/devkey
+{"name":"sandystudio/exec-stitch/start","data":{"episodeId":"8b32b3e0-d012-4545-a834-85bc140a2707"}}
+```
+
+Expected outcome on the new final cut:
+- `metadata.duration_seconds` populated (not null this time)
+- `metadata.excluded_shot_ids` lists SH17 (or whichever shots ended up ≤0.5s)
+- `metadata.ffmpeg_command` audit-readable
+- Real mp4 duration ≈ 1:32 not 1:12
+- No abrupt cut at the end (fade out applied if Director set music shaping; otherwise just clean cutoff)
+
+If that confirms all 9 commits land correctly end-to-end, the natural follow-up is: Director writes «Director standing orders» section in `SS-S15-BIB-general_idea` (1080p mandatory + min duration 3s + provider preferences), LOCKs it, and Polина gets nudged to run a correction pass on SH23 + SH27. That closes the wrong-resolution loose end.
+
+---
+
+## Environment & Setup Notes
+
+- Dev servers still alive: `next-dev` `3f61026e` :3000, `inngest-dev` `c381d8da` :8288 (started yesterday morning, survived all of today's edits).
+- Worker auto-reloads on TypeScript changes; no manual restart needed after any of today's commits.
+- `npm run replay-pilot` from `webapp/` is the smoke target — 30 assertions, no servers required.
+- Verify trio: `npx tsc --noEmit` · `npx vitest run` (712) · `npm run replay-pilot` (30).
+- ffmpeg binary required for stitch + music pre-process; resolved via env `FFMPEG_PATH` → PATH → winget canonical path; missing ffmpeg is graceful (catch + console.error + keep raw URL).
+- Commit message multi-line: `git commit -F <tempfile>` (PowerShell here-string mangles).
+- Hourly /context cloud cron `hourly-context` is set up — survives session close. Old session-only `098bab98` will die when this session ends; can be left or `CronDelete`d.

@@ -1,0 +1,104 @@
+# Session: 2026-05-14
+
+**Started:** morning (composer music upload fix in agitated-lederberg-a292d3 worktree)
+**Last Updated:** afternoon
+**Project:** SandyStudio (`C:\SandyStudio\.claude\worktrees\agitated-lederberg-a292d3`)
+**Topic:** Composer music upload fix shipped (morning) + 16-screen UI/UX noise audit (afternoon) — no code yet for the audit, only consolidated map awaiting Director go-ahead on Wave 0.
+
+---
+
+## What We Are Building
+
+**Two parallel threads in this session:**
+
+1. **Morning — composer music upload buttons (DELIVERED).** Director report 2026-05-12: «зашёл в композер, вижу мок, нет кнопок». Phase A.2 PR γ audio reorg (LT-04) moved MGEN before animatic, but the legacy Upload-music UI lived only inside AnimaticPlayer (which doesn't render for fresh episodes when only AUD-music exists). New route + new component restore the path. Commit `2d72849` pushed to master.
+
+2. **Afternoon — UI/UX civilization audit (PLANNED, NO CODE).** Director described current UI as «Волга газ-24 прошлого века»: too much noise, duplicated info, narrow drawer when screen is empty. Long-term goal: pill semi-translucent buttons with glow, ambient parallax x3, depth perception. **Phase 0 of that journey** (per Director directive «Для начала уберём просто избыток информации») is information noise reduction without visual changes. Director sent 16 screens covering Dashboard, Inbox, Inbox→OPEN drawer, Episode page (full scroll), EREF gallery, EREF detail drawer, Editor preview drawer, Budget, Jobs, Activity. I consolidated everything into a 4-wave execution plan.
+
+This complements but doesn't replace the **Sprint α→ε kickoff** Director queued for tomorrow (`~/.claude/plans/cached-tickling-willow.md`): P0 Flux 422 fix + E20 archive → α Realtime + team-chat → β seedance skill → γ E21 production via chat → δ Character Identity Model → ε Skill Editor. UI cleanup may slot before/between those, or as parallel polish.
+
+---
+
+## What WORKED (with evidence)
+
+- **Composer Upload + Generate buttons shipped** — confirmed by: commit `2d72849` pushed to `origin/master`; `tsc --noEmit` clean; `npm test -- --run` → 166/166 passed; `npm run replay-pilot` → 29/29 passed; new route `webapp/app/api/assets/[id]/upload-music-direct/route.ts` (~190 LOC) + new component `MGENActionsBlock` inside `webapp/components/preview/AssetPreview.tsx`.
+- **Master pulled into agitated-lederberg worktree** — confirmed by: `git status -sb` showed `master...origin/master` clean after pull; was 231 commits behind; now at `2d72849`. CLAUDE.md slimmed to 347 lines + `docs/CLAUDE-history.md` present + 5 hooks in `.claude/hooks/`.
+- **All 4 Operational Rituals observed for the morning fix** — Ritual 1 PLAN.md updated in-session, Ritual 3 verify trio reported numbers, Ritual 4 session memo at `~/.claude/projects/C--SandyStudio/memory/session_2026-05-13_composer_music_upload_fix.md` (note: file dated 05-13 due to morning timestamp, though session crossed into 05-14).
+- **Full 16-screen noise audit consolidated into wave-based execution plan** — confirmed by: Director sent screens of Dashboard, Inbox, Inbox→drawer, Episode page (5 scrolls), EREF gallery, EREF detail drawer (3 scrolls), Editor preview drawer, Budget, Jobs, Activity; I extracted 25 noise items + 4 layout items + 3 PA-accessibility items + 9 critical data/UX bugs and grouped into 4 waves.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Director's browser didn't show the new composer buttons after the fix** — failed because: dev server (PID 541280) runs from `quizzical-brown-462555` worktree, NOT from `agitated-lederberg-a292d3` where my commit lives. The quizzical-brown branch is 2 commits behind master and doesn't include `2d72849`. HMR serves stale code. **Not resolved** — Director moved focus to UI audit before deciding restart strategy. Parked.
+
+- **Wave 0 execution not started** — failed because: Director hasn't given q1/q2 green-light yet. The audit ended with «Wave 0 — стартую сразу или сначала хочешь review этой карты глазами?» and remained open. Asked for Series + Settings screens before commit — not received yet.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Wave 0 — fix-the-lies (~3-4 h)** — 9 critical items: C4 Inbox OPEN drawer primary Approve/Reject buttons, A19 inbox dedup (latest version per shot, old REVIEWs auto-demote), D5-D8 Dashboard live data via `buildPipelineSnapshot`, JB6 jobs status vocab (APPROVED→COMPLETED), JB1+JB2+BG4 stale subtitle copy + `Send ping` debug button removal, friendly agent names everywhere (Long-debt #1).
+- **Wave 1 — noise removal (~3-4 h)** — ~18 items: filename compression helper, email→Director.name in feeds, group consecutive events (LT-12), hide REVIEWER SCORES when all 100, delete STATUS & META + SUMMARY + EDITING CURRENT SHOT duplicate blocks, hide $0-cost providers in Budget breakdown, TEST PLAN UUID→Bible-resolved human names, conditional Gag readability hide.
+- **Wave 2 — layout (~1 day)** — L1-L4 drawer width strategy (resizable up to ~70%), L2 episode content responsive to chat panel state, C1-C3 Prod Assistant global float button on every page + page-aware no-episode mode + mini-bubble collapse.
+- **Wave 3 — visual redesign (~1-2 days)** — pill semi-translucent buttons with glow, AmbientAssetField parallax ×3 + variable cube sizes (depth perception), use `frontend-design` + `design:design-critique` + `design:design-system` skills.
+- **Restart dev server from agitated-lederberg worktree** so composer fix is visible in browser, OR cherry-pick `2d72849` into quizzical-brown branch from that session.
+- **Series + Settings audit — RECEIVED (post save-session)**. Series page: low noise, cards clean; only minor — subtitle could be tooltip, empty space below not compressed. Settings page: ⭐ **Director-approved reference design pattern** («одна из более приятных страниц»). Why it works: wide cards full width / section headers + small description / theme cards with visual preview / per-row 3-col layout (label+desc · control · pill+toggle) / consistent LIVE pill / low text density per row. Single minor: «Authority Matrix lands in Phase 7» stale copy in subtitle.
+- **Design doctrine extracted from Settings** for Wave 1 supplement: Inbox cards → Settings-style wide rows · Pipeline DAG → Settings-style stage rows · Episode header → Settings-style top section · Drawer detail → Settings-style sections (not fixed-width) · Activity feed item → Settings-style row. Rule: «всё что не похоже на Settings — выровнять под него».
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/app/api/assets/[id]/upload-music-direct/route.ts` | ✅ Complete | NEW. Writes binary to AUD-music asset's drive_path/staging_path. 20MB cap, .mp3/.wav. Sets `metadata.uploaded_by_director: true`. Activity event `aud_music_direct_upload`. |
+| `webapp/components/preview/AssetPreview.tsx` | ✅ Complete | NEW `MGENActionsBlock` component renders for `file_type.startsWith('AUD-music')` && `status !== 'LOCKED'`. Two buttons: Upload track / Run generation. «mock» chip honest about Suno not wired. |
+| `PLAN.md` | ✅ Updated | `## CURRENT STATE` reflects composer fix (Ritual 1). Date 2026-05-12. |
+| `~/.claude/projects/C--SandyStudio/memory/session_2026-05-13_composer_music_upload_fix.md` | ✅ Complete | Morning session memo (Ritual 4). |
+| `~/.claude/projects/C--SandyStudio/memory/MEMORY.md` | ✅ Updated | Composer fix linked. Has Sprint α→ε kickoff entry too (added externally, prep for tomorrow). |
+| `~/.claude/plans/purrfect-stirring-hollerith.md` | ✅ Approved (then pruned) | Plan iterated through plan mode — final state lists only Task 0 (music upload fix), since CLAUDE.md slim + 5 hooks already shipped in PR #23. |
+| UI audit map | ⚠️ In conversation only | Lives in chat as 4 wave tables. Not yet committed to any file. **Save before /clear.** |
+
+No other files touched. Dev server still running from quizzical-brown worktree (unchanged).
+
+---
+
+## Decisions Made
+
+- **4-wave execution order locked.** Wave 0 = critical fixes (data lies + workflow bugs), Wave 1 = pure noise removal (text density), Wave 2 = layout (drawer width + PA global), Wave 3 = visual redesign (pill / glow / ambient). Each wave has explicit completion criteria. Director called «Для начала уберём просто избыток информации» → noise reduction WITHOUT visual changes is Wave 0+1.
+- **Composer fix lives in AssetPreview, not AnimaticPlayer.** Music is a separate layer with its own asset type → composer surface owns its affordances. Rejected option B (extend legacy `/upload-music`) and option C (kebab-only action) in favour of drawer-native upload via NEW route.
+- **`/upload-music-direct` is sibling to `/upload-music`, not replacement.** Legacy VID-animatic path stays untouched. Two routes mirror the two asset types music can attach to.
+- **Asset status stays REVIEW after Director upload.** Uploaded flag in metadata is informational only — explicit Approve still required. Avoids accidental implicit approval.
+- **No route handler integration test added.** Matches project style — only utility/lib tests exist (errors-handler, pipeline-stages, response, status-transitions, storage-probe, ffmpeg-stitch, series-bible, timeline-cell-resolver, vgen-prompt-*, budget, governance). Adding the first route integration test for this fix would be out-of-style.
+- **Dev server restart NOT executed unilaterally.** Composer fix is not visible to Director without it, but stopping a parallel-session's dev server could disrupt the Mode 2.5 PA session running in quizzical-brown. Awaiting Director call.
+
+---
+
+## Blockers & Open Questions
+
+- **Director hasn't picked Wave 0 sequencing** — q1 (start Wave 0 now) vs q2 (Series + Settings screens first, then start). Open.
+- **Composer fix invisible in browser** — Dev server (PID 541280) runs from quizzical-brown worktree which is 2 commits behind master. Options on the table: q1 stop+restart from agitated-lederberg, q2 merge master into quizzical-brown branch from that session, q3 Director restarts manually.
+- **Sprint α→ε kickoff plan vs UI audit work** — both queued for next session. Memory note dated 2026-05-14 says «READ FIRST ON RESUME» pointing at `cached-tickling-willow.md`. Need to clarify whether UI audit Wave 0 happens before, during, or after the α→ε ladder.
+- **UI audit map exists only in chat history** — not persisted to a file. If Director /clears before Wave 0 starts, the work is lost. **Recommend either committing audit map to `webapp/docs/ui-audit-2026-05-14.md` OR including the 4-wave tables verbatim in next session's resume context.**
+
+---
+
+## Exact Next Step
+
+Two equally valid resume paths:
+
+1. **If Wave 0 first:** Open `~/.claude/projects/C--SandyStudio/memory/MEMORY.md`, follow link to this session's notes. Ask Director to confirm q1/q2 sequencing. If q1 → start with **C4 (Inbox OPEN drawer primary Approve/Reject)** — clone `PilotApproveButtons` from `webapp/components/preview/AssetPreview.tsx`, mount at top of Inbox drawer before regen panel. ~1 hour. Then D5-D8 Dashboard live data + JB6 jobs vocab.
+
+2. **If Sprint α→ε first (per fresh MEMORY top entry):** Open `~/.claude/plans/cached-tickling-willow.md`. Begin with P0 Flux 422 fix + E20 archive. UI audit map (this session's chat) deferred until P0+α settled — recommend saving the 4-wave tables to `webapp/docs/ui-audit-2026-05-14.md` first so it survives.
+
+**Recommended order:** verify with Director which queue takes priority (UI audit vs α→ε). Audit map is fresh and ready; α→ε plan is the bigger strategic move.
+
+---
+
+## Environment & Setup Notes
+
+- **Working worktree:** `C:\SandyStudio\.claude\worktrees\agitated-lederberg-a292d3` (currently on `master` at `2d72849`).
+- **Dev server location:** `quizzical-brown-462555` worktree (PID 541280, ports 3000 + 8288). Stale: 2 commits behind master, missing composer fix.
+- **Hooks active:** A (PLAN.md staleness), B (commit-guard), C (verify-on-push, blocks on tsc/test fail), D (session-memo), E (parallel-worktree warn). Kill-switch: `SANDY_HOOKS_OFF=1`.
+- **Active worktrees:** `agitated-lederberg-a292d3` (this session), `quizzical-brown-462555` (Mode 2.5 PA session, holds dev server), `condescending-pare-61c4a7` + `ecstatic-noyce-12c9a8` + `eloquent-montalcini-5f367f` (likely stale). 5 total — over the §12 hard cap of 2 + main.

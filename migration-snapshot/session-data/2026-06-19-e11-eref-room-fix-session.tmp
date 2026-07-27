@@ -1,0 +1,98 @@
+# Session: 2026-06-19
+
+**Started:** ~early 2026-06-19 (resumed from pascal-e11-bridge) → long day
+**Last Updated:** 2026-06-19 ~17:15 UTC (21:15 Dubai)
+**Project:** SandyStudio — Тео в роли **Pascal** (AI Executive Producer / EXEC-DIR-AI), master
+**Topic:** E11 «Мощный вентилятор» через EREF: фикс «комнаты на пустом фоне» (root + код-гарды), фикс сквозной нумерации SH, разбор Полининых ложных диагнозов. Pascal действует руками Полины + код-фиксы под ===5===.
+
+---
+
+## What We Are Building
+
+Прогон E11 по пайплайну (Pascal ведёт через Полину). Эпизод на локации **empty_background** (пустой фон #FFF8EC, решено ранее). Главная боль дня: на EREF-стадии у кадров **появляется КОМНАТА** на пустом фоне, и **Сэнди ломается в 3D/не-канон** при ручных правках промпта. Вторая тема: **нумерация SH** в раскадровке поехала (per-scene vs сквозная). Параллельно — каталог дефектов для «зачатия настоящего Pascal'я» в `~/.claude/plans/pascal-e11-rolelog.md` (F8–F22 + решения).
+
+Глобальная цель прогона (НЕ забывать): Pascal-смок-тест = собрать требования к 24/7-заму, действуя через легитимные поверхности, **не бэкстопить**, надзор+диагностика+координация (в чате), а не параллельное исполнение мимо исполнителя.
+
+---
+
+## What WORKED (with evidence)
+
+- **Скрипт E11 v06 APPROVED** (спальня→empty_background применена; критик-slug-false-positives оверрайднуты). Подтверждено: раскадровка сгенерилась.
+- **Cтоriбордер continuous-SH код-фикс** — `renumberShotsContinuous()` в `storyboarder.ts`. tsc·0. Подтверждено: раскадровка `2b03450d` (16:28) вышла со сквозным SH01..SH59 → код применился.
+- **EREF designer empty_background гард** (2 части) — `episode-reference-designer.ts`: (1) standing objects = пусто, мебель = транзиент; (2) НЕТ spatial_same_location anchor для empty_bg. tsc·0. Полину НЕ сломал (её SH03-якорь дописался 16:59 после правки).
+- **empty_background канон-локация** LOCKED + плашка #FFF8EC в `_media_cache` (worktree-независимо) → EREF media-preflight проходит (F13 подтверждён: SH02 якоря сгенерились).
+- **Диагнозы доказаны grep'ом**, не словами: строка «scene_master entry / Cannot apply LAYOUT LOCK» в коде ОТСУТСТВУЕТ → это домысел gemini-Полины (F18/F22).
+
+---
+
+## What Did NOT Work (and why)
+
+- **«scene_master» как причина** — ФАНТОМ Полины (gemini). Реальные сбои: `requires shotId in event payload`, `Shot regen cap reached`, `WCHK/storyboarder max_tokens (json не закрыт)`. Полина пересказывает ВСЕ как «scene_master». НЕ создавать scene_master.
+- **Мой диагноз «комната = широкий угол» (F20)** — НЕВЕРЕН, ретракнут. Реально: (F22) SH01-план залочил мебель спальни в LAYOUT LOCK + (пропагация) `spatial_same_location` anchor копирует комнату прошлого якоря вперёд даже на чистых планах. Корень-корень: гэги брифа используют мебель (шкаф/кровать/ковёр) → storyboard `props_in_frame` (77 хитов) → дизайнер копирует.
+- **Переавтор раскадровки E11** падал на gemini (4 акта вместо 3 / max_tokens). E11 остался на per-scene `b5497563` (36 шотов, APPROVED).
+- **Мой дубль-триггер дизайнера SH01 (14:30)** прилетел поверх готовой работы Полины → EPREV HALT + лишний REVISION-план (шум, не урон). Director: «не синхронишься с чатом» (F19).
+- **Ручная правка промпта Директором** убрала комнату, НО сломала Сэнди (3D/не-канон) — снесла STYLE CANON + identity. Вывод Директора: «критики полезны, руками вредно».
+- **Полина авто-апрувит визуал по «completed»** без просмотра → брак-якорь прошёл в APPROVED (F21).
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Пересборка SC02-SH01 через ПОЛНЫЙ пайплайн с критиками** (нудж Полине отправлен turn `4cd3499a`) — гард уберёт комнату, EPREV/CREAD поймают 3D-Сэнди. Ждём результат.
+- **Уборка существующих комнатных якорей** (SH01, SC02-SH01 и т.п.) — перегенерить на новом коде (порядок не важен: spatial-anchor для empty_bg теперь отключён → нет наследования).
+- **Системный скилл «document surgical-revision»** + object-canon-preflight + «одноразовый гэг-проп vs канон» — отложено (бэклог).
+- **max_tokens на gemini** (WCHK/storyboarder обрывают JSON) — бюджет/чанкинг, не трогали.
+- **Reset regen-cap** на запоротых шотах (Director-only) — если дизайнер упрётся.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/agents/runners/storyboarder.ts` | ✅ tsc·0 | + `renumberShotsContinuous()` (сквозной SH, model-independent), вызов после парса acts |
+| `webapp/lib/agents/runners/episode-reference-designer.ts` | ✅ tsc·0 | + empty_background гард: standing objects пусто/транзиент (перед LAYOUT-LOCK блоком) + НЕТ spatial_same_location anchor (в spatial-секции) |
+| `~/.claude/plans/pascal-e11-rolelog.md` | ✅ anchor | F8–F22 + решения (q12a, q14a, «работаю через Полину») — реестр для Pascal'я |
+| `~/.claude/.../memory/backlog_eref_pipeline_node_spec.md` | ✅ new | ТЗ узла EREF в pipeline-view (под-этапы по кадру + версии) |
+| `~/.claude/.../memory/backlog_td_surgical_revision_after_critique.md` | ✅ upd | + регресс-эффект, document-surgical-revision скилл |
+| `~/.claude/.../memory/backlog_td_storyboarder_orbit_not_wired.md` | ✅ new | orbit вероятно by-design (Аниматор), не дефект |
+| `~/.claude/.../memory/MEMORY.md` | ✅ upd | индекс-строки добавлены |
+| E11 раскадровка `b5497563` | APPROVED (активная) | per-scene SH, 36 шотов — на ней якоря |
+| E11 раскадровка `2b03450d` | REVIEW (НЕ юзать) | сквозной SH, 59 шотов/4 акта — gemini раздул |
+
+---
+
+## Decisions Made
+
+- **empty_background модель (Director):** нет постоянных объектов; мебель = ТРАНЗИЕНТНЫЙ проп (появился-исчез, без дрейфа). Не создавать scene_master.
+- **Нумерация SH (q14a):** фикс кодом (сквозной), но E11 НЕ переавторивать ради этого (per-scene функционально безопасен — уникальные id, exact-match downstream; фикс для E12+). Re-author рискован.
+- **Исполнение — через Полину** (Director: «работаю через Полину»; «действуй её руками и головой, глаза за тобой»). Pascal = надзор+диагностика+нудж, НЕ параллельные триггеры.
+- **Чинить В КОДЕ/процессе + критики в контуре**, НЕ руками промпт (ломает Сэнди).
+- **===5=== активен** (Director включил для код-фиксов).
+
+---
+
+## Blockers & Open Questions
+
+- **SC02-SH01 пересборка** — ждём, отработает ли Полина нудж `4cd3499a` (полный пайплайн, чистый план без мебели/spatial-anchor, критики ловят 3D). НЕ проверено живьём, что гард реально даёт пустой-фон+канон-Сэнди.
+- **regen-cap** на SC02-SH01 (Director руками регенерил) может блокнуть дизайнер → нужен reset (Director-only).
+- **Две раскадровки** — путаница версий; активная `b5497563` (per-scene). Свести/не плодить.
+- **Полинины ложные диагнозы** (scene_master) + авто-апрув визуала + петли — структурный блокер Mode-3 (F18/F21/F22), требует реактивного Pascal-надзора (R9, отложено q12a).
+- Контекст сессии 79% — /clear после save.
+
+---
+
+## Exact Next Step
+
+**Проверить результат нуджа `4cd3499a`** (Полина пересобирает `SS-S15-E11-A1-SC02-SH01` через полный пайплайн). Считать (read-only) план SC02-SH01: должен быть БЕЗ залоканной мебели И БЕЗ `spatial_same_location` anchor (= гард сработал) → предиктор чистого якоря. Если упрётся в regen-cap — доложить Директору на reset (НЕ лезть самому). Дальше: если SC02-SH01 чистый (пустой фон + канон-Сэнди) — нудж Полине гнать остальные комнатные шоты на новом коде. Действовать ТОЛЬКО руками Полины, глаза за результатом.
+
+---
+
+## Environment & Setup Notes
+
+- **Серверы (фон):** next dev :3000, inngest :8288 — поднимать ОСТОРОЖНО (history зависаний; turbopack-пересборка от моих правок ПРЕРЫВАЕТ in-flight Inngest-функции → «Completed без ассета»). Правки кода делать в паузах потока Полины.
+- **Pascal постит в чат:** JSON в UTF-8 файл → `curl --data-binary @file` на `POST /api/team-chat/post`, Bearer `$EXEC_DIR_AI_TOKEN`, `thread_id=bdbdafcf-2a38-4c58-b706-362fd7ff0f16` (тред Директора), author `Pascal`. НЕ `-d` (ломает UTF-8).
+- **DB-чтения:** `cd webapp && node --env-file=.env.local -e "import('@supabase/supabase-js')…"` (service role). Многострочный код — через temp `.mjs` (heredoc 'EOF'), bash коверкает бэкслэши/regex в inline -e.
+- **tsc:** `npx tsc --noEmit --pretty false 2>&1 | grep -c "error TS"`.
+- **Ключевые id:** E11 эпизод `7dd562a5-3af4-480e-8971-27141a2b9aa1`; активная раскадровка `b5497563-b2d9-48c2-8a6c-777658780e71`; empty_background локация `4749660d-2ef4-447d-a955-827f70578929`; тред Директора `bdbdafcf-…`.
+- **Реальную ошибку читать из dev-лога/activity, НЕ из пересказа Полины** (она домысливает «scene_master»).

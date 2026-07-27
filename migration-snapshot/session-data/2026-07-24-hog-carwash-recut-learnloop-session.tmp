@@ -1,0 +1,96 @@
+# Session: 2026-07-24
+
+**Started:** 2026-07-23 evening (continued into 07-24)
+**Last Updated:** 2026-07-24 ~19:00 AST (Dubai)
+**Project:** SandyStudio (`C:\Users\Alexander\sandystudio`)
+**Topic:** Head of Growth day — avatar fix, retention diagnosis, learning-loop VERIFY (kill write-only capture), Car Wash 9:16 recut + upload, playlist-attribution skill rule. Role = **Head of Growth** for most of the session (`/head-of-growth` invoked twice).
+
+> **PLANET — Дистрибуция / Измеримость** (Distribution/Measurability). NOT Autonomy.
+> Star = NORTH_STAR.md. A parallel CODER session owns most code + skill dedup.
+
+---
+
+## What We Are Building
+
+Turning the "Sandy the Hourglass" YouTube channel from blind posting into a measured, self-improving growth loop, and fixing the actual content that underperforms. Today's arc: diagnosed WHY reach doesn't convert (retention below median), verified a coder's subtractive fix of the broken learning loop, and hand-rebuilt the Car Wash short as a tighter 9:16 recut from the Director's own timeline edit — then uploaded it to the channel with the correct metadata/playlist discipline.
+
+---
+
+## What WORKED (with evidence)
+
+- **Channel avatar re-crop** — confirmed by: og:image source was 1024×1024 (not low-res); real problem = busy logo illegible at 48px. Cropped source art to Sandy's face (ffmpeg), gave Director the file. Он залил сам.
+- **Retention diagnosis (data-backed)** — confirmed by: YouTube Analytics API `relativeRetentionPerformance` on 4 aged shorts, ALL ≤ median (Car Wash bottom-15% at 0.15; Red Tape ~0.47). Winners 1200+ views are REAL (Red Tape analytics 1248 ≈ public 1253). The 1000-vs-10 short-vs-long gap is structural (Shorts feed firehose vs long-form zero cold discovery); subs weak (~0.1-0.2%, and only median-retention shots converted at all).
+- **Analytics API LAG confirmed** — confirmed by: recent shorts read false-zero in API (Tennis public 1443 vs API 15) but OLD control matched public → it's a ~2-3 day processing lag, NOT fake views. subsGained ALSO lags.
+- **Car Wash exact drop-off point** — confirmed by: fine retention curve. Steepest single fall 5.3→6.0s; exodus window 5-15s; half the audience gone by 12s. First ~4s hold.
+- **Learning-loop VERIFY (coder's claim)** — confirmed by runtime: hook `training-capture.cjs` DELETED (grep 0, file gone), inbox `training-inbox.md` gone but distilled into ~20 skills + archived first, HoG metric fix real (`youtube-stats.ts` no longer hardcodes 0 — reads `reach?.impressions ?? 0` from `channel_reports` via `readReachMetricsFromArchive`; tsc EXIT=0, 13/13 tests). Real impressions exist: Red Tape 39, Car Wash 30, etc. in `channel_reach_basic_a1`.
+- **Car Wash 9:16 recut built** — confirmed by: ffmpeg 2-pass. 15 kept shots (Director's `episode.metadata.excluded_shot_ids` = sh02-06,09,10,13,17,18,26 EXACTLY matched his UI), numeric order, 60.0s, 1080×1920 center-crop 9:16 + same music (from old final_cut audio) + 2s fade-out. Frames sane (checked 2s + 30s).
+- **Upload to channel** — confirmed by: YouTube Data API resumable upload → id `sp9Q06AZPu8`, verified processed/succeeded, unlisted (Director then scheduled it Aug 1 + added to Shorts playlist himself).
+- **Episode metadata phantom fixed (q23)** — confirmed by: PATCH status 200. `youtube_video_id` undefined→`2efpY_JPYUo` (real long); `youtube_short_id` `qQx1IgopGd0`(deleted)→`sp9Q06AZPu8`. Prev ids kept in `_prev_deleted`.
+- **Playlist-attribution skill rule** — confirmed by: committed `d39610b6`, pushed to origin. Added to `shorts-longform-distribution` (BOTH trees) as "second invariant upload step".
+
+---
+
+## What Did NOT Work (and why)
+
+- **Reading Director's recut from `VID-animatic` v03 content/shot_list** — failed because: STALE artifact. shot_list said sequential sh01-26; content markdown said a DIFFERENT reorder; NEITHER matched his UI. Real source of truth = `episode.metadata.excluded_shot_ids`. Lesson: the online editor's exclusions/order persist to episode.metadata, not the animatic asset.
+- **`/api/media/<music>.mp3` fetch** — failed because: returns HTTP 307 redirect (86-byte stub), not the file. Used old `VID-final_cut` mp4's baked audio instead (reliable).
+- **node writing to git-bash path `/c/Users/...`** — failed because: Windows node read it as `C:\c\Users\...`. Fix: pass Windows path with forward slashes `C:/Users/...`.
+- **`videos.list` on old short `8afgQAWP9ac`** — returns 0 items (Director deleted it). Fine.
+- **First avatar SendUserFile / video preview (41MB)** — failed because: exceeded 30MB SendUserFile limit. Fix: re-encode preview at CRF 31 veryfast → 12.5MB.
+- **ffmpeg preview at `-preset medium`** — timed out at 2min. Fix: `-preset veryfast`.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Above-median retention experiment**: no current short crosses median, so the "retention>median → escalation + subs" thesis is unproven. Next: produce ONE short via the new storyboarder rule (hook in shot-1, ≤35s, payoff-tease) and measure its rel after lag. The Car Wash recut (60s, action-first) is a partial test — snap its retention curve once it goes public (Aug 1) + clears lag.
+- **Seriality → sub-conversion** (backlog memory) — untested; design Airport 1-4 as counter-test vs standalone gags.
+- **Retention sweep** across recent winners (Tennis/PowerFan/Smartphone) — was lag-blocked; Tennis/PowerFan cleared today, Smartphone still lagging.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+|---|---|---|
+| `.claude|.agents/skills/storyboarder-situational-comedy/SKILL.md` | ✅ committed `5075b8df` | "Shorts retention shape" rule (hook/length/payoff) |
+| `.claude|.agents/skills/shorts-longform-distribution/SKILL.md` | ✅ committed `d39610b6` pushed | "Playlist attribution — second invariant upload step" |
+| `~/.claude/.../memory/backlog_shorts_reach_no_sub_conversion_seriality.md` | ✅ created | + MEMORY.md pointer |
+| `~/.claude/session-data/2026-07-23-distiller-learning-loop-handoff.md` | ✅ created | Handoff (now MOOT — coder killed capture instead of building distiller) |
+| `episode.metadata` (E15, Supabase) | ✅ patched | video_id=2efpY_JPYUo, short_id=sp9Q06AZPu8 |
+| YouTube short `sp9Q06AZPu8` | ✅ live (unlisted→scheduled Aug 1) | Car Wash 9:16 recut, in Shorts playlist |
+| scratchpad `carwash/SS-S15-E15-CarWash-9x16-recut-60s.mp4` | ✅ full-quality 41MB kept | source if re-upload needed |
+
+---
+
+## Decisions Made
+
+- **Avatar/retention/learning-loop: subtract, don't add.** Avatar = re-crop not regen. Learning loop = coder KILLED the write-only capture (distilled→archived→removed) rather than build a distiller. My distiller handoff is now moot.
+- **Don't re-upload the Car Wash long** — it already exists (`2efpY_JPYUo`, public, in Full-Episodes playlist). Re-upload = duplicate = harm. "Не вижу" was the phantom metadata id.
+- **Retire old short by UNLIST not delete** (recommended) — but Director deleted it himself. Keep the LONG (different algorithm + backlink target).
+- **Upload flow**: build → show preview → upload UNLISTED → Director schedules. Verify every publish on YouTube (don't trust the upload response).
+- **Skill IDs by role, not value** — playlist rule names Shorts/Full-Episodes playlists by role; ids (`PLSxChBijpEdM` Shorts, `PLVJB9rPJ6q2g` Full Episodes) live in channel config.
+
+---
+
+## Blockers & Open Questions
+
+- **q24 — skill-tree duplication STILL live**: `.agents/skills/` AND `.claude/skills/` both tracked, both edited by hand to stay in sync. The coder's q17 dedup is NOT done despite "Кодер доволен". Needs: pick canonical, delete the other.
+- **inject-time.cjs**: my C2 commit for it did not fire (likely already tracked by coder now, or condition skipped). Verify it's committed so the settings.json reference isn't dangling on origin.
+- **Above-median short** doesn't exist yet → growth thesis unproven (see Not Tried).
+
+---
+
+## Exact Next Step
+
+Two candidates. (1) Once the Car Wash recut goes **public Aug 1** and clears the ~2-3d lag (~Aug 4), snap its retention curve — did action-first + 60s beat the old 75s (rel 0.15)? That's the first live test of the recut thesis. (2) Continue the growth loop: pick the next episode's storyboard, apply the new "Shorts retention shape" rule, ship a deliberately hook-first ≤35s short as the above-median experiment. Recommend (2) to generate a clean data point faster; (1) is passive/automatic.
+
+---
+
+## Environment & Setup Notes
+
+- **Owner-token pattern (reused all session):** mint access token from `.env.local` `GOOGLE_CLIENT_ID`+`GOOGLE_CLIENT_SECRET`+`YOUTUBE_REFRESH_TOKEN` (YouTube/brand) or `GOOGLE_REFRESH_TOKEN` (Drive). Run `node --input-type=module -e '...'` from `webapp/`. Sees Unlisted/Private/scheduled + Analytics + Reporting + Drive download (`drive/v3/files/{id}?alt=media`).
+- **Supabase** service_role REST for `episodes`/`assets`/`channel_reports`. Columns: episodes = `episode_code,title_working,metadata`(no title/episode_number); assets = `filename,file_type,drive_file_id,drive_web_view_url,content,metadata`(no name/type).
+- **ffmpeg/ffprobe** at winget Gyan path. node on Windows needs `C:/...` forward-slash paths, NOT git-bash `/c/...`.
+- **inject-time hook** now injects `[now: HH:MM Dubai]` each turn — use it, don't fabricate time.
+- **git**: master pushed to origin at `d39610b6`. No feature branch. Skill edits allowed in `===1===` (config carve-out).

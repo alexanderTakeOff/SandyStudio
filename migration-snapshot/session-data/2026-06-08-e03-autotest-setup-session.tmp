@@ -1,0 +1,119 @@
+# Session: 2026-06-08
+
+**Started:** resumed from `2026-06-06-e02-stitch-polish-session.tmp`
+**Last Updated:** ~evening (Dubai)
+**Project:** SandyStudio (C:\SandyStudio) — Тео = master orchestrator + Director's proxy
+**Topic:** (1) AnimaticPlayer controls polish, (2) FIXED the "E02 final cut never changes" bug (stitch read stale animatic), (3) starting an autonomous Mode-4 test run for a new E03 vertical-shorts episode — blocked on Polina mutation approval.
+
+---
+
+## What We Are Building
+
+Three threads this session, all on `master` (pushed to origin):
+
+1. **AnimaticPlayer controls polish** (commit `a7dcb0c`) — `cut start`/`cut end` button labels (±0.5s), single `duration` readout (net), fixed the 1→1.5 decrement bug, fixed Save "Request body failed validation", moved duration INFO into the Timeline panel.
+
+2. **E02 final-cut WYSIWYG fix** (commits `e7c76d7` + `3bbe597`) — Director's timeline edits never reached the final cut; every re-stitch produced byte-identical renders (4 files v01-v04, same SHA256). ROOT: two APPROVED VID-animatic (v06+v07) and EXEC-STITCH `.find()`'d the stale v06. Fixed + media-versioning + duration-consolidation + ffprobe + music URL decode. Full diagnosis in memory note `session_2026-06-08_e02-finalcut-wysiwyg-fix.md`.
+
+3. **E03 autonomous test run (IN PROGRESS, blocked)** — Director wants a full pipeline smoke run, fully autonomous (Mode 4), no him, ROUTED THROUGH POLINA: new episode **E03** in series **SS-S15** (same Bible+brief as E02), but **vertical shorts (9:16) + 480p minimum** to keep it cheap. Budget **$50 approved**. Music **reuse E02's**. Goal: prove the brief→final-cut chain works end-to-end autonomously.
+
+---
+
+## What WORKED (with evidence)
+
+- **Commit `a7dcb0c` (AnimaticPlayer)** — tsc·0 / 712 vitest / 30 replay-pilot green before push.
+- **Commit `e7c76d7` (stitch fix, 7 files +3 tests)** — tsc·0 / **715** vitest / 30 replay-pilot. Confirmed by live DB: 4 final_cut rows all pointed at `…v01…` file; `loadAgentInputs` loads APPROVED unordered; mp4 was 72s = v06.total_duration.
+- **C.1 stitch-picks-newest WORKS** — confirmed by the re-stitch Director triggered: it got PAST animatic selection (reading v07) and reached music loading. Previously it silently used v06.
+- **Commit `3bbe597` (music %20 decode)** — confirmed root: file on disk is `Twang_Relay-processed.mp3` (underscore), URL is `…%20…`, stitch's loadBytes didn't decode (browser route does). tsc green.
+- **E02 is SAFE** — DB confirms all existing episodes still governance_mode=1; nothing flipped to Mode 4.
+- **Polina nudge channel works** — `POST /api/team-chat/post` (Bearer TEAM_CHAT_TOKEN, author='Тео') returned 200, thread `bdbdafcf-2a38-4c58-b706-362fd7ff0f16`; Polina reacted (called listSeries, found SS-S15 UUID `45351141-6334-4bf0-8a0f-4e00a994f670`).
+
+---
+
+## What Did NOT Work (and why)
+
+- **E02 re-stitch (Director's trigger)** — failed with `[stitch] media-cache miss for Twang%20Relay-processed.mp3`. FIXED in `3bbe597` (decodeURIComponent). NOT yet re-run to confirm green end-to-end.
+- **Тео editing code in ===1=== mode** — I accidentally set PLAN.md `Mode:` to `===1=== ANALYTICS` during a PLAN update; the `mode-validator.cjs` hook then BLOCKED all writes. FIX: restored PLAN.md `Mode:` line to `===5=== EDIT` (the Director's prior state). Lesson: do NOT write `===1===` into PLAN.md Mode line while actively editing.
+- **Polina creating E03** — BLOCKED (correct behavior): `createEpisode` is a mutation; in Mode 2.5 only the Director's DIRECT verbal "да" authorizes Polina mutations — a Тео team-chat nudge does NOT. She found the series and is waiting for the Director.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Re-stitch E02** to confirm the music-decode fix + the whole chain now produces a NEW (v05) final cut: read v07 / 30 shots, SHA256 ≠ the 4 identical files, `duration_seconds` populated, path `…v05…`. Then Director hard-reload (Ctrl+Shift+R).
+- **Create E03 + run it.** Either (a) Director tells Polina "да, создавай E03" in the PA panel, or (b) Тео creates it directly. Then the autonomous Mode-4 chain runs.
+- **480p enforcement** — UNSOLVED mechanism. vgen_defaults (app_config `vgen_defaults:SS-S15`) carries aspect/quality/provider but NOT resolution; resolution lives in the Shot Plan and the Animator (LLM) picks it per-shot (defaults 720p). Options: patch Shot Plans to 480p before VGEN fires (lots of runway — VGEN is ~10 stages after brief), or add a small episode-level resolution override the vgen event-builder reads. Cost at 720p still under $50 (~$36) so not blocking, but Director explicitly wants 480p.
+- **Music reuse** — need to inject E02's `SS-S15-E02-AUD-music-main-v01` into E03's animatic instead of letting MGEN generate new music (Mode 4 auto-runs MGEN). Handle at the animatic stage.
+
+---
+
+## Current State of Files
+
+All shipped commits are on `origin/master` (latest `3bbe597`). No uncommitted code.
+
+| File | Status | Notes |
+|------|--------|-------|
+| `webapp/components/animatic/AnimaticPlayer.tsx` | DONE `a7dcb0c` | cut start/end, duration net readout, save-validation, INFO→timeline |
+| `webapp/lib/agents/runner.ts` | DONE `e7c76d7`+`3bbe597` | stitch picks newest animatic (C.1); saveAgentOutput renames media→vNN (A.1); clipLengths+computeEffectivePlayback (B.3); duration fallback + PERSIST keys (B.5); music URL decodeURIComponent |
+| `webapp/app/api/assets/[id]/approve/route.ts` | DONE `e7c76d7` | added VID-animatic slot → invalidates prior APPROVED animatic (C.2) |
+| `webapp/app/api/media/[id]/route.ts` | DONE `e7c76d7` | -DRAFT files revalidate, not immutable (A.2) |
+| `webapp/app/api/assets/[id]/animatic-timing/route.ts` | DONE `e7c76d7` | persists clamped total via clipLengths (B.2) |
+| `webapp/lib/agents/providers/ffmpeg-stitch.ts` | DONE `e7c76d7` | ffprobe derived from resolved ffmpeg path (B.4) |
+| `webapp/lib/api/animatic-shotlist.ts` | DONE `e7c76d7` | exported `clipLengthsFromVidShotRows` (B.1) |
+| `webapp/__tests__/lib/api/animatic-shotlist-clamp.test.ts` | DONE `e7c76d7` | +3 tests |
+| **E03 episode** | NOT CREATED | blocked on Polina mutation approval |
+| `PLAN.md` | UPDATED | CURRENT STATE bumped to 2026-06-08; Mode `===5===` restored |
+| `~/.claude/.../memory/session_2026-06-08_e02-finalcut-wysiwyg-fix.md` | DONE | full final-cut bug memo + MEMORY.md index updated |
+
+---
+
+## Decisions Made
+
+- **E03 setup split:** Polina creates the episode (her tool, Mode 4); Тео applies infra config her tools can't reach (delivery_targets vertical, 480p, $50 ceiling, anchor_chain off, music reuse). Polina launches + monitors; Тео supervises + fixes code.
+- **episode_ref path, NOT anchor-chain** for E03 — fewer failure points, faster (anchor-chain historically capricious). Set `episode.metadata.anchor_chain_enabled = false`.
+- **Vertical = `delivery_target: "youtube_shorts"`** → 9:16 + portrait image sizes flow end-to-end (no 16:9 hardcode anywhere). Set in `episode.metadata.delivery_targets`.
+- **Mode 4 does NOT force mocks** — providers run REAL (cost real money) if contract enabled + API key present. Budget ceiling ($50) is the hard stop, enforced in all modes. Cheapest = Seedance fast 480p ≈ $0.66/shot ≈ $20 for 30 shots.
+- **Two commits, not one mega** for the fixes (revert-ability).
+
+---
+
+## Blockers & Open Questions
+
+- **Polina waiting on Director's verbal "да"** to create E03 (mutation gate). Director must either approve her in the PA panel, or tell Тео to create E03 directly.
+- **480p enforcement mechanism** — unresolved (see Not Tried Yet). Solve before VGEN fires.
+- **Music reuse mechanism** — inject E02 music at animatic stage; prevent/override MGEN's new music.
+- **`governance_mode_default=4`** in app_config (scope=system) — makes ALL new episodes autonomous. Intentional for this test; REVERT to 1 after the test so future episodes don't auto-run.
+- **E02 final cut** still unverified after the music-decode fix — needs one re-stitch.
+
+---
+
+## Exact Next Step
+
+Decide who creates E03:
+- **(a, recommended)** Director tells Polina in the PA panel: **"да, создавай E03"** → she runs `createEpisode(seriesId=45351141-6334-4bf0-8a0f-4e00a994f670, episodeCode=E03, title="Tidy Tornado — Shorts Test", premise=<E02 premise>, runtime=60, governanceMode=4)` and reports the id.
+- **(b)** Тео creates E03 directly (same params).
+
+THEN Тео applies config to E03 (before brief approval / before VGEN):
+1. `episode.metadata = { delivery_targets: ["youtube_shorts"], anchor_chain_enabled: false }`
+2. `episode.budget_ceiling = 50`
+3. vgen_defaults for SS-S15 → `{aspect_ratio:"9:16", quality_tier:"fast", provider_id:"seedance-fal-img2vid"}` (NOTE: series-scoped, affects E02 too — E02 is done, OK; but consider per-episode override)
+4. Plan 480p enforcement (patch Shot Plans or episode override)
+5. Plan E02 music reuse at animatic stage
+THEN nudge Polina to approve the brief → autonomous Mode-4 run → Тео supervises 30 shots + fixes code live.
+
+E02 context for the brief/music:
+- series SS-S15 UUID `45351141-6334-4bf0-8a0f-4e00a994f670`; episodes.series_id text = "SS-S15"
+- E02 id `8b32b3e0-d012-4545-a834-85bc140a2707`; brief id `d4166cd9-28fd-4541-a142-67ba6eac123e`
+- E02 premise: "Sandy sees a small bedroom mess and tries to clean it at impossible speed. Every shortcut makes the room worse — drawers spit things back, books collapse, a lamp cord traps him, smudges spread, clutter pops out under the bed, the rug releases dust, pillows throw feathers — and after a blackout final push the room is far messier than before. Sandy stands filthy, proudly polishing one tiny clean spot."
+- E02 music asset `SS-S15-E02-AUD-music-main-v01` (id `3b86dc0f-5d0a-4c93-a57c-5c746e41e9c6`), file `Twang_Relay-processed.mp3`
+
+---
+
+## Environment & Setup Notes
+
+- Dev servers running: next-dev :3000, inngest-dev :8288 (worker auto-reloads on TS change; KEEP ALIVE for the autonomous chain — Polina's auto-react dies without it).
+- Verify trio: `cd webapp; npx tsc --noEmit` · `npx vitest run` (715) · `npm run replay-pilot` (30).
+- DB queries: inline `node --input-type=module` loading `.env.local` (NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY). Naming-validator hook blocks writing new `.ts` scripts into the repo — use inline node, not a script file.
+- Polina nudge: `POST http://localhost:3000/api/team-chat/post` Bearer `TEAM_CHAT_TOKEN`, body `{content, author:"Тео", tag}`; needs an OPEN concierge thread (PA panel open). Thread `bdbdafcf-2a38-4c58-b706-362fd7ff0f16`.
+- Mode gate: PLAN.md `Mode:` line must stay `===5=== EDIT` for code writes (mode-validator hook reads it). Do NOT write `===1===` there mid-work.
+- Commits: attribution disabled (no Co-Authored-By); `git commit -F -` heredoc for multi-line.

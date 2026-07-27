@@ -1,0 +1,92 @@
+# Session: 2026-06-25
+
+**Started:** resumed from 2026-06-24-e12-animator-kebab · **Last Updated:** Dubai ~12:55 (machine clock ~4h behind — trust webapp/DB UTC)
+**Project:** SandyStudio — webapp concierge (Полина) cost/loop + EREF dispatch. Тео = AI EP.
+**Topic:** Forensic diagnosis + fix of a $100/day Anthropic drain (Polina watchdog↔auto-react loop × Opus), switch Polina to gpt-5.5, and close the EREF double-dispatch hole (E12 SH10). Plus EREF SH13 shot_id unblock.
+
+> Clock: machine ~4h BEHIND real Dubai. Work landed in MAIN checkout `C:\SandyStudio` (master), turbopack hot-reloads. ALL session commits pushed to origin/master. Dev servers restarted by Тео mid-session (new code + Inngest re-sync live).
+
+---
+
+## What We Are Building
+Polina's concierge drained **$100 of Anthropic credits in ~24h** after the 2026-06-24 switch to Opus 4.8. This session: diagnosed it (loop × expensive model), shipped a model-agnostic loop fix + Opus cost-hardening + a durable cost guardrail, then — when budget_log (the new tracking) showed Opus was STILL $0.4-0.7/auto-react-call even hardened — switched Polina to **gpt-5.5** (Director q6a). Separately closed two EREF dispatch bugs the run surfaced: SH13 (blocked by strict shot_id match) and SH10 (double image generation from two dispatch sources).
+
+---
+
+## What WORKED (with evidence) — all tsc·0 / vitest green / replay·30, pushed to origin/master
+- **Diagnosis (high confidence)** — DB read-only queries: 695 concierge assistant turns in 24h post-switch, 81% auto_react. Root = watchdog↔auto-react loop (Polina re-reacted to her OWN events) × Opus uncapped-thinking + untracked cost. Corrected Agent-3's "Opus innocent" (budget_log never tracked concierge → invisible).
+- **W1 loop kill** `fc2ba67` — `events.ts` suppresses `pa/notify-needed` for AI-principal's own decisions (`isSelfCausedNotify`); watchdog `pa-batch-stall-watchdog.ts` no-new-state + fresh-assistant-turn guards + `closeStaleConciergeThreads`; debounce 5s→20s. Shared `resolveOpenThreadId`.
+- **W2 reasoning-off** `fc2ba67` — `conciergeReasoningParam()` sends `reasoning_effort:minimal` on anthropic branch (was dropped by isGpt5 gate → uncapped thinking).
+- **W3 cost guardrail** `fc2ba67` — `lib/concierge/cost.ts`: `recordConciergeCost` → budget_log (agent_id=EXEC-CONC, episode_id set, NOT counted vs episodes.budget_spent) + daily circuit-breaker $20/24h disarms auto-react (Director chat never gated). CONFIRMED LIVE: budget_log EXEC-CONC rows appeared ($0.39-0.72/call).
+- **W4.a/W5** `fc2ba67` — auto-react history 80→24, round backstop 25→6, auto-react output→800.
+- **gpt-5.5 switch** (`.env.local`, gitignored) — `CONCIERGE_PROVIDER=openai`, `OPENAI_MODEL=gpt-5.5`. VALIDATED via micro-completion (no 400). Servers restarted, env live.
+- **EREF SH13 unblock** `875b00b` — tolerant `shotIdsMatchLoose` in loadPlanOverrides (canonical plan-body vs bare event-shot).
+- **EREF SH10 double-dispatch fix** `e27b5c2` — per-shot in-flight dedup at `factory.ts` Step-0 (universal chokepoint), reuses `shotIdsMatchLoose` (moved to `vgen-shot-helpers`), new `findInFlightShotDuplicate` in plan-regen-guard. Blocks only SIMULTANEOUS dup of same agent+shot; fail-open; all principals.
+- **Verify**: tsc·0, vitest **1010/1010**, replay·30. Servers up (3000+8288, 30 fns).
+
+---
+
+## What Did NOT Work (and why)
+- **Opus 4.8 for Polina, even hardened** — budget_log showed $0.39-0.72 PER auto-react call (~$84/hr extrapolated) even after reasoning-off + history-trim. Input ~39k tokens/call (fat tool-result history + full tool schemas + reasoning maybe not honored by Anthropic OpenAI-compat). My estimate of ~$0.005-0.02/call was wrong by 20-100×. → Director chose gpt-5.5 (q6a).
+- **Anthropic prompt-cache via OpenAI-compat** — NOT supported (`cache_control` is native Messages API; compat shim drops it). Deferred.
+- **normalizeShotId to fix bare "SH10"** — can't canonicalize a shot-only id (no scene). Used `shotIdsMatchLoose` instead.
+- **Pushing the focused-sinoussi worktree** — it's 24 behind master with only stale junk (AnimaticPlayer is OLD base, −226 lines vs master; popover fix already on master a63bc45). Pushing/committing it would REGRESS master. Did NOT push it.
+
+---
+
+## What Has NOT Been Tried Yet
+- **Live smoke of the fixes** — Director to run ~1h on gpt-5.5; Тео then snaps two numbers: auto-react turns/hr (was 23 median/164 peak; expect single digits) + budget_log EXEC-CONC $/hr (now tracked; expect cents).
+- **Breaker smoke** — set CONCIERGE_DAILY_CAP_USD low → ambient event → expect `skipped:concierge_budget_tripped` (no Opus call needed).
+- **EREF dedup smoke** — double-fire one shot → second should log `regen_duplicate_skipped`, no 2nd image.
+
+---
+
+## Current State of Files (all committed + pushed unless noted)
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/api/events.ts` | ✅ fc2ba67 | self-echo notify skip |
+| `webapp/lib/api/event-actionable.ts` | ✅ fc2ba67 | `isSelfCausedNotify` |
+| `webapp/inngest/functions/pa-batch-stall-watchdog.ts` | ✅ fc2ba67 | no-new-state + stale-thread reap |
+| `webapp/inngest/functions/exec-pa-react.ts` | ✅ fc2ba67 | debounce 20s + shared resolver |
+| `webapp/lib/concierge/threads.ts` | ✅ fc2ba67 | resolveOpenThreadId + closeStaleConciergeThreads |
+| `webapp/lib/concierge/llm.ts` | ✅ fc2ba67 | conciergeReasoningParam |
+| `webapp/lib/concierge/cost.ts` | ✅ fc2ba67 NEW | record + circuit-breaker |
+| `webapp/app/api/concierge/chat-internal/route.ts` | ✅ fc2ba67 | breaker + reasoning + cost + trims |
+| `webapp/app/api/concierge/chat/route.ts` | ✅ fc2ba67 | reasoning-off |
+| `webapp/lib/concierge/auto-react-loop.ts` | ✅ fc2ba67 | backstop 25→6 |
+| `webapp/vitest.config.ts` | ✅ fc2ba67 | dummy test env |
+| `webapp/lib/agents/runners/episode-references.ts` | ✅ 875b00b/e27b5c2 | SH13 guard → import shotIdsMatchLoose |
+| `webapp/lib/api/vgen-shot-helpers.ts` | ✅ e27b5c2 | shotIdsMatchLoose (moved here, exported) |
+| `webapp/lib/api/plan-regen-guard.ts` | ✅ e27b5c2 | findInFlightShotDuplicate |
+| `webapp/lib/agents/factory.ts` | ✅ e27b5c2 | Step-0 per-shot in-flight dedup |
+| `webapp/.env.local` | ✅ local (gitignored) | CONCIERGE_PROVIDER=openai, OPENAI_MODEL=gpt-5.5 |
+| `PLAN.md` | ✅ cf98d3c | CURRENT STATE updated |
+
+---
+
+## Decisions Made
+- **gpt-5.5 over Opus for Polina (q6a)** — Opus too expensive ($0.5/call) even hardened; gpt-5.5 = "optimal" quality + far cheaper/token + reasoning=none works. Revert = `CONCIERGE_PROVIDER=anthropic`.
+- **Loop fix is model-agnostic** — W1/W3 stay regardless of model; the breaker is the durable backstop.
+- **Concierge cost → budget_log with episode_id but NOT episodes.budget_spent** — per-episode "estimate" queryable without tripping pipeline gates (Director "хотя бы порядок, после отладки").
+- **EREF dedup at factory Step-0, all principals, fail-open** — concurrency correctness ≠ autonomy cap; only blocks simultaneous dup; sequential/Director regen + Designer→Artist preserved.
+- **Deferred**: single-approved-plan invariant (two APPROVED plans per shot coexist); W4.b tool-allowlist; W4.c prompt reorder; native Anthropic cache; interactive cost-record + episode-budget UI.
+
+---
+
+## Blockers & Open Questions
+- **q8 (open)**: worktree `focused-sinoussi-597697` is 24 behind master with stale junk (AnimaticPlayer dup + launch.json local + tsbuildinfo). Offered `git reset --hard origin/master` to clean — Director hasn't answered. Not destructive to anything valuable.
+- **Live verification pending** — fixes are live but not yet measured under ~1h autonomous gpt-5.5 operation.
+
+---
+
+## Exact Next Step
+Director runs Polina ~1h on gpt-5.5; then Тео snaps the two verification numbers (auto-react turns/hr + budget_log EXEC-CONC $/hr) and reports PASS/FAIL. Quick wins available without waiting: breaker smoke ($0) + EREF double-fire dedup smoke. Then answer q8 (clean focused-sinoussi worktree). Backlog: single-approved-plan invariant; deeper Opus trims if ever reverting to Opus.
+
+---
+
+## Environment & Setup Notes
+- Dev servers RESTARTED by Тео this session (killed stale trees, relaunched `npm --prefix C:/SandyStudio/webapp run dev` + `run inngest:dev` in background; logs `.next-dev.log` / `.inngest-dev.log`). 3000+8288 up, 30 inngest fns.
+- Read-only DB queries: inline `node --input-type=module` heredoc from `C:\SandyStudio\webapp`, loads `.env.local` + SUPABASE_SERVICE_ROLE_KEY. E12 UUID `725efe84-be85-4a1d-9dfb-1d8aa4afe509`.
+- Env knobs (defaults baked, no change needed): `CONCIERGE_DAILY_CAP_USD`=20, `CONCIERGE_CAP_WINDOW_H`=24, `CONCIERGE_REASONING_EFFORT`=minimal, `CONCIERGE_AUTO_REACT_TURN_WINDOW`=24, `CONCIERGE_AUTO_REACT_BACKSTOP`=6, `PA_REACT_DEBOUNCE_SEC`=20, `CONCIERGE_THREAD_TTL_MIN`=180.
+- Plan file: `~/.claude/plans/functional-tickling-ullman.md` (EREF-dedup plan; cost-fix plan superseded in-file).
+- Verify trio from `C:\SandyStudio\webapp`: `npx tsc --noEmit` · `node_modules/.bin/vitest run` (1010) · `npm run replay-pilot` (30). No `npm run build` while dev up.

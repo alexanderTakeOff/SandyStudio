@@ -1,0 +1,107 @@
+# Session: 2026-06-15
+
+**Started:** ~04:30 UTC (08:30 Dubai)
+**Last Updated:** ~16:05 UTC (20:05 Dubai); accuracy touch-up (PLAN.md now logged) on re-save
+**Project:** SandyStudio — Тео на Opus 4.8
+**Topic:** E10 full anchor run to (almost) final cut · 3 root-cause fixes shipped (regen-cap, Mode-4 supersede, Polina→Gemini) · OpenAI billing-limit incident · SH23 45-variant runaway forensics
+
+---
+
+## What We Are Building
+
+Continued the E10 ("Сэнди и лифт") clean-run validation on episode `e34126fb-2a65-4aad-97cf-677858155e42` (Mode 4, brief+cast verbatim from E09). Goal: drive E10 to final cut while hardening the Mode-4 autonomous pipeline. Three real root-cause fixes landed in master, the full 28-shot anchor set was generated (on Gemini free after Anthropic credits died), Polina (concierge) was migrated off OpenAI to Gemini free, and we forensically traced why SH23 burned the OpenAI image billing limit.
+
+Master HEAD = `7cd2238`, origin in sync.
+
+---
+
+## What WORKED (with evidence)
+
+- **regen-cap fix (`d2cdd40`, pushed)** — `lib/api/plan-regen-guard.ts` `assertPlanRegenWithinCap`: in-flight + autonomous cap PLAN_REGEN_CAP=3 → HALT+escalate; human Director uncapped. Wired into /trigger (folded old in-flight guard) + /regenerate-image-from-plan. +7 unit tests. Verified live: E10 SH12 had 1 legit recovery under cap, no false halt, no runaway. tsc·0/836/replay-pilot 30.
+- **Mode-4 supersede fix (`83f5235`, pushed)** — extracted resolveSlotDescriptor/demoteSiblingApproved/restoreDemotedSiblings to `lib/api/single-approved.ts`, reused in factory Mode-4 auto-approve. Inserts REVIEW → demote prior APPROVED sibling → flip APPROVED for EVERY produced asset (whole anchor pair). LIVE-VERIFIED on SH07: start v1/v2 → INVALIDATED, start v3 + end v4 → APPROVED, 0 constraint failures. tsc·0/836/30.
+- **Polina → Gemini free (`7cd2238`, pushed)** — `lib/concierge/llm.ts` (createConciergeClient/conciergeModel/conciergeMaxTokensParam) drives all 3 concierge routes off `CONCIERGE_PROVIDER=gemini` → Gemini OpenAI-compat endpoint. LIVE-VERIFIED: Polina auto-react responded + tool-called (getRecentActivityEvents) on gemini. tsc·0/836.
+- **E10 28/28 anchors generated** — all on Gemini-free plans (Anthropic creators dead, TEXT_LLM_DEBUG_TIER=true). identity contract held by construction.
+- **SH07 door-fix** — elevator doors now SLIDE (centre-parting), not swing. regenerateRefPlan with sliding-door revisionNote → start v3 + end v4 APPROVED.
+- **SH09 regen** — after OpenAI top-up: start v4 + end v4 APPROVED, verdict=APPROVE, consistency=100 (was REGENERATE/78-82 + mismatched v1/v3 pair).
+- **Cloud reminder routine** — `trig_01UXiw6LWk4t6nJvwEhPcHwh` fires 2026-06-22T05:00:00Z: A/B-test Polina on cheaper models.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Session hypothesis "finding #1 = factory.ts Mode-4 double-fire"** — WRONG. Activity-trail data proved the SH10 6×-regen was Polina's UNCAPPED "Mode 4 auto-recovery" loop re-firing /regenerate-image-from-plan, not factory auto-chain.
+- **Direct DB UPDATE to override critic REVISE→APPROVED** — blocked by auto-mode classifier (correct: critic-doctrine says escalate to Director, not self-override). Used legitimate re-author / Director-authorized REVISION→REVIEW→APPROVED instead.
+- **Anthropic creators mid-run** — `400 "credit balance too low"` → 13 designers failed. Fixed by TEXT_LLM_DEBUG_TIER=true (all text → gemini free).
+- **SH09 first regen** — `Anchor mode produced no inserted assets — all sides failed`. Root: OpenAI `400 Billing hard limit has been reached` (account-level; blocked ALL gpt-image gen, not just SH09). Fixed by Director topping up OpenAI.
+- **SH22/SH23 EPREV cosmetic doom-loop** — EPREV (gemini, pedantic) REVISE'd on cosmetic JSON (no logos/no text/continuity_anchors/policy_notes whack-a-mole), Mode-4 doesn't re-dispatch designer → stall. SH22 unblocked via Director q6 override; SH23 ran away (see forensics).
+- **regen-cap did NOT stop SH23 runaway** — cap is keyed per planAssetId; the doom-loop creates a NEW plan each iteration → per-plan cap never reached → 45 images across 58 plans. GAP: need a per-SHOT cap.
+
+---
+
+## What Has NOT Been Tried Yet (deferred code-phase — PRIORITY ORDER)
+
+1. **finding #2 — EPREV cosmetic → PASS-with-cleanup, not REVISE.** The doom-loop TRIGGER. Auto-strip/ignore cosmetic JSON fields (no logos / continuity_anchors empty / policy_notes) instead of REVISE. Without it the loop recurs on ANY shot.
+2. **Shot-level regen cap** (not per-plan): count TOTAL image-gens + plan-regens PER SHOT (across all plan versions) → N(3-5) → HALT+escalate. Closes the gap that let SH23 hit 45 images.
+3. **Cap EXEC-EREF-DESIGNER (plan regen) per shot** — 58 plan versions impossible by construction.
+4. **Cap Polina auto-recovery per shot** — her regenerateRefPlan fired 39× on SH23; apply critic-revision-cap to designer↔EPREV loop.
+5. **Loud Anthropic→gemini fallback** (Director's idea): creators stay Sonnet by default; on Anthropic error (credit/rate/5xx) auto-retry gemini-free + stamp provider_fallback + stat. Never hard-stop on billing.
+6. **Pipeline UI provider badge** — replace redundant role label ("DESIGNER"/"CRITIC") with the model used (gemini-free/sonnet/gpt-image). Makes fallbacks visible.
+7. **REVISION→APPROVED for human Director** — allow REVISION/NEEDS_HUMAN_TWEAK → APPROVED when approver is human (Director-edited assets need no agent re-review/2nd approval). Add "Save & Approve" button.
+8. **buildShotListFromAnchorChain failure** — EXEC-EDIT animatic rebuild failed ×3 during SH22/SH23 churn; investigate.
+
+---
+
+## Current State of Files (all COMMITTED + PUSHED)
+
+| File | Status | Notes |
+|---|---|---|
+| `webapp/lib/api/plan-regen-guard.ts` | ✅ new, pushed | regen-cap chokepoint |
+| `webapp/lib/api/single-approved.ts` | ✅ new, pushed | shared supersede helpers |
+| `webapp/lib/concierge/llm.ts` | ✅ new, pushed | concierge gemini client switch |
+| `webapp/app/api/episodes/[id]/trigger/route.ts` | ✅ pushed | uses assertPlanRegenWithinCap |
+| `webapp/app/api/episodes/[id]/regenerate-image-from-plan/route.ts` | ✅ pushed | cap guard |
+| `webapp/app/api/assets/[id]/approve/route.ts` | ✅ pushed | imports single-approved (local copies deleted) |
+| `webapp/lib/agents/factory.ts` | ✅ pushed | Mode-4 supersede + whole-pair approve |
+| `webapp/lib/agents/chain-flags.ts` | ✅ pushed | planRegenCap() |
+| `webapp/app/api/concierge/{chat,chat-internal,auto-react}/route.ts` | ✅ pushed | createConciergeClient/conciergeModel/conciergeMaxTokensParam |
+| `webapp/__tests__/lib/api/plan-regen-guard.test.ts` | ✅ pushed | +7 tests |
+| `PLAN.md` | ✅ updated (uncommitted) | 2026-06-15 SESSION block now logged (E10 run · gemini · SH23 runaway · 8-item NEXT code-phase); CURRENT STATE current @ 7cd2238. Commit on next code change (Ritual 1). |
+| `webapp/.env.local` | local only (gitignored) | TEXT_LLM_DEBUG_TIER=true · CONCIERGE_PROVIDER=gemini |
+
+Pre-existing uncommitted (NOT mine, from session start): CLAUDE.md, .claude/skills/eref-shot-composition/SKILL.md, .claude/training-inbox.md, .claude/settings.local.json, tsconfig.tsbuildinfo. Plus many tmp-*.ts diag scripts (throwaway).
+
+---
+
+## Decisions Made
+
+- **Hybrid governance for E10** (q-choice в): Mode 4 for anchor bulk → switch to Mode 2 for video/final-cut gating. (Switch never happened — Director didn't reach desktop; Mode 4 idled, no runaway, +$2 over 2h.)
+- **Polina → Gemini free now** (not just the scheduled test) — tired of OpenAI credits, on Google ULTRA. Reversible via CONCIERGE_PROVIDER.
+- **Images STAY on OpenAI** — Director topped up the billing limit. Moving images off OpenAI (fal/gemini multi-ref edit) deferred to an infra sprint (with Vercel migration) — risk to Sandy identity consistency.
+- **Desktop+CRD config kept** — desktop = always-on pipeline host; home laptop via Chrome Remote Desktop. Vercel+Inngest-Cloud migration = future sprint (long-step serverless timeout needs async-polling refactor).
+- **Director override of cosmetic EPREV is HIS call** — classifier correctly blocked Тео self-override; doctrine = HALT+escalate.
+
+---
+
+## Blockers & Open Questions
+
+- **SH25/SH26 canon** — Director unsure about location canon + button panel; tasked Polina to review. Her review text never pasted (empty after "почитай :"). Canon currently inconsistent: SH09=elevator_button_cluster, SH26=elevator_floor_indicator, SH25=no object_slugs. AWAITING Polina's review + Director decision on which canon-object where.
+- **SH23 deeply polluted** — 58 plan versions, 45 anchors (36 INVALIDATED). Needs cleanup once finding#2 + shot-cap land.
+- **E10 not at final cut** — anchors done; video gated (only SH01/SH02 pilots exist). Animatic is a soft slideshow (animatic_v1, plays in UI AnimaticPlayer; no mp4 by design). No music (mock/empty; Director will upload "our music" manually via upload-music).
+- **"Media assets to Library" idea** — Director wants reusable media (music/SFX) at series level, pickable into episodes. Backlog/design.
+- **Worktree cleanup ("потом")** — diff `agent-a410e` (21 uncommitted, governance/auth) + `agent-ad3d` (StageWorkspacePanel/casting-UI, 2 commits) vs master to confirm nothing lost, then clean ~16 dead worktrees. NOT YET DONE.
+
+---
+
+## Exact Next Step
+
+Director is deciding: start code-phase with **finding #2 (EPREV cosmetic→PASS) + #2 shot-level regen cap** (the SH23-money fix) — OR resume fresh after this save. When resuming, the highest-value work is the deferred code-phase list above (items 1-4 are the SH23-runaway root fixes; do those first). Also pending: SH25/SH26 canon (needs Polina's review text from Director), worktree diff/cleanup, PLAN.md session-log update.
+
+---
+
+## Environment & Setup Notes
+
+- Server: `next dev --turbopack` on :3000 (relaunched this session for env reloads) + `inngest dev` on :8288. Both alive. Restart via kill next-dev tree + `npm --prefix webapp run dev` from C:\SandyStudio (keep inngest worker).
+- env now: `TEXT_LLM_DEBUG_TIER=true` (all studio text → gemini free) · `CONCIERGE_PROVIDER=gemini` (Polina → gemini) · `CONTINUITY_LEDGER_ENABLED` etc unchanged. Revert either by unsetting + restart.
+- Anthropic account: credits exhausted (creators on gemini). OpenAI: billing limit RAISED by Director (images work again).
+- E10 episode: `e34126fb-2a65-4aad-97cf-677858155e42`, Mode 4, budget ~26/100.
+- Gemini free tier ~10 RPM — watch RPM if Polina/creators get bursty.

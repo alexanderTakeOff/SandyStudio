@@ -1,0 +1,260 @@
+# Session: 2026-05-13
+
+**Started:** ~05:30 UTC (resumed from previous day's PR #23 merge)
+**Last Updated:** ~17:36 UTC (Dubai local 21:36)
+**Project:** SandyStudio webapp — `claude/quizzical-brown-462555` worktree
+**Topic:** E20 episode partial recovery + VGEN/STITCH/Realtime push fix pack (10+ patches, 2 migrations applied)
+
+---
+
+## What We Are Building
+
+SandyStudio is an AI-first animation production studio. Today's session was a continuous Mode 2.5 production push to drive episode SS-S14-E20 ("The Violet Distance") from script-approved state through full Animator pipeline to a final cut mp4. Director worked through PA (Polina, gpt-5.5 in webapp) while I (Claude Code in terminal) handled code fixes.
+
+The session evolved into a long sequence of pipeline issues surfaced by actual production usage:
+- EREF prompt builder ignored storyboard camera intent → flat plate refs
+- VGEN duration logic crashed with fractional/out-of-bounds values
+- Veo 3.1 img2vid Standard tier only returns 8s clips (Google's error message misleads)
+- Supabase Realtime push silent because RLS blocked anon channel subscriptions
+- ffmpeg `-shortest` + short music loop truncated final cut to music duration
+- ffmpeg concat played full mp4 durations, ignoring animatic shot_list timing
+- Browser WebSocket leak зомбировал next-dev twice (2-5GB heap)
+- Composer fix needed cross-worktree merge
+
+Result: E20 closed partial (17/19 shots — SC11-SH01 + SC11-SH02 unreachable on Veo daily quota). Final cut mp4 exists at 96s (concat actual durations). All fixes committed via auto-sync. Pending: per-shot trim ffmpeg (q1), Postgres trigger Realtime (q2), team-chat unified channel (q3).
+
+---
+
+## What WORKED (with evidence)
+
+- **SREV REVIEW-loader layer fix** — confirmed by: `loadAgentInputs.allowedStatuses` parameter, EXEC-SREV passes `['APPROVED','REVIEW','REVISION']`. Verify trio clean (tsc · 185/185 · 29/29).
+- **gate.ts EXEC-MGEN unblock** — confirmed by: required changed from `VID-animatic` (legacy pre-LT-04) to `STB + REV-world_check`. MGEN now fires correctly after world check, not stuck waiting for animatic.
+- **`regenerate-video/route.ts` vgen_pilot forwarding** — confirmed by: source asset's `metadata.vgen_pilot` flag is now spread into new asset's metadata. Approve count UI no longer reads "1/2" after pilot regeneration.
+- **`<audio key={drive_path}>` + `<video key={drive_path}>`** — confirmed by: React forces remount when URL changes; browser audio buffer no longer holds stale stream after Replace upload.
+- **AnimaticPlayer bright pills** — confirmed by: Director's screenshot at 13:08 showed timeline with bright green 1-17 cells after refresh. Solid `var(--accent-success)` + glow shadow + weight 700 + textShadow.
+- **`buildShotPromptV2` cleanup** — confirmed by: 23/23 vitest passing. Drops role label, quoted title, Beat:/Mood:; truncates to first sentence; adds explicit 16:9. Veo no longer renders text artifacts.
+- **`runner.ts EXEC-VGEN` Math.round + force_8 patches** — confirmed by: console.info log captured `Veo durationSeconds=4 (raw=2)` (correct clamp) and later `Veo durationSeconds=8 (clamped=true)` for Standard img2vid. Several shots successfully generated.
+- **`veo-gemini.ts` surface full error body** — confirmed by: Inngest run output now shows `Veo predictLongRunning failed (400) — {"error":{"code":400,"message":"The number value for durationSeconds is out of bound..."}}`. Revealed actual root causes (duration, quota).
+- **`ffmpeg-stitch.ts` `-stream_loop -1`** — confirmed by: 10/10 vitest passing. Short music files no longer truncate video via `-shortest`.
+- **Two-button `Generate · Fast` / `Generate · Standard`** in EpisodeTimelineSection — confirmed by: footer renders both buttons for missing-VID cells. Frontend POST body includes `quality_tier`. Verified via next-dev log `[exec-vgen] shot=... quality=standard` after Director's click.
+- **Singleton Supabase browser client** — confirmed by: module-level cache in `lib/supabase/client.ts`. After fix next-dev has not gone zombie despite continued HMR.
+- **Migration 0026 applied** (`activity_events` in supabase_realtime publication + REPLICA IDENTITY FULL) — confirmed by: `npx supabase db push` returned "Finished supabase db push" at 10:00 UTC.
+- **Migration 0027 applied** (`activity_events_authenticated_select` RLS policy) — confirmed by: same CLI returned success. Anon GET returns empty array (proves policy is `TO authenticated`, blocking anon — as intended).
+- **STITCH ran end-to-end** — confirmed by: `EXEC-STITCH completed` activity_event at 13:00 UTC, then again at 13:12 after re-fire. Final cut mp4 exists at `SS-S14-E20-VID-final_cut-v01-DRAFT.mp4`.
+- **Animatic trim 19→17 shots** — confirmed by: `scripts/trim-e20-animatic-sc11.ts --write` ran; `check-animatic.ts` shows `total_duration_s: 54` and 17 shots in shot_list.
+- **Backfill 21+2 ambient turns** — confirmed by: `scripts/backfill-pa-ambient.ts --write` reported `Inserted 21 ambient system turns` then `Inserted 2`. PA picked up at next reply.
+- **EREF Spatial Coverage Manifest** — confirmed by: 7/7 vitest passing on `eref-spatial-coverage.test.ts`. EREF prompt now includes per-shot anchor + camera direction + variation rule.
+- **Composer fix merged from sibling worktree** (commit `2d72849`) — confirmed by: merge conflict в PLAN.md resolved, AssetPreview's MGENActionsBlock present in current branch.
+- **Last verify trio at 17:28 UTC** — tsc clean · vitest 185/185 · replay-pilot 29/29 · auto-sync commit `6099464`.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Veo Standard tier with `durationSeconds=5` for img2vid** — failed because: Veo 3.1 docs confirm `veo-3.1-generate-preview` returns only 8-second clips when a reference image is attached. Google's error message ("between 4 and 8 inclusive") misleads — for img2vid Standard the real allowed set is `{8}`. Fixed: forced 8s in runner.ts when `hasReferenceImage && quality==='standard'`.
+- **Veo Fast tier retries on SC11 shots** — failed because: HTTP 429 RESOURCE_EXHAUSTED on every attempt. Quota burned across 25+ API requests today (mix of pilots, fanout, regens). Per Director: probably Tier-1 daily limit.
+- **Veo Standard tier retries on SC11 shots** — failed because: same 429 RESOURCE_EXHAUSTED. Standard's separate quota bucket also exhausted. 5+ explicit attempts (3 from UI, 2 from `fire-sc11-vgen.ts` script).
+- **First STITCH run at 13:00 UTC** — failed because: ffmpeg `-shortest` flag cut final cut to music duration (~32s) since Director's loop file was shorter than the 54s video stitched. Director's reaction: "длина ролика оказалась 32 секунды, поясните". Fixed via `-stream_loop -1` patch.
+- **Second STITCH run at 13:12 UTC** — failed (as expected) because: ffmpeg concat demuxer plays each input file at its native duration (Veo Fast=4s, Standard=8s). Sum of actual mp4 durations = 96s, not animatic shot_list intended 54s. Still pending q1 fix.
+- **Browser useActivityRealtime hook** — failed because: 0 POSTs to `/api/concierge/ambient` despite migration 0027 + hard refresh. Either WebSocket subscription fails silently in browser, or Director's bundle is stale. Workaround: backfill script. Real fix: q2 Postgres trigger.
+- **Next-dev zombie twice** (~12:25 UTC and ~12:50 UTC) — failed because: each `createSupabaseBrowserClient()` call opened a new WebSocket. HMR + React StrictMode amplified this into a 2-5GB heap leak; TCP listener stayed alive but handler dead → curl 000 timeout. Director killed via Task Manager twice. Fixed: singleton + channel dedupe.
+- **PA's `findEpisode("E20")` and `findEpisode("SS-S14-E20")`** — failed because: tool's matching logic doesn't recognize either short or full code. Director had to give explicit context, then PA searched via activity.
+- **VGEN single-shot routes pre-Math.round patch** — failed because: `durationSeconds` could leak fractional (e.g. 5.5) or values below 4 from animatic shot_list (some shots were 2-3s). Google rejected 400. Fixed: clamp + Math.round all branches.
+- **EREF first fan-out attempt** — failed because: Spatial Coverage Manifest layer missing → all 19 shots got essentially the same prompt → "Madame humanoid" + "Sandy duplicates" + "1:1 ref → 16:9 video" bugs. Cancelled mid-fanout (Director-approved q1). 8 refs already burned. Fixed by adding spatial layer to prompt builder.
+- **PA stale memory at 12:54 UTC** — failed because: PA reported "несколько video assets висят в REVIEW уже больше 5 минут" while my check-vid-statuses script showed 17 APPROVED, 0 REVIEW. PA was running on context from before Director's recent batch approvals. Realtime push wasn't delivering updates (root cause: blocked RLS).
+
+---
+
+## What Has NOT Been Tried Yet
+
+### q1 — STITCH per-shot trim ✂️ (~30-45 min, planned)
+Switch concat-list builder in `webapp/lib/agents/providers/ffmpeg-stitch.ts` from listing each shot with default duration to using ffmpeg concat demuxer's `inpoint`/`outpoint` directives:
+```
+file 'shot1.mp4'
+outpoint 4
+file 'shot2.mp4'
+outpoint 5
+```
+Per-shot duration comes from `animatic_v1.shot_list[i].duration_seconds`. After patch, re-fire STITCH event — final cut should produce 54s correctly. Unit tests in `ffmpeg-stitch.test.ts` will need an update for the new args shape.
+
+### q2 — Postgres trigger Realtime reliable 🔔 (~30 min, planned)
+Browser-side Realtime push remains silent despite migration 0027. Replace fragile client subscription with server-side Postgres trigger:
+```sql
+CREATE FUNCTION trg_inject_ambient_turn() RETURNS trigger AS $$
+BEGIN
+  INSERT INTO concierge_turns (thread_id, role, event_type, content, metadata, created_at)
+  SELECT id, 'system', 'message',
+         format('[ambient pipeline event · %s] %s (actor=%s)',
+                NEW.event_type, NEW.title, COALESCE(NEW.actor, 'system')),
+         jsonb_build_object('kind','pipeline_event','activity_event_id',NEW.id, /*...*/),
+         NEW.created_at
+  FROM concierge_threads
+  WHERE director_id = ... -- resolve from active session
+    AND ended_at IS NULL
+  ORDER BY started_at DESC LIMIT 1;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER on_activity_event_insert AFTER INSERT ON activity_events
+  EXECUTE FUNCTION trg_inject_ambient_turn();
+```
+Migration 0028. Need to resolve `thread_id` lookup — perhaps via `app_config` "active_thread:<director_id>" set on chat creation. After trigger lands, `useActivityRealtime.ts` becomes optional and can be simplified or removed.
+
+### q3 — Team-chat unified channel 💬 (~50 min, planned, Director's directive)
+Director wants minimal version: shared PA chat thread with all three participants writing.
+- `POST /api/team-chat/post` — endpoint Claude posts via curl. Persists `role=system content="**Клод:** ..." metadata.kind='claude_message'`.
+- `ConciergePanel.tsx` renders `kind='claude_message'` system turns as distinct bubble (e.g. blue, "Клод:" label).
+- New PA system prompt block — lifts `kind='claude_message'` turns into her LLM context (similar to PIPELINE_EVENTS_SINCE_LAST_REPLY).
+- Я post via Bash `curl` after every significant action.
+- Director writes в его field в webapp → "Директор:". Я в том же thread через curl → "Клод:". PA отвечает в том же thread.
+
+### q4 — E20 publish decision
+Current final-cut.mp4 = 96s. Options:
+- (a) Approve as-is and publish — 96s of full Veo content
+- (b) Wait q1 fix → re-stitch 54s → approve → publish
+- (c) Wait Veo daily quota recovery (next session?) → generate SC11-SH01 + SC11-SH02 → re-trim animatic to 19 shots → re-stitch full episode
+
+### q5 — Sprint 10 (Director-approved earlier — q1y q2a q4y)
+- 10A Reviewer Unification (EXEC-REVIEWER + skill registry `agents/skills/*.md`) — 5-7 дней
+- 10B Phase D Character Identity Model — 3-7 дней
+- 10C Skill Editor / Learning Loop — 5-7 дней
+- Per Director: also add fal.ai universal video adapter (Veo, Kling, Seedance, Hailuo) for next episode
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+| --- | --- | --- |
+| `webapp/lib/agents/runner.ts` | ✅ Complete | `loadAgentInputs.allowedStatuses` parameter; EXEC-VGEN finalDuration Math.round on all 3 branches + force 8s for Standard img2vid + console.info debug log |
+| `webapp/lib/agents/factory.ts` | ✅ Complete | `AgentFunctionSpec.inputAllowedStatuses?`; outer try/catch + `step.run('log-agent-failure')` idempotent ambient agent_failed activity_event |
+| `webapp/inngest/functions/exec-srev.ts` | ✅ Complete | `inputAllowedStatuses: ['APPROVED','REVIEW','REVISION']` |
+| `webapp/lib/agents/gate.ts` | ✅ Complete | EXEC-MGEN no longer requires APPROVED VID-animatic; needs STB + REV-world_check instead |
+| `webapp/lib/agents/runners/episode-references.ts` | ✅ Complete | Parser lifts camera_* + sub_area; ShotJob.spatial field; calls `deriveSpatialCoverage` before prompt composition; skip-if-already-approved loop |
+| `webapp/lib/api/eref-spatial-coverage.ts` | ✅ Complete (NEW) | Pure `deriveSpatialCoverage(shots) → SpatialShotEntry[]` with 17 movement→direction mappings; per-location anchor reuse tracking |
+| `webapp/__tests__/lib/api/eref-spatial-coverage.test.ts` | ✅ Complete (NEW) | 7 unit tests passing |
+| `webapp/lib/concierge/ambient-events.ts` | ✅ Complete (NEW) | `decideAmbientEvent` + `extractAmbientMetadata` pure functions |
+| `webapp/__tests__/lib/concierge/ambient-events.test.ts` | ✅ Complete (NEW) | 9 unit tests passing |
+| `webapp/app/api/concierge/ambient/route.ts` | ✅ Complete (NEW) | POST endpoint, RLS guard, dedup by activity_event_id |
+| `webapp/hooks/useActivityRealtime.ts` | ⚠️ Working but silent in browser | Code correct; channel dedup defensive; but Director's browser hook fires 0 POSTs in practice. Server-side trigger (q2) supersedes |
+| `webapp/components/concierge/ConciergePanel.tsx` | ✅ Complete | Imports `useActivityRealtime`, calls with threadId after effects |
+| `webapp/lib/concierge/system-prompt-builder.ts` | ✅ Complete | Block 11 `PIPELINE_EVENTS_SINCE_LAST_REPLY` lifts system pipeline_event turns into LLM context |
+| `webapp/lib/supabase/client.ts` | ✅ Complete | Module-level singleton (`cachedClient`) — closes WebSocket leak |
+| `webapp/supabase/migrations/0026_realtime_publish_activity_events.sql` | ✅ Applied | `ALTER PUBLICATION supabase_realtime ADD TABLE` + `REPLICA IDENTITY FULL` |
+| `webapp/supabase/migrations/0027_activity_events_authenticated_select.sql` | ✅ Applied | RLS SELECT policy for `authenticated` role |
+| `webapp/app/api/assets/[id]/regenerate-video/route.ts` | ✅ Complete | Forwards `vgen_pilot: true` from source asset metadata |
+| `webapp/components/preview/AssetPreview.tsx` | ✅ Complete | `<audio key={drive_path}>` + `<video key={drive_path}>` |
+| `webapp/components/animatic/AnimaticPlayer.tsx` | ✅ Complete | Solid `var(--accent-success)` + glow + textShadow + weight 700 for canonical/REVIEW pills |
+| `webapp/lib/api/vgen-shot-helpers.ts` | ✅ Complete | `buildShotPromptV2` rewrite: `firstSentence` truncate, drop role label/quoted title/Beat:/Mood:, add explicit 16:9, `endWithPeriod` helper, `describeRole` removed |
+| `webapp/__tests__/lib/api/vgen-prompt-builder.test.ts` | ✅ Complete | 23/23 tests passing under new contract |
+| `webapp/lib/agents/providers/veo-gemini.ts` | ✅ Complete | Error message includes full Veo response body slice (800 chars) |
+| `webapp/lib/agents/providers/ffmpeg-stitch.ts` | ✅ Complete | `-stream_loop -1` before music input (both inline and pure helper) |
+| `webapp/__tests__/lib/agents/providers/ffmpeg-stitch.test.ts` | ✅ Complete | 10/10 tests passing |
+| `webapp/components/timeline/EpisodeTimelineSection.tsx` | ✅ Complete | Two-button `Generate · Fast` + `Generate · Standard` footer; passes `quality_tier` to endpoint |
+| `webapp/package.json` | ✅ Complete (earlier) | `"dev": "next dev --turbopack"` |
+| `webapp/app/api/director/inbox/route.ts` | ✅ Complete (earlier) | Light select (no `content`/`metadata` for assets), limit applied |
+| `webapp/scripts/patch-e20-stb-camera.ts` | ✅ Complete (NEW, earlier) | One-off STB camera fields surgical patch (19 shots) |
+| `webapp/scripts/approve-stb-e20-v02.ts` | ✅ Complete (NEW, earlier) | Service-role approve helper |
+| `webapp/scripts/refire-eref-mgen.ts` | ✅ Complete (NEW, earlier) | Cancel stale + re-fire EREF/MGEN events |
+| `webapp/scripts/check-e20-state.ts` | ✅ Complete (NEW) | Coverage/state diagnostic — extended through session |
+| `webapp/scripts/check-pa-realtime.ts` | ✅ Complete (NEW) | Diagnoses ambient turn persistence |
+| `webapp/scripts/check-realtime-config.ts` | ✅ Complete (NEW) | Anon vs service-role probe for RLS |
+| `webapp/scripts/backfill-pa-ambient.ts` | ✅ Complete (NEW) | Retroactive ambient turn injection (21+2 turns) |
+| `webapp/scripts/check-vid-statuses.ts` | ✅ Complete (NEW) | Per-shot VID-shot row inspection |
+| `webapp/scripts/check-sc11.ts` | ✅ Complete (NEW) | SC11 specific diagnosis |
+| `webapp/scripts/fire-sc11-vgen.ts` | ✅ Complete (NEW) | Manual VGEN event fire for SC11 |
+| `webapp/scripts/trim-e20-animatic-sc11.ts` | ✅ Complete + executed (NEW) | Animatic shot_list trim 19→17 + STITCH fire |
+| `webapp/scripts/check-finalcut.ts` | ✅ Complete (NEW) | Final cut metadata inspection |
+| `webapp/scripts/check-animatic.ts` | ✅ Complete (NEW) | Animatic shot_list dump |
+| `webapp/scripts/check-policy.ts` | ✅ Complete (NEW) | Anon vs service-role policy probe |
+| `PLAN.md` | ✅ Complete | `## CURRENT STATE` updated with today's E20 fix pack, Next q1-q5 |
+| `~/.claude/projects/C--SandyStudio/memory/session_2026-05-13_e20_partial_recovery_and_vgen_pack.md` | ✅ Complete (NEW) | Session memo |
+| `~/.claude/projects/C--SandyStudio/memory/MEMORY.md` | ✅ Updated | Added link to today's memo |
+
+---
+
+## Decisions Made
+
+- **Force `durationSeconds=8` для Veo Standard + img2vid** — reason: Veo 3.1 docs confirmed img2vid Standard returns only 8s clips. Sending 5/6/7 returns 400. Trade-off: video timing diverges from storyboard intent (3-5s shots become 8s), so final cut needs per-shot trim in STITCH (q1 pending).
+- **Singleton browser Supabase client** — reason: prevents WebSocket leak that turned next-dev into 2-5GB zombie. Module-level cache, no API change to callers.
+- **RLS policy for Realtime — `TO authenticated USING (true)`** — reason: SandyStudio is single-director (per webapp.md §2.1). Every authenticated session belongs to Director. No multi-tenant boundary inside activity_events. Permissive SELECT is correct and minimal.
+- **Drop role label + Beat:/Mood: in Veo prompt** — reason: Veo printed these as on-screen text annotations. The EREF already encodes framing/role.
+- **Force 16:9 native composition prompt** — reason: Director observed videos starting as 1:1 inside 16:9 canvas then expanding mid-shot. Explicit "16:9 widescreen composition from the very first frame" instruction added.
+- **Close E20 partial at 17/19 (animatic trim)** — reason: Director's "ждать бесполезно" after Veo daily quota exhausted on SC11-SH01 + SC11-SH02. Pipeline must move; SC11 punchlines were closing-act content but episode's narrative arc survives without them.
+- **Two separate quality tier buttons (Fast / Standard)** — reason: Director needs to bypass Fast 429 quota explicitly. Single button defaulted to Fast and stuck there silently.
+- **`-stream_loop -1` for ffmpeg music** — reason: Better default than `-shortest`-only because Director will often upload short loop files. Music behaves as infinite stream; video duration anchors the cut.
+- **Backfill script over Realtime hot-fix** — reason: Realtime push debug requires browser-side investigation (DevTools, WebSocket frames). Faster recovery for current session via service-role backfill. Permanent fix shifted to q2 Postgres trigger.
+- **Use existing `concierge_threads.bdbdafcf...` for team-chat (q3)** — reason: Director's PA thread is the canonical channel. New `role='system'` turns with `metadata.kind='claude_message'` don't require schema migration.
+- **/clear before doing q1+q2+q3** — reason: context is deep; non-trivial multi-file changes risk bug surface if context runs out mid-fix. Fresh session better.
+
+---
+
+## Blockers & Open Questions
+
+- **Browser useActivityRealtime fires 0 POSTs** — likely silent WebSocket failure or stale browser bundle. Need DevTools inspection (Network → WS frames) to confirm. Bypass: q2 Postgres trigger.
+- **Veo Tier-1 daily quota** — exact limit unknown without Google billing dashboard access. Burned ~25-30 API requests today. SC11 generation deferred to next-day window (or alternative provider).
+- **`thread_id` resolution for Postgres trigger (q2)** — need a stable lookup: latest non-ended `concierge_threads` for `director_id`. May require `app_config.active_thread:<director_id>` set on thread creation.
+- **Final cut 96s vs 54s decision** — Director needs to weigh: ship 96s as-is OR wait q1 + re-stitch.
+- **Bug in PA's stale memory at 12:54** — she reported REVIEW count from older context. Should q2 trigger include a "last_inspected_at" marker so PA knows freshness?
+
+---
+
+## Exact Next Step
+
+Run `/resume-session` in fresh terminal. Then start q1 (STITCH per-shot trim) by:
+
+1. Reading `webapp/lib/agents/providers/ffmpeg-stitch.ts` (around line 240-310 where concat-list is built).
+2. Update concat-list writer to emit per-file `outpoint <seconds>` directive using `animatic_v1.shot_list[i].duration_seconds`.
+3. Update `webapp/__tests__/lib/agents/providers/ffmpeg-stitch.test.ts` to assert new concat-list shape.
+4. Verify trio (tsc + vitest + replay-pilot).
+5. Re-fire STITCH event via:
+   ```bash
+   curl -s -X POST 'http://localhost:8288/e/devkey' \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"sandystudio/exec-stitch/assemble-episode","data":{"episodeId":"763c5c1e-44dc-4e10-92fb-e7671e5d4a44"}}'
+   ```
+6. Verify final-cut v03 ≈ 54s.
+
+Then q2 (Postgres trigger), then q3 (team-chat).
+
+---
+
+## Environment & Setup Notes
+
+**Two terminals required for local dev:**
+```bash
+# Terminal 1
+cd webapp && npm run dev           # http://localhost:3000 (Turbopack)
+# Terminal 2
+cd webapp && npm run inngest:dev   # http://localhost:8288
+```
+
+Both servers killed twice this session by Director via Task Manager (memory leak now fixed). At session end via preview MCP:
+- next-dev: `5461eb2a-3a84-4fa4-a617-c9bee091de4d`
+- inngest-dev: `b10d4618-6fa3-47bf-80ec-8ff48c322d84`
+- PA Monitor: `b6ttps1eh` (persistent tail on `.claude/pa-feedback.log`)
+
+**Active PA thread:** `bdbdafcf-2a38-4c58-b706-362fd7ff0f16`
+
+**Episode under work:** `SS-S14-E20` (UUID `763c5c1e-44dc-4e10-92fb-e7671e5d4a44`), Mode 1 (MANUAL).
+
+**Last auto-sync commit:** `6099464` (2026-05-13 17:36 Dubai local).
+
+**Branch:** `claude/quizzical-brown-462555`. Ahead 60+ commits from `origin/master` (composer fix already merged in).
+
+**Env vars in `webapp/.env.local`:**
+```
+OPENAI_MODEL=gpt-5.5
+OPENAI_REASONING_EFFORT=none
+OPENAI_MAX_OUTPUT_TOKENS=8000
+OPENAI_TEMPERATURE=0.2
+GEMINI_API_KEY=<set>
+SUPABASE_SERVICE_ROLE_KEY=<set>
+NEXT_PUBLIC_SUPABASE_URL=https://akstennzrnkvexjgzhxv.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<set>
+```
+
+**Director's timezone:** Dubai UTC+4. Auto-sync commit messages use local time; DB/Inngest use UTC. Always `date -u` before declaring stale.
+
+**Migrations applied today:** 0026, 0027. Schema is current.

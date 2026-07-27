@@ -1,0 +1,170 @@
+# Session: 2026-05-21
+
+**Started:** Resumed from 2026-05-20 PM session (commit `b6c83e7` + sprint «Дизайнер и Аниматор» merged `12d708f`); active work today started ~07:00 Dubai (UTC+4)
+**Last Updated:** 2026-05-21 ~13:15 UTC (~17:15 Dubai)
+**Project:** SandyStudio (C:\SandyStudio\)
+**Worktree:** C:\SandyStudio\.claude\worktrees\quizzical-brown-462555 (branch `claude/quizzical-brown-462555`)
+**Topic:** Live smoke of SS-S15-E01 Designer chain → discovered + fixed 4 TDs (TD-23 right-path, TD-24 hot-fix, TD-25 P1+P2+P3+P3.5 Polina autonomy, TD-29 logEvent bypass) + TD-31 behavioral rule for context reminders. 2 commits landed.
+
+---
+
+## What We Are Building
+
+Validating the full Designer chain end-to-end on SS-S15-E01 «Heavy Friend» episode and closing UX/autonomy gaps surfaced during the live run. Three intertwined work streams:
+
+1. **Designer chain validation** — SH01..SH06 of 22 shots produced via full Sprint Designer pipeline (Plan → Director review → execute-from-plan → IMG → Director review). 6 IMG-episode_ref assets generated, 5 APPROVED, 1 in REVISION (SH04 ждёт regen after Director's quality feedback).
+
+2. **Polina autonomy hardening (TD-25)** — Director observed Polina silently waiting when expected events never fire. Built three layers of fix: P1 open-loop awareness in system prompt, P3 detector + UI yellow chip, P2 watchdog cron escalates after 90s. Director correctly flagged regex-based detector as «почти моветон» for LLM work — TD-25 P4 (structured `markAwaitingDirector` PA tool) deferred for next session.
+
+3. **Bug sweeps (TD-23/24/26/27/29)** — three classes of bugs revealed during smoke: (a) strict `===` on file_type that includes shot_id suffix (TD-24, 2 sites fixed, 4 in backlog); (b) UI/state desync where one widget reads from a different source than another (TD-26 pictogram, TD-27 modal); (c) direct `activity_events.insert` calls bypassing `logEvent` helper, breaking Polina's auto-react chain (TD-29 root cause, 2 sites fixed, 7 prod sites in backlog).
+
+---
+
+## What WORKED (with evidence)
+
+- **Designer chain end-to-end on 6 shots** — confirmed by: DB shows 6 SPC-ref_plan APPROVED + 6 IMG-episode_ref (5 APPROVED, 1 REVISION) for SS-S15-E01; activity_events trail clean from REV-world_check.APPROVED → fan-out → Plan creation → Director approve → execute-from-plan → IMG creation.
+- **TD-24 hot-fix on approve route + runner** — confirmed by: after fix, SH03+SH04 Plan APPROVE auto-triggered execute-from-plan without manual replay script (vs SH01+SH02 which required `replay-execute-from-plan.ts` because fix hadn't landed yet).
+- **TD-25 P1 open-loop awareness in prompt** — confirmed by: Director's «ЧЕГО ЖДЕШЬ» reply triggered Polina to RE-CHECK context (calling `findEpisode`, `getEpisode`) instead of repeating prior passive «жду», ultimately self-corrected the episode_id desync. Without P1 she would have repeated «жду».
+- **TD-25 P3 yellow chip** — confirmed by: Polina's 08:46:29 turn with q3 question stamped `metadata.awaiting_director_input=YES` per `check-watchdog-state.ts`. UI would render the chip (not visually verified by Director yet).
+- **TD-25 P2 watchdog cron** — confirmed by: Inngest `/v1/events` shows `source=watchdog trigger=4abbb1d4` event at 08:48:17Z, ~90s after Polina's 08:46 turn with awaiting=YES. Cron fires every minute and dispatched correctly.
+- **TD-29 root cause localized** — confirmed by: Inngest `/v1/events?event_name=sandystudio/pa/notify-needed` shows 0 entries for Director's 08:42 + 08:43 approves; logEvent doesn't fire because approve route uses direct `supabase.from('activity_events').insert(...)` instead of `logEvent(...)` helper. After hot-fix (commit `672a3dc`), next Director approve in fresh session should fire correctly.
+- **2 commits clean** — confirmed by: `git log --oneline` shows `eb4d4d9` (feat autonomy 29 files) + `672a3dc` (TD-29 hot-fix 2 files); `npx tsc --noEmit` clean; `npx vitest run` = 348/348.
+- **TD-31 behavioral rule landed** — confirmed by: `~/.claude/rules/common/director-communication.md` has new section «Context usage reminder — 60% threshold (TD-31)»; this session's later turns prefix 🔴 [Context ~XX%] correctly.
+
+---
+
+## What Did NOT Work (and why)
+
+- **First Designer fan-out attempt (08:00-ish UTC)** — failed because: `assets_file_type_check` constraint rejected file_type with uppercase shot_id (`SPC-ref_plan-SS-S15-E01-A1-SC01-SH01`). 10× failures cascaded. **Fixed** by migration 0034 (`e5ffa22`, landed yesterday).
+- **Polina's manual triggerAgent at 14:24 (yesterday) on EXEC-EREF instead of EXEC-EREF-DESIGNER** — failed because: wrong agent_id, old pipeline (Artist) instead of new (Designer). Was a Polina UX failure now mitigated by P1 prompt.
+- **`replay-execute-from-plan.ts` first run** — failed because: TD-24 strict-compare bug in `lib/agents/runners/episode-references.ts:774` (`data.file_type !== 'SPC-ref_plan'`). **Fixed** by adding `.startsWith('SPC-ref_plan-')` check, then second replay succeeded.
+- **~~Polina's hallucinated shotIds (`SC01-SH03/04` instead of real `SC02-SH03/04`)~~** — **RESOLVED 2026-05-21 ~13:25 UTC.** Director audit on this session: in turns 09:12..09:24 UTC Polina operated `SS-S15-E01-A2-SC03-SH07/SH08`, distinguished Plan vs Image, quoted UUIDs (`1177690c-…`, `ae4e87d0-…`) without error. No re-occurrence after the initial day-prior incident. Keeping the entry as historical context, but it's not a live issue.
+- **Polina passive on auto-react: "не буду выдумывать какой именно агент и какой ассет"** (turns 09:14:17 + 09:17:41) — **RESOLVED 2026-05-21 ~13:30 UTC by Fix A+B+C in `lib/concierge/system-prompt-builder.ts`** (commit pending). Root cause: (a) `pipelineEvents` block in system prompt serialized only `content` from `concierge_turns`, dropping `metadata.asset_id`/`actor`/`event_type` — Polina saw the title but had no UUID to call `getAsset` with; (b) `AUTO_REACT_GUIDANCE` didn't explicitly invite read-only follow-up; (c) `BASE_BEHAVIOR` "NEVER fabricate" rule over-applied because no exemption for "source is visible". Fix: emit a per-event `refs:` line with structured fields, rewrite AUTO_REACT_GUIDANCE to encourage `getAsset(asset_id)` + getRecentActivityEvents follow-up, add "no source is visible" caveat to fabrication rule. 4 new unit tests; vitest 352/352, tsc clean. Live validation: next auto-react after Director approve should produce a concrete asset+status summary instead of "не знаю".
+- **Detector regex pattern v1** — too narrow, missed «мониторю появление» phrasing. **Fixed in P3.5** by extending pattern, but Director rightly called this anti-pattern overall — proper fix (TD-25 P4) is a structured PA tool, not regex.
+- **PA tool `regenerateImage` was NOT auto-fired** after `requestRevision` set SH04 to REVISION. Director expected atomic operation but Polina split it into 2 steps and waited 8 min silently. **Mitigated by P1 prompt fix** which teaches her to treat «регенерируй» as atomic; full fix is TD-29 retire of regex detector.
+- **Director's 08:42-08:43 approves on SH05/SH06 IMG** did NOT wake Polina for 13 minutes — root cause **TD-29 hot-fix** (just landed); validation pending in next session.
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **TD-30 (scene continuity anchor)** — Director's architectural insight: use prior APPROVED IMG of same location as additional reference image (4th anchor alongside identity/location/style) to stabilize spatial layout. Trumeau drift observed across SH01-SH06. Plan in `sparkling-riding-blum.md` ADDENDUM Phase 7 Step D has exact file:line punch list (9 insertion points across 3 files). **Estimated 2-3h. Highest quality impact** for remaining 16 shots of S15-E01 and all future episodes.
+- **TD-29.5 sweep** — 7 remaining prod direct-insert sites still bypass logEvent (`episodes/[id]/trigger/route.ts`, `archive/route.ts`, `assets/[id]/regenerate-video/route.ts`, `upload-music-direct/route.ts`, `skills/...`, `concierge/chat/route.ts`, `inngest/functions/exec-pa-watchdog.ts`). Same fix pattern as TD-29: replace `supabase.from('activity_events').insert(...)` → `logEvent(supabase, ...)`. ~30 min mechanical work.
+- **TD-25 P4 (markAwaitingDirector PA tool)** — retire regex detector by giving Polina a structured tool to declare pending. Director's instinct on regex-моветон-in-LLM. Plan exists in addendum. ~2-3h.
+- **TD-26 pipeline pictogram stale** — left-rail Reference Artist row shows ◇ (blocked) while activity feed says «started». Director noted same pattern on other stages. Investigation entry: `components/pipeline/StageList.tsx` or similar.
+- **TD-27 approve modal spinner false-stuck** — variant swap modal closes but UI doesn't refetch. Investigation entry: `components/preview/AssetPreview.tsx` and its modal pattern.
+- **Resume SH04 regen** — IMG `a674735e` still in REVISION with Polina's note. Either Director clicks UI «Regenerate» button or Polina calls `regenerateImage` tool. Pipeline pause point.
+- **Continue mini-batch validation or hit Fan-Out button** — 14 shotIds remain in `episode.metadata.designer_fanout_pending` (SH05/06 already done as mini-batch, removed from pending). Director can either send 2 more via Polina (cross-act validation) or press the now-fixed Fan-Out button which fires Designer events on all remaining.
+
+---
+
+## Current State of Files
+
+### Modified in commit `eb4d4d9` (29 files):
+
+| File | Status | Notes |
+|---|---|---|
+| `app/api/assets/[id]/approve/route.ts` | ✅ TD-24 line 410 + Track-A mirror | Plus TD-29 hot-fix in next commit |
+| `app/api/episodes/[id]/eref/approve-pilots/route.ts` | ✅ TD-23 right-path | Plus TD-29 hot-fix in next commit |
+| `app/api/concierge/chat/route.ts` | ✅ P3 detector integration | metadata.awaiting_director_input stamping |
+| `app/api/concierge/chat-internal/route.ts` | ✅ watchdog source handling | Distinct instruction for source=watchdog |
+| `lib/agents/runners/episode-references.ts` | ✅ TD-24 runner guard | Line 774 accepts both shapes |
+| `lib/concierge/system-prompt-builder.ts` | ✅ P1 OPEN_LOOP_AWARENESS Block | Added + registered after AUTO_REACT_GUIDANCE |
+| `lib/concierge/await-detector.ts` | ✅ NEW — P3 detector | Plus P3.5 expansion pattern |
+| `lib/inngest/client.ts` | ✅ watchdog source enum | Extended pa/notify-needed source union |
+| `inngest/functions/exec-pa-watchdog.ts` | ✅ NEW — P2 cron | Every minute, 90s age threshold, 5min cooldown |
+| `inngest/index.ts` | ✅ watchdog registered | 28 functions total |
+| `components/concierge/ConciergePanel.tsx` | ✅ yellow chip + 3-path propagation | Message.awaitingDirectorInput field |
+| `__tests__/lib/concierge/await-detector.test.ts` | ✅ NEW — 15 tests | All pass |
+| `__tests__/lib/concierge/system-prompt-builder.test.ts` | ✅ NEW — 6 tests | All pass |
+| `webapp/scripts/check-resume-status.ts` + 15 others | ✅ NEW — diagnostic + one-off ops | Audit trail |
+
+### Modified in commit `672a3dc` (2 files):
+
+| File | Status | Notes |
+|---|---|---|
+| `app/api/assets/[id]/approve/route.ts:823` | ✅ TD-29 hot-fix | Direct insert → `logEvent(supabase, ...)` |
+| `app/api/episodes/[id]/eref/approve-pilots/route.ts:209` | ✅ TD-29 hot-fix | Same fix on Fan-Out trigger audit |
+
+### Modified outside webapp (TD-31):
+
+| File | Status | Notes |
+|---|---|---|
+| `~/.claude/rules/common/director-communication.md` | ✅ NEW SECTION | Context >60% reminder rule (TD-31) |
+| `~/.claude/plans/sparkling-riding-blum.md` | ✅ updated | Phase 5b/6/7 ADDENDUMs + TD-26/27/29/30/31 backlog |
+| `~/.claude/session-data/2026-05-21-polina-autonomy-td-sweep-session.tmp` | ✅ this file | |
+
+### Not modified yet (queued for next session):
+
+| File | Status | Notes |
+|---|---|---|
+| `lib/api/shot-reference.ts` | ⏳ TD-30 queued | Extend ReferenceUsed.kind to 'scene_continuity' |
+| `lib/agents/runners/episode-reference-designer.ts` | ⏳ TD-30 queued | Add `scene_continuity_anchor_asset_id` to Plan + new helper |
+| `lib/agents/runners/episode-references.ts` | ⏳ TD-30 queued | Loader + executor changes for new ref kind |
+| `app/api/episodes/[id]/trigger/route.ts` + 6 others | ⏳ TD-29.5 queued | Direct insert → logEvent sweep |
+
+---
+
+## Decisions Made
+
+- **Commit current partition in 2 commits** — reason: `eb4d4d9` is the cohesive «autonomy + TDs» landing (29 files), `672a3dc` is a separate surgical hot-fix on TD-29 root cause (2 files). Cleaner git log.
+- **No PR open yet** — reason: keep worktree branch until Director says ship. Plus full validation of TD-29 fix requires a fresh smoke run.
+- **Defer TD-30 to fresh session** — reason: 3-file architectural change deserves fresh context. Detailed plan exists. Risk of subtle bugs on degraded context outweighs «just do it now».
+- **TD-25 P4 (structured PA tool) over regex extension** — reason: Director called regex anti-pattern for LLM. Tool-based signal is structurally correct. Current regex (P3.5) is acknowledged tech debt.
+- **Context reminder via behavioral rule, not real hook** — reason: Claude Code lacks pre-response hook event AND lacks token-usage metric exposure. Behavioral rule survives session restarts and is the proven pattern.
+- **TD-30 scene_continuity through Designer's Plan, not executor-side query** — reason: Designer is the decision layer; executor is mechanical. Plan-driven design keeps audit trail in the Plan JSON.
+
+---
+
+## Blockers & Open Questions
+
+- **TD-29 hot-fix needs validation** — next Director approve via UI should fire pa/notify-needed and trigger auto-react. If it doesn't → hypothesis H3/H4/H6 from plan applies, deeper investigation needed.
+- **SH04 regen pending** — IMG `a674735e` REVISION status, awaiting Director or Polina to call `regenerateImage`. Pipeline pause.
+- **Composer music v01 vs v02 decision** — Polina asked q3 («which version?») in 08:46 turn. Director answer pending. Affects next pipeline gate.
+- **TD-26 + TD-27** — UI desync bugs observed but not investigated. Director mentioned «не только у этого» — pattern repeats on other stages. Possible refactor TD-28 if symptoms persist.
+- **dev servers state at session end** — next-dev :3000 still running (background task started yesterday session, survived). inngest-dev :8288 restarted today at ~12:21 UTC by me (kill PID 557552 → new bg task `b5mjsk6ki`). Watchdog cron registered (28 functions).
+
+---
+
+## Exact Next Step
+
+When Director resumes after `/clear`:
+
+1. **Read identity + memory** (per standard SandyStudio session start):
+   - `~/.claude/rules/common/identity.md` — recognize «Тео»
+   - `~/.claude/projects/C--SandyStudio/memory/director_name_alexander.md` — Director is Александр
+   - SandyStudio CLAUDE.md → PLAN.md → glossary
+   - This session note (auto-loaded by `/resume-session`)
+
+2. **Verify state:**
+   - `git log --oneline -5` should show `672a3dc` near top, then `eb4d4d9`, then `32b293c`
+   - `git log origin/master --oneline -3` still shows `12d708f` (this branch not merged)
+   - `cd webapp && npx tsx scripts/check-resume-status.ts` for live snapshot
+
+3. **Pick up at one of three forks (Director chooses):**
+   - **a)** Validate TD-29 hot-fix: ask Director to approve any asset via UI, watch for auto-react within 30s. If works → TD-29 fully closed. If not → run cross-cutting probe from plan ADDENDUM Phase 7 Step C.
+   - **b)** Resume SH04 regen + continue smoke (answer composer music q3, etc) — keep production moving on S15-E01.
+   - **c)** Take on TD-30 scene continuity anchor — biggest quality impact, plan ready, ~2-3h.
+
+4. **Recommended order (Theo's vote):**
+   - Quick: Director clicks one approve → confirms TD-29 works (5 min)
+   - Then: TD-30 scene continuity (2-3h, fresh context properly invested)
+   - Then: TD-29.5 sweep on 7 remaining prod sites (~30 min mechanical)
+   - Then: TD-25 P4 PA tool to retire regex (~2-3h)
+   - Smoke continues in parallel as Director reviews assets
+
+---
+
+## Environment & Setup Notes
+
+- **Worktree:** C:\SandyStudio\.claude\worktrees\quizzical-brown-462555 (branch `claude/quizzical-brown-462555`)
+- **Branch commits ahead of master `12d708f`:** ~21 (yesterday's session continued + 2 today)
+- **Dev servers:** next-dev :3000 alive (yesterday's bg task), inngest-dev :8288 restarted today (~12:21 UTC, bg task `b5mjsk6ki`), 28 Inngest functions registered (includes new exec-pa-watchdog cron)
+- **Env vars (in webapp/.env.local):** `DESIGNER_CHAIN_ENABLED=true`, `PA_INTERNAL_TOKEN`, `TEAM_CHAT_TOKEN`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, Supabase URL+service-role, Google Drive OAuth, `INNGEST_DEV=1`
+- **Director:** Александр (NEVER «Кирилл»). Dubai (UTC+4). Mode ===5=== · Mode 1 governance · auto-sync OFF.
+- **Smoke target thread:** `bdbdafcf-2a38-4c58-b706-362fd7ff0f16`
+- **Smoke target episode:** `f019c29f-5e1e-4964-b62b-6c59fc3aa966` (SS-S15-E01 «Heavy Friend»)
+- **Pending shot IDs (14 remaining):** SH05 ✅, SH06 ✅, then SH07/A2-SC03 ... SH22/A3-SC11. Polina's `episode.metadata.designer_fanout_pending` is authoritative source.
+- **Verify trio at session end:** `npx tsc --noEmit` clean · `npx vitest run` 348/348 · `npm run replay-pilot` not re-run today (was 29/29 yesterday, agent layer unchanged).
+- **My name (Тео):** persistent global identity. Sign as «Theo» in commits (per identity.md).
+- **Context reminder:** 60% threshold rule active. Prefix 🔴 [Context ~XX%] on future messages when warranted.

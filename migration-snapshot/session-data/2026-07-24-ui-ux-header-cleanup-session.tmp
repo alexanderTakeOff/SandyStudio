@@ -1,0 +1,155 @@
+# Session: 2026-07-24
+
+**Started:** ~19:40 Dubai
+**Last Updated:** ~22:23 Dubai
+**Project:** SandyStudio webapp (worktree `ui-cleanup-header-modes-2ee585`)
+**Topic:** UI/UX cleanup — episode header consolidation into a contextual top bar
+
+---
+
+## What We Are Building
+
+A multi-step declutter of the episode page (`/episodes/[id]`) and the global
+StudioShell top bar. The Director's end-vision: the non-scrolling top bar becomes
+a **contextual page header** (shows the current page's identity + actions), NOT
+global chrome. On the episode page it will host: episode code · title (no quotes) ·
+budget · the `…` kebab. Dead/duplicate chrome is removed; scattered action buttons
+collapse into the kebab; episode-level settings (governance MODE) move to Episode
+Settings.
+
+Work is split into steps, each committed + verified separately:
+- **Step 1** (done): remove mockup search, ANALYTICS system-mode chip, `←Episodes`
+  back-link, `BRIEF APPROVED` status chip, passive `Mode N` text. Archived episodes
+  marked by sand title colour instead of a chip.
+- **Step 2a** (done): collapse Refresh/Re-trigger/Mark Complete/Move-to-Trash into
+  the previously-empty `…` kebab (reused existing `DropdownMenu` primitive).
+- **Chunk 2b** (done): declutter the Timeline section header; move Visual check +
+  STOP/Restart servers into the kebab.
+- **Chunk 2c** (NOT STARTED): the big one — move episode code/title(no quotes)/
+  budget/kebab UP into the sticky top bar via a portal-slot; move the MODE
+  (governance) chip OUT of the top bar INTO Episode Settings.
+
+---
+
+## What WORKED (with evidence)
+
+- **Step 1 + 2a** — confirmed by: `tsc --noEmit` EXIT 0; lint clean on touched
+  files; LIVE smoke on dev server — top bar shows only MODE chip (search + ANALYTICS
+  gone), episode header clean (no back-link / status chip / mode text), kebab opens
+  with Refresh/Re-trigger/Mark Complete/Move-to-Trash. Committed `586069ee`.
+- **Chunk 2b** — confirmed by: `tsc --noEmit` EXIT 0; LIVE smoke — timeline header
+  reduced to `Collapse` + `Timeline` next to `All/Review/Approved/Missing` chips
+  (verified via page text); kebab now also has Visual check / STOP servers (red) /
+  Restart servers (verified via screenshot of open menu). Committed `d1ca8cea`.
+- **Orphan removal** — `StitchStatusPill.tsx` deleted (grep confirmed zero importers
+  after 2b). Committed `87f05587`.
+- **Dev server runs this branch** — `preview_start name:"next-dev"` → autoPort picked
+  **45597** (3000 busy = Director's prod). Compiles `/episodes` + `/episodes/[id]`
+  with no runtime errors; Director's browser session already authenticated in the tab.
+
+---
+
+## What Did NOT Work (and why)
+
+- **Full `npm install` in the worktree** — failed: ERESOLVE, `@react-three/drei@9`
+  peer conflict with `@react-three/fiber@9` (react 19). Fix: `npm install
+  --legacy-peer-deps` (how the main repo is installed; no `.npmrc`).
+- **`npx tsc`** — installed a bogus `tsc@2.0.4` package. Use the LOCAL binary:
+  `cd webapp && npm run typecheck` (or `node_modules/.bin/tsc`).
+- **Direct `eslint`** — ESLint 9 wants flat config; project lints via `next lint`.
+  Use `npm run lint`.
+- **Live screenshot from a fresh unauth server** — middleware redirects to `/login`;
+  cannot (and must not) enter creds. Resolved because the Director's preview tab was
+  already authenticated (session cookie present).
+
+---
+
+## What Has NOT Been Tried Yet
+
+- **Chunk 2c portal-slot** — the mechanism to render episode header content INTO the
+  sticky `StudioTopbar` from the episode page. Two options: (a) a portal into a
+  known slot `<div>` id rendered by StudioTopbar (minimal, needs a mounted guard);
+  (b) a small React context/provider carrying a ReactNode up to the topbar (more
+  robust, one new provider). Codebase already uses `createPortal` (DropdownMenu,
+  PreviewDrawer) so a portal-slot is idiomatic.
+- **MODE → Episode Settings** — drop `<GovernanceChip current={episode.governance_mode} />`
+  into `EpisodeSettingsCard` (it self-reads episodeId from the URL, so it works there
+  unchanged); remove GovernanceChip from StudioTopbar.
+- **Verify "Open final cut" still reachable** — the removed StitchStatusPill was the
+  only click-to-open-final-cut affordance in the timeline header. Director said "the
+  pipeline has the signal"; VERIFY the Editor/Online-Editor pipeline stage opens the
+  final cut. If not, add "Open final cut" to the kebab.
+
+---
+
+## Current State of Files
+
+| File | Status | Notes |
+| --- | --- | --- |
+| `webapp/components/studio-shell/StudioTopbar.tsx` | Complete (2a), will change in 2c | Search + SystemModeChip removed; only GovernanceChip (MODE) top-right. In 2c: host the episode-header slot, remove GovernanceChip. |
+| `webapp/components/studio-shell/StudioShell.tsx` | Complete | Dead `systemMode` prop pruned. |
+| `webapp/components/studio-shell/SystemModeChip.tsx` | DELETED | ANALYTICS/EDIT chip removed (nothing in webapp UI gated on it; harness hook gates file writes). |
+| `webapp/app/(studio)/layout.tsx` | Complete | Stopped reading `system_mode`. |
+| `webapp/app/(studio)/episodes/[id]/page.tsx` | In Progress | Back-link/status-chip/mode-text removed; archived title = sand `--accent-warning` + tooltip; kebab = DropdownMenu (Refresh/Re-trigger/Visual check/Mark Complete/Move-to-Trash/STOP/Restart) + page-level handlers + visualCheck banner. 2c: move header block into topbar slot, drop quotes. |
+| `webapp/app/(studio)/episodes/page.tsx` | Complete | Archived rows: sand code+title colour. |
+| `webapp/components/timeline/EpisodeTimelineSection.tsx` | Complete | Removed StitchStatusPill + finalCutAsset + shots-count text + header Visual/STOP/Restart; "Episode timeline" → "Timeline" moved next to filter chips. Per-shot Visual Critic kept. |
+| `webapp/components/timeline/StitchStatusPill.tsx` | DELETED | Orphaned after 2b. |
+
+All committed. Working tree clean.
+
+---
+
+## Decisions Made
+
+- **Top bar = contextual page header, NOT global chrome** (Director q9a). Resolves the
+  "episode-specific MODE button in a global bar" smell: on the episode page the bar
+  IS the episode's header.
+- **MODE (governance) → Episode Settings** (Director). It's a per-episode setting, not
+  header identity. Consequence: the global-default mode UI control disappears when no
+  episode is open — accepted (per-episode workflow).
+- **Archived marker = sand title colour + tooltip**, not a status chip (Director). Reuses
+  `--accent-warning` (the old chip's colour). Reinforced in the list by the existing
+  TRASH tab + "archived" sub-label + Delete-forever button.
+- **Final cut pill removed entirely** — the pipeline carries the stitch signal (Director q7).
+- **Reuse `DropdownMenu` primitive** for the kebab; **portal-slot** for 2c — anti-additivity
+  (no new bespoke components).
+- **Commit small verified checkpoints** (Director q5/q10a). Branch-only; no push/merge yet.
+
+---
+
+## Blockers & Open Questions
+
+- **2c mechanism choice** (portal-into-id vs context provider) — decide at start of 2c.
+- **"Open final cut" reachability** — verify pipeline stage opens it; else add to kebab.
+- **Timeline collapse bar is now bare** when collapsed (just Film icon + Collapse toggle,
+  no label). Director may want a tweak — deferred to visual review.
+- **push / merge to master** — pending Director's explicit word (pre-save rule).
+
+---
+
+## Exact Next Step
+
+Start **Chunk 2c**. First re-open the dev server (`preview_start name:"next-dev"`) and
+read `webapp/components/episode/EpisodeSettingsCard.tsx` + `StudioTopbar.tsx`. Then:
+(1) add a header slot to StudioTopbar and portal the episode page's `code · title
+(NO quotes) · budget · kebab` block into it; (2) move `<GovernanceChip>` from
+StudioTopbar into EpisodeSettingsCard; (3) `tsc --noEmit` + live smoke. Then commit as
+Chunk 2c.
+
+---
+
+## Environment & Setup Notes
+
+- **Worktree:** `C:\Users\Alexander\sandystudio\.claude\worktrees\ui-cleanup-header-modes-2ee585`
+  on branch `claude/ui-cleanup-header-modes-2ee585` (base: master). NOT pushed, NOT merged.
+- **node_modules:** worktree starts empty. Install with `cd webapp && npm install
+  --legacy-peer-deps` (full install ERESOLVEs on @react-three/drei).
+- **.env.local:** copied from `C:\Users\Alexander\sandystudio\webapp\.env.local` into the
+  worktree's `webapp/.env.local` (gitignored, needed for Supabase/dev server).
+- **Dev server:** `preview_start name:"next-dev"` (from `.claude/launch.json`, autoPort;
+  ran on **45597**). Main prod stack occupies :3000 — do NOT clash. Verify via text tools;
+  auth is via the Director's already-signed-in preview tab.
+- **cwd note:** the Bash tool's cwd resets to the worktree ROOT between calls — always
+  `cd .../webapp` (absolute) before `npm run typecheck` / `lint`.
+- **Verify trio:** `npm run typecheck` (tsc clean), `npm run lint` (next lint, warnings-only
+  baseline is pre-existing — check only YOUR files appear), live browser smoke.
