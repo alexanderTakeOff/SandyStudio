@@ -1,4 +1,0 @@
-packed at: 2026-07-27T07:31:47 on LAPTOP-4GLMSKPK
-memory:       175 files
-session-data: 112 files
-rules:        15 files
