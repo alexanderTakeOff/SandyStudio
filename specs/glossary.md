@@ -31,6 +31,12 @@ Top-level orchestrating agent. Owns episode plan: chooses sub-agents, sequences 
 ### Assistant / Ассистент (Concierge)
 Conversational interface agent between Director and Producer. Translates voice/text intent into actions, surfaces pending items, proactively reports status. Does not approve creative work and does not run pipeline stages. Implemented via `EXEC-CONC`. See [`agents/exec/concierge.md`](../agents/exec/concierge.md).
 
+### Head of Growth / Директор по росту
+Role (worn by Тео in sessions and by the daily headless report loop) that owns the go-to-market loop after the product exists: packaging, launch, measurement, learning. Runs the per-channel daily report; owns the **cross-channel correlation hub** — the only place where raw metrics of different channels meet; ratifies which lessons apply to which channel. Proposes and prepares to one-click readiness; publish/spend stay Director hard limits. See `.claude/skills/head-of-growth/SKILL.md`.
+
+### Channel Showrunner / Шоураннер канала
+Per-channel content owner (ratified q4/q5 2026-07-27): converts ratified Growth lessons + the channel passport + series Bible into a filled publication runway — theme portfolio → Director theme gate → production briefs. **One role-process, instantiated per channel**; an instance never reads other channels' raw metrics (Growth-hub topology). Interface-agnostic by law: invoked today via `/showrunner <channel-key>` in a Claude session; the runway watchdog in the daily Growth loop flags when it is needed; webapp rails (Themes tab / Approval Queue) are the later home for the same skill. See `.claude/skills/channel-showrunner/SKILL.md`.
+
 ### Sub-agent / Под-агент (Specialist)
 Single-purpose execution agent (Screenwriter, Storyboarder, World Checker, etc.). Fulfils exactly one contract. Replaceable by any other agent that honours the same contract. All `EXEC-*` entries except `EXEC-ORCH` and `EXEC-CONC` are sub-agents.
 

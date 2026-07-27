@@ -19,6 +19,22 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-27 (Роль «Шоураннер канала» + закон интерфейсов — Тео, ===5===; утро-2).
+Status: HoG-луп отработал первый раз на десктопе (09:00, SANDY+PRAGMATIC, GIST+DELIVERY
+  OK; отчёты закоммичены). Ратифицировано (q4/q7): одна роль-процесс
+  .claude/skills/channel-showrunner на все каналы; кросс-канальный анализ ТОЛЬКО
+  через Growth-хаб; закон тонких интерфейсов — интерфейсы без логики, роль в git,
+  состояние в файлах/DB. Интерфейс сейчас: /showrunner <канал> (.claude/commands) +
+  сторожок эфира в hog/daily-prompt.md (🔴 при запасе < 7 дн); webapp-рельсы — позже.
+  Портфель августа Sandy аппрувнут (q6a): Автомат → Автомойка → Лифт → Автодверь →
+  Весы (зафиксирован в FILMS/Sandy/episode_ideas.md). Глоссарий: +Head of Growth,
+  +Channel Showrunner.
+Next:   холодный прогон series-episode-theme-selection слота 1 «Автомат» → бриф.
+  Аниматик и брендинг Pragmatico — Директор лично с шоураннерами.
+Mode:   ===5=== (Директор, 2026-07-27).
+```
+
+```
 Date:   2026-07-27 (Переезд на десктоп ЗАВЕРШЁН — Тео, ===5===; утро).
 Status: Десктоп C:\SandyStudio боевой. Ловушка переезда: MACHINE-MIGRATION.md:40 велел
   ставить «без --legacy-peer-deps», прочитав память наоборот (опасен ТОЧЕЧНЫЙ
