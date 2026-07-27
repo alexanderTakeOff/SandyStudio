@@ -37,23 +37,44 @@
 ```
 git clone <origin> C:\Users\Alexander\sandystudio    # или git pull, если репо уже есть
 cd C:\Users\Alexander\sandystudio\webapp
-npm install                                          # ПОЛНЫЙ install, без --legacy-peer-deps
+npm install                                          # ПОЛНЫЙ install, без флагов
 ```
-> `--legacy-peer-deps` выпиливает optional-зависимости — см. память `npm_install_legacy_peer_prunes_optionals`.
+> Никаких флагов. `--legacy-peer-deps` больше не нужен: неиспользуемый
+> `@react-three/drei` (тянул peer `fiber@^8` и `@react-spring` с `react<=18`)
+> вырезан в `3b566732`, дерево решается чисто. Если `npm install` снова упадёт
+> с ERESOLVE — лечи причину в `package.json`, НЕ добавляй флаг: старый lock
+> родился под флагом и недосчитывал optional-бинарники.
+> Опасен ТОЧЕЧНЫЙ `npm install <один-пакет>` — он выпиливает те же optional-бинарники
+> (`@esbuild/win32-x64`, `sharp`) и ломает `tsx`. Ставь только ПОЛНЫЙ install.
+> См. память `npm_install_legacy_peer_prunes_optionals`.
 
 ### 2. Перенести секреты (флешка / зашифрованный канал, НЕ мессенджер)
 - `webapp/.env.local`
 - `.claude/settings.local.json`
 
+⚠️ **Секреты переносятся, ПУТИ — нет.** В `.env.local` могут сидеть значения с путями
+прошлой машины (2026-07-27 приехал `FFMPEG_PATH=C:\Users\Alexander\...` — мёртвый на
+десктопе). После переноса проверь все path-подобные значения:
+```powershell
+cd webapp
+Get-Content .env.local | ForEach-Object { if ($_ -match '^\s*([A-Za-z_]\w*)\s*=\s*"?([A-Za-z]:\\.*?)"?\s*$') {
+  "$(if (Test-Path -LiteralPath $matches[2]) {'OK  '} else {'MISS'}) $($matches[1])" } }
+```
+Что нашлось `MISS` — либо поправь под эту машину, либо **удали**, если код умеет
+искать сам (`FFMPEG_PATH` именно такой: `resolveFfmpegPath()` идёт PATH → winget-glob
+→ unix-пути, поэтому его правильнее не задавать вовсе).
+
 ### 3. Перенести память и правила
 - `~/.claude/projects/C--Users-Alexander-sandystudio/memory/` → в тот же путь
 - `~/.claude/rules/` → в тот же путь
 
-⚠️ **Ключ проекта = путь репо.** Папка памяти названа по пути (`C--Users-Alexander-sandystudio`).
-Если на новой машине репо ляжет в ДРУГОЕ место (например `C:\SandyStudio`), Claude Code
-создаст **новую пустую** папку памяти, и вся история будет «потеряна» (лежит рядом, но не
-читается). Это уже случалось при прошлом переезде.
-**Вывод: держи путь репо ОДИНАКОВЫМ на обеих машинах** — `C:\Users\Alexander\sandystudio`.
+ℹ️ **Ключ проекта = путь репо — но `migrate-unpack.ps1` это уже учитывает.** Папка памяти
+названа по пути (`C:\SandyStudio` → `C--SandyStudio`), поэтому при переносе «как файлы»
+разные пути на машинах = потерянная память. Скрипт считает ключ из ФАКТИЧЕСКОГО пути
+(`migrate-unpack.ps1:15`) и кладёт память куда надо: переезд 2026-07-27
+`C:\Users\Alexander\sandystudio` (лэптоп) → `C:\SandyStudio` (десктоп) прошёл штатно,
+159 файлов на месте. **Одинаковый путь больше не требование — требование пользоваться
+скриптом**, а не копировать `~/.claude/projects/*` руками.
 
 ### 4. Авторизации
 ```

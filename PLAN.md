@@ -19,6 +19,27 @@ stale and causes drift (2026-07-21: it still called a parked planet "current").
 ## CURRENT STATE
 
 ```
+Date:   2026-07-27 (Переезд на десктоп ЗАВЕРШЁН — Тео, ===5===; утро).
+Status: Десктоп C:\SandyStudio боевой. Ловушка переезда: MACHINE-MIGRATION.md:40 велел
+  ставить «без --legacy-peer-deps», прочитав память наоборот (опасен ТОЧЕЧНЫЙ
+  `npm install <pkg>`, не флаг) → install/ci падали с ERESOLVE. Корень вырезан на
+  origin (3b566732: неиспользуемый @react-three/drei тянул peer fiber@^8) — мой
+  обход через webapp/.npmrc снят как мёртвый, плоский install теперь чистый.
+  Вторая мина: .env.local с лэптопа принёс FFMPEG_PATH=C:\Users\Alexander\... —
+  мёртвый путь; снят, resolveFfmpegPath() находит ffmpeg сам (PATH → winget-glob).
+  Остальные 40 env-переменных сошлись с old.env.local без потерь. Документ выправлен
+  трижды: npm-флаг, машинно-зависимые пути в env, устаревшее «держи путь репо
+  одинаковым» (migrate-unpack считает ключ памяти из фактического пути).
+Verify: flat npm install без флагов exit 0 (optional-бинарники целы: @esbuild/win32-x64,
+  sharp-win32-x64, lightningcss-win32-x64-msvc; lock дописал @emnapi/*) · tsc clean ·
+  1564/1564 vitest · npm run build exit 0 (.next пересобран с нуля) ·
+  hog-channels.mts видит PRAGMATIC+SANDY · ffmpeg 8.1.1 спавнится из PATH.
+Next:   Директор поднимает стек ярлыком SandyStudio Stack (без -Build, уже собран).
+  Открыто: судьба мёртвого config/defaults.yaml.
+Mode:   ===5=== (Директор, 2026-07-27, q1y).
+```
+
+```
 Date:   2026-07-26 (Фаза 4e multi-channel ЦЕЛИКОМ в master — Тео, ===5===; вечер).
 Status: 4e part 1: кеш-раскладка SBL → <S>/bible/media/ (+legacy-шим), eref-upscale
   episodeCode из имени файла; budget_log.series_id (0055: триггер+бэкфилл 9875,
