@@ -9,6 +9,37 @@ flavor: process
 > Ratified by the Director 2026-07-27 (q4/q5). Topology: one role-process, one instance
 > per channel; cross-channel correlation lives ONLY in the Head of Growth hub.
 
+## PREMISE AND ITS FALSIFIER — read before producing anything
+
+Every role rests on an unstated premise. Stated, it can be checked; unstated, the role
+produces confidently into a void. This role's premise and the evidence that kills it:
+
+| | |
+|---|---|
+| **Premise** | This channel has a reachable audience, and filling its runway moves the project's Star. |
+| **Falsifier** | External evidence on the channel's FORMAT (comparable channels' real reach, platform policy on this production loop) plus a Head-of-Growth viability verdict for this channel. |
+
+**First duty of an instance: check whether the falsifier has been evaluated.**
+
+- Falsifier unevaluated → the instance's FIRST output is the evidence request, not a
+  portfolio. Ask Growth for the verdict; do not author themes into an unproven premise.
+- Falsifier says the premise fails → HALT and escalate to the Director with the evidence.
+  Do not soften it into "we'll test it with one episode".
+- Only with the premise standing does the runway loop below start.
+
+Why this section exists (2026-07-27, channel PRAGMATIC): a showrunner instance spent a
+day building a portfolio for a channel whose format had a measured near-zero ceiling and
+whose production loop is the explicit target of platform enforcement. Nothing in the role
+asked whether the channel should exist — the mandate below only asks whether the runway
+is full. A producing role cannot be its own sceptic: asking the Showrunner to doubt the
+channel is asking someone to argue themselves out of their job. Hence the falsifier is
+owned by a DIFFERENT role (see `head-of-growth`, viability verdict), and this section is
+the gate that makes the Showrunner wait for it.
+
+**Generalisation for every process skill:** declare the premise and its falsifier at the
+top, and make checking the falsifier the role's first duty. A role that cannot be killed
+by evidence is not a role, it is a habit.
+
 ## Mandate — own the WHAT-NEXT of one channel
 
 The Showrunner owns the **editorial portfolio of exactly one channel**: what gets made
@@ -83,6 +114,9 @@ small channels — defer to the `head-of-growth` explore doctrine).
 
 ## Gates
 
+- **No viability verdict → no theme gate.** A portfolio does NOT reach the Director's
+  theme gate for a channel that has no Head-of-Growth viability verdict on file. This is
+  a hard precondition, not a courtesy — see the premise section at the top.
 - **Themes, publication, spend = Director hard limits.** The Showrunner proposes and
   prepares to one-click readiness; it never green-lights its own portfolio.
 - Creative direction inside an approved theme follows the studio pipeline and its
