@@ -49,9 +49,15 @@ async function main() {
   const author = authorFlag >= 0 ? args[authorFlag + 1]! : 'Claude';
   const threadId = threadFlag >= 0 ? args[threadFlag + 1] : undefined;
 
-  const token = process.env.TEAM_CHAT_TOKEN;
+  // `--as-exec-dir-ai` presents the EXEC-DIR-AI role token instead of the plain
+  // team-chat one, so /api/team-chat/post stamps metadata.authorized_principal
+  // and Polina treats the turn as a delegated order (CLAUDE.md §4). Hard limits
+  // stay human-Director-only regardless — the route/tool guards enforce that.
+  const asExecDirAi = args.includes('--as-exec-dir-ai');
+  const tokenVar = asExecDirAi ? 'EXEC_DIR_AI_TOKEN' : 'TEAM_CHAT_TOKEN';
+  const token = process.env[tokenVar];
   if (!token) {
-    console.error('TEAM_CHAT_TOKEN missing in .env.local');
+    console.error(`${tokenVar} missing in .env.local`);
     process.exit(1);
   }
   const url = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000') + '/api/team-chat/post';
