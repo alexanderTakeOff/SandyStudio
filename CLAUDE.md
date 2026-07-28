@@ -217,6 +217,11 @@ block is the human-readable governance statement; keep the two in sync. (There i
 4. **Media goes to `<media_storage>/raw/` first.** It only moves to `approved/` after passing QA.
 5. **All agent instructions live in `agents/`.** When Claude Code acts as a specific agent, it reads that agent's `.md` file first.
 6. **Director/CEO approves all LOCKED status changes.** Claude Code must explicitly ask for confirmation before marking anything LOCKED. EXEC-DIR-AI cannot mark files LOCKED.
+7. **Every analysis updates its topic dossier in the same commit.** `docs/analysis/` and `docs/plans/`
+   hold the evidence; `docs/topics/` holds the state, and only the state is ever loaded into a session.
+   An analysis whose dossier was not updated is dead weight — nothing will read it again. Do not
+   date-stamp a dossier's filename: a name that says "as of <date>" gets a sibling instead of an edit,
+   which is exactly how eight orphaned analyses appeared in one day (2026-07-27).
 
 ---
 
@@ -264,6 +269,13 @@ When starting a new Claude Code session in this project:
 3. **Read `PLANET.md`** — the current planet (the one destination we steer to now + its terrain).
 4. **Read `PLAN.md`** — day-to-day operations/backlog. NOT the strategy — the Star/Planet above are.
 5. **Read `specs/glossary.md`** — canonical RU+EN vocabulary. Never invent a term — look it up or add it.
+5.5 **Topic dossiers — `docs/topics/`.** The SessionStart hook injects a one-line state for each
+   long-running thread (it derives the list from the directory — there is no index to maintain).
+   Before discussing a topic, **open its dossier and read it in full**: `РЕШЕНО` and `ОПРОВЕРГНУТО`
+   are settled findings with evidence behind them, and re-deriving them wastes the Director's time.
+   Hard cap 80 lines, enforced by `topic-dossier-guard.cjs` — the cap **is** the deletion mechanism:
+   to add a finding to a full dossier, remove a stale one. Dated claims that stopped being true are
+   deleted, not accumulated.
 6. Set system mode to `===1===` ANALYTICS MODE (default — read-only)
 7. **Apply §12 Ritual 2** — `Date:` sanity check on PLAN.md AND `PLANET.md` (flag Director if > 3 days stale)
 8. Report current planet + next step to Director (planet from `PLANET.md`, live state from PLAN.md `## CURRENT STATE`)
