@@ -471,10 +471,10 @@ export const POST = withApiHandler(async (req, ctx) => {
   // Pre-flight Style Guardian check. Behaviour depends on app_config.style_guardian_mode:
   //   warn          → record verdict, NEVER block
   //   strict        → FAIL blocks (Director may pass directorConfirm with override flag)
-  //   auto_rewrite  → use suggested_prompt instead of original; mark history
-  let promptToSend = body.prompt;
+  // The Guardian never edits the prompt: the third mode (`auto_rewrite`) swapped the
+  // Director's prompt for the Guardian's ≤800-char paraphrase and is gone (E33 P0 #1).
+  // `body.prompt` is what gets generated, verbatim.
   let styleVerdict: 'PASS' | 'WARN' | 'FAIL' | null = null;
-  let styleRewritten = false;
   let styleSkipped = false;
   if (asset.series_id) {
     const guardMode = await getStyleGuardianMode(sb);
@@ -501,10 +501,6 @@ export const POST = withApiHandler(async (req, ctx) => {
           undefined,
           { status: 409 },
         );
-      }
-      if (guardMode === 'auto_rewrite' && result.suggested_prompt && result.verdict !== 'PASS') {
-        promptToSend = result.suggested_prompt;
-        styleRewritten = true;
       }
     }
   }
@@ -608,7 +604,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
 
     const result = await provider.generate({
-      prompt: promptToSend,
+      prompt: body.prompt,
       references: refs,
       size: '1024x1024',
       quality: body.quality ?? 'medium',
@@ -633,7 +629,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       ? resolveBibleImageSize({ section: bibleSection })
       : '1024x1024';
     const real = await generateImageOpenAI({
-      prompt: promptToSend,
+      prompt: body.prompt,
       size: regenSize,
       quality: body.quality ?? 'medium',
     });
@@ -736,7 +732,7 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   const newEntry: ImagePromptHistoryEntry = {
     version: nextVersion,
-    prompt: promptToSend,
+    prompt: body.prompt,
     source: 'director_edit',
     at: nowIso,
     cost_usd: realCost,
@@ -748,7 +744,6 @@ export const POST = withApiHandler(async (req, ctx) => {
     quality: body.quality ?? 'medium',
     mode_at_time: decision.modeAtTime,
     style_check_verdict: styleVerdict,
-    style_check_rewritten: styleRewritten,
   };
 
   // For v2 EREF: append a new entry to shot_reference.generation_history
@@ -761,7 +756,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       version: v2AttemptVersion ?? 1,
       provider_id: realProviderId,
       model: realModel,
-      prompt: promptToSend,
+      prompt: body.prompt,
       references_used: v2RefsUsed,
       strength: null,
       cost_usd: realCost,
@@ -856,6 +851,6 @@ export const POST = withApiHandler(async (req, ctx) => {
     provider_id: realProviderId,
     regen_count: regenCount,
     mode_1_warning: mode1Warning,
-    style_check: { verdict: styleVerdict, rewritten: styleRewritten, skipped: styleSkipped },
+    style_check: { verdict: styleVerdict, skipped: styleSkipped },
   });
 });

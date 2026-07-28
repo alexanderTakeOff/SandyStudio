@@ -164,6 +164,48 @@ time) — but vary it elsewhere to avoid monotony.
 5. If budget conflict arises: flag to EXEC-ORCH, do not silently trim shots
 ```
 
+### Craft invariants — machine-level, genre-independent
+
+These hold because of how the downstream image/video generator works, not because
+of what an audience finds funny. They apply to every genre, medium and format. A
+genre playbook may ADD craft on top; it may never replace or relax these. Do NOT
+rely on a genre skill to carry them — a genre skill may not be loaded.
+
+1. **Action, never state.** A generator cannot draw a feeling, an intention,
+   knowledge or an evaluation — it draws the words you wrote. «asleep and
+   unsuspecting», «with intent», «has not begun to move yet», «absolute
+   stillness» all render as a character standing still. Write the observable
+   change instead. Absence of knowledge is shown as absence of REACTION to an
+   event that visibly HAPPENS in the shot — so the event must happen on screen.
+2. **Every verb is a status change.** "He stands" is not a status change;
+   "he lifts → it slips → falls on his foot" is three. A character who holds a
+   pose for the shot's whole duration is a defect — including the co-star, whose
+   body and contents must move too. Rest is where a beat ENDS, never where it
+   spends its runtime.
+3. **Never write a word the world already owns; bind it in every shot.** Your
+   prose is read by a generator that has never seen your Bible. It resolves every
+   noun with its OWN priors, and when a canon term also names a common everyday
+   object, the everyday object wins. Bind the word on first use IN THAT SHOT with
+   material, colour or geometry — not "weight" but "the 30-pound cast-iron weight
+   disc" — or pick a word the world does not already own. Shots render
+   INDEPENDENTLY: a binding written in SH04 does not travel to SH05. Re-bind every
+   time. (Director's rule 2026-07-17: a term carrying two meanings is banned from
+   `action_prose`; a wrong render on an ambiguous noun is the author's bug, never
+   the generator's. E30: "the Dusty Violet plate" rendered as a violet floor slab;
+   the bare "the plate itself" one shot later rendered as literal tableware.)
+4. **No canon image behind it → describe it fully, in-shot.** A thing is locked
+   one of two ways: `props_in_frame` names a Bible object that HAS a LOCKED
+   reference image (its pixels are attached at generation), or your prose is the
+   ONLY definition the generator ever receives. Anything transient, new or
+   one-shot must carry material + colour + geometry inline. Do not list a
+   non-canon item in `props_in_frame` expecting it to lock — there is no image to
+   attach; that field is for Bible objects only.
+5. **A canon thing that TRANSFORMS must name its source.** When a shot melts,
+   inflates, shatters or recolours something that IS canon, the generator ties the
+   new state to the locked colour/shape only if the prose names the source object.
+   Name the source, carry its canonical colour into the new state, THEN describe
+   the change. Severing the tie repaints the substance from the model's own priors.
+
 ### Step 3 — Decompose each scene into shots
 
 For each scene in the script, in order:
@@ -200,29 +242,36 @@ camera_motivation: # one-sentence narrative reason for the movement choice
                    #          emulates love-at-first-sight focal narrowing."
 
 location:          # exact string from World Bible — no variations
-time_of_day:       # from script scene exactly
-lighting_condition: # derived from World Bible lighting rules for this location + time_of_day
+time_of_day:       # MANDATORY — MORNING | DAY | AFTERNOON | EVENING | NIGHT.
+                   # From the script scene when it declares one. The live script
+                   # contract does not yet carry the field, so when the script is
+                   # silent, choose from the scene action + World Bible and record
+                   # the choice in `assumptions[]` — never leave it unstated.
+lighting_condition: # MANDATORY — derived from World Bible lighting rules for this
+                   # location at this time_of_day. Key source + direction + shadow
+                   # quality, concrete and physical, never a mood word. These two
+                   # fields are the ONLY machine-readable light in the pipeline:
+                   # light written into action_prose or continuity_notes instead
+                   # NEVER reaches the renderer (E33 rendered a night episode in
+                   # daylight for exactly this reason).
 
 characters_present: # character_ids from script scene — exact strings from profiles
                     # [] if no characters (establishing shot)
 
-action:            # one sentence — what the camera sees
-                   # subject + movement/state + reaction/expression
+action:            # one sentence — what the camera sees: subject + the CHANGE it
+                   # undergoes between first and last frame + the visible reaction.
+                   # The acting belongs here too. A held pose is not an action.
                    # must not go beyond what the script action describes
-                   # keep this line factual — the visible ACTING beat goes in the
-                   # dedicated `expected_emotion` field below, NOT smuggled in here
 
 expected_emotion:  # MANDATORY (Director directive 2026-06-20) — the focal
                    # character's VISIBLE acting beat for THIS shot, so the
-                   # Reference Designer renders real emotion instead of inventing
-                   # a flat face. One short clause covering:
+                   # Reference Designer renders real acting, not a flat face.
+                   # One short clause covering ONLY what the camera records:
                    #   - facial expression: eye state + mouth state
-                   #   - body attitude: how the pose carries the feeling
-                   #   - readable intent: what we instantly read them trying to do
-                   # Derive from the script beat + comic_beat. For a comedy series
-                   # the acting IS the product — never leave this empty.
-                   # Example: "panicked determination — eyes wide, mouth clenched,
-                   #           body stretched forward against the wind"
+                   #   - body attitude: how the pose carries it
+                   # Never a feeling-noun, never intent — neither has pixels.
+                   # Example: "eyes stretching wide, mouth clenching shut, body
+                   #           straining forward against the wind"
 
 dialogue:          # if script has dialogue in this scene, assign to shot where it occurs
                    # copy from script exactly — do not paraphrase

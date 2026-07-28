@@ -4,13 +4,26 @@
 // (purrfect-stirring-hollerith plan, Phase 1).
 //
 // Director opens a VID-shot in the Episode Asset Drawer, edits aspect /
-// quality / duration / prompt / reference, and clicks "Generate". This route:
+// quality / duration / reference, and clicks "Generate". This route:
 //   1. Validates the asset is a VID-shot.
 //   2. Resolves the storyboard shot (from the asset's metadata.shot_id).
-//   3. Loads (or accepts an override of) the approved EREF reference image.
-//   4. Calls Veo 3 with the chosen Universal Core settings.
-//   5. Persists the new mp4 → NEW asset row (status REVIEW). Old asset is
+//   3. Reads the PROMPT from the shot's APPROVED SPC-shot_plan — the same
+//      contract the automated path executes (runner.ts EXEC-VGEN plan-driven
+//      branch). No plan → hard refusal, never a fallback prompt.
+//   4. Loads (or accepts an override of) the approved EREF reference image.
+//   5. Calls the video provider with the chosen Universal Core settings.
+//   6. Persists the new mp4 → NEW asset row (status REVIEW). Old asset is
 //      preserved for audit / rollback.
+//
+// E33 audit P0 #4 (2026-07-29): this route used to build its prompt from
+// `body.prompt ?? buildShotPromptV2(storyboardShot, …)` — the approved plan was
+// never read. So the Director pressing "Re-generate" in the UI got a video that
+// bypassed the plan he had approved (and, because the panel echoed the previous
+// asset's stored prompt back, a re-authored plan was silently ignored). The
+// plan is now the ONLY prompt source here, exactly as in the automated path;
+// the legacy storyboard template and the free-text prompt override are gone —
+// to change the prompt, revise the plan (REQUEST_REVISION → Animator) or edit
+// it on the Shot Plan contract page.
 //
 // Mode-gated via `enforceMode('REGENERATE_IMAGE')` — same Category C as
 // regenerate-image.
@@ -24,12 +37,12 @@ import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { getMultiVideoProvider } from '@/lib/agents/providers/video-gen-multi';
-import { getVgenDefaults, type VgenProviderId } from '@/lib/api/vgen-defaults';
+import { getVgenDefaults } from '@/lib/api/vgen-defaults';
 import {
+  clampRenderDuration,
   deliveryAspectFor,
   type VideoAspectRatio,
   type VideoProviderId,
-  type VideoQualityTier,
   type VideoResolution,
 } from '@/lib/api/provider-capabilities';
 import {
@@ -37,13 +50,20 @@ import {
   type EpisodeVideoConfig,
 } from '@/lib/api/resolve-generation-params';
 import { persistBinary } from '@/lib/agents/persist-binary';
-import { loadSeriesBibleCanon } from '@/lib/agents/bible-loader';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import { recordCost } from '@/lib/budget';
+import { parseShotPlanContract } from '@/lib/api/shot-plan-contract';
 import {
-  buildShotPromptV2,
-  makeCharacterCanonSnippets,
+  assertShotReadyForGeneration,
+  resolveApprovedShotPlan,
+  shotPlanRenderParams,
+} from '@/lib/api/shot-readiness';
+import {
+  effectiveDurationSeconds,
+  isAnimaticV1,
+} from '@/lib/api/animatic-shotlist';
+import {
   getApprovedEREFForShot,
   getStoryboardShotById,
 } from '@/lib/api/vgen-shot-helpers';
@@ -53,20 +73,22 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const Body = z.object({
-  prompt: z.string().min(8).max(8000).optional(),
-  // Sprint β 2026-05-14: full capability surface. Adapters narrow + downgrade
-  // per provider (e.g. Veo silently downgrades 21:9 → 16:9; ignores seed).
+  // NO `prompt`, `provider`, `quality_tier`, `resolution`, `seed` or
+  // `duration_seconds` — every one of them is a DECISION of the approved
+  // SPC-shot_plan, read here through the same projection the automated path
+  // uses (E33 audit P0 #4 + the three same-class holes, 2026-07-29). Each of
+  // these fields was a second, uncontrolled channel: the drawer could run an
+  // approved prompt at an unapproved tier/resolution, and `body.seed` let a
+  // "retry" differ from the first take ONLY by seed — $0.968 on a dice roll
+  // instead of on the revision. To change any of them, revise the plan
+  // (REQUEST_REVISION → Animator) or edit it on the Shot Plan contract page.
+  //
+  // Aspect stays a per-shot channel: it is the delivery-format axis the
+  // episode authority owns (resolveVideoParams), mirroring the runner's event
+  // `aspectRatio` arg rather than a plan field.
   aspect_ratio: z.enum(['16:9', '9:16', '1:1', '21:9', '4:3', '3:4', 'auto']).optional(),
-  quality_tier: z.enum(['fast', 'standard']).optional(),
-  duration_seconds: z.number().min(4).max(15).optional(),
-  resolution: z.enum(['480p', '720p', '1080p']).optional(),
-  seed: z.number().int().optional(),
   end_image_asset_id: z.string().uuid().nullable().optional(),
   reference_asset_id: z.string().uuid().nullable().optional(),
-  // Phase 2 (2026-05-13): explicit provider override per UI dropdown choice.
-  // Fallback chain: body override → asset metadata.provider_id → series default
-  // (app_config.vgen_defaults.<series>) → FALLBACK_DEFAULTS.provider_id.
-  provider: z.enum(['veo-3-img2vid', 'seedance-fal-img2vid']).optional(),
   directorConfirm: z.boolean().optional(),
 });
 
@@ -183,14 +205,13 @@ export const POST = withApiHandler(async (req, ctx) => {
     ? getStoryboardShotById(stbAsset.content, shotId)
     : null;
 
-  // Episode title for prompt context
+  // Episode row — filename prefix + the format authority (generation_config).
   const { data: epRow } = await sb
     .from('episodes')
-    .select('episode_code,title_working,metadata')
+    .select('episode_code,metadata')
     .eq('id', asset.episode_id)
     .maybeSingle();
   const episodeCode = (epRow as { episode_code?: string } | null)?.episode_code ?? 'SS-unknown';
-  const episodeTitle = (epRow as { title_working?: string | null } | null)?.title_working ?? '';
   const episodeMeta = ((epRow as { metadata?: unknown } | null)?.metadata ?? null) as
     | Record<string, unknown>
     | null;
@@ -202,25 +223,54 @@ export const POST = withApiHandler(async (req, ctx) => {
       )
     : [];
 
-  // Phase A.1 — load Bible character canon to anchor character visuals in the
-  // prompt alongside the EREF reference image. Failure is non-fatal: degrade
-  // to empty canon so regenerate still works on series without Bible.
-  let bibleCanon: ReturnType<typeof makeCharacterCanonSnippets> = [];
-  try {
-    const bible = await loadSeriesBibleCanon(sb, asset.episode_id);
-    bibleCanon = makeCharacterCanonSnippets(
-      bible.characters.map((c) => ({ slug: c.slug, description: c.description })),
+  // ── Prompt = the shot's APPROVED plan, re-read from the DB ──────────────
+  // Same contract, same parser, same fail-loud semantics as the automated path
+  // (runner.ts EXEC-VGEN "Refusing silent storyboard fallback"). Resolved BY
+  // SHOT, not by an id cached on the previous asset, so a plan re-authored
+  // after a REQUEST_REVISION is the one that renders. Every failure mode is a
+  // hard refusal with a reason the Director can act on — a silent fallback to
+  // a legacy template is precisely the defect this replaces.
+  const { plan, reason: planReason } = await resolveApprovedShotPlan(
+    sb,
+    asset.episode_id,
+    shotId,
+    null,
+  );
+  if (!plan) {
+    throw new ValidationError(
+      `Shot ${shotId} has no APPROVED shot plan (${planReason ?? 'not found'}) — refusing to re-render off-plan. Author/approve the plan first (Animator → EXEC-VPREV → approve).`,
     );
-  } catch {
-    bibleCanon = [];
   }
 
-  // Resolve prompt: explicit override → buildShotPromptV2 (with Bible canon) → fallback
-  const finalPrompt = body.prompt
-    ? body.prompt
-    : storyboardShot
-      ? buildShotPromptV2(storyboardShot, episodeTitle, bibleCanon)
-      : `Single shot from animated comedy "${episodeTitle}" (shot ${shotId}). Vibrant 2D animation, dynamic action, comedic timing.`;
+  // ── FREE readiness gate — the same one `/trigger` runs ($0, pre-spend) ───
+  // Hole #3 of the same family: the gate guarded the automated dispatch but NOT
+  // the Director's button, so a manual re-render could pay a full render and
+  // only THEN die on a dead reference, a cancelled VGEN, or a plan whose
+  // declared resolution the provider cannot render. Pinned to `plan.id` so the
+  // gate validates exactly the plan this request is about to execute. Throws
+  // ShotNotReadyError (a ValidationError → 400 carrying the blockers).
+  await assertShotReadyForGeneration(sb, {
+    shotId,
+    episodeId: asset.episode_id,
+    planAssetId: plan.id,
+  });
+
+  const planContract = parseShotPlanContract(plan.content);
+  // The gate above already blocks `plan_unparseable` / `prompt_missing` with
+  // richer findings; this is the type-narrowing backstop, not a second gate.
+  if (!planContract.prompt) {
+    throw new ValidationError(
+      `Shot plan ${plan.id} for ${shotId} has no usable \`prompt\`${planContract.error ? ` (${planContract.error})` : ''}. Refusing to re-render off-plan.`,
+    );
+  }
+  const finalPrompt = planContract.prompt;
+
+  // ── The plan's OTHER decisions — provider / quality / resolution / seed ──
+  // Same projection the runner's plan-driven branch consumes. Executing the
+  // plan's prompt while picking the tier from a UI drawer is the same defect as
+  // discarding the plan, just smaller: a contract honoured in part is not
+  // honoured. `providerUnknown` mirrors the runner's soft fall-back.
+  const planParams = shotPlanRenderParams(planContract);
 
   // Resolve reference image: override → approved EREF for shot → none
   let referenceImageBase64: string | null = null;
@@ -306,38 +356,26 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
-  const seed = typeof body.seed === 'number' ? body.seed : undefined;
+  // Seed: the PLAN's, or none. Never the drawer's, never a fresh roll — an
+  // unlocked seed is why the E33 SH01 retry differed from take 1 by nothing but
+  // the dice. Providers that ignore seed drop it at the call site below.
+  const seed = planParams.seed ?? undefined;
 
-  // Map a previous asset's stored provider_id (which may be a legacy alias)
-  // into the canonical id for the shot-override channel.
-  function normalizeProviderId(raw: string | null | undefined): VgenProviderId | null {
-    if (raw === 'veo-3' || raw === 'veo-3-img2vid') return 'veo-3-img2vid';
-    if (raw === 'seedance-fal' || raw === 'seedance-fal-img2vid') return 'seedance-fal-img2vid';
-    return null;
-  }
-
-  // 2026-06-09: single resolver authority (same as the runner). Director's
-  // explicit drawer edits (body) and the previous asset's metadata form the
-  // per-shot override channel; episode generation_config wins for declared
-  // fields unless allow_shot_overrides is on. duration + seed stay per-shot
-  // (q27). For an un-configured episode this reproduces the prior
-  // body → meta → series → fallback chain — no regression.
+  // 2026-06-09: single resolver authority (same call the runner makes). The
+  // shot-override channel now carries the PLAN's provider / quality /
+  // resolution (2026-07-29) instead of drawer edits + previous-asset metadata;
+  // episode generation_config still wins for declared fields unless
+  // allow_shot_overrides is on. Aspect remains the per-request channel.
   const seriesDefaults = await getVgenDefaults(sb, asset.series_id);
   const resolved = resolveVideoParams({
     episodeConfig: episodeVideoConfig,
     shotOverride: {
-      provider_id:
-        body.provider ??
-        normalizeProviderId(typeof meta.provider_id === 'string' ? meta.provider_id : null),
+      provider_id: planParams.format.provider_id,
       aspect_ratio:
         body.aspect_ratio ??
         (typeof meta.aspect_ratio === 'string' ? (meta.aspect_ratio as VideoAspectRatio) : null),
-      quality_tier:
-        body.quality_tier ??
-        (typeof meta.quality_tier === 'string' ? (meta.quality_tier as VideoQualityTier) : null),
-      resolution:
-        body.resolution ??
-        (typeof meta.resolution === 'string' ? (meta.resolution as VideoResolution) : null),
+      quality_tier: planParams.format.quality_tier,
+      resolution: planParams.format.resolution,
     },
     seriesDefaults,
     deliveryAspect: deliveryAspectFor(episodeDeliveryTargets),
@@ -349,18 +387,55 @@ export const POST = withApiHandler(async (req, ctx) => {
   const videoProvider = getMultiVideoProvider(providerId);
   const cap = videoProvider.capabilities;
 
-  const durationSeconds = (() => {
-    const clamp = (n: number) => Math.min(cap.max_duration_s, Math.max(cap.min_duration_s, Math.round(n)));
-    if (typeof body.duration_seconds === 'number' && body.duration_seconds > 0) {
-      return clamp(body.duration_seconds);
+  // Where each field actually came from. When the plan declares nothing the
+  // resolver falls through to episode/series/fallback — legitimate, but it must
+  // be VISIBLE (the requirement is "explicit, not a silent pick"), so the source
+  // map rides along into the asset description, metadata and the response.
+  const formatSource = {
+    ...resolved.source,
+    ...(planParams.providerUnknown
+      ? { plan_provider_id: `${planContract.providerId} (off-allowlist → fell back)` }
+      : {}),
+  };
+
+  // ── RENDER duration — same authority order as the runner ────────────────
+  // Director directive 2026-06-22: render length is the episode-TIMELINE
+  // (animatic director_overrides) value, not the possibly-stale plan value —
+  // render length is cost. Plan is the fallback, then the storyboard. The
+  // drawer's slider is gone: it was a fourth source with the highest priority
+  // and no record. Clamped to the resolved provider's contract, never a
+  // hardcoded range.
+  const { data: animaticRow } = await sb
+    .from('assets')
+    .select('metadata')
+    .eq('episode_id', asset.episode_id)
+    .eq('file_type', 'VID-animatic')
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const animaticMeta = (animaticRow as { metadata?: unknown } | null)?.metadata;
+  const animaticDuration = (() => {
+    if (!isAnimaticV1(animaticMeta)) return null;
+    const doc = animaticMeta.animatic_v1;
+    const animShot = doc.shot_list.find((s) => s.shot_id === shotId);
+    if (!animShot) return null;
+    return effectiveDurationSeconds(animShot, doc.director_overrides);
+  })();
+  const { durationSeconds, durationSource } = (() => {
+    const pick = (n: number, source: string) => ({
+      durationSeconds: clampRenderDuration(cap, n),
+      durationSource: source,
+    });
+    if (animaticDuration !== null && animaticDuration > 0) {
+      return pick(animaticDuration, 'animatic');
     }
-    if (typeof meta.duration_seconds === 'number' && meta.duration_seconds > 0) {
-      return clamp(meta.duration_seconds as number);
+    if (planParams.durationSeconds !== null && planParams.durationSeconds > 0) {
+      return pick(planParams.durationSeconds, 'plan');
     }
     if (storyboardShot?.duration_seconds && storyboardShot.duration_seconds > 0) {
-      return clamp(storyboardShot.duration_seconds);
+      return pick(storyboardShot.duration_seconds, 'storyboard');
     }
-    return clamp(5);
+    return pick(5, 'fallback');
   })();
 
   // Veo Standard img2vid quirk — see runner.ts EXEC-VGEN for full rationale.
@@ -436,6 +511,12 @@ export const POST = withApiHandler(async (req, ctx) => {
     ...(typeof seed === 'number' ? { seed } : {}),
     ...(body.end_image_asset_id ? { end_image_asset_id: body.end_image_asset_id } : {}),
     prompt: finalPrompt,
+    // Provenance — which approved plan this render executed, and which layer won
+    // each parameter. Lets an audit prove the manual re-render honoured the plan
+    // in FULL, not just its prompt (E33 audit P0 #4 + the three same-class holes).
+    plan_asset_id: plan.id,
+    format_source: formatSource,
+    duration_source: durationSource,
     reference_eref_asset_id: referenceErefAssetId,
     storyboard_asset_id: stbAsset?.id ?? null,
     staging_path: persisted.absolutePath,
@@ -456,7 +537,7 @@ export const POST = withApiHandler(async (req, ctx) => {
   // Production trace shown in AssetPreview's "⚙ {description}" green box.
   // Includes model_id so Director can audit Veo 3.0 vs 3.1 at a glance
   // (Phase A.1 directive 2026-05-07 — "Verify provider").
-  const description = `model=${real.model_id} · ${aspectRatio} · ${qualityTier} · ${real.duration_seconds}s · cost $${real.cost_usd.toFixed(3)} · op=${real.operation_name}`;
+  const description = `model=${real.model_id} · ${aspectRatio} · ${qualityTier} · ${real.duration_seconds}s · cost $${real.cost_usd.toFixed(3)} · op=${real.operation_name} · plan=${plan.id.slice(0, 8)} · src[provider=${resolved.source.provider} quality=${resolved.source.quality} res=${resolved.source.resolution} dur=${durationSource}${typeof seed === 'number' ? ' seed=plan' : ''}]`;
 
   const { data: insertedAsset, error: insErr } = await sb
     .from('assets')
@@ -524,6 +605,15 @@ export const POST = withApiHandler(async (req, ctx) => {
     duration_seconds: durationSeconds,
     aspect_ratio: aspectRatio,
     quality_tier: qualityTier,
+    // The plan that was executed + which layer supplied each parameter, so the
+    // drawer can show what actually drove the render instead of echoing back
+    // the controls the Director happened to be looking at.
+    plan_asset_id: plan.id,
+    provider_id: providerId,
+    resolution: resolution ?? null,
+    seed: seed ?? null,
+    format_source: formatSource,
+    duration_source: durationSource,
     new_version: nextVersion,
     staging_url: persisted.browserUrl,
     drive_web_view_url: persisted.driveWebViewUrl,

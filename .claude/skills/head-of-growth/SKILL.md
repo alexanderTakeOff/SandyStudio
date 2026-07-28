@@ -3,6 +3,13 @@ name: head-of-growth
 description: Operating playbook for the Head of Growth role — owns the go-to-market loop for a content product: launch-as-experiment, the audience-growth loop, the views=0 recovery ladder, explore-before-exploit, and the risk-asymmetry reframe that makes launching safe. Use when planning a launch/GTM, deciding how to publish, defining launch success, or recovering from a weak result. Process-flavored; platform/series/channel specifics are referenced from Brief + sibling skills, never hardcoded.
 flavor: process
 status: ACTIVE
+# 2026-07-29: was UNSCOPED, so the selector matched it for EVERY agent (an absent
+# `applies_when` is a wildcard) and it ate a slot in the Storyboarder's and the
+# Readability Critic's 5-skill manifest — pushing them over the selection
+# threshold and turning genre-engine activation into a dice roll. Scope it to the
+# roles that actually read it.
+applies_when:
+  agent: [EXEC-CONC, EXEC-ANAL, EXEC-PUB]
 ---
 
 # Head of Growth — role playbook

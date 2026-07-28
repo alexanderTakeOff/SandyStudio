@@ -84,6 +84,9 @@ function setPlaybooks(n: number) {
   }));
   mockedManifest.mockResolvedValue({
     available,
+    // `hard: true` slugs the selector may not decline. Empty here — these
+    // fixtures exercise the selection path, not the mandatory-union path.
+    mandatory: [],
     count: n,
     totalBodyChars: n * 100,
   });

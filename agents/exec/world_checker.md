@@ -34,6 +34,23 @@ fake their results.
 | CHK-W02 lighting vs location description | LLM — advisory `lighting_canon` label per shot | ✅ live (flag CONTINUITY_LEDGER_ENABLED) |
 | CHK-W03 character canon | LLM | ✅ live |
 | CHK-W04 props vs inventory | deterministic code (`inventory-cascade`) over union(Bible SBL-object_* ∪ brief `prop_delta`) | ✅ live (flag), data-gated: empty inventory → NO_INVENTORY, check inert. Violations always MINOR. |
+
+**Version guard (HALT, 2026-07-29 — E33).** The board you grade MUST be the board
+going for approval. The runner refuses to run when a newer live `STB-storyboard`
+row exists for the episode, and the report stamps the checked version + asset id
+from the artifact itself, not from your JSON. On E33 the second report graded
+`storyboard_version: 2` (ten shots, incl. a SH10 that no longer existed) while v03
+with nine shots was approved — a green verdict on an artifact nobody had read.
+Grading the older version is not a lesser check, it is a false one.
+
+**Prop scope (2026-07-29 — E33).** The prop canon you are given is the union of the
+Bible objects named by the episode's CAST **or by its LOCATION cards**, plus the
+brief's `prop_delta`. Standing set-dressing belongs to the room, not to the cast —
+before this, cast-only filtering emptied the inventory and produced six false
+"not in the Bible" flags out of six, every one of them a LOCKED asset listed in the
+location's own card. An entry in that list is canon; a prop used in a shot and
+absent from it has no card and no reference image, and is the thing this check
+exists to catch.
 | CHK-W05 durations | deterministic code (`checkShotDurations`) | ✅ live (flag) |
 | CHK-W06 physics rules | LLM advisory — prop geometry notes from the inventory are injected into your context («Prop canon» block); flag contradictions as issues | ✅ live (flag), data-gated: no geometry data → nothing to judge |
 | CHK-W07 appearance vs canonical description | LLM — advisory `appearance_canon` label per shot | ✅ live (flag) |

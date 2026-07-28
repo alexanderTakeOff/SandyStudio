@@ -15,16 +15,19 @@
 
 import { useEffect, useState } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, Loader2 } from 'lucide-react';
+import type { StyleCheckResult } from '@/lib/agents/runners/style-check';
+import type { StyleGuardianMode } from '@/lib/api/style-guardian-config';
 
-interface StyleCheckResponse {
-  verdict: 'PASS' | 'WARN' | 'FAIL';
-  score: number;
-  issues: Array<{ field: string; severity: 'low' | 'med' | 'high'; note: string }>;
-  suggested_prompt: string | null;
-  skipped: boolean;
-  skipped_reason?: string;
-  style_guardian_mode: 'warn' | 'strict' | 'auto_rewrite';
-}
+/**
+ * Exactly what POST /api/style-check returns: the runner's result spread, plus
+ * the current guardian mode. Composed from the two sources of truth instead of
+ * being re-declared — the hand-copied version had drifted, still carrying the
+ * deleted `suggested_prompt` field and an `auto_rewrite` mode that no longer
+ * exists (E33 P0 #1 removed both). Type-only imports: nothing ships to the client.
+ */
+type StyleCheckResponse = StyleCheckResult & {
+  style_guardian_mode: StyleGuardianMode;
+};
 
 export interface StyleGuardianBadgeProps {
   prompt: string;

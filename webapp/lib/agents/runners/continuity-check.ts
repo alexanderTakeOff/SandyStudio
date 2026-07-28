@@ -10,6 +10,8 @@
 //   - per-shot duration schema limits                      (CHK-W05)
 //   - deterministic state-evolution ledger                 (CHK-W08):
 //     Haiku extraction → ShotStateDelta[] → validateStateLedger (pure code).
+// Before anything else it HALTs when the board in hand is not the newest live
+// storyboard for the episode (E33: PASS stamped on v2 while v3 was approved).
 // Returns PASS / REVISE / FAIL verdict with per-shot issues. The ledger never
 // FAILs on its own; comedy-soft policy (Director q2 2026-06-11): the MAJOR
 // pool (ledger + durations + canon conflicts) must reach the threshold to
@@ -35,6 +37,17 @@ import { findApprovedAsset } from '../upstream';
 // WCHK runs pre-approval (CREAD-PASS chain) — accept the latest board in any
 // reviewable status, mirroring the Script Critic's SCR-script resolution.
 const STB_REVIEWABLE: ReadonlySet<string> = new Set(['REVIEW', 'REVISION', 'APPROVED']);
+/** Statuses a storyboard row can hold and still be a LIVE candidate for approval.
+ *  A newer row in one of these is the board the Director is about to approve —
+ *  see assertCheckedBoardIsLatest. REJECTED / INVALIDATED / TEST are dead ends. */
+const STB_LIVE_STATUSES = [
+  'DRAFT',
+  'REVIEW',
+  'REVISION',
+  'APPROVED',
+  'LOCKED',
+  'NEEDS_HUMAN_TWEAK',
+] as const;
 import {
   validateStateLedger,
   reviseImpactForMajorPool,
@@ -107,9 +120,11 @@ interface UpstreamAssetLike {
   version?: number | null;
 }
 
-interface BibleAssetLike {
+export interface BibleAssetLike {
   filename: string;
   description: string | null;
+  /** Long-form canon body when the card keeps it separate from `description`. */
+  content?: string | null;
   status: string;
   file_type: string;
   /** SBL-object_* carries optional { aliases, geometry } for Motor 2. */
@@ -153,6 +168,49 @@ async function loadSystemPrompt(): Promise<string> {
 // re-introduce a local filename regex here. See JSDoc on bibleSlugFromFileType
 // for the history of the bug this prevents.
 
+/**
+ * HALT guard (E33, 2026-07-29): WCHK must judge the board that is going for
+ * approval — not whichever older row happened to be in `upstream_assets`.
+ *
+ * On E33 the v02 report graded `storyboard_version: 2` (ten shots, incl. a
+ * SH10 that no longer exists) while v03 — nine shots — was the board that got
+ * APPROVED. The final artifact was never checked, and the PASS was read as if
+ * it covered it. Silently grading the older version is worse than not checking
+ * at all: it manufactures a green verdict for an artifact nobody looked at.
+ *
+ * So: if a NEWER live storyboard row exists for this episode, stop. Never
+ * downgrade to "check the old one and mention it".
+ */
+async function assertCheckedBoardIsLatest(
+  supabase: SupabaseClient<Database>,
+  episodeId: string | null | undefined,
+  checkedVersion: number,
+): Promise<{ status: 'OK' | 'SKIPPED'; newest_version: number | null; note?: string }> {
+  if (!episodeId) return { status: 'SKIPPED', newest_version: null, note: 'no episode id' };
+  const { data, error } = await supabase
+    .from('assets')
+    .select('id,version,status')
+    .eq('episode_id', episodeId)
+    .eq('file_type', 'STB-storyboard')
+    .in('status', STB_LIVE_STATUSES as unknown as never)
+    .order('version', { ascending: false })
+    .limit(1);
+  // A failed lookup cannot PROVE a mismatch — do not block the pipeline on it,
+  // but say so in the report rather than presenting the guard as having run.
+  if (error) return { status: 'SKIPPED', newest_version: null, note: error.message };
+  const newest = (data ?? [])[0] as { version?: number | null; status?: string } | undefined;
+  const newestVersion = typeof newest?.version === 'number' ? newest.version : null;
+  if (newestVersion !== null && newestVersion > checkedVersion) {
+    throw new ContinuityCheckError(
+      `HALT — storyboard version mismatch: the newest live board is v${newestVersion} ` +
+        `(${newest?.status ?? 'unknown status'}), but the board reaching this check is ` +
+        `v${checkedVersion}. Checking the older board would stamp a verdict on an artifact ` +
+        `that is not the one being approved. Re-fire EXEC-WCHK against v${newestVersion}.`,
+    );
+  }
+  return { status: 'OK', newest_version: newestVersion };
+}
+
 async function loadBibleCanon(
   supabase: SupabaseClient<Database>,
   seriesId: string,
@@ -165,7 +223,7 @@ async function loadBibleCanon(
 }> {
   const { data, error } = await supabase
     .from('assets')
-    .select('filename,description,status,file_type,metadata')
+    .select('filename,description,content,status,file_type,metadata')
     .eq('series_id', seriesId)
     .eq('status', 'LOCKED')
     .like('file_type', 'SBL-%');
@@ -181,14 +239,51 @@ async function loadBibleCanon(
     const slug = bibleSlug(a.file_type);
     return slug != null && castSlugs.has(slug.toLowerCase());
   };
+  const locations = all.filter(
+    (a) => a.file_type.startsWith('SBL-location_') && inCast(a),
+  );
   return {
     characters: all.filter((a) => a.file_type.startsWith('SBL-character_') && inCast(a)),
-    locations: all.filter((a) => a.file_type.startsWith('SBL-location_') && inCast(a)),
+    locations,
     styles: all.filter((a) => a.file_type.startsWith('SBL-style_')),
     // Motor 2 (CHK-W04): the v1 contract declared SBL-object_ as
     // optional_series from day one — the runner just never loaded it.
-    objects: all.filter((a) => a.file_type.startsWith('SBL-object_') && inCast(a)),
+    objects: selectCanonObjects(all, inCast, locations),
   };
+}
+
+/**
+ * Which LOCKED objects are prop canon for THIS episode.
+ *
+ * E33 fix (2026-07-29) — props resolve THROUGH the location card. The cast
+ * gallery lists the story's principals; it does not list the standing
+ * set-dressing of the rooms it casts. Cast-only filtering emptied the inventory
+ * on E33 (cast = 3 entries: hero, antagonist, bedroom), so CHK-W04
+ * self-deactivated (NO_INVENTORY), and the LLM — handed no prop canon at all —
+ * flagged six LOCKED props as "not confirmed in the Bible inventory": 6 false
+ * positives out of 6, every one of them named in the bedroom card's own
+ * locked-object block. The missing step was never the check, it was this
+ * resolution. With it the inventory is populated again and CHK-W04 can do the
+ * one job nothing else does: catch a prop carried through a whole episode with
+ * no canon card at all (E33's crib).
+ */
+export function selectCanonObjects(
+  all: readonly BibleAssetLike[],
+  inCast: (a: BibleAssetLike) => boolean,
+  castLocations: readonly BibleAssetLike[],
+): BibleAssetLike[] {
+  const locationCanonText = castLocations
+    .map((l) => `${l.description ?? ''}\n${l.content ?? ''}`)
+    .join('\n')
+    .toLowerCase();
+  return all.filter((a) => {
+    if (!a.file_type.startsWith('SBL-object_')) return false;
+    if (inCast(a)) return true;
+    const slug = bibleSlug(a.file_type);
+    return (
+      slug != null && slug.length > 0 && locationCanonText.includes(slug.toLowerCase())
+    );
+  });
 }
 
 /** Bible SBL-object_* asset → PropSpec (aliases/geometry from metadata). */
@@ -271,7 +366,14 @@ function buildUserMessage(args: {
     '',
     ...(canonChecks && inventory && inventory.length > 0
       ? [
-          `**Prop canon** (${inventory.length} entries — Bible objects ∪ episode prop_delta).`,
+          `**Prop canon** (${inventory.length} entries — Bible objects named by the`,
+          'episode\'s cast OR by its location cards, ∪ the brief\'s prop_delta).',
+          'This list is the ONLY authority on what is a canonical prop. An entry that',
+          'appears here IS canon — never flag it as "not in the Bible", not even when',
+          'the episode cast does not name it: standing set-dressing belongs to the',
+          'location, not to the cast. A prop a shot uses that is ABSENT from this list',
+          'has no canon card and no reference image, so every shot will re-invent its',
+          'shape and colour — flag it as an issue naming the shot.',
           'Geometry notes are physics canon (CHK-W06 advisory): flag an issue when a',
           'shot\'s action contradicts a prop\'s stated geometry (e.g. a four-legged',
           'table "rolling like a wheel" when its canon says it cannot roll).',
@@ -529,6 +631,15 @@ export async function runContinuityCheck(
     );
   }
 
+  // The board must be the one going for approval — HALT, never silently grade
+  // an older version (E33: PASS stamped on v2 while v3 was approved).
+  const checkedVersion = sbAsset.version ?? 1;
+  const versionGuard = await assertCheckedBoardIsLatest(
+    supabase,
+    ep?.id ?? inputs.episode_id,
+    checkedVersion,
+  );
+
   // Series is required to load Bible canon. Always resolve via helper so we
   // get a real UUID even when episodes.series_id was populated with the code
   // (legacy NewEpisodeModal bug).
@@ -561,7 +672,7 @@ export async function runContinuityCheck(
   const userMessage = buildUserMessage({
     episodeCode,
     storyboardContent: sbAsset.content,
-    storyboardVersion: sbAsset.version ?? 1,
+    storyboardVersion: checkedVersion,
     bible,
     canonChecks: ledgerOn,
     inventory,
@@ -601,6 +712,14 @@ export async function runContinuityCheck(
   let totalCostUsd = result.costUsd;
   let markdown = result.markdown;
   const body: Record<string, unknown> = { ...result.body };
+
+  // The LLM echoes `storyboard_version` from the prompt template, so a report
+  // can name a version it did not read. Overwrite with the artifact we actually
+  // fed it — identity of the checked board is a fact, not a model opinion.
+  body.storyboard_version = checkedVersion;
+  body.storyboard_asset_id = sbAsset.id ?? null;
+  body.storyboard_status = sbAsset.status ?? null;
+  body.version_guard = versionGuard;
 
   if (ledgerOn) {
     const shots = listStoryboardShotsV2(sbAsset.content);
@@ -716,7 +835,7 @@ export async function runContinuityCheck(
     : '';
   const description =
     `Produced by EXEC-CONT · ${CONT_CONTRACT} · ${result.model} · ` +
-    `verdict ${verdict} · ` +
+    `verdict ${verdict} · STB v${checkedVersion} · ` +
     `${bible.characters.length} canon characters / ${bible.locations.length} locations · ` +
     `cost $${totalCostUsd.toFixed(4)}${ledgerSuffix}`;
 
@@ -737,7 +856,13 @@ export async function runContinuityCheck(
   const verdictBanner =
     `## Continuity verdict: ${verdict}` +
     (downgradedByLedger ? ' — downgraded from PASS by the state-ledger (see below)' : '') +
-    '\n\n';
+    '\n\n' +
+    `_Checked artifact: STB-storyboard v${checkedVersion} ` +
+    `(${sbAsset.status ?? 'unknown status'}, asset ${sbAsset.id ?? 'unknown'})` +
+    (versionGuard.status === 'SKIPPED'
+      ? ' · ⚠️ latest-version guard skipped: ' + (versionGuard.note ?? 'unknown')
+      : '') +
+    '._\n\n';
   markdown = verdictBanner + markdown;
 
   return {

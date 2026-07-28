@@ -15,11 +15,20 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/supabase/types.gen';
-import { parseShotPlanContract } from '@/lib/api/shot-plan-contract';
+import {
+  parseShotPlanContract,
+  type ShotPlanContract,
+} from '@/lib/api/shot-plan-contract';
 import { resolveVanimProviderId } from '@/lib/agents/runners/animator';
-import { VIDEO_PROVIDER_CAPS } from '@/lib/api/provider-capabilities';
+import {
+  VIDEO_PROVIDER_CAPS,
+  type VideoProviderId,
+  type VideoQualityTier,
+} from '@/lib/api/provider-capabilities';
+import type { ShotFormatOverride } from '@/lib/api/resolve-generation-params';
 import { assertMediaResolves, type PreflightAsset } from '@/lib/agents/media-preflight';
 import { isVgenCancelled } from '@/lib/api/vgen-cancel';
+import { ValidationError } from '@/lib/api/errors';
 
 export interface ReadinessFinding {
   code: string;
@@ -35,7 +44,7 @@ export interface ReadinessReport {
   details: Record<string, unknown>;
 }
 
-interface PlanRow {
+export interface PlanRow {
   id: string;
   content: string | null;
   status: string;
@@ -50,8 +59,14 @@ interface RefRow {
   staging_path: string | null;
 }
 
-/** Resolve the APPROVED Shot Plan to validate: explicit id, else newest for the shot. */
-async function loadPlan(
+/**
+ * Resolve the Shot Plan of record: explicit id, else the newest APPROVED plan
+ * for the shot. Exported because every path that renders a shot must execute
+ * the SAME approved plan — the readiness gate here, and the manual per-shot
+ * re-render (`/api/assets/:id/regenerate-video`), which used to build its own
+ * legacy storyboard prompt instead (E33 audit P0 #4).
+ */
+export async function resolveApprovedShotPlan(
   supabase: SupabaseClient<Database>,
   episodeId: string,
   shotId: string,
@@ -86,6 +101,73 @@ async function loadPlan(
 }
 
 /**
+ * The generation decisions an Animator plan DECLARES, projected into the shape
+ * every render path consumes. One function, two callers — the runner's
+ * plan-driven branch (lib/agents/runner.ts EXEC-VGEN) and the manual per-shot
+ * re-render (`/api/assets/:id/regenerate-video`).
+ *
+ * E33 audit (2026-07-29): the runner extracted these fields inline and the
+ * manual route did not extract them at all — it took provider / quality_tier /
+ * resolution / seed from the UI drawer instead. So a re-render executed the
+ * APPROVED prompt at a tier the plan never declared, and the plan-locked seed
+ * was dropped (the E33 SH01 retry differed from the first take ONLY by seed —
+ * $0.968 spent on a dice roll instead of on the revision). Projecting once and
+ * consuming twice is what makes "the plan is a contract, not a hint" structural
+ * rather than a convention each caller has to remember.
+ *
+ * FORMAT only + seed + duration. Prompt, end_image and the anchor chain keep
+ * their own richer readers (parseShotPlanContract / extractAnchorChain).
+ */
+export interface ShotPlanRenderParams {
+  /** provider / quality / resolution, ready for `resolveVideoParams`'s shot channel. */
+  format: ShotFormatOverride;
+  /** Resolved provider impl; null when undeclared OR off-allowlist (see below). */
+  providerImpl: VideoProviderId | null;
+  /** `provider.id` is declared but off the Animator allowlist — callers soft-fall
+   *  back to their own provider chain (the runner's long-standing behaviour). */
+  providerUnknown: boolean;
+  /** Plan-locked seed. null = the plan declares none → send no seed. */
+  seed: number | null;
+  /** Plan-declared render duration. null = undeclared. */
+  durationSeconds: number | null;
+}
+
+export function shotPlanRenderParams(contract: ShotPlanContract): ShotPlanRenderParams {
+  let providerImpl: VideoProviderId | null = null;
+  let providerUnknown = false;
+  let qualityTier: VideoQualityTier | null = null;
+
+  // provider.id is the single source of truth for provider AND tier (TD-44).
+  if (contract.providerId) {
+    try {
+      const resolved = resolveVanimProviderId(contract.providerId);
+      providerImpl = resolved.providerImpl;
+      qualityTier = resolved.qualityTier;
+    } catch {
+      // Off-allowlist id is a SOFT fail (the allowlist grows; a new entry must
+      // not break every render). Reported via providerUnknown so the caller can
+      // warn instead of guessing.
+      providerUnknown = true;
+    }
+  }
+  // An explicit `quality_tier` beats the provider-derived tier — same precedence
+  // the runner applied when it did this inline.
+  if (contract.qualityTier) qualityTier = contract.qualityTier;
+
+  return {
+    format: {
+      provider_id: providerImpl,
+      quality_tier: qualityTier,
+      resolution: contract.resolution,
+    },
+    providerImpl,
+    providerUnknown,
+    seed: contract.seed,
+    durationSeconds: contract.durationSeconds,
+  };
+}
+
+/**
  * Validate that `shotId` can generate its video right now. Pure read — no paid
  * calls, no mutations. Returns a report; callers decide whether to throw
  * (assertShotReadyForGeneration) or surface warnings.
@@ -112,7 +194,7 @@ export async function validateShotReadyForGeneration(
   }
 
   // 1. Plan present + APPROVED.
-  const { plan, reason } = await loadPlan(
+  const { plan, reason } = await resolveApprovedShotPlan(
     supabase,
     args.episodeId,
     args.shotId,
@@ -141,72 +223,66 @@ export async function validateShotReadyForGeneration(
   }
 
   // 3. Provider contract — resolution / duration / prompt length / capability.
+  //    Provider + tier come from the SAME projection the render paths execute
+  //    (shotPlanRenderParams), so the gate can never validate a different
+  //    provider than the one that will actually be called.
+  const planParams = shotPlanRenderParams(contract);
   if (!contract.providerId) {
     blockers.push({ code: 'provider_missing', message: 'plan declares no provider.id' });
+  } else if (planParams.providerUnknown || !planParams.providerImpl) {
+    // WARNING, not blocker: resolveVanimProviderId rejects an off-allowlist
+    // provider.id, but the runner catches that and SOFT-falls back to the
+    // DB-config provider (runner.ts plan-driven branch) — it does not fail.
+    // Blocking here would be stricter than the runner and could refuse a plan
+    // it would run. We can't validate resolution/duration without caps, so we
+    // pass it through to the runner's own fallback + gates.
+    warnings.push({
+      code: 'provider_unknown',
+      message: `provider.id "${contract.providerId}" off the Animator allowlist — runner will fall back to DB-config provider`,
+    });
   } else {
-    try {
-      const resolved = resolveVanimProviderId(contract.providerId);
-      const caps = VIDEO_PROVIDER_CAPS[resolved.providerImpl];
-      details.provider = { id: contract.providerId, impl: resolved.providerImpl };
-      if (
-        contract.resolution &&
-        caps.supports_resolutions.length > 0 &&
-        !caps.supports_resolutions.includes(contract.resolution)
-      ) {
-        blockers.push({
-          code: 'resolution_unsupported',
-          message: `${resolved.providerImpl} does not support ${contract.resolution} (allowed: ${caps.supports_resolutions.join(', ')})`,
-        });
-      } else if (contract.resolution && caps.supports_resolutions.length === 0) {
-        warnings.push({
-          code: 'resolution_ignored',
-          message: `${resolved.providerImpl} uses a fixed resolution; declared ${contract.resolution} is ignored`,
-        });
-      }
-      if (contract.durationSeconds != null) {
-        if (
-          contract.durationSeconds < caps.min_duration_s ||
-          contract.durationSeconds > caps.max_duration_s
-        ) {
-          // WARNING, not blocker: the runner CLAMPS duration into range
-          // (runner.ts ~1848 Math.min/max) rather than failing — so blocking
-          // here would be stricter than the path that actually runs and could
-          // refuse a render the runner would happily clamp + complete.
-          warnings.push({
-            code: 'duration_out_of_range',
-            message: `duration ${contract.durationSeconds}s outside ${resolved.providerImpl} range ${caps.min_duration_s}-${caps.max_duration_s}s — runner will clamp`,
-          });
-        }
-      }
-      if (contract.endImageAssetId && !caps.supports_end_image) {
-        warnings.push({
-          code: 'end_image_ignored',
-          message: `${resolved.providerImpl} ignores end_image`,
-        });
-      }
-      if (contract.seed != null && !caps.supports_seed) {
-        warnings.push({ code: 'seed_ignored', message: `${resolved.providerImpl} ignores seed` });
-      }
-      if (
-        caps.max_prompt_chars &&
-        contract.prompt &&
-        contract.prompt.length > caps.max_prompt_chars
-      ) {
-        warnings.push({
-          code: 'prompt_too_long',
-          message: `prompt ${contract.prompt.length} chars exceeds ${resolved.providerImpl} max ${caps.max_prompt_chars}`,
-        });
-      }
-    } catch {
-      // WARNING, not blocker: resolveVanimProviderId throws on an off-allowlist
-      // provider.id, but the runner catches that and SOFT-falls back to the
-      // DB-config provider (runner.ts ~2004-2014) — it does not fail. Blocking
-      // here would be stricter than the runner and could refuse a plan it would
-      // run. We can't validate resolution/duration without caps, so we pass it
-      // through to the runner's own fallback + gates.
+    const impl = planParams.providerImpl;
+    const caps = VIDEO_PROVIDER_CAPS[impl];
+    details.provider = { id: contract.providerId, impl };
+    if (
+      contract.resolution &&
+      caps.supports_resolutions.length > 0 &&
+      !caps.supports_resolutions.includes(contract.resolution)
+    ) {
+      blockers.push({
+        code: 'resolution_unsupported',
+        message: `${impl} does not support ${contract.resolution} (allowed: ${caps.supports_resolutions.join(', ')})`,
+      });
+    } else if (contract.resolution && caps.supports_resolutions.length === 0) {
       warnings.push({
-        code: 'provider_unknown',
-        message: `provider.id "${contract.providerId}" off the Animator allowlist — runner will fall back to DB-config provider`,
+        code: 'resolution_ignored',
+        message: `${impl} uses a fixed resolution; declared ${contract.resolution} is ignored`,
+      });
+    }
+    if (
+      contract.durationSeconds != null &&
+      (contract.durationSeconds < caps.min_duration_s ||
+        contract.durationSeconds > caps.max_duration_s)
+    ) {
+      // WARNING, not blocker: both render paths CLAMP duration into range
+      // (clampRenderDuration) rather than failing — so blocking here would be
+      // stricter than the path that actually runs and could refuse a render
+      // that would happily clamp + complete.
+      warnings.push({
+        code: 'duration_out_of_range',
+        message: `duration ${contract.durationSeconds}s outside ${impl} range ${caps.min_duration_s}-${caps.max_duration_s}s — render will clamp`,
+      });
+    }
+    if (contract.endImageAssetId && !caps.supports_end_image) {
+      warnings.push({ code: 'end_image_ignored', message: `${impl} ignores end_image` });
+    }
+    if (contract.seed != null && !caps.supports_seed) {
+      warnings.push({ code: 'seed_ignored', message: `${impl} ignores seed` });
+    }
+    if (caps.max_prompt_chars && contract.prompt && contract.prompt.length > caps.max_prompt_chars) {
+      warnings.push({
+        code: 'prompt_too_long',
+        message: `prompt ${contract.prompt.length} chars exceeds ${impl} max ${caps.max_prompt_chars}`,
       });
     }
   }
@@ -249,12 +325,21 @@ export async function validateShotReadyForGeneration(
   return { ok: blockers.length === 0, blockers, warnings, details };
 }
 
-/** Throwing wrapper for routes that want fail-loud refusal before dispatch. */
-export class ShotNotReadyError extends Error {
+/**
+ * Throwing wrapper for routes that want fail-loud refusal before dispatch.
+ *
+ * Extends ValidationError so `withApiHandler` maps it to a 400 carrying the
+ * concrete blockers — a route calling the gate needs no try/catch adapter, and
+ * a refusal can never surface as an opaque 500. (Was a bare Error; the only
+ * caller then had to translate it by hand, which is exactly the per-caller
+ * duplication that let the manual path skip the gate in the first place.)
+ */
+export class ShotNotReadyError extends ValidationError {
   readonly report: ReadinessReport;
   constructor(report: ReadinessReport) {
     super(
       `Shot not ready for generation: ${report.blockers.map((b) => b.message).join('; ')}`,
+      { blockers: report.blockers, warnings: report.warnings },
     );
     this.name = 'ShotNotReadyError';
     this.report = report;

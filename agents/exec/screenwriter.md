@@ -196,7 +196,14 @@ generator's.
   generator it is tableware. Write "the hexagonal floor slab", not "the plate".
 - Prefer the canonical glossary term. If a needed thing has no term, describe
   it (material + shape), do not coin slang for it.
+- **Reflections are a black box.** Image/video generation cannot hold mirror
+  semantics. Never write a beat whose logic depends on precise reflection
+  geometry — delayed reflections, portals, a character entering their own
+  reflection. A safe mirror beat is one that still reads when the reflection is
+  wrong (wipes a dirty mirror, smears the dirt, sees himself dirtier).
 This discipline STARTS in the brief (ART-HW) and must survive the script intact.
+It is a property of the GENERATOR, not of the genre — it holds in every genre,
+so never expect a genre playbook to carry it.
 
 ### Step 4 — Internal QA pass (eval-first)
 

@@ -30,6 +30,14 @@ import { CandidatesStrip } from '@/components/assets/EREFv2Sections';
 import { primaryAttemptVersion } from '@/lib/api/shot-reference';
 import { compareAssetVersionsNewestFirst } from '@/lib/api/asset-ordering';
 import { EditorModal } from '@/components/editor/EditorModal';
+import { CriticVerdictOverrideModal } from '@/components/assets/CriticVerdictOverrideModal';
+import {
+  postAssetDecision,
+  withCriticOverride,
+  CriticVerdictBlockedError,
+  type AssetDecisionBody,
+  type CriticFailure,
+} from '@/lib/api/asset-decision';
 import { Button } from '@/components/ui/Button';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -732,26 +740,33 @@ function PilotApproveButtons({
 }) {
   const [busy, setBusy] = useState<null | 'approve' | 'revise'>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when a frozen critic verdict refused the approve — carries the exact
+  // body to re-send if the Director decides to ship over it.
+  const [criticBlock, setCriticBlock] = useState<{
+    body: AssetDecisionBody;
+    failures: readonly CriticFailure[];
+  } | null>(null);
 
-  async function approve() {
+  const approveBody: AssetDecisionBody = {
+    decision: 'APPROVE',
+    directorConfirm: true,
+    preview_acknowledged: true,
+  };
+
+  async function approve(body: AssetDecisionBody = approveBody) {
     setBusy('approve');
     setError(null);
     try {
-      const res = await fetch(`/api/assets/${assetId}/approve`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          decision: 'APPROVE',
-          directorConfirm: true,
-          preview_acknowledged: true,
-        }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? 'APPROVE failed');
-      }
+      await postAssetDecision(assetId, body);
+      setCriticBlock(null);
       onChanged();
     } catch (e) {
+      // The critic's verdict is a decision for the Director, not a red string.
+      if (e instanceof CriticVerdictBlockedError) {
+        setCriticBlock({ body, failures: e.failures });
+        return;
+      }
+      setCriticBlock(null);
       setError((e as Error).message);
     } finally {
       setBusy(null);
@@ -771,19 +786,11 @@ function PilotApproveButtons({
     setBusy('revise');
     setError(null);
     try {
-      const res = await fetch(`/api/assets/${assetId}/approve`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          decision: 'REQUEST_REVISION',
-          note: trimmed,
-          directorConfirm: true,
-        }),
+      await postAssetDecision(assetId, {
+        decision: 'REQUEST_REVISION',
+        note: trimmed,
+        directorConfirm: true,
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? 'REVISION failed');
-      }
       onChanged();
     } catch (e) {
       setError((e as Error).message);
@@ -794,11 +801,20 @@ function PilotApproveButtons({
 
   return (
     <div className="flex items-center gap-2 pt-2 border-t border-glass">
+      <CriticVerdictOverrideModal
+        open={criticBlock !== null}
+        failures={criticBlock?.failures ?? []}
+        onCancel={() => setCriticBlock(null)}
+        onOverride={async () => {
+          if (!criticBlock) return;
+          await approve(withCriticOverride(criticBlock.body));
+        }}
+      />
       {variant === 'review' && (
         <Button
           size="sm"
           variant="primary"
-          onClick={approve}
+          onClick={() => void approve()}
           disabled={busy !== null}
         >
           {busy === 'approve' ? 'Approving…' : 'Approve'}

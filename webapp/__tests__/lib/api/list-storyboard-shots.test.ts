@@ -207,3 +207,39 @@ describe('getStoryboardShotById — exact canonical match only (refactor 2026-06
     expect(getStoryboardShotById(stb, 'SS-S15-E12-A2-SC02-SH03')).toBeNull();
   });
 });
+
+// E33 P1 #12 — the parser dropped `props_in_frame`, so the Designer, instructed
+// to "copy props_in_frame verbatim" into the Plan, was never handed the list.
+describe('shotToV2 — props_in_frame survives the parse', () => {
+  test('carries the canon prop slugs through, trimmed and de-blanked', () => {
+    const stb = makeStb([
+      {
+        act: 1,
+        shots: [
+          {
+            shot_id: 'S15-E33-SH04',
+            props_in_frame: ['object_sandy_bed', '  object_yellow_rug  ', '', 7],
+          },
+        ],
+      },
+    ]);
+    expect(getStoryboardShotById(stb, 'S15-E33-SH04')?.props_in_frame).toEqual([
+      'object_sandy_bed',
+      'object_yellow_rug',
+    ]);
+  });
+
+  test('absent / non-array props_in_frame stays undefined (not an empty array)', () => {
+    const stb = makeStb([
+      {
+        act: 1,
+        shots: [
+          { shot_id: 'S15-E33-SH01' },
+          { shot_id: 'S15-E33-SH02', props_in_frame: 'object_sandy_bed' },
+        ],
+      },
+    ]);
+    expect(getStoryboardShotById(stb, 'S15-E33-SH01')?.props_in_frame).toBeUndefined();
+    expect(getStoryboardShotById(stb, 'S15-E33-SH02')?.props_in_frame).toBeUndefined();
+  });
+});

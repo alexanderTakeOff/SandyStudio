@@ -52,79 +52,25 @@ nowhere and the audience has nothing to laugh at.
 
 ## Per-shot prose craft
 
+The machine-level rules — action-never-state, status-change verbs, binding
+ambiguous nouns per shot, describing un-imaged props in full, naming the source
+of a canon transformation — are NOT comedy rules and do not live here. They are
+in your role file `agents/exec/storyboarder.md` §"Craft invariants", which is
+always loaded regardless of genre. This playbook adds comedy on top of them.
+
 When you write each shot's `action_prose`, run through this checklist:
 
 1. **Verb chain present.** Count the verbs that drive visible motion.
    Three to seven verbs for an action beat; one or two for a reaction
    that ends on a pose.
-2. **Each verb is a status change.** "He stands" is not a status change.
-   "He lifts → it slips → falls on foot" is three status changes.
-3. **No internal states.** Strip every word that names a feeling. The
-   animator draws what the camera sees. Replace "he feels intimidated"
-   with the physical consequence: the rack is so tall the dumbbells are
-   out of reach, he tiptoes, the shelf tips.
-4. **Concrete props.** Name the prop and what it does. Not "weight" —
-   "the 30-pound cast-iron weight disc". Not "rope" — "the jump rope on
-   the hook". Concrete means *unmistakable to someone who has never read
-   your Bible* (see rule 7) — not merely specific.
-5. **Punctuation at the end.** Close on a beat the audience can hang a
+2. **Punctuation at the end.** Close on a beat the audience can hang a
    laugh on: a pose, a freeze, a final ricochet, a blink.
-6. **Continuity baked in.** The prose tells the next shot what to
+3. **Continuity baked in.** The prose tells the next shot what to
    inherit (the weight disc is still on the floor, the rope is still
    around his head).
-7. **Never write a word the world already owns.** Your prose is read by an
-   image generator that has never seen your Bible. It resolves every noun
-   with its OWN priors, and when a canon term also names a common everyday
-   object, the everyday object wins — every time. So bind the word on first
-   use **in that shot**: give it material, colour, or geometry. If you can't
-   bind it, don't use it — pick a word the world doesn't already own.
-   **Shots render INDEPENDENTLY.** A binding you wrote in SH04 does not
-   travel to SH05. Re-bind in every shot that names the thing.
 
-   Director's rule (2026-07-17): a term with two meanings is banned from
-   `action_prose`. When the render comes back wrong, the ambiguity is the
-   author's bug — never the generator's. It drew exactly what you wrote.
-
-   Worked failure — E30, the same word, two shots, two fates:
-   - SH04 wrote "Sandy's foot descends onto the **Dusty Violet** plate".
-     Bound by colour → rendered correctly: a violet floor slab liquefying.
-   - SH05 wrote "**the plate itself** bulges upward like a trampoline".
-     Bare → the generator drew a literal **dinner plate** holding yellow
-     goo, and dropped the trampoline launch entirely. The gag died.
-
-   Count the meanings that one word carries: in a gym "plate" is a weight
-   disc; on a hex-slab planet it is the floor; in a camera note a "flat
-   plate" is a composition; to a generator with no context it is tableware.
-   Four meanings, one word, and no glossary in the room. Write "the
-   hexagonal floor slab under his foot" and the trap is gone. (Rules 4 and 6
-   above used to say "plate" — they are rewritten, because this skill was
-   itself laying the trap it now warns about.)
-8. **No canon image behind it → describe it fully, in-shot.** The Reference
-   Designer locks a thing one of two ways: either the shot's `props_in_frame`
-   names a Bible object that HAS a LOCKED reference image (its pixels get
-   attached at generation, so it can't be hallucinated), or — for everything
-   else — the ONLY definition the generator receives is your prose. A prop
-   that is not a canon object with an image (a transient item the action
-   introduces, a new substance, a one-shot gizmo) falls entirely on the
-   prose: it MUST carry material + colour + geometry inline, because nothing
-   downstream will supply them. "A jelly" is under-specified; "a wobbling
-   translucent violet jelly the size of a manhole cover" is a contract.
-   Do NOT list a non-canon item in `props_in_frame` expecting it to lock —
-   there is no image to attach; the field is for Bible objects only.
-9. **A canon thing that TRANSFORMS must name its source.** When a shot melts,
-   inflates, shatters or recolours something that IS canon (a location floor,
-   a Bible prop), the generator only ties the new state to the locked colour/
-   shape if your prose names the source object. "The violet floor slab
-   liquefies into violet jelly" keeps the tie; "jelly plate" severs it and
-   the generator repaints the substance from its own priors. Name the source,
-   carry its canonical colour into the new state, THEN describe the change.
-   (E30 SH05: "jelly plate" cut the tie to the locked violet floor, so the
-   jelly rendered in the character's OWN gold — the one colour it must never
-   be. The location anchor already held the right colour; the prose threw it
-   away.)
-
-A good `action_prose` reads like a stage direction for an animator
-working in 2D limited animation: concrete, sequential, ending on a pose.
+A good `action_prose` reads like a stage direction for an animator:
+concrete, sequential, ending on a pose.
 
 ## Comic timing — letting the joke land
 
@@ -339,7 +285,7 @@ Run this pass over the storyboard as a whole, not just per-shot:
 4. **Confirm continuity carries.** The weight disc is still on the floor
    in the next shot. The rope is still on his head. Cascade is funny only
    if it persists.
-4b. **Hunt your own ambiguous nouns (craft rule 7).** Go noun by noun and
+4b. **Hunt your own ambiguous nouns** (role-file invariant 3). Go noun by noun and
    ask: *would a stranger who has never read the Bible draw this the way I
    mean?* Any noun that also names a common object — plate, bar, ring,
    spring, board, cell, crown, mount, chip — must carry a disambiguating

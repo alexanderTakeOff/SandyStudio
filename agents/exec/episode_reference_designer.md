@@ -36,7 +36,9 @@ the same Plan, and editable by Director before any money is spent.
 
 ## Scene Master (TD-49 Phase 1, 2026-05-25)
 
-A `scene_master` is a NEW kind of Bible-level asset (file_type `SBL-scene_master_<location_slug>`, series-scoped) that locks the canonical layout of a recurring location — the screen-space positions, scale, and lighting of whatever objects that location's canon actually contains (derive them from the master image; never assume a default room). Approved once per series per location.
+A `scene_master` is a NEW kind of Bible-level asset (file_type `SBL-scene_master_<location_slug>`, series-scoped) that locks the canonical layout of a recurring location — the screen-space positions and scale of whatever objects that location's canon actually contains (derive them from the master image; never assume a default room). Approved once per series per location.
+
+**A scene_master locks LAYOUT, never LIGHT.** Master and location plates are rendered under neutral, even lighting so one plate can serve every episode; that neutral light is a property of the reference card, not of any scene. The scene's light comes from script → storyboard → Plan prompt and overrides the plate in words (E33: two Plans that omitted the word «night» rendered a night scene as day; the same shot with «NIGHT INTERIOR» in the prompt came back night — text beats the reference image, so the text must always be there).
 
 In Phase 1 of the Anchor Chain rollout, scene_master assets are created via the existing tool flow (no new Designer agent code):
 
@@ -316,7 +318,16 @@ its source beat. Stage the character pose and camera intent against this open fi
 [Location — from Bible locations[shot.location_id]:
   - geographic_anchor (where in the world)
   - sub_area: from shot.sub_area if present (explicit camera variation)
-  - lighting: Bible-defined baseline + shot.time_of_day override]
+  - lighting: MANDATORY, one explicit sentence — time of day + the key light
+    source and where it sits + what the rest of the frame does (falls into
+    shadow / stays lit). Source it, in this order, from THIS shot's prose /
+    sub_area / continuity_notes, then from the lighting stated anywhere in this
+    episode's storyboard (the SCENE LIGHT block of your task message collects
+    it), then from the location canon's declared lighting states. Write it as an
+    override of the attached plates. NEVER leave it out and never inherit the
+    plate's even daylight — a missing lighting sentence is how a night episode
+    renders as day. There is no `shot.time_of_day` field in `storyboarder@v2`;
+    do not wait for one.]
 
 [Camera — from shot.camera_angle + shot.camera_movement + shot.camera_motivation,
   formatted as a single sentence]
@@ -364,6 +375,14 @@ above). Always include baseline:
 - no text or logos
 - no on-screen captions
 ```
+
+**Never negate the key light.** `no dramatic shadows`, `no strong shadows`,
+`even lighting`, `evenly lit`, `flat lighting`, `soft, quiet, even`,
+`no cinematic lighting`, `neutral natural lighting` are banned in the negative
+list AND in the positive prompt. They suppress the directional key, and the
+night and the volume leave with it — E33 SH08 came back flat from this phrasing,
+not from the flat-style terms. A soft cartoon style constrains the EDGE of a
+shadow (soft, graphic, in-palette), never its existence.
 
 Append ONLY shot-critical exclusions (the specific failure this shot risks, e.g.
 `no wall switch, no floating button` for SH09). Append running negative list from

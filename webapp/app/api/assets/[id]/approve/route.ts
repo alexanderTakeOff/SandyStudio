@@ -23,6 +23,7 @@ import {
   type ShotReferenceContract,
 } from '@/lib/api/shot-reference';
 import { getEREFUpscaleEnabled } from '@/lib/api/eref-config';
+import type { CriticFailure } from '@/lib/api/asset-decision';
 import {
   isAnimaticV1,
   type AnimaticContract,
@@ -68,9 +69,67 @@ const ApproveBody = z.object({
   eref_options: z
     .object({
       skip_upscale: z.boolean().optional(),
+      /**
+       * Deliberate override of a FAILED frozen critic verdict (E33 audit P1 #8).
+       * Absent/false ⇒ an EREF image whose own reviewer said REGENERATE, or whose
+       * on-model gate froze FAIL, CANNOT be approved. The Director sets this to
+       * ship a frame the critic rejected — knowingly, and on the record.
+       */
+      override_critic_verdict: z.boolean().optional(),
     })
     .optional(),
 });
+
+/**
+ * The frozen critic verdicts an EREF reference carries in its own metadata, when
+ * they say "do not ship this" — else null.
+ *
+ * E33 (2026-07-29): SH02/SH03/SH04/SH08 shipped APPROVED while their LAST review
+ * held `verdict: 'REGENERATE'` — the SH08 reviewer wrote "lighting is daytime" in
+ * plain words and the frame went to production anyway. Retry exhaustion picked a
+ * best-of-bad candidate and nothing downstream re-read the verdict, so every
+ * automatic critic on the episode was decorative. This makes the verdict binding.
+ *
+ * `HUMAN_REVIEW` is NOT blocking — that verdict is the critic asking for exactly
+ * the human decision this route represents.
+ */
+function failedCriticVerdicts(metadata: unknown): CriticFailure[] {
+  if (!isShotReferenceV2(metadata)) return [];
+  const sr = (metadata as unknown as { shot_reference: ShotReferenceContract }).shot_reference;
+  const failed: CriticFailure[] = [];
+  if (sr.review?.verdict === 'REGENERATE') {
+    // The critic's own words, worst-first — this is what the Director reads in
+    // the override dialog, so a single truncated issue is not enough context.
+    const why = (sr.review.issues ?? [])
+      .slice()
+      .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
+      .slice(0, 3)
+      .map((i) => `${i.severity}: ${i.description.trim()}`)
+      .join(' · ');
+    failed.push({
+      critic: 'Reference critic',
+      verdict: 'REGENERATE',
+      detail: why.slice(0, 600),
+    });
+  }
+  if (sr.on_model?.verdict === 'FAIL') {
+    failed.push({
+      critic: `On-model gate (${sr.on_model.strictness})`,
+      verdict: 'FAIL',
+      detail: sr.on_model.reason.slice(0, 600),
+    });
+  }
+  return failed;
+}
+
+function severityRank(severity: string): number {
+  return severity === 'CRITICAL' ? 2 : severity === 'MAJOR' ? 1 : 0;
+}
+
+/** One-line rendering of a failure for the plain-text error message. */
+function describeCriticFailure(f: CriticFailure): string {
+  return `${f.critic} → ${f.verdict}${f.detail ? ` — ${f.detail}` : ''}`;
+}
 
 const VISUAL_FILE_TYPES: ReadonlySet<string> = new Set(['IMG', 'VID']);
 
@@ -131,6 +190,24 @@ export const POST = withApiHandler(async (req, ctx) => {
     throw new ValidationError(
       'Visual asset approval requires preview_acknowledged: true. ' +
         'Open the preview drawer at least once before approving.',
+    );
+  }
+  // E33 audit P1 #8 — a failed critic verdict HOLDS the asset. Ship it only by
+  // an explicit, recorded override; never by silently walking past the verdict.
+  const criticFailures =
+    decision === 'APPROVE' ? failedCriticVerdicts(asset.metadata) : [];
+  const criticOverridden = body.eref_options?.override_critic_verdict === true;
+  if (criticFailures.length > 0 && !criticOverridden) {
+    // `details.critic_failures` is the machine-readable half the Director-facing
+    // surfaces render (CriticVerdictOverrideModal) — without it the UI could only
+    // show "400" and the gate would read as a broken button.
+    throw new ValidationError(
+      `${asset.filename} did not clear its own critics: ${criticFailures
+        .map(describeCriticFailure)
+        .join(' · ')}. ` +
+        'Regenerate the shot, or approve again with eref_options.override_critic_verdict: true ' +
+        'to ship it over the verdict.',
+      { critic_failures: criticFailures },
     );
   }
 
@@ -312,7 +389,14 @@ export const POST = withApiHandler(async (req, ctx) => {
     actor: user.id,
     asset_id: id,
     episode_id: asset.episode_id,
-    metadata: { decision: decision, file_type: asset.file_type },
+    metadata: {
+      decision: decision,
+      file_type: asset.file_type,
+      // On the record when a failed critic verdict was deliberately overridden.
+      ...(criticFailures.length > 0
+        ? { critic_verdict_overridden: criticFailures }
+        : {}),
+    },
   });
 
   // 4. Brief approval also flips the episode milestone status so the
@@ -483,9 +567,19 @@ export const POST = withApiHandler(async (req, ctx) => {
     // already injects revisionNote as HARD ACCEPTANCE CRITERIA. Route it to the
     // Animator with the note (merged with the shot-plan critics' criteria), same
     // shape as refs. Covers the plan itself AND its critic review (REV-shot_plan).
-    // VID-shot regen stays on /regenerate-video (separate per-shot path).
+    //
+    // 2026-07-29 (E33 audit P0 #5) — VID-shot joins them. It used to be excluded
+    // ("VID-shot regen stays on /regenerate-video"), but that path carries no
+    // note: on E33 SH01 the Director's «Please regenerate with adjusted settings»
+    // reached nothing, the re-render replayed the same plan, and with
+    // seed_strategy.mode="random" attempt 2 differed from attempt 1 by the SEED
+    // ALONE — $0.968 for a dice roll. The prompt lives in the plan, so a note
+    // about the video is a note about the plan: re-author it here, and the
+    // existing chain (plan → critic → approve → render) does the rest.
     const isShotPlanRevision =
-      ft.startsWith('SPC-shot_plan') || ft.startsWith('REV-shot_plan');
+      ft.startsWith('SPC-shot_plan') ||
+      ft.startsWith('REV-shot_plan') ||
+      ft.startsWith('VID-shot');
     if (isShotPlanRevision) {
       const meta = asset.metadata as { shot_id?: unknown } | null;
       const shotIdFromMeta =
@@ -582,8 +676,8 @@ export const POST = withApiHandler(async (req, ctx) => {
  * Map asset.file_type → the Inngest event that re-runs its producing agent.
  * Used on REQUEST_REVISION to auto-chain the upstream agent so pipeline
  * keeps moving without manual triggerAgent. Returns null when no obvious
- * single-agent rerun applies (e.g. per-shot VID is regenerate-video, not
- * a whole-stage rerun; thumbnails / publish are terminal).
+ * single-agent rerun applies (e.g. per-shot VID/EREF revisions are re-authored
+ * by the blocks above, not by a whole-stage rerun; publish is terminal).
  *
  * Director directive 2026-05-12 (Mode 3 readiness drill): PA observed that
  * requestRevision only flips status without dispatching the producing agent.
@@ -605,8 +699,9 @@ function revisionEventForAsset(fileType: string): string | null {
                                                         return 'sandystudio/exec-thumb-designer/plan';
   // Final cut revision → re-assemble (re-stitch) rather than dead-ending.
   if (fileType.startsWith('VID-final_cut'))             return 'sandystudio/exec-stitch/assemble-episode';
-  // Per-shot VGEN regen goes through /regenerate-video, not the wide event.
-  // EREF revision per-shot is similar — handled by Director UI, not a global rerun.
+  // Per-shot VID-shot / EREF revisions are NOT whole-stage reruns: they are
+  // routed above (isShotPlanRevision / isRefRevision) to the Designer/Animator
+  // with the Director's note merged into the critics' acceptance criteria.
   // Publish — terminal, no automatic rerun.
   return null;
 }

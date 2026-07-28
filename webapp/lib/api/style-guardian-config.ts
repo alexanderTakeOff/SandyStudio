@@ -2,11 +2,14 @@
 // lib/api/style-guardian-config.ts
 // Read the Style Guardian strictness setting from `app_config`.
 //
-// Three modes (per Director's plan):
+// Two modes:
 //   warn          — display verdict in UI; NEVER block. (default while system matures)
 //   strict        — FAIL blocks the action; Director may override per-call
-//   auto_rewrite  — silently swap original prompt for `suggested_prompt` when present;
-//                   stamp `style_check_rewritten` in history for audit transparency
+//
+// A third mode, `auto_rewrite`, silently swapped the prompt for the Guardian's
+// ≤800-char `suggested_prompt`. Removed 2026-07-29 (E33 P0 #1): it threw away the
+// Director-approved Plan wholesale. The Guardian reports; it does not edit. A row
+// still holding the old value degrades to the `warn` default below — no migration.
 //
 // Setting lives at app_config.scope='app', key='style_guardian_mode', value=jsonb-string.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -14,10 +17,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
 
-export type StyleGuardianMode = 'warn' | 'strict' | 'auto_rewrite';
+export type StyleGuardianMode = 'warn' | 'strict';
 export const DEFAULT_STYLE_GUARDIAN_MODE: StyleGuardianMode = 'warn';
 
-const VALID_MODES: ReadonlySet<StyleGuardianMode> = new Set(['warn', 'strict', 'auto_rewrite']);
+const VALID_MODES: ReadonlySet<StyleGuardianMode> = new Set(['warn', 'strict']);
 
 export async function getStyleGuardianMode(
   supabase: SupabaseClient<Database>,

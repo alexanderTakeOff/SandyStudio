@@ -10,8 +10,10 @@
 //     test plan are passed simultaneously (where the provider supports it).
 //     Solved the v1 "Vial drift" problem — first character no longer wins.
 //   - AI reviewer (EXEC-EREF-CHECK) scores every generation. Verdict drives
-//     the loop: APPROVE / REGENERATE (≤2 retries with suggested_prompt_v2) /
-//     HUMAN_REVIEW.
+//     the loop: APPROVE / REGENERATE (≤2 retries) / HUMAN_REVIEW. On a retry the
+//     approved Plan prompt is the immovable base and the reviewer's issues are
+//     APPENDED to it via mergeRevisionNote — the reviewer no longer hands back a
+//     rewritten prompt that replaces the plan (E33 P0 #1).
 //   - 4K upscale via fal.ai clarity-upscaler after AI-APPROVE so downstream
 //     stages (Animatic, VGEN) ingest 4K input.
 //   - Each asset row's metadata carries the full shot_reference contract
@@ -51,6 +53,7 @@ import { persistBinary } from '../persist-binary';
 import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
 import { runStyleCheck } from './style-check';
 import { getStyleGuardianMode } from '../../api/style-guardian-config';
+import { mergeRevisionNote } from '../../api/critic-notes';
 import {
   getEREFProvider,
   type EREFProviderId,
@@ -79,7 +82,7 @@ import {
   checkPlanAnchorFreshness,
   formatStaleAnchorMessage,
 } from './episode-reference-freshness';
-import { runEREFCheck, type ReviewBibleRef } from './eref-check';
+import { runEREFCheck, skippedReview, type ReviewBibleRef } from './eref-check';
 import { isErefCancelled } from '../../api/eref-cancel';
 import { setPilotState } from '../../api/eref-pilot-state';
 import {
@@ -931,13 +934,11 @@ interface PlanOverrides {
   variantsCount: number;
   prompt: string;
   negative: readonly string[];
-  /**
-   * 2026-06-14: canon prop slugs the Designer declared for this shot
-   * (`objects[]` in the Plan JSON). Authoritative per-shot object list; when
-   * present it supersedes the storyboard's `props_in_frame`. Resolved against
-   * cast-scoped `SBL-object_*` canon and attached as `kind:'object'` refs.
-   */
-  objects: readonly string[];
+  // `objects` removed 2026-07-29 (E33 P1 #12): the Plan used to restate the canon
+  // prop slugs, copied "verbatim" by the LLM from a field it was never shown, and
+  // superseded the storyboard when non-empty. Copying a list is deterministic
+  // work — the executor now reads `props_in_frame` off the APPROVED storyboard,
+  // the single authoring point, on both the regular and the anchor path.
   continuityMode: string;
   policyNotes: readonly string[];
   /**
@@ -1165,12 +1166,6 @@ export async function loadPlanOverrides(
     if (typeof v === 'string' && v.trim().length > 0) negative.push(v.trim());
   }
 
-  const objectsRaw = Array.isArray(body.objects) ? body.objects : [];
-  const objects: string[] = [];
-  for (const v of objectsRaw) {
-    if (typeof v === 'string' && v.trim().length > 0) objects.push(v.trim());
-  }
-
   const continuityObj = body.continuity_strategy as
     | { mode?: unknown }
     | undefined;
@@ -1215,7 +1210,6 @@ export async function loadPlanOverrides(
     variantsCount,
     prompt,
     negative,
-    objects,
     continuityMode,
     policyNotes,
     continuityAnchors,
@@ -1566,8 +1560,9 @@ async function runAnchorPairGeneration(
 
   // Object refs (2026-06-14): attach the shot's canon props so the provider
   // composites the real button panel / indicator instead of hallucinating one
-  // (the E09 "1 vs 2 buttons" defect). Source: the Designer Plan's `objects[]`
-  // (authoritative) → fallback to the storyboard `props_in_frame`. Resolved
+  // (the E09 "1 vs 2 buttons" defect). Source: the APPROVED storyboard's
+  // `props_in_frame` — the single authoring point (2026-07-29, E33 P1 #12: the
+  // Plan's LLM-copied `objects[]` used to win, and came back empty). Resolved
   // against cast-scoped `bible.objects`, so a prop the episode wasn't cast for
   // can't ride in. Placed after identity (which needs attention priority) and
   // before style/scene_master.
@@ -1576,10 +1571,7 @@ async function runAnchorPairGeneration(
     const n = nameFromBibleFilename(o);
     if (n) objBySlug.set(n, o);
   }
-  const objectSlugs =
-    planOverrides.objects.length > 0
-      ? planOverrides.objects
-      : (shot.props_in_frame ?? []);
+  const objectSlugs = shot.props_in_frame ?? [];
   const objectRefs: MultiImageRef[] = [];
   const objectNames: string[] = [];
   const seenObjIds = new Set<string>();
@@ -2295,13 +2287,22 @@ export async function runEpisodeReferences(
     // string. Trust it verbatim — Director approved it. Style Guardian still
     // runs as a safety net but Plan.prompt won (Designer's contract is the
     // creative-decision-of-record).
-    let prompt = planOverrides
+    //
+    // `basePrompt` is the creative decision-of-record and is NEVER reassigned
+    // (E33 P0 #1). Everything a critic wants is APPENDED to it, so the Plan
+    // survives every retry — `prompt` starts as the base and only ever grows.
+    const basePrompt = planOverrides
       ? planOverrides.prompt
       : composePromptFromTestPlan(job);
+    let prompt = basePrompt;
 
-    // Pre-flight Style Guardian (cheap, may rewrite or block).
+    // Pre-flight Style Guardian (cheap; advisory in `warn`, blocks FAIL in `strict`).
+    // It can no longer REWRITE the prompt — the `auto_rewrite` mode and the
+    // `suggested_prompt` channel it consumed are gone (E33 P0 #1).
     let styleVerdictPre: 'PASS' | 'WARN' | 'FAIL' | null = null;
-    let styleRewrittenPre = false;
+    // Guardian rewrites are impossible now; kept as a constant so the per-attempt
+    // audit field written further down keeps its shape.
+    const styleRewrittenPre = false;
     try {
       const guardResult = await runStyleCheck({
         supabase,
@@ -2319,16 +2320,6 @@ export async function runEpisodeReferences(
             `[eref] strict-mode FAIL for shot ${job.shot.shot_id}, skipping`,
           );
           continue;
-        }
-        if (
-          guardianMode === 'auto_rewrite' &&
-          guardResult.suggested_prompt &&
-          guardResult.verdict !== 'PASS'
-        ) {
-          // Style Guardian rewrites the inner prompt. No skill block
-          // re-prepend — image-gen consumes a clean visual description.
-          prompt = guardResult.suggested_prompt;
-          styleRewrittenPre = true;
         }
       }
     } catch {
@@ -2483,24 +2474,14 @@ export async function runEpisodeReferences(
         console.error(
           `[eref] reviewer threw for shot ${job.shot.shot_id}: ${(err as Error).message}`,
         );
-        // Treat reviewer failure as APPROVE so the pipeline doesn't deadlock.
+        // A reviewer outage is a NON-verdict, not a pass — same honest shape the
+        // checker's own skip path stamps (registry P1 #9). The shot still lands
+        // HUMAN_REVIEW via the `checkerSkipped` branch below, so nothing deadlocks.
+        const reason = `reviewer error: ${(err as Error).message.slice(0, 200)}`;
         reviewResult = {
           skipped: true as const,
-          skipped_reason: `reviewer error: ${(err as Error).message.slice(0, 200)}`,
-          review: {
-            verdict: 'APPROVE' as const,
-            consistency_score: 100,
-            emotion_alignment_score: 100,
-            action_clarity_score: 100,
-            gag_readability_score: null,
-            style_match_score: 100,
-            extraneous_objects: [],
-            issues: [],
-            suggested_prompt_v2: null,
-            reviewer_model: 'reviewer-failed',
-            reviewer_cost_usd: 0,
-            at: new Date().toISOString(),
-          },
+          skipped_reason: reason,
+          review: skippedReview(reason),
         };
       }
       latestReview = reviewResult.review;
@@ -2559,7 +2540,17 @@ export async function runEpisodeReferences(
         approvedB64 = genB64;
         break;
       }
-      if (retry < maxRetries && latestReview.suggested_prompt_v2) {
+      // SURGICAL revision (E33 P0 #1). The reviewer's remarks are a DELTA on the
+      // approved Plan, never a replacement for it: `basePrompt` stays whole and the
+      // issues are appended under it as hard acceptance criteria — the same merge
+      // the Director's REVISION path already uses (lib/api/critic-notes.ts).
+      // Before this, `prompt = suggested_prompt_v2` collapsed a 6000-8500-char Plan
+      // to a ≤2000-char paraphrase on attempt 2, and since the approved frame is
+      // usually NOT attempt 1, most shipped frames were drawn with no plan at all.
+      const criticBullets = latestReview.issues
+        .map((i) => [i.description, i.fix_hint].map((s) => s?.trim()).filter(Boolean).join(' — '))
+        .filter((b) => b.length > 0);
+      if (retry < maxRetries && criticBullets.length > 0) {
         retryHistory.push({
           at: new Date().toISOString(),
           reason:
@@ -2567,9 +2558,7 @@ export async function runEpisodeReferences(
             `below keep bar (composite ${composite.toFixed(0)}, critical ${criticalCount})`,
           verdict_before_retry: verdict,
         });
-        // Reviewer's rewrite replaces the prompt body. No skill block
-        // re-prepend — image-gen consumes a clean visual description.
-        prompt = latestReview.suggested_prompt_v2;
+        prompt = mergeRevisionNote(basePrompt, criticBullets) ?? basePrompt;
       } else {
         // Cap reached (or reviewer supplied no rewrite): KEEP THE BEST-scoring
         // attempt so far, NOT the last — after prompt drift the last is frequently

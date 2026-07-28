@@ -151,7 +151,13 @@ For each character in shot.characters[]:
 From Bible.locations[shot.location_id]:
   - geographic_anchor (where in the world / room)
   - sub_area: <from shot.sub_area if present — explicit camera variation>
-  - lighting: Bible baseline + shot.time_of_day override
+  - lighting: MANDATORY explicit sentence — time of day + key light source and
+    its position + what the rest of the frame does. Sourced from this shot's
+    prose / sub_area / continuity_notes, else from the lighting stated anywhere
+    in this episode's storyboard, else from the location canon's declared
+    lighting states. It OVERRIDES the reference plates, which are lit neutrally
+    so they can be reused and therefore carry no scene light. Never omit it and
+    never inherit the plate's even daylight.
 
 [Camera]
 <one sentence combining shot.camera_angle + shot.camera_movement +

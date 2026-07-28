@@ -14,6 +14,11 @@ description: >-
   laws; never hardcodes a single series or video provider.
 flavor: process
 status: ACTIVE
+# 2026-07-29: was UNSCOPED — an absent `applies_when` is a wildcard, so this
+# matched every agent's manifest (including EXEC-SB / EXEC-CREAD) and crowded out
+# their real playbooks under MAX_SKILLS_PER_CALL. Scoped to its real consumers.
+applies_when:
+  agent: [EXEC-CONC, EXEC-HW]
 ---
 
 # Series Episode Theme Generation

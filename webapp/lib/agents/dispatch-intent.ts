@@ -7,6 +7,9 @@
 //   - fresh insert OR re-claim of a terminal (done/failed) row → claimed=true
 //   - conflict on an in-flight (claimed/running) row           → claimed=false
 //                                                                 (duplicate blocked)
+// Plus one client-side term the RPC cannot express: an identical dispatch landing
+// within RECLAIM_ECHO_WINDOW_MS of a TERMINAL claim is an echo of the run that
+// just finished, not a sequential regen — also blocked (E33 SH07, see below).
 //
 // This REPLACES factory.ts's racy "eref-inflight-dedup-check" (a TOCTOU
 // read-then-check where two same-shot dispatches both read "nothing in flight"
@@ -101,7 +104,68 @@ type RpcCapableClient = {
 };
 
 /**
+ * How soon after a TERMINAL claim an identical dispatch is read as an echo of the
+ * one that just finished, rather than a deliberate sequential regen.
+ *
+ * The RPC deliberately allows a done/failed row to be re-claimed — that is how a
+ * sequential regen works. But "sequential" was unbounded in time, so a duplicate
+ * trigger arriving right behind the completion sailed through: E33 SH07 ref_plan
+ * v03 started ONE SECOND after v02 completed, re-authored the same content in
+ * different words, and invalidated a plan the Director had already accepted. Same
+ * class as the double `approveAsset` of 2026-07-28. A human regen is never one
+ * second behind the render it is judging — but it can be a fast one, so the
+ * window stays short: an order of magnitude above the observed echo, far below
+ * "someone looked at the frame and pressed the button".
+ */
+export const RECLAIM_ECHO_WINDOW_MS = 10_000;
+
+/** Statuses a claim row can be re-claimed from (mirrors the RPC's ON CONFLICT). */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['done', 'failed']);
+
+/**
+ * The blocked-claim result when this dispatch is an echo of a run that just
+ * finished with the SAME payload — else null (proceed to the atomic claim).
+ * Fail-open: any read error / absent row / unparseable timestamp ⇒ null.
+ */
+async function readTerminalEcho(
+  supabase: SupabaseClient<Database>,
+  key: DispatchKey,
+  inputHash: string,
+): Promise<DispatchClaim | null> {
+  try {
+    const { data: prior } = await supabase
+      .from('dispatch_intent')
+      .select('status,input_hash,updated_at,inngest_run_id')
+      .eq('episode_id', key.episodeId)
+      .eq('shot_id', key.shotId)
+      .eq('agent_id', key.agentId)
+      .maybeSingle();
+    if (!prior) return null;
+    if (!TERMINAL_STATUSES.has(prior.status)) return null;
+    if (prior.input_hash !== inputHash) return null;
+    const closedAgo = Date.now() - Date.parse(prior.updated_at);
+    if (!Number.isFinite(closedAgo) || closedAgo < 0) return null;
+    if (closedAgo >= RECLAIM_ECHO_WINDOW_MS) return null;
+    return {
+      claimed: false,
+      blockingRunId: prior.inngest_run_id,
+      blockingStatus: prior.status,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Atomically claim a per-shot dispatch. See module header for semantics.
+ *
+ * Before the atomic claim we read the existing row once: a TERMINAL row that was
+ * closed within `RECLAIM_ECHO_WINDOW_MS` by the SAME `input_hash` means this
+ * dispatch is a duplicate echo, and we block it exactly as an in-flight claim
+ * would (the caller's `regen_duplicate_skipped` path is unchanged). The read is a
+ * TOCTOU only against another *concurrent* dispatch — and that case is what the
+ * RPC below already serialises, so nothing is weakened. FAIL-OPEN like the rest
+ * of this module: any error reading the row skips the echo check entirely.
  *
  * Call rpc AS A METHOD on the client (`sb.rpc(...)`) — supabase-js dereferences
  * `this.rest` internally, so an extracted bare reference loses the binding (the
@@ -114,6 +178,9 @@ export async function claimDispatchIntent(
   inputHash: string,
   inngestRunId: string,
 ): Promise<DispatchClaim> {
+  const echo = await readTerminalEcho(supabase, key, inputHash);
+  if (echo) return echo;
+
   const sb = supabase as unknown as RpcCapableClient;
   const { data, error } = await sb.rpc('claim_dispatch_intent', {
     p_episode: key.episodeId,

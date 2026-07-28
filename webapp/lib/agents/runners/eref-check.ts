@@ -10,7 +10,9 @@
 //
 // Returns a structured EREFReview verdict that drives the runner's loop:
 //   APPROVE        → land in REVIEW (Mode 1-3) or APPROVED (Mode 4)
-//   REGENERATE     → auto-retry (≤2 retries) with suggested_prompt_v2
+//   REGENERATE     → auto-retry (≤2 retries); the runner APPENDS this review's
+//                    `issues[]` to the approved Plan prompt (mergeRevisionNote).
+//                    The reviewer never rewrites the prompt (E33 P0 #1).
 //   HUMAN_REVIEW   → land in REVIEW (Director must judge by eye)
 //
 // Mirrors style-check.ts patterns (skip on no key / no canon / parser hiccup,
@@ -88,7 +90,7 @@ export interface RunEREFCheckArgs {
 export interface EREFCheckSkipped {
   skipped: true;
   skipped_reason: string;
-  /** Always APPROVE so the pipeline doesn't deadlock when the checker is offline. */
+  /** A NON-verdict (see `skippedReview`) — never a pass. Callers branch on `skipped`. */
   review: EREFReview;
 }
 
@@ -105,25 +107,49 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function approvePassReview(reason: string): EREFReview {
+/**
+ * The review stamped when the checker did NOT run (no key, nothing to anchor
+ * against, vision outage, reviewer threw).
+ *
+ * A skipped check must never LOOK like a passed one. It used to return
+ * APPROVE + 100/100/100 with zero issues; E33 shipped SH07 v4 and SH01 v2 on
+ * exactly that — frames marked "excellent" without a single real inspection
+ * (registry P1 #9). Now it says what actually happened: nobody looked, so the
+ * verdict is HUMAN_REVIEW, every axis is 0, and the reason is carried as an
+ * issue so the drawer shows WHY the scores are empty. Zero scores also keep an
+ * uninspected attempt from ever clearing `attemptClearsKeepBar` or out-ranking
+ * an inspected one in `pickBestAttempt`.
+ *
+ * Callers still branch on the `skipped` flag (unchanged) — this only stops the
+ * payload from lying. Exported so the runner's reviewer-threw fallback stamps
+ * the same shape instead of hand-rolling a second synthetic pass.
+ */
+export function skippedReview(reason: string): EREFReview {
   return {
-    verdict: 'APPROVE',
-    consistency_score: 100,
-    emotion_alignment_score: 100,
-    action_clarity_score: 100,
+    verdict: 'HUMAN_REVIEW',
+    consistency_score: 0,
+    emotion_alignment_score: 0,
+    action_clarity_score: 0,
     gag_readability_score: null,
-    style_match_score: 100,
+    style_match_score: 0,
     extraneous_objects: [],
-    issues: [],
-    suggested_prompt_v2: null,
-    reviewer_model: EREF_CHECK_MODEL,
+    issues: [
+      {
+        area: 'composition',
+        character_slug: null,
+        severity: 'MAJOR',
+        description: `Automated check did not run: ${reason}`.slice(0, 400),
+        fix_hint: 'No machine verdict for this attempt — judge it by eye.',
+      },
+    ],
+    reviewer_model: 'checker-skipped',
     reviewer_cost_usd: 0,
     at: nowIso(),
   };
 }
 
 function buildSkipped(reason: string): EREFCheckSkipped {
-  return { skipped: true, skipped_reason: reason, review: approvePassReview(reason) };
+  return { skipped: true, skipped_reason: reason, review: skippedReview(reason) };
 }
 
 // ── System & user prompts ───────────────────────────────────────────────────
@@ -140,19 +166,22 @@ function buildSystemPrompt(): string {
     '     and the expected_gag.',
     '',
     'Your job: score the candidate against the test plan + bible refs on FIVE axes',
-    '(0-100 each), find any extraneous objects, and emit a verdict + actionable',
-    'suggested_prompt_v2 if regeneration would help.',
+    '(0-100 each), find any extraneous objects, and emit a verdict plus a list of',
+    'concrete, actionable issues.',
+    '',
+    'You do NOT rewrite the prompt. The Director-approved Plan is the base prompt and',
+    'is never replaced; on a retry your `issues[]` are appended UNDER it as hard',
+    'acceptance criteria. So every fix you want MUST appear as its own issue — an',
+    'instruction you leave out of `issues[]` will not reach the generator.',
     '',
     'Verdict rubric:',
     '  APPROVE        — every axis ≥ 80 AND no CRITICAL issues. Image is shippable.',
-    '  REGENERATE     — fixable via prompt change. Provide concrete suggested_prompt_v2.',
+    '  REGENERATE     — fixable via prompt change. Name each fix as its own issue.',
     '                   Use this when emotion/action/composition is off but identity is OK.',
     '  HUMAN_REVIEW   — judgement call needed (e.g. style edge case, narrative concern,',
     '                   identity drift that prompt cannot fix). Director must look.',
     '',
     'Be terse. Issue descriptions ≤ 140 chars. fix_hints ≤ 200 chars.',
-    'suggested_prompt_v2 ≤ 1200 chars and must produce a SAME-shape generation',
-    '(do not change shot_role or characters).',
     '',
     'Output ONLY one fenced ```json block. No preamble, no markdown sections. Schema:',
     '```json',
@@ -172,8 +201,7 @@ function buildSystemPrompt(): string {
     '      "description": "<≤140 chars>",',
     '      "fix_hint": "<≤200 chars actionable suggestion>"',
     '    }',
-    '  ],',
-    '  "suggested_prompt_v2": "<≤1200 chars rewrite or null>"',
+    '  ]',
     '}',
     '```',
   ].join('\n');
@@ -335,7 +363,7 @@ function coerceIssues(raw: unknown): EREFReviewIssue[] {
 export async function runEREFCheck(args: RunEREFCheckArgs): Promise<EREFCheckResult> {
   // Skip when API key absent (CI / replay-pilot / no Anthropic budget).
   if (!process.env.ANTHROPIC_API_KEY?.trim()) {
-    return buildSkipped('ANTHROPIC_API_KEY not set — checker bypassed, defaulting to APPROVE');
+    return buildSkipped('ANTHROPIC_API_KEY not set — checker bypassed, no verdict');
   }
 
   // Skip when there's nothing to anchor against (truly fresh series).
@@ -397,10 +425,6 @@ export async function runEREFCheck(args: RunEREFCheckArgs): Promise<EREFCheckRes
           .slice(0, 10)
       : [],
     issues: coerceIssues(body.issues),
-    suggested_prompt_v2:
-      typeof body.suggested_prompt_v2 === 'string' && body.suggested_prompt_v2.length > 0
-        ? body.suggested_prompt_v2.slice(0, 2000)
-        : null,
     reviewer_model: response.model,
     reviewer_cost_usd: response.costUsd,
     at: nowIso(),

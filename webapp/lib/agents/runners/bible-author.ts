@@ -106,11 +106,25 @@ const SECTION_GUIDANCE: Record<BibleSection, string> = {
     'Cover (in this exact order):',
     '1. **Identity** — name, function, scale.',
     '2. **Architecture & materials** — structure, textures, era.',
-    '3. **Palette & lighting** — dominant colours, light sources, time of day if fixed.',
-    '4. **Mood & atmosphere** — what the place *feels* like.',
-    '5. **Key props / set dressing** — recurring objects that anchor the space.',
-    '6. **Sound design hint** — ambient sound texture (1 line).',
-    '7. **Visual canon notes** — camera angles that work, signature framing.',
+    '3. **Palette** — dominant colours, finish.',
+    // E33 (2026-07-29): a location card that says nothing about light hands the
+    // scene's lighting to the reference plate, which is deliberately rendered
+    // neutral so it can be reused — i.e. to daylight. Enumerating the states
+    // gives the storyboard and the Plan something to CHOOSE, instead of a
+    // silence each of them fills differently.
+    '4. **Lighting states** — the fixed light sources built into the space (windows and',
+    '   where they face, practicals, their colour), then an ENUMERATED list of the lighting',
+    '   states this location can be shot in, one line each with its key source and falloff',
+    '   (e.g. `day_window` — sun through the back window, soft fill, short shadows;',
+    '   `night_practical` — the desk lamp is the only source, the rest of the room falls to',
+    '   shadow). Close the section with this sentence verbatim: "The canonical reference',
+    '   plate for this location is rendered under neutral even lighting so it can be reused',
+    '   — it fixes layout and palette only. Each episode picks one lighting state above, and',
+    '   that choice overrides the plate." Never declare one time of day as universal.',
+    '5. **Mood & atmosphere** — what the place *feels* like.',
+    '6. **Key props / set dressing** — recurring objects that anchor the space.',
+    '7. **Sound design hint** — ambient sound texture (1 line).',
+    '8. **Visual canon notes** — camera angles that work, signature framing.',
   ].join('\n'),
   object: [
     'Cover (in this exact order):',
@@ -225,6 +239,14 @@ function buildImagePrompt(args: {
       'Render as a clean reference image — front-facing or three-quarter view, neutral background, full-body, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
     );
   } else if (section === 'location') {
+    // "neutral natural lighting" STAYS — Director, 2026-07-29: «для канона
+    // нейтраль как точка отсчёта, не более». A canon plate is a reference card,
+    // not a frame; neutral light is what makes one plate reusable by every
+    // episode. What must NOT survive is the plate's authority over a scene: the
+    // location card enumerates the lighting states (SECTION_GUIDANCE above) and
+    // the shot prompt states the scene's light as an explicit override (SCENE
+    // LIGHT block in episode-reference-designer). Do not "fix" this line — the
+    // defect it was blamed for lives downstream, in the silence around it.
     lines.push(
       '',
       'Render as a clean establishing reference of the empty location — no characters present, neutral natural lighting, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
