@@ -29,7 +29,13 @@ import {
 import { runUpscaleOnly } from '@/lib/agents/runners/eref-upscale-only';
 import { recordCost } from '@/lib/budget';
 import { clearErefCancel } from '@/lib/api/eref-cancel';
-import { loadAgentInputs, insertJobRow, markJobCompleted, markJobFailed } from '@/lib/agents/runner';
+import {
+  loadAgentInputs,
+  insertJobRow,
+  markJobCompleted,
+  markJobFailed,
+  closeOpenJobsForRun,
+} from '@/lib/agents/runner';
 import { validateAgentInputs } from '@/lib/agents/gate';
 import { logEvent } from '@/lib/api/events';
 import { agentDisplayName } from '@/lib/api/agent-names';
@@ -51,6 +57,25 @@ export const execErefStart = inngest.createFunction(
     name: 'EXEC-EREF: Generate Episode References (Pilot+Fanout+Upscale)',
     retries: 2,
     concurrency: concurrencyFor('exec-eref'),
+    // ── Job-row close guarantee (E33, 2026-07-29) ──────────────────────────
+    // This is the function whose row actually leaked: on 2026-07-29 an
+    // EXEC-EREF job sat RUNNING for hours because the app process died mid-step
+    // — the `catch` below never ran, because NO user code ran. onFailure is
+    // invoked from the outside, once, after retries are exhausted, so it is the
+    // only hook that survives a dead worker. Same shape as the factory's.
+    onFailure: async ({ event, error }: { event: { data?: { run_id?: string } }; error: Error }) => {
+      const failedRunId = typeof event?.data?.run_id === 'string' ? event.data.run_id : null;
+      if (!failedRunId) return;
+      try {
+        await closeOpenJobsForRun(
+          createSupabaseServiceRoleClient(),
+          failedRunId,
+          `EXEC-EREF run failed after retries — ${error?.message ?? 'unknown error'}`,
+        );
+      } catch {
+        // Best-effort — the hourly reaper still sits behind this.
+      }
+    },
   },
   // Multi-event subscription — branch on event.name in the handler.
   [

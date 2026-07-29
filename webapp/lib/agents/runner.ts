@@ -42,6 +42,7 @@ import { parseShotPlanContract } from '../api/shot-plan-contract';
 import { assertBudgetAvailable, releaseBudgetReservation, BudgetExceededError } from '../budget';
 import { applyCriticVerdict, type CriticVerdict } from './critic-loop';
 import { resolvePromptRevisionCap } from './chain-flags';
+import { markDispatchIntent } from './dispatch-intent';
 import {
   SEEDANCE_COST_USD_PER_SECOND,
   SEEDANCE_RESOLUTION_COST_MULT,
@@ -3734,4 +3735,77 @@ export async function markJobFailed(
   if (error) {
     throw new Error(`markJobFailed: ${error.message}`);
   }
+}
+
+/**
+ * Close every still-open `jobs` row belonging to one Inngest run, and release the
+ * dispatch claim each row was holding.
+ *
+ * WHY (E33, 2026-07-29): an `EXEC-EREF` row sat `RUNNING` for hours. The app
+ * process died mid-step, so NO user code ran — not the step, not the function's
+ * `catch`, not `markJobFailed`. Every per-attempt close is a promise the process
+ * has to be alive to keep. `onFailure` is the one hook Inngest invokes from the
+ * OUTSIDE, on a fresh request, once the run is terminally failed — so it is the
+ * only place that can close a row whose worker is gone. Every agent function's
+ * `onFailure` calls this; the hourly reaper stays as the last line for runs the
+ * queue lost entirely (a reset orphans the run itself, so no failure event fires).
+ *
+ * HOW IT STAYS OUT OF THE RETRY'S WAY: `onFailure` fires ONCE, after all retries
+ * are exhausted — never between attempts. A run that fails an attempt and then
+ * succeeds on retry writes `COMPLETED` and never reaches here. And the status
+ * filter makes this write-once-only in the other direction too: a row already
+ * closed (by the per-attempt `catch`, or `COMPLETED` before a later step threw)
+ * is not `RUNNING`/`QUEUED`, so it is left exactly as it is.
+ *
+ * The claim release is not optional: closing the row here removes it from the
+ * reaper's `RUNNING`/`QUEUED` scan, and the reaper is what used to do the
+ * release. Without it a ghost claim would keep the shot undispatchable forever.
+ *
+ * @returns how many rows this call closed (0 is the common, healthy case).
+ */
+export async function closeOpenJobsForRun(
+  supabase: SupabaseClient<Database>,
+  inngestRunId: string,
+  errorMessage: string
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('id,episode_id,agent_id,input_snapshot')
+    .eq('inngest_run_id', inngestRunId)
+    .in('status', ['RUNNING', 'QUEUED']);
+  if (error || !data || data.length === 0) return 0;
+
+  const rows = data as Array<{
+    id: string;
+    episode_id: string | null;
+    agent_id: string | null;
+    input_snapshot: unknown;
+  }>;
+
+  let closed = 0;
+  for (const row of rows) {
+    try {
+      await markJobFailed(supabase, row.id, errorMessage.slice(0, 500));
+      closed += 1;
+      // Same key derivation the factory claims under (and the reaper releases by):
+      // per-shot for the money executors, an episode sentinel for EXEC-PUB.
+      const snapshot = (row.input_snapshot ?? null) as { shotId?: unknown } | null;
+      const shotId =
+        snapshot && typeof snapshot.shotId === 'string'
+          ? snapshot.shotId
+          : row.agent_id === 'EXEC-PUB'
+            ? 'EPISODE'
+            : null;
+      if (row.episode_id && row.agent_id && shotId) {
+        await markDispatchIntent(
+          supabase,
+          { episodeId: row.episode_id, shotId, agentId: row.agent_id },
+          'failed'
+        );
+      }
+    } catch {
+      // One unclosable row must not block the rest — the reaper still covers it.
+    }
+  }
+  return closed;
 }

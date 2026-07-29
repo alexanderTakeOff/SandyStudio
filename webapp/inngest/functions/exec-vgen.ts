@@ -29,6 +29,7 @@ import { inngest } from '@/lib/inngest/client';
 import { concurrencyFor } from '@/lib/inngest/concurrency';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import {
+  closeOpenJobsForRun,
   insertJobRow,
   loadAgentInputs,
   markJobCompleted,
@@ -184,6 +185,26 @@ export const execVgenRun = inngest.createFunction(
     name: 'EXEC-VGEN: Pilot + Single Shot',
     retries: 2,
     concurrency: concurrencyFor('exec-vgen-shot'),
+    // ── Job-row close guarantee (E33, 2026-07-29) ──────────────────────────
+    // The `catch` below only runs while the process is alive; a worker that dies
+    // mid-render leaves the row RUNNING and nothing notices until the hourly
+    // reaper. onFailure is invoked from the outside, once, after retries are
+    // exhausted. Same shape as the factory's and exec-eref's — and it also
+    // releases the per-shot dispatch claim, without which the shot would stay
+    // undispatchable (the reaper can no longer see a row we already closed).
+    onFailure: async ({ event, error }: { event: { data?: { run_id?: string } }; error: Error }) => {
+      const failedRunId = typeof event?.data?.run_id === 'string' ? event.data.run_id : null;
+      if (!failedRunId) return;
+      try {
+        await closeOpenJobsForRun(
+          createSupabaseServiceRoleClient(),
+          failedRunId,
+          `EXEC-VGEN run failed after retries — ${error?.message ?? 'unknown error'}`,
+        );
+      } catch {
+        // Best-effort — the hourly reaper still sits behind this.
+      }
+    },
   },
   [
     { event: 'sandystudio/exec-vgen/start' },
