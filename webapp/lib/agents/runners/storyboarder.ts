@@ -60,6 +60,8 @@ const SKILL_SELECTION_THRESHOLD = 2;
 // 60K-char markdown output on a 22-shot E21 v03 attempt with SKILLS injected.
 export const SB_MAX_TOKENS = 24000;
 export const SB_COST_CEILING_USD = 1.0;
+/** `specs/schemas/shot.md:54` — the REQUIRED time-of-day enum, verbatim. */
+const TIME_OF_DAY_VALUES = new Set(['MORNING', 'DAY', 'AFTERNOON', 'EVENING', 'NIGHT']);
 
 export class StoryboarderError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -79,6 +81,14 @@ export interface StoryboarderRunResult {
   briefAssetId: string | null;
   scriptAssetId: string | null;
   description: string;
+  /**
+   * Playbooks whose BODIES actually reached the model this run. Reported so the
+   * activation is observable postfactum (agent_completed metadata) instead of
+   * dying in a local `notes` string — an EMPTY list means the Storyboarder
+   * worked blind and the completion row is raised to warning. Same field name
+   * and semantics as EXEC-CREAD's `activePlaybooks`.
+   */
+  activePlaybooks: readonly string[];
   notes: readonly string[];
 }
 
@@ -387,12 +397,14 @@ function buildUserMessage(args: {
     hasCanon
       ? `          "location": { "slug": "<one of: ${locationSlugs.join(', ') || '(none)'}>", "sub_area": "<optional sub-area within that location, e.g. \\"entrance\\" or \\"window table\\". Use null if shot covers the whole location.>" },`
       : '          "location": { "slug": "<short slug derived from brief location name, lowercase_with_underscores>", "sub_area": "<optional sub-area or null>" },',
+    '          "time_of_day": "MORNING" | "DAY" | "AFTERNOON" | "EVENING" | "NIGHT",',
+    '          "lighting_condition": "<one clause derived from the World Bible lighting rules for THIS location at THIS time_of_day: key source + its direction + shadow quality. e.g. \\"single warm desk lamp camera-left, deep falloff into the room, long soft shadows\\" or \\"flat overcast daylight through the window wall, no directional key\\". Concrete and physical — never a mood word.>",',
     '          "characters": [',
     '            {',
     hasCanon
       ? `              "bible_slug": "<one of the Bible character slugs: ${characterSlugs.join(', ') || '(none)'}>",`
       : '              "bible_slug": "<character slug from brief, lowercase_with_underscores>",',
-    '              "expected_emotion": "<one short noun phrase — e.g. \\"smitten\\", \\"panicked\\", \\"dignified composure\\", \\"oblivious\\". The mood the AI image reviewer will check against.>",',
+    '              "expected_emotion": "<the VISIBLE acting beat, written as a CHANGE the camera records — eye state + mouth state + body attitude. e.g. \\"eyes flying wide, mouth dropping open\\", \\"lids sagging shut, jaw going slack\\", \\"ears swinging forward, tongue lolling out\\". Never a feeling-noun (\\"panicked\\", \\"oblivious\\") and never intent — those have no pixels. The acting the AI image reviewer will check against.>",',
     '              "expected_action": "<one short verb phrase — e.g. \\"leaning forward toward the vial\\", \\"falling backward like a plank\\", \\"raising one open hand\\". The physical action the AI image reviewer will check against.>",',
     '              "role_in_shot": "subject" | "co-star" | "background"',
     '            }',
@@ -435,7 +447,7 @@ function buildUserMessage(args: {
       ? `- \`characters[].bible_slug\` MUST be a Bible character slug (verbatim). Available: ${characterSlugs.join(', ') || '(none)'}. Never use display names ("Sandy") or invent characters. EREF and the AI reviewer match canonical reference images by exact slug.`
       : '- `characters[].bible_slug` must be a stable lowercase_with_underscores identifier from the brief.',
     '- `characters[]` must contain EVERY character visible or audible in the shot — even brief background presence. If a character is offscreen, do NOT include them.',
-    '- For each character: `expected_emotion` and `expected_action` are the two values the downstream AI image reviewer will use to score the generated image. Be specific and physical (not abstract). "happy" is too vague; "wide-eyed admiration" is good. "moving" is too vague; "leaning forward toward vial, hands flat on table" is good.',
+    '- `time_of_day` + `lighting_condition` are MANDATORY on every shot (`specs/schemas/shot.md`). They are the ONLY machine-readable statement of light in the whole pipeline — the Reference Designer and the Continuity Critic read these fields, NOT your prose, so light mentioned only in `action_prose` / `continuity_notes` / `sub_area` is light the renderer never receives (E33: a night episode rendered in daylight for exactly this reason). Copy `time_of_day` from the script scene when it declares one; if the script is silent, choose it from the scene action + World Bible and record that choice in `assumptions[]`. Derive `lighting_condition` from the World Bible lighting rules for that location at that time — never invent a lighting style the Bible does not sanction.',
     '- `role_in_shot`: "subject" = main focus, "co-star" = also active in this shot, "background" = visible but passive.',
     '- `expected_gag` is null only for transitions/setups. Every shot tagged `shot_role: "gag" | "punchline"` MUST have a non-null `expected_gag`.',
     shortsIsTarget
@@ -449,7 +461,7 @@ function buildUserMessage(args: {
       : '',
     `- Set \`runtime_target_seconds\` to ${runtimeTargetSeconds}. Sum of all shot \`duration_seconds\` MUST be within ±10% of ${runtimeTargetSeconds} — distribute/extend shots to reach it; do NOT inherit a shorter runtime from the script.`,
     '- For visual comedy MVP: every shot is action, no dialogue.',
-    '- Each shot\'s `action_prose` must describe what the camera SEES — concrete physical action, not internal feelings.',
+    '- `action_prose`, `expected_action` AND `expected_emotion` must all describe what the camera SEES — concrete physical action, never internal feeling, intent, knowledge or evaluation ("unsuspecting", "with intent", "ready to", "has not begun yet" are all unrenderable). Each must name a CHANGE between the shot\'s first and last frame: a held pose ("standing still", "lying motionless", "remains stationary") is NOT an action, and every character in the shot changes — a co-star frozen for the whole shot is a defect. A beat may COME TO rest; it may not start and end at rest.',
     '- The fenced JSON must be valid JSON. No trailing commas. No comments. Properly escape any quotes inside strings.',
     '- KEEP PROSE TIGHT in markdown — JSON at end is mandatory and must not be truncated. If running long, shorten markdown — never skip JSON.',
   ]
@@ -664,7 +676,11 @@ export async function runStoryboarder(
         selectionCostUsd = selectionResult.costUsd;
         const parsed = parseSkillSelection(selectionResult.markdown);
         const knownSlugs = new Set(manifestResult.available.map((m) => m.slug));
-        activatedSlugs = parsed.slugs.filter((s) => knownSlugs.has(s));
+        // Mandatory (`hard: true`) playbooks are NOT selectable — a genre engine
+        // must not depend on a Haiku dice roll. Union them back in.
+        activatedSlugs = [
+          ...new Set([...manifestResult.mandatory, ...parsed.slugs.filter((s) => knownSlugs.has(s))]),
+        ];
         selectionSkipped = false;
         notes.push(
           `Skill selection (${SB_SELECTION_MODEL}): ${activatedSlugs.length}/${manifestResult.count} activated · source=${parsed.source} · cost $${selectionCostUsd.toFixed(4)}`,
@@ -683,9 +699,27 @@ export async function runStoryboarder(
   }
 
   const bodiesResult = await loadAgentSkillBodies(activatedSlugs);
-  if (bodiesResult.loaded.length > 0) {
+  // The loaded bodies are what actually reach the model — an activated slug
+  // whose body failed to load never arrived. Report the LOADED set.
+  const activePlaybooks = bodiesResult.loaded.map((s) => s.slug);
+  if (activePlaybooks.length > 0) {
     notes.push(
-      `Active playbooks loaded: ${bodiesResult.loaded.map((s) => s.slug).join(', ')} (${bodiesResult.totalChars} chars${bodiesResult.truncatedCount > 0 ? ` · ${bodiesResult.truncatedCount} truncated for budget` : ''})`,
+      `Active playbooks loaded: ${activePlaybooks.join(', ')} (${bodiesResult.totalChars} chars${bodiesResult.truncatedCount > 0 ? ` · ${bodiesResult.truncatedCount} truncated for budget` : ''})`,
+    );
+  } else {
+    // Zero playbooks = storyboarding blind. EXEC-SB cannot HALT the way
+    // EXEC-CREAD does (it has no genre engine to be missing — its invariants
+    // live in agents/exec/storyboarder.md), but silence is what let this go
+    // unnoticed. Scream in the server log; the empty `active_playbooks` array
+    // also flips the agent_completed row to warning (factory.ts).
+    const genreLabel = seriesGenre ?? 'null';
+    notes.push(
+      `NO PLAYBOOKS — zero skills matched (agent=EXEC-SB genre=${genreLabel}); storyboarding on role-file invariants alone`,
+    );
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[EXEC-SB] NO PLAYBOOKS for ${episodeCode}: zero skills matched the manifest (genre=${genreLabel}). ` +
+        `Authoring proceeds on agents/exec/storyboarder.md invariants only — no genre craft reached the model.`,
     );
   }
   const activeSkillsBlock = composeActivePlaybooksBlock(bodiesResult.loaded);
@@ -799,6 +833,8 @@ export async function runStoryboarder(
         shot_id?: string;
         shot_role?: string;
         location?: { slug?: string; sub_area?: string | null };
+        time_of_day?: string;
+        lighting_condition?: string;
         characters?: Array<{
           bible_slug?: string;
           expected_emotion?: string;
@@ -818,6 +854,18 @@ export async function runStoryboarder(
         validationErrors.push(
           `${id}: location.slug "${s.location.slug}" not in Bible canon (${[...allowedLocSlugs].join(', ')})`,
         );
+      }
+      // Light is a REQUIRED shot parameter (`specs/schemas/shot.md:54-55`) that the
+      // live v2 contract never implemented — so on E33 the night was stated only in
+      // prose, the Reference Designer never received it, and the frames came back
+      // daylit. Fail loudly here rather than let an unlit board reach EREF.
+      if (!TIME_OF_DAY_VALUES.has(String(s.time_of_day ?? '').toUpperCase())) {
+        validationErrors.push(
+          `${id}: time_of_day must be one of ${[...TIME_OF_DAY_VALUES].join('|')} (got ${JSON.stringify(s.time_of_day)})`,
+        );
+      }
+      if (typeof s.lighting_condition !== 'string' || s.lighting_condition.trim().length === 0) {
+        validationErrors.push(`${id}: missing lighting_condition`);
       }
       if (!Array.isArray(s.characters) || s.characters.length === 0) {
         // Allowed: a pure-environment shot with zero characters. But action_prose
@@ -875,6 +923,7 @@ export async function runStoryboarder(
     contract: SB_CONTRACT,
     totalShots,
     totalDurationS,
+    activePlaybooks,
     briefAssetId: briefAsset.id ?? null,
     scriptAssetId: scriptAsset.id ?? null,
     description,

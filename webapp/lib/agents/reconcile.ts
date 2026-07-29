@@ -124,12 +124,20 @@ export function collectCriticSignals(
 }
 
 /**
- * Fold the on-model gate verdict of each IMG-episode_ref row into a verdicts map
- * keyed `${shot}::ref_image` (latest version wins). There is NO REV-ref_image row —
- * the detector's PASS/FAIL is frozen in the IMG's own metadata
- * (`shot_reference.on_model.verdict`) at generation time. The executor merges this
- * into the same map `planReconcileActions` consumes, so the on-model branch reads it
- * exactly like a critic signal. Pure — the executor passes the rows it already loaded.
+ * Fold the FROZEN verdicts each IMG-episode_ref row carries in its own metadata
+ * into a verdicts map keyed `${shot}::ref_image` (latest version wins). There is
+ * NO REV-ref_image row — both signals live on the image:
+ *   - `shot_reference.on_model.verdict` — the identity detector's PASS / FAIL.
+ *   - `shot_reference.review.verdict`   — the EREF reviewer's APPROVE /
+ *     REGENERATE / HUMAN_REVIEW on the pixels that shipped.
+ *
+ * Either one saying "do not ship" is reported as `FAIL`, so the existing on-model
+ * bounce branch in `planReconcileActions` holds the cell in REVIEW. E33 (P1 #8):
+ * only the on-model axis was folded in, so SH02/SH03/SH04/SH08 — all carrying a
+ * final `REGENERATE` — were invisible here and eligible for auto-approve.
+ *
+ * The executor merges this into the same map `planReconcileActions` consumes.
+ * Pure — the executor passes the rows it already loaded.
  */
 export function collectOnModelSignals(
   imgRows: ReadonlyArray<{ version?: number | null; metadata?: unknown }>,
@@ -139,11 +147,21 @@ export function collectOnModelSignals(
   for (const row of imgRows) {
     const meta = (row.metadata ?? null) as { shot_reference?: unknown } | null;
     const sr = (meta?.shot_reference ?? null) as
-      | { shot_id?: unknown; on_model?: { verdict?: unknown } | null }
+      | {
+          shot_id?: unknown;
+          on_model?: { verdict?: unknown } | null;
+          review?: { verdict?: unknown } | null;
+        }
       | null;
     const shotId = sr && typeof sr.shot_id === 'string' ? sr.shot_id : null;
-    const verdict =
+    const onModel =
       sr && sr.on_model && typeof sr.on_model.verdict === 'string' ? sr.on_model.verdict : null;
+    const reviewer =
+      sr && sr.review && typeof sr.review.verdict === 'string' ? sr.review.verdict : null;
+    // The reviewer's REGENERATE is as blocking as an on-model FAIL. HUMAN_REVIEW
+    // is not — that verdict asks for the Director, which the creative gate below
+    // already delivers in Modes 1/2.
+    const verdict = onModel === 'FAIL' || reviewer === 'REGENERATE' ? 'FAIL' : onModel;
     if (!shotId || !verdict) continue;
     const key = signalKey(shotId, 'ref_image');
     const v = row.version ?? 0;

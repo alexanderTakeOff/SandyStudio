@@ -27,6 +27,7 @@ import { DropdownMenu, type DropdownEntry } from '@/components/ui/DropdownMenu';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { RejectModal } from '@/components/editor/RejectModal';
 import { RetriggerStageModal } from '@/components/pipeline/RetriggerStageModal';
+import { postAssetDecision, CriticVerdictBlockedError } from '@/lib/api/asset-decision';
 import {
   AWAITING_DIRECTOR_STATUSES,
   type PipelineNodeState,
@@ -155,37 +156,37 @@ export function StageKebabMenu({
       }
       const results = await Promise.allSettled(
         candidates.map((a) =>
-          fetch(`/api/assets/${a.id}/approve`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              decision: 'APPROVE',
-              note: `Bulk approve from ${stageLabel} kebab`,
-              // Visual assets (IMG/VID) require preview_acknowledged — bulk
-              // approve sets it true since the Director's intent is explicit.
-              preview_acknowledged: true,
-            }),
-          }).then(async (r) => {
-            if (!r.ok) {
-              const j = await r.json().catch(() => ({}));
-              throw new Error((j as { error?: string }).error ?? `${r.status}`);
-            }
-            return a.id;
+          postAssetDecision(a.id, {
+            decision: 'APPROVE',
+            note: `Bulk approve from ${stageLabel} kebab`,
+            // Visual assets (IMG/VID) require preview_acknowledged — bulk
+            // approve sets it true since the Director's intent is explicit.
+            preview_acknowledged: true,
           }),
         ),
       );
       const ok = results.filter((r) => r.status === 'fulfilled').length;
-      const fail = results.length - ok;
+      const rejected = results.filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected',
+      );
       onChanged();
-      if (fail > 0) {
-        const firstErr = (results.find((r) => r.status === 'rejected') as
-          | PromiseRejectedResult
-          | undefined)?.reason as Error | undefined;
-        alert(
-          `Approved ${ok} of ${results.length} in ${stageLabel}. ${fail} failed${
-            firstErr ? `: ${firstErr.message}` : '.'
-          }`,
-        );
+      if (rejected.length > 0) {
+        // A critic-held asset is NOT overridable from here on purpose: a bulk
+        // "approve everything" is exactly the careless click that must not be
+        // able to walk past a verdict. The Director opens that shot and decides
+        // with the critic's text in front of him.
+        const held = rejected.filter((r) => r.reason instanceof CriticVerdictBlockedError);
+        const other = rejected.filter((r) => !(r.reason instanceof CriticVerdictBlockedError));
+        const lines = [`Approved ${ok} of ${results.length} in ${stageLabel}.`];
+        if (held.length > 0) {
+          lines.push(
+            `${held.length} held by their own critic — open each shot to read the verdict and decide there.`,
+          );
+        }
+        if (other.length > 0) {
+          lines.push(`${other.length} failed: ${(other[0].reason as Error).message}`);
+        }
+        alert(lines.join('\n'));
       }
     } catch (err) {
       alert(`Approve all failed: ${(err as Error).message}`);

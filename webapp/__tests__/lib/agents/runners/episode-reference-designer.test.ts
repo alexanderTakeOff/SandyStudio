@@ -28,6 +28,8 @@ import {
   runEpisodeReferenceDesigner,
   findLatestApprovedImgByLocation,
   buildEpisodeImageFormatAuthorityBlock,
+  collectSceneLightingEvidence,
+  buildSceneLightAuthorityBlock,
   _resetSystemPromptCacheForTests,
 } from '@/lib/agents/runners/episode-reference-designer';
 
@@ -871,5 +873,99 @@ describe('buildEpisodeImageFormatAuthorityBlock', () => {
     expect(block).not.toContain('openai-edits-multi'); // translated to alias
     expect(block).not.toMatch(/size/i);
     expect(block).not.toMatch(/allow_shot_overrides/i);
+  });
+});
+
+// ── E33: scene light outranks the reference plate's neutral light ──────────────
+describe('collectSceneLightingEvidence', () => {
+  it('gathers lighting statements from sub_area, prose and continuity_notes across the whole board', () => {
+    const evidence = collectSceneLightingEvidence([
+      {
+        shot_id: 'SH01',
+        location: { slug: 'bedroom', sub_area: 'crib corner, warm lamplight pool' },
+        action_prose:
+          'Sandy lowers the baby into the crib. One warm pool of desk-lamp light, the rest of the bedroom in shadow.',
+      },
+      { shot_id: 'SH02', action_prose: 'Sandy lies flat. Both sand states STILL.' },
+      {
+        shot_id: 'SH03',
+        action_prose: 'Sandy tips over.',
+        continuity_notes: 'The desk lamp stays the only source lit in frame.',
+      },
+    ]);
+    const joined = evidence.join('\n');
+    expect(joined).toContain('SH01 (sub_area)');
+    expect(joined).toContain('SH01 (action_prose)');
+    expect(joined).toContain('SH03 (continuity_notes)');
+    expect(joined).not.toContain('SH02'); // says nothing about light
+  });
+
+  it('does not read the costume word "dark" as a lighting statement', () => {
+    expect(
+      collectSceneLightingEvidence([
+        { shot_id: 'SH01', action_prose: 'His dark rubber-hose limbs extend outward.' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('returns nothing when the storyboard is silent about light', () => {
+    expect(
+      collectSceneLightingEvidence([
+        { shot_id: 'SH01', action_prose: 'Sandy walks to the bed and sits down.' },
+      ]),
+    ).toEqual([]);
+  });
+
+  // The declared contract fields are the primary source; prose is the fallback
+  // for boards authored before storyboarder@v2 carried them.
+  it('emits the DECLARED fields first, ahead of every prose line', () => {
+    const evidence = collectSceneLightingEvidence([
+      {
+        shot_id: 'SH01',
+        action_prose: 'One warm pool of desk-lamp light, the rest in shadow.',
+      },
+      {
+        shot_id: 'SH02',
+        time_of_day: 'NIGHT',
+        lighting_condition: 'teal desk lamp at frame-right is the only key; falloff into shadow',
+      },
+    ]);
+    expect(evidence[0]).toContain('SH02 [DECLARED time_of_day]');
+    expect(evidence[1]).toContain('SH02 [DECLARED lighting_condition]');
+    expect(evidence.some((l) => l.includes('SH01 (action_prose)'))).toBe(true);
+  });
+
+  it('emits a declared field even when it carries no recognised light cue word', () => {
+    // The regex gate applies to PROSE only — a contract field IS the statement.
+    // Bare "DAY" is deliberately absent from LIGHT_CUE_RE, so a prose-only
+    // pipeline would have dropped it.
+    const evidence = collectSceneLightingEvidence([{ shot_id: 'SH01', time_of_day: 'DAY' }]);
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]).toContain('[DECLARED time_of_day]');
+  });
+});
+
+describe('buildSceneLightAuthorityBlock', () => {
+  it('demotes the plate, names the banned phrasing, and carries the evidence', () => {
+    const block = buildSceneLightAuthorityBlock(['- SH01 (action_prose): "night interior"']);
+    expect(block).toContain('- SH01 (action_prose): "night interior"');
+    expect(block).toMatch(/outranks every reference plate/i);
+    expect(block).toContain('no dramatic shadows');
+    expect(block).toContain('even lighting');
+  });
+
+  it('ranks the shot\'s DECLARED contract fields above its prose', () => {
+    const block = buildSceneLightAuthorityBlock([]);
+    const declaredAt = block.indexOf('DECLARED `time_of_day`');
+    const proseAt = block.indexOf("THIS shot's own prose");
+    expect(declaredAt).toBeGreaterThan(-1);
+    expect(proseAt).toBeGreaterThan(declaredAt);
+  });
+
+  it('an empty storyboard light gets an explicit no-default instruction, never silence', () => {
+    const block = buildSceneLightAuthorityBlock([]);
+    expect(block).toContain('(none —');
+    expect(block).toMatch(/do NOT quietly fall back to daylight/i);
+    expect(block).toContain('policy_notes');
   });
 });

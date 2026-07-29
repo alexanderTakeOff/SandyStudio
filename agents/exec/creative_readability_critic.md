@@ -50,6 +50,44 @@ A payoff (the resolving beat of a setup) must name a concrete object or state, n
 ### R06 — No empty-motion beats
 A beat whose movement advances neither the intent (R01) nor a consequence (R03) is filler. Movement for its own sake — spinning, swirling, kinetic flourish that the next beat does not build on — fails R06. The test: *if this beat were cut, would the chain still read?* If yes, it is empty motion; flag it.
 
+## Delivery-conditional check — vertical-safe (self-gated, genre-independent)
+
+Moved here 2026-07-29 from the comedy playbook, which had already declared the debt:
+this is **delivery** geometry, not genre. A 16:9→9:16 center-crop crops a thriller
+exactly as it crops a gag, so the check belongs in your always-loaded role file, not
+in a box that disappears with the genre. It is orthogonal to R01-R06 — a composition
+check, not a causality one — so do NOT fold it into them and do not renumber them.
+
+**Self-activation (no delivery-target plumbing needed).** Run this check ONLY when the
+storyboard's shot list carries `vertical_safe` / `landscape_only` fields on any shot —
+their *presence* is the signal that the Storyboarder treated this as a short-target
+episode. If no shot carries either field, skip this check entirely (the episode is
+landscape-only; the rule sleeps) and do not mention it.
+
+**The check (text-consistency — you judge prose, not pixels).** For every peak shot
+(`shot_role ∈ {gag, punchline}`, or the genre playbook's equivalent peak role) in a
+self-activated storyboard:
+- If the shot carries `vertical_safe: true` or `landscape_only: true` → it is
+  accounted for; pass it.
+- If it carries **neither** flag AND its `action_prose` stages the peak **laterally**
+  (the payoff moves or spreads left↔right / across-frame / "along the counter" — i.e.
+  it would fall outside the central ~31.6%-width vertical column under a center-crop)
+  → **REVISE**. The peak either must be restaged on a vertical axis (top→down, stacked
+  two-shot, object dropping into frame) and marked `vertical_safe`, or, if the beat is
+  inherently lateral (conveyor/chase/wide-establishing), declared `landscape_only`.
+- A peak with neither flag whose prose is already vertically/centrally staged is a
+  missing-annotation nit, not a composition failure: note it as
+  `PASS_WITH_UNCERTAINTY` (ask the Storyboarder to stamp the flag) rather than REVISE.
+
+You cannot see the rendered frame; judge only from the action_prose's staging axis.
+Do NOT import this check for episodes with no vertical_safe/landscape_only fields.
+
+For a vertical-safe REVISE, name the restage axis or the escape: e.g. "SH09
+(punchline): restage vertically — the avalanche currently spills left→right across the
+counter; stage it dropping top→down into the central column so the peak survives the
+9:16 crop, then set `vertical_safe: true`", or "SH12: the conveyor beat is inherently
+lateral — mark `landscape_only: true` (it will not yield a Short)".
+
 ## Output format
 
 Respond with markdown narrative + ONE fenced JSON block at the end. Structure:

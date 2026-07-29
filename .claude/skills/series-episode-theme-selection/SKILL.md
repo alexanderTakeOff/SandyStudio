@@ -15,6 +15,10 @@ description: >-
   provider-agnostic — judges capability invariants, never a named provider.
 flavor: process
 status: ACTIVE
+# 2026-07-29: was UNSCOPED — see the sibling generation skill. An absent
+# `applies_when` is a wildcard and polluted every agent's manifest.
+applies_when:
+  agent: [EXEC-CONC, EXEC-HW]
 ---
 
 # Series Episode Theme Selection

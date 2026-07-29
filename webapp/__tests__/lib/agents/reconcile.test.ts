@@ -388,12 +388,66 @@ describe('collectOnModelSignals', () => {
     expect(verdicts.get(signalKey('SH02', 'ref_image'))).toBe('PASS');
   });
 
-  it('ignores rows with no on_model verdict (legacy / loose-skipped images)', () => {
+  it('ignores rows with no verdict at all (legacy / loose-skipped images)', () => {
     const verdicts = collectOnModelSignals([
       { version: 1, metadata: { shot_reference: { shot_id: 'SH01' } } },
       { version: 1, metadata: { shot_reference: null } },
       { version: 1, metadata: null },
     ]);
     expect(verdicts.size).toBe(0);
+  });
+
+  // E33 P1 #8 — SH02/SH03/SH04/SH08 shipped APPROVED holding a final REGENERATE.
+  it('reports a reviewer REGENERATE as FAIL even when the on-model gate passed', () => {
+    const verdicts = collectOnModelSignals([
+      {
+        version: 1,
+        metadata: {
+          shot_reference: {
+            shot_id: 'SH08',
+            on_model: { verdict: 'PASS' },
+            review: { verdict: 'REGENERATE' },
+          },
+        },
+      },
+    ]);
+    expect(verdicts.get(signalKey('SH08', 'ref_image'))).toBe('FAIL');
+  });
+
+  it('reports a reviewer REGENERATE as FAIL on a loose episode with no on-model axis', () => {
+    const verdicts = collectOnModelSignals([
+      {
+        version: 1,
+        metadata: { shot_reference: { shot_id: 'SH03', review: { verdict: 'REGENERATE' } } },
+      },
+    ]);
+    expect(verdicts.get(signalKey('SH03', 'ref_image'))).toBe('FAIL');
+  });
+
+  it('does NOT block on APPROVE or HUMAN_REVIEW (the latter asks for the Director)', () => {
+    const verdicts = collectOnModelSignals([
+      {
+        version: 1,
+        metadata: {
+          shot_reference: {
+            shot_id: 'SH01',
+            on_model: { verdict: 'PASS' },
+            review: { verdict: 'HUMAN_REVIEW' },
+          },
+        },
+      },
+      {
+        version: 1,
+        metadata: {
+          shot_reference: {
+            shot_id: 'SH02',
+            on_model: { verdict: 'PASS' },
+            review: { verdict: 'APPROVE' },
+          },
+        },
+      },
+    ]);
+    expect(verdicts.get(signalKey('SH01', 'ref_image'))).toBe('PASS');
+    expect(verdicts.get(signalKey('SH02', 'ref_image'))).toBe('PASS');
   });
 });

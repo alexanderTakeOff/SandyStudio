@@ -9,7 +9,12 @@
 //   - regenerate-image / EREF / Thumbnail endpoints (called inline)
 //
 // Returns the StyleCheckResult shape from the runner, plus the current
-// `style_guardian_mode` setting so the caller knows whether FAIL would block.
+// `style_guardian_mode` ('warn' | 'strict') so the caller knows whether FAIL
+// would block. The Guardian REPORTS — it never returns a rewritten prompt, and
+// there is no third `auto_rewrite` mode (both removed 2026-07-29, E33 P0 #1).
+// The one UI consumer (StyleGuardianBadge) types this response by composing
+// `StyleCheckResult & { style_guardian_mode: StyleGuardianMode }`, so the
+// contract cannot drift from the two definitions again.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { z } from 'zod';

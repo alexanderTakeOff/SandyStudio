@@ -44,6 +44,7 @@ import {
   composeActivePlaybooksBlock,
 } from '../load-skills';
 import { parseSkillSelection } from '../../skills/parse-skill-selection';
+import { getStoryboardShotById } from '../../api/vgen-shot-helpers';
 
 export const CREAD_CONTRACT = 'creative_readability_critic@v1';
 export const CREAD_MODEL = 'claude-sonnet-4-6';
@@ -274,7 +275,11 @@ async function resolveActivePlaybooks(args: {
         selectionCostUsd = selectionResult.costUsd;
         const parsed = parseSkillSelection(selectionResult.markdown);
         const knownSlugs = new Set(manifestResult.available.map((m) => m.slug));
-        activatedSlugs = parsed.slugs.filter((s) => knownSlugs.has(s));
+        // The genre ENGINE (`hard: true`) is not selectable — this critic HALTs
+        // without one, so it must never depend on the selector's dice roll.
+        activatedSlugs = [
+          ...new Set([...manifestResult.mandatory, ...parsed.slugs.filter((s) => knownSlugs.has(s))]),
+        ];
         notes.push(
           `Skill selection (${CREAD_SELECTION_MODEL}): ${activatedSlugs.length}/${manifestResult.count} activated · source=${parsed.source} · cost $${selectionCostUsd.toFixed(4)}`,
         );
@@ -412,18 +417,47 @@ async function loadPlan(
   return { id: row.id ?? planAssetId, content: row.content };
 }
 
-/** Newest APPROVED STB excerpt from upstream — the readable intent the per-shot
- *  plan must preserve. Soft: returns a placeholder when no STB is present. */
-function storyboardExcerpt(inputs: AgentInputs, maxChars = 4000): string {
+/**
+ * Storyboard context for a per-shot review — the readable intent the plan must
+ * preserve. THE SHOT UNDER REVIEW comes first, in full, as parsed JSON; the head
+ * of the board follows for surrounding context.
+ *
+ * E33 (P1 #10): this used to be the first 4000 characters of the board and
+ * nothing else. On a 9-shot episode that window covers the first two or three
+ * shots, so a critic reviewing SH07 was judging it against SH01's prose and never
+ * saw SH07 at all. Every one of the 9 reviews reported "no `vertical_safe` /
+ * `landscape_only` fields present — the check sleeps", while the storyboarder had
+ * in fact set `vertical_safe` on six shots. A field that is authored, ignored, and
+ * then reported as absent is worse than a missing one: it reads as coverage.
+ *
+ * Soft throughout: no STB / unparseable board / shot not found ⇒ falls back to the
+ * plain head-of-board excerpt, never throws.
+ */
+function storyboardExcerpt(
+  inputs: AgentInputs,
+  shotId?: string,
+  maxChars = 4000,
+): string {
   const upstream = inputs.upstream_assets as readonly UpstreamAssetLike[] | undefined;
   const stb = (upstream ?? [])
     .filter((a) => a.file_type?.startsWith('STB-') && a.status === 'APPROVED' && a.content)
     .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0];
   if (!stb?.content) return '<no STB upstream>';
-  return (
+  const head =
     stb.content.slice(0, maxChars) +
-    (stb.content.length > maxChars ? '\n... [truncated]' : '')
-  );
+    (stb.content.length > maxChars ? '\n... [truncated]' : '');
+  if (!shotId) return head;
+  const shot = getStoryboardShotById(stb.content, shotId);
+  if (!shot) return head;
+  return [
+    `### Shot under review — ${shotId} (verbatim from the APPROVED storyboard)`,
+    '```json',
+    JSON.stringify(shot, null, 2),
+    '```',
+    '',
+    '### Board head (surrounding context)',
+    head,
+  ].join('\n');
 }
 
 function buildReviewUserMessage(args: {
@@ -669,7 +703,7 @@ async function runReviewPhase(args: CREADReviewArgs): Promise<CREADRunResult> {
     planAssetId,
     shotId,
     planContent: plan.content,
-    storyboardExcerpt: storyboardExcerpt(inputs),
+    storyboardExcerpt: storyboardExcerpt(inputs, shotId),
     activeSkillsBlock: shelf.block,
   });
 

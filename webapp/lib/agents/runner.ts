@@ -881,6 +881,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
                 brief_asset_id: r.briefAssetId,
                 script_asset_id: r.scriptAssetId,
                 mvp_missing_inputs: r.notes,
+                active_playbooks: r.activePlaybooks,
                 provider_id: r.model,
                 provider_used: 'anthropic',
               },
@@ -2148,32 +2149,30 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           );
         }
         const body = parsedPlan.raw as {
-          prompt?: unknown;
           end_image?: unknown;
-          seed_strategy?: unknown;
-          quality_tier?: unknown;
-          provider?: unknown;
-          resolution?: unknown;
         };
         planPrompt = parsedPlan.prompt;
 
-        // TD-44 (2026-05-24): provider.id drives provider impl + quality tier.
-        if (body.provider && typeof body.provider === 'object') {
-          const pid = (body.provider as { id?: unknown }).id;
-          if (typeof pid === 'string') {
-            try {
-              const { resolveVanimProviderId } = await import('./runners/animator');
-              const resolved = resolveVanimProviderId(pid);
-              planProviderImplOverride = resolved.providerImpl;
-              planQualityOverride = resolved.qualityTier;
-            } catch {
-              // Unknown provider.id is a soft fail — leave overrides null
-              // so runner falls back to event-arg/DB-config + body.quality_tier.
-              // (Throwing would be too strict — Animator allowlist may grow
-              // and the runner shouldn't break on a new entry.)
-            }
-          }
-        }
+        // E33 audit (2026-07-29): provider / quality_tier / resolution / seed
+        // are projected out of the parsed contract by ONE shared function so
+        // the manual per-shot re-render (`/api/assets/:id/regenerate-video`)
+        // executes the SAME declared decisions this path does. They used to be
+        // extracted inline here and NOWHERE on the manual path — which is how a
+        // re-render ran an APPROVED prompt at an unapproved tier and dropped the
+        // plan-locked seed. Precedence is unchanged: provider.id sets impl+tier
+        // (TD-44), an explicit quality_tier overrides the tier (TD-33), an
+        // off-allowlist provider.id stays a soft fall-back (TD-67), resolution
+        // is lenient here and hard-gated at the generate() site (TD-85).
+        // Dynamic import: shot-readiness reaches resolveVanimProviderId and
+        // animator.ts imports this runner — same cycle the anchor-chain import
+        // below dodges.
+        const { shotPlanRenderParams } = await import('../api/shot-readiness');
+        const planParams = shotPlanRenderParams(parsedPlan);
+        planProviderImplOverride = planParams.providerImpl;
+        planQualityOverride = planParams.format.quality_tier ?? null;
+        planResolution = planParams.format.resolution ?? null;
+        planSeed = planParams.seed;
+
         // end_image: { asset_id: "<uuid>" } — null/missing = no end frame.
         if (body.end_image && typeof body.end_image === 'object') {
           const ei = body.end_image as { asset_id?: unknown };
@@ -2196,29 +2195,6 @@ export async function runAgent(args: RunAgentArgs): Promise<RunResult> {
           // legacy end_image / EREF lookup drives the call. Anchor mode
           // is opt-in, malformed anchors should not block the Plan-driven
           // path entirely.
-        }
-        // seed_strategy: { seed: <int> } — Seedance reproducibility hook.
-        if (body.seed_strategy && typeof body.seed_strategy === 'object') {
-          const ss = body.seed_strategy as { seed?: unknown };
-          if (typeof ss.seed === 'number' && Number.isFinite(ss.seed)) {
-            planSeed = Math.floor(ss.seed);
-          }
-        }
-        // quality_tier: 'fast' | 'standard' — Plan beats event arg.
-        if (body.quality_tier === 'fast' || body.quality_tier === 'standard') {
-          planQualityOverride = body.quality_tier;
-        }
-        // TD-85 (2026-06-01): resolution — lenient raw extraction only.
-        // Accept only the known contract values; anything else stays null.
-        // The authoritative member-of-supported-set validation runs at the
-        // generate() site so a bad value fails the run loudly rather than
-        // silently degrading to the provider's 720p default.
-        if (
-          body.resolution === '480p' ||
-          body.resolution === '720p' ||
-          body.resolution === '1080p'
-        ) {
-          planResolution = body.resolution;
         }
       }
       const prompt =

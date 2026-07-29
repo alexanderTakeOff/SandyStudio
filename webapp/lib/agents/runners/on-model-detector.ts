@@ -141,7 +141,9 @@ function buildSystemPrompt(present: Set<OnModelCanonKind>): string {
   if (present.has('style')) {
     axes.push(
       '  style_ok         — Does the rendering (medium, line, shading, palette discipline) match the',
-      '                    style canon? FALSE on a clear medium break (photoreal / 3D / wrong art style).',
+      '                    style canon REFERENCE? Read the medium off that reference, never off your',
+      '                    own priors: FALSE on a clear medium break (photoreal / live-action / a',
+      '                    wholly different art style).',
     );
     schema.push('  "style_ok": true | false,');
   }

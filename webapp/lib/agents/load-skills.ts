@@ -58,6 +58,14 @@ function ctxFromArgs(args: LoadAgentSkillsArgs): SelectorContext {
 
 export interface AgentSkillManifestResult {
   available: readonly SkillManifest[];
+  /**
+   * Slugs the agent may NOT decline — `hard: true` in frontmatter. A genre
+   * ENGINE (the playbook a role HALTs without) must reach the model
+   * deterministically; leaving it to the Haiku selection step makes activation
+   * a dice roll and, worse, an unobservable one. Callers union this into the
+   * activated set after selection. `hard` used to affect sort order only.
+   */
+  mandatory: readonly string[];
   count: number;
   totalBodyChars: number;
 }
@@ -73,6 +81,7 @@ export async function getAgentSkillManifest(
   const manifests = await listSkillManifests(ctxFromArgs(args));
   return {
     available: manifests,
+    mandatory: manifests.filter((m) => m.frontmatter.hard).map((m) => m.slug),
     count: manifests.length,
     totalBodyChars: manifests.reduce((acc, m) => acc + m.bodyChars, 0),
   };

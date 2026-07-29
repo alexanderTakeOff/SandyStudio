@@ -127,12 +127,13 @@ ACTION slot (Seedance) or action prose (Veo) MUST describe a full physical beat 
 PASS conditions (ALL must hold):
 
 - ACTION slot has ≥3 sentences (or ≥3 explicit beat phrases separated by `→`, `;`, or `.`)
-- ACTION slot names an `initiation` state (pose / surface contact / starting position) AND a `termination` state (final pose / surface / position) AND a `consequence` (residual motion, vibration, dust, ripple, tremor)
+- ACTION slot names an `initiation` state (pose / surface contact / starting position) AND a `termination` state (final pose / surface / position) that is a **DIFFERENT configuration** from the initiation — some body, prop or substance is demonstrably not where it started — AND a `consequence` (residual motion, vibration, dust, ripple, tremor)
 - ACTION slot's described physics matches the storyboard `expected_gag` + `action_prose` polarity. The Critic compares the Plan's ACTION verbs against the storyboard's verbs and REVISE if the Animator inverted the gag (e.g. storyboard says «launches into wall + vibrates», Plan says «aligns perfectly + stops» — opposite physics, REVISE with diagnosis "V12 gag inversion: storyboard says X, Plan says opposite Y").
 
 REVISE conditions:
 - ACTION slot is one line (<3 sentences, no `→` chain, no explicit beat phrases) → REVISE «V12 action beat: expand to full physical beat — initiation, trajectory, termination, consequence».
 - Storyboard's primary action verbs are NOT reflected in the ACTION slot OR are inverted → REVISE «V12 gag fidelity: ACTION must render storyboard physics, not paraphrase to opposite».
+- `termination` is the SAME configuration as `initiation` (a held pose described at length — multi-sentence prose about stillness still fails), OR the ACTION slot contains any stillness command — `absolute stillness`, `perfect stillness`, `total inertia`, `remains stationary`, `remains motionless`, `held motionless`, `motionless throughout`, `frozen` / `frozen tableau`, `sustained inertia`, `no body movement`, `no sand movement`, `STILL throughout`, `no reaction yet`, `has not begun to move` → REVISE «V12 no change of state: name what MOVES between the first and last frame for EVERY character in the shot; a video model renders "stay put" literally, and stillness is a place the beat arrives at, never the whole beat». A static CAMERA (V11 `static frame justified`) never licenses static CHARACTERS — the two axes are independent, and a `policy_notes` camera rationale is not a waiver here.
 
 V11 + V12 are the «cinematography signature» checks — formal companion to TD-68 Director directive and the [[camera-orbit-signature-policy]] memory note.
 

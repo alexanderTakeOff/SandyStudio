@@ -46,6 +46,7 @@ import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import {
   getStoryboardShotById,
   listStoryboardShots,
+  listStoryboardShotsV2,
   type StoryboardShotV2,
 } from '../../api/vgen-shot-helpers';
 import type { AgentInputs } from '../types';
@@ -320,6 +321,135 @@ function readAnchorChainEnabled(meta: unknown): boolean {
   return m.anchor_chain_enabled === true;
 }
 
+/**
+ * Words that name a time of day or a light source. Deliberately excludes bare
+ * "dark" — in this series it overwhelmingly means "dark rubber-hose limbs", a
+ * costume fact, not a light.
+ */
+const LIGHT_CUE_RE =
+  /\b(night|nights|nighttime|midnight|dawn|dusk|twilight|sunrise|sunset|morning|afternoon|evening|noon|daylight|daytime|darkness|shadow|shadows|silhouette|silhouetted|lamp|lamplight|lamps|candle|candlelit|candlelight|moonlight|sunlight|firelight|torchlight|neon|backlit|unlit|dim|dims|dimly|glow|glows|glowing|lit)\b/i;
+
+const MAX_LIGHT_EVIDENCE_LINES = 12;
+const MAX_LIGHT_EVIDENCE_CHARS = 220;
+
+/**
+ * E33 fix (2026-07-29): collect every statement about time of day or light
+ * source anywhere in the episode's storyboard.
+ *
+ * Two tiers, and the order is the point:
+ *   1. DECLARED — `time_of_day` / `lighting_condition`, the machine-readable
+ *      fields the storyboard contract now requires. Emitted verbatim, never
+ *      gated by the cue regex: a declared field IS the statement.
+ *   2. PROSE — sentences from sub_area / action_prose / continuity_notes that
+ *      name a time of day or a light source. This was the only tier before the
+ *      fields existed, and on E33 it fired on 2 shots out of 9: the other seven
+ *      Plans were authored with an empty light input and each invented its own,
+ *      the one furthest from the shots that spoke (SH07) taking its model's
+ *      default ("top-lit cartoon ambient") and rendering a night scene as day.
+ *      It stays as the fallback for boards authored before the fields existed.
+ *
+ * One episode is one lighting state, so every shot gets the whole episode's
+ * evidence — a shot that says nothing inherits from the shots that do.
+ */
+export function collectSceneLightingEvidence(
+  shots: readonly StoryboardShotV2[],
+): string[] {
+  const declared: string[] = [];
+  const prose: string[] = [];
+  for (const shot of shots) {
+    const subArea =
+      shot.location && typeof shot.location === 'object'
+        ? shot.location.sub_area ?? null
+        : null;
+    // Tier 1 — the declared fields, verbatim and unfiltered.
+    for (const [field, text] of [
+      ['time_of_day', shot.time_of_day],
+      ['lighting_condition', shot.lighting_condition],
+    ] as const) {
+      const s = text?.trim();
+      if (!s) continue;
+      declared.push(
+        `- ${shot.shot_id} [DECLARED ${field}]: "${s.slice(0, MAX_LIGHT_EVIDENCE_CHARS)}"`,
+      );
+    }
+    // Tier 2 — light spoken in prose.
+    const proseFields: Array<[string, string | null | undefined]> = [
+      ['sub_area', subArea],
+      ['action_prose', shot.action_prose ?? shot.action ?? shot.key_beat],
+      ['continuity_notes', shot.continuity_notes],
+    ];
+    for (const [field, text] of proseFields) {
+      if (!text) continue;
+      for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+        const s = sentence.trim();
+        if (!s || !LIGHT_CUE_RE.test(s)) continue;
+        prose.push(`- ${shot.shot_id} (${field}): "${s.slice(0, MAX_LIGHT_EVIDENCE_CHARS)}"`);
+      }
+    }
+  }
+  // Declared lines are never crowded out of the window by prose chatter.
+  return [...declared, ...prose].slice(0, MAX_LIGHT_EVIDENCE_LINES);
+}
+
+/**
+ * The light block. Its whole job is to put the scene's light ABOVE the light
+ * baked into the reference plates: canon location plates are generated with
+ * "neutral natural lighting" by design (bible-author) so one plate serves every
+ * episode — which makes the plate a daylight-shaped anchor that a night scene
+ * inherits unless the prompt says otherwise in words. Text beats the reference
+ * image (proven on E33 SH07: the two Plans without the word "night" rendered
+ * day; adding "NIGHT INTERIOR" made the same shot night), so the cure is to
+ * guarantee the words are always there.
+ */
+export function buildSceneLightAuthorityBlock(evidence: readonly string[]): string {
+  return [
+    '## SCENE LIGHT — outranks every reference plate (HARD)',
+    '',
+    'Location and scene-master reference plates are rendered under NEUTRAL, EVEN',
+    'lighting on purpose, so one plate can serve every episode. A plate fixes',
+    'GEOMETRY, LAYOUT, SCALE and PALETTE. It carries NO information about this',
+    "scene's time of day or light source: its even daylight is a rendering",
+    'baseline for a reference card, never the light of this scene, and it must',
+    'NOT be inherited into the frame.',
+    '',
+    'Authority over light, highest first:',
+    "  1. THIS shot's DECLARED `time_of_day` + `lighting_condition` (in the <shot>",
+    '     block). These are contract fields, not description — when present they',
+    '     settle the question and nothing below may soften them;',
+    "  2. THIS shot's own prose / sub_area / continuity_notes;",
+    "  3. lighting stated ANYWHERE in this episode's storyboard (evidence below) —",
+    '     one episode is one continuous lighting state unless a shot states a change;',
+    '  4. the lighting states declared by the location canon;',
+    '  5. nothing else. A reference plate is not a source of lighting authority.',
+    '',
+    "Lighting stated in this episode's storyboard:",
+    evidence.length > 0
+      ? evidence.join('\n')
+      : '(none — no shot in this storyboard names a time of day or a light source)',
+    '',
+    'Your `## Промпт` MUST contain one explicit lighting sentence stating (a) the',
+    'time of day, (b) the key light source and where it sits, (c) what the rest of',
+    'the frame does (falls into shadow / stays lit). Write it so it overrides the',
+    'attached plates, e.g. «NIGHT INTERIOR — the only light is the desk lamp at',
+    "frame-right; the rest of the room falls into shadow. The location plate's even",
+    'daylight does not apply.»',
+    '',
+    'If the evidence block above is empty, do NOT quietly fall back to daylight or',
+    'to top-lit ambient — that default is exactly how a night scene renders as a day',
+    'frame. Choose the light the action needs, state it, and record the choice in',
+    '`policy_notes[]` as an assumption for the Director.',
+    '',
+    'BANNED — in the positive prompt AND in the negative list. This phrasing class',
+    'erases the directional key light, and the night and the volume go with it:',
+    '«no dramatic shadows», «no strong shadows», «even lighting», «evenly lit»,',
+    '«flat lighting», «soft, quiet, even», «neutral natural lighting»,',
+    '«no cinematic lighting». A soft cartoon style constrains the EDGE of a shadow',
+    '(soft, graphic, inside the palette) — never its existence. Every frame keeps a',
+    'named key light with a direction and a visible falloff.',
+    '',
+  ].join('\n');
+}
+
 function buildDeliveryTargetsTable(targets: readonly string[]): string {
   const rows = targets.map((slug) => {
     const dims = SIZE_BY_DELIVERY_TARGET[slug];
@@ -488,6 +618,9 @@ function buildUserMessage(args: {
   /** Slice 2: pre-rendered episode IMAGE FORMAT authority block (or '' when the
    *  episode declares no image config). */
   episodeImageFormatBlock?: string;
+  /** E33: pre-rendered SCENE LIGHT authority block — the scene's light over the
+   *  reference plate's neutral light. Always present. */
+  sceneLightBlock: string;
 }): string {
   const {
     episodeCode,
@@ -509,6 +642,7 @@ function buildUserMessage(args: {
     temporalAnchorLookupPerformed,
     anchorChainContext,
     episodeImageFormatBlock,
+    sceneLightBlock,
   } = args;
 
   const biblePromptBlock = formatBibleForPrompt(bible);
@@ -531,6 +665,11 @@ function buildUserMessage(args: {
       ? Array.from(presentCharacterSlugs).join(', ')
       : '(none — establishing / object shot)';
 
+  const subArea =
+    shot.location && typeof shot.location === 'object'
+      ? shot.location.sub_area ?? null
+      : null;
+
   const planVersionLabel =
     priorPlanVersion !== null && priorPlanVersion > 0
       ? `v${String(priorPlanVersion + 1).padStart(2, '0')}`
@@ -548,7 +687,29 @@ function buildUserMessage(args: {
     `shot_role: ${shot.shot_role ?? '(unspecified)'}`,
     `camera_angle: ${shot.camera_angle ?? '(unspecified)'}`,
     `duration_seconds: ${shot.duration_seconds ?? '(unspecified)'}`,
+    // E33: sub_area + continuity_notes were parsed off the board and then
+    // dropped here. sub_area is where the storyboarder actually wrote the light
+    // ("…warm lamplight pool"), and continuity_notes is where "must match the
+    // prior shot — pose, prop state, lighting" lives. Withholding both from the
+    // Designer is how a night scene arrives with no light input at all.
+    `sub_area: ${subArea ?? '(unspecified)'}`,
+    // The two contract fields for light (storyboarder@v2, 2026-07-29). They are
+    // authored and validated upstream; until now nothing read them here, so the
+    // scene's light reached the Designer only if it happened to be spoken in
+    // prose. Authority order is spelled out in the SCENE LIGHT block below.
+    `time_of_day: ${shot.time_of_day ?? '(not declared — derive from the SCENE LIGHT evidence below)'}`,
+    `lighting_condition: ${shot.lighting_condition ?? '(not declared — derive from the SCENE LIGHT evidence below)'}`,
     `action_prose: ${shot.action_prose ?? shot.action ?? shot.key_beat ?? '(unspecified)'}`,
+    `continuity_notes: ${shot.continuity_notes ?? '(none)'}`,
+    // The canon props the executor WILL attach as LOCKED reference images. Shown
+    // so the prompt describes them as canon rather than inventing them; the
+    // Designer does not restate this list in the Plan (the executor reads it off
+    // the storyboard itself).
+    `props_in_frame (canon props auto-attached at render): ${
+      shot.props_in_frame && shot.props_in_frame.length > 0
+        ? shot.props_in_frame.join(', ')
+        : '(none)'
+    }`,
     `expected_gag: ${shot.expected_gag ?? '(none)'}`,
     `expected_emotion: ${shot.expected_emotion ?? '(none)'}`,
     `characters_present: ${presentList}`,
@@ -578,6 +739,7 @@ function buildUserMessage(args: {
         ].join('\n')
       : 'NEXT: (none — this is the last shot of the episode)',
     '',
+    sceneLightBlock,
     '## Series Bible canon',
     '',
     hasCanon
@@ -718,7 +880,12 @@ function buildUserMessage(args: {
     '  ],',
     '  "prompt": "<full prompt text — same as Промпт section above, machine-readable>",',
     '  "negative": ["<term>", "<term>", ...],',
-    '  "objects": [<zero or more canon prop slugs visible in this shot — copy the storyboard shot\'s props_in_frame verbatim. These attach the prop\'s canonical reference image at generation so the prop is locked, not hallucinated. Use [] if the shot has no canon prop.>],',
+    // `objects` was authored HERE by the model, told to "copy props_in_frame
+    // verbatim" — a deterministic list-copy handed to a generative model, from a
+    // field the model was never even shown. It came back empty on 5 of 9 E33
+    // shots (P1 #12), so the canon prop images were not attached and the props
+    // were drawn from scratch. The executor now reads props_in_frame off the
+    // storyboard directly; the Plan does not restate it.
     '  "camera_intent": {',
     '    "angle": "<MEDIUM | WIDE | CLOSE | ...>",',
     '    "sub_area_variation": "<one sentence on viewpoint variation vs sibling shots>"',
@@ -971,6 +1138,17 @@ export async function runEpisodeReferenceDesigner(
       ? getStoryboardShotById(stbAsset.content, orderedShotIds[currentIdx + 1]!)
       : null;
 
+  // E33: the episode's light, gathered from every shot that states it, so the
+  // seven shots that say nothing are not left to invent one each.
+  const lightingEvidence = collectSceneLightingEvidence(
+    listStoryboardShotsV2(stbAsset.content),
+  );
+  notes.push(
+    lightingEvidence.length > 0
+      ? `Scene light: ${lightingEvidence.length} lighting statement(s) found in the storyboard`
+      : 'Scene light: storyboard states NO time of day and NO light source — Designer must choose and declare it in policy_notes',
+  );
+
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
     episodeCode,
@@ -994,6 +1172,7 @@ export async function runEpisodeReferenceDesigner(
     episodeImageFormatBlock: buildEpisodeImageFormatAuthorityBlock(
       readEpisodeImageConfig(inputs.episode),
     ),
+    sceneLightBlock: buildSceneLightAuthorityBlock(lightingEvidence),
   });
 
   let result: AnthropicTextResult;

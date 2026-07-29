@@ -16,6 +16,15 @@ import {
   InboxNotePromptModal,
   type InboxNoteDecision,
 } from '@/components/inbox/InboxNotePromptModal';
+import { CriticVerdictOverrideModal } from '@/components/assets/CriticVerdictOverrideModal';
+import {
+  postAssetDecision,
+  withCriticOverride,
+  CriticVerdictBlockedError,
+  type AssetDecisionBody,
+  type AssetDecisionVerb,
+  type CriticFailure,
+} from '@/lib/api/asset-decision';
 
 interface InboxItem {
   id: string;
@@ -48,23 +57,45 @@ export function InboxPreviewZone() {
     item: InboxItem;
     decision: InboxNoteDecision;
   } | null>(null);
+  const [actError, setActError] = useState<string | null>(null);
+  const [criticBlock, setCriticBlock] = useState<{
+    item: InboxItem;
+    body: AssetDecisionBody;
+    failures: readonly CriticFailure[];
+  } | null>(null);
 
-  async function postDecision(item: InboxItem, decision: string, note?: string) {
+  async function postDecision(item: InboxItem, decision: AssetDecisionVerb, note?: string) {
     if (!item.asset_id) return;
     if (decision === 'APPROVE' && item.is_visual) {
       const ack = window.confirm('Visual asset — confirm preview reviewed?');
       if (!ack) return;
     }
-    await fetch(`/api/assets/${item.asset_id}/approve`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        decision,
-        note,
-        preview_acknowledged: decision === 'APPROVE' && item.is_visual ? true : undefined,
-      }),
+    await submitDecision(item, {
+      decision,
+      ...(note ? { note } : {}),
+      ...(decision === 'APPROVE' && item.is_visual ? { preview_acknowledged: true } : {}),
     });
-    mutate();
+  }
+
+  /** Single exit point. This zone used to drop the response on the floor, so a
+   *  refused approve (critic verdict, governance, FSM) looked like a dead
+   *  button. Every refusal is now shown; a critic verdict opens the override
+   *  dialog with the critic's own text. */
+  async function submitDecision(item: InboxItem, body: AssetDecisionBody) {
+    if (!item.asset_id) return;
+    setActError(null);
+    try {
+      await postAssetDecision(item.asset_id, body);
+      setCriticBlock(null);
+      mutate();
+    } catch (e) {
+      if (e instanceof CriticVerdictBlockedError) {
+        setCriticBlock({ item, body, failures: e.failures });
+        return;
+      }
+      setCriticBlock(null);
+      setActError(`${item.title} — ${(e as Error).message}`);
+    }
   }
 
   return (
@@ -87,6 +118,16 @@ export function InboxPreviewZone() {
 
         {error && (
           <p className="text-xs text-[var(--accent-danger)]">Failed to load inbox</p>
+        )}
+
+        {actError && (
+          <p
+            className="text-xs mb-2 leading-snug"
+            role="alert"
+            style={{ color: 'var(--accent-danger)' }}
+          >
+            {actError}
+          </p>
         )}
 
         {isLoading && (
@@ -130,7 +171,7 @@ export function InboxPreviewZone() {
                     <button
                       key={b.action}
                       onClick={() => {
-                        const map: Record<string, string> = {
+                        const map: Record<string, AssetDecisionVerb> = {
                           approve: 'APPROVE',
                           revise: 'REQUEST_REVISION',
                           reject: 'REJECT',
@@ -155,6 +196,16 @@ export function InboxPreviewZone() {
           ))}
         </div>
       </CardBody>
+      <CriticVerdictOverrideModal
+        open={criticBlock !== null}
+        subjectLabel={criticBlock?.item.title}
+        failures={criticBlock?.failures ?? []}
+        onCancel={() => setCriticBlock(null)}
+        onOverride={async () => {
+          if (!criticBlock) return;
+          await submitDecision(criticBlock.item, withCriticOverride(criticBlock.body));
+        }}
+      />
       <InboxNotePromptModal
         open={notePrompt !== null}
         decision={notePrompt?.decision ?? 'REJECT'}

@@ -4,15 +4,25 @@
 // Universal Core controls panel for a single VID-shot asset. Sits inside the
 // EpisodeAssetDrawer when `asset.file_type === 'VID-shot'`. Director uses it
 // to inspect the generated mp4, tweak Universal Core settings (aspect ratio,
-// quality tier, duration, prompt, reference image), and re-generate the shot
-// with the new settings via POST /api/assets/[id]/regenerate-video.
+// quality tier, duration, reference image), and re-generate the shot with the
+// new settings via POST /api/assets/[id]/regenerate-video.
 //
-// Universal Core settings (Phase 1, see plans/purrfect-stirring-hollerith.md):
-//   - aspect_ratio:     '16:9' | '9:16' | '1:1'
-//   - quality_tier:     'fast' | 'standard'
-//   - duration_seconds: 1–8
-//   - reference_asset_id: UUID of approved EREF (read-only chip in Phase 1)
-//   - prompt:           free text, auto-built upstream, editable here
+// What this panel may still change (2026-07-29, E33 audit):
+//   - aspect_ratio:       per-shot delivery-format channel (episode authority
+//                         may lock it — see the lock notice below)
+//   - end_image_asset_id: the anchor-mode toggle
+//   - reference_asset_id: read-only chip
+//
+// What it may NOT change — every one of these is a DECISION of the approved
+// SPC-shot_plan and is read server-side from that plan:
+//   - prompt, provider, quality_tier, resolution, seed, duration_seconds
+//
+// They are rendered here as a read-only mirror of the LAST render. Editing them
+// here was a second, uncontrolled channel: the drawer could run the approved
+// prompt at a tier the plan never declared, and shipping a drawer seed made a
+// "retry" differ from take 1 by nothing but the dice roll. To change any of
+// them: Request revision (Animator re-authors) or edit the plan on its contract
+// page. A control that cannot change the outcome must not look like it can.
 //
 // Provider-specific knobs (native_audio toggle, person_generation policy, etc.)
 // land in Phase 2 via ProviderManifest dynamic renderer — NOT here.
@@ -127,7 +137,7 @@ export interface VGENShotPanelProps {
   episodeId?: string | null;
   /** Drive or staging URL of the generated mp4. Null while generating or before first run. */
   videoUrl: string | null;
-  /** Storyboard shot row — used as fallback when prompt is empty. */
+  /** Storyboard shot row — supplies shot_id for labels + regen focus. */
   storyboardShot: VGENShotPanelStoryboardShot;
   /** Current settings (from asset metadata or computed defaults). */
   currentSettings: VGENShotPanelSettings;
@@ -152,16 +162,6 @@ function clampDuration(n: number): number {
   return Math.min(DURATION_MAX, Math.max(DURATION_MIN, Math.round(n)));
 }
 
-function buildPromptFromShot(shot: VGENShotPanelStoryboardShot): string {
-  const parts: string[] = [];
-  if (shot.action_prose) parts.push(shot.action_prose.trim());
-  if (shot.camera_angle) parts.push(`Camera: ${shot.camera_angle.trim()}.`);
-  if (shot.expected_emotion) parts.push(`Mood: ${shot.expected_emotion.trim()}.`);
-  if (shot.expected_gag) parts.push(`Beat: ${shot.expected_gag.trim()}.`);
-  if (shot.key_beat) parts.push(`Key: ${shot.key_beat.trim()}.`);
-  return parts.join(' ');
-}
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function VGENShotPanel({
@@ -174,11 +174,6 @@ export function VGENShotPanel({
   onRegenerated,
   readOnly,
 }: VGENShotPanelProps) {
-  const [prompt, setPrompt] = useState<string>(
-    currentSettings.prompt && currentSettings.prompt.trim().length > 0
-      ? currentSettings.prompt
-      : buildPromptFromShot(storyboardShot),
-  );
   const [provider, setProvider] = useState<VgenProvider>(
     currentSettings.provider_id ?? 'seedance-fal-img2vid',
   );
@@ -209,13 +204,6 @@ export function VGENShotPanel({
   const aspect = controls.aspect_ratio;
   const quality = controls.quality_tier;
   const duration = controls.duration_seconds;
-  // Track whether Director actually edited the prompt textarea. When false,
-  // regenerate sends NO `prompt` field so the server rebuilds via the latest
-  // `buildShotPromptV2(storyboardShot, episodeTitle, bibleCanon)` — Phase A.1
-  // bug fix 2026-05-08: without this, the panel always shipped the previously-
-  // persisted prompt back, and Bible canon never landed on regen.
-  const [promptEdited, setPromptEdited] = useState(false);
-
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -261,11 +249,6 @@ export function VGENShotPanel({
 
   // Re-seed local state when a different asset is opened or upstream metadata changes.
   useEffect(() => {
-    setPrompt(
-      currentSettings.prompt && currentSettings.prompt.trim().length > 0
-        ? currentSettings.prompt
-        : buildPromptFromShot(storyboardShot),
-    );
     const nextProvider = currentSettings.provider_id ?? 'seedance-fal-img2vid';
     setProvider(nextProvider);
     setControls(
@@ -281,7 +264,6 @@ export function VGENShotPanel({
         VIDEO_PROVIDER_CAPS[nextProvider],
       ),
     );
-    setPromptEdited(false);
     setAnchorMode('ref-only');
     setError(null);
     setSuccess(false);
@@ -315,36 +297,22 @@ export function VGENShotPanel({
     return Math.round(raw * 1000) / 1000; // $0.001 precision
   }, [provider, quality, duration, controls.resolution]);
 
-  const dirty = useMemo(() => {
-    return (
-      prompt !== currentSettings.prompt ||
-      aspect !== currentSettings.aspect_ratio ||
-      quality !== currentSettings.quality_tier ||
-      provider !== (currentSettings.provider_id ?? 'seedance-fal-img2vid') ||
-      duration !== currentSettings.duration_seconds
-    );
-  }, [prompt, aspect, quality, provider, duration, currentSettings]);
+  // Aspect is the only value this panel still sends, so it is the only thing
+  // that can be "dirty" or diverge from the episode authority. Comparing the
+  // plan-owned fields here would raise a confirm prompt for a divergence the
+  // panel cannot actually cause (2026-07-29).
+  const dirty = aspect !== currentSettings.aspect_ratio;
 
-  // When per-shot overrides are ALLOWED, surface whether the current panel
-  // values diverge from the episode authority — q26b requires an explicit
-  // confirm before a divergent regenerate (no silent override).
+  // When per-shot overrides are ALLOWED, surface whether the aspect diverges
+  // from the episode authority — q26b requires an explicit confirm before a
+  // divergent regenerate (no silent override).
   const overrideDiffs = useMemo(() => {
     if (!episodeDeclaresFormat || !allowShotOverrides) return [];
-    const diffs: string[] = [];
-    if (episodeVideo?.provider_id && episodeVideo.provider_id !== provider) {
-      diffs.push(`provider ${episodeVideo.provider_id}→${provider}`);
-    }
     if (episodeVideo?.aspect_ratio && episodeVideo.aspect_ratio !== aspect) {
-      diffs.push(`aspect ${episodeVideo.aspect_ratio}→${aspect}`);
+      return [`aspect ${episodeVideo.aspect_ratio}→${aspect}`];
     }
-    if (episodeVideo?.quality_tier && episodeVideo.quality_tier !== quality) {
-      diffs.push(`quality ${episodeVideo.quality_tier}→${quality}`);
-    }
-    if (episodeVideo?.resolution && episodeVideo.resolution !== controls.resolution) {
-      diffs.push(`res ${episodeVideo.resolution}→${controls.resolution ?? 'default'}`);
-    }
-    return diffs;
-  }, [episodeDeclaresFormat, allowShotOverrides, episodeVideo, provider, aspect, quality, controls.resolution]);
+    return [];
+  }, [episodeDeclaresFormat, allowShotOverrides, episodeVideo, aspect]);
   const needsOverrideConfirm = overrideDiffs.length > 0 && !overrideConfirmed;
 
   async function regenerate() {
@@ -362,17 +330,11 @@ export function VGENShotPanel({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          // Send whatever is currently in the textarea — what you see is what
-          // regenerates. Server rebuilds via buildShotPromptV2 with current
-          // Bible canon only when the box is empty. (Fixes: edit dropped on the
-          // second regen because `promptEdited` reset after each success.)
-          ...(prompt && prompt.trim().length > 0 ? { prompt } : {}),
+          // No prompt / provider / quality_tier / resolution / seed /
+          // duration_seconds — the server reads every one of them from this
+          // shot's APPROVED SPC-shot_plan (E33 audit, 2026-07-29). The route's
+          // schema rejects them outright, so sending them would 400.
           aspect_ratio: aspect,
-          quality_tier: quality,
-          provider,
-          duration_seconds: duration,
-          ...(controls.resolution ? { resolution: controls.resolution } : {}),
-          ...(typeof controls.seed === 'number' ? { seed: controls.seed } : {}),
           ...(controls.end_image_asset_id
             ? { end_image_asset_id: controls.end_image_asset_id }
             : {}),
@@ -403,9 +365,19 @@ export function VGENShotPanel({
   }
 
   const disabled = readOnly === true || busy;
-  // Format controls (provider / aspect / quality / resolution) are additionally
-  // frozen when the episode authority owns them and overrides are off.
-  const formatDisabled = disabled || formatLocked;
+
+  // Aspect is the only format field this panel still sends; quality /
+  // resolution / duration / seed are plan-owned (2026-07-29) and are no longer
+  // offered as controls that would silently do nothing. Anchor-mode doctrine:
+  // the end-frame picker shows ONLY in two-anchor mode; ref-only (the orbit
+  // default) hides it and end_image stays null. When the episode authority owns
+  // the format AND we're in ref-only mode nothing is left to edit — render no
+  // control panel rather than an empty one.
+  const editableFields = useMemo(() => {
+    const base: ProviderControlField[] = formatLocked ? [] : ['aspect'];
+    if (anchorMode === 'two-anchor') base.push('endImage');
+    return base;
+  }, [formatLocked, anchorMode]);
 
   return (
     <div className="space-y-3" aria-label="VGEN shot panel">
@@ -466,26 +438,42 @@ export function VGENShotPanel({
           ]
             .filter(Boolean)
             .join(' · ')}
-          ). Enable “Allow per-shot overrides” on the episode to edit per-shot.
-          Prompt / seed / end-frame remain editable.
+          ). Enable “Allow per-shot overrides” on the episode to edit the aspect per-shot.
         </div>
       )}
 
-      {/* ── Provider select (gate to capability surface) ────────────── */}
+      {/* ── Plan authority notice ───────────────────────────────────── */}
+      <div
+        className="rounded-md px-2.5 py-2 text-[11px] leading-snug border"
+        style={{
+          background: 'color-mix(in oklab, var(--accent-info, #38bdf8) 10%, transparent)',
+          borderColor: 'color-mix(in oklab, var(--accent-info, #38bdf8) 35%, transparent)',
+          color: 'var(--text-secondary)',
+        }}
+      >
+        📄 <strong>Prompt · provider · quality · resolution · seed · duration</strong> come from
+        this shot’s <strong>approved Shot Plan</strong> — shown below as the last render’s
+        values, read-only. To change them: Request revision (Animator re-authors) or edit the
+        plan on its contract page.
+      </div>
+
+      {/* ── Provider — read-only mirror of the plan-driven last render ── */}
       <label className="block">
-        <span className="text-[10px] uppercase tracking-wider text-text-muted">Provider</span>
+        <span className="text-[10px] uppercase tracking-wider text-text-muted">
+          Provider
+          <span
+            className="ml-2 normal-case font-normal"
+            style={{ color: 'var(--accent-info, #38bdf8)' }}
+          >
+            · from approved plan
+          </span>
+        </span>
         <select
           value={provider}
-          onChange={(e) => {
-            const next = e.target.value as VgenProvider;
-            setProvider(next);
-            setOverrideConfirmed(false);
-            // Re-normalise controls against the new provider's capabilities.
-            setControls((prev) => normalizeControls(prev, VIDEO_PROVIDER_CAPS[next]));
-          }}
-          disabled={formatDisabled}
-          aria-label="Video provider"
-          className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
+          disabled
+          aria-label="Video provider (from the approved shot plan)"
+          title="The server resolves the provider from this shot's APPROVED Shot Plan."
+          className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary focus:outline-none disabled:opacity-60 cursor-default"
         >
           {PROVIDER_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -535,25 +523,19 @@ export function VGENShotPanel({
       )}
 
       {/* ── Capability-aware controls (Sprint β) ─────────────────────── */}
-      <ProviderControlPanel
-        provider={provider}
-        value={controls}
-        onChange={(next) => {
-          setControls(next);
-          setOverrideConfirmed(false);
-        }}
-        disabled={disabled}
-        density="full"
-        fields={(() => {
-          // Anchor-mode doctrine: the end-frame picker shows ONLY in two-anchor
-          // mode. ref-only (the orbit default) hides it (end_image stays null).
-          const base: ProviderControlField[] = formatLocked
-            ? ['duration', 'seed']
-            : ['aspect', 'quality', 'resolution', 'duration', 'seed'];
-          if (anchorMode === 'two-anchor') base.push('endImage');
-          return base;
-        })()}
-      />
+      {editableFields.length > 0 && (
+        <ProviderControlPanel
+          provider={provider}
+          value={controls}
+          onChange={(next) => {
+            setControls(next);
+            setOverrideConfirmed(false);
+          }}
+          disabled={disabled}
+          density="full"
+          fields={editableFields}
+        />
+      )}
 
       {/* ── Override-episode confirm (q26b) ──────────────────────────── */}
       {overrideDiffs.length > 0 && (
@@ -604,59 +586,27 @@ export function VGENShotPanel({
         </div>
       </div>
 
-      {/* ── Prompt textarea ─────────────────────────────────────────── */}
+      {/* ── Prompt — read-only mirror of the APPROVED Shot Plan ──────── */}
       <label className="block">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-[10px] uppercase tracking-wider text-text-muted">
             Prompt
-            {!promptEdited && (
-              <span
-                className="ml-2 normal-case font-normal"
-                style={{ color: 'var(--accent-info, #38bdf8)' }}
-                title="Auto-built from storyboard + Bible canon. Server rebuilds fresh on regenerate."
-              >
-                · auto
-              </span>
-            )}
-            {promptEdited && (
-              <span
-                className="ml-2 normal-case font-normal"
-                style={{ color: 'var(--accent-warning, #f59e0b)' }}
-                title="Director edited — server uses this verbatim, ignores Bible canon"
-              >
-                · edited
-              </span>
-            )}
-          </span>
-          {promptEdited && (
-            <button
-              type="button"
-              onClick={() => {
-                setPrompt(
-                  currentSettings.prompt && currentSettings.prompt.trim().length > 0
-                    ? currentSettings.prompt
-                    : buildPromptFromShot(storyboardShot),
-                );
-                setPromptEdited(false);
-              }}
-              className="text-[10px] underline text-text-muted hover:text-text-secondary"
-              title="Discard edits — let server rebuild prompt with current Bible canon on regen"
+            <span
+              className="ml-2 normal-case font-normal"
+              style={{ color: 'var(--accent-info, #38bdf8)' }}
+              title="The server renders the prompt from this shot's APPROVED Shot Plan. To change it: Request revision (Animator re-authors), or edit the plan on its contract page."
             >
-              Reset to auto
-            </button>
-          )}
+              · from approved plan
+            </span>
+          </span>
         </div>
         <textarea
-          value={prompt}
-          onChange={(e) => {
-            setPrompt(e.target.value);
-            setPromptEdited(true);
-          }}
-          disabled={disabled}
+          value={currentSettings.prompt}
+          readOnly
           rows={5}
-          aria-label="Video generation prompt"
-          placeholder="Describe the action, camera, mood…"
-          className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-primary leading-relaxed focus:outline-none focus:border-[var(--accent-primary)] disabled:opacity-50"
+          aria-label="Video generation prompt (from the approved shot plan)"
+          placeholder="Prompt comes from the approved Shot Plan"
+          className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm text-text-secondary leading-relaxed focus:outline-none cursor-default"
         />
       </label>
 
@@ -668,8 +618,11 @@ export function VGENShotPanel({
             style={{ background: 'color-mix(in oklab, var(--accent-primary) 6%, transparent)' }}
           >
             <Sparkles size={12} className="shrink-0" style={{ color: 'var(--accent-primary)' }} />
-            <span>
+            <span
+              title="Estimated from the LAST render's provider / quality / resolution / duration. The approved Shot Plan is what the server actually executes — if the plan was re-authored since, the real cost follows the plan."
+            >
               Will cost ~<span className="font-mono text-text-primary">${costEstimate.toFixed(3)}</span>{' '}
+              <span className="text-text-muted">(est. from last render)</span>{' '}
               <span className="text-text-muted">
                 ({duration}s × ${COST_RATE_USD_PER_SECOND[provider][quality].toFixed(4)}/s
                 {(() => {

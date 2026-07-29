@@ -39,7 +39,6 @@ function review(
       description: 'x',
       fix_hint: 'y',
     })),
-    suggested_prompt_v2: null,
     reviewer_model: 'test',
     reviewer_cost_usd: 0,
     at: '2026-07-16T00:00:00.000Z',
@@ -71,9 +70,17 @@ describe('reviewComposite', () => {
 });
 
 describe('attemptClearsKeepBar', () => {
+  it('sits at a bar real reviews can actually clear (E33: 85 was unreachable)', () => {
+    // Across 63 paid generations of E33 the reviewer's best composite was 77, so an
+    // 85 bar fired zero times and every shot went to retry-exhaustion by construction.
+    // Director set 70 on 2026-07-29 — pin it so it cannot drift back silently.
+    expect(KEEP_ATTEMPT_SCORE_THRESHOLD).toBe(70);
+    expect(attemptClearsKeepBar(77, 0)).toBe(true); // E33's best attempt would now be kept
+  });
+
   it('keeps only when no CRITICAL AND composite ≥ threshold', () => {
-    expect(attemptClearsKeepBar(KEEP_ATTEMPT_SCORE_THRESHOLD, 0)).toBe(true); // 85, clean
-    expect(attemptClearsKeepBar(KEEP_ATTEMPT_SCORE_THRESHOLD - 1, 0)).toBe(false); // 84 → regen
+    expect(attemptClearsKeepBar(KEEP_ATTEMPT_SCORE_THRESHOLD, 0)).toBe(true); // at the bar, clean
+    expect(attemptClearsKeepBar(KEEP_ATTEMPT_SCORE_THRESHOLD - 1, 0)).toBe(false); // just under → regen
     expect(attemptClearsKeepBar(100, 1)).toBe(false); // perfect score but a CRITICAL → regen
     expect(attemptClearsKeepBar(95, 0)).toBe(true);
   });

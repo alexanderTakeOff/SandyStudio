@@ -182,16 +182,19 @@ export interface EREFReview {
   /** Free-text descriptions of any extra objects in frame. Empty = clean. */
   extraneous_objects: string[];
   issues: EREFReviewIssue[];
-  /** Provider-tunable rewritten prompt for auto-regen. Null = no actionable fix. */
-  suggested_prompt_v2: string | null;
   reviewer_model: string;
   reviewer_cost_usd: number;
   at: string;
 }
 
 /** Keep-first threshold (Director 2026-07-16): an attempt is "clean enough to keep"
- *  when it has no CRITICAL issue AND its composite score ≥ this. */
-export const KEEP_ATTEMPT_SCORE_THRESHOLD = 85;
+ *  when it has no CRITICAL issue AND its composite score ≥ this.
+ *
+ *  85 → 70 (Director, 2026-07-29, E33 audit): across 63 paid generations of E33 the
+ *  BEST composite the reviewer ever returned was 77, so the gate never once fired and
+ *  every shot went to retry-exhaustion by construction — the machine that made each
+ *  retry worse was fed by a bar nothing could clear. */
+export const KEEP_ATTEMPT_SCORE_THRESHOLD = 70;
 
 /**
  * Score an attempt's review: `composite` = mean of the reviewer's non-null 0-100

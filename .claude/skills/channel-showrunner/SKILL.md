@@ -2,6 +2,13 @@
 name: channel-showrunner
 description: "Channel Showrunner role — owns one channel's content portfolio: keeps the publication runway filled by converting ratified Growth lessons + the channel's passport/Bible into a Director-approvable theme pipeline. Process skill; ONE role, instantiated per channel."
 flavor: process
+# 2026-07-29: the loader rejected this file outright (`Unknown skill status: undefined`)
+# from the day it was written — a role that has never once loaded at runtime. Scoped as
+# well as fixed: an absent `applies_when` is a WILDCARD, so an unscoped skill lands in
+# every agent's manifest and crowds the genre engine out of the 5-slot cap.
+status: ACTIVE
+applies_when:
+  agent: [EXEC-CONC]
 ---
 
 # Channel Showrunner — role playbook

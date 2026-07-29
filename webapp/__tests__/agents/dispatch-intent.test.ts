@@ -6,6 +6,7 @@ import {
   computeInputHash,
   claimDispatchIntent,
   markDispatchIntent,
+  RECLAIM_ECHO_WINDOW_MS,
 } from '@/lib/agents/dispatch-intent';
 import { makeMockSupabase } from '../helpers/mock-supabase';
 
@@ -81,12 +82,37 @@ describe('dispatch-intent — claimDispatchIntent (atomic claim)', () => {
     expect(designer.claimed).toBe(true);
   });
 
-  it('allows a sequential re-claim after the prior run is marked terminal', async () => {
+  it('allows a sequential re-claim once the echo window has passed', async () => {
+    const { client, tables } = makeMockSupabase();
+    await claimDispatchIntent(client, key, 'h1', 'run-1');
+    await markDispatchIntent(client, key, 'done');
+    // Backdate the completion past the echo window — a deliberate later regen.
+    tables.dispatch_intent[0].updated_at = new Date(
+      Date.now() - RECLAIM_ECHO_WINDOW_MS - 1_000,
+    ).toISOString();
+    const regen = await claimDispatchIntent(client, key, 'h1', 'run-2');
+    expect(regen.claimed).toBe(true);
+  });
+
+  // E33 P1 #11: SH07 ref_plan v03 started ONE SECOND after v02 completed and
+  // invalidated an already-accepted plan. A terminal row stays re-claimable —
+  // just not by an identical payload arriving inside the echo window.
+  it('blocks an identical re-claim inside the echo window after a terminal run', async () => {
     const { client } = makeMockSupabase();
     await claimDispatchIntent(client, key, 'h1', 'run-1');
     await markDispatchIntent(client, key, 'done');
-    const regen = await claimDispatchIntent(client, key, 'h1', 'run-2');
-    expect(regen.claimed).toBe(true);
+    const echo = await claimDispatchIntent(client, key, 'h1', 'run-2');
+    expect(echo.claimed).toBe(false);
+    expect(echo.blockingRunId).toBe('run-1');
+    expect(echo.blockingStatus).toBe('done');
+  });
+
+  it('allows an immediate re-claim with a DIFFERENT payload (real new work)', async () => {
+    const { client } = makeMockSupabase();
+    await claimDispatchIntent(client, key, 'h1', 'run-1');
+    await markDispatchIntent(client, key, 'done');
+    const different = await claimDispatchIntent(client, key, 'h2', 'run-2');
+    expect(different.claimed).toBe(true);
   });
 
   it('still blocks while the holder is RUNNING (not yet terminal)', async () => {

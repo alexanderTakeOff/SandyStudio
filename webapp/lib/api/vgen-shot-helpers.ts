@@ -81,6 +81,15 @@ export interface StoryboardShotV2 {
    */
   location?: string | { slug?: string; sub_area?: string };
   /**
+   * Light — REQUIRED by `specs/schemas/shot.md:54-55` and implemented in the live
+   * contract 2026-07-29. Until then the whitelist below silently dropped any
+   * light the storyboarder emitted, so the only statement of "night" that reached
+   * the Reference Designer was whatever it could infer from prose (E33: it could
+   * not, and a night episode rendered daylit).
+   */
+  time_of_day?: string;
+  lighting_condition?: string;
+  /**
    * Storyboarder's shot-to-shot carry-over note (pose, prop state, lighting
    * that must match the previous frame). Feeds the WCHK state-ledger
    * extraction (Motor 1, 2026-06-11).
@@ -94,6 +103,14 @@ export interface StoryboardShotV2 {
    */
   vertical_safe?: boolean;
   landscape_only?: boolean;
+  /**
+   * Canon prop slugs physically visible in this shot, authored by EXEC-SB. This
+   * is what attaches each prop's LOCKED reference image at generation, so the
+   * prop is composited from canon instead of drawn from scratch. Was dropped by
+   * this parser until 2026-07-29 (E33 P1 #12) — which is why the Designer, told
+   * to "copy props_in_frame verbatim", never had the list to copy.
+   */
+  props_in_frame?: string[];
 }
 
 interface StoryboardJson {
@@ -145,12 +162,21 @@ function shotToV2(s: unknown): StoryboardShotV2 | null {
     expected_gag: typeof sh.expected_gag === 'string' ? sh.expected_gag : undefined,
     expected_emotion:
       typeof sh.expected_emotion === 'string' ? sh.expected_emotion : undefined,
+    time_of_day: typeof sh.time_of_day === 'string' ? sh.time_of_day : undefined,
+    lighting_condition:
+      typeof sh.lighting_condition === 'string' ? sh.lighting_condition : undefined,
     continuity_notes:
       typeof sh.continuity_notes === 'string' ? sh.continuity_notes : undefined,
     vertical_safe:
       typeof sh.vertical_safe === 'boolean' ? sh.vertical_safe : undefined,
     landscape_only:
       typeof sh.landscape_only === 'boolean' ? sh.landscape_only : undefined,
+    props_in_frame: Array.isArray(sh.props_in_frame)
+      ? sh.props_in_frame
+          .filter((x): x is string => typeof x === 'string')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : undefined,
     characters,
     characters_present: Array.isArray(sh.characters_present)
       ? sh.characters_present.filter((x): x is string => typeof x === 'string')

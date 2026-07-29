@@ -4,7 +4,15 @@ description: Post-render vision rubric — a critic LOOKS at the rendered pixels
 flavor: process
 status: ACTIVE
 owner: Director
+# `stage` and `input` below are documentation only — the selector's predicate knows
+# agent/genre/series_id/episode_id/gate/file_type and ignores everything else, so
+# this block matched EVERY agent until `agent:` was added (2026-07-29). The rubric's
+# real consumer loads it by path (lib/agents/visual-verdict.ts), not through the
+# selector; the scope exists to keep it out of other agents' manifests.
+# NB: the frontmatter parser skips comments only at column 0 — never indent one
+# inside a nested block, it throws "Malformed nested line" and drops the skill.
 applies_when:
+  agent: [EXEC-VCRIT]
   stage: [episode_reference, video_shot]
   input: rendered_pixels
 ---

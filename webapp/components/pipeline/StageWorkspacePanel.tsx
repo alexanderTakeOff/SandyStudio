@@ -24,6 +24,14 @@ import { CheckCheck, Pencil, RotateCcw, Eye, Shuffle, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { EditorModal } from '@/components/editor/EditorModal';
 import { RetriggerStageModal } from '@/components/pipeline/RetriggerStageModal';
+import { CriticVerdictOverrideModal } from '@/components/assets/CriticVerdictOverrideModal';
+import {
+  postAssetDecision,
+  withCriticOverride,
+  CriticVerdictBlockedError,
+  type AssetDecisionBody,
+  type CriticFailure,
+} from '@/lib/api/asset-decision';
 import { agentDisplayName } from '@/lib/api/agent-names';
 import type {
   PipelineNodeState,
@@ -258,6 +266,10 @@ export function StageWorkspacePanel({
   const [retriggerOpen, setRetriggerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [providerHint, setProviderHint] = useState(false);
+  const [criticBlock, setCriticBlock] = useState<{
+    body: AssetDecisionBody;
+    failures: readonly CriticFailure[];
+  } | null>(null);
 
   const producerAgent = stage.agents.find((a) => a !== 'Director') ?? null;
   const isBinary = !isTextFileType(stage.latest_asset_type);
@@ -276,26 +288,26 @@ export function StageWorkspacePanel({
   const criticLabel =
     stage.role === 'critic' ? stage.label : (critic?.label ?? 'Critic');
 
-  async function approveAll() {
+  async function approveAll(
+    body: AssetDecisionBody = {
+      decision: 'APPROVE',
+      note: `Approved from ${stage.label} workstation`,
+      preview_acknowledged: true,
+    },
+  ) {
     if (busy || !stage.latest_asset_id) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/assets/${stage.latest_asset_id}/approve`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          decision: 'APPROVE',
-          note: `Approved from ${stage.label} workstation`,
-          preview_acknowledged: true,
-        }),
-      });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        alert(j.error ?? `Approve failed (${res.status})`);
-        return;
-      }
+      await postAssetDecision(stage.latest_asset_id, body);
+      setCriticBlock(null);
       onChanged();
     } catch (err) {
+      // A frozen critic verdict gets the dialog with the critic's own words —
+      // an `alert()` with a wall of text is not a decision surface.
+      if (err instanceof CriticVerdictBlockedError) {
+        setCriticBlock({ body, failures: err.failures });
+        return;
+      }
       alert(`Approve failed: ${(err as Error).message}`);
     } finally {
       setBusy(false);
@@ -394,7 +406,7 @@ export function StageWorkspacePanel({
             </Button>
           )}
           {canApprove && (
-            <Button variant="primary" size="sm" onClick={approveAll} disabled={busy}>
+            <Button variant="primary" size="sm" onClick={() => void approveAll()} disabled={busy}>
               <CheckCheck size={14} /> Approve
             </Button>
           )}
@@ -435,6 +447,17 @@ export function StageWorkspacePanel({
           onTriggered={onChanged}
         />
       )}
+
+      <CriticVerdictOverrideModal
+        open={criticBlock !== null}
+        subjectLabel={stage.label}
+        failures={criticBlock?.failures ?? []}
+        onCancel={() => setCriticBlock(null)}
+        onOverride={async () => {
+          if (!criticBlock) return;
+          await approveAll(withCriticOverride(criticBlock.body));
+        }}
+      />
     </div>
   );
 }

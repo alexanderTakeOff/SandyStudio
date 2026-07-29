@@ -46,6 +46,14 @@ import {
   AttemptsStrip,
 } from './EREFv2Sections';
 import { InboxNotePromptModal } from '@/components/inbox/InboxNotePromptModal';
+import { CriticVerdictOverrideModal } from './CriticVerdictOverrideModal';
+import {
+  postAssetDecision,
+  withCriticOverride,
+  CriticVerdictBlockedError,
+  type AssetDecisionBody,
+  type CriticFailure,
+} from '@/lib/api/asset-decision';
 import { fetcher } from '@/lib/swr';
 import { isShotReferenceV2, primaryAttemptVersion, type GenerationAttempt } from '@/lib/api/shot-reference';
 import { compareAssetVersionsNewestFirst } from '@/lib/api/asset-ordering';
@@ -186,6 +194,12 @@ export function EpisodeAssetDrawer({
     useState<'openai-edits-multi' | 'flux-pro-1.1-ultra' | ''>('');
   const [notePrompt, setNotePrompt] = useState<null | 'REJECT' | 'REQUEST_REVISION'>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
+  // Set when the approve route refused on a frozen critic verdict — holds the
+  // exact body to re-send if the Director chooses to ship over it.
+  const [criticBlock, setCriticBlock] = useState<{
+    body: AssetDecisionBody;
+    failures: readonly CriticFailure[];
+  } | null>(null);
   const [anchorRegenBusy, setAnchorRegenBusy] = useState(false);
   // Timeline-as-home (2026-07-02): version being promoted via AttemptsStrip.
   const [promotingVersion, setPromotingVersion] = useState<number | null>(null);
@@ -435,31 +449,39 @@ export function EpisodeAssetDrawer({
   // ── EREF v2 footer actions ────────────────────────────────────────────────
 
   async function postDecision(decision: DecisionVerb, note?: string) {
-    setDecisionBusy(decision);
+    const body: AssetDecisionBody = {
+      decision,
+      directorConfirm: true,
+      ...(decision === 'APPROVE'
+        ? { preview_acknowledged: true, eref_options: { skip_upscale: skipUpscale } }
+        : {}),
+      ...(note ? { note } : {}),
+    };
+    await submitDecision(body);
+  }
+
+  /** Single exit point for every decision POST from this drawer, so the critic
+   *  gate is handled once instead of per button. */
+  async function submitDecision(body: AssetDecisionBody) {
+    setDecisionBusy(body.decision as DecisionVerb);
     setError(null);
     try {
-      const body: Record<string, unknown> = {
-        decision,
-        directorConfirm: true,
-      };
-      if (decision === 'APPROVE') {
-        body.preview_acknowledged = true;
-        body.eref_options = { skip_upscale: skipUpscale };
-      }
-      if (note) body.note = note;
-      const res = await fetch(`/api/assets/${asset.id}/approve`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error((j as { error?: string }).error ?? `${decision} failed`);
-      }
-      setDecisionDone(decision);
+      await postAssetDecision(asset.id, body);
+      setCriticBlock(null);
+      setDecisionDone(body.decision as DecisionVerb);
       setTimeout(() => setDecisionDone(null), 600);
       onChange();
     } catch (e) {
+      // A frozen critic verdict is not an error to log and forget — it is a
+      // decision to put back in front of the Director, in the critic's own
+      // words, with a deliberate way through.
+      if (e instanceof CriticVerdictBlockedError) {
+        setCriticBlock({ body, failures: e.failures });
+        return;
+      }
+      // Any other refusal belongs on the drawer, so close the dialog that would
+      // otherwise cover it.
+      setCriticBlock(null);
       setError((e as Error).message);
     } finally {
       setDecisionBusy(null);
@@ -1195,6 +1217,19 @@ export function EpisodeAssetDrawer({
         onClose={() => setNotePrompt(null)}
         onSubmit={async (note) => {
           if (notePrompt) await postDecision(notePrompt, note);
+        }}
+      />
+
+      {/* Critic verdict held the approve — show what the critic said, and the
+          deliberate way through. */}
+      <CriticVerdictOverrideModal
+        open={criticBlock !== null}
+        subjectLabel={asset.filename}
+        failures={criticBlock?.failures ?? []}
+        onCancel={() => setCriticBlock(null)}
+        onOverride={async () => {
+          if (!criticBlock) return;
+          await submitDecision(withCriticOverride(criticBlock.body));
         }}
       />
 

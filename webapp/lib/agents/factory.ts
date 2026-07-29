@@ -866,17 +866,34 @@ export function createAgentInngestFunction<E extends string>(
         const rawVerdict = (exec.result.metadata as { verdict?: unknown })?.verdict;
         const completedVerdict = typeof rawVerdict === 'string' ? rawVerdict : null;
         const verdictSuffix = completedVerdict ? ` · ${completedVerdict}` : '';
+
+        // 2026-07-29 (E33 audit §20b): which craft playbooks actually reached the
+        // model was written to a local `notes` string and dropped at save — so
+        // "did the tool work?" was unanswerable postfactum. Runners that report
+        // `active_playbooks` now surface it on the completion row. An EMPTY array
+        // is the loud case (the agent worked blind — no playbook matched) and
+        // raises severity exactly like a non-PASS verdict does. Absent (null) =
+        // this agent has no skill shelf; stays silent.
+        const rawPlaybooks = (exec.result.metadata as { active_playbooks?: unknown })
+          ?.active_playbooks;
+        const activePlaybooks = Array.isArray(rawPlaybooks)
+          ? rawPlaybooks.filter((s): s is string => typeof s === 'string')
+          : null;
+        const blindRun = activePlaybooks !== null && activePlaybooks.length === 0;
+        const playbookSuffix = blindRun ? ' · NO PLAYBOOKS' : '';
+
         const completedSeverity: 'info' | 'warning' =
-          completedVerdict &&
-          completedVerdict !== 'PASS' &&
-          completedVerdict !== 'PASS_WITH_UNCERTAINTY'
+          blindRun ||
+          (completedVerdict &&
+            completedVerdict !== 'PASS' &&
+            completedVerdict !== 'PASS_WITH_UNCERTAINTY')
             ? 'warning'
             : 'info';
 
         await logEvent(supabase, {
           event_type: 'agent_completed',
           severity: completedSeverity,
-          title: `${agentDisplayName(spec.agentId)} completed${completedSuffix}${verdictSuffix}`,
+          title: `${agentDisplayName(spec.agentId)} completed${completedSuffix}${verdictSuffix}${playbookSuffix}`,
           description: spec.name,
           actor: spec.agentId,
           episode_id: episodeId,
@@ -885,6 +902,7 @@ export function createAgentInngestFunction<E extends string>(
           metadata: {
             agent: spec.agentId,
             status: 'REVIEW',
+            ...(activePlaybooks !== null ? { active_playbooks: activePlaybooks } : {}),
             ...(completedVerdict ? { verdict: completedVerdict } : {}),
             ...(completedVersion ? { version: completedVersion } : {}),
             ...(completedAsset?.file_type ? { file_type: completedAsset.file_type } : {}),

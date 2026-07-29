@@ -391,7 +391,10 @@ export async function runScreenwriter(
         selectionCostUsd = selectionResult.costUsd;
         const parsed = parseSkillSelection(selectionResult.markdown);
         const knownSlugs = new Set(manifestResult.available.map((m) => m.slug));
-        activatedSlugs = parsed.slugs.filter((s) => knownSlugs.has(s));
+        // `hard: true` playbooks are not selectable — see load-skills.ts `mandatory`.
+        activatedSlugs = [
+          ...new Set([...manifestResult.mandatory, ...parsed.slugs.filter((s) => knownSlugs.has(s))]),
+        ];
         selectionSkipped = false;
         notes.push(
           `Skill selection (${SW_SELECTION_MODEL}): ${activatedSlugs.length}/${manifestResult.count} activated · source=${parsed.source} · cost $${selectionCostUsd.toFixed(4)}`,

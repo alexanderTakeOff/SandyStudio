@@ -27,6 +27,15 @@ import {
   type InboxNoteDecision,
 } from '@/components/inbox/InboxNotePromptModal';
 import { EpisodeAssetDrawer, type EpisodeAsset } from '@/components/assets/EpisodeAssetDrawer';
+import { CriticVerdictOverrideModal } from '@/components/assets/CriticVerdictOverrideModal';
+import {
+  postAssetDecision,
+  withCriticOverride,
+  CriticVerdictBlockedError,
+  type AssetDecisionBody,
+  type AssetDecisionVerb,
+  type CriticFailure,
+} from '@/lib/api/asset-decision';
 import { isClearableInboxItem } from '@/lib/api/inbox-clear';
 
 interface InboxItem {
@@ -68,6 +77,15 @@ export default function InboxPage() {
   const [clearing, setClearing] = useState(false);
   const [clearResult, setClearResult] = useState<string | null>(null);
   const [includeAssets, setIncludeAssets] = useState(false);
+  // A refused decision is shown, never swallowed.
+  const [actError, setActError] = useState<string | null>(null);
+  // Refusal on a frozen critic verdict — keeps the body so the Director can
+  // knowingly re-send it over the verdict.
+  const [criticBlock, setCriticBlock] = useState<{
+    item: InboxItem;
+    body: AssetDecisionBody;
+    failures: readonly CriticFailure[];
+  } | null>(null);
 
   const { mutate: globalMutate } = useSWRConfig();
 
@@ -188,27 +206,48 @@ export default function InboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flat, focusIdx, helpOpen, clearOpen]);
 
-  async function act(item: InboxItem, decision: string, note?: string) {
+  async function act(item: InboxItem, decision: AssetDecisionVerb, note?: string) {
     if (!item.asset_id) return;
     const ack = item.is_visual && decision === 'APPROVE'
       ? window.confirm('Visual asset — confirm preview reviewed before approving?')
       : true;
     if (!ack) return;
-    await fetch(`/api/assets/${item.asset_id}/approve`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        decision,
-        note,
-        preview_acknowledged: item.is_visual ? true : undefined,
-      }),
+    await submitDecision(item, {
+      decision,
+      ...(note ? { note } : {}),
+      ...(item.is_visual ? { preview_acknowledged: true } : {}),
     });
-    setSelected((s) => {
-      const c = new Set(s);
-      c.delete(item.id);
-      return c;
-    });
-    mutate();
+  }
+
+  /**
+   * The single exit point for every inbox decision POST.
+   *
+   * Until 2026-07-29 this call ignored `res.ok` outright, so a refused approve —
+   * including the new critic-verdict gate — left the row sitting there with no
+   * message at all: the Director's read was "the Approve button is broken".
+   * Now every refusal is shown, and a frozen critic verdict opens the override
+   * dialog with the critic's own words.
+   */
+  async function submitDecision(item: InboxItem, body: AssetDecisionBody) {
+    if (!item.asset_id) return;
+    setActError(null);
+    try {
+      await postAssetDecision(item.asset_id, body);
+      setCriticBlock(null);
+      setSelected((s) => {
+        const c = new Set(s);
+        c.delete(item.id);
+        return c;
+      });
+      mutate();
+    } catch (e) {
+      if (e instanceof CriticVerdictBlockedError) {
+        setCriticBlock({ item, body, failures: e.failures });
+        return;
+      }
+      setCriticBlock(null);
+      setActError(`${item.title} — ${(e as Error).message}`);
+    }
   }
 
   async function bulkApprove() {
@@ -359,6 +398,21 @@ export default function InboxPage() {
           }}
         >
           {clearResult}
+        </div>
+      )}
+
+      {actError && (
+        <div
+          className="mb-4 rounded-lg border px-3 py-2 text-xs flex items-start gap-2"
+          role="alert"
+          style={{
+            borderColor: 'color-mix(in oklab, var(--accent-danger) 40%, transparent)',
+            background: 'color-mix(in oklab, var(--accent-danger) 10%, transparent)',
+            color: 'var(--accent-danger)',
+          }}
+        >
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+          <span className="leading-snug">{actError}</span>
         </div>
       )}
 
@@ -579,6 +633,17 @@ export default function InboxPage() {
           </section>
         );
       })}
+
+      <CriticVerdictOverrideModal
+        open={criticBlock !== null}
+        subjectLabel={criticBlock?.item.title}
+        failures={criticBlock?.failures ?? []}
+        onCancel={() => setCriticBlock(null)}
+        onOverride={async () => {
+          if (!criticBlock) return;
+          await submitDecision(criticBlock.item, withCriticOverride(criticBlock.body));
+        }}
+      />
 
       <InboxNotePromptModal
         open={notePrompt !== null}

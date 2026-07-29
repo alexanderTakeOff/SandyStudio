@@ -8,7 +8,11 @@
 //
 //   warn          → display verdict in UI; never block
 //   strict        → FAIL blocks the action; Director may override
-//   auto_rewrite  → use suggested_prompt instead of original; mark history
+//
+// The Guardian is a VERDICT, not an editor. It used to be able to hand back a
+// ≤800-char `suggested_prompt` that callers swapped in for the real one — a
+// 6000-8500-char Director-approved Plan replaced by a paraphrase (E33 P0 #1).
+// That channel is gone; the prompt under review is never rewritten.
 //
 // Designed to be called BEFORE every paid generation (regenerate-image, EREF
 // per-shot, Thumbnail). Cost ~$0.005/check (Sonnet, ~600 input + 250 output
@@ -41,8 +45,6 @@ export interface StyleCheckResult {
   /** 0-100 — quick numeric severity rating; useful for UI bar. */
   score: number;
   issues: StyleCheckIssue[];
-  /** Optional rewrite of the prompt that complies with the style. */
-  suggested_prompt: string | null;
   /** Used model id for cost calculation. */
   model: string;
   cost_usd: number;
@@ -112,15 +114,15 @@ function buildSystemPrompt(): string {
   return [
     'You are EXEC-STYLE-CHECK, Style Guardian for an animated comedy studio.',
     'Compare the given prompt against the LOCKED Series Bible Style guide and',
-    'flag drift. Be terse — issue notes <120 chars, suggested_prompt <800 chars.',
+    'flag drift. Be terse — issue notes <120 chars. Do NOT rewrite the prompt:',
+    'report what diverges, nothing else.',
     '',
     'Output ONLY one fenced ```json block (no markdown summary, no preamble). Schema:',
     '{',
     '  "verdict": "PASS" | "WARN" | "FAIL",',
     '  "score": 0-100,',
     '  "issues": [{ "field": "palette|lighting|composition|shape|tone|texture|other",',
-    '               "severity": "low|med|high", "note": "<terse>" }],',
-    '  "suggested_prompt": "<rewrite under 800 chars, or null>"',
+    '               "severity": "low|med|high", "note": "<terse>" }]',
     '}',
     '',
     'Verdict: PASS = aligned (score >= 85). WARN = minor drift (60-84). FAIL = major drift (any high severity, or score < 60).',
@@ -128,8 +130,11 @@ function buildSystemPrompt(): string {
 }
 
 function buildUserMessage(args: { prompt: string; assetType: string; styleText: string }): string {
-  // Cap the prompt + style each at 2000 chars — Style Guardian only needs the
-  // visual/aesthetic gist. Longer prompts blow past max_output_tokens.
+  // The prompt under review is passed WHOLE. It used to be cut at 2000 chars, so
+  // the Guardian judged only the first quarter of a 6000-8500-char Plan and never
+  // saw the rest (E33 P0 #1). Output is a short verdict now — no rewrite to blow
+  // past max_output_tokens. Style text stays capped: it is background, not the
+  // subject of the check.
   return [
     `# Asset type`,
     args.assetType,
@@ -139,7 +144,7 @@ function buildUserMessage(args: { prompt: string; assetType: string; styleText: 
     '',
     `# Prompt under review`,
     '<prompt>',
-    args.prompt.slice(0, 2000),
+    args.prompt,
     '</prompt>',
     '',
     'Return verdict per the schema.',
@@ -153,7 +158,6 @@ export async function runStyleCheck(args: RunStyleCheckArgs): Promise<StyleCheck
       verdict: 'PASS',
       score: 100,
       issues: [],
-      suggested_prompt: null,
       model: STYLE_CHECK_MODEL,
       cost_usd: 0,
       skipped: true,
@@ -168,7 +172,6 @@ export async function runStyleCheck(args: RunStyleCheckArgs): Promise<StyleCheck
       verdict: 'PASS',
       score: 100,
       issues: [],
-      suggested_prompt: null,
       model: STYLE_CHECK_MODEL,
       cost_usd: 0,
       skipped: true,
@@ -198,7 +201,6 @@ export async function runStyleCheck(args: RunStyleCheckArgs): Promise<StyleCheck
         verdict: 'PASS',
         score: 100,
         issues: [],
-        suggested_prompt: null,
         model: STYLE_CHECK_MODEL,
         cost_usd: 0,
         skipped: true,
@@ -223,7 +225,6 @@ export async function runStyleCheck(args: RunStyleCheckArgs): Promise<StyleCheck
         note: typeof i.note === 'string' ? i.note : '',
       }))
     : [];
-  const suggested = typeof body.suggested_prompt === 'string' ? body.suggested_prompt : null;
 
   // The Style Guardian is a real paid Sonnet call on EVERY image generation and on
   // every Director pre-flight from the drawer, and its `cost_usd` used to be
@@ -251,7 +252,6 @@ export async function runStyleCheck(args: RunStyleCheckArgs): Promise<StyleCheck
     verdict,
     score,
     issues,
-    suggested_prompt: suggested,
     model: response.model,
     cost_usd: response.costUsd,
     skipped: false,
