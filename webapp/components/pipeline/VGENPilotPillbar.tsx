@@ -359,11 +359,8 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
         title={`Approve all ${reviewCount} REVIEW shots?`}
       >
         <div className="space-y-4">
-          <p className="text-sm text-text-secondary leading-relaxed">
-            This bulk-flips every VID-shot row in REVIEW status to APPROVED for
-            this episode. Use it after fan-out completes when you&apos;re satisfied
-            the direction holds across all shots. Mode 1 governance still
-            applies — the audit log records each approval.
+          <p className="text-text-secondary">
+            Approves every shot still in REVIEW. Each one is logged.
           </p>
           <div className="flex justify-end gap-2">
             <Button
@@ -388,9 +385,9 @@ export function VGENPilotPillbar({ episodeId, stageRunning }: VGENPilotPillbarPr
 
       <Modal open={confirmCancel} onClose={() => setConfirmCancel(false)} title="Cancel VGEN?">
         <div className="space-y-4">
-          <p className="text-sm text-text-secondary leading-relaxed">
-            The currently in-flight shot will finish (~$0.20 wasted on Veo 3.1).
-            Subsequent shots will abort. You can re-trigger VGEN afterwards.
+          <p className="text-text-secondary">
+            The shot in flight finishes (~$0.20 wasted), the rest abort. You can
+            re-run VGEN later.
           </p>
           <div className="flex justify-end gap-2">
             <Button

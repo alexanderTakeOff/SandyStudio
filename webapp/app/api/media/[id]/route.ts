@@ -197,8 +197,9 @@ async function serveThumbnail(
 ): Promise<Response> {
   const thumbAbs = thumbnailCacheAbsPath(filename, width);
   try {
-    const cached = await cachedThumbIfPresent(thumbAbs);
-    if (cached) return serveFile(thumbAbs, filename, req, 'image/webp');
+    if (await thumbIsFresh(thumbAbs, origAbs)) {
+      return serveFile(thumbAbs, filename, req, 'image/webp');
+    }
 
     const resized = await sharp(origAbs)
       .resize({ width, withoutEnlargement: true })
@@ -213,10 +214,20 @@ async function serveThumbnail(
   }
 }
 
-async function cachedThumbIfPresent(thumbAbs: string): Promise<boolean> {
+/**
+ * A cached thumbnail is reusable only while it is NEWER than the file it was cut
+ * from. The `.thumb/` key is `<filename>.w<width>.webp` — filename + width, no
+ * content signal — so a mere existence check pinned the first thumbnail ever cut
+ * for that name, forever. Several paths replace bytes IN PLACE under a fixed
+ * filename (`select_attempt`'s canonical byte-copy, upload, copy-image-from), and
+ * for those the tile kept serving the pre-swap picture no matter what the client
+ * asked: the `?t=` cache-bust travels in the query, which never reaches this key.
+ * Comparing mtimes makes every in-place swap self-heal without a second key.
+ */
+async function thumbIsFresh(thumbAbs: string, origAbs: string): Promise<boolean> {
   try {
-    await fs.access(thumbAbs);
-    return true;
+    const [thumb, orig] = await Promise.all([fs.stat(thumbAbs), fs.stat(origAbs)]);
+    return thumb.mtimeMs >= orig.mtimeMs;
   } catch {
     return false;
   }

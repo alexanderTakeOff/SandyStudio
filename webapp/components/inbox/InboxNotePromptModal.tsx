@@ -80,33 +80,26 @@ export function InboxNotePromptModal({
   return (
     <Modal open={open} onClose={onClose} title={title}>
       <div className="space-y-4">
-        <p className="text-xs text-text-secondary leading-relaxed">
+        <p className="text-text-secondary">
           {decision === 'REJECT'
-            ? 'The asset will move to REJECTED. The note is saved to the audit log.'
-            : 'The asset will move to REVISION and the producing agent will be re-triggered with your note as guidance.'}
+            ? 'Dropped for good. Note goes to the audit log.'
+            : 'Goes back to the agent to redo, with your note.'}
         </p>
         <div>
-          <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
-            Note (required)
-          </label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={4}
             placeholder={PLACEHOLDERS[decision]}
-            className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm leading-relaxed resize-y"
+            className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-base leading-relaxed resize-y"
             style={{ minHeight: 88 }}
             autoFocus
           />
-          <div className="text-[10px] text-text-muted mt-1">
-            Minimum {MIN_NOTE_LEN} characters · {note.length} typed
+          <div className="text-sm text-text-muted mt-1">
+            {note.length}/{MIN_NOTE_LEN} min
           </div>
         </div>
-        {error && (
-          <p className="text-xs" style={{ color: 'var(--accent-danger)' }}>
-            {error}
-          </p>
-        )}
+        {error && <p style={{ color: 'var(--accent-danger)' }}>{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose} disabled={pending}>
             Cancel

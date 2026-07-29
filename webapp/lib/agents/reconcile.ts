@@ -47,9 +47,11 @@ export type ReconcileAction =
   | { kind: 'stitch'; reason: string }
   | { kind: 'halt'; shotId: string; stage: StageName; reason: string }
   | { kind: 'wait'; shotId: string | null; stage: StageName | null; reason: string }
-  // Failure-spine Slice 3: re-drive a FAILED (never-produced) cell. `assetId` is
-  // the UPSTREAM plan's id for money stages (ref_image/video), absent for the
-  // authoring stages (ref_plan/shot_plan) which re-run from scratch.
+  // Re-drive a cell nobody else owns. Two origins, one action:
+  //   - Failure-spine Slice 3: a FAILED (never-produced) cell, status null;
+  //   - a REJECTED money cell (status REVISION) whose APPROVED plan supersedes it.
+  // `assetId` is the UPSTREAM plan's id for money stages (ref_image/video), absent
+  // for the authoring stages (ref_plan/shot_plan) which re-run from scratch.
   | { kind: 'refire'; shotId: string; stage: StageName; assetId?: string; reason: string }
   // On-model gate: a rendered ref image whose FROZEN on_model verdict is FAIL.
   // Keeps the cell in REVIEW (no status flip) and escalates to the Director — a
@@ -299,30 +301,81 @@ export function planReconcileActions(ctx: ReconcileContext): ReconcileAction[] {
       }
     }
 
-    // ── Critic REVISE → re-author (Phase 2+, 2026-07-18) ─────────────────────
-    // A plan a critic flipped to REVISION sits with NOBODY re-authoring it:
-    // next-events.ts explicitly leaves the REVISE→re-author edge to "a Director-
-    // manual re-trigger today (Phase 2+: the reconciler owns it)". This IS that —
-    // re-fire the producing agent (Designer / Animator) with the critic's notes,
-    // below the critic-revision cap. At/over the cap the critic-loop already
-    // coerced the verdict to HALT + escalated to the Director, so do nothing here.
-    // Idempotency: a re-author lifts the plan to a NEW version (no longer REVISION)
-    // so the next pass won't re-emit; the executor additionally guards an in-flight
-    // author job. Authoring stages only (ref_plan / shot_plan) — the money stages
-    // (ref_image / video) are handled by the bounce / creative branches above.
+    // ── REVISION cells — EVERY rejected cell gets an owner ───────────────────
+    // A cell flipped to REVISION (by a critic or by the Director) is invisible to
+    // both passes around it: the REVIEW loop above reads `status === 'REVIEW'`, the
+    // failure refire below reads `status === null`. This pass used to open with
+    // `if (!STAGE_HAS_CRITIC[stage]) continue`, claiming the money stages were
+    // "handled by the bounce / creative branches above" — they are NOT. Those
+    // branches live INSIDE the REVIEW loop and never see a REVISION cell, so a
+    // rejected ref_image / video had no owner at all. Live proof, E33 SH02
+    // (2026-07-29): the Director rejected the video, the Animator re-authored the
+    // plan, the plan was approved — and the shot stood still forever, while its
+    // siblings (EMPTY cells → the refire pass) kept moving.
+    //
+    // Two owners, one loop; the difference is what a rejection ASKS for:
+    //   authoring stage (ref_plan / shot_plan) → re-author the plan with the
+    //     critic's notes as hard criteria (`reauthor`);
+    //   money stage (ref_image / video) → nothing to re-write, the plan was
+    //     already re-authored: RENDER the APPROVED plan (`refire` — the same
+    //     action + executor branch the failure spine uses, not a third path).
+    // Both are bounded by the SAME critic-revision cap, counted the same way
+    // (version N ⇒ N-1 revisions so far). At/over the cap the authoring branch does
+    // nothing (its critic loop already HALTed + escalated there) while the money
+    // branch — which has no critic loop behind it — HALTs + escalates itself.
+    //
+    // IDEMPOTENCY — what stops each branch firing twice on the same cell:
+    //   authoring: a re-author lifts the plan to a NEW version, so the cell stops
+    //     being REVISION; the executor also dedups per REVISION asset id via the
+    //     `reconcile/reauthor` ledger.
+    //   money: the executor refuses to render a plan that has ALREADY produced an
+    //     artifact (`planAlreadyExecuted` — the same per-plan guard computeNextEvents
+    //     uses on this exact edge). That IS the "is there an APPROVED plan NEWER than
+    //     the rejected render" test: the rejected render carries the OLD plan's id,
+    //     so a freshly-approved plan has no artifact and renders exactly once, and
+    //     the plan that produced the rejected render is never re-rolled (no repeat of
+    //     the E33 SH01 «$0.968 for a dice roll»). While that render is in flight the
+    //     atomic per-(episode, shot, agent) dispatch claim blocks the duplicate
+    //     BEFORE any spend; once it lands the cell is no longer REVISION at all.
     for (const stage of STAGE_ORDER) {
-      if (!STAGE_HAS_CRITIC[stage]) continue; // ref_plan / shot_plan only
       const cell = shot.stages[stage];
       if (cell.status !== 'REVISION') continue;
       if (!cell.asset_id) continue;
       const revisionsSoFar = Math.max(0, (cell.version ?? 1) - 1);
-      if (revisionsSoFar >= criticCap) continue; // critic-loop already HALTed at cap
+
+      if (STAGE_HAS_CRITIC[stage]) {
+        if (revisionsSoFar >= criticCap) continue; // critic-loop already HALTed at cap
+        actions.push({
+          kind: 'reauthor',
+          shotId: shot.shot_id,
+          stage,
+          assetId: cell.asset_id,
+          reason: `critic REVISE — re-author ${stage} (revision ${revisionsSoFar + 1}/${criticCap})`,
+        });
+        continue;
+      }
+
+      // Money stage. No APPROVED upstream plan → the gap is upstream (the authoring
+      // branch owns it), so stay silent rather than render something unblessed.
+      const upstream = UPSTREAM_OF[stage];
+      const up = upstream ? shot.stages[upstream] : null;
+      if (!up || up.status !== 'APPROVED' || !up.asset_id) continue;
+
+      if (revisionsSoFar >= criticCap) {
+        actions.push({
+          kind: 'halt',
+          shotId: shot.shot_id,
+          stage,
+          reason: `rejected ${stage} ×${revisionsSoFar} ≥ cap ${criticCap} — HALT + escalate Director`,
+        });
+        continue;
+      }
       actions.push({
-        kind: 'reauthor',
+        kind: 'refire',
         shotId: shot.shot_id,
         stage,
-        assetId: cell.asset_id,
-        reason: `critic REVISE — re-author ${stage} (revision ${revisionsSoFar + 1}/${criticCap})`,
+        assetId: up.asset_id,
+        reason: `rejected ${stage} — re-render from the APPROVED ${upstream} (revision ${revisionsSoFar + 1}/${criticCap})`,
       });
     }
 

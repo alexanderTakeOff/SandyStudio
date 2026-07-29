@@ -2,6 +2,13 @@
 // components/ui/Modal.tsx
 // Lightweight modal primitive. Renders into document.body via portal,
 // respects ESC + backdrop click. Theme-token styled.
+//
+// READABILITY FLOOR (Director, 2026-07-29): a modal interrupts the human to ask
+// him something, so its text must be readable at a glance — not squinted at.
+// The title and the content wrapper set `text-base` (the document base size),
+// which every child inherits unless it deliberately steps down. Small type is
+// for service captions (counters, hints), never for the sentence the decision
+// rests on. See specs/system/uiux.md §20.1.
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
@@ -66,7 +73,7 @@ export function Modal({ open, onClose, title, children, size = 'sm', hideClose }
       >
         {(title || !hideClose) && (
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-glass">
-            <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+            <h3 className="text-base font-semibold text-text-primary">{title}</h3>
             {!hideClose && (
               <button
                 onClick={onClose}
@@ -78,7 +85,7 @@ export function Modal({ open, onClose, title, children, size = 'sm', hideClose }
             )}
           </div>
         )}
-        <div className="px-5 py-4">{children}</div>
+        <div className="px-5 py-4 text-base leading-relaxed">{children}</div>
       </div>
     </div>,
     document.body,

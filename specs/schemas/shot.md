@@ -167,7 +167,7 @@ characters_present:
   - "inspector_stopwatch"
 
 action: "Sandy floats toward the velvet rope, sand fully in upper bulb, chest out.
-         Inspector-Stopwatch swivels on his telescopic shaft to face her, arrow-brow at 9 o'clock."
+         Inspector-Stopwatch swivels on his telescopic shaft to face him, arrow-brow at 9 o'clock."
 
 dialogue: ""
 

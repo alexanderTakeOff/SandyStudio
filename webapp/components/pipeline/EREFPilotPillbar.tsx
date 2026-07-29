@@ -344,9 +344,9 @@ export function EREFPilotPillbar({ episodeId, stageRunning }: EREFPilotPillbarPr
         title="Cancel EREF?"
       >
         <div className="space-y-4">
-          <p className="text-sm text-text-secondary leading-relaxed">
-            The currently in-flight shot will finish (~$0.05 wasted). Subsequent
-            shots will abort. You can re-trigger EREF afterwards.
+          <p className="text-text-secondary">
+            The shot in flight finishes (~$0.05 wasted), the rest abort. You can
+            re-run EREF later.
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setConfirmCancel(false)} disabled={busy === 'cancel'}>

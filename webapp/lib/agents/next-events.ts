@@ -330,9 +330,10 @@ export function stageRefireEvent(
 /**
  * Per-Plan idempotency: has this Plan already produced an output asset?
  * One shared scan for all branches (was 3 inline copies, each reading only
- * the provenance shape).
+ * the provenance shape). Exported 2026-07-29 so the reconciler's refire branch
+ * reuses the SAME guard rather than growing a second per-plan check.
  */
-async function planAlreadyExecuted(
+export async function planAlreadyExecuted(
   supabase: SupabaseClientLike,
   episodeId: string,
   outputFileTypePrefix: 'IMG-episode_ref' | 'VID-shot',

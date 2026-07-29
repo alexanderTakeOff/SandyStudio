@@ -733,6 +733,31 @@ thumbnails
 
 `PUBLISH` remains hard-locked to Director only in all modes.
 
+### 13.3 No silent approval surface (2026-07-29)
+
+Every control that approves — button, kebab item, per-version tick, bulk action —
+must **either do the thing or tell the human why not**. Silence is forbidden.
+
+```text
+approve control clicked
+  → succeeded          → refresh the surface
+  → refused by a gate  → show the reason where the click happened
+  → held by a critic   → open CriticVerdictOverrideModal with the critic's words
+```
+
+Concretely: no approve handler may drop `res.ok`, and no `catch {}` may swallow a
+refusal. All of them go through `lib/api/asset-decision.ts` (`postAssetDecision`),
+which raises a typed `CriticVerdictBlockedError` the surfaces render.
+
+Where a bypass would be reckless (bulk "approve everything"), the surface still
+speaks: it says how many were held and sends the Director to the single-asset
+surface where the verdict can be read.
+
+Why this rule exists: the timeline version tick used a bare `fetch` with an empty
+`catch`. When the critic-verdict gate answered 400 the checkmark did nothing at
+all — no modal, no message, no visual change. To the Director that is
+indistinguishable from a broken button.
+
 ---
 
 ## 14. Ambient Asset Field v1
@@ -1028,6 +1053,27 @@ components/
     ThemeSelector
     AmbientBackgroundSelector
 ```
+
+### 20.1 Confirmation modal rule (2026-07-29)
+
+A modal interrupts a human to ask him something. It must be readable in a glance,
+not decoded.
+
+- **Two seconds.** If the modal cannot be read whole in about two seconds, it is
+  too long. Cut it.
+- **One line per fact.** Say what will happen and what it costs. Rationale,
+  caveats and provenance are not decision inputs — drop them or fold them under a
+  closed `<details>` disclosure.
+- **Base size floor.** `components/ui/Modal` sets `text-base` on the title and the
+  content wrapper; everything inherits it. Small type (`text-sm` and below) is for
+  service captions only — character counters, filenames, hints. Never for the
+  sentence the decision rests on. `text-xs` / `text-[11px]` in modal body copy is
+  a defect.
+- **Verbs on buttons.** "Regenerate instead" / "Approve anyway", not "OK" /
+  "Cancel", and not a restatement of the title.
+- **Titles are short.** Three or four words. The filename, if needed, goes on its
+  own muted caption line, not into the title.
+- Semantic theme tokens only, as everywhere else (§6.4).
 
 ---
 

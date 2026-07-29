@@ -285,7 +285,7 @@ personality:
     - "unshakeable self-confidence"
     - "oblivious to own situation"
     - "committed to the plan regardless of evidence"
-  comedic_style: "the gap between her confidence and reality is the entire joke"
+  comedic_style: "the gap between his confidence and reality is the entire joke"
   speech_patterns: "zero — no dialogue, no sound, no vocal expression"
   motivation: "to get inside the club"
   never_does:

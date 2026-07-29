@@ -301,15 +301,15 @@ This is not a re-do of the PILOT — it's a measurement pass for learning.
 |------|------|------------|---------|
 | SH01 | — | — | both (atmosphere) |
 | SH02 | visual (swagger) | recognition (oblivious entry) | both |
-| SH03 | visual (smear she can't see) | irony (audience sees it, she doesn't) | both ★ |
+| SH03 | visual (smear he can't see) | irony (audience sees it, he doesn't) | both ★ |
 | SH04 | timing (shaft extends) | — | children |
 | SH05 | reversal (arrow to 6) | recognition (the verdict) | both ★ |
-| SH06 | — | recognition (she looks down) | adults |
+| SH06 | — | recognition (he looks down) | adults |
 | SH07 | physical (handstand!) | recognition (committed irrational solution) | both ★ |
 | SH08 | reversal (approved upside down) | irony (system works when gamed) | both |
 | SH09 | physical (walking on hands) | — | children |
 | SH10 | — | universal_truth (gravity always wins) | adults |
-| SH11 | — | universal_truth (she collapses) | adults |
+| SH11 | — | universal_truth (he collapses) | adults |
 | SH12 | callback (Inspector at door) | recognition (he was right) | both ★ |
 
 ```

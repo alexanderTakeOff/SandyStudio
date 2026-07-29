@@ -22,6 +22,19 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { AnimaticContract, AnimaticShot } from './animatic-shotlist';
+// ONE derivation of "which bytes are active", shared with the asset drawer.
+// This file used to carry its own `bestVideoUrl` / `bestRefImageUrl` pair — a
+// copy of `resolvePreviewSrc` frozen before `previewFreshness` existed: it
+// emitted a BARE `/api/media/<assetId>` and ignored `drive_file_id` entirely.
+// That made "which version is active" a two-source-of-truth question: the
+// drawer's URL carried the cache-bust key (`image_prompt.current_version` AND
+// `shot_reference.selected_version`), the timeline/viewer's did not. Since
+// `select_attempt` replaces bytes IN PLACE under a fixed asset id + filename —
+// and an `-APPROVED` filename is served `immutable` for a year — the viewer
+// could keep painting the pre-pick image while the drawer showed the new one.
+// Exactly the class `bumpPreviewFreshness` was written for, one surface short
+// of being fixed. Delegating deletes the second source instead of syncing it.
+import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
 
 /** Subset of asset row fields the resolver needs. */
 export interface VidShotAssetRow {
@@ -35,6 +48,8 @@ export interface VidShotAssetRow {
   drive_path: string | null;
   staging_path: string | null;
   drive_web_view_url: string | null;
+  /** Drive-backed marker — half of `driveBackedMediaUrl`'s test. */
+  drive_file_id?: string | null;
   metadata: unknown;
 }
 
@@ -53,6 +68,8 @@ export interface ImgRefAssetRow {
   drive_path: string | null;
   staging_path: string | null;
   drive_web_view_url: string | null;
+  /** Drive-backed marker — half of `driveBackedMediaUrl`'s test. */
+  drive_file_id?: string | null;
 }
 
 export type CellKind = 'video-canonical' | 'video-review' | 'image' | 'placeholder';
@@ -111,18 +128,6 @@ function pickLatestVidShot(rows: VidShotAssetRow[]): VidShotAssetRow {
     if (rv < bv) return best;
     return r.created_at > best.created_at ? r : best;
   });
-}
-
-function bestVideoUrl(asset: VidShotAssetRow): string | null {
-  // Drive-backed media → stable /api/media/<id> cache route (post-2026-06-01).
-  if (asset.id && asset.drive_web_view_url) return `/api/media/${asset.id}`;
-  return asset.drive_path || asset.staging_path || asset.drive_web_view_url || null;
-}
-
-/** Best browser-loadable URL for a reference image (same /api/media rule). */
-function bestRefImageUrl(ref: ImgRefAssetRow): string | null {
-  if (ref.id && ref.drive_web_view_url) return `/api/media/${ref.id}`;
-  return ref.drive_path || ref.staging_path || ref.drive_web_view_url || null;
 }
 
 /** Storyboard shot id from an IMG-episode_ref's metadata.shot_reference.shot_id. */
@@ -198,7 +203,7 @@ export function resolveTimelineCells(
     const rank = refStatusRank(ref.status);
     // Only refs with a loadable image can be the frame — otherwise a newer but
     // url-less DRAFT could shadow an older REVIEW that actually has an image.
-    if (!sid || rank === 0 || !bestRefImageUrl(ref)) continue;
+    if (!sid || rank === 0 || !resolvePreviewSrc(ref)) continue;
     const cur = liveRefByShot.get(sid);
     if (
       !cur ||
@@ -244,7 +249,7 @@ export function resolveTimelineCells(
             : null;
       if (tier) {
         const latest = pickLatestVidShot(tier);
-        const url = bestVideoUrl(latest);
+        const url = resolvePreviewSrc(latest);
         const isCanonical = latest.status === 'APPROVED' || latest.status === 'LOCKED';
         if (url) {
           return {
@@ -265,7 +270,7 @@ export function resolveTimelineCells(
     // even when the frozen contract predates the ref. asset_id is the live ref so
     // the kebab "on screen" marker + click-to-open resolve to the right asset.
     const liveRef = liveRefByShot.get(shot.shot_id);
-    const liveRefUrl = liveRef ? bestRefImageUrl(liveRef) : null;
+    const liveRefUrl = liveRef ? resolvePreviewSrc(liveRef) : null;
     if (liveRef && liveRefUrl) {
       return {
         shot_id: shot.shot_id,

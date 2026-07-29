@@ -49,7 +49,11 @@ import {
 } from '@/lib/api/animatic-shotlist';
 import { isVgenCancelled, clearVgenCancel } from '@/lib/api/vgen-cancel';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
-import { animatorChainEnabled, resolveVideoRegenCap } from '@/lib/agents/chain-flags';
+import {
+  animatorChainEnabled,
+  occupiesRegenSlot,
+  resolveVideoRegenCap,
+} from '@/lib/agents/chain-flags';
 
 const EXEC_VGEN_EXPECTED_SECONDS = 150;
 
@@ -390,17 +394,23 @@ export const execVgenRun = inngest.createFunction(
         const cap = resolveVideoRegenCap((epRow as { metadata?: unknown } | null)?.metadata);
         const { data: vidRows } = await supabase
           .from('assets')
-          .select('id,metadata')
+          .select('id,status,metadata')
           .eq('episode_id', episodeId)
           .like('file_type', 'VID-shot%');
         let count = 0;
         let lastId: string | null = null;
-        for (const row of (vidRows ?? []) as Array<{ id: string; metadata?: unknown }>) {
+        for (const row of (vidRows ?? []) as Array<{
+          id: string;
+          status?: string | null;
+          metadata?: unknown;
+        }>) {
           const sid = (row.metadata as { shot_id?: unknown } | null)?.shot_id;
-          if (typeof sid === 'string' && normShot(sid) === target && target) {
-            count++;
-            lastId = row.id;
-          }
+          if (typeof sid !== 'string' || normShot(sid) !== target || !target) continue;
+          // A render the Director REJECTED must not keep holding the quota that
+          // exists to produce its replacement (see occupiesRegenSlot).
+          if (!occupiesRegenSlot(row.status)) continue;
+          count++;
+          lastId = row.id;
         }
         return { count, lastId, cap };
       });
@@ -413,7 +423,7 @@ export const execVgenRun = inngest.createFunction(
             event_type: 'agent_completed',
             severity: 'warning',
             title: `${agentDisplayName('EXEC-VGEN')} re-gen blocked${label ? ` — ${label}` : ''}`,
-            description: `Shot ${shotId} already has ${dedup.count} VID-shot(s) (cap ${dedup.cap}) — automatic re-generation suppressed, $0 spent. Re-render requires the explicit Director regenerate surface after visual review.`,
+            description: `Shot ${shotId} already has ${dedup.count} live VID-shot(s) (cap ${dedup.cap}) — automatic re-generation suppressed, $0 spent. Re-render requires the explicit Director regenerate surface after visual review. (Rejected/superseded renders do NOT count — reject one and the machine may render its replacement on its own.)`,
             actor: 'EXEC-VGEN',
             episode_id: episodeId,
             asset_id: dedup.lastId!,

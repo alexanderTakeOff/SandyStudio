@@ -46,6 +46,14 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { CriticVerdictOverrideModal } from '@/components/assets/CriticVerdictOverrideModal';
+import {
+  postAssetDecision,
+  withCriticOverride,
+  CriticVerdictBlockedError,
+  type AssetDecisionBody,
+  type CriticFailure,
+} from '@/lib/api/asset-decision';
 import {
   computeTotalDuration,
   computeEffectivePlayback,
@@ -486,26 +494,57 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // toggles its kebab; clicking again (or another cell) closes it.
   const [openCellIdx, setOpenCellIdx] = useState<number | null>(null);
   const [approveBusyId, setApproveBusyId] = useState<string | null>(null);
+  // A decision the approve route refused, kept WITH the row it belongs to.
+  // `error` is owned by the timing autosave (its banner carries a "Повторить"
+  // retry that re-saves timing), so an approve failure needs its own slot to be
+  // visible without hijacking that retry. It is shown twice on purpose: on the
+  // tick itself (the reason lands where the click happened, even if the banner
+  // is scrolled out of view) and in the banner at the bottom.
+  const [approveError, setApproveError] = useState<{
+    assetId: string;
+    message: string;
+  } | null>(null);
+  // Set when a frozen critic verdict held the approve — carries the exact body
+  // to re-send if the Director decides to ship over the verdict.
+  const [criticBlock, setCriticBlock] = useState<{
+    assetId: string;
+    body: AssetDecisionBody;
+    failures: readonly CriticFailure[];
+  } | null>(null);
 
-  async function approveVersion(assetId: string): Promise<void> {
+  /**
+   * The tick used to be a bare `fetch` whose catch was empty — so when the
+   * critic-verdict gate (or any other refusal) answered 400, the checkmark did
+   * absolutely nothing: no modal, no message, no visual change. A control that
+   * can silently do nothing is indistinguishable from a broken one. Everything
+   * now goes through the shared poster, and every refusal reaches the Director.
+   */
+  async function approveVersion(
+    assetId: string,
+    body: AssetDecisionBody = {
+      decision: 'APPROVE',
+      directorConfirm: true,
+      // preview_acknowledged: harmless for text/plan rows, satisfies the
+      // visual-asset gate for IMG/VID without opening the drawer first.
+      preview_acknowledged: true,
+    },
+  ): Promise<void> {
     setApproveBusyId(assetId);
+    setApproveError(null);
     try {
-      const res = await fetch(`/api/assets/${assetId}/approve`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        // preview_acknowledged: harmless for text/plan rows, satisfies the
-        // visual-asset gate for IMG/VID without opening the drawer first.
-        body: JSON.stringify({
-          decision: 'APPROVE',
-          directorConfirm: true,
-          preview_acknowledged: true,
-        }),
-      });
-      if (!res.ok) throw new Error('approve failed');
+      await postAssetDecision(assetId, body);
+      setCriticBlock(null);
       // Trigger parent refresh — SWR will refetch episode and timeline cell.
       if (onChanged) onChanged();
-    } catch {
-      // Surface failure as a brief visual signal; full UX in drawer.
+    } catch (err) {
+      if (err instanceof CriticVerdictBlockedError) {
+        setCriticBlock({ assetId, body, failures: err.failures });
+        return;
+      }
+      // Any other refusal: close the verdict dialog (if the attempt came from
+      // it) so the banner underneath is the one place the reason is read.
+      setCriticBlock(null);
+      setApproveError({ assetId, message: `Не утвердил: ${(err as Error).message}` });
     } finally {
       setApproveBusyId(null);
     }
@@ -518,20 +557,19 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   // REQUEST_REVISION auto-chain). LOCKED is terminal and gets no revoke.
   async function unapproveVersion(assetId: string): Promise<void> {
     setApproveBusyId(assetId);
+    setApproveError(null);
     try {
-      const res = await fetch(`/api/assets/${assetId}/approve`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          decision: 'REQUEST_REVISION',
-          note: 'Director revoked approval from the timeline kebab',
-          directorConfirm: true,
-        }),
+      await postAssetDecision(assetId, {
+        decision: 'REQUEST_REVISION',
+        note: 'Director revoked approval from the timeline kebab',
+        directorConfirm: true,
       });
-      if (!res.ok) throw new Error('unapprove failed');
       if (onChanged) onChanged();
-    } catch {
-      // Best-effort; full UX in drawer.
+    } catch (err) {
+      setApproveError({
+        assetId,
+        message: `Не снял утверждение: ${(err as Error).message}`,
+      });
     } finally {
       setApproveBusyId(null);
     }
@@ -543,8 +581,34 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
   //   APPROVED             → amber   ↩  = click to UN-APPROVE (→ REVISION).
   //   LOCKED               → solid   ✓  = terminal state indicator (no action).
   //   anything else                     = no tick.
+  //
+  // A refused click turns the tick into a red «!» carrying the server's reason
+  // in its tooltip (2026-07-29). Before that the handler swallowed the refusal
+  // and the tick just sat there — the Director read it as a dead button.
   function approveTick(status: string, assetId: string) {
     const isBusy = approveBusyId === assetId;
+    const failure = approveError?.assetId === assetId ? approveError.message : null;
+    if (failure) {
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setApproveError(null);
+          }}
+          className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+          style={{
+            background: 'color-mix(in oklab, var(--accent-danger) 20%, transparent)',
+            border: '1px solid var(--accent-danger)',
+            color: 'var(--accent-danger)',
+          }}
+          title={failure}
+          aria-label={failure}
+        >
+          !
+        </button>
+      );
+    }
     if (status === 'LOCKED') {
       return (
         <span
@@ -2274,19 +2338,31 @@ export const AnimaticPlayer = forwardRef<AnimaticPlayerHandle, AnimaticPlayerPro
           2026-07-25) — shot id + cut start / cut end / duration now sit on the
           same line as Play / Stop / Reset. The old standalone block was removed. */}
 
-      {/* Error banner */}
-      {error && (
+      {/* Error banner — timing-save failures AND refused approve ticks. */}
+      {(error || approveError) && (
         <div
-          className="rounded-md p-2 text-xs"
+          className="rounded-md p-2 text-sm"
           style={{
             background: 'color-mix(in oklab, var(--accent-danger) 10%, transparent)',
             border: '1px solid color-mix(in oklab, var(--accent-danger) 35%, transparent)',
             color: 'var(--accent-danger)',
           }}
         >
-          {error}
+          {error ?? approveError?.message}
         </div>
       )}
+
+      {/* The tick hit the critic-verdict gate — show the verdict and the
+          deliberate way through, exactly as the drawer does. */}
+      <CriticVerdictOverrideModal
+        open={criticBlock !== null}
+        failures={criticBlock?.failures ?? []}
+        onCancel={() => setCriticBlock(null)}
+        onOverride={async () => {
+          if (!criticBlock) return;
+          await approveVersion(criticBlock.assetId, withCriticOverride(criticBlock.body));
+        }}
+      />
     </div>
   );
 });

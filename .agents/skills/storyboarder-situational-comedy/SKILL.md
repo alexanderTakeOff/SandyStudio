@@ -46,8 +46,8 @@ The cycle can live inside a single shot or span 2-3 consecutive shots. A
 **setup** shot is valid if the **payoff** lands later in the sequence —
 both halves participate in one cycle even when they are not adjacent.
 
-Pure description ("she stands by the window, ready") or pure ritual
-("she stretches, jumps, claps") is the anti-pattern: the action goes
+Pure description ("the character stands by the window, ready") or pure ritual
+("the character stretches, jumps, claps") is the anti-pattern: the action goes
 nowhere and the audience has nothing to laugh at.
 
 ## Per-shot prose craft

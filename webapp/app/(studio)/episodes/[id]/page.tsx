@@ -1107,27 +1107,20 @@ function TriggerModal({
           <select
             value={agentCode}
             onChange={(e) => setAgentCode(e.target.value)}
-            className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm font-mono"
+            className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-base font-mono"
           >
             {['EXEC-SW', 'EXEC-SREV', 'EXEC-SB', 'EXEC-WCHK', 'EXEC-EDIT', 'EXEC-VGEN', 'EXEC-MGEN', 'EXEC-COPY', 'EXEC-THUMB', 'EXEC-PUB', 'EXEC-ANAL'].map((a) => (
               <option key={a} value={a}>{agentDisplayName(a)} ({a})</option>
             ))}
           </select>
         </div>
-        <div>
-          <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
-            Reason (required, audit log)
-          </label>
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. previous run produced wrong tone"
-            className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm"
-          />
-        </div>
-        <p className="text-[11px] text-text-muted">
-          This creates a new job and may produce duplicate assets.
-        </p>
+        <input
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Why? e.g. previous run produced wrong tone"
+          className="w-full h-10 px-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-base"
+        />
+        <p className="text-text-secondary">Runs it again — makes a new version.</p>
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={fire} disabled={pending || reason.length < 3}>
@@ -1180,32 +1173,18 @@ function ArchiveModal({
   return (
     <Modal open={open} onClose={onClose} title={`Move ${episodeCode} to Trash`}>
       <div className="space-y-4">
-        <p className="text-sm text-text-secondary">
-          Moves the episode to Trash (status <code className="font-mono">ARCHIVED</code>).
-          It leaves the ACTIVE list and can be purged later from the TRASH tab.
-          Whether it was finished or closed early is recorded automatically from
-          the shot counts.
+        <p className="text-text-secondary">
+          Leaves the ACTIVE list, running jobs are cancelled. Recoverable from the
+          TRASH tab.
         </p>
-        <div>
-          <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
-            Reason (required, audit log)
-          </label>
-          <textarea
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Veo quota exhausted, closed at 17/19 — or: shipped, no further work"
-            rows={3}
-            className="w-full p-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm resize-none"
-          />
-        </div>
-        <p className="text-[11px] text-text-muted">
-          Cancels any QUEUED/RUNNING/RETRYING jobs on this episode and logs an
-          <code className="font-mono"> episode_archived</code> audit event.
-          Idempotent — trashing an already-trashed episode is rejected.
-        </p>
-        {err && (
-          <p className="text-xs text-[var(--accent-danger)]">{err}</p>
-        )}
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Why? e.g. Veo quota exhausted, closed at 17/19"
+          rows={3}
+          className="w-full p-3 rounded-lg bg-[var(--bg-elevated)] border border-glass text-base resize-none"
+        />
+        {err && <p className="text-[var(--accent-danger)]">{err}</p>}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={fire} disabled={pending || reason.trim().length < 3} variant="warning">
@@ -1259,12 +1238,10 @@ function MarkCompleteModal({
   return (
     <Modal open={open} onClose={onClose} title={`Mark ${episodeCode} complete`}>
       <div className="space-y-4">
-        <p className="text-sm text-text-secondary">
-          Flips status to <code className="font-mono">COMPLETE</code> — the episode
-          is done and moves to the COMPLETE tab. This is a terminal status; to pull
-          it back out later, move it to Trash.
+        <p className="text-text-secondary">
+          Moves it to the COMPLETE tab. Final — the only way back is Trash.
         </p>
-        {err && <p className="text-xs text-[var(--accent-danger)]">{err}</p>}
+        {err && <p className="text-[var(--accent-danger)]">{err}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={fire} disabled={pending}>
