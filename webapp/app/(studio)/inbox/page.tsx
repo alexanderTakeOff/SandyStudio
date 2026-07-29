@@ -20,6 +20,7 @@ import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { FilterPills, type FilterPillOption } from '@/components/ui/FilterPills';
 import { fetcher } from '@/lib/swr';
 import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
 import {
@@ -61,7 +62,13 @@ const GROUP_LABEL: Record<InboxItem['group'], string> = {
 type FilterId = 'all' | 'visual' | 'non_visual' | 'blockers' | 'hidden';
 
 /** Pills in render order. `hidden` is the recovery view for swept asset gates. */
-const FILTERS: FilterId[] = ['all', 'visual', 'non_visual', 'blockers', 'hidden'];
+const FILTERS: ReadonlyArray<FilterPillOption<FilterId>> = [
+  { id: 'all', label: 'all' },
+  { id: 'visual', label: 'visual' },
+  { id: 'non_visual', label: 'non-visual' },
+  { id: 'blockers', label: 'blockers' },
+  { id: 'hidden', label: 'hidden' },
+];
 
 export default function InboxPage() {
   const [filter, setFilter] = useState<FilterId>('all');
@@ -412,27 +419,7 @@ export default function InboxPage() {
       {/* Filter pills */}
       <div className="flex items-center gap-2 mb-5">
         <Filter size={14} className="text-text-muted" />
-        {FILTERS.map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className="px-3 h-8 rounded-md text-xs font-medium uppercase tracking-wider border transition-colors"
-            style={{
-              background:
-                filter === f
-                  ? 'color-mix(in oklab, var(--accent-primary) 14%, transparent)'
-                  : 'transparent',
-              borderColor:
-                filter === f
-                  ? 'var(--accent-primary)'
-                  : 'var(--panel-glass-border)',
-              color:
-                filter === f ? 'var(--text-primary)' : 'var(--text-secondary)',
-            }}
-          >
-            {f.replace('_', '-')}
-          </button>
-        ))}
+        <FilterPills options={FILTERS} value={filter} onChange={setFilter} />
 
         {selectable.length > 0 && (
           <label className="ml-auto flex items-center gap-2 text-xs text-text-secondary cursor-pointer select-none">

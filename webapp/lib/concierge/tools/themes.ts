@@ -7,7 +7,7 @@
 //
 // Closes the smoke gap where Polina judged themes but had no hand to write the
 // bank ("добавь в themes" was a no-op). She proposes ONE theme as a DRAFT; the
-// Director re-statuses approved/invalidated freely in the Themes UI. Reuses the
+// Director re-statuses approved/used/invalidated freely in the Themes UI. Reuses the
 // existing POST /api/series/{id}/themes route (slug-clash guard, provenance,
 // activity event) instead of touching the DB directly — anti-additivity.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ interface ListThemesArgs {
 export const listThemes: Tool<ListThemesArgs> = {
   name: 'listThemes',
   description:
-    "Read-only. List the episode themes (reusable visual gag engines) already in the series Themes bank — each with slug, one-liner description, and status (approved / draft / invalidated). Call freely to answer «какие темы есть?» and BEFORE proposing a new theme, to avoid duplicating an existing gag engine. Resolves the series from the open episode when seriesId is omitted.",
+    "Read-only. List the episode themes (reusable visual gag engines) already in the series Themes bank — each with slug, one-liner description, and status (approved / draft / used / invalidated — `used` means the theme already ran in an episode, listed in used_in_episodes). Call freely to answer «какие темы есть?» and BEFORE proposing a new theme, to avoid duplicating an existing gag engine. Resolves the series from the open episode when seriesId is omitted.",
   mutating: false,
   schema: {
     type: 'function',
@@ -166,7 +166,17 @@ export const listThemes: Tool<ListThemesArgs> = {
         headers: { ...authHeaders(ctx) },
       });
       const json = (await res.json().catch(() => null)) as
-        | { data?: { themes?: Array<{ slug?: string; description?: string; theme_status?: string }> }; error?: string }
+        | {
+            data?: {
+              themes?: Array<{
+                slug?: string;
+                description?: string;
+                theme_status?: string;
+                used_in_episodes?: Array<{ code?: string }>;
+              }>;
+            };
+            error?: string;
+          }
         | null;
       if (!res.ok) {
         return fail(json?.error ?? `theme list failed (HTTP ${res.status})`, 'list_failed');
@@ -180,6 +190,7 @@ export const listThemes: Tool<ListThemesArgs> = {
             slug: t.slug,
             description: t.description,
             theme_status: t.theme_status,
+            used_in_episodes: (t.used_in_episodes ?? []).map((e) => e.code).filter(Boolean),
           })),
         },
         themes.length

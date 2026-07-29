@@ -19,21 +19,38 @@
 // Storage model:
 //   - `description` column  = the one-liner (index text).
 //   - `content` column      = full theme markdown (detail card).
-//   - `metadata.theme_status` = 'approved' | 'draft' | 'invalidated' — the
-//     CURATION status, free any→any via a metadata PATCH. This is deliberately
-//     NOT the asset `status` enum (DRAFT→LOCKED), which embeds status in the
-//     filename → a rename per flip. `asset.status` stays a stable 'DRAFT'
-//     storage marker; the canon status machine is irrelevant here (themes sit
-//     outside every SBL-/pipeline gate).
+//   - `metadata.theme_status` = 'approved' | 'draft' | 'used' | 'invalidated' —
+//     the CURATION status, free any→any via a metadata PATCH. This is
+//     deliberately NOT the asset `status` enum (DRAFT→LOCKED), which embeds
+//     status in the filename → a rename per flip. `asset.status` stays a stable
+//     'DRAFT' storage marker; the canon status machine is irrelevant here
+//     (themes sit outside every SBL-/pipeline gate).
+//   - `metadata.used_in_episodes` = [{ id, code }] — which episodes consumed
+//     this theme (2026-07-29). Lives in metadata for the same reason: the
+//     `assets_series_or_episode_check` constraint forbids a row from carrying
+//     BOTH series_id and episode_id, so the link cannot go in the column. The
+//     episode UUID is stored alongside the code so the stamp stays
+//     machine-readable once the brief remembers which theme it came from.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
 import type { AssetMetadataDoc } from './series-bible';
 
-export type ThemeStatus = 'approved' | 'draft' | 'invalidated';
+export type ThemeStatus = 'approved' | 'draft' | 'used' | 'invalidated';
 
-export const THEME_STATUSES: ReadonlyArray<ThemeStatus> = ['approved', 'draft', 'invalidated'];
+export const THEME_STATUSES: ReadonlyArray<ThemeStatus> = [
+  'approved',
+  'draft',
+  'used',
+  'invalidated',
+];
+
+/** An episode that consumed a theme. Both halves stored: uuid = link, code = label. */
+export interface ThemeEpisodeRef {
+  id: string;
+  code: string;
+}
 
 /** All per-theme assets carry this prefix; `{slug}` follows. */
 export const THEME_FILE_TYPE_PREFIX = 'SPC-theme_';
@@ -44,12 +61,25 @@ export const LEGACY_THEME_BANK_FILE_TYPE = 'SPC-theme_bank';
 const THEME_STATUS_LABELS: Record<ThemeStatus, string> = {
   approved: 'Approved',
   draft: 'Draft',
+  used: 'In use',
   invalidated: 'Invalidated',
 };
 
 export function themeStatusLabel(s: ThemeStatus): string {
   return THEME_STATUS_LABELS[s];
 }
+
+/**
+ * Semantic colour token per status (specs/system/uiux.md — never a literal hex).
+ * `used` borrows `--status-locked` because `--status-completed` is the SAME green
+ * as `--status-approved` and the two would be indistinguishable at a glance.
+ */
+export const THEME_STATUS_TOKEN: Record<ThemeStatus, string> = {
+  approved: '--status-approved',
+  draft: '--accent-warning',
+  used: '--status-locked',
+  invalidated: '--status-muted',
+};
 
 export interface SeriesTheme {
   id: string;
@@ -63,6 +93,8 @@ export interface SeriesTheme {
   content: string | null;
   /** Curation status (metadata.theme_status), default 'draft'. */
   theme_status: ThemeStatus;
+  /** Episodes that consumed this theme (metadata.used_in_episodes). */
+  used_in_episodes: ThemeEpisodeRef[];
   /** Stable asset status enum — themes keep it 'DRAFT'. */
   status: string;
   version: number | null;
@@ -85,7 +117,33 @@ export function themeSlugFromFileType(fileType: string): string | null {
 /** Read `metadata.theme_status`, defaulting to 'draft' for any missing/invalid value. */
 export function themeStatusFromMetadata(metadata: AssetMetadataDoc | null | undefined): ThemeStatus {
   const raw = (metadata as Record<string, unknown> | null | undefined)?.theme_status;
-  return raw === 'approved' || raw === 'invalidated' ? raw : 'draft';
+  return raw === 'approved' || raw === 'invalidated' || raw === 'used' ? raw : 'draft';
+}
+
+/** Read `metadata.used_in_episodes`, dropping any malformed entry. */
+export function usedEpisodesFromMetadata(
+  metadata: AssetMetadataDoc | null | undefined,
+): ThemeEpisodeRef[] {
+  const raw = (metadata as Record<string, unknown> | null | undefined)?.used_in_episodes;
+  if (!Array.isArray(raw)) return [];
+  const refs: ThemeEpisodeRef[] = [];
+  for (const entry of raw) {
+    const e = entry as Partial<ThemeEpisodeRef> | null;
+    if (e && typeof e.id === 'string' && typeof e.code === 'string' && e.code) {
+      refs.push({ id: e.id, code: e.code });
+    }
+  }
+  return refs;
+}
+
+/**
+ * The usage stamp shown on a theme card: `IN E16`, or `IN E16 +2` when the
+ * theme was consumed by more than one episode. Null when never used.
+ */
+export function themeUsageLabel(refs: ReadonlyArray<ThemeEpisodeRef>): string | null {
+  if (refs.length === 0) return null;
+  const rest = refs.length - 1;
+  return rest > 0 ? `IN ${refs[0].code} +${rest}` : `IN ${refs[0].code}`;
 }
 
 /** Normalise free text into a safe theme slug (snake_case, a-z0-9_). */
@@ -130,6 +188,7 @@ function toSeriesTheme(row: ThemeAssetRow, slug: string): SeriesTheme {
     description: row.description,
     content: row.content,
     theme_status: themeStatusFromMetadata(row.metadata),
+    used_in_episodes: usedEpisodesFromMetadata(row.metadata),
     status: row.status,
     version: row.version,
     metadata: row.metadata,

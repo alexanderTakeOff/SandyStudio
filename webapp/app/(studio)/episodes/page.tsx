@@ -13,6 +13,7 @@ import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame
 import { Card, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { FilterPills, type FilterPillOption } from '@/components/ui/FilterPills';
 import { fetcher } from '@/lib/swr';
 import { NewEpisodeModal } from '@/components/episodes/NewEpisodeModal';
 import { useWorkspaceScope } from '@/components/providers/WorkspaceScopeProvider';
@@ -58,6 +59,13 @@ const ACTIVE_FILTER: Record<string, (e: EpisodeRow) => boolean> = {
 };
 
 type Filter = keyof typeof ACTIVE_FILTER;
+
+const EPISODE_FILTERS: ReadonlyArray<FilterPillOption<Filter>> = [
+  { id: 'active', label: 'active' },
+  { id: 'all', label: 'all' },
+  { id: 'complete', label: 'complete' },
+  { id: 'trash', label: 'trash' },
+];
 
 export default function EpisodesPage() {
   const [filter, setFilter] = useState<Filter>('active');
@@ -114,24 +122,7 @@ export default function EpisodesPage() {
         </Button>
       </header>
 
-      <div className="flex gap-2 mb-4">
-        {(['active', 'all', 'complete', 'trash'] as Filter[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className="px-3 h-8 rounded-md text-xs font-medium uppercase tracking-wider border transition-colors"
-            style={{
-              borderColor: filter === f ? 'var(--accent-primary)' : 'var(--panel-glass-border)',
-              background: filter === f
-                ? 'color-mix(in oklab, var(--accent-primary) 14%, transparent)'
-                : 'transparent',
-              color: filter === f ? 'var(--text-primary)' : 'var(--text-secondary)',
-            }}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
+      <FilterPills options={EPISODE_FILTERS} value={filter} onChange={setFilter} className="mb-4" />
 
       {isLoading && <p className="text-xs text-text-muted">Loading…</p>}
       {!isLoading && episodes.length === 0 && (

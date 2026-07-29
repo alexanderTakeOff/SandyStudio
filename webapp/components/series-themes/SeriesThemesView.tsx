@@ -1,14 +1,18 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // components/series-themes/SeriesThemesView.tsx
-// Episode-Themes surface (q9a, 2026-06-30): a LIGHT, status-segmented index of
+// Episode-Themes surface (q9a, 2026-06-30): a LIGHT, status-filtered index of
 // per-theme assets (`SPC-theme_{slug}`), each a reusable visual gag engine.
 //
-// Replaces the single 500px monolithic markdown editor. Three groups —
-// Approved · Draft · Invalidated — each a list of theme cards showing the
-// one-liner (`description`) with a status control that moves the card to any
-// other group (PATCH metadata.theme_status — no file rename). Click a card to
-// expand the full `content` (read-only, with an in-place edit/save). "+ Add
-// theme" creates a draft. Themes sit OUT of the EREF canon-gate by construction.
+// 2026-07-29 — picking a theme should not mean re-reading every theme:
+//   · fourth status `used` + the `IN E16` stamp answers "which ones are spent";
+//   · one filter row (All · Approved · Draft · In use · Invalidated) replaces the
+//     three stacked status sections — with a filter the grouping was dead weight;
+//   · colour comes from the semantic status tokens (THEME_STATUS_TOKEN), so the
+//     row is recognised by hue instead of read word by word.
+//
+// Click a card to expand the full `content` (read-only, with an in-place edit).
+// "+ Add theme" creates a draft. Themes sit OUT of the EREF canon-gate by
+// construction.
 // ──────────────────────────────────────────────────────────────────────────────
 
 'use client';
@@ -18,9 +22,17 @@ import useSWR from 'swr';
 import { ChevronDown, ChevronRight, Plus, Save, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody } from '@/components/ui/Card';
+import { FilterPills, type FilterPillOption } from '@/components/ui/FilterPills';
 import { MarkdownEditor } from '@/components/editor/MarkdownEditor';
 import { fetcher } from '@/lib/swr';
-import { THEME_STATUSES, themeStatusLabel, type SeriesTheme, type ThemeStatus } from '@/lib/api/series-themes';
+import {
+  themeStatusLabel,
+  themeUsageLabel,
+  THEME_STATUSES,
+  THEME_STATUS_TOKEN,
+  type SeriesTheme,
+  type ThemeStatus,
+} from '@/lib/api/series-themes';
 
 interface ThemesResponse {
   data: {
@@ -29,15 +41,18 @@ interface ThemesResponse {
   };
 }
 
+/** Only what the episode picker needs off /api/episodes. */
+interface EpisodeOption {
+  id: string;
+  episode_code: string;
+  title_working: string | null;
+}
+
 export interface SeriesThemesViewProps {
   seriesId: string;
 }
 
-const STATUS_ACCENT: Record<ThemeStatus, string> = {
-  approved: 'var(--accent-success, #4ade80)',
-  draft: 'var(--accent-warning, #fbbf24)',
-  invalidated: 'var(--text-muted)',
-};
+type ThemeFilter = 'all' | ThemeStatus;
 
 export function SeriesThemesView({ seriesId }: SeriesThemesViewProps) {
   const { data, isLoading, mutate } = useSWR<ThemesResponse>(
@@ -45,22 +60,46 @@ export function SeriesThemesView({ seriesId }: SeriesThemesViewProps) {
     fetcher,
     { refreshInterval: 10_000, revalidateOnFocus: true },
   );
+  // Episodes of THIS series — the picker behind the `IN E16` stamp. Cheap enough
+  // to load with the tab; no refresh interval (the list barely moves).
+  const { data: epData } = useSWR<{ data: EpisodeOption[] }>(
+    `/api/episodes?limit=100&series_id=${seriesId}`,
+    fetcher,
+  );
+  const episodes = epData?.data ?? [];
+
   const themes = data?.data?.themes ?? [];
+  const [filter, setFilter] = useState<ThemeFilter>('all');
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const grouped = useMemo(() => {
-    const g: Record<ThemeStatus, SeriesTheme[]> = { approved: [], draft: [], invalidated: [] };
-    for (const t of themes) g[t.theme_status].push(t);
-    return g;
+  const filterOptions = useMemo<FilterPillOption<ThemeFilter>[]>(() => {
+    const counts = themes.reduce<Record<string, number>>((acc, t) => {
+      acc[t.theme_status] = (acc[t.theme_status] ?? 0) + 1;
+      return acc;
+    }, {});
+    return [
+      { id: 'all' as const, label: 'All', count: themes.length },
+      ...THEME_STATUSES.map((s) => ({
+        id: s,
+        label: themeStatusLabel(s),
+        count: counts[s] ?? 0,
+        cssVar: THEME_STATUS_TOKEN[s],
+      })),
+    ];
   }, [themes]);
 
-  async function setStatus(themeId: string, theme_status: ThemeStatus) {
+  const visible = useMemo(
+    () => (filter === 'all' ? themes : themes.filter((t) => t.theme_status === filter)),
+    [themes, filter],
+  );
+
+  async function setStatus(themeId: string, theme_status: ThemeStatus, episodeId?: string) {
     setError(null);
     const res = await fetch(`/api/series/${seriesId}/themes`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ themeId, theme_status }),
+      body: JSON.stringify({ themeId, theme_status, ...(episodeId ? { episode_id: episodeId } : {}) }),
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -79,12 +118,17 @@ export function SeriesThemesView({ seriesId }: SeriesThemesViewProps) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs text-text-secondary max-w-xl">
           Темы — переиспользуемые визуальные «движки гэгов». Лёгкий индекс: одна строка на тему,
-          детали — по клику. Статус двигается свободно между группами и не трогает файл.
+          детали — по клику. Статус двигается свободно и не трогает файл; «In use» помечает тему
+          эпизодом, в который она ушла.
         </p>
         <Button onClick={() => setAdding((v) => !v)} disabled={adding}>
           <Plus size={14} /> Add theme
         </Button>
       </div>
+
+      {themes.length > 0 && (
+        <FilterPills options={filterOptions} value={filter} onChange={setFilter} />
+      )}
 
       {error && (
         <p className="text-xs px-1" style={{ color: 'var(--accent-danger)' }}>
@@ -111,34 +155,28 @@ export function SeriesThemesView({ seriesId }: SeriesThemesViewProps) {
               <p className="text-sm text-text-primary">No themes yet.</p>
               <p className="text-xs text-text-secondary max-w-md mx-auto">
                 Add a theme, or let Polina propose one (она кладёт его в Draft, ты двигаешь
-                в Approved / Invalidated).
+                в Approved / In use / Invalidated).
               </p>
             </div>
           </CardBody>
         </Card>
       )}
 
-      {THEME_STATUSES.map((status) => {
-        const list = grouped[status];
-        if (list.length === 0) return null;
-        return (
-          <section key={status} className="space-y-2">
-            <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              <span
-                className="inline-block h-2 w-2 rounded-full"
-                style={{ background: STATUS_ACCENT[status] }}
-              />
-              {themeStatusLabel(status)}
-              <span className="text-text-muted font-normal">· {list.length}</span>
-            </h3>
-            <div className="space-y-2">
-              {list.map((t) => (
-                <ThemeCard key={t.id} theme={t} onSetStatus={setStatus} onSaved={() => mutate()} />
-              ))}
-            </div>
-          </section>
-        );
-      })}
+      {themes.length > 0 && visible.length === 0 && (
+        <p className="text-xs text-text-muted px-1">Нет тем в этом статусе.</p>
+      )}
+
+      <div className="space-y-2">
+        {visible.map((t) => (
+          <ThemeCard
+            key={t.id}
+            theme={t}
+            episodes={episodes}
+            onSetStatus={setStatus}
+            onSaved={() => mutate()}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -147,20 +185,36 @@ export function SeriesThemesView({ seriesId }: SeriesThemesViewProps) {
 
 interface ThemeCardProps {
   theme: SeriesTheme;
-  onSetStatus: (themeId: string, status: ThemeStatus) => void;
+  episodes: EpisodeOption[];
+  onSetStatus: (themeId: string, status: ThemeStatus, episodeId?: string) => void;
   onSaved: () => void;
 }
 
-function ThemeCard({ theme, onSetStatus, onSaved }: ThemeCardProps) {
+function ThemeCard({ theme, episodes, onSetStatus, onSaved }: ThemeCardProps) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(theme.content ?? '');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Non-null while the Director is choosing which episode consumed the theme.
+  const [pickingFor, setPickingFor] = useState<ThemeStatus | null>(null);
 
   useEffect(() => {
     setContent(theme.content ?? '');
   }, [theme.id, theme.content]);
+
+  const tint = `var(${THEME_STATUS_TOKEN[theme.theme_status]})`;
+  const usage = themeUsageLabel(theme.used_in_episodes);
+
+  function onStatusPicked(next: ThemeStatus) {
+    // `used` is the one status that carries data — ask for the episode first.
+    if (next === 'used') {
+      setPickingFor('used');
+      return;
+    }
+    setPickingFor(null);
+    onSetStatus(theme.id, next);
+  }
 
   async function save() {
     setSaving(true);
@@ -199,10 +253,32 @@ function ThemeCard({ theme, onSetStatus, onSaved }: ThemeCardProps) {
               <p className="text-[11px] font-mono text-text-muted mt-0.5">{theme.slug}</p>
             </button>
           </div>
+
+          {usage && (
+            <button
+              type="button"
+              onClick={() => setPickingFor(theme.theme_status)}
+              title={`Used in ${theme.used_in_episodes.map((r) => r.code).join(', ')} — click to add another`}
+              className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide"
+              style={{
+                borderColor: `var(${THEME_STATUS_TOKEN.used})`,
+                color: `var(${THEME_STATUS_TOKEN.used})`,
+                background: `color-mix(in oklab, var(${THEME_STATUS_TOKEN.used}) 12%, transparent)`,
+              }}
+            >
+              {usage}
+            </button>
+          )}
+
           <select
             value={theme.theme_status}
-            onChange={(e) => onSetStatus(theme.id, e.target.value as ThemeStatus)}
-            className="text-[11px] rounded-md border border-[var(--border-subtle)] bg-[var(--panel-bg)] px-1.5 py-1 text-text-secondary"
+            onChange={(e) => onStatusPicked(e.target.value as ThemeStatus)}
+            className="shrink-0 text-[11px] rounded-md border px-1.5 py-1"
+            style={{
+              borderColor: tint,
+              color: tint,
+              background: `color-mix(in oklab, ${tint} 10%, transparent)`,
+            }}
             aria-label="Theme status"
           >
             {THEME_STATUSES.map((s) => (
@@ -212,6 +288,17 @@ function ThemeCard({ theme, onSetStatus, onSaved }: ThemeCardProps) {
             ))}
           </select>
         </div>
+
+        {pickingFor && (
+          <EpisodePicker
+            episodes={episodes}
+            onCancel={() => setPickingFor(null)}
+            onPick={(episodeId) => {
+              setPickingFor(null);
+              onSetStatus(theme.id, 'used', episodeId);
+            }}
+          />
+        )}
 
         {open && (
           <div className="mt-3 pl-6 space-y-2">
@@ -241,6 +328,55 @@ function ThemeCard({ theme, onSetStatus, onSaved }: ThemeCardProps) {
         )}
       </CardBody>
     </Card>
+  );
+}
+
+// ── episode picker (inline, only while marking a theme "In use") ───────────────
+
+interface EpisodePickerProps {
+  episodes: EpisodeOption[];
+  onPick: (episodeId: string) => void;
+  onCancel: () => void;
+}
+
+function EpisodePicker({ episodes, onPick, onCancel }: EpisodePickerProps) {
+  if (episodes.length === 0) {
+    return (
+      <div className="mt-2 pl-6 flex items-center gap-2 text-xs text-text-secondary">
+        <span>В этой серии ещё нет эпизодов — пометить тему нечем.</span>
+        <button type="button" onClick={onCancel} className="underline underline-offset-2">
+          Cancel
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 pl-6 flex items-center gap-2">
+      <span className="text-xs text-text-secondary">Used in</span>
+      <select
+        defaultValue=""
+        onChange={(e) => e.target.value && onPick(e.target.value)}
+        className="text-xs rounded-md border border-[var(--border-subtle)] bg-[var(--panel-bg)] px-1.5 py-1 text-text-primary"
+        aria-label="Episode that used this theme"
+      >
+        <option value="" disabled>
+          Pick episode…
+        </option>
+        {episodes.map((e) => (
+          <option key={e.id} value={e.id}>
+            {e.episode_code}
+            {e.title_working ? ` — ${e.title_working}` : ''}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="text-xs text-text-muted underline underline-offset-2"
+      >
+        Cancel
+      </button>
+    </div>
   );
 }
 
