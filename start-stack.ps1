@@ -49,15 +49,33 @@ if ([string]::IsNullOrWhiteSpace($ek) -or [string]::IsNullOrWhiteSpace($sk)) {
 }
 New-Item -ItemType Directory -Force -Path $SqliteDir | Out-Null
 
+# Logs APPEND across restarts (2026-07-29). They used to be deleted here and written
+# with `*>`, so every restart destroyed the evidence of the crash that caused it: a
+# stuck EXEC-EREF job that morning became undiagnosable for exactly this reason —
+# the stack was wiping the forensic trail of the failure it was being restarted for.
+# Growth is bounded by ONE rotation at 50 MB; nothing is discarded without first
+# becoming the .1 file.
+function Start-LogRotation([string]$Path) {
+  if ((Test-Path $Path) -and ((Get-Item $Path).Length -gt 50MB)) {
+    Move-Item $Path "$Path.1" -Force
+  }
+}
+function Write-BootBanner([string]$Path) {
+  # In an appended file a restart is invisible without a marker to grep for.
+  Add-Content -Path $Path -Value "`n===== STACK START $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ====="
+}
+
 Write-Host '== starting Inngest (self-host, durable SQLite) ==' -ForegroundColor Cyan
-if (Test-Path "$Web\inngest.log") { Remove-Item "$Web\inngest.log" -Force }
+Start-LogRotation "$Web\inngest.log"
+Write-BootBanner "$Web\inngest.log"
 Start-Process powershell -ArgumentList '-NoProfile','-NoExit','-Command',
-  "Set-Location $Web; npx $InngestCli start --event-key $ek --signing-key $sk --sdk-url http://localhost:3000/api/inngest --sqlite-dir `"$SqliteDir`" *> `"$Web\inngest.log`"" -WindowStyle Minimized
+  "Set-Location $Web; npx $InngestCli start --event-key $ek --signing-key $sk --sdk-url http://localhost:3000/api/inngest --sqlite-dir `"$SqliteDir`" *>> `"$Web\inngest.log`"" -WindowStyle Minimized
 
 Write-Host '== starting App (npm run start) ==' -ForegroundColor Cyan
-if (Test-Path "$Web\prod.log") { Remove-Item "$Web\prod.log" -Force }
+Start-LogRotation "$Web\prod.log"
+Write-BootBanner "$Web\prod.log"
 Start-Process powershell -ArgumentList '-NoProfile','-NoExit','-Command',
-  "Set-Location $Web; npm run start *> `"$Web\prod.log`"" -WindowStyle Minimized
+  "Set-Location $Web; npm run start *>> `"$Web\prod.log`"" -WindowStyle Minimized
 
 Write-Host '== waiting for boot (18s) ==' -ForegroundColor Cyan
 Start-Sleep -Seconds 18
