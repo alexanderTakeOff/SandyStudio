@@ -74,6 +74,7 @@ export default function InboxPage() {
   } | null>(null);
   const [openAssetId, setOpenAssetId] = useState<string | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearResult, setClearResult] = useState<string | null>(null);
   const [includeAssets, setIncludeAssets] = useState(false);
@@ -170,7 +171,7 @@ export default function InboxPage() {
     function onKey(e: KeyboardEvent) {
       // A modal owns the keyboard while open — otherwise A/R/X would silently
       // decide the focused row behind the dialog.
-      if ((helpOpen || clearOpen) && e.key !== 'Escape') return;
+      if ((helpOpen || clearOpen || bulkOpen) && e.key !== 'Escape') return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       const item = flat[focusIdx];
@@ -198,13 +199,14 @@ export default function InboxPage() {
         case 'escape':
           setHelpOpen(false);
           setClearOpen(false);
+          setBulkOpen(false);
           break;
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flat, focusIdx, helpOpen, clearOpen]);
+  }, [flat, focusIdx, helpOpen, clearOpen, bulkOpen]);
 
   async function act(item: InboxItem, decision: AssetDecisionVerb, note?: string) {
     if (!item.asset_id) return;
@@ -250,20 +252,11 @@ export default function InboxPage() {
     }
   }
 
+  // Per-item POSTs on purpose: there is no bulk endpoint, and every decision
+  // goes through submitDecision, so a refusal (critic gate included) surfaces.
   async function bulkApprove() {
     const ids = Array.from(selected);
-    if (ids.length === 0) return;
-    if (!window.confirm(`Approve ${ids.length} non-visual items?`)) return;
-    await fetch('/api/director/inbox/bulk-approve', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        asset_ids: items
-          .filter((i) => ids.includes(i.id) && i.asset_id)
-          .map((i) => i.asset_id),
-      }),
-    }).catch(() => undefined);
-    // Phase 5b doesn't ship the bulk endpoint — fall back to per-item POSTs.
+    setBulkOpen(false);
     for (const id of ids) {
       const item = items.find((i) => i.id === id);
       if (item && !item.is_visual) await act(item, 'APPROVE');
@@ -493,7 +486,7 @@ export default function InboxPage() {
                 <strong>{selected.size}</strong> selected (non-visual only)
               </span>
               <div className="flex gap-2">
-                <Button onClick={bulkApprove}>Bulk approve</Button>
+                <Button onClick={() => setBulkOpen(true)}>Bulk approve</Button>
                 <Button variant="ghost" onClick={() => setSelected(new Set())}>
                   Clear
                 </Button>
@@ -677,56 +670,44 @@ export default function InboxPage() {
         title="Clear inbox"
         size="md"
       >
-        <div className="space-y-4 text-sm">
+        <div className="space-y-4">
           <p className="text-text-secondary">
-            Dismisses the <strong className="text-text-primary">notification</strong>{' '}
-            rows in the current view — decision / input requests, blockers and budget
-            alerts ({clearableCount} shown). These never expire on their own, which is why
-            the feed grows.
+            Hides {clearableCount} notification{clearableCount === 1 ? '' : 's'} in the{' '}
+            <strong className="text-text-primary">{filter.replace('_', '-')}</strong> view.
+            Nothing is decided.
           </p>
 
           <label
-            className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5 cursor-pointer"
+            className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 cursor-pointer text-text-primary"
             style={{ borderColor: 'var(--panel-glass-border)' }}
           >
             <input
               type="checkbox"
               checked={includeAssets}
               onChange={(e) => setIncludeAssets(e.target.checked)}
-              className="mt-0.5"
+              className="h-4 w-4 shrink-0"
               disabled={assetGateCount === 0}
             />
             <span>
-              <span className="text-text-primary">
-                Also hide {assetGateCount} asset{assetGateCount === 1 ? '' : 's'} awaiting
-                approval
-              </span>
-              <span className="block text-xs text-text-muted mt-0.5">
-                Takes them out of triage <strong>without deciding them</strong> — status
-                stays REVIEW, no pipeline event fires, and they stay reachable from their
-                episode. Recover them any time via the <code>hidden</code> filter.
-              </span>
+              Also hide {assetGateCount} asset{assetGateCount === 1 ? '' : 's'} awaiting
+              approval
             </span>
           </label>
 
-          <ul className="space-y-1.5 text-xs text-text-muted">
-            <li>
-              <strong className="text-text-primary">Never cleared:</strong> Bible extension
-              proposals — the proposals live inside those items, so they stay until you
-              decide them.
-            </li>
-            <li>
-              <strong className="text-text-primary">Never cleared:</strong> Skill Editor rule
-              proposals — a change to how agents behave is a standing decision, not a
-              notification.
-            </li>
-            <li>
-              Scope: the <strong className="text-text-primary">{filter.replace('_', '-')}</strong>{' '}
-              filter. Counts above are what is on screen; anything past the 50-row page is
-              swept too.
-            </li>
-            <li>Both actions are logged to the Activity feed as an audit record.</li>
-          </ul>
+          <details>
+            <summary className="text-sm text-text-muted cursor-pointer">Подробнее</summary>
+            <ul className="space-y-1.5 text-sm text-text-muted mt-2">
+              <li>
+                Hidden assets stay REVIEW, fire no pipeline event, and come back via the{' '}
+                <code>hidden</code> filter.
+              </li>
+              <li>
+                Never cleared: Bible extension proposals and Skill Editor rule proposals —
+                the decision lives inside those items.
+              </li>
+              <li>Anything past the 50-row page is swept too. Both actions are audited.</li>
+            </ul>
+          </details>
 
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={() => setClearOpen(false)} disabled={clearing}>
@@ -735,6 +716,21 @@ export default function InboxPage() {
             <Button variant="danger" onClick={clearInbox} disabled={clearing}>
               {clearing ? 'Clearing…' : includeAssets ? 'Clear all' : 'Clear notifications'}
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={bulkOpen} onClose={() => setBulkOpen(false)} title="Bulk approve">
+        <div className="space-y-4">
+          <p className="text-text-secondary">
+            Approves <strong className="text-text-primary">{selected.size}</strong> non-visual
+            item{selected.size === 1 ? '' : 's'}. Each one advances its stage of the pipeline.
+          </p>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={() => setBulkOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={bulkApprove}>Approve {selected.size}</Button>
           </div>
         </div>
       </Modal>

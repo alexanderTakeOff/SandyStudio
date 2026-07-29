@@ -213,6 +213,37 @@ export function resolveVideoRegenCap(metadata: unknown): number {
 }
 
 /**
+ * Does an existing render still OCCUPY the regen quota? (2026-07-29, E33 SH02.)
+ *
+ * The cap exists so the machine never spends twice on a shot without a human
+ * decision in between. The counting loop used to ignore status entirely, so a
+ * render the Director had explicitly REJECTED kept holding the slot that was
+ * meant to produce its own replacement — the Director rejected a video, the
+ * Animator re-authored the plan, the Director approved it, and every automatic
+ * render was then suppressed at $0 because the rejected file still counted. The
+ * only way out was a second manual click, i.e. an unplanned touch caused by the
+ * guard rather than by the work.
+ *
+ * A rejected render is not a delivered render. Statuses that already CARRY the
+ * human's decision to redo (REVISION, REJECTED) release the slot; so does
+ * INVALIDATED, where a sibling version holds it instead — counting both would
+ * double-charge one shot. Everything a human still owes a verdict on (DRAFT,
+ * REVIEW, NEEDS_HUMAN_TWEAK) and everything delivered (APPROVED, LOCKED) keeps
+ * occupying it, which is what preserves the guard's original intent: at most one
+ * un-reviewed render outstanding per shot.
+ */
+const REGEN_SLOT_RELEASED: ReadonlySet<string> = new Set([
+  'REVISION', // Director looked and said redo — the decision is spent, not the quota
+  'REJECTED', // Director looked and said no
+  'INVALIDATED', // superseded by a sibling, which occupies the slot instead
+  'TEST', // Mode 4 output, never promotes
+]);
+
+export function occupiesRegenSlot(status: string | null | undefined): boolean {
+  return !REGEN_SLOT_RELEASED.has((status ?? '').toUpperCase());
+}
+
+/**
  * ANCHOR_VISUAL_GATE — run the EREF AI checker on anchor frames too (2026-06-14,
  * Director q "default ON"). Advisory: stamps a visual verdict + flags intruders
  * (extraneous_objects) into the anchor's metadata and emits a stat on bypass; it

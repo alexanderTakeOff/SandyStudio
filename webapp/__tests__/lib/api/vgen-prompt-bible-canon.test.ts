@@ -26,7 +26,7 @@ const baseShot: StoryboardShotV2 = {
 const sandyCanon: CharacterCanonSnippet = {
   slug: 'sandy_hourglass',
   description:
-    'Young woman with curly red hair, freckles, wearing a yellow raincoat. Carries a vintage hourglass.',
+    'Young man with curly red hair, freckles, wearing a yellow raincoat. Carries a vintage hourglass.',
 };
 const stopwatchCanon: CharacterCanonSnippet = {
   slug: 'stopwatch_brass',
@@ -84,18 +84,18 @@ describe('makeCharacterCanonSnippets — sentence truncation', () => {
       {
         slug: 'sandy',
         description:
-          'Young woman. Curly red hair, freckles. Wears a yellow raincoat. Likes coffee.',
+          'Young man. Curly red hair, freckles. Wears a yellow raincoat. Likes coffee.',
       },
     ]);
-    expect(result[0]?.description).toBe('Young woman. Curly red hair, freckles.');
+    expect(result[0]?.description).toBe('Young man. Curly red hair, freckles.');
     expect(result[0]?.description).not.toContain('yellow raincoat');
   });
 
   it('keeps shorter descriptions intact', () => {
     const result = makeCharacterCanonSnippets([
-      { slug: 'sandy', description: 'Young woman with red hair.' },
+      { slug: 'sandy', description: 'Young man with red hair.' },
     ]);
-    expect(result[0]?.description).toBe('Young woman with red hair.');
+    expect(result[0]?.description).toBe('Young man with red hair.');
   });
 
   it('skips entries with empty slug or description', () => {

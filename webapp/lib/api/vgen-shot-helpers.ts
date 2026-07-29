@@ -666,7 +666,7 @@ export interface CharacterCanonSnippet {
 }
 
 /** Pull the first N sentences from a longer description. Defaults to 2 — long
- *  enough for "young woman, curly red hair, freckles, yellow raincoat" without
+ *  enough for "young man, curly red hair, freckles, yellow raincoat" without
  *  bloating the prompt with backstory. */
 function firstSentences(text: string, n: number = 2): string {
   if (!text) return '';

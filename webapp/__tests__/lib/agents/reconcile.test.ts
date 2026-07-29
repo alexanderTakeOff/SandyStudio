@@ -377,6 +377,71 @@ describe('critic REVISE → re-author (reconcile owns the Phase 2+ edge)', () =>
   });
 });
 
+// E33 SH02 (2026-07-29): a REJECTED money cell belonged to NO branch — the REVIEW
+// loop only sees REVIEW, the failure refire only sees never-produced cells, and the
+// re-author pass skipped every stage without a critic. The shot stopped forever.
+describe('REVISION on a money stage → re-render (the cell that had no owner)', () => {
+  const rejectedVideo = (version = 1, planStatus = 'APPROVED') =>
+    matrix([
+      shot('SH01', {
+        shot_plan: st({ status: planStatus, asset_id: 'sp2', version: 2 }),
+        video: st({ status: 'REVISION', asset_id: 'vid1', version }),
+      }),
+    ]);
+
+  it('(a) re-renders a rejected video from the APPROVED shot_plan', () => {
+    const acts = planReconcileActions(ctx({ matrix: rejectedVideo(), criticCap: 2 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'refire', shotId: 'SH01', stage: 'video', assetId: 'sp2' }),
+    );
+    expect(acts.filter((a) => a.kind === 'reauthor')).toHaveLength(0);
+  });
+
+  it('(b) HALTs instead of rendering once the revision cap is reached', () => {
+    // video v3 → revisionsSoFar 2 >= cap 2
+    const acts = planReconcileActions(ctx({ matrix: rejectedVideo(3), criticCap: 2 }));
+    expect(acts.filter((a) => a.kind === 'refire')).toHaveLength(0);
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'halt', shotId: 'SH01', stage: 'video' }),
+    );
+  });
+
+  it('(c) a rejected ref_image gets the same owner (from the APPROVED ref_plan)', () => {
+    const m = matrix([
+      shot('SH01', {
+        ref_plan: st({ status: 'APPROVED', asset_id: 'rp2', version: 2 }),
+        ref_image: st({ status: 'REVISION', asset_id: 'img1', version: 1 }),
+      }),
+    ]);
+    const acts = planReconcileActions(ctx({ matrix: m, criticCap: 2 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'refire', shotId: 'SH01', stage: 'ref_image', assetId: 'rp2' }),
+    );
+  });
+
+  it('(d) regression: a shot_plan in REVISION is still RE-AUTHORED, never rendered', () => {
+    const m = matrix([shot('SH01', { shot_plan: st({ status: 'REVISION', asset_id: 'sp1', version: 1 }) })]);
+    const acts = planReconcileActions(ctx({ matrix: m, criticCap: 2 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'reauthor', assetId: 'sp1', stage: 'shot_plan' }),
+    );
+    expect(acts.filter((a) => a.kind === 'refire')).toHaveLength(0);
+  });
+
+  it('stays silent when the upstream plan is not APPROVED — the gap is upstream', () => {
+    const acts = planReconcileActions(ctx({ matrix: rejectedVideo(1, 'REVIEW'), criticCap: 2 }));
+    expect(acts.filter((a) => a.kind === 'refire')).toHaveLength(0);
+    expect(acts.filter((a) => a.kind === 'halt')).toHaveLength(0);
+  });
+
+  it('never re-renders a reserved (pilot) shot', () => {
+    const acts = planReconcileActions(
+      ctx({ matrix: rejectedVideo(), criticCap: 2, reservedShots: new Set(['SH01']) }),
+    );
+    expect(acts).toHaveLength(0);
+  });
+});
+
 describe('collectOnModelSignals', () => {
   it('folds on_model.verdict into a ref_image-keyed map, latest version wins', () => {
     const verdicts = collectOnModelSignals([

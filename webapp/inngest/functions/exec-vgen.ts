@@ -29,6 +29,7 @@ import { inngest } from '@/lib/inngest/client';
 import { concurrencyFor } from '@/lib/inngest/concurrency';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import {
+  closeOpenJobsForRun,
   insertJobRow,
   loadAgentInputs,
   markJobCompleted,
@@ -49,7 +50,11 @@ import {
 } from '@/lib/api/animatic-shotlist';
 import { isVgenCancelled, clearVgenCancel } from '@/lib/api/vgen-cancel';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
-import { animatorChainEnabled, resolveVideoRegenCap } from '@/lib/agents/chain-flags';
+import {
+  animatorChainEnabled,
+  occupiesRegenSlot,
+  resolveVideoRegenCap,
+} from '@/lib/agents/chain-flags';
 
 const EXEC_VGEN_EXPECTED_SECONDS = 150;
 
@@ -180,6 +185,26 @@ export const execVgenRun = inngest.createFunction(
     name: 'EXEC-VGEN: Pilot + Single Shot',
     retries: 2,
     concurrency: concurrencyFor('exec-vgen-shot'),
+    // ── Job-row close guarantee (E33, 2026-07-29) ──────────────────────────
+    // The `catch` below only runs while the process is alive; a worker that dies
+    // mid-render leaves the row RUNNING and nothing notices until the hourly
+    // reaper. onFailure is invoked from the outside, once, after retries are
+    // exhausted. Same shape as the factory's and exec-eref's — and it also
+    // releases the per-shot dispatch claim, without which the shot would stay
+    // undispatchable (the reaper can no longer see a row we already closed).
+    onFailure: async ({ event, error }: { event: { data?: { run_id?: string } }; error: Error }) => {
+      const failedRunId = typeof event?.data?.run_id === 'string' ? event.data.run_id : null;
+      if (!failedRunId) return;
+      try {
+        await closeOpenJobsForRun(
+          createSupabaseServiceRoleClient(),
+          failedRunId,
+          `EXEC-VGEN run failed after retries — ${error?.message ?? 'unknown error'}`,
+        );
+      } catch {
+        // Best-effort — the hourly reaper still sits behind this.
+      }
+    },
   },
   [
     { event: 'sandystudio/exec-vgen/start' },
@@ -390,17 +415,23 @@ export const execVgenRun = inngest.createFunction(
         const cap = resolveVideoRegenCap((epRow as { metadata?: unknown } | null)?.metadata);
         const { data: vidRows } = await supabase
           .from('assets')
-          .select('id,metadata')
+          .select('id,status,metadata')
           .eq('episode_id', episodeId)
           .like('file_type', 'VID-shot%');
         let count = 0;
         let lastId: string | null = null;
-        for (const row of (vidRows ?? []) as Array<{ id: string; metadata?: unknown }>) {
+        for (const row of (vidRows ?? []) as Array<{
+          id: string;
+          status?: string | null;
+          metadata?: unknown;
+        }>) {
           const sid = (row.metadata as { shot_id?: unknown } | null)?.shot_id;
-          if (typeof sid === 'string' && normShot(sid) === target && target) {
-            count++;
-            lastId = row.id;
-          }
+          if (typeof sid !== 'string' || normShot(sid) !== target || !target) continue;
+          // A render the Director REJECTED must not keep holding the quota that
+          // exists to produce its replacement (see occupiesRegenSlot).
+          if (!occupiesRegenSlot(row.status)) continue;
+          count++;
+          lastId = row.id;
         }
         return { count, lastId, cap };
       });
@@ -413,7 +444,7 @@ export const execVgenRun = inngest.createFunction(
             event_type: 'agent_completed',
             severity: 'warning',
             title: `${agentDisplayName('EXEC-VGEN')} re-gen blocked${label ? ` — ${label}` : ''}`,
-            description: `Shot ${shotId} already has ${dedup.count} VID-shot(s) (cap ${dedup.cap}) — automatic re-generation suppressed, $0 spent. Re-render requires the explicit Director regenerate surface after visual review.`,
+            description: `Shot ${shotId} already has ${dedup.count} live VID-shot(s) (cap ${dedup.cap}) — automatic re-generation suppressed, $0 spent. Re-render requires the explicit Director regenerate surface after visual review. (Rejected/superseded renders do NOT count — reject one and the machine may render its replacement on its own.)`,
             actor: 'EXEC-VGEN',
             episode_id: episodeId,
             asset_id: dedup.lastId!,

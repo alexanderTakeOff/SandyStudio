@@ -326,6 +326,7 @@ export function EpisodeTimelineSection({
         drive_path: a.drive_path,
         staging_path: a.staging_path,
         drive_web_view_url: a.drive_web_view_url,
+        drive_file_id: a.drive_file_id ?? null,
         metadata: a.metadata,
       }));
   }, [data]);
@@ -344,6 +345,7 @@ export function EpisodeTimelineSection({
         drive_path: a.drive_path,
         staging_path: a.staging_path,
         drive_web_view_url: a.drive_web_view_url,
+        drive_file_id: a.drive_file_id ?? null,
       }));
   }, [data]);
 

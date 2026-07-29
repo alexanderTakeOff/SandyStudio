@@ -30,7 +30,12 @@ import {
   demoteSiblingApproved,
   type AssetForSlot,
 } from '../api/single-approved';
-import { computeNextEvents, stageRefireEvent, type AssetForChain } from './next-events';
+import {
+  computeNextEvents,
+  stageRefireEvent,
+  planAlreadyExecuted,
+  type AssetForChain,
+} from './next-events';
 import { getEpisodeStateMatrix } from './state-matrix';
 import {
   planReconcileActions,
@@ -213,6 +218,27 @@ export async function reconcileEpisode(
       // canonical stage→event map (single source, shared with computeNextEvents);
       // the emitted event flows out with the rest for the caller to dispatch. Log
       // reconcile/refire so the NEXT pass counts it against the recovery cap.
+      //
+      // Per-Plan guard on the MONEY stages — the same one computeNextEvents applies
+      // to this exact edge: never render a plan that already produced an artifact.
+      // For a FAILED (never-produced) cell it is always false (no artifact exists),
+      // so the failure spine is untouched; for a REJECTED cell it is the load-bearing
+      // idempotency — the rejected render carries the OLD plan's id, so only a plan
+      // NEWER than it renders, exactly once, and the plan being rejected is never
+      // re-rolled at $-per-attempt.
+      const outputPrefix: 'IMG-episode_ref' | 'VID-shot' | null =
+        action.stage === 'ref_image'
+          ? 'IMG-episode_ref'
+          : action.stage === 'video'
+            ? 'VID-shot'
+            : null;
+      if (
+        outputPrefix &&
+        action.assetId &&
+        (await planAlreadyExecuted(supabase, episodeId, outputPrefix, action.assetId))
+      ) {
+        continue; // this plan already rendered — nothing to re-drive
+      }
       const evt = stageRefireEvent(action.stage, {
         episodeId,
         shotId: action.shotId,

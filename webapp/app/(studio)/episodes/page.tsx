@@ -292,36 +292,30 @@ function DeleteForeverModal({
   return (
     <Modal open={target !== null} onClose={onClose} title={`Delete ${code} forever`}>
       <div className="space-y-4">
-        <p className="text-sm text-text-secondary">
-          This permanently removes the episode and all its asset/job records. This
-          cannot be undone.
+        <p className="text-text-secondary">
+          Gone for good — the episode and all its records. No undo.
         </p>
-        <label className="flex items-start gap-2 text-sm text-text-primary cursor-pointer">
+        <label className="flex items-center gap-2.5 text-text-primary cursor-pointer">
           <input
             type="checkbox"
             checked={deleteMedia}
             onChange={(e) => setDeleteMedia(e.target.checked)}
-            className="mt-0.5"
+            className="h-4 w-4 shrink-0"
           />
           <span>
-            Also delete media files from Drive (raw + approved images/video/audio).
-            <span className="block text-xs text-text-muted mt-0.5">
+            Delete its media on Drive too
+            <span className="block text-sm text-text-muted">
               Published YouTube videos are never touched.
             </span>
           </span>
         </label>
-        <div>
-          <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
-            Type <code className="font-mono text-text-primary">{code}</code> to confirm
-          </label>
-          <input
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            placeholder={code}
-            className="w-full h-10 px-3 rounded-lg border border-glass bg-transparent text-sm text-text-primary outline-none focus:border-glass-active"
-          />
-        </div>
-        {err && <p className="text-xs text-[var(--accent-danger)]">{err}</p>}
+        <input
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          placeholder={`Type ${code} to confirm`}
+          className="w-full h-10 px-3 rounded-lg border border-glass bg-transparent text-base text-text-primary outline-none focus:border-glass-active"
+        />
+        {err && <p className="text-[var(--accent-danger)]">{err}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel

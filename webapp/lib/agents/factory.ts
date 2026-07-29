@@ -23,6 +23,7 @@ import { recordCost } from '../budget';
 import { agentDisplayName } from '../api/agent-names';
 import { validateAgentInputs } from './gate';
 import {
+  closeOpenJobsForRun,
   insertJobRow,
   loadAgentInputs,
   markJobCompleted,
@@ -231,7 +232,30 @@ export function createAgentInngestFunction<E extends string>(
       // so the ONLY escalation on a genuinely-dead agent is this single deduped
       // blocker_raised → Director Inbox. Closes the E29 gap: 6× per-attempt
       // notify-needed woke read-only Polina, the Director was never told.
-      onFailure: async ({ event, error }: { event: { data?: { event?: { data?: Record<string, unknown> } } }; error: Error }) => {
+      onFailure: async ({ event, error }: { event: { data?: { run_id?: string; event?: { data?: Record<string, unknown> } } }; error: Error }) => {
+        // ── Job-row close guarantee (E33, 2026-07-29) ────────────────────────
+        // The per-attempt catch at the end of this function is a promise only a
+        // LIVE process can keep: when the worker died mid-step (the E33 EXEC-EREF
+        // row that sat RUNNING for hours) no user code ran at all. onFailure runs
+        // from the OUTSIDE, on a fresh request, exactly once, after retries are
+        // exhausted — so this is the one place that can close such a row. It
+        // cannot fight a retry: a run that succeeds on retry is not failed and
+        // never lands here; and the helper's own status filter leaves an
+        // already-closed (FAILED or COMPLETED) row untouched.
+        // Kept in its OWN try so a failing escalation below cannot skip it.
+        const failedRunId = typeof event?.data?.run_id === 'string' ? event.data.run_id : null;
+        if (failedRunId) {
+          try {
+            await closeOpenJobsForRun(
+              createSupabaseServiceRoleClient(),
+              failedRunId,
+              `${spec.agentId} run failed after retries — ${error?.message ?? 'unknown error'}`,
+            );
+          } catch {
+            // Best-effort — the hourly reaper still sits behind this.
+          }
+        }
+
         try {
           const original = event?.data?.event?.data;
           const episodeId = typeof original?.episodeId === 'string' ? original.episodeId : null;

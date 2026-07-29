@@ -15,6 +15,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { hasVerticalDeliveryTarget } from '@/lib/api/provider-capabilities';
 import { readDeliveryTargetsFromMetadata } from '@/lib/agents/delivery-targets';
+// ONE derivation of a browser-loadable media URL (see timeline-cell-resolver).
+// The private `bestImageUrl` that used to live here was a third copy, frozen
+// before `previewFreshness` — bare /api/media/<id>, no cache-bust, and its own
+// candidate order (staging before drive_path). It baked that stale URL into the
+// FROZEN animatic contract, so the divergence outlived the row it came from.
+import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
 
 export const ANIMATIC_CONTRACT = 'animatic@v1';
 export type AnimaticContractId = typeof ANIMATIC_CONTRACT;
@@ -594,24 +600,14 @@ interface ApprovedEREFAssetRow {
   staging_path: string | null;
   drive_path: string | null;
   drive_web_view_url: string | null;
+  /** Drive-backed marker + cache-bust inputs for `resolvePreviewSrc`. */
+  drive_file_id: string | null;
+  version: number | null;
   filename: string;
   metadata: unknown;
 }
 
 const FALLBACK_DURATION_S = 2.5;
-
-function bestImageUrl(asset: ApprovedEREFAssetRow): string {
-  // Drive-backed media is served via the stable /api/media/<id> cache route
-  // (post-2026-06-01 migration); /staging is dead and drive_web_view_url is a
-  // viewer page, not an image. drive_web_view_url presence ⇒ Drive-backed.
-  if (asset.id && asset.drive_web_view_url) return `/api/media/${asset.id}`;
-  return (
-    asset.staging_path ||
-    asset.drive_web_view_url ||
-    asset.drive_path ||
-    ''
-  );
-}
 
 function shotIdFromMetadata(meta: unknown): string | null {
   if (!meta || typeof meta !== 'object') return null;
@@ -643,7 +639,9 @@ export async function buildShotListFromApprovedEREF(
 
   const { data: assets, error } = await supabase
     .from('assets')
-    .select('id,file_type,status,staging_path,drive_path,drive_web_view_url,filename,metadata')
+    .select(
+      'id,file_type,status,staging_path,drive_path,drive_web_view_url,drive_file_id,version,filename,metadata',
+    )
     .eq('episode_id', episodeId)
     .eq('status', 'APPROVED')
     .like('file_type', 'IMG-episode_ref%');
@@ -678,7 +676,7 @@ export async function buildShotListFromApprovedEREF(
     shotList.push({
       shot_id: shot.shot_id,
       asset_id: chosen?.id ?? null,
-      image_url: chosen ? bestImageUrl(chosen) : null,
+      image_url: chosen ? resolvePreviewSrc(chosen) : null,
       duration_seconds: shot.duration_seconds ?? FALLBACK_DURATION_S,
       shot_role: shot.shot_role,
       caption: captionSource ? captionSource.slice(0, 200) : undefined,
@@ -718,7 +716,9 @@ export async function buildShotListFromAnchorChain(
   // 1. APPROVED IMG-anchor_* assets → keep only the START anchor per shot.
   const { data: anchorAssets, error: anchorErr } = await supabase
     .from('assets')
-    .select('id,file_type,status,staging_path,drive_path,drive_web_view_url,filename,metadata')
+    .select(
+      'id,file_type,status,staging_path,drive_path,drive_web_view_url,drive_file_id,version,filename,metadata',
+    )
     .eq('episode_id', episodeId)
     .eq('status', 'APPROVED')
     .like('file_type', 'IMG-anchor_%')
@@ -818,7 +818,7 @@ export async function buildShotListFromAnchorChain(
     shotList.push({
       shot_id: shot.shot_id,
       asset_id: chosen.id,
-      image_url: bestImageUrl(chosen),
+      image_url: resolvePreviewSrc(chosen) ?? '',
       duration_seconds: duration,
       shot_role: shot.shot_role,
       caption: captionSource ? captionSource.slice(0, 200) : undefined,

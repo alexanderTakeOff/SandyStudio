@@ -75,36 +75,25 @@ export function RetriggerStageModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`Re-trigger ${producerAgent} · ${stageLabel}`}
+      title={`Re-run ${stageLabel}`}
     >
       <div className="space-y-4">
-        <p className="text-xs text-text-secondary leading-relaxed">
-          This will fire <span className="font-mono">{producerAgent}</span> and may
-          produce a duplicate asset (a new version). Downstream agents will fire
-          automatically when their input gates pass.
-        </p>
+        <p className="text-text-secondary">Runs it again — makes a new version.</p>
         <div>
-          <label className="block text-xs uppercase tracking-wider text-text-muted mb-1.5">
-            Reason (required, audit log)
-          </label>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={4}
-            placeholder="e.g. Re-run with Bible canon now loaded"
-            className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-sm leading-relaxed resize-y"
+            placeholder="Why? e.g. Re-run with Bible canon now loaded"
+            className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-glass text-base leading-relaxed resize-y"
             style={{ minHeight: 88 }}
             autoFocus
           />
-          <div className="text-[10px] text-text-muted mt-1">
-            Minimum {MIN_REASON_LEN} characters · {reason.length} typed
+          <div className="text-sm text-text-muted mt-1">
+            {reason.length}/{MIN_REASON_LEN} min
           </div>
         </div>
-        {error && (
-          <p className="text-xs" style={{ color: 'var(--accent-danger)' }}>
-            {error}
-          </p>
-        )}
+        {error && <p style={{ color: 'var(--accent-danger)' }}>{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose} disabled={pending}>
             Cancel
@@ -113,7 +102,7 @@ export function RetriggerStageModal({
             onClick={submit}
             disabled={pending || reason.trim().length < MIN_REASON_LEN}
           >
-            {pending ? 'Triggering…' : `Re-trigger ${producerAgent}`}
+            {pending ? 'Running…' : `Run ${producerAgent}`}
           </Button>
         </div>
       </div>

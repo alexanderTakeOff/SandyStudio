@@ -12,6 +12,7 @@ import {
   type ImgRefAssetRow,
 } from '@/lib/api/timeline-cell-resolver';
 import type { AnimaticContract } from '@/lib/api/animatic-shotlist';
+import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
 
 const baseContract: AnimaticContract = {
   contract: 'animatic@v1',
@@ -379,10 +380,49 @@ describe('resolveTimelineCells — live reference frame (SH18 stale-frozen fix)'
     expect(cells[0]!.asset_id).toBe('rev');
   });
 
-  it('drive-backed ref resolves via /api/media/<id>', () => {
+  it('drive-backed ref resolves via /api/media/<id> WITH the cache-bust key', () => {
+    // The bare `/api/media/<id>` this used to assert is what let the timeline go
+    // stale: `select_attempt` swaps the bytes under a fixed asset id + filename,
+    // and an `-APPROVED` filename is served `immutable` for a year. The drawer
+    // had the `?t=` bust; the timeline did not. One resolver now, one URL.
     const ref = imgRef(SH01, { id: 'drv', drive_web_view_url: 'https://drive/view' });
     const cells = resolveTimelineCells(baseContract, [], [ref]);
-    expect(cells[0]!.url).toBe('/api/media/drv');
+    expect(cells[0]!.url).toBe(resolvePreviewSrc(ref));
+    expect(cells[0]!.url).toBe('/api/media/drv?t=1');
+  });
+
+  it('a variant pick moves the timeline url — same key the drawer uses', () => {
+    // Exact before/after of `select_attempt` (regenerate-image route branch A2):
+    // staging_path + drive_path repoint at the attempt, drive_web_view_url is
+    // nulled, drive_file_id carries the attempt's, and shot_reference gains
+    // `selected_version`. Neither `version` nor `image_prompt.current_version`
+    // moves — `selected_version` is the ONLY signal that the pixels changed.
+    const meta = (selected: number | null) => ({
+      shot_reference: { shot_id: SH01, ...(selected == null ? {} : { selected_version: selected }) },
+      image_prompt: { current_version: 4 },
+    });
+    const before = imgRef(SH01, {
+      id: 'ref-1',
+      status: 'APPROVED',
+      drive_file_id: 'drive-1',
+      drive_web_view_url: 'https://drive/view',
+      metadata: meta(null),
+    });
+    const after = imgRef(SH01, {
+      id: 'ref-1',
+      status: 'APPROVED',
+      drive_file_id: 'drive-attempt-3',
+      drive_web_view_url: null,
+      drive_path: '/api/media/ref-attempt3.png',
+      staging_path: '/api/media/ref-attempt3.png',
+      metadata: meta(3),
+    });
+    const urlBefore = resolveTimelineCells(baseContract, [], [before])[0]!.url;
+    const urlAfter = resolveTimelineCells(baseContract, [], [after])[0]!.url;
+    expect(urlAfter).not.toBe(urlBefore);
+    // …and both agree with what the drawer paints for the same row.
+    expect(urlBefore).toBe(resolvePreviewSrc(before));
+    expect(urlAfter).toBe(resolvePreviewSrc(after));
   });
 
   it('a VID-shot still wins over a live ref (video is downstream-canonical)', () => {

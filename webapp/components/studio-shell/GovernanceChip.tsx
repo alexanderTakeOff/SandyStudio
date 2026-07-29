@@ -140,23 +140,23 @@ export function GovernanceChip({ current }: GovernanceChipProps) {
                   }}
                 />
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-text-primary">
+                  <div className="font-medium text-text-primary">
                     Mode {mode} — {MODE_LABEL[mode]}
                   </div>
-                  <div className="text-xs text-text-secondary mt-0.5">{MODE_DESCRIPTION[mode]}</div>
+                  <div className="text-sm text-text-secondary mt-0.5">
+                    {MODE_DESCRIPTION[mode]}
+                  </div>
                 </div>
               </button>
             );
           })}
         </div>
 
-        <p className="text-[11px] mt-4 leading-relaxed font-medium" style={{ color: 'var(--accent-primary)' }}>
-          Applies to: {scope === 'episode' ? 'THIS EPISODE (override)' : 'GLOBAL default (no episode in focus)'}.
+        <p className="mt-4 font-medium" style={{ color: 'var(--accent-primary)' }}>
+          Applies to {scope === 'episode' ? 'this episode' : 'everything by default'}.
         </p>
-        <p className="text-[11px] text-text-muted mt-1 leading-relaxed">
-          Director-only · hard limit per CLAUDE.md §6 · audited in activity feed.
-          Hard-limit actions (PUBLISH, LOCKED, BUDGET, MODE_CHANGE) always require Director,
-          regardless of governance mode.
+        <p className="text-sm text-text-muted mt-1">
+          Publish, LOCKED, budget and mode changes always stay with you.
         </p>
 
         <div className="mt-5 flex justify-end gap-2">

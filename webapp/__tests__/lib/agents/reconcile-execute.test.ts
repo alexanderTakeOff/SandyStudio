@@ -186,6 +186,47 @@ describe('reconcileEpisode', () => {
     expect(again.events.some((e) => e.name === 'sandystudio/exec-vanim/plan')).toBe(false);
   });
 
+  // E33 SH02 — the Director rejected the video, the Animator re-authored the plan,
+  // the plan was approved, and the shot then stood still forever: the REVISION cell
+  // belonged to no branch of the reconciler.
+  it('re-renders a REJECTED video from the APPROVED plan that supersedes it', async () => {
+    const { client, tables } = makeMockSupabase({
+      episodes: [{ id: EP, episode_code: 'SS-S1-E1', metadata: {} }],
+      assets: [
+        storyboard([SHOT]),
+        { id: 'sp1', episode_id: EP, file_type: 'SPC-shot_plan', status: 'INVALIDATED', version: 1, metadata: { shot_id: SHOT } },
+        { id: 'sp2', episode_id: EP, file_type: 'SPC-shot_plan', status: 'APPROVED', version: 2, metadata: { shot_id: SHOT } },
+        // the rejected render was built from the OLD plan (sp1)
+        { id: 'vid1', episode_id: EP, file_type: 'VID-shot', status: 'REVISION', version: 1, metadata: { shot_id: SHOT, plan_asset_id: 'sp1' } },
+      ],
+    });
+    const res = await reconcileEpisode(client, EP, { force: true });
+    expect(
+      res.events.some(
+        (e) => e.name === 'sandystudio/exec-vgen/single-shot' && e.data.planAssetId === 'sp2',
+      ),
+    ).toBe(true);
+    expect(tables.activity_events.some((e) => e.event_type === 'reconcile/refire')).toBe(true);
+  });
+
+  it('refuses to re-roll the very plan that produced the rejected render', async () => {
+    const { client } = makeMockSupabase({
+      episodes: [{ id: EP, episode_code: 'SS-S1-E1', metadata: {} }],
+      assets: [
+        storyboard([SHOT]),
+        { id: 'sp1', episode_id: EP, file_type: 'SPC-shot_plan', status: 'APPROVED', version: 1, metadata: { shot_id: SHOT } },
+        { id: 'vid1', episode_id: EP, file_type: 'VID-shot', status: 'REVISION', version: 1, metadata: { shot_id: SHOT, plan_asset_id: 'sp1' } },
+      ],
+    });
+    const res = await reconcileEpisode(client, EP, { force: true });
+    // The intent IS planned (the cell has an owner now) — the executor's per-Plan
+    // guard is what suppresses the spend, not an absent decision.
+    expect(res.actions).toContainEqual(
+      expect.objectContaining({ kind: 'refire', stage: 'video', assetId: 'sp1' }),
+    );
+    expect(res.events.some((e) => e.name === 'sandystudio/exec-vgen/single-shot')).toBe(false);
+  });
+
   it('auto-approves an on-model ref image (on_model PASS) in Mode 3 — gate lets good ones through', async () => {
     const { client, tables } = makeMockSupabase({
       episodes: [{ id: EP, episode_code: 'SS-S1-E1', governance_mode: '3', metadata: {} }],

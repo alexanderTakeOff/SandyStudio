@@ -413,12 +413,21 @@ export function EpisodeAssetDrawer({
   // that attempt's own file — that is what makes this a viewer. Falls back to
   // the canonical bytes when nothing is explicitly selected, and self-heals if
   // the selected version disappears (asset refetched with a different history).
+  //
+  // Compared against SERVER truth, never against the optimistic pick. The
+  // optimistic value exists for the RING (which tile is chosen); letting it into
+  // the picture meant that the instant "Сделать текущим" was clicked the preview
+  // switched to `canonicalPreviewSrc` — resolved from the STILL-STALE `asset`
+  // prop — so the Director's confirmation flashed the OLD image back at him
+  // until the refetch landed. Keep painting the picked attempt's own file until
+  // the server says it IS the primary; then the canonical URL carries a
+  // `sel<N>` cache-bust and resolves to the same bytes.
   const viewedAttempt =
     viewingVersion != null
       ? (erefHistory.find((a) => a.version === viewingVersion) ?? null)
       : null;
   const previewSrc =
-    viewedAttempt?.image_url && viewedAttempt.version !== erefPrimaryVersion
+    viewedAttempt?.image_url && viewedAttempt.version !== serverPrimaryVersion
       ? viewedAttempt.image_url
       : canonicalPreviewSrc;
 
@@ -1272,17 +1281,17 @@ function ConfirmReplaceModal({
     >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
       <div
-        className="relative w-full max-w-md rounded-2xl border border-glass bg-panel-glass-strong backdrop-blur-xl shadow-glass p-5 space-y-4"
+        className="relative w-full max-w-md rounded-2xl border border-glass bg-panel-glass-strong backdrop-blur-xl shadow-glass p-5 space-y-4 text-base leading-relaxed"
         style={{ boxShadow: 'var(--panel-shadow)' }}
       >
-        <h3 className="text-sm font-semibold text-text-primary">
-          Replace approved image for this shot?
+        <h3 className="text-base font-semibold text-text-primary">
+          Replace the approved image?
         </h3>
-        <p className="text-xs text-text-secondary leading-relaxed">
-          <span className="font-mono text-text-primary">{existingFilename}</span> is
-          currently approved for this shot. Approving{' '}
-          <span className="font-mono text-text-primary">{newFilename}</span> will
-          demote the previous candidate to REJECTED in a single transaction.
+        <p className="text-text-secondary">
+          This shot already has one. The old one gets rejected.
+        </p>
+        <p className="text-sm font-mono text-text-muted truncate" title={`${existingFilename} → ${newFilename}`}>
+          {existingFilename} → {newFilename}
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onCancel} disabled={pending}>

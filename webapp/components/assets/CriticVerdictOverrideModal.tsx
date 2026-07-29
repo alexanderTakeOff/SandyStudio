@@ -10,6 +10,12 @@
 // override button turns on. A bypass that is one careless click from the normal
 // Approve is worse than no bypass at all.
 //
+// SHORT BY CONSTRUCTION (Director, 2026-07-29): the first pass poured the whole
+// verdict onto the screen — up to three complaints at 600 chars each. Nobody
+// reads a wall at decision time. What the human needs is WHO objected and WHAT
+// in one line; the full text lives one disclosure away. If the dialog cannot be
+// read in two seconds it is too long.
+//
 // Presentational only: the parent owns the re-POST (same pattern as
 // InboxNotePromptModal), so the override rides the SAME body the Director
 // already submitted, plus `eref_options.override_critic_verdict: true` — which
@@ -19,7 +25,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import type { CriticFailure } from '@/lib/api/asset-decision';
@@ -33,6 +38,17 @@ export interface CriticVerdictOverrideModalProps {
   onCancel: () => void;
   /** Re-send the same decision with the override flag. May throw. */
   onOverride: () => Promise<void> | void;
+}
+
+/** The one-line version of a verdict: its worst complaint, clamped. */
+const HEADLINE_MAX = 90;
+
+function headline(detail: string): string {
+  // The route joins complaints worst-first with ' · ' — the first is the one
+  // that matters; the rest are behind the disclosure.
+  const first = detail.split(' · ')[0]?.replace(/^(CRITICAL|MAJOR|MINOR):\s*/i, '').trim() ?? '';
+  if (first.length <= HEADLINE_MAX) return first;
+  return `${first.slice(0, HEADLINE_MAX).trimEnd()}…`;
 }
 
 export function CriticVerdictOverrideModal({
@@ -70,93 +86,62 @@ export function CriticVerdictOverrideModal({
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onCancel}
-      title={
-        subjectLabel
-          ? `Critic is holding this asset · ${subjectLabel}`
-          : 'Critic is holding this asset'
-      }
-      size="md"
-    >
+    <Modal open={open} onClose={onCancel} title="Critic says no" size="md">
       <div className="space-y-4">
-        <p className="text-xs text-text-secondary leading-relaxed">
-          Approval was refused because this asset&apos;s own critic said it should not
-          ship. The normal move is to send it back and regenerate.
-        </p>
+        {subjectLabel && (
+          <p className="text-sm font-mono text-text-muted truncate" title={subjectLabel}>
+            {subjectLabel}
+          </p>
+        )}
 
         <ul className="space-y-2">
           {failures.map((f, i) => (
-            <li
-              key={`${f.critic}-${i}`}
-              className="rounded-lg border px-3 py-2.5"
-              style={{
-                background: 'color-mix(in oklab, var(--accent-danger) 8%, transparent)',
-                borderColor: 'color-mix(in oklab, var(--accent-danger) 35%, transparent)',
-              }}
-            >
-              <div className="flex items-center gap-2 flex-wrap">
-                <AlertTriangle
-                  size={12}
-                  className="shrink-0"
-                  style={{ color: 'var(--accent-danger)' }}
-                />
-                <span className="text-xs font-medium text-text-primary">{f.critic}</span>
-                <span
-                  className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded"
-                  style={{
-                    background: 'color-mix(in oklab, var(--accent-danger) 18%, transparent)',
-                    color: 'var(--accent-danger)',
-                  }}
-                >
-                  {f.verdict}
-                </span>
+            <li key={`${f.critic}-${i}`}>
+              <div>
+                <span className="font-semibold text-text-primary">{f.critic}</span>
+                <span style={{ color: 'var(--accent-danger)' }}> — {f.verdict}</span>
               </div>
               {f.detail && (
-                <p className="text-xs text-text-secondary leading-relaxed mt-1.5">
-                  “{f.detail}”
-                </p>
+                <>
+                  <p className="text-text-secondary">{headline(f.detail)}</p>
+                  {f.detail.length > HEADLINE_MAX && (
+                    <details className="mt-1">
+                      <summary className="text-sm text-text-muted cursor-pointer">
+                        Подробнее
+                      </summary>
+                      <p className="text-sm text-text-secondary mt-1">{f.detail}</p>
+                    </details>
+                  )}
+                </>
               )}
             </li>
           ))}
         </ul>
 
-        <label className="flex items-start gap-2 cursor-pointer text-xs text-text-secondary leading-relaxed">
+        <label className="flex items-center gap-2.5 cursor-pointer text-text-secondary">
           <input
             type="checkbox"
-            className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-[var(--accent-danger)]"
+            className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--accent-danger)]"
             checked={acknowledged}
             disabled={pending}
             onChange={(e) => setAcknowledged(e.target.checked)}
           />
-          <span>
-            I have read the verdict and am approving over it. The override is written
-            to the approval audit trail.
-          </span>
+          <span>Ship it anyway. Logged.</span>
         </label>
 
-        {error && (
-          <p className="text-xs" style={{ color: 'var(--accent-danger)' }}>
-            {error}
-          </p>
-        )}
+        {error && <p style={{ color: 'var(--accent-danger)' }}>{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="primary" onClick={onCancel} disabled={pending}>
-            Back — regenerate instead
+            Regenerate instead
           </Button>
           <Button
             variant="danger"
             onClick={override}
             disabled={pending || !acknowledged}
-            title={
-              acknowledged
-                ? 'Approve this asset over its critic verdict'
-                : 'Tick the acknowledgement first'
-            }
+            title={acknowledged ? 'Approve over the verdict' : 'Tick the box first'}
           >
-            {pending ? 'Approving…' : 'Approve over the verdict'}
+            {pending ? 'Approving…' : 'Approve anyway'}
           </Button>
         </div>
       </div>
