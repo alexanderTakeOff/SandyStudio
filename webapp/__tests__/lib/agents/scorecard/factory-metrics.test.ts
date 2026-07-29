@@ -10,6 +10,8 @@ import {
   splitTouches,
   castLockFromEvents,
   productionStartFromJobs,
+  productionEndFromJobs,
+  inWindow,
   foldCost,
   type TouchEvent,
 } from '@/lib/agents/scorecard/factory-metrics';
@@ -103,6 +105,39 @@ describe('productionStartFromJobs — ref-artist boundary', () => {
   });
   it('null when production never started (design only)', () => {
     expect(productionStartFromJobs([{ agent_id: 'EXEC-SB', created_at: 'x' }])).toBeNull();
+  });
+});
+
+describe('productionEndFromJobs — auto-stitch boundary', () => {
+  const jobs = [
+    { agent_id: 'EXEC-EREF', created_at: '2026-07-23T05:44:00Z' },
+    { agent_id: 'EXEC-STITCH', created_at: '2026-07-23T09:48:00Z' },
+    { agent_id: 'EXEC-STITCH', created_at: '2026-07-24T09:35:00Z' },
+  ];
+  it('takes the FIRST stitch — the meter is speed to a whole picture, re-stitches are polish', () => {
+    expect(productionEndFromJobs(jobs)).toBe('2026-07-23T09:48:00Z');
+  });
+  it('null while the episode never reached a cut — window still open', () => {
+    expect(productionEndFromJobs([{ agent_id: 'EXEC-EREF', created_at: 'x' }])).toBeNull();
+  });
+});
+
+describe('inWindow — half-open production window', () => {
+  const start = '2026-07-23T05:44:00Z';
+  const end = '2026-07-24T09:35:00Z';
+  it('excludes the lower boundary, includes the upper one', () => {
+    expect(inWindow(start, start, end)).toBe(false);
+    expect(inWindow(end, start, end)).toBe(true);
+  });
+  it('excludes work before the window and after it (distribution)', () => {
+    expect(inWindow('2026-07-22T00:00:00Z', start, end)).toBe(false);
+    expect(inWindow('2026-07-25T00:00:00Z', start, end)).toBe(false);
+  });
+  it('open-ended when the window never closed', () => {
+    expect(inWindow('2026-07-30T00:00:00Z', start, null)).toBe(true);
+  });
+  it('empty when production never started', () => {
+    expect(inWindow('2026-07-30T00:00:00Z', null, null)).toBe(false);
   });
 });
 

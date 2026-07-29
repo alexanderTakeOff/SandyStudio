@@ -47,16 +47,28 @@ export function touchClass(
   return (description ?? '').startsWith(PROD_ASSISTANT_MARKER) ? 'polina' : 'director';
 }
 
-/** True when an event happened strictly AFTER casting was locked (post-cast).
- *  When there is no lock yet (castLockAt null) nothing is post-cast — casting is
- *  not done, so all work is still pre-cast. Boundary itself (== lock, the casting
- *  approval) counts as pre-cast: it is the last pre-cast act. */
+/** True when an event falls inside a half-open production window (start, end].
+ *  `start` null → the window never opened, nothing is inside it. `end` null → the
+ *  window is still open, everything after `start` is inside. The lower boundary
+ *  itself is EXCLUDED (it is the last act of the previous phase), the upper one
+ *  INCLUDED (the stitch run that closes production is part of production). */
+export function inWindow(
+  createdAt: string,
+  start: string | null,
+  end: string | null,
+): boolean {
+  if (!start) return false;
+  return createdAt > start && (end === null || createdAt <= end);
+}
+
+/** True when an event happened strictly AFTER the design→production boundary.
+ *  Same as an open-ended window: everything from production-start onwards, with
+ *  no upper bound (so it also counts distribution work that follows the stitch). */
 export function isPostCast(
   createdAt: string,
   castLockAt: string | null,
 ): boolean {
-  if (!castLockAt) return false;
-  return createdAt > castLockAt;
+  return inWindow(createdAt, castLockAt, null);
 }
 
 export interface TouchBuckets {
@@ -129,6 +141,25 @@ export function castLockFromEvents(
   return earliest;
 }
 
+/** Timestamp of an anchor agent's run, trying each anchor in order and taking the
+ *  first anchor that ever ran. `pick` chooses which of its runs answers. */
+function jobBoundary(
+  jobs: Array<{ agent_id: string; created_at: string }>,
+  anchors: string[],
+  pick: 'earliest' | 'latest',
+): string | null {
+  for (const anchor of anchors) {
+    let best: string | null = null;
+    for (const j of jobs) {
+      if (j.agent_id !== anchor) continue;
+      if (best === null) { best = j.created_at; continue; }
+      if (pick === 'earliest' ? j.created_at < best : j.created_at > best) best = j.created_at;
+    }
+    if (best !== null) return best;
+  }
+  return null;
+}
+
 /** Production-start boundary (Director 2026-07-16: "pre-cast = [0 → start ref
  *  artist]"). = the earliest job of the reference ARTIST (EXEC-EREF, the render
  *  step). Everything before is DESIGN (brief / script / storyboard / critics /
@@ -139,15 +170,20 @@ export function productionStartFromJobs(
   jobs: Array<{ agent_id: string; created_at: string }>,
   anchors: string[] = ['EXEC-EREF', 'EXEC-VGEN'],
 ): string | null {
-  for (const anchor of anchors) {
-    let earliest: string | null = null;
-    for (const j of jobs) {
-      if (j.agent_id !== anchor) continue;
-      if (earliest === null || j.created_at < earliest) earliest = j.created_at;
-    }
-    if (earliest !== null) return earliest;
-  }
-  return null;
+  return jobBoundary(jobs, anchors, 'earliest');
+}
+
+/** Production-END boundary = the FIRST auto-stitch run (Director 2026-07-29:
+ *  "до первого стича — это про СКОРОСТЬ, остальное украшательство"). The meter
+ *  answers how fast the factory reaches a whole picture; the re-stitches that
+ *  follow a video revision are polish, and they stay counted by the open-ended
+ *  whole-episode numbers. Null while the episode has not stitched yet → never
+ *  reached a cut, window still open. */
+export function productionEndFromJobs(
+  jobs: Array<{ agent_id: string; created_at: string }>,
+  anchors: string[] = ['EXEC-STITCH'],
+): string | null {
+  return jobBoundary(jobs, anchors, 'earliest');
 }
 
 export interface CostFold {

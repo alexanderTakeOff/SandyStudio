@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import useSWR from 'swr';
 import { Factory, TriangleAlert, RefreshCw, DollarSign, ChevronDown } from 'lucide-react';
 import { StudioContentFrame } from '@/components/studio-shell/StudioContentFrame';
@@ -45,6 +45,16 @@ interface FactoryEpisode {
   };
   autonomyPct: number | null;
   agentFailures: number;
+  // The PRODUCTION WINDOW: (first ref-design render → last auto-stitch]. Same
+  // meters as above but bounded at both ends, so publishing/thumbnail/copy work
+  // after the cut no longer lands on production's bill.
+  production: {
+    startedAt: string | null; endedAt: string | null; open: boolean; spanHours: number | null;
+    touches: Buckets;
+    leadershipTotal: number; leadershipPerShot: number | null;
+    rework: number; reworkPerShot: number | null;
+    costUsd: number; costPerShot: number | null; costItemized: boolean;
+  };
   budget: {
     total: number; perShot: number | null; reservationOnly: boolean;
     reservedTotal: number; itemizedTotal: number;
@@ -166,6 +176,178 @@ function CostFoldList({ rows, label }: { rows: CostFold[]; label: string }) {
     </div>
   );
 }
+
+// ── One table skeleton, two column sets (whole-episode / production window) ────
+interface Column {
+  key: string;
+  label: string;
+  title?: string;
+  align?: 'right';
+  cellClass?: string;
+  cell: (e: FactoryEpisode) => ReactNode;
+}
+
+const pad = (i: number, n: number) => (i === 0 ? 'pr-3' : i === n - 1 ? 'pl-2' : 'px-2');
+
+function EpisodeTable({ columns, rows }: { columns: Column[]; rows: FactoryEpisode[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-text-muted text-left border-b border-glass">
+            {columns.map((c, i) => (
+              <th key={c.key} title={c.title} className={`py-1.5 ${pad(i, columns.length)} font-medium ${c.align === 'right' ? 'text-right' : ''}`}>
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((e) => (
+            <tr key={e.episodeId} className="border-b border-glass/50">
+              {columns.map((c, i) => (
+                <td key={c.key} className={`py-1.5 ${pad(i, columns.length)} ${c.align === 'right' ? 'text-right tabular-nums' : ''} ${c.cellClass ?? ''}`}>
+                  {c.cell(e)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// leadership/shot colour scale — shared so both tables read on the same ruler
+const leadColor = (v: number | null) =>
+  (v ?? 0) <= 0.2 ? 'var(--accent-success)' : (v ?? 0) <= 1 ? 'var(--accent-warning)' : 'var(--accent-danger)';
+
+const epCode = (e: FactoryEpisode) => e.episodeCode.replace('SS-', '');
+
+const COL_EPISODE: Column = {
+  key: 'ep', label: 'Episode', cellClass: 'font-mono text-text-primary whitespace-nowrap',
+  cell: (e) => (
+    <>
+      {epCode(e)}
+      {!e.productionStarted && <span className="ml-1 text-text-muted" title="production (ref artist) not started">◦</span>}
+    </>
+  ),
+};
+const COL_SHOTS: Column = { key: 'shots', label: 'Shots', align: 'right', cellClass: 'text-text-secondary', cell: (e) => e.shotCount };
+
+const tiersCell = (b: Buckets) => (
+  <div className="flex items-center gap-2">
+    <span className="tabular-nums text-text-secondary w-20 shrink-0">{b.director}·{b.polina}·{b.aiEp}</span>
+    <div className="w-24"><TouchStack b={b} /></div>
+  </div>
+);
+
+// Whole episode — design + production + distribution, every meter the scorecard has.
+const COLUMNS_ALL: Column[] = [
+  COL_EPISODE,
+  COL_SHOTS,
+  {
+    key: 'lead', label: '⚑ Lead/shot', align: 'right',
+    title: 'PRODUCTION-phase LEADERSHIP touches (Director L2 + Polina L1) per shot — the factory-autonomy leak, target 0',
+    cell: (e) => <span className="font-medium" style={{ color: leadColor(e.touches.postLeadershipPerShot) }}>{e.touches.postLeadershipPerShot ?? '—'}</span>,
+  },
+  {
+    key: 'tiers', label: 'Tiers (Dir·Pol·AI-EP)',
+    title: 'leadership touches, tiered: Director (L2, human) · Polina (L1, AI assistant) · AI-EP (autonomy). Agents = free base, not shown.',
+    cell: (e) => tiersCell(e.touches.all),
+  },
+  { key: 'design', label: 'Design/stage', align: 'right', title: 'design-phase leadership touches per stage', cellClass: 'text-text-secondary', cell: (e) => e.touches.prePerStage },
+  {
+    key: 'rework', label: 'Rework/shot', align: 'right', title: 'production rework (revise/reject) per shot — secondary quality signal',
+    cell: (e) => (
+      <span style={{ color: (e.touches.reworkPerShot ?? 0) === 0 ? 'var(--accent-success)' : 'var(--accent-danger)' }}>
+        {e.touches.reworkPerShot ?? '—'} <span className="text-text-muted">({e.touches.postCastRework})</span>
+      </span>
+    ),
+  },
+  {
+    key: 'churn', label: 'Churn/sh', align: 'right', title: 'true REVISE churn / shot', cellClass: 'text-text-secondary',
+    cell: (e) => <>{e.churn.truePerShot ?? '—'}<span className="text-text-muted">/{e.churn.naivePerShot}</span></>,
+  },
+  { key: 'cost', label: '$/shot', align: 'right', cellClass: 'text-text-secondary', cell: (e) => (e.budget.perShot === null ? '—' : usd(e.budget.perShot)) },
+  { key: 'auto', label: 'Auto%', align: 'right', cellClass: 'text-text-secondary', cell: (e) => (e.autonomyPct === null ? '—' : `${e.autonomyPct}%`) },
+  {
+    key: 'verdicts', label: 'Critic verdicts',
+    cell: (e) => (
+      <div className="flex flex-wrap gap-1">
+        {e.criticVerdicts.length === 0 ? <span className="text-text-muted">—</span> : e.criticVerdicts.map((v, i) => (
+          <span key={i} className="inline-flex items-center gap-1 px-1.5 h-5 rounded-full text-[10px] font-medium border"
+            style={{ color: VERDICT_COLOR[v.verdict] ?? 'var(--text-muted)', borderColor: VERDICT_COLOR[v.verdict] ?? 'var(--text-muted)' }}
+            title={`${v.reviseCount} REVISE${v.repeatedPoints.length ? ` · repeats ${v.repeatedPoints.join(',')}` : ''}`}>
+            {v.critic.replace('EXEC-', '')} {v.repeatedPoints.length > 0 && <span className="opacity-70">[{v.repeatedPoints.join(',')}]</span>}
+          </span>
+        ))}
+      </div>
+    ),
+  },
+];
+
+// Production window ONLY — (first ref-design render → FIRST auto-stitch]. The
+// SPEED table: what it costs the factory to reach a whole picture. Meters the
+// scorecard cannot cut by time (churn, autonomy%, critic verdicts) are absent on
+// purpose rather than shown whole and read as production's.
+const COLUMNS_PRODUCTION: Column[] = [
+  {
+    ...COL_EPISODE,
+    cell: (e) => (
+      <>
+        {epCode(e)}
+        {e.production.startedAt === null
+          ? <span className="ml-1 text-text-muted" title="production never started — nothing in this window">◦</span>
+          : e.production.open
+            ? <span className="ml-1" style={{ color: 'var(--accent-orange)' }} title="never reached a cut — window still open, numbers still growing">▸</span>
+            : null}
+      </>
+    ),
+  },
+  COL_SHOTS,
+  {
+    // THE speed meter of this table. WALL-clock, deliberately labelled as such:
+    // docs/topics/factory-autonomy-metrics.md retired "first job → last job" as a
+    // reading of production TIME (it swallows debugging days and Director waiting).
+    // Kept because the calendar span is itself what waiting drives — but never
+    // call it effort.
+    key: 'span', label: 'To 1st cut, h', align: 'right',
+    title: 'calendar hours from the first ref-design render to the FIRST auto-stitch — how fast the factory reaches a whole picture. Includes waiting and idle time; NOT the sum of task durations, so do not read it as effort',
+    cellClass: 'text-text-secondary',
+    cell: (e) => (
+      <span title={e.production.startedAt ? `${new Date(e.production.startedAt).toLocaleString()} → ${e.production.endedAt ? new Date(e.production.endedAt).toLocaleString() : 'still open'}` : 'production never started'}>
+        {e.production.spanHours === null ? '—' : e.production.spanHours}
+      </span>
+    ),
+  },
+  {
+    key: 'lead', label: '⚑ Lead/shot', align: 'right',
+    title: 'leadership touches (Director + Polina) per shot INSIDE the production window — the autonomy leak with distribution work excluded',
+    cell: (e) => (
+      <span className="font-medium" style={{ color: leadColor(e.production.leadershipPerShot) }}>
+        {e.production.leadershipPerShot ?? '—'} <span className="text-text-muted">({e.production.leadershipTotal})</span>
+      </span>
+    ),
+  },
+  { key: 'tiers', label: 'Tiers (Dir·Pol·AI-EP)', title: 'touches inside the production window only', cell: (e) => tiersCell(e.production.touches) },
+  {
+    key: 'rework', label: 'Rework/shot', align: 'right', title: 'revise/reject inside the production window, per shot',
+    cell: (e) => (
+      <span style={{ color: (e.production.reworkPerShot ?? 0) === 0 ? 'var(--accent-success)' : 'var(--accent-danger)' }}>
+        {e.production.reworkPerShot ?? '—'} <span className="text-text-muted">({e.production.rework})</span>
+      </span>
+    ),
+  },
+  {
+    key: 'cost', label: '$/shot', align: 'right', title: 'itemized spend inside the production window, per shot', cellClass: 'text-text-secondary',
+    cell: (e) => (!e.production.costItemized ? <span title="no itemized budget_log — reservation-only episode">—</span> : e.production.costPerShot === null ? '—' : usd(e.production.costPerShot)),
+  },
+  {
+    key: 'costTotal', label: '$ window', align: 'right', title: 'itemized spend inside the production window', cellClass: 'text-text-secondary',
+    cell: (e) => (!e.production.costItemized ? '—' : usd(e.production.costUsd)),
+  },
+];
 
 export default function FactoryPage() {
   const { data, isLoading, error } = useSWR<{ data: FactoryData }>('/api/factory', fetcher, {
@@ -365,68 +547,34 @@ export default function FactoryPage() {
             </CardBody>
           </Card>
 
-          {/* Per-episode table */}
+          {/* Per-episode table — the WHOLE episode (design + production + distribution) */}
           <Card>
             <CardHeader><CardTitle>Per-episode detail</CardTitle></CardHeader>
             <CardBody>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-text-muted text-left border-b border-glass">
-                      <th className="py-1.5 pr-3 font-medium">Episode</th>
-                      <th className="py-1.5 px-2 font-medium text-right">Shots</th>
-                      <th className="py-1.5 px-2 font-medium text-right" title="PRODUCTION-phase LEADERSHIP touches (Director L2 + Polina L1) per shot — the factory-autonomy leak, target 0">⚑ Lead/shot</th>
-                      <th className="py-1.5 px-2 font-medium" title="leadership touches, tiered: Director (L2, human) · Polina (L1, AI assistant) · AI-EP (autonomy). Agents = free base, not shown.">Tiers (Dir·Pol·AI-EP)</th>
-                      <th className="py-1.5 px-2 font-medium text-right" title="design-phase leadership touches per stage">Design/stage</th>
-                      <th className="py-1.5 px-2 font-medium text-right" title="production rework (revise/reject) per shot — secondary quality signal">Rework/shot</th>
-                      <th className="py-1.5 px-2 font-medium text-right" title="true REVISE churn / shot">Churn/sh</th>
-                      <th className="py-1.5 px-2 font-medium text-right">$/shot</th>
-                      <th className="py-1.5 px-2 font-medium text-right">Auto%</th>
-                      <th className="py-1.5 pl-2 font-medium">Critic verdicts</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visible.map((e) => (
-                      <tr key={e.episodeId} className="border-b border-glass/50">
-                        <td className="py-1.5 pr-3 font-mono text-text-primary whitespace-nowrap">
-                          {e.episodeCode.replace('SS-', '')}
-                          {!e.productionStarted && <span className="ml-1 text-text-muted" title="production (ref artist) not started">◦</span>}
-                        </td>
-                        <td className="py-1.5 px-2 text-right text-text-secondary">{e.shotCount}</td>
-                        <td className="py-1.5 px-2 text-right tabular-nums font-medium" style={{ color: (e.touches.postLeadershipPerShot ?? 0) <= 0.2 ? 'var(--accent-success)' : (e.touches.postLeadershipPerShot ?? 0) <= 1 ? 'var(--accent-warning)' : 'var(--accent-danger)' }}>
-                          {e.touches.postLeadershipPerShot ?? '—'}
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <div className="flex items-center gap-2">
-                            <span className="tabular-nums text-text-secondary w-20 shrink-0">{e.touches.all.director}·{e.touches.all.polina}·{e.touches.all.aiEp}</span>
-                            <div className="w-24"><TouchStack b={e.touches.all} /></div>
-                          </div>
-                        </td>
-                        <td className="py-1.5 px-2 text-right tabular-nums text-text-secondary">{e.touches.prePerStage}</td>
-                        <td className="py-1.5 px-2 text-right tabular-nums" style={{ color: (e.touches.reworkPerShot ?? 0) === 0 ? 'var(--accent-success)' : 'var(--accent-danger)' }}>
-                          {e.touches.reworkPerShot ?? '—'} <span className="text-text-muted">({e.touches.postCastRework})</span>
-                        </td>
-                        <td className="py-1.5 px-2 text-right tabular-nums text-text-secondary">
-                          {e.churn.truePerShot ?? '—'}<span className="text-text-muted">/{e.churn.naivePerShot}</span>
-                        </td>
-                        <td className="py-1.5 px-2 text-right tabular-nums text-text-secondary">{e.budget.perShot === null ? '—' : usd(e.budget.perShot)}</td>
-                        <td className="py-1.5 px-2 text-right tabular-nums text-text-secondary">{e.autonomyPct === null ? '—' : `${e.autonomyPct}%`}</td>
-                        <td className="py-1.5 pl-2">
-                          <div className="flex flex-wrap gap-1">
-                            {e.criticVerdicts.length === 0 ? <span className="text-text-muted">—</span> : e.criticVerdicts.map((v, i) => (
-                              <span key={i} className="inline-flex items-center gap-1 px-1.5 h-5 rounded-full text-[10px] font-medium border"
-                                style={{ color: VERDICT_COLOR[v.verdict] ?? 'var(--text-muted)', borderColor: VERDICT_COLOR[v.verdict] ?? 'var(--text-muted)' }}
-                                title={`${v.reviseCount} REVISE${v.repeatedPoints.length ? ` · repeats ${v.repeatedPoints.join(',')}` : ''}`}>
-                                {v.critic.replace('EXEC-', '')} {v.repeatedPoints.length > 0 && <span className="opacity-70">[{v.repeatedPoints.join(',')}]</span>}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <EpisodeTable columns={COLUMNS_ALL} rows={visible} />
+            </CardBody>
+          </Card>
+
+          {/* Same meters, cut to the PRODUCTION WINDOW only */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Production speed · first ref-design render → first auto-stitch</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <EpisodeTable columns={COLUMNS_PRODUCTION} rows={visible} />
+              <p className="text-[11px] text-text-muted mt-3">
+                Same meters as above, but bounded at BOTH ends: the window opens when the ref designer
+                (EXEC-EREF) fires its first render and closes on the <b>first</b> auto-stitch (EXEC-STITCH)
+                — the moment a whole picture exists. Everything after it is polish and distribution
+                (re-stitches, thumbnail, copy, publish, the Director&apos;s final review) and is excluded
+                here; the table above still counts all of it. <b>Churn, autonomy % and critic verdicts are
+                absent on purpose:</b> the scorecard computes them per artifact version, not per timestamp,
+                so they cannot be cut to this window without lying. <b>Time is WALL-clock</b> — it counts
+                waiting and idle time, so read it as calendar duration, never as effort (the sum of task
+                durations is the effort meter, and this is not it).{' '}
+                <span style={{ color: 'var(--accent-orange)' }}>▸</span> = never reached a cut, window
+                still open · ◦ = production never started.
+              </p>
             </CardBody>
           </Card>
 
