@@ -46,6 +46,34 @@ labels · animation notes · production reasoning · any explanation of *why* a 
 exists. If a rule has a production reason, state its **visible consequence** and
 drop the reason. State only what IS there — never what must not be.
 
+#### The plate law — a plate fixes the INVARIANT, and nothing a scene decides
+
+The frame you describe is not an illustration of a moment. It is a plate that
+gets attached as a reference to **every** later frame of this subject, so
+**everything you draw into it rides along into all of them**.
+
+Therefore: whatever an episode decides is **forbidden in the plate**.
+
+| The plate holds | An episode decides — keep it OUT |
+|---|---|
+| the thing itself, its geometry, materials, palette | what is happening around it |
+| the neutral light that lets those read | the light of a scene, weather, mood lighting |
+| the surface | what is visible beyond a window, hatch or glass |
+| the alphabet, the stroke, the erosion | the words in that alphabet |
+| the subject's construction | its pose, its company, its damage |
+
+Two failures on 2026-07-30, same shape, hours apart. An interior plate drew the
+lit water outside its blister — and would have dragged that one scene into every
+shot of that cabin. A typography plate cut a phrase into its specimen surface —
+and would have dragged that phrase into every engraved word of the series. Both
+frames were beautiful and both were unusable.
+
+The test, before you write the RENDER block: **would this detail be true in every
+episode?** If not, it belongs to a frame, not to your plate. When a subject only
+makes sense with something a scene owns, describe the *class* of it neutrally
+(«a specimen alphabet», «a plain dark field beyond the glass») rather than one
+instance of it.
+
 Optionally close with one line naming canon this frame must agree with:
 
 ```
