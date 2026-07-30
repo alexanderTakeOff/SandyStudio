@@ -65,19 +65,11 @@ import {
 import type { EREFProviderId } from '@/lib/api/eref-config';
 import type { MultiImageRef } from '@/lib/agents/providers/image-gen-multi';
 import { readAssetMediaAsBase64, localCacheAbsPath } from '@/lib/media-cache';
+import { loadSeriesCanonRefs } from '@/lib/agents/series-canon-refs';
 import { promises as fsp } from 'node:fs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-/**
- * How many LOCKED `SBL-character_*` identity anchors ride along when a Bible
- * canon asset is regenerated. The Edits API accepts up to 16 references; the
- * cap here leaves room for the style guide and keeps a mature series (Sandy has
- * 10 characters) from crowding the request with cast members irrelevant to the
- * entry being drawn.
- */
-const MAX_BIBLE_IDENTITY_REFS = 4;
 
 const ProviderIdSchema = z.enum([
   'openai-edits-multi',
@@ -638,54 +630,17 @@ export const POST = withApiHandler(async (req, ctx) => {
       ? resolveBibleImageSize({ section: bibleSection })
       : '1024x1024';
 
-    // ── Bible canon rides on the series' OWN LOCKED canon (2026-07-30) ───────
-    // Root cause of long-standing series canon drift, found on the SS-S20
-    // bootstrap: the multi-reference branch above only opens for v2 SHOT assets
-    // (it reads refs out of `v2Sr.test_plan`). A Bible asset has no test_plan,
-    // so every canon entry after the first was drawn text-only, blind to the
-    // series style anchor and hero — and therefore diverged from them by
-    // construction. That is exactly the Sandy canon drift the Director
-    // identified. Here the refs are assembled from the series Bible itself:
-    // LOCKED character(s) as identity anchors + the LOCKED style guide.
-    // Falls through to plain text-to-image when the series has no canon yet
-    // (the very first entry, by definition) — never blocks, only anchors.
-    const bibleRefs: MultiImageRef[] = [];
-    if (asset.file_type.startsWith('SBL-') && asset.series_id) {
-      const { data: canonRows } = await sb
-        .from('assets')
-        .select('id,filename,file_type,staging_path,drive_file_id')
-        .eq('series_id', asset.series_id)
-        .eq('status', 'LOCKED')
-        .like('file_type', 'SBL-%');
-      const canon = (canonRows ?? []) as {
-        id: string;
-        filename: string | null;
-        file_type: string;
-        staging_path: string | null;
-        drive_file_id: string | null;
-      }[];
-      // Identity anchors first, style last — same order the shot path uses.
-      const ordered = [
-        ...canon.filter((c) => c.file_type.startsWith('SBL-character_')).slice(0, MAX_BIBLE_IDENTITY_REFS),
-        ...canon.filter((c) => c.file_type.startsWith('SBL-style_')).slice(0, 1),
-      ];
-      for (const c of ordered) {
-        // Never reference the asset being regenerated — it would anchor the
-        // new image to the very version we are replacing.
-        if (c.id === asset.id) continue;
-        const b64 = await readAssetMediaAsBase64({
-          filename: c.filename,
-          driveFileId: c.drive_file_id,
-          stagingPath: c.staging_path,
-        });
-        if (!b64) continue;
-        bibleRefs.push({
-          kind: c.file_type.startsWith('SBL-style_') ? 'style' : 'identity',
-          bible_asset_id: c.id,
-          image_b64: b64,
-        });
-      }
-    }
+    // Bible canon rides on the series' OWN LOCKED canon — see
+    // lib/agents/series-canon-refs.ts for why this connection was missing and
+    // what it fixes. Shared with EXEC-BIBLE-AUTHOR so the lesson lives in ONE
+    // place instead of two diverging copies.
+    const bibleRefs: MultiImageRef[] =
+      asset.file_type.startsWith('SBL-') && asset.series_id
+        ? await loadSeriesCanonRefs(sb as never, {
+            seriesId: asset.series_id,
+            excludeAssetId: asset.id,
+          })
+        : [];
 
     if (bibleRefs.length > 0) {
       const provider = getImageGenMultiProvider('openai-edits-multi');

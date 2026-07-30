@@ -29,6 +29,8 @@ import type {
 import { buildProvenance } from '../../api/series-bible';
 import { logEvent } from '../../api/events';
 import { resolveBibleImageSize } from '../../api/bible-image-size';
+import { getImageGenMultiProvider } from '../providers/image-gen-multi-registry';
+import { loadSeriesCanonRefs } from '../series-canon-refs';
 
 export class BibleAuthorError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -399,13 +401,48 @@ export async function runBibleAuthor(
   // series.metadata.delivery_targets is not a column today; if it becomes
   // one later, callers can pass it through resolveBibleImageSize.
   const resolvedSize = resolveBibleImageSize({ section });
-  let imgResult;
+
+  // A new canon entry is drawn ON the series' existing LOCKED canon — its hero
+  // and its style anchor ride along as references. Before 2026-07-30 this call
+  // was text-only, so entry N+1 could not see entry N and diverged from it by
+  // construction (the Sandy canon drift). Empty when the series has no LOCKED
+  // canon yet — the first entry, by definition — and then this falls through to
+  // plain text-to-image exactly as before. See lib/agents/series-canon-refs.ts.
+  const canonRefs = await loadSeriesCanonRefs(supabase as never, {
+    seriesId,
+    excludeAssetId: assetId,
+  });
+
+  let imgResult: {
+    b64_data: string;
+    cost_usd: number;
+    width: number;
+    height: number;
+    provider: string;
+  };
   try {
-    imgResult = await generateImageOpenAI({
-      prompt: imagePrompt,
-      size: resolvedSize,
-      quality: 'medium',
-    });
+    if (canonRefs.length > 0) {
+      const provider = getImageGenMultiProvider('openai-edits-multi');
+      const multi = await provider.generate({
+        prompt: imagePrompt,
+        references: canonRefs,
+        size: resolvedSize,
+        quality: 'medium',
+      });
+      imgResult = {
+        b64_data: multi.b64_data,
+        cost_usd: multi.cost_usd,
+        width: multi.width,
+        height: multi.height,
+        provider: multi.provider_id,
+      };
+    } else {
+      imgResult = await generateImageOpenAI({
+        prompt: imagePrompt,
+        size: resolvedSize,
+        quality: 'medium',
+      });
+    }
   } catch (err: unknown) {
     if (err instanceof OpenAIImageError) {
       throw new BibleAuthorError(`image generation failed: ${err.message}`, err);
