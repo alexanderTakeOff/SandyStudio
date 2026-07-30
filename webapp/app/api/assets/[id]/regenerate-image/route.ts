@@ -51,6 +51,7 @@ import {
   parseRenderBrief,
   stampLastModified,
   buildProvenance,
+  nextVersionFor,
 } from '@/lib/api/series-bible';
 import {
   isShotReferenceV2,
@@ -225,18 +226,9 @@ export const POST = withApiHandler(async (req, ctx) => {
   const meta: AssetMetadataDoc = (asset.metadata ?? {}) as AssetMetadataDoc;
   const existingHistory = meta.image_prompt?.history ?? [];
   // 2026-07-18 — number from the HIGHEST version ever recorded, not from
-  // `current_version`. The two diverge whenever the Director points `current`
-  // at an older entry (a restore, or picking an earlier attempt): E30 SH44 sat
-  // at current_version=1 with a v2 already in history, so a regen minted a
-  // SECOND entry numbered v2. Nothing errored — but every reader resolves an
-  // attempt by `history.find(h => h.version === current_version)`, which
-  // returns the FIRST match, so the UI kept showing the OLD image while the
-  // freshly generated one hid behind the duplicate number.
-  const nextVersion =
-    Math.max(
-      meta.image_prompt?.current_version ?? 0,
-      ...existingHistory.map((h) => h.version ?? 0),
-    ) + 1;
+  // `current_version`; see nextVersionFor for the E30 SH44 case that forced it.
+  // Extracted 2026-07-30 so `bible-author` obeys the same rule.
+  const nextVersion = nextVersionFor(meta.image_prompt);
   const nowIso = new Date().toISOString();
 
   // ── Branch A: restore previous version ────────────────────────────────────

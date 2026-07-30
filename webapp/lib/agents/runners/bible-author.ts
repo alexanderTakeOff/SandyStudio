@@ -26,7 +26,7 @@ import type {
   ImagePromptHistoryEntry,
   DescriptionHistoryEntry,
 } from '../../api/series-bible';
-import { buildProvenance } from '../../api/series-bible';
+import { buildProvenance, nextVersionFor } from '../../api/series-bible';
 import { logEvent } from '../../api/events';
 import { resolveBibleImageSize } from '../../api/bible-image-size';
 import { getImageGenMultiProvider } from '../providers/image-gen-multi-registry';
@@ -700,8 +700,15 @@ export async function runBibleAuthor(
   const nowIso = new Date().toISOString();
 
   // ── 3. Build metadata sub-docs ──────────────────────────────────────────────
+  // A revision must ADD a version, never replace one. Before 2026-07-30 both
+  // sub-docs were rebuilt from scratch at version 1, so the article and the
+  // prompt that produced the previous frame were destroyed by the very call
+  // meant to improve on them.
+  const promptVersion = nextVersionFor(existingMeta.image_prompt);
+  const descriptionVersion = nextVersionFor(existingMeta.description_history);
+
   const promptEntry: ImagePromptHistoryEntry = {
-    version: 1,
+    version: promptVersion,
     prompt: finalImagePrompt,
     source: 'EXEC-BIBLE-AUTHOR',
     at: nowIso,
@@ -727,7 +734,7 @@ export async function runBibleAuthor(
     quality: 'medium',
   };
   const descriptionEntry: DescriptionHistoryEntry = {
-    version: 1,
+    version: descriptionVersion,
     content: descriptionMd,
     source: 'EXEC-BIBLE-AUTHOR',
     at: nowIso,
@@ -752,13 +759,13 @@ export async function runBibleAuthor(
       last_modified_at: nowIso,
     },
     image_prompt: {
-      current_version: 1,
+      current_version: promptVersion,
       style_anchor_asset_id: ctx.styleAnchor?.id ?? null,
-      history: [promptEntry],
+      history: [...(existingMeta.image_prompt?.history ?? []), promptEntry],
     },
     description_history: {
-      current_version: 1,
-      history: [descriptionEntry],
+      current_version: descriptionVersion,
+      history: [...(existingMeta.description_history?.history ?? []), descriptionEntry],
     },
   };
 

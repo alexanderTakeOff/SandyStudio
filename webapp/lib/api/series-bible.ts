@@ -338,6 +338,30 @@ export interface AssetMetadataDoc {
   [key: string]: unknown;
 }
 
+/**
+ * The next version number for a versioned sub-doc — one rule, every writer.
+ *
+ * Numbering comes from the HIGHEST version ever recorded, not from
+ * `current_version`. The two diverge whenever `current` is pointed at an older
+ * entry (a restore, or the Director picking an earlier attempt): E30 SH44 sat at
+ * `current_version=1` with a v2 already in history, so the next write minted a
+ * SECOND entry numbered v2. Nothing errored — but every reader resolves an entry
+ * by `history.find(h => h.version === current_version)`, which returns the FIRST
+ * match, so the UI kept showing the OLD image while the fresh one hid behind the
+ * duplicate number.
+ *
+ * Extracted from `regenerate-image` on 2026-07-30 because a second writer —
+ * `bible-author`, on the revision path — had been hardcoding `1` and discarding
+ * the history entirely. It cost the first version of the S20 maw entry: the
+ * Director asked for that text back and there was nowhere to get it.
+ */
+export function nextVersionFor(
+  doc: { current_version?: number | null; history?: Array<{ version?: number | null }> } | null | undefined,
+): number {
+  const history = doc?.history ?? [];
+  return Math.max(doc?.current_version ?? 0, 0, ...history.map((h) => h.version ?? 0)) + 1;
+}
+
 /** Build a fresh provenance record for a new asset. */
 export function buildProvenance(args: {
   by: string;
