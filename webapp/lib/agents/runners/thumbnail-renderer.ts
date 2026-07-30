@@ -141,7 +141,9 @@ async function resolveCanonRefs(
     .select('id,file_type,staging_path,drive_file_id')
     .eq('series_id', seriesId)
     .eq('status', 'LOCKED')
-    .like('file_type', 'SBL-%');
+    .like('file_type', 'SBL-%')
+    // Deterministic order (2026-07-31) — see loadBibleCanon in episode-references.
+    .order('created_at', { ascending: true });
   if (error) {
     throw new ThumbnailRendererError(`Bible canon fetch failed: ${error.message}`);
   }

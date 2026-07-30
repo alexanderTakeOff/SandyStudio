@@ -111,7 +111,11 @@ export async function loadSeriesBibleCanon(
     .select('filename,description,content,status,file_type,drive_web_view_url')
     .eq('series_id', seriesId)
     .eq('status', 'LOCKED')
-    .like('file_type', 'SBL-%');
+    .like('file_type', 'SBL-%')
+    // Deterministic order (2026-07-31): an unordered canon query is a latent
+    // coin flip for any caller that takes a first element. See loadBibleCanon in
+    // episode-references for the case that forced it.
+    .order('created_at', { ascending: true });
   if (error) {
     throw new Error(`loadSeriesBibleCanon: ${error.message}`);
   }

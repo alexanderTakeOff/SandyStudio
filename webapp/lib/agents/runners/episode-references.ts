@@ -311,7 +311,16 @@ async function loadBibleCanon(
     .select('id,filename,description,content,staging_path,drive_web_view_url,status,file_type')
     .eq('series_id', seriesId)
     .eq('status', 'LOCKED')
-    .like('file_type', 'SBL-%');
+    .like('file_type', 'SBL-%')
+    // Deterministic order (2026-07-31). Callers below take `styles[0]` as the
+    // series style anchor, and without an ORDER BY that was whichever row
+    // Postgres happened to return first — a coin flip on every run the moment a
+    // series carries more than one locked entry in a section. S14 has carried
+    // three since May. The section is meant to hold ONE art-direction document
+    // (a plate that is merely a reference belongs in object/location), so this
+    // ordering is a safety net, not the rule: oldest first, because a series'
+    // style anchor is authored before anything that could reference it.
+    .order('created_at', { ascending: true });
   if (error) {
     throw new EpisodeReferencesError(`Bible canon fetch: ${error.message}`);
   }

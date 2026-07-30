@@ -226,7 +226,9 @@ async function loadBibleCanon(
     .select('filename,description,content,status,file_type,metadata')
     .eq('series_id', seriesId)
     .eq('status', 'LOCKED')
-    .like('file_type', 'SBL-%');
+    .like('file_type', 'SBL-%')
+    // Deterministic order (2026-07-31) — see loadBibleCanon in episode-references.
+    .order('created_at', { ascending: true });
   if (error) throw new ContinuityCheckError(`Bible canon fetch: ${error.message}`);
   const all = (data ?? []) as BibleAssetLike[];
   // Episode casting (2026-06-14): the continuity critic validates the storyboard
