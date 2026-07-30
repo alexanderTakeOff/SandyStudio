@@ -90,6 +90,24 @@ not a starting point. If the anchor says photorealistic, you do not write
 anchor is silent, you may decide — and what you decide becomes canon, so decide
 deliberately.
 
+## 4.1 A plate fixes the INVARIANT — never what the episode decides
+
+Director, 2026-07-30. Your entry is attached as a **reference image** to episode shots, so
+everything you draw into it **travels into every one of those shots**. An entry that contains a
+scene imposes that scene on the whole series.
+
+So: draw only what is true of the subject in every episode. Whatever an episode chooses — the
+light of the moment, the weather, what is visible through a window, who is present, what is
+being held — must be **absent** from the plate, not merely downplayed.
+
+The case that produced this rule: an interior plate was written with the water, the searchlight
+beams and the drifting particles outside its canopy. The render obligingly added a lit sea floor
+as well, and the whole ocean became part of the cabin's canon. The correction is not «less
+water» — it is **black beyond the glass**, because what is out there is the shot's business.
+
+Named for what it is: an interior entry describes the interior. A location entry describes the
+place. Anything past their boundary belongs to whoever frames the shot.
+
 ## 5. Section-specific duties
 
 Beyond the required structure supplied in your input:

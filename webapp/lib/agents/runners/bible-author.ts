@@ -31,7 +31,7 @@ import { logEvent } from '../../api/events';
 import { resolveBibleImageSize } from '../../api/bible-image-size';
 import { getImageGenMultiProvider } from '../providers/image-gen-multi-registry';
 import { assembleBibleImageRequest } from '../series-canon-refs';
-import { parseRenderBrief } from '../../api/series-bible';
+import { bibleSlug, parseRenderBrief } from '../../api/series-bible';
 
 /** Per-entry slice of the canon digest handed to the author (chars). */
 const CANON_DIGEST_ENTRY_CHARS = 400;
@@ -199,19 +199,20 @@ const SECTION_FRAMING: Record<BibleSection, string> = {
  * state variations and character interactions as *Animation notes* — those are
  * TEXT canon for the animator and must never be drawn into this plate.
  */
+// Trimmed the same evening it shipped: the first list carried «logo, watermark,
+// lettering» on every section — boilerplate that prevents a defect nobody has
+// ever seen here, while every term in the negative clause costs attention the
+// description needs. What stays is what has actually broken canon in this studio.
 const SECTION_NEGATIVE: Record<BibleSection, readonly string[]> = {
-  character: ['text overlay', 'logo', 'watermark', 'lettering'],
-  location: ['characters', 'people', 'animals', 'text overlay', 'logo', 'watermark', 'lettering'],
+  character: [],
+  location: ['characters', 'people'],
   object: [
-    'characters', 'humans', 'animals', 'hands', 'arms', 'silhouettes',
-    'characters reflected in mirrors or glass',
+    'characters', 'humans', 'animals', 'hands',
     'multi-view sheet', 'contact sheet', 'turnaround grid', 'rows or columns of variants',
-    'scale chart', 'exploded view',
     'state variations such as broken damaged hidden or glowing',
-    'surrounding props', 'scene context',
-    'text overlay', 'logo', 'watermark', 'lettering',
+    'scene context',
   ],
-  style: ['text overlay', 'logo', 'watermark', 'lettering'],
+  style: [],
 };
 
 function buildDescriptionPrompt(args: {
@@ -242,13 +243,30 @@ function buildDescriptionPrompt(args: {
     '',
     '## RENDER',
     'Three to eight sentences addressed to an image model, describing ONLY the canonical',
-    'reference frame: subject, geometry, materials, palette, light, framing. Drawable nouns',
-    'only. NO canon ids, NO version numbers, NO role or archetype labels, NO animation notes,',
-    'NO production reasoning, NO explanation of why a rule exists — state the visible',
-    'consequence and drop the reason. State only what IS there; never what must not be.',
-    'If this entry must agree with canon already written for the series, add one final line:',
-    '`Refs: slug_a, slug_b` — the slugs of those entries, at most four. Declare a slug only',
-    'when the frame genuinely depends on it; every reference dilutes the others equally.',
+    'reference frame: subject, geometry, materials, palette, light, framing —',
+    'AND its atmosphere. State only what IS there; never what must not be.',
+    '',
+    'Keep OUT: canon ids, version numbers, role or archetype labels, animation notes,',
+    'production reasoning, any explanation of WHY a rule exists. If a rule has a production',
+    'reason, state its visible consequence and drop the reason.',
+    '',
+    // 2026-07-30, same evening the split shipped. «Drawable nouns only» swept out
+    // the mood along with the meta, and the first frame written under it came
+    // back correct and dull — the Director's word. Atmosphere is not reasoning:
+    // «ominous stillness», «geological, older than context» steer exposure,
+    // contrast and composition as directly as geometry does. The line runs
+    // between MOOD and META, not between nouns and everything else.
+    'Keep IN — mood is a drawing instruction, not commentary. Devote at least one sentence to',
+    'what the frame should FEEL like: its register, its stillness or menace, its age. A frame',
+    'described only as geometry renders correct and lifeless.',
+    'END the RENDER block with a `Refs:` line whenever the canon digest contains an entry this',
+    'frame has to agree with — the interior of a vehicle must declare that vehicle, a prop held',
+    'by a character must declare that character. Format: `Refs: slug_a, slug_b`, at most four',
+    'slugs. Only those entries are attached as reference images, so an undeclared dependency is',
+    'simply not seen by the renderer; the first entry written under this contract omitted the',
+    'line and drew an interior that could not see its own hull. Declare only true dependencies —',
+    'every reference dilutes the others equally. Omit the line only when the frame truly',
+    'depends on nothing but the style anchor.',
     '',
     '## NEGATIVE',
     'A markdown list of short terms that must NOT appear. Terms only — no sentences, no',
@@ -414,7 +432,10 @@ async function loadSeriesContext(
     const omitted: string[] = [];
     let budget = CANON_DIGEST_TOTAL_CHARS;
     for (const r of rows) {
-      const label = r.file_type.replace(/^SBL-/, '');
+      // Label with the SLUG the author must write back on the `Refs:` line.
+      // Labelling with the section-qualified name taught the wrong token and
+      // the first declared reference HALTed on a slug that does not exist.
+      const label = bibleSlug(r.file_type) || r.file_type.replace(/^SBL-/, '');
       const brief = parseRenderBrief(r.content);
       // Entries written before the RENDER convention (all of SS-S15) degrade to
       // their opening line rather than vanishing from the author's view.
@@ -495,7 +516,12 @@ export async function runBibleAuthor(
       systemPrompt,
       userMessage,
       model,
-      maxOutputTokens: 1200,
+      // 1200 was sized for the pre-2026-07-30 structure. With RENDER + NEGATIVE
+      // required at the end, the first entry written under the new contract ran
+      // out mid-sentence and never reached NEGATIVE — the list came back empty
+      // and only the section defaults applied. The ceiling has to clear the
+      // whole document, sections included.
+      maxOutputTokens: 2000,
       expectsJson: false,
     });
     descriptionMd = text.markdown.trim();
@@ -534,7 +560,12 @@ export async function runBibleAuthor(
     assetId,
     content: descriptionMd,
     fallbackPrompt: imagePrompt,
-    renderPrefix: `${imagePromptHeader}\n\n${SECTION_FRAMING[section]}`,
+    // With a RENDER block the entry states its own framing and light, so only
+    // the invariant is prefixed. SECTION_FRAMING carries section assumptions —
+    // «empty location under neutral natural lighting» — which contradicted an
+    // entry whose canon is a dark, beam-lit frame. Those assumptions belong to
+    // the legacy fallback, where nobody stated anything.
+    renderPrefix: `${imagePromptHeader}\n\nStudio canon reference plate — reusable across many shots.`,
     defaultNegative: SECTION_NEGATIVE[section],
   });
 

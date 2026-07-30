@@ -76,6 +76,20 @@ describe('parseRenderBrief', () => {
     expect(brief.negative).toEqual(['smooth cone', 'needle', 'cartoon eyes']);
   });
 
+  test.each([
+    ['plain', 'Refs: hero, style_v1'],
+    ['backticked', '`Refs: hero, style_v1`'],
+    ['bolded', '**Refs:** hero, style_v1'],
+    ['bulleted', '- Refs: hero, style_v1'],
+  ])('the Refs line survives %s markdown', (_label, line) => {
+    // The author writes markdown, not a config file. A strict match found
+    // nothing on the very first entry that declared a reference, and the frame
+    // drew without its hero.
+    const brief = parseRenderBrief(`## RENDER\nA cabin interior.\n\n${line}`)!;
+    expect(brief.refSlugs).toEqual(['hero', 'style_v1']);
+    expect(brief.render).not.toContain('Refs');
+  });
+
   test('a RENDER heading whose body is only a Refs line is not a usable brief', () => {
     // Otherwise the assembler would send an empty positive prompt.
     expect(parseRenderBrief('## RENDER\nRefs: hero')).toBeNull();

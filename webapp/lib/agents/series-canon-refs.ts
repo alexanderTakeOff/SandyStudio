@@ -130,8 +130,18 @@ export async function loadSeriesCanonRefs(
   const missingDeclared: string[] = [];
 
   for (const slug of declared) {
+    // Accept BOTH the bare slug (`bathyscaphe_turnaround`) and the
+    // section-qualified form (`character_bathyscaphe_turnaround`). The canon
+    // digest labels entries with the section prefix, so the author naturally
+    // writes that form back — the first entry to declare a reference did
+    // exactly this and HALTed. Refusing it would be pedantry: both strings
+    // name one entry unambiguously.
     // LOCKED first — `usable` is already ordered, so find() takes the best match.
-    const row = usable.find((c) => bibleSlug(c.file_type) === slug);
+    const row = usable.find(
+      (c) =>
+        bibleSlug(c.file_type) === slug ||
+        c.file_type.replace(/^SBL-/, '').toLowerCase() === slug,
+    );
     if (row) chosen.push(row);
     else missingDeclared.push(slug);
   }
@@ -214,7 +224,21 @@ export async function assembleBibleImageRequest(
       ? [args.renderPrefix, brief.render].filter(Boolean).join('\n\n')
       : args.fallbackPrompt;
 
-  const negative = [...new Set([...(args.defaultNegative ?? []), ...(brief?.negative ?? [])])];
+  // Never negate what the render block explicitly asks for. Section defaults are
+  // assumptions about a kind of plate ("a location has no people in it"); the
+  // entry's RENDER is a statement about THIS frame. When they disagree the entry
+  // wins, because it was written knowing the canon and the default was not.
+  //
+  // Found on the first frame drawn under this contract: the location default
+  // negated «people» while the entry's canon called for a hand on the joystick.
+  // The model happened to resolve it in the entry's favour — luck, not design.
+  // An entry's own NEGATIVE is never filtered: contradicting yourself in one
+  // document is an authoring defect, and silently repairing it would hide it.
+  const renderText = (brief?.render ?? '').toLowerCase();
+  const defaults = (args.defaultNegative ?? []).filter(
+    (term) => !renderText.includes(term.toLowerCase()),
+  );
+  const negative = [...new Set([...defaults, ...(brief?.negative ?? [])])];
 
   if (!args.seriesId) {
     return { prompt: positive, negative, refs: [], dropped: [], halt: null, usedRenderBlock };

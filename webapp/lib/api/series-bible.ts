@@ -162,8 +162,16 @@ export interface RenderBrief {
 const RENDER_HEADING_RE = /^#{1,6}[ \t]*RENDER[ \t]*$/m;
 const NEGATIVE_HEADING_RE = /^#{1,6}[ \t]*NEGATIVE[ \t]*$/m;
 const NEXT_HEADING_RE = /^#{1,6}[ \t]+\S/m;
-/** `Refs: slug_a, slug_b` — one line inside the RENDER block. */
-const REFS_LINE_RE = /^[ \t]*Refs:[ \t]*(.+)$/im;
+/**
+ * `Refs: slug_a, slug_b` — one line inside the RENDER block.
+ *
+ * Tolerant of the markdown the author actually produces: the line may be
+ * wrapped in backticks, bolded, or bulleted. The first entry to declare a
+ * reference wrote `` `Refs: bathyscaphe_turnaround` `` and a strict
+ * start-of-line match silently found nothing — so the hero was never attached
+ * and the frame drew blind. Parse what authors write, not what they should.
+ */
+const REFS_LINE_RE = /^[ \t>*\-`_]*\**\s*Refs:\s*([^\n`]+)/im;
 
 /** Body between a heading and the next heading (or end of document). */
 function sectionBody(content: string, headingRe: RegExp): string | null {
@@ -206,7 +214,9 @@ export function parseRenderBrief(content: string | null | undefined): RenderBrie
   const refSlugs = refsMatch
     ? refsMatch[1]
         .split(/[,;]/)
-        .map((s) => s.trim().toLowerCase())
+        // Strip whatever markdown clung to the token — `**Refs:** hero` leaves
+        // the asterisks glued to the first slug otherwise.
+        .map((s) => s.trim().toLowerCase().replace(/^[^a-z0-9_]+|[^a-z0-9_]+$/g, ''))
         .filter(Boolean)
     : [];
 
