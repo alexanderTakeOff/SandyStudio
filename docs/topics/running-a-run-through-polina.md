@@ -18,15 +18,10 @@
   `created_at > '2026-07-30T08:1'` лексически больше `08:04:49` и молча съедает ответ. Ловилось дважды.
 - **48 инструментов Полины** — список одной строкой:
   `grep -hoE "name: '[a-zA-Z_]+'" lib/concierge/tools/*.ts | sed "s/name: //" | tr -d "'" | sort -u`.
-  Ключевые для канона: `setBibleContent` · `enrichBible` · `regenerateBibleImage` · `copyAssetImage`
-  (переносит картинку с ассета на ассет, БЕЗ перегенерации — для канона из прошлого сериала) ·
-  `getStateMatrix` · `getNextGate` · `listPendingApprovals` · `createSeries` · `createEpisode`.
-- **Полина сидит на `gemini-2.5-flash` (free).** Оверрайд живёт в `app_config`
-  (`scope=providers`, `key=concierge_provider`), а **НЕ** в `.env.local` — искать там бесполезно.
-  Подтверждение рантаймом: $0.0032–0.0037 за вызов против $0.09 на claude-sonnet-5.
-- **Обрыв её ответов** лечится `CONCIERGE_AUTO_REACT_MAX_TOKENS` в `webapp/.env.local`
-  (90 → 1856 символов при 4000). Правится в `chat-internal/route.ts`, **не** в `/auto-react`.
-- **`prod.log` для её диагностики бесполезен** — UTF-16 и только крон HoG; concierge туда не пишет.
+- **Полина на `gemini-2.5-flash` (free).** Оверрайд в `app_config` (`scope=providers`,
+  `key=concierge_provider`), **НЕ** в `.env.local`. Обрыв её ответов лечится
+  `CONCIERGE_AUTO_REACT_MAX_TOKENS` в `webapp/.env.local` (правится в `chat-internal/route.ts`,
+  **не** в `/auto-react`). `prod.log` для её диагностики бесполезен — UTF-16 и только крон HoG.
 - **MCP Supabase `execute_sql` запрещён** («You do not have permission»). База — только
   node/tsx-скриптом с ручным чтением `.env.local`.
 - **Одноразовая диагностика — `scripts/diag-*.ts`**: уже в `.gitignore`. Не плодить `probe-*`,
@@ -41,8 +36,12 @@
   УЖЕ готового кадра: `POST /api/series/{id}/bible` (DRAFT + текст) →
   `POST /api/assets/{id}/upload` (multipart, поле `file`) →
   `npx tsx scripts/backfill-uploaded-canon.ts <assetId>` → `POST .../bible/{id}/lock`.
-  Новый кадр вместо готового — `POST .../bible/{id}/regenerate-image`, провайдер по умолчанию
-  **`openai-edits-multi`**, референсы собирает из якорей серии сам.
+- ⚠️ **ОПРОВЕРГНУТО 16:40 — моя же запись выше была неверна.** `regenerate-image` для ассета
+  Библии **НЕ мульти-референсный**: ветка с референсами — `if (isV2 && v2Sr)`, то есть только
+  для v2-ассетов КАДРА с `test_plan`. У `SBL-*` его нет → падает в legacy-ветку
+  `generateImageOpenAI`, чистый text-to-image, **ноль референсов**. Канон серии перерисовывается
+  с чистого листа — ровно причина дрейфа канона Sandy, и она ЖИВА. Рабочий мульти-реф на уровне
+  Библии есть только скриптом: `scripts/gen-brand-visual.ts`. Разрыв **D7**.
 - **ЛОВУШКА: `upload` ставит `drive_file_id = null`.** Байты остаются локальными, и агентский
   media-preflight позже падает HALT'ом «Media unreachable» — так убился E16. Лечится не правкой,
   а третьим шагом цепочки: `backfill-uploaded-canon.ts` перекладывает файл через `persistBinary`
