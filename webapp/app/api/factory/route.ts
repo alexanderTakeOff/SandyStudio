@@ -19,8 +19,10 @@ import {
   TOUCH_EVENT_TYPES,
   splitTouches,
   productionStartFromJobs,
+  productionEndFromJobs,
   foldCost,
   isPostCast,
+  inWindow,
   type TouchEvent,
 } from '@/lib/agents/scorecard/factory-metrics';
 
@@ -133,6 +135,21 @@ export const GET = withApiHandler(async () => {
     const productionStart = productionStartFromJobs(jobs);
     const touches = splitTouches(events as TouchEvent[], productionStart);
 
+    // The PRODUCTION WINDOW (Director 2026-07-29): (first ref-design render →
+    // FIRST auto-stitch]. This meter is SPEED — how fast the factory reaches a
+    // whole picture. `touches.post` is open-ended, so everything after the cut
+    // (re-stitch polish, thumb / copy / publish, the Director's final review)
+    // lands on production's bill there; here it does not. Never stitched → the
+    // window is still open, and flagged as such.
+    const productionEnd = productionEndFromJobs(jobs);
+    const inProd = (at: string) => inWindow(at, productionStart, productionEnd);
+    const prodEvents = events.filter((e) => inProd(e.created_at));
+    // every prodEvent is by construction after productionStart → `.post` IS the window
+    const prodTouches = splitTouches(prodEvents as TouchEvent[], productionStart).post;
+    const prodRework = prodEvents.filter(
+      (e) => e.event_type === 'approval_revision' || e.event_type === 'approval_rejected',
+    ).length;
+
     // Sharp leak: leadership rework DURING PRODUCTION — a revision/reject after the
     // factory should be autonomously rendering. Design-phase revisions are legit
     // creative iteration; production-phase rework/shot → 0 is the real target.
@@ -170,6 +187,28 @@ export const GET = withApiHandler(async () => {
       postCast: reservationOnly ? null : round(postCastRows.reduce((s, r) => s + Number(r.cost_usd ?? 0), 0)),
       byAgent: reservationOnly ? [] : foldCost(bl, (r: { agent_id: string | null }) => r.agent_id ?? 'unknown'),
       byOp: reservationOnly ? [] : foldCost(bl, (r: { operation: string | null }) => r.operation ?? 'unknown'),
+    };
+
+    const prodCostRows = bl.filter((r) => inProd(r.created_at));
+    const prodCost = prodCostRows.reduce((s, r) => s + Number(r.cost_usd ?? 0), 0);
+    const prodLeadership = prodTouches.director + prodTouches.polina;
+    const production = {
+      startedAt: productionStart,
+      endedAt: productionEnd,
+      // open = production began but never stitched → the numbers are still growing
+      open: productionStart !== null && productionEnd === null,
+      spanHours:
+        productionStart && productionEnd
+          ? round((Date.parse(productionEnd) - Date.parse(productionStart)) / 3_600_000, 1)
+          : null,
+      touches: prodTouches,
+      leadershipTotal: prodLeadership,
+      leadershipPerShot: shotCount > 0 ? round(prodLeadership / shotCount, 2) : null,
+      rework: prodRework,
+      reworkPerShot: shotCount > 0 ? round(prodRework / shotCount, 2) : null,
+      costUsd: round(prodCost),
+      costPerShot: shotCount > 0 && prodCost > 0 ? round(prodCost / shotCount) : null,
+      costItemized: !reservationOnly,
     };
 
     const trueChurn = disc?.trueCriticChurn ?? null;
@@ -222,6 +261,7 @@ export const GET = withApiHandler(async () => {
       autonomyPct: typeof metrics.autonomy_pct === 'number' ? metrics.autonomy_pct : null,
       agentFailures: c.agent_failures ?? 0,
       budget,
+      production,
       criticVerdicts: (disc?.perCritic ?? [])
         .filter((pc) => pc.reviseCount > 0 || pc.verdict !== 'healthy')
         .map((pc) => ({ critic: pc.critic, verdict: pc.verdict, reviseCount: pc.reviseCount, repeatedPoints: pc.repeatedPoints })),
