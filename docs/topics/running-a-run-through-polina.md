@@ -72,7 +72,8 @@
 
 ## КУДА СМОТРЕТЬ
 
-- `docs/plans/series-bootstrap-run-notes.md` — порядок прогона + черновики двух артефактов.
-- `webapp/scripts/team-chat-post.ts` · `webapp/lib/concierge/tools/series.ts` (`setBibleContent`).
+- **Возвращение в работу после очистки — `docs/plans/series-bootstrap-run-notes.md` §0:** там
+  позиция прогона одной строкой, дальше §1 — первая незакрытая строка таблицы. Читать ЕЁ, а не
+  восстанавливать состояние по коду: 30.07 на такое восстановление ушло сорок минут.
 - `webapp/app/api/series/[id]/bible/` — три маршрута: create · regenerate-image · lock.
 - Тред прогона «Глубины» 30.07: `647156a9-2c56-48f2-a678-4a4e95cb3367`.
