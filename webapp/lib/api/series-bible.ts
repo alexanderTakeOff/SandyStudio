@@ -13,6 +13,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
+import type { ReferenceUsed } from './shot-reference';
 
 export type SbSection =
   | 'general_idea'
@@ -124,6 +125,99 @@ export function bibleSlug(fileType: string): string | null {
   return bibleSlugFromFileType(fileType)?.slug ?? null;
 }
 
+// ── The render brief: what the IMAGE MODEL reads, split from what HUMANS read ─
+//
+// A Bible entry has two readers and until 2026-07-30 they shared one field. The
+// image prompt was built as `content.slice(0, 2400)`, so canon ids, version
+// numbers, role labels and production reasoning were all handed to gpt-image-2
+// as things to render. The Director's example: «a panel parked in a corner
+// vanishes in the vertical crop» — to a renderer that is neither a subject nor
+// a constraint, yet the model must do something with it. What it did, twice in
+// one hour, was render a generic portrait of the subject instead of the frame
+// the canon called for.
+//
+// Two rules, both his: no surplus information, and what must NOT appear is not
+// described in prose — it goes to the dedicated negative channel, which already
+// exists (`MultiImageGenInput.negative`, folded by openai-edits-multi into one
+// closing clause because hard negatives up front starve the positive prompt).
+//
+// Back-compatible by construction: an entry with no `## RENDER` section yields
+// null and every caller falls back to today's behaviour byte for byte. The ~50
+// LOCKED entries of SS-S15 are neither migrated nor at risk.
+
+/** Model-facing half of a Bible entry. */
+export interface RenderBrief {
+  /** Drawable description — positive only, no rationale. */
+  render: string;
+  /** Terms that must not appear; fed to the provider's `negative` channel. */
+  negative: string[];
+  /**
+   * Canon slugs this entry must agree with, declared by its author on a
+   * `Refs:` line. Empty means "style anchor only" — see loadSeriesCanonRefs.
+   */
+  refSlugs: string[];
+}
+
+/** ASCII-only headings, mandated by the author's system prompt so parsing stays exact. */
+const RENDER_HEADING_RE = /^#{1,6}[ \t]*RENDER[ \t]*$/m;
+const NEGATIVE_HEADING_RE = /^#{1,6}[ \t]*NEGATIVE[ \t]*$/m;
+const NEXT_HEADING_RE = /^#{1,6}[ \t]+\S/m;
+/** `Refs: slug_a, slug_b` — one line inside the RENDER block. */
+const REFS_LINE_RE = /^[ \t]*Refs:[ \t]*(.+)$/im;
+
+/** Body between a heading and the next heading (or end of document). */
+function sectionBody(content: string, headingRe: RegExp): string | null {
+  const m = headingRe.exec(content);
+  if (!m || m.index === undefined) return null;
+  const after = content.slice(m.index + m[0].length);
+  const next = NEXT_HEADING_RE.exec(after);
+  const body = (next && next.index !== undefined ? after.slice(0, next.index) : after).trim();
+  return body.length > 0 ? body : null;
+}
+
+/** Strip list bullets and blank entries from a markdown list body. */
+function bulletList(body: string): string[] {
+  const lines = body
+    .split('\n')
+    .map((l) => l.replace(/^[ \t]*[-*•][ \t]*/, '').trim())
+    .filter((l) => l.length > 0 && !/^#{1,6}[ \t]/.test(l));
+  if (lines.length > 1) return lines;
+  // Single line — the author may have used separators instead of bullets.
+  return (lines[0] ?? body)
+    .split(/[;·,]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Extract the model-facing brief from a Bible entry's markdown body.
+ *
+ * Returns null when the entry has no `## RENDER` section — callers MUST then
+ * fall back to their previous behaviour rather than sending an empty prompt.
+ */
+export function parseRenderBrief(content: string | null | undefined): RenderBrief | null {
+  const text = (content ?? '').trim();
+  if (!text) return null;
+
+  const renderBody = sectionBody(text, RENDER_HEADING_RE);
+  if (!renderBody) return null;
+
+  const refsMatch = REFS_LINE_RE.exec(renderBody);
+  const refSlugs = refsMatch
+    ? refsMatch[1]
+        .split(/[,;]/)
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+
+  // The Refs line is metadata, not something to draw — keep it out of the prompt.
+  const render = renderBody.replace(REFS_LINE_RE, '').trim();
+  if (!render) return null;
+
+  const negativeBody = sectionBody(text, NEGATIVE_HEADING_RE);
+  return { render, negative: negativeBody ? bulletList(negativeBody) : [], refSlugs };
+}
+
 // ── Asset metadata schema (assets.metadata jsonb, migration 0020) ─────────────
 //
 // We persist three structured side-documents inside the single JSONB column,
@@ -177,6 +271,31 @@ export interface ImagePromptHistoryEntry {
   style_check_verdict?: 'PASS' | 'WARN' | 'FAIL' | null;
   /** True if Auto-Rewrite Style Guardian rewrote the prompt before generation. */
   style_check_rewritten?: boolean;
+
+  // ── Audit of the generation itself (2026-07-30) ────────────────────────────
+  // Until now a Bible history row recorded the prompt and the cost and nothing
+  // about the mechanism, so the question «did the model actually see the hero
+  // reference?» could not be answered after the fact — it had to be re-derived
+  // by calling the loader by hand. Both write sites already computed these
+  // values and threw them away; the v2 shot path has carried them for months
+  // (GenerationAttempt in lib/api/shot-reference.ts). All optional: existing
+  // rows stay valid, no migration.
+
+  /** Which provider actually ran — multi-reference branch or plain text-to-image. */
+  provider_id?: string;
+  /** Model id reported by that provider. */
+  model?: string;
+  /** Canon images actually attached. Same shape as the shot path — no second form. */
+  references_used?: ReferenceUsed[];
+  /**
+   * Canon images that were meant to ride along and did not. The load-bearing
+   * one: a reference whose bytes fail to load is skipped silently, which makes
+   * «there was no hero reference» indistinguishable from «there was one and it
+   * was unreachable» — precisely the question this audit exists to answer.
+   */
+  references_dropped?: Array<{ bible_asset_id: string; kind: string; reason: string }>;
+  /** Negative terms actually folded in, so a later reader can tell a prohibition was in force. */
+  negative?: string[];
 }
 
 /** image_prompt sub-doc — current pointer + ordered history. */

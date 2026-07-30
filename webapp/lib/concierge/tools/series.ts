@@ -238,7 +238,7 @@ interface SetBibleContentArgs {
 export const setBibleContent: Tool<SetBibleContentArgs> = {
   name: 'setBibleContent',
   description:
-    "Write Director-supplied verbatim text as a NEW DRAFT version of a Bible section. Use this when the Director dictates / pastes specific canon text and wants it persisted exactly as-is (not paraphrased by an agent). Creates a fresh version — old versions stay as history. Slug defaults to 'main' if omitted; pass a specific slug only when distinguishing sub-entries (e.g. character='sandy' vs 'pink_panther'). Never ask the Director about slug — call listSeriesBibles first to see existing slugs, or default to 'main'. Verbal approval required.",
+    "Write Director-supplied verbatim text as a NEW DRAFT version of a Bible section. Use this when the Director dictates / pastes specific canon text and wants it persisted exactly as-is (not paraphrased by an agent). This is NOT a channel for canon prose written by you or by another agent — that is EXEC-BIBLE-AUTHOR's job, reached via enrichBible. You are an administrator, not an author. Creates a fresh version — old versions stay as history. Slug defaults to 'main' if omitted; pass a specific slug only when distinguishing sub-entries (e.g. character='sandy' vs 'pink_panther'). Never ask the Director about slug — call listSeriesBibles first to see existing slugs, or default to 'main'. Verbal approval required.",
   mutating: true,
   schema: {
     type: 'function',
@@ -392,7 +392,8 @@ export const setBibleContent: Tool<SetBibleContentArgs> = {
 
 interface RegenerateBibleImageArgs {
   assetId: string;
-  prompt: string;
+  /** Omitted on the normal path — the route derives it from the entry's RENDER block. */
+  prompt?: string;
   quality?: 'low' | 'medium' | 'high';
   styleAnchorAssetId?: string | null;
 }
@@ -415,7 +416,7 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
           prompt: {
             type: 'string',
             description:
-              "The image prompt to use for the new generation. Required. If the Director hasn't supplied a new prompt explicitly, use the current asset's image prompt (from a prior listSeriesBibles call or by reading the asset.metadata.image_prompt.history). For location assets, enforce: no characters, no people, no animals, no silhouettes — only environment, architecture, lighting, signage, neutral props.",
+              "OPTIONAL, and normally OMIT IT. The entry's own '## RENDER' block is the prompt, written by the Bible author agent — composing image-prompt prose is not your job. Pass this ONLY to relay a prompt the Director dictated himself, verbatim. Never write one yourself, and never paste a prompt authored by another agent.",
             minLength: 8,
             maxLength: 8000,
           },
@@ -430,7 +431,7 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
               "Optional override for the visual style anchor used during generation. Pass the UUID of a Bible style asset (SBL-style*) to swap the locked-style reference (e.g. when the active LOCKED style anchor diverges from current text canon, and the Director has approved a new style draft). Pass null to explicitly clear the anchor (rare). Omit to keep the asset's existing anchor.",
           },
         },
-        required: ['assetId', 'prompt'],
+        required: ['assetId'],
         additionalProperties: false,
       },
     },
@@ -440,9 +441,11 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
     if (typeof obj.assetId !== 'string' || !obj.assetId) {
       throw new Error('assetId is required');
     }
-    if (typeof obj.prompt !== 'string' || obj.prompt.trim().length < 8) {
-      throw new Error('prompt is required (min 8 chars)');
-    }
+    // 2026-07-30: omitting the prompt is the NORMAL case — the route derives it
+    // from the entry's own RENDER block, written by the Bible author agent.
+    // Only a prompt the Director dictated is relayed through here.
+    const prompt =
+      typeof obj.prompt === 'string' && obj.prompt.trim().length >= 8 ? obj.prompt : undefined;
     const quality =
       obj.quality === 'low' || obj.quality === 'medium' || obj.quality === 'high'
         ? obj.quality
@@ -452,7 +455,7 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
     else if (typeof obj.styleAnchorAssetId === 'string' && obj.styleAnchorAssetId.length > 0) {
       styleAnchorAssetId = obj.styleAnchorAssetId;
     }
-    return { assetId: obj.assetId, prompt: obj.prompt, quality, styleAnchorAssetId };
+    return { assetId: obj.assetId, prompt, quality, styleAnchorAssetId };
   },
   async execute(args, ctx): Promise<ToolResult> {
     const approval = gateMutation('regenerateBibleImage', {
@@ -471,7 +474,7 @@ export const regenerateBibleImage: Tool<RegenerateBibleImageArgs> = {
           ...authHeaders(ctx),
         },
         body: JSON.stringify({
-          prompt: args.prompt,
+          ...(args.prompt ? { prompt: args.prompt } : {}),
           quality: args.quality ?? 'medium',
           directorConfirm: true,
           ...(args.styleAnchorAssetId !== undefined

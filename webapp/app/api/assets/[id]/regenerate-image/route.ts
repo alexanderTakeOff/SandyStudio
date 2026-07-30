@@ -48,6 +48,7 @@ import {
   type AssetMetadataDoc,
   type ImagePromptHistoryEntry,
   type GovernanceModeNum,
+  parseRenderBrief,
   stampLastModified,
   buildProvenance,
 } from '@/lib/api/series-bible';
@@ -65,7 +66,7 @@ import {
 import type { EREFProviderId } from '@/lib/api/eref-config';
 import type { MultiImageRef } from '@/lib/agents/providers/image-gen-multi';
 import { readAssetMediaAsBase64, localCacheAbsPath } from '@/lib/media-cache';
-import { loadSeriesCanonRefs } from '@/lib/agents/series-canon-refs';
+import { assembleBibleImageRequest, type DroppedRef } from '@/lib/agents/series-canon-refs';
 import { promises as fsp } from 'node:fs';
 
 export const runtime = 'nodejs';
@@ -82,19 +83,11 @@ const ProviderIdSchema = z.enum([
   'gpt-image-1',
 ]);
 
+// Order matters: zod returns the FIRST matching variant, and the generate
+// variant's `prompt` is optional (2026-07-30), so an all-optional object would
+// otherwise swallow `{restore_version}` / `{select_attempt}`. The two specific
+// shapes are therefore tried first.
 const Body = z.union([
-  z.object({
-    prompt: z.string().min(8).max(8000),
-    quality: z.enum(['low', 'medium', 'high']).optional(),
-    style_anchor_asset_id: z.string().uuid().nullable().optional(),
-    directorConfirm: z.boolean().optional(),
-    /**
-     * Optional per-image provider override for v2 EREF assets. Per
-     * technology.md §4 — Director may switch providers per shot during
-     * testing. Ignored for non-v2 assets.
-     */
-    provider_id: ProviderIdSchema.optional(),
-  }),
   z.object({
     restore_version: z.number().int().positive(),
     directorConfirm: z.boolean().optional(),
@@ -107,6 +100,25 @@ const Body = z.union([
     // but sourced from generation_history instead of image_prompt.history.
     select_attempt: z.number().int().positive(),
     directorConfirm: z.boolean().optional(),
+  }),
+  z.object({
+    /**
+     * OPTIONAL for Bible assets since 2026-07-30. Omitted, the prompt is
+     * derived from the entry's own `## RENDER` block — that is the normal path
+     * now, because composing image-prompt prose is the author agent's job, not
+     * the caller's. An explicit prompt remains the Director's hand-edit from
+     * the UI drawer, and is still required for non-Bible assets.
+     */
+    prompt: z.string().min(8).max(8000).optional(),
+    quality: z.enum(['low', 'medium', 'high']).optional(),
+    style_anchor_asset_id: z.string().uuid().nullable().optional(),
+    directorConfirm: z.boolean().optional(),
+    /**
+     * Optional per-image provider override for v2 EREF assets. Per
+     * technology.md §4 — Director may switch providers per shot during
+     * testing. Ignored for non-v2 assets.
+     */
+    provider_id: ProviderIdSchema.optional(),
   }),
 ]);
 
@@ -130,6 +142,8 @@ interface AssetRow {
   drive_web_view_url: string | null;
   drive_path: string | null;
   metadata: AssetMetadataDoc | null;
+  /** Markdown canon body — carries the RENDER / NEGATIVE blocks for SBL-* assets. */
+  content: string | null;
 }
 
 async function resolveMode(
@@ -469,6 +483,24 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
+  // ── Resolve the prompt actually being generated ────────────────────────────
+  // For a Bible entry the normal path no longer carries a prompt: the entry's
+  // own `## RENDER` block IS the prompt, written by the author agent. A caller-
+  // supplied prompt still wins — that is the Director's hand-edit — and remains
+  // mandatory for non-Bible assets, which have no RENDER block to fall back on.
+  const bibleBrief = asset.file_type.startsWith('SBL-')
+    ? parseRenderBrief(asset.content)
+    : null;
+  const effectivePrompt = body.prompt ?? bibleBrief?.render ?? null;
+  if (!effectivePrompt) {
+    throw new ValidationError(
+      asset.file_type.startsWith('SBL-')
+        ? `No prompt supplied and ${asset.filename} has no "## RENDER" section to derive one from. ` +
+          `Either re-enrich the entry so its author writes one, or pass an explicit prompt.`
+        : 'prompt is required for this asset type',
+    );
+  }
+
   // Pre-flight Style Guardian check. Behaviour depends on app_config.style_guardian_mode:
   //   warn          → record verdict, NEVER block
   //   strict        → FAIL blocks (Director may pass directorConfirm with override flag)
@@ -481,7 +513,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     const guardMode = await getStyleGuardianMode(sb);
     const result = await runStyleCheck({
       supabase: sb,
-      prompt: body.prompt,
+      prompt: effectivePrompt,
       assetType: asset.file_type,
       seriesId: asset.series_id,
       // 2026-07-25 — the guardian's Sonnet call is billed to the same episode as
@@ -520,6 +552,9 @@ export const POST = withApiHandler(async (req, ctx) => {
   let realProviderId = 'gpt-image-2';
   let realModel = 'gpt-image-2';
   let v2RefsUsed: ReferenceUsed[] = [];
+  // Bible-path audit — see ImagePromptHistoryEntry in lib/api/series-bible.ts.
+  let bibleDropped: DroppedRef[] = [];
+  let bibleNegative: string[] = [];
 
   // For v2 EREF assets we ALWAYS go through the multi-image path so identity
   // anchors (Sandy/Vial/location/style) are preserved on regeneration.
@@ -605,7 +640,7 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
 
     const result = await provider.generate({
-      prompt: body.prompt,
+      prompt: effectivePrompt,
       references: refs,
       size: '1024x1024',
       quality: body.quality ?? 'medium',
@@ -630,23 +665,40 @@ export const POST = withApiHandler(async (req, ctx) => {
       ? resolveBibleImageSize({ section: bibleSection })
       : '1024x1024';
 
-    // Bible canon rides on the series' OWN LOCKED canon — see
-    // lib/agents/series-canon-refs.ts for why this connection was missing and
-    // what it fixes. Shared with EXEC-BIBLE-AUTHOR so the lesson lives in ONE
-    // place instead of two diverging copies.
-    const bibleRefs: MultiImageRef[] =
+    // Bible canon rides on the series' OWN canon, through the one assembler all
+    // three Bible image paths share. `explicitPrompt` is set because a re-roll
+    // always carries a prompt — the Director's hand-edit from the drawer, or the
+    // entry's own prompt replayed by the tool — so the RENDER block informs the
+    // negative list and the declared references, not the positive text.
+    // See lib/agents/series-canon-refs.ts for what this fixes.
+    const bibleAssembled =
       asset.file_type.startsWith('SBL-') && asset.series_id
-        ? await loadSeriesCanonRefs(sb as never, {
+        ? await assembleBibleImageRequest(sb as never, {
             seriesId: asset.series_id,
-            excludeAssetId: asset.id,
+            assetId: asset.id,
+            content: asset.content,
+            fallbackPrompt: effectivePrompt,
+            explicitPrompt: effectivePrompt,
           })
-        : [];
+        : null;
 
-    if (bibleRefs.length > 0) {
+    // A reference the entry's author declared load-bearing could not be loaded.
+    // Refuse before spending: canon drawn without its declared anchor is
+    // off-model by construction, and every later frame inherits that.
+    if (bibleAssembled?.halt) {
+      throw new ValidationError(bibleAssembled.halt);
+    }
+    bibleDropped = bibleAssembled?.dropped ?? [];
+    bibleNegative = bibleAssembled?.negative ?? [];
+
+    if (bibleAssembled && bibleAssembled.refs.length > 0) {
       const provider = getImageGenMultiProvider('openai-edits-multi');
       const result = await provider.generate({
-        prompt: body.prompt,
-        references: bibleRefs,
+        prompt: bibleAssembled.prompt,
+        references: bibleAssembled.refs,
+        // Prohibitions ride the provider's dedicated channel — one closing
+        // clause — instead of competing with the description for attention.
+        negative: bibleAssembled.negative,
         size: regenSize,
         quality: body.quality ?? 'medium',
       });
@@ -656,12 +708,16 @@ export const POST = withApiHandler(async (req, ctx) => {
       realHeight = result.height;
       realProviderId = result.provider_id;
       realModel = result.model;
-      v2RefsUsed = bibleRefs.map(
+      v2RefsUsed = bibleAssembled.refs.map(
         (r): ReferenceUsed => ({ kind: r.kind, bible_asset_id: r.bible_asset_id }),
       );
     } else {
+      const negative = bibleAssembled?.negative ?? [];
       const real = await generateImageOpenAI({
-        prompt: body.prompt,
+        prompt:
+          negative.length > 0
+            ? `${effectivePrompt}\n\nAvoid depicting: ${negative.join('; ')}.`
+            : effectivePrompt,
         size: regenSize,
         quality: body.quality ?? 'medium',
       });
@@ -765,7 +821,7 @@ export const POST = withApiHandler(async (req, ctx) => {
 
   const newEntry: ImagePromptHistoryEntry = {
     version: nextVersion,
-    prompt: body.prompt,
+    prompt: effectivePrompt,
     source: 'director_edit',
     at: nowIso,
     cost_usd: realCost,
@@ -777,6 +833,16 @@ export const POST = withApiHandler(async (req, ctx) => {
     quality: body.quality ?? 'medium',
     mode_at_time: decision.modeAtTime,
     style_check_verdict: styleVerdict,
+    // Audit (2026-07-30). All three values were already computed here and then
+    // written only into the v2 `shot_reference` sub-doc — which a Bible asset
+    // does not have — so for Bible canon they were computed and discarded. That
+    // is why «did the model see the hero reference?» could not be answered from
+    // the record. See ImagePromptHistoryEntry in lib/api/series-bible.ts.
+    provider_id: realProviderId,
+    model: realModel,
+    references_used: v2RefsUsed,
+    references_dropped: bibleDropped,
+    negative: bibleNegative,
   };
 
   // For v2 EREF: append a new entry to shot_reference.generation_history
@@ -789,7 +855,7 @@ export const POST = withApiHandler(async (req, ctx) => {
       version: v2AttemptVersion ?? 1,
       provider_id: realProviderId,
       model: realModel,
-      prompt: body.prompt,
+      prompt: effectivePrompt,
       references_used: v2RefsUsed,
       strength: null,
       cost_usd: realCost,

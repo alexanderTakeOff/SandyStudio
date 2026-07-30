@@ -18,8 +18,10 @@ import { requireDirector } from '@/lib/api/auth';
 import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
-import { NotFoundError } from '@/lib/api/errors';
+import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { generateImageOpenAI } from '@/lib/agents/providers/openai-image';
+import { getImageGenMultiProvider } from '@/lib/agents/providers/image-gen-multi-registry';
+import { assembleBibleImageRequest } from '@/lib/agents/series-canon-refs';
 import { persistBinary } from '@/lib/agents/persist-binary';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { logEvent } from '@/lib/api/events';
@@ -103,19 +105,55 @@ export const POST = withApiHandler(async (req, ctx) => {
     .filter((s): s is string => Boolean(s && s.trim()))
     .slice(0, 3);
 
-  const prompt = buildPrompt({
+  const fallbackPrompt = buildPrompt({
     seriesTitle: series.title,
     section: body.section,
     description: body.description,
     styleGuides,
   });
 
+  // Third and last of the Bible image paths to be connected (2026-07-30). This
+  // one was drawing canon completely blind — its own prompt builder, zero
+  // reference images — so an asset created from the Add-asset modal could not
+  // see the series it was joining. The assembler is shared with the author and
+  // the re-roll so the lesson lives in one place, not three.
+  const assembled = await assembleBibleImageRequest(sb as never, {
+    seriesId,
+    content: body.description,
+    fallbackPrompt,
+    renderPrefix: `Canonical ${body.section} reference for the animated series "${series.title}".`,
+  });
+  if (assembled.halt) throw new ValidationError(assembled.halt);
+  const prompt = assembled.prompt;
+
   // Director 2026-05-20 — was hardcoded 1024×1024. Section-aware default
   // (characters/objects → square, locations/style → landscape).
   // See lib/api/bible-image-size.ts.
   const resolvedSize = resolveBibleImageSize({ section: body.section });
-  const real = await generateImageOpenAI({
-    prompt,
+  const real = assembled.refs.length > 0
+    ? await (async () => {
+        const provider = getImageGenMultiProvider('openai-edits-multi');
+        const multi = await provider.generate({
+          prompt,
+          references: assembled.refs,
+          negative: assembled.negative,
+          size: resolvedSize,
+          quality: body.quality ?? 'medium',
+        });
+        return {
+          b64_data: multi.b64_data,
+          cost_usd: multi.cost_usd,
+          width: multi.width,
+          height: multi.height,
+          size_bytes: Math.round((multi.b64_data.length * 3) / 4),
+          provider: multi.provider_id,
+        };
+      })()
+    : await generateImageOpenAI({
+    prompt:
+      assembled.negative.length > 0
+        ? `${prompt}\n\nAvoid depicting: ${assembled.negative.join('; ')}.`
+        : prompt,
     size: resolvedSize,
     quality: body.quality ?? 'medium',
   });

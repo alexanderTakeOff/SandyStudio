@@ -23,6 +23,38 @@ The Director can ask any question or hand off any ad-hoc task from any page in t
 
 This agent is the **entry point** for both casual interaction (Mode 1) and full agent-led operation (Mode 2.5). It is intentionally distinct from `EXEC-ORCH` (operational pipeline) and `EXEC-DIR-AI` (delegated approval authority).
 
+### 1.1 Administrator, not author (Director, 2026-07-30)
+
+> «Полина администратор, а не писатель прозы. Она должна вызывать инструменты, в
+> которых работают профессиональные модели-писатели. Но не она сама.»
+
+The Prod Assistant **dispatches**; specialist agents **write**. This is a hard
+boundary, not a stylistic preference.
+
+| Artifact | Who writes it |
+|---|---|
+| Canon text of a Bible entry | `EXEC-BIBLE-AUTHOR`, reached via `enrichBible` |
+| The image prompt for that entry | the same agent, as the entry's `## RENDER` block |
+| Prohibitions for that image | the same agent, as the entry's `## NEGATIVE` block |
+| Everything above, dispatched and gated | **this agent** |
+
+Concretely:
+
+- **`regenerateBibleImage` — omit `prompt`.** The route derives it from the
+  entry's RENDER block. Pass a prompt ONLY to relay one the Director dictated
+  himself, verbatim.
+- **`setBibleContent` is for the Director's verbatim text**, not a channel for
+  prose composed by an agent or by the orchestrator. Canon prose goes through
+  `enrichBible`.
+- Never compose English image-prompt prose. If a canon entry needs better text,
+  the answer is to re-run its author, not to type over it.
+
+**Why the boundary exists.** On 2026-07-30, bootstrapping a new series, the
+orchestrator hand-wrote image prompts and used `setBibleContent` as a typewriter
+for them. It produced three off-canon frames in an hour, and it bypassed the one
+component whose whole job is writing canon. The failure was structural: nothing
+in the tooling said whose job it was.
+
 ---
 
 ## 2. Authority

@@ -30,7 +30,13 @@ import { buildProvenance } from '../../api/series-bible';
 import { logEvent } from '../../api/events';
 import { resolveBibleImageSize } from '../../api/bible-image-size';
 import { getImageGenMultiProvider } from '../providers/image-gen-multi-registry';
-import { loadSeriesCanonRefs } from '../series-canon-refs';
+import { assembleBibleImageRequest } from '../series-canon-refs';
+import { parseRenderBrief } from '../../api/series-bible';
+
+/** Per-entry slice of the canon digest handed to the author (chars). */
+const CANON_DIGEST_ENTRY_CHARS = 400;
+/** Total canon digest budget (chars) — beyond it, entries are named but not quoted. */
+const CANON_DIGEST_TOTAL_CHARS = 6000;
 
 export class BibleAuthorError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -153,6 +159,61 @@ const SECTION_GUIDANCE: Record<BibleSection, string> = {
   ].join('\n'),
 };
 
+/**
+ * How the canonical reference frame is FRAMED, per section. Positive only.
+ *
+ * 2026-07-30: these used to carry their prohibitions inline, up to seven lines
+ * of «no …» for objects, inside the positive prompt. That is the attention
+ * pollution openai-edits-multi's own comment warns about (2026-05-26 finding:
+ * hard negatives placed up front starve the positive prompt). The prohibitions
+ * moved to SECTION_NEGATIVE and now travel through the provider's negative
+ * channel as one closing clause. Nothing was dropped — it was relocated.
+ */
+const SECTION_FRAMING: Record<BibleSection, string> = {
+  character:
+    'Render as a clean reference image — front-facing or three-quarter view, neutral background, full-body. Studio canon, reusable across many shots.',
+  // "neutral natural lighting" STAYS — Director, 2026-07-29: «для канона
+  // нейтраль как точка отсчёта, не более». A canon plate is a reference card,
+  // not a frame; neutral light is what makes one plate reusable by every
+  // episode. What must NOT survive is the plate's authority over a scene: the
+  // location card enumerates the lighting states (SECTION_GUIDANCE above) and
+  // the shot prompt states the scene's light as an explicit override (SCENE
+  // LIGHT block in episode-reference-designer). Do not "fix" this line — the
+  // defect it was blamed for lives downstream, in the silence around it.
+  location:
+    'Render as a clean establishing reference of the empty location under neutral natural lighting. Studio canon, reusable across many shots.',
+  object:
+    'Render exactly ONE clean hero view of ONE canonical object instance — front-facing or three-quarter view, empty neutral backdrop.',
+  style:
+    'Render as a clean style sample frame illustrating the aesthetic thesis. Neutral subject if applicable.',
+};
+
+/**
+ * Default prohibitions per section, fed to the provider's `negative` channel
+ * and merged with whatever the entry's own `## NEGATIVE` block declares.
+ *
+ * The object list is the longest for a reason recorded in
+ * ~/.claude/skills/library-style-first-visual-generation-protocol: a primary
+ * object reference is consumed downstream as identity canon, so a variant sheet
+ * or a stray hand in it poisons every later shot. The Bible entry may describe
+ * state variations and character interactions as *Animation notes* — those are
+ * TEXT canon for the animator and must never be drawn into this plate.
+ */
+const SECTION_NEGATIVE: Record<BibleSection, readonly string[]> = {
+  character: ['text overlay', 'logo', 'watermark', 'lettering'],
+  location: ['characters', 'people', 'animals', 'text overlay', 'logo', 'watermark', 'lettering'],
+  object: [
+    'characters', 'humans', 'animals', 'hands', 'arms', 'silhouettes',
+    'characters reflected in mirrors or glass',
+    'multi-view sheet', 'contact sheet', 'turnaround grid', 'rows or columns of variants',
+    'scale chart', 'exploded view',
+    'state variations such as broken damaged hidden or glowing',
+    'surrounding props', 'scene context',
+    'text overlay', 'logo', 'watermark', 'lettering',
+  ],
+  style: ['text overlay', 'logo', 'watermark', 'lettering'],
+};
+
 function buildDescriptionPrompt(args: {
   seriesTitle: string;
   section: BibleSection;
@@ -160,8 +221,10 @@ function buildDescriptionPrompt(args: {
   seedDescription: string;
   generalIdea: string | null;
   styleGuide: string | null;
+  /** RENDER blocks of canon already written for this series — must not be contradicted. */
+  canonDigest?: string | null;
 }): { systemPrompt: string; userMessage: string } {
-  const { seriesTitle, section, slug, seedDescription, generalIdea, styleGuide } = args;
+  const { seriesTitle, section, slug, seedDescription, generalIdea, styleGuide, canonDigest } = args;
   const systemPrompt = [
     `You are EXEC-BIBLE-AUTHOR, a Pixar-grade story-bible writer for the animated`,
     `series "${seriesTitle}". You produce concise, production-ready ${SECTION_LABEL[section]}`,
@@ -169,6 +232,28 @@ function buildDescriptionPrompt(args: {
     '',
     'Write in clean markdown. ~250-450 words. No filler. No meta-commentary.',
     'Every sentence must give a visual or behavioural fact a generator can use.',
+    '',
+    // 2026-07-30. The entry has two readers and mixing them is what poisoned
+    // canon for months: the whole document used to be handed to the image model
+    // verbatim, so canon ids, role labels and production arguments arrived as
+    // things to draw. Asked to render «the body is never fully shown», the model
+    // drew the body. Split the readers here, at the source.
+    'The entry MUST end with these two sections, exactly these ASCII headings, in this order:',
+    '',
+    '## RENDER',
+    'Three to eight sentences addressed to an image model, describing ONLY the canonical',
+    'reference frame: subject, geometry, materials, palette, light, framing. Drawable nouns',
+    'only. NO canon ids, NO version numbers, NO role or archetype labels, NO animation notes,',
+    'NO production reasoning, NO explanation of why a rule exists — state the visible',
+    'consequence and drop the reason. State only what IS there; never what must not be.',
+    'If this entry must agree with canon already written for the series, add one final line:',
+    '`Refs: slug_a, slug_b` — the slugs of those entries, at most four. Declare a slug only',
+    'when the frame genuinely depends on it; every reference dilutes the others equally.',
+    '',
+    '## NEGATIVE',
+    'A markdown list of short terms that must NOT appear. Terms only — no sentences, no',
+    'justification. This list travels to the generator through a dedicated channel, so',
+    'prohibitions belong here and NOWHERE else in the entry.',
   ].join('\n');
 
   const lines: string[] = [];
@@ -189,11 +274,37 @@ function buildDescriptionPrompt(args: {
     lines.push(styleGuide.trim().slice(0, 1500));
     lines.push('');
   }
+  if (canonDigest && canonDigest.trim()) {
+    // Director's rule, 2026-07-30: whoever authors a canon entry must first READ
+    // the canon already written for this series. That day's blister-versus-
+    // porthole contradiction came from writing the interior entry without
+    // re-reading the vehicle entry. Feeding the digest here turns the rule from
+    // a habit the author must remember into an input it cannot miss — there is
+    // no path into this function that skips it.
+    lines.push('## Canon ALREADY WRITTEN for this series — you may not contradict it');
+    lines.push(
+      'Read this before writing. An entry that disagrees with existing canon is a defect, not a variation.',
+      'If your entry genuinely depends on one of these, name its slug on the `Refs:` line of your RENDER block.',
+      '',
+      canonDigest.trim(),
+      '',
+    );
+  }
   lines.push('## Required structure');
   lines.push(SECTION_GUIDANCE[section]);
   lines.push('');
   lines.push('Output the full markdown body now. No code fences. No preamble.');
   return { systemPrompt, userMessage: lines.join('\n') };
+}
+
+/** Opening line of any Bible image prompt — shared by the RENDER path and the fallback. */
+function sectionHeaderLine(seriesTitle: string, section: BibleSection): string {
+  const sectionWord =
+    section === 'character' ? 'character'
+      : section === 'location' ? 'location'
+      : section === 'object' ? 'prop'
+      : 'style sample frame';
+  return `Canonical ${sectionWord} reference for the animated series "${seriesTitle}".`;
 }
 
 function buildImagePrompt(args: {
@@ -203,13 +314,8 @@ function buildImagePrompt(args: {
   styleGuide: string | null;
 }): string {
   const { seriesTitle, section, description, styleGuide } = args;
-  const sectionWord =
-    section === 'character' ? 'character'
-      : section === 'location' ? 'location'
-      : section === 'object' ? 'prop'
-      : 'style sample frame';
   const lines = [
-    `Canonical ${sectionWord} reference for the animated series "${seriesTitle}".`,
+    sectionHeaderLine(seriesTitle, section),
     '',
     'Description:',
     description.slice(0, 2400),
@@ -218,48 +324,11 @@ function buildImagePrompt(args: {
     lines.push('', 'Series art direction (must follow):');
     lines.push(styleGuide.trim().slice(0, 1200));
   }
-  // Per-section closing instruction. Objects MUST be single-hero-view without
-  // characters/variants — the description may contain *Animation notes — state
-  // variations* and *Animation notes — character interactions* sections, those
-  // are TEXT canon only and must not be drawn. The primary object reference
-  // exists to be consumed as identity canon downstream; variants pollute it.
-  // See ~/.claude/skills/library-style-first-visual-generation-protocol.
-  if (section === 'object') {
-    lines.push(
-      '',
-      'Render exactly ONE clean hero view of ONE canonical object instance — front-facing or three-quarter view, neutral background, no text overlay, no logo, no watermark.',
-      'HARD CONSTRAINTS for this primary object reference (violation = unusable canon):',
-      '- no characters, no humans, no animals, no squirrels, no dogs, no hands, no arms, no silhouettes, no reflected characters in mirrors/glass.',
-      '- no multi-view sheet, no contact sheet, no turnaround grid, no rows/columns of variants, no scale chart, no exploded view.',
-      '- no state variations in the image (broken, damaged, hidden, glowing). Even if the Description mentions them as *Animation notes*, those are TEXT only — do NOT depict.',
-      '- no surrounding props, no scene context. Empty / neutral backdrop only.',
-      'If the Description includes sections titled "Animation notes — state variations" or "Animation notes — character interactions", treat them as text canon for downstream animation only. They are NOT permission to add characters or variants to this primary reference.',
-    );
-  } else if (section === 'character') {
-    lines.push(
-      '',
-      'Render as a clean reference image — front-facing or three-quarter view, neutral background, full-body, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
-    );
-  } else if (section === 'location') {
-    // "neutral natural lighting" STAYS — Director, 2026-07-29: «для канона
-    // нейтраль как точка отсчёта, не более». A canon plate is a reference card,
-    // not a frame; neutral light is what makes one plate reusable by every
-    // episode. What must NOT survive is the plate's authority over a scene: the
-    // location card enumerates the lighting states (SECTION_GUIDANCE above) and
-    // the shot prompt states the scene's light as an explicit override (SCENE
-    // LIGHT block in episode-reference-designer). Do not "fix" this line — the
-    // defect it was blamed for lives downstream, in the silence around it.
-    lines.push(
-      '',
-      'Render as a clean establishing reference of the empty location — no characters present, neutral natural lighting, no text overlay, no logo, no watermark. Studio canon — should be reusable across many shots.',
-    );
-  } else {
-    // style sample
-    lines.push(
-      '',
-      'Render as a clean style sample frame illustrating the aesthetic thesis. Neutral subject if applicable. No text overlay, no logo, no watermark.',
-    );
-  }
+  // Per-section closing instruction — POSITIVE framing only. Everything that
+  // used to be phrased here as a prohibition («no characters, no humans, no
+  // animals, no squirrels…») now lives in SECTION_NEGATIVE and rides the
+  // provider's dedicated negative channel. See the comment on SECTION_NEGATIVE.
+  lines.push('', SECTION_FRAMING[section]);
   return lines.join('\n');
 }
 
@@ -270,6 +339,8 @@ async function loadSeriesContext(
   series: SeriesRow;
   styleAnchor: StyleAnchorRow | null;
   generalIdea: string | null;
+  /** RENDER blocks of canon already written for this series — see the assembly below. */
+  canonDigest: string | null;
 }> {
   const { data: seriesRow, error: serr } = await supabase
     .from('series')
@@ -320,7 +391,55 @@ async function loadSeriesContext(
     generalIdea = row.content || row.description || null;
   }
 
-  return { series: seriesRow as SeriesRow, styleAnchor, generalIdea };
+  // Canon digest — the mechanism behind «read what is already written».
+  // Only RENDER blocks: they are short, they are the drawable axis, and they are
+  // exactly where «blister canopy» and «porthole rim» collide. Full prose would
+  // blow the context and re-import the human half we just separated out.
+  // LOCKED outranks APPROVED; DRAFT is excluded because a draft is not canon and
+  // anchoring to it manufactures false conflicts.
+  const canonQuery = await supabase
+    .from('assets')
+    .select('file_type,content,status')
+    .eq('series_id', seriesId)
+    .in('status', ['LOCKED', 'APPROVED'])
+    .like('file_type', 'SBL-%')
+    .order('status', { ascending: true });
+  let canonDigest: string | null = null;
+  if (!canonQuery.error && canonQuery.data) {
+    const rows = (canonQuery.data as Array<{ file_type: string; content: string | null }>).filter(
+      // Style and general idea already ride in their own dedicated blocks above.
+      (r) => !/^SBL-(style|general_idea)/.test(r.file_type),
+    );
+    const parts: string[] = [];
+    const omitted: string[] = [];
+    let budget = CANON_DIGEST_TOTAL_CHARS;
+    for (const r of rows) {
+      const label = r.file_type.replace(/^SBL-/, '');
+      const brief = parseRenderBrief(r.content);
+      // Entries written before the RENDER convention (all of SS-S15) degrade to
+      // their opening line rather than vanishing from the author's view.
+      const body = (brief?.render ?? (r.content ?? '').trim().split('\n').find((l) => l.trim()) ?? '')
+        .trim()
+        .slice(0, CANON_DIGEST_ENTRY_CHARS);
+      if (!body) continue;
+      const chunk = `### ${label}\n${body}`;
+      if (chunk.length > budget) {
+        // Named, not silently dropped: the author must know the entry exists.
+        omitted.push(label);
+        continue;
+      }
+      budget -= chunk.length;
+      parts.push(chunk);
+    }
+    if (omitted.length > 0) {
+      parts.push(
+        `### (not shown, ask before contradicting)\n${omitted.join(', ')}`,
+      );
+    }
+    canonDigest = parts.length > 0 ? parts.join('\n\n') : null;
+  }
+
+  return { series: seriesRow as SeriesRow, styleAnchor, generalIdea, canonDigest };
 }
 
 export async function runBibleAuthor(
@@ -367,6 +486,7 @@ export async function runBibleAuthor(
     seedDescription,
     generalIdea: ctx.generalIdea,
     styleGuide,
+    canonDigest: ctx.canonDigest,
   });
   let descriptionMd: string;
   let textCost = 0;
@@ -388,12 +508,16 @@ export async function runBibleAuthor(
   }
 
   // ── 2. First reference image via gpt-image-2 ────────────────────────────────
+  // `imagePrompt` is the pre-2026-07-30 shape — the whole entry handed to the
+  // renderer. It survives ONLY as the fallback for entries with no RENDER block
+  // (every SS-S15 entry), which is what keeps their behaviour byte-identical.
   const imagePrompt = buildImagePrompt({
     seriesTitle: ctx.series.title,
     section,
     description: descriptionMd,
     styleGuide,
   });
+  const imagePromptHeader = sectionHeaderLine(ctx.series.title, section);
   // Director 2026-05-20 — was hardcoded 1024×1024 (1:1), which did not suit
   // landscape shows. Section-aware default: characters/objects → square
   // (best for a single hero specimen on neutral backdrop), locations/style
@@ -402,17 +526,27 @@ export async function runBibleAuthor(
   // one later, callers can pass it through resolveBibleImageSize.
   const resolvedSize = resolveBibleImageSize({ section });
 
-  // A new canon entry is drawn ON the series' existing LOCKED canon — its hero
-  // and its style anchor ride along as references. Before 2026-07-30 this call
-  // was text-only, so entry N+1 could not see entry N and diverged from it by
-  // construction (the Sandy canon drift). Empty when the series has no LOCKED
-  // canon yet — the first entry, by definition — and then this falls through to
-  // plain text-to-image exactly as before. See lib/agents/series-canon-refs.ts.
-  const canonRefs = await loadSeriesCanonRefs(supabase as never, {
+  // One assembler for all three Bible image paths — positive prompt, negative
+  // channel, and the canon this entry declared it must agree with. See
+  // lib/agents/series-canon-refs.ts for why this lives in one place.
+  const assembled = await assembleBibleImageRequest(supabase as never, {
     seriesId,
-    excludeAssetId: assetId,
+    assetId,
+    content: descriptionMd,
+    fallbackPrompt: imagePrompt,
+    renderPrefix: `${imagePromptHeader}\n\n${SECTION_FRAMING[section]}`,
+    defaultNegative: SECTION_NEGATIVE[section],
   });
 
+  // A reference the author DECLARED is load-bearing. Drawing without it produces
+  // canon that is off-model by construction, and canon is the thing every later
+  // frame anchors on — so stop before spending, the way a conflicting source of
+  // truth is always handled here: escalate, never reconcile silently.
+  if (assembled.halt) {
+    throw new BibleAuthorError(assembled.halt);
+  }
+
+  const finalImagePrompt = assembled.prompt;
   let imgResult: {
     b64_data: string;
     cost_usd: number;
@@ -421,11 +555,12 @@ export async function runBibleAuthor(
     provider: string;
   };
   try {
-    if (canonRefs.length > 0) {
+    if (assembled.refs.length > 0) {
       const provider = getImageGenMultiProvider('openai-edits-multi');
       const multi = await provider.generate({
-        prompt: imagePrompt,
-        references: canonRefs,
+        prompt: finalImagePrompt,
+        references: assembled.refs,
+        negative: assembled.negative,
         size: resolvedSize,
         quality: 'medium',
       });
@@ -437,8 +572,16 @@ export async function runBibleAuthor(
         provider: multi.provider_id,
       };
     } else {
+      // No canon to anchor on yet — the series' first entry, by definition.
+      // gpt-image's text-to-image endpoint has no negative parameter, so the
+      // terms are appended the way the multi-ref provider does it: one closing
+      // clause, never up front where it would starve the description.
+      const withNegative =
+        assembled.negative.length > 0
+          ? `${finalImagePrompt}\n\nAvoid depicting: ${assembled.negative.join('; ')}.`
+          : finalImagePrompt;
       imgResult = await generateImageOpenAI({
-        prompt: imagePrompt,
+        prompt: withNegative,
         size: resolvedSize,
         quality: 'medium',
       });
@@ -470,10 +613,21 @@ export async function runBibleAuthor(
   // ── 3. Build metadata sub-docs ──────────────────────────────────────────────
   const promptEntry: ImagePromptHistoryEntry = {
     version: 1,
-    prompt: imagePrompt,
+    prompt: finalImagePrompt,
     source: 'EXEC-BIBLE-AUTHOR',
     at: nowIso,
     cost_usd: imgResult.cost_usd,
+    // Audit (2026-07-30): without these the question «did the model actually see
+    // the hero reference?» is unanswerable after the fact — it had to be
+    // re-derived by calling the loader by hand.
+    provider_id: imgResult.provider,
+    model: imgResult.provider,
+    references_used: assembled.refs.map((r) => ({
+      kind: r.kind,
+      bible_asset_id: r.bible_asset_id,
+    })),
+    references_dropped: assembled.dropped,
+    negative: assembled.negative,
     // Store browser-loadable url; absolutePath is OS-specific and breaks <img>.
     // seed-sandy-bible.ts uses the same convention.
     staging_path: persisted.browserUrl,
