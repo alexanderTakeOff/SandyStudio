@@ -3,7 +3,18 @@ Staging/
 
 # Film projects — each film is its own non-git project (Director's q2 decision 2026-04-25)
 # Studio repo = tools. Films = content. Do not couple.
-FILMS/
+FILMS/**
+# EXCEPT the design text. Директор 30.07: «чтобы не потерять стиль Глубины». Причина не
+# гигиена, а инцидент: 29.07 две сессии независимо построили один и тот же мир второго
+# жанра — FILMS/ невидим в git, и одна сессия физически не могла увидеть работу другой.
+# Медиа по-прежнему не коммитим. В git идёт только .md: замысел, канон, банки идей.
+!FILMS/**/
+!FILMS/**/*.md
+# ...но НЕ из кэшей и служебных папок: там лежат файлы с расширением .md, внутри которых
+# бинарь на полтора мегабайта (FILMS/_media_cache/SS-*-LOCKED.md). Расширение врёт, размер
+# нет — проверять по `git diff --cached --stat`, а не по имени.
+FILMS/_media_cache/
+FILMS/_inngest/
 
 # Claude Code worktrees from parallel sessions
 .claude/worktrees/
