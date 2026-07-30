@@ -39,6 +39,12 @@ export const dynamic = 'force-dynamic';
 const Body = z
   .object({
     directorConfirm: z.boolean().optional(),
+    /**
+     * Director's corrections to an article that already exists. Their presence
+     * turns this call from «write it» into «revise it»: the current article
+     * becomes the untouchable base and these notes the delta on top.
+     */
+    notes: z.string().trim().min(1).max(4000).optional(),
   })
   .optional();
 
@@ -50,6 +56,7 @@ interface AssetRow {
   file_type: string;
   status: string;
   description: string | null;
+  content: string | null;
   metadata: AssetMetadataDoc | null;
 }
 
@@ -90,9 +97,18 @@ export const POST = withApiHandler(async (req, ctx) => {
   if (asset.status === 'LOCKED') {
     throw new ValidationError('Asset is LOCKED — cannot enrich');
   }
-  if (asset.metadata?.image_prompt && asset.metadata.image_prompt.history.length > 0) {
+  // The guard is against an ACCIDENTAL second enrich — one that would silently
+  // pay twice and hand back a different article and a different picture. It is
+  // not against a deliberate revision: `notes` says the Director looked at what
+  // exists and named what to change, so re-running is the point, not the
+  // accident. LOCKED still refuses above, in every case.
+  if (
+    !body.notes &&
+    asset.metadata?.image_prompt &&
+    asset.metadata.image_prompt.history.length > 0
+  ) {
     throw new ValidationError(
-      'Asset already enriched — use /regenerate-image to reroll the image',
+      'Asset already enriched — use /regenerate-image to reroll the image, or pass notes to revise the article',
     );
   }
 
@@ -141,6 +157,9 @@ export const POST = withApiHandler(async (req, ctx) => {
         seedDescription: asset.description ?? '',
         filename: asset.filename,
         source: 'manual_add',
+        // Revision inputs. Both empty → the writer behaves exactly as before.
+        notes: body.notes ?? null,
+        baseContent: body.notes ? (asset.content ?? null) : null,
       });
       // Direct Bible-enrich spend → budget_log (series-level, no episode).
       // Best-effort; money already spent. jobId=null; enforceCeiling=false.

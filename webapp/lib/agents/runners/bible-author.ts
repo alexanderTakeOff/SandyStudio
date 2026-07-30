@@ -63,6 +63,14 @@ export interface RunBibleAuthorArgs {
   filename: string;
   /** Source bucket for provenance. */
   source: 'canon_extension_approval' | 'manual_add' | 'pipeline';
+  /**
+   * Director's corrections to an article that already exists. Their presence
+   * switches the writer from «compose» to «revise»: `baseContent` becomes the
+   * untouchable base and these the delta on top of it.
+   */
+  notes?: string | null;
+  /** The current article, supplied only alongside `notes`. */
+  baseContent?: string | null;
 }
 
 export interface RunBibleAuthorResult {
@@ -215,7 +223,7 @@ const SECTION_NEGATIVE: Record<BibleSection, readonly string[]> = {
   style: [],
 };
 
-function buildDescriptionPrompt(args: {
+export function buildDescriptionPrompt(args: {
   seriesTitle: string;
   section: BibleSection;
   slug: string;
@@ -224,8 +232,15 @@ function buildDescriptionPrompt(args: {
   styleGuide: string | null;
   /** RENDER blocks of canon already written for this series — must not be contradicted. */
   canonDigest?: string | null;
+  /** The article as it stands today. Present only on a revision. */
+  baseContent?: string | null;
+  /** Director's corrections to that article. Present only on a revision. */
+  notes?: string | null;
 }): { systemPrompt: string; userMessage: string } {
   const { seriesTitle, section, slug, seedDescription, generalIdea, styleGuide, canonDigest } = args;
+  const baseContent = args.baseContent?.trim() ?? '';
+  const notes = args.notes?.trim() ?? '';
+  const isRevision = Boolean(notes && baseContent);
   const systemPrompt = [
     `You are EXEC-BIBLE-AUTHOR, a Pixar-grade story-bible writer for the animated`,
     `series "${seriesTitle}". You produce concise, production-ready ${SECTION_LABEL[section]}`,
@@ -272,12 +287,34 @@ function buildDescriptionPrompt(args: {
     'A markdown list of short terms that must NOT appear. Terms only — no sentences, no',
     'justification. This list travels to the generator through a dedicated channel, so',
     'prohibitions belong here and NOWHERE else in the entry.',
+    ...(isRevision
+      ? [
+          '',
+          // 2026-07-30. The same shape that fixed the shot plan being replaced by
+          // a critic's 2000-character retelling: the base is untouchable and the
+          // note is a DELTA on top of it. A reviser that re-words what nobody
+          // complained about silently discards decisions made earlier for reasons
+          // the corrections do not restate.
+          'REVISION. An article for this entry already exists and is given below as BASE.',
+          'The BASE is authoritative and largely correct. Reproduce it IN FULL — every section,',
+          'in the same order — changing ONLY what the CORRECTIONS name. Do not re-word untouched',
+          'sentences, do not drop or merge sections, do not add ideas of your own. Where a',
+          'correction contradicts the BASE, the correction wins and the surrounding text is',
+          'adjusted just enough to stay consistent with it.',
+        ]
+      : []),
   ].join('\n');
 
   const lines: string[] = [];
-  lines.push(`Write the canonical Bible entry for ${SECTION_LABEL[section]}: **${slug}**.`);
+  lines.push(
+    isRevision
+      ? `Revise the canonical Bible entry for ${SECTION_LABEL[section]}: **${slug}**.`
+      : `Write the canonical Bible entry for ${SECTION_LABEL[section]}: **${slug}**.`,
+  );
   lines.push('');
-  if (seedDescription.trim()) {
+  // On a revision the seed is the stale one-line summary derived from the very
+  // article being revised — feeding it back adds noise and an older truth.
+  if (!isRevision && seedDescription.trim()) {
     lines.push('## Seed (from Director / proposing agent)');
     lines.push(seedDescription.trim());
     lines.push('');
@@ -311,6 +348,16 @@ function buildDescriptionPrompt(args: {
   lines.push('## Required structure');
   lines.push(SECTION_GUIDANCE[section]);
   lines.push('');
+  if (isRevision) {
+    lines.push('## BASE — the article as it stands. Reproduce it; do not re-invent it.');
+    lines.push(baseContent);
+    lines.push('');
+    // Corrections go LAST, after everything else, because the tail of a prompt
+    // is where an instruction is least likely to be diluted.
+    lines.push('## CORRECTIONS from the Director — apply exactly these, and nothing beyond them.');
+    lines.push(notes);
+    lines.push('');
+  }
   lines.push('Output the full markdown body now. No code fences. No preamble.');
   return { systemPrompt, userMessage: lines.join('\n') };
 }
@@ -467,6 +514,9 @@ export async function runBibleAuthor(
   args: RunBibleAuthorArgs,
 ): Promise<RunBibleAuthorResult> {
   const { supabase, assetId, seriesId, section, slug, seedDescription, filename, source } = args;
+  const notes = args.notes?.trim() ?? '';
+  const baseContent = args.baseContent?.trim() ?? '';
+  const isRevision = Boolean(notes && baseContent);
 
   // Idempotency check — if metadata.image_prompt already has history entries,
   // do not re-enrich. This protects against double approval / retries.
@@ -486,7 +536,10 @@ export async function runBibleAuthor(
     metadata: AssetMetadataDoc | null;
   };
   const existingMeta = (existingRow.metadata ?? {}) as AssetMetadataDoc;
-  if (existingMeta.image_prompt && existingMeta.image_prompt.history.length > 0) {
+  // A revision is the deliberate case this guard was never aimed at: the caller
+  // has read what exists and named what to change. Only the accidental repeat
+  // is refused.
+  if (!isRevision && existingMeta.image_prompt && existingMeta.image_prompt.history.length > 0) {
     throw new BibleAuthorError(`asset ${assetId} already enriched (image_prompt v${existingMeta.image_prompt.current_version})`);
   }
   if (existingRow.status === 'LOCKED') {
@@ -508,6 +561,8 @@ export async function runBibleAuthor(
     generalIdea: ctx.generalIdea,
     styleGuide,
     canonDigest: ctx.canonDigest,
+    baseContent: isRevision ? baseContent : null,
+    notes: isRevision ? notes : null,
   });
   let descriptionMd: string;
   let textCost = 0;
@@ -520,8 +575,11 @@ export async function runBibleAuthor(
       // required at the end, the first entry written under the new contract ran
       // out mid-sentence and never reached NEGATIVE — the list came back empty
       // and only the section defaults applied. The ceiling has to clear the
-      // whole document, sections included.
-      maxOutputTokens: 2000,
+      // whole document, sections included. A revision must additionally
+      // reproduce the entire base article before it can change anything in it,
+      // so it needs roughly double — truncation there would silently amputate
+      // the sections the corrections never mentioned.
+      maxOutputTokens: isRevision ? 4000 : 2000,
       expectsJson: false,
     });
     descriptionMd = text.markdown.trim();

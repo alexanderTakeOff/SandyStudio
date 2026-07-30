@@ -74,6 +74,23 @@ interface CanonRow {
   drive_file_id: string | null;
 }
 
+/**
+ * Does this canon row answer to the slug an author declared?
+ *
+ * Accepts BOTH the bare slug (`bathyscaphe_turnaround`) and the
+ * section-qualified form (`character_bathyscaphe_turnaround`). The canon digest
+ * labels entries with the section prefix, so the author naturally writes that
+ * form back — the first entry to declare a reference did exactly this and
+ * HALTed. Refusing it would be pedantry: both strings name one entry
+ * unambiguously.
+ */
+function matchesSlug(row: CanonRow, slug: string): boolean {
+  return (
+    bibleSlug(row.file_type) === slug ||
+    row.file_type.replace(/^SBL-/, '').toLowerCase() === slug
+  );
+}
+
 /** Reference kind implied by a Bible file_type. */
 function kindFor(fileType: string): MultiImageRef['kind'] {
   if (fileType.startsWith('SBL-style_')) return 'style';
@@ -100,7 +117,11 @@ export async function loadSeriesCanonRefs(
   supabase: SupabaseClient<never>,
   args: {
     seriesId: string;
-    /** Never reference the asset being generated — it would anchor on the version being replaced. */
+    /**
+     * Never reference the asset being generated — it would anchor on the version
+     * being replaced. Lifted only when the entry declares ITSELF on its `Refs:`
+     * line, which is an explicit «edit this frame», not an accident.
+     */
     excludeAssetId?: string | null;
     /** Canon slugs declared by the entry's author. */
     refSlugs?: readonly string[];
@@ -126,22 +147,37 @@ export async function loadSeriesCanonRefs(
   const usable = canon.filter((c) => c.id !== args.excludeAssetId);
 
   const declared = (args.refSlugs ?? []).slice(0, MAX_CANON_REFS);
+
+  // The entry's own current image is excluded by default (see `usable` above):
+  // a re-roll that anchors on the version it is replacing compounds its own
+  // drift. But an author who names the entry ITSELF on the `Refs:` line is
+  // saying something different and deliberate — «the base is the frame we
+  // already have; change only what the text now says». Declared beats assumed
+  // here as it does everywhere else in this module, so for that one row the
+  // exclusion lifts, and the LOCKED/APPROVED filter lifts with it: the frame
+  // being edited is by definition this entry's own draft.
+  //
+  // Director 2026-07-30, on the S20 interior: «эту картинку можно взять за
+  // образец, убрать лишнее и сдвинуть джойстик, компоновку оставить».
+  // Composition survives only when it arrives as pixels — words re-derive it.
+  let selfRow: CanonRow | null = null;
+  if (args.excludeAssetId && declared.length > 0) {
+    const { data: selfData } = await supabase
+      .from('assets')
+      .select('id,filename,file_type,status,staging_path,drive_file_id')
+      .eq('id', args.excludeAssetId)
+      .maybeSingle();
+    const row = (selfData ?? null) as unknown as CanonRow | null;
+    if (row && declared.some((slug) => matchesSlug(row, slug))) selfRow = row;
+  }
+
   const chosen: CanonRow[] = [];
   const missingDeclared: string[] = [];
 
   for (const slug of declared) {
-    // Accept BOTH the bare slug (`bathyscaphe_turnaround`) and the
-    // section-qualified form (`character_bathyscaphe_turnaround`). The canon
-    // digest labels entries with the section prefix, so the author naturally
-    // writes that form back — the first entry to declare a reference did
-    // exactly this and HALTed. Refusing it would be pedantry: both strings
-    // name one entry unambiguously.
     // LOCKED first — `usable` is already ordered, so find() takes the best match.
-    const row = usable.find(
-      (c) =>
-        bibleSlug(c.file_type) === slug ||
-        c.file_type.replace(/^SBL-/, '').toLowerCase() === slug,
-    );
+    const row =
+      selfRow && matchesSlug(selfRow, slug) ? selfRow : usable.find((c) => matchesSlug(c, slug));
     if (row) chosen.push(row);
     else missingDeclared.push(slug);
   }

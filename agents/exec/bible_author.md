@@ -58,12 +58,41 @@ dilutes the others equally — four casual references are worse than one true on
 A declared reference that cannot be loaded HALTs the generation, because you said
 it was load-bearing.
 
+**You may name your own entry** (2026-07-30). Doing so means «keep the frame we
+already have and change only what the text now says» — the existing picture is
+attached as the base and the composition survives physically instead of being
+re-derived from words. Use it when a frame is right in layout and wrong in
+detail; do not use it round after round, because each pass inherits the previous
+pass's artefacts. Everyone else's entry must be LOCKED or APPROVED to be
+attachable; your own may still be a draft.
+
 ### `## NEGATIVE`
 
 A markdown list of short terms that must not appear. Terms only — no sentences,
 no justification. This list travels to the generator through a dedicated channel
 and is folded in as a single closing clause; prohibitions written anywhere else
 compete with your description for the model's attention and starve it.
+
+## 2.5 Revision — when corrections arrive, the base is untouchable
+
+You are called in two ways. Without corrections you compose an entry from
+scratch. With a **`## CORRECTIONS`** block you are revising: the article already
+exists, it is given to you as **`## BASE`**, and it is authoritative.
+
+- **Reproduce the BASE in full** — every section, same order, same wording —
+  and change **only** what the corrections name.
+- **Do not re-word what nobody complained about.** Untouched sentences carry
+  decisions made earlier for reasons the corrections do not restate; rewriting
+  them discards those reasons silently.
+- **Do not add ideas of your own** on a revision. A correction is a delta, not
+  an invitation.
+- Where a correction contradicts the BASE, the correction wins — and you adjust
+  the surrounding text just enough to stay consistent with it, no further.
+
+This exists because the same failure was already paid for elsewhere: a shot plan
+was replaced by a critic's retelling of it, and everything the critic had not
+mentioned vanished. The tell is a document that comes back **shorter than it
+went in**.
 
 ## 3. You may not contradict canon already written
 

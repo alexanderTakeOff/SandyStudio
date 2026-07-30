@@ -168,22 +168,29 @@ export const listSeriesBibles: Tool<ListSeriesBiblesArgs> = {
 
 interface EnrichBibleArgs {
   assetId: string;
+  notes?: string;
 }
 
 export const enrichBible: Tool<EnrichBibleArgs> = {
   name: 'enrichBible',
   description:
-    "Trigger EXEC-BIBLE-AUTHOR to enrich a DRAFT Bible asset: Sonnet generates a richer description + gpt-image-1 produces a reference image. Use after listSeriesBibles to pick which entry to enrich. Verbal approval required.",
+    "Trigger EXEC-BIBLE-AUTHOR on a Bible asset. Without `notes` the writer composes the entry from scratch (DRAFT only). With `notes` it REVISES the entry that already exists: the current article stays the base and the notes are applied on top — use this whenever the Director asks to change, fix or correct canon text rather than replace it. Verbal approval required.",
   mutating: true,
   schema: {
     type: 'function',
     function: {
       name: 'enrichBible',
-      description: 'Run the Bible-Author agent on a DRAFT Bible asset. Verbal approval required.',
+      description:
+        'Run the Bible-Author agent on a Bible asset — compose from scratch, or revise the existing article when `notes` are given. Verbal approval required.',
       parameters: {
         type: 'object',
         properties: {
           assetId: { type: 'string', description: 'Bible asset UUID (SBL-*).' },
+          notes: {
+            type: 'string',
+            description:
+              "The Director's corrections, verbatim. Pass them whenever an article already exists and only needs changing — the writer keeps everything else as it stands. Omit to compose a new article from scratch.",
+          },
         },
         required: ['assetId'],
         additionalProperties: false,
@@ -193,7 +200,8 @@ export const enrichBible: Tool<EnrichBibleArgs> = {
   parse(raw) {
     const obj = safeParse(raw);
     if (typeof obj.assetId !== 'string' || !obj.assetId) throw new Error('assetId is required');
-    return { assetId: obj.assetId };
+    const notes = typeof obj.notes === 'string' && obj.notes.trim() ? obj.notes.trim() : undefined;
+    return { assetId: obj.assetId, ...(notes ? { notes } : {}) };
   },
   async execute(args, ctx): Promise<ToolResult> {
     const approval = gateMutation('enrichBible', {
@@ -211,7 +219,7 @@ export const enrichBible: Tool<EnrichBibleArgs> = {
           'Content-Type': 'application/json',
           ...authHeaders(ctx),
         },
-        body: JSON.stringify({ directorConfirm: true }),
+        body: JSON.stringify({ directorConfirm: true, ...(args.notes ? { notes: args.notes } : {}) }),
       },
     );
     let body: unknown = null;
