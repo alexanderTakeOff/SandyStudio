@@ -422,14 +422,19 @@ rollback-to-dev: memory `inngest_selfhost_setup.md`. Do NOT restart mid-run (§7
 - **Human, session-independent (all day, survives restarts):** double-click the
   **`SandyStudio Stack` shortcut on the Desktop** → `start-stack.cmd` (add `-Build`
   after code changes). Runs in its own windows, independent of any Claude session.
-- **Agent in a headless tool call:** do **NOT** rely on `start-stack.ps1` foreground —
-  its `Start-Process` windows are in the tool's process tree and get **reaped when the
-  tool call returns** (servers die). Instead launch the **same start-mode commands**
-  (`npm run start` + `inngest start` durable — never dev) as **persistent
-  `run_in_background` jobs**, then poll health + `PUT /api/inngest`. These survive across
-  turns for the session's lifetime. (`start-stack.ps1 -Build` is still the way to
-  *rebuild* after code changes — just re-launch the servers as background jobs, not via
-  the desktop launcher's foreground path.)
+- **Agent in a headless tool call — USE THE ROOT LAUNCHERS (Director, 2026-07-31):**
+  - `start-stack.cmd` — plain start, no rebuild.
+  - `start-stack-build.cmd` — rebuild first, then start. Use after code changes.
+
+  Both shell out to `start-stack.ps1` with `-ExecutionPolicy Bypass`, and its
+  `Start-Process` windows detach from the tool's process tree, so the servers keep
+  running after the call returns. `stop-stack.cmd` is the matching stop.
+
+  Do **not** hand-roll the two servers as `run_in_background` jobs. That path works
+  by luck: the harness kills the wrapper job (three "killed" notifications on
+  2026-07-31), and whether the servers survive is not something you control. It also
+  means every rebuild reinvents the launcher's ordering — Inngest first on stop,
+  durable SQLite parked, `PUT /api/inngest` after — which the script already does.
 
 ---
 

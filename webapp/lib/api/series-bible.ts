@@ -125,6 +125,25 @@ export function bibleSlug(fileType: string): string | null {
   return bibleSlugFromFileType(fileType)?.slug ?? null;
 }
 
+/**
+ * BOTH names a Bible entry answers to, lowercased: the SHORT slug
+ * (`bathyscaphe_turnaround`) and the SECTIONED one (`character_bathyscaphe_turnaround`).
+ *
+ * Every surface that SHOWS canon — `listSeriesBibles`, the canon digest handed to the
+ * Bible author, the Prod Assistant's own listing — names it sectioned. Every function
+ * that CHECKED canon demanded the short form only, so a caller who copied the name it
+ * was just shown got "no LOCKED canon" about canon that is locked (D14, 2026-07-31 —
+ * episode casting refused twice; the same defect had already been fixed once on the
+ * author's `Refs:` line, in a private copy).
+ *
+ * Empty for a non-SBL file_type. One place, both forms — do not re-derive either.
+ */
+export function bibleSlugForms(fileType: string): string[] {
+  const parsed = bibleSlugFromFileType(fileType);
+  if (!parsed || !parsed.slug) return [];
+  return [parsed.slug, `${parsed.section}_${parsed.slug}`.toLowerCase()];
+}
+
 // ── The render brief: what the IMAGE MODEL reads, split from what HUMANS read ─
 //
 // A Bible entry has two readers and until 2026-07-30 they shared one field. The
@@ -552,8 +571,7 @@ export async function validateCanonExists(
 
   const have = new Set<string>();
   for (const row of (data ?? []) as Array<{ file_type: string }>) {
-    const slug = bibleSlug(row.file_type);
-    if (slug) have.add(slug.toLowerCase());
+    for (const form of bibleSlugForms(row.file_type)) have.add(form);
   }
 
   const missing = want.filter((s) => !have.has(s));
