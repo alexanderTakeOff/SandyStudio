@@ -25,7 +25,64 @@ const ANALYTICS_SINCE = '2026-01-01';
 
 // Dynamic imports: tsx's ESM interop mis-links static named imports from sibling
 // .ts modules ("does not provide an export named …"); dynamic import resolves fine.
+// --history <videoId> [hours]: READ-ONLY replay of the 15-minute archive that the
+// Inngest snapshot job already writes to `channel_snapshots`. Added 2026-08-01
+// after the daily brain issued a false verdict ("the views axis lags a day") on a
+// video that had in fact been unpublished and relaunched mid-day: the daily JSON
+// pair cannot see a transition that opens AND closes between two snapshots, while
+// the 15-minute archive records it. No new table, no new collector — one read mode
+// on the handle that already owns this data.
+async function history(videoId: string, hours: number) {
+  const { createClient } = await import('@supabase/supabase-js');
+  const sb = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+  const since = new Date(Date.now() - hours * 3600_000).toISOString();
+  const { data, error } = await sb
+    .from('channel_snapshots')
+    .select('captured_at, views, privacy')
+    .eq('video_id', videoId)
+    .gte('captured_at', since)
+    .order('captured_at', { ascending: true });
+  if (error) throw new Error(`history read failed: ${error.message}`);
+  const rows = data ?? [];
+  if (!rows.length) {
+    console.log(`no snapshots for ${videoId} in the last ${hours}h`);
+    return;
+  }
+  let prevPrivacy: string | null = null;
+  let lastWentPublic: string | null = null;
+  console.log(`video ${videoId} — ${rows.length} snapshots over ${hours}h`);
+  for (const r of rows) {
+    if (r.privacy !== prevPrivacy) {
+      console.log(`  [${r.captured_at.slice(0, 16)}] privacy: ${prevPrivacy ?? '—'} -> ${r.privacy}`);
+      if (r.privacy === 'public') lastWentPublic = r.captured_at;
+      prevPrivacy = r.privacy;
+    }
+  }
+  // Hourly curve counted from the LAST transition into public — that, not
+  // publishedAt, is when this video's current run at the feed actually started.
+  const t0 = lastWentPublic ? new Date(lastWentPublic).getTime() : new Date(rows[0].captured_at).getTime();
+  console.log(`  clock starts at ${new Date(t0).toISOString().slice(0, 16)} (last transition into public)`);
+  let nextMark = 0;
+  for (const r of rows) {
+    const h = (new Date(r.captured_at).getTime() - t0) / 3600_000;
+    if (h < -0.01 || h < nextMark) continue;
+    console.log(`  +${h.toFixed(1).padStart(5)}h  views=${String(r.views).padStart(6)}  ${r.privacy}`);
+    nextMark = Math.floor(h) + 1;
+  }
+}
+
 async function main() {
+  const argv = process.argv.slice(2);
+  const hi = argv.indexOf('--history');
+  if (hi !== -1) {
+    const videoId = argv[hi + 1];
+    if (!videoId) throw new Error('--history needs a videoId');
+    await history(videoId, Number(argv[hi + 2]) || 48);
+    return;
+  }
   const { createClient } = await import('@supabase/supabase-js');
   const { readReachMetricsFromArchive } = await import('../lib/agents/providers/youtube-reporting.ts');
   const { getChannelStatistics, getVideoStatistics, getVideoAnalytics, isCompletionReadable } =

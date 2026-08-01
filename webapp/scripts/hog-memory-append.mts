@@ -16,6 +16,16 @@
 //   --text   human-readable statement (goes to payload.text)
 //   --json   extra payload fields as a JSON object (merged over text/slug)
 //
+// Read mode (added 2026-07-31): the daily brain used to WRITE the journal and
+// never read it, so yesterday's decision — and the Director's answer to it —
+// could not reach the next morning's run. One flag closes that loop:
+//
+//   node --env-file=.env.local --import tsx scripts/hog-memory-append.mts \
+//     --key PRAGMATIC --list 20
+//
+//   --list [N]  print the last N journal rows (default 20) as text and exit.
+//               Nothing else is required; no row is written.
+//
 // daily_advice / rollup kinds are cron-owned — this pen only writes the
 // journal kinds, so a prompt mistake can't forge advisor output.
 
@@ -35,9 +45,11 @@ async function main() {
   const unlock = arg('unlock');
   const text = arg('text');
   const jsonRaw = arg('json');
+  const listing = process.argv.includes('--list');
 
-  if (!key || !kind || !KINDS.includes(kind)) {
-    throw new Error(`--key and --kind (${KINDS.join('|')}) are required`);
+  if (!key) throw new Error('--key is required');
+  if (!listing && (!kind || !KINDS.includes(kind))) {
+    throw new Error(`--kind (${KINDS.join('|')}) is required unless --list`);
   }
   if (status && !STATUSES.includes(status)) {
     throw new Error(`--status must be one of ${STATUSES.join('|')}`);
@@ -71,6 +83,33 @@ async function main() {
     .maybeSingle();
   if (chErr) throw new Error(`channels read failed: ${chErr.message}`);
   if (!ch) throw new Error(`No channel with credential_key='${key}'`);
+
+  if (listing) {
+    const limit = Number(arg('list') ?? 20) || 20;
+    const { data: rows, error: readErr } = await sb
+      .from('hog_memory')
+      .select('kind, status, unlock_date, created_at, payload')
+      .eq('channel_id', ch.id)
+      .in('kind', KINDS)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (readErr) throw new Error(`hog_memory read failed: ${readErr.message}`);
+    console.log(`[hog-memory] ${ch.name} — last ${rows?.length ?? 0} journal rows (newest first)`);
+    for (const r of rows ?? []) {
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      const head = [
+        r.created_at.slice(0, 10),
+        r.kind,
+        typeof p.slug === 'string' ? p.slug : '—',
+        r.status ?? '—',
+        r.unlock_date ? `unlock ${r.unlock_date}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      console.log(`\n${head}\n  ${typeof p.text === 'string' ? p.text : ''}`);
+    }
+    return;
+  }
 
   const payload: Record<string, unknown> = { ...extra };
   if (slug) payload.slug = slug;
