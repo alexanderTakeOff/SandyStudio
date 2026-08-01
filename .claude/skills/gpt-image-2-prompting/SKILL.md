@@ -206,3 +206,38 @@ instead of a 2:3 portrait the video stage has to re-frame. Not changed here; fla
   free-form size bounds, text-placement hedge.
 - `webapp/lib/agents/providers/openai-edits-multi.ts:33,99` — our model id and the
   absent negative-prompt parameter, verified in our own call path.
+
+## Identity ceiling — four recognisable characters per frame (2026-08-01)
+
+**The model locks at most FOUR identities.** A fifth attached identity reference is
+not merely weaker — the fifth character comes back **invented from the prompt's
+words**, wearing the right idea and the wrong canon.
+
+Measured on SS-S15-E35, three runs of the same shot, one variable each:
+
+| Refs | Order | Fifth character |
+|---|---|---|
+| 5 identities | style → location → identities | off-canon |
+| 5 identities | location → identities → style | off-canon, unchanged |
+| 4 identities | location → identities → style | four lock; the model **volunteers a fifth** on its own |
+
+**So the ceiling is about the count, not the ordering**, and it sits far below the
+provider's own limits: `MAX_REFS = 16` in the adapter, and `episode-references.ts`
+calls 6–7 refs «comfortably under the cap». Neither number governs *recognisability*.
+
+**Consequences for whoever plans the frames:**
+
+- A scene needing more than four named characters is **split across shots**, not
+  compressed into one. Chain them by overlap — each shot shares a character with
+  the next — and the group still reads as continuous.
+- The count that matters is **identities**, not references: location and style refs
+  do not consume the budget.
+- Stating «exactly four characters and no others» does **not** stop the model adding
+  a fifth silhouette to fill a bench. Crop the frame so there is no room for one.
+- Accept a multi-character frame **name by name against each canon plate**. Judging
+  the frame «as a whole» is what let an off-canon character through in the first
+  place.
+
+**Related, and separate:** the ref-ORDER contract (TD-53, `episode-references.ts`)
+still holds — location first as the canonical layout, then identities, then style.
+It just does not buy a fifth identity.

@@ -115,6 +115,15 @@
             "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/session-end-memo-check.cjs"]
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/run-algorithm-growth-guard.cjs"]
+          }
+        ]
       }
     ]
   }
