@@ -132,6 +132,57 @@ try {
     if (!blocker) blocker = { ...w, lines };
   }
 
+  // ——— Third check: a reshot frame must carry a rewritten acceptance line ———
+  //
+  // WHY (2026-08-04, E36): the Director reversed the ending, I wrote a new frame
+  // prompt and did NOT rewrite that frame's acceptance block. The old lines said
+  // "walks out of frame", the new shot did not — so there was nothing left to
+  // check against, and a legless character shipped. The rule existed in the
+  // journal two hours earlier and was applied from memory, which is exactly the
+  // failure mode this file was created to remove.
+  //
+  // Mechanism: if any prompt under FILMS/_run/**/prompts is NEWER than the run's
+  // expectations document, the spec is behind the material. Cheap, exact, and it
+  // cannot be forgotten.
+  try {
+    const runsRoot = path.join(ROOT, 'FILMS', '_run');
+    let newestPrompt = 0;
+    let newestName = '';
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.txt$/.test(e.name)) {
+          const m = fs.statSync(p).mtimeMs;
+          if (m > newestPrompt) { newestPrompt = m; newestName = e.name; }
+        }
+      }
+    };
+    if (fs.existsSync(runsRoot)) walk(runsRoot);
+
+    let newestSpec = 0;
+    for (const name of fs.readdirSync(PLANS)) {
+      if (!/expectations.*\.md$/.test(name)) continue;
+      const m = fs.statSync(path.join(PLANS, name)).mtimeMs;
+      if (m > newestSpec) newestSpec = m;
+    }
+
+    if (newestPrompt && newestPrompt > newestSpec + 60_000) {
+      writeState(next);
+      console.error(
+        `[Hook] СТОП ЗАБЛОКИРОВАН. Промпт «${newestName}» новее листа приёмки на ` +
+          `${Math.round((newestPrompt - newestSpec) / 60000)} мин.`,
+      );
+      console.error(
+        '[Hook] Переснял кадр — перепиши его строки «приму, если». Старая строка на новом ' +
+          'кадре не проверяет ничего, и брак проходит молча (E36: герой без ног).',
+      );
+      process.exit(2);
+    }
+  } catch (_) {
+    /* a guard that cannot read the tree must not break the turn */
+  }
+
   writeState(next);
 
   if (blocker) {
