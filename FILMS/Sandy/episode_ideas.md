@@ -6,7 +6,12 @@
 > `~/.claude/projects/C--SandyStudio/memory/` → see MEMORY.md index.
 >
 > Status legend: 💡 idea · ✅ chosen for an episode · 🚫 parked
-> Last updated: 2026-07-04 (Director, merged `Sandy_Studio_Episode_Themes_Catalog.md` v0.1).
+> Last updated: 2026-08-02 (метод рождения тем — досье `docs/topics/episode-themes.md`).
+>
+> **Как рождается новая тема.** Не выдумывать сюжет — собирать комбинацию по осям:
+> `series-episode-theme-generation` порождает, `series-episode-theme-selection` судит.
+> Состояние темы, принятое и отвергнутое → `docs/topics/episode-themes.md`.
+> Внешний метод-источник → `docs/analysis/theme-architecture-method-2026-08-02.md`.
 
 ---
 
