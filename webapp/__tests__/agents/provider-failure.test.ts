@@ -3,6 +3,8 @@ import { describe, it, expect } from 'vitest';
 import {
   isPersistentBillingFailure,
   classifyProviderFailure,
+  isPlanAnchorStaleFailure,
+  isTerminalAgentFailure,
 } from '@/lib/agents/provider-failure';
 
 describe('provider-failure — isPersistentBillingFailure', () => {
@@ -63,5 +65,33 @@ describe('provider-failure — classifyProviderFailure', () => {
   it('classifies everything else as transient', () => {
     expect(classifyProviderFailure('Gate failed for EXEC-SB')).toBe('transient');
     expect(classifyProviderFailure('schema mismatch')).toBe('transient');
+  });
+});
+
+describe('provider-failure — isPlanAnchorStaleFailure', () => {
+  it('detects the guard message as the runner throws it (S20-E01 shape)', () => {
+    const msg =
+      'EXEC-EREF: PLAN_ANCHOR_STALE: Plan 9039b9dd-51a2-4c2a-8ffb-2a74b074b6cd (shot S20-E01-SH06) ' +
+      'references continuity anchors that are no longer current:\n' +
+      '  - spatial_same_location: plan anchor 0317947e (anchor_no_longer_approved)';
+    expect(isPlanAnchorStaleFailure(msg)).toBe(true);
+  });
+
+  it('does NOT flag an unrelated failure', () => {
+    expect(isPlanAnchorStaleFailure('fal status poll failed (503)')).toBe(false);
+    expect(isPlanAnchorStaleFailure(null)).toBe(false);
+    expect(isPlanAnchorStaleFailure('')).toBe(false);
+  });
+});
+
+describe('provider-failure — isTerminalAgentFailure', () => {
+  it('covers BOTH walls: billing and stale anchor', () => {
+    expect(isTerminalAgentFailure('insufficient_quota')).toBe(true);
+    expect(isTerminalAgentFailure('EXEC-EREF: PLAN_ANCHOR_STALE: Plan … (shot SH06)')).toBe(true);
+  });
+
+  it('leaves a recoverable failure retryable', () => {
+    expect(isTerminalAgentFailure('ECONNRESET socket hang up')).toBe(false);
+    expect(isTerminalAgentFailure('fal request polling timed out after 720s')).toBe(false);
   });
 });

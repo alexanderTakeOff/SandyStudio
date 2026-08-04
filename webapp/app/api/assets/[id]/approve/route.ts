@@ -51,6 +51,7 @@ import {
   type DemotedSibling,
   type AssetForSlot,
 } from '@/lib/api/single-approved';
+import { findPlansAnchoredTo, type AnchoredPlan } from '@/lib/api/anchor-usage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -658,9 +659,58 @@ export const POST = withApiHandler(async (req, ctx) => {
     }
   }
 
+  // ── Who did this approval just orphan? (2026-07-31) ──────────────────────
+  // Approving a different version of a reference frame demotes the previous one,
+  // and every Plan anchored to that previous frame is now stale. Nothing used to
+  // say so: on S20-E01 the Director learned it from five failed renders and a
+  // round of paid re-generation. Report it in the response AND in the feed, so the
+  // consequence arrives with the action that caused it.
+  const stalePlans: AnchoredPlan[] = [];
+  if (
+    decision === 'APPROVE' &&
+    demotedSiblings.length > 0 &&
+    asset.episode_id &&
+    typeof asset.file_type === 'string' &&
+    asset.file_type.startsWith('IMG-episode_ref')
+  ) {
+    try {
+      for (const sib of demotedSiblings) {
+        stalePlans.push(
+          ...(await findPlansAnchoredTo(supabase, asset.episode_id, sib.id)),
+        );
+      }
+      if (stalePlans.length > 0) {
+        const shots = [...new Set(stalePlans.map((p) => p.shotId).filter(Boolean))].sort();
+        await logEvent(supabase, {
+          event_type: 'plan_anchor_orphaned',
+          severity: 'warning',
+          title: `Смена якоря: ${shots.length} ${shots.length === 1 ? 'план ссылается' : 'планов ссылаются'} на прежний кадр (${shots.join(', ')})`,
+          description:
+            `Утверждён ${asset.filename}; прежний кадр этого слота снят с APPROVED. ` +
+            `Планы ${shots.join(', ')} были написаны под него и теперь устарели — ` +
+            `их нужно перевыпустить (перепривязать или перерисовать), иначе рендер по ним упадёт с PLAN_ANCHOR_STALE.`,
+          actor: user.email ?? user.id,
+          asset_id: id,
+          episode_id: asset.episode_id,
+          metadata: {
+            reason: 'PLAN_ANCHOR_ORPHANED',
+            approved_asset_id: id,
+            demoted_asset_ids: demotedSiblings.map((d) => d.id),
+            stale_plans: stalePlans,
+          },
+        });
+      }
+    } catch {
+      // Advisory only — a failure to compute the reverse index must never fail
+      // the approval the Director already made.
+    }
+  }
+
   return apiOk({
     decision: decision,
     asset_status: targetStatus,
+    // Plans that this approval just invalidated (empty in the common case).
+    stale_plans: stalePlans,
     // TD-39 L1: episode anchor lets the PA dispatch wrapper poll for the
     // fan-out job row created by the downstream Inngest function.
     episode_id: asset.episode_id,

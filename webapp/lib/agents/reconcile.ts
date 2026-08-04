@@ -407,7 +407,19 @@ export function planReconcileActions(ctx: ReconcileContext): ReconcileAction[] {
         planAssetId = up.asset_id;
       }
 
-      if (refireCount < recoveryCap) {
+      // A DETERMINISTIC failure (billing wall / stale continuity anchor) re-reads
+      // the same state and returns the same verdict — a refire cannot recover it,
+      // it can only spend. On S20-E01 (2026-07-31) the stale-anchor case was
+      // "recovered" into five PAID re-renders that nobody asked for. Straight to
+      // the Director, without consuming the recovery budget.
+      if (cell.failure_terminal) {
+        actions.push({
+          kind: 'halt',
+          shotId: shot.shot_id,
+          stage,
+          reason: `${cell.blocked_reason ?? 'терминальный отказ'} — ретрай не поможет, нужно решение Директора`,
+        });
+      } else if (refireCount < recoveryCap) {
         actions.push({
           kind: 'refire',
           shotId: shot.shot_id,

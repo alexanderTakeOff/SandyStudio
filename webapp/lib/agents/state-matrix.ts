@@ -26,6 +26,7 @@ import type { Database } from '../supabase/types.gen';
 import { extractShotsFromStoryboard, excludedShotIdsFromEpisodeMeta } from '../api/animatic-shotlist';
 import { resolveReservedGates } from './production-plan';
 import { REAPED_MARKER } from './dispatch-intent';
+import { isTerminalAgentFailure } from './provider-failure';
 
 /** Per-shot production stages, in dependency order (upstream → downstream). */
 export const STAGE_ORDER = ['ref_plan', 'ref_image', 'shot_plan', 'video'] as const;
@@ -62,6 +63,10 @@ export interface StageState {
    *  when the cell never produced an asset. Typed trigger for reconciler refire —
    *  the prose lives in `blocked_reason`, the number here. Absent = 0 failures. */
   failure_count?: number;
+  /** True when the LAST failure is deterministic (billing wall / stale continuity
+   *  anchor) — re-running the same agent on the same inputs cannot change it. The
+   *  reconciler HALTs such a cell instead of spending a mechanical refire on it. */
+  failure_terminal?: boolean;
 }
 
 export interface ShotState {
@@ -282,8 +287,12 @@ export async function getEpisodeStateMatrix(
         if (cell.status !== null) continue; // only truly-stuck (never produced) cells
         const fail = failures.get(`${shot.shot_id}::${stage}`);
         if (fail) {
-          cell.blocked_reason = `генерация упала ×${fail.count}${fail.lastMsg ? ` (${fail.lastMsg})` : ''} — нужен retry или park`;
+          const terminal = isTerminalAgentFailure(fail.lastMsg);
+          cell.blocked_reason = terminal
+            ? `генерация упала ×${fail.count}${fail.lastMsg ? ` (${fail.lastMsg})` : ''} — ретрай не поможет, нужно решение Директора`
+            : `генерация упала ×${fail.count}${fail.lastMsg ? ` (${fail.lastMsg})` : ''} — нужен retry или park`;
           cell.failure_count = fail.count; // typed trigger for reconciler refire (Slice 3)
+          if (terminal) cell.failure_terminal = true;
         }
       }
     }

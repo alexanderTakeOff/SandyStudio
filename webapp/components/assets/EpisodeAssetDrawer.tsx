@@ -22,6 +22,7 @@ import ReactMarkdown from 'react-markdown';
 import { withHardBreaks } from '@/lib/markdown-breaks';
 import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
 import {
+  Anchor,
   ArrowLeft,
   X,
   Save,
@@ -323,6 +324,19 @@ export function EpisodeAssetDrawer({
       : null,
     fetcher,
   );
+
+  // Reverse anchor index (2026-07-31) — which APPROVED Plans are anchored to THIS
+  // frame. Replacing a frame demotes the previous one and silently invalidates
+  // every Plan written against it; on S20-E01 that cost five failed renders and a
+  // round of paid re-generation before anyone knew the dependency existed. The
+  // drawer asks the question the storage layer cannot answer on its own.
+  const { data: anchorUsageData } = useSWR<{
+    data: { anchor_usage?: { summary?: string } };
+  }>(
+    open && asset.file_type.startsWith('IMG-episode_ref') ? `/api/assets/${asset.id}` : null,
+    fetcher,
+  );
+  const anchorUsageSummary = anchorUsageData?.data?.anchor_usage?.summary ?? '';
 
   // EREF rows for this shot. 2026-07-18 — the status-rank sort ("current first,
   // then APPROVED, REVIEW, DRAFT…") is GONE. It was orphaned when e4b77342
@@ -714,6 +728,19 @@ export function EpisodeAssetDrawer({
           >
             <AssetProvenanceChip prov={asset.metadata?.provenance} />
           </div>
+
+          {anchorUsageSummary && (
+            <div
+              className="rounded-lg p-3 border flex items-start gap-2.5"
+              style={{
+                background: 'color-mix(in oklab, var(--accent-warning, #d99a2b) 12%, transparent)',
+                borderColor: 'color-mix(in oklab, var(--accent-warning, #d99a2b) 35%, transparent)',
+              }}
+            >
+              <Anchor size={16} className="shrink-0 mt-0.5 text-text-secondary" strokeWidth={1.7} />
+              <div className="text-sm text-text-primary">{anchorUsageSummary}</div>
+            </div>
+          )}
 
           {isImage && (
             <AssetCollapsibleSection
