@@ -80,43 +80,75 @@ try {
   }
   if (!runLabel) process.exit(0);
 
-  const algoRel = `docs/plans/${prefix}-algorithm.md`;
-  const algoAbs = path.join(ROOT, algoRel);
-  const lines = fs.existsSync(algoAbs)
-    ? fs.readFileSync(algoAbs, 'utf8').split('\n').length
-    : 0;
-
+  // Two watched files, one machine. The journal records WHAT WAS DONE and must
+  // move nearly every turn; the route (`ss-run`) records WHICH TOOL SERVES WHICH
+  // STATION and moves only when something about the tooling is actually learned —
+  // so it gets a slacker threshold. Director, 2026-08-04: «каждый шаг должен
+  // записываться не потому, что ты помнишь, а потому что тебя хватает хук».
   const state = readState();
-  const prev = state[algoRel] ?? { lines: -1, misses: 0 };
+  const WATCHED = [
+    {
+      rel: `docs/plans/${prefix}-algorithm.md`,
+      limit: 2,
+      why: 'Обещание прогона — алгоритм фабрики пишется ПО ХОДУ, не восстанавливается в конце.',
+      todo: 'Допиши шаг, который только что сделал: что делал, каким ИНСТРУМЕНТОМ, почему в этом порядке, что было бы дешевле.',
+    },
+    {
+      rel: '.claude/skills/ss-run/SKILL.md',
+      limit: 5,
+      why: 'Прогон существует ради МАРШРУТА: какой штатный инструмент когда брать. Маршрут, дописанный в конце, — пересказ, а не путь.',
+      todo: 'Занеси в `ss-run` то, что узнал про инструменты: чем запускается станция, что её держит, что рядом лежит и инструментом НЕ является.',
+    },
+  ];
 
-  if (lines > prev.lines) {
-    writeState({ ...state, [algoRel]: { lines, misses: 0 } });
-    process.exit(0);
+  const next = { ...state };
+  let blocker = null;
+  const warnings = [];
+
+  for (const w of WATCHED) {
+    const abs = path.join(ROOT, w.rel);
+    const lines = fs.existsSync(abs)
+      ? fs.readFileSync(abs, 'utf8').split('\n').length
+      : 0;
+    const prev = state[w.rel] ?? { lines: -1, misses: 0 };
+
+    if (lines > prev.lines) {
+      next[w.rel] = { lines, misses: 0 };
+      continue;
+    }
+
+    const misses = prev.misses + 1;
+    if (misses < w.limit) {
+      next[w.rel] = { lines, misses };
+      warnings.push(
+        `[Hook] Прогон «${runLabel}»: ${w.rel} не рос этот ход (${lines} строк, ` +
+          `${misses}/${w.limit}). На ${w.limit}-м стоп будет заблокирован.`,
+      );
+      continue;
+    }
+
+    // Threshold reached → block once, then reset so this can never loop.
+    next[w.rel] = { lines, misses: 0 };
+    if (!blocker) blocker = { ...w, lines };
   }
 
-  const misses = prev.misses + 1;
+  writeState(next);
 
-  if (misses < 2) {
-    writeState({ ...state, [algoRel]: { lines, misses } });
+  if (blocker) {
     console.error(
-      `[Hook] Прогон «${runLabel}»: ${algoRel} не рос этот ход (${lines} строк). ` +
-        `Ещё один такой ход — и стоп будет заблокирован.`,
+      `[Hook] СТОП ЗАБЛОКИРОВАН. Прогон «${runLabel}»: ${blocker.rel} стоит на ${blocker.lines} строках ${blocker.limit} ходов подряд.`,
     );
+    console.error(`[Hook] ${blocker.why}`);
+    console.error(`[Hook] ${blocker.todo}`);
+    process.exit(2);
+  }
+
+  if (warnings.length) {
+    for (const line of warnings) console.error(line);
     process.exit(1);
   }
 
-  // Second miss in a row → block once, then reset so this can never loop.
-  writeState({ ...state, [algoRel]: { lines, misses: 0 } });
-  console.error(
-    `[Hook] СТОП ЗАБЛОКИРОВАН. Прогон «${runLabel}»: ${algoRel} стоит на ${lines} строках два хода подряд.`,
-  );
-  console.error(
-    `[Hook] Обещание прогона — алгоритм фабрики пишется ПО ХОДУ, не восстанавливается в конце.`,
-  );
-  console.error(
-    `[Hook] Допиши шаг, который только что сделал: что делал, почему в этом порядке, что было бы дешевле. Потом заканчивай ход.`,
-  );
-  process.exit(2);
+  process.exit(0);
 } catch (_) {
   process.exit(0);
 }
