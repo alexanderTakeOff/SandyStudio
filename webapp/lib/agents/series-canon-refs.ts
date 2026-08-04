@@ -38,7 +38,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { MultiImageRef } from './providers/image-gen-multi';
 import { readAssetMediaAsBase64 } from '../media-cache';
-import { bibleSlug, parseRenderBrief, type RenderBrief } from '../api/series-bible';
+import { bibleSlug, bibleSlugForms, parseRenderBrief, type RenderBrief } from '../api/series-bible';
 
 /**
  * Ceiling on canon images attached to one Bible generation, style excluded.
@@ -85,10 +85,7 @@ interface CanonRow {
  * unambiguously.
  */
 function matchesSlug(row: CanonRow, slug: string): boolean {
-  return (
-    bibleSlug(row.file_type) === slug ||
-    row.file_type.replace(/^SBL-/, '').toLowerCase() === slug
-  );
+  return bibleSlugForms(row.file_type).includes(slug);
 }
 
 /** Reference kind implied by a Bible file_type. */

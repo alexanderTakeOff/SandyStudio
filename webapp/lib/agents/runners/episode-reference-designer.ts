@@ -94,6 +94,7 @@ export const EREF_DESIGNER_PROVIDER_ALLOWLIST = ['gpt-image-2'] as const;
  *  the gpt-image-2 bounds rationale. */
 import { SIZE_BY_DELIVERY_TARGET } from '@/lib/api/provider-capabilities';
 export { SIZE_BY_DELIVERY_TARGET };
+import { loadAgentSkillBodies, composeActivePlaybooksBlock } from '../load-skills';
 
 export class EpisodeReferenceDesignerError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -257,45 +258,96 @@ interface EpisodeLike {
   metadata?: unknown;
 }
 
-// In-process cache for the system prompt — read once per process.
-// NOTE: editing the skill .md alone does NOT refresh this cache (it is keyed to
-// process lifetime); a code edit here (HMR) or a server restart is required to
-// reload it. 2026-06-15 — skill LAYOUT LOCK example de-leaked (was a hardcoded
-// bedroom furniture list that the Designer copied into elevator plans, painting
-// furniture into a bare cab); this touch busts the stale cache.
-// 2026-06-20 (q15а) — .md LAYOUT LOCK block made spatial-kind aware: flat FIELD
-// (spatial_layout=false) now SKIPS layout-lock/scene_master in single-ref mode
-// (was leaking the scene_master preamble into empty_background plans). Gating
-// moved to non-emitted prose; flat field uses a clean [Background] block (no
-// trigger words). Also dropped the redundant layout_lock_directive from [Location]
-// and the "floor" word from [Background]. This touch busts the stale cache.
-let systemPromptCache: string | null = null;
+// Cache for the system prompt, invalidated by the file's OWN mtime.
+//
+// It used to be keyed to process lifetime, and every edit to the .md was
+// therefore invisible to a running server — the two dated comment blocks that
+// used to live here existed for no reason except to touch this file so HMR would
+// reload the module. On 2026-07-31 that cost a full round: the Designer was
+// re-fired twice against a corrected instruction and twice authored from the old
+// one, and the failure is silent by construction — nothing reports "you are
+// running last week's role".
+//
+// Now the cache stores the mtime it was read at and re-reads when the file moves.
+// Cost is one `stat` per run, against a model call that costs seconds; skills
+// already do the same thing with a 30s TTL (lib/skills/select-skills.ts).
+let systemPromptCache: { text: string; path: string; mtimeMs: number } | null = null;
+
+const SYSTEM_PROMPT_CANDIDATES = [
+  '../agents/exec/episode_reference_designer.md',
+  'agents/exec/episode_reference_designer.md',
+  '../../agents/exec/episode_reference_designer.md',
+];
 
 async function loadSystemPrompt(): Promise<string> {
-  if (systemPromptCache !== null) return systemPromptCache;
-  const candidates = [
-    path.resolve(process.cwd(), '../agents/exec/episode_reference_designer.md'),
-    path.resolve(process.cwd(), 'agents/exec/episode_reference_designer.md'),
-    path.resolve(process.cwd(), '../../agents/exec/episode_reference_designer.md'),
-  ];
-  for (const p of candidates) {
+  if (systemPromptCache !== null) {
+    try {
+      const st = await fs.stat(systemPromptCache.path);
+      if (st.mtimeMs === systemPromptCache.mtimeMs) return systemPromptCache.text;
+    } catch {
+      // file moved or unreadable — fall through and re-resolve from scratch
+    }
+  }
+  for (const rel of SYSTEM_PROMPT_CANDIDATES) {
+    const p = path.resolve(process.cwd(), rel);
     try {
       const text = await fs.readFile(p, 'utf-8');
-      systemPromptCache = text;
+      const st = await fs.stat(p);
+      systemPromptCache = { text, path: p, mtimeMs: st.mtimeMs };
       return text;
     } catch {
       // try next candidate
     }
   }
   throw new EpisodeReferenceDesignerError(
-    `Could not find agents/exec/episode_reference_designer.md from cwd=${process.cwd()} (tried ${candidates.length} paths)`,
+    `Could not find agents/exec/episode_reference_designer.md from cwd=${process.cwd()} (tried ${SYSTEM_PROMPT_CANDIDATES.length} paths)`,
   );
 }
 
-/** Reset the in-process system-prompt cache. Test-only seam — production
- *  code never calls this; the cache is intentionally process-lived. */
+/** Reset the cached system prompt. Test-only seam. */
 export function _resetSystemPromptCacheForTests(): void {
   systemPromptCache = null;
+}
+
+// ── Genre + provider playbooks ───────────────────────────────────────────────
+//
+// The Designer was the only authoring runner that loaded no skills at all, so
+// every rule — including rules that are only true for one genre — had to live in
+// its role file. That is what put ACTING-FIRST (a face-driven-comedy rule) in
+// front of a series that has no face.
+//
+// Two axes, both `hard`, so no selection step is needed (a `hard` skill is
+// unioned past selection anyway — load-skills.ts `mandatory`). This is the
+// thumbnail-designer.ts shape: load the bodies, compose the block, done. No
+// manifest call, no paid selector round-trip per plan.
+const EREF_DESIGNER_PROVIDER_SKILL = 'gpt-image-2-prompting';
+
+/** Genre → the prompt-composition playbook that leads the positive prompt. */
+const EREF_DESIGNER_GENRE_SKILL: Readonly<Record<string, string>> = Object.freeze({
+  comedy: 'eref-prompt-comedy',
+  cosmic_horror: 'eref-prompt-cosmic-horror',
+});
+
+/**
+ * Resolve the playbook block for this run: the provider mechanics skill plus the
+ * genre skill, when the series declares a genre we have one for.
+ *
+ * An unknown genre is NOT an error here — unlike the readability critic, the
+ * Designer can still author from the role file alone. It returns the slugs it
+ * skipped so the caller can log the gap rather than let it pass unseen.
+ */
+async function loadDesignerPlaybooks(
+  seriesGenre: string | null | undefined,
+): Promise<{ block: string; loaded: string[]; missingGenre: string | null }> {
+  const genreSlug =
+    typeof seriesGenre === 'string' ? EREF_DESIGNER_GENRE_SKILL[seriesGenre] : undefined;
+  const want = [EREF_DESIGNER_PROVIDER_SKILL, ...(genreSlug ? [genreSlug] : [])];
+  const { loaded } = await loadAgentSkillBodies(want);
+  return {
+    block: composeActivePlaybooksBlock(loaded),
+    loaded: loaded.map((s) => s.slug),
+    missingGenre: genreSlug ? null : (seriesGenre ?? null),
+  };
 }
 
 // F2 (2026-06-12): findApprovedAsset → shared newest-wins resolver
@@ -568,6 +620,13 @@ export function buildEpisodeImageFormatAuthorityBlock(cfg: EpisodeImageConfig | 
  * message tells it about THIS shot.
  */
 function buildUserMessage(args: {
+  /**
+   * Provider mechanics + the genre's prompt-composition playbook, already
+   * composed into a block. Placed directly under `# Task`, the same slot the
+   * Storyboarder and Screenwriter use — these rules govern how everything below
+   * is written, so they have to be read before the shot data, not after it.
+   */
+  activeSkillsBlock?: string;
   episodeCode: string;
   episodeTitle: string;
   shotId: string;
@@ -623,6 +682,7 @@ function buildUserMessage(args: {
   sceneLightBlock: string;
 }): string {
   const {
+    activeSkillsBlock,
     episodeCode,
     episodeTitle,
     shotId,
@@ -678,6 +738,8 @@ function buildUserMessage(args: {
   return [
     '# Task',
     `Design the reference image generation plan for shot ${shotId} of episode ${episodeCode} — "${episodeTitle}".`,
+    '',
+    activeSkillsBlock && activeSkillsBlock.length > 0 ? activeSkillsBlock : '',
     `Target Plan version: ${planVersionLabel}.`,
     '',
     '## Storyboard shot (canonical input — from APPROVED STB)',
@@ -1149,8 +1211,20 @@ export async function runEpisodeReferenceDesigner(
       : 'Scene light: storyboard states NO time of day and NO light source — Designer must choose and declare it in policy_notes',
   );
 
+  const seriesGenre = typeof inputs.series_genre === 'string' ? inputs.series_genre : null;
+  const playbooks = await loadDesignerPlaybooks(seriesGenre);
+  if (playbooks.missingGenre !== null) {
+    notes.push(
+      `No prompt playbook for genre "${playbooks.missingGenre}" — authored on the role file + provider skill alone`,
+    );
+  }
+  if (!playbooks.loaded.includes(EREF_DESIGNER_PROVIDER_SKILL)) {
+    notes.push(`Skill ${EREF_DESIGNER_PROVIDER_SKILL} not found — provider rules unavailable`);
+  }
+
   const systemPrompt = await loadSystemPrompt();
   const userMessage = buildUserMessage({
+    activeSkillsBlock: playbooks.block,
     episodeCode,
     episodeTitle,
     shotId,

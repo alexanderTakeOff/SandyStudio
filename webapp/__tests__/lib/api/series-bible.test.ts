@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   bibleSlug,
+  bibleSlugForms,
   bibleSlugFromFileType,
   sectionFromFileType,
 } from '@/lib/api/series-bible';
@@ -69,6 +70,32 @@ describe('bibleSlugFromFileType — section + slug pair', () => {
 
   it('returns null on non-SBL prefix', () => {
     expect(bibleSlugFromFileType('IMG-episode_ref_a1_sandy_at_cafe')).toBeNull();
+  });
+});
+
+describe('bibleSlugForms — both names an entry answers to (D14)', () => {
+  it('returns short AND sectioned form', () => {
+    // The casting preflight matched the short form only, while every surface
+    // that SHOWS canon prints the sectioned one — so locked canon read as missing.
+    expect(bibleSlugForms('SBL-character_bathyscaphe_turnaround')).toEqual([
+      'bathyscaphe_turnaround',
+      'character_bathyscaphe_turnaround',
+    ]);
+  });
+
+  it('keeps compound slugs intact in both forms', () => {
+    expect(bibleSlugForms('SBL-location_bathyscaphe_interior')).toEqual([
+      'bathyscaphe_interior',
+      'location_bathyscaphe_interior',
+    ]);
+  });
+
+  it('returns nothing for a section with no slug', () => {
+    expect(bibleSlugForms('SBL-general_idea')).toEqual([]);
+  });
+
+  it('returns nothing for a non-SBL file_type', () => {
+    expect(bibleSlugForms('IMG-episode_ref_a1_sandy_at_cafe')).toEqual([]);
   });
 });
 

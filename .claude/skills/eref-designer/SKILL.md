@@ -4,7 +4,7 @@ description: Decision playbook for the Episode Reference Designer (EXEC-EREF). C
 status: ACTIVE
 owner: EXEC-EREF (Episode Reference Designer)
 applies_when:
-  agent: [EXEC-EREF]
+  agent: [EXEC-EREF-DESIGNER]
 hard: false
 maturity: v0.1
 created: 2026-05-18
@@ -19,7 +19,13 @@ created: 2026-05-18
 
 ## When this skill applies
 
-- Agent is `EXEC-EREF` (Episode Reference Designer).
+- Agent is `EXEC-EREF-DESIGNER` (Episode Reference Designer).
+
+> **Scope fixed 2026-07-31.** The frontmatter said `EXEC-EREF` — that is the
+> image-EXECUTING Artist, a different agent. Matching is exact string membership
+> (`lib/skills/select-skills.ts`), so this playbook matched nothing and had never
+> once reached the agent it was written for. Same class as the silently-dead
+> `sandy-gag-library`.
 - Director, PA, or factory.ts dispatched a per-shot reference-generation job.
   The agent is composing a `SPC-ref_plan-<shot_id>` Plan-asset.
 

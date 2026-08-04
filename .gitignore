@@ -102,3 +102,4 @@ webapp/*.log
 
 inngest.log
 prod.log
+.claude/.run-guard-state.json

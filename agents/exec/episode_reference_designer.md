@@ -290,23 +290,59 @@ and no standing set-dressing, only the empty field. Every object in frame (the f
 a blanket, any prop) is a TRANSIENT prop the action introduces; name each and cite
 its source beat. Stage the character pose and camera intent against this open field.
 
-[Scene context — 1 sentence from script_scene context]
+[Scene context — 1 sentence from script_scene context. State WHERE and WHAT only.
+  It must not narrate what happens during the shot: the renderer draws one instant,
+  not a beat.]
 
-[Action — verbatim from storyboard shot.action_prose, NOT truncated to first sentence]
+[Action — the FIRST FRAME OF THE SHOT, described as a single frozen photograph.
 
-[Acting — LEAD THE POSITIVE WITH THIS. The single most important quality lever:
-  the focal character's emotional beat made VISIBLE. State, in this order:
-  - facial expression: eye state (wide / narrowed / squeezed shut) + mouth state
-    (clenched / open / gritted / grin);
-  - body attitude / silhouette: how the pose carries the emotion (leaning hard into
-    the wind, recoiling, braced, deflated);
-  - readable intent: what the audience instantly reads the character is trying to do.
-  SOURCE: shot.expected_emotion. When it is `(none)`/absent, DERIVE the beat from
-  shot.action_prose + shot.expected_gag — NEVER leave the character emotionally
-  neutral. For a comedy series the acting IS the product: a flat face kills the gag.
-  Bad:  "Sandy reaches for the switch."
-  Good: "Sandy lunges for the switch with panicked determination — eyes wide, mouth
-         clenched, body stretched forward while the wind shoves him back."]
+  The reference image is the shot's START frame — `image_url` in the video call
+  (fal-seedance.ts:276); the animator moves away from it. So this block describes
+  the state at t=0, not the beat that plays out.
+
+  Source is `shot.action_prose`, but it is REWRITTEN, never copied verbatim: the
+  storyboard's prose runs across time, and one image can only be one of those
+  moments. Choose the moment the shot OPENS and state what is true at it.
+
+  TEST — countability, not grammar: does the sentence contain two states that
+  cannot both be true in one photograph? Then split it and keep the opening one.
+  The real failure looks like this: «the cones have just found the surface; the
+  vehicle has not yet begun to drift» — a caption about two different times, so the
+  renderer picks one at random.
+
+  A gerund is not automatically a defect: «marine snow drifting through the beam»
+  is a texture, not a sequence. Do not hunt verbs; hunt second moments.
+
+  Do NOT over-freeze either. Implied motion in the still — a pose caught mid-move,
+  directional blur — is what the video stage moves away from; a completely inert
+  frame can fight the shot's own motion. Choose the instant the movement should
+  start FROM.
+
+  Example — WRONG: «Two cones cut forward into the darkness, marine snow drifting
+  toward camera; the cones widen across the frame and strike a vast faceted
+  surface. THIS IS THE OPENING MOMENT: the cones have just found the surface; the
+  vehicle has not yet begun to drift.»
+  Example — RIGHT: «Absolute black. Two teal-green cones reach from the left edge
+  toward the right of frame, marine snow suspended in both columns. Their far ends
+  rest on a vast vertical faceted surface: one ridge is a hard bright line, the two
+  facets beside it are flat even tones separated by a sharp step.»]
+
+[References — one line per attached image, in attachment order, each given a ROLE.
+  An unlabelled reference is an invitation to copy its content: a typography
+  specimen plate attached with no role came back with its whole alphabet rendered
+  onto the surface (SS-S20-E01 SH04, 2026-07-31).
+  Format:
+    Image 1: <slug> — IDENTITY. Reproduce the subject's shape and markings. Nothing else.
+    Image 2: <slug> — STYLE ONLY. Palette and light behaviour. Do NOT copy its subject.
+    Image 3: <slug> — LAYOUT. Camera position and placement of fixed elements.
+  Then state the interaction: "apply Image 2's palette to the subject from Image 1".]
+
+[Acting — the focal character's emotional beat made VISIBLE, sourced from
+  shot.expected_emotion; DERIVE it from action_prose + expected_gag when absent.
+  WHERE this block sits in the positive prompt, and how much weight it carries, is
+  a GENRE decision — see the active genre playbook. It leads the prompt in a
+  face-driven genre and follows the scene in a genre with no face in frame.
+  Omit entirely when no character appears in the shot.]
 
 [Subject — for each character in shot.characters[]:
   - name
@@ -335,13 +371,8 @@ its source beat. Stage the character pose and camera intent against this open fi
 [Style — verbatim from Bible style_canon (e.g. "S14 STYLE CANON v1.1: outline-only
   pencil edge, flat vector fills, no hatching, warm cinematic palette")]
 
-[Gag / Beat — if shot.expected_gag present, one sentence explaining the visual gag]
-
-[Gag-object attachment — when the gag involves an interactive control (a button,
-  lever, switch, panel, dial, handle), state EXPLICITLY which object's body/base it
-  is physically mounted on, e.g. «the red OFF button is mounted on the fan's own
-  body/base», never on a wall and never floating in space. Ambiguous attachment is
-  what made SH09 draw a wall switch / floating button.]
+[Gag / Beat — only in genres that have gags; the active genre playbook says whether
+  this block exists at all and what it must carry.]
 ```
 
 **Critical rules (closing the 2026-05-18 dispute on smart-canon B):**
@@ -355,18 +386,27 @@ its source beat. Stage the character pose and camera intent against this open fi
   `firstSentence()` clamp in buildShotPromptV2 was a 2026-05-13 over-correction.
 - Include camera_movement + camera_motivation, not just camera_angle. The
   legacy `describeCamera()` lookup table ignored both.
-- **ACTING-FIRST, NEGATIVE-LIGHT (Director directive 2026-06-20).** The positive
-  must LEAD with the `[Acting]` block (face + body + intent) — that is the first
-  thing the model reads, not layout boilerplate. The negative block must stay
-  **compact** and MUST NOT be longer or more detailed than the positive acting
-  core. A prompt that spends most of its tokens on prohibitions while the desired
-  image is one thin sentence is the defect we are fixing.
+- **NEGATIVE-LIGHT.** The negative block stays **compact** and MUST NOT be longer
+  or more detailed than the positive. A prompt that spends most of its tokens on
+  prohibitions while the desired image is one thin sentence is the defect we are
+  fixing. What the positive LEADS with is a genre decision — see the active genre
+  playbook.
+- **Order of blocks follows the provider playbook** (`gpt-image-2-prompting`):
+  scene → subject → details → constraints, unless the genre playbook overrides the
+  lead. Do not invent a third ordering.
 
 ### Step 6 — Compose negative list
 
 Keep it COMPACT — baseline + only shot-critical exclusions. The negative must not
-dominate the prompt or out-length the positive acting core (see ACTING-FIRST rule
-above). Always include baseline:
+dominate the prompt or out-length the positive (NEGATIVE-LIGHT above).
+
+**Write BOTH the positive invariant and the explicit exclusion.** The endpoint has
+no `negative_prompt` parameter, and the provider's own guidance is to state
+exclusions plainly in the prompt — the «never say no X» reflex is diffusion-era and
+does not apply here. «The surface is smooth and unmarked» AND «no letters, no text,
+no glyphs». See `gpt-image-2-prompting`.
+
+Always include baseline:
 
 ```
 - no extra limbs
@@ -376,6 +416,21 @@ above). Always include baseline:
 - no on-screen captions
 ```
 
+**CLEAN-SURFACE SHOTS — the typography canon must NOT ride along.** When the shot
+plan requires a surface generated CLEAN because the text arrives later as an
+overlay layer (language versioning), two things are mandatory:
+
+1. Do NOT attach the series' typography / engraving canon as a reference for that
+   shot. Its reference plate is a SPECIMEN — rows of the alphabet and numerals —
+   and a renderer handed it copies that content onto the surface. It belongs to
+   whoever draws the lettering, not to the frame that must stay bare.
+2. Add to the negative: `letters`, `glyphs`, `alphabet`, `numerals`, `inscription`,
+   `carved text`, `engraved writing`, `any writing on the surface`.
+
+"Clean" alone is not understood as "no writing at all" — a model reads it as "no
+OUR phrase" and fills the surface from whatever reference it was given (SS-S20-E01
+SH04, 2026-07-31: came back carrying A-Z and 0-9 straight off the specimen plate).
+
 **Never negate the key light.** `no dramatic shadows`, `no strong shadows`,
 `even lighting`, `evenly lit`, `flat lighting`, `soft, quiet, even`,
 `no cinematic lighting`, `neutral natural lighting` are banned in the negative
@@ -384,10 +439,10 @@ night and the volume leave with it — E33 SH08 came back flat from this phrasin
 not from the flat-style terms. A soft cartoon style constrains the EDGE of a
 shadow (soft, graphic, in-palette), never its existence.
 
-Append ONLY shot-critical exclusions (the specific failure this shot risks, e.g.
-`no wall switch, no floating button` for SH09). Append running negative list from
-`app_config.eref_negative_baseline` +
-per-episode addenda (e.g. from E20 retro: `no granular body distortion on Sandy`).
+Append ONLY shot-critical exclusions — the specific failure THIS shot risks. The
+genre playbook lists that genre's recurring failures; do not carry another genre's
+list. Append the running negative list from `app_config.eref_negative_baseline`
+plus any per-episode addenda.
 
 ### Step 7 — Decide camera coverage / sub_area variation
 
@@ -568,25 +623,6 @@ Maximum 2 revision cycles. On 3rd REVISE → emit `plan_rejected` with
 revisionNote chain, escalate to Director via `decision_requested` activity_event.
 
 ---
-
-## GAG PLAN INTEGRATION (Day 11+ — Sprint «Дизайнер и Аниматор»)
-
-When `upstream_assets` contains an APPROVED `SPC-gag_plan-<episode>` asset (only present for comedy-like series after Director approves the Gag AD's plan):
-
-1. **Locate your shot** in the Gag Plan's JSON `shots[]` array by matching `shot_id`
-2. **Read the gag intent fields** for your shot:
-   - `gag_category` — one of 10 from sandy-gag-library
-   - `atoms[]` — composable verb primitives the gag uses
-   - `role_in_chain` — where this shot sits in the escalation
-   - `visual_keys[]` — concrete objects/poses MUST appear in your image
-   - `directorial_primitive` — ANTICIPATION / DELAYED_REVEAL / SCALE_CONTRAST / etc
-   - `timing_beat` — pacing intent
-3. **Reflect the intent in your Plan**:
-   - «Цель шота» section MUST mention what gag role this shot serves («setup for the slip in SH05», «mid-link of chain reaction»)
-   - Your prompt MUST include the `visual_keys[]` verbatim or paraphrased. No silent omissions.
-4. **policy_notes[] in your JSON** MUST contain one entry per gag intent element honored: `"Honours gag_intent.visual_keys: banana, counter"`. Makes V10 enforcement machine-checkable by EPREV.
-
-When NO `SPC-gag_plan` exists in upstream (drama/doc series, or comedy where Director hasn't approved gag plan yet): operate normally — no gag-plan reference required.
 
 When Director (or EXEC-DIR-AI in Mode 2/3) returns verdict REJECT:
 
