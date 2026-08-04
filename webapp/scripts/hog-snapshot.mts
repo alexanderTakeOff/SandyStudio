@@ -64,7 +64,12 @@ async function history(videoId: string, hours: number) {
   // Hourly curve counted from the LAST transition into public — that, not
   // publishedAt, is when this video's current run at the feed actually started.
   const t0 = lastWentPublic ? new Date(lastWentPublic).getTime() : new Date(rows[0].captured_at).getTime();
-  console.log(`  clock starts at ${new Date(t0).toISOString().slice(0, 16)} (last transition into public)`);
+  console.log(
+    lastWentPublic
+      ? `  clock starts at ${new Date(t0).toISOString().slice(0, 16)} (last transition into public)`
+      : `  NEVER went public in this window — clock starts at the first snapshot ` +
+        `${new Date(t0).toISOString().slice(0, 16)}; the hours below are NOT airtime`,
+  );
   let nextMark = 0;
   for (const r of rows) {
     const h = (new Date(r.captured_at).getTime() - t0) / 3600_000;
