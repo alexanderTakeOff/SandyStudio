@@ -152,7 +152,10 @@ try {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name);
         if (e.isDirectory()) walk(p);
-        else if (/\.txt$/.test(e.name)) {
+        // Only prompts count. The first version walked every .txt under the run
+        // and fired on `packaging.txt` (publication copy, not a shot prompt) —
+        // a guard that cries wolf teaches you to ignore it.
+        else if (/\.txt$/.test(e.name) && /[\\/]prompts[\\/]/.test(p)) {
           const m = fs.statSync(p).mtimeMs;
           if (m > newestPrompt) { newestPrompt = m; newestName = e.name; }
         }
