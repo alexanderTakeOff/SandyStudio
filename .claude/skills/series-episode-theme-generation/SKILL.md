@@ -65,13 +65,41 @@ gag-engine capacity · series fit · character physical fit · silent readabilit
 production simplicity · novelty vs the bank.** A candidate that obviously fails one
 of these is wasted generation.
 
-## Variety mandate
+## Variety mandate — vary along named axes, not by vibe
 
 Vary the **dominant gag engine** across the pack — don't hand in ten machines that
 "almost obey". Pull deliberately from the series' gag families (for Sandy: the
 taxonomy in `sandy-gag-library` — wrong-reaction, almost-works, overcorrection,
 environment-as-opponent, body-mismatch, letting-go). A pack with one engine in six
 costumes is a weak pack.
+
+**Do not invent a plot and then justify it.** Build each candidate as a *combination*
+across the axes below, then check whether the combination produces a machine. Vary
+deliberately: two candidates differing only in the object axis are one candidate.
+
+| Axis | What it fixes | Examples (illustrative — the series Bible supplies the real vocabulary) |
+|---|---|---|
+| **Human experience** | why anyone would do this at all | impatience · pride · fear of embarrassment · perfectionism · desire for control · loss aversion · excessive helpfulness |
+| **Gag atoms** | the minimal physical failures available | stuck · slip · stretch · compress · bounce · jam · spill · overshoot · recoil · tangle · topple · multiply · snap back |
+| **Object / system** | the antagonist that almost helps | one main object or ONE coherent object family |
+| **Physical environment** | where the body acts | one location by default |
+| **Social environment** | who is watching | alone · pair · queue · audience · customers · inspection point |
+| **Social situation** | what is at stake socially | being first · hiding incompetence · unwanted help · taking turns · following rules too literally · avoiding embarrassment |
+| **Governing physics** | the rule the gags obey | gravity · momentum · friction · elasticity · air pressure · balance · rotation · spring tension · inertia |
+| **Escalation engine** | how it gets worse | every attempt makes it worse · speed rises · space shrinks · object multiplies · chain reaction · the system reclassifies the hero · success creates a bigger problem |
+| **Ending pattern** | how it stops | false victory · loop · status reversal · tiny success · ironic punishment · object wins · social exposure |
+
+Axis vocabularies are **illustrative, not canonical** — genre, hero and world supply the
+real ones through the Bible. A different genre changes the lists, not the axes.
+
+## Two layers, both mandatory
+
+Every candidate carries a **mechanical layer** (what reads instantly as action, no
+knowledge required) and a **social layer** (the familiar human behaviour an adult
+recognises without a word). A candidate with only the first is a stunt; with only the
+second, a lecture. The social layer must be visible **through behaviour** — "pretending
+to be competent", "refusing help", "protecting ownership" — never a message
+("society is unfair"). The judge gates on this; generate with it already present.
 
 ## Reuse, don't re-derive
 
@@ -83,7 +111,10 @@ Call the knowledge that already exists; don't rewrite it:
 - **Laws, hero physics, production prefs** → the **series Bible**, by reference.
 - **Stable entity IDs** (`THEME-*`, `OBJ-*`, `CHR-*`, `LOC-*`, `LAW-*`) → the
   **Identifier Convention** (glossary). Reuse existing IDs; mint a new `THEME-*` per
-  candidate.
+  candidate. The axes above are candidate **fields**, not new namespaces — do not mint
+  `SOC-*` / `ATOM-*` / `ESC-*` and friends here; that decision belongs to the glossary.
+- **State of this topic** (what the axes came from, what was rejected and why) →
+  `docs/topics/episode-themes.md`.
 
 ## Canon physics guardrails (read the Bible critically)
 
@@ -125,11 +156,18 @@ Hand the selection skill a clean, judgeable candidate — the contract it consum
 # Episode Theme Candidate — THEME-{Name}
 
 ## Theme ID — `THEME-{Name}` (stable entity id; mint per Identifier Convention)
+## Axes — human experience · gag atoms · object/system · physical env · social env ·
+##        social situation · governing physics · escalation engine · ending pattern
+##        (name each; write `none` + why if one genuinely does not apply — never omit)
 ## Core Goal — what the hero wants (simple, concrete)
 ## Antagonist — the `OBJ-*` / `LOC-*` / system / space that almost helps
 ## Gag Engine — the repeatable wrong-reaction mechanism (the ENGINE axis)
+## Mechanical Layer — what reads as pure action, no knowledge required
+## Social Layer — the recognisable human behaviour, stated as behaviour not as message
 ## Why It Fits This Hero — how the EXTERNAL world acts on the hero's FORM
 ## Series Law — which `LAW-*` it expresses
+## The One Variable It Tests — the single thing this theme would teach us if made
+##        (ties the candidate to the ratified-lesson loop; a theme testing nothing is filler)
 ## Participating Entities — `CHR-*` / `OBJ-*` / `LOC-*` referenced
 ## First-Frame Hook — the single clearest opening image
 ## Ending Payoff — accident / reversal / surrender resolution

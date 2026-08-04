@@ -46,6 +46,15 @@ batch.**
 If a required input is missing, **stop and ask.** A missing series, Bible, runtime,
 or bank turns every gate into a guess.
 
+## Step 0 — cluster by engine before judging anything
+
+Group the incoming candidates by their **underlying engine**, not their props, and judge
+one representative per cluster (carry the others as variants). `THEME-Elevator`,
+`OBJ-Automatic_Door` and `OBJ-Turnstile` are one engine — *a threshold that almost
+obeys* — in three costumes. Judging them separately spends three passes to reach one
+verdict and quietly inflates the shortlist. Clustering first is also the cheapest form
+of the novelty check below.
+
 ## Pass / Fail gates (binary — these decide the tier, not a number)
 
 A theme must clear **every** gate to reach tier A. They are binary and physical on
@@ -75,7 +84,13 @@ purpose: checkable, unlike a vanity score.
    load-bearing — i.e. the theme would play identically with a generic character AND
    engages none of his motives. Don't over-index on form: Tom & Jerry runs on
    character, not anatomy.
-6. **Silent readability** — works with zero dialogue, signs, or wordplay.
+6. **Silent readability, on BOTH layers** — works with zero dialogue, signs, or wordplay,
+   and carries two layers at once: a **mechanical layer** a child reads as pure action,
+   and a **social layer** an adult recognises as familiar human behaviour (pretending to
+   be competent · refusing help · protecting ownership · following a rule too literally).
+   FAIL a candidate whose social layer is a *message* rather than a *behaviour* ("society
+   is unfair" is not a social layer), and FAIL one that is a clean stunt with no human
+   behaviour under it — that is a gag, not an episode.
 7. **Production simplicity** — one main location, one main system/prop, minimal
    background, stable camera, reusable assets, clean start/end poses. Penalise
    crowds, complex moving environments, and exact numeric/spatial continuity in
@@ -156,7 +171,10 @@ to name** — not a reason to bake in a one-tool workaround.
 ## Report contract (the report matters more than the number)
 
 A numeric score is optional metadata for sorting only. The decision is the **tier**
-plus a short report. One per candidate:
+plus a short report. **Do not import a multi-axis 1–10 scorecard with an average** — a
+mean over ten hand-set axes is tuned until the preferred candidate passes, the same
+defect class as the flat gag count above. Gates are binary because binary is checkable.
+(Rejected explicitly 2026-08-02 — see `docs/topics/episode-themes.md`.) One per candidate:
 
 ```markdown
 # Theme Evaluation — THEME-{Name}
