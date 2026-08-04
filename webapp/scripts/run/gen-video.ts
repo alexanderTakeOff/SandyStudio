@@ -18,7 +18,13 @@ import { dirname, resolve } from 'node:path';
 import { sb } from './_env';
 import { generateVideoFalSeedance } from '../../lib/agents/providers/fal-seedance';
 
-const EPISODE_ID = '9ec4366e-96fa-4324-8de1-89bec5914f80'; // SS-S15-E35
+// Episode comes from the environment, never hardcoded: a stale id bills the wrong
+// episode silently (2026-08-04 stocktake).
+const EPISODE_ID = process.env.RUN_EPISODE_ID;
+if (!EPISODE_ID) {
+  console.error('RUN_EPISODE_ID is not set — refusing to bill an unknown episode.');
+  process.exit(1);
+}
 
 function arg(name: string, fallback?: string): string {
   const i = process.argv.indexOf(`--${name}`);

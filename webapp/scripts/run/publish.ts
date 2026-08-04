@@ -13,7 +13,13 @@ import { sb, S15 } from './_env';
 import { uploadVideo } from '../../lib/agents/providers/youtube';
 import { resolveChannelRefreshToken } from '../../lib/agents/providers/google-auth';
 
-const EPISODE_ID = '9ec4366e-96fa-4324-8de1-89bec5914f80'; // SS-S15-E35
+// Episode comes from the environment, never hardcoded: a stale id publishes onto
+// the wrong episode row silently (2026-08-04 stocktake).
+const EPISODE_ID = process.env.RUN_EPISODE_ID;
+if (!EPISODE_ID) {
+  console.error('RUN_EPISODE_ID is not set — refusing to act on an unknown episode.');
+  process.exit(1);
+}
 
 function arg(name: string, fallback?: string): string {
   const i = process.argv.indexOf(`--${name}`);

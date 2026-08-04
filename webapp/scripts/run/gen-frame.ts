@@ -18,7 +18,14 @@ import { openAIEditsMultiProvider } from '../../lib/agents/providers/openai-edit
 import { readAssetMediaAsBase64 } from '../../lib/media-cache';
 import type { MultiImageRef, MultiImageRefKind } from '../../lib/agents/providers/image-gen-multi';
 
-const EPISODE_ID = '9ec4366e-96fa-4324-8de1-89bec5914f80'; // SS-S15-E35
+// The episode is NOT hardcoded: a stale id spends the new episode's money on the
+// old episode's ledger and the mistake is silent (2026-08-04 stocktake). Fail
+// fast instead — `RUN_EPISODE_ID=<uuid>` must be set by the caller.
+const EPISODE_ID = process.env.RUN_EPISODE_ID;
+if (!EPISODE_ID) {
+  console.error('RUN_EPISODE_ID is not set — refusing to bill an unknown episode.');
+  process.exit(1);
+}
 
 function arg(name: string, fallback?: string): string {
   const i = process.argv.indexOf(`--${name}`);
