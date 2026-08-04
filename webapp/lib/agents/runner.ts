@@ -176,21 +176,48 @@ function coercePrivacy(v: string | null): PrivacyStatus | null {
 }
 
 /** Merge the published video id into episodes.metadata (the thin distribution
- *  ledger — no new table). */
+ *  ledger — no new table) AND stamp the episode PUBLISHED.
+ *
+ * The status half is the fix for E33 (2026-07-29). `PUBLISHED` was declared in
+ * EPISODE_TRANSITIONS, read by pipeline-stages.ts:401 to colour the publisher
+ * gate, and listed in budget-summary — but NOTHING ever wrote it. Only two
+ * writers of `episodes.status` existed at all (BRIEF_APPROVED and
+ * GENERATION_IN_PROGRESS), so E33 sat at BRIEF_APPROVED while it shot nine
+ * videos, cut a final and uploaded to YouTube. A gate nobody can ever turn green
+ * is worse than no gate: it reads as "not done" forever and teaches everyone to
+ * ignore it.
+ *
+ * A successful upload IS the moment of truth, so the stamp lives here rather
+ * than in a separate step that could be skipped. `assertEpisodeTransition` is
+ * deliberately NOT called: the intermediate statuses have no writers either, so
+ * every real episode jumps here from wherever it got stuck, and refusing the
+ * stamp would preserve exactly the lie this fixes. When the full lifecycle gets
+ * its writers (Director 2026-07-29 — one status per big step, surfaced on the
+ * episode LIST), this becomes a normal PUBLISH_PENDING → PUBLISHED transition
+ * and the assert can go back in.
+ */
 async function persistYouTubeVideoId(
   supabase: SupabaseClient<Database>,
   episodeId: string,
   videoId: string,
   privacy: PrivacyStatus,
 ): Promise<void> {
-  const { data } = await supabase.from('episodes').select('metadata').eq('id', episodeId).single();
+  const { data } = await supabase
+    .from('episodes')
+    .select('metadata,status')
+    .eq('id', episodeId)
+    .single();
   const meta =
     data?.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
       ? (data.metadata as Record<string, unknown>)
       : {};
+  // Never walk BACK out of a terminal state a human chose (COMPLETE / ARCHIVED).
+  const current = (data as { status?: string } | null)?.status ?? null;
+  const terminal = current === 'COMPLETE' || current === 'ARCHIVED';
   await supabase
     .from('episodes')
     .update({
+      ...(terminal ? {} : { status: 'PUBLISHED' as const }),
       metadata: {
         ...meta,
         youtube_video_id: videoId,

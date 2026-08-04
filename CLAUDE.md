@@ -290,7 +290,9 @@ When starting a new Claude Code session in this project:
 ## 10. DIRECTOR COMMUNICATION RULES
 
 When presenting questions or options to the Director/CEO:
-- Number all questions: **q1**, **q2**, **q3** — never ask multiple unnumbered questions
+- Number all questions continuously: **01**, **02**, **03**... Answers are numeric-only —
+  `<NN><option digit>` (e.g. `031` = question 3, option 1), no letters. Full format:
+  `~/.claude/rules/common/director-communication.md` §"Question numbering".
 - Keep questions short and decision-focused
 - Wait for answers before proceeding with changes
 

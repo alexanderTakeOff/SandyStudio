@@ -1,0 +1,523 @@
+<title>Sandy the Hourglass — отчёт Head of Growth · 4 августа</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0e1520; --panel:#17212e; --panel2:#1e2a38; --border:#2a3746;
+    --text:#e7edf3; --muted:#94a4b5; --faint:#6a7c8d;
+    --sand:#e2a95c; --sand-soft:#f0c689;
+    --grow:#5cbb8c; --warn:#dcae4e; --crit:#e0754f;
+    --grid:rgba(255,255,255,.05);
+    --serif: "Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --sans: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#e9ecf1; --panel:#f7f8fb; --panel2:#eef1f5; --border:#d3dae2;
+      --text:#16222e; --muted:#556676; --faint:#7d8d9c;
+      --sand:#bd7c2c; --sand-soft:#a9691d;
+      --grow:#2e8d60; --warn:#a97c1c; --crit:#bd4c2c;
+      --grid:rgba(20,40,60,.06);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1520; --panel:#17212e; --panel2:#1e2a38; --border:#2a3746;
+    --text:#e7edf3; --muted:#94a4b5; --faint:#6a7c8d;
+    --sand:#e2a95c; --sand-soft:#f0c689; --grow:#5cbb8c; --warn:#dcae4e; --crit:#e0754f;
+    --grid:rgba(255,255,255,.05);
+  }
+  :root[data-theme="light"]{
+    --bg:#e9ecf1; --panel:#f7f8fb; --panel2:#eef1f5; --border:#d3dae2;
+    --text:#16222e; --muted:#556676; --faint:#7d8d9c;
+    --sand:#bd7c2c; --sand-soft:#a9691d; --grow:#2e8d60; --warn:#a97c1c; --crit:#bd4c2c;
+    --grid:rgba(20,40,60,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+    line-height:1.55;-webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(1200px 500px at 80% -10%, color-mix(in srgb,var(--sand) 9%, transparent), transparent 60%);}
+  .wrap{max-width:1000px;margin:0 auto;padding:clamp(20px,4vw,52px) clamp(16px,4vw,40px) 80px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--sand);margin:0 0 14px}
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(30px,5.4vw,52px);line-height:1.04;
+    letter-spacing:-.01em;margin:0 0 10px;text-wrap:balance}
+  .sub{color:var(--muted);font-size:clamp(15px,1.9vw,18px);max-width:60ch;margin:0}
+  .metaline{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:20px;font-family:var(--mono);
+    font-size:12.5px;color:var(--faint);letter-spacing:.03em}
+  .metaline b{color:var(--muted);font-weight:500}
+  .hr{height:1px;background:var(--border);border:0;margin:36px 0}
+
+  h2{font-family:var(--serif);font-weight:600;font-size:clamp(20px,3vw,27px);letter-spacing:-.01em;
+    margin:0 0 4px;text-wrap:balance}
+  .lede{color:var(--muted);margin:0 0 22px;max-width:66ch}
+  section{margin-top:48px}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+  .tile{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 18px 16px;
+    position:relative;overflow:hidden}
+  .tile .lab{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .tile .now{font-family:var(--serif);font-size:clamp(30px,5vw,42px);line-height:1;margin:12px 0 6px;
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .tile .delta{font-family:var(--mono);font-size:12.5px;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+  .up{color:var(--grow)} .flat{color:var(--muted)} .down{color:var(--crit)}
+  .tile .from{color:var(--faint)}
+  .tile.crit .now{color:var(--crit)}
+  .tile.win .now{color:var(--grow)}
+
+  .diag{display:grid;grid-template-columns:minmax(0,240px) minmax(0,1fr);gap:clamp(18px,3vw,40px);align-items:center}
+  @media (max-width:640px){.diag{grid-template-columns:1fr;justify-items:center}}
+  .glass{width:100%;max-width:240px}
+  .rung{display:flex;gap:14px;padding:16px 0;border-top:1px solid var(--border)}
+  .rung:first-child{border-top:0}
+  .rung .ic{flex:0 0 34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:16px;
+    font-family:var(--mono);font-weight:700;border:1px solid transparent}
+  .ic.ok{background:color-mix(in srgb,var(--grow) 16%,transparent);color:var(--grow);border-color:color-mix(in srgb,var(--grow) 35%,transparent)}
+  .ic.mid{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+  .ic.bad{background:color-mix(in srgb,var(--crit) 16%,transparent);color:var(--crit);border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
+  .rung h3{margin:0 0 3px;font-size:16px;font-weight:650;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .rung p{margin:0;color:var(--muted);font-size:14px;max-width:60ch}
+  .pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 8px;border-radius:99px;font-weight:600}
+  .pill.ok{background:color-mix(in srgb,var(--grow) 16%,transparent);color:var(--grow)}
+  .pill.mid{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+  .pill.bad{background:color-mix(in srgb,var(--crit) 16%,transparent);color:var(--crit)}
+
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:14px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+  thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);text-align:right;padding:13px 14px;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap}
+  thead th:first-child{text-align:left}
+  tbody td{padding:12px 14px;border-bottom:1px solid var(--border);text-align:right;
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  tbody td:first-child{text-align:left;white-space:normal;min-width:180px}
+  .vtitle{font-weight:600;display:block;line-height:1.3}
+  .vmeta{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.02em}
+  .num{font-family:var(--mono)}
+  .retbar{display:inline-flex;align-items:center;gap:9px;justify-content:flex-end}
+  .retbar .track{width:64px;height:7px;border-radius:99px;background:var(--panel2);overflow:hidden;flex:0 0 auto}
+  .retbar .fill{height:100%;border-radius:99px}
+  .subs-pos{color:var(--grow);font-weight:650}
+  .subs-zero{color:var(--faint)}
+  .tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:2px 7px;border-radius:6px;
+    border:1px solid var(--border);color:var(--muted)}
+  .tag.pend{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+  .tag.win{color:var(--grow);border-color:color-mix(in srgb,var(--grow) 40%,transparent)}
+  .tag.dead{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 40%,transparent)}
+  tr.dead td{background:color-mix(in srgb,var(--crit) 7%,transparent)}
+  tr.fresh td{background:color-mix(in srgb,var(--grow) 7%,transparent)}
+
+  .callout{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--warn);
+    border-radius:12px;padding:18px 20px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px}
+  .callout.crit{border-left-color:var(--crit)}
+  .callout.ok{border-left-color:var(--grow)}
+  .callout .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--warn)}
+  .callout.crit .k{color:var(--crit)}
+  .callout.ok .k{color:var(--grow)}
+  .callout p{margin:6px 0 0;color:var(--muted);font-size:14px;max-width:72ch}
+
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:640px){.split{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:18px 20px}
+  .card h4{margin:0 0 8px;font-size:14px;font-weight:650;display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .card p{margin:0;color:var(--muted);font-size:13.5px}
+  .card .verdict{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 8px;border-radius:99px}
+  .v-ok{background:color-mix(in srgb,var(--grow) 16%,transparent);color:var(--grow)}
+  .v-wait{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+  .v-bad{background:color-mix(in srgb,var(--crit) 16%,transparent);color:var(--crit)}
+
+  .ledger{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:16px}
+  .lrow{background:var(--panel2);border:1px solid var(--border);border-radius:11px;padding:14px 16px}
+  .lrow .lk{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .lrow .lv{font-family:var(--mono);font-size:13px;margin-top:6px;line-height:1.7}
+  .ok-t{color:var(--grow)} .bad-t{color:var(--crit)}
+
+  .moves{display:grid;gap:12px}
+  .move{display:grid;grid-template-columns:44px 1fr;gap:16px;background:var(--panel);
+    border:1px solid var(--border);border-radius:13px;padding:18px 20px;align-items:start}
+  .move .n{font-family:var(--serif);font-size:26px;color:var(--sand);line-height:1;font-variant-numeric:tabular-nums}
+  .move h3{margin:0 0 4px;font-size:16px;font-weight:650}
+  .move p{margin:0;color:var(--muted);font-size:14px;max-width:70ch}
+  .move .why{color:var(--faint);font-size:12.5px;font-family:var(--mono);margin-top:7px;letter-spacing:.02em}
+  .prio{float:right;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 8px;border-radius:99px;background:var(--panel2);color:var(--muted)}
+  .prio.now{color:var(--crit);background:color-mix(in srgb,var(--crit) 14%,transparent)}
+  .conf{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:2px 7px;border-radius:6px;
+    border:1px solid var(--border);color:var(--faint);margin-left:8px}
+  code{font-family:var(--mono);font-size:.9em;background:var(--panel2);padding:1px 6px;border-radius:5px}
+
+  .spark{width:100%;height:118px;display:block}
+
+  footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--border);
+    font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.03em;line-height:1.9}
+  .sign{color:var(--sand)}
+  @media (prefers-reduced-motion:no-preference){
+    .stream{animation:flow 1.1s linear infinite}
+    @keyframes flow{to{stroke-dashoffset:-14}}
+  }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Head of Growth · отчёт по каналу</p>
+  <h1>Признак подтверждён.</h1>
+  <p class="sub">Грязная «Автомойка» вышла вчера в 20:00Z и за девять часов взяла <b>2 просмотра</b>. Предсказание сбылось буквально. Ролик, побывавший в unlisted до постановки в расписание, не получает раздачи ленты — 3 отказа против 7 здоровых стартов, исключений нет. Это перестало быть гипотезой: у нас есть работающее правило публикации, которое стоит ноль.</p>
+  <div class="metaline">
+    <span><b>Канал</b> Sandy the Hourglass</span>
+    <span><b>Снято</b> 4 августа 2026, 05:00Z</span>
+    <span><b>Окно</b> Δ к 3 августа (сутки, без пропусков)</span>
+    <span><b>Публичных</b> 18 из 33 загрузок</span>
+  </div>
+
+  <hr class="hr">
+
+  <!-- STAT TILES -->
+  <div class="tiles">
+    <div class="tile win">
+      <div class="lab">Подписчики</div>
+      <div class="now">14</div>
+      <div class="delta"><span class="up">▲ +1</span><span class="from">сдвинулись впервые за 4 суток</span></div>
+    </div>
+    <div class="tile crit">
+      <div class="lab">Просмотры (сумма по видео)</div>
+      <div class="now">13 712</div>
+      <div class="delta"><span class="up">▲ +240</span><span class="from">худший прирост в живой день</span></div>
+    </div>
+    <div class="tile">
+      <div class="lab">Видео с 4‑значным охватом</div>
+      <div class="now">7</div>
+      <div class="delta"><span class="flat">■ 0</span><span class="from">вторые сутки</span></div>
+    </div>
+    <div class="tile">
+      <div class="lab">Конверсия просмотр → подписка</div>
+      <div class="now">0.102%</div>
+      <div class="delta"><span class="up">▲ было 0.096%</span><span class="from">впервые вверх</span></div>
+    </div>
+  </div>
+
+  <!-- DAILY REACH SPARK -->
+  <section>
+    <h2>Суточный охват: провал на месте вышедшего ролика</h2>
+    <p class="lede">Прирост просмотров по дням. Живые сутки дают 800–1300; вчерашние <b>+240</b> — это живой день, в котором новый ролик не поехал. Из 240 ровно 200 принёс позавчерашний «Не смог сказать нет», а вышедшая вчера «Автомойка» — <b>+1</b>. Раздача фронт‑загружена: вчерашний герой за первые 9 ч взял 1 269, за следующие сутки — 200.</p>
+    <svg class="spark" viewBox="0 0 700 118" role="img" aria-label="Столбики суточного прироста просмотров с 28 июля по 4 августа: 1157, 810, 28, 2, 1125, 11, 1271, 240">
+      <line x1="0" y1="100" x2="700" y2="100" stroke="var(--border)" stroke-width="1"/>
+      <g font-family="ui-monospace,monospace" font-size="10" fill="var(--faint)" text-anchor="middle">
+        <rect x="15"  y="27" width="50" height="73" rx="4" fill="var(--sand)" opacity=".85"/>
+        <text x="40"  y="20" fill="var(--muted)">1157</text><text x="40"  y="114">28 июл</text>
+        <rect x="102" y="49" width="50" height="51" rx="4" fill="var(--sand)" opacity=".85"/>
+        <text x="127" y="42" fill="var(--muted)">810</text><text x="127" y="114">29 июл</text>
+        <rect x="189" y="96" width="50" height="4"  rx="2" fill="var(--faint)"/>
+        <text x="214" y="89" fill="var(--muted)">28</text><text x="214" y="114">30 июл</text>
+        <rect x="276" y="97" width="50" height="3"  rx="1.5" fill="var(--faint)"/>
+        <text x="301" y="89" fill="var(--muted)">2</text><text x="301" y="114">31 июл</text>
+        <rect x="363" y="29" width="50" height="71" rx="4" fill="var(--sand)" opacity=".85"/>
+        <text x="388" y="22" fill="var(--muted)">1125</text><text x="388" y="114">1 авг</text>
+        <rect x="450" y="97" width="50" height="3"  rx="1.5" fill="var(--crit)"/>
+        <text x="475" y="89" fill="var(--crit)">11</text><text x="475" y="114" fill="var(--crit)">2 авг ✕</text>
+        <rect x="537" y="20" width="50" height="80" rx="4" fill="var(--grow)" opacity=".9"/>
+        <text x="562" y="13" fill="var(--grow)">1271</text><text x="562" y="114" fill="var(--grow)">3 авг ✓</text>
+        <rect x="624" y="85" width="50" height="15" rx="3" fill="var(--crit)" opacity=".9"/>
+        <text x="649" y="78" fill="var(--crit)">240</text><text x="649" y="114" fill="var(--crit)">4 авг ✕</text>
+      </g>
+    </svg>
+  </section>
+
+  <!-- THE VERDICT -->
+  <section>
+    <h2>Вердикт: грязный путь убивает раздачу</h2>
+    <p class="lede">Гипотеза заведена 2 августа и проверялась сама, без наших действий — два ролика уже стояли в расписании, один чистый, другой грязный. Обе половины отработали по предсказанию. Признак: побывал ли ролик в <code>unlisted</code> до постановки в <code>scheduled</code>.</p>
+    <div class="split">
+      <div class="card">
+        <h4>Чистый — раздался <span class="verdict v-ok">предсказано → сбылось</span></h4>
+        <p><b>«When You Can't Say No»</b>, 31 с, в расписании с 29 июля, unlisted не был. 2 авг 20:00Z → <b>1 269 за 9 ч</b>, сегодня 1 469. Контроль на отсечке +9 ч: Лифт 864, Парфюм 789, Тяжёлый друг 1 050. Лучший старт из четырёх.</p>
+      </div>
+      <div class="card">
+        <h4>Грязный — отказал <span class="verdict v-bad">предсказано → сбылось</span></h4>
+        <p><b>«Автомойка»</b>, 61 с. Архив: 24 июл 12:45Z <code>unlisted</code> → 13:45Z <code>scheduled</code> → 3 авг 20:15Z <code>public</code>. За 9 ч — <b>2 просмотра</b>, shorts_feed нулевой. При том, что 61 с — это ровно длина здорового «Тяжёлого друга» (1 083).</p>
+      </div>
+    </div>
+    <div class="ledger">
+      <div class="lrow">
+        <div class="lk">Отказали · грязный путь</div>
+        <div class="lv bad-t">Аэропорт‑4 (1‑й заход) · 23 июл<br>Off Switch · 29 июл<br>Автомойка · 24 июл</div>
+      </div>
+      <div class="lrow">
+        <div class="lk">Раздались · чистый путь</div>
+        <div class="lv ok-t">Пафосный приём · Уборка · Лифт<br>Тяжёлый друг · Парфюм · Не смог сказать нет<br>Аэропорт‑4 (перезапуск)</div>
+      </div>
+      <div class="lrow">
+        <div class="lk">Счёт</div>
+        <div class="lv">3 отказа / 7 здоровых<br>исключений <b>0</b><br>вероятность случайного совпадения ≈ 1 из 120</div>
+      </div>
+      <div class="lrow">
+        <div class="lk">Форвард‑тест на сегодня</div>
+        <div class="lv">«Он был первым в очереди» 39 с<br>в <code>scheduled</code> с 1 авг 13:30Z, чистый<br>предсказание: <span class="ok-t">раздастся</span> · вердикт 5 авг</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DIAGNOSIS -->
+  <section>
+    <h2>Диагностика воронки</h2>
+    <p class="lede">Верхняя ступень лестницы — не качество, а допуск. Ролик сначала должен попасть в раздачу вообще; это бинарно и решается до всякого удержания. С сегодняшнего дня эта ступень из «нового гейта» стала известной и управляемой.</p>
+    <div class="diag">
+      <svg class="glass" viewBox="0 0 200 300" role="img" aria-label="Песочные часы: верхняя колба — 13 712 просмотров, горлышко — удержание, нижняя колба почти пуста — 14 подписок">
+        <defs>
+          <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="var(--sand-soft)"/><stop offset="1" stop-color="var(--sand)"/>
+          </linearGradient>
+        </defs>
+        <path d="M40 24 H160 M40 276 H160" stroke="var(--faint)" stroke-width="6" stroke-linecap="round"/>
+        <path d="M52 28 C52 96 92 128 92 150 C92 172 52 204 52 272
+                 M148 28 C148 96 108 128 108 150 C108 172 148 204 148 272"
+              fill="none" stroke="var(--border)" stroke-width="3"/>
+        <path d="M56 40 C56 96 90 126 92 148 C108 126 144 96 144 40 Z" fill="url(#sand)" opacity=".92"/>
+        <line class="stream" x1="100" y1="150" x2="100" y2="238" stroke="var(--sand)" stroke-width="3"
+              stroke-dasharray="3 5" stroke-linecap="round"/>
+        <path d="M72 260 C84 250 116 250 128 260 C136 265 138 268 138 270 H62 C62 268 64 265 72 260 Z" fill="url(#sand)"/>
+        <text x="100" y="78" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="#1c130a" font-weight="700">13 712</text>
+        <text x="100" y="90" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" fill="#1c130a" opacity=".7">просмотров</text>
+        <text x="163" y="152" font-family="ui-monospace,monospace" font-size="8.5" fill="var(--muted)">удержание</text>
+        <text x="100" y="288" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="var(--crit)" font-weight="700">14 подписок</text>
+      </svg>
+      <div>
+        <div class="rung">
+          <div class="ic bad">!</div>
+          <div>
+            <h3>Допуск в раздачу <span class="pill bad">причина найдена</span></h3>
+            <p>Из десяти запусков три не были раздана лентой вообще, и все три шли путём <b>unlisted → scheduled → public</b>. Все семь здоровых — сразу в scheduled. Это <b>30% производства в мусор</b> по причине, которая правится настройкой процесса, а не творчеством.</p>
+          </div>
+        </div>
+        <div class="rung">
+          <div class="ic ok">✓</div>
+          <div>
+            <h3>Охват <span class="pill ok">решено — для допущенных</span></h3>
+            <p>Кто прошёл гейт, получает 736–1 501 просмотр, <b>96%</b> трафика из shorts_feed (по роликам с доехавшей атрибуцией). Раздача фронт‑загружена и гаснет за ~48 ч. Каталог из 26 прочих загрузок дал за сутки <b>+40</b> на всех — восьмая такая точка подряд.</p>
+          </div>
+        </div>
+        <div class="rung">
+          <div class="ic mid">≈</div>
+          <div>
+            <h3>Удержание <span class="pill mid">стоит на месте</span></h3>
+            <p>Медиана <b>38.8%</b> по 11 зрелым раздаваемым (вчера 38.9% — движение в пределах шума). Потолок «Пафосный приём» 71.7%, дно «Уборка» 27.3%. Пятые сутки без тренда: сдвиги у зрелых роликов ±0.15 п.п.</p>
+          </div>
+        </div>
+        <div class="rung">
+          <div class="ic bad">✕</div>
+          <div>
+            <h3>Подписка <span class="pill bad">точка обрыва</span></h3>
+            <p>13 712 просмотров → 14 подписчиков = <b>0.102%</b>. Впервые за наблюдение цифра пошла вверх — но только потому, что просмотры почти не выросли, а подписчик пришёл один. Механика горлышка не изменилась.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MOVERS -->
+  <section>
+    <h2>Кто поехал</h2>
+    <p class="lede">Все публичные видео, которые лента подхватила, плюс отказы снизу для контраста. Столбик удержания читается только у выдержанных — свежим он ещё не начислен.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>Видео</th><th>Просмотры</th><th>Δ сутки</th><th>Удержание</th><th>Подписки</th><th>Статус</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="vtitle">🎂 Пафосный приём</span><span class="vmeta">23 с · 23 июл · лента 99%</span></td>
+            <td class="num">1 501</td><td class="num up">+4</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:72%;background:var(--grow)"></span></span>71.7%</span></td>
+            <td class="subs-pos">+1</td>
+            <td><span class="tag win">потолок</span></td>
+          </tr>
+          <tr class="fresh">
+            <td><span class="vtitle">😬 Не смог сказать «нет»</span><span class="vmeta">31 с · 2 авг · чистый путь</span></td>
+            <td class="num">1 469</td><td class="num up">+200</td>
+            <td><span class="retbar"><span class="track"></span><span style="color:var(--faint)">—</span></span></td>
+            <td class="subs-zero">—</td>
+            <td><span class="tag pend">PENDING 6 авг</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">🎾 Стена / Теннис</span><span class="vmeta">75 с · 21 июл · лента 97%</span></td>
+            <td class="num">1 450</td><td class="num up">+2</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:40%;background:var(--warn)"></span></span>40.0%</span></td>
+            <td class="subs-pos">+3</td>
+            <td><span class="tag win">топ‑конвертер</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">🧹 Уборка</span><span class="vmeta">73 с · 25 июл · лента 96%</span></td>
+            <td class="num">1 425</td><td class="num up">+4</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:27%;background:var(--crit)"></span></span>27.3%</span></td>
+            <td class="subs-pos">+2</td>
+            <td><span class="tag">дно удержания</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">✈️ Аэропорт / Красная лента</span><span class="vmeta">52 с · 19 июл · лента 96%</span></td>
+            <td class="num">1 274</td><td class="num up">+2</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:51%;background:var(--grow)"></span></span>50.6%</span></td>
+            <td class="subs-zero">0</td>
+            <td><span class="tag">выдержан</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">✈️ Аэропорт‑4</span><span class="vmeta">62 с · 30 июл, перезапуск 31 июл</span></td>
+            <td class="num">1 132</td><td class="num up">+3</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:56%;background:var(--grow)"></span></span>55.5%</span></td>
+            <td class="subs-pos">+1</td>
+            <td><span class="tag win">оживлён перезапуском</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">🏋️ Тяжёлый друг</span><span class="vmeta">61 с · 27 июл · лента 97%</span></td>
+            <td class="num">1 083</td><td class="num up">+3</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:39%;background:var(--warn)"></span></span>39.0%</span></td>
+            <td class="subs-pos">+2</td>
+            <td><span class="tag">медиана</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">🏋️ Спортзал</span><span class="vmeta">86 с · 24 июл · лента 95%</span></td>
+            <td class="num">992</td><td class="num up">+2</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:32%;background:var(--crit)"></span></span>32.3%</span></td>
+            <td class="subs-zero">0</td>
+            <td><span class="tag">ниже медианы</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">🛗 Лифт</span><span class="vmeta">82 с · 26 июл · лента 96%</span></td>
+            <td class="num">880</td><td class="num up">+3</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:39%;background:var(--warn)"></span></span>38.8%</span></td>
+            <td class="subs-pos">+1</td>
+            <td><span class="tag">медиана</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">💐 Мадам Парфюм</span><span class="vmeta">78 с · 28 июл · лента 97%</span></td>
+            <td class="num">819</td><td class="num up">+3</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:32%;background:var(--crit)"></span></span>31.5%</span></td>
+            <td class="subs-zero">0</td>
+            <td><span class="tag">ниже медианы</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">💨 Вентилятор</span><span class="vmeta">144 с · 21 июл · лента 96%</span></td>
+            <td class="num">819</td><td class="num up">+4</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:37%;background:var(--warn)"></span></span>36.7%</span></td>
+            <td class="subs-pos">+2</td>
+            <td><span class="tag">самый длинный</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">📱 Смартфон</span><span class="vmeta">61 с · 22 июл · лента 96%</span></td>
+            <td class="num">736</td><td class="num up">+2</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:36%;background:var(--warn)"></span></span>36.3%</span></td>
+            <td class="subs-zero">0</td>
+            <td><span class="tag">ниже медианы</span></td>
+          </tr>
+          <tr class="dead">
+            <td><span class="vtitle">🚗 Автомойка</span><span class="vmeta">61 с · 3 авг 20:00Z · грязный путь</span></td>
+            <td class="num">2</td><td class="num">+1</td>
+            <td><span class="retbar"><span class="track"></span><span style="color:var(--faint)">—</span></span></td>
+            <td class="subs-zero">—</td>
+            <td><span class="tag dead">отказ, 9 ч</span></td>
+          </tr>
+          <tr class="dead">
+            <td><span class="vtitle">😵 Off Switch</span><span class="vmeta">27 с · 1 авг 20:00Z · грязный путь</span></td>
+            <td class="num">6</td><td class="num">+3</td>
+            <td><span class="retbar"><span class="track"></span><span style="color:var(--faint)">—</span></span></td>
+            <td class="subs-zero">—</td>
+            <td><span class="tag dead">отказ, 57 ч</span></td>
+          </tr>
+          <tr class="dead">
+            <td><span class="vtitle">🚗 Автомойка‑19 июл</span><span class="vmeta">75 с · 19 июл · вне архива</span></td>
+            <td class="num">11</td><td class="num">+1</td>
+            <td><span class="retbar"><span class="track"><span class="fill" style="width:80%;background:var(--faint)"></span></span>80.2%</span></td>
+            <td class="subs-zero">0</td>
+            <td><span class="tag dead">отказ, 16 сут</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- CALLOUTS -->
+  <section>
+    <div class="callout crit">
+      <div>
+        <div class="k">🔴 Эфир кончается сегодня вечером</div>
+        <p>В расписании осталась <b>одна</b> публикация — «Он был первым в очереди» сегодня 20:00Z. После неё пусто. Запас эфира <b>0 дней</b>. Каждые сутки без выхода = суточный охват падает почти в ноль, это измерено четырежды (28 · 2 просмотра, 30 июл · 28). Тем не сочиняю — это гейт шоураннера: <code>/ss-showrunner SANDY</code>.</p>
+      </div>
+    </div>
+    <div class="callout crit">
+      <div>
+        <div class="k">🔴 Эксперимент закончен — оба отказника можно чинить</div>
+        <p>Вчера я просил <b>не спасать</b> «Автомойку», потому что она была единственной контрольной точкой. Вердикт получен, контроль больше не нужен. Теперь оба мёртвых ролика можно перезапускать без потери знания: <b>Off Switch</b> (6 просмотров за 57 ч) и <b>Автомойка</b> (2 за 9 ч). Ручка: снять в <code>scheduled</code>, вернуть в <code>public</code> — ровно это 31 июля оживило «Аэропорт‑4» и дало ему лучший старт из четырёх. Две минуты в Studio, потенциал ~2 000 просмотров. <b>[ОЦЕНОЧНО, n=1 по ручке починки]</b></p>
+      </div>
+    </div>
+    <div class="callout">
+      <div>
+        <div class="k">⏳ Лаг метрик — что сегодня читать нельзя</div>
+        <p>«Не смог сказать нет» (2 авг) и «Автомойка» (3 авг) внутри окна обработки: удержание, CTR, источники и атрибуция подписок им не начислены — <b>PENDING‑VALIDATION 6 и 7 августа</b>. Ось views у обоих читаема уже сейчас, она живая с первого часа (проверено 15‑минутным архивом). Не переносить лаг одной оси на другую.</p>
+      </div>
+    </div>
+    <div class="callout ok">
+      <div>
+        <div class="k">🔬 Что этот вердикт НЕ доказал</div>
+        <p>Механизм остаётся гипотезой. «Побывал в unlisted» может быть не причиной, а <b>маркером</b> — признаком того, что ролик пересоздавали или трогали руками. Для роста это неважно (правило работает в обе стороны), для понимания — важно. Разделить можно одним экспериментом: положить заведомо нетронутый ролик в unlisted на час и вернуть. Ставить его сейчас не предлагаю — стоит дня охвата при нулевом эфире.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- GROWTH MOVES -->
+  <section>
+    <h2>Что предлагаю дальше</h2>
+    <p class="lede">Режим накопления: продукт не трогаю, коррекции копятся как предложения. Ход №2 — исключение: это не коррекция продукта, а починка сломанного конвейера, и она стоит ноль. Уверенность помечена честно у каждого хода. Публикация и деньги — твой триггер.</p>
+    <div class="moves">
+      <div class="move">
+        <div class="n">1</div>
+        <div>
+          <span class="prio now">сегодня</span>
+          <h3>Эфир на нуле</h3>
+          <p>Сегодняшний выход — последний в расписании. Дальше канал замолкает, а замолкший канал теряет не только сутки: раздача фронт‑загружена, накопления от каталога нет. Восемь суток подряд каталог из 26 загрузок даёт около нуля.</p>
+          <div class="why">команда: /ss-showrunner SANDY · <b>[ДОКАЗАНО: 8 точек подряд, каталог ≈ 0]</b></div>
+        </div>
+      </div>
+      <div class="move">
+        <div class="n">2</div>
+        <div>
+          <span class="prio now">исполнять</span>
+          <h3>Правило публикации: из монтажа сразу в scheduled</h3>
+          <p>Ролик никогда не кладётся в <code>unlisted</code>. Проверка глазами — до заливки, не после. Если проверить надо после — ролик уже мёртв, его придётся перезапускать. Это правка процесса, не продукта: ноль стоимости, ноль риска, и она снимает 30% брака на ровном месте.</p>
+          <div class="why">почему: 3 отказа из 10 запусков · выброшено ≈ $80 производства <span class="conf">[ДОКАЗАНО: 3/7, исключений 0]</span></div>
+        </div>
+      </div>
+      <div class="move">
+        <div class="n">3</div>
+        <div>
+          <span class="prio now">две минуты</span>
+          <h3>Перезапустить Off Switch и Автомойку</h3>
+          <p>Контрольная точка отработала, держать их мёртвыми больше незачем. Снять в scheduled → вернуть в public. Два ролика уже оплачены и лежат в нуле; при среднем здоровом старте это ~2 000 просмотров, которых сейчас просто нет.</p>
+          <div class="why">почему: ручка проверена один раз (Аэропорт‑4, 31 июл) <span class="conf">[ОЦЕНОЧНО, n=1]</span></div>
+        </div>
+      </div>
+      <div class="move">
+        <div class="n">4</div>
+        <div>
+          <span class="prio">копится</span>
+          <h3>Горлышко — причина вернуться, а не форма ролика</h3>
+          <p>Механические объяснения конверсии исчерпаны: связь «подписка ↔ секунды досмотра» опровергнута 1 августа на выборке 11. Осталась одна непроверенная — зрителю нечего ждать дальше. Проверяется только постановкой: узнаваемый конец, обещание следующего, единый бренд.</p>
+          <div class="why">почему: 0.102% при 13 712 просмотрах <span class="conf">[ОЦЕНОЧНО, гипотезу метрикой не опровергнуть]</span></div>
+        </div>
+      </div>
+      <div class="move">
+        <div class="n">5</div>
+        <div>
+          <span class="prio">наблюдаю</span>
+          <h3>Короткая длина: переменные наконец разведены</h3>
+          <p>Вчерашняя оговорка снята наполовину. «Автомойка» — 61 с чистой длины на грязном пути — отказала, значит отказы объясняются путём, а не длиной, и корреляцию можно считать по одним допущенным. Там она держится: длительность ↔ охват −0.60 при n=12, длительность ↔ удержание −0.61 при n=11. Но коротких роликов среди допущенных всего два, и у 31‑секундного удержание ещё не начислено.</p>
+          <div class="why">почему: n=2 на коротком конце, по удержанию n=1 <span class="conf">[PENDING до 6 авг]</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>Источник: снапшот 2026‑08‑04T05:00Z (Data API + Analytics), дельты к 2026‑08‑03T05:00Z. Пропущенных суток нет. 33 загрузки, 18 публичных, 12 раздаваемых. Privacy‑история — 15‑минутный архив channel_snapshots (webapp/scripts/hog-privacy-history.mts).</div>
+    <div>Метод по скиллу Head of Growth: views ≠ growth · охват → удержание → подписка · уважать лаг метрик · только числа из снапшота.</div>
+    <div>Прирост охвата считается по сумме rows.views (Analytics); счётчик канала Data API за сутки прыгнул 11 004 → 13 648, это догон отставания агрегата, а не рост — как метрика роста не используется.</div>
+    <div>Режим накопления соблюдён: продукт не изменён, коррекции — предложения. Ход №2 заявлен как починка конвейера. Исполняет Директор.</div>
+    <div class="sign">— Тео, Head of Growth · SandyStudio</div>
+  </footer>
+</div>
