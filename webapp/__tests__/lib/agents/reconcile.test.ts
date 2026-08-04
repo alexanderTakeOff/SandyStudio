@@ -266,6 +266,41 @@ describe('planReconcileActions — Failure-spine Slice 3 refire', () => {
     expect(acts.filter((a) => a.kind === 'refire')).toHaveLength(0);
   });
 
+  it('HALTs a TERMINAL failure immediately, without spending a refire (stale anchor)', () => {
+    // S20-E01, 2026-07-31: a stale continuity anchor re-reads the same rows on
+    // every attempt. The old spine "recovered" it into paid re-renders; now the
+    // cell goes straight to the Director and the recovery budget stays untouched.
+    const m = matrix([
+      shot('SH01', {
+        ref_plan: st({ status: 'APPROVED', asset_id: 'rp1', version: 1 }),
+        ref_image: st({
+          status: null,
+          failure_count: 3,
+          failure_terminal: true,
+          blocked_reason: 'генерация упала ×3 (PLAN_ANCHOR_STALE …)',
+        }),
+      }),
+    ]);
+    const acts = planReconcileActions(ctx({ matrix: m, recoveryCap: 3 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'halt', shotId: 'SH01', stage: 'ref_image' }),
+    );
+    expect(acts.filter((a) => a.kind === 'refire')).toHaveLength(0);
+  });
+
+  it('still refires a NON-terminal failure of the same cell', () => {
+    const m = matrix([
+      shot('SH01', {
+        ref_plan: st({ status: 'APPROVED', asset_id: 'rp1', version: 1 }),
+        ref_image: st({ status: null, failure_count: 1 }),
+      }),
+    ]);
+    const acts = planReconcileActions(ctx({ matrix: m, recoveryCap: 3 }));
+    expect(acts).toContainEqual(
+      expect.objectContaining({ kind: 'refire', shotId: 'SH01', stage: 'ref_image', assetId: 'rp1' }),
+    );
+  });
+
   it('never refires a reserved (pilot) shot — the visual gate stays intact', () => {
     const m = matrix([shot('SH01', { ref_image: st({ status: null, failure_count: 5 }) })]);
     const acts = planReconcileActions(

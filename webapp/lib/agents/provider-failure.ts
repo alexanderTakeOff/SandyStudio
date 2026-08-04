@@ -63,3 +63,37 @@ export function classifyProviderFailure(
 ): ProviderFailureClass {
   return isPersistentBillingFailure(message) ? 'persistent_billing' : 'transient';
 }
+
+/**
+ * True when the failure is a STALE CONTINUITY ANCHOR (`PLAN_ANCHOR_STALE`, raised
+ * by `checkPlanAnchorFreshness`) — the Plan points at a reference frame that is no
+ * longer the APPROVED one at its scope.
+ *
+ * Same TEXT-signature detection as the billing patterns above, and for the same
+ * reason: the message survives error-wrapping across the runner → factory →
+ * Inngest boundary, while an error subclass does not.
+ *
+ * Why it belongs in the terminal class (S20-E01, 2026-07-31): the Director
+ * re-approved SH04 v02, which auto-demoted v01, and the five Plans authored
+ * against v01 went stale. Every retry re-read the SAME rows and produced the SAME
+ * verdict — 100 identical failures in the log — and the recovery spine then
+ * "healed" it with five PAID re-renders. A deterministic state cannot be retried
+ * into success; it needs ONE Director decision (re-anchor / re-render / leave).
+ */
+export function isPlanAnchorStaleFailure(
+  message: string | null | undefined,
+): boolean {
+  if (!message) return false;
+  return message.includes('PLAN_ANCHOR_STALE');
+}
+
+/**
+ * True when re-running the SAME agent on the SAME inputs cannot change the
+ * outcome: a billing wall or a stale continuity anchor. Callers use it to skip
+ * Inngest retries, skip the mechanical refire, and escalate to the Director once.
+ */
+export function isTerminalAgentFailure(
+  message: string | null | undefined,
+): boolean {
+  return isPersistentBillingFailure(message) || isPlanAnchorStaleFailure(message);
+}

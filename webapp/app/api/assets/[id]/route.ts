@@ -19,6 +19,7 @@ import {
   type AssetMetadataDoc,
   type DescriptionHistoryEntry,
 } from '@/lib/api/series-bible';
+import { findPlansAnchoredTo, formatAnchorUsage } from '@/lib/api/anchor-usage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,6 +45,20 @@ export const GET = withApiHandler(async (_req, ctx) => {
     .maybeSingle();
   if (error) throw new Error(`asset fetch failed: ${error.message}`);
   if (!data) throw new NotFoundError(`Asset ${id}`);
+
+  // Reverse anchor index — who depends on THIS frame (2026-07-31). The anchor
+  // link is one-directional in storage: a Plan records the frame it was authored
+  // against, the frame knows nothing of its dependants. Surfacing it here lets the
+  // approval panel show the cost of replacing a frame BEFORE the click, instead of
+  // the Director learning it from five failed renders afterwards.
+  const row = data as { file_type?: string | null; episode_id?: string | null };
+  if (typeof row.file_type === 'string' && row.file_type.startsWith('IMG-episode_ref') && row.episode_id) {
+    const plans = await findPlansAnchoredTo(supabase, row.episode_id, id);
+    return apiOk({
+      ...data,
+      anchor_usage: { plans, summary: formatAnchorUsage(plans) },
+    });
+  }
   return apiOk(data);
 });
 

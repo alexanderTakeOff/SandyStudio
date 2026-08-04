@@ -52,7 +52,11 @@ import {
   markDispatchIntent,
   type DispatchKey,
 } from './dispatch-intent';
-import { isPersistentBillingFailure } from './provider-failure';
+import {
+  isPersistentBillingFailure,
+  isPlanAnchorStaleFailure,
+  isTerminalAgentFailure,
+} from './provider-failure';
 import { decideGate, recordGateDecision } from './gate-decision';
 import { resolveProvider, type ContractName, type ResolvedProvider } from './provider-resolver';
 import type { AgentId } from './types';
@@ -1136,9 +1140,15 @@ export function createAgentInngestFunction<E extends string>(
             // (the cross-wake spend spiral). metadata.auto_react=false is the
             // suppression flag honoured by logEvent.
             const billingLocked = isPersistentBillingFailure(errMsg);
+            // Same class, different wall: a stale continuity anchor re-reads the
+            // same rows on every attempt and returns the same verdict. Naming it
+            // here keeps the feed honest ("needs a decision", not "flaky agent").
+            const anchorStale = isPlanAnchorStaleFailure(errMsg);
             const failTitle = billingLocked
               ? `⛔ Provider out of funds — ${agentDisplayName(spec.agentId)}${failedSuffix} (Director: top up)`
-              : `${agentDisplayName(spec.agentId)} failed${failedSuffix}`;
+              : anchorStale
+                ? `⚓ Якорь непрерывности сменился — ${agentDisplayName(spec.agentId)}${failedSuffix} (нужно решение Директора)`
+                : `${agentDisplayName(spec.agentId)} failed${failedSuffix}`;
             await logEvent(supabase, {
               event_type: 'agent_failed',
               severity: 'error',
@@ -1155,6 +1165,7 @@ export function createAgentInngestFunction<E extends string>(
                 // billing). Terminal escalation is the onFailure blocker_raised.
                 auto_react: false,
                 ...(billingLocked ? { reason: 'PROVIDER_BILLING_LOCK' } : {}),
+                ...(anchorStale ? { reason: 'PLAN_ANCHOR_STALE' } : {}),
                 ...(failedCtx?.metadata ?? {}),
               },
             });
@@ -1170,6 +1181,15 @@ export function createAgentInngestFunction<E extends string>(
           }
           return { logged: true };
         });
+        // A deterministic failure cannot be retried into success: the billing wall
+        // and the stale anchor both re-read the same state and return the same
+        // verdict. Retrying multiplies log noise and (for money stages) burns the
+        // attempt budget on a wall — S20-E01 logged 100 identical PLAN_ANCHOR_STALE
+        // before anyone looked. NonRetriable skips straight to onFailure, which
+        // raises the ONE deduped blocker for the Director.
+        if (isTerminalAgentFailure(errMsg)) {
+          throw new NonRetriableError(errMsg, { cause: err });
+        }
         throw err;
       }
     },
