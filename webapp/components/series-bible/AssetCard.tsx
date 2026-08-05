@@ -13,6 +13,14 @@ import { bibleSlug, type BibleAsset, type SbSection } from '@/lib/api/series-bib
 import { NotificationDot } from '@/components/notifications/NotificationDot';
 import { AssetDetailDrawer } from './AssetDetailDrawer';
 import { resolvePreviewSrc } from '@/lib/asset-preview-resolver';
+import { withGridThumbParam } from '@/lib/media-thumb';
+
+// Bible cards render inside a responsive `grid-cols-2..5` layout — never
+// wider than ~300px CSS even on a full-width desktop grid. 480px (DPR-safe
+// for ~240px CSS) is a small fraction of the 1024px+ source the Bible
+// generator ships, so requesting it via the media route's disk-cached `?w=`
+// resize cuts bytes-over-the-wire and decode/paint cost on every re-render.
+const BIBLE_CARD_THUMB_WIDTH = 480;
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'var(--accent-info)',
@@ -47,6 +55,7 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
       (asset.metadata.image_prompt.current_version ?? 1) - 1
     ];
   const previewSrc = resolvePreviewSrc(asset, promptEntry);
+  const thumbSrc = previewSrc ? withGridThumbParam(previewSrc, BIBLE_CARD_THUMB_WIDTH) : null;
   const isVideoAsset = asset.file_type.startsWith('SBL-video');
   const isImage = !!previewSrc && !isVideoAsset;
   const statusColor = STATUS_COLORS[asset.status] ?? 'var(--text-muted)';
@@ -114,8 +123,10 @@ export function AssetCard({ seriesId, asset, section, onChange }: AssetCardProps
             ) : isImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={previewSrc!}
+                src={thumbSrc!}
                 alt={name}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
               />
             ) : (

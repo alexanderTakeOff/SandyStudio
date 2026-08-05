@@ -23,3 +23,18 @@ export function withThumbParam(src: string, cssSizePx: number): string {
   const sep = src.includes('?') ? '&' : '?';
   return `${src}${sep}w=${width}`;
 }
+
+/**
+ * Fixed-width thumbnail request for responsive CSS-grid cards whose rendered
+ * size isn't known at request time (e.g. Bible `AssetCard`, sized by
+ * `grid-cols-2..5` breakpoints rather than a fixed px prop). These tiles sit
+ * above `THUMB_GATE_PX` — too big for `withThumbParam` — but still far below
+ * the 1024px+ source, so the same disk-cached `?w=` resize still pays off.
+ * 2026-08-05 — Bible cards were shipping full-res PNGs into a grid tile.
+ */
+export function withGridThumbParam(src: string, width: number): string {
+  if (!src.startsWith('/api/media/')) return src;
+  const clamped = Math.max(16, Math.round(width));
+  const sep = src.includes('?') ? '&' : '?';
+  return `${src}${sep}w=${clamped}`;
+}
