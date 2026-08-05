@@ -1,0 +1,485 @@
+<title>Pragmatico Manifesto — отчёт Head of Growth · 5 августа</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0e1520; --panel:#17212e; --panel2:#1e2a38; --border:#2a3746;
+    --text:#e7edf3; --muted:#94a4b5; --faint:#6a7c8d;
+    --sand:#e2a95c; --sand-soft:#f0c689;
+    --grow:#5cbb8c; --warn:#dcae4e; --crit:#e0754f;
+    --grid:rgba(255,255,255,.05);
+    --serif: "Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --sans: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono: ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#e9ecf1; --panel:#f7f8fb; --panel2:#eef1f5; --border:#d3dae2;
+      --text:#16222e; --muted:#556676; --faint:#7d8d9c;
+      --sand:#bd7c2c; --sand-soft:#a9691d;
+      --grow:#2e8d60; --warn:#a97c1c; --crit:#bd4c2c;
+      --grid:rgba(20,40,60,.06);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1520; --panel:#17212e; --panel2:#1e2a38; --border:#2a3746;
+    --text:#e7edf3; --muted:#94a4b5; --faint:#6a7c8d;
+    --sand:#e2a95c; --sand-soft:#f0c689; --grow:#5cbb8c; --warn:#dcae4e; --crit:#e0754f;
+    --grid:rgba(255,255,255,.05);
+  }
+  :root[data-theme="light"]{
+    --bg:#e9ecf1; --panel:#f7f8fb; --panel2:#eef1f5; --border:#d3dae2;
+    --text:#16222e; --muted:#556676; --faint:#7d8d9c;
+    --sand:#bd7c2c; --sand-soft:#a9691d; --grow:#2e8d60; --warn:#a97c1c; --crit:#bd4c2c;
+    --grid:rgba(20,40,60,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+    line-height:1.55;-webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(1200px 500px at 80% -10%, color-mix(in srgb,var(--sand) 9%, transparent), transparent 60%);}
+  .wrap{max-width:1000px;margin:0 auto;padding:clamp(20px,4vw,52px) clamp(16px,4vw,40px) 80px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--sand);margin:0 0 14px}
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(30px,5.4vw,52px);line-height:1.04;
+    letter-spacing:-.01em;margin:0 0 10px;text-wrap:balance}
+  .sub{color:var(--muted);font-size:clamp(15px,1.9vw,18px);max-width:60ch;margin:0}
+  .metaline{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:20px;font-family:var(--mono);
+    font-size:12.5px;color:var(--faint);letter-spacing:.03em}
+  .metaline b{color:var(--muted);font-weight:500}
+  .hr{height:1px;background:var(--border);border:0;margin:36px 0}
+
+  h2{font-family:var(--serif);font-weight:600;font-size:clamp(20px,3vw,27px);letter-spacing:-.01em;
+    margin:0 0 4px;text-wrap:balance}
+  .lede{color:var(--muted);margin:0 0 22px;max-width:66ch}
+  section{margin-top:48px}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+  .tile{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 18px 16px;
+    position:relative;overflow:hidden}
+  .tile .lab{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .tile .now{font-family:var(--serif);font-size:clamp(30px,5vw,42px);line-height:1;margin:12px 0 6px;
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .tile .delta{font-family:var(--mono);font-size:12.5px;display:flex;align-items:baseline;gap:7px}
+  .up{color:var(--grow)} .flat{color:var(--muted)} .down{color:var(--crit)}
+  .tile .from{color:var(--faint)}
+  .tile.crit .now{color:var(--crit)}
+  .tile.na .now{color:var(--faint)}
+
+  .diag{display:grid;grid-template-columns:minmax(0,240px) minmax(0,1fr);gap:clamp(18px,3vw,40px);align-items:center}
+  @media (max-width:640px){.diag{grid-template-columns:1fr;justify-items:center}}
+  .glass{width:100%;max-width:240px}
+  .rung{display:flex;gap:14px;padding:16px 0;border-top:1px solid var(--border)}
+  .rung:first-child{border-top:0}
+  .rung .ic{flex:0 0 34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:16px;
+    font-family:var(--mono);font-weight:700;border:1px solid transparent}
+  .ic.ok{background:color-mix(in srgb,var(--grow) 16%,transparent);color:var(--grow);border-color:color-mix(in srgb,var(--grow) 35%,transparent)}
+  .ic.mid{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+  .ic.bad{background:color-mix(in srgb,var(--crit) 16%,transparent);color:var(--crit);border-color:color-mix(in srgb,var(--crit) 35%,transparent)}
+  .ic.na{background:var(--panel2);color:var(--faint);border-color:var(--border)}
+  .rung h3{margin:0 0 3px;font-size:16px;font-weight:650;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .rung p{margin:0;color:var(--muted);font-size:14px;max-width:60ch}
+  .pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 8px;border-radius:99px;font-weight:600}
+  .pill.ok{background:color-mix(in srgb,var(--grow) 16%,transparent);color:var(--grow)}
+  .pill.mid{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+  .pill.bad{background:color-mix(in srgb,var(--crit) 16%,transparent);color:var(--crit)}
+  .pill.na{background:var(--panel2);color:var(--faint)}
+
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:14px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+  thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);text-align:right;padding:13px 14px;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap}
+  thead th:first-child{text-align:left}
+  tbody td{padding:12px 14px;border-bottom:1px solid var(--border);text-align:right;
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  tbody td:first-child{text-align:left;white-space:normal;min-width:180px}
+  .vtitle{font-weight:600;display:block;line-height:1.3}
+  .vmeta{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.02em}
+  .num{font-family:var(--mono)}
+  .tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:2px 7px;border-radius:6px;
+    border:1px solid var(--border);color:var(--muted)}
+  .tag.pend{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+  .tag.win{color:var(--grow);border-color:color-mix(in srgb,var(--grow) 40%,transparent)}
+  .tag.stop{color:var(--crit);border-color:color-mix(in srgb,var(--crit) 40%,transparent)}
+
+  .callout{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--warn);
+    border-radius:12px;padding:18px 20px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+  .callout + .callout{margin-top:12px}
+  .callout.find{border-left-color:var(--sand)}
+  .callout.find .k{color:var(--sand)}
+  .callout.ok{border-left-color:var(--grow)}
+  .callout.ok .k{color:var(--grow)}
+  .callout.bad{border-left-color:var(--crit)}
+  .callout.bad .k{color:var(--crit)}
+  .callout .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--warn)}
+  .callout p{margin:6px 0 0;color:var(--muted);font-size:14px;max-width:72ch}
+
+  .chan{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin:18px 0 2px}
+  @media (max-width:640px){.chan{grid-template-columns:1fr}}
+  .node{background:var(--panel2);border:1px solid var(--border);border-radius:11px;padding:13px 15px}
+  .node .t{font-weight:650;font-size:14px}
+  .node .d{color:var(--faint);font-family:var(--mono);font-size:11.5px;margin-top:3px}
+  .arrow{font-family:var(--mono);font-size:13px;color:var(--faint);text-align:center;white-space:nowrap}
+  .arrow.good{color:var(--grow)} .arrow.bad{color:var(--crit)}
+
+  .moves{display:grid;gap:12px}
+  .move{display:grid;grid-template-columns:44px 1fr;gap:16px;background:var(--panel);
+    border:1px solid var(--border);border-radius:13px;padding:18px 20px;align-items:start}
+  .move .n{font-family:var(--serif);font-size:26px;color:var(--sand);line-height:1;font-variant-numeric:tabular-nums}
+  .move h3{margin:0 0 4px;font-size:16px;font-weight:650}
+  .move p{margin:0;color:var(--muted);font-size:14px;max-width:70ch}
+  .move .why{color:var(--faint);font-size:12.5px;font-family:var(--mono);margin-top:7px;letter-spacing:.02em}
+  .conf{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+    padding:2px 7px;border-radius:6px;border:1px solid var(--border);color:var(--faint);margin-top:8px}
+  .conf.est{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+  .conf.proven{color:var(--grow);border-color:color-mix(in srgb,var(--grow) 40%,transparent)}
+  .prio{float:right;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 8px;border-radius:99px;background:var(--panel2);color:var(--muted)}
+  .prio.now{color:var(--crit);background:color-mix(in srgb,var(--crit) 14%,transparent)}
+  .prio.dir{color:var(--sand);background:color-mix(in srgb,var(--sand) 14%,transparent)}
+  .prio.done{color:var(--grow);background:color-mix(in srgb,var(--grow) 14%,transparent)}
+
+  footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--border);
+    font-family:var(--mono);font-size:11.5px;color:var(--faint);letter-spacing:.03em;line-height:1.9}
+  .sign{color:var(--sand)}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Head of Growth · отчёт по каналу</p>
+  <h1>Я строил канал для слов. А решение имеет форму действия.</h1>
+  <p class="sub">Десятые сутки честного 0/0/0 — метрик по‑прежнему нет. Сегодняшняя находка отменяет четыре дня моей собственной работы: обратный канал, который я строю с 31 июля, <b>не нужен</b>. Решение, которого я жду, выглядит не как фраза, а как строка в базе — а базу прогон читает каждое утро без единой потери. Заодно вердикт по вчерашнему тесту: он не провален, он <b>ненаблюдаем</b>.</p>
+  <div class="metaline">
+    <span><b>Канал</b> Pragmatico Manifesto</span>
+    <span><b>ID</b> UC7_0FZQ2GJka0f9c0zfgmtQ</span>
+    <span><b>Снято</b> 5 августа 2026, 05:00Z</span>
+    <span><b>Окно</b> Δ к 4 августа, 23 ч 59 м 59 с</span>
+    <span><b>Публичных</b> 0 из 0 загрузок</span>
+  </div>
+
+  <hr class="hr">
+
+  <!-- STAT TILES -->
+  <div class="tiles">
+    <div class="tile">
+      <div class="lab">Подписчики</div>
+      <div class="now">0</div>
+      <div class="delta"><span class="flat">— 0</span><span class="from">было 0</span></div>
+    </div>
+    <div class="tile">
+      <div class="lab">Всего просмотров</div>
+      <div class="now">0</div>
+      <div class="delta"><span class="flat">— 0</span><span class="from">было 0</span></div>
+    </div>
+    <div class="tile">
+      <div class="lab">Видео с 4‑значным охватом</div>
+      <div class="now">0</div>
+      <div class="delta"><span class="flat">— 0</span><span class="from">загрузок всего 0</span></div>
+    </div>
+    <div class="tile na">
+      <div class="lab">Конверсия просмотр → подписка</div>
+      <div class="now">н/д</div>
+      <div class="delta"><span class="flat">◆ делить не на что</span></div>
+    </div>
+    <div class="tile crit">
+      <div class="lab">Простой подготовки</div>
+      <div class="now">8 д 18 ч</div>
+      <div class="delta"><span class="down">▲ +24 ч</span><span class="from">последнее касание 27 июл 11:00Z</span></div>
+    </div>
+  </div>
+
+  <!-- DIAGNOSIS -->
+  <section>
+    <h2>Диагностика воронки</h2>
+    <p class="lede">Лестница роста читается сверху вниз: охват → удержание → подписка. Десятый день подряд она не оборвана, а <b>не начата</b>: верхняя колба пуста, поэтому ни одно нижнее звено нельзя ни доказать, ни опровергнуть. Точка приложения силы лежит <i>выше</i> воронки — и сегодня выяснилось, что четыре дня я прикладывал её не туда.</p>
+    <div class="diag">
+      <svg class="glass" viewBox="0 0 200 300" role="img" aria-label="Песочные часы: обе колбы пусты, песок не течёт — публикаций нет">
+        <defs>
+          <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="var(--sand-soft)"/><stop offset="1" stop-color="var(--sand)"/>
+          </linearGradient>
+        </defs>
+        <path d="M40 24 H160 M40 276 H160" stroke="var(--faint)" stroke-width="6" stroke-linecap="round"/>
+        <path d="M52 28 C52 96 92 128 92 150 C92 172 52 204 52 272
+                 M148 28 C148 96 108 128 108 150 C108 172 148 204 148 272"
+              fill="none" stroke="var(--border)" stroke-width="3"/>
+        <line x1="100" y1="152" x2="100" y2="236" stroke="var(--border)" stroke-width="3"
+              stroke-dasharray="2 8" stroke-linecap="round" opacity=".6"/>
+        <text x="100" y="86" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="var(--faint)" font-weight="700">пусто</text>
+        <text x="100" y="99" text-anchor="middle" font-family="ui-monospace,monospace" font-size="7" fill="var(--faint)" opacity=".8">10‑е сутки</text>
+        <text x="163" y="152" font-family="ui-monospace,monospace" font-size="8.5" fill="var(--faint)">нет входа</text>
+        <text x="100" y="288" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="var(--faint)" font-weight="700">0 подписок</text>
+      </svg>
+      <div>
+        <div class="rung">
+          <div class="ic na">·</div>
+          <div>
+            <h3>Охват <span class="pill na">нет входа</span></h3>
+            <p>0 загрузок → лента не имеет объекта раздачи. Доля <span class="num">shorts_feed</span> не определена: строк с трафиком ноль. Это не «лента нас прижала» — алгоритм нас ещё не видел ни разу.</p>
+          </div>
+        </div>
+        <div class="rung">
+          <div class="ic na">·</div>
+          <div>
+            <h3>Удержание <span class="pill na">не измеримо</span></h3>
+            <p>Медианы канала нет и быть не может: публичных читаемых видео ноль. Своя медиана появляется только с 3‑й публикации — «медиана из одного» это не медиана, а чужая сюда не переносится.</p>
+          </div>
+        </div>
+        <div class="rung">
+          <div class="ic bad">✕</div>
+          <div>
+            <h3>Публикация <span class="pill bad">точка обрыва</span></h3>
+            <p>Обрыв <b>выше воронки</b>: 6 активов SS‑S17 девятые сутки в статусе DRAFT, эпизодов <b>0 строк</b>, запас эфира 0 дней. Числа сегодня снова взяты живым запросом в базу, не унаследованы. Не «плохо конвертим» — <b>нечего конвертить</b>.</p>
+          </div>
+        </div>
+        <div class="rung">
+          <div class="ic ok">✓</div>
+          <div>
+            <h3>Обратная связь <span class="pill ok">снята с повестки</span></h3>
+            <p>Впервые за пять дней это звено <i>не</i> красное — но не потому, что починилось. Я перестал его чинить: ответ, которого я жду, имеет форму <b>состояния в базе</b>, а не фразы, и это состояние я читаю каждое утро со стопроцентной надёжностью. Разбор — ниже.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT IS STANDING -->
+  <section>
+    <h2>Что стоит</h2>
+    <p class="lede">Раз метрик нет, единственная измеримая величина канала — время простоя по узлам. Все узлы на 5 августа 05:00Z. Темы, эпизоды и паспорт прочитаны <b>живым запросом в Supabase</b> сегодня; строка про аватар — единственная унаследованная, и помечена как таковая.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>Узел</th><th>Состояние</th><th>Стоит</th><th>Кто держит</th><th>Статус</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="vtitle">Публикации на канале</span><span class="vmeta">0 загрузок · 0 публичных · канал создан 25 июл 17:09Z</span></td>
+            <td class="num">0 / 0 / 0</td>
+            <td class="num">10 д 12 ч</td>
+            <td>Директор</td>
+            <td><span class="tag stop">простой</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">Темы SS‑S17</span><span class="vmeta">5 × SPC‑theme + 1 SBL · последнее касание 27 июл 11:00:38Z</span></td>
+            <td class="num">6 × DRAFT</td>
+            <td class="num">8 д 18 ч</td>
+            <td>Директор</td>
+            <td><span class="tag pend">не аппрувнут</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">Эпизоды SS‑S17</span><span class="vmeta">серия DRAFT · delivery_targets = [youtube_shorts]</span></td>
+            <td class="num">0 строк</td>
+            <td class="num">8 д 20 ч</td>
+            <td>Шоураннер</td>
+            <td><span class="tag stop">простой</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">Развилка формата</span><span class="vmeta">Shorts vs лонгформ · открыта 28 июл</span></td>
+            <td class="num">открыта</td>
+            <td class="num">8‑е сутки</td>
+            <td>Директор</td>
+            <td><span class="tag pend">имеет вид в базе</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">Вопрос «до какого числа стоим»</span><span class="vmeta">задан 31 июл · состояния в базе не имеет</span></td>
+            <td class="num">снят</td>
+            <td class="num">закрыт</td>
+            <td>HoG (я)</td>
+            <td><span class="tag win">✓ снял сам</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">Канал ответа Директора</span><span class="vmeta">версии 1–3 · строился с 31 июл</span></td>
+            <td class="num">закрыт</td>
+            <td class="num">5 суток</td>
+            <td>HoG (я)</td>
+            <td><span class="tag stop">◆ находка дня</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">Аватар канала</span><span class="vmeta">avatar‑800.png готов, Data API не умеет · сегодня НЕ перепроверял</span></td>
+            <td class="num">не поставлен</td>
+            <td class="num">10‑е сутки</td>
+            <td>Директор</td>
+            <td><span class="tag pend">унаследовано с 4 авг</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">Запас эфира</span><span class="vmeta">будущих публикаций 0</span></td>
+            <td class="num">0 дн</td>
+            <td class="num">10‑е сутки</td>
+            <td>Шоураннер</td>
+            <td><span class="tag pend">🔴 недельный · возврат 6 авг</span></td>
+          </tr>
+          <tr>
+            <td><span class="vtitle">Правки инструмента HoG</span><span class="vmeta">коммит a6e077ca, локально, без пуша · сегодня проверен в истории</span></td>
+            <td class="num">в git</td>
+            <td class="num">закрыт</td>
+            <td>HoG (я)</td>
+            <td><span class="tag win">✓ держится 3‑й день</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- CALLOUTS -->
+  <section>
+    <h2>Что прогон нашёл сегодня</h2>
+
+    <div class="callout bad">
+      <div>
+        <div class="k">◆ находка дня — вопрос был не тот, и канал под него не нужен</div>
+        <p>С 31 июля я строю обратный канал: версия 1 — строка в терминале, версия 2 — фраза Полине (вчера оказалась вымышленной), версия 3 — ответ в ntfy (сегодня оказался ненаблюдаемым). Три версии за пять суток, ноль доставленных ответов. Сегодня я задал себе вопрос уровнем выше: <b>а какой формы ответ я вообще жду?</b></p>
+        <p>Разбор по открытым вопросам. «Аппрувнуть темы» → это <span class="num">status = APPROVED</span> у актива. «Формат Shorts или лонгформ» → это <span class="num">delivery_targets</span> у серии, уже <span class="num">[youtube_shorts]</span>. «Начали ли мы производство» → это строка в <span class="num">episodes</span>. <b>Три вопроса из четырёх имеют представление в базе — а базу прогон читает живым запросом каждое утро.</b> Потерь нет, кэша нет, срока хранения нет, стоимость ответа для Директора равна тому действию, которое он и так обязан сделать. Канал, который я пять дней пытался построить, всё это время работал.</p>
+        <p><b>Четвёртый вопрос — «до какого числа стоим» — состояния не имеет. Именно поэтому я его снимаю.</b> По моему же правилу спрашивать надо то, что меняет следующий шаг: при ответе «до 10‑го» прогон снимает метрики и ждёт; при ответе «до 20‑го» — снимает метрики и ждёт; при молчании — снимает метрики и ждёт. Вопрос не менял ничего и пять суток занимал первую строку выжимки. По умолчанию фиксирую: <b>канал в паузе до первого изменения в базе</b>. Отменять не нужно — достаточно этого изменения.</p>
+        <p><b>Нетто‑дельта отрицательная:</b> снят один вопрос к Директору и снята с очереди правка лаунчера (ниже). Ни одной новой сущности не заведено.</p>
+      </div>
+    </div>
+
+    <div class="callout find">
+      <div>
+        <div class="k">◆ второе — вчерашний тест не провален, он ненаблюдаем</div>
+        <p>Вчера я предложил Директору ответить прямо в уведомление и назвал это «первым живым тестом контура». Сегодня опросил топик <span class="num">pragmatic-hog-197106</span>: <span class="num">since=12h → 0 байт</span>, <span class="num">24h → 0</span>, <span class="num">all → 0</span>. Пусто целиком — включая наш собственный вчерашний пуш, который лог зафиксировал как <span class="num">DELIVERY OK</span>, а самопроверка лаунчера на <span class="num">since=10m</span> видела своими глазами.</p>
+        <p>Это второе независимое испытание подряд (3→4 августа дало то же самое), и вывод из него арифметический, а не про людей: <b>сообщение живёт на сервере меньше 24 часов, а читаем мы раз в 24 часа.</b> Значит «Директор не ответил» и «Директор ответил, но ответ стёрли» дают ровно одну и ту же наблюдаемую картину — ноль байт. Тест такой конструкции не может вернуть информацию ни при каком поведении Директора. Записывать его как «ответа не было» было бы враньём.</p>
+        <p><b>И отдельно отзываю собственную вчерашнюю цифру.</b> Вчера я написал «публичный ntfy.sh держит кэш порядка 12 часов» и подал это как измеренное. Измерено было другое: отсутствие сообщения 24‑часовой давности, то есть <b>только верхняя граница — кэш меньше 24 часов</b>. Нижней границы у меня нет ни одной, и «12» я взял из воздуха рядом с настоящими числами. Это ровно тот дефект, за который я вчера себя же и разбирал.</p>
+        <p><b>Следствие — субтрактивное:</b> правка лаунчера (расширить <span class="num">since</span>, печатать чужие сообщения), объявленная вчера с краем 7 августа, <b>снимается с очереди</b>. Не «выполняется локально», а <b>отменяется</b>: она обслуживала канал, который больше не нужен. Край закрыт отказом, а не работой.</p>
+      </div>
+    </div>
+
+    <div class="callout ok">
+      <div>
+        <div class="k">✓ третье — почту проверил ДО того, как предлагать</div>
+        <p>Очевидный следующий кандидат на обратный ход — почта: Директор отвечает письмом, прогон читает Gmail. Персистентно, с телефона, ничего не истекает. Вчерашнее правило («прежде чем предложить ход, опирающийся на существующую поверхность, — открыть эту поверхность») отработало второй день подряд: коннектор Gmail в этом headless‑прогоне <b>числится доступным</b>, но первый же вызов вернул <span class="num">permissions not granted</span>. Класс рецептов закрыт <i>до</i> того, как попал в отчёт. Заодно перепроверен вчерашний вывод про Полину: в <span class="num">lib/concierge/tools/</span> 22 файла, ручки записи в журнал среди них по‑прежнему нет.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div>
+        <div class="k">⏳ чего в этом отчёте намеренно нет</div>
+        <p>Нет ни одной цифры об аудитории, удержании, CTR и источниках трафика — их физически нет в снапшоте, и выдумывать замену им я не буду. Нет ежедневного <span class="num">🔴 ЭФИР 0 дн</span>: он понижен до недельного решением 30 июля, <b>возврат завтра, 6 августа</b>, или автоматически с первой публикацией; отсутствие 🔴 сегодня штатно, не регрессия. Гипотезы <span class="num">reach-requires-publication-flow</span> (unlock 20 авг) и <span class="num">format-axis-is-concreteness-not-visual</span> (10 авг) не тронуты: обе судимы только после 3 публикаций, публикаций ноль. И отдельно про 7 августа: по собственному правилу прогон деградирует до одной строки, если <b>два прогона подряд</b> не дадут находки — сегодняшний дал три, счётчик не начат.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEEDBACK CHANNEL DIAGRAM -->
+  <section>
+    <h2>Контур ответа: четыре версии за пять дней, и почему он закрывается</h2>
+    <p class="lede">Путь отчёта к Директору работает десять дней подряд. Путь его решения обратно не работал ни одного — потому что я строил канал для фраз. Версия 4 не строится вообще: она уже существует и всё это время работала.</p>
+    <div class="chan">
+      <div class="node">
+        <div class="t">Прогон → Директор</div>
+        <div class="d">ntfy‑пуш + ссылка на отчёт · телефон · 1 нажатие</div>
+      </div>
+      <div class="arrow good">━━ работает 10/10 дней ━▶</div>
+      <div class="node">
+        <div class="t">Директор читает</div>
+        <div class="d">DELIVERY OK · GIST OK · подтверждено логом</div>
+      </div>
+    </div>
+    <div class="chan">
+      <div class="node">
+        <div class="t">Версия 1 <span class="tag stop">31 июл</span></div>
+        <div class="d">CLI‑строка в терминале репозитория · не с телефона</div>
+      </div>
+      <div class="arrow bad">◀━ 0 записей за 5 суток ━━</div>
+      <div class="node">
+        <div class="t">Журнал <span class="num">hog_memory</span></div>
+        <div class="d">ждёт <span class="num">--slug director-*</span> · пусто</div>
+      </div>
+    </div>
+    <div class="chan">
+      <div class="node">
+        <div class="t">Версия 2 <span class="tag stop">3 авг · вымысел</span></div>
+        <div class="d">фраза Полине · ручки записи в журнал у неё нет</div>
+      </div>
+      <div class="arrow bad">◀━ пути не существует ━━</div>
+      <div class="node">
+        <div class="t">Журнал <span class="num">hog_memory</span></div>
+        <div class="d">22 файла в lib/concierge/tools/, записи среди них нет</div>
+      </div>
+    </div>
+    <div class="chan">
+      <div class="node">
+        <div class="t">Версия 3 <span class="tag stop">4 авг · ненаблюдаема</span></div>
+        <div class="d">ответ в приложении ntfy · тот же топик, тот же палец</div>
+      </div>
+      <div class="arrow bad">◀━ кэш &lt; 24 ч, читаем раз в 24 ч ━━</div>
+      <div class="node">
+        <div class="t">Топик <span class="num">pragmatic-hog-197106</span></div>
+        <div class="d">since=all → 0 байт · стёрт и наш собственный пуш</div>
+      </div>
+    </div>
+    <div class="chan">
+      <div class="node">
+        <div class="t">Версия 4 <span class="tag win">принята · строить нечего</span></div>
+        <div class="d">ответ = действие: тема в APPROVED, созданный эпизод</div>
+      </div>
+      <div class="arrow good">◀━ живой запрос каждое утро, потерь 0 ━━</div>
+      <div class="node">
+        <div class="t">Supabase <span class="num">assets / episodes / series</span></div>
+        <div class="d">персистентно, без кэша и срока хранения</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GROWTH MOVES -->
+  <section>
+    <h2>Что предлагаю дальше</h2>
+    <p class="lede">Режим накопления заморозил <i>исполнение</i> коррекций продукта, не мышление. Ходы ниже — предложения с честной меткой уверенности. Публикация и деньги — жёсткий лимит Директора; я довожу до одного действия и веду.</p>
+    <div class="moves">
+      <div class="move">
+        <div class="n">1</div>
+        <div>
+          <span class="prio dir">одно действие</span>
+          <h3>Перевести одну тему SS‑S17 в APPROVED — это и есть ответ</h3>
+          <p>Ничего писать не нужно. Выберите любую из пяти (<span class="num">your_best_not_my_best</span>, <span class="num">your_best_hook_variant</span>, <span class="num">price_not_weather</span>, <span class="num">desync</span>, <span class="num">cunning_takes_the_round</span>) и аппрувните. Это одновременно ответ на «стоим ли», ответ на «что снимаем» и старт производства — три вопроса закрываются действием, которое вы и так обязаны сделать. Прогон увидит это завтра утром живым запросом, без кэша, без окна и без риска потери.</p>
+          <div class="why">почему: версии 1–3 обратного канала мертвы, а этот путь работал всё это время</div>
+          <span class="conf proven">ДОКАЗАНО: база сегодня прочитана живым запросом — серия, 6 активов, 0 эпизодов, паспорт</span>
+        </div>
+      </div>
+      <div class="move">
+        <div class="n">2</div>
+        <div>
+          <span class="prio done">снял с вас</span>
+          <h3>Вопрос «до какого числа стоим» закрыт по умолчанию</h3>
+          <p>Пять суток он держал первую строку выжимки и не менял ничего: при любом ответе прогон делает одно и то же — снимает метрики и ждёт. Фиксирую по умолчанию: <b>канал в паузе до первого изменения в базе</b>. Отвечать не нужно; нужно действие из хода №1, когда решите. Вместе с ним снята с очереди вчерашняя правка лаунчера с краем 7 августа — она обслуживала канал, который отменён.</p>
+          <div class="why">почему: вопрос, не меняющий следующий шаг, — это налог на внимание, а не запрос решения</div>
+          <span class="conf proven">ДОКАЗАНО: 5 суток одинакового поведения прогона при трёх разных состояниях вопроса</span>
+        </div>
+      </div>
+      <div class="move">
+        <div class="n">3</div>
+        <div>
+          <span class="prio now">приоритет</span>
+          <h3>Первый замер покупать тремя роликами подряд</h3>
+          <p>Когда пауза кончится — не «выпустим один и посмотрим». Три публикации в три вечера подряд: при съёмке в 05:00Z и зрелости данных с +33 ч это даёт полное чтение утром D+4. Тот же набор через день растягивает первый замер на неделю.</p>
+          <div class="why">почему: reach-requires-publication-flow + measurement-lag-rule-is-portable — арифметика окна, не вкус</div>
+          <span class="conf est">ОЦЕНОЧНО: механика охвата взята с Sandy, своих замеров ноль</span>
+        </div>
+      </div>
+      <div class="move">
+        <div class="n">4</div>
+        <div>
+          <span class="prio">2 минуты</span>
+          <h3>Аватар руками в Studio</h3>
+          <p>Десятые сутки. Файл <span class="num">avatar‑800.png</span> готов с 27 июля, Data API аватар ставить не умеет — нужен человек. Честная оговорка: сегодня я эту строку <b>не перепроверял</b>, она унаследована с 4 августа.</p>
+          <div class="why">почему: единственный узел, который нельзя закрыть автоматикой в принципе</div>
+          <span class="conf est">ОЦЕНОЧНО: влияние на подписку не измерено ни на одном нашем канале</span>
+        </div>
+      </div>
+      <div class="move">
+        <div class="n">5</div>
+        <div>
+          <span class="prio done">закрыто мной</span>
+          <h3>Спрашивать себя, какой ФОРМЫ ответ я жду, прежде чем строить канал</h3>
+          <p>Пять суток и три конструкции ушли на канал для фраз, потому что я ни разу не проверил исходную посылку: что ответ вообще должен быть фразой. Правило в практику: <b>сначала форма ответа, потом канал для него.</b> Если ответ имеет представление в состоянии системы — канал уже есть, и строить нечего. Сегодня то же правило сэкономило ещё один тупик: почта проверена и отброшена до попадания в отчёт.</p>
+          <div class="why">почему: три мёртвых канала подряд — это не невезение, это незаданный вопрос уровнем выше</div>
+          <span class="conf proven">ДОКАЗАНО: три из четырёх открытых вопросов имеют прямое представление в базе</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>Источник: снапшот 2026-08-05T05:00:23Z (единственный за сутки), предыдущий 2026-08-04T05:00:23Z — окно 23 ч 59 м 59 с, пропущенных дней нет. Прогон 4 августа — DONE, DELIVERY OK и GIST OK по обоим каналам. Состояние подготовки прочитано живым запросом в Supabase 5 августа; топик ntfy опрошен вживую; коннектор Gmail проверен вызовом.</div>
+    <div>Метод по скиллу Head of Growth: views ≠ growth · мерить цепочку раздельно · уважать лаг метрик · охват не лагает · только реальные числа.</div>
+    <div class="sign">— Тео, Head of Growth · SandyStudio</div>
+  </footer>
+</div>
