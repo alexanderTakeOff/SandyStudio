@@ -1,3 +1,4 @@
+// @not-a-tool: общий каркас — читает .env.local и отдаёт клиент базы; сам не запускается
 // Shared env + client bootstrap for the clean-run direct-call scripts.
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, existsSync } from 'node:fs';
