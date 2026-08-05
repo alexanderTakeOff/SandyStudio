@@ -1,0 +1,13 @@
+﻿[hog] 2026-08-05T09:00:02.9479056+04:00 START
+C:\SandyStudio\docs\distribution\snapshots\2026-08-05T0500Z-SANDY.json
+node : [hog-snapshot] 2026-08-05 SANDY: subs=14 views=13655 public=19/34
+At C:\SandyStudio\webapp\scripts\hog-daily.ps1:26 char:7
++ try { node --env-file=.env.local --import tsx scripts/hog-snapshot.mt ...
++       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([hog-snapshot] ...55 public=19/34:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[hog-snapshot] 2026-08-05 PRAGMATIC: subs=0 views=0 public=0/0
+C:\SandyStudio\docs\distribution\snapshots\2026-08-05T0500Z-PRAGMATIC.json
+[hog-snapshot] done: ok=[SANDY, PRAGMATIC] failed=[]
+[hog] === channel SANDY (Sandy the Hourglass) ===

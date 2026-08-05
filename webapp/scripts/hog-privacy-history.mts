@@ -5,7 +5,10 @@ const sb = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
 
-const ids = ['iXlrtsPbpJg', 'sp9Q06AZPu8', 'G3I_kR-Y9Tk']
+// ids из аргументов командной строки; без аргументов — список по умолчанию
+const ids = process.argv.slice(2).length
+  ? process.argv.slice(2)
+  : ['iXlrtsPbpJg', 'sp9Q06AZPu8', 'G3I_kR-Y9Tk']
 
 for (const id of ids) {
   const { data, error } = await sb
@@ -25,6 +28,8 @@ for (const id of ids) {
       prev = r.privacy as string
     }
   }
-  const last = rows[rows.length - 1]
-  console.log(`  LAST ${last.captured_at}  privacy=${last.privacy}  views=${last.views}`)
+  // хвост кривой: видно, ровный ли ноль или счётчик просто не доехал
+  for (const r of rows.slice(-8)) {
+    console.log(`  TAIL ${r.captured_at}  privacy=${r.privacy}  views=${r.views}`)
+  }
 }
