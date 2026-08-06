@@ -246,7 +246,13 @@ const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   // AFTER the brief — once the brief is set it's clear which characters/objects
   // the episode needs. (Was casting-before-brief.)
   { id: 'brief',               label: 'Brief',             agents: ['Director'],            phase: 'pre-production', tier: 'primary', role: 'input',     emoji: '🎬' },
-  { id: 'casting',             label: 'Casting',           subtitle: 'Production Designer',  agents: ['ART-AD'],     phase: 'pre-production', tier: 'primary', role: 'designer', emoji: '🎭' },
+  // 2026-08-06 — Casting is NOT an agent. `ART-AD` exists in no registry and has
+  // no runner; the cast is a plain POST route that inserts the slugs the caller
+  // chose, with no model call anywhere. Calling it a Production Designer implied
+  // a worker that never existed. It stays visible — the cast gates the Writer and
+  // the Storyboard Artist, so hiding it would blind the studio to a real input —
+  // but it is declared for what it is: the Director's choice, like the Brief.
+  { id: 'casting',             label: 'Casting',           subtitle: 'выбор Директора',      agents: ['Director'],   phase: 'pre-production', tier: 'primary', role: 'input',    emoji: '🎭' },
   { id: 'screenwriter',        label: 'Writer',            agents: ['EXEC-SW'],             phase: 'pre-production', tier: 'primary', role: 'author',    emoji: '✍️' },
   { id: 'script_critic',       label: 'Script Critic',     subtitle: 'Story Editor',        agents: ['EXEC-SREV'],   phase: 'pre-production', tier: 'muted',   role: 'critic',  serves: 'screenwriter', emoji: '🔍' },
   { id: 'storyboarder',        label: 'Storyboard Artist', agents: ['EXEC-SB'],             phase: 'production',     tier: 'primary', role: 'author',    emoji: '🎬' },
@@ -254,11 +260,19 @@ const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   // Was invisible in the pipeline view — REV-readability had no row/asset mapping,
   // so a REVISE verdict silently gated the Reference Artist (Director 2026-07-04).
   { id: 'readability_critic',  label: 'Readability Critic', subtitle: 'Comedy Editor',       agents: ['EXEC-CREAD'],  phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'storyboarder', emoji: '📖' },
-  { id: 'continuity_critic',   label: 'Continuity Critic', subtitle: 'Script Supervisor',   agents: ['EXEC-CONT'],   phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'storyboarder', emoji: '🌍' },
+  // The row was named after `EXEC-CONT`, an agent that exists in no registry and
+  // never shipped. The work is done by `EXEC-WCHK`, aliased in silently below —
+  // so the row named a ghost while a real worker filled it. Named for the worker
+  // that actually runs (2026-08-06).
+  { id: 'continuity_critic',   label: 'Continuity Critic', subtitle: 'Script Supervisor',   agents: ['EXEC-WCHK'],   phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'storyboarder', emoji: '🌍' },
   { id: 'reference_designer',  label: 'Reference Designer', agents: ['EXEC-EREF-DESIGNER'], phase: 'production',     tier: 'muted',   role: 'designer', serves: 'episode_references', emoji: '🧠' },
   { id: 'reference_critic',    label: 'Reference Critic',  agents: ['EXEC-EPREV'],          phase: 'production',     tier: 'muted',   role: 'critic',  serves: 'episode_references', emoji: '🧐' },
   { id: 'episode_references',  label: 'Reference Artist',  agents: ['EXEC-EREF'],           phase: 'production',     tier: 'primary', role: 'artist',   emoji: '🖼️' },
-  { id: 'music_generator',     label: 'Composer',          agents: ['EXEC-MGEN'],           phase: 'production',     tier: 'primary', role: 'artist',   emoji: '🎵' },
+  // Composer generates nothing: `case 'EXEC-MGEN'` in the runner unconditionally
+  // returns `mockMusic()` — a stub with zero cost and a template path. Every real
+  // track arrives by the Director's upload, which writes an APPROVED `AUD-music`
+  // row past the agent entirely. Declared as what it is: a gate the human fills.
+  { id: 'music_generator',     label: 'Музыка',            subtitle: 'загрузка Директора',  agents: ['Director'],    phase: 'production',     tier: 'primary', role: 'input',    emoji: '🎵' },
   { id: 'animatic',            label: 'Editor',            agents: ['EXEC-EDIT'],           phase: 'production',     tier: 'primary', role: 'editor',   emoji: '🎞️' },
   { id: 'shot_designer',       label: 'Video Designer',    agents: ['EXEC-VANIM'],          phase: 'generation',     tier: 'muted',   role: 'designer', serves: 'visual_generator', emoji: '📝' },
   { id: 'shot_critic',         label: 'Video Critic',      agents: ['EXEC-VPREV'],          phase: 'generation',     tier: 'muted',   role: 'critic',  serves: 'visual_generator', emoji: '🧐' },
@@ -266,7 +280,6 @@ const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   { id: 'final_cut',           label: 'Online Editor',     agents: ['EXEC-STITCH'],         phase: 'generation',     tier: 'primary', role: 'editor',   emoji: '🎬' },
   { id: 'copywriter',          label: 'Publicist',         agents: ['EXEC-COPY'],           phase: 'distribution',   tier: 'primary', role: 'author',    emoji: '📝' },
   { id: 'thumbnail_designer',  label: 'Key Art Designer',  agents: ['EXEC-THUMB-DESIGNER'], phase: 'distribution',   tier: 'muted',   role: 'designer', serves: 'thumbnail_creator', emoji: '🎨' },
-  { id: 'thumbnail_critic',    label: 'Key Art Critic',    subtitle: 'not staffed',         agents: [],              phase: 'distribution',   tier: 'muted',   role: 'critic',  serves: 'thumbnail_creator', emoji: '🧐', unstaffed: true },
   { id: 'thumbnail_creator',   label: 'Key Art Artist',    agents: ['EXEC-THUMB'],          phase: 'distribution',   tier: 'primary', role: 'artist',   emoji: '🖼️' },
   { id: 'publisher',           label: 'Distribution',      agents: ['EXEC-PUB'],            phase: 'distribution',   tier: 'primary', role: 'publisher', emoji: '🚀' },
   { id: 'analytics_collector', label: 'Audience Analyst',  agents: ['EXEC-ANAL'],           phase: 'analytics',      tier: 'primary', role: 'analyst',  emoji: '📊' },

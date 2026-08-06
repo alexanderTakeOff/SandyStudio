@@ -42,11 +42,30 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
       'final_cut',
       'copywriter',
       'thumbnail_designer',
-      'thumbnail_critic',
       'thumbnail_creator',
       'publisher',
       'analytics_collector',
     ]);
+  });
+
+  // 2026-08-06 — rows that named a worker who does not exist now say what they are.
+  it('Casting and Музыка are declared as Director INPUT, not as agents', () => {
+    const byId = new Map(buildPipelineSnapshot('BRIEF_PENDING', [], []).map((s) => [s.id, s]));
+    for (const id of ['casting', 'music_generator'] as const) {
+      expect(byId.get(id)!.role).toBe('input');
+      expect(byId.get(id)!.agents).toEqual(['Director']);
+    }
+  });
+
+  it('Continuity Critic names the worker that actually runs', () => {
+    const byId = new Map(buildPipelineSnapshot('BRIEF_PENDING', [], []).map((s) => [s.id, s]));
+    // `EXEC-CONT` was never shipped; `EXEC-WCHK` has always done the work.
+    expect(byId.get('continuity_critic')!.agents).toEqual(['EXEC-WCHK']);
+  });
+
+  it('Key Art Critic is gone — an unstaffed slot is not a stage', () => {
+    const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
+    expect(stages.find((s) => s.id === 'thumbnail_critic')).toBeUndefined();
   });
 
   it('tiers: Artist/Author/Editor + hard-gate = primary; Designer/Critic = muted', () => {
@@ -57,7 +76,7 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
       expect(byId.get(id)!.tier).toBe('primary');
     }
     // MUTED — Designers + Critics
-    for (const id of ['script_critic', 'continuity_critic', 'reference_designer', 'reference_critic', 'shot_designer', 'shot_critic', 'thumbnail_designer', 'thumbnail_critic'] as const) {
+    for (const id of ['script_critic', 'continuity_critic', 'reference_designer', 'reference_critic', 'shot_designer', 'shot_critic', 'thumbnail_designer'] as const) {
       expect(byId.get(id)!.tier).toBe('muted');
     }
   });
@@ -74,7 +93,7 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
     expect(byId.get('thumbnail_designer')!.serves).toBe('thumbnail_creator');
   });
 
-  it('thumbnail_critic is an honest unstaffed empty slot (q11a)', () => {
+  it.skip('thumbnail_critic is an honest unstaffed empty slot (q11a) — row removed 2026-08-06', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     const tc = stages.find((s) => s.id === 'thumbnail_critic')!;
     expect(tc.unstaffed).toBe(true);
