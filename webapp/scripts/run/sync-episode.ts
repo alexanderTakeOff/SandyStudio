@@ -227,6 +227,26 @@ export default defineTool(
       );
     }
 
+    // ── 2-бис. ИЗМЕРЕНИЕ плотности (решение Директора 27) ──────────────────
+    // Число живёт как ПРИБОР, а не как условие пропуска: гейт по группам набить
+    // нельзя, гейт по числу набивается ре-скинами за минуту. Печатается факт и
+    // сравнение с планом; не блокируется ничего.
+    const measuredRuntime = shots.reduce((s, x) => s + x.duration_seconds, 0);
+    const longShots = shots.filter((s) => s.duration_seconds > 10);
+    console.log(
+      `ПЛОТНОСТЬ (измерение, не гейт): ${shots.length} кадров · ${measuredRuntime.toFixed(1)} с · ` +
+        `средний кадр ${(measuredRuntime / shots.length).toFixed(1)} с · ` +
+        `${((shots.length / measuredRuntime) * 60).toFixed(1)} кадров/мин` +
+        (longShots.length > 0 ? ` · ⚠ длиннее 10 с: ${longShots.length}` : ''),
+    );
+    const expectedShots = Math.max(3, Math.round(measuredRuntime / 3));
+    if (shots.length < expectedShots) {
+      console.log(
+        `   при ${measuredRuntime.toFixed(0)} с плотная комедия ждёт ~${expectedShots} кадров — ` +
+          `здесь ${shots.length}. Не отказ: это наблюдение для приёмки.`,
+      );
+    }
+
     // ── 3. Деньги ──────────────────────────────────────────────────────────
     const { data: ledger, error: ledgerErr } = await sb
       .from('budget_log')
