@@ -12,7 +12,15 @@
 # Then syncs functions (PUT /api/inngest) and prints health.
 # Keys are read from webapp/.env.local - never hardcoded here (this file is in git).
 # -----------------------------------------------------------------------------
-param([switch]$Build)
+# 2026-08-06 — порты стали параметрами, потому что деревьев теперь ДВА: master в
+# C:\SandyStudio и новая парадигма в C:\SandyStudio-nx. До этой правки скрипт был
+# прибит к :3000/:8288 И УБИВАЛ ЛЮБОЙ `next start` — то есть запуск второго дерева
+# гасил первое. Дефолты прежние, так что старый вызов работает как работал.
+param(
+  [switch]$Build,
+  [int]$Port = 3000,
+  [int]$InngestPort = 8288
+)
 
 # Path-agnostic: resolve everything relative to THIS script's folder (the repo
 # root), so the same launcher works on any machine / clone path (desktop
@@ -23,11 +31,16 @@ $SqliteDir = Join-Path $RepoRoot 'FILMS\_inngest'
 $InngestCli = 'inngest-cli@1.33.0'
 Set-Location $Web
 
-Write-Host '== stopping any running app / inngest ==' -ForegroundColor Cyan
+# Гасим ТОЛЬКО своё дерево и свой порт. Раньше здесь падал любой `next start` и
+# любой inngest на машине — с двумя деревьями это означало, что второй запуск
+# убивает первый.
+Write-Host "== stopping app on :$Port and inngest on :$InngestPort ==" -ForegroundColor Cyan
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
-  Where-Object { $_.CommandLine -like '*next*start*' } |
+  Where-Object { $_.CommandLine -like '*next*start*' -and $_.CommandLine -like "*$RepoRoot*" } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Get-Process inngest -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -Filter "Name='inngest.exe'" |
+  Where-Object { $_.CommandLine -like "*$SqliteDir*" } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 2
 
 if ($Build) {
@@ -69,27 +82,28 @@ Write-Host '== starting Inngest (self-host, durable SQLite) ==' -ForegroundColor
 Start-LogRotation "$Web\inngest.log"
 Write-BootBanner "$Web\inngest.log"
 Start-Process powershell -ArgumentList '-NoProfile','-NoExit','-Command',
-  "Set-Location $Web; npx $InngestCli start --event-key $ek --signing-key $sk --sdk-url http://localhost:3000/api/inngest --sqlite-dir `"$SqliteDir`" *>> `"$Web\inngest.log`"" -WindowStyle Minimized
+  "Set-Location $Web; npx $InngestCli start --port $InngestPort --event-key $ek --signing-key $sk --sdk-url http://localhost:$Port/api/inngest --sqlite-dir `"$SqliteDir`" *>> `"$Web\inngest.log`"" -WindowStyle Minimized
 
-Write-Host '== starting App (npm run start) ==' -ForegroundColor Cyan
+Write-Host "== starting App (npm run start on :$Port) ==" -ForegroundColor Cyan
 Start-LogRotation "$Web\prod.log"
 Write-BootBanner "$Web\prod.log"
 Start-Process powershell -ArgumentList '-NoProfile','-NoExit','-Command',
-  "Set-Location $Web; npm run start *>> `"$Web\prod.log`"" -WindowStyle Minimized
+  "Set-Location $Web; npm run start -- -p $Port *>> `"$Web\prod.log`"" -WindowStyle Minimized
 
 Write-Host '== waiting for boot (18s) ==' -ForegroundColor Cyan
 Start-Sleep -Seconds 18
 
-Write-Host '== syncing functions (PUT /api/inngest) ==' -ForegroundColor Cyan
-try { (Invoke-RestMethod -Method Put -Uri 'http://localhost:3000/api/inngest' -TimeoutSec 10) | Out-Host }
+$SyncUri = "http://localhost:$Port/api/inngest"
+Write-Host "== syncing functions (PUT $SyncUri) ==" -ForegroundColor Cyan
+try { (Invoke-RestMethod -Method Put -Uri $SyncUri -TimeoutSec 10) | Out-Host }
 catch { Write-Host "  sync failed (retry once): $($_.Exception.Message)" -ForegroundColor Yellow; Start-Sleep 4;
-        try { (Invoke-RestMethod -Method Put -Uri 'http://localhost:3000/api/inngest' -TimeoutSec 10) | Out-Host } catch { Write-Host "  sync still failing - check prod.log" -ForegroundColor Red } }
+        try { (Invoke-RestMethod -Method Put -Uri $SyncUri -TimeoutSec 10) | Out-Host } catch { Write-Host "  sync still failing - check prod.log" -ForegroundColor Red } }
 
 Write-Host '== health ==' -ForegroundColor Cyan
-foreach ($u in @('http://localhost:3000/api/health','http://localhost:3000/api/inngest','http://localhost:8288/')) {
+foreach ($u in @("http://localhost:$Port/api/health","http://localhost:$Port/api/inngest","http://localhost:$InngestPort/")) {
   try { $c = (Invoke-WebRequest -UseBasicParsing $u -TimeoutSec 5).StatusCode; Write-Host "  $u  ->  $c" -ForegroundColor Green }
   catch { Write-Host "  $u  ->  DOWN" -ForegroundColor Red }
 }
 Write-Host ''
-Write-Host 'Stack up. App :3000 | Inngest :8288 (durable). Logs: webapp\prod.log | webapp\inngest.log' -ForegroundColor Cyan
+Write-Host "Stack up. App :$Port | Inngest :$InngestPort (durable). Root: $RepoRoot" -ForegroundColor Cyan
 Read-Host 'Enter to close this launcher window (the app/inngest keep running)'
