@@ -74,6 +74,11 @@ try {
     const head = fs.readFileSync(path.join(PLANS, name), 'utf8').slice(0, 4000);
     const m = head.match(/Прогон:\s*«([^»]+)»/);
     if (!m) continue;
+    // A run that is over must stop asking for its journal. Without this the guard
+    // blocked every stop for hours after E37 shipped, demanding entries in a closed
+    // log — and a watchdog without a done-signal becomes noise, which is exactly
+    // what gets ignored the day it is right (2026-08-06).
+    if (/Статус:\s*ЗАКРЫТ/.test(head)) continue;
     runLabel = m[1];
     prefix = name.slice(0, -'-brief.md'.length);
     break;

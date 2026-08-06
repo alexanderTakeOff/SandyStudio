@@ -40,7 +40,8 @@ import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { applyConciergeProviderOverride } from '@/lib/api/concierge-provider-config';
 import { logEvent } from '@/lib/api/events';
 import path from 'node:path';
-import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
+import { buildConciergeSystemSplit, buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
+import { createConciergeCompletion } from '@/lib/concierge/anthropic-native';
 import { detectAwaitingDirectorInput } from '@/lib/concierge/await-detector';
 import { createThread, getThread, loadRecentTurns, persistTurn, resolveOpenThreadId, updateThreadEpisode } from '@/lib/concierge/threads';
 import { seriesIdForEpisode } from '@/lib/api/series-bible';
@@ -469,8 +470,15 @@ async function handleChatPOST(req: Request) {
     }
   }
 
-  const buildPrompt = (turns: ConciergeTurnRow[]) =>
-    buildSystemPrompt({ today, mode, episodeId, episodeCode, nextGate, recentTurns: turns, modelId: model, availablePlaybooks, workPlanDoc });
+  const promptCtx = (turns: ConciergeTurnRow[]) =>
+    ({ today, mode, episodeId, episodeCode, nextGate, recentTurns: turns, modelId: model, availablePlaybooks, workPlanDoc }) as const;
+  const buildPrompt = (turns: ConciergeTurnRow[]) => buildSystemPrompt(promptCtx(turns));
+  // Native-Anthropic split: stable blocks first (cacheable prefix), dynamic after.
+  // 2026-08-06 — the interactive chat went through the OpenAI-compat surface, which
+  // SILENTLY DROPS `cache_control`; the −86% cache win proven by the 2026-07-04 smoke
+  // was live only on `chat-internal`. Director's own conversation — 192 calls, $34.21
+  // in the sampled window — paid full price every round.
+  const buildSplit = (turns: ConciergeTurnRow[]) => buildConciergeSystemSplit(promptCtx(turns));
 
   // TD-20.A 2026-05-20 — Cancel support via req.signal. AbortController is
   // created client-side; when Director hits Cancel, fetch's signal aborts,
@@ -654,7 +662,15 @@ async function handleChatPOST(req: Request) {
             break;
           }
 
-          const completion = await client.chat.completions.create(params);
+          // Tool-capable round — the expensive one: it carries the whole ~45-tool
+          // block plus the full system prompt. Routed through the native adapter so
+          // `cache_control` actually reaches the wire (the compat surface drops it).
+          // Flag off → the adapter passes through byte-for-byte.
+          const completion = await createConciergeCompletion(
+            client,
+            params as Parameters<typeof createConciergeCompletion>[1],
+            { systemSplit: buildSplit(recentTurns) },
+          );
           if (reqSignal?.aborted) { cancelled = true; break; }
           // `stream: false` so the response is a single completion object,
           // not an async iterable — narrow the type accordingly.
