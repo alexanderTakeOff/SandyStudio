@@ -136,6 +136,17 @@ export interface PipelineStageSnapshot {
   job_count?: { total: number; done: number; running: number; failed: number };
   /** Count of assets in this stage awaiting a Director decision (REVIEW / REVISION / NEEDS_HUMAN_TWEAK). */
   assets_in_review?: number;
+  /**
+   * PER-SHOT rows only: how many shots this stage has actually closed.
+   *
+   * These stages do not belong to the episode — they belong to the SHOT (the
+   * system's brick is the cell `shot × stage`). A single lamp over 24 cells lit
+   * up on the FIRST approved asset, so "1 of 24 done" read as "done" — and the
+   * code already carried a special case (`eref_pilot_state`) to patch exactly one
+   * of the six rows. The counter replaces the patch: the row says what it is,
+   * `done / total`, and only goes green when the last cell closes.
+   */
+  progress?: { done: number; total: number };
 }
 
 interface AssetLike {
@@ -149,6 +160,41 @@ interface AssetLike {
   description?: string | null;
   /** Optional — Plan/REV body parsed for verdict when description absent. */
   content?: string | null;
+  /** Optional — carries `shot_id` / `shot_reference.shot_id` for per-shot rows. */
+  metadata?: unknown;
+}
+
+/**
+ * Rows whose real object is the SHOT, not the episode. They report `done/total`
+ * instead of a single lamp. Kept as a named set so the rule is stated once and
+ * every future per-shot stage joins it by adding its id here.
+ */
+const PER_SHOT_ROWS: ReadonlySet<PipelineStageId> = new Set<PipelineStageId>([
+  'reference_designer',
+  'reference_critic',
+  'episode_references',
+  'shot_designer',
+  'shot_critic',
+  'visual_generator',
+]);
+
+/**
+ * Which shot an asset belongs to. Three shapes exist in the wild and all three
+ * are live: video clips carry `metadata.shot_id`, reference images carry
+ * `metadata.shot_reference.shot_id`, and the direct-call tools encode it in the
+ * file type (`VID-shot-s15-e36-sh01`, `IMG-episode_ref_s15_e36_sh01`). Reading
+ * only the first is how a whole episode's work went uncounted.
+ */
+function shotKeyOf(asset: AssetLike): string | null {
+  const meta = asset.metadata as
+    | { shot_id?: unknown; shot_reference?: { shot_id?: unknown } | null }
+    | null
+    | undefined;
+  if (typeof meta?.shot_id === 'string' && meta.shot_id) return meta.shot_id.toUpperCase();
+  const ref = meta?.shot_reference?.shot_id;
+  if (typeof ref === 'string' && ref) return ref.toUpperCase();
+  const fromType = /(?:^|[_-])(sh\d{1,3})(?:[_-]|$)/i.exec(asset.file_type);
+  return fromType ? fromType[1].toUpperCase() : null;
 }
 
 interface JobLike {
@@ -327,6 +373,13 @@ export function buildPipelineSnapshot(
   assets: AssetLike[],
   jobs: JobLike[],
   episodeMetadata?: EpisodeMetadataForPipeline | null,
+  /**
+   * How many shots the episode has, from the storyboard / animatic shot list.
+   * Optional: callers that do not know it get today's behaviour unchanged.
+   * When known, per-shot rows report `done/total` and stay short of green until
+   * the last shot closes.
+   */
+  shotCount?: number,
 ): PipelineStageSnapshot[] {
   const assetsByStage = new Map<PipelineStageId, AssetLike[]>();
   for (const a of assets) {
@@ -368,7 +421,29 @@ export function buildPipelineSnapshot(
     // orange "running" over green "approved" was misleading (Director saw
     // 3 approved Final Cuts but row stayed orange because of a stale or
     // in-flight STITCH job). A blocked/review state still beats running.
-    if (hasApprovedAsset) {
+    // PER-SHOT rows count cells, not lamps. `done` is how many distinct shots
+    // have a closed asset here; green waits for the last one. Without a known
+    // shot count we cannot say `n/N`, so behaviour falls back to the old rule.
+    const isPerShot = PER_SHOT_ROWS.has(def.id);
+    let progress: { done: number; total: number } | undefined;
+    if (isPerShot && typeof shotCount === 'number' && shotCount > 0) {
+      const closed = new Set<string>();
+      for (const a of stageAssets) {
+        if (a.status !== 'APPROVED' && a.status !== 'LOCKED') continue;
+        const key = shotKeyOf(a);
+        if (key) closed.add(key);
+      }
+      progress = { done: closed.size, total: shotCount };
+    }
+
+    if (progress) {
+      // A stage that has closed every shot is done; anything less is work in
+      // progress, however many assets it has produced.
+      if (progress.done >= progress.total) state = 'approved';
+      else if (hasReviewAsset) state = 'blocked';
+      else if (hasRunningJob || progress.done > 0) state = 'running';
+      else if (hasFailedJob) state = 'failed';
+    } else if (hasApprovedAsset) {
       state = 'approved';
     } else if (hasReviewAsset) {
       state = 'blocked';
@@ -387,7 +462,12 @@ export function buildPipelineSnapshot(
     // on a stage that has produced only 2/24 references. Same trap from
     // the opposite direction: "pilots in REVIEW + fan-out running" is
     // PRODUCTIVE work, not `blocked`.
-    if (def.id === 'episode_references') {
+    //
+    // 2026-08-06 — this is the patch the counter replaces. It was written for
+    // ONE of the six per-shot rows because that one hurt first; the counter
+    // covers all six by construction. Kept only for callers that cannot supply
+    // a shot count — when `progress` exists it already says the truth.
+    if (def.id === 'episode_references' && !progress) {
       const pilotState = episodeMetadata?.eref_pilot_state;
       if (pilotState === 'PENDING_REVIEW') {
         state = 'blocked';
@@ -425,6 +505,7 @@ export function buildPipelineSnapshot(
       latest_asset_id: latest?.id,
       latest_asset_type: latest?.file_type,
       latest_verdict,
+      ...(progress ? { progress } : {}),
       assets_in_review: stageAssets.filter((a) => AWAITING_DIRECTOR_STATUSES.has(a.status)).length,
       job_count: {
         total: stageJobs.length,

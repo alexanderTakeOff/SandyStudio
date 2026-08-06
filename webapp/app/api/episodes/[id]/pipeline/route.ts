@@ -11,6 +11,7 @@ import { apiOk } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/zod-helpers';
 import { NotFoundError } from '@/lib/api/errors';
 import { buildPipelineSnapshot } from '@/lib/api/pipeline-stages';
+import { extractShotsFromStoryboard } from '@/lib/api/animatic-shotlist';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,39 @@ const Query = z.object({
   feed_limit: z.coerce.number().int().positive().max(100).default(50),
   feed_cursor: z.string().optional(),
 });
+
+interface AssetRowLike {
+  file_type: string;
+  status: string;
+  content?: string | null;
+  metadata?: unknown;
+  version?: number | null;
+}
+
+/**
+ * Shots in this episode — the denominator of every per-shot row.
+ * Animatic first (it IS the edit decision list), approved storyboard second.
+ * Returns undefined when neither exists yet: an unknown denominator must read as
+ * unknown, not as zero, or every per-shot row would claim to be complete.
+ */
+function resolveShotCount(rows: readonly AssetRowLike[]): number | undefined {
+  const animatics = rows.filter(
+    (r) => r.file_type.startsWith('VID-animatic') && (r.status === 'APPROVED' || r.status === 'LOCKED'),
+  );
+  for (const a of animatics.reverse()) {
+    const list = (a.metadata as { animatic_v1?: { shot_list?: unknown[] } } | null)?.animatic_v1?.shot_list;
+    if (Array.isArray(list) && list.length > 0) return list.length;
+  }
+
+  const boards = rows.filter(
+    (r) => r.file_type.startsWith('STB') && (r.status === 'APPROVED' || r.status === 'LOCKED') && r.content,
+  );
+  for (const b of boards.reverse()) {
+    const shots = extractShotsFromStoryboard(b.content ?? '');
+    if (shots.length > 0) return shots.length;
+  }
+  return undefined;
+}
 
 export const GET = withApiHandler(async (req, ctx) => {
   const params = (await ctx?.params) as { id: string } | undefined;
@@ -32,7 +66,7 @@ export const GET = withApiHandler(async (req, ctx) => {
     supabase.from('episodes').select('*').eq('id', id).maybeSingle(),
     supabase
       .from('assets')
-      .select('id,filename,file_type,status,agent_id,created_at,description,version,content')
+      .select('id,filename,file_type,status,agent_id,created_at,description,version,content,metadata')
       .eq('episode_id', id)
       .order('created_at', { ascending: true }),
     supabase
@@ -56,6 +90,13 @@ export const GET = withApiHandler(async (req, ctx) => {
   if (epRes.error) throw new Error(`episode fetch failed: ${epRes.error.message}`);
   if (!epRes.data) throw new NotFoundError(`Episode ${id}`);
 
+  // How many shots the episode actually has. Per-shot rows report `done/total`
+  // against this instead of lighting up on the first approved asset. Source of
+  // truth, in order: the animatic shot list (the edit decision list Director
+  // works with), else the approved storyboard. Unknown → rows fall back to the
+  // old single-lamp rule, so a caller that cannot resolve it loses nothing.
+  const shotCount = resolveShotCount(assetsRes.data ?? []);
+
   const stages = buildPipelineSnapshot(
     epRes.data.status,
     (assetsRes.data ?? []).map((a) => ({
@@ -68,6 +109,7 @@ export const GET = withApiHandler(async (req, ctx) => {
       // Topic 3 — verdict is parsed from description (cheap) or body.
       description: (a as { description?: string | null }).description ?? null,
       content: (a as { content?: string | null }).content ?? null,
+      metadata: (a as { metadata?: unknown }).metadata ?? null,
     })),
     (jobsRes.data ?? []).map((j) => ({
       id: j.id,
@@ -78,6 +120,7 @@ export const GET = withApiHandler(async (req, ctx) => {
     // so the snapshot builder can promote `running` over `blocked` while
     // pilots-in-REVIEW and remaining shots fan out in parallel.
     ((epRes.data as { metadata?: unknown }).metadata as Parameters<typeof buildPipelineSnapshot>[3]) ?? null,
+    shotCount,
   );
 
   const feedRows = feedRes.data ?? [];
