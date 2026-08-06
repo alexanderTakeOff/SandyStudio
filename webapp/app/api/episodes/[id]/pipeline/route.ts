@@ -13,6 +13,7 @@ import { NotFoundError } from '@/lib/api/errors';
 import { buildPipelineSnapshot } from '@/lib/api/pipeline-stages';
 import { extractShotsFromStoryboard } from '@/lib/api/animatic-shotlist';
 import { buildCanonSnapshot } from '@/lib/api/canon-stages';
+import { buildChannelSnapshot } from '@/lib/api/channel-stages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -104,6 +105,35 @@ export const GET = withApiHandler(async (req, ctx) => {
     : null;
   const canon = canonRes?.data ? buildCanonSnapshot(canonRes.data) : null;
 
+  // Канальный контур. КАНАЛ ОПЦИОНАЛЕН (решение Директора 18): серия без канала —
+  // законное состояние, снимок вернётся `not_applicable`, и производство это не
+  // трогает никак. Ошибку выборки глотаем намеренно: отсутствие канальных данных
+  // не должно ронять страницу эпизода.
+  const seriesRes = seriesId
+    ? await supabase.from('series').select('channel_id').eq('id', seriesId).maybeSingle()
+    : null;
+  const channelId = (seriesRes?.data as { channel_id?: string | null } | null)?.channel_id ?? null;
+  const channelRes = channelId
+    ? await supabase
+        .from('channels')
+        .select('id,name,credential_key,youtube_channel_id,metadata')
+        .eq('id', channelId)
+        .maybeSingle()
+    : null;
+  const audienceRes = channelId
+    ? await supabase
+        .from('channel_snapshots')
+        .select('captured_at,views,subscribers')
+        .eq('channel_id', channelId)
+        .order('captured_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : null;
+  const channel = buildChannelSnapshot({
+    channel: channelRes?.data ?? null,
+    latestAudience: audienceRes?.data ?? null,
+  });
+
   // How many shots the episode actually has. Per-shot rows report `done/total`
   // against this instead of lighting up on the first approved asset. Source of
   // truth, in order: the animatic shot list (the edit decision list Director
@@ -152,5 +182,8 @@ export const GET = withApiHandler(async (req, ctx) => {
     // Плиты канона целиком — чтобы вкладка серии могла показать, ЧТО именно
     // стоит, а не только счётчик в строке конвейера.
     canon,
+    // Канальный контур. `state: 'not_applicable'` — у серии нет канала, и это
+    // законно: вкладка просто не показывается.
+    channel,
   });
 });
