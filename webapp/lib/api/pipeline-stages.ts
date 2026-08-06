@@ -25,6 +25,9 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 export type PipelineStageId =
+  // Уровень СЕРИИ, а не эпизода: канон один на сериал, но от него зависят шесть
+  // строк ниже, и до 2026-08-06 его отказ читался как отказ эпизода.
+  | 'series_canon'
   | 'casting'
   | 'brief'
   | 'screenwriter'
@@ -62,6 +65,8 @@ export type PipelineStageId =
   | 'publish'
   | 'analytics'
   | 'story';
+
+import type { CanonSnapshot } from './canon-stages';
 
 export type PipelineNodeState =
   | 'idle'
@@ -168,6 +173,9 @@ interface AssetLike {
  * Rows whose real object is the SHOT, not the episode. They report `done/total`
  * instead of a single lamp. Kept as a named set so the rule is stated once and
  * every future per-shot stage joins it by adding its id here.
+ *
+ * `series_canon` is NOT here on purpose: its object is the SERIES, and its
+ * counter is supplied from outside rather than counted from episode assets.
  */
 const PER_SHOT_ROWS: ReadonlySet<PipelineStageId> = new Set<PipelineStageId>([
   'reference_designer',
@@ -245,6 +253,10 @@ const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   // Brief → Casting → Writer (2026-06-23, Director q22a/q30a): Casting comes
   // AFTER the brief — once the brief is set it's clear which characters/objects
   // the episode needs. (Was casting-before-brief.)
+  // Канон СЕРИИ — первая строка, потому что без него шесть строк ниже мертвы.
+  // Отдельная сущность, а не стадия эпизода: она объясняет, почему Reference
+  // Artist упадёт, ДО того как он упадёт (решение Директора 20, 2026-08-06).
+  { id: 'series_canon',        label: 'Канон серии',       subtitle: 'уровень сериала',      agents: ['Director'],   phase: 'pre-production', tier: 'primary', role: 'input',    emoji: '📚' },
   { id: 'brief',               label: 'Brief',             agents: ['Director'],            phase: 'pre-production', tier: 'primary', role: 'input',     emoji: '🎬' },
   // 2026-08-06 — Casting is NOT an agent. `ART-AD` exists in no registry and has
   // no runner; the cast is a plain POST route that inserts the slugs the caller
@@ -393,6 +405,12 @@ export function buildPipelineSnapshot(
    * the last shot closes.
    */
   shotCount?: number,
+  /**
+   * Состояние канона СЕРИИ (`buildCanonSnapshot`). Опционально: без него строка
+   * канона ведёт себя как обычная — тихо и неинформативно. С ним она называет
+   * отказ на уровне сериала, вместо того чтобы он всплыл падением эпизода.
+   */
+  canon?: CanonSnapshot | null,
 ): PipelineStageSnapshot[] {
   const assetsByStage = new Map<PipelineStageId, AssetLike[]>();
   for (const a of assets) {
@@ -488,6 +506,18 @@ export function buildPipelineSnapshot(
         state = 'running';
       }
       // FANOUT_COMPLETE / NONE: fall through to default rule above.
+    }
+
+    // Канон СЕРИИ живёт не в ассетах эпизода — его состояние приносит вызывающий.
+    // Строка красная, когда сериалу нечем снимать, и это единственное место, где
+    // такой отказ виден ДО падения эпизодной стадии.
+    if (def.id === 'series_canon') {
+      if (canon) {
+        progress = { done: canon.locked, total: canon.total };
+        state = canon.productionReady ? 'approved' : 'blocked';
+      } else {
+        state = 'idle';
+      }
     }
 
     if (def.id === 'brief' && status === 'BRIEF_APPROVED') state = 'approved';

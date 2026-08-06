@@ -24,6 +24,9 @@ describe('buildPipelineSnapshot — per-agent rows (Topic 3 19-row model)', () =
   it('returns per-agent rows in canonical order (Brief → Casting → Writer, 2026-06-23)', () => {
     const stages = buildPipelineSnapshot('BRIEF_PENDING', [], []);
     expect(stages.map((s) => s.id)).toEqual([
+      // 2026-08-06 — канон СЕРИИ встал первой строкой: от него зависят шесть
+      // строк ниже, и до сих пор его отказ читался как отказ эпизода.
+      'series_canon',
       'brief',
       'casting',
       'screenwriter',
@@ -549,5 +552,49 @@ describe('buildPipelineSnapshot — per-shot rows count cells, not lamps', () =>
     ).find((s) => s.id === 'episode_references')!;
     expect(row.progress).toEqual({ done: 1, total: 4 });
     expect(row.state).toBe('running');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Канон серии как строка конвейера (2026-08-06, решение 20). Единственная
+// сущность студии, у которой не было состояния нигде: матрица кадров начинается
+// после неё, гейт автора Библии информационный. От канона зависят шесть строк, и
+// его отказ всплывал падением ЭПИЗОДА — Директор видел красный эпизод там, где
+// болен сериал.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('buildPipelineSnapshot — строка канона серии', () => {
+  const canonRow = (canon?: Parameters<typeof buildPipelineSnapshot>[5]) =>
+    buildPipelineSnapshot('BRIEF_PENDING', [], [], null, undefined, canon)
+      .find((s) => s.id === 'series_canon')!;
+
+  it('без снимка канона строка молчит, а не врёт', () => {
+    const row = canonRow();
+    expect(row.state).toBe('idle');
+    expect(row.progress).toBeUndefined();
+  });
+
+  it('канон не готов → строка БЛОКИРУЕТ и показывает счётчик запертых плит', () => {
+    const row = canonRow({
+      plates: [], locked: 1, total: 4, productionReady: false,
+      blockers: ['нет ни одного LOCKED стиля'],
+    });
+    expect(row.state).toBe('blocked');
+    expect(row.progress).toEqual({ done: 1, total: 4 });
+  });
+
+  it('канон готов → зелёная, даже когда не все плиты заперты', () => {
+    const row = canonRow({
+      plates: [], locked: 2, total: 5, productionReady: true, blockers: [],
+    });
+    expect(row.state).toBe('approved');
+    expect(row.progress).toEqual({ done: 2, total: 5 });
+  });
+
+  it('строка объявлена ВВОДОМ уровня сериала, а не работой агента', () => {
+    const row = canonRow();
+    expect(row.role).toBe('input');
+    expect(row.phase).toBe('pre-production');
+    expect(row.agents).toEqual(['Director']);
   });
 });

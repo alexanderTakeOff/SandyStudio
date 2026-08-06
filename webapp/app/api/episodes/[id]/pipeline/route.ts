@@ -12,6 +12,7 @@ import { parseSearchParams } from '@/lib/api/zod-helpers';
 import { NotFoundError } from '@/lib/api/errors';
 import { buildPipelineSnapshot } from '@/lib/api/pipeline-stages';
 import { extractShotsFromStoryboard } from '@/lib/api/animatic-shotlist';
+import { buildCanonSnapshot } from '@/lib/api/canon-stages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -90,6 +91,19 @@ export const GET = withApiHandler(async (req, ctx) => {
   if (epRes.error) throw new Error(`episode fetch failed: ${epRes.error.message}`);
   if (!epRes.data) throw new NotFoundError(`Episode ${id}`);
 
+  // Канон СЕРИИ — уровень выше эпизода, поэтому отдельная выборка. До 2026-08-06
+  // его состояние не показывалось нигде, и «у сериала нет запертого стиля»
+  // доходило до Директора как падение эпизодной стадии на префлайте.
+  const seriesId = (epRes.data as { series_id?: string | null }).series_id ?? null;
+  const canonRes = seriesId
+    ? await supabase
+        .from('assets')
+        .select('id,file_type,status,filename,content,description,drive_path,drive_file_id,staging_path')
+        .eq('series_id', seriesId)
+        .like('file_type', 'SBL-%')
+    : null;
+  const canon = canonRes?.data ? buildCanonSnapshot(canonRes.data) : null;
+
   // How many shots the episode actually has. Per-shot rows report `done/total`
   // against this instead of lighting up on the first approved asset. Source of
   // truth, in order: the animatic shot list (the edit decision list Director
@@ -121,6 +135,7 @@ export const GET = withApiHandler(async (req, ctx) => {
     // pilots-in-REVIEW and remaining shots fan out in parallel.
     ((epRes.data as { metadata?: unknown }).metadata as Parameters<typeof buildPipelineSnapshot>[3]) ?? null,
     shotCount,
+    canon,
   );
 
   const feedRows = feedRes.data ?? [];
@@ -134,5 +149,8 @@ export const GET = withApiHandler(async (req, ctx) => {
     feed_cursor: nextCursor,
     asset_count: (assetsRes.data ?? []).length,
     job_count: (jobsRes.data ?? []).length,
+    // Плиты канона целиком — чтобы вкладка серии могла показать, ЧТО именно
+    // стоит, а не только счётчик в строке конвейера.
+    canon,
   });
 });
