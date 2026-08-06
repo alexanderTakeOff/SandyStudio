@@ -33,7 +33,12 @@ import { parseSkillSelection } from '../../skills/parse-skill-selection';
 import { findApprovedAsset, START_NOTICE_FILE_TYPE } from '../upstream';
 import { SHOT_ID_RE, canonicalShotId, episodeShort } from '../../api/shot-id';
 import { hasVerticalDeliveryTarget } from '../../api/provider-capabilities';
-import { readEpisodeDeliveryTargets, resolveRuntimeTarget } from '../delivery-targets';
+import {
+  readEpisodeDeliveryTargets,
+  resolveRuntimeTarget,
+  resolveGagPlan,
+  gagPlanBriefLine,
+} from '../delivery-targets';
 
 export const SB_CONTRACT = 'storyboarder@v2';
 // 2026-05-20 — upgraded sonnet-4-6 → opus-4-7 per Director directive.
@@ -249,8 +254,11 @@ function buildUserMessage(args: {
   /** Authoritative target total runtime (seconds) from
    *  episode.target_runtime_seconds (Director) or a shorts/long default. */
   runtimeTargetSeconds: number;
+  /** Gag density resolved from the episode passport — the same line the Writer
+   *  got, so the shot count agreed on upstream is the shot count boarded here. */
+  gagPlanLine?: string;
 }): string {
-  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes, activeSkillsBlock, revisionNote, shortsIsTarget, startNoticeContent, runtimeTargetSeconds } = args;
+  const { episodeCode, episodeTitle, briefContent, scriptContent, scriptVersion, bible, upstreamNotes, activeSkillsBlock, revisionNote, shortsIsTarget, startNoticeContent, runtimeTargetSeconds, gagPlanLine } = args;
   const biblePromptBlock = formatBibleForPrompt(bible);
   const hasCanon = bible.total_entries > 0 || bible.general_idea !== null;
   const characterSlugs = bible.characters.map((c) => c.slug).filter(Boolean);
@@ -460,6 +468,11 @@ function buildUserMessage(args: {
       ? '- Every visual description in `action_prose` MUST be consistent with the Bible canon above. Do not contradict canonical character appearance, location layout, or style direction.'
       : '',
     `- Set \`runtime_target_seconds\` to ${runtimeTargetSeconds}. Sum of all shot \`duration_seconds\` MUST be within ±10% of ${runtimeTargetSeconds} — distribute/extend shots to reach it; do NOT inherit a shorter runtime from the script.`,
+    // 2026-08-06 — density had to SURVIVE the storyboard, and until today it did
+    // not: it lived as prose in skills, reached the Writer at best, and the board
+    // was free to answer a 30-second runtime with four long shots. Director:
+    // «на шортсах каждый кадр должен иметь свой гэг».
+    gagPlanLine ? `- ${gagPlanLine}` : '',
     '- For visual comedy MVP: every shot is action, no dialogue.',
     '- `action_prose`, `expected_action` AND `expected_emotion` must all describe what the camera SEES — concrete physical action, never internal feeling, intent, knowledge or evaluation ("unsuspecting", "with intent", "ready to", "has not begun yet" are all unrenderable). Each must name a CHANGE between the shot\'s first and last frame: a held pose ("standing still", "lying motionless", "remains stationary") is NOT an action, and every character in the shot changes — a co-star frozen for the whole shot is a defect. A beat may COME TO rest; it may not start and end at rest.',
     '- The fenced JSON must be valid JSON. No trailing commas. No comments. Properly escape any quotes inside strings.',
@@ -582,6 +595,12 @@ export async function runStoryboarder(
 
   // Authoritative episode runtime (Director's setting wins over shorts default).
   const runtimeTargetSeconds = resolveRuntimeTarget({
+    episodeMetadata: (inputs.episode as { metadata?: unknown } | undefined)?.metadata,
+    shortsIsTarget,
+  });
+  // Same passport, same function as the Writer used — so the shot count agreed
+  // upstream is the shot count boarded here, by construction and not by hope.
+  const gagPlan = resolveGagPlan({
     episodeMetadata: (inputs.episode as { metadata?: unknown } | undefined)?.metadata,
     shortsIsTarget,
   });
@@ -737,6 +756,7 @@ export async function runStoryboarder(
     shortsIsTarget,
     startNoticeContent,
     runtimeTargetSeconds,
+    gagPlanLine: gagPlanBriefLine(gagPlan),
   });
   if (startNoticeContent) {
     notes.push(`Episode Start Notice loaded (${startNoticeContent.length} chars) — advisory reservoir injected into storyboard prompt`);
