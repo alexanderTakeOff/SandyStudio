@@ -9,6 +9,7 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { sb, S15 } from './_env';
 import { defineTool } from './_tool';
+import { shotFromFilename, traceInStudio } from './_asset';
 import { openAIEditsMultiProvider } from '../../lib/agents/providers/openai-edits-multi';
 import { readAssetMediaAsBase64 } from '../../lib/media-cache';
 import type { MultiImageRef, MultiImageRefKind } from '../../lib/agents/providers/image-gen-multi';
@@ -28,6 +29,12 @@ export default defineTool(
           'инструмент сам сортирует по контракту TD-53 (location → identity → style → object → continuity)',
       },
       out: { about: 'куда положить PNG; директории создаются' },
+      shot: {
+        about:
+          'номер кадра, `sh01` — по нему изделие СРАЗУ заводится в студию. Пусто — выводится ' +
+          'из имени файла; не вывелся — след не оставлен, и об этом сказано громко',
+        default: '',
+      },
       size: { about: 'размер кадра', default: '1024x1536', values: ['1024x1536', '1024x1024', '1536x1024'] },
       quality: { about: 'тир качества; low держит канон и стоит $0,018', default: 'high', values: ['low', 'medium', 'high'] },
     },
@@ -125,5 +132,25 @@ export default defineTool(
 
     console.log(`OK ${abs}`);
     console.log(`cost $${cost.toFixed(3)} · ${(ms / 1000).toFixed(1)}s · ledger ok`);
+
+    // След в студии — часть ТОГО ЖЕ движения. Отдельный шаг «завести в студию»
+    // не забывается — он просто никогда не выполняется: три эпизода подряд
+    // произвели 195 кадров, которых студия не увидела.
+    const shot = arg('shot') || shotFromFilename(out);
+    if (shot) {
+      await traceInStudio({
+        episodeId: env('RUN_EPISODE_ID'),
+        kind: 'frame',
+        file: out,
+        shot,
+        description: `кадр ${shot} · gpt-image-2/${quality} · $${cost.toFixed(3)}`,
+        origin: 'gen-frame',
+      });
+    } else {
+      console.error(
+        `СЛЕД НЕ ОСТАВЛЕН: номер кадра не задан и не выводится из «${out}». ` +
+          'Передай --shot sh01 — иначе изделие для студии не существует.',
+      );
+    }
   },
 );

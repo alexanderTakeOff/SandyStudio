@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { defineTool } from './_tool';
+import { traceInStudio } from './_asset';
 
 function ff(args: string[]): void {
   execFileSync('ffmpeg', ['-v', 'error', '-y', ...args], { stdio: ['ignore', 'inherit', 'inherit'] });
@@ -29,9 +30,15 @@ export default defineTool(
       order: { about: 'порядок клипов через запятую, без расширения: `sh01,sh02,...`' },
       out: { about: 'куда положить кат' },
       tail: { about: 'длина чёрного хвоста в секундах', default: '1.0' },
+      version: { about: 'версия ката в студии', default: 'v01' },
     },
+    // Сборка ничего не тратит, но её результат — изделие, и он обязан оставить
+    // след. До 2026-08-06 `stitch` не знал про базу вовсе, поэтому финальный кат
+    // трёх эпизодов существовал только файлом.
+    env: { RUN_EPISODE_ID: { about: 'эпизод, которому принадлежит кат' } },
+    writes: ['assets'],
   },
-  async ({ arg }) => {
+  async ({ arg, env }) => {
     const dir = resolve(process.cwd(), arg('dir'));
     const order = arg('order').split(',').map((s) => s.trim()).filter(Boolean);
     const out = resolve(process.cwd(), arg('out'));
@@ -71,6 +78,19 @@ export default defineTool(
 
     rmSync(work, { recursive: true, force: true });
     console.log(`OK ${out}`);
-    console.log(`total ${durationOf(out).toFixed(1)}s`);
+    const total = durationOf(out);
+    console.log(`total ${total.toFixed(1)}s`);
+
+    // ПОРЯДОК СБОРКИ ЗАПИСЫВАЕТСЯ. Он не сохранялся нигде, и через сутки
+    // восстановить, какая версия каждого кадра вошла в кат, можно было только
+    // догадкой по именам файлов (2026-08-05).
+    await traceInStudio({
+      episodeId: env('RUN_EPISODE_ID'),
+      kind: 'cut',
+      file: arg('out'),
+      version: arg('version'),
+      description: `кат ${arg('version')} · ${total.toFixed(1)} с · порядок: ${order.join(', ')}`,
+      origin: 'stitch',
+    });
   },
 );

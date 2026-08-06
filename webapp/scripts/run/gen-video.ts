@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { sb } from './_env';
 import { defineTool } from './_tool';
+import { shotFromFilename, traceInStudio } from './_asset';
 import { generateVideoFalSeedance } from '../../lib/agents/providers/fal-seedance';
 
 /** Sample one pixel well inside the wall area and return it as ffmpeg 0xRRGGBB. */
@@ -44,6 +45,12 @@ export default defineTool(
       frame: { about: 'исходный кадр PNG; падится до 9:16 рядом с собой' },
       'prompt-file': { about: 'файл с видео-промптом кадра' },
       out: { about: 'куда положить MP4; директории создаются' },
+      shot: {
+        about:
+          'номер кадра, `sh01` — по нему клип СРАЗУ заводится в студию. Пусто — выводится ' +
+          'из имени файла кадра или клипа',
+        default: '',
+      },
       duration: { about: 'длительность клипа в секундах', default: '10' },
       tier: { about: 'тир Seedance', default: 'standard', values: ['standard', 'fast'] },
       seed: { about: 'сид для повторяемости; пусто — провайдер выбирает сам', default: '' },
@@ -109,5 +116,24 @@ export default defineTool(
     console.log(
       `cost $${res.cost_usd.toFixed(2)} · ${(ms / 1000).toFixed(0)}s · ${res.width}x${res.height} · ${res.duration_seconds}s · ledger ok`,
     );
+
+    // След в студии — часть того же движения. Номер кадра берётся из имени
+    // клипа, а если оно безымянное — из имени исходного кадра.
+    const shot = arg('shot') || shotFromFilename(out) || shotFromFilename(arg('frame'));
+    if (shot) {
+      await traceInStudio({
+        episodeId: env('RUN_EPISODE_ID'),
+        kind: 'clip',
+        file: out,
+        shot,
+        description: `клип ${shot} · ${res.model_id}/${tier} · $${res.cost_usd.toFixed(2)}`,
+        origin: 'gen-video',
+      });
+    } else {
+      console.error(
+        `СЛЕД НЕ ОСТАВЛЕН: номер кадра не задан и не выводится ни из «${out}», ни из «${arg('frame')}». ` +
+          'Передай --shot sh01.',
+      );
+    }
   },
 );

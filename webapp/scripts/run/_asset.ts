@@ -12,8 +12,9 @@
 //     файлом, который лежит рядом (симптом четырёх канон-плит).
 //   • свежесть превью — при замене байтов под тем же именем браузер держит старую
 //     картинку (DRAFT кэшируется на час, APPROVED/LOCKED — на год как immutable).
+import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import { sb } from './_env';
 import { localCacheAbsPath } from '../../lib/media-cache';
 import { bumpPreviewFreshness } from '../../lib/asset-preview-resolver';
@@ -130,4 +131,131 @@ export async function episodeCode(episodeId: string): Promise<string> {
     throw new Error(`episode ${episodeId} not found — RUN_EPISODE_ID указывает в никуда`);
   }
   return data.episode_code;
+}
+
+// ── След в студии для изделия эпизода ─────────────────────────────────────────
+//
+// Один способ завести кадр, клип, кат или музыку. Зовётся И вручную
+// (`register-media`), И самими генераторами сразу после записи файла: регистрация
+// становится частью ТОГО ЖЕ движения, а не отдельным шагом, который забудут.
+// Именно потому, что шаг был отдельным, три эпизода подряд остались невидимыми.
+
+export type MediaKind = 'frame' | 'clip' | 'cut' | 'music';
+
+/** Тип-префикс — единственное, что связывает изделие со стадией конвейера. */
+const MEDIA_AGENT: Readonly<Record<MediaKind, { kindTag: string; agent: string }>> = {
+  frame: { kindTag: 'IMG', agent: 'EXEC-EREF' },
+  clip: { kindTag: 'VID', agent: 'EXEC-VGEN' },
+  cut: { kindTag: 'VID', agent: 'EXEC-STITCH' },
+  music: { kindTag: 'AUD', agent: 'EXEC-MGEN' },
+};
+
+/** `SS-S15-E36` + `sh01` → `S15-E36-SH01` — канонический id кадра by-position. */
+export function shotIdFor(code: string, shot: string): string {
+  return `${code.replace(/^SS-/, '')}-${shot.toUpperCase()}`;
+}
+
+/**
+ * Номер кадра из имени файла: `sh01-v02.png`, `clips/sh04c.mp4`, `sh09-v03.png`.
+ * Буквенный суффикс пересъёмки (`sh04c`) отбрасывается — это другая ВЕРСИЯ того
+ * же кадра, а не другой кадр; счёт по ячейкам иначе задвоится.
+ */
+export function shotFromFilename(file: string): string | null {
+  const base = file.split(/[\\/]/).pop() ?? '';
+  const m = /(?:^|[^a-z0-9])(sh\d{1,3})[a-z]?(?:[^a-z0-9]|$)/i.exec(base);
+  return m ? m[1].toLowerCase() : null;
+}
+
+/** Длительность медиафайла; по ней лента считает ширину ячейки. */
+export function mediaDurationSeconds(file: string): number | undefined {
+  try {
+    const out = execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', resolve(process.cwd(), file)],
+      { encoding: 'utf8' },
+    );
+    const n = Number(out.trim());
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface RegisterMediaArgs {
+  episodeId: string;
+  kind: MediaKind;
+  /** Путь к файлу-изделию. */
+  file: string;
+  /** `sh01` — обязателен для кадра и клипа; для ката и музыки не нужен. */
+  shot?: string;
+  version?: string;
+  status?: string;
+  description?: string;
+  origin?: string;
+}
+
+export async function registerEpisodeMedia(a: RegisterMediaArgs): Promise<PersistAssetResult> {
+  const kind = a.kind;
+  const shot = (a.shot ?? '').toLowerCase();
+  const perShot = kind === 'frame' || kind === 'clip';
+  if (perShot && !shot) throw new Error(`registerEpisodeMedia(${kind}): нужен shot, например sh01`);
+
+  const code = await episodeCode(a.episodeId);
+  const stem = code.replace(/^SS-/, '').toLowerCase();
+  const sid = perShot ? shotIdFor(code, shot) : null;
+  const spec = MEDIA_AGENT[kind];
+  const version = a.version ?? 'v01';
+  const status = a.status ?? 'APPROVED';
+
+  const fileType =
+    kind === 'frame' ? `IMG-episode_ref_${stem.replace(/-/g, '_')}_${shot}`
+    : kind === 'clip' ? `VID-shot-${stem}-${shot}`
+    : kind === 'cut' ? 'VID-final_cut'
+    : 'AUD-music-main';
+  const slug = perShot ? `shot_${shot}` : kind === 'cut' ? 'final_cut' : 'music_main';
+
+  // Лента связывает ячейку с изделием через эти поля; без них тип верен, а
+  // ячейка пуста.
+  const metadata: Record<string, unknown> = {
+    origin: a.origin ?? 'direct-run',
+    source_file: a.file,
+  };
+  if (kind === 'frame') metadata.shot_reference = { shot_id: sid };
+  if (kind === 'clip') {
+    metadata.shot_id = sid;
+    const seconds = mediaDurationSeconds(a.file);
+    if (seconds) metadata.duration_seconds = seconds;
+  }
+
+  return persistAsset({
+    filename: `${code}-${spec.kindTag}-${slug}-${version}-${status}${extname(a.file)}`,
+    fileType,
+    srcPath: a.file,
+    episodeId: a.episodeId,
+    status,
+    description: a.description ?? `${kind} ${sid ?? code} · прямой вызов`,
+    agentId: spec.agent,
+    metadata,
+  });
+}
+
+/**
+ * Оставить след, НЕ уронив работу. Изделие уже произведено и оплачено; если
+ * регистрация не удалась, потерять надо запись, а не результат. Но потерять
+ * ТИХО нельзя — молчание здесь и есть тот дефект, который мы чиним, поэтому
+ * отказ печатается громко и с указанием, чем починить вручную.
+ */
+export async function traceInStudio(a: RegisterMediaArgs): Promise<void> {
+  try {
+    const res = await registerEpisodeMedia(a);
+    console.log(`студия: ${res.created ? 'заведено' : 'обновлено'} ${res.filename}`);
+  } catch (e) {
+    console.error(
+      `СЛЕД НЕ ОСТАВЛЕН (изделие цело, студия его не видит): ${e instanceof Error ? e.message : e}`,
+    );
+    console.error(
+      `почини вручную: npx tsx scripts/run/register-media.ts --file ${a.file} --kind ${a.kind}` +
+        (a.shot ? ` --shot ${a.shot}` : ''),
+    );
+  }
 }
