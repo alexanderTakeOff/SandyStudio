@@ -114,7 +114,7 @@ export interface AnthropicTextResult {
   model: string;
   /** Anthropic stop reason — `end_turn` is normal, `max_tokens` means truncated. */
   stopReason: string | null;
-  usage: { inputTokens: number; outputTokens: number };
+  usage: TextUsage;
   /**
    * Which engine actually produced this text:
    *   'anthropic'       — the requested Claude model (normal path)
@@ -196,6 +196,49 @@ function rateFor(model: string): ModelRate {
 const CACHE_WRITE_MULT = 1.25;
 const CACHE_READ_MULT = 0.1;
 
+/**
+ * A studio agent's system prompt is the SAME bytes on every call — Reference
+ * Designer's is ~10K tokens and is sent once per shot, Animator's ~6.6K. Marking
+ * it as a cache breakpoint makes every call after the first pay 0.1× for that
+ * bulk instead of 1×. Nothing else about the request changes.
+ *
+ * The `cache_control` block is skipped below the provider's minimum cacheable
+ * prefix (1024 tokens for Sonnet/Opus) — under it the marker is dead weight and
+ * the write premium would be paid for nothing. ~4 chars/token is the usual
+ * ratio for our English prompts, so 4500 chars keeps a safety margin.
+ *
+ * `cache_control` is not on the stable SDK param types; the API accepts it on
+ * content blocks, so it reaches the wire through this cast — same technique the
+ * concierge native path already uses.
+ */
+const MIN_CACHEABLE_CHARS = 4500;
+
+/** Token counters of one text call. Cache fields are zero on non-cached paths. */
+export interface TextUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+}
+
+/** SDK 0.32.1 `Usage` predates prompt caching — the wire carries these fields. */
+type UsageWithCache = {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+};
+
+function cacheableSystem(systemPrompt: string): Anthropic.TextBlockParam[] {
+  const block: Anthropic.TextBlockParam = { type: 'text', text: systemPrompt };
+  if (systemPrompt.length >= MIN_CACHEABLE_CHARS) {
+    (block as Anthropic.TextBlockParam & { cache_control?: { type: 'ephemeral' } }).cache_control = {
+      type: 'ephemeral',
+    };
+  }
+  return [block];
+}
+
 export function computeCostUsd(
   usage: {
     inputTokens: number;
@@ -267,7 +310,7 @@ export async function generateAnthropicText(
   let markdown!: string;
   let model!: string;
   let stopReason!: string | null;
-  let usage!: { inputTokens: number; outputTokens: number };
+  let usage!: TextUsage;
   let costUsd!: number;
   let provider!: AnthropicTextResult['provider'];
 
@@ -320,7 +363,7 @@ export async function generateAnthropicText(
         {
           model: input.model,
           max_tokens: maxTokens,
-          system: input.systemPrompt,
+          system: cacheableSystem(input.systemPrompt),
           messages: [{ role: 'user', content: input.userMessage }],
         },
         {
@@ -379,9 +422,14 @@ export async function generateAnthropicText(
         .trim();
       model = input.model;
       stopReason = response.stop_reason ?? null;
+      // Read the cache counters the request now earns — `computeCostUsd` has
+      // priced them since day one and was waiting for a caller to send them.
+      const wireUsage = (response.usage ?? {}) as UsageWithCache;
       usage = {
-        inputTokens: response.usage?.input_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
+        inputTokens: wireUsage.input_tokens ?? 0,
+        outputTokens: wireUsage.output_tokens ?? 0,
+        cacheReadTokens: wireUsage.cache_read_input_tokens ?? 0,
+        cacheWriteTokens: wireUsage.cache_creation_input_tokens ?? 0,
       };
       costUsd = computeCostUsd(usage, model);
       provider = 'anthropic';

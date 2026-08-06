@@ -31,7 +31,8 @@ import { getServerEnv } from '@/lib/env';
 import { requireDirector } from '@/lib/api/auth';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { applyConciergeProviderOverride } from '@/lib/api/concierge-provider-config';
-import { buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
+import { buildConciergeSystemSplit, buildSystemPrompt } from '@/lib/concierge/system-prompt-builder';
+import { createConciergeCompletion } from '@/lib/concierge/anthropic-native';
 import { loadRecentTurns, persistTurn } from '@/lib/concierge/threads';
 import { loadWorkPlanDoc } from '@/lib/concierge/tools/work-plan';
 import { resolveSkillsContext } from '@/lib/concierge/build-context';
@@ -162,7 +163,7 @@ export async function POST(req: Request) {
   const isGpt5 = isOpenAiGpt5Model(model);
 
   const today = new Date().toISOString().slice(0, 10);
-  const systemPrompt = buildSystemPrompt({
+  const promptCtx = {
     today,
     mode,
     episodeId,
@@ -171,7 +172,8 @@ export async function POST(req: Request) {
     modelId: model,
     availablePlaybooks,
     workPlanDoc,
-  });
+  };
+  const systemPrompt = buildSystemPrompt(promptCtx);
 
   const conversation: ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
@@ -198,7 +200,15 @@ export async function POST(req: Request) {
 
   let assistantText = '';
   try {
-    const completion = await client.chat.completions.create(params);
+    // 2026-08-06 — same fix as /chat: the compat surface silently drops
+    // `cache_control`, so the ambient reaction paid full price on every event
+    // (208 calls, $13.17 in the sampled window). The native adapter carries the
+    // cache breakpoint; with the flag off it passes through byte-for-byte.
+    const completion = await createConciergeCompletion(
+      client,
+      params as Parameters<typeof createConciergeCompletion>[1],
+      { systemSplit: buildConciergeSystemSplit(promptCtx) },
+    );
     if (Symbol.asyncIterator in (completion as object)) {
       throw new Error('expected non-streaming completion');
     }
