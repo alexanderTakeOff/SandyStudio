@@ -64,6 +64,23 @@ export interface ToolContext<S extends ToolSpec> {
 export const isIntrospecting = (): boolean => process.env.SS_TOOLS_INTROSPECT === '1';
 
 /**
+ * Третий режим — IN-PROCESS (Ф4.1, мост единого ума). Тот же закон лени, что у
+ * introspect: флаг ставит `lib/mind/harness-flag.ts` ДО импорта инструментов.
+ * В этом режиме инструмент не трогает argv и не запускается — он регистрирует
+ * `{spec, main}` в карту, и цикл ума вызывает `main` напрямую, без `npx tsx`
+ * на каждый вызов. CLI-поведение (три строки ниже) не меняется ни на байт.
+ */
+export const isHarnessed = (): boolean => process.env.SS_TOOLS_HARNESS === '1';
+
+export interface HarnessedTool {
+  readonly spec: ToolSpec;
+  readonly main: (ctx: ToolContext<ToolSpec>) => Promise<void>;
+}
+
+/** Карта in-process инструментов. Наполняется импортом модулей под SS_TOOLS_HARNESS=1. */
+export const HARNESS_TOOLS = new Map<string, HarnessedTool>();
+
+/**
  * One renderer serves both surfaces: `--help` of a single tool and its section
  * in `docs/TOOLS.md`. Two renderers would drift, which is the whole disease.
  * No dates or timestamps — the snapshot is compared byte for byte.
@@ -116,6 +133,27 @@ function fail(spec: ToolSpec, message: string): never {
 }
 
 /**
+ * Смысловая валидация — ОДНА на оба входа (CLI и in-process): неизвестный флаг,
+ * пропущенный обязательный, значение вне `values`, подстановка умолчаний.
+ * Кидает, а не завершает процесс — завершение остаётся CLI-обёртке `parseArgv`.
+ */
+export function resolveArgs(spec: ToolSpec, given: Readonly<Record<string, string>>): Record<string, string> {
+  for (const name of Object.keys(given)) {
+    if (!(name in spec.args)) throw new Error(`неизвестный флаг --${name}`);
+  }
+  const out: Record<string, string> = {};
+  for (const [name, a] of Object.entries(spec.args)) {
+    const value = given[name] ?? a.default;
+    if (value === undefined) throw new Error(`не задан обязательный --${name} (${a.about})`);
+    if (a.values && !a.values.includes(value)) {
+      throw new Error(`--${name}=${value} вне допустимого набора: ${a.values.join(' · ')}`);
+    }
+    out[name] = value;
+  }
+  return out;
+}
+
+/**
  * Strict parse. Every token must be a declared `--flag` followed by its value.
  * Today `--qualiti high` silently yields the `high` default and spends $0.25
  * instead of $0.018 — an unrecorded class of defect this closes.
@@ -126,23 +164,17 @@ function parseArgv(spec: ToolSpec, argv: readonly string[]): Record<string, stri
     const token = argv[i];
     if (!token.startsWith('--')) fail(spec, `неожиданный аргумент «${token}» — ожидался --флаг`);
     const name = token.slice(2);
-    if (!(name in spec.args)) fail(spec, `неизвестный флаг --${name}`);
     const value = argv[i + 1];
     if (value === undefined || value.startsWith('--')) fail(spec, `у --${name} нет значения`);
     given[name] = value;
     i++;
   }
 
-  for (const [name, a] of Object.entries(spec.args)) {
-    const value = given[name] ?? a.default;
-    if (value === undefined) fail(spec, `не задан обязательный --${name} (${a.about})`);
-    if (a.values && !a.values.includes(value)) {
-      fail(spec, `--${name}=${value} вне допустимого набора: ${a.values.join(' · ')}`);
-    }
-    given[name] = value;
+  try {
+    return resolveArgs(spec, given);
+  } catch (e) {
+    fail(spec, e instanceof Error ? e.message : String(e));
   }
-
-  return given;
 }
 
 /**
@@ -155,6 +187,11 @@ export function defineTool<const S extends ToolSpec>(
   main: (ctx: ToolContext<S>) => Promise<void>,
 ): S {
   if (isIntrospecting()) return spec;
+
+  if (isHarnessed()) {
+    HARNESS_TOOLS.set(spec.name, { spec, main: main as HarnessedTool['main'] });
+    return spec;
+  }
 
   const argv = process.argv.slice(2);
   if (argv.includes('--help')) {

@@ -17,7 +17,7 @@
 // Контракт: `--help`.
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve, extname, join } from 'node:path';
-import { sb, seriesId } from './_env';
+import { sb, seriesId, runEnv } from './_env';
 import { defineTool } from './_tool';
 import { readAssetMediaAsBase64, localCacheAbsPath } from '../../lib/media-cache';
 import { sampleVideoFrames } from '../../lib/sample-frames';
@@ -53,14 +53,14 @@ export default defineTool(
     const query = sb.from('assets').select(FIELDS);
     if (id) query.eq('id', id);
     else if (slug) query.eq('series_id', seriesId()).eq('file_type', `SBL-${slug}`);
-    else query.eq('episode_id', process.env.RUN_EPISODE_ID ?? '').eq('file_type', type);
+    else query.eq('episode_id', runEnv('RUN_EPISODE_ID') ?? '').eq('file_type', type);
 
     const { data, error } = await query.order('created_at', { ascending: false }).limit(1);
     if (error) throw new Error(`поиск изделия: ${error.message}`);
     const asset = data?.[0];
     if (!asset) {
       // Отказ адресный: сказать, ЧТО искали и ГДЕ, иначе следующий шаг — чтение кода.
-      const where = id ? `id=${id}` : slug ? `SBL-${slug} в серии ${seriesId()}` : `${type} в эпизоде ${process.env.RUN_EPISODE_ID}`;
+      const where = id ? `id=${id}` : slug ? `SBL-${slug} в серии ${seriesId()}` : `${type} в эпизоде ${runEnv('RUN_EPISODE_ID')}`;
       throw new Error(`изделие не найдено: ${where}`);
     }
 

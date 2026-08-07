@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const envPath = resolve(process.cwd(), '.env.local');
 if (existsSync(envPath)) {
@@ -19,6 +20,22 @@ export const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
+
+/**
+ * Per-вызов окружение для IN-PROCESS запуска (Ф4.1, мост единого ума).
+ *
+ * В CLI-жизни инструмент — процесс, и `RUN_SERIES_ID`/`RUN_EPISODE_ID` живут в
+ * `process.env`. В процессе приложения инструменты вызываются из ПАРАЛЛЕЛЬНЫХ
+ * запросов разных эпизодов — глобальная переменная стала бы гонкой: чат серии A
+ * молча писал бы в серию B (класс дефекта D58/D60). Поэтому мост кладёт значения
+ * в AsyncLocalStorage на время одного вызова, и они ПОБЕЖДАЮТ process.env.
+ */
+export const runEnvStore = new AsyncLocalStorage<Readonly<Record<string, string>>>();
+
+/** Значение run-переменной: сперва контекст вызова (мост), затем process.env (CLI). */
+export function runEnv(name: string): string | undefined {
+  return runEnvStore.getStore()?.[name] ?? process.env[name];
+}
 /**
  * СЕРИЯ — ПАРАМЕТР, не константа (D60, Ф1 новой парадигмы 2026-08-07).
  *
@@ -32,7 +49,7 @@ export const sb = createClient(
  * `RUN_EPISODE_ID`: захардкоженный id молча делает работу не над тем объектом.
  */
 export function seriesId(): string {
-  const v = process.env.RUN_SERIES_ID;
+  const v = runEnv('RUN_SERIES_ID');
   if (!v) {
     throw new Error(
       'не задана RUN_SERIES_ID — сериал, над которым идёт работа. ' +
