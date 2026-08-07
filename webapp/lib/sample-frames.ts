@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// lib/agents/sample-frames.ts
+// lib/sample-frames.ts
 // Sample evenly-spaced frames from a local mp4 as base64 PNGs — the in-memory
 // counterpart of scripts/clip-frames.ts, for the Visual Critic's video path.
 // Reuses the project's own ffmpeg (resolveFfmpegPath + runFfmpeg). Writes to a
@@ -9,7 +9,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { probeDurationSeconds, runFfmpeg } from '../providers/ffmpeg-stitch';
+import { probeDurationSeconds, runFfmpeg } from './providers/ffmpeg-stitch';
 
 /**
  * Sample ~`frames` evenly-spaced frames from `mp4Path`, scaled to `width`, and
