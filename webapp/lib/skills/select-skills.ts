@@ -22,6 +22,11 @@ export interface SelectorContext {
 }
 
 const CACHE_TTL_MS = 30_000;
+/**
+ * Квота под МАЛЕНЬКУЮ модель старого мира. Для единого ума она снята (доктрина
+ * §21: «большой ум читает сколько нужно») — он передаёт `limit: Infinity`.
+ * Умолчание держит старых вызывающих без изменений до Ф6.
+ */
 const MAX_SKILLS_PER_CALL = 5;
 
 /**
@@ -149,7 +154,10 @@ async function getCache(): Promise<CacheEntry> {
   return cache;
 }
 
-async function selectSkillsRanked(ctx: SelectorContext): Promise<readonly LoadedSkill[]> {
+async function selectSkillsRanked(
+  ctx: SelectorContext,
+  limit: number = MAX_SKILLS_PER_CALL,
+): Promise<readonly LoadedSkill[]> {
   const entry = await getCache();
 
   const matches = entry.skills.filter(
@@ -163,7 +171,7 @@ async function selectSkillsRanked(ctx: SelectorContext): Promise<readonly Loaded
     return specificityScore(b.frontmatter.applies_when) - specificityScore(a.frontmatter.applies_when);
   });
 
-  return matches.slice(0, MAX_SKILLS_PER_CALL);
+  return Number.isFinite(limit) ? matches.slice(0, limit) : matches;
 }
 
 /**
@@ -181,8 +189,11 @@ export async function selectSkills(ctx: SelectorContext): Promise<readonly Loade
  * metadata (no body). Used by agent runners and PA to expose the available
  * capability repertoire without burning context budget on bodies.
  */
-export async function listSkillManifests(ctx: SelectorContext): Promise<readonly SkillManifest[]> {
-  const ranked = await selectSkillsRanked(ctx);
+export async function listSkillManifests(
+  ctx: SelectorContext,
+  opts?: { limit?: number },
+): Promise<readonly SkillManifest[]> {
+  const ranked = await selectSkillsRanked(ctx, opts?.limit);
   return ranked.map((s) => ({
     slug: s.slug,
     filePath: s.filePath,
