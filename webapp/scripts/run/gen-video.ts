@@ -58,7 +58,8 @@ export default defineTool(
     // Episode comes from the environment, never hardcoded: a stale id bills the
     // wrong episode silently (2026-08-04 stocktake).
     env: { RUN_EPISODE_ID: { about: 'эпизод, на который списывается трата; без него инструмент не стартует' } },
-    writes: ['budget_log'],
+    reads: ['assets', 'episodes'],
+    writes: ['budget_log', 'assets'],
   },
   async ({ arg, env }) => {
     const out = arg('out');

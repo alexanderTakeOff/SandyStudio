@@ -53,8 +53,15 @@ export interface ToolContext<S extends ToolSpec> {
   env<K extends keyof NonNullable<S['env']> & string>(name: K): string;
 }
 
-/** True while the registry reads declarations. No `main` runs, no network. */
-export const INTROSPECT = process.env.SS_TOOLS_INTROSPECT === '1';
+/**
+ * True while the registry reads declarations. No `main` runs, no network.
+ *
+ * Read LAZILY on purpose. As a module-level const it froze at the moment this file was first
+ * imported — so the registry, which imports `renderTool` from here before it can set the flag,
+ * got `false` and every tool it introspected tried to parse `--write` as its own argument.
+ * A snapshot of the environment taken at import time is a hidden ordering dependency.
+ */
+export const isIntrospecting = (): boolean => process.env.SS_TOOLS_INTROSPECT === '1';
 
 /**
  * One renderer serves both surfaces: `--help` of a single tool and its section
@@ -147,7 +154,7 @@ export function defineTool<const S extends ToolSpec>(
   spec: S,
   main: (ctx: ToolContext<S>) => Promise<void>,
 ): S {
-  if (INTROSPECT) return spec;
+  if (isIntrospecting()) return spec;
 
   const argv = process.argv.slice(2);
   if (argv.includes('--help')) {

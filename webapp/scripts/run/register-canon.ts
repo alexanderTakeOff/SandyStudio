@@ -20,7 +20,7 @@ export default defineTool(
       status: { about: 'статус ассета', default: 'APPROVED' },
       version: { about: 'версия в имени файла', default: 'v01' },
     },
-    reads: ['assets'],
+    reads: ['assets', 'episodes'],
     writes: ['assets'],
   },
   async ({ arg }) => {

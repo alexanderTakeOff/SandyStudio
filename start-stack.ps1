@@ -16,11 +16,18 @@
 # C:\SandyStudio и новая парадигма в C:\SandyStudio-nx. До этой правки скрипт был
 # прибит к :3000/:8288 И УБИВАЛ ЛЮБОЙ `next start` — то есть запуск второго дерева
 # гасил первое. Дефолты прежние, так что старый вызов работает как работал.
+# D65 (2026-08-07): у Inngest ДВА порта, а параметризовали один. `--port` двигает только
+# API/UI; connect-gateway висит на своём собственном (дефолт 8289) и НЕ следует за ним.
+# Поэтому второе дерево, поднятое на 8289, падало с `listen tcp :8289: bind: Only one usage
+# of each socket address` — молча, в свой лог, оставляя приложение живым и без Inngest.
+# Дефолт гейтвея выводим из порта: InngestPort + 1, как у самой Inngest.
 param(
   [switch]$Build,
   [int]$Port = 3000,
-  [int]$InngestPort = 8288
+  [int]$InngestPort = 8288,
+  [int]$InngestGatewayPort = 0
 )
+if ($InngestGatewayPort -eq 0) { $InngestGatewayPort = $InngestPort + 1 }
 
 # Path-agnostic: resolve everything relative to THIS script's folder (the repo
 # root), so the same launcher works on any machine / clone path (desktop
@@ -82,7 +89,7 @@ Write-Host '== starting Inngest (self-host, durable SQLite) ==' -ForegroundColor
 Start-LogRotation "$Web\inngest.log"
 Write-BootBanner "$Web\inngest.log"
 Start-Process powershell -ArgumentList '-NoProfile','-NoExit','-Command',
-  "Set-Location $Web; npx $InngestCli start --port $InngestPort --event-key $ek --signing-key $sk --sdk-url http://localhost:$Port/api/inngest --sqlite-dir `"$SqliteDir`" *>> `"$Web\inngest.log`"" -WindowStyle Minimized
+  "Set-Location $Web; npx $InngestCli start --port $InngestPort --connect-gateway-port $InngestGatewayPort --event-key $ek --signing-key $sk --sdk-url http://localhost:$Port/api/inngest --sqlite-dir `"$SqliteDir`" *>> `"$Web\inngest.log`"" -WindowStyle Minimized
 
 Write-Host "== starting App (npm run start on :$Port) ==" -ForegroundColor Cyan
 Start-LogRotation "$Web\prod.log"

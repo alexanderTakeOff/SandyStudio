@@ -36,6 +36,7 @@ export default defineTool(
     // след. До 2026-08-06 `stitch` не знал про базу вовсе, поэтому финальный кат
     // трёх эпизодов существовал только файлом.
     env: { RUN_EPISODE_ID: { about: 'эпизод, которому принадлежит кат' } },
+    reads: ['assets', 'episodes'],
     writes: ['assets'],
   },
   async ({ arg, env }) => {

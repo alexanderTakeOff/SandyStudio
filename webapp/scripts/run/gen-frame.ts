@@ -41,8 +41,8 @@ export default defineTool(
     // The episode is NOT hardcoded: a stale id spends the new episode's money on
     // the old episode's ledger and the mistake is silent (2026-08-04 stocktake).
     env: { RUN_EPISODE_ID: { about: 'эпизод, на который списывается трата; без него инструмент не стартует' } },
-    reads: ['assets'],
-    writes: ['budget_log'],
+    reads: ['assets', 'episodes'],
+    writes: ['budget_log', 'assets'],
   },
   async ({ arg, env }) => {
     const out = arg('out');
