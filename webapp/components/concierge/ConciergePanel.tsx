@@ -71,6 +71,15 @@ interface Message {
 
 const STORAGE_KEY = 'sandystudio.prodassistant.history';
 const THREAD_KEY = 'sandystudio.prodassistant.threadId';
+// Ф4.4 — режим ЕДИНОГО УМА. Эндпойнт переключается флагом; тред = эпизод
+// (доктрина §7): у каждого эпизода СВОЙ ключ треда, переключение эпизода
+// переключает ленту. Старое решение «один тред следует за эпизодом»
+// (2026-06-23) в mind-режиме отменено — оно и было той кашей, где сериалы
+// мешались в одну ленту.
+const MIND_CHAT = process.env.NEXT_PUBLIC_MIND_CHAT === '1';
+const CHAT_ENDPOINT = MIND_CHAT ? '/api/mind/chat' : '/api/concierge/chat';
+const threadKeyFor = (episodeId: string | null): string =>
+  MIND_CHAT ? `sandystudio.mind.threadId.${episodeId ?? 'studio'}` : THREAD_KEY;
 const TTS_KEY = 'sandystudio.prodassistant.ttsEnabled';
 // 2026-05-26 (TD-54.3) — left/right dock retired. PA now lives in the middle
 // grid column between Sidebar and Content. SIDE_KEY removed; old localStorage
@@ -426,8 +435,11 @@ export function ConciergePanel() {
       if (raw) setMessages(JSON.parse(raw));
     } catch { /* ignore */ }
     try {
-      const t = localStorage.getItem(THREAD_KEY);
-      if (t) setThreadId(t);
+      // В mind-режиме тред привязан к эпизоду — его грузит эффект [openEpisodeId] ниже.
+      if (!MIND_CHAT) {
+        const t = localStorage.getItem(THREAD_KEY);
+        if (t) setThreadId(t);
+      }
     } catch { /* ignore */ }
     try {
       const tts = localStorage.getItem(TTS_KEY);
@@ -448,6 +460,19 @@ export function ConciergePanel() {
       if (Number.isFinite(h) && h >= INPUT_MIN_PX && h <= INPUT_MAX_PX) setInputHeight(h);
     } catch { /* ignore */ }
   }, []);
+
+  // Ф4.4 — mind-режим: тред СЛЕДУЕТ за открытым эпизодом через СВОЙ ключ.
+  // Смена эпизода = смена треда = смена ленты; история нового треда дольётся
+  // существующим [threadId] DB-load эффектом. Параллельные сериалы не мешаются.
+  useEffect(() => {
+    if (!MIND_CHAT) return;
+    try {
+      const t = localStorage.getItem(threadKeyFor(openEpisodeId));
+      setThreadId(t ?? null);
+      setMessages([]);
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    } catch { /* ignore */ }
+  }, [openEpisodeId]);
 
   // Persist panel width / open / input height.
   useEffect(() => {
@@ -838,7 +863,7 @@ export function ConciergePanel() {
       // closing the OpenAI/tool loop on abort.
       const controller = new AbortController();
       abortControllerRef.current = controller;
-      const res = await fetch('/api/concierge/chat', {
+      const res = await fetch(CHAT_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -863,7 +888,7 @@ export function ConciergePanel() {
           try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
         }
         setThreadId(newThreadId);
-        try { localStorage.setItem(THREAD_KEY, newThreadId); } catch { /* ignore */ }
+        try { localStorage.setItem(threadKeyFor(openEpisodeId), newThreadId); } catch { /* ignore */ }
       }
       // 2026-05-22 — server-side error envelope detection BEFORE stream parse.
       // When chat route's outer try-catch fires (Supabase quota / unavailable
@@ -1097,7 +1122,7 @@ export function ConciergePanel() {
       const data = (await res.json()) as { threadId?: string };
       if (!data.threadId) return;
       setThreadId(data.threadId);
-      try { localStorage.setItem(THREAD_KEY, data.threadId); } catch { /* ignore */ }
+      try { localStorage.setItem(threadKeyFor(openEpisodeId), data.threadId); } catch { /* ignore */ }
       setMessages([]);
       try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     } catch (err) {

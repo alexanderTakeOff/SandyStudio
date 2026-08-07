@@ -60,7 +60,17 @@ export function clearDoctrineCache(): void {
   doctrineCache = null;
 }
 
-export function buildMindPrompt(ctx: MindPromptContext): string {
+/**
+ * Промпт двумя частями под кэш нативного пути (−86% на входных токенах):
+ * `stable` не меняется от хода к ходу треда и несёт cache_control;
+ * `dynamic` — контекст (деньги, скиллы), меняется и не кэшируется.
+ */
+export interface MindPromptParts {
+  stable: string;
+  dynamic: string;
+}
+
+export function buildMindPromptParts(ctx: MindPromptContext): MindPromptParts {
   if (!ctx.doctrine.trim()) {
     throw new Error('промпт ума без доктрины не собирается — это конституция, а не украшение');
   }
@@ -109,7 +119,9 @@ ${ctx.doctrine}`);
 9. Скиллы — знания оси РАБОТ (§20-21): квот нет, читай сколько нужно ДО работы,
    а не после брака. Тело скилла — getSkill.`);
 
-  // ── 4. Рабочий контекст ────────────────────────────────────────────────────
+  const stable = blocks.join('\n\n');
+
+  // ── 4. Рабочий контекст (динамическая часть — не кэшируется) ──────────────
   const lines: string[] = [];
   if (ctx.series) lines.push(`Сериал: ${ctx.series.code} «${ctx.series.title}»`);
   if (ctx.episode) {
@@ -126,8 +138,14 @@ ${ctx.doctrine}`);
     lines.push('', 'Применимые скиллы (тела — через getSkill):');
     for (const s of ctx.skills) lines.push(`- ${s.slug} — ${s.summary}`);
   }
-  blocks.push(`[КОНТЕКСТ]
-${lines.join('\n')}`);
+  const dynamic = `[КОНТЕКСТ]
+${lines.join('\n')}`;
 
-  return blocks.join('\n\n');
+  return { stable, dynamic };
+}
+
+/** Цельный промпт — для тестов и не-кэширующих провайдеров. */
+export function buildMindPrompt(ctx: MindPromptContext): string {
+  const parts = buildMindPromptParts(ctx);
+  return `${parts.stable}\n\n${parts.dynamic}`;
 }
