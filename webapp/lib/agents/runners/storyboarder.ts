@@ -20,7 +20,7 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import type { AgentInputs } from '../types';
 import {
@@ -38,7 +38,7 @@ import {
   resolveRuntimeTarget,
   resolveGagPlan,
   gagPlanBriefLine,
-} from '../delivery-targets';
+} from '../../delivery-targets';
 
 export const SB_CONTRACT = 'storyboarder@v2';
 // 2026-05-20 — upgraded sonnet-4-6 → opus-4-7 per Director directive.

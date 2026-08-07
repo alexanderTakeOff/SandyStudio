@@ -65,7 +65,7 @@ import type {
 } from '@/lib/api/series-bible';
 
 // Provider IDs available for per-image regeneration override.
-// Hard-coded for MVP — kept in sync with lib/agents/providers/image-gen-multi-registry.ts.
+// Hard-coded for MVP — kept in sync with lib/providers/image-gen-multi-registry.ts.
 const PROVIDER_OPTIONS: Array<{ id: 'openai-edits-multi' | 'flux-pro-1.1-ultra'; label: string }> = [
   { id: 'openai-edits-multi', label: 'OpenAI Edits' },
   { id: 'flux-pro-1.1-ultra', label: 'Flux Pro 1.1 Ultra' },

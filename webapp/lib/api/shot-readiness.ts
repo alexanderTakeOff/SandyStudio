@@ -26,7 +26,7 @@ import {
   type VideoQualityTier,
 } from '@/lib/api/provider-capabilities';
 import type { ShotFormatOverride } from '@/lib/api/resolve-generation-params';
-import { assertMediaResolves, type PreflightAsset } from '@/lib/agents/media-preflight';
+import { assertMediaResolves, type PreflightAsset } from '@/lib/media-preflight';
 import { isVgenCancelled } from '@/lib/api/vgen-cancel';
 import { ValidationError } from '@/lib/api/errors';
 

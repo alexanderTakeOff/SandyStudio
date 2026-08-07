@@ -15,7 +15,7 @@ import { inngest } from '@/lib/inngest/client';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { logEvent } from '@/lib/api/events';
 import type { ServerSupabaseClient } from '@/lib/api/auth';
-import { aggregateWeekly, type MemoryRow } from '@/lib/agents/hog-memory-rollup';
+import { aggregateWeekly, type MemoryRow } from '@/lib/hog-memory-rollup';
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 

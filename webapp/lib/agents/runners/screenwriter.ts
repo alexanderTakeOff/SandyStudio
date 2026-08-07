@@ -22,7 +22,7 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import { hasVerticalDeliveryTarget } from '../../api/provider-capabilities';
 import {
@@ -31,7 +31,7 @@ import {
   resolveGagPlan,
   gagPlanBriefLine,
   DEFAULT_RUNTIME_SECONDS,
-} from '../delivery-targets';
+} from '../../delivery-targets';
 import type { AgentInputs } from '../types';
 import {
   getAgentSkillManifest,

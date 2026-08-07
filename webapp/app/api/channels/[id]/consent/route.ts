@@ -13,7 +13,7 @@ import { NextResponse } from 'next/server';
 import { requireDirector, assertHumanDirector } from '@/lib/api/auth';
 import { NotFoundError } from '@/lib/api/errors';
 import { PUBLIC_ENV } from '@/lib/env';
-import { buildConsentAuthUrl } from '@/lib/agents/providers/google-consent';
+import { buildConsentAuthUrl } from '@/lib/providers/google-consent';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

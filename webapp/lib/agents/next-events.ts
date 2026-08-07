@@ -36,11 +36,11 @@ import {
 import { pickPilotVgenShots } from '@/lib/api/vgen-shot-helpers';
 import { resolveShotId } from '@/lib/api/shot-identity';
 import { hasVerticalDeliveryTarget } from '@/lib/api/provider-capabilities';
-import { readDeliveryTargetsFromMetadata } from '@/lib/agents/delivery-targets';
+import { readDeliveryTargetsFromMetadata } from '@/lib/delivery-targets';
 import { setVgenPilotState } from '@/lib/api/vgen-pilot-state';
 import { ensureEpisodeAnimaticEDL } from '@/lib/api/ensure-animatic';
 import { bakeMusicIntoEpisodeAnimatic } from '@/lib/api/ingest-music';
-import { contractHasMusic } from '@/lib/agents/music';
+import { contractHasMusic } from '@/lib/music';
 import {
   designerChainEnabled,
   animatorChainEnabled,

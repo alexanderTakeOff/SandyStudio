@@ -24,17 +24,17 @@ import {
   mockVideo,
   mockYouTubeUpload,
 } from './mock-providers';
-import { generateImageOpenAI } from './providers/openai-image';
-import { generateVideoVeoGemini } from './providers/veo-gemini';
-import { getMultiVideoProvider } from './providers/video-gen-multi';
-import { uploadVideo, setThumbnail, videoExists, isVideoInPlaylist, addVideoToPlaylist, type PrivacyStatus } from './providers/youtube';
-import { collectAudienceSnapshot } from './providers/youtube-stats';
-import { decideYouTubePathway, assertChannelIdentity, publishDefaultsOf } from './providers/channel-resolver';
-import { resolveSeriesPlaylistId } from './providers/short-linkage';
-import { downloadFile } from './providers/drive';
-import { parseVideoMetadata } from './publish-metadata';
-import { persistBinary, type PersistedBinary } from './persist-binary';
-import { readEpisodeDeliveryTargets } from './delivery-targets';
+import { generateImageOpenAI } from '../providers/openai-image';
+import { generateVideoVeoGemini } from '../providers/veo-gemini';
+import { getMultiVideoProvider } from '../providers/video-gen-multi';
+import { uploadVideo, setThumbnail, videoExists, isVideoInPlaylist, addVideoToPlaylist, type PrivacyStatus } from '../providers/youtube';
+import { collectAudienceSnapshot } from '../providers/youtube-stats';
+import { decideYouTubePathway, assertChannelIdentity, publishDefaultsOf } from '../providers/channel-resolver';
+import { resolveSeriesPlaylistId } from '../providers/short-linkage';
+import { downloadFile } from '../providers/drive';
+import { parseVideoMetadata } from '../publish-metadata';
+import { persistBinary, type PersistedBinary } from '../persist-binary';
+import { readEpisodeDeliveryTargets } from '../delivery-targets';
 import { computeInputVersions } from './input-versions';
 import { canonicalShotId } from '../api/shot-id';
 import { resolveShotId } from '../api/shot-identity';
@@ -46,7 +46,7 @@ import { markDispatchIntent } from './dispatch-intent';
 import {
   SEEDANCE_COST_USD_PER_SECOND,
   SEEDANCE_RESOLUTION_COST_MULT,
-} from './providers/fal-seedance';
+} from '../providers/fal-seedance';
 import {
   buildShotPromptV2,
   makeCharacterCanonSnippets,
@@ -67,15 +67,15 @@ import {
   resolveMusicSourceUrl,
   type AnimaticContract,
 } from '../api/animatic-shotlist';
-import { ffmpegStitchEpisode, buildBrandedInputs } from './providers/ffmpeg-stitch';
-import type { ResolvedProvider } from './provider-resolver';
+import { ffmpegStitchEpisode, buildBrandedInputs } from '../providers/ffmpeg-stitch';
+import type { ResolvedProvider } from '../provider-resolver';
 import { getAgent } from './registry';
 import { runScreenwriter, ScreenwriterError } from './runners/screenwriter';
 import { runScriptReviewer, ScriptReviewerError } from './runners/script-reviewer';
 import { runStoryboarder, StoryboarderError } from './runners/storyboarder';
 import { runContinuityCheck, ContinuityCheckError } from './runners/continuity-check';
 import { runCopywriter, CopywriterError } from './runners/copywriter';
-import { loadCopyBrandingForEpisode } from './branding';
+import { loadCopyBrandingForEpisode } from '../branding';
 import { runThumbnailDesigner, ThumbnailDesignerError } from './runners/thumbnail-designer';
 import { runThumbnailRenderer, ThumbnailRendererError } from './runners/thumbnail-renderer';
 import { runEpisodeReferences, EpisodeReferencesError, type AnchorTarget } from './runners/episode-references';

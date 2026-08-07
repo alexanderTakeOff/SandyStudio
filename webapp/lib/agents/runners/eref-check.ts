@@ -21,8 +21,8 @@
 
 import {
   AnthropicTextError,
-} from '../providers/anthropic-text';
-import { generateAnthropicVision, type VisionImage } from '../providers/anthropic-vision';
+} from '../../providers/anthropic-text';
+import { generateAnthropicVision, type VisionImage } from '../../providers/anthropic-vision';
 import type {
   EREFReview,
   EREFReviewIssue,

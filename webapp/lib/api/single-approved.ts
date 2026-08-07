@@ -29,7 +29,17 @@ import {
   type ShotReferenceContract,
 } from '@/lib/api/shot-reference';
 import { resolveShotId } from '@/lib/api/shot-identity';
-import type { SupabaseClientLike } from '@/lib/agents/next-events';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/lib/supabase/types.gen';
+
+/**
+ * Клиент базы, каким его видит инвариант «один утверждённый на слот».
+ *
+ * Брался как `SupabaseClientLike` из `agents/next-events` — то есть инвариант хранилища
+ * зависел по типу от диспетчера событий конвейера. Инвариант переживает роли; тип назван
+ * здесь напрямую (Ф1 новой парадигмы, 2026-08-07).
+ */
+type SupabaseClientLike = SupabaseClient<Database>;
 
 /** Status that "occupies" a slot for a given asset family. */
 export type OccupyingStatus = 'APPROVED' | 'LOCKED';

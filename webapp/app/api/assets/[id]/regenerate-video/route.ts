@@ -36,7 +36,7 @@ import { withApiHandler } from '@/lib/api/handler';
 import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
-import { getMultiVideoProvider } from '@/lib/agents/providers/video-gen-multi';
+import { getMultiVideoProvider } from '@/lib/providers/video-gen-multi';
 import { getVgenDefaults } from '@/lib/api/vgen-defaults';
 import {
   clampRenderDuration,
@@ -49,7 +49,7 @@ import {
   resolveVideoParams,
   type EpisodeVideoConfig,
 } from '@/lib/api/resolve-generation-params';
-import { persistBinary } from '@/lib/agents/persist-binary';
+import { persistBinary } from '@/lib/persist-binary';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import { enforceMode } from '@/lib/governance';
 import { recordCost } from '@/lib/budget';

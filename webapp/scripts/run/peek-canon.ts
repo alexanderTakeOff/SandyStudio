@@ -7,7 +7,7 @@
 // directory. The destination is an argument now.
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { sb, S15 } from './_env';
+import { sb, seriesId } from './_env';
 import { defineTool } from './_tool';
 import { readAssetMediaAsBase64 } from '../../lib/media-cache';
 
@@ -20,6 +20,9 @@ export default defineTool(
       out: { about: 'куда сохранить картинку плиты; пусто — только текст', default: '' },
       chars: { about: 'сколько символов текста печатать', default: '1800' },
     },
+    env: {
+      RUN_SERIES_ID: { about: 'сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу' },
+    },
     reads: ['assets'],
   },
   async ({ arg }) => {
@@ -27,10 +30,10 @@ export default defineTool(
     const { data: asset } = await sb
       .from('assets')
       .select('id,filename,drive_file_id,staging_path,content,description,status')
-      .eq('series_id', S15)
+      .eq('series_id', seriesId())
       .eq('file_type', `SBL-${slug}`)
       .maybeSingle();
-    if (!asset) throw new Error(`no canon asset SBL-${slug} in S15`);
+    if (!asset) throw new Error(`no canon asset SBL-${slug} в серии ${seriesId()}`);
 
     console.log('filename:', asset.filename, '| status:', asset.status);
     console.log('--- content ---');

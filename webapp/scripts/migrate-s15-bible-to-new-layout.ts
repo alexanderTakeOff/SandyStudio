@@ -21,7 +21,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { createClient } from '@supabase/supabase-js';
-import { ensureFolder, moveFile, DriveError } from '../lib/agents/providers/drive';
+import { ensureFolder, moveFile, DriveError } from '../lib/providers/drive';
 
 interface AssetRow {
   id: string;

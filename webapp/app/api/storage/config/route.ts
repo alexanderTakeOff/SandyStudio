@@ -27,8 +27,8 @@ import { ValidationError } from '@/lib/api/errors';
 import { runWriteTest } from '@/lib/api/storage-probe';
 import { persistEnvValue } from '@/lib/persist-env';
 import { mediaCacheRoot } from '@/lib/media-cache';
-import { bustDriveRootNameCache } from '@/lib/agents/persist-binary';
-import { ensureFolder, DriveError } from '@/lib/agents/providers/drive';
+import { bustDriveRootNameCache } from '@/lib/persist-binary';
+import { ensureFolder, DriveError } from '@/lib/providers/drive';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

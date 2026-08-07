@@ -1,0 +1,282 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// lib/agents/persist-binary.ts
+// Single helper for binary persistence used by EXEC-THUMB / EXEC-EDIT /
+// EXEC-VGEN. Always writes a local cache into the worktree-independent media
+// cache (lib/media-cache → FILMS/_media_cache, NOT webapp/public/staging/ —
+// Director directive 2026-06-02, no media in branches) so the browser can
+// render fast; additionally uploads to Drive when the resolver reports
+// storage='drive_native'.
+//
+// Per provider_strategy.md §5: Drive is the canonical store for binaries,
+// the local cache is best-effort fast-load. If Drive upload fails, the agent
+// run does NOT fail — we log and continue with local-only. This matches the
+// resolver's auto-downgrade-to-mock philosophy.
+// ──────────────────────────────────────────────────────────────────────────────
+
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from './supabase/types.gen';
+import { ensureFolder, uploadBinary, DriveError } from './providers/drive';
+import { resolveProvider } from './provider-resolver';
+import { localCacheAbsPath } from './media-cache';
+
+export type BinaryExt = 'png' | 'jpg' | 'webp' | 'mp4' | 'mov' | 'wav' | 'mp3';
+
+const CONTENT_TYPE_BY_EXT: Record<BinaryExt, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  webp: 'image/webp',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  wav: 'audio/wav',
+  mp3: 'audio/mpeg',
+};
+
+export interface PersistBinaryArgs {
+  /** base64-encoded body, no data: URI prefix. */
+  base64: string;
+  ext: BinaryExt;
+  /** Drive filename. Should be the canonical SS-... filename when known. */
+  driveFilename: string;
+  /** Hint for local cache filename (will get a random suffix appended). */
+  localHint?: string;
+  /**
+   * Legacy layout (kept for backward compat with S14 episode chain).
+   * Maps to `/SandyStudio/<episodeCode>/<file>` when none of the new-layout
+   * fields are supplied. Director's directive 2026-05-20: leave S14 files
+   * alone, start writing S15+ into the new layout via `seriesCode + bucket`.
+   */
+  episodeCode?: string;
+  /**
+   * New layout 2026-05-20. When `seriesCode` AND `bucket` are both set, the
+   * Drive folder layout becomes:
+   *   /SandyStudio/<seriesCode>/<bucket>/<assetType>/<file>
+   *   e.g. /SandyStudio/SS-S15/bible/images/SS-S15-SBL-*.png
+   *        /SandyStudio/SS-S15/E01/video/SS-S15-E01-VID-shot_*.mp4
+   * `bucket` is either the literal string 'bible' (series-scoped Library)
+   * or an episode short like 'E01' / 'E02' (episode-scoped).
+   * `assetType` defaults to derive-from-ext (png/jpg/webp → images,
+   *  mp4/mov → video, wav/mp3 → audio).
+   */
+  seriesCode?: string;
+  bucket?: 'bible' | string;
+  assetType?: 'images' | 'video' | 'audio';
+  /** Authenticated Supabase client for the resolver lookup. */
+  supabase: SupabaseClient<Database>;
+}
+
+function deriveAssetTypeFromExt(ext: BinaryExt): 'images' | 'video' | 'audio' {
+  if (ext === 'png' || ext === 'jpg' || ext === 'webp') return 'images';
+  if (ext === 'mp4' || ext === 'mov') return 'video';
+  return 'audio';
+}
+
+// ── Drive root folder name (Phase 4e) ────────────────────────────────────────
+// The Drive layout root used to be the hardcoded literal 'SandyStudio'. It now
+// lives in app_config (scope='storage', key='drive_root_name') so the Storage
+// panel can point a fresh studio at any Drive folder. TTL-cached like
+// concierge-provider-config (30s cross-process; instant in-proc after a write
+// via bustDriveRootNameCache). Fail-open: on read error keep the current name.
+
+const DEFAULT_DRIVE_ROOT_NAME = 'SandyStudio';
+const DRIVE_ROOT_TTL_MS = 30_000;
+let _driveRootName = DEFAULT_DRIVE_ROOT_NAME;
+let _driveRootReadAt = 0;
+
+export function bustDriveRootNameCache(): void {
+  _driveRootReadAt = 0;
+}
+
+export async function driveRootName(supabase: SupabaseClient<Database>): Promise<string> {
+  const now = Date.now();
+  if (now - _driveRootReadAt < DRIVE_ROOT_TTL_MS) return _driveRootName;
+  _driveRootReadAt = now;
+  try {
+    const { data } = await supabase
+      .from('app_config')
+      .select('value')
+      .eq('scope', 'storage')
+      .eq('key', 'drive_root_name')
+      .maybeSingle();
+    const v = (data as { value?: unknown } | null)?.value;
+    _driveRootName = typeof v === 'string' && v.trim() ? v.trim() : DEFAULT_DRIVE_ROOT_NAME;
+  } catch {
+    // fail-open — keep the current (or default) root name
+  }
+  return _driveRootName;
+}
+
+export interface PersistedBinary {
+  /** Public URL the browser can fetch — always set. e.g. "/api/media/<file>". */
+  browserUrl: string;
+  /** Server-side absolute path to the local cache. */
+  absolutePath: string;
+  /** Drive file id when storage=drive_native and upload succeeded. */
+  driveFileId: string | null;
+  /** Drive web view link (preview page URL) when uploaded. */
+  driveWebViewUrl: string | null;
+  /** Provider id reported by the resolver — useful for telemetry. */
+  storageProviderId: string;
+  /** True if drive_native was requested but upload failed (we still kept local). */
+  driveUploadFailed: boolean;
+}
+
+/**
+ * Write the local copy into the worktree-independent media cache
+ * (`FILMS/_media_cache/<S>/<E>/media/<filename>`) keyed by the canonical
+ * filename — NOT into `webapp/public/staging/` (Director directive 2026-06-02:
+ * no media in branches). The `/api/media/<id|filename>` route reads from this
+ * same cache, so a persisted file is an instant cache hit with no Drive fetch.
+ * The returned `browserUrl` is the filename-keyed media route, which works for
+ * Drive-backed AND mock/local-only assets (the latter have no asset id yet).
+ */
+async function writeLocalCache(args: {
+  base64: string;
+  driveFilename: string;
+}): Promise<{ browserUrl: string; absolutePath: string }> {
+  const absolutePath = localCacheAbsPath(args.driveFilename);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await fs.writeFile(absolutePath, Buffer.from(args.base64, 'base64'));
+  return {
+    absolutePath,
+    browserUrl: `/api/media/${encodeURIComponent(path.basename(args.driveFilename))}`,
+  };
+}
+
+async function uploadToDrive(args: {
+  base64: string;
+  ext: BinaryExt;
+  filename: string;
+  episodeCode?: string;
+  seriesCode?: string;
+  bucket?: string;
+  assetType?: 'images' | 'video' | 'audio';
+  supabase: SupabaseClient<Database>;
+}): Promise<{ id: string; webViewLink: string }> {
+  // Two layouts coexist (Director directive 2026-05-20):
+  //
+  //  NEW: /SandyStudio/<seriesCode>/<bucket>/<assetType>/<file>
+  //         used when both seriesCode AND bucket are supplied.
+  //         bucket is 'bible' for series Library, 'E01' / 'E02' for episodes.
+  //         assetType is images / video / audio (derived from ext if omitted).
+  //
+  //  LEGACY: /SandyStudio/<episodeCode>/<file>  (S14 episode flow)
+  //         used when only episodeCode is supplied. Director said leave S14
+  //         files where they are — this branch keeps that contract.
+  //
+  // If neither is supplied, falls back to root /<drive_root>/<file> (the old
+  // Bible behaviour that left files homeless — should not happen after the
+  // route refactor in the same commit).
+  const sandyFolder = await ensureFolder(await driveRootName(args.supabase));
+
+  if (args.seriesCode && args.bucket) {
+    const seriesFolder = await ensureFolder(args.seriesCode, sandyFolder.id);
+    const bucketFolder = await ensureFolder(args.bucket, seriesFolder.id);
+    const assetType = args.assetType ?? deriveAssetTypeFromExt(args.ext);
+    const typeFolder = await ensureFolder(assetType, bucketFolder.id);
+    const uploaded = await uploadBinary({
+      filename: args.filename,
+      contentType: CONTENT_TYPE_BY_EXT[args.ext],
+      bytes: Buffer.from(args.base64, 'base64'),
+      parentFolderId: typeFolder.id,
+    });
+    return { id: uploaded.id, webViewLink: uploaded.webViewLink };
+  }
+
+  const targetFolder = args.episodeCode
+    ? await ensureFolder(args.episodeCode, sandyFolder.id)
+    : sandyFolder;
+  const uploaded = await uploadBinary({
+    filename: args.filename,
+    contentType: CONTENT_TYPE_BY_EXT[args.ext],
+    bytes: Buffer.from(args.base64, 'base64'),
+    parentFolderId: targetFolder.id,
+  });
+  return { id: uploaded.id, webViewLink: uploaded.webViewLink };
+}
+
+export async function persistBinary(args: PersistBinaryArgs): Promise<PersistedBinary> {
+  // 1. Local cache — always succeeds (fs writable). Writes to the
+  //    worktree-independent media cache, NOT public/staging (2026-06-02).
+  const local = await writeLocalCache({
+    base64: args.base64,
+    driveFilename: args.driveFilename,
+  });
+
+  // 2. Resolve storage provider. On error (no row, contract disabled), default
+  //    to mock semantics (no Drive upload). This mirrors the runner's own
+  //    "provider undefined → mock" fallback.
+  let storageProviderId = 'mock';
+  try {
+    const resolved = await resolveProvider(args.supabase, 'storage');
+    storageProviderId = resolved.providerId;
+  } catch {
+    storageProviderId = 'mock';
+  }
+
+  if (storageProviderId !== 'drive_native') {
+    return {
+      ...local,
+      driveFileId: null,
+      driveWebViewUrl: null,
+      storageProviderId,
+      driveUploadFailed: false,
+    };
+  }
+
+  // 3. Auto-resolve new layout from legacy episodeCode (Director directive
+  //    2026-05-20). Episode runners (runner.ts, episode-references.ts,
+  //    eref-upscale-only.ts) all pass episodeCode like "SS-S15-E01" but no
+  //    seriesCode/bucket — split that string into the new layout so they
+  //    don't need touching individually. Bible callers pass seriesCode +
+  //    bucket explicitly and bypass this path.
+  let resolvedSeriesCode = args.seriesCode;
+  let resolvedBucket = args.bucket;
+  let resolvedAssetType = args.assetType;
+  if (!resolvedSeriesCode && !resolvedBucket && args.episodeCode) {
+    const m = /^(SS-[A-Z0-9]+)-(E\d+)$/i.exec(args.episodeCode);
+    if (m) {
+      resolvedSeriesCode = m[1];
+      resolvedBucket = m[2].toUpperCase();
+      resolvedAssetType = resolvedAssetType ?? deriveAssetTypeFromExt(args.ext);
+    }
+  }
+
+  // 4. Drive upload. Failure is non-fatal — local cache still serves the
+  //    asset, the next agent re-trigger or a follow-up sync job can heal it.
+  try {
+    const drive = await uploadToDrive({
+      base64: args.base64,
+      ext: args.ext,
+      filename: args.driveFilename,
+      // Legacy episodeCode is only honoured when auto-resolve fails (i.e.
+      // unparseable episodeCode like "SS-PILOT-old"). That falls back to
+      // the flat /SandyStudio/<episodeCode>/<file> layout.
+      episodeCode: resolvedSeriesCode ? undefined : args.episodeCode,
+      seriesCode: resolvedSeriesCode,
+      bucket: resolvedBucket,
+      assetType: resolvedAssetType,
+      supabase: args.supabase,
+    });
+    return {
+      ...local,
+      driveFileId: drive.id,
+      driveWebViewUrl: drive.webViewLink,
+      storageProviderId,
+      driveUploadFailed: false,
+    };
+  } catch (err) {
+    const detail = err instanceof DriveError ? `${err.message}${err.body ? ` — ${err.body.slice(0, 200)}` : ''}` : (err as Error).message;
+    // Use console.warn rather than logger lib (we don't have one centralised yet).
+    // eslint-disable-next-line no-console
+    console.warn(`[persistBinary] Drive upload failed, kept local only: ${detail}`);
+    return {
+      ...local,
+      driveFileId: null,
+      driveWebViewUrl: null,
+      storageProviderId,
+      driveUploadFailed: true,
+    };
+  }
+}

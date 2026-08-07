@@ -18,7 +18,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '../supabase/types.gen';
 import { enforceMode } from '../governance';
-import { assertMediaResolves } from './media-preflight';
+import { assertMediaResolves } from '../media-preflight';
 import type { AgentId, GateResult, GovernanceAction } from './types';
 
 // ── Agent dependency declarations ────────────────────────────────────────────

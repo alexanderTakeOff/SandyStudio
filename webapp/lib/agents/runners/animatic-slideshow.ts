@@ -23,7 +23,7 @@ import {
   type AnimaticContract,
   type AnimaticShot,
 } from '../../api/animatic-shotlist';
-import { bakeApprovedMusic } from '../music';
+import { bakeApprovedMusic } from '../../music';
 
 export const ANIMATIC_CONTRACT = 'animatic_slideshow@v1';
 

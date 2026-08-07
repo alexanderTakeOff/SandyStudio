@@ -50,7 +50,7 @@ for (const line of env.split('\n')) {
   if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
 }
 
-import { listAllUploads, updateVideoMetadata } from '../lib/agents/providers/youtube';
+import { listAllUploads, updateVideoMetadata } from '../lib/providers/youtube';
 
 const APPLY = process.argv.includes('--apply');
 

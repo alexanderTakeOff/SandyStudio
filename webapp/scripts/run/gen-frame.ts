@@ -7,12 +7,12 @@
 // so the run's money instrument stays honest. Contract: `--help`.
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { sb, S15 } from './_env';
+import { sb, seriesId } from './_env';
 import { defineTool } from './_tool';
 import { shotFromFilename, traceInStudio } from './_asset';
-import { openAIEditsMultiProvider } from '../../lib/agents/providers/openai-edits-multi';
+import { openAIEditsMultiProvider } from '../../lib/providers/openai-edits-multi';
 import { readAssetMediaAsBase64 } from '../../lib/media-cache';
-import type { MultiImageRef, MultiImageRefKind } from '../../lib/agents/providers/image-gen-multi';
+import type { MultiImageRef, MultiImageRefKind } from '../../lib/providers/image-gen-multi';
 
 /** gpt-image-2 medium/high pricing per image at 1024x1536 (OpenAI list). */
 const COST_USD: Record<string, number> = { low: 0.016, medium: 0.063, high: 0.25 };
@@ -40,7 +40,10 @@ export default defineTool(
     },
     // The episode is NOT hardcoded: a stale id spends the new episode's money on
     // the old episode's ledger and the mistake is silent (2026-08-04 stocktake).
-    env: { RUN_EPISODE_ID: { about: 'эпизод, на который списывается трата; без него инструмент не стартует' } },
+    env: {
+      RUN_EPISODE_ID: { about: 'эпизод, на который списывается трата; без него инструмент не стартует' },
+      RUN_SERIES_ID: { about: 'сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу' },
+    },
     reads: ['assets', 'episodes'],
     writes: ['budget_log', 'assets'],
   },
@@ -58,11 +61,11 @@ export default defineTool(
       const { data: asset, error } = await sb
         .from('assets')
         .select('id,filename,drive_file_id,staging_path,file_type')
-        .eq('series_id', S15)
+        .eq('series_id', seriesId())
         .eq('file_type', `SBL-${slug}`)
         .maybeSingle();
       if (error) throw new Error(`ref ${slug}: ${error.message}`);
-      if (!asset) throw new Error(`ref ${slug}: no canon asset SBL-${slug} in S15`);
+      if (!asset) throw new Error(`ref ${slug}: no canon asset SBL-${slug} в серии ${seriesId()}`);
       const image_b64 = await readAssetMediaAsBase64({
         filename: asset.filename,
         driveFileId: asset.drive_file_id,

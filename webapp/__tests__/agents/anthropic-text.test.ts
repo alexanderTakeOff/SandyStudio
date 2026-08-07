@@ -4,7 +4,7 @@ import {
   anthropicTimeoutMs,
   computeCostUsd,
   extractLastJsonBlock,
-} from '@/lib/agents/providers/anthropic-text';
+} from '@/lib/providers/anthropic-text';
 
 describe('anthropic-text — pure helpers', () => {
   describe('computeCostUsd', () => {

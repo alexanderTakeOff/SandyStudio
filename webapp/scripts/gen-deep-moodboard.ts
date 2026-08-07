@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // scripts/gen-deep-moodboard.ts
 // Пять кадров мудборда серии «ГЛУБИНА» (SS-S20) через ШТАТНЫЙ слой студии:
-// `generateImageOpenAI` (lib/agents/providers/openai-image) + `recordCost`
+// `generateImageOpenAI` (lib/providers/openai-image) + `recordCost`
 // (lib/budget) — чтобы расход попал в budget_log, а не мимо учёта.
 //
 // Директор 2026-07-29: «бери наши штатные генераторы из сэндистудио».
@@ -17,7 +17,7 @@
 import { promises as fs } from 'node:fs';
 import fs2 from 'node:fs';
 import path from 'node:path';
-import { generateImageOpenAI } from '../lib/agents/providers/openai-image';
+import { generateImageOpenAI } from '../lib/providers/openai-image';
 import { recordCost } from '../lib/budget';
 
 /** Канон стиля серии — тот же текст, что в FILMS/Deep/canon_minimum.md §1. */

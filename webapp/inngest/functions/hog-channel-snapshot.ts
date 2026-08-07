@@ -20,10 +20,10 @@
 
 import { inngest } from '@/lib/inngest/client';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
-import { listAllUploads } from '@/lib/agents/providers/youtube';
-import { getVideoStatistics, getChannelStatistics } from '@/lib/agents/providers/youtube-stats';
-import { resolveChannelRefreshToken } from '@/lib/agents/providers/google-auth';
-import { assertChannelIdentity, type ChannelPassport } from '@/lib/agents/providers/channel-resolver';
+import { listAllUploads } from '@/lib/providers/youtube';
+import { getVideoStatistics, getChannelStatistics } from '@/lib/providers/youtube-stats';
+import { resolveChannelRefreshToken } from '@/lib/providers/google-auth';
+import { assertChannelIdentity, type ChannelPassport } from '@/lib/providers/channel-resolver';
 
 export const hogChannelSnapshot = inngest.createFunction(
   {

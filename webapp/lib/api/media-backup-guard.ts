@@ -25,7 +25,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/types.gen';
-import { resolveProvider } from '../agents/provider-resolver';
+import { resolveProvider } from '../provider-resolver';
 import { ValidationError } from './errors';
 
 /** Bible canon binary filenames whose bytes MUST be Drive-backed before finalize. */

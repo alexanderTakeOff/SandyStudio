@@ -13,7 +13,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { downloadFile } from './agents/providers/drive';
+import { downloadFile } from './providers/drive';
 
 /**
  * Cache root. Env-overridable per CLAUDE.md §11; defaults to the gitignored

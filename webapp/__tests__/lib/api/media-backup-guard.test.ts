@@ -6,7 +6,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const { resolveProviderMock } = vi.hoisted(() => ({ resolveProviderMock: vi.fn() }));
-vi.mock('@/lib/agents/provider-resolver', () => ({
+vi.mock('@/lib/provider-resolver', () => ({
   resolveProvider: resolveProviderMock,
 }));
 

@@ -10,7 +10,7 @@ import {
   providerOverlayKey,
   ContractDisabledError,
   SERIES_OVERRIDABLE_CONTRACTS,
-} from '@/lib/agents/provider-resolver';
+} from '@/lib/provider-resolver';
 
 const SERIES = '11111111-2222-3333-4444-555555555555';
 

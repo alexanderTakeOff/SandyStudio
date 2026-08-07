@@ -24,7 +24,7 @@ if (existsSync(envPath)) {
   }
 }
 
-import { generateVideoVeoGemini } from '@/lib/agents/providers/veo-gemini';
+import { generateVideoVeoGemini } from '@/lib/providers/veo-gemini';
 
 const EREF_STAGING = '/staging/eref-ss_s14_e20_a2_sc04_sh01_perfume_counter_bar_perfume_madame_sandy-f881c79bd72c.png';
 

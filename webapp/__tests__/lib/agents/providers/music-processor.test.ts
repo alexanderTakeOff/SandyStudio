@@ -15,8 +15,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/agents/providers/ffmpeg-stitch', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@/lib/agents/providers/ffmpeg-stitch')>();
+vi.mock('@/lib/providers/ffmpeg-stitch', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/lib/providers/ffmpeg-stitch')>();
   return {
     ...original,
     runFfmpeg: vi.fn(),
@@ -26,8 +26,8 @@ vi.mock('@/lib/agents/providers/ffmpeg-stitch', async (importOriginal) => {
 import {
   processMusicTrack,
   type ProcessMusicTrackInput,
-} from '@/lib/agents/providers/music-processor';
-import { runFfmpeg, FfmpegStitchError } from '@/lib/agents/providers/ffmpeg-stitch';
+} from '@/lib/providers/music-processor';
+import { runFfmpeg, FfmpegStitchError } from '@/lib/providers/ffmpeg-stitch';
 
 type MockedRun = ReturnType<typeof vi.fn> & {
   mockResolvedValueOnce: (v: unknown) => unknown;

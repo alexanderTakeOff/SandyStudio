@@ -10,7 +10,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'node:fs';
 import { promises as fsp } from 'node:fs';
-import { persistBinary, type BinaryExt } from '../lib/agents/persist-binary';
+import { persistBinary, type BinaryExt } from '../lib/persist-binary';
 import { localCacheAbsPath } from '../lib/media-cache';
 
 for (const raw of readFileSync('.env.local', 'utf-8').split('\n')) {

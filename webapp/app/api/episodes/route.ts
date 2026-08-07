@@ -14,7 +14,7 @@ import {
   buildBriefTemplate,
   generateBriefMarkdown,
   type BriefInput,
-} from '@/lib/agents/providers/anthropic-brief';
+} from '@/lib/providers/anthropic-brief';
 import { episodeBudgetDefaultUsd, recordCost } from '@/lib/budget';
 import { conciergeBudgetCapConfig } from '@/lib/concierge/cost';
 import {

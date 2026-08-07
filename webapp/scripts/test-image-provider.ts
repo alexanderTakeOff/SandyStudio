@@ -13,7 +13,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { generateImageOpenAI } from '../lib/agents/providers/openai-image';
+import { generateImageOpenAI } from '../lib/providers/openai-image';
 
 const DEFAULT_PROMPT =
   'YouTube thumbnail for an animated comedy short. Style: stylised 2D animation, vibrant colours, dynamic composition, comedy art direction, 16:9 framing, high contrast. No text.';

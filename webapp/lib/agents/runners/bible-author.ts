@@ -17,9 +17,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
-import { generateAnthropicText, AnthropicTextError } from '../providers/anthropic-text';
-import { generateImageOpenAI, OpenAIImageError } from '../providers/openai-image';
-import { persistBinary } from '../persist-binary';
+import { generateAnthropicText, AnthropicTextError } from '../../providers/anthropic-text';
+import { generateImageOpenAI, OpenAIImageError } from '../../providers/openai-image';
+import { persistBinary } from '../../persist-binary';
 import { resolveModelId } from '../registry';
 import type {
   AssetMetadataDoc,
@@ -29,7 +29,7 @@ import type {
 import { buildProvenance, nextVersionFor } from '../../api/series-bible';
 import { logEvent } from '../../api/events';
 import { resolveBibleImageSize } from '../../api/bible-image-size';
-import { getImageGenMultiProvider } from '../providers/image-gen-multi-registry';
+import { getImageGenMultiProvider } from '../../providers/image-gen-multi-registry';
 import { assembleBibleImageRequest } from '../series-canon-refs';
 import { bibleSlug, parseRenderBrief } from '../../api/series-bible';
 

@@ -15,7 +15,7 @@ import { dirname, resolve } from 'node:path';
 import { sb } from './_env';
 import { defineTool } from './_tool';
 import { shotFromFilename, traceInStudio } from './_asset';
-import { generateVideoFalSeedance } from '../../lib/agents/providers/fal-seedance';
+import { generateVideoFalSeedance } from '../../lib/providers/fal-seedance';
 
 /** Sample one pixel well inside the wall area and return it as ffmpeg 0xRRGGBB. */
 function wallColour(src: string): string {

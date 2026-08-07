@@ -17,7 +17,7 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import type { ShotStateDelta, StateAction } from '../state-ledger';
 import type { StoryboardShotV2 } from '../../api/vgen-shot-helpers';
 

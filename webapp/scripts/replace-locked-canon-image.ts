@@ -18,7 +18,7 @@ import { createClient } from '@supabase/supabase-js';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { persistBinary, type BinaryExt } from '../lib/agents/persist-binary';
+import { persistBinary, type BinaryExt } from '../lib/persist-binary';
 import { bumpPreviewFreshness } from '../lib/asset-preview-resolver';
 
 // --- load .env.local (no override of already-set env; Windows-safe) ---

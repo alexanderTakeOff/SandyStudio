@@ -17,7 +17,7 @@ import * as fs from 'fs'; import * as path from 'path';
 const env = fs.readFileSync(path.join(process.cwd(), '.env.local'), 'utf8');
 for (const line of env.split('\n')) { const m = line.match(/^([A-Z_]+)=(.*)$/); if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g,''); }
 
-import { getMyChannel, listAllUploads } from '../lib/agents/providers/youtube';
+import { getMyChannel, listAllUploads } from '../lib/providers/youtube';
 
 const EXPECTED_CHANNEL = 'UCc2YJlHFclO9BWLEgPlglIg';
 const FINALS = 'H:/Мой диск/SandyStudio_Media/Finals';

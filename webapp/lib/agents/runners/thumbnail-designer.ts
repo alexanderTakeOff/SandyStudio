@@ -24,7 +24,7 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import { loadAgentSkillBodies, composeActivePlaybooksBlock } from '../load-skills';
 import type { AgentInputs } from '../types';

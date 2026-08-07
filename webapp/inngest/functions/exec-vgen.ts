@@ -38,9 +38,9 @@ import {
   saveAgentOutput,
 } from '@/lib/agents/runner';
 import { validateAgentInputs } from '@/lib/agents/gate';
-import { resolveProvider } from '@/lib/agents/provider-resolver';
+import { resolveProvider } from '@/lib/provider-resolver';
 import { recordCost } from '@/lib/budget';
-import { isFalBalanceLock } from '@/lib/agents/providers/fal-seedance';
+import { isFalBalanceLock } from '@/lib/providers/fal-seedance';
 import { logEvent } from '@/lib/api/events';
 import { agentDisplayName } from '@/lib/api/agent-names';
 import {
@@ -155,7 +155,7 @@ async function emitSingleShot(
 // auto-downgrade behavior).
 function syntheticResolvedProvider(
   providerId: 'veo-3-img2vid' | 'seedance-fal-img2vid',
-): import('@/lib/agents/provider-resolver').ResolvedProvider {
+): import('@/lib/provider-resolver').ResolvedProvider {
   const envKey = providerId === 'seedance-fal-img2vid' ? 'FAL_KEY' : 'GEMINI_API_KEY';
   const envOk = Boolean(process.env[envKey]?.trim());
   return {

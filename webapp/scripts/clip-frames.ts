@@ -15,7 +15,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'node:child_process';
-import { resolveFfmpegPath, runFfmpeg } from '../lib/agents/providers/ffmpeg-stitch';
+import { resolveFfmpegPath, runFfmpeg } from '../lib/providers/ffmpeg-stitch';
 
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};

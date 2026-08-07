@@ -25,7 +25,7 @@ function loadEnv(f: string) {
 }
 loadEnv('.env.local');
 
-import { downloadFile } from '../lib/agents/providers/drive';
+import { downloadFile } from '../lib/providers/drive';
 
 /** Extract the `/staging/<file>` basename from a path field. */
 function stagingName(p: string | null | undefined): string | null {

@@ -9,7 +9,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { probeDurationSeconds, runFfmpeg } from './providers/ffmpeg-stitch';
+import { probeDurationSeconds, runFfmpeg } from '../providers/ffmpeg-stitch';
 
 /**
  * Sample ~`frames` evenly-spaced frames from `mp4Path`, scaled to `width`, and

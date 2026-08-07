@@ -35,23 +35,23 @@ import { apiOk } from '@/lib/api/response';
 import { parseJson } from '@/lib/api/zod-helpers';
 import { NotFoundError, ValidationError } from '@/lib/api/errors';
 import { ensureCachedMedia, cachedFileIfPresent, mediaCacheRoot } from '@/lib/media-cache';
-import { makeShort } from '@/lib/agents/providers/ffmpeg-shorts';
-import { uploadVideo } from '@/lib/agents/providers/youtube';
-import { persistBinary } from '@/lib/agents/persist-binary';
-import { parseVideoMetadata } from '@/lib/agents/publish-metadata';
-import { loadShortBrandingForEpisode } from '@/lib/agents/branding';
+import { makeShort } from '@/lib/providers/ffmpeg-shorts';
+import { uploadVideo } from '@/lib/providers/youtube';
+import { persistBinary } from '@/lib/persist-binary';
+import { parseVideoMetadata } from '@/lib/publish-metadata';
+import { loadShortBrandingForEpisode } from '@/lib/branding';
 import {
   assertChannelIdentity,
   decideYouTubePathway,
   publishDefaultsOf,
-} from '@/lib/agents/providers/channel-resolver';
+} from '@/lib/providers/channel-resolver';
 import {
   appendParentBacklink,
   readParentVideoId,
   persistShortId,
   resolveSeriesPlaylistId,
   recutWindowMarker,
-} from '@/lib/agents/providers/short-linkage';
+} from '@/lib/providers/short-linkage';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

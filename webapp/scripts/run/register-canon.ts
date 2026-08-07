@@ -6,7 +6,7 @@
 // instead of creating a twin. That is also how a plate whose preview is broken
 // gets repaired — `--slug` alone rewrites `drive_path` without touching the text.
 import { defineTool } from './_tool';
-import { S15 } from './_env';
+import { seriesId, seriesCode } from './_env';
 import { persistAsset } from './_asset';
 
 export default defineTool(
@@ -20,7 +20,10 @@ export default defineTool(
       status: { about: 'статус ассета', default: 'APPROVED' },
       version: { about: 'версия в имени файла', default: 'v01' },
     },
-    reads: ['assets', 'episodes'],
+    env: {
+      RUN_SERIES_ID: { about: 'сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу' },
+    },
+    reads: ['assets', 'episodes', 'series'],
     writes: ['assets'],
   },
   async ({ arg }) => {
@@ -30,10 +33,10 @@ export default defineTool(
     const res = await persistAsset({
       // Имя собирается только когда есть чем его наполнить: при починке старой
       // записи оно берётся из строки, иначе кэш разъедется с базой.
-      filename: file ? `SS-S15-SBL-${slug}-${arg('version')}-${arg('status')}.png` : undefined,
+      filename: file ? `${await seriesCode()}-SBL-${slug}-${arg('version')}-${arg('status')}.png` : undefined,
       fileType: `SBL-${slug}`,
       srcPath: file || undefined,
-      seriesId: S15,
+      seriesId: seriesId(),
       status: file ? arg('status') : undefined,
       description: arg('desc') || undefined,
       metadata: file ? { origin: 'clean-run direct call', source_frame: file } : undefined,

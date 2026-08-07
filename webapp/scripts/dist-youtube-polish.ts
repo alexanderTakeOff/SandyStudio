@@ -17,9 +17,9 @@ import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs'; import * as path from 'path';
 const env = fs.readFileSync(path.join(process.cwd(), '.env.local'), 'utf8');
 for (const line of env.split('\n')) { const m = line.match(/^([A-Z_]+)=(.*)$/); if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g,''); }
-import { updateVideoMetadata, setThumbnail } from '../lib/agents/providers/youtube';
-import { downloadFile } from '../lib/agents/providers/drive';
-import { parseVideoMetadata } from '../lib/agents/publish-metadata';
+import { updateVideoMetadata, setThumbnail } from '../lib/providers/youtube';
+import { downloadFile } from '../lib/providers/drive';
+import { parseVideoMetadata } from '../lib/publish-metadata';
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 

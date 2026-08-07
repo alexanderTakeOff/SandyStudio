@@ -38,8 +38,8 @@ for (const line of env.split('\n')) {
   if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
 }
 
-import { listAllUploads, updateVideoMetadata } from '../lib/agents/providers/youtube';
-import { appendParentBacklink, persistShortId } from '../lib/agents/providers/short-linkage';
+import { listAllUploads, updateVideoMetadata } from '../lib/providers/youtube';
+import { appendParentBacklink, persistShortId } from '../lib/providers/short-linkage';
 import type { Database } from '../lib/supabase/types.gen';
 
 // Short's original description (what dist-shorts.ts uploaded them with).

@@ -38,6 +38,9 @@ npx tsx scripts/run/blind-brief.ts --spec <spec> --shots <shots> --out <out>
 | `--shots` | да | — | — | папка с контактными листами приёмки (png/jpg) |
 | `--out` | да | — | — | куда положить готовый брифинг приёмщику |
 
+**env:**
+- `RUN_SERIES_ID` — сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу
+
 **читает:** `assets`
 
 
@@ -56,6 +59,7 @@ npx tsx scripts/run/check-video.ts --id <id>
 | `--id` | да | — | — | id видео на YouTube (`res.id` из `publish`, хвост ссылки) |
 
 **env:**
+- `RUN_SERIES_ID` — сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу
 - `GOOGLE_CLIENT_ID` — клиент OAuth для обмена refresh-токена
 - `GOOGLE_CLIENT_SECRET` — секрет OAuth
 
@@ -79,6 +83,9 @@ npx tsx scripts/run/ensure-episode.ts --code <code> [--title <title>] [--theme <
 | `--theme` | — | `` | — | слаг темы; обязателен при создании, ложится в паспорт |
 | `--ceiling` | — | `50` | — | потолок бюджета эпизода в долларах |
 | `--run` | — | `forward-run` | — | метка прогона в паспорте |
+
+**env:**
+- `RUN_SERIES_ID` — сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу
 
 **читает:** `episodes`
 
@@ -106,6 +113,7 @@ npx tsx scripts/run/gen-frame.ts --prompt-file <prompt-file> --refs <refs> --out
 
 **env:**
 - `RUN_EPISODE_ID` — эпизод, на который списывается трата; без него инструмент не стартует
+- `RUN_SERIES_ID` — сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу
 
 **читает:** `assets`, `episodes`
 
@@ -156,6 +164,9 @@ npx tsx scripts/run/peek-canon.ts --slug <slug> [--out <out>] [--chars <chars>]
 | `--out` | — | `` | — | куда сохранить картинку плиты; пусто — только текст |
 | `--chars` | — | `1800` | — | сколько символов текста печатать |
 
+**env:**
+- `RUN_SERIES_ID` — сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу
+
 **читает:** `assets`
 
 
@@ -178,6 +189,7 @@ npx tsx scripts/run/publish.ts --file <file> --title <title> --desc-file <desc-f
 
 **env:**
 - `RUN_EPISODE_ID` — эпизод, на который записывается публикация
+- `RUN_SERIES_ID` — сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу
 
 **читает:** `series`, `channels`, `episodes`
 
@@ -202,7 +214,10 @@ npx tsx scripts/run/register-canon.ts --slug <slug> [--file <file>] [--desc <des
 | `--status` | — | `APPROVED` | — | статус ассета |
 | `--version` | — | `v01` | — | версия в имени файла |
 
-**читает:** `assets`, `episodes`
+**env:**
+- `RUN_SERIES_ID` — сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу
+
+**читает:** `assets`, `episodes`, `series`
 
 **пишет:** `assets`
 

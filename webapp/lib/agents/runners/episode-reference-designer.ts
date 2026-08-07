@@ -41,7 +41,7 @@ import {
   generateAnthropicText,
   AnthropicTextError,
   type AnthropicTextResult,
-} from '../providers/anthropic-text';
+} from '../../providers/anthropic-text';
 import { formatBibleForPrompt, type SeriesBibleCanon } from '../bible-loader';
 import {
   getStoryboardShotById,
@@ -60,7 +60,7 @@ import {
   type EpisodeImageConfig,
 } from '@/lib/api/resolve-generation-params';
 import { findApprovedAsset } from '../upstream';
-import { resolveDeliveryTargets } from '../delivery-targets';
+import { resolveDeliveryTargets } from '../../delivery-targets';
 
 export const EREF_DESIGNER_CONTRACT = 'episode_reference_designer@v1';
 export const EREF_DESIGNER_MODEL = 'claude-sonnet-4-6';
@@ -232,7 +232,7 @@ export interface EREFDesignerRunResult {
   costUsd: number;
   model: string;
   /** Which text engine produced the Plan — surfaces a Gemini-overload fallback. */
-  provider: import('../providers/anthropic-text').AnthropicTextResult['provider'];
+  provider: import('../../providers/anthropic-text').AnthropicTextResult['provider'];
   contract: typeof EREF_DESIGNER_CONTRACT;
   shotId: string;
   storyboardAssetId: string | null;

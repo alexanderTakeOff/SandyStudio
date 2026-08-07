@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/agents/providers/anthropic-text', () => {
+vi.mock('@/lib/providers/anthropic-text', () => {
   class AnthropicTextError extends Error {}
   return {
     AnthropicTextError,
@@ -13,7 +13,7 @@ vi.mock('@/lib/agents/providers/anthropic-text', () => {
   };
 });
 
-import { generateAnthropicText } from '@/lib/agents/providers/anthropic-text';
+import { generateAnthropicText } from '@/lib/providers/anthropic-text';
 import {
   runContinuityExtract,
   chunkShots,

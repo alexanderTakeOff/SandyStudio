@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('@/lib/agents/providers/anthropic-text', () => ({
+vi.mock('@/lib/providers/anthropic-text', () => ({
   AnthropicTextError: class AnthropicTextError extends Error {
     constructor(message: string) {
       super(message);
@@ -30,7 +30,7 @@ vi.mock('@/lib/agents/load-skills', () => ({
   ),
 }));
 
-import { generateAnthropicText } from '@/lib/agents/providers/anthropic-text';
+import { generateAnthropicText } from '@/lib/providers/anthropic-text';
 import {
   getAgentSkillManifest,
   loadAgentSkillBodies,

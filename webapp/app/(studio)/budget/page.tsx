@@ -337,7 +337,7 @@ function HonestyPanel({ summary }: { summary: BudgetSummary }) {
     notes.push(
       `${usd(total)} is attributed to models with no entry in the rate table (${summary.gaps.unpricedModels
         .map((f) => f.key)
-        .join(', ')}). Those figures are the Sonnet fallback rate, not real prices — add the rates in lib/agents/providers/anthropic-text.ts to make them true.`,
+        .join(', ')}). Those figures are the Sonnet fallback rate, not real prices — add the rates in lib/providers/anthropic-text.ts to make them true.`,
     );
   }
   if (summary.gaps.totalDriftAbs >= 0.01) {

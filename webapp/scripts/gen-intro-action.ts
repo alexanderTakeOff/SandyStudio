@@ -23,11 +23,11 @@ for (const line of env.split('\n')) {
 }
 
 import { createClient } from '@supabase/supabase-js';
-import { openAIEditsMultiProvider } from '../lib/agents/providers/openai-edits-multi';
-import type { MultiImageRef } from '../lib/agents/providers/image-gen-multi';
-import { readBibleImageAsBase64 } from '../lib/agents/providers/openai-image-edit';
-import { downloadFile } from '../lib/agents/providers/drive';
-import { generateVideoFalSeedance } from '../lib/agents/providers/fal-seedance';
+import { openAIEditsMultiProvider } from '../lib/providers/openai-edits-multi';
+import type { MultiImageRef } from '../lib/providers/image-gen-multi';
+import { readBibleImageAsBase64 } from '../lib/providers/openai-image-edit';
+import { downloadFile } from '../lib/providers/drive';
+import { generateVideoFalSeedance } from '../lib/providers/fal-seedance';
 
 const OUT_DIR = 'C:/SandyStudio/FILMS/_media_cache/_brand';
 const S15_SERIES_ID = '45351141-6334-4bf0-8a0f-4e00a994f670';

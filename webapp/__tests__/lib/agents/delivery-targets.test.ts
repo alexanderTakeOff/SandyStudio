@@ -11,7 +11,7 @@ import {
   gagPlanBriefLine,
   DEFAULT_RUNTIME_SECONDS,
   DEFAULT_SHORTS_RUNTIME_SECONDS,
-} from '@/lib/agents/delivery-targets';
+} from '@/lib/delivery-targets';
 import { deliveryTargetsForAspect } from '@/lib/api/provider-capabilities';
 
 describe('readDeliveryTargetsFromMetadata', () => {

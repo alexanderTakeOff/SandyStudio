@@ -33,8 +33,8 @@ function loadDotenvOverride(filename: string): void {
 }
 loadDotenvOverride('.env.local');
 
-import { generateImageOpenAI } from '../lib/agents/providers/openai-image';
-import { persistBinary } from '../lib/agents/persist-binary';
+import { generateImageOpenAI } from '../lib/providers/openai-image';
+import { persistBinary } from '../lib/persist-binary';
 
 const GENERAL_IDEA = `# General idea — Sandy series
 

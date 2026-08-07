@@ -40,9 +40,9 @@ for (const line of env.split('\n')) {
   if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
 }
 
-import { listAllUploads, uploadVideo } from '../lib/agents/providers/youtube';
-import { makeShort, probeDimensions, isVertical, type EndCtaOptions } from '../lib/agents/providers/ffmpeg-shorts';
-import { appendParentBacklink, recutWindowMarker } from '../lib/agents/providers/short-linkage';
+import { listAllUploads, uploadVideo } from '../lib/providers/youtube';
+import { makeShort, probeDimensions, isVertical, type EndCtaOptions } from '../lib/providers/ffmpeg-shorts';
+import { appendParentBacklink, recutWindowMarker } from '../lib/providers/short-linkage';
 
 // Parent landscape video id per episode (funnel bridge — the ONE programmable
 // Shorts→long-form link goes in the description). Same ids as dist-youtube-polish.ts.

@@ -8,7 +8,7 @@ import {
   buildFfmpegArgs,
   buildMusicAudioFilter,
   sortFfmpegBuildDirsDesc,
-} from '@/lib/agents/providers/ffmpeg-stitch';
+} from '@/lib/providers/ffmpeg-stitch';
 
 describe('sortFfmpegBuildDirsDesc — winget version discovery (2026-07-17)', () => {
   it('puts the newest build first so a winget upgrade is picked up automatically', () => {

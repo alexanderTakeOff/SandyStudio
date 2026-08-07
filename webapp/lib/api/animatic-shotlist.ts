@@ -14,7 +14,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { hasVerticalDeliveryTarget } from '@/lib/api/provider-capabilities';
-import { readDeliveryTargetsFromMetadata } from '@/lib/agents/delivery-targets';
+import { readDeliveryTargetsFromMetadata } from '@/lib/delivery-targets';
 // ONE derivation of a browser-loadable media URL (see timeline-cell-resolver).
 // The private `bestImageUrl` that used to live here was a third copy, frozen
 // before `previewFreshness` — bare /api/media/<id>, no cache-bust, and its own

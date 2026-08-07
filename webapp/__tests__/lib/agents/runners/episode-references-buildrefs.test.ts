@@ -14,7 +14,7 @@ import {
   buildMultiImageRefs,
   type ShotJob,
 } from '@/lib/agents/runners/episode-references';
-import type { MultiImageRef } from '@/lib/agents/providers/image-gen-multi';
+import type { MultiImageRef } from '@/lib/providers/image-gen-multi';
 
 type BibleRefEntry = ShotJob['bibleRefs'][number];
 

@@ -3,7 +3,7 @@ import {
   fetchWithTimeout,
   FetchTimeoutError,
   FETCH_TIMEOUTS,
-} from '../../lib/agents/providers/fetch-with-timeout';
+} from '../../lib/providers/fetch-with-timeout';
 
 // Preserve the real fetch so we can restore it between cases.
 const realFetch = global.fetch;

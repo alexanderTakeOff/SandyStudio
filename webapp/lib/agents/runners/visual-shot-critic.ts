@@ -31,7 +31,7 @@ import {
 import { recordCost } from '../../budget';
 import { sampleVideoFrames } from '../sample-frames';
 import { cachedFileIfPresent } from '../../media-cache';
-import { downloadFile } from '../providers/drive';
+import { downloadFile } from '../../providers/drive';
 
 type Client = SupabaseClient<Database>;
 export type VisualCriticKind = 'ref' | 'video' | 'both';

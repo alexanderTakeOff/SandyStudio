@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock the Anthropic provider — runner is exercised end-to-end, but no real
 // API key is used and no money is spent in test runs.
-vi.mock('@/lib/agents/providers/anthropic-text', () => ({
+vi.mock('@/lib/providers/anthropic-text', () => ({
   AnthropicTextError: class AnthropicTextError extends Error {
     constructor(message: string) {
       super(message);
@@ -17,7 +17,7 @@ vi.mock('@/lib/agents/providers/anthropic-text', () => ({
   generateAnthropicText: vi.fn(),
 }));
 
-import { generateAnthropicText } from '@/lib/agents/providers/anthropic-text';
+import { generateAnthropicText } from '@/lib/providers/anthropic-text';
 import {
   EREF_DESIGNER_CONTRACT,
   EREF_DESIGNER_MODEL,

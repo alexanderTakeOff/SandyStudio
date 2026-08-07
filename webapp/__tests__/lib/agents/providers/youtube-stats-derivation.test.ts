@@ -7,7 +7,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
-import { isCompletionReadable } from '@/lib/agents/providers/youtube-stats';
+import { isCompletionReadable } from '@/lib/providers/youtube-stats';
 
 /** Mirrors the derivation inside getVideoStatistics — kept in sync by these tests. */
 function derive(privacy: string | undefined, publishAt: string | null, publishedAt: string | null) {

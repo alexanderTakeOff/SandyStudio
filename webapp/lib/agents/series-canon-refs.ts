@@ -36,7 +36,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { MultiImageRef } from './providers/image-gen-multi';
+import type { MultiImageRef } from '../providers/image-gen-multi';
 import { readAssetMediaAsBase64 } from '../media-cache';
 import { bibleSlug, bibleSlugForms, parseRenderBrief, type RenderBrief } from '../api/series-bible';
 

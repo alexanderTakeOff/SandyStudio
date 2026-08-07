@@ -10,7 +10,7 @@ import {
   FalBalanceError,
   isFalBalanceLock,
   SEEDANCE_COST_USD_PER_SECOND,
-} from '@/lib/agents/providers/fal-seedance';
+} from '@/lib/providers/fal-seedance';
 
 type FetchInit = RequestInit | undefined;
 type FetchResponse = {

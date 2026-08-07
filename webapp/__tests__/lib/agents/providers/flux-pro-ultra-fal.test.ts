@@ -4,8 +4,8 @@
 // otherwise fal.ai returns HTTP 422.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fluxProUltraFalProvider } from '@/lib/agents/providers/flux-pro-ultra-fal';
-import { MultiImageGenError, type MultiImageGenInput } from '@/lib/agents/providers/image-gen-multi';
+import { fluxProUltraFalProvider } from '@/lib/providers/flux-pro-ultra-fal';
+import { MultiImageGenError, type MultiImageGenInput } from '@/lib/providers/image-gen-multi';
 
 type FetchInit = RequestInit | undefined;
 type FetchResponse = {

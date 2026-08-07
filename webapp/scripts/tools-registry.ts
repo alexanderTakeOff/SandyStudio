@@ -54,18 +54,42 @@ function tablesIn(source: string): string[] {
 }
 
 /**
+ * Экспорт каркаса → таблицы, которых он касается. Режем по границам `export`: тела функций
+ * лежат между ними, а вложенность фигурных скобок разбирать ради этого незачем.
+ */
+function frameworkExports(source: string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const marks = [...source.matchAll(/export (?:async )?(?:function|const) (\w+)/g)];
+  for (let i = 0; i < marks.length; i++) {
+    const start = marks[i].index!;
+    const end = i + 1 < marks.length ? marks[i + 1].index! : source.length;
+    map.set(marks[i][1], tablesIn(source.slice(start, end)));
+  }
+  return map;
+}
+
+/**
  * Таблицы, которых инструмент касается — СВОИ и те, что за него трогают каркасы из этой же
- * папки. Считать только свой файл было бы половиной проверки: `gen-frame` пишет `assets`
- * не сам, а через `traceInStudio` в `_asset.ts` — и такая декларация врала бы, пройдя гейт.
- * Половинчатый гейт хуже отсутствующего, поэтому локальные импорты разворачиваются.
+ * папки. Считать только свой файл было бы половиной проверки: `gen-frame` пишет `assets` не
+ * сам, а через `traceInStudio` в `_asset.ts`, и такая декларация врала бы, пройдя гейт.
+ *
+ * Но разворачивается не весь каркас, а РОВНО ТЕ функции, которые инструмент импортировал.
+ * Иначе гейт требует объявить `series` у `spend`, который её не касается, — и декларация
+ * начинает врать в другую сторону. Гейт, требующий неправды, обесценивает себя так же
+ * надёжно, как гейт, пропускающий её.
  */
 function tablesTouched(source: string): string[] {
   const found = new Set(tablesIn(source));
-  for (const m of source.matchAll(/from '\.\/(_[a-z]+)'/g)) {
+  for (const imp of source.matchAll(/import \{([^}]+)\} from '\.\/(_[a-z]+)'/g)) {
+    let exports: Map<string, string[]>;
     try {
-      for (const t of tablesIn(readFileSync(join(RUN_DIR, `${m[1]}.ts`), 'utf-8'))) found.add(t);
+      exports = frameworkExports(readFileSync(join(RUN_DIR, `${imp[2]}.ts`), 'utf-8'));
     } catch {
-      // Каркас не найден — это поймает сам импорт инструмента, здесь молчать нечем.
+      continue; // Каркаса нет — это громко поймает сам импорт инструмента.
+    }
+    for (const raw of imp[1].split(',')) {
+      const name = raw.trim().split(/\s+as\s+/)[0].trim();
+      for (const t of exports.get(name) ?? []) found.add(t);
     }
   }
   return [...found].sort();

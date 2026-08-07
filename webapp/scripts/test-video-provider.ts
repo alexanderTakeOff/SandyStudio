@@ -18,7 +18,7 @@ import path from 'node:path';
 import {
   generateVideoVeoGemini,
   type VeoQualityTier,
-} from '../lib/agents/providers/veo-gemini';
+} from '../lib/providers/veo-gemini';
 
 function parseArgs(argv: string[]): {
   prompt: string;

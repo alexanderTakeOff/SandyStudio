@@ -2,7 +2,7 @@
 // lib/api/provider-capabilities.ts
 //
 // Sprint β 2026-05-14 — static capability manifest shared between the
-// server-side provider router (`lib/agents/providers/video-gen-multi.ts`)
+// server-side provider router (`lib/providers/video-gen-multi.ts`)
 // and the UI (`components/vgen/*`, `components/timeline/*`). The router
 // is the source of truth; this module re-exports the same shape in a
 // frontend-safe way (no Node-only imports).
@@ -10,7 +10,7 @@
 // Why a shared module: the UI needs to render controls per capability
 // (e.g. show "Resolution" only when `supports_resolutions.length > 0`,
 // duration slider bounds, seed field, end-image picker). Reaching into
-// the agents/providers/* directory from a 'use client' file would pull
+// the lib/providers/* directory from a 'use client' file would pull
 // fal.ai / Veo runtime code into the browser bundle — wrong layer.
 // ──────────────────────────────────────────────────────────────────────────────
 

@@ -28,7 +28,7 @@ for (const line of env.split('\n')) {
 
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../lib/supabase/types.gen';
-import { persistBinary } from '../lib/agents/persist-binary';
+import { persistBinary } from '../lib/persist-binary';
 import { bibleFilename } from '../lib/api/series-bible';
 
 function parseArgs(argv: string[]): Record<string, string> {

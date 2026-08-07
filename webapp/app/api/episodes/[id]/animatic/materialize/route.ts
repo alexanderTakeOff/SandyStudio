@@ -33,7 +33,7 @@ import {
   type AnimaticShot,
   type AnimaticContract,
 } from '@/lib/api/animatic-shotlist';
-import { bakeApprovedMusic } from '@/lib/agents/music';
+import { bakeApprovedMusic } from '@/lib/music';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

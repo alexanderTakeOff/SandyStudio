@@ -13,7 +13,7 @@ import {
   SHORT_HEIGHT,
   CTA_Y_EXPR,
   DEFAULT_CTA_SECONDS,
-} from '@/lib/agents/providers/ffmpeg-shorts';
+} from '@/lib/providers/ffmpeg-shorts';
 
 describe('buildShortFilter', () => {
   it('center-crops to 9:16 and scales to 1080x1920 with no overlay', () => {

@@ -6,10 +6,10 @@
 // the authorisation lives in the conversation, not here. Contract: `--help`.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { sb, S15 } from './_env';
+import { sb, seriesId } from './_env';
 import { defineTool } from './_tool';
-import { uploadVideo } from '../../lib/agents/providers/youtube';
-import { resolveChannelRefreshToken } from '../../lib/agents/providers/google-auth';
+import { uploadVideo } from '../../lib/providers/youtube';
+import { resolveChannelRefreshToken } from '../../lib/providers/google-auth';
 
 export default defineTool(
   {
@@ -23,7 +23,10 @@ export default defineTool(
     },
     // Episode comes from the environment, never hardcoded: a stale id publishes
     // onto the wrong episode row silently (2026-08-04 stocktake).
-    env: { RUN_EPISODE_ID: { about: 'эпизод, на который записывается публикация' } },
+    env: {
+      RUN_EPISODE_ID: { about: 'эпизод, на который записывается публикация' },
+      RUN_SERIES_ID: { about: 'сериал, над которым идёт работа; умолчания нет — чужой сериал молча делает не ту работу' },
+    },
     reads: ['series', 'channels', 'episodes'],
     writes: ['episodes'],
   },
@@ -34,7 +37,7 @@ export default defineTool(
     const privacy = arg('privacy');
     const episodeId = env('RUN_EPISODE_ID');
 
-    const { data: series } = await sb.from('series').select('channel_id').eq('id', S15).single();
+    const { data: series } = await sb.from('series').select('channel_id').eq('id', seriesId()).single();
     if (!series?.channel_id) throw new Error('series has no channel — HALT (multi-channel §3)');
     const { data: channel } = await sb
       .from('channels')

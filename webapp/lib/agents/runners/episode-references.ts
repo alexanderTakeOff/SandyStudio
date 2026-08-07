@@ -49,7 +49,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/types.gen';
-import { persistBinary } from '../persist-binary';
+import { persistBinary } from '../../persist-binary';
 import { seriesIdForEpisode, bibleSlug } from '../../api/series-bible';
 import { runStyleCheck } from './style-check';
 import { getStyleGuardianMode } from '../../api/style-guardian-config';
@@ -61,7 +61,7 @@ import {
 import {
   getImageGenMultiProvider,
   resolveAvailableProviderId,
-} from '../providers/image-gen-multi-registry';
+} from '../../providers/image-gen-multi-registry';
 import {
   loadAnchorChainContext,
   readEpisodeImageConfig,
@@ -75,8 +75,8 @@ import type {
   MultiImageGenProvider,
   MultiImageRef,
   MultiImageRefKind,
-} from '../providers/image-gen-multi';
-import { MultiImageGenError } from '../providers/image-gen-multi';
+} from '../../providers/image-gen-multi';
+import { MultiImageGenError } from '../../providers/image-gen-multi';
 import { readAssetMediaAsBase64 } from '@/lib/media-cache';
 import {
   checkPlanAnchorFreshness,

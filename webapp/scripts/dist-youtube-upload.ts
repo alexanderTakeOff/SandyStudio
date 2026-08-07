@@ -16,7 +16,7 @@ if (process.env.LEGACY_SINGLE_CHANNEL !== '1') {
 import * as fs from 'fs'; import * as path from 'path';
 const env = fs.readFileSync(path.join(process.cwd(), '.env.local'), 'utf8');
 for (const line of env.split('\n')) { const m = line.match(/^([A-Z_]+)=(.*)$/); if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g,''); }
-import { listAllUploads, uploadVideo } from '../lib/agents/providers/youtube';
+import { listAllUploads, uploadVideo } from '../lib/providers/youtube';
 
 const FINALS = 'H:/Мой диск/SandyStudio_Media/Finals';
 const PLAN = [

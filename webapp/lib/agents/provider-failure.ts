@@ -17,7 +17,7 @@
 // threw and how the factory wrapped it.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { isFalBalanceLock } from './providers/fal-seedance';
+import { isFalBalanceLock } from '../providers/fal-seedance';
 
 /**
  * Billing / quota wall signatures across providers. fal is covered by

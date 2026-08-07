@@ -25,7 +25,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { bakeApprovedMusic } from '../agents/music';
+import { bakeApprovedMusic } from '../music';
 import { ensureEpisodeAnimaticEDL } from './ensure-animatic';
 import { isAnimaticV1 } from './animatic-shotlist';
 import { filenameForStatus } from './filename-status';
