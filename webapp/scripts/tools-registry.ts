@@ -23,6 +23,8 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { renderTool, type ToolSpec } from './run/_tool';
+import { MIND_CHAT_TOOLS } from '../lib/mind/chat-tools';
+import type { Tool } from '../lib/concierge/tools/types';
 
 const RUN_DIR = resolve(process.cwd(), 'scripts/run');
 const SNAPSHOT = resolve(process.cwd(), '../docs/TOOLS.md');
@@ -134,12 +136,53 @@ function undeclared(e: Entry): string[] {
   return e.touched.filter((t) => !declared.has(t));
 }
 
+// ── Второй мир: выжившие чат-тулы ума (Ф4.2) ────────────────────────────────
+// Их контракт — function-calling схема в самом туле; рендер читает ЕЁ, а не
+// пересказ. Гейт честности таблиц на них не распространяется: reads/writes не
+// декларированы, и это сказано в шапке раздела явно, а не умолчано.
+
+const CHAT_SECTION_HEADER = `## Тулы ума (chat) — выжившие из старого диспетчера
+
+> Живут в \`lib/concierge/tools/*\` до Ф6; при сносе переезжают и портируются на
+> \`defineTool\`-самоописание. \`reads\`/\`writes\` у них не декларированы — гейт
+> честности таблиц на этот раздел НЕ распространяется. Кил-лист (30 умерших) и
+> основания отбора — \`lib/mind/chat-tools.ts\`.
+
+`;
+
+type ChatTool = Tool<Record<string, unknown>>;
+
+function renderChatTool(t: ChatTool): string {
+  const params = t.schema.function.parameters;
+  const required = new Set(params.required ?? []);
+  const lines: string[] = [`### ${t.name}`, '', t.description, ''];
+  const names = Object.keys(params.properties);
+  if (names.length > 0) {
+    lines.push('| аргумент | обязателен | допустимо | что это |', '|---|---|---|---|');
+    for (const n of names) {
+      const p = params.properties[n] as { description?: string; enum?: unknown[] };
+      const values = p.enum ? p.enum.map((v) => `\`${String(v)}\``).join(' · ') : '—';
+      lines.push(`| \`${n}\` | ${required.has(n) ? 'да' : '—'} | ${values} | ${p.description ?? ''} |`);
+    }
+    lines.push('');
+  }
+  lines.push(`**меняет состояние:** ${t.mutating ? 'да' : 'нет'}`, '');
+  return lines.join('\n');
+}
+
 function render(entries: readonly Entry[]): string {
   const rows = entries
     .map((e) => `| [\`${e.spec.name}\`](#${e.spec.name}) | ${e.spec.summary} |`)
     .join('\n');
   const body = entries.map((e) => renderTool(e.spec)).join('\n\n---\n\n');
-  return `${HEADER}| инструмент | что делает |\n|---|---|\n${rows}\n\n---\n\n${body}\n`;
+
+  const chatRows = MIND_CHAT_TOOLS.map((t) => `| [\`${t.name}\`](#${t.name.toLowerCase()}) | ${t.mutating ? '✎' : '👁'} |`).join('\n');
+  const chatBody = MIND_CHAT_TOOLS.map((t) => renderChatTool(t)).join('\n---\n\n');
+
+  return (
+    `${HEADER}| инструмент | что делает |\n|---|---|\n${rows}\n\n---\n\n${body}\n\n` +
+    `${CHAT_SECTION_HEADER}| тул | ✎/👁 |\n|---|---|\n${chatRows}\n\n---\n\n${chatBody}`
+  );
 }
 
 async function main() {
