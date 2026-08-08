@@ -18,6 +18,7 @@ import { dirname, extname, resolve } from 'node:path';
 import { sb } from './_env';
 import { localCacheAbsPath } from '../../lib/media-cache';
 import { bumpPreviewFreshness } from '../../lib/asset-preview-resolver';
+import { assertStoryboardApprovable } from '../../lib/api/animatic-shotlist';
 
 export interface PersistAssetArgs {
   /**
@@ -69,7 +70,7 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
   // побеждает — так уже отвечает show-asset/gen-frame на тот же вопрос.
   const { data: existingRows, error: findErr } = await sb
     .from('assets')
-    .select('id,version,metadata,filename')
+    .select('id,version,metadata,filename,status,content')
     .eq('file_type', a.fileType)
     .eq(scope.column, scope.value)
     .order('version', { ascending: false })
@@ -103,6 +104,14 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
     if (a.description) patch.description = a.description;
     if (a.content ?? a.description) patch.content = a.content ?? a.description;
 
+    // D76: не пустить STB в APPROVED/LOCKED без машиночитаемого списка кадров —
+    // резолвим статус/контент так же, как патч выше их резолвит.
+    assertStoryboardApprovable(
+      a.fileType,
+      (patch.status as string | undefined) ?? existing.status,
+      (patch.content as string | undefined) ?? existing.content,
+    );
+
     const { error } = await sb.from('assets').update(patch).eq('id', existing.id);
     if (error) throw new Error(`asset update failed: ${error.message}`);
     return { id: existing.id, filename, created: false, cachedAt };
@@ -135,6 +144,12 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
     }
   }
 
+  const insertStatus = a.status ?? 'APPROVED';
+  const insertContent = a.content ?? a.description ?? null;
+  // D76: same gate as the update branch — a NEW STB row can be born straight
+  // into APPROVED (persistAsset defaults status to APPROVED when unset).
+  assertStoryboardApprovable(a.fileType, insertStatus, insertContent);
+
   const { data, error } = await sb
     .from('assets')
     .insert({
@@ -143,9 +158,9 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
       file_type: a.fileType,
       filename,
       drive_path: drivePath,
-      status: a.status ?? 'APPROVED',
+      status: insertStatus,
       description: a.description ?? null,
-      content: a.content ?? a.description ?? null,
+      content: insertContent,
       agent_id: a.agentId ?? 'DIRECT-RUN',
       version: 1,
       metadata: a.metadata ?? {},

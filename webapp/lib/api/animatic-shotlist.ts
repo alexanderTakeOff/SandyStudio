@@ -591,6 +591,45 @@ export function extractShotsFromStoryboard(content: string): StoryboardShotV2[] 
   return shots;
 }
 
+/**
+ * Boundary gate for the STB→APPROVED/LOCKED transition (D76, 2026-08-08).
+ *
+ * `extractShotsFromStoryboard` is the ONLY code that reads a storyboard's body —
+ * Timeline's skeleton (`storyboardContract`) and both shot-list builders
+ * (`buildShotListFromApprovedEREF`, `buildShotListFromAnchorChain`) all call it.
+ * Before this gate, a storyboard missing the fenced ```json shot-list contract
+ * could reach APPROVED silently: Timeline just showed "storyboard pending"
+ * forever, with nothing pointing back at the actual cause. Root cause traced
+ * live on SS-S20-E03 ("Зрачок-2") — a cosmic_horror storyboard written as pure
+ * craft prose, because `storyboarder-cosmic-horror` (unlike the comedy-genre
+ * skill) never taught the contract. Rather than teach every current and future
+ * genre skill this studio-structural requirement, the studio itself refuses
+ * the transition and says why — the fix belongs in the one gate every writer
+ * (human, agent runner, or the mind via the tool-bridge) already passes
+ * through, not in N genre skills' prompts.
+ *
+ * No-op for non-STB file types and for transitions that are not APPROVED/LOCKED
+ * — a DRAFT/REVIEW storyboard is free to be pure prose while still being
+ * drafted; only the promotion that unblocks Timeline is gated.
+ */
+export function assertStoryboardApprovable(
+  fileType: string,
+  status: string | null | undefined,
+  content: string | null | undefined,
+): void {
+  if (!fileType.startsWith('STB')) return;
+  if (status !== 'APPROVED' && status !== 'LOCKED') return;
+  const shots = extractShotsFromStoryboard(content ?? '');
+  if (shots.length > 0) return;
+  throw new Error(
+    `${fileType}: нельзя перевести в ${status} без машиночитаемого списка кадров. ` +
+      'Timeline и сборщики шот-листа (buildShotListFromApprovedEREF/AnchorChain) ' +
+      'читают ТОЛЬКО fenced ```json блок {"acts":[{"shots":[{"shot_id":...}]}]} ' +
+      '(контракт storyboarder@v2) — проза сама по себе их не запускает. ' +
+      'Допиши JSON-блок с shot_id на каждый кадр, затем повтори APPROVED.',
+  );
+}
+
 // ── ShotList builder ──────────────────────────────────────────────────────────
 
 interface ApprovedEREFAssetRow {

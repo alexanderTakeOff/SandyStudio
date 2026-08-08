@@ -16,6 +16,7 @@
 import { defineTool } from './_tool';
 import { sb } from './_env';
 import { demoteSiblingApproved, resolveSlotDescriptor } from '../../lib/api/single-approved';
+import { assertStoryboardApprovable } from '../../lib/api/animatic-shotlist';
 
 const SETTABLE = ['DRAFT', 'REVIEW', 'REVISION', 'APPROVED', 'INVALIDATED', 'NEEDS_HUMAN_TWEAK'] as const;
 
@@ -40,7 +41,7 @@ export default defineTool(
 
     const { data: asset, error } = await sb
       .from('assets')
-      .select('id,filename,file_type,status,episode_id,series_id,metadata')
+      .select('id,filename,file_type,status,episode_id,series_id,metadata,content')
       .eq('id', id)
       .maybeSingle();
     if (error) throw new Error(`чтение ассета: ${error.message}`);
@@ -48,6 +49,10 @@ export default defineTool(
     if (asset.status === 'LOCKED') {
       throw new Error(`${asset.filename} — LOCKED. Замок снимает только Директор; создай новую версию.`);
     }
+
+    // D76: тот же гейт, что в persistAsset — set-status не трогает content, но
+    // может быть ЕДИНСТВЕННЫМ шагом, который переводит STB в APPROVED/LOCKED.
+    assertStoryboardApprovable(asset.file_type, status, asset.content);
 
     // Повышение до утверждённого вытесняет прежнего в том же слоте — тем же кодом, что и
     // маршрут аппрува, чтобы инвариант имел ОДИН источник, а не два расходящихся.
