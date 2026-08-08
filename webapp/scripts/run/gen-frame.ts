@@ -63,13 +63,21 @@ export default defineTool(
     for (const item of arg('refs').split(',').map((s) => s.trim()).filter(Boolean)) {
       const [slug, kindRaw] = item.split(':');
       const kind = (kindRaw ?? 'identity') as MultiImageRefKind;
-      const { data: asset, error } = await sb
+      // D75 (Зрачок-2, 08.08): плита с историей версий (v01 INVALIDATED + v02
+      // DRAFT — обычное дело после правки канона) даёt ДВЕ строки на один
+      // file_type. `.maybeSingle()` без сортировки падает на «multiple rows»
+      // тем же классом, что и находка insert-гвардом D72 в persistAsset —
+      // только здесь это ЧТЕНИЕ рефа, не запись. Свежая версия побеждает —
+      // та же конвенция, что у show-asset/register-canon.
+      const { data: rows, error } = await sb
         .from('assets')
         .select('id,filename,drive_file_id,staging_path,file_type')
         .eq('series_id', seriesId())
         .eq('file_type', `SBL-${slug}`)
-        .maybeSingle();
+        .order('version', { ascending: false })
+        .limit(1);
       if (error) throw new Error(`ref ${slug}: ${error.message}`);
+      const asset = rows?.[0];
       if (!asset) throw new Error(`ref ${slug}: no canon asset SBL-${slug} в серии ${seriesId()}`);
       const image_b64 = await readAssetMediaAsBase64({
         filename: asset.filename,

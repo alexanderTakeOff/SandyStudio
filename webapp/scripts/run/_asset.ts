@@ -63,13 +63,19 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
     ? { column: 'episode_id' as const, value: a.episodeId }
     : { column: 'series_id' as const, value: a.seriesId! };
 
-  const { data: existing, error: findErr } = await sb
+  // D75: та же неоднозначность, что чинили в gen-frame — плита с историей версий
+  // (INVALIDATED-хвост + свежая DRAFT) даёт две строки на file_type;
+  // `.maybeSingle()` без сортировки падает на «multiple rows». Свежая версия
+  // побеждает — так уже отвечает show-asset/gen-frame на тот же вопрос.
+  const { data: existingRows, error: findErr } = await sb
     .from('assets')
     .select('id,version,metadata,filename')
     .eq('file_type', a.fileType)
     .eq(scope.column, scope.value)
-    .maybeSingle();
+    .order('version', { ascending: false })
+    .limit(1);
   if (findErr) throw new Error(`assets lookup failed: ${findErr.message}`);
+  const existing = existingRows?.[0];
 
   const filename = a.filename ?? existing?.filename;
   if (!filename) throw new Error(`persistAsset(${a.fileType}): новой строке нужно имя файла`);
