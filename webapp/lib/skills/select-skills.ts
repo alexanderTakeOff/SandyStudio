@@ -13,7 +13,23 @@ import path from 'node:path';
 import { loadSkillFile, type LoadedSkill, type SkillManifest, type AppliesWhen } from './load-skill-file';
 
 export interface SelectorContext {
-  agent?: string;
+  /**
+   * Роль, от имени которой идёт выборка. СПИСОК ролей (2026-08-08) — для единого
+   * ума, который собой заменяет всех маленьких агентов сразу и потому обязан
+   * видеть репертуар их всех.
+   *
+   * Почему это понадобилось: роут ума звал селектор БЕЗ `agent`, а все ACTIVE-скиллы
+   * на диске объявляют `applies_when.agent` — `fieldMatches` при заданном скоупе и
+   * пустом контексте отдаёт false, поэтому ум получал РОВНО НОЛЬ скиллов и работал
+   * без ремесла студии (корень D76: сториборд без контракта `storyboarder@v2`,
+   * потому что `storyboarder-cosmic-horror` ему не выдали).
+   *
+   * Список, а не снятие скоупа: снятие пустило бы `sandy-gag-library`
+   * (`genre:[comedy]`, Sandy-специфичный) в cosmic_horror. Остальные оси
+   * (`genre`/`series_id`/`episode_id`) продолжают фильтровать как раньше — именно
+   * они держат изоляцию каналов.
+   */
+  agent?: string | readonly string[];
   genre?: string;
   series_id?: string;
   episode_id?: string;
@@ -103,12 +119,18 @@ async function scanSkillsDir(): Promise<ScanResult> {
 }
 
 function fieldMatches(
-  ctxValue: string | undefined,
+  ctxValue: string | readonly string[] | undefined,
   required: readonly string[] | undefined,
 ): boolean {
   if (!required || required.length === 0) return true;
   if (!ctxValue) return false;
-  return required.includes(ctxValue);
+  // Список в контексте (единый ум = много ролей сразу) — совпадение по ЛЮБОЙ из
+  // них: скилл подходит, если он адресован хоть одной роли, которую ум играет.
+  if (Array.isArray(ctxValue)) {
+    if (ctxValue.length === 0) return false;
+    return ctxValue.some((v) => required.includes(v));
+  }
+  return required.includes(ctxValue as string);
 }
 
 function predicateMatches(applies: AppliesWhen | undefined, ctx: SelectorContext): boolean {

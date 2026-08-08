@@ -52,6 +52,7 @@ import { HARNESS_TOOLS } from '../../../../scripts/run/_tool';
 import { MIND_CHAT_TOOLS, findMindChatTool } from '@/lib/mind/chat-tools';
 import { buildMindPromptParts, loadDoctrine } from '@/lib/mind/prompt';
 import { listSkillManifests } from '@/lib/skills/select-skills';
+import { AGENT_REGISTRY } from '@/lib/agents/registry';
 import type { ToolContext } from '@/lib/concierge/tools/types';
 
 export const maxDuration = 600; // цикл ума с генерациями — минуты, не секунды
@@ -150,8 +151,22 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   // Скиллы оси работ — квота снята (доктрина §21).
+  //
+  // 2026-08-08 — `agent` появился здесь не сразу, и без него ум получал РОВНО НОЛЬ
+  // скиллов: все ACTIVE-скиллы на диске объявляют `applies_when.agent`, а селектор
+  // при заданном скоупе и пустом значении в контексте отвечает «не подходит». Ум
+  // работал без всей ремесленной библиотеки студии — это корень D76 (написала
+  // сториборд без машиночитаемого контракта, потому что `storyboarder-cosmic-horror`
+  // ей не выдали), и брак этим не ограничивался.
+  //
+  // Ум собой заменяет ВСЕХ маленьких агентов (доктрина парадигмы), поэтому берём
+  // реестр целиком, а не выдуманное подмножество: новая роль студии автоматически
+  // становится видна уму, и второй список ролей, расходящийся с первым, не заводится.
+  // Снять `agent`-скоуп было НЕЛЬЗЯ — тогда `sandy-gag-library` (`genre:[comedy]`,
+  // Sandy-специфичный) протёк бы в cosmic_horror; прочие оси фильтруют как прежде.
   const manifests = await listSkillManifests(
     {
+      agent: Object.keys(AGENT_REGISTRY),
       series_id: series?.id,
       episode_id: boundEpisodeId ?? undefined,
       genre: series?.genre ?? undefined,
