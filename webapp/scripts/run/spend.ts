@@ -14,6 +14,8 @@ export default defineTool(
     },
     env: { RUN_EPISODE_ID: { about: 'эпизод, по которому считаются траты' } },
     reads: ['budget_log'],
+    // Сквозной: единственный законный источник остатка (правило 4 промпта).
+    stations: [],
   },
   async ({ arg, env }) => {
     const { data, error } = await sb

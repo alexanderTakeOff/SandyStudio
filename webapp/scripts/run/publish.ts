@@ -29,6 +29,7 @@ export default defineTool(
     },
     reads: ['series', 'channels', 'episodes'],
     writes: ['episodes'],
+    stations: ['publisher'],
   },
   async ({ arg, env }) => {
     const file = resolve(process.cwd(), arg('file'));

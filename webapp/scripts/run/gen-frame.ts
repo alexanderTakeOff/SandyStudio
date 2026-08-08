@@ -51,6 +51,7 @@ export default defineTool(
     },
     reads: ['assets', 'episodes'],
     writes: ['budget_log', 'assets'],
+    stations: ['episode_references'],
   },
   async ({ arg, env }) => {
     const out = arg('out');

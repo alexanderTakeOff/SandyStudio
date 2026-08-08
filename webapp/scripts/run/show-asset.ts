@@ -64,6 +64,8 @@ export default defineTool(
       RUN_SERIES_ID: { about: 'сериал; нужен для поиска по --slug' },
     },
     reads: ['assets'],
+    // Сквозной: глаза ума на любой станции — текст, картинка, id строки.
+    stations: [],
   },
   async ({ arg }) => {
     const slug = arg('slug');

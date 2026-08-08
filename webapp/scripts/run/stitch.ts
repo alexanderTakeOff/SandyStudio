@@ -38,6 +38,7 @@ export default defineTool(
     env: { RUN_EPISODE_ID: { about: 'эпизод, которому принадлежит кат' } },
     reads: ['assets', 'episodes'],
     writes: ['assets'],
+    stations: ['final_cut'],
   },
   async ({ arg, env }) => {
     const dir = resolve(process.cwd(), arg('dir'));

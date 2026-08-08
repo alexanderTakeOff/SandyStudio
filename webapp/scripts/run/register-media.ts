@@ -26,6 +26,10 @@ export default defineTool(
     env: { RUN_EPISODE_ID: { about: 'эпизод, которому принадлежит изделие' } },
     reads: ['episodes', 'assets'],
     writes: ['assets'],
+    // Ручной след для готового изделия — кадр, клип, кат, музыка. Генераторы
+    // оставляют его сами; этот нужен, когда файл произведён иначе (в т.ч. музыка,
+    // залитая Директором).
+    stations: ['episode_references', 'visual_generator', 'final_cut', 'music_generator'],
   },
   async ({ arg, env }) => {
     const res = await registerEpisodeMedia({

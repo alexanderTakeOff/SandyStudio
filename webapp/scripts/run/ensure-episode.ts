@@ -23,6 +23,8 @@ export default defineTool(
     },
     reads: ['episodes'],
     writes: ['episodes'],
+    // Не станция маршрута, а его начало: эпизод должен существовать до первой станции.
+    stations: [],
   },
   async ({ arg }) => {
     const code = arg('code');

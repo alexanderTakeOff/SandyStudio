@@ -45,6 +45,7 @@ import { seriesIdForEpisode } from '@/lib/api/series-bible';
 import {
   invokeMindTool,
   mindToolSchemas,
+  mindToolSpecs,
   type MindToolResult,
   type MultimodalToolResult,
 } from '@/lib/mind/tool-bridge';
@@ -179,7 +180,16 @@ export async function POST(req: NextRequest): Promise<Response> {
     doctrine: loadDoctrine(),
     series: series ? { code: series.code, title: series.title } : null,
     episode,
-    skills: manifests.map((m) => ({ slug: m.slug, summary: m.frontmatter.description })),
+    // `agents` — чтобы скилл встал на СВОЮ станцию в карте маршрута, а не лежал
+    // общим списком: у скилла `applies_when.agent`, у станции `agents`.
+    skills: manifests.map((m) => ({
+      slug: m.slug,
+      summary: m.frontmatter.description,
+      agents: m.frontmatter.applies_when?.agent,
+    })),
+    // Инструменты — источник карты «чем проходить станцию» (`ToolSpec.stations`).
+    // Те же спеки, из которых строятся function-calling схемы: один источник, не два.
+    tools: mindToolSpecs(),
   });
 
   // ── Инструментальный контекст ─────────────────────────────────────────────

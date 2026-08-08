@@ -42,6 +42,19 @@ export default defineTool(
     },
     reads: ['assets', 'episodes'],
     writes: ['assets'],
+    // Перо ума: им пишутся ВСЕ документные станции — сценарий, раскадровка, планы
+    // рефа и шота, метаданные, план обложки. Бриф и каст здесь же, но они ВХОД
+    // Директора: инструмент кладёт его решение, а не сочиняет за него.
+    stations: [
+      'brief',
+      'casting',
+      'screenwriter',
+      'storyboarder',
+      'reference_designer',
+      'shot_designer',
+      'copywriter',
+      'thumbnail_designer',
+    ],
   },
   async ({ arg, env }) => {
     const episodeId = env('RUN_EPISODE_ID');

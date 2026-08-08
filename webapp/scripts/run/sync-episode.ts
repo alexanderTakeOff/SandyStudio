@@ -45,6 +45,8 @@ export default defineTool(
     env: { RUN_EPISODE_ID: { about: 'эпизод, паспорт которого дособираем' } },
     reads: ['assets', 'budget_log', 'episodes'],
     writes: ['assets', 'episodes'],
+    // Сшивает след эпизода задним числом — не станция, а починка следа.
+    stations: [],
   },
   async ({ arg, env }) => {
     const episodeId = env('RUN_EPISODE_ID');

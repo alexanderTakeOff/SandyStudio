@@ -35,6 +35,7 @@ export default defineTool(
     },
     reads: ['assets', 'episodes', 'series'],
     writes: ['assets'],
+    stations: ['series_canon'],
   },
   async ({ arg }) => {
     const slug = arg('slug');

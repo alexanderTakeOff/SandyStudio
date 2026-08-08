@@ -60,6 +60,7 @@ export default defineTool(
     env: { RUN_EPISODE_ID: { about: 'эпизод, на который списывается трата; без него инструмент не стартует' } },
     reads: ['assets', 'episodes'],
     writes: ['budget_log', 'assets'],
+    stations: ['visual_generator'],
   },
   async ({ arg, env }) => {
     const out = arg('out');

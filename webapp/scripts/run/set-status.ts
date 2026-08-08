@@ -34,6 +34,8 @@ export default defineTool(
     },
     reads: ['assets'],
     writes: ['assets'],
+    // Сквозной: статус меняется на КАЖДОЙ станции — им же ум проводит гейт Директора.
+    stations: [],
   },
   async ({ arg }) => {
     const id = arg('id');

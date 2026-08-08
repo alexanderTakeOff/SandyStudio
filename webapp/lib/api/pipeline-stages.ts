@@ -249,7 +249,12 @@ interface RowDef {
 //
 // Music sits in production phase BEFORE Animatic (audio reorg LT-04): EDIT
 // gates on BOTH MGEN + EREF approved so the animatic preview plays with music.
-const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
+/**
+ * Экспортируется с 2026-08-08 (D86) — промпт единого ума строит карту конвейера
+ * ИЗ ЭТОГО массива, а не из своего пересказа. Второй список станций разошёлся бы
+ * с первым на первой же правке конвейера, и ум учил бы маршрут, которого нет.
+ */
+export const ROW_DEFINITIONS: ReadonlyArray<RowDef> = [
   // Brief → Casting → Writer (2026-06-23, Director q22a/q30a): Casting comes
   // AFTER the brief — once the brief is set it's clear which characters/objects
   // the episode needs. (Was casting-before-brief.)

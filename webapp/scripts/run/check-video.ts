@@ -19,6 +19,7 @@ export default defineTool(
       GOOGLE_CLIENT_SECRET: { about: 'секрет OAuth' },
     },
     reads: ['series', 'channels'],
+    stations: ['publisher', 'analytics_collector'],
   },
   async ({ arg, env }) => {
     const { data: s } = await sb.from('series').select('channel_id').eq('id', seriesId()).single();
