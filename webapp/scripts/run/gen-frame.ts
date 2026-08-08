@@ -59,6 +59,17 @@ export default defineTool(
 
     const prompt = readFileSync(resolve(process.cwd(), arg('prompt-file')), 'utf8').trim();
 
+    // D87 (2026-08-08): чем именно кормили провайдера — часть изделия, а не
+    // след в консоли. Директор: «prompt — самое важное, что должно храниться
+    // почти вечно, потому что это образцы; к ним всегда можно вернуться,
+    // поправить, дополнить — вместо того чтобы генерить что-то новое».
+    // До этой правки промпт читался из файла, уходил провайдеру и ИСЧЕЗАЛ:
+    // в метаданных кадра лежали только origin/source_file/shot_id, а у вызова
+    // через мост сам файл промпта ещё и сносился как временный. Ответить
+    // «на чём сгенерирован этот кадр» было физически нечем — ровно этот вопрос
+    // Директор и задал про неканоничный батискаф.
+    const refsUsed: Array<{ slug: string; kind: string; asset_id: string; filename: string }> = [];
+
     const references: MultiImageRef[] = [];
     for (const item of arg('refs').split(',').map((s) => s.trim()).filter(Boolean)) {
       const [slug, kindRaw] = item.split(':');
@@ -86,6 +97,7 @@ export default defineTool(
       });
       if (!image_b64) throw new Error(`ref ${slug}: canon asset has no image on disk/Drive`);
       references.push({ kind, bible_asset_id: asset.id, image_b64 });
+      refsUsed.push({ slug, kind, asset_id: asset.id, filename: asset.filename });
       console.log(`ref ok: ${slug} (${kind}) ${Math.round(image_b64.length / 1365)}KB`);
     }
 
@@ -106,6 +118,12 @@ export default defineTool(
       scene_continuity: 4, temporal_continuity: 5,
     };
     references.sort((a, b) => (ORDER[a.kind] ?? 9) - (ORDER[b.kind] ?? 9));
+    // D87: тем же ключом сортируем запись — в метаданных должен лежать порядок,
+    // который РЕАЛЬНО ушёл провайдеру, а не порядок, в котором их назвал
+    // вызывающий. Порядок здесь содержателен: провайдер считает ранние
+    // референсы приоритетными (REF-ORDER CONTRACT выше), поэтому образец без
+    // него неполон.
+    refsUsed.sort((a, b) => (ORDER[a.kind] ?? 9) - (ORDER[b.kind] ?? 9));
     console.log('ref order:', references.map((r) => r.kind).join(' → '));
 
     console.log(`generating ${out} — ${references.length} refs, ${size}, ${quality}`);
@@ -162,6 +180,19 @@ export default defineTool(
         status: arg('status'),
         description: `кадр ${shot} · gpt-image-2/${quality} · $${cost.toFixed(3)}`,
         origin: 'gen-frame',
+        // D87: полный рецепт — промпт дословно и референсы в том порядке, в
+        // котором они ушли провайдеру. Промпт НЕ обрезается: усечённый образец
+        // бесполезен ровно тем, ради чего он хранится — его нельзя повторить.
+        recipe: {
+          prompt,
+          provider: 'openai-edits-multi',
+          model: 'gpt-image-2',
+          quality,
+          size,
+          references: refsUsed,
+          generated_at: new Date().toISOString(),
+          cost_usd: cost,
+        },
       });
     } else {
       console.error(

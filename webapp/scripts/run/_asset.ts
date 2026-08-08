@@ -241,6 +241,13 @@ export interface RegisterMediaArgs {
   status?: string;
   description?: string;
   origin?: string;
+  /**
+   * D87: рецепт изделия — промпт, референсы, провайдер, тир качества. Ложится в
+   * `metadata` рядом со служебными полями. Это ОБРАЗЕЦ, к которому возвращаются
+   * и который правят, а не диагностика: без него нельзя ни повторить удачный
+   * кадр, ни ответить, на чём сгенерирован неудачный.
+   */
+  recipe?: Record<string, unknown>;
 }
 
 export async function registerEpisodeMedia(a: RegisterMediaArgs): Promise<PersistAssetResult> {
@@ -275,6 +282,10 @@ export async function registerEpisodeMedia(a: RegisterMediaArgs): Promise<Persis
     const seconds = mediaDurationSeconds(a.file);
     if (seconds) metadata.duration_seconds = seconds;
   }
+  // D87: рецепт кладётся ПОД своим ключом, а не рассыпается по корню метаданных —
+  // так его видно как одно целое и он не столкнётся с полями, по которым лента
+  // ищет ячейку.
+  if (a.recipe) metadata.recipe = a.recipe;
 
   return persistAsset({
     filename: `${code}-${spec.kindTag}-${slug}-${version}-${status}${extname(a.file)}`,
