@@ -32,6 +32,19 @@ describe('anthropic-text — pure helpers', () => {
       expect(cost).toBeCloseTo(7.5, 4);
     });
 
+    // D81 (2026-08-08): единый ум работает на `claude-opus-4-8-1m` (выставлено
+    // Директором через UI, лежит в app_config). Цена его ходов пишется в
+    // budget_log ЭТОЙ функцией, поэтому промах таблицы по модели ума = молча
+    // заниженный счёт. Незнакомая модель уходит в фолбэк на ставки Sonnet —
+    // впятеро дешевле Opus, и никто бы этого не заметил.
+    it('prices the mind model claude-opus-4-8-1m at Opus rates, not the Sonnet fallback', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        'claude-opus-4-8-1m',
+      );
+      expect(cost).toBeCloseTo(90.0, 4); // 15 + 75, а не 18 (=3+15) по Sonnet
+    });
+
     it('prices gpt-5.5 at $5/M input + $30/M output (not Sonnet-default)', () => {
       const cost = computeCostUsd(
         { inputTokens: 1_000_000, outputTokens: 1_000_000 },

@@ -53,6 +53,7 @@ import { MIND_CHAT_TOOLS, findMindChatTool } from '@/lib/mind/chat-tools';
 import { buildMindPromptParts, loadDoctrine } from '@/lib/mind/prompt';
 import { listSkillManifests } from '@/lib/skills/select-skills';
 import { AGENT_REGISTRY } from '@/lib/agents/registry';
+import { recordConciergeCost } from '@/lib/concierge/cost';
 import type { ToolContext } from '@/lib/concierge/tools/types';
 
 export const maxDuration = 600; // цикл ума с генерациями — минуты, не секунды
@@ -246,6 +247,32 @@ export async function POST(req: NextRequest): Promise<Response> {
           const usage = completion.usage;
           cacheRead += usage?.cache_read_input_tokens ?? 0;
           cacheWrite += usage?.cache_creation_input_tokens ?? 0;
+
+          // D81 (2026-08-08): пишем стоимость СВОЕГО хода. Старый роут это делал
+          // (`concierge/chat/route.ts:502`), новый писался с нуля и перенос
+          // потерял — тот же класс упущения, что D69. Цена молчания конкретна:
+          // правило 4 промпта велит уму брать остаток ТОЛЬКО вызовом `spend`, а
+          // `spend` читает `budget_log` — не находя там ходов ума, он выдавал
+          // заниженную цифру, и ум честно называл Директору неправду. Дисциплина,
+          // введённая чтобы цифра не врала, гарантировала, что она врёт.
+          //
+          // Пишем ПОРАУНДНО, а не один раз за ход: каждый раунд — отдельный
+          // оплаченный вызов API (их до MAX_ROUNDS), и суммировать их в одну
+          // строку значило бы прятать, где именно ушли деньги.
+          // Best-effort по построению — `recordConciergeCost` не бросает наружу,
+          // сорванная строка аудита не должна ронять ответ уму.
+          void recordConciergeCost(supabase, {
+            model,
+            usage: {
+              promptTokens: usage?.prompt_tokens ?? 0,
+              completionTokens: usage?.completion_tokens ?? 0,
+              cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+              cacheWriteTokens: usage?.cache_creation_input_tokens ?? 0,
+            },
+            source: 'mind-chat',
+            episodeId: boundEpisodeId,
+            seriesId: series?.id ?? null,
+          });
 
           const msg = completion.choices[0]?.message;
           const toolCalls = msg?.tool_calls ?? [];
