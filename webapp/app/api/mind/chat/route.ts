@@ -42,7 +42,12 @@ import {
   resolveOpenThreadId,
 } from '@/lib/concierge/threads';
 import { seriesIdForEpisode } from '@/lib/api/series-bible';
-import { invokeMindTool, mindToolSchemas } from '@/lib/mind/tool-bridge';
+import {
+  invokeMindTool,
+  mindToolSchemas,
+  type MindToolResult,
+  type MultimodalToolResult,
+} from '@/lib/mind/tool-bridge';
 import { HARNESS_TOOLS } from '../../../../scripts/run/_tool';
 import { MIND_CHAT_TOOLS, findMindChatTool } from '@/lib/mind/chat-tools';
 import { buildMindPromptParts, loadDoctrine } from '@/lib/mind/prompt';
@@ -257,6 +262,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             });
 
             let resultText: string;
+            let resultImages: MindToolResult['images'];
             let ok = false;
             try {
               let args: Record<string, unknown> = {};
@@ -274,6 +280,7 @@ export async function POST(req: NextRequest): Promise<Response> {
                   const res = await invokeMindTool(name, args, runEnv);
                   ok = res.ok;
                   resultText = res.output || '(инструмент отработал молча — это его дефект, вывода нет)';
+                  resultImages = res.images;
                 }
               } else {
                 const chatTool = findMindChatTool(name);
@@ -293,7 +300,12 @@ export async function POST(req: NextRequest): Promise<Response> {
             const ms = Date.now() - started;
             toolAudit.push({ name, ok, ms });
             emit({ t: 'tool_result', id: call.id, name, ok });
-            messages.push({ role: 'tool', tool_call_id: call.id, content: resultText });
+            // D70: картинка есть — кладём сентинел, который anthropic-native.ts
+            // разворачивает в настоящий multimodal-блок; текстовые тулы не задеты.
+            const toolContent: string | MultimodalToolResult = resultImages?.length
+              ? { __sandystudio_multimodal: true, text: resultText, images: resultImages }
+              : resultText;
+            messages.push({ role: 'tool', tool_call_id: call.id, content: toolContent as never });
           }
         }
 

@@ -101,7 +101,7 @@ npx tsx scripts/run/ensure-episode.ts --code <code> [--title <title>] [--theme <
 Один кадр за вызов: промпт из файла, канон-референсы по слагам, цена в `budget_log`.
 
 ```
-npx tsx scripts/run/gen-frame.ts --prompt-file <prompt-file> --refs <refs> --out <out> [--shot <shot>] [--size <size>] [--quality <quality>]
+npx tsx scripts/run/gen-frame.ts --prompt-file <prompt-file> --refs <refs> --out <out> [--shot <shot>] [--size <size>] [--quality <quality>] [--status <status>]
 ```
 
 | аргумент | обязателен | по умолчанию | допустимо | что это |
@@ -112,6 +112,7 @@ npx tsx scripts/run/gen-frame.ts --prompt-file <prompt-file> --refs <refs> --out
 | `--shot` | — | `` | — | номер кадра, `sh01` — по нему изделие СРАЗУ заводится в студию. Пусто — выводится из имени файла; не вывелся — след не оставлен, и об этом сказано громко |
 | `--size` | — | `1024x1536` | `1024x1536` · `1024x1024` · `1536x1024` | размер кадра |
 | `--quality` | — | `high` | `low` · `medium` · `high` | тир качества; low держит канон и стоит $0,018 |
+| `--status` | — | `APPROVED` | `DRAFT` · `REVIEW` · `APPROVED` | статус строки изделия в студии |
 
 **env:**
 - `RUN_EPISODE_ID` — эпизод, на который списывается трата; без него инструмент не стартует
@@ -188,7 +189,7 @@ npx tsx scripts/run/register-canon.ts --slug <slug> [--file <file>] [--desc <des
 
 | аргумент | обязателен | по умолчанию | допустимо | что это |
 |---|---|---|---|---|
-| `--slug` | да | — | — | слаг канона без префикса; кадры цепляют его как `<slug>:<kind>` |
+| `--slug` | да | — | — | слаг канона БЕЗ префикса `SBL-`, но С категорией внутри самого слага: `object_eyelid_shutter`, `character_iris_labyrinth`, `location_empty_background` — НЕ голое имя `eyelid_shutter`. Кадры цепляют его как `<slug>:<kind>` |
 | `--file` | — | `` | — | исходный PNG; пусто — строка чинится без замены байтов |
 | `--desc` | — | `` | — | описание плиты; читается приёмщиком дословно. Пусто — существующее не трогается |
 | `--status` | — | `APPROVED` | — | статус ассета |

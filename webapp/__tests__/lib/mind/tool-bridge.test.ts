@@ -4,13 +4,16 @@
 // Сам ИМПОРТ моста — уже половина проверки: без harness-флага импорт любого
 // инструмента пошёл бы CLI-путём, начал парсить argv vitest'а и завершил процесс.
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import {
   mindToolSpecs,
   mindToolSchemas,
   toFunctionSchema,
   invokeMindTool,
+  applyDraftDefault,
+  collectImages,
 } from '@/lib/mind/tool-bridge';
 import { runEnvStore, runEnv } from '../../../scripts/run/_env';
 
@@ -106,5 +109,80 @@ describe('per-вызов env через AsyncLocalStorage', () => {
     ]);
     expect(a).toBe('ep-A');
     expect(b).toBe('ep-B');
+  });
+});
+
+describe('D71: bridge-умолчание статуса', () => {
+  it('gen-frame/register-canon уходят в DRAFT, если ум статус не назвала', () => {
+    const given: Record<string, string> = { 'prompt-file': 'x.txt' };
+    applyDraftDefault('gen-frame', given);
+    expect(given.status).toBe('DRAFT');
+  });
+
+  it('явный статус от ума не перезаписывается', () => {
+    const given: Record<string, string> = { status: 'APPROVED' };
+    applyDraftDefault('register-canon', given);
+    expect(given.status).toBe('APPROVED');
+  });
+
+  it('тулы вне списка (не пишут медиа) статус не трогают', () => {
+    const given: Record<string, string> = {};
+    applyDraftDefault('write-asset', given);
+    expect(given.status).toBeUndefined();
+  });
+});
+
+describe('D70: мост возвращает уму картинку через show-asset', () => {
+  it('без явного --out мост подставляет временный путь и читает байты обратно', async () => {
+    // show-asset ищет строку в базе по RUN_SERIES_ID/RUN_EPISODE_ID — оба
+    // недекларированы здесь нарочно: интересует не успех поиска (для этого
+    // нужна живая база — доказано прогоном «Зрачок-2»), а то, что отказ
+    // приходит ПОСЛЕ попытки подставить `out`, не раньше валидации.
+    const res = await invokeMindTool('show-asset', { type: 'SCR-script' }, {});
+    expect(res.ok).toBe(false);
+    expect(res.images).toBeUndefined();
+  });
+
+  it('кадр: show-asset дописывает расширение к --out — collectImages находит файл по базовому имени', () => {
+    // Ровно то расхождение путей, которое и было опасно: мост просит записать
+    // по `<dir>/out`, а show-asset реально пишет `<dir>/out.png` (extname
+    // дописывается внутри самого show-asset, не мостом).
+    const dir = mkdtempSync(join(tmpdir(), 'ss-mind-test-'));
+    try {
+      const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      writeFileSync(join(dir, 'out.png'), bytes);
+      const images = collectImages(join(dir, 'out'));
+      expect(images).toHaveLength(1);
+      expect(images[0].mediaType).toBe('image/png');
+      expect(Buffer.from(images[0].base64, 'base64').equals(bytes)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('видео: show-asset превращает --out в директорию с полосой кадров — collectImages читает все', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ss-mind-test-'));
+    try {
+      const outDir = join(dir, 'out');
+      const a = Buffer.from([1, 2, 3]);
+      const b = Buffer.from([4, 5, 6]);
+      mkdirSync(outDir);
+      writeFileSync(join(outDir, '01.png'), a);
+      writeFileSync(join(outDir, '02.png'), b);
+      const images = collectImages(outDir);
+      expect(images).toHaveLength(2);
+      expect(Buffer.from(images[0].base64, 'base64').equals(a)).toBe(true);
+      expect(Buffer.from(images[1].base64, 'base64').equals(b)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('пустой out — пустой список, не отказ', () => {
+    expect(collectImages('')).toEqual([]);
+  });
+
+  it('несуществующий путь — пустой список', () => {
+    expect(collectImages('/nowhere/really/out')).toEqual([]);
   });
 });

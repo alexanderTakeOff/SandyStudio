@@ -37,6 +37,11 @@ export default defineTool(
       },
       size: { about: 'размер кадра', default: '1024x1536', values: ['1024x1536', '1024x1024', '1536x1024'] },
       quality: { about: 'тир качества; low держит канон и стоит $0,018', default: 'high', values: ['low', 'medium', 'high'] },
+      status: {
+        about: 'статус строки изделия в студии',
+        default: 'APPROVED',
+        values: ['DRAFT', 'REVIEW', 'APPROVED'],
+      },
     },
     // The episode is NOT hardcoded: a stale id spends the new episode's money on
     // the old episode's ledger and the mistake is silent (2026-08-04 stocktake).
@@ -146,6 +151,7 @@ export default defineTool(
         kind: 'frame',
         file: out,
         shot,
+        status: arg('status'),
         description: `кадр ${shot} · gpt-image-2/${quality} · $${cost.toFixed(3)}`,
         origin: 'gen-frame',
       });

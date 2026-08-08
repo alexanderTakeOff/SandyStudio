@@ -102,6 +102,33 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
     return { id: existing.id, filename, created: false, cachedAt };
   }
 
+  // D72: новая строка канона под слагом без категории (`eyelid_shutter` вместо
+  // `object_eyelid_shutter`) молча заводит ВТОРУЮ плиту рядом с первой — ни
+  // один из тулов, что пишут SBL-, не знал о существовании другого. Ищем
+  // БЛИЗКИЙ file_type в том же скопе ДО вставки — в обе стороны (новый может
+  // быть и короче, и длиннее существующего), а не только точное совпадение,
+  // которое `existing` выше уже проверил и не нашёл.
+  if (a.fileType.startsWith('SBL-')) {
+    const newTail = a.fileType.slice('SBL-'.length);
+    const { data: siblings } = await sb
+      .from('assets')
+      .select('file_type')
+      .eq(scope.column, scope.value)
+      .like('file_type', 'SBL-%');
+    const near = (siblings ?? []).find((s) => {
+      if (s.file_type === a.fileType) return false;
+      const otherTail = s.file_type.slice('SBL-'.length);
+      return s.file_type.endsWith(newTail) || a.fileType.endsWith(otherTail);
+    });
+    if (near) {
+      throw new Error(
+        `persistAsset(${a.fileType}): рядом уже есть похожий канон «${near.file_type}» — ` +
+          `не забыта ли категория в слаге (object_/character_/location_/style_/…)? ` +
+          `Если это действительно ДРУГАЯ плита — назови слаг так, чтобы хвост не совпадал.`,
+      );
+    }
+  }
+
   const { data, error } = await sb
     .from('assets')
     .insert({

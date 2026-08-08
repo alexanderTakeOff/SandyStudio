@@ -15,6 +15,31 @@ import Anthropic from '@anthropic-ai/sdk';
 import type OpenAI from 'openai';
 import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
 import { conciergeAnthropicNativeEnabled } from './llm';
+import type { MultimodalToolResult } from '../mind/tool-bridge';
+
+function isMultimodalToolResult(v: unknown): v is MultimodalToolResult {
+  return !!v && typeof v === 'object' && (v as { __sandystudio_multimodal?: unknown }).__sandystudio_multimodal === true;
+}
+
+/**
+ * D70: тул-результат с картинкой (сентинел из `tool-bridge.ts`) разворачивается
+ * в настоящий Anthropic multimodal-блок — текст + `image` с base64. Обычная
+ * строка проходит как раньше; JSON.stringify — последний рубеж для того, что
+ * не строка и не сентинел (не должно случаться, но не должно и падать).
+ */
+function toolResultContent(content: unknown): string | Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
+  if (typeof content === 'string') return content;
+  if (isMultimodalToolResult(content)) {
+    return [
+      { type: 'text', text: content.text },
+      ...content.images.map((img): Anthropic.ImageBlockParam => ({
+        type: 'image',
+        source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+      })),
+    ];
+  }
+  return JSON.stringify(content);
+}
 
 export interface ConciergeSystemSplit {
   stable: string;
@@ -113,7 +138,7 @@ function translateMessages(
       pendingToolResults.push({
         type: 'tool_result',
         tool_use_id: m.tool_call_id,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        content: toolResultContent(m.content),
       });
       continue;
     }
@@ -194,8 +219,15 @@ export async function createConciergeCompletion(
     // (см. resolveModel выше), а бета-заголовок здесь недоступен вовсе — на
     // compat-поверхности он и так молча отбрасывается (см. заметку файла).
     // Снимаем суффикс, иначе неизвестное имя модели уходит на 400.
+    // D70: мультимодальный сентинел (см. toolResultContent) рассчитан на native
+    // Anthropic-путь; compat-поверхность его не поймёт — разворачиваем в текст,
+    // деградация, а не поломка (глаза остаются только у native-пути, честно).
+    const messages = params.messages.map((m) =>
+      m.role === 'tool' && isMultimodalToolResult(m.content) ? { ...m, content: m.content.text } : m,
+    );
     return (await openaiClient.chat.completions.create({
       ...params,
+      messages,
       model: resolveModel(params.model).apiModel,
     })) as unknown as ConciergeCompletion;
   }

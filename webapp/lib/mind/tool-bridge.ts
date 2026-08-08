@@ -34,13 +34,75 @@ import '../../scripts/run/sync-episode';
 import '../../scripts/run/write-asset';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { format } from 'node:util';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, extname, dirname, basename } from 'node:path';
 import { HARNESS_TOOLS, resolveArgs, type ToolSpec, type ToolContext } from '../../scripts/run/_tool';
 import { runEnvStore } from '../../scripts/run/_env';
 
 const INLINE_PREFIX = 'inline:';
+
+/** Бридж заводит уму умолчание, если она не задала статус явно (D71). CLI-умолчание
+ *  инструментов (обычно APPROVED) не трогается — это касается только вызовов через мост. */
+const DRAFT_BY_DEFAULT_TOOLS = new Set(['gen-frame', 'register-canon']);
+
+/**
+ * D71: ум не назвала статус явно → черновик, не APPROVED. Мутирует `given` на
+ * месте (тот же приём, что и материализация инлайна ниже) — чистая функция по
+ * входу/выходу, вынесена отдельно, чтобы решение проверялось без похода в БД.
+ */
+export function applyDraftDefault(name: string, given: Record<string, string>): void {
+  if (DRAFT_BY_DEFAULT_TOOLS.has(name) && given.status === undefined) {
+    given.status = 'DRAFT';
+  }
+}
+
+/** D70: doctrine's «глаза» — show-asset пишет файл на диск (CLI-контракт), но
+ *  мультимодальному уму нужны БАЙТЫ в ответе тула, не путь. Инструмент не трогаем —
+ *  он уже держит base64 в памяти перед записью; мост читает файл ОБРАТНО и кладёт
+ *  в MindToolResult.images. */
+const IMAGE_RETURNING_TOOLS = new Set(['show-asset']);
+
+export type MediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+const MEDIA_TYPE_BY_EXT: Readonly<Record<string, MediaType>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+};
+
+function mediaTypeFor(path: string): MediaType {
+  return MEDIA_TYPE_BY_EXT[extname(path).toLowerCase()] ?? 'image/png';
+}
+
+/**
+ * Картинки, реально записанные по пути `out` инструментом показа. `show-asset`
+ * не гарантирует, что файл лежит РОВНО по `out`: кадр дописывает расширение
+ * (`out` → `out.png`), видео превращает `out` в ДИРЕКТОРИЮ с полосой кадров
+ * (`01.png`, `02.png`...) — оба случая нужно найти, не угадав путь один раз.
+ * Пусто, если ничего не появилось — `out` мог быть пуст (только текст).
+ */
+export function collectImages(outPath: string): Array<{ mediaType: MediaType; base64: string }> {
+  if (!outPath) return [];
+
+  if (existsSync(outPath) && statSync(outPath).isDirectory()) {
+    return readdirSync(outPath)
+      .sort()
+      .map((f) => join(outPath, f))
+      .filter((f) => statSync(f).isFile())
+      .map((f) => ({ mediaType: mediaTypeFor(f), base64: readFileSync(f).toString('base64') }));
+  }
+
+  // Кадр: искать `<base>.*` рядом, а не только точное имя — расширение дописал сам тул.
+  const dir = dirname(outPath);
+  const base = basename(outPath);
+  if (!existsSync(dir)) return [];
+  const hit = readdirSync(dir).find((f) => f === base || f.startsWith(`${base}.`));
+  if (!hit) return [];
+  const full = join(dir, hit);
+  return [{ mediaType: mediaTypeFor(full), base64: readFileSync(full).toString('base64') }];
+}
 
 /** Схема тула в формате function-calling — выводится из той же меты, что и docs/TOOLS.md. */
 export interface MindFunctionSchema {
@@ -61,6 +123,21 @@ export interface MindToolResult {
   ok: boolean;
   /** Всё, что инструмент сказал (console.*), плюс строка ошибки при отказе. */
   output: string;
+  /** D70: байты, которые инструмент показа записал по `out` — глаза единого ума. */
+  images?: ReadonlyArray<{ mediaType: MediaType; base64: string }>;
+}
+
+/**
+ * D70: сентинел для тул-результата с картинкой. Маршрут кладёт его вместо
+ * простой строки в `content` хода `role:'tool'`; `anthropic-native.ts`
+ * распознаёт сентинел и разворачивает в настоящий multimodal-блок
+ * (`{type:'image', source:{...}}`) — единственное место, где OpenAI-форма
+ * сообщения временно несёт то, что ей по контракту не положено.
+ */
+export interface MultimodalToolResult {
+  __sandystudio_multimodal: true;
+  text: string;
+  images: ReadonlyArray<{ mediaType: MediaType; base64: string }>;
 }
 
 /** Аргумент-носитель файла: значение может прийти инлайном. */
@@ -145,6 +222,16 @@ export async function invokeMindTool(
       given[k] = String(v);
     }
 
+    applyDraftDefault(name, given);
+
+    // D70: show-asset получает картинку глазами — ей нужен `out`, даже если ум
+    // его не попросил. Свой временный путь ставим ТОЛЬКО когда она молчала —
+    // явный `out` от неё не трогаем.
+    if (IMAGE_RETURNING_TOOLS.has(name) && !given.out) {
+      scratchDir ??= mkdtempSync(join(tmpdir(), 'ss-mind-'));
+      given.out = join(scratchDir, 'out');
+    }
+
     const resolved = resolveArgs(tool.spec, given);
 
     // Инлайн-носитель → временный файл. После вызова файл сносится.
@@ -173,7 +260,9 @@ export async function invokeMindTool(
     };
 
     await captureStore.run(buf, () => runEnvStore.run(env, () => tool.main(ctx)));
-    return { ok: true, output: buf.join('\n') };
+
+    const images = IMAGE_RETURNING_TOOLS.has(name) ? collectImages(resolved.out ?? '') : [];
+    return { ok: true, output: buf.join('\n'), ...(images.length ? { images } : {}) };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return { ok: false, output: [...buf, `ERROR: ${message}`].join('\n') };
