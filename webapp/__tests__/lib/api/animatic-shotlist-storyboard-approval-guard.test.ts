@@ -75,3 +75,63 @@ describe('assertStoryboardApprovable', () => {
     expect(() => assertStoryboardApprovable('STB-act1', 'APPROVED', PROSE_ONLY)).toThrow();
   });
 });
+
+// ── D84: формат shot_id ───────────────────────────────────────────────────────
+//
+// Наличия списка мало. Timeline связывает кадр с ячейкой ТОЧНЫМ совпадением
+// строки shot_id с `metadata.shot_reference.shot_id`, который проставляют
+// инструменты через shotIdFor() как `<код эпизода без SS->-SH<nn>`. Живой случай
+// SS-S20-E04: ум написал «SH01», инструмент зарегистрировал «S20-E04-SH01» —
+// кадр сгенерировался, списал деньги и не показался нигде, а Директор дважды
+// спросил «почему не вижу кадра».
+const FILENAME = 'SS-S20-E04-STB-storyboard-v01-DRAFT.md';
+
+const SHORT_IDS = `\`\`\`json
+{"acts":[{"shots":[{"shot_id":"SH01"},{"shot_id":"SH02"}]}]}
+\`\`\``;
+
+const CANONICAL_IDS = `\`\`\`json
+{"acts":[{"shots":[{"shot_id":"S20-E04-SH01"},{"shot_id":"S20-E04-SH02"}]}]}
+\`\`\``;
+
+describe('assertStoryboardApprovable — формат shot_id (D84)', () => {
+  it('отказывает на коротких shot_id и называет ожидаемый формат', () => {
+    expect(() =>
+      assertStoryboardApprovable('STB-storyboard', 'APPROVED', SHORT_IDS, FILENAME),
+    ).toThrow(/S20-E04-SH01/);
+  });
+
+  it('перечисляет реально встреченные неверные id, а не только шаблон', () => {
+    expect(() =>
+      assertStoryboardApprovable('STB-storyboard', 'APPROVED', SHORT_IDS, FILENAME),
+    ).toThrow(/«SH01»/);
+  });
+
+  it('пропускает канонические shot_id', () => {
+    expect(() =>
+      assertStoryboardApprovable('STB-storyboard', 'APPROVED', CANONICAL_IDS, FILENAME),
+    ).not.toThrow();
+  });
+
+  it('ловит id ЧУЖОГО эпизода — самый тихий класс расхождения', () => {
+    const otherEpisode = CANONICAL_IDS.replace(/S20-E04/g, 'S20-E03');
+    expect(() =>
+      assertStoryboardApprovable('STB-storyboard', 'APPROVED', otherEpisode, FILENAME),
+    ).toThrow(/S20-E03-SH01/);
+  });
+
+  it('без имени файла формат не проверяется, но проверка НАЛИЧИЯ списка остаётся', () => {
+    expect(() =>
+      assertStoryboardApprovable('STB-storyboard', 'APPROVED', SHORT_IDS),
+    ).not.toThrow();
+    expect(() =>
+      assertStoryboardApprovable('STB-storyboard', 'APPROVED', PROSE_ONLY),
+    ).toThrow(/машиночитаемого списка кадров/);
+  });
+
+  it('не гейтит формат на DRAFT — черновик волен быть каким угодно', () => {
+    expect(() =>
+      assertStoryboardApprovable('STB-storyboard', 'DRAFT', SHORT_IDS, FILENAME),
+    ).not.toThrow();
+  });
+});

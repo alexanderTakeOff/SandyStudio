@@ -51,6 +51,20 @@ type ArgValue<A extends ArgSpec> = A extends { readonly values: readonly (infer 
 export interface ToolContext<S extends ToolSpec> {
   arg<K extends keyof S['args'] & string>(name: K): ArgValue<S['args'][K]>;
   env<K extends keyof NonNullable<S['env']> & string>(name: K): string;
+  /**
+   * Пришёл ли аргумент ЯВНО от вызывающего, или это статический дефолт из спеки.
+   *
+   * D74 (2026-08-08): без этого различения инструмент не может уступить дорогу
+   * настройкам эпизода. `--quality` с `default: 'high'` выглядел одинаково и
+   * когда его назвали, и когда взяли по умолчанию, поэтому
+   * `episodes.metadata.generation_config`, выставленный Директором в UI, не
+   * управлял ничем — держала только устная подсказка уму в чате, ровно то
+   * временное решение, которое Директор велел не принимать за постоянное.
+   *
+   * Приоритет получается честный: явный аргумент → настройка эпизода →
+   * статический дефолт как последний рубеж.
+   */
+  wasGiven<K extends keyof S['args'] & string>(name: K): boolean;
 }
 
 /**
@@ -158,7 +172,10 @@ export function resolveArgs(spec: ToolSpec, given: Readonly<Record<string, strin
  * Today `--qualiti high` silently yields the `high` default and spends $0.25
  * instead of $0.018 — an unrecorded class of defect this closes.
  */
-function parseArgv(spec: ToolSpec, argv: readonly string[]): Record<string, string> {
+function parseArgv(
+  spec: ToolSpec,
+  argv: readonly string[],
+): { values: Record<string, string>; given: Record<string, string> } {
   const given: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
@@ -171,7 +188,7 @@ function parseArgv(spec: ToolSpec, argv: readonly string[]): Record<string, stri
   }
 
   try {
-    return resolveArgs(spec, given);
+    return { values: resolveArgs(spec, given), given };
   } catch (e) {
     fail(spec, e instanceof Error ? e.message : String(e));
   }
@@ -199,7 +216,7 @@ export function defineTool<const S extends ToolSpec>(
     process.exit(0);
   }
 
-  const values = parseArgv(spec, argv);
+  const { values, given } = parseArgv(spec, argv);
 
   for (const [name, e] of Object.entries(spec.env ?? {})) {
     if (!process.env[name]) fail(spec, `не задана переменная окружения ${name} — ${e.about}`);
@@ -208,6 +225,7 @@ export function defineTool<const S extends ToolSpec>(
   const ctx = {
     arg: (name: string) => values[name],
     env: (name: string) => process.env[name]!,
+    wasGiven: (name: string) => name in given,
   } as ToolContext<S>;
 
   main(ctx).catch((e: unknown) => {

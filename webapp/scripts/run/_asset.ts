@@ -104,12 +104,13 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
     if (a.description) patch.description = a.description;
     if (a.content ?? a.description) patch.content = a.content ?? a.description;
 
-    // D76: не пустить STB в APPROVED/LOCKED без машиночитаемого списка кадров —
-    // резолвим статус/контент так же, как патч выше их резолвит.
+    // D76/D84: не пустить STB в APPROVED/LOCKED без машиночитаемого списка кадров
+    // и с shot_id не по канону — резолвим статус/контент так же, как патч выше.
     assertStoryboardApprovable(
       a.fileType,
       (patch.status as string | undefined) ?? existing.status,
       (patch.content as string | undefined) ?? existing.content,
+      filename,
     );
 
     const { error } = await sb.from('assets').update(patch).eq('id', existing.id);
@@ -148,7 +149,7 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
   const insertContent = a.content ?? a.description ?? null;
   // D76: same gate as the update branch — a NEW STB row can be born straight
   // into APPROVED (persistAsset defaults status to APPROVED when unset).
-  assertStoryboardApprovable(a.fileType, insertStatus, insertContent);
+  assertStoryboardApprovable(a.fileType, insertStatus, insertContent, filename);
 
   const { data, error } = await sb
     .from('assets')

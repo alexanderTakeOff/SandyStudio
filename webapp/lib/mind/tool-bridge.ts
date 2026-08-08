@@ -251,6 +251,11 @@ export async function invokeMindTool(
 
     const ctx: ToolContext<ToolSpec> = {
       arg: (n: string) => resolved[n],
+      // D74: тот же признак, что у CLI-пути. `given` здесь — то, что назвал УМ
+      // (после `applyDraftDefault`), поэтому «явно задано» значит ровно то же:
+      // инструмент отличит названный аргумент от подставленного дефолта и сможет
+      // уступить дорогу настройкам эпизода.
+      wasGiven: (n: string) => n in given,
       env: (n: string) => {
         const v = env[n];
         // Недекларированный env — дефект контракта тула, и он обязан быть громким.

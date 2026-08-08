@@ -611,22 +611,56 @@ export function extractShotsFromStoryboard(content: string): StoryboardShotV2[] 
  * No-op for non-STB file types and for transitions that are not APPROVED/LOCKED
  * — a DRAFT/REVIEW storyboard is free to be pure prose while still being
  * drafted; only the promotion that unblocks Timeline is gated.
+ *
+ * D84 (2026-08-08) — the gate also checks the shot_id FORMAT. Having the list is
+ * not enough: Timeline matches a frame to its cell by exact string equality
+ * between the storyboard's `shot_id` and the asset's
+ * `metadata.shot_reference.shot_id`, and the latter is minted by `shotIdFor()`
+ * (scripts/run/_asset.ts) as `<episode code without SS->-SH<nn>`. On SS-S20-E04
+ * the mind wrote `"SH01"` in prose-authored JSON while the tool registered
+ * `S20-E04-SH01`; the frame was correct, paid for and invisible — an empty cell
+ * three steps downstream, with nothing naming the cause. Same remedy as the
+ * list check: refuse at the moment of promotion and say what the format must be.
+ *
+ * The expected prefix is derived from the FILENAME (canonical per CLAUDE.md §3),
+ * so the gate stays a pure synchronous function with no DB round-trip. When the
+ * filename is absent or unparseable the format check is skipped — the presence
+ * check still runs, and a missing filename must never be a reason to block work.
  */
 export function assertStoryboardApprovable(
   fileType: string,
   status: string | null | undefined,
   content: string | null | undefined,
+  filename?: string | null,
 ): void {
   if (!fileType.startsWith('STB')) return;
   if (status !== 'APPROVED' && status !== 'LOCKED') return;
   const shots = extractShotsFromStoryboard(content ?? '');
-  if (shots.length > 0) return;
+  if (shots.length === 0) {
+    throw new Error(
+      `${fileType}: нельзя перевести в ${status} без машиночитаемого списка кадров. ` +
+        'Timeline и сборщики шот-листа (buildShotListFromApprovedEREF/AnchorChain) ' +
+        'читают ТОЛЬКО fenced ```json блок {"acts":[{"shots":[{"shot_id":...}]}]} ' +
+        '(контракт storyboarder@v2) — проза сама по себе их не запускает. ' +
+        'Допиши JSON-блок с shot_id на каждый кадр, затем повтори APPROVED.',
+    );
+  }
+
+  // `SS-S20-E04-STB-storyboard-v01-DRAFT.md` → `S20-E04` → ждём `S20-E04-SH<nn>`.
+  const codeMatch = /^SS-(S\d+-E\d+)-/i.exec(filename ?? '');
+  if (!codeMatch) return;
+  const stem = codeMatch[1]!.toUpperCase();
+  const expected = new RegExp(`^${stem}-SH\\d+$`);
+  const wrong = shots.map((s) => s.shot_id).filter((id) => !expected.test(id));
+  if (wrong.length === 0) return;
   throw new Error(
-    `${fileType}: нельзя перевести в ${status} без машиночитаемого списка кадров. ` +
-      'Timeline и сборщики шот-листа (buildShotListFromApprovedEREF/AnchorChain) ' +
-      'читают ТОЛЬКО fenced ```json блок {"acts":[{"shots":[{"shot_id":...}]}]} ' +
-      '(контракт storyboarder@v2) — проза сама по себе их не запускает. ' +
-      'Допиши JSON-блок с shot_id на каждый кадр, затем повтори APPROVED.',
+    `${fileType}: нельзя перевести в ${status} — shot_id не по канону студии. ` +
+      `Ожидается «${stem}-SH01», «${stem}-SH02», … (код эпизода без префикса SS- плюс номер кадра); ` +
+      `в списке кадров стоит: ${wrong.slice(0, 5).map((id) => `«${id}»`).join(', ')}` +
+      `${wrong.length > 5 ? ` и ещё ${wrong.length - 5}` : ''}. ` +
+      'Timeline связывает кадр с ячейкой ТОЧНЫМ совпадением этой строки с ' +
+      'metadata.shot_reference.shot_id, который проставляют инструменты, — при ' +
+      'расхождении кадр сгенерируется, спишет деньги и не покажется нигде.',
   );
 }
 
