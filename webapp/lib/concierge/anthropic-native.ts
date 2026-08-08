@@ -43,6 +43,24 @@ export interface ConciergeCompletion {
   };
 }
 
+// Заголовок беты расширенного окна (Директор 08.08: подтвердить окно ПЕРЕД
+// длинными эпизодами — 60с+ эпизод копит рефы+кадры+стоп-кадры клипов быстрее,
+// чем влезает в стандартные 200К). Без заголовка запрос идёт со стандартным
+// окном МОЛЧА — SDK не откажет, значит несовпадение не будет видно нигде,
+// кроме как в преждевременном обрыве истории треда. Триггерится СУФФИКСОМ
+// `-1m` в id модели (см. каталог `concierge-provider-config.ts`), чтобы окно
+// было ЯВНЫМ выбором в дропдауне, а не скрытым свойством модели.
+const CONTEXT_1M_SUFFIX = '-1m';
+const CONTEXT_1M_BETA_HEADER = 'context-1m-2025-08-07';
+
+/** Модель + флаг «эта модель просила окно 1M» — суффикс снят для реального API-имени. */
+export function resolveModel(model: string): { apiModel: string; contextWindow1m: boolean } {
+  if (model.endsWith(CONTEXT_1M_SUFFIX)) {
+    return { apiModel: model.slice(0, -CONTEXT_1M_SUFFIX.length), contextWindow1m: true };
+  }
+  return { apiModel: model, contextWindow1m: false };
+}
+
 let cachedClient: Anthropic | null = null;
 function anthropicClient(): Anthropic {
   if (!cachedClient) {
@@ -172,10 +190,14 @@ export async function createConciergeCompletion(
   opts: { systemSplit: ConciergeSystemSplit },
 ): Promise<ConciergeCompletion> {
   if (!conciergeAnthropicNativeEnabled()) {
-    // Byte-for-byte passthrough — identical to pre-migration behavior.
-    return (await openaiClient.chat.completions.create(
-      params,
-    )) as unknown as ConciergeCompletion;
+    // Байт-в-байт passthrough — но суффикс `-1m` не настоящее имя модели API
+    // (см. resolveModel выше), а бета-заголовок здесь недоступен вовсе — на
+    // compat-поверхности он и так молча отбрасывается (см. заметку файла).
+    // Снимаем суффикс, иначе неизвестное имя модели уходит на 400.
+    return (await openaiClient.chat.completions.create({
+      ...params,
+      model: resolveModel(params.model).apiModel,
+    })) as unknown as ConciergeCompletion;
   }
 
   const { systemSplit } = opts;
@@ -187,9 +209,10 @@ export async function createConciergeCompletion(
   }
 
   const tools = translateTools(params.tools);
+  const { apiModel, contextWindow1m } = resolveModel(params.model);
 
   const request = {
-    model: params.model,
+    model: apiModel,
     max_tokens: params.max_tokens ?? 1024,
     system,
     messages: translateMessages(params.messages),
@@ -202,6 +225,7 @@ export async function createConciergeCompletion(
 
   const resp = await anthropicClient().messages.create(
     request as unknown as Anthropic.MessageCreateParamsNonStreaming,
+    contextWindow1m ? { headers: { 'anthropic-beta': CONTEXT_1M_BETA_HEADER } } : undefined,
   );
 
   const textParts: string[] = [];
