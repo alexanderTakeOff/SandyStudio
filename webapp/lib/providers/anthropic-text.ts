@@ -170,6 +170,13 @@ interface ModelRate {
   outputUsdPerMillion: number;
 }
 const MODEL_RATES: ReadonlyArray<{ prefix: string; rate: ModelRate }> = [
+  // ВНИМАНИЕ на порядок: Opus 4.8 подешевел втрое против прежних Opus-4.x
+  // ($5/$25 вместо $15/$75), поэтому его префикс обязан стоять ПЕРЕД общим
+  // `claude-opus-4` — иначе `claude-opus-4-8-1m` (модель единого ума) матчится
+  // на старую строку и счёт завышается втрое. Найдено 2026-08-08 сразу после
+  // того, как D81 включил запись стоимости ума в budget_log: цифра пошла бы в
+  // журнал неверной с первого же хода.
+  { prefix: 'claude-opus-4-8',  rate: { inputUsdPerMillion: 5.00, outputUsdPerMillion: 25.00 } },
   { prefix: 'claude-haiku-4',   rate: { inputUsdPerMillion: 0.80, outputUsdPerMillion: 4.00 } },
   { prefix: 'claude-sonnet-4',  rate: { inputUsdPerMillion: 3.00, outputUsdPerMillion: 15.00 } },
   { prefix: 'claude-opus-4',    rate: { inputUsdPerMillion: 15.00, outputUsdPerMillion: 75.00 } },

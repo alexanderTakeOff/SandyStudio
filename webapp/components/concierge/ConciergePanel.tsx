@@ -411,6 +411,13 @@ export function ConciergePanel() {
   // the Director can cancel a hanging turn. abortControllerRef holds the
   // current controller during streaming; null when no request is in flight.
   const abortControllerRef = useRef<AbortController | null>(null);
+  // D83: DB-load эффект висит на [threadId] и не должен перезапускаться от каждой
+  // новой реплики — иначе восстановление ленты дёргалось бы весь разговор. Ref
+  // даёт ему прочитать АКТУАЛЬНЫЙ стейт, не попадая в зависимости.
+  const messagesRef = useRef<Message[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // TD-20.A — current tool plashka. `null` when no tool is executing.
   // `startedAt` is wall-clock so the elapsed-seconds counter ticks via the
@@ -652,13 +659,23 @@ export function ConciergePanel() {
         const sb = createSupabaseBrowserClient();
         // TD-20.B 2026-05-20 — also pull auto-react assistant turns so
         // they survive page reload. Filter is applied in JS below.
+        // D83 (2026-08-08): роль `director` тоже грузится. До этой правки запрос
+        // брал только system+assistant, а внутри цикла оставлял из assistant
+        // ТОЛЬКО auto-react — то есть при возврате в эпизод лента восстанавливала
+        // одни ambient-пузыри, без единой реплики разговора. Директор: «переключение
+        // между эпизодами чат Полины стирается и не восстанавливается».
+        //
+        // Опаснее косметики: панель шлёт в /api/mind/chat историю ИЗ СВОЕГО стейта
+        // (роут ничего не грузит из базы), и `sessionStorage` чистится при смене
+        // треда. Пустая лента = следующий ход уходит без памяти, и ум начинает
+        // разговор заново, хотя вся история лежит в concierge_turns.
         const { data, error } = await sb
           .from('concierge_turns')
           .select('id,role,content,metadata,created_at')
           .eq('thread_id', threadId)
-          .in('role', ['system', 'assistant'])
+          .in('role', ['system', 'assistant', 'director'])
           .order('created_at', { ascending: false })
-          .limit(30);
+          .limit(60);
         console.log('[ConciergePanel] DB-load result: rows=', data?.length ?? 0, 'error=', error);
         if (cancelled || error || !data) return;
         // supabase-js infers a tuple-with-error union for the row type when
@@ -673,8 +690,43 @@ export function ConciergePanel() {
         };
         const rows = data as unknown as SystemTurnRow[];
         const additions: Message[] = [];
+        // D83: ленту разговора (director + обычные assistant) восстанавливаем
+        // ТОЛЬКО когда она пуста — то есть после смены эпизода или холодной
+        // загрузки. Если реплики уже на экране, они пришли стримингом и своего
+        // `turnId` не несут, так что дедуп по id их не поймает и мы бы задвоили
+        // диалог. Ambient/team-chat пузыри грузятся всегда, как и раньше.
+        const conversationEmpty = messagesRef.current.every(
+          (m) => m.role !== 'user' && m.role !== 'assistant',
+        );
         for (const t of [...rows].reverse()) {
           const meta = (t.metadata ?? {}) as Record<string, unknown>;
+          // D83: ход Директора — в ленте это `user`. Роут пишет его ДО цикла
+          // (role='director'), поэтому без него восстановленный разговор был бы
+          // монологом ума.
+          if (t.role === 'director') {
+            if (conversationEmpty && t.content.trim()) {
+              additions.push({
+                role: 'user',
+                content: t.content,
+                turnId: t.id,
+                createdAt: t.created_at,
+              });
+            }
+            continue;
+          }
+          // D83: обычный (не auto-react) ответ ума — тот самый, что приходит
+          // стримингом в живом ходе и раньше при возврате терялся целиком.
+          if (t.role === 'assistant' && meta.auto_react !== true) {
+            if (conversationEmpty && t.content.trim()) {
+              additions.push({
+                role: 'assistant',
+                content: t.content,
+                turnId: t.id,
+                createdAt: t.created_at,
+              });
+            }
+            continue;
+          }
           // TD-20.B — auto-react assistant turn (server-authored by
           // chat-internal). Restore so reload doesn't lose Polina's
           // autonomous reactions.

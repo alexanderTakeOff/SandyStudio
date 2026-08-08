@@ -67,8 +67,13 @@ describe('recordConciergeCost', () => {
     expect(row.episode_id).toBe('ep-123');
     expect(row.job_id).toBeNull(); // never collides on the partial-unique index
     expect(row.tokens_used).toBe(1500);
-    // opus rates $15/$75 per M → 1000*15/1e6 + 500*75/1e6 = 0.0525
-    expect(row.cost_usd).toBeCloseTo(0.0525, 4);
+    // Opus 4.8 = $5/$25 per M → 1000*5/1e6 + 500*25/1e6 = 0.0175.
+    // 2026-08-08: тут стояло 0.0525 по ставкам $15/$75 — цена ПРЕЖНИХ Opus-4.x.
+    // Таблица цен ошибалась так же, поэтому тест её не ловил, а консервировал:
+    // проверка, списанная с той же неверной константы, не защищает. Реальную
+    // цену свёрили по документации Anthropic, когда D81 включил запись стоимости
+    // ума в budget_log и завышение втрое пошло бы прямо в журнал.
+    expect(row.cost_usd).toBeCloseTo(0.0175, 4);
   });
 
   it('skips the insert when there are no tokens to record', async () => {

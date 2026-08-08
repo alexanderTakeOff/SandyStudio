@@ -34,15 +34,28 @@ describe('anthropic-text — pure helpers', () => {
 
     // D81 (2026-08-08): единый ум работает на `claude-opus-4-8-1m` (выставлено
     // Директором через UI, лежит в app_config). Цена его ходов пишется в
-    // budget_log ЭТОЙ функцией, поэтому промах таблицы по модели ума = молча
-    // заниженный счёт. Незнакомая модель уходит в фолбэк на ставки Sonnet —
-    // впятеро дешевле Opus, и никто бы этого не заметил.
-    it('prices the mind model claude-opus-4-8-1m at Opus rates, not the Sonnet fallback', () => {
+    // budget_log ЭТОЙ функцией, поэтому промах таблицы по модели ума попадает
+    // прямо в денежный журнал.
+    //
+    // Ловушек тут ДВЕ, и обе проверяются этим кейсом:
+    //  1) незнакомая модель молча уходит в фолбэк на ставки Sonnet ($3/$15);
+    //  2) Opus 4.8 стоит $5/$25 — ВТРОЕ дешевле прежних Opus-4.x ($15/$75),
+    //     поэтому его префикс обязан стоять в таблице ПЕРЕД общим `claude-opus-4`,
+    //     иначе счёт завышается втрое. Ровно это и было до 2026-08-08.
+    it('prices the mind model claude-opus-4-8-1m at Opus-4.8 rates, not the old Opus or the Sonnet fallback', () => {
       const cost = computeCostUsd(
         { inputTokens: 1_000_000, outputTokens: 1_000_000 },
         'claude-opus-4-8-1m',
       );
-      expect(cost).toBeCloseTo(90.0, 4); // 15 + 75, а не 18 (=3+15) по Sonnet
+      expect(cost).toBeCloseTo(30.0, 4); // 5 + 25; не 90 (старый Opus), не 18 (Sonnet)
+    });
+
+    it('keeps the OLD Opus-4.x rates for pre-4.8 models (prefix order must not swallow them)', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        'claude-opus-4-7',
+      );
+      expect(cost).toBeCloseTo(90.0, 4); // 15 + 75
     });
 
     it('prices gpt-5.5 at $5/M input + $30/M output (not Sonnet-default)', () => {
