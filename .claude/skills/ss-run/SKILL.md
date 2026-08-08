@@ -25,12 +25,15 @@ created: 2026-07-31
 
 ```bash
 cd webapp
-curl -s -o /dev/null -w "app=%{http_code} " localhost:3000/api/health
-curl -s -o /dev/null -w "inngest=%{http_code}\n" localhost:8288/
+curl -s -o /dev/null -w "app=%{http_code} " localhost:3001/api/health
+curl -s -o /dev/null -w "inngest=%{http_code}\n" localhost:8388/
 ```
 
-Стек не поднят → из корня репозитория: `start-stack.cmd` (без сборки) или
-`start-stack-build.cmd` (после правок кода). Стоп — `stop-stack.cmd`.
+Это дерево `C:\SandyStudio-nx` — порты 3001/8388, СВОИ, не master'овские 3000/8288.
+Стек не поднят → из корня репозитория: **`start-stack-nx.cmd`** (без сборки, задаёт
+`-Port 3001 -InngestPort 8388` сам) или `start-stack-nx.cmd -Build` (после правок кода —
+флаг форвардится в `start-stack.ps1`). Голый `start-stack.cmd` без `-nx` бьёт по
+3000/8288 — чужим для этой ветки. Стоп — `stop-stack.cmd` (гасит по своему дереву).
 **Не поднимать серверы фоновыми job'ами** — харнесс убивает обёртку.
 
 Позиция прогона — §0 заметок. Больше ничего читать не нужно.
