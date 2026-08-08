@@ -88,13 +88,18 @@ function Write-BootBanner([string]$Path) {
 Write-Host '== starting Inngest (self-host, durable SQLite) ==' -ForegroundColor Cyan
 Start-LogRotation "$Web\inngest.log"
 Write-BootBanner "$Web\inngest.log"
-Start-Process powershell -ArgumentList '-NoProfile','-NoExit','-Command',
+# NO -NoExit (2026-08-08, Director: окна копились гирляндами в трее). Вывод и так
+# уходит ТОЛЬКО в лог-файл (*>>) — окно никогда не читается глазами, только логом.
+# Без -NoExit powershell САМ закрывается, как только умирает обёрнутый процесс —
+# то есть ровно в момент, когда stop-stack/пересборка убивают node.exe/inngest.exe,
+# а не остаётся пустой оболочкой до следующей перезагрузки машины.
+Start-Process powershell -ArgumentList '-NoProfile','-Command',
   "Set-Location $Web; npx $InngestCli start --port $InngestPort --connect-gateway-port $InngestGatewayPort --event-key $ek --signing-key $sk --sdk-url http://localhost:$Port/api/inngest --sqlite-dir `"$SqliteDir`" *>> `"$Web\inngest.log`"" -WindowStyle Minimized
 
 Write-Host "== starting App (npm run start on :$Port) ==" -ForegroundColor Cyan
 Start-LogRotation "$Web\prod.log"
 Write-BootBanner "$Web\prod.log"
-Start-Process powershell -ArgumentList '-NoProfile','-NoExit','-Command',
+Start-Process powershell -ArgumentList '-NoProfile','-Command',
   "Set-Location $Web; npm run start -- -p $Port *>> `"$Web\prod.log`"" -WindowStyle Minimized
 
 Write-Host '== waiting for boot (18s) ==' -ForegroundColor Cyan
