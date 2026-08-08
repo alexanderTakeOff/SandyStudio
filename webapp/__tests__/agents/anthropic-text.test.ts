@@ -24,10 +24,14 @@ describe('anthropic-text — pure helpers', () => {
       expect(cost).toBeCloseTo(4.8, 4);
     });
 
-    it('prices Opus at $15/M input + $75/M output', () => {
+    // 2026-08-08: кейс был написан на `claude-opus-4-7` по ставкам $15/$75. Это
+    // цена ПРЕЖНИХ поколений Opus; 4.7 и 4.8 стоят $5/$25 (сверено по документации).
+    // Модель заменена на ту, для которой ставка действительно верна, — иначе тест
+    // консервировал бы завышение втрое, ровно как это уже случилось с cost.test.ts.
+    it('prices legacy Opus at $15/M input + $75/M output', () => {
       const cost = computeCostUsd(
         { inputTokens: 0, outputTokens: 100_000 },
-        'claude-opus-4-7',
+        'claude-opus-4-1',
       );
       expect(cost).toBeCloseTo(7.5, 4);
     });
@@ -50,12 +54,22 @@ describe('anthropic-text — pure helpers', () => {
       expect(cost).toBeCloseTo(30.0, 4); // 5 + 25; не 90 (старый Opus), не 18 (Sonnet)
     });
 
-    it('keeps the OLD Opus-4.x rates for pre-4.8 models (prefix order must not swallow them)', () => {
+    // Opus 4.7 тарифицируется ТАК ЖЕ, как 4.8 ($5/$25) — различие только в
+    // fast-режиме, которым мы не пользуемся. Сверено по документации 2026-08-08.
+    it('prices Opus 4.7 identically to 4.8 ($5/$25), not by the legacy Opus-4.x row', () => {
       const cost = computeCostUsd(
         { inputTokens: 1_000_000, outputTokens: 1_000_000 },
         'claude-opus-4-7',
       );
-      expect(cost).toBeCloseTo(90.0, 4); // 15 + 75
+      expect(cost).toBeCloseTo(30.0, 4);
+    });
+
+    it('keeps the legacy $15/$75 row for older Opus-4.x (prefix order must not swallow it)', () => {
+      const cost = computeCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        'claude-opus-4-1',
+      );
+      expect(cost).toBeCloseTo(90.0, 4);
     });
 
     it('prices gpt-5.5 at $5/M input + $30/M output (not Sonnet-default)', () => {
