@@ -9,7 +9,7 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { sb, seriesId } from './_env';
 import { defineTool } from './_tool';
-import { shotFromFilename, traceInStudio } from './_asset';
+import { shotFromFilename, traceInStudio, assertEpisodeReadyToSpend } from './_asset';
 import { openAIEditsMultiProvider } from '../../lib/providers/openai-edits-multi';
 import { readAssetMediaAsBase64 } from '../../lib/media-cache';
 // D74: те же читатели настроек эпизода, что у агентского конвейера — своя копия
@@ -58,6 +58,10 @@ export default defineTool(
     stations: ['episode_references'],
   },
   async ({ arg, env, wasGiven }) => {
+    // D90: гейт денег ПЕРВЫМ действием — до чтения промпта, до референсов, до
+    // любой работы. Отказ должен стоить ноль.
+    await assertEpisodeReadyToSpend(env('RUN_EPISODE_ID'));
+
     const out = arg('out');
     const size = arg('size');
 

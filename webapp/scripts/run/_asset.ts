@@ -181,6 +181,49 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
   return { id: data.id, filename, created: true, cachedAt };
 }
 
+/**
+ * ГЕЙТ ДЕНЕГ для прямого пути (D90, 2026-08-09).
+ *
+ * Правило Директора от 2026-07-01: после брифа НИКАКАЯ работа не идёт, пока не
+ * утверждены настройки эпизода и потолок. Оно было реализовано — но только в
+ * `lib/agents/gate.ts:544`, то есть на АГЕНТСКОМ пути (Inngest). Прямые
+ * инструменты, которыми теперь работает единый ум, этот гейт не проходят вовсе:
+ * `gen-frame`/`gen-video` тратили бы деньги на эпизоде без утверждённого бюджета
+ * и без настроек, и никто бы не остановил.
+ *
+ * На E03/E04 правило не нарушилось только потому, что Директор выставил флаг
+ * рукой — то есть держалось его вниманием, а не механикой. Директор: «это
+ * must-have до того, как двигаться дальше… не факт, что инструментарий сейчас
+ * блокирует отсутствие утверждения автоматически. А это должно быть».
+ *
+ * Проверяется ДВОЕ, потому что Директор назвал двоих: утверждение бюджета и
+ * наличие настроек эпизода (`generation_config` — то, что он выставляет в UI и
+ * что с D74 реально управляет инструментом).
+ */
+export async function assertEpisodeReadyToSpend(episodeId: string): Promise<void> {
+  const { data, error } = await sb
+    .from('episodes')
+    .select('episode_code,budget_ceiling,metadata')
+    .eq('id', episodeId)
+    .maybeSingle();
+  if (error) throw new Error(`проверка бюджета эпизода: ${error.message}`);
+  if (!data) throw new Error(`эпизода ${episodeId} нет — RUN_EPISODE_ID указывает в никуда`);
+
+  const meta = (data.metadata ?? {}) as Record<string, unknown>;
+  const missing: string[] = [];
+  if (meta.budget_approved !== true) missing.push('бюджет не утверждён Директором');
+  if (data.budget_ceiling === null || data.budget_ceiling === undefined) missing.push('не задан потолок');
+  if (!meta.generation_config) missing.push('не заданы настройки эпизода (generation_config)');
+
+  if (missing.length > 0) {
+    throw new Error(
+      `${data.episode_code}: тратить нельзя — ${missing.join('; ')}. ` +
+        'Правило Директора: после брифа работа не идёт, пока не утверждены настройки эпизода ' +
+        'и потолок. Их ставит ДИРЕКТОР в Episode Settings — попроси и жди, обойти нечем.',
+    );
+  }
+}
+
 /** Код эпизода из базы — никогда не хардкодится (уроки D49, D58). */
 export async function episodeCode(episodeId: string): Promise<string> {
   const { data, error } = await sb.from('episodes').select('episode_code').eq('id', episodeId).single();

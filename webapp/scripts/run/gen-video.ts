@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { sb } from './_env';
 import { defineTool } from './_tool';
-import { shotFromFilename, traceInStudio } from './_asset';
+import { shotFromFilename, traceInStudio, assertEpisodeReadyToSpend } from './_asset';
 import { generateVideoFalSeedance } from '../../lib/providers/fal-seedance';
 
 /** Sample one pixel well inside the wall area and return it as ffmpeg 0xRRGGBB. */
@@ -63,6 +63,9 @@ export default defineTool(
     stations: ['visual_generator'],
   },
   async ({ arg, env }) => {
+    // D90: гейт денег ПЕРВЫМ действием — отказ обязан стоить ноль.
+    await assertEpisodeReadyToSpend(env('RUN_EPISODE_ID'));
+
     const out = arg('out');
     const duration = Number(arg('duration'));
     const tier = arg('tier');
