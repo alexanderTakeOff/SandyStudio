@@ -31,10 +31,13 @@ process.stdin.on('end', () => {
   if (/scripts[\\/]run[\\/](gen-frame|gen-video|stitch)(\.ts)?\b/.test(cmd)) {
     try {
       execFileSync('npx', ['tsx', 'scripts/gate-check.ts', '--kind', 'spend'], {
-        cwd: require('node:path').join(
-          process.env.CLAUDE_PROJECT_DIR ?? 'C:/SandyStudio-polina',
-          'webapp',
-        ),
+        // CLAUDE_PROJECT_DIR = cwd спавна (мост даёт .../webapp) — 'webapp' не
+        // доклеивать вслепую, иначе webapp\webapp (пойман живым ходом 09.08).
+        cwd: (() => {
+          const p = require('node:path');
+          const root = (process.env.CLAUDE_PROJECT_DIR ?? 'C:/SandyStudio-polina').replace(/[\\/]+$/, '');
+          return /webapp$/i.test(root) ? root : p.join(root, 'webapp');
+        })(),
         env: process.env,
         stdio: ['ignore', 'ignore', 'pipe'],
         shell: process.platform === 'win32',

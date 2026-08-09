@@ -5,7 +5,11 @@ const path = require('node:path');
 
 try {
   const out = execFileSync('npx', ['tsx', 'scripts/gate-check.ts', '--kind', 'context'], {
-    cwd: path.join(process.env.CLAUDE_PROJECT_DIR ?? 'C:/SandyStudio-polina', 'webapp'),
+    // CLAUDE_PROJECT_DIR = cwd спавна (.../webapp) — не доклеивать 'webapp' вслепую.
+    cwd: (() => {
+      const root = (process.env.CLAUDE_PROJECT_DIR ?? 'C:/SandyStudio-polina').replace(/[\\/]+$/, '');
+      return /webapp$/i.test(root) ? root : path.join(root, 'webapp');
+    })(),
     env: process.env,
     encoding: 'utf8',
     shell: process.platform === 'win32',
