@@ -112,7 +112,7 @@ npx tsx scripts/run/gen-frame.ts --prompt-file <prompt-file> --refs <refs> --out
 | `--shot` | — | `` | — | номер кадра, `sh01` — по нему изделие СРАЗУ заводится в студию. Пусто — выводится из имени файла; не вывелся — след не оставлен, и об этом сказано громко |
 | `--size` | — | `1024x1536` | `1024x1536` · `1024x1024` · `1536x1024` | размер кадра |
 | `--quality` | — | `high` | `low` · `medium` · `high` | тир качества; low держит канон и стоит $0,018 |
-| `--status` | — | `APPROVED` | `DRAFT` · `REVIEW` · `APPROVED` | статус строки изделия в студии |
+| `--status` | — | `REVIEW` | `DRAFT` · `REVIEW` · `APPROVED` | статус строки изделия в студии |
 
 **env:**
 - `RUN_EPISODE_ID` — эпизод, на который списывается трата; без него инструмент не стартует
@@ -139,7 +139,7 @@ npx tsx scripts/run/gen-video.ts --frame <frame> --prompt-file <prompt-file> --o
 | `--prompt-file` | да | — | — | файл с видео-промптом кадра |
 | `--out` | да | — | — | куда положить MP4; директории создаются |
 | `--shot` | — | `` | — | номер кадра, `sh01` — по нему клип СРАЗУ заводится в студию. Пусто — выводится из имени файла кадра или клипа |
-| `--duration` | — | `10` | — | длительность клипа в секундах |
+| `--duration` | — | `` | — | длительность клипа в секундах; пусто — из раскадровки (+0.5с+0.5с, min 4) |
 | `--tier` | — | `standard` | `standard` · `fast` | тир Seedance |
 | `--seed` | — | `` | — | сид для повторяемости; пусто — провайдер выбирает сам |
 
@@ -210,7 +210,7 @@ npx tsx scripts/run/register-canon.ts --slug <slug> [--file <file>] [--desc <des
 Заводит кадр, клип, кат или музыку эпизода в студию — с типом и метаданными, которые читает лента.
 
 ```
-npx tsx scripts/run/register-media.ts --file <file> --kind <kind> [--shot <shot>] [--version <version>] [--status <status>] [--desc <desc>]
+npx tsx scripts/run/register-media.ts --file <file> --kind <kind> [--shot <shot>] [--status <status>] [--desc <desc>]
 ```
 
 | аргумент | обязателен | по умолчанию | допустимо | что это |
@@ -218,8 +218,7 @@ npx tsx scripts/run/register-media.ts --file <file> --kind <kind> [--shot <shot>
 | `--file` | да | — | — | исходный файл — PNG для кадра, MP4 для клипа и ката, аудио для музыки |
 | `--kind` | да | — | `frame` · `clip` · `cut` · `music` | что заводим |
 | `--shot` | — | `` | — | номер кадра, `sh01`; для `cut` и `music` не нужен |
-| `--version` | — | `v01` | — | версия в имени и в строке |
-| `--status` | — | `APPROVED` | — | статус ассета; лента показывает APPROVED и LOCKED |
+| `--status` | — | `REVIEW` | `DRAFT` · `REVIEW` · `APPROVED` | статус ассета |
 | `--desc` | — | `` | — | описание — что это и откуда |
 
 **env:**

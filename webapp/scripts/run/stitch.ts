@@ -86,11 +86,12 @@ export default defineTool(
     // ПОРЯДОК СБОРКИ ЗАПИСЫВАЕТСЯ. Он не сохранялся нигде, и через сутки
     // восстановить, какая версия каждого кадра вошла в кат, можно было только
     // догадкой по именам файлов (2026-08-05).
+    // Ф1: версия строки вычисляется регистратором (max+1) — `--version` остаётся
+    // только меткой в описании.
     await traceInStudio({
       episodeId: env('RUN_EPISODE_ID'),
       kind: 'cut',
       file: arg('out'),
-      version: arg('version'),
       description: `кат ${arg('version')} · ${total.toFixed(1)} с · порядок: ${order.join(', ')}`,
       origin: 'stitch',
     });

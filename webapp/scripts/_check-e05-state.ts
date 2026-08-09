@@ -52,9 +52,27 @@ async function main() {
   const { existsSync, statSync } = await import('node:fs');
   const { data: imgs } = await sb
     .from('assets')
-    .select('id,filename,staging_path,drive_file_id')
+    .select('id,filename,staging_path,drive_file_id,version,status,metadata')
     .eq('episode_id', ep.id)
-    .like('filename', '%.png');
+    .like('filename', '%.png')
+    .order('filename');
+  const v2 = (imgs ?? []).find((x) => x.version === 2);
+  if (v2) {
+    const m = (v2.metadata ?? {}) as Record<string, any>;
+    console.log('\nПРОВЕРКА Ф1 (строка v2):');
+    console.log('  filename:', v2.filename, '| status:', v2.status, '| version:', v2.version);
+    console.log('  contract:', m.shot_reference?.contract ?? 'НЕТ');
+    console.log('  shot_id:', m.shot_reference?.shot_id ?? 'НЕТ');
+    console.log('  drive_file_id:', v2.drive_file_id ?? 'null', '| staging_path:', v2.staging_path ?? 'null');
+  }
+  const { data: ev } = await sb
+    .from('activity_events')
+    .select('event_type,title,created_at')
+    .eq('episode_id', ep.id)
+    .eq('event_type', 'asset_created')
+    .order('created_at', { ascending: false })
+    .limit(2);
+  console.log('события asset_created:', JSON.stringify(ev));
   console.log('\nбайты кадров:');
   for (const a of imgs ?? []) {
     const p = localCacheAbsPath(a.filename);

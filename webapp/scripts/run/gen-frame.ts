@@ -42,8 +42,10 @@ export default defineTool(
       size: { about: 'размер кадра', default: '1024x1536', values: ['1024x1536', '1024x1024', '1536x1024'] },
       quality: { about: 'тир качества; low держит канон и стоит $0,018', default: 'high', values: ['low', 'medium', 'high'] },
       status: {
+        // R13 (Ф1): изделие ПРЕДЪЯВЛЯЕТСЯ, а не самоутверждается — APPROVED мимо
+        // ревью было дырой прямого пути.
         about: 'статус строки изделия в студии',
-        default: 'APPROVED',
+        default: 'REVIEW',
         values: ['DRAFT', 'REVIEW', 'APPROVED'],
       },
     },
@@ -222,9 +224,9 @@ export default defineTool(
         status: arg('status'),
         description: `кадр ${shot} · gpt-image-2/${quality} · $${cost.toFixed(3)}`,
         origin: 'gen-frame',
-        // D87: полный рецепт — промпт дословно и референсы в том порядке, в
-        // котором они ушли провайдеру. Промпт НЕ обрезается: усечённый образец
-        // бесполезен ровно тем, ради чего он хранится — его нельзя повторить.
+        // D87→Ф1: рецепт раскладывается регистратором в ЭТАЛОННЫЕ формы
+        // (image_prompt.history + shot_reference.generation_history) — промпт
+        // дословно, референсы в порядке подачи провайдеру.
         recipe: {
           prompt,
           provider: 'openai-edits-multi',
@@ -232,7 +234,6 @@ export default defineTool(
           quality,
           size,
           references: refsUsed,
-          generated_at: new Date().toISOString(),
           cost_usd: cost,
         },
       });

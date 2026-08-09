@@ -19,8 +19,9 @@ export default defineTool(
       file: { about: 'исходный файл — PNG для кадра, MP4 для клипа и ката, аудио для музыки' },
       kind: { about: 'что заводим', values: ['frame', 'clip', 'cut', 'music'] },
       shot: { about: 'номер кадра, `sh01`; для `cut` и `music` не нужен', default: '' },
-      version: { about: 'версия в имени и в строке', default: 'v01' },
-      status: { about: 'статус ассета; лента показывает APPROVED и LOCKED', default: 'APPROVED' },
+      // Ф1: версия ВЫЧИСЛЯЕТСЯ (max+1 по file_type) — заданная руками версия
+      // затирала историю (D88). Статус рождения — REVIEW: изделие предъявляется.
+      status: { about: 'статус ассета', default: 'REVIEW', values: ['DRAFT', 'REVIEW', 'APPROVED'] },
       desc: { about: 'описание — что это и откуда', default: '' },
     },
     env: { RUN_EPISODE_ID: { about: 'эпизод, которому принадлежит изделие' } },
@@ -37,12 +38,11 @@ export default defineTool(
       kind: arg('kind') as MediaKind,
       file: arg('file'),
       shot: arg('shot'),
-      version: arg('version'),
       status: arg('status'),
       description: arg('desc') || undefined,
       origin: 'direct-run register-media',
     });
 
-    console.log(res.created ? 'СОЗДАНА' : 'ОБНОВЛЕНА', `${res.id} · ${res.filename}`);
+    console.log('СОЗДАНА', `${res.id} · ${res.filename}`);
   },
 );

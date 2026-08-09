@@ -16,6 +16,7 @@ import { sb } from './_env';
 import { defineTool } from './_tool';
 import { shotFromFilename, traceInStudio, assertEpisodeReadyToSpend } from './_asset';
 import { generateVideoFalSeedance } from '../../lib/providers/fal-seedance';
+import { extractShotsFromStoryboard } from '../../lib/api/animatic-shotlist';
 
 /** Sample one pixel well inside the wall area and return it as ffmpeg 0xRRGGBB. */
 function wallColour(src: string): string {
@@ -51,7 +52,15 @@ export default defineTool(
           'из имени файла кадра или клипа',
         default: '',
       },
-      duration: { about: 'длительность клипа в секундах', default: '10' },
+      duration: {
+        // D99 (Директор, 09.08): дефолт 10с был отсебятиной — на линейной цене
+        // Seedance кадр в 5с стоил вдвое. Пусто — длительность берётся ИЗ
+        // РАСКАДРОВКИ (+0.5с на обрезку с каждой стороны, кламп по минимуму
+        // провайдера 4с). «Больше выразительности» закладывается в раскадровку,
+        // а не в длину видео.
+        about: 'длительность клипа в секундах; пусто — из раскадровки (+0.5с+0.5с, min 4)',
+        default: '',
+      },
       tier: { about: 'тир Seedance', default: 'standard', values: ['standard', 'fast'] },
       seed: { about: 'сид для повторяемости; пусто — провайдер выбирает сам', default: '' },
     },
@@ -67,10 +76,49 @@ export default defineTool(
     await assertEpisodeReadyToSpend(env('RUN_EPISODE_ID'));
 
     const out = arg('out');
-    const duration = Number(arg('duration'));
     const tier = arg('tier');
     const seedRaw = arg('seed');
     const seed = seedRaw ? Number(seedRaw) : undefined;
+
+    // D99: длительность = кадр раскадровки + 0.5с спереди + 0.5с сзади, кламп
+    // по минимуму провайдера (4с; максимум 15 держит сам fal-seedance). Явный
+    // `--duration` побеждает. Раскадровка читается тем же парсером, что лента.
+    const shotForDuration =
+      arg('shot') || shotFromFilename(arg('out')) || shotFromFilename(arg('frame'));
+    let duration = arg('duration') ? Number(arg('duration')) : NaN;
+    if (!Number.isFinite(duration)) {
+      if (!shotForDuration) {
+        throw new Error(
+          'длительность не задана и номер кадра не выводится — передай --duration или --shot',
+        );
+      }
+      const { data: stbRows } = await sb
+        .from('assets')
+        .select('content,filename')
+        .eq('episode_id', env('RUN_EPISODE_ID'))
+        .like('file_type', 'STB%')
+        .in('status', ['APPROVED', 'LOCKED'])
+        .order('version', { ascending: false })
+        .limit(1);
+      const stb = stbRows?.[0];
+      if (!stb?.content) {
+        throw new Error(
+          'D99: в эпизоде нет APPROVED/LOCKED раскадровки — длительность взять неоткуда; передай --duration явно',
+        );
+      }
+      const shots = extractShotsFromStoryboard(stb.content);
+      const token = shotForDuration.toUpperCase();
+      const match = shots.find((s) => s.shot_id.toUpperCase().endsWith(token));
+      if (!match?.duration_seconds) {
+        throw new Error(
+          `D99: кадр ${shotForDuration} не найден в раскадровке ${stb.filename} (или без длительности) — передай --duration явно`,
+        );
+      }
+      duration = Math.max(4, Math.round(match.duration_seconds + 1));
+      console.log(
+        `duration=${duration}s (раскадровка: ${match.duration_seconds}s + 0.5+0.5, ${stb.filename})`,
+      );
+    }
 
     const srcAbs = resolve(process.cwd(), arg('frame'));
     if (!existsSync(srcAbs)) throw new Error(`frame not found: ${srcAbs}`);
@@ -133,6 +181,18 @@ export default defineTool(
         shot,
         description: `клип ${shot} · ${res.model_id}/${tier} · $${res.cost_usd.toFixed(2)}`,
         origin: 'gen-video',
+        // R22/D101: промпт и параметры клипа — часть изделия; регистратор кладёт
+        // их плоскими полями по эталону exec-vgen.
+        recipe: {
+          prompt,
+          provider: 'seedance-fal-img2vid',
+          model: res.model_id,
+          tier,
+          resolution: '720p',
+          aspect_ratio: '9:16',
+          seed,
+          cost_usd: res.cost_usd,
+        },
       });
     } else {
       console.error(

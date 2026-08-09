@@ -13,13 +13,18 @@
 //   • свежесть превью — при замене байтов под тем же именем браузер держит старую
 //     картинку (DRAFT кэшируется на час, APPROVED/LOCKED — на год как immutable).
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, resolve } from 'node:path';
 import { sb } from './_env';
 import { localCacheAbsPath } from '../../lib/media-cache';
-import { bumpPreviewFreshness } from '../../lib/asset-preview-resolver';
+import { bumpPreviewFreshness, resolvePreviewSrc } from '../../lib/asset-preview-resolver';
 import { assertStoryboardApprovable } from '../../lib/api/animatic-shotlist';
 import { assertCastApprovable } from '../../lib/agents/episode-cast';
+// Ф1 миграции (R1-R23): медиа пишется В ФОРМАХ КОНВЕЙЕРА, теми же функциями.
+import { persistBinary, type BinaryExt } from '../../lib/persist-binary';
+import { SHOT_REFERENCE_CONTRACT, isShotReferenceV2 } from '../../lib/api/shot-reference';
+import { resolveSlotDescriptor, demoteSiblingApproved } from '../../lib/api/single-approved';
+import { logEvent } from '../../lib/api/events';
 
 export interface PersistAssetArgs {
   /**
@@ -93,6 +98,55 @@ export async function persistAsset(a: PersistAssetArgs): Promise<PersistAssetRes
 
   // Без этого поля карточка молча пишет «no preview» — см. шапку.
   const drivePath = `/api/media/${filename}`;
+
+  // Правка через ревью = ОТДЕЛЬНАЯ версия (Директор, 09.08): документ, чьё
+  // содержимое меняется ПОСЛЕ выхода из DRAFT, получает новую строку `max+1`,
+  // а не переписывает слот — история правок обязана сохраняться (паттерн
+  // `nextVersionFor`, lib/api/series-bible.ts). DRAFT итерируется на месте.
+  if (existing && a.content !== undefined && a.content !== existing.content && existing.status !== 'DRAFT') {
+    const nextVersion = ((existing.version as number | null) ?? 1) + 1;
+    const nextTag = `v${String(nextVersion).padStart(2, '0')}`;
+    const status = a.status ?? 'REVIEW';
+    const newFilename = (a.filename ?? existing.filename)
+      .replace(/-v\d+-/, `-${nextTag}-`)
+      .replace(/-(DRAFT|REVIEW|REVISION|APPROVED|LOCKED)(\.[^.]+)$/, `-${status}$2`);
+    if (a.srcPath) {
+      const dst = localCacheAbsPath(newFilename);
+      mkdirSync(dirname(dst), { recursive: true });
+      copyFileSync(resolve(process.cwd(), a.srcPath), dst);
+      cachedAt = dst;
+    }
+    assertStoryboardApprovable(a.fileType, status, a.content, newFilename);
+    assertCastApprovable(a.fileType, status, a.content, a.metadata ?? {});
+    const { data: created, error: verErr } = await sb
+      .from('assets')
+      .insert({
+        episode_id: a.episodeId ?? null,
+        series_id: a.seriesId ?? null,
+        file_type: a.fileType,
+        filename: newFilename,
+        drive_path: `/api/media/${newFilename}`,
+        status,
+        description: a.description ?? null,
+        content: a.content,
+        agent_id: a.agentId ?? 'DIRECT-RUN',
+        version: nextVersion,
+        metadata: { ...(existing.metadata as object), ...(a.metadata ?? {}) },
+      })
+      .select('id')
+      .single();
+    if (verErr) throw new Error(`asset new-version insert failed: ${verErr.message}`);
+    await logEvent(sb as never, {
+      event_type: 'asset_created',
+      title: `${a.fileType} ${nextTag} · ${status}`,
+      actor: a.agentId ?? 'DIRECT-RUN',
+      episode_id: a.episodeId ?? null,
+      series_id: a.seriesId ?? null,
+      asset_id: created.id,
+      metadata: { file_type: a.fileType, filename: newFilename, supersedes_version: existing.version },
+    });
+    return { id: created.id, filename: newFilename, created: true, cachedAt };
+  }
 
   if (existing) {
     const patch: Record<string, unknown> = {
@@ -281,6 +335,30 @@ export function mediaDurationSeconds(file: string): number | undefined {
   }
 }
 
+/**
+ * Рецепт изделия — промпт и параметры генерации. Раскладывается в ЭТАЛОННЫЕ
+ * формы конвейера (D89/D101/D102 закрыты этой правкой):
+ *   кадр → `image_prompt.history[]` + `shot_reference.generation_history[]`
+ *          (то, что читают дровер и select_attempt);
+ *   клип → плоские поля metadata по образцу exec-vgen (`prompt`, `provider_id`…).
+ * Ключа `metadata.recipe` больше НЕТ — четвёртая форма хранения промпта была
+ * невидима всему существующему UI.
+ */
+export interface MediaRecipe {
+  /** Промпт дословно, НЕ обрезается — усечённый образец нельзя повторить. */
+  prompt: string;
+  provider?: string;
+  model?: string;
+  quality?: string;
+  size?: string;
+  tier?: string;
+  resolution?: string;
+  aspect_ratio?: string;
+  seed?: number;
+  cost_usd?: number;
+  references?: Array<{ slug: string; kind: string; asset_id: string; filename: string }>;
+}
+
 export interface RegisterMediaArgs {
   episodeId: string;
   kind: MediaKind;
@@ -288,19 +366,32 @@ export interface RegisterMediaArgs {
   file: string;
   /** `sh01` — обязателен для кадра и клипа; для ката и музыки не нужен. */
   shot?: string;
-  version?: string;
+  /**
+   * Статус рождения. По умолчанию REVIEW (R13): изделие ПРЕДЪЯВЛЯЕТСЯ, а не
+   * самоутверждается — APPROVED мимо ревью было дырой прямого пути.
+   */
   status?: string;
   description?: string;
   origin?: string;
-  /**
-   * D87: рецепт изделия — промпт, референсы, провайдер, тир качества. Ложится в
-   * `metadata` рядом со служебными полями. Это ОБРАЗЕЦ, к которому возвращаются
-   * и который правят, а не диагностика: без него нельзя ни повторить удачный
-   * кадр, ни ответить, на чём сгенерирован неудачный.
-   */
-  recipe?: Record<string, unknown>;
+  recipe?: MediaRecipe;
 }
 
+/**
+ * Эталонный след изделия (Ф1 миграции, R1-R23). Правила, выстраданные E05:
+ *
+ *  · ВСЕГДА INSERT новой строки `version = max+1` (R1/R2). Перегенерация 09.08
+ *    ЗАТЁРЛА четыре одобренных кадра — байты, промпты и историю разом; сравнить
+ *    «до/после» стало нечем. Версии — не украшение, а возможность отката.
+ *  · Байты через `persistBinary` (R4/R5/R6): кэш + Drive, строка получает
+ *    `drive_file_id`/`staging_path` — без них превью не резолвится и ячейка
+ *    таймлайна пуста при живом файле.
+ *  · Кадр несёт `shot_reference.contract` (R8) — без него демоушен возвращает
+ *    null, а уникальный индекс `assets_one_approved_per_shot` бьёт duplicate key
+ *    на втором утверждении.
+ *  · `logEvent('asset_created')` — realtime-подписки UI заведены от
+ *    `activity_events`; изделие без события невидимо до следующего опроса
+ *    (жалоба Директора: «фид какие-то вещи не выдавал»).
+ */
 export async function registerEpisodeMedia(a: RegisterMediaArgs): Promise<PersistAssetResult> {
   const kind = a.kind;
   const shot = (a.shot ?? '').toLowerCase();
@@ -311,8 +402,8 @@ export async function registerEpisodeMedia(a: RegisterMediaArgs): Promise<Persis
   const stem = code.replace(/^SS-/, '').toLowerCase();
   const sid = perShot ? shotIdFor(code, shot) : null;
   const spec = MEDIA_AGENT[kind];
-  const version = a.version ?? 'v01';
-  const status = a.status ?? 'APPROVED';
+  const status = a.status ?? 'REVIEW';
+  const nowIso = new Date().toISOString();
 
   const fileType =
     kind === 'frame' ? `IMG-episode_ref_${stem.replace(/-/g, '_')}_${shot}`
@@ -321,33 +412,190 @@ export async function registerEpisodeMedia(a: RegisterMediaArgs): Promise<Persis
     : 'AUD-music-main';
   const slug = perShot ? `shot_${shot}` : kind === 'cut' ? 'final_cut' : 'music_main';
 
-  // Лента связывает ячейку с изделием через эти поля; без них тип верен, а
-  // ячейка пуста.
+  // R1/R2: версия = max по (episode, file_type) + 1 — паттерн эталона
+  // (`episode-references.ts:2200`). Имя файла выводится ИЗ версии (R3), поэтому
+  // старые байты в кэше живут рядом с новыми, а не затираются.
+  const { data: verRows, error: verErr } = await sb
+    .from('assets')
+    .select('version')
+    .eq('episode_id', a.episodeId)
+    .eq('file_type', fileType)
+    .order('version', { ascending: false })
+    .limit(1);
+  if (verErr) throw new Error(`registerEpisodeMedia(${fileType}): чтение версий — ${verErr.message}`);
+  const nextVersion = ((verRows?.[0]?.version as number | undefined) ?? 0) + 1;
+  const versionTag = `v${String(nextVersion).padStart(2, '0')}`;
+  const filename = `${code}-${spec.kindTag}-${slug}-${versionTag}-${status}${extname(a.file)}`;
+
+  // R4/R5/R6: байты — через тот же persistBinary, что у агентского пути:
+  // локальный кэш по каноническому имени + Drive (когда storage=drive_native).
+  const src = resolve(process.cwd(), a.file);
+  if (!existsSync(src)) throw new Error(`registerEpisodeMedia: файла нет — ${src}`);
+  const ext = extname(a.file).slice(1).toLowerCase() as BinaryExt;
+  const persisted = await persistBinary({
+    base64: readFileSync(src).toString('base64'),
+    ext,
+    driveFilename: filename,
+    episodeCode: code,
+    supabase: sb as never,
+  });
+
+  const r = a.recipe;
   const metadata: Record<string, unknown> = {
     origin: a.origin ?? 'direct-run',
     source_file: a.file,
   };
-  if (kind === 'frame') metadata.shot_reference = { shot_id: sid };
+
+  if (kind === 'frame') {
+    // R8: контракт эталона — без него ассет невидим демоушену и select_attempt.
+    metadata.shot_reference = {
+      contract: SHOT_REFERENCE_CONTRACT,
+      shot_id: sid,
+      generation_history: r
+        ? [
+            {
+              version: nextVersion,
+              provider_id: r.provider ?? 'unknown',
+              model: r.model ?? 'gen',
+              prompt: r.prompt,
+              references_used: (r.references ?? []).map((x) => ({
+                kind: x.kind,
+                bible_asset_id: x.asset_id,
+              })),
+              strength: null,
+              cost_usd: r.cost_usd ?? 0,
+              image_url: persisted.browserUrl,
+              drive_file_id: persisted.driveFileId,
+              drive_web_view_url: persisted.driveWebViewUrl,
+              is_4k: false,
+              at: nowIso,
+              triggered_by: 'director_edit',
+              mode_at_time: 3,
+            },
+          ]
+        : [],
+      review: null,
+      retry_count: 0,
+      retry_history: [],
+    };
+    // D101/D102: промпт живёт там, где его читает дровер, — image_prompt.history.
+    if (r) {
+      metadata.image_prompt = {
+        current_version: nextVersion,
+        history: [
+          {
+            version: nextVersion,
+            prompt: r.prompt,
+            source: 'director_edit',
+            at: nowIso,
+            cost_usd: r.cost_usd ?? 0,
+            staging_path: persisted.browserUrl,
+            drive_file_id: persisted.driveFileId,
+            drive_web_view_url: persisted.driveWebViewUrl,
+            quality: r.quality ?? null,
+            mode_at_time: 3,
+          },
+        ],
+      };
+    }
+    if (!isShotReferenceV2({ ...metadata })) {
+      throw new Error('registerEpisodeMedia: собранный кадр не проходит isShotReferenceV2 — форма разъехалась с контрактом');
+    }
+  }
+
   if (kind === 'clip') {
+    // Эталон VID — плоские поля (exec-vgen.ts:586): промпт клипа больше не
+    // теряется (R22 был: «чем сделан клип, проверить нечем»).
     metadata.shot_id = sid;
     const seconds = mediaDurationSeconds(a.file);
     if (seconds) metadata.duration_seconds = seconds;
+    if (r) {
+      metadata.prompt = r.prompt;
+      if (r.provider) metadata.provider_id = r.provider;
+      if (r.model) metadata.model_id = r.model;
+      if (r.tier) metadata.quality_tier = r.tier;
+      if (r.resolution) metadata.resolution = r.resolution;
+      if (r.aspect_ratio) metadata.aspect_ratio = r.aspect_ratio;
+      if (r.seed !== undefined) metadata.seed = r.seed;
+    }
   }
-  // D87: рецепт кладётся ПОД своим ключом, а не рассыпается по корню метаданных —
-  // так его видно как одно целое и он не столкнётся с полями, по которым лента
-  // ищет ячейку.
-  if (a.recipe) metadata.recipe = a.recipe;
 
-  return persistAsset({
-    filename: `${code}-${spec.kindTag}-${slug}-${version}-${status}${extname(a.file)}`,
-    fileType,
-    srcPath: a.file,
-    episodeId: a.episodeId,
-    status,
-    description: a.description ?? `${kind} ${sid ?? code} · прямой вызов`,
-    agentId: spec.agent,
+  if ((kind === 'cut' || kind === 'music') && r) {
+    metadata.prompt = r.prompt;
+    if (r.provider) metadata.provider_id = r.provider;
+  }
+
+  // Демоушен ПЕРЕД вставкой APPROVED: слот «один утверждённый на кадр» держит
+  // уникальный индекс; прежний победитель уходит в INVALIDATED тем же кодом,
+  // что у кнопки аппрува (`single-approved.ts`). currentId — заглушка: новой
+  // строки ещё нет, а демоушен исключает по id.
+  if (status === 'APPROVED' || status === 'LOCKED') {
+    const slot = resolveSlotDescriptor({
+      file_type: fileType,
+      episode_id: a.episodeId,
+      series_id: null,
+      metadata,
+      content: null,
+    } as never);
+    if (slot) {
+      await demoteSiblingApproved(sb as never, { slot, currentId: '00000000-0000-0000-0000-000000000000' });
+    }
+  }
+
+  const { data: inserted, error: insErr } = await sb
+    .from('assets')
+    .insert({
+      episode_id: a.episodeId,
+      series_id: null,
+      file_type: fileType,
+      filename,
+      drive_path: persisted.browserUrl,
+      staging_path: persisted.browserUrl,
+      drive_file_id: persisted.driveFileId,
+      drive_web_view_url: persisted.driveWebViewUrl,
+      status,
+      description: a.description ?? `${kind} ${sid ?? code} · прямой вызов`,
+      content: null,
+      agent_id: spec.agent,
+      version: nextVersion,
+      metadata,
+    })
+    .select('id')
+    .single();
+  if (insErr) throw new Error(`registerEpisodeMedia insert: ${insErr.message}`);
+
+  // Самопроверка «увидит ли лента» (Ф1.8): те же чистые функции, которыми ячейка
+  // резолвит изделие. Строка уже вставлена — отказ громкий, но изделие цело.
+  const visible = resolvePreviewSrc({
+    id: inserted.id,
+    drive_file_id: persisted.driveFileId,
+    drive_web_view_url: persisted.driveWebViewUrl,
+    drive_path: persisted.browserUrl,
+    staging_path: persisted.browserUrl,
+    version: nextVersion,
     metadata,
+  } as never);
+  if (!visible) {
+    console.error(
+      `ЛЕНТА НЕ УВИДИТ ${filename}: resolvePreviewSrc вернул null — проверь drive/staging поля строки ${inserted.id}`,
+    );
+  }
+
+  // Событие — то, от чего живут realtime-подписки UI и лента чата (жалоба
+  // Директора 09.08: «activity feed какие-то вещи не выдавал»). asset_created
+  // есть в whitelist DB-триггера → пузырь в треде; не actionable → платного
+  // пробуждения нет.
+  await logEvent(sb as never, {
+    event_type: 'asset_created',
+    title: `${kind} ${sid ?? code} ${versionTag} · ${status}`,
+    description: a.description ?? null,
+    actor: spec.agent,
+    episode_id: a.episodeId,
+    asset_id: inserted.id,
+    metadata: { file_type: fileType, filename, shot_id: sid, origin: a.origin ?? 'direct-run' },
   });
+
+  return { id: inserted.id, filename, created: true, cachedAt: persisted.absolutePath };
 }
 
 /**
