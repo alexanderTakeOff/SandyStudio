@@ -30,5 +30,22 @@ async function main() {
   for (const a of assets ?? []) {
     console.log(`  ${a.status.padEnd(9)} v${a.version}  ${a.filename}`);
   }
+
+  const { localCacheAbsPath } = await import('../lib/media-cache');
+  const { existsSync, statSync } = await import('node:fs');
+  const { data: imgs } = await sb
+    .from('assets')
+    .select('id,filename,staging_path,drive_file_id')
+    .eq('episode_id', ep.id)
+    .like('filename', '%.png');
+  console.log('\nбайты кадров:');
+  for (const a of imgs ?? []) {
+    const p = localCacheAbsPath(a.filename);
+    const ok = existsSync(p);
+    console.log(`  ${a.filename}`);
+    console.log(`    id=${a.id}`);
+    console.log(`    cache=${p}  ${ok ? `ЕСТЬ ${(statSync(p).size / 1024).toFixed(0)}KB` : 'НЕТ'}`);
+    console.log(`    staging_path=${a.staging_path ?? '—'}  drive=${a.drive_file_id ?? '—'}`);
+  }
 }
 main();
