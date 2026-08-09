@@ -241,6 +241,19 @@ export async function POST(req: NextRequest): Promise<Response> {
       try {
         let finalText = '';
         for (let round = 0; round < MAX_ROUNDS; round++) {
+          // D69 (2026-08-09): отмена на клиенте ОСТАНАВЛИВАЕТ сервер. У старого
+          // роута это было учтено явно (TD-20.A), новый писался с нуля и не
+          // перенёс — кнопка «стоп» обрывала fetch у Директора, а сервер продолжал
+          // крутить раунды и тратить деньги на большой модели. Проверка на границе
+          // раунда: следующий платный вызов не уходит, а незавершённый ход честно
+          // записывается ассистентской строкой ниже — молча пропасть он не может.
+          if (req.signal.aborted) {
+            finalText =
+              finalText ||
+              `(ход прерван Директором на ${round + 1}-м раунде — работа остановлена, не завершена)`;
+            emit({ t: 'error', message: 'ход прерван' });
+            break;
+          }
           const params = {
             model,
             messages,
@@ -253,6 +266,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
           const completion = await createConciergeCompletion(client, params, {
             systemSplit: promptParts,
+            signal: req.signal,
           });
           const usage = completion.usage;
           cacheRead += usage?.cache_read_input_tokens ?? 0;

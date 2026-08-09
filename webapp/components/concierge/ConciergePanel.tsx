@@ -473,12 +473,47 @@ export function ConciergePanel() {
   // существующим [threadId] DB-load эффектом. Параллельные сериалы не мешаются.
   useEffect(() => {
     if (!MIND_CHAT) return;
+    let cancelled = false;
     try {
       const t = localStorage.getItem(threadKeyFor(openEpisodeId));
       setThreadId(t ?? null);
       setMessages([]);
       try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+
+      // D85 (2026-08-09): ключа в localStorage нет — СПРОСИТЬ СЕРВЕР, а не считать
+      // тред новым. Привязка «тред ↔ эпизод» живёт в базе (`concierge_threads`), а
+      // localStorage — лишь её кэш на этом браузере. На другом устройстве, в другом
+      // профиле или после чистки хранилища панель открывала эпизод с пустым тредом
+      // и заводила ВТОРОЙ: переписка не терялась, но становилась недостижимой из
+      // UI, а разговор начинался с нуля на модели за $5/$25.
+      //
+      // Запрос — ровно первая ветка `resolveOpenThreadId`: открытый тред ИМЕННО
+      // этого эпизода. Серийный и глобальный фолбэки не воспроизводим сознательно
+      // (роут такой тред всё равно отвергнет, а при параллельных эпизодах он увёл
+      // бы в чужой ум).
+      if (!t && openEpisodeId) {
+        void (async () => {
+          try {
+            const sb = createSupabaseBrowserClient();
+            const { data } = await sb
+              .from('concierge_threads')
+              .select('id')
+              .eq('episode_id', openEpisodeId)
+              .is('ended_at', null)
+              .order('started_at', { ascending: false })
+              .limit(1);
+            // Тот же каст, что у соседних запросов в этом файле: supabase-js
+            // выводит tuple-with-error union и теряет форму строки.
+            const rows = (data ?? []) as unknown as Array<{ id: string }>;
+            const found = rows[0]?.id;
+            if (cancelled || !found) return;
+            setThreadId(found);
+            try { localStorage.setItem(threadKeyFor(openEpisodeId), found); } catch { /* ignore */ }
+          } catch { /* сеть/права — панель просто заведёт новый тред, как раньше */ }
+        })();
+      }
     } catch { /* ignore */ }
+    return () => { cancelled = true; };
   }, [openEpisodeId]);
 
   // Persist panel width / open / input height.

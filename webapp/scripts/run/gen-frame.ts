@@ -12,6 +12,10 @@ import { defineTool } from './_tool';
 import { shotFromFilename, traceInStudio } from './_asset';
 import { openAIEditsMultiProvider } from '../../lib/providers/openai-edits-multi';
 import { readAssetMediaAsBase64 } from '../../lib/media-cache';
+// D74: те же читатели настроек эпизода, что у агентского конвейера — своя копия
+// разъехалась бы в трактовке одних и тех же полей.
+import { readEpisodeImageConfig } from '../../lib/agents/runner';
+import { resolveImageParams } from '../../lib/api/resolve-generation-params';
 import type { MultiImageRef, MultiImageRefKind } from '../../lib/providers/image-gen-multi';
 
 /** gpt-image-2 medium/high pricing per image at 1024x1536 (OpenAI list). */
@@ -53,10 +57,43 @@ export default defineTool(
     writes: ['budget_log', 'assets'],
     stations: ['episode_references'],
   },
-  async ({ arg, env }) => {
+  async ({ arg, env, wasGiven }) => {
     const out = arg('out');
     const size = arg('size');
-    const quality = arg('quality');
+
+    // D74 (2026-08-09): настройки эпизода, выставленные Директором в UI, УПРАВЛЯЮТ
+    // инструментом. До этой правки `--quality` со статическим умолчанием `high`
+    // выглядел одинаково и когда его назвали, и когда взяли по умолчанию, поэтому
+    // `episodes.metadata.generation_config.image` не управлял ничем — держала одна
+    // устная подсказка уму в чате. Директор: «Директор устанавливает настройки
+    // эпизода в UI, а не напоминает».
+    //
+    // Порядок честный: явный аргумент → настройка эпизода → статический дефолт как
+    // последний рубеж. Читаем теми же функциями, что агентский конвейер
+    // (`readEpisodeImageConfig` + `resolveImageParams`), а не своей копией — иначе
+    // прямой путь и конвейер разъедутся в трактовке одних и тех же настроек.
+    let quality = arg('quality');
+    let qualitySource = 'аргумент';
+    if (!wasGiven('quality')) {
+      const { data: epRow } = await sb
+        .from('episodes')
+        .select('metadata')
+        .eq('id', env('RUN_EPISODE_ID'))
+        .maybeSingle();
+      const epConfig = readEpisodeImageConfig(epRow);
+      if (epConfig) {
+        const resolved = resolveImageParams({ episodeConfig: epConfig });
+        if (resolved.source.quality === 'episode') {
+          quality = resolved.quality as typeof quality;
+          qualitySource = 'настройки эпизода';
+        } else {
+          qualitySource = 'умолчание инструмента';
+        }
+      } else {
+        qualitySource = 'умолчание инструмента';
+      }
+    }
+    console.log(`quality=${quality} (${qualitySource})`);
 
     const prompt = readFileSync(resolve(process.cwd(), arg('prompt-file')), 'utf8').trim();
 

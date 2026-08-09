@@ -212,7 +212,15 @@ function translateTools(
 export async function createConciergeCompletion(
   openaiClient: OpenAI,
   params: ChatCompletionCreateParamsNonStreaming,
-  opts: { systemSplit: ConciergeSystemSplit },
+  opts: {
+    systemSplit: ConciergeSystemSplit;
+    /**
+     * D69 (2026-08-09): отмена Директора должна обрывать и УЖЕ ИДУЩИЙ вызов, а не
+     * только следующий раунд. Необязателен — вызывающие без него ведут себя как
+     * прежде, поэтому старый роут не задет.
+     */
+    signal?: AbortSignal;
+  },
 ): Promise<ConciergeCompletion> {
   if (!conciergeAnthropicNativeEnabled()) {
     // Байт-в-байт passthrough — но суффикс `-1m` не настоящее имя модели API
@@ -257,7 +265,13 @@ export async function createConciergeCompletion(
 
   const resp = await anthropicClient().messages.create(
     request as unknown as Anthropic.MessageCreateParamsNonStreaming,
-    contextWindow1m ? { headers: { 'anthropic-beta': CONTEXT_1M_BETA_HEADER } } : undefined,
+    {
+      ...(contextWindow1m ? { headers: { 'anthropic-beta': CONTEXT_1M_BETA_HEADER } } : {}),
+      // D69: сигнал отмены — штатное поле request-options SDK. Без него «стоп»
+      // Директора обрывал только его собственный fetch, а начатый вызов дорабатывал
+      // до конца и списывался.
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    },
   );
 
   const textParts: string[] = [];
