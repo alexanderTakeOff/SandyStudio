@@ -36,7 +36,49 @@ $RepoRoot  = $PSScriptRoot
 $Web       = Join-Path $RepoRoot 'webapp'
 $SqliteDir = Join-Path $RepoRoot 'FILMS\_inngest'
 $InngestCli = 'inngest-cli@1.33.0'
+# Клон Полины (2026-08-09): её рабочая поверхность И адресат моста ниже. Одна константа
+# на обе роли — второго списка «где живёт клон» не заводим.
+$PolinaClone = 'C:\SandyStudio-polina'
+
+# ГОВОРЯЩИЙ ОТКАЗ — самой первой строкой, до Set-Location и до любого Stop-Process
+# (2026-08-09, Директор). Клон Полины — рабочая поверхность headless-сессии, не станок:
+# лаунчеры приехали туда клоном репозитория и прибиты к дефолтам :3000/:8288, то есть к
+# портам МАСТЕРА. Приложение и Inngest на занятых портах молча не встанут (отказ уйдёт в
+# лог, на экране будет «Stack up»), а блок моста ниже стартует БЕЗУСЛОВНО. Итог двойного
+# клика здесь: серверов ноль, мостов два — а два моста читают одну строку Директора и оба
+# спавнят ход (двойной ответ, двойные деньги, гонка за один session_id). Стоп-фаза их не
+# разведёт: она гасит процессы со СВОИМ корнем в командной строке, а мост из клона несёт
+# чужой, и переживает любое число рестартов.
+if ($RepoRoot.TrimEnd('\') -ieq $PolinaClone.TrimEnd('\')) {
+  Write-Host ''
+  Write-Host '  ┌──────────────────────────────────────────────────────────────┐' -ForegroundColor Red
+  Write-Host '  │  СТОП. Это КЛОН ПОЛИНЫ — здесь стек НЕ запускают.            │' -ForegroundColor Red
+  Write-Host '  └──────────────────────────────────────────────────────────────┘' -ForegroundColor Red
+  Write-Host ''
+  Write-Host "  Дерево:  $RepoRoot" -ForegroundColor Yellow
+  Write-Host '  Роль:    рабочая поверхность headless-сессии Полины (мост спавнит её ЗДЕСЬ).' -ForegroundColor Yellow
+  Write-Host '  Причина: лаунчеры тут прибиты к :3000/:8288 — портам МАСТЕРА. Серверы молча' -ForegroundColor Yellow
+  Write-Host '           не встанут, а МОСТ встанет — и станет вторым. Два моста двоят' -ForegroundColor Yellow
+  Write-Host '           каждый ход Полины: двойной ответ, двойные деньги, гонка за сессию.' -ForegroundColor Yellow
+  Write-Host ''
+  Write-Host '  Стек живёт в РАБОЧЕМ дереве: C:\SandyStudio-nx  ->  start-stack-nx.cmd' -ForegroundColor Cyan
+  Write-Host '  (мост Полины поднимается оттуда же и сам; отдельных действий не нужно)' -ForegroundColor Cyan
+  Write-Host ''
+  Read-Host 'Enter — закрыть'
+  exit 1
+}
+
 Set-Location $Web
+
+# Где мы и на каких портах — В НАЧАЛЕ, а не только в конце: деревьев несколько, и окно
+# читают в момент запуска, а не через 20 секунд.
+$TreeName = if ($RepoRoot -match 'SandyStudio-nx$') { 'РАБОЧЕЕ (nx) — новая парадигма' }
+            elseif ($RepoRoot -match 'SandyStudio$')  { 'МАСТЕР' }
+            else { 'прочее' }
+Write-Host ''
+Write-Host "  == СТЕК ПОДНИМАЕТСЯ В ДЕРЕВЕ: $TreeName ==" -ForegroundColor Green
+Write-Host "     $RepoRoot   ->   App :$Port | Inngest :$InngestPort (gateway :$InngestGatewayPort)" -ForegroundColor Green
+Write-Host ''
 
 # Гасим ТОЛЬКО своё дерево и свой порт. Раньше здесь падал любой `next start` и
 # любой inngest на машине — с двумя деревьями это означало, что второй запуск
@@ -109,7 +151,6 @@ Start-Process powershell -ArgumentList '-NoProfile','-Command',
 # Ф2 миграции «Полина в харнес» (2026-08-09): МОСТ — канал панель↔headless-сессия
 # Полины. Живёт и умирает со стеком; отдельных действий Директора нет. Гасится
 # выше вместе с node-процессами дерева (командная строка содержит $RepoRoot).
-$PolinaClone = 'C:\SandyStudio-polina'
 if (Test-Path (Join-Path $PolinaClone 'webapp\roles\polina.md')) {
   Write-Host '== starting mind-bridge (Polina harness) ==' -ForegroundColor Cyan
   Start-LogRotation "$Web\bridge.log"
@@ -135,5 +176,5 @@ foreach ($u in @("http://localhost:$Port/api/health","http://localhost:$Port/api
   catch { Write-Host "  $u  ->  DOWN" -ForegroundColor Red }
 }
 Write-Host ''
-Write-Host "Stack up. App :$Port | Inngest :$InngestPort (durable). Root: $RepoRoot" -ForegroundColor Cyan
+Write-Host "Stack up [$TreeName]. App :$Port | Inngest :$InngestPort (durable). Root: $RepoRoot" -ForegroundColor Cyan
 Read-Host 'Enter to close this launcher window (the app/inngest keep running)'
